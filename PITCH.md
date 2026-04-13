@@ -1,247 +1,246 @@
-# APEX — AI-Powered BTC Trading Bot
-### Competition Pitch Document
+# APEX — Adaptive Perpetual Execution on SoDEX
 
 ---
 
-## Problem Statement
+## What is APEX?
 
-Retail traders on perpetual futures exchanges face three compounding challenges:
-
-1. **Signal noise** — technical indicators alone produce too many false signals, especially in sideways markets
-2. **Fee erosion** — maker/taker fees (0.024% round-trip) silently kill profitability on high-frequency strategies
-3. **No learning loop** — bots repeat the same mistakes because they have no memory of past trades
-
-Existing solutions are either black-box (no transparency) or require expensive infrastructure. APEX solves all three with a fully open, self-improving architecture.
+APEX is an AI-powered BTC perpetual futures trading bot built **natively for SoDEX**. It combines a hybrid signal engine, adaptive learning, and a pseudo market-making strategy to maximize both **SoPoints accumulation** (Farm Mode) and **trading performance** (Trade Mode) — the two core incentives of the SoDEX ecosystem.
 
 ---
 
-## Solution Overview
+## Why SoDEX?
 
-APEX is a production-grade BTC perpetual futures trading bot that combines:
+SoDEX's maker fee model (0.012% per side) and SoPoints reward system create a unique opportunity: a bot that trades frequently with Post-Only orders can accumulate SoPoints while staying profitable. APEX is designed around this exact mechanic.
 
-- **Hybrid AI signal engine**: technical momentum scoring + cloud LLM reasoning
-- **Self-improving memory**: local vector database learns from every trade
-- **Fee-aware execution**: Post-Only maker orders, fee-adjusted TP targets
-- **Real-time analytics**: win rate breakdown across regime, direction, confidence, and time-of-day
-- **Zero-downtime config**: all parameters tunable at runtime via web dashboard
+**SoDEX-specific integrations:**
+- Full **EIP-712 typed data signing** for all write operations
+- **Post-Only orders** on every entry and exit — 0.012% per side, never taker
+- **Spread-aware entry**: skip if spread > 10 bps to protect maker status
+- **SoPoints dashboard**: real-time tier, weekly volume, countdown, runtime token refresh
+- **Dynamic TP** tied to live spread — always covers round-trip fees
 
 ---
 
-## Technical Architecture
+## Two Modes, One Bot
+
+### Farm Mode — Maximum Volume for SoPoints
+
+The core insight: SoDEX rewards volume. Farm Mode is designed to **always trade** — no signal can block execution.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        APEX Core                            │
-│                                                             │
-│  Watcher (State Machine)                                    │
-│  IDLE → PENDING_ENTRY → IN_POSITION → PENDING_EXIT → IDLE  │
-│                                                             │
-│  ┌──────────────────┐  ┌──────────────┐  ┌─────────────┐  │
-│  │  AISignalEngine  │  │ RiskManager  │  │  Executor   │  │
-│  │  EMA9/21 + RSI   │  │  TP/SL check │  │ Post-Only   │  │
-│  │  + LLM decision  │  │  per tick    │  │ maker orders│  │
-│  └──────────────────┘  └──────────────┘  └─────────────┘  │
-│           │                                                 │
-│  ┌──────────────────┐  ┌──────────────┐                    │
-│  │  TradingMemory   │  │  Analytics   │                    │
-│  │  ChromaDB+Ollama │  │  Engine      │                    │
-│  │  (local, free)   │  │  (30+ dims)  │                    │
-│  └──────────────────┘  └──────────────┘                    │
-└─────────────────────────────────────────────────────────────┘
-         │                          │
-   SoDEX / Decibel            Telegram + Dashboard
-   (BTC perpetuals)           (real-time control)
+signal = long/short → use it
+signal = skip       → alternate direction (long ↔ short)
+```
+
+No confidence gate. No chop filter. No fake breakout check. The bot is always active.
+
+**Exit logic:**
+- SL: 5% hard stop
+- TP: dynamic, tied to live spread (`spreadBps/10000 × price × 1.5`, min fee floor, max $2)
+- Time exit: 2–5 minute hold, then exit regardless of PnL
+
+**Pseudo Market Making:**
+- Ping-pong: after LONG exit → bias SHORT; after SHORT exit → bias LONG
+- Inventory control: soft bias when net exposure > $50, force rebalance when > $150
+- Result: bot alternates sides, capturing spread on each leg
+
+### Trade Mode — Signal-Filtered Execution
+
+When the goal is win rate over volume, Trade Mode applies full filtering:
+
+1. Regime check (HIGH_VOLATILITY → skip)
+2. Chop detection (chopScore ≥ 0.55 → skip)
+3. Fake breakout filter (OB imbalance contradiction → skip)
+4. Confidence ≥ 0.65 (calibrated against historical win rates)
+5. 2-tick confirmation (60s window)
+
+Exit: SL 5% or TP 5% — no time pressure.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        APEX on SoDEX                            │
+│                                                                 │
+│  Watcher (State Machine)                                        │
+│  IDLE → PENDING_ENTRY → IN_POSITION → PENDING_EXIT → IDLE      │
+│                                                                 │
+│  ┌──────────────────┐  ┌──────────────┐  ┌─────────────────┐  │
+│  │  AISignalEngine  │  │PositionSizer │  │ ExecutionEdge   │  │
+│  │  EMA+RSI+LLM     │  │ conf×perf×   │  │ spread guard +  │  │
+│  │  adaptive wts    │  │ volatility   │  │ dynamic offset  │  │
+│  └──────────────────┘  └──────────────┘  └─────────────────┘  │
+│                                                                 │
+│  ┌──────────────────┐  ┌──────────────┐  ┌─────────────────┐  │
+│  │  FeedbackLoop    │  │RegimeDetect  │  │  MarketMaker    │  │
+│  │  adaptive wts    │  │ ATR+BB+Vol   │  │ ping-pong +     │  │
+│  │  per component   │  │ 4-state      │  │ inventory ctrl  │  │
+│  └──────────────────┘  └──────────────┘  └─────────────────┘  │
+│                                                                 │
+│  ┌──────────────────┐  ┌──────────────┐                        │
+│  │  ChopDetector    │  │  Analytics   │                        │
+│  │  FakeBreakout    │  │  30+ dims    │                        │
+│  │  AdaptiveCool    │  │              │                        │
+│  └──────────────────┘  └──────────────┘                        │
+└─────────────────────────────────────────────────────────────────┘
+              │                        │
+         SoDEX API               Telegram + Dashboard
+    (EIP-712, Post-Only)        (real-time control)
 ```
 
 ---
 
-## Key Innovations
+## Intelligence Stack
 
-### 1. Hybrid Signal Engine
+### 1. Adaptive Signal Weights
 
-Most bots use either pure technical analysis OR pure AI. APEX uses both in a layered approach:
+Signal weights are not static — they adjust every 10 trades:
 
-**Layer 1 — Momentum Score** (deterministic, fast):
 ```
-score = (EMA9/21 trend × 0.40)
-      + (RSI(14)       × 0.25)
-      + (3-candle mom  × 0.20)
-      + (OB imbalance  × 0.15)
-      + candle pattern bonus (±5%)
+if EMA_winRate > 60%  → EMA weight += 0.05
+if RSI_lossStreak > 3 → RSI weight -= 0.05
 ```
 
-**Layer 2 — LLM Reasoning** (contextual, adaptive):
-- Receives full market context: indicators, regime, price position in range, L/S ratio, fee
-- Returns `direction` + `confidence` + `reasoning` in structured JSON
-- Supports OpenAI (gpt-4o) and Anthropic (claude-sonnet) interchangeably
-- Graceful fallback to Layer 1 if LLM is unavailable
+Each component (EMA, RSI, momentum, orderbook imbalance) is tracked independently. Weights persist across restarts in `signal-weights.json`.
 
-**Layer 3 — Signal Confirmation** (noise filter):
-- Requires same direction on 2 consecutive ticks within 60 seconds
-- Eliminates single-tick false signals without adding latency
+### 2. SIDEWAY Range Intelligence
 
-### 2. Fee-Aware Strategy
+In SIDEWAY regime, the bot uses **price position in range** (0 = bottom, 1 = top of last 10 candles):
 
-Fee erosion is the silent killer of high-frequency strategies. APEX accounts for fees at every decision point:
+```
+pricePosition > 75% → momentumScore -= 0.08  (penalize long at range top)
+pricePosition < 25% → momentumScore += 0.08  (penalize short at range bottom)
+```
 
-- All orders are **Post-Only (maker)** — 0.012% per side vs 0.06% taker
-- Farm mode TP target: `max(FARM_TP_USD, fee_round_trip × 1.5)` — never exit at a loss to fees
-- Analytics tracks "fee losers" — trades that won gross but lost net after fees
-- LLM prompt explicitly includes round-trip fee: "need clear momentum to profit above 0.024%"
+When LLM is unavailable in SIDEWAY, price position becomes the primary signal:
+- Price at range bottom (< 30%) → LONG (mean reversion)
+- Price at range top (> 70%) → SHORT (mean reversion)
 
-### 3. Self-Improving Trading Memory
+This prevents the bot from longing at the top or shorting at the bottom of a range — a common mistake in sideways markets.
 
-APEX includes a local AI memory system that learns from every completed trade:
+### 2. Dynamic Position Sizing
 
-- **Signal embedding**: converts market state to a 6-dimensional vector `[price, sma50, ls_ratio, ob_imbalance, buy_pressure, rsi]`
-- **ChromaDB**: stores all trade vectors for cosine similarity search
-- **Prediction**: for any new signal, retrieves 10 most similar past trades → computes historical win rate → feeds context to local Ollama (llama3) for decision
-- **Fully local**: no API costs, no data leaving the server
+```
+size = baseSize × clamp(confMult × 0.6 + perfMult × 0.4) × volatilityFactor
+```
 
-This creates a feedback loop: the bot gets better at recognizing market conditions it has seen before.
+Scales up on winning streaks, scales down during drawdowns. Hard BTC cap + soft balance-% cap.
 
-### 4. Dual Operating Modes
+### 3. Regime Detection
 
-**Farm Mode** — optimized for volume accumulation (SoPoints):
-- High frequency, 2–5 minute holds
-- Lower confidence threshold (0.55)
-- Dynamic hold: waits for price recovery before exiting at a loss
-- Targets SoDEX SoPoints tier progression
+4 market states from ATR + Bollinger Band width + volume ratio:
 
-**Trade Mode** — optimized for win rate:
-- Strict signal filtering (confidence ≥ 0.65)
-- Pure TP/SL exits, no time pressure
-- R:R = 1.5:1 (TP 0.3% / SL 0.2%)
-- Regime-aware: reduces position bias against the trend
+| Regime | Entry edge | Size | Hold | SL buffer |
+|---|---|---|---|---|
+| TREND | 0.02 | 1.0× | 1.5× | 1.0× |
+| SIDEWAY | 0.05 | 0.85× | 0.8× | 1.0× |
+| HIGH_VOL | 0.08 | 0.5× | 0.7× | 1.5× |
 
-### 5. Multi-Dimensional Analytics
+Applied in Trade Mode only. Farm Mode always executes.
 
-The analytics engine computes win rate across 30+ dimensions:
+### 4. Execution Edge
 
-| Dimension | Purpose |
-|---|---|
-| By regime (TREND/SIDEWAY) | Identify which market conditions work |
-| By confidence bucket | Validate LLM confidence calibration |
-| By hour UTC | Find optimal trading windows |
-| By direction (long/short) | Detect directional bias |
-| Signal quality metrics | LLM vs momentum agreement rate |
-| Fee impact analysis | Quantify fee erosion |
-| Holding time distribution | Optimize farm mode timing |
+Smart order placement for SoDEX's maker model:
+
+```
+offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
+```
+
+- Spread guard: skip if spread > 10 bps
+- Depth penalty: +$0.5 if top-5 book depth < $50k
+- Fill rate feedback: +$1.0 if recent fill rate < 60% (ring buffer of 20 orders)
+
+The bot self-corrects placement when orders aren't filling.
+
+### 5. Signal Cache
+
+LLM calls cached for 60 seconds. Cache invalidated after each entry. Result: LLM called at most once per minute — reduces cost and 429 errors.
 
 ---
 
-## Exchange Integration
+## SoDEX Integration Details
 
-### SoDEX
-- REST API with EIP-712 typed data signing (Ethereum-compatible)
-- Full order lifecycle: place, cancel, position, balance
-- SoPoints integration: tier tracking, weekly volume, countdown
+### EIP-712 Signing
 
-### Decibel
-- Aptos blockchain-based DEX
-- Ed25519 signing via `@aptos-labs/ts-sdk`
-- Post-Only order support
+Every write operation uses EIP-712 typed data signing:
+- Canonical JSON payload with strict field ordering (matching Go struct layout)
+- `keccak256` hash → sign `ExchangeAction { payloadHash, nonce }`
+- Normalize `v` from 27/28 → 0/1 (Go backend requirement)
+- Monotonically increasing nonce prevents replay attacks
 
-Both exchanges share a common `ExchangeAdapter` interface — adding new exchanges requires only implementing 9 methods.
+### Post-Only Execution
+
+All orders use `timeInForce = 4` (Post-Only):
+- Entry: `best_bid - dynamicOffset` (long) or `best_ask + dynamicOffset` (short)
+- Exit: `best_ask` (long exit) or `best_bid` (short exit)
+- Force close only: IOC for emergency exits
+
+### SoPoints Dashboard
+
+Built into the web dashboard:
+- Current tier (Bronze/Silver/Gold/Diamond) with progress bar
+- Weekly trading volume vs tier requirements
+- Countdown to next distribution
+- Token refresh at runtime — no restart needed
 
 ---
 
 ## Operational Features
 
-### Zero-Downtime Config
-All trading parameters are tunable at runtime via the web dashboard without restarting the bot:
-- Order sizes, TP/SL percentages, hold times, cooldowns
-- Changes validated before applying, persisted to disk
-- Rollback to defaults with one click
+**Zero-Downtime Config**: 70+ parameters tunable at runtime via dashboard. All changes validated before applying.
 
-### Telegram Control
-Full bot control via Telegram commands and inline buttons:
-- Start/stop sessions, set max loss, switch modes
-- Real-time position monitoring with one-tap close
-- Automatic alerts on fills, stops, and errors
+**Telegram Control**: start/stop, set max loss, switch modes, force close, real-time alerts.
 
-### Graceful Shutdown
-- SIGTERM/SIGINT handlers close open positions before exiting
-- State persisted to disk on every trade and on shutdown
-- Dashboard shows last known state immediately on restart
+**Graceful Shutdown**: SIGTERM/SIGINT handlers close open positions before exiting.
+
+**Docker**: `docker compose up -d` for production deployment.
 
 ---
 
 ## Correctness & Testing
 
-APEX uses **Property-Based Testing (PBT)** with `fast-check` to verify formal correctness properties:
+Property-Based Testing with `fast-check` across all phases:
 
 ```typescript
-// P1: Win rate always in [0, 1]
-∀ trades: compute(trades).overall.winRate ∈ [0, 1]
+// Adaptive weights always sum to 1.0
+∀ stats: adjustWeights(stats, w).sum ∈ [0.999, 1.001]
 
-// P2: wins + losses = total
-∀ trades: breakdown.wins + breakdown.losses === breakdown.total
+// Position size always within bounds
+∀ input: computeSize(input).size ∈ [ORDER_SIZE_MIN, SIZING_MAX_BTC]
 
-// P3: Analytics is pure (same input → same output)
-compute(trades) deepEquals compute([...trades])
+// Dynamic TP always covers fees
+∀ price, spread: computeDynamicTP(price, spread) >= feeRoundTrip × 1.5
 
-// P4: Fee relationship
-∀ trade: trade.grossPnl ≈ trade.pnl + trade.feePaid
-
-// P5: Signal embedding is deterministic
-signalToEmbedding(s) deepEquals signalToEmbedding(s)
-
-// P6: Embedding values in [0, 1]
-∀ signal: signalToEmbedding(signal).every(v => v >= 0 && v <= 1)
+// Chop score always in [0, 1]
+∀ signal, history: evaluate(signal, history).chopScore ∈ [0, 1]
 ```
 
-Test coverage spans: signal engine, analytics computation, config validation, trading memory, and exchange adapter behavior.
+---
+
+## Stack
+
+TypeScript / Node.js · Express · SQLite · Docker
+
+OpenAI gpt-4o / Anthropic claude-sonnet · Vitest + fast-check
+
+SoDEX REST API (EIP-712) · Decibel (Aptos, secondary)
 
 ---
 
-## Roadmap (Planned Features)
+## Summary
 
-### Signal Win Rate Optimizer
-A filtering layer that wraps `AISignalEngine` with four independent gates:
-- **Regime gate**: block trend signals unless confidence > threshold (addresses ~0% win rate in trending markets)
-- **Hour filter**: block historically low-performing UTC hours
-- **Confidence gate**: stricter threshold for fallback signals
-- **LLM hint injection**: feed historical win rates back into the LLM prompt for self-calibration
-
-### AI Alpha Execution Engine
-Upgrade the execution layer with:
-- Dynamic position sizing based on signal quality score
-- Multi-symbol support (BTC + ETH + SOL)
-- Cross-symbol correlation filtering
-
-### Trade Analytics Reporting (in progress)
-Extended analytics dashboard with:
-- Interactive charts (win rate over time, regime heatmap)
-- Signal quality trends
-- Export to CSV/JSON
-
----
-
-## Why APEX Wins
-
-| Criterion | APEX | Typical Bot |
+| Feature | APEX | Typical Bot |
 |---|---|---|
-| Signal quality | Hybrid: TA + LLM + confirmation | TA only |
-| Fee awareness | Built into every decision | Ignored |
-| Learning | Self-improving memory (ChromaDB) | Stateless |
-| Transparency | Full reasoning logged per trade | Black box |
-| Adaptability | Runtime config, dual mode | Restart required |
-| Exchange support | SoDEX + Decibel (pluggable) | Single exchange |
-| Analytics | 30+ dimensions, PBT-verified | Basic PnL |
+| Farm mode | Always executes, never skips | Signal-gated |
+| Fee awareness | Dynamic TP tied to live spread | Fixed target |
+| SoPoints | Built-in tier tracking + token refresh | None |
+| Execution | Dynamic offset + spread guard + fill feedback | Static best-bid/ask |
+| Learning | Self-adjusting weights per component | Stateless |
+| Config | 70+ runtime params, no restart | Restart required |
 
 ---
 
-## Team & Stack
-
-**Stack**: TypeScript / Node.js, Express, SQLite, ChromaDB, Ollama, Docker
-
-**AI**: OpenAI gpt-4o / Anthropic claude-sonnet (cloud) + llama3 (local)
-
-**Exchanges**: SoDEX (EVM), Decibel (Aptos)
-
-**Testing**: Vitest + fast-check (property-based testing)
-
----
-
-> APEX is not just a trading bot — it's a learning system that gets smarter with every trade.
+> APEX turns SoDEX's maker fee model and SoPoints incentives into a systematic edge.
+> Farm Mode ensures the bot is always active. Trade Mode ensures it's always smart.

@@ -2,6 +2,10 @@ import axios from 'axios';
 import { ExchangeAdapter } from '../adapters/ExchangeAdapter.js';
 import { Signal, SignalEngine } from '../modules/SignalEngine.js';
 import { LLMClient, MarketContext } from './LLMClient.js';
+import { weightStore } from './FeedbackLoop/WeightStore.js';
+import { confidenceCalibrator } from './FeedbackLoop/ConfidenceCalibrator.js';
+import { TradeLogger } from './TradeLogger.js';
+import { RegimeDetector } from './RegimeDetector.js';
 
 // Fee per side (maker): 0.00012 = 0.012%
 // Round-trip fee: 0.024% — need at least this much profit to break even
@@ -55,9 +59,14 @@ const SIGNAL_CACHE_TTL_MS = 60_000;
 export class AISignalEngine {
     private adapter: ExchangeAdapter;
     private _cache: { signal: Signal; cachedAt: number; symbol: string } | null = null;
+    private tradeLogger: TradeLogger;
 
-    constructor(adapter: ExchangeAdapter) {
+    constructor(adapter: ExchangeAdapter, tradeLogger?: TradeLogger) {
         this.adapter = adapter;
+        this.tradeLogger = tradeLogger ?? new TradeLogger(
+            (process.env.TRADE_LOG_BACKEND ?? 'json') as 'json' | 'sqlite',
+            process.env.TRADE_LOG_PATH ?? 'trades.json',
+        );
     }
 
     /** Returns cached signal if still fresh (< 60s old), otherwise fetches a new one. */
@@ -169,22 +178,23 @@ export class AISignalEngine {
 
             // EMA trend (weight 40%)
             const emaTrend = emaAbove ? 0.65 : 0.35;
-            momentumScore = emaTrend * 0.40;
+            const w = weightStore.getWeights();
+            momentumScore = emaTrend * w.ema;
 
             // RSI (weight 25%) — oversold = buy, overbought = sell
             let rsiScore = 0.5;
             if (rsiOversold) rsiScore = 0.75;
             else if (rsiOverbought) rsiScore = 0.25;
             else rsiScore = 0.5 + (50 - rsiVal) / 100; // linear
-            momentumScore += rsiScore * 0.25;
+            momentumScore += rsiScore * w.rsi;
 
             // Price momentum 3 candles (weight 20%)
             const momScore = Math.min(Math.max(momentum3 * 50 + 0.5, 0), 1);
-            momentumScore += momScore * 0.20;
+            momentumScore += momScore * w.momentum;
 
             // Orderbook imbalance (weight 15%) — direct (not contrarian)
             const imbScore = Math.min(Math.max((imbalance - 1) * 0.5 + 0.5, 0), 1);
-            momentumScore += imbScore * 0.15;
+            momentumScore += imbScore * w.imbalance;
 
             // Candle pattern bonus/penalty
             if (emaCrossUp || (isGreenCandle && volSpike && lowerTail > body)) momentumScore += 0.05;
@@ -194,9 +204,9 @@ export class AISignalEngine {
             const base_score = (momentumScore - 0.5) * 2;
 
             // Regime
-            let regime: 'TREND_UP' | 'TREND_DOWN' | 'SIDEWAY' = 'SIDEWAY';
-            if (currentPrice > ema21Last * 1.002) regime = 'TREND_UP';
-            else if (currentPrice < ema21Last * 0.998) regime = 'TREND_DOWN';
+            const regimeDetector = new RegimeDetector();
+            const regimeResult = regimeDetector.detect(closes, highs, lows, volumes, ema21Last);
+            const { regime, atrPct, bbWidth, volRatio } = regimeResult;
 
             // ── Swing position in range (0=đáy, 1=đỉnh) ──────────────────────
             // Dùng 10 nến gần nhất để xác định giá đang ở đâu trong range
@@ -272,28 +282,35 @@ export class AISignalEngine {
                 }
 
                 console.log(`[AISignalEngine] Fallback → ${direction.toUpperCase()} (conf: ${confidence.toFixed(2)}) | ${reasoning}`);
+                const recentTradesFallback = await this.tradeLogger.readAll();
+                const calibratedFallbackConf = confidenceCalibrator.calibrate(confidence, recentTradesFallback.slice(0, 50));
                 return {
-                    base_score, regime, direction, confidence,
+                    base_score, regime, direction, confidence: calibratedFallbackConf,
                     imbalance, tradePressure, score: momentumScore,
                     chartTrend: emaAbove ? 'bullish' : 'bearish',
                     reasoning,
                     fallback: true,
+                    atrPct, bbWidth, volRatio,
                 };
             }
 
             console.log(`[AISignalEngine] 5m Scalp | EMA9=${ema9Last.toFixed(0)} EMA21=${ema21Last.toFixed(0)} RSI=${rsiVal.toFixed(1)} Mom=${(momentum3*100).toFixed(3)}% | Score=${momentumScore.toFixed(2)} | LLM=${decision.direction} (${decision.confidence.toFixed(2)})`);
 
+            const recentTrades = await this.tradeLogger.readAll();
+            const calibratedConf = confidenceCalibrator.calibrate(decision.confidence, recentTrades.slice(0, 50));
+
             return {
                 base_score,
                 regime,
                 direction: decision.direction,
-                confidence: decision.confidence,
+                confidence: calibratedConf,
                 imbalance,
                 tradePressure,
                 score: momentumScore,
                 chartTrend: emaAbove ? 'bullish' : 'bearish',
                 reasoning: decision.reasoning,
                 fallback: false,
+                atrPct, bbWidth, volRatio,
             };
 
         } catch (error) {

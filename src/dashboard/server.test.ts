@@ -108,3 +108,109 @@ describe('DashboardServer — Property 9: PnL endpoint reflects current shared s
     try { fs.unlinkSync(logPath); } catch { /* ignore */ }
   });
 });
+
+// ── Task 7.2: GET /api/feedback-loop/stats route tests ───────────────────────
+
+import { vi } from 'vitest';
+import * as ComponentPerformanceTrackerModule from '../ai/FeedbackLoop/ComponentPerformanceTracker.js';
+import * as WeightStoreModule from '../ai/FeedbackLoop/WeightStore.js';
+import * as ConfidenceCalibratorModule from '../ai/FeedbackLoop/ConfidenceCalibrator.js';
+
+describe('DashboardServer — GET /api/feedback-loop/stats', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns 200 with valid JSON shape when no trades exist (defaults)', async () => {
+    const logPath = makeTempPath('json');
+    const logger = new TradeLogger('json', logPath);
+    const server = new DashboardServer(logger, 0);
+
+    const res = await request(server.app).get('/api/feedback-loop/stats');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/json/);
+
+    const body = res.body as {
+      weights: Record<string, unknown>;
+      componentStats: Record<string, unknown>;
+      confidenceBuckets: unknown[];
+    };
+
+    // Top-level shape
+    expect(body).toHaveProperty('weights');
+    expect(body).toHaveProperty('componentStats');
+    expect(body).toHaveProperty('confidenceBuckets');
+
+    // weights shape: ema, rsi, momentum, imbalance
+    expect(typeof body.weights.ema).toBe('number');
+    expect(typeof body.weights.rsi).toBe('number');
+    expect(typeof body.weights.momentum).toBe('number');
+    expect(typeof body.weights.imbalance).toBe('number');
+
+    // componentStats shape
+    const cs = body.componentStats as Record<string, unknown>;
+    expect(cs).toHaveProperty('ema');
+    expect(cs).toHaveProperty('rsi');
+    expect(cs).toHaveProperty('momentum');
+    expect(cs).toHaveProperty('imbalance');
+
+    // confidenceBuckets is an array
+    expect(Array.isArray(body.confidenceBuckets)).toBe(true);
+
+    // Cleanup
+    try { fs.unlinkSync(logPath); } catch { /* ignore */ }
+  });
+
+  it('returns populated componentStats when getStats() returns non-zero data', async () => {
+    const logPath = makeTempPath('json');
+    const logger = new TradeLogger('json', logPath);
+    const server = new DashboardServer(logger, 0);
+
+    // Mock componentPerformanceTracker.getStats() to return non-zero stats
+    const mockStats: ComponentPerformanceTrackerModule.ComponentStats = {
+      ema: { total: 20, wins: 14, winRate: 0.7 },
+      rsi: { total: 10, wins: 6, winRate: 0.6, lossStreak: 1 },
+      momentum: { total: 18, wins: 11, winRate: 0.611 },
+      imbalance: { total: 15, wins: 8, winRate: 0.533 },
+      computedAt: new Date().toISOString(),
+      lookbackN: 50,
+    };
+
+    vi.spyOn(ComponentPerformanceTrackerModule.componentPerformanceTracker, 'getStats')
+      .mockReturnValue(mockStats);
+
+    const res = await request(server.app).get('/api/feedback-loop/stats');
+
+    expect(res.status).toBe(200);
+
+    const body = res.body as {
+      weights: Record<string, unknown>;
+      componentStats: typeof mockStats;
+      confidenceBuckets: unknown[];
+    };
+
+    // componentStats reflects the mocked non-zero values
+    expect(body.componentStats.ema.total).toBe(20);
+    expect(body.componentStats.ema.wins).toBe(14);
+    expect(body.componentStats.ema.winRate).toBeCloseTo(0.7);
+
+    expect(body.componentStats.rsi.total).toBe(10);
+    expect(body.componentStats.rsi.lossStreak).toBe(1);
+
+    expect(body.componentStats.momentum.total).toBe(18);
+    expect(body.componentStats.imbalance.total).toBe(15);
+
+    // weights still has the expected shape
+    expect(typeof body.weights.ema).toBe('number');
+    expect(typeof body.weights.rsi).toBe('number');
+    expect(typeof body.weights.momentum).toBe('number');
+    expect(typeof body.weights.imbalance).toBe('number');
+
+    // confidenceBuckets is still an array
+    expect(Array.isArray(body.confidenceBuckets)).toBe(true);
+
+    // Cleanup
+    try { fs.unlinkSync(logPath); } catch { /* ignore */ }
+  });
+});

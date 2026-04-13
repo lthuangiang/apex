@@ -1,30 +1,31 @@
-# APEX — AI-Powered BTC Perpetual Trading Bot
+# APEX — Adaptive Perpetual Execution on SoDEX
 
-APEX là trading bot tự động cho BTC perpetual futures, tích hợp **AI signal engine** (LLM + technical indicators), **local trading memory** (ChromaDB + Ollama), **analytics engine**, và **web dashboard** real-time. Hỗ trợ hai sàn: **SoDEX** và **Decibel**.
+APEX là trading bot tự động cho BTC perpetual futures trên **SoDEX**, tích hợp AI signal engine, adaptive learning, và pseudo market-making để tối đa hóa cả **volume** (SoPoints) lẫn **win rate**.
 
 ---
 
 ## Hai chế độ hoạt động
 
-### Farm Mode (`MODE=farm`)
-Mục tiêu: **tối đa hóa volume** để tích lũy SoPoints.
+### Farm Mode (`MODE=farm`) — Tối đa hóa volume
+Mục tiêu: **luôn luôn trade**, không bao giờ skip.
 
-- Vào lệnh thường xuyên, giữ 2–5 phút
-- **Không cần confirmation** — enter ngay trên tick đầu tiên khi signal hợp lệ
-- Điều kiện entry: score edge > 3% (`|score - 0.5| > FARM_SCORE_EDGE`) và confidence ≥ 0.50
-- Exit theo thứ tự ưu tiên: SL 5% → TP ($) → Early profit (≥2 phút, PnL ≥ $0.4) → Time limit (5 phút)
-- TP tính cả fee: `max(FARM_TP_USD, fee_round_trip × 1.5)`
-- Dynamic hold: nếu hết hold time nhưng giá đang phục hồi → chờ thêm tối đa `FARM_EXTRA_WAIT_SECS` (30s)
+- Signal `long`/`short` → dùng ngay
+- Signal `skip` → fallback alternating direction (long ↔ short)
+- Không có confidence gate, chop check, hay fake breakout filter
+- Confidence chỉ dùng để scale size, không để gate
+- MM bias (ping-pong + inventory) điều chỉnh direction
+- Dynamic TP dựa trên spread thực tế
+- Exit: SL 5% → Dynamic TP → Early profit → Time limit (2–5 phút)
 
-### Trade Mode (`MODE=trade`)
-Mục tiêu: **tối đa hóa win rate**.
+### Trade Mode (`MODE=trade`) — Tối đa hóa win rate
+Mục tiêu: **chỉ vào khi có edge rõ ràng**.
 
-- Chỉ vào khi signal mạnh: confidence ≥ 0.65, score edge > 6.5%
-- **Cần confirmation**: cùng direction trên 2 tick liên tiếp trong vòng 60s
-- Regime bias: signal ngược chiều trend bị giảm 50% weight
-- Last trade context bias: điều chỉnh score dựa trên kết quả trade trước
-- Exit **chỉ** khi hit TP 0.3% hoặc SL 0.2% — không có time exit
-- R:R = 1.5:1 → cần win rate > 40% để profitable
+- Regime check → skip nếu HIGH_VOL
+- Chop detection → skip nếu choppy
+- Fake breakout filter → skip nếu thiếu OB confirmation
+- Confidence ≥ 0.65 (calibrated)
+- 2-tick confirmation trong 60s
+- Exit: SL 5% hoặc TP 5% — không có time exit
 
 ---
 
@@ -32,95 +33,107 @@ Mục tiêu: **tối đa hóa win rate**.
 
 ```
 bot.ts
-  └── SessionManager          # Session state, max loss guard
-  └── Watcher                 # State machine chính (IDLE → PENDING_ENTRY → IN_POSITION → PENDING_EXIT)
-        ├── AISignalEngine     # Signal chính: EMA9/21, RSI, momentum, OB imbalance + LLM
-        │     └── LLMClient   # OpenAI / Anthropic — quyết định direction + confidence
-        ├── SignalEngine       # Fallback signal (contrarian, dùng khi AISignalEngine throw)
-        ├── RiskManager        # TP/SL check mỗi tick
-        ├── PositionManager    # Duration tracking
+  └── Watcher                 # State machine: IDLE → PENDING_ENTRY → IN_POSITION → PENDING_EXIT
+        ├── AISignalEngine     # Signal: EMA9/21, RSI, momentum, OB + LLM (adaptive weights)
+        │     ├── WeightStore          # Adaptive signal weights (Phase 1)
+        │     ├── ConfidenceCalibrator # Historical win rate calibration (Phase 1)
+        │     └── RegimeDetector       # ATR + BB width + volume → 4-state regime (Phase 3)
+        ├── PositionSizer      # Dynamic sizing: confidence × performance × volatility (Phase 2)
+        ├── RiskManager        # TP/SL check, runtime SL override (Phase 3)
+        ├── MarketMaker        # Ping-pong bias + inventory control + dynamic TP (Phase 6)
+        ├── ChopDetector       # Chop score (Phase 4) — trade mode only
+        ├── FakeBreakoutFilter # Breakout validation (Phase 4) — trade mode only
+        ├── ExecutionEdge      # Dynamic price offset + spread guard (Phase 5)
+        ├── FillTracker        # Fill rate tracking, feedback vào offset (Phase 5)
         └── Executor           # Đặt/hủy lệnh Post-Only (maker)
+
+  └── FeedbackLoop/            # Adaptive signal weights (Phase 1)
+        ├── ComponentPerformanceTracker
+        ├── AdaptiveWeightAdjuster
+        └── WeightStore
 
   └── TelegramManager          # Bot Telegram: commands + inline buttons
   └── TradeLogger              # Ghi trade record (JSON hoặc SQLite)
   └── DashboardServer          # Express dashboard + SSE real-time
-
-src/ai/TradingMemory/          # Local AI memory (ChromaDB + Ollama)
-  └── TradingMemoryService     # saveTrade() + predict() — học từ lịch sử
-  └── VectorStore              # ChromaDB similarity search
-  └── TradeDB                  # SQLite persistence
-  └── OllamaClient             # Local LLM (llama3)
-
-src/config/
-  └── ConfigStore              # Runtime config override (không cần restart)
-  └── validateOverrides        # Validation rules cho config
 ```
 
-**State machine**: `IDLE → PENDING_ENTRY → IN_POSITION → PENDING_EXIT → IDLE`
+---
+
+## Farm Mode — Chi tiết
+
+**Entry**: luôn execute, không skip.
+- Signal direction → dùng trực tiếp
+- Signal skip → alternate từ last trade
+- MM inventory hard block → force opposite direction (không return)
+
+**Exit** (theo thứ tự ưu tiên):
+1. SL: `FARM_SL_PERCENT = 5%`
+2. Dynamic TP: `max(spreadBps/10000 × price × 1.5, feeFloor)`, capped $2.0
+3. Early profit: hold ≥ 120s AND pnl ≥ $0.4
+4. Time exit: sau hold time (120–300s), chờ thêm 30s nếu đang phục hồi
+
+**Cooldown**: adaptive — tăng khi losing streak hoặc choppy (trade mode only).
+
+---
+
+## Trade Mode — Chi tiết
+
+**Entry pipeline** (fail-fast):
+1. Regime check → skip nếu HIGH_VOL skip enabled
+2. Chop detection → skip nếu `chopScore ≥ 0.55`
+3. Fake breakout filter → skip nếu breakout thiếu OB confirmation
+4. Confidence ≥ 0.65
+5. 2-tick confirmation trong 60s
+
+**Exit**: SL 5% hoặc TP 5% — không có time exit.
 
 ---
 
 ## AI Signal Engine
 
-`AISignalEngine` tính **momentum score** từ 5m candles + market data, sau đó gọi LLM để ra quyết định:
+Momentum score từ 5m candles với **adaptive weights** (tự điều chỉnh mỗi 10 trades):
 
-| Nguồn | Logic | Trọng số |
+| Nguồn | Logic | Default weight |
 |---|---|---|
-| EMA9 vs EMA21 | EMA9 > EMA21 → bullish momentum | 40% |
-| RSI(14) | < 35 oversold → long, > 65 overbought → short | 25% |
-| 3-candle momentum | Price change 3 nến gần nhất | 20% |
-| Orderbook imbalance | bid/ask volume ratio (direct, không contrarian) | 15% |
-| Candle pattern | EMA cross, hammer, shooting star | ±5% bonus |
+| EMA9 vs EMA21 | EMA9 > EMA21 → bullish | ~40% |
+| RSI(14) | < 35 oversold, > 65 overbought | ~25% |
+| 3-candle momentum | Price change 3 nến gần nhất | ~20% |
+| Orderbook imbalance | bid/ask volume ratio | ~15% |
 
-Regime detection: `TREND_UP` / `TREND_DOWN` / `SIDEWAY` dựa trên khoảng cách giá vs EMA21 (±0.2%).
+**SIDEWAY range logic**: trong SIDEWAY regime, `pricePositionInRange` tính vị trí giá trong range 10 nến gần nhất (0 = đáy, 1 = đỉnh):
+- Giá ở đỉnh range (> 75%) → `momentumScore -= 0.08` (penalize long, favor short)
+- Giá ở đáy range (< 25%) → `momentumScore += 0.08` (penalize short, favor long)
 
-Trong SIDEWAY: penalize long khi giá ở đỉnh range (>75%), penalize short khi ở đáy (<25%).
+Khi LLM fail trong SIDEWAY, dùng price position làm primary signal:
+- `pricePosition < 30%` → LONG (mean reversion từ đáy)
+- `pricePosition > 70%` → SHORT (mean reversion từ đỉnh)
+- Mid-range → dùng momentum score
 
-LLM nhận full context (EMA, RSI, momentum, volume spike, L/S ratio, orderbook, fee) và trả về `direction` + `confidence` + `reasoning`. Nếu LLM fail → fallback dùng momentum score trực tiếp.
-
-**Fallback SignalEngine** (contrarian): dùng khi `AISignalEngine` throw exception. Logic ngược lại — giá trên SMA → SHORT signal, crowd long nhiều → SHORT signal.
-
----
-
-## Local Trading Memory
-
-Module `TradingMemory` cho phép bot **học từ lịch sử giao dịch** của chính nó:
-
-- Mỗi trade được lưu vào SQLite + ChromaDB dưới dạng vector embedding 6 chiều
-- Khi cần predict, tìm 10 trade tương tự nhất (cosine similarity) → gọi Ollama (llama3) để ra quyết định
-- Endpoint HTTP: `POST /api/memory/save`, `POST /api/memory/predict`, `GET /api/memory/health`
+LLM (GPT-4o / Claude) nhận full context → `direction + confidence + reasoning`. Nếu LLM fail → fallback momentum + price position in range. Cache 60s.
 
 ---
 
-## Analytics Engine
+## SoDEX Integration
 
-`AnalyticsEngine` tính win rate và performance metrics đa chiều từ trade history:
-
-- Overall, by mode (farm/trade), by direction (long/short), by regime, by confidence bucket, by hour UTC
-- Signal quality: LLM vs momentum agreement rate, fallback rate, avg confidence
-- Fee impact: total fee paid, trades won before fee but lost after
-- Holding time distribution (farm mode)
-- Streak tracking: max consecutive wins/losses, current streak
+- **EIP-712 signing**: tất cả write operations (order, cancel)
+- **Post-Only orders**: `timeInForce = 4` — 0.012% maker fee
+- **Spread guard**: skip entry nếu spread > 10 bps
+- **SoPoints dashboard**: tier, weekly volume, countdown, token refresh runtime
 
 ---
 
 ## Cài đặt
 
-### Local
-
 ```bash
 npm install
 cp .env.example .env
-# Điền API keys
 npm start
 ```
 
-### Docker (production)
+### Docker
 
 ```bash
 cp .env.example .env
-mkdir -p data
-chown -R 1000:1000 data
 docker compose up -d
 ```
 
@@ -129,42 +142,21 @@ docker compose up -d
 ## Cấu hình `.env`
 
 ```env
-# Exchange (chọn 1)
 EXCHANGE=sodex
-
-# SoDEX
 SODEX_API_KEY=...
 SODEX_API_SECRET=0x...
 SODEX_SUBACCOUNT=0x...
 
-# Decibel (nếu dùng)
-DECIBELS_PRIVATE_KEY=...
-DECIBELS_NODE_API_KEY=...
-DECIBELS_SUBACCOUNT=0x...
-
-# Telegram
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
-TELEGRAM_ENABLED=true
 
-# AI (cloud LLM)
-LLM_PROVIDER=openai          # hoặc anthropic
+LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
 
-# SoDex SoPoints
-SODEX_SOPOINTS_TOKEN=...     # Update runtime qua Bot Settings
-
-# Trade Logger
-TRADE_LOG_BACKEND=json       # json hoặc sqlite
+TRADE_LOG_BACKEND=json
 TRADE_LOG_PATH=/app/data/trades.json
-
-# State persistence
-STATE_STORE_PATH=/app/data/bot_state.json
-
-# Dashboard
 DASHBOARD_PORT=3000
-DASHBOARD_PASSCODE=          # để trống = không cần mật khẩu
+DASHBOARD_PASSCODE=
 ```
 
 ---
@@ -175,12 +167,12 @@ DASHBOARD_PASSCODE=          # để trống = không cần mật khẩu
 |---|---|
 | `/start_bot` | Bắt đầu session |
 | `/stop_bot` | Dừng bot |
-| `/status` | Xem trạng thái, uptime, PnL |
-| `/check` | Xem position đang mở (có nút Close) |
+| `/status` | Trạng thái, uptime, PnL |
+| `/check` | Position đang mở (có nút Close) |
 | `/set_mode farm\|trade` | Đổi mode |
 | `/set_max_loss <usd>` | Giới hạn lỗ session |
-| `/long [size]` | Lệnh long thủ công (bot phải dừng) |
-| `/short [size]` | Lệnh short thủ công (bot phải dừng) |
+| `/long [size]` | Lệnh long thủ công |
+| `/short [size]` | Lệnh short thủ công |
 
 ---
 
@@ -189,44 +181,27 @@ DASHBOARD_PASSCODE=          # để trống = không cần mật khẩu
 Truy cập `http://localhost:3000`
 
 - Session PnL, volume, SoPoints tier + countdown
-- Trade history, event log, real-time console stream (SSE)
-- Bot controls: start/stop, mode, max loss, force close position
-- **Bot Settings popup**: chỉnh tất cả config runtime không cần restart
-- **Analytics tab**: win rate breakdown, signal quality, fee impact, holding time
-- SoDex SoPoints token: update runtime khi expired
+- Trade history, event log, live console stream (SSE)
+- Bot controls: start/stop, mode, max loss, force close
+- **Bot Settings**: chỉnh tất cả config runtime không cần restart
+- **Analytics tab**: win rate breakdown, signal quality, fee impact
 
 ---
 
-## Config runtime (Bot Settings)
+## Config runtime
 
-Tất cả tham số sau có thể thay đổi trực tiếp trên dashboard:
+Tất cả tham số thay đổi trực tiếp trên dashboard:
 
-| Tham số | Mô tả |
+| Group | Keys |
 |---|---|
-| `ORDER_SIZE_MIN/MAX` | Size lệnh (BTC) |
-| `FARM_TP_USD` | Farm TP ($) |
-| `FARM_SL_PERCENT` | Farm SL (%) |
-| `FARM_MIN/MAX_HOLD_SECS` | Farm hold time |
-| `FARM_SCORE_EDGE` | Min score edge để vào lệnh farm |
-| `FARM_MIN_CONFIDENCE` | Min confidence fallback farm |
-| `FARM_EARLY_EXIT_SECS/PNL` | Early exit threshold |
-| `FARM_EXTRA_WAIT_SECS` | Extra wait sau hold time |
-| `FARM_BLOCKED_HOURS` | Block giờ UTC (array) |
-| `TRADE_TP_PERCENT` | Trade TP (%) |
-| `TRADE_SL_PERCENT` | Trade SL (%) |
-| `COOLDOWN_MIN/MAX_MINS` | Cooldown giữa lệnh |
-| `MIN_POSITION_VALUE_USD` | Bỏ qua đóng dust position |
+| Order sizing | `ORDER_SIZE_MIN/MAX`, `SIZING_*` |
+| Farm mode | `FARM_TP_USD`, `FARM_SL_PERCENT`, `FARM_MIN/MAX_HOLD_SECS` |
+| Trade mode | `TRADE_TP_PERCENT (5%)`, `TRADE_SL_PERCENT (5%)` |
+| Regime | `REGIME_HIGH_VOL_THRESHOLD`, `REGIME_*_HOLD_MULT` |
+| Anti-chop | `CHOP_SCORE_THRESHOLD`, `CHOP_COOLDOWN_MAX_MINS` |
+| Execution | `EXEC_MAX_SPREAD_BPS`, `EXEC_OFFSET_MAX` |
+| Market making | `MM_ENABLED`, `MM_INVENTORY_HARD_BLOCK`, `MM_TP_MAX_USD` |
 
 ---
 
-## Scripts debug
-
-```bash
-npm run test:balance    # Xem raw balance API response
-npm run test:signal     # Test AI signal engine
-npm run test:llm        # Test LLM connection
-```
-
----
-
-> **Cảnh báo**: Phần mềm này chỉ dành cho mục đích nghiên cứu. Giao dịch perpetual futures có rủi ro thanh lý cao. Không commit file `.env` lên git.
+> **Cảnh báo**: Phần mềm này chỉ dành cho mục đích nghiên cứu. Không commit file `.env` lên git.

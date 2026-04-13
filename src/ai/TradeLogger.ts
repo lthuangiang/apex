@@ -3,7 +3,7 @@ import * as path from 'path';
 
 // Signal snapshot captured at entry signal time
 export interface SignalSnapshot {
-  regime?: 'TREND_UP' | 'TREND_DOWN' | 'SIDEWAY';
+  regime?: 'TREND_UP' | 'TREND_DOWN' | 'SIDEWAY' | 'HIGH_VOLATILITY';
   momentumScore?: number;
   ema9?: number;
   ema21?: number;
@@ -18,6 +18,9 @@ export interface SignalSnapshot {
   llmDirection?: 'long' | 'short' | 'skip';
   llmConfidence?: number;
   llmMatchesMomentum?: boolean;
+  atrPct?: number;
+  bbWidth?: number;
+  volRatio?: number;
 }
 
 export interface TradeRecord extends SignalSnapshot {
@@ -39,12 +42,24 @@ export interface TradeRecord extends SignalSnapshot {
   entryTime?: string;       // ISO 8601 — when entry was filled
   exitTime?: string;        // ISO 8601 — same as timestamp
   holdingTimeSecs?: number;
-  exitTrigger?: 'FARM_TP' | 'FARM_TIME' | 'FARM_EARLY_PROFIT' | 'SL' | 'TP' | 'FORCE' | 'EXTERNAL';
+  exitTrigger?: 'FARM_TP' | 'FARM_TIME' | 'FARM_EARLY_PROFIT' | 'FARM_MM_TP' | 'SL' | 'TP' | 'FORCE' | 'EXTERNAL';
 
   // ── Fee analysis (new, optional) ─────────────────────────────────
   grossPnl?: number;        // PnL before fees
   feePaid?: number;         // total fee in USD (round-trip)
   wonBeforeFee?: boolean;   // grossPnl > 0 but pnl <= 0
+
+  // ── Sizing metadata (optional) ────────────────────────────────────
+  sizingConfMult?: number;
+  sizingPerfMult?: number;
+  sizingCombinedMult?: number;
+  sizingCappedBy?: 'none' | 'btc_cap' | 'balance_pct';
+
+  // ── Market Making metadata (optional) ─────────────────────────────
+  mmPingPongBias?: number;
+  mmInventoryBias?: number;
+  mmDynamicTP?: number;
+  mmNetExposure?: number;
 }
 
 export class TradeLogger {
@@ -114,6 +129,9 @@ export class TradeLogger {
       ['llm_direction', 'TEXT'],
       ['llm_confidence', 'REAL'],
       ['llm_matches_momentum', 'INTEGER'],
+      ['atr_pct', 'REAL'],
+      ['bb_width', 'REAL'],
+      ['vol_ratio', 'REAL'],
     ];
     for (const [col, type] of newCols) {
       try {
@@ -140,11 +158,13 @@ export class TradeLogger {
             gross_pnl, fee_paid, won_before_fee,
             regime, momentum_score, ema9, ema21, rsi, momentum_3candles,
             vol_spike, ema_cross_up, ema_cross_down, imbalance, trade_pressure,
-            ls_ratio, llm_direction, llm_confidence, llm_matches_momentum
+            ls_ratio, llm_direction, llm_confidence, llm_matches_momentum,
+            atr_pct, bb_width, vol_ratio
           ) VALUES (
             ?,?,?,?,?,?,?,?,?,?,?,
             ?,?,?,?,?,?,?,?,
-            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+            ?,?,?
           )
         `);
         stmt.run(
@@ -165,6 +185,7 @@ export class TradeLogger {
           record.lsRatio ?? null, record.llmDirection ?? null,
           record.llmConfidence ?? null,
           record.llmMatchesMomentum != null ? (record.llmMatchesMomentum ? 1 : 0) : null,
+          record.atrPct ?? null, record.bbWidth ?? null, record.volRatio ?? null,
         );
         this.onTradeLogged?.();
       } catch (err) {
@@ -234,6 +255,9 @@ export class TradeLogger {
       llmDirection: r['llm_direction'] as TradeRecord['llmDirection'] ?? undefined,
       llmConfidence: r['llm_confidence'] as number | undefined ?? undefined,
       llmMatchesMomentum: r['llm_matches_momentum'] != null ? (r['llm_matches_momentum'] as number) === 1 : undefined,
+      atrPct: r['atr_pct'] as number | undefined ?? undefined,
+      bbWidth: r['bb_width'] as number | undefined ?? undefined,
+      volRatio: r['vol_ratio'] as number | undefined ?? undefined,
     }));
   }
 }

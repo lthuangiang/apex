@@ -9,6 +9,9 @@ import { Watcher } from '../modules/Watcher.js';
 import { config } from '../config.js';
 import type { ConfigStoreInterface, OverridableConfig } from '../config/ConfigStore.js';
 import { validateOverrides } from '../config/validateOverrides.js';
+import { weightStore } from '../ai/FeedbackLoop/WeightStore.js';
+import { componentPerformanceTracker } from '../ai/FeedbackLoop/ComponentPerformanceTracker.js';
+import { confidenceCalibrator } from '../ai/FeedbackLoop/ConfidenceCalibrator.js';
 
 const validTokens = new Map<string, number>();
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -320,6 +323,24 @@ export class DashboardServer {
           this._analyticsCache.cachedAt = Date.now();
         }
         res.json(this._analyticsCache.summary!.feeImpact);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // ── Feedback Loop Stats Route ─────────────────────────────────────────────
+
+    this.app.get('/api/feedback-loop/stats', async (_req, res) => {
+      try {
+        const backend = (process.env.TRADE_LOG_BACKEND ?? 'json') as 'json' | 'sqlite';
+        const logPath = process.env.TRADE_LOG_PATH ?? './trades.json';
+        const logger = new TradeLogger(backend, logPath);
+        const recentTrades = await logger.readAll();
+        res.json({
+          weights: weightStore.getWeights(),
+          componentStats: componentPerformanceTracker.getStats(),
+          confidenceBuckets: confidenceCalibrator.computeBuckets(recentTrades),
+        });
       } catch (err) {
         res.status(500).json({ error: String(err) });
       }

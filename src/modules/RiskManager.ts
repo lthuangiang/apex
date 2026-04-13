@@ -2,14 +2,21 @@ import { Position } from '../adapters/ExchangeAdapter.js';
 import { config } from '../config.js';
 
 export class RiskManager {
+    private _slPercent: number | null = null;
+
+    setSlPercent(pct: number): void {
+        this._slPercent = pct;
+    }
+
     shouldClose(currentPrice: number, position: Position): boolean {
         const { side, entryPrice, unrealizedPnl } = position;
 
         if (config.MODE === 'farm') {
-            // Farm mode: SL 5% hard stop
+            // Farm mode: SL 5% hard stop (runtime override via setSlPercent takes precedence)
+            const slPercent = this._slPercent ?? config.FARM_SL_PERCENT;
             const sl = side === 'long'
-                ? entryPrice * (1 - config.FARM_SL_PERCENT)
-                : entryPrice * (1 + config.FARM_SL_PERCENT);
+                ? entryPrice * (1 - slPercent)
+                : entryPrice * (1 + slPercent);
 
             if (side === 'long' && currentPrice <= sl) {
                 console.log(`🛑 [FARM SL] Stop Loss triggered at ${currentPrice} (SL: ${sl.toFixed(2)})`);

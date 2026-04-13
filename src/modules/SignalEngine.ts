@@ -4,7 +4,7 @@ import axios from 'axios';
 
 export interface Signal {
     base_score: number;
-    regime: 'TREND_UP' | 'TREND_DOWN' | 'SIDEWAY';
+    regime: 'TREND_UP' | 'TREND_DOWN' | 'SIDEWAY' | 'HIGH_VOLATILITY';
     direction: 'long' | 'short' | 'skip';
     confidence: number;
     imbalance: number;
@@ -13,6 +13,9 @@ export interface Signal {
     chartTrend: 'bullish' | 'bearish' | 'neutral';
     reasoning: string;
     fallback: boolean;
+    atrPct?: number;
+    bbWidth?: number;
+    volRatio?: number;
 }
 
 export class SignalEngine {

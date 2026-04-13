@@ -9,6 +9,16 @@ import { PositionManager } from './PositionManager.js';
 import { Executor, PendingOrder } from './Executor.js';
 import { TelegramManager } from './TelegramManager.js';
 import { SessionManager } from './SessionManager.js';
+import { weightStore } from '../ai/FeedbackLoop/WeightStore.js';
+import { componentPerformanceTracker } from '../ai/FeedbackLoop/ComponentPerformanceTracker.js';
+import { PositionSizer } from './PositionSizer.js';
+import { getRegimeStrategyConfig, Regime } from '../ai/RegimeDetector.js';
+import { ChopDetector, SignalHistoryEntry } from '../ai/ChopDetector.js';
+import { FakeBreakoutFilter } from '../ai/FakeBreakoutFilter.js';
+import { computeAdaptiveCooldown } from '../ai/AdaptiveCooldown.js';
+import { FillTracker } from './FillTracker.js';
+import { ExecutionEdge } from './ExecutionEdge.js';
+import { MarketMaker, MMEntryBias } from './MarketMaker.js';
 
 type BotState = 'IDLE' | 'PENDING_ENTRY' | 'IN_POSITION' | 'PENDING_EXIT';
 
@@ -35,6 +45,7 @@ export class Watcher {
     private positionManager: PositionManager;
     private executor: Executor;
     private tradeLogger: TradeLogger;
+    private positionSizer: PositionSizer;
     private symbol: string;
     private isRunning: boolean = false;
     private cooldownUntil: number | null = null;
@@ -42,6 +53,13 @@ export class Watcher {
     private sessionStartBalance: number | null = null;
     private sessionCurrentPnl: number = 0;
     private sessionVolume: number = 0;
+    private fillTracker = new FillTracker();
+
+    // Market Maker
+    private readonly marketMaker = new MarketMaker();
+    private _pendingDynamicTP: number | null = null;
+    private _pendingEntrySpreadBps: number | null = null;
+    private _pendingMMBias: MMEntryBias | null = null;
 
     // State machine
     private botState: BotState = 'IDLE';
@@ -54,6 +72,12 @@ export class Watcher {
     private recentPnLs: number[] = [];
     private currentProfile: 'SCALP' | 'NORMAL' | 'RUNNER' | 'DEGEN' = 'NORMAL';
 
+    // Anti-chop filter state
+    private _signalHistory: SignalHistoryEntry[] = [];
+    private _lastChopScore: number = 0;
+    private readonly chopDetector = new ChopDetector();
+    private readonly fakeBreakoutFilter = new FakeBreakoutFilter();
+
     constructor(
         private adapter: ExchangeAdapter,
         symbol: string,
@@ -61,13 +85,27 @@ export class Watcher {
         private sessionManager: SessionManager
     ) {
         this.symbol = symbol;
-        this.signalEngine = new AISignalEngine(adapter);
         this.riskManager = new RiskManager();
         this.positionManager = new PositionManager();
-        this.executor = new Executor(adapter, telegram);
+        const executionEdge = new ExecutionEdge(adapter, this.fillTracker);
+        this.executor = new Executor(adapter, telegram, executionEdge);
+        this.positionSizer = new PositionSizer();
         const tradeLogBackend = (process.env.TRADE_LOG_BACKEND ?? 'json') as 'json' | 'sqlite';
         const tradeLogPath = process.env.TRADE_LOG_PATH ?? './trades.json';
         this.tradeLogger = new TradeLogger(tradeLogBackend, tradeLogPath);
+
+        // Task 6.1: load persisted weights at startup
+        weightStore.loadFromDisk();
+
+        // Task 6.2: wire tradeLogger.onTradeLogged to componentPerformanceTracker
+        const _existingOnTradeLogged = this.tradeLogger.onTradeLogged;
+        this.tradeLogger.onTradeLogged = () => {
+            _existingOnTradeLogged?.();
+            componentPerformanceTracker.onTradeLogged();
+        };
+
+        // Task 6.3: pass tradeLogger to AISignalEngine
+        this.signalEngine = new AISignalEngine(adapter, this.tradeLogger);
     }
 
     async run() {
@@ -178,10 +216,11 @@ export class Watcher {
                 // Capture actual entry price in signalMeta
                 this.pendingEntry.signalMeta.entryPrice = position.entryPrice;
 
+                const fillMs = Date.now() - this.pendingEntry.placedAt;
+                this.fillTracker.recordFill('entry', fillMs);
+
                 if (config.MODE === 'farm') {
-                    const holdSecs = Math.floor(Math.random() * (config.FARM_MAX_HOLD_SECS - config.FARM_MIN_HOLD_SECS + 1)) + config.FARM_MIN_HOLD_SECS;
-                    this.farmHoldUntil = Date.now() + holdSecs * 1000;
-                    console.log(`🚜 [FARM] Min hold time: ${holdSecs}s (until ${new Date(this.farmHoldUntil).toLocaleTimeString()})`);
+                    console.log(`🚜 [FARM] Hold until: ${this.farmHoldUntil ? new Date(this.farmHoldUntil).toLocaleTimeString() : 'N/A'}`);
                 }
 
                 console.log(`✅ [Watcher] Entry filled: ${filledSize} ${this.symbol} @ ${position.entryPrice}`);
@@ -206,6 +245,7 @@ export class Watcher {
 
                 console.log(`[Watcher] Entry order not filled after ${fillTimeout/1000}s. Cancelling and re-placing...`);
                 await this.adapter.cancel_all_orders(this.symbol);
+                this.fillTracker.recordCancel('entry');
 
                 // Re-check position after cancel to avoid double-entry race condition
                 const positionAfterCancel = await this.adapter.get_position(this.symbol);
@@ -219,9 +259,11 @@ export class Watcher {
                     // Capture actual entry price in signalMeta
                     this.pendingEntry.signalMeta.entryPrice = positionAfterCancel.entryPrice;
 
+                    const fillMs = Date.now() - this.pendingEntry.placedAt;
+                    this.fillTracker.recordFill('entry', fillMs);
+
                     if (config.MODE === 'farm') {
-                        const holdSecs = Math.floor(Math.random() * (config.FARM_MAX_HOLD_SECS - config.FARM_MIN_HOLD_SECS + 1)) + config.FARM_MIN_HOLD_SECS;
-                        this.farmHoldUntil = Date.now() + holdSecs * 1000;
+                        // farmHoldUntil already set in IDLE block with regime multiplier
                     }
 
                     console.log(`✅ [Watcher] Entry filled (detected after cancel): ${filledSize} ${this.symbol} @ ${positionAfterCancel.entryPrice}`);
@@ -286,19 +328,35 @@ export class Watcher {
                 const filledVol = filledSize * this.pendingExit.order.price;
                 this.sessionVolume += filledVol;
 
+                const exitFillMs = Date.now() - this.pendingExit.placedAt;
+                this.fillTracker.recordFill('exit', exitFillMs);
+
                 this.lastTradeContext = {
                     side: this.pendingExit.positionSide,
                     exitPrice: this.pendingExit.order.price,
                     pnl: this.pendingExit.pnl
                 };
 
+                // Task 7.3: Record trade in MarketMaker for inventory tracking
+                if (config.MODE === 'farm' && config.MM_ENABLED) {
+                  const volumeUsd = filledSize * this.pendingExit.order.price;
+                  this.marketMaker.recordTrade(this.pendingExit.positionSide, volumeUsd);
+                }
+
                 this.recentPnLs.push(this.pendingExit.pnl);
                 if (this.recentPnLs.length > 5) this.recentPnLs.shift();
                 this.updateProfile();
 
-                const delayMins = Math.floor(Math.random() * (config.COOLDOWN_MAX_MINS - config.COOLDOWN_MIN_MINS + 1)) + config.COOLDOWN_MIN_MINS;
-                this.cooldownUntil = Date.now() + delayMins * 60 * 1000;
-                console.log(`⏱️ Post-trade cooldown: ${delayMins} mins. (Profile: ${this.currentProfile})`);
+                const cooldownResult = computeAdaptiveCooldown({
+                  recentPnLs: this.recentPnLs,
+                  lastChopScore: this._lastChopScore,
+                });
+                this.cooldownUntil = Date.now() + cooldownResult.cooldownMs;
+                console.log(
+                  `⏱️ Adaptive cooldown: ${(cooldownResult.cooldownMs / 60000).toFixed(1)} mins` +
+                  ` (base: ${cooldownResult.baseMins.toFixed(1)}, streak×${cooldownResult.streakMult.toFixed(2)}, chop×${cooldownResult.chopMult.toFixed(2)})` +
+                  ` | Profile: ${this.currentProfile}`
+                );
 
                 console.log(`✅ [Watcher] Exit filled: ${filledSize} ${this.symbol} @ ${this.pendingExit.order.price}`);
                 await this.executor.notifyExitFilled(
@@ -339,6 +397,15 @@ export class Watcher {
                     feePaid,
                     grossPnl,
                     wonBeforeFee: grossPnl > 0 && pnlNet <= 0,
+                    sizingConfMult: this._pendingSizingResult?.confidenceMultiplier,
+                    sizingPerfMult: this._pendingSizingResult?.performanceMultiplier,
+                    sizingCombinedMult: this._pendingSizingResult?.combinedMultiplier,
+                    sizingCappedBy: this._pendingSizingResult?.cappedBy,
+                    // MM metadata (Task 8.2)
+                    mmPingPongBias: (config.MM_ENABLED && this._pendingMMBias) ? this._pendingMMBias.pingPongBias : undefined,
+                    mmInventoryBias: (config.MM_ENABLED && this._pendingMMBias) ? this._pendingMMBias.inventoryBias : undefined,
+                    mmDynamicTP: (config.MM_ENABLED && this._pendingDynamicTP !== null) ? this._pendingDynamicTP : undefined,
+                    mmNetExposure: (config.MM_ENABLED && this._pendingMMBias) ? this._pendingMMBias.netExposureUsd : undefined,
                     ...this._pendingEntrySignalMeta?.signalSnapshot,
                 };
                 this.tradeLogger.log(tradeRecord);
@@ -352,6 +419,8 @@ export class Watcher {
                 logEvent('ORDER_FILLED', `Exit filled: ${this.pendingExit.positionSide.toUpperCase()} ${tradeRecord.exitPrice} | PnL: ${this.pendingExit.pnl.toFixed(4)}`);
                 this._pendingEntrySignalMeta = null;
                 this._pendingExitTrigger = null;
+                this._pendingSizingResult = null;
+                this._pendingMMBias = null;
 
                 this.positionManager.onPositionClosed();
                 this.botState = 'IDLE';
@@ -368,6 +437,7 @@ export class Watcher {
 
                 console.log(`[Watcher] Exit order not filled after 15s. Cancelling and re-placing at current price...`);
                 await this.adapter.cancel_all_orders(this.symbol);
+                this.fillTracker.recordCancel('exit');
                 const newOrder = await this.executor.placeExitOrder(this.symbol, position, this.pendingExit.forceClose);
                 if (newOrder) {
                     this.pendingExit = { ...this.pendingExit, order: newOrder, placedAt: Date.now() };
@@ -386,8 +456,15 @@ export class Watcher {
                 `ℹ️ *Position closed externally*\n• Symbol: \`${this.symbol}\`\n• Detected on tick.`
             );
             this.positionManager.onPositionClosed();
-            const delayMins = Math.floor(Math.random() * (config.COOLDOWN_MAX_MINS - config.COOLDOWN_MIN_MINS + 1)) + config.COOLDOWN_MIN_MINS;
-            this.cooldownUntil = Date.now() + delayMins * 60 * 1000;
+            const cooldownResult = computeAdaptiveCooldown({
+              recentPnLs: this.recentPnLs,
+              lastChopScore: this._lastChopScore,
+            });
+            this.cooldownUntil = Date.now() + cooldownResult.cooldownMs;
+            console.log(
+              `⏱️ Adaptive cooldown (external close): ${(cooldownResult.cooldownMs / 60000).toFixed(1)} mins` +
+              ` (base: ${cooldownResult.baseMins.toFixed(1)}, streak×${cooldownResult.streakMult.toFixed(2)}, chop×${cooldownResult.chopMult.toFixed(2)})`
+            );
             this.botState = 'IDLE';
             this.entryFilledAt = null;
             this.farmHoldUntil = null;
@@ -414,19 +491,28 @@ export class Watcher {
                 // Farm mode: TP when profitable after fees
                 const positionValue = Math.abs(position.size) * position.entryPrice;
                 const feeRoundTrip = positionValue * config.FEE_RATE_MAKER * 2;
-                const minProfitTarget = Math.max(config.FARM_TP_USD, feeRoundTrip * 1.5);
+                const dynamicTP = (config.MM_ENABLED && this._pendingDynamicTP !== null)
+                  ? this._pendingDynamicTP
+                  : Math.max(config.FARM_TP_USD, feeRoundTrip * 1.5);
+                const exitTriggerLabel = (config.MM_ENABLED && this._pendingDynamicTP !== null) ? 'FARM_MM_TP' : 'FARM_TP';
 
-                if (pnl >= minProfitTarget) {
+                if (pnl >= dynamicTP) {
                     shouldExit = true;
-                    exitTrigger = `FARM TP (${pnl.toFixed(2)} >= ${minProfitTarget.toFixed(2)})`;
+                    exitTrigger = `${exitTriggerLabel} (${pnl.toFixed(2)} >= ${dynamicTP.toFixed(2)})`;
                 } else {
                     const holdDone = !this.farmHoldUntil || Date.now() >= this.farmHoldUntil;
                     if (!holdDone) {
                         const remainSecs = Math.floor((this.farmHoldUntil! - Date.now()) / 1000);
                         // Early exit: held >= FARM_EARLY_EXIT_SECS and PnL >= FARM_EARLY_EXIT_PNL
                         if (duration >= config.FARM_EARLY_EXIT_SECS && pnl >= config.FARM_EARLY_EXIT_PNL) {
-                            shouldExit = true;
-                            exitTrigger = `FARM EARLY PROFIT (${pnl.toFixed(2)} after ${duration}s)`;
+                            const entryRegime = this._pendingEntrySignalMeta?.signalSnapshot?.regime;
+                            const exitRegimeConfig = entryRegime ? getRegimeStrategyConfig(entryRegime as Regime) : null;
+                            if (exitRegimeConfig?.suppressEarlyExit) {
+                                console.log(`🚜 [REGIME] Suppressing early exit in ${entryRegime} — letting trend run`);
+                            } else {
+                                shouldExit = true;
+                                exitTrigger = `FARM EARLY PROFIT (${pnl.toFixed(2)} after ${duration}s)`;
+                            }
                         } else {
                             console.log(`🚜 [FARM] Holding... ${remainSecs}s remaining | PnL: ${pnl.toFixed(2)}`);
                         }
@@ -459,6 +545,7 @@ export class Watcher {
                 // Map raw exitTrigger string to the typed union
                 let mappedTrigger: TradeRecord['exitTrigger'];
                 if (exitTrigger.startsWith('SL/TP')) mappedTrigger = 'SL';
+                else if (exitTrigger.startsWith('FARM_MM_TP')) mappedTrigger = 'FARM_MM_TP';
                 else if (exitTrigger.startsWith('FARM TP')) mappedTrigger = 'FARM_TP';
                 else if (exitTrigger.startsWith('FARM TIME EXIT')) mappedTrigger = 'FARM_TIME';
                 else if (exitTrigger.startsWith('FARM EARLY PROFIT')) mappedTrigger = 'FARM_EARLY_PROFIT';
@@ -510,28 +597,140 @@ export class Watcher {
 
             this.positionManager.onPositionClosed();
 
-            const signal = await this.signalEngine.getSignal(this.symbol);
-            let bias = 0;
-            let finalDirection: 'long' | 'short' | 'skip' = 'skip';
-
             if (config.MODE === 'farm') {
-                // Farm mode: use LLM/signal direction directly, not just score threshold
-                // Only skip if signal is genuinely neutral (score very close to 0.5)
-                const signalDir = signal.direction; // from LLM or momentum fallback
-                const scoreStrong = Math.abs(signal.score - 0.5) > config.FARM_SCORE_EDGE;
+                // ── FARM MODE: Maximum Volume Execution ──────────────────────────────
+                // Goal: always execute, never skip. Signal = direction hint only.
+                // No chop check, no confidence gate, no fake breakout filter.
+                // If signal says skip → use alternating direction (ping-pong).
 
-                if (signalDir !== 'skip' && scoreStrong) {
-                    finalDirection = signalDir;
-                } else if (signalDir === 'skip' || !scoreStrong) {
-                    // Weak signal — use score as tiebreaker but require minimum confidence
-                    if (signal.confidence >= config.FARM_MIN_CONFIDENCE) {
-                        finalDirection = signal.score >= 0.5 ? 'long' : 'short';
+                // Use cached signal (no LLM in farm mode — use momentum fallback only)
+                const signal = await this.signalEngine.getSignal(this.symbol);
+
+                // MM bias (inventory control only — no hard block in pure farm mode)
+                let mmBias = null;
+                if (config.MM_ENABLED) {
+                    mmBias = this.marketMaker.computeEntryBias(
+                        this.lastTradeContext,
+                        this.marketMaker.getState()
+                    );
+                    this._pendingMMBias = mmBias;
+                    if (mmBias.blocked) {
+                        // Inventory too one-sided — still enter but flip direction
+                        console.log(`🔄 [MM] Inventory rebalance: ${mmBias.blockReason} | net: ${mmBias.netExposureUsd.toFixed(0)} USD → forcing opposite side`);
+                        // Don't return — use forced direction below
                     } else {
-                        finalDirection = 'skip';
+                        console.log(
+                            `🔄 [MM] pingPong: ${mmBias.pingPongBias > 0 ? '+' : ''}${mmBias.pingPongBias.toFixed(2)}` +
+                            ` | inventory: ${mmBias.inventoryBias > 0 ? '+' : ''}${mmBias.inventoryBias.toFixed(2)}` +
+                            ` | net: ${mmBias.netExposureUsd.toFixed(0)} USD`
+                        );
                     }
                 }
-                console.log(`🚜 [FARM] Score: ${signal.score.toFixed(2)} Dir: ${signalDir} Conf: ${signal.confidence.toFixed(2)} → ${finalDirection.toUpperCase()}`);
-            } else {
+
+                // Determine direction — ALWAYS produce long or short, never skip
+                let finalDirection: 'long' | 'short';
+
+                if (mmBias?.blocked) {
+                    // Inventory hard block → force opposite of last trade to rebalance
+                    finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
+                    console.log(`🚜 [FARM] Inventory rebalance → ${finalDirection.toUpperCase()}`);
+                } else {
+                    // Apply MM bias to score
+                    const adjustedScore = mmBias && !mmBias.blocked
+                        ? signal.score + mmBias.pingPongBias + mmBias.inventoryBias
+                        : signal.score;
+
+                    if (signal.direction !== 'skip') {
+                        // Signal has a direction — use it (adjusted by MM bias)
+                        // If MM bias strongly opposes signal, let adjusted score decide
+                        const mmStronglyOpposes = mmBias && Math.abs(mmBias.pingPongBias + mmBias.inventoryBias) >= 0.1;
+                        if (mmStronglyOpposes) {
+                            finalDirection = adjustedScore >= 0.5 ? 'long' : 'short';
+                        } else {
+                            finalDirection = signal.direction;
+                        }
+                    } else {
+                        // Signal says skip → use adjusted score or alternate
+                        if (Math.abs(adjustedScore - 0.5) > 0.02) {
+                            finalDirection = adjustedScore >= 0.5 ? 'long' : 'short';
+                        } else {
+                            // Truly neutral → alternate from last trade (ping-pong)
+                            finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
+                        }
+                    }
+                    console.log(`🚜 [FARM] Score: ${signal.score.toFixed(2)} AdjScore: ${adjustedScore.toFixed(2)} Dir: ${signal.direction} → ${finalDirection.toUpperCase()}`);
+                }
+
+                // Size: use confidence to scale (not to gate)
+                const sizingResult = this.positionSizer.computeSize({
+                    confidence: signal.confidence,
+                    recentPnLs: this.recentPnLs,
+                    sessionPnl: this.sessionCurrentPnl,
+                    balance,
+                    mode: 'farm',
+                    profile: this.currentProfile,
+                    volatilityFactor: 1.0, // no regime penalty in pure farm mode
+                });
+                this._pendingSizingResult = sizingResult;
+                let size = sizingResult.size;
+                const maxSizeFromBalance = (balance * config.SIZING_MAX_BALANCE_PCT) / markPrice;
+                if (size > maxSizeFromBalance) size = Math.max(config.ORDER_SIZE_MIN, maxSizeFromBalance);
+
+                console.log(`📐 [FARM] Size: ${size.toFixed(5)} BTC | conf: ${signal.confidence.toFixed(2)}`);
+
+                // Hold time: fixed range, no regime multiplier
+                const holdSecs = Math.floor(Math.random() * (config.FARM_MAX_HOLD_SECS - config.FARM_MIN_HOLD_SECS + 1)) + config.FARM_MIN_HOLD_SECS;
+                this.farmHoldUntil = Date.now() + holdSecs * 1000;
+
+                // SL: base farm SL, no regime adjustment
+                this.riskManager.setSlPercent(config.FARM_SL_PERCENT);
+
+                // Dynamic TP from spread
+                if (config.MM_ENABLED) {
+                    const spreadBps = this._pendingEntrySpreadBps ?? 2;
+                    this._pendingDynamicTP = this.marketMaker.computeDynamicTP(markPrice, spreadBps);
+                    console.log(`🎯 [MM] Dynamic TP: ${this._pendingDynamicTP.toFixed(3)} USD (spread: ${spreadBps.toFixed(1)}bps)`);
+                } else {
+                    this._pendingDynamicTP = null;
+                }
+
+                const order = await this.executor.placeEntryOrder(this.symbol, finalDirection, size);
+                if (order) {
+                    this.signalEngine.invalidateCache();
+                    logEvent('ORDER_PLACED', `[FARM] Order placed: ${finalDirection.toUpperCase()} ${size.toFixed(3)} @ ${order.price}`);
+                    this.botState = 'PENDING_ENTRY';
+                    this._pendingEntrySignalMeta = {
+                        reasoning: signal.reasoning,
+                        confidence: signal.confidence,
+                        fallback: signal.fallback,
+                        entryPrice: 0,
+                        signalSnapshot: {
+                            regime: signal.regime,
+                            momentumScore: signal.score,
+                            imbalance: signal.imbalance,
+                            tradePressure: signal.tradePressure,
+                            atrPct: signal.atrPct,
+                            bbWidth: signal.bbWidth,
+                            volRatio: signal.volRatio,
+                        },
+                    };
+                    this.pendingEntry = {
+                        order,
+                        direction: finalDirection,
+                        meta: { baseScore: signal.base_score, bias: 0, regime: signal.regime, finalScore: signal.score },
+                        signalMeta: this._pendingEntrySignalMeta,
+                        placedAt: Date.now(),
+                        replaceCount: 0,
+                    };
+                }
+                return;
+            }
+
+            // ── TRADE MODE: Signal-filtered execution ────────────────────────────
+            const signal = await this.signalEngine.getSignal(this.symbol);
+            const regimeConfig = getRegimeStrategyConfig(signal.regime as Regime);
+            let bias = 0;
+            let finalDirection: 'long' | 'short' | 'skip' = 'skip';
                 // Trade mode: strict filtering
                 if (this.lastTradeContext) {
                     const { side: lastSide, exitPrice, pnl } = this.lastTradeContext;
@@ -555,19 +754,61 @@ export class Watcher {
 
                 console.log(`🧠 [TRADE] Base: ${signal.base_score.toFixed(2)} | Bias: ${bias.toFixed(2)} | Regime: ${signal.regime}`);
                 console.log(`   => Final Score: ${final_score.toFixed(2)} | Direction: ${finalDirection.toUpperCase()}`);
-            }
 
             if (finalDirection !== 'skip') {
-                // Confidence filter — trade mode only
-                if (config.MODE !== 'farm' && signal.confidence < config.MIN_CONFIDENCE) {
+                // Regime strategy config — skipEntry check (trade mode)
+                if (regimeConfig.skipEntry) {
+                  console.log(`⚠️ [REGIME] Skipping entry: HIGH_VOLATILITY skip enabled`);
+                  return;
+                }
+
+                // Phase 4a: chop detection (trade mode)
+                const chopResult = this.chopDetector.evaluate(
+                  { score: signal.score, bbWidth: signal.bbWidth ?? 0 },
+                  this._signalHistory
+                );
+                this._lastChopScore = chopResult.chopScore;
+
+                this._signalHistory.push({ direction: finalDirection, score: signal.score, ts: Date.now() });
+                if (this._signalHistory.length > config.CHOP_FLIP_WINDOW) {
+                  this._signalHistory.shift();
+                }
+
+                if (chopResult.isChoppy) {
+                  console.log(
+                    `🌀 [CHOP] Skipping entry — chop score: ${chopResult.chopScore.toFixed(2)}` +
+                    ` (flip: ${chopResult.flipRate.toFixed(2)}, mom: ${chopResult.momNeutrality.toFixed(2)}, bb: ${chopResult.bbCompression.toFixed(2)})`
+                  );
+                  return;
+                }
+
+                // Phase 4b: fake breakout filter (trade mode)
+                {
+                  const fakeResult = this.fakeBreakoutFilter.check(
+                    {
+                      score: signal.score,
+                      volRatio: signal.volRatio ?? 1,
+                      imbalance: signal.imbalance ?? 0,
+                    },
+                    finalDirection
+                  );
+                  if (fakeResult.isFakeBreakout) {
+                    console.log(
+                      `🚫 [CHOP] Fake breakout detected (${fakeResult.reason})` +
+                      ` | volRatio: ${(signal.volRatio ?? 1).toFixed(2)}, imbalance: ${(signal.imbalance ?? 0).toFixed(2)}`
+                    );
+                    return;
+                  }
+                }
+
+                // Confidence filter (trade mode)
+                if (signal.confidence < config.MIN_CONFIDENCE) {
                     console.log(`😴 Signal too weak (confidence: ${signal.confidence.toFixed(2)} < ${config.MIN_CONFIDENCE}). Skipping.`);
                     return;
                 }
 
-                // Signal confirmation:
-                // - Trade mode: require same direction on 2 consecutive ticks (within 60s)
-                // - Farm mode: enter immediately on first valid signal (no confirmation delay)
-                if (config.MODE !== 'farm') {
+                // Signal confirmation: require same direction on 2 consecutive ticks (within 60s)
+                {
                     const now = Date.now();
                     const prevSig = this._lastSignal;
                     this._lastSignal = { direction: finalDirection, score: signal.score, ts: now };
@@ -576,9 +817,6 @@ export class Watcher {
                         console.log(`[Watcher] Signal ${finalDirection.toUpperCase()} — waiting for confirmation on next tick...`);
                         return;
                     }
-                    this._lastSignal = null;
-                } else {
-                    // Farm: clear any stale last signal, enter immediately
                     this._lastSignal = null;
                 }
 
@@ -590,20 +828,42 @@ export class Watcher {
                     process.exit(1);
                 }
 
-                // Farm mode: pure random between min and max (no confidence scaling — farm confidence is naturally lower)
-                // Trade mode: scale with confidence so stronger signals get larger size
-                let size: number;
-                let confidenceScale = 1;
-                if (config.MODE === 'farm') {
-                    size = config.ORDER_SIZE_MIN + Math.random() * (config.ORDER_SIZE_MAX - config.ORDER_SIZE_MIN);
-                } else {
-                    confidenceScale = Math.min(signal.confidence / config.MIN_CONFIDENCE, 1.5);
-                    const baseSize = config.ORDER_SIZE_MIN + Math.random() * (config.ORDER_SIZE_MAX - config.ORDER_SIZE_MIN);
-                    size = Math.max(config.ORDER_SIZE_MIN, Math.min(baseSize * confidenceScale, config.ORDER_SIZE_MAX * 1.5));
-                }
-                console.log(`📐 Order size: ${size.toFixed(5)} (confidence scale: ${confidenceScale.toFixed(2)}x)`);
-                const order = await this.executor.placeEntryOrder(this.symbol, finalDirection, size);
+                // Sizing (trade mode)
+                const sizingResult = this.positionSizer.computeSize({
+                  confidence: signal.confidence,
+                  recentPnLs: this.recentPnLs,
+                  sessionPnl: this.sessionCurrentPnl,
+                  balance,
+                  mode: 'trade',
+                  profile: this.currentProfile,
+                  volatilityFactor: regimeConfig.volatilitySizingFactor,
+                });
+                this._pendingSizingResult = sizingResult;
+                let size = sizingResult.size;
 
+                const maxSizeFromBalance = (balance * config.SIZING_MAX_BALANCE_PCT) / markPrice;
+                if (size > maxSizeFromBalance) {
+                  size = Math.max(config.ORDER_SIZE_MIN, maxSizeFromBalance);
+                }
+
+                console.log(`📐 Order size: ${size.toFixed(5)} BTC | confMult: ${sizingResult.confidenceMultiplier.toFixed(2)}x | perfMult: ${sizingResult.performanceMultiplier.toFixed(2)}x | combined: ${sizingResult.combinedMultiplier.toFixed(2)}x | cappedBy: ${sizingResult.cappedBy}`);
+
+                // Hold time with regime multiplier
+                const baseHoldSecs = Math.floor(Math.random() * (config.FARM_MAX_HOLD_SECS - config.FARM_MIN_HOLD_SECS + 1)) + config.FARM_MIN_HOLD_SECS;
+                const holdSecs = Math.min(
+                  config.FARM_MAX_HOLD_SECS * 2,
+                  Math.max(config.FARM_MIN_HOLD_SECS, Math.round(baseHoldSecs * regimeConfig.holdMultiplier))
+                );
+                this.farmHoldUntil = Date.now() + holdSecs * 1000;
+
+                const effectiveSlPercent = config.FARM_SL_PERCENT * regimeConfig.slBufferMultiplier;
+                this.riskManager.setSlPercent(effectiveSlPercent);
+
+                console.log(`🎯 [REGIME] ${signal.regime} | ATR: ${(((signal as any).atrPct ?? 0)*100).toFixed(3)}% | BB: ${(((signal as any).bbWidth ?? 0)*100).toFixed(2)}% | Vol: ${((signal as any).volRatio ?? 1).toFixed(2)}x | Hold: ${holdSecs}s | SL: ${(effectiveSlPercent*100).toFixed(2)}%`);
+
+                this._pendingDynamicTP = null;
+
+                const order = await this.executor.placeEntryOrder(this.symbol, finalDirection, size);
                 if (order) {
                     // Invalidate signal cache so next IDLE tick after this trade gets a fresh signal
                     this.signalEngine.invalidateCache();
@@ -630,6 +890,9 @@ export class Watcher {
                             llmDirection: signal.direction,
                             llmConfidence: signal.confidence,
                             llmMatchesMomentum: signal.direction === (signal.score > 0.5 ? 'long' : 'short'),
+                            atrPct: signal.atrPct,
+                            bbWidth: signal.bbWidth,
+                            volRatio: signal.volRatio,
                         },
                     };
                     this.pendingEntry = {
@@ -662,6 +925,7 @@ export class Watcher {
 
     private _pendingExitTrigger: TradeRecord['exitTrigger'] | null = null;
     private _lastSignal: { direction: 'long' | 'short'; score: number; ts: number } | null = null;
+    private _pendingSizingResult: import('./PositionSizer.js').SizingResult | null = null;
 
     private updateProfile() {
         let winStreak = 0; let lossStreak = 0;
@@ -749,5 +1013,14 @@ export class Watcher {
         this.farmHoldUntil = null;
         this._pendingEntrySignalMeta = null;
         this._pendingExitTrigger = null;
+        this._pendingSizingResult = null;
+        this._signalHistory = [];
+        this._lastChopScore = 0;
+        this.fillTracker.reset();
+        // Task 7.4: Reset MM state
+        this.marketMaker.reset();
+        this._pendingDynamicTP = null;
+        this._pendingEntrySpreadBps = null;
+        this._pendingMMBias = null;
     }
 }

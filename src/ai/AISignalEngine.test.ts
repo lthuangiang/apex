@@ -178,7 +178,8 @@ describe('AISignalEngine', () => {
 
     assertValidSignal(signal);
     expect(signal.fallback).toBe(true);
-    expect(signal.reasoning).toBe('');
+    // Fallback path now returns a non-empty reasoning string describing the fallback logic
+    expect(typeof signal.reasoning).toBe('string');
   });
 
   it('returns fallback:false and reasoning from LLM on success', async () => {
@@ -244,5 +245,90 @@ describe('AISignalEngine', () => {
     expect(threw).toBe(false);
     assertValidSignal(signal);
     expect((signal as { fallback: boolean }).fallback).toBe(true);
+  });
+});
+
+// ── Task 5.4: Adaptive weights + calibrated confidence + tradeLogger injection ──
+// Import the singleton instances so we can spy on them per-test
+import { weightStore } from './FeedbackLoop/WeightStore.js';
+import { confidenceCalibrator } from './FeedbackLoop/ConfidenceCalibrator.js';
+
+describe('AISignalEngine — adaptive weights & calibration (Task 5.4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.LLM_PROVIDER = 'openai';
+    process.env.OPENAI_API_KEY = 'test-key';
+  });
+
+  function setupAxiosMocks() {
+    mockedAxios.get = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('klines')) {
+        return Promise.resolve({ data: makeKlines() });
+      }
+      if (url.includes('topLongShortPositionRatio')) {
+        return Promise.resolve({ data: [{ longShortRatio: '1.2' }] });
+      }
+      return Promise.reject(new Error('unavailable'));
+    });
+  }
+
+  async function setupLLMMock(response = { direction: 'long', confidence: 0.80, reasoning: 'test' }) {
+    const axiosModule = await import('axios');
+    (axiosModule.default as unknown as { post: ReturnType<typeof vi.fn> }).post = vi.fn().mockResolvedValue({
+      data: { choices: [{ message: { content: JSON.stringify(response) } }] },
+    });
+  }
+
+  it('uses custom weights from weightStore without crashing and returns a valid signal', async () => {
+    const adapter = makeMockAdapter();
+    setupAxiosMocks();
+    await setupLLMMock();
+
+    // Spy on weightStore.getWeights to return custom weights
+    const getWeightsSpy = vi.spyOn(weightStore, 'getWeights').mockReturnValue({
+      ema: 0.50,
+      rsi: 0.20,
+      momentum: 0.20,
+      imbalance: 0.10,
+    });
+
+    const engine = new AISignalEngine(adapter);
+    const signal = await engine.getSignal('BTC-USD');
+
+    assertValidSignal(signal);
+    expect(getWeightsSpy).toHaveBeenCalled();
+
+    getWeightsSpy.mockRestore();
+  });
+
+  it('returns calibrated confidence from confidenceCalibrator.calibrate', async () => {
+    const adapter = makeMockAdapter();
+    setupAxiosMocks();
+    await setupLLMMock({ direction: 'long', confidence: 0.80, reasoning: 'test' });
+
+    // Spy on calibrate to return a known value
+    const calibrateSpy = vi.spyOn(confidenceCalibrator, 'calibrate').mockReturnValue(0.75);
+
+    const engine = new AISignalEngine(adapter);
+    const signal = await engine.getSignal('BTC-USD');
+
+    expect(calibrateSpy).toHaveBeenCalled();
+    expect(signal.confidence).toBe(0.75);
+
+    calibrateSpy.mockRestore();
+  });
+
+  it('calls tradeLogger.readAll() when injected via constructor', async () => {
+    const adapter = makeMockAdapter();
+    setupAxiosMocks();
+    await setupLLMMock();
+
+    const mockReadAll = vi.fn().mockResolvedValue([]);
+    const mockTradeLogger = { readAll: mockReadAll } as unknown as import('./TradeLogger.js').TradeLogger;
+
+    const engine = new AISignalEngine(adapter, mockTradeLogger);
+    await engine.getSignal('BTC-USD');
+
+    expect(mockReadAll).toHaveBeenCalled();
   });
 });
