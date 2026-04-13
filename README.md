@@ -113,12 +113,21 @@ LLM (GPT-4o / Claude) nhận full context → `direction + confidence + reasonin
 
 ---
 
-## SoDEX Integration
+## Exchange Integration
 
-- **EIP-712 signing**: tất cả write operations (order, cancel)
-- **Post-Only orders**: `timeInForce = 4` — 0.012% maker fee
-- **Spread guard**: skip entry nếu spread > 10 bps
-- **SoPoints dashboard**: tier, weekly volume, countdown, token refresh runtime
+APEX hỗ trợ 2 sàn qua interface chung `ExchangeAdapter` — thêm sàn mới chỉ cần implement 9 methods.
+
+### SoDEX (`EXCHANGE=sodex`)
+- REST API với **EIP-712 typed data signing** (Ethereum-compatible)
+- Post-Only orders: `timeInForce = 4` — 0.012% maker fee
+- Spread guard: skip entry nếu spread > 10 bps
+- SoPoints integration: tier tracking, weekly volume, countdown, token refresh runtime
+
+### Decibel (`EXCHANGE=decibel`)
+- Aptos blockchain-based DEX
+- **Ed25519 signing** via `@aptos-labs/ts-sdk`
+- Post-Only order support
+- Cấu hình: `DECIBELS_PRIVATE_KEY`, `DECIBELS_NODE_API_KEY`, `DECIBELS_SUBACCOUNT`
 
 ---
 
@@ -142,10 +151,18 @@ docker compose up -d
 ## Cấu hình `.env`
 
 ```env
+# Exchange — chọn 1 trong 2
 EXCHANGE=sodex
+
+# SoDEX
 SODEX_API_KEY=...
 SODEX_API_SECRET=0x...
 SODEX_SUBACCOUNT=0x...
+
+# Decibel (nếu dùng EXCHANGE=decibel)
+DECIBELS_PRIVATE_KEY=0x...
+DECIBELS_NODE_API_KEY=...
+DECIBELS_SUBACCOUNT=0x...
 
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
