@@ -240,16 +240,43 @@ export class AISignalEngine {
             const decision = await llmClient.call(ctx);
 
             if (decision === null) {
-                console.warn('[AISignalEngine] LLM returned null — using momentum score');
-                const direction: 'long' | 'short' | 'skip' =
-                    momentumScore > 0.58 ? 'long' :
-                    momentumScore < 0.42 ? 'short' : 'skip';
-                const confidence = Math.abs(momentumScore - 0.5) * 2;
+                console.warn('[AISignalEngine] LLM returned null — using momentum + price position fallback');
+
+                let direction: 'long' | 'short' | 'skip';
+                let confidence: number;
+                let reasoning: string;
+
+                if (regime === 'SIDEWAY') {
+                    // In SIDEWAY: use price position in range as primary signal
+                    // Bottom of range (<30%) → LONG, top of range (>70%) → SHORT
+                    if (pricePosition < 0.30) {
+                        direction = 'long';
+                        confidence = 0.5 + (0.30 - pricePosition) * 1.5; // 0.50–0.95
+                        reasoning = `SIDEWAY fallback: price at range bottom (${(pricePosition*100).toFixed(0)}%) → LONG`;
+                    } else if (pricePosition > 0.70) {
+                        direction = 'short';
+                        confidence = 0.5 + (pricePosition - 0.70) * 1.5;
+                        reasoning = `SIDEWAY fallback: price at range top (${(pricePosition*100).toFixed(0)}%) → SHORT`;
+                    } else {
+                        // Mid-range: fall back to momentum
+                        direction = momentumScore > 0.55 ? 'long' : momentumScore < 0.45 ? 'short' : 'skip';
+                        confidence = Math.abs(momentumScore - 0.5) * 2;
+                        reasoning = `SIDEWAY mid-range fallback: momentum=${momentumScore.toFixed(2)} pos=${(pricePosition*100).toFixed(0)}%`;
+                    }
+                    confidence = Math.min(1, Math.max(0, confidence));
+                } else {
+                    // TREND: use momentum score
+                    direction = momentumScore > 0.58 ? 'long' : momentumScore < 0.42 ? 'short' : 'skip';
+                    confidence = Math.abs(momentumScore - 0.5) * 2;
+                    reasoning = `${regime} fallback: EMA9=${ema9Last.toFixed(0)} EMA21=${ema21Last.toFixed(0)} RSI=${rsiVal.toFixed(1)}`;
+                }
+
+                console.log(`[AISignalEngine] Fallback → ${direction.toUpperCase()} (conf: ${confidence.toFixed(2)}) | ${reasoning}`);
                 return {
                     base_score, regime, direction, confidence,
                     imbalance, tradePressure, score: momentumScore,
                     chartTrend: emaAbove ? 'bullish' : 'bearish',
-                    reasoning: `Momentum fallback: EMA9=${ema9Last.toFixed(0)} EMA21=${ema21Last.toFixed(0)} RSI=${rsiVal.toFixed(1)}`,
+                    reasoning,
                     fallback: true,
                 };
             }
