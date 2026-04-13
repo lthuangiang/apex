@@ -5,7 +5,7 @@ services:
   # Runs standalone without Ollama/ChromaDB for low-memory VPS (1G RAM)
   # Trading Memory AI is disabled — uses cloud LLM (OpenAI/Anthropic) only
   apex:
-    image: ghandicap/apex:1.0.1
+    image: apex:1.0.1
     container_name: apex
     restart: unless-stopped
     stop_grace_period: 30s
