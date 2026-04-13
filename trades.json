@@ -1,0 +1,2 @@
+{"id":"1e470e54-234a-4ebd-9d52-5617b27fa03c","timestamp":"2026-04-09T13:33:06.714Z","symbol":"BTC-USD","direction":"short","confidence":0.1591052487445921,"reasoning":"","fallback":true,"entryPrice":71065,"exitPrice":70979,"pnl":0.395,"sessionPnl":0.34477359999999635}
+{"id":"848c4432-b33a-444e-961b-862de73d4b12","timestamp":"2026-04-10T03:28:01.901Z","symbol":"BTC-USD","direction":"long","confidence":0,"reasoning":"","fallback":false,"entryPrice":0,"exitPrice":71827,"pnl":-0.066,"sessionPnl":-0.18785772000000023}

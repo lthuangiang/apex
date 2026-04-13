@@ -1,0 +1,43 @@
+{
+  "name": "apex",
+  "version": "1.0.0",
+  "description": "APEX — AI-Powered Execution with Experiential memory",
+  "scripts": {
+    "start": "tsx src/bot.ts",
+    "build": "tsc",
+    "start:prod": "node dist/bot.js",
+    "test": "vitest --run",
+    "test:balance": "tsx src/scripts/test-balance.ts",
+    "test:signal": "tsx src/scripts/test-ai-signal.ts",
+    "test:llm": "tsx src/scripts/test-llm.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@aptos-labs/ts-sdk": "^5.2.1",
+    "@decibeltrade/sdk": "^0.4.1",
+    "@noble/hashes": "^2.0.1",
+    "@noble/secp256k1": "^3.0.0",
+    "axios": "^1.14.0",
+    "better-sqlite3": "^12.8.0",
+    "chromadb": "^3.4.3",
+    "dotenv": "^17.4.0",
+    "ethers": "^6.16.0",
+    "express": "^5.2.1",
+    "node-telegram-bot-api": "^0.67.0",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "@types/node-telegram-bot-api": "^0.64.14",
+    "@types/supertest": "^7.2.0",
+    "fast-check": "^4.6.0",
+    "supertest": "^7.2.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.3"
+  }
+}
