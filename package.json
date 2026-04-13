@@ -9,7 +9,8 @@
     "test": "vitest --run",
     "test:balance": "tsx src/scripts/test-balance.ts",
     "test:signal": "tsx src/scripts/test-ai-signal.ts",
-    "test:llm": "tsx src/scripts/test-llm.ts"
+    "test:llm": "tsx src/scripts/test-llm.ts",
+    "test:dango": "tsx src/scripts/test-dango.ts"
   },
   "keywords": [],
   "author": "",

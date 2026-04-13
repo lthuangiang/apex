@@ -1,6 +1,6 @@
-# APEX — Adaptive Perpetual Execution on SoDEX
+# APEX — Adaptive Perpetual Execution
 
-APEX là trading bot tự động cho BTC perpetual futures trên **SoDEX**, tích hợp AI signal engine, adaptive learning, và pseudo market-making để tối đa hóa cả **volume** (SoPoints) lẫn **win rate**.
+APEX là trading bot tự động cho BTC perpetual futures, tích hợp AI signal engine, adaptive learning, và pseudo market-making để tối đa hóa cả **volume** lẫn **win rate**. Hỗ trợ nhiều sàn: **SoDEX**, **Dango Exchange**, và **Decibel**.
 
 ---
 
@@ -123,7 +123,19 @@ APEX hỗ trợ 2 sàn qua interface chung `ExchangeAdapter` — thêm sàn mớ
 - Spread guard: skip entry nếu spread > 10 bps
 - SoPoints integration: tier tracking, weekly volume, countdown, token refresh runtime
 
+### Dango Exchange (`EXCHANGE=dango`)
+- GraphQL endpoint (không phải REST)
+- **Secp256k1 signing**: SHA-256 hash của canonical SignDoc JSON
+- Market orders và limit orders (GTC/IOC/POST)
+- Size là USD notional (tự động convert từ BTC quantity)
+- Pair format: `perp/btcusd`
+- Cấu hình: `DANGO_PRIVATE_KEY`, `DANGO_USER_ADDRESS`, `DANGO_NETWORK` (mainnet/testnet)
+
 ### Decibel (`EXCHANGE=decibel`)
+- Aptos blockchain-based DEX
+- **Ed25519 signing** via `@aptos-labs/ts-sdk`
+- Post-Only order support
+- Cấu hình: `DECIBELS_PRIVATE_KEY`, `DECIBELS_NODE_API_KEY`, `DECIBELS_SUBACCOUNT`
 - Aptos blockchain-based DEX
 - **Ed25519 signing** via `@aptos-labs/ts-sdk`
 - Post-Only order support
@@ -163,6 +175,11 @@ SODEX_SUBACCOUNT=0x...
 DECIBELS_PRIVATE_KEY=0x...
 DECIBELS_NODE_API_KEY=...
 DECIBELS_SUBACCOUNT=0x...
+
+# Dango (nếu dùng EXCHANGE=dango)
+DANGO_PRIVATE_KEY=0x...
+DANGO_USER_ADDRESS=0x...
+DANGO_NETWORK=mainnet
 
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...

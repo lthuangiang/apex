@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { ExchangeAdapter } from './adapters/ExchangeAdapter.js';
 import { SodexAdapter } from './adapters/sodex_adapter.js';
 import { DecibelAdapter } from './adapters/decibel_adapter.js';
+import { DangoAdapter } from './adapters/dango_adapter.js';
 import { TelegramManager } from './modules/TelegramManager.js';
 import { Watcher } from './modules/Watcher.js';
 import { SessionManager } from './modules/SessionManager.js';
@@ -26,6 +27,9 @@ const {
     SODEX_API_KEY,
     SODEX_API_SECRET,
     SODEX_SUBACCOUNT,
+    DANGO_PRIVATE_KEY,
+    DANGO_USER_ADDRESS,
+    DANGO_NETWORK,
     TRADE_LOG_BACKEND,
     TRADE_LOG_PATH,
     DASHBOARD_PORT,
@@ -55,6 +59,15 @@ async function bootstrap() {
             throw new Error("Missing SoDex settings in .env");
         }
         adapter = new SodexAdapter(SODEX_API_KEY, SODEX_API_SECRET, SODEX_SUBACCOUNT);
+    } else if (config.EXCHANGE === 'dango') {
+        if (!DANGO_PRIVATE_KEY || !DANGO_USER_ADDRESS) {
+            throw new Error("Missing Dango settings in .env (DANGO_PRIVATE_KEY, DANGO_USER_ADDRESS)");
+        }
+        adapter = new DangoAdapter(
+            DANGO_PRIVATE_KEY,
+            DANGO_USER_ADDRESS,
+            (DANGO_NETWORK as 'mainnet' | 'testnet') ?? 'mainnet'
+        );
     } else {
         if (!DECIBELS_PRIVATE_KEY || !DECIBELS_SUBACCOUNT) {
             throw new Error("Missing Decibel settings in .env");
