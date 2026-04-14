@@ -8,9 +8,7 @@ const PERSISTENCE_FILE = path.join(process.cwd(), 'config-overrides.json');
 export type OverridableConfig = {
   ORDER_SIZE_MIN: number;
   ORDER_SIZE_MAX: number;
-  STOP_LOSS_PERCENT: number;
-  TAKE_PROFIT_PERCENT: number;
-  POSITION_SL_PERCENT: number;
+  // ── Farm mode ──────────────────────────────────────────────────────────────
   FARM_MIN_HOLD_SECS: number;
   FARM_MAX_HOLD_SECS: number;
   FARM_TP_USD: number;
@@ -21,11 +19,15 @@ export type OverridableConfig = {
   FARM_EARLY_EXIT_PNL: number;
   FARM_EXTRA_WAIT_SECS: number;
   FARM_BLOCKED_HOURS: number[];
+  FARM_COOLDOWN_SECS: number;   // Fixed cooldown after each farm trade (seconds)
+  // ── Trade mode ─────────────────────────────────────────────────────────────
   TRADE_TP_PERCENT: number;
   TRADE_SL_PERCENT: number;
-  COOLDOWN_MIN_MINS: number;
-  COOLDOWN_MAX_MINS: number;
+  COOLDOWN_MIN_MINS: number;    // Trade mode adaptive cooldown min
+  COOLDOWN_MAX_MINS: number;    // Trade mode adaptive cooldown max
+  // ── Shared ─────────────────────────────────────────────────────────────────
   MIN_POSITION_VALUE_USD: number;
+  // ── Dynamic sizing ─────────────────────────────────────────────────────────
   SIZING_MIN_MULTIPLIER: number;
   SIZING_MAX_MULTIPLIER: number;
   SIZING_CONF_WEIGHT: number;
@@ -34,6 +36,7 @@ export type OverridableConfig = {
   SIZING_DRAWDOWN_FLOOR: number;
   SIZING_MAX_BTC: number;
   SIZING_MAX_BALANCE_PCT: number;
+  // ── Regime detection ───────────────────────────────────────────────────────
   REGIME_ATR_PERIOD: number;
   REGIME_BB_PERIOD: number;
   REGIME_BB_STD_DEV: number;
@@ -49,6 +52,7 @@ export type OverridableConfig = {
   REGIME_HIGH_VOL_SL_MULT: number;
   REGIME_HIGH_VOL_SKIP_ENTRY: boolean;
   REGIME_TREND_SUPPRESS_EARLY_EXIT: boolean;
+  // ── Anti-chop (trade mode) ─────────────────────────────────────────────────
   CHOP_FLIP_WINDOW: number;
   CHOP_FLIP_WEIGHT: number;
   CHOP_MOM_WEIGHT: number;
@@ -61,6 +65,7 @@ export type OverridableConfig = {
   CHOP_COOLDOWN_STREAK_FACTOR: number;
   CHOP_COOLDOWN_CHOP_FACTOR: number;
   CHOP_COOLDOWN_MAX_MINS: number;
+  // ── Execution edge ─────────────────────────────────────────────────────────
   EXEC_MAX_SPREAD_BPS?: number;
   EXEC_SPREAD_OFFSET_MULT?: number;
   EXEC_DEPTH_LEVELS?: number;
@@ -71,6 +76,7 @@ export type OverridableConfig = {
   EXEC_FILL_RATE_PENALTY?: number;
   EXEC_OFFSET_MIN?: number;
   EXEC_OFFSET_MAX?: number;
+  // ── Market making ──────────────────────────────────────────────────────────
   MM_ENABLED: boolean;
   MM_PINGPONG_BIAS_STRENGTH: number;
   MM_INVENTORY_SOFT_BIAS: number;
@@ -97,9 +103,7 @@ export interface ConfigStoreInterface {
 const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
   'ORDER_SIZE_MIN',
   'ORDER_SIZE_MAX',
-  'STOP_LOSS_PERCENT',
-  'TAKE_PROFIT_PERCENT',
-  'POSITION_SL_PERCENT',
+  // Farm mode
   'FARM_MIN_HOLD_SECS',
   'FARM_MAX_HOLD_SECS',
   'FARM_TP_USD',
@@ -110,11 +114,15 @@ const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
   'FARM_EARLY_EXIT_PNL',
   'FARM_EXTRA_WAIT_SECS',
   'FARM_BLOCKED_HOURS',
+  'FARM_COOLDOWN_SECS',
+  // Trade mode
   'TRADE_TP_PERCENT',
   'TRADE_SL_PERCENT',
   'COOLDOWN_MIN_MINS',
   'COOLDOWN_MAX_MINS',
+  // Shared
   'MIN_POSITION_VALUE_USD',
+  // Sizing
   'SIZING_MIN_MULTIPLIER',
   'SIZING_MAX_MULTIPLIER',
   'SIZING_CONF_WEIGHT',
@@ -123,6 +131,7 @@ const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
   'SIZING_DRAWDOWN_FLOOR',
   'SIZING_MAX_BTC',
   'SIZING_MAX_BALANCE_PCT',
+  // Regime
   'REGIME_ATR_PERIOD',
   'REGIME_BB_PERIOD',
   'REGIME_BB_STD_DEV',
@@ -138,6 +147,7 @@ const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
   'REGIME_HIGH_VOL_SL_MULT',
   'REGIME_HIGH_VOL_SKIP_ENTRY',
   'REGIME_TREND_SUPPRESS_EARLY_EXIT',
+  // Anti-chop (trade mode)
   'CHOP_FLIP_WINDOW',
   'CHOP_FLIP_WEIGHT',
   'CHOP_MOM_WEIGHT',
@@ -150,6 +160,7 @@ const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
   'CHOP_COOLDOWN_STREAK_FACTOR',
   'CHOP_COOLDOWN_CHOP_FACTOR',
   'CHOP_COOLDOWN_MAX_MINS',
+  // Execution edge
   'EXEC_MAX_SPREAD_BPS',
   'EXEC_SPREAD_OFFSET_MULT',
   'EXEC_DEPTH_LEVELS',
@@ -160,6 +171,7 @@ const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
   'EXEC_FILL_RATE_PENALTY',
   'EXEC_OFFSET_MIN',
   'EXEC_OFFSET_MAX',
+  // Market making
   'MM_ENABLED',
   'MM_PINGPONG_BIAS_STRENGTH',
   'MM_INVENTORY_SOFT_BIAS',
@@ -174,9 +186,6 @@ function extractBase(): OverridableConfig {
   return {
     ORDER_SIZE_MIN: config.ORDER_SIZE_MIN,
     ORDER_SIZE_MAX: config.ORDER_SIZE_MAX,
-    STOP_LOSS_PERCENT: config.STOP_LOSS_PERCENT,
-    TAKE_PROFIT_PERCENT: config.TAKE_PROFIT_PERCENT,
-    POSITION_SL_PERCENT: config.POSITION_SL_PERCENT,
     FARM_MIN_HOLD_SECS: config.FARM_MIN_HOLD_SECS,
     FARM_MAX_HOLD_SECS: config.FARM_MAX_HOLD_SECS,
     FARM_TP_USD: config.FARM_TP_USD,
@@ -187,6 +196,7 @@ function extractBase(): OverridableConfig {
     FARM_EARLY_EXIT_PNL: config.FARM_EARLY_EXIT_PNL,
     FARM_EXTRA_WAIT_SECS: config.FARM_EXTRA_WAIT_SECS,
     FARM_BLOCKED_HOURS: config.FARM_BLOCKED_HOURS,
+    FARM_COOLDOWN_SECS: config.FARM_COOLDOWN_SECS,
     TRADE_TP_PERCENT: config.TRADE_TP_PERCENT,
     TRADE_SL_PERCENT: config.TRADE_SL_PERCENT,
     COOLDOWN_MIN_MINS: config.COOLDOWN_MIN_MINS,

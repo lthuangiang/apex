@@ -1,6 +1,7 @@
 import { ExchangeAdapter, Order, Position, RawTrade } from './ExchangeAdapter.js';
 import { createHash } from 'crypto';
 import axios from 'axios';
+import { ethers } from 'ethers';
 
 // ─── Dango GraphQL Adapter ────────────────────────────────────────────────────
 // Docs: https://docs.dango.exchange/perps/8-api.html
@@ -90,15 +91,14 @@ export class DangoAdapter implements ExchangeAdapter {
      * Returns the 64-byte hex signature.
      */
     private async signTx(signDoc: Record<string, unknown>): Promise<string> {
-        // Canonical JSON: sort keys alphabetically (recursive)
         const canonical = JSON.stringify(signDoc, Object.keys(signDoc).sort());
         const hash = createHash('sha256').update(canonical).digest();
 
-        // Dynamic import of secp256k1 (already in package.json as @noble/secp256k1)
-        const { secp256k1 } = await import('@noble/secp256k1');
-        const privKeyBytes = Buffer.from(this.privateKeyHex, 'hex');
-        const sig = secp256k1.sign(hash, privKeyBytes, { lowS: true });
-        return Buffer.from(sig.toCompactRawBytes()).toString('hex');
+        // Use ethers SigningKey for Secp256k1 signing (already a dependency)
+        const signingKey = new ethers.SigningKey('0x' + this.privateKeyHex);
+        const sig = signingKey.sign(hash);
+        // Return compact 64-byte signature (r + s, no recovery byte)
+        return sig.r.slice(2) + sig.s.slice(2);
     }
 
     /**
@@ -119,9 +119,8 @@ export class DangoAdapter implements ExchangeAdapter {
         const sig = await this.signTx(signDoc);
 
         // Get key_hash: SHA-256 of compressed public key bytes
-        const { secp256k1 } = await import('@noble/secp256k1');
-        const privKeyBytes = Buffer.from(this.privateKeyHex, 'hex');
-        const pubKeyBytes = secp256k1.getPublicKey(privKeyBytes, true); // compressed 33 bytes
+        const signingKey = new ethers.SigningKey('0x' + this.privateKeyHex);
+        const pubKeyBytes = Buffer.from(signingKey.compressedPublicKey.slice(2), 'hex'); // remove 0x
         const keyHash = createHash('sha256').update(pubKeyBytes).digest('hex').toUpperCase();
 
         const tx = {

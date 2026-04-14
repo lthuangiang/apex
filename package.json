@@ -10,7 +10,8 @@
     "test:balance": "tsx src/scripts/test-balance.ts",
     "test:signal": "tsx src/scripts/test-ai-signal.ts",
     "test:llm": "tsx src/scripts/test-llm.ts",
-    "test:dango": "tsx src/scripts/test-dango.ts"
+    "test:dango": "tsx src/scripts/test-dango.ts",
+    "test:sodex-api": "tsx src/scripts/test-sodex-api.ts"
   },
   "keywords": [],
   "author": "",

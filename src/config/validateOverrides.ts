@@ -6,9 +6,6 @@ export interface ValidationError {
 }
 
 const PERCENT_FIELDS: (keyof OverridableConfig)[] = [
-  'STOP_LOSS_PERCENT',
-  'TAKE_PROFIT_PERCENT',
-  'POSITION_SL_PERCENT',
   'FARM_SL_PERCENT',
   'TRADE_TP_PERCENT',
   'TRADE_SL_PERCENT',
@@ -104,6 +101,14 @@ export function validateOverrides(
   if ('FARM_TP_USD' in patch) {
     if (!isPositive(patch.FARM_TP_USD)) {
       errors.push({ field: 'FARM_TP_USD', message: 'Must be a positive number' });
+    }
+  }
+
+  // Rule 5a: FARM_COOLDOWN_SECS must be a positive integer
+  if ('FARM_COOLDOWN_SECS' in patch) {
+    const v = patch.FARM_COOLDOWN_SECS;
+    if (typeof v !== 'number' || !isFinite(v) || v < 0) {
+      errors.push({ field: 'FARM_COOLDOWN_SECS', message: 'Must be a non-negative number (seconds)' });
     }
   }
 

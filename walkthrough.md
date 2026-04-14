@@ -23,17 +23,17 @@ IDLE ──► PENDING_ENTRY ──► IN_POSITION ──► PENDING_EXIT ──
 3. Max loss check → force close + stop nếu hit
 4. Hour blocking (nếu `FARM_BLOCKED_HOURS` được set)
 5. Cancel stale open orders
-6. `AISignalEngine.getSignal()` (cached 60s, không gọi LLM trong farm mode)
+6. `AISignalEngine.getSignal()` (cached 60s)
 7. MM bias: `computeEntryBias()` — ping-pong + inventory
 8. **Determine direction — NEVER skip:**
    - `signal.direction = 'long'/'short'` → dùng ngay (có thể override bởi MM bias mạnh)
    - `signal.direction = 'skip'` → dùng adjusted score, nếu vẫn neutral → alternate từ last trade
-   - MM hard block → force opposite direction (không return)
+   - MM hard block → force opposite direction
 9. Balance guard: stop nếu < $15
 10. `PositionSizer.computeSize()` — confidence scale size, không gate
 11. Balance-% soft cap
-12. Hold time: random `[FARM_MIN_HOLD_SECS, FARM_MAX_HOLD_SECS]`
-13. SL: `config.FARM_SL_PERCENT` (không có regime multiplier)
+12. Hold time: random `[FARM_MIN_HOLD_SECS, FARM_MAX_HOLD_SECS]` × regime multiplier
+13. SL: `config.FARM_SL_PERCENT` × regime SL multiplier
 14. Dynamic TP từ spread (MM mode)
 15. `executor.placeEntryOrder()` → `PENDING_ENTRY`
 
@@ -64,11 +64,12 @@ IDLE ──► PENDING_ENTRY ──► IN_POSITION ──► PENDING_EXIT ──
 
 Thứ tự ưu tiên:
 
-1. **SL**: `RiskManager.shouldClose()` với `FARM_SL_PERCENT = 5%`
+1. **SL**: `RiskManager.shouldClose()` với `FARM_SL_PERCENT × slBufferMultiplier`
 2. **Dynamic TP** (MM mode): `pnl >= _pendingDynamicTP`
 3. **Farm TP**: `pnl >= max(FARM_TP_USD, feeRoundTrip × 1.5)`
-4. **Early profit**: hold ≥ 120s AND pnl ≥ $0.4
-5. **Dynamic hold**: hết hold time nhưng giá đang phục hồi → chờ thêm `FARM_EXTRA_WAIT_SECS (30s)`
+4. **Early profit**: hold ≥ `FARM_EARLY_EXIT_SECS (60s)` AND pnl ≥ `FARM_EARLY_EXIT_PNL ($0.3)`
+   - Bị suppress nếu regime là TREND (để trend chạy tiếp)
+5. **Dynamic hold**: hết hold time nhưng giá đang phục hồi → chờ thêm `FARM_EXTRA_WAIT_SECS (15s)`
 6. **Time exit**: hết thời gian chờ thêm
 
 ### IN_POSITION — Trade Mode Exit
@@ -110,21 +111,21 @@ momentumScore = emaTrend × w.ema
 - `SIDEWAY`: default
 
 **SIDEWAY range logic**: `pricePositionInRange` tính vị trí giá trong range 10 nến (0 = đáy, 1 = đỉnh):
-- `pricePosition > 0.75` → `momentumScore -= 0.08` (penalize long ở đỉnh range)
-- `pricePosition < 0.25` → `momentumScore += 0.08` (penalize short ở đáy range)
+- `pricePosition > 0.75` → `momentumScore -= 0.08`
+- `pricePosition < 0.25` → `momentumScore += 0.08`
 
 Khi LLM null trong SIDEWAY, price position là primary signal:
 - `< 30%` → LONG (mean reversion từ đáy)
 - `> 70%` → SHORT (mean reversion từ đỉnh)
 - Mid-range → dùng momentum score
 
-**LLM**: GPT-4o hoặc Claude → `direction + confidence + reasoning`. Null → fallback momentum + price position in range.
+**LLM**: GPT-4o hoặc Claude → `direction + confidence + reasoning`. Null → fallback momentum + price position.
 
 **Cache**: 60s TTL. Invalidate sau khi place entry.
 
 ---
 
-## 3. Feedback Loop (Phase 1)
+## 3. Feedback Loop
 
 Mỗi 10 trades, tính win rate của từng component trên 50 trades gần nhất:
 
@@ -135,11 +136,18 @@ if RSI_lossStreak > 3 → RSI weight -= 0.05
 
 Clamp [0.05, 0.60], normalize sum = 1.0. Persist → `signal-weights.json`.
 
-Confidence calibration: `adjusted = rawConf × (historicalWinRate / 0.5)`, clamp [0.10, 1.00].
+**Confidence calibration**: `adjusted = rawConf × (historicalWinRate / 0.5)`, clamp [0.10, 1.00].
+- Chỉ áp dụng khi bucket có ≥ 5 trades (tránh overfitting sparse data)
+
+**Component attribution**:
+- EMA: `ema9 > ema21` → predicted long
+- RSI: `rsi < 35` → predicted long, `rsi > 65` → predicted short
+- Momentum: `momentum3candles > 0` → predicted long
+- Imbalance: `imbalance > 1` → predicted long
 
 ---
 
-## 4. Dynamic Position Sizing (Phase 2)
+## 4. Dynamic Position Sizing
 
 ```
 size = baseSize × clamp(confMult × 0.6 + perfMult × 0.4) × volatilityFactor
@@ -147,31 +155,47 @@ size = baseSize × clamp(confMult × 0.6 + perfMult × 0.4) × volatilityFactor
 
 - `confMult`: farm = dampened `1.0 + (conf - 0.5) × 0.6`; trade = full scale
 - `perfMult`: win rate × drawdown × profile bias (SCALP/NORMAL/RUNNER/DEGEN)
+  - Win rate 0% → 0.7×, 50% → 1.0×, 100% → 1.3×
+  - Drawdown < -$3 → scale down đến floor 0.5×
 - `volatilityFactor`: từ regime (farm mode = 1.0 luôn)
+
+Hard cap: `SIZING_MAX_BTC = 0.008`. Soft cap: `SIZING_MAX_BALANCE_PCT = 2%`.
 
 ---
 
-## 5. Regime-Adaptive Strategy (Phase 3)
+## 5. Regime-Adaptive Strategy
 
-| Regime | Score edge | Size | Hold | SL mult |
-|---|---|---|---|---|
-| TREND | 0.02 | 1.0× | 1.5× | 1.0× |
-| SIDEWAY | 0.05 | 0.85× | 0.8× | 1.0× |
-| HIGH_VOL | 0.08 | 0.5× | 0.7× | 1.5× |
+| Regime | Score edge | Size | Hold | SL mult | Suppress early exit |
+|---|---|---|---|---|---|
+| TREND | 0.02 | 1.0× | 1.5× | 1.0× | true |
+| SIDEWAY | 0.05 | 0.85× | 0.8× | 1.0× | false |
+| HIGH_VOL | 0.08 | 0.5× | 0.7× | 1.5× | false |
 
 Chỉ áp dụng cho **trade mode**. Farm mode không dùng regime multipliers.
 
+**Regime detection algorithm**:
+1. `atrPct > 0.5%` → HIGH_VOLATILITY
+2. `price > ema21 × 1.002` AND `bbWidth > 0.01` → TREND_UP
+3. `price < ema21 × 0.998` AND `bbWidth > 0.01` → TREND_DOWN
+4. Default → SIDEWAY
+
 ---
 
-## 6. Anti-Chop & Trade Filtering (Phase 4) — Trade Mode Only
+## 6. Anti-Chop & Trade Filtering (Trade Mode Only)
 
 **ChopDetector**:
 ```
 chopScore = flipRate × 0.40 + momNeutrality × 0.35 + bbCompression × 0.25
 ```
+- `flipRate`: tỷ lệ direction flip trong 5 signals gần nhất
+- `momNeutrality`: `1 - |score - 0.5| / 0.5` (score gần 0.5 = neutral = chop)
+- `bbCompression`: `1 - bbWidth / CHOP_BB_COMPRESS_MAX` (BB hẹp = chop)
+
 Score ≥ 0.55 → skip entry.
 
-**FakeBreakoutFilter**: chỉ kích hoạt khi `|score - 0.5| > 0.15`. Check OB imbalance contradiction.
+**FakeBreakoutFilter**: chỉ kích hoạt khi `|score - 0.5| > 0.15`. Check:
+- `volRatio < 0.4` → low volume
+- `imbalance` contradicts direction → OB opposes move
 
 **AdaptiveCooldown**:
 ```
@@ -180,7 +204,7 @@ finalMins = clamp(baseMins × (1 + losingStreak × 0.5) × (1 + chopScore × 1.0
 
 ---
 
-## 7. Execution Edge (Phase 5)
+## 7. Execution Edge
 
 ```
 offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
@@ -188,17 +212,34 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 
 - Spread guard: skip entry nếu spread > 10 bps
 - Depth penalty: +$0.5 nếu top-5 book depth < $50k
-- Fill rate penalty: +$1.0 nếu fill rate < 60%
+- Fill rate penalty: +$1.0 nếu fill rate < 60% (ring buffer 20 orders)
+
+**Order placement**:
+
+| Lệnh | Giá đặt |
+|---|---|
+| Entry LONG | `best_bid - dynamicOffset` |
+| Entry SHORT | `best_ask + dynamicOffset` |
+| Exit LONG | `best_ask` |
+| Exit SHORT | `best_bid` |
+| Force close | cross spread (IOC) |
 
 ---
 
-## 8. Farm Market Making (Phase 6)
+## 8. Farm Market Making
 
 **Ping-Pong**: sau LONG exit → bias SHORT; sau SHORT exit → bias LONG.
+- `pingPongBias = ±MM_PINGPONG_BIAS_STRENGTH (0.08)`
 
 **Inventory Control**:
-- Net exposure > $50 → soft bias rebalancing
-- Net exposure > $150 → force opposite direction (không block)
+- Net exposure > $50 → soft bias rebalancing (`inventoryBias = ±0.12`)
+- Net exposure > $150 → hard block entry
+
+**Direction resolution**:
+```
+adjustedScore = signal.score + pingPongBias + inventoryBias
+finalDirection = adjustedScore >= 0.5 ? 'long' : 'short'
+```
 
 **Dynamic TP**:
 ```
@@ -207,21 +248,7 @@ dynamicTP = min(max(spreadBps/10000 × price × 1.5, feeFloor), $2.0)
 
 ---
 
-## 9. Order Execution
-
-Tất cả lệnh **Post-Only (maker)**:
-
-| Lệnh | Giá đặt | TimeInForce |
-|---|---|---|
-| Entry LONG | `best_bid - dynamicOffset` | Post-Only (4) |
-| Entry SHORT | `best_ask + dynamicOffset` | Post-Only (4) |
-| Exit LONG | `best_ask` | Post-Only (4) |
-| Exit SHORT | `best_bid` | Post-Only (4) |
-| Force close | cross spread | IOC (3) |
-
----
-
-## 10. SoDEX Adapter — EIP-712 Signing
+## 9. SoDEX Adapter — EIP-712 Signing
 
 1. Build canonical JSON payload (field order khớp Go struct)
 2. Hash với `keccak256`
@@ -233,16 +260,36 @@ Nonce: timestamp ms, tăng dần. Account ID và Symbol ID được cache.
 
 ---
 
+## 10. Trade Analytics
+
+**TradeRecord** lưu đầy đủ metadata:
+- Signal snapshot: regime, momentumScore, ema9/21, rsi, imbalance, tradePressure
+- Timing: entryTime, exitTime, holdingTimeSecs
+- Fee analysis: grossPnl, feePaid, wonBeforeFee
+- Sizing: sizingConfMult, sizingPerfMult, sizingCombinedMult
+- MM metadata: mmPingPongBias, mmInventoryBias, mmDynamicTP, mmNetExposure
+- Exit trigger: FARM_TP, FARM_MM_TP, FARM_TIME, FARM_EARLY_PROFIT, SL, FORCE
+
+**AnalyticsEngine** compute:
+- Win rate by mode, direction, regime, confidence bucket, UTC hour
+- Signal quality: LLM match rate, fallback rate, avg confidence
+- Fee impact: total fee paid, fee-loser rate
+- Holding time distribution (farm mode)
+- Streak tracking: max consecutive wins/losses
+
+---
+
 ## 11. Cấu trúc thư mục
 
 ```
 src/
 ├── bot.ts                    # Bootstrap, Telegram commands, graceful shutdown
-├── config.ts                 # Tất cả tham số mặc định
+├── config.ts                 # Tất cả tham số mặc định (70+ keys)
 ├── adapters/
-│   ├── ExchangeAdapter.ts    # Interface chung
+│   ├── ExchangeAdapter.ts    # Interface chung (9 methods)
 │   ├── sodex_adapter.ts      # SoDEX (EIP-712 signing)
-│   └── decibel_adapter.ts    # Decibel (Aptos SDK)
+│   ├── decibel_adapter.ts    # Decibel (Aptos Ed25519)
+│   └── dango_adapter.ts      # Dango (Secp256k1 + GraphQL)
 ├── modules/
 │   ├── Watcher.ts            # State machine chính
 │   ├── Executor.ts           # Đặt/hủy lệnh
@@ -266,14 +313,14 @@ src/
 │   ├── TradeLogger.ts        # Log trade (JSON / SQLite)
 │   ├── sharedState.ts        # Shared state + SSE broadcast
 │   ├── StateStore.ts         # Persist state to disk
-│   └── FeedbackLoop/         # Adaptive weights
+│   └── FeedbackLoop/
 │       ├── WeightStore.ts
 │       ├── ComponentPerformanceTracker.ts
 │       ├── AdaptiveWeightAdjuster.ts
 │       └── ConfidenceCalibrator.ts
 ├── config/
 │   ├── ConfigStore.ts        # Runtime config override
-│   └── validateOverrides.ts  # 41 validation rules
+│   └── validateOverrides.ts  # 41+ validation rules
 └── dashboard/
     └── server.ts             # Express dashboard (inline HTML + SSE)
 ```

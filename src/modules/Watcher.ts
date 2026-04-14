@@ -347,16 +347,23 @@ export class Watcher {
                 if (this.recentPnLs.length > 5) this.recentPnLs.shift();
                 this.updateProfile();
 
-                const cooldownResult = computeAdaptiveCooldown({
-                  recentPnLs: this.recentPnLs,
-                  lastChopScore: this._lastChopScore,
-                });
-                this.cooldownUntil = Date.now() + cooldownResult.cooldownMs;
-                console.log(
-                  `⏱️ Adaptive cooldown: ${(cooldownResult.cooldownMs / 60000).toFixed(1)} mins` +
-                  ` (base: ${cooldownResult.baseMins.toFixed(1)}, streak×${cooldownResult.streakMult.toFixed(2)}, chop×${cooldownResult.chopMult.toFixed(2)})` +
-                  ` | Profile: ${this.currentProfile}`
-                );
+                // Farm mode: short fixed cooldown to maximize trade frequency
+                // Trade mode: adaptive cooldown based on performance and chop
+                if (config.MODE === 'farm') {
+                    this.cooldownUntil = Date.now() + config.FARM_COOLDOWN_SECS * 1000;
+                    console.log(`⏱️ Farm cooldown: ${config.FARM_COOLDOWN_SECS}s`);
+                } else {
+                    const cooldownResult = computeAdaptiveCooldown({
+                        recentPnLs: this.recentPnLs,
+                        lastChopScore: this._lastChopScore,
+                    });
+                    this.cooldownUntil = Date.now() + cooldownResult.cooldownMs;
+                    console.log(
+                        `⏱️ Adaptive cooldown: ${(cooldownResult.cooldownMs / 60000).toFixed(1)} mins` +
+                        ` (base: ${cooldownResult.baseMins.toFixed(1)}, streak×${cooldownResult.streakMult.toFixed(2)}, chop×${cooldownResult.chopMult.toFixed(2)})` +
+                        ` | Profile: ${this.currentProfile}`
+                    );
+                }
 
                 console.log(`✅ [Watcher] Exit filled: ${filledSize} ${this.symbol} @ ${this.pendingExit.order.price}`);
                 await this.executor.notifyExitFilled(
@@ -599,14 +606,16 @@ export class Watcher {
 
             if (config.MODE === 'farm') {
                 // ── FARM MODE: Maximum Volume Execution ──────────────────────────────
-                // Goal: always execute, never skip. Signal = direction hint only.
-                // No chop check, no confidence gate, no fake breakout filter.
-                // If signal says skip → use alternating direction (ping-pong).
+                // Goal: always execute, never skip.
+                // Direction: use simple price position in range (mean reversion)
+                // - Price near top of range → SHORT (expect pullback)
+                // - Price near bottom of range → LONG (expect bounce)
+                // - Mid-range → use last trade context (ping-pong) or signal hint
 
-                // Use cached signal (no LLM in farm mode — use momentum fallback only)
+                // Use cached signal for score/regime context (no LLM call needed)
                 const signal = await this.signalEngine.getSignal(this.symbol);
 
-                // MM bias (inventory control only — no hard block in pure farm mode)
+                // MM bias (inventory control)
                 let mmBias = null;
                 if (config.MM_ENABLED) {
                     mmBias = this.marketMaker.computeEntryBias(
@@ -615,9 +624,7 @@ export class Watcher {
                     );
                     this._pendingMMBias = mmBias;
                     if (mmBias.blocked) {
-                        // Inventory too one-sided — still enter but flip direction
                         console.log(`🔄 [MM] Inventory rebalance: ${mmBias.blockReason} | net: ${mmBias.netExposureUsd.toFixed(0)} USD → forcing opposite side`);
-                        // Don't return — use forced direction below
                     } else {
                         console.log(
                             `🔄 [MM] pingPong: ${mmBias.pingPongBias > 0 ? '+' : ''}${mmBias.pingPongBias.toFixed(2)}` +
@@ -635,32 +642,45 @@ export class Watcher {
                     finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
                     console.log(`🚜 [FARM] Inventory rebalance → ${finalDirection.toUpperCase()}`);
                 } else {
-                    // Apply MM bias to score
+                    // Primary: use price position in range (mean reversion)
+                    // pricePosition: 0 = range bottom, 1 = range top (from signal snapshot)
+                    const pricePos = (signal as any).pricePositionInRange as number | undefined;
                     const adjustedScore = mmBias && !mmBias.blocked
                         ? signal.score + mmBias.pingPongBias + mmBias.inventoryBias
                         : signal.score;
 
-                    if (signal.direction !== 'skip') {
-                        // Signal has a direction — use it (adjusted by MM bias)
-                        // If MM bias strongly opposes signal, let adjusted score decide
-                        const mmStronglyOpposes = mmBias && Math.abs(mmBias.pingPongBias + mmBias.inventoryBias) >= 0.1;
-                        if (mmStronglyOpposes) {
-                            finalDirection = adjustedScore >= 0.5 ? 'long' : 'short';
+                    if (pricePos !== undefined) {
+                        if (pricePos > 0.65) {
+                            // Price near top of range → SHORT (mean reversion)
+                            finalDirection = 'short';
+                        } else if (pricePos < 0.35) {
+                            // Price near bottom of range → LONG (mean reversion)
+                            finalDirection = 'long';
                         } else {
-                            finalDirection = signal.direction;
+                            // Mid-range: use adjusted score or ping-pong
+                            if (Math.abs(adjustedScore - 0.5) > 0.05) {
+                                finalDirection = adjustedScore >= 0.5 ? 'long' : 'short';
+                            } else {
+                                // Truly neutral → alternate from last trade
+                                finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
+                            }
                         }
+                        console.log(`🚜 [FARM] PricePos: ${(pricePos*100).toFixed(0)}% Score: ${signal.score.toFixed(2)} AdjScore: ${adjustedScore.toFixed(2)} → ${finalDirection.toUpperCase()}`);
                     } else {
-                        // Signal says skip → use adjusted score or alternate
-                        if (Math.abs(adjustedScore - 0.5) > 0.02) {
-                            finalDirection = adjustedScore >= 0.5 ? 'long' : 'short';
+                        // Fallback: use adjusted score or alternate
+                        if (signal.direction !== 'skip') {
+                            const mmStronglyOpposes = mmBias && Math.abs(mmBias.pingPongBias + mmBias.inventoryBias) >= 0.1;
+                            finalDirection = mmStronglyOpposes
+                                ? (adjustedScore >= 0.5 ? 'long' : 'short')
+                                : signal.direction;
                         } else {
-                            // Truly neutral → alternate from last trade (ping-pong)
-                            finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
+                            finalDirection = Math.abs(adjustedScore - 0.5) > 0.02
+                                ? (adjustedScore >= 0.5 ? 'long' : 'short')
+                                : (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
                         }
+                        console.log(`🚜 [FARM] Score: ${signal.score.toFixed(2)} AdjScore: ${adjustedScore.toFixed(2)} Dir: ${signal.direction} → ${finalDirection.toUpperCase()}`);
                     }
-                    console.log(`🚜 [FARM] Score: ${signal.score.toFixed(2)} AdjScore: ${adjustedScore.toFixed(2)} Dir: ${signal.direction} → ${finalDirection.toUpperCase()}`);
                 }
-
                 // Size: use confidence to scale (not to gate)
                 const sizingResult = this.positionSizer.computeSize({
                     confidence: signal.confidence,
