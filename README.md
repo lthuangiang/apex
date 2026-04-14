@@ -67,8 +67,8 @@ bot.ts (SHIELD-BOT)
 ## Farm Mode — Chi tiết
 
 **Entry**: luôn execute, không skip.
-- Signal direction → dùng trực tiếp
-- Signal skip → alternate từ last trade
+- Signal direction → dùng trực tiếp (đã bao gồm logic Sideway Range tích hợp trong Signal Engine)
+- Signal skip → dùng điểm số momentum đã điều chỉnh hoặc luân phiên từ last trade
 - MM inventory hard block → force opposite direction
 
 **Exit** (theo thứ tự ưu tiên):
@@ -99,7 +99,7 @@ bot.ts (SHIELD-BOT)
 
 ## AI Signal Engine
 
-Momentum score từ 5m candles với **adaptive weights** (tự điều chỉnh mỗi 10 trades):
+Momemtum score từ 5m candles với **adaptive weights** (tự điều chỉnh mỗi 10 trades). Hệ thống tích hợp **SIDEWAY range intelligence** trực tiếp vào điểm số:
 
 | Nguồn | Logic | Default weight |
 |---|---|---|
@@ -108,14 +108,14 @@ Momentum score từ 5m candles với **adaptive weights** (tự điều chỉnh 
 | 3-candle momentum | Price change 3 nến gần nhất | ~20% |
 | Orderbook imbalance | bid/ask volume ratio | ~15% |
 
-**SIDEWAY range logic**: `pricePositionInRange` tính vị trí giá trong range 10 nến (0 = đáy, 1 = đỉnh):
-- Giá ở đỉnh range (> 75%) → `momentumScore -= 0.08`
-- Giá ở đáy range (< 25%) → `momentumScore += 0.08`
+**Logic SIDEWAY range**: Tính vị trí giá trong range 10 nến (0 = đáy, 1 = đỉnh) để điều chỉnh `momentumScore`:
+- Giá ở đỉnh range (> 75%) → `momentumScore -= 0.08` (giảm độ bullish)
+- Giá ở đáy range (< 25%) → `momentumScore += 0.08` (tăng độ bullish)
 
-Khi LLM fail trong SIDEWAY, dùng price position làm primary signal:
+Khi LLM không phản hồi trong vùng SIDEWAY, vị trí trong range trở thành tín hiệu chính để quyết định `direction`:
 - `pricePosition < 30%` → LONG (mean reversion từ đáy)
 - `pricePosition > 70%` → SHORT (mean reversion từ đỉnh)
-- Mid-range → dùng momentum score
+- Mid-range → dùng momentum score để quyết định Long/Short
 
 LLM (GPT-4o / Claude) nhận full context → `direction + confidence + reasoning`. Cache 60s.
 

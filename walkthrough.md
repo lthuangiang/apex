@@ -26,9 +26,9 @@ IDLE ──► PENDING_ENTRY ──► IN_POSITION ──► PENDING_EXIT ──
 6. `AISignalEngine.getSignal()` (cached 60s)
 7. MM bias: `computeEntryBias()` — ping-pong + inventory
 8. **Determine direction — NEVER skip:**
-   - `signal.direction = 'long'/'short'` → dùng ngay (có thể override bởi MM bias mạnh)
-   - `signal.direction = 'skip'` → dùng adjusted score, nếu vẫn neutral → alternate từ last trade
-   - MM hard block → force opposite direction
+   - `signal.direction = 'long'/'short'` → dùng ngay (hướng này đã được tích hợp logic Sideway Range nội bộ)
+   - `signal.direction = 'skip'` → dùng điểm số momentum đã điều chỉnh, nếu vẫn neutral → luân phiên từ last trade
+   - MM hard block → force opposite direction để cân bằng inventory
 9. Balance guard: stop nếu < $15
 10. `PositionSizer.computeSize()` — confidence scale size, không gate
 11. Balance-% soft cap
@@ -110,14 +110,14 @@ momentumScore = emaTrend × w.ema
 - `TREND_UP/DOWN`: price vs EMA21 ± 0.2% AND bbWidth > 0.01
 - `SIDEWAY`: default
 
-**SIDEWAY range logic**: `pricePositionInRange` tính vị trí giá trong range 10 nến (0 = đáy, 1 = đỉnh):
-- `pricePosition > 0.75` → `momentumScore -= 0.08`
-- `pricePosition < 0.25` → `momentumScore += 0.08`
+**SIDEWAY range logic**: Tích hợp trực tiếp vào `AISignalEngine` để điều chỉnh điểm số dựa trên vị trí giá trong range 10 nến:
+- `pricePosition > 0.75` → `momentumScore -= 0.08` (giảm độ bullish ở đỉnh)
+- `pricePosition < 0.25` → `momentumScore += 0.08` (tăng độ bullish ở đáy)
 
-Khi LLM null trong SIDEWAY, price position là primary signal:
-- `< 30%` → LONG (mean reversion từ đáy)
-- `> 70%` → SHORT (mean reversion từ đỉnh)
-- Mid-range → dùng momentum score
+Khi LLM không phản hồi (null) trong vùng SIDEWAY, vị trí trong range là yếu tố xác định `direction`:
+- `< 30%` → `direction = 'long'` (mean reversion từ đáy)
+- `> 70%` → `direction = 'short'` (mean reversion từ đỉnh)
+- Vùng giữa → dùng momentum score tổng hợp
 
 **LLM**: GPT-4o hoặc Claude → `direction + confidence + reasoning`. Null → fallback momentum + price position.
 

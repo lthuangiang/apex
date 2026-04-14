@@ -149,14 +149,14 @@ Each component (EMA, RSI, momentum, orderbook imbalance) is tracked independentl
 
 ### 2. SIDEWAY Range Intelligence
 
-In SIDEWAY regime, the bot uses **price position in range** (0 = bottom, 1 = top of last 10 candles):
+In SIDEWAY regime, the bot uses **price position in range** (0 = bottom, 1 = top of last 10 candles) internal to the signal engine:
 
 ```
 pricePosition > 75% → momentumScore -= 0.08  (penalize long at range top)
 pricePosition < 25% → momentumScore += 0.08  (penalize short at range bottom)
 ```
 
-When LLM is unavailable in SIDEWAY, price position becomes the primary signal:
+When LLM is unavailable in SIDEWAY, price position becomes the primary driver for signal direction:
 - Price at range bottom (< 30%) → LONG (mean reversion)
 - Price at range top (> 70%) → SHORT (mean reversion)
 
