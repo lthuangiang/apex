@@ -1,6 +1,9 @@
 <div align="center">
 
-# 🌊 DRIFT
+<p align="center">
+  <img src="drift.png" alt="DRIFT logo" width="480"/>
+</p>
+
 
 ### Dynamic Risk-Informed Futures Trading
 
@@ -16,7 +19,21 @@
 
 DRIFT là trading bot tự động cho BTC perpetual futures, tích hợp AI signal engine, adaptive learning, và pseudo market-making để tối đa hóa cả **volume** lẫn **win rate**. Hỗ trợ 3 sàn: **SoDEX**, **Dango Exchange**, và **Decibel**.
 
----
+
+## Dashboard
+
+<p align="center">
+  <img src="dashboard.png" alt="DRIFT Full System Architecture" width="800"/>
+</p>
+
+
+
+## System Architecture
+
+<p align="center">
+  <img src="design.png" alt="DRIFT Full System Architecture" width="800"/>
+</p>
+
 
 ## Hai chế độ hoạt động
 
