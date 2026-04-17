@@ -5,13 +5,10 @@ import { interceptConsole } from './ai/sharedState.js';
 interceptConsole();
 
 import { config } from './config.js';
-import { ExchangeAdapter } from './adapters/ExchangeAdapter.js';
-import { SodexAdapter } from './adapters/sodex_adapter.js';
 import { DecibelAdapter } from './adapters/decibel_adapter.js';
-import { DangoAdapter } from './adapters/dango_adapter.js';
 import { TelegramManager } from './modules/TelegramManager.js';
-import { Watcher } from './modules/Watcher.js';
 import { SessionManager } from './modules/SessionManager.js';
+import { Watcher } from './modules/Watcher.js';
 import { TradeLogger } from './ai/TradeLogger.js';
 import { DashboardServer } from './dashboard/server.js';
 import { sharedState } from './ai/sharedState.js';
@@ -19,24 +16,26 @@ import { configStore } from './config/ConfigStore.js';
 import { loadState, saveStateSync } from './ai/StateStore.js';
 
 const {
+    DECIBELS_PRIVATE_KEY,
+    DECIBELS_NODE_API_KEY,
+    DECIBELS_SUBACCOUNT,
+    DECIBELS_BUILDER_ADDRESS,
+    DECIBELS_GAS_STATION_API_KEY,
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
-    DECIBELS_PRIVATE_KEY,
-    DECIBELS_SUBACCOUNT,
-    DECIBELS_NODE_API_KEY,
-    SODEX_API_KEY,
-    SODEX_API_SECRET,
-    SODEX_SUBACCOUNT,
-    DANGO_PRIVATE_KEY,
-    DANGO_USER_ADDRESS,
-    DANGO_NETWORK,
     TRADE_LOG_BACKEND,
     TRADE_LOG_PATH,
     DASHBOARD_PORT,
+    SYMBOL,
 } = process.env;
 
 async function bootstrap() {
-    console.log(`\n🚀 SHIELD-BOT: Farming + Trading Agent starting...`);
+    console.log(`\n🚀 SHIELD-BOT: Decibel Trading Agent starting...`);
+
+    if (!DECIBELS_PRIVATE_KEY) {
+        console.error('FATAL: DECIBELS_PRIVATE_KEY is not set in .env');
+        process.exit(1);
+    }
 
     // Load persisted config overrides before any trading logic runs
     configStore.loadFromDisk();
@@ -44,69 +43,62 @@ async function bootstrap() {
     // Load persisted bot state (PnL, logs, history)
     loadState();
 
-    const sessionManager = new SessionManager();
+    // ── Decibel adapter ───────────────────────────────────────────────────────
+    const symbol = SYMBOL || config.SYMBOL;
+    const builderAddr = DECIBELS_BUILDER_ADDRESS?.trim() ?? '';
+
+    const adapter = new DecibelAdapter(
+        DECIBELS_PRIVATE_KEY,
+        DECIBELS_NODE_API_KEY ?? '',
+        DECIBELS_SUBACCOUNT ?? '',
+        builderAddr,
+        10,
+        DECIBELS_GAS_STATION_API_KEY,
+    );
+
+    // ── Core modules ──────────────────────────────────────────────────────────
     const telegramEnabled = process.env.TELEGRAM_ENABLED !== 'false';
     const telegram = new TelegramManager(
         telegramEnabled ? TELEGRAM_BOT_TOKEN : undefined,
-        telegramEnabled ? TELEGRAM_CHAT_ID : undefined
+        telegramEnabled ? TELEGRAM_CHAT_ID : undefined,
     );
 
-    let adapter: ExchangeAdapter;
-    const symbol = config.EXCHANGE === 'sodex' ? config.SYMBOL : config.MARKET;
-
-    if (config.EXCHANGE === 'sodex') {
-        if (!SODEX_API_KEY || !SODEX_API_SECRET || !SODEX_SUBACCOUNT) {
-            throw new Error("Missing SoDex settings in .env");
-        }
-        adapter = new SodexAdapter(SODEX_API_KEY, SODEX_API_SECRET, SODEX_SUBACCOUNT);
-    } else if (config.EXCHANGE === 'dango') {
-        if (!DANGO_PRIVATE_KEY || !DANGO_USER_ADDRESS) {
-            throw new Error("Missing Dango settings in .env (DANGO_PRIVATE_KEY, DANGO_USER_ADDRESS)");
-        }
-        adapter = new DangoAdapter(
-            DANGO_PRIVATE_KEY,
-            DANGO_USER_ADDRESS,
-            (DANGO_NETWORK as 'mainnet' | 'testnet') ?? 'mainnet'
-        );
-    } else {
-        if (!DECIBELS_PRIVATE_KEY || !DECIBELS_SUBACCOUNT) {
-            throw new Error("Missing Decibel settings in .env");
-        }
-        adapter = new DecibelAdapter(DECIBELS_PRIVATE_KEY, DECIBELS_NODE_API_KEY || "0x0", DECIBELS_SUBACCOUNT);
-    }
-
+    const sessionManager = new SessionManager();
     const watcher = new Watcher(adapter, symbol, telegram, sessionManager);
 
-    // ── Dashboard & Trade Logger ──────────────────────────────────────────────
     const tradeLogger = new TradeLogger(
         (TRADE_LOG_BACKEND as 'json' | 'sqlite') || 'json',
-        TRADE_LOG_PATH || './trades.json'
+        TRADE_LOG_PATH || './trades.json',
     );
+
+    // ── Dashboard ─────────────────────────────────────────────────────────────
     const dashboardPort = parseInt(DASHBOARD_PORT || '3000', 10);
     const dashboardServer = new DashboardServer(tradeLogger, dashboardPort);
+
     dashboardServer.setBotControls(sessionManager, watcher, () => {
         watcher.run().catch(err => {
-            console.error("Watcher crashed:", err);
+            console.error('Watcher crashed:', err);
             sessionManager.stopSession();
         });
     });
+
     dashboardServer.setConfigStore(configStore);
-    dashboardServer.start();
 
     // Set shared state metadata
     sharedState.symbol = symbol;
-    if (config.EXCHANGE === 'sodex' && SODEX_SUBACCOUNT) sharedState.walletAddress = SODEX_SUBACCOUNT;
+    if (DECIBELS_SUBACCOUNT) sharedState.walletAddress = DECIBELS_SUBACCOUNT;
 
+    dashboardServer.start();
+
+    // ── Telegram commands ─────────────────────────────────────────────────────
     await telegram.setupMenu();
-
-    // ── Bot control ───────────────────────────────────────────────────────────
 
     telegram.onCommand('start_bot', async () => {
         if (sessionManager.getState().isRunning) {
-            await telegram.sendMessage("⚠️ Bot is already running.");
+            await telegram.sendMessage('⚠️ Bot is already running.');
             return;
         }
-        const balance = await adapter.get_balance();
+        const balance = await adapter.get_balance().catch(() => 'N/A');
         const success = sessionManager.startSession();
         if (success) {
             watcher.resetSession();
@@ -114,10 +106,10 @@ async function bootstrap() {
             const startTime = new Date().toLocaleString();
             await telegram.sendMessage(
                 `🚀 *Bot started.*\n💰 Balance: \`${balance}\`\n🛡️ Max Loss: \`${maxLoss}\`\n⚙️ Mode: \`${config.MODE}\`\n📈 Symbol: \`${symbol}\`\n🕐 Start: \`${startTime}\``,
-                true
+                true,
             );
             watcher.run().catch(err => {
-                console.error("Watcher crashed:", err);
+                console.error('Watcher crashed:', err);
                 sessionManager.stopSession();
             });
         }
@@ -125,23 +117,21 @@ async function bootstrap() {
 
     telegram.onCommand('stop_bot', async () => {
         if (!sessionManager.getState().isRunning) {
-            await telegram.sendMessage("ℹ️ Bot is not running.");
+            await telegram.sendMessage('ℹ️ Bot is not running.');
             return;
         }
         sessionManager.stopSession();
         watcher.stop();
         const cooldownSecs = watcher.getCooldownInfo();
-        const cooldownText = cooldownSecs !== null
-            ? `\n⏳ Cooldown: \`${cooldownSecs}s\` remaining.`
-            : '';
-        await telegram.sendMessage("🛑 *Bot stopped.* Session terminated." + cooldownText, true);
+        const cooldownText = cooldownSecs !== null ? `\n⏳ Cooldown: \`${cooldownSecs}s\` remaining.` : '';
+        await telegram.sendMessage(`🛑 *Bot stopped.* Session terminated.${cooldownText}`, true);
     });
 
     telegram.onCommand('set_mode', async (args) => {
         const mode = args[0]?.toLowerCase();
         if (mode !== 'farm' && mode !== 'trade') {
             await telegram.sendMessage(
-                `⚙️ *Current mode: \`${config.MODE}\`*\n\nUsage: \`/set_mode farm\` or \`/set_mode trade\`\n\n🚜 *farm* — always enter, TP $${config.FARM_TP_USD}, SL ${config.FARM_SL_PERCENT * 100}%, hold 2-10 min\n📈 *trade* — signal-filtered, TP/SL ${config.TRADE_TP_PERCENT * 100}%`
+                `⚙️ *Current mode: \`${config.MODE}\`*\n\nUsage: \`/set_mode farm\` or \`/set_mode trade\`\n\n🚜 *farm* — always enter, TP ${config.FARM_TP_USD}, SL ${config.FARM_SL_PERCENT * 100}%, hold 2-10 min\n📈 *trade* — signal-filtered, TP/SL ${config.TRADE_TP_PERCENT * 100}%`,
             );
             return;
         }
@@ -149,27 +139,23 @@ async function bootstrap() {
         await telegram.sendMessage(`✅ *Mode switched to \`${mode}\`*`, true);
     });
 
-    // ── Session settings ──────────────────────────────────────────────────────
-
     telegram.onCommand('set_max_loss', async (args) => {
         const amount = parseFloat(args[0]);
         if (isNaN(amount)) {
-            await telegram.sendMessage("❌ Usage: `/set_max_loss 10` (USD)");
+            await telegram.sendMessage('❌ Usage: `/set_max_loss 10` (USD)');
             return;
         }
         sessionManager.setMaxLoss(amount);
-        await telegram.sendMessage(`✅ *Max loss set to $${amount}*`, true);
+        await telegram.sendMessage(`✅ *Max loss set to ${amount}*`, true);
     });
-
-    // ── Status & monitoring ───────────────────────────────────────────────────
 
     telegram.onCommand('status', async () => {
         const state = sessionManager.getState();
-        const statusText = state.isRunning ? "RUNNING" : "STOPPED";
+        const statusText = state.isRunning ? 'RUNNING' : 'STOPPED';
         const uptime = state.startTime ? Math.floor((Date.now() - state.startTime) / 60000) : 0;
         await telegram.sendMessage(
-            `📊 *Bot Status*: \`${statusText}\`\n⚙️ Mode: \`${config.MODE}\`\n⏱️ Uptime: \`${uptime} mins\`\n📉 PnL: \`$${state.currentPnL.toFixed(2)}\`\n🛡️ Max Loss: \`$${state.maxLoss}\``,
-            true
+            `📊 *Bot Status*: \`${statusText}\`\n⚙️ Mode: \`${config.MODE}\`\n⏱️ Uptime: \`${uptime} mins\`\n📉 PnL: \`${state.currentPnL.toFixed(2)}\`\n🛡️ Max Loss: \`${state.maxLoss}\``,
+            true,
         );
     });
 
@@ -177,26 +163,24 @@ async function bootstrap() {
         const status = await watcher.getDetailedStatus();
         if (status.hasPosition) {
             await telegram.sendMessageWithInlineButtons(status.text, [
-                [{ text: '🛑 Close Position', callback_data: 'close_position' }]
+                [{ text: '🛑 Close Position', callback_data: 'close_position' }],
             ]);
         } else {
             await telegram.sendMessage(status.text, true);
         }
     });
 
-    // ── Manual trading (bot must be stopped) ─────────────────────────────────
-
     telegram.onCommand('long', async (args) => {
         if (sessionManager.getState().isRunning) {
-            await telegram.sendMessage("⚠️ Stop bot first before placing manual orders.");
+            await telegram.sendMessage('⚠️ Stop bot first before placing manual orders.');
             return;
         }
         try {
             const ob = await adapter.get_orderbook(symbol);
-            const price = ob.best_bid; // Post-Only: join bid side as maker
+            const price = ob.best_bid;
             const size = args[0] ? parseFloat(args[0]) : config.ORDER_SIZE_MIN;
             if (isNaN(size) || size <= 0) {
-                await telegram.sendMessage("❌ Usage: `/long 0.008` (size in BTC, optional)");
+                await telegram.sendMessage('❌ Usage: `/long 0.008` (size in BTC, optional)');
                 return;
             }
             await telegram.sendMessage(`📋 *Manual LONG placing...*\n• Price: \`${price}\` (best bid, Post-Only)\n• Size: \`${size}\``);
@@ -209,15 +193,15 @@ async function bootstrap() {
 
     telegram.onCommand('short', async (args) => {
         if (sessionManager.getState().isRunning) {
-            await telegram.sendMessage("⚠️ Stop bot first before placing manual orders.");
+            await telegram.sendMessage('⚠️ Stop bot first before placing manual orders.');
             return;
         }
         try {
             const ob = await adapter.get_orderbook(symbol);
-            const price = ob.best_ask; // Post-Only: join ask side as maker
+            const price = ob.best_ask;
             const size = args[0] ? parseFloat(args[0]) : config.ORDER_SIZE_MIN;
             if (isNaN(size) || size <= 0) {
-                await telegram.sendMessage("❌ Usage: `/short 0.008` (size in BTC, optional)");
+                await telegram.sendMessage('❌ Usage: `/short 0.008` (size in BTC, optional)');
                 return;
             }
             await telegram.sendMessage(`📋 *Manual SHORT placing...*\n• Price: \`${price}\` (best ask, Post-Only)\n• Size: \`${size}\``);
@@ -228,20 +212,17 @@ async function bootstrap() {
         }
     });
 
-    // ── Callbacks ─────────────────────────────────────────────────────────────
-
     telegram.onCallback('close_position', async () => {
-        await telegram.sendMessage("🔄 *Manual Close Requested...* Sending exit order.");
+        await telegram.sendMessage('🔄 *Manual Close Requested...* Sending exit order.');
         const success = await watcher.forceClosePosition();
         if (success) {
-            await telegram.sendMessage("✅ *Position Closed Successfully.*");
+            await telegram.sendMessage('✅ *Position Closed Successfully.*');
         } else {
-            await telegram.sendMessage("❌ *Failed to Close Position.* Check logs or dashboard.");
+            await telegram.sendMessage('❌ *Failed to Close Position.* Check logs or dashboard.');
         }
     });
 
     // ── Graceful shutdown ─────────────────────────────────────────────────────
-
     const shutdown = async (signal: string) => {
         console.log(`\n🛑 [System] ${signal} received. Shutting down...`);
         if (sessionManager.getState().isRunning) {
@@ -257,10 +238,10 @@ async function bootstrap() {
     process.on('SIGINT', () => shutdown('SIGINT'));
 
     console.log('📡 [System] Waiting for Telegram commands...');
-    await telegram.sendMessage("🤖 *SHIELD-BOT Online*\nControl via menu, buttons, or commands.", true);
+    await telegram.sendMessage('🤖 *SHIELD-BOT Online* (Decibel)\nControl via menu, buttons, or commands.', true);
 }
 
 bootstrap().catch(error => {
-    console.error("FATAL: Bot failed to start:", error);
+    console.error('FATAL: Bot failed to start:', error);
     process.exit(1);
 });

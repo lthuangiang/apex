@@ -1,4 +1,4 @@
-import { ExchangeAdapter, Order, Position, RawTrade } from './ExchangeAdapter.js';
+import { IExchangeAdapter, Order, Position, RawTrade, OrderParams, Orderbook, ConnectionHealth } from '../types/core.js';
 import { createHash } from 'crypto';
 import axios from 'axios';
 import { ethers } from 'ethers';
@@ -18,12 +18,17 @@ const TESTNET_HTTP = 'https://api-testnet.dango.zone/graphql';
 const PERPS_CONTRACT = '0x90bc84df68d1aa59a857e04ed529e9a26edbea4f';
 const CHAIN_ID = 'dango-1';
 
-export class DangoAdapter implements ExchangeAdapter {
+export class DangoAdapter implements IExchangeAdapter {
+    // Required interface properties
+    readonly exchangeName = 'dango';
+    readonly supportedSymbols = ['BTC-USD', 'ETH-USD', 'SOL-USD']; // Add more as needed
+    
     private readonly endpoint: string;
     private readonly userAddress: string;
     private readonly privateKeyHex: string; // 32-byte hex, no 0x prefix
     private cachedUserIndex: number | null = null;
     private lastNonce: number = 0;
+    private connected = false;
 
     constructor(
         privateKey: string,
@@ -309,11 +314,12 @@ export class DangoAdapter implements ExchangeAdapter {
                 side: parseFloat(o.size) > 0 ? 'buy' : 'sell',
                 price: parseFloat(o.limit_price),
                 size: Math.abs(parseFloat(o.size)),
-                status: 'open',
+                status: 'pending' as const, // Use valid OrderStatus
+                timestamp: new Date() // Dango doesn't provide timestamp, use current time
             }));
     }
 
-    async get_position(symbol: string): Promise<Position | null> {
+    async get_position(symbol: string, _markPrice?: number): Promise<Position | null> {
         const pairId = this._toPairId(symbol);
         const result = await this.queryContract<{
             positions?: Record<string, { size: string; entry_price: string }>;
@@ -363,5 +369,99 @@ export class DangoAdapter implements ExchangeAdapter {
         const base = symbol.split(/[-/]/)[0].toLowerCase();
         const quote = symbol.split(/[-/]/)[1]?.toLowerCase() ?? 'usd';
         return `perp/${base}${quote}`;
+    }
+
+    // ── IExchangeAdapter interface methods ────────────────────────────────────
+
+    async getMarkPrice(symbol: string): Promise<number> {
+        return this.get_mark_price(symbol);
+    }
+
+    async getOrderbook(symbol: string): Promise<Orderbook> {
+        const result = await this.get_orderbook(symbol);
+        return {
+            bestBid: result.best_bid,
+            bestAsk: result.best_ask,
+            bids: [[result.best_bid, 0]], // Size not available from simple orderbook
+            asks: [[result.best_ask, 0]]
+        };
+    }
+
+    async getOrderbookDepth(symbol: string, limit: number): Promise<{ bids: [number, number][], asks: [number, number][] }> {
+        return this.get_orderbook_depth(symbol, limit);
+    }
+
+    async getRecentTrades(symbol: string, limit: number): Promise<RawTrade[]> {
+        return this.get_recent_trades(symbol, limit);
+    }
+
+    async getPosition(symbol: string, markPrice?: number): Promise<Position | null> {
+        return this.get_position(symbol, markPrice);
+    }
+
+    async getBalance(): Promise<number> {
+        return this.get_balance();
+    }
+
+    async placeLimitOrder(params: OrderParams): Promise<string> {
+        // Convert TimeInForce string to number for legacy method
+        let timeInForceNumber: number | undefined;
+        if (params.timeInForce) {
+            const tifMap: Record<string, number> = { 
+                'post-only': 4, 
+                'IOC': 3, 
+                'GTC': 0, 
+                'FOK': 1 
+            };
+            timeInForceNumber = tifMap[params.timeInForce] ?? 4; // Default to post-only
+        }
+        
+        return this.place_limit_order(
+            params.symbol,
+            params.side,
+            params.price,
+            params.size,
+            params.reduceOnly,
+            timeInForceNumber
+        );
+    }
+
+    async cancelOrder(orderId: string, symbol: string): Promise<boolean> {
+        return this.cancel_order(orderId, symbol);
+    }
+
+    async cancelAllOrders(symbol: string): Promise<boolean> {
+        return this.cancel_all_orders(symbol);
+    }
+
+    async getOpenOrders(symbol: string): Promise<Order[]> {
+        return this.get_open_orders(symbol);
+    }
+
+    async connect(): Promise<void> {
+        // Dango doesn't require explicit connection, but we can test connectivity
+        try {
+            await this.getUserIndex();
+            this.connected = true;
+        } catch (error) {
+            this.connected = false;
+            throw new Error(`Failed to connect to Dango: ${error}`);
+        }
+    }
+
+    async disconnect(): Promise<void> {
+        this.connected = false;
+    }
+
+    isConnected(): boolean {
+        return this.connected;
+    }
+
+    getHealthStatus(): ConnectionHealth {
+        return {
+            isHealthy: this.connected,
+            lastPing: new Date(),
+            latency: 0 // Could implement actual latency measurement
+        };
     }
 }

@@ -1,8 +1,31 @@
-import { ExchangeAdapter, Order, Position, RawTrade } from './ExchangeAdapter.js';
+import { ExchangeAdapter, Position, RawTrade } from './ExchangeAdapter.js';
+import { Orderbook, OrderParams, ConnectionHealth, Order, OrderStatus } from '../types/core.js';
 import { ethers } from 'ethers';
 
 // ─── SodexAdapter ─────────────────────────────────────────────────────────────
 export class SodexAdapter implements ExchangeAdapter {
+    /** Exchange name identifier */
+    readonly exchangeName: string = 'sodex';
+    
+    /** List of supported trading symbols */
+    readonly supportedSymbols: string[] = [
+        'BTC-USD',
+        'ETH-USD',
+        'SOL-USD',
+        'AVAX-USD',
+        'MATIC-USD',
+        'LINK-USD',
+        'UNI-USD',
+        'AAVE-USD',
+        'SUSHI-USD',
+        'CRV-USD',
+        'DOT-USD',
+        'ADA-USD',
+        'ATOM-USD',
+        'NEAR-USD',
+        'FTM-USD'
+    ];
+
     private readonly baseUrl = 'https://mainnet-gw.sodex.dev/api/v1/perps';
     private apiKey: string;
     private apiSecret: string;
@@ -11,6 +34,7 @@ export class SodexAdapter implements ExchangeAdapter {
     private cachedSymbolId: Record<string, number> = {};
     private lastNonce: number = 0;
     private wallet: ethers.Wallet;
+    private connected: boolean = false;
 
     constructor(apiKey: string, apiSecret: string, userAddress: string) {
         this.apiKey = apiKey;
@@ -304,11 +328,12 @@ export class SodexAdapter implements ExchangeAdapter {
             side: (o.side || '').toLowerCase(),
             price: parseFloat(o.price),
             size: parseFloat(o.origQty ?? o.quantity ?? o.size ?? 0),
-            status: 'open',
+            status: 'pending' as OrderStatus,
+            timestamp: new Date() // Add required timestamp field
         })).filter((o: Order) => o.id !== '');
     }
 
-    async get_position(symbol: string): Promise<Position | null> {
+    async get_position(symbol: string, markPrice?: number): Promise<Position | null> {
         const data = await this.request('GET', `/accounts/${this.userAddress}/positions?symbol=${symbol}`);
         const arr = Array.isArray(data) ? data : (data?.positions || data?.data || (data && Object.keys(data).length > 0 ? [data] : []));
         if (!arr || arr.length === 0) return null;
@@ -320,11 +345,9 @@ export class SodexAdapter implements ExchangeAdapter {
         const entryPrice = parseFloat(pos.avgEntryPrice || pos.entryPrice || 0);
         let unrealizedPnl = parseFloat(pos.unrealizedPnl || pos.upl || pos.unrealizedProfit || 0);
 
-        if (unrealizedPnl === 0 && entryPrice > 0) {
-            try {
-                const markPrice = await this.get_mark_price(symbol);
-                if (markPrice > 0) unrealizedPnl = (markPrice - entryPrice) * size;
-            } catch { /* silent */ }
+        // If API didn't return PnL, compute from markPrice provided by caller
+        if (unrealizedPnl === 0 && entryPrice > 0 && markPrice && markPrice > 0) {
+            unrealizedPnl = (markPrice - entryPrice) * size;
         }
 
         return {
@@ -347,5 +370,74 @@ export class SodexAdapter implements ExchangeAdapter {
             return equity ? parseFloat(equity) : 0;
         }
         return 0;
+    }
+
+    // IExchangeAdapter interface methods (camelCase aliases)
+    async getMarkPrice(symbol: string): Promise<number> {
+        return this.get_mark_price(symbol);
+    }
+
+    async getOrderbook(symbol: string): Promise<Orderbook> {
+        const ob = await this.get_orderbook(symbol);
+        return {
+            bestBid: ob.best_bid,
+            bestAsk: ob.best_ask,
+            bids: [[ob.best_bid, 0]], // Size not available from current implementation
+            asks: [[ob.best_ask, 0]], // Size not available from current implementation
+            timestamp: new Date()
+        };
+    }
+
+    async getOrderbookDepth(symbol: string, limit: number): Promise<{ bids: [number, number][], asks: [number, number][] }> {
+        return this.get_orderbook_depth(symbol, limit);
+    }
+
+    async getRecentTrades(symbol: string, limit: number): Promise<RawTrade[]> {
+        return this.get_recent_trades(symbol, limit);
+    }
+
+    async getPosition(symbol: string, markPrice?: number): Promise<Position | null> {
+        return this.get_position(symbol, markPrice);
+    }
+
+    async getBalance(): Promise<number> {
+        return this.get_balance();
+    }
+
+    async placeLimitOrder(params: OrderParams): Promise<string> {
+        return this.place_limit_order(params.symbol, params.side, params.price, params.size, params.reduceOnly);
+    }
+
+    async cancelOrder(orderId: string, symbol: string): Promise<boolean> {
+        return this.cancel_order(orderId, symbol);
+    }
+
+    async cancelAllOrders(symbol: string): Promise<boolean> {
+        return this.cancel_all_orders(symbol);
+    }
+
+    async getOpenOrders(symbol: string): Promise<Order[]> {
+        return this.get_open_orders(symbol);
+    }
+
+    // Connection management methods
+    async connect(): Promise<void> {
+        this.connected = true;
+    }
+
+    async disconnect(): Promise<void> {
+        this.connected = false;
+    }
+
+    isConnected(): boolean {
+        return this.connected;
+    }
+
+    getHealthStatus(): ConnectionHealth {
+        return {
+            isHealthy: this.connected,
+            lastPing: new Date(),
+            latency: 0
+        };
     }
 }

@@ -90,12 +90,15 @@ export class Executor {
 
             if (forceClose) {
                 // IOC: cross spread for guaranteed fill
+                // Long exit (sell) → hit best_bid; Short exit (buy) → hit best_ask
                 price = side === 'long' ? ob.best_bid : ob.best_ask;
                 timeInForce = 3;
                 label = 'IOC/taker';
             } else {
-                // Post-Only: join book as maker
-                price = side === 'long' ? ob.best_ask : ob.best_bid;
+                // Post-Only: join book as maker (must NOT cross spread)
+                // Long exit (sell) → join bid side @ best_bid
+                // Short exit (buy) → join ask side @ best_ask
+                price = side === 'long' ? ob.best_bid : ob.best_ask;
                 timeInForce = 4;
                 label = 'Post-Only/maker';
             }

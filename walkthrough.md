@@ -6,84 +6,150 @@ Hướng dẫn chi tiết về logic hoạt động của từng thành phần.
 
 ## 1. State Machine (Watcher)
 
-Watcher chạy vòng lặp với delay ngẫu nhiên (2s–90s). Mỗi tick:
+### Sơ đồ trạng thái
 
 ```
-IDLE ──► PENDING_ENTRY ──► IN_POSITION ──► PENDING_EXIT ──► IDLE
-           │                                    │
-      (5s farm / 15s trade)              (15s timeout)
-      cancel + re-place                  cancel + re-place
-      (max 3 lần farm / 10 lần trade)
+IDLE ──[place order]──► PENDING ──[fill detected]──► IN_POSITION
+  ▲                         │                              │
+  │                    [cancel only]               [exit trigger fired]
+  │                     (tick N+1)                         │
+  │                         │                          EXITING
+  │                       IDLE                   [cancel, then place exit]
+  │                    (tick N+2)                         │
+  │                                               [exit fill confirmed]
+  └──────────────── COOLDOWN ◄────────────────────────────┘
 ```
 
-### IDLE — Farm Mode (luôn execute)
+**Tick isolation (STRICT)**:
+- Mỗi tick = một atomic execution unit
+- Chỉ một action: place OR cancel OR wait — sau đó RETURN
+- Per-tick mutex (`_tickLock`): nếu tick trước chưa xong thì skip tick mới
+- Không bao giờ cancel + place trong cùng một tick
 
-1. Cooldown check — return ngay nếu còn cooldown
-2. Fetch `position + markPrice + balance` song song
-3. Max loss check → force close + stop nếu hit
-4. Hour blocking (nếu `FARM_BLOCKED_HOURS` được set)
-5. Cancel stale open orders
-6. `AISignalEngine.getSignal()` (cached 60s)
-7. MM bias: `computeEntryBias()` — ping-pong + inventory
-8. **Determine direction — NEVER skip:**
-   - `signal.direction = 'long'/'short'` → dùng ngay (hướng này đã được tích hợp logic Sideway Range nội bộ)
-   - `signal.direction = 'skip'` → dùng điểm số momentum đã điều chỉnh, nếu vẫn neutral → luân phiên từ last trade
-   - MM hard block → force opposite direction để cân bằng inventory
-9. Balance guard: stop nếu < $15
-10. `PositionSizer.computeSize()` — confidence scale size, không gate
-11. Balance-% soft cap
-12. Hold time: random `[FARM_MIN_HOLD_SECS, FARM_MAX_HOLD_SECS]` × regime multiplier
-13. SL: `config.FARM_SL_PERCENT` × regime SL multiplier
-14. Dynamic TP từ spread (MM mode)
-15. `executor.placeEntryOrder()` → `PENDING_ENTRY`
+**Dynamic scheduler**:
 
-### IDLE — Trade Mode (full filtering)
+| State | Tick interval |
+|---|---|
+| `IN_POSITION` + `heldSecs > FARM_EARLY_EXIT_SECS` | **FIXED 5s** |
+| `IN_POSITION` normal | Random 5–10s |
+| `EXITING` / `PENDING` | Random 3–8s |
+| `COOLDOWN` / `IDLE` | Weighted random 2s–90s |
 
-1–5. Giống farm mode
-6. `AISignalEngine.getSignal()` (có LLM)
-7. Regime check → skip nếu `regimeConfig.skipEntry`
-8. Chop detection → skip nếu `chopScore ≥ CHOP_SCORE_THRESHOLD`
-9. Fake breakout filter → skip nếu breakout thiếu OB confirmation
-10. Confidence ≥ `MIN_CONFIDENCE (0.65)`
-11. 2-tick confirmation trong 60s
-12. Balance guard
-13. `PositionSizer.computeSize()` với `volatilityFactor` từ regime
-14. Regime-adaptive hold time, SL buffer
-15. `executor.placeEntryOrder()` → `PENDING_ENTRY`
+---
 
-### PENDING_ENTRY
+### State: COOLDOWN
 
-- Chờ position xuất hiện (fill confirmation)
-- Farm: timeout 5s, max 3 lần re-place
-- Trade: timeout 15s, max 10 lần re-place
-- Race condition guard: check position sau cancel
-- Khi fill: `fillTracker.recordFill('entry', fillMs)` → `IN_POSITION`
-- Khi cancel: `fillTracker.recordCancel('entry')`
+Tick bị short-circuit ngay lập tức — không có API call, không có signal evaluation, không có order placement. Chỉ check timer:
 
-### IN_POSITION — Farm Mode Exit
+```
+if Date.now() < cooldownUntil → log remaining → RETURN
+else → cooldownUntil = null → botState = IDLE → RETURN
+```
 
-Thứ tự ưu tiên:
+Transition vào COOLDOWN:
+- Farm mode: fixed `FARM_COOLDOWN_SECS` (30s)
+- Trade mode / external close / dust: random trong `[COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]` (2–4 phút)
 
-1. **SL**: `RiskManager.shouldClose()` với `FARM_SL_PERCENT × slBufferMultiplier`
-2. **Dynamic TP** (MM mode): `pnl >= _pendingDynamicTP`
-3. **Farm TP**: `pnl >= max(FARM_TP_USD, feeRoundTrip × 1.5)`
-4. **Early profit**: hold ≥ `FARM_EARLY_EXIT_SECS (60s)` AND pnl ≥ `FARM_EARLY_EXIT_PNL ($0.3)`
-   - Bị suppress nếu regime là TREND (để trend chạy tiếp)
-5. **Dynamic hold**: hết hold time nhưng giá đang phục hồi → chờ thêm `FARM_EXTRA_WAIT_SECS (15s)`
-6. **Time exit**: hết thời gian chờ thêm
+---
 
-### IN_POSITION — Trade Mode Exit
+### State: IDLE
 
-1. **SL**: `TRADE_SL_PERCENT = 5%`
-2. **TP**: `TRADE_TP_PERCENT = 5%`
-3. **Không có time exit**
+**Farm Mode** (luôn execute):
 
-### PENDING_EXIT
+1. Sync check: nếu có position → transition thẳng sang `IN_POSITION`
+2. Hour blocking (`FARM_BLOCKED_HOURS`)
+3. Stale orders check → cancel nếu có → RETURN (1 action)
+4. `_retryEntry` check → nếu có (từ cancelled PENDING) → place lại ngay, không re-evaluate signal
+5. `AISignalEngine.getSignal()` (cached 60s)
+6. MM bias: ping-pong + inventory → adjust direction
+7. Direction resolution (NEVER skip): pricePosition → adjustedScore → last trade fallback
+8. `PositionSizer.computeSize()` → size
+9. `farmHoldUntil`, SL, dynamic TP setup
+10. `executor.placeEntryOrder()` → `botState = PENDING` → RETURN
 
-- Dust position check: skip close nếu value < `MIN_POSITION_VALUE_USD ($20)`
-- Timeout 15s → cancel + re-place
-- Khi fill: `fillTracker.recordFill('exit', fillMs)` → adaptive cooldown → `IDLE`
-- MM: `marketMaker.recordTrade(side, volumeUsd)`
+**Trade Mode** (full filtering):
+
+1–4. Giống farm
+5. Signal + regime config
+6. Regime gate → skip nếu `skipEntry`
+7. ChopDetector → skip nếu `chopScore ≥ 0.55`
+8. FakeBreakoutFilter → skip nếu breakout thiếu volume/OB
+9. Confidence ≥ `MIN_CONFIDENCE`
+10. 2-tick confirmation (60s window)
+11. Sizing, hold time, SL với regime multipliers
+12. `executor.placeEntryOrder()` → `botState = PENDING` → RETURN
+
+---
+
+### State: PENDING
+
+Tick N đã place order. Tick N+1 kiểm tra fill:
+
+```
+PENDING tick:
+  if position exists → _onEntryFilled() → IN_POSITION → RETURN
+  if waitedMs < fillTimeout → log waiting → RETURN
+  if cancelledOnTick = false:
+    → cancel_all_orders() → cancelledOnTick = true → RETURN (ACTION: cancel)
+  if cancelledOnTick = true:
+    → check open orders để confirm cancel
+    → nếu chưa confirm → RETURN (wait)
+    → nếu confirmed → check position (race condition guard)
+      → nếu có position → _onEntryFilled() → IN_POSITION
+      → nếu không → save retry context → _transitionToIdle() → IDLE
+```
+
+- **Partial fill = filled**: bất kỳ position size > 0 đều xem là filled
+- `_retryEntry` lưu direction/meta/size để tick IDLE sau có thể re-place mà không cần re-evaluate signal
+- Farm: max 3 lần retry. Trade: max 10 lần.
+
+---
+
+### State: IN_POSITION
+
+Exit conditions (theo thứ tự ưu tiên):
+
+**Farm Mode**:
+1. `RiskManager.shouldClose()` (SL 5%)
+2. `pnl >= dynamicTP` (MM mode) hoặc `pnl >= FARM_TP_USD`
+3. Early exit: `duration >= FARM_EARLY_EXIT_SECS` AND `pnl >= FARM_EARLY_EXIT_PNL`
+   - Suppress nếu regime là TREND (`suppressEarlyExit = true`)
+4. Hold expired + extra wait: nếu profitable và đang phục hồi → wait thêm `FARM_EXTRA_WAIT_SECS`
+5. Time exit: hết extra wait → exit
+
+**Trade Mode**: chỉ SL 5% hoặc TP 5%. Không có time exit.
+
+Khi exit trigger:
+- `botState = EXITING` (ngay lập tức, trước bất kỳ async op nào)
+- `cancel_all_orders()` → RETURN (ACTION: cancel)
+- Tick tiếp theo: `_handleExiting()` sẽ place exit order
+
+**Nếu position đóng từ bên ngoài** (external close): detect → apply cooldown → RETURN.
+
+---
+
+### State: EXITING
+
+**Case A** — chưa có `pendingExit` (tick đầu tiên sau cancel từ IN_POSITION):
+
+```
+→ confirm open orders = 0
+→ re-verify position vẫn còn (race condition check)
+→ dust check: value < MIN_POSITION_VALUE_USD → skip close → COOLDOWN
+→ placeExitOrder() → pendingExit = { order, ... } → RETURN (ACTION: place)
+```
+
+**Case B** — đã có `pendingExit`, check fill:
+
+```
+→ nếu position gone → _onExitFilled() → COOLDOWN → RETURN
+→ nếu waitedMs < 15s → log waiting → RETURN
+→ nếu timeout:
+   → cancel_all_orders() → pendingExit = null → RETURN (ACTION: cancel)
+   → tick tiếp: quay về Case A và place lại
+```
+
+**Strict**: cancel và place exit KHÔNG bao giờ trong cùng tick.
 
 ---
 
@@ -105,23 +171,16 @@ momentumScore = emaTrend × w.ema
               + candle pattern bonus (±0.05)
 ```
 
-**Regime detection** (ATR + BB width + volume ratio):
-- `HIGH_VOLATILITY`: ATR/price > 0.5%
-- `TREND_UP/DOWN`: price vs EMA21 ± 0.2% AND bbWidth > 0.01
-- `SIDEWAY`: default
+**SIDEWAY range logic**:
+- `pricePosition > 0.75` → `momentumScore -= 0.08`
+- `pricePosition < 0.25` → `momentumScore += 0.08`
 
-**SIDEWAY range logic**: Tích hợp trực tiếp vào `AISignalEngine` để điều chỉnh điểm số dựa trên vị trí giá trong range 10 nến:
-- `pricePosition > 0.75` → `momentumScore -= 0.08` (giảm độ bullish ở đỉnh)
-- `pricePosition < 0.25` → `momentumScore += 0.08` (tăng độ bullish ở đáy)
+Khi LLM null trong SIDEWAY:
+- `< 30%` → `direction = 'long'`
+- `> 70%` → `direction = 'short'`
+- Mid → dùng momentum score
 
-Khi LLM không phản hồi (null) trong vùng SIDEWAY, vị trí trong range là yếu tố xác định `direction`:
-- `< 30%` → `direction = 'long'` (mean reversion từ đáy)
-- `> 70%` → `direction = 'short'` (mean reversion từ đỉnh)
-- Vùng giữa → dùng momentum score tổng hợp
-
-**LLM**: GPT-4o hoặc Claude → `direction + confidence + reasoning`. Null → fallback momentum + price position.
-
-**Cache**: 60s TTL. Invalidate sau khi place entry.
+**Cache**: 60s TTL. Invalidate sau khi place entry order.
 
 ---
 
@@ -137,13 +196,6 @@ if RSI_lossStreak > 3 → RSI weight -= 0.05
 Clamp [0.05, 0.60], normalize sum = 1.0. Persist → `signal-weights.json`.
 
 **Confidence calibration**: `adjusted = rawConf × (historicalWinRate / 0.5)`, clamp [0.10, 1.00].
-- Chỉ áp dụng khi bucket có ≥ 5 trades (tránh overfitting sparse data)
-
-**Component attribution**:
-- EMA: `ema9 > ema21` → predicted long
-- RSI: `rsi < 35` → predicted long, `rsi > 65` → predicted short
-- Momentum: `momentum3candles > 0` → predicted long
-- Imbalance: `imbalance > 1` → predicted long
 
 ---
 
@@ -153,17 +205,15 @@ Clamp [0.05, 0.60], normalize sum = 1.0. Persist → `signal-weights.json`.
 size = baseSize × clamp(confMult × 0.6 + perfMult × 0.4) × volatilityFactor
 ```
 
-- `confMult`: farm = dampened `1.0 + (conf - 0.5) × 0.6`; trade = full scale
-- `perfMult`: win rate × drawdown × profile bias (SCALP/NORMAL/RUNNER/DEGEN)
-  - Win rate 0% → 0.7×, 50% → 1.0×, 100% → 1.3×
-  - Drawdown < -$3 → scale down đến floor 0.5×
-- `volatilityFactor`: từ regime (farm mode = 1.0 luôn)
+- `confMult`: farm = dampened; trade = full scale
+- `perfMult`: win rate × drawdown × profile (SCALP/NORMAL/RUNNER/DEGEN)
+- `volatilityFactor`: từ regime (farm = 1.0 luôn)
 
 Hard cap: `SIZING_MAX_BTC = 0.008`. Soft cap: `SIZING_MAX_BALANCE_PCT = 2%`.
 
 ---
 
-## 5. Regime-Adaptive Strategy
+## 5. Regime-Adaptive Strategy (Trade Mode Only)
 
 | Regime | Score edge | Size | Hold | SL mult | Suppress early exit |
 |---|---|---|---|---|---|
@@ -171,13 +221,7 @@ Hard cap: `SIZING_MAX_BTC = 0.008`. Soft cap: `SIZING_MAX_BALANCE_PCT = 2%`.
 | SIDEWAY | 0.05 | 0.85× | 0.8× | 1.0× | false |
 | HIGH_VOL | 0.08 | 0.5× | 0.7× | 1.5× | false |
 
-Chỉ áp dụng cho **trade mode**. Farm mode không dùng regime multipliers.
-
-**Regime detection algorithm**:
-1. `atrPct > 0.5%` → HIGH_VOLATILITY
-2. `price > ema21 × 1.002` AND `bbWidth > 0.01` → TREND_UP
-3. `price < ema21 × 0.998` AND `bbWidth > 0.01` → TREND_DOWN
-4. Default → SIDEWAY
+Farm mode không dùng regime multipliers.
 
 ---
 
@@ -187,20 +231,12 @@ Chỉ áp dụng cho **trade mode**. Farm mode không dùng regime multipliers.
 ```
 chopScore = flipRate × 0.40 + momNeutrality × 0.35 + bbCompression × 0.25
 ```
-- `flipRate`: tỷ lệ direction flip trong 5 signals gần nhất
-- `momNeutrality`: `1 - |score - 0.5| / 0.5` (score gần 0.5 = neutral = chop)
-- `bbCompression`: `1 - bbWidth / CHOP_BB_COMPRESS_MAX` (BB hẹp = chop)
 
 Score ≥ 0.55 → skip entry.
 
-**FakeBreakoutFilter**: chỉ kích hoạt khi `|score - 0.5| > 0.15`. Check:
+**FakeBreakoutFilter**: kích hoạt khi `|score - 0.5| > 0.15`. Check:
 - `volRatio < 0.4` → low volume
-- `imbalance` contradicts direction → OB opposes move
-
-**AdaptiveCooldown**:
-```
-finalMins = clamp(baseMins × (1 + losingStreak × 0.5) × (1 + chopScore × 1.0), MIN, 30)
-```
+- `imbalance` contradicts direction
 
 ---
 
@@ -214,14 +250,12 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 - Depth penalty: +$0.5 nếu top-5 book depth < $50k
 - Fill rate penalty: +$1.0 nếu fill rate < 60% (ring buffer 20 orders)
 
-**Order placement**:
-
 | Lệnh | Giá đặt |
 |---|---|
 | Entry LONG | `best_bid - dynamicOffset` |
 | Entry SHORT | `best_ask + dynamicOffset` |
-| Exit LONG | `best_ask` |
-| Exit SHORT | `best_bid` |
+| Exit LONG | `best_bid` (Post-Only) |
+| Exit SHORT | `best_ask` (Post-Only) |
 | Force close | cross spread (IOC) |
 
 ---
@@ -232,14 +266,8 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 - `pingPongBias = ±MM_PINGPONG_BIAS_STRENGTH (0.08)`
 
 **Inventory Control**:
-- Net exposure > $50 → soft bias rebalancing (`inventoryBias = ±0.12`)
-- Net exposure > $150 → hard block entry
-
-**Direction resolution**:
-```
-adjustedScore = signal.score + pingPongBias + inventoryBias
-finalDirection = adjustedScore >= 0.5 ? 'long' : 'short'
-```
+- Net exposure > $50 → soft bias (`inventoryBias = ±0.12`)
+- Net exposure > $150 → hard block entry → force opposite direction
 
 **Dynamic TP**:
 ```
@@ -248,34 +276,27 @@ dynamicTP = min(max(spreadBps/10000 × price × 1.5, feeFloor), $2.0)
 
 ---
 
-## 9. SoDEX Adapter — EIP-712 Signing
+## 9. Decibel Adapter — Order Management
 
-1. Build canonical JSON payload (field order khớp Go struct)
-2. Hash với `keccak256`
-3. Sign `ExchangeAction { payloadHash, nonce }` với EIP-712
-4. Normalize `v` từ 27/28 → 0/1
-5. Prefix `0x01`
+**`get_open_orders`**: response format `{ items: [...], total_count: N }` — đọc field `items`.
 
-Nonce: timestamp ms, tăng dần. Account ID và Symbol ID được cache.
+**`cancel_all_orders`**:
+- Fetch open orders → lấy danh sách IDs
+- Cancel từng order bằng `cancelOrder({ orderId, marketName, subaccountAddr })`
+- Parallel cancel với `Promise.allSettled`
+- Không dùng `cancelBulkOrder` không có IDs (gây `EORDER_NOT_FOUND` trên Aptos)
 
 ---
 
 ## 10. Trade Analytics
 
-**TradeRecord** lưu đầy đủ metadata:
-- Signal snapshot: regime, momentumScore, ema9/21, rsi, imbalance, tradePressure
+**TradeRecord** lưu 30+ fields:
+- Signal: regime, momentumScore, ema9/21, rsi, imbalance, llmDirection
 - Timing: entryTime, exitTime, holdingTimeSecs
-- Fee analysis: grossPnl, feePaid, wonBeforeFee
+- Economics: pnl, grossPnl, feePaid, wonBeforeFee
 - Sizing: sizingConfMult, sizingPerfMult, sizingCombinedMult
-- MM metadata: mmPingPongBias, mmInventoryBias, mmDynamicTP, mmNetExposure
-- Exit trigger: FARM_TP, FARM_MM_TP, FARM_TIME, FARM_EARLY_PROFIT, SL, FORCE
-
-**AnalyticsEngine** compute:
-- Win rate by mode, direction, regime, confidence bucket, UTC hour
-- Signal quality: LLM match rate, fallback rate, avg confidence
-- Fee impact: total fee paid, fee-loser rate
-- Holding time distribution (farm mode)
-- Streak tracking: max consecutive wins/losses
+- MM: mmPingPongBias, mmInventoryBias, mmDynamicTP, mmNetExposure
+- Exit trigger: `FARM_TP` | `FARM_MM_TP` | `FARM_TIME` | `FARM_EARLY_PROFIT` | `SL` | `FORCE`
 
 ---
 
@@ -291,7 +312,7 @@ src/
 │   ├── decibel_adapter.ts    # Decibel (Aptos Ed25519)
 │   └── dango_adapter.ts      # Dango (Secp256k1 + GraphQL)
 ├── modules/
-│   ├── Watcher.ts            # State machine chính
+│   ├── Watcher.ts            # 5-state machine chính
 │   ├── Executor.ts           # Đặt/hủy lệnh
 │   ├── ExecutionEdge.ts      # Dynamic offset + spread guard
 │   ├── FillTracker.ts        # Fill rate ring buffer
@@ -300,14 +321,12 @@ src/
 │   ├── RiskManager.ts        # TP/SL check + runtime SL override
 │   ├── PositionManager.ts    # Duration tracking
 │   ├── SessionManager.ts     # Max loss, session state
-│   ├── SignalEngine.ts       # Fallback signal (contrarian)
 │   └── TelegramManager.ts    # Telegram bot wrapper
 ├── ai/
 │   ├── AISignalEngine.ts     # Signal engine chính
 │   ├── RegimeDetector.ts     # ATR + BB + volume regime
 │   ├── ChopDetector.ts       # Chop score
 │   ├── FakeBreakoutFilter.ts # Breakout validation
-│   ├── AdaptiveCooldown.ts   # Adaptive cooldown formula
 │   ├── LLMClient.ts          # OpenAI / Anthropic client
 │   ├── AnalyticsEngine.ts    # Win rate & performance analytics
 │   ├── TradeLogger.ts        # Log trade (JSON / SQLite)

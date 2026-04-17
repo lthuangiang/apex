@@ -11,7 +11,15 @@
     "test:signal": "tsx src/scripts/test-ai-signal.ts",
     "test:llm": "tsx src/scripts/test-llm.ts",
     "test:dango": "tsx src/scripts/test-dango.ts",
-    "test:sodex-api": "tsx src/scripts/test-sodex-api.ts"
+    "test:sodex-api": "tsx src/scripts/test-sodex-api.ts",
+    "test:decibel": "tsx src/scripts/test-decibel.ts",
+    "test:decibel:orderbook": "tsx src/scripts/test-decibel.ts orderbook",
+    "test:decibel:balance": "tsx src/scripts/test-decibel.ts balance",
+    "test:decibel:orders": "tsx src/scripts/test-decibel.ts open_orders",
+    "test:decibel:position": "tsx src/scripts/test-decibel.ts position",
+    "test:decibel:place": "tsx src/scripts/test-decibel.ts place_order",
+    "test:decibel:cancel": "tsx src/scripts/test-decibel.ts cancel_all",
+    "approve:decibel": "tsx src/scripts/approve-builder-fee.ts"
   },
   "keywords": [],
   "author": "",

@@ -18,11 +18,12 @@ async function main() {
     const adapter = new DecibelAdapter(
         DECIBELS_PRIVATE_KEY,
         DECIBELS_NODE_API_KEY ?? '0x0',
-        DECIBELS_SUBACCOUNT
+        DECIBELS_SUBACCOUNT,
+        process.env.DECIBELS_BUILDER_ADDRESS ?? '0x5eefc26ee8f0b537717e57718a9a0c365e32081d96dc618a56041b3b7ff31ed5'
     );
 
     console.log('Approving builder fee (10 bps = 0.1%)...');
-    console.log('Builder address:', DECIBELS_SUBACCOUNT);
+    console.log('Builder address:', process.env.DECIBELS_BUILDER_ADDRESS ?? '0x5eefc26ee8f0b537717e57718a9a0c365e32081d96dc618a56041b3b7ff31ed5');
     console.log('NOTE: This requires APT in your wallet for gas fees.');
 
     try {

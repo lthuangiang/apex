@@ -15,7 +15,12 @@ if (config.EXCHANGE === 'sodex') {
 } else {
   const { DECIBELS_PRIVATE_KEY, DECIBELS_NODE_API_KEY, DECIBELS_SUBACCOUNT } = process.env;
   if (!DECIBELS_PRIVATE_KEY || !DECIBELS_SUBACCOUNT) throw new Error('Missing Decibel env vars');
-  adapter = new DecibelAdapter(DECIBELS_PRIVATE_KEY, DECIBELS_NODE_API_KEY ?? '0x0', DECIBELS_SUBACCOUNT);
+  adapter = new DecibelAdapter(
+    DECIBELS_PRIVATE_KEY,
+    DECIBELS_NODE_API_KEY ?? '0x0',
+    DECIBELS_SUBACCOUNT,
+    process.env.DECIBELS_BUILDER_ADDRESS ?? '0x5eefc26ee8f0b537717e57718a9a0c365e32081d96dc618a56041b3b7ff31ed5'
+  );
 }
 
 async function main() {

@@ -12,7 +12,7 @@ APEX is an AI-powered BTC perpetual futures trading bot built for **SoDEX**, **D
 
 ### Farm Mode — Maximum Volume
 
-The core insight: SoDEX rewards volume. Farm Mode is designed to **always trade** — no signal can block execution.
+The core insight: volume-incentive DEXes reward activity. Farm Mode is designed to **always trade** — no signal can block execution.
 
 ```
 signal = long/short → use it
@@ -42,7 +42,33 @@ When the goal is win rate over volume, Trade Mode applies full filtering:
 
 Exit: SL 5% or TP 5% — no time pressure.
 
-**Cooldown**: adaptive — scales with losing streak and chop score, capped at 30 minutes.
+**Cooldown**: random between `COOLDOWN_MIN_MINS` and `COOLDOWN_MAX_MINS` (default 2–4 minutes).
+
+---
+
+## Deterministic Execution Engine
+
+The core execution safety guarantee is a **5-state machine with strict tick isolation**:
+
+```
+IDLE → PENDING → IN_POSITION → EXITING → COOLDOWN → IDLE
+```
+
+**Rules enforced on every tick:**
+- ONE action per tick: place OR cancel OR wait — then RETURN immediately
+- `_tickLock` mutex: no concurrent tick execution
+- Cancel + place never in the same tick
+- Exit + re-entry never in the same tick
+- COOLDOWN blocks all signal evaluation and order placement
+
+**Dynamic tick scheduler:**
+
+| State | Interval |
+|---|---|
+| IN_POSITION + early exit mode | FIXED 5s |
+| IN_POSITION normal | Random 5–10s |
+| EXITING / PENDING | Random 3–8s |
+| COOLDOWN / IDLE | Weighted random 2s–90s |
 
 ---
 
@@ -53,8 +79,8 @@ Exit: SL 5% or TP 5% — no time pressure.
 │                           APEX Bot                                      │
 │                                                                         │
 │  bot.ts (SHIELD-BOT)                                                    │
-│  ├── Watcher (State Machine)                                            │
-│  │   IDLE → PENDING_ENTRY → IN_POSITION → PENDING_EXIT → IDLE          │
+│  ├── Watcher (5-State Machine)                                          │
+│  │   IDLE → PENDING → IN_POSITION → EXITING → COOLDOWN                 │
 │  │                                                                      │
 │  │   ┌──────────────────┐  ┌──────────────┐  ┌─────────────────┐      │
 │  │   │  AISignalEngine  │  │PositionSizer │  │ ExecutionEdge   │      │
@@ -71,7 +97,7 @@ Exit: SL 5% or TP 5% — no time pressure.
 │  │   ┌──────────────────┐  ┌──────────────┐  ┌─────────────────┐      │
 │  │   │  ChopDetector    │  │  FillTracker │  │ AnalyticsEngine │      │
 │  │   │  FakeBreakout    │  │  ring buffer │  │  30+ dimensions │      │
-│  │   │  AdaptiveCool    │  │  fill rate   │  │  win rate data  │      │
+│  │   │  (trade only)    │  │  fill rate   │  │  win rate data  │      │
 │  │   └──────────────────┘  └──────────────┘  └─────────────────┘      │
 │  │                                                                      │
 │  ├── TelegramManager (commands + inline buttons)                        │
@@ -82,9 +108,6 @@ Exit: SL 5% or TP 5% — no time pressure.
               │                        │                    │
          SoDEX API               Dango GraphQL        Decibel (Aptos)
     (EIP-712, Post-Only)    (Secp256k1 signing)    (Ed25519 signing)
-              │
-    Telegram + Dashboard
-    (real-time control)
 ```
 
 ---
@@ -92,44 +115,41 @@ Exit: SL 5% or TP 5% — no time pressure.
 ## Signal & Decision Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     Signal Decision Pipeline                            │
-│                                                                         │
-│  Binance 5m candles ──► EMA9/21, RSI, Momentum, OB Imbalance           │
-│                              │                                          │
-│                         WeightStore ──► adaptive weights (per 10 trades)│
-│                              │                                          │
-│                        momentumScore (0–1)                              │
-│                              │                                          │
-│                     RegimeDetector ──► ATR + BB + Volume                │
-│                              │                                          │
-│                    SIDEWAY range logic ──► pricePositionInRange         │
-│                              │                                          │
-│                         LLMClient ──► GPT-4o / Claude                  │
-│                              │                                          │
-│                    ConfidenceCalibrator ──► historical win rate         │
-│                              │                                          │
-│                         Signal output                                   │
-│                    { direction, confidence, regime, score }             │
-│                              │                                          │
-│              ┌───────────────┴───────────────┐                         │
-│         Farm Mode                       Trade Mode                      │
-│              │                               │                          │
-│    MM Bias (ping-pong +             Regime Gate                         │
-│    inventory control)               ChopDetector                        │
-│              │                      FakeBreakoutFilter                  │
-│    ALWAYS ENTER                     Confidence Gate                     │
-│              │                               │                          │
-│              └───────────────┬───────────────┘                         │
-│                              │                                          │
-│                    PositionSizer                                        │
-│                    conf × perf × volatility                             │
-│                              │                                          │
-│                    ExecutionEdge                                        │
-│                    spread guard + dynamic offset                        │
-│                              │                                          │
-│                    Executor (Post-Only maker)                           │
-└─────────────────────────────────────────────────────────────────────────┘
+Binance 5m candles ──► EMA9/21, RSI, Momentum, OB Imbalance
+                            │
+                       WeightStore ──► adaptive weights (per 10 trades)
+                            │
+                      momentumScore (0–1)
+                            │
+                  SIDEWAY range logic ──► pricePositionInRange
+                            │
+                       LLMClient ──► GPT-4o / Claude (cached 60s)
+                            │
+                 ConfidenceCalibrator ──► historical win rate
+                            │
+                      Signal output
+               { direction, confidence, regime, score }
+                            │
+         ┌──────────────────┴──────────────────┐
+    Farm Mode                             Trade Mode
+         │                                     │
+MM Bias (ping-pong +               Regime Gate → ChopDetector
+inventory control)                 FakeBreakoutFilter → Confidence
+         │                                     │
+   ALWAYS ENTER                        Conditional enter
+         │                                     │
+         └──────────────────┬──────────────────┘
+                            │
+                    PositionSizer
+                    conf × perf × volatility
+                            │
+                    ExecutionEdge
+                    spread guard + dynamic offset
+                            │
+                  Executor (Post-Only maker)
+                            │
+                  Watcher tick isolation
+               ONE action → RETURN immediately
 ```
 
 ---
@@ -138,27 +158,27 @@ Exit: SL 5% or TP 5% — no time pressure.
 
 ### 1. Adaptive Signal Weights
 
-Signal weights are not static — they adjust every 10 trades based on per-component win rates:
+Signal weights adjust every 10 trades based on per-component win rates:
 
 ```
 if EMA_winRate > 60%  → EMA weight += 0.05
 if RSI_lossStreak > 3 → RSI weight -= 0.05
 ```
 
-Each component (EMA, RSI, momentum, orderbook imbalance) is tracked independently. Weights persist across restarts in `signal-weights.json`. Bounds: [0.05, 0.60] per component, always sum to 1.0.
+Each component tracked independently. Weights persist in `signal-weights.json`. Bounds: [0.05, 0.60], always sum to 1.0.
 
 ### 2. SIDEWAY Range Intelligence
 
-In SIDEWAY regime, the bot uses **price position in range** (0 = bottom, 1 = top of last 10 candles) internal to the signal engine:
+Price position in last 10 candles range (0 = bottom, 1 = top):
 
 ```
-pricePosition > 75% → momentumScore -= 0.08  (penalize long at range top)
-pricePosition < 25% → momentumScore += 0.08  (penalize short at range bottom)
+pricePosition > 75% → momentumScore -= 0.08  (penalize long at top)
+pricePosition < 25% → momentumScore += 0.08  (penalize short at bottom)
 ```
 
-When LLM is unavailable in SIDEWAY, price position becomes the primary driver for signal direction:
-- Price at range bottom (< 30%) → LONG (mean reversion)
-- Price at range top (> 70%) → SHORT (mean reversion)
+When LLM is unavailable in SIDEWAY, price position drives direction directly:
+- Bottom of range (< 30%) → LONG (mean reversion)
+- Top of range (> 70%) → SHORT (mean reversion)
 
 ### 3. Dynamic Position Sizing
 
@@ -166,17 +186,13 @@ When LLM is unavailable in SIDEWAY, price position becomes the primary driver fo
 size = baseSize × clamp(confMult × 0.6 + perfMult × 0.4) × volatilityFactor
 ```
 
-Scales up on winning streaks, scales down during drawdowns. Hard BTC cap + soft balance-% cap.
-
 | Factor | Farm | Trade |
 |---|---|---|
-| confMult | dampened (0.5→1.0, 1.0→1.3) | full scale (MIN_CONF→1.0, 1.0→2.0) |
+| confMult | dampened (confidence scales mildly) | full scale |
 | perfMult | win rate × drawdown × profile | same |
 | volatilityFactor | always 1.0 | from regime (0.5–1.0) |
 
-### 4. Regime Detection
-
-4 market states from ATR + Bollinger Band width + volume ratio:
+### 4. Regime Detection (Trade Mode Only)
 
 | Regime | Entry edge | Size | Hold | SL buffer |
 |---|---|---|---|---|
@@ -184,20 +200,11 @@ Scales up on winning streaks, scales down during drawdowns. Hard BTC cap + soft 
 | SIDEWAY | 0.05 | 0.85× | 0.8× | 1.0× |
 | HIGH_VOL | 0.08 | 0.5× | 0.7× | 1.5× |
 
-Applied in Trade Mode only. Farm Mode always executes.
+Farm Mode ignores regime multipliers — always executes at full parameters.
 
-### 5. Anti-Chop Filtering (Trade Mode)
+### 5. Execution Edge
 
-Three-component chop score:
-```
-chopScore = flipRate × 0.40 + momNeutrality × 0.35 + bbCompression × 0.25
-```
-
-Score ≥ 0.55 → skip entry. FakeBreakoutFilter additionally checks volume confirmation and orderbook imbalance for breakout-strength signals.
-
-### 6. Execution Edge
-
-Smart order placement:
+Smart order placement with self-correction:
 ```
 offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 ```
@@ -206,121 +213,44 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 - Depth penalty: +$0.5 if top-5 book depth < $50k
 - Fill rate feedback: +$1.0 if recent fill rate < 60% (ring buffer of 20 orders)
 
-The bot self-corrects placement when orders aren't filling.
+### 6. Farm Market Making
 
-### 7. Farm Market Making
-
-**Ping-pong**: after LONG exit → bias SHORT; after SHORT exit → bias LONG.
+**Ping-pong**: after LONG → bias SHORT; after SHORT → bias LONG.
 
 **Inventory control**: soft bias when net exposure > $50, hard block when > $150.
 
-**Dynamic TP**: `min(max(spreadBps/10000 × price × 1.5, feeFloor), $2.0)` — always covers round-trip fees, adapts to live spread.
+**Dynamic TP**: `min(max(spreadBps/10000 × price × 1.5, feeFloor), $2.0)` — always covers fees, adapts to live spread.
 
 ---
 
 ## Exchange Integrations
 
-### SoDEX (Primary)
+### Decibel (Active)
 
-Every write operation uses EIP-712 typed data signing:
-- Canonical JSON payload with strict field ordering (matching Go struct layout)
-- `keccak256` hash → sign `ExchangeAction { payloadHash, nonce }`
-- Normalize `v` from 27/28 → 0/1 (Go backend requirement)
-- Monotonically increasing nonce prevents replay attacks
-- All orders use `timeInForce = 4` (Post-Only) — 0.012% maker fee
+- Aptos blockchain-based DEX, Ed25519 signing
+- `get_open_orders`: reads `{ items, total_count }` response format
+- `cancel_all_orders`: cancels each order individually by ID via `cancelOrder({ orderId })` — avoids `EORDER_NOT_FOUND` from bulk cancel without IDs
 
-**SoPoints Dashboard**: current tier, weekly volume, countdown, runtime token refresh.
+### SoDEX
+
+- EIP-712 typed data signing, Post-Only orders, 0.012% maker fee
+- SoPoints tier tracking + runtime token refresh
 
 ### Dango Exchange
 
-- GraphQL endpoint (not REST)
-- Secp256k1 signing: SHA-256 hash of canonical SignDoc JSON
-- Size in USD notional (auto-converted from BTC quantity)
-
-### Decibel
-
-- Aptos blockchain-based DEX
-- Ed25519 signing via `@aptos-labs/ts-sdk`
-- Post-Only order support
-
----
-
-## Trade Analytics
-
-Every trade is logged with 30+ dimensions:
-
-```typescript
-{
-  // Signal context
-  regime, momentumScore, ema9, ema21, rsi, imbalance,
-  llmDirection, llmConfidence, llmMatchesMomentum,
-  
-  // Execution
-  entryPrice, exitPrice, holdingTimeSecs, exitTrigger,
-  
-  // Economics
-  pnl, grossPnl, feePaid, wonBeforeFee,
-  
-  // Sizing
-  sizingConfMult, sizingPerfMult, sizingCombinedMult,
-  
-  // Market making
-  mmPingPongBias, mmInventoryBias, mmDynamicTP, mmNetExposure
-}
-```
-
-Analytics dashboard shows win rate by regime, confidence bucket, UTC hour, direction, and mode.
+- GraphQL endpoint, Secp256k1 signing, USD notional sizing
 
 ---
 
 ## Operational Features
 
-**Zero-Downtime Config**: 70+ parameters tunable at runtime via dashboard. All changes validated before applying (41+ validation rules).
+**Zero-Downtime Config**: 70+ parameters tunable at runtime. All changes validated before applying (41+ rules).
 
 **Telegram Control**: start/stop, set max loss, switch modes, force close, real-time alerts.
 
 **Graceful Shutdown**: SIGTERM/SIGINT handlers close open positions before exiting.
 
-**Docker**: `docker compose up -d` for production deployment.
-
----
-
-## Correctness & Testing
-
-Property-Based Testing with `fast-check` across all phases:
-
-```typescript
-// Adaptive weights always sum to 1.0
-∀ stats: adjustWeights(stats, w).sum ∈ [0.999, 1.001]
-
-// Position size always within bounds
-∀ input: computeSize(input).size ∈ [ORDER_SIZE_MIN, SIZING_MAX_BTC]
-
-// Dynamic TP always covers fees
-∀ price, spread: computeDynamicTP(price, spread) >= feeRoundTrip × 1.5
-
-// Chop score always in [0, 1]
-∀ signal, history: evaluate(signal, history).chopScore ∈ [0, 1]
-
-// Adaptive cooldown always within bounds
-∀ input: computeAdaptiveCooldown(input).cooldownMs ∈ [MIN_MINS × 60000, MAX_MINS × 60000]
-
-// Regime never amplifies position size
-∀ regime: getRegimeStrategyConfig(regime).volatilitySizingFactor ∈ (0, 1]
-
-// SL never tightens from regime
-∀ regime: getRegimeStrategyConfig(regime).slBufferMultiplier >= 1.0
-```
-
----
-
-## Stack
-
-TypeScript / Node.js · Express · SQLite · Docker
-
-OpenAI gpt-4o / Anthropic claude-sonnet · Vitest + fast-check
-
-SoDEX REST API (EIP-712) · Dango GraphQL (Secp256k1) · Decibel Aptos (Ed25519)
+**Docker**: `docker build -f Dockerfile -t apex:latest . && docker compose up -d`
 
 ---
 
@@ -328,9 +258,12 @@ SoDEX REST API (EIP-712) · Dango GraphQL (Secp256k1) · Decibel Aptos (Ed25519)
 
 | Feature | APEX | Typical Bot |
 |---|---|---|
+| Execution model | 5-state machine, strict tick isolation | Loose loop |
+| Cancel safety | Per-order ID cancel, race condition guards | Bulk cancel |
 | Farm mode | Always executes, never skips | Signal-gated |
+| Tick timing | Dynamic: fixed 5s (early exit) / random 5–10s | Fixed interval |
+| Cooldown | Random range \[MIN, MAX\] | Fixed or none |
 | Fee awareness | Dynamic TP tied to live spread | Fixed target |
-| SoPoints | Built-in tier tracking + token refresh | None |
 | Execution | Dynamic offset + spread guard + fill feedback | Static best-bid/ask |
 | Learning | Self-adjusting weights per component | Stateless |
 | Config | 70+ runtime params, no restart | Restart required |
@@ -341,3 +274,4 @@ SoDEX REST API (EIP-712) · Dango GraphQL (Secp256k1) · Decibel Aptos (Ed25519)
 
 > APEX turns maker fee models and volume incentives into a systematic edge.
 > Farm Mode ensures the bot is always active. Trade Mode ensures it's always smart.
+> The execution engine ensures it's always safe.

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "bots": [
+    {
+      "id": "default-bot",
+      "name": "Default Bot",
+      "exchange": "sodex",
+      "symbol": "BTC-USD",
+      "credentialKey": "SODEX",
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades.json",
+      "autoStart": false,
+      "mode": "farm",
+      "orderSizeMin": 0.003,
+      "orderSizeMax": 0.005,
+      "tags": []
+    },
+    {
+      "id": "decibel-farm",
+      "name": "DECIBEL#FARM",
+      "exchange": "decibel",
+      "symbol": "BTC/USD",
+      "credentialKey": "DECIBELS",
+      "mode": "farm",
+      "orderSizeMin": 0.003,
+      "orderSizeMax": 0.005,
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades-decibel-farm.json",
+      "tags": [],
+      "autoStart": false
+    }
+  ]
+}

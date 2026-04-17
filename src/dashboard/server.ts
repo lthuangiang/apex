@@ -13,6 +13,7 @@ import { weightStore } from '../ai/FeedbackLoop/WeightStore.js';
 import { componentPerformanceTracker } from '../ai/FeedbackLoop/ComponentPerformanceTracker.js';
 import { confidenceCalibrator } from '../ai/FeedbackLoop/ConfidenceCalibrator.js';
 
+
 const validTokens = new Map<string, number>();
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -27,9 +28,12 @@ export class DashboardServer {
   private watcher: Watcher | null = null;
   private watcherRunner: (() => void) | null = null;
   private configStore: ConfigStoreInterface | null = null;
+  private botManager: null = null;
   private _sopointsCache: { summary: any; week: any } = { summary: null, week: null };
   private _analyticsCache: { summary: AnalyticsSummary | null; cachedAt: number } = { summary: null, cachedAt: 0 };
   private _analyticsEngine = new AnalyticsEngine();
+  // Cache built HTML to avoid rebuilding on every request
+  private _htmlCache: string | null = null;
   readonly app: express.Application;
 
   constructor(tradeLogger: TradeLogger, port: number) {
@@ -51,6 +55,13 @@ export class DashboardServer {
 
   setConfigStore(store: ConfigStoreInterface): void {
     this.configStore = store;
+  }
+
+  /**
+   * No-op: BotManager has been removed. Kept for API compatibility.
+   */
+  registerBotManager(_manager: any): void {
+    // multi-bot manager removed
   }
 
   private _isAuthenticated(req: Request): boolean {
@@ -84,7 +95,10 @@ export class DashboardServer {
       res.json({ ok: true });
     });
 
-    this.app.get('/', (_req, res) => { res.setHeader('Content-Type', 'text/html'); res.send(this._buildHtml()); });
+    this.app.get('/', (_req, res) => {
+      res.setHeader('Content-Type', 'text/html');
+      res.send(this._buildHtml());
+    });
 
     this.app.get('/api/trades', async (_req, res) => {
       try { res.json(await this.tradeLogger.readAll()); } catch (err) { res.status(500).json({ error: String(err) }); }
@@ -207,6 +221,43 @@ export class DashboardServer {
       }
       process.env.SODEX_SOPOINTS_TOKEN = token.trim();
       console.log('[Dashboard] SODEX_SOPOINTS_TOKEN updated at runtime');
+      res.json({ ok: true });
+    });
+
+    // ── Decibel Points API ────────────────────────────────────────────────────
+    // GET /api/decibel-points — fetch tier/points/rank from Decibel Points API
+    this.app.get('/api/decibel-points', async (_req, res) => {
+      const token = process.env.DECIBEL_POINTS_API_KEY;
+      const owner = process.env.DECIBEL_POINTS_OWNER ?? process.env.DECIBELS_SUBACCOUNT;
+      if (!token || !owner) {
+        res.status(503).json({ error: 'DECIBEL_POINTS_API_KEY or owner address not set' }); return;
+      }
+      try {
+        const r = await (await import('axios')).default.get(
+          `https://api.mainnet.aptoslabs.com/decibel/api/v1/points/tier?owner=${owner}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              origin: 'https://app.decibel.trade',
+            },
+            timeout: 8000,
+          }
+        );
+        res.json(r.data);
+      } catch (err: any) {
+        res.status(502).json({ error: err?.message ?? 'Failed to fetch Decibel points' });
+      }
+    });
+
+    // POST /api/decibel-points/config — update token/owner at runtime
+    this.app.post('/api/decibel-points/config', (req, res) => {
+      const { token, owner } = req.body as { token?: string; owner?: string };
+      if (token && token.trim().length > 5) {
+        process.env.DECIBEL_POINTS_API_KEY = token.trim();
+      }
+      if (owner && owner.trim().startsWith('0x')) {
+        process.env.DECIBEL_POINTS_OWNER = owner.trim();
+      }
       res.json({ ok: true });
     });
 
@@ -373,6 +424,7 @@ export class DashboardServer {
   }
 
   private _buildHtml(): string {
+    if (this._htmlCache) return this._htmlCache;
     const css = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0a0a0a;color:#e0e0e0;min-height:100vh}
@@ -756,7 +808,7 @@ tr:last-child td{border-bottom:none}
           </div>
         </div>
       </div>
-      <div class="cfg-section">
+      <div class="cfg-section" id="sopoints-cfg-section">
         <div class="cfg-section-title">🔑 SoDex SoPoints Token</div>
         <div class="cfg-fields" style="grid-template-columns:1fr;">
           <div class="cfg-field">
@@ -937,6 +989,32 @@ tr:last-child td{border-bottom:none}
 </div><!-- /tabpanel-analytics -->
 
 <script>
+// Bot context — injected by server for bot detail pages (null = single-bot mode)
+window.BOT_CONTEXT = null;
+
+// API routing — resolves correct endpoint based on BOT_CONTEXT
+function api(path) {
+  const ctx = window.BOT_CONTEXT;
+  if (!ctx) return path; // single-bot mode: use global endpoints
+  // Map global paths to per-bot paths
+  const map = {
+    '/api/pnl': '/api/bots/'+ctx.botId+'/pnl',
+    '/api/trades': '/api/bots/'+ctx.botId+'/trades',
+    '/api/events': '/api/bots/'+ctx.botId+'/events',
+    '/api/events/stream': '/api/bots/'+ctx.botId+'/events/stream',
+    '/api/position': '/api/bots/'+ctx.botId+'/position',
+    '/api/analytics/summary': '/api/bots/'+ctx.botId+'/analytics',
+    '/api/config': '/api/bots/'+ctx.botId+'/config',
+    '/api/control/status': '/api/bots/'+ctx.botId+'/control/status',
+    '/api/control/start': '/api/bots/'+ctx.botId+'/control/start',
+    '/api/control/stop': '/api/bots/'+ctx.botId+'/control/stop',
+    '/api/control/close_position': '/api/bots/'+ctx.botId+'/control/close_position',
+    '/api/control/set_mode': '/api/bots/'+ctx.botId+'/control/set_mode',
+    '/api/control/set_max_loss': '/api/bots/'+ctx.botId+'/control/set_max_loss',
+  };
+  return map[path] || path;
+}
+
 const PAGE_SIZE = 10;
 let allTrades = [], allEvents = [], tradePg = 1, eventPg = 1;
 let pnlChart, volChart;
@@ -998,9 +1076,9 @@ function eventPage(d) { eventPg+=d; renderEvents(); }
 async function refresh() {
   try {
     const [pnlData, trades, events] = await Promise.all([
-      fetch('/api/pnl').then(r=>r.json()),
-      fetch('/api/trades').then(r=>r.json()),
-      fetch('/api/events').then(r=>r.json()),
+      fetch(api('/api/pnl')).then(r=>r.json()),
+      fetch(api('/api/trades')).then(r=>r.json()),
+      fetch(api('/api/events')).then(r=>r.json()),
     ]);
     const badge = document.getElementById('status-badge');
     badge.className = 'status-badge '+(pnlData.botStatus==='RUNNING'?'status-running':'status-stopped');
@@ -1029,7 +1107,7 @@ async function refresh() {
 async function refreshPosition() {
   try {
     const [pos, status] = await Promise.all([
-      fetch('/api/position').then(r=>r.json()),
+      fetch(api('/api/position')).then(r=>r.json()),
       fetch('/api/status').then(r=>r.json()).catch(()=>null),
     ]);
     const body = document.getElementById('pos-body'), badge = document.getElementById('pos-badge');
@@ -1096,7 +1174,7 @@ function appendConsoleLine(entry) {
 }
 
 function initSSE() {
-  const evtEs = new EventSource('/api/events/stream');
+  const evtEs = new EventSource(api('/api/events/stream'));
   evtEs.onmessage = e => { try { appendEventLog(JSON.parse(e.data)); } catch {} };
   const conEs = new EventSource('/api/console/stream');
   conEs.onmessage = e => { try { appendConsoleLine(JSON.parse(e.data)); } catch {} };
@@ -1175,26 +1253,26 @@ function updateCtrlButtons(isRunning, mode) {
 }
 
 async function ctrlStart() {
-  try { const r=await fetch('/api/control/start',{method:'POST'}),d=await r.json(); if(r.ok){showToast('Bot started',false);refreshCtrlStatus();}else showToast(d.error||'Error',true); } catch{showToast('Failed',true);}
+  try { const r=await fetch(api('/api/control/start'),{method:'POST'}),d=await r.json(); if(r.ok){showToast('Bot started',false);refreshCtrlStatus();}else showToast(d.error||'Error',true); } catch{showToast('Failed',true);}
 }
 async function ctrlStop() {
-  try { const r=await fetch('/api/control/stop',{method:'POST'}),d=await r.json(); if(r.ok){showToast('Bot stopped',false);refreshCtrlStatus();}else showToast(d.error||'Error',true); } catch{showToast('Failed',true);}
+  try { const r=await fetch(api('/api/control/stop'),{method:'POST'}),d=await r.json(); if(r.ok){showToast('Bot stopped',false);refreshCtrlStatus();}else showToast(d.error||'Error',true); } catch{showToast('Failed',true);}
 }
 async function ctrlSetMode(mode) {
-  try { const r=await fetch('/api/control/set_mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}),d=await r.json(); if(r.ok){showToast('Mode: '+mode,false);updateCtrlButtons(ctrlRunning,mode);}else showToast(d.error||'Error',true); } catch{showToast('Failed',true);}
+  try { const r=await fetch(api('/api/control/set_mode'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}),d=await r.json(); if(r.ok){showToast('Mode: '+mode,false);updateCtrlButtons(ctrlRunning,mode);}else showToast(d.error||'Error',true); } catch{showToast('Failed',true);}
 }
 async function ctrlSetMaxLoss() {
   const amount=parseFloat(document.getElementById('input-maxloss').value);
   if(!amount||amount<=0){showToast('Invalid amount',true);return;}
-  try { const r=await fetch('/api/control/set_max_loss',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount})}),d=await r.json(); if(r.ok)showToast('Max loss: \$'+amount,false);else showToast(d.error||'Error',true); } catch{showToast('Failed',true);}
+  try { const r=await fetch(api('/api/control/set_max_loss'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount})}),d=await r.json(); if(r.ok)showToast('Max loss: \$'+amount,false);else showToast(d.error||'Error',true); } catch{showToast('Failed',true);}
 }
 async function ctrlClosePosition() {
   if(!confirm('Force close current position?'))return;
-  try { const r=await fetch('/api/control/close_position',{method:'POST'}),d=await r.json(); if(r.ok&&d.ok)showToast('Position closed',false);else showToast('Close failed',true); } catch{showToast('Failed',true);}
+  try { const r=await fetch(api('/api/control/close_position'),{method:'POST'}),d=await r.json(); if(r.ok&&d.ok)showToast('Position closed',false);else showToast('Close failed',true); } catch{showToast('Failed',true);}
 }
 async function refreshCtrlStatus() {
   try {
-    const d=await fetch('/api/control/status').then(r=>r.json());
+    const d=await fetch(api('/api/control/status')).then(r=>r.json());
     updateCtrlButtons(d.isRunning,d.mode);
     document.getElementById('input-maxloss').value=d.maxLoss;
     const uptime=d.uptime?d.uptime+'m uptime':'';
@@ -1243,7 +1321,7 @@ function setCfgBusy(busy) {
 
 async function loadConfigPanel() {
   try {
-    const cfg = await fetch('/api/config').then(r => r.json());
+    const cfg = await fetch(api('/api/config')).then(r => r.json());
     populateConfigFields(cfg);
   } catch(e) { console.error('loadConfigPanel error:', e); }
 }
@@ -1263,7 +1341,7 @@ async function applyConfig() {
         patch[k] = parseFloat(el.value);
       }
     }
-    const r = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+    const r = await fetch(api('/api/config'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
     const d = await r.json();
     if (r.ok) { populateConfigFields(d); showCfgToast('Config applied ✓', false); setTimeout(closeCfgModal, 1200); }
     else { const msg = d.errors ? d.errors.map(e => e.field+': '+e.message).join('; ') : (d.error||'Error'); showCfgToast(msg, true); }
@@ -1274,7 +1352,7 @@ async function applyConfig() {
 async function resetConfig() {
   setCfgBusy(true);
   try {
-    const r = await fetch('/api/config', { method: 'DELETE' });
+    const r = await fetch(api('/api/config'), { method: 'DELETE' });
     const d = await r.json();
     if (r.ok) { populateConfigFields(d); showCfgToast('Reset to defaults', false); }
     else showCfgToast(d.error||'Error', true);
@@ -1400,7 +1478,7 @@ function renderAnalytics(s) {
 }
 async function refreshAnalytics() {
   try {
-    var s = await fetch('/api/analytics/summary').then(function(r){return r.json();});
+    var s = await fetch(api('/api/analytics/summary')).then(function(r){return r.json();});
     if (s.error) return;
     renderAnalytics(s);
   } catch(e) { console.error('Analytics refresh error:', e); }
@@ -1429,6 +1507,8 @@ async function updateSoPointsToken() {
 </body>
 </html>`;
 
+    this._htmlCache = body;
     return body;
   }
+
 }

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SoDEX Dashboard</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,sans-serif;background:#0a0a0a;color:#e0e0e0;display:flex;align-items:center;justify-content:center;min-height:100vh}
+    .card{background:#111;border:1px solid #1e1e1e;border-radius:12px;padding:2rem 2.5rem;width:100%;max-width:360px}
+    h1{font-size:1.1rem;font-weight:600;color:#fff;margin-bottom:0.25rem}
+    .sub{font-size:0.75rem;color:#555;margin-bottom:1.5rem}
+    label{font-size:0.72rem;color:#666;text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:0.4rem}
+    input{width:100%;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:7px;padding:0.65rem 0.85rem;color:#e0e0e0;font-size:0.9rem;outline:none}
+    input:focus{border-color:#00d464}
+    button{width:100%;margin-top:1rem;background:#00d464;color:#000;border:none;border-radius:7px;padding:0.7rem;font-size:0.9rem;font-weight:700;cursor:pointer}
+    .error{color:#ff4d4d;font-size:0.75rem;margin-top:0.75rem;display:none}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>SoDEX Dashboard</h1>
+    <p class="sub">Enter passcode to continue</p>
+    <label for="pc">Passcode</label>
+    <input type="password" id="pc" placeholder="••••••••" autofocus/>
+    <button onclick="login()">Unlock</button>
+    <p class="error" id="err">Incorrect passcode.</p>
+  </div>
+  <script>
+    document.getElementById('pc').addEventListener('keydown', e => {
+      if (e.key === 'Enter') login();
+    });
+
+    async function login() {
+      const p = document.getElementById('pc').value;
+      const err = document.getElementById('err');
+      err.style.display = 'none';
+      try {
+        const r = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ passcode: p })
+        });
+        if (r.ok) {
+          window.location.href = '/';
+        } else {
+          err.style.display = 'block';
+          document.getElementById('pc').value = '';
+        }
+      } catch {
+        err.style.display = 'block';
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,207 @@
+/* ── Reset & Base ─────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0a0a0a;color:#e0e0e0;min-height:100vh}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.header{padding:1.25rem 1.5rem 0.5rem;border-bottom:1px solid #1e1e1e}
+.header-top{display:flex;align-items:center;justify-content:space-between}
+.header-title{display:flex;align-items:center;gap:0.5rem}
+.header-title h1{font-size:1.25rem;font-weight:600;color:#fff}
+.header-meta{font-size:0.72rem;color:#555;margin-top:0.3rem}
+.wallet{font-size:0.72rem;color:#555;background:#161616;border:1px solid #1e1e1e;border-radius:6px;padding:0.5rem 0.75rem;margin-top:0.5rem}
+.wallet span{color:#888}
+
+/* ── Status Badge ────────────────────────────────────────────────────────── */
+.status-badge{display:inline-flex;align-items:center;gap:0.35rem;padding:0.2rem 0.6rem;border-radius:999px;font-size:0.7rem;font-weight:600;letter-spacing:0.05em}
+.status-running{background:rgba(0,212,100,0.15);color:#00d464;border:1px solid rgba(0,212,100,0.3)}
+.status-stopped{background:rgba(255,77,77,0.15);color:#ff4d4d;border:1px solid rgba(255,77,77,0.3)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.main{padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:1rem}
+.cards-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;align-items:stretch}
+.tables-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+
+/* ── Cards ───────────────────────────────────────────────────────────────── */
+.card{background:#111;border:1px solid #1e1e1e;border-radius:10px;padding:1rem 1.25rem}
+.card-label{font-size:0.68rem;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem;display:flex;justify-content:space-between}
+.card-value{font-size:1.6rem;font-weight:700}
+.card-sub{font-size:0.72rem;color:#555;margin-top:0.25rem}
+.progress-bar{height:3px;background:#1e1e1e;border-radius:2px;margin-top:0.5rem;overflow:hidden}
+.progress-fill{height:100%;border-radius:2px;transition:width 0.4s}
+
+/* ── Colors ──────────────────────────────────────────────────────────────── */
+.positive{color:#00d464}
+.negative{color:#ff4d4d}
+.neutral{color:#888}
+
+/* ── Chart Cards ─────────────────────────────────────────────────────────── */
+.chart-card{background:#111;border:1px solid #1e1e1e;border-radius:10px;padding:1rem 1.25rem}
+.chart-card h3{font-size:0.85rem;font-weight:600;color:#ccc;margin-bottom:0.75rem}
+.chart-wrap{position:relative;height:180px}
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+.table-card{background:#111;border:1px solid #1e1e1e;border-radius:10px;padding:1rem 1.25rem}
+.table-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem}
+.table-header h3{font-size:0.85rem;font-weight:600;color:#ccc}
+.table-count{font-size:0.7rem;color:#555}
+table{width:100%;border-collapse:collapse;font-size:0.75rem}
+th{color:#555;font-weight:500;text-align:left;padding:0.4rem 0.5rem;border-bottom:1px solid #1a1a1a}
+td{padding:0.45rem 0.5rem;border-bottom:1px solid #141414;color:#ccc}
+tr:last-child td{border-bottom:none}
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
+.side-badge{display:inline-block;padding:0.15rem 0.45rem;border-radius:4px;font-size:0.68rem;font-weight:700}
+.side-buy{background:rgba(0,212,100,0.15);color:#00d464}
+.side-sell{background:rgba(255,77,77,0.15);color:#ff4d4d}
+.event-badge{display:inline-block;padding:0.15rem 0.45rem;border-radius:4px;font-size:0.65rem;font-weight:600}
+.ev-info,.ev-order_placed{background:rgba(100,150,255,0.15);color:#6496ff}
+.ev-order_filled{background:rgba(0,212,100,0.15);color:#00d464}
+.ev-error{background:rgba(255,77,77,0.15);color:#ff4d4d}
+.ev-warn{background:rgba(255,180,0,0.15);color:#ffb400}
+
+/* ── Pagination ──────────────────────────────────────────────────────────── */
+.pagination{display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;font-size:0.72rem;color:#555}
+.pagination button{background:#1a1a1a;border:1px solid #2a2a2a;color:#aaa;padding:0.25rem 0.65rem;border-radius:5px;cursor:pointer;font-size:0.72rem}
+.pagination button:hover{background:#222}
+.pagination button:disabled{opacity:0.3;cursor:default}
+
+/* ── Position Card ───────────────────────────────────────────────────────── */
+.pos-card{background:#111;border:1px solid #1e1e1e;border-radius:10px;padding:1rem 1.25rem}
+.pos-empty{font-size:0.78rem;color:#444;text-align:center;padding:1rem 0}
+.pos-side-long{color:#00d464;font-weight:700}
+.pos-side-short{color:#ff4d4d;font-weight:700}
+.pos-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-top:0.75rem}
+.pos-item label{font-size:0.65rem;color:#555;text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:0.2rem}
+.pos-item span{font-size:0.9rem;font-weight:600;color:#ccc}
+
+/* ── Log Card ────────────────────────────────────────────────────────────── */
+.log-card{background:#111;border:1px solid #1e1e1e;border-radius:10px;padding:1rem 1.25rem}
+.log-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem}
+.log-header h3{font-size:0.85rem;font-weight:600;color:#ccc}
+.log-live{display:inline-flex;align-items:center;gap:0.3rem;font-size:0.65rem;color:#00d464;background:rgba(0,212,100,0.1);border:1px solid rgba(0,212,100,0.25);border-radius:999px;padding:0.15rem 0.5rem}
+.log-live .dot{width:5px;height:5px;border-radius:50%;background:#00d464;animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.log-tabs{display:flex;gap:0.5rem;margin-bottom:0.5rem}
+.log-tab{font-size:0.72rem;padding:0.25rem 0.65rem;border-radius:5px;border:1px solid #2a2a2a;background:#161616;color:#666;cursor:pointer}
+.log-tab.active{background:rgba(100,150,255,0.12);border-color:rgba(100,150,255,0.3);color:#6496ff}
+.log-body{height:260px;overflow-y:auto;font-size:0.7rem;font-family:monospace}
+.log-body::-webkit-scrollbar{width:4px}
+.log-body::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:2px}
+.log-line{padding:0.18rem 0;border-bottom:1px solid #141414;display:flex;gap:0.5rem;align-items:baseline}
+.log-time{color:#444;white-space:nowrap;flex-shrink:0}
+.log-type{flex-shrink:0;padding:0.05rem 0.35rem;border-radius:3px;font-size:0.62rem;font-weight:600}
+.log-msg{color:#aaa;word-break:break-all}
+.con-line{padding:0.15rem 0;border-bottom:1px solid #0f0f0f;color:#7a9e7a;white-space:pre-wrap;word-break:break-all}
+.con-line.err{color:#c97070}
+
+/* ── Tier / SoPoints Card ────────────────────────────────────────────────── */
+.tier-card{border-radius:14px;padding:1.25rem 1.5rem;display:flex;flex-direction:column;justify-content:space-between;height:100%}
+.tier-gold{background:linear-gradient(135deg,#8a6000,#d4a017,#f0c040)}
+.tier-silver{background:linear-gradient(135deg,#5a5a6e,#9a9ab0)}
+.tier-bronze{background:linear-gradient(135deg,#7c4a1e,#c47a3a)}
+.tier-diamond{background:linear-gradient(135deg,#1a4a7a,#3a8ad4,#7ac0f0)}
+.tier-name{font-size:1.1rem;font-weight:800;color:#fff;letter-spacing:0.08em}
+.tier-points{font-size:2.2rem;font-weight:800;color:#fff;line-height:1}
+.tier-points-label{display:inline-block;background:rgba(0,0,0,0.25);color:#ffe066;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;padding:0.15rem 0.5rem;border-radius:5px;margin-left:0.5rem;vertical-align:middle}
+.tier-next{font-size:0.72rem;color:rgba(255,255,255,0.75);margin-bottom:0.3rem;display:flex;justify-content:space-between}
+.tier-bar-bg{height:6px;background:rgba(0,0,0,0.3);border-radius:3px;overflow:hidden}
+.tier-bar-fill{height:100%;background:rgba(255,220,50,0.9);border-radius:3px;transition:width 0.5s}
+.tier-rank{font-size:0.72rem;color:rgba(255,255,255,0.85);margin-top:0.5rem}
+.tier-empty{font-size:0.78rem;color:#444;text-align:center;padding:2rem 0}
+
+/* ── Week Volume Card ────────────────────────────────────────────────────── */
+.week-card{background:#111;border:1px solid #1e1e1e;border-radius:10px;padding:1.25rem 1.5rem;display:flex;flex-direction:column;justify-content:space-between;height:100%}
+.week-label{font-size:0.72rem;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.5rem}
+.week-vol{font-size:2rem;font-weight:700;color:#fff;margin-bottom:0.25rem}
+.week-vol-sub{font-size:0.72rem;color:#555;margin-bottom:1rem}
+.week-countdown{background:#161616;border:1px solid #1e1e1e;border-radius:8px;padding:0.65rem 1rem;display:flex;align-items:center;gap:0.4rem;font-size:0.78rem;color:#888;flex-wrap:wrap}
+.cd-label{color:#aaa;font-weight:500;margin-right:0.25rem}
+.cd-num{color:#fff;font-weight:700;font-size:0.9rem}
+.cd-sep{color:#555}
+.cd-sec{color:#f97316;font-weight:700;font-size:0.9rem}
+.cd-unit{font-size:0.6rem;color:#555;margin-left:1px}
+
+/* ── Control Panel ───────────────────────────────────────────────────────── */
+.ctrl-panel{background:#111;border:1px solid #1e1e1e;border-radius:10px;padding:1rem 1.25rem;margin:1rem 1.5rem 0}
+.ctrl-title{font-size:0.72rem;color:#555;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.85rem}
+.ctrl-row{display:flex;flex-wrap:wrap;gap:0.6rem;align-items:center}
+.cb{display:inline-flex;align-items:center;gap:0.35rem;padding:0.45rem 0.9rem;border-radius:7px;border:1px solid #2a2a2a;background:#161616;color:#ccc;font-size:0.78rem;font-weight:500;cursor:pointer;transition:background 0.15s}
+.cb:hover:not(:disabled){background:#1e1e1e;border-color:#3a3a3a}
+.cb:disabled{opacity:0.35;cursor:default}
+.cb.g{background:rgba(0,212,100,0.12);border-color:rgba(0,212,100,0.3);color:#00d464}
+.cb.g:hover:not(:disabled){background:rgba(0,212,100,0.2)}
+.cb.r{background:rgba(255,77,77,0.12);border-color:rgba(255,77,77,0.3);color:#ff4d4d}
+.cb.r:hover:not(:disabled){background:rgba(255,77,77,0.2)}
+.cb.o{background:rgba(255,180,0,0.12);border-color:rgba(255,180,0,0.3);color:#ffb400}
+.cb.o:hover:not(:disabled){background:rgba(255,180,0,0.2)}
+.cdiv{width:1px;height:24px;background:#2a2a2a;margin:0 0.2rem}
+.ci{background:#0a0a0a;border:1px solid #2a2a2a;border-radius:6px;padding:0.4rem 0.65rem;color:#e0e0e0;font-size:0.78rem;width:80px;outline:none}
+.ci:focus{border-color:#444}
+.clabel{font-size:0.72rem;color:#555}
+.ctoast{font-size:0.72rem;margin-left:0.5rem;opacity:0;transition:opacity 0.3s}
+
+/* ── Gear / Settings Button ──────────────────────────────────────────────── */
+.gear-btn{background:none;border:1px solid #2a2a2a;border-radius:7px;padding:0.35rem 0.5rem;color:#666;cursor:pointer;display:inline-flex;align-items:center;transition:color 0.15s,border-color 0.15s}
+.gear-btn:hover{color:#ccc;border-color:#444}
+
+/* ── Config Modal ────────────────────────────────────────────────────────── */
+.cfg-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;padding:1rem}
+.cfg-overlay.open{display:flex}
+.cfg-modal{background:#111;border:1px solid #1e1e1e;border-radius:12px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;padding:1.25rem 1.5rem}
+.cfg-modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.cfg-modal-header h2{font-size:0.95rem;font-weight:600;color:#fff}
+.cfg-close{background:none;border:none;color:#555;font-size:1.2rem;cursor:pointer;padding:0.2rem 0.4rem;border-radius:5px}
+.cfg-close:hover{color:#ccc;background:#1e1e1e}
+.cfg-sections{display:flex;flex-direction:column;gap:1rem}
+.cfg-section{background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;padding:0.75rem 1rem}
+.cfg-section-title{font-size:0.7rem;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.6rem;font-weight:600}
+.cfg-fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.75rem}
+.cfg-field{display:flex;flex-direction:column;gap:0.3rem}
+.cfg-field label{font-size:0.75rem;color:#ccc;font-weight:500}
+.cfg-field .cfg-hint{font-size:0.65rem;color:#555;margin-top:-0.1rem}
+.cfg-field input{background:#0a0a0a;border:1px solid #2a2a2a;border-radius:6px;padding:0.4rem 0.65rem;color:#e0e0e0;font-size:0.82rem;outline:none;width:100%}
+.cfg-field input:focus{border-color:#444}
+.cfg-actions{display:flex;align-items:center;gap:0.6rem;margin-top:1rem;flex-wrap:wrap}
+.cfg-toast{font-size:0.72rem;margin-left:0.25rem;opacity:0;transition:opacity 0.3s}
+@media(max-width:480px){.cfg-fields{grid-template-columns:1fr}}
+
+/* ── Tab Navigation ──────────────────────────────────────────────────────── */
+.tab-nav{display:flex;gap:0;border-bottom:1px solid #1e1e1e;padding:0 1.5rem;margin-top:0.5rem}
+.tab-btn{padding:0.6rem 1.1rem;font-size:0.8rem;font-weight:600;color:#555;background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:color 0.15s,border-color 0.15s;letter-spacing:0.04em}
+.tab-btn:hover{color:#aaa}
+.tab-btn.active{color:#fff;border-bottom-color:#00d464}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ── Analytics Panel ─────────────────────────────────────────────────────── */
+.an-section{padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:1rem}
+.an-cards-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+.an-charts-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.an-three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem}
+.an-card{background:#111;border:1px solid #1e1e1e;border-radius:10px;padding:1rem 1.25rem}
+.an-card-label{font-size:0.68rem;color:#666;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.4rem}
+.an-card-value{font-size:1.5rem;font-weight:700;color:#fff}
+.an-card-sub{font-size:0.72rem;color:#555;margin-top:0.2rem}
+.an-chart-card{background:#111;border:1px solid #1e1e1e;border-radius:10px;padding:1rem 1.25rem}
+.an-chart-card h3{font-size:0.82rem;font-weight:600;color:#ccc;margin-bottom:0.75rem}
+.an-chart-wrap{position:relative;height:160px}
+.an-section-title{font-size:0.72rem;color:#555;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.75rem;font-weight:600}
+.an-metric-row{display:flex;justify-content:space-between;align-items:center;padding:0.45rem 0;border-bottom:1px solid #141414;font-size:0.78rem}
+.an-metric-row:last-child{border-bottom:none}
+.an-metric-label{color:#666}
+.an-metric-value{color:#ccc;font-weight:600}
+.an-trade-card{background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;padding:0.75rem 1rem}
+.an-trade-card-title{font-size:0.68rem;color:#555;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.5rem}
+.an-trade-pnl{font-size:1.2rem;font-weight:700;margin-bottom:0.25rem}
+.an-trade-meta{font-size:0.7rem;color:#555}
+@media(max-width:900px){.an-cards-row{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.an-cards-row,.an-charts-row,.an-three-col{grid-template-columns:1fr}}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media(max-width:768px){
+  .cards-row,.charts-row,.tables-row,.three-col{grid-template-columns:1fr}
+  .ctrl-panel{margin:1rem 1rem 0}
+}

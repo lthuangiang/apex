@@ -2,12 +2,12 @@ export const config = {
   MODE: "farm", // 'farm' (volume farming, 2-5 min scalps) or 'trade' (signal-filtered, TP/SL based)
 
   // Exchange
-  EXCHANGE: "sodex", // 'sodex', 'decibel', or 'dango'
-  MARKET: "BTC-USD",
-  SYMBOL: "BTC-USD",
+  EXCHANGE: "decibel", // 'sodex', 'decibel', or 'dango'
+  MARKET: "BTC/USD",
+  SYMBOL: "BTC/USD",
 
   // Order sizing (BTC)
-  ORDER_SIZE_MIN: 0.003,
+  ORDER_SIZE_MIN: 0.002,
   ORDER_SIZE_MAX: 0.005,
 
   // Dynamic position sizing
@@ -31,15 +31,15 @@ export const config = {
 
   // ── Farm mode ─────────────────────────────────────────────────────────────
   // Goal: maximize volume. Enter frequently, hold short, exit when profitable.
-  FARM_MIN_HOLD_SECS: 60,       // Hold at least 60s after fill (reduced from 120s)
-  FARM_MAX_HOLD_SECS: 180,      // Force exit after 3 mins (reduced from 5 mins)
+  FARM_MIN_HOLD_SECS: 120,       // Hold at least 60s after fill (reduced from 120s)
+  FARM_MAX_HOLD_SECS: 480,      // Force exit after 3 mins (reduced from 5 mins)
   FARM_TP_USD: 0.5,             // TP $0.5 — đủ cover fee với size nhỏ (fee ~$0.07 per trade)
   FARM_SL_PERCENT: 0.05,        // Stop loss 5% — rộng để không bị stop out sớm
   FARM_SCORE_EDGE: 0.03,        // Min score edge to enter (|score - 0.5| > this)
   FARM_MIN_CONFIDENCE: 0.50,    // Min confidence for fallback signal entry
   FARM_EARLY_EXIT_SECS: 60,     // Early exit: if held >= 60s AND pnl >= FARM_EARLY_EXIT_PNL
-  FARM_EARLY_EXIT_PNL: 0.3,     // Early exit PnL threshold ($0.3 — covers round-trip fee)
-  FARM_EXTRA_WAIT_SECS: 15,     // Extra wait after hold expires if profitable (reduced from 30s)
+  FARM_EARLY_EXIT_PNL: 0.4,     // Early exit PnL threshold ($0.3 — covers round-trip fee)
+  FARM_EXTRA_WAIT_SECS: 30,     // Extra wait after hold expires if profitable (reduced from 30s)
 
   // ── Regime-adaptive strategy ──────────────────────────────────────────────
   REGIME_ATR_PERIOD: 14,
@@ -75,7 +75,7 @@ export const config = {
 
   // Cooldown between trades (trade mode only — farm mode uses FARM_COOLDOWN_SECS)
   COOLDOWN_MIN_MINS: 2,
-  COOLDOWN_MAX_MINS: 4,
+  COOLDOWN_MAX_MINS: 5,
 
   // Farm mode uses a short fixed cooldown (ignores adaptive multipliers)
   FARM_COOLDOWN_SECS: 30,       // Fixed 30s cooldown after each farm trade
@@ -90,7 +90,7 @@ export const config = {
   POSITION_SL_PERCENT: 0.05,
   TIME_EXIT_SECONDS: 300,
 
-  TELEGRAM_ENABLED: true,
+  TELEGRAM_ENABLED: false,
 
   // ── Anti-Chop & Trade Filtering (Phase 4) ────────────────────────────────────
 

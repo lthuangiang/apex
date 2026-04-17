@@ -258,7 +258,7 @@ function extractBase(): OverridableConfig {
   };
 }
 
-class ConfigStore {
+export class ConfigStore {
   private overrides: PartialOverride = {};
   private readonly base: OverridableConfig;
 

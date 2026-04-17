@@ -4,10 +4,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockApproveMaxBuilderFee = vi.fn();
 const mockPlaceOrder = vi.fn();
 const mockCancelOrder = vi.fn();
+const mockGasInitialize = vi.fn().mockResolvedValue(undefined);
+const mockMarketsGetAll = vi.fn();
 
 vi.mock('@decibeltrade/sdk', () => ({
     DecibelReadDex: vi.fn(function () {
         return {
+            markets: { getAll: mockMarketsGetAll },
             marketDepth: { getByName: vi.fn() },
             userOpenOrders: { getByAddr: vi.fn() },
             userPositions: { getByAddr: vi.fn() },
@@ -21,6 +24,9 @@ vi.mock('@decibeltrade/sdk', () => ({
             cancelOrder: mockCancelOrder,
         };
     }),
+    GasPriceManager: vi.fn(function () {
+        return { initialize: mockGasInitialize };
+    }),
     MAINNET_CONFIG: {},
     TimeInForce: { PostOnly: 'PostOnly', ImmediateOrCancel: 'ImmediateOrCancel' },
 }));
@@ -33,15 +39,24 @@ vi.mock('@aptos-labs/ts-sdk', () => ({
 import { DecibelAdapter } from '../decibel_adapter.js';
 
 const BUILDER_ADDRESS = '0x0000000000000000000000008c967e73e7b15087c42a10d344cff4c96d877f1d';
+const SUBACCOUNT = '0x1234567890123456789012345678901234567890123456789012345678901234';
 const PRIVATE_KEY = 'a'.repeat(64);
 const NODE_API_KEY = 'b'.repeat(64);
 
 describe('Decibel Builder Codes', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockGasInitialize.mockResolvedValue(undefined);
+        mockMarketsGetAll.mockResolvedValue([
+            { market_name: 'BTC/USD', market_addr: '0xbtc', sz_decimals: 8, px_decimals: 8, tick_size: 1, min_size: 1 },
+            { market_name: 'APT/USD', market_addr: '0xapt', sz_decimals: 8, px_decimals: 8, tick_size: 1, min_size: 1 },
+        ]);
+    });
     let adapter: DecibelAdapter;
 
     beforeEach(() => {
         vi.clearAllMocks();
-        adapter = new DecibelAdapter(PRIVATE_KEY, NODE_API_KEY, BUILDER_ADDRESS);
+        adapter = new DecibelAdapter(PRIVATE_KEY, NODE_API_KEY, SUBACCOUNT, BUILDER_ADDRESS);
     });
 
     describe('approveMaxBuilderFee', () => {
@@ -88,7 +103,7 @@ describe('Decibel Builder Codes', () => {
 
     describe('placeOrder with builder codes', () => {
         it('should include builderAddr in placeOrder call', async () => {
-            mockPlaceOrder.mockResolvedValue({ success: true, transactionHash: '0xabc' });
+            mockPlaceOrder.mockResolvedValue({ orderId: 'order-123', transactionHash: '0xabc' });
 
             await adapter.place_limit_order('APT/USD', 'buy', 3.0, 10.0);
 
@@ -101,7 +116,7 @@ describe('Decibel Builder Codes', () => {
         });
 
         it('should convert price and size to chain units (1e8)', async () => {
-            mockPlaceOrder.mockResolvedValue({ success: true });
+            mockPlaceOrder.mockResolvedValue({ orderId: 'order-123' });
 
             await adapter.place_limit_order('APT/USD', 'buy', 3.0, 10.0);
 
@@ -114,21 +129,21 @@ describe('Decibel Builder Codes', () => {
         });
 
         it('should set isBuy=true for buy orders', async () => {
-            mockPlaceOrder.mockResolvedValue({ success: true });
+            mockPlaceOrder.mockResolvedValue({ orderId: 'order-123' });
             await adapter.place_limit_order('APT/USD', 'buy', 3.0, 1.0);
             expect(mockPlaceOrder).toHaveBeenCalledWith(expect.objectContaining({ isBuy: true }));
         });
 
         it('should set isBuy=false for sell orders', async () => {
-            mockPlaceOrder.mockResolvedValue({ success: true });
+            mockPlaceOrder.mockResolvedValue({ orderId: 'order-123' });
             await adapter.place_limit_order('APT/USD', 'sell', 3.0, 1.0);
             expect(mockPlaceOrder).toHaveBeenCalledWith(expect.objectContaining({ isBuy: false }));
         });
 
-        it('should return an order id string', async () => {
-            mockPlaceOrder.mockResolvedValue({ success: true });
+        it('should return real order ID from response', async () => {
+            mockPlaceOrder.mockResolvedValue({ orderId: 'real-order-123' });
             const result = await adapter.place_limit_order('APT/USD', 'buy', 3.0, 1.0);
-            expect(result).toMatch(/^decibel-order-\d+$/);
+            expect(result).toBe('real-order-123');
         });
     });
 
@@ -179,9 +194,11 @@ describe('Decibel Builder Codes', () => {
         });
 
         it('subaccountAddr used as builderAddr should be valid format', () => {
-            const addr = (adapter as any).subaccountAddr;
-            expect(addr).toBe(BUILDER_ADDRESS);
-            expect(addr.slice(2)).toHaveLength(64);
+            const subaccount = (adapter as any).subaccountAddr;
+            const builderAddr = (adapter as any).builderAddr;
+            expect(subaccount).toBe(SUBACCOUNT);
+            expect(builderAddr).toBe(BUILDER_ADDRESS);
+            expect(builderAddr.slice(2)).toHaveLength(64);
         });
     });
 });
