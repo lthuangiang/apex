@@ -2,7 +2,14 @@
 
 ## Introduction
 
-Feature này mở rộng kiến trúc single-bot hiện tại thành multi-bot, cho phép chạy nhiều bot trading song song trên các sàn khác nhau (SoDEX, Dango, Decibel), quản lý tập trung qua một Manager Dashboard mới. Mỗi bot hoạt động hoàn toàn độc lập với state, config, và trade log riêng.
+Feature này mở rộng kiến trúc single-bot hiện tại thành multi-bot, cho phép chạy nhiều bot trading song song trên các sàn khác nhau (SoDEX, Dango, Decibel), quản lý tập trung qua một Manager Dashboard mới. Thiết kế tập trung vào **tối thiểu hóa thay đổi** và **tái sử dụng tối đa** code hiện có.
+
+**Nguyên tắc:**
+- Giữ nguyên `src/bot.ts` entry point
+- Thêm `BotManager` class đơn giản - chỉ là registry
+- `BotInstance` là wrapper nhẹ quanh Watcher + SessionManager
+- Mỗi bot có state riêng, TradeLogger riêng
+- Dashboard mở rộng thêm routes `/api/bots/*`
 
 ---
 
@@ -10,19 +17,19 @@ Feature này mở rộng kiến trúc single-bot hiện tại thành multi-bot, 
 
 ### 1. Multi-Bot Registry
 
-**User Story**: Là một trader, tôi muốn chạy nhiều bot cùng lúc trên các sàn khác nhau để tối đa hóa volume farming, vì vậy tôi cần một hệ thống quản lý nhiều bot instances độc lập.
+**User Story**: Là một trader, tôi muốn chạy nhiều bot cùng lúc trên các sàn khác nhau để tối đa hóa volume farming.
 
 #### Acceptance Criteria
 
-1. GIVEN hệ thống khởi động, WHEN có nhiều `BotConfig` được cung cấp, THEN mỗi config tạo ra một `BotInstance` riêng biệt trong `BotManager` registry.
+1. GIVEN `bot-configs.json` với nhiều bot configs, WHEN hệ thống khởi động, THEN mỗi config tạo ra một `BotInstance` riêng biệt trong `BotManager` registry.
 
 2. GIVEN một `BotInstance` đang chạy, WHEN bot đó gặp lỗi hoặc bị stop, THEN các bot khác trong registry không bị ảnh hưởng và tiếp tục chạy bình thường.
 
-3. GIVEN `BotManager` registry, WHEN `createBot()` được gọi với một `id` đã tồn tại, THEN hệ thống throw `DuplicateBotError` và bot mới không được thêm vào registry.
+3. GIVEN `BotManager` registry, WHEN `createBot()` được gọi với một `id` đã tồn tại, THEN hệ thống throw error và bot mới không được thêm vào registry.
 
 4. GIVEN một `BotInstance`, WHEN `start()` được gọi khi bot đã ở trạng thái `RUNNING`, THEN hệ thống trả về `false` và không tạo thêm Watcher loop.
 
-5. GIVEN một `BotInstance`, WHEN `stop()` được gọi, THEN `sessionManager.stopSession()` và `watcher.stop()` được gọi, `state.botStatus` chuyển thành `'STOPPED'`, và open position KHÔNG bị force-close.
+5. GIVEN một `BotInstance`, WHEN `stop()` được gọi, THEN `sessionManager.stopSession()` và `watcher.stop()` được gọi, `state.botStatus` chuyển thành `'STOPPED'`.
 
 6. GIVEN nhiều `BotInstance` đang chạy, WHEN mỗi bot update `BotSharedState` của mình, THEN state của bot A không bao giờ ghi đè hoặc ảnh hưởng state của bot B.
 
@@ -30,15 +37,15 @@ Feature này mở rộng kiến trúc single-bot hiện tại thành multi-bot, 
 
 ### 2. Manager Dashboard — Tổng quan
 
-**User Story**: Là một trader, tôi muốn xem tổng quan tất cả bot đang chạy trên một màn hình duy nhất, vì vậy tôi cần một Manager Dashboard với aggregated stats và danh sách bot cards.
+**User Story**: Là một trader, tôi muốn xem tổng quan tất cả bot đang chạy trên một màn hình duy nhất.
 
 #### Acceptance Criteria
 
-1. GIVEN Manager Dashboard được mở tại `/`, WHEN có ít nhất một bot trong registry, THEN dashboard hiển thị: Total Volume (tổng `sessionVolume` của tất cả bots), Active Bots count (số bot đang `RUNNING`), Total Fees (tổng `sessionFees`), và Total PnL (tổng `sessionPnl`).
+1. GIVEN Manager Dashboard được mở tại `/`, WHEN có ít nhất một bot trong registry, THEN dashboard hiển thị: Total Volume, Active Bots count, Total Fees, và Total PnL.
 
-2. GIVEN `GET /api/bots/stats`, WHEN được gọi, THEN response chứa `{ totalVolume, activeBotCount, totalFees, totalPnl }` với `totalVolume = Σ bot.state.sessionVolume` và `activeBotCount = count(bots where status === 'RUNNING')`.
+2. GIVEN `GET /api/bots/stats`, WHEN được gọi, THEN response chứa `{ totalVolume, activeBotCount, totalFees, totalPnl }`.
 
-3. GIVEN Manager Dashboard, WHEN filter được chọn là `Active`, THEN chỉ hiển thị các bot có `status === 'active'`; tương tự cho `Inactive` và `Completed`.
+3. GIVEN Manager Dashboard, WHEN filter được chọn là `Active`, THEN chỉ hiển thị các bot có `status === 'active'`; tương tự cho `Inactive`.
 
 4. GIVEN filter `All` được chọn, WHEN có N bots trong registry, THEN tất cả N bot cards được hiển thị.
 
@@ -48,7 +55,7 @@ Feature này mở rộng kiến trúc single-bot hiện tại thành multi-bot, 
 
 ### 3. Bot Card
 
-**User Story**: Là một trader, tôi muốn xem thông tin tóm tắt của từng bot trên một card, vì vậy tôi cần bot card hiển thị đầy đủ thông tin và có nút điều khiển.
+**User Story**: Là một trader, tôi muốn xem thông tin tóm tắt của từng bot trên một card.
 
 #### Acceptance Criteria
 
@@ -64,17 +71,17 @@ Feature này mở rộng kiến trúc single-bot hiện tại thành multi-bot, 
 
 ### 4. Bot Detail Navigation
 
-**User Story**: Là một trader, tôi muốn xem chi tiết của từng bot, vì vậy tôi cần click "View details" để vào Bot Detail Dashboard với đầy đủ UI hiện tại.
+**User Story**: Là một trader, tôi muốn xem chi tiết của từng bot.
 
 #### Acceptance Criteria
 
 1. GIVEN Manager Dashboard, WHEN user click "View details →" trên một bot card, THEN browser navigate đến `/bots/:id`.
 
-2. GIVEN `GET /bots/:id`, WHEN `id` tồn tại trong registry, THEN server trả về Bot Detail HTML page (tương đương UI dashboard hiện tại, scoped cho bot đó).
+2. GIVEN `GET /bots/:id`, WHEN `id` tồn tại trong registry, THEN server trả về Bot Detail HTML page (giống UI dashboard hiện tại, scoped cho bot đó).
 
 3. GIVEN `GET /bots/:id`, WHEN `id` không tồn tại, THEN server trả về 404.
 
-4. GIVEN Bot Detail page, WHEN tất cả API calls được thực hiện (pnl, trades, status, events, position), THEN tất cả data trả về là của bot có `id` tương ứng, không phải data của bot khác.
+4. GIVEN Bot Detail page, WHEN tất cả API calls được thực hiện, THEN tất cả data trả về là của bot có `id` tương ứng.
 
 5. GIVEN Bot Detail page, WHEN user muốn quay lại, THEN có link "← Back to Manager" navigate về `/`.
 
@@ -82,11 +89,11 @@ Feature này mở rộng kiến trúc single-bot hiện tại thành multi-bot, 
 
 ### 5. Per-Bot Start/Stop Control
 
-**User Story**: Là một trader, tôi muốn start và stop từng bot độc lập từ dashboard, vì vậy tôi cần các nút điều khiển trên bot card và API tương ứng.
+**User Story**: Là một trader, tôi muốn start và stop từng bot độc lập từ dashboard.
 
 #### Acceptance Criteria
 
-1. GIVEN `POST /api/bots/:id/start`, WHEN bot đang `STOPPED` hoặc `INACTIVE`, THEN bot được start, `state.botStatus` chuyển thành `'RUNNING'`, response là `{ ok: true }`.
+1. GIVEN `POST /api/bots/:id/start`, WHEN bot đang `STOPPED`, THEN bot được start, `state.botStatus` chuyển thành `'RUNNING'`, response là `{ ok: true }`.
 
 2. GIVEN `POST /api/bots/:id/start`, WHEN bot đã đang `RUNNING`, THEN response là `400 { error: 'Already running' }`.
 
@@ -100,27 +107,9 @@ Feature này mở rộng kiến trúc single-bot hiện tại thành multi-bot, 
 
 ---
 
-### 6. Create Bot
+### 6. Per-Bot Data Isolation
 
-**User Story**: Là một trader, tôi muốn tạo bot mới từ dashboard mà không cần restart server, vì vậy tôi cần nút "+ Create Bot" và API tương ứng.
-
-#### Acceptance Criteria
-
-1. GIVEN `POST /api/bots` với valid `BotConfig`, WHEN credentials tương ứng có trong `process.env`, THEN bot mới được tạo, thêm vào registry, và response là `BotStatus` của bot mới với `status: 'inactive'`.
-
-2. GIVEN `POST /api/bots` với `BotConfig` thiếu credentials, WHEN credentials không có trong `process.env`, THEN response là `400 { error: 'Missing credentials for exchange ...' }`.
-
-3. GIVEN `POST /api/bots` với `id` đã tồn tại, THEN response là `409 { error: 'Bot ID already exists' }`.
-
-4. GIVEN `DELETE /api/bots/:id`, WHEN bot đang `RUNNING`, THEN response là `400 { error: 'Stop bot before deleting' }`.
-
-5. GIVEN `DELETE /api/bots/:id`, WHEN bot đang `STOPPED`, THEN bot bị xóa khỏi registry, response là `{ ok: true }`.
-
----
-
-### 7. Per-Bot Data Isolation
-
-**User Story**: Là một trader, tôi muốn trade log và analytics của từng bot được tách biệt, vì vậy mỗi bot cần có TradeLogger và analytics riêng.
+**User Story**: Là một trader, tôi muốn trade log và analytics của từng bot được tách biệt.
 
 #### Acceptance Criteria
 
@@ -128,25 +117,79 @@ Feature này mở rộng kiến trúc single-bot hiện tại thành multi-bot, 
 
 2. GIVEN `GET /api/bots/:id/trades`, WHEN được gọi, THEN chỉ trả về trades của bot có `id` tương ứng.
 
-3. GIVEN `GET /api/bots/:id/analytics`, WHEN được gọi, THEN analytics được tính từ trades của bot đó, không phải tổng hợp từ tất cả bots.
-
-4. GIVEN `GET /api/bots/:id/config`, WHEN được gọi, THEN trả về config hiệu lực của bot đó (base config + overrides của bot đó).
-
-5. GIVEN `POST /api/bots/:id/config` với valid patch, WHEN được gọi, THEN chỉ config của bot đó bị thay đổi, các bot khác không bị ảnh hưởng.
+3. GIVEN `GET /api/bots/:id/pnl`, WHEN được gọi, THEN trả về `BotSharedState` của bot đó.
 
 ---
 
-### 8. Authentication & Security
+### 7. Authentication & Security
 
-**User Story**: Là một trader, tôi muốn dashboard được bảo vệ bởi passcode, vì vậy tất cả routes kể cả manager routes phải yêu cầu authentication.
+**User Story**: Là một trader, tôi muốn dashboard được bảo vệ bởi passcode.
 
 #### Acceptance Criteria
 
 1. GIVEN authentication middleware hiện tại, WHEN request đến bất kỳ `/api/bots/*` route nào mà không có valid `dash_token` cookie, THEN response là `401 { error: 'Unauthorized' }`.
 
-2. GIVEN `GET /api/bots/:id/config`, WHEN được gọi bởi authenticated user, THEN response KHÔNG chứa private keys, API secrets, hoặc bất kỳ credentials nào.
+2. GIVEN `GET /api/bots`, WHEN được gọi, THEN `walletAddress` trong response là địa chỉ ví (public), không phải private key.
 
-3. GIVEN `GET /api/bots`, WHEN được gọi, THEN `walletAddress` trong response là địa chỉ ví (public), không phải private key.
+---
+
+### 8. Default Bot Configs
+
+**User Story**: Là một trader, tôi muốn hệ thống có sẵn 3 bot configs mặc định khi khởi động lần đầu.
+
+#### Acceptance Criteria
+
+1. GIVEN `bot-configs.json` không tồn tại, WHEN hệ thống khởi động lần đầu, THEN file được tạo với 3 bot configs: `sodex-bot`, `decibel-bot`, `dango-bot`.
+
+2. GIVEN `bot-configs.json` đã tồn tại, WHEN hệ thống khởi động, THEN file không bị overwrite, configs hiện tại được giữ nguyên.
+
+3. GIVEN 3 bot configs mặc định, WHEN được load, THEN mỗi bot có: `id`, `name`, `exchange`, `symbol`, `credentialKey`, `tradeLogPath` riêng biệt, `autoStart: false`, `mode: 'farm'`.
+
+4. GIVEN `sodex-bot` config, WHEN được load, THEN `exchange === 'sodex'`, `credentialKey === 'SODEX'`, `tradeLogPath === './trades-sodex.json'`, `tags === ['TWAP', 'Farm']`.
+
+5. GIVEN `decibel-bot` config, WHEN được load, THEN `exchange === 'decibel'`, `credentialKey === 'DECIBELS'`, `tradeLogPath === './trades-decibel.json'`, `tags === ['Market Making', 'Farm']`.
+
+6. GIVEN `dango-bot` config, WHEN được load, THEN `exchange === 'dango'`, `credentialKey === 'DANGO'`, `tradeLogPath === './trades-dango.json'`, `tags === ['Scalping', 'Farm']`.
+
+---
+
+### 9. Config Persistence
+
+**User Story**: Là một trader, tôi muốn config changes của bot được lưu vào file để survive qua docker restart.
+
+#### Acceptance Criteria
+
+1. GIVEN `POST /api/bots/:id/config` với valid overrides, WHEN request thành công, THEN bot's `ConfigStore` được update VÀ changes được persist vào `bot-configs.json`.
+
+2. GIVEN `bot-configs.json` đã được update, WHEN docker container restart (down → build → up), THEN bot configs được load lại với changes đã lưu.
+
+3. GIVEN `DELETE /api/bots/:id/config`, WHEN được gọi, THEN bot's config reset về defaults VÀ changes được persist vào `bot-configs.json`.
+
+4. GIVEN `GET /api/bots/:id/config`, WHEN được gọi, THEN response chứa effective config (base + overrides) của bot đó.
+
+5. GIVEN `POST /api/bots/:id/config` với invalid overrides, WHEN validation fails, THEN response là `400` với `errors` array VÀ `bot-configs.json` không bị thay đổi.
+
+6. GIVEN mỗi `BotInstance`, WHEN được tạo, THEN bot có `ConfigStore` riêng với `botId` unique.
+
+---
+
+### 10. HTML Partials Structure
+
+**User Story**: Là một developer, tôi muốn Manager Dashboard dùng EJS partials để dễ maintain.
+
+#### Acceptance Criteria
+
+1. GIVEN Manager Dashboard, WHEN `GET /` được gọi, THEN server render `manager.ejs` template.
+
+2. GIVEN `manager.ejs`, WHEN render, THEN template include `partials/bot-cards.ejs` partial.
+
+3. GIVEN `partials/bot-cards.ejs`, WHEN render, THEN container `#bot-cards` được tạo với `<template id="bot-card-template">` bên trong.
+
+4. GIVEN `bot-card-template`, WHEN JavaScript fetch `/api/bots`, THEN template được dùng để render dynamic bot cards với placeholders `{id}`, `{name}`, `{status}`, etc.
+
+5. GIVEN file structure, WHEN kiểm tra, THEN tồn tại: `views/manager.ejs`, `views/partials/bot-cards.ejs`, `views/partials/bot-card.ejs`.
+
+6. GIVEN Bot Detail page, WHEN `GET /bots/:id` được gọi, THEN server render `layout.ejs` (existing template) với `botId` parameter.
 
 ---
 
@@ -156,12 +199,10 @@ Các properties sau được verify bằng fast-check property-based tests:
 
 **P1 — State Isolation**: Với mọi tập hợp N bot instances (N ≥ 2), khi bot i update `state.sessionPnl`, `state.sessionPnl` của tất cả bot j ≠ i không thay đổi.
 
-**P2 — Aggregation Consistency**: Với mọi tập hợp bot instances, `getAggregatedStats().totalVolume = Σ bot.state.sessionVolume` và `getAggregatedStats().activeBotCount ∈ [0, registry.size]`.
+**P2 — Aggregation Consistency**: Với mọi tập hợp bot instances, `getAggregatedStats().totalVolume = Σ bot.state.sessionVolume`.
 
-**P3 — Filter Completeness**: Với mọi danh sách bots và filter `'all'`, `filterBotCards(bots, 'all').length === bots.length`.
+**P3 — Active Count Range**: Với mọi tập hợp bot instances, `getAggregatedStats().activeBotCount ∈ [0, registry.size]`.
 
-**P4 — Filter Correctness**: Với mọi danh sách bots và filter `f ∈ {'active', 'inactive', 'completed'}`, tất cả phần tử trong kết quả có `status === f`.
+**P4 — Stop Idempotency**: Sau khi `stop()` được gọi, `state.botStatus` luôn là `'STOPPED'` bất kể trạng thái trước đó.
 
-**P5 — Stop Idempotency**: Sau khi `stop()` được gọi, `state.botStatus` luôn là `'STOPPED'` bất kể trạng thái trước đó.
-
-**P6 — Efficiency Calculation**: Với mọi bot có `sessionVolume > 0`, `efficiencyBps = (sessionPnl / sessionVolume) * 10000` (trong phạm vi floating point precision).
+**P5 — Efficiency Calculation**: Với mọi bot có `sessionVolume > 0`, `efficiencyBps = (sessionPnl / sessionVolume) * 10000` (trong phạm vi floating point precision).

@@ -95,10 +95,8 @@ export class Executor {
                 timeInForce = 3;
                 label = 'IOC/taker';
             } else {
-                // Post-Only: join book as maker (must NOT cross spread)
-                // Long exit (sell) → join bid side @ best_bid
-                // Short exit (buy) → join ask side @ best_ask
-                price = side === 'long' ? ob.best_bid : ob.best_ask;
+                // Post-Only: join book as maker
+                price = side === 'long' ? ob.best_ask : ob.best_bid;
                 timeInForce = 4;
                 label = 'Post-Only/maker';
             }
