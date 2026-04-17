@@ -11,6 +11,7 @@
     "test:signal": "tsx src/scripts/test-ai-signal.ts",
     "test:llm": "tsx src/scripts/test-llm.ts",
     "test:dango": "tsx src/scripts/test-dango.ts",
+    "dango:introspect": "tsx src/scripts/dango-introspect.ts",
     "test:sodex-api": "tsx src/scripts/test-sodex-api.ts",
     "test:decibel": "tsx src/scripts/test-decibel.ts",
     "test:decibel:orderbook": "tsx src/scripts/test-decibel.ts orderbook",

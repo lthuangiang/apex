@@ -5,7 +5,10 @@ import { interceptConsole } from './ai/sharedState.js';
 interceptConsole();
 
 import { config } from './config.js';
+import { ExchangeAdapter } from './adapters/ExchangeAdapter.js';
 import { DecibelAdapter } from './adapters/decibel_adapter.js';
+import { SodexAdapter } from './adapters/sodex_adapter.js';
+import { DangoAdapter } from './adapters/dango_adapter.js';
 import { TelegramManager } from './modules/TelegramManager.js';
 import { SessionManager } from './modules/SessionManager.js';
 import { Watcher } from './modules/Watcher.js';
@@ -16,26 +19,73 @@ import { configStore } from './config/ConfigStore.js';
 import { loadState, saveStateSync } from './ai/StateStore.js';
 
 const {
+    // Exchange selector
+    EXCHANGE,
+    SYMBOL,
+    // Decibel
     DECIBELS_PRIVATE_KEY,
     DECIBELS_NODE_API_KEY,
     DECIBELS_SUBACCOUNT,
     DECIBELS_BUILDER_ADDRESS,
     DECIBELS_GAS_STATION_API_KEY,
+    // SoDEX
+    SODEX_API_KEY,
+    SODEX_API_SECRET,
+    SODEX_SUBACCOUNT,
+    // Dango
+    DANGO_PRIVATE_KEY,
+    DANGO_USER_ADDRESS,
+    DANGO_NETWORK,
+    // Shared
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_CHAT_ID,
     TRADE_LOG_BACKEND,
     TRADE_LOG_PATH,
     DASHBOARD_PORT,
-    SYMBOL,
 } = process.env;
 
-async function bootstrap() {
-    console.log(`\n🚀 SHIELD-BOT: Decibel Trading Agent starting...`);
-
-    if (!DECIBELS_PRIVATE_KEY) {
-        console.error('FATAL: DECIBELS_PRIVATE_KEY is not set in .env');
-        process.exit(1);
+function createAdapter(exchange: string, symbol: string): ExchangeAdapter {
+    switch (exchange.toLowerCase()) {
+        case 'sodex': {
+            if (!SODEX_API_KEY || !SODEX_API_SECRET || !SODEX_SUBACCOUNT) {
+                console.error('FATAL: SODEX_API_KEY, SODEX_API_SECRET, SODEX_SUBACCOUNT are required for exchange=sodex');
+                process.exit(1);
+            }
+            console.log(`🔌 Using SoDEX adapter`);
+            return new SodexAdapter(SODEX_API_KEY, SODEX_API_SECRET, SODEX_SUBACCOUNT);
+        }
+        case 'dango': {
+            if (!DANGO_PRIVATE_KEY || !DANGO_USER_ADDRESS) {
+                console.error('FATAL: DANGO_PRIVATE_KEY, DANGO_USER_ADDRESS are required for exchange=dango');
+                process.exit(1);
+            }
+            console.log(`🔌 Using Dango adapter`);
+            return new DangoAdapter(DANGO_PRIVATE_KEY, DANGO_USER_ADDRESS, (DANGO_NETWORK ?? 'mainnet') as 'mainnet' | 'testnet');
+        }
+        case 'decibel':
+        default: {
+            if (!DECIBELS_PRIVATE_KEY) {
+                console.error('FATAL: DECIBELS_PRIVATE_KEY is required for exchange=decibel');
+                process.exit(1);
+            }
+            console.log(`🔌 Using Decibel adapter`);
+            return new DecibelAdapter(
+                DECIBELS_PRIVATE_KEY,
+                DECIBELS_NODE_API_KEY ?? '',
+                DECIBELS_SUBACCOUNT ?? '',
+                DECIBELS_BUILDER_ADDRESS?.trim() ?? '',
+                10,
+                DECIBELS_GAS_STATION_API_KEY,
+            );
+        }
     }
+}
+
+async function bootstrap() {
+    const exchange = EXCHANGE ?? config.EXCHANGE ?? 'decibel';
+    const symbol = SYMBOL || config.SYMBOL;
+
+    console.log(`\n🚀 SHIELD-BOT starting... [exchange: ${exchange.toUpperCase()} | symbol: ${symbol}]`);
 
     // Load persisted config overrides before any trading logic runs
     configStore.loadFromDisk();
@@ -43,22 +93,11 @@ async function bootstrap() {
     // Load persisted bot state (PnL, logs, history)
     loadState();
 
-    // ── Decibel adapter ───────────────────────────────────────────────────────
-    const symbol = SYMBOL || config.SYMBOL;
-    const builderAddr = DECIBELS_BUILDER_ADDRESS?.trim() ?? '';
-
-    const adapter = new DecibelAdapter(
-        DECIBELS_PRIVATE_KEY,
-        DECIBELS_NODE_API_KEY ?? '',
-        DECIBELS_SUBACCOUNT ?? '',
-        builderAddr,
-        10,
-        DECIBELS_GAS_STATION_API_KEY,
-    );
+    // ── Adapter (selected by EXCHANGE env) ───────────────────────────────────
+    const adapter = createAdapter(exchange, symbol);
 
     // ── Core modules ──────────────────────────────────────────────────────────
-    const telegramEnabled = process.env.TELEGRAM_ENABLED !== 'false';
-    const telegram = new TelegramManager(
+    const telegramEnabled = process.env.TELEGRAM_ENABLED !== 'false';    const telegram = new TelegramManager(
         telegramEnabled ? TELEGRAM_BOT_TOKEN : undefined,
         telegramEnabled ? TELEGRAM_CHAT_ID : undefined,
     );
@@ -87,7 +126,6 @@ async function bootstrap() {
     // Set shared state metadata
     sharedState.symbol = symbol;
     if (DECIBELS_SUBACCOUNT) sharedState.walletAddress = DECIBELS_SUBACCOUNT;
-
     dashboardServer.start();
 
     // ── Telegram commands ─────────────────────────────────────────────────────

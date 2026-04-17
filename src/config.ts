@@ -2,9 +2,9 @@ export const config = {
   MODE: "farm", // 'farm' (volume farming, 2-5 min scalps) or 'trade' (signal-filtered, TP/SL based)
 
   // Exchange
-  EXCHANGE: "decibel", // 'sodex', 'decibel', or 'dango'
-  MARKET: "BTC/USD",
-  SYMBOL: "BTC/USD",
+  EXCHANGE: "sodex", // 'sodex', 'decibel', or 'dango'
+  MARKET: "BTC-USD", // BTC/USD
+  SYMBOL: "BTC-USD", // BTC/USD
 
   // Order sizing (BTC)
   ORDER_SIZE_MIN: 0.002,

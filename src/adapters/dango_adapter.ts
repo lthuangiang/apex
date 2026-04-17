@@ -1,17 +1,20 @@
 import { IExchangeAdapter, Order, Position, RawTrade, OrderParams, Orderbook, ConnectionHealth } from '../types/core.js';
-import { createHash } from 'crypto';
 import axios from 'axios';
-import { ethers } from 'ethers';
+import { secp256k1 } from '@noble/curves/secp256k1';
+import { sha256 } from '@noble/hashes/sha2.js';
 
 // ─── Dango GraphQL Adapter ────────────────────────────────────────────────────
 // Docs: https://docs.dango.exchange/perps/8-api.html
 //
-// Key differences from SoDEX:
-// - GraphQL endpoint (not REST)
-// - Secp256k1 signing: SHA-256(canonical JSON of SignDoc) → sign hash
-// - Size is USD notional (not BTC quantity)
-// - Market orders only (no Post-Only maker)
-// - Pair format: "perp/btcusd"
+// Authentication (§2.4 Secp256k1):
+//   1. Build SignDoc: { data, gas_limit, messages, sender } — fields sorted alphabetically
+//   2. SHA-256 hash the canonical JSON
+//   3. Sign with Secp256k1 → 64-byte compact signature (r+s)
+//   4. key_hash = SHA-256(compressed public key) — hex uppercase
+//
+// Address format: sender is EVM-style 0x... hex address (NOT bech32)
+// DANGO_PRIVATE_KEY: raw 32-byte hex (64 chars, no 0x prefix)
+// DANGO_USER_ADDRESS: 0x... hex address matching the private key
 
 const MAINNET_HTTP = 'https://api-mainnet.dango.zone/graphql';
 const TESTNET_HTTP = 'https://api-testnet.dango.zone/graphql';
@@ -19,12 +22,11 @@ const PERPS_CONTRACT = '0x90bc84df68d1aa59a857e04ed529e9a26edbea4f';
 const CHAIN_ID = 'dango-1';
 
 export class DangoAdapter implements IExchangeAdapter {
-    // Required interface properties
     readonly exchangeName = 'dango';
-    readonly supportedSymbols = ['BTC-USD', 'ETH-USD', 'SOL-USD']; // Add more as needed
-    
+    readonly supportedSymbols = ['BTC-USD', 'ETH-USD', 'SOL-USD'];
+
     private readonly endpoint: string;
-    private readonly userAddress: string;
+    private readonly userAddress: string;   // bech32 dango1... address
     private readonly privateKeyHex: string; // 32-byte hex, no 0x prefix
     private cachedUserIndex: number | null = null;
     private lastNonce: number = 0;
@@ -35,8 +37,13 @@ export class DangoAdapter implements IExchangeAdapter {
         userAddress: string,
         network: 'mainnet' | 'testnet' = 'mainnet'
     ) {
-        // Strip 0x prefix if present
-        this.privateKeyHex = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+        // Normalize to raw 64-char hex (no 0x prefix) for hashing
+        // ethers.SigningKey requires '0x' + 64 hex chars (32 bytes)
+        const stripped = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+        if (stripped.length !== 64) {
+            throw new Error(`[DangoAdapter] Invalid private key length: expected 64 hex chars, got ${stripped.length}`);
+        }
+        this.privateKeyHex = stripped;
         this.userAddress = userAddress.toLowerCase();
         this.endpoint = network === 'mainnet' ? MAINNET_HTTP : TESTNET_HTTP;
     }
@@ -55,21 +62,24 @@ export class DangoAdapter implements IExchangeAdapter {
         return res.data.data as T;
     }
 
-    /** Query a contract via wasm_smart */
+    /** Query a contract via wasm_smart. Returns the inner wasm_smart result. */
     private async queryContract<T = any>(msg: Record<string, unknown>): Promise<T> {
-        const data = await this.gql<{ queryApp: unknown }>(`
+        const data = await this.gql<{ queryApp: { wasm_smart: T } }>(`
             query QueryContract($msg: JSON!) {
                 queryApp(request: { wasm_smart: { contract: "${PERPS_CONTRACT}", msg: $msg } })
             }
         `, { msg });
-        return data.queryApp as T;
+        // Response is wrapped: { queryApp: { wasm_smart: <actual data> } }
+        const result = data.queryApp as any;
+        return (result?.wasm_smart ?? result) as T;
     }
 
     // ── Signing ───────────────────────────────────────────────────────────────
 
     private async getUserIndex(): Promise<number> {
         if (this.cachedUserIndex !== null) return this.cachedUserIndex;
-        // Query account factory to find user index by address
+
+        // Doc §2.7: query account's user_index via accounts(address: ...)
         const data = await this.gql<{ accounts: { nodes: Array<{ users: Array<{ userIndex: number }> }> } }>(`
             query {
                 accounts(address: "${this.userAddress}", first: 1) {
@@ -77,43 +87,47 @@ export class DangoAdapter implements IExchangeAdapter {
                 }
             }
         `);
+
         const userIndex = data.accounts?.nodes?.[0]?.users?.[0]?.userIndex;
-        if (userIndex === undefined) throw new Error('[DangoAdapter] Could not find user index for address');
+        if (userIndex === undefined) {
+            throw new Error(`[DangoAdapter] Could not find user index for address ${this.userAddress}. Make sure your wallet is registered on Dango.`);
+        }
         this.cachedUserIndex = userIndex;
+        console.log(`[DangoAdapter] Resolved userIndex: ${userIndex}`);
         return userIndex;
     }
 
     private getNextNonce(): number {
-        const n = Date.now();
+        // Doc §2.2: nonce is u32. Use incrementing counter seeded from timestamp.
+        // Dango uses unordered nonces with sliding window of 20.
+        const n = Date.now() % 0xFFFFFFFF; // keep within u32 range
         if (n <= this.lastNonce) { this.lastNonce += 1; return this.lastNonce; }
-        this.lastNonce = n % 100000; // keep nonce reasonable
+        this.lastNonce = n;
         return this.lastNonce;
     }
 
-    /**
-     * Sign a transaction using Secp256k1.
-     * SignDoc is SHA-256 hashed (canonical JSON, keys sorted alphabetically).
-     * Returns the 64-byte hex signature.
-     */
-    private async signTx(signDoc: Record<string, unknown>): Promise<string> {
+    private signTx(signDoc: Record<string, unknown>): string {
+        // Doc §2.6: canonical JSON (fields sorted alphabetically) → SHA-256 → Secp256k1 sign
         const canonical = JSON.stringify(signDoc, Object.keys(signDoc).sort());
-        const hash = createHash('sha256').update(canonical).digest();
-
-        // Use ethers SigningKey for Secp256k1 signing (already a dependency)
-        const signingKey = new ethers.SigningKey('0x' + this.privateKeyHex);
-        const sig = signingKey.sign(hash);
-        // Return compact 64-byte signature (r + s, no recovery byte)
-        return sig.r.slice(2) + sig.s.slice(2);
+        const hash = sha256(Buffer.from(canonical));
+        const privKeyBytes = Buffer.from(this.privateKeyHex, 'hex');
+        // @noble/curves secp256k1 — compact 64-byte signature (r+s, no recovery byte)
+        const sig = secp256k1.sign(hash, privKeyBytes, { lowS: true });
+        return Buffer.from(sig.toCompactRawBytes()).toString('hex');
     }
 
-    /**
-     * Build, sign, and broadcast a transaction.
-     * Returns the tx result JSON.
-     */
+    private getKeyHash(): string {
+        // Doc §2.4: key_hash = SHA-256(compressed public key), hex uppercase
+        const privKeyBytes = Buffer.from(this.privateKeyHex, 'hex');
+        const pubKeyBytes = secp256k1.getPublicKey(privKeyBytes, true); // compressed 33 bytes
+        return Buffer.from(sha256(pubKeyBytes)).toString('hex').toUpperCase();
+    }
+
     private async broadcastTx(msgs: unknown[]): Promise<unknown> {
         const userIndex = await this.getUserIndex();
         const nonce = this.getNextNonce();
 
+        // Doc §2.6: SignDoc structure
         const signDoc = {
             data: { chain_id: CHAIN_ID, expiry: null, nonce, user_index: userIndex },
             gas_limit: 1500000,
@@ -121,13 +135,10 @@ export class DangoAdapter implements IExchangeAdapter {
             sender: this.userAddress,
         };
 
-        const sig = await this.signTx(signDoc);
+        const sig = this.signTx(signDoc);
+        const keyHash = this.getKeyHash();
 
-        // Get key_hash: SHA-256 of compressed public key bytes
-        const signingKey = new ethers.SigningKey('0x' + this.privateKeyHex);
-        const pubKeyBytes = Buffer.from(signingKey.compressedPublicKey.slice(2), 'hex'); // remove 0x
-        const keyHash = createHash('sha256').update(pubKeyBytes).digest('hex').toUpperCase();
-
+        // Doc §2.1: Tx structure
         const tx = {
             sender: this.userAddress,
             gas_limit: 1500000,
@@ -148,6 +159,15 @@ export class DangoAdapter implements IExchangeAdapter {
         `, { tx });
 
         console.log(`[DangoAdapter] Tx broadcast result:`, JSON.stringify(result.broadcastTxSync).slice(0, 200));
+
+        // Check for contract-level errors in check_tx result
+        const resultStr = JSON.stringify(result.broadcastTxSync);
+        const checkTx = (result.broadcastTxSync as any)?.check_tx;
+        if (checkTx?.result?.Err) {
+            const errMsg = checkTx.result.Err.error ?? JSON.stringify(checkTx.result.Err);
+            throw new Error(`[DangoAdapter] Contract error: ${errMsg}`);
+        }
+
         return result.broadcastTxSync;
     }
 
@@ -174,45 +194,56 @@ export class DangoAdapter implements IExchangeAdapter {
 
     async get_orderbook_depth(symbol: string, limit: number): Promise<{ bids: [number, number][]; asks: [number, number][] }> {
         const pairId = this._toPairId(symbol);
-        // Use bucket_size=10 (smallest standard bucket for BTC)
-        const result = await this.queryContract<{ bids: Record<string, { size: string; notional: string }>; asks: Record<string, { size: string; notional: string }> }>({
+        // bucket_size must be a string decimal. Use "10.000000" for BTC (smallest standard bucket).
+        // Response is wrapped: { wasm_smart: { bids: {...}, asks: {...} } }
+        const result = await this.queryContract<{
+            bids: Record<string, { size: string; notional: string }>;
+            asks: Record<string, { size: string; notional: string }>;
+        }>({
             liquidity_depth: { pair_id: pairId, bucket_size: '10.000000', limit },
         });
 
         const parseLevels = (levels: Record<string, { size: string; notional: string }>): [number, number][] =>
-            Object.entries(levels)
+            Object.entries(levels ?? {})
                 .map(([price, { size }]) => [parseFloat(price), parseFloat(size)] as [number, number])
-                .sort((a, b) => b[0] - a[0]); // descending for bids
+                .sort((a, b) => b[0] - a[0]);
 
         return {
             bids: parseLevels(result?.bids ?? {}),
-            asks: parseLevels(result?.asks ?? {}).reverse(), // ascending for asks
+            asks: parseLevels(result?.asks ?? {}).reverse(),
         };
     }
 
     async get_recent_trades(symbol: string, limit: number): Promise<RawTrade[]> {
+        // Dango has no perpsTrades field — use perpsCandles as a proxy.
+        // Confirmed PerpsCandle fields: timeStart, open, close, high, low, volume
         const pairId = this._toPairId(symbol);
-        const data = await this.gql<{ perpsTrades: { orderId: string; fillPrice: string; fillSize: string; createdAt: string } }>(`
+        const data = await this.gql<{
+            perpsCandles: {
+                nodes: Array<{
+                    timeStart: string;
+                    open: string;
+                    close: string;
+                    volume: string;
+                }>;
+            };
+        }>(`
             query {
-                perpsTrades(pairId: "${pairId}", first: ${limit}) {
-                    orderId fillPrice fillSize createdAt
+                perpsCandles(pairId: "${pairId}", interval: ONE_MINUTE, first: ${limit}) {
+                    nodes { timeStart open close volume }
                 }
             }
         `);
-        const trades = Array.isArray(data.perpsTrades) ? data.perpsTrades : [];
-        return (trades as any[]).map((t: any) => ({
-            side: parseFloat(t.fillSize) > 0 ? 'buy' : 'sell',
-            price: parseFloat(t.fillPrice),
-            size: Math.abs(parseFloat(t.fillSize)),
-            timestamp: new Date(t.createdAt).getTime(),
+
+        const nodes = data.perpsCandles?.nodes ?? [];
+        return nodes.map((c: any) => ({
+            side: parseFloat(c.close ?? '0') >= parseFloat(c.open ?? c.close ?? '0') ? 'buy' : 'sell',
+            price: parseFloat(c.close ?? '0'),
+            size: parseFloat(c.volume ?? '0'),
+            timestamp: new Date(c.timeStart).getTime(),
         }));
     }
 
-    /**
-     * Place a limit order on Dango.
-     * Note: Dango size is USD notional. We convert BTC size × price → USD notional.
-     * timeInForce mapping: 4 (Post-Only) → "POST", 3 (IOC) → "IOC", default → "GTC"
-     */
     async place_limit_order(
         symbol: string,
         side: 'buy' | 'sell',
@@ -223,16 +254,13 @@ export class DangoAdapter implements IExchangeAdapter {
     ): Promise<string> {
         const pairId = this._toPairId(symbol);
 
-        // Dango size = USD notional (positive = buy, negative = sell)
-        // size param is BTC quantity → convert to USD notional
+        // Dango size = USD notional (positive = long, negative = short)
         const usdNotional = (size * price).toFixed(6);
         const dangoSize = side === 'buy' ? usdNotional : `-${usdNotional}`;
 
-        // Map timeInForce
         const tifMap: Record<number, string> = { 4: 'POST', 3: 'IOC' };
         const tif = tifMap[timeInForce] ?? 'GTC';
 
-        // Align price to tick_size (1.0 for BTC)
         const alignedPrice = Math.round(price).toFixed(6);
 
         const msg = {
@@ -260,10 +288,17 @@ export class DangoAdapter implements IExchangeAdapter {
         console.log(`[DangoAdapter] Placing ${side.toUpperCase()} ${dangoSize} USD @ ${alignedPrice} (${tif})`);
         const result = await this.broadcastTx([msg]);
 
-        // Extract order_id from events
+        // Extract order_id from events in the result
         const resultStr = JSON.stringify(result);
-        const match = resultStr.match(/"order_id"\s*:\s*"(\d+)"/);
-        return match ? match[1] : `dango-${Date.now()}`;
+        const match = resultStr.match(/"order_id"\s*:\s*"?(\d+)"?/);
+        if (match) {
+            console.log(`[DangoAdapter] Order placed: ${match[1]}`);
+            return match[1];
+        }
+        // Fallback: use tx_hash as order reference
+        const txHash = (result as any)?.tx_hash;
+        if (txHash) return txHash;
+        return `dango-${Date.now()}`;
     }
 
     async cancel_order(order_id: string, _symbol: string): Promise<boolean> {
@@ -302,7 +337,12 @@ export class DangoAdapter implements IExchangeAdapter {
 
     async get_open_orders(symbol: string): Promise<Order[]> {
         const pairId = this._toPairId(symbol);
-        const result = await this.queryContract<Record<string, { pair_id: string; size: string; limit_price: string; reduce_only: boolean }>>({
+        const result = await this.queryContract<Record<string, {
+            pair_id: string;
+            size: string;
+            limit_price: string;
+            reduce_only: boolean;
+        }>>({
             orders_by_user: { user: this.userAddress },
         });
         if (!result) return [];
@@ -314,15 +354,15 @@ export class DangoAdapter implements IExchangeAdapter {
                 side: parseFloat(o.size) > 0 ? 'buy' : 'sell',
                 price: parseFloat(o.limit_price),
                 size: Math.abs(parseFloat(o.size)),
-                status: 'pending' as const, // Use valid OrderStatus
-                timestamp: new Date() // Dango doesn't provide timestamp, use current time
+                status: 'pending' as const,
+                timestamp: new Date(),
             }));
     }
 
     async get_position(symbol: string, _markPrice?: number): Promise<Position | null> {
         const pairId = this._toPairId(symbol);
         const result = await this.queryContract<{
-            positions?: Record<string, { size: string; entry_price: string }>;
+            positions?: Record<string, { size: string; entry_price: string; unrealized_pnl?: string }>;
         }>({
             user_state_extended: {
                 user: this.userAddress,
@@ -341,10 +381,9 @@ export class DangoAdapter implements IExchangeAdapter {
         const size = parseFloat(pos.size);
         if (size === 0) return null;
 
-        // Dango size is USD notional — convert back to BTC quantity using entry_price
         const entryPrice = parseFloat(pos.entry_price);
         const btcSize = entryPrice > 0 ? Math.abs(size) / entryPrice : 0;
-        const unrealizedPnl = parseFloat((pos as any).unrealized_pnl ?? '0');
+        const unrealizedPnl = parseFloat(pos.unrealized_pnl ?? '0');
 
         return {
             symbol,
@@ -373,73 +412,29 @@ export class DangoAdapter implements IExchangeAdapter {
 
     // ── IExchangeAdapter interface methods ────────────────────────────────────
 
-    async getMarkPrice(symbol: string): Promise<number> {
-        return this.get_mark_price(symbol);
-    }
+    async getMarkPrice(symbol: string): Promise<number> { return this.get_mark_price(symbol); }
 
     async getOrderbook(symbol: string): Promise<Orderbook> {
         const result = await this.get_orderbook(symbol);
-        return {
-            bestBid: result.best_bid,
-            bestAsk: result.best_ask,
-            bids: [[result.best_bid, 0]], // Size not available from simple orderbook
-            asks: [[result.best_ask, 0]]
-        };
+        return { bestBid: result.best_bid, bestAsk: result.best_ask, bids: [[result.best_bid, 0]], asks: [[result.best_ask, 0]] };
     }
 
-    async getOrderbookDepth(symbol: string, limit: number): Promise<{ bids: [number, number][], asks: [number, number][] }> {
-        return this.get_orderbook_depth(symbol, limit);
-    }
-
-    async getRecentTrades(symbol: string, limit: number): Promise<RawTrade[]> {
-        return this.get_recent_trades(symbol, limit);
-    }
-
-    async getPosition(symbol: string, markPrice?: number): Promise<Position | null> {
-        return this.get_position(symbol, markPrice);
-    }
-
-    async getBalance(): Promise<number> {
-        return this.get_balance();
-    }
+    async getOrderbookDepth(symbol: string, limit: number) { return this.get_orderbook_depth(symbol, limit); }
+    async getRecentTrades(symbol: string, limit: number) { return this.get_recent_trades(symbol, limit); }
+    async getPosition(symbol: string, markPrice?: number) { return this.get_position(symbol, markPrice); }
+    async getBalance() { return this.get_balance(); }
 
     async placeLimitOrder(params: OrderParams): Promise<string> {
-        // Convert TimeInForce string to number for legacy method
-        let timeInForceNumber: number | undefined;
-        if (params.timeInForce) {
-            const tifMap: Record<string, number> = { 
-                'post-only': 4, 
-                'IOC': 3, 
-                'GTC': 0, 
-                'FOK': 1 
-            };
-            timeInForceNumber = tifMap[params.timeInForce] ?? 4; // Default to post-only
-        }
-        
-        return this.place_limit_order(
-            params.symbol,
-            params.side,
-            params.price,
-            params.size,
-            params.reduceOnly,
-            timeInForceNumber
-        );
+        const tifMap: Record<string, number> = { 'post-only': 4, 'IOC': 3, 'GTC': 0, 'FOK': 1 };
+        const tif = params.timeInForce ? (tifMap[params.timeInForce] ?? 4) : 4;
+        return this.place_limit_order(params.symbol, params.side, params.price, params.size, params.reduceOnly, tif);
     }
 
-    async cancelOrder(orderId: string, symbol: string): Promise<boolean> {
-        return this.cancel_order(orderId, symbol);
-    }
-
-    async cancelAllOrders(symbol: string): Promise<boolean> {
-        return this.cancel_all_orders(symbol);
-    }
-
-    async getOpenOrders(symbol: string): Promise<Order[]> {
-        return this.get_open_orders(symbol);
-    }
+    async cancelOrder(orderId: string, symbol: string) { return this.cancel_order(orderId, symbol); }
+    async cancelAllOrders(symbol: string) { return this.cancel_all_orders(symbol); }
+    async getOpenOrders(symbol: string) { return this.get_open_orders(symbol); }
 
     async connect(): Promise<void> {
-        // Dango doesn't require explicit connection, but we can test connectivity
         try {
             await this.getUserIndex();
             this.connected = true;
@@ -449,19 +444,7 @@ export class DangoAdapter implements IExchangeAdapter {
         }
     }
 
-    async disconnect(): Promise<void> {
-        this.connected = false;
-    }
-
-    isConnected(): boolean {
-        return this.connected;
-    }
-
-    getHealthStatus(): ConnectionHealth {
-        return {
-            isHealthy: this.connected,
-            lastPing: new Date(),
-            latency: 0 // Could implement actual latency measurement
-        };
-    }
+    async disconnect(): Promise<void> { this.connected = false; }
+    isConnected(): boolean { return this.connected; }
+    getHealthStatus(): ConnectionHealth { return { isHealthy: this.connected, lastPing: new Date(), latency: 0 }; }
 }

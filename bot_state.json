@@ -127,6 +127,26 @@
   ],
   "eventLog": [
     {
+      "time": "2026-04-17T03:03:17.777Z",
+      "type": "INFO",
+      "message": "Bot stopped"
+    },
+    {
+      "time": "2026-04-17T03:03:15.269Z",
+      "type": "INFO",
+      "message": "Bot started"
+    },
+    {
+      "time": "2026-04-17T03:00:41.664Z",
+      "type": "INFO",
+      "message": "Bot stopped"
+    },
+    {
+      "time": "2026-04-17T03:00:39.939Z",
+      "type": "INFO",
+      "message": "Bot started"
+    },
+    {
       "time": "2026-04-17T01:32:58.270Z",
       "type": "INFO",
       "message": "Bot stopped"
@@ -1105,27 +1125,7 @@
       "time": "2026-04-14T08:56:41.170Z",
       "type": "INFO",
       "message": "Bot started"
-    },
-    {
-      "time": "2026-04-14T08:51:53.188Z",
-      "type": "INFO",
-      "message": "Bot stopped"
-    },
-    {
-      "time": "2026-04-14T08:50:45.189Z",
-      "type": "INFO",
-      "message": "Bot started"
-    },
-    {
-      "time": "2026-04-14T08:42:04.208Z",
-      "type": "INFO",
-      "message": "Bot stopped"
-    },
-    {
-      "time": "2026-04-14T08:41:16.931Z",
-      "type": "ORDER_PLACED",
-      "message": "[FARM] Order placed: SHORT 0.003 @ 50012.1"
     }
   ],
-  "savedAt": "2026-04-17T01:32:58.271Z"
+  "savedAt": "2026-04-17T03:03:17.777Z"
 }
