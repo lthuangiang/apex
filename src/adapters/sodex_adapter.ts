@@ -266,8 +266,12 @@ export class SodexAdapter implements ExchangeAdapter {
 
         const uniqueId = 'ext-' + Date.now().toString() + '-' + Math.floor(Math.random() * 1000);
 
+        // modifier: 1 = Post-Only (reject if would cross spread), 0 = Normal limit
+        // Post-Only only makes sense with timeInForce=4; IOC/GTC should use modifier=0
+        const modifier = timeInForce === 4 ? 1 : 0;
+
         const ord = {
-            modifier: 1,
+            modifier,
             side: side.toLowerCase() === 'buy' ? 1 : 2,
             type: 1,
             timeInForce,

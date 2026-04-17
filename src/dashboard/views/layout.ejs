@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DRIFT — Let it run.</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/css/main.css"/>
+</head>
+<body>
+
+<%- include('partials/header') %>
+
+<%- include('partials/tab-nav') %>
+
+<!-- ── Overview Tab ────────────────────────────────────────────────────── -->
+<div class="tab-panel active" id="tabpanel-overview">
+
+  <div class="main" style="padding-bottom:0">
+    <%- include('partials/overview/tier-week-position') %>
+  </div>
+
+  <%- include('partials/overview/ctrl-panel') %>
+
+  <%- include('partials/overview/cfg-modal') %>
+
+  <!-- ── Main Stats + Charts ────────────────────────────────────────────── -->
+  <div class="main">
+    <%- include('partials/overview/stats-charts') %>
+    <%- include('partials/overview/realtime-log') %>
+    <%- include('partials/overview/tables') %>
+  </div>
+
+</div><!-- /tabpanel-overview -->
+
+<!-- ── Analytics Tab ───────────────────────────────────────────────────── -->
+<div class="tab-panel" id="tabpanel-analytics">
+  <div class="an-section">
+    <%- include('partials/analytics/summary-cards') %>
+    <%- include('partials/analytics/mode-signal') %>
+    <%- include('partials/analytics/charts') %>
+    <%- include('partials/analytics/best-worst-holding') %>
+  </div>
+</div><!-- /tabpanel-analytics -->
+
+<script src="/js/dashboard.js"></script>
+</body>
+</html>

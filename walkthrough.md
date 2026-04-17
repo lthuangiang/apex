@@ -1,6 +1,6 @@
-# Walkthrough — APEX
+# Walkthrough — DRIFT
 
-Hướng dẫn chi tiết về logic hoạt động của từng thành phần.
+Hướng dẫn chi tiết về logic hoạt động của từng thành phần trong DRIFT trading bot.
 
 ---
 
@@ -47,8 +47,8 @@ else → cooldownUntil = null → botState = IDLE → RETURN
 ```
 
 Transition vào COOLDOWN:
-- Farm mode: fixed `FARM_COOLDOWN_SECS` (30s)
-- Trade mode / external close / dust: random trong `[COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]` (2–4 phút)
+- Cả farm và trade mode: random trong `[COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]` (2–5 phút)
+- External close / dust: cũng dùng random cooldown
 
 ---
 
@@ -111,13 +111,13 @@ Exit conditions (theo thứ tự ưu tiên):
 
 **Farm Mode**:
 1. `RiskManager.shouldClose()` (SL 5%)
-2. `pnl >= dynamicTP` (MM mode) hoặc `pnl >= FARM_TP_USD`
-3. Early exit: `duration >= FARM_EARLY_EXIT_SECS` AND `pnl >= FARM_EARLY_EXIT_PNL`
+2. `pnl >= dynamicTP` (MM mode, khi enabled) hoặc `pnl >= FARM_TP_USD`
+3. Early exit: `duration >= FARM_EARLY_EXIT_SECS` (60s) AND `pnl >= FARM_EARLY_EXIT_PNL` ($0.4)
    - Suppress nếu regime là TREND (`suppressEarlyExit = true`)
-4. Hold expired + extra wait: nếu profitable và đang phục hồi → wait thêm `FARM_EXTRA_WAIT_SECS`
+4. Hold expired + extra wait: nếu profitable và đang phục hồi → wait thêm `FARM_EXTRA_WAIT_SECS` (30s)
 5. Time exit: hết extra wait → exit
 
-**Trade Mode**: chỉ SL 5% hoặc TP 5%. Không có time exit.
+**Trade Mode**: chỉ SL 5% hoặc TP 5%. **Không có time exit**.
 
 Khi exit trigger:
 - `botState = EXITING` (ngay lập tức, trước bất kỳ async op nào)
@@ -171,14 +171,14 @@ momentumScore = emaTrend × w.ema
               + candle pattern bonus (±0.05)
 ```
 
-**SIDEWAY range logic**:
-- `pricePosition > 0.75` → `momentumScore -= 0.08`
-- `pricePosition < 0.25` → `momentumScore += 0.08`
+**SIDEWAY range logic** (Farm Mode):
+- `pricePosition > 0.65` → `direction = 'short'` (mean reversion từ đỉnh)
+- `pricePosition < 0.35` → `direction = 'long'` (mean reversion từ đáy)
+- Mid-range (0.35–0.65) → dùng adjusted momentum score hoặc alternate
 
 Khi LLM null trong SIDEWAY:
-- `< 30%` → `direction = 'long'`
-- `> 70%` → `direction = 'short'`
-- Mid → dùng momentum score
+- Farm mode: dùng price position logic trên
+- Trade mode: dùng momentum score với bias
 
 **Cache**: 60s TTL. Invalidate sau khi place entry order.
 
@@ -343,3 +343,14 @@ src/
 └── dashboard/
     └── server.ts             # Express dashboard (inline HTML + SSE)
 ```
+
+---
+
+## 12. Điểm khác biệt chính so với documentation cũ
+
+1. **Cooldown**: Cả farm và trade mode đều dùng random cooldown `[2–5 mins]` - không còn fixed 30s cho farm
+2. **Price Position Logic**: Farm mode dùng thresholds 35%/65% (không phải 25%/75%) cho mean reversion
+3. **Early Exit**: Threshold là $0.4 (không phải $0.3), và hold time là 60s
+4. **Hold Time**: Farm mode hold 2–8 phút (config: `FARM_MIN_HOLD_SECS=120`, `FARM_MAX_HOLD_SECS=480`)
+5. **Trade Mode**: Không có time-based exit - chỉ TP/SL
+6. **Extra Wait**: 30s grace period sau hold expired nếu profitable

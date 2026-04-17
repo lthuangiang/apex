@@ -7,6 +7,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .header-top{display:flex;align-items:center;justify-content:space-between}
 .header-title{display:flex;align-items:center;gap:0.5rem}
 .header-title h1{font-size:1.25rem;font-weight:600;color:#fff}
+.header-logo{height:36px;width:auto}
 .header-meta{font-size:0.72rem;color:#555;margin-top:0.3rem}
 .wallet{font-size:0.72rem;color:#555;background:#161616;border:1px solid #1e1e1e;border-radius:6px;padding:0.5rem 0.75rem;margin-top:0.5rem}
 .wallet span{color:#888}

@@ -1,6 +1,20 @@
-# APEX — Adaptive Perpetual Execution
+<div align="center">
 
-APEX là trading bot tự động cho BTC perpetual futures, tích hợp AI signal engine, adaptive learning, và pseudo market-making để tối đa hóa cả **volume** lẫn **win rate**. Hỗ trợ 3 sàn: **SoDEX**, **Dango Exchange**, và **Decibel**.
+# 🌊 DRIFT
+
+### Dynamic Risk-Informed Futures Trading
+
+*AI-powered BTC perpetual futures bot với adaptive learning và intelligent execution*
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
+
+</div>
+
+---
+
+DRIFT là trading bot tự động cho BTC perpetual futures, tích hợp AI signal engine, adaptive learning, và pseudo market-making để tối đa hóa cả **volume** lẫn **win rate**. Hỗ trợ 3 sàn: **SoDEX**, **Dango Exchange**, và **Decibel**.
 
 ---
 
@@ -10,13 +24,13 @@ APEX là trading bot tự động cho BTC perpetual futures, tích hợp AI sign
 Mục tiêu: **luôn luôn trade**, không bao giờ skip.
 
 - Signal `long`/`short` → dùng ngay
-- Signal `skip` → fallback alternating direction (long ↔ short)
+- Signal `skip` → fallback dựa trên price position trong range hoặc alternating direction
 - Không có confidence gate, chop check, hay fake breakout filter
 - Confidence chỉ dùng để scale size, không để gate
 - MM bias (ping-pong + inventory) điều chỉnh direction
-- Dynamic TP dựa trên spread thực tế
-- Exit: SL 5% → Dynamic TP → Early profit → Time limit (1–3 phút)
-- Cooldown cố định 30s sau mỗi trade
+- Dynamic TP dựa trên spread thực tế (khi MM enabled)
+- Exit: SL 5% → Dynamic TP (MM) hoặc Farm TP $0.5 → Early profit (≥60s + $0.4) → Time exit (2–8 phút)
+- Cooldown random trong `[COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]` (2–5 phút) - **không còn fixed 30s**
 
 ### Trade Mode (`MODE=trade`) — Tối đa hóa win rate
 Mục tiêu: **chỉ vào khi có edge rõ ràng**.
@@ -26,15 +40,15 @@ Mục tiêu: **chỉ vào khi có edge rõ ràng**.
 - Fake breakout filter → skip nếu thiếu OB confirmation
 - Confidence ≥ 0.65 (calibrated)
 - 2-tick confirmation trong 60s
-- Exit: SL 5% hoặc TP 5% — không có time exit
-- Cooldown random trong `[COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]` (2–4 phút)
+- Exit: SL 5% hoặc TP 5% — **không có time exit**
+- Cooldown random trong `[COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]` (2–5 phút)
 
 ---
 
 ## Kiến trúc tổng quan
 
 ```
-bot.ts (SHIELD-BOT)
+bot.ts (DRIFT Core)
   └── Watcher                 # 5-state machine: IDLE → PENDING → IN_POSITION → EXITING → COOLDOWN
         ├── AISignalEngine     # Signal: EMA9/21, RSI, momentum, OB + LLM (adaptive weights)
         │     ├── RegimeDetector       # ATR + BB width + volume → 4-state regime
@@ -90,17 +104,20 @@ IDLE ──[place order]──► PENDING ──[fill detected]──► IN_POSI
 
 **Entry**: luôn execute, không skip.
 - Signal direction → dùng trực tiếp
-- Signal skip → dùng điểm số momentum đã điều chỉnh hoặc luân phiên từ last trade
+- Signal skip với price position:
+  - `pricePos > 65%` → SHORT (ở đỉnh range)
+  - `pricePos < 35%` → LONG (ở đáy range)
+  - Mid-range → dùng adjusted score hoặc alternate từ last trade
 - MM inventory hard block → force opposite direction
 
 **Exit** (theo thứ tự ưu tiên):
 1. SL: `FARM_SL_PERCENT = 5%`
-2. Dynamic TP (MM): `max(spreadBps/10000 × price × 1.5, feeFloor)`, capped $2.0
+2. Dynamic TP (MM enabled): `max(spreadBps/10000 × price × 1.5, feeFloor)`, capped $2.0
 3. Farm TP: `FARM_TP_USD = $0.5`
-4. Early profit: hold ≥ 60s AND pnl ≥ $0.3
-5. Time exit: sau hold time (1–3 phút), chờ thêm 15s nếu đang phục hồi
+4. Early profit: hold ≥ 60s AND pnl ≥ $0.4 (suppressed trong TREND regime)
+5. Time exit: sau hold time (2–8 phút), chờ thêm 30s nếu profitable và đang phục hồi
 
-**Cooldown**: cố định 30s (`FARM_COOLDOWN_SECS`).
+**Cooldown**: random `[COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]` (2–5 phút) - giống trade mode.
 
 ---
 
@@ -115,7 +132,7 @@ IDLE ──[place order]──► PENDING ──[fill detected]──► IN_POSI
 
 **Exit**: SL 5% hoặc TP 5% — không có time exit.
 
-**Cooldown**: random giữa `COOLDOWN_MIN_MINS` và `COOLDOWN_MAX_MINS` (mặc định 2–4 phút).
+**Cooldown**: random giữa `COOLDOWN_MIN_MINS` và `COOLDOWN_MAX_MINS` (mặc định 2–5 phút).
 
 ---
 
@@ -130,9 +147,10 @@ Momentum score từ 5m candles với **adaptive weights** (tự điều chỉnh 
 | 3-candle momentum | Price change 3 nến gần nhất | ~20% |
 | Orderbook imbalance | bid/ask volume ratio | ~15% |
 
-**SIDEWAY range logic**: vị trí giá trong range 10 nến (0 = đáy, 1 = đỉnh) điều chỉnh `momentumScore`:
-- Giá ở đỉnh range (> 75%) → `momentumScore -= 0.08`
-- Giá ở đáy range (< 25%) → `momentumScore += 0.08`
+**SIDEWAY range logic** (Farm Mode): vị trí giá trong range 10 nến (0 = đáy, 1 = đỉnh):
+- `pricePos > 65%` → bias SHORT (mean reversion từ đỉnh)
+- `pricePos < 35%` → bias LONG (mean reversion từ đáy)
+- Mid-range (35-65%) → dùng adjusted momentum score
 
 LLM (GPT-4o / Claude) nhận full context → `direction + confidence + reasoning`. Cache 60s.
 
@@ -140,7 +158,7 @@ LLM (GPT-4o / Claude) nhận full context → `direction + confidence + reasonin
 
 ## Exchange Integration
 
-APEX hỗ trợ 3 sàn qua interface chung `ExchangeAdapter`. `cancel_all_orders` luôn cancel theo **order ID cụ thể** (không dùng bulk cancel không có ID) để tránh `EORDER_NOT_FOUND` trên Aptos.
+DRIFT hỗ trợ 3 sàn qua interface chung `ExchangeAdapter`. `cancel_all_orders` luôn cancel theo **order ID cụ thể** (không dùng bulk cancel không có ID) để tránh `EORDER_NOT_FOUND` trên Aptos.
 
 ### Decibel (`EXCHANGE=decibel`)
 - Aptos blockchain-based DEX
@@ -172,7 +190,7 @@ npm start
 
 ```bash
 cp .env.example .env
-docker build -f Dockerfile -t apex:latest .
+docker build -f Dockerfile -t drift:latest .
 docker compose up -d
 ```
 
@@ -247,8 +265,9 @@ Truy cập `http://localhost:3000`
 | Group | Keys |
 |---|---|
 | Order sizing | `ORDER_SIZE_MIN/MAX`, `SIZING_*` |
-| Farm mode | `FARM_TP_USD`, `FARM_SL_PERCENT`, `FARM_MIN/MAX_HOLD_SECS`, `FARM_COOLDOWN_SECS` |
-| Trade mode | `TRADE_TP_PERCENT`, `TRADE_SL_PERCENT`, `COOLDOWN_MIN_MINS`, `COOLDOWN_MAX_MINS` |
+| Farm mode | `FARM_TP_USD`, `FARM_SL_PERCENT`, `FARM_MIN/MAX_HOLD_SECS`, `FARM_EARLY_EXIT_*` |
+| Cooldown | `COOLDOWN_MIN_MINS`, `COOLDOWN_MAX_MINS` (áp dụng cho cả farm và trade mode) |
+| Trade mode | `TRADE_TP_PERCENT`, `TRADE_SL_PERCENT` |
 | Regime | `REGIME_HIGH_VOL_THRESHOLD`, `REGIME_*_HOLD_MULT` |
 | Anti-chop | `CHOP_SCORE_THRESHOLD` |
 | Execution | `EXEC_MAX_SPREAD_BPS`, `EXEC_OFFSET_MAX` |
@@ -256,4 +275,14 @@ Truy cập `http://localhost:3000`
 
 ---
 
-> **Cảnh báo**: Phần mềm này chỉ dành cho mục đích nghiên cứu. Không commit file `.env` lên git.
+> **Cảnh báo**: Phần mềm này chỉ dành cho mục đích nghiên cứu và giáo dục. Trading cryptocurrency có rủi ro cao. Không commit file `.env` lên git.
+
+---
+
+<div align="center">
+
+**Made with ❤️ for the DeFi community**
+
+*DRIFT - Where intelligent execution meets adaptive learning*
+
+</div>

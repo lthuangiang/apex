@@ -1,0 +1,14 @@
+<div class="charts-row">
+  <div class="log-card" style="grid-column:1/-1">
+    <div class="log-header">
+      <h3>Realtime Log</h3>
+      <span class="log-live"><span class="dot"></span>LIVE</span>
+    </div>
+    <div class="log-tabs">
+      <button class="log-tab" id="tab-events" onclick="switchTab('events')">Events</button>
+      <button class="log-tab active" id="tab-console" onclick="switchTab('console')">Console</button>
+    </div>
+    <div class="log-body" id="log-events" style="display:none"></div>
+    <div class="log-body" id="log-console"></div>
+  </div>
+</div>

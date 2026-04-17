@@ -1,0 +1,31 @@
+<div class="ctrl-panel">
+  <div class="ctrl-title">Bot Controls</div>
+  <div class="ctrl-row">
+    <button class="cb g" id="btn-start" onclick="ctrlStart()">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
+      Start
+    </button>
+    <button class="cb r" id="btn-stop" onclick="ctrlStop()" disabled>
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>
+      Stop
+    </button>
+    <div class="cdiv"></div>
+    <span class="clabel">Mode:</span>
+    <button class="cb" id="btn-farm" onclick="ctrlSetMode('farm')">🚜 Farm</button>
+    <button class="cb" id="btn-trade" onclick="ctrlSetMode('trade')">📈 Trade</button>
+    <div class="cdiv"></div>
+    <span class="clabel">Max Loss $</span>
+    <input class="ci" id="input-maxloss" type="number" min="1" step="1" value="5"/>
+    <button class="cb" onclick="ctrlSetMaxLoss()">Set</button>
+    <div class="cdiv"></div>
+    <button class="cb o" onclick="ctrlClosePosition()">
+      <svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" stroke-width="2" fill="none">
+        <line x1="2" y1="2" x2="10" y2="10"/>
+        <line x1="10" y1="2" x2="2" y2="10"/>
+      </svg>
+      Close Position
+    </button>
+    <span class="ctoast" id="ctrl-toast"></span>
+  </div>
+  <div style="margin-top:0.65rem;font-size:0.72rem;color:#444;" id="ctrl-status-line">—</div>
+</div>

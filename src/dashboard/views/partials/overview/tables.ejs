@@ -1,0 +1,41 @@
+<div class="tables-row">
+  <div class="table-card">
+    <div class="table-header">
+      <h3>Trade History</h3>
+      <span class="table-count" id="trade-count"></span>
+    </div>
+    <table>
+      <thead><tr><th>Order ID</th><th>Date</th><th>Side</th><th>Price</th><th>PnL</th></tr></thead>
+      <tbody id="trades-body">
+        <tr><td colspan="5" style="color:#444;text-align:center;padding:1rem;">No trades yet.</td></tr>
+      </tbody>
+    </table>
+    <div class="pagination">
+      <span id="trade-page-info">Page 1</span>
+      <div style="display:flex;gap:0.5rem;">
+        <button id="trade-prev" onclick="tradePage(-1)" disabled>&#8249; Prev</button>
+        <button id="trade-next" onclick="tradePage(1)">Next &#8250;</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="table-header">
+      <h3>Event Log</h3>
+      <span class="table-count" id="event-count"></span>
+    </div>
+    <table>
+      <thead><tr><th>Time</th><th>Type</th><th>Message</th></tr></thead>
+      <tbody id="events-body">
+        <tr><td colspan="3" style="color:#444;text-align:center;padding:1rem;">No events yet.</td></tr>
+      </tbody>
+    </table>
+    <div class="pagination">
+      <span id="event-page-info">Page 1</span>
+      <div style="display:flex;gap:0.5rem;">
+        <button id="event-prev" onclick="eventPage(-1)" disabled>&#8249; Prev</button>
+        <button id="event-next" onclick="eventPage(1)">Next &#8250;</button>
+      </div>
+    </div>
+  </div>
+</div>

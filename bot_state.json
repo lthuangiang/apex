@@ -127,6 +127,31 @@
   ],
   "eventLog": [
     {
+      "time": "2026-04-17T06:54:46.473Z",
+      "type": "INFO",
+      "message": "Bot stopped"
+    },
+    {
+      "time": "2026-04-17T06:54:44.854Z",
+      "type": "INFO",
+      "message": "Bot started"
+    },
+    {
+      "time": "2026-04-17T06:35:22.972Z",
+      "type": "INFO",
+      "message": "Bot stopped"
+    },
+    {
+      "time": "2026-04-17T06:35:05.452Z",
+      "type": "INFO",
+      "message": "EXIT_TRIGGER: FARM TIME EXIT (PnL: 0.03)"
+    },
+    {
+      "time": "2026-04-17T06:34:22.576Z",
+      "type": "INFO",
+      "message": "Bot started"
+    },
+    {
       "time": "2026-04-17T03:03:17.777Z",
       "type": "INFO",
       "message": "Bot stopped"
@@ -1100,32 +1125,7 @@
       "time": "2026-04-14T09:00:47.062Z",
       "type": "INFO",
       "message": "Bot started"
-    },
-    {
-      "time": "2026-04-14T09:00:33.891Z",
-      "type": "INFO",
-      "message": "Bot stopped"
-    },
-    {
-      "time": "2026-04-14T09:00:16.227Z",
-      "type": "INFO",
-      "message": "Bot started"
-    },
-    {
-      "time": "2026-04-14T08:58:04.893Z",
-      "type": "INFO",
-      "message": "Bot stopped"
-    },
-    {
-      "time": "2026-04-14T08:56:57.929Z",
-      "type": "ORDER_PLACED",
-      "message": "[FARM] Order placed: SHORT 0.003 @ 50011.1"
-    },
-    {
-      "time": "2026-04-14T08:56:41.170Z",
-      "type": "INFO",
-      "message": "Bot started"
     }
   ],
-  "savedAt": "2026-04-17T03:03:17.777Z"
+  "savedAt": "2026-04-17T06:57:17.418Z"
 }

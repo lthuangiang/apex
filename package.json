@@ -1,10 +1,10 @@
 {
-  "name": "apex",
+  "name": "drift",
   "version": "1.0.0",
-  "description": "APEX — AI-Powered Execution with Experiential memory",
+  "description": "DRIFT — Dynamic Risk-Informed Futures Trading",
   "scripts": {
     "start": "tsx src/bot.ts",
-    "build": "tsc",
+    "build": "tsc && node -e \"const fs = require('fs'); fs.cpSync('src/dashboard/views','dist/dashboard/views',{recursive:true}); fs.cpSync('src/dashboard/public','dist/dashboard/public',{recursive:true});\"",
     "start:prod": "node dist/bot.js",
     "test": "vitest --run",
     "test:balance": "tsx src/scripts/test-balance.ts",
@@ -34,6 +34,7 @@
     "better-sqlite3": "^12.8.0",
     "chromadb": "^3.4.3",
     "dotenv": "^17.4.0",
+    "ejs": "^5.0.2",
     "ethers": "^6.16.0",
     "express": "^5.2.1",
     "node-telegram-bot-api": "^0.67.0",
@@ -41,6 +42,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/ejs": "^3.1.5",
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
     "@types/node-telegram-bot-api": "^0.64.14",

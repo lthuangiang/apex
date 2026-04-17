@@ -1,10 +1,17 @@
-# APEX — Adaptive Perpetual Execution
+<div align="center">
+
+# 🌊 DRIFT
+## Dynamic Risk-Informed Futures Trading
+
+*Intelligent execution meets adaptive learning*
+
+</div>
 
 ---
 
-## What is APEX?
+## What is DRIFT?
 
-APEX is an AI-powered BTC perpetual futures trading bot built for **SoDEX**, **Dango**, and **Decibel**. It combines a hybrid signal engine, adaptive learning, and a pseudo market-making strategy to maximize both **volume accumulation** (Farm Mode) and **trading performance** (Trade Mode).
+DRIFT is an AI-powered BTC perpetual futures trading bot built for **SoDEX**, **Dango**, and **Decibel**. It combines a hybrid signal engine, adaptive learning, and a pseudo market-making strategy to maximize both **volume accumulation** (Farm Mode) and **trading performance** (Trade Mode).
 
 ---
 
@@ -16,19 +23,20 @@ The core insight: volume-incentive DEXes reward activity. Farm Mode is designed 
 
 ```
 signal = long/short → use it
-signal = skip       → alternate direction (long ↔ short)
+signal = skip       → use price position in range (mean reversion)
+                      or alternate direction (long ↔ short)
 ```
 
 No confidence gate. No chop filter. No fake breakout check. The bot is always active.
 
 **Exit logic (priority order):**
 1. SL: 5% hard stop
-2. Dynamic TP: tied to live spread (`spreadBps/10000 × price × 1.5`, min fee floor, max $2)
+2. Dynamic TP: tied to live spread (`spreadBps/10000 × price × 1.5`, min fee floor, max $2) when MM enabled
 3. Farm TP: $0.5 fixed floor
-4. Early profit: hold ≥ 60s AND pnl ≥ $0.3
-5. Time exit: 1–3 minute hold, then exit regardless of PnL
+4. Early profit: hold ≥ 60s AND pnl ≥ $0.4 (suppressed in TREND regime)
+5. Time exit: 2–8 minute hold, then exit (with 30s grace period if profitable and recovering)
 
-**Cooldown**: fixed 30s after each trade.
+**Cooldown**: random between `COOLDOWN_MIN_MINS` and `COOLDOWN_MAX_MINS` (default 2–5 minutes) — **same as trade mode**.
 
 ### Trade Mode — Signal-Filtered Execution
 
@@ -40,9 +48,9 @@ When the goal is win rate over volume, Trade Mode applies full filtering:
 4. Confidence ≥ 0.65 (calibrated against historical win rates)
 5. 2-tick confirmation (60s window)
 
-Exit: SL 5% or TP 5% — no time pressure.
+Exit: SL 5% or TP 5% — **no time pressure, no time-based exit**.
 
-**Cooldown**: random between `COOLDOWN_MIN_MINS` and `COOLDOWN_MAX_MINS` (default 2–4 minutes).
+**Cooldown**: random between `COOLDOWN_MIN_MINS` and `COOLDOWN_MAX_MINS` (default 2–5 minutes).
 
 ---
 
@@ -76,9 +84,9 @@ IDLE → PENDING → IN_POSITION → EXITING → COOLDOWN → IDLE
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           APEX Bot                                      │
+│                           DRIFT Bot                                     │
 │                                                                         │
-│  bot.ts (SHIELD-BOT)                                                    │
+│  bot.ts (DRIFT Core)                                                    │
 │  ├── Watcher (5-State Machine)                                          │
 │  │   IDLE → PENDING → IN_POSITION → EXITING → COOLDOWN                 │
 │  │                                                                      │
@@ -171,14 +179,16 @@ Each component tracked independently. Weights persist in `signal-weights.json`. 
 
 Price position in last 10 candles range (0 = bottom, 1 = top):
 
+**Farm Mode** (mean reversion logic):
 ```
-pricePosition > 75% → momentumScore -= 0.08  (penalize long at top)
-pricePosition < 25% → momentumScore += 0.08  (penalize short at bottom)
+pricePosition > 65% → bias SHORT (price at top of range)
+pricePosition < 35% → bias LONG (price at bottom of range)
+mid-range (35-65%)  → use adjusted momentum score or alternate
 ```
 
-When LLM is unavailable in SIDEWAY, price position drives direction directly:
-- Bottom of range (< 30%) → LONG (mean reversion)
-- Top of range (> 70%) → SHORT (mean reversion)
+**Trade Mode**: uses momentum score with regime adjustments.
+
+When LLM is unavailable in SIDEWAY, price position drives direction directly for mean reversion trades.
 
 ### 3. Dynamic Position Sizing
 
@@ -215,11 +225,13 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 
 ### 6. Farm Market Making
 
-**Ping-pong**: after LONG → bias SHORT; after SHORT → bias LONG.
+**Cooldown**: after LONG → bias SHORT; after SHORT → bias LONG.
 
 **Inventory control**: soft bias when net exposure > $50, hard block when > $150.
 
 **Dynamic TP**: `min(max(spreadBps/10000 × price × 1.5, feeFloor), $2.0)` — always covers fees, adapts to live spread.
+
+**Note**: Both farm and trade modes now use the same cooldown mechanism: random between `[COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]` (2–5 minutes).
 
 ---
 
@@ -250,19 +262,19 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 
 **Graceful Shutdown**: SIGTERM/SIGINT handlers close open positions before exiting.
 
-**Docker**: `docker build -f Dockerfile -t apex:latest . && docker compose up -d`
+**Docker**: `docker build -f Dockerfile -t drift:latest . && docker compose up -d`
 
 ---
 
 ## Summary
 
-| Feature | APEX | Typical Bot |
+| Feature | DRIFT | Typical Bot |
 |---|---|---|
 | Execution model | 5-state machine, strict tick isolation | Loose loop |
 | Cancel safety | Per-order ID cancel, race condition guards | Bulk cancel |
 | Farm mode | Always executes, never skips | Signal-gated |
 | Tick timing | Dynamic: fixed 5s (early exit) / random 5–10s | Fixed interval |
-| Cooldown | Random range \[MIN, MAX\] | Fixed or none |
+| Cooldown | Random range \[2–5 mins\] for both modes | Fixed or none |
 | Fee awareness | Dynamic TP tied to live spread | Fixed target |
 | Execution | Dynamic offset + spread guard + fill feedback | Static best-bid/ask |
 | Learning | Self-adjusting weights per component | Stateless |
@@ -272,6 +284,16 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 
 ---
 
-> APEX turns maker fee models and volume incentives into a systematic edge.
-> Farm Mode ensures the bot is always active. Trade Mode ensures it's always smart.
-> The execution engine ensures it's always safe.
+<div align="center">
+
+## 🎯 The DRIFT Advantage
+
+**DRIFT turns maker fee models and volume incentives into a systematic edge.**
+
+✨ Farm Mode ensures the bot is always active  
+🧠 Trade Mode ensures it's always smart  
+🛡️ The execution engine ensures it's always safe
+
+*Built for the future of decentralized perpetual trading*
+
+</div>
