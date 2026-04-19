@@ -14,6 +14,8 @@ import { validateOverrides } from '../config/validateOverrides.js';
 import { weightStore } from '../ai/FeedbackLoop/WeightStore.js';
 import { componentPerformanceTracker } from '../ai/FeedbackLoop/ComponentPerformanceTracker.js';
 import { confidenceCalibrator } from '../ai/FeedbackLoop/ConfidenceCalibrator.js';
+import type { BotManager } from '../bot/BotManager.js';
+import { saveBotConfigsToFile } from '../bot/persistBotConfigs.js';
 
 
 const validTokens = new Map<string, number>();
@@ -33,7 +35,7 @@ export class DashboardServer {
   private watcher: Watcher | null = null;
   private watcherRunner: (() => void) | null = null;
   private configStore: ConfigStoreInterface | null = null;
-  private botManager: null = null;
+  private botManager: BotManager | null = null;
   private _sopointsCache: { summary: any; week: any } = { summary: null, week: null };
   private _analyticsCache: { summary: AnalyticsSummary | null; cachedAt: number } = { summary: null, cachedAt: 0 };
   private _analyticsEngine = new AnalyticsEngine();
@@ -64,10 +66,12 @@ export class DashboardServer {
   }
 
   /**
-   * No-op: BotManager has been removed. Kept for API compatibility.
+   * Register BotManager for multi-bot support
    */
-  registerBotManager(_manager: any): void {
-    // multi-bot manager removed
+  registerBotManager(manager: BotManager): void {
+    this.botManager = manager;
+    console.log('[DashboardServer] BotManager registered');
+    this._setupManagerRoutes();
   }
 
   private _isAuthenticated(req: Request): boolean {
@@ -115,15 +119,29 @@ export class DashboardServer {
     });
 
     this.app.get('/', (_req, res) => {
-      res.render('layout', (err: Error | null, html: string) => {
-        if (err) {
-          console.error('[DashboardServer] Template render error:', err);
-          res.status(500).send(`Template render error: ${err.message}`);
-          return;
-        }
-        res.setHeader('Content-Type', 'text/html');
-        res.send(html);
-      });
+      // Serve Manager Dashboard if BotManager is registered
+      if (this.botManager) {
+        res.render('manager', (err: Error | null, html: string) => {
+          if (err) {
+            console.error('[DashboardServer] Manager template render error:', err);
+            res.status(500).send(`Template render error: ${err.message}`);
+            return;
+          }
+          res.setHeader('Content-Type', 'text/html');
+          res.send(html);
+        });
+      } else {
+        // Fallback to single-bot dashboard (existing behavior)
+        res.render('layout', (err: Error | null, html: string) => {
+          if (err) {
+            console.error('[DashboardServer] Template render error:', err);
+            res.status(500).send(`Template render error: ${err.message}`);
+            return;
+          }
+          res.setHeader('Content-Type', 'text/html');
+          res.send(html);
+        });
+      }
     });
 
     this.app.get('/api/trades', async (_req, res) => {
@@ -131,7 +149,7 @@ export class DashboardServer {
     });
 
     this.app.get('/api/pnl', (_req, res) => {
-      res.json({ sessionPnl: sharedState.sessionPnl, sessionVolume: sharedState.sessionVolume, updatedAt: sharedState.updatedAt, botStatus: sharedState.botStatus, symbol: sharedState.symbol, walletAddress: sharedState.walletAddress, pnlHistory: sharedState.pnlHistory, volumeHistory: sharedState.volumeHistory });
+      res.json({ sessionPnl: sharedState.sessionPnl, sessionVolume: sharedState.sessionVolume, todayVolume: sharedState.todayVolume, updatedAt: sharedState.updatedAt, botStatus: sharedState.botStatus, symbol: sharedState.symbol, walletAddress: sharedState.walletAddress, pnlHistory: sharedState.pnlHistory, volumeHistory: sharedState.volumeHistory });
     });
 
     this.app.get('/api/events', (_req, res) => res.json(sharedState.eventLog));
@@ -164,6 +182,7 @@ export class DashboardServer {
     this.app.post('/api/control/start', async (_req, res) => {
       if (!this.sessionManager || !this.watcher || !this.watcherRunner) { res.status(503).json({ error: 'Not available' }); return; }
       if (this.sessionManager.getState().isRunning) { res.status(400).json({ error: 'Already running' }); return; }
+      this.sessionManager.resetMaxLoss(); // allow restart after emergency stop
       if (this.sessionManager.startSession()) { this.watcher.resetSession(); this.watcherRunner(); res.json({ ok: true }); }
       else res.status(500).json({ error: 'Failed' });
     });
@@ -422,6 +441,588 @@ export class DashboardServer {
         res.status(500).json({ error: String(err) });
       }
     });
+  }
+
+  /**
+   * Setup multi-bot manager routes
+   * Called after BotManager is registered
+   */
+  private _setupManagerRoutes(): void {
+    if (!this.botManager) {
+      console.warn('[DashboardServer] _setupManagerRoutes called but botManager is null');
+      return;
+    }
+
+    // ── Bot Detail Page Route ─────────────────────────────────────────────────
+
+    // GET /bots/:id - Bot detail page
+    this.app.get('/bots/:id', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).send('Bot manager not available');
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).send('Bot not found');
+        return;
+      }
+      
+      // Render Bot Detail Dashboard (existing layout.ejs)
+      res.render('layout', { botId: req.params.id, exchange: bot.config.exchange, botName: bot.config.name }, (err: Error | null, html: string) => {
+        if (err) {
+          console.error('[DashboardServer] Bot detail template render error:', err);
+          res.status(500).send(`Template render error: ${err.message}`);
+          return;
+        }
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+      });
+    });
+
+    // ── Manager API Routes ────────────────────────────────────────────────────
+
+    // GET /api/bots - List all bots
+    this.app.get('/api/bots', (_req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      try {
+        const bots = this.botManager.getAllBots();
+        const statuses = bots.map(bot => bot.getStatus());
+        res.json(statuses);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // GET /api/bots/stats - Aggregated stats
+    this.app.get('/api/bots/stats', (_req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      try {
+        const stats = this.botManager.getAggregatedStats();
+        res.json(stats);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // ── Per-Bot Control Routes ────────────────────────────────────────────────
+
+    // POST /api/bots/:id/start - Start a bot
+    this.app.post('/api/bots/:id/start', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      if (bot.state.botStatus === 'RUNNING') {
+        res.status(400).json({ error: 'Already running' });
+        return;
+      }
+      
+      try {
+        const success = await this.botManager.startBot(req.params.id);
+        res.json({ ok: success });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/bots/:id/stop - Stop a bot
+    this.app.post('/api/bots/:id/stop', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      if (bot.state.botStatus === 'STOPPED') {
+        res.status(400).json({ error: 'Not running' });
+        return;
+      }
+      
+      try {
+        await this.botManager.stopBot(req.params.id);
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/bots/:id/close - Force close position
+    this.app.post('/api/bots/:id/close', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      try {
+        const success = await bot.forceClosePosition();
+        res.json({ ok: success });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // ── Per-Bot Control Status & Actions ──────────────────────────────────────
+
+    // GET /api/bots/:id/control/status - Get bot control status
+    this.app.get('/api/bots/:id/control/status', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      try {
+        const sessionManager = bot.getSessionManager();
+        const watcher = bot.getWatcher();
+        const state = sessionManager.getState();
+        const uptime = state.startTime ? Math.floor((Date.now() - state.startTime) / 60000) : 0;
+        
+        let hasPosition = false, positionText = '', cooldown: number | null = null;
+        if (state.isRunning) {
+          const detail = await watcher.getDetailedStatus();
+          hasPosition = detail.hasPosition;
+          positionText = detail.text;
+          cooldown = watcher.getCooldownInfo();
+        }
+        
+        res.json({
+          isRunning: state.isRunning,
+          mode: bot.config.mode,
+          maxLoss: state.maxLoss,
+          currentPnL: state.currentPnL,
+          uptime,
+          hasPosition,
+          positionText,
+          cooldown,
+        });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/bots/:id/control/start - Start bot (alias for /api/bots/:id/start)
+    this.app.post('/api/bots/:id/control/start', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      if (bot.state.botStatus === 'RUNNING') {
+        res.status(400).json({ error: 'Already running' });
+        return;
+      }
+      
+      try {
+        const success = await this.botManager.startBot(req.params.id);
+        res.json({ ok: success });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/bots/:id/control/stop - Stop bot (alias for /api/bots/:id/stop)
+    this.app.post('/api/bots/:id/control/stop', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      if (bot.state.botStatus === 'STOPPED') {
+        res.status(400).json({ error: 'Not running' });
+        return;
+      }
+      
+      try {
+        await this.botManager.stopBot(req.params.id);
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/bots/:id/control/close_position - Force close position (alias)
+    this.app.post('/api/bots/:id/control/close_position', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      try {
+        const success = await bot.forceClosePosition();
+        res.json({ ok: success });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/bots/:id/control/set_mode - Set bot mode
+    this.app.post('/api/bots/:id/control/set_mode', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      const { mode } = req.body as { mode?: string };
+      if (mode !== 'farm' && mode !== 'trade') {
+        res.status(400).json({ error: 'Invalid mode' });
+        return;
+      }
+      
+      try {
+        (bot.config as any).mode = mode as 'farm' | 'trade';
+        res.json({ ok: true, mode });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/bots/:id/control/set_max_loss - Set bot max loss
+    this.app.post('/api/bots/:id/control/set_max_loss', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      const { amount } = req.body as { amount?: number };
+      if (!amount || isNaN(amount) || amount <= 0) {
+        res.status(400).json({ error: 'Invalid amount' });
+        return;
+      }
+      
+      try {
+        bot.getSessionManager().setMaxLoss(amount);
+        res.json({ ok: true, maxLoss: amount });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // ── Per-Bot SSE Stream ────────────────────────────────────────────────────
+
+    // GET /api/bots/:id/events/stream - SSE stream for bot events
+    this.app.get('/api/bots/:id/events/stream', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+      
+      const send = (d: string) => res.write(`data: ${d}\n\n`);
+      
+      // Send recent events
+      bot.state.eventLog.slice(0, 20).reverse().forEach(e => send(JSON.stringify(e)));
+      
+      // Note: For real-time updates, would need to add SSE client management to BotSharedState
+      // For now, client will poll via regular /api/bots/:id/events
+      
+      req.on('close', () => {
+        // Cleanup if needed
+      });
+    });
+
+    // ── Per-Bot Analytics ─────────────────────────────────────────────────────
+
+    // GET /api/bots/:id/analytics - Bot analytics summary
+    this.app.get('/api/bots/:id/analytics', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      try {
+        const trades = await bot.getTradeLogger().readAll();
+        const summary = this._analyticsEngine.compute(trades);
+        res.json(summary);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // ── Per-Bot Data Routes ───────────────────────────────────────────────────
+
+    // GET /api/bots/:id/pnl - Bot PnL data
+    this.app.get('/api/bots/:id/pnl', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      res.json({
+        sessionPnl: bot.state.sessionPnl,
+        sessionVolume: bot.state.sessionVolume,
+        sessionFees: bot.state.sessionFees,
+        todayVolume: bot.state.todayVolume ?? 0,
+        updatedAt: bot.state.updatedAt,
+        botStatus: bot.state.botStatus,
+        symbol: bot.state.symbol,
+        walletAddress: bot.state.walletAddress,
+        pnlHistory: bot.state.pnlHistory,
+        volumeHistory: bot.state.volumeHistory,
+      });
+    });
+
+    // GET /api/bots/:id/trades - Bot trades
+    this.app.get('/api/bots/:id/trades', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      try {
+        const trades = await bot.getTradeLogger().readAll();
+        res.json(trades);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // GET /api/bots/:id/events - Bot event log
+    this.app.get('/api/bots/:id/events', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      res.json(bot.state.eventLog);
+    });
+
+    // GET /api/bots/:id/position - Bot open position
+    this.app.get('/api/bots/:id/position', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      res.json(bot.state.openPosition);
+    });
+
+    // ── Per-Bot Config Routes ─────────────────────────────────────────────────
+
+    const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
+      'ORDER_SIZE_MIN', 'ORDER_SIZE_MAX',
+      'FARM_MIN_HOLD_SECS', 'FARM_MAX_HOLD_SECS', 'FARM_TP_USD',
+      'FARM_SL_PERCENT', 'FARM_SCORE_EDGE', 'FARM_MIN_CONFIDENCE', 'FARM_EARLY_EXIT_SECS',
+      'FARM_EARLY_EXIT_PNL', 'FARM_EXTRA_WAIT_SECS', 'FARM_BLOCKED_HOURS', 'FARM_COOLDOWN_SECS',
+      'TRADE_TP_PERCENT', 'TRADE_SL_PERCENT',
+      'COOLDOWN_MIN_MINS', 'COOLDOWN_MAX_MINS', 'MIN_POSITION_VALUE_USD',
+    ];
+
+    // GET /api/bots/:id/config - Get bot config
+    this.app.get('/api/bots/:id/config', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      try {
+        res.json(bot.getConfigStore().getEffective());
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/bots/:id/config - Update bot config
+    this.app.post('/api/bots/:id/config', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      try {
+        const body = req.body as Record<string, unknown>;
+        const hasRecognisedKey = OVERRIDABLE_KEYS.some(k => k in body);
+        if (!body || !hasRecognisedKey) {
+          res.status(400).json({ errors: [{ field: '*', message: 'No recognised config keys in request body' }] });
+          return;
+        }
+        
+        const patch: Partial<OverridableConfig> = {};
+        for (const key of OVERRIDABLE_KEYS) {
+          if (key in body) (patch as Record<string, unknown>)[key] = body[key];
+        }
+        
+        const errors = validateOverrides(patch, bot.getConfigStore().getEffective());
+        if (errors.length > 0) {
+          res.status(400).json({ errors });
+          return;
+        }
+        
+        // Apply overrides to bot's ConfigStore
+        bot.getConfigStore().applyOverrides(patch);
+        
+        // Persist to file
+        const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
+        saveBotConfigsToFile(this.botManager, configPath);
+        
+        res.json(bot.getConfigStore().getEffective());
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // DELETE /api/bots/:id/config - Reset bot config to defaults
+    this.app.delete('/api/bots/:id/config', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+      
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+      
+      try {
+        bot.getConfigStore().resetToDefaults();
+        
+        // Persist to file
+        const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
+        saveBotConfigsToFile(this.botManager, configPath);
+        
+        res.json(bot.getConfigStore().getEffective());
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // PATCH /api/bots/:id/identity - Update bot name and/or symbol live
+    this.app.patch('/api/bots/:id/identity', (req, res) => {
+      if (!this.botManager) { res.status(503).json({ error: 'Bot manager not available' }); return; }
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) { res.status(404).json({ error: 'Bot not found' }); return; }
+      const { name, symbol } = req.body as { name?: string; symbol?: string };
+      if (!name && !symbol) { res.status(400).json({ error: 'Provide at least one of: name, symbol' }); return; }
+      try {
+        if (name && typeof name === 'string' && name.trim()) (bot.config as any).name = name.trim();
+        if (symbol && typeof symbol === 'string' && symbol.trim()) {
+          const sym = symbol.trim().toUpperCase();
+          (bot.config as any).symbol = sym;
+          bot.state.symbol = sym;
+          // Update Watcher's live symbol so next tick uses the new market
+          bot.getWatcher().setSymbol(sym);
+        }
+        const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
+        saveBotConfigsToFile(this.botManager, configPath);
+        res.json({ ok: true, name: bot.config.name, symbol: bot.config.symbol });
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+
+    console.log('[DashboardServer] Manager routes registered');
   }
 
   start(): void {

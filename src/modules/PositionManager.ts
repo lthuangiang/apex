@@ -75,6 +75,10 @@ export class PositionManager {
 
             this.dynamicMaxHold = Math.floor(Math.random() * (maxD - minD + 1)) + minD;
 
+            // FLOOR: Never hold less than FARM_MIN_HOLD_SECS regardless of behavior profile
+            const minHoldMs = config.FARM_MIN_HOLD_SECS * 1000;
+            if (this.dynamicMaxHold < minHoldMs) this.dynamicMaxHold = minHoldMs;
+
             // ABSOLUTE HARD CAP: Never exceed 3x the config baseline
             const absoluteCap = baseMs * 3;
             if (this.dynamicMaxHold > absoluteCap) this.dynamicMaxHold = absoluteCap;

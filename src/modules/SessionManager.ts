@@ -7,6 +7,7 @@ export type BotSession = {
 
 export class SessionManager {
     private session: BotSession;
+    private _maxLossTriggered = false;
 
     constructor() {
         this.session = {
@@ -22,6 +23,7 @@ export class SessionManager {
         this.session.isRunning = true;
         this.session.startTime = Date.now();
         this.session.currentPnL = 0;
+        this._maxLossTriggered = false; // reset on new session
         return true;
     }
 
@@ -30,13 +32,19 @@ export class SessionManager {
         // Keep stats for post-session reporting
     }
 
+    /** Reset max-loss flag so the bot can be restarted after an emergency stop */
+    resetMaxLoss() {
+        this._maxLossTriggered = false;
+    }
+
     setMaxLoss(amount: number) {
         this.session.maxLoss = Math.abs(amount);
     }
 
     updatePnL(pnl: number) {
         this.session.currentPnL = pnl;
-        if (this.session.isRunning && this.session.currentPnL <= -this.session.maxLoss) {
+        if (this.session.isRunning && !this._maxLossTriggered && this.session.currentPnL <= -this.session.maxLoss) {
+            this._maxLossTriggered = true; // fire only once per session
             console.log(`⚠️ [SessionManager] Max loss reached: ${this.session.currentPnL.toFixed(2)} <= -${this.session.maxLoss}`);
             return true; // Trigger emergency stop
         }

@@ -32,6 +32,13 @@ export function validateOverrides(
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
+  // Rule 0: MODE must be 'farm' or 'trade'
+  if ('MODE' in patch) {
+    if (patch.MODE !== 'farm' && patch.MODE !== 'trade') {
+      errors.push({ field: 'MODE', message: "Must be 'farm' or 'trade'" });
+    }
+  }
+
   // Rule 1: ORDER_SIZE_MIN and ORDER_SIZE_MAX must be positive numbers
   if ('ORDER_SIZE_MIN' in patch) {
     if (!isPositive(patch.ORDER_SIZE_MIN)) {

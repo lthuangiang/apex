@@ -6,6 +6,7 @@ import { validateOverrides, type ValidationError } from './validateOverrides';
 const PERSISTENCE_FILE = path.join(process.cwd(), 'config-overrides.json');
 
 export type OverridableConfig = {
+  MODE: 'farm' | 'trade';
   ORDER_SIZE_MIN: number;
   ORDER_SIZE_MAX: number;
   // ── Farm mode ──────────────────────────────────────────────────────────────
@@ -101,6 +102,7 @@ export interface ConfigStoreInterface {
 }
 
 const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
+  'MODE',
   'ORDER_SIZE_MIN',
   'ORDER_SIZE_MAX',
   // Farm mode
@@ -184,6 +186,7 @@ const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
 
 function extractBase(): OverridableConfig {
   return {
+    MODE: config.MODE as 'farm' | 'trade',
     ORDER_SIZE_MIN: config.ORDER_SIZE_MIN,
     ORDER_SIZE_MAX: config.ORDER_SIZE_MAX,
     FARM_MIN_HOLD_SECS: config.FARM_MIN_HOLD_SECS,
@@ -287,23 +290,12 @@ export class ConfigStore {
       }
     }
 
-    // Mutate the live config object so Watcher picks up changes on next tick
-    const effective = this.getEffective();
-    for (const key of OVERRIDABLE_KEYS) {
-      (config as Record<string, unknown>)[key] = effective[key];
-    }
-
     this.saveToDisk();
   }
 
   /** Clears all overrides and restores base config values. */
   resetToDefaults(): void {
     this.overrides = {};
-
-    // Restore base values on the live config object
-    for (const key of OVERRIDABLE_KEYS) {
-      (config as Record<string, unknown>)[key] = this.base[key];
-    }
 
     this.saveToDisk();
   }
@@ -365,7 +357,6 @@ export class ConfigStore {
       }
 
       (this.overrides as Record<string, number>)[key] = value as number;
-      (config as Record<string, unknown>)[key] = value;
     }
   }
 }

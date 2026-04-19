@@ -7,6 +7,27 @@
     </div>
     <div class="cfg-sections">
 
+      <!-- Bot Identity — only shown in multi-bot mode (BOT_CONTEXT set) -->
+      <div class="cfg-section" id="bot-identity-section" style="display:none">
+        <div class="cfg-section-title">🤖 Bot Identity</div>
+        <div class="cfg-fields">
+          <div class="cfg-field">
+            <label>Bot Name</label>
+            <div class="cfg-hint">Display name shown in dashboard</div>
+            <input type="text" id="cfg-bot-name" placeholder="e.g. SoDEX Bot"/>
+          </div>
+          <div class="cfg-field">
+            <label>Symbol</label>
+            <div class="cfg-hint">Trading pair (e.g. BTC-USD, BTC/USD)</div>
+            <input type="text" id="cfg-bot-symbol" placeholder="e.g. BTC-USD"/>
+          </div>
+        </div>
+        <div style="margin-top:.75rem;display:flex;align-items:center;gap:.6rem;">
+          <button class="cb g" onclick="updateBotIdentity()">✓ Save</button>
+          <span id="identity-toast" style="font-size:.72rem;opacity:0;transition:opacity .3s;"></span>
+        </div>
+      </div>
+
       <div class="cfg-section">
         <div class="cfg-section-title">📦 Order Sizing</div>
         <div class="cfg-fields">
@@ -143,8 +164,9 @@
         </div>
       </div>
 
+      <!-- Exchange-specific token section — shown/hidden by JS based on exchange -->
       <div class="cfg-section" id="sopoints-cfg-section">
-        <div class="cfg-section-title">🔑 SoDex SoPoints Token</div>
+        <div class="cfg-section-title">🔑 SoDEX SoPoints Token</div>
         <div class="cfg-fields" style="grid-template-columns:1fr;">
           <div class="cfg-field">
             <label>API Token</label>
@@ -155,6 +177,26 @@
         <div style="margin-top:0.75rem;display:flex;align-items:center;gap:0.6rem;">
           <button class="cb g" onclick="updateSoPointsToken()">✓ Update Token</button>
           <span id="sopoints-token-toast" style="font-size:0.72rem;opacity:0;transition:opacity 0.3s;"></span>
+        </div>
+      </div>
+
+      <div class="cfg-section" id="decibel-cfg-section" style="display:none">
+        <div class="cfg-section-title">🎵 Decibel AMPS Token</div>
+        <div class="cfg-fields" style="grid-template-columns:1fr;">
+          <div class="cfg-field">
+            <label>Authorization Token</label>
+            <div class="cfg-hint">Bearer token từ Decibel — dùng để fetch AMPS points</div>
+            <input type="password" id="decibel-token-input" placeholder="AG-XXXXXXXXXXXXXXXXXXXX"/>
+          </div>
+          <div class="cfg-field">
+            <label>Owner Address (0x...)</label>
+            <div class="cfg-hint">Aptos wallet address của account Decibel</div>
+            <input type="text" id="decibel-owner-input" placeholder="0x5941634d4ec6f9733c..."/>
+          </div>
+        </div>
+        <div style="margin-top:0.75rem;display:flex;align-items:center;gap:0.6rem;">
+          <button class="cb g" onclick="updateDecibelToken()">✓ Update</button>
+          <span id="decibel-token-toast" style="font-size:0.72rem;opacity:0;transition:opacity 0.3s;"></span>
         </div>
       </div>
 

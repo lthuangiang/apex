@@ -17,6 +17,9 @@ import { DashboardServer } from './dashboard/server.js';
 import { sharedState } from './ai/sharedState.js';
 import { configStore } from './config/ConfigStore.js';
 import { loadState, saveStateSync } from './ai/StateStore.js';
+import { BotManager } from './bot/BotManager.js';
+import { loadBotConfigs } from './bot/loadBotConfigs.js';
+import { createAdapter as createBotAdapter } from './bot/adapterFactory.js';
 
 const {
     // Exchange selector
@@ -82,10 +85,7 @@ function createAdapter(exchange: string, symbol: string): ExchangeAdapter {
 }
 
 async function bootstrap() {
-    const exchange = EXCHANGE ?? config.EXCHANGE ?? 'decibel';
-    const symbol = SYMBOL || config.SYMBOL;
-
-    console.log(`\n🚀 SHIELD-BOT starting... [exchange: ${exchange.toUpperCase()} | symbol: ${symbol}]`);
+    console.log(`\n🚀 SHIELD-BOT starting...`);
 
     // Load persisted config overrides before any trading logic runs
     configStore.loadFromDisk();
@@ -93,44 +93,141 @@ async function bootstrap() {
     // Load persisted bot state (PnL, logs, history)
     loadState();
 
-    // ── Adapter (selected by EXCHANGE env) ───────────────────────────────────
-    const adapter = createAdapter(exchange, symbol);
+    // ── Multi-Bot Mode: Load bot configs ─────────────────────────────────────
+    const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
+    const botConfigs = loadBotConfigs(configPath);
 
-    // ── Core modules ──────────────────────────────────────────────────────────
-    const telegramEnabled = process.env.TELEGRAM_ENABLED !== 'false';    const telegram = new TelegramManager(
+    const telegramEnabled = process.env.TELEGRAM_ENABLED !== 'false';
+    const telegram = new TelegramManager(
         telegramEnabled ? TELEGRAM_BOT_TOKEN : undefined,
         telegramEnabled ? TELEGRAM_CHAT_ID : undefined,
     );
 
-    const sessionManager = new SessionManager();
-    const watcher = new Watcher(adapter, symbol, telegram, sessionManager);
-
-    const tradeLogger = new TradeLogger(
-        (TRADE_LOG_BACKEND as 'json' | 'sqlite') || 'json',
-        TRADE_LOG_PATH || './trades.json',
-    );
-
     // ── Dashboard ─────────────────────────────────────────────────────────────
     const dashboardPort = parseInt(DASHBOARD_PORT || '3000', 10);
-    const dashboardServer = new DashboardServer(tradeLogger, dashboardPort);
-
-    dashboardServer.setBotControls(sessionManager, watcher, () => {
-        watcher.run().catch(err => {
-            console.error('Watcher crashed:', err);
-            sessionManager.stopSession();
+    
+    // Check if we're in multi-bot mode or single-bot mode
+    const isMultiBot = botConfigs.length > 0;
+    
+    if (isMultiBot) {
+        console.log(`📦 [Multi-Bot Mode] Found ${botConfigs.length} bot config(s)`);
+        
+        // Create BotManager and initialize bots
+        const botManager = new BotManager();
+        
+        for (const botConfig of botConfigs) {
+            try {
+                const adapter = createBotAdapter(botConfig.exchange, botConfig.credentialKey);
+                const botInstance = botManager.createBot(botConfig, adapter, telegram);
+                
+                // Auto-start if configured
+                if (botConfig.autoStart) {
+                    console.log(`🚀 [Multi-Bot] Auto-starting bot: ${botConfig.id}`);
+                    await botInstance.start();
+                }
+            } catch (err) {
+                console.error(`❌ [Multi-Bot] Failed to create bot ${botConfig.id}:`, err);
+            }
+        }
+        
+        // Create dashboard with BotManager
+        // In multi-bot mode, we create a dummy TradeLogger that won't be used
+        const dummyLogger = new TradeLogger('json', './trades-dummy.json');
+        const dashboardServer = new DashboardServer(dummyLogger, dashboardPort);
+        dashboardServer.registerBotManager(botManager);
+        dashboardServer.start();
+        
+        console.log(`✅ [Multi-Bot] Dashboard started with ${botManager.getBotCount()} bot(s)`);
+        
+        // Telegram commands work with first bot for backward compatibility
+        const firstBot = botManager.getAllBots()[0];
+        if (firstBot) {
+            setupTelegramCommands(telegram, firstBot.getSessionManager(), firstBot.getWatcher(), firstBot.config.symbol);
+        }
+        
+        // Graceful shutdown for multi-bot
+        const shutdown = async (signal: string) => {
+            console.log(`\n🛑 [System] ${signal} received. Shutting down all bots...`);
+            for (const bot of botManager.getAllBots()) {
+                if (bot.state.botStatus === 'RUNNING') {
+                    await bot.stop();
+                }
+            }
+            saveStateSync();
+            await telegram.sendMessage(`⚠️ *Bot Shutting Down* (${signal}). All operations suspended.`);
+            process.exit(0);
+        };
+        
+        process.on('SIGTERM', () => shutdown('SIGTERM'));
+        process.on('SIGINT', () => shutdown('SIGINT'));
+        
+        console.log('📡 [System] Multi-Bot Manager ready. Waiting for commands...');
+        await telegram.sendMessage('🤖 *SHIELD-BOT Online* (Multi-Bot Mode)\nControl via dashboard or commands.', true);
+        
+    } else {
+        // ── Single-Bot Mode (Backward Compatibility) ─────────────────────────
+        console.log(`📦 [Single-Bot Mode] Using legacy configuration`);
+        
+        const exchange = EXCHANGE ?? config.EXCHANGE ?? 'decibel';
+        const symbol = SYMBOL || config.SYMBOL;
+        
+        console.log(`   [exchange: ${exchange.toUpperCase()} | symbol: ${symbol}]`);
+        
+        const adapter = createAdapter(exchange, symbol);
+        const sessionManager = new SessionManager();
+        const watcher = new Watcher(adapter, symbol, telegram, sessionManager);
+        const tradeLogger = new TradeLogger(
+            (TRADE_LOG_BACKEND as 'json' | 'sqlite') || 'json',
+            TRADE_LOG_PATH || './trades.json',
+        );
+        
+        const dashboardServer = new DashboardServer(tradeLogger, dashboardPort);
+        dashboardServer.setBotControls(sessionManager, watcher, () => {
+            watcher.run().catch(err => {
+                console.error('Watcher crashed:', err);
+                sessionManager.stopSession();
+            });
         });
-    });
+        dashboardServer.setConfigStore(configStore);
+        
+        // Set shared state metadata
+        sharedState.symbol = symbol;
+        if (DECIBELS_SUBACCOUNT) sharedState.walletAddress = DECIBELS_SUBACCOUNT;
+        dashboardServer.start();
+        
+        setupTelegramCommands(telegram, sessionManager, watcher, symbol);
+        
+        // Graceful shutdown for single-bot
+        const shutdown = async (signal: string) => {
+            console.log(`\n🛑 [System] ${signal} received. Shutting down...`);
+            if (sessionManager.getState().isRunning) {
+                sessionManager.stopSession();
+                watcher.stop();
+            }
+            saveStateSync();
+            await telegram.sendMessage(`⚠️ *Bot Shutting Down* (${signal}). Operations suspended.`);
+            process.exit(0);
+        };
+        
+        process.on('SIGTERM', () => shutdown('SIGTERM'));
+        process.on('SIGINT', () => shutdown('SIGINT'));
+        
+        console.log('📡 [System] Waiting for Telegram commands...');
+        await telegram.sendMessage('🤖 *SHIELD-BOT Online*\nControl via menu, buttons, or commands.', true);
+    }
+}
 
-    dashboardServer.setConfigStore(configStore);
-
-    // Set shared state metadata
-    sharedState.symbol = symbol;
-    if (DECIBELS_SUBACCOUNT) sharedState.walletAddress = DECIBELS_SUBACCOUNT;
-    dashboardServer.start();
+function setupTelegramCommands(
+    telegram: TelegramManager,
+    sessionManager: SessionManager,
+    watcher: Watcher,
+    symbol: string
+) {
+    // Get adapter from watcher (private field, but we need it for commands)
+    const adapter = (watcher as any).adapter as ExchangeAdapter;
 
     // ── Telegram commands ─────────────────────────────────────────────────────
-    await telegram.setupMenu();
-
+    telegram.setupMenu().catch(err => console.error('Failed to setup Telegram menu:', err));
     telegram.onCommand('start_bot', async () => {
         if (sessionManager.getState().isRunning) {
             await telegram.sendMessage('⚠️ Bot is already running.');
@@ -259,24 +356,6 @@ async function bootstrap() {
             await telegram.sendMessage('❌ *Failed to Close Position.* Check logs or dashboard.');
         }
     });
-
-    // ── Graceful shutdown ─────────────────────────────────────────────────────
-    const shutdown = async (signal: string) => {
-        console.log(`\n🛑 [System] ${signal} received. Shutting down...`);
-        if (sessionManager.getState().isRunning) {
-            sessionManager.stopSession();
-            watcher.stop();
-        }
-        saveStateSync();
-        await telegram.sendMessage(`⚠️ *Bot Shutting Down* (${signal}). Operations suspended.`);
-        process.exit(0);
-    };
-
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
-
-    console.log('📡 [System] Waiting for Telegram commands...');
-    await telegram.sendMessage('🤖 *SHIELD-BOT Online* (Decibel)\nControl via menu, buttons, or commands.', true);
 }
 
 bootstrap().catch(error => {

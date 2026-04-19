@@ -17,6 +17,7 @@ services:
       - TELEGRAM_ENABLED=true
       - STATE_STORE_PATH=/app/data/bot_state.json
       - TRADE_LOG_PATH=/app/data/trades.json
+      - BOT_CONFIGS_PATH=/app/data/bot-configs.json
     ports:
       - "3000:3000"
     volumes:

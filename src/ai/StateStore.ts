@@ -14,6 +14,8 @@ const DEBOUNCE_MS = 3000;
 interface PersistedState {
   sessionPnl: number;
   sessionVolume: number;
+  todayVolume?: number;
+  todayVolumeDate?: string;
   pnlHistory: PnlDataPoint[];
   volumeHistory: PnlDataPoint[];
   eventLog: EventLogEntry[];
@@ -30,6 +32,12 @@ export function loadState(): void {
     const saved: PersistedState = JSON.parse(raw);
     if (typeof saved.sessionPnl === 'number') sharedState.sessionPnl = saved.sessionPnl;
     if (typeof saved.sessionVolume === 'number') sharedState.sessionVolume = saved.sessionVolume;
+    // Restore todayVolume only if it's still the same UTC day
+    const today = new Date().toISOString().slice(0, 10);
+    if (typeof saved.todayVolume === 'number' && saved.todayVolumeDate === today) {
+      sharedState.todayVolume = saved.todayVolume;
+      sharedState.todayVolumeDate = today;
+    }
     if (Array.isArray(saved.pnlHistory)) sharedState.pnlHistory = saved.pnlHistory;
     if (Array.isArray(saved.volumeHistory)) sharedState.volumeHistory = saved.volumeHistory;
     if (Array.isArray(saved.eventLog)) sharedState.eventLog = saved.eventLog;
@@ -47,6 +55,8 @@ export function saveState(): void {
       const payload: PersistedState = {
         sessionPnl: sharedState.sessionPnl,
         sessionVolume: sharedState.sessionVolume,
+        todayVolume: sharedState.todayVolume,
+        todayVolumeDate: sharedState.todayVolumeDate,
         pnlHistory: sharedState.pnlHistory,
         volumeHistory: sharedState.volumeHistory,
         eventLog: sharedState.eventLog,
@@ -66,6 +76,8 @@ export function saveStateSync(): void {
     const payload: PersistedState = {
       sessionPnl: sharedState.sessionPnl,
       sessionVolume: sharedState.sessionVolume,
+      todayVolume: sharedState.todayVolume,
+      todayVolumeDate: sharedState.todayVolumeDate,
       pnlHistory: sharedState.pnlHistory,
       volumeHistory: sharedState.volumeHistory,
       eventLog: sharedState.eventLog,

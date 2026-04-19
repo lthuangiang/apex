@@ -1,0 +1,59 @@
+<div class="bot-grid" id="bot-cards">
+  <div class="state-loading">
+    <div class="spinner"></div>
+    Loading bots...
+  </div>
+</div>
+
+<!-- Bot Card Template (rendered by manager-dashboard.js) -->
+<template id="bot-card-template">
+  <div class="bot-card {cardClass}" data-bot-id="{id}" data-status="{status}">
+    <div class="card-header">
+      <div class="card-identity">
+        <div class="card-name">{name}</div>
+        <div class="card-meta">
+          <span class="exchange-badge">{exchange}</span>
+          {strategyTags}
+        </div>
+      </div>
+      <div class="status-pill {status}">
+        <div class="status-dot"></div>
+        {statusText}
+      </div>
+    </div>
+
+    <div class="sparkline-wrap" id="sparkline-{id}">
+      <div class="sparkline-empty">No trade history yet</div>
+    </div>
+
+    <div class="pnl-hero">
+      <span class="pnl-value {pnlClass}">{pnlSign}${pnl}</span>
+      <span class="pnl-label">Session PnL</span>
+    </div>
+
+    <div class="card-stats">
+      <div class="stat-item">
+        <span class="stat-item-label">Volume</span>
+        <span class="stat-item-value">${volume}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-item-label">Efficiency</span>
+        <span class="stat-item-value {effClass}">{efficiency} bps</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-item-label">Uptime</span>
+        <span class="stat-item-value">{uptime}m</span>
+      </div>
+    </div>
+
+    <div class="card-actions">
+      <button class="btn btn-primary btn-start-bot" data-bot-id="{id}" style="display:{startDisplay}">
+        ▶ Start Bot
+      </button>
+      <button class="btn btn-danger btn-stop-bot" data-bot-id="{id}" style="display:{stopDisplay}">
+        ■ Stop
+      </button>
+      <a href="/bots/{id}" class="btn btn-ghost">Details →</a>
+    </div>
+  </div>
+</template>

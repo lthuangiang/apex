@@ -24,6 +24,8 @@ export interface OpenPositionState {
 export const sharedState = {
   sessionPnl: 0,
   sessionVolume: 0,
+  todayVolume: 0,
+  todayVolumeDate: new Date().toISOString().slice(0, 10), // UTC date YYYY-MM-DD
   updatedAt: new Date().toISOString(),
   botStatus: 'STOPPED' as 'RUNNING' | 'STOPPED',
   symbol: 'BTC-USD',
@@ -33,6 +35,16 @@ export const sharedState = {
   eventLog: [] as EventLogEntry[],
   openPosition: null as OpenPositionState | null,
 };
+
+/** Add volume to today's UTC volume counter, auto-resets at UTC midnight */
+export function addTodayVolume(amount: number): void {
+  const today = new Date().toISOString().slice(0, 10);
+  if (sharedState.todayVolumeDate !== today) {
+    sharedState.todayVolume = 0;
+    sharedState.todayVolumeDate = today;
+  }
+  sharedState.todayVolume += amount;
+}
 
 // SSE subscribers for realtime log streaming
 const sseClients = new Set<(data: string) => void>();

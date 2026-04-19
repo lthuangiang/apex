@@ -26,11 +26,12 @@ COPY package*.json ./
 RUN npm ci
 
 COPY --from=builder /app/dist ./dist
-
-RUN chown -R node:node /app
+COPY bot-configs.json ./bot-configs.default.json
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh && chown -R node:node /app
 
 EXPOSE 3000
 
 USER node
 
-CMD ["npx", "tsx", "dist/bot.js"]
+CMD ["./docker-entrypoint.sh"]

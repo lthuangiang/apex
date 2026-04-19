@@ -456,6 +456,88 @@ export class DecibelAdapter implements ExchangeAdapter {
         return []; // Stub
     }
 
+    /**
+     * Compute today's UTC trading volume by querying the Decibel trade history API.
+     * Sums size * price for all trades where transaction_unix_ms falls within the
+     * current UTC day (00:00:00 UTC to 23:59:59.999 UTC).
+     *
+     * Handles pagination automatically if total_count > 200.
+     * Throws on API error so the caller can decide to keep the existing value.
+     */
+    async getTodayVolumeFromAPI(): Promise<number> {
+        const now = new Date();
+        const todayStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+        const tomorrowStartMs = todayStartMs + 86_400_000;
+
+        // Use raw fetch to bypass SDK Zod schema validation.
+        // The API response may be missing total_count, causing:
+        // "Invalid input: expected number, received undefined → at total_count"
+        const tradingHttpUrl: string = (this.read as any)?.deps?.config?.tradingHttpUrl
+            ?? 'https://api.mainnet.aptoslabs.com/decibel';
+        const nodeApiKey: string = (this.read as any)?.deps?.apiKey ?? '';
+
+        const fetchPage = async (limit: number, offset: number): Promise<{ items: any[]; totalCount: number }> => {
+            const url = `${tradingHttpUrl}/api/v1/trade_history?account=${encodeURIComponent(this.subaccountAddr)}&limit=${limit}&offset=${offset}`;
+            const headers: Record<string, string> = {};
+            if (nodeApiKey) headers['Authorization'] = `Bearer ${nodeApiKey}`;
+
+            const res = await fetch(url, { headers });
+            if (!res.ok) {
+                throw new Error(`trade_history API error: ${res.status} ${res.statusText}`);
+            }
+            const raw = await res.json();
+
+            // Handle all known response formats:
+            //   { items: [...], total_count: N }  <- SDK schema expects this
+            //   [...] direct array
+            //   { data: [...] }
+            let items: any[];
+            let totalCount: number;
+
+            if (Array.isArray(raw)) {
+                items = raw;
+                totalCount = raw.length;
+            } else if (raw && Array.isArray(raw.items)) {
+                items = raw.items;
+                totalCount = typeof raw.total_count === 'number' ? raw.total_count : items.length;
+            } else if (raw && Array.isArray(raw.data)) {
+                items = raw.data;
+                totalCount = typeof raw.total_count === 'number' ? raw.total_count : items.length;
+            } else {
+                items = [];
+                totalCount = 0;
+            }
+
+            return { items, totalCount };
+        };
+
+        let totalVolume = 0;
+        let offset = 0;
+        const limit = 200;
+
+        const firstPage = await fetchPage(limit, offset);
+        for (const item of firstPage.items) {
+            if (item.transaction_unix_ms >= todayStartMs && item.transaction_unix_ms < tomorrowStartMs) {
+                totalVolume += (item.size ?? 0) * (item.price ?? 0);
+            }
+        }
+
+        // Paginate if needed
+        offset += limit;
+        while (offset < firstPage.totalCount) {
+            const page = await fetchPage(limit, offset);
+            for (const item of page.items) {
+                if (item.transaction_unix_ms >= todayStartMs && item.transaction_unix_ms < tomorrowStartMs) {
+                    totalVolume += (item.size ?? 0) * (item.price ?? 0);
+                }
+            }
+            offset += limit;
+        }
+
+        console.log(`[DecibelAdapter] getTodayVolumeFromAPI: $${totalVolume.toFixed(2)} (${firstPage.totalCount} total trades)`);
+        return totalVolume;
+    }
+
     // IExchangeAdapter interface methods (camelCase aliases)
     async getMarkPrice(symbol: string): Promise<number> {
         return this.get_mark_price(symbol);

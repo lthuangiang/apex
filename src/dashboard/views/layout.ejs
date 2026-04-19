@@ -1,39 +1,578 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>DRIFT — Let it run.</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="/css/main.css"/>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DRIFT</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<% if (typeof botId !== 'undefined' && botId) { %><script>window.BOT_CONTEXT={botId:'<%= botId %>',exchange:'<%= typeof exchange !== "undefined" ? exchange : "" %>',botName:'<%= typeof botName !== "undefined" ? botName.replace(/'/g, "\\'") : "" %>'};</script><% } %>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F7F9FB;--surface:#fff;--s2:#f4f6f9;--border:#e8eaed;--text1:#0d1117;--text2:#4b5563;--text3:#9ca3af;
+  --accent:#4361ee;--adim:#eef0fd;--green:#15803d;--gbg:#f0fdf4;--gborder:#bbf7d0;--gglow:rgba(21,128,61,.12);
+  --red:#b91c1c;--rbg:#fef2f2;--rborder:#fecaca;--orange:#c2410c;--obg:#fff7ed;
+  --sh0:0 1px 2px rgba(0,0,0,.05);--sh1:0 1px 4px rgba(0,0,0,.07),0 1px 2px rgba(0,0,0,.04);
+  --sh2:0 4px 16px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);--sh3:0 12px 32px rgba(0,0,0,.10),0 4px 8px rgba(0,0,0,.05);
+  --r:10px;--rs:7px;--rx:5px;--tr:all .15s ease;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;background:var(--bg);color:var(--text1);-webkit-font-smoothing:antialiased;min-height:100vh}
+
+/* TOPBAR */
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 1rem;position:sticky;top:0;z-index:300;box-shadow:var(--sh0)}
+.tl{display:flex;align-items:center;gap:.6rem}
+.tr{display:flex;align-items:center;gap:.5rem}
+.back-link{display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:500;color:var(--text2);text-decoration:none;padding:.2rem .5rem;border-radius:var(--rx);border:1px solid var(--border);background:var(--s2);transition:var(--tr)}
+.back-link:hover{background:var(--border);color:var(--text1)}
+.brand{font-size:.85rem;font-weight:700;color:var(--text1);letter-spacing:-.02em}
+.live-pill{display:flex;align-items:center;gap:.3rem;font-size:.62rem;font-weight:700;letter-spacing:.08em;color:var(--text3)}
+.ldot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.ldot.on{animation:blink 1.4s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1;box-shadow:0 0 0 0 var(--gglow)}50%{opacity:.5;box-shadow:0 0 0 4px var(--gglow)}}
+.topbar-time{font-size:.68rem;color:var(--text3);font-variant-numeric:tabular-nums}
+.icon-btn{width:30px;height:30px;border-radius:var(--rx);border:1px solid var(--border);background:var(--s2);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--tr)}
+.icon-btn:hover{background:var(--border);color:var(--text1)}
+
+/* HERO HEADER — compact command bar */
+.hero-hd{background:var(--surface);border-bottom:1px solid var(--border);padding:.75rem 1rem}
+.hero-in{max-width:1440px;margin:0 auto;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:1rem}
+
+/* Identity */
+.hero-id{display:flex;flex-direction:column;gap:.2rem;min-width:1px}
+.hero-name{font-size:.95rem;font-weight:800;letter-spacing:-.02em;color:var(--text1);white-space:nowrap}
+.hero-pair{font-size:.62rem;color:var(--text3);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.hero-st{display:inline-flex;align-items:center;gap:.25rem;font-size:.6rem;font-weight:700;letter-spacing:.06em;padding:.15rem .45rem;border-radius:20px;margin-top:.1rem;width:fit-content;line-height:1.4}
+.hero-st.running{background:var(--gbg);color:var(--green);border:1px solid var(--gborder)}
+.hero-st.running .sdot{animation:blink 1.4s ease-in-out infinite}
+.hero-st.stopped{background:var(--s2);color:var(--text3);border:1px solid var(--border)}
+.sdot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+/* KPI strip */
+.hero-kpis{display:flex;align-items:stretch;gap:0;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.kpi-blk{flex:1;min-width:0;padding:.5rem .85rem;display:flex;flex-direction:column;gap:.05rem;border-right:1px solid var(--border)}
+.kpi-blk:last-child{border-right:none}
+.kpi-lbl{font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)}
+.kpi-val{font-size:1.2rem;font-weight:900;letter-spacing:-.04em;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi-val.pos{color:var(--green)}.kpi-val.neg{color:var(--red)}.kpi-val.neu{color:var(--text2)}
+.kpi-sub{font-size:.58rem;color:var(--text3);margin-top:.05rem}
+@keyframes pnlFlash{0%{opacity:.3}100%{opacity:1}}
+.pnl-flash{animation:pnlFlash .35s ease}
+
+/* Compat aliases for JS */
+.pnl-val{font-size:1.2rem;font-weight:900;letter-spacing:-.04em;line-height:1.1}
+.pnl-val.pos{color:var(--green)}.pnl-val.neg{color:var(--red)}.pnl-val.neu{color:var(--text2)}
+
+/* Hero right actions */
+.hero-actions{display:flex;align-items:center;gap:.5rem;flex-shrink:0}
+
+/* CONTROL PANEL — compact inline */
+.ctrl-panel{background:var(--surface);border-bottom:1px solid var(--border);padding:.6rem 1rem}
+.ctrl-in{max-width:1440px;margin:0 auto;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap; padding: 0rem 1.25rem;}
+.ctrl-blk{display:flex;align-items:center;gap:.4rem}
+.ctrl-sep{width:1px;height:24px;background:var(--border);flex-shrink:0}
+.ctrl-lbl{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);white-space:nowrap}
+.ctrl-row{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;padding:.4rem .8rem;border-radius:var(--rx);font-size:.72rem;font-weight:700;cursor:pointer;transition:var(--tr);border:none;white-space:nowrap;letter-spacing:.01em}
+.btn:active{transform:scale(.97)}
+.btn-start{background:var(--accent);color:#fff;box-shadow:0 1px 6px rgba(67,97,238,.35)}
+.btn-start:hover:not(:disabled){background:#3451d1;box-shadow:0 2px 10px rgba(67,97,238,.45)}
+.btn-start:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.btn-stop{background:var(--rbg);color:var(--red);border:1.5px solid var(--rborder)}
+.btn-stop:hover:not(:disabled){background:#fee2e2}
+.btn-stop:disabled{opacity:.45;cursor:not-allowed}
+.btn-emg{background:var(--obg);color:var(--orange);border:1.5px solid #fed7aa;font-size:.7rem}
+.btn-emg:hover{background:#ffedd5}
+
+/* MODE TOGGLE */
+.mode-tgl{display:flex;background:var(--s2);border:1px solid var(--border);border-radius:var(--rx);padding:2px}
+.mode-btn{padding:.22rem .55rem;border-radius:4px;font-size:.68rem;font-weight:700;cursor:pointer;border:none;background:transparent;color:var(--text3);transition:var(--tr)}
+.mode-btn.active{background:var(--surface);color:var(--text1);box-shadow:var(--sh0)}
+
+/* RISK */
+.risk-wrap{display:flex;align-items:center;gap:.3rem}
+.risk-in{width:56px;padding:.28rem .45rem;border:1.5px solid var(--border);border-radius:var(--rx);font-size:.72rem;font-weight:700;color:var(--text1);background:var(--surface);outline:none;transition:border-color .15s;font-variant-numeric:tabular-nums}
+.risk-in:focus{border-color:var(--accent)}
+.risk-set{padding:.28rem .5rem;border-radius:var(--rx);font-size:.65rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--s2);color:var(--text2);transition:var(--tr)}
+.risk-set:hover{background:var(--border)}
+.risk-st{font-size:.6rem;font-weight:700;padding:.1rem .35rem;border-radius:20px}
+.risk-st.safe{background:var(--gbg);color:var(--green)}
+.risk-st.warn{background:#fff7ed;color:var(--orange)}
+.risk-st.danger{background:var(--rbg);color:var(--red)}
+
+/* TOAST */
+.ctrl-toast{font-size:.68rem;font-weight:600;opacity:0;transition:opacity .3s;padding:.18rem .45rem;border-radius:var(--rx)}
+.ctrl-toast.ok{color:var(--green);background:var(--gbg)}
+.ctrl-toast.err{color:var(--red);background:var(--rbg)}
+
+/* TABS — inline in ctrl bar */
+.tab-btn{padding:.3rem .7rem;font-size:.72rem;font-weight:600;color:var(--text3);background:transparent;border:none;border-bottom:2px solid transparent;cursor:pointer;transition:var(--tr);white-space:nowrap}
+.tab-btn:hover{color:var(--text1)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* PAGE */
+.page{max-width:1440px;margin:0 auto;padding:1rem}
+.cockpit-grid{display:grid;grid-template-columns:1fr;gap:1rem}
+
+/* PANELS */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh1);overflow:hidden;transition:box-shadow .2s}
+.panel:hover{box-shadow:var(--sh2)}
+.panel-hd{display:flex;align-items:center;justify-content:space-between;padding:.65rem .875rem;border-bottom:1px solid var(--border)}
+.panel-title{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text3)}
+.panel-bd{padding:.875rem}
+
+/* CHARTS */
+.chart-wrap{height:150px;position:relative}
+.chart-wrap canvas{width:100%!important;height:150px!important}
+.chart-skel{width:100%;height:100%;background:linear-gradient(90deg,var(--s2) 25%,var(--border) 50%,var(--s2) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--rx)}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+/* POSITION */
+.pos-empty-st{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.25rem 1rem;gap:.4rem;color:var(--text3)}
+.pos-empty-icon{font-size:1.4rem;opacity:.35}
+.pos-empty-txt{font-size:.72rem}
+.pos-row{display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid var(--border)}
+.pos-row:last-child{border-bottom:none}
+.pos-key{font-size:.65rem;color:var(--text3);font-weight:500}
+.pos-val{font-size:.78rem;font-weight:700;color:var(--text1);font-variant-numeric:tabular-nums}
+.pos-val.pos{color:var(--green)}.pos-val.neg{color:var(--red)}
+.pos-side{display:inline-flex;align-items:center;gap:.2rem;font-size:.62rem;font-weight:800;padding:.18rem .45rem;border-radius:20px;letter-spacing:.05em}
+.pos-side.long{background:var(--gbg);color:var(--green);border:1px solid var(--gborder)}
+.pos-side.short{background:var(--rbg);color:var(--red);border:1px solid var(--rborder)}
+
+/* ACTIVITY */
+.act-item{display:flex;align-items:flex-start;gap:.5rem;padding:.45rem 0;border-bottom:1px solid var(--border)}
+.act-item:last-child{border-bottom:none}
+.act-dot{width:6px;height:6px;border-radius:50%;margin-top:.3rem;flex-shrink:0}
+.act-dot.buy{background:var(--green)}.act-dot.sell{background:var(--red)}.act-dot.info{background:var(--accent)}
+.act-body{flex:1;min-width:0}
+.act-msg{font-size:.72rem;color:var(--text1);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.act-time{font-size:.62rem;color:var(--text3);margin-top:.08rem}
+
+/* STATS */
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid var(--border)}
+.stat-row:last-child{border-bottom:none}
+.stat-key{font-size:.65rem;color:var(--text3);font-weight:500}
+.stat-val{font-size:.75rem;font-weight:700;color:var(--text1);font-variant-numeric:tabular-nums}
+.stat-val.pos{color:var(--green)}.stat-val.neg{color:var(--red)}
+
+/* COOLDOWN */
+.cd-val{font-size:1.5rem;font-weight:900;color:var(--orange);letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+
+/* TABLES */
+.data-table{width:100%;border-collapse:collapse;font-size:.72rem}
+.data-table th{text-align:left;padding:.45rem .65rem;font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);border-bottom:1px solid var(--border);background:var(--s2)}
+.data-table td{padding:.45rem .65rem;border-bottom:1px solid var(--border);color:var(--text2);font-variant-numeric:tabular-nums}
+.data-table tr:last-child td{border-bottom:none}
+.data-table tr:hover td{background:var(--s2)}
+.td-pos{color:var(--green);font-weight:700}.td-neg{color:var(--red);font-weight:700}
+.td-buy{color:var(--green);font-weight:800;font-size:.62rem;letter-spacing:.04em}
+.td-sell{color:var(--red);font-weight:800;font-size:.62rem;letter-spacing:.04em}
+.pg-row{display:flex;align-items:center;justify-content:space-between;padding:.5rem .65rem;border-top:1px solid var(--border);font-size:.68rem;color:var(--text3)}
+.pg-btn{padding:.22rem .5rem;border:1px solid var(--border);border-radius:var(--rx);background:var(--s2);color:var(--text2);cursor:pointer;font-size:.68rem;transition:var(--tr)}
+.pg-btn:hover:not(:disabled){background:var(--border)}
+.pg-btn:disabled{opacity:.35;cursor:not-allowed}
+
+/* LOG */
+.log-tabs{display:flex;gap:.2rem;padding:.35rem .65rem;border-bottom:1px solid var(--border)}
+.log-tab{padding:.22rem .55rem;font-size:.65rem;font-weight:600;border-radius:var(--rx);border:none;cursor:pointer;background:transparent;color:var(--text3);transition:var(--tr)}
+.log-tab.active{background:var(--adim);color:var(--accent)}
+.log-body{height:160px;overflow-y:auto;padding:.5rem .65rem;font-size:.65rem;font-family:'SF Mono','Fira Code','Consolas',monospace;color:var(--text2);line-height:1.7}
+
+/* CFG MODAL */
+.cfg-overlay{display:none;position:fixed;inset:0;background:rgba(15,17,23,.45);z-index:1000;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+.cfg-overlay.open{display:flex}
+.cfg-modal{background:var(--surface);border-radius:var(--r);box-shadow:var(--sh3);width:min(680px,96vw);max-height:90vh;overflow-y:auto;border:1px solid var(--border)}
+.cfg-modal-header{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1}
+.cfg-modal-header h2{font-size:.9rem;font-weight:700;color:var(--text1)}
+.cfg-close{width:26px;height:26px;border-radius:var(--rx);border:1px solid var(--border);background:var(--s2);color:var(--text2);cursor:pointer;font-size:.85rem;display:flex;align-items:center;justify-content:center;transition:var(--tr)}
+.cfg-close:hover{background:var(--border)}
+.cfg-sections{padding:1rem 1.25rem;display:flex;flex-direction:column;gap:1.25rem}
+.cfg-section-title{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text2);margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:1px solid var(--border)}
+.cfg-fields{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+.cfg-field label{display:block;font-size:.65rem;font-weight:600;color:var(--text2);margin-bottom:.18rem}
+.cfg-hint{font-size:.6rem;color:var(--text3);margin-bottom:.28rem;line-height:1.4}
+.cfg-field input{width:100%;padding:.38rem .55rem;border:1.5px solid var(--border);border-radius:var(--rx);font-size:.75rem;color:var(--text1);background:var(--surface);outline:none;transition:border-color .15s}
+.cfg-field input:focus{border-color:var(--accent)}
+.cfg-actions{display:flex;align-items:center;gap:.55rem;padding:.8rem 1.25rem;border-top:1px solid var(--border);background:var(--s2);position:sticky;bottom:0}
+.cfg-toast{font-size:.7rem;opacity:0;transition:opacity .3s}
+.cb{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;padding:.42rem .8rem;border-radius:var(--rx);font-size:.75rem;font-weight:700;cursor:pointer;transition:var(--tr);border:1px solid var(--border);background:var(--s2);color:var(--text2)}
+.cb:hover{background:var(--border)}
+.cb.g{background:var(--accent);color:#fff;border-color:var(--accent)}
+.cb.g:hover{background:#3451d1}
+
+/* ANALYTICS */
+.an-section{max-width:1440px;margin:0 auto;padding:1rem;display:flex;flex-direction:column;gap:1rem}
+.an-grid-4{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.an-grid-2{display:grid;grid-template-columns:1fr;gap:1rem}
+.an-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:.8rem .9rem;box-shadow:var(--sh1)}
+.an-stat-label{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:.28rem}
+.an-stat-value{font-size:1.25rem;font-weight:800;letter-spacing:-.03em;color:var(--text1)}
+.an-stat-value.pos{color:var(--green)}.an-stat-value.neg{color:var(--red)}
+
+/* ANALYTICS PARTIALS — classes used by analytics/*.ejs */
+.an-cards-row{display:grid;grid-template-columns:repeat(2,1fr);gap:.75rem;margin-bottom:1rem}
+.an-charts-row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1rem}
+.an-three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;margin-bottom:1rem}
+.an-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:.875rem 1rem;box-shadow:var(--sh1)}
+.an-card-label{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:.3rem}
+.an-card-value{font-size:1.5rem;font-weight:800;letter-spacing:-.04em;color:var(--text1)}
+.an-card-sub{font-size:.65rem;color:var(--text3);margin-top:.15rem}
+.an-section-title{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:1px solid var(--border)}
+.an-metric-row{display:flex;justify-content:space-between;align-items:center;padding:.35rem 0;border-bottom:1px solid var(--border)}
+.an-metric-row:last-child{border-bottom:none}
+.an-metric-label{font-size:.72rem;color:var(--text3)}
+.an-metric-value{font-size:.78rem;font-weight:700;color:var(--text1)}
+.an-chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:.875rem 1rem;box-shadow:var(--sh1)}
+.an-chart-card h3{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);margin-bottom:.6rem}
+.an-chart-wrap{height:160px;position:relative}
+.an-chart-wrap canvas{width:100%!important;height:160px!important}
+.an-trade-card{padding:.5rem 0}
+.an-trade-pnl{font-size:1.25rem;font-weight:800;letter-spacing:-.03em}
+.an-trade-pnl.positive{color:var(--green)}.an-trade-pnl.negative{color:var(--red)}
+.an-trade-meta{font-size:.68rem;color:var(--text3);margin-top:.2rem}
+@media(min-width:768px){.an-cards-row{grid-template-columns:repeat(4,1fr)}.an-grid-4{grid-template-columns:repeat(4,1fr)}.an-grid-2{grid-template-columns:1fr 1fr}}
+
+/* INFO CARDS */
+.info-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:.875rem;box-shadow:var(--sh1)}
+.info-card-label{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin-bottom:.35rem}
+.info-card-value{font-size:1.35rem;font-weight:800;letter-spacing:-.04em;color:var(--text1)}
+.info-card-sub{font-size:.65rem;color:var(--text3);margin-top:.12rem}
+.info-card-footer{display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;padding-top:.6rem;border-top:1px solid var(--border);font-size:.65rem;color:var(--text3)}
+.tier-empty{padding:1rem;text-align:center;color:var(--text3);font-size:.72rem}
+
+/* ── SoPoints Card — matches SoDEX UI ── */
+.sopoints-card{
+  border-radius:var(--r);
+  padding:1.1rem 1.25rem 1rem;
+  display:flex;
+  flex-direction:column;
+  gap:.55rem;
+  min-height:130px;
+  position:relative;
+  overflow:hidden;
+}
+.sopoints-gold{background:linear-gradient(135deg,#b8860b 0%,#d4a017 35%,#f0c040 65%,#c8960c 100%)}
+.sopoints-silver{background:linear-gradient(135deg,#6b7280 0%,#9ca3af 50%,#d1d5db 100%)}
+.sopoints-bronze{background:linear-gradient(135deg,#92400e 0%,#b45309 50%,#d97706 100%)}
+.sopoints-diamond{background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 40%,#60a5fa 70%,#1d4ed8 100%)}
+.sopoints-unavail{background:var(--s2);border:1px solid var(--border);color:var(--text3);font-size:.75rem;align-items:center;justify-content:center}
+
+.sopoints-top{display:flex;align-items:center;justify-content:space-between}
+.sopoints-tier{font-size:1.1rem;font-weight:900;color:#fff;letter-spacing:.04em;text-shadow:0 1px 3px rgba(0,0,0,.25)}
+.sopoints-stale{font-size:.58rem;background:rgba(0,0,0,.25);color:#ffe066;border-radius:4px;padding:.1rem .35rem;margin-left:.4rem;vertical-align:middle}
+
+.sopoints-hero{display:flex;align-items:baseline;gap:.5rem;margin-top:.1rem}
+.sopoints-num{font-size:2.4rem;font-weight:900;color:#fff;letter-spacing:-.04em;line-height:1;text-shadow:0 2px 8px rgba(0,0,0,.2)}
+.sopoints-badge{
+  background:rgba(0,0,0,.28);
+  color:#ffe066;
+  font-size:.6rem;
+  font-weight:800;
+  letter-spacing:.1em;
+  padding:.2rem .5rem;
+  border-radius:6px;
+  align-self:center;
+}
+
+.sopoints-next-row{display:flex;justify-content:space-between;align-items:center;font-size:.65rem;color:rgba(255,255,255,.8);font-weight:600}
+.sopoints-next-lbl{letter-spacing:.04em}
+.sopoints-next-val{font-weight:700;color:#fff}
+
+.sopoints-bar-bg{height:7px;background:rgba(0,0,0,.3);border-radius:4px;overflow:hidden}
+.sopoints-bar-fill{height:100%;background:rgba(255,220,50,.95);border-radius:4px;transition:width .6s ease}
+
+.sopoints-rank{font-size:.68rem;color:rgba(255,255,255,.85);font-weight:600;margin-top:.05rem}
+
+/* ── Decibel Points Card ── */
+.decibel-card{
+  border-radius:var(--r);
+  padding:1.1rem 1.25rem 1rem;
+  display:flex;
+  flex-direction:column;
+  gap:.45rem;
+  min-height:130px;
+  color:#fff;
+  position:relative;
+}
+/* Default / no-token: soft mint */
+.decibel-card{background:linear-gradient(135deg,#a8edcf 0%,#6dd5b0 50%,#4ec9a0 100%);color:#0d3d2a}
+.decibel-card .decibel-label{color:rgba(13,61,42,.65)}
+.decibel-card .decibel-logo{color:rgba(13,61,42,.65)}
+.decibel-card .decibel-pts-lbl{color:rgba(13,61,42,.55)}
+.decibel-card .decibel-pts-num{color:#0d3d2a}
+.decibel-card .decibel-meta-lbl{color:rgba(13,61,42,.5)}
+.decibel-card .decibel-meta-val{color:#0d3d2a}
+
+/* Tier overrides */
+.decibel-tier-gold{background:linear-gradient(135deg,#b8860b 0%,#d4a017 40%,#f0c040 70%,#c8960c 100%);color:#fff}
+.decibel-tier-gold .decibel-label,.decibel-tier-gold .decibel-logo,.decibel-tier-gold .decibel-pts-lbl,.decibel-tier-gold .decibel-meta-lbl{color:rgba(255,255,255,.65)}
+.decibel-tier-gold .decibel-pts-num,.decibel-tier-gold .decibel-meta-val{color:#fff}
+
+.decibel-tier-platinum{background:linear-gradient(135deg,#6b7280 0%,#9ca3af 40%,#e5e7eb 70%,#9ca3af 100%);color:#1f2937}
+.decibel-tier-platinum .decibel-label,.decibel-tier-platinum .decibel-logo,.decibel-tier-platinum .decibel-pts-lbl,.decibel-tier-platinum .decibel-meta-lbl{color:rgba(31,41,55,.55)}
+.decibel-tier-platinum .decibel-pts-num,.decibel-tier-platinum .decibel-meta-val{color:#1f2937}
+
+.decibel-tier-diamond{background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 40%,#60a5fa 70%,#1d4ed8 100%);color:#fff}
+.decibel-tier-diamond .decibel-label,.decibel-tier-diamond .decibel-logo,.decibel-tier-diamond .decibel-pts-lbl,.decibel-tier-diamond .decibel-meta-lbl{color:rgba(255,255,255,.65)}
+.decibel-tier-diamond .decibel-pts-num,.decibel-tier-diamond .decibel-meta-val{color:#fff}
+
+.decibel-unavail{background:var(--s2)!important;border:1px solid var(--border);color:var(--text3)!important;font-size:.75rem;align-items:center;justify-content:center}
+.decibel-header{display:flex;align-items:center;justify-content:space-between}
+.decibel-label{font-size:.62rem;font-weight:500;letter-spacing:.04em}
+.decibel-logo{font-size:.65rem;font-weight:600}
+.decibel-pts-lbl{font-size:.58rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;margin-top:.05rem}
+.decibel-pts-num{font-size:2.4rem;font-weight:900;letter-spacing:-.04em;line-height:1}
+.decibel-meta{display:flex;gap:1rem;margin-top:.1rem}
+.decibel-meta-row{display:flex;flex-direction:column;gap:.05rem}
+.decibel-meta-lbl{font-size:.55rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em}
+.decibel-meta-val{font-size:1rem;font-weight:800;letter-spacing:-.02em}
+.decibel-progress-wrap{margin-top:.2rem}
+.decibel-progress-row{display:flex;justify-content:space-between;font-size:.6rem;font-weight:600;opacity:.75;margin-bottom:.2rem}
+.decibel-bar-bg{height:5px;background:rgba(0,0,0,.2);border-radius:3px;overflow:hidden}
+.decibel-bar-fill{height:100%;background:rgba(255,255,255,.7);border-radius:3px;transition:width .6s ease}
+
+/* DESKTOP OVERRIDES */
+@media(min-width:768px){
+  .hero-in{grid-template-columns:auto 1fr auto}
+  .kpi-val{font-size:1.35rem}
+  .cockpit-grid{grid-template-columns:1fr 280px}
+  .an-grid-4{grid-template-columns:repeat(4,1fr)}
+  .an-grid-2{grid-template-columns:1fr 1fr}
+  .page{padding:1.25rem}
+  .topbar{padding:0 1.25rem}
+  .hero-hd{padding:.85rem 1.25rem}
+  .ctrl-panel{padding:.6rem 1.25rem}
+}
+@media(max-width:600px){
+  .hero-in{grid-template-columns:1fr auto;grid-template-rows:auto auto}
+  .hero-kpis{grid-column:1/-1}
+  .kpi-blk{padding:.4rem .6rem}
+  .kpi-val{font-size:1rem}
+  .ctrl-in{gap:.5rem}
+}
+</style>
 </head>
 <body>
 
-<%- include('partials/header') %>
+<!-- TOPBAR -->
+<nav class="topbar">
+  <div class="tl">
+    <% if (typeof botId !== 'undefined' && botId) { %>
+    <a href="/" class="back-link">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      Manager
+    </a>
+    <% } %>
+    <div class="hero-name" id="hero-bot-name">Bot</div>
+  </div>
+  <div class="tr">
+    <div class="live-pill"><div class="ldot on" id="live-dot"></div>LIVE</div>
+    <span class="topbar-time" id="updated-at"></span>
+    <button class="icon-btn" onclick="openCfgModal()" title="Settings">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+</nav>
 
-<%- include('partials/tab-nav') %>
+<!-- HERO HEADER -->
+<header class="hero-hd">
+  <div class="hero-in">
+    <!-- Identity -->
+    <div class="hero-id">
+      <div class="hero-name" id="hero-bot-name">Bot</div>
+      <div class="hero-pair"><span id="symbol-label">BTC-USD</span> · <span id="wallet-addr" style="font-family:monospace;font-size:.62rem;color:var(--text3)">—</span></div>
+      <div class="hero-st stopped" id="status-badge"><div class="sdot"></div><span id="status-text">STOPPED</span></div>
+    </div>
 
-<!-- ── Overview Tab ────────────────────────────────────────────────────── -->
+    <!-- KPI strip — order swaps based on mode (JS controls) -->
+    <div class="hero-kpis">
+      <!-- PRIMARY KPI (farm=volume, trade=pnl) -->
+      <div class="kpi-blk" id="kpi-primary">
+        <div class="kpi-lbl" id="kpi-primary-lbl">Volume</div>
+        <div class="kpi-val neu" id="kpi-primary-val">$0.00</div>
+        <div class="kpi-sub" id="kpi-primary-sub">Session</div>
+      </div>
+      <!-- SECONDARY KPI -->
+      <div class="kpi-blk" id="kpi-secondary">
+        <div class="kpi-lbl" id="kpi-secondary-lbl">PnL</div>
+        <div class="kpi-val neu" id="pnl-value">+$0.0000</div>
+        <div class="kpi-sub" id="pnl-sub">Waiting for trades</div>
+      </div>
+      <!-- Position -->
+      <div class="kpi-blk">
+        <div class="kpi-lbl">Position</div>
+        <div class="kpi-val" id="hdr-position" style="font-size:.9rem">—</div>
+        <div class="kpi-sub" id="hdr-uptime">0m uptime</div>
+      </div>
+      <!-- Last action -->
+      <div class="kpi-blk">
+        <div class="kpi-lbl">Last Trade</div>
+        <div class="kpi-val" id="hdr-last-action" style="font-size:.9rem">—</div>
+        <div class="kpi-sub" id="hdr-last-time">—</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="hero-actions">
+    
+    </div>
+  </div>
+</header>
+
+<!-- CONTROL PANEL -->
+<div class="ctrl-panel">
+  <div class="ctrl-in">
+    <!-- Start / Stop -->
+    <div class="ctrl-blk">
+      <button class="btn btn-start" id="btn-start" onclick="ctrlStart()">
+        <svg width="8" height="8" viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
+        Start
+      </button>
+      <button class="btn btn-stop" id="btn-stop" onclick="ctrlStop()" disabled>
+        <svg width="8" height="8" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>
+        Stop
+      </button>
+    </div>
+
+    <div class="ctrl-sep"></div>
+
+    <!-- Mode -->
+    <div class="ctrl-blk">
+      <span class="ctrl-lbl">Mode</span>
+      <div class="mode-tgl">
+        <button class="mode-btn active" id="btn-farm" onclick="ctrlSetMode('farm')">🚜 Farm</button>
+        <button class="mode-btn" id="btn-trade" onclick="ctrlSetMode('trade')">📈 Trade</button>
+      </div>
+    </div>
+
+    <div class="ctrl-sep"></div>
+
+    <!-- Risk -->
+    <div class="ctrl-blk">
+      <span class="ctrl-lbl">Max Loss $</span>
+      <div class="risk-wrap">
+        <input class="risk-in" id="input-maxloss" type="number" min="1" step="1" value="5"/>
+        <button class="risk-set" onclick="ctrlSetMaxLoss()">Set</button>
+      </div>
+    </div>
+
+    <div class="ctrl-sep"></div>
+
+    <!-- Emergency -->
+    <button class="btn btn-emg" onclick="ctrlClosePosition()">
+      <svg width="8" height="8" viewBox="0 0 12 12" stroke="currentColor" stroke-width="2.5" fill="none"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+      Close Position
+    </button>
+
+    <span class="ctrl-toast" id="ctrl-toast"></span>
+    <span id="risk-state" style="display:none"></span>
+
+    <!-- Tabs — inline right -->
+    <div style="margin-left:auto;display:flex;align-items:center;gap:0">
+      <button class="tab-btn active" id="tabnav-overview" onclick="switchMainTab('overview')">Overview</button>
+      <button class="tab-btn" id="tabnav-analytics" onclick="switchMainTab('analytics')">Analytics</button>
+    </div>
+  </div>
+</div>
+
+<!-- OVERVIEW TAB -->
 <div class="tab-panel active" id="tabpanel-overview">
+  <div class="page">
 
-  <div class="main" style="padding-bottom:0">
-    <%- include('partials/overview/tier-week-position') %>
-  </div>
+    <!-- Info row -->
+    <div style="display:grid;grid-template-columns:1fr;gap:.875rem;margin-bottom:1rem" id="info-row">
+      <div id="tier-card-wrap"><div class="info-card"><div class="tier-empty">Loading SoPoints...</div></div></div>
+      <div class="info-card">
+        <div class="info-card-label" id="week-label">Current Week</div>
+        <div class="info-card-value" id="week-vol">—</div>
+        <div class="info-card-sub">Futures Volume</div>
+        <div class="info-card-footer"><span>Next Distribution</span><span id="week-cd">—</span></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hd"><span class="panel-title">Open Position</span><span id="pos-badge"></span></div>
+        <div class="panel-bd" id="pos-body">
+          <div class="pos-empty-st"><div class="pos-empty-icon">◎</div><div class="pos-empty-txt">No open position</div></div>
+        </div>
+      </div>
+    </div>
 
-  <%- include('partials/overview/ctrl-panel') %>
+    <!-- Cockpit grid -->
+    <div class="cockpit-grid">
+      <!-- LEFT -->
+      <div style="display:flex;flex-direction:column;gap:1rem">
 
-  <%- include('partials/overview/cfg-modal') %>
+        <div class="panel">
+          <div class="panel-hd"><span class="panel-title">Session PnL</span><div class="live-pill"><div class="ldot on"></div>LIVE</div></div>
+          <div class="panel-bd"><div class="chart-wrap" id="pnl-chart-wrap"><div class="chart-skel"></div></div></div>
+        </div>
 
-  <!-- ── Main Stats + Charts ────────────────────────────────────────────── -->
-  <div class="main">
-    <%- include('partials/overview/stats-charts') %>
-    <%- include('partials/overview/realtime-log') %>
-    <%- include('partials/overview/tables') %>
-  </div>
+        <div class="panel">
+          <div class="panel-hd"><span class="panel-title">Trading Volume</span></div>
+          <div class="panel-bd"><div class="chart-wrap" id="vol-chart-wrap"><div class="chart-skel"></div></div></div>
+        </div>
 
-</div><!-- /tabpanel-overview -->
+        <div class="panel">
+          <div class="panel-hd"><span class="panel-title">Realtime Log</span><div class="live-pill"><div class="ldot on"></div>LIVE</div></div>
+          <div class="log-tabs">
+            <button class="log-tab" id="tab-events" onclick="switchTab('events')">Events</button>
+            <button class="log-tab active" id="tab-console" onclick="switchTab('console')">Console</button>
+          </div>
+          <div class="log-body" id="log-events" style="display:none"></div>
+          <div class="log-body" id="log-console"></div>
+        </div>
 
-<!-- ── Analytics Tab ───────────────────────────────────────────────────── -->
+        <div class="panel">
+          <div class="panel-hd"><span class="panel-title">Trade History</span><span style="font-size:.65rem;color:var(--text3)" id="trade-count"></span></div>
+          <div style="overflow-x:auto">
+            <table class="data-table">
+              <thead><tr><th>Order ID</th><th>Date</th><th>Side</th><th>Price</th><th>PnL</th></tr></thead>
+              <tbody id="trades-body"><tr><td colspan="5" style="text-align:center;padding:1.25rem;color:var(--text3)">No trades yet.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="pg-row"><span id="trade-page-info">Page 1</span><div style="display:flex;gap:.3rem"><button class="pg-btn" id="trade-prev" onclick="tradePage(-1)" disabled>‹</button><button class="pg-btn" id="trade-next" onclick="tradePage(1)">›</button></div></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-hd"><span class="panel-title">Event Log</span><span style="font-size:.65rem;color:var(--text3)" id="event-count"></span></div>
+          <div style="overflow-x:auto">
+            <table class="data-table">
+              <thead><tr><th>Time</th><th>Type</th><th>Message</th></tr></thead>
+              <tbody id="events-body"><tr><td colspan="3" style="text-align:center;padding:1.25rem;color:var(--text3)">No events yet.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="pg-row"><span id="event-page-info">Page 1</span><div style="display:flex;gap:.3rem"><button class="pg-btn" id="event-prev" onclick="eventPage(-1)" disabled>‹</button><button class="pg-btn" id="event-next" onclick="eventPage(1)">›</button></div></div>
+        </div>
+
+      </div><!-- /left -->
+
+      <!-- RIGHT -->
+      <div style="display:flex;flex-direction:column;gap:.875rem">
+        <div id="recent-activity" style="display:none"></div>
+        <div class="panel">
+          <div class="panel-hd"><span class="panel-title">Session</span></div>
+          <div class="panel-bd">
+            <div class="stat-row"><span class="stat-key">Fees</span><span class="stat-val" id="side-fees">$0.00</span></div>
+            <div class="stat-row"><span class="stat-key">Efficiency</span><span class="stat-val" id="side-eff">0 bps</span></div>
+            <div class="stat-row"><span class="stat-key">Uptime</span><span class="stat-val" id="side-uptime">0m</span></div>
+            <div class="stat-row"><span class="stat-key">Mode</span><span class="stat-val" id="side-mode">—</span></div>
+            <div class="stat-row"><span class="stat-key">Max Loss</span><span class="stat-val" id="side-maxloss">$5</span></div>
+          </div>
+        </div>
+        <div class="panel" id="cooldown-panel" style="display:none">
+          <div class="panel-hd"><span class="panel-title">⏸ Cooldown</span></div>
+          <div class="panel-bd"><div class="cd-val" id="cooldown-val">—</div><div style="font-size:.65rem;color:var(--text3);margin-top:.15rem">seconds remaining</div></div>
+        </div>
+      </div><!-- /right -->
+    </div><!-- /cockpit-grid -->
+
+  </div><!-- /page -->
+</div><!-- /overview -->
+
+<!-- ANALYTICS TAB -->
 <div class="tab-panel" id="tabpanel-analytics">
   <div class="an-section">
     <%- include('partials/analytics/summary-cards') %>
@@ -41,8 +580,33 @@
     <%- include('partials/analytics/charts') %>
     <%- include('partials/analytics/best-worst-holding') %>
   </div>
-</div><!-- /tabpanel-analytics -->
+</div>
 
+<!-- CFG MODAL -->
+<%- include('partials/overview/cfg-modal') %>
+
+<script>
+// Stubs so inline onclick attrs work before dashboard.js loads
+function openCfgModal() {
+  var o = document.getElementById('cfg-overlay');
+  if (o) { o.classList.add('open'); if (typeof loadConfigPanel === 'function') loadConfigPanel(); }
+}
+function closeCfgModal() {
+  var o = document.getElementById('cfg-overlay');
+  if (o) o.classList.remove('open');
+}
+// ESC to close
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeCfgModal();
+});
+// Responsive info row
+function setInfoRow() {
+  var el = document.getElementById('info-row');
+  if (el) el.style.gridTemplateColumns = window.innerWidth >= 768 ? '1fr 1fr 1fr' : '1fr';
+}
+setInfoRow();
+window.addEventListener('resize', setInfoRow);
+</script>
 <script src="/js/dashboard.js"></script>
 </body>
 </html>

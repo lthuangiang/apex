@@ -3,52 +3,52 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>DRIFT — Let it run.</title>
+  <title>DRIFT — Login</title>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,sans-serif;background:#080c14;color:#e0e0e0;display:flex;align-items:center;justify-content:center;min-height:100vh}
-    .card{background:#0d1117;border:1px solid #1a2030;border-radius:16px;padding:2.5rem 2.5rem 2rem;width:100%;max-width:360px;text-align:center}
-    .logo-wrap{margin-bottom:1.5rem}
-    .logo-wrap img{width:180px;height:auto}
-    .tagline{font-size:0.72rem;color:#4a9eff;letter-spacing:0.12em;text-transform:lowercase;margin-top:-0.25rem;margin-bottom:1.75rem}
-    .divider{border:none;border-top:1px solid #1a2030;margin-bottom:1.5rem}
-    label{font-size:0.7rem;color:#555;text-transform:uppercase;letter-spacing:0.08em;display:block;margin-bottom:0.4rem;text-align:left}
-    input{width:100%;background:#080c14;border:1px solid #1e2a3a;border-radius:8px;padding:0.65rem 0.85rem;color:#e0e0e0;font-size:0.9rem;outline:none;transition:border-color 0.2s}
-    input:focus{border-color:#4a9eff}
-    button{width:100%;margin-top:1rem;background:linear-gradient(135deg,#4a9eff,#7b5ea7);color:#fff;border:none;border-radius:8px;padding:0.72rem;font-size:0.9rem;font-weight:600;cursor:pointer;letter-spacing:0.04em;transition:opacity 0.2s}
-    button:hover{opacity:0.88}
-    .error{color:#ff4d4d;font-size:0.75rem;margin-top:0.75rem;display:none}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;background:#F7F9FB;color:#0d1117;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem;-webkit-font-smoothing:antialiased}
+    .card{background:#fff;border:1px solid #e8eaed;border-radius:14px;padding:2rem 1.75rem 1.75rem;width:100%;max-width:340px;box-shadow:0 4px 24px rgba(0,0,0,.07),0 1px 4px rgba(0,0,0,.04);text-align:center}
+    .logo-wrap{margin-bottom:1.25rem}
+    .logo-wrap img{width:160px;height:auto}
+    .brand{font-size:1.4rem;font-weight:900;letter-spacing:-.04em;color:#0d1117;margin-bottom:.2rem}
+    .tagline{font-size:.72rem;color:#9ca3af;letter-spacing:.06em;text-transform:lowercase;margin-bottom:1.5rem}
+    .divider{border:none;border-top:1px solid #e8eaed;margin-bottom:1.5rem}
+    label{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#4b5563;display:block;margin-bottom:.35rem;text-align:left}
+    input{width:100%;background:#f4f6f9;border:1.5px solid #e8eaed;border-radius:7px;padding:.6rem .8rem;color:#0d1117;font-size:.9rem;outline:none;transition:border-color .15s;-webkit-appearance:none}
+    input:focus{border-color:#4361ee;background:#fff}
+    button{width:100%;margin-top:.875rem;background:#4361ee;color:#fff;border:none;border-radius:7px;padding:.68rem;font-size:.875rem;font-weight:700;cursor:pointer;letter-spacing:.02em;transition:all .15s;box-shadow:0 1px 6px rgba(67,97,238,.3)}
+    button:hover{background:#3451d1;box-shadow:0 2px 10px rgba(67,97,238,.4);transform:translateY(-1px)}
+    button:active{transform:scale(.98)}
+    .error{color:#b91c1c;font-size:.72rem;margin-top:.65rem;display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:.4rem .65rem}
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo-wrap">
-      <img src="/images/logo.png" alt="DRIFT"/>
-    </div>
-    <p class="tagline">let it run.</p>
+    <div class="brand">DRIFT</div>
+    <p class="tagline">Set it. Let it drift.</p>
     <hr class="divider"/>
     <label for="pc">Passcode</label>
-    <input type="password" id="pc" placeholder="••••••••" autofocus/>
-    <button onclick="login()">Unlock</button>
-    <p class="error" id="err">Incorrect passcode.</p>
+    <input type="password" id="pc" placeholder="••••••••" autofocus autocomplete="current-password"/>
+    <button onclick="login()">Unlock →</button>
+    <p class="error" id="err">Incorrect passcode. Try again.</p>
   </div>
   <script>
-    document.getElementById('pc').addEventListener('keydown', e => {
+    document.getElementById('pc').addEventListener('keydown', function(e) {
       if (e.key === 'Enter') login();
     });
     async function login() {
-      const p = document.getElementById('pc').value;
-      const err = document.getElementById('err');
+      var p = document.getElementById('pc').value;
+      var err = document.getElementById('err');
       err.style.display = 'none';
       try {
-        const r = await fetch('/api/login', {
+        var r = await fetch('/api/login', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ passcode: p })
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({passcode: p})
         });
         if (r.ok) { window.location.href = '/'; }
-        else { err.style.display = 'block'; document.getElementById('pc').value = ''; }
-      } catch { err.style.display = 'block'; }
+        else { err.style.display = 'block'; document.getElementById('pc').value = ''; document.getElementById('pc').focus(); }
+      } catch(e) { err.style.display = 'block'; }
     }
   </script>
 </body>
