@@ -122,7 +122,27 @@ function drawSparkline(bot) {
 
   // If no trade history but there's an open position — show live position widget
   if (!history.length) {
-    if (bot.openPosition) {
+    if (bot.hedgePosition) {
+      // HedgeBot: show both legs
+      const hp = bot.hedgePosition;
+      const legA = hp.legA;
+      const legB = hp.legB;
+      const combinedPnl = hp.combinedPnl ?? 0;
+      const pnlSign = combinedPnl >= 0 ? '+' : '';
+      const pnlCls = combinedPnl > 0 ? 'positive' : combinedPnl < 0 ? 'negative' : '';
+      const fmtPrice = p => (p || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      wrap.innerHTML =
+        '<div class="live-pos-widget">' +
+          '<div class="live-pos-header">' +
+            '<span class="live-pos-side pos-hedge">⇄ HEDGE</span>' +
+            '<span class="live-pos-pnl ' + pnlCls + '">' + pnlSign + '$' + Math.abs(combinedPnl).toFixed(4) + '</span>' +
+          '</div>' +
+          '<div class="live-pos-rows">' +
+            '<div class="live-pos-row"><span>' + (legA.symbol || 'Leg A') + '</span><span class="' + (legA.side === 'long' ? 'pos-long' : 'pos-short') + '">' + (legA.side || '').toUpperCase() + ' ' + (legA.size || '') + ' @ $' + fmtPrice(legA.entryPrice) + '</span></div>' +
+            '<div class="live-pos-row"><span>' + (legB.symbol || 'Leg B') + '</span><span class="' + (legB.side === 'long' ? 'pos-long' : 'pos-short') + '">' + (legB.side || '').toUpperCase() + ' ' + (legB.size || '') + ' @ $' + fmtPrice(legB.entryPrice) + '</span></div>' +
+          '</div>' +
+        '</div>';
+    } else if (bot.openPosition) {
       const pos = bot.openPosition;
       const isLong = pos.side === 'long';
       const pnl = pos.unrealizedPnl ?? 0;

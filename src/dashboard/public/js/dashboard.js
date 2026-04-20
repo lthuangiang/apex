@@ -262,6 +262,34 @@ async function refreshPosition() {
       if (badge) badge.innerHTML = '';
       return;
     }
+
+    // HedgeBot: dual-leg position
+    if (pos.type === 'hedge' && pos.hedgePosition) {
+      const hp = pos.hedgePosition;
+      const legA = hp.legA;
+      const legB = hp.legB;
+      const combinedPnl = hp.combinedPnl ?? 0;
+      const pc = combinedPnl >= 0 ? 'pos' : 'neg';
+      const pnlStr = (combinedPnl >= 0 ? '+' : '') + '$' + Math.abs(combinedPnl).toFixed(4);
+      const fmtP = p => (p || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+      const legSide = leg => '<span class="pos-side ' + (leg.side === 'long' ? 'long' : 'short') + '">' + (leg.side || '').toUpperCase() + '</span>';
+      if (badge) badge.innerHTML = '<span class="pos-side long" style="font-size:.6rem">⇄ HEDGE</span>';
+      body.innerHTML =
+        '<div class="pos-row"><span class="pos-key">Combined PnL</span><span class="pos-val ' + pc + '">' + pnlStr + '</span></div>' +
+        '<div class="pos-row" style="padding-bottom:.5rem;margin-bottom:.25rem"><span class="pos-key" style="font-weight:700;color:var(--text2)">Leg A — ' + (legA.symbol || '') + '</span>' + legSide(legA) + '</div>' +
+        '<div class="pos-row"><span class="pos-key">Entry Price</span><span class="pos-val">$' + fmtP(legA.entryPrice) + '</span></div>' +
+        '<div class="pos-row"><span class="pos-key">Size</span><span class="pos-val">' + (legA.size || '—') + '</span></div>' +
+        '<div class="pos-row"><span class="pos-key">Unrealized PnL</span><span class="pos-val ' + ((legA.unrealizedPnl||0) >= 0 ? 'pos' : 'neg') + '">' + ((legA.unrealizedPnl||0) >= 0 ? '+' : '') + '$' + Math.abs(legA.unrealizedPnl||0).toFixed(4) + '</span></div>' +
+        '<div class="pos-row" style="padding-bottom:.5rem;margin-bottom:.25rem;margin-top:.5rem"><span class="pos-key" style="font-weight:700;color:var(--text2)">Leg B — ' + (legB.symbol || '') + '</span>' + legSide(legB) + '</div>' +
+        '<div class="pos-row"><span class="pos-key">Entry Price</span><span class="pos-val">$' + fmtP(legB.entryPrice) + '</span></div>' +
+        '<div class="pos-row"><span class="pos-key">Size</span><span class="pos-val">' + (legB.size || '—') + '</span></div>' +
+        '<div class="pos-row"><span class="pos-key">Unrealized PnL</span><span class="pos-val ' + ((legB.unrealizedPnl||0) >= 0 ? 'pos' : 'neg') + '">' + ((legB.unrealizedPnl||0) >= 0 ? '+' : '') + '$' + Math.abs(legB.unrealizedPnl||0).toFixed(4) + '</span></div>';
+      const hdrPos = document.getElementById('hdr-position');
+      if (hdrPos) hdrPos.textContent = '⇄ HEDGE';
+      return;
+    }
+
+    // Standard single-leg position
     const isLong = pos.side === 'long';
     const pc = (pos.unrealizedPnl || 0) >= 0 ? 'pos' : 'neg';
     const holdSecs = pos.holdRemainingMs != null ? Math.ceil(pos.holdRemainingMs / 1000) : null;

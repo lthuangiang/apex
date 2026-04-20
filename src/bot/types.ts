@@ -67,6 +67,37 @@ export interface BotStatus {
 }
 
 /**
+ * HedgeBot configuration interface
+ * Defines all settings needed to create and run a Correlation Hedging Bot instance
+ */
+export interface HedgeBotConfig {
+  // Identity
+  id: string;
+  name: string;
+  botType: 'hedge';                          // discriminant field
+  exchange: 'sodex' | 'dango' | 'decibel';
+  tags: string[];
+  autoStart: boolean;
+  credentialKey: string;
+
+  // Logging
+  tradeLogBackend: 'json' | 'sqlite';
+  tradeLogPath: string;
+
+  // Hedge-specific
+  symbolA: string;                           // e.g. "BTC-USD"
+  symbolB: string;                           // e.g. "ETH-USD"
+  legValueUsd: number;                       // USD notional per leg
+  holdingPeriodSecs: number;                 // max hold time before TIME_EXPIRY
+  profitTargetUsd: number;                   // CombinedPnL threshold for PROFIT_TARGET
+  maxLossUsd: number;                        // CombinedPnL threshold for MAX_LOSS
+  volumeSpikeMultiplier: number;             // e.g. 2.0 = 2× rolling average
+  volumeRollingWindow: number;               // number of samples in rolling window
+  fundingRateWeight: number;                 // 0–1, weight for funding rate adjustment
+  cooldownSecs?: number;                     // post-close cooldown (default: 30)
+}
+
+/**
  * Aggregated statistics across all bots
  */
 export interface AggregatedStats {

@@ -32,9 +32,13 @@ export class SodexAdapter implements ExchangeAdapter {
     public userAddress: string;
     private cachedAccountId: number | null = null;
     private cachedSymbolId: Record<string, number> = {};
+    private cachedTickSize: Record<string, number> = {};
+    private cachedLotSize: Record<string, number> = {};
     private lastNonce: number = 0;
     private wallet: ethers.Wallet;
     private connected: boolean = false;
+    /** Timestamp (ms) until which all requests should be paused due to rate limiting */
+    private _rateLimitUntil: number = 0;
 
     constructor(apiKey: string, apiSecret: string, userAddress: string) {
         this.apiKey = apiKey;
@@ -156,6 +160,14 @@ export class SodexAdapter implements ExchangeAdapter {
         console.log(`\n[SoDEX DEBUG] ---> ${method} ${url} | Payload: ${paramsStr}`);
 
         try {
+            // Respect rate limit backoff
+            const now = Date.now();
+            if (this._rateLimitUntil > now) {
+                const waitMs = this._rateLimitUntil - now;
+                console.warn(`[SoDEX] Rate limit active — waiting ${waitMs}ms before request`);
+                await new Promise(resolve => setTimeout(resolve, waitMs));
+            }
+
             const res = await fetch(url, config);
             const textResponse = await res.text();
 
@@ -174,6 +186,12 @@ export class SodexAdapter implements ExchangeAdapter {
             }
 
             if (json.code !== 0 && json.code !== '0' && json.error) {
+                // Handle rate limit — set backoff and throw so caller can retry
+                if (json.code === 429) {
+                    const retryAfterSecs = json.data?.retryAfter ?? 5;
+                    this._rateLimitUntil = Date.now() + retryAfterSecs * 1000;
+                    console.warn(`[SoDEX] Rate limited — backing off ${retryAfterSecs}s`);
+                }
                 throw new Error(`Sodex API Error: ${JSON.stringify(json)}`);
             }
             return json.data;
@@ -208,10 +226,11 @@ export class SodexAdapter implements ExchangeAdapter {
         const data = await this.request('GET', `/markets/${symbol}/trades?limit=${limit}`);
         const arr = Array.isArray(data) ? data : (data?.trades || data?.data || []);
         return arr.map((t: any) => ({
-            side: (t.side || t.type || '').toLowerCase() === 'buy' ? 'buy' : 'sell',
-            price: parseFloat(t.price),
-            size: parseFloat(t.size || t.quantity || 0),
-            timestamp: t.timestamp || t.time || Date.now(),
+            side: (t.side || t.type || t.S || '').toLowerCase() === 'buy' ? 'buy' : 'sell',
+            price: parseFloat(t.price || t.p),
+            size: parseFloat(t.size || t.quantity || t.q || 0),
+            // SoDEX uses uppercase T for timestamp (milliseconds)
+            timestamp: t.T || t.timestamp || t.time || Date.now(),
         }));
     }
 
@@ -233,15 +252,72 @@ export class SodexAdapter implements ExchangeAdapter {
         try {
             const data = await this.request('GET', '/markets/symbols');
             const arr = Array.isArray(data) ? data : (data?.data || []);
-            const item = arr.find((s: any) => s.symbol === symbol || s.name === symbol || s.id === symbol);
-            if (item?.id !== undefined) {
-                this.cachedSymbolId[symbol] = item.id;
-                return item.id;
+            // Cache symbolId, tickSize, and lotSize for all symbols in one pass
+            for (const s of arr) {
+                const name: string = s.symbol || s.name;
+                if (name && s.id !== undefined) {
+                    this.cachedSymbolId[name] = s.id;
+                }
+                if (name && s.tickSize !== undefined) {
+                    this.cachedTickSize[name] = parseFloat(s.tickSize);
+                }
+                // lotSize / stepSize / quantityStep — try common field names
+                const lotRaw = s.lotSize ?? s.stepSize ?? s.quantityStep ?? s.minQty;
+                if (name && lotRaw !== undefined) {
+                    this.cachedLotSize[name] = parseFloat(lotRaw);
+                    console.log(`[SoDEX] ${name}: tickSize=${s.tickSize} lotSize=${lotRaw}`);
+                }
+            }
+            if (this.cachedSymbolId[symbol] !== undefined) {
+                return this.cachedSymbolId[symbol];
             }
         } catch (e) {
             console.error('[SoDEX] Failed to fetch symbol ID:', e);
         }
         return 1;
+    }
+
+    /**
+     * Returns the tick size for a symbol (e.g. 1 for BTC-USD, 0.1 for ETH-USD).
+     * Falls back to 1 if not cached yet.
+     */
+    private getTickSize(symbol: string): number {
+        return this.cachedTickSize[symbol] ?? 1;
+    }
+
+    /**
+     * Returns the lot size (quantity step) for a symbol.
+     * Falls back to 0.001 for BTC-USD and 0.0001 for others.
+     */
+    private getLotSize(symbol: string): number {
+        if (this.cachedLotSize[symbol] !== undefined) return this.cachedLotSize[symbol];
+        return symbol === 'BTC-USD' ? 0.001 : 0.0001;
+    }
+
+    /**
+     * Round a price to the nearest valid tick for the given symbol.
+     * Uses parseFloat to strip unnecessary trailing zeros (e.g. "2281.0" → "2281").
+     */
+    private roundToTick(price: number, symbol: string): string {
+        const tick = this.getTickSize(symbol);
+        const rounded = Math.round(price / tick) * tick;
+        // Determine decimal places from tick size (e.g. 0.1 → 1, 0.01 → 2, 1 → 0)
+        const decimals = tick < 1 ? Math.round(-Math.log10(tick)) : 0;
+        // parseFloat strips trailing zeros: "2281.0" → "2281", "2281.1" → "2281.1"
+        return String(parseFloat(rounded.toFixed(decimals)));
+    }
+
+    /**
+     * Round a quantity down to the nearest valid lot size for the given symbol.
+     * Always floors (never rounds up) to avoid over-ordering.
+     * Always uses absolute value — sign is determined by the order side, not quantity.
+     */
+    private roundToLot(qty: number, symbol: string): string {
+        const lot = this.getLotSize(symbol);
+        const absQty = Math.abs(qty);
+        const floored = Math.floor(absQty / lot) * lot;
+        const decimals = lot < 1 ? Math.round(-Math.log10(lot)) : 0;
+        return floored.toFixed(decimals);
     }
 
     async place_limit_order(
@@ -255,14 +331,11 @@ export class SodexAdapter implements ExchangeAdapter {
         const accId = await this.getAccountId();
         const symId = await this.getSymbolId(symbol);
 
-        const formattedPrice = symbol === 'BTC-USD'
-            ? Math.round(price).toString()
-            : price.toFixed(2);
+        // Round price to the symbol's tick size (fetched from /markets/symbols)
+        const formattedPrice = this.roundToTick(price, symbol);
 
-        // BTC minimum step is 0.00001 — use enough decimals to represent small sizes
-        const formattedSize = symbol === 'BTC-USD'
-            ? (size < 0.001 ? size.toFixed(5) : size.toFixed(3))
-            : size.toFixed(4);
+        // Round quantity down to the symbol's lot size (fetched from /markets/symbols)
+        const formattedSize = this.roundToLot(size, symbol);
 
         const uniqueId = 'ext-' + Date.now().toString() + '-' + Math.floor(Math.random() * 1000);
 
@@ -340,21 +413,41 @@ export class SodexAdapter implements ExchangeAdapter {
         const arr = Array.isArray(data) ? data : (data?.positions || data?.data || (data && Object.keys(data).length > 0 ? [data] : []));
         if (!arr || arr.length === 0) return null;
 
-        const pos = arr[0];
-        const size = parseFloat(pos.size || 0);
-        if (size === 0) return null;
+        // SoDEX API may return all positions regardless of query symbol — filter explicitly
+        const matchingPositions = arr.filter((p: any) => {
+            const posSymbol = p.symbol || '';
+            return posSymbol === symbol || posSymbol === '';
+        });
+
+        if (matchingPositions.length === 0) {
+            console.log(`[SodexAdapter] No position found for ${symbol} (API returned ${arr.length} positions for other symbols)`);
+            return null;
+        }
+
+        const pos = matchingPositions[0];
+        const rawSize = parseFloat(pos.size || 0);
+        if (rawSize === 0) return null;
+
+        // Normalize: size is always positive, side is derived from sign
+        // SoDEX returns negative size for short positions
+        const side = rawSize >= 0 ? 'long' : 'short';
+        const size = Math.abs(rawSize);
 
         const entryPrice = parseFloat(pos.avgEntryPrice || pos.entryPrice || 0);
         let unrealizedPnl = parseFloat(pos.unrealizedPnl || pos.upl || pos.unrealizedProfit || 0);
 
         // If API didn't return PnL, compute from markPrice provided by caller
         if (unrealizedPnl === 0 && entryPrice > 0 && markPrice && markPrice > 0) {
-            unrealizedPnl = (markPrice - entryPrice) * size;
+            // For long: pnl = (mark - entry) * size
+            // For short: pnl = (entry - mark) * size  (size is positive)
+            unrealizedPnl = side === 'long'
+                ? (markPrice - entryPrice) * size
+                : (entryPrice - markPrice) * size;
         }
 
         return {
             symbol: pos.symbol || symbol,
-            side: size > 0 ? 'long' : (size < 0 ? 'short' : 'neutral'),
+            side,
             size,
             entryPrice,
             unrealizedPnl,

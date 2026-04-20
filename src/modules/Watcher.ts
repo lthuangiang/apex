@@ -140,6 +140,7 @@ export class Watcher {
         private sessionManager: SessionManager,
         private _botSharedState?: BotSharedState,
         private _configStore?: ConfigStoreInterface,
+        tradeLogger?: TradeLogger,
     ) {
         this.symbol = symbol;
         this.riskManager = new RiskManager();
@@ -147,9 +148,13 @@ export class Watcher {
         const executionEdge = new ExecutionEdge(adapter, this.fillTracker);
         this.executor = new Executor(adapter, telegram, executionEdge);
         this.positionSizer = new PositionSizer();
-        const tradeLogBackend = (process.env.TRADE_LOG_BACKEND ?? 'json') as 'json' | 'sqlite';
-        const tradeLogPath = process.env.TRADE_LOG_PATH ?? './trades.json';
-        this.tradeLogger = new TradeLogger(tradeLogBackend, tradeLogPath);
+        if (tradeLogger) {
+            this.tradeLogger = tradeLogger;
+        } else {
+            const tradeLogBackend = (process.env.TRADE_LOG_BACKEND ?? 'json') as 'json' | 'sqlite';
+            const tradeLogPath = process.env.TRADE_LOG_PATH ?? './trades.json';
+            this.tradeLogger = new TradeLogger(tradeLogBackend, tradeLogPath);
+        }
 
         weightStore.loadFromDisk();
 

@@ -75,7 +75,7 @@ export class BotInstance {
     // Initialize components with bot-specific config
     this.sessionManager = new SessionManager();
     this.tradeLogger = new TradeLogger(config.tradeLogBackend, config.tradeLogPath);
-    this.watcher = new Watcher(adapter, this.config.symbol, telegram, this.sessionManager, this.state, this.configStore);
+    this.watcher = new Watcher(adapter, this.config.symbol, telegram, this.sessionManager, this.state, this.configStore, this.tradeLogger);
     
     // Set symbol in state
     this.state.symbol = config.symbol;

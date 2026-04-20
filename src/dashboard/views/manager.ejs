@@ -666,7 +666,12 @@
         <button class="filter-btn" data-filter="active">Active</button>
         <button class="filter-btn" data-filter="inactive">Inactive</button>
       </div>
-      <span class="bot-count" id="bot-count-label"></span>
+      <div style="display:flex;align-items:center;gap:0.75rem;">
+        <span class="bot-count" id="bot-count-label"></span>
+        <button class="btn btn-primary" id="btn-create-bot" style="padding:0.45rem 1rem;font-size:0.8rem;">
+          + New Bot
+        </button>
+      </div>
     </div>
 
     <!-- Bot Grid -->
@@ -676,5 +681,326 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="/js/manager-dashboard.js"></script>
+
+  <!-- ── Create Bot Modal ─────────────────────────────────────────────────── -->
+  <style>
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 560px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 2rem;
+      position: relative;
+    }
+    .modal-title { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 1.5rem; color: var(--text-primary); }
+    .modal-close { position: absolute; top: 1rem; right: 1rem; background: none; border: none; font-size: 1.25rem; cursor: pointer; color: var(--text-tertiary); line-height: 1; padding: 0.25rem; }
+    .modal-close:hover { color: var(--text-primary); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem; }
+    .form-row.full { grid-template-columns: 1fr; }
+    .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+    .form-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
+    .form-label .req { color: var(--red); margin-left: 2px; }
+    .form-input, .form-select { padding: 0.55rem 0.75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-xs); font-size: 0.85rem; color: var(--text-primary); background: var(--surface); transition: border-color 0.15s, box-shadow 0.15s; width: 100%; }
+    .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,110,247,0.12); }
+    .form-hint { font-size: 0.68rem; color: var(--text-tertiary); }
+    .form-section { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+    .form-section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-tertiary); margin-bottom: 0.875rem; }
+    .modal-footer { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+    .modal-error { background: var(--red-bg); border: 1px solid var(--red-border); color: var(--red); border-radius: var(--radius-xs); padding: 0.6rem 0.875rem; font-size: 0.8rem; margin-bottom: 1rem; display: none; }
+    .modal-error.visible { display: block; }
+    .type-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; }
+    .type-tab { flex: 1; padding: 0.65rem; border: 2px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; text-align: center; transition: all 0.15s; }
+    .type-tab:hover { border-color: var(--accent); }
+    .type-tab.selected { border-color: var(--accent); background: var(--accent-light); }
+    .type-tab-title { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.2rem; }
+    .type-tab.selected .type-tab-title { color: var(--accent); }
+    .type-tab-desc { font-size: 0.68rem; color: var(--text-tertiary); }
+    .fields-standard, .fields-hedge { display: none; }
+    .fields-standard.visible, .fields-hedge.visible { display: contents; }
+    .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem; }
+    .checkbox-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+    .checkbox-row label { font-size: 0.82rem; color: var(--text-secondary); cursor: pointer; }
+  </style>
+
+  <div class="modal-overlay" id="create-bot-modal">
+    <div class="modal">
+      <button class="modal-close" id="modal-close-btn" aria-label="Close">&#x2715;</button>
+      <div class="modal-title">Create New Bot</div>
+      <div class="modal-error" id="modal-error"></div>
+
+      <div class="type-tabs">
+        <div class="type-tab selected" data-type="standard" id="tab-standard">
+          <div class="type-tab-title">Standard Bot</div>
+          <div class="type-tab-desc">Farm / trade a single symbol</div>
+        </div>
+        <div class="type-tab" data-type="hedge" id="tab-hedge">
+          <div class="type-tab-title">Hedge Bot</div>
+          <div class="type-tab-desc">Correlated pair, delta-neutral</div>
+        </div>
+      </div>
+
+      <form id="create-bot-form" autocomplete="off">
+        <!-- Common fields -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Bot ID <span class="req">*</span></label>
+            <input class="form-input" type="text" name="id" placeholder="my-bot-1" required />
+            <span class="form-hint">Lowercase, hyphens only</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Display Name <span class="req">*</span></label>
+            <input class="form-input" type="text" name="name" placeholder="My Bot" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Exchange <span class="req">*</span></label>
+            <select class="form-select" name="exchange" required>
+              <option value="sodex">SoDEX</option>
+              <option value="dango">Dango</option>
+              <option value="decibel">Decibel</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Credential Key <span class="req">*</span></label>
+            <input class="form-input" type="text" name="credentialKey" placeholder="SODEX" required />
+            <span class="form-hint">Env prefix (e.g. SODEX_API_KEY)</span>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Trade Log Backend</label>
+            <select class="form-select" name="tradeLogBackend">
+              <option value="json">JSON</option>
+              <option value="sqlite">SQLite</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Trade Log Path <span class="req">*</span></label>
+            <input class="form-input" type="text" name="tradeLogPath" placeholder="./trades-mybot.json" required />
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label class="form-label">Tags</label>
+            <input class="form-input" type="text" name="tags" placeholder="Farm, TWAP (comma-separated)" />
+          </div>
+        </div>
+
+        <!-- Standard Bot fields -->
+        <div class="form-section fields-standard visible" id="fields-standard">
+          <div class="form-section-title">Standard Bot Settings</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Symbol <span class="req">*</span></label>
+              <input class="form-input" type="text" name="symbol" placeholder="BTC-USD" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Mode</label>
+              <select class="form-select" name="mode">
+                <option value="farm">Farm</option>
+                <option value="trade">Trade</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Order Size Min <span class="req">*</span></label>
+              <input class="form-input" type="number" name="orderSizeMin" placeholder="0.003" step="0.001" min="0.001" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Order Size Max <span class="req">*</span></label>
+              <input class="form-input" type="number" name="orderSizeMax" placeholder="0.005" step="0.001" min="0.001" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Hedge Bot fields -->
+        <div class="form-section fields-hedge" id="fields-hedge">
+          <div class="form-section-title">Hedge Bot Settings</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Symbol A <span class="req">*</span></label>
+              <input class="form-input" type="text" name="symbolA" placeholder="BTC-USD" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Symbol B <span class="req">*</span></label>
+              <input class="form-input" type="text" name="symbolB" placeholder="ETH-USD" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Leg Value USD <span class="req">*</span></label>
+              <input class="form-input" type="number" name="legValueUsd" placeholder="1000" min="1" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Holding Period (secs) <span class="req">*</span></label>
+              <input class="form-input" type="number" name="holdingPeriodSecs" placeholder="300" min="10" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Profit Target USD <span class="req">*</span></label>
+              <input class="form-input" type="number" name="profitTargetUsd" placeholder="50" min="0.01" step="0.01" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Max Loss USD <span class="req">*</span></label>
+              <input class="form-input" type="number" name="maxLossUsd" placeholder="30" min="0.01" step="0.01" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Volume Spike Multiplier <span class="req">*</span></label>
+              <input class="form-input" type="number" name="volumeSpikeMultiplier" placeholder="2.0" min="1.01" step="0.1" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Volume Rolling Window <span class="req">*</span></label>
+              <input class="form-input" type="number" name="volumeRollingWindow" placeholder="20" min="2" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Funding Rate Weight</label>
+              <input class="form-input" type="number" name="fundingRateWeight" placeholder="0.1" min="0" max="1" step="0.01" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Cooldown (secs)</label>
+              <input class="form-input" type="number" name="cooldownSecs" placeholder="30" min="0" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Auto-start -->
+        <div class="form-row full" style="margin-top:1rem;">
+          <div class="checkbox-row">
+            <input type="checkbox" name="autoStart" id="autoStart" />
+            <label for="autoStart">Auto-start bot after creation</label>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="modal-cancel-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="modal-submit-btn">Create Bot</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    var overlay    = document.getElementById('create-bot-modal');
+    var form       = document.getElementById('create-bot-form');
+    var errEl      = document.getElementById('modal-error');
+    var submitBtn  = document.getElementById('modal-submit-btn');
+    var selectedType = 'standard';
+
+    document.getElementById('btn-create-bot').addEventListener('click', function() {
+      overlay.classList.add('open');
+      errEl.classList.remove('visible');
+      form.reset();
+      selectType('standard');
+    });
+
+    document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+    document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
+
+    function closeModal() { overlay.classList.remove('open'); }
+
+    document.querySelectorAll('.type-tab').forEach(function(tab) {
+      tab.addEventListener('click', function() { selectType(tab.dataset.type); });
+    });
+
+    function selectType(type) {
+      selectedType = type;
+      document.querySelectorAll('.type-tab').forEach(function(t) {
+        t.classList.toggle('selected', t.dataset.type === type);
+      });
+      document.getElementById('fields-standard').classList.toggle('visible', type === 'standard');
+      document.getElementById('fields-hedge').classList.toggle('visible', type === 'hedge');
+    }
+
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      errEl.classList.remove('visible');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating\u2026';
+
+      try {
+        var data = buildPayload();
+        var r = await fetch('/api/bots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        var json = await r.json();
+        if (!r.ok) throw new Error(json.error || 'Failed to create bot');
+        closeModal();
+        if (typeof refresh === 'function') refresh();
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.add('visible');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Bot';
+      }
+    });
+
+    function buildPayload() {
+      var fd = new FormData(form);
+      var raw = Object.fromEntries(fd.entries());
+      var tagsRaw = (raw.tags || '').toString().trim();
+      var tags = tagsRaw ? tagsRaw.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
+
+      var base = {
+        id:              raw.id,
+        name:            raw.name,
+        exchange:        raw.exchange,
+        credentialKey:   raw.credentialKey,
+        tradeLogBackend: raw.tradeLogBackend,
+        tradeLogPath:    raw.tradeLogPath,
+        tags:            tags,
+        autoStart:       form.querySelector('[name="autoStart"]').checked,
+      };
+
+      if (selectedType === 'hedge') {
+        return Object.assign({}, base, {
+          botType:               'hedge',
+          symbolA:               raw.symbolA,
+          symbolB:               raw.symbolB,
+          legValueUsd:           parseFloat(raw.legValueUsd),
+          holdingPeriodSecs:     parseInt(raw.holdingPeriodSecs, 10),
+          profitTargetUsd:       parseFloat(raw.profitTargetUsd),
+          maxLossUsd:            parseFloat(raw.maxLossUsd),
+          volumeSpikeMultiplier: parseFloat(raw.volumeSpikeMultiplier),
+          volumeRollingWindow:   parseInt(raw.volumeRollingWindow, 10),
+          fundingRateWeight:     parseFloat(raw.fundingRateWeight || '0'),
+          cooldownSecs:          raw.cooldownSecs ? parseInt(raw.cooldownSecs, 10) : undefined,
+        });
+      }
+
+      return Object.assign({}, base, {
+        symbol:       raw.symbol,
+        mode:         raw.mode,
+        orderSizeMin: parseFloat(raw.orderSizeMin),
+        orderSizeMax: parseFloat(raw.orderSizeMax),
+      });
+    }
+  })();
+  </script>
 </body>
 </html>

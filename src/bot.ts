@@ -19,6 +19,8 @@ import { configStore } from './config/ConfigStore.js';
 import { loadState, saveStateSync } from './ai/StateStore.js';
 import { BotManager } from './bot/BotManager.js';
 import { loadBotConfigs } from './bot/loadBotConfigs.js';
+import type { BotConfig, HedgeBotConfig } from './bot/types.js';
+import { BotInstance } from './bot/BotInstance.js';
 import { createAdapter as createBotAdapter } from './bot/adapterFactory.js';
 
 const {
@@ -116,17 +118,35 @@ async function bootstrap() {
         const botManager = new BotManager();
         
         for (const botConfig of botConfigs) {
-            try {
-                const adapter = createBotAdapter(botConfig.exchange, botConfig.credentialKey);
-                const botInstance = botManager.createBot(botConfig, adapter, telegram);
-                
-                // Auto-start if configured
-                if (botConfig.autoStart) {
-                    console.log(`🚀 [Multi-Bot] Auto-starting bot: ${botConfig.id}`);
-                    await botInstance.start();
+            if ('botType' in botConfig && botConfig.botType === 'hedge') {
+                // HedgeBot routing (Requirement 1.3, 2.1)
+                const hedgeConfig = botConfig as HedgeBotConfig;
+                try {
+                    const adapter = createBotAdapter(hedgeConfig.exchange, hedgeConfig.credentialKey);
+                    const hedgeBot = botManager.createHedgeBot(hedgeConfig, adapter, telegram);
+
+                    // Auto-start if configured
+                    if (hedgeConfig.autoStart) {
+                        console.log(`🚀 [Multi-Bot] Auto-starting HedgeBot: ${hedgeConfig.id}`);
+                        await hedgeBot.start();
+                    }
+                } catch (err) {
+                    console.error(`❌ [Multi-Bot] Failed to create HedgeBot ${hedgeConfig.id}:`, err);
                 }
-            } catch (err) {
-                console.error(`❌ [Multi-Bot] Failed to create bot ${botConfig.id}:`, err);
+            } else {
+                const standardConfig = botConfig as BotConfig;
+                try {
+                    const adapter = createBotAdapter(standardConfig.exchange, standardConfig.credentialKey);
+                    const botInstance = botManager.createBot(standardConfig, adapter, telegram);
+
+                    // Auto-start if configured
+                    if (standardConfig.autoStart) {
+                        console.log(`🚀 [Multi-Bot] Auto-starting bot: ${standardConfig.id}`);
+                        await botInstance.start();
+                    }
+                } catch (err) {
+                    console.error(`❌ [Multi-Bot] Failed to create bot ${standardConfig.id}:`, err);
+                }
             }
         }
         
@@ -134,13 +154,13 @@ async function bootstrap() {
         // In multi-bot mode, we create a dummy TradeLogger that won't be used
         const dummyLogger = new TradeLogger('json', './trades-dummy.json');
         const dashboardServer = new DashboardServer(dummyLogger, dashboardPort);
-        dashboardServer.registerBotManager(botManager);
+        dashboardServer.registerBotManager(botManager, telegram);
         dashboardServer.start();
         
         console.log(`✅ [Multi-Bot] Dashboard started with ${botManager.getBotCount()} bot(s)`);
         
-        // Telegram commands work with first bot for backward compatibility
-        const firstBot = botManager.getAllBots()[0];
+        // Telegram commands work with first standard BotInstance for backward compatibility
+        const firstBot = botManager.getAllBots().find((b): b is BotInstance => b instanceof BotInstance);
         if (firstBot) {
             setupTelegramCommands(telegram, firstBot.getSessionManager(), firstBot.getWatcher(), firstBot.config.symbol);
         }

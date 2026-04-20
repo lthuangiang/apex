@@ -99,6 +99,28 @@
       "cooldownMinMins": 2,
       "cooldownMaxMins": 5,
       "minPositionValueUsd": 20
+    },
+    {
+      "id": "sodex-hedge-bot",
+      "name": "SoDEX Hedge ",
+      "exchange": "sodex",
+      "credentialKey": "SODEX",
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades-sodex-hedge.json",
+      "tags": [
+        "Hedge"
+      ],
+      "autoStart": false,
+      "botType": "hedge",
+      "symbolA": "BTC-USD",
+      "symbolB": "ETH-USD",
+      "legValueUsd": 150,
+      "holdingPeriodSecs": 120,
+      "profitTargetUsd": 1,
+      "maxLossUsd": 1,
+      "volumeSpikeMultiplier": 1.05,
+      "volumeRollingWindow": 10,
+      "fundingRateWeight": 0
     }
   ]
 }

@@ -1,7 +1,8 @@
 import type { ExchangeAdapter } from '../adapters/ExchangeAdapter.js';
 import type { TelegramManager } from '../modules/TelegramManager.js';
 import { BotInstance } from './BotInstance.js';
-import type { BotConfig, AggregatedStats } from './types.js';
+import { HedgeBot } from './HedgeBot.js';
+import type { BotConfig, HedgeBotConfig, AggregatedStats } from './types.js';
 
 /**
  * BotManager - Registry for managing multiple bot instances
@@ -10,10 +11,10 @@ import type { BotConfig, AggregatedStats } from './types.js';
  * - Create and remove bot instances
  * - Start/stop bots by ID
  * - Provide aggregated statistics
- * - Maintain bot registry (Map<botId, BotInstance>)
+ * - Maintain bot registry (Map<botId, BotInstance | HedgeBot>)
  */
 export class BotManager {
-  private registry = new Map<string, BotInstance>();
+  private registry = new Map<string, BotInstance | HedgeBot>();
 
   /**
    * Create a new bot instance and add to registry
@@ -51,16 +52,32 @@ export class BotManager {
   }
 
   /**
+   * Create a new HedgeBot instance and add to registry
+   * @throws Error if bot with same ID already exists
+   */
+  createHedgeBot(config: HedgeBotConfig, adapter: ExchangeAdapter, telegram: TelegramManager): HedgeBot {
+    if (this.registry.has(config.id)) {
+      throw new Error(`Bot with id "${config.id}" already exists`);
+    }
+
+    const instance = new HedgeBot(config, adapter, telegram);
+    this.registry.set(config.id, instance);
+
+    console.log(`[BotManager] Created HedgeBot: ${config.id} (${config.name})`);
+    return instance;
+  }
+
+  /**
    * Get a bot instance by ID
    */
-  getBot(id: string): BotInstance | undefined {
+  getBot(id: string): BotInstance | HedgeBot | undefined {
     return this.registry.get(id);
   }
 
   /**
    * Get all bot instances
    */
-  getAllBots(): BotInstance[] {
+  getAllBots(): (BotInstance | HedgeBot)[] {
     return Array.from(this.registry.values());
   }
 

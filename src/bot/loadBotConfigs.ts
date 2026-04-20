@@ -1,13 +1,13 @@
 import fs from 'fs';
-import type { BotConfig } from './types.js';
+import type { BotConfig, HedgeBotConfig } from './types.js';
 
 /**
  * Load bot configurations from file
  * 
  * @param configPath - Path to bot-configs.json (default: ./bot-configs.json)
- * @returns Array of valid BotConfig objects
+ * @returns Array of valid BotConfig or HedgeBotConfig objects
  */
-export function loadBotConfigs(configPath: string = './bot-configs.json'): BotConfig[] {
+export function loadBotConfigs(configPath: string = './bot-configs.json'): (BotConfig | HedgeBotConfig)[] {
   // Check if file exists
   if (!fs.existsSync(configPath)) {
     console.warn(`[loadBotConfigs] Config file not found: ${configPath}`);
@@ -80,10 +80,17 @@ export function loadBotConfigs(configPath: string = './bot-configs.json'): BotCo
       return [];
     }
     
-    const validConfigs: BotConfig[] = [];
+    const validConfigs: (BotConfig | HedgeBotConfig)[] = [];
     
     for (const config of data.bots) {
-      if (validateBotConfig(config)) {
+      if (config.botType === 'hedge') {
+        try {
+          validateHedgeBotConfig(config);
+          validConfigs.push(config as HedgeBotConfig);
+        } catch (err) {
+          console.warn(`[loadBotConfigs] Invalid hedge config skipped: ${config.id || 'unknown'} — ${err}`);
+        }
+      } else if (validateBotConfig(config)) {
         validConfigs.push(config);
       } else {
         console.warn(`[loadBotConfigs] Invalid config skipped: ${config.id || 'unknown'}`);
@@ -108,7 +115,7 @@ export function loadBotConfigs(configPath: string = './bot-configs.json'): BotCo
  * @param config - Config object to validate
  * @returns true if valid, false otherwise
  */
-function validateBotConfig(config: any): config is BotConfig {
+export function validateBotConfig(config: any): config is BotConfig {
   if (!config || typeof config !== 'object') return false;
   
   // Required fields
@@ -126,4 +133,73 @@ function validateBotConfig(config: any): config is BotConfig {
   if (!Array.isArray(config.tags)) return false;
   
   return true;
+}
+
+/**
+ * Validate a hedge bot config object, throwing a descriptive error for any missing required field.
+ * @param config - Config object to validate
+ * @throws Error naming the missing or invalid field
+ */
+export function validateHedgeBotConfig(config: any): asserts config is HedgeBotConfig {
+  if (!config || typeof config !== 'object') {
+    throw new Error('HedgeBotConfig must be a non-null object');
+  }
+
+  // Base identity fields
+  if (typeof config.id !== 'string' || config.id.trim().length === 0) {
+    throw new Error('HedgeBotConfig missing required field: id');
+  }
+  if (typeof config.name !== 'string' || config.name.trim().length === 0) {
+    throw new Error('HedgeBotConfig missing required field: name');
+  }
+  if (typeof config.credentialKey !== 'string' || config.credentialKey.trim().length === 0) {
+    throw new Error('HedgeBotConfig missing required field: credentialKey');
+  }
+  if (!['json', 'sqlite'].includes(config.tradeLogBackend)) {
+    throw new Error('HedgeBotConfig missing required field: tradeLogBackend');
+  }
+  if (typeof config.tradeLogPath !== 'string' || config.tradeLogPath.trim().length === 0) {
+    throw new Error('HedgeBotConfig missing required field: tradeLogPath');
+  }
+  if (!Array.isArray(config.tags)) {
+    throw new Error('HedgeBotConfig missing required field: tags');
+  }
+  if (typeof config.autoStart !== 'boolean') {
+    throw new Error('HedgeBotConfig missing required field: autoStart');
+  }
+
+  // Hedge-specific required fields
+  if (config.botType !== 'hedge') {
+    throw new Error('HedgeBotConfig missing required field: botType (must be "hedge")');
+  }
+  if (typeof config.symbolA !== 'string' || config.symbolA.trim().length === 0) {
+    throw new Error('HedgeBotConfig missing required field: symbolA');
+  }
+  if (typeof config.symbolB !== 'string' || config.symbolB.trim().length === 0) {
+    throw new Error('HedgeBotConfig missing required field: symbolB');
+  }
+  if (!['sodex', 'dango', 'decibel'].includes(config.exchange)) {
+    throw new Error('HedgeBotConfig missing required field: exchange');
+  }
+  if (typeof config.legValueUsd !== 'number') {
+    throw new Error('HedgeBotConfig missing required field: legValueUsd');
+  }
+  if (typeof config.holdingPeriodSecs !== 'number') {
+    throw new Error('HedgeBotConfig missing required field: holdingPeriodSecs');
+  }
+  if (typeof config.profitTargetUsd !== 'number') {
+    throw new Error('HedgeBotConfig missing required field: profitTargetUsd');
+  }
+  if (typeof config.maxLossUsd !== 'number') {
+    throw new Error('HedgeBotConfig missing required field: maxLossUsd');
+  }
+  if (typeof config.volumeSpikeMultiplier !== 'number') {
+    throw new Error('HedgeBotConfig missing required field: volumeSpikeMultiplier');
+  }
+  if (typeof config.volumeRollingWindow !== 'number') {
+    throw new Error('HedgeBotConfig missing required field: volumeRollingWindow');
+  }
+  if (typeof config.fundingRateWeight !== 'number') {
+    throw new Error('HedgeBotConfig missing required field: fundingRateWeight');
+  }
 }

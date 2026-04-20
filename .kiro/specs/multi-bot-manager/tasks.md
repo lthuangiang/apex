@@ -151,35 +151,35 @@
   - Test `getAggregatedStats()` với mock instances
   - _Requirements: 1.2, 1.3, 2.2_
 
-- [~] 5.2 Unit tests cho `BotInstance`
+- [ ] 5.2 Unit tests cho `BotInstance`
   - File: `src/bot/__tests__/BotInstance.test.ts`
   - Test start/stop state transitions
   - Test crash handling (watcher throw → status STOPPED)
   - Test `start()` khi đã running trả về false
   - _Requirements: 1.4, 1.5_
 
-- [~] 5.3 Unit tests cho Manager Routes
+- [ ] 5.3 Unit tests cho Manager Routes
   - File: `src/dashboard/__tests__/manager-routes.test.ts`
   - Test tất cả `/api/bots/*` endpoints với supertest + mock BotManager
   - Test 404 khi bot không tìm thấy
   - Test 401 khi không authenticated
   - _Requirements: 5.6, 7.1_
 
-- [~] 5.4 Unit tests cho Config Persistence
+- [ ] 5.4 Unit tests cho Config Persistence
   - File: `src/bot/__tests__/persistBotConfigs.test.ts`
   - Test `saveBotConfigsToFile()` với mock BotManager
   - Test config overrides được merge đúng vào BotConfig
   - Test file được write với format đúng
   - _Requirements: 9.1, 9.2, 9.3_
 
-- [~] 5.5 Unit tests cho HTML Partials
+- [ ] 5.5 Unit tests cho HTML Partials
   - File: `src/dashboard/__tests__/partials-structure.test.ts`
   - Test `manager.ejs` render thành công
   - Test `partials/bot-cards.ejs` được include đúng
   - Test `bot-card-template` tồn tại trong rendered HTML
   - _Requirements: 10.1, 10.2, 10.3_
 
-- [~] 5.6 Property-based tests
+- [ ] 5.6 Property-based tests
   - File: `src/bot/__tests__/BotManager.properties.test.ts`
   - P1: State isolation — update bot i không ảnh hưởng bot j
   - P2: Aggregation consistency — totalVolume = Σ sessionVolume
@@ -188,7 +188,7 @@
   - P5: Efficiency calculation — efficiencyBps = (pnl/volume)*10000
   - _Requirements: Correctness Properties P1-P5_
 
-- [~] 5.7 Integration test
+- [ ] 5.7 Integration test
   - File: `src/bot/__tests__/multi-bot.integration.test.ts`
   - Tạo 2 bot instances với mock adapters
   - Start/stop qua API, verify aggregated stats

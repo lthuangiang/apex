@@ -15,7 +15,12 @@ import { weightStore } from '../ai/FeedbackLoop/WeightStore.js';
 import { componentPerformanceTracker } from '../ai/FeedbackLoop/ComponentPerformanceTracker.js';
 import { confidenceCalibrator } from '../ai/FeedbackLoop/ConfidenceCalibrator.js';
 import type { BotManager } from '../bot/BotManager.js';
+import { BotInstance } from '../bot/BotInstance.js';
 import { saveBotConfigsToFile } from '../bot/persistBotConfigs.js';
+import { validateBotConfig, validateHedgeBotConfig } from '../bot/loadBotConfigs.js';
+import { createAdapter as createBotAdapter } from '../bot/adapterFactory.js';
+import type { HedgeBotConfig } from '../bot/types.js';
+import type { TelegramManager } from '../modules/TelegramManager.js';
 
 
 const validTokens = new Map<string, number>();
@@ -36,6 +41,7 @@ export class DashboardServer {
   private watcherRunner: (() => void) | null = null;
   private configStore: ConfigStoreInterface | null = null;
   private botManager: BotManager | null = null;
+  private _telegram: TelegramManager | null = null;
   private _sopointsCache: { summary: any; week: any } = { summary: null, week: null };
   private _analyticsCache: { summary: AnalyticsSummary | null; cachedAt: number } = { summary: null, cachedAt: 0 };
   private _analyticsEngine = new AnalyticsEngine();
@@ -68,8 +74,9 @@ export class DashboardServer {
   /**
    * Register BotManager for multi-bot support
    */
-  registerBotManager(manager: BotManager): void {
+  registerBotManager(manager: BotManager, telegram?: TelegramManager): void {
     this.botManager = manager;
+    if (telegram) this._telegram = telegram;
     console.log('[DashboardServer] BotManager registered');
     this._setupManagerRoutes();
   }
@@ -513,6 +520,73 @@ export class DashboardServer {
       }
     });
 
+    // POST /api/bots - Create a new bot at runtime
+    this.app.post('/api/bots', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+
+      const body = req.body as Record<string, unknown>;
+
+      try {
+        const isHedge = body.botType === 'hedge';
+
+        if (isHedge) {
+          validateHedgeBotConfig(body);
+          const adapter = createBotAdapter(body.exchange as string, body.credentialKey as string);
+          const bot = this.botManager.createHedgeBot(body as unknown as HedgeBotConfig, adapter, this._telegram as any);
+          if (body.autoStart) await bot.start();
+        } else {
+          if (!validateBotConfig(body)) {
+            res.status(400).json({ error: 'Invalid bot config — check all required fields' });
+            return;
+          }
+          const adapter = createBotAdapter(body.exchange as string, body.credentialKey as string);
+          const bot = this.botManager.createBot(body, adapter, this._telegram as any);
+          if (body.autoStart) await bot.start();
+        }
+
+        // Persist updated config list to disk
+        const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
+        saveBotConfigsToFile(this.botManager, configPath);
+
+        res.status(201).json({ ok: true, id: body.id });
+      } catch (err) {
+        res.status(400).json({ error: String(err) });
+      }
+    });
+
+    // DELETE /api/bots/:id - Remove a bot from the registry
+    this.app.delete('/api/bots/:id', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+
+      try {
+        // Stop first if running
+        if (bot.state.botStatus === 'RUNNING') {
+          await bot.stop();
+        }
+        this.botManager.removeBot(req.params.id);
+
+        // Persist
+        const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
+        saveBotConfigsToFile(this.botManager, configPath);
+
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
     // ── Per-Bot Control Routes ────────────────────────────────────────────────
 
     // POST /api/bots/:id/start - Start a bot
@@ -581,6 +655,10 @@ export class DashboardServer {
       }
       
       try {
+        if (!(bot instanceof BotInstance)) {
+          res.status(400).json({ error: 'Force-close is not supported for this bot type' });
+          return;
+        }
         const success = await bot.forceClosePosition();
         res.json({ ok: success });
       } catch (err) {
@@ -604,6 +682,21 @@ export class DashboardServer {
       }
       
       try {
+        // HedgeBot doesn't have a SessionManager/Watcher — return simplified status
+        if (!(bot instanceof BotInstance)) {
+          res.json({
+            isRunning: bot.state.botStatus === 'RUNNING',
+            mode: null,
+            maxLoss: null,
+            currentPnL: bot.state.sessionPnl,
+            uptime: 0,
+            hasPosition: bot.state.hedgePosition !== null,
+            positionText: '',
+            cooldown: null,
+          });
+          return;
+        }
+
         const sessionManager = bot.getSessionManager();
         const watcher = bot.getWatcher();
         const state = sessionManager.getState();
@@ -698,6 +791,10 @@ export class DashboardServer {
       }
       
       try {
+        if (!(bot instanceof BotInstance)) {
+          res.status(400).json({ error: 'Force-close is not supported for this bot type' });
+          return;
+        }
         const success = await bot.forceClosePosition();
         res.json({ ok: success });
       } catch (err) {
@@ -752,6 +849,10 @@ export class DashboardServer {
       }
       
       try {
+        if (!(bot instanceof BotInstance)) {
+          res.status(400).json({ error: 'set_max_loss is not supported for this bot type' });
+          return;
+        }
         bot.getSessionManager().setMaxLoss(amount);
         res.json({ ok: true, maxLoss: amount });
       } catch (err) {
@@ -895,6 +996,12 @@ export class DashboardServer {
         return;
       }
       
+      // HedgeBot uses hedgePosition instead of openPosition
+      const hedgePos = (bot.state as any).hedgePosition;
+      if (hedgePos) {
+        res.json({ type: 'hedge', hedgePosition: hedgePos });
+        return;
+      }
       res.json(bot.state.openPosition);
     });
 
@@ -923,6 +1030,11 @@ export class DashboardServer {
       }
       
       try {
+        if (!(bot instanceof BotInstance)) {
+          // HedgeBot: return raw config (no ConfigStore)
+          res.json(bot.config);
+          return;
+        }
         res.json(bot.getConfigStore().getEffective());
       } catch (err) {
         res.status(500).json({ error: String(err) });
@@ -939,6 +1051,11 @@ export class DashboardServer {
       const bot = this.botManager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+
+      if (!(bot instanceof BotInstance)) {
+        res.status(400).json({ error: 'Config overrides are not supported for this bot type' });
         return;
       }
       
@@ -986,6 +1103,11 @@ export class DashboardServer {
         res.status(404).json({ error: 'Bot not found' });
         return;
       }
+
+      if (!(bot instanceof BotInstance)) {
+        res.status(400).json({ error: 'Config reset is not supported for this bot type' });
+        return;
+      }
       
       try {
         bot.getConfigStore().resetToDefaults();
@@ -1010,15 +1132,18 @@ export class DashboardServer {
       try {
         if (name && typeof name === 'string' && name.trim()) (bot.config as any).name = name.trim();
         if (symbol && typeof symbol === 'string' && symbol.trim()) {
+          if (!(bot instanceof BotInstance)) {
+            res.status(400).json({ error: 'Symbol change is not supported for hedge bots' });
+            return;
+          }
           const sym = symbol.trim().toUpperCase();
           (bot.config as any).symbol = sym;
           bot.state.symbol = sym;
-          // Update Watcher's live symbol so next tick uses the new market
           bot.getWatcher().setSymbol(sym);
         }
         const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
         saveBotConfigsToFile(this.botManager, configPath);
-        res.json({ ok: true, name: bot.config.name, symbol: bot.config.symbol });
+        res.json({ ok: true, name: bot.config.name });
       } catch (err) { res.status(500).json({ error: String(err) }); }
     });
 
