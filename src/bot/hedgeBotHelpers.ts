@@ -130,8 +130,10 @@ export function evaluateExitConditions(
   }
 
   // Priority 3 — MEAN_REVERSION (Requirement 6.5)
-  // Guard against division by zero
-  if (equilibriumSpread !== 0) {
+  // Only fire after holding at least 20% of holdingPeriodSecs to avoid
+  // triggering immediately when equilibriumSpread == currentRatio (window not warmed up yet)
+  const minHoldForMeanReversion = holdingPeriodSecs * 0.2;
+  if (equilibriumSpread !== 0 && elapsedSecs >= minHoldForMeanReversion) {
     const deviation = Math.abs(currentRatio - equilibriumSpread) / equilibriumSpread;
     if (deviation < 0.005) {
       return { shouldExit: true, reason: 'MEAN_REVERSION' };

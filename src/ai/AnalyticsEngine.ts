@@ -1,5 +1,25 @@
 import { TradeRecord } from './TradeLogger.js';
 
+export interface FilterSkipStats {
+  regimeGate: number;
+  pressureGate: number;
+  fallbackGate: number;
+  feeFilter: number;
+  total: number;
+}
+
+export interface EffectiveConfidenceStats {
+  avgRawConfidence: number;
+  avgEffectiveConfidence: number;
+  adjustedTradeCount: number;
+}
+
+export interface DynamicMinHoldStats {
+  avgDynamicMinHold: number;
+  avgActualHoldSecs: number;
+  earlyExitRate: number;  // % trades exited before dynamicMinHold
+}
+
 export interface WinRateBreakdown {
   total: number;
   wins: number;
@@ -37,6 +57,9 @@ export interface AnalyticsSummary {
     medianSecs: number;
     distribution: Array<{ bucket: string; count: number }>;
   };
+  filterSkipStats: FilterSkipStats;
+  effectiveConfidenceStats: EffectiveConfidenceStats;
+  dynamicMinHoldStats: DynamicMinHoldStats;
 }
 
 function emptyBreakdown(): WinRateBreakdown {
@@ -60,6 +83,9 @@ function emptySummary(): AnalyticsSummary {
     signalQuality: { llmMatchesMomentumRate: 0, fallbackRate: 0, avgConfidence: 0 },
     feeImpact: { totalFeePaid: 0, tradesWonBeforeFee: 0, feeLoserRate: 0 },
     holdingTime: { avgSecs: 0, medianSecs: 0, distribution: [] },
+    filterSkipStats: { regimeGate: 0, pressureGate: 0, fallbackGate: 0, feeFilter: 0, total: 0 },
+    effectiveConfidenceStats: { avgRawConfidence: 0, avgEffectiveConfidence: 0, adjustedTradeCount: 0 },
+    dynamicMinHoldStats: { avgDynamicMinHold: 0, avgActualHoldSecs: 0, earlyExitRate: 0 },
   };
 }
 
@@ -143,6 +169,49 @@ export class AnalyticsEngine {
       summary.holdingTime.avgSecs = times.reduce((s, v) => s + v, 0) / times.length;
       summary.holdingTime.medianSecs = times[Math.floor(times.length / 2)];
       summary.holdingTime.distribution = this._holdingDistribution(farmTrades);
+    }
+
+    // Filter skip stats — count per-filter rejection prefixes in signalSnapshot.filterResult
+    const filterResultTrades = trades.filter(t => t.filterResult != null);
+    let regimeGate = 0, pressureGate = 0, fallbackGate = 0, feeFilter = 0;
+    for (const t of filterResultTrades) {
+      const fr = t.filterResult!;
+      if (fr.startsWith('[RegimeGate]')) regimeGate++;
+      else if (fr.startsWith('[PressureGate]')) pressureGate++;
+      else if (fr.startsWith('[FallbackGate]')) fallbackGate++;
+      else if (fr.startsWith('[FeeFilter]')) feeFilter++;
+    }
+    summary.filterSkipStats = {
+      regimeGate,
+      pressureGate,
+      fallbackGate,
+      feeFilter,
+      total: regimeGate + pressureGate + fallbackGate + feeFilter,
+    };
+
+    // Effective confidence stats — farm trades with effectiveConfidence defined
+    const farmTradesWithEffConf = trades.filter(t => t.mode === 'farm' && t.effectiveConfidence != null);
+    if (farmTradesWithEffConf.length > 0) {
+      summary.effectiveConfidenceStats.avgRawConfidence =
+        farmTradesWithEffConf.reduce((s, t) => s + t.confidence, 0) / farmTradesWithEffConf.length;
+      summary.effectiveConfidenceStats.avgEffectiveConfidence =
+        farmTradesWithEffConf.reduce((s, t) => s + t.effectiveConfidence!, 0) / farmTradesWithEffConf.length;
+      summary.effectiveConfidenceStats.adjustedTradeCount =
+        farmTradesWithEffConf.filter(t => t.effectiveConfidence !== t.confidence).length;
+    }
+
+    // Dynamic min hold stats — farm trades with dynamicMinHold defined
+    const farmTradesWithMinHold = trades.filter(t => t.mode === 'farm' && t.dynamicMinHold != null);
+    if (farmTradesWithMinHold.length > 0) {
+      summary.dynamicMinHoldStats.avgDynamicMinHold =
+        farmTradesWithMinHold.reduce((s, t) => s + t.dynamicMinHold!, 0) / farmTradesWithMinHold.length;
+      const holdTimeTrades = farmTradesWithMinHold.filter(t => t.holdingTimeSecs != null);
+      if (holdTimeTrades.length > 0) {
+        summary.dynamicMinHoldStats.avgActualHoldSecs =
+          holdTimeTrades.reduce((s, t) => s + t.holdingTimeSecs!, 0) / holdTimeTrades.length;
+        const earlyExitCount = holdTimeTrades.filter(t => t.holdingTimeSecs! < t.dynamicMinHold!).length;
+        summary.dynamicMinHoldStats.earlyExitRate = (earlyExitCount / holdTimeTrades.length) * 100;
+      }
     }
 
     return summary;

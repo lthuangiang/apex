@@ -505,16 +505,60 @@ export class DashboardServer {
       }
     });
 
-    // GET /api/bots/stats - Aggregated stats
-    this.app.get('/api/bots/stats', (_req, res) => {
+    // GET /api/bots/stats - Aggregated lifetime stats from persisted trade logs.
+    // Reads trade log files (mounted at /app/data/) so stats survive Docker restarts/updates.
+    // PnL and Fees are computed from historical trade records.
+    // Volume is estimated from feePaid (feePaid = notional * FEE_RATE_MAKER * 2).
+    this.app.get('/api/bots/stats', async (_req, res) => {
       if (!this.botManager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
-      
+
       try {
-        const stats = this.botManager.getAggregatedStats();
-        res.json(stats);
+        const bots = this.botManager.getAllBots();
+        let totalPnl = 0;
+        let totalVolume = 0;
+        let totalFees = 0;
+        let activeBotCount = 0;
+        // feePaid = notional * FEE_RATE_MAKER * 2 → notional = feePaid / (FEE_RATE_MAKER * 2)
+        const FEE_RATE_ROUND_TRIP = 0.00024;
+
+        await Promise.all(bots.map(async (bot) => {
+          if (bot.state.botStatus === 'RUNNING') activeBotCount++;
+
+          try {
+            const trades = await bot.getTradeLogger().readAll();
+
+            // Lifetime PnL from all persisted trade records
+            totalPnl += trades.reduce((s, t) => s + (t.pnl ?? 0), 0);
+
+            // Lifetime fees from feePaid field (persisted since trade-analytics-reporting)
+            totalFees += trades.reduce((s, t) => s + (t.feePaid ?? 0), 0);
+
+            // Volume: derive from feePaid when available (feePaid = notional * FEE_RATE * 2)
+            // For old records without feePaid, fall back to session volume
+            const tradesWithFee = trades.filter(t => t.feePaid != null && t.feePaid > 0);
+            if (tradesWithFee.length > 0) {
+              totalVolume += tradesWithFee.reduce((s, t) => s + (t.feePaid! / FEE_RATE_ROUND_TRIP), 0);
+            } else {
+              // No fee data — use session volume as best available estimate
+              totalVolume += bot.state.sessionVolume;
+            }
+          } catch {
+            // Trade log unreadable — fall back to session state only
+            totalPnl += bot.state.sessionPnl;
+            totalFees += bot.state.sessionFees;
+            totalVolume += bot.state.sessionVolume;
+          }
+        }));
+
+        res.json({
+          totalPnl,
+          totalVolume,
+          totalFees,
+          activeBotCount,
+        });
       } catch (err) {
         res.status(500).json({ error: String(err) });
       }
@@ -944,6 +988,46 @@ export class DashboardServer {
         pnlHistory: bot.state.pnlHistory,
         volumeHistory: bot.state.volumeHistory,
       });
+    });
+
+    // GET /api/bots/:id/today-volume - Fetch today's volume directly from exchange API
+    // This bypasses the in-memory cache and queries the authoritative source,
+    // so it always returns accurate data even when the bot is stopped or just started.
+    this.app.get('/api/bots/:id/today-volume', async (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+
+      // Only BotInstance has access to the adapter
+      if (!(bot instanceof BotInstance)) {
+        res.json({ todayVolume: bot.state.todayVolume ?? 0, source: 'cache' });
+        return;
+      }
+
+      const adapter = (bot as any).adapter;
+      if (typeof adapter?.getTodayVolumeFromAPI !== 'function') {
+        // Non-Decibel adapter — return cached value
+        res.json({ todayVolume: bot.state.todayVolume ?? 0, source: 'cache' });
+        return;
+      }
+
+      try {
+        const volume: number = await adapter.getTodayVolumeFromAPI();
+        // Update the bot state so subsequent /pnl calls also reflect this
+        bot.state.todayVolume = volume;
+        res.json({ todayVolume: volume, source: 'api' });
+      } catch (err: any) {
+        // API failed — return last known cached value
+        console.warn(`[DashboardServer] today-volume fetch failed for bot ${req.params.id}:`, err?.message ?? err);
+        res.json({ todayVolume: bot.state.todayVolume ?? 0, source: 'cache', error: err?.message });
+      }
     });
 
     // GET /api/bots/:id/trades - Bot trades

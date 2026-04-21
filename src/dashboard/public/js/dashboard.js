@@ -71,15 +71,86 @@ function renderTrades() {
   document.getElementById('trade-page-info').textContent = 'Page '+tradePg+' of '+Math.max(1,Math.ceil(total/PAGE_SIZE));
   document.getElementById('trade-prev').disabled = tradePg<=1;
   document.getElementById('trade-next').disabled = tradePg>=Math.ceil(total/PAGE_SIZE);
-  if (!total) { tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:1.5rem;color:var(--text-3);">No trades yet.</td></tr>'; return; }
+  if (!total) { tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:1.5rem;color:var(--text-3);">No trades yet.</td></tr>'; return; }
   tbody.innerHTML = allTrades.slice((tradePg-1)*PAGE_SIZE,tradePg*PAGE_SIZE).map(t => {
-    const side = t.direction==='long'?'<span class="td-buy">BUY</span>':'<span class="td-sell">SELL</span>';
-    const pc = t.pnl>=0?'td-pos':'td-neg';
+    const isHedge = t.symbolA !== undefined || t.exitPriceA !== undefined;
     const id = t.id?t.id.slice(0,8)+'...'+t.id.slice(-4):'—';
-    const price = t.exitPrice?'$'+Number(t.exitPrice).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'—';
-    const pnlv = (t.pnl>=0?'+':'')+'$'+Number(t.pnl).toFixed(4);
-    return '<tr><td style="font-family:monospace;font-size:.7rem;">'+esc(id)+'</td><td>'+fmt(t.timestamp)+'</td><td>'+side+'</td><td>'+price+'</td><td class="'+pc+'">'+pnlv+'</td></tr>';
+
+    let side, entryPrice, exitPrice, pnl, pc, hold, signal, conf;
+
+    if (isHedge) {
+      // Hedge trade: long/short symbols, combined PnL, hold duration
+      const longSym = (t.longSymbol||'').split('/')[0].split('-')[0];
+      const shortSym = (t.shortSymbol||'').split('/')[0].split('-')[0];
+      side = '<span class="td-buy" style="font-size:.65rem">L:'+esc(longSym)+'</span> <span class="td-sell" style="font-size:.65rem">S:'+esc(shortSym)+'</span>';
+      const pA = t.entryPriceA ? '$'+Number(t.entryPriceA).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
+      const pB = t.entryPriceB ? '$'+Number(t.entryPriceB).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
+      entryPrice = '<span style="font-size:.68rem">'+pA+'<br>'+pB+'</span>';
+      const xA = t.exitPriceA ? '$'+Number(t.exitPriceA).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
+      const xB = t.exitPriceB ? '$'+Number(t.exitPriceB).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}) : '—';
+      exitPrice = '<span style="font-size:.68rem">'+xA+'<br>'+xB+'</span>';
+      const rawPnl = typeof t.combinedPnl === 'number' ? t.combinedPnl : (typeof t.pnlA === 'number' && typeof t.pnlB === 'number' ? t.pnlA + t.pnlB : NaN);
+      pc = rawPnl >= 0 ? 'td-pos' : 'td-neg';
+      pnl = isNaN(rawPnl) ? '—' : (rawPnl>=0?'+':'')+'$'+rawPnl.toFixed(4);
+      hold = t.holdDurationSecs ? fmtHold(t.holdDurationSecs) : '—';
+      signal = '—';
+      conf = '—';
+    } else {
+      // Regular trade
+      side = t.direction==='long'?'<span class="td-buy">BUY</span>':'<span class="td-sell">SELL</span>';
+      pc = (t.pnl||0)>=0?'td-pos':'td-neg';
+      // Entry price
+      entryPrice = t.entryPrice ? '$'+Number(t.entryPrice).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+      // Exit price
+      exitPrice = t.exitPrice ? '$'+Number(t.exitPrice).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+      pnl = (t.pnl>=0?'+':'')+'$'+Number(t.pnl).toFixed(4);
+      // Fix: use camelCase holdingTimeSecs (JSON field from TradeRecord), fallback to snake_case for old records
+      hold = t.holdingTimeSecs ? fmtHold(t.holdingTimeSecs) : (t.holding_time_secs ? fmtHold(t.holding_time_secs) : '—');
+      // Signal: regime + llm direction
+      const regime = t.regime ? t.regime.replace(/_/g,' ') : null;
+      const llmDir = t.llmDirection;
+      if (regime && llmDir) {
+        signal = '<span style="font-size:.62rem;color:var(--text-3)">'+esc(regime)+'</span><br><span style="font-size:.65rem;font-weight:600;color:'+(llmDir==='long'?'var(--green)':'var(--red)')+'">'+llmDir.toUpperCase()+'</span>';
+      } else if (regime) {
+        signal = '<span style="font-size:.65rem;color:var(--text-3)">'+esc(regime)+'</span>';
+      } else if (t.reasoning) {
+        const firstWord = t.reasoning.split(' ')[0];
+        signal = '<span style="font-size:.65rem;color:var(--text-3)">'+esc(firstWord)+'</span>';
+      } else {
+        signal = '—';
+      }
+      // Confidence: show as percentage
+      const confVal = t.confidence != null ? t.confidence : (t.llmConfidence != null ? t.llmConfidence : null);
+      if (confVal != null) {
+        const pct = confVal <= 1 ? (confVal * 100).toFixed(0) : confVal.toFixed(0);
+        const threshold = confVal <= 1 ? 0.7 : 70;
+        const midThreshold = confVal <= 1 ? 0.4 : 40;
+        const color = confVal >= threshold ? 'var(--green)' : confVal >= midThreshold ? '#f59e0b' : 'var(--red)';
+        conf = '<span style="font-size:.72rem;font-weight:600;color:'+color+'">'+pct+'%</span>';
+      } else {
+        conf = '—';
+      }
+    }
+
+    return '<tr>'
+      +'<td style="font-family:monospace;font-size:.7rem;">'+esc(id)+'</td>'
+      +'<td>'+fmt(t.timestamp)+'</td>'
+      +'<td>'+side+'</td>'
+      +'<td style="font-size:.72rem;">'+entryPrice+'</td>'
+      +'<td style="font-size:.72rem;">'+exitPrice+'</td>'
+      +'<td style="font-size:.72rem;color:var(--text-3)">'+hold+'</td>'
+      +'<td style="font-size:.65rem;line-height:1.3">'+signal+'</td>'
+      +'<td>'+conf+'</td>'
+      +'<td class="'+pc+'">'+pnl+'</td>'
+      +'</tr>';
   }).join('');
+}
+function fmtHold(secs) {
+  if (!secs || secs < 0) return '—';
+  const s = Math.round(secs);
+  if (s < 60) return s+'s';
+  if (s < 3600) return Math.floor(s/60)+'m '+(s%60)+'s';
+  return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m';
 }
 
 function renderEvents() {
@@ -447,8 +518,17 @@ async function refreshDecibelPoints() {
 // ── Today Volume (Decibel) ────────────────────────────────────────────────
 async function refreshTodayVolume() {
   try {
-    const d = await fetch(api('/api/pnl')).then(r=>r.json());
-    const vol = d.todayVolume || 0;
+    // If we have a bot context, fetch directly from the exchange API for accurate data.
+    // This ensures the value is correct even when the bot is stopped or just started.
+    const ctx = window.BOT_CONTEXT;
+    let vol = 0;
+    if (ctx && ctx.botId) {
+      const d = await fetch('/api/bots/' + ctx.botId + '/today-volume').then(r => r.json());
+      vol = d.todayVolume || 0;
+    } else {
+      const d = await fetch(api('/api/pnl')).then(r => r.json());
+      vol = d.todayVolume || 0;
+    }
     const today = new Date().toISOString().slice(0, 10);
     document.getElementById('week-label').textContent = 'Today Volume (UTC)';
     document.getElementById('week-vol').textContent = '$'+vol.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});

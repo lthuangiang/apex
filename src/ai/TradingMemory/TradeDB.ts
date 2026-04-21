@@ -1,28 +1,35 @@
 import type { TradeRecord } from './types.js';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const Database = require('better-sqlite3');
-
 type BetterSQLite3Database = import('better-sqlite3').Database;
 
 export class TradeDB {
-  private db: BetterSQLite3Database;
+  private db: BetterSQLite3Database | null = null;
 
-  constructor(dbPath: string = './trading_memory.db') {
-    this.db = new Database(dbPath);
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS memory_trades (
-        trade_id   TEXT PRIMARY KEY,
-        signal     TEXT NOT NULL,
-        decision   TEXT NOT NULL,
-        pnl_percent REAL NOT NULL,
-        outcome    TEXT NOT NULL,
-        timestamp  TEXT NOT NULL
-      );
-    `);
+  constructor(dbPath: string = '/app/data/trading_memory.db') {
+    // SQLite disabled — TradingMemory feature not in use
+    // Skipping DB initialization to avoid disk usage in container
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Database = require('better-sqlite3');
+      this.db = new Database(dbPath);
+      this.db!.exec(`
+        CREATE TABLE IF NOT EXISTS memory_trades (
+          trade_id   TEXT PRIMARY KEY,
+          signal     TEXT NOT NULL,
+          decision   TEXT NOT NULL,
+          pnl_percent REAL NOT NULL,
+          outcome    TEXT NOT NULL,
+          timestamp  TEXT NOT NULL
+        );
+      `);
+    } catch (err) {
+      console.warn('[TradeDB] SQLite unavailable — running in no-op mode:', (err as Error).message);
+      this.db = null;
+    }
   }
 
   insert(trade: TradeRecord): string {
+    if (!this.db) return trade.tradeId;
     this.db.prepare(`
       INSERT OR REPLACE INTO memory_trades (trade_id, signal, decision, pnl_percent, outcome, timestamp)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -38,7 +45,7 @@ export class TradeDB {
   }
 
   getByIds(ids: string[]): TradeRecord[] {
-    if (ids.length === 0) return [];
+    if (!this.db || ids.length === 0) return [];
     const placeholders = ids.map(() => '?').join(',');
     const rows = this.db.prepare(
       `SELECT * FROM memory_trades WHERE trade_id IN (${placeholders})`

@@ -21,6 +21,9 @@ export interface SignalSnapshot {
   atrPct?: number;
   bbWidth?: number;
   volRatio?: number;
+  filterResult?: string;          // 'pass' or rejection reason
+  effectiveConfidence?: number;   // confidence after LLM adjustment
+  dynamicMinHold?: number;        // computed min hold in seconds
 }
 
 export interface TradeRecord extends SignalSnapshot {
@@ -132,6 +135,9 @@ export class TradeLogger {
       ['atr_pct', 'REAL'],
       ['bb_width', 'REAL'],
       ['vol_ratio', 'REAL'],
+      ['filter_result', 'TEXT'],
+      ['effective_confidence', 'REAL'],
+      ['dynamic_min_hold', 'REAL'],
     ];
     for (const [col, type] of newCols) {
       try {

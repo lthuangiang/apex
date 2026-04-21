@@ -529,8 +529,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
           <div class="panel-hd"><span class="panel-title">Trade History</span><span style="font-size:.65rem;color:var(--text3)" id="trade-count"></span></div>
           <div style="overflow-x:auto">
             <table class="data-table">
-              <thead><tr><th>Order ID</th><th>Date</th><th>Side</th><th>Price</th><th>PnL</th></tr></thead>
-              <tbody id="trades-body"><tr><td colspan="5" style="text-align:center;padding:1.25rem;color:var(--text3)">No trades yet.</td></tr></tbody>
+              <thead><tr><th>Order ID</th><th>Date</th><th>Side</th><th>Entry</th><th>Exit</th><th>Hold</th><th>Signal</th><th>Conf</th><th>PnL</th></tr></thead>
+              <tbody id="trades-body"><tr><td colspan="9" style="text-align:center;padding:1.25rem;color:var(--text3)">No trades yet.</td></tr></tbody>
             </table>
           </div>
           <div class="pg-row"><span id="trade-page-info">Page 1</span><div style="display:flex;gap:.3rem"><button class="pg-btn" id="trade-prev" onclick="tradePage(-1)" disabled>‹</button><button class="pg-btn" id="trade-next" onclick="tradePage(1)">›</button></div></div>

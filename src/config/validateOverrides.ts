@@ -598,5 +598,21 @@ export function validateOverrides(
     }
   }
 
+  // Rule 42: Farm Signal Cost Optimizer confidence thresholds must be in [0, 1]
+  const farmConfidenceFields = [
+    'FARM_MIN_CONFIDENCE_PRESSURE_GATE',
+    'FARM_MIN_FALLBACK_CONFIDENCE',
+    'FARM_SIDEWAY_MIN_CONFIDENCE',
+    'FARM_TREND_MIN_CONFIDENCE',
+  ] as const;
+  for (const field of farmConfidenceFields) {
+    if (field in patch) {
+      const v = patch[field];
+      if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 1) {
+        errors.push({ field, message: `Must be a number in the range [0, 1]` });
+      }
+    }
+  }
+
   return errors;
 }

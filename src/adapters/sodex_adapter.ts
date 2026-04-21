@@ -267,6 +267,10 @@ export class SodexAdapter implements ExchangeAdapter {
                     this.cachedLotSize[name] = parseFloat(lotRaw);
                     console.log(`[SoDEX] ${name}: tickSize=${s.tickSize} lotSize=${lotRaw}`);
                 }
+                // Debug: log all fields for first symbol to detect field names
+                if (name === 'BTC-USD') {
+                    console.log(`[SoDEX] BTC-USD raw symbol fields:`, JSON.stringify(s));
+                }
             }
             if (this.cachedSymbolId[symbol] !== undefined) {
                 return this.cachedSymbolId[symbol];
@@ -317,7 +321,10 @@ export class SodexAdapter implements ExchangeAdapter {
         const absQty = Math.abs(qty);
         const floored = Math.floor(absQty / lot) * lot;
         const decimals = lot < 1 ? Math.round(-Math.log10(lot)) : 0;
-        return floored.toFixed(decimals);
+        // Use parseFloat to strip trailing zeros — SoDEX rejects "0.00200", needs "0.002"
+        const result = String(parseFloat(floored.toFixed(decimals)));
+        console.log(`[SoDEX] roundToLot: qty=${qty} lot=${lot} decimals=${decimals} floored=${floored} result=${result}`);
+        return result;
     }
 
     async place_limit_order(

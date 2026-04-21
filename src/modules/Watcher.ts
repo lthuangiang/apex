@@ -21,6 +21,7 @@ import { FillTracker } from './FillTracker.js';
 import { ExecutionEdge } from './ExecutionEdge.js';
 import { MarketMaker, MMEntryBias } from './MarketMaker.js';
 import type { ConfigStoreInterface } from '../config/ConfigStore.js';
+import { evaluateFarmEntryFilters, type FilterInput } from './FarmSignalFilters.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE MACHINE
@@ -388,6 +389,7 @@ export class Watcher {
             }
 
             // Step 3: Stop the bot — session is now fully closed
+            this.sessionManager.stopSession(); // sync SessionManager state so isRunning = false
             this.stop();
             this._setState({ openPosition: null });
             return; // RETURN
@@ -642,15 +644,27 @@ export class Watcher {
             const holdDone = !this.farmHoldUntil || Date.now() >= this.farmHoldUntil;
 
             if (!holdDone) {
-                // Early exit: held >= FARM_EARLY_EXIT_SECS AND pnl >= threshold
-                if (duration >= this._cfg.FARM_EARLY_EXIT_SECS && pnl >= this._cfg.FARM_EARLY_EXIT_PNL) {
-                    const entryRegime = this._pendingEntrySignalMeta?.signalSnapshot?.regime;
-                    const regimeCfg = entryRegime ? getRegimeStrategyConfig(entryRegime as Regime) : null;
-                    if (regimeCfg?.suppressEarlyExit) {
-                        console.log(`🚜 [REGIME] Suppressing early exit in ${entryRegime}`);
-                        return { shouldExit: false, exitTrigger: '' };
+                // Early exit: held >= FARM_EARLY_EXIT_SECS AND pnl covers round-trip fee
+                if (duration >= this._cfg.FARM_EARLY_EXIT_SECS) {
+                    // Dynamic threshold: must cover round-trip fee × multiplier
+                    // e.g. 0.002 BTC @ $74,500 → posValue=$149 → fee=$0.036 → threshold=$0.043
+                    const positionValue = Math.abs(position.size) * position.entryPrice;
+                    const feeRoundTripCost = positionValue * this._cfg.FEE_RATE_MAKER * 2;
+                    const minProfitThreshold = Math.max(
+                        feeRoundTripCost * this._cfg.FARM_MIN_PROFIT_FEE_MULT,
+                        this._cfg.FARM_EARLY_EXIT_PNL, // fallback floor
+                    );
+
+                    if (pnl >= minProfitThreshold) {
+                        const entryRegime = this._pendingEntrySignalMeta?.signalSnapshot?.regime;
+                        const regimeCfg = entryRegime ? getRegimeStrategyConfig(entryRegime as Regime) : null;
+                        if (regimeCfg?.suppressEarlyExit) {
+                            console.log(`🚜 [REGIME] Suppressing early exit in ${entryRegime}`);
+                            return { shouldExit: false, exitTrigger: '' };
+                        }
+                        console.log(`🚜 [FARM] Early profit exit: pnl=${pnl.toFixed(4)} >= threshold=${minProfitThreshold.toFixed(4)} (fee=${feeRoundTripCost.toFixed(4)} × ${this._cfg.FARM_MIN_PROFIT_FEE_MULT})`);
+                        return { shouldExit: true, exitTrigger: `FARM EARLY PROFIT (${pnl.toFixed(2)} >= fee×${this._cfg.FARM_MIN_PROFIT_FEE_MULT} after ${duration}s)` };
                     }
-                    return { shouldExit: true, exitTrigger: `FARM EARLY PROFIT (${pnl.toFixed(2)} after ${duration}s)` };
                 }
                 const remainSecs = Math.floor((this.farmHoldUntil! - Date.now()) / 1000);
                 console.log(`🚜 [FARM] Holding... ${remainSecs}s remaining | PnL: ${pnl.toFixed(2)}`);
@@ -873,13 +887,24 @@ export class Watcher {
     private async _handleIdle(position: any, markPrice: number, balance: number) {
         // Sync: position exists but state is IDLE (e.g. after restart)
         if (position && Math.abs(position.size) > 0) {
-            console.log(`[IDLE] Detected existing position — syncing to IN_POSITION`);
-            this.botState = 'IN_POSITION';
-            if (this.entryFilledAt === null) {
-                this.entryFilledAt = Date.now();
-                this.positionManager.onPositionOpened(position, this.currentProfile);
+            // Dust check: if position value is below threshold, treat as no position
+            // and cancel any stale orders so we can enter a fresh trade next tick.
+            const posValueUsd = Math.abs(position.size) * markPrice;
+            if (posValueUsd < this._cfg.MIN_POSITION_VALUE_USD) {
+                console.log(`[IDLE] Dust position detected (${posValueUsd.toFixed(2)} USD < ${this._cfg.MIN_POSITION_VALUE_USD} USD) — ignoring, proceeding to new entry`);
+                this._logEvent('WARN', `Dust position ignored in IDLE (${posValueUsd.toFixed(2)} USD)`);
+                await this.adapter.cancel_all_orders(this.symbol);
+                this.positionManager.onPositionClosed();
+                // Fall through to signal evaluation below
+            } else {
+                console.log(`[IDLE] Detected existing position — syncing to IN_POSITION`);
+                this.botState = 'IN_POSITION';
+                if (this.entryFilledAt === null) {
+                    this.entryFilledAt = Date.now();
+                    this.positionManager.onPositionOpened(position, this.currentProfile);
+                }
+                return; // RETURN
             }
-            return; // RETURN
         }
 
         // Hour blocking (farm mode)
@@ -938,6 +963,32 @@ export class Watcher {
     private async _handleIdleFarm(markPrice: number, balance: number) {
         const signal = await this.signalEngine.getSignal(this.symbol);
 
+        // ── Signal filter pipeline ─────────────────────────────────────────────
+        const filterResult = evaluateFarmEntryFilters({
+            regime: signal.regime as FilterInput['regime'],
+            confidence: signal.confidence,
+            momentumScore: signal.score,
+            tradePressure: signal.tradePressure,
+            fallback: signal.fallback,
+            llmMatchesMomentum: (signal as any).llmMatchesMomentum,
+            atrPct: signal.atrPct,
+            mode: this._cfg.MODE as 'farm' | 'trade',
+            FEE_RATE_MAKER: this._cfg.FEE_RATE_MAKER,
+            FARM_MIN_CONFIDENCE_PRESSURE_GATE: this._cfg.FARM_MIN_CONFIDENCE_PRESSURE_GATE,
+            FARM_MIN_FALLBACK_CONFIDENCE: this._cfg.FARM_MIN_FALLBACK_CONFIDENCE,
+            FARM_SIDEWAY_MIN_CONFIDENCE: this._cfg.FARM_SIDEWAY_MIN_CONFIDENCE,
+            FARM_TREND_MIN_CONFIDENCE: this._cfg.FARM_TREND_MIN_CONFIDENCE,
+            FARM_MIN_HOLD_SECS: this._cfg.FARM_MIN_HOLD_SECS,
+            FARM_MAX_HOLD_SECS: this._cfg.FARM_MAX_HOLD_SECS,
+        });
+
+        if (!filterResult.pass) {
+            console.log(`[SignalFilter] SKIP: ${filterResult.reason}`);
+            return; // ACTION: wait — RETURN
+        }
+
+        console.log(`[SignalFilter] PASS: regime=${signal.regime}, confidence=${signal.confidence.toFixed(2)}, pressure=${signal.tradePressure.toFixed(2)}, fallback=${signal.fallback}, effectiveConf=${filterResult.effectiveConfidence.toFixed(2)}`);
+
         let mmBias = null;
         if (this._cfg.MM_ENABLED) {
             mmBias = this.marketMaker.computeEntryBias(this.lastTradeContext, this.marketMaker.getState());
@@ -980,7 +1031,7 @@ export class Watcher {
         }
 
         const sizingResult = this.positionSizer.computeSize({
-            confidence: signal.confidence,
+            confidence: filterResult.effectiveConfidence,
             recentPnLs: this.recentPnLs,
             sessionPnl: this.sessionCurrentPnl,
             balance,
@@ -993,8 +1044,9 @@ export class Watcher {
         const maxSizeFromBalance = (balance * this._cfg.SIZING_MAX_BALANCE_PCT) / markPrice;
         if (size > maxSizeFromBalance) size = Math.max(this._cfg.ORDER_SIZE_MIN, maxSizeFromBalance);
 
-        const holdSecs = Math.floor(Math.random() * (this._cfg.FARM_MAX_HOLD_SECS - this._cfg.FARM_MIN_HOLD_SECS + 1)) + this._cfg.FARM_MIN_HOLD_SECS;
+        const holdSecs = filterResult.dynamicMinHold;
         this.farmHoldUntil = Date.now() + holdSecs * 1000;
+        console.log(`[MinHold] dynamicMinHold=${holdSecs}s (feeBreakEven computed, FARM_MIN=${this._cfg.FARM_MIN_HOLD_SECS}s, FARM_MAX=${this._cfg.FARM_MAX_HOLD_SECS}s)`);
         this.riskManager.setSlPercent(this._cfg.FARM_SL_PERCENT);
 
         if (this._cfg.MM_ENABLED) {
@@ -1025,6 +1077,9 @@ export class Watcher {
                     atrPct: signal.atrPct,
                     bbWidth: signal.bbWidth,
                     volRatio: signal.volRatio,
+                    filterResult: filterResult.pass ? 'pass' : filterResult.reason,
+                    effectiveConfidence: filterResult.effectiveConfidence,
+                    dynamicMinHold: filterResult.dynamicMinHold,
                 },
             };
             this.pendingEntry = {

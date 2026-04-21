@@ -37,8 +37,9 @@ export const config = {
   FARM_SL_PERCENT: 0.05,        // Stop loss 5% — rộng để không bị stop out sớm
   FARM_SCORE_EDGE: 0.03,        // Min score edge to enter (|score - 0.5| > this)
   FARM_MIN_CONFIDENCE: 0.50,    // Min confidence for fallback signal entry
-  FARM_EARLY_EXIT_SECS: 60,     // Early exit: if held >= 60s AND pnl >= FARM_EARLY_EXIT_PNL
-  FARM_EARLY_EXIT_PNL: 0.4,     // Early exit PnL threshold ($0.3 — covers round-trip fee)
+  FARM_EARLY_EXIT_SECS: 60,     // Early exit: if held >= 60s AND pnl covers fee
+  FARM_EARLY_EXIT_PNL: 0.04,    // Fallback fixed threshold (used only if position value unavailable)
+  FARM_MIN_PROFIT_FEE_MULT: 1.2, // Exit when pnl > roundTripFee × this multiplier (1.2 = 20% above fee)
   FARM_EXTRA_WAIT_SECS: 30,     // Extra wait after hold expires if profitable (reduced from 30s)
 
   // ── Regime-adaptive strategy ──────────────────────────────────────────────
@@ -57,6 +58,12 @@ export const config = {
   REGIME_HIGH_VOL_SL_MULT: 1.5,
   REGIME_HIGH_VOL_SKIP_ENTRY: false,
   REGIME_TREND_SUPPRESS_EARLY_EXIT: true,
+
+  // ── Farm Signal Cost Optimizer ───────────────────────────────────────────
+  FARM_MIN_CONFIDENCE_PRESSURE_GATE: 0.55,  // Min confidence when tradePressure=0 (TradePressureGate)
+  FARM_MIN_FALLBACK_CONFIDENCE: 0.25,       // Min confidence for fallback signals (FallbackQualityGate)
+  FARM_SIDEWAY_MIN_CONFIDENCE: 0.45,        // Min confidence in SIDEWAY regime (RegimeConfidenceThreshold)
+  FARM_TREND_MIN_CONFIDENCE: 0.35,          // Min confidence in TREND regime (RegimeConfidenceThreshold)
 
   // Hour blocking (UTC) — để trống = không block giờ nào
   // Ví dụ block giờ xấu: [7,8,9,10,11,18,19,20,21,22,23]

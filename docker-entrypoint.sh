@@ -5,4 +5,4 @@ if [ ! -f /app/data/bot-configs.json ]; then
   cp /app/bot-configs.default.json /app/data/bot-configs.json
 fi
 
-exec npx tsx dist/bot.js
+exec npx tsx src/bot.ts

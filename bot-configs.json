@@ -36,7 +36,7 @@
     },
     {
       "id": "decibel-bot",
-      "name": "Van Decibel Bot",
+      "name": "Decibel Bot",
       "exchange": "decibel",
       "symbol": "BTC/USD",
       "credentialKey": "DECIBELS",
@@ -119,6 +119,28 @@
       "profitTargetUsd": 1,
       "maxLossUsd": 1,
       "volumeSpikeMultiplier": 1.05,
+      "volumeRollingWindow": 10,
+      "fundingRateWeight": 0
+    },
+    {
+      "id": "decibel-hedge-bot",
+      "name": "Decibel Hedge Bot",
+      "exchange": "decibel",
+      "credentialKey": "DECIBELS",
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades-decibel-hedge.json",
+      "tags": [
+        "Hedge"
+      ],
+      "autoStart": false,
+      "botType": "hedge",
+      "symbolA": "BTC/USD",
+      "symbolB": "ETH/USD",
+      "legValueUsd": 150,
+      "holdingPeriodSecs": 120,
+      "profitTargetUsd": 1,
+      "maxLossUsd": 1,
+      "volumeSpikeMultiplier": 1.01,
       "volumeRollingWindow": 10,
       "fundingRateWeight": 0
     }

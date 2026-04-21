@@ -23,7 +23,9 @@ export class SignalEngine {
 
     private async getChartSignal(symbol: string, interval: string, limit: number) {
         try {
-            const sym = symbol.replace('-', '').toUpperCase();
+            // Normalize: "BTC/USD" or "BTC-USD" → "BTC", then append "USDT"
+            const base = symbol.split('/')[0].split('-')[0].toUpperCase();
+            const sym = `${base}USDT`;
             const url = `https://fapi.binance.com/fapi/v1/klines`;
             const params = { symbol: sym, interval, limit };
             console.log(`[Binance REQ] GET ${url} | Params: ${JSON.stringify(params)}`);
@@ -70,7 +72,8 @@ export class SignalEngine {
     async getSignal(symbol: string): Promise<Signal> {
         try {
             // 1. Lấy dữ liệu song song (Orderbook, Trades, Binance Ratio và Chart Klines)
-            const normalizedBase = symbol.split('-')[0].replace('/', '').toUpperCase();
+            // Normalize: "BTC/USD" or "BTC-USD" → "BTC", then append "USDT"
+            const normalizedBase = symbol.split('/')[0].split('-')[0].toUpperCase();
             const symbolUpper = `${normalizedBase}USDT`;
 
             const ratioUrl = `https://fapi.binance.com/futures/data/topLongShortPositionRatio`;

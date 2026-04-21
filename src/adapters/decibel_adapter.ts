@@ -178,8 +178,10 @@ export class DecibelAdapter implements ExchangeAdapter {
         return Math.floor(raw / tick_size) * tick_size;
     }
 
-    private toChainSize(size: number, sz_decimals: number): number {
-        return Math.floor(size * Math.pow(10, sz_decimals));
+    private toChainSize(size: number, sz_decimals: number, min_size: number): number {
+        const raw = size * Math.pow(10, sz_decimals);
+        // Must be a multiple of min_size — floor to nearest valid lot
+        return Math.floor(raw / min_size) * min_size;
     }
 
     async approveBuilderFee(maxFeeBps: number = 10): Promise<void> {
@@ -250,7 +252,7 @@ export class DecibelAdapter implements ExchangeAdapter {
         const orderParams = {
             marketName: symbol,
             price: this.toChainPrice(price, cfg.px_decimals, cfg.tick_size),
-            size: this.toChainSize(size, cfg.sz_decimals),
+            size: this.toChainSize(size, cfg.sz_decimals, cfg.min_size),
             isBuy: side === 'buy',
             skipSimulate: true,
             timeInForce: TimeInForce.PostOnly,
@@ -452,8 +454,19 @@ export class DecibelAdapter implements ExchangeAdapter {
         return { bids: [], asks: [] }; // Stub — use get_orderbook for best bid/ask
     }
 
-    async get_recent_trades(_symbol: string, _limit: number): Promise<RawTrade[]> {
-        return []; // Stub
+    async get_recent_trades(symbol: string, limit: number): Promise<RawTrade[]> {
+        try {
+            const items: any[] = await this.read.marketTrades.getByName({ marketName: symbol, limit });
+            return (Array.isArray(items) ? items : []).map((t: any) => ({
+                timestamp: t.transaction_unix_ms ?? Date.now(),
+                price: t.price ?? 0,
+                size: t.size ?? 0,
+                side: t.action === 'buy' ? 'buy' : 'sell',
+            }));
+        } catch (e: any) {
+            console.warn(`[DecibelAdapter] get_recent_trades failed for ${symbol}:`, e?.message ?? e);
+            return [];
+        }
     }
 
     /**
@@ -561,6 +574,7 @@ export class DecibelAdapter implements ExchangeAdapter {
     async getRecentTrades(symbol: string, limit: number): Promise<RawTrade[]> {
         return this.get_recent_trades(symbol, limit);
     }
+
 
     async getPosition(symbol: string, markPrice?: number): Promise<Position | null> {
         return this.get_position(symbol, markPrice);

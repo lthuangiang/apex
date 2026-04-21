@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { ExchangeAdapter } from '../adapters/ExchangeAdapter.js';
 import { Signal, SignalEngine } from '../modules/SignalEngine.js';
-import { LLMClient, MarketContext } from './LLMClient.js';
 import { weightStore } from './FeedbackLoop/WeightStore.js';
 import { confidenceCalibrator } from './FeedbackLoop/ConfidenceCalibrator.js';
 import { TradeLogger } from './TradeLogger.js';
@@ -93,16 +92,10 @@ export class AISignalEngine {
 
     private async _fetchSignal(symbol: string): Promise<Signal> {
         try {
-            const provider = (process.env.LLM_PROVIDER ?? 'openai') as 'openai' | 'anthropic';
-            const apiKey = provider === 'anthropic'
-                ? (process.env.ANTHROPIC_API_KEY ?? '')
-                : (process.env.OPENAI_API_KEY ?? '');
-
             const normalizedBase = symbol.split('-')[0].replace('/', '').toUpperCase();
             const symbolUpper = `${normalizedBase}USDT`;
 
             // Fetch 5m candles (30 candles = 2.5h of data) + orderbook in parallel
-            // No SoSoValue — 6h cache is useless for 5m scalping
             const [ob, trades, klinesRes, lsRatioRes] = await Promise.all([
                 this.adapter.get_orderbook_depth(symbol, 20),
                 this.adapter.get_recent_trades(symbol, 100),
@@ -224,91 +217,54 @@ export class AISignalEngine {
                 momentumScore = Math.min(Math.max(momentumScore, 0), 1);
             }
 
-            // ── LLM Decision ──────────────────────────────────────────────────
-            const llmClient = new LLMClient(provider, apiKey);
-            const ctx: MarketContext = {
-                sma50: ema21Last,
-                currentPrice,
-                lsRatio,
-                imbalance,
-                tradePressure,
-                fearGreedIndex: null,
-                fearGreedLabel: null,
-                sectorIndex: null,
-                // Extra context for farm scalping
-                ema9: ema9Last,
-                rsi: rsiVal,
-                momentum3candles: momentum3,
-                volSpike,
-                emaCrossUp,
-                emaCrossDown,
-                regime,
-                feeRoundTrip: ROUND_TRIP_FEE,
-                pricePositionInRange: pricePosition, // 0=đáy, 1=đỉnh của range 10 nến
-            } as any;
+            // ── Technical Signal Decision (no LLM) ───────────────────────────
+            // LLM adds latency and noise — pure technical signal is more reliable
+            // for short-term scalping based on recent candles
+            let direction: 'long' | 'short' | 'skip';
+            let confidence: number;
+            let reasoning: string;
 
-            const decision = await llmClient.call(ctx);
-
-            if (decision === null) {
-                console.warn('[AISignalEngine] LLM returned null — using momentum + price position fallback');
-
-                let direction: 'long' | 'short' | 'skip';
-                let confidence: number;
-                let reasoning: string;
-
-                if (regime === 'SIDEWAY') {
-                    // In SIDEWAY: use price position in range as primary signal
-                    // Bottom of range (<30%) → LONG, top of range (>70%) → SHORT
-                    if (pricePosition < 0.30) {
-                        direction = 'long';
-                        confidence = 0.5 + (0.30 - pricePosition) * 1.5; // 0.50–0.95
-                        reasoning = `SIDEWAY fallback: price at range bottom (${(pricePosition*100).toFixed(0)}%) → LONG`;
-                    } else if (pricePosition > 0.70) {
-                        direction = 'short';
-                        confidence = 0.5 + (pricePosition - 0.70) * 1.5;
-                        reasoning = `SIDEWAY fallback: price at range top (${(pricePosition*100).toFixed(0)}%) → SHORT`;
-                    } else {
-                        // Mid-range: fall back to momentum
-                        direction = momentumScore > 0.55 ? 'long' : momentumScore < 0.45 ? 'short' : 'skip';
-                        confidence = Math.abs(momentumScore - 0.5) * 2;
-                        reasoning = `SIDEWAY mid-range fallback: momentum=${momentumScore.toFixed(2)} pos=${(pricePosition*100).toFixed(0)}%`;
-                    }
-                    confidence = Math.min(1, Math.max(0, confidence));
+            if (regime === 'SIDEWAY') {
+                // In SIDEWAY: use price position in range as primary signal
+                // Bottom of range (<30%) → LONG, top of range (>70%) → SHORT
+                if (pricePosition < 0.30) {
+                    direction = 'long';
+                    confidence = 0.5 + (0.30 - pricePosition) * 1.5;
+                    reasoning = `SIDEWAY: price at range bottom (${(pricePosition*100).toFixed(0)}%) RSI=${rsiVal.toFixed(1)} → LONG`;
+                } else if (pricePosition > 0.70) {
+                    direction = 'short';
+                    confidence = 0.5 + (pricePosition - 0.70) * 1.5;
+                    reasoning = `SIDEWAY: price at range top (${(pricePosition*100).toFixed(0)}%) RSI=${rsiVal.toFixed(1)} → SHORT`;
                 } else {
-                    // TREND: use momentum score
-                    direction = momentumScore > 0.58 ? 'long' : momentumScore < 0.42 ? 'short' : 'skip';
+                    // Mid-range: use momentum
+                    direction = momentumScore > 0.55 ? 'long' : momentumScore < 0.45 ? 'short' : 'skip';
                     confidence = Math.abs(momentumScore - 0.5) * 2;
-                    reasoning = `${regime} fallback: EMA9=${ema9Last.toFixed(0)} EMA21=${ema21Last.toFixed(0)} RSI=${rsiVal.toFixed(1)}`;
+                    reasoning = `SIDEWAY mid-range: momentum=${momentumScore.toFixed(2)} pos=${(pricePosition*100).toFixed(0)}%`;
                 }
-
-                console.log(`[AISignalEngine] Fallback → ${direction.toUpperCase()} (conf: ${confidence.toFixed(2)}) | ${reasoning}`);
-                const recentTradesFallback = await this.tradeLogger.readAll();
-                const calibratedFallbackConf = confidenceCalibrator.calibrate(confidence, recentTradesFallback.slice(0, 50));
-                return {
-                    base_score, regime, direction, confidence: calibratedFallbackConf,
-                    imbalance, tradePressure, score: momentumScore,
-                    chartTrend: emaAbove ? 'bullish' : 'bearish',
-                    reasoning,
-                    fallback: true,
-                    atrPct, bbWidth, volRatio,
-                };
+            } else {
+                // TREND_UP / TREND_DOWN / HIGH_VOLATILITY: follow momentum
+                direction = momentumScore > 0.58 ? 'long' : momentumScore < 0.42 ? 'short' : 'skip';
+                confidence = Math.abs(momentumScore - 0.5) * 2;
+                reasoning = `${regime}: EMA9=${ema9Last.toFixed(0)} EMA21=${ema21Last.toFixed(0)} RSI=${rsiVal.toFixed(1)} mom=${(momentum3*100).toFixed(3)}%`;
             }
 
-            console.log(`[AISignalEngine] 5m Scalp | EMA9=${ema9Last.toFixed(0)} EMA21=${ema21Last.toFixed(0)} RSI=${rsiVal.toFixed(1)} Mom=${(momentum3*100).toFixed(3)}% | Score=${momentumScore.toFixed(2)} | LLM=${decision.direction} (${decision.confidence.toFixed(2)})`);
+            confidence = Math.min(1, Math.max(0, confidence));
+
+            console.log(`[AISignalEngine] 5m | EMA9=${ema9Last.toFixed(0)} EMA21=${ema21Last.toFixed(0)} RSI=${rsiVal.toFixed(1)} Mom=${(momentum3*100).toFixed(3)}% pos=${(pricePosition*100).toFixed(0)}% | Score=${momentumScore.toFixed(2)} | ${direction.toUpperCase()} (${confidence.toFixed(2)}) | ${regime}`);
 
             const recentTrades = await this.tradeLogger.readAll();
-            const calibratedConf = confidenceCalibrator.calibrate(decision.confidence, recentTrades.slice(0, 50));
+            const calibratedConf = confidenceCalibrator.calibrate(confidence, recentTrades.slice(0, 50));
 
             return {
                 base_score,
                 regime,
-                direction: decision.direction,
+                direction,
                 confidence: calibratedConf,
                 imbalance,
                 tradePressure,
                 score: momentumScore,
                 chartTrend: emaAbove ? 'bullish' : 'bearish',
-                reasoning: decision.reasoning,
+                reasoning,
                 fallback: false,
                 atrPct, bbWidth, volRatio,
             };

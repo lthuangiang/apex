@@ -21,6 +21,11 @@ export type OverridableConfig = {
   FARM_EXTRA_WAIT_SECS: number;
   FARM_BLOCKED_HOURS: number[];
   FARM_COOLDOWN_SECS: number;   // Fixed cooldown after each farm trade (seconds)
+  // ── Farm Signal Cost Optimizer ─────────────────────────────────────────────
+  FARM_MIN_CONFIDENCE_PRESSURE_GATE: number;
+  FARM_MIN_FALLBACK_CONFIDENCE: number;
+  FARM_SIDEWAY_MIN_CONFIDENCE: number;
+  FARM_TREND_MIN_CONFIDENCE: number;
   // ── Trade mode ─────────────────────────────────────────────────────────────
   TRADE_TP_PERCENT: number;
   TRADE_SL_PERCENT: number;
@@ -117,6 +122,11 @@ const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
   'FARM_EXTRA_WAIT_SECS',
   'FARM_BLOCKED_HOURS',
   'FARM_COOLDOWN_SECS',
+  // Farm Signal Cost Optimizer
+  'FARM_MIN_CONFIDENCE_PRESSURE_GATE',
+  'FARM_MIN_FALLBACK_CONFIDENCE',
+  'FARM_SIDEWAY_MIN_CONFIDENCE',
+  'FARM_TREND_MIN_CONFIDENCE',
   // Trade mode
   'TRADE_TP_PERCENT',
   'TRADE_SL_PERCENT',
@@ -200,6 +210,10 @@ function extractBase(): OverridableConfig {
     FARM_EXTRA_WAIT_SECS: config.FARM_EXTRA_WAIT_SECS,
     FARM_BLOCKED_HOURS: config.FARM_BLOCKED_HOURS,
     FARM_COOLDOWN_SECS: config.FARM_COOLDOWN_SECS,
+    FARM_MIN_CONFIDENCE_PRESSURE_GATE: config.FARM_MIN_CONFIDENCE_PRESSURE_GATE,
+    FARM_MIN_FALLBACK_CONFIDENCE: config.FARM_MIN_FALLBACK_CONFIDENCE,
+    FARM_SIDEWAY_MIN_CONFIDENCE: config.FARM_SIDEWAY_MIN_CONFIDENCE,
+    FARM_TREND_MIN_CONFIDENCE: config.FARM_TREND_MIN_CONFIDENCE,
     TRADE_TP_PERCENT: config.TRADE_TP_PERCENT,
     TRADE_SL_PERCENT: config.TRADE_SL_PERCENT,
     COOLDOWN_MIN_MINS: config.COOLDOWN_MIN_MINS,
@@ -288,6 +302,14 @@ export class ConfigStore {
       if (key in patch) {
         (this.overrides as Record<string, number>)[key] = patch[key] as number;
       }
+    }
+
+    // Warn when FARM_SIDEWAY_MIN_CONFIDENCE < FARM_TREND_MIN_CONFIDENCE (Requirement 8.3)
+    const effective = this.getEffective();
+    if (effective.FARM_SIDEWAY_MIN_CONFIDENCE < effective.FARM_TREND_MIN_CONFIDENCE) {
+      console.warn(
+        '[Config] WARN: FARM_SIDEWAY_MIN_CONFIDENCE < FARM_TREND_MIN_CONFIDENCE — sideway threshold should be higher'
+      );
     }
 
     this.saveToDisk();
