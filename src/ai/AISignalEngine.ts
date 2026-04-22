@@ -92,7 +92,8 @@ export class AISignalEngine {
 
     private async _fetchSignal(symbol: string): Promise<Signal> {
         try {
-            const normalizedBase = symbol.split('-')[0].replace('/', '').toUpperCase();
+            // Normalize: "BTC/USD" or "BTC-USD" → "BTC", then append "USDT"
+            const normalizedBase = symbol.split('/')[0].split('-')[0].toUpperCase();
             const symbolUpper = `${normalizedBase}USDT`;
 
             // Fetch 5m candles (30 candles = 2.5h of data) + orderbook in parallel

@@ -11,7 +11,7 @@
       "tradeLogPath": "./trades-sodex.json",
       "autoStart": false,
       "mode": "farm",
-      "orderSizeMin": 0.003,
+      "orderSizeMin": 0.002,
       "orderSizeMax": 0.005,
       "tags": [
         "Scalping",

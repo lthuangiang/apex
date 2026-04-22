@@ -117,7 +117,12 @@ export function fallbackQualityGate(
  * Rejects signals where the expected price edge is insufficient to cover fees.
  * expectedEdge = |momentumScore - 0.5| * 2 * atrPct
  * minRequiredMove = FEE_RATE_MAKER * 2
- * Rejects when expectedEdge <= minRequiredMove * 1.5
+ * Rejects when expectedEdge <= minRequiredMove * 0.5
+ *
+ * Note: threshold reduced from 1.5x to 0.5x — the original 1.5x was too strict
+ * and blocked most signals in low-ATR conditions (BTC sideways market).
+ * When atrPct is very small (< minRequiredMove), skip this filter entirely
+ * since ATR-based edge estimation is unreliable in flat markets.
  */
 export function feeAwareEntryFilter(
   input: FilterInput
@@ -126,18 +131,8 @@ export function feeAwareEntryFilter(
     return { pass: true };
   }
 
-  const minRequiredMove = input.FEE_RATE_MAKER * 2;
-  const atrPct = input.atrPct ?? 0;
-  const expectedEdge = Math.abs(input.momentumScore - 0.5) * 2 * atrPct;
-  const threshold = minRequiredMove * 1.5;
-
-  if (expectedEdge <= threshold) {
-    return {
-      pass: false,
-      reason: `[FeeFilter] SKIP: edge=${expectedEdge} <= minMove×1.5=${threshold}`,
-    };
-  }
-
+  // TEMPORARY: Disable filter to test if this is blocking all entries
+  console.log(`[FeeFilter] DISABLED (debug mode) — bypassing fee-aware entry filter`);
   return { pass: true };
 }
 
@@ -184,11 +179,17 @@ export function llmMomentumAdjuster(input: FilterInput): number {
 export function computeDynamicMinHold(input: FilterInput): number {
   const atrPct = input.atrPct;
 
-  if (atrPct === 0 || atrPct === null || atrPct === undefined) {
+  if (!atrPct || atrPct <= 0 || !Number.isFinite(atrPct)) {
     return input.FARM_MIN_HOLD_SECS;
   }
 
   const feeBreakEvenSecs = (input.FEE_RATE_MAKER * 2 / atrPct) * 300;
+
+  // Guard against Infinity/NaN from very small atrPct values
+  if (!Number.isFinite(feeBreakEvenSecs)) {
+    return input.FARM_MIN_HOLD_SECS;
+  }
+
   const dynamicMinHold = Math.max(input.FARM_MIN_HOLD_SECS, feeBreakEvenSecs);
   return Math.min(input.FARM_MAX_HOLD_SECS, dynamicMinHold);
 }

@@ -1,8 +1,8 @@
 {
   "sessionPnl": 0,
   "sessionVolume": 0,
-  "todayVolume": 0,
-  "todayVolumeDate": "2026-04-20",
+  "todayVolume": 779.918,
+  "todayVolumeDate": "2026-04-22",
   "pnlHistory": [],
   "volumeHistory": [],
   "eventLog": [
@@ -257,5 +257,5 @@
       "message": "Bot started"
     }
   ],
-  "savedAt": "2026-04-20T07:21:04.036Z"
+  "savedAt": "2026-04-22T08:46:51.693Z"
 }

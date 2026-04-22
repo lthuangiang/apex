@@ -131,6 +131,9 @@ export class Watcher {
     // ── Trade-mode signal confirmation ────────────────────────────────────────
     private _lastSignal: { direction: 'long' | 'short'; score: number; ts: number } | null = null;
 
+    // ── Pending farm hold duration (set at signal time, applied at fill time) ──
+    private _pendingFarmHoldSecs: number | null = null;
+
     // ── Volume reconciliation ─────────────────────────────────────────────────
     private _lastVolumeReconcileAt: number = 0;
 
@@ -523,6 +526,19 @@ export class Watcher {
             this.fillTracker.recordFill('entry', fillMs);
         }
 
+        // Set farmHoldUntil from fill time — ensures full hold period is measured
+        // from actual fill, not from order placement time.
+        if (this._cfg.MODE === 'farm') {
+            const rawHold = this._pendingFarmHoldSecs ?? this._cfg.FARM_MIN_HOLD_SECS;
+            // Guard against NaN/Infinity from fee-break-even calculation
+            const holdSecs = Number.isFinite(rawHold) && rawHold > 0
+                ? rawHold
+                : this._cfg.FARM_MIN_HOLD_SECS;
+            this.farmHoldUntil = Date.now() + holdSecs * 1000;
+            console.log(`🚜 [FARM] Hold until: ${new Date(this.farmHoldUntil).toLocaleTimeString()} (${holdSecs}s from fill)`);
+            this._pendingFarmHoldSecs = null;
+        }
+
         console.log(`✅ [PENDING→IN_POSITION] Entry filled: ${filledSize} @ ${position.entryPrice}`);
         this._logEvent('ORDER_FILLED', `Entry filled: ${filledSize} @ ${position.entryPrice}`);
 
@@ -641,7 +657,17 @@ export class Watcher {
                 return { shouldExit: true, exitTrigger: `${tpLabel} (${pnl.toFixed(2)} >= ${dynamicTP.toFixed(2)})` };
             }
 
-            const holdDone = !this.farmHoldUntil || Date.now() >= this.farmHoldUntil;
+            // Absolute safety net: force exit if held beyond FARM_MAX_HOLD_SECS
+            // This catches cases where farmHoldUntil is null/NaN (e.g. restart sync)
+            if (duration >= this._cfg.FARM_MAX_HOLD_SECS) {
+                console.log(`🚜 [FARM] ABSOLUTE MAX HOLD (${duration}s >= ${this._cfg.FARM_MAX_HOLD_SECS}s) — force exit`);
+                return { shouldExit: true, exitTrigger: `FARM MAX HOLD (${duration}s, PnL: ${pnl.toFixed(2)})` };
+            }
+
+            // If farmHoldUntil is null (e.g. restart sync), fall back to duration-based check
+            const holdDone = this.farmHoldUntil !== null
+                ? Date.now() >= this.farmHoldUntil
+                : duration >= this._cfg.FARM_MIN_HOLD_SECS;
 
             if (!holdDone) {
                 // Early exit: held >= FARM_EARLY_EXIT_SECS AND pnl covers round-trip fee
@@ -666,23 +692,33 @@ export class Watcher {
                         return { shouldExit: true, exitTrigger: `FARM EARLY PROFIT (${pnl.toFixed(2)} >= fee×${this._cfg.FARM_MIN_PROFIT_FEE_MULT} after ${duration}s)` };
                     }
                 }
-                const remainSecs = Math.floor((this.farmHoldUntil! - Date.now()) / 1000);
+                const remainSecs = this.farmHoldUntil !== null
+                    ? Math.floor((this.farmHoldUntil - Date.now()) / 1000)
+                    : Math.max(0, this._cfg.FARM_MIN_HOLD_SECS - duration);
                 console.log(`🚜 [FARM] Holding... ${remainSecs}s remaining | PnL: ${pnl.toFixed(2)}`);
                 return { shouldExit: false, exitTrigger: '' };
+            }
+
+            // HARD CAP: force exit after FARM_MAX_HOLD_SECS regardless of profit
+            // This ensures holding time never exceeds config.FARM_MAX_HOLD_SECS
+            if (duration >= this._cfg.FARM_MAX_HOLD_SECS) {
+                console.log(`🚜 [FARM] MAX HOLD reached (${duration}s >= ${this._cfg.FARM_MAX_HOLD_SECS}s) — force exit`);
+                return { shouldExit: true, exitTrigger: `FARM MAX HOLD (${duration}s, PnL: ${pnl.toFixed(2)})` };
             }
 
             // Hold expired — extra wait if profitable and moving toward profit
             const isLong = position.side === 'long';
             const movingTowardProfit = isLong ? markPrice > position.entryPrice : markPrice < position.entryPrice;
-            const extraWaitExpired = Date.now() > (this.farmHoldUntil! + this._cfg.FARM_EXTRA_WAIT_SECS * 1000);
+            const extraWaitExpired = this.farmHoldUntil !== null
+                ? Date.now() > (this.farmHoldUntil + this._cfg.FARM_EXTRA_WAIT_SECS * 1000)
+                : true; // farmHoldUntil unknown → don't wait extra
 
             if (pnl > 0 && movingTowardProfit && !extraWaitExpired) {
                 console.log(`🚜 [FARM] Hold expired but profitable — waiting up to ${this._cfg.FARM_EXTRA_WAIT_SECS}s more`);
                 return { shouldExit: false, exitTrigger: '' };
             }
 
-            return { shouldExit: true, exitTrigger: `FARM TIME EXIT (PnL: ${pnl.toFixed(2)})` };
-        }
+            return { shouldExit: true, exitTrigger: `FARM TIME EXIT (PnL: ${pnl.toFixed(2)})` };        }
 
         // Trade mode: TP/SL only (RiskManager handles above)
         console.log(`📈 [TRADE] Holding for TP/SL... | PnL: ${pnl.toFixed(4)} | ${duration}s`);
@@ -903,6 +939,11 @@ export class Watcher {
                     this.entryFilledAt = Date.now();
                     this.positionManager.onPositionOpened(position, this.currentProfile);
                 }
+                // Ensure farmHoldUntil is set so hold logic works correctly after restart
+                if (this._cfg.MODE === 'farm' && this.farmHoldUntil === null) {
+                    this.farmHoldUntil = this.entryFilledAt + this._cfg.FARM_MIN_HOLD_SECS * 1000;
+                    console.log(`[IDLE] Synced farmHoldUntil from entryFilledAt + ${this._cfg.FARM_MIN_HOLD_SECS}s`);
+                }
                 return; // RETURN
             }
         }
@@ -1038,6 +1079,8 @@ export class Watcher {
             mode: 'farm',
             profile: this.currentProfile,
             volatilityFactor: 1.0,
+            orderSizeMin: this._cfg.ORDER_SIZE_MIN,
+            orderSizeMax: this._cfg.ORDER_SIZE_MAX,
         });
         this._pendingSizingResult = sizingResult;
         let size = sizingResult.size;
@@ -1045,7 +1088,10 @@ export class Watcher {
         if (size > maxSizeFromBalance) size = Math.max(this._cfg.ORDER_SIZE_MIN, maxSizeFromBalance);
 
         const holdSecs = filterResult.dynamicMinHold;
-        this.farmHoldUntil = Date.now() + holdSecs * 1000;
+        // Store holdSecs — farmHoldUntil will be set from fill time in _onEntryFilled
+        // to ensure the full hold period is measured from actual fill, not order placement.
+        this._pendingFarmHoldSecs = holdSecs;
+        this.farmHoldUntil = null; // cleared until fill confirmed
         console.log(`[MinHold] dynamicMinHold=${holdSecs}s (feeBreakEven computed, FARM_MIN=${this._cfg.FARM_MIN_HOLD_SECS}s, FARM_MAX=${this._cfg.FARM_MAX_HOLD_SECS}s)`);
         this.riskManager.setSlPercent(this._cfg.FARM_SL_PERCENT);
 
@@ -1186,6 +1232,8 @@ export class Watcher {
             mode: 'trade',
             profile: this.currentProfile,
             volatilityFactor: regimeConfig.volatilitySizingFactor,
+            orderSizeMin: this._cfg.ORDER_SIZE_MIN,
+            orderSizeMax: this._cfg.ORDER_SIZE_MAX,
         });
         this._pendingSizingResult = sizingResult;
         let size = sizingResult.size;
@@ -1253,20 +1301,14 @@ export class Watcher {
     // STRICT: after calling _transitionToCooldown the caller MUST return.
     // ─────────────────────────────────────────────────────────────────────────
 
-    private _transitionToCooldown(mode: 'farm' | 'random') {
-        let cooldownMs: number;
-
-        if (mode === 'farm') {
-            // Farm mode: fixed short cooldown (FARM_COOLDOWN_SECS, default 30s)
-            cooldownMs = this._cfg.FARM_COOLDOWN_SECS * 1_000;
-            console.log(`⏱️ FARM cooldown: ${this._cfg.FARM_COOLDOWN_SECS}s`);
-        } else {
-            // Random between COOLDOWN_MIN_MINS and COOLDOWN_MAX_MINS
-            const minMs = this._cfg.COOLDOWN_MIN_MINS * 60_000;
-            const maxMs = this._cfg.COOLDOWN_MAX_MINS * 60_000;
-            cooldownMs = Math.random() * (maxMs - minMs) + minMs;
-            console.log(`⏱️ Random cooldown: ${(cooldownMs / 60_000).toFixed(1)} mins [${this._cfg.COOLDOWN_MIN_MINS}–${this._cfg.COOLDOWN_MAX_MINS} mins]`);
-        }
+    private _transitionToCooldown(_mode?: 'farm' | 'random') {
+        // Unified cooldown: always random between FARM_COOLDOWN_SECS and
+        // COOLDOWN_MAX_MINS — regardless of exit trigger type.
+        // FARM_COOLDOWN_SECS is the floor (seconds), COOLDOWN_MAX_MINS is the ceiling (minutes).
+        const minMs = this._cfg.FARM_COOLDOWN_SECS * 1_000;
+        const maxMs = this._cfg.COOLDOWN_MAX_MINS * 60_000;
+        const cooldownMs = Math.random() * (maxMs - minMs) + minMs;
+        console.log(`⏱️ Cooldown: ${(cooldownMs / 1000).toFixed(0)}s [${this._cfg.FARM_COOLDOWN_SECS}s – ${this._cfg.COOLDOWN_MAX_MINS}min]`);
 
         this.cooldownUntil = Date.now() + cooldownMs;
         this.botState = 'COOLDOWN';
@@ -1281,6 +1323,7 @@ export class Watcher {
         this.pendingExit = null;
         this.entryFilledAt = null;
         this.farmHoldUntil = null;
+        this._pendingFarmHoldSecs = null;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1367,6 +1410,7 @@ export class Watcher {
         this._retryEntry = null;
         this._exitPnlSnapshot = 0;
         this._tickLock = false;
+        this._pendingFarmHoldSecs = null;
         this.marketMaker.reset();
     }
 

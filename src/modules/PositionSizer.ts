@@ -8,6 +8,8 @@ export interface SizingInput {
   mode: 'farm' | 'trade';
   profile: 'SCALP' | 'NORMAL' | 'RUNNER' | 'DEGEN';
   volatilityFactor?: number;   // regime-based volatility scaling factor [0.1, 1.0]
+  orderSizeMin?: number;       // per-bot override for ORDER_SIZE_MIN
+  orderSizeMax?: number;       // per-bot override for ORDER_SIZE_MAX
 }
 
 export interface SizingResult {
@@ -101,14 +103,16 @@ export class PositionSizer {
    * We jitter at the 0.0001 level (sub-unit noise) so the on-chain size
    * still rounds to a valid tick but the float passed to the SDK varies.
    */
-  humanizeSize(size: number): number {
+  humanizeSize(size: number, sizeMin?: number, sizeMax?: number): number {
+    const min = sizeMin ?? config.ORDER_SIZE_MIN;
+    const max = sizeMax ?? config.ORDER_SIZE_MAX;
     // Jitter at 4th decimal place (0.0001 BTC ≈ $7 at $70k — negligible)
     const jitterStep = 0.0001;
     // Random offset in [-2, +2] steps, biased away from zero to avoid exact repeats
     const steps = Math.floor(Math.random() * 5) - 2; // -2, -1, 0, 1, 2
     const jittered = size + steps * jitterStep;
     // Clamp to valid range
-    return Math.max(config.ORDER_SIZE_MIN, Math.min(config.ORDER_SIZE_MAX, jittered));
+    return Math.max(min, Math.min(max, jittered));
   }
 
   /**
@@ -117,7 +121,8 @@ export class PositionSizer {
    * - If rawSize < ORDER_SIZE_MIN: floor to ORDER_SIZE_MIN
    * - Otherwise: cappedBy = 'none'
    */
-  applyRiskCaps(rawSize: number): { size: number; cappedBy: 'none' | 'btc_cap' | 'balance_pct' } {
+  applyRiskCaps(rawSize: number, sizeMin?: number): { size: number; cappedBy: 'none' | 'btc_cap' | 'balance_pct' } {
+    const min = sizeMin ?? config.ORDER_SIZE_MIN;
     let size = rawSize;
     let cappedBy: 'none' | 'btc_cap' | 'balance_pct' = 'none';
 
@@ -126,8 +131,8 @@ export class PositionSizer {
       cappedBy = 'btc_cap';
     }
 
-    if (size < config.ORDER_SIZE_MIN) {
-      size = config.ORDER_SIZE_MIN;
+    if (size < min) {
+      size = min;
     }
 
     return { size, cappedBy };
@@ -143,10 +148,11 @@ export class PositionSizer {
    * - Applies risk caps and returns full SizingResult
    */
   computeSize(input: SizingInput): SizingResult {
-    // Step 1: base size — uniform random in [ORDER_SIZE_MIN, ORDER_SIZE_MAX]
-    const baseSize =
-      config.ORDER_SIZE_MIN +
-      Math.random() * (config.ORDER_SIZE_MAX - config.ORDER_SIZE_MIN);
+    const sizeMin = input.orderSizeMin ?? config.ORDER_SIZE_MIN;
+    const sizeMax = input.orderSizeMax ?? config.ORDER_SIZE_MAX;
+
+    // Step 1: base size — uniform random in [sizeMin, sizeMax]
+    const baseSize = sizeMin + Math.random() * (sizeMax - sizeMin);
 
     // Step 2: individual multipliers
     const confMult = this.confidenceMultiplier(input.confidence, input.mode);
@@ -161,22 +167,19 @@ export class PositionSizer {
       )
     );
 
-    // Step 4: raw size — clamp to [ORDER_SIZE_MIN, ORDER_SIZE_MAX] so multiplier
+    // Step 4: raw size — clamp to [sizeMin, sizeMax] so multiplier
     // scales within the configured range rather than collapsing to the floor
-    let rawSize = Math.max(
-      config.ORDER_SIZE_MIN,
-      Math.min(config.ORDER_SIZE_MAX, baseSize * combined)
-    );
+    let rawSize = Math.max(sizeMin, Math.min(sizeMax, baseSize * combined));
 
     // Step 5: apply volatility factor (clamped to [0.1, 1.0])
     const volFactor = Math.min(1.0, Math.max(0.1, input.volatilityFactor ?? 1.0));
     rawSize *= volFactor;
 
     // Step 6: apply risk caps (hard BTC cap + final floor)
-    const { size, cappedBy } = this.applyRiskCaps(rawSize);
+    const { size, cappedBy } = this.applyRiskCaps(rawSize, sizeMin);
 
     // Step 7: humanize — add sub-unit jitter so size varies naturally trade-to-trade
-    const humanizedSize = this.humanizeSize(size);
+    const humanizedSize = this.humanizeSize(size, sizeMin, sizeMax);
 
     return {
       size: humanizedSize,

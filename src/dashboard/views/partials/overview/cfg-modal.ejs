@@ -109,14 +109,50 @@
             <input type="number" id="cfg-FARM_EARLY_EXIT_PNL" step="any" min="0" placeholder="e.g. 2.0"/>
           </div>
           <div class="cfg-field">
+            <label>Min Profit Fee Multiplier</label>
+            <div class="cfg-hint">Exit khi pnl > fee × multiplier này (1.2 = 20% trên fee)</div>
+            <input type="number" id="cfg-FARM_MIN_PROFIT_FEE_MULT" step="any" min="1" placeholder="e.g. 1.2"/>
+          </div>
+          <div class="cfg-field">
             <label>Extra Wait (secs)</label>
             <div class="cfg-hint">Chờ thêm sau hold time nếu đang lời</div>
             <input type="number" id="cfg-FARM_EXTRA_WAIT_SECS" step="1" min="0" placeholder="e.g. 30"/>
+          </div>
+          <div class="cfg-field">
+            <label>Cooldown (secs)</label>
+            <div class="cfg-hint">Nghỉ sau mỗi lệnh farm (fixed, không dùng adaptive)</div>
+            <input type="number" id="cfg-FARM_COOLDOWN_SECS" step="1" min="0" placeholder="e.g. 30"/>
           </div>
           <div class="cfg-field" style="grid-column:1/-1">
             <label>Blocked Hours UTC (farm)</label>
             <div class="cfg-hint">Giờ UTC không vào lệnh, cách nhau bằng dấu phẩy. Để trống = không block. Ví dụ: 7,8,9,10,11,18,19,20,21,22,23</div>
             <input type="text" id="cfg-FARM_BLOCKED_HOURS" placeholder="e.g. 7,8,9,10,11 (để trống = không block)"/>
+          </div>
+        </div>
+      </div>
+
+      <div class="cfg-section">
+        <div class="cfg-section-title">🔍 Farm Mode — Entry Filters</div>
+        <div class="cfg-fields">
+          <div class="cfg-field">
+            <label>Pressure Gate Min Confidence</label>
+            <div class="cfg-hint">Min confidence khi tradePressure=0 (0.55 = 55%)</div>
+            <input type="number" id="cfg-FARM_MIN_CONFIDENCE_PRESSURE_GATE" step="any" min="0" max="1" placeholder="e.g. 0.55"/>
+          </div>
+          <div class="cfg-field">
+            <label>Fallback Min Confidence</label>
+            <div class="cfg-hint">Min confidence cho fallback signals (0.25 = 25%)</div>
+            <input type="number" id="cfg-FARM_MIN_FALLBACK_CONFIDENCE" step="any" min="0" max="1" placeholder="e.g. 0.25"/>
+          </div>
+          <div class="cfg-field">
+            <label>Sideway Min Confidence</label>
+            <div class="cfg-hint">Min confidence trong SIDEWAY regime (0.45 = 45%)</div>
+            <input type="number" id="cfg-FARM_SIDEWAY_MIN_CONFIDENCE" step="any" min="0" max="1" placeholder="e.g. 0.45"/>
+          </div>
+          <div class="cfg-field">
+            <label>Trend Min Confidence</label>
+            <div class="cfg-hint">Min confidence trong TREND regime (0.35 = 35%)</div>
+            <input type="number" id="cfg-FARM_TREND_MIN_CONFIDENCE" step="any" min="0" max="1" placeholder="e.g. 0.35"/>
           </div>
         </div>
       </div>

@@ -18,6 +18,7 @@ export type OverridableConfig = {
   FARM_MIN_CONFIDENCE: number;
   FARM_EARLY_EXIT_SECS: number;
   FARM_EARLY_EXIT_PNL: number;
+  FARM_MIN_PROFIT_FEE_MULT: number;  // Exit when pnl > roundTripFee × this multiplier
   FARM_EXTRA_WAIT_SECS: number;
   FARM_BLOCKED_HOURS: number[];
   FARM_COOLDOWN_SECS: number;   // Fixed cooldown after each farm trade (seconds)
@@ -119,6 +120,7 @@ const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
   'FARM_MIN_CONFIDENCE',
   'FARM_EARLY_EXIT_SECS',
   'FARM_EARLY_EXIT_PNL',
+  'FARM_MIN_PROFIT_FEE_MULT',
   'FARM_EXTRA_WAIT_SECS',
   'FARM_BLOCKED_HOURS',
   'FARM_COOLDOWN_SECS',
@@ -207,6 +209,7 @@ function extractBase(): OverridableConfig {
     FARM_MIN_CONFIDENCE: config.FARM_MIN_CONFIDENCE,
     FARM_EARLY_EXIT_SECS: config.FARM_EARLY_EXIT_SECS,
     FARM_EARLY_EXIT_PNL: config.FARM_EARLY_EXIT_PNL,
+    FARM_MIN_PROFIT_FEE_MULT: config.FARM_MIN_PROFIT_FEE_MULT,
     FARM_EXTRA_WAIT_SECS: config.FARM_EXTRA_WAIT_SECS,
     FARM_BLOCKED_HOURS: config.FARM_BLOCKED_HOURS,
     FARM_COOLDOWN_SECS: config.FARM_COOLDOWN_SECS,
