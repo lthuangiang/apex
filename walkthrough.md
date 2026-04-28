@@ -1,544 +1,483 @@
-# DRIFT Walkthrough — Hướng Dẫn Đầy Đủ
+# DRIFT — Hướng Dẫn Đầy Đủ
 
-Tài liệu này hướng dẫn chi tiết toàn bộ hệ thống DRIFT từ setup đến vận hành, bao gồm cả 3 chiến lược (Farm, Trade, Hedge) và các khái niệm quan trọng.
+Tài liệu này hướng dẫn chi tiết từ setup đến vận hành DRIFT trading bot, bao gồm 3 chiến lược (Farm, Trade, Hedge).
 
 ---
 
 ## Mục Lục
 
 1. [Bắt Đầu Nhanh](#bắt-đầu-nhanh)
-2. [Kiến Trúc Hệ Thống](#kiến-trúc-hệ-thống)
-3. [Cấu Hình](#cấu-hình)
+2. [Setup Chi Tiết Cho Người Mới](#setup-chi-tiết-cho-người-mới)
+3. [Workflow Hàng Ngày](#workflow-hàng-ngày)
 4. [Ba Chiến Lược Trading](#ba-chiến-lược-trading)
-5. [AI Signal Engine](#ai-signal-engine)
-6. [Execution Safety](#execution-safety)
-7. [Dashboard & Giám Sát](#dashboard--giám-sát)
-8. [Điều Khiển Telegram](#điều-khiển-telegram)
-9. [Quản Lý Multi-Bot](#quản-lý-multi-bot)
-10. [Xử Lý Sự Cố](#xử-lý-sự-cố)
+5. [Cấu Hình Nâng Cao](#cấu-hình-nâng-cao)
+6. [Dashboard & Giám Sát](#dashboard--giám-sát)
+7. [Xử Lý Sự Cố](#xử-lý-sự-cố)
 
 ---
 
 ## Bắt Đầu Nhanh
 
-### Prerequisites
+### Yêu Cầu
 
-- Node.js 18+ or Docker
-- API keys for at least one exchange (SoDEX, Dango, or Decibel)
-- Telegram bot token (optional but recommended)
-- OpenAI API key (for LLM-enhanced signals)
+- Node.js 18+ hoặc Docker
+- API keys từ SoDEX/Dango/Decibel
+- Telegram bot token (tùy chọn)
 
-### Installation
+### Cài Đặt 3 Bước
 
 ```bash
-# Clone and install
-git clone <repo-url>
-cd drift
-npm install
+# 1. Clone & install
+git clone <repo-url> && cd drift && npm install
 
-# Configure environment
+# 2. Cấu hình
 cp .env.example .env
-# Edit .env with your API keys
+# Điền API keys vào .env
 
-# Start the bot
+# 3. Chạy
 npm start
 ```
 
-### Docker Setup
+Dashboard: `http://localhost:3000`
+
+---
+
+## Setup Chi Tiết Cho Người Mới
+
+### Bước 1: Chuẩn Bị Môi Trường
+
+**Cài Node.js:**
+
+```bash
+# macOS
+brew install node
+
+# Ubuntu/Debian
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Kiểm tra
+node --version  # >= 18.0.0
+```
+
+**Hoặc dùng Docker:**
+
+```bash
+# Cài Docker Desktop (macOS/Windows)
+# https://www.docker.com/products/docker-desktop
+
+# Hoặc Docker Engine (Linux)
+curl -fsSL https://get.docker.com | sh
+```
+
+### Bước 2: Lấy API Keys
+
+#### SoDEX (Khuyến nghị cho Farm Mode)
+
+1. Truy cập https://sodex.dev
+2. Đăng ký/đăng nhập
+3. Settings → API Keys → Create New
+4. Lưu lại:
+   - `API_KEY`
+   - `API_SECRET`
+   - `SUBACCOUNT` (địa chỉ ví con)
+
+**Lưu ý:** SoDEX có maker fee 0.012% — rất thấp, phù hợp farm volume.
+
+#### Decibel (Aptos)
+
+1. Cài Petra Wallet: https://petra.app
+2. Tạo ví mới hoặc import existing
+3. Settings → Export Private Key
+4. Lấy Node API key từ https://decibel.finance/api
+5. (Tùy chọn) Gas Station API key để sponsor gas
+
+#### Dango
+
+1. Cài MetaMask: https://metamask.io
+2. Tạo ví hoặc import
+3. Account Details → Export Private Key
+4. Copy địa chỉ ví (0x...)
+
+### Bước 3: Tạo Telegram Bot
+
+```
+1. Mở Telegram, tìm @BotFather
+2. Gửi: /newbot
+3. Đặt tên: MyTradingBot
+4. Đặt username: my_trading_bot
+5. Lưu token: 123456:ABC-DEF...
+
+6. Lấy Chat ID:
+   - Gửi tin nhắn cho bot
+   - Truy cập: https://api.telegram.org/bot<TOKEN>/getUpdates
+   - Tìm "chat":{"id": 123456789}
+```
+
+### Bước 4: Clone & Cài Đặt
+
+```bash
+# Clone repo
+git clone <repo-url>
+cd drift
+
+# Cài dependencies
+npm install
+
+# Nếu lỗi, thử:
+npm install --legacy-peer-deps
+```
+
+### Bước 5: Cấu Hình .env
 
 ```bash
 cp .env.example .env
-# Edit .env with your credentials
-
-docker build -f Dockerfile -t drift:latest .
-docker compose up -d
+nano .env  # hoặc code .env
 ```
 
-Dashboard will be available at `http://localhost:3000`
+**Template cho SoDEX:**
 
----
-
-## System Architecture
-
-DRIFT uses a **multi-bot architecture** with two operational modes:
-
-### Single-Bot Mode (Legacy)
-One `Watcher` instance managing one symbol on one exchange. Configured via `.env` file.
-
-### Multi-Bot Mode (Recommended)
-`BotManager` orchestrates multiple `BotInstance` objects, each with its own:
-- Exchange adapter
-- Symbol
-- ConfigStore (isolated config overrides)
-- State tracking (PnL, volume, trades)
-
-**Key Components:**
-
-```
-BotManager
-├── BotInstance (Farm/Trade) × N
-│   ├── Watcher (5-state machine)
-│   │   ├── AISignalEngine
-│   │   ├── PositionSizer
-│   │   ├── ExecutionEdge
-│   │   ├── MarketMaker
-│   │   ├── RegimeDetector
-│   │   ├── ChopDetector (trade mode)
-│   │   └── FakeBreakoutFilter (trade mode)
-│   ├── ConfigStore (per-bot overrides)
-│   └── SessionManager
-│
-├── HedgeBot × N
-│   ├── VolumeMonitor (dual-symbol spike detection)
-│   ├── AISignalEngine × 2 (one per symbol)
-│   └── State Machine (6 states)
-│
-├── DashboardServer (Express + SSE)
-├── TelegramManager
-└── TradeLogger (JSON or SQLite)
-```
-
----
-
-## Configuration
-
-### Environment Variables
-
-**Exchange Selection:**
 ```env
-EXCHANGE=sodex          # sodex | dango | decibel
+# Exchange
+EXCHANGE=sodex
 SYMBOL=BTC-USD
-```
 
-**SoDEX:**
-```env
-SODEX_API_KEY=your_api_key
+# SoDEX
+SODEX_API_KEY=your_key
 SODEX_API_SECRET=0x...
 SODEX_SUBACCOUNT=0x...
-```
 
-**Decibel (Aptos):**
-```env
-DECIBELS_PRIVATE_KEY=0x...
-DECIBELS_NODE_API_KEY=...
-DECIBELS_SUBACCOUNT=0x...
-DECIBELS_BUILDER_ADDRESS=0x...
-DECIBELS_GAS_STATION_API_KEY=...
-```
+# Telegram
+TELEGRAM_BOT_TOKEN=123456:ABC...
+TELEGRAM_CHAT_ID=123456789
 
-**Dango:**
-```env
-DANGO_PRIVATE_KEY=0x...
-DANGO_USER_ADDRESS=0x...
-DANGO_NETWORK=mainnet
-```
-
-**Telegram:**
-```env
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_CHAT_ID=...
-```
-
-**LLM (Optional):**
-```env
+# LLM (tùy chọn)
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
+
+# Log
+TRADE_LOG_BACKEND=json
+TRADE_LOG_PATH=./trades.json
+
+# Dashboard
+DASHBOARD_PORT=3000
 ```
 
-### Runtime Config (Dashboard)
+### Bước 6: Build & Chạy
 
-70+ parameters can be adjusted at runtime via the dashboard without restarting:
+```bash
+# Build TypeScript
+npm run build
 
-**Farm Mode:**
-- `FARM_SIDEWAY_MIN_CONFIDENCE` (0.01–0.60)
-- `FARM_TREND_MIN_CONFIDENCE` (0.01–0.60)
-- `FARM_MIN_HOLD_SECS` (60–600)
-- `FARM_MAX_HOLD_SECS` (120–900)
-- `FARM_TP_USD` (0.1–5.0)
-- `FARM_COOLDOWN_SECS` (10–120)
+# Chạy bot
+npm start
+```
 
-**Trade Mode:**
-- `MIN_CONFIDENCE` (0.50–0.90)
-- `COOLDOWN_MIN_MINS` (1–30)
-- `COOLDOWN_MAX_MINS` (2–60)
+**Output mong đợi:**
 
-**Market Making:**
-- `MM_ENABLED` (true/false)
-- `MM_INVENTORY_SOFT_LIMIT_USD` (10–500)
-- `MM_INVENTORY_HARD_LIMIT_USD` (50–1000)
+```
+🚀 SHIELD-BOT starting...
+🔌 Using SoDEX adapter
+📡 [System] Multi-Bot Manager ready
+🤖 Dashboard running on http://localhost:3000
+```
 
-**Risk:**
-- `SL_PERCENT` (1–10)
-- `TP_PERCENT` (1–20)
-- `MAX_POSITION_SIZE_USD` (10–10000)
+### Bước 7: Truy Cập Dashboard
 
-All changes are validated and persisted to `config-overrides.json`.
+1. Mở browser: `http://localhost:3000`
+2. Xem bot status
+3. Click "Bot Settings" → điều chỉnh config
+4. Click "Start Bot"
+
+### Bước 8: Trade Đầu Tiên
+
+**Cấu hình Farm Mode (khuyến nghị cho người mới):**
+
+1. Dashboard → Bot Settings
+2. Điều chỉnh:
+   ```
+   MODE: farm
+   FARM_SIDEWAY_MIN_CONFIDENCE: 0.01
+   FARM_MIN_HOLD_SECS: 120
+   MAX_POSITION_SIZE_USD: 50
+   ```
+3. Click "Apply Changes"
+4. Click "Start Bot"
+
+**Theo dõi:**
+- Console log sẽ hiện signal mỗi 5-10s
+- Trade đầu tiên trong 5-10 phút
+- Xem Analytics tab sau 1 giờ
 
 ---
 
-## Three Trading Strategies
+## Workflow Hàng Ngày
 
-### 1. Farm Mode — Maximum Volume
+### Sáng (Khởi Động Bot)
 
-**Goal:** Generate maximum trading volume for SoPoints/rebates on volume-incentive DEXes.
+```bash
+# 1. Kiểm tra bot status
+docker ps  # nếu dùng Docker
+# hoặc
+pm2 status  # nếu dùng PM2
 
-**Philosophy:** Always trade. Never skip an opportunity.
+# 2. Xem logs
+docker logs -f drift-bot --tail 50
 
-**Entry Logic:**
+# 3. Kiểm tra balance
+# Dashboard → Bot Detail → Balance
 
-```
-1. Get signal from AISignalEngine
-2. Run filter pipeline:
-   [1] RegimeConfidenceThreshold — SIDEWAY ≥ threshold, TREND ≥ threshold
-   [2] TradePressureGate — skip if pressure=0 AND confidence too low
-   [3] FallbackQualityGate — skip if fallback signal with very low confidence
-   [4] FeeAwareEntryFilter — skip if expected edge < fee cost
-   [5] LLMMomentumAdjuster — boost/penalty based on LLM alignment
-   [6] MinHoldTimeEnforcer — compute dynamic hold time from ATR
-
-3. Direction resolution (NEVER skip):
-   - pricePosition > 0.65 → SHORT (price near range top)
-   - pricePosition < 0.35 → LONG (price near range bottom)
-   - Mid-range → use adjustedMomentumScore
-   - Fallback → alternate with previous trade (long ↔ short)
-
-4. Market Maker bias (if MM_ENABLED):
-   - Ping-pong: after LONG → bias SHORT next
-   - Inventory control: soft/hard limits on net exposure
-
-5. Place limit order (Post-Only for maker fee)
+# 4. Set max loss cho session
+# Telegram: /set_max_loss 100
+# hoặc Dashboard → Bot Settings → SESSION_MAX_LOSS_USD
 ```
 
-**Exit Logic (priority order):**
+### Trong Ngày (Giám Sát)
 
-1. **SL 5%** — hard stop loss
-2. **Dynamic TP** (MM enabled) — based on live spread: `max(spreadBps/10000 × price × 1.5, feeFloor)`, capped $2.0
-3. **Farm TP $0.5** — fixed floor target
-4. **Early profit** — hold ≥ 60s AND pnl ≥ fee × 1.2 (suppressed in TREND regime)
-5. **Time exit** — after `dynamicMinHold` (120–480s), wait extra 30s if profitable
+**Qua Dashboard:**
+- Xem real-time console
+- Kiểm tra PnL mỗi 1-2 giờ
+- Analytics tab: win rate, fee impact
 
-**Cooldown:** Fixed 30s
+**Qua Telegram:**
+```
+/status          # Tổng quan
+/check           # Position hiện tại
+```
 
-**Best for:** SoDEX (0.012% maker fee + SoPoints), any DEX with volume incentives
+**Điều chỉnh nếu cần:**
+- Win rate < 50% → tăng confidence threshold
+- Không trade → hạ confidence threshold
+- Fee impact cao → tăng min hold time
+
+### Tối (Tổng Kết & Dừng)
+
+```bash
+# 1. Xem tổng kết ngày
+# Dashboard → Analytics → Today's Stats
+
+# 2. Backup state
+cp bot_state.json bot_state_backup_$(date +%Y%m%d).json
+cp config-overrides.json config_backup_$(date +%Y%m%d).json
+
+# 3. Dừng bot (nếu muốn)
+# Telegram: /stop_bot
+# hoặc Dashboard → Stop Bot
+
+# 4. Xem trade log
+cat trades.json | jq '.[-10:]'  # 10 trades cuối
+```
 
 ---
 
-### 2. Trade Mode — Maximum Win Rate
+## Ba Chiến Lược Trading
 
-**Goal:** Only enter when edge is clear. Maximize win rate over volume.
+### 1. Farm Mode — Tối Đa Hóa Volume
 
-**Philosophy:** Quality over quantity. Let winners run.
+**Mục tiêu:** Trade liên tục để farm SoPoints/rebate.
 
-**Entry Logic:**
+**Khi nào dùng:**
+- Sàn có volume incentive (SoDEX, Dango)
+- Maker fee thấp (< 0.02%)
+- Muốn tích điểm/airdrop
+
+**Logic vào lệnh:**
 
 ```
-1. Get signal from AISignalEngine
-2. Run filter pipeline:
-   [1] Regime check — HIGH_VOLATILITY → skip if REGIME_HIGH_VOL_SKIP_ENTRY=true
-   [2] ChopDetector — chopScore ≥ 0.55 → skip (market is choppy)
-   [3] FakeBreakoutFilter — OB imbalance contradicts direction → skip
-   [4] Confidence gate — confidence < MIN_CONFIDENCE (0.65) → skip
-   [5] 2-tick confirmation — signal must persist for 60s window
+1. Lấy signal từ AI
+2. Chạy 4 bộ lọc:
+   - RegimeGate: SIDEWAY ≥ 0.01, TREND ≥ 0.01
+   - PressureGate: skip nếu pressure=0 và confidence thấp
+   - FallbackGate: skip nếu fallback signal yếu
+   - FeeFilter: skip nếu edge < fee cost
 
-3. If all filters pass → place limit order
+3. Quyết định hướng (KHÔNG BAO GIỜ SKIP):
+   - Giá gần đỉnh range (> 65%) → SHORT
+   - Giá gần đáy range (< 35%) → LONG
+   - Giữa range → dùng momentum score
+   - Không rõ → alternate với lệnh trước
+
+4. Đặt lệnh limit (Post-Only)
 ```
 
-**Exit Logic:**
+**Logic thoát lệnh (ưu tiên từ trên xuống):**
 
-- **SL 5%** or **TP 5%**
-- **No time exit** — let trade run to target
+1. **SL 5%** — cắt lỗ cứng
+2. **Dynamic TP** — dựa vào spread thực tế (nếu bật MM)
+3. **Farm TP $0.5** — target tối thiểu
+4. **Early profit** — giữ ≥ 60s và lời ≥ fee × 1.2
+5. **Time exit** — sau 2-8 phút, chờ thêm 30s nếu đang lời
 
-**Cooldown:** Random `[COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]` (default 2–5 minutes)
+**Cooldown:** 30s cố định
 
-**Best for:** Trending markets, when you want to avoid overtrading
+**Config khuyến nghị:**
+
+```env
+MODE=farm
+FARM_SIDEWAY_MIN_CONFIDENCE=0.01
+FARM_TREND_MIN_CONFIDENCE=0.01
+FARM_MIN_HOLD_SECS=120
+FARM_MAX_HOLD_SECS=480
+FARM_TP_USD=0.5
+FARM_COOLDOWN_SECS=30
+MM_ENABLED=true
+```
+
+**Kết quả mong đợi:**
+- 20-40 trades/giờ
+- Win rate 60-70%
+- Net positive sau fee
+
+---
+
+### 2. Trade Mode — Tối Đa Hóa Win Rate
+
+**Mục tiêu:** Chỉ vào khi có edge rõ ràng.
+
+**Khi nào dùng:**
+- Thị trường trending
+- Không quan tâm volume
+- Muốn win rate cao
+
+**Logic vào lệnh:**
+
+```
+1. Lấy signal từ AI
+2. Chạy 5 bộ lọc:
+   - Regime: HIGH_VOL → skip
+   - ChopDetector: chopScore ≥ 0.55 → skip
+   - FakeBreakout: OB mâu thuẫn → skip
+   - Confidence: < 0.65 → skip
+   - 2-tick confirm: phải confirm trong 60s
+
+3. Nếu pass hết → đặt lệnh
+```
+
+**Logic thoát:**
+- SL 5% hoặc TP 5%
+- **Không có time exit** — để lệnh chạy
+
+**Cooldown:** Random 2-5 phút
+
+**Config khuyến nghị:**
+
+```env
+MODE=trade
+MIN_CONFIDENCE=0.70
+COOLDOWN_MIN_MINS=5
+COOLDOWN_MAX_MINS=10
+REGIME_HIGH_VOL_SKIP_ENTRY=true
+```
+
+**Kết quả mong đợi:**
+- 2-5 trades/giờ
+- Win rate 75-85%
 
 ---
 
 ### 3. Hedge Mode — Correlation Divergence
 
-**Goal:** Profit from temporary divergence between correlated assets (BTC/ETH).
+**Mục tiêu:** Lợi nhuận từ phân kỳ tạm thời BTC/ETH.
 
-**Philosophy:** Market neutral. No directional bet.
+**Khi nào dùng:**
+- Thị trường sideway
+- BTC/ETH correlation cao
+- Muốn market neutral
 
-**Entry Logic:**
-
-```
-1. VolumeMonitor samples volume every 15s for both symbols
-2. shouldEnter() checks:
-   - currentVolumeA > avgA × 1.21 (spike threshold)
-   - currentVolumeB > avgB × 1.21
-   - Both windows have ≥ 10 samples
-   - Both symbols spike simultaneously
-
-3. Get AI signals for both symbols in parallel
-4. Assign directions:
-   - scoreA > scoreB → long A, short B (A has stronger momentum)
-   - scoreB > scoreA → long B, short A (B has stronger momentum)
-   - scoreA == scoreB → skip entry
-
-5. Place limit orders for both legs simultaneously
-```
-
-**State Machine:**
+**Logic vào lệnh:**
 
 ```
-IDLE → OPENING → WAITING_FILL → IN_PAIR → CLOSING → COOLDOWN
+1. VolumeMonitor theo dõi volume 2 symbol
+2. Điều kiện vào:
+   - Volume BTC spike > 21%
+   - Volume ETH spike > 21%
+   - Cả 2 spike đồng thời
+
+3. Lấy AI signal cho cả 2
+4. Phân hướng:
+   - BTC momentum > ETH → long BTC, short ETH
+   - ETH momentum > BTC → long ETH, short BTC
+
+5. Đặt 2 lệnh cùng lúc (cùng USD notional)
 ```
 
-**Fill Management (one-action-per-tick):**
+**Fill management:**
+- 1 filled + 1 rejected → đặt lại lệnh bị reject
+- 1 filled + 1 pending → chờ 30s → cancel → retry
+- 2 pending → chờ 30s → cancel cả 2 → retry
 
-- **Case 1:** 1 filled + 1 rejected → re-place rejected leg immediately (tick N+1)
-- **Case 2:** 1 filled + 1 pending → wait up to 30s; timeout → cancel pending → OPENING
-- **Case 3:** 2 pending → wait up to 30s; timeout → cancel both → OPENING
+**Logic thoát:**
+1. Profit target: combined PnL ≥ $5
+2. Max loss: combined PnL ≤ -$10
+3. Mean reversion: ratio về equilibrium
+4. Time expiry: giữ quá 1 giờ
 
-**Exit Conditions:**
+**Config trong bot-configs.json:**
 
-1. **PROFIT_TARGET:** combinedPnl ≥ profitTargetUsd
-2. **MAX_LOSS:** combinedPnl ≤ -maxLossUsd
-3. **MEAN_REVERSION:** ratio returns to equilibrium spread
-4. **TIME_EXPIRY:** elapsedSecs ≥ holdingPeriodSecs
+```json
+{
+  "hedgeBots": [{
+    "id": "btc-eth-hedge",
+    "exchange": "sodex",
+    "symbolA": "BTC-USD",
+    "symbolB": "ETH-USD",
+    "notionalUsd": 100,
+    "profitTargetUsd": 5,
+    "maxLossUsd": 10,
+    "holdingPeriodSecs": 3600,
+    "cooldownSecs": 300
+  }]
+}
+```
 
-**Best for:** Low-volatility periods, when BTC/ETH correlation is high but temporary divergence occurs
+**Kết quả mong đợi:**
+- 1-3 pairs/giờ
+- Win rate 60-70%
+- Low correlation với market direction
 
 ---
 
-## AI Signal Engine
+## Cấu Hình Nâng Cao
 
-### Data Sources (fetched in parallel)
+### Runtime Config (Dashboard)
 
-1. **Binance 5m klines** (30 candles) — EMA9, EMA21, RSI(14), 3-candle momentum
-2. **Orderbook depth** (20 levels) — bid/ask imbalance
-3. **Recent trades** (100 trades) — trade pressure (buy vs sell volume)
-4. **Binance L/S position ratio** (5m) — sentiment indicator
+70+ tham số có thể điều chỉnh không cần restart:
 
-### Momentum Score Calculation
-
+**Farm Mode:**
 ```
-momentumScore = Σ (component_i × weight_i)
-```
-
-**Components (default weights):**
-
-| Component | Logic | Weight |
-|---|---|---|
-| EMA9 vs EMA21 | EMA9 > EMA21 → 0.65, else 0.35 | ~40% |
-| RSI(14) | < 35 oversold (0.75), > 65 overbought (0.25), linear between | ~25% |
-| 3-candle momentum | `(currentPrice - closes[-4]) / closes[-4] × 50 + 0.5` | ~20% |
-| Orderbook imbalance | `(bidVol/askVol - 1) × 0.5 + 0.5` | ~15% |
-
-**Bonuses:**
-- EMA crossover or hammer/shooting star → ±0.05
-- SIDEWAY regime: price position in 10-candle range → ±0.08
-
-### Adaptive Weight Adjustment
-
-After every 10 trades, weights self-adjust based on per-component win rates:
-
-```
-if EMA_winRate > 60% → EMA weight += 0.05
-if RSI_lossStreak > 3 → RSI weight -= 0.05
+FARM_SIDEWAY_MIN_CONFIDENCE: 0.01-0.60
+FARM_TREND_MIN_CONFIDENCE: 0.01-0.60
+FARM_MIN_HOLD_SECS: 60-600
+FARM_MAX_HOLD_SECS: 120-900
+FARM_TP_USD: 0.1-5.0
+FARM_COOLDOWN_SECS: 10-120
 ```
 
-Bounds: [0.05, 0.60], always sum to 1.0. Persisted to disk.
-
-### Regime Detection
-
-**Regimes:**
-- **TREND_UP / TREND_DOWN** — ATR high + price outside Bollinger Bands
-- **SIDEWAY** — ATR low + price inside Bollinger Bands
-- **HIGH_VOLATILITY** — ATR > threshold × 1.5
-
-**Impact:**
-- Farm Mode: SIDEWAY requires higher confidence threshold
-- Trade Mode: HIGH_VOLATILITY can auto-skip entry
-
-### Fallback Mode
-
-If Binance API fails → use basic SignalEngine (orderbook + trades only). Signal marked as `fallback: true`.
-
-### Cache
-
-60s TTL. Invalidated after placing entry order to force fresh data.
-
----
-
-## Execution Safety
-
-### Core Principle: One Action Per Tick
-
-Every bot follows strict rules to prevent race conditions and duplicate orders:
-
-**Rules:**
-1. **Per-tick mutex** (`_tickLock`) — only one tick executes at a time
-2. **ONE action per tick** — place OR cancel OR wait, then RETURN immediately
-3. **No cancel + place in same tick**
-4. **No exit + re-entry in same tick**
-5. **COOLDOWN blocks ALL signal evaluation**
-6. **Always query actual exchange positions** before close (not cached state)
-
-### Farm/Trade Bot State Machine
-
+**Trade Mode:**
 ```
-IDLE → PENDING → IN_POSITION → EXITING → COOLDOWN → IDLE
+MIN_CONFIDENCE: 0.50-0.90
+COOLDOWN_MIN_MINS: 1-30
+COOLDOWN_MAX_MINS: 2-60
 ```
 
-**IDLE:**
-- Dust check (ignore position < MIN_POS_USD)
-- Hour blocking (FARM_BLOCKED_HOURS)
-- Cancel stale orders → RETURN
-- Retry entry if `_retryEntry` flag set
-- Signal pipeline → PositionSizer → placeOrder → PENDING
-
-**PENDING:**
-- Position detected → IN_POSITION
-- Timeout (10s farm, 15s trade) → cancel (tick N) → check (tick N+1)
-- Confirmed cancel → save `_retryEntry` → IDLE
-
-**IN_POSITION:**
-- Check exit triggers (SL, TP, time, early profit)
-- Exit trigger fired → EXITING
-
-**EXITING:**
-- Case A: no pendingExit → cancel open orders → verify position → placeExitOrder
-- Case B: pendingExit exists → position gone → `_onExitFilled` → COOLDOWN
-- Timeout 15s → cancel → retry Case A
-
-**COOLDOWN:**
-- Farm: fixed 30s
-- Trade: random [COOLDOWN_MIN, COOLDOWN_MAX] mins
-- Cooldown expired → IDLE
-
-### Hedge Bot State Machine
-
+**Market Making:**
 ```
-IDLE → OPENING → WAITING_FILL → IN_PAIR → CLOSING → COOLDOWN → IDLE
+MM_ENABLED: true/false
+MM_INVENTORY_SOFT_LIMIT_USD: 10-500
+MM_INVENTORY_HARD_LIMIT_USD: 50-1000
 ```
 
-**IDLE:**
-- VolumeMonitor samples every 15s
-- shouldEnter() checks dual-symbol spike
-- Get signals for both symbols
-- Assign directions → OPENING
+**Risk:**
+```
+SL_PERCENT: 1-10
+TP_PERCENT: 1-20
+MAX_POSITION_SIZE_USD: 10-10000
+SESSION_MAX_LOSS_USD: 10-1000
+```
 
-**OPENING:**
-- Tick A: cancel open orders → RETURN
-- Tick B: check existing positions (anti-double-trade)
-- Place limit orders for both legs
-- 1 leg fails → cancel successful leg → IDLE
+### Multi-Bot Config
 
-**WAITING_FILL:**
-- Both filled → IN_PAIR
-- Case 1: filled A + rejected B → re-place B (tick N+1)
-- Case 2: filled A + pending B → wait 30s → cancel B → OPENING
-- Case 3: pending A + pending B → wait 30s → cancel both → OPENING
-
-**IN_PAIR:**
-- Update PnL every 5s
-- Check exit conditions (profit target, max loss, mean reversion, time expiry)
-- Exit condition met → CLOSING
-
-**CLOSING:**
-- Tick A: cancel open orders → RETURN
-- Tick B: query ACTUAL positions → close only open legs
-- Poll flat confirmation (5 times, 1s interval)
-- Both legs closed → COOLDOWN
-
-**COOLDOWN:**
-- Wait cooldownSecs → IDLE
-
----
-
-## Dashboard & Monitoring
-
-### Access
-
-`http://localhost:3000` (default port, configurable via `DASHBOARD_PORT`)
-
-### Features
-
-**Manager View:**
-- All bots overview
-- Total PnL, volume, win rate
-- Start/stop individual bots
-- Create new bot instances
-
-**Bot Detail View:**
-- Real-time console (SSE streaming)
-- Session PnL, volume, trade count
-- Trade history table
-- Current position (if any)
-
-**Hedge Bot View:**
-- Both legs displayed: symbol, side, entry price, unrealized PnL
-- Combined PnL
-- State machine status
-
-**Analytics Tab:**
-- Win rate by regime
-- Signal quality metrics
-- Fee impact analysis
-- Filter skip stats (farm mode)
-- Effective confidence distribution
-- Dynamic min hold distribution
-
-**Bot Settings:**
-- 70+ config params
-- Real-time validation
-- Apply without restart
-- Reset to defaults
-
-### Real-Time Updates
-
-Dashboard uses **Server-Sent Events (SSE)** for live console streaming. No polling, no WebSocket complexity.
-
----
-
-## Telegram Control
-
-### Setup
-
-1. Create bot via [@BotFather](https://t.me/BotFather)
-2. Get bot token
-3. Get your chat ID (send `/start` to bot, check logs)
-4. Add to `.env`:
-   ```env
-   TELEGRAM_BOT_TOKEN=...
-   TELEGRAM_CHAT_ID=...
-   ```
-
-### Commands
-
-**Single-Bot Mode:**
-- `/start_bot` — Start trading session
-- `/stop_bot` — Stop trading (closes position if open)
-- `/status` — Bot state, uptime, PnL
-- `/check` — Current position details
-- `/set_mode farm|trade` — Switch strategy
-- `/set_max_loss <usd>` — Set session max loss limit
-- `/force_close` — Emergency position close
-
-**Multi-Bot Mode:**
-- `/status` — All bots summary
-- `/status <botId>` — Specific bot details
-- `/start <botId>` — Start specific bot
-- `/stop <botId>` — Stop specific bot
-
-### Alerts
-
-Automatic notifications for:
-- Session start/stop
-- Trade entry/exit
-- Max loss hit
-- Error conditions
-- Daily summary (if enabled)
-
----
-
-## Multi-Bot Management
-
-### Configuration File
-
-`bot-configs.json` (default path, configurable via `BOT_CONFIGS_PATH`):
+File `bot-configs.json`:
 
 ```json
 {
@@ -557,304 +496,152 @@ Automatic notifications for:
       "mode": "trade",
       "enabled": true
     }
-  ],
-  "hedgeBots": [
-    {
-      "id": "btc-eth-hedge",
-      "exchange": "sodex",
-      "symbolA": "BTC-USD",
-      "symbolB": "ETH-USD",
-      "enabled": true,
-      "notionalUsd": 100,
-      "profitTargetUsd": 5,
-      "maxLossUsd": 10,
-      "holdingPeriodSecs": 3600,
-      "cooldownSecs": 300
-    }
   ]
 }
 ```
 
-### Per-Bot Config Isolation
-
-Each `BotInstance` has its own `ConfigStore` — runtime config changes apply only to that bot.
-
-**Example:** Bot A can have `FARM_SIDEWAY_MIN_CONFIDENCE: 0.10` while Bot B has `0.45`.
-
-Overrides saved to `config-overrides-<botId>.json`.
-
-### Adding Bots at Runtime
-
-Via dashboard:
-1. Navigate to Manager view
-2. Click "Add Bot"
-3. Fill form (exchange, symbol, mode)
-4. Click "Create"
-
-Bot starts immediately if `enabled: true`.
-
-### Removing Bots
-
-Via dashboard:
-1. Stop bot
-2. Click "Remove"
-3. Confirm
-
-Config file updated automatically.
+Mỗi bot có ConfigStore riêng → config độc lập.
 
 ---
 
-## Troubleshooting
+## Dashboard & Giám Sát
 
-### Bot Not Trading (Farm Mode)
+### Manager View
 
-**Symptom:** `[SignalFilter] SKIP: [RegimeGate] SKIP: regime=SIDEWAY, confidence=0.09 < 0.45`
+- Tổng quan tất cả bots
+- Total PnL, volume, win rate
+- Start/stop từng bot
+- Tạo bot mới
 
-**Cause:** `FARM_SIDEWAY_MIN_CONFIDENCE` too high for current market conditions.
+### Bot Detail View
 
-**Fix:**
-1. Open dashboard → Bot Settings
-2. Lower `FARM_SIDEWAY_MIN_CONFIDENCE` to `0.01` or `0.05`
-3. Click "Apply Changes"
+- Real-time console (SSE streaming)
+- Session PnL, volume, trade count
+- Trade history table
+- Current position
 
-**Note:** If using Single-Bot Mode, ensure `configStore` is passed to `Watcher` constructor (fixed in latest version).
+### Analytics Tab
 
----
+- Win rate theo regime
+- Signal quality metrics
+- Fee impact analysis
+- Filter skip stats
+- Confidence distribution
+- Hold time distribution
 
-### Orders Not Filling
+### Bot Settings
 
-**Symptom:** `[PENDING] Timeout — cancelling order`
-
-**Possible causes:**
-1. **Price too aggressive** — ExecutionEdge offset too large
-2. **Low liquidity** — spread > 10 bps triggers spread guard
-3. **Post-Only rejection** — price crosses spread
-
-**Fix:**
-1. Check `EXECUTION_EDGE_SPREAD_MULT` (default 0.3) — lower to 0.1 for tighter pricing
-2. Disable Post-Only: set `timeInForce = 0` (GTC) instead of `4` (Post-Only) in adapter
-3. Check exchange orderbook depth — if < $50k top-5, consider different symbol
-
----
-
-### Hedge Bot Stuck in WAITING_FILL
-
-**Symptom:** One leg filled, other leg pending for > 30s
-
-**Cause:** Fill management timeout not triggering cancel.
-
-**Debug:**
-1. Check dashboard console for `[WAITING_FILL]` logs
-2. Verify timeout logic: `elapsedSecs >= 30`
-3. Check if `cancelAllOrders()` is being called
-
-**Fix:** Restart bot — state machine will reset to IDLE and cancel stale orders.
+- 70+ params
+- Real-time validation
+- Apply không cần restart
+- Reset về defaults
 
 ---
 
-### Config Changes Not Applied
+## Xử Lý Sự Cố
 
-**Symptom:** Changed `FARM_SIDEWAY_MIN_CONFIDENCE` on dashboard but bot still uses old value.
+### Bot Không Trade (Farm Mode)
 
-**Cause (Single-Bot Mode):** `configStore` not passed to `Watcher` constructor.
-
-**Fix:** Update `src/bot.ts` line 198:
-```ts
-// BEFORE:
-const watcher = new Watcher(adapter, symbol, telegram, sessionManager);
-
-// AFTER:
-const watcher = new Watcher(adapter, symbol, telegram, sessionManager, undefined, configStore);
+**Triệu chứng:**
+```
+[SignalFilter] SKIP: [RegimeGate] confidence=0.09 < 0.45
 ```
 
-**Cause (Multi-Bot Mode):** Config override file not loaded on startup.
+**Nguyên nhân:** `FARM_SIDEWAY_MIN_CONFIDENCE` quá cao.
 
-**Fix:** Check `config-overrides-<botId>.json` exists and is valid JSON.
-
----
-
-### High Fee Impact
-
-**Symptom:** `grossPnl > 0` but `netPnl < 0` (fee ate all profit)
-
-**Cause:** Holding time too short — exiting before price moves enough to cover fees.
-
-**Fix:**
-1. Increase `FARM_MIN_HOLD_SECS` to 180 or 240
-2. Increase `FARM_MIN_PROFIT_FEE_MULT` to 1.5 or 2.0 (early exit threshold)
-3. Enable Market Maker (`MM_ENABLED: true`) for dynamic TP based on spread
+**Giải pháp:**
+1. Dashboard → Bot Settings
+2. `FARM_SIDEWAY_MIN_CONFIDENCE: 0.01`
+3. Apply Changes
 
 ---
 
-### Rate Limiting (SoDEX)
+### Lệnh Không Fill
 
-**Symptom:** `[SoDEX] Rate limited — backing off 5s`
-
-**Cause:** Too many API requests in short time.
-
-**Behavior:** Adapter automatically backs off for `retryAfter` seconds (from API response).
-
-**Fix:** No action needed — bot will resume after backoff. If persistent:
-1. Increase tick interval (not recommended — breaks timing)
-2. Reduce number of bots on same exchange
-3. Contact exchange for higher rate limit tier
-
----
-
-### LLM API Errors
-
-**Symptom:** `[LLMClient] OpenAI API error: 429 Too Many Requests`
-
-**Cause:** OpenAI rate limit hit.
-
-**Behavior:** Signal engine falls back to basic mode (no LLM adjustment).
-
-**Fix:**
-1. Upgrade OpenAI plan for higher rate limits
-2. Increase `LLM_CACHE_TTL` to reduce API calls
-3. Disable LLM: remove `OPENAI_API_KEY` from `.env`
-
----
-
-### Docker Container Exits
-
-**Symptom:** `docker ps` shows container stopped.
-
-**Debug:**
-```bash
-docker logs drift-bot
+**Triệu chứng:**
+```
+[PENDING] Timeout — cancelling order
 ```
 
-**Common causes:**
-1. **Missing .env** — copy `.env.example` to `.env`
-2. **Invalid API keys** — check credentials
-3. **Port conflict** — change `DASHBOARD_PORT` if 3000 is taken
-4. **Out of memory** — increase Docker memory limit
+**Nguyên nhân:**
+- Giá quá aggressive
+- Spread quá rộng
+- Post-Only bị reject
+
+**Giải pháp:**
+1. Hạ `EXECUTION_EDGE_SPREAD_MULT` xuống 0.1
+2. Kiểm tra orderbook depth
+3. Thử symbol khác nếu liquidity thấp
 
 ---
 
-### Position Sync Issues After Restart
+### Config Không Áp Dụng
 
-**Symptom:** Bot thinks position is open but exchange shows flat.
+**Triệu chứng:** Đổi config trên dashboard nhưng bot vẫn dùng giá trị cũ.
 
-**Cause:** Stale state from `bot_state.json`.
+**Nguyên nhân:** `configStore` không được pass vào `Watcher` (đã fix).
 
-**Fix:**
-1. Stop bot
-2. Delete `bot_state.json`
-3. Restart bot — will sync from exchange
-
-**Prevention:** Bot automatically queries exchange position on startup (IDLE state).
+**Giải pháp:**
+1. Pull code mới nhất
+2. Rebuild: `npm run build`
+3. Restart bot
 
 ---
 
-## Advanced Topics
+### Fee Ăn Hết Lời
 
-### Custom Signal Components
+**Triệu chứng:** `grossPnl > 0` nhưng `netPnl < 0`
 
-Add new signal components in `src/ai/AISignalEngine.ts`:
+**Nguyên nhân:** Giữ lệnh quá ngắn.
 
-```ts
-// Example: Add MACD component
-const macd = calculateMACD(closes);
-const macdScore = macd > 0 ? 0.7 : 0.3;
+**Giải pháp:**
+1. Tăng `FARM_MIN_HOLD_SECS: 180`
+2. Tăng `FARM_MIN_PROFIT_FEE_MULT: 1.5`
+3. Bật MM: `MM_ENABLED: true`
 
-// Add to weighted sum
-const momentumScore = 
-  emaScore * weights.ema +
-  rsiScore * weights.rsi +
-  momentumScore * weights.momentum +
-  obScore * weights.orderbook +
-  macdScore * weights.macd; // new component
+---
+
+### Rate Limit (SoDEX)
+
+**Triệu chứng:**
+```
+[SoDEX] Rate limited — backing off 5s
 ```
 
-Update `WeightStore` to include new component.
+**Hành vi:** Bot tự động chờ, không cần can thiệp.
 
-### Custom Exit Conditions
-
-Add new exit logic in `src/modules/Watcher.ts` → `_checkExitConditions()`:
-
-```ts
-// Example: Exit on volume spike
-const recentVolume = await this.adapter.getRecentTrades(this.symbol, 20);
-const avgVolume = recentVolume.reduce((sum, t) => sum + t.size, 0) / 20;
-if (recentVolume[0].size > avgVolume * 3) {
-  return { shouldExit: true, exitTrigger: 'VOLUME_SPIKE' };
-}
-```
-
-### Custom Filters (Farm Mode)
-
-Add new filter in `src/modules/FarmSignalFilters.ts`:
-
-```ts
-export function myCustomFilter(input: FilterInput): { pass: boolean; reason?: string } {
-  if (input.mode !== 'farm') return { pass: true };
-  
-  // Your logic here
-  if (someCondition) {
-    return { pass: false, reason: '[MyFilter] SKIP: reason' };
-  }
-  
-  return { pass: true };
-}
-```
-
-Add to pipeline in `evaluateFarmEntryFilters()`.
+**Nếu thường xuyên:**
+- Giảm số bot trên cùng exchange
+- Liên hệ SoDEX xin tăng limit
 
 ---
 
-## Performance Tuning
+## Checklist Production
 
-### Farm Mode Optimization
+Trước khi chạy với số tiền lớn:
 
-**Goal:** Maximum volume with minimal fee impact.
-
-**Key params:**
-- `FARM_SIDEWAY_MIN_CONFIDENCE: 0.01` — very permissive
-- `FARM_MIN_HOLD_SECS: 120` — minimum 2 minutes
-- `FARM_COOLDOWN_SECS: 30` — fast re-entry
-- `MM_ENABLED: true` — dynamic TP based on spread
-- `EXECUTION_EDGE_SPREAD_MULT: 0.2` — tight pricing
-
-**Expected:** 20–40 trades/hour, 60–70% win rate, net positive after fees.
-
-### Trade Mode Optimization
-
-**Goal:** High win rate, low trade frequency.
-
-**Key params:**
-- `MIN_CONFIDENCE: 0.70` — strict entry
-- `COOLDOWN_MIN_MINS: 5` — avoid overtrading
-- `REGIME_HIGH_VOL_SKIP_ENTRY: true` — skip volatile periods
-- `CHOP_THRESHOLD: 0.55` — skip choppy markets
-
-**Expected:** 2–5 trades/hour, 75–85% win rate.
-
-### Hedge Mode Optimization
-
-**Goal:** Capture divergence with minimal directional risk.
-
-**Key params:**
-- `notionalUsd: 100` — equal size both legs
-- `profitTargetUsd: 3` — 3% of notional
-- `maxLossUsd: 5` — 5% of notional
-- `holdingPeriodSecs: 1800` — 30 minutes max hold
-- `volumeSpikeThreshold: 1.21` — 21% above average
-
-**Expected:** 1–3 pairs/hour, 60–70% win rate, low correlation to market direction.
+- [ ] Test với < $50 ít nhất 1 ngày
+- [ ] Xem ≥ 20 trades hoàn chỉnh
+- [ ] Win rate > 55%
+- [ ] Fee impact < 30%
+- [ ] Set `MAX_POSITION_SIZE_USD` hợp lý
+- [ ] Set `SESSION_MAX_LOSS_USD`
+- [ ] Telegram alerts hoạt động
+- [ ] Backup `bot_state.json` hàng ngày
+- [ ] Monitor dashboard ít nhất 2 lần/ngày
 
 ---
 
-## Conclusion
+## Kết Luận
 
-DRIFT is a production-grade trading system with:
-- **Three strategies** for different market conditions
-- **Adaptive learning** via self-adjusting signal weights
-- **Execution safety** via strict state machines
-- **Real-time config** via dashboard
-- **Multi-bot management** for portfolio diversification
+DRIFT là hệ thống trading production-grade với:
 
-For questions or issues, check logs first, then dashboard analytics, then this walkthrough.
+- **3 chiến lược** cho các điều kiện thị trường khác nhau
+- **Adaptive learning** qua self-adjusting weights
+- **Execution safety** qua strict state machines
+- **Real-time config** qua dashboard
+- **Multi-bot management** cho đa dạng hóa
 
-Happy trading. 🚀
+Bắt đầu với Farm Mode, số tiền nhỏ, theo dõi kỹ 1-2 ngày đầu. Sau khi hiểu rõ workflow, scale dần.
+
+Chúc trade thành công! 🚀
