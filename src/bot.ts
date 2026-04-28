@@ -195,7 +195,7 @@ async function bootstrap() {
         
         const adapter = createAdapter(exchange, symbol);
         const sessionManager = new SessionManager();
-        const watcher = new Watcher(adapter, symbol, telegram, sessionManager);
+        const watcher = new Watcher(adapter, symbol, telegram, sessionManager, undefined, configStore);
         const tradeLogger = new TradeLogger(
             (TRADE_LOG_BACKEND as 'json' | 'sqlite') || 'json',
             TRADE_LOG_PATH || './trades.json',

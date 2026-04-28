@@ -46,22 +46,7 @@ export interface FilterResult {
 export function regimeConfidenceThreshold(
   input: FilterInput
 ): { pass: boolean; reason?: string } {
-  if (input.mode !== 'farm') {
-    return { pass: true };
-  }
-
-  const threshold =
-    input.regime === 'SIDEWAY'
-      ? input.FARM_SIDEWAY_MIN_CONFIDENCE
-      : input.FARM_TREND_MIN_CONFIDENCE;
-
-  if (input.confidence < threshold) {
-    return {
-      pass: false,
-      reason: `[RegimeGate] SKIP: regime=${input.regime}, confidence=${input.confidence} < ${threshold}`,
-    };
-  }
-
+  // Farm mode: no confidence gate — always trade regardless of regime
   return { pass: true };
 }
 
