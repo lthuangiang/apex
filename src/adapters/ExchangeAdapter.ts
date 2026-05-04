@@ -22,6 +22,15 @@ export interface RawTrade {
     timestamp: number;
 }
 
+export interface Kline {
+    t: number; // open timestamp (ms)
+    o: number; // open
+    h: number; // high
+    l: number; // low
+    c: number; // close
+    v: number; // volume
+}
+
 export interface ExchangeAdapter {
     get_mark_price(symbol: string): Promise<number>;
     get_orderbook(symbol: string): Promise<{ best_bid: number, best_ask: number }>;
@@ -39,4 +48,6 @@ export interface ExchangeAdapter {
     get_balance(): Promise<number>;
     get_orderbook_depth(symbol: string, limit: number): Promise<{ bids: [number, number][], asks: [number, number][] }>;
     get_recent_trades(symbol: string, limit: number): Promise<RawTrade[]>;
+    /** Fetch OHLCV klines. Returns candles in chronological order (oldest first). */
+    get_klines?(symbol: string, interval: string, limit: number): Promise<Kline[]>;
 }

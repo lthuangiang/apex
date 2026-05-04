@@ -1,0 +1,132 @@
+# Implementation Plan
+
+- [x] 1. Write bug condition exploration test
+  - **Property 1: Bug Condition** - Session Stats Lost on Bot Restart
+  - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: This test encodes the expected behavior - it will validate the fix when it passes after implementation
+  - **GOAL**: Surface counterexamples that demonstrate the bug exists
+  - **Scoped PBT Approach**: For deterministic bugs, scope the property to the concrete failing case(s) to ensure reproducibility
+  - Test that sessionFees, sessionGrossPnl, sessionVolume, sessionStartBalance, currentBalance are lost on bot restart (stop/start)
+  - Simulate bot lifecycle: start → accumulate stats → stop → restart → assert stats are 0/null
+  - Test cases:
+    - Single-bot restart: sessionFees=$5, sessionGrossPnl=$10, sessionVolume=$1000 → restart → assert all 0
+    - Multi-bot restart: 3 bots running, restart bot #2 → assert bot #2 stats are 0, bot #1 and #3 unaffected
+    - Balance preservation: sessionStartBalance=$500, currentBalance=$512 → restart → assert both null
+    - Crash recovery: simulate crash (kill process) → restart → assert stats are 0
+  - Run test on UNFIXED code
+  - **EXPECTED OUTCOME**: Test FAILS (this is correct - it proves the bug exists)
+  - Document counterexamples found to understand root cause
+  - Mark task complete when test is written, run, and failure is documented
+  - _Requirements: 1.1, 1.2, 1.3, 1.4_
+
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
+  - **Property 2: Preservation** - Existing Persistence and Runtime Behavior
+  - **IMPORTANT**: Follow observation-first methodology
+  - Observe behavior on UNFIXED code for non-buggy inputs
+  - Write property-based tests capturing observed behavior patterns from Preservation Requirements
+  - Property-based testing generates many test cases for stronger guarantees
+  - Test cases:
+    - Runtime accumulation: sessionFees, sessionGrossPnl, sessionVolume accumulate correctly during active trading
+    - Existing persistence: sessionPnl, sessionVolume, todayVolume, pnlHistory, volumeHistory, eventLog persist correctly
+    - Fresh session reset: explicit resetSession() calls reset all stats to 0/null (not a restart scenario)
+    - Multi-bot isolation: each bot maintains isolated state (bot #1 stats don't affect bot #2)
+    - TodayVolume date logic: todayVolume only restored if same UTC day
+    - Debounced save: StateStore saves with 3-second debounce
+  - Run tests on UNFIXED code
+  - **EXPECTED OUTCOME**: Tests PASS (this confirms baseline behavior to preserve)
+  - Mark task complete when tests are written, run, and passing on unfixed code
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
+
+- [x] 3. Fix for session state persistence on bot restart
+
+  - [x] 3.1 Extend StateStore.ts to persist additional session fields
+    - Extend `PersistedState` interface to include:
+      - `sessionFees?: number;`
+      - `sessionGrossPnl?: number;`
+      - `sessionStartBalance?: number | null;`
+      - `currentBalance?: number | null;`
+    - Update `saveState()` to persist new fields:
+      - Add `sessionFees: sharedState.sessionFees,`
+      - Add `sessionGrossPnl: sharedState.sessionGrossPnl,`
+      - Add `sessionStartBalance: sharedState.sessionStartBalance,`
+      - Add `currentBalance: sharedState.currentBalance,`
+    - Update `saveStateSync()` to persist new fields (same as saveState)
+    - Update `loadState()` to restore new fields:
+      - Add `if (typeof saved.sessionFees === 'number') sharedState.sessionFees = saved.sessionFees;`
+      - Add `if (typeof saved.sessionGrossPnl === 'number') sharedState.sessionGrossPnl = saved.sessionGrossPnl;`
+      - Add `if (saved.sessionStartBalance !== undefined) sharedState.sessionStartBalance = saved.sessionStartBalance;`
+      - Add `if (saved.currentBalance !== undefined) sharedState.currentBalance = saved.currentBalance;`
+    - Guard against null/undefined: ensure null values for sessionStartBalance and currentBalance are handled correctly
+    - _Bug_Condition: isBugCondition(input) where input.event IN ['bot_stop', 'bot_crash', 'docker_restart'] AND sessionStatsExistInMemory(input.botInstance) AND NOT sessionStatsPersisted(input.botInstance)_
+    - _Expected_Behavior: For all bot restart events, sessionFees, sessionGrossPnl, sessionVolume, sessionStartBalance, currentBalance SHALL be persisted to disk on stop and restored from disk on start_
+    - _Preservation: Existing StateStore persistence of sessionPnl, sessionVolume, todayVolume, pnlHistory, volumeHistory, eventLog must remain unchanged_
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 3.4_
+
+  - [x] 3.2 Add Watcher.restoreSessionFromPersistence() method
+    - Add new method `restoreSessionFromPersistence()` to Watcher class
+    - Method should sync Watcher's in-memory session fields with restored BotSharedState values:
+      - `this.sessionFees = this._getState().sessionFees;`
+      - `this.sessionGrossPnl = this._getState().sessionGrossPnl;`
+      - `this.sessionVolume = this._getState().sessionVolume;`
+      - `this.sessionStartBalance = this._getState().sessionStartBalance;`
+      - `this.sessionCurrentPnl = this._getState().sessionPnl;`
+    - This method is called AFTER loadState() to sync Watcher's private fields with restored state
+    - Do NOT modify resetSession() signature - keep it as a fresh session reset method
+    - _Bug_Condition: After bot restart, Watcher's in-memory session fields are not synced with restored state_
+    - _Expected_Behavior: Watcher's in-memory session fields SHALL be synced with restored BotSharedState values after loadState()_
+    - _Preservation: resetSession() behavior must remain unchanged - it resets all session stats to 0/null for fresh sessions_
+    - _Requirements: 2.2, 2.3, 3.8_
+
+  - [x] 3.3 Update BotInstance.start() to load and restore state
+    - Call `loadState()` before starting Watcher (for single-bot mode)
+    - For multi-bot mode: implement per-bot state persistence
+      - Extend StateStore to accept `botId` parameter
+      - Save to `./bot_state_${botId}.json` instead of `./bot_state.json`
+      - Pass `this.id` to StateStore methods
+    - After loadState(), call `watcher.restoreSessionFromPersistence()` to sync Watcher's in-memory fields
+    - Ensure state is loaded BEFORE watcher.resetSession() is called
+    - _Bug_Condition: BotInstance.start() does not load persisted state before starting Watcher_
+    - _Expected_Behavior: BotInstance.start() SHALL load persisted state and sync Watcher before starting the bot loop_
+    - _Preservation: Multi-bot mode must continue to maintain isolated state per bot instance_
+    - _Requirements: 2.2, 2.3, 3.7_
+
+  - [x] 3.4 Update BotInstance.stop() to save state
+    - Call `saveStateSync()` in stop() method to persist session stats before shutdown
+    - For multi-bot mode: pass `this.id` to saveStateSync()
+    - Ensure state is saved AFTER watcher.stop() completes
+    - _Bug_Condition: BotInstance.stop() does not save session stats before shutdown_
+    - _Expected_Behavior: BotInstance.stop() SHALL save session stats to disk before shutdown_
+    - _Preservation: Existing save behavior in _onExitFilled must remain unchanged_
+    - _Requirements: 2.1_
+
+  - [x] 3.5 Verify bug condition exploration test now passes
+    - **Property 1: Expected Behavior** - Session Stats Persist on Bot Restart
+    - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
+    - The test from task 1 encodes the expected behavior
+    - When this test passes, it confirms the expected behavior is satisfied
+    - Run bug condition exploration test from step 1
+    - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed)
+    - Test cases should now pass:
+      - Single-bot restart: sessionFees=$5, sessionGrossPnl=$10, sessionVolume=$1000 → restart → assert all restored
+      - Multi-bot restart: 3 bots running, restart bot #2 → assert bot #2 stats are restored
+      - Balance preservation: sessionStartBalance=$500, currentBalance=$512 → restart → assert both restored
+      - Crash recovery: simulate crash → restart → assert stats are restored
+    - _Requirements: 2.1, 2.2, 2.3, 2.4_
+
+  - [x] 3.6 Verify preservation tests still pass
+    - **Property 2: Preservation** - Existing Persistence and Runtime Behavior
+    - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
+    - Run preservation property tests from step 2
+    - **EXPECTED OUTCOME**: Tests PASS (confirms no regressions)
+    - Confirm all tests still pass after fix (no regressions):
+      - Runtime accumulation: sessionFees, sessionGrossPnl, sessionVolume accumulate correctly
+      - Existing persistence: sessionPnl, sessionVolume, todayVolume, pnlHistory, volumeHistory, eventLog persist correctly
+      - Fresh session reset: explicit resetSession() calls reset all stats to 0/null
+      - Multi-bot isolation: each bot maintains isolated state
+      - TodayVolume date logic: todayVolume only restored if same UTC day
+      - Debounced save: StateStore saves with 3-second debounce
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
+
+- [x] 4. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.

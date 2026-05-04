@@ -22,6 +22,7 @@ import { ExecutionEdge } from './ExecutionEdge.js';
 import { MarketMaker, MMEntryBias } from './MarketMaker.js';
 import type { ConfigStoreInterface } from '../config/ConfigStore.js';
 import { evaluateFarmEntryFilters, type FilterInput } from './FarmSignalFilters.js';
+import { computeAdaptiveCooldown } from '../ai/AdaptiveCooldown.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE MACHINE
@@ -105,8 +106,10 @@ export class Watcher {
     private cooldownUntil: number | null = null;
 
     // ── Session / analytics ───────────────────────────────────────────────────
-    private sessionStartBalance: number | null = null;
+    private sessionStartBalance: number | null = null;  // Balance when session started
     private sessionCurrentPnl = 0;
+    private sessionGrossPnl = 0;  // Cumulative gross PnL (before fees)
+    private sessionFees = 0;      // Cumulative fees paid
     private sessionVolume = 0;
     private lastTradeContext: { side: 'long' | 'short'; exitPrice: number; pnl: number } | null = null;
     private recentPnLs: number[] = [];
@@ -185,7 +188,7 @@ export class Watcher {
         }
     }
 
-    private _setState(patch: Partial<typeof sharedState>): void {
+    private _setState(patch: Partial<BotSharedState>): void {
         if (this._botSharedState) {
             Object.assign(this._botSharedState, patch);
         } else {
@@ -193,8 +196,8 @@ export class Watcher {
         }
     }
 
-    private _getState(): typeof sharedState {
-        return (this._botSharedState as unknown as typeof sharedState) ?? sharedState;
+    private _getState(): BotSharedState {
+        return (this._botSharedState as BotSharedState) ?? sharedState as unknown as BotSharedState;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -334,6 +337,8 @@ export class Watcher {
         this._setState({
             sessionPnl: this.sessionCurrentPnl,
             sessionVolume: this.sessionVolume,
+            sessionStartBalance: this.sessionStartBalance,
+            currentBalance: balance,
             updatedAt: new Date().toISOString(),
         });
 
@@ -393,6 +398,45 @@ export class Watcher {
 
             // Step 3: Stop the bot — session is now fully closed
             this.sessionManager.stopSession(); // sync SessionManager state so isRunning = false
+            this.stop();
+            this._setState({ openPosition: null });
+            return; // RETURN
+        }
+
+        // ── 2.5. Volume target stop ────────────────────────────────────────────
+        const isVolumeTargetHit = this.sessionManager.updateVolume(this.sessionVolume);
+        if (isVolumeTargetHit) {
+            const target = this.sessionManager.getState().targetVolumeUsd;
+            console.log(`🎯 [Watcher] Volume Target Stop — ${this.sessionVolume.toFixed(0)} USD reached target ${target} USD.`);
+            await this.telegram.sendMessage(
+                `🎯 *Volume Target Reached*\nTarget: \`$${target.toLocaleString()}\`\nActual: \`$${this.sessionVolume.toFixed(0)}\`\nPnL: \`${this.sessionCurrentPnl.toFixed(2)}\`\n⏸ Bot stopped — will reset at next daily cycle`
+            );
+
+            // Step 1: Cancel all open orders
+            try { await this.adapter.cancel_all_orders(this.symbol); } catch {}
+
+            // Step 2: Close open position gracefully (IOC)
+            if (position && Math.abs(position.size) > 0) {
+                await this.executor.placeExitOrder(this.symbol, position, true /* IOC */);
+                await this.telegram.sendMessage(`🔄 *Volume target IOC close sent.*`);
+
+                // Poll until position is gone or timeout
+                const deadline = Date.now() + 10_000;
+                while (Date.now() < deadline) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    try {
+                        const mp = await this.adapter.get_mark_price(this.symbol);
+                        const pos = await this.adapter.get_position(this.symbol, mp);
+                        if (!pos || Math.abs(pos.size) === 0) {
+                            console.log(`✅ [Watcher] Position confirmed closed after volume target stop.`);
+                            break;
+                        }
+                    } catch { break; }
+                }
+            }
+
+            // Step 3: Stop the bot
+            this.sessionManager.stopSession();
             this.stop();
             this._setState({ openPosition: null });
             return; // RETURN
@@ -852,10 +896,17 @@ export class Watcher {
         const exitTime = new Date().toISOString();
         const entryTimeMs = this._pendingEntrySignalMeta?.entryTime ?? this.entryFilledAt ?? Date.now();
         const entryPrice = this._pendingEntrySignalMeta?.entryPrice ?? 0;
-        const positionValue = Math.abs(filledSize) * entryPrice;
-        const feePaid = positionValue * this._cfg.FEE_RATE_MAKER * 2;
-        const pnlNet = this.pendingExit.pnl;
-        const grossPnl = pnlNet + feePaid;
+        const exitPrice = this.pendingExit.order.price;
+        
+        // Calculate round-trip fee (entry + exit)
+        // Fee is calculated on actual volume (entry volume + exit volume)
+        // NOT on positionValue × 2 (which would double-count)
+        const entryVolume = Math.abs(filledSize) * entryPrice;
+        const exitVolume = Math.abs(filledSize) * exitPrice;
+        const tradeVolume = entryVolume + exitVolume;
+        const feePaid = tradeVolume * this._cfg.FEE_RATE_MAKER;  // Fee on total volume
+        const pnlNet = this.pendingExit.pnl;  // Net PnL from exchange
+        const grossPnl = pnlNet + feePaid;    // Gross PnL (before fees)
 
         const tradeRecord: TradeRecord = {
             id: crypto.randomUUID(),
@@ -866,7 +917,7 @@ export class Watcher {
             reasoning: this._pendingEntrySignalMeta?.reasoning ?? '',
             fallback: this._pendingEntrySignalMeta?.fallback ?? false,
             entryPrice,
-            exitPrice: this.pendingExit.order.price,
+            exitPrice,
             pnl: pnlNet,
             sessionPnl: this.sessionCurrentPnl,
             mode: this._cfg.MODE as 'farm' | 'trade',
@@ -891,9 +942,16 @@ export class Watcher {
         this.tradeLogger.log(tradeRecord);
         this._logEvent('ORDER_FILLED', `Exit filled: ${this.pendingExit.positionSide.toUpperCase()} @ ${tradeRecord.exitPrice} | PnL: ${pnlNet.toFixed(4)}`);
 
+        // Update session cumulative stats
+        this.sessionGrossPnl += grossPnl;
+        this.sessionFees += feePaid;
+        // sessionCurrentPnl is updated from balance difference in _tick()
+
         const now = new Date().toISOString();
         const state = this._getState();
         state.sessionPnl = this.sessionCurrentPnl;
+        state.sessionGrossPnl = this.sessionGrossPnl;
+        state.sessionFees = this.sessionFees;
         state.sessionVolume = this.sessionVolume;
         state.updatedAt = now;
         state.pnlHistory.push({ time: now, value: this.sessionCurrentPnl });
@@ -1047,27 +1105,29 @@ export class Watcher {
             finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
             console.log(`🚜 [FARM] Inventory rebalance → ${finalDirection.toUpperCase()}`);
         } else {
-            const pricePos = (signal as any).pricePositionInRange as number | undefined;
+            const pricePos = signal.pricePositionInRange;
             const adjustedScore = mmBias
                 ? signal.score + mmBias.pingPongBias + mmBias.inventoryBias
                 : signal.score;
 
-            if (pricePos !== undefined) {
-                if (pricePos > 0.65)      finalDirection = 'short';
-                else if (pricePos < 0.35) finalDirection = 'long';
-                else if (Math.abs(adjustedScore - 0.5) > 0.05) finalDirection = adjustedScore >= 0.5 ? 'long' : 'short';
-                else finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
-                console.log(`🚜 [FARM] PricePos: ${(pricePos * 100).toFixed(0)}% AdjScore: ${adjustedScore.toFixed(2)} → ${finalDirection.toUpperCase()}`);
+            if (signal.direction !== 'skip') {
+                // AISignalEngine has a clear directional signal (range bottom/top confirmed)
+                // MM bias can override only if strongly opposing
+                const mmOpposes = mmBias && Math.abs(mmBias.pingPongBias + mmBias.inventoryBias) >= 0.1;
+                finalDirection = mmOpposes ? (adjustedScore >= 0.5 ? 'long' : 'short') : signal.direction;
+                console.log(`🚜 [FARM] Signal: ${signal.direction.toUpperCase()} pos=${pricePos !== undefined ? (pricePos * 100).toFixed(0) + '%' : 'n/a'} → ${finalDirection.toUpperCase()}`);
             } else {
-                if (signal.direction !== 'skip') {
-                    const mmOpposes = mmBias && Math.abs(mmBias.pingPongBias + mmBias.inventoryBias) >= 0.1;
-                    finalDirection = mmOpposes ? (adjustedScore >= 0.5 ? 'long' : 'short') : signal.direction;
+                // direction = 'skip': mid-range chop or no clear edge
+                // Use pricePositionInRange as tiebreaker if available, else ping-pong
+                if (pricePos !== undefined && Math.abs(pricePos - 0.5) > 0.15) {
+                    // Price is leaning toward one side of range — use it
+                    finalDirection = pricePos > 0.5 ? 'short' : 'long';
+                    console.log(`🚜 [FARM] Skip→PricePos tiebreak: ${(pricePos * 100).toFixed(0)}% → ${finalDirection.toUpperCase()}`);
                 } else {
-                    finalDirection = Math.abs(adjustedScore - 0.5) > 0.02
-                        ? (adjustedScore >= 0.5 ? 'long' : 'short')
-                        : (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
+                    // Truly neutral — ping-pong to alternate sides for volume farming
+                    finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
+                    console.log(`🚜 [FARM] Skip→ping-pong → ${finalDirection.toUpperCase()} (last: ${this.lastTradeContext?.side ?? 'none'})`);
                 }
-                console.log(`🚜 [FARM] Score: ${signal.score.toFixed(2)} → ${finalDirection.toUpperCase()}`);
             }
         }
 
@@ -1083,7 +1143,8 @@ export class Watcher {
             orderSizeMax: this._cfg.ORDER_SIZE_MAX,
         });
         this._pendingSizingResult = sizingResult;
-        let size = sizingResult.size;
+        // FARM mode: random size in [min, max], ignore dynamic multipliers
+        let size = this._cfg.ORDER_SIZE_MIN + Math.random() * (this._cfg.ORDER_SIZE_MAX - this._cfg.ORDER_SIZE_MIN);
         const maxSizeFromBalance = (balance * this._cfg.SIZING_MAX_BALANCE_PCT) / markPrice;
         if (size > maxSizeFromBalance) size = Math.max(this._cfg.ORDER_SIZE_MIN, maxSizeFromBalance);
 
@@ -1302,13 +1363,18 @@ export class Watcher {
     // ─────────────────────────────────────────────────────────────────────────
 
     private _transitionToCooldown(_mode?: 'farm' | 'random') {
-        // Unified cooldown: always random between FARM_COOLDOWN_SECS and
-        // COOLDOWN_MAX_MINS — regardless of exit trigger type.
-        // FARM_COOLDOWN_SECS is the floor (seconds), COOLDOWN_MAX_MINS is the ceiling (minutes).
-        const minMs = this._cfg.FARM_COOLDOWN_SECS * 1_000;
-        const maxMs = this._cfg.COOLDOWN_MAX_MINS * 60_000;
-        const cooldownMs = Math.random() * (maxMs - minMs) + minMs;
-        console.log(`⏱️ Cooldown: ${(cooldownMs / 1000).toFixed(0)}s [${this._cfg.FARM_COOLDOWN_SECS}s – ${this._cfg.COOLDOWN_MAX_MINS}min]`);
+        // Use adaptive cooldown based on recent PnL and chop score
+        const adaptiveResult = computeAdaptiveCooldown({
+            recentPnLs: this.recentPnLs,
+            lastChopScore: this._lastChopScore,
+        });
+
+        const cooldownMs = adaptiveResult.cooldownMs;
+        console.log(
+            `⏱️ Adaptive Cooldown: ${(cooldownMs / 1000).toFixed(0)}s ` +
+            `[base=${adaptiveResult.baseMins.toFixed(1)}m × streak=${adaptiveResult.streakMult.toFixed(2)} × chop=${adaptiveResult.chopMult.toFixed(2)}] ` +
+            `losing_streak=${adaptiveResult.losingStreak}`
+        );
 
         this.cooldownUntil = Date.now() + cooldownMs;
         this.botState = 'COOLDOWN';
@@ -1391,6 +1457,8 @@ export class Watcher {
     resetSession() {
         this.sessionStartBalance = null;
         this.sessionCurrentPnl = 0;
+        this.sessionGrossPnl = 0;
+        this.sessionFees = 0;
         this.sessionVolume = 0;
         this.recentPnLs = [];
         this.currentProfile = 'NORMAL';
@@ -1412,6 +1480,23 @@ export class Watcher {
         this._tickLock = false;
         this._pendingFarmHoldSecs = null;
         this.marketMaker.reset();
+    }
+
+    /**
+     * Restore session state from persisted BotSharedState values.
+     * Called AFTER loadState() to sync Watcher's in-memory session fields
+     * with restored state values from disk.
+     * 
+     * This method is used during bot restart to preserve session statistics
+     * across stop/start cycles, ensuring cumulative session data is not lost.
+     */
+    restoreSessionFromPersistence() {
+        const state = this._getState();
+        this.sessionFees = state.sessionFees;
+        this.sessionGrossPnl = state.sessionGrossPnl;
+        this.sessionVolume = state.sessionVolume;
+        this.sessionStartBalance = state.sessionStartBalance;
+        this.sessionCurrentPnl = state.sessionPnl;
     }
 
     /** Update the trading symbol at runtime — takes effect on next tick */

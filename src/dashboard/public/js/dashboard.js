@@ -670,6 +670,7 @@ const CFG_KEYS = ['ORDER_SIZE_MIN','ORDER_SIZE_MAX','STOP_LOSS_PERCENT','TAKE_PR
 
 function openCfgModal() {
   loadConfigPanel();
+  loadDailyResetPanel(); // Load daily reset config if in bot context
   // Refresh identity fields with current live values
   if (window.BOT_CONTEXT?.botId) {
     const nameInput = document.getElementById('cfg-bot-name');
@@ -746,6 +747,93 @@ async function resetConfig() {
   } catch(e) { showCfgToast('Request failed', true); }
   finally { setCfgBusy(false); }
 }
+
+// ── Daily Budget Reset Panel ──────────────────────────────────────────────
+function _dailyResetTzHint(hourUTC) {
+  const vnHour = (hourUTC + 7) % 24;
+  const pad = h => String(h).padStart(2,'0');
+  return `= ${pad(vnHour)}:00 Vietnam (UTC+7)`;
+}
+
+async function loadDailyResetPanel() {
+  if (!window.BOT_CONTEXT?.botId) return;
+  try {
+    const r = await fetch('/api/bots/' + window.BOT_CONTEXT.botId + '/daily-reset');
+    if (!r.ok) return;
+    const d = await r.json();
+    const enableEl = document.getElementById('cfg-daily-budget-reset');
+    const maxLossEl = document.getElementById('cfg-daily-max-loss-usd');
+    const volEl = document.getElementById('cfg-daily-target-volume-usd');
+    const hourEl = document.getElementById('cfg-daily-reset-hour-utc');
+    const hintEl = document.getElementById('daily-reset-tz-hint');
+    if (enableEl) enableEl.checked = !!d.dailyBudgetReset;
+    if (maxLossEl) maxLossEl.value = d.dailyMaxLossUsd ?? 5;
+    if (volEl) volEl.value = d.dailyTargetVolumeUsd ?? 0;
+    if (hourEl) { hourEl.value = d.dailyResetHourUTC ?? 0; }
+    if (hintEl) hintEl.textContent = _dailyResetTzHint(d.dailyResetHourUTC ?? 0);
+  } catch(e) { console.error('loadDailyResetPanel error:', e); }
+}
+
+async function saveDailyReset() {
+  if (!window.BOT_CONTEXT?.botId) return;
+  const enableEl = document.getElementById('cfg-daily-budget-reset');
+  const maxLossEl = document.getElementById('cfg-daily-max-loss-usd');
+  const volEl = document.getElementById('cfg-daily-target-volume-usd');
+  const hourEl = document.getElementById('cfg-daily-reset-hour-utc');
+  const toast = document.getElementById('daily-reset-toast');
+
+  const patch = {
+    dailyBudgetReset: enableEl?.checked ?? false,
+    dailyMaxLossUsd: parseFloat(maxLossEl?.value || '5'),
+    dailyTargetVolumeUsd: parseFloat(volEl?.value || '0'),
+    dailyResetHourUTC: parseInt(hourEl?.value || '0', 10),
+  };
+
+  // Basic client-side validation
+  if (isNaN(patch.dailyMaxLossUsd) || patch.dailyMaxLossUsd < 0) {
+    if (toast) { toast.textContent = 'Max Loss must be ≥ 0'; toast.style.color='#ff4d4d'; toast.style.opacity='1'; setTimeout(()=>toast.style.opacity='0',3000); }
+    return;
+  }
+  if (isNaN(patch.dailyTargetVolumeUsd) || patch.dailyTargetVolumeUsd < 0) {
+    if (toast) { toast.textContent = 'Target Volume must be ≥ 0'; toast.style.color='#ff4d4d'; toast.style.opacity='1'; setTimeout(()=>toast.style.opacity='0',3000); }
+    return;
+  }
+  if (isNaN(patch.dailyResetHourUTC) || patch.dailyResetHourUTC < 0 || patch.dailyResetHourUTC > 23) {
+    if (toast) { toast.textContent = 'Reset Hour must be 0–23'; toast.style.color='#ff4d4d'; toast.style.opacity='1'; setTimeout(()=>toast.style.opacity='0',3000); }
+    return;
+  }
+
+  try {
+    const r = await fetch('/api/bots/' + window.BOT_CONTEXT.botId + '/daily-reset', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const d = await r.json();
+    if (r.ok) {
+      if (toast) { toast.textContent = 'Saved ✓'; toast.style.color='#00d464'; toast.style.opacity='1'; setTimeout(()=>toast.style.opacity='0',2500); }
+      // Update tz hint
+      const hintEl = document.getElementById('daily-reset-tz-hint');
+      if (hintEl) hintEl.textContent = _dailyResetTzHint(d.dailyResetHourUTC ?? 0);
+    } else {
+      if (toast) { toast.textContent = d.error||'Error'; toast.style.color='#ff4d4d'; toast.style.opacity='1'; setTimeout(()=>toast.style.opacity='0',3000); }
+    }
+  } catch(e) {
+    if (toast) { toast.textContent = 'Request failed'; toast.style.color='#ff4d4d'; toast.style.opacity='1'; setTimeout(()=>toast.style.opacity='0',3000); }
+  }
+}
+
+// Update tz hint live when user changes the hour input
+document.addEventListener('DOMContentLoaded', () => {
+  const hourEl = document.getElementById('cfg-daily-reset-hour-utc');
+  const hintEl = document.getElementById('daily-reset-tz-hint');
+  if (hourEl && hintEl) {
+    hourEl.addEventListener('input', () => {
+      const v = parseInt(hourEl.value, 10);
+      hintEl.textContent = (!isNaN(v) && v >= 0 && v <= 23) ? _dailyResetTzHint(v) : '';
+    });
+  }
+});
 
 // ── Main Tab Navigation ───────────────────────────────────────────────────
 let activeMainTab = 'overview';
@@ -921,6 +1009,10 @@ function initExchangeUI() {
   // Show bot identity section only in multi-bot mode
   const identitySection = document.getElementById('bot-identity-section');
   if (identitySection) identitySection.style.display = isBotContext ? '' : 'none';
+
+  // Show daily reset section only in multi-bot mode (bot detail page)
+  const dailyResetSection = document.getElementById('daily-reset-section');
+  if (dailyResetSection) dailyResetSection.style.display = isBotContext ? '' : 'none';
 
   // Pre-fill identity fields
   if (isBotContext) {

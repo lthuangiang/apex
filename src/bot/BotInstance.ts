@@ -6,6 +6,7 @@ import { TradeLogger } from '../ai/TradeLogger.js';
 import type { BotConfig, BotStatus } from './types.js';
 import { createBotSharedState, type BotSharedState } from './BotSharedState.js';
 import { ConfigStore, type ConfigStoreInterface } from '../config/ConfigStore.js';
+import { DailyResetScheduler } from './DailyResetScheduler.js';
 
 /**
  * BotInstance - Wrapper managing lifecycle of a single bot
@@ -27,6 +28,7 @@ export class BotInstance {
   private telegram: TelegramManager;
   private configStore: ConfigStoreInterface;
   private watcherPromise: Promise<void> | null = null;
+  private dailyResetScheduler: DailyResetScheduler | null = null;
 
   constructor(config: BotConfig, adapter: ExchangeAdapter, telegram: TelegramManager) {
     this.id = config.id;
@@ -84,6 +86,39 @@ export class BotInstance {
     this._initWalletAddress().catch(err => {
       console.error(`[BotInstance:${this.id}] Failed to get wallet address:`, err);
     });
+
+    // ── Daily Budget Reset Scheduler ─────────────────────────────────────────
+    if (config.dailyBudgetReset) {
+      const maxLossUsd = config.dailyMaxLossUsd ?? 5;
+      const resetHourUTC = config.dailyResetHourUTC ?? 0;
+      const targetVolumeUsd = config.dailyTargetVolumeUsd ?? 0;
+
+      // Apply initial limits from daily budget config
+      this.sessionManager.setMaxLoss(maxLossUsd);
+      this.sessionManager.setTargetVolume(targetVolumeUsd);
+
+      this.dailyResetScheduler = new DailyResetScheduler(
+        this,
+        { resetHourUTC, maxLossUsd, targetVolumeUsd },
+        async (botId) => {
+          const vietnamHour = (resetHourUTC + 7) % 24;
+          const lines = [
+            `🔄 *Daily Budget Reset* — Bot \`${botId}\``,
+            `💰 Max Loss: \`$${maxLossUsd}\``,
+          ];
+          if (targetVolumeUsd > 0) {
+            lines.push(`📊 Volume Target: \`$${targetVolumeUsd.toLocaleString()}\``);
+          }
+          lines.push(
+            `🕐 Reset at: \`${resetHourUTC}:00 UTC\` (${vietnamHour}:00 Vietnam)`,
+            `🚀 Bot auto-restarted with fresh budget`,
+          );
+          await telegram.sendMessage(lines.join('\n'), true)
+            .catch(() => {/* ignore telegram errors */});
+        },
+      );
+      this.dailyResetScheduler.start();
+    }
   }
 
   private async _initWalletAddress(): Promise<void> {
@@ -111,7 +146,18 @@ export class BotInstance {
       return false;
     }
     
+    // Load persisted state BEFORE resetting session
+    // This ensures session stats are restored from disk on bot restart
+    const { loadState } = await import('../ai/StateStore.js');
+    loadState(this.state);
+    
+    // Reset session state machine (but preserve loaded stats)
     this.watcher.resetSession();
+    
+    // Restore session stats from loaded state into Watcher's in-memory fields
+    // This syncs Watcher's private session fields with the restored BotSharedState
+    this.watcher.restoreSessionFromPersistence();
+    
     this.state.botStatus = 'RUNNING';
     this.state.updatedAt = new Date().toISOString();
     
@@ -131,8 +177,9 @@ export class BotInstance {
   /**
    * Stop the bot
    * Does not force-close open positions
+   * @param stopScheduler - If true, also stops the daily reset scheduler (default: false)
    */
-  async stop(): Promise<void> {
+  async stop(stopScheduler = false): Promise<void> {
     console.log(`[BotInstance:${this.id}] Stopping...`);
     
     this.sessionManager.stopSession();
@@ -146,6 +193,15 @@ export class BotInstance {
         // Ignore errors - already handled in start()
       });
       this.watcherPromise = null;
+    }
+    
+    // Save state to disk before shutdown (multi-bot mode)
+    const { saveStateSync } = await import('../ai/StateStore.js');
+    saveStateSync(this.state);
+
+    // Stop daily reset scheduler only if explicitly requested (e.g. full shutdown)
+    if (stopScheduler && this.dailyResetScheduler) {
+      this.dailyResetScheduler.stop();
     }
     
     console.log(`✅ [BotInstance:${this.id}] Stopped`);
@@ -176,6 +232,8 @@ export class BotInstance {
       sessionPnl: this.state.sessionPnl,
       sessionVolume: this.state.sessionVolume,
       sessionFees: this.state.sessionFees,
+      sessionStartBalance: this.state.sessionStartBalance,
+      currentBalance: this.state.currentBalance,
       efficiencyBps,
       walletAddress: this.state.walletAddress,
       uptime,
@@ -208,5 +266,50 @@ export class BotInstance {
 
   getConfigStore(): ConfigStoreInterface {
     return this.configStore;
+  }
+
+  /**
+   * Sync the DailyResetScheduler with the current bot.config.
+   * Call this after updating dailyBudgetReset / dailyMaxLossUsd / dailyResetHourUTC / dailyTargetVolumeUsd
+   * at runtime (e.g. from the dashboard PATCH endpoint).
+   *
+   * - If dailyBudgetReset is now true and no scheduler exists → create + start one
+   * - If dailyBudgetReset is now true and scheduler exists → stop old, create + start new (picks up new config)
+   * - If dailyBudgetReset is now false → stop and remove scheduler
+   */
+  syncDailyResetScheduler(): void {
+    // Stop existing scheduler regardless
+    if (this.dailyResetScheduler) {
+      this.dailyResetScheduler.stop();
+      this.dailyResetScheduler = null;
+    }
+
+    if (!this.config.dailyBudgetReset) return;
+
+    const maxLossUsd = this.config.dailyMaxLossUsd ?? 5;
+    const resetHourUTC = this.config.dailyResetHourUTC ?? 0;
+    const targetVolumeUsd = this.config.dailyTargetVolumeUsd ?? 0;
+
+    this.dailyResetScheduler = new DailyResetScheduler(
+      this,
+      { resetHourUTC, maxLossUsd, targetVolumeUsd },
+      async (botId) => {
+        const vietnamHour = (resetHourUTC + 7) % 24;
+        const lines = [
+          `🔄 *Daily Budget Reset* — Bot \`${botId}\``,
+          `💰 Max Loss: \`$${maxLossUsd}\``,
+        ];
+        if (targetVolumeUsd > 0) {
+          lines.push(`📊 Volume Target: \`$${targetVolumeUsd.toLocaleString()}\``);
+        }
+        lines.push(
+          `🕐 Reset at: \`${resetHourUTC}:00 UTC\` (${vietnamHour}:00 Vietnam)`,
+          `🚀 Bot auto-restarted with fresh budget`,
+        );
+        await this.telegram.sendMessage(lines.join('\n'), true)
+          .catch(() => {/* ignore telegram errors */});
+      },
+    );
+    this.dailyResetScheduler.start();
   }
 }

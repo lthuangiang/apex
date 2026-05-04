@@ -92,29 +92,54 @@ export class AISignalEngine {
 
     private async _fetchSignal(symbol: string): Promise<Signal> {
         try {
-            // Normalize: "BTC/USD" or "BTC-USD" → "BTC", then append "USDT"
-            const normalizedBase = symbol.split('/')[0].split('-')[0].toUpperCase();
-            const symbolUpper = `${normalizedBase}USDT`;
+            // Fetch orderbook, recent trades, and klines in parallel
+            // Klines come from SoDEX directly if the adapter supports get_klines,
+            // otherwise fall back to Binance futures API
+            let klinesPromise: Promise<{ opens: number[]; closes: number[]; highs: number[]; lows: number[]; volumes: number[] }>;
 
-            // Fetch 5m candles (30 candles = 2.5h of data) + orderbook in parallel
-            const [ob, trades, klinesRes, lsRatioRes] = await Promise.all([
-                this.adapter.get_orderbook_depth(symbol, 20),
-                this.adapter.get_recent_trades(symbol, 100),
-                axios.get('https://fapi.binance.com/fapi/v1/klines', {
+            if (this.adapter.get_klines) {
+                klinesPromise = this.adapter.get_klines(symbol, '5m', 30).then(candles => ({
+                    opens:   candles.map(c => c.o),
+                    closes:  candles.map(c => c.c),
+                    highs:   candles.map(c => c.h),
+                    lows:    candles.map(c => c.l),
+                    volumes: candles.map(c => c.v),
+                }));
+            } else {
+                // Fallback: Binance futures klines
+                const normalizedBase = symbol.split('/')[0].split('-')[0].toUpperCase();
+                const symbolUpper = `${normalizedBase}USDT`;
+                klinesPromise = axios.get('https://fapi.binance.com/fapi/v1/klines', {
                     params: { symbol: symbolUpper, interval: '5m', limit: 30 },
                     timeout: 8000,
-                }),
-                axios.get('https://fapi.binance.com/futures/data/topLongShortPositionRatio', {
-                    params: { symbol: symbolUpper, period: '5m', limit: 1 },
-                    timeout: 8000,
-                }),
+                }).then(res => {
+                    const candles = res.data as [string, string, string, string, string, string, ...unknown[]][];
+                    return {
+                        opens:   candles.map(c => parseFloat(c[1])),
+                        closes:  candles.map(c => parseFloat(c[4])),
+                        highs:   candles.map(c => parseFloat(c[2])),
+                        lows:    candles.map(c => parseFloat(c[3])),
+                        volumes: candles.map(c => parseFloat(c[5])),
+                    };
+                });
+            }
+
+            const [ob, trades, klinesData, lsRatioRes] = await Promise.all([
+                this.adapter.get_orderbook_depth(symbol, 20),
+                this.adapter.get_recent_trades(symbol, 100),
+                klinesPromise,
+                // L/S ratio: SoDEX doesn't expose this — use Binance as supplemental data
+                (() => {
+                    const normalizedBase = symbol.split('/')[0].split('-')[0].toUpperCase();
+                    const symbolUpper = `${normalizedBase}USDT`;
+                    return axios.get('https://fapi.binance.com/futures/data/topLongShortPositionRatio', {
+                        params: { symbol: symbolUpper, period: '5m', limit: 1 },
+                        timeout: 8000,
+                    }).catch(() => ({ data: [] }));
+                })(),
             ]);
 
-            const candles = klinesRes.data as [string, string, string, string, string, string, ...unknown[]][];
-            const closes = candles.map(c => parseFloat(c[4]));
-            const highs = candles.map(c => parseFloat(c[2]));
-            const lows = candles.map(c => parseFloat(c[3]));
-            const volumes = candles.map(c => parseFloat(c[5]));
+            const { opens, closes, highs, lows, volumes } = klinesData;
 
             const currentPrice = closes[closes.length - 1];
 
@@ -144,7 +169,7 @@ export class AISignalEngine {
             const volSpike = volumes[volumes.length - 1] > avgVol * 1.5;
 
             // Candle body analysis
-            const lastOpen = parseFloat(candles[candles.length - 1][1]);
+            const lastOpen = opens[opens.length - 1];
             const lastHigh = highs[highs.length - 1];
             const lastLow = lows[lows.length - 1];
             const body = Math.abs(currentPrice - lastOpen);
@@ -225,28 +250,81 @@ export class AISignalEngine {
             let confidence: number;
             let reasoning: string;
 
+            // Minimum confidence threshold to avoid chop
+            const MIN_CONFIDENCE = 0.55;
+
             if (regime === 'SIDEWAY') {
                 // In SIDEWAY: use price position in range as primary signal
-                // Bottom of range (<30%) → LONG, top of range (>70%) → SHORT
-                if (pricePosition < 0.30) {
+                // Bottom of range (<25%) → LONG, top of range (>75%) → SHORT
+                // Tighten thresholds to avoid mid-range whipsaw
+                if (pricePosition < 0.25 && rsiVal < 45) {
+                    // Only LONG at bottom if RSI confirms oversold
                     direction = 'long';
-                    confidence = 0.5 + (0.30 - pricePosition) * 1.5;
+                    confidence = 0.5 + (0.25 - pricePosition) * 2.0;
                     reasoning = `SIDEWAY: price at range bottom (${(pricePosition*100).toFixed(0)}%) RSI=${rsiVal.toFixed(1)} → LONG`;
-                } else if (pricePosition > 0.70) {
+                } else if (pricePosition > 0.75 && rsiVal > 55) {
+                    // Only SHORT at top if RSI confirms overbought
                     direction = 'short';
-                    confidence = 0.5 + (pricePosition - 0.70) * 1.5;
+                    confidence = 0.5 + (pricePosition - 0.75) * 2.0;
                     reasoning = `SIDEWAY: price at range top (${(pricePosition*100).toFixed(0)}%) RSI=${rsiVal.toFixed(1)} → SHORT`;
                 } else {
-                    // Mid-range: use momentum
-                    direction = momentumScore > 0.55 ? 'long' : momentumScore < 0.45 ? 'short' : 'skip';
-                    confidence = Math.abs(momentumScore - 0.5) * 2;
-                    reasoning = `SIDEWAY mid-range: momentum=${momentumScore.toFixed(2)} pos=${(pricePosition*100).toFixed(0)}%`;
+                    // Mid-range or weak signal: SKIP to avoid chop
+                    direction = 'skip';
+                    confidence = 0;
+                    reasoning = `SIDEWAY mid-range: pos=${(pricePosition*100).toFixed(0)}% RSI=${rsiVal.toFixed(1)} → SKIP (avoid chop)`;
+                }
+            } else if (regime === 'TREND_UP') {
+                // In uptrend: prefer LONG, only SHORT on strong reversal signal
+                if (momentumScore > 0.60 && !rsiOverbought) {
+                    direction = 'long';
+                    confidence = (momentumScore - 0.5) * 2;
+                    reasoning = `TREND_UP: momentum=${momentumScore.toFixed(2)} RSI=${rsiVal.toFixed(1)} → LONG`;
+                } else if (momentumScore < 0.35 && emaCrossDown) {
+                    direction = 'short';
+                    confidence = (0.5 - momentumScore) * 2;
+                    reasoning = `TREND_UP reversal: EMA cross down, momentum=${momentumScore.toFixed(2)} → SHORT`;
+                } else {
+                    direction = 'skip';
+                    confidence = 0;
+                    reasoning = `TREND_UP: weak signal, momentum=${momentumScore.toFixed(2)} → SKIP`;
+                }
+            } else if (regime === 'TREND_DOWN') {
+                // In downtrend: prefer SHORT, only LONG on strong reversal signal
+                if (momentumScore < 0.40 && !rsiOversold) {
+                    direction = 'short';
+                    confidence = (0.5 - momentumScore) * 2;
+                    reasoning = `TREND_DOWN: momentum=${momentumScore.toFixed(2)} RSI=${rsiVal.toFixed(1)} → SHORT`;
+                } else if (momentumScore > 0.65 && emaCrossUp) {
+                    direction = 'long';
+                    confidence = (momentumScore - 0.5) * 2;
+                    reasoning = `TREND_DOWN reversal: EMA cross up, momentum=${momentumScore.toFixed(2)} → LONG`;
+                } else {
+                    direction = 'skip';
+                    confidence = 0;
+                    reasoning = `TREND_DOWN: weak signal, momentum=${momentumScore.toFixed(2)} → SKIP`;
                 }
             } else {
-                // TREND_UP / TREND_DOWN / HIGH_VOLATILITY: follow momentum
-                direction = momentumScore > 0.58 ? 'long' : momentumScore < 0.42 ? 'short' : 'skip';
-                confidence = Math.abs(momentumScore - 0.5) * 2;
-                reasoning = `${regime}: EMA9=${ema9Last.toFixed(0)} EMA21=${ema21Last.toFixed(0)} RSI=${rsiVal.toFixed(1)} mom=${(momentum3*100).toFixed(3)}%`;
+                // HIGH_VOLATILITY: require very strong signal or skip
+                if (momentumScore > 0.65 && volSpike && isGreenCandle) {
+                    direction = 'long';
+                    confidence = (momentumScore - 0.5) * 2;
+                    reasoning = `HIGH_VOL: strong bullish momentum=${momentumScore.toFixed(2)} → LONG`;
+                } else if (momentumScore < 0.35 && volSpike && !isGreenCandle) {
+                    direction = 'short';
+                    confidence = (0.5 - momentumScore) * 2;
+                    reasoning = `HIGH_VOL: strong bearish momentum=${momentumScore.toFixed(2)} → SHORT`;
+                } else {
+                    direction = 'skip';
+                    confidence = 0;
+                    reasoning = `HIGH_VOL: insufficient signal strength → SKIP`;
+                }
+            }
+
+            // Apply minimum confidence filter
+            if (confidence < MIN_CONFIDENCE) {
+                direction = 'skip';
+                reasoning += ` [conf=${confidence.toFixed(2)} < ${MIN_CONFIDENCE}]`;
+                confidence = 0;
             }
 
             confidence = Math.min(1, Math.max(0, confidence));
@@ -268,6 +346,7 @@ export class AISignalEngine {
                 reasoning,
                 fallback: false,
                 atrPct, bbWidth, volRatio,
+                pricePositionInRange: pricePosition,
             };
 
         } catch (error) {

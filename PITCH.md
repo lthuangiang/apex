@@ -3,7 +3,7 @@
 # 🌊 DRIFT
 ## Dynamic Risk-Informed Futures Trading
 
-*Intelligent execution meets adaptive learning — now with correlation hedging*
+*Intelligent execution meets adaptive learning — with correlation hedging and daily budget automation*
 
 </div>
 
@@ -11,13 +11,13 @@
 
 ## What is DRIFT?
 
-DRIFT is a multi-bot AI trading system for perpetual futures on **SoDEX**, **Dango**, and **Decibel**. It runs multiple strategies simultaneously: single-asset Farm/Trade bots and a dual-asset Hedge bot that exploits correlation divergence between BTC and ETH.
+DRIFT is a multi-bot AI trading system for perpetual futures on **SoDEX**, **Dango**, and **Decibel**. It runs multiple strategies simultaneously: single-asset Farm/Trade bots and a dual-asset Hedge bot that exploits correlation divergence between BTC and ETH. Each bot can be configured with a **daily budget reset** — automatically resetting max loss and restarting at a fixed UTC time every day, no manual intervention required.
 
 ---
 
-## Three Strategies, One System
+## Four Core Capabilities
 
-### Farm Mode — Maximum Volume
+### 1. Farm Mode — Maximum Volume
 
 Volume-incentive DEXes reward activity. Farm Mode is designed to **always trade** — no signal can block execution.
 
@@ -33,10 +33,10 @@ No confidence gate. No chop filter. No fake breakout check. Always active.
 1. SL: 5% hard stop
 2. Dynamic TP: tied to live spread when MM enabled
 3. Farm TP: $0.5 fixed floor
-4. Early profit: hold ≥ 60s AND pnl ≥ $0.4
+4. Early profit: hold ≥ 60s AND pnl ≥ fee × 1.2
 5. Time exit: 2–8 minute hold with 30s grace period
 
-### Trade Mode — Signal-Filtered Execution
+### 2. Trade Mode — Signal-Filtered Execution
 
 When win rate matters more than volume:
 
@@ -48,9 +48,9 @@ When win rate matters more than volume:
 
 Exit: SL 5% or TP 5% — **no time pressure**.
 
-### Hedge Mode — Correlation Divergence
+### 3. Hedge Mode — Correlation Divergence
 
-The newest strategy. DRIFT simultaneously opens **long on one asset, short on the other** with equal USD notional. Profit comes from temporary divergence between correlated assets (BTC/ETH).
+DRIFT simultaneously opens **long on one asset, short on the other** with equal USD notional. Profit comes from temporary divergence between correlated assets (BTC/ETH).
 
 **Entry**: volume spike on both symbols simultaneously + AI signal divergence.
 
@@ -65,6 +65,36 @@ IDLE → OPENING → WAITING_FILL → IN_PAIR → CLOSING → COOLDOWN
 - Case 3: 2 pending → wait up to 30s; timeout → cancel both → retry
 
 **Exit**: profit target, max loss, mean reversion, or time expiry.
+
+### 4. Daily Budget Reset — Automated Risk Management
+
+Each bot can be configured to **automatically reset its daily loss budget and restart** at a fixed UTC time.
+
+```
+Every minute: DailyResetScheduler checks current UTC hour
+  │
+  ├── Not reset hour yet → wait
+  │
+  └── Reset hour reached (first minute only, once per day):
+        Step 1: bot.stop()           — clean shutdown, save state
+        Step 2: resetMaxLoss()       — clear the max-loss-triggered flag
+        Step 3: setMaxLoss($N)       — apply fresh daily budget
+        Step 4: bot.start()          — new session begins
+        Step 5: Telegram notify      — "🔄 Daily Budget Reset — $5 budget, bot restarted"
+```
+
+**Config:**
+```json
+{
+  "dailyBudgetReset": true,
+  "dailyMaxLossUsd": 5,
+  "dailyResetHourUTC": 0
+}
+```
+
+`dailyResetHourUTC: 0` = midnight UTC = **7:00 AM Vietnam time**.
+
+The scheduler seeds `lastResetDate` on startup to avoid firing immediately. Each bot has its own independent scheduler — different bots can reset at different hours.
 
 ---
 
@@ -90,26 +120,27 @@ This prevents the most common bot failure modes: duplicate orders, ghost positio
 ## Full System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           DRIFT Multi-Bot System                        │
-│                                                                         │
-│  BotManager                                                             │
-│  ├── BotInstance (Farm/Trade) × N                                       │
-│  │   └── Watcher (5-state machine)                                      │
-│  │       ├── AISignalEngine  ├── PositionSizer  ├── ExecutionEdge       │
-│  │       ├── RegimeDetector  ├── MarketMaker    ├── FeedbackLoop        │
-│  │       └── ChopDetector / FakeBreakoutFilter (trade only)             │
-│  │                                                                       │
-│  └── HedgeBot × N                                                       │
-│      └── State Machine (6 states)                                       │
-│          ├── VolumeMonitor (dual-symbol spike detection)                │
-│          ├── AISignalEngine × 2 (one per symbol)                        │
-│          └── Fill management (3 cases, 30s timeout)                    │
-│                                                                         │
-│  DashboardServer (Express + SSE)                                        │
-│  TelegramManager (commands + alerts)                                    │
-│  ConfigStore (70+ runtime params)                                       │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           DRIFT Multi-Bot System                         │
+│                                                                          │
+│  BotManager                                                              │
+│  ├── BotInstance (Farm/Trade) × N                                        │
+│  │   ├── DailyResetScheduler  ← reset budget + auto-start every day     │
+│  │   └── Watcher (5-state machine)                                       │
+│  │       ├── AISignalEngine  ├── PositionSizer  ├── ExecutionEdge        │
+│  │       ├── RegimeDetector  ├── MarketMaker    ├── FeedbackLoop         │
+│  │       └── ChopDetector / FakeBreakoutFilter (trade only)              │
+│  │                                                                        │
+│  └── HedgeBot × N                                                        │
+│      └── State Machine (6 states)                                        │
+│          ├── VolumeMonitor (dual-symbol spike detection)                 │
+│          ├── AISignalEngine × 2 (one per symbol)                         │
+│          └── Fill management (3 cases, 30s timeout)                     │
+│                                                                          │
+│  DashboardServer (Express + SSE)                                         │
+│  TelegramManager (commands + alerts)                                     │
+│  ConfigStore (70+ runtime params)                                        │
+└──────────────────────────────────────────────────────────────────────────┘
               │                        │                    │
          SoDEX API               Dango GraphQL        Decibel (Aptos)
     (EIP-712, Post-Only)    (Secp256k1 signing)    (Ed25519 signing)
@@ -205,11 +236,13 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 
 ## Operational Features
 
+**Daily Budget Reset**: each bot resets its max loss and auto-restarts at a configured UTC hour. No manual intervention needed — the bot runs, hits its daily limit, stops, then comes back fresh the next morning.
+
 **Zero-Downtime Config**: 70+ parameters tunable at runtime via dashboard. All changes validated before applying.
 
-**Telegram Control**: start/stop bots, set max loss, switch modes, force close, real-time alerts.
+**Telegram Control**: start/stop bots, set max loss, switch modes, force close, real-time alerts including daily reset notifications.
 
-**Graceful Shutdown**: SIGTERM/SIGINT handlers close open positions before exiting.
+**Graceful Shutdown**: SIGTERM/SIGINT handlers stop all bots (including their schedulers) before exiting.
 
 **Rate Limit Handling**: automatic backoff when exchange returns 429, respects `retryAfter` header.
 
@@ -222,6 +255,7 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 | Feature | DRIFT | Typical Bot |
 |---|---|---|
 | Strategies | Farm + Trade + Hedge | Single strategy |
+| Daily budget reset | Automatic, per-bot, configurable hour | Manual restart |
 | Execution model | Strict one-action-per-tick | Loose loop |
 | Hedge fill handling | 3 cases with 30s timeout | None |
 | Cancel safety | Check open orders before placing | Blind cancel |
@@ -244,6 +278,7 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 🌾 Farm Mode — always active, always accumulating volume  
 🧠 Trade Mode — signal-filtered, win-rate optimized  
 ⇄ Hedge Mode — correlation divergence, market-neutral  
+🔄 Daily Reset — automated budget management, no babysitting  
 🛡️ Execution engine — one action per tick, always safe
 
 *Built for the future of decentralized perpetual trading*

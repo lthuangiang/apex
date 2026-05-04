@@ -23,7 +23,11 @@ export interface OpenPositionState {
 
 export const sharedState = {
   sessionPnl: 0,
+  sessionGrossPnl: 0,
   sessionVolume: 0,
+  sessionFees: 0,
+  sessionStartBalance: null as number | null,
+  currentBalance: null as number | null,
   todayVolume: 0,
   todayVolumeDate: new Date().toISOString().slice(0, 10), // UTC date YYYY-MM-DD
   updatedAt: new Date().toISOString(),

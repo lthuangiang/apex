@@ -6,7 +6,7 @@
 
 ### Dynamic Risk-Informed Futures Trading
 
-*AI-powered perpetual futures bot với adaptive learning, intelligent execution, và correlation hedging*
+*AI-powered perpetual futures bot với adaptive learning, intelligent execution, correlation hedging, và daily budget reset*
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -16,7 +16,7 @@
 
 ---
 
-DRIFT là multi-bot trading system cho perpetual futures, hỗ trợ 3 sàn: **SoDEX**, **Dango Exchange**, và **Decibel**. Hệ thống chạy nhiều bot song song với 3 chiến lược: **Farm Mode** (volume tối đa), **Trade Mode** (win rate tối đa), và **Hedge Bot** (correlation divergence).
+DRIFT là multi-bot trading system cho perpetual futures, hỗ trợ 3 sàn: **SoDEX**, **Dango Exchange**, và **Decibel**. Hệ thống chạy nhiều bot song song với 3 chiến lược: **Farm Mode** (volume tối đa), **Trade Mode** (win rate tối đa), và **Hedge Bot** (correlation divergence). Mỗi bot có thể cấu hình **daily budget reset** — tự động reset max loss và restart lúc 0h UTC (7h sáng Vietnam) mỗi ngày.
 
 ## Dashboard
 
@@ -134,12 +134,61 @@ IDLE → OPENING → WAITING_FILL → IN_PAIR → CLOSING → COOLDOWN
 
 ---
 
+## Daily Budget Reset
+
+Mỗi bot có thể bật tính năng **tự động reset budget hàng ngày** và **auto-start** lại sau khi reset.
+
+### Cách hoạt động
+
+```
+Mỗi phút: DailyResetScheduler kiểm tra giờ UTC hiện tại
+  │
+  ▼
+Đến giờ reset (mặc định 0h UTC = 7h sáng Vietnam)?
+  │
+  ├── Không → tiếp tục chờ
+  │
+  └── Có → thực hiện reset:
+        1. Stop bot (nếu đang chạy)
+        2. Reset max-loss flag
+        3. Áp dụng lại dailyMaxLossUsd
+        4. Auto-start bot với budget mới
+        5. Gửi Telegram notification
+```
+
+### Cấu hình trong `bot-configs.json`
+
+```json
+{
+  "id": "sodex-bot",
+  "autoStart": true,
+  "dailyBudgetReset": true,
+  "dailyMaxLossUsd": 5,
+  "dailyResetHourUTC": 0
+}
+```
+
+| Field | Mô tả | Mặc định |
+|---|---|---|
+| `dailyBudgetReset` | Bật/tắt tính năng | `false` |
+| `dailyMaxLossUsd` | Max loss mỗi ngày (USD) | `5` |
+| `dailyResetHourUTC` | Giờ reset (UTC 0–23) | `0` (= 7h VN) |
+
+### Ví dụ thực tế
+
+- Setup `dailyMaxLossUsd: 5` → bot trade cả ngày, nếu lỗ $5 thì dừng
+- Đến 0h UTC (7h sáng VN): budget reset về $5, bot tự start lại
+- Telegram nhận thông báo: `🔄 Daily Budget Reset — Bot sodex-bot | Budget: $5 max loss | 0:00 UTC (7:00 Vietnam) | Bot auto-restarted`
+
+---
+
 ## Kiến trúc tổng quan
 
 ```
 bot.ts (Multi-Bot Manager)
   ├── BotManager                    # Quản lý nhiều bot song song
   │     ├── BotInstance (Farm/Trade)
+  │     │     ├── DailyResetScheduler   # Reset budget + auto-start hàng ngày
   │     │     └── Watcher           # 5-state: IDLE→PENDING→IN_POSITION→EXITING→COOLDOWN
   │     │           ├── AISignalEngine      # EMA9/21, RSI, momentum, OB + regime
   │     │           ├── FarmSignalFilters   # 4-gate pipeline + LLM adjuster + MinHold
@@ -298,6 +347,45 @@ bot.ts (Multi-Bot Manager)
 
 ---
 
+## Daily Budget Reset — Workflow Chi Tiết
+
+```
+Bot khởi động
+  │
+  ├── dailyBudgetReset: false → không làm gì thêm
+  │
+  └── dailyBudgetReset: true
+        │
+        ▼
+  DailyResetScheduler.start()
+  Seed lastResetDate = today@resetHour (tránh fire ngay khi khởi động)
+        │
+        ▼
+  setInterval(60s) — mỗi phút check:
+        │
+        ├── currentUTCHour ≠ resetHourUTC → skip
+        ├── currentMinute ≠ 0 → skip
+        └── todayKey === lastResetDate → skip (đã reset hôm nay rồi)
+              │
+              ▼ (chỉ fire 1 lần/ngày, đúng phút đầu của giờ reset)
+        lastResetDate = todayKey
+              │
+              ▼
+        _doReset():
+          1. bot.stop()              — dừng watcher, lưu state
+          2. sm.resetMaxLoss()       — xóa flag max-loss-triggered
+          3. sm.setMaxLoss(dailyMaxLossUsd)  — áp lại budget
+          4. bot.start()             — khởi động lại session mới
+          5. onReset(botId)          — gửi Telegram notification
+```
+
+**Lưu ý quan trọng:**
+- `bot.stop()` trong daily reset **không** dừng scheduler (chỉ `bot.stop(true)` khi shutdown toàn hệ thống mới dừng scheduler)
+- Nếu bot đang STOPPED (đã bị dừng do max loss), scheduler vẫn restart được
+- `forceReset()` cho phép trigger thủ công từ dashboard
+
+---
+
 ## AI Signal Engine
 
 Fetch song song 4 nguồn dữ liệu:
@@ -439,6 +527,7 @@ src/
 ├── bot/
 │   ├── BotManager.ts         # Quản lý nhiều bot
 │   ├── BotInstance.ts        # Farm/Trade bot wrapper
+│   ├── DailyResetScheduler.ts # Daily budget reset + auto-start
 │   ├── HedgeBot.ts           # Correlation hedging bot (6-state machine)
 │   ├── VolumeMonitor.ts      # Dual-symbol volume spike detection
 │   └── hedgeBotHelpers.ts    # assignDirections, evaluateExitConditions

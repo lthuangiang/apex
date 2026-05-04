@@ -16,6 +16,7 @@ export interface Signal {
     atrPct?: number;
     bbWidth?: number;
     volRatio?: number;
+    pricePositionInRange?: number; // 0=range bottom, 1=range top (SIDEWAY only)
 }
 
 export class SignalEngine {

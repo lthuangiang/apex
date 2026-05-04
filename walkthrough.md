@@ -1,6 +1,6 @@
 # DRIFT — Hướng Dẫn Đầy Đủ
 
-Tài liệu này hướng dẫn chi tiết từ setup đến vận hành DRIFT trading bot, bao gồm 3 chiến lược (Farm, Trade, Hedge).
+Tài liệu này hướng dẫn chi tiết từ setup đến vận hành DRIFT trading bot, bao gồm 3 chiến lược (Farm, Trade, Hedge) và tính năng Daily Budget Reset.
 
 ---
 
@@ -10,9 +10,10 @@ Tài liệu này hướng dẫn chi tiết từ setup đến vận hành DRIFT t
 2. [Setup Chi Tiết Cho Người Mới](#setup-chi-tiết-cho-người-mới)
 3. [Workflow Hàng Ngày](#workflow-hàng-ngày)
 4. [Ba Chiến Lược Trading](#ba-chiến-lược-trading)
-5. [Cấu Hình Nâng Cao](#cấu-hình-nâng-cao)
-6. [Dashboard & Giám Sát](#dashboard--giám-sát)
-7. [Xử Lý Sự Cố](#xử-lý-sự-cố)
+5. [Daily Budget Reset](#daily-budget-reset)
+6. [Cấu Hình Nâng Cao](#cấu-hình-nâng-cao)
+7. [Dashboard & Giám Sát](#dashboard--giám-sát)
+8. [Xử Lý Sự Cố](#xử-lý-sự-cố)
 
 ---
 
@@ -77,10 +78,7 @@ curl -fsSL https://get.docker.com | sh
 1. Truy cập https://sodex.dev
 2. Đăng ký/đăng nhập
 3. Settings → API Keys → Create New
-4. Lưu lại:
-   - `API_KEY`
-   - `API_SECRET`
-   - `SUBACCOUNT` (địa chỉ ví con)
+4. Lưu lại: `API_KEY`, `API_SECRET`, `SUBACCOUNT` (địa chỉ ví con)
 
 **Lưu ý:** SoDEX có maker fee 0.012% — rất thấp, phù hợp farm volume.
 
@@ -117,59 +115,43 @@ curl -fsSL https://get.docker.com | sh
 ### Bước 4: Clone & Cài Đặt
 
 ```bash
-# Clone repo
 git clone <repo-url>
 cd drift
-
-# Cài dependencies
 npm install
-
-# Nếu lỗi, thử:
-npm install --legacy-peer-deps
 ```
 
 ### Bước 5: Cấu Hình .env
 
 ```bash
 cp .env.example .env
-nano .env  # hoặc code .env
+nano .env
 ```
 
 **Template cho SoDEX:**
 
 ```env
-# Exchange
 EXCHANGE=sodex
 SYMBOL=BTC-USD
 
-# SoDEX
 SODEX_API_KEY=your_key
 SODEX_API_SECRET=0x...
 SODEX_SUBACCOUNT=0x...
 
-# Telegram
 TELEGRAM_BOT_TOKEN=123456:ABC...
 TELEGRAM_CHAT_ID=123456789
 
-# LLM (tùy chọn)
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 
-# Log
 TRADE_LOG_BACKEND=json
 TRADE_LOG_PATH=./trades.json
-
-# Dashboard
 DASHBOARD_PORT=3000
 ```
 
 ### Bước 6: Build & Chạy
 
 ```bash
-# Build TypeScript
 npm run build
-
-# Chạy bot
 npm start
 ```
 
@@ -189,26 +171,6 @@ npm start
 3. Click "Bot Settings" → điều chỉnh config
 4. Click "Start Bot"
 
-### Bước 8: Trade Đầu Tiên
-
-**Cấu hình Farm Mode (khuyến nghị cho người mới):**
-
-1. Dashboard → Bot Settings
-2. Điều chỉnh:
-   ```
-   MODE: farm
-   FARM_SIDEWAY_MIN_CONFIDENCE: 0.01
-   FARM_MIN_HOLD_SECS: 120
-   MAX_POSITION_SIZE_USD: 50
-   ```
-3. Click "Apply Changes"
-4. Click "Start Bot"
-
-**Theo dõi:**
-- Console log sẽ hiện signal mỗi 5-10s
-- Trade đầu tiên trong 5-10 phút
-- Xem Analytics tab sau 1 giờ
-
 ---
 
 ## Workflow Hàng Ngày
@@ -218,8 +180,6 @@ npm start
 ```bash
 # 1. Kiểm tra bot status
 docker ps  # nếu dùng Docker
-# hoặc
-pm2 status  # nếu dùng PM2
 
 # 2. Xem logs
 docker logs -f drift-bot --tail 50
@@ -227,9 +187,8 @@ docker logs -f drift-bot --tail 50
 # 3. Kiểm tra balance
 # Dashboard → Bot Detail → Balance
 
-# 4. Set max loss cho session
-# Telegram: /set_max_loss 100
-# hoặc Dashboard → Bot Settings → SESSION_MAX_LOSS_USD
+# 4. Set max loss cho session (nếu không dùng daily reset)
+# Telegram: /set_max_loss 5
 ```
 
 ### Trong Ngày (Giám Sát)
@@ -250,22 +209,18 @@ docker logs -f drift-bot --tail 50
 - Không trade → hạ confidence threshold
 - Fee impact cao → tăng min hold time
 
-### Tối (Tổng Kết & Dừng)
+### Tối (Tổng Kết)
 
 ```bash
-# 1. Xem tổng kết ngày
+# Xem tổng kết ngày
 # Dashboard → Analytics → Today's Stats
 
-# 2. Backup state
+# Backup state
 cp bot_state.json bot_state_backup_$(date +%Y%m%d).json
-cp config-overrides.json config_backup_$(date +%Y%m%d).json
 
-# 3. Dừng bot (nếu muốn)
+# Nếu dùng daily reset: bot tự restart lúc 0h UTC — không cần làm gì
+# Nếu không dùng daily reset: dừng thủ công
 # Telegram: /stop_bot
-# hoặc Dashboard → Stop Bot
-
-# 4. Xem trade log
-cat trades.json | jq '.[-10:]'  # 10 trades cuối
 ```
 
 ---
@@ -281,52 +236,59 @@ cat trades.json | jq '.[-10:]'  # 10 trades cuối
 - Maker fee thấp (< 0.02%)
 - Muốn tích điểm/airdrop
 
-**Logic vào lệnh:**
+**Workflow vào lệnh:**
 
 ```
-1. Lấy signal từ AI
-2. Chạy 4 bộ lọc:
-   - RegimeGate: SIDEWAY ≥ 0.01, TREND ≥ 0.01
-   - PressureGate: skip nếu pressure=0 và confidence thấp
-   - FallbackGate: skip nếu fallback signal yếu
-   - FeeFilter: skip nếu edge < fee cost
-
-3. Quyết định hướng (KHÔNG BAO GIỜ SKIP):
-   - Giá gần đỉnh range (> 65%) → SHORT
-   - Giá gần đáy range (< 35%) → LONG
-   - Giữa range → dùng momentum score
-   - Không rõ → alternate với lệnh trước
-
-4. Đặt lệnh limit (Post-Only)
+AISignalEngine lấy signal
+  │
+  ▼
+[1] RegimeGate: SIDEWAY ≥ 0.01, TREND ≥ 0.01
+  │
+  ▼
+[2] PressureGate: skip nếu pressure=0 và confidence thấp
+  │
+  ▼
+[3] FallbackGate: skip nếu fallback signal yếu
+  │
+  ▼
+[4] FeeFilter: skip nếu edge < fee cost
+  │
+  ▼
+Quyết định hướng (KHÔNG BAO GIỜ SKIP):
+  ├── pricePosition > 65% → SHORT
+  ├── pricePosition < 35% → LONG
+  ├── giữa range → dùng momentum score
+  └── không rõ → alternate với lệnh trước
+  │
+  ▼
+Đặt lệnh limit (Post-Only)
 ```
 
-**Logic thoát lệnh (ưu tiên từ trên xuống):**
+**Workflow thoát lệnh (ưu tiên từ trên xuống):**
 
-1. **SL 5%** — cắt lỗ cứng
-2. **Dynamic TP** — dựa vào spread thực tế (nếu bật MM)
-3. **Farm TP $0.5** — target tối thiểu
-4. **Early profit** — giữ ≥ 60s và lời ≥ fee × 1.2
-5. **Time exit** — sau 2-8 phút, chờ thêm 30s nếu đang lời
+```
+Mỗi tick khi IN_POSITION:
+  │
+  ├── pnl ≤ -SL_PERCENT → EXIT (SL 5%)
+  ├── MM enabled AND pnl ≥ dynamicTP → EXIT
+  ├── pnl ≥ FARM_TP_USD ($0.5) → EXIT
+  ├── held ≥ 60s AND pnl ≥ fee×1.2 → EXIT (early profit)
+  └── held ≥ dynamicMinHold → wait 30s grace → EXIT (time exit)
+```
 
 **Cooldown:** 30s cố định
 
 **Config khuyến nghị:**
 
-```env
-MODE=farm
-FARM_SIDEWAY_MIN_CONFIDENCE=0.01
-FARM_TREND_MIN_CONFIDENCE=0.01
-FARM_MIN_HOLD_SECS=120
-FARM_MAX_HOLD_SECS=480
-FARM_TP_USD=0.5
-FARM_COOLDOWN_SECS=30
-MM_ENABLED=true
+```json
+{
+  "mode": "farm",
+  "farmMinHoldSecs": 120,
+  "farmMaxHoldSecs": 480,
+  "farmTpUsd": 0.5,
+  "farmCooldownSecs": 30
+}
 ```
-
-**Kết quả mong đợi:**
-- 20-40 trades/giờ
-- Win rate 60-70%
-- Net positive sau fee
 
 ---
 
@@ -334,44 +296,39 @@ MM_ENABLED=true
 
 **Mục tiêu:** Chỉ vào khi có edge rõ ràng.
 
-**Khi nào dùng:**
-- Thị trường trending
-- Không quan tâm volume
-- Muốn win rate cao
-
-**Logic vào lệnh:**
+**Workflow vào lệnh:**
 
 ```
-1. Lấy signal từ AI
-2. Chạy 5 bộ lọc:
-   - Regime: HIGH_VOL → skip
-   - ChopDetector: chopScore ≥ 0.55 → skip
-   - FakeBreakout: OB mâu thuẫn → skip
-   - Confidence: < 0.65 → skip
-   - 2-tick confirm: phải confirm trong 60s
-
-3. Nếu pass hết → đặt lệnh
+AISignalEngine lấy signal
+  │
+  ▼
+[1] Regime: HIGH_VOL → skip
+  │
+  ▼
+[2] ChopDetector: chopScore ≥ 0.55 → skip
+  │
+  ▼
+[3] FakeBreakout: OB mâu thuẫn → skip
+  │
+  ▼
+[4] Confidence: < 0.65 → skip
+  │
+  ▼
+[5] 2-tick confirm: phải confirm trong 60s
+  │
+  ▼
+Đặt lệnh
 ```
 
-**Logic thoát:**
-- SL 5% hoặc TP 5%
-- **Không có time exit** — để lệnh chạy
+**Workflow thoát:**
+```
+IN_POSITION:
+  ├── pnl ≤ -5% → EXIT (SL)
+  └── pnl ≥ +5% → EXIT (TP)
+  (không có time exit)
+```
 
 **Cooldown:** Random 2-5 phút
-
-**Config khuyến nghị:**
-
-```env
-MODE=trade
-MIN_CONFIDENCE=0.70
-COOLDOWN_MIN_MINS=5
-COOLDOWN_MAX_MINS=10
-REGIME_HIGH_VOL_SKIP_ENTRY=true
-```
-
-**Kết quả mong đợi:**
-- 2-5 trades/giờ
-- Win rate 75-85%
 
 ---
 
@@ -379,61 +336,135 @@ REGIME_HIGH_VOL_SKIP_ENTRY=true
 
 **Mục tiêu:** Lợi nhuận từ phân kỳ tạm thời BTC/ETH.
 
-**Khi nào dùng:**
-- Thị trường sideway
-- BTC/ETH correlation cao
-- Muốn market neutral
-
-**Logic vào lệnh:**
+**Workflow vào lệnh:**
 
 ```
-1. VolumeMonitor theo dõi volume 2 symbol
-2. Điều kiện vào:
-   - Volume BTC spike > 21%
-   - Volume ETH spike > 21%
-   - Cả 2 spike đồng thời
-
-3. Lấy AI signal cho cả 2
-4. Phân hướng:
-   - BTC momentum > ETH → long BTC, short ETH
-   - ETH momentum > BTC → long ETH, short BTC
-
-5. Đặt 2 lệnh cùng lúc (cùng USD notional)
+VolumeMonitor.sample() mỗi 15s
+  │
+  ▼
+shouldEnter():
+  ├── volumeBTC > avgBTC × 1.21? ✓
+  ├── volumeETH > avgETH × 1.21? ✓
+  └── cả 2 spike đồng thời? → tiếp tục
+  │
+  ▼
+getSignal(BTC) + getSignal(ETH) song song
+  │
+  ▼
+assignDirections(scoreA, scoreB):
+  ├── scoreA > scoreB → long BTC, short ETH
+  ├── scoreB > scoreA → long ETH, short BTC
+  └── equal → skip
+  │
+  ▼
+Đặt 2 lệnh cùng lúc (cùng USD notional)
 ```
 
 **Fill management:**
-- 1 filled + 1 rejected → đặt lại lệnh bị reject
-- 1 filled + 1 pending → chờ 30s → cancel → retry
-- 2 pending → chờ 30s → cancel cả 2 → retry
 
-**Logic thoát:**
-1. Profit target: combined PnL ≥ $5
-2. Max loss: combined PnL ≤ -$10
-3. Mean reversion: ratio về equilibrium
-4. Time expiry: giữ quá 1 giờ
+```
+WAITING_FILL:
+  ├── cả 2 filled → IN_PAIR ✓
+  ├── A filled + B rejected → re-place B ngay
+  ├── A filled + B pending → chờ 30s → cancel B → OPENING
+  └── cả 2 pending → chờ 30s → cancel cả 2 → OPENING
+```
 
-**Config trong bot-configs.json:**
+**Workflow thoát:**
+
+```
+IN_PAIR (check mỗi 5s):
+  ├── combinedPnl ≥ profitTargetUsd → EXIT (profit)
+  ├── combinedPnl ≤ -maxLossUsd → EXIT (max loss)
+  ├── ratio về equilibrium → EXIT (mean reversion)
+  └── elapsed ≥ holdingPeriodSecs → EXIT (time expiry)
+```
+
+---
+
+## Daily Budget Reset
+
+Tính năng cho phép mỗi bot **tự động reset budget và restart** vào một giờ cố định mỗi ngày.
+
+### Tại sao cần tính năng này?
+
+Khi bot bị dừng do chạm max loss trong ngày, không cần can thiệp thủ công — bot sẽ tự reset và chạy lại vào sáng hôm sau với budget mới.
+
+### Workflow đầy đủ
+
+```
+Bot khởi động với dailyBudgetReset: true
+  │
+  ▼
+DailyResetScheduler.start()
+  ├── Ghi nhớ lastResetDate = hôm nay (tránh fire ngay khi khởi động)
+  └── setInterval(60s) — check mỗi phút
+        │
+        ▼
+  Mỗi phút: kiểm tra điều kiện
+        ├── currentUTCHour ≠ resetHourUTC → skip
+        ├── currentMinute ≠ 0 → skip
+        └── todayKey === lastResetDate → skip (đã reset hôm nay)
+              │
+              ▼ (chỉ fire 1 lần/ngày, đúng phút đầu của giờ reset)
+        lastResetDate = todayKey
+              │
+              ▼
+        _doReset():
+          Step 1: bot.stop()
+                  → sessionManager.stopSession()
+                  → watcher.stop()
+                  → saveStateSync()
+          Step 2: sessionManager.resetMaxLoss()
+                  → xóa flag _maxLossTriggered
+          Step 3: sessionManager.setMaxLoss(dailyMaxLossUsd)
+                  → áp lại budget mới
+          Step 4: bot.start()
+                  → sessionManager.startSession()
+                  → watcher.resetSession()
+                  → watcher.run() (background)
+          Step 5: telegram.sendMessage(...)
+                  → "🔄 Daily Budget Reset — Bot sodex-bot
+                     💰 Budget: $5 max loss
+                     🕐 0:00 UTC (7:00 Vietnam)
+                     🚀 Bot auto-restarted"
+```
+
+### Cấu hình trong `bot-configs.json`
 
 ```json
 {
-  "hedgeBots": [{
-    "id": "btc-eth-hedge",
-    "exchange": "sodex",
-    "symbolA": "BTC-USD",
-    "symbolB": "ETH-USD",
-    "notionalUsd": 100,
-    "profitTargetUsd": 5,
-    "maxLossUsd": 10,
-    "holdingPeriodSecs": 3600,
-    "cooldownSecs": 300
-  }]
+  "id": "sodex-bot",
+  "name": "SoDEX Bot",
+  "exchange": "sodex",
+  "symbol": "BTC-USD",
+  "autoStart": true,
+  "dailyBudgetReset": true,
+  "dailyMaxLossUsd": 5,
+  "dailyResetHourUTC": 0
 }
 ```
 
-**Kết quả mong đợi:**
-- 1-3 pairs/giờ
-- Win rate 60-70%
-- Low correlation với market direction
+| Field | Mô tả | Mặc định |
+|---|---|---|
+| `dailyBudgetReset` | Bật/tắt tính năng | `false` |
+| `dailyMaxLossUsd` | Max loss mỗi ngày (USD) | `5` |
+| `dailyResetHourUTC` | Giờ reset UTC (0–23) | `0` = 7h VN |
+
+### Múi giờ tham chiếu
+
+| UTC | Vietnam (UTC+7) |
+|---|---|
+| 0:00 | 7:00 sáng |
+| 1:00 | 8:00 sáng |
+| 17:00 | 0:00 đêm |
+
+### Lưu ý quan trọng
+
+- `bot.stop()` trong daily reset **không** dừng scheduler. Chỉ khi process shutdown (`SIGTERM`/`SIGINT`) mới gọi `bot.stop(true)` để dừng scheduler.
+- Nếu bot đang STOPPED (đã bị dừng do max loss), scheduler vẫn restart được bình thường.
+- `forceReset()` có thể được gọi thủ công từ dashboard để trigger reset ngay lập tức.
+- Mỗi bot có scheduler riêng — các bot có thể reset ở các giờ khác nhau.
 
 ---
 
@@ -463,44 +494,47 @@ COOLDOWN_MAX_MINS: 2-60
 **Market Making:**
 ```
 MM_ENABLED: true/false
-MM_INVENTORY_SOFT_LIMIT_USD: 10-500
-MM_INVENTORY_HARD_LIMIT_USD: 50-1000
+MM_INVENTORY_SOFT_BIAS: 50
+MM_INVENTORY_HARD_BLOCK: 150
 ```
 
 **Risk:**
 ```
-SL_PERCENT: 1-10
-TP_PERCENT: 1-20
-MAX_POSITION_SIZE_USD: 10-10000
-SESSION_MAX_LOSS_USD: 10-1000
+FARM_SL_PERCENT: 0.01-0.10
+FARM_TP_USD: 0.1-5.0
+MIN_POSITION_VALUE_USD: 10-100
 ```
 
-### Multi-Bot Config
+### Multi-Bot Config (`bot-configs.json`)
 
-File `bot-configs.json`:
+Mỗi bot trong mảng `bots` có config độc lập:
 
 ```json
 {
+  "version": 1,
   "bots": [
     {
-      "id": "sodex-btc-farm",
+      "id": "sodex-bot",
+      "name": "SoDEX Bot",
       "exchange": "sodex",
       "symbol": "BTC-USD",
+      "credentialKey": "SODEX",
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades-sodex.json",
+      "autoStart": true,
       "mode": "farm",
-      "enabled": true
-    },
-    {
-      "id": "sodex-eth-trade",
-      "exchange": "sodex",
-      "symbol": "ETH-USD",
-      "mode": "trade",
-      "enabled": true
+      "orderSizeMin": 0.002,
+      "orderSizeMax": 0.005,
+      "tags": ["Farm", "Market Making"],
+      "dailyBudgetReset": true,
+      "dailyMaxLossUsd": 5,
+      "dailyResetHourUTC": 0
     }
   ]
 }
 ```
 
-Mỗi bot có ConfigStore riêng → config độc lập.
+Mỗi bot có `ConfigStore` riêng → config hoàn toàn độc lập.
 
 ---
 
@@ -547,8 +581,6 @@ Mỗi bot có ConfigStore riêng → config độc lập.
 [SignalFilter] SKIP: [RegimeGate] confidence=0.09 < 0.45
 ```
 
-**Nguyên nhân:** `FARM_SIDEWAY_MIN_CONFIDENCE` quá cao.
-
 **Giải pháp:**
 1. Dashboard → Bot Settings
 2. `FARM_SIDEWAY_MIN_CONFIDENCE: 0.01`
@@ -563,36 +595,29 @@ Mỗi bot có ConfigStore riêng → config độc lập.
 [PENDING] Timeout — cancelling order
 ```
 
-**Nguyên nhân:**
-- Giá quá aggressive
-- Spread quá rộng
-- Post-Only bị reject
-
 **Giải pháp:**
-1. Hạ `EXECUTION_EDGE_SPREAD_MULT` xuống 0.1
+1. Hạ `EXEC_SPREAD_OFFSET_MULT` xuống 0.1
 2. Kiểm tra orderbook depth
 3. Thử symbol khác nếu liquidity thấp
 
 ---
 
-### Config Không Áp Dụng
+### Daily Reset Không Chạy
 
-**Triệu chứng:** Đổi config trên dashboard nhưng bot vẫn dùng giá trị cũ.
+**Triệu chứng:** Đến 0h UTC nhưng bot không restart.
 
-**Nguyên nhân:** `configStore` không được pass vào `Watcher` (đã fix).
+**Kiểm tra:**
+1. `dailyBudgetReset: true` trong `bot-configs.json`?
+2. Bot có đang chạy không? (scheduler chỉ active khi `BotInstance` được tạo)
+3. Xem logs: `[DailyResetScheduler:sodex-bot] Started — resets daily at 0:00 UTC`
 
-**Giải pháp:**
-1. Pull code mới nhất
-2. Rebuild: `npm run build`
-3. Restart bot
+**Lưu ý:** Scheduler seed `lastResetDate` khi khởi động — nếu khởi động đúng lúc 0h UTC thì sẽ không fire ngay, phải chờ đến 0h UTC ngày hôm sau.
 
 ---
 
 ### Fee Ăn Hết Lời
 
 **Triệu chứng:** `grossPnl > 0` nhưng `netPnl < 0`
-
-**Nguyên nhân:** Giữ lệnh quá ngắn.
 
 **Giải pháp:**
 1. Tăng `FARM_MIN_HOLD_SECS: 180`
@@ -608,11 +633,7 @@ Mỗi bot có ConfigStore riêng → config độc lập.
 [SoDEX] Rate limited — backing off 5s
 ```
 
-**Hành vi:** Bot tự động chờ, không cần can thiệp.
-
-**Nếu thường xuyên:**
-- Giảm số bot trên cùng exchange
-- Liên hệ SoDEX xin tăng limit
+Bot tự động chờ, không cần can thiệp. Nếu thường xuyên: giảm số bot trên cùng exchange.
 
 ---
 
@@ -624,8 +645,8 @@ Trước khi chạy với số tiền lớn:
 - [ ] Xem ≥ 20 trades hoàn chỉnh
 - [ ] Win rate > 55%
 - [ ] Fee impact < 30%
-- [ ] Set `MAX_POSITION_SIZE_USD` hợp lý
-- [ ] Set `SESSION_MAX_LOSS_USD`
+- [ ] Set `dailyMaxLossUsd` hợp lý
+- [ ] Bật `dailyBudgetReset: true` nếu muốn tự động
 - [ ] Telegram alerts hoạt động
 - [ ] Backup `bot_state.json` hàng ngày
 - [ ] Monitor dashboard ít nhất 2 lần/ngày
@@ -637,11 +658,12 @@ Trước khi chạy với số tiền lớn:
 DRIFT là hệ thống trading production-grade với:
 
 - **3 chiến lược** cho các điều kiện thị trường khác nhau
+- **Daily budget reset** — tự động reset và restart mỗi ngày
 - **Adaptive learning** qua self-adjusting weights
 - **Execution safety** qua strict state machines
 - **Real-time config** qua dashboard
 - **Multi-bot management** cho đa dạng hóa
 
-Bắt đầu với Farm Mode, số tiền nhỏ, theo dõi kỹ 1-2 ngày đầu. Sau khi hiểu rõ workflow, scale dần.
+Bắt đầu với Farm Mode, số tiền nhỏ, bật `dailyBudgetReset` để không cần can thiệp thủ công. Theo dõi kỹ 1-2 ngày đầu rồi scale dần.
 
 Chúc trade thành công! 🚀

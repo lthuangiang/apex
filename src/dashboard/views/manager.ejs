@@ -456,9 +456,45 @@
     /* ── PnL Hero ── */
     .pnl-hero {
       display: flex;
-      align-items: baseline;
+      flex-direction: column;
       gap: 0.5rem;
       margin-bottom: 1rem;
+    }
+
+    .pnl-breakdown {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0.5rem 0;
+    }
+
+    .pnl-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .pnl-label-sm {
+      font-size: 0.68rem;
+      color: var(--text-tertiary);
+      font-weight: 500;
+    }
+
+    .pnl-value-sm {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .pnl-value-sm.positive { color: var(--green); }
+    .pnl-value-sm.negative { color: var(--red); }
+    .pnl-value-sm.neutral { color: var(--text-secondary); }
+    .pnl-value-sm.fee { color: var(--red); }
+
+    .pnl-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0.25rem 0;
     }
 
     .pnl-value {
@@ -683,7 +719,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="/js/manager-dashboard.js"></script>
+  <script src="/js/manager-dashboard.js?v=2"></script>
 
   <!-- ── Create Bot Modal ─────────────────────────────────────────────────── -->
   <style>

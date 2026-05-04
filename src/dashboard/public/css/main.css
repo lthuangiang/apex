@@ -378,6 +378,13 @@ tr:last-child td{border-bottom:none}
 .cb:hover:not(:disabled){background:#1e1e2a;border-color:#3a3a4a}
 .cb:disabled{opacity:0.35;cursor:default}
 .cb.g{background:rgba(0,212,100,0.1);border-color:rgba(0,212,100,0.25);color:#00d464}
+/* Toggle switch for Daily Budget Reset */
+.cfg-toggle{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+.cfg-toggle input{opacity:0;width:0;height:0}
+.cfg-toggle-slider{position:absolute;cursor:pointer;inset:0;background:#2a2a35;border-radius:20px;transition:.2s}
+.cfg-toggle-slider:before{content:'';position:absolute;width:14px;height:14px;left:3px;bottom:3px;background:#666;border-radius:50%;transition:.2s}
+.cfg-toggle input:checked+.cfg-toggle-slider{background:rgba(0,212,100,0.3);border:1px solid rgba(0,212,100,0.5)}
+.cfg-toggle input:checked+.cfg-toggle-slider:before{transform:translateX(16px);background:#00d464}
 .cb.g:hover:not(:disabled){background:rgba(0,212,100,0.18)}
 .cb.r{background:rgba(255,77,77,0.1);border-color:rgba(255,77,77,0.25);color:#ff4d4d}
 .cb.r:hover:not(:disabled){background:rgba(255,77,77,0.18)}

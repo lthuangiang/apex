@@ -200,6 +200,43 @@
         </div>
       </div>
 
+      <!-- Daily Budget Reset — only shown in multi-bot mode (BOT_CONTEXT set) -->
+      <div class="cfg-section" id="daily-reset-section" style="display:none">
+        <div class="cfg-section-title">📅 Daily Budget Reset</div>
+        <div class="cfg-fields" style="grid-template-columns:1fr 1fr;">
+          <div class="cfg-field" style="grid-column:1/-1;display:flex;align-items:center;gap:.75rem;">
+            <label style="margin:0;min-width:0">Enable Daily Reset</label>
+            <label class="cfg-toggle" style="margin:0">
+              <input type="checkbox" id="cfg-daily-budget-reset"/>
+              <span class="cfg-toggle-slider"></span>
+            </label>
+            <div class="cfg-hint" style="margin:0">Tự động reset budget và restart bot mỗi ngày</div>
+          </div>
+          <div class="cfg-field">
+            <label>Max Loss / ngày ($)</label>
+            <div class="cfg-hint">Bot dừng khi lỗ đủ số này. 0 = không giới hạn</div>
+            <input type="number" id="cfg-daily-max-loss-usd" step="0.5" min="0" placeholder="e.g. 5"/>
+          </div>
+          <div class="cfg-field">
+            <label>Target Volume / ngày ($)</label>
+            <div class="cfg-hint">Bot dừng khi đạt đủ volume. 0 = không giới hạn</div>
+            <input type="number" id="cfg-daily-target-volume-usd" step="100" min="0" placeholder="e.g. 5000"/>
+          </div>
+          <div class="cfg-field">
+            <label>Reset Hour (UTC)</label>
+            <div class="cfg-hint">Giờ reset mỗi ngày (UTC 0–23). 0 = 7h sáng Vietnam</div>
+            <input type="number" id="cfg-daily-reset-hour-utc" step="1" min="0" max="23" placeholder="e.g. 0"/>
+          </div>
+          <div class="cfg-field" style="display:flex;align-items:flex-end;">
+            <div class="cfg-hint" id="daily-reset-tz-hint" style="color:#aaa;font-size:.72rem;padding-bottom:.25rem;"></div>
+          </div>
+        </div>
+        <div style="margin-top:.75rem;display:flex;align-items:center;gap:.6rem;">
+          <button class="cb g" onclick="saveDailyReset()">✓ Save</button>
+          <span id="daily-reset-toast" style="font-size:.72rem;opacity:0;transition:opacity .3s;"></span>
+        </div>
+      </div>
+
       <!-- Exchange-specific token section — shown/hidden by JS based on exchange -->
       <div class="cfg-section" id="sopoints-cfg-section">
         <div class="cfg-section-title">🔑 SoDEX SoPoints Token</div>

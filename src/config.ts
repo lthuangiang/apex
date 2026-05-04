@@ -60,10 +60,10 @@ export const config = {
   REGIME_TREND_SUPPRESS_EARLY_EXIT: true,
 
   // ── Farm Signal Cost Optimizer ───────────────────────────────────────────
-  FARM_MIN_CONFIDENCE_PRESSURE_GATE: 0.55,  // Min confidence when tradePressure=0 (TradePressureGate)
-  FARM_MIN_FALLBACK_CONFIDENCE: 0.25,       // Min confidence for fallback signals (FallbackQualityGate)
-  FARM_SIDEWAY_MIN_CONFIDENCE: 0.45,        // Min confidence in SIDEWAY regime (RegimeConfidenceThreshold)
-  FARM_TREND_MIN_CONFIDENCE: 0.35,          // Min confidence in TREND regime (RegimeConfidenceThreshold)
+  FARM_MIN_CONFIDENCE_PRESSURE_GATE: 0.0,   // Min confidence when tradePressure=0 (DISABLED for farm mode)
+  FARM_MIN_FALLBACK_CONFIDENCE: 0.0,        // Min confidence for fallback signals (DISABLED for farm mode)
+  FARM_SIDEWAY_MIN_CONFIDENCE: 0.0,         // Min confidence in SIDEWAY regime (DISABLED for farm mode)
+  FARM_TREND_MIN_CONFIDENCE: 0.0,           // Min confidence in TREND regime (DISABLED for farm mode)
 
   // Hour blocking (UTC) — để trống = không block giờ nào
   // Ví dụ block giờ xấu: [7,8,9,10,11,18,19,20,21,22,23]

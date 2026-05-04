@@ -7,8 +7,11 @@ import type { PnlDataPoint, EventLogEntry, OpenPositionState } from '../ai/share
 export interface BotSharedState {
   botId: string;
   sessionPnl: number;
+  sessionGrossPnl: number;  // PnL before fees
   sessionVolume: number;
   sessionFees: number;
+  sessionStartBalance: number | null;  // Balance when session started
+  currentBalance: number | null;       // Current balance
   todayVolume: number;
   todayVolumeDate: string;
   updatedAt: string;
@@ -30,8 +33,11 @@ export function createBotSharedState(botId: string): BotSharedState {
   return {
     botId,
     sessionPnl: 0,
+    sessionGrossPnl: 0,
     sessionVolume: 0,
     sessionFees: 0,
+    sessionStartBalance: null,
+    currentBalance: null,
     todayVolume: 0,
     todayVolumeDate: new Date().toISOString().slice(0, 10),
     updatedAt: new Date().toISOString(),

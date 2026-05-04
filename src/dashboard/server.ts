@@ -980,6 +980,7 @@ export class DashboardServer {
       
       res.json({
         sessionPnl: bot.state.sessionPnl,
+        sessionGrossPnl: bot.state.sessionGrossPnl,
         sessionVolume: bot.state.sessionVolume,
         sessionFees: bot.state.sessionFees,
         todayVolume: bot.state.todayVolume ?? 0,
@@ -1232,6 +1233,78 @@ export class DashboardServer {
         const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
         saveBotConfigsToFile(this.botManager, configPath);
         res.json({ ok: true, name: bot.config.name });
+      } catch (err) { res.status(500).json({ error: String(err) }); }
+    });
+
+    // GET /api/bots/:id/daily-reset - Get daily budget reset config
+    this.app.get('/api/bots/:id/daily-reset', (req, res) => {
+      if (!this.botManager) { res.status(503).json({ error: 'Bot manager not available' }); return; }
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) { res.status(404).json({ error: 'Bot not found' }); return; }
+      if (!(bot instanceof BotInstance)) {
+        res.status(400).json({ error: 'Daily reset is not supported for this bot type' }); return;
+      }
+      res.json({
+        dailyBudgetReset: bot.config.dailyBudgetReset ?? false,
+        dailyMaxLossUsd: bot.config.dailyMaxLossUsd ?? 5,
+        dailyResetHourUTC: bot.config.dailyResetHourUTC ?? 0,
+        dailyTargetVolumeUsd: bot.config.dailyTargetVolumeUsd ?? 0,
+      });
+    });
+
+    // PATCH /api/bots/:id/daily-reset - Update daily budget reset config live
+    this.app.patch('/api/bots/:id/daily-reset', (req, res) => {
+      if (!this.botManager) { res.status(503).json({ error: 'Bot manager not available' }); return; }
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) { res.status(404).json({ error: 'Bot not found' }); return; }
+      if (!(bot instanceof BotInstance)) {
+        res.status(400).json({ error: 'Daily reset is not supported for this bot type' }); return;
+      }
+
+      const body = req.body as {
+        dailyBudgetReset?: boolean;
+        dailyMaxLossUsd?: number;
+        dailyResetHourUTC?: number;
+        dailyTargetVolumeUsd?: number;
+      };
+
+      // Validate
+      if (body.dailyMaxLossUsd !== undefined && (typeof body.dailyMaxLossUsd !== 'number' || body.dailyMaxLossUsd <= 0)) {
+        res.status(400).json({ error: 'dailyMaxLossUsd must be a positive number' }); return;
+      }
+      if (body.dailyResetHourUTC !== undefined && (typeof body.dailyResetHourUTC !== 'number' || body.dailyResetHourUTC < 0 || body.dailyResetHourUTC > 23)) {
+        res.status(400).json({ error: 'dailyResetHourUTC must be 0–23' }); return;
+      }
+      if (body.dailyTargetVolumeUsd !== undefined && (typeof body.dailyTargetVolumeUsd !== 'number' || body.dailyTargetVolumeUsd < 0)) {
+        res.status(400).json({ error: 'dailyTargetVolumeUsd must be >= 0' }); return;
+      }
+
+      try {
+        // Apply to live bot config
+        if (body.dailyBudgetReset !== undefined) (bot.config as any).dailyBudgetReset = body.dailyBudgetReset;
+        if (body.dailyMaxLossUsd !== undefined) (bot.config as any).dailyMaxLossUsd = body.dailyMaxLossUsd;
+        if (body.dailyResetHourUTC !== undefined) (bot.config as any).dailyResetHourUTC = body.dailyResetHourUTC;
+        if (body.dailyTargetVolumeUsd !== undefined) (bot.config as any).dailyTargetVolumeUsd = body.dailyTargetVolumeUsd;
+
+        // Apply live to SessionManager (takes effect immediately for current session)
+        const sm = bot.getSessionManager();
+        if (body.dailyMaxLossUsd !== undefined) sm.setMaxLoss(body.dailyMaxLossUsd);
+        if (body.dailyTargetVolumeUsd !== undefined) sm.setTargetVolume(body.dailyTargetVolumeUsd);
+
+        // Sync scheduler: restart it with new config if enabled, stop if disabled
+        bot.syncDailyResetScheduler();
+
+        // Persist to file
+        const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
+        saveBotConfigsToFile(this.botManager, configPath);
+
+        res.json({
+          ok: true,
+          dailyBudgetReset: bot.config.dailyBudgetReset,
+          dailyMaxLossUsd: bot.config.dailyMaxLossUsd,
+          dailyResetHourUTC: bot.config.dailyResetHourUTC,
+          dailyTargetVolumeUsd: bot.config.dailyTargetVolumeUsd,
+        });
       } catch (err) { res.status(500).json({ error: String(err) }); }
     });
 

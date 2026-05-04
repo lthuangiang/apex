@@ -170,7 +170,7 @@ async function bootstrap() {
             console.log(`\n🛑 [System] ${signal} received. Shutting down all bots...`);
             for (const bot of botManager.getAllBots()) {
                 if (bot.state.botStatus === 'RUNNING') {
-                    await bot.stop();
+                    await bot.stop(true); // stop scheduler too on full shutdown
                 }
             }
             saveStateSync();

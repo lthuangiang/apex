@@ -222,6 +222,20 @@ export class SodexAdapter implements ExchangeAdapter {
         };
     }
 
+    async get_klines(symbol: string, interval: string, limit: number): Promise<{ t: number; o: number; h: number; l: number; c: number; v: number }[]> {
+        const data = await this.request('GET', `/markets/${symbol}/klines?interval=${interval}&limit=${limit}`);
+        const arr = Array.isArray(data) ? data : [];
+        // SoDEX returns newest-first — reverse to chronological order
+        return arr.reverse().map((k: any) => ({
+            t: k.t,
+            o: parseFloat(k.o),
+            h: parseFloat(k.h),
+            l: parseFloat(k.l),
+            c: parseFloat(k.c),
+            v: parseFloat(k.v),
+        }));
+    }
+
     async get_recent_trades(symbol: string, limit: number): Promise<RawTrade[]> {
         const data = await this.request('GET', `/markets/${symbol}/trades?limit=${limit}`);
         const arr = Array.isArray(data) ? data : (data?.trades || data?.data || []);

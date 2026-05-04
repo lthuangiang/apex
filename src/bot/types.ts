@@ -25,6 +25,20 @@ export interface BotConfig {
   tradeLogBackend: 'json' | 'sqlite';
   tradeLogPath: string;          // e.g. "./trades-sodex.json"
   
+  // Daily budget reset
+  /** Enable automatic daily budget reset + auto-start */
+  dailyBudgetReset?: boolean;
+  /** Max loss per day (USD). Applied on each daily reset. Default: 5 */
+  dailyMaxLossUsd?: number;
+  /** UTC hour to reset (0–23). 0 = midnight UTC = 7h Vietnam. Default: 0 */
+  dailyResetHourUTC?: number;
+  /**
+   * Daily volume target (USD). Bot stops when session volume reaches this value.
+   * Whichever is hit first (max loss OR volume target) stops the bot.
+   * 0 or omitted = disabled.
+   */
+  dailyTargetVolumeUsd?: number;
+
   // Optional overridable fields (for config persistence)
   farmMinHoldSecs?: number;
   farmMaxHoldSecs?: number;
@@ -58,6 +72,8 @@ export interface BotStatus {
   sessionPnl: number;
   sessionVolume: number;
   sessionFees: number;
+  sessionStartBalance: number | null;
+  currentBalance: number | null;
   efficiencyBps: number;
   walletAddress: string;
   uptime: number;              // minutes

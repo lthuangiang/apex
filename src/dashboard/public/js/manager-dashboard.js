@@ -87,6 +87,8 @@ function buildCard(tmpl, bot) {
   const pnl = bot.sessionPnl ?? 0;
   const vol = bot.sessionVolume ?? 0;
   const eff = bot.efficiencyBps ?? 0;
+  const startBalance = bot.sessionStartBalance ?? null;
+  const currentBalance = bot.currentBalance ?? null;
 
   const strategyTags = (bot.tags || [])
     .slice(0, 2)
@@ -108,6 +110,8 @@ function buildCard(tmpl, bot) {
     .replace(/{effClass}/g,    eff > 0 ? 'positive' : eff < 0 ? 'negative' : '')
     .replace(/{efficiency}/g,  eff.toFixed(1))
     .replace(/{uptime}/g,      bot.uptime ?? 0)
+    .replace(/{startBalance}/g, startBalance !== null ? fmtUsd(startBalance) : 'N/A')
+    .replace(/{currentBalance}/g, currentBalance !== null ? fmtUsd(currentBalance) : 'N/A')
     .replace(/{startDisplay}/g, isActive ? 'none' : 'flex')
     .replace(/{stopDisplay}/g,  isActive ? 'flex' : 'none');
 }
