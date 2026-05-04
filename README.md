@@ -16,7 +16,7 @@
 
 ---
 
-DRIFT là multi-bot trading system cho perpetual futures, hỗ trợ 3 sàn: **SoDEX**, **Dango Exchange**, và **Decibel**. Hệ thống chạy nhiều bot song song với 3 chiến lược: **Farm Mode** (volume tối đa), **Trade Mode** (win rate tối đa), và **Hedge Bot** (correlation divergence). Mỗi bot có thể cấu hình **daily budget reset** — tự động reset max loss và restart lúc 0h UTC (7h sáng Vietnam) mỗi ngày.
+DRIFT là multi-bot trading system cho perpetual futures, hỗ trợ 3 sàn: **SoDEX**, **Dango Exchange**, và **Decibel**. Hệ thống chạy nhiều bot song song với 3 chiến lược: **Farm Mode** (volume tối đa), **Trade Mode** (win rate tối đa), và **Hedge Bot** (correlation divergence). Mỗi bot có thể cấu hình **daily budget reset** — tự động reset max loss và volume target, restart lúc 0h UTC (7h sáng Vietnam) mỗi ngày. Bot dừng khi chạm max loss **hoặc** khi đạt volume target — cái nào đến trước thì dừng.
 
 ## Dashboard
 
@@ -136,11 +136,25 @@ IDLE → OPENING → WAITING_FILL → IN_PAIR → CLOSING → COOLDOWN
 
 ## Daily Budget Reset
 
-Mỗi bot có thể bật tính năng **tự động reset budget hàng ngày** và **auto-start** lại sau khi reset.
+Mỗi bot có thể bật tính năng **tự động reset budget hàng ngày** và **auto-start** lại sau khi reset. Có **hai điều kiện dừng** — cái nào đến trước thì dừng:
+
+1. **Max Loss**: session PnL ≤ `-dailyMaxLossUsd`
+2. **Volume Target**: session volume ≥ `dailyTargetVolumeUsd` (nếu > 0)
 
 ### Cách hoạt động
 
 ```
+Watcher._tick() mỗi ~5s:
+  │
+  ├── Section 2: updatePnL(sessionCurrentPnl)
+  │     → nếu sessionPnl ≤ -maxLossUsd → IOC close + dừng bot (MAX LOSS)
+  │
+  └── Section 2.5: updateVolume(sessionVolume)
+        → nếu sessionVolume ≥ targetVolumeUsd VÀ targetVolumeUsd > 0
+          → IOC close + dừng bot (VOLUME TARGET)
+
+Cả hai check chỉ fire 1 lần/session (_maxLossTriggered / _volumeTargetTriggered flags).
+
 Mỗi phút: DailyResetScheduler kiểm tra giờ UTC hiện tại
   │
   ▼
@@ -150,11 +164,17 @@ Mỗi phút: DailyResetScheduler kiểm tra giờ UTC hiện tại
   │
   └── Có → thực hiện reset:
         1. Stop bot (nếu đang chạy)
-        2. Reset max-loss flag
-        3. Áp dụng lại dailyMaxLossUsd
+        2. Reset cả hai flags: resetMaxLoss() + resetVolumeTarget()
+        3. Áp dụng lại: setMaxLoss(dailyMaxLossUsd) + setTargetVolume(dailyTargetVolumeUsd)
         4. Auto-start bot với budget mới
         5. Gửi Telegram notification
 ```
+
+### Telegram notifications
+
+- Max loss hit: `⚠️ Max Loss Reached | Limit: $5 | Actual: -$5.12 | Bot stopped — will reset at next daily cycle`
+- Volume target hit: `🎯 Volume Target Reached | Target: $5,000 | Actual: $5,023 | PnL: +2.40 | Bot stopped — will reset at next daily cycle`
+- Daily reset: `🔄 Daily Budget Reset — Bot sodex-bot | Budget: $5 max loss | Volume target: $5,000 | 0:00 UTC (7:00 Vietnam) | Bot auto-restarted`
 
 ### Cấu hình trong `bot-configs.json`
 
@@ -164,6 +184,7 @@ Mỗi phút: DailyResetScheduler kiểm tra giờ UTC hiện tại
   "autoStart": true,
   "dailyBudgetReset": true,
   "dailyMaxLossUsd": 5,
+  "dailyTargetVolumeUsd": 5000,
   "dailyResetHourUTC": 0
 }
 ```
@@ -172,13 +193,48 @@ Mỗi phút: DailyResetScheduler kiểm tra giờ UTC hiện tại
 |---|---|---|
 | `dailyBudgetReset` | Bật/tắt tính năng | `false` |
 | `dailyMaxLossUsd` | Max loss mỗi ngày (USD) | `5` |
+| `dailyTargetVolumeUsd` | Volume target mỗi ngày (USD). `0` = tắt | `0` |
 | `dailyResetHourUTC` | Giờ reset (UTC 0–23) | `0` (= 7h VN) |
+
+### Cấu hình từ Dashboard (Bot Settings popup)
+
+Ngoài việc sửa `bot-configs.json` trực tiếp, có thể cấu hình từ giao diện web:
+
+```
+Mở trang bot detail → click ⚙️ Bot Settings
+  │
+  ▼
+Popup mở → cuộn xuống section "📅 Daily Budget Reset"
+  │
+  ├── Enable toggle: bật/tắt tính năng
+  ├── Max Loss/day ($): giới hạn lỗ mỗi ngày
+  ├── Target Volume/day ($): mục tiêu volume (0 = tắt)
+  └── Reset Hour UTC: giờ reset (hint tự động hiển thị giờ Vietnam)
+  │
+  ▼
+Click "✓ Save"
+  │
+  ▼
+Server:
+  1. Validate tất cả fields
+  2. Cập nhật bot.config (live, không cần restart)
+  3. Gọi sm.setMaxLoss() + sm.setTargetVolume() (có hiệu lực ngay)
+  4. Gọi bot.syncDailyResetScheduler() — restart scheduler với config mới
+  5. Persist vào bot-configs.json
+  6. Trả về config đã cập nhật
+  │
+  ▼
+Toast "Saved ✓" (xanh) hoặc thông báo lỗi (đỏ)
+```
+
+**Lưu ý:** Section "📅 Daily Budget Reset" chỉ hiển thị trên trang bot detail (multi-bot mode), không hiển thị trên trang overview.
 
 ### Ví dụ thực tế
 
-- Setup `dailyMaxLossUsd: 5` → bot trade cả ngày, nếu lỗ $5 thì dừng
-- Đến 0h UTC (7h sáng VN): budget reset về $5, bot tự start lại
-- Telegram nhận thông báo: `🔄 Daily Budget Reset — Bot sodex-bot | Budget: $5 max loss | 0:00 UTC (7:00 Vietnam) | Bot auto-restarted`
+- Setup `dailyMaxLossUsd: 5`, `dailyTargetVolumeUsd: 5000` → bot trade cả ngày
+- Nếu lỗ $5 → dừng ngay (max loss)
+- Nếu volume đạt $5,000 → dừng ngay (volume target) — dù chưa lỗ
+- Đến 0h UTC (7h sáng VN): reset cả hai flags, bot tự start lại với budget mới
 
 ---
 
@@ -188,7 +244,7 @@ Mỗi phút: DailyResetScheduler kiểm tra giờ UTC hiện tại
 bot.ts (Multi-Bot Manager)
   ├── BotManager                    # Quản lý nhiều bot song song
   │     ├── BotInstance (Farm/Trade)
-  │     │     ├── DailyResetScheduler   # Reset budget + auto-start hàng ngày
+  │     │     ├── DailyResetScheduler   # Reset budget (max loss + volume target) + auto-start hàng ngày
   │     │     └── Watcher           # 5-state: IDLE→PENDING→IN_POSITION→EXITING→COOLDOWN
   │     │           ├── AISignalEngine      # EMA9/21, RSI, momentum, OB + regime
   │     │           ├── FarmSignalFilters   # 4-gate pipeline + LLM adjuster + MinHold
@@ -214,7 +270,7 @@ bot.ts (Multi-Bot Manager)
   ├── TradeLogger                   # JSON hoặc SQLite
   ├── DashboardServer               # Express + SSE real-time
   ├── ConfigStore                   # Runtime config override (70+ params)
-  └── SessionManager                # Max loss, session state
+  └── SessionManager                # Max loss, volume target, session state
 ```
 
 ---
@@ -372,17 +428,38 @@ Bot khởi động
               │
               ▼
         _doReset():
-          1. bot.stop()              — dừng watcher, lưu state
-          2. sm.resetMaxLoss()       — xóa flag max-loss-triggered
-          3. sm.setMaxLoss(dailyMaxLossUsd)  — áp lại budget
-          4. bot.start()             — khởi động lại session mới
-          5. onReset(botId)          — gửi Telegram notification
+          1. bot.stop()                        — dừng watcher, lưu state
+          2. sm.resetMaxLoss()                 — xóa flag max-loss-triggered
+          3. sm.resetVolumeTarget()            — xóa flag volume-target-triggered
+          4. sm.setMaxLoss(dailyMaxLossUsd)    — áp lại max loss budget
+          5. sm.setTargetVolume(dailyTargetVolumeUsd) — áp lại volume target
+          6. bot.start()                       — khởi động lại session mới
+          7. onReset(botId)                    — gửi Telegram notification
+```
+
+### Stop condition trong Watcher._tick()
+
+```
+Watcher._tick() mỗi ~5s:
+  │
+  ├── Section 2: updatePnL(sessionCurrentPnl)
+  │     → sessionPnl ≤ -maxLossUsd?
+  │       → Có: IOC close all positions + bot.stop() [MAX LOSS]
+  │
+  └── Section 2.5: updateVolume(sessionVolume)
+        → sessionVolume ≥ targetVolumeUsd AND targetVolumeUsd > 0?
+          → Có: IOC close all positions + bot.stop() [VOLUME TARGET]
+
+Cả hai dùng cùng pattern: IOC close → poll flat → stop.
+Cả hai chỉ fire 1 lần/session (flag _maxLossTriggered / _volumeTargetTriggered).
+DailyResetScheduler._doReset() reset cả hai flags lúc giờ reset.
 ```
 
 **Lưu ý quan trọng:**
 - `bot.stop()` trong daily reset **không** dừng scheduler (chỉ `bot.stop(true)` khi shutdown toàn hệ thống mới dừng scheduler)
-- Nếu bot đang STOPPED (đã bị dừng do max loss), scheduler vẫn restart được
+- Nếu bot đang STOPPED (đã bị dừng do max loss hoặc volume target), scheduler vẫn restart được
 - `forceReset()` cho phép trigger thủ công từ dashboard
+- `BotInstance.syncDailyResetScheduler()` — dừng scheduler cũ, tạo scheduler mới với config mới, start ngay lập tức (dùng khi save config từ dashboard)
 
 ---
 
@@ -496,7 +573,7 @@ Truy cập `http://localhost:3000`
 - **Bot detail**: session PnL, volume, real-time console (SSE), trade history
 - **Hedge bot**: hiển thị 2 legs đang mở (symbol, side, entry price, unrealized PnL, combined PnL)
 - **Analytics tab**: win rate, signal quality, fee impact, regime performance, filter skip stats, effective confidence stats, dynamic min hold stats
-- **Bot Settings**: chỉnh 70+ config params runtime không cần restart
+- **Bot Settings**: chỉnh 70+ config params runtime không cần restart; section **📅 Daily Budget Reset** (chỉ hiển thị trên bot detail page) cho phép cấu hình Enable toggle, Max Loss/day, Target Volume/day, Reset Hour UTC — save ngay không cần reload trang
 
 ---
 
@@ -540,7 +617,7 @@ src/
 │   ├── PositionSizer.ts      # Dynamic sizing
 │   ├── MarketMaker.ts        # Ping-pong + inventory + dynamic TP
 │   ├── RiskManager.ts        # TP/SL check
-│   └── SessionManager.ts     # Max loss, session state
+│   └── SessionManager.ts     # Max loss, volume target, session state
 ├── ai/
 │   ├── AISignalEngine.ts     # Signal engine chính (EMA/RSI/momentum/OB)
 │   ├── RegimeDetector.ts     # ATR + BB + volume → SIDEWAY/TREND/HIGH_VOL

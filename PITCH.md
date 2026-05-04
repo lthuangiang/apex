@@ -68,19 +68,38 @@ IDLE → OPENING → WAITING_FILL → IN_PAIR → CLOSING → COOLDOWN
 
 ### 4. Daily Budget Reset — Automated Risk Management
 
-Each bot can be configured to **automatically reset its daily loss budget and restart** at a fixed UTC time.
+Each bot can be configured with **two daily stop conditions** — whichever is hit first stops the bot for the day:
+
+1. **Max Loss**: session PnL ≤ `-dailyMaxLossUsd`
+2. **Volume Target**: session volume ≥ `dailyTargetVolumeUsd` (when > 0)
+
+At the configured UTC reset hour, the scheduler automatically restarts the bot with a fresh budget.
 
 ```
+Watcher._tick() every ~5s:
+  │
+  ├── Section 2: updatePnL(sessionCurrentPnl)
+  │     → sessionPnl ≤ -maxLossUsd?
+  │       → Yes: IOC close + bot.stop()  [MAX LOSS]
+  │
+  └── Section 2.5: updateVolume(sessionVolume)
+        → sessionVolume ≥ targetVolumeUsd AND targetVolumeUsd > 0?
+          → Yes: IOC close + bot.stop()  [VOLUME TARGET]
+
+Both checks fire only once per session (flag-guarded).
+
 Every minute: DailyResetScheduler checks current UTC hour
   │
   ├── Not reset hour yet → wait
   │
   └── Reset hour reached (first minute only, once per day):
-        Step 1: bot.stop()           — clean shutdown, save state
-        Step 2: resetMaxLoss()       — clear the max-loss-triggered flag
-        Step 3: setMaxLoss($N)       — apply fresh daily budget
-        Step 4: bot.start()          — new session begins
-        Step 5: Telegram notify      — "🔄 Daily Budget Reset — $5 budget, bot restarted"
+        Step 1: bot.stop()                    — clean shutdown, save state
+        Step 2: resetMaxLoss()                — clear max-loss-triggered flag
+        Step 3: resetVolumeTarget()           — clear volume-target-triggered flag
+        Step 4: setMaxLoss($N)                — apply fresh daily budget
+        Step 5: setTargetVolume($V)           — apply fresh volume target
+        Step 6: bot.start()                   — new session begins
+        Step 7: Telegram notify               — "🔄 Daily Budget Reset — $5 budget, $5k target, bot restarted"
 ```
 
 **Config:**
@@ -88,11 +107,15 @@ Every minute: DailyResetScheduler checks current UTC hour
 {
   "dailyBudgetReset": true,
   "dailyMaxLossUsd": 5,
+  "dailyTargetVolumeUsd": 5000,
   "dailyResetHourUTC": 0
 }
 ```
 
 `dailyResetHourUTC: 0` = midnight UTC = **7:00 AM Vietnam time**.
+`dailyTargetVolumeUsd: 0` = volume target disabled (max loss only).
+
+**Dashboard UI**: the Bot Settings popup (⚙️ on any bot detail page) includes a **📅 Daily Budget Reset** section with Enable toggle, Max Loss/day, Target Volume/day, and Reset Hour UTC fields. Changes apply live via `PATCH /api/bots/:id/daily-reset` — no page reload, no restart needed. `BotInstance.syncDailyResetScheduler()` stops the old scheduler and starts a new one with the updated config immediately.
 
 The scheduler seeds `lastResetDate` on startup to avoid firing immediately. Each bot has its own independent scheduler — different bots can reset at different hours.
 
@@ -255,7 +278,7 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 | Feature | DRIFT | Typical Bot |
 |---|---|---|
 | Strategies | Farm + Trade + Hedge | Single strategy |
-| Daily budget reset | Automatic, per-bot, configurable hour | Manual restart |
+| Daily budget reset | Automatic, per-bot, configurable hour, max loss + volume target | Manual restart |
 | Execution model | Strict one-action-per-tick | Loose loop |
 | Hedge fill handling | 3 cases with 30s timeout | None |
 | Cancel safety | Check open orders before placing | Blind cancel |

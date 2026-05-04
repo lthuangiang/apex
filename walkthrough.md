@@ -384,11 +384,33 @@ IN_PAIR (check mỗi 5s):
 
 ## Daily Budget Reset
 
-Tính năng cho phép mỗi bot **tự động reset budget và restart** vào một giờ cố định mỗi ngày.
+Tính năng cho phép mỗi bot **tự động reset budget và restart** vào một giờ cố định mỗi ngày. Có **hai điều kiện dừng** — cái nào đến trước thì dừng:
+
+1. **Max Loss**: session PnL ≤ `-dailyMaxLossUsd`
+2. **Volume Target**: session volume ≥ `dailyTargetVolumeUsd` (nếu > 0)
 
 ### Tại sao cần tính năng này?
 
-Khi bot bị dừng do chạm max loss trong ngày, không cần can thiệp thủ công — bot sẽ tự reset và chạy lại vào sáng hôm sau với budget mới.
+Khi bot bị dừng do chạm max loss hoặc đạt volume target trong ngày, không cần can thiệp thủ công — bot sẽ tự reset và chạy lại vào sáng hôm sau với budget mới.
+
+### Hai điều kiện dừng
+
+```
+Watcher._tick() mỗi ~5s:
+  │
+  ├── Section 2: updatePnL(sessionCurrentPnl)
+  │     → sessionPnl ≤ -maxLossUsd?
+  │       → Có: IOC close all positions + bot.stop() [MAX LOSS]
+  │       → Telegram: "⚠️ Max Loss Reached | Limit: $5 | Actual: -$5.12 | Bot stopped"
+  │
+  └── Section 2.5: updateVolume(sessionVolume)
+        → sessionVolume ≥ targetVolumeUsd AND targetVolumeUsd > 0?
+          → Có: IOC close all positions + bot.stop() [VOLUME TARGET]
+          → Telegram: "🎯 Volume Target Reached | Target: $5,000 | Actual: $5,023 | PnL: +2.40"
+
+Cả hai check chỉ fire 1 lần/session.
+DailyResetScheduler._doReset() reset cả hai flags lúc giờ reset.
+```
 
 ### Workflow đầy đủ
 
@@ -417,15 +439,19 @@ DailyResetScheduler.start()
                   → saveStateSync()
           Step 2: sessionManager.resetMaxLoss()
                   → xóa flag _maxLossTriggered
-          Step 3: sessionManager.setMaxLoss(dailyMaxLossUsd)
-                  → áp lại budget mới
-          Step 4: bot.start()
+          Step 3: sessionManager.resetVolumeTarget()
+                  → xóa flag _volumeTargetTriggered
+          Step 4: sessionManager.setMaxLoss(dailyMaxLossUsd)
+                  → áp lại max loss budget mới
+          Step 5: sessionManager.setTargetVolume(dailyTargetVolumeUsd)
+                  → áp lại volume target mới
+          Step 6: bot.start()
                   → sessionManager.startSession()
                   → watcher.resetSession()
                   → watcher.run() (background)
-          Step 5: telegram.sendMessage(...)
+          Step 7: telegram.sendMessage(...)
                   → "🔄 Daily Budget Reset — Bot sodex-bot
-                     💰 Budget: $5 max loss
+                     💰 Budget: $5 max loss | Volume target: $5,000
                      🕐 0:00 UTC (7:00 Vietnam)
                      🚀 Bot auto-restarted"
 ```
@@ -441,6 +467,7 @@ DailyResetScheduler.start()
   "autoStart": true,
   "dailyBudgetReset": true,
   "dailyMaxLossUsd": 5,
+  "dailyTargetVolumeUsd": 5000,
   "dailyResetHourUTC": 0
 }
 ```
@@ -449,7 +476,44 @@ DailyResetScheduler.start()
 |---|---|---|
 | `dailyBudgetReset` | Bật/tắt tính năng | `false` |
 | `dailyMaxLossUsd` | Max loss mỗi ngày (USD) | `5` |
+| `dailyTargetVolumeUsd` | Volume target mỗi ngày (USD). `0` = tắt | `0` |
 | `dailyResetHourUTC` | Giờ reset UTC (0–23) | `0` = 7h VN |
+
+### Cấu hình từ Dashboard (khuyến nghị)
+
+Thay vì sửa file `bot-configs.json` trực tiếp, có thể cấu hình từ giao diện web — thay đổi có hiệu lực ngay, không cần restart:
+
+**Bước 1:** Mở trang bot detail (click vào tên bot từ manager view)
+
+**Bước 2:** Click nút ⚙️ **Bot Settings** (góc trên phải)
+
+**Bước 3:** Trong popup, cuộn xuống section **📅 Daily Budget Reset**
+
+> Lưu ý: Section này chỉ hiển thị trên trang bot detail (multi-bot mode), không hiển thị trên trang overview.
+
+**Bước 4:** Điền các trường:
+- **Enable**: toggle bật/tắt tính năng
+- **Max Loss/day ($)**: giới hạn lỗ mỗi ngày (ví dụ: `5`)
+- **Target Volume/day ($)**: mục tiêu volume (ví dụ: `5000`; để `0` để tắt)
+- **Reset Hour UTC**: giờ reset theo UTC (ví dụ: `0` = 7h sáng Vietnam; hint tự động cập nhật khi gõ)
+
+**Bước 5:** Click **✓ Save**
+
+```
+saveDailyReset() validate client-side → PATCH /api/bots/:id/daily-reset
+  │
+  ▼
+Server:
+  1. Validate tất cả fields
+  2. Cập nhật bot.config (dailyBudgetReset, dailyMaxLossUsd, dailyResetHourUTC, dailyTargetVolumeUsd)
+  3. sm.setMaxLoss() + sm.setTargetVolume() — có hiệu lực ngay
+  4. bot.syncDailyResetScheduler() — dừng scheduler cũ, tạo mới, start ngay
+  5. Persist vào bot-configs.json
+  6. Trả về config đã cập nhật
+  │
+  ▼
+Toast "Saved ✓" (xanh) hoặc thông báo lỗi (đỏ)
+```
 
 ### Múi giờ tham chiếu
 
@@ -462,9 +526,10 @@ DailyResetScheduler.start()
 ### Lưu ý quan trọng
 
 - `bot.stop()` trong daily reset **không** dừng scheduler. Chỉ khi process shutdown (`SIGTERM`/`SIGINT`) mới gọi `bot.stop(true)` để dừng scheduler.
-- Nếu bot đang STOPPED (đã bị dừng do max loss), scheduler vẫn restart được bình thường.
+- Nếu bot đang STOPPED (đã bị dừng do max loss hoặc volume target), scheduler vẫn restart được bình thường.
 - `forceReset()` có thể được gọi thủ công từ dashboard để trigger reset ngay lập tức.
 - Mỗi bot có scheduler riêng — các bot có thể reset ở các giờ khác nhau.
+- `dailyTargetVolumeUsd: 0` = tắt volume target, chỉ dùng max loss.
 
 ---
 
@@ -615,6 +680,21 @@ Mỗi bot có `ConfigStore` riêng → config hoàn toàn độc lập.
 
 ---
 
+### Bot Dừng Sớm Hơn Dự Kiến (Volume Target)
+
+**Triệu chứng:** Bot dừng giữa ngày dù chưa lỗ, Telegram báo `🎯 Volume Target Reached`.
+
+**Giải thích:** `dailyTargetVolumeUsd` đã được đặt và session volume đã đạt ngưỡng đó. Đây là hành vi đúng — bot dừng để bảo toàn lợi nhuận sau khi đạt mục tiêu volume.
+
+**Nếu muốn tắt volume target:**
+1. Dashboard → Bot Settings → Daily Budget Reset
+2. Đặt **Target Volume/day** = `0`
+3. Click Save
+
+Hoặc sửa `bot-configs.json`: `"dailyTargetVolumeUsd": 0`
+
+---
+
 ### Fee Ăn Hết Lời
 
 **Triệu chứng:** `grossPnl > 0` nhưng `netPnl < 0`
@@ -646,6 +726,7 @@ Trước khi chạy với số tiền lớn:
 - [ ] Win rate > 55%
 - [ ] Fee impact < 30%
 - [ ] Set `dailyMaxLossUsd` hợp lý
+- [ ] Set `dailyTargetVolumeUsd` nếu muốn dừng sau khi đạt volume mục tiêu
 - [ ] Bật `dailyBudgetReset: true` nếu muốn tự động
 - [ ] Telegram alerts hoạt động
 - [ ] Backup `bot_state.json` hàng ngày
