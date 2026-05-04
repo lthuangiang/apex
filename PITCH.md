@@ -301,7 +301,7 @@ offset = clamp(spreadBps × 0.3 + depthPenalty + fillRatePenalty, 0, 5)
 🌾 Farm Mode — always active, always accumulating volume  
 🧠 Trade Mode — signal-filtered, win-rate optimized  
 ⇄ Hedge Mode — correlation divergence, market-neutral  
-🔄 Daily Reset — automated budget management, no babysitting  
+🔄 Daily Reset — max loss + volume target, automated budget management, no babysitting  
 🛡️ Execution engine — one action per tick, always safe
 
 *Built for the future of decentralized perpetual trading*

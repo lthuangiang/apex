@@ -9,7 +9,7 @@ DRIFT is a multi-bot trading system for perpetual futures running three strategi
 - **Farm Mode** — trades continuously to maximize volume incentives (SoPoints, rebates). Never skips — falls back to price position and mean reversion when the signal is weak.
 - **Trade Mode** — only enters on a clear edge, passing through five filters: regime check, chop detection, fake breakout filter, confidence gate, and 2-tick confirmation.
 - **Hedge Mode** — simultaneously opens long on one asset and short on the other (BTC/ETH) with equal USD notional, profiting from temporary correlation divergence.
-- **Daily Budget Reset** — each bot automatically resets its max loss budget and restarts at a configured UTC time every day. Set `dailyMaxLossUsd: 5` and the bot trades all day, stops when it hits $5 loss, then comes back fresh at 7 AM Vietnam time (0:00 UTC) without any manual intervention.
+- **Daily Budget Reset** — each bot automatically resets its daily budget and restarts at a configured UTC time every day. Two stop conditions — whichever hits first stops the bot: **max loss** (`dailyMaxLossUsd`) and **volume target** (`dailyTargetVolumeUsd`). Set `dailyMaxLossUsd: 5` and `dailyTargetVolumeUsd: 5000` and the bot trades all day, stops when it hits $5 loss or $5,000 volume (whichever comes first), then comes back fresh at 7 AM Vietnam time (0:00 UTC) without any manual intervention. Configurable live from the Bot Settings popup in the dashboard — no restart needed.
 
 The system is controlled via a real-time web dashboard and Telegram bot, with 70+ parameters tunable at runtime without a restart.
 
@@ -30,18 +30,26 @@ DRIFT addresses all four: a strict one-action-per-tick state machine eliminates 
 ## How the daily budget reset works
 
 ```
-Bot running with dailyBudgetReset: true, dailyMaxLossUsd: 5, dailyResetHourUTC: 0
+Bot running with dailyBudgetReset: true, dailyMaxLossUsd: 5,
+                 dailyTargetVolumeUsd: 5000, dailyResetHourUTC: 0
   │
   ├── Bot trades normally during the day
-  ├── If sessionPnL hits -$5 → bot stops (max loss protection)
   │
-  └── At 0:00 UTC (7:00 AM Vietnam):
+  ├── If sessionPnL hits -$5 → bot stops (MAX LOSS)
+  │     Telegram: "⚠️ Max Loss Reached | Limit: $5 | Actual: -$5.12 | Bot stopped"
+  │
+  ├── If sessionVolume hits $5,000 → bot stops (VOLUME TARGET)
+  │     Telegram: "🎯 Volume Target Reached | Target: $5,000 | Actual: $5,023 | PnL: +2.40"
+  │
+  └── At 0:00 UTC (7:00 AM Vietnam) — whichever stop condition fired:
         DailyResetScheduler fires (once per day, first minute only):
-          1. bot.stop()           — clean shutdown, state saved to disk
-          2. resetMaxLoss()       — clears the max-loss-triggered flag
-          3. setMaxLoss($5)       — fresh $5 budget for the new day
-          4. bot.start()          — new session begins automatically
-          5. Telegram notification — "🔄 Daily Budget Reset — $5 budget, bot restarted"
+          1. bot.stop()                — clean shutdown, state saved to disk
+          2. resetMaxLoss()            — clears the max-loss-triggered flag
+          3. resetVolumeTarget()       — clears the volume-target-triggered flag
+          4. setMaxLoss($5)            — fresh $5 budget for the new day
+          5. setTargetVolume($5,000)   — fresh $5,000 volume target for the new day
+          6. bot.start()               — new session begins automatically
+          7. Telegram notification     — "🔄 Daily Budget Reset — $5 budget, $5k target, bot restarted"
 ```
 
 The scheduler seeds `lastResetDate` on startup to avoid firing immediately on boot. Each bot has its own independent scheduler — different bots can reset at different hours.
@@ -55,6 +63,8 @@ The scheduler seeds `lastResetDate` on startup to avoid firing immediately on bo
 **Fee-aware trading in Farm Mode.** Farm Mode needs high frequency for volume, but holding too briefly means fees eat the profit. A dynamic minimum hold time derived from live ATR and the actual round-trip fee rate was required to keep net PnL positive.
 
 **Daily reset without disrupting the scheduler.** The `stop()` method is called both during daily reset (temporary) and during full system shutdown (permanent). These need different behavior — daily reset must not kill the scheduler, but SIGTERM must. Solved by adding a `stopScheduler` parameter: `bot.stop()` for daily reset, `bot.stop(true)` for full shutdown.
+
+**Live dashboard config for daily reset.** Exposing the daily reset config through the dashboard required more than just a UI form. The `PATCH /api/bots/:id/daily-reset` endpoint must validate all fields, update `bot.config` in memory, call `sm.setMaxLoss()` and `sm.setTargetVolume()` so the running session reflects the new limits immediately, then call `bot.syncDailyResetScheduler()` to stop the old scheduler and start a new one with the updated config — all atomically before persisting to `bot-configs.json`. Getting the scheduler swap right (stop old → create new → start immediately) without a race condition or a missed reset took careful sequencing.
 
 ## Technologies I used
 
@@ -104,4 +114,4 @@ Started with a single SoDEX bot, then refactored into a modular architecture:
 
 **LLM-enhanced signal reasoning** — use LLM to analyze market context and produce auditable reasoning per trade decision.
 
-**Dashboard daily reset controls** — expose `forceReset()` and reset schedule configuration directly in the bot settings UI.
+**Per-bot analytics dashboard** — dedicated analytics page per bot showing daily PnL curves, volume-vs-target progress bars, and stop-condition history (how many days ended on max loss vs volume target).
