@@ -269,6 +269,25 @@ export class BotInstance {
   }
 
   /**
+   * Clear all session-level stats from the shared state and persist to disk.
+   * Called by DailyResetScheduler before bot.start() so the new session
+   * begins with zero volume, zero PnL, and a fresh start balance.
+   */
+  async clearSessionState(): Promise<void> {
+    this.state.sessionPnl = 0;
+    this.state.sessionGrossPnl = 0;
+    this.state.sessionVolume = 0;
+    this.state.sessionFees = 0;
+    this.state.sessionStartBalance = null;
+    // Keep pnlHistory / volumeHistory / eventLog — they are cumulative across sessions
+    console.log(`[BotInstance:${this.id}] Session state cleared for daily reset`);
+
+    // Persist the cleared state so loadState() in the subsequent start() picks up zeros.
+    const { saveStateSync } = await import('../ai/StateStore.js');
+    saveStateSync(this.state);
+  }
+
+  /**
    * Sync the DailyResetScheduler with the current bot.config.
    * Call this after updating dailyBudgetReset / dailyMaxLossUsd / dailyResetHourUTC / dailyTargetVolumeUsd
    * at runtime (e.g. from the dashboard PATCH endpoint).

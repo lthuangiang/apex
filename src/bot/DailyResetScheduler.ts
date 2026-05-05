@@ -40,6 +40,7 @@ export interface DailyResetTarget {
   readonly id: string;
   start(): Promise<boolean>;
   stop(): Promise<void>;
+  clearSessionState(): Promise<void>;
   getSessionManager(): {
     resetMaxLoss(): void;
     resetVolumeTarget(): void;
@@ -156,7 +157,13 @@ export class DailyResetScheduler {
     sm.setMaxLoss(this.config.maxLossUsd);
     sm.setTargetVolume(this.config.targetVolumeUsd);
 
-    // 4. Auto-restart the bot
+    // 4. Clear persisted session stats so the new session starts fresh.
+    //    Without this, loadState() in bot.start() would restore the old
+    //    sessionVolume / sessionPnl / sessionStartBalance from disk, causing
+    //    the volume-target check to fire immediately and PnL to be wrong.
+    await this.bot.clearSessionState();
+
+    // 5. Auto-restart the bot
     const started = await this.bot.start();
     if (started) {
       console.log(`✅ [DailyResetScheduler:${this.bot.id}] Bot auto-restarted — ${parts.join(', ')}`);
@@ -164,7 +171,7 @@ export class DailyResetScheduler {
       console.warn(`⚠️ [DailyResetScheduler:${this.bot.id}] Bot failed to restart after daily reset`);
     }
 
-    // 5. Notify callback (e.g. send Telegram message)
+    // 6. Notify callback (e.g. send Telegram message)
     this.onReset?.(this.bot.id, 'scheduled');
   }
 
