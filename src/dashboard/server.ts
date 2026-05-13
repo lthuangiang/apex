@@ -189,9 +189,26 @@ export class DashboardServer {
     this.app.post('/api/control/start', async (_req, res) => {
       if (!this.sessionManager || !this.watcher || !this.watcherRunner) { res.status(503).json({ error: 'Not available' }); return; }
       if (this.sessionManager.getState().isRunning) { res.status(400).json({ error: 'Already running' }); return; }
-      this.sessionManager.resetMaxLoss(); // allow restart after emergency stop
-      if (this.sessionManager.startSession()) { this.watcher.resetSession(); this.watcherRunner(); res.json({ ok: true }); }
-      else res.status(500).json({ error: 'Failed' });
+      this.sessionManager.resetMaxLoss();    // allow restart after emergency stop
+      this.sessionManager.resetVolumeTarget(); // allow restart after volume-target stop
+      if (this.sessionManager.startSession()) {
+        // Reset session stats in shared state so the new session starts from zero
+        sharedState.sessionPnl = 0;
+        sharedState.sessionGrossPnl = 0;
+        sharedState.sessionVolume = 0;
+        sharedState.sessionFees = 0;
+        sharedState.sessionStartBalance = null;
+        // Persist the zeroed state so debounced saveState() from the previous
+        // session doesn't overwrite the fresh zeros after restart
+        const { saveStateSync } = await import('../ai/StateStore.js');
+        saveStateSync();
+        this.watcher.resetSession();
+        this.watcher.restoreSessionFromPersistence();
+        this.watcherRunner();
+        res.json({ ok: true });
+      } else {
+        res.status(500).json({ error: 'Failed' });
+      }
     });
 
     this.app.post('/api/control/stop', (_req, res) => {

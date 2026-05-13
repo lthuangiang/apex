@@ -129,9 +129,12 @@ export class BotInstance {
 
   /**
    * Start the bot
+   * @param freshSession - If true (default), clears session PnL/volume/balance so the
+   *   new session starts from zero.  Pass false only when recovering from a crash where
+   *   you want to continue the previous session's accumulated stats.
    * @returns true if started successfully, false if already running
    */
-  async start(): Promise<boolean> {
+  async start(freshSession = true): Promise<boolean> {
     if (this.state.botStatus === 'RUNNING') {
       console.log(`[BotInstance:${this.id}] Already running`);
       return false;
@@ -139,25 +142,41 @@ export class BotInstance {
 
     // Reset max-loss flag so a previously emergency-stopped bot can restart
     this.sessionManager.resetMaxLoss();
+    // Also reset volume-target flag so a volume-stopped bot can restart
+    this.sessionManager.resetVolumeTarget();
 
     const success = this.sessionManager.startSession();
     if (!success) {
       console.error(`[BotInstance:${this.id}] SessionManager failed to start`);
       return false;
     }
-    
-    // Load persisted state BEFORE resetting session
-    // This ensures session stats are restored from disk on bot restart
-    const { loadState } = await import('../ai/StateStore.js');
-    loadState(this.state);
-    
-    // Reset session state machine (but preserve loaded stats)
+
+    if (freshSession) {
+      // Fresh start: wipe session PnL, volume, fees and start balance so the
+      // new session is not poisoned by the previous session's losses.
+      this.state.sessionPnl = 0;
+      this.state.sessionGrossPnl = 0;
+      this.state.sessionVolume = 0;
+      this.state.sessionFees = 0;
+      this.state.sessionStartBalance = null;
+
+      // Persist the zeroed state immediately so that any debounced saveState()
+      // calls from the previous session don't overwrite the fresh zeros, and so
+      // restoreSessionFromPersistence() below reads zeros from disk.
+      const { saveStateSync } = await import('../ai/StateStore.js');
+      saveStateSync(this.state);
+    } else {
+      // Crash-recovery: load persisted state so accumulated stats are preserved.
+      const { loadState } = await import('../ai/StateStore.js');
+      loadState(this.state);
+    }
+
+    // Reset session state machine and sync Watcher's in-memory fields from state.
+    // For a fresh session sessionStartBalance is null so Watcher will capture the
+    // current balance on the very first tick — giving a correct PnL baseline.
     this.watcher.resetSession();
-    
-    // Restore session stats from loaded state into Watcher's in-memory fields
-    // This syncs Watcher's private session fields with the restored BotSharedState
     this.watcher.restoreSessionFromPersistence();
-    
+
     this.state.botStatus = 'RUNNING';
     this.state.updatedAt = new Date().toISOString();
     
