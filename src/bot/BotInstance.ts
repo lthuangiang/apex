@@ -263,6 +263,19 @@ export class BotInstance {
   }
 
   /**
+   * Execute one tick of the bot's Watcher logic.
+   * Used by BacktestRunner to drive the bot over historical candles.
+   *
+   * Safe to call regardless of botStatus — does NOT throw a state-guard error
+   * when the bot is STOPPED. Timing control is delegated to the caller.
+   *
+   * Requirements: 11.2, 11.3, 11.4, 11.5
+   */
+  async tickOnce(): Promise<void> {
+    await this.watcher.tickOnce();
+  }
+
+  /**
    * Force close any open position
    * @returns true if close order was placed successfully
    */

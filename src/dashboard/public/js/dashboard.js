@@ -43,20 +43,31 @@ function initCharts() {
   if (pnlWrap) pnlWrap.innerHTML = '<canvas id="pnl-chart"></canvas>';
   if (volWrap) volWrap.innerHTML = '<canvas id="vol-chart"></canvas>';
 
+  // Read colors from CSS variables so they adapt to light/dark theme
+  const cs = getComputedStyle(document.body);
+  const isLight = document.body.classList.contains('light');
+  const gridColor   = isLight ? 'rgba(0,0,0,0.07)'   : 'rgba(255,255,255,0.05)';
+  const borderColor = isLight ? '#dde2ee'             : '#1e2535';
+  const tickColor   = isLight ? '#4a5a72'             : '#4a5a72';
+  const tooltipBg   = isLight ? '#ffffff'             : '#141820';
+  const tooltipTitle = isLight ? '#0f1623'            : '#e8edf5';
+  const tooltipBody  = isLight ? '#4a5a72'            : '#8a9bb5';
+  const tooltipBorder = isLight ? '#dde2ee'           : '#1e2535';
+
   const opts = (label, color, fillColor) => ({
     type: 'line',
     data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: fillColor, borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4 }] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
-      plugins: { legend:{display:false}, tooltip:{ mode:'index', intersect:false, backgroundColor:'#fff', titleColor:'#0d1117', bodyColor:'#4b5563', borderColor:'#e8eaed', borderWidth:1, padding:10 } },
+      plugins: { legend:{display:false}, tooltip:{ mode:'index', intersect:false, backgroundColor:tooltipBg, titleColor:tooltipTitle, bodyColor:tooltipBody, borderColor:tooltipBorder, borderWidth:1, padding:10 } },
       scales: {
-        x: { ticks:{color:'#9ca3af',font:{size:10},maxTicksLimit:6}, grid:{color:'#f4f6f9'}, border:{color:'#e8eaed'} },
-        y: { ticks:{color:'#9ca3af',font:{size:10}}, grid:{color:'#f4f6f9'}, border:{color:'#e8eaed'} }
+        x: { ticks:{color:tickColor,font:{size:10},maxTicksLimit:6}, grid:{color:gridColor}, border:{color:borderColor} },
+        y: { ticks:{color:tickColor,font:{size:10}}, grid:{color:gridColor}, border:{color:borderColor} }
       }
     }
   });
-  pnlChart = new Chart(document.getElementById('pnl-chart'), opts('PnL','#15803d','rgba(21,128,61,0.07)'));
-  volChart = new Chart(document.getElementById('vol-chart'), opts('Volume','#4361ee','rgba(67,97,238,0.07)'));
+  pnlChart = new Chart(document.getElementById('pnl-chart'), opts('PnL','#1db954','rgba(29,185,84,0.1)'));
+  volChart = new Chart(document.getElementById('vol-chart'), opts('Volume','#f5a623','rgba(245,166,35,0.1)'));
 }
 
 function updateCharts(ph, vh) {
@@ -383,7 +394,7 @@ async function refreshPosition() {
 }
 
 // ── Realtime Log (SSE) ────────────────────────────────────────────────────
-const LOG_COLORS = { INFO:'background:rgba(100,150,255,0.15);color:#6496ff', ORDER_PLACED:'background:rgba(100,150,255,0.15);color:#6496ff', ORDER_FILLED:'background:rgba(0,212,100,0.15);color:#00d464', ERROR:'background:rgba(255,77,77,0.15);color:#ff4d4d', WARN:'background:rgba(255,180,0,0.15);color:#ffb400' };
+const LOG_COLORS = { INFO:'background:rgba(74,144,217,0.15);color:#4a90d9', ORDER_PLACED:'background:rgba(74,144,217,0.15);color:#4a90d9', ORDER_FILLED:'background:rgba(29,185,84,0.15);color:#1db954', ERROR:'background:rgba(232,64,74,0.15);color:#e8404a', WARN:'background:rgba(245,166,35,0.15);color:#f5a623' };
 let activeTab = 'console';
 
 function switchTab(tab) {

@@ -230,10 +230,22 @@ export class HedgeBot {
   }
 
   /**
+   * Execute one iteration of the bot's state machine.
+   * Used by BacktestRunner to drive the bot tick-by-tick over historical candles.
+   * Unlike the internal tick loop, this method does NOT check botStatus — the caller
+   * (BacktestRunner) is responsible for managing the execution loop.
+   *
+   * Requirements: 11.1, 11.3, 11.4, 11.5
+   */
+  public async tickOnce(): Promise<void> {
+    return this._tick();
+  }
+
+  /**
    * Single tick — dispatches to the appropriate state handler.
    * IDLE → OPENING → WAITING_FILL → IN_PAIR → CLOSING → COOLDOWN
    */
-  private async _tick(): Promise<void> {
+  protected async _tick(): Promise<void> {
     switch (this.state.hedgeBotState) {
       case 'IDLE':
         await this._tickIdle();

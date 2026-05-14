@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DRIFT — Connect Wallet</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
+      background:#0d0f14;color:#e8edf5;
+      display:flex;align-items:center;justify-content:center;
+      min-height:100vh;padding:1rem;
+      -webkit-font-smoothing:antialiased;
+    }
+
+    /* ── Card ── */
+    .card{
+      background:#141820;border:1px solid #1e2535;border-radius:16px;
+      padding:2rem 1.75rem 1.75rem;width:100%;max-width:380px;
+      box-shadow:0 8px 40px rgba(0,0,0,.65),0 1px 4px rgba(0,0,0,.4);
+      text-align:center;
+    }
+
+    .back-link{
+      display:inline-flex;align-items:center;gap:.3rem;
+      font-size:.7rem;color:#4a5a72;text-decoration:none;
+      margin-bottom:1.25rem;letter-spacing:.04em;
+      transition:color .15s;
+    }
+    .back-link:hover{color:#8a9bb5}
+
+    .brand{font-size:1.5rem;font-weight:900;letter-spacing:-.04em;color:#fff;margin-bottom:.2rem}
+    .tagline{font-size:.72rem;color:#4a5a72;letter-spacing:.06em;text-transform:lowercase;margin-bottom:1.5rem}
+    .divider{border:none;border-top:1px solid #1e2535;margin-bottom:1.5rem}
+
+    /* ── Section title ── */
+    .section-title{
+      font-size:.62rem;font-weight:700;text-transform:uppercase;
+      letter-spacing:.1em;color:#4a5a72;margin-bottom:.875rem;
+    }
+
+    /* ── Wallet list container ── */
+    #wallet-list{margin-bottom:.25rem}
+
+    /* ── Wallet buttons ── */
+    .wallet-btn{
+      width:100%;display:flex;align-items:center;gap:.875rem;
+      padding:.75rem 1rem;border-radius:10px;border:1.5px solid #1e2535;
+      background:#0d0f14;color:#e8edf5;cursor:pointer;
+      font-size:.875rem;font-weight:600;
+      transition:all .15s;margin-bottom:.6rem;
+      text-align:left;
+    }
+    .wallet-btn:hover{border-color:#f5a623;background:#141820;transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.4)}
+    .wallet-btn:active{transform:scale(.98)}
+    .wallet-btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+
+    .wallet-icon{
+      width:36px;height:36px;border-radius:8px;
+      display:flex;align-items:center;justify-content:center;
+      flex-shrink:0;font-size:1.2rem;overflow:hidden;
+    }
+
+    .wallet-info{display:flex;flex-direction:column;gap:.1rem;flex:1;min-width:0}
+    .wallet-name{font-size:.875rem;font-weight:700;color:#e8edf5}
+    /* .wallet-desc kept as alias for legacy code; .wallet-sub is the canonical class */
+    .wallet-sub,.wallet-desc{font-size:.65rem;color:#4a5a72;font-weight:400}
+
+    .chevron,.wallet-arrow{
+      margin-left:auto;color:#4a5a72;font-size:.9rem;
+      transition:transform .15s,color .15s;flex-shrink:0;
+    }
+    .wallet-btn:hover .chevron,
+    .wallet-btn:hover .wallet-arrow{transform:translateX(3px);color:#f5a623}
+
+    /* ── Install MetaMask link ── */
+    .install-link{
+      display:block;text-align:center;
+      font-size:.75rem;color:#4a5a72;text-decoration:none;
+      margin-top:.5rem;padding:.5rem;
+      transition:color .15s;
+    }
+    .install-link:hover{color:#f5a623}
+
+    /* ── Detecting skeleton ── */
+    .detecting-msg{
+      font-size:.72rem;color:#4a5a72;text-align:center;
+      padding:.75rem 0;letter-spacing:.04em;
+    }
+
+    /* ── Status / signing step ── */
+    .status-box{
+      display:none;
+      background:#0d0f14;border:1px solid #1e2535;border-radius:10px;
+      padding:1rem;margin-top:.875rem;text-align:left;
+    }
+    .status-box.visible{display:block}
+
+    .status-step{
+      display:flex;align-items:center;gap:.6rem;
+      font-size:.78rem;color:#8a9bb5;padding:.3rem 0;
+    }
+    .status-step.active{color:#e8edf5;font-weight:600}
+    .status-step.done{color:#1db954}
+    .status-step.error{color:#e8404a}
+
+    .step-icon{
+      width:18px;height:18px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:.65rem;flex-shrink:0;
+    }
+    .step-icon.pending{background:#1e2535;color:#4a5a72}
+    .step-icon.active{background:rgba(245,166,35,.15);color:#f5a623;animation:spin .8s linear infinite}
+    .step-icon.done{background:rgba(29,185,84,.15);color:#1db954}
+    .step-icon.error{background:rgba(232,64,74,.15);color:#e8404a}
+
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* ── Connected address display ── */
+    .addr-box{
+      display:none;
+      background:#0d0f14;border:1px solid #1e2535;border-radius:10px;
+      padding:.75rem 1rem;margin-top:.875rem;
+      align-items:center;gap:.75rem;
+    }
+    .addr-box.visible{display:flex}
+    .addr-dot{width:8px;height:8px;border-radius:50%;background:#1db954;flex-shrink:0}
+    .addr-text{
+      font-size:.75rem;font-family:'SF Mono','Fira Code',monospace;
+      color:#8a9bb5;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    }
+    .addr-disconnect{
+      font-size:.65rem;color:#4a5a72;cursor:pointer;
+      background:none;border:none;padding:.2rem .4rem;
+      border-radius:4px;transition:color .15s;
+    }
+    .addr-disconnect:hover{color:#e8404a}
+
+    /* ── Error ── */
+    .error-msg{
+      color:#e8404a;font-size:.72rem;margin-top:.65rem;
+      background:rgba(232,64,74,.1);border:1px solid rgba(232,64,74,.3);
+      border-radius:6px;padding:.4rem .65rem;display:none;text-align:left;
+    }
+    .error-msg.visible{display:block}
+
+    /* ── Sign button ── */
+    .sign-btn{
+      width:100%;margin-top:.875rem;
+      background:#f5a623;color:#000;border:none;border-radius:8px;
+      padding:.7rem;font-size:.875rem;font-weight:700;cursor:pointer;
+      letter-spacing:.02em;transition:all .15s;
+      box-shadow:0 1px 12px rgba(245,166,35,.3);
+      display:none;
+    }
+    .sign-btn.visible{display:block}
+    .sign-btn:hover{background:#ffb83d;box-shadow:0 2px 18px rgba(245,166,35,.4);transform:translateY(-1px)}
+    .sign-btn:active{transform:scale(.98)}
+    .sign-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+
+    /* ── Divider with text ── */
+    .or-divider{
+      display:flex;align-items:center;gap:.75rem;
+      margin:1.25rem 0;color:#2a3548;font-size:.68rem;
+    }
+    .or-divider::before,.or-divider::after{content:'';flex:1;height:1px;background:#1e2535}
+
+    /* ── Passcode link ── */
+    .passcode-link{
+      font-size:.72rem;color:#4a5a72;text-decoration:none;
+      transition:color .15s;display:inline-block;
+    }
+    .passcode-link:hover{color:#8a9bb5}
+
+    /* ── WalletConnect modal overlay ── */
+    .wc-overlay{
+      display:none;position:fixed;inset:0;
+      background:rgba(0,0,0,.7);z-index:1000;
+      align-items:center;justify-content:center;
+      backdrop-filter:blur(4px);
+    }
+    .wc-overlay.open{display:flex}
+    .wc-modal{
+      background:#141820;border:1px solid #1e2535;border-radius:16px;
+      padding:1.75rem;width:100%;max-width:340px;
+      box-shadow:0 16px 48px rgba(0,0,0,.8);
+      text-align:center;
+    }
+    .wc-title{font-size:1rem;font-weight:700;margin-bottom:.5rem}
+    .wc-subtitle{font-size:.75rem;color:#4a5a72;margin-bottom:1.25rem}
+    .wc-uri-box{
+      background:#0d0f14;border:1px solid #1e2535;border-radius:8px;
+      padding:.75rem;font-size:.65rem;font-family:monospace;
+      color:#8a9bb5;word-break:break-all;margin-bottom:1rem;
+      max-height:80px;overflow-y:auto;
+    }
+    .wc-qr{
+      margin:0 auto 1rem;width:200px;height:200px;
+      background:#fff;border-radius:8px;
+      display:flex;align-items:center;justify-content:center;
+      font-size:.7rem;color:#000;
+    }
+    .wc-close{
+      font-size:.8rem;color:#4a5a72;cursor:pointer;
+      background:none;border:1px solid #1e2535;border-radius:6px;
+      padding:.4rem .875rem;transition:all .15s;
+    }
+    .wc-close:hover{color:#e8edf5;border-color:#8a9bb5}
+  </style>
+</head>
+<body>
+  <script>
+    // If already authenticated, skip login and go straight to dashboard
+    fetch('/api/auth/me').then(function(r) {
+      if (r.ok) return r.json();
+    }).then(function(d) {
+      if (d && d.ok) window.location.replace('/dashboard');
+    }).catch(function() {});
+  </script>
+  <div class="card">
+    <a href="/landing" class="back-link">← Back</a>
+
+    <div class="brand">DRIFT</div>
+    <p class="tagline">Set it. Let it drift.</p>
+    <hr class="divider"/>
+
+    <div class="section-title">Connect your wallet</div>
+
+    <!-- Dynamic wallet list — populated by wallet-detect.js -->
+    <div id="wallet-list">
+      <!-- Shown while EIP-6963 detection window is open (150 ms) -->
+      <p class="detecting-msg">Detecting wallets…</p>
+    </div>
+
+    <!-- Connected address display -->
+    <div class="addr-box" id="addr-box">
+      <div class="addr-dot"></div>
+      <div class="addr-text" id="addr-text">0x...</div>
+      <button class="addr-disconnect" onclick="disconnect()">Disconnect</button>
+    </div>
+
+    <!-- Sign button — shown after wallet connects -->
+    <button class="sign-btn" id="sign-btn" onclick="signAndVerify()">
+      Sign Message to Continue →
+    </button>
+
+    <!-- Status steps -->
+    <div class="status-box" id="status-box">
+      <div class="status-step" id="step-connect">
+        <div class="step-icon pending" id="step-connect-icon">1</div>
+        Connect wallet
+      </div>
+      <div class="status-step" id="step-sign">
+        <div class="step-icon pending" id="step-sign-icon">2</div>
+        Sign message (no gas)
+      </div>
+      <div class="status-step" id="step-verify">
+        <div class="step-icon pending" id="step-verify-icon">3</div>
+        Verify on server
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div class="error-msg" id="error-msg"></div>
+
+    <div class="or-divider" style="display:none"></div>
+    <a href="/login" class="passcode-link" style="display:none">Sign in with passcode →</a>
+  </div>
+
+  <!-- WalletConnect URI modal (fallback QR display) -->
+  <div class="wc-overlay" id="wc-overlay">
+    <div class="wc-modal">
+      <div class="wc-title">Scan with your wallet</div>
+      <div class="wc-subtitle">Open your mobile wallet and scan the QR code</div>
+      <div class="wc-qr" id="wc-qr">
+        <span style="color:#666;font-size:.7rem">QR code loading...</span>
+      </div>
+      <div class="wc-uri-box" id="wc-uri">Generating connection URI...</div>
+      <button class="wc-close" onclick="closeWcModal()">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    // ── Shared state ──────────────────────────────────────────────────────────
+    var connectedAddress  = null;
+    var connectedProvider = null;
+
+    // ── UI helpers ────────────────────────────────────────────────────────────
+    function shortAddr(addr) {
+      return addr.slice(0, 6) + '\u2026' + addr.slice(-4);
+    }
+
+    function showError(msg) {
+      var el = document.getElementById('error-msg');
+      el.textContent = msg;
+      el.classList.add('visible');
+    }
+
+    function clearError() {
+      document.getElementById('error-msg').classList.remove('visible');
+    }
+
+    function setStep(stepId, state) {
+      var step = document.getElementById('step-' + stepId);
+      var icon = document.getElementById('step-' + stepId + '-icon');
+      if (!step || !icon) return;
+      var labels  = { connect: '1', sign: '2', verify: '3' };
+      var symbols = { active: '\u21bb', done: '\u2713', error: '\u2715' };
+      step.className = 'status-step' + (state !== 'pending' ? ' ' + state : '');
+      icon.className = 'step-icon ' + state;
+      icon.textContent = symbols[state] || labels[stepId] || '';
+    }
+
+    function showStatusBox() {
+      document.getElementById('status-box').classList.add('visible');
+    }
+
+    // ── Called by wallet-detect.js after EIP-6963 connect ─────────────────────
+    // Also called by connectWalletConnect() after WC session is established.
+    // Automatically proceeds to sign+verify — no manual button click needed.
+    window.connectWithProvider = function (provider, address) {
+      connectedProvider = provider;
+      connectedAddress  = address;
+      document.getElementById('addr-text').textContent = shortAddr(address);
+      document.getElementById('addr-box').classList.add('visible');
+      clearError();
+      // Auto-proceed to SIWE signing immediately
+      signAndVerify();
+    };
+
+    // ── Disconnect ────────────────────────────────────────────────────────────
+    window.disconnect = function () {
+      connectedAddress  = null;
+      connectedProvider = null;
+      document.getElementById('addr-box').classList.remove('visible');
+      document.getElementById('sign-btn').classList.remove('visible');
+      document.getElementById('status-box').classList.remove('visible');
+      clearError();
+      ['connect', 'sign', 'verify'].forEach(function (s) { setStep(s, 'pending'); });
+      // wallet-detect.js wraps this to also re-enable buttons
+    };
+
+    // ── WalletConnect (lazy-loaded on click) ──────────────────────────────────
+    window.connectWalletConnect = async function () {
+      clearError();
+      showStatusBox();
+      setStep('connect', 'active');
+
+      // Disable all wallet buttons while connecting
+      document.querySelectorAll('#wallet-list .wallet-btn').forEach(function (b) {
+        b.disabled = true;
+      });
+
+      try {
+        // Lazy-load the WalletConnect SDK only when the user clicks the button.
+        // This prevents CDN fetch errors on page load when the SDK is unreachable.
+        var mod = await import(
+          'https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.17.0/dist/index.es.js'
+        );
+        var EthereumProvider = mod.EthereumProvider;
+
+        var wcProvider = await EthereumProvider.init({
+          projectId: '17746bd693c050df38d432312bc640cc',
+          chains: [1],
+          optionalChains: [1, 137, 56, 42161],
+          showQrModal: true,
+          metadata: {
+            name: 'DRIFT Trading Dashboard',
+            description: 'AI-powered perpetual futures trading bot',
+            url: window.location.origin,
+            icons: [window.location.origin + '/images/logo.png'],
+          },
+        });
+
+        wcProvider.on('display_uri', function (uri) {
+          document.getElementById('wc-uri').textContent = uri;
+          renderQR(uri);
+        });
+
+        await wcProvider.connect();
+        var accounts = wcProvider.accounts;
+        if (!accounts || accounts.length === 0) throw new Error('No accounts returned');
+
+        setStep('connect', 'done');
+        closeWcModal();
+        window.connectWithProvider(wcProvider, accounts[0]);
+      } catch (err) {
+        var rejected = err.code === 4001 ||
+          (err.message && err.message.toLowerCase().includes('user rejected'));
+        if (rejected) {
+          setStep('connect', 'pending');
+          clearError();
+        } else {
+          setStep('connect', 'error');
+          showError(err.message || 'WalletConnect failed');
+        }
+        document.querySelectorAll('#wallet-list .wallet-btn').forEach(function (b) {
+          b.disabled = false;
+        });
+        closeWcModal();
+      }
+    };
+
+    // ── QR code rendering (optional) ─────────────────────────────────────────
+    async function renderQR(uri) {
+      try {
+        var mod = await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.esm.js');
+        var canvas = document.createElement('canvas');
+        await mod.default.toCanvas(canvas, uri, { width: 200, margin: 1 });
+        var qrEl = document.getElementById('wc-qr');
+        qrEl.innerHTML = '';
+        qrEl.appendChild(canvas);
+      } catch (_) { /* QR render failed — URI text is still visible */ }
+    }
+
+    window.closeWcModal = function () {
+      document.getElementById('wc-overlay').classList.remove('open');
+    };
+
+    // ── SIWE sign & verify ────────────────────────────────────────────────────
+    async function signAndVerify() {
+      if (!connectedAddress || !connectedProvider) {
+        showError('No wallet connected');
+        return;
+      }
+      clearError();
+      showStatusBox();
+
+      var signBtn = document.getElementById('sign-btn');
+      signBtn.classList.remove('visible');
+      signBtn.disabled = true;
+      signBtn.textContent = 'Signing\u2026';
+
+      try {
+        // 1. Fetch nonce
+        setStep('sign', 'active');
+        var nonceRes = await fetch('/api/auth/nonce');
+        if (!nonceRes.ok) throw new Error('Failed to get nonce from server');
+        var nonceData = await nonceRes.json();
+        var nonce = nonceData.nonce;
+
+        // 2. Build EIP-4361 message
+        var domain    = window.location.host;
+        var uri       = window.location.origin;
+        var issuedAt  = new Date().toISOString();
+        var message   = [
+          domain + ' wants you to sign in with your Ethereum account:',
+          connectedAddress,
+          '',
+          'Sign in to DRIFT Trading Dashboard',
+          '',
+          'URI: ' + uri,
+          'Version: 1',
+          'Chain ID: 1',
+          'Nonce: ' + nonce,
+          'Issued At: ' + issuedAt,
+        ].join('\n');
+
+        // 3. Request personal_sign from wallet
+        var signature = await connectedProvider.request({
+          method: 'personal_sign',
+          params: [message, connectedAddress],
+        });
+
+        setStep('sign', 'done');
+
+        // 4. Verify on server
+        setStep('verify', 'active');
+        var verifyRes = await fetch('/api/auth/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: message, signature: signature }),
+        });
+        var verifyData = await verifyRes.json();
+        console.log('[SIWE] verify response status:', verifyRes.status, '| body:', JSON.stringify(verifyData));
+        if (!verifyRes.ok) throw new Error(verifyData.error || 'Verification failed');
+
+        setStep('verify', 'done');
+        console.log('[SIWE] ✅ success — redirecting to /dashboard');
+        // Force hard navigation to ensure cookie is sent with next request
+        window.location.replace('/dashboard');
+      } catch (err) {
+        var rejected = err.code === 4001 ||
+          (err.message && err.message.toLowerCase().includes('user rejected'));
+        if (rejected) {
+          setStep('sign', 'pending');
+          showError('Signature rejected.');
+        } else {
+          setStep('verify', 'error');
+          showError(err.message || 'Authentication failed');
+        }
+        // Show retry button on failure
+        signBtn.disabled = false;
+        signBtn.textContent = 'Retry Sign \u2192';
+        signBtn.classList.add('visible');
+      }
+    }
+
+    // Expose for the retry button onclick
+    window.signAndVerify = signAndVerify;
+  </script>
+
+  <!--
+    wallet-detect.js — EIP-6963 dynamic detection.
+    Loaded last so the page's connectWithProvider() and connectWalletConnect()
+    functions are already defined when the script runs.
+  -->
+  <script src="/js/wallet-detect.js"></script>
+</body>
+</html>

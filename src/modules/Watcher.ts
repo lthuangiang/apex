@@ -302,7 +302,15 @@ export class Watcher {
     // Every branch that performs an action ends with `return`.
     // ─────────────────────────────────────────────────────────────────────────
 
-    private async _tick() {
+    /**
+     * Public wrapper for BacktestRunner: executes exactly one tick of the bot's
+     * state machine without any sleep/setTimeout. Timing is controlled by the caller.
+     */
+    public async tickOnce(): Promise<void> {
+        await this._tick();
+    }
+
+    public async _tick() {
         const ts = new Date().toLocaleTimeString();
         console.log(`\n--- ${ts} Tick --- [State: ${this.botState}]`);
 

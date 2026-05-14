@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DRIFT — Dynamic Risk-Informed Futures Trading</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;background:#0d0f14;color:#e8edf5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    
+    /* Hero Section */
+    .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem 1rem;position:relative;overflow:hidden}
+    .hero::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:radial-gradient(circle at 50% 20%,rgba(245,166,35,0.08) 0%,transparent 50%);pointer-events:none}
+    
+    .hero-content{max-width:900px;text-align:center;position:relative;z-index:1}
+    .badge{display:inline-block;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.3);color:#f5a623;font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;padding:0.4rem 0.9rem;border-radius:20px;margin-bottom:1.5rem}
+    
+    .hero-title{font-size:clamp(2.5rem,8vw,5rem);font-weight:900;line-height:1.1;letter-spacing:-0.03em;margin-bottom:1.5rem;background:linear-gradient(135deg,#fff 0%,#8a9bb5 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    
+    .hero-tagline{font-size:clamp(0.9rem,2.5vw,1.15rem);color:#f5a623;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:0.75rem}
+    .hero-subtitle{font-size:clamp(1.1rem,3vw,1.5rem);color:#8a9bb5;line-height:1.5;margin-bottom:2.5rem;font-style:italic}
+    
+    .cta-group{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-bottom:3rem}
+    .btn{padding:0.85rem 2rem;border-radius:10px;font-size:0.95rem;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;gap:0.5rem;transition:all 0.2s;cursor:pointer;border:none}
+    .btn-primary{background:#f5a623;color:#000;box-shadow:0 4px 20px rgba(245,166,35,0.3)}
+    .btn-primary:hover{background:#ffb83d;box-shadow:0 6px 28px rgba(245,166,35,0.4);transform:translateY(-2px)}
+    .btn-secondary{background:rgba(255,255,255,0.05);color:#e8edf5;border:1.5px solid #1e2535}
+    .btn-secondary:hover{background:rgba(255,255,255,0.08);border-color:#f5a623}
+    
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:2rem;max-width:700px;margin:0 auto}
+    .stat-item{text-align:center}
+    .stat-value{font-size:2.2rem;font-weight:900;color:#f5a623;line-height:1}
+    .stat-label{font-size:0.75rem;color:#4a5a72;text-transform:uppercase;letter-spacing:0.08em;margin-top:0.4rem}
+    
+    /* Features Section */
+    .section{padding:6rem 1rem;position:relative}
+    .section-header{text-align:center;max-width:700px;margin:0 auto 4rem}
+    .section-title{font-size:clamp(2rem,5vw,3rem);font-weight:900;margin-bottom:1rem;letter-spacing:-0.02em}
+    .section-subtitle{font-size:1.1rem;color:#8a9bb5;line-height:1.6}
+    
+    .features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:2rem;max-width:1200px;margin:0 auto}
+    .feature-card{background:#141820;border:1px solid #1e2535;border-radius:14px;padding:2rem;transition:all 0.3s}
+    .feature-card:hover{border-color:#f5a623;transform:translateY(-4px);box-shadow:0 8px 32px rgba(0,0,0,0.4)}
+    .feature-icon{width:48px;height:48px;background:rgba(245,166,35,0.12);border:1px solid rgba(245,166,35,0.3);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;margin-bottom:1.2rem}
+    .feature-title{font-size:1.3rem;font-weight:700;margin-bottom:0.8rem}
+    .feature-desc{color:#8a9bb5;line-height:1.6;font-size:0.95rem}
+    
+    /* Strategies Section */
+    .strategies{background:#141820;border-top:1px solid #1e2535;border-bottom:1px solid #1e2535}
+    .strategy-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;max-width:1100px;margin:0 auto}
+    .strategy-card{background:#0d0f14;border:1px solid #1e2535;border-radius:12px;padding:1.8rem;position:relative;overflow:hidden}
+    .strategy-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#f5a623,#ffb83d)}
+    .strategy-name{font-size:1.2rem;font-weight:700;margin-bottom:0.6rem;margin-top:0.5rem}
+    .strategy-desc{color:#8a9bb5;font-size:0.9rem;line-height:1.5;margin-bottom:1rem}
+    .strategy-tag{display:inline-block;background:rgba(245,166,35,0.12);color:#f5a623;font-size:0.7rem;font-weight:600;padding:0.3rem 0.7rem;border-radius:6px;margin-right:0.4rem}
+    
+    /* CTA Section */
+    .cta-section{background:linear-gradient(135deg,rgba(245,166,35,0.08) 0%,transparent 100%);text-align:center;padding:5rem 1rem}
+    .cta-title{font-size:clamp(2rem,5vw,3rem);font-weight:900;margin-bottom:1rem}
+    .cta-subtitle{font-size:1.1rem;color:#8a9bb5;margin-bottom:2rem}
+    
+    /* Footer */
+    .footer{padding:2rem 1rem;text-align:center;border-top:1px solid #1e2535}
+    .footer-text{color:#4a5a72;font-size:0.85rem}
+    .footer-link{color:#8a9bb5;text-decoration:none;transition:color 0.2s}
+    .footer-link:hover{color:#f5a623}
+    
+    /* Exchange cards */
+    .exchange-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;max-width:1100px;margin:0 auto}
+    .exchange-card{background:#0d0f14;border:1px solid #1e2535;border-radius:14px;padding:2rem;transition:all 0.3s;display:flex;flex-direction:column;gap:1rem}
+    .exchange-card:hover{border-color:rgba(245,166,35,0.4);transform:translateY(-4px);box-shadow:0 8px 32px rgba(0,0,0,0.5)}
+    .exchange-logo-wrap{height:52px;display:flex;align-items:center}
+    .exchange-logo-svg{height:44px;width:auto;max-width:200px}
+    .exchange-tags{display:flex;flex-wrap:wrap;gap:0.4rem}
+    .exchange-tag{background:rgba(245,166,35,0.1);border:1px solid rgba(245,166,35,0.25);color:#f5a623;font-size:0.68rem;font-weight:600;padding:0.25rem 0.6rem;border-radius:5px;letter-spacing:0.04em}
+    .exchange-desc{color:#8a9bb5;font-size:0.9rem;line-height:1.55}
+
+    @media(max-width:768px){
+      .hero{min-height:90vh}
+      .stats-grid{grid-template-columns:repeat(2,1fr);gap:1.5rem}
+      .features-grid,.strategy-cards{grid-template-columns:1fr}
+    }
+  </style>
+</head>
+<body>
+  
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <div class="badge">LIVE · AI-POWERED TRADING</div>
+      <h1 class="hero-title">DRIFT</h1>
+      <p class="hero-tagline">Dynamic Risk-Informed Futures Trading</p>
+      <p class="hero-subtitle">AI-powered perpetual futures bot with adaptive learning, intelligent execution, correlation hedging, and daily budget reset.</p>
+      
+      <div class="cta-group">
+        <a href="/wallet-login" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
+          Connect Wallet
+        </a>
+        <a href="#features" class="btn btn-secondary">Explore Features</a>
+      </div>
+      
+      <div class="stats-grid">
+        <div class="stat-item">
+          <div class="stat-value">3</div>
+          <div class="stat-label">Strategies</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">3</div>
+          <div class="stat-label">Exchanges</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">70+</div>
+          <div class="stat-label">Live Params</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">24/7</div>
+          <div class="stat-label">Automated</div>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Strategies Section -->
+  <section class="section strategies" id="strategies">
+    <div class="section-header">
+      <h2 class="section-title">Three strategies. One system.</h2>
+      <p class="section-subtitle">Farm Mode maximizes volume, Trade Mode maximizes win rate, Hedge Bot profits from correlation divergence.</p>
+    </div>
+    
+    <div class="strategy-cards">
+      <div class="strategy-card">
+        <div class="strategy-name">🌾 Farm Mode</div>
+        <p class="strategy-desc">Designed for DEXes with volume incentives (SoPoints, rebates). Always trading, never skips — falls back to price position or mean reversion when signal is weak.</p>
+        <div>
+          <span class="strategy-tag">Volume Maximizer</span>
+          <span class="strategy-tag">Dynamic TP/SL</span>
+        </div>
+      </div>
+      
+      <div class="strategy-card">
+        <div class="strategy-name">📈 Trade Mode</div>
+        <p class="strategy-desc">Only enters on clear edge: regime check → chop detection → fake breakout filter → confidence gate → 2-tick confirmation. No time exit — lets winners run.</p>
+        <div>
+          <span class="strategy-tag">Win Rate Focus</span>
+          <span class="strategy-tag">Signal Filtered</span>
+        </div>
+      </div>
+      
+      <div class="strategy-card">
+        <div class="strategy-name">⚖️ Hedge Bot</div>
+        <p class="strategy-desc">Simultaneously opens long on one asset and short on the other (BTC/ETH) with equal USD notional, profiting from temporary correlation divergence.</p>
+        <div>
+          <span class="strategy-tag">Market Neutral</span>
+          <span class="strategy-tag">Correlation Play</span>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Features Section -->
+  <section class="section" id="features">
+    <div class="section-header">
+      <h2 class="section-title">Built for serious traders</h2>
+      <p class="section-subtitle">Production-grade execution safety, adaptive learning, and full automation.</p>
+    </div>
+    
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🧠</div>
+        <h3 class="feature-title">AI Signal Engine</h3>
+        <p class="feature-desc">Parallel fetch: orderbook depth, recent trades, 5m klines (EMA9/21, RSI14, momentum), plus SoSoValue Fear & Greed. Adaptive weights auto-adjust every 10 trades.</p>
+      </div>
+      
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3 class="feature-title">One-Action-Per-Tick</h3>
+        <p class="feature-desc">Strict execution safety. Each tick performs exactly one action then returns. Per-tick mutex prevents duplicate orders, ghost positions, and race conditions.</p>
+      </div>
+      
+      <div class="feature-card">
+        <div class="feature-icon">📅</div>
+        <h3 class="feature-title">Daily Budget Reset</h3>
+        <p class="feature-desc">Two stop conditions: max loss and volume target. Bot stops when either hits, auto-restarts at 0:00 UTC (7:00 AM Vietnam) with fresh budget. Fully hands-free.</p>
+      </div>
+      
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3 class="feature-title">Real-Time Dashboard</h3>
+        <p class="feature-desc">Multi-bot manager view, per-bot session PnL, SSE console stream, trade history, 30+ dimension analytics, and 70+ runtime-configurable parameters.</p>
+      </div>
+      
+      <div class="feature-card">
+        <div class="feature-icon">🔄</div>
+        <h3 class="feature-title">Feedback Loop</h3>
+        <p class="feature-desc">Tracks win rate per signal component, adjusts weights every 10 trades. Bounds: [0.05, 0.60], sum to 1.0. System learns from its own results.</p>
+      </div>
+      
+      <div class="feature-card">
+        <div class="feature-icon">💬</div>
+        <h3 class="feature-title">Telegram Control</h3>
+        <p class="feature-desc">Remote control and alerts via Telegram bot. Start/stop bots, check status, view open positions, adjust config — all from your phone.</p>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Tech Stack Section -->
+  <section class="section" style="background:#141820;border-top:1px solid #1e2535">
+    <div class="section-header">
+      <h2 class="section-title">Exchange-agnostic architecture</h2>
+      <p class="section-subtitle">One adapter interface, three exchanges. Same bot logic, completely different mechanics.</p>
+    </div>
+    
+    <div class="exchange-grid">
+
+      <!-- SoDEX -->
+      <div class="exchange-card">
+        <div class="exchange-logo-wrap">
+          <svg viewBox="0 0 220 56" fill="none" xmlns="http://www.w3.org/2000/svg" class="exchange-logo-svg">
+            <!-- Hexagon icon -->
+            <path d="M22 4L38 13V31L22 40L6 31V13L22 4Z" stroke="white" stroke-width="2.5" fill="none"/>
+            <path d="M22 12L30 17V27L22 32L14 27V17L22 12Z" fill="white" opacity="0.15"/>
+            <rect x="19" y="19" width="6" height="6" rx="1" fill="#e8404a"/>
+            <!-- SoDEX text -->
+            <text x="50" y="36" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="22" font-weight="800" fill="white" letter-spacing="-0.5">SoDEX</text>
+          </svg>
+        </div>
+        <div class="exchange-tags">
+          <span class="exchange-tag">EIP-712</span>
+          <span class="exchange-tag">Post-Only</span>
+          <span class="exchange-tag">SoPoints</span>
+        </div>
+        <p class="exchange-desc">EIP-712 typed data signing, Post-Only orders, 0.012% maker fee, SoPoints volume incentives.</p>
+      </div>
+
+      <!-- Decibel -->
+      <div class="exchange-card">
+        <div class="exchange-logo-wrap">
+          <svg viewBox="0 0 240 56" fill="none" xmlns="http://www.w3.org/2000/svg" class="exchange-logo-svg">
+            <!-- Decibel icon: two overlapping ellipses -->
+            <ellipse cx="14" cy="20" rx="10" ry="6" transform="rotate(-30 14 20)" fill="white" opacity="0.9"/>
+            <ellipse cx="26" cy="36" rx="10" ry="6" transform="rotate(-30 26 36)" fill="white" opacity="0.9"/>
+            <!-- Decibel text -->
+            <text x="48" y="36" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="22" font-weight="700" fill="white" letter-spacing="-0.3">Decibel</text>
+          </svg>
+        </div>
+        <div class="exchange-tags">
+          <span class="exchange-tag">Aptos</span>
+          <span class="exchange-tag">Ed25519</span>
+          <span class="exchange-tag">Gas Station</span>
+        </div>
+        <p class="exchange-desc">Aptos-based DEX with Ed25519 signing, Gas Station support, per-order cancel, builder fee optional.</p>
+      </div>
+
+      <!-- Dango -->
+      <div class="exchange-card">
+        <div class="exchange-logo-wrap">
+          <svg viewBox="0 0 200 56" fill="none" xmlns="http://www.w3.org/2000/svg" class="exchange-logo-svg">
+            <!-- Dango icon: 3 mochi balls on a stick -->
+            <line x1="18" y1="8" x2="14" y2="48" stroke="#c8a882" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="16" cy="14" r="7" fill="#e8a0a0"/>
+            <circle cx="15" cy="28" r="7" fill="#f5f0e8"/>
+            <circle cx="14" cy="42" r="7" fill="#a8c878"/>
+            <!-- Dango text -->
+            <text x="34" y="36" font-family="Georgia,serif" font-size="22" font-weight="700" fill="white" letter-spacing="-0.5">DanGO</text>
+          </svg>
+        </div>
+        <div class="exchange-tags">
+          <span class="exchange-tag">GraphQL</span>
+          <span class="exchange-tag">Secp256k1</span>
+          <span class="exchange-tag">USD Notional</span>
+        </div>
+        <p class="exchange-desc">GraphQL API with Secp256k1 signing, USD notional sizing, mainnet and testnet support.</p>
+      </div>
+
+    </div>
+  </section>
+  
+  <!-- CTA Section -->
+  <section class="cta-section">
+    <h2 class="cta-title">Start trading smarter today.</h2>
+    <p class="cta-subtitle">Deploy the full multi-bot system in under 60 seconds.</p>
+    <a href="/wallet-login" class="btn btn-primary">Connect Wallet →</a>
+  </section>
+  
+  <!-- Footer -->
+  <footer class="footer">
+    <p class="footer-text">© 2026 DRIFT — Dynamic Risk-Informed Futures Trading · Built for serious DeFi traders</p>
+    <p class="footer-text" style="margin-top:0.5rem">
+      <a href="https://github.com" class="footer-link">GitHub</a> · 
+      <a href="https://t.me" class="footer-link">Telegram</a> · 
+      <a href="/dashboard" class="footer-link">Dashboard</a>
+    </p>
+  </footer>
+  
+</body>
+</html>

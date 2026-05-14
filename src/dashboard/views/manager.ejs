@@ -8,27 +8,27 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #f4f5f7;
-      --surface: #ffffff;
-      --surface-2: #f8f9fb;
-      --border: #e8eaed;
-      --border-strong: #d1d5db;
-      --text-primary: #0f1117;
-      --text-secondary: #6b7280;
-      --text-tertiary: #9ca3af;
-      --accent: #4f6ef7;
-      --accent-light: #eef1fe;
-      --accent-hover: #3d5ce8;
-      --green: #16a34a;
-      --green-bg: #f0fdf4;
-      --green-border: #bbf7d0;
-      --red: #dc2626;
-      --red-bg: #fef2f2;
-      --red-border: #fecaca;
-      --yellow: #d97706;
-      --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-      --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
-      --shadow-lg: 0 10px 24px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.05);
+      --bg: #0d0f14;
+      --surface: #141820;
+      --surface-2: #1a2030;
+      --border: #1e2535;
+      --border-strong: #28334a;
+      --text-primary: #e8edf5;
+      --text-secondary: #8a9bb5;
+      --text-tertiary: #4a5a72;
+      --accent: #f5a623;
+      --accent-light: rgba(245,166,35,0.12);
+      --accent-hover: #ffb83d;
+      --green: #1db954;
+      --green-bg: rgba(29,185,84,0.12);
+      --green-border: rgba(29,185,84,0.3);
+      --red: #e8404a;
+      --red-bg: rgba(232,64,74,0.12);
+      --red-border: rgba(232,64,74,0.3);
+      --yellow: #f5a623;
+      --shadow-sm: 0 1px 4px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+      --shadow-lg: 0 10px 32px rgba(0,0,0,0.65), 0 4px 8px rgba(0,0,0,0.4);
       --radius: 12px;
       --radius-sm: 8px;
       --radius-xs: 6px;
@@ -103,6 +103,39 @@
       50% { opacity: 0.4; }
     }
 
+    /* ── Light Mode ── */
+    body.light {
+      --bg: #f0f2f7;
+      --surface: #ffffff;
+      --surface-2: #f5f7fb;
+      --border: #dde2ee;
+      --border-strong: #c8d0e0;
+      --text-primary: #0f1623;
+      --text-secondary: #4a5a72;
+      --text-tertiary: #8a9bb5;
+      --shadow-sm: 0 1px 4px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.06);
+      --shadow-lg: 0 10px 32px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.07);
+    }
+
+    /* ── Theme Toggle Button ── */
+    .theme-toggle-btn {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .theme-toggle-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-light);
+    }
+
     /* ── Page Layout ── */
     .page {
       max-width: 1440px;
@@ -149,7 +182,7 @@
     }
 
     .stat-card.primary {
-      background: linear-gradient(135deg, #4f6ef7 0%, #7c3aed 100%);
+      background: linear-gradient(135deg, #c47a10 0%, #f5a623 100%);
       border-color: transparent;
       color: white;
     }
@@ -278,7 +311,7 @@
       position: absolute;
       top: 0; left: 0; right: 0;
       height: 3px;
-      background: linear-gradient(90deg, #4f6ef7, #7c3aed);
+      background: linear-gradient(90deg, #c47a10, #f5a623);
       border-radius: var(--radius) var(--radius) 0 0;
     }
 
@@ -414,15 +447,15 @@
     }
 
     .live-pos-side.pos-long {
-      background: rgba(22,163,74,0.1);
-      color: #16a34a;
-      border: 1px solid rgba(22,163,74,0.25);
+      background: rgba(29,185,84,0.1);
+      color: #1db954;
+      border: 1px solid rgba(29,185,84,0.3);
     }
 
     .live-pos-side.pos-short {
-      background: rgba(220,38,38,0.1);
-      color: #dc2626;
-      border: 1px solid rgba(220,38,38,0.25);
+      background: rgba(232,64,74,0.1);
+      color: #e8404a;
+      border: 1px solid rgba(232,64,74,0.3);
     }
 
     .live-pos-pnl {
@@ -431,8 +464,8 @@
       font-variant-numeric: tabular-nums;
     }
 
-    .live-pos-pnl.positive { color: #16a34a; }
-    .live-pos-pnl.negative { color: #dc2626; }
+    .live-pos-pnl.positive { color: #1db954; }
+    .live-pos-pnl.negative { color: #e8404a; }
 
     .live-pos-rows {
       display: grid;
@@ -575,12 +608,12 @@
       background: var(--accent);
       color: white;
       flex: 1;
-      box-shadow: 0 1px 4px rgba(79,110,247,0.3);
+      box-shadow: 0 1px 4px rgba(245,166,35,0.3);
     }
 
     .btn-primary:hover {
       background: var(--accent-hover);
-      box-shadow: 0 2px 8px rgba(79,110,247,0.4);
+      box-shadow: 0 2px 8px rgba(245,166,35,0.4);
       transform: translateY(-1px);
     }
 
@@ -645,43 +678,136 @@
       .bot-grid { grid-template-columns: 1fr; }
       .topnav { padding: 0 1rem; }
     }
+
+    /* ── Wallet Widget ── */
+    .wallet-widget { position: relative; }
+
+    .wallet-chip {
+      display: flex; align-items: center; gap: 0.45rem;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 0.3rem 0.75rem 0.3rem 0.55rem;
+      cursor: pointer; transition: all 0.15s; color: var(--text-primary);
+      font-size: 0.78rem; font-weight: 600;
+    }
+    .wallet-chip:hover { border-color: var(--accent); background: var(--surface); }
+
+    .wallet-chip-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--green); flex-shrink: 0;
+      box-shadow: 0 0 0 2px rgba(29,185,84,0.25);
+    }
+    .wallet-chip-addr { font-family: 'SF Mono','Fira Code',monospace; letter-spacing: 0.01em; }
+
+    .wallet-popup {
+      display: none; position: absolute; top: calc(100% + 10px); right: 0;
+      background: var(--surface); border: 1px solid var(--border-strong);
+      border-radius: var(--radius); box-shadow: var(--shadow-lg);
+      padding: 1rem; min-width: 240px; z-index: 500;
+      animation: popupIn 0.12s ease;
+    }
+    .wallet-popup.open { display: block; }
+    @keyframes popupIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+
+    .wallet-popup-addr {
+      font-size: 1rem; font-weight: 800; color: var(--text-primary);
+      letter-spacing: -0.02em; text-align: center; margin-bottom: 0.2rem;
+    }
+    .wallet-popup-full {
+      font-size: 0.62rem; color: var(--text-tertiary);
+      font-family: 'SF Mono','Fira Code',monospace;
+      text-align: center; margin-bottom: 1rem;
+      word-break: break-all; line-height: 1.5;
+    }
+    .wallet-popup-actions { display: flex; gap: 0.5rem; }
+    .wallet-popup-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.4rem;
+      padding: 0.55rem 0.5rem; border-radius: var(--radius-sm);
+      font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
+      background: var(--surface-2); border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+    .wallet-popup-btn:hover { background: var(--border); color: var(--text-primary); }
+    .wallet-popup-btn-danger { color: var(--red); border-color: var(--red-border); background: var(--red-bg); }
+    .wallet-popup-btn-danger:hover { background: rgba(232,64,74,0.2); }
+
+    .copy-toast {
+      position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--green-border);
+      color: var(--green); font-size: 0.78rem; font-weight: 600;
+      padding: 0.5rem 1.25rem; border-radius: 20px; box-shadow: var(--shadow-md);
+      opacity: 0; pointer-events: none; transition: opacity 0.2s;
+      z-index: 9999;
+    }
+    .copy-toast.show { opacity: 1; }
   </style>
 </head>
 <body>
+  <script>
+    // Apply saved theme immediately to prevent flash
+    (function() {
+      if (localStorage.getItem('drift-theme') === 'light') {
+        document.body.classList.add('light');
+      }
+    })();
+  </script>
 
   <!-- Top Nav -->
   <nav class="topnav">
     <div class="topnav-brand">
-      <!-- <div class="brand-dot"></div> -->
-      <!-- DRIFT -->
+      <div style="display:flex;flex-direction:column;gap:0.1rem">
+        <span style="font-size:1rem;font-weight:800;color:var(--text-primary);letter-spacing:-0.02em">DRIFT — Let it run</span>
+        <span style="font-size:0.65rem;color:var(--text-tertiary);font-weight:400">Autopilot trading · generates volume · executes strategies</span>
+      </div>
     </div>
     <div class="topnav-right">
       <div class="live-indicator">
-        <!-- <div class="live-dot"></div> -->
-        <!-- LIVE -->
+        <div class="live-dot"></div>
+        <span>LIVE</span>
+      </div>
+      <!-- ── Theme Toggle ── -->
+      <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme">
+        <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+      <!-- ── Wallet Widget ── -->
+      <div class="wallet-widget" id="wallet-widget" style="display:none">
+        <button class="wallet-chip" id="wallet-chip" onclick="toggleWalletPopup(event)" aria-label="Wallet menu">
+          <span class="wallet-chip-dot"></span>
+          <span class="wallet-chip-addr" id="wallet-chip-addr">0x…</span>
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style="opacity:.5;flex-shrink:0"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <!-- Popup -->
+        <div class="wallet-popup" id="wallet-popup">
+          <div class="wallet-popup-addr" id="wallet-popup-addr">0x…</div>
+          <div class="wallet-popup-full" id="wallet-popup-full">0x0000…0000</div>
+          <div class="wallet-popup-actions">
+            <button class="wallet-popup-btn" id="btn-copy-addr" onclick="copyWalletAddress()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy Address
+            </button>
+            <button class="wallet-popup-btn wallet-popup-btn-danger" onclick="walletDisconnect()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Disconnect
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </nav>
 
   <div class="page">
 
-    <!-- Page Header -->
-    <div class="page-header">
-      <h1 class="page-title">DRIFT - Let it run</h1>
-      <p class="page-subtitle">DRIFT is an autopilot trading system that generates volume and executes strategies while you do nothing</p>
-    </div>
-
     <!-- Stats Row -->
     <div class="stats-row">
       <div class="stat-card primary">
         <div class="stat-label">Total PnL</div>
         <div class="stat-value" id="total-pnl">$0.00</div>
-        <div class="stat-sub">Lifetime performance across all bots</div>
+        <div class="stat-sub">Combined session across all bots</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Volume</div>
         <div class="stat-value" id="total-volume">$0</div>
-        <div class="stat-sub">Lifetime traded</div>
+        <div class="stat-sub">Session traded</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Active Bots</div>
@@ -691,7 +817,7 @@
       <div class="stat-card">
         <div class="stat-label">Fees Paid</div>
         <div class="stat-value" id="total-fees">$0.00</div>
-        <div class="stat-sub">Lifetime total</div>
+        <div class="stat-sub">Session total</div>
       </div>
     </div>
 
@@ -704,9 +830,6 @@
       </div>
       <div style="display:flex;align-items:center;gap:0.75rem;">
         <span class="bot-count" id="bot-count-label"></span>
-        <button class="btn btn-ghost" id="btn-settings" style="padding:0.45rem 1rem;font-size:0.8rem;">
-          ⚙️ Settings
-        </button>
         <button class="btn btn-primary" id="btn-create-bot" style="padding:0.45rem 1rem;font-size:0.8rem;">
           + New Bot
         </button>
@@ -754,7 +877,7 @@
     .form-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
     .form-label .req { color: var(--red); margin-left: 2px; }
     .form-input, .form-select { padding: 0.55rem 0.75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-xs); font-size: 0.85rem; color: var(--text-primary); background: var(--surface); transition: border-color 0.15s, box-shadow 0.15s; width: 100%; }
-    .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,110,247,0.12); }
+    .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(245,166,35,0.15); }
     .form-hint { font-size: 0.68rem; color: var(--text-tertiary); }
     .form-section { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
     .form-section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-tertiary); margin-bottom: 0.875rem; }
@@ -1039,6 +1162,102 @@
         orderSizeMax: parseFloat(raw.orderSizeMax),
       });
     }
+  })();
+  </script>
+
+  <!-- ── Theme Toggle JS ── -->
+  <script>
+  (function () {
+    function applyTheme(isLight) {
+      document.body.classList.toggle('light', isLight);
+      var moon = document.querySelector('.icon-moon');
+      var sun  = document.querySelector('.icon-sun');
+      if (moon) moon.style.display = isLight ? 'none'  : '';
+      if (sun)  sun.style.display  = isLight ? ''      : 'none';
+    }
+
+    // Apply icon state on load (body class already set by inline script)
+    applyTheme(document.body.classList.contains('light'));
+
+    window.toggleTheme = function () {
+      var isLight = !document.body.classList.contains('light');
+      localStorage.setItem('drift-theme', isLight ? 'light' : 'dark');
+      applyTheme(isLight);
+    };
+  })();
+  </script>
+
+  <!-- ── Copy toast ── -->
+  <div class="copy-toast" id="copy-toast">✓ Address copied</div>
+
+  <!-- ── Wallet Widget JS ── -->
+  <script>
+  (function () {
+    var fullAddress = null;
+
+    function shortAddr(addr) {
+      return addr.slice(0, 6) + '\u2026' + addr.slice(-4);
+    }
+
+    // Fetch session info and render widget
+    fetch('/api/auth/me')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok || !data.address) return; // passcode auth — no address to show
+        fullAddress = data.address;
+        var short = shortAddr(fullAddress);
+        document.getElementById('wallet-chip-addr').textContent = short;
+        document.getElementById('wallet-popup-addr').textContent = short;
+        document.getElementById('wallet-popup-full').textContent = fullAddress;
+        document.getElementById('wallet-widget').style.display = '';
+      })
+      .catch(function () { /* not wallet-authed, hide widget */ });
+
+    // Toggle popup
+    window.toggleWalletPopup = function (e) {
+      e.stopPropagation();
+      document.getElementById('wallet-popup').classList.toggle('open');
+    };
+
+    // Close popup on outside click
+    document.addEventListener('click', function (e) {
+      var popup = document.getElementById('wallet-popup');
+      var chip  = document.getElementById('wallet-chip');
+      if (popup && !popup.contains(e.target) && e.target !== chip) {
+        popup.classList.remove('open');
+      }
+    });
+
+    // Copy address
+    window.copyWalletAddress = function () {
+      if (!fullAddress) return;
+      navigator.clipboard.writeText(fullAddress).then(function () {
+        var toast = document.getElementById('copy-toast');
+        toast.classList.add('show');
+        setTimeout(function () { toast.classList.remove('show'); }, 2000);
+        // Update button text briefly
+        var btn = document.getElementById('btn-copy-addr');
+        var orig = btn.innerHTML;
+        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
+        setTimeout(function () { btn.innerHTML = orig; }, 2000);
+      }).catch(function () {
+        // Fallback for non-HTTPS
+        var ta = document.createElement('textarea');
+        ta.value = fullAddress;
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      });
+      document.getElementById('wallet-popup').classList.remove('open');
+    };
+
+    // Disconnect
+    window.walletDisconnect = function () {
+      fetch('/api/auth/logout', { method: 'POST' }).finally(function () {
+        window.location.href = '/wallet-login';
+      });
+    };
   })();
   </script>
 </body>

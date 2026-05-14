@@ -21,9 +21,11 @@ import { validateBotConfig, validateHedgeBotConfig } from '../bot/loadBotConfigs
 import { createAdapter as createBotAdapter } from '../bot/adapterFactory.js';
 import type { HedgeBotConfig } from '../bot/types.js';
 import type { TelegramManager } from '../modules/TelegramManager.js';
+import { generateNonce, verifySiweMessage } from '../auth/SiweAuth.js';
 
 
 const validTokens = new Map<string, number>();
+const validTokenAddresses = new Map<string, string>(); // siwe_token → wallet address
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 
 const TEMPLATE_ENGINE = 'ejs' as const;
@@ -82,19 +84,39 @@ export class DashboardServer {
   }
 
   private _isAuthenticated(req: Request): boolean {
+    // If no passcode is configured, allow all (local dev)
     if (!this.passcodeHash) return true;
-    const match = (req.headers.cookie || '').match(/dash_token=([a-f0-9]+)/);
-    if (!match) return false;
-    const expiry = validTokens.get(match[1]);
-    if (!expiry || Date.now() > expiry) { validTokens.delete(match[1]); return false; }
+    // Check both dash_token (passcode auth) and siwe_token (wallet auth)
+    const cookies = req.headers.cookie || '';
+    // Match either token — try siwe_token first, then dash_token
+    const siweMatch = cookies.match(/siwe_token=([a-f0-9]+)/);
+    const dashMatch = cookies.match(/dash_token=([a-f0-9]+)/);
+    const token = (siweMatch && siweMatch[1]) || (dashMatch && dashMatch[1]);
+    if (!token) {
+      console.log('[Auth] no token in cookies:', cookies.slice(0, 80));
+      return false;
+    }
+    const expiry = validTokens.get(token);
+    if (!expiry || Date.now() > expiry) {
+      validTokens.delete(token);
+      console.log('[Auth] token expired or not found:', token.slice(0, 8));
+      return false;
+    }
     return true;
   }
 
   private _authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
-    if (req.path === '/login' || req.path === '/api/login') { next(); return; }
+    if (
+      req.path === '/login' ||
+      req.path === '/wallet-login' ||
+      req.path === '/api/login' ||
+      req.path === '/api/auth/nonce' ||
+      req.path === '/api/auth/verify' ||
+      req.path === '/api/auth/logout'
+    ) { next(); return; }
     if (!this._isAuthenticated(req)) {
       if (req.path.startsWith('/api/')) { res.status(401).json({ error: 'Unauthorized' }); }
-      else { res.sendFile(path.join(__dirname, 'public', 'login.html')); }
+      else { res.redirect('/wallet-login'); }
       return;
     }
     next();
@@ -114,6 +136,16 @@ export class DashboardServer {
     this.app.use('/css', express.static(path.join(PUBLIC_DIR, 'css')));
     this.app.use('/js', express.static(path.join(PUBLIC_DIR, 'js')));
     this.app.use('/images', express.static(path.join(PUBLIC_DIR, 'images')));
+    // Public routes — no auth required
+    this.app.get('/', (_req, res) => { res.redirect('/landing'); });
+    this.app.get('/landing', (_req, res) => {
+      res.sendFile(path.join(__dirname, 'public', 'landing.html'));
+    });
+    // /login redirects to wallet-login — passcode auth is hidden (wallet-only mode)
+    this.app.get('/login', (_req, res) => { res.redirect('/wallet-login'); });
+    this.app.get('/wallet-login', (_req, res) => {
+      res.sendFile(path.join(__dirname, 'public', 'wallet-login.html'));
+    });
     this.app.use(this._authMiddleware);
 
     this.app.post('/api/login', (req: Request, res: Response) => {
@@ -125,7 +157,68 @@ export class DashboardServer {
       res.json({ ok: true });
     });
 
-    this.app.get('/', (_req, res) => {
+    // ── SIWE (Sign-In with Ethereum) Routes ───────────────────────────────────
+
+    // GET /api/auth/nonce — issue a one-time nonce for the client to include in the SIWE message
+    this.app.get('/api/auth/nonce', (_req, res) => {
+      const nonce = generateNonce();
+      res.json({ nonce });
+    });
+
+    // POST /api/auth/verify — verify a signed SIWE message and issue a session token
+    this.app.post('/api/auth/verify', (req: Request, res: Response) => {
+      const { message, signature } = req.body as { message?: string; signature?: string };
+      if (!message || !signature) {
+        res.status(400).json({ error: 'message and signature are required' });
+        return;
+      }
+      console.log('[SIWE] verify request — message length:', message.length, '| sig prefix:', signature.slice(0, 10));
+      const result = verifySiweMessage(message, signature);
+      console.log('[SIWE] verify result:', result.ok ? `OK addr=${result.address}` : `FAIL: ${result.error}`);
+      if (!result.ok) {
+        res.status(401).json({ error: result.error ?? 'Verification failed' });
+        return;
+      }
+      const token = generateToken();
+      validTokens.set(token, Date.now() + TOKEN_TTL_MS);
+      validTokenAddresses.set(token, result.address!);
+      res.setHeader('Set-Cookie', `siwe_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${TOKEN_TTL_MS / 1000}`);
+      res.json({ ok: true, address: result.address });
+    });
+
+    // GET /api/auth/me — return the wallet address for the current session
+    this.app.get('/api/auth/me', (req: Request, res: Response) => {
+      const cookies = req.headers.cookie || '';
+      const siweMatch = cookies.match(/siwe_token=([a-f0-9]+)/);
+      const dashMatch = cookies.match(/dash_token=([a-f0-9]+)/);
+      const token = (siweMatch && siweMatch[1]) || (dashMatch && dashMatch[1]);
+      if (!token || !validTokens.get(token)) {
+        res.status(401).json({ error: 'Not authenticated' });
+        return;
+      }
+      // siwe_token carries the address; dash_token is passcode-only (no address)
+      const address = siweMatch ? (validTokenAddresses.get(siweMatch[1]) ?? null) : null;
+      res.json({ ok: true, address, authType: siweMatch ? 'wallet' : 'passcode' });
+    });
+
+    // POST /api/auth/logout — clear the wallet session cookie
+    this.app.post('/api/auth/logout', (req: Request, res: Response) => {
+      const cookies = req.headers.cookie || '';
+      const siweMatch = cookies.match(/siwe_token=([a-f0-9]+)/);
+      const dashMatch = cookies.match(/dash_token=([a-f0-9]+)/);
+      const token = (siweMatch && siweMatch[1]) || (dashMatch && dashMatch[1]);
+      if (token) {
+        validTokens.delete(token);
+        validTokenAddresses.delete(token);
+      }
+      res.setHeader('Set-Cookie', [
+        'siwe_token=; Path=/; HttpOnly; Max-Age=0',
+        'dash_token=; Path=/; HttpOnly; Max-Age=0',
+      ]);
+      res.json({ ok: true });
+    });
+
+    this.app.get('/dashboard', (_req, res) => {
       // Serve Manager Dashboard if BotManager is registered
       if (this.botManager) {
         res.render('manager', (err: Error | null, html: string) => {
@@ -540,37 +633,15 @@ export class DashboardServer {
         let totalVolume = 0;
         let totalFees = 0;
         let activeBotCount = 0;
-        // feePaid = notional * FEE_RATE_MAKER * 2 → notional = feePaid / (FEE_RATE_MAKER * 2)
-        const FEE_RATE_ROUND_TRIP = 0.00024;
 
-        await Promise.all(bots.map(async (bot) => {
+        bots.forEach((bot) => {
           if (bot.state.botStatus === 'RUNNING') activeBotCount++;
-
-          try {
-            const trades = await bot.getTradeLogger().readAll();
-
-            // Lifetime PnL from all persisted trade records
-            totalPnl += trades.reduce((s, t) => s + (t.pnl ?? 0), 0);
-
-            // Lifetime fees from feePaid field (persisted since trade-analytics-reporting)
-            totalFees += trades.reduce((s, t) => s + (t.feePaid ?? 0), 0);
-
-            // Volume: derive from feePaid when available (feePaid = notional * FEE_RATE * 2)
-            // For old records without feePaid, fall back to session volume
-            const tradesWithFee = trades.filter(t => t.feePaid != null && t.feePaid > 0);
-            if (tradesWithFee.length > 0) {
-              totalVolume += tradesWithFee.reduce((s, t) => s + (t.feePaid! / FEE_RATE_ROUND_TRIP), 0);
-            } else {
-              // No fee data — use session volume as best available estimate
-              totalVolume += bot.state.sessionVolume;
-            }
-          } catch {
-            // Trade log unreadable — fall back to session state only
-            totalPnl += bot.state.sessionPnl;
-            totalFees += bot.state.sessionFees;
-            totalVolume += bot.state.sessionVolume;
-          }
-        }));
+          // Use session state directly — consistent with per-bot card display,
+          // resets on each restart so numbers always reflect the current session.
+          totalPnl    += bot.state.sessionPnl    ?? 0;
+          totalFees   += bot.state.sessionFees   ?? 0;
+          totalVolume += bot.state.sessionVolume ?? 0;
+        });
 
         res.json({
           totalPnl,

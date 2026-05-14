@@ -77,6 +77,8 @@ function renderBots() {
     btn.addEventListener('click', () => startBot(btn.dataset.botId)));
   container.querySelectorAll('.btn-stop-bot').forEach(btn =>
     btn.addEventListener('click', () => stopBot(btn.dataset.botId)));
+  container.querySelectorAll('.btn-delete-bot').forEach(btn =>
+    btn.addEventListener('click', () => deleteBot(btn.dataset.botId, btn.dataset.botName)));
 
   // Draw sparklines after DOM is ready
   requestAnimationFrame(() => filtered.forEach(bot => drawSparkline(bot)));
@@ -182,6 +184,9 @@ function drawSparkline(bot) {
   const isPositive = values[values.length - 1] >= values[0];
   const lineColor = isPositive ? '#16a34a' : '#dc2626';
   const fillColor = isPositive ? 'rgba(22,163,74,0.08)' : 'rgba(220,38,38,0.08)';
+  const isLight = document.body.classList.contains('light');
+  const gridCol   = isLight ? 'rgba(0,0,0,0.06)'   : 'rgba(255,255,255,0.04)';
+  const borderCol = isLight ? '#dde2ee'             : '#1e2535';
 
   sparklineCharts[bot.id] = new Chart(ctx, {
     type: 'line',
@@ -236,6 +241,20 @@ async function stopBot(botId) {
   } catch (err) {
     alert('Failed to stop bot: ' + err.message);
     if (btn) { btn.disabled = false; btn.textContent = '■ Stop'; }
+  }
+}
+
+async function deleteBot(botId, botName) {
+  if (!confirm(`Delete "${botName}"?\n\nThis removes the bot from the manager. Trade history files are kept on disk.`)) return;
+  const btn = document.querySelector(`.btn-delete-bot[data-bot-id="${botId}"]`);
+  if (btn) { btn.disabled = true; }
+  try {
+    const r = await fetch(`/api/bots/${botId}`, { method: 'DELETE' });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Failed'); }
+    await refresh();
+  } catch (err) {
+    alert('Failed to delete bot: ' + err.message);
+    if (btn) { btn.disabled = false; }
   }
 }
 
