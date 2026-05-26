@@ -9,6 +9,7 @@ import { ExchangeAdapter } from './adapters/ExchangeAdapter.js';
 import { DecibelAdapter } from './adapters/decibel_adapter.js';
 import { SodexAdapter } from './adapters/sodex_adapter.js';
 import { DangoAdapter } from './adapters/dango_adapter.js';
+import { HibachiAdapter } from './adapters/hibachi_adapter.js';
 import { TelegramManager } from './modules/TelegramManager.js';
 import { SessionManager } from './modules/SessionManager.js';
 import { Watcher } from './modules/Watcher.js';
@@ -22,6 +23,7 @@ import { loadBotConfigs } from './bot/loadBotConfigs.js';
 import type { BotConfig, HedgeBotConfig } from './bot/types.js';
 import { BotInstance } from './bot/BotInstance.js';
 import { createAdapter as createBotAdapter } from './bot/adapterFactory.js';
+import { TenantRegistry } from './bot/TenantRegistry.js';
 
 const {
     // Exchange selector
@@ -58,6 +60,33 @@ function createAdapter(exchange: string, symbol: string): ExchangeAdapter {
             }
             console.log(`🔌 Using SoDEX adapter`);
             return new SodexAdapter(SODEX_API_KEY, SODEX_API_SECRET, SODEX_SUBACCOUNT);
+        }
+        case 'hibachi': {
+            const HIBACHI_API_KEY = process.env.HIBACHI_API_KEY;
+            const HIBACHI_ACCOUNT_ID = process.env.HIBACHI_ACCOUNT_ID;
+            const HIBACHI_ACCOUNT_TYPE = process.env.HIBACHI_ACCOUNT_TYPE as 'trustless' | 'exchange_managed' | undefined;
+            const HIBACHI_PRIVATE_KEY = process.env.HIBACHI_PRIVATE_KEY;
+            const HIBACHI_SECRET_KEY = process.env.HIBACHI_SECRET_KEY;
+            if (!HIBACHI_API_KEY) {
+                console.error('FATAL: HIBACHI_API_KEY is required for exchange=hibachi');
+                process.exit(1);
+            }
+            if (!HIBACHI_ACCOUNT_ID) {
+                console.error('FATAL: HIBACHI_ACCOUNT_ID is required for exchange=hibachi');
+                process.exit(1);
+            }
+            if (!HIBACHI_ACCOUNT_TYPE) {
+                console.error('FATAL: HIBACHI_ACCOUNT_TYPE is required for exchange=hibachi (trustless or exchange_managed)');
+                process.exit(1);
+            }
+            console.log(`🔌 Using Hibachi adapter`);
+            return new HibachiAdapter({
+                apiKey: HIBACHI_API_KEY,
+                accountId: HIBACHI_ACCOUNT_ID,
+                accountType: HIBACHI_ACCOUNT_TYPE,
+                privateKey: HIBACHI_PRIVATE_KEY,
+                secretKey: HIBACHI_SECRET_KEY,
+            });
         }
         case 'dango': {
             if (!DANGO_PRIVATE_KEY || !DANGO_USER_ADDRESS) {
@@ -155,6 +184,14 @@ async function bootstrap() {
         const dummyLogger = new TradeLogger('json', './trades-dummy.json');
         const dashboardServer = new DashboardServer(dummyLogger, dashboardPort);
         dashboardServer.registerBotManager(botManager, telegram);
+
+        // ── Multi-Wallet SaaS: wire TenantRegistry ────────────────────────────
+        // Requirements: 3.3, 3.4, 3.6
+        const tenantRegistry = new TenantRegistry('./data');
+        dashboardServer.registerTenantRegistry(tenantRegistry);
+        const restoredCount = await tenantRegistry.restoreAll(telegram);
+        console.log(`✅ [TenantRegistry] Restored ${restoredCount} tenant(s) from ./data`);
+
         dashboardServer.start();
         
         console.log(`✅ [Multi-Bot] Dashboard started with ${botManager.getBotCount()} bot(s)`);
@@ -173,6 +210,9 @@ async function bootstrap() {
                     await bot.stop(true); // stop scheduler too on full shutdown
                 }
             }
+            // Shutdown all tenant contexts (stops tenant bots and persists configs)
+            // Requirement 3.6
+            await tenantRegistry.shutdownAll();
             saveStateSync();
             await telegram.sendMessage(`⚠️ *Bot Shutting Down* (${signal}). All operations suspended.`);
             process.exit(0);
@@ -209,6 +249,13 @@ async function bootstrap() {
             });
         });
         dashboardServer.setConfigStore(configStore);
+
+        // ── Multi-Wallet SaaS: wire TenantRegistry ────────────────────────────
+        // Requirements: 3.3, 3.4, 3.6
+        const tenantRegistry = new TenantRegistry('./data');
+        dashboardServer.registerTenantRegistry(tenantRegistry);
+        const restoredCount = await tenantRegistry.restoreAll(telegram);
+        console.log(`✅ [TenantRegistry] Restored ${restoredCount} tenant(s) from ./data`);
         
         // Set shared state metadata
         sharedState.symbol = symbol;
@@ -224,6 +271,9 @@ async function bootstrap() {
                 sessionManager.stopSession();
                 watcher.stop();
             }
+            // Shutdown all tenant contexts (stops tenant bots and persists configs)
+            // Requirement 3.6
+            await tenantRegistry.shutdownAll();
             saveStateSync();
             await telegram.sendMessage(`⚠️ *Bot Shutting Down* (${signal}). Operations suspended.`);
             process.exit(0);

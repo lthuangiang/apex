@@ -39,8 +39,14 @@ export const config = {
   FARM_MIN_CONFIDENCE: 0.50,    // Min confidence for fallback signal entry
   FARM_EARLY_EXIT_SECS: 60,     // Early exit: if held >= 60s AND pnl covers fee
   FARM_EARLY_EXIT_PNL: 0.04,    // Fallback fixed threshold (used only if position value unavailable)
-  FARM_MIN_PROFIT_FEE_MULT: 1.2, // Exit when pnl > roundTripFee × this multiplier (1.2 = 20% above fee)
+  FARM_MIN_PROFIT_FEE_MULT: 0.15, // Min profit in USD to exit early (e.g., 0.15 for SoDEX, 0.001 for free fee exchanges)
   FARM_EXTRA_WAIT_SECS: 30,     // Extra wait after hold expires if profitable (reduced from 30s)
+
+  // ── Farm mode sizing controls ─────────────────────────────────────────────
+  FARM_USE_DYNAMIC_SIZING: true,       // Use PositionSizer dynamic multipliers in farm mode
+  FARM_WEAK_SIGNAL_SIZE_MULT: 0.7,    // Size multiplier when signal direction is confirmed but weak
+  FARM_NO_PRESSURE_SIZE_MULT: 0.75,   // Size multiplier when tradePressure = 0
+  FARM_PINGPONG_SIZE_MULT: 0.6,       // Size multiplier for ping-pong direction entries
 
   // ── Regime-adaptive strategy ──────────────────────────────────────────────
   REGIME_ATR_PERIOD: 14,
@@ -60,10 +66,15 @@ export const config = {
   REGIME_TREND_SUPPRESS_EARLY_EXIT: true,
 
   // ── Farm Signal Cost Optimizer ───────────────────────────────────────────
-  FARM_MIN_CONFIDENCE_PRESSURE_GATE: 0.0,   // Min confidence when tradePressure=0 (DISABLED for farm mode)
-  FARM_MIN_FALLBACK_CONFIDENCE: 0.0,        // Min confidence for fallback signals (DISABLED for farm mode)
-  FARM_SIDEWAY_MIN_CONFIDENCE: 0.0,         // Min confidence in SIDEWAY regime (DISABLED for farm mode)
-  FARM_TREND_MIN_CONFIDENCE: 0.0,           // Min confidence in TREND regime (DISABLED for farm mode)
+  // FARM mode is volume-focused by default. Use TRADE mode for quality/safety.
+  FARM_MIN_CONFIDENCE_PRESSURE_GATE: 0.55,
+  FARM_MIN_FALLBACK_CONFIDENCE: 0.25,
+  FARM_SIDEWAY_MIN_CONFIDENCE: 0.45,
+  FARM_TREND_MIN_CONFIDENCE: 0.35,
+
+  // ── Farm Mode Profile Toggles ─────────────────────────────────────────────
+  // REVERSE SIGNAL: flips long↔short after filters pass (farm-only, for real-env testing).
+  FARM_REVERSE_SIGNAL_ENABLED: false,
 
   // Hour blocking (UTC) — để trống = không block giờ nào
   // Ví dụ block giờ xấu: [7,8,9,10,11,18,19,20,21,22,23]
@@ -73,8 +84,10 @@ export const config = {
   // ── Trade mode ────────────────────────────────────────────────────────────
   // Goal: maximize win rate. Only enter on strong signals. Exit on TP or SL only.
   // No time-based exit — let the trade run until TP or SL is hit.
-  TRADE_TP_PERCENT: 0.05,      // Take profit 5%
-  TRADE_SL_PERCENT: 0.05,      // Stop loss 5%
+  TRADE_TP_PERCENT: 0.05,           // Take profit 5%
+  TRADE_SL_PERCENT: 0.05,           // Stop loss 5%
+  TRADE_SCORE_THRESHOLD: 0.65,      // Min |score| to enter a trade direction
+  TRADE_MIN_CONFIDENCE: 0.65,       // Min LLM confidence to confirm trade entry
 
   // ── Shared ────────────────────────────────────────────────────────────────
   // Trading fee: 0.012% maker per side, 0.024% round-trip

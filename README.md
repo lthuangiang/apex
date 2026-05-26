@@ -6,7 +6,7 @@
 
 ### Dynamic Risk-Informed Futures Trading
 
-*AI-powered perpetual futures bot with adaptive learning, intelligent execution, correlation hedging, and daily budget reset*
+*AI-powered perpetual futures bot with adaptive learning, SoSoValue macro intelligence, multi-exchange execution, and multi-wallet SaaS architecture*
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -17,9 +17,30 @@
 
 ---
 
-DRIFT is a multi-bot trading system for perpetual futures, supporting 3 exchanges: **SoDEX**, **Dango Exchange**, and **Decibel**. The system runs multiple bots in parallel with 3 strategies: **Farm Mode** (maximize volume), **Trade Mode** (maximize win rate), and **Hedge Bot** (correlation divergence). Each bot can be configured with **daily budget reset** — automatically resets max loss and volume target, restarts at 0:00 UTC (7:00 AM Vietnam) every day. The bot stops when it hits max loss **or** when it reaches the volume target — whichever comes first.
-
 > Vietnamese documentation: [README_vi.md](README_vi.md)
+
+## Hackathon Timeline
+
+| Wave | Build Phase | Evaluation Phase | Focus | Allocation | Status |
+|------|-------------|-----------------|-------|------------|--------|
+| **Wave 1** — Concept / Early Prototype | May 1 – May 12, 2026 | May 13 – May 22, 2026 | Idea direction, target users, use case definition, API usage plan, workflow design, early prototype | 3,000 USDC | ✅ **Complete** |
+| **Wave 2** — Build Phase I | May 23 – Jun 3, 2026 | Jun 4 – Jun 13, 2026 | Core feature development, SoSoValue API integration, Hibachi exchange adapter, multi-wallet SaaS, interactive prototype | 3,000 USDC | 🔄 **In Progress** |
+| **Wave 3** — Build Phase II | Jun 14 – Jun 25, 2026 | Jun 26 – Jul 5, 2026 | Product completion, logic refinement, UX improvement, risk control design, final demo and submission | 4,000 USDC | ⏳ **Pending** |
+
+---
+
+## Overview
+
+DRIFT is a multi-bot trading system for perpetual futures, supporting **4 exchanges**: **SoDEX**, **Dango**, **Decibel**, and **Hibachi**. The system runs multiple bots in parallel with 3 strategies: **Farm Mode** (maximize volume), **Trade Mode** (maximize win rate), and **Hedge Bot** (correlation divergence).
+
+**Wave 2 additions:**
+- **SoSoValue Fear & Greed Index** — macro sentiment drives confidence multipliers and position sizing
+- **Hibachi exchange adapter** — trustless (ECDSA) and exchange-managed (HMAC-SHA256) signing modes
+- **Multi-wallet SaaS** — wallet-scoped tenant isolation, encrypted credential storage, per-tenant bot lifecycle
+
+Each bot supports **daily budget reset** — auto-resets max loss and volume target at 0:00 UTC (7:00 AM Vietnam) every day.
+
+---
 
 ## Dashboard
 
@@ -46,25 +67,28 @@ Designed for DEXes with volume incentives (SoPoints, AMPs, rebates). The goal is
 Signal from AISignalEngine
   │
   ▼
-[1] RegimeConfidenceThreshold  — SIDEWAY ≥ 0.45, TREND ≥ 0.35
+[1] SoSoValue macro filter    — sentiment multiplier applied to confidence
   │
   ▼
-[2] TradePressureGate          — skip if pressure=0 AND confidence < 0.55
+[2] RegimeConfidenceThreshold — SIDEWAY ≥ 0.45, TREND ≥ 0.35
   │
   ▼
-[3] FallbackQualityGate        — skip if fallback=true AND confidence < 0.25
+[3] TradePressureGate         — skip if pressure=0 AND confidence < 0.55
   │
   ▼
-[4] FeeAwareEntryFilter        — skip if expectedEdge ≤ minRequiredMove × 1.5
+[4] FallbackQualityGate       — skip if fallback=true AND confidence < 0.25
   │
   ▼
-[5] LLMMomentumAdjuster        — adjust effectiveConfidence (±10–20%)
+[5] FeeAwareEntryFilter       — skip if expectedEdge ≤ minRequiredMove × 1.5
   │
   ▼
-[6] MinHoldTimeEnforcer        — compute dynamicMinHold from ATR and fee
+[6] LLMMomentumAdjuster       — adjust effectiveConfidence (±10–20%)
   │
   ▼
-PositionSizer → placeEntryOrder
+[7] MinHoldTimeEnforcer       — compute dynamicMinHold from ATR and fee
+  │
+  ▼
+PositionSizer (+ macroSentimentMultiplier) → placeEntryOrder
 ```
 
 **Direction resolution** (never skips):
@@ -93,19 +117,22 @@ Only enters when there is a clear edge. No time exit — lets the trade run to T
 Signal from AISignalEngine
   │
   ▼
-[1] Regime check       — HIGH_VOLATILITY → skip if REGIME_HIGH_VOL_SKIP_ENTRY=true
+[1] SoSoValue macro filter — Extreme Greed (>75): raise confidence threshold
   │
   ▼
-[2] ChopDetector       — chopScore ≥ 0.55 → skip
+[2] Regime check       — HIGH_VOLATILITY → skip if REGIME_HIGH_VOL_SKIP_ENTRY=true
   │
   ▼
-[3] FakeBreakoutFilter — OB imbalance contradicts direction → skip
+[3] ChopDetector       — chopScore ≥ 0.55 → skip
   │
   ▼
-[4] Confidence gate    — confidence < MIN_CONFIDENCE (0.65) → skip
+[4] FakeBreakoutFilter — OB imbalance contradicts direction → skip
   │
   ▼
-[5] 2-tick confirmation — must confirm within 60s window
+[5] Confidence gate    — confidence < MIN_CONFIDENCE (0.65) → skip
+  │
+  ▼
+[6] 2-tick confirmation — must confirm within 60s window
   │
   ▼
 PositionSizer → placeEntryOrder
@@ -134,6 +161,93 @@ IDLE → OPENING → WAITING_FILL → IN_PAIR → CLOSING → COOLDOWN
 - Case 3: 2 pending → wait for fill; timeout 30s → cancel both → OPENING
 
 **Exit conditions**: profit target, max loss, mean reversion, or holding period expired.
+
+---
+
+## SoSoValue Integration (Wave 2)
+
+DRIFT integrates the **SoSoValue Fear & Greed Index** as a macro intelligence layer that dynamically adjusts trading behavior based on market sentiment.
+
+### How It Works
+
+```
+Every signal evaluation:
+  │
+  ▼
+SoSoValueClient.getFearGreedIndex()
+  → Primary:  SoSoValue API (https://openapi.sosovalue.com/openapi/v1)
+  → Fallback: alternative.me API
+  │
+  ▼
+SoSoValueStrategy.getAdjustment(fearGreedIndex)
+  │
+  ▼
+Applied to:
+  ├── AISignalEngine  → confidence × sentimentMultiplier
+  └── PositionSizer   → size × macroSentimentMultiplier
+```
+
+### Sentiment Strategy Table
+
+| Fear & Greed | Mode | Confidence Mult | Size Mult | Behavior |
+|---|---|---|---|---|
+| < 25 | Aggressive Farm | 0.85× | 1.15× | Buy the dip — lower threshold, larger size |
+| 25–45 | Normal Farm | 0.95× | 1.0× | Cautious but active |
+| 45–55 | Balanced | 1.0× | 1.0× | No adjustment |
+| 55–75 | Cautious Trade | 1.1× | 0.9× | Be selective — higher threshold, smaller size |
+| > 75 | Defensive | 1.2× | 0.8× | Avoid FOMO — much higher threshold, defensive size |
+
+**Why it works:**
+- **Extreme Fear (< 25)**: Panic creates dip-buying opportunities → bot becomes more aggressive
+- **Extreme Greed (> 75)**: Euphoria increases reversal risk → bot becomes defensive
+- **Neutral (45–55)**: Normal conditions → no adjustment
+
+### Configuration
+
+```env
+SOSOVALUE_API_KEY=your_api_key
+```
+
+---
+
+## Multi-Wallet SaaS Architecture (Wave 2)
+
+DRIFT supports wallet-scoped **tenant isolation** — each wallet address gets its own bot instances, credentials, and configuration stored under `./data/<wallet>/`.
+
+### Tenant Lifecycle
+
+```
+User connects wallet (WalletConnect / AppKit)
+  │
+  ▼
+Dashboard authenticates wallet address
+  │
+  ▼
+TenantRegistry.getOrCreate(walletAddress)
+  ├── New tenant: create ./data/<wallet>/ directory
+  │     ├── TenantConfigStore  — per-wallet bot configs
+  │     ├── CredentialStore    — encrypted exchange credentials
+  │     └── TenantContext      — active bot instances
+  │
+  └── Existing tenant: restore from disk
+        ├── Load bot configs
+        ├── Decrypt credentials
+        └── Restart bots with autoStart=true
+  │
+  ▼
+On shutdown: TenantRegistry.shutdownAll()
+  → Stops all tenant bots + persists state
+```
+
+### Data Layout
+
+```
+./data/
+└── <wallet_address>/
+    ├── bot-configs.json      # Per-wallet bot configurations
+    ├── credentials.enc       # Encrypted exchange API keys
+    └── bot_state_*.json      # Per-bot runtime state
+```
 
 ---
 
@@ -173,12 +287,6 @@ Is it reset time (default 0:00 UTC = 7:00 AM Vietnam)?
         5. Send Telegram notification
 ```
 
-### Telegram notifications
-
-- Max loss hit: `⚠️ Max Loss Reached | Limit: $5 | Actual: -$5.12 | Bot stopped — will reset at next daily cycle`
-- Volume target hit: `🎯 Volume Target Reached | Target: $5,000 | Actual: $5,023 | PnL: +2.40 | Bot stopped — will reset at next daily cycle`
-- Daily reset: `🔄 Daily Budget Reset — Bot sodex-bot | Budget: $5 max loss | Volume target: $5,000 | 0:00 UTC (7:00 Vietnam) | Bot auto-restarted`
-
 ### Configuration in `bot-configs.json`
 
 ```json
@@ -199,45 +307,11 @@ Is it reset time (default 0:00 UTC = 7:00 AM Vietnam)?
 | `dailyTargetVolumeUsd` | Volume target per day (USD). `0` = disabled | `0` |
 | `dailyResetHourUTC` | Reset hour (UTC 0–23) | `0` (= 7:00 AM VN) |
 
-### Configuration from Dashboard (Bot Settings popup)
+### Telegram notifications
 
-In addition to editing `bot-configs.json` directly, you can configure from the web interface:
-
-```
-Open bot detail page → click ⚙️ Bot Settings
-  │
-  ▼
-Popup opens → scroll to "📅 Daily Budget Reset" section
-  │
-  ├── Enable toggle: turn feature on/off
-  ├── Max Loss/day ($): daily loss limit
-  ├── Target Volume/day ($): volume target (0 = disabled)
-  └── Reset Hour UTC: reset hour (hint auto-shows Vietnam time)
-  │
-  ▼
-Click "✓ Save"
-  │
-  ▼
-Server:
-  1. Validate all fields
-  2. Update bot.config (live, no restart needed)
-  3. Call sm.setMaxLoss() + sm.setTargetVolume() (takes effect immediately)
-  4. Call bot.syncDailyResetScheduler() — restart scheduler with new config
-  5. Persist to bot-configs.json
-  6. Return updated config
-  │
-  ▼
-Toast "Saved ✓" (green) or error message (red)
-```
-
-**Note:** The "📅 Daily Budget Reset" section only appears on the bot detail page (multi-bot mode), not on the overview page.
-
-### Practical example
-
-- Set `dailyMaxLossUsd: 5`, `dailyTargetVolumeUsd: 5000` → bot trades all day
-- If loss reaches $5 → stop immediately (max loss)
-- If volume reaches $5,000 → stop immediately (volume target) — even if not at a loss
-- At 0:00 UTC (7:00 AM VN): reset both flags, bot auto-restarts with fresh budget
+- Max loss hit: `⚠️ Max Loss Reached | Limit: $5 | Actual: -$5.12 | Bot stopped — will reset at next daily cycle`
+- Volume target hit: `🎯 Volume Target Reached | Target: $5,000 | Actual: $5,023 | PnL: +2.40 | Bot stopped — will reset at next daily cycle`
+- Daily reset: `🔄 Daily Budget Reset — Bot sodex-bot | Budget: $5 max loss | Volume target: $5,000 | 0:00 UTC (7:00 Vietnam) | Bot auto-restarted`
 
 ---
 
@@ -249,9 +323,9 @@ bot.ts (Multi-Bot Manager)
   │     ├── BotInstance (Farm/Trade)
   │     │     ├── DailyResetScheduler   # Reset budget (max loss + volume target) + daily auto-start
   │     │     └── Watcher           # 5-state: IDLE→PENDING→IN_POSITION→EXITING→COOLDOWN
-  │     │           ├── AISignalEngine      # EMA9/21, RSI, momentum, OB + regime
+  │     │           ├── AISignalEngine      # EMA9/21, RSI, momentum, OB + regime + SoSoValue
   │     │           ├── FarmSignalFilters   # 4-gate pipeline + LLM adjuster + MinHold
-  │     │           ├── PositionSizer       # Dynamic sizing (confidence × performance)
+  │     │           ├── PositionSizer       # Dynamic sizing (confidence × performance × sentiment)
   │     │           ├── MarketMaker         # Ping-pong + inventory + dynamic TP
   │     │           ├── ExecutionEdge       # Dynamic offset + spread guard + fill rate
   │     │           ├── ChopDetector        # Trade mode only
@@ -263,6 +337,14 @@ bot.ts (Multi-Bot Manager)
   │           ├── AISignalEngine ×2 # One engine per symbol
   │           └── State Machine     # IDLE→OPENING→WAITING_FILL→IN_PAIR→CLOSING→COOLDOWN
   │
+  ├── TenantRegistry                # Multi-wallet SaaS tenant isolation
+  │     ├── TenantContext           # Per-wallet active bot instances
+  │     ├── TenantConfigStore       # Per-wallet bot configs
+  │     └── CredentialStore         # Encrypted exchange credentials
+  │
+  ├── SoSoValueClient               # Fear & Greed Index API
+  ├── SoSoValueStrategy             # Sentiment → confidence/size multipliers
+  ├── LLMReasoningAgent             # LLM-based momentum adjustment
   ├── FeedbackLoop/                 # Adaptive signal weights
   │     ├── ComponentPerformanceTracker
   │     ├── AdaptiveWeightAdjuster
@@ -335,120 +417,13 @@ bot.ts (Multi-Bot Manager)
 
 ---
 
-## Hedge Bot — Detailed State Machine
-
-```
-                    ┌─────────────────────────────────────────────────────┐
-                    │                    IDLE                             │
-                    │  • VolumeMonitor.sample() every 15s                 │
-                    │  • shouldEnter(): both symbols spiking at once?     │
-                    │  • getSignal(A) + getSignal(B) in parallel          │
-                    │  • assignDirections(scoreA, scoreB)                 │
-                    │    → scoreA > scoreB: long A, short B               │
-                    │    → scoreB > scoreA: long B, short A               │
-                    │    → equal: skip                                    │
-                    └──────────────────────┬──────────────────────────────┘
-                                           │ entry triggered
-                                           ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │                  OPENING                            │
-                    │  Tick A: check open orders → cancel if any → RETURN │
-                    │  Tick B: check existing positions (anti-double-trade)│
-                    │    → legA filled? skip order A                      │
-                    │    → legB filled? skip order B                      │
-                    │    → place_limit_order(A) + place_limit_order(B)    │
-                    │    → 1 leg fails → cancel successful leg → IDLE     │
-                    └──────────────────────┬──────────────────────────────┘
-                                           │ orders placed
-                                           ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │               WAITING_FILL                          │
-                    │  Each tick: query positions + open orders           │
-                    │                                                     │
-                    │  ✅ Both filled → IN_PAIR                           │
-                    │                                                     │
-                    │  Case 1: filled A + rejected B (no pending)         │
-                    │    → re-place B this tick                           │
-                    │                                                     │
-                    │  Case 2: filled A + pending B                       │
-                    │    → wait; timeout 30s → cancel B → OPENING         │
-                    │                                                     │
-                    │  Case 3: pending A + pending B                      │
-                    │    → wait; timeout 30s → cancel A+B → OPENING       │
-                    └──────────────────────┬──────────────────────────────┘
-                                           │ both legs filled
-                                           ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │                  IN_PAIR                            │
-                    │  Each tick (5s): update PnL, check exit conditions  │
-                    │  Exit triggers:                                     │
-                    │  • PROFIT_TARGET: combinedPnl ≥ profitTargetUsd     │
-                    │  • MAX_LOSS: combinedPnl ≤ -maxLossUsd              │
-                    │  • MEAN_REVERSION: ratio returns to equilibrium     │
-                    │  • TIME_EXPIRY: elapsedSecs ≥ holdingPeriodSecs     │
-                    └──────────────────────┬──────────────────────────────┘
-                                           │ exit condition met
-                                           ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │                  CLOSING                            │
-                    │  Tick A: cancel open orders → RETURN                │
-                    │  Tick B: query ACTUAL positions from exchange        │
-                    │    → close only open legs (avoid ghost close)       │
-                    │    → poll flat confirmation (5 times, 1s interval)  │
-                    └──────────────────────┬──────────────────────────────┘
-                                           │ both legs closed
-                                           ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │                 COOLDOWN                            │
-                    │  Wait cooldownSecs → IDLE                           │
-                    └─────────────────────────────────────────────────────┘
-```
-
----
-
-## Daily Budget Reset — Detailed Workflow
-
-```
-Bot starts
-  │
-  ├── dailyBudgetReset: false → nothing extra
-  │
-  └── dailyBudgetReset: true
-        │
-        ▼
-  DailyResetScheduler.start()
-  Seed lastResetDate = today@resetHour (prevents firing immediately on startup)
-        │
-        ▼
-  setInterval(60s) — check every minute:
-        │
-        ├── currentUTCHour ≠ resetHourUTC → skip
-        ├── currentMinute ≠ 0 → skip
-        └── todayKey === lastResetDate → skip (already reset today)
-              │
-              ▼ (fires once per day, on the first minute of the reset hour)
-        lastResetDate = todayKey
-              │
-              ▼
-        _doReset():
-          1. bot.stop()                        — stop watcher, save state
-          2. sm.resetMaxLoss()                 — clear max-loss-triggered flag
-          3. sm.resetVolumeTarget()            — clear volume-target-triggered flag
-          4. sm.setMaxLoss(dailyMaxLossUsd)    — re-apply max loss budget
-          5. sm.setTargetVolume(dailyTargetVolumeUsd) — re-apply volume target
-          6. bot.start()                       — start new session
-          7. onReset(botId)                    — send Telegram notification
-```
-
----
-
 ## AI Signal Engine
 
 Fetches 4 data sources in parallel:
 - Orderbook depth (20 levels) — from exchange adapter
 - Recent trades (100 trades) — from exchange adapter
-- Binance 5m klines (30 candles) — EMA, RSI, momentum
-- Binance top L/S position ratio (5m) — sentiment
+- OHLCV klines (30 candles, 5m interval) — from exchange adapter (SoDEX, Hibachi) or Binance fallback
+- Built-in sentiment indicator — composite score from trade pressure, orderbook imbalance, and volume activity
 
 **Momentum score** with adaptive weights (auto-adjusts every 10 trades):
 
@@ -459,28 +434,16 @@ Fetches 4 data sources in parallel:
 | 3-candle momentum | `(currentPrice - closes[-4]) / closes[-4] × 50 + 0.5` | ~20% |
 | Orderbook imbalance | `(bidVol/askVol - 1) × 0.5 + 0.5` | ~15% |
 
-**Candle pattern bonus**: EMA crossover or hammer/shooting star → ±0.05
+**Built-in sentiment indicator:**
+- Trade pressure (40%): `buyVol / (buyVol + sellVol)`
+- Orderbook imbalance (40%): `bidVol / askVol`
+- Volume activity (20%): volume spike detection
 
-**SIDEWAY regime**: price position within 10-candle range adjusts score by ±0.08
+**SoSoValue overlay**: confidence × sentimentMultiplier (0.85× to 1.2×) applied after all indicators.
 
 **Cache**: 60s TTL. Invalidated after placing an entry order.
 
-**Fallback**: if Binance API fails → use basic SignalEngine (OB + trades only)
-
----
-
-## Farm Signal Cost Optimizer
-
-6 filters/adjusters to reduce trades with negative cost (fee > gross PnL):
-
-| Filter | Reject condition | Config key |
-|---|---|---|
-| RegimeConfidenceThreshold | SIDEWAY: conf < 0.45; TREND: conf < 0.35 | `FARM_SIDEWAY_MIN_CONFIDENCE`, `FARM_TREND_MIN_CONFIDENCE` |
-| TradePressureGate | tradePressure=0 AND conf < 0.55 | `FARM_MIN_CONFIDENCE_PRESSURE_GATE` |
-| FallbackQualityGate | fallback=true AND conf < 0.25 | `FARM_MIN_FALLBACK_CONFIDENCE` |
-| FeeAwareEntryFilter | `\|score-0.5\|×2×atrPct ≤ FEE_RATE×2×1.5` | `FEE_RATE_MAKER` |
-| LLMMomentumAdjuster | (no reject) boost ×1.1 or penalty ×0.8 | — |
-| MinHoldTimeEnforcer | (no reject) `feeBreakEvenSecs = (FEE×2/atrPct)×300` | `FARM_MIN_HOLD_SECS`, `FARM_MAX_HOLD_SECS` |
+**Fallback**: if exchange klines unavailable → Binance futures klines; if all fails → basic SignalEngine (OB + trades only)
 
 ---
 
@@ -491,8 +454,55 @@ Fetches 4 data sources in parallel:
 | SoDEX | EIP-712 typed data | Post-Only, 0.012% maker fee, SoPoints |
 | Decibel | Ed25519 (Aptos) | Gas Station, per-order cancel |
 | Dango | Secp256k1 + GraphQL | USD notional sizing |
+| **Hibachi** | ECDSA (trustless) / HMAC-SHA256 (managed) | Two account modes, contract-based sizing |
 
-**SoDEX quirks**: API returns all positions regardless of `?symbol=` query → filter client-side. Negative size = short → normalize with `Math.abs()`.
+**Hibachi account modes:**
+- `trustless` — requires `HIBACHI_PRIVATE_KEY` (0x-prefixed 32-byte hex); signs orders client-side
+- `exchange_managed` — requires `HIBACHI_SECRET_KEY`; HMAC-SHA256 request signing
+
+---
+
+## Operational Workflow
+
+```
+1. Setup
+   ├── Copy .env.example → .env, fill credentials
+   ├── Configure bot-configs.json (exchange, symbol, mode, budget)
+   └── npm install
+
+2. Start
+   ├── npm start (dev) or npm run start:prod (production)
+   ├── Bot loads .env → restores persisted state → reads bot-configs.json
+   ├── Multi-bot mode: BotManager creates all configured bots
+   └── TenantRegistry restores any wallet-scoped tenants from ./data/
+
+3. Runtime
+   ├── Dashboard: http://localhost:3000
+   │     ├── Manager view: all bots, aggregated PnL, start/stop
+   │     ├── Bot detail: session PnL, volume, real-time console (SSE)
+   │     ├── Analytics tab: win rate, signal quality, fee impact
+   │     └── Bot Settings: 70+ config params, daily budget reset
+   │
+   ├── Telegram: /start_bot, /stop_bot, /status, /check, /set_mode, /set_max_loss
+   │
+   └── Each bot tick (~5s):
+         ├── Fetch SoSoValue Fear & Greed Index
+         ├── Run signal pipeline (AISignalEngine + filters)
+         ├── Check PnL vs max loss / volume vs target
+         ├── Execute state machine (IDLE→PENDING→IN_POSITION→EXITING→COOLDOWN)
+         └── Log trade + update analytics
+
+4. Daily Reset (if enabled)
+   ├── 0:00 UTC: DailyResetScheduler fires
+   ├── Stop bot → reset flags → re-apply budget → auto-start
+   └── Telegram notification sent
+
+5. Shutdown
+   ├── SIGINT/SIGTERM received
+   ├── All bots stopped gracefully
+   ├── TenantRegistry.shutdownAll() — persist all tenant state
+   └── State saved to disk
+```
 
 ---
 
@@ -517,6 +527,10 @@ docker compose up -d
 ## `.env` Configuration
 
 ```env
+# Exchange selector (single-bot mode)
+EXCHANGE=sodex
+SYMBOL=BTC-PERP
+
 # SoDEX
 SODEX_API_KEY=...
 SODEX_API_SECRET=0x...
@@ -531,12 +545,24 @@ DECIBELS_SUBACCOUNT=0x...
 DANGO_PRIVATE_KEY=0x...
 DANGO_USER_ADDRESS=0x...
 
+# Hibachi
+HIBACHI_API_KEY=...
+HIBACHI_ACCOUNT_ID=...
+HIBACHI_ACCOUNT_TYPE=trustless
+HIBACHI_PRIVATE_KEY=0x...
+
+# SoSoValue
+SOSOVALUE_API_KEY=...
+
+# Telegram
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 
+# LLM
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 
+# Logging & Dashboard
 TRADE_LOG_BACKEND=json
 TRADE_LOG_PATH=/app/data/trades.json
 DASHBOARD_PORT=3000
@@ -553,6 +579,7 @@ Access at `http://localhost:3000`
 - **Hedge bot**: shows 2 open legs (symbol, side, entry price, unrealized PnL, combined PnL)
 - **Analytics tab**: win rate, signal quality, fee impact, regime performance, filter skip stats, effective confidence stats, dynamic min hold stats
 - **Bot Settings**: adjust 70+ config params at runtime without restart; **📅 Daily Budget Reset** section (only on bot detail page) lets you configure Enable toggle, Max Loss/day, Target Volume/day, Reset Hour UTC — saves immediately without page reload
+- **Wallet login**: WalletConnect / AppKit — each wallet gets isolated tenant storage
 
 ---
 
@@ -579,13 +606,18 @@ src/
 │   ├── ExchangeAdapter.ts    # Common interface
 │   ├── sodex_adapter.ts      # SoDEX (EIP-712 signing)
 │   ├── decibel_adapter.ts    # Decibel (Aptos Ed25519)
-│   └── dango_adapter.ts      # Dango (Secp256k1 + GraphQL)
+│   ├── dango_adapter.ts      # Dango (Secp256k1 + GraphQL)
+│   └── hibachi_adapter.ts    # Hibachi (ECDSA / HMAC-SHA256)
 ├── bot/
 │   ├── BotManager.ts         # Manages multiple bots
 │   ├── BotInstance.ts        # Farm/Trade bot wrapper
 │   ├── DailyResetScheduler.ts # Daily budget reset + auto-start
 │   ├── HedgeBot.ts           # Correlation hedging bot (6-state machine)
 │   ├── VolumeMonitor.ts      # Dual-symbol volume spike detection
+│   ├── TenantRegistry.ts     # Multi-wallet SaaS tenant management
+│   ├── TenantContext.ts      # Per-wallet active bot instances
+│   ├── TenantConfigStore.ts  # Per-wallet bot configs
+│   ├── CredentialStore.ts    # Encrypted exchange credentials
 │   └── hedgeBotHelpers.ts    # assignDirections, evaluateExitConditions
 ├── modules/
 │   ├── Watcher.ts            # Main 5-state machine
@@ -593,12 +625,16 @@ src/
 │   ├── Executor.ts           # Place/cancel orders (Post-Only + IOC)
 │   ├── ExecutionEdge.ts      # Dynamic offset + spread guard
 │   ├── FillTracker.ts        # Fill rate ring buffer (20 orders)
-│   ├── PositionSizer.ts      # Dynamic sizing
+│   ├── PositionSizer.ts      # Dynamic sizing + macro sentiment multiplier
 │   ├── MarketMaker.ts        # Ping-pong + inventory + dynamic TP
 │   ├── RiskManager.ts        # TP/SL check
 │   └── SessionManager.ts     # Max loss, volume target, session state
 ├── ai/
-│   ├── AISignalEngine.ts     # Main signal engine (EMA/RSI/momentum/OB)
+│   ├── AISignalEngine.ts     # Main signal engine (EMA/RSI/momentum/OB + SoSoValue)
+│   ├── SoSoValueClient.ts    # Fear & Greed Index API client
+│   ├── SoSoValueStrategy.ts  # Sentiment → confidence/size multipliers
+│   ├── SoSoValueAnalytics.ts # Sentiment analytics and reporting
+│   ├── LLMReasoningAgent.ts  # LLM-based momentum adjustment
 │   ├── RegimeDetector.ts     # ATR + BB + volume → SIDEWAY/TREND/HIGH_VOL
 │   ├── ChopDetector.ts       # Flip rate + momentum neutrality + BB compression
 │   ├── FakeBreakoutFilter.ts # Volume + OB imbalance contradiction check
@@ -630,3 +666,4 @@ src/
 *DRIFT — Where intelligent execution meets adaptive learning*
 
 </div>
+

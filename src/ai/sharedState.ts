@@ -38,6 +38,10 @@ export const sharedState = {
   volumeHistory: [] as PnlDataPoint[],
   eventLog: [] as EventLogEntry[],
   openPosition: null as OpenPositionState | null,
+  /** Last LLM-generated reasoning sentence — updated on each trade entry */
+  lastReasoning: null as string | null,
+  /** Timestamp of the last reasoning update */
+  lastReasoningAt: null as string | null,
 };
 
 /** Add volume to today's UTC volume counter, auto-resets at UTC midnight */

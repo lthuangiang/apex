@@ -6,17 +6,41 @@
 
 ### Dynamic Risk-Informed Futures Trading
 
-*AI-powered perpetual futures bot với adaptive learning, intelligent execution, correlation hedging, và daily budget reset*
+*AI-powered perpetual futures bot với adaptive learning, SoSoValue macro intelligence, multi-exchange execution, và multi-wallet SaaS architecture*
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Live](https://img.shields.io/badge/🚀_Live_Demo-drift.junxcrypto.xyz-f5a623?style=flat)](https://drift.junxcrypto.xyz/)
 
 </div>
 
 ---
 
-DRIFT là multi-bot trading system cho perpetual futures, hỗ trợ 3 sàn: **SoDEX**, **Dango Exchange**, và **Decibel**. Hệ thống chạy nhiều bot song song với 3 chiến lược: **Farm Mode** (volume tối đa), **Trade Mode** (win rate tối đa), và **Hedge Bot** (correlation divergence). Mỗi bot có thể cấu hình **daily budget reset** — tự động reset max loss và volume target, restart lúc 0h UTC (7h sáng Vietnam) mỗi ngày. Bot dừng khi chạm max loss **hoặc** khi đạt volume target — cái nào đến trước thì dừng.
+> English documentation: [README.md](README.md)
+
+## Hackathon Timeline
+
+| Wave | Build Phase | Evaluation Phase | Focus | Allocation | Status |
+|------|-------------|-----------------|-------|------------|--------|
+| **Wave 1** — Concept / Early Prototype | 1/5 – 12/5/2026 | 13/5 – 22/5/2026 | Định hướng ý tưởng, xác định người dùng mục tiêu, use case, kế hoạch API, thiết kế workflow, prototype ban đầu | 3,000 USDC | ✅ **Hoàn thành** |
+| **Wave 2** — Build Phase I | 23/5 – 3/6/2026 | 4/6 – 13/6/2026 | Phát triển tính năng cốt lõi, tích hợp SoSoValue API, Hibachi exchange adapter, multi-wallet SaaS, interactive prototype | 3,000 USDC | 🔄 **Đang thực hiện** |
+| **Wave 3** — Build Phase II | 14/6 – 25/6/2026 | 26/6 – 5/7/2026 | Hoàn thiện sản phẩm, tinh chỉnh logic, cải thiện UX, thiết kế risk control, demo và nộp bài cuối | 4,000 USDC | ⏳ **Chưa bắt đầu** |
+
+---
+
+## Tổng quan
+
+DRIFT là multi-bot trading system cho perpetual futures, hỗ trợ **4 sàn giao dịch**: **SoDEX**, **Dango**, **Decibel**, và **Hibachi**. Hệ thống chạy nhiều bot song song với 3 chiến lược: **Farm Mode** (tối đa volume), **Trade Mode** (tối đa win rate), và **Hedge Bot** (correlation divergence).
+
+**Tính năng mới trong Wave 2:**
+- **SoSoValue Fear & Greed Index** — sentiment thị trường điều chỉnh confidence multiplier và position sizing
+- **Hibachi exchange adapter** — hỗ trợ trustless (ECDSA) và exchange-managed (HMAC-SHA256)
+- **Multi-wallet SaaS** — tenant isolation theo wallet, encrypted credential storage, per-tenant bot lifecycle
+
+Mỗi bot hỗ trợ **daily budget reset** — tự động reset max loss và volume target lúc 0h UTC (7h sáng Vietnam) mỗi ngày.
+
+---
 
 ## Dashboard
 
@@ -24,7 +48,7 @@ DRIFT là multi-bot trading system cho perpetual futures, hỗ trợ 3 sàn: **S
   <img src="dashboard.png" alt="DRIFT Dashboard" width="800"/>
 </p>
 
-## System Architecture
+## Kiến trúc hệ thống
 
 <p align="center">
   <img src="design.png" alt="DRIFT Architecture" width="800"/>
@@ -43,25 +67,28 @@ Thiết kế cho các DEX có volume incentive (SoPoints, rebate). Mục tiêu l
 Signal từ AISignalEngine
   │
   ▼
-[1] RegimeConfidenceThreshold  — SIDEWAY ≥ 0.45, TREND ≥ 0.35
+[1] SoSoValue macro filter    — sentiment multiplier áp vào confidence
   │
   ▼
-[2] TradePressureGate          — skip nếu pressure=0 AND confidence < 0.55
+[2] RegimeConfidenceThreshold — SIDEWAY ≥ 0.45, TREND ≥ 0.35
   │
   ▼
-[3] FallbackQualityGate        — skip nếu fallback=true AND confidence < 0.25
+[3] TradePressureGate         — skip nếu pressure=0 AND confidence < 0.55
   │
   ▼
-[4] FeeAwareEntryFilter        — skip nếu expectedEdge ≤ minRequiredMove × 1.5
+[4] FallbackQualityGate       — skip nếu fallback=true AND confidence < 0.25
   │
   ▼
-[5] LLMMomentumAdjuster        — điều chỉnh effectiveConfidence (±10–20%)
+[5] FeeAwareEntryFilter       — skip nếu expectedEdge ≤ minRequiredMove × 1.5
   │
   ▼
-[6] MinHoldTimeEnforcer        — tính dynamicMinHold từ ATR và fee
+[6] LLMMomentumAdjuster       — điều chỉnh effectiveConfidence (±10–20%)
   │
   ▼
-PositionSizer → placeEntryOrder
+[7] MinHoldTimeEnforcer       — tính dynamicMinHold từ ATR và fee
+  │
+  ▼
+PositionSizer (+ macroSentimentMultiplier) → placeEntryOrder
 ```
 
 **Direction resolution** (không bao giờ skip):
@@ -90,19 +117,22 @@ Chỉ vào khi có edge rõ ràng. Không có time exit — để trade chạy �
 Signal từ AISignalEngine
   │
   ▼
-[1] Regime check       — HIGH_VOLATILITY → skip nếu REGIME_HIGH_VOL_SKIP_ENTRY=true
+[1] SoSoValue macro filter — Extreme Greed (>75): tăng ngưỡng confidence
   │
   ▼
-[2] ChopDetector       — chopScore ≥ 0.55 → skip
+[2] Regime check       — HIGH_VOLATILITY → skip nếu REGIME_HIGH_VOL_SKIP_ENTRY=true
   │
   ▼
-[3] FakeBreakoutFilter — OB imbalance contradicts direction → skip
+[3] ChopDetector       — chopScore ≥ 0.55 → skip
   │
   ▼
-[4] Confidence gate    — confidence < MIN_CONFIDENCE (0.65) → skip
+[4] FakeBreakoutFilter — OB imbalance contradicts direction → skip
   │
   ▼
-[5] 2-tick confirmation — phải confirm trong 60s window
+[5] Confidence gate    — confidence < MIN_CONFIDENCE (0.65) → skip
+  │
+  ▼
+[6] 2-tick confirmation — phải confirm trong 60s window
   │
   ▼
 PositionSizer → placeEntryOrder
@@ -131,6 +161,93 @@ IDLE → OPENING → WAITING_FILL → IN_PAIR → CLOSING → COOLDOWN
 - Case 3: 2 pending → chờ fill; timeout 30s → cancel cả 2 → OPENING
 
 **Exit conditions**: profit target, max loss, mean reversion, hoặc holding period hết hạn.
+
+---
+
+## Tích hợp SoSoValue (Wave 2)
+
+DRIFT tích hợp **SoSoValue Fear & Greed Index** như một lớp macro intelligence điều chỉnh hành vi trading theo sentiment thị trường.
+
+### Cách hoạt động
+
+```
+Mỗi lần đánh giá signal:
+  │
+  ▼
+SoSoValueClient.getFearGreedIndex()
+  → Primary:  SoSoValue API (https://openapi.sosovalue.com/openapi/v1)
+  → Fallback: alternative.me API
+  │
+  ▼
+SoSoValueStrategy.getAdjustment(fearGreedIndex)
+  │
+  ▼
+Áp dụng vào:
+  ├── AISignalEngine  → confidence × sentimentMultiplier
+  └── PositionSizer   → size × macroSentimentMultiplier
+```
+
+### Bảng chiến lược theo Sentiment
+
+| Fear & Greed | Mode | Confidence Mult | Size Mult | Hành vi |
+|---|---|---|---|---|
+| < 25 | Aggressive Farm | 0.85× | 1.15× | Mua đáy — ngưỡng thấp hơn, size lớn hơn |
+| 25–45 | Normal Farm | 0.95× | 1.0× | Thận trọng nhưng chủ động |
+| 45–55 | Balanced | 1.0× | 1.0× | Không điều chỉnh |
+| 55–75 | Cautious Trade | 1.1× | 0.9× | Chọn lọc — ngưỡng cao hơn, size nhỏ hơn |
+| > 75 | Defensive | 1.2× | 0.8× | Tránh FOMO — phòng thủ |
+
+**Tại sao hoạt động:**
+- **Extreme Fear (< 25)**: Hoảng loạn tạo cơ hội mua đáy → bot aggressive hơn
+- **Extreme Greed (> 75)**: Euphoria tăng rủi ro đảo chiều → bot phòng thủ
+- **Neutral (45–55)**: Điều kiện bình thường → không điều chỉnh
+
+### Cấu hình
+
+```env
+SOSOVALUE_API_KEY=your_api_key
+```
+
+---
+
+## Multi-Wallet SaaS Architecture (Wave 2)
+
+DRIFT hỗ trợ **tenant isolation** theo wallet — mỗi địa chỉ ví có bot instances, credentials, và config riêng biệt lưu trong `./data/<wallet>/`.
+
+### Tenant Lifecycle
+
+```
+Người dùng kết nối ví (WalletConnect / AppKit)
+  │
+  ▼
+Dashboard xác thực địa chỉ ví
+  │
+  ▼
+TenantRegistry.getOrCreate(walletAddress)
+  ├── Tenant mới: tạo thư mục ./data/<wallet>/
+  │     ├── TenantConfigStore  — bot configs theo ví
+  │     ├── CredentialStore    — credentials mã hóa
+  │     └── TenantContext      — bot instances đang chạy
+  │
+  └── Tenant đã có: khôi phục từ disk
+        ├── Load bot configs
+        ├── Giải mã credentials
+        └── Khởi động lại bots có autoStart=true
+  │
+  ▼
+Khi shutdown: TenantRegistry.shutdownAll()
+  → Dừng tất cả tenant bots + lưu state
+```
+
+### Cấu trúc dữ liệu
+
+```
+./data/
+└── <wallet_address>/
+    ├── bot-configs.json      # Bot configs theo ví
+    ├── credentials.enc       # Exchange API keys đã mã hóa
+    └── bot_state_*.json      # Runtime state của từng bot
+```
 
 ---
 
@@ -170,12 +287,6 @@ Mỗi phút: DailyResetScheduler kiểm tra giờ UTC hiện tại
         5. Gửi Telegram notification
 ```
 
-### Telegram notifications
-
-- Max loss hit: `⚠️ Max Loss Reached | Limit: $5 | Actual: -$5.12 | Bot stopped — will reset at next daily cycle`
-- Volume target hit: `🎯 Volume Target Reached | Target: $5,000 | Actual: $5,023 | PnL: +2.40 | Bot stopped — will reset at next daily cycle`
-- Daily reset: `🔄 Daily Budget Reset — Bot sodex-bot | Budget: $5 max loss | Volume target: $5,000 | 0:00 UTC (7:00 Vietnam) | Bot auto-restarted`
-
 ### Cấu hình trong `bot-configs.json`
 
 ```json
@@ -196,45 +307,11 @@ Mỗi phút: DailyResetScheduler kiểm tra giờ UTC hiện tại
 | `dailyTargetVolumeUsd` | Volume target mỗi ngày (USD). `0` = tắt | `0` |
 | `dailyResetHourUTC` | Giờ reset (UTC 0–23) | `0` (= 7h VN) |
 
-### Cấu hình từ Dashboard (Bot Settings popup)
+### Telegram notifications
 
-Ngoài việc sửa `bot-configs.json` trực tiếp, có thể cấu hình từ giao diện web:
-
-```
-Mở trang bot detail → click ⚙️ Bot Settings
-  │
-  ▼
-Popup mở → cuộn xuống section "📅 Daily Budget Reset"
-  │
-  ├── Enable toggle: bật/tắt tính năng
-  ├── Max Loss/day ($): giới hạn lỗ mỗi ngày
-  ├── Target Volume/day ($): mục tiêu volume (0 = tắt)
-  └── Reset Hour UTC: giờ reset (hint tự động hiển thị giờ Vietnam)
-  │
-  ▼
-Click "✓ Save"
-  │
-  ▼
-Server:
-  1. Validate tất cả fields
-  2. Cập nhật bot.config (live, không cần restart)
-  3. Gọi sm.setMaxLoss() + sm.setTargetVolume() (có hiệu lực ngay)
-  4. Gọi bot.syncDailyResetScheduler() — restart scheduler với config mới
-  5. Persist vào bot-configs.json
-  6. Trả về config đã cập nhật
-  │
-  ▼
-Toast "Saved ✓" (xanh) hoặc thông báo lỗi (đỏ)
-```
-
-**Lưu ý:** Section "📅 Daily Budget Reset" chỉ hiển thị trên trang bot detail (multi-bot mode), không hiển thị trên trang overview.
-
-### Ví dụ thực tế
-
-- Setup `dailyMaxLossUsd: 5`, `dailyTargetVolumeUsd: 5000` → bot trade cả ngày
-- Nếu lỗ $5 → dừng ngay (max loss)
-- Nếu volume đạt $5,000 → dừng ngay (volume target) — dù chưa lỗ
-- Đến 0h UTC (7h sáng VN): reset cả hai flags, bot tự start lại với budget mới
+- Max loss hit: `⚠️ Max Loss Reached | Limit: $5 | Actual: -$5.12 | Bot stopped — will reset at next daily cycle`
+- Volume target hit: `🎯 Volume Target Reached | Target: $5,000 | Actual: $5,023 | PnL: +2.40 | Bot stopped — will reset at next daily cycle`
+- Daily reset: `🔄 Daily Budget Reset — Bot sodex-bot | Budget: $5 max loss | Volume target: $5,000 | 0:00 UTC (7:00 Vietnam) | Bot auto-restarted`
 
 ---
 
@@ -246,9 +323,9 @@ bot.ts (Multi-Bot Manager)
   │     ├── BotInstance (Farm/Trade)
   │     │     ├── DailyResetScheduler   # Reset budget (max loss + volume target) + auto-start hàng ngày
   │     │     └── Watcher           # 5-state: IDLE→PENDING→IN_POSITION→EXITING→COOLDOWN
-  │     │           ├── AISignalEngine      # EMA9/21, RSI, momentum, OB + regime
+  │     │           ├── AISignalEngine      # EMA9/21, RSI, momentum, OB + regime + SoSoValue
   │     │           ├── FarmSignalFilters   # 4-gate pipeline + LLM adjuster + MinHold
-  │     │           ├── PositionSizer       # Dynamic sizing (confidence × performance)
+  │     │           ├── PositionSizer       # Dynamic sizing (confidence × performance × sentiment)
   │     │           ├── MarketMaker         # Ping-pong + inventory + dynamic TP
   │     │           ├── ExecutionEdge       # Dynamic offset + spread guard + fill rate
   │     │           ├── ChopDetector        # Trade mode only
@@ -260,6 +337,14 @@ bot.ts (Multi-Bot Manager)
   │           ├── AISignalEngine ×2 # Một engine per symbol
   │           └── State Machine     # IDLE→OPENING→WAITING_FILL→IN_PAIR→CLOSING→COOLDOWN
   │
+  ├── TenantRegistry                # Multi-wallet SaaS tenant isolation
+  │     ├── TenantContext           # Bot instances đang chạy theo ví
+  │     ├── TenantConfigStore       # Bot configs theo ví
+  │     └── CredentialStore         # Credentials mã hóa
+  │
+  ├── SoSoValueClient               # Fear & Greed Index API
+  ├── SoSoValueStrategy             # Sentiment → confidence/size multipliers
+  ├── LLMReasoningAgent             # LLM-based momentum adjustment
   ├── FeedbackLoop/                 # Adaptive signal weights
   │     ├── ComponentPerformanceTracker
   │     ├── AdaptiveWeightAdjuster
@@ -271,6 +356,50 @@ bot.ts (Multi-Bot Manager)
   ├── DashboardServer               # Express + SSE real-time
   ├── ConfigStore                   # Runtime config override (70+ params)
   └── SessionManager                # Max loss, volume target, session state
+```
+
+---
+
+## Quy trình vận hành
+
+```
+1. Cài đặt
+   ├── Copy .env.example → .env, điền credentials
+   ├── Cấu hình bot-configs.json (exchange, symbol, mode, budget)
+   └── npm install
+
+2. Khởi động
+   ├── npm start (dev) hoặc npm run start:prod (production)
+   ├── Bot load .env → khôi phục state → đọc bot-configs.json
+   ├── Multi-bot mode: BotManager tạo tất cả bots đã cấu hình
+   └── TenantRegistry khôi phục tenant wallets từ ./data/
+
+3. Vận hành
+   ├── Dashboard: http://localhost:3000
+   │     ├── Manager view: tất cả bots, PnL tổng hợp, start/stop
+   │     ├── Bot detail: session PnL, volume, real-time console (SSE)
+   │     ├── Analytics tab: win rate, signal quality, fee impact
+   │     └── Bot Settings: 70+ config params, daily budget reset
+   │
+   ├── Telegram: /start_bot, /stop_bot, /status, /check, /set_mode, /set_max_loss
+   │
+   └── Mỗi tick bot (~5s):
+         ├── Fetch SoSoValue Fear & Greed Index
+         ├── Chạy signal pipeline (AISignalEngine + filters)
+         ├── Kiểm tra PnL vs max loss / volume vs target
+         ├── Thực thi state machine (IDLE→PENDING→IN_POSITION→EXITING→COOLDOWN)
+         └── Log trade + cập nhật analytics
+
+4. Daily Reset (nếu bật)
+   ├── 0h UTC: DailyResetScheduler kích hoạt
+   ├── Stop bot → reset flags → áp lại budget → auto-start
+   └── Gửi Telegram notification
+
+5. Shutdown
+   ├── Nhận SIGINT/SIGTERM
+   ├── Tất cả bots dừng gracefully
+   ├── TenantRegistry.shutdownAll() — lưu state tất cả tenants
+   └── State lưu xuống disk
 ```
 
 ---
@@ -332,144 +461,13 @@ bot.ts (Multi-Bot Manager)
 
 ---
 
-## Hedge Bot — State Machine Chi Tiết
-
-```
-                    ┌─────────────────────────────────────────────────────┐
-                    │                    IDLE                             │
-                    │  • VolumeMonitor.sample() mỗi 15s                  │
-                    │  • shouldEnter(): cả 2 symbol spike đồng thời?      │
-                    │  • getSignal(A) + getSignal(B) song song            │
-                    │  • assignDirections(scoreA, scoreB)                 │
-                    │    → scoreA > scoreB: long A, short B               │
-                    │    → scoreB > scoreA: long B, short A               │
-                    │    → equal: skip                                    │
-                    └──────────────────────┬──────────────────────────────┘
-                                           │ entry triggered
-                                           ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │                  OPENING                            │
-                    │  Tick A: check open orders → cancel nếu có → RETURN │
-                    │  Tick B: check existing positions (anti-double-trade)│
-                    │    → legA filled? skip order A                      │
-                    │    → legB filled? skip order B                      │
-                    │    → place_limit_order(A) + place_limit_order(B)    │
-                    │    → 1 leg fails → cancel successful leg → IDLE     │
-                    └──────────────────────┬──────────────────────────────┘
-                                           │ orders placed
-                                           ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │               WAITING_FILL                          │
-                    │  Mỗi tick: query positions + open orders            │
-                    │                                                     │
-                    │  ✅ Both filled → IN_PAIR                           │
-                    │                                                     │
-                    │  Case 1: filled A + rejected B (no pending)         │
-                    │    → re-place B ngay tick này                       │
-                    │                                                     │
-                    │  Case 2: filled A + pending B                       │
-                    │    → wait; timeout 30s → cancel B → OPENING         │
-                    │                                                     │
-                    │  Case 3: pending A + pending B                      │
-                    │    → wait; timeout 30s → cancel A+B → OPENING       │
-                    └──────────────────────┬──────────────────────────────┘
-                                           │ both legs filled
-                                           ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │                  IN_PAIR                            │
-                    │  Mỗi tick (5s): update PnL, check exit conditions   │
-                    │  Exit triggers:                                     │
-                    │  • PROFIT_TARGET: combinedPnl ≥ profitTargetUsd     │
-                    │  • MAX_LOSS: combinedPnl ≤ -maxLossUsd              │
-                    │  • MEAN_REVERSION: ratio trở về equilibrium spread  │
-                    │  • TIME_EXPIRY: elapsedSecs ≥ holdingPeriodSecs     │
-                    └──────────────────────┬──────────────────────────────┘
-                                           │ exit condition met
-                                           ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │                  CLOSING                            │
-                    │  Tick A: cancel open orders → RETURN                │
-                    │  Tick B: query ACTUAL positions từ exchange          │
-                    │    → close chỉ legs còn mở (tránh ghost close)      │
-                    │    → poll flat confirmation (5 lần, 1s interval)    │
-                    └──────────────────────┬──────────────────────────────┘
-                                           │ both legs closed
-                                           ▼
-                    ┌─────────────────────────────────────────────────────┐
-                    │                 COOLDOWN                            │
-                    │  Chờ cooldownSecs → IDLE                            │
-                    └─────────────────────────────────────────────────────┘
-```
-
----
-
-## Daily Budget Reset — Workflow Chi Tiết
-
-```
-Bot khởi động
-  │
-  ├── dailyBudgetReset: false → không làm gì thêm
-  │
-  └── dailyBudgetReset: true
-        │
-        ▼
-  DailyResetScheduler.start()
-  Seed lastResetDate = today@resetHour (tránh fire ngay khi khởi động)
-        │
-        ▼
-  setInterval(60s) — mỗi phút check:
-        │
-        ├── currentUTCHour ≠ resetHourUTC → skip
-        ├── currentMinute ≠ 0 → skip
-        └── todayKey === lastResetDate → skip (đã reset hôm nay rồi)
-              │
-              ▼ (chỉ fire 1 lần/ngày, đúng phút đầu của giờ reset)
-        lastResetDate = todayKey
-              │
-              ▼
-        _doReset():
-          1. bot.stop()                        — dừng watcher, lưu state
-          2. sm.resetMaxLoss()                 — xóa flag max-loss-triggered
-          3. sm.resetVolumeTarget()            — xóa flag volume-target-triggered
-          4. sm.setMaxLoss(dailyMaxLossUsd)    — áp lại max loss budget
-          5. sm.setTargetVolume(dailyTargetVolumeUsd) — áp lại volume target
-          6. bot.start()                       — khởi động lại session mới
-          7. onReset(botId)                    — gửi Telegram notification
-```
-
-### Stop condition trong Watcher._tick()
-
-```
-Watcher._tick() mỗi ~5s:
-  │
-  ├── Section 2: updatePnL(sessionCurrentPnl)
-  │     → sessionPnl ≤ -maxLossUsd?
-  │       → Có: IOC close all positions + bot.stop() [MAX LOSS]
-  │
-  └── Section 2.5: updateVolume(sessionVolume)
-        → sessionVolume ≥ targetVolumeUsd AND targetVolumeUsd > 0?
-          → Có: IOC close all positions + bot.stop() [VOLUME TARGET]
-
-Cả hai dùng cùng pattern: IOC close → poll flat → stop.
-Cả hai chỉ fire 1 lần/session (flag _maxLossTriggered / _volumeTargetTriggered).
-DailyResetScheduler._doReset() reset cả hai flags lúc giờ reset.
-```
-
-**Lưu ý quan trọng:**
-- `bot.stop()` trong daily reset **không** dừng scheduler (chỉ `bot.stop(true)` khi shutdown toàn hệ thống mới dừng scheduler)
-- Nếu bot đang STOPPED (đã bị dừng do max loss hoặc volume target), scheduler vẫn restart được
-- `forceReset()` cho phép trigger thủ công từ dashboard
-- `BotInstance.syncDailyResetScheduler()` — dừng scheduler cũ, tạo scheduler mới với config mới, start ngay lập tức (dùng khi save config từ dashboard)
-
----
-
 ## AI Signal Engine
 
 Fetch song song 4 nguồn dữ liệu:
 - Orderbook depth (20 levels) — từ exchange adapter
 - Recent trades (100 trades) — từ exchange adapter
-- Binance 5m klines (30 candles) — EMA, RSI, momentum
-- Binance top L/S position ratio (5m) — sentiment
+- OHLCV klines (30 nến, 5m interval) — từ exchange adapter (SoDEX, Hibachi) hoặc Binance fallback
+- Built-in sentiment indicator — điểm tổng hợp từ trade pressure, orderbook imbalance, và volume activity
 
 **Momentum score** với adaptive weights (tự điều chỉnh mỗi 10 trades):
 
@@ -480,28 +478,16 @@ Fetch song song 4 nguồn dữ liệu:
 | 3-candle momentum | `(currentPrice - closes[-4]) / closes[-4] × 50 + 0.5` | ~20% |
 | Orderbook imbalance | `(bidVol/askVol - 1) × 0.5 + 0.5` | ~15% |
 
-**Candle pattern bonus**: EMA crossover hoặc hammer/shooting star → ±0.05
+**Built-in sentiment indicator:**
+- Trade pressure (40%): `buyVol / (buyVol + sellVol)`
+- Orderbook imbalance (40%): `bidVol / askVol`
+- Volume activity (20%): phát hiện volume spike
 
-**SIDEWAY regime**: price position trong 10-candle range điều chỉnh score thêm ±0.08
+**SoSoValue overlay**: confidence × sentimentMultiplier (0.85× đến 1.2×) áp sau tất cả indicators.
 
 **Cache**: 60s TTL. Invalidate sau khi place entry order.
 
-**Fallback**: nếu Binance API lỗi → dùng SignalEngine cơ bản (OB + trades only)
-
----
-
-## Farm Signal Cost Optimizer
-
-6 bộ lọc/điều chỉnh để giảm trades có chi phí âm (fee > gross PnL):
-
-| Filter | Điều kiện reject | Config key |
-|---|---|---|
-| RegimeConfidenceThreshold | SIDEWAY: conf < 0.45; TREND: conf < 0.35 | `FARM_SIDEWAY_MIN_CONFIDENCE`, `FARM_TREND_MIN_CONFIDENCE` |
-| TradePressureGate | tradePressure=0 AND conf < 0.55 | `FARM_MIN_CONFIDENCE_PRESSURE_GATE` |
-| FallbackQualityGate | fallback=true AND conf < 0.25 | `FARM_MIN_FALLBACK_CONFIDENCE` |
-| FeeAwareEntryFilter | `\|score-0.5\|×2×atrPct ≤ FEE_RATE×2×1.5` | `FEE_RATE_MAKER` |
-| LLMMomentumAdjuster | (không reject) boost ×1.1 hoặc penalty ×0.8 | — |
-| MinHoldTimeEnforcer | (không reject) `feeBreakEvenSecs = (FEE×2/atrPct)×300` | `FARM_MIN_HOLD_SECS`, `FARM_MAX_HOLD_SECS` |
+**Fallback**: nếu exchange klines không có → Binance futures klines; nếu tất cả lỗi → SignalEngine cơ bản (OB + trades only)
 
 ---
 
@@ -512,8 +498,11 @@ Fetch song song 4 nguồn dữ liệu:
 | SoDEX | EIP-712 typed data | Post-Only, 0.012% maker fee, SoPoints |
 | Decibel | Ed25519 (Aptos) | Gas Station, per-order cancel |
 | Dango | Secp256k1 + GraphQL | USD notional sizing |
+| **Hibachi** | ECDSA (trustless) / HMAC-SHA256 (managed) | Hai account mode, contract-based sizing |
 
-**SoDEX quirks**: API trả về tất cả positions bất kể `?symbol=` query → filter client-side. Size âm = short → normalize `Math.abs()`.
+**Hibachi account modes:**
+- `trustless` — cần `HIBACHI_PRIVATE_KEY` (0x-prefixed 32-byte hex); ký lệnh client-side
+- `exchange_managed` — cần `HIBACHI_SECRET_KEY`; HMAC-SHA256 request signing
 
 ---
 
@@ -538,6 +527,10 @@ docker compose up -d
 ## Cấu hình `.env`
 
 ```env
+# Exchange selector (single-bot mode)
+EXCHANGE=sodex
+SYMBOL=BTC-PERP
+
 # SoDEX
 SODEX_API_KEY=...
 SODEX_API_SECRET=0x...
@@ -552,12 +545,24 @@ DECIBELS_SUBACCOUNT=0x...
 DANGO_PRIVATE_KEY=0x...
 DANGO_USER_ADDRESS=0x...
 
+# Hibachi
+HIBACHI_API_KEY=...
+HIBACHI_ACCOUNT_ID=...
+HIBACHI_ACCOUNT_TYPE=trustless
+HIBACHI_PRIVATE_KEY=0x...
+
+# SoSoValue
+SOSOVALUE_API_KEY=...
+
+# Telegram
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 
+# LLM
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 
+# Logging & Dashboard
 TRADE_LOG_BACKEND=json
 TRADE_LOG_PATH=/app/data/trades.json
 DASHBOARD_PORT=3000
@@ -574,6 +579,7 @@ Truy cập `http://localhost:3000`
 - **Hedge bot**: hiển thị 2 legs đang mở (symbol, side, entry price, unrealized PnL, combined PnL)
 - **Analytics tab**: win rate, signal quality, fee impact, regime performance, filter skip stats, effective confidence stats, dynamic min hold stats
 - **Bot Settings**: chỉnh 70+ config params runtime không cần restart; section **📅 Daily Budget Reset** (chỉ hiển thị trên bot detail page) cho phép cấu hình Enable toggle, Max Loss/day, Target Volume/day, Reset Hour UTC — save ngay không cần reload trang
+- **Wallet login**: WalletConnect / AppKit — mỗi ví có tenant storage riêng biệt
 
 ---
 
@@ -600,13 +606,18 @@ src/
 │   ├── ExchangeAdapter.ts    # Interface chung
 │   ├── sodex_adapter.ts      # SoDEX (EIP-712 signing)
 │   ├── decibel_adapter.ts    # Decibel (Aptos Ed25519)
-│   └── dango_adapter.ts      # Dango (Secp256k1 + GraphQL)
+│   ├── dango_adapter.ts      # Dango (Secp256k1 + GraphQL)
+│   └── hibachi_adapter.ts    # Hibachi (ECDSA / HMAC-SHA256)
 ├── bot/
 │   ├── BotManager.ts         # Quản lý nhiều bot
 │   ├── BotInstance.ts        # Farm/Trade bot wrapper
 │   ├── DailyResetScheduler.ts # Daily budget reset + auto-start
 │   ├── HedgeBot.ts           # Correlation hedging bot (6-state machine)
 │   ├── VolumeMonitor.ts      # Dual-symbol volume spike detection
+│   ├── TenantRegistry.ts     # Multi-wallet SaaS tenant management
+│   ├── TenantContext.ts      # Bot instances đang chạy theo ví
+│   ├── TenantConfigStore.ts  # Bot configs theo ví
+│   ├── CredentialStore.ts    # Credentials mã hóa
 │   └── hedgeBotHelpers.ts    # assignDirections, evaluateExitConditions
 ├── modules/
 │   ├── Watcher.ts            # 5-state machine chính
@@ -614,12 +625,16 @@ src/
 │   ├── Executor.ts           # Đặt/hủy lệnh (Post-Only + IOC)
 │   ├── ExecutionEdge.ts      # Dynamic offset + spread guard
 │   ├── FillTracker.ts        # Fill rate ring buffer (20 orders)
-│   ├── PositionSizer.ts      # Dynamic sizing
+│   ├── PositionSizer.ts      # Dynamic sizing + macro sentiment multiplier
 │   ├── MarketMaker.ts        # Ping-pong + inventory + dynamic TP
 │   ├── RiskManager.ts        # TP/SL check
 │   └── SessionManager.ts     # Max loss, volume target, session state
 ├── ai/
-│   ├── AISignalEngine.ts     # Signal engine chính (EMA/RSI/momentum/OB)
+│   ├── AISignalEngine.ts     # Signal engine chính (EMA/RSI/momentum/OB + SoSoValue)
+│   ├── SoSoValueClient.ts    # Fear & Greed Index API client
+│   ├── SoSoValueStrategy.ts  # Sentiment → confidence/size multipliers
+│   ├── SoSoValueAnalytics.ts # Sentiment analytics và reporting
+│   ├── LLMReasoningAgent.ts  # LLM-based momentum adjustment
 │   ├── RegimeDetector.ts     # ATR + BB + volume → SIDEWAY/TREND/HIGH_VOL
 │   ├── ChopDetector.ts       # Flip rate + momentum neutrality + BB compression
 │   ├── FakeBreakoutFilter.ts # Volume + OB imbalance contradiction check
@@ -651,3 +666,4 @@ src/
 *DRIFT — Where intelligent execution meets adaptive learning*
 
 </div>
+

@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SoDEX — Bot Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:       #080b0f;
+  --bg1:      #0d1117;
+  --bg2:      #111820;
+  --bg3:      #161e2a;
+  --border:   #1c2a3a;
+  --border2:  #243040;
+  --green:    #00e5a0;
+  --green2:   #00b87a;
+  --red:      #ff4560;
+  --amber:    #f5a623;
+  --blue:     #3d8bff;
+  --cyan:     #00d4ff;
+  --text:     #e2eaf4;
+  --text2:    #8899aa;
+  --text3:    #4a6070;
+  --glow-g:   0 0 20px rgba(0,229,160,.18);
+  --glow-r:   0 0 20px rgba(255,69,96,.18);
+  --glow-b:   0 0 20px rgba(61,139,255,.18);
+  --font-ui:  'IBM Plex Mono', monospace;
+  --font-h:   'Syne', sans-serif;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+html,body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font-ui);
+  font-size:13px;
+  line-height:1.5;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* ── Scanline overlay ── */
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.06) 2px,rgba(0,0,0,.06) 4px);
+  pointer-events:none;z-index:9999;
+}
+
+/* ── Grid bg ── */
+body::after{
+  content:'';
+  position:fixed;inset:0;
+  background-image:
+    linear-gradient(var(--border) 1px,transparent 1px),
+    linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:48px 48px;
+  opacity:.25;
+  pointer-events:none;z-index:0;
+}
+
+.wrap{position:relative;z-index:1;max-width:1440px;margin:0 auto;padding:0 24px 40px}
+
+/* ── TOP NAV ── */
+nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 0;
+  border-bottom:1px solid var(--border);
+  margin-bottom:24px;
+}
+.nav-left{display:flex;align-items:center;gap:20px}
+.nav-logo{font-family:var(--font-h);font-size:18px;font-weight:800;letter-spacing:-.5px;color:#fff}
+.nav-logo span{color:var(--green)}
+.nav-back{font-size:11px;color:var(--text3);text-decoration:none;display:flex;align-items:center;gap:5px;transition:.2s}
+.nav-back:hover{color:var(--text2)}
+.nav-right{display:flex;align-items:center;gap:16px}
+.nav-badge{
+  font-size:11px;padding:3px 10px;border-radius:2px;
+  background:rgba(0,229,160,.08);color:var(--green);
+  border:1px solid rgba(0,229,160,.2);
+  display:flex;align-items:center;gap:5px;
+}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+
+.nav-time{color:var(--text3);font-size:11px}
+
+/* ── BOT HEADER ── */
+.bot-header{
+  display:grid;grid-template-columns:1fr auto;
+  align-items:start;gap:20px;
+  padding:20px 24px;
+  background:var(--bg1);
+  border:1px solid var(--border);
+  border-radius:4px;
+  margin-bottom:20px;
+  position:relative;overflow:hidden;
+}
+.bot-header::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--green),transparent);
+}
+.bot-name-row{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.bot-name{font-family:var(--font-h);font-size:22px;font-weight:700;color:#fff;letter-spacing:-.3px}
+.bot-pair{font-size:11px;color:var(--text3);padding:2px 8px;border:1px solid var(--border2);border-radius:2px}
+.status-chip{
+  font-size:10px;font-weight:500;padding:2px 8px;border-radius:2px;letter-spacing:.5px;
+  background:rgba(255,69,96,.1);color:var(--red);border:1px solid rgba(255,69,96,.25);
+}
+.status-chip.running{background:rgba(0,229,160,.1);color:var(--green);border-color:rgba(0,229,160,.25)}
+
+.bot-meta{display:flex;gap:24px;font-size:11px;color:var(--text3)}
+.bot-meta span{display:flex;align-items:center;gap:5px}
+.bot-meta i{color:var(--text3)}
+
+.bot-actions{display:flex;gap:8px;align-items:flex-start}
+.btn{
+  height:34px;padding:0 16px;border-radius:3px;font-family:var(--font-ui);font-size:12px;
+  cursor:pointer;display:flex;align-items:center;gap:6px;transition:.2s;border:none;
+  letter-spacing:.3px;
+}
+.btn-start{background:var(--green);color:#000;font-weight:600}
+.btn-start:hover{background:var(--green2);box-shadow:var(--glow-g)}
+.btn-stop{background:transparent;color:var(--red);border:1px solid rgba(255,69,96,.3)}
+.btn-stop:hover{background:rgba(255,69,96,.08);box-shadow:var(--glow-r)}
+.btn-close{background:transparent;color:var(--amber);border:1px solid rgba(245,166,35,.3);font-size:11px}
+.btn-close:hover{background:rgba(245,166,35,.08)}
+
+/* ── MODE ROW ── */
+.mode-row{display:flex;align-items:center;gap:8px;margin-top:12px}
+.mode-label{color:var(--text3);font-size:11px}
+.mode-tabs{display:flex;gap:2px}
+.mode-tab{
+  padding:4px 12px;font-size:11px;border-radius:2px;cursor:pointer;
+  border:1px solid var(--border2);color:var(--text2);background:transparent;
+  font-family:var(--font-ui);transition:.15s;
+}
+.mode-tab.active{background:rgba(0,212,255,.1);color:var(--cyan);border-color:rgba(0,212,255,.3)}
+.maxloss-row{display:flex;align-items:center;gap:8px;margin-left:16px}
+.ml-label{color:var(--text3);font-size:11px}
+.ml-input{
+  width:60px;height:26px;padding:0 8px;border-radius:2px;
+  background:var(--bg2);border:1px solid var(--border2);
+  color:var(--text);font-family:var(--font-ui);font-size:12px;
+}
+.btn-set{height:26px;padding:0 10px;background:var(--bg2);border:1px solid var(--border2);border-radius:2px;color:var(--text2);font-size:11px;cursor:pointer;font-family:var(--font-ui)}
+
+/* ── STAT CARDS ── */
+.stats-row{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:12px;margin-bottom:20px;
+}
+.stat-card{
+  background:var(--bg1);border:1px solid var(--border);border-radius:4px;
+  padding:16px 18px;position:relative;overflow:hidden;
+  transition:.2s;cursor:default;
+}
+.stat-card:hover{border-color:var(--border2);transform:translateY(-1px)}
+.stat-card::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--border2),transparent);
+}
+.stat-label{font-size:10px;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:8px}
+.stat-val{font-family:var(--font-h);font-size:24px;font-weight:700;line-height:1;margin-bottom:4px}
+.stat-val.up{color:var(--green)}
+.stat-val.down{color:var(--red)}
+.stat-val.neutral{color:#fff}
+.stat-sub{font-size:10px;color:var(--text3)}
+.stat-sub.up{color:var(--green2)}
+.stat-sub.down{color:var(--red)}
+
+/* rank badge */
+.rank-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 8px;border-radius:1px;
+  background:linear-gradient(135deg,rgba(245,166,35,.15),rgba(245,166,35,.05));
+  border:1px solid rgba(245,166,35,.3);
+  color:var(--amber);font-size:11px;font-weight:600;margin-top:4px;
+}
+
+/* ── MAIN GRID ── */
+.main-grid{display:grid;grid-template-columns:1fr 340px;gap:16px;margin-bottom:20px}
+
+/* ── PANEL ── */
+.panel{
+  background:var(--bg1);border:1px solid var(--border);border-radius:4px;
+  overflow:hidden;
+}
+.panel-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;border-bottom:1px solid var(--border);
+}
+.panel-title{font-family:var(--font-h);font-size:13px;font-weight:600;color:var(--text);letter-spacing:.3px}
+.live-dot{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--green)}
+
+/* ── CHART ── */
+.chart-wrap{padding:16px;height:220px;position:relative}
+canvas{width:100%!important;height:100%!important}
+
+/* ── SESSION STATS ── */
+.session-grid{padding:16px;display:flex;flex-direction:column;gap:0}
+.sess-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:9px 0;border-bottom:1px solid var(--border);
+}
+.sess-row:last-child{border-bottom:none}
+.sess-k{font-size:11px;color:var(--text3)}
+.sess-v{font-size:12px;color:var(--text);font-weight:500}
+.sess-v.up{color:var(--green)}
+.sess-v.down{color:var(--red)}
+.sess-v.amber{color:var(--amber)}
+
+/* ── DIAMOND CARD ── */
+.diamond-card{
+  margin:16px;border-radius:4px;padding:20px;
+  background:linear-gradient(135deg,#0a1628 0%,#0d2040 50%,#0a1628 100%);
+  border:1px solid rgba(61,139,255,.2);
+  position:relative;overflow:hidden;
+}
+.diamond-card::before{
+  content:'';position:absolute;top:-40%;right:-20%;
+  width:200px;height:200px;border-radius:50%;
+  background:radial-gradient(circle,rgba(61,139,255,.12),transparent 70%);
+}
+.diamond-tier{font-size:11px;font-weight:600;letter-spacing:1.5px;color:var(--cyan);margin-bottom:4px}
+.diamond-pts{font-family:var(--font-h);font-size:32px;font-weight:800;color:#fff;margin-bottom:2px}
+.sopoints-badge{
+  font-size:10px;font-weight:600;padding:2px 7px;border-radius:1px;letter-spacing:.5px;
+  background:rgba(0,212,255,.15);color:var(--cyan);border:1px solid rgba(0,212,255,.3);
+  vertical-align:middle;margin-left:6px;
+}
+.diamond-prog{margin:10px 0 6px}
+.prog-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-bottom:4px}
+.prog-bar{height:3px;background:rgba(255,255,255,.08);border-radius:2px;overflow:hidden}
+.prog-fill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--blue),var(--cyan));transition:width 1s ease}
+.diamond-rank{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);margin-top:6px}
+.diamond-rank span{color:var(--amber)}
+
+/* week card */
+.week-card{
+  margin:0 16px 16px;border-radius:4px;padding:16px;
+  background:var(--bg2);border:1px solid var(--border);
+}
+.week-label{font-size:10px;letter-spacing:.8px;color:var(--text3);text-transform:uppercase;margin-bottom:4px}
+.week-vol{font-family:var(--font-h);font-size:20px;font-weight:700;color:#fff;margin-bottom:8px}
+.week-row{display:flex;justify-content:space-between;font-size:10px;color:var(--text3)}
+.week-row span:last-child{color:var(--text2)}
+.week-timer{font-size:12px;color:var(--cyan);font-weight:500;font-variant-numeric:tabular-nums}
+
+/* ── TABS ROW ── */
+.tabs-row{
+  display:flex;align-items:center;gap:0;
+  border-bottom:1px solid var(--border);
+  padding:0 16px;
+}
+.tab{
+  padding:10px 16px;font-size:12px;color:var(--text3);cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-1px;transition:.15s;
+  font-family:var(--font-ui);
+}
+.tab.active{color:var(--text);border-bottom-color:var(--green)}
+.tab:hover:not(.active){color:var(--text2)}
+
+/* ── TABLE ── */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+thead th{
+  padding:8px 12px;text-align:left;
+  font-size:10px;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--text3);border-bottom:1px solid var(--border);
+  font-weight:500;white-space:nowrap;
+}
+tbody tr{border-bottom:1px solid rgba(28,42,58,.5);transition:.15s;cursor:default}
+tbody tr:hover{background:rgba(255,255,255,.025)}
+tbody td{padding:9px 12px;font-size:12px;color:var(--text2);white-space:nowrap}
+td.order-id{color:var(--text3);font-size:11px;font-variant-numeric:tabular-nums}
+td.date{color:var(--text3);font-size:11px}
+td.side-buy{color:var(--green);font-weight:600;letter-spacing:.3px}
+td.side-sell{color:var(--red);font-weight:600;letter-spacing:.3px}
+td.price{font-variant-numeric:tabular-nums;color:var(--text)}
+td.hold{color:var(--text3);font-size:11px}
+td.signal{font-size:10px;letter-spacing:.5px;color:var(--blue)}
+td.conf-high{color:var(--green);font-weight:600}
+td.conf-low{color:var(--text3)}
+td.reason{font-size:11px;color:var(--text3);max-width:240px;overflow:hidden;text-overflow:ellipsis}
+td.reason .hl{color:var(--cyan)}
+td.pnl-up{color:var(--green);font-weight:600;font-variant-numeric:tabular-nums}
+td.pnl-down{color:var(--red);font-weight:600;font-variant-numeric:tabular-nums}
+td.pnl-zero{color:var(--text3);font-variant-numeric:tabular-nums}
+
+/* pagination */
+.table-footer{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;border-top:1px solid var(--border);
+}
+.page-info{font-size:11px;color:var(--text3)}
+.page-btns{display:flex;gap:4px}
+.page-btn{
+  width:26px;height:26px;border-radius:2px;
+  background:var(--bg2);border:1px solid var(--border2);
+  color:var(--text3);cursor:pointer;font-size:12px;
+  display:flex;align-items:center;justify-content:center;transition:.15s;
+}
+.page-btn:hover{background:var(--bg3);color:var(--text)}
+.page-btn.active{background:rgba(0,229,160,.1);border-color:rgba(0,229,160,.3);color:var(--green)}
+
+/* ── EVENT LOG ── */
+.log-wrap{max-height:280px;overflow-y:auto}
+.log-row{
+  display:grid;grid-template-columns:80px 130px 1fr;
+  gap:12px;padding:7px 16px;border-bottom:1px solid rgba(28,42,58,.4);
+  align-items:center;
+}
+.log-row:hover{background:rgba(255,255,255,.02)}
+.log-time{font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums}
+.log-type{font-size:10px;letter-spacing:.5px;font-weight:600}
+.log-type.info{color:var(--text3)}
+.log-type.order{color:var(--green)}
+.log-type.warn{color:var(--amber)}
+.log-msg{font-size:11px;color:var(--text2)}
+.log-msg .hl-g{color:var(--green)}
+.log-msg .hl-r{color:var(--red)}
+.log-msg .hl-c{color:var(--cyan)}
+.log-msg .hl-a{color:var(--amber)}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* ── ANIM ── */
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.panel{animation:fadeIn .4s ease both}
+.panel:nth-child(2){animation-delay:.05s}
+.panel:nth-child(3){animation-delay:.1s}
+.stats-row .stat-card{animation:fadeIn .35s ease both}
+.stats-row .stat-card:nth-child(1){animation-delay:.05s}
+.stats-row .stat-card:nth-child(2){animation-delay:.1s}
+.stats-row .stat-card:nth-child(3){animation-delay:.15s}
+.stats-row .stat-card:nth-child(4){animation-delay:.2s}
+
+/* ── HYPERLINK decorations ── */
+a.hl-link{
+  color:var(--cyan);text-decoration:none;
+  border-bottom:1px solid rgba(0,212,255,.25);
+  transition:.15s;font-size:11px;
+}
+a.hl-link:hover{color:#fff;border-bottom-color:rgba(0,212,255,.6)}
+
+/* corner accent */
+.corner-tl::before,.corner-tl::after{content:'';position:absolute;top:0;left:0}
+.corner-tl::before{width:12px;height:1px;background:var(--green)}
+.corner-tl::after{width:1px;height:12px;background:var(--green)}
+
+/* volume mini bars */
+.mini-vol{display:flex;align-items:flex-end;gap:2px;height:20px}
+.mini-bar{width:4px;border-radius:1px;background:rgba(0,229,160,.3);flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- NAV -->
+  <nav>
+    <div class="nav-left">
+      <a class="nav-back" href="#">← Manager</a>
+      <span class="nav-logo">So<span>DEX</span></span>
+    </div>
+    <div class="nav-right">
+      <div class="nav-badge"><div class="pulse"></div>MAINNET</div>
+      <span class="nav-time" id="clock">10:55:03</span>
+    </div>
+  </nav>
+
+  <!-- BOT HEADER -->
+  <div class="bot-header corner-tl">
+    <div>
+      <div class="bot-name-row">
+        <span class="bot-name">Bot</span>
+        <span class="bot-pair">BTC-USD · tenant_odex</span>
+        <span class="status-chip" id="statusChip">● STOPPED</span>
+      </div>
+      <div class="bot-meta" style="margin-bottom:12px">
+        <span>⟁ Uptime: 166m</span>
+        <span>◈ Mode: farm</span>
+        <span>⊕ Last trade: <strong style="color:var(--green)">▲ BUY</strong> May 16, 15:00</span>
+      </div>
+      <div class="mode-row">
+        <span class="mode-label">MODE</span>
+        <div class="mode-tabs">
+          <button class="mode-tab active" onclick="setMode(this,'farm')">🌾 Farm</button>
+          <button class="mode-tab" onclick="setMode(this,'trade')">📈 Trade</button>
+        </div>
+        <div class="maxloss-row">
+          <span class="ml-label">MAX LOSS $</span>
+          <input class="ml-input" type="number" value="5" id="maxloss"/>
+          <button class="btn-set" onclick="handleSet()">Set</button>
+        </div>
+      </div>
+    </div>
+    <div class="bot-actions">
+      <button class="btn btn-start" id="startBtn" onclick="toggleBot()">▶ Start</button>
+      <button class="btn btn-stop">■ Stop</button>
+      <button class="btn btn-close">✕ Close Position</button>
+    </div>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="stats-row">
+    <div class="stat-card corner-tl">
+      <div class="stat-label">Volume</div>
+      <div class="stat-val neutral" style="font-size:22px">$1,228.86</div>
+      <div class="stat-sub">Session farming</div>
+      <div style="margin-top:8px">
+        <div class="mini-vol" id="miniVol"></div>
+      </div>
+    </div>
+    <div class="stat-card corner-tl">
+      <div class="stat-label">Session PNL</div>
+      <div class="stat-val up" id="pnlVal">+$0.1004</div>
+      <div class="stat-sub down">Session in loss</div>
+    </div>
+    <div class="stat-card corner-tl">
+      <div class="stat-label">Position</div>
+      <div class="stat-val neutral" style="font-size:32px">—</div>
+      <div class="stat-sub">No open position</div>
+    </div>
+    <div class="stat-card corner-tl">
+      <div class="stat-label">SoPoints</div>
+      <div class="stat-val neutral" style="font-size:26px">11,043</div>
+      <div class="rank-badge">⭐ Rank 113 / 191,302</div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+    <!-- LEFT: charts + tables -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- PNL CHART -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">SESSION PNL</span>
+          <span class="live-dot"><div class="pulse"></div>LIVE</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="pnlChart"></canvas>
+        </div>
+      </div>
+
+      <!-- VOLUME CHART -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">TRADING VOLUME</span>
+          <span class="live-dot"><div class="pulse" style="background:var(--amber)"></div><span style="color:var(--amber)">LIVE</span></span>
+        </div>
+        <div class="chart-wrap" style="height:160px">
+          <canvas id="volChart"></canvas>
+        </div>
+      </div>
+
+      <!-- TRADE HISTORY -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">TRADE HISTORY</span>
+          <span style="font-size:11px;color:var(--text3)">Showing 1–10 of 315</span>
+        </div>
+        <div class="tabs-row">
+          <div class="tab active">Overview</div>
+          <div class="tab">Analytics</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Date</th>
+                <th>Side</th>
+                <th>Entry</th>
+                <th>Exit</th>
+                <th>Hold</th>
+                <th>Signal</th>
+                <th>Conf</th>
+                <th>Reason</th>
+                <th>PNL</th>
+              </tr>
+            </thead>
+            <tbody id="tradeTableBody"></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span class="page-info">Page 1 of 32</span>
+          <div class="page-btns">
+            <button class="page-btn">‹</button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn">2</button>
+            <button class="page-btn">3</button>
+            <button class="page-btn">›</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- EVENT LOG -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">EVENT LOG</span>
+          <span style="font-size:11px;color:var(--text3)">Showing 1–10 of 200</span>
+        </div>
+        <div class="log-wrap" id="eventLog"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: sidebar -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- DIAMOND -->
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">REWARDS</span></div>
+        <div class="diamond-card">
+          <div class="diamond-tier">DIAMOND</div>
+          <div class="diamond-pts">11,043 <span class="sopoints-badge">SOPOINTS</span></div>
+          <div class="diamond-prog">
+            <div class="prog-labels"><span>NEXT: EPIC</span><span>50,000</span></div>
+            <div class="prog-bar"><div class="prog-fill" style="width:22%"></div></div>
+          </div>
+          <div class="diamond-rank">⭐ Rank <span>113</span> of 191,302 users</div>
+        </div>
+
+        <!-- WEEK -->
+        <div class="week-card">
+          <div class="week-label">Week 16 · Futures Volume</div>
+          <div class="week-vol">$289,959.74</div>
+          <div class="week-row">
+            <span>Next Distribution</span>
+            <span class="week-timer" id="countdown">05D : 05H : 40M : 18S</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- SESSION STATS -->
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">SESSION</span></div>
+        <div class="session-grid">
+          <div class="sess-row"><span class="sess-k">Fees</span><span class="sess-v">$0.00</span></div>
+          <div class="sess-row"><span class="sess-k">Efficiency</span><span class="sess-v down">-0.8 bps</span></div>
+          <div class="sess-row"><span class="sess-k">Uptime</span><span class="sess-v amber">166m</span></div>
+          <div class="sess-row"><span class="sess-k">Mode</span><span class="sess-v" style="color:var(--cyan)">farm</span></div>
+          <div class="sess-row"><span class="sess-k">Max Loss</span><span class="sess-v">$5.00</span></div>
+          <div class="sess-row"><span class="sess-k">Network</span><span class="sess-v up">MAINNET</span></div>
+          <div class="sess-row"><span class="sess-k">Pair</span><span class="sess-v" style="color:var(--text)">BTC-USD</span></div>
+        </div>
+      </div>
+
+      <!-- OPEN POSITION -->
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">OPEN POSITION</span></div>
+        <div style="padding:40px 16px;text-align:center;color:var(--text3);font-size:12px">
+          <div style="font-size:28px;margin-bottom:8px;opacity:.2">◎</div>
+          No open position
+        </div>
+      </div>
+
+      <!-- LINKS -->
+      <div class="panel" style="padding:16px">
+        <div class="panel-title" style="margin-bottom:12px;display:block">RESOURCES</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <a class="hl-link" href="#">→ SoSoValue Docs</a>
+          <a class="hl-link" href="#">→ API Reference</a>
+          <a class="hl-link" href="#">→ Farm Strategy Guide</a>
+          <a class="hl-link" href="#">→ Discord Community</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+// ── Clock ──
+function updateClock(){
+  const now = new Date();
+  const h = now.getHours().toString().padStart(2,'0');
+  const m = now.getMinutes().toString().padStart(2,'0');
+  const s = now.getSeconds().toString().padStart(2,'0');
+  document.getElementById('clock').textContent = `${h}:${m}:${s}`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Countdown ──
+let cdSecs = 5*86400 + 5*3600 + 40*60 + 18;
+function updateCountdown(){
+  if(cdSecs <= 0) return;
+  cdSecs--;
+  const d = Math.floor(cdSecs/86400);
+  const h = Math.floor((cdSecs%86400)/3600).toString().padStart(2,'0');
+  const m = Math.floor((cdSecs%3600)/60).toString().padStart(2,'0');
+  const s = (cdSecs%60).toString().padStart(2,'0');
+  document.getElementById('countdown').textContent = `${d.toString().padStart(2,'0')}D : ${h}H : ${m}M : ${s}S`;
+}
+setInterval(updateCountdown, 1000);
+
+// ── Mini vol bars ──
+const miniVol = document.getElementById('miniVol');
+for(let i=0;i<16;i++){
+  const b = document.createElement('div');
+  b.className = 'mini-bar';
+  b.style.height = (Math.random()*14+4)+'px';
+  b.style.opacity = (.2 + Math.random()*.6).toString();
+  miniVol.appendChild(b);
+}
+
+// ── Mode ──
+function setMode(el, mode){
+  document.querySelectorAll('.mode-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+}
+function handleSet(){
+  const v = document.getElementById('maxloss').value;
+  document.querySelector('.sess-row:nth-child(5) .sess-v').textContent = '$'+parseFloat(v).toFixed(2);
+}
+
+// ── Bot toggle ──
+let running = false;
+function toggleBot(){
+  running = !running;
+  const chip = document.getElementById('statusChip');
+  const btn = document.getElementById('startBtn');
+  if(running){
+    chip.textContent='● RUNNING'; chip.className='status-chip running';
+    btn.textContent='■ Running'; btn.style.background='var(--green2)';
+  } else {
+    chip.textContent='● STOPPED'; chip.className='status-chip';
+    btn.textContent='▶ Start'; btn.style.background='var(--green)';
+  }
+}
+
+// ── Charts ──
+const gridColor = 'rgba(28,42,58,.6)';
+const textColor = '#4a6070';
+
+Chart.defaults.font.family = "'IBM Plex Mono', monospace";
+Chart.defaults.font.size = 10;
+Chart.defaults.color = textColor;
+
+// PNL chart data
+function genPnl(){
+  const pts=[];let v=0;
+  for(let i=0;i<120;i++){v+=((Math.random()-.52)*.12);pts.push(+v.toFixed(4));}
+  return pts;
+}
+const pnlData = genPnl();
+const pnlLabels = pnlData.map((_,i)=>{
+  const t=new Date(2026,4,21,7,27,0); t.setMinutes(t.getMinutes()+i*10);
+  return t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
+});
+
+const pnlCtx = document.getElementById('pnlChart').getContext('2d');
+const pnlGrad = pnlCtx.createLinearGradient(0,0,0,200);
+pnlGrad.addColorStop(0,'rgba(0,229,160,.18)');
+pnlGrad.addColorStop(.5,'rgba(0,229,160,.04)');
+pnlGrad.addColorStop(1,'transparent');
+
+new Chart(pnlCtx,{
+  type:'line',
+  data:{
+    labels:pnlLabels,
+    datasets:[{
+      data:pnlData,
+      borderColor:'#00e5a0',
+      borderWidth:1.5,
+      backgroundColor:pnlGrad,
+      fill:true,
+      pointRadius:0,
+      tension:.3,
+    }]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    interaction:{intersect:false,mode:'index'},
+    plugins:{
+      legend:{display:false},
+      tooltip:{
+        backgroundColor:'#0d1117',borderColor:'#1c2a3a',borderWidth:1,
+        titleColor:'#4a6070',bodyColor:'#e2eaf4',padding:8,
+        callbacks:{label:ctx=>' PNL: $'+ctx.parsed.y.toFixed(4)}
+      }
+    },
+    scales:{
+      x:{grid:{color:gridColor},ticks:{maxTicksLimit:8}},
+      y:{grid:{color:gridColor},ticks:{callback:v=>'$'+v.toFixed(2)}}
+    }
+  }
+});
+
+// Volume chart
+function genVol(){
+  const pts=[];let v=0;
+  for(let i=0;i<120;i++){
+    if(i%30===0) v=0;
+    v+=Math.random()*800+200;
+    pts.push(Math.round(v));
+  }
+  return pts;
+}
+const volData = genVol();
+const volCtx = document.getElementById('volChart').getContext('2d');
+const volGrad = volCtx.createLinearGradient(0,0,0,150);
+volGrad.addColorStop(0,'rgba(245,166,35,.25)');
+volGrad.addColorStop(1,'rgba(245,166,35,.02)');
+
+new Chart(volCtx,{
+  type:'line',
+  data:{
+    labels:pnlLabels,
+    datasets:[{
+      data:volData,
+      borderColor:'#f5a623',
+      borderWidth:1.5,
+      backgroundColor:volGrad,
+      fill:true,
+      pointRadius:0,
+      tension:.2,
+    }]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{
+      backgroundColor:'#0d1117',borderColor:'#1c2a3a',borderWidth:1,
+      titleColor:'#4a6070',bodyColor:'#e2eaf4',padding:8,
+    }},
+    scales:{
+      x:{grid:{color:gridColor},ticks:{maxTicksLimit:8}},
+      y:{grid:{color:gridColor},ticks:{callback:v=>'$'+v.toLocaleString()}}
+    }
+  }
+});
+
+// ── Trade table ──
+const trades = [
+  {id:'37be9b8d...7a1f',date:'May 21, 10:54',side:'SELL',entry:'$77,969.00',exit:'$77,998.00',hold:'5m 20s',signal:'SIDEWAY',conf:'0%',reason:'SIDEWAY mid-range: pos=79% RSI=46.3 → SKIP…',pnl:'-$0.0684',pnlCls:'pnl-down'},
+  {id:'719405e8...0575',date:'May 21, 10:45',side:'BUY', entry:'$77,961.00',exit:'$77,981.00',hold:'5m 16s',signal:'SIDEWAY',conf:'0%',reason:'SIDEWAY mid-range: pos=65% RSI=42.9 → SKIP…',pnl:'+$0.0500',pnlCls:'pnl-up'},
+  {id:'80e07027...744e',date:'May 21, 10:38',side:'SELL',entry:'$77,979.00',exit:'$77,952.00',hold:'5m 16s',signal:'SIDEWAY',conf:'0%',reason:'SIDEWAY mid-range: pos=79% RSI=51.6 → SKIP…',pnl:'+$0.0681',pnlCls:'pnl-up'},
+  {id:'3cbcc951...f298',date:'May 20, 03:18',side:'SELL',entry:'$76,900.00',exit:'$76,903.00',hold:'5m 47s',signal:'SIDEWAY',conf:'0%',reason:'SIDEWAY mid-range: pos=95% RSI=54.0 → SKIP…',pnl:'+$0.0000',pnlCls:'pnl-zero'},
+  {id:'71896c21...981a',date:'May 20, 03:11',side:'SELL',entry:'$76,813.85',exit:'$76,904.00',hold:'6m 14s',signal:'SIDEWAY',conf:'0%',reason:'SIDEWAY mid-range: pos=41% RSI=53.4 → SKIP…',pnl:'-$0.2143',pnlCls:'pnl-down'},
+  {id:'d34292e0...7269',date:'May 20, 02:56',side:'BUY', entry:'$76,798.00',exit:'$76,770.00',hold:'5m 14s',signal:'SIDEWAY',conf:'0%',reason:'SIDEWAY mid-range: pos=24% RSI=49.2 → SKIP…',pnl:'-$0.0960',pnlCls:'pnl-down'},
+  {id:'8d600fff...abd2',date:'May 20, 02:49',side:'SELL',entry:'$76,843.00',exit:'$76,808.00',hold:'5m 46s',signal:'SIDEWAY',conf:'0%',reason:'SIDEWAY mid-range: pos=37% RSI=53.8 → SKIP…',pnl:'+$0.1385',pnlCls:'pnl-up'},
+  {id:'85bde81a...fba6',date:'May 20, 02:32',side:'BUY', entry:'$76,782.00',exit:'$76,812.00',hold:'5m 17s',signal:'SIDEWAY',conf:'67%',reason:'SIDEWAY: price at range bottom (16%) RSI=4…',pnl:'+$0.0540',pnlCls:'pnl-up'},
+  {id:'487cd224...510d',date:'May 20, 02:24',side:'BUY', entry:'$76,946.00',exit:'$76,835.00',hold:'5m 13s',signal:'SIDEWAY',conf:'0%',reason:'SIDEWAY mid-range: pos=69% RSI=53.7 → SKIP…',pnl:'-$0.2940',pnlCls:'pnl-down'},
+  {id:'5f42c672...c9b3',date:'May 20, 02:17',side:'SELL',entry:'$76,955.00',exit:'$76,953.00',hold:'5m 28s',signal:'SIDEWAY',conf:'100%',reason:'SIDEWAY: price at range top (100%) RSI=61…',pnl:'-$0.0300',pnlCls:'pnl-down'},
+];
+const tbody = document.getElementById('tradeTableBody');
+trades.forEach(t=>{
+  const confCls = t.conf==='0%'?'conf-low':t.conf==='100%'?'conf-high':'conf-high';
+  const isHighConf = t.conf !== '0%';
+  tbody.innerHTML += `<tr>
+    <td class="order-id">${t.id}</td>
+    <td class="date">${t.date}</td>
+    <td class="side-${t.side.toLowerCase()}">${t.side}</td>
+    <td class="price">${t.entry}</td>
+    <td class="price">${t.exit}</td>
+    <td class="hold">${t.hold}</td>
+    <td class="signal">${t.signal}</td>
+    <td class="${confCls}">${t.conf}</td>
+    <td class="reason"><span class="${isHighConf?'hl':''}">${t.reason}</span></td>
+    <td class="${t.pnlCls}">${t.pnl}</td>
+  </tr>`;
+});
+
+// ── Event log ──
+const events = [
+  {time:'10:55:03',type:'INFO',typeCls:'info',msg:'Bot stopped'},
+  {time:'10:54:46',type:'ORDER FILLED',typeCls:'order',msg:'Exit filled: <span class="hl-r">SHORT @ 77998</span> | PnL: <span class="hl-r">-0.0684</span>'},
+  {time:'10:54:29',type:'INFO',typeCls:'info',msg:'EXIT_TRIGGER: <span class="hl-a">FARM TIME EXIT</span> (PnL: -0.07)'},
+  {time:'10:49:25',type:'ORDER FILLED',typeCls:'order',msg:'Entry filled: <span class="hl-g">0.00263 @ 77969</span>'},
+  {time:'10:48:22',type:'ORDER PLACED',typeCls:'order',msg:'[RETRY] <span class="hl-c">SHORT 0.003 @ 77969.04</span>'},
+  {time:'10:47:44',type:'ORDER PLACED',typeCls:'order',msg:'[RETRY] <span class="hl-c">SHORT 0.003 @ 77974.04</span>'},
+  {time:'10:46:01',type:'INFO',typeCls:'info',msg:'Signal: SIDEWAY · Confidence: <span class="hl-r">0%</span> → SKIP'},
+  {time:'10:45:33',type:'ORDER FILLED',typeCls:'order',msg:'Exit filled: <span class="hl-g">LONG @ 77981</span> | PnL: <span class="hl-g">+0.0500</span>'},
+  {time:'10:41:20',type:'INFO',typeCls:'info',msg:'RSI divergence detected — monitoring range'},
+  {time:'10:38:15',type:'ORDER PLACED',typeCls:'order',msg:'<span class="hl-r">SELL 0.003 @ 77979.00</span>'},
+];
+const logWrap = document.getElementById('eventLog');
+events.forEach(e=>{
+  logWrap.innerHTML += `<div class="log-row">
+    <span class="log-time">${e.time}</span>
+    <span class="log-type ${e.typeCls}">${e.type}</span>
+    <span class="log-msg">${e.msg}</span>
+  </div>`;
+});
+
+// ── Live PNL animation ──
+let pnlTick = 0.1004;
+setInterval(()=>{
+  pnlTick += (Math.random()-.49)*.005;
+  const el = document.getElementById('pnlVal');
+  el.textContent = (pnlTick>=0?'+':'')+`$${pnlTick.toFixed(4)}`;
+  el.className = 'stat-val '+(pnlTick>=0?'up':'down');
+}, 2000);
+</script>
+</body>
+</html>

@@ -9,6 +9,9 @@ export type OverridableConfig = {
   MODE: 'farm' | 'trade';
   ORDER_SIZE_MIN: number;
   ORDER_SIZE_MAX: number;
+  STOP_LOSS_PERCENT: number;
+  TAKE_PROFIT_PERCENT: number;
+  POSITION_SL_PERCENT: number;
   // ── Farm mode ──────────────────────────────────────────────────────────────
   FARM_MIN_HOLD_SECS: number;
   FARM_MAX_HOLD_SECS: number;
@@ -27,9 +30,16 @@ export type OverridableConfig = {
   FARM_MIN_FALLBACK_CONFIDENCE: number;
   FARM_SIDEWAY_MIN_CONFIDENCE: number;
   FARM_TREND_MIN_CONFIDENCE: number;
+  FARM_REVERSE_SIGNAL_ENABLED: boolean;
+  FARM_USE_DYNAMIC_SIZING: boolean;
+  FARM_WEAK_SIGNAL_SIZE_MULT: number;
+  FARM_NO_PRESSURE_SIZE_MULT: number;
+  FARM_PINGPONG_SIZE_MULT: number;
   // ── Trade mode ─────────────────────────────────────────────────────────────
   TRADE_TP_PERCENT: number;
   TRADE_SL_PERCENT: number;
+  TRADE_SCORE_THRESHOLD: number;
+  TRADE_MIN_CONFIDENCE: number;
   COOLDOWN_MIN_MINS: number;    // Trade mode adaptive cooldown min
   COOLDOWN_MAX_MINS: number;    // Trade mode adaptive cooldown max
   // ── Shared ─────────────────────────────────────────────────────────────────
@@ -129,9 +139,16 @@ const OVERRIDABLE_KEYS: (keyof OverridableConfig)[] = [
   'FARM_MIN_FALLBACK_CONFIDENCE',
   'FARM_SIDEWAY_MIN_CONFIDENCE',
   'FARM_TREND_MIN_CONFIDENCE',
+  'FARM_REVERSE_SIGNAL_ENABLED',
+  'FARM_USE_DYNAMIC_SIZING',
+  'FARM_WEAK_SIGNAL_SIZE_MULT',
+  'FARM_NO_PRESSURE_SIZE_MULT',
+  'FARM_PINGPONG_SIZE_MULT',
   // Trade mode
   'TRADE_TP_PERCENT',
   'TRADE_SL_PERCENT',
+  'TRADE_SCORE_THRESHOLD',
+  'TRADE_MIN_CONFIDENCE',
   'COOLDOWN_MIN_MINS',
   'COOLDOWN_MAX_MINS',
   // Shared
@@ -201,6 +218,9 @@ function extractBase(): OverridableConfig {
     MODE: config.MODE as 'farm' | 'trade',
     ORDER_SIZE_MIN: config.ORDER_SIZE_MIN,
     ORDER_SIZE_MAX: config.ORDER_SIZE_MAX,
+    STOP_LOSS_PERCENT: config.STOP_LOSS_PERCENT,
+    TAKE_PROFIT_PERCENT: config.TAKE_PROFIT_PERCENT,
+    POSITION_SL_PERCENT: config.POSITION_SL_PERCENT,
     FARM_MIN_HOLD_SECS: config.FARM_MIN_HOLD_SECS,
     FARM_MAX_HOLD_SECS: config.FARM_MAX_HOLD_SECS,
     FARM_TP_USD: config.FARM_TP_USD,
@@ -217,8 +237,15 @@ function extractBase(): OverridableConfig {
     FARM_MIN_FALLBACK_CONFIDENCE: config.FARM_MIN_FALLBACK_CONFIDENCE,
     FARM_SIDEWAY_MIN_CONFIDENCE: config.FARM_SIDEWAY_MIN_CONFIDENCE,
     FARM_TREND_MIN_CONFIDENCE: config.FARM_TREND_MIN_CONFIDENCE,
+    FARM_REVERSE_SIGNAL_ENABLED: config.FARM_REVERSE_SIGNAL_ENABLED,
+    FARM_USE_DYNAMIC_SIZING: config.FARM_USE_DYNAMIC_SIZING,
+    FARM_WEAK_SIGNAL_SIZE_MULT: config.FARM_WEAK_SIGNAL_SIZE_MULT,
+    FARM_NO_PRESSURE_SIZE_MULT: config.FARM_NO_PRESSURE_SIZE_MULT,
+    FARM_PINGPONG_SIZE_MULT: config.FARM_PINGPONG_SIZE_MULT,
     TRADE_TP_PERCENT: config.TRADE_TP_PERCENT,
     TRADE_SL_PERCENT: config.TRADE_SL_PERCENT,
+    TRADE_SCORE_THRESHOLD: config.TRADE_SCORE_THRESHOLD,
+    TRADE_MIN_CONFIDENCE: config.TRADE_MIN_CONFIDENCE,
     COOLDOWN_MIN_MINS: config.COOLDOWN_MIN_MINS,
     COOLDOWN_MAX_MINS: config.COOLDOWN_MAX_MINS,
     MIN_POSITION_VALUE_USD: config.MIN_POSITION_VALUE_USD,
@@ -303,7 +330,7 @@ export class ConfigStore {
     // Merge patch into overrides
     for (const key of OVERRIDABLE_KEYS) {
       if (key in patch) {
-        (this.overrides as Record<string, number>)[key] = patch[key] as number;
+        (this.overrides as Record<string, unknown>)[key] = patch[key];
       }
     }
 
@@ -381,7 +408,7 @@ export class ConfigStore {
         continue;
       }
 
-      (this.overrides as Record<string, number>)[key] = value as number;
+      (this.overrides as Record<string, unknown>)[key] = value;
     }
   }
 }

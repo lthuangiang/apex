@@ -10,6 +10,7 @@ export interface SizingInput {
   volatilityFactor?: number;   // regime-based volatility scaling factor [0.1, 1.0]
   orderSizeMin?: number;       // per-bot override for ORDER_SIZE_MIN
   orderSizeMax?: number;       // per-bot override for ORDER_SIZE_MAX
+  fearGreedIndex?: number;     // SoSoValue Fear & Greed Index [0, 100]
 }
 
 export interface SizingResult {
@@ -90,6 +91,17 @@ export class PositionSizer {
     // Step 4: combine and clamp
     const multiplier = winRateMult * drawdownMult * profileBias;
     return Math.max(config.SIZING_MIN_MULTIPLIER, Math.min(config.SIZING_MAX_MULTIPLIER, multiplier));
+  }
+
+  /**
+   * Computes macro sentiment multiplier from SoSoValue Fear & Greed Index.
+   * - Extreme fear (< 25) or extreme greed (> 75): 0.8× (reduce size by 20%)
+   * - Neutral (25-75): 1.0× (no adjustment)
+   */
+  macroSentimentMultiplier(fearGreedIndex?: number): number {
+    if (fearGreedIndex === undefined) return 1.0;
+    if (fearGreedIndex < 25 || fearGreedIndex > 75) return 0.8;
+    return 1.0;
   }
 
   /**
@@ -175,10 +187,14 @@ export class PositionSizer {
     const volFactor = Math.min(1.0, Math.max(0.1, input.volatilityFactor ?? 1.0));
     rawSize *= volFactor;
 
-    // Step 6: apply risk caps (hard BTC cap + final floor)
+    // Step 6: apply macro sentiment multiplier (SoSoValue Fear & Greed)
+    const macroMult = this.macroSentimentMultiplier(input.fearGreedIndex);
+    rawSize *= macroMult;
+
+    // Step 7: apply risk caps (hard BTC cap + final floor)
     const { size, cappedBy } = this.applyRiskCaps(rawSize, sizeMin);
 
-    // Step 7: humanize — add sub-unit jitter so size varies naturally trade-to-trade
+    // Step 8: humanize — add sub-unit jitter so size varies naturally trade-to-trade
     const humanizedSize = this.humanizeSize(size, sizeMin, sizeMax);
 
     return {

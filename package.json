@@ -4,7 +4,8 @@
   "description": "DRIFT — Dynamic Risk-Informed Futures Trading",
   "scripts": {
     "start": "tsx src/bot.ts",
-    "build": "tsc && node -e \"const fs = require('fs'); fs.cpSync('src/dashboard/views','dist/dashboard/views',{recursive:true}); fs.cpSync('src/dashboard/public','dist/dashboard/public',{recursive:true});\"",
+    "build:appkit": "esbuild src/appkit-bundle/index.ts --bundle --format=iife --platform=browser --target=es2020 --outfile=src/dashboard/public/js/appkit.bundle.js --minify --define:process.env.NODE_ENV='\"production\"' --define:global=window",
+    "build": "npm run build:appkit && tsc && node -e \"const fs = require('fs'); fs.cpSync('src/dashboard/views','dist/dashboard/views',{recursive:true}); fs.cpSync('src/dashboard/public','dist/dashboard/public',{recursive:true});\"",
     "start:prod": "node dist/bot.js",
     "test": "vitest --run",
     "test:balance": "tsx src/scripts/test-balance.ts",
@@ -30,6 +31,8 @@
     "@decibeltrade/sdk": "^0.4.1",
     "@noble/hashes": "^2.0.1",
     "@noble/secp256k1": "^3.0.0",
+    "@reown/appkit": "^1.8.19",
+    "@reown/appkit-adapter-ethers": "^1.8.19",
     "axios": "^1.14.0",
     "better-sqlite3": "^12.8.0",
     "chromadb": "^3.4.3",

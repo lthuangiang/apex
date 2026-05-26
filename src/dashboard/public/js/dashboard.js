@@ -82,12 +82,12 @@ function renderTrades() {
   document.getElementById('trade-page-info').textContent = 'Page '+tradePg+' of '+Math.max(1,Math.ceil(total/PAGE_SIZE));
   document.getElementById('trade-prev').disabled = tradePg<=1;
   document.getElementById('trade-next').disabled = tradePg>=Math.ceil(total/PAGE_SIZE);
-  if (!total) { tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:1.5rem;color:var(--text-3);">No trades yet.</td></tr>'; return; }
+  if (!total) { tbody.innerHTML='<tr><td colspan="10" style="text-align:center;padding:1.5rem;color:var(--text-3);">No trades yet.</td></tr>'; return; }
   tbody.innerHTML = allTrades.slice((tradePg-1)*PAGE_SIZE,tradePg*PAGE_SIZE).map(t => {
     const isHedge = t.symbolA !== undefined || t.exitPriceA !== undefined;
     const id = t.id?t.id.slice(0,8)+'...'+t.id.slice(-4):'—';
 
-    let side, entryPrice, exitPrice, pnl, pc, hold, signal, conf;
+    let side, entryPrice, exitPrice, pnl, pc, hold, signal, conf, reason;
 
     if (isHedge) {
       // Hedge trade: long/short symbols, combined PnL, hold duration
@@ -106,6 +106,7 @@ function renderTrades() {
       hold = t.holdDurationSecs ? fmtHold(t.holdDurationSecs) : '—';
       signal = '—';
       conf = '—';
+      reason = '—';
     } else {
       // Regular trade
       side = t.direction==='long'?'<span class="td-buy">BUY</span>':'<span class="td-sell">SELL</span>';
@@ -141,6 +142,22 @@ function renderTrades() {
       } else {
         conf = '—';
       }
+      // Reason: full reasoning string, truncated with tooltip
+      if (t.reasoning) {
+        const r = t.reasoning;
+        // Extract key part: everything before " [conf=" if present
+        const clean = r.replace(/\s*\[conf=[^\]]+\]/g, '').trim();
+        // Color based on direction keyword in reasoning
+        const isLongReason = /→\s*LONG/i.test(clean);
+        const isShortReason = /→\s*SHORT/i.test(clean);
+        const isSkip = /→\s*SKIP/i.test(clean) || /SKIP/i.test(clean);
+        const reasonColor = isSkip ? 'var(--text-3)' : isLongReason ? 'var(--green)' : isShortReason ? 'var(--red)' : 'var(--text-2)';
+        // Truncate to ~40 chars for display, full text in title tooltip
+        const display = clean.length > 42 ? clean.slice(0, 42) + '…' : clean;
+        reason = '<span style="font-size:.65rem;color:'+reasonColor+';cursor:default;line-height:1.4" title="'+esc(clean)+'">'+esc(display)+'</span>';
+      } else {
+        reason = '—';
+      }
     }
 
     return '<tr>'
@@ -152,6 +169,7 @@ function renderTrades() {
       +'<td style="font-size:.72rem;color:var(--text-3)">'+hold+'</td>'
       +'<td style="font-size:.65rem;line-height:1.3">'+signal+'</td>'
       +'<td>'+conf+'</td>'
+      +'<td style="max-width:200px;overflow:hidden">'+reason+'</td>'
       +'<td class="'+pc+'">'+pnl+'</td>'
       +'</tr>';
   }).join('');
@@ -619,9 +637,10 @@ function updateCtrlButtons(isRunning, mode) {
   const liveDot = document.getElementById('live-dot');
   if (liveDot) liveDot.className = 'ldot on'+(isRunning?'':' off');
 
+  _lastKpiMode = mode;
+
   // Re-render KPI layout for new mode (use last known values)
   if (_lastKpiPnl !== null && _lastKpiVol !== null) {
-    _lastKpiMode = mode; // update mode first
     updateKpiLayout(mode, _lastKpiPnl, _lastKpiVol);
   }
 }
@@ -677,9 +696,11 @@ async function refreshCtrlStatus() {
 
 
 // ── Config Panel ──────────────────────────────────────────────────────────
-const CFG_KEYS = ['ORDER_SIZE_MIN','ORDER_SIZE_MAX','STOP_LOSS_PERCENT','TAKE_PROFIT_PERCENT','POSITION_SL_PERCENT','FARM_MIN_HOLD_SECS','FARM_MAX_HOLD_SECS','FARM_TP_USD','FARM_SL_PERCENT','FARM_SCORE_EDGE','FARM_MIN_CONFIDENCE','FARM_EARLY_EXIT_SECS','FARM_EARLY_EXIT_PNL','FARM_EXTRA_WAIT_SECS','FARM_BLOCKED_HOURS','TRADE_TP_PERCENT','TRADE_SL_PERCENT','COOLDOWN_MIN_MINS','COOLDOWN_MAX_MINS','MIN_POSITION_VALUE_USD'];
+const CFG_KEYS = ['ORDER_SIZE_MIN','ORDER_SIZE_MAX','MIN_POSITION_VALUE_USD','FARM_MIN_HOLD_SECS','FARM_MAX_HOLD_SECS','FARM_TP_USD','FARM_SL_PERCENT','FARM_EARLY_EXIT_SECS','FARM_MIN_PROFIT_FEE_MULT','FARM_EXTRA_WAIT_SECS','FARM_BLOCKED_HOURS','FARM_COOLDOWN_SECS','TRADE_SCORE_THRESHOLD','TRADE_MIN_CONFIDENCE','TRADE_TP_PERCENT','TRADE_SL_PERCENT','COOLDOWN_MIN_MINS','COOLDOWN_MAX_MINS'];
+const CFG_BOOL_KEYS = ['FARM_REVERSE_SIGNAL_ENABLED','FARM_USE_DYNAMIC_SIZING'];
 
 function openCfgModal() {
+  onCfgModeChange(_lastKpiMode || 'farm');
   loadConfigPanel();
   loadDailyResetPanel(); // Load daily reset config if in bot context
   // Refresh identity fields with current live values
@@ -695,6 +716,13 @@ function closeCfgModal() {
   document.getElementById('cfg-overlay').classList.remove('open');
 }
 
+function onCfgModeChange(mode) {
+  const farmSection = document.getElementById('cfg-section-farm');
+  const tradeSection = document.getElementById('cfg-section-trade');
+  if (farmSection) farmSection.style.display = mode === 'farm' ? '' : 'none';
+  if (tradeSection) tradeSection.style.display = mode === 'trade' ? '' : 'none';
+}
+
 function populateConfigFields(cfg) {
   for (const k of CFG_KEYS) {
     const el = document.getElementById('cfg-'+k);
@@ -706,6 +734,11 @@ function populateConfigFields(cfg) {
       }
     }
   }
+  for (const k of CFG_BOOL_KEYS) {
+    const el = document.getElementById('cfg-'+k);
+    if (el) el.checked = !!cfg[k];
+  }
+  onCfgModeChange(_lastKpiMode || cfg.MODE || 'farm');
 }
 
 function showCfgToast(msg, isErr) {
@@ -739,6 +772,10 @@ async function applyConfig() {
       } else {
         patch[k] = parseFloat(el.value);
       }
+    }
+    for (const k of CFG_BOOL_KEYS) {
+      const el = document.getElementById('cfg-'+k);
+      if (el) patch[k] = !!el.checked;
     }
     const r = await fetch(api('/api/config'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
     const d = await r.json();

@@ -32,8 +32,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
 .back-link{display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:500;color:var(--text2);text-decoration:none;padding:.2rem .5rem;border-radius:var(--rx);border:1px solid var(--border);background:var(--s2);transition:var(--tr)}
 .back-link:hover{background:var(--border);color:var(--text1)}
 .brand{font-size:.85rem;font-weight:700;color:var(--text1);letter-spacing:-.02em}
-.live-pill{display:flex;align-items:center;gap:.3rem;font-size:.62rem;font-weight:700;letter-spacing:.08em;color:var(--text3)}
-.ldot{width:6px;height:6px;border-radius:50%;background:var(--green)}
+.live-pill{display:flex;align-items:center;gap:.4rem;font-size:.72rem;font-weight:700;letter-spacing:.06em;color:var(--text1);background:var(--s2);border:1px solid var(--border);border-radius:20px;padding:.25rem .65rem .25rem .5rem}
+.ldot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;box-shadow:0 0 0 2px rgba(29,185,84,0.25)}
 .ldot.on{animation:blink 1.4s ease-in-out infinite}
 @keyframes blink{0%,100%{opacity:1;box-shadow:0 0 0 0 var(--gglow)}50%{opacity:.5;box-shadow:0 0 0 4px var(--gglow)}}
 .topbar-time{font-size:.68rem;color:var(--text3);font-variant-numeric:tabular-nums}
@@ -355,11 +355,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
   .ctrl-panel{padding:.6rem 1.25rem}
 }
 @media(max-width:600px){
+  /* Topbar */
+  .topbar{padding:0 .75rem;height:44px}
   .hero-in{grid-template-columns:1fr auto;grid-template-rows:auto auto}
   .hero-kpis{grid-column:1/-1}
   .kpi-blk{padding:.4rem .6rem}
   .kpi-val{font-size:1rem}
-  .ctrl-in{gap:.5rem}
+  .ctrl-in{gap:.5rem;padding:0 .75rem}
+  /* Page */
+  .page{padding:.75rem .75rem 3rem}
+  /* Charts — reduce height on mobile */
+  .chart-wrap{height:110px}
+  .chart-wrap canvas{height:110px!important}
+  /* Log — reduce height */
+  .log-body{height:120px}
+  /* Cockpit grid — single column */
+  .cockpit-grid{grid-template-columns:1fr}
+  /* Analytics grids */
+  .an-cards-row{grid-template-columns:1fr 1fr}
+  .an-charts-row{grid-template-columns:1fr}
+  .an-three-col{grid-template-columns:1fr 1fr}
+  .cfg-fields{grid-template-columns:1fr}
+  /* KPI cards — 2 col */
+  .an-grid-4{grid-template-columns:1fr 1fr}
+  /* Trades table — horizontal scroll */
+  .trades-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
 </style>
 </head>
@@ -378,7 +398,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
     <div class="hero-name" id="hero-bot-name">Bot</div>
   </div>
   <div class="tr">
-    <div class="live-pill"><div class="ldot on" id="live-dot"></div>LIVE</div>
+    <div class="live-pill"><div class="ldot on" id="live-dot"></div>MAINNET</div>
     <span class="topbar-time" id="updated-at"></span>
     <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark">
       <svg id="icon-moon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -541,8 +561,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
           <div class="panel-hd"><span class="panel-title">Trade History</span><span style="font-size:.65rem;color:var(--text3)" id="trade-count"></span></div>
           <div style="overflow-x:auto">
             <table class="data-table">
-              <thead><tr><th>Order ID</th><th>Date</th><th>Side</th><th>Entry</th><th>Exit</th><th>Hold</th><th>Signal</th><th>Conf</th><th>PnL</th></tr></thead>
-              <tbody id="trades-body"><tr><td colspan="9" style="text-align:center;padding:1.25rem;color:var(--text3)">No trades yet.</td></tr></tbody>
+              <thead><tr><th>Order ID</th><th>Date</th><th>Side</th><th>Entry</th><th>Exit</th><th>Hold</th><th>Signal</th><th>Conf</th><th>Reason</th><th>PnL</th></tr></thead>
+              <tbody id="trades-body"><tr><td colspan="10" style="text-align:center;padding:1.25rem;color:var(--text3)">No trades yet.</td></tr></tbody>
             </table>
           </div>
           <div class="pg-row"><span id="trade-page-info">Page 1</span><div style="display:flex;gap:.3rem"><button class="pg-btn" id="trade-prev" onclick="tradePage(-1)" disabled>‹</button><button class="pg-btn" id="trade-next" onclick="tradePage(1)">›</button></div></div>

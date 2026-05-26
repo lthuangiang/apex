@@ -63,6 +63,13 @@ export interface TradeRecord extends SignalSnapshot {
   mmInventoryBias?: number;
   mmDynamicTP?: number;
   mmNetExposure?: number;
+
+  // ── SoSoValue metadata (optional) ─────────────────────────────────
+  fearGreedIndex?: number;           // Fear & Greed Index at entry (0-100)
+  fearGreedLabel?: string;           // Label: "Extreme Fear", "Fear", etc.
+  sosoStrategyMode?: string;         // Strategy mode applied: "aggressive_farm", "defensive", etc.
+  sosoSizeMultiplier?: number;       // Size adjustment applied (0.8-1.15)
+  sosoConfidenceMultiplier?: number; // Confidence/threshold adjustment applied (0.85-1.2)
 }
 
 export class TradeLogger {

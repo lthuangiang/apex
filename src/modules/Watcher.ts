@@ -6,7 +6,7 @@ import { sharedState, logEvent, addTodayVolume, type EventLogEntry } from '../ai
 import { saveState } from '../ai/StateStore.js';
 import type { BotSharedState } from '../bot/BotSharedState.js';
 import { logEvent as logBotEvent } from '../bot/BotSharedState.js';
-import { RiskManager } from './RiskManager.js';
+import { RiskManager, type RiskPolicy } from './RiskManager.js';
 import { PositionManager } from './PositionManager.js';
 import { Executor, PendingOrder } from './Executor.js';
 import { TelegramManager } from './TelegramManager.js';
@@ -21,8 +21,10 @@ import { FillTracker } from './FillTracker.js';
 import { ExecutionEdge } from './ExecutionEdge.js';
 import { MarketMaker, MMEntryBias } from './MarketMaker.js';
 import type { ConfigStoreInterface } from '../config/ConfigStore.js';
-import { evaluateFarmEntryFilters, type FilterInput } from './FarmSignalFilters.js';
+import { evaluateFarmEntryFilters, type FilterInput, type FilterResult } from './FarmSignalFilters.js';
 import { computeAdaptiveCooldown } from '../ai/AdaptiveCooldown.js';
+import { SoSoValueClient } from '../ai/SoSoValueClient.js';
+import { computeStrategyAdjustment } from '../ai/SoSoValueStrategy.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE MACHINE
@@ -86,6 +88,7 @@ export class Watcher {
     private readonly marketMaker = new MarketMaker();
     private readonly chopDetector = new ChopDetector();
     private readonly fakeBreakoutFilter = new FakeBreakoutFilter();
+    private readonly sosoValueClient = new SoSoValueClient();
 
     // ── Loop control ──────────────────────────────────────────────────────────
     private isRunning = false;
@@ -130,6 +133,15 @@ export class Watcher {
     private _pendingDynamicTP: number | null = null;
     private _pendingEntrySpreadBps: number | null = null;
     private _pendingMMBias: MMEntryBias | null = null;
+
+    // ── SoSoValue metadata (for trade logging) ───────────────────────────────
+    private _pendingSoSoData: {
+        fearGreedIndex: number;
+        fearGreedLabel: string;
+        strategyMode: string;
+        sizeMultiplier: number;
+        confidenceMultiplier: number;
+    } | null = null;
 
     // ── Trade-mode signal confirmation ────────────────────────────────────────
     private _lastSignal: { direction: 'long' | 'short'; score: number; ts: number } | null = null;
@@ -594,6 +606,12 @@ export class Watcher {
         console.log(`✅ [PENDING→IN_POSITION] Entry filled: ${filledSize} @ ${position.entryPrice}`);
         this._logEvent('ORDER_FILLED', `Entry filled: ${filledSize} @ ${position.entryPrice}`);
 
+        // Update sharedState with the latest LLM reasoning so dashboard can display it
+        if (this._pendingEntrySignalMeta?.reasoning) {
+            sharedState.lastReasoning = this._pendingEntrySignalMeta.reasoning;
+            sharedState.lastReasoningAt = new Date().toISOString();
+        }
+
         this.executor.notifyEntryFilled(
             this.symbol,
             this.pendingEntry?.direction ?? 'long',
@@ -686,6 +704,15 @@ export class Watcher {
     // Snapshot of pnl at exit trigger time (used by _handleExiting)
     private _exitPnlSnapshot: number = 0;
 
+    private _riskPolicy(): RiskPolicy {
+        return {
+            mode: this._cfg.MODE as 'farm' | 'trade',
+            farmSlPercent: this._cfg.FARM_SL_PERCENT,
+            tradeSlPercent: this._cfg.TRADE_SL_PERCENT,
+            tradeTpPercent: this._cfg.TRADE_TP_PERCENT,
+        };
+    }
+
     private _evaluateExitConditions(
         position: any,
         markPrice: number,
@@ -693,7 +720,7 @@ export class Watcher {
         duration: number,
     ): { shouldExit: boolean; exitTrigger: string } {
         // Risk manager (SL/TP) — highest priority
-        if (this.riskManager.shouldClose(markPrice, position)) {
+        if (this.riskManager.shouldClose(markPrice, position, this._riskPolicy())) {
             return { shouldExit: true, exitTrigger: 'SL/TP (RiskManager)' };
         }
 
@@ -716,34 +743,31 @@ export class Watcher {
                 return { shouldExit: true, exitTrigger: `FARM MAX HOLD (${duration}s, PnL: ${pnl.toFixed(2)})` };
             }
 
+            // Early exit: held >= FARM_EARLY_EXIT_SECS AND pnl covers round-trip fee
+            // This check runs at ANY time, not just before min hold
+            if (duration >= this._cfg.FARM_EARLY_EXIT_SECS) {
+                // Direct USD threshold (not multiplied by fee)
+                const minProfitThreshold = this._cfg.FARM_MIN_PROFIT_FEE_MULT;
+
+                if (pnl >= minProfitThreshold) {
+                    const entryRegime = this._pendingEntrySignalMeta?.signalSnapshot?.regime;
+                    const regimeCfg = entryRegime ? getRegimeStrategyConfig(entryRegime as Regime) : null;
+                    // suppressEarlyExit only applies in TRADE mode — FARM mode always exits early when profitable
+                    if (regimeCfg?.suppressEarlyExit && this._cfg.MODE !== 'farm') {
+                        console.log(`🚜 [REGIME] Suppressing early exit in ${entryRegime} (trade mode only)`);
+                        return { shouldExit: false, exitTrigger: '' };
+                    }
+                    console.log(`🚜 [FARM] Early profit exit: pnl=${pnl.toFixed(4)} >= threshold=${minProfitThreshold.toFixed(4)}`);
+                    return { shouldExit: true, exitTrigger: `FARM EARLY PROFIT ($${pnl.toFixed(2)} >= $${minProfitThreshold.toFixed(2)} after ${duration}s)` };
+                }
+            }
+
             // If farmHoldUntil is null (e.g. restart sync), fall back to duration-based check
             const holdDone = this.farmHoldUntil !== null
                 ? Date.now() >= this.farmHoldUntil
                 : duration >= this._cfg.FARM_MIN_HOLD_SECS;
 
             if (!holdDone) {
-                // Early exit: held >= FARM_EARLY_EXIT_SECS AND pnl covers round-trip fee
-                if (duration >= this._cfg.FARM_EARLY_EXIT_SECS) {
-                    // Dynamic threshold: must cover round-trip fee × multiplier
-                    // e.g. 0.002 BTC @ $74,500 → posValue=$149 → fee=$0.036 → threshold=$0.043
-                    const positionValue = Math.abs(position.size) * position.entryPrice;
-                    const feeRoundTripCost = positionValue * this._cfg.FEE_RATE_MAKER * 2;
-                    const minProfitThreshold = Math.max(
-                        feeRoundTripCost * this._cfg.FARM_MIN_PROFIT_FEE_MULT,
-                        this._cfg.FARM_EARLY_EXIT_PNL, // fallback floor
-                    );
-
-                    if (pnl >= minProfitThreshold) {
-                        const entryRegime = this._pendingEntrySignalMeta?.signalSnapshot?.regime;
-                        const regimeCfg = entryRegime ? getRegimeStrategyConfig(entryRegime as Regime) : null;
-                        if (regimeCfg?.suppressEarlyExit) {
-                            console.log(`🚜 [REGIME] Suppressing early exit in ${entryRegime}`);
-                            return { shouldExit: false, exitTrigger: '' };
-                        }
-                        console.log(`🚜 [FARM] Early profit exit: pnl=${pnl.toFixed(4)} >= threshold=${minProfitThreshold.toFixed(4)} (fee=${feeRoundTripCost.toFixed(4)} × ${this._cfg.FARM_MIN_PROFIT_FEE_MULT})`);
-                        return { shouldExit: true, exitTrigger: `FARM EARLY PROFIT (${pnl.toFixed(2)} >= fee×${this._cfg.FARM_MIN_PROFIT_FEE_MULT} after ${duration}s)` };
-                    }
-                }
                 const remainSecs = this.farmHoldUntil !== null
                     ? Math.floor((this.farmHoldUntil - Date.now()) / 1000)
                     : Math.max(0, this._cfg.FARM_MIN_HOLD_SECS - duration);
@@ -944,6 +968,11 @@ export class Watcher {
             mmInventoryBias: (this._cfg.MM_ENABLED && this._pendingMMBias) ? this._pendingMMBias.inventoryBias : undefined,
             mmDynamicTP: (this._cfg.MM_ENABLED && this._pendingDynamicTP !== null) ? this._pendingDynamicTP : undefined,
             mmNetExposure: (this._cfg.MM_ENABLED && this._pendingMMBias) ? this._pendingMMBias.netExposureUsd : undefined,
+            fearGreedIndex: this._pendingSoSoData?.fearGreedIndex,
+            fearGreedLabel: this._pendingSoSoData?.fearGreedLabel,
+            sosoStrategyMode: this._pendingSoSoData?.strategyMode,
+            sosoSizeMultiplier: this._pendingSoSoData?.sizeMultiplier,
+            sosoConfidenceMultiplier: this._pendingSoSoData?.confidenceMultiplier,
             ...this._pendingEntrySignalMeta?.signalSnapshot,
         };
 
@@ -1068,33 +1097,76 @@ export class Watcher {
     // ── FARM MODE entry ───────────────────────────────────────────────────────
 
     private async _handleIdleFarm(markPrice: number, balance: number) {
-        const signal = await this.signalEngine.getSignal(this.symbol);
+        // Fetch F&G, ETF flow, and macro events in parallel — all SoSoValue API calls
+        const [sosoData, etfFlow, macroRisk] = await Promise.all([
+            this.sosoValueClient.fetch(),
+            this.sosoValueClient.fetchEtfFlow(),
+            this.sosoValueClient.fetchMacroEvents(),
+        ]);
+        const fearGreedIndex = sosoData?.fearGreedIndex ?? 50;
+
+        // Compute combined strategy adjustment (F&G + ETF flow + Macro guard)
+        const strategyAdj = computeStrategyAdjustment(fearGreedIndex, etfFlow, macroRisk);
+        console.log(`[SoSoValue] F&G: ${fearGreedIndex} (${sosoData?.fearGreedLabel ?? 'N/A'}) | ETF: ${etfFlow?.signal ?? 'n/a'} | Macro: ${macroRisk?.riskLevel ?? 'none'} → ${strategyAdj.description}`);
+
+        // Store SoSoValue data for trade logging
+        this._pendingSoSoData = {
+            fearGreedIndex,
+            fearGreedLabel: sosoData?.fearGreedLabel ?? 'Unknown',
+            strategyMode: strategyAdj.mode,
+            sizeMultiplier: strategyAdj.sizeMultiplier,
+            confidenceMultiplier: strategyAdj.confidenceMultiplier,
+        };
+
+        // Log SoSoValue strategy mode to event log
+        const modeDescription = strategyAdj.mode === 'aggressive_farm' ? '🟢 AGGRESSIVE FARM - Buy the dip, +15% size'
+            : strategyAdj.mode === 'normal_farm' ? '🟡 NORMAL FARM - Cautious approach'
+            : strategyAdj.mode === 'balanced' ? '⚪ BALANCED - Normal operation'
+            : strategyAdj.mode === 'cautious_trade' ? '🟠 CAUTIOUS TRADE - Be selective, -10% size'
+            : '🔴 DEFENSIVE - Avoid FOMO, -20% size';
+
+        const etfTag = etfFlow ? ` | ETF:${etfFlow.signal}` : '';
+        const macroTag = macroRisk && macroRisk.riskLevel !== 'none' ? ` | ⚠️ MACRO:${macroRisk.riskLevel.toUpperCase()}` : '';
+        this._logEvent('INFO', `[SoSoValue] F&G: ${fearGreedIndex} (${sosoData?.fearGreedLabel ?? 'N/A'})${etfTag}${macroTag} | ${modeDescription} | Size: ${strategyAdj.sizeMultiplier.toFixed(2)}x | Threshold: ${strategyAdj.confidenceMultiplier.toFixed(2)}x`);
+
+        const signal = await this.signalEngine.getSignal(this.symbol, fearGreedIndex);
 
         // ── Signal filter pipeline ─────────────────────────────────────────────
-        const filterResult = evaluateFarmEntryFilters({
-            regime: signal.regime as FilterInput['regime'],
-            confidence: signal.confidence,
-            momentumScore: signal.score,
-            tradePressure: signal.tradePressure,
-            fallback: signal.fallback,
-            llmMatchesMomentum: (signal as any).llmMatchesMomentum,
-            atrPct: signal.atrPct,
-            mode: this._cfg.MODE as 'farm' | 'trade',
-            FEE_RATE_MAKER: this._cfg.FEE_RATE_MAKER,
-            FARM_MIN_CONFIDENCE_PRESSURE_GATE: this._cfg.FARM_MIN_CONFIDENCE_PRESSURE_GATE,
-            FARM_MIN_FALLBACK_CONFIDENCE: this._cfg.FARM_MIN_FALLBACK_CONFIDENCE,
-            FARM_SIDEWAY_MIN_CONFIDENCE: this._cfg.FARM_SIDEWAY_MIN_CONFIDENCE,
-            FARM_TREND_MIN_CONFIDENCE: this._cfg.FARM_TREND_MIN_CONFIDENCE,
-            FARM_MIN_HOLD_SECS: this._cfg.FARM_MIN_HOLD_SECS,
-            FARM_MAX_HOLD_SECS: this._cfg.FARM_MAX_HOLD_SECS,
-        });
+        // Skip filters when signal direction is 'skip' — FARM mode has fallback logic to handle it
+        let filterResult: FilterResult;
+        if (signal.direction === 'skip') {
+            console.log(`[SignalFilter] BYPASS: signal direction is 'skip', using fallback logic`);
+            filterResult = {
+                pass: true,
+                effectiveConfidence: signal.confidence,
+                dynamicMinHold: this._cfg.FARM_MIN_HOLD_SECS,
+            };
+        } else {
+            filterResult = evaluateFarmEntryFilters({
+                regime: signal.regime as FilterInput['regime'],
+                confidence: signal.confidence,
+                momentumScore: signal.score,
+                tradePressure: signal.tradePressure,
+                fallback: signal.fallback,
+                llmMatchesMomentum: (signal as any).llmMatchesMomentum,
+                atrPct: signal.atrPct,
+                mode: this._cfg.MODE as 'farm' | 'trade',
+                FEE_RATE_MAKER: this._cfg.FEE_RATE_MAKER,
+                FARM_MIN_CONFIDENCE_PRESSURE_GATE: this._cfg.FARM_MIN_CONFIDENCE_PRESSURE_GATE,
+                FARM_MIN_FALLBACK_CONFIDENCE: this._cfg.FARM_MIN_FALLBACK_CONFIDENCE,
+                FARM_SIDEWAY_MIN_CONFIDENCE: this._cfg.FARM_SIDEWAY_MIN_CONFIDENCE,
+                FARM_TREND_MIN_CONFIDENCE: this._cfg.FARM_TREND_MIN_CONFIDENCE,
+                FARM_MIN_HOLD_SECS: this._cfg.FARM_MIN_HOLD_SECS,
+                FARM_MAX_HOLD_SECS: this._cfg.FARM_MAX_HOLD_SECS,
+            });
 
-        if (!filterResult.pass) {
-            console.log(`[SignalFilter] SKIP: ${filterResult.reason}`);
-            return; // ACTION: wait — RETURN
+            if (!filterResult.pass) {
+                console.log(`[SignalFilter] SKIP: ${filterResult.reason}`);
+                return; // ACTION: wait — RETURN
+            }
+
+            console.log(`[SignalFilter] PASS: regime=${signal.regime}, confidence=${signal.confidence.toFixed(2)}, pressure=${signal.tradePressure.toFixed(2)}, fallback=${signal.fallback}, effectiveConf=${filterResult.effectiveConfidence.toFixed(2)}`);
         }
-
-        console.log(`[SignalFilter] PASS: regime=${signal.regime}, confidence=${signal.confidence.toFixed(2)}, pressure=${signal.tradePressure.toFixed(2)}, fallback=${signal.fallback}, effectiveConf=${filterResult.effectiveConfidence.toFixed(2)}`);
 
         let mmBias = null;
         if (this._cfg.MM_ENABLED) {
@@ -1108,35 +1180,49 @@ export class Watcher {
         }
 
         let finalDirection: 'long' | 'short';
+        const pricePos = signal.pricePositionInRange;
+        const adjustedScore = mmBias
+            ? signal.score + mmBias.pingPongBias + mmBias.inventoryBias
+            : signal.score;
 
         if (mmBias?.blocked) {
             finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
             console.log(`🚜 [FARM] Inventory rebalance → ${finalDirection.toUpperCase()}`);
         } else {
-            const pricePos = signal.pricePositionInRange;
-            const adjustedScore = mmBias
-                ? signal.score + mmBias.pingPongBias + mmBias.inventoryBias
-                : signal.score;
-
             if (signal.direction !== 'skip') {
-                // AISignalEngine has a clear directional signal (range bottom/top confirmed)
-                // MM bias can override only if strongly opposing
-                const mmOpposes = mmBias && Math.abs(mmBias.pingPongBias + mmBias.inventoryBias) >= 0.1;
-                finalDirection = mmOpposes ? (adjustedScore >= 0.5 ? 'long' : 'short') : signal.direction;
-                console.log(`🚜 [FARM] Signal: ${signal.direction.toUpperCase()} pos=${pricePos !== undefined ? (pricePos * 100).toFixed(0) + '%' : 'n/a'} → ${finalDirection.toUpperCase()}`);
+                // AISignalEngine has a clear directional signal (range bottom/top confirmed).
+                // Always follow it — MM bias must NOT override a confirmed signal.
+                // Previously MM bias could flip direction here, causing consistent losses.
+                finalDirection = signal.direction as 'long' | 'short';
+                console.log(`🚜 [FARM] Signal: ${signal.direction.toUpperCase()} pos=${pricePos !== undefined ? (pricePos * 100).toFixed(0) + '%' : 'n/a'} → ${finalDirection.toUpperCase()} [signal-follow]`);
             } else {
-                // direction = 'skip': mid-range chop or no clear edge
-                // Use pricePositionInRange as tiebreaker if available, else ping-pong
-                if (pricePos !== undefined && Math.abs(pricePos - 0.5) > 0.15) {
-                    // Price is leaning toward one side of range — use it
-                    finalDirection = pricePos > 0.5 ? 'short' : 'long';
-                    console.log(`🚜 [FARM] Skip→PricePos tiebreak: ${(pricePos * 100).toFixed(0)}% → ${finalDirection.toUpperCase()}`);
+                // direction = 'skip': mid-range chop, no confirmed edge from signal engine.
+                // Farm mode must always trade for volume — resolve direction per spec:
+                //   pricePosition > 0.65 → SHORT (near range top)
+                //   pricePosition < 0.35 → LONG  (near range bottom)
+                //   mid-range           → use adjustedMomentumScore
+                //   fallback            → ping-pong alternate sides
+                if (pricePos !== undefined && pricePos > 0.65) {
+                    finalDirection = 'short';
+                    console.log(`🚜 [FARM] Skip→PriceTop (${(pricePos * 100).toFixed(0)}%) → SHORT`);
+                } else if (pricePos !== undefined && pricePos < 0.35) {
+                    finalDirection = 'long';
+                    console.log(`🚜 [FARM] Skip→PriceBottom (${(pricePos * 100).toFixed(0)}%) → LONG`);
+                } else if (adjustedScore !== 0.5) {
+                    // Mid-range: use adjustedMomentumScore as tiebreaker
+                    finalDirection = adjustedScore >= 0.5 ? 'long' : 'short';
+                    console.log(`🚜 [FARM] Skip→MomentumScore (${adjustedScore.toFixed(2)}) → ${finalDirection.toUpperCase()}`);
                 } else {
                     // Truly neutral — ping-pong to alternate sides for volume farming
                     finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
                     console.log(`🚜 [FARM] Skip→ping-pong → ${finalDirection.toUpperCase()} (last: ${this.lastTradeContext?.side ?? 'none'})`);
                 }
             }
+        }
+
+        if (this._cfg.FARM_REVERSE_SIGNAL_ENABLED) {
+            finalDirection = finalDirection === 'long' ? 'short' : 'long';
+            console.log(`🔁 [FARM] Reverse-signal enabled → ${finalDirection.toUpperCase()}`);
         }
 
         const sizingResult = this.positionSizer.computeSize({
@@ -1149,10 +1235,37 @@ export class Watcher {
             volatilityFactor: 1.0,
             orderSizeMin: this._cfg.ORDER_SIZE_MIN,
             orderSizeMax: this._cfg.ORDER_SIZE_MAX,
+            fearGreedIndex,
         });
         this._pendingSizingResult = sizingResult;
-        // FARM mode: random size in [min, max], ignore dynamic multipliers
-        let size = this._cfg.ORDER_SIZE_MIN + Math.random() * (this._cfg.ORDER_SIZE_MAX - this._cfg.ORDER_SIZE_MIN);
+
+        // Farm sizing: use dynamic sizer when enabled, otherwise random in [min, max]
+        let size: number;
+        if (this._cfg.FARM_USE_DYNAMIC_SIZING) {
+            size = sizingResult.size;
+            // Apply signal-quality size multipliers to reduce exposure on weaker entries
+            let sizeMult = 1.0;
+            const isPingPong = !mmBias?.blocked && signal.direction === 'skip' &&
+                (pricePos === undefined || (pricePos >= 0.35 && pricePos <= 0.65)) &&
+                Math.abs((mmBias ? signal.score + mmBias.pingPongBias + mmBias.inventoryBias : signal.score) - 0.5) < 0.001;
+            const isNoPressure = (isNaN(signal.tradePressure) ? 0 : signal.tradePressure) === 0;
+            if (isPingPong) {
+                sizeMult = this._cfg.FARM_PINGPONG_SIZE_MULT;
+                console.log(`📐 [FARM] Ping-pong entry → size × ${sizeMult}`);
+            } else if (isNoPressure) {
+                sizeMult = this._cfg.FARM_NO_PRESSURE_SIZE_MULT;
+                console.log(`📐 [FARM] No pressure → size × ${sizeMult}`);
+            } else if (signal.direction !== 'skip' && filterResult.effectiveConfidence < 0.55) {
+                sizeMult = this._cfg.FARM_WEAK_SIGNAL_SIZE_MULT;
+                console.log(`📐 [FARM] Weak signal (conf=${filterResult.effectiveConfidence.toFixed(2)}) → size × ${sizeMult}`);
+            }
+            size *= sizeMult;
+            // Apply SoSoValue strategy adjustment
+            size *= strategyAdj.sizeMultiplier;
+            size = Math.max(this._cfg.ORDER_SIZE_MIN, size);
+        } else {
+            size = this._cfg.ORDER_SIZE_MIN + Math.random() * (this._cfg.ORDER_SIZE_MAX - this._cfg.ORDER_SIZE_MIN);
+        }
         const maxSizeFromBalance = (balance * this._cfg.SIZING_MAX_BALANCE_PCT) / markPrice;
         if (size > maxSizeFromBalance) size = Math.max(this._cfg.ORDER_SIZE_MIN, maxSizeFromBalance);
 
@@ -1162,14 +1275,16 @@ export class Watcher {
         this._pendingFarmHoldSecs = holdSecs;
         this.farmHoldUntil = null; // cleared until fill confirmed
         console.log(`[MinHold] dynamicMinHold=${holdSecs}s (feeBreakEven computed, FARM_MIN=${this._cfg.FARM_MIN_HOLD_SECS}s, FARM_MAX=${this._cfg.FARM_MAX_HOLD_SECS}s)`);
-        this.riskManager.setSlPercent(this._cfg.FARM_SL_PERCENT);
 
-        if (this._cfg.MM_ENABLED) {
-            const spreadBps = this._pendingEntrySpreadBps ?? 2;
-            this._pendingDynamicTP = this.marketMaker.computeDynamicTP(markPrice, spreadBps);
-            console.log(`🎯 [MM] Dynamic TP: ${this._pendingDynamicTP.toFixed(3)} USD`);
+        if (this._cfg.MM_ENABLED && this._pendingEntrySpreadBps !== null) {
+            this._pendingDynamicTP = this.marketMaker.computeDynamicTP(markPrice, this._pendingEntrySpreadBps);
+            console.log(`🎯 [MM] Dynamic TP: ${this._pendingDynamicTP.toFixed(3)} USD (spread=${this._pendingEntrySpreadBps}bps)`);
         } else {
+            // No spread data available — fall back to FARM_TP_USD so MM doesn't inflate the target
             this._pendingDynamicTP = null;
+            if (this._cfg.MM_ENABLED) {
+                console.log(`🎯 [MM] No spread data — using FARM_TP_USD fallback ($${this._cfg.FARM_TP_USD})`);
+            }
         }
 
         console.log(`📐 [FARM] Size: ${size.toFixed(5)} BTC | conf: ${signal.confidence.toFixed(2)}`);
@@ -1213,7 +1328,33 @@ export class Watcher {
     // ── TRADE MODE entry ──────────────────────────────────────────────────────
 
     private async _handleIdleTrade(markPrice: number, balance: number) {
-        const signal = await this.signalEngine.getSignal(this.symbol);
+        // Fetch signal and SoSoValue data in parallel
+        const sosoData = await this.sosoValueClient.fetch();
+        const fearGreedIndex = sosoData?.fearGreedIndex ?? 50; // Default to neutral if unavailable
+
+        // Compute strategy adjustment based on Fear & Greed Index
+        const strategyAdj = computeStrategyAdjustment(fearGreedIndex);
+        console.log(`[SoSoValue] F&G: ${fearGreedIndex} (${sosoData?.fearGreedLabel ?? 'N/A'}) → ${strategyAdj.description}`);
+
+        // Store SoSoValue data for trade logging
+        this._pendingSoSoData = {
+            fearGreedIndex,
+            fearGreedLabel: sosoData?.fearGreedLabel ?? 'Unknown',
+            strategyMode: strategyAdj.mode,
+            sizeMultiplier: strategyAdj.sizeMultiplier,
+            confidenceMultiplier: strategyAdj.confidenceMultiplier,
+        };
+
+        // Log SoSoValue strategy mode to event log
+        const modeDescription = strategyAdj.mode === 'aggressive_farm' ? '🟢 AGGRESSIVE FARM - Buy the dip, +15% size'
+            : strategyAdj.mode === 'normal_farm' ? '🟡 NORMAL FARM - Cautious approach'
+            : strategyAdj.mode === 'balanced' ? '⚪ BALANCED - Normal operation'
+            : strategyAdj.mode === 'cautious_trade' ? '🟠 CAUTIOUS TRADE - Be selective, -10% size'
+            : '🔴 DEFENSIVE - Avoid FOMO, -20% size';
+
+        this._logEvent('INFO', `[SoSoValue] F&G: ${fearGreedIndex} (${sosoData?.fearGreedLabel ?? 'N/A'}) | ${modeDescription} | Size: ${strategyAdj.sizeMultiplier.toFixed(2)}x | Threshold: ${strategyAdj.confidenceMultiplier.toFixed(2)}x`);
+
+        const signal = await this.signalEngine.getSignal(this.symbol, fearGreedIndex);
         const regimeConfig = getRegimeStrategyConfig(signal.regime as Regime);
 
         let bias = 0;
@@ -1233,7 +1374,11 @@ export class Watcher {
         if (signal.regime === 'TREND_UP' && final_score < 0) final_score *= 0.5;
         if (signal.regime === 'TREND_DOWN' && final_score > 0) final_score *= 0.5;
 
-        const threshold = 0.65;
+        // Apply SoSoValue strategy adjustment to threshold
+        const baseThreshold = this._cfg.TRADE_SCORE_THRESHOLD ?? 0.65;
+        const threshold = baseThreshold * strategyAdj.confidenceMultiplier;
+        console.log(`[SoSoValue] Adjusted threshold: ${baseThreshold.toFixed(2)} → ${threshold.toFixed(2)} (${strategyAdj.mode})`);
+
         let finalDirection: 'long' | 'short' | 'skip' = 'skip';
         if (final_score > threshold) finalDirection = 'long';
         else if (final_score < -threshold) finalDirection = 'short';
@@ -1272,8 +1417,8 @@ export class Watcher {
             return; // RETURN
         }
 
-        if (signal.confidence < this._cfg.MIN_CONFIDENCE) {
-            console.log(`😴 Confidence too low (${signal.confidence.toFixed(2)} < ${this._cfg.MIN_CONFIDENCE})`);
+        if (signal.confidence < this._cfg.TRADE_MIN_CONFIDENCE) {
+            console.log(`😴 Confidence too low (${signal.confidence.toFixed(2)} < ${this._cfg.TRADE_MIN_CONFIDENCE})`);
             return; // RETURN
         }
 
@@ -1303,19 +1448,16 @@ export class Watcher {
             volatilityFactor: regimeConfig.volatilitySizingFactor,
             orderSizeMin: this._cfg.ORDER_SIZE_MIN,
             orderSizeMax: this._cfg.ORDER_SIZE_MAX,
+            fearGreedIndex,
         });
         this._pendingSizingResult = sizingResult;
         let size = sizingResult.size;
         const maxSizeFromBalance = (balance * this._cfg.SIZING_MAX_BALANCE_PCT) / markPrice;
         if (size > maxSizeFromBalance) size = Math.max(this._cfg.ORDER_SIZE_MIN, maxSizeFromBalance);
 
-        const baseHoldSecs = Math.floor(Math.random() * (this._cfg.FARM_MAX_HOLD_SECS - this._cfg.FARM_MIN_HOLD_SECS + 1)) + this._cfg.FARM_MIN_HOLD_SECS;
-        const holdSecs = Math.min(this._cfg.FARM_MAX_HOLD_SECS * 2, Math.max(this._cfg.FARM_MIN_HOLD_SECS, Math.round(baseHoldSecs * regimeConfig.holdMultiplier)));
-        this.farmHoldUntil = Date.now() + holdSecs * 1000;
-        this.riskManager.setSlPercent(this._cfg.FARM_SL_PERCENT * regimeConfig.slBufferMultiplier);
         this._pendingDynamicTP = null;
 
-        console.log(`📐 [TRADE] Size: ${size.toFixed(5)} | Hold: ${holdSecs}s | Regime: ${signal.regime}`);
+        console.log(`📐 [TRADE] Size: ${size.toFixed(5)} | Regime: ${signal.regime}`);
 
         const order = await this.executor.placeEntryOrder(this.symbol, finalDirection, size);
         if (order) {
@@ -1370,19 +1512,26 @@ export class Watcher {
     // STRICT: after calling _transitionToCooldown the caller MUST return.
     // ─────────────────────────────────────────────────────────────────────────
 
-    private _transitionToCooldown(_mode?: 'farm' | 'random') {
-        // Use adaptive cooldown based on recent PnL and chop score
-        const adaptiveResult = computeAdaptiveCooldown({
-            recentPnLs: this.recentPnLs,
-            lastChopScore: this._lastChopScore,
-        });
+    private _transitionToCooldown(mode?: 'farm' | 'random') {
+        let cooldownMs: number;
 
-        const cooldownMs = adaptiveResult.cooldownMs;
-        console.log(
-            `⏱️ Adaptive Cooldown: ${(cooldownMs / 1000).toFixed(0)}s ` +
-            `[base=${adaptiveResult.baseMins.toFixed(1)}m × streak=${adaptiveResult.streakMult.toFixed(2)} × chop=${adaptiveResult.chopMult.toFixed(2)}] ` +
-            `losing_streak=${adaptiveResult.losingStreak}`
-        );
+        if (mode === 'farm' || this._cfg.MODE === 'farm') {
+            // Farm mode: fixed short cooldown — no adaptive multipliers
+            cooldownMs = this._cfg.FARM_COOLDOWN_SECS * 1000;
+            console.log(`⏱️ Farm Cooldown: ${this._cfg.FARM_COOLDOWN_SECS}s (fixed)`);
+        } else {
+            // Trade mode: adaptive cooldown based on recent PnL and chop score
+            const adaptiveResult = computeAdaptiveCooldown({
+                recentPnLs: this.recentPnLs,
+                lastChopScore: this._lastChopScore,
+            });
+            cooldownMs = adaptiveResult.cooldownMs;
+            console.log(
+                `⏱️ Adaptive Cooldown: ${(cooldownMs / 1000).toFixed(0)}s ` +
+                `[base=${adaptiveResult.baseMins.toFixed(1)}m × streak=${adaptiveResult.streakMult.toFixed(2)} × chop=${adaptiveResult.chopMult.toFixed(2)}] ` +
+                `losing_streak=${adaptiveResult.losingStreak}`
+            );
+        }
 
         this.cooldownUntil = Date.now() + cooldownMs;
         this.botState = 'COOLDOWN';

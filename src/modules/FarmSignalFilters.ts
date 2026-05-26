@@ -46,7 +46,23 @@ export interface FilterResult {
 export function regimeConfidenceThreshold(
   input: FilterInput
 ): { pass: boolean; reason?: string } {
-  // Farm mode: no confidence gate — always trade regardless of regime
+  if (input.mode !== 'farm') {
+    return { pass: true };
+  }
+
+  // Enforce regime-specific confidence floors
+  const required =
+    input.regime === 'SIDEWAY' ? input.FARM_SIDEWAY_MIN_CONFIDENCE :
+    (input.regime === 'TREND_UP' || input.regime === 'TREND_DOWN') ? input.FARM_TREND_MIN_CONFIDENCE :
+    0;
+
+  if (required > 0 && input.confidence < required) {
+    return {
+      pass: false,
+      reason: `[RegimeGate] SKIP: regime=${input.regime}, confidence=${input.confidence} < ${required}`,
+    };
+  }
+
   return { pass: true };
 }
 
@@ -116,8 +132,25 @@ export function feeAwareEntryFilter(
     return { pass: true };
   }
 
-  // TEMPORARY: Disable filter to test if this is blocking all entries
-  console.log(`[FeeFilter] DISABLED (debug mode) — bypassing fee-aware entry filter`);
+  const minRequiredMove = input.FEE_RATE_MAKER * 2;
+  const feeFloor = minRequiredMove * 1.5;
+
+  if (!Number.isFinite(input.atrPct) || !input.atrPct || input.atrPct <= 0) {
+    return {
+      pass: false,
+      reason: `[FeeFilter] SKIP: edge=0.000000 <= ${feeFloor.toFixed(6)}`,
+    };
+  }
+
+  const expectedEdge = Math.abs(input.momentumScore - 0.5) * 2 * input.atrPct;
+
+  if (expectedEdge <= feeFloor) {
+    return {
+      pass: false,
+      reason: `[FeeFilter] SKIP: expectedEdge=${expectedEdge.toFixed(6)} <= ${feeFloor.toFixed(6)}`,
+    };
+  }
+
   return { pass: true };
 }
 

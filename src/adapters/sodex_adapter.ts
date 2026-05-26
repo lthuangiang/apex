@@ -488,6 +488,25 @@ export class SodexAdapter implements ExchangeAdapter {
         return 0;
     }
 
+    /**
+     * Fetch live tradeable symbols from SoDEX /markets/symbols.
+     * Returns symbol names as the exchange uses them (e.g. "BTC-USD").
+     */
+    async get_markets(): Promise<string[]> {
+        try {
+            const data = await this.request('GET', '/markets/symbols');
+            const arr = Array.isArray(data) ? data : (data?.data || []);
+            const names: string[] = arr
+                .map((s: any) => s.symbol || s.name)
+                .filter(Boolean)
+                .sort();
+            return names.length > 0 ? names : this.supportedSymbols;
+        } catch (err) {
+            console.warn('[SodexAdapter] get_markets failed, using static list:', err);
+            return this.supportedSymbols;
+        }
+    }
+
     // IExchangeAdapter interface methods (camelCase aliases)
     async getMarkPrice(symbol: string): Promise<number> {
         return this.get_mark_price(symbol);

@@ -1,6 +1,6 @@
 # DRIFT — Hướng Dẫn Đầy Đủ
 
-Tài liệu này hướng dẫn chi tiết từ setup đến vận hành DRIFT trading bot, bao gồm 3 chiến lược (Farm, Trade, Hedge) và tính năng Daily Budget Reset.
+Tài liệu này hướng dẫn chi tiết từ setup đến vận hành DRIFT trading bot, bao gồm 3 chiến lược (Farm, Trade, Hedge), Daily Budget Reset, và các tính năng Wave 2 (SoSoValue integration, Hibachi adapter, Multi-wallet SaaS).
 
 ---
 
@@ -8,12 +8,13 @@ Tài liệu này hướng dẫn chi tiết từ setup đến vận hành DRIFT t
 
 1. [Bắt Đầu Nhanh](#bắt-đầu-nhanh)
 2. [Setup Chi Tiết Cho Người Mới](#setup-chi-tiết-cho-người-mới)
-3. [Workflow Hàng Ngày](#workflow-hàng-ngày)
-4. [Ba Chiến Lược Trading](#ba-chiến-lược-trading)
-5. [Daily Budget Reset](#daily-budget-reset)
-6. [Cấu Hình Nâng Cao](#cấu-hình-nâng-cao)
-7. [Dashboard & Giám Sát](#dashboard--giám-sát)
-8. [Xử Lý Sự Cố](#xử-lý-sự-cố)
+3. [Wave 2 Features](#wave-2-features)
+4. [Workflow Hàng Ngày](#workflow-hàng-ngày)
+5. [Ba Chiến Lược Trading](#ba-chiến-lược-trading)
+6. [Daily Budget Reset](#daily-budget-reset)
+7. [Cấu Hình Nâng Cao](#cấu-hình-nâng-cao)
+8. [Dashboard & Giám Sát](#dashboard--giám-sát)
+9. [Xử Lý Sự Cố](#xử-lý-sự-cố)
 
 ---
 
@@ -22,7 +23,8 @@ Tài liệu này hướng dẫn chi tiết từ setup đến vận hành DRIFT t
 ### Yêu Cầu
 
 - Node.js 18+ hoặc Docker
-- API keys từ SoDEX/Dango/Decibel
+- API keys từ SoDEX/Dango/Decibel/Hibachi
+- SoSoValue API key (Wave 2)
 - Telegram bot token (tùy chọn)
 
 ### Cài Đặt 3 Bước
@@ -97,7 +99,24 @@ curl -fsSL https://get.docker.com | sh
 3. Account Details → Export Private Key
 4. Copy địa chỉ ví (0x...)
 
-### Bước 3: Tạo Telegram Bot
+#### Hibachi (Wave 2)
+
+1. Truy cập https://hibachi.xyz
+2. Đăng ký/đăng nhập
+3. Settings → API Keys → Create New
+4. Chọn account type:
+   - **Trustless**: cần private key (0x...) để ký lệnh client-side
+   - **Exchange-managed**: cần secret key cho HMAC-SHA256 signing
+5. Lưu lại: `API_KEY`, `ACCOUNT_ID`, `ACCOUNT_TYPE`, và `PRIVATE_KEY` hoặc `SECRET_KEY`
+
+### Bước 3: Lấy SoSoValue API Key (Wave 2)
+
+1. Truy cập https://sosovalue.com
+2. Đăng ký tài khoản
+3. API Dashboard → Create API Key
+4. Lưu lại API key để fetch Fear & Greed Index
+
+### Bước 4: Tạo Telegram Bot
 
 ```
 1. Mở Telegram, tìm @BotFather
@@ -127,7 +146,7 @@ cp .env.example .env
 nano .env
 ```
 
-**Template cho SoDEX:**
+**Template cho SoDEX + Wave 2:**
 
 ```env
 EXCHANGE=sodex
@@ -136,6 +155,15 @@ SYMBOL=BTC-USD
 SODEX_API_KEY=your_key
 SODEX_API_SECRET=0x...
 SODEX_SUBACCOUNT=0x...
+
+# Hibachi (Wave 2)
+HIBACHI_API_KEY=your_key
+HIBACHI_ACCOUNT_ID=12345
+HIBACHI_ACCOUNT_TYPE=trustless
+HIBACHI_PRIVATE_KEY=0x...
+
+# SoSoValue (Wave 2)
+SOSOVALUE_API_KEY=your_key
 
 TELEGRAM_BOT_TOKEN=123456:ABC...
 TELEGRAM_CHAT_ID=123456789
@@ -170,6 +198,117 @@ npm start
 2. Xem bot status
 3. Click "Bot Settings" → điều chỉnh config
 4. Click "Start Bot"
+
+---
+
+## Wave 2 Features
+
+### 1. SoSoValue Fear & Greed Index Integration
+
+**Mục đích:** Điều chỉnh trading behavior theo sentiment thị trường macro.
+
+**Cách hoạt động:**
+```
+Mỗi signal evaluation:
+  → Fetch SoSoValue Fear & Greed Index (0-100)
+  → Áp sentiment multiplier vào confidence và position size
+```
+
+**Sentiment Strategy:**
+
+| Fear & Greed | Confidence Mult | Size Mult | Hành vi |
+|---|---|---|---|
+| < 25 (Extreme Fear) | 0.85× | 1.15× | Aggressive — mua đáy |
+| 25-45 (Fear) | 0.95× | 1.0× | Thận trọng nhưng chủ động |
+| 45-55 (Neutral) | 1.0× | 1.0× | Không điều chỉnh |
+| 55-75 (Greed) | 1.1× | 0.9× | Chọn lọc — tránh FOMO |
+| > 75 (Extreme Greed) | 1.2× | 0.8× | Phòng thủ |
+
+**Cấu hình:**
+```env
+SOSOVALUE_API_KEY=your_api_key
+```
+
+---
+
+### 2. Hibachi Exchange Adapter
+
+**Mục đích:** Hỗ trợ Hibachi exchange với 2 signing modes.
+
+**Account Types:**
+- **Trustless**: ECDSA signing client-side (cần private key)
+- **Exchange-managed**: HMAC-SHA256 signing (cần secret key)
+
+**Cấu hình:**
+```env
+HIBACHI_API_KEY=your_key
+HIBACHI_ACCOUNT_ID=12345
+HIBACHI_ACCOUNT_TYPE=trustless
+HIBACHI_PRIVATE_KEY=0x...
+```
+
+**Hoặc exchange-managed:**
+```env
+HIBACHI_ACCOUNT_TYPE=exchange_managed
+HIBACHI_SECRET_KEY=your_secret
+```
+
+---
+
+### 3. Multi-Wallet SaaS Architecture
+
+**Mục đích:** Tenant isolation — mỗi wallet có bot instances, credentials, config riêng.
+
+**Workflow:**
+```
+User connects wallet (WalletConnect/AppKit)
+  → Dashboard authenticates wallet address
+  → TenantRegistry.getOrCreate(walletAddress)
+      ├── New: create ./data/<wallet>/ directory
+      └── Existing: restore bots + decrypt credentials
+  → Each wallet has isolated:
+      ├── Bot configs
+      ├── Encrypted credentials
+      └── Runtime state
+```
+
+**Data Layout:**
+```
+./data/
+└── <wallet_address>/
+    ├── bot-configs.json
+    ├── credentials.enc
+    └── bot_state_*.json
+```
+
+**Dashboard Features:**
+- Wallet login button (WalletConnect)
+- Per-wallet bot management
+- Encrypted credential storage
+- Auto-restore on startup
+
+---
+
+### 4. AI Signal Engine Updates
+
+**Data Sources (Wave 2):**
+- Orderbook depth (20 levels) — from exchange adapter
+- Recent trades (100 trades) — from exchange adapter
+- **OHLCV klines** — from SoDEX/Hibachi API (fallback: Binance)
+- **Built-in sentiment** — composite từ trade pressure + orderbook imbalance + volume
+
+**Sentiment Indicator:**
+```
+sentimentScore =
+  tradePressure × 0.4 +           // Buy vs sell volume
+  (obImbalance / 2) × 0.4 +       // Bid vs ask depth
+  (volSpike ? 0.15 : 0.05) × 2    // Volume activity
+```
+
+**Thay đổi từ Wave 1:**
+- ❌ Binance L/S position ratio
+- ✅ Built-in sentiment từ SoDEX market data
+- ✅ SoDEX klines API (không phụ thuộc Binance)
 
 ---
 

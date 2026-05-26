@@ -38,18 +38,34 @@ export class DecibelAdapter implements ExchangeAdapter {
     /** Exchange name identifier */
     readonly exchangeName: string = 'decibel';
     
-    /** List of supported trading symbols */
+    /** List of supported trading symbols (format: BASE/USD as used by Decibel API) */
     readonly supportedSymbols: string[] = [
-        'BTC-USD',
-        'ETH-USD', 
-        'SOL-USD',
-        'AVAX-USD',
-        'MATIC-USD',
-        'LINK-USD',
-        'UNI-USD',
-        'AAVE-USD',
-        'SUSHI-USD',
-        'CRV-USD'
+        'BTC/USD',
+        'ETH/USD',
+        'SOL/USD',
+        'BNB/USD',
+        'XRP/USD',
+        'DOGE/USD',
+        'ADA/USD',
+        'APT/USD',
+        'SUI/USD',
+        'NEAR/USD',
+        'LINK/USD',
+        'AAVE/USD',
+        'TAO/USD',
+        'ZEC/USD',
+        'ZRO/USD',
+        'HYPE/USD',
+        'TRUMP/USD',
+        'FARTCOIN/USD',
+        'WLFI/USD',
+        'kPEPE/USD',
+        'CHIP/USD',
+        'MEGA/USD',
+        'XPL/USD',
+        'GOLD/USD',
+        'SILVER/USD',
+        'WTIOIL/USD',
     ];
 
     private read: any;
@@ -442,11 +458,28 @@ export class DecibelAdapter implements ExchangeAdapter {
             return overview && overview.perp_equity_balance ? overview.perp_equity_balance : 0;
         } catch (e: any) {
             if (e?.status === 404) {
-                // Subaccount not yet created on-chain — needs deposit via Decibel UI first
                 console.warn('[DecibelAdapter] Subaccount not found (404) — deposit USDC via app.decibel.trade to create it');
                 return 0;
             }
             throw e;
+        }
+    }
+
+    /**
+     * Fetch live tradeable symbols from Decibel markets.getAll().
+     * Returns market_name values as the exchange uses them (e.g. "BTC/USD").
+     */
+    async get_markets(): Promise<string[]> {
+        try {
+            const markets = await this.read.markets.getAll();
+            const names: string[] = (markets ?? [])
+                .map((m: any) => m.market_name)
+                .filter(Boolean)
+                .sort();
+            return names.length > 0 ? names : this.supportedSymbols;
+        } catch (err) {
+            console.warn('[DecibelAdapter] get_markets failed, using static list:', err);
+            return this.supportedSymbols;
         }
     }
 

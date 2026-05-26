@@ -18,7 +18,21 @@ import type { BotManager } from '../bot/BotManager.js';
 import { BotInstance } from '../bot/BotInstance.js';
 import { saveBotConfigsToFile } from '../bot/persistBotConfigs.js';
 import { validateBotConfig, validateHedgeBotConfig } from '../bot/loadBotConfigs.js';
-import { createAdapter as createBotAdapter } from '../bot/adapterFactory.js';
+import { createAdapter as createBotAdapter, createAdapterFromCredentials } from '../bot/adapterFactory.js';
+import type { TenantRegistry } from '../bot/TenantRegistry.js';
+import type { TenantContext } from '../bot/TenantContext.js';
+import type { BotCredentials } from '../bot/CredentialStore.js';
+
+/**
+ * Extended Express Request that carries wallet identity and tenant context.
+ * Attached by `walletScopedMiddleware` after successful token validation.
+ *
+ * Requirements: 4.3, 4.5
+ */
+export interface WalletScopedRequest extends Request {
+  walletAddress: string;
+  tenant: TenantContext;
+}
 import type { HedgeBotConfig } from '../bot/types.js';
 import type { TelegramManager } from '../modules/TelegramManager.js';
 import { generateNonce, verifySiweMessage } from '../auth/SiweAuth.js';
@@ -43,10 +57,12 @@ export class DashboardServer {
   private watcherRunner: (() => void) | null = null;
   private configStore: ConfigStoreInterface | null = null;
   private botManager: BotManager | null = null;
+  private tenantRegistry: TenantRegistry | null = null;
   private _telegram: TelegramManager | null = null;
   private _sopointsCache: { summary: any; week: any } = { summary: null, week: null };
   private _analyticsCache: { summary: AnalyticsSummary | null; cachedAt: number } = { summary: null, cachedAt: 0 };
   private _analyticsEngine = new AnalyticsEngine();
+  private _sosoSnapshotCache: { data: unknown; fetchedAt: number } | null = null;
   readonly app: express.Application;
 
   constructor(tradeLogger: TradeLogger, port: number) {
@@ -81,6 +97,24 @@ export class DashboardServer {
     if (telegram) this._telegram = telegram;
     console.log('[DashboardServer] BotManager registered');
     this._setupManagerRoutes();
+  }
+
+  /**
+   * Resolve the correct BotManager for a request.
+   * In multi-wallet SaaS mode, returns the tenant's BotManager.
+   * Falls back to the global botManager for legacy single-operator mode.
+   */
+  private _resolveManager(req: Request): BotManager | null {
+    return (req as WalletScopedRequest).tenant?.botManager ?? this.botManager;
+  }
+
+  /**
+   * Register TenantRegistry for multi-wallet SaaS support.
+   * Must be called before the server starts listening.
+   */
+  registerTenantRegistry(registry: TenantRegistry): void {
+    this.tenantRegistry = registry;
+    console.log('[DashboardServer] TenantRegistry registered');
   }
 
   private _isAuthenticated(req: Request): boolean {
@@ -219,6 +253,7 @@ export class DashboardServer {
     });
 
     this.app.get('/dashboard', (_req, res) => {
+      console.log('[DEBUG] /dashboard hit, botManager:', !!this.botManager);
       // Serve Manager Dashboard if BotManager is registered
       if (this.botManager) {
         res.render('manager', (err: Error | null, html: string) => {
@@ -654,6 +689,40 @@ export class DashboardServer {
       }
     });
 
+    // GET /api/exchanges/:exchange/symbols — list supported symbols for an exchange
+    this.app.get('/api/exchanges/:exchange/symbols', async (req, res) => {
+      const exchange = (req.params.exchange as string).toLowerCase();
+
+      // SoDEX: fetch live from public API
+      if (exchange === 'sodex') {
+        try {
+          const { default: axios } = await import('axios');
+          const resp = await axios.get('https://mainnet-gw.sodex.dev/api/v1/perps/markets/symbols', { timeout: 5000 });
+          const data = resp.data?.data ?? [];
+          const symbols = data
+            .map((s: any) => s.name as string)
+            .filter(Boolean)
+            .sort();
+          res.json({ symbols: symbols.length ? symbols : null });
+          return;
+        } catch (err) {
+          console.warn('[GET /api/exchanges/sodex/symbols] live fetch failed:', err);
+          res.json({ symbols: null }); // frontend will fall back
+          return;
+        }
+      }
+
+      // Other exchanges: static lists
+      const supported: Record<string, string[]> = {
+        decibel: ['BTC/USD','ETH/USD','SOL/USD','AVAX/USD','MATIC/USD'],
+        dango:   ['BTC-USD','ETH-USD','SOL-USD'],
+        hibachi: ['BTC/USDT-P','ETH/USDT-P','SOL/USDT-P','BNB/USDT-P','XRP/USDT-P','DOGE/USDT-P'],
+      };
+      const symbols = supported[exchange];
+      if (!symbols) { res.json({ symbols: [] }); return; }
+      res.json({ symbols });
+    });
+
     // POST /api/bots - Create a new bot at runtime
     this.app.post('/api/bots', async (req, res) => {
       if (!this.botManager) {
@@ -668,7 +737,10 @@ export class DashboardServer {
 
         if (isHedge) {
           validateHedgeBotConfig(body);
-          const adapter = createBotAdapter(body.exchange as string, body.credentialKey as string);
+          // Prefer inline credentials over env var lookup
+          const adapter = (body.apiKey || body.privateKey || body.dangoPrivateKey || body.hibachiApiKey)
+            ? createAdapterFromCredentials(body.exchange as string, body as any)
+            : createBotAdapter(body.exchange as string, body.credentialKey as string);
           const bot = this.botManager.createHedgeBot(body as unknown as HedgeBotConfig, adapter, this._telegram as any);
           if (body.autoStart) await bot.start();
         } else {
@@ -676,7 +748,10 @@ export class DashboardServer {
             res.status(400).json({ error: 'Invalid bot config — check all required fields' });
             return;
           }
-          const adapter = createBotAdapter(body.exchange as string, body.credentialKey as string);
+          // Prefer inline credentials over env var lookup
+          const adapter = (body.apiKey || body.privateKey || body.dangoPrivateKey || body.hibachiApiKey)
+            ? createAdapterFromCredentials(body.exchange as string, body as any)
+            : createBotAdapter(body.exchange as string, body.credentialKey as string);
           const bot = this.botManager.createBot(body, adapter, this._telegram as any);
           if (body.autoStart) await bot.start();
         }
@@ -688,6 +763,52 @@ export class DashboardServer {
         res.status(201).json({ ok: true, id: body.id });
       } catch (err) {
         res.status(400).json({ error: String(err) });
+      }
+    });
+
+    // GET /api/sosovalue/snapshot — aggregated SoSoValue market intelligence
+    // Server-side cache 5 min to avoid rate limit (20 req/min)
+    this.app.get('/api/sosovalue/snapshot', async (_req, res) => {
+      const now = Date.now();
+      if (this._sosoSnapshotCache && now - this._sosoSnapshotCache.fetchedAt < 5 * 60 * 1000) {
+        res.json(this._sosoSnapshotCache.data);
+        return;
+      }
+
+      try {
+        const { SoSoValueClient } = await import('../ai/SoSoValueClient.js');
+        const client = new SoSoValueClient();
+
+        const [fearGreed, etfFlow, macroRisk, hotNews] = await Promise.allSettled([
+          client.fetch(),
+          client.fetchEtfFlow(),
+          client.fetchMacroEvents(),
+          (async () => {
+            const API_KEY = process.env.SOSOVALUE_API_KEY;
+            if (!API_KEY) return null;
+            const { default: axios } = await import('axios');
+            const r = await axios.get('https://openapi.sosovalue.com/openapi/v1/news/hot', {
+              headers: { 'x-soso-api-key': API_KEY },
+              params: { page: 1, page_size: 5, language: 'en' },
+              timeout: 6000,
+            });
+            const items: any[] = r.data?.data?.list ?? r.data?.data ?? [];
+            return items.slice(0, 5).map((n: any) => ({ title: String(n.title ?? ''), url: String(n.url ?? n.link ?? '') }));
+          })(),
+        ]);
+
+        const snapshot = {
+          fearGreed: fearGreed.status === 'fulfilled' ? fearGreed.value : null,
+          etfFlow: etfFlow.status === 'fulfilled' ? etfFlow.value : null,
+          macroRisk: macroRisk.status === 'fulfilled' ? macroRisk.value : null,
+          hotNews: hotNews.status === 'fulfilled' ? hotNews.value : null,
+          fetchedAt: new Date().toISOString(),
+        };
+
+        this._sosoSnapshotCache = { data: snapshot, fetchedAt: now };
+        res.json(snapshot);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
       }
     });
 

@@ -6,6 +6,9 @@ export interface ValidationError {
 }
 
 const PERCENT_FIELDS: (keyof OverridableConfig)[] = [
+  'STOP_LOSS_PERCENT',
+  'TAKE_PROFIT_PERCENT',
+  'POSITION_SL_PERCENT',
   'FARM_SL_PERCENT',
   'TRADE_TP_PERCENT',
   'TRADE_SL_PERCENT',
@@ -173,6 +176,16 @@ export function validateOverrides(
       const invalid = v.filter(h => typeof h !== 'number' || !Number.isInteger(h) || h < 0 || h > 23);
       if (invalid.length > 0) {
         errors.push({ field: 'FARM_BLOCKED_HOURS', message: `Invalid hours: ${invalid.join(', ')}. Must be integers in [0, 23]` });
+      }
+    }
+  }
+
+  // Rule 5i: Trade entry thresholds must be in (0, 1]
+  for (const field of ['TRADE_SCORE_THRESHOLD', 'TRADE_MIN_CONFIDENCE'] as const) {
+    if (field in patch) {
+      const v = patch[field];
+      if (typeof v !== 'number' || !isFinite(v) || v <= 0 || v > 1) {
+        errors.push({ field, message: 'Must be a number in the range (0, 1]' });
       }
     }
   }
@@ -610,6 +623,25 @@ export function validateOverrides(
       const v = patch[field];
       if (typeof v !== 'number' || !isFinite(v) || v < 0 || v > 1) {
         errors.push({ field, message: `Must be a number in the range [0, 1]` });
+      }
+    }
+  }
+
+  // Rule 43: Farm mode profile toggles must be booleans
+  for (const field of ['FARM_REVERSE_SIGNAL_ENABLED', 'FARM_USE_DYNAMIC_SIZING'] as const) {
+    if (field in patch) {
+      if (typeof patch[field] !== 'boolean') {
+        errors.push({ field, message: 'Must be true or false' });
+      }
+    }
+  }
+
+  // Rule 44: Farm sizing multipliers must be in (0, 1]
+  for (const field of ['FARM_WEAK_SIGNAL_SIZE_MULT', 'FARM_NO_PRESSURE_SIZE_MULT', 'FARM_PINGPONG_SIZE_MULT'] as const) {
+    if (field in patch) {
+      const v = patch[field];
+      if (typeof v !== 'number' || !isFinite(v) || v <= 0 || v > 1) {
+        errors.push({ field, message: 'Must be a number in the range (0, 1]' });
       }
     }
   }

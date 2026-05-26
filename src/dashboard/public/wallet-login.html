@@ -268,7 +268,7 @@
     <a href="/login" class="passcode-link" style="display:none">Sign in with passcode →</a>
   </div>
 
-  <!-- WalletConnect URI modal (fallback QR display) -->
+  <!-- WalletConnect URI modal (desktop fallback QR display) -->
   <div class="wc-overlay" id="wc-overlay">
     <div class="wc-modal">
       <div class="wc-title">Scan with your wallet</div>
@@ -341,78 +341,132 @@
       // wallet-detect.js wraps this to also re-enable buttons
     };
 
-    // ── WalletConnect (lazy-loaded on click) ──────────────────────────────────
+    // ── WalletConnect / Mobile wallet connection ──────────────────────────────
+    // Strategy:
+    //   Desktop: load WalletConnect SDK lazily (works fine on desktop browsers)
+    //   iOS/Android: show deep links to popular wallet apps directly
+    //   This avoids the Node.js 'events' polyfill issue on Safari iOS.
+
+    var _isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    var _isIOS    = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    // ── Mobile wallet deep-link flow ──────────────────────────────────────────
+    // On mobile we can't use WalletConnect SDK (Node polyfill issues on Safari).
+    // Instead: show a list of popular wallet apps with deep links.
+    // The wallet app opens the dApp URL in its built-in browser where window.ethereum
+    // is injected — then EIP-6963 detection picks it up automatically.
+
+    function buildMobileWalletList() {
+      var container = document.getElementById('wallet-list');
+      if (!container) return;
+      container.innerHTML = '';
+
+      var dappUrl = encodeURIComponent(window.location.href);
+      var origin  = encodeURIComponent(window.location.origin);
+
+      var wallets = [
+        {
+          name: 'MetaMask',
+          sub: 'Most popular · iOS & Android',
+          icon: '<img src="https://cdn.jsdelivr.net/npm/@metamask/logo@2.1.0/metamask-fox.svg" width="22" height="22" style="border-radius:4px;display:block" alt="MetaMask" onerror="this.style.display=\'none\'">',
+          iconBg: '#f6851b',
+          // MetaMask universal link — opens dApp URL inside MetaMask browser
+          href: _isIOS
+            ? 'https://metamask.app.link/dapp/' + window.location.host + window.location.pathname
+            : 'https://metamask.app.link/dapp/' + window.location.host + window.location.pathname,
+        },
+        {
+          name: 'Binance Web3 Wallet',
+          sub: 'All Wallets · iOS & Android',
+          icon: '<span style="font-size:1.4rem">🟡</span>',
+          iconBg: '#F0B90B',
+          href: 'bnc://app.binance.com/mp/app?appId=S1001&startPagePath=pages%2Fbrowser%2Findex&startPageQuery=url%3D' + dappUrl,
+        },
+        {
+          name: 'Trust Wallet',
+          sub: 'Multi-chain · iOS & Android',
+          icon: '<span style="font-size:1.2rem">🛡️</span>',
+          iconBg: '#3375BB',
+          href: 'https://link.trustwallet.com/open_url?coin_id=60&url=' + dappUrl,
+        },
+        {
+          name: 'Rainbow',
+          sub: 'iOS & Android',
+          icon: '<span style="font-size:1.2rem">🌈</span>',
+          iconBg: '#174299',
+          href: 'https://rnbwapp.com/wc?uri=' + dappUrl,
+        },
+        {
+          name: 'Coinbase Wallet',
+          sub: 'iOS & Android',
+          icon: '<span style="font-size:1.2rem">🔵</span>',
+          iconBg: '#0052FF',
+          href: 'https://go.cb-w.com/dapp?cb_url=' + dappUrl,
+        },
+      ];
+
+      wallets.forEach(function (w) {
+        var btn = buildWalletBtn({
+          iconContent: w.icon,
+          iconBg: w.iconBg,
+          name: w.name,
+          sub: w.sub,
+          onClick: function () {
+            // Open wallet app — it will load this page inside its browser
+            // where window.ethereum is injected, then EIP-6963 fires
+            window.location.href = w.href;
+          },
+        });
+        container.appendChild(btn);
+      });
+
+      // Show a note about how it works
+      var note = document.createElement('p');
+      note.style.cssText = 'font-size:.65rem;color:#4a5a72;text-align:center;margin-top:.75rem;line-height:1.5';
+      note.textContent = 'Opens your wallet app → connects automatically';
+      container.appendChild(note);
+    }
+
+    // ── AppKit wallet connection (works on all platforms via bundled SDK) ─────
+    // Uses the pre-bundled /js/appkit.bundle.js which exposes window.DriftAppKit.
+    // This handles desktop (QR + 550+ wallets) and mobile (deep links + WalletConnect)
+    // without any Node.js polyfill issues.
     window.connectWalletConnect = async function () {
       clearError();
       showStatusBox();
       setStep('connect', 'active');
 
-      // Disable all wallet buttons while connecting
       document.querySelectorAll('#wallet-list .wallet-btn').forEach(function (b) {
         b.disabled = true;
       });
 
       try {
-        // Lazy-load the WalletConnect SDK only when the user clicks the button.
-        // This prevents CDN fetch errors on page load when the SDK is unreachable.
-        var mod = await import(
-          'https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.17.0/dist/index.es.js'
-        );
-        var EthereumProvider = mod.EthereumProvider;
+        // Wait for AppKit bundle to be ready
+        if (!window.DriftAppKit) {
+          throw new Error('AppKit not loaded. Please refresh the page.');
+        }
 
-        var wcProvider = await EthereumProvider.init({
-          projectId: '17746bd693c050df38d432312bc640cc',
-          chains: [1],
-          optionalChains: [1, 137, 56, 42161],
-          showQrModal: true,
-          metadata: {
-            name: 'DRIFT Trading Dashboard',
-            description: 'AI-powered perpetual futures trading bot',
-            url: window.location.origin,
-            icons: [window.location.origin + '/images/logo.png'],
-          },
-        });
-
-        wcProvider.on('display_uri', function (uri) {
-          document.getElementById('wc-uri').textContent = uri;
-          renderQR(uri);
-        });
-
-        await wcProvider.connect();
-        var accounts = wcProvider.accounts;
-        if (!accounts || accounts.length === 0) throw new Error('No accounts returned');
-
+        var result = await window.DriftAppKit.open();
         setStep('connect', 'done');
-        closeWcModal();
-        window.connectWithProvider(wcProvider, accounts[0]);
+        window.connectWithProvider(result.provider, result.address);
       } catch (err) {
         var rejected = err.code === 4001 ||
-          (err.message && err.message.toLowerCase().includes('user rejected'));
+          (err.message && (
+            err.message.toLowerCase().includes('user rejected') ||
+            err.message.toLowerCase().includes('user closed')
+          ));
         if (rejected) {
           setStep('connect', 'pending');
           clearError();
         } else {
           setStep('connect', 'error');
-          showError(err.message || 'WalletConnect failed');
+          showError(err.message || 'Wallet connection failed. Please try again.');
         }
         document.querySelectorAll('#wallet-list .wallet-btn').forEach(function (b) {
           b.disabled = false;
         });
-        closeWcModal();
       }
     };
-
-    // ── QR code rendering (optional) ─────────────────────────────────────────
-    async function renderQR(uri) {
-      try {
-        var mod = await import('https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.esm.js');
-        var canvas = document.createElement('canvas');
-        await mod.default.toCanvas(canvas, uri, { width: 200, margin: 1 });
-        var qrEl = document.getElementById('wc-qr');
-        qrEl.innerHTML = '';
-        qrEl.appendChild(canvas);
-      } catch (_) { /* QR render failed — URI text is still visible */ }
-    }
 
     window.closeWcModal = function () {
       document.getElementById('wc-overlay').classList.remove('open');
@@ -500,6 +554,14 @@
     // Expose for the retry button onclick
     window.signAndVerify = signAndVerify;
   </script>
+
+  <!--
+    AppKit bundle — pre-built browser bundle for wallet connection.
+    Exposes window.DriftAppKit with open(), getProvider(), disconnect().
+    Supports 550+ wallets via WalletConnect, MetaMask, Binance Wallet, etc.
+    on both desktop and mobile.
+  -->
+  <script src="/js/appkit.bundle.js"></script>
 
   <!--
     wallet-detect.js — EIP-6963 dynamic detection.

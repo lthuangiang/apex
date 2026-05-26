@@ -401,6 +401,41 @@ export class DangoAdapter implements IExchangeAdapter {
         return parseFloat(result?.margin ?? '0');
     }
 
+    /**
+     * Fetch live tradeable symbols from Dango via GraphQL perpsPairStats.
+     * Returns symbols in "BTC-USD" format (normalized from "perp/btcusd").
+     */
+    async get_markets(): Promise<string[]> {
+        try {
+            const data = await this.gql<{
+                perpsPairs: { nodes: Array<{ pairId: string }> };
+            }>(`
+                query {
+                    perpsPairs(first: 100) {
+                        nodes { pairId }
+                    }
+                }
+            `);
+            const pairs = data.perpsPairs?.nodes ?? [];
+            const names = pairs
+                .map((p: any) => {
+                    // "perp/btcusd" → "BTC-USD"
+                    const raw = p.pairId?.replace(/^perp\//, '') ?? '';
+                    if (raw.endsWith('usd') && raw.length > 3) {
+                        const base = raw.slice(0, -3).toUpperCase();
+                        return `${base}-USD`;
+                    }
+                    return raw.toUpperCase();
+                })
+                .filter(Boolean)
+                .sort();
+            return names.length > 0 ? names : this.supportedSymbols;
+        } catch (err) {
+            console.warn('[DangoAdapter] get_markets failed, using static list:', err);
+            return this.supportedSymbols;
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /** Convert "BTC-USD" or "BTC/USD" → "perp/btcusd" */

@@ -51,6 +51,13 @@ export class BotInstance {
     if (config.farmSlPercent !== undefined) initialOverrides.FARM_SL_PERCENT = config.farmSlPercent;
     if (config.farmScoreEdge !== undefined) initialOverrides.FARM_SCORE_EDGE = config.farmScoreEdge;
     if (config.farmMinConfidence !== undefined) initialOverrides.FARM_MIN_CONFIDENCE = config.farmMinConfidence;
+    if (config.farmSafeModeEnabled !== undefined) initialOverrides.FARM_SAFE_MODE_ENABLED = config.farmSafeModeEnabled;
+    if (config.farmVolumeModeEnabled !== undefined) initialOverrides.FARM_VOLUME_MODE_ENABLED = config.farmVolumeModeEnabled;
+    if (config.farmReverseSignalEnabled !== undefined) initialOverrides.FARM_REVERSE_SIGNAL_ENABLED = config.farmReverseSignalEnabled;
+    if (config.farmUseDynamicSizing !== undefined) initialOverrides.FARM_USE_DYNAMIC_SIZING = config.farmUseDynamicSizing;
+    if (config.farmWeakSignalSizeMult !== undefined) initialOverrides.FARM_WEAK_SIGNAL_SIZE_MULT = config.farmWeakSignalSizeMult;
+    if (config.farmNoPressureSizeMult !== undefined) initialOverrides.FARM_NO_PRESSURE_SIZE_MULT = config.farmNoPressureSizeMult;
+    if (config.farmPingpongSizeMult !== undefined) initialOverrides.FARM_PINGPONG_SIZE_MULT = config.farmPingpongSizeMult;
     if (config.farmEarlyExitSecs !== undefined) initialOverrides.FARM_EARLY_EXIT_SECS = config.farmEarlyExitSecs;
     if (config.farmEarlyExitPnl !== undefined) initialOverrides.FARM_EARLY_EXIT_PNL = config.farmEarlyExitPnl;
     if (config.farmExtraWaitSecs !== undefined) initialOverrides.FARM_EXTRA_WAIT_SECS = config.farmExtraWaitSecs;
@@ -66,6 +73,8 @@ export class BotInstance {
     if (config.farmCooldownSecs !== undefined) initialOverrides.FARM_COOLDOWN_SECS = config.farmCooldownSecs;
     if (config.tradeTpPercent !== undefined) initialOverrides.TRADE_TP_PERCENT = config.tradeTpPercent;
     if (config.tradeSlPercent !== undefined) initialOverrides.TRADE_SL_PERCENT = config.tradeSlPercent;
+    if (config.tradeScoreThreshold !== undefined) initialOverrides.TRADE_SCORE_THRESHOLD = config.tradeScoreThreshold;
+    if (config.tradeMinConfidence !== undefined) initialOverrides.TRADE_MIN_CONFIDENCE = config.tradeMinConfidence;
     if (config.cooldownMinMins !== undefined) initialOverrides.COOLDOWN_MIN_MINS = config.cooldownMinMins;
     if (config.cooldownMaxMins !== undefined) initialOverrides.COOLDOWN_MAX_MINS = config.cooldownMaxMins;
     if (config.minPositionValueUsd !== undefined) initialOverrides.MIN_POSITION_VALUE_USD = config.minPositionValueUsd;

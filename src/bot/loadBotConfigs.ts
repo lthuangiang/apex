@@ -121,7 +121,7 @@ export function validateBotConfig(config: any): config is BotConfig {
   // Required fields
   if (typeof config.id !== 'string' || config.id.trim().length === 0) return false;
   if (typeof config.name !== 'string' || config.name.trim().length === 0) return false;
-  if (!['sodex', 'dango', 'decibel'].includes(config.exchange)) return false;
+  if (!['sodex', 'dango', 'decibel', 'hibachi'].includes(config.exchange)) return false;
   if (typeof config.symbol !== 'string' || config.symbol.trim().length === 0) return false;
   if (typeof config.credentialKey !== 'string' || config.credentialKey.trim().length === 0) return false;
   if (!['json', 'sqlite'].includes(config.tradeLogBackend)) return false;

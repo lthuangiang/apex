@@ -1,19 +1,18 @@
 import { Position } from '../adapters/ExchangeAdapter.js';
-import { config } from '../config.js';
+
+export interface RiskPolicy {
+    mode: 'farm' | 'trade';
+    farmSlPercent: number;
+    tradeSlPercent: number;
+    tradeTpPercent: number;
+}
 
 export class RiskManager {
-    private _slPercent: number | null = null;
+    shouldClose(currentPrice: number, position: Position, policy: RiskPolicy): boolean {
+        const { side, entryPrice } = position;
 
-    setSlPercent(pct: number): void {
-        this._slPercent = pct;
-    }
-
-    shouldClose(currentPrice: number, position: Position): boolean {
-        const { side, entryPrice, unrealizedPnl } = position;
-
-        if (config.MODE === 'farm') {
-            // Farm mode: SL 5% hard stop (runtime override via setSlPercent takes precedence)
-            const slPercent = this._slPercent ?? config.FARM_SL_PERCENT;
+        if (policy.mode === 'farm') {
+            const slPercent = policy.farmSlPercent;
             const sl = side === 'long'
                 ? entryPrice * (1 - slPercent)
                 : entryPrice * (1 + slPercent);
@@ -27,13 +26,12 @@ export class RiskManager {
                 return true;
             }
         } else {
-            // Trade mode: SL 10%
             const sl = side === 'long'
-                ? entryPrice * (1 - config.TRADE_SL_PERCENT)
-                : entryPrice * (1 + config.TRADE_SL_PERCENT);
+                ? entryPrice * (1 - policy.tradeSlPercent)
+                : entryPrice * (1 + policy.tradeSlPercent);
             const tp = side === 'long'
-                ? entryPrice * (1 + config.TRADE_TP_PERCENT)
-                : entryPrice * (1 - config.TRADE_TP_PERCENT);
+                ? entryPrice * (1 + policy.tradeTpPercent)
+                : entryPrice * (1 - policy.tradeTpPercent);
 
             if (side === 'long' && currentPrice <= sl) {
                 console.log(`🛑 [TRADE SL] Stop Loss triggered at ${currentPrice} (SL: ${sl.toFixed(2)})`);

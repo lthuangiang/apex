@@ -42,7 +42,6 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    /* ── Top Nav ── */
     .topnav {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
@@ -56,727 +55,209 @@
       z-index: 100;
       box-shadow: var(--shadow-sm);
     }
+    .topnav-brand { display: flex; align-items: center; gap: 0.6rem; font-size: 1rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; min-width: 0; overflow: hidden; flex: 1; }
+    .topnav-brand .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+    .topnav-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+    .live-indicator { display: flex; align-items: center; gap: 0.45rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 0.3rem 0.75rem 0.3rem 0.55rem; font-size: 0.78rem; font-weight: 700; color: var(--text-primary); letter-spacing: 0.06em; }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; box-shadow: 0 0 0 2px rgba(29,185,84,0.25); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-    .topnav-brand {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      font-size: 1rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      letter-spacing: -0.02em;
-    }
-
-    .topnav-brand .brand-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent);
-    }
-
-    .topnav-right {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-    }
-
-    .live-indicator {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      font-size: 0.72rem;
-      font-weight: 500;
-      color: var(--text-tertiary);
-      letter-spacing: 0.04em;
-    }
-
-    .live-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--green);
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    /* ── Light Mode ── */
     body.light {
-      --bg: #f0f2f7;
-      --surface: #ffffff;
-      --surface-2: #f5f7fb;
-      --border: #dde2ee;
-      --border-strong: #c8d0e0;
-      --text-primary: #0f1623;
-      --text-secondary: #4a5a72;
-      --text-tertiary: #8a9bb5;
+      --bg: #f0f2f7; --surface: #ffffff; --surface-2: #f5f7fb; --border: #dde2ee; --border-strong: #c8d0e0;
+      --text-primary: #0f1623; --text-secondary: #4a5a72; --text-tertiary: #8a9bb5;
       --shadow-sm: 0 1px 4px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
       --shadow-md: 0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.06);
       --shadow-lg: 0 10px 32px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.07);
     }
+    .theme-toggle-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
+    .theme-toggle-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
-    /* ── Theme Toggle Button ── */
-    .theme-toggle-btn {
-      width: 32px; height: 32px;
-      border-radius: 50%;
-      border: 1px solid var(--border);
-      background: var(--surface-2);
-      color: var(--text-secondary);
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 0.15s;
-      flex-shrink: 0;
-    }
-    .theme-toggle-btn:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-      background: var(--accent-light);
-    }
+    .page { max-width: 1440px; margin: 0 auto; padding: 2rem 2rem 4rem; }
+    .page-header { margin-bottom: 2rem; }
+    .page-title { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.03em; margin-bottom: 0.25rem; }
+    .page-subtitle { font-size: 0.85rem; color: var(--text-secondary); }
 
-    /* ── Page Layout ── */
-    .page {
-      max-width: 1440px;
-      margin: 0 auto;
-      padding: 2rem 2rem 4rem;
-    }
-
-    .page-header {
-      margin-bottom: 2rem;
-    }
-
-    .page-title {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      letter-spacing: -0.03em;
-      margin-bottom: 0.25rem;
-    }
-
-    .page-subtitle {
-      font-size: 0.85rem;
-      color: var(--text-secondary);
-    }
-
-    /* ── Stats Row ── */
-    .stats-row {
-      display: grid;
-      grid-template-columns: 2fr 1fr 1fr 1fr;
-      gap: 1rem;
-      margin-bottom: 2rem;
-    }
-
-    .stat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.25rem 1.5rem;
-      box-shadow: var(--shadow-sm);
-      transition: box-shadow 0.2s;
-    }
-
-    .stat-card:hover {
-      box-shadow: var(--shadow-md);
-    }
-
-    .stat-card.primary {
-      background: linear-gradient(135deg, #c47a10 0%, #f5a623 100%);
-      border-color: transparent;
-      color: white;
-    }
-
-    .stat-label {
-      font-size: 0.7rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--text-tertiary);
-      margin-bottom: 0.5rem;
-    }
-
-    .stat-card.primary .stat-label {
-      color: rgba(255,255,255,0.65);
-    }
-
-    .stat-value {
-      font-size: 1.75rem;
-      font-weight: 800;
-      color: var(--text-primary);
-      letter-spacing: -0.04em;
-      line-height: 1;
-    }
-
-    .stat-card.primary .stat-value {
-      color: white;
-      font-size: 2.25rem;
-    }
-
+    .stats-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 1rem; margin-bottom: 2rem; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem 1.5rem; box-shadow: var(--shadow-sm); transition: box-shadow 0.2s; }
+    .stat-card:hover { box-shadow: var(--shadow-md); }
+    .stat-card.primary { background: linear-gradient(135deg, #c47a10 0%, #f5a623 100%); border-color: transparent; color: white; }
+    .stat-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); margin-bottom: 0.5rem; }
+    .stat-card.primary .stat-label { color: rgba(255,255,255,0.65); }
+    .stat-value { font-size: 1.75rem; font-weight: 800; color: var(--text-primary); letter-spacing: -0.04em; line-height: 1; }
+    .stat-card.primary .stat-value { color: white; font-size: 2.25rem; }
     .stat-value.positive { color: var(--green); }
     .stat-value.negative { color: var(--red); }
+    .stat-sub { font-size: 0.75rem; color: var(--text-tertiary); margin-top: 0.35rem; }
+    .stat-card.primary .stat-sub { color: rgba(255,255,255,0.55); }
 
-    .stat-sub {
-      font-size: 0.75rem;
-      color: var(--text-tertiary);
-      margin-top: 0.35rem;
-    }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+    .filter-group { display: flex; gap: 0.25rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; box-shadow: var(--shadow-sm); }
+    .filter-btn { background: transparent; border: none; color: var(--text-secondary); padding: 0.35rem 0.85rem; cursor: pointer; font-size: 0.8rem; font-weight: 500; border-radius: 6px; transition: all 0.15s; }
+    .filter-btn:hover { background: var(--surface-2); color: var(--text-primary); }
+    .filter-btn.active { background: var(--accent); color: white; box-shadow: 0 1px 4px rgba(79,110,247,0.35); }
+    .bot-count { font-size: 0.8rem; color: var(--text-tertiary); }
 
-    .stat-card.primary .stat-sub {
-      color: rgba(255,255,255,0.55);
-    }
+    .bot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 1.25rem; }
+    .bot-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow-sm); transition: all 0.2s; position: relative; overflow: hidden; }
+    .bot-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); border-color: var(--border-strong); }
+    .bot-card.inactive { opacity: 0.65; }
+    .bot-card.inactive:hover { opacity: 1; }
+    .bot-card.active::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #c47a10, #f5a623); border-radius: var(--radius) var(--radius) 0 0; }
 
-    /* ── Toolbar ── */
-    .toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 1.25rem;
-    }
+    .card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; }
+    .card-identity { display: flex; flex-direction: column; gap: 0.3rem; }
+    .card-name { font-size: 1rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
+    .card-meta { display: flex; align-items: center; gap: 0.5rem; }
+    .exchange-badge { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em; padding: 0.2rem 0.5rem; border-radius: 4px; background: var(--accent-light); color: var(--accent); text-transform: uppercase; }
+    .strategy-tag { font-size: 0.65rem; font-weight: 500; color: var(--text-tertiary); background: var(--surface-2); border: 1px solid var(--border); padding: 0.2rem 0.5rem; border-radius: 4px; }
+    .status-pill { display: flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; padding: 0.3rem 0.65rem; border-radius: 20px; white-space: nowrap; }
+    .status-pill.active { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+    .status-pill.inactive { background: var(--surface-2); color: var(--text-tertiary); border: 1px solid var(--border); }
+    .status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .status-pill.active .status-dot { animation: pulse 2s infinite; }
 
-    .filter-group {
-      display: flex;
-      gap: 0.25rem;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 3px;
-      box-shadow: var(--shadow-sm);
-    }
+    .sparkline-wrap { margin-bottom: 1rem; min-height: 44px; position: relative; }
+    .sparkline-wrap canvas { width: 100% !important; height: 44px !important; }
+    .sparkline-empty { height: 44px; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; color: var(--text-tertiary); background: var(--surface-2); border-radius: var(--radius-xs); border: 1px dashed var(--border); }
 
-    .filter-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-secondary);
-      padding: 0.35rem 0.85rem;
-      cursor: pointer;
-      font-size: 0.8rem;
-      font-weight: 500;
-      border-radius: 6px;
-      transition: all 0.15s;
-    }
-
-    .filter-btn:hover {
-      background: var(--surface-2);
-      color: var(--text-primary);
-    }
-
-    .filter-btn.active {
-      background: var(--accent);
-      color: white;
-      box-shadow: 0 1px 4px rgba(79,110,247,0.35);
-    }
-
-    .bot-count {
-      font-size: 0.8rem;
-      color: var(--text-tertiary);
-    }
-
-    /* ── Bot Grid ── */
-    .bot-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-      gap: 1.25rem;
-    }
-
-    /* ── Bot Card ── */
-    .bot-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.5rem;
-      box-shadow: var(--shadow-sm);
-      transition: all 0.2s;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .bot-card:hover {
-      box-shadow: var(--shadow-lg);
-      transform: translateY(-2px);
-      border-color: var(--border-strong);
-    }
-
-    .bot-card.inactive {
-      opacity: 0.65;
-    }
-
-    .bot-card.inactive:hover {
-      opacity: 1;
-    }
-
-    /* Active card accent line */
-    .bot-card.active::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, #c47a10, #f5a623);
-      border-radius: var(--radius) var(--radius) 0 0;
-    }
-
-    /* ── Card Header ── */
-    .card-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      margin-bottom: 1rem;
-    }
-
-    .card-identity {
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
-    }
-
-    .card-name {
-      font-size: 1rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      letter-spacing: -0.02em;
-    }
-
-    .card-meta {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .exchange-badge {
-      font-size: 0.65rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-      background: var(--accent-light);
-      color: var(--accent);
-      text-transform: uppercase;
-    }
-
-    .strategy-tag {
-      font-size: 0.65rem;
-      font-weight: 500;
-      color: var(--text-tertiary);
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
-    }
-
-    .status-pill {
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      font-size: 0.7rem;
-      font-weight: 600;
-      letter-spacing: 0.05em;
-      padding: 0.3rem 0.65rem;
-      border-radius: 20px;
-      white-space: nowrap;
-    }
-
-    .status-pill.active {
-      background: var(--green-bg);
-      color: var(--green);
-      border: 1px solid var(--green-border);
-    }
-
-    .status-pill.inactive {
-      background: var(--surface-2);
-      color: var(--text-tertiary);
-      border: 1px solid var(--border);
-    }
-
-    .status-dot {
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-      background: currentColor;
-    }
-
-    .status-pill.active .status-dot {
-      animation: pulse 2s infinite;
-    }
-
-    /* ── Sparkline ── */
-    .sparkline-wrap {
-      margin-bottom: 1rem;
-      min-height: 44px;
-      position: relative;
-    }
-
-    .sparkline-wrap canvas {
-      width: 100% !important;
-      height: 44px !important;
-    }
-
-    .sparkline-empty {
-      height: 44px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.72rem;
-      color: var(--text-tertiary);
-      background: var(--surface-2);
-      border-radius: var(--radius-xs);
-      border: 1px dashed var(--border);
-    }
-
-    /* ── Live Position Widget (replaces sparkline when position open) ── */
-    .live-pos-widget {
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-xs);
-      padding: 0.5rem 0.65rem;
-      margin-bottom: 1rem;
-    }
-
-    .live-pos-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 0.35rem;
-    }
-
-    .live-pos-side {
-      font-size: 0.65rem;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      padding: 0.1rem 0.4rem;
-      border-radius: 4px;
-    }
-
-    .live-pos-side.pos-long {
-      background: rgba(29,185,84,0.1);
-      color: #1db954;
-      border: 1px solid rgba(29,185,84,0.3);
-    }
-
-    .live-pos-side.pos-short {
-      background: rgba(232,64,74,0.1);
-      color: #e8404a;
-      border: 1px solid rgba(232,64,74,0.3);
-    }
-
-    .live-pos-pnl {
-      font-size: 0.78rem;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-    }
-
+    .live-pos-widget { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 0.5rem 0.65rem; margin-bottom: 1rem; }
+    .live-pos-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem; }
+    .live-pos-side { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.05em; padding: 0.1rem 0.4rem; border-radius: 4px; }
+    .live-pos-side.pos-long { background: rgba(29,185,84,0.1); color: #1db954; border: 1px solid rgba(29,185,84,0.3); }
+    .live-pos-side.pos-short { background: rgba(232,64,74,0.1); color: #e8404a; border: 1px solid rgba(232,64,74,0.3); }
+    .live-pos-pnl { font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums; }
     .live-pos-pnl.positive { color: #1db954; }
     .live-pos-pnl.negative { color: #e8404a; }
+    .live-pos-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 0.1rem 0.5rem; }
+    .live-pos-row { display: flex; justify-content: space-between; font-size: 0.62rem; color: var(--text-secondary); }
+    .live-pos-row span:last-child { font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
-    .live-pos-rows {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.1rem 0.5rem;
-    }
-
-    .live-pos-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.62rem;
-      color: var(--text-secondary);
-    }
-
-    .live-pos-row span:last-child {
-      font-weight: 600;
-      color: var(--text-primary);
-      font-variant-numeric: tabular-nums;
-    }
-
-    /* ── PnL Hero ── */
-    .pnl-hero {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
-    }
-
-    .pnl-breakdown {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-      padding: 0.5rem 0;
-    }
-
-    .pnl-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .pnl-label-sm {
-      font-size: 0.68rem;
-      color: var(--text-tertiary);
-      font-weight: 500;
-    }
-
-    .pnl-value-sm {
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }
-
+    .pnl-hero { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+    .pnl-breakdown { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem 0; }
+    .pnl-row { display: flex; justify-content: space-between; align-items: center; }
+    .pnl-label-sm { font-size: 0.68rem; color: var(--text-tertiary); font-weight: 500; }
+    .pnl-value-sm { font-size: 0.78rem; font-weight: 700; letter-spacing: -0.02em; }
     .pnl-value-sm.positive { color: var(--green); }
     .pnl-value-sm.negative { color: var(--red); }
     .pnl-value-sm.neutral { color: var(--text-secondary); }
     .pnl-value-sm.fee { color: var(--red); }
-
-    .pnl-divider {
-      height: 1px;
-      background: var(--border);
-      margin: 0.25rem 0;
-    }
-
-    .pnl-value {
-      font-size: 1.6rem;
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      line-height: 1;
-    }
-
+    .pnl-divider { height: 1px; background: var(--border); margin: 0.25rem 0; }
+    .pnl-value { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
     .pnl-value.positive { color: var(--green); }
     .pnl-value.negative { color: var(--red); }
     .pnl-value.neutral { color: var(--text-secondary); }
+    .pnl-label { font-size: 0.72rem; color: var(--text-tertiary); font-weight: 500; }
 
-    .pnl-label {
-      font-size: 0.72rem;
-      color: var(--text-tertiary);
-      font-weight: 500;
-    }
-
-    /* ── Stats Grid ── */
-    .card-stats {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 0.75rem;
-      padding: 0.875rem;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      margin-bottom: 1rem;
-    }
-
-    .stat-item {
-      display: flex;
-      flex-direction: column;
-      gap: 0.2rem;
-    }
-
-    .stat-item-label {
-      font-size: 0.65rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-tertiary);
-    }
-
-    .stat-item-value {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-
+    .card-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; padding: 0.875rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 1rem; }
+    .stat-item { display: flex; flex-direction: column; gap: 0.2rem; }
+    .stat-item-label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); }
+    .stat-item-value { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); }
     .stat-item-value.positive { color: var(--green); }
     .stat-item-value.negative { color: var(--red); }
 
-    /* ── Actions ── */
-    .card-actions {
-      display: flex;
-      gap: 0.5rem;
-    }
+    .card-actions { display: flex; gap: 0.5rem; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.55rem 1rem; border-radius: var(--radius-xs); font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.15s; text-decoration: none; border: none; white-space: nowrap; }
+    .btn-primary { background: var(--accent); color: white; flex: 1; box-shadow: 0 1px 4px rgba(245,166,35,0.3); }
+    .btn-primary:hover { background: var(--accent-hover); box-shadow: 0 2px 8px rgba(245,166,35,0.4); transform: translateY(-1px); }
+    .btn-danger { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); flex: 1; }
+    .btn-danger:hover { background: #fee2e2; }
+    .btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--surface-2); color: var(--text-primary); border-color: var(--border-strong); }
 
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.35rem;
-      padding: 0.55rem 1rem;
-      border-radius: var(--radius-xs);
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s;
-      text-decoration: none;
-      border: none;
-      white-space: nowrap;
-    }
-
-    .btn-primary {
-      background: var(--accent);
-      color: white;
-      flex: 1;
-      box-shadow: 0 1px 4px rgba(245,166,35,0.3);
-    }
-
-    .btn-primary:hover {
-      background: var(--accent-hover);
-      box-shadow: 0 2px 8px rgba(245,166,35,0.4);
-      transform: translateY(-1px);
-    }
-
-    .btn-danger {
-      background: var(--red-bg);
-      color: var(--red);
-      border: 1px solid var(--red-border);
-      flex: 1;
-    }
-
-    .btn-danger:hover {
-      background: #fee2e2;
-    }
-
-    .btn-ghost {
-      background: transparent;
-      color: var(--text-secondary);
-      border: 1px solid var(--border);
-    }
-
-    .btn-ghost:hover {
-      background: var(--surface-2);
-      color: var(--text-primary);
-      border-color: var(--border-strong);
-    }
-
-    /* ── Loading / Empty ── */
-    .state-loading, .state-empty, .state-error {
-      grid-column: 1 / -1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 4rem 2rem;
-      color: var(--text-tertiary);
-      font-size: 0.875rem;
-      gap: 0.75rem;
-    }
-
+    .state-loading, .state-empty, .state-error { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; color: var(--text-tertiary); font-size: 0.875rem; gap: 0.75rem; }
     .state-error { color: var(--red); }
-
-    .spinner {
-      width: 24px;
-      height: 24px;
-      border: 2px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-
+    .spinner { width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Responsive ── */
-    @media (max-width: 900px) {
-      .stats-row { grid-template-columns: 1fr 1fr; }
-      .stats-row .stat-card.primary { grid-column: 1 / -1; }
-    }
-
+    @media (max-width: 900px) { .stats-row { grid-template-columns: 1fr 1fr; } .stats-row .stat-card.primary { grid-column: 1 / -1; } }
     @media (max-width: 600px) {
-      .page { padding: 1rem 1rem 3rem; }
-      .stats-row { grid-template-columns: 1fr; }
+      .page { padding: 0.75rem 0.75rem 3rem; }
+      .stats-row { grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem; }
+      .stats-row .stat-card.primary { grid-column: 1 / -1; }
+      .stat-value { font-size: 1.4rem; }
+      .stat-card.primary .stat-value { font-size: 1.75rem; }
+      .stat-card { padding: 0.875rem 1rem; }
       .bot-grid { grid-template-columns: 1fr; }
-      .topnav { padding: 0 1rem; }
+      .topnav { padding: 0 0.75rem; }
+      .topnav-subtitle { display: none; }
+      .live-indicator { display: none; }
+      .bot-count { display: none; }
+      .toolbar { margin-bottom: 0.75rem; }
     }
 
-    /* ── Wallet Widget ── */
+    /* ── Market Intelligence Panel ─────────────────────────────────────── */
+    .mi-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+    .mi-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.875rem; }
+    .mi-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); display: flex; align-items: center; gap: 0.45rem; }
+    .mi-title-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+    .mi-updated { font-size: 0.68rem; color: var(--text-tertiary); }
+    .mi-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 2fr; gap: 0.875rem; }
+    @media (max-width: 1100px) { .mi-grid { grid-template-columns: 1fr 1fr; } .mi-news { grid-column: 1 / -1; } }
+    @media (max-width: 600px) { .mi-grid { grid-template-columns: 1fr; } }
+    .mi-cell { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.75rem 0.875rem; }
+    .mi-cell-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-tertiary); margin-bottom: 0.4rem; }
+    .mi-cell-value { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.03em; color: var(--text-primary); line-height: 1; }
+    .mi-cell-sub { font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.3rem; }
+    .mi-fg-bar { height: 5px; border-radius: 3px; margin-top: 0.5rem; background: linear-gradient(to right, #e8404a 0%, #f5a623 25%, #f5a623 50%, #1db954 75%, #1db954 100%); position: relative; }
+    .mi-fg-thumb { position: absolute; top: -3px; width: 11px; height: 11px; border-radius: 50%; background: #fff; border: 2px solid var(--border-strong); transform: translateX(-50%); transition: left 0.4s ease; }
+    .mi-etf-bull { color: var(--green); }
+    .mi-etf-bear { color: var(--red); }
+    .mi-etf-neutral { color: var(--text-secondary); }
+    .mi-macro-high { color: var(--red); }
+    .mi-macro-medium { color: var(--yellow); }
+    .mi-macro-low { color: var(--green); }
+    .mi-news { }
+    .mi-news-list { list-style: none; display: flex; flex-direction: column; gap: 0.35rem; }
+    .mi-news-item { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0.2rem 0; border-bottom: 1px solid var(--border); }
+    .mi-news-item:last-child { border-bottom: none; }
+    .mi-skeleton { background: var(--border); border-radius: 4px; animation: shimmer 1.4s infinite; }
+    @keyframes shimmer { 0%,100%{opacity:.4} 50%{opacity:.9} }
+
     .wallet-widget { position: relative; }
-
-    .wallet-chip {
-      display: flex; align-items: center; gap: 0.45rem;
-      background: var(--surface-2); border: 1px solid var(--border);
-      border-radius: 20px; padding: 0.3rem 0.75rem 0.3rem 0.55rem;
-      cursor: pointer; transition: all 0.15s; color: var(--text-primary);
-      font-size: 0.78rem; font-weight: 600;
-    }
+    .wallet-chip { display: flex; align-items: center; gap: 0.45rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 0.3rem 0.75rem 0.3rem 0.55rem; cursor: pointer; transition: all 0.15s; color: var(--text-primary); font-size: 0.78rem; font-weight: 600; }
     .wallet-chip:hover { border-color: var(--accent); background: var(--surface); }
-
-    .wallet-chip-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--green); flex-shrink: 0;
-      box-shadow: 0 0 0 2px rgba(29,185,84,0.25);
-    }
+    .wallet-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; box-shadow: 0 0 0 2px rgba(29,185,84,0.25); }
     .wallet-chip-addr { font-family: 'SF Mono','Fira Code',monospace; letter-spacing: 0.01em; }
-
-    .wallet-popup {
-      display: none; position: absolute; top: calc(100% + 10px); right: 0;
-      background: var(--surface); border: 1px solid var(--border-strong);
-      border-radius: var(--radius); box-shadow: var(--shadow-lg);
-      padding: 1rem; min-width: 240px; z-index: 500;
-      animation: popupIn 0.12s ease;
-    }
+    .wallet-popup { display: none; position: absolute; top: calc(100% + 10px); right: 0; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-lg); padding: 1rem; min-width: 220px; max-width: calc(100vw - 1.5rem); z-index: 500; animation: popupIn 0.12s ease; }
     .wallet-popup.open { display: block; }
     @keyframes popupIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
-
-    .wallet-popup-addr {
-      font-size: 1rem; font-weight: 800; color: var(--text-primary);
-      letter-spacing: -0.02em; text-align: center; margin-bottom: 0.2rem;
-    }
-    .wallet-popup-full {
-      font-size: 0.62rem; color: var(--text-tertiary);
-      font-family: 'SF Mono','Fira Code',monospace;
-      text-align: center; margin-bottom: 1rem;
-      word-break: break-all; line-height: 1.5;
-    }
+    .wallet-popup-addr { font-size: 1rem; font-weight: 800; color: var(--text-primary); letter-spacing: -0.02em; text-align: center; margin-bottom: 0.2rem; }
+    .wallet-popup-full { font-size: 0.62rem; color: var(--text-tertiary); font-family: 'SF Mono','Fira Code',monospace; text-align: center; margin-bottom: 1rem; word-break: break-all; line-height: 1.5; }
     .wallet-popup-actions { display: flex; gap: 0.5rem; }
-    .wallet-popup-btn {
-      flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.4rem;
-      padding: 0.55rem 0.5rem; border-radius: var(--radius-sm);
-      font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
-      background: var(--surface-2); border: 1px solid var(--border);
-      color: var(--text-secondary);
-    }
+    .wallet-popup-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.55rem 0.5rem; border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.15s; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-secondary); }
     .wallet-popup-btn:hover { background: var(--border); color: var(--text-primary); }
     .wallet-popup-btn-danger { color: var(--red); border-color: var(--red-border); background: var(--red-bg); }
     .wallet-popup-btn-danger:hover { background: rgba(232,64,74,0.2); }
-
-    .copy-toast {
-      position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
-      background: var(--surface); border: 1px solid var(--green-border);
-      color: var(--green); font-size: 0.78rem; font-weight: 600;
-      padding: 0.5rem 1.25rem; border-radius: 20px; box-shadow: var(--shadow-md);
-      opacity: 0; pointer-events: none; transition: opacity 0.2s;
-      z-index: 9999;
-    }
+    .copy-toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--green-border); color: var(--green); font-size: 0.78rem; font-weight: 600; padding: 0.5rem 1.25rem; border-radius: 20px; box-shadow: var(--shadow-md); opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 9999; }
     .copy-toast.show { opacity: 1; }
   </style>
 </head>
 <body>
   <script>
-    // Apply saved theme immediately to prevent flash
     (function() {
-      if (localStorage.getItem('drift-theme') === 'light') {
-        document.body.classList.add('light');
-      }
+      if (localStorage.getItem('drift-theme') === 'light') document.body.classList.add('light');
     })();
   </script>
 
-  <!-- Top Nav -->
   <nav class="topnav">
     <div class="topnav-brand">
-      <div style="display:flex;flex-direction:column;gap:0.1rem">
-        <span style="font-size:1rem;font-weight:800;color:var(--text-primary);letter-spacing:-0.02em">DRIFT — Let it run</span>
-        <span style="font-size:0.65rem;color:var(--text-tertiary);font-weight:400">Autopilot trading · generates volume · executes strategies</span>
+      <div style="display:flex;flex-direction:column;gap:0.1rem;min-width:0;overflow:hidden">
+        <span style="font-size:1rem;font-weight:800;color:var(--text-primary);letter-spacing:-0.02em;white-space:nowrap">DRIFT</span>
+        <span class="topnav-subtitle" style="font-size:0.65rem;color:var(--text-tertiary);font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Autopilot trading · generates volume · executes strategies</span>
       </div>
     </div>
     <div class="topnav-right">
-      <div class="live-indicator">
-        <div class="live-dot"></div>
-        <span>LIVE</span>
-      </div>
-      <!-- ── Theme Toggle ── -->
+      <div class="live-indicator"><div class="live-dot"></div><span>MAINNET</span></div>
       <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme">
         <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
       </button>
-      <!-- ── Wallet Widget ── -->
       <div class="wallet-widget" id="wallet-widget" style="display:none">
         <button class="wallet-chip" id="wallet-chip" onclick="toggleWalletPopup(event)" aria-label="Wallet menu">
           <span class="wallet-chip-dot"></span>
           <span class="wallet-chip-addr" id="wallet-chip-addr">0x…</span>
           <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style="opacity:.5;flex-shrink:0"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <!-- Popup -->
         <div class="wallet-popup" id="wallet-popup">
           <div class="wallet-popup-addr" id="wallet-popup-addr">0x…</div>
           <div class="wallet-popup-full" id="wallet-popup-full">0x0000…0000</div>
@@ -796,8 +277,6 @@
   </nav>
 
   <div class="page">
-
-    <!-- Stats Row -->
     <div class="stats-row">
       <div class="stat-card primary">
         <div class="stat-label">Total PnL</div>
@@ -821,7 +300,40 @@
       </div>
     </div>
 
-    <!-- Toolbar -->
+    <!-- ── Market Intelligence Panel ──────────────────────────────────── -->
+    <div class="mi-panel" id="mi-panel">
+      <div class="mi-header">
+        <div class="mi-title"><span class="mi-title-dot"></span>Market Intelligence · SoSoValue</div>
+        <div class="mi-updated" id="mi-updated">Loading…</div>
+      </div>
+      <div class="mi-grid">
+        <div class="mi-cell" id="mi-fg-cell">
+          <div class="mi-cell-label">Fear &amp; Greed</div>
+          <div class="mi-cell-value" id="mi-fg-value"><span class="mi-skeleton" style="display:inline-block;width:40px;height:1.2rem;">&nbsp;</span></div>
+          <div class="mi-cell-sub" id="mi-fg-label">—</div>
+          <div class="mi-fg-bar"><div class="mi-fg-thumb" id="mi-fg-thumb" style="left:50%"></div></div>
+        </div>
+        <div class="mi-cell">
+          <div class="mi-cell-label">BTC ETF Flow</div>
+          <div class="mi-cell-value" id="mi-etf-value"><span class="mi-skeleton" style="display:inline-block;width:60px;height:1.2rem;">&nbsp;</span></div>
+          <div class="mi-cell-sub" id="mi-etf-signal">—</div>
+        </div>
+        <div class="mi-cell">
+          <div class="mi-cell-label">Macro Risk</div>
+          <div class="mi-cell-value" id="mi-macro-value"><span class="mi-skeleton" style="display:inline-block;width:50px;height:1.2rem;">&nbsp;</span></div>
+          <div class="mi-cell-sub" id="mi-macro-sub">—</div>
+        </div>
+        <div class="mi-cell mi-news">
+          <div class="mi-cell-label">Hot News</div>
+          <ul class="mi-news-list" id="mi-news-list">
+            <li class="mi-news-item"><span class="mi-skeleton" style="display:inline-block;width:90%;height:0.8rem;">&nbsp;</span></li>
+            <li class="mi-news-item"><span class="mi-skeleton" style="display:inline-block;width:75%;height:0.8rem;">&nbsp;</span></li>
+            <li class="mi-news-item"><span class="mi-skeleton" style="display:inline-block;width:82%;height:0.8rem;">&nbsp;</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
     <div class="toolbar">
       <div class="filter-group">
         <button class="filter-btn active" data-filter="all">All</button>
@@ -836,332 +348,1050 @@
       </div>
     </div>
 
-    <!-- Bot Grid -->
     <%- include('partials/bot-cards') %>
-
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="/js/manager-dashboard.js?v=2"></script>
+  <!-- ── Market Intelligence polling ──────────────────────────────────── -->
+  <script>
+  (function() {
+    var POLL_MS = 5 * 60 * 1000;
+    var fgLabels = ['Extreme Fear','Fear','Neutral','Greed','Extreme Greed'];
+    var etfClassMap = { strong_bull:'mi-etf-bull', bull:'mi-etf-bull', neutral:'mi-etf-neutral', bear:'mi-etf-bear', strong_bear:'mi-etf-bear' };
+    var macroClassMap = { HIGH:'mi-macro-high', MEDIUM:'mi-macro-medium', LOW:'mi-macro-low' };
 
-  <!-- ── Create Bot Modal ─────────────────────────────────────────────────── -->
+    function fmtMoney(n) {
+      if (n == null) return '—';
+      var abs = Math.abs(n);
+      var s = abs >= 1e9 ? (abs/1e9).toFixed(2)+'B' : abs >= 1e6 ? (abs/1e6).toFixed(1)+'M' : abs.toFixed(0);
+      return (n < 0 ? '-$' : '+$') + s;
+    }
+
+    function renderSnapshot(snap) {
+      var now = new Date(snap.fetchedAt);
+      document.getElementById('mi-updated').textContent = 'Updated ' + now.toLocaleTimeString();
+
+      // Fear & Greed
+      var fg = snap.fearGreed && snap.fearGreed.status === 'fulfilled' ? snap.fearGreed.value : null;
+      if (fg && fg.value != null) {
+        var idx = fg.value;
+        document.getElementById('mi-fg-value').textContent = idx;
+        var label = idx <= 20 ? fgLabels[0] : idx <= 40 ? fgLabels[1] : idx <= 60 ? fgLabels[2] : idx <= 80 ? fgLabels[3] : fgLabels[4];
+        document.getElementById('mi-fg-label').textContent = label + (fg.source === 'alternative.me' ? ' (alt)' : '');
+        document.getElementById('mi-fg-thumb').style.left = idx + '%';
+      }
+
+      // ETF Flow
+      var etf = snap.etfFlow && snap.etfFlow.status === 'fulfilled' ? snap.etfFlow.value : null;
+      if (etf) {
+        var etfEl = document.getElementById('mi-etf-value');
+        etfEl.textContent = fmtMoney(etf.netInflow);
+        etfEl.className = 'mi-cell-value ' + (etfClassMap[etf.signal] || 'mi-etf-neutral');
+        document.getElementById('mi-etf-signal').textContent = (etf.signal || '—').replace(/_/g,' ');
+      }
+
+      // Macro Risk
+      var macro = snap.macroRisk && snap.macroRisk.status === 'fulfilled' ? snap.macroRisk.value : null;
+      if (macro) {
+        var macroEl = document.getElementById('mi-macro-value');
+        macroEl.textContent = macro.level || '—';
+        macroEl.className = 'mi-cell-value ' + (macroClassMap[macro.level] || '');
+        var evts = (macro.upcomingEvents || []).slice(0,2).map(function(e){ return e.name; }).join(', ');
+        document.getElementById('mi-macro-sub').textContent = evts || 'No high-impact events';
+      }
+
+      // Hot News
+      var news = snap.hotNews && snap.hotNews.status === 'fulfilled' ? snap.hotNews.value : null;
+      var list = document.getElementById('mi-news-list');
+      if (news && Array.isArray(news) && news.length) {
+        list.innerHTML = news.slice(0,5).map(function(n){
+          return '<li class="mi-news-item" title="' + (n.title||'').replace(/"/g,'&quot;') + '">' + (n.title || '') + '</li>';
+        }).join('');
+      } else {
+        list.innerHTML = '<li class="mi-news-item mi-etf-neutral">No news data</li>';
+      }
+    }
+
+    function fetchMI() {
+      fetch('/api/sosovalue/snapshot').then(function(r){ return r.json(); }).then(function(data){
+        renderSnapshot(data);
+      }).catch(function(err){
+        document.getElementById('mi-updated').textContent = 'Unavailable';
+        console.warn('[MI]', err);
+      });
+    }
+
+    fetchMI();
+    setInterval(fetchMI, POLL_MS);
+  })();
+  </script>
   <style>
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.45);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
+    /* Overlay */
+    .wz-overlay { visibility:hidden; opacity:0; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1000; display:flex; align-items:center; justify-content:center; transition:opacity .15s,visibility .15s; pointer-events:none; }
+    .wz-overlay.open { visibility:visible; opacity:1; pointer-events:auto; }
+    /* Pause background animations when modal is open — reduces GPU load */
+    body.modal-open .live-dot, body.modal-open .status-dot, body.modal-open .spinner { animation-play-state:paused; }
+    body.modal-open .bot-card { transition:none; }
+    body.modal-open .stat-card { transition:none; }
+
+    /* Modal shell */
+    .wz-modal { background:var(--surface); border:1px solid var(--border-strong); border-radius:16px; box-shadow:var(--shadow-lg); width:100%; max-width:560px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; position:relative; animation:wzIn .15s ease; will-change:transform,opacity; transform:translateZ(0); }
+    @keyframes wzIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+    /* Header */
+    .wz-header { padding:1.5rem 1.75rem 0; flex-shrink:0; }
+    .wz-title-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem; }
+    .wz-title { font-size:1.15rem; font-weight:800; letter-spacing:-.03em; color:var(--text-primary); }
+    .wz-close { background:none; border:none; color:var(--text-tertiary); cursor:pointer; font-size:1.1rem; padding:.25rem; line-height:1; border-radius:6px; transition:color .15s; }
+    .wz-close:hover { color:var(--text-primary); }
+
+    /* Step progress bar */
+    .wz-steps { display:flex; align-items:center; gap:0; margin-bottom:1.5rem; }
+    .wz-step { display:flex; align-items:center; flex:1; }
+    .wz-step-dot { width:28px; height:28px; border-radius:50%; border:2px solid var(--border-strong); background:var(--surface-2); color:var(--text-tertiary); font-size:.72rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background .2s,border-color .2s,color .2s,box-shadow .2s; position:relative; z-index:1; }
+    .wz-step.done .wz-step-dot { background:var(--accent); border-color:var(--accent); color:#000; }
+    .wz-step.active .wz-step-dot { background:var(--accent); border-color:var(--accent); color:#000; box-shadow:0 0 0 4px rgba(245,166,35,.2); }
+    .wz-step-label { font-size:.62rem; font-weight:600; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:.06em; margin-left:.4rem; white-space:nowrap; }
+    .wz-step.active .wz-step-label, .wz-step.done .wz-step-label { color:var(--text-primary); }
+    .wz-step-line { flex:1; height:2px; background:var(--border); margin:0 .35rem; transition:background .2s; }
+    .wz-step.done .wz-step-line { background:var(--accent); }
+
+    /* Body */
+    .wz-body { flex:1; overflow-y:auto; padding:0 1.75rem 1rem; }
+    .wz-panel { display:none; }
+    .wz-panel.active { display:block; animation:panelIn .15s ease; }
+    @keyframes panelIn { from{opacity:0} to{opacity:1} }
+
+    /* Exchange tiles */
+    .ex-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-bottom:.5rem; }
+    .ex-tile { border:2px solid var(--border); border-radius:12px; padding:1rem .75rem; cursor:pointer; text-align:center; transition:all .15s; background:var(--surface-2); position:relative; }
+    .ex-tile:hover { border-color:var(--accent); background:var(--accent-light); }
+    .ex-tile.selected { border-color:var(--accent); background:var(--accent-light); }
+    .ex-tile.selected::after { content:'✓'; position:absolute; top:.4rem; right:.5rem; font-size:.65rem; font-weight:800; color:var(--accent); }
+    .ex-logo { width:40px; height:40px; border-radius:10px; margin:0 auto .6rem; display:flex; align-items:center; justify-content:center; font-size:1.3rem; }
+    .ex-name { font-size:.85rem; font-weight:700; color:var(--text-primary); margin-bottom:.15rem; }
+    .ex-desc { font-size:.62rem; color:var(--text-tertiary); line-height:1.4; }
+
+    /* Bot type tiles */
+    .type-grid { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:1rem; }
+    .type-tile { border:2px solid var(--border); border-radius:12px; padding:1rem; cursor:pointer; transition:all .15s; background:var(--surface-2); position:relative; }
+    .type-tile:hover { border-color:var(--accent); background:var(--accent-light); }
+    .type-tile.selected { border-color:var(--accent); background:var(--accent-light); }
+    .type-tile.selected::after { content:'✓'; position:absolute; top:.5rem; right:.65rem; font-size:.65rem; font-weight:800; color:var(--accent); }
+    .type-tile-icon { font-size:1.5rem; margin-bottom:.4rem; }
+    .type-tile-name { font-size:.9rem; font-weight:700; color:var(--text-primary); margin-bottom:.2rem; }
+    .type-tile-desc { font-size:.68rem; color:var(--text-tertiary); line-height:1.4; }
+
+    /* Symbol grid */
+    .sym-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); gap:.5rem; margin-bottom:.75rem; }
+    .sym-tile { border:1.5px solid var(--border); border-radius:8px; padding:.5rem .4rem; cursor:pointer; text-align:center; transition:all .12s; background:var(--surface-2); }
+    .sym-tile:hover { border-color:var(--accent); background:var(--accent-light); }
+    .sym-tile.selected { border-color:var(--accent); background:var(--accent-light); color:var(--accent); font-weight:700; }
+    .sym-tile-name { font-size:.78rem; font-weight:600; color:var(--text-primary); }
+    .sym-tile.selected .sym-tile-name { color:var(--accent); }
+    .sym-tile-sub { font-size:.58rem; color:var(--text-tertiary); margin-top:.1rem; }
+    .sym-loading { text-align:center; padding:2rem; color:var(--text-tertiary); font-size:.8rem; }
+
+    /* Form elements */
+    .wz-form-row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:.75rem; }
+    .wz-form-row.full { grid-template-columns:1fr; }
+    .wz-form-group { display:flex; flex-direction:column; gap:.3rem; }
+    .wz-label { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text-secondary); }
+    .wz-label .req { color:var(--red); margin-left:2px; }
+    .wz-input, .wz-select { padding:.6rem .8rem; border:1.5px solid var(--border-strong); border-radius:8px; font-size:.875rem; color:var(--text-primary); background:var(--surface); transition:border-color .15s, box-shadow .15s; width:100%; }
+    .wz-input:focus, .wz-select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(245,166,35,.15); }
+    .wz-input.error, .wz-select.error { border-color:var(--red); box-shadow:0 0 0 3px rgba(232,64,74,.12); }
+    .wz-hint { font-size:.65rem; color:var(--text-tertiary); }
+    .wz-field-error { font-size:.65rem; color:var(--red); margin-top:.15rem; display:none; }
+    .wz-field-error.visible { display:block; }
+
+    /* Section title */
+    .wz-section-title { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--text-tertiary); margin:1.25rem 0 .75rem; padding-top:1rem; border-top:1px solid var(--border); }
+    .wz-section-title:first-child { margin-top:0; border-top:none; padding-top:0; }
+
+    /* Review panel */
+    .review-grid { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
+    .review-item { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:.65rem .875rem; }
+    .review-label { font-size:.62rem; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--text-tertiary); margin-bottom:.2rem; }
+    .review-value { font-size:.85rem; font-weight:700; color:var(--text-primary); }
+    .review-value.accent { color:var(--accent); }
+    .review-creds { background:var(--green-bg); border:1px solid var(--green-border); border-radius:8px; padding:.65rem .875rem; margin-top:.5rem; display:flex; align-items:center; gap:.5rem; font-size:.78rem; color:var(--green); font-weight:600; }
+
+    /* Checkbox */
+    .wz-check-row { display:flex; align-items:center; gap:.5rem; margin-top:.5rem; }
+    .wz-check-row input[type="checkbox"] { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
+    .wz-check-row label { font-size:.82rem; color:var(--text-secondary); cursor:pointer; }
+
+    /* Error banner */
+    .wz-error { background:var(--red-bg); border:1px solid var(--red-border); color:var(--red); border-radius:8px; padding:.6rem .875rem; font-size:.8rem; margin-bottom:.875rem; display:none; }
+    .wz-error.visible { display:block; }
+
+    /* Footer */
+    .wz-footer { padding:1rem 1.75rem 1.5rem; border-top:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; gap:.75rem; }
+    .wz-footer-left { display:flex; align-items:center; gap:.5rem; }
+    .wz-footer-right { display:flex; align-items:center; gap:.5rem; }
+    .wz-btn { display:inline-flex; align-items:center; justify-content:center; gap:.35rem; padding:.6rem 1.25rem; border-radius:8px; font-size:.85rem; font-weight:700; cursor:pointer; transition:all .15s; border:none; white-space:nowrap; }
+    .wz-btn-primary { background:var(--accent); color:#000; box-shadow:0 1px 8px rgba(245,166,35,.35); }
+    .wz-btn-primary:hover { background:var(--accent-hover); box-shadow:0 2px 14px rgba(245,166,35,.45); }
+    .wz-btn-primary:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+    .wz-btn-ghost { background:transparent; color:var(--text-secondary); border:1.5px solid var(--border); }
+    .wz-btn-ghost:hover { background:var(--surface-2); color:var(--text-primary); border-color:var(--border-strong); }
+    .wz-step-counter { font-size:.72rem; color:var(--text-tertiary); font-weight:600; }
+
+    /* ── Wizard mobile overrides ── */
+    @media (max-width: 480px) {
+      .wz-modal { max-height:100vh; border-radius:16px 16px 0 0; margin-top:auto; }
+      .wz-overlay { align-items:flex-end; }
+      .wz-header { padding:1.25rem 1.25rem 0; }
+      .wz-body { padding:0 1.25rem .75rem; }
+      .wz-footer { padding:.75rem 1.25rem 1.25rem; }
+      /* Hide step labels on mobile — show only dots */
+      .wz-step-label { display:none; }
+      .wz-step-line { margin:0 .2rem; }
+      /* Stack form rows */
+      .wz-form-row { grid-template-columns:1fr; }
+      /* Exchange tiles — 3 col still OK on mobile */
+      .ex-grid { gap:.5rem; }
+      .ex-logo { width:32px; height:32px; }
+      .ex-name { font-size:.78rem; }
+      .ex-desc { font-size:.58rem; }
+      /* Symbol grid — more columns */
+      .sym-grid { grid-template-columns:repeat(auto-fill,minmax(72px,1fr)); }
+      /* Review grid — single col */
+      .review-grid { grid-template-columns:1fr; }
     }
-    .modal-overlay.open { display: flex; }
-    .modal {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow-lg);
-      width: 100%;
-      max-width: 560px;
-      max-height: 90vh;
-      overflow-y: auto;
-      padding: 2rem;
-      position: relative;
-    }
-    .modal-title { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 1.5rem; color: var(--text-primary); }
-    .modal-close { position: absolute; top: 1rem; right: 1rem; background: none; border: none; font-size: 1.25rem; cursor: pointer; color: var(--text-tertiary); line-height: 1; padding: 0.25rem; }
-    .modal-close:hover { color: var(--text-primary); }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem; }
-    .form-row.full { grid-template-columns: 1fr; }
-    .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
-    .form-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary); }
-    .form-label .req { color: var(--red); margin-left: 2px; }
-    .form-input, .form-select { padding: 0.55rem 0.75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-xs); font-size: 0.85rem; color: var(--text-primary); background: var(--surface); transition: border-color 0.15s, box-shadow 0.15s; width: 100%; }
-    .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(245,166,35,0.15); }
-    .form-hint { font-size: 0.68rem; color: var(--text-tertiary); }
-    .form-section { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
-    .form-section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-tertiary); margin-bottom: 0.875rem; }
-    .modal-footer { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
-    .modal-error { background: var(--red-bg); border: 1px solid var(--red-border); color: var(--red); border-radius: var(--radius-xs); padding: 0.6rem 0.875rem; font-size: 0.8rem; margin-bottom: 1rem; display: none; }
-    .modal-error.visible { display: block; }
-    .type-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; }
-    .type-tab { flex: 1; padding: 0.65rem; border: 2px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; text-align: center; transition: all 0.15s; }
-    .type-tab:hover { border-color: var(--accent); }
-    .type-tab.selected { border-color: var(--accent); background: var(--accent-light); }
-    .type-tab-title { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.2rem; }
-    .type-tab.selected .type-tab-title { color: var(--accent); }
-    .type-tab-desc { font-size: 0.68rem; color: var(--text-tertiary); }
-    .fields-standard, .fields-hedge { display: none; }
-    .fields-standard.visible, .fields-hedge.visible { display: contents; }
-    .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem; }
-    .checkbox-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
-    .checkbox-row label { font-size: 0.82rem; color: var(--text-secondary); cursor: pointer; }
   </style>
 
-  <div class="modal-overlay" id="create-bot-modal">
-    <div class="modal">
-      <button class="modal-close" id="modal-close-btn" aria-label="Close">&#x2715;</button>
-      <div class="modal-title">Create New Bot</div>
-      <div class="modal-error" id="modal-error"></div>
+  <!-- Wizard overlay -->
+  <div class="wz-overlay" id="wz-overlay">
+    <div class="wz-modal" id="wz-modal">
 
-      <div class="type-tabs">
-        <div class="type-tab selected" data-type="standard" id="tab-standard">
-          <div class="type-tab-title">Standard Bot</div>
-          <div class="type-tab-desc">Farm / trade a single symbol</div>
+      <!-- Header -->
+      <div class="wz-header">
+        <div class="wz-title-row">
+          <span class="wz-title">Launch Bot</span>
+          <button class="wz-close" id="wz-close" aria-label="Close">&#x2715;</button>
         </div>
-        <div class="type-tab" data-type="hedge" id="tab-hedge">
-          <div class="type-tab-title">Hedge Bot</div>
-          <div class="type-tab-desc">Correlated pair, delta-neutral</div>
+        <!-- Step progress -->
+        <div class="wz-steps" id="wz-steps">
+          <div class="wz-step active" data-step="0">
+            <div class="wz-step-dot">1</div>
+            <span class="wz-step-label">Exchange</span>
+            <div class="wz-step-line"></div>
+          </div>
+          <div class="wz-step" data-step="1">
+            <div class="wz-step-dot">2</div>
+            <span class="wz-step-label">Credentials</span>
+            <div class="wz-step-line"></div>
+          </div>
+          <div class="wz-step" data-step="2">
+            <div class="wz-step-dot">3</div>
+            <span class="wz-step-label">Market</span>
+            <div class="wz-step-line"></div>
+          </div>
+          <div class="wz-step" data-step="3">
+            <div class="wz-step-dot">4</div>
+            <span class="wz-step-label">Configure</span>
+            <div class="wz-step-line"></div>
+          </div>
+          <div class="wz-step" data-step="4">
+            <div class="wz-step-dot">5</div>
+            <span class="wz-step-label">Review</span>
+          </div>
         </div>
       </div>
 
-      <form id="create-bot-form" autocomplete="off">
-        <!-- Common fields -->
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Bot ID <span class="req">*</span></label>
-            <input class="form-input" type="text" name="id" placeholder="my-bot-1" required />
-            <span class="form-hint">Lowercase, hyphens only</span>
+      <!-- Body -->
+      <div class="wz-body">
+        <div class="wz-error" id="wz-error"></div>
+
+        <!-- ── Step 0: Choose Exchange ── -->
+        <div class="wz-panel active" id="wz-panel-0">
+          <div class="wz-section-title">Select a Perp DEX</div>
+          <div class="ex-grid">
+            <div class="ex-tile selected" data-exchange="sodex">
+              <div class="ex-logo" style="background:linear-gradient(135deg,#1a2535,#2a3a55)">
+                <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="#f5a623" opacity=".15"/><path d="M10 20c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="#f5a623" stroke-width="2.5" stroke-linecap="round"/><circle cx="16" cy="11" r="2.5" fill="#f5a623"/></svg>
+              </div>
+              <div class="ex-name">SoDEX</div>
+              <div class="ex-desc">EVM · EIP-712 signing · 15 markets</div>
+            </div>
+            <div class="ex-tile" data-exchange="decibel">
+              <div class="ex-logo" style="background:linear-gradient(135deg,#1a2535,#2a3a55)">
+                <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="#3b82f6" opacity=".15"/><path d="M10 16h12M16 10v12" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round"/></svg>
+              </div>
+              <div class="ex-name">Decibel</div>
+              <div class="ex-desc">Aptos · Ed25519 · 10 markets</div>
+            </div>
+            <div class="ex-tile" data-exchange="dango">
+              <div class="ex-logo" style="background:linear-gradient(135deg,#1a2535,#2a3a55)">
+                <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="#a855f7" opacity=".15"/><circle cx="16" cy="16" r="5" fill="#a855f7" opacity=".6"/><circle cx="16" cy="16" r="2" fill="#a855f7"/></svg>
+              </div>
+              <div class="ex-name">Dango</div>
+              <div class="ex-desc">Cosmos · Secp256k1 · 3 markets</div>
+            </div>
+            <div class="ex-tile" data-exchange="hibachi">
+              <div class="ex-logo" style="background:linear-gradient(135deg,#1a2535,#2a3a55)">
+                <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="#f97316" opacity=".15"/><path d="M10 22c0-4.4 2.7-8 6-8s6 3.6 6 8" stroke="#f97316" stroke-width="2.5" stroke-linecap="round"/><path d="M13 14c0-1.7 1.3-4 3-4s3 2.3 3 4" stroke="#f97316" stroke-width="2" stroke-linecap="round" opacity=".6"/></svg>
+              </div>
+              <div class="ex-name">Hibachi</div>
+              <div class="ex-desc">EVM · ECDSA / HMAC · Trustless &amp; Managed</div>
+            </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Display Name <span class="req">*</span></label>
-            <input class="form-input" type="text" name="name" placeholder="My Bot" required />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Exchange <span class="req">*</span></label>
-            <select class="form-select" name="exchange" required>
-              <option value="sodex">SoDEX</option>
-              <option value="dango">Dango</option>
-              <option value="decibel">Decibel</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Credential Key <span class="req">*</span></label>
-            <input class="form-input" type="text" name="credentialKey" placeholder="SODEX" required />
-            <span class="form-hint">Env prefix (e.g. SODEX_API_KEY)</span>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Trade Log Backend</label>
-            <select class="form-select" name="tradeLogBackend">
-              <option value="json">JSON</option>
-              <option value="sqlite">SQLite</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Trade Log Path <span class="req">*</span></label>
-            <input class="form-input" type="text" name="tradeLogPath" placeholder="./trades-mybot.json" required />
-          </div>
-        </div>
-        <div class="form-row full">
-          <div class="form-group">
-            <label class="form-label">Tags</label>
-            <input class="form-input" type="text" name="tags" placeholder="Farm, TWAP (comma-separated)" />
+
+          <div class="wz-section-title" style="margin-top:1.25rem">Bot Type</div>
+          <div class="type-grid">
+            <div class="type-tile selected" data-type="standard">
+              <div class="type-tile-icon">🤖</div>
+              <div class="type-tile-name">Standard Bot</div>
+              <div class="type-tile-desc">Farm or trade a single symbol. Best for volume generation.</div>
+            </div>
+            <div class="type-tile" data-type="hedge">
+              <div class="type-tile-icon">⚖️</div>
+              <div class="type-tile-name">Hedge Bot</div>
+              <div class="type-tile-desc">Delta-neutral pair trading. Long one, short the other.</div>
+            </div>
           </div>
         </div>
 
-        <!-- Standard Bot fields -->
-        <div class="form-section fields-standard visible" id="fields-standard">
-          <div class="form-section-title">Standard Bot Settings</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Symbol <span class="req">*</span></label>
-              <input class="form-input" type="text" name="symbol" placeholder="BTC-USD" />
+        <!-- ── Step 1: Credentials ── -->
+        <div class="wz-panel" id="wz-panel-1">
+          <!-- SoDEX creds -->
+          <div id="wz-creds-sodex">
+            <div class="wz-section-title">SoDEX Credentials</div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">API Key <span class="req">*</span></label>
+                <input class="wz-input" type="text" id="wz-apiKey" placeholder="your_api_key" autocomplete="off" />
+                <span class="wz-field-error" id="err-apiKey">Required</span>
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Subaccount Address <span class="req">*</span></label>
+                <input class="wz-input" type="text" id="wz-subaccount" placeholder="0x..." autocomplete="off" />
+                <span class="wz-field-error" id="err-subaccount">Required</span>
+              </div>
             </div>
-            <div class="form-group">
-              <label class="form-label">Mode</label>
-              <select class="form-select" name="mode">
-                <option value="farm">Farm</option>
-                <option value="trade">Trade</option>
+            <div class="wz-form-row full">
+              <div class="wz-form-group">
+                <label class="wz-label">Private Key (EVM) <span class="req">*</span></label>
+                <input class="wz-input" type="password" id="wz-apiSecret" placeholder="0x..." autocomplete="new-password" />
+                <span class="wz-hint">EIP-712 signing key — AES-256 encrypted at rest, never logged</span>
+                <span class="wz-field-error" id="err-apiSecret">Required</span>
+              </div>
+            </div>
+          </div>
+          <!-- Decibel creds -->
+          <div id="wz-creds-decibel" style="display:none">
+            <div class="wz-section-title">Decibel Credentials</div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Node API Key</label>
+                <input class="wz-input" type="text" id="wz-nodeApiKey" placeholder="aptoslabs_..." autocomplete="off" />
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Subaccount Address</label>
+                <input class="wz-input" type="text" id="wz-decibelSubaccount" placeholder="0x..." autocomplete="off" />
+              </div>
+            </div>
+            <div class="wz-form-row full">
+              <div class="wz-form-group">
+                <label class="wz-label">Private Key (Ed25519) <span class="req">*</span></label>
+                <input class="wz-input" type="password" id="wz-privateKey" placeholder="ed25519-priv-0x..." autocomplete="new-password" />
+                <span class="wz-hint">Stored encrypted, never logged</span>
+                <span class="wz-field-error" id="err-privateKey">Required</span>
+              </div>
+            </div>
+          </div>
+          <!-- Dango creds -->
+          <div id="wz-creds-dango" style="display:none">
+            <div class="wz-section-title">Dango Credentials</div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">User Address <span class="req">*</span></label>
+                <input class="wz-input" type="text" id="wz-userAddress" placeholder="0x..." autocomplete="off" />
+                <span class="wz-field-error" id="err-userAddress">Required</span>
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Network</label>
+                <select class="wz-select" id="wz-network">
+                  <option value="mainnet">Mainnet</option>
+                  <option value="testnet">Testnet</option>
+                </select>
+              </div>
+            </div>
+            <div class="wz-form-row full">
+              <div class="wz-form-group">
+                <label class="wz-label">Private Key (Secp256k1) <span class="req">*</span></label>
+                <input class="wz-input" type="password" id="wz-dangoPrivateKey" placeholder="64-char hex, no 0x" autocomplete="new-password" />
+                <span class="wz-hint">Stored encrypted, never logged</span>
+                <span class="wz-field-error" id="err-dangoPrivateKey">Required</span>
+              </div>
+            </div>
+          </div>
+          <!-- Hibachi creds -->
+          <div id="wz-creds-hibachi" style="display:none">
+            <div class="wz-section-title">Hibachi Credentials</div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">API Key <span class="req">*</span></label>
+                <input class="wz-input" type="text" id="wz-hibachiApiKey" placeholder="your_api_key" autocomplete="off" />
+                <span class="wz-field-error" id="err-hibachiApiKey">Required</span>
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Account ID <span class="req">*</span></label>
+                <input class="wz-input" type="text" id="wz-hibachiAccountId" placeholder="123" autocomplete="off" />
+                <span class="wz-hint">Numeric ID shown under your API Key in the Hibachi dashboard</span>
+                <span class="wz-field-error" id="err-hibachiAccountId">Required</span>
+              </div>
+            </div>
+            <div class="wz-form-row full">
+              <div class="wz-form-group">
+                <label class="wz-label">Account Type <span class="req">*</span></label>
+                <select class="wz-select" id="wz-hibachiAccountType">
+                  <option value="trustless">Trustless (ECDSA)</option>
+                  <option value="exchange_managed">Exchange Managed (HMAC)</option>
+                </select>
+              </div>
+            </div>
+            <div class="wz-form-row full" id="wz-hibachi-trustless-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Private Key (EVM) <span class="req">*</span></label>
+                <input class="wz-input" type="password" id="wz-hibachiPrivateKey" placeholder="0x..." autocomplete="new-password" />
+                <span class="wz-hint">66-char 0x-prefixed hex — stored encrypted, never logged</span>
+                <span class="wz-field-error" id="err-hibachiPrivateKey">Required for Trustless accounts</span>
+              </div>
+            </div>
+            <div class="wz-form-row full" id="wz-hibachi-managed-row" style="display:none">
+              <div class="wz-form-group">
+                <label class="wz-label">Secret Key (HMAC) <span class="req">*</span></label>
+                <input class="wz-input" type="password" id="wz-hibachiSecretKey" placeholder="your_secret_key" autocomplete="new-password" />
+                <span class="wz-hint">HMAC-SHA256 signing key — stored encrypted, never logged</span>
+                <span class="wz-field-error" id="err-hibachiSecretKey">Required for Exchange Managed accounts</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Step 2: Market ── -->
+        <div class="wz-panel" id="wz-panel-2">
+          <div class="wz-section-title" id="wz-market-title">Select Symbol</div>
+          <div id="wz-sym-container">
+            <div id="wz-sym-loading">
+              <div class="spinner" style="margin:0 auto .75rem"></div>
+              Loading markets from exchange…
+            </div>
+            <div id="wz-sym-ready" style="display:none">
+              <select class="wz-select" id="wz-sym-select" style="margin-bottom:.25rem">
+                <option value="">— Select symbol —</option>
+              </select>
+              <div id="wz-sym-meta" style="font-size:11px;color:var(--text-secondary);min-height:18px"></div>
+            </div>
+            <div id="wz-sym-fallback" style="display:none">
+              <input class="wz-input" type="text" id="wz-sym-manual" placeholder="e.g. BTC-USD" autocomplete="off" style="text-transform:uppercase" />
+            </div>
+          </div>
+          <!-- Hedge: second symbol -->
+          <div id="wz-sym-b-section" style="display:none">
+            <div class="wz-section-title">Symbol B (Short leg)</div>
+            <select class="wz-select" id="wz-sym-select-b">
+              <option value="">— Select symbol —</option>
+            </select>
+            <span class="wz-field-error" id="err-symbolB" style="display:none">Select a different symbol for leg B</span>
+          </div>
+          <span class="wz-field-error" id="err-symbol">Please select a symbol</span>
+        </div>
+
+        <!-- ── Step 3: Configure ── -->
+        <div class="wz-panel" id="wz-panel-3">
+          <div class="wz-section-title">Bot Identity</div>
+          <div class="wz-form-row">
+            <div class="wz-form-group">
+              <label class="wz-label">Bot ID <span class="req">*</span></label>
+              <input class="wz-input" type="text" id="wz-id" placeholder="my-sodex-bot" autocomplete="off" />
+              <span class="wz-hint">Lowercase, hyphens only</span>
+              <span class="wz-field-error" id="err-id">Required — lowercase letters, numbers, hyphens only</span>
+            </div>
+            <div class="wz-form-group">
+              <label class="wz-label">Display Name <span class="req">*</span></label>
+              <input class="wz-input" type="text" id="wz-name" placeholder="My Bot" autocomplete="off" />
+              <span class="wz-field-error" id="err-name">Required</span>
+            </div>
+          </div>
+          <div class="wz-form-row">
+            <div class="wz-form-group">
+              <label class="wz-label">Mode</label>
+              <select class="wz-select" id="wz-mode">
+                <option value="farm">🚜 Farm — high-frequency volume</option>
+                <option value="trade">📈 Trade — signal-filtered entries</option>
               </select>
             </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Order Size Min <span class="req">*</span></label>
-              <input class="form-input" type="number" name="orderSizeMin" placeholder="0.003" step="0.001" min="0.001" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Order Size Max <span class="req">*</span></label>
-              <input class="form-input" type="number" name="orderSizeMax" placeholder="0.005" step="0.001" min="0.001" />
+            <div class="wz-form-group">
+              <label class="wz-label">Tags</label>
+              <input class="wz-input" type="text" id="wz-tags" placeholder="Farm, TWAP" autocomplete="off" />
             </div>
           </div>
-        </div>
-
-        <!-- Hedge Bot fields -->
-        <div class="form-section fields-hedge" id="fields-hedge">
-          <div class="form-section-title">Hedge Bot Settings</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Symbol A <span class="req">*</span></label>
-              <input class="form-input" type="text" name="symbolA" placeholder="BTC-USD" />
+          <!-- Hedge-only fields -->
+          <div id="wz-hedge-config" style="display:none">
+            <div class="wz-section-title">Hedge Parameters</div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Leg Value USD <span class="req">*</span></label>
+                <input class="wz-input" type="number" id="wz-legValueUsd" placeholder="1000" min="1" value="1000" />
+                <span class="wz-field-error" id="err-legValueUsd">Must be > 0</span>
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Holding Period (secs)</label>
+                <input class="wz-input" type="number" id="wz-holdingPeriodSecs" placeholder="300" min="10" value="300" />
+              </div>
             </div>
-            <div class="form-group">
-              <label class="form-label">Symbol B <span class="req">*</span></label>
-              <input class="form-input" type="text" name="symbolB" placeholder="ETH-USD" />
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Leg Value USD <span class="req">*</span></label>
-              <input class="form-input" type="number" name="legValueUsd" placeholder="1000" min="1" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Holding Period (secs) <span class="req">*</span></label>
-              <input class="form-input" type="number" name="holdingPeriodSecs" placeholder="300" min="10" />
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Profit Target USD <span class="req">*</span></label>
-              <input class="form-input" type="number" name="profitTargetUsd" placeholder="50" min="0.01" step="0.01" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Max Loss USD <span class="req">*</span></label>
-              <input class="form-input" type="number" name="maxLossUsd" placeholder="30" min="0.01" step="0.01" />
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Profit Target USD</label>
+                <input class="wz-input" type="number" id="wz-profitTargetUsd" placeholder="50" min="0.01" step="0.01" value="50" />
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Max Loss USD</label>
+                <input class="wz-input" type="number" id="wz-maxLossUsd" placeholder="30" min="0.01" step="0.01" value="30" />
+              </div>
             </div>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Volume Spike Multiplier <span class="req">*</span></label>
-              <input class="form-input" type="number" name="volumeSpikeMultiplier" placeholder="2.0" min="1.01" step="0.1" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Volume Rolling Window <span class="req">*</span></label>
-              <input class="form-input" type="number" name="volumeRollingWindow" placeholder="20" min="2" />
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Funding Rate Weight</label>
-              <input class="form-input" type="number" name="fundingRateWeight" placeholder="0.1" min="0" max="1" step="0.01" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Cooldown (secs)</label>
-              <input class="form-input" type="number" name="cooldownSecs" placeholder="30" min="0" />
-            </div>
+          <div class="wz-check-row" style="margin-top:.75rem">
+            <input type="checkbox" id="wz-autoStart" />
+            <label for="wz-autoStart">Auto-start bot after creation</label>
           </div>
         </div>
 
-        <!-- Auto-start -->
-        <div class="form-row full" style="margin-top:1rem;">
-          <div class="checkbox-row">
-            <input type="checkbox" name="autoStart" id="autoStart" />
-            <label for="autoStart">Auto-start bot after creation</label>
+        <!-- ── Step 4: Review ── -->
+        <div class="wz-panel" id="wz-panel-4">
+          <div class="wz-section-title">Review & Launch</div>
+          <div class="review-grid" id="wz-review-grid"></div>
+          <div class="review-creds">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Credentials encrypted with AES-256-GCM — never stored in plaintext
           </div>
         </div>
+      </div>
 
-        <div class="modal-footer">
-          <button type="button" class="btn btn-ghost" id="modal-cancel-btn">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="modal-submit-btn">Create Bot</button>
+      <!-- Footer -->
+      <div class="wz-footer">
+        <div class="wz-footer-left">
+          <button class="wz-btn wz-btn-ghost" id="wz-back" style="display:none">← Back</button>
         </div>
-      </form>
+        <div class="wz-footer-right">
+          <span class="wz-step-counter" id="wz-step-counter">Step 1 of 5</span>
+          <button class="wz-btn wz-btn-primary" id="wz-next">Next →</button>
+        </div>
+      </div>
     </div>
   </div>
 
+  <!-- ── Wizard JS ─────────────────────────────────────────────────────────── -->
   <script>
-  (function() {
-    var overlay    = document.getElementById('create-bot-modal');
-    var form       = document.getElementById('create-bot-form');
-    var errEl      = document.getElementById('modal-error');
-    var submitBtn  = document.getElementById('modal-submit-btn');
-    var selectedType = 'standard';
+  (function () {
+    'use strict';
 
-    document.getElementById('btn-create-bot').addEventListener('click', function() {
+    // ── State ─────────────────────────────────────────────────────────────────
+    var state = {
+      step: 0,
+      exchange: 'sodex',
+      botType: 'standard',
+      symbol: '',
+      symbolB: '',
+      symbols: [],
+    };
+
+    var TOTAL_STEPS = 5;
+
+    // ── DOM refs ──────────────────────────────────────────────────────────────
+    var overlay   = document.getElementById('wz-overlay');
+    var errBanner = document.getElementById('wz-error');
+    var nextBtn   = document.getElementById('wz-next');
+    var backBtn   = document.getElementById('wz-back');
+    var counter   = document.getElementById('wz-step-counter');
+
+    // ── Open / Close ──────────────────────────────────────────────────────────
+    document.getElementById('btn-create-bot').addEventListener('click', openWizard);
+    document.getElementById('wz-close').addEventListener('click', closeWizard);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeWizard(); });
+
+    function openWizard() {
+      resetState();
+      document.body.classList.add('modal-open');
       overlay.classList.add('open');
-      errEl.classList.remove('visible');
-      form.reset();
-      selectType('standard');
-    });
-
-    document.getElementById('modal-close-btn').addEventListener('click', closeModal);
-    document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
-    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
-
-    function closeModal() { overlay.classList.remove('open'); }
-
-    document.querySelectorAll('.type-tab').forEach(function(tab) {
-      tab.addEventListener('click', function() { selectType(tab.dataset.type); });
-    });
-
-    function selectType(type) {
-      selectedType = type;
-      document.querySelectorAll('.type-tab').forEach(function(t) {
-        t.classList.toggle('selected', t.dataset.type === type);
-      });
-      document.getElementById('fields-standard').classList.toggle('visible', type === 'standard');
-      document.getElementById('fields-hedge').classList.toggle('visible', type === 'hedge');
+      goToStep(0);
     }
 
-    form.addEventListener('submit', async function(e) {
-      e.preventDefault();
-      errEl.classList.remove('visible');
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Creating\u2026';
+    function closeWizard() {
+      overlay.classList.remove('open');
+      document.body.classList.remove('modal-open');
+    }
 
-      try {
-        var data = buildPayload();
-        var r = await fetch('/api/bots', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
-        var json = await r.json();
-        if (!r.ok) throw new Error(json.error || 'Failed to create bot');
-        closeModal();
-        if (typeof refresh === 'function') refresh();
-      } catch (err) {
-        errEl.textContent = err.message;
-        errEl.classList.add('visible');
-      } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Create Bot';
+    function resetState() {
+      state.step = 0;
+      state.exchange = 'sodex';
+      state.botType = 'standard';
+      state.symbol = '';
+      state.symbolB = '';
+      state.symbols = [];
+      clearErrors();
+      // Reset exchange tiles
+      document.querySelectorAll('.ex-tile').forEach(function (t) {
+        t.classList.toggle('selected', t.dataset.exchange === 'sodex');
+      });
+      // Reset type tiles
+      document.querySelectorAll('.type-tile').forEach(function (t) {
+        t.classList.toggle('selected', t.dataset.type === 'standard');
+      });
+      // Reset form inputs
+      ['wz-id','wz-name','wz-tags','wz-apiKey','wz-subaccount','wz-apiSecret',
+       'wz-nodeApiKey','wz-decibelSubaccount','wz-privateKey',
+       'wz-userAddress','wz-dangoPrivateKey',
+       'wz-hibachiApiKey','wz-hibachiAccountId','wz-hibachiPrivateKey','wz-hibachiSecretKey'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      document.getElementById('wz-mode').value = 'farm';
+      document.getElementById('wz-network').value = 'mainnet';
+      document.getElementById('wz-hibachiAccountType').value = 'trustless';
+      document.getElementById('wz-hibachi-trustless-row').style.display = '';
+      document.getElementById('wz-hibachi-managed-row').style.display = 'none';
+      document.getElementById('wz-autoStart').checked = false;
+      document.getElementById('wz-legValueUsd').value = '1000';
+      document.getElementById('wz-holdingPeriodSecs').value = '300';
+      document.getElementById('wz-profitTargetUsd').value = '50';
+      document.getElementById('wz-maxLossUsd').value = '30';
+    }
+
+    // ── Step navigation ───────────────────────────────────────────────────────
+    nextBtn.addEventListener('click', function () {
+      // Use step index instead of button text to avoid emoji matching issues
+      if (state.step === TOTAL_STEPS - 1) {
+        submitBot();
+      } else {
+        if (validateStep(state.step)) goToStep(state.step + 1);
       }
     });
 
+    backBtn.addEventListener('click', function () {
+      goToStep(state.step - 1);
+    });
+
+    function goToStep(n) {
+      clearErrors();
+      // Hide all panels
+      document.querySelectorAll('.wz-panel').forEach(function (p) { p.classList.remove('active'); });
+      document.getElementById('wz-panel-' + n).classList.add('active');
+
+      // Update step indicators
+      document.querySelectorAll('.wz-step').forEach(function (s) {
+        var i = parseInt(s.dataset.step, 10);
+        s.classList.remove('active', 'done');
+        if (i < n) s.classList.add('done');
+        else if (i === n) s.classList.add('active');
+      });
+
+      state.step = n;
+      counter.textContent = 'Step ' + (n + 1) + ' of ' + TOTAL_STEPS;
+      backBtn.style.display = n > 0 ? '' : 'none';
+
+      // Always set button text based on current step — never leave stale "Launch Bot" on non-final steps
+      nextBtn.disabled = false;
+      nextBtn.textContent = n === TOTAL_STEPS - 1 ? '\uD83D\uDE80 Launch Bot' : 'Next \u2192';
+
+      // Side effects per step
+      if (n === 1) showCredsPanel();
+      if (n === 2) loadSymbols();
+      if (n === 3) showHedgeConfig();
+      if (n === 4) buildReview();
+    }
+
+    // ── Step 0: Exchange + Type tiles ─────────────────────────────────────────
+    document.querySelectorAll('.ex-tile').forEach(function (tile) {
+      tile.addEventListener('click', function () {
+        state.exchange = tile.dataset.exchange;
+        state.symbol = '';
+        state.symbolB = '';
+        document.querySelectorAll('.ex-tile').forEach(function (t) { t.classList.remove('selected'); });
+        tile.classList.add('selected');
+        // Auto-fill bot ID
+        var idEl = document.getElementById('wz-id');
+        if (idEl && !idEl.value) idEl.value = 'my-' + state.exchange + '-bot';
+        var nameEl = document.getElementById('wz-name');
+        if (nameEl && !nameEl.value) nameEl.value = state.exchange.charAt(0).toUpperCase() + state.exchange.slice(1) + ' Bot';
+      });
+    });
+
+    document.querySelectorAll('.type-tile').forEach(function (tile) {
+      tile.addEventListener('click', function () {
+        state.botType = tile.dataset.type;
+        document.querySelectorAll('.type-tile').forEach(function (t) { t.classList.remove('selected'); });
+        tile.classList.add('selected');
+      });
+    });
+
+    // ── Hibachi account type toggle ───────────────────────────────────────────
+    document.getElementById('wz-hibachiAccountType').addEventListener('change', function () {
+      var isTrustless = this.value === 'trustless';
+      document.getElementById('wz-hibachi-trustless-row').style.display = isTrustless ? '' : 'none';
+      document.getElementById('wz-hibachi-managed-row').style.display   = isTrustless ? 'none' : '';
+    });
+
+    // ── Step 1: Credentials panel ─────────────────────────────────────────────
+    function showCredsPanel() {
+      ['sodex','decibel','dango','hibachi'].forEach(function (ex) {
+        var el = document.getElementById('wz-creds-' + ex);
+        if (el) el.style.display = ex === state.exchange ? '' : 'none';
+      });
+    }
+
+    // ── Step 2: Symbol loading ────────────────────────────────────────────────
+    var BTC_DEFAULTS = { sodex: 'BTC-USD', decibel: 'BTC/USD', dango: 'BTC-USD', hibachi: 'BTC/USDT-P' };
+
+    function loadSymbols() {
+      var title = document.getElementById('wz-market-title');
+      title.textContent = state.botType === 'hedge' ? 'Symbol A (Long leg)' : 'Select Symbol';
+
+      var bSection = document.getElementById('wz-sym-b-section');
+      bSection.style.display = state.botType === 'hedge' ? '' : 'none';
+
+      var loading  = document.getElementById('wz-sym-loading');
+      var ready   = document.getElementById('wz-sym-ready');
+      var fallback = document.getElementById('wz-sym-fallback');
+      var selA    = document.getElementById('wz-sym-select');
+      var selB    = document.getElementById('wz-sym-select-b');
+      var meta    = document.getElementById('wz-sym-meta');
+
+      // Reset state
+      loading.style.display  = '';
+      ready.style.display    = 'none';
+      fallback.style.display = 'none';
+      selA.innerHTML = '<option value="">— Select symbol —</option>';
+      selB.innerHTML = '<option value="">— Select symbol —</option>';
+      state.symbol  = '';
+      state.symbolB = '';
+      if (meta) meta.textContent = '';
+
+      fetch('/api/exchanges/' + state.exchange + '/symbols')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var symbols = data.symbols;
+          loading.style.display = 'none';
+
+          if (symbols && symbols.length > 0) {
+            ready.style.display = '';
+            // Populate dropdown
+            symbols.forEach(function (sym) {
+              [selA, selB].forEach(function (sel) {
+                var opt = document.createElement('option');
+                opt.value = sym;
+                opt.textContent = sym;
+                sel.appendChild(opt);
+              });
+            });
+            // Auto-select BTC default for this exchange
+            var btcDefault = BTC_DEFAULTS[state.exchange] || (symbols[0] || '');
+            // Try exact match first, then first available
+            var btcIdx = symbols.indexOf(btcDefault);
+            var selected = btcIdx >= 0 ? btcDefault : symbols[0];
+            selA.value = selected;
+            state.symbol = selected;
+            if (meta) meta.textContent = 'Trading pair for ' + state.exchange.toUpperCase() + ' — ' + selected;
+            if (selB) { selB.value = ''; }
+          } else {
+            // Live fetch failed or returned empty — show manual input
+            fallback.style.display = '';
+            var manual = document.getElementById('wz-sym-manual');
+            if (manual) manual.value = BTC_DEFAULTS[state.exchange] || '';
+          }
+        })
+        .catch(function () {
+          loading.style.display = 'none';
+          fallback.style.display = '';
+          var manual = document.getElementById('wz-sym-manual');
+          if (manual) manual.value = BTC_DEFAULTS[state.exchange] || '';
+        });
+    }
+
+    // Wire select change → state
+    document.getElementById('wz-sym-select').addEventListener('change', function () {
+      state.symbol = this.value;
+      hideFieldError('symbol');
+    });
+    document.getElementById('wz-sym-select-b').addEventListener('change', function () {
+      state.symbolB = this.value;
+      hideFieldError('symbolB');
+    });
+    // Manual fallback input
+    document.getElementById('wz-sym-manual').addEventListener('input', function () {
+      state.symbol = this.value.trim().toUpperCase();
+      hideFieldError('symbol');
+    });
+
+    // ── Step 3: Hedge config visibility ──────────────────────────────────────
+    function showHedgeConfig() {
+      document.getElementById('wz-hedge-config').style.display = state.botType === 'hedge' ? '' : 'none';
+    }
+
+    // ── Step 4: Review ────────────────────────────────────────────────────────
+    function buildReview() {
+      try {
+        var grid = document.getElementById('wz-review-grid');
+        if (!grid) return;
+
+        var idEl   = document.getElementById('wz-id');
+        var nameEl = document.getElementById('wz-name');
+        var modeEl = document.getElementById('wz-mode');
+        var tagsEl = document.getElementById('wz-tags');
+        var autoEl = document.getElementById('wz-autoStart');
+
+        var id   = idEl   ? idEl.value.trim()   : '';
+        var name = nameEl ? nameEl.value.trim()  : '';
+        var mode = modeEl ? modeEl.value         : 'farm';
+        var tags = tagsEl ? tagsEl.value.trim()  : '';
+
+        var items = [
+          { label: 'Exchange',     value: state.exchange.toUpperCase(), accent: true },
+          { label: 'Bot Type',     value: state.botType === 'hedge' ? 'Hedge Bot ⚖️' : 'Standard Bot 🤖' },
+          { label: 'Bot ID',       value: id   || '(not set)' },
+          { label: 'Display Name', value: name || '(not set)' },
+          { label: 'Symbol',       value: state.botType === 'hedge'
+              ? (state.symbol || '?') + ' / ' + (state.symbolB || '?')
+              : (state.symbol || '(not set)') },
+          { label: 'Mode',         value: mode === 'farm' ? 'Farm' : 'Trade' },
+        ];
+        if (tags) items.push({ label: 'Tags', value: tags });
+        if (state.botType === 'hedge') {
+          var lvEl = document.getElementById('wz-legValueUsd');
+          items.push({ label: 'Leg Value', value: '$' + (lvEl ? lvEl.value : '1000') });
+        }
+        if (autoEl && autoEl.checked) {
+          items.push({ label: 'Auto-start', value: 'Yes', accent: true });
+        }
+
+        grid.innerHTML = items.map(function (item) {
+          return '<div class="review-item">' +
+                   '<div class="review-label">' + item.label + '</div>' +
+                   '<div class="review-value' + (item.accent ? ' accent' : '') + '">' + item.value + '</div>' +
+                 '</div>';
+        }).join('');
+      } catch (e) {
+        console.error('[Wizard] buildReview error:', e);
+      }
+    }
+
+    // ── Validation ────────────────────────────────────────────────────────────
+    function validateStep(step) {
+      clearErrors();
+      var ok = true;
+
+      if (step === 0) {
+        // Exchange and type are always selected (tiles default)
+        return true;
+      }
+
+      if (step === 1) {
+        if (state.exchange === 'sodex') {
+          if (!val('wz-apiKey'))     { showFieldError('apiKey', 'API Key is required'); ok = false; }
+          if (!val('wz-subaccount')) { showFieldError('subaccount', 'Subaccount address is required'); ok = false; }
+          if (!val('wz-apiSecret'))  { showFieldError('apiSecret', 'Private key is required'); ok = false; }
+        } else if (state.exchange === 'decibel') {
+          if (!val('wz-privateKey')) { showFieldError('privateKey', 'Private key is required'); ok = false; }
+        } else if (state.exchange === 'dango') {
+          if (!val('wz-userAddress'))     { showFieldError('userAddress', 'User address is required'); ok = false; }
+          if (!val('wz-dangoPrivateKey')) { showFieldError('dangoPrivateKey', 'Private key is required'); ok = false; }
+        } else if (state.exchange === 'hibachi') {
+          if (!val('wz-hibachiApiKey')) { showFieldError('hibachiApiKey', 'API Key is required'); ok = false; }
+          if (!val('wz-hibachiAccountId')) { showFieldError('hibachiAccountId', 'Account ID is required'); ok = false; }
+          var acctType = document.getElementById('wz-hibachiAccountType').value;
+          if (acctType === 'trustless') {
+            var pk = val('wz-hibachiPrivateKey');
+            if (!pk) { showFieldError('hibachiPrivateKey', 'Private key is required'); ok = false; }
+            else if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) { showFieldError('hibachiPrivateKey', 'Must be 0x-prefixed 64-char hex'); ok = false; }
+          } else {
+            if (!val('wz-hibachiSecretKey')) { showFieldError('hibachiSecretKey', 'Secret key is required'); ok = false; }
+          }
+        }
+        return ok;
+      }
+
+      if (step === 2) {
+        if (!state.symbol) { showFieldError('symbol', 'Please select a symbol'); ok = false; }
+        if (state.botType === 'hedge') {
+          if (!state.symbolB) { showFieldError('symbolB', 'Please select Symbol B'); ok = false; }
+          if (state.symbol && state.symbolB && state.symbol === state.symbolB) {
+            showFieldError('symbolB', 'Symbol B must be different from Symbol A'); ok = false;
+          }
+        }
+        return ok;
+      }
+
+      if (step === 3) {
+        var id = val('wz-id');
+        if (!id) { showFieldError('id', 'Bot ID is required'); ok = false; }
+        else if (!/^[a-z0-9][a-z0-9\-]*$/.test(id)) { showFieldError('id', 'Lowercase letters, numbers, hyphens only'); ok = false; }
+        if (!val('wz-name')) { showFieldError('name', 'Display name is required'); ok = false; }
+        if (state.botType === 'hedge') {
+          var lv = parseFloat(document.getElementById('wz-legValueUsd').value);
+          if (!lv || lv <= 0) { showFieldError('legValueUsd', 'Must be greater than 0'); ok = false; }
+        }
+        return ok;
+      }
+
+      return ok;
+    }
+
+    function val(id) {
+      var el = document.getElementById(id);
+      return el ? el.value.trim() : '';
+    }
+
+    function showFieldError(field, msg) {
+      var errEl = document.getElementById('err-' + field);
+      var inputEl = document.getElementById('wz-' + field);
+      if (errEl) { errEl.textContent = msg; errEl.classList.add('visible'); errEl.style.display = ''; }
+      if (inputEl) inputEl.classList.add('error');
+    }
+
+    function hideFieldError(field) {
+      var errEl = document.getElementById('err-' + field);
+      var inputEl = document.getElementById('wz-' + field);
+      if (errEl) { errEl.classList.remove('visible'); }
+      if (inputEl) inputEl.classList.remove('error');
+    }
+
+    function clearErrors() {
+      errBanner.classList.remove('visible');
+      document.querySelectorAll('.wz-field-error').forEach(function (e) { e.classList.remove('visible'); });
+      document.querySelectorAll('.wz-input.error, .wz-select.error').forEach(function (e) { e.classList.remove('error'); });
+    }
+
+    // Clear field error on input
+    document.querySelectorAll('.wz-input, .wz-select').forEach(function (el) {
+      el.addEventListener('input', function () {
+        el.classList.remove('error');
+        var id = el.id.replace('wz-', '');
+        var errEl = document.getElementById('err-' + id);
+        if (errEl) errEl.classList.remove('visible');
+      });
+    });
+
+    // ── Submit ────────────────────────────────────────────────────────────────
+    async function submitBot() {
+      clearErrors();
+      nextBtn.disabled = true;
+      nextBtn.textContent = 'Launching\u2026';
+
+      try {
+        var payload = buildPayload();
+        console.log('[Wizard] Submitting bot:', JSON.stringify(Object.assign({}, payload, {
+          apiSecret: payload.apiSecret ? '***' : undefined,
+          privateKey: payload.privateKey ? '***' : undefined,
+          dangoPrivateKey: payload.dangoPrivateKey ? '***' : undefined,
+          hibachiPrivateKey: payload.hibachiPrivateKey ? '***' : undefined,
+          hibachiSecretKey: payload.hibachiSecretKey ? '***' : undefined,
+        })));
+
+        var r = await fetch('/api/bots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        var json = await r.json();
+        if (!r.ok) {
+          console.error('[Wizard] Server error:', r.status, json);
+          throw Object.assign(new Error(json.error || json.hint || 'Failed to create bot'), { _status: r.status, _body: json });
+        }
+        closeWizard();
+        if (typeof refresh === 'function') refresh();
+      } catch (err) {
+        console.error('[Wizard] submitBot error:', err);
+        err.message && (errBanner.textContent = err.message);
+        errBanner.classList.add('visible');
+        errBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // credential errors → go back to credentials step
+        var msg = (err.message || '').toLowerCase();
+        var isCredErr = msg.includes('missing credentials') || msg.includes('invalid credentials') ||
+                        msg.includes('authentication failed') || msg.includes('unauthorized') ||
+                        msg.startsWith('missing sodex') || msg.startsWith('missing dango') ||
+                        msg.startsWith('missing decibel') || msg.startsWith('missing hibachi');
+        if (isCredErr) goToStep(1);
+      } finally {
+        nextBtn.disabled = false;
+        // Only restore "Launch Bot" text if we're still on the final step.
+        // If a credential error sent us back to step 1, goToStep() already set the correct text.
+        if (state.step === TOTAL_STEPS - 1) {
+          nextBtn.textContent = '\uD83D\uDE80 Launch Bot';
+        }
+      }
+    }
+
     function buildPayload() {
-      var fd = new FormData(form);
-      var raw = Object.fromEntries(fd.entries());
-      var tagsRaw = (raw.tags || '').toString().trim();
-      var tags = tagsRaw ? tagsRaw.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
+      var id   = val('wz-id');
+      var name = val('wz-name');
+      var mode = document.getElementById('wz-mode').value;
+      var tags = val('wz-tags').split(',').map(function (t) { return t.trim(); }).filter(Boolean);
+      var autoStart = document.getElementById('wz-autoStart').checked;
 
       var base = {
-        id:              raw.id,
-        name:            raw.name,
-        exchange:        raw.exchange,
-        credentialKey:   raw.credentialKey,
-        tradeLogBackend: raw.tradeLogBackend,
-        tradeLogPath:    raw.tradeLogPath,
+        id:              id,
+        name:            name,
+        exchange:        state.exchange,
+        credentialKey:   id,   // Bot ID — adapter already created inline from credentials
+        tradeLogBackend: 'json',
+        tradeLogPath:    './trades-' + id + '.json',
         tags:            tags,
-        autoStart:       form.querySelector('[name="autoStart"]').checked,
+        autoStart:       autoStart,
       };
 
-      if (selectedType === 'hedge') {
+      // Attach credentials
+      if (state.exchange === 'sodex') {
+        base.apiKey    = val('wz-apiKey');
+        base.apiSecret = val('wz-apiSecret');
+        base.subaccount = val('wz-subaccount');
+      } else if (state.exchange === 'decibel') {
+        base.privateKey          = val('wz-privateKey');
+        base.nodeApiKey          = val('wz-nodeApiKey');
+        base.subaccount          = val('wz-decibelSubaccount');
+      } else if (state.exchange === 'dango') {
+        base.dangoPrivateKey = val('wz-dangoPrivateKey');
+        base.userAddress     = val('wz-userAddress');
+        base.network         = document.getElementById('wz-network').value;
+      } else if (state.exchange === 'hibachi') {
+        base.hibachiApiKey      = val('wz-hibachiApiKey');
+        base.hibachiAccountId   = val('wz-hibachiAccountId');
+        base.hibachiAccountType = document.getElementById('wz-hibachiAccountType').value;
+        if (base.hibachiAccountType === 'trustless') {
+          base.hibachiPrivateKey = val('wz-hibachiPrivateKey');
+        } else {
+          base.hibachiSecretKey = val('wz-hibachiSecretKey');
+        }
+      }
+
+      if (state.botType === 'hedge') {
         return Object.assign({}, base, {
           botType:               'hedge',
-          symbolA:               raw.symbolA,
-          symbolB:               raw.symbolB,
-          legValueUsd:           parseFloat(raw.legValueUsd),
-          holdingPeriodSecs:     parseInt(raw.holdingPeriodSecs, 10),
-          profitTargetUsd:       parseFloat(raw.profitTargetUsd),
-          maxLossUsd:            parseFloat(raw.maxLossUsd),
-          volumeSpikeMultiplier: parseFloat(raw.volumeSpikeMultiplier),
-          volumeRollingWindow:   parseInt(raw.volumeRollingWindow, 10),
-          fundingRateWeight:     parseFloat(raw.fundingRateWeight || '0'),
-          cooldownSecs:          raw.cooldownSecs ? parseInt(raw.cooldownSecs, 10) : undefined,
+          symbolA:               state.symbol,
+          symbolB:               state.symbolB,
+          legValueUsd:           parseFloat(document.getElementById('wz-legValueUsd').value) || 1000,
+          holdingPeriodSecs:     parseInt(document.getElementById('wz-holdingPeriodSecs').value, 10) || 300,
+          profitTargetUsd:       parseFloat(document.getElementById('wz-profitTargetUsd').value) || 50,
+          maxLossUsd:            parseFloat(document.getElementById('wz-maxLossUsd').value) || 30,
+          volumeSpikeMultiplier: 2.0,
+          volumeRollingWindow:   20,
+          fundingRateWeight:     0.1,
+          cooldownSecs:          30,
         });
       }
 
       return Object.assign({}, base, {
-        symbol:       raw.symbol,
-        mode:         raw.mode,
-        orderSizeMin: parseFloat(raw.orderSizeMin),
-        orderSizeMax: parseFloat(raw.orderSizeMax),
+        symbol:       state.symbol,
+        mode:         mode,
+        orderSizeMin: 0.003,
+        orderSizeMax: 0.005,
       });
     }
+
   })();
   </script>
 
@@ -1175,10 +1405,7 @@
       if (moon) moon.style.display = isLight ? 'none'  : '';
       if (sun)  sun.style.display  = isLight ? ''      : 'none';
     }
-
-    // Apply icon state on load (body class already set by inline script)
     applyTheme(document.body.classList.contains('light'));
-
     window.toggleTheme = function () {
       var isLight = !document.body.classList.contains('light');
       localStorage.setItem('drift-theme', isLight ? 'light' : 'dark');
@@ -1194,16 +1421,12 @@
   <script>
   (function () {
     var fullAddress = null;
+    function shortAddr(addr) { return addr.slice(0, 6) + '\u2026' + addr.slice(-4); }
 
-    function shortAddr(addr) {
-      return addr.slice(0, 6) + '\u2026' + addr.slice(-4);
-    }
-
-    // Fetch session info and render widget
     fetch('/api/auth/me')
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (!data.ok || !data.address) return; // passcode auth — no address to show
+        if (!data.ok || !data.address) return;
         fullAddress = data.address;
         var short = shortAddr(fullAddress);
         document.getElementById('wallet-chip-addr').textContent = short;
@@ -1211,52 +1434,36 @@
         document.getElementById('wallet-popup-full').textContent = fullAddress;
         document.getElementById('wallet-widget').style.display = '';
       })
-      .catch(function () { /* not wallet-authed, hide widget */ });
+      .catch(function () {});
 
-    // Toggle popup
     window.toggleWalletPopup = function (e) {
       e.stopPropagation();
       document.getElementById('wallet-popup').classList.toggle('open');
     };
-
-    // Close popup on outside click
     document.addEventListener('click', function (e) {
       var popup = document.getElementById('wallet-popup');
       var chip  = document.getElementById('wallet-chip');
-      if (popup && !popup.contains(e.target) && e.target !== chip) {
-        popup.classList.remove('open');
-      }
+      if (popup && !popup.contains(e.target) && e.target !== chip) popup.classList.remove('open');
     });
-
-    // Copy address
     window.copyWalletAddress = function () {
       if (!fullAddress) return;
       navigator.clipboard.writeText(fullAddress).then(function () {
         var toast = document.getElementById('copy-toast');
         toast.classList.add('show');
         setTimeout(function () { toast.classList.remove('show'); }, 2000);
-        // Update button text briefly
         var btn = document.getElementById('btn-copy-addr');
         var orig = btn.innerHTML;
         btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Copied!';
         setTimeout(function () { btn.innerHTML = orig; }, 2000);
       }).catch(function () {
-        // Fallback for non-HTTPS
         var ta = document.createElement('textarea');
-        ta.value = fullAddress;
-        ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
+        ta.value = fullAddress; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
       });
       document.getElementById('wallet-popup').classList.remove('open');
     };
-
-    // Disconnect
     window.walletDisconnect = function () {
-      fetch('/api/auth/logout', { method: 'POST' }).finally(function () {
-        window.location.href = '/wallet-login';
-      });
+      fetch('/api/auth/logout', { method: 'POST' }).finally(function () { window.location.href = '/wallet-login'; });
     };
   })();
   </script>

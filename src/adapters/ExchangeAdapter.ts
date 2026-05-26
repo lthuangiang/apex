@@ -50,4 +50,11 @@ export interface ExchangeAdapter {
     get_recent_trades(symbol: string, limit: number): Promise<RawTrade[]>;
     /** Fetch OHLCV klines. Returns candles in chronological order (oldest first). */
     get_klines?(symbol: string, interval: string, limit: number): Promise<Kline[]>;
+    /**
+     * Fetch the list of tradeable market symbols from the exchange.
+     * Returns symbol names in the format the exchange expects (e.g. "BTC/USD" for Decibel,
+     * "BTC-USD" for SoDEX/Dango). Used by the Create Bot wizard to populate the symbol picker.
+     * Optional — falls back to `supportedSymbols` static list if not implemented.
+     */
+    get_markets?(): Promise<string[]>;
 }

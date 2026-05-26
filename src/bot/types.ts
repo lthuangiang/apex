@@ -8,7 +8,7 @@ export interface BotConfig {
   // Identity
   id: string;                    // e.g. "sodex-bot", "dango-bot"
   name: string;                  // Display name: "Bot SoDEX"
-  exchange: 'sodex' | 'dango' | 'decibel';
+  exchange: 'sodex' | 'dango' | 'decibel' | 'hibachi';
   symbol: string;                // e.g. "BTC-USD"
   tags: string[];                // e.g. ["TWAP", "Aggressive"]
   autoStart: boolean;
@@ -46,6 +46,13 @@ export interface BotConfig {
   farmSlPercent?: number;
   farmScoreEdge?: number;
   farmMinConfidence?: number;
+  farmSafeModeEnabled?: boolean;
+  farmVolumeModeEnabled?: boolean;
+  farmReverseSignalEnabled?: boolean;
+  farmUseDynamicSizing?: boolean;
+  farmWeakSignalSizeMult?: number;
+  farmNoPressureSizeMult?: number;
+  farmPingpongSizeMult?: number;
   farmEarlyExitSecs?: number;
   farmEarlyExitPnl?: number;
   farmExtraWaitSecs?: number;
@@ -53,6 +60,8 @@ export interface BotConfig {
   farmCooldownSecs?: number;
   tradeTpPercent?: number;
   tradeSlPercent?: number;
+  tradeScoreThreshold?: number;
+  tradeMinConfidence?: number;
   cooldownMinMins?: number;
   cooldownMaxMins?: number;
   minPositionValueUsd?: number;
@@ -91,7 +100,7 @@ export interface HedgeBotConfig {
   id: string;
   name: string;
   botType: 'hedge';                          // discriminant field
-  exchange: 'sodex' | 'dango' | 'decibel';
+  exchange: 'sodex' | 'dango' | 'decibel' | 'hibachi';
   tags: string[];
   autoStart: boolean;
   credentialKey: string;

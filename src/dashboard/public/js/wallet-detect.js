@@ -95,12 +95,13 @@
   // ── Build WalletConnect button (always shown) ────────────────────────────────
 
   function buildWCButton() {
+    var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     return buildWalletBtn({
       id: 'btn-walletconnect',
       iconContent: WC_ICON_SVG,
       iconBg: 'linear-gradient(135deg,#3b99fc,#2563eb)',
-      name: 'WalletConnect',
-      sub: 'Mobile & hardware wallets',
+      name: isMobile ? 'All Wallets' : 'WalletConnect',
+      sub: isMobile ? 'MetaMask, Binance, OKX, SafePal & 550+ more' : 'Mobile & hardware wallets · 550+ supported',
       onClick: function () {
         if (typeof window.connectWalletConnect === 'function') {
           window.connectWalletConnect();
@@ -123,17 +124,97 @@
 
   // ── Render the wallet list ───────────────────────────────────────────────────
 
+  // Mobile wallet deep-link configs — opens the dApp URL inside the wallet's browser
+  var MOBILE_WALLETS = [
+    {
+      name: 'MetaMask',
+      sub: 'Most popular · iOS & Android',
+      icon: '<span style="font-size:1.4rem">🦊</span>',
+      iconBg: '#f6851b',
+      getHref: function () {
+        return 'https://metamask.app.link/dapp/' + window.location.host + window.location.pathname;
+      },
+    },
+    {
+      name: 'Binance Web3 Wallet',
+      sub: 'All Wallets · iOS & Android',
+      icon: '<img src="https://public.bnbstatic.com/image/cms/blog/20230912/a4b5c6d7-e8f9-0a1b-2c3d-4e5f6a7b8c9d.png" width="22" height="22" style="border-radius:4px;display:block" alt="Binance" onerror="this.parentNode.innerHTML=\'<span style=\\\"font-size:1.4rem\\\">🟡</span>\'">',
+      iconBg: '#F0B90B',
+      getHref: function () {
+        // Binance app deep link — opens dApp URL inside Binance built-in browser
+        return 'bnc://app.binance.com/mp/app?appId=S1001&startPagePath=pages%2Fbrowser%2Findex&startPageQuery=url%3D' + encodeURIComponent(window.location.href);
+      },
+    },
+    {
+      name: 'Trust Wallet',
+      sub: 'Multi-chain · iOS & Android',
+      icon: '<span style="font-size:1.4rem">🛡️</span>',
+      iconBg: '#3375BB',
+      getHref: function () {
+        return 'https://link.trustwallet.com/open_url?coin_id=60&url=' + encodeURIComponent(window.location.href);
+      },
+    },
+    {
+      name: 'Rainbow',
+      sub: 'iOS & Android',
+      icon: '<span style="font-size:1.4rem">🌈</span>',
+      iconBg: '#174299',
+      getHref: function () {
+        return 'https://rnbwapp.com/wc?uri=' + encodeURIComponent(window.location.href);
+      },
+    },
+    {
+      name: 'Coinbase Wallet',
+      sub: 'iOS & Android',
+      icon: '<span style="font-size:1.4rem">🔵</span>',
+      iconBg: '#0052FF',
+      getHref: function () {
+        return 'https://go.cb-w.com/dapp?cb_url=' + encodeURIComponent(window.location.href);
+      },
+    },
+  ];
+
+  function buildMobileButtons(container) {
+    MOBILE_WALLETS.forEach(function (w) {
+      var btn = buildWalletBtn({
+        iconContent: w.icon,
+        iconBg: w.iconBg,
+        name: w.name,
+        sub: w.sub,
+        onClick: function () {
+          window.location.href = w.getHref();
+        },
+      });
+      container.appendChild(btn);
+    });
+
+    var note = document.createElement('p');
+    note.style.cssText = 'font-size:.65rem;color:#4a5a72;text-align:center;margin-top:.75rem;line-height:1.5';
+    note.textContent = 'Opens your wallet app → connects automatically';
+    container.appendChild(note);
+  }
+
   function render() {
     var container = document.getElementById('wallet-list');
     if (!container) return;
     container.innerHTML = '';
 
     var detected = Array.from(providers.values());
+    var isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-    // ── 0 wallets: WalletConnect + install link ──────────────────────────────
+    // ── 0 wallets detected ───────────────────────────────────────────────────
     if (detected.length === 0) {
-      container.appendChild(buildWCButton());
-      container.appendChild(buildInstallLink());
+      if (isMobile) {
+        // Always show static deep-link list immediately (no race condition)
+        buildMobileButtons(container);
+        // Then append "All Wallets" button for AppKit modal (550+ wallets)
+        // This works regardless of whether AppKit has finished loading
+        container.appendChild(buildWCButton());
+      } else {
+        // Desktop: WalletConnect QR + install link
+        container.appendChild(buildWCButton());
+        container.appendChild(buildInstallLink());
+      }
       return;
     }
 
@@ -142,7 +223,6 @@
       var info     = entry.info;
       var provider = entry.provider;
 
-      // Icon: use base64 data URI from EIP-6963 info.icon
       var iconContent = info.icon
         ? '<img src="' + info.icon + '" width="22" height="22" style="border-radius:4px;display:block" alt="' + info.name + '">'
         : '<span style="font-size:1.1rem">🔗</span>';
@@ -162,7 +242,7 @@
       container.appendChild(btn);
     });
 
-    // ── Always append WalletConnect at the bottom ────────────────────────────
+    // ── Always append WalletConnect / mobile button at the bottom ────────────
     container.appendChild(buildWCButton());
   }
 

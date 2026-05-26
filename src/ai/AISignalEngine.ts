@@ -5,6 +5,7 @@ import { weightStore } from './FeedbackLoop/WeightStore.js';
 import { confidenceCalibrator } from './FeedbackLoop/ConfidenceCalibrator.js';
 import { TradeLogger } from './TradeLogger.js';
 import { RegimeDetector } from './RegimeDetector.js';
+import { LLMReasoningAgent } from './LLMReasoningAgent.js';
 
 // Fee per side (maker): 0.00012 = 0.012%
 // Round-trip fee: 0.024% — need at least this much profit to break even
@@ -69,7 +70,7 @@ export class AISignalEngine {
     }
 
     /** Returns cached signal if still fresh (< 60s old), otherwise fetches a new one. */
-    async getSignal(symbol: string): Promise<Signal> {
+    async getSignal(symbol: string, fearGreedIndex?: number): Promise<Signal> {
         const now = Date.now();
         if (
             this._cache &&
@@ -80,7 +81,7 @@ export class AISignalEngine {
             console.log(`[AISignalEngine] Using cached signal (age: ${(ageMs / 1000).toFixed(0)}s) — skipping LLM call`);
             return this._cache.signal;
         }
-        const signal = await this._fetchSignal(symbol);
+        const signal = await this._fetchSignal(symbol, fearGreedIndex);
         this._cache = { signal, cachedAt: now, symbol };
         return signal;
     }
@@ -90,7 +91,7 @@ export class AISignalEngine {
         this._cache = null;
     }
 
-    private async _fetchSignal(symbol: string): Promise<Signal> {
+    private async _fetchSignal(symbol: string, fearGreedIndex?: number): Promise<Signal> {
         try {
             // Fetch orderbook, recent trades, and klines in parallel
             // Klines come from SoDEX directly if the adapter supports get_klines,
@@ -124,19 +125,10 @@ export class AISignalEngine {
                 });
             }
 
-            const [ob, trades, klinesData, lsRatioRes] = await Promise.all([
+            const [ob, trades, klinesData] = await Promise.all([
                 this.adapter.get_orderbook_depth(symbol, 20),
                 this.adapter.get_recent_trades(symbol, 100),
                 klinesPromise,
-                // L/S ratio: SoDEX doesn't expose this — use Binance as supplemental data
-                (() => {
-                    const normalizedBase = symbol.split('/')[0].split('-')[0].toUpperCase();
-                    const symbolUpper = `${normalizedBase}USDT`;
-                    return axios.get('https://fapi.binance.com/futures/data/topLongShortPositionRatio', {
-                        params: { symbol: symbolUpper, period: '5m', limit: 1 },
-                        timeout: 8000,
-                    }).catch(() => ({ data: [] }));
-                })(),
             ]);
 
             const { opens, closes, highs, lows, volumes } = klinesData;
@@ -187,9 +179,14 @@ export class AISignalEngine {
             const sellVol = trades.filter(t => t.side === 'sell').reduce((sum: number, t) => sum + t.size, 0);
             const tradePressure = buyVol / (buyVol + sellVol || 1);
 
-            // L/S ratio
-            const lsData = lsRatioRes.data[0];
-            const lsRatio = lsData ? parseFloat(lsData.longShortRatio) : 1;
+            // Built-in sentiment indicator (replaces Binance L/S ratio)
+            // Combines: trade pressure, orderbook imbalance, volume trend
+            // Range: 0-2 (1 = neutral, >1 = bullish, <1 = bearish)
+            const sentimentScore = (
+                tradePressure * 0.4 +           // 40% weight: recent trade flow
+                (imbalance / 2) * 0.4 +         // 40% weight: orderbook depth
+                (volSpike ? 0.15 : 0.05) * 2    // 20% weight: volume activity
+            );
 
             // ── Momentum Score (0-1, >0.5 = bullish) ──────────────────────────
             // Farm mode: follow momentum, not contrarian
@@ -334,16 +331,48 @@ export class AISignalEngine {
             const recentTrades = await this.tradeLogger.readAll();
             const calibratedConf = confidenceCalibrator.calibrate(confidence, recentTrades.slice(0, 50));
 
+            // ── LLM Reasoning Agent ───────────────────────────────────────────
+            // If LLM_REASONING_ENABLED=true, ask Ollama to write a human-readable
+            // explanation. Falls back to the rule-based `reasoning` string on
+            // timeout or if Ollama is not running. Non-blocking by design.
+            const llmReasoning = await LLMReasoningAgent.getInstance().generateReasoning(
+                {
+                    symbol,
+                    direction,
+                    regime,
+                    rsi: rsiVal,
+                    ema9: ema9Last,
+                    ema21: ema21Last,
+                    momentumScore,
+                    pricePosition,
+                    volSpike,
+                    imbalance,
+                    tradePressure,
+                    currentPrice,
+                    confidence: calibratedConf,
+                },
+                reasoning,
+            );
+
+            // Apply SoSoValue Fear & Greed adjustment to confidence
+            let adjustedConf = calibratedConf;
+            if (fearGreedIndex !== undefined) {
+                if (fearGreedIndex < 25 || fearGreedIndex > 75) {
+                    adjustedConf = calibratedConf * 0.8; // Reduce confidence by 20% in extreme sentiment
+                    console.log(`[AISignalEngine] Extreme sentiment (F&G: ${fearGreedIndex}) — confidence: ${calibratedConf.toFixed(2)} → ${adjustedConf.toFixed(2)}`);
+                }
+            }
+
             return {
                 base_score,
                 regime,
                 direction,
-                confidence: calibratedConf,
+                confidence: adjustedConf,
                 imbalance,
                 tradePressure,
                 score: momentumScore,
                 chartTrend: emaAbove ? 'bullish' : 'bearish',
-                reasoning,
+                reasoning: llmReasoning,
                 fallback: false,
                 atrPct, bbWidth, volRatio,
                 pricePositionInRange: pricePosition,
