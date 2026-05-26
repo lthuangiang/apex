@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "bots": [
+    {
+      "id": "sodex-bot",
+      "name": "SoDEX Bot",
+      "exchange": "sodex",
+      "symbol": "BTC-USD",
+      "credentialKey": "SODEX",
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades-sodex.json",
+      "autoStart": false,
+      "mode": "farm",
+      "orderSizeMin": 0.003,
+      "orderSizeMax": 0.005,
+      "tags": [
+        "TWAP",
+        "Farm"
+      ]
+    },
+    {
+      "id": "decibel-bot",
+      "name": "Decibel Bot",
+      "exchange": "decibel",
+      "symbol": "BTC/USD",
+      "credentialKey": "DECIBELS",
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades-decibel.json",
+      "autoStart": false,
+      "mode": "farm",
+      "orderSizeMin": 0.003,
+      "orderSizeMax": 0.005,
+      "tags": [
+        "Market Making",
+        "Farm"
+      ]
+    },
+    {
+      "id": "dango-bot",
+      "name": "Dango Bot",
+      "exchange": "dango",
+      "symbol": "BTC-USD",
+      "credentialKey": "DANGO",
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades-dango.json",
+      "autoStart": false,
+      "mode": "farm",
+      "orderSizeMin": 0.003,
+      "orderSizeMax": 0.005,
+      "tags": [
+        "Scalping",
+        "Farm"
+      ]
+    }
+  ]
+}

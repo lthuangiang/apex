@@ -373,9 +373,9 @@
       document.getElementById('mi-updated').textContent = 'Updated ' + now.toLocaleTimeString();
 
       // Fear & Greed
-      var fg = snap.fearGreed && snap.fearGreed.status === 'fulfilled' ? snap.fearGreed.value : null;
-      if (fg && fg.value != null) {
-        var idx = fg.value;
+      var fg = snap.fearGreed;
+      if (fg && fg.fearGreedIndex != null) {
+        var idx = fg.fearGreedIndex;
         document.getElementById('mi-fg-value').textContent = idx;
         var label = idx <= 20 ? fgLabels[0] : idx <= 40 ? fgLabels[1] : idx <= 60 ? fgLabels[2] : idx <= 80 ? fgLabels[3] : fgLabels[4];
         document.getElementById('mi-fg-label').textContent = label + (fg.source === 'alternative.me' ? ' (alt)' : '');
@@ -383,30 +383,33 @@
       }
 
       // ETF Flow
-      var etf = snap.etfFlow && snap.etfFlow.status === 'fulfilled' ? snap.etfFlow.value : null;
+      var etf = snap.etfFlow;
+      console.log('[MI] ETF Flow data:', etf);
       if (etf) {
         var etfEl = document.getElementById('mi-etf-value');
-        etfEl.textContent = fmtMoney(etf.netInflow);
+        etfEl.textContent = fmtMoney(etf.btcNetInflowToday);
         etfEl.className = 'mi-cell-value ' + (etfClassMap[etf.signal] || 'mi-etf-neutral');
         document.getElementById('mi-etf-signal').textContent = (etf.signal || '—').replace(/_/g,' ');
       }
 
       // Macro Risk
-      var macro = snap.macroRisk && snap.macroRisk.status === 'fulfilled' ? snap.macroRisk.value : null;
+      var macro = snap.macroRisk;
       if (macro) {
         var macroEl = document.getElementById('mi-macro-value');
-        macroEl.textContent = macro.level || '—';
-        macroEl.className = 'mi-cell-value ' + (macroClassMap[macro.level] || '');
-        var evts = (macro.upcomingEvents || []).slice(0,2).map(function(e){ return e.name; }).join(', ');
+        macroEl.textContent = macro.riskLevel || '—';
+        macroEl.className = 'mi-cell-value ' + (macroClassMap[macro.riskLevel ? macro.riskLevel.toUpperCase() : ''] || '');
+        var evts = (macro.events || []).filter(function(e){ return e.impact === 'high'; }).slice(0,2).map(function(e){ return e.name; }).join(', ');
         document.getElementById('mi-macro-sub').textContent = evts || 'No high-impact events';
       }
 
       // Hot News
-      var news = snap.hotNews && snap.hotNews.status === 'fulfilled' ? snap.hotNews.value : null;
+      var news = snap.hotNews;
       var list = document.getElementById('mi-news-list');
       if (news && Array.isArray(news) && news.length) {
         list.innerHTML = news.slice(0,5).map(function(n){
-          return '<li class="mi-news-item" title="' + (n.title||'').replace(/"/g,'&quot;') + '">' + (n.title || '') + '</li>';
+          var title = (n.title || '').replace(/"/g,'&quot;');
+          var url = n.url || '#';
+          return '<li class="mi-news-item"><a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:none;" title="' + title + '">' + (n.title || '') + '</a></li>';
         }).join('');
       } else {
         list.innerHTML = '<li class="mi-news-item mi-etf-neutral">No news data</li>';

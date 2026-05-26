@@ -152,11 +152,19 @@ export class SoSoValueClient {
     if (_etfCache && Date.now() - _etfCache.fetchedAt < ETF_CACHE_TTL) return _etfCache.data;
 
     try {
-      const res = await axios.get(`${BASE_URL}/etfs/summary-history`, {
+      const url = `${BASE_URL}/etfs/summary-history`;
+      const params = { symbol: 'BTC', limit: 3, country_code: 'US' };
+
+      console.log(`[SoSoValueClient] ETF Flow request: ${url}`, params);
+
+      const res = await axios.get(url, {
         headers: _authHeaders(API_KEY),
-        params: { symbol: 'BTC', limit: 3 },
+        params,
         timeout: 8000,
       });
+
+      console.log(`[SoSoValueClient] ETF Flow response status: ${res.status}`);
+      console.log(`[SoSoValueClient] ETF Flow response data:`, JSON.stringify(res.data, null, 2).slice(0, 500));
 
       const rows: any[] = res.data?.data ?? [];
       if (rows.length === 0) { console.warn('[SoSoValueClient] ETF summary-history empty'); return null; }
@@ -173,7 +181,11 @@ export class SoSoValueClient {
       return data;
 
     } catch (err: any) {
-      console.warn('[SoSoValueClient] ETF flow fetch error:', err.message);
+      console.error('[SoSoValueClient] ETF flow fetch error:', err.message);
+      if (err.response) {
+        console.error('[SoSoValueClient] ETF error response status:', err.response.status);
+        console.error('[SoSoValueClient] ETF error response data:', JSON.stringify(err.response.data, null, 2));
+      }
       return null;
     }
   }
@@ -260,8 +272,8 @@ export class SoSoValueClient {
       const res = await axios.get(`${BASE_URL}/analyses`, { headers: _authHeaders(API_KEY), timeout: 8000 });
       const data: unknown[] = res.data?.data ?? [];
       return data.map((item: any) => ({
-        name: String(item.name ?? ''),
-        fields: Array.isArray(item.fields) ? item.fields.map(String) : [],
+        name: String(item.chart_name ?? item.name ?? ''),
+        fields: Array.isArray(item.fields) ? item.fields.map((f: any) => String(f.name ?? f)) : [],
       })).filter(c => c.name);
     } catch (err: any) {
       console.error('[SoSoValueClient] listCharts error:', err.message);
@@ -297,19 +309,23 @@ export class SoSoValueClient {
     try {
       const res = await axios.get(`${BASE_URL}/analyses`, { headers: _authHeaders(apiKey), timeout: 8000 });
       const charts: any[] = res.data?.data ?? [];
+
+      // Debug: log all chart names
+      const chartNames = charts.map((c: any) => c.chart_name ?? c.name ?? '').filter(Boolean);
+      console.log(`[SoSoValueClient] DEBUG: Found ${charts.length} charts:`, chartNames.join(', '));
+
       const match = charts.find((c: any) => {
-        const name = String(c.name ?? '').toLowerCase();
-        return name.includes('fear') || name.includes('greed');
+        const name = String(c.chart_name ?? c.name ?? '').toLowerCase();
+        return name.includes('fear') || name.includes('greed') || name.includes('fgi');
       });
 
       if (match) {
-        _fearGreedChartName = String(match.name);
-        console.log(`[SoSoValueClient] Discovered Fear & Greed chart: "${_fearGreedChartName}"`);
+        _fearGreedChartName = String(match.chart_name ?? match.name);
+        console.log(`[SoSoValueClient] ✅ Discovered Fear & Greed chart: "${_fearGreedChartName}"`);
         return _fearGreedChartName;
       }
 
-      const names = charts.map((c: any) => c.name).join(', ');
-      console.warn(`[SoSoValueClient] No fear/greed chart found. Available: ${names}`);
+      console.warn(`[SoSoValueClient] No fear/greed chart found in: ${chartNames.join(', ')}`);
       return null;
 
     } catch (err: any) {
