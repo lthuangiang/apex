@@ -29,11 +29,18 @@ export interface FilterInput {
   FARM_MAX_HOLD_SECS: number;
 }
 
+export interface GateResult {
+  gate: string;
+  result: 'pass' | 'skip' | 'not_reached';
+  reason: string;
+}
+
 export interface FilterResult {
   pass: boolean;
   reason?: string;           // filter name + rejection reason if pass=false
   effectiveConfidence: number;
   dynamicMinHold: number;    // seconds
+  pipelineTrace?: GateResult[];
 }
 
 // ── Individual Filter Functions ───────────────────────────────────────────────
@@ -226,29 +233,42 @@ export function computeDynamicMinHold(input: FilterInput): number {
  * After all gates pass, computes effectiveConfidence and dynamicMinHold.
  */
 export function evaluateFarmEntryFilters(input: FilterInput): FilterResult {
+  const trace: GateResult[] = [];
+
   // [1] Regime confidence threshold
   const regimeResult = regimeConfidenceThreshold(input);
   if (!regimeResult.pass) {
+    trace.push({ gate: 'RegimeConfidenceThreshold', result: 'skip', reason: regimeResult.reason || 'failed' });
+    trace.push({ gate: 'TradePressureGate', result: 'not_reached', reason: '' });
+    trace.push({ gate: 'FeeAwareEntryFilter', result: 'not_reached', reason: '' });
+    trace.push({ gate: 'LLMMomentumAdjuster', result: 'not_reached', reason: '' });
     return {
       pass: false,
       reason: regimeResult.reason,
       effectiveConfidence: input.confidence,
       dynamicMinHold: input.FARM_MIN_HOLD_SECS,
+      pipelineTrace: trace,
     };
   }
+  trace.push({ gate: 'RegimeConfidenceThreshold', result: 'pass', reason: 'confidence meets threshold' });
 
   // [2] Trade pressure gate
   const pressureResult = tradePressureGate(input);
   if (!pressureResult.pass) {
+    trace.push({ gate: 'TradePressureGate', result: 'skip', reason: pressureResult.reason || 'failed' });
+    trace.push({ gate: 'FeeAwareEntryFilter', result: 'not_reached', reason: '' });
+    trace.push({ gate: 'LLMMomentumAdjuster', result: 'not_reached', reason: '' });
     return {
       pass: false,
       reason: pressureResult.reason,
       effectiveConfidence: input.confidence,
       dynamicMinHold: input.FARM_MIN_HOLD_SECS,
+      pipelineTrace: trace,
     };
   }
+  trace.push({ gate: 'TradePressureGate', result: 'pass', reason: `pressure ${input.tradePressure.toFixed(2)}` });
 
-  // [3] Fallback quality gate
+  // [3] Fallback quality gate (skip trace for this internal gate)
   const fallbackResult = fallbackQualityGate(input);
   if (!fallbackResult.pass) {
     return {
@@ -256,27 +276,34 @@ export function evaluateFarmEntryFilters(input: FilterInput): FilterResult {
       reason: fallbackResult.reason,
       effectiveConfidence: input.confidence,
       dynamicMinHold: input.FARM_MIN_HOLD_SECS,
+      pipelineTrace: trace,
     };
   }
 
   // [4] Fee-aware entry filter
   const feeResult = feeAwareEntryFilter(input);
   if (!feeResult.pass) {
+    trace.push({ gate: 'FeeAwareEntryFilter', result: 'skip', reason: feeResult.reason || 'failed' });
+    trace.push({ gate: 'LLMMomentumAdjuster', result: 'not_reached', reason: '' });
     return {
       pass: false,
       reason: feeResult.reason,
       effectiveConfidence: input.confidence,
       dynamicMinHold: input.FARM_MIN_HOLD_SECS,
+      pipelineTrace: trace,
     };
   }
+  trace.push({ gate: 'FeeAwareEntryFilter', result: 'pass', reason: 'fee-adjusted confidence OK' });
 
   // All gates passed — compute adjustments
   const effectiveConfidence = llmMomentumAdjuster(input);
   const dynamicMinHold = computeDynamicMinHold(input);
+  trace.push({ gate: 'LLMMomentumAdjuster', result: 'pass', reason: `conf ${effectiveConfidence.toFixed(2)}` });
 
   return {
     pass: true,
     effectiveConfidence,
     dynamicMinHold,
+    pipelineTrace: trace,
   };
 }

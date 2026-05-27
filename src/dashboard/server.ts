@@ -1242,6 +1242,26 @@ export class DashboardServer {
       }
     });
 
+    // GET /api/bots/:id/ai-signal - Bot AI signal state
+    this.app.get('/api/bots/:id/ai-signal', (req, res) => {
+      if (!this.botManager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+
+      const bot = this.botManager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+
+      if ('getAISignalState' in bot) {
+        res.json(bot.getAISignalState());
+      } else {
+        res.json({ regime: 'unknown', lastSignal: null, macro: null, signalPipeline: [] });
+      }
+    });
+
     // GET /api/bots/:id/trades - Bot trades
     this.app.get('/api/bots/:id/trades', async (req, res) => {
       if (!this.botManager) {

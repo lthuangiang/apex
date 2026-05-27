@@ -22,6 +22,25 @@
       </div>
     </div>
 
+    <div class="ai-strip" id="ai-signal-{id}">
+      <div class="ai-strip-title">⚡ AI signal engine</div>
+      <div class="ai-row">
+        <div class="ai-pill"><span class="ai-pill-label">Regime</span><span class="ai-pill-val">{regime}</span></div>
+        <div class="ai-pill"><span class="ai-pill-label">Macro</span><span class="ai-pill-val">{macro}</span></div>
+        <div class="ai-pill"><span class="ai-pill-label">Size ×</span><span class="ai-pill-val">{sizeMult}</span></div>
+        <div class="ai-pill"><span class="ai-pill-label">Direction</span><span class="ai-pill-val">{direction}</span></div>
+      </div>
+      <div class="conf-bar-wrap">
+        <span class="conf-label">Confidence</span>
+        <div class="conf-track"><div class="conf-fill" style="width:{confidence}%;background:#BA7517;"></div></div>
+        <span class="conf-pct" style="color:#BA7517;">{confidenceText}</span>
+      </div>
+      <div class="decision-log">
+        <div class="log-header"><span>Signal pipeline</span><span class="log-timestamp">last tick —</span></div>
+        <!-- Log rows injected by renderAIStrip() -->
+      </div>
+    </div>
+
     <div class="sparkline-wrap" id="sparkline-{id}">
       <div class="sparkline-empty">No trade history yet</div>
     </div>

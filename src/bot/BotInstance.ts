@@ -271,6 +271,10 @@ export class BotInstance {
     };
   }
 
+  getAISignalState() {
+    return this.watcher.getAISignalState();
+  }
+
   /**
    * Execute one tick of the bot's Watcher logic.
    * Used by BacktestRunner to drive the bot over historical candles.

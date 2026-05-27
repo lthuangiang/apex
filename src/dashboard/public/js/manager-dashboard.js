@@ -7,6 +7,7 @@ const sparklineCharts = {}; // botId → Chart instance
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
 function fmtUsd(n) {
+  if (n == null || isNaN(n)) return '0.00';
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
   if (abs >= 1_000) return (n / 1_000).toFixed(1) + 'K';
@@ -15,6 +16,72 @@ function fmtUsd(n) {
 
 function fmtSign(n) {
   return n > 0 ? '+' : n < 0 ? '-' : '';
+}
+
+// ── AI Signal Strip Renderer ──────────────────────────────────────────────────
+
+function renderAIStrip(botId, state) {
+  const card = document.querySelector(`[data-bot-id="${botId}"]`);
+  if (!card) return;
+
+  // Pills
+  const regimeColors = { SIDEWAY: '#BA7517', TREND: '#1D9E75', HIGH_VOL: '#E24B4A' };
+  const regimeEl = card.querySelector('.ai-pill-val');
+  if (regimeEl) {
+    regimeEl.style.color = regimeColors[state.regime] || '';
+    regimeEl.textContent = state.regime;
+  }
+
+  const fg = state.fearGreedIndex;
+  const macroEl = card.querySelectorAll('.ai-pill-val')[1];
+  if (macroEl) {
+    macroEl.textContent = fg < 35 ? `Fear ${fg}` : fg > 55 ? `Greed ${fg}` : `Neutral ${fg}`;
+    macroEl.style.color = fg < 35 ? '#E24B4A' : fg > 55 ? '#1D9E75' : '#888780';
+  }
+
+  const mx = state.macroSentimentMultiplier;
+  const mxEl = card.querySelectorAll('.ai-pill-val')[2];
+  if (mxEl) {
+    mxEl.textContent = mx.toFixed(2) + '×';
+    mxEl.style.color = mx > 1 ? '#1D9E75' : mx < 1 ? '#E24B4A' : '#888780';
+  }
+
+  const dirEl = card.querySelectorAll('.ai-pill-val')[3];
+  if (dirEl) {
+    dirEl.textContent = state.lastSignalDirection === 'LONG' ? 'LONG ↑' : state.lastSignalDirection === 'SHORT' ? 'SHORT ↓' : '—';
+  }
+
+  // Confidence bar
+  const conf = state.effectiveConfidence;
+  const fillColor = conf < 0.4 ? '#E24B4A' : conf < 0.65 ? '#BA7517' : '#1D9E75';
+  const fill = card.querySelector('.conf-fill');
+  if (fill) {
+    fill.style.width = (conf * 100).toFixed(1) + '%';
+    fill.style.background = fillColor;
+  }
+  const pctEl = card.querySelector('.conf-pct');
+  if (pctEl) {
+    pctEl.textContent = conf.toFixed(2);
+    pctEl.style.color = fillColor;
+  }
+
+  // Pipeline log
+  const logBody = card.querySelector('.decision-log');
+  if (logBody) {
+    const existing = logBody.querySelectorAll('.log-row');
+    existing.forEach(r => r.remove());
+    const ts = card.querySelector('.log-timestamp');
+    if (ts) ts.textContent = 'last tick just now';
+
+    (state.signalPipeline || []).forEach(({ gate, result, reason }) => {
+      const row = document.createElement('div');
+      row.className = 'log-row';
+      const cls = result === 'pass' ? 'log-pass' : result === 'skip' ? 'log-fail' : 'log-skip';
+      const label = result === 'pass' ? `pass · ${reason}` : result === 'skip' ? `skip · ${reason}` : 'not reached';
+      row.innerHTML = `<span class="log-gate">${gate}</span><span class="${cls}">${label}</span>`;
+      logBody.appendChild(row);
+    });
+  }
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -28,6 +95,15 @@ async function fetchStats() {
     const sign = fmtSign(stats.totalPnl);
     pnlEl.textContent = sign + '$' + fmtUsd(Math.abs(stats.totalPnl));
     pnlEl.className = 'stat-value ' + (stats.totalPnl > 0 ? 'positive' : stats.totalPnl < 0 ? 'negative' : '');
+
+    // PnL delta
+    const deltaEl = document.getElementById('pnl-delta');
+    if (deltaEl && stats.previousSessionPnl !== undefined) {
+      const delta = stats.totalPnl - stats.previousSessionPnl;
+      const deltaSign = delta > 0 ? '▲ +' : delta < 0 ? '▼ ' : '';
+      deltaEl.textContent = deltaSign + '$' + fmtUsd(Math.abs(delta)) + ' vs yesterday';
+      deltaEl.className = delta > 0 ? 'delta-positive' : delta < 0 ? 'delta-negative' : 'delta-neutral';
+    }
 
     document.getElementById('total-volume').textContent = '$' + fmtUsd(stats.totalVolume);
     document.getElementById('active-bots').textContent = stats.activeBotCount;
@@ -47,6 +123,31 @@ async function fetchBots() {
   } catch (err) {
     document.getElementById('bot-cards').innerHTML =
       '<div class="state-error">⚠ Failed to load bots: ' + err.message + '</div>';
+  }
+}
+
+async function updateAISignals() {
+  for (const bot of botsData) {
+    try {
+      console.log(`[AI Signal] Fetching for bot ${bot.id}`);
+      const signal = await fetch(`/api/bots/${bot.id}/ai-signal`).then(r => r.json());
+      console.log(`[AI Signal] Bot ${bot.id} data:`, signal);
+
+      // Map API response to renderAIStrip expected format
+      const state = {
+        regime: signal.regime || 'unknown',
+        fearGreedIndex: signal.macro?.fearGreedIndex || 50,
+        macroSentimentMultiplier: signal.macro?.sizeMultiplier || 1,
+        lastSignalDirection: signal.lastSignal?.direction?.toUpperCase() || null,
+        effectiveConfidence: signal.lastSignal?.confidence || 0,
+        signalPipeline: signal.signalPipeline || []
+      };
+
+      renderAIStrip(bot.id, state);
+      console.log(`[AI Signal] Updated bot ${bot.id}`);
+    } catch (err) {
+      console.error(`[AI Signal] Update failed for bot ${bot.id}:`, err);
+    }
   }
 }
 
@@ -115,7 +216,15 @@ function buildCard(tmpl, bot) {
     .replace(/{startBalance}/g, startBalance !== null ? fmtUsd(startBalance) : 'N/A')
     .replace(/{currentBalance}/g, currentBalance !== null ? fmtUsd(currentBalance) : 'N/A')
     .replace(/{startDisplay}/g, isActive ? 'none' : 'flex')
-    .replace(/{stopDisplay}/g,  isActive ? 'flex' : 'none');
+    .replace(/{stopDisplay}/g,  isActive ? 'flex' : 'none')
+    .replace(/{regime}/g, '—')
+    .replace(/{macro}/g, '—')
+    .replace(/{sizeMult}/g, '—')
+    .replace(/{direction}/g, '—')
+    .replace(/{directionClass}/g, '')
+    .replace(/{confidence}/g, '0')
+    .replace(/{confidenceText}/g, '—')
+    .replace(/{signalAge}/g, 'No signal data');
 }
 
 // ── Sparklines ────────────────────────────────────────────────────────────────
@@ -276,6 +385,7 @@ function setupFilters() {
 async function refresh() {
   await fetchBots();
   await fetchStats();
+  await updateAISignals();
 }
 
 async function init() {

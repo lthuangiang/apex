@@ -145,6 +145,8 @@ export class Watcher {
 
     // ── Trade-mode signal confirmation ────────────────────────────────────────
     private _lastSignal: { direction: 'long' | 'short'; score: number; ts: number } | null = null;
+    private _lastRegime: string = 'unknown';
+    private _lastPipelineTrace: Array<{ gate: string; result: string; reason: string }> = [];
 
     // ── Pending farm hold duration (set at signal time, applied at fill time) ──
     private _pendingFarmHoldSecs: number | null = null;
@@ -1162,10 +1164,30 @@ export class Watcher {
 
             if (!filterResult.pass) {
                 console.log(`[SignalFilter] SKIP: ${filterResult.reason}`);
+                this._lastPipelineTrace = filterResult.pipelineTrace || [];
+                // Prepend SoSoValue macro filter
+                this._lastPipelineTrace.unshift({
+                    gate: 'SoSoValue macro filter',
+                    result: 'pass',
+                    reason: `×${strategyAdj.confidenceMultiplier.toFixed(2)} conf, ×${strategyAdj.sizeMultiplier.toFixed(2)} size`
+                });
                 return; // ACTION: wait — RETURN
             }
 
             console.log(`[SignalFilter] PASS: regime=${signal.regime}, confidence=${signal.confidence.toFixed(2)}, pressure=${signal.tradePressure.toFixed(2)}, fallback=${signal.fallback}, effectiveConf=${filterResult.effectiveConfidence.toFixed(2)}`);
+            this._lastPipelineTrace = filterResult.pipelineTrace || [];
+            // Prepend SoSoValue macro filter
+            this._lastPipelineTrace.unshift({
+                gate: 'SoSoValue macro filter',
+                result: 'pass',
+                reason: `×${strategyAdj.confidenceMultiplier.toFixed(2)} conf, ×${strategyAdj.sizeMultiplier.toFixed(2)} size`
+            });
+        }
+
+        // Store regime and signal for AI state
+        this._lastRegime = signal.regime || 'unknown';
+        if (signal.direction !== 'skip') {
+            this._lastSignal = { direction: signal.direction as 'long' | 'short', score: filterResult.effectiveConfidence, ts: Date.now() };
         }
 
         let mmBias = null;
@@ -1426,11 +1448,11 @@ export class Watcher {
         const now = Date.now();
         const prevSig = this._lastSignal;
         this._lastSignal = { direction: finalDirection, score: signal.score, ts: now };
+        this._lastRegime = signal.regime || 'unknown';
         if (!prevSig || prevSig.direction !== finalDirection || (now - prevSig.ts) > 60_000) {
             console.log(`[TRADE] Signal ${finalDirection.toUpperCase()} — waiting for confirmation next tick`);
             return; // ACTION: wait — RETURN
         }
-        this._lastSignal = null;
 
         if (balance < 15) {
             console.log(`🚨 Balance below $15 (${balance.toFixed(2)}) — stopping`);
@@ -1609,6 +1631,27 @@ export class Watcher {
     getCooldownInfo(): number | null {
         if (this.cooldownUntil === null || Date.now() >= this.cooldownUntil) return null;
         return Math.floor((this.cooldownUntil - Date.now()) / 1000);
+    }
+
+    getAISignalState() {
+        const now = Date.now();
+        const lastSignalAge = this._lastSignal ? Math.floor((now - this._lastSignal.ts) / 1000) : null;
+
+        return {
+            regime: this._lastRegime,
+            lastSignal: this._lastSignal ? {
+                direction: this._lastSignal.direction,
+                confidence: this._lastSignal.score,
+                ageSeconds: lastSignalAge,
+            } : null,
+            macro: this._pendingSoSoData ? {
+                fearGreedIndex: this._pendingSoSoData.fearGreedIndex,
+                fearGreedLabel: this._pendingSoSoData.fearGreedLabel,
+                sizeMultiplier: this._pendingSoSoData.sizeMultiplier,
+                confidenceMultiplier: this._pendingSoSoData.confidenceMultiplier,
+            } : null,
+            signalPipeline: this._lastPipelineTrace,
+        };
     }
 
     resetSession() {

@@ -4,15 +4,15 @@ html{-webkit-text-size-adjust:100%}
 
 /* ── SoDEX Color Palette ──────────────────────────────────────────────────── */
 :root{
-  /* Backgrounds — near-black, very subtle depth */
-  --bg-base:      #0d0f14;   /* page background */
-  --bg-surface:   #141820;   /* card / panel */
-  --bg-elevated:  #1a2030;   /* hover / raised */
-  --bg-input:     #0d0f14;   /* inputs */
+  /* Backgrounds — softer dark, professional depth */
+  --bg-base:      #16181d;   /* page background */
+  --bg-surface:   #1c1f26;   /* card / panel */
+  --bg-elevated:  #23262f;   /* hover / raised */
+  --bg-input:     #16181d;   /* inputs */
 
-  /* Borders — barely visible */
-  --border:       #1e2535;
-  --border-soft:  #181e2a;
+  /* Borders — subtle but visible */
+  --border:       #2a2e38;
+  --border-soft:  #23262f;
 
   /* Accent — SoDEX amber/gold (primary CTA, highlights) */
   --accent:        #f5a623;
@@ -36,9 +36,9 @@ html{-webkit-text-size-adjust:100%}
 
   /* Text */
   --text-primary:  #e8edf5;
-  --text-secondary:#8a9bb5;
-  --text-muted:    #4a5a72;
-  --text-dim:      #2a3448;
+  --text-secondary:#9ca3af;
+  --text-muted:    #6b7280;
+  --text-dim:      #4b5563;
 }
 
 body{
@@ -451,6 +451,38 @@ tr:last-child td{border-bottom:none}
 .an-trade-card{background:var(--bg-input);border:1px solid var(--border-soft);border-radius:8px;padding:0.75rem 1rem}
 .an-trade-pnl{font-size:1.15rem;font-weight:700;margin-bottom:0.25rem}
 .an-trade-meta{font-size:0.68rem;color:var(--text-muted)}
+
+/* ── AI Signal Engine Strip ───────────────────────────────────────────────── */
+.ai-strip{margin:0 0 10px;background:var(--bg-elevated);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;transition:opacity 0.2s ease}
+.ai-strip-title{font-size:10px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);display:flex;align-items:center;gap:5px;margin-bottom:2px}
+.ai-row{display:flex;gap:6px;flex-wrap:wrap}
+.ai-pill{display:flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:100px;border:0.5px solid var(--border);background:var(--bg-surface);transition:all 0.2s ease}
+.ai-pill-label{color:var(--text-muted)}
+.ai-pill-val{font-weight:500;transition:color 0.2s ease}
+.conf-bar-wrap{display:flex;align-items:center;gap:6px}
+.conf-label{font-size:11px;color:var(--text-muted);white-space:nowrap}
+.conf-track{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.conf-fill{height:100%;border-radius:2px;transition:width 0.6s ease,background 0.3s ease}
+.conf-pct{font-size:11px;font-weight:500;min-width:28px;text-align:right;transition:color 0.3s ease}
+.decision-log{border:0.5px solid var(--border);border-radius:8px;overflow:hidden}
+.log-header{padding:5px 10px;background:var(--bg-elevated);font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);display:flex;justify-content:space-between;align-items:center}
+.log-timestamp{font-weight:400}
+.log-row{padding:5px 10px;font-size:11px;border-top:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;transition:background 0.15s ease}
+.log-gate{color:var(--text-secondary)}
+.log-pass{color:#1D9E75;font-weight:500}
+.log-fail{color:#E24B4A;font-weight:500}
+.log-skip{color:var(--text-muted)}
+
+/* ── News Sentiment Tags ──────────────────────────────────────────────────── */
+.news-tag{font-size:10px;padding:1px 6px;border-radius:4px;margin-right:6px}
+.tag-bull{background:#EAF3DE;color:#27500A}
+.tag-bear{background:#FCEBEB;color:#791F1F}
+.tag-neutral{background:#F1EFE8;color:#444441}
+
+/* ── Stat Card Deltas ─────────────────────────────────────────────────────── */
+.delta-positive{color:var(--green)}
+.delta-negative{color:var(--red)}
+.delta-neutral{color:var(--text-muted)}
 
 /* ── Mobile-first responsive ──────────────────────────────────────────────── */
 @media(max-width:600px){
