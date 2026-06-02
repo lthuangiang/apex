@@ -36,6 +36,8 @@ export interface WalletScopedRequest extends Request {
 import type { HedgeBotConfig } from '../bot/types.js';
 import type { TelegramManager } from '../modules/TelegramManager.js';
 import { generateNonce, verifySiweMessage } from '../auth/SiweAuth.js';
+import { createBacktestRouter } from './routes/backtestRoutes.js';
+import { HistoricalDataFeed } from '../backtest/HistoricalDataFeed.js';
 
 
 const validTokens = new Map<string, number>();
@@ -607,6 +609,11 @@ export class DashboardServer {
       return;
     }
 
+    // ── Backtest Routes ───────────────────────────────────────────────────────
+    const dataFeed = new HistoricalDataFeed();
+    const backtestRouter = createBacktestRouter(dataFeed);
+    this.app.use('/api/backtest', backtestRouter);
+
     // ── Bot Detail Page Route ─────────────────────────────────────────────────
 
     // GET /bots/:id - Bot detail page
@@ -757,8 +764,16 @@ export class DashboardServer {
         }
 
         // Persist updated config list to disk
-        const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
-        saveBotConfigsToFile(this.botManager, configPath);
+        // Check if this is a tenant-scoped request
+        const tenant = (req as unknown as WalletScopedRequest).tenant;
+        if (tenant) {
+          // Tenant mode: use tenant-aware persistence
+          tenant.persistConfigs();
+        } else {
+          // Legacy single-bot mode: use global config file
+          const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
+          saveBotConfigsToFile(this.botManager, configPath);
+        }
 
         res.status(201).json({ ok: true, id: body.id });
       } catch (err) {
@@ -833,8 +848,13 @@ export class DashboardServer {
         this.botManager.removeBot(req.params.id);
 
         // Persist
-        const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
-        saveBotConfigsToFile(this.botManager, configPath);
+        const tenant = (req as unknown as WalletScopedRequest).tenant;
+        if (tenant) {
+          tenant.persistConfigs();
+        } else {
+          const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
+          saveBotConfigsToFile(this.botManager, configPath);
+        }
 
         res.json({ ok: true });
       } catch (err) {

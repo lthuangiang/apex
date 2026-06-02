@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>DRIFT</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/css/bot-detail.css">
 <% if (typeof botId !== 'undefined' && botId) { %><script>window.BOT_CONTEXT={botId:'<%= botId %>',exchange:'<%= typeof exchange !== "undefined" ? exchange : "" %>',botName:'<%= typeof botName !== "undefined" ? botName.replace(/'/g, "\\'") : "" %>'};</script><% } %>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -213,6 +214,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
 
 /* ANALYTICS */
 .an-section{max-width:1440px;margin:0 auto;padding:1rem;display:flex;flex-direction:column;gap:1rem}
+.analytics-sig-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1rem}
+.asig-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:.8rem .9rem;box-shadow:var(--sh1)}
+.asig-label{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:.28rem}
+.asig-val{font-size:1.25rem;font-weight:800;letter-spacing:-.03em;color:var(--text1)}
+.asig-sub{font-size:.65rem;color:var(--text3);margin-top:.15rem}
 .an-grid-4{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
 .an-grid-2{display:grid;grid-template-columns:1fr;gap:1rem}
 .an-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:.8rem .9rem;box-shadow:var(--sh1)}
@@ -507,112 +513,156 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
     <div style="margin-left:auto;display:flex;align-items:center;gap:0">
       <button class="tab-btn active" id="tabnav-overview" onclick="switchMainTab('overview')">Overview</button>
       <button class="tab-btn" id="tabnav-analytics" onclick="switchMainTab('analytics')">Analytics</button>
+      <% if (typeof exchange !== 'undefined' && exchange === 'sodex') { %>
+      <button class="tab-btn" id="tabnav-backtest" onclick="switchMainTab('backtest')">Backtest</button>
+      <% } %>
     </div>
   </div>
 </div>
 
 <!-- OVERVIEW TAB -->
 <div class="tab-panel active" id="tabpanel-overview">
-  <div class="page">
 
-    <!-- Info row -->
-    <div style="display:grid;grid-template-columns:1fr;gap:.875rem;margin-bottom:1rem" id="info-row">
-      <div id="tier-card-wrap"><div class="info-card"><div class="tier-empty">Loading SoPoints...</div></div></div>
-      <div class="info-card">
-        <div class="info-card-label" id="week-label">Current Week</div>
-        <div class="info-card-value" id="week-vol">—</div>
-        <div class="info-card-sub">Futures Volume</div>
-        <div class="info-card-footer"><span>Next Distribution</span><span id="week-cd">—</span></div>
-      </div>
-      <div class="panel">
-        <div class="panel-hd"><span class="panel-title">Open Position</span><span id="pos-badge"></span></div>
-        <div class="panel-bd" id="pos-body">
-          <div class="pos-empty-st"><div class="pos-empty-icon">◎</div><div class="pos-empty-txt">No open position</div></div>
+  <div class="page">
+    <div class="main">
+      <div class="content">
+
+        <div class="pnl-card">
+          <div class="pnl-hdr">
+            <span class="pnl-title">SESSION PNL</span>
+            <div class="blive"><div class="ld"></div>LIVE</div>
+          </div>
+
+          <div class="ai-band" id="ai-signal-band">
+            <div class="ai-band-top">
+              <div class="ai-label">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="9" x2="9" y2="15"/><line x1="12" y1="11" x2="12" y2="15"/><line x1="15" y1="7" x2="15" y2="15"/></svg>
+                AI SIGNAL ENGINE
+              </div>
+              <span class="ai-tick" id="ai-last-tick">—</span>
+            </div>
+            <div class="pill-row">
+              <div class="pill"><span class="pl">Regime</span><span class="pv" id="ai-pill-regime">—</span></div>
+              <div class="pill"><span class="pl">Macro</span><span class="pv" id="ai-pill-macro">—</span></div>
+              <div class="pill"><span class="pl">Size ×</span><span class="pv" id="ai-pill-sizemult">—</span></div>
+              <div class="pill"><span class="pl">Direction</span><span class="pv" id="ai-pill-direction">—</span></div>
+            </div>
+            <div class="pill-row">
+              <div class="pill"><span class="pl">Chop</span><span class="pv" id="ai-pill-chop">—</span></div>
+            </div>
+            <div class="cbar">
+              <span class="cbar-l">Confidence</span>
+              <div class="cbar-t"><div class="cbar-f" id="ai-conf-fill"></div></div>
+              <span class="cbar-n" id="ai-conf-pct">—</span>
+            </div>
+            <div class="pipeline-row" id="ai-pipeline-flow"></div>
+          </div>
+
+          <div class="pnl-chart-area" id="pnl-chart-wrap">
+            <div class="chart-skel"></div>
+          </div>
+
+          <div class="hist-band">
+            <div class="hist-toggle" onclick="toggleSignalHistory()">
+              <div class="hist-toggle-l">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+                Signal history
+              </div>
+              <div class="hist-toggle-r">
+                <div class="fseg-wrap">
+                  <button class="fseg on" onclick="event.stopPropagation(); filterSignals('all', this)">All</button>
+                  <button class="fseg" onclick="event.stopPropagation(); filterSignals('trade', this)">Traded</button>
+                  <button class="fseg" onclick="event.stopPropagation(); filterSignals('skip', this)">Skipped</button>
+                </div>
+                <span class="sig-count" id="sig-hist-count">0</span>
+                <span class="chevron" id="sig-hist-chevron">▾</span>
+              </div>
+            </div>
+            <div class="hist-list" id="sig-hist-body">
+              <div class="col-hdr">
+                <span class="ch">Time</span><span class="ch">Dir</span><span class="ch">Regime</span><span class="ch">Conf</span><span class="ch">Gates</span>
+              </div>
+              <div id="sig-hist-rows"></div>
+            </div>
+          </div>
         </div>
+
+        <div class="vol-card">
+          <div class="vol-ttl">TRADING VOLUME</div>
+          <div id="vol-chart-wrap"><div class="chart-skel"></div></div>
+        </div>
+
       </div>
     </div>
 
-    <!-- Cockpit grid -->
-    <div class="cockpit-grid">
-      <!-- LEFT -->
-      <div style="display:flex;flex-direction:column;gap:1rem">
-
-        <div class="panel">
-          <div class="panel-hd"><span class="panel-title">Session PnL</span><div class="live-pill"><div class="ldot on"></div>LIVE</div></div>
-          <div class="panel-bd"><div class="chart-wrap" id="pnl-chart-wrap"><div class="chart-skel"></div></div></div>
+    <div class="sidebar">
+      <div class="sidebar-card">
+        <div class="sbl">OPEN POSITION</div>
+        <div id="pos-body">
+          <div class="pos-empty-st"><div class="pos-empty-icon">◎</div><div class="pos-empty-txt">No open position</div></div>
         </div>
+      </div>
+      <div class="sidebar-card">
+        <div class="sbl">TIER & POINTS</div>
+        <div id="tier-card-wrap"><div class="tier-empty">Loading tier...</div></div>
+      </div>
+      <div class="sidebar-card">
+        <div class="sbl">WEEK DISTRIBUTION</div>
+        <div class="srow"><span class="srl" id="week-label">Current Week</span><span class="srv" id="week-vol">—</span></div>
+        <div class="srow"><span class="srl">Futures Volume</span></div>
+        <div class="srow"><span class="srl">Next Distribution</span><span class="srv" id="week-cd">—</span></div>
+      </div>
+      <div class="sidebar-card" id="cooldown-panel" style="display:none">
+        <div class="sbl">⏸ COOLDOWN</div>
+        <div class="cd-val" id="cooldown-val">—</div>
+        <div style="font-size:.65rem;color:var(--text3);margin-top:.15rem">seconds remaining</div>
+      </div>
+    </div>
+  </div>
 
-        <div class="panel">
-          <div class="panel-hd"><span class="panel-title">Trading Volume</span></div>
-          <div class="panel-bd"><div class="chart-wrap" id="vol-chart-wrap"><div class="chart-skel"></div></div></div>
-        </div>
 
-        <div class="panel">
-          <div class="panel-hd"><span class="panel-title">Realtime Log</span><div class="live-pill"><div class="ldot on"></div>LIVE</div></div>
-          <div class="log-tabs">
-            <button class="log-tab" id="tab-events" onclick="switchTab('events')">Events</button>
-            <button class="log-tab active" id="tab-console" onclick="switchTab('console')">Console</button>
-          </div>
-          <div class="log-body" id="log-events" style="display:none"></div>
-          <div class="log-body" id="log-console"></div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-hd"><span class="panel-title">Trade History</span><span style="font-size:.65rem;color:var(--text3)" id="trade-count"></span></div>
-          <div style="overflow-x:auto">
-            <table class="data-table">
-              <thead><tr><th>Order ID</th><th>Date</th><th>Side</th><th>Entry</th><th>Exit</th><th>Hold</th><th>Signal</th><th>Conf</th><th>Reason</th><th>PnL</th></tr></thead>
-              <tbody id="trades-body"><tr><td colspan="10" style="text-align:center;padding:1.25rem;color:var(--text3)">No trades yet.</td></tr></tbody>
-            </table>
-          </div>
-          <div class="pg-row"><span id="trade-page-info">Page 1</span><div style="display:flex;gap:.3rem"><button class="pg-btn" id="trade-prev" onclick="tradePage(-1)" disabled>‹</button><button class="pg-btn" id="trade-next" onclick="tradePage(1)">›</button></div></div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-hd"><span class="panel-title">Event Log</span><span style="font-size:.65rem;color:var(--text3)" id="event-count"></span></div>
-          <div style="overflow-x:auto">
-            <table class="data-table">
-              <thead><tr><th>Time</th><th>Type</th><th>Message</th></tr></thead>
-              <tbody id="events-body"><tr><td colspan="3" style="text-align:center;padding:1.25rem;color:var(--text3)">No events yet.</td></tr></tbody>
-            </table>
-          </div>
-          <div class="pg-row"><span id="event-page-info">Page 1</span><div style="display:flex;gap:.3rem"><button class="pg-btn" id="event-prev" onclick="eventPage(-1)" disabled>‹</button><button class="pg-btn" id="event-next" onclick="eventPage(1)">›</button></div></div>
-        </div>
-
-      </div><!-- /left -->
-
-      <!-- RIGHT -->
-      <div style="display:flex;flex-direction:column;gap:.875rem">
-        <div id="recent-activity" style="display:none"></div>
-        <div class="panel">
-          <div class="panel-hd"><span class="panel-title">Session</span></div>
-          <div class="panel-bd">
-            <div class="stat-row"><span class="stat-key">Fees</span><span class="stat-val" id="side-fees">$0.00</span></div>
-            <div class="stat-row"><span class="stat-key">Efficiency</span><span class="stat-val" id="side-eff">0 bps</span></div>
-            <div class="stat-row"><span class="stat-key">Uptime</span><span class="stat-val" id="side-uptime">0m</span></div>
-            <div class="stat-row"><span class="stat-key">Mode</span><span class="stat-val" id="side-mode">—</span></div>
-            <div class="stat-row"><span class="stat-key">Max Loss</span><span class="stat-val" id="side-maxloss">$5</span></div>
-          </div>
-        </div>
-        <div class="panel" id="cooldown-panel" style="display:none">
-          <div class="panel-hd"><span class="panel-title">⏸ Cooldown</span></div>
-          <div class="panel-bd"><div class="cd-val" id="cooldown-val">—</div><div style="font-size:.65rem;color:var(--text3);margin-top:.15rem">seconds remaining</div></div>
-        </div>
-      </div><!-- /right -->
-    </div><!-- /cockpit-grid -->
-
-  </div><!-- /page -->
 </div><!-- /overview -->
 
 <!-- ANALYTICS TAB -->
 <div class="tab-panel" id="tabpanel-analytics">
   <div class="an-section">
+    <!-- Signal Stats Row -->
+    <div class="analytics-sig-stats">
+      <div class="asig-stat">
+        <div class="asig-label">Signals fired</div>
+        <div class="asig-val" id="asig-total">—</div>
+        <div class="asig-sub">this session</div>
+      </div>
+      <div class="asig-stat">
+        <div class="asig-label">Traded</div>
+        <div class="asig-val" style="color: #1D9E75" id="asig-traded">—</div>
+        <div class="asig-sub" id="asig-hitrate">— hit rate</div>
+      </div>
+      <div class="asig-stat">
+        <div class="asig-label">Skipped</div>
+        <div class="asig-val" style="color: #E24B4A" id="asig-skipped">—</div>
+        <div class="asig-sub">gate blocked</div>
+      </div>
+      <div class="asig-stat">
+        <div class="asig-label">Avg confidence</div>
+        <div class="asig-val" style="color: #BA7517" id="asig-avgconf">—</div>
+        <div class="asig-sub">traded signals</div>
+      </div>
+    </div>
+
     <%- include('partials/analytics/summary-cards') %>
     <%- include('partials/analytics/mode-signal') %>
     <%- include('partials/analytics/charts') %>
     <%- include('partials/analytics/best-worst-holding') %>
   </div>
 </div>
+
+<!-- BACKTEST TAB (SoDEX only) -->
+<% if (typeof exchange !== 'undefined' && exchange === 'sodex') { %>
+<div class="tab-panel" id="tabpanel-backtest">
+  <%- include('partials/backtest-tab') %>
+</div>
+<% } %>
 
 <!-- CFG MODAL -->
 <%- include('partials/overview/cfg-modal') %>
@@ -640,6 +690,9 @@ setInfoRow();
 window.addEventListener('resize', setInfoRow);
 </script>
 <script src="/js/dashboard.js?v=2"></script>
+<% if (typeof exchange !== 'undefined' && exchange === 'sodex') { %>
+<script src="/js/backtest.js"></script>
+<% } %>
 <script>
 (function(){
   function applyTheme(light){

@@ -1638,7 +1638,21 @@ export class Watcher {
         const lastSignalAge = this._lastSignal ? Math.floor((now - this._lastSignal.ts) / 1000) : null;
 
         return {
+            // Regime
             regime: this._lastRegime,
+            // Flattened macro fields (expected by dashboard.js updateAIBand)
+            fearGreedIndex: this._pendingSoSoData?.fearGreedIndex ?? null,
+            fearGreedLabel: this._pendingSoSoData?.fearGreedLabel ?? null,
+            macroSentimentMultiplier: this._pendingSoSoData?.sizeMultiplier ?? null,
+            // Last signal flattened
+            lastSignalDirection: this._lastSignal ? this._lastSignal.direction.toUpperCase() : null,
+            effectiveConfidence: this._lastSignal?.score ?? null,
+            signalAgeSeconds: lastSignalAge,
+            // Chop
+            chopScore: this._lastChopScore ?? null,
+            // Pipeline trace
+            signalPipeline: this._lastPipelineTrace,
+            // Nested form kept for backwards compat
             lastSignal: this._lastSignal ? {
                 direction: this._lastSignal.direction,
                 confidence: this._lastSignal.score,
@@ -1650,7 +1664,6 @@ export class Watcher {
                 sizeMultiplier: this._pendingSoSoData.sizeMultiplier,
                 confidenceMultiplier: this._pendingSoSoData.confidenceMultiplier,
             } : null,
-            signalPipeline: this._lastPipelineTrace,
         };
     }
 

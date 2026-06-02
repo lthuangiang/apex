@@ -41,7 +41,7 @@ function renderAIStrip(botId, state) {
 
   const mx = state.macroSentimentMultiplier;
   const mxEl = card.querySelectorAll('.ai-pill-val')[2];
-  if (mxEl) {
+  if (mxEl && mx != null) {
     mxEl.textContent = mx.toFixed(2) + '×';
     mxEl.style.color = mx > 1 ? '#1D9E75' : mx < 1 ? '#E24B4A' : '#888780';
   }
@@ -53,27 +53,29 @@ function renderAIStrip(botId, state) {
 
   // Confidence bar
   const conf = state.effectiveConfidence;
-  const fillColor = conf < 0.4 ? '#E24B4A' : conf < 0.65 ? '#BA7517' : '#1D9E75';
-  const fill = card.querySelector('.conf-fill');
-  if (fill) {
-    fill.style.width = (conf * 100).toFixed(1) + '%';
-    fill.style.background = fillColor;
-  }
-  const pctEl = card.querySelector('.conf-pct');
-  if (pctEl) {
-    pctEl.textContent = conf.toFixed(2);
-    pctEl.style.color = fillColor;
+  if (conf != null) {
+    const fillColor = conf < 0.4 ? '#E24B4A' : conf < 0.65 ? '#BA7517' : '#1D9E75';
+    const fill = card.querySelector('.conf-fill');
+    if (fill) {
+      fill.style.width = (conf * 100).toFixed(1) + '%';
+      fill.style.background = fillColor;
+    }
+    const pctEl = card.querySelector('.conf-pct');
+    if (pctEl) {
+      pctEl.textContent = conf.toFixed(2);
+      pctEl.style.color = fillColor;
+    }
   }
 
-  // Pipeline log
+  // Pipeline log - only update if we have new pipeline data
   const logBody = card.querySelector('.decision-log');
-  if (logBody) {
+  if (logBody && state.signalPipeline && state.signalPipeline.length > 0) {
     const existing = logBody.querySelectorAll('.log-row');
     existing.forEach(r => r.remove());
     const ts = card.querySelector('.log-timestamp');
     if (ts) ts.textContent = 'last tick just now';
 
-    (state.signalPipeline || []).forEach(({ gate, result, reason }) => {
+    state.signalPipeline.forEach(({ gate, result, reason }) => {
       const row = document.createElement('div');
       row.className = 'log-row';
       const cls = result === 'pass' ? 'log-pass' : result === 'skip' ? 'log-fail' : 'log-skip';
@@ -118,22 +120,69 @@ async function fetchStats() {
 
 async function fetchBots() {
   try {
-    botsData = await fetch('/api/bots').then(r => r.json());
-    renderBots();
+    const newData = await fetch('/api/bots').then(r => r.json());
+
+    // Check if bot list changed (added/removed)
+    const listChanged = !botsData || botsData.length !== newData.length ||
+      botsData.some((b, i) => b.id !== newData[i].id);
+
+    botsData = newData;
+
+    // Only re-render if bot list changed, otherwise just update data
+    if (listChanged) {
+      renderBots();
+    } else {
+      updateBotCards();
+    }
   } catch (err) {
     document.getElementById('bot-cards').innerHTML =
       '<div class="state-error">⚠ Failed to load bots: ' + err.message + '</div>';
   }
 }
 
-async function updateAISignals() {
-  for (const bot of botsData) {
-    try {
-      console.log(`[AI Signal] Fetching for bot ${bot.id}`);
-      const signal = await fetch(`/api/bots/${bot.id}/ai-signal`).then(r => r.json());
-      console.log(`[AI Signal] Bot ${bot.id} data:`, signal);
+function updateBotCards() {
+  // Update existing bot cards without re-rendering
+  botsData.forEach(bot => {
+    const card = document.querySelector(`[data-bot-id="${bot.id}"]`);
+    if (!card) return;
 
-      // Map API response to renderAIStrip expected format
+    // Update status
+    const statusPill = card.querySelector('.status-pill');
+    if (statusPill) {
+      statusPill.className = `status-pill ${bot.status}`;
+      statusPill.querySelector('.status-dot');
+      const statusText = bot.status === 'active' ? 'Running' : 'Stopped';
+      const textNode = Array.from(statusPill.childNodes).find(n => n.nodeType === 3);
+      if (textNode) textNode.textContent = statusText;
+    }
+
+    // Update PnL
+    const pnlValue = card.querySelector('.pnl-value');
+    if (pnlValue) {
+      const pnlClass = bot.sessionPnl > 0 ? 'pos' : bot.sessionPnl < 0 ? 'neg' : '';
+      pnlValue.className = `pnl-value ${pnlClass}`;
+      pnlValue.textContent = fmtSign(bot.sessionPnl) + '$' + fmtUsd(Math.abs(bot.sessionPnl));
+    }
+
+    // Update stats
+    const statValues = card.querySelectorAll('.stat-item-value');
+    if (statValues[0]) statValues[0].textContent = '$' + fmtUsd(bot.startBalance);
+    if (statValues[1]) statValues[1].textContent = '$' + fmtUsd(bot.currentBalance);
+    if (statValues[2]) statValues[2].textContent = '$' + fmtUsd(bot.sessionVolume);
+    if (statValues[3]) {
+      const eff = bot.efficiency;
+      statValues[3].className = `stat-item-value ${eff > 0 ? 'pos' : eff < 0 ? 'neg' : ''}`;
+      statValues[3].textContent = (eff != null ? eff.toFixed(1) : '0.0') + ' bps';
+    }
+    if (statValues[4]) statValues[4].textContent = bot.uptime + 'm';
+  });
+}
+
+async function updateAISignals() {
+  const activeBots = botsData.filter(b => b.status === 'active');
+  await Promise.all(activeBots.map(async bot => {
+    try {
+      const signal = await fetch(`/api/bots/${bot.id}/ai-signal`).then(r => r.json());
       const state = {
         regime: signal.regime || 'unknown',
         fearGreedIndex: signal.macro?.fearGreedIndex || 50,
@@ -142,13 +191,11 @@ async function updateAISignals() {
         effectiveConfidence: signal.lastSignal?.confidence || 0,
         signalPipeline: signal.signalPipeline || []
       };
-
       renderAIStrip(bot.id, state);
-      console.log(`[AI Signal] Updated bot ${bot.id}`);
     } catch (err) {
       console.error(`[AI Signal] Update failed for bot ${bot.id}:`, err);
     }
-  }
+  }));
 }
 
 function renderBots() {
@@ -211,7 +258,7 @@ function buildCard(tmpl, bot) {
     .replace(/{pnl}/g,         fmtUsd(Math.abs(pnl)))
     .replace(/{volume}/g,      fmtUsd(vol))
     .replace(/{effClass}/g,    eff > 0 ? 'positive' : eff < 0 ? 'negative' : '')
-    .replace(/{efficiency}/g,  eff.toFixed(1))
+    .replace(/{efficiency}/g,  (eff != null ? eff.toFixed(1) : '0.0'))
     .replace(/{uptime}/g,      bot.uptime ?? 0)
     .replace(/{startBalance}/g, startBalance !== null ? fmtUsd(startBalance) : 'N/A')
     .replace(/{currentBalance}/g, currentBalance !== null ? fmtUsd(currentBalance) : 'N/A')

@@ -97,7 +97,7 @@
     .filter-btn.active { background: var(--accent); color: white; box-shadow: 0 1px 4px rgba(79,110,247,0.35); }
     .bot-count { font-size: 0.8rem; color: var(--text-tertiary); }
 
-    .bot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 1.25rem; }
+    .bot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 1.25rem; }
     .bot-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow-sm); transition: all 0.2s; position: relative; overflow: hidden; }
     .bot-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); border-color: var(--border-strong); }
     .bot-card.inactive { opacity: 0.65; }
@@ -108,8 +108,8 @@
     .card-identity { display: flex; flex-direction: column; gap: 0.3rem; }
     .card-name { font-size: 1rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
     .card-meta { display: flex; align-items: center; gap: 0.5rem; }
-    .exchange-badge { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em; padding: 0.2rem 0.5rem; border-radius: 4px; background: var(--accent-light); color: var(--accent); text-transform: uppercase; }
-    .strategy-tag { font-size: 0.65rem; font-weight: 500; color: var(--text-tertiary); background: var(--surface-2); border: 1px solid var(--border); padding: 0.2rem 0.5rem; border-radius: 4px; }
+    .exchange-badge { font-size: 0.58rem; font-weight: 700; letter-spacing: 0.06em; padding: 0.15rem 0.4rem; border-radius: 4px; background: var(--accent-light); color: var(--accent); text-transform: uppercase; }
+    .strategy-tag { font-size: 0.58rem; font-weight: 500; color: var(--text-tertiary); background: var(--surface-2); border: 1px solid var(--border); padding: 0.15rem 0.4rem; border-radius: 4px; }
     .status-pill { display: flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; padding: 0.3rem 0.65rem; border-radius: 20px; white-space: nowrap; }
     .status-pill.active { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
     .status-pill.inactive { background: var(--surface-2); color: var(--text-tertiary); border: 1px solid var(--border); }
@@ -474,7 +474,7 @@
     body.modal-open .stat-card { transition:none; }
 
     /* Modal shell */
-    .wz-modal { background:var(--surface); border:1px solid var(--border-strong); border-radius:16px; box-shadow:var(--shadow-lg); width:100%; max-width:560px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; position:relative; animation:wzIn .15s ease; will-change:transform,opacity; transform:translateZ(0); }
+    .wz-modal { background:var(--surface); border:1px solid var(--border-strong); border-radius:16px; box-shadow:var(--shadow-lg); width:100%; max-width:860px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; position:relative; animation:wzIn .15s ease; will-change:transform,opacity; transform:translateZ(0); }
     @keyframes wzIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
 
     /* Header */
@@ -502,7 +502,7 @@
     @keyframes panelIn { from{opacity:0} to{opacity:1} }
 
     /* Exchange tiles */
-    .ex-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-bottom:.5rem; }
+    .ex-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; margin-bottom:.5rem; }
     .ex-tile { border:2px solid var(--border); border-radius:12px; padding:1rem .75rem; cursor:pointer; text-align:center; transition:all .15s; background:var(--surface-2); position:relative; }
     .ex-tile:hover { border-color:var(--accent); background:var(--accent-light); }
     .ex-tile.selected { border-color:var(--accent); background:var(--accent-light); }

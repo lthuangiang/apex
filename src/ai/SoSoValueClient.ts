@@ -45,6 +45,9 @@ export interface MacroRisk {
 
 let _fearGreedChartName: string | null = null;
 
+let _fearGreedCache: { data: SoSoValueData; fetchedAt: number } | null = null;
+const FEAR_GREED_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
 let _etfCache: { data: EtfFlowData; fetchedAt: number } | null = null;
 const ETF_CACHE_TTL = 4 * 60 * 60 * 1000;
 
@@ -104,6 +107,11 @@ export class SoSoValueClient {
    * Falls back to alternative.me if no API key or on error.
    */
   async fetch(): Promise<SoSoValueData | null> {
+    // Check cache first
+    if (_fearGreedCache && Date.now() - _fearGreedCache.fetchedAt < FEAR_GREED_CACHE_TTL) {
+      return _fearGreedCache.data;
+    }
+
     const API_KEY = process.env.SOSOVALUE_API_KEY;
 
     if (!API_KEY) {
@@ -132,6 +140,10 @@ export class SoSoValueClient {
 
       const fearGreedLabel = _labelFromIndex(fearGreedIndex);
       const result: SoSoValueData = { sectorIndex: fearGreedIndex, fearGreedIndex, fearGreedLabel, source: 'sosovalue' };
+
+      // Cache the result
+      _fearGreedCache = { data: result, fetchedAt: Date.now() };
+
       console.log(`[SoSoValueClient] ✅ Fear & Greed ${fearGreedIndex} (${fearGreedLabel}) — source: sosovalue`);
       return result;
 

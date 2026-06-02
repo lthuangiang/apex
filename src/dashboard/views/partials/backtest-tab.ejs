@@ -1,0 +1,67 @@
+<div style="padding:1.5rem;max-width:1440px;margin:0 auto">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem;margin-bottom:1.5rem">
+    <h3 style="font-size:.95rem;font-weight:700;color:var(--text1);margin-bottom:.5rem">📊 Backtest Session</h3>
+    <p style="font-size:.72rem;color:var(--text2);margin-bottom:1.5rem">Run historical simulation using bot's current config and SoDEX market data</p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1.5rem">
+      <div>
+        <label style="display:block;font-size:.68rem;font-weight:600;color:var(--text2);margin-bottom:.4rem">Start Date</label>
+        <input type="datetime-local" id="backtest-start" style="width:100%;padding:.5rem;font-size:.72rem;background:var(--s2);border:1px solid var(--border);border-radius:var(--rx);color:var(--text1);font-family:inherit" />
+      </div>
+      <div>
+        <label style="display:block;font-size:.68rem;font-weight:600;color:var(--text2);margin-bottom:.4rem">End Date</label>
+        <input type="datetime-local" id="backtest-end" style="width:100%;padding:.5rem;font-size:.72rem;background:var(--s2);border:1px solid var(--border);border-radius:var(--rx);color:var(--text1);font-family:inherit" />
+      </div>
+      <div>
+        <label style="display:block;font-size:.68rem;font-weight:600;color:var(--text2);margin-bottom:.4rem">Initial Balance (USD)</label>
+        <input type="number" id="backtest-balance" value="1000" min="1" style="width:100%;padding:.5rem;font-size:.72rem;background:var(--s2);border:1px solid var(--border);border-radius:var(--rx);color:var(--text1);font-family:inherit" />
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        const now = new Date();
+        const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        document.getElementById('backtest-start').value = start.toISOString().slice(0, 16);
+        document.getElementById('backtest-end').value = now.toISOString().slice(0, 16);
+      })();
+    </script>
+
+    <button id="run-backtest-btn" style="padding:.6rem 1.2rem;font-size:.75rem;font-weight:600;background:var(--s2);border:1px solid var(--border);border-radius:var(--rx);color:var(--text1);cursor:pointer;transition:var(--tr)">🚀 Run Backtest</button>
+
+    <div id="backtest-progress" style="display:none;margin-top:1.5rem">
+      <div style="width:100%;height:24px;background:var(--s2);border:1px solid var(--border);border-radius:var(--rx);overflow:hidden">
+        <div id="progress-fill" style="height:100%;background:var(--green);transition:width .3s"></div>
+      </div>
+      <p id="progress-text" style="text-align:center;font-size:.72rem;color:var(--text2);margin-top:.5rem">Initializing...</p>
+    </div>
+  </div>
+
+  <div id="backtest-results" style="display:none">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.5rem">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1rem;text-align:center">
+        <div id="result-trades" style="font-size:1.5rem;font-weight:700;color:var(--text1)">-</div>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:.3rem">Trades</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1rem;text-align:center">
+        <div id="result-winrate" style="font-size:1.5rem;font-weight:700;color:var(--text1)">-</div>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:.3rem">Win Rate</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1rem;text-align:center">
+        <div id="result-pnl" style="font-size:1.5rem;font-weight:700;color:var(--text1)">-</div>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:.3rem">PnL</div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1rem;text-align:center">
+        <div id="result-sharpe" style="font-size:1.5rem;font-weight:700;color:var(--text1)">-</div>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:.3rem">Sharpe</div>
+      </div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.5rem">
+      <h4 style="font-size:.85rem;font-weight:700;color:var(--text1);margin-bottom:1rem">Equity Curve</h4>
+      <div style="height:300px">
+        <canvas id="equity-chart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>

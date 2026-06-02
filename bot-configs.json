@@ -16,41 +16,30 @@
       "tags": [
         "TWAP",
         "Farm"
-      ]
-    },
-    {
-      "id": "decibel-bot",
-      "name": "Decibel Bot",
-      "exchange": "decibel",
-      "symbol": "BTC/USD",
-      "credentialKey": "DECIBELS",
-      "tradeLogBackend": "json",
-      "tradeLogPath": "./trades-decibel.json",
-      "autoStart": false,
-      "mode": "farm",
-      "orderSizeMin": 0.003,
-      "orderSizeMax": 0.005,
-      "tags": [
-        "Market Making",
-        "Farm"
-      ]
-    },
-    {
-      "id": "dango-bot",
-      "name": "Dango Bot",
-      "exchange": "dango",
-      "symbol": "BTC-USD",
-      "credentialKey": "DANGO",
-      "tradeLogBackend": "json",
-      "tradeLogPath": "./trades-dango.json",
-      "autoStart": false,
-      "mode": "farm",
-      "orderSizeMin": 0.003,
-      "orderSizeMax": 0.005,
-      "tags": [
-        "Scalping",
-        "Farm"
-      ]
+      ],
+      "farmMinHoldSecs": 120,
+      "farmMaxHoldSecs": 480,
+      "farmTpUsd": 0.5,
+      "farmSlPercent": 0.05,
+      "farmScoreEdge": 0.03,
+      "farmMinConfidence": 0.5,
+      "farmReverseSignalEnabled": false,
+      "farmUseDynamicSizing": true,
+      "farmWeakSignalSizeMult": 0.7,
+      "farmNoPressureSizeMult": 0.75,
+      "farmPingpongSizeMult": 0.6,
+      "farmEarlyExitSecs": 60,
+      "farmEarlyExitPnl": 0.04,
+      "farmExtraWaitSecs": 30,
+      "farmBlockedHours": "[]",
+      "farmCooldownSecs": 30,
+      "tradeTpPercent": 0.05,
+      "tradeSlPercent": 0.05,
+      "tradeScoreThreshold": 0.65,
+      "tradeMinConfidence": 0.65,
+      "cooldownMinMins": 2,
+      "cooldownMaxMins": 5,
+      "minPositionValueUsd": 20
     }
   ]
 }

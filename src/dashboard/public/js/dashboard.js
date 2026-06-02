@@ -415,12 +415,22 @@ async function refreshPosition() {
 const LOG_COLORS = { INFO:'background:rgba(74,144,217,0.15);color:#4a90d9', ORDER_PLACED:'background:rgba(74,144,217,0.15);color:#4a90d9', ORDER_FILLED:'background:rgba(29,185,84,0.15);color:#1db954', ERROR:'background:rgba(232,64,74,0.15);color:#e8404a', WARN:'background:rgba(245,166,35,0.15);color:#f5a623' };
 let activeTab = 'console';
 
-function switchTab(tab) {
-  activeTab = tab;
-  document.getElementById('log-events').style.display = tab==='events'?'':'none';
-  document.getElementById('log-console').style.display = tab==='console'?'':'none';
-  document.getElementById('tab-events').className = 'log-tab'+(tab==='events'?' active':'');
-  document.getElementById('tab-console').className = 'log-tab'+(tab==='console'?' active':'');
+function switchTab(tab, el) {
+  // Handle both old log tabs and new main tabs
+  if (tab === 'events' || tab === 'console') {
+    activeTab = tab;
+    document.getElementById('log-events').style.display = tab==='events'?'':'none';
+    document.getElementById('log-console').style.display = tab==='console'?'':'none';
+    document.getElementById('tab-events').className = 'log-tab'+(tab==='events'?' active':'');
+    document.getElementById('tab-console').className = 'log-tab'+(tab==='console'?' active':'');
+  } else {
+    // New tab system for overview/analytics/settings
+    document.querySelectorAll('.bdp-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.bdp-tab-panel').forEach(p => p.style.display = 'none');
+    if (el) el.classList.add('active');
+    const panel = document.querySelector(`.bdp-tab-panel[data-tab="${tab}"]`);
+    if (panel) panel.style.display = 'flex';
+  }
 }
 
 function appendEventLog(entry) {
@@ -447,6 +457,16 @@ function initSSE() {
   evtEs.onmessage = e => { try { appendEventLog(JSON.parse(e.data)); } catch {} };
   const conEs = new EventSource('/api/console/stream');
   conEs.onmessage = e => { try { appendConsoleLine(JSON.parse(e.data)); } catch {} };
+}
+
+async function refreshAISignal() {
+  if (!window.BOT_CONTEXT?.botId) return;
+  try {
+    const signal = await fetch(api(`/api/bots/${window.BOT_CONTEXT.botId}/ai-signal`)).then(r => r.json());
+    updateAIBand(signal);
+  } catch (err) {
+    console.warn('[AI Signal] Fetch failed:', err);
+  }
 }
 
 // ── SoPoints Tier Card ────────────────────────────────────────────────────
@@ -890,9 +910,11 @@ let analyticsCharts = {};
 
 function switchMainTab(tab) {
   activeMainTab = tab;
-  ['overview','analytics'].forEach(t => {
-    document.getElementById('tabpanel-'+t).classList.toggle('active', t===tab);
-    document.getElementById('tabnav-'+t).classList.toggle('active', t===tab);
+  ['overview','analytics','backtest'].forEach(t => {
+    const panel = document.getElementById('tabpanel-'+t);
+    const nav = document.getElementById('tabnav-'+t);
+    if (panel) panel.classList.toggle('active', t===tab);
+    if (nav) nav.classList.toggle('active', t===tab);
   });
   if (tab === 'analytics') {
     refreshAnalytics();
@@ -1125,6 +1147,175 @@ async function updateBotIdentity() {
   setTimeout(() => { toast.style.opacity = '0'; }, 3000);
 }
 
+// ── AI Signal Band ────────────────────────────────────────────────────────
+function _confColor(v) {
+  return v < 0.4 ? '#E24B4A' : v < 0.65 ? '#BA7517' : '#1D9E75';
+}
+
+function updateAIBand(ai) {
+  if (!ai) return;
+  const regime = ai.regime || '—';
+  const regimeColors = { SIDEWAY: '#BA7517', TREND_UP: '#1D9E75', TREND_DOWN: '#1D9E75', HIGH_VOL: '#E24B4A', TREND: '#1D9E75' };
+  _setPill('ai-pill-regime', regime, regimeColors[regime] || '#888780');
+  if (ai.fearGreedIndex != null) {
+    const fg = ai.fearGreedIndex;
+    const macroText = fg < 35 ? `Fear ${fg}` : fg > 55 ? `Greed ${fg}` : `Neutral ${fg}`;
+    const macroColor = fg < 35 ? '#E24B4A' : fg > 55 ? '#1D9E75' : '#888780';
+    _setPill('ai-pill-macro', macroText, macroColor);
+  }
+  if (ai.macroSentimentMultiplier != null) {
+    const mx = ai.macroSentimentMultiplier;
+    _setPill('ai-pill-sizemult', mx.toFixed(2) + '×', mx > 1 ? '#1D9E75' : mx < 1 ? '#E24B4A' : '#888780');
+  }
+  const dir = ai.lastSignalDirection;
+  _setPill('ai-pill-direction', dir === 'LONG' ? 'LONG ↑' : dir === 'SHORT' ? 'SHORT ↓' : '—', null);
+  if (ai.chopScore != null) {
+    _setPill('ai-pill-chop', ai.chopScore.toFixed(2), ai.chopScore > 0.5 ? '#E24B4A' : '#BA7517');
+  }
+  if (ai.effectiveConfidence != null) {
+    const conf = ai.effectiveConfidence;
+    const color = _confColor(conf);
+    const fill = document.getElementById('ai-conf-fill');
+    if (fill) { fill.style.width = (conf * 100).toFixed(1) + '%'; fill.style.background = color; }
+    const pct = document.getElementById('ai-conf-pct');
+    if (pct) { pct.textContent = conf.toFixed(2); pct.style.color = color; }
+  }
+  renderPipelineFlow(ai.signalPipeline || []);
+  if (ai.signalPipeline && ai.signalPipeline.length > 0) {
+    appendSignalHistory({
+      time: new Date().toLocaleTimeString('en-GB', { hour12: false }),
+      dir: ai.lastSignalDirection || 'SKIP',
+      regime: ai.regime || '—',
+      detail: [ai.adx ? `ADX ${ai.adx}` : null, ai.chopScore != null ? `chop ${ai.chopScore.toFixed(2)}` : null].filter(Boolean).join(' · '),
+      conf: ai.effectiveConfidence || 0,
+      traded: ai.traded === true,
+      pipeline: ai.signalPipeline,
+    });
+  }
+}
+
+function _setPill(id, text, color) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  if (color) el.style.color = color;
+}
+
+const GATE_SHORT_NAMES = {
+  'SoSoValue macro filter': 'Macro', 'RegimeConfidenceThreshold': 'Regime', 'TradePressureGate': 'Pressure',
+  'FallbackQualityGate': 'Fallback', 'FeeAwareEntryFilter': 'Fee', 'LLMMomentumAdjuster': 'LLM',
+  'MinHoldTimeEnforcer': 'MinHold', 'Regime check': 'Regime', 'ChopDetector': 'Chop',
+  'FakeBreakoutFilter': 'Breakout', 'Confidence gate': 'Confidence', '2-tick confirmation': '2-tick',
+};
+
+function renderPipelineFlow(pipeline) {
+  const container = document.getElementById('ai-pipeline-flow');
+  if (!container) return;
+  if (!pipeline || !pipeline.length) { container.innerHTML = ''; return; }
+  container.innerHTML = pipeline.map((g, i) => {
+    const isPass = g.result === 'pass';
+    const isNR = g.result === 'not_reached';
+    const dotColor = isPass ? '#1D9E75' : isNR ? '#B4B2A9' : '#E24B4A';
+    const resultText = isPass ? (g.gate === 'LLMMomentumAdjuster' && g.reason ? g.reason : 'pass') : isNR ? 'nr' : 'skip';
+    const resultClass = isPass ? 'green' : isNR ? '' : 'red';
+    const name = GATE_SHORT_NAMES[g.gate] || g.gate;
+    const arrow = i < pipeline.length - 1 ? '<span class="pr-arrow">→</span>' : '';
+    return `<div class="pr-gate"><div class="pr-dot" style="background:${dotColor}"></div><span class="pr-name">${name}</span><span class="pr-result ${resultClass}">${resultText}</span></div>${arrow}`;
+  }).join('');
+}
+
+// ── Signal History ────────────────────────────────────────────────────────
+const _sigHistory = [];
+const SIG_HISTORY_MAX = 200;
+let _sigFilter = 'all';
+let _sigOpenIdx = -1;
+let _sigHistOpen = false;
+
+function appendSignalHistory(entry) {
+  _sigHistory.unshift(entry);
+  if (_sigHistory.length > SIG_HISTORY_MAX) _sigHistory.pop();
+  _updateSigCount();
+  if (_sigHistOpen) renderSignalHistory();
+  updateAnalyticsSignalStats();
+}
+
+function _updateSigCount() {
+  const el = document.getElementById('sig-hist-count');
+  if (!el) return;
+  const filtered = _sigHistory.filter(_sigFilterFn);
+  el.textContent = filtered.length;
+}
+
+function _sigFilterFn(s) {
+  return _sigFilter === 'all' || (_sigFilter === 'trade' && s.traded) || (_sigFilter === 'skip' && !s.traded);
+}
+
+function toggleSignalHistory() {
+  _sigHistOpen = !_sigHistOpen;
+  const body = document.getElementById('sig-hist-body');
+  const chev = document.getElementById('sig-hist-chevron');
+  if (body) body.classList.toggle('open', _sigHistOpen);
+  if (chev) chev.classList.toggle('open', _sigHistOpen);
+  if (_sigHistOpen) renderSignalHistory();
+}
+
+function filterSignals(f, el) {
+  _sigFilter = f;
+  _sigOpenIdx = -1;
+  document.querySelectorAll('.fseg').forEach(b => b.classList.remove('on'));
+  if (el) el.classList.add('on');
+  _updateSigCount();
+  if (_sigHistOpen) renderSignalHistory();
+}
+
+function toggleSigRow(i) {
+  _sigOpenIdx = _sigOpenIdx === i ? -1 : i;
+  renderSignalHistory();
+}
+
+function renderSignalHistory() {
+  const container = document.getElementById('sig-hist-rows');
+  if (!container) return;
+  const filtered = _sigHistory.filter(_sigFilterFn);
+  container.innerHTML = filtered.map((s, i) => {
+    const dirClass = s.dir === 'LONG' ? 'dl' : s.dir === 'SHORT' ? 'ds' : 'dsk';
+    const dirIcon = s.dir === 'LONG' ? '↑' : s.dir === 'SHORT' ? '↓' : '—';
+    const col = _confColor(s.conf);
+    const isOpen = i === _sigOpenIdx;
+    const dots = (s.pipeline || []).map(p => {
+      const c = p.result === 'pass' ? '#1D9E75' : p.result === 'not_reached' ? '#B4B2A9' : '#E24B4A';
+      return `<div class="gd" style="background:${c}" title="${p.gate}: ${p.result}"></div>`;
+    }).join('');
+    const pipeRows = (s.pipeline || []).map(p => {
+      const cls = p.result === 'pass' ? 'pp' : p.result === 'not_reached' ? 'psk' : 'pf';
+      const label = p.result === 'pass' ? `pass · ${p.reason}` : p.result === 'not_reached' ? 'not reached' : `skip · ${p.reason}`;
+      return `<div class="ep"><span class="pg">${p.gate}</span><span class="${cls}">${label}</span></div>`;
+    }).join('');
+    return `<div class="sig-row${isOpen ? ' open-row' : ''}" onclick="toggleSigRow(${i})"><span class="ts">${s.time}</span><span class="dp ${dirClass}">${dirIcon} ${s.dir}</span><span><div class="rg">${s.regime}</div><div class="rd">${s.detail}</div></span><span class="cm"><div class="ct"><div class="cf" style="width:${Math.round(s.conf*100)}%;background:${col}"></div></div><span class="cn" style="color:${col}">${s.conf.toFixed(2)}</span></span><span class="gdots">${dots}</span></div><div class="expand${isOpen ? ' on' : ''}"><div class="exp-lbl">Pipeline log</div>${pipeRows}</div>`;
+  }).join('');
+}
+
+function updateAnalyticsSignalStats() {
+  const total = _sigHistory.length;
+  const traded = _sigHistory.filter(s => s.traded).length;
+  const skipped = total - traded;
+  const avgConf = traded > 0 ? (_sigHistory.filter(s => s.traded).reduce((a, s) => a + s.conf, 0) / traded) : 0;
+  const _set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  _set('asig-total', total || '—');
+  _set('asig-traded', traded || '—');
+  _set('asig-hitrate', total > 0 ? Math.round(traded / total * 100) + '% hit rate' : '—');
+  _set('asig-skipped', skipped || '—');
+  _set('asig-avgconf', traded > 0 ? avgConf.toFixed(2) : '—');
+}
+
+// ── Tick Counter ──────────────────────────────────────────────────────────
+let _lastAiTickSecs = 0;
+setInterval(() => {
+  _lastAiTickSecs++;
+  const el = document.getElementById('ai-last-tick');
+  if (el) el.textContent = `last tick ${_lastAiTickSecs}s ago`;
+}, 1000);
+
 // ── Init ──────────────────────────────────────────────────────────────────
 initCharts();
 initExchangeUI();
@@ -1133,10 +1324,12 @@ refreshPosition();
 refreshCtrlStatus();
 refreshTier();
 refreshWeek();
+refreshAISignal();
 initSSE();
 setInterval(refresh, 5000);
 setInterval(refreshPosition, 3000);
 setInterval(refreshCtrlStatus, 5000);
+setInterval(refreshAISignal, 5000);
 setInterval(refreshTier, 5*60*1000);
 setInterval(refreshWeek, 5*60*1000);
 // ── Config Panel ──────────────────────────────────────────────────────────
