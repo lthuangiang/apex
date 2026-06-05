@@ -175,6 +175,9 @@ function updateBotCards() {
       statValues[3].textContent = (eff != null ? eff.toFixed(1) : '0.0') + ' bps';
     }
     if (statValues[4]) statValues[4].textContent = bot.uptime + 'm';
+
+    // Update sparkline/position widget
+    drawSparkline(bot);
   });
 }
 
