@@ -67,7 +67,7 @@
     .footer-link:hover{color:#f5a623}
     
     /* Exchange cards */
-    .exchange-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;max-width:1100px;margin:0 auto}
+    .exchange-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem;max-width:1300px;margin:0 auto}
     .exchange-card{background:#0d0f14;border:1px solid #1e2535;border-radius:14px;padding:2rem;transition:all 0.3s;display:flex;flex-direction:column;gap:1rem}
     .exchange-card:hover{border-color:rgba(245,166,35,0.4);transform:translateY(-4px);box-shadow:0 8px 32px rgba(0,0,0,0.5)}
     .exchange-logo-wrap{height:52px;display:flex;align-items:center}
@@ -91,8 +91,8 @@
       <div class="badge">LIVE · AI-POWERED TRADING</div>
       <h1 class="hero-title">DRIFT</h1>
       <p class="hero-tagline">Dynamic Risk-Informed Futures Trading</p>
-      <p class="hero-subtitle">AI-powered perpetual futures bot with adaptive learning, intelligent execution, correlation hedging, and daily budget reset.</p>
-      
+      <p class="hero-subtitle">Multi-tenant SaaS platform for perpetual futures trading. Wallet-scoped bot management, adaptive AI signals, and hands-free automation.</p>
+
       <div class="cta-group">
         <a href="/wallet-login" class="btn btn-primary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
@@ -100,14 +100,14 @@
         </a>
         <a href="#features" class="btn btn-secondary">Explore Features</a>
       </div>
-      
+
       <div class="stats-grid">
         <div class="stat-item">
           <div class="stat-value">3</div>
           <div class="stat-label">Strategies</div>
         </div>
         <div class="stat-item">
-          <div class="stat-value">3</div>
+          <div class="stat-value">4</div>
           <div class="stat-label">Exchanges</div>
         </div>
         <div class="stat-item">
@@ -186,6 +186,12 @@
       </div>
       
       <div class="feature-card">
+        <div class="feature-icon">🏢</div>
+        <h3 class="feature-title">Multi-Tenant SaaS</h3>
+        <p class="feature-desc">Wallet-scoped bot isolation, encrypted credential storage, per-tenant config persistence. Each wallet gets isolated BotManager and data directory.</p>
+      </div>
+
+      <div class="feature-card">
         <div class="feature-icon">📊</div>
         <h3 class="feature-title">Real-Time Dashboard</h3>
         <p class="feature-desc">Multi-bot manager view, per-bot session PnL, SSE console stream, trade history, 30+ dimension analytics, and 70+ runtime-configurable parameters.</p>
@@ -208,10 +214,10 @@
   <!-- Tech Stack Section -->
   <section class="section" style="background:#141820;border-top:1px solid #1e2535">
     <div class="section-header">
-      <h2 class="section-title">Exchange-agnostic architecture</h2>
-      <p class="section-subtitle">One adapter interface, three exchanges. Same bot logic, completely different mechanics.</p>
+      <h2 class="section-title">Multi-exchange support</h2>
+      <p class="section-subtitle">One unified interface, four perpetual DEXes. Tenant-isolated credentials, encrypted storage.</p>
     </div>
-    
+
     <div class="exchange-grid">
 
       <!-- SoDEX -->
@@ -272,6 +278,26 @@
           <span class="exchange-tag">USD Notional</span>
         </div>
         <p class="exchange-desc">GraphQL API with Secp256k1 signing, USD notional sizing, mainnet and testnet support.</p>
+      </div>
+
+      <!-- Hibachi -->
+      <div class="exchange-card">
+        <div class="exchange-logo-wrap">
+          <svg viewBox="0 0 220 56" fill="none" xmlns="http://www.w3.org/2000/svg" class="exchange-logo-svg">
+            <!-- Hibachi icon: flame symbol -->
+            <path d="M22 42C22 42 14 36 14 28C14 22 17 18 22 14C27 18 30 22 30 28C30 36 22 42 22 42Z" fill="#ff6b35" opacity="0.9"/>
+            <path d="M22 38C22 38 18 34 18 29C18 26 19.5 23.5 22 21C24.5 23.5 26 26 26 29C26 34 22 38 22 38Z" fill="#ffa500" opacity="0.8"/>
+            <circle cx="22" cy="28" r="2" fill="white" opacity="0.9"/>
+            <!-- Hibachi text -->
+            <text x="44" y="36" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="22" font-weight="700" fill="white" letter-spacing="-0.4">Hibachi</text>
+          </svg>
+        </div>
+        <div class="exchange-tags">
+          <span class="exchange-tag">REST API</span>
+          <span class="exchange-tag">HMAC-SHA256</span>
+          <span class="exchange-tag">Trustless/Managed</span>
+        </div>
+        <p class="exchange-desc">REST API with HMAC-SHA256 auth, supports both trustless (private key) and exchange-managed accounts.</p>
       </div>
 
     </div>

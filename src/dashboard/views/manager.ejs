@@ -257,6 +257,20 @@
     .wallet-popup-btn-danger:hover { background: rgba(232,64,74,0.2); }
     .copy-toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--green-border); color: var(--green); font-size: 0.78rem; font-weight: 600; padding: 0.5rem 1.25rem; border-radius: 20px; box-shadow: var(--shadow-md); opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 9999; }
     .copy-toast.show { opacity: 1; }
+
+    /* Add Bot Modal */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; padding: 2rem; }
+    .modal-content { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); }
+    .modal-header { padding: 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .modal-title { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); }
+    .modal-close { background: transparent; border: none; color: var(--text-tertiary); cursor: pointer; font-size: 1.5rem; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all 0.15s; }
+    .modal-close:hover { background: var(--surface-2); color: var(--text-primary); }
+    .modal-body { padding: 1.5rem; }
+    .form-group { margin-bottom: 1.25rem; }
+    .form-group label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem; }
+    .form-group input, .form-group select { width: 100%; padding: 0.65rem 0.85rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text-primary); font-size: 0.85rem; transition: all 0.15s; }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+    .modal-footer { padding: 1.5rem; border-top: 1px solid var(--border); display: flex; gap: 0.75rem; justify-content: flex-end; }
   </style>
 </head>
 <body>
@@ -676,6 +690,13 @@
               <div class="ex-name">Hibachi</div>
               <div class="ex-desc">EVM · ECDSA / HMAC · Trustless &amp; Managed</div>
             </div>
+            <div class="ex-tile" data-exchange="ondoperps">
+              <div class="ex-logo" style="background:linear-gradient(135deg,#6B46C1,#9333EA)">
+                <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="#9333EA" opacity=".15"/><path d="M16 8v16M12 12h8M12 20h8" stroke="#9333EA" stroke-width="2.5" stroke-linecap="round"/></svg>
+              </div>
+              <div class="ex-name">OndoPerps</div>
+              <div class="ex-desc">RWA · REST API · Gold &amp; Stocks</div>
+            </div>
           </div>
 
           <div class="wz-section-title" style="margin-top:1.25rem">Bot Type</div>
@@ -806,6 +827,33 @@
                 <input class="wz-input" type="password" id="wz-hibachiSecretKey" placeholder="your_secret_key" autocomplete="new-password" />
                 <span class="wz-hint">HMAC-SHA256 signing key — stored encrypted, never logged</span>
                 <span class="wz-field-error" id="err-hibachiSecretKey">Required for Exchange Managed accounts</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- OndoPerps creds -->
+          <div id="wz-creds-ondoperps" style="display:none">
+            <div class="wz-section-title">OndoPerps Credentials</div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">API Key ID <span class="req">*</span></label>
+                <input class="wz-input" type="text" id="wz-ondoperpsApiKeyId" placeholder="your_api_key_id" autocomplete="off" />
+                <span class="wz-field-error" id="err-ondoperpsApiKeyId">Required</span>
+              </div>
+            </div>
+            <div class="wz-form-row full">
+              <div class="wz-form-group">
+                <label class="wz-label">API Key Secret <span class="req">*</span></label>
+                <input class="wz-input" type="password" id="wz-ondoperpsApiKeySecret" placeholder="your_api_key_secret" autocomplete="new-password" />
+                <span class="wz-hint">Stored encrypted, never logged</span>
+                <span class="wz-field-error" id="err-ondoperpsApiKeySecret">Required</span>
+              </div>
+            </div>
+            <div class="wz-form-row full">
+              <div class="wz-form-group">
+                <label class="wz-label">Base URL (optional)</label>
+                <input class="wz-input" type="text" id="wz-ondoperpsBaseUrl" placeholder="https://api.ondoperps.xyz/v1" autocomplete="off" />
+                <span class="wz-hint">Leave empty for default</span>
               </div>
             </div>
           </div>
@@ -1077,14 +1125,14 @@
 
     // ── Step 1: Credentials panel ─────────────────────────────────────────────
     function showCredsPanel() {
-      ['sodex','decibel','dango','hibachi'].forEach(function (ex) {
+      ['sodex','decibel','dango','hibachi','ondoperps'].forEach(function (ex) {
         var el = document.getElementById('wz-creds-' + ex);
         if (el) el.style.display = ex === state.exchange ? '' : 'none';
       });
     }
 
     // ── Step 2: Symbol loading ────────────────────────────────────────────────
-    var BTC_DEFAULTS = { sodex: 'BTC-USD', decibel: 'BTC/USD', dango: 'BTC-USD', hibachi: 'BTC/USDT-P' };
+    var BTC_DEFAULTS = { sodex: 'BTC-USD', decibel: 'BTC/USD', dango: 'BTC-USD', hibachi: 'BTC/USDT-P', ondoperps: 'XAU-PERP' };
 
     function loadSymbols() {
       var title = document.getElementById('wz-market-title');
@@ -1232,7 +1280,14 @@
         if (state.exchange === 'sodex') {
           if (!val('wz-apiKey'))     { showFieldError('apiKey', 'API Key is required'); ok = false; }
           if (!val('wz-subaccount')) { showFieldError('subaccount', 'Subaccount address is required'); ok = false; }
-          if (!val('wz-apiSecret'))  { showFieldError('apiSecret', 'Private key is required'); ok = false; }
+          var secret = val('wz-apiSecret');
+          if (!secret) {
+            showFieldError('apiSecret', 'Private key is required');
+            ok = false;
+          } else if (!/^0x[0-9a-fA-F]{64}$/.test(secret)) {
+            showFieldError('apiSecret', 'Must be 0x-prefixed 64-char hex (e.g., 0x123abc...)');
+            ok = false;
+          }
         } else if (state.exchange === 'decibel') {
           if (!val('wz-privateKey')) { showFieldError('privateKey', 'Private key is required'); ok = false; }
         } else if (state.exchange === 'dango') {
@@ -1249,6 +1304,9 @@
           } else {
             if (!val('wz-hibachiSecretKey')) { showFieldError('hibachiSecretKey', 'Secret key is required'); ok = false; }
           }
+        } else if (state.exchange === 'ondoperps') {
+          if (!val('wz-ondoperpsApiKeyId')) { showFieldError('ondoperpsApiKeyId', 'API Key ID is required'); ok = false; }
+          if (!val('wz-ondoperpsApiKeySecret')) { showFieldError('ondoperpsApiKeySecret', 'API Key Secret is required'); ok = false; }
         }
         return ok;
       }
@@ -1404,6 +1462,11 @@
         } else {
           base.hibachiSecretKey = val('wz-hibachiSecretKey');
         }
+      } else if (state.exchange === 'ondoperps') {
+        base.apiKeyId     = val('wz-ondoperpsApiKeyId');
+        base.apiKeySecret = val('wz-ondoperpsApiKeySecret');
+        var baseUrl = val('wz-ondoperpsBaseUrl');
+        if (baseUrl) base.baseUrl = baseUrl;
       }
 
       if (state.botType === 'hedge') {
@@ -1505,5 +1568,65 @@
     };
   })();
   </script>
+
+  <!-- Add Bot Modal - DISABLED: Using wizard instead -->
+  <!--
+  <div class="modal-overlay" id="add-bot-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Create New Bot</h2>
+        <button class="modal-close" id="close-add-bot-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Bot Name *</label>
+          <input type="text" id="bot-name" placeholder="My Trading Bot" required />
+        </div>
+
+        <div class="form-group">
+          <label>Exchange *</label>
+          <select id="bot-exchange" required>
+            <option value="sodex">SoDEX</option>
+            <option value="dango">Dango</option>
+            <option value="decibel">Decibel</option>
+            <option value="hibachi">Hibachi</option>
+            <option value="ondoperps">OndoPerps</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Symbol *</label>
+          <select id="bot-symbol" required>
+            <option value="BTC-USD">BTC-USD</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Mode *</label>
+          <select id="bot-mode" required>
+            <option value="trade">Trade</option>
+            <option value="farm">Farm</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Leverage</label>
+          <input type="number" id="bot-leverage" value="10" min="1" max="100" />
+        </div>
+
+        <div id="credential-form"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeAddBotModal()">Cancel</button>
+        <button class="btn btn-primary" id="submit-add-bot">Create Bot</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/add-bot-modal.js"></script>
+  <script>
+    document.getElementById('btn-create-bot')?.addEventListener('click', openAddBotModal);
+  </script>
+  -->
 </body>
 </html>

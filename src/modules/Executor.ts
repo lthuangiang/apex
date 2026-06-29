@@ -30,22 +30,26 @@ export class Executor {
 
             // Task 4.2–4.4: Use ExecutionEdge for dynamic offset if available
             let effectiveOffset: number;
-            if (this.executionEdge) {
-                const edgeResult = await this.executionEdge.computeOffset(symbol, direction, ob);
-                // Task 4.3: Return null when spread is too wide
-                if (!edgeResult.spreadOk) {
-                    console.warn(
-                        `[Executor] Spread too wide (${edgeResult.spreadBps.toFixed(1)} bps). Skipping entry.`
-                    );
-                    return null;
-                }
-                // Task 4.4: Use edge offset
-                effectiveOffset = edgeResult.offset;
+            if (symbol == "SPCX-USD") {
+                effectiveOffset = 0.01
             } else {
-                // Task 4.5: Legacy fallback
-                effectiveOffset = priceOffset;
+                    if (this.executionEdge) {
+                    const edgeResult = await this.executionEdge.computeOffset(symbol, direction, ob);
+                    // Task 4.3: Return null when spread is too wide
+                    if (!edgeResult.spreadOk) {
+                        console.warn(
+                            `[Executor] Spread too wide (${edgeResult.spreadBps.toFixed(1)} bps). Skipping entry.`
+                        );
+                        return null;
+                    }
+                    // Task 4.4: Use edge offset
+                    effectiveOffset = edgeResult.offset;
+                } else {
+                    // Task 4.5: Legacy fallback
+                    effectiveOffset = priceOffset;
+                }
             }
-
+            
             // Post-Only (maker): Buy @ best_bid - offset, Sell @ best_ask + offset
             // Offset ensures order sits inside book and won't cross spread on re-place
             const rawPrice = direction === 'long' ? ob.best_bid : ob.best_ask;

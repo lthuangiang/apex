@@ -3,6 +3,7 @@ import { SodexAdapter } from '../adapters/sodex_adapter.js';
 import { DangoAdapter } from '../adapters/dango_adapter.js';
 import { DecibelAdapter } from '../adapters/decibel_adapter.js';
 import { HibachiAdapter } from '../adapters/hibachi_adapter.js';
+import { OndoPerpsAdapter } from '../adapters/ondoperps_adapter.js';
 import type { BotCredentials } from './CredentialStore.js';
 
 /**
@@ -101,9 +102,24 @@ export function createAdapterFromCredentials(
       });
     }
 
+    case 'ondoperps': {
+      const { apiKeyId, apiKeySecret, baseUrl } = credentials;
+      if (!apiKeyId || !apiKeySecret) {
+        throw new Error(
+          `Missing OndoPerps credentials. Required: apiKeyId, apiKeySecret`
+        );
+      }
+      console.log(`[adapterFactory] Creating OndoPerpsAdapter from stored credentials`);
+      return new OndoPerpsAdapter({
+        apiKeyId,
+        apiKeySecret,
+        baseUrl
+      });
+    }
+
     default:
       throw new Error(
-        `Unsupported exchange: "${exchange}". Supported exchanges: sodex, dango, decibel, hibachi`
+        `Unsupported exchange: "${exchange}". Supported exchanges: sodex, dango, decibel, hibachi, ondoperps`
       );
   }
 }
@@ -211,9 +227,29 @@ export function createAdapter(exchange: string, credentialKey: string): Exchange
       });
     }
 
+    case 'ondoperps': {
+      const apiKeyId = process.env[`${envPrefix}_API_KEY_ID`];
+      const apiKeySecret = process.env[`${envPrefix}_API_KEY_SECRET`];
+      const baseUrl = process.env[`${envPrefix}_BASE_URL`];
+
+      if (!apiKeyId || !apiKeySecret) {
+        throw new Error(
+          `Missing credentials for ${exchange}. Required env vars: ` +
+          `${credentialKey}_API_KEY_ID, ${credentialKey}_API_KEY_SECRET`
+        );
+      }
+
+      console.log(`[adapterFactory] Creating OndoPerpsAdapter with credentialKey: ${credentialKey}`);
+      return new OndoPerpsAdapter({
+        apiKeyId,
+        apiKeySecret,
+        baseUrl
+      });
+    }
+
     default:
       throw new Error(
-        `Unsupported exchange: "${exchange}". Supported exchanges: sodex, dango, decibel, hibachi`
+        `Unsupported exchange: "${exchange}". Supported exchanges: sodex, dango, decibel, hibachi, ondoperps`
       );
   }
 }

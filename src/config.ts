@@ -43,7 +43,7 @@ export const config = {
   FARM_EXTRA_WAIT_SECS: 30,     // Extra wait after hold expires if profitable (reduced from 30s)
 
   // ── Farm mode sizing controls ─────────────────────────────────────────────
-  FARM_USE_DYNAMIC_SIZING: true,       // Use PositionSizer dynamic multipliers in farm mode
+  FARM_USE_DYNAMIC_SIZING: false,       // Use PositionSizer dynamic multipliers in farm mode
   FARM_WEAK_SIGNAL_SIZE_MULT: 0.7,    // Size multiplier when signal direction is confirmed but weak
   FARM_NO_PRESSURE_SIZE_MULT: 0.75,   // Size multiplier when tradePressure = 0
   FARM_PINGPONG_SIZE_MULT: 0.6,       // Size multiplier for ping-pong direction entries
@@ -94,14 +94,18 @@ export const config = {
   FEE_RATE_MAKER: 0.00012,
 
   // Cooldown between trades (trade mode only — farm mode uses FARM_COOLDOWN_SECS)
-  COOLDOWN_MIN_MINS: 2,
-  COOLDOWN_MAX_MINS: 5,
+  COOLDOWN_MIN_MINS: 1,
+  COOLDOWN_MAX_MINS: 2,
 
   // Farm mode uses a short fixed cooldown (ignores adaptive multipliers)
   FARM_COOLDOWN_SECS: 30,       // Fixed 30s cooldown after each farm trade
 
   // Skip closing positions below this USD value (avoids API "quantity invalid" errors)
   MIN_POSITION_VALUE_USD: 20,
+
+  // Native SL/TP (SoDEX only)
+  useNativeSL: true,        // Use native server-side SL (SoDEX adapter only)
+  slPercent: 0.05,          // Stop loss percent for native SL
 
   // Legacy — only used by PositionManager in trade mode trailing stop (not primary exit)
   MAX_POSITION: 0.05,

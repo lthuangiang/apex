@@ -54,9 +54,6 @@ export class DashboardServer {
   private tradeLogger: TradeLogger;
   private port: number;
   private passcodeHash: string | null;
-  private sessionManager: SessionManager | null = null;
-  private watcher: Watcher | null = null;
-  private watcherRunner: (() => void) | null = null;
   private configStore: ConfigStoreInterface | null = null;
   private botManager: BotManager | null = null;
   private tenantRegistry: TenantRegistry | null = null;
@@ -81,18 +78,12 @@ export class DashboardServer {
     this._setupRoutes();
   }
 
-  setBotControls(sessionManager: SessionManager, watcher: Watcher, runWatcher: () => void) {
-    this.sessionManager = sessionManager;
-    this.watcher = watcher;
-    this.watcherRunner = runWatcher;
-  }
-
   setConfigStore(store: ConfigStoreInterface): void {
     this.configStore = store;
   }
 
   /**
-   * Register BotManager for multi-bot support
+   * Register BotManager for multi-bot support (used by tenant routes)
    */
   registerBotManager(manager: BotManager, telegram?: TelegramManager): void {
     this.botManager = manager;
@@ -104,7 +95,7 @@ export class DashboardServer {
   /**
    * Resolve the correct BotManager for a request.
    * In multi-wallet SaaS mode, returns the tenant's BotManager.
-   * Falls back to the global botManager for legacy single-operator mode.
+   * Falls back to the global botManager for backward compat.
    */
   private _resolveManager(req: Request): BotManager | null {
     return (req as WalletScopedRequest).tenant?.botManager ?? this.botManager;
@@ -114,9 +105,11 @@ export class DashboardServer {
    * Register TenantRegistry for multi-wallet SaaS support.
    * Must be called before the server starts listening.
    */
-  registerTenantRegistry(registry: TenantRegistry): void {
+  registerTenantRegistry(registry: TenantRegistry, telegram?: TelegramManager): void {
     this.tenantRegistry = registry;
+    if (telegram) this._telegram = telegram;
     console.log('[DashboardServer] TenantRegistry registered');
+    this._setupManagerRoutes();
   }
 
   private _isAuthenticated(req: Request): boolean {
@@ -155,8 +148,22 @@ export class DashboardServer {
       else { res.redirect('/wallet-login'); }
       return;
     }
+    // Attach tenant context from SIWE token wallet address
+    this._attachTenantContext(req);
     next();
   };
+
+  private _attachTenantContext(req: Request): void {
+    if (!this.tenantRegistry) return;
+    const cookies = req.headers.cookie || '';
+    const siweMatch = cookies.match(/siwe_token=([a-f0-9]+)/);
+    if (!siweMatch) return;
+    const walletAddress = validTokenAddresses.get(siweMatch[1]);
+    if (!walletAddress) return;
+    const tenant = this.tenantRegistry.ensureTenant(walletAddress);
+    (req as any).walletAddress = walletAddress;
+    (req as any).tenant = tenant;
+  }
 
   private _validateViewsDir(): void {
     if (!fs.existsSync(VIEWS_DIR)) {
@@ -255,30 +262,17 @@ export class DashboardServer {
     });
 
     this.app.get('/dashboard', (_req, res) => {
-      console.log('[DEBUG] /dashboard hit, botManager:', !!this.botManager);
-      // Serve Manager Dashboard if BotManager is registered
-      if (this.botManager) {
-        res.render('manager', (err: Error | null, html: string) => {
-          if (err) {
-            console.error('[DashboardServer] Manager template render error:', err);
-            res.status(500).send(`Template render error: ${err.message}`);
-            return;
-          }
-          res.setHeader('Content-Type', 'text/html');
-          res.send(html);
-        });
-      } else {
-        // Fallback to single-bot dashboard (existing behavior)
-        res.render('layout', (err: Error | null, html: string) => {
-          if (err) {
-            console.error('[DashboardServer] Template render error:', err);
-            res.status(500).send(`Template render error: ${err.message}`);
-            return;
-          }
-          res.setHeader('Content-Type', 'text/html');
-          res.send(html);
-        });
-      }
+      console.log('[DEBUG] /dashboard hit, tenantRegistry:', !!this.tenantRegistry);
+      // SaaS Mode: Always render tenant manager view
+      res.render('manager', (err: Error | null, html: string) => {
+        if (err) {
+          console.error('[DashboardServer] Manager template render error:', err);
+          res.status(500).send(`Template render error: ${err.message}`);
+          return;
+        }
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+      });
     });
 
     this.app.get('/api/trades', async (_req, res) => {
@@ -317,65 +311,27 @@ export class DashboardServer {
     this.app.use('/api/memory', memoryRouter);
 
     this.app.post('/api/control/start', async (_req, res) => {
-      if (!this.sessionManager || !this.watcher || !this.watcherRunner) { res.status(503).json({ error: 'Not available' }); return; }
-      if (this.sessionManager.getState().isRunning) { res.status(400).json({ error: 'Already running' }); return; }
-      this.sessionManager.resetMaxLoss();    // allow restart after emergency stop
-      this.sessionManager.resetVolumeTarget(); // allow restart after volume-target stop
-      if (this.sessionManager.startSession()) {
-        // Reset session stats in shared state so the new session starts from zero
-        sharedState.sessionPnl = 0;
-        sharedState.sessionGrossPnl = 0;
-        sharedState.sessionVolume = 0;
-        sharedState.sessionFees = 0;
-        sharedState.sessionStartBalance = null;
-        // Persist the zeroed state so debounced saveState() from the previous
-        // session doesn't overwrite the fresh zeros after restart
-        const { saveStateSync } = await import('../ai/StateStore.js');
-        saveStateSync();
-        this.watcher.resetSession();
-        this.watcher.restoreSessionFromPersistence();
-        this.watcherRunner();
-        res.json({ ok: true });
-      } else {
-        res.status(500).json({ error: 'Failed' });
-      }
+      res.status(410).json({ error: 'Single-bot control removed. Use tenant bot API: POST /api/bots/:id/start' });
     });
 
     this.app.post('/api/control/stop', (_req, res) => {
-      if (!this.sessionManager || !this.watcher) { res.status(503).json({ error: 'Not available' }); return; }
-      if (!this.sessionManager.getState().isRunning) { res.status(400).json({ error: 'Not running' }); return; }
-      this.sessionManager.stopSession(); this.watcher.stop(); res.json({ ok: true });
+      res.status(410).json({ error: 'Single-bot control removed. Use tenant bot API: POST /api/bots/:id/stop' });
     });
 
-    this.app.post('/api/control/set_mode', (req, res) => {
-      const { mode } = req.body as { mode?: string };
-      if (mode !== 'farm' && mode !== 'trade') { res.status(400).json({ error: 'Invalid mode' }); return; }
-      (config as any).MODE = mode; res.json({ ok: true, mode });
+    this.app.post('/api/control/set_mode', (_req, res) => {
+      res.status(410).json({ error: 'Single-bot control removed. Use tenant bot API: PATCH /api/bots/:id/config' });
     });
 
-    this.app.post('/api/control/set_max_loss', (req, res) => {
-      if (!this.sessionManager) { res.status(503).json({ error: 'Not available' }); return; }
-      const { amount } = req.body as { amount?: number };
-      if (!amount || isNaN(amount) || amount <= 0) { res.status(400).json({ error: 'Invalid amount' }); return; }
-      this.sessionManager.setMaxLoss(amount); res.json({ ok: true, maxLoss: amount });
+    this.app.post('/api/control/set_max_loss', (_req, res) => {
+      res.status(410).json({ error: 'Single-bot control removed. Use tenant bot API: PATCH /api/bots/:id/config' });
     });
 
     this.app.get('/api/control/status', async (_req, res) => {
-      if (!this.sessionManager || !this.watcher) { res.json({ isRunning: false, mode: config.MODE, maxLoss: 5, currentPnL: 0, uptime: 0, hasPosition: false }); return; }
-      const state = this.sessionManager.getState();
-      const uptime = state.startTime ? Math.floor((Date.now() - state.startTime) / 60000) : 0;
-      let hasPosition = false, positionText = '', cooldown: number | null = null;
-      if (state.isRunning) {
-        const detail = await this.watcher.getDetailedStatus();
-        hasPosition = detail.hasPosition; positionText = detail.text; cooldown = this.watcher.getCooldownInfo();
-      }
-      res.json({ isRunning: state.isRunning, mode: config.MODE, maxLoss: state.maxLoss, currentPnL: state.currentPnL, uptime, hasPosition, positionText, cooldown });
+      res.status(410).json({ error: 'Single-bot control removed. Use tenant bot API: GET /api/bots/:id/status' });
     });
 
     this.app.post('/api/control/close_position', async (_req, res) => {
-      if (!this.watcher) { res.status(503).json({ error: 'Not available' }); return; }
-      if (!this.sessionManager?.getState().isRunning) { res.status(400).json({ error: 'Not running' }); return; }
-      res.json({ ok: await this.watcher.forceClosePosition() });
+      res.status(410).json({ error: 'Single-bot control removed. Use tenant bot API: POST /api/bots/:id/close' });
     });
 
     this.app.get('/api/sopoints', async (_req, res) => {
@@ -602,11 +558,11 @@ export class DashboardServer {
 
   /**
    * Setup multi-bot manager routes
-   * Called after BotManager is registered
+   * Called after TenantRegistry is registered
    */
   private _setupManagerRoutes(): void {
-    if (!this.botManager) {
-      console.warn('[DashboardServer] _setupManagerRoutes called but botManager is null');
+    if (!this.tenantRegistry) {
+      console.warn('[DashboardServer] _setupManagerRoutes called but tenantRegistry is null');
       return;
     }
 
@@ -619,12 +575,13 @@ export class DashboardServer {
 
     // GET /bots/:id - Bot detail page
     this.app.get('/bots/:id', (req, res) => {
-      if (!this.botManager) {
-        res.status(503).send('Bot manager not available');
+      const manager = this._resolveManager(req);
+      if (!manager) {
+        res.status(503).send('Bot manager not available. Please login with wallet first.');
         return;
       }
-      
-      const bot = this.botManager.getBot(req.params.id);
+
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).send('Bot not found');
         return;
@@ -645,14 +602,15 @@ export class DashboardServer {
     // ── Manager API Routes ────────────────────────────────────────────────────
 
     // GET /api/bots - List all bots
-    this.app.get('/api/bots', (_req, res) => {
-      if (!this.botManager) {
+    this.app.get('/api/bots', (req, res) => {
+      const manager = this._resolveManager(req);
+      if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
-      
+
       try {
-        const bots = this.botManager.getAllBots();
+        const bots = manager.getAllBots();
         const statuses = bots.map(bot => bot.getStatus());
         res.json(statuses);
       } catch (err) {
@@ -664,14 +622,15 @@ export class DashboardServer {
     // Reads trade log files (mounted at /app/data/) so stats survive Docker restarts/updates.
     // PnL and Fees are computed from historical trade records.
     // Volume is estimated from feePaid (feePaid = notional * FEE_RATE_MAKER * 2).
-    this.app.get('/api/bots/stats', async (_req, res) => {
-      if (!this.botManager) {
+    this.app.get('/api/bots/stats', async (req, res) => {
+      const manager = this._resolveManager(req);
+      if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
 
       try {
-        const bots = this.botManager.getAllBots();
+        const bots = manager.getAllBots();
         let totalPnl = 0;
         let totalVolume = 0;
         let totalFees = 0;
@@ -733,8 +692,9 @@ export class DashboardServer {
 
     // POST /api/bots - Create a new bot at runtime
     this.app.post('/api/bots', async (req, res) => {
-      if (!this.botManager) {
-        res.status(503).json({ error: 'Bot manager not available' });
+      const manager = this._resolveManager(req);
+      if (!manager) {
+        res.status(503).json({ error: 'Bot manager not available. Please login with wallet first.' });
         return;
       }
 
@@ -745,35 +705,27 @@ export class DashboardServer {
 
         if (isHedge) {
           validateHedgeBotConfig(body);
-          // Prefer inline credentials over env var lookup
           const adapter = (body.apiKey || body.privateKey || body.dangoPrivateKey || body.hibachiApiKey)
             ? createAdapterFromCredentials(body.exchange as string, body as any)
             : createBotAdapter(body.exchange as string, body.credentialKey as string);
-          const bot = this.botManager.createHedgeBot(body as unknown as HedgeBotConfig, adapter, this._telegram as any);
+          const bot = manager.createHedgeBot(body as unknown as HedgeBotConfig, adapter, this._telegram as any);
           if (body.autoStart) await bot.start();
         } else {
           if (!validateBotConfig(body)) {
             res.status(400).json({ error: 'Invalid bot config — check all required fields' });
             return;
           }
-          // Prefer inline credentials over env var lookup
           const adapter = (body.apiKey || body.privateKey || body.dangoPrivateKey || body.hibachiApiKey)
             ? createAdapterFromCredentials(body.exchange as string, body as any)
             : createBotAdapter(body.exchange as string, body.credentialKey as string);
-          const bot = this.botManager.createBot(body, adapter, this._telegram as any);
+          const bot = manager.createBot(body, adapter, this._telegram as any);
           if (body.autoStart) await bot.start();
         }
 
-        // Persist updated config list to disk
-        // Check if this is a tenant-scoped request
+        // Persist updated config list to disk (tenant-scoped)
         const tenant = (req as unknown as WalletScopedRequest).tenant;
         if (tenant) {
-          // Tenant mode: use tenant-aware persistence
           tenant.persistConfigs();
-        } else {
-          // Legacy single-bot mode: use global config file
-          const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
-          saveBotConfigsToFile(this.botManager, configPath);
         }
 
         res.status(201).json({ ok: true, id: body.id });
@@ -828,33 +780,57 @@ export class DashboardServer {
       }
     });
 
+    // GET /api/exchanges/:exchange/symbols - Fetch supported symbols for an exchange
+    this.app.get('/api/exchanges/:exchange/symbols', async (req, res) => {
+      const { exchange } = req.params;
+
+      try {
+        if (exchange === 'ondoperps') {
+          // OndoPerps supports RWA assets only
+          res.json({
+            symbols: [
+              'XAU-PERP',
+              'AAPL-PERP',
+              'TSLA-PERP',
+              'GOOGL-PERP',
+              'MSFT-PERP',
+              'AMZN-PERP',
+              'NVDA-PERP',
+              'META-PERP'
+            ]
+          });
+        } else {
+          res.status(404).json({ error: 'Exchange not supported for symbol fetching' });
+        }
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
     // DELETE /api/bots/:id - Remove a bot from the registry
     this.app.delete('/api/bots/:id', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req);
+      if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
 
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
       }
 
       try {
-        // Stop first if running
         if (bot.state.botStatus === 'RUNNING') {
           await bot.stop();
         }
-        this.botManager.removeBot(req.params.id);
+        manager.removeBot(req.params.id);
 
-        // Persist
+        // Persist (tenant-scoped)
         const tenant = (req as unknown as WalletScopedRequest).tenant;
         if (tenant) {
           tenant.persistConfigs();
-        } else {
-          const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
-          saveBotConfigsToFile(this.botManager, configPath);
         }
 
         res.json({ ok: true });
@@ -867,24 +843,25 @@ export class DashboardServer {
 
     // POST /api/bots/:id/start - Start a bot
     this.app.post('/api/bots/:id/start', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req);
+      if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
-      
-      const bot = this.botManager.getBot(req.params.id);
+
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
       }
-      
+
       if (bot.state.botStatus === 'RUNNING') {
         res.status(400).json({ error: 'Already running' });
         return;
       }
-      
+
       try {
-        const success = await this.botManager.startBot(req.params.id);
+        const success = await manager.startBot(req.params.id);
         res.json({ ok: success });
       } catch (err) {
         res.status(500).json({ error: String(err) });
@@ -893,24 +870,25 @@ export class DashboardServer {
 
     // POST /api/bots/:id/stop - Stop a bot
     this.app.post('/api/bots/:id/stop', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req);
+      if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
-      
-      const bot = this.botManager.getBot(req.params.id);
+
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
       }
-      
+
       if (bot.state.botStatus === 'STOPPED') {
         res.status(400).json({ error: 'Not running' });
         return;
       }
-      
+
       try {
-        await this.botManager.stopBot(req.params.id);
+        await manager.stopBot(req.params.id);
         res.json({ ok: true });
       } catch (err) {
         res.status(500).json({ error: String(err) });
@@ -919,17 +897,18 @@ export class DashboardServer {
 
     // POST /api/bots/:id/close - Force close position
     this.app.post('/api/bots/:id/close', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req);
+      if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
-      
-      const bot = this.botManager.getBot(req.params.id);
+
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
       }
-      
+
       try {
         if (!(bot instanceof BotInstance)) {
           res.status(400).json({ error: 'Force-close is not supported for this bot type' });
@@ -946,12 +925,12 @@ export class DashboardServer {
 
     // GET /api/bots/:id/control/status - Get bot control status
     this.app.get('/api/bots/:id/control/status', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1003,12 +982,12 @@ export class DashboardServer {
 
     // POST /api/bots/:id/control/start - Start bot (alias for /api/bots/:id/start)
     this.app.post('/api/bots/:id/control/start', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1020,7 +999,7 @@ export class DashboardServer {
       }
       
       try {
-        const success = await this.botManager.startBot(req.params.id);
+        const success = await manager.startBot(req.params.id);
         res.json({ ok: success });
       } catch (err) {
         res.status(500).json({ error: String(err) });
@@ -1029,12 +1008,12 @@ export class DashboardServer {
 
     // POST /api/bots/:id/control/stop - Stop bot (alias for /api/bots/:id/stop)
     this.app.post('/api/bots/:id/control/stop', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1046,7 +1025,7 @@ export class DashboardServer {
       }
       
       try {
-        await this.botManager.stopBot(req.params.id);
+        await manager.stopBot(req.params.id);
         res.json({ ok: true });
       } catch (err) {
         res.status(500).json({ error: String(err) });
@@ -1055,12 +1034,12 @@ export class DashboardServer {
 
     // POST /api/bots/:id/control/close_position - Force close position (alias)
     this.app.post('/api/bots/:id/control/close_position', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1080,12 +1059,12 @@ export class DashboardServer {
 
     // POST /api/bots/:id/control/set_mode - Set bot mode
     this.app.post('/api/bots/:id/control/set_mode', (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1107,12 +1086,12 @@ export class DashboardServer {
 
     // POST /api/bots/:id/control/set_max_loss - Set bot max loss
     this.app.post('/api/bots/:id/control/set_max_loss', (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1140,12 +1119,12 @@ export class DashboardServer {
 
     // GET /api/bots/:id/events/stream - SSE stream for bot events
     this.app.get('/api/bots/:id/events/stream', (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1173,12 +1152,12 @@ export class DashboardServer {
 
     // GET /api/bots/:id/analytics - Bot analytics summary
     this.app.get('/api/bots/:id/analytics', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1197,12 +1176,12 @@ export class DashboardServer {
 
     // GET /api/bots/:id/pnl - Bot PnL data
     this.app.get('/api/bots/:id/pnl', (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1227,12 +1206,12 @@ export class DashboardServer {
     // This bypasses the in-memory cache and queries the authoritative source,
     // so it always returns accurate data even when the bot is stopped or just started.
     this.app.get('/api/bots/:id/today-volume', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
 
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1265,12 +1244,12 @@ export class DashboardServer {
 
     // GET /api/bots/:id/ai-signal - Bot AI signal state
     this.app.get('/api/bots/:id/ai-signal', (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
 
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1285,12 +1264,12 @@ export class DashboardServer {
 
     // GET /api/bots/:id/trades - Bot trades
     this.app.get('/api/bots/:id/trades', async (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1306,12 +1285,12 @@ export class DashboardServer {
 
     // GET /api/bots/:id/events - Bot event log
     this.app.get('/api/bots/:id/events', (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1322,12 +1301,12 @@ export class DashboardServer {
 
     // GET /api/bots/:id/position - Bot open position
     this.app.get('/api/bots/:id/position', (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1358,12 +1337,12 @@ export class DashboardServer {
 
     // GET /api/bots/:id/config - Get bot config
     this.app.get('/api/bots/:id/config', (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1383,12 +1362,12 @@ export class DashboardServer {
 
     // POST /api/bots/:id/config - Update bot config
     this.app.post('/api/bots/:id/config', (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1423,7 +1402,7 @@ export class DashboardServer {
         
         // Persist to file
         const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
-        saveBotConfigsToFile(this.botManager, configPath);
+        saveBotConfigsToFile(manager, configPath);
         
         res.json(bot.getConfigStore().getEffective());
       } catch (err) {
@@ -1433,12 +1412,12 @@ export class DashboardServer {
 
     // DELETE /api/bots/:id/config - Reset bot config to defaults
     this.app.delete('/api/bots/:id/config', (req, res) => {
-      if (!this.botManager) {
+      const manager = this._resolveManager(req); if (!manager) {
         res.status(503).json({ error: 'Bot manager not available' });
         return;
       }
       
-      const bot = this.botManager.getBot(req.params.id);
+      const bot = manager.getBot(req.params.id);
       if (!bot) {
         res.status(404).json({ error: 'Bot not found' });
         return;
@@ -1454,7 +1433,7 @@ export class DashboardServer {
         
         // Persist to file
         const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
-        saveBotConfigsToFile(this.botManager, configPath);
+        saveBotConfigsToFile(manager, configPath);
         
         res.json(bot.getConfigStore().getEffective());
       } catch (err) {
@@ -1464,8 +1443,8 @@ export class DashboardServer {
 
     // PATCH /api/bots/:id/identity - Update bot name and/or symbol live
     this.app.patch('/api/bots/:id/identity', (req, res) => {
-      if (!this.botManager) { res.status(503).json({ error: 'Bot manager not available' }); return; }
-      const bot = this.botManager.getBot(req.params.id);
+      const manager = this._resolveManager(req); if (!manager) { res.status(503).json({ error: 'Bot manager not available' }); return; }
+      const bot = manager.getBot(req.params.id);
       if (!bot) { res.status(404).json({ error: 'Bot not found' }); return; }
       const { name, symbol } = req.body as { name?: string; symbol?: string };
       if (!name && !symbol) { res.status(400).json({ error: 'Provide at least one of: name, symbol' }); return; }
@@ -1482,15 +1461,15 @@ export class DashboardServer {
           bot.getWatcher().setSymbol(sym);
         }
         const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
-        saveBotConfigsToFile(this.botManager, configPath);
+        saveBotConfigsToFile(manager, configPath);
         res.json({ ok: true, name: bot.config.name });
       } catch (err) { res.status(500).json({ error: String(err) }); }
     });
 
     // GET /api/bots/:id/daily-reset - Get daily budget reset config
     this.app.get('/api/bots/:id/daily-reset', (req, res) => {
-      if (!this.botManager) { res.status(503).json({ error: 'Bot manager not available' }); return; }
-      const bot = this.botManager.getBot(req.params.id);
+      const manager = this._resolveManager(req); if (!manager) { res.status(503).json({ error: 'Bot manager not available' }); return; }
+      const bot = manager.getBot(req.params.id);
       if (!bot) { res.status(404).json({ error: 'Bot not found' }); return; }
       if (!(bot instanceof BotInstance)) {
         res.status(400).json({ error: 'Daily reset is not supported for this bot type' }); return;
@@ -1505,8 +1484,8 @@ export class DashboardServer {
 
     // PATCH /api/bots/:id/daily-reset - Update daily budget reset config live
     this.app.patch('/api/bots/:id/daily-reset', (req, res) => {
-      if (!this.botManager) { res.status(503).json({ error: 'Bot manager not available' }); return; }
-      const bot = this.botManager.getBot(req.params.id);
+      const manager = this._resolveManager(req); if (!manager) { res.status(503).json({ error: 'Bot manager not available' }); return; }
+      const bot = manager.getBot(req.params.id);
       if (!bot) { res.status(404).json({ error: 'Bot not found' }); return; }
       if (!(bot instanceof BotInstance)) {
         res.status(400).json({ error: 'Daily reset is not supported for this bot type' }); return;
@@ -1547,7 +1526,7 @@ export class DashboardServer {
 
         // Persist to file
         const configPath = process.env.BOT_CONFIGS_PATH ?? './bot-configs.json';
-        saveBotConfigsToFile(this.botManager, configPath);
+        saveBotConfigsToFile(manager, configPath);
 
         res.json({
           ok: true,

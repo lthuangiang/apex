@@ -484,7 +484,13 @@ async function refreshTier() {
 async function refreshSoPoints() {
   try {
     const d = await fetch('/api/sopoints').then(r=>r.json());
-    if (d.error) { document.getElementById('tier-card-wrap').innerHTML='<div class="sopoints-card sopoints-unavail">'+esc(d.error)+'</div>'; return; }
+    if (d.error) {
+      if (d.error.includes('not set')) {
+        document.getElementById('tier-card-wrap')?.closest('.sidebar-card')?.remove();
+        return;
+      }
+      document.getElementById('tier-card-wrap').innerHTML='<div class="sopoints-card sopoints-unavail">'+esc(d.error)+'</div>'; return;
+    }
     const tier = (d.currentTier||'GOLD').toUpperCase();
     const cls = 'sopoints-' + tier.toLowerCase();
     const pct = d.nextTierPoints ? Math.min(d.totalPoints / d.nextTierPoints * 100, 100) : 100;

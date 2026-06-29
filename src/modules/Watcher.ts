@@ -134,6 +134,10 @@ export class Watcher {
     private _pendingEntrySpreadBps: number | null = null;
     private _pendingMMBias: MMEntryBias | null = null;
 
+    // ── Native SL/TP state ────────────────────────────────────────────────────
+    private _nativeSLOrderId: string | null = null;
+    private _nativeTPOrderId: string | null = null;
+
     // ── SoSoValue metadata (for trade logging) ───────────────────────────────
     private _pendingSoSoData: {
         fearGreedIndex: number;
@@ -493,7 +497,7 @@ export class Watcher {
 
         // Check fill: any position (even partial) → treat as IN_POSITION
         if (position && Math.abs(position.size) > 0) {
-            this._onEntryFilled(position);
+            await this._onEntryFilled(position);
             return; // ACTION: state transition — RETURN
         }
 
@@ -519,7 +523,7 @@ export class Watcher {
             const posAfterCancel = await this.adapter.get_position(this.symbol, markPrice);
             if (posAfterCancel && Math.abs(posAfterCancel.size) > 0) {
                 console.log(`[PENDING] Position detected after cancel — treating as filled`);
-                this._onEntryFilled(posAfterCancel);
+                await this._onEntryFilled(posAfterCancel);
                 return; // ACTION: state transition — RETURN
             }
 
@@ -575,7 +579,7 @@ export class Watcher {
         replaceCount: number;
     } | null = null;
 
-    private _onEntryFilled(position: any) {
+    private async _onEntryFilled(position: any) {
         const filledSize = Math.abs(position.size);
         this.sessionVolume += filledSize * position.entryPrice;
         addTodayVolume(filledSize * position.entryPrice);
@@ -627,6 +631,28 @@ export class Watcher {
                 fallback: this._pendingEntrySignalMeta?.fallback ?? false,
             }
         ).catch(() => {});
+
+        // Attach native SL if SoDEX adapter and enabled
+        if (this._cfg.useNativeSL !== false) {
+            try {
+                const SodexAdapter = (await import('../adapters/sodex_adapter.js')).SodexAdapter;
+                if (this.adapter instanceof SodexAdapter) {
+                    this._nativeSLOrderId = await this.adapter.attachSLToPosition(
+                        this.symbol,
+                        position.side as 'buy' | 'sell',
+                        filledSize,
+                        position.entryPrice,
+                        this._cfg.slPercent ?? 0.05
+                    );
+                    const slStopPrice = position.side === 'long'
+                        ? position.entryPrice * (1 - (this._cfg.slPercent ?? 0.05))
+                        : position.entryPrice * (1 + (this._cfg.slPercent ?? 0.05));
+                    console.log(`[SL] Native SL attached @ stopPrice=${slStopPrice.toFixed(2)} | ${this._nativeSLOrderId}`);
+                }
+            } catch (err) {
+                console.warn('[SL] Native SL failed — falling back to poll-based SL', err);
+            }
+        }
 
         this.pendingEntry = null;
         this._retryEntry = null;
@@ -692,6 +718,9 @@ export class Watcher {
         else                                              mappedTrigger = 'FORCE';
         this._pendingExitTrigger = mappedTrigger;
 
+        // Cancel native SL/TP orders
+        await this._cancelNativeOrders();
+
         // Transition to EXITING and cancel — exit order placed next tick
         this.botState = 'EXITING';
         this.pendingExit = null; // will be set by _handleExiting after cancel confirms
@@ -705,6 +734,20 @@ export class Watcher {
 
     // Snapshot of pnl at exit trigger time (used by _handleExiting)
     private _exitPnlSnapshot: number = 0;
+
+    private async _cancelNativeOrders(): Promise<void> {
+        const toCancel = [this._nativeSLOrderId, this._nativeTPOrderId].filter(Boolean) as string[];
+        for (const ordId of toCancel) {
+            try {
+                await this.adapter.cancel_order(ordId, this.symbol);
+                console.log(`[SL] Cancelled native order ${ordId}`);
+            } catch (err) {
+                console.warn(`[SL] Failed to cancel native order ${ordId}`, err);
+            }
+        }
+        this._nativeSLOrderId = null;
+        this._nativeTPOrderId = null;
+    }
 
     private _riskPolicy(): RiskPolicy {
         return {
@@ -721,6 +764,11 @@ export class Watcher {
         pnl: number,
         duration: number,
     ): { shouldExit: boolean; exitTrigger: string } {
+        // Skip poll-based SL if native SL is active
+        if (this._nativeSLOrderId) {
+            return this._checkTPAndTimeExit(position, pnl, duration);
+        }
+
         // Risk manager (SL/TP) — highest priority
         if (this.riskManager.shouldClose(markPrice, position, this._riskPolicy())) {
             return { shouldExit: true, exitTrigger: 'SL/TP (RiskManager)' };
@@ -800,6 +848,62 @@ export class Watcher {
 
         // Trade mode: TP/SL only (RiskManager handles above)
         console.log(`📈 [TRADE] Holding for TP/SL... | PnL: ${pnl.toFixed(4)} | ${duration}s`);
+        return { shouldExit: false, exitTrigger: '' };
+    }
+
+    private _checkTPAndTimeExit(
+        position: any,
+        pnl: number,
+        duration: number,
+    ): { shouldExit: boolean; exitTrigger: string } {
+        if (this._cfg.MODE === 'farm') {
+            const positionValue = Math.abs(position.size) * position.entryPrice;
+            const feeRoundTrip = positionValue * this._cfg.FEE_RATE_MAKER * 2;
+            const dynamicTP = (this._cfg.MM_ENABLED && this._pendingDynamicTP !== null)
+                ? this._pendingDynamicTP
+                : Math.max(this._cfg.FARM_TP_USD, feeRoundTrip * 1.5);
+            const tpLabel = (this._cfg.MM_ENABLED && this._pendingDynamicTP !== null) ? 'FARM_MM_TP' : 'FARM TP';
+
+            if (pnl >= dynamicTP) {
+                return { shouldExit: true, exitTrigger: `${tpLabel} (${pnl.toFixed(2)} >= ${dynamicTP.toFixed(2)})` };
+            }
+
+            if (duration >= this._cfg.FARM_MAX_HOLD_SECS) {
+                return { shouldExit: true, exitTrigger: `FARM MAX HOLD (${duration}s, PnL: ${pnl.toFixed(2)})` };
+            }
+
+            if (duration >= this._cfg.FARM_EARLY_EXIT_SECS) {
+                const minProfitThreshold = this._cfg.FARM_MIN_PROFIT_FEE_MULT;
+                if (pnl >= minProfitThreshold) {
+                    return { shouldExit: true, exitTrigger: `FARM EARLY PROFIT ($${pnl.toFixed(2)} >= $${minProfitThreshold.toFixed(2)} after ${duration}s)` };
+                }
+            }
+
+            const holdDone = this.farmHoldUntil !== null
+                ? Date.now() >= this.farmHoldUntil
+                : duration >= this._cfg.FARM_MIN_HOLD_SECS;
+
+            if (!holdDone) {
+                return { shouldExit: false, exitTrigger: '' };
+            }
+
+            if (duration >= this._cfg.FARM_MAX_HOLD_SECS) {
+                return { shouldExit: true, exitTrigger: `FARM MAX HOLD (${duration}s, PnL: ${pnl.toFixed(2)})` };
+            }
+
+            const isLong = position.side === 'long';
+            const movingTowardProfit = isLong ? position.entryPrice < position.entryPrice : position.entryPrice > position.entryPrice;
+            const extraWaitExpired = this.farmHoldUntil !== null
+                ? Date.now() > (this.farmHoldUntil + this._cfg.FARM_EXTRA_WAIT_SECS * 1000)
+                : true;
+
+            if (pnl > 0 && movingTowardProfit && !extraWaitExpired) {
+                return { shouldExit: false, exitTrigger: '' };
+            }
+
+            return { shouldExit: true, exitTrigger: `FARM TIME EXIT (PnL: ${pnl.toFixed(2)})` };
+        }
+
         return { shouldExit: false, exitTrigger: '' };
     }
 
@@ -1003,6 +1107,8 @@ export class Watcher {
         this._pendingSizingResult = null;
         this._pendingMMBias = null;
         this._exitPnlSnapshot = 0;
+        this._nativeSLOrderId = null;
+        this._nativeTPOrderId = null;
 
         this.positionManager.onPositionClosed();
 
@@ -1263,40 +1369,41 @@ export class Watcher {
 
         // Farm sizing: use dynamic sizer when enabled, otherwise random in [min, max]
         let size: number;
-        if (this._cfg.FARM_USE_DYNAMIC_SIZING) {
-            size = sizingResult.size;
-            // Apply signal-quality size multipliers to reduce exposure on weaker entries
-            let sizeMult = 1.0;
-            const isPingPong = !mmBias?.blocked && signal.direction === 'skip' &&
-                (pricePos === undefined || (pricePos >= 0.35 && pricePos <= 0.65)) &&
-                Math.abs((mmBias ? signal.score + mmBias.pingPongBias + mmBias.inventoryBias : signal.score) - 0.5) < 0.001;
-            const isNoPressure = (isNaN(signal.tradePressure) ? 0 : signal.tradePressure) === 0;
-            if (isPingPong) {
-                sizeMult = this._cfg.FARM_PINGPONG_SIZE_MULT;
-                console.log(`📐 [FARM] Ping-pong entry → size × ${sizeMult}`);
-            } else if (isNoPressure) {
-                sizeMult = this._cfg.FARM_NO_PRESSURE_SIZE_MULT;
-                console.log(`📐 [FARM] No pressure → size × ${sizeMult}`);
-            } else if (signal.direction !== 'skip' && filterResult.effectiveConfidence < 0.55) {
-                sizeMult = this._cfg.FARM_WEAK_SIGNAL_SIZE_MULT;
-                console.log(`📐 [FARM] Weak signal (conf=${filterResult.effectiveConfidence.toFixed(2)}) → size × ${sizeMult}`);
-            }
-            size *= sizeMult;
-            // Apply SoSoValue strategy adjustment
-            size *= strategyAdj.sizeMultiplier;
-            size = Math.max(this._cfg.ORDER_SIZE_MIN, size);
-        } else {
-            size = this._cfg.ORDER_SIZE_MIN + Math.random() * (this._cfg.ORDER_SIZE_MAX - this._cfg.ORDER_SIZE_MIN);
-        }
-        const maxSizeFromBalance = (balance * this._cfg.SIZING_MAX_BALANCE_PCT) / markPrice;
-        if (size > maxSizeFromBalance) size = Math.max(this._cfg.ORDER_SIZE_MIN, maxSizeFromBalance);
+        // if (this._cfg.FARM_USE_DYNAMIC_SIZING) {
+        //     size = sizingResult.size;
+        //     // Apply signal-quality size multipliers to reduce exposure on weaker entries
+        //     let sizeMult = 1.0;
+        //     const isPingPong = !mmBias?.blocked && signal.direction === 'skip' &&
+        //         (pricePos === undefined || (pricePos >= 0.35 && pricePos <= 0.65)) &&
+        //         Math.abs((mmBias ? signal.score + mmBias.pingPongBias + mmBias.inventoryBias : signal.score) - 0.5) < 0.001;
+        //     const isNoPressure = (isNaN(signal.tradePressure) ? 0 : signal.tradePressure) === 0;
+        //     if (isPingPong) {
+        //         sizeMult = this._cfg.FARM_PINGPONG_SIZE_MULT;
+        //         console.log(`📐 [FARM] Ping-pong entry → size × ${sizeMult}`);
+        //     } else if (isNoPressure) {
+        //         sizeMult = this._cfg.FARM_NO_PRESSURE_SIZE_MULT;
+        //         console.log(`📐 [FARM] No pressure → size × ${sizeMult}`);
+        //     } else if (signal.direction !== 'skip' && filterResult.effectiveConfidence < 0.55) {
+        //         sizeMult = this._cfg.FARM_WEAK_SIGNAL_SIZE_MULT;
+        //         console.log(`📐 [FARM] Weak signal (conf=${filterResult.effectiveConfidence.toFixed(2)}) → size × ${sizeMult}`);
+        //     }
+        //     size *= sizeMult;
+        //     // Apply SoSoValue strategy adjustment
+        //     size *= strategyAdj.sizeMultiplier;
+        //     // size = Math.max(this._cfg.ORDER_SIZE_MIN, size);
+        // } else {
+            
+        // }
+        size = this._cfg.ORDER_SIZE_MIN + Math.random() * (this._cfg.ORDER_SIZE_MAX - this._cfg.ORDER_SIZE_MIN);
+        // const maxSizeFromBalance = (balance * this._cfg.SIZING_MAX_BALANCE_PCT) / markPrice;
+        // if (size > maxSizeFromBalance) size = Math.max(this._cfg.ORDER_SIZE_MIN, maxSizeFromBalance);
 
-        const holdSecs = filterResult.dynamicMinHold;
+        const holdSecs = this._cfg.FARM_MIN_HOLD_SECS + Math.random() * (this._cfg.FARM_MAX_HOLD_SECS - this._cfg.FARM_MIN_HOLD_SECS);
         // Store holdSecs — farmHoldUntil will be set from fill time in _onEntryFilled
         // to ensure the full hold period is measured from actual fill, not order placement.
         this._pendingFarmHoldSecs = holdSecs;
         this.farmHoldUntil = null; // cleared until fill confirmed
-        console.log(`[MinHold] dynamicMinHold=${holdSecs}s (feeBreakEven computed, FARM_MIN=${this._cfg.FARM_MIN_HOLD_SECS}s, FARM_MAX=${this._cfg.FARM_MAX_HOLD_SECS}s)`);
+        console.log(`[MinHold] randomHold=${holdSecs.toFixed(0)}s (FARM_MIN=${this._cfg.FARM_MIN_HOLD_SECS}s, FARM_MAX=${this._cfg.FARM_MAX_HOLD_SECS}s)`);
 
         if (this._cfg.MM_ENABLED && this._pendingEntrySpreadBps !== null) {
             this._pendingDynamicTP = this.marketMaker.computeDynamicTP(markPrice, this._pendingEntrySpreadBps);
@@ -1528,32 +1635,16 @@ export class Watcher {
     // ─────────────────────────────────────────────────────────────────────────
     // COOLDOWN TRANSITIONS
     //
-    // 'farm'   → FARM_COOLDOWN_SECS (fixed short cooldown for farm mode)
-    // 'random' → random between [COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]
+    // Random cooldown between [COOLDOWN_MIN_MINS, COOLDOWN_MAX_MINS]
     //
     // STRICT: after calling _transitionToCooldown the caller MUST return.
     // ─────────────────────────────────────────────────────────────────────────
 
     private _transitionToCooldown(mode?: 'farm' | 'random') {
-        let cooldownMs: number;
-
-        if (mode === 'farm' || this._cfg.MODE === 'farm') {
-            // Farm mode: fixed short cooldown — no adaptive multipliers
-            cooldownMs = this._cfg.FARM_COOLDOWN_SECS * 1000;
-            console.log(`⏱️ Farm Cooldown: ${this._cfg.FARM_COOLDOWN_SECS}s (fixed)`);
-        } else {
-            // Trade mode: adaptive cooldown based on recent PnL and chop score
-            const adaptiveResult = computeAdaptiveCooldown({
-                recentPnLs: this.recentPnLs,
-                lastChopScore: this._lastChopScore,
-            });
-            cooldownMs = adaptiveResult.cooldownMs;
-            console.log(
-                `⏱️ Adaptive Cooldown: ${(cooldownMs / 1000).toFixed(0)}s ` +
-                `[base=${adaptiveResult.baseMins.toFixed(1)}m × streak=${adaptiveResult.streakMult.toFixed(2)} × chop=${adaptiveResult.chopMult.toFixed(2)}] ` +
-                `losing_streak=${adaptiveResult.losingStreak}`
-            );
-        }
+        const minMs = this._cfg.COOLDOWN_MIN_MINS * 60 * 1000;
+        const maxMs = this._cfg.COOLDOWN_MAX_MINS * 60 * 1000;
+        const cooldownMs = minMs + Math.random() * (maxMs - minMs);
+        console.log(`⏱️ Cooldown: ${(cooldownMs / 1000).toFixed(0)}s (${(cooldownMs / 60000).toFixed(1)}m)`);
 
         this.cooldownUntil = Date.now() + cooldownMs;
         this.botState = 'COOLDOWN';

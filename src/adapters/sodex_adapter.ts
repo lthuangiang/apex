@@ -341,6 +341,40 @@ export class SodexAdapter implements ExchangeAdapter {
         return result;
     }
 
+    private async placeOrdersBatch(
+        symbol: string,
+        orders: Array<{
+            clOrdID: string;
+            modifier: number;
+            side: number;
+            type: number;
+            timeInForce: number;
+            price: string;
+            quantity: string;
+            stopPrice?: string;
+            reduceOnly: boolean;
+            positionSide: number;
+        }>
+    ): Promise<any> {
+        try {
+            const accId = await this.getAccountId();
+            const symId = await this.getSymbolId(symbol);
+
+            const orderItems = orders.map(ord => {
+                if (ord.stopPrice !== undefined) {
+                    return `{"clOrdID":"${ord.clOrdID}","modifier":${ord.modifier},"side":${ord.side},"type":${ord.type},"timeInForce":${ord.timeInForce},"price":"${ord.price}","quantity":"${ord.quantity}","stopPrice":"${ord.stopPrice}","reduceOnly":${ord.reduceOnly},"positionSide":${ord.positionSide}}`;
+                } else {
+                    return `{"clOrdID":"${ord.clOrdID}","modifier":${ord.modifier},"side":${ord.side},"type":${ord.type},"timeInForce":${ord.timeInForce},"price":"${ord.price}","quantity":"${ord.quantity}","reduceOnly":${ord.reduceOnly},"positionSide":${ord.positionSide}}`;
+                }
+            });
+
+            const paramsStr = `{"accountID":${accId},"symbolID":${symId},"orders":[${orderItems.join(',')}]}`;
+            return await this.request('POST', '/trade/orders', paramsStr);
+        } catch (err: any) {
+            throw new Error(`[SoDEX] placeOrdersBatch failed: ${err.message}`);
+        }
+    }
+
     async place_limit_order(
         symbol: string,
         side: 'buy' | 'sell',
@@ -382,6 +416,148 @@ export class SodexAdapter implements ExchangeAdapter {
         console.log(`[SoDEX] Preparing order: ${side} ${formattedSize} @ ${formattedPrice} (accId: ${accId}, symId: ${symId})`);
         const res = await this.request('POST', '/trade/orders', paramsStr);
         return res?.[0]?.orderId || ord.clOrdID;
+    }
+
+    async place_limit_order_with_sl(
+        symbol: string,
+        side: 'buy' | 'sell',
+        price: number,
+        size: number,
+        slPercent: number,
+        tpUsd?: number,
+        reduceOnly = false,
+    ): Promise<{ entryClOrdID: string; slClOrdID: string; tpClOrdID?: string }> {
+        try {
+            const formattedPrice = this.roundToTick(price, symbol);
+            const formattedSize = this.roundToLot(size, symbol);
+
+            const entryClOrdID = 'ext-' + Date.now().toString() + '-' + Math.floor(Math.random() * 1000);
+            const slClOrdID = 'sl-' + Date.now().toString() + '-' + Math.floor(Math.random() * 1000);
+
+            const entrySide = side.toLowerCase() === 'buy' ? 1 : 2;
+            const slSide = entrySide === 1 ? 2 : 1;
+
+            const slStopPrice = entrySide === 1
+                ? price * (1 - slPercent)
+                : price * (1 + slPercent);
+            const formattedSLStopPrice = this.roundToTick(slStopPrice, symbol);
+
+            const orders: Array<any> = [
+                {
+                    clOrdID: entryClOrdID,
+                    modifier: 1,
+                    side: entrySide,
+                    type: 1,
+                    timeInForce: 4,
+                    price: formattedPrice,
+                    quantity: formattedSize,
+                    reduceOnly,
+                    positionSide: 1,
+                },
+                {
+                    clOrdID: slClOrdID,
+                    modifier: 5,
+                    side: slSide,
+                    type: 2,
+                    timeInForce: 1,
+                    price: "0",
+                    quantity: formattedSize,
+                    stopPrice: formattedSLStopPrice,
+                    reduceOnly: true,
+                    positionSide: 1,
+                },
+            ];
+
+            let tpClOrdID: string | undefined;
+            if (tpUsd !== undefined) {
+                tpClOrdID = 'tp-' + Date.now().toString() + '-' + Math.floor(Math.random() * 1000);
+                const tpPrice = entrySide === 1
+                    ? price + (tpUsd / size)
+                    : price - (tpUsd / size);
+                const formattedTPPrice = this.roundToTick(tpPrice, symbol);
+
+                orders.push({
+                    clOrdID: tpClOrdID,
+                    modifier: 5,
+                    side: slSide,
+                    type: 1,
+                    timeInForce: 3,
+                    price: formattedTPPrice,
+                    quantity: formattedSize,
+                    stopPrice: formattedTPPrice,
+                    reduceOnly: true,
+                    positionSide: 1,
+                });
+            }
+
+            await this.placeOrdersBatch(symbol, orders);
+
+            console.log(`[SoDEX] Native SL placed: clOrdID=${slClOrdID} stopPrice=${formattedSLStopPrice} side=${slSide === 1 ? 'buy' : 'sell'}`);
+            if (tpClOrdID) {
+                const tpPrice = orders[2].price;
+                console.log(`[SoDEX] Native TP placed: clOrdID=${tpClOrdID} price=${tpPrice} side=${slSide === 1 ? 'buy' : 'sell'}`);
+            }
+
+            return { entryClOrdID, slClOrdID, tpClOrdID };
+        } catch (err: any) {
+            throw new Error(`[SoDEX] place_limit_order_with_sl failed: ${err.message}`);
+        }
+    }
+
+    async attach_sl_to_position(
+        symbol: string,
+        side: 'buy' | 'sell',
+        size: number,
+        currentPrice: number,
+        slPercent: number,
+    ): Promise<string> {
+        try {
+            const formattedSize = this.roundToLot(size, symbol);
+            const clOrdID = 'sl-pos-' + Date.now().toString() + '-' + Math.floor(Math.random() * 1000);
+
+            const posSide = side.toLowerCase() === 'buy' ? 1 : 2;
+            const slSide = posSide === 1 ? 2 : 1;
+
+            const slStopPrice = posSide === 1
+                ? currentPrice * (1 - slPercent)
+                : currentPrice * (1 + slPercent);
+            const formattedSLStopPrice = this.roundToTick(slStopPrice, symbol);
+
+            const order = {
+                clOrdID,
+                modifier: 3,
+                side: slSide,
+                type: 2,
+                timeInForce: 1,
+                price: "0",
+                quantity: formattedSize,
+                stopPrice: formattedSLStopPrice,
+                reduceOnly: true,
+                positionSide: 1,
+            };
+
+            await this.placeOrdersBatch(symbol, [order]);
+            console.log(`[SoDEX] Standalone SL attached: clOrdID=${clOrdID} stopPrice=${formattedSLStopPrice}`);
+            return clOrdID;
+        } catch (err: any) {
+            throw new Error(`[SoDEX] attach_sl_to_position failed: ${err.message}`);
+        }
+    }
+
+    async placeLimitOrderWithSL(
+        params: OrderParams & { slPercent: number; tpUsd?: number }
+    ): Promise<{ entryClOrdID: string; slClOrdID: string; tpClOrdID?: string }> {
+        return this.place_limit_order_with_sl(
+            params.symbol, params.side, params.price, params.size,
+            params.slPercent, params.tpUsd, params.reduceOnly
+        );
+    }
+
+    async attachSLToPosition(
+        symbol: string, side: 'buy' | 'sell', size: number,
+        currentPrice: number, slPercent: number
+    ): Promise<string> {
+        return this.attach_sl_to_position(symbol, side, size, currentPrice, slPercent);
     }
 
     async cancel_order(order_id: string, symbol: string): Promise<boolean> {
