@@ -523,12 +523,13 @@ export class SodexAdapter implements ExchangeAdapter {
                 : currentPrice * (1 + slPercent);
             const formattedSLStopPrice = this.roundToTick(slStopPrice, symbol);
 
-            const order = {
+            // SoDEX changed timeInForce validation - stop orders don't accept TIF
+            // Try without timeInForce first (works for stop-market orders)
+            const order: any = {
                 clOrdID,
                 modifier: 3,
                 side: slSide,
                 type: 2,
-                timeInForce: 1,
                 price: "0",
                 quantity: formattedSize,
                 stopPrice: formattedSLStopPrice,

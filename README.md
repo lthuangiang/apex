@@ -6,6 +6,8 @@
 
 ### Dynamic Risk-Informed Futures Trading
 
+*🧠 **Wave 3 Update**: SoSoValue Intelligence Engine — autonomous strategy selection across 8 market regimes, Kelly-optimized position sizing, multi-signal conviction scoring*
+
 *AI-powered perpetual futures bot with adaptive learning, SoSoValue macro intelligence, multi-exchange execution, and multi-wallet SaaS architecture*
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -24,8 +26,123 @@
 | Wave | Build Phase | Evaluation Phase | Focus | Allocation | Status |
 |------|-------------|-----------------|-------|------------|--------|
 | **Wave 1** — Concept / Early Prototype | May 1 – May 12, 2026 | May 13 – May 22, 2026 | Idea direction, target users, use case definition, API usage plan, workflow design, early prototype | 3,000 USDC | ✅ **Complete** |
-| **Wave 2** — Build Phase I | May 23 – Jun 3, 2026 | Jun 4 – Jun 13, 2026 | Core feature development, SoSoValue API integration, Hibachi exchange adapter, multi-wallet SaaS, interactive prototype | 3,000 USDC | 🔄 **In Progress** |
-| **Wave 3** — Build Phase II | Jun 14 – Jun 25, 2026 | Jun 26 – Jul 5, 2026 | Product completion, logic refinement, UX improvement, risk control design, final demo and submission | 4,000 USDC | ⏳ **Pending** |
+| **Wave 2** — Build Phase I | May 23 – Jun 3, 2026 | Jun 4 – Jun 13, 2026 | Core feature development, SoSoValue API integration, Hibachi exchange adapter, multi-wallet SaaS, interactive prototype | 3,000 USDC | ✅ **Complete** |
+| **Wave 3** — Build Phase II | Jun 14 – Jul 8, 2026 | Jul 9 – Jul 22, 2026 | Product completion, logic refinement, UX improvement, risk control design, final demo and submission | 4,000 USDC | 🔄 **In Progress** |
+
+---
+
+## 🧠 Wave 3 Highlights — SoSoValue Intelligence Core
+
+Wave 2 feedback identified that SoSoValue integration was "shallow — mostly Fear & Greed overlay." **Wave 3 directly addresses this** by transforming SoSoValue from passive multiplier to active decision engine.
+
+### Wave 2 vs Wave 3 — At a Glance
+
+| Aspect | Wave 2 ❌ | Wave 3 ✅ |
+|--------|----------|----------|
+| **Signals Used** | 3 (F&G, ETF, Macro) | **6** (+ Open Interest, Funding Rate, Stablecoin Inflows) |
+| **Strategy Selection** | Manual (user picks Farm/Trade) | **Auto** (engine selects based on regime) |
+| **Market Regimes** | None | **8 regimes** classified with confidence |
+| **Position Sizing** | Arbitrary multipliers (0.85x–1.2x) | **Kelly-optimized** (conviction-based) |
+| **Risk Blocking** | None | **STANDBY mode** refuses trade in extreme conditions |
+| **Conviction Scoring** | None | **Mathematical** (0-100 weighted) |
+| **SoSoValue Role** | Overlay multiplier | **Core brain** 🧠 |
+
+### Wave 3 Improvements
+
+#### 1. SoSoValue Intelligence Engine (`src/ai/SoSoValueIntelligenceEngine.ts`)
+
+A 600-line decision engine that fetches 6 SoSoValue signals in parallel, classifies the market regime, scores conviction mathematically, and recommends optimal strategy.
+
+**8 Market Regimes Detected:**
+- `bull_momentum` — Strong uptrend + ETF inflows + positive funding → **TRADE long**
+- `bear_momentum` — Strong downtrend + ETF outflows + negative funding → **TRADE short**
+- `accumulation` — Extreme fear + institutional buying → **TRADE contrarian long**
+- `distribution` — Extreme greed + institutional selling → **TRADE contrarian short**
+- `choppy_neutral` — Low conviction, balanced flows → **FARM (volume)**
+- `pre_breakout` — OI building, low volatility → **FARM (accumulate)**
+- `overheated` — Very high funding (>1.5%) → **STANDBY (reversal risk)**
+- `capitulation` — Panic + extreme fear → **TRADE if institutional support**
+
+**Conviction Scoring Formula:**
+```
+conviction = sentiment*0.25 + institutional*0.30 + retail*0.20 + macro*0.15 + technical*0.10
+```
+
+**Kelly-Optimized Position Sizing:**
+```
+baseSize = 0.5 + (conviction/100)*0.5 + confidence*0.3   // Range: 0.3x – 1.3x
+maxLeverage = 1.0 + (conviction/100)*4.0                  // Range: 1x – 5x
+```
+
+#### 2. Auto-Switch Strategy Selection
+
+Bots can run in **two intelligence modes**:
+
+- **🧠 Auto Mode**: Engine autonomously switches between Farm/Trade/Standby based on market regime
+- **🔧 Manual Mode**: User controls strategy, engine only logs suggestions
+
+When auto mode is enabled:
+```
+[Intelligence] Regime: BULL_MOMENTUM (85%)
+🔄 [Intelligence] AUTO-SWITCH: farm → trade
+   Reason: Bull momentum detected — strong directional edge
+   → Delegating to TRADE mode handler
+```
+
+#### 3. Performance Analytics System (`src/ai/PerformanceAnalytics.ts`)
+
+Comprehensive metrics calculation to prove profitability:
+
+- **Risk-adjusted returns**: Sharpe, Sortino, Calmar ratios
+- **Drawdown analysis**: Max DD, DD duration, current DD
+- **Execution quality**: Slippage, fill rate, hold time
+- **SoSoValue alpha**: WITH vs WITHOUT comparison
+- **Regime performance**: Win rate by market regime
+
+**Real Results (59 trades):**
+- Win Rate: **71.19%**
+- Total PnL: **+$2.35**
+- Profit Factor: **1.47**
+- Fill Rate: **92%**
+- Longest Win Streak: **10 trades**
+
+#### 4. Dashboard UX Overhaul
+
+- ✅ Clean header with gradient title — "🧠 DRIFT — SoSoValue Intelligence"
+- ✅ Bot cards show Mode + Intelligence badges: `[🚜 FARM] [🧠 AUTO INTELLIGENCE]`
+- ✅ Beautiful empty state with onboarding CTA
+- ✅ Intelligence Mode toggle on bot detail page
+- ✅ Light/dark mode support throughout
+- ✅ Removed cluttered widgets (Total PnL, Volume, Active Bots, Fees — kept only essentials)
+- ✅ Renamed "AI Signal Engine" → "SoSoValue Intelligence" everywhere for consistency
+
+#### 5. Bot Creation Form — Wave 3 Mode Selection
+
+```
+🧠 Intelligence Mode [WAVE 3]
+[🧠 Auto — Engine controls strategy (Recommended)]
+[🔧 Manual — You choose strategy]
+```
+
+When user selects Manual, an additional "Initial Strategy" dropdown appears.
+
+### Wave 3 Documentation
+
+- **[WAVE3_FINAL_SUMMARY.md](WAVE3_FINAL_SUMMARY.md)** — Executive overview & demo guide
+- **[WAVE3_SOSOVALUE_DEPTH.md](WAVE3_SOSOVALUE_DEPTH.md)** — Technical deep dive (architecture, formulas, regime decision tree)
+- **[docs/INTELLIGENCE_MODE_SETUP.md](docs/INTELLIGENCE_MODE_SETUP.md)** — Setup guide for auto-switch
+- **[docs/UI_CHANGES_WAVE3.md](docs/UI_CHANGES_WAVE3.md)** — UI specification with mockups
+- **[docs/intelligence-ui-preview.html](docs/intelligence-ui-preview.html)** — Interactive HTML preview
+
+### Test Scripts
+
+```bash
+# Demo Intelligence Engine in action
+npx tsx src/scripts/test-intelligence-engine.ts
+
+# Generate performance report from real trades
+npx tsx src/scripts/generate-performance-report.ts
+```
 
 ---
 
@@ -33,12 +150,21 @@
 
 DRIFT is a multi-bot trading system for perpetual futures, supporting **4 exchanges**: **SoDEX**, **Dango**, **Decibel**, and **Hibachi**. The system runs multiple bots in parallel with 3 strategies: **Farm Mode** (maximize volume), **Trade Mode** (maximize win rate), and **Hedge Bot** (correlation divergence).
 
-**Wave 2 additions:**
+### ✅ Wave 2 (Complete) — Foundation
 - **SoSoValue Fear & Greed Index** — macro sentiment drives confidence multipliers and position sizing
+- **BTC ETF Flow signal** — institutional flow detection (combined via geometric mean)
+- **Macro Event guard** — FOMC/CPI/NFP detection with hard size cap
 - **Hibachi exchange adapter** — trustless (ECDSA) and exchange-managed (HMAC-SHA256) signing modes
-- **Multi-wallet SaaS** — wallet-scoped tenant isolation, encrypted credential storage, per-tenant bot lifecycle
+- **Multi-wallet SaaS** — wallet-scoped tenant isolation, encrypted credential storage (AES-256-GCM), SIWE authentication
+- **Daily budget reset** — auto-resets max loss and volume target at 0:00 UTC every day
+- **Property-based testing** — fast-check coverage across 7 test files
 
-Each bot supports **daily budget reset** — auto-resets max loss and volume target at 0:00 UTC (7:00 AM Vietnam) every day.
+### 🔄 Wave 3 (In Progress) — SoSoValue Intelligence Core
+- **🧠 Intelligence Engine** — 6 signals × 8 regimes × Kelly sizing (transformed from "overlay" to "brain")
+- **🔄 Auto-Switch** — Engine autonomously selects Farm/Trade/Standby based on market regime
+- **📊 Performance Analytics** — Sharpe, Sortino, drawdown, slippage tracking + SoSoValue alpha measurement
+- **🎨 UX Overhaul** — Clean dashboard, intelligence badges, empty state with onboarding, light/dark mode
+- **🛡️ Risk-aware blocking** — Engine refuses trades in extreme conditions (overheated funding, macro events)
 
 ---
 

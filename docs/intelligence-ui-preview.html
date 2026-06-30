@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DRIFT Wave 3 - Intelligence UI Preview</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #e2e8f0;
+  padding: 40px 20px;
+  min-height: 100vh;
+}
+.container { max-width: 1200px; margin: 0 auto; }
+h1 {
+  text-align: center;
+  margin-bottom: 8px;
+  background: linear-gradient(90deg, #60a5fa, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: 2.5em;
+}
+.subtitle { text-align: center; color: #94a3b8; margin-bottom: 40px; }
+
+.section-title {
+  font-size: 1.3em;
+  margin: 40px 0 20px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #334155;
+  color: #cbd5e1;
+}
+
+/* Bot Cards */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 20px;
+  margin-bottom: 40px;
+}
+
+.bot-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 20px;
+  transition: transform 0.2s, border-color 0.2s;
+}
+.bot-card:hover {
+  transform: translateY(-2px);
+  border-color: #60a5fa;
+}
+
+.bot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.bot-name {
+  font-weight: 600;
+  font-size: 1.1em;
+}
+.bot-icon { margin-right: 6px; }
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #22c55e;
+  display: inline-block;
+  margin-left: 8px;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Intelligence Badges */
+.intel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.intel-auto {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+.intel-manual {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+.intel-standby {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.strategy-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.strategy-farm { background: #166534; color: #bbf7d0; }
+.strategy-trade { background: #1e40af; color: #bfdbfe; }
+.strategy-hedge { background: #7c2d12; color: #fed7aa; }
+
+.bot-info {
+  font-size: 0.9em;
+  color: #94a3b8;
+  margin-bottom: 12px;
+}
+
+.regime-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #334155;
+  border-radius: 8px;
+  font-size: 0.8em;
+  color: #cbd5e1;
+  margin-top: 4px;
+}
+
+/* Intelligence Panel */
+.intel-panel {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid #475569;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 40px;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.panel-title {
+  font-size: 1.2em;
+  font-weight: 600;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.metric {
+  background: #0f172a;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border-left: 3px solid #60a5fa;
+}
+.metric-label {
+  font-size: 0.75em;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.metric-value {
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+/* Conviction Bars */
+.conviction-section {
+  margin: 20px 0;
+}
+.conviction-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 50px;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+.conviction-label { font-size: 0.9em; color: #cbd5e1; }
+.conviction-bar {
+  height: 8px;
+  background: #1e293b;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.conviction-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.conviction-bull { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.conviction-bear { background: linear-gradient(90deg, #ef4444, #f87171); }
+.conviction-neutral { background: linear-gradient(90deg, #eab308, #facc15); }
+.conviction-pct {
+  text-align: right;
+  font-size: 0.9em;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Risk Levels */
+.risk-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85em;
+}
+.risk-low { background: #14532d; color: #86efac; }
+.risk-medium { background: #713f12; color: #fde68a; }
+.risk-high { background: #7f1d1d; color: #fca5a5; }
+.risk-extreme {
+  background: #450a0a;
+  color: #fecaca;
+  animation: pulse-red 1.5s infinite;
+}
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+/* Activity Log */
+.activity-log {
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 16px;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.85em;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.log-entry {
+  padding: 8px 0;
+  border-bottom: 1px solid #1e293b;
+}
+.log-entry:last-child { border-bottom: none; }
+.log-time { color: #64748b; margin-right: 8px; }
+.log-info { color: #60a5fa; }
+.log-warn { color: #fbbf24; }
+.log-switch { color: #4ade80; font-weight: 600; }
+
+/* Form Mock */
+.form-mock {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.form-row { margin-bottom: 16px; }
+.form-label {
+  display: block;
+  margin-bottom: 8px;
+  color: #cbd5e1;
+  font-size: 0.9em;
+}
+.radio-group {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.radio-card {
+  flex: 1;
+  min-width: 200px;
+  background: #0f172a;
+  border: 2px solid #334155;
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.radio-card.active {
+  border-color: #4ade80;
+  background: rgba(34, 197, 94, 0.05);
+}
+.radio-card:hover { transform: translateY(-1px); }
+.radio-title { font-weight: 600; margin-bottom: 4px; }
+.radio-desc { font-size: 0.85em; color: #94a3b8; }
+.recommended {
+  display: inline-block;
+  background: #f59e0b;
+  color: #78350f;
+  font-size: 0.7em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  font-weight: 700;
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <h1>🧠 DRIFT Wave 3</h1>
+  <p class="subtitle">Intelligence Mode UI Preview</p>
+
+  <!-- Section 1: Bot Cards with Intelligence Badges -->
+  <h2 class="section-title">📋 Bot Cards with Intelligence Badges</h2>
+  <div class="cards-grid">
+
+    <!-- Auto Mode Bot -->
+    <div class="bot-card">
+      <div class="bot-header">
+        <div class="bot-name"><span class="bot-icon">🤖</span> SoDEX Auto Bot</div>
+        <span class="status-dot"></span>
+      </div>
+      <div style="margin-bottom: 10px;">
+        <span class="intel-badge intel-auto">🧠 AUTO</span>
+        <span class="strategy-badge strategy-trade">→ TRADE</span>
+      </div>
+      <div class="bot-info">BTC-USD • SoDEX</div>
+      <div class="regime-tag">bull_momentum (85% conf)</div>
+    </div>
+
+    <!-- Manual Mode Bot -->
+    <div class="bot-card">
+      <div class="bot-header">
+        <div class="bot-name"><span class="bot-icon">🤖</span> SoDEX Manual Bot</div>
+        <span class="status-dot"></span>
+      </div>
+      <div style="margin-bottom: 10px;">
+        <span class="intel-badge intel-manual">🔧 MANUAL</span>
+        <span class="strategy-badge strategy-farm">FARM</span>
+      </div>
+      <div class="bot-info">BTC-USD • SoDEX</div>
+      <div class="regime-tag">💡 Suggests: TRADE</div>
+    </div>
+
+    <!-- Standby Mode Bot -->
+    <div class="bot-card">
+      <div class="bot-header">
+        <div class="bot-name"><span class="bot-icon">🤖</span> Hibachi Smart Bot</div>
+        <span class="status-dot" style="background: #ef4444;"></span>
+      </div>
+      <div style="margin-bottom: 10px;">
+        <span class="intel-badge intel-standby">🛑 STANDBY</span>
+        <span class="strategy-badge" style="background: #450a0a; color: #fecaca;">PAUSED</span>
+      </div>
+      <div class="bot-info">ETH-USD • Hibachi</div>
+      <div class="regime-tag" style="background: #450a0a; color: #fecaca;">overheated (funding 1.8%)</div>
+    </div>
+
+  </div>
+
+  <!-- Section 2: Intelligence Panel -->
+  <h2 class="section-title">📊 Market Intelligence Panel</h2>
+  <div class="intel-panel">
+    <div class="panel-header">
+      <div class="panel-title">🧠 Market Intelligence — Real-time</div>
+      <span class="risk-tag risk-low">🟢 RISK: LOW</span>
+    </div>
+
+    <div class="metric-grid">
+      <div class="metric">
+        <div class="metric-label">Mode</div>
+        <div class="metric-value">🧠 AUTO</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Active Strategy</div>
+        <div class="metric-value">FARM</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Regime</div>
+        <div class="metric-value">choppy_neutral</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Confidence</div>
+        <div class="metric-value">60%</div>
+      </div>
+    </div>
+
+    <div class="conviction-section">
+      <div style="margin-bottom: 12px; color: #cbd5e1; font-weight: 600;">Market Conviction</div>
+      <div class="conviction-row">
+        <div class="conviction-label">🟢 Bull</div>
+        <div class="conviction-bar">
+          <div class="conviction-fill conviction-bull" style="width: 0%;"></div>
+        </div>
+        <div class="conviction-pct">0%</div>
+      </div>
+      <div class="conviction-row">
+        <div class="conviction-label">🔴 Bear</div>
+        <div class="conviction-bar">
+          <div class="conviction-fill conviction-bear" style="width: 85%;"></div>
+        </div>
+        <div class="conviction-pct">85%</div>
+      </div>
+      <div class="conviction-row">
+        <div class="conviction-label">🟡 Neutral</div>
+        <div class="conviction-bar">
+          <div class="conviction-fill conviction-neutral" style="width: 87%;"></div>
+        </div>
+        <div class="conviction-pct">87%</div>
+      </div>
+    </div>
+
+    <div class="metric-grid">
+      <div class="metric"><div class="metric-label">F&G Index</div><div class="metric-value">15 🔴</div></div>
+      <div class="metric"><div class="metric-label">ETF Flow</div><div class="metric-value">neutral</div></div>
+      <div class="metric"><div class="metric-label">Open Interest</div><div class="metric-value">$44.09B</div></div>
+      <div class="metric"><div class="metric-label">Funding Rate</div><div class="metric-value">+0.62%</div></div>
+      <div class="metric"><div class="metric-label">Stablecoin</div><div class="metric-value">-$0.39B</div></div>
+      <div class="metric"><div class="metric-label">Macro</div><div class="metric-value">✅ Clear</div></div>
+    </div>
+
+    <div style="margin-top: 16px; padding: 12px; background: #0f172a; border-radius: 8px; border-left: 3px solid #fbbf24;">
+      <div style="font-size: 0.85em; color: #fbbf24; font-weight: 600; margin-bottom: 4px;">REASONING</div>
+      <div style="color: #cbd5e1;">"Choppy market — no clear direction (Farm mode to capture volume)"</div>
+    </div>
+  </div>
+
+  <!-- Section 3: Activity Log -->
+  <h2 class="section-title">📜 Strategy Switch Activity</h2>
+  <div class="activity-log">
+    <div class="log-entry">
+      <span class="log-time">02:53:30</span>
+      <span class="log-switch">🔄 AUTO-SWITCH: farm → trade</span><br>
+      <span style="margin-left: 80px; color: #94a3b8;">Regime: bull_momentum (85%) | Reason: Strong directional edge</span>
+    </div>
+    <div class="log-entry">
+      <span class="log-time">02:48:15</span>
+      <span class="log-warn">🛑 STANDBY: Trade blocked</span><br>
+      <span style="margin-left: 80px; color: #94a3b8;">Reason: Market overheated (funding 1.8%)</span>
+    </div>
+    <div class="log-entry">
+      <span class="log-time">02:45:10</span>
+      <span class="log-info">📈 Trade executed (LONG)</span><br>
+      <span style="margin-left: 80px; color: #94a3b8;">Entry: $59,950 | Size: 0.0041 BTC</span>
+    </div>
+    <div class="log-entry">
+      <span class="log-time">02:30:00</span>
+      <span class="log-switch">🔄 AUTO-SWITCH: trade → farm</span><br>
+      <span style="margin-left: 80px; color: #94a3b8;">Regime: choppy_neutral | Reason: Market consolidation</span>
+    </div>
+  </div>
+
+  <!-- Section 4: Bot Creation Form -->
+  <h2 class="section-title">📝 Bot Creation Form</h2>
+  <div class="form-mock">
+    <div class="form-row">
+      <label class="form-label">🧠 Intelligence Mode</label>
+      <div class="radio-group">
+        <div class="radio-card active">
+          <div class="radio-title">🧠 Auto <span class="recommended">RECOMMENDED</span></div>
+          <div class="radio-desc">Engine autonomously controls strategy. Switches Farm/Trade/Standby based on market regime.</div>
+        </div>
+        <div class="radio-card">
+          <div class="radio-title">🔧 Manual</div>
+          <div class="radio-desc">You choose strategy. Engine only logs suggestions in console.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label class="form-label">Initial Strategy (Manual mode only)</label>
+      <div class="radio-group">
+        <div class="radio-card" style="opacity: 0.5;">
+          <div class="radio-title">🚜 Farm Mode</div>
+          <div class="radio-desc">Maximize volume, short scalps</div>
+        </div>
+        <div class="radio-card" style="opacity: 0.5;">
+          <div class="radio-title">📈 Trade Mode</div>
+          <div class="radio-desc">Higher confidence, longer holds</div>
+        </div>
+      </div>
+      <div style="margin-top: 8px; color: #64748b; font-size: 0.85em; font-style: italic;">
+        ⓘ Auto mode is selected - engine will choose strategy dynamically
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="text-align: center; margin-top: 60px; padding: 20px; color: #64748b; font-size: 0.85em;">
+    <strong>DRIFT Wave 3</strong> — Where SoSoValue Intelligence Meets Production Trading 🚀
+  </div>
+
+</div>
+</body>
+</html>

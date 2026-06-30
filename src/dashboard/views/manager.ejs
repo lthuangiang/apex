@@ -318,63 +318,75 @@
   </nav>
 
   <div class="page">
-    <div class="stats-row">
-      <div class="stat-card primary">
-        <div class="stat-label">Total PnL</div>
-        <div class="stat-value" id="total-pnl">$0.00</div>
-        <div class="stat-sub">
-          <span id="pnl-delta" class="delta-neutral">— vs yesterday</span>
-        </div>
-        <div class="stat-sub">Combined session across all bots</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Volume</div>
-        <div class="stat-value" id="total-volume">$0</div>
-        <div class="stat-sub">Session traded</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Active Bots</div>
-        <div class="stat-value" id="active-bots">0</div>
-        <div class="stat-sub" id="active-bots-sub">of 0 running</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Fees Paid</div>
-        <div class="stat-value" id="total-fees">$0.00</div>
-        <div class="stat-sub">Session total</div>
-      </div>
+    <!-- Hidden stats for compatibility with existing JS -->
+    <div style="display:none">
+      <span id="total-pnl">$0.00</span>
+      <span id="pnl-delta">—</span>
+      <span id="total-volume">$0</span>
+      <span id="active-bots">0</span>
+      <span id="active-bots-sub">of 0 running</span>
+      <span id="total-fees">$0.00</span>
     </div>
 
-    <!-- ── Market Intelligence Panel ──────────────────────────────────── -->
-    <div class="mi-panel" id="mi-panel">
-      <div class="mi-header">
-        <div class="mi-title"><span class="mi-title-dot"></span>Market Intelligence · SoSoValue</div>
-        <div class="mi-updated" id="mi-updated">Loading…</div>
+    <!-- Clean header with simple summary - Theme aware -->
+    <style>
+      .wave3-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        padding: 0.75rem 1rem;
+        background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+      }
+      body.dark .wave3-header,
+      body[data-theme="dark"] .wave3-header {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        border-color: #334155;
+      }
+      .wave3-title {
+        margin: 0;
+        font-size: 1.4rem;
+        background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      body.dark .wave3-title,
+      body[data-theme="dark"] .wave3-title {
+        background: linear-gradient(90deg, #60a5fa, #a78bfa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+      .wave3-subtitle {
+        font-size: 0.8rem;
+        color: #64748b;
+        margin-top: 2px;
+      }
+      body.dark .wave3-subtitle,
+      body[data-theme="dark"] .wave3-subtitle { color: #94a3b8; }
+      .wave3-pnl-label {
+        font-size: 0.7rem;
+        color: #64748b;
+        letter-spacing: 0.05em;
+      }
+      .wave3-pnl-value {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #16a34a;
+      }
+      body.dark .wave3-pnl-value,
+      body[data-theme="dark"] .wave3-pnl-value { color: #22c55e; }
+    </style>
+    <div class="wave3-header">
+      <div>
+        <h1 class="wave3-title">🧠 DRIFT — SoSoValue Intelligence</h1>
+        <div class="wave3-subtitle">Autonomous multi-bot trading with regime-aware strategy</div>
       </div>
-      <div class="mi-grid">
-        <div class="mi-cell" id="mi-fg-cell">
-          <div class="mi-cell-label">Fear &amp; Greed</div>
-          <div class="mi-cell-value" id="mi-fg-value"><span class="mi-skeleton" style="display:inline-block;width:40px;height:1.2rem;">&nbsp;</span></div>
-          <div class="mi-cell-sub" id="mi-fg-label">—</div>
-          <div class="mi-fg-bar"><div class="mi-fg-thumb" id="mi-fg-thumb" style="left:50%"></div></div>
-        </div>
-        <div class="mi-cell">
-          <div class="mi-cell-label">BTC ETF Flow</div>
-          <div class="mi-cell-value" id="mi-etf-value"><span class="mi-skeleton" style="display:inline-block;width:60px;height:1.2rem;">&nbsp;</span></div>
-          <div class="mi-cell-sub" id="mi-etf-signal">—</div>
-        </div>
-        <div class="mi-cell">
-          <div class="mi-cell-label">Macro Risk</div>
-          <div class="mi-cell-value" id="mi-macro-value"><span class="mi-skeleton" style="display:inline-block;width:50px;height:1.2rem;">&nbsp;</span></div>
-          <div class="mi-cell-sub" id="mi-macro-sub">—</div>
-        </div>
-        <div class="mi-cell mi-news">
-          <div class="mi-cell-label">Hot News</div>
-          <ul class="mi-news-list" id="mi-news-list">
-            <li class="mi-news-item"><span class="mi-skeleton" style="display:inline-block;width:90%;height:0.8rem;">&nbsp;</span></li>
-            <li class="mi-news-item"><span class="mi-skeleton" style="display:inline-block;width:75%;height:0.8rem;">&nbsp;</span></li>
-            <li class="mi-news-item"><span class="mi-skeleton" style="display:inline-block;width:82%;height:0.8rem;">&nbsp;</span></li>
-          </ul>
-        </div>
+      <div style="text-align:right">
+        <div class="wave3-pnl-label">SESSION PnL</div>
+        <div id="total-pnl-display" class="wave3-pnl-value">$0.00</div>
       </div>
     </div>
 
@@ -906,17 +918,29 @@
           </div>
           <div class="wz-form-row">
             <div class="wz-form-group">
-              <label class="wz-label">Mode</label>
-              <select class="wz-select" id="wz-mode">
-                <option value="farm">🚜 Farm — high-frequency volume</option>
-                <option value="trade">📈 Trade — signal-filtered entries</option>
+              <label class="wz-label">🧠 Intelligence Mode <span style="background:#22c55e;color:#000;font-size:0.65em;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:700;">WAVE 3</span></label>
+              <select class="wz-select" id="wz-intelligence-mode" onchange="window.toggleManualModeSection && window.toggleManualModeSection(this.value)">
+                <option value="auto">🧠 Auto — Engine controls strategy (Recommended)</option>
+                <option value="manual">🔧 Manual — You choose strategy</option>
               </select>
+              <span class="wz-hint" id="wz-intel-hint">Engine auto-switches Farm/Trade based on market regime</span>
             </div>
             <div class="wz-form-group">
               <label class="wz-label">Tags</label>
               <input class="wz-input" type="text" id="wz-tags" placeholder="Farm, TWAP" autocomplete="off" />
             </div>
           </div>
+          <div class="wz-form-row" id="wz-manual-mode-section" style="display:none">
+            <div class="wz-form-group" style="grid-column: 1 / -1">
+              <label class="wz-label">Initial Strategy (Manual Mode)</label>
+              <select class="wz-select" id="wz-mode">
+                <option value="farm">🚜 Farm — high-frequency volume</option>
+                <option value="trade">📈 Trade — signal-filtered entries</option>
+              </select>
+              <span class="wz-hint">Engine will suggest changes but won't switch automatically</span>
+            </div>
+          </div>
+          <input type="hidden" id="wz-mode-hidden" value="farm" />
           <!-- Hedge-only fields -->
           <div id="wz-hedge-config" style="display:none">
             <div class="wz-section-title">Hedge Parameters</div>
@@ -1038,6 +1062,8 @@
         if (el) el.value = '';
       });
       document.getElementById('wz-mode').value = 'farm';
+      document.getElementById('wz-intelligence-mode').value = 'auto';
+      document.getElementById('wz-manual-mode-section').style.display = 'none';
       document.getElementById('wz-network').value = 'mainnet';
       document.getElementById('wz-hibachiAccountType').value = 'trustless';
       document.getElementById('wz-hibachi-trustless-row').style.display = '';
@@ -1422,19 +1448,38 @@
       }
     }
 
+    // Wave 3: Toggle manual mode strategy selector visibility
+    window.toggleManualModeSection = function(intelligenceMode) {
+      var manualSection = document.getElementById('wz-manual-mode-section');
+      var hint = document.getElementById('wz-intel-hint');
+      if (!manualSection) return;
+
+      if (intelligenceMode === 'manual') {
+        manualSection.style.display = '';
+        if (hint) hint.textContent = 'You control strategy. Engine logs suggestions only.';
+      } else {
+        manualSection.style.display = 'none';
+        if (hint) hint.textContent = 'Engine auto-switches Farm/Trade based on market regime';
+      }
+    };
+
     function buildPayload() {
       var id   = val('wz-id');
       var name = val('wz-name');
-      var mode = document.getElementById('wz-mode').value;
+      var intelligenceMode = document.getElementById('wz-intelligence-mode').value;
+      // In auto mode, default initial mode to 'farm' (engine will switch as needed)
+      // In manual mode, use user-selected mode
+      var mode = intelligenceMode === 'auto' ? 'farm' : document.getElementById('wz-mode').value;
       var tags = val('wz-tags').split(',').map(function (t) { return t.trim(); }).filter(Boolean);
       var autoStart = document.getElementById('wz-autoStart').checked;
 
       var base = {
-        id:              id,
-        name:            name,
-        exchange:        state.exchange,
-        credentialKey:   id,   // Bot ID — adapter already created inline from credentials
-        tradeLogBackend: 'json',
+        id:               id,
+        name:             name,
+        exchange:         state.exchange,
+        intelligenceMode: intelligenceMode,  // Wave 3: Auto or Manual
+        credentialKey:    id,   // Bot ID — adapter already created inline from credentials
+        tradeLogBackend:  'json',
         tradeLogPath:    './trades-' + id + '.json',
         tags:            tags,
         autoStart:       autoStart,

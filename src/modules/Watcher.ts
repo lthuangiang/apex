@@ -25,6 +25,7 @@ import { evaluateFarmEntryFilters, type FilterInput, type FilterResult } from '.
 import { computeAdaptiveCooldown } from '../ai/AdaptiveCooldown.js';
 import { SoSoValueClient } from '../ai/SoSoValueClient.js';
 import { computeStrategyAdjustment } from '../ai/SoSoValueStrategy.js';
+import { SoSoValueIntelligenceEngine, type MarketIntelligence } from '../ai/SoSoValueIntelligenceEngine.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE MACHINE
@@ -89,6 +90,10 @@ export class Watcher {
     private readonly chopDetector = new ChopDetector();
     private readonly fakeBreakoutFilter = new FakeBreakoutFilter();
     private readonly sosoValueClient = new SoSoValueClient();
+    private readonly intelligenceEngine = new SoSoValueIntelligenceEngine();
+
+    // Wave 3: Intelligence Mode - controls auto-switch behavior
+    public intelligenceMode: 'auto' | 'manual' = 'manual'; // Default: manual (backward compat)
 
     // ── Loop control ──────────────────────────────────────────────────────────
     private isRunning = false;
@@ -1205,39 +1210,95 @@ export class Watcher {
     // ── FARM MODE entry ───────────────────────────────────────────────────────
 
     private async _handleIdleFarm(markPrice: number, balance: number) {
-        // Fetch F&G, ETF flow, and macro events in parallel — all SoSoValue API calls
-        const [sosoData, etfFlow, macroRisk] = await Promise.all([
-            this.sosoValueClient.fetch(),
-            this.sosoValueClient.fetchEtfFlow(),
-            this.sosoValueClient.fetchMacroEvents(),
-        ]);
-        const fearGreedIndex = sosoData?.fearGreedIndex ?? 50;
+        // WAVE 3: SoSoValue Intelligence Engine — multi-signal analysis
+        console.log(`[Intelligence] Analyzing market conditions...`);
+        const intel = await this.intelligenceEngine.analyze();
 
-        // Compute combined strategy adjustment (F&G + ETF flow + Macro guard)
-        const strategyAdj = computeStrategyAdjustment(fearGreedIndex, etfFlow, macroRisk);
-        console.log(`[SoSoValue] F&G: ${fearGreedIndex} (${sosoData?.fearGreedLabel ?? 'N/A'}) | ETF: ${etfFlow?.signal ?? 'n/a'} | Macro: ${macroRisk?.riskLevel ?? 'none'} → ${strategyAdj.description}`);
+        // Log intelligence summary
+        // Wave 3: Show intelligence mode clearly
+        const modeIcon = this.intelligenceMode === 'auto' ? '🧠' : '🔧';
+        console.log(`[Intelligence] ${modeIcon} Mode: ${this.intelligenceMode.toUpperCase()} | Current: ${this._cfg.MODE.toUpperCase()}`);
+        console.log(`[Intelligence] Regime: ${intel.regime.toUpperCase()} (${(intel.regimeConfidence * 100).toFixed(0)}% confidence)`);
+        console.log(`[Intelligence] Conviction: Bull ${intel.bullConviction.toFixed(0)} | Bear ${intel.bearConviction.toFixed(0)} | Neutral ${intel.neutralConviction.toFixed(0)}`);
+        console.log(`[Intelligence] Recommended Strategy: ${intel.recommendedStrategy.toUpperCase()}`);
+        console.log(`[Intelligence] Reason: ${intel.strategyReason}`);
 
-        // Store SoSoValue data for trade logging
+        // Show clear status: switch needed or not
+        if (intel.recommendedStrategy === this._cfg.MODE) {
+            console.log(`[Intelligence] ✅ Current mode matches recommendation — no switch needed`);
+        } else if (this.intelligenceMode === 'auto') {
+            console.log(`[Intelligence] 🔄 Will auto-switch: ${this._cfg.MODE} → ${intel.recommendedStrategy}`);
+        } else {
+            console.log(`[Intelligence] 💡 Suggestion only (manual mode): consider switching to ${intel.recommendedStrategy}`);
+        }
+
+        console.log(`[Intelligence] Sizing: ${(intel.baseSize * 100).toFixed(0)}% base, ${intel.maxLeverage.toFixed(1)}x max leverage, ${intel.confidenceMultiplier.toFixed(2)}x threshold`);
+        console.log(`[Intelligence] Risk: ${intel.riskLevel.toUpperCase()}${intel.warnings.length > 0 ? ' — ' + intel.warnings.join('; ') : ''}`);
+
+        // Check if we should trade at all
+        const decision = await this.intelligenceEngine.shouldTrade();
+        if (!decision.trade) {
+            console.log(`🛑 [Intelligence] Trade blocked: ${decision.reason}`);
+            this._logEvent('WARN', `[Intelligence] Trade blocked: ${decision.reason}`);
+            return; // ACTION: wait — RETURN
+        }
+
+        // Strategy auto-switch: Intelligence Engine drives mode selection
+        // (Only if intelligenceMode = "auto" set via Watcher instance property)
+        const intelligenceMode = this.intelligenceMode;
+
+        if (intel.recommendedStrategy === 'standby') {
+            console.log(`🛑 [Intelligence] Strategy: STANDBY — refusing to trade`);
+            console.log(`   Reason: ${intel.strategyReason}`);
+            this._logEvent('WARN', `[Intelligence] STANDBY mode — ${intel.strategyReason}`);
+            return; // Block trade entirely
+        }
+
+        // Auto-switch logic
+        const currentMode = this._cfg.MODE;
+        const recommendedMode = intel.recommendedStrategy;
+
+        if (intelligenceMode === 'auto' && currentMode !== recommendedMode && recommendedMode !== 'standby') {
+            console.log(`🔄 [Intelligence] AUTO-SWITCH: ${currentMode.toUpperCase()} → ${recommendedMode.toUpperCase()}`);
+            console.log(`   Mode: AUTO (intelligenceMode enabled)`);
+            console.log(`   Reason: ${intel.strategyReason}`);
+            console.log(`   Regime: ${intel.regime} (${(intel.regimeConfidence * 100).toFixed(0)}% confidence)`);
+            this._logEvent('INFO', `[Intelligence] AUTO-SWITCH: ${currentMode} → ${recommendedMode} | ${intel.strategyReason}`);
+
+            // Actually switch the mode!
+            this._cfg.MODE = recommendedMode as 'farm' | 'trade';
+
+            // Delegate to the appropriate handler
+            if (recommendedMode === 'trade') {
+                console.log(`   → Delegating to TRADE mode handler`);
+                return await this._handleIdleTrade(markPrice, balance);
+            }
+            // If recommended 'farm', continue with current Farm handler below
+        } else if (intelligenceMode === 'manual' && currentMode !== recommendedMode && recommendedMode !== 'standby') {
+            // Manual mode: only log suggestion
+            console.log(`💡 [Intelligence] Suggestion: Switch to ${recommendedMode.toUpperCase()} mode (current: ${currentMode})`);
+            console.log(`   Mode: MANUAL (intelligenceMode disabled)`);
+            console.log(`   Reason: ${intel.strategyReason}`);
+            this._logEvent('INFO', `[Intelligence] Strategy suggestion: ${recommendedMode.toUpperCase()} — ${intel.strategyReason}`);
+        }
+
+        // Store intelligence data for trade logging (backwards compatible with old format)
         this._pendingSoSoData = {
-            fearGreedIndex,
-            fearGreedLabel: sosoData?.fearGreedLabel ?? 'Unknown',
-            strategyMode: strategyAdj.mode,
-            sizeMultiplier: strategyAdj.sizeMultiplier,
-            confidenceMultiplier: strategyAdj.confidenceMultiplier,
+            fearGreedIndex: intel.signals.fearGreed,
+            fearGreedLabel: intel.signals.fearGreed < 25 ? 'Extreme Fear' :
+                           intel.signals.fearGreed < 45 ? 'Fear' :
+                           intel.signals.fearGreed < 55 ? 'Neutral' :
+                           intel.signals.fearGreed < 75 ? 'Greed' : 'Extreme Greed',
+            strategyMode: intel.recommendedStrategy === 'farm' ? 'balanced' :
+                         intel.recommendedStrategy === 'trade' ? 'cautious_trade' : 'defensive',
+            sizeMultiplier: intel.baseSize,
+            confidenceMultiplier: intel.confidenceMultiplier,
         };
 
-        // Log SoSoValue strategy mode to event log
-        const modeDescription = strategyAdj.mode === 'aggressive_farm' ? '🟢 AGGRESSIVE FARM - Buy the dip, +15% size'
-            : strategyAdj.mode === 'normal_farm' ? '🟡 NORMAL FARM - Cautious approach'
-            : strategyAdj.mode === 'balanced' ? '⚪ BALANCED - Normal operation'
-            : strategyAdj.mode === 'cautious_trade' ? '🟠 CAUTIOUS TRADE - Be selective, -10% size'
-            : '🔴 DEFENSIVE - Avoid FOMO, -20% size';
+        // Event log with full intelligence context
+        this._logEvent('INFO', `[Intelligence] ${intel.regime} | F&G:${intel.signals.fearGreed} ETF:${intel.signals.etfFlow} OI:$${(intel.signals.openInterest/1e9).toFixed(1)}B FR:${(intel.signals.fundingRate*100).toFixed(2)}% | Size:${intel.baseSize.toFixed(2)}x Conf:${intel.confidenceMultiplier.toFixed(2)}x`);
 
-        const etfTag = etfFlow ? ` | ETF:${etfFlow.signal}` : '';
-        const macroTag = macroRisk && macroRisk.riskLevel !== 'none' ? ` | ⚠️ MACRO:${macroRisk.riskLevel.toUpperCase()}` : '';
-        this._logEvent('INFO', `[SoSoValue] F&G: ${fearGreedIndex} (${sosoData?.fearGreedLabel ?? 'N/A'})${etfTag}${macroTag} | ${modeDescription} | Size: ${strategyAdj.sizeMultiplier.toFixed(2)}x | Threshold: ${strategyAdj.confidenceMultiplier.toFixed(2)}x`);
-
-        const signal = await this.signalEngine.getSignal(this.symbol, fearGreedIndex);
+        const signal = await this.signalEngine.getSignal(this.symbol, intel.signals.fearGreed);
 
         // ── Signal filter pipeline ─────────────────────────────────────────────
         // Skip filters when signal direction is 'skip' — FARM mode has fallback logic to handle it
@@ -1271,22 +1332,22 @@ export class Watcher {
             if (!filterResult.pass) {
                 console.log(`[SignalFilter] SKIP: ${filterResult.reason}`);
                 this._lastPipelineTrace = filterResult.pipelineTrace || [];
-                // Prepend SoSoValue macro filter
+                // Prepend Intelligence Engine filter
                 this._lastPipelineTrace.unshift({
-                    gate: 'SoSoValue macro filter',
+                    gate: 'Intelligence Engine',
                     result: 'pass',
-                    reason: `×${strategyAdj.confidenceMultiplier.toFixed(2)} conf, ×${strategyAdj.sizeMultiplier.toFixed(2)} size`
+                    reason: `${intel.regime} | ×${intel.confidenceMultiplier.toFixed(2)} conf, ×${intel.baseSize.toFixed(2)} size`
                 });
                 return; // ACTION: wait — RETURN
             }
 
             console.log(`[SignalFilter] PASS: regime=${signal.regime}, confidence=${signal.confidence.toFixed(2)}, pressure=${signal.tradePressure.toFixed(2)}, fallback=${signal.fallback}, effectiveConf=${filterResult.effectiveConfidence.toFixed(2)}`);
             this._lastPipelineTrace = filterResult.pipelineTrace || [];
-            // Prepend SoSoValue macro filter
+            // Prepend Intelligence Engine filter
             this._lastPipelineTrace.unshift({
-                gate: 'SoSoValue macro filter',
+                gate: 'Intelligence Engine',
                 result: 'pass',
-                reason: `×${strategyAdj.confidenceMultiplier.toFixed(2)} conf, ×${strategyAdj.sizeMultiplier.toFixed(2)} size`
+                reason: `${intel.regime} | ×${intel.confidenceMultiplier.toFixed(2)} conf, ×${intel.baseSize.toFixed(2)} size`
             });
         }
 
@@ -1363,7 +1424,7 @@ export class Watcher {
             volatilityFactor: 1.0,
             orderSizeMin: this._cfg.ORDER_SIZE_MIN,
             orderSizeMax: this._cfg.ORDER_SIZE_MAX,
-            fearGreedIndex,
+            fearGreedIndex: intel.signals.fearGreed,
         });
         this._pendingSizingResult = sizingResult;
 
@@ -1388,8 +1449,8 @@ export class Watcher {
         //         console.log(`📐 [FARM] Weak signal (conf=${filterResult.effectiveConfidence.toFixed(2)}) → size × ${sizeMult}`);
         //     }
         //     size *= sizeMult;
-        //     // Apply SoSoValue strategy adjustment
-        //     size *= strategyAdj.sizeMultiplier;
+        //     // Apply Intelligence Engine sizing
+        //     size *= intel.baseSize;
         //     // size = Math.max(this._cfg.ORDER_SIZE_MIN, size);
         // } else {
             
@@ -1457,33 +1518,35 @@ export class Watcher {
     // ── TRADE MODE entry ──────────────────────────────────────────────────────
 
     private async _handleIdleTrade(markPrice: number, balance: number) {
-        // Fetch signal and SoSoValue data in parallel
-        const sosoData = await this.sosoValueClient.fetch();
-        const fearGreedIndex = sosoData?.fearGreedIndex ?? 50; // Default to neutral if unavailable
+        // WAVE 3: Intelligence Engine for TRADE mode
+        console.log(`[Intelligence] Analyzing market for TRADE mode...`);
+        const intel = await this.intelligenceEngine.analyze();
 
-        // Compute strategy adjustment based on Fear & Greed Index
-        const strategyAdj = computeStrategyAdjustment(fearGreedIndex);
-        console.log(`[SoSoValue] F&G: ${fearGreedIndex} (${sosoData?.fearGreedLabel ?? 'N/A'}) → ${strategyAdj.description}`);
+        console.log(`[Intelligence] Regime: ${intel.regime} | Strategy: ${intel.recommendedStrategy}`);
+        console.log(`[Intelligence] Conviction: Bull ${intel.bullConviction.toFixed(0)} | Bear ${intel.bearConviction.toFixed(0)}`);
 
-        // Store SoSoValue data for trade logging
+        // Check if we should trade
+        const decision = await this.intelligenceEngine.shouldTrade();
+        if (!decision.trade) {
+            console.log(`🛑 [Intelligence] Trade blocked: ${decision.reason}`);
+            return;
+        }
+
+        // Store intelligence data for logging
         this._pendingSoSoData = {
-            fearGreedIndex,
-            fearGreedLabel: sosoData?.fearGreedLabel ?? 'Unknown',
-            strategyMode: strategyAdj.mode,
-            sizeMultiplier: strategyAdj.sizeMultiplier,
-            confidenceMultiplier: strategyAdj.confidenceMultiplier,
+            fearGreedIndex: intel.signals.fearGreed,
+            fearGreedLabel: intel.signals.fearGreed < 25 ? 'Extreme Fear' :
+                           intel.signals.fearGreed < 45 ? 'Fear' :
+                           intel.signals.fearGreed < 55 ? 'Neutral' :
+                           intel.signals.fearGreed < 75 ? 'Greed' : 'Extreme Greed',
+            strategyMode: intel.recommendedStrategy === 'trade' ? 'balanced' : 'cautious_trade',
+            sizeMultiplier: intel.baseSize,
+            confidenceMultiplier: intel.confidenceMultiplier,
         };
 
-        // Log SoSoValue strategy mode to event log
-        const modeDescription = strategyAdj.mode === 'aggressive_farm' ? '🟢 AGGRESSIVE FARM - Buy the dip, +15% size'
-            : strategyAdj.mode === 'normal_farm' ? '🟡 NORMAL FARM - Cautious approach'
-            : strategyAdj.mode === 'balanced' ? '⚪ BALANCED - Normal operation'
-            : strategyAdj.mode === 'cautious_trade' ? '🟠 CAUTIOUS TRADE - Be selective, -10% size'
-            : '🔴 DEFENSIVE - Avoid FOMO, -20% size';
+        this._logEvent('INFO', `[Intelligence] ${intel.regime} | F&G:${intel.signals.fearGreed} | Conv:${Math.max(intel.bullConviction, intel.bearConviction).toFixed(0)} | ${intel.recommendedStrategy.toUpperCase()}`);
 
-        this._logEvent('INFO', `[SoSoValue] F&G: ${fearGreedIndex} (${sosoData?.fearGreedLabel ?? 'N/A'}) | ${modeDescription} | Size: ${strategyAdj.sizeMultiplier.toFixed(2)}x | Threshold: ${strategyAdj.confidenceMultiplier.toFixed(2)}x`);
-
-        const signal = await this.signalEngine.getSignal(this.symbol, fearGreedIndex);
+        const signal = await this.signalEngine.getSignal(this.symbol, intel.signals.fearGreed);
         const regimeConfig = getRegimeStrategyConfig(signal.regime as Regime);
 
         let bias = 0;
@@ -1503,10 +1566,10 @@ export class Watcher {
         if (signal.regime === 'TREND_UP' && final_score < 0) final_score *= 0.5;
         if (signal.regime === 'TREND_DOWN' && final_score > 0) final_score *= 0.5;
 
-        // Apply SoSoValue strategy adjustment to threshold
+        // Apply Intelligence Engine confidence multiplier to threshold
         const baseThreshold = this._cfg.TRADE_SCORE_THRESHOLD ?? 0.65;
-        const threshold = baseThreshold * strategyAdj.confidenceMultiplier;
-        console.log(`[SoSoValue] Adjusted threshold: ${baseThreshold.toFixed(2)} → ${threshold.toFixed(2)} (${strategyAdj.mode})`);
+        const threshold = baseThreshold * intel.confidenceMultiplier;
+        console.log(`[Intelligence] Adjusted threshold: ${baseThreshold.toFixed(2)} → ${threshold.toFixed(2)} (${intel.regime})`);
 
         let finalDirection: 'long' | 'short' | 'skip' = 'skip';
         if (final_score > threshold) finalDirection = 'long';
@@ -1577,7 +1640,7 @@ export class Watcher {
             volatilityFactor: regimeConfig.volatilitySizingFactor,
             orderSizeMin: this._cfg.ORDER_SIZE_MIN,
             orderSizeMax: this._cfg.ORDER_SIZE_MAX,
-            fearGreedIndex,
+            fearGreedIndex: intel.signals.fearGreed,
         });
         this._pendingSizingResult = sizingResult;
         let size = sizingResult.size;

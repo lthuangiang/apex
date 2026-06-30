@@ -10,6 +10,10 @@
       Stop
     </button>
     <div class="cdiv"></div>
+    <span class="clabel">🧠 Intelligence:</span>
+    <button class="cb" id="btn-intel-auto" onclick="ctrlSetIntelligenceMode('auto')" title="Engine auto-switches strategy based on market regime">🧠 Auto</button>
+    <button class="cb" id="btn-intel-manual" onclick="ctrlSetIntelligenceMode('manual')" title="You control strategy, engine only suggests">🔧 Manual</button>
+    <div class="cdiv"></div>
     <span class="clabel">Mode:</span>
     <button class="cb" id="btn-farm" onclick="ctrlSetMode('farm')">🚜 Farm</button>
     <button class="cb" id="btn-trade" onclick="ctrlSetMode('trade')">📈 Trade</button>
@@ -28,4 +32,45 @@
     <span class="ctoast" id="ctrl-toast"></span>
   </div>
   <div style="margin-top:0.65rem;font-size:0.72rem;color:#444;" id="ctrl-status-line">—</div>
+
+  <!-- Wave 3: Intelligence Engine Status Panel -->
+  <div id="intelligence-panel" style="margin-top:0.85rem;padding:0.75rem;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border:1px solid #2a3f5f;border-radius:8px;display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+      <span style="font-size:0.8rem;font-weight:600;color:#60a5fa">🧠 Market Intelligence (Live)</span>
+      <span id="intel-risk-badge" style="font-size:0.7rem;padding:2px 8px;border-radius:10px;background:#14532d;color:#86efac">🟢 LOW</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:0.5rem;font-size:0.72rem;color:#cbd5e1">
+      <div><span style="color:#64748b">Regime:</span> <span id="intel-regime" style="font-weight:600">—</span></div>
+      <div><span style="color:#64748b">Strategy:</span> <span id="intel-strategy" style="font-weight:600">—</span></div>
+      <div><span style="color:#64748b">F&G:</span> <span id="intel-fg">—</span></div>
+      <div><span style="color:#64748b">ETF Flow:</span> <span id="intel-etf">—</span></div>
+      <div><span style="color:#64748b">Funding:</span> <span id="intel-funding">—</span></div>
+      <div><span style="color:#64748b">OI:</span> <span id="intel-oi">—</span></div>
+    </div>
+    <div id="intel-reason" style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:rgba(251,191,36,0.1);border-left:2px solid #fbbf24;font-size:0.7rem;color:#fde68a;display:none"></div>
+  </div>
+
+  <script>
+    // Wave 3: Intelligence Mode setter
+    if (typeof window.ctrlSetIntelligenceMode !== 'function') {
+      window.ctrlSetIntelligenceMode = async function(mode) {
+        try {
+          const res = await fetch('/api/bot/intelligence-mode', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({intelligenceMode: mode})
+          });
+          if (res.ok) {
+            // Update button states
+            document.getElementById('btn-intel-auto').classList.toggle('active', mode === 'auto');
+            document.getElementById('btn-intel-manual').classList.toggle('active', mode === 'manual');
+            // Hide manual mode buttons when auto is selected
+            const showManual = mode === 'manual';
+            document.getElementById('btn-farm').style.opacity = showManual ? '1' : '0.4';
+            document.getElementById('btn-trade').style.opacity = showManual ? '1' : '0.4';
+          }
+        } catch (err) { console.error('Failed to set intelligence mode:', err); }
+      };
+    }
+  </script>
 </div>

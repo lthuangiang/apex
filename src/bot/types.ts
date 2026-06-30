@@ -15,6 +15,15 @@ export interface BotConfig {
 
   // Trading config
   mode: 'farm' | 'trade';
+
+  /**
+   * Wave 3: Intelligence Mode
+   * - "auto": Engine autonomously controls strategy (auto-switch enabled)
+   * - "manual": User sets mode, engine only logs suggestions
+   * Default: "manual" (backward compatible)
+   */
+  intelligenceMode?: 'auto' | 'manual';
+
   orderSizeMin: number;
   orderSizeMax: number;
 

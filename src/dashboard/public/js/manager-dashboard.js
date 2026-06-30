@@ -213,7 +213,55 @@ function renderBots() {
   if (label) label.textContent = filtered.length + ' bot' + (filtered.length !== 1 ? 's' : '');
 
   if (!filtered.length) {
-    container.innerHTML = '<div class="state-empty">No bots match this filter</div>';
+    // Different empty states based on context
+    if (botsData.length === 0) {
+      // No bots at all - show onboarding CTA
+      container.innerHTML = `
+        <div class="empty-state-hero">
+          <div class="empty-state-icon">🤖</div>
+          <h2 class="empty-state-title">No bots yet</h2>
+          <p class="empty-state-desc">
+            Create your first bot to start trading with <strong>SoSoValue Intelligence</strong> 🧠<br>
+            <span style="opacity:0.7;font-size:0.9em">Auto-switching strategy based on market regime</span>
+          </p>
+          <div class="empty-state-features">
+            <div class="empty-feature">
+              <div class="empty-feature-icon">🧠</div>
+              <div class="empty-feature-text">
+                <strong>Auto Strategy</strong>
+                <span>Engine picks Farm/Trade based on market</span>
+              </div>
+            </div>
+            <div class="empty-feature">
+              <div class="empty-feature-icon">📊</div>
+              <div class="empty-feature-text">
+                <strong>Kelly Sizing</strong>
+                <span>Conviction-based position sizing</span>
+              </div>
+            </div>
+            <div class="empty-feature">
+              <div class="empty-feature-icon">🛡️</div>
+              <div class="empty-feature-text">
+                <strong>Risk Aware</strong>
+                <span>Stops trading in extreme conditions</span>
+              </div>
+            </div>
+          </div>
+          <button class="empty-state-cta" onclick="document.getElementById('btn-create-bot')?.click()">
+            <span style="font-size:1.2em">🚀</span> Launch Your First Bot
+          </button>
+        </div>
+      `;
+    } else {
+      // Has bots but filter shows nothing
+      container.innerHTML = `
+        <div class="empty-state-filter">
+          <div class="empty-state-icon" style="font-size:2.5em">🔍</div>
+          <h3 style="margin:0.5rem 0;color:#cbd5e1">No bots match this filter</h3>
+          <p style="color:#94a3b8;margin:0.5rem 0">You have ${botsData.length} bot${botsData.length !== 1 ? 's' : ''} total. Try a different filter.</p>
+        </div>
+      `;
+    }
     return;
   }
 
@@ -243,6 +291,14 @@ function buildCard(tmpl, bot) {
   const startBalance = bot.sessionStartBalance ?? null;
   const currentBalance = bot.currentBalance ?? null;
 
+  // Wave 3: Mode and Intelligence Mode badges
+  const mode = bot.mode || 'farm';
+  const intelligenceMode = bot.intelligenceMode || 'manual';
+  const modeIcon = mode === 'farm' ? '🚜' : mode === 'trade' ? '📈' : '⚖️';
+  const modeLabel = mode.toUpperCase();
+  const intelIcon = intelligenceMode === 'auto' ? '🧠' : '🔧';
+  const intelLabel = intelligenceMode === 'auto' ? 'AUTO INTELLIGENCE' : 'MANUAL';
+
   const strategyTags = (bot.tags || [])
     .slice(0, 2)
     .map(t => `<span class="strategy-tag">${t}</span>`)
@@ -267,6 +323,13 @@ function buildCard(tmpl, bot) {
     .replace(/{currentBalance}/g, currentBalance !== null ? fmtUsd(currentBalance) : 'N/A')
     .replace(/{startDisplay}/g, isActive ? 'none' : 'flex')
     .replace(/{stopDisplay}/g,  isActive ? 'flex' : 'none')
+    // Wave 3: Mode + Intelligence badges
+    .replace(/{mode}/g, mode)
+    .replace(/{modeIcon}/g, modeIcon)
+    .replace(/{modeLabel}/g, modeLabel)
+    .replace(/{intelligenceMode}/g, intelligenceMode)
+    .replace(/{intelIcon}/g, intelIcon)
+    .replace(/{intelLabel}/g, intelLabel)
     .replace(/{regime}/g, '—')
     .replace(/{macro}/g, '—')
     .replace(/{sizeMult}/g, '—')

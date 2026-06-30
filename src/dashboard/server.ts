@@ -968,6 +968,7 @@ export class DashboardServer {
         res.json({
           isRunning: state.isRunning,
           mode: bot.config.mode,
+          intelligenceMode: (bot.config as any).intelligenceMode ?? 'manual',  // Wave 3
           maxLoss: state.maxLoss,
           currentPnL: state.currentPnL,
           uptime,

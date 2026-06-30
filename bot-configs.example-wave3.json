@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "bots": [
+    {
+      "id": "sodex-auto-bot",
+      "name": "SoDEX Auto Intelligence",
+      "exchange": "sodex",
+      "credentialKey": "sodex-main",
+      "symbol": "BTC-USD",
+      "mode": "farm",
+
+      "_comment": "Wave 3: Intelligence Mode - Set to 'auto' for autonomous strategy control",
+      "intelligenceMode": "auto",
+
+      "orderSizeMin": 0.003,
+      "orderSizeMax": 0.005,
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades-sodex-auto.json",
+      "tags": ["auto", "wave3"],
+      "autoStart": true,
+
+      "dailyBudgetReset": true,
+      "dailyMaxLossUsd": 5,
+      "dailyTargetVolumeUsd": 5000,
+      "dailyResetHourUTC": 0
+    },
+    {
+      "id": "sodex-manual-bot",
+      "name": "SoDEX Manual Control",
+      "exchange": "sodex",
+      "credentialKey": "sodex-main",
+      "symbol": "BTC-USD",
+      "mode": "farm",
+
+      "_comment": "Manual mode: User controls strategy, engine only suggests",
+      "intelligenceMode": "manual",
+
+      "orderSizeMin": 0.003,
+      "orderSizeMax": 0.005,
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades-sodex-manual.json",
+      "tags": ["manual"],
+      "autoStart": true
+    }
+  ]
+}

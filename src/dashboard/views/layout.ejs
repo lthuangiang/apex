@@ -478,9 +478,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
 
     <div class="ctrl-sep"></div>
 
-    <!-- Mode -->
+    <!-- Wave 3: Intelligence Mode -->
     <div class="ctrl-blk">
-      <span class="ctrl-lbl">Mode</span>
+      <span class="ctrl-lbl">🧠 Intelligence</span>
+      <div class="mode-tgl">
+        <button class="mode-btn" id="btn-intel-auto" onclick="ctrlSetIntelligenceMode('auto')" title="Engine controls strategy">🧠 Auto</button>
+        <button class="mode-btn active" id="btn-intel-manual" onclick="ctrlSetIntelligenceMode('manual')" title="User controls strategy">🔧 Manual</button>
+      </div>
+    </div>
+
+    <div class="ctrl-sep"></div>
+
+    <!-- Mode (only active in Manual intelligence mode) -->
+    <div class="ctrl-blk" id="manual-mode-ctrl">
+      <span class="ctrl-lbl">Strategy</span>
       <div class="mode-tgl">
         <button class="mode-btn active" id="btn-farm" onclick="ctrlSetMode('farm')">🚜 Farm</button>
         <button class="mode-btn" id="btn-trade" onclick="ctrlSetMode('trade')">📈 Trade</button>
@@ -535,9 +546,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
 
           <div class="ai-band" id="ai-signal-band">
             <div class="ai-band-top">
-              <div class="ai-label">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="9" x2="9" y2="15"/><line x1="12" y1="11" x2="12" y2="15"/><line x1="15" y1="7" x2="15" y2="15"/></svg>
-                AI SIGNAL ENGINE
+              <div class="ai-label" style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:1rem">🧠</span>
+                <span>SOSOVALUE INTELLIGENCE</span>
+                <span style="background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:white;font-size:0.55rem;padding:1px 6px;border-radius:3px;font-weight:700;letter-spacing:0.05em">WAVE 3</span>
               </div>
               <span class="ai-tick" id="ai-last-tick">—</span>
             </div>

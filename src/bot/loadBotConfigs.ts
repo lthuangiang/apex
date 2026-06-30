@@ -75,7 +75,12 @@ export function validateBotConfig(config: any): config is BotConfig {
   if (typeof config.orderSizeMin !== 'number' || config.orderSizeMin <= 0) return false;
   if (typeof config.orderSizeMax !== 'number' || config.orderSizeMax <= 0) return false;
   if (!Array.isArray(config.tags)) return false;
-  
+
+  // Wave 3: Intelligence mode validation (optional, defaults to manual)
+  if (config.intelligenceMode !== undefined && !['auto', 'manual'].includes(config.intelligenceMode)) {
+    return false;
+  }
+
   return true;
 }
 

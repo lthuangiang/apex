@@ -87,6 +87,10 @@ export class BotInstance {
     this.sessionManager = new SessionManager();
     this.tradeLogger = new TradeLogger(config.tradeLogBackend, config.tradeLogPath);
     this.watcher = new Watcher(adapter, this.config.symbol, telegram, this.sessionManager, this.state, this.configStore, this.tradeLogger);
+
+    // Wave 3: Set intelligence mode from bot config (default: manual for backward compat)
+    this.watcher.intelligenceMode = (config as any).intelligenceMode ?? 'manual';
+    console.log(`[BotInstance:${this.id}] Intelligence mode: ${this.watcher.intelligenceMode}`);
     
     // Set symbol in state
     this.state.symbol = config.symbol;
@@ -257,6 +261,9 @@ export class BotInstance {
       status: this.state.botStatus === 'RUNNING' ? 'active' : 'inactive',
       symbol: this.config.symbol,
       tags: this.config.tags,
+      // Wave 3: Include mode and intelligenceMode
+      mode: this.config.mode,
+      intelligenceMode: (this.config as any).intelligenceMode ?? 'manual',
       sessionPnl: this.state.sessionPnl,
       sessionVolume: this.state.sessionVolume,
       sessionFees: this.state.sessionFees,
@@ -268,7 +275,7 @@ export class BotInstance {
       hasPosition: this.state.openPosition !== null,
       openPosition: this.state.openPosition,
       progress,
-    };
+    } as any;
   }
 
   getAISignalState() {

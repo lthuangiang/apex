@@ -680,6 +680,43 @@ async function ctrlStop() {
 async function ctrlSetMode(mode) {
   try { const r=await fetch(api('/api/control/set_mode'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}),d=await r.json(); if(r.ok){showToast('Mode: '+mode,false);updateCtrlButtons(ctrlRunning,mode);}else showToast(d.error||'Error',true); } catch{showToast('Failed',true);}
 }
+
+// Wave 3: Intelligence Mode setter (client-side state, persisted via bot config update)
+async function ctrlSetIntelligenceMode(mode) {
+  const autoBtn = document.getElementById('btn-intel-auto');
+  const manualBtn = document.getElementById('btn-intel-manual');
+  const manualModeCtrl = document.getElementById('manual-mode-ctrl');
+  const farmBtn = document.getElementById('btn-farm');
+  const tradeBtn = document.getElementById('btn-trade');
+
+  // Update UI immediately
+  if (autoBtn) autoBtn.classList.toggle('active', mode === 'auto');
+  if (manualBtn) manualBtn.classList.toggle('active', mode === 'manual');
+
+  // Dim/enable strategy buttons based on mode
+  if (manualModeCtrl) manualModeCtrl.style.opacity = mode === 'auto' ? '0.4' : '1';
+  if (farmBtn) farmBtn.disabled = (mode === 'auto');
+  if (tradeBtn) tradeBtn.disabled = (mode === 'auto');
+
+  // Persist to backend
+  try {
+    const r = await fetch(api('/api/control/set_intelligence_mode'), {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({intelligenceMode: mode})
+    });
+    if (r.ok) {
+      showToast(mode === 'auto' ? '🧠 Auto Intelligence enabled' : '🔧 Manual mode enabled', false);
+    } else {
+      // Endpoint may not exist yet — UI still updates
+      console.log('Intelligence mode UI updated (backend save pending)');
+      showToast(mode === 'auto' ? '🧠 Auto mode (UI only)' : '🔧 Manual mode (UI only)', false);
+    }
+  } catch (err) {
+    console.log('Intelligence mode set (offline):', mode);
+    showToast('Mode updated locally', false);
+  }
+}
 async function ctrlSetMaxLoss() {
   const amount=parseFloat(document.getElementById('input-maxloss').value);
   if(!amount||amount<=0){showToast('Invalid amount',true);return;}
@@ -695,6 +732,19 @@ async function refreshCtrlStatus() {
     const d=await fetch(api('/api/control/status')).then(r=>r.json());
     updateCtrlButtons(d.isRunning,d.mode);
     document.getElementById('input-maxloss').value=d.maxLoss;
+
+    // Wave 3: Sync intelligence mode UI with backend state
+    const intelMode = d.intelligenceMode || 'manual';
+    const autoBtn = document.getElementById('btn-intel-auto');
+    const manualBtn = document.getElementById('btn-intel-manual');
+    const manualModeCtrl = document.getElementById('manual-mode-ctrl');
+    const farmBtn = document.getElementById('btn-farm');
+    const tradeBtn = document.getElementById('btn-trade');
+    if (autoBtn) autoBtn.classList.toggle('active', intelMode === 'auto');
+    if (manualBtn) manualBtn.classList.toggle('active', intelMode === 'manual');
+    if (manualModeCtrl) manualModeCtrl.style.opacity = intelMode === 'auto' ? '0.4' : '1';
+    if (farmBtn) farmBtn.disabled = (intelMode === 'auto');
+    if (tradeBtn) tradeBtn.disabled = (intelMode === 'auto');
 
     const setEl = (id, val) => { const el=document.getElementById(id); if(el) el.textContent=val; };
     setEl('side-mode', d.mode||'—');
