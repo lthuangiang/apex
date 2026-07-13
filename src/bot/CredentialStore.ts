@@ -12,7 +12,7 @@ const TAG_BYTES = 16;  // 128-bit auth tag
  * Fields mirror the env vars previously used by adapterFactory.
  */
 export interface BotCredentials {
-  exchange: 'sodex' | 'dango' | 'decibel' | 'hibachi';
+  exchange: 'sodex' | 'dango' | 'decibel' | 'hibachi' | 'ondoperps' | 'perpl';
 
   // SoDEX
   apiKey?: string;
@@ -36,6 +36,17 @@ export interface BotCredentials {
   hibachiPrivateKey?: string;   // ECDSA private key for trustless accounts (0x-prefixed)
   hibachiSecretKey?: string;    // HMAC secret for exchange_managed accounts
   hibachiAccountId?: string | number;  // Numeric account ID from Hibachi dashboard
+
+  // OndoPerps
+  apiKeyId?: string;
+  apiKeySecret?: string;
+  baseUrl?: string;
+
+  // Perpl
+  perplApiKey?: string;
+  perplApiKeySecret?: string;  // Ed25519 private key hex
+  perplChainId?: string | number;
+  perplBaseUrl?: string;
 }
 
 /**

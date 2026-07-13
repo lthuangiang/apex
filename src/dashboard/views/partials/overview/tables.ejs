@@ -2,10 +2,17 @@
   <div class="table-card">
     <div class="table-header">
       <h3>Trade History</h3>
-      <span class="table-count" id="trade-count"></span>
+      <div class="trade-hdr-r">
+        <div class="fseg-wrap">
+          <button class="fseg on" id="tdir-all" onclick="filterTradeDir('all', this)">All</button>
+          <button class="fseg" id="tdir-long" onclick="filterTradeDir('long', this)">Long</button>
+          <button class="fseg" id="tdir-short" onclick="filterTradeDir('short', this)">Short</button>
+        </div>
+        <span class="table-count" id="trade-count"></span>
+      </div>
     </div>
     <table>
-      <thead><tr><th>Order ID</th><th>Date</th><th>Side</th><th>Entry</th><th>Exit</th><th>Hold</th><th>Signal</th><th>Conf</th><th>Gross</th><th>Fee</th><th>Net PnL</th></tr></thead>
+      <thead><tr><th></th><th>Order ID</th><th>Date</th><th>Side</th><th>Entry</th><th>Exit</th><th>Hold</th><th>Signal</th><th>Conf</th><th>Reason</th><th>Net PnL</th></tr></thead>
       <tbody id="trades-body">
         <tr><td colspan="11" style="color:#444;text-align:center;padding:1rem;">No trades yet.</td></tr>
       </tbody>

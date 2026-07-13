@@ -16,6 +16,21 @@ export class Executor {
     ) { }
 
     /**
+     * Price decimals (tick precision) for `symbol`. Uses the adapter's real value
+     * when available; falls back to 2 decimals for adapters that don't expose it.
+     */
+    private async getPriceDecimals(symbol: string): Promise<number> {
+        if (this.adapter.get_price_decimals) {
+            try {
+                return await this.adapter.get_price_decimals(symbol);
+            } catch {
+                // fall through to default
+            }
+        }
+        return 2;
+    }
+
+    /**
      * Places a Post-Only entry order. Returns order info immediately — does NOT wait for fill.
      * Watcher will check fill status on the next tick.
      */
@@ -24,9 +39,25 @@ export class Executor {
         direction: 'long' | 'short',
         size: number,
         priceOffset = 0, // positive = move price away from spread to ensure Post-Only
+        aggressive = false, // true = cross spread for immediate fill (FARM mode)
     ): Promise<PendingOrder | null> {
         try {
             const ob = await this.adapter.get_orderbook(symbol);
+
+            let price: number;
+            const side = direction === 'long' ? 'buy' : 'sell';
+
+            if (aggressive) {
+                // Taker: cross the spread for immediate fill
+                price = direction === 'long' ? ob.best_ask : ob.best_bid;
+                console.log(`[Executor] Placing ${direction.toUpperCase()} entry order: ${size} ${symbol} @ ${price} (IOC/taker)...`);
+                const orderId = await this.adapter.place_limit_order(symbol, side, price, size, false, 1);
+                console.log(`[Executor] Entry order placed: ${orderId}`);
+                await this.telegram.sendMessage(
+                    `📋 *Entry order placed*\n• Symbol: \`${symbol}\`\n• Direction: \`${direction.toUpperCase()}\`\n• Size: \`${size.toFixed(5)}\`\n• Price: \`${price}\` (IOC/taker)`
+                );
+                return { orderId, price, size };
+            }
 
             // Task 4.2–4.4: Use ExecutionEdge for dynamic offset if available
             let effectiveOffset: number;
@@ -49,16 +80,19 @@ export class Executor {
                     effectiveOffset = priceOffset;
                 }
             }
-            
-            // Post-Only (maker): Buy @ best_bid - offset, Sell @ best_ask + offset
-            // Offset ensures order sits inside book and won't cross spread on re-place
-            const rawPrice = direction === 'long' ? ob.best_bid : ob.best_ask;
-            const price = direction === 'long'
-                ? Math.floor((rawPrice - effectiveOffset) * 100) / 100
-                : Math.ceil((rawPrice + effectiveOffset) * 100) / 100;
-            const side = direction === 'long' ? 'buy' : 'sell';
+            effectiveOffset = 0.001
 
-            // Note: caller (Watcher) is responsible for cancelling open orders before calling this
+            // Post-Only (maker): Buy @ best_bid - offset, Sell @ best_ask + offset.
+            // Round to the market's real tick. Flooring to 2 decimals on a 3-decimal
+            // tick (e.g. SOL, tick 0.001) truncates the price up to 0.009 behind the
+            // touch, so the order rests too far back and never fills.
+            // The +/- 1e-9 nudge absorbs float error so we land exactly on the tick.
+            const factor = Math.pow(10, await this.getPriceDecimals(symbol));
+            const rawPrice = direction === 'long' ? ob.best_bid : ob.best_ask;
+            price = direction === 'long'
+                ? Math.floor((rawPrice - effectiveOffset) * factor + 1e-9) / factor
+                : Math.ceil((rawPrice + effectiveOffset) * factor - 1e-9) / factor;
+
             console.log(`[Executor] Placing ${direction.toUpperCase()} entry order: ${size} ${symbol} @ ${price} (Post-Only)...`);
             const orderId = await this.adapter.place_limit_order(symbol, side, price, size);
             console.log(`[Executor] Entry order placed: ${orderId}`);

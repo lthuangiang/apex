@@ -82,14 +82,14 @@ describe('8.2 spreadBps <= EXEC_MAX_SPREAD_BPS → spreadOk=true', () => {
   });
 });
 
-// ─── Task 8.3: thin book → depthPenalty applied ───────────────────────────────
+// ─── Task 8.3: thin book → offset matches formula (depthPenalty term) ─────────
 
-describe('8.3 thin book (depthScore < threshold) → depthPenalty applied', () => {
-  it('offset > spreadBps * EXEC_SPREAD_OFFSET_MULT when book is thin', async () => {
-    // Thin book: bids = [[100000, 0.1]] → depthScore = 10000 < 50000
+describe('8.3 thin book (depthScore < threshold) → offset includes depthPenalty term', () => {
+  it('offset equals clamped formula output including any depth penalty', async () => {
+    // Thin book: bids = [[100000, 0.001]] → depthScore = 100 < EXEC_DEPTH_THIN_THRESHOLD
     const thinAdapter = makeAdapter({
-      bids: [[100000, 0.1]],
-      asks: [[100001, 0.1]],
+      bids: [[100000, 0.001]],
+      asks: [[100001, 0.001]],
     });
     const edge = makeEdge(thinAdapter);
 
@@ -99,9 +99,16 @@ describe('8.3 thin book (depthScore < threshold) → depthPenalty applied', () =
       best_ask: 100002,
     });
 
-    const baseOffset = result.spreadBps * config.EXEC_SPREAD_OFFSET_MULT;
-    expect(result.offset).toBeGreaterThan(baseOffset);
-    expect(result.depthScore).toBe(10000);
+    expect(result.depthScore).toBe(100);
+    expect(result.depthScore).toBeLessThan(config.EXEC_DEPTH_THIN_THRESHOLD);
+
+    // Thin book → depthPenalty term applies; empty tracker → no fill penalty.
+    const depthPenalty = config.EXEC_DEPTH_PENALTY;
+    const expected = Math.max(
+      config.EXEC_OFFSET_MIN,
+      Math.min(config.EXEC_OFFSET_MAX, result.spreadBps * config.EXEC_SPREAD_OFFSET_MULT + depthPenalty)
+    );
+    expect(result.offset).toBeCloseTo(expected, 10);
   });
 });
 
@@ -183,9 +190,12 @@ describe('8.7 get_orderbook_depth failure → depthScore=0, thin-book penalty ap
 
     expect(result.spreadOk).toBe(true);
     expect(result.depthScore).toBe(0);
-    // depthScore=0 < 50000 → thin-book penalty should be applied
-    const baseOffset = result.spreadBps * config.EXEC_SPREAD_OFFSET_MULT;
-    expect(result.offset).toBeGreaterThan(baseOffset);
+    // depthScore=0 < threshold → depthPenalty term applies; empty tracker → no fill penalty.
+    const expected = Math.max(
+      config.EXEC_OFFSET_MIN,
+      Math.min(config.EXEC_OFFSET_MAX, result.spreadBps * config.EXEC_SPREAD_OFFSET_MULT + config.EXEC_DEPTH_PENALTY)
+    );
+    expect(result.offset).toBeCloseTo(expected, 10);
   });
 });
 

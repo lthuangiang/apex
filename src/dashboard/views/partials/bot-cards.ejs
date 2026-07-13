@@ -220,23 +220,52 @@
       </span>
     </div>
 
-    <div class="ai-strip" id="ai-signal-{id}">
-      <div class="ai-strip-title">🧠 SoSoValue Intelligence</div>
-      <div class="ai-row">
-        <div class="ai-pill"><span class="ai-pill-label">Regime</span><span class="ai-pill-val">{regime}</span></div>
-        <div class="ai-pill"><span class="ai-pill-label">Macro</span><span class="ai-pill-val">{macro}</span></div>
-        <div class="ai-pill"><span class="ai-pill-label">Size ×</span><span class="ai-pill-val">{sizeMult}</span></div>
-        <div class="ai-pill"><span class="ai-pill-label">Direction</span><span class="ai-pill-val">{direction}</span></div>
+    <!-- Wave 3: Intelligence Engine live output — proof the engine is deciding -->
+    <div class="intel-panel" id="intel-panel-{id}" style="display:none;margin-top:0.75rem;padding:0.85rem;border:1px solid var(--border,#2a2a2a);border-radius:10px;background:linear-gradient(135deg,rgba(30,58,138,0.12),rgba(91,33,182,0.12))">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:0.6rem">
+        <span style="font-size:0.75rem;font-weight:700;letter-spacing:0.04em">🧠 INTELLIGENCE ENGINE</span>
+        <span class="intel-regime" style="font-size:0.72rem;font-weight:700;color:#a78bfa">—</span>
       </div>
-      <div class="conf-bar-wrap">
-        <span class="conf-label">Confidence</span>
-        <div class="conf-track"><div class="conf-fill" style="width:{confidence}%;background:#BA7517;"></div></div>
-        <span class="conf-pct" style="color:#BA7517;">{confidenceText}</span>
+
+      <!-- Conviction bars -->
+      <div class="intel-conv" style="display:flex;flex-direction:column;gap:0.3rem;margin-bottom:0.6rem">
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <span style="width:52px;font-size:0.65rem;color:#888780">Bull</span>
+          <div style="flex:1;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden"><div class="intel-bull-fill" style="height:100%;width:0%;background:#1D9E75"></div></div>
+          <span class="intel-bull-val" style="width:32px;font-size:0.65rem;text-align:right">0</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <span style="width:52px;font-size:0.65rem;color:#888780">Bear</span>
+          <div style="flex:1;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden"><div class="intel-bear-fill" style="height:100%;width:0%;background:#E24B4A"></div></div>
+          <span class="intel-bear-val" style="width:32px;font-size:0.65rem;text-align:right">0</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <span style="width:52px;font-size:0.65rem;color:#888780">Neutral</span>
+          <div style="flex:1;height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden"><div class="intel-neutral-fill" style="height:100%;width:0%;background:#BA7517"></div></div>
+          <span class="intel-neutral-val" style="width:32px;font-size:0.65rem;text-align:right">0</span>
+        </div>
       </div>
-      <div class="decision-log">
-        <div class="log-header"><span>Signal pipeline</span><span class="log-timestamp">last tick —</span></div>
-        <!-- Log rows injected by renderAIStrip() -->
+
+      <!-- Strategy recommendation + reason -->
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem">
+        <span style="font-size:0.65rem;color:#888780">Strategy</span>
+        <span class="intel-strategy" style="font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:5px;background:rgba(255,255,255,0.06)">—</span>
+        <span class="intel-risk" style="font-size:0.62rem;font-weight:700;padding:2px 7px;border-radius:5px;margin-left:auto">—</span>
       </div>
+      <div class="intel-reason" style="font-size:0.66rem;color:#b4b2a9;line-height:1.4;margin-bottom:0.5rem">—</div>
+
+      <!-- Sizing row -->
+      <div style="display:flex;gap:0.75rem;font-size:0.64rem;color:#888780;margin-bottom:0.5rem">
+        <span>Size <b class="intel-size" style="color:#e5e5e5">—</b></span>
+        <span>Lev <b class="intel-lev" style="color:#e5e5e5">—</b></span>
+        <span>Threshold <b class="intel-confmult" style="color:#e5e5e5">—</b></span>
+      </div>
+
+      <!-- Warnings -->
+      <div class="intel-warnings" style="display:none;font-size:0.64rem;color:#E24B4A;margin-bottom:0.5rem"></div>
+
+      <!-- Apply recommendation button (suggestion-first, human confirms) -->
+      <button class="intel-apply-btn" data-bot-id="{id}" style="display:none;width:100%;padding:0.5rem;border:none;border-radius:8px;background:#5b21b6;color:#fff;font-size:0.72rem;font-weight:700;cursor:pointer">Áp dụng khuyến nghị</button>
     </div>
 
     <div class="sparkline-wrap" id="sparkline-{id}">

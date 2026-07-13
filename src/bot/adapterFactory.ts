@@ -4,6 +4,7 @@ import { DangoAdapter } from '../adapters/dango_adapter.js';
 import { DecibelAdapter } from '../adapters/decibel_adapter.js';
 import { HibachiAdapter } from '../adapters/hibachi_adapter.js';
 import { OndoPerpsAdapter } from '../adapters/ondoperps_adapter.js';
+import { PerplAdapter } from '../adapters/perpl_adapter.js';
 import type { BotCredentials } from './CredentialStore.js';
 
 /**
@@ -114,12 +115,28 @@ export function createAdapterFromCredentials(
         apiKeyId,
         apiKeySecret,
         baseUrl
+      }) as unknown as ExchangeAdapter;
+    }
+
+    case 'perpl': {
+      const { perplApiKey, perplApiKeySecret, perplChainId, perplBaseUrl } = credentials;
+      if (!perplApiKey || !perplApiKeySecret) {
+        throw new Error(
+          `Missing Perpl credentials. Required: perplApiKey, perplApiKeySecret`
+        );
+      }
+      console.log(`[adapterFactory] Creating PerplAdapter from stored credentials`);
+      return new PerplAdapter({
+        apiKey: perplApiKey,
+        apiKeySecret: perplApiKeySecret,
+        chainId: perplChainId ? Number(perplChainId) : undefined,
+        baseUrl: perplBaseUrl,
       });
     }
 
     default:
       throw new Error(
-        `Unsupported exchange: "${exchange}". Supported exchanges: sodex, dango, decibel, hibachi, ondoperps`
+        `Unsupported exchange: "${exchange}". Supported exchanges: sodex, dango, decibel, hibachi, ondoperps, perpl`
       );
   }
 }
@@ -244,12 +261,34 @@ export function createAdapter(exchange: string, credentialKey: string): Exchange
         apiKeyId,
         apiKeySecret,
         baseUrl
+      }) as unknown as ExchangeAdapter;
+    }
+
+    case 'perpl': {
+      const apiKey = process.env[`${envPrefix}_API_KEY`];
+      const apiKeySecret = process.env[`${envPrefix}_API_KEY_SECRET`];
+      const chainId = process.env[`${envPrefix}_CHAIN_ID`];
+      const baseUrl = process.env[`${envPrefix}_BASE_URL`];
+
+      if (!apiKey || !apiKeySecret) {
+        throw new Error(
+          `Missing credentials for ${exchange}. Required env vars: ` +
+          `${envPrefix}_API_KEY, ${envPrefix}_API_KEY_SECRET`
+        );
+      }
+
+      console.log(`[adapterFactory] Creating PerplAdapter with credentialKey: ${credentialKey}`);
+      return new PerplAdapter({
+        apiKey,
+        apiKeySecret,
+        chainId: chainId ? Number(chainId) : undefined,
+        baseUrl,
       });
     }
 
     default:
       throw new Error(
-        `Unsupported exchange: "${exchange}". Supported exchanges: sodex, dango, decibel, hibachi, ondoperps`
+        `Unsupported exchange: "${exchange}". Supported exchanges: sodex, dango, decibel, hibachi, ondoperps, perpl`
       );
   }
 }

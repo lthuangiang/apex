@@ -490,6 +490,60 @@ export class DashboardServer {
       }
     });
 
+    // Wave 3: Performance Analytics endpoint
+    this.app.get('/api/performance', async (_req, res) => {
+      try {
+        const { PerformanceAnalytics } = await import('../ai/PerformanceAnalytics.js');
+        const analytics = new PerformanceAnalytics();
+
+        // Collect trades from all bots
+        let allTrades: any[] = [];
+
+        // Try tenant trades first
+        try {
+          const trades = await this.tradeLogger.readAll();
+          if (trades && trades.length > 0) allTrades = trades;
+        } catch (e) {
+          // No trades in default logger
+        }
+
+        // Also include trades from disk files (existing trade history)
+        try {
+          const fs = await import('fs');
+          const path = await import('path');
+          const tradeFiles = [
+            'trades-sodex-spacex.json',
+            'trades-sodex-brave.json',
+            'trades-sodex.json',
+          ];
+          for (const file of tradeFiles) {
+            const fullPath = path.join(process.cwd(), file);
+            if (fs.existsSync(fullPath)) {
+              const content = fs.readFileSync(fullPath, 'utf-8').trim();
+              if (content) {
+                const lines = content.split('\n').filter(l => l.trim());
+                const trades = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+                allTrades = allTrades.concat(trades);
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore file read errors
+        }
+
+        if (allTrades.length === 0) {
+          res.json({ summary: null, sosoAlpha: null, longestWinStreak: 0, longestLoseStreak: 0 });
+          return;
+        }
+
+        const report = analytics.generateReport(allTrades);
+        res.json(report);
+      } catch (err) {
+        console.error('[performance] error:', err);
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
     this.app.get('/api/analytics/trades', async (req, res) => {
       try {
         const { mode, direction, regime, limit: limitStr, offset: offsetStr } = req.query as Record<string, string | undefined>;
@@ -681,9 +735,11 @@ export class DashboardServer {
 
       // Other exchanges: static lists
       const supported: Record<string, string[]> = {
-        decibel: ['BTC/USD','ETH/USD','SOL/USD','AVAX/USD','MATIC/USD'],
-        dango:   ['BTC-USD','ETH-USD','SOL-USD'],
-        hibachi: ['BTC/USDT-P','ETH/USDT-P','SOL/USDT-P','BNB/USDT-P','XRP/USDT-P','DOGE/USDT-P'],
+        decibel:   ['BTC/USD','ETH/USD','SOL/USD','AVAX/USD','MATIC/USD'],
+        dango:     ['BTC-USD','ETH-USD','SOL-USD'],
+        hibachi:   ['BTC/USDT-P','ETH/USDT-P','SOL/USDT-P','BNB/USDT-P','XRP/USDT-P','DOGE/USDT-P'],
+        ondoperps: ['XAU-PERP','AAPL-PERP','TSLA-PERP','GOOGL-PERP','MSFT-PERP','AMZN-PERP','NVDA-PERP','META-PERP'],
+        perpl:     ['BTC-PERP','ETH-PERP','SOL-PERP','MON-PERP','HYPE-PERP','ZEC-PERP'],
       };
       const symbols = supported[exchange];
       if (!symbols) { res.json({ symbols: [] }); return; }
@@ -705,7 +761,7 @@ export class DashboardServer {
 
         if (isHedge) {
           validateHedgeBotConfig(body);
-          const adapter = (body.apiKey || body.privateKey || body.dangoPrivateKey || body.hibachiApiKey)
+          const adapter = (body.apiKey || body.privateKey || body.dangoPrivateKey || body.hibachiApiKey || body.apiKeyId || body.perplApiKey)
             ? createAdapterFromCredentials(body.exchange as string, body as any)
             : createBotAdapter(body.exchange as string, body.credentialKey as string);
           const bot = manager.createHedgeBot(body as unknown as HedgeBotConfig, adapter, this._telegram as any);
@@ -715,7 +771,7 @@ export class DashboardServer {
             res.status(400).json({ error: 'Invalid bot config — check all required fields' });
             return;
           }
-          const adapter = (body.apiKey || body.privateKey || body.dangoPrivateKey || body.hibachiApiKey)
+          const adapter = (body.apiKey || body.privateKey || body.dangoPrivateKey || body.hibachiApiKey || body.apiKeyId || body.perplApiKey)
             ? createAdapterFromCredentials(body.exchange as string, body as any)
             : createBotAdapter(body.exchange as string, body.credentialKey as string);
           const bot = manager.createBot(body, adapter, this._telegram as any);
@@ -797,6 +853,17 @@ export class DashboardServer {
               'AMZN-PERP',
               'NVDA-PERP',
               'META-PERP'
+            ]
+          });
+        } else if (exchange === 'perpl') {
+          res.json({
+            symbols: [
+              'BTC-PERP',
+              'ETH-PERP',
+              'SOL-PERP',
+              'MON-PERP',
+              'HYPE-PERP',
+              'ZEC-PERP'
             ]
           });
         } else {

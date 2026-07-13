@@ -7,6 +7,13 @@
 
 import type { TradeRecord } from './TradeLogger.js';
 
+// entryTime/exitTime are ISO 8601 strings; coerce to epoch ms for arithmetic.
+function _toMs(t: string | number | undefined | null): number {
+  if (t == null) return Date.now();
+  const ms = typeof t === 'number' ? t : new Date(t).getTime();
+  return Number.isNaN(ms) ? Date.now() : ms;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -66,6 +73,7 @@ export interface SoSoValueAlphaAnalysis {
   alpha: number;  // PnL difference
   alphaPercent: number;  // Win rate improvement
   valueAdded: number;  // Total value from SoSoValue
+  alphaComparable: boolean;  // true only when both WITH and WITHOUT subsets are non-empty
 
   // Regime-specific performance
   regimePerformance: Record<string, {
@@ -136,7 +144,7 @@ export class PerformanceAnalytics {
     const avgSlippageBps = this._calculateAvgSlippage(trades);
     const fillRate = this._calculateFillRate(trades);
     const failedOrderRate = 1 - fillRate;
-    const avgHoldTime = trades.reduce((sum, t) => sum + ((t.exitTime ?? Date.now()) - (t.entryTime ?? 0)), 0) / trades.length / 1000;
+    const avgHoldTime = trades.reduce((sum, t) => sum + (_toMs(t.exitTime) - _toMs(t.entryTime)), 0) / trades.length / 1000;
 
     // Other metrics
     const grossProfit = wins.reduce((sum, t) => sum + t.pnl, 0);
@@ -172,16 +180,26 @@ export class PerformanceAnalytics {
    * Analyze SoSoValue alpha — compare performance WITH vs WITHOUT SoSoValue signals
    */
   analyzeSoSoValueAlpha(trades: TradeRecord[]): SoSoValueAlphaAnalysis {
-    // Split trades based on whether they used SoSoValue intelligence
-    // (Trades after Wave 3 integration have intelligence metadata)
-    const withSoSo = trades.filter(t => (t as any).sosoData || (t as any).intelligence);
-    const withoutSoSo = trades.filter(t => !(t as any).sosoData && !(t as any).intelligence);
+    // Split trades based on whether SoSoValue intelligence was applied at entry.
+    // A trade carries SoSoValue metadata when any of these fields are present.
+    const usedSoSo = (t: TradeRecord) =>
+      t.fearGreedIndex != null ||
+      t.sosoStrategyMode != null ||
+      t.sosoSizeMultiplier != null ||
+      t.sosoConfidenceMultiplier != null;
+
+    const withSoSo = trades.filter(usedSoSo);
+    const withoutSoSo = trades.filter(t => !usedSoSo(t));
 
     const withMetrics = this._computeSubset(withSoSo);
     const withoutMetrics = this._computeSubset(withoutSoSo);
 
-    const alpha = withMetrics.totalPnL - withoutMetrics.totalPnL;
-    const alphaPercent = (withMetrics.winRate - withoutMetrics.winRate) * 100;
+    // Alpha is only a meaningful comparison when both subsets exist. With no
+    // baseline (WITHOUT) trades, `withPnL - 0` would just echo total PnL and,
+    // when negative, flip sign into a misleading positive number.
+    const alphaComparable = withSoSo.length > 0 && withoutSoSo.length > 0;
+    const alpha = alphaComparable ? withMetrics.totalPnL - withoutMetrics.totalPnL : 0;
+    const alphaPercent = alphaComparable ? (withMetrics.winRate - withoutMetrics.winRate) * 100 : 0;
     const valueAdded = alpha;
 
     // Regime-specific performance (only for trades with intelligence data)
@@ -189,7 +207,7 @@ export class PerformanceAnalytics {
     const regimeGroups: Record<string, TradeRecord[]> = {};
 
     for (const trade of withSoSo) {
-      const regime = (trade as any).intelligence?.regime || 'unknown';
+      const regime = trade.regime || 'unknown';
       if (!regimeGroups[regime]) regimeGroups[regime] = [];
       regimeGroups[regime].push(trade);
     }
@@ -210,6 +228,7 @@ export class PerformanceAnalytics {
       alpha,
       alphaPercent,
       valueAdded,
+      alphaComparable,
       regimePerformance,
     };
   }
@@ -316,7 +335,7 @@ export class PerformanceAnalytics {
 
     for (const trade of trades) {
       equity += trade.pnl;
-      const timestamp = trade.exitTime || Date.now();
+      const timestamp = _toMs(trade.exitTime);
 
       equityCurve.push({ timestamp, equity, pnl: trade.pnl });
 
@@ -341,7 +360,7 @@ export class PerformanceAnalytics {
       }
     }
 
-    return { maxDrawdown: maxDD, maxDrawdownPercent: maxDDPct, maxDDDuration, equityCurve, drawdownCurve };
+    return { maxDrawdown: maxDD, maxDrawdownPercent: maxDDPct, maxDrawdownDuration: maxDDDuration, equityCurve, drawdownCurve };
   }
 
   private _calculateAvgSlippage(trades: TradeRecord[]): number {
@@ -391,7 +410,7 @@ export class PerformanceAnalytics {
     const monthlyGroups: Record<string, TradeRecord[]> = {};
 
     for (const trade of trades) {
-      const date = new Date(trade.exitTime || Date.now());
+      const date = new Date(_toMs(trade.exitTime));
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       if (!monthlyGroups[monthKey]) monthlyGroups[monthKey] = [];
       monthlyGroups[monthKey].push(trade);

@@ -142,9 +142,10 @@ export class SoSoValueIntelligenceEngine {
 
   /**
    * Quick check: should we trade right now?
+   * Pass an existing analysis to avoid re-fetching signals.
    */
-  async shouldTrade(): Promise<{ trade: boolean; reason: string }> {
-    const intel = await this.analyze();
+  async shouldTrade(intel?: MarketIntelligence): Promise<{ trade: boolean; reason: string }> {
+    intel ??= await this.analyze();
 
     // Hard blockers
     if (intel.riskLevel === 'extreme') {

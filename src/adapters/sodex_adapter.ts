@@ -348,7 +348,7 @@ export class SodexAdapter implements ExchangeAdapter {
             modifier: number;
             side: number;
             type: number;
-            timeInForce: number;
+            timeInForce?: number;
             price: string;
             quantity: string;
             stopPrice?: string;
@@ -361,11 +361,21 @@ export class SodexAdapter implements ExchangeAdapter {
             const symId = await this.getSymbolId(symbol);
 
             const orderItems = orders.map(ord => {
-                if (ord.stopPrice !== undefined) {
-                    return `{"clOrdID":"${ord.clOrdID}","modifier":${ord.modifier},"side":${ord.side},"type":${ord.type},"timeInForce":${ord.timeInForce},"price":"${ord.price}","quantity":"${ord.quantity}","stopPrice":"${ord.stopPrice}","reduceOnly":${ord.reduceOnly},"positionSide":${ord.positionSide}}`;
-                } else {
-                    return `{"clOrdID":"${ord.clOrdID}","modifier":${ord.modifier},"side":${ord.side},"type":${ord.type},"timeInForce":${ord.timeInForce},"price":"${ord.price}","quantity":"${ord.quantity}","reduceOnly":${ord.reduceOnly},"positionSide":${ord.positionSide}}`;
-                }
+                const fields = [
+                    `"clOrdID":"${ord.clOrdID}"`,
+                    `"modifier":${ord.modifier}`,
+                    `"side":${ord.side}`,
+                    `"type":${ord.type}`,
+                ];
+                // Omit timeInForce entirely when absent — stop orders reject it, and
+                // interpolating undefined produces invalid JSON ("timeInForce":undefined).
+                if (ord.timeInForce !== undefined) fields.push(`"timeInForce":${ord.timeInForce}`);
+                fields.push(`"price":"${ord.price}"`);
+                fields.push(`"quantity":"${ord.quantity}"`);
+                if (ord.stopPrice !== undefined) fields.push(`"stopPrice":"${ord.stopPrice}"`);
+                fields.push(`"reduceOnly":${ord.reduceOnly}`);
+                fields.push(`"positionSide":${ord.positionSide}`);
+                return `{${fields.join(',')}}`;
             });
 
             const paramsStr = `{"accountID":${accId},"symbolID":${symId},"orders":[${orderItems.join(',')}]}`;

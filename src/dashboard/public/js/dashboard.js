@@ -30,6 +30,8 @@ function api(path) {
 
 const PAGE_SIZE = 10;
 let allTrades = [], allEvents = [], tradePg = 1, eventPg = 1;
+let tradeDirFilter = 'all';
+const expandedTrades = new Set();
 let pnlChart, volChart;
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -76,14 +78,36 @@ function updateCharts(ph, vh) {
   if (vh.length) upd(volChart, vh);
 }
 
+function filteredTrades() {
+  if (tradeDirFilter === 'all') return allTrades;
+  return allTrades.filter(t => t.direction === tradeDirFilter);
+}
+function filterTradeDir(dir, btn) {
+  tradeDirFilter = dir;
+  tradePg = 1;
+  ['tdir-all','tdir-long','tdir-short'].forEach(id => { const b=document.getElementById(id); if (b) b.classList.remove('on'); });
+  if (btn) btn.classList.add('on');
+  renderTrades();
+}
+function toggleTradeDetail(id) {
+  if (expandedTrades.has(id)) expandedTrades.delete(id); else expandedTrades.add(id);
+  renderTrades();
+}
 function renderTrades() {
-  const tbody = document.getElementById('trades-body'), total = allTrades.length;
-  document.getElementById('trade-count').textContent = total ? 'Showing '+Math.min((tradePg-1)*PAGE_SIZE+1,total)+'-'+Math.min(tradePg*PAGE_SIZE,total)+' of '+total : '';
-  document.getElementById('trade-page-info').textContent = 'Page '+tradePg+' of '+Math.max(1,Math.ceil(total/PAGE_SIZE));
-  document.getElementById('trade-prev').disabled = tradePg<=1;
-  document.getElementById('trade-next').disabled = tradePg>=Math.ceil(total/PAGE_SIZE);
-  if (!total) { tbody.innerHTML='<tr><td colspan="10" style="text-align:center;padding:1.5rem;color:var(--text-3);">No trades yet.</td></tr>'; return; }
-  tbody.innerHTML = allTrades.slice((tradePg-1)*PAGE_SIZE,tradePg*PAGE_SIZE).map(t => {
+  const tbody = document.getElementById('trades-body');
+  if (!tbody) return; // Skip if trades section not rendered (e.g. manager view)
+  const list = filteredTrades(), total = list.length;
+  if (tradePg > Math.max(1, Math.ceil(total/PAGE_SIZE))) tradePg = 1;
+  const tc = document.getElementById('trade-count');
+  if (tc) tc.textContent = total ? 'Showing '+Math.min((tradePg-1)*PAGE_SIZE+1,total)+'-'+Math.min(tradePg*PAGE_SIZE,total)+' of '+total : '';
+  const tpi = document.getElementById('trade-page-info');
+  if (tpi) tpi.textContent = 'Page '+tradePg+' of '+Math.max(1,Math.ceil(total/PAGE_SIZE));
+  const tp = document.getElementById('trade-prev');
+  if (tp) tp.disabled = tradePg<=1;
+  const tn = document.getElementById('trade-next');
+  if (tn) tn.disabled = tradePg>=Math.ceil(total/PAGE_SIZE);
+  if (!total) { tbody.innerHTML='<tr><td colspan="11" style="text-align:center;padding:1.5rem;color:var(--text-3);">No trades'+(tradeDirFilter!=='all'?' ('+tradeDirFilter+')':'')+' yet.</td></tr>'; return; }
+  tbody.innerHTML = list.slice((tradePg-1)*PAGE_SIZE,tradePg*PAGE_SIZE).map(t => {
     const isHedge = t.symbolA !== undefined || t.exitPriceA !== undefined;
     const id = t.id?t.id.slice(0,8)+'...'+t.id.slice(-4):'—';
 
@@ -160,7 +184,10 @@ function renderTrades() {
       }
     }
 
-    return '<tr>'
+    const isExpanded = expandedTrades.has(t.id);
+    const caret = isHedge ? '' : '<span class="tr-caret'+(isExpanded?' open':'')+'">▸</span>';
+    const mainRow = '<tr class="'+(isHedge?'':'tr-clickable')+'"'+(isHedge?'':' onclick="toggleTradeDetail(\''+esc(t.id||'')+'\')"')+'>'
+      +'<td style="width:18px;text-align:center;color:var(--text-3)">'+caret+'</td>'
       +'<td style="font-family:monospace;font-size:.7rem;">'+esc(id)+'</td>'
       +'<td>'+fmt(t.timestamp)+'</td>'
       +'<td>'+side+'</td>'
@@ -172,7 +199,78 @@ function renderTrades() {
       +'<td style="max-width:200px;overflow:hidden">'+reason+'</td>'
       +'<td class="'+pc+'">'+pnl+'</td>'
       +'</tr>';
+    const detailRow = (!isHedge && isExpanded)
+      ? '<tr class="tr-detail"><td></td><td colspan="10" style="padding:0">'+renderIntelPanel(t)+'</td></tr>'
+      : '';
+    return mainRow + detailRow;
   }).join('');
+}
+
+// Intelligence Engine log for a single trade — built entirely from TradeRecord snapshot fields
+function renderIntelPanel(t) {
+  const pct = v => v==null ? null : (v<=1 ? (v*100).toFixed(0)+'%' : v.toFixed(0)+'%');
+  const num = (v,d=2) => v==null ? null : Number(v).toFixed(d);
+  const chip = (label, val, color) => val==null||val===''||val==='—' ? '' :
+    '<div class="intel-chip"><span class="intel-k">'+esc(label)+'</span><span class="intel-v"'+(color?' style="color:'+color+'"':'')+'>'+esc(String(val))+'</span></div>';
+
+  const dirColor = d => d==='long'?'var(--green)':d==='short'?'var(--red)':'var(--text-3)';
+
+  // Signal / regime block
+  let sig = '';
+  sig += chip('Regime', t.regime ? t.regime.replace(/_/g,' ') : null);
+  sig += chip('Momentum', num(t.momentumScore,3));
+  sig += chip('RSI', num(t.rsi,1));
+  sig += chip('EMA9', num(t.ema9,4));
+  sig += chip('EMA21', num(t.ema21,4));
+  sig += chip('EMA cross', t.emaCrossUp?'↑ up':t.emaCrossDown?'↓ down':null, t.emaCrossUp?'var(--green)':t.emaCrossDown?'var(--red)':null);
+  sig += chip('Mom 3c', num(t.momentum3candles,3));
+  sig += chip('Vol spike', t.volSpike==null?null:(t.volSpike?'yes':'no'), t.volSpike?'var(--red)':null);
+  sig += chip('ATR %', t.atrPct==null?null:num(t.atrPct,2)+'%');
+  sig += chip('BB width', num(t.bbWidth,4));
+  sig += chip('Vol ratio', num(t.volRatio,2));
+  sig += chip('Imbalance', num(t.imbalance,3));
+  sig += chip('Trade press', num(t.tradePressure,3));
+  sig += chip('L/S ratio', num(t.lsRatio,2));
+
+  // LLM / decision block
+  let llm = '';
+  llm += chip('LLM dir', t.llmDirection ? t.llmDirection.toUpperCase() : null, dirColor(t.llmDirection));
+  llm += chip('LLM conf', pct(t.llmConfidence));
+  llm += chip('Matches mom', t.llmMatchesMomentum==null?null:(t.llmMatchesMomentum?'yes':'no'), t.llmMatchesMomentum?'var(--green)':'var(--red)');
+  llm += chip('Eff. conf', pct(t.effectiveConfidence));
+  llm += chip('Gate', t.filterResult, /pass/i.test(t.filterResult||'')?'var(--green)':'var(--red)');
+  llm += chip('Min hold', t.dynamicMinHold==null?null:fmtHold(t.dynamicMinHold));
+  llm += chip('Fallback', t.fallback?'yes':null, 'var(--red)');
+
+  // SoSoValue macro block
+  let soso = '';
+  soso += chip('Fear&Greed', t.fearGreedIndex==null?null:(t.fearGreedIndex+(t.fearGreedLabel?' · '+t.fearGreedLabel:'')));
+  soso += chip('Strategy', t.sosoStrategyMode);
+  soso += chip('Size ×', num(t.sosoSizeMultiplier,2));
+  soso += chip('Conf ×', num(t.sosoConfidenceMultiplier,2));
+
+  // Sizing + exit block
+  let siz = '';
+  siz += chip('Exit', t.exitTrigger);
+  siz += chip('Conf mult', num(t.sizingConfMult,2));
+  siz += chip('Perf mult', num(t.sizingPerfMult,2));
+  siz += chip('Comb mult', num(t.sizingCombinedMult,2));
+  siz += chip('Capped by', t.sizingCappedBy && t.sizingCappedBy!=='none' ? t.sizingCappedBy : null);
+  siz += chip('Gross', t.grossPnl==null?null:(t.grossPnl>=0?'+':'')+'$'+num(t.grossPnl,4));
+  siz += chip('Fee', t.feePaid==null?null:'$'+num(t.feePaid,4));
+  siz += chip('Won pre-fee', t.wonBeforeFee?'yes':null, '#f59e0b');
+
+  const section = (title, body) => body ? '<div class="intel-sec"><div class="intel-sec-t">'+title+'</div><div class="intel-grid">'+body+'</div></div>' : '';
+  const reasoning = t.reasoning ? '<div class="intel-reason"><span class="intel-k">Reasoning</span> '+esc(t.reasoning)+'</div>' : '';
+
+  return '<div class="intel-panel">'
+    + '<div class="intel-hdr">🧠 Intelligence Engine — why this '+esc((t.direction||'').toUpperCase())+' trade</div>'
+    + reasoning
+    + section('Signal', sig)
+    + section('Decision / LLM', llm)
+    + section('SoSoValue Macro', soso)
+    + section('Sizing & Exit', siz)
+    + '</div>';
 }
 function fmtHold(secs) {
   if (!secs || secs < 0) return '—';
@@ -184,10 +282,15 @@ function fmtHold(secs) {
 
 function renderEvents() {
   const tbody = document.getElementById('events-body'), total = allEvents.length;
-  document.getElementById('event-count').textContent = total ? 'Showing '+Math.min((eventPg-1)*PAGE_SIZE+1,total)+'-'+Math.min(eventPg*PAGE_SIZE,total)+' of '+total : '';
-  document.getElementById('event-page-info').textContent = 'Page '+eventPg+' of '+Math.max(1,Math.ceil(total/PAGE_SIZE));
-  document.getElementById('event-prev').disabled = eventPg<=1;
-  document.getElementById('event-next').disabled = eventPg>=Math.ceil(total/PAGE_SIZE);
+  if (!tbody) return; // Skip if events section not rendered (e.g. manager view)
+  const ec = document.getElementById('event-count');
+  if (ec) ec.textContent = total ? 'Showing '+Math.min((eventPg-1)*PAGE_SIZE+1,total)+'-'+Math.min(eventPg*PAGE_SIZE,total)+' of '+total : '';
+  const epi = document.getElementById('event-page-info');
+  if (epi) epi.textContent = 'Page '+eventPg+' of '+Math.max(1,Math.ceil(total/PAGE_SIZE));
+  const ep = document.getElementById('event-prev');
+  if (ep) ep.disabled = eventPg<=1;
+  const en = document.getElementById('event-next');
+  if (en) en.disabled = eventPg>=Math.ceil(total/PAGE_SIZE);
   if (!total) { tbody.innerHTML='<tr><td colspan="3" style="text-align:center;padding:1.5rem;color:var(--text-3);">No events yet.</td></tr>'; return; }
   tbody.innerHTML = allEvents.slice((eventPg-1)*PAGE_SIZE,eventPg*PAGE_SIZE).map(e => {
     return '<tr><td style="white-space:nowrap;font-size:.72rem;color:var(--text-3);">'+fmtS(e.time)+'</td><td style="font-size:.72rem;font-weight:600;color:var(--text-2);">'+esc(e.type.replace(/_/g,' '))+'</td><td style="font-size:.75rem;color:var(--text-2);">'+esc(e.message)+'</td></tr>';
@@ -966,7 +1069,7 @@ let analyticsCharts = {};
 
 function switchMainTab(tab) {
   activeMainTab = tab;
-  ['overview','analytics','backtest'].forEach(t => {
+  ['overview','analytics','performance','backtest'].forEach(t => {
     const panel = document.getElementById('tabpanel-'+t);
     const nav = document.getElementById('tabnav-'+t);
     if (panel) panel.classList.toggle('active', t===tab);
@@ -977,6 +1080,10 @@ function switchMainTab(tab) {
     if (!analyticsInterval) analyticsInterval = setInterval(refreshAnalytics, 30000);
   } else {
     if (analyticsInterval) { clearInterval(analyticsInterval); analyticsInterval = null; }
+  }
+  // Wave 3: Auto-load Performance tab when switched to
+  if (tab === 'performance' && typeof loadPerformanceTab === 'function') {
+    loadPerformanceTab();
   }
 }
 

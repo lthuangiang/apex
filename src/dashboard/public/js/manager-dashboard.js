@@ -84,6 +84,94 @@ function renderAIStrip(botId, state) {
       logBody.appendChild(row);
     });
   }
+
+  // Wave 3: Intelligence Engine panel — proof the engine is deciding
+  renderIntelPanel(card, botId, state.intelligence);
+}
+
+function renderIntelPanel(card, botId, intel) {
+  const panel = card.querySelector(`#intel-panel-${botId}`) || card.querySelector('.intel-panel');
+  if (!panel) return;
+  if (!intel) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+
+  const set = (sel, txt) => { const el = panel.querySelector(sel); if (el) el.textContent = txt; };
+  const bar = (sel, pct) => { const el = panel.querySelector(sel); if (el) el.style.width = Math.max(0, Math.min(100, pct)).toFixed(0) + '%'; };
+
+  set('.intel-regime', `${(intel.regime || '—').toUpperCase()} · ${Math.round((intel.regimeConfidence || 0) * 100)}%`);
+
+  bar('.intel-bull-fill', intel.bullConviction || 0);
+  bar('.intel-bear-fill', intel.bearConviction || 0);
+  bar('.intel-neutral-fill', intel.neutralConviction || 0);
+  set('.intel-bull-val', Math.round(intel.bullConviction || 0));
+  set('.intel-bear-val', Math.round(intel.bearConviction || 0));
+  set('.intel-neutral-val', Math.round(intel.neutralConviction || 0));
+
+  const strat = (intel.recommendedStrategy || '—').toUpperCase();
+  const stratColors = { TRADE: '#1D9E75', FARM: '#BA7517', HEDGE: '#3b82f6', STANDBY: '#E24B4A' };
+  const stratEl = panel.querySelector('.intel-strategy');
+  if (stratEl) { stratEl.textContent = strat; stratEl.style.color = stratColors[strat] || '#e5e5e5'; }
+  set('.intel-reason', intel.strategyReason || '');
+
+  const riskColors = { low: '#1D9E75', medium: '#BA7517', high: '#E24B4A', extreme: '#E24B4A' };
+  const riskEl = panel.querySelector('.intel-risk');
+  if (riskEl) {
+    riskEl.textContent = `RISK ${(intel.riskLevel || '—').toUpperCase()}`;
+    riskEl.style.background = (riskColors[intel.riskLevel] || '#888780') + '33';
+    riskEl.style.color = riskColors[intel.riskLevel] || '#888780';
+  }
+
+  set('.intel-size', intel.baseSize != null ? (intel.baseSize * 100).toFixed(0) + '%' : '—');
+  set('.intel-lev', intel.maxLeverage != null ? intel.maxLeverage.toFixed(1) + '×' : '—');
+  set('.intel-confmult', intel.confidenceMultiplier != null ? intel.confidenceMultiplier.toFixed(2) + '×' : '—');
+
+  const warnEl = panel.querySelector('.intel-warnings');
+  if (warnEl) {
+    if (intel.warnings && intel.warnings.length) {
+      warnEl.style.display = 'block';
+      warnEl.textContent = '⚠ ' + intel.warnings.join(' · ');
+    } else {
+      warnEl.style.display = 'none';
+    }
+  }
+
+  // Apply button: only when recommendation differs from current mode and is actionable
+  const bot = (window.botsData || botsData || []).find(b => b.id === botId);
+  const currentMode = bot?.mode || 'farm';
+  const rec = intel.recommendedStrategy;
+  const btn = panel.querySelector('.intel-apply-btn');
+  if (btn) {
+    if ((rec === 'farm' || rec === 'trade') && rec !== currentMode) {
+      btn.style.display = 'block';
+      btn.textContent = `Áp dụng: ${currentMode.toUpperCase()} → ${rec.toUpperCase()}`;
+      btn.onclick = () => applyIntelRecommendation(botId, rec, btn);
+    } else {
+      btn.style.display = 'none';
+    }
+  }
+}
+
+async function applyIntelRecommendation(botId, mode, btn) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Đang áp dụng...';
+  try {
+    const res = await fetch(`/api/bots/${botId}/control/set_mode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const bot = (window.botsData || botsData || []).find(b => b.id === botId);
+    if (bot) bot.mode = mode;
+    btn.textContent = '✓ Đã đổi mode';
+    btn.style.background = '#1D9E75';
+  } catch (err) {
+    console.error('[Intel] apply failed:', err);
+    btn.disabled = false;
+    btn.textContent = original;
+    alert('Đổi mode thất bại: ' + err.message);
+  }
 }
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -192,7 +280,8 @@ async function updateAISignals() {
         macroSentimentMultiplier: signal.macro?.sizeMultiplier || 1,
         lastSignalDirection: signal.lastSignal?.direction?.toUpperCase() || null,
         effectiveConfidence: signal.lastSignal?.confidence || 0,
-        signalPipeline: signal.signalPipeline || []
+        signalPipeline: signal.signalPipeline || [],
+        intelligence: signal.intelligence || null,
       };
       renderAIStrip(bot.id, state);
     } catch (err) {

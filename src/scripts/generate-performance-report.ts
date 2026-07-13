@@ -112,11 +112,18 @@ function printSoSoValueAlpha(report: DetailedReport) {
 
   section('ALPHA METRICS');
 
-  const alphaColor = sosoAlpha.alpha >= 0 ? COLORS.green + COLORS.bright : COLORS.red;
+  if (sosoAlpha.alphaComparable) {
+    const alphaColor = sosoAlpha.alpha >= 0 ? COLORS.green + COLORS.bright : COLORS.red;
+    const gainColor = sosoAlpha.alphaPercent >= 0 ? COLORS.green : COLORS.red;
+    const gainSign = sosoAlpha.alphaPercent >= 0 ? '+' : '';
 
-  console.log(`${COLORS.bright}SoSoValue Alpha:${COLORS.reset}  ${alphaColor}${formatUSD(sosoAlpha.alpha)}${COLORS.reset}`);
-  console.log(`Win Rate Gain:    ${COLORS.green}+${sosoAlpha.alphaPercent.toFixed(2)}%${COLORS.reset}`);
-  console.log(`Value Added:      ${COLORS.green}${formatUSD(sosoAlpha.valueAdded)}${COLORS.reset}`);
+    console.log(`${COLORS.bright}SoSoValue Alpha:${COLORS.reset}  ${alphaColor}${formatUSD(sosoAlpha.alpha)}${COLORS.reset}`);
+    console.log(`Win Rate Gain:    ${gainColor}${gainSign}${sosoAlpha.alphaPercent.toFixed(2)}%${COLORS.reset}`);
+    console.log(`Value Added:      ${alphaColor}${formatUSD(sosoAlpha.valueAdded)}${COLORS.reset}`);
+  } else {
+    console.log(`${COLORS.yellow}N/A — need both WITH and WITHOUT SoSoValue trades to compute alpha.${COLORS.reset}`);
+    console.log(`  WITH: ${sosoAlpha.tradesWithSoSoValue.count} trades | WITHOUT: ${sosoAlpha.tradesWithoutSoSoValue.count} trades`);
+  }
 
   section('REGIME PERFORMANCE');
 
@@ -218,9 +225,17 @@ async function main() {
 
   console.log(`${COLORS.green}${COLORS.bright}Intelligence Engine Impact:${COLORS.reset}`);
   console.log(`  • ${report.sosoAlpha.tradesWithSoSoValue.count} trades used SoSoValue intelligence`);
-  console.log(`  • ${COLORS.green}+${report.sosoAlpha.alphaPercent.toFixed(2)}%${COLORS.reset} win rate improvement`);
-  console.log(`  • ${COLORS.green}${formatUSD(report.sosoAlpha.alpha)}${COLORS.reset} alpha generated`);
-  console.log(`  • Sharpe ratio: ${report.sosoAlpha.tradesWithSoSoValue.sharpe.toFixed(2)} (vs ${report.sosoAlpha.tradesWithoutSoSoValue.sharpe.toFixed(2)} without)`);
+  if (report.sosoAlpha.alphaComparable) {
+    const gainSign = report.sosoAlpha.alphaPercent >= 0 ? '+' : '';
+    const gainColor = report.sosoAlpha.alphaPercent >= 0 ? COLORS.green : COLORS.red;
+    const alphaColor = report.sosoAlpha.alpha >= 0 ? COLORS.green : COLORS.red;
+    console.log(`  • ${gainColor}${gainSign}${report.sosoAlpha.alphaPercent.toFixed(2)}%${COLORS.reset} win rate vs baseline`);
+    console.log(`  • ${alphaColor}${formatUSD(report.sosoAlpha.alpha)}${COLORS.reset} alpha generated`);
+    console.log(`  • Sharpe ratio: ${report.sosoAlpha.tradesWithSoSoValue.sharpe.toFixed(2)} (vs ${report.sosoAlpha.tradesWithoutSoSoValue.sharpe.toFixed(2)} without)`);
+  } else {
+    console.log(`  • ${COLORS.yellow}Alpha N/A — no non-SoSoValue baseline trades to compare against${COLORS.reset}`);
+    console.log(`  • Sharpe ratio: ${report.sosoAlpha.tradesWithSoSoValue.sharpe.toFixed(2)}`);
+  }
 
   console.log(`\n${COLORS.bright}System Reliability:${COLORS.reset}`);
   console.log(`  • ${formatPercent(report.summary.fillRate)} fill rate`);

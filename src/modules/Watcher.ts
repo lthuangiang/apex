@@ -152,6 +152,9 @@ export class Watcher {
         confidenceMultiplier: number;
     } | null = null;
 
+    // ── Wave 3: last full Intelligence Engine output (for dashboard display) ──
+    private _lastIntelligence: MarketIntelligence | null = null;
+
     // ── Trade-mode signal confirmation ────────────────────────────────────────
     private _lastSignal: { direction: 'long' | 'short'; score: number; ts: number } | null = null;
     private _lastRegime: string = 'unknown';
@@ -1189,7 +1192,7 @@ export class Watcher {
                 console.log(`[IDLE] Retry: refreshed farmHoldUntil → ${holdSecs}s`);
             }
 
-            const order = await this.executor.placeEntryOrder(this.symbol, direction, size);
+            const order = await this.executor.placeEntryOrder(this.symbol, direction, size, 0, false);
             if (order) {
                 this.signalEngine.invalidateCache();
                 this._logEvent('ORDER_PLACED', `[RETRY] ${direction.toUpperCase()} ${size.toFixed(3)} @ ${order.price}`);
@@ -1213,6 +1216,7 @@ export class Watcher {
         // WAVE 3: SoSoValue Intelligence Engine — multi-signal analysis
         console.log(`[Intelligence] Analyzing market conditions...`);
         const intel = await this.intelligenceEngine.analyze();
+        this._lastIntelligence = intel;
 
         // Log intelligence summary
         // Wave 3: Show intelligence mode clearly
@@ -1236,7 +1240,7 @@ export class Watcher {
         console.log(`[Intelligence] Risk: ${intel.riskLevel.toUpperCase()}${intel.warnings.length > 0 ? ' — ' + intel.warnings.join('; ') : ''}`);
 
         // Check if we should trade at all
-        const decision = await this.intelligenceEngine.shouldTrade();
+        const decision = await this.intelligenceEngine.shouldTrade(intel);
         if (!decision.trade) {
             console.log(`🛑 [Intelligence] Trade blocked: ${decision.reason}`);
             this._logEvent('WARN', `[Intelligence] Trade blocked: ${decision.reason}`);
@@ -1258,7 +1262,7 @@ export class Watcher {
         const currentMode = this._cfg.MODE;
         const recommendedMode = intel.recommendedStrategy;
 
-        if (intelligenceMode === 'auto' && currentMode !== recommendedMode && recommendedMode !== 'standby') {
+        if (intelligenceMode === 'auto' && currentMode !== recommendedMode) {
             console.log(`🔄 [Intelligence] AUTO-SWITCH: ${currentMode.toUpperCase()} → ${recommendedMode.toUpperCase()}`);
             console.log(`   Mode: AUTO (intelligenceMode enabled)`);
             console.log(`   Reason: ${intel.strategyReason}`);
@@ -1274,7 +1278,7 @@ export class Watcher {
                 return await this._handleIdleTrade(markPrice, balance);
             }
             // If recommended 'farm', continue with current Farm handler below
-        } else if (intelligenceMode === 'manual' && currentMode !== recommendedMode && recommendedMode !== 'standby') {
+        } else if (intelligenceMode === 'manual' && currentMode !== recommendedMode) {
             // Manual mode: only log suggestion
             console.log(`💡 [Intelligence] Suggestion: Switch to ${recommendedMode.toUpperCase()} mode (current: ${currentMode})`);
             console.log(`   Mode: MANUAL (intelligenceMode disabled)`);
@@ -1479,7 +1483,7 @@ export class Watcher {
 
         console.log(`📐 [FARM] Size: ${size.toFixed(5)} BTC | conf: ${signal.confidence.toFixed(2)}`);
 
-        const order = await this.executor.placeEntryOrder(this.symbol, finalDirection, size);
+        const order = await this.executor.placeEntryOrder(this.symbol, finalDirection, size, 0, false);
         if (order) {
             this.signalEngine.invalidateCache();
             this._logEvent('ORDER_PLACED', `[FARM] ${finalDirection.toUpperCase()} ${size.toFixed(3)} @ ${order.price}`);
@@ -1521,12 +1525,13 @@ export class Watcher {
         // WAVE 3: Intelligence Engine for TRADE mode
         console.log(`[Intelligence] Analyzing market for TRADE mode...`);
         const intel = await this.intelligenceEngine.analyze();
+        this._lastIntelligence = intel;
 
         console.log(`[Intelligence] Regime: ${intel.regime} | Strategy: ${intel.recommendedStrategy}`);
         console.log(`[Intelligence] Conviction: Bull ${intel.bullConviction.toFixed(0)} | Bear ${intel.bearConviction.toFixed(0)}`);
 
         // Check if we should trade
-        const decision = await this.intelligenceEngine.shouldTrade();
+        const decision = await this.intelligenceEngine.shouldTrade(intel);
         if (!decision.trade) {
             console.log(`🛑 [Intelligence] Trade blocked: ${decision.reason}`);
             return;
@@ -1817,6 +1822,22 @@ export class Watcher {
                 fearGreedLabel: this._pendingSoSoData.fearGreedLabel,
                 sizeMultiplier: this._pendingSoSoData.sizeMultiplier,
                 confidenceMultiplier: this._pendingSoSoData.confidenceMultiplier,
+            } : null,
+            // Wave 3: full Intelligence Engine output (null until first idle tick)
+            intelligence: this._lastIntelligence ? {
+                regime: this._lastIntelligence.regime,
+                regimeConfidence: this._lastIntelligence.regimeConfidence,
+                bullConviction: this._lastIntelligence.bullConviction,
+                bearConviction: this._lastIntelligence.bearConviction,
+                neutralConviction: this._lastIntelligence.neutralConviction,
+                recommendedStrategy: this._lastIntelligence.recommendedStrategy,
+                strategyReason: this._lastIntelligence.strategyReason,
+                baseSize: this._lastIntelligence.baseSize,
+                maxLeverage: this._lastIntelligence.maxLeverage,
+                confidenceMultiplier: this._lastIntelligence.confidenceMultiplier,
+                riskLevel: this._lastIntelligence.riskLevel,
+                warnings: this._lastIntelligence.warnings,
+                signals: this._lastIntelligence.signals,
             } : null,
         };
     }

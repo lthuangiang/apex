@@ -32,7 +32,7 @@ export const config = {
   // ── Farm mode ─────────────────────────────────────────────────────────────
   // Goal: maximize volume. Enter frequently, hold short, exit when profitable.
   FARM_MIN_HOLD_SECS: 120,       // Hold at least 60s after fill (reduced from 120s)
-  FARM_MAX_HOLD_SECS: 480,      // Force exit after 3 mins (reduced from 5 mins)
+  FARM_MAX_HOLD_SECS: 180,      // Force exit after 3 mins (reduced from 5 mins)
   FARM_TP_USD: 0.5,             // TP $0.5 — đủ cover fee với size nhỏ (fee ~$0.07 per trade)
   FARM_SL_PERCENT: 0.05,        // Stop loss 5% — rộng để không bị stop out sớm
   FARM_SCORE_EDGE: 0.03,        // Min score edge to enter (|score - 0.5| > this)
@@ -40,7 +40,7 @@ export const config = {
   FARM_EARLY_EXIT_SECS: 60,     // Early exit: if held >= 60s AND pnl covers fee
   FARM_EARLY_EXIT_PNL: 0.04,    // Fallback fixed threshold (used only if position value unavailable)
   FARM_MIN_PROFIT_FEE_MULT: 0.15, // Min profit in USD to exit early (e.g., 0.15 for SoDEX, 0.001 for free fee exchanges)
-  FARM_EXTRA_WAIT_SECS: 30,     // Extra wait after hold expires if profitable (reduced from 30s)
+  FARM_EXTRA_WAIT_SECS: 0,     // Extra wait after hold expires if profitable (reduced from 30s)
 
   // ── Farm mode sizing controls ─────────────────────────────────────────────
   FARM_USE_DYNAMIC_SIZING: false,       // Use PositionSizer dynamic multipliers in farm mode
@@ -151,16 +151,21 @@ export const config = {
   // Spread guard
   EXEC_MAX_SPREAD_BPS: 10,          // skip entry if spread > this (basis points)
 
-  // Dynamic offset formula
-  EXEC_SPREAD_OFFSET_MULT: 0.3,     // offset += spreadBps × this (USD per bps)
+  // Dynamic offset formula.
+  // NOTE: offsets are absolute USD. On a low-priced asset (e.g. SOL ~$75) even a
+  // 0.14 USD offset posts ~18bps behind the touch and rarely fills. Keep these at 0
+  // so maker orders post AT best_bid/best_ask; raise only if Post-Only gets rejected.
+  EXEC_SPREAD_OFFSET_MULT: 0,       // offset += spreadBps × this (USD per bps)
   EXEC_DEPTH_LEVELS: 5,             // number of orderbook levels to sum for depth score
-  EXEC_DEPTH_THIN_THRESHOLD: 50000, // depth (USD) below which thin-book penalty applies
-  EXEC_DEPTH_PENALTY: 0.5,          // extra offset (USD) added when book is thin
+  EXEC_DEPTH_THIN_THRESHOLD: 1000,  // depth (USD) below which thin-book penalty applies
+  EXEC_DEPTH_PENALTY: 0,            // extra offset (USD) added when book is thin
 
-  // Fill rate feedback
+  // Fill rate feedback.
+  // NOTE: penalty widens the offset when fills are low — backwards for maker orders
+  // (further from touch = even fewer fills). Kept at 0 to avoid the death spiral.
   EXEC_FILL_WINDOW: 20,             // ring buffer size (number of recent orders)
   EXEC_FILL_RATE_THRESHOLD: 0.6,    // fill rate below this triggers penalty
-  EXEC_FILL_RATE_PENALTY: 1.0,      // extra offset (USD) added when fill rate is low
+  EXEC_FILL_RATE_PENALTY: 0,        // extra offset (USD) added when fill rate is low
 
   // Offset bounds
   EXEC_OFFSET_MIN: 0,               // minimum offset (USD) — 0 = no floor

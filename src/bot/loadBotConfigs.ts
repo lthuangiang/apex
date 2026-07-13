@@ -65,7 +65,7 @@ export function validateBotConfig(config: any): config is BotConfig {
   // Required fields
   if (typeof config.id !== 'string' || config.id.trim().length === 0) return false;
   if (typeof config.name !== 'string' || config.name.trim().length === 0) return false;
-  if (!['sodex', 'dango', 'decibel', 'hibachi', 'ondoperps'].includes(config.exchange)) return false;
+  if (!['sodex', 'dango', 'decibel', 'hibachi', 'ondoperps', 'perpl'].includes(config.exchange)) return false;
   if (typeof config.symbol !== 'string' || config.symbol.trim().length === 0) return false;
   if (typeof config.credentialKey !== 'string' || config.credentialKey.trim().length === 0) return false;
   if (!['json', 'sqlite'].includes(config.tradeLogBackend)) return false;
@@ -127,7 +127,7 @@ export function validateHedgeBotConfig(config: any): asserts config is HedgeBotC
   if (typeof config.symbolB !== 'string' || config.symbolB.trim().length === 0) {
     throw new Error('HedgeBotConfig missing required field: symbolB');
   }
-  if (!['sodex', 'dango', 'decibel'].includes(config.exchange)) {
+  if (!['sodex', 'dango', 'decibel', 'hibachi', 'ondoperps', 'perpl'].includes(config.exchange)) {
     throw new Error('HedgeBotConfig missing required field: exchange');
   }
   if (typeof config.legValueUsd !== 'number') {

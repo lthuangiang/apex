@@ -57,4 +57,11 @@ export interface ExchangeAdapter {
      * Optional — falls back to `supportedSymbols` static list if not implemented.
      */
     get_markets?(): Promise<string[]>;
+    /**
+     * Number of decimal places allowed in an order price for `symbol`
+     * (e.g. 3 → tick 0.001). Used to round maker prices to a valid tick so
+     * Post-Only orders rest at the touch instead of behind it. Optional —
+     * callers fall back to 2 decimals when not implemented.
+     */
+    get_price_decimals?(symbol: string): Promise<number>;
 }

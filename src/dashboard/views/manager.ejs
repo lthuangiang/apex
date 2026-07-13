@@ -384,10 +384,6 @@
         <h1 class="wave3-title">🧠 DRIFT — SoSoValue Intelligence</h1>
         <div class="wave3-subtitle">Autonomous multi-bot trading with regime-aware strategy</div>
       </div>
-      <div style="text-align:right">
-        <div class="wave3-pnl-label">SESSION PnL</div>
-        <div id="total-pnl-display" class="wave3-pnl-value">$0.00</div>
-      </div>
     </div>
 
     <div class="toolbar">
@@ -709,6 +705,13 @@
               <div class="ex-name">OndoPerps</div>
               <div class="ex-desc">RWA · REST API · Gold &amp; Stocks</div>
             </div>
+            <div class="ex-tile" data-exchange="perpl">
+              <div class="ex-logo" style="background:linear-gradient(135deg,#0f1729,#1e3a5f)">
+                <svg width="22" height="22" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="14" fill="#22d3ee" opacity=".15"/><path d="M12 10h6a4 4 0 0 1 0 8h-6v6" stroke="#22d3ee" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+              <div class="ex-name">Perpl</div>
+              <div class="ex-desc">Monad · Ed25519 · BTC ETH SOL MON</div>
+            </div>
           </div>
 
           <div class="wz-section-title" style="margin-top:1.25rem">Bot Type</div>
@@ -866,6 +869,38 @@
                 <label class="wz-label">Base URL (optional)</label>
                 <input class="wz-input" type="text" id="wz-ondoperpsBaseUrl" placeholder="https://api.ondoperps.xyz/v1" autocomplete="off" />
                 <span class="wz-hint">Leave empty for default</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Perpl creds -->
+          <div id="wz-creds-perpl" style="display:none">
+            <div class="wz-section-title">Perpl Credentials</div>
+            <div class="wz-form-row full">
+              <div class="wz-form-group">
+                <label class="wz-label">API Key <span class="req">*</span></label>
+                <input class="wz-input" type="text" id="wz-perplApiKey" placeholder="your_api_key_token" autocomplete="off" />
+                <span class="wz-hint">Opaque token from the Perpl web UI</span>
+                <span class="wz-field-error" id="err-perplApiKey">Required</span>
+              </div>
+            </div>
+            <div class="wz-form-row full">
+              <div class="wz-form-group">
+                <label class="wz-label">Private Key (Ed25519 hex) <span class="req">*</span></label>
+                <input class="wz-input" type="password" id="wz-perplApiKeySecret" placeholder="0x... or hex without prefix" autocomplete="new-password" />
+                <span class="wz-hint">32-byte Ed25519 private key — stored encrypted, never logged</span>
+                <span class="wz-field-error" id="err-perplApiKeySecret">Required</span>
+              </div>
+            </div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Chain ID (optional)</label>
+                <input class="wz-input" type="number" id="wz-perplChainId" placeholder="143" autocomplete="off" />
+                <span class="wz-hint">Default 143 (Monad mainnet). Testnet: 10143</span>
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Base URL (optional)</label>
+                <input class="wz-input" type="text" id="wz-perplBaseUrl" placeholder="https://app.perpl.xyz/api" autocomplete="off" />
               </div>
             </div>
           </div>
@@ -1151,14 +1186,14 @@
 
     // ── Step 1: Credentials panel ─────────────────────────────────────────────
     function showCredsPanel() {
-      ['sodex','decibel','dango','hibachi','ondoperps'].forEach(function (ex) {
+      ['sodex','decibel','dango','hibachi','ondoperps','perpl'].forEach(function (ex) {
         var el = document.getElementById('wz-creds-' + ex);
         if (el) el.style.display = ex === state.exchange ? '' : 'none';
       });
     }
 
     // ── Step 2: Symbol loading ────────────────────────────────────────────────
-    var BTC_DEFAULTS = { sodex: 'BTC-USD', decibel: 'BTC/USD', dango: 'BTC-USD', hibachi: 'BTC/USDT-P', ondoperps: 'XAU-PERP' };
+    var BTC_DEFAULTS = { sodex: 'BTC-USD', decibel: 'BTC/USD', dango: 'BTC-USD', hibachi: 'BTC/USDT-P', ondoperps: 'XAU-PERP', perpl: 'BTC-PERP' };
 
     function loadSymbols() {
       var title = document.getElementById('wz-market-title');
@@ -1333,6 +1368,11 @@
         } else if (state.exchange === 'ondoperps') {
           if (!val('wz-ondoperpsApiKeyId')) { showFieldError('ondoperpsApiKeyId', 'API Key ID is required'); ok = false; }
           if (!val('wz-ondoperpsApiKeySecret')) { showFieldError('ondoperpsApiKeySecret', 'API Key Secret is required'); ok = false; }
+        } else if (state.exchange === 'perpl') {
+          if (!val('wz-perplApiKey')) { showFieldError('perplApiKey', 'API Key is required'); ok = false; }
+          var pk = val('wz-perplApiKeySecret');
+          if (!pk) { showFieldError('perplApiKeySecret', 'Private key is required'); ok = false; }
+          else if (!/^(0x)?[0-9a-fA-F]{64}$/.test(pk)) { showFieldError('perplApiKeySecret', 'Must be 64-char hex (with or without 0x prefix)'); ok = false; }
         }
         return ok;
       }
@@ -1512,6 +1552,13 @@
         base.apiKeySecret = val('wz-ondoperpsApiKeySecret');
         var baseUrl = val('wz-ondoperpsBaseUrl');
         if (baseUrl) base.baseUrl = baseUrl;
+      } else if (state.exchange === 'perpl') {
+        base.perplApiKey       = val('wz-perplApiKey');
+        base.perplApiKeySecret = val('wz-perplApiKeySecret');
+        var chainId = val('wz-perplChainId');
+        if (chainId) base.perplChainId = chainId;
+        var perplUrl = val('wz-perplBaseUrl');
+        if (perplUrl) base.perplBaseUrl = perplUrl;
       }
 
       if (state.botType === 'hedge') {

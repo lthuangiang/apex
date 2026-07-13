@@ -524,6 +524,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
     <div style="margin-left:auto;display:flex;align-items:center;gap:0">
       <button class="tab-btn active" id="tabnav-overview" onclick="switchMainTab('overview')">Overview</button>
       <button class="tab-btn" id="tabnav-analytics" onclick="switchMainTab('analytics')">Analytics</button>
+      <button class="tab-btn" id="tabnav-performance" onclick="switchMainTab('performance');loadPerformanceTab && loadPerformanceTab()" style="display:flex;align-items:center;gap:4px">
+        📊 Performance
+        <span style="background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:white;font-size:0.5rem;padding:1px 4px;border-radius:3px;font-weight:700;letter-spacing:0.05em">WAVE 3</span>
+      </button>
       <% if (typeof exchange !== 'undefined' && exchange === 'sodex') { %>
       <button class="tab-btn" id="tabnav-backtest" onclick="switchMainTab('backtest')">Backtest</button>
       <% } %>
@@ -671,6 +675,334 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;
 
 <!-- BACKTEST TAB (SoDEX only) -->
 <% if (typeof exchange !== 'undefined' && exchange === 'sodex') { %>
+<!-- PERFORMANCE TAB - Wave 3 -->
+<div class="tab-panel" id="tabpanel-performance">
+  <style>
+    .perf-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1.25rem; margin:1rem 0 }
+    .perf-card {
+      background:var(--bg-card,#fff);
+      border:1px solid var(--border-color,#e2e8f0);
+      border-radius:14px;
+      padding:1.25rem 1.5rem;
+      transition:all 0.2s;
+      box-shadow:0 1px 3px rgba(0,0,0,0.04);
+    }
+    body.dark .perf-card, body[data-theme="dark"] .perf-card {
+      background:#1e293b;
+      border-color:#334155;
+      box-shadow:0 1px 3px rgba(0,0,0,0.2);
+    }
+    .perf-card:hover {
+      transform:translateY(-2px);
+      border-color:#3b82f6;
+      box-shadow:0 4px 12px rgba(59,130,246,0.15);
+    }
+    .perf-label {
+      font-size:0.7rem;
+      color:#64748b;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      margin-bottom:0.6rem;
+      font-weight:600;
+    }
+    .perf-value {
+      font-size:1.7rem;
+      font-weight:700;
+      color:var(--text-primary,#1e293b);
+      line-height:1.1;
+    }
+    body.dark .perf-value, body[data-theme="dark"] .perf-value { color:#e2e8f0 }
+    .perf-value.pos { color:#16a34a }
+    .perf-value.neg { color:#dc2626 }
+    .perf-sub {
+      font-size:0.75rem;
+      color:#94a3b8;
+      margin-top:0.4rem;
+    }
+    .perf-section {
+      margin:2rem 0;
+    }
+    .perf-section-title {
+      font-size:1.1rem;
+      font-weight:600;
+      margin-bottom:1rem;
+      padding-bottom:0.6rem;
+      border-bottom:2px solid var(--border-color,#e2e8f0);
+      display:flex;
+      align-items:center;
+      gap:0.5rem;
+      color:var(--text-primary,#1e293b);
+    }
+    body.dark .perf-section-title, body[data-theme="dark"] .perf-section-title {
+      border-color:#334155;
+      color:#e2e8f0;
+    }
+    .perf-alpha-banner {
+      background:linear-gradient(135deg,#1e3a8a 0%,#5b21b6 100%);
+      color:white;
+      padding:1.75rem 2rem;
+      border-radius:16px;
+      margin:1.5rem 0 2rem 0;
+      box-shadow:0 8px 24px rgba(59,130,246,0.25);
+      position:relative;
+      overflow:hidden;
+    }
+    .perf-alpha-banner::before {
+      content:'';
+      position:absolute;
+      top:-50%;
+      right:-10%;
+      width:300px;
+      height:300px;
+      background:radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+      pointer-events:none;
+    }
+    .perf-alpha-title {
+      font-size:0.8rem;
+      text-transform:uppercase;
+      letter-spacing:0.12em;
+      opacity:0.9;
+      font-weight:600;
+    }
+    .perf-alpha-value {
+      font-size:2.5rem;
+      font-weight:800;
+      margin:0.5rem 0;
+      letter-spacing:-0.02em;
+    }
+    .perf-alpha-value.pos { color:#4ade80 }
+    .perf-alpha-value.neg { color:#f87171 }
+    .perf-alpha-sub {
+      font-size:0.9rem;
+      opacity:0.85;
+    }
+    .perf-empty {
+      text-align:center;
+      padding:4rem 2rem;
+      color:#94a3b8;
+    }
+    .regime-row {
+      display:grid;
+      grid-template-columns:1fr auto auto auto;
+      gap:1.5rem;
+      padding:0.85rem 1.25rem;
+      border-bottom:1px solid var(--border-color,#e2e8f0);
+      align-items:center;
+      font-size:0.9rem;
+      transition:background 0.15s;
+    }
+    body.dark .regime-row, body[data-theme="dark"] .regime-row { border-color:#334155 }
+    .regime-row:hover {
+      background:rgba(59,130,246,0.05);
+    }
+    .regime-row:last-child { border-bottom:none }
+    .regime-name {
+      font-weight:600;
+      color:var(--text-primary,#1e293b);
+    }
+    body.dark .regime-name, body[data-theme="dark"] .regime-name { color:#e2e8f0 }
+  </style>
+
+  <div style="padding:1.5rem 2rem;max-width:1400px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid var(--border-color,#e2e8f0)">
+      <h2 style="margin:0;font-size:1.5rem;display:flex;align-items:center;gap:0.5rem;color:var(--text-primary,#1e293b)">
+        📊 Performance Analytics
+        <span style="background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:white;font-size:0.6rem;padding:3px 10px;border-radius:4px;font-weight:700;letter-spacing:0.05em">WAVE 3</span>
+      </h2>
+      <button onclick="loadPerformanceTab(true)" style="padding:0.5rem 1rem;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;font-size:0.85rem;font-weight:500;display:flex;align-items:center;gap:6px;transition:background 0.2s" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">🔄 Refresh</button>
+    </div>
+
+    <div id="perf-loading" class="perf-empty">Loading performance metrics...</div>
+
+    <div id="perf-content" style="display:none">
+      <!-- SoSoValue Alpha Banner -->
+      <div class="perf-alpha-banner">
+        <div class="perf-alpha-title">🧠 SoSoValue Intelligence Alpha</div>
+        <div class="perf-alpha-value" id="perf-alpha-value">+$0.00</div>
+        <div class="perf-alpha-sub" id="perf-alpha-sub">Value added by SoSoValue Intelligence vs baseline</div>
+      </div>
+
+      <!-- Key Metrics Grid -->
+      <div class="perf-section">
+        <div class="perf-section-title">📈 Overall Performance</div>
+        <div class="perf-grid">
+          <div class="perf-card">
+            <div class="perf-label">Total Trades</div>
+            <div class="perf-value" id="perf-total-trades">0</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Win Rate</div>
+            <div class="perf-value pos" id="perf-win-rate">0%</div>
+            <div class="perf-sub" id="perf-win-rate-sub">— wins / — losses</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Total PnL</div>
+            <div class="perf-value pos" id="perf-total-pnl">$0.00</div>
+            <div class="perf-sub" id="perf-avg-pnl">Avg: $0.00</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Profit Factor</div>
+            <div class="perf-value" id="perf-profit-factor">0.00</div>
+            <div class="perf-sub">Gross win / Gross loss</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Risk-Adjusted Returns -->
+      <div class="perf-section">
+        <div class="perf-section-title">🛡️ Risk-Adjusted Returns</div>
+        <div class="perf-grid">
+          <div class="perf-card">
+            <div class="perf-label">Sharpe Ratio</div>
+            <div class="perf-value" id="perf-sharpe">0.00</div>
+            <div class="perf-sub">Risk-adjusted return</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Sortino Ratio</div>
+            <div class="perf-value" id="perf-sortino">0.00</div>
+            <div class="perf-sub">Downside risk-adjusted</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Max Drawdown</div>
+            <div class="perf-value neg" id="perf-max-dd">0.00%</div>
+            <div class="perf-sub" id="perf-max-dd-usd">$0.00</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Calmar Ratio</div>
+            <div class="perf-value" id="perf-calmar">0.00</div>
+            <div class="perf-sub">Return / Max DD</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Execution Quality -->
+      <div class="perf-section">
+        <div class="perf-section-title">⚡ Execution Quality</div>
+        <div class="perf-grid">
+          <div class="perf-card">
+            <div class="perf-label">Fill Rate</div>
+            <div class="perf-value pos" id="perf-fill-rate">0%</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Avg Slippage</div>
+            <div class="perf-value" id="perf-slippage">0.0 bps</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Win Streak</div>
+            <div class="perf-value pos" id="perf-win-streak">0</div>
+            <div class="perf-sub">Longest consecutive wins</div>
+          </div>
+          <div class="perf-card">
+            <div class="perf-label">Loss Streak</div>
+            <div class="perf-value neg" id="perf-loss-streak">0</div>
+            <div class="perf-sub">Longest consecutive losses</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Regime Performance -->
+      <div class="perf-section">
+        <div class="perf-section-title">🎯 Performance by Market Regime</div>
+        <div id="perf-regime-list" style="background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;padding:0.5rem 1rem">
+          <div class="perf-empty">No regime data yet</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Wave 3: Load Performance Analytics
+    async function loadPerformanceTab(force) {
+      const loading = document.getElementById('perf-loading');
+      const content = document.getElementById('perf-content');
+      if (loading) loading.style.display = 'block';
+      if (content) content.style.display = 'none';
+
+      try {
+        const url = '/api/performance' + (force ? '?refresh=1' : '');
+        const r = await fetch(url);
+        const d = await r.json();
+
+        if (!d || !d.summary) {
+          if (loading) loading.innerHTML = '<div style="font-size:2rem;margin-bottom:0.5rem">📊</div>No trade data available yet<div style="font-size:0.8rem;margin-top:0.5rem;opacity:0.7">Run a bot to generate performance metrics</div>';
+          return;
+        }
+
+        const s = d.summary;
+        const a = d.sosoAlpha || {};
+
+        // SoSoValue Alpha
+        const alphaEl = document.getElementById('perf-alpha-value');
+        const withCount = a.tradesWithSoSoValue?.count || 0;
+        const withoutCount = a.tradesWithoutSoSoValue?.count || 0;
+        const withWinRate = ((a.tradesWithSoSoValue?.winRate || 0) * 100).toFixed(1);
+        if (a.alphaComparable) {
+          const alpha = a.alpha ?? 0;
+          alphaEl.textContent = (alpha >= 0 ? '+' : '-') + '$' + Math.abs(alpha).toFixed(2);
+          alphaEl.className = 'perf-alpha-value ' + (alpha >= 0 ? 'pos' : 'neg');
+          document.getElementById('perf-alpha-sub').textContent =
+            'WITH: ' + withCount + ' trades (' + withWinRate + '% win) vs WITHOUT: ' + withoutCount + ' trades';
+        } else {
+          // No baseline to compare against — showing an alpha number would mislead.
+          alphaEl.textContent = 'N/A';
+          alphaEl.className = 'perf-alpha-value';
+          document.getElementById('perf-alpha-sub').textContent =
+            withCount > 0
+              ? 'All ' + withCount + ' trades used SoSoValue (' + withWinRate + '% win) — no baseline to compare'
+              : 'No SoSoValue trades yet';
+        }
+
+        // Overview
+        document.getElementById('perf-total-trades').textContent = s.totalTrades || 0;
+        document.getElementById('perf-win-rate').textContent = ((s.winRate || 0) * 100).toFixed(2) + '%';
+        document.getElementById('perf-win-rate-sub').textContent = Math.round((s.winRate || 0) * (s.totalTrades || 0)) + ' wins / ' + Math.round((1 - (s.winRate || 0)) * (s.totalTrades || 0)) + ' losses';
+
+        const pnlEl = document.getElementById('perf-total-pnl');
+        pnlEl.textContent = (s.totalPnL >= 0 ? '+' : '-') + '$' + Math.abs(s.totalPnL || 0).toFixed(2);
+        pnlEl.className = 'perf-value ' + (s.totalPnL >= 0 ? 'pos' : 'neg');
+        document.getElementById('perf-avg-pnl').textContent = 'Avg: $' + (s.avgPnL || 0).toFixed(4);
+
+        document.getElementById('perf-profit-factor').textContent = (s.profitFactor || 0).toFixed(2);
+
+        // Risk-adjusted
+        document.getElementById('perf-sharpe').textContent = (s.sharpeRatio || 0).toFixed(2);
+        document.getElementById('perf-sortino').textContent = (s.sortinoRatio || 0).toFixed(2);
+        document.getElementById('perf-max-dd').textContent = (s.maxDrawdownPercent || 0).toFixed(2) + '%';
+        document.getElementById('perf-max-dd-usd').textContent = '$' + (s.maxDrawdown || 0).toFixed(2);
+        document.getElementById('perf-calmar').textContent = (s.calmarRatio || 0).toFixed(2);
+
+        // Execution
+        document.getElementById('perf-fill-rate').textContent = ((s.fillRate || 0) * 100).toFixed(1) + '%';
+        document.getElementById('perf-slippage').textContent = (s.avgSlippageBps || 0).toFixed(1) + ' bps';
+        document.getElementById('perf-win-streak').textContent = d.longestWinStreak || 0;
+        document.getElementById('perf-loss-streak').textContent = d.longestLoseStreak || 0;
+
+        // Regimes
+        const regimeList = document.getElementById('perf-regime-list');
+        const regimes = Object.entries(a.regimePerformance || {});
+        if (regimes.length === 0) {
+          regimeList.innerHTML = '<div class="perf-empty" style="padding:1.5rem">No regime data — bot needs more trades with intelligence enabled</div>';
+        } else {
+          regimeList.innerHTML = regimes.map(([regime, perf]) => `
+            <div class="regime-row">
+              <div class="regime-name">${regime}</div>
+              <div>${perf.trades} trades</div>
+              <div style="color:${perf.winRate >= 0.6 ? '#16a34a' : perf.winRate >= 0.5 ? '#eab308' : '#dc2626'}">${(perf.winRate * 100).toFixed(1)}%</div>
+              <div style="color:${perf.avgPnL >= 0 ? '#16a34a' : '#dc2626'}">${perf.avgPnL >= 0 ? '+' : '-'}$${Math.abs(perf.avgPnL).toFixed(2)}</div>
+            </div>
+          `).join('');
+        }
+
+        if (loading) loading.style.display = 'none';
+        if (content) content.style.display = 'block';
+      } catch (err) {
+        if (loading) loading.innerHTML = '<div style="color:#dc2626">⚠️ Failed to load performance data</div><div style="font-size:0.8rem;margin-top:0.5rem">' + err.message + '</div>';
+      }
+    }
+    window.loadPerformanceTab = loadPerformanceTab;
+  </script>
+</div>
+
 <div class="tab-panel" id="tabpanel-backtest">
   <%- include('partials/backtest-tab') %>
 </div>
