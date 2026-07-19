@@ -5,13 +5,14 @@
  *
  * Key capabilities:
  * 1. Strategy Auto-Selection — Farm/Trade/Hedge based on market intelligence
- * 2. Multi-Signal Conviction Scoring — F&G + ETF + OI + Funding + Stablecoin flows
+ * 2. Multi-Signal Conviction Scoring — 8 signals: F&G + ETF + OI + Funding + Stablecoin + Macro + SSI + Sector
  * 3. Kelly-Optimized Position Sizing — conviction-based, not arbitrary multipliers
  * 4. Market Regime Classification — 8 regimes, each with optimal strategy
- * 5. Risk-On/Risk-Off Detection — institutional flow patterns
+ * 5. Risk-On/Risk-Off Detection — institutional flow + sector rotation patterns
+ * 6. Sector Momentum — SSI index health + sector rotation (DeFi/Meme/L1 leading vs lagging)
  */
 
-import { SoSoValueClient, type SoSoValueData, type EtfFlowData, type MacroRisk } from './SoSoValueClient.js';
+import { SoSoValueClient, type SoSoValueData, type EtfFlowData, type MacroRisk, type SsiIndexData, type SectorRotationData } from './SoSoValueClient.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -60,6 +61,8 @@ export interface MarketIntelligence {
     fundingRate: number;
     stablecoinInflow: number;
     macroRisk: string;
+    ssiIndex: number;
+    sectorSignal: string;
   };
 }
 
@@ -71,6 +74,7 @@ export interface ConvictionScore {
     retail: number;       // Open interest + funding
     macro: number;        // Economic events
     technical: number;    // Price action vs flows
+    sectorMomentum: number; // SSI + Sector rotation
   };
   confidence: number;     // How sure are we? 0-1
 }
@@ -89,6 +93,8 @@ export class SoSoValueIntelligenceEngine {
   private openInterest: number | null = null;
   private fundingRate: number | null = null;
   private stablecoinInflow: number | null = null;
+  private ssiIndex: SsiIndexData | null = null;
+  private sectorRotation: SectorRotationData | null = null;
 
   constructor() {
     this.client = new SoSoValueClient();
@@ -136,6 +142,8 @@ export class SoSoValueIntelligenceEngine {
         fundingRate: this.fundingRate ?? 0,
         stablecoinInflow: this.stablecoinInflow ?? 0,
         macroRisk: this.macroRisk?.riskLevel ?? 'none',
+        ssiIndex: this.ssiIndex?.compositeScore ?? 0,
+        sectorSignal: this.sectorRotation?.signal ?? 'neutral',
       },
     };
   }
@@ -175,13 +183,15 @@ export class SoSoValueIntelligenceEngine {
   // ═════════════════════════════════════════════════════════════════════════════
 
   private async _fetchAllSignals(): Promise<void> {
-    const [fg, etf, macro, oi, fr, sc] = await Promise.all([
+    const [fg, etf, macro, oi, fr, sc, ssi, sector] = await Promise.all([
       this.client.fetch(),
       this.client.fetchEtfFlow(),
       this.client.fetchMacroEvents(),
       this._fetchOpenInterest(),
       this._fetchFundingRate(),
       this._fetchStablecoinInflow(),
+      this.client.fetchSsiIndex(),
+      this.client.fetchSectorRotation(),
     ]);
 
     this.fearGreed = fg;
@@ -190,6 +200,8 @@ export class SoSoValueIntelligenceEngine {
     this.openInterest = oi;
     this.fundingRate = fr;
     this.stablecoinInflow = sc;
+    this.ssiIndex = ssi;
+    this.sectorRotation = sector;
   }
 
   private async _fetchOpenInterest(): Promise<number | null> {
@@ -245,13 +257,19 @@ export class SoSoValueIntelligenceEngine {
     // Technical: Does price action confirm flows?
     const technical = this._scoreTechnicalAlignment();
 
-    // Weighted average
+    // Sector Momentum: SSI index + sector rotation (NEW — Wave 3)
+    const sectorMomentum = this._scoreSectorMomentum();
+
+    // Weighted average (rebalanced to include sector signal)
+    // Original: sentiment*0.25 + institutional*0.30 + retail*0.20 + macro*0.15 + technical*0.10
+    // New:      sentiment*0.20 + institutional*0.25 + retail*0.15 + macro*0.12 + technical*0.10 + sector*0.18
     const overall = (
-      sentiment * 0.25 +
-      institutional * 0.30 +
-      retail * 0.20 +
-      macro * 0.15 +
-      technical * 0.10
+      sentiment * 0.20 +
+      institutional * 0.25 +
+      retail * 0.15 +
+      macro * 0.12 +
+      technical * 0.10 +
+      sectorMomentum * 0.18
     );
 
     // Confidence: how many signals do we have?
@@ -261,13 +279,15 @@ export class SoSoValueIntelligenceEngine {
       this.openInterest !== null,
       this.fundingRate !== null,
       this.stablecoinInflow !== null,
+      this.ssiIndex !== null,
+      this.sectorRotation !== null,
     ].filter(Boolean).length;
 
-    const confidence = Math.min(signalCount / 5, 1.0);
+    const confidence = Math.min(signalCount / 7, 1.0);
 
     return {
       overall,
-      components: { sentiment, institutional, retail, macro, technical },
+      components: { sentiment, institutional, retail, macro, technical, sectorMomentum },
       confidence,
     };
   }
@@ -326,6 +346,33 @@ export class SoSoValueIntelligenceEngine {
     if (inflow < -1e9) return 25;
     if (inflow < 0) return 40;
     return 50;
+  }
+
+  private _scoreSectorMomentum(): number {
+    // Combines SSI index health + sector rotation signal
+    // Score: 0-100 where >50 = bullish sector momentum, <50 = bearish
+
+    let ssiScore = 50;
+    let sectorScore = 50;
+
+    // SSI Index: hot sectors = bullish, cold = bearish
+    if (this.ssiIndex) {
+      const { trend, compositeScore, change24h } = this.ssiIndex;
+      if (trend === 'hot') ssiScore = 65 + Math.min(15, change24h * 3); // 65-80
+      else if (trend === 'cold') ssiScore = 35 - Math.min(15, Math.abs(change24h) * 3); // 20-35
+      else ssiScore = 45 + (compositeScore - 50) * 0.2; // 40-60
+    }
+
+    // Sector Rotation: risk-on sectors leading = bullish
+    if (this.sectorRotation) {
+      const { signal } = this.sectorRotation;
+      if (signal === 'risk_on') sectorScore = 70;
+      else if (signal === 'risk_off') sectorScore = 30;
+      else sectorScore = 50;
+    }
+
+    // Blend 60% SSI + 40% sector rotation
+    return ssiScore * 0.6 + sectorScore * 0.4;
   }
 
   // ═════════════════════════════════════════════════════════════════════════════

@@ -24,8 +24,113 @@
 | Wave | Build Phase | Evaluation Phase | Focus | Allocation | Status |
 |------|-------------|-----------------|-------|------------|--------|
 | **Wave 1** — Concept / Early Prototype | 1/5 – 12/5/2026 | 13/5 – 22/5/2026 | Định hướng ý tưởng, xác định người dùng mục tiêu, use case, kế hoạch API, thiết kế workflow, prototype ban đầu | 3,000 USDC | ✅ **Hoàn thành** |
-| **Wave 2** — Build Phase I | 23/5 – 3/6/2026 | 4/6 – 13/6/2026 | Phát triển tính năng cốt lõi, tích hợp SoSoValue API, Hibachi exchange adapter, multi-wallet SaaS, interactive prototype | 3,000 USDC | 🔄 **Đang thực hiện** |
-| **Wave 3** — Build Phase II | 14/6 – 25/6/2026 | 26/6 – 5/7/2026 | Hoàn thiện sản phẩm, tinh chỉnh logic, cải thiện UX, thiết kế risk control, demo và nộp bài cuối | 4,000 USDC | ⏳ **Chưa bắt đầu** |
+| **Wave 2** — Build Phase I | 23/5 – 3/6/2026 | 4/6 – 13/6/2026 | Phát triển tính năng cốt lõi, tích hợp SoSoValue API, Hibachi exchange adapter, multi-wallet SaaS, interactive prototype | 3,000 USDC | ✅ **Hoàn thành** |
+| **Wave 3** — Build Phase II | 14/6 – 8/7/2026 | 9/7 – 22/7/2026 | Agent Layer tự động, 8 signal SoSoValue, Kelly sizing, RiskGate, Performance Analytics dashboard, stress testing | 4,000 USDC | ✅ **Hoàn thành** |
+
+---
+
+## 🧠 Wave 3 — Agent Layer + SoSoValue Intelligence Core
+
+Wave 2 feedback: "SoSoValue integration is shallow — mostly Fear & Greed overlay." **Wave 3 trực tiếp giải quyết vấn đề này** bằng cách biến SoSoValue từ "overlay" thành "bộ não ra quyết định".
+
+### So sánh Wave 2 vs Wave 3
+
+| Khía cạnh | Wave 2 ❌ | Wave 3 ✅ |
+|-----------|----------|----------|
+| **Signals** | 3 (F&G, ETF, Macro) | **8** (+ OI, Funding, Stablecoin, SSI Index, Sector Rotation) |
+| **Chọn chiến lược** | Thủ công (user chọn Farm/Trade) | **Tự động** (Agent Layer chọn mỗi 30s dựa trên regime) |
+| **Market Regimes** | Không có | **8 regimes** phân loại với confidence score |
+| **Position Sizing** | Multiplier tùy ý (0.85x–1.2x) | **Kelly criterion** (conviction × performance × regime) |
+| **Risk Control** | Không có | **RiskGate** (max loss halt, exposure cap, cooldown) |
+| **Orchestration** | Không có | **Agent Layer** — bộ não tự động điều phối tất cả bot |
+| **Vai trò SoSoValue** | Overlay multiplier | **Core decision engine** 🧠 |
+
+### Agent Layer — Bộ não điều phối tự động
+
+Agent Layer **không phải là bot mới** — nó là **tầng quyết định chiến lược** ngồi trên tất cả bot hiện có. Nó không đặt lệnh trực tiếp lên exchange, mà ra lệnh cho các bot phải làm gì.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     AGENT LAYER (bộ não)                            │
+│                                                                     │
+│  Intelligence Engine → StrategySelector → CapitalAllocator → RiskGate
+│  (8 tín hiệu)         (FARM/TRADE/HOLD)   (Kelly sizing)    (halt/allow)
+└──────────────────────────────────┬──────────────────────────────────┘
+                                   │ AgentDecision
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                     BOT MANAGER (bàn tay)                           │
+│                                                                     │
+│  Farm Bot (SoDEX)    Trade Bot (SoDEX)    Hedge Bot (Hibachi)      │
+│  → đặt lệnh          → đặt lệnh           → đặt cặp lệnh         │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Mỗi 30 giây, Agent chạy 1 chu kỳ:**
+
+| Bước | Hành động | Kết quả |
+|------|-----------|---------|
+| 1. Observe | Fetch 8 signal SoSoValue | Market context snapshot |
+| 2. Classify | Phân loại regime | 1 trong 8 regimes + confidence |
+| 3. Select | Chọn chiến lược | FARM / TRADE / BOTH / HOLD |
+| 4. Allocate | Tính size (Kelly) | BTC position size |
+| 5. Gate | Kiểm tra rủi ro | ALLOW hoặc BLOCK |
+| 6. Emit | Ra lệnh cho bot | Bot chuyển mode + size |
+
+**Ví dụ thực tế:**
+
+| Tình huống | Regime | Agent quyết định | Lý do |
+|------------|--------|-------------------|--------|
+| Thị trường sideway | `choppy_neutral` | **FARM** short | Không có edge → farm volume an toàn |
+| ETF inflows mạnh + funding dương | `bull_momentum` | **TRADE** long | Edge hướng rõ → trích xuất alpha |
+| Funding > 1.5% + greed cực đoan | `overheated` | **HOLD** | Rủi ro đảo chiều → bảo toàn vốn |
+| 3 lệnh thua liên tiếp | Any | **COOLDOWN 10 phút** | RiskGate → tránh tilt |
+| Session PnL dưới -$5 | Any | **HALTED** | Max loss → không mở vị thế mới |
+
+### 8 Tín hiệu SoSoValue
+
+| # | Signal | Nguồn | Cho biết gì |
+|---|--------|-------|-------------|
+| 1 | Fear & Greed Index | `/analyses/fgi` | Tâm lý thị trường (0-100) |
+| 2 | BTC ETF Net Flows | `/etfs/summary-history` | Dòng tiền tổ chức ($M) |
+| 3 | Futures Open Interest | `/analyses/futures_open_interest` | Đòn bẩy tích lũy ($B) |
+| 4 | Funding Rate | `/analyses/funding_rate` | Xu hướng retail (%) |
+| 5 | Stablecoin Inflows | `/analyses/stablecoins_mcap` | Vốn mới vào/ra ($B) |
+| 6 | Macro Events | `/macro/events` | Lịch rủi ro FOMC/CPI/NFP |
+| 7 | SSI Index | `/analyses/ssi_index` | Sức khỏe tổng thể sector (0-100) |
+| 8 | Sector Rotation | Multi-sector charts | Sector nào dẫn/lag (risk-on/off) |
+
+**Công thức Conviction Scoring:**
+```
+conviction = sentiment×0.20 + institutional×0.25 + retail×0.15 + macro×0.12 + technical×0.10 + sectorMomentum×0.18
+```
+
+### Dashboard — Judges có thể thấy
+
+1. **Trang chính (`/dashboard`)** — Agent Brain panel hiển thị:
+   - Regime hiện tại + confidence + strategy
+   - 8 signal pills với giá trị real-time (cập nhật mỗi 5s)
+   - Risk Gate status (OPEN / HALTED / COOLDOWN)
+   - Lịch sử 10 decisions gần nhất
+   - Nút Start / Pause / Stop
+
+2. **Trang Performance (`/performance`)** — Analytics dashboard:
+   - KPI cards (Total Trades, Win Rate, PnL, Sharpe Ratio)
+   - Equity curve chart
+   - So sánh alpha WITH vs WITHOUT SoSoValue
+   - Win rate theo regime (bar chart)
+   - Farm vs Trade performance breakdown
+   - Monthly returns table
+
+### Test Scripts
+
+```bash
+# Demo Agent Layer (dry-run, không cần exchange credentials)
+npx tsx src/scripts/test-agent-layer.ts
+
+# Stress test (flash crash, funding spike, consecutive losses)
+npx tsx src/scripts/stress-test-agent.ts
+```
 
 ---
 
@@ -33,12 +138,15 @@
 
 DRIFT là multi-bot trading system cho perpetual futures, hỗ trợ **4 sàn giao dịch**: **SoDEX**, **Dango**, **Decibel**, và **Hibachi**. Hệ thống chạy nhiều bot song song với 3 chiến lược: **Farm Mode** (tối đa volume), **Trade Mode** (tối đa win rate), và **Hedge Bot** (correlation divergence).
 
-**Tính năng mới trong Wave 2:**
-- **SoSoValue Fear & Greed Index** — sentiment thị trường điều chỉnh confidence multiplier và position sizing
-- **Hibachi exchange adapter** — hỗ trợ trustless (ECDSA) và exchange-managed (HMAC-SHA256)
-- **Multi-wallet SaaS** — tenant isolation theo wallet, encrypted credential storage, per-tenant bot lifecycle
-
-Mỗi bot hỗ trợ **daily budget reset** — tự động reset max loss và volume target lúc 0h UTC (7h sáng Vietnam) mỗi ngày.
+**Tính năng chính:**
+- **Agent Layer** — bộ não tự động điều phối tất cả bot dựa trên 8 tín hiệu SoSoValue (Wave 3)
+- **8 Signal Intelligence Engine** — Fear&Greed, ETF flows, OI, Funding, Stablecoin, Macro, SSI, Sector
+- **Kelly-optimized sizing** — position size dựa trên conviction score, không phải arbitrary multiplier
+- **RiskGate** — portfolio-level risk: max loss halt, exposure cap, consecutive loss cooldown
+- **Multi-wallet SaaS** — tenant isolation theo wallet, encrypted credential storage (AES-256-GCM)
+- **Daily budget reset** — tự động reset max loss và volume target lúc 0h UTC mỗi ngày
+- **Performance Analytics** — Sharpe, Sortino, drawdown, equity curve, SoSoValue alpha comparison
+- **Backtesting Engine** — replay lịch sử với simulated fills, speed control, abort/progress
 
 ---
 
@@ -164,48 +272,36 @@ IDLE → OPENING → WAITING_FILL → IN_PAIR → CLOSING → COOLDOWN
 
 ---
 
-## Tích hợp SoSoValue (Wave 2)
+## Tích hợp SoSoValue (Wave 3 — 8 Signals)
 
-DRIFT tích hợp **SoSoValue Fear & Greed Index** như một lớp macro intelligence điều chỉnh hành vi trading theo sentiment thị trường.
+DRIFT tích hợp **8 tín hiệu SoSoValue** để tạo thành lớp intelligence cốt lõi — không chỉ là overlay mà là **bộ não ra quyết định**.
 
-### Cách hoạt động
+### Cách hoạt động (Wave 3)
 
 ```
-Mỗi lần đánh giá signal:
+Mỗi 30 giây, Agent Layer chạy chu kỳ:
   │
   ▼
-SoSoValueClient.getFearGreedIndex()
-  → Primary:  SoSoValue API (https://openapi.sosovalue.com/openapi/v1)
-  → Fallback: alternative.me API
+Fetch song song 8 tín hiệu:
+  ├── Fear & Greed Index (tâm lý thị trường)
+  ├── BTC ETF Net Flows (dòng tiền tổ chức)
+  ├── Futures Open Interest (leverage build-up)
+  ├── Funding Rate (xu hướng retail)
+  ├── Stablecoin Inflows (vốn mới vào/ra)
+  ├── Macro Events (lịch FOMC/CPI/NFP)
+  ├── SSI Index (sức khỏe sector)
+  └── Sector Rotation (risk-on/risk-off)
   │
   ▼
-SoSoValueStrategy.getAdjustment(fearGreedIndex)
+Conviction Scoring (0-100):
+  sentiment×0.20 + institutional×0.25 + retail×0.15
+  + macro×0.12 + technical×0.10 + sector×0.18
   │
   ▼
-Áp dụng vào:
-  ├── AISignalEngine  → confidence × sentimentMultiplier
-  └── PositionSizer   → size × macroSentimentMultiplier
-```
-
-### Bảng chiến lược theo Sentiment
-
-| Fear & Greed | Mode | Confidence Mult | Size Mult | Hành vi |
-|---|---|---|---|---|
-| < 25 | Aggressive Farm | 0.85× | 1.15× | Mua đáy — ngưỡng thấp hơn, size lớn hơn |
-| 25–45 | Normal Farm | 0.95× | 1.0× | Thận trọng nhưng chủ động |
-| 45–55 | Balanced | 1.0× | 1.0× | Không điều chỉnh |
-| 55–75 | Cautious Trade | 1.1× | 0.9× | Chọn lọc — ngưỡng cao hơn, size nhỏ hơn |
-| > 75 | Defensive | 1.2× | 0.8× | Tránh FOMO — phòng thủ |
-
-**Tại sao hoạt động:**
-- **Extreme Fear (< 25)**: Hoảng loạn tạo cơ hội mua đáy → bot aggressive hơn
-- **Extreme Greed (> 75)**: Euphoria tăng rủi ro đảo chiều → bot phòng thủ
-- **Neutral (45–55)**: Điều kiện bình thường → không điều chỉnh
-
-### Cấu hình
-
-```env
-SOSOVALUE_API_KEY=your_api_key
+Phân loại 1 trong 8 Regimes → Chọn chiến lược → Kelly sizing → RiskGate
+  │
+  ▼
+AgentDecision → Bot chuyển mode (Farm/Trade/Standby) + size
 ```
 
 ---

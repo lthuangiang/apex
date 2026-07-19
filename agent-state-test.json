@@ -1,0 +1,132 @@
+{
+  "lifecycleState": "STOPPED",
+  "lastDecision": {
+    "cycleId": "1a2354c3-45b2-4fc0-9fb2-dd10afd36043",
+    "timestamp": "2026-07-19T04:46:31.256Z",
+    "selectedStrategy": "FARM",
+    "direction": "short",
+    "allocatedSize": 0.0034333977142857143,
+    "regime": "choppy_neutral",
+    "confidenceScore": 0.6,
+    "riskGateStatus": "OPEN",
+    "reasoning": "[Context] regime=choppy_neutral confidence=0.60 pnl=$0.60 | [Strategy] Regime: choppy_neutral (60%) | Direction: short | Farm: eligible (score 0.54, Eligible) | Trade: eligible (score 0.23, Eligible) | Selected: FARM | [Capital] base=0.00385 | conf=1.08 | perf=1.00 | regime=0.85 | dd=1.00 | expo=1.00 | final=0.00343 BTC | [Risk] OPEN: No risk conditions triggered | [DRY-RUN] No orders emitted"
+  },
+  "lastMarketContext": {
+    "cycleId": "1a2354c3-45b2-4fc0-9fb2-dd10afd36043",
+    "timestamp": "2026-07-19T04:46:31.255Z",
+    "degraded": false,
+    "regime": "choppy_neutral",
+    "regimeConfidence": 0.6,
+    "confidenceScore": 0.6,
+    "signalDirection": "short",
+    "bullConviction": 0,
+    "bearConviction": 72,
+    "neutralConviction": 91.2,
+    "sessionPnl": 0.6000000000000001,
+    "sessionVolume": 3300,
+    "totalOpenExposureUsd": 313.5,
+    "activeBots": 2,
+    "intelligence": {
+      "regime": "choppy_neutral",
+      "regimeConfidence": 0.6,
+      "bullConviction": 0,
+      "bearConviction": 72,
+      "neutralConviction": 91.2,
+      "recommendedStrategy": "farm",
+      "strategyReason": "Choppy market — no clear direction (Farm mode to capture volume)",
+      "baseSize": 0.7708571428571428,
+      "maxLeverage": 2.824,
+      "confidenceMultiplier": 1,
+      "riskLevel": "low",
+      "warnings": [],
+      "signals": {
+        "fearGreed": 28,
+        "etfFlow": "neutral",
+        "openInterest": 0,
+        "fundingRate": 0,
+        "stablecoinInflow": 0,
+        "macroRisk": "none",
+        "ssiIndex": 0,
+        "sectorSignal": "neutral"
+      }
+    }
+  },
+  "decisionHistory": [
+    {
+      "cycleId": "1a2354c3-45b2-4fc0-9fb2-dd10afd36043",
+      "timestamp": "2026-07-19T04:46:31.256Z",
+      "selectedStrategy": "FARM",
+      "direction": "short",
+      "allocatedSize": 0.0034333977142857143,
+      "regime": "choppy_neutral",
+      "confidenceScore": 0.6,
+      "riskGateStatus": "OPEN",
+      "reasoning": "[Context] regime=choppy_neutral confidence=0.60 pnl=$0.60 | [Strategy] Regime: choppy_neutral (60%) | Direction: short | Farm: eligible (score 0.54, Eligible) | Trade: eligible (score 0.23, Eligible) | Selected: FARM | [Capital] base=0.00385 | conf=1.08 | perf=1.00 | regime=0.85 | dd=1.00 | expo=1.00 | final=0.00343 BTC | [Risk] OPEN: No risk conditions triggered | [DRY-RUN] No orders emitted"
+    },
+    {
+      "cycleId": "90a9ac67-c97a-49dd-8fcf-25357a3c3a0f",
+      "timestamp": "2026-07-19T04:46:26.274Z",
+      "selectedStrategy": "FARM",
+      "direction": "short",
+      "allocatedSize": 0.0034333977142857143,
+      "regime": "choppy_neutral",
+      "confidenceScore": 0.6,
+      "riskGateStatus": "OPEN",
+      "reasoning": "[Context] regime=choppy_neutral confidence=0.60 pnl=$0.60 | [Strategy] Regime: choppy_neutral (60%) | Direction: short | Farm: eligible (score 0.54, Eligible) | Trade: eligible (score 0.23, Eligible) | Selected: FARM | [Capital] base=0.00385 | conf=1.08 | perf=1.00 | regime=0.85 | dd=1.00 | expo=1.00 | final=0.00343 BTC | [Risk] OPEN: No risk conditions triggered | [DRY-RUN] No orders emitted"
+    },
+    {
+      "cycleId": "706c76f1-86de-425e-a002-7a615d11314a",
+      "timestamp": "2026-07-19T04:46:21.188Z",
+      "selectedStrategy": "FARM",
+      "direction": "short",
+      "allocatedSize": 0.0034333977142857143,
+      "regime": "choppy_neutral",
+      "confidenceScore": 0.6,
+      "riskGateStatus": "OPEN",
+      "reasoning": "[Context] regime=choppy_neutral confidence=0.60 pnl=$0.60 | [Strategy] Regime: choppy_neutral (60%) | Direction: short | Farm: eligible (score 0.54, Eligible) | Trade: eligible (score 0.23, Eligible) | Selected: FARM | [Capital] base=0.00385 | conf=1.08 | perf=1.00 | regime=0.85 | dd=1.00 | expo=1.00 | final=0.00343 BTC | [Risk] OPEN: No risk conditions triggered | [DRY-RUN] No orders emitted"
+    },
+    {
+      "cycleId": "390bd11e-f242-4662-b1c0-7eefcb4d603f",
+      "timestamp": "2026-07-19T04:46:16.743Z",
+      "selectedStrategy": "FARM",
+      "direction": "short",
+      "allocatedSize": 0.0034333977142857143,
+      "regime": "choppy_neutral",
+      "confidenceScore": 0.6,
+      "riskGateStatus": "OPEN",
+      "reasoning": "[Context] regime=choppy_neutral confidence=0.60 pnl=$0.60 | [Strategy] Regime: choppy_neutral (60%) | Direction: short | Farm: eligible (score 0.54, Eligible) | Trade: eligible (score 0.23, Eligible) | Selected: FARM | [Capital] base=0.00385 | conf=1.08 | perf=1.00 | regime=0.85 | dd=1.00 | expo=1.00 | final=0.00343 BTC | [Risk] OPEN: No risk conditions triggered | [DRY-RUN] No orders emitted"
+    }
+  ],
+  "cycleCount": 4,
+  "totalCycleTimeMs": 1998,
+  "cycleLatencies": [
+    1037,
+    270,
+    355,
+    336
+  ],
+  "strategyPerformance": {
+    "farm": {
+      "totalTrades": 3,
+      "wins": 3,
+      "losses": 0,
+      "winRate": 1,
+      "recentWinRate": 1,
+      "totalPnl": 0.44999999999999996,
+      "totalVolume": 590
+    },
+    "trade": {
+      "totalTrades": 1,
+      "wins": 0,
+      "losses": 1,
+      "winRate": 0,
+      "recentWinRate": 0,
+      "totalPnl": -0.5,
+      "totalVolume": 300
+    },
+    "farmRecent": [],
+    "tradeRecent": []
+  },
+  "startedAt": "2026-07-19T04:46:15.705Z",
+  "updatedAt": "2026-07-19T04:46:32.007Z"
+}

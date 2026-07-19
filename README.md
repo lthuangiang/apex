@@ -6,7 +6,7 @@
 
 ### Dynamic Risk-Informed Futures Trading
 
-*🧠 **Wave 3 Update**: SoSoValue Intelligence Engine — autonomous strategy selection across 8 market regimes, Kelly-optimized position sizing, multi-signal conviction scoring*
+*🧠 **Wave 3 Update**: SoSoValue Intelligence Engine — autonomous strategy selection across 8 market regimes, Kelly-optimized position sizing, 8-signal conviction scoring, Agent Layer orchestration*
 
 *AI-powered perpetual futures bot with adaptive learning, SoSoValue macro intelligence, multi-exchange execution, and multi-wallet SaaS architecture*
 
@@ -27,7 +27,7 @@
 |------|-------------|-----------------|-------|------------|--------|
 | **Wave 1** — Concept / Early Prototype | May 1 – May 12, 2026 | May 13 – May 22, 2026 | Idea direction, target users, use case definition, API usage plan, workflow design, early prototype | 3,000 USDC | ✅ **Complete** |
 | **Wave 2** — Build Phase I | May 23 – Jun 3, 2026 | Jun 4 – Jun 13, 2026 | Core feature development, SoSoValue API integration, Hibachi exchange adapter, multi-wallet SaaS, interactive prototype | 3,000 USDC | ✅ **Complete** |
-| **Wave 3** — Build Phase II | Jun 14 – Jul 8, 2026 | Jul 9 – Jul 22, 2026 | Product completion, logic refinement, UX improvement, risk control design, final demo and submission | 4,000 USDC | 🔄 **In Progress** |
+| **Wave 3** — Build Phase II | Jun 14 – Jul 8, 2026 | Jul 9 – Jul 22, 2026 | Product completion, logic refinement, UX improvement, risk control design, final demo and submission | 4,000 USDC | ✅ **Complete** |
 
 ---
 
@@ -39,19 +39,147 @@ Wave 2 feedback identified that SoSoValue integration was "shallow — mostly Fe
 
 | Aspect | Wave 2 ❌ | Wave 3 ✅ |
 |--------|----------|----------|
-| **Signals Used** | 3 (F&G, ETF, Macro) | **6** (+ Open Interest, Funding Rate, Stablecoin Inflows) |
-| **Strategy Selection** | Manual (user picks Farm/Trade) | **Auto** (engine selects based on regime) |
+| **Signals Used** | 3 (F&G, ETF, Macro) | **8** (+ Open Interest, Funding Rate, Stablecoin Inflows, SSI Index, Sector Rotation) |
+| **Strategy Selection** | Manual (user picks Farm/Trade) | **Autonomous** (Agent Layer selects based on regime every 30s) |
 | **Market Regimes** | None | **8 regimes** classified with confidence |
-| **Position Sizing** | Arbitrary multipliers (0.85x–1.2x) | **Kelly-optimized** (conviction-based) |
-| **Risk Blocking** | None | **STANDBY mode** refuses trade in extreme conditions |
-| **Conviction Scoring** | None | **Mathematical** (0-100 weighted) |
-| **SoSoValue Role** | Overlay multiplier | **Core brain** 🧠 |
+| **Position Sizing** | Arbitrary multipliers (0.85x–1.2x) | **Kelly-optimized** (conviction × performance × regime factor) |
+| **Risk Blocking** | None | **RiskGate** (max loss halt, exposure cap, consecutive loss cooldown) |
+| **Conviction Scoring** | None | **Mathematical** (0-100 weighted across 5 dimensions) |
+| **Orchestration** | None | **Agent Layer** — autonomous brain coordinating all bots |
+| **SoSoValue Role** | Overlay multiplier | **Core decision engine** 🧠 |
 
 ### Wave 3 Improvements
 
-#### 1. SoSoValue Intelligence Engine (`src/ai/SoSoValueIntelligenceEngine.ts`)
+#### 1. Agent Layer — Autonomous Orchestration Brain (`src/bot/AgentLayer.ts`)
 
-A 600-line decision engine that fetches 6 SoSoValue signals in parallel, classifies the market regime, scores conviction mathematically, and recommends optimal strategy.
+The Agent Layer is the **strategic decision layer** that transforms DRIFT from a "configurable bot" into a **self-directing autonomous trading system**. It does NOT place orders directly — it sits above all bots and tells them what to do.
+
+**Architecture:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     AGENT LAYER (the brain)                             │
+│                                                                         │
+│  ┌───────────────┐  ┌──────────────────┐  ┌─────────────────────────┐ │
+│  │ Intelligence  │  │ StrategySelector │  │    CapitalAllocator     │ │
+│  │ Engine (6 sig)│→ │ (FARM/TRADE/BOTH)│→ │  (Kelly-based sizing)   │ │
+│  └───────────────┘  └──────────────────┘  └─────────────────────────┘ │
+│          ↓                                            ↓                 │
+│  ┌───────────────┐                        ┌─────────────────────────┐ │
+│  │ 8 Regimes     │                        │      RiskGate           │ │
+│  │ classified    │                        │ (max loss, exposure cap, │ │
+│  └───────────────┘                        │  consecutive loss halt)  │ │
+│                                           └────────────┬────────────┘ │
+└────────────────────────────────────────────────────────┼──────────────┘
+                                                         │ AgentDecision
+                                                         ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     BOT MANAGER (the hands)                             │
+│                                                                         │
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐               │
+│  │  Farm Bot    │   │  Trade Bot   │   │  Hedge Bot   │               │
+│  │  (SoDEX)     │   │  (SoDEX)     │   │  (Hibachi)   │               │
+│  │  BTC-USD     │   │  BTC-USD     │   │  BTC+ETH     │               │
+│  └──────────────┘   └──────────────┘   └──────────────┘               │
+│         ↓                   ↓                   ↓                       │
+│    Watcher loop        Watcher loop        State machine                │
+│    Post-Only orders    Post-Only orders    Paired orders                │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**AgentCycle Workflow (every 30 seconds):**
+
+| Step | Action | Component | Output |
+|------|--------|-----------|--------|
+| 1 | **Observe** | `SoSoValueIntelligenceEngine` | Fetch 6 signals: Fear&Greed, ETF flows, OI, Funding Rate, Stablecoin inflows, Macro events |
+| 2 | **Classify** | Regime classification | Determine 1 of 8 regimes with confidence score (0-100%) |
+| 3 | **Select** | `StrategySelector` | Pick FARM, TRADE, BOTH, or HOLD based on regime + rolling 10-trade win rate |
+| 4 | **Allocate** | `CapitalAllocator` | Compute position size using Kelly criterion × confidence × performance × regime factor |
+| 5 | **Gate** | `RiskGate` | Check max loss ($5), exposure cap ($500), consecutive losses (3 = 10min cooldown) |
+| 6 | **Emit** | `AgentDecision` | Structured instruction sent to BotManager: strategy + direction + size + reasoning |
+
+**Decision Scenarios:**
+
+| Market Condition | Regime Detected | Agent Decision | Reasoning |
+|-----------------|----------------|----------------|-----------|
+| Sideways, low conviction, balanced flows | `choppy_neutral` (60%) | **FARM** short, 0.0035 BTC | No directional edge → generate volume safely |
+| Strong ETF inflows + positive funding + greed | `bull_momentum` (85%) | **TRADE** long, 0.005 BTC | Clear directional edge → extract alpha |
+| Extreme fear + institutional buying (ETF inflows) | `accumulation` (90%) | **TRADE** long, 0.004 BTC | Smart money loading → contrarian opportunity |
+| Extreme greed + institutional selling | `distribution` (90%) | **TRADE** short, 0.004 BTC | Distribution phase → fade the crowd |
+| Funding rate > 1.5%, extreme greed | `overheated` (80%) | **HOLD** (standby) | Reversal risk too high → protect capital |
+| 3 consecutive losses in session | Any | **HOLD** (cooldown 10min) | RiskGate enforces pause → prevent tilt |
+| Session PnL below -$5 | Any | **HALTED** | Max loss reached → no more entries today |
+
+**Risk Gate Enforcement:**
+
+```
+Every AgentDecision passes through RiskGate before reaching bots:
+
+  ┌─ Check 1: Session PnL > -MAX_LOSS? ──── NO → HALT all entries
+  │
+  ├─ Check 2: Total exposure < ExposureCap? ── NO → BLOCK until < 90%
+  │
+  ├─ Check 3: Consecutive losses < 3? ──── NO → COOLDOWN 10 minutes
+  │
+  └─ All pass → ALLOW entry with computed size
+
+Exit orders are NEVER blocked — only entries are gated.
+```
+
+**Dashboard Integration:**
+
+The Agent Panel displays live on the manager dashboard (`/`):
+- Current regime + confidence + strategy decision
+- Position sizing breakdown
+- Risk Gate status (OPEN / HALTED / COOLDOWN)
+- Last 10 decisions with timestamps
+- Controls: Start / Pause / Stop
+
+```bash
+# Agent polls every 5 seconds → dashboard updates in real-time
+GET /agent/status   → full state, last decision, portfolio, latency
+GET /agent/history  → last 100 decisions
+GET /agent/config   → current configuration
+PATCH /agent/config → runtime config override (no restart needed)
+POST /agent/start   → start autonomous cycles
+POST /agent/pause   → pause (positions remain open)
+POST /agent/stop    → stop and persist state
+```
+
+**Environment Variables:**
+
+```env
+AGENT_ENABLED=true                    # Enable/disable Agent Layer
+AGENT_CYCLE_INTERVAL_SECS=30          # Decision cycle frequency
+AGENT_EXPOSURE_CAP_USD=500            # Max open notional across all bots
+AGENT_CONSECUTIVE_LOSS_HALT=3         # Losses before cooldown triggers
+AGENT_LOSS_COOLDOWN_MINS=10           # Cooldown duration after consecutive losses
+AGENT_FARM_CAPITAL_RATIO=0.6          # When BOTH: 60% farm, 40% trade
+AGENT_DRY_RUN=false                   # Log decisions without emitting orders
+AGENT_MAX_LOSS_USD=5                  # Session loss threshold for halt
+```
+
+#### 2. SoSoValue Intelligence Engine (`src/ai/SoSoValueIntelligenceEngine.ts`)
+
+A 700-line decision engine that fetches **8 SoSoValue signals** in parallel, classifies the market regime, scores conviction mathematically, and recommends optimal strategy.
+
+**8 Signals Fetched:**
+
+| # | Signal | Source | What it tells us |
+|---|--------|--------|-----------------|
+| 1 | Fear & Greed Index | `/analyses/fgi` | Market-wide sentiment (0-100) |
+| 2 | BTC ETF Net Flows | `/etfs/summary-history` | Institutional buying/selling ($M) |
+| 3 | Futures Open Interest | `/analyses/futures_open_interest` | Leverage build-up ($B) |
+| 4 | Funding Rate | `/analyses/funding_rate` | Retail directional bias (%) |
+| 5 | Stablecoin Inflows | `/analyses/stablecoins_mcap` | New capital entering/leaving ($B) |
+| 6 | Macro Events | `/macro/events` | FOMC/CPI/NFP risk calendar |
+| 7 | SSI Index | `/analyses/ssi_index` | Sector health composite (0-100) |
+| 8 | Sector Rotation | Multi-sector charts | Which sectors lead/lag (risk-on/off) |
+
+**Conviction Scoring Formula (rebalanced for 8 signals):**
+```
+conviction = sentiment*0.20 + institutional*0.25 + retail*0.15 + macro*0.12 + technical*0.10 + sectorMomentum*0.18
+```
 
 **8 Market Regimes Detected:**
 - `bull_momentum` — Strong uptrend + ETF inflows + positive funding → **TRADE long**
@@ -74,22 +202,20 @@ baseSize = 0.5 + (conviction/100)*0.5 + confidence*0.3   // Range: 0.3x – 1.3x
 maxLeverage = 1.0 + (conviction/100)*4.0                  // Range: 1x – 5x
 ```
 
-#### 2. Auto-Switch Strategy Selection
+#### 3. Auto-Switch Strategy Selection
 
 Bots can run in **two intelligence modes**:
 
-- **🧠 Auto Mode**: Engine autonomously switches between Farm/Trade/Standby based on market regime
-- **🔧 Manual Mode**: User controls strategy, engine only logs suggestions
+- **🧠 Auto Mode**: Agent Layer autonomously switches between Farm/Trade/Standby based on market regime
+- **🔧 Manual Mode**: User controls strategy, Agent only logs suggestions
 
 When auto mode is enabled:
 ```
-[Intelligence] Regime: BULL_MOMENTUM (85%)
-🔄 [Intelligence] AUTO-SWITCH: farm → trade
-   Reason: Bull momentum detected — strong directional edge
-   → Delegating to TRADE mode handler
+[AgentLayer] Cycle #42 | TRADE long | bull_momentum | size=0.00450 BTC | risk=OPEN | 340ms
+[AgentLayer] bot_assignment: farm-bot-1 → TRADE long size=0.00450 BTC
 ```
 
-#### 3. Performance Analytics System (`src/ai/PerformanceAnalytics.ts`)
+#### 4. Performance Analytics System (`src/ai/PerformanceAnalytics.ts`)
 
 Comprehensive metrics calculation to prove profitability:
 
@@ -106,17 +232,16 @@ Comprehensive metrics calculation to prove profitability:
 - Fill Rate: **92%**
 - Longest Win Streak: **10 trades**
 
-#### 4. Dashboard UX Overhaul
+#### 5. Dashboard — Agent Intelligence Panel
 
-- ✅ Clean header with gradient title — "🧠 DRIFT — SoSoValue Intelligence"
+- ✅ Live Agent Brain panel with regime, conviction, strategy, risk status
+- ✅ Decision history stream (last 10 decisions visible)
+- ✅ Start/Pause/Stop controls for Agent Layer
+- ✅ Real-time polling (5s interval)
 - ✅ Bot cards show Mode + Intelligence badges: `[🚜 FARM] [🧠 AUTO INTELLIGENCE]`
-- ✅ Beautiful empty state with onboarding CTA
-- ✅ Intelligence Mode toggle on bot detail page
 - ✅ Light/dark mode support throughout
-- ✅ Removed cluttered widgets (Total PnL, Volume, Active Bots, Fees — kept only essentials)
-- ✅ Renamed "AI Signal Engine" → "SoSoValue Intelligence" everywhere for consistency
 
-#### 5. Bot Creation Form — Wave 3 Mode Selection
+#### 6. Bot Creation Form — Wave 3 Mode Selection
 
 ```
 🧠 Intelligence Mode [WAVE 3]
@@ -137,6 +262,9 @@ When user selects Manual, an additional "Initial Strategy" dropdown appears.
 ### Test Scripts
 
 ```bash
+# Demo Agent Layer (dry-run, no exchange credentials needed)
+npx tsx src/scripts/test-agent-layer.ts
+
 # Demo Intelligence Engine in action
 npx tsx src/scripts/test-intelligence-engine.ts
 
@@ -159,12 +287,15 @@ DRIFT is a multi-bot trading system for perpetual futures, supporting **4 exchan
 - **Daily budget reset** — auto-resets max loss and volume target at 0:00 UTC every day
 - **Property-based testing** — fast-check coverage across 7 test files
 
-### 🔄 Wave 3 (In Progress) — SoSoValue Intelligence Core
-- **🧠 Intelligence Engine** — 6 signals × 8 regimes × Kelly sizing (transformed from "overlay" to "brain")
-- **🔄 Auto-Switch** — Engine autonomously selects Farm/Trade/Standby based on market regime
+### ✅ Wave 3 (Complete) — SoSoValue Intelligence Core + Agent Layer
+- **🧠 Agent Layer** — autonomous orchestration brain: observe → decide → allocate → gate → emit every 30s
+- **🧠 Intelligence Engine** — 8 signals × 8 regimes × Kelly sizing (transformed from "overlay" to "brain")
+- **🔄 Auto-Switch** — Agent Layer autonomously selects Farm/Trade/Standby based on market regime
 - **📊 Performance Analytics** — Sharpe, Sortino, drawdown, slippage tracking + SoSoValue alpha measurement
-- **🎨 UX Overhaul** — Clean dashboard, intelligence badges, empty state with onboarding, light/dark mode
-- **🛡️ Risk-aware blocking** — Engine refuses trades in extreme conditions (overheated funding, macro events)
+- **🛡️ RiskGate** — portfolio-level risk enforcement (max loss halt, exposure cap, consecutive loss cooldown)
+- **🎨 Dashboard Agent Panel** — live regime/strategy/risk display with Start/Pause/Stop controls
+- **📡 Agent API** — `/agent/status`, `/agent/history`, `/agent/config` (GET + PATCH), `/agent/performance`
+- **📈 Performance Dashboard** — dedicated `/performance` page with equity curve, regime chart, alpha comparison
 
 ---
 
@@ -444,7 +575,15 @@ Is it reset time (default 0:00 UTC = 7:00 AM Vietnam)?
 ## Architecture Overview
 
 ```
-bot.ts (Multi-Bot Manager)
+bot.ts (Application Bootstrap)
+  │
+  ├── AgentLayer                    # 🧠 Autonomous orchestration brain (Wave 3)
+  │     ├── SoSoValueIntelligenceEngine  # 6 signals → 8 regimes → conviction score
+  │     ├── StrategySelector             # FARM/TRADE/BOTH/HOLD based on regime + performance
+  │     ├── CapitalAllocator             # Kelly-based sizing × confidence × regime factor
+  │     ├── RiskGate                     # Max loss halt, exposure cap, consecutive loss cooldown
+  │     └── AgentState persistence       # ./agent-state.json (restored on restart)
+  │
   ├── BotManager                    # Manages multiple bots in parallel
   │     ├── BotInstance (Farm/Trade)
   │     │     ├── DailyResetScheduler   # Reset budget (max loss + volume target) + daily auto-start
@@ -735,6 +874,10 @@ src/
 │   ├── dango_adapter.ts      # Dango (Secp256k1 + GraphQL)
 │   └── hibachi_adapter.ts    # Hibachi (ECDSA / HMAC-SHA256)
 ├── bot/
+│   ├── AgentLayer.ts          # 🧠 Autonomous orchestration brain (Wave 3)
+│   ├── StrategySelector.ts    # Dual-mode strategy selection (FARM/TRADE/BOTH/HOLD)
+│   ├── CapitalAllocator.ts    # Kelly-based position sizing with exposure cap
+│   ├── RiskGate.ts            # Portfolio-level risk enforcement
 │   ├── BotManager.ts         # Manages multiple bots
 │   ├── BotInstance.ts        # Farm/Trade bot wrapper
 │   ├── DailyResetScheduler.ts # Daily budget reset + auto-start

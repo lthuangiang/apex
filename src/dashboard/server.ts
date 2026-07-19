@@ -22,6 +22,7 @@ import { createAdapter as createBotAdapter, createAdapterFromCredentials } from 
 import type { TenantRegistry } from '../bot/TenantRegistry.js';
 import type { TenantContext } from '../bot/TenantContext.js';
 import type { BotCredentials } from '../bot/CredentialStore.js';
+import type { AgentLayer } from '../bot/AgentLayer.js';
 
 /**
  * Extended Express Request that carries wallet identity and tenant context.
@@ -58,6 +59,7 @@ export class DashboardServer {
   private botManager: BotManager | null = null;
   private tenantRegistry: TenantRegistry | null = null;
   private _telegram: TelegramManager | null = null;
+  private _agentLayer: AgentLayer | null = null;
   private _sopointsCache: { summary: any; week: any } = { summary: null, week: null };
   private _analyticsCache: { summary: AnalyticsSummary | null; cachedAt: number } = { summary: null, cachedAt: 0 };
   private _analyticsEngine = new AnalyticsEngine();
@@ -110,6 +112,16 @@ export class DashboardServer {
     if (telegram) this._telegram = telegram;
     console.log('[DashboardServer] TenantRegistry registered');
     this._setupManagerRoutes();
+  }
+
+  /**
+   * Register the AgentLayer for autonomous orchestration API endpoints.
+   * Exposes /agent/status, /agent/history, /agent/config
+   */
+  registerAgentLayer(agent: AgentLayer): void {
+    this._agentLayer = agent;
+    this._setupAgentRoutes();
+    console.log('[DashboardServer] AgentLayer registered');
   }
 
   private _isAuthenticated(req: Request): boolean {
@@ -273,6 +285,11 @@ export class DashboardServer {
         res.setHeader('Content-Type', 'text/html');
         res.send(html);
       });
+    });
+
+    // Performance Analytics page — standalone HTML with charts
+    this.app.get('/performance', (_req, res) => {
+      res.sendFile(path.join(__dirname, 'public', 'performance.html'));
     });
 
     this.app.get('/api/trades', async (_req, res) => {
@@ -733,12 +750,39 @@ export class DashboardServer {
         }
       }
 
-      // Other exchanges: static lists
+      // Other exchanges: static lists or live fetch
+      if (exchange === 'ondoperps') {
+        // Live fetch from OndoPerps public contracts API (no auth needed)
+        try {
+          const resp = await fetch('https://api.ondoperps.xyz/v1/perps/contracts', {
+            headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(6000),
+          });
+          if (resp.ok) {
+            const json = await resp.json() as { success: boolean; result: any[] };
+            if (json.success && Array.isArray(json.result)) {
+              const symbols = json.result
+                .filter((c: any) => c.market && c.status !== 'inactive')
+                .map((c: any) => (c.market as string).replace(/-USD\.P$/, '-PERP'))
+                .sort();
+              if (symbols.length > 0) {
+                res.json({ symbols });
+                return;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[GET /api/exchanges/ondoperps/symbols] live fetch failed:', err);
+        }
+        // Fallback static list if live fetch fails
+        res.json({ symbols: null });
+        return;
+      }
+
       const supported: Record<string, string[]> = {
         decibel:   ['BTC/USD','ETH/USD','SOL/USD','AVAX/USD','MATIC/USD'],
         dango:     ['BTC-USD','ETH-USD','SOL-USD'],
         hibachi:   ['BTC/USDT-P','ETH/USDT-P','SOL/USDT-P','BNB/USDT-P','XRP/USDT-P','DOGE/USDT-P'],
-        ondoperps: ['XAU-PERP','AAPL-PERP','TSLA-PERP','GOOGL-PERP','MSFT-PERP','AMZN-PERP','NVDA-PERP','META-PERP'],
         perpl:     ['BTC-PERP','ETH-PERP','SOL-PERP','MON-PERP','HYPE-PERP','ZEC-PERP'],
       };
       const symbols = supported[exchange];
@@ -836,25 +880,35 @@ export class DashboardServer {
       }
     });
 
-    // GET /api/exchanges/:exchange/symbols - Fetch supported symbols for an exchange
+    // GET /api/exchanges/:exchange/symbols - Fetch supported symbols for an exchange (duplicate route for tenant-scoped requests)
     this.app.get('/api/exchanges/:exchange/symbols', async (req, res) => {
       const { exchange } = req.params;
 
       try {
         if (exchange === 'ondoperps') {
-          // OndoPerps supports RWA assets only
-          res.json({
-            symbols: [
-              'XAU-PERP',
-              'AAPL-PERP',
-              'TSLA-PERP',
-              'GOOGL-PERP',
-              'MSFT-PERP',
-              'AMZN-PERP',
-              'NVDA-PERP',
-              'META-PERP'
-            ]
-          });
+          // Live fetch from OndoPerps public contracts API (no auth needed)
+          try {
+            const resp = await fetch('https://api.ondoperps.xyz/v1/perps/contracts', {
+              headers: { 'Content-Type': 'application/json' },
+              signal: AbortSignal.timeout(6000),
+            });
+            if (resp.ok) {
+              const json = await resp.json() as { success: boolean; result: any[] };
+              if (json.success && Array.isArray(json.result)) {
+                const symbols = json.result
+                  .filter((c: any) => c.market && c.status !== 'inactive')
+                  .map((c: any) => (c.market as string).replace(/-USD\.P$/, '-PERP'))
+                  .sort();
+                if (symbols.length > 0) {
+                  res.json({ symbols });
+                  return;
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('[GET /api/exchanges/ondoperps/symbols] live fetch failed:', err);
+          }
+          res.json({ symbols: null });
         } else if (exchange === 'perpl') {
           res.json({
             symbols: [
@@ -1607,6 +1661,146 @@ export class DashboardServer {
     });
 
     console.log('[DashboardServer] Manager routes registered');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AGENT LAYER ROUTES (Req 11.2, 11.3, 12.4, 12.5)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private _setupAgentRoutes(): void {
+    if (!this._agentLayer) return;
+    const agent = this._agentLayer;
+
+    // GET /agent/status — Req 11.2
+    this.app.get('/agent/status', (req, res) => {
+      const state = agent.getState();
+      const portfolio = agent.getPortfolioState();
+      const risk = agent.getRiskStatus();
+      const latency = agent.getCycleLatencyStats();
+      const dualObjective = agent.getDualObjectiveMetrics();
+
+      res.json({
+        lifecycleState: state.lifecycleState,
+        cycleCount: state.cycleCount,
+        lastDecision: state.lastDecision,
+        lastMarketContext: state.lastMarketContext,
+        portfolio,
+        riskGate: risk,
+        latency,
+        dualObjective,
+        performance: agent.getPerformanceSummary(),
+        startedAt: state.startedAt,
+        updatedAt: state.updatedAt,
+      });
+    });
+
+    // GET /agent/history — Req 11.3
+    this.app.get('/agent/history', (req, res) => {
+      const history = agent.getDecisionHistory();
+      res.json({ decisions: history, count: history.length });
+    });
+
+    // GET /agent/config — Req 12.4
+    this.app.get('/agent/config', (req, res) => {
+      res.json(agent.getConfig());
+    });
+
+    // PATCH /agent/config — Req 12.5
+    this.app.patch('/agent/config', (req, res) => {
+      const patch = req.body;
+      if (!patch || typeof patch !== 'object') {
+        res.status(400).json({ error: 'Request body must be a JSON object' });
+        return;
+      }
+      const result = agent.updateConfig(patch);
+      if (!result.success) {
+        res.status(400).json({ error: 'Validation failed', errors: result.errors });
+        return;
+      }
+      res.json({ ok: true, config: agent.getConfig() });
+    });
+
+    // POST /agent/start
+    this.app.post('/agent/start', (req, res) => {
+      agent.start();
+      res.json({ ok: true, state: agent.getState().lifecycleState });
+    });
+
+    // POST /agent/pause
+    this.app.post('/agent/pause', (req, res) => {
+      agent.pause();
+      res.json({ ok: true, state: agent.getState().lifecycleState });
+    });
+
+    // POST /agent/stop
+    this.app.post('/agent/stop', async (req, res) => {
+      await agent.stop();
+      res.json({ ok: true, state: agent.getState().lifecycleState });
+    });
+
+    // GET /agent/performance — comprehensive analytics for dashboard
+    this.app.get('/agent/performance', async (req, res) => {
+      try {
+        const { PerformanceAnalytics } = await import('../ai/PerformanceAnalytics.js');
+        const analytics = new PerformanceAnalytics();
+
+        // Try to load trades from any available trade logger
+        let trades: any[] = [];
+        try { trades = await this.tradeLogger.readAll(); } catch { /* empty */ }
+
+        // If no trades from primary logger, check tenant loggers
+        if (trades.length === 0 && this.tenantRegistry) {
+          for (const tenant of this.tenantRegistry.getAllTenants()) {
+            const bots = tenant.botManager.getAllBots();
+            for (const bot of bots) {
+              if ('getTradeLogger' in bot) {
+                try {
+                  const botTrades = await (bot as any).getTradeLogger().readAll();
+                  trades = trades.concat(botTrades);
+                } catch { /* skip */ }
+              }
+            }
+          }
+        }
+
+        const report = analytics.generateReport(trades);
+        const agentState = agent.getState();
+        const perf = agent.getPerformanceSummary();
+        const latency = agent.getCycleLatencyStats();
+
+        res.json({
+          // Agent metrics
+          agent: {
+            cycleCount: agentState.cycleCount,
+            lifecycleState: agentState.lifecycleState,
+            latency,
+            farmWinRate: perf.farm.winRate,
+            farmTrades: perf.farm.totalTrades,
+            farmPnl: perf.farm.totalPnl,
+            tradeWinRate: perf.trade.winRate,
+            tradeTrades: perf.trade.totalTrades,
+            tradePnl: perf.trade.totalPnl,
+          },
+          // Trade analytics
+          summary: report.summary,
+          sosoAlpha: report.sosoAlpha,
+          monthlyReturns: report.monthlyReturns,
+          bestTrade: report.bestTrade,
+          worstTrade: report.worstTrade,
+          longestWinStreak: report.longestWinStreak,
+          longestLoseStreak: report.longestLoseStreak,
+          farmPerformance: report.farmPerformance,
+          tradePerformance: report.tradePerformance,
+          // Metadata
+          totalTrades: trades.length,
+          generatedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    console.log('[DashboardServer] Agent routes registered: /agent/status, /agent/history, /agent/config, /agent/performance, /agent/start, /agent/pause, /agent/stop');
   }
 
   start(): void {

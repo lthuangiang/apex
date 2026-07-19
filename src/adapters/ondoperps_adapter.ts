@@ -1,301 +1,556 @@
-// @ts-nocheck — legacy adapter; type mismatches with ExchangeAdapter interface
-import axios, { AxiosInstance } from 'axios';
-import { ExchangeAdapter, Position, RawTrade } from './ExchangeAdapter.js';
-import { Orderbook, OrderParams, ConnectionHealth, Order, OrderStatus } from '../types/core.js';
+import { createHmac } from 'node:crypto';
+import { ExchangeAdapter, Order, Position, RawTrade, Kline } from './ExchangeAdapter.js';
 import {
   OndoPerpsConfig,
+  OndoPerpsApiResponse,
   OndoPerpsOrderRequest,
   OndoPerpsOrderResponse,
-  OndoPerpsApiResponse,
-  OndoPerpsMarket,
   OndoPerpsPosition,
   OndoPerpsBalance,
-  OndoPerpsAccountResponse,
-  MarketInfo
+  OndoPerpsDepth,
+  OndoPerpsMarkPrice,
+  MarketInfo,
 } from './types/ondoperps.types.js';
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const DEFAULT_BASE_URL = 'https://api.ondoperps.xyz';
+const MARKET_CACHE_TTL_MS = 60_000; // 1 minute
+
+// ── Adapter ───────────────────────────────────────────────────────────────────
+
+/**
+ * OndoPerps exchange adapter implementing the DRIFT ExchangeAdapter interface.
+ *
+ * Authentication uses HMAC-SHA256 per the OndoPerps API docs:
+ *   - ONDO-KEY-ID: the API key ID (includes "ondoKeyId_" prefix)
+ *   - ONDO-TIMESTAMP: milliseconds since Unix epoch (must be within 30s)
+ *   - ONDO-SIGN: hex(HMAC-SHA256(secret, timestamp + method + path + body))
+ *
+ * Reference: https://docs.ondoperps.xyz/api-reference/api_key_authentication
+ */
 export class OndoPerpsAdapter implements ExchangeAdapter {
   readonly exchangeName = 'ondoperps';
   readonly supportedSymbols: string[] = [];
 
-  private apiKeyId: string;
-  private apiKeySecret: string;
-  private baseUrl: string;
-  private client: AxiosInstance;
+  private readonly apiKeyId: string;
+  private readonly apiKeySecret: string;
+  private readonly baseUrl: string;
+
   private marketCache = new Map<string, MarketInfo>();
-  private connected = false;
+  private lastMarketFetch = 0;
 
   constructor(config: OndoPerpsConfig) {
+    if (!config.apiKeyId) throw new Error('[OndoPerps] apiKeyId is required');
+    if (!config.apiKeySecret) throw new Error('[OndoPerps] apiKeySecret is required');
+
     this.apiKeyId = config.apiKeyId;
     this.apiKeySecret = config.apiKeySecret;
-    this.baseUrl = config.baseUrl || 'https://api.ondoperps.xyz/v1';
+    this.baseUrl = (config.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, '');
+  }
 
-    this.client = axios.create({
-      baseURL: this.baseUrl,
-      headers: {
-        'X-API-KEY-ID': this.apiKeyId,
-        'Authorization': `Bearer ${this.apiKeySecret}`,
-        'Content-Type': 'application/json'
-      }
+  // ── HMAC-SHA256 signing ───────────────────────────────────────────────────
+
+  /**
+   * Generate authentication headers per Ondo Perps API Key Authentication spec.
+   * Signature = hex(HMAC-SHA256(apiKeySecret, timestamp + METHOD + path + body))
+   */
+  private sign(method: string, path: string, body = ''): Record<string, string> {
+    const timestamp = Date.now().toString();
+    const message = timestamp + method.toUpperCase() + path + body;
+    const signature = createHmac('sha256', this.apiKeySecret)
+      .update(message)
+      .digest('hex');
+
+    return {
+      'ONDO-KEY-ID': this.apiKeyId,
+      'ONDO-TIMESTAMP': timestamp,
+      'ONDO-SIGN': signature,
+      'Content-Type': 'application/json',
+    };
+  }
+
+  // ── HTTP helpers ──────────────────────────────────────────────────────────
+
+  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const bodyStr = body ? JSON.stringify(body) : '';
+    const headers = this.sign(method.toUpperCase(), path, bodyStr);
+    const url = `${this.baseUrl}${path}`;
+
+    const init: RequestInit = {
+      method: method.toUpperCase(),
+      headers,
+    };
+    if (bodyStr && method.toUpperCase() !== 'GET') {
+      init.body = bodyStr;
+    }
+
+    const res = await fetch(url, init);
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      let errorCode = '';
+      let errorMsg = text;
+      try {
+        const parsed = JSON.parse(text);
+        errorCode = parsed.error_code || '';
+        errorMsg = parsed.message || text;
+      } catch {}
+      throw new Error(
+        `[OndoPerps] ${method} ${path} → ${res.status}: ${errorCode ? `[${errorCode}] ` : ''}${errorMsg}`
+      );
+    }
+
+    const json = (await res.json()) as OndoPerpsApiResponse<T>;
+    if (!json.success) {
+      throw new Error(
+        `[OndoPerps] ${method} ${path}: API error ${json.error_code ?? ''} — ${json.message ?? 'unknown'}`
+      );
+    }
+    return json.result;
+  }
+
+  private async publicRequest<T>(method: string, path: string): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
     });
-  }
-
-  private async request<T>(method: string, endpoint: string, data?: any): Promise<T> {
-    try {
-      const response = await this.client.request<OndoPerpsApiResponse<T>>({
-        method,
-        url: endpoint,
-        data
-      });
-      return response.data.result;
-    } catch (error: any) {
-      this.handleApiError(error);
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`[OndoPerps] public ${method} ${path} → ${res.status}: ${text}`);
     }
-  }
-
-  private handleApiError(error: any): never {
-    const errorCode = error.response?.data?.error_code;
-    const message = error.response?.data?.message || error.message;
-
-    switch (errorCode) {
-      case 'insufficient_margin':
-        throw new Error(`[OndoPerps] Insufficient margin: ${message}`);
-      case 'account_in_liquidation':
-        throw new Error(`[OndoPerps] Account in liquidation: ${message}`);
-      case 'post_only_has_match':
-        throw new Error(`[OndoPerps] PostOnly order would match: ${message}`);
-      case 'too_many_requests':
-        throw new Error(`[OndoPerps] Rate limit exceeded: ${message}`);
-      case 'insufficient_funds':
-        throw new Error(`[OndoPerps] Insufficient funds: ${message}`);
-      case 'order_invalid_price':
-        throw new Error(`[OndoPerps] Invalid price: ${message}`);
-      case 'order_invalid_size':
-        throw new Error(`[OndoPerps] Invalid size: ${message}`);
-      default:
-        throw new Error(`[OndoPerps] API Error: ${message}`);
+    const json = (await res.json()) as OndoPerpsApiResponse<T>;
+    if (!json.success) {
+      throw new Error(
+        `[OndoPerps] public ${method} ${path}: ${json.error_code ?? ''} — ${json.message ?? 'unknown'}`
+      );
     }
+    return json.result;
   }
 
-  private mapSymbol(driftSymbol: string): string {
-    // XAU-PERP → XAU-USD.P, AAPL-PERP → AAPL-USD.P
-    return driftSymbol.replace('-PERP', '-USD.P');
+  // ── Symbol mapping ────────────────────────────────────────────────────────
+
+  /**
+   * DRIFT internal format: "NVDA-PERP", "XAU-PERP"
+   * OndoPerps format: "NVDA-USD.P", "XAU-USD.P"
+   */
+  private toOndoSymbol(driftSymbol: string): string {
+    // Already in Ondo format
+    if (driftSymbol.endsWith('-USD.P')) return driftSymbol;
+    // NVDA-PERP → NVDA-USD.P
+    return driftSymbol.replace(/-PERP$/, '-USD.P');
   }
 
-  private mapSide(driftSide: string): 'buy' | 'sell' {
-    return driftSide.toLowerCase() === 'long' || driftSide.toLowerCase() === 'buy' ? 'buy' : 'sell';
+  private toDriftSymbol(ondoSymbol: string): string {
+    // Already in DRIFT format
+    if (ondoSymbol.endsWith('-PERP')) return ondoSymbol;
+    // NVDA-USD.P → NVDA-PERP
+    return ondoSymbol.replace(/-USD\.P$/, '-PERP');
   }
 
-  private unmapSide(ondoSide: 'buy' | 'sell'): 'long' | 'short' {
-    return ondoSide === 'buy' ? 'long' : 'short';
-  }
+  // ── Market data caching ───────────────────────────────────────────────────
 
-  private roundToIncrement(value: number, increment: number): number {
-    return Math.round(value / increment) * increment;
-  }
-
-  private async getMarketInfo(symbol: string): Promise<MarketInfo | undefined> {
-    if (!this.marketCache.has(symbol)) {
-      await this.fetchMarkets();
+  private async ensureMarkets(): Promise<void> {
+    if (this.marketCache.size > 0 && Date.now() - this.lastMarketFetch < MARKET_CACHE_TTL_MS) {
+      return;
     }
-    return this.marketCache.get(symbol);
-  }
-
-  async connect(): Promise<void> {
     await this.fetchMarkets();
-    this.connected = true;
   }
 
-  async disconnect(): Promise<void> {
-    this.connected = false;
-  }
+  private async fetchMarkets(): Promise<void> {
+    // /v1/markets returns full market specs including baseIncrement (step size) and quoteIncrement (tick size)
+    const marketsResp = await this.publicRequest<{
+      perps: { tradingPairs: any[] | null };
+    }>('GET', '/v1/markets');
 
-  isConnected(): boolean {
-    return this.connected;
-  }
-
-  getConnectionHealth(): ConnectionHealth {
-    return {
-      isConnected: this.connected,
-      latency: 0,
-      lastHeartbeat: Date.now()
-    };
-  }
-
-  async fetchMarkets(): Promise<void> {
-    const markets = await this.request<OndoPerpsMarket[]>('GET', '/perps/markets');
-
-    this.supportedSymbols.length = 0;
     this.marketCache.clear();
+    this.supportedSymbols.length = 0;
 
-    for (const market of markets) {
-      if (market.status === 'active') {
-        const driftSymbol = market.market.replace('-USD.P', '-PERP');
-        this.supportedSymbols.push(driftSymbol);
+    const pairs = marketsResp?.perps?.tradingPairs ?? [];
+    for (const p of pairs) {
+      const market = p.market as string;
+      if (!market) continue;
 
-        this.marketCache.set(market.market, {
-          quoteIncrement: parseFloat(market.quoteIncrement),
-          baseIncrement: parseFloat(market.baseIncrement),
-          minOrderSize: parseFloat(market.minOrderSize),
-          maxOrderSize: parseFloat(market.maxOrderSize)
-        });
-      }
+      const tickSize = parseFloat(p.quoteIncrement || '0.01');
+      const stepSize = parseFloat(p.baseIncrement || '0.001');
+      const maxLev = p.marginInfo?.[0]?.maxLeverage
+        ? parseInt(p.marginInfo[0].maxLeverage)
+        : (p.defaultLeverage ? parseInt(p.defaultLeverage) : 10);
+
+      this.marketCache.set(market, {
+        market,
+        tickSize,
+        stepSize,
+        minOrderSize: stepSize, // min order = 1 step
+        maxLeverage: maxLev,
+        priceDecimals: this.countDecimals(tickSize),
+        sizeDecimals: this.countDecimals(stepSize),
+      });
+
+      this.supportedSymbols.push(this.toDriftSymbol(market));
     }
+    this.lastMarketFetch = Date.now();
   }
 
-  async getBalance(): Promise<{ total: number; available: number; currency: string }> {
-    const account = await this.request<OndoPerpsAccountResponse>('GET', '/account');
-
-    return {
-      total: parseFloat(account.balance.totalEquity),
-      available: parseFloat(account.balance.availableBalance),
-      currency: account.balance.currency
-    };
+  private getMarketInfo(ondoSymbol: string): MarketInfo | undefined {
+    return this.marketCache.get(ondoSymbol);
   }
 
-  async getPositions(): Promise<Position[]> {
-    const account = await this.request<OndoPerpsAccountResponse>('GET', '/account');
-
-    return account.positions.map(pos => ({
-      symbol: pos.market.replace('-USD.P', '-PERP'),
-      side: pos.side,
-      size: parseFloat(pos.size),
-      entryPrice: parseFloat(pos.entryPrice),
-      markPrice: parseFloat(pos.markPrice),
-      liquidationPrice: parseFloat(pos.liquidationPrice),
-      unrealizedPnl: parseFloat(pos.unrealizedPnl),
-      leverage: pos.leverage
-    }));
+  private countDecimals(value: number): number {
+    const str = value.toString();
+    if (!str.includes('.')) return 0;
+    return str.split('.')[1].length;
   }
 
-  async placeOrder(params: OrderParams): Promise<Order> {
-    const ondoSymbol = this.mapSymbol(params.symbol);
-    const marketInfo = await this.getMarketInfo(ondoSymbol);
+  private roundToStep(value: number, step: number): number {
+    return Math.round(value / step) * step;
+  }
 
-    let price: string | undefined;
-    let size: string | undefined;
+  // ── ExchangeAdapter interface implementation ──────────────────────────────
 
-    if (params.type.toUpperCase() === 'LIMIT') {
-      if (!params.price) {
-        throw new Error('[OndoPerps] Price required for limit orders');
-      }
+  async get_mark_price(symbol: string): Promise<number> {
+    const ondoSymbol = this.toOndoSymbol(symbol);
+    // API returns an object keyed by market name, e.g. { "NVDA-USD.P": { markPrice: "..." } }
+    const markPrices = await this.publicRequest<Record<string, OndoPerpsMarkPrice>>(
+      'GET',
+      '/v1/perps/mark_prices'
+    );
+    const entry = markPrices[ondoSymbol];
+    if (!entry) {
+      throw new Error(`[OndoPerps] No mark price found for ${ondoSymbol}`);
+    }
+    return parseFloat(entry.markPrice);
+  }
 
-      if (marketInfo) {
-        const roundedPrice = this.roundToIncrement(params.price, marketInfo.quoteIncrement);
-        price = roundedPrice.toFixed(8);
-      } else {
-        price = params.price.toFixed(8);
-      }
+  async get_orderbook(symbol: string): Promise<{ best_bid: number; best_ask: number }> {
+    const ondoSymbol = this.toOndoSymbol(symbol);
+    const depth = await this.publicRequest<OndoPerpsDepth>(
+      'GET',
+      `/v1/perps/depth?market=${encodeURIComponent(ondoSymbol)}&limit=1`
+    );
+
+    const best_bid = depth.bids?.length > 0 ? parseFloat(depth.bids[0][0]) : 0;
+    const best_ask = depth.asks?.length > 0 ? parseFloat(depth.asks[0][0]) : 0;
+
+    if (best_bid <= 0 || best_ask <= 0) {
+      throw new Error(`[OndoPerps] Empty orderbook for ${ondoSymbol}`);
     }
 
-    if (params.size) {
-      if (marketInfo) {
-        const roundedSize = this.roundToIncrement(params.size, marketInfo.baseIncrement);
-        size = roundedSize.toFixed(8);
-      } else {
-        size = params.size.toFixed(8);
-      }
+    return { best_bid, best_ask };
+  }
+
+  async get_orderbook_depth(
+    symbol: string,
+    limit: number
+  ): Promise<{ bids: [number, number][]; asks: [number, number][] }> {
+    const ondoSymbol = this.toOndoSymbol(symbol);
+    const depth = await this.publicRequest<OndoPerpsDepth>(
+      'GET',
+      `/v1/perps/depth?market=${encodeURIComponent(ondoSymbol)}&limit=${limit}`
+    );
+
+    const bids: [number, number][] = (depth.bids || []).map(([p, s]) => [
+      parseFloat(p),
+      parseFloat(s),
+    ]);
+    const asks: [number, number][] = (depth.asks || []).map(([p, s]) => [
+      parseFloat(p),
+      parseFloat(s),
+    ]);
+
+    return { bids, asks };
+  }
+
+  async place_limit_order(
+    symbol: string,
+    side: 'buy' | 'sell',
+    price: number,
+    size: number,
+    reduceOnly = false,
+    timeInForce?: number
+  ): Promise<string> {
+    await this.ensureMarkets();
+    const ondoSymbol = this.toOndoSymbol(symbol);
+    const info = this.getMarketInfo(ondoSymbol);
+
+    // Round to valid increments
+    const roundedPrice = info ? this.roundToStep(price, info.tickSize) : price;
+    const roundedSize = info ? this.roundToStep(size, info.stepSize) : size;
+
+    // Reject if rounded size is zero or below minimum
+    if (roundedSize <= 0) {
+      const minSize = info?.minOrderSize ?? info?.stepSize ?? 0;
+      throw new Error(
+        `[OndoPerps] Order size too small for ${ondoSymbol}: requested ${size}, ` +
+        `rounded to ${roundedSize} (stepSize=${info?.stepSize ?? '?'}, minOrderSize=${minSize})`
+      );
     }
 
-    const orderRequest: OndoPerpsOrderRequest = {
-      side: this.mapSide(params.side),
+    const priceStr = info
+      ? roundedPrice.toFixed(info.priceDecimals)
+      : roundedPrice.toString();
+    const sizeStr = info
+      ? roundedSize.toFixed(info.sizeDecimals)
+      : roundedSize.toString();
+
+    // Determine order type:
+    // - reduceOnly → market (OndoPerps requires IOC for reduce-only)
+    // - timeInForce=1 (IOC/taker) → market for immediate fill
+    // - otherwise → limit (maker/PostOnly)
+    const useMarket = reduceOnly || timeInForce === 1;
+
+    const orderReq: OndoPerpsOrderRequest = {
       market: ondoSymbol,
-      type: params.type.toLowerCase() as 'limit' | 'market',
-      price,
-      size,
-      clientOrderId: `drift_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      type: useMarket ? 'market' : 'limit',
+      side,
+      size: sizeStr,
+      reduceOnly: reduceOnly || undefined,
+      clientOrderId: `drift_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     };
 
-    if (params.type.toUpperCase() === 'LIMIT' && params.timeInForce) {
-      orderRequest.timeInForce = params.timeInForce as 'GTC' | 'IOC';
+    // Only include price for limit orders
+    if (!useMarket) {
+      orderReq.price = priceStr;
     }
 
-    const response = await this.request<OndoPerpsOrderResponse>('POST', '/perps/orders', orderRequest);
-
-    return {
-      id: response.orderId,
-      clientOrderId: response.clientOrderId,
-      symbol: params.symbol,
-      side: this.unmapSide(response.side),
-      type: response.type.toUpperCase() as 'LIMIT' | 'MARKET',
-      price: parseFloat(response.price),
-      size: parseFloat(response.size),
-      filledSize: parseFloat(response.filledSize),
-      status: this.mapOrderStatus(response.status),
-      timestamp: new Date(response.createdAt).getTime()
-    };
+    const response = await this.request<OndoPerpsOrderResponse>(
+      'POST',
+      '/v1/perps/orders',
+      orderReq
+    );
+    return response.orderId;
   }
 
-  async cancelOrder(orderId: string): Promise<void> {
-    await this.request('DELETE', `/perps/orders/${orderId}`);
+  async cancel_order(order_id: string, _symbol: string): Promise<boolean> {
+    try {
+      await this.request<void>('DELETE', `/v1/perps/orders/${order_id}`);
+      return true;
+    } catch (err: any) {
+      // Order already cancelled/filled is still a successful cancel from caller's perspective
+      if (
+        err.message?.includes('order_already_cancelled') ||
+        err.message?.includes('order_already_filled') ||
+        err.message?.includes('order_not_in_cancellable_state')
+      ) {
+        return true;
+      }
+      console.error(`[OndoPerps] cancel_order failed: ${err.message}`);
+      return false;
+    }
   }
 
-  async getOrder(orderId: string): Promise<Order> {
-    const response = await this.request<OndoPerpsOrderResponse>('GET', `/perps/orders/${orderId}`);
-
-    return {
-      id: response.orderId,
-      clientOrderId: response.clientOrderId,
-      symbol: response.market.replace('-USD.P', '-PERP'),
-      side: this.unmapSide(response.side),
-      type: response.type.toUpperCase() as 'LIMIT' | 'MARKET',
-      price: parseFloat(response.price),
-      size: parseFloat(response.size),
-      filledSize: parseFloat(response.filledSize),
-      status: this.mapOrderStatus(response.status),
-      timestamp: new Date(response.createdAt).getTime()
-    };
+  async cancel_all_orders(symbol: string): Promise<boolean> {
+    const ondoSymbol = this.toOndoSymbol(symbol);
+    try {
+      await this.request<void>(
+        'DELETE',
+        `/v1/perps/orders?market=${encodeURIComponent(ondoSymbol)}`
+      );
+      return true;
+    } catch (err: any) {
+      console.error(`[OndoPerps] cancel_all_orders failed: ${err.message}`);
+      return false;
+    }
   }
 
-  async getOpenOrders(symbol?: string): Promise<Order[]> {
-    const endpoint = symbol
-      ? `/perps/orders?market=${this.mapSymbol(symbol)}&status=open`
-      : '/perps/orders?status=open';
+  async get_open_orders(symbol: string): Promise<Order[]> {
+    const ondoSymbol = this.toOndoSymbol(symbol);
+    const orders = await this.request<OndoPerpsOrderResponse[]>(
+      'GET',
+      `/v1/perps/orders?market=${encodeURIComponent(ondoSymbol)}&status=open`
+    );
 
-    const response = await this.request<OndoPerpsOrderResponse[]>('GET', endpoint);
-
-    return response.map(order => ({
-      id: order.orderId,
-      clientOrderId: order.clientOrderId,
-      symbol: order.market.replace('-USD.P', '-PERP'),
-      side: this.unmapSide(order.side),
-      type: order.type.toUpperCase() as 'LIMIT' | 'MARKET',
-      price: parseFloat(order.price),
-      size: parseFloat(order.size),
-      filledSize: parseFloat(order.filledSize),
-      status: this.mapOrderStatus(order.status),
-      timestamp: new Date(order.createdAt).getTime()
+    return (orders || []).map(o => ({
+      id: o.orderId,
+      symbol: this.toDriftSymbol(o.market),
+      side: o.side,
+      price: parseFloat(o.price),
+      size: parseFloat(o.size),
+      status: o.status,
     }));
   }
 
-  private mapOrderStatus(ondoStatus: string): OrderStatus {
-    switch (ondoStatus) {
-      case 'open':
-      case 'partially_filled':
-        return 'OPEN';
-      case 'closed':
-        return 'FILLED';
-      case 'cancelled':
-        return 'CANCELLED';
-      default:
-        return 'OPEN';
+  async get_position(symbol: string, markPrice?: number): Promise<Position | null> {
+    const ondoSymbol = this.toOndoSymbol(symbol);
+    const raw = await this.request<any>('GET', '/v1/perps/positions');
+
+    // API may return array or object keyed by market — handle both
+    let positions: any[];
+    if (Array.isArray(raw)) {
+      positions = raw;
+    } else if (raw && typeof raw === 'object') {
+      positions = Object.values(raw);
+    } else {
+      positions = [];
+    }
+
+    // Log raw positions for debugging
+    if (positions.length > 0) {
+      console.log(`[OndoPerps] get_position raw: ${JSON.stringify(positions[0])}`);
+    }
+
+    // Flexible match: try market field first
+    let pos = positions.find((p: any) => p?.market === ondoSymbol);
+
+    // If not found by market field, try matching in the raw object by key
+    if (!pos && raw && typeof raw === 'object' && !Array.isArray(raw) && raw[ondoSymbol]) {
+      pos = raw[ondoSymbol];
+    }
+
+    if (!pos) return null;
+
+    // Flexible field extraction — OndoPerps uses: direction, netQuantity, averageEntryPrice
+    const sizeRaw = parseFloat(
+      pos.netQuantity ?? pos.size ?? pos.quantity ?? pos.positionSize ?? pos.netSize ??
+      pos.base_size ?? pos.baseSize ?? pos.contracts ?? pos.amount ?? 'NaN'
+    );
+
+    // Side detection: OndoPerps uses "direction" field
+    const sideField = (pos.direction ?? pos.side ?? '').toLowerCase();
+    const hasValidSide = ['long', 'short', 'buy', 'sell'].includes(sideField);
+
+    // If no size AND no valid side, truly no position
+    if ((isNaN(sizeRaw) || sizeRaw === 0) && !hasValidSide) return null;
+
+    // Determine side
+    let side: 'long' | 'short';
+    if (sideField === 'long' || sideField === 'buy') {
+      side = 'long';
+    } else if (sideField === 'short' || sideField === 'sell') {
+      side = 'short';
+    } else {
+      side = sizeRaw > 0 ? 'long' : 'short';
+    }
+
+    // Determine absolute size
+    let absSize: number;
+    if (!isNaN(sizeRaw) && sizeRaw !== 0) {
+      absSize = Math.abs(sizeRaw);
+    } else {
+      // Size field missing — try to derive from notional/value
+      const notional = parseFloat(pos.notionalValue ?? pos.notional ?? pos.value ?? pos.positionValue ?? '0');
+      if (notional > 0 && markPrice && markPrice > 0) {
+        absSize = notional / markPrice;
+      } else {
+        // Position exists (has side) but size unknown — use placeholder so bot knows it exists
+        absSize = 0.0001;
+        console.warn(`[OndoPerps] Position ${ondoSymbol} has side="${sideField}" but no size field. Raw: ${JSON.stringify(pos)}`);
+      }
+    }
+
+    const entryPrice = parseFloat(
+      pos.averageEntryPrice ?? pos.entryPrice ?? pos.entry_price ?? pos.avgEntryPrice ?? '0'
+    );
+
+    let unrealizedPnl = parseFloat(
+      pos.unrealizedPnl ?? pos.unrealized_pnl ?? pos.uPnl ?? pos.pnl ?? '0'
+    );
+    if (unrealizedPnl === 0 && markPrice && markPrice > 0 && entryPrice > 0) {
+      unrealizedPnl = side === 'long'
+        ? (markPrice - entryPrice) * absSize
+        : (entryPrice - markPrice) * absSize;
+    }
+
+    return {
+      symbol: this.toDriftSymbol(ondoSymbol),
+      side,
+      size: absSize,
+      entryPrice,
+      unrealizedPnl,
+    };
+  }
+
+  async get_balance(): Promise<number> {
+    const raw = await this.request<any>('GET', '/v1/perps/balance');
+    // Return marginBalance (total equity) NOT availableMargin.
+    // availableMargin drops when margin is held for orders/positions,
+    // which causes false max-loss triggers. marginBalance reflects true account value.
+    const marginBalance = parseFloat(raw.marginBalance ?? raw.margin_balance ?? '0');
+    if (marginBalance > 0) return marginBalance;
+    // Fallback: try walletBalance or total
+    const walletBalance = parseFloat(raw.walletBalance ?? raw.wallet_balance ?? '0');
+    if (walletBalance > 0) return walletBalance;
+    // Last resort: available
+    return parseFloat(raw.availableMargin ?? raw.available_margin ?? raw.balance ?? '0');
+  }
+
+  async get_recent_trades(symbol: string, limit: number): Promise<RawTrade[]> {
+    const ondoSymbol = this.toOndoSymbol(symbol);
+    const trades = await this.publicRequest<any[]>(
+      'GET',
+      `/v1/perps/trades?market=${encodeURIComponent(ondoSymbol)}&limit=${limit}`
+    );
+
+    return (trades || []).map((t: any) => ({
+      side: (t.aggressor_side || t.side) as 'buy' | 'sell',
+      price: parseFloat(t.price),
+      size: parseFloat(t.size),
+      timestamp: new Date(t.time || t.createdAt).getTime(),
+    }));
+  }
+
+  async get_klines(symbol: string, interval: string, limit: number): Promise<Kline[]> {
+    const ondoSymbol = this.toOndoSymbol(symbol);
+    // TradingView UDF endpoint is public — symbol format: "XAUUSD.P" (no dash)
+    const tvSymbol = ondoSymbol.replace('-', '');
+
+    // Map DRIFT interval strings to TradingView resolution values
+    const resolutionMap: Record<string, string> = {
+      '1m': '1', '5m': '5', '15m': '15', '30m': '30',
+      '1h': '60', '4h': '240', '1d': '1D', '1w': '1W',
+    };
+    const resolution = resolutionMap[interval] || '60';
+
+    const to = Math.floor(Date.now() / 1000);
+
+    // TradingView UDF history endpoint — returns raw {s,t,o,h,l,c,v} without the
+    // standard {success, result} wrapper, so we fetch directly instead of publicRequest.
+    const url = `${this.baseUrl}/v1/perps/history?symbol=${encodeURIComponent(tvSymbol)}&resolution=${resolution}&to=${to}&countback=${limit}`;
+
+    try {
+      const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json() as {
+        s: string;
+        t: number[];
+        o: number[];
+        h: number[];
+        l: number[];
+        c: number[];
+        v: number[];
+      };
+
+      if (data.s !== 'ok' || !data.t?.length) return [];
+
+      return data.t.map((timestamp, i) => ({
+        t: timestamp * 1000, // convert to ms
+        o: data.o[i],
+        h: data.h[i],
+        l: data.l[i],
+        c: data.c[i],
+        v: data.v[i],
+      }));
+    } catch (err) {
+      // Some symbols may not have history data yet — return empty gracefully
+      console.warn(`[OndoPerps] get_klines failed for ${symbol}: ${(err as Error).message}`);
+      return [];
     }
   }
 
-  // Not implemented methods (use defaults or throw)
-  async getOrderbook(symbol: string): Promise<Orderbook> {
-    throw new Error('[OndoPerps] getOrderbook not implemented');
+  async get_markets(): Promise<string[]> {
+    await this.ensureMarkets();
+    return [...this.supportedSymbols];
   }
 
-  async getRecentTrades(symbol: string, limit?: number): Promise<RawTrade[]> {
-    throw new Error('[OndoPerps] getRecentTrades not implemented');
-  }
-
-  async subscribeToOrderbook(symbol: string, callback: (orderbook: Orderbook) => void): Promise<void> {
-    throw new Error('[OndoPerps] WebSocket subscriptions not implemented');
-  }
-
-  async subscribeToTrades(symbol: string, callback: (trade: RawTrade) => void): Promise<void> {
-    throw new Error('[OndoPerps] WebSocket subscriptions not implemented');
+  async get_price_decimals(symbol: string): Promise<number> {
+    await this.ensureMarkets();
+    const ondoSymbol = this.toOndoSymbol(symbol);
+    const info = this.getMarketInfo(ondoSymbol);
+    return info?.priceDecimals ?? 2;
   }
 }

@@ -41,6 +41,32 @@ export interface MacroRisk {
   reason: string;
 }
 
+// ── SSI / Sector types ────────────────────────────────────────────────────────
+
+export type SectorTrend = 'hot' | 'neutral' | 'cold';
+
+export interface SsiIndexData {
+  /** Composite SSI index value (weighted avg of sector indices, 0-100 scale) */
+  compositeScore: number;
+  /** 24h percentage change of the composite index */
+  change24h: number;
+  /** Trend interpretation */
+  trend: SectorTrend;
+  source: 'sosovalue' | 'derived';
+}
+
+export interface SectorRotationData {
+  /** Which sector is leading (highest 24h % gain) */
+  leadingSector: string;
+  /** Which sector is lagging (lowest 24h % gain) */
+  laggingSector: string;
+  /** Sector performance map: sector name → 24h % change */
+  sectorPerformance: Record<string, number>;
+  /** Rotation signal: if DeFi/L1 leading → risk-on; if stablecoins leading → risk-off */
+  signal: 'risk_on' | 'neutral' | 'risk_off';
+  source: 'sosovalue' | 'derived';
+}
+
 // ── Internal cache ────────────────────────────────────────────────────────────
 
 let _fearGreedChartName: string | null = null;
@@ -53,6 +79,12 @@ const ETF_CACHE_TTL = 4 * 60 * 60 * 1000;
 
 let _macroCache: { data: MacroRisk; fetchedAt: number } | null = null;
 const MACRO_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+let _ssiCache: { data: SsiIndexData; fetchedAt: number } | null = null;
+const SSI_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+let _sectorCache: { data: SectorRotationData; fetchedAt: number } | null = null;
+const SECTOR_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -273,6 +305,175 @@ export class SoSoValueClient {
       console.warn('[SoSoValueClient] Macro events fetch error:', err.message);
       return SAFE_DEFAULT;
     }
+  }
+
+  /**
+   * Fetch SSI (SoSoValue Sector Index) composite score.
+   * Uses the sector index charts to compute a market-wide sentiment composite.
+   * Cached 15 minutes.
+   */
+  async fetchSsiIndex(): Promise<SsiIndexData | null> {
+    const API_KEY = process.env.SOSOVALUE_API_KEY;
+    if (!API_KEY) return this._deriveSsiFromFearGreed();
+
+    if (_ssiCache && Date.now() - _ssiCache.fetchedAt < SSI_CACHE_TTL) return _ssiCache.data;
+
+    try {
+      // Attempt to fetch sector index data from SoSoValue analyses
+      // Try common chart names for sector/SSI data
+      const chartNames = ['ssi_index', 'sector_index', 'crypto_sector_performance', 'market_sector_index'];
+      let rows: Record<string, unknown>[] | null = null;
+
+      for (const name of chartNames) {
+        rows = await this.fetchChart(name, 2);
+        if (rows && rows.length > 0) break;
+      }
+
+      if (rows && rows.length >= 1) {
+        const latest = rows[0] as any;
+        const previous = rows.length > 1 ? rows[1] as any : null;
+
+        const currentValue = Number(latest.value ?? latest.index ?? latest.score ?? 50);
+        const previousValue = previous ? Number(previous.value ?? previous.index ?? previous.score ?? currentValue) : currentValue;
+        const change24h = previousValue > 0 ? ((currentValue - previousValue) / previousValue) * 100 : 0;
+
+        const trend: SectorTrend = change24h > 2 ? 'hot' : change24h < -2 ? 'cold' : 'neutral';
+
+        const data: SsiIndexData = {
+          compositeScore: Math.min(100, Math.max(0, currentValue)),
+          change24h,
+          trend,
+          source: 'sosovalue',
+        };
+
+        _ssiCache = { data, fetchedAt: Date.now() };
+        console.log(`[SoSoValueClient] ✅ SSI Index: ${data.compositeScore.toFixed(1)} (${change24h >= 0 ? '+' : ''}${change24h.toFixed(2)}%) → ${trend}`);
+        return data;
+      }
+
+      // Fallback: derive from Fear & Greed + funding rate combo
+      return this._deriveSsiFromFearGreed();
+    } catch (err: any) {
+      console.warn('[SoSoValueClient] SSI fetch error:', err.message);
+      return this._deriveSsiFromFearGreed();
+    }
+  }
+
+  /**
+   * Fetch sector rotation signal.
+   * Determines which crypto sectors are leading/lagging to detect risk-on/risk-off flows.
+   * Cached 15 minutes.
+   */
+  async fetchSectorRotation(): Promise<SectorRotationData | null> {
+    const API_KEY = process.env.SOSOVALUE_API_KEY;
+    if (!API_KEY) return this._deriveSectorRotation();
+
+    if (_sectorCache && Date.now() - _sectorCache.fetchedAt < SECTOR_CACHE_TTL) return _sectorCache.data;
+
+    try {
+      // Fetch multiple sector charts to compare performance
+      const sectors = ['defi', 'meme', 'layer1', 'layer2', 'ai_crypto', 'gamefi'];
+      const sectorPerformance: Record<string, number> = {};
+
+      const results = await Promise.allSettled(
+        sectors.map(async (sector) => {
+          // Try multiple chart name patterns
+          const names = [`${sector}_sector_mcap`, `${sector}_market_cap`, `sector_${sector}`];
+          for (const name of names) {
+            const rows = await this.fetchChart(name, 2);
+            if (rows && rows.length >= 2) {
+              const latest = Number((rows[0] as any).value ?? (rows[0] as any).mcap ?? 0);
+              const previous = Number((rows[1] as any).value ?? (rows[1] as any).mcap ?? 0);
+              if (previous > 0) {
+                return { sector, change: ((latest - previous) / previous) * 100 };
+              }
+            }
+          }
+          return null;
+        })
+      );
+
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value) {
+          sectorPerformance[result.value.sector] = result.value.change;
+        }
+      }
+
+      // If we got any sector data, compute rotation signal
+      if (Object.keys(sectorPerformance).length >= 2) {
+        const sorted = Object.entries(sectorPerformance).sort((a, b) => b[1] - a[1]);
+        const leading = sorted[0];
+        const lagging = sorted[sorted.length - 1];
+
+        // Risk-on = DeFi/L1/AI leading; Risk-off = stablecoins or everything red
+        const riskOnSectors = ['defi', 'layer1', 'ai_crypto', 'gamefi'];
+        const signal: SectorRotationData['signal'] =
+          riskOnSectors.includes(leading[0]) && leading[1] > 1 ? 'risk_on' :
+          leading[1] < -1 ? 'risk_off' : 'neutral';
+
+        const data: SectorRotationData = {
+          leadingSector: leading[0],
+          laggingSector: lagging[0],
+          sectorPerformance,
+          signal,
+          source: 'sosovalue',
+        };
+
+        _sectorCache = { data, fetchedAt: Date.now() };
+        console.log(`[SoSoValueClient] ✅ Sector Rotation: leading=${leading[0]} (${leading[1].toFixed(1)}%) | signal=${signal}`);
+        return data;
+      }
+
+      return this._deriveSectorRotation();
+    } catch (err: any) {
+      console.warn('[SoSoValueClient] Sector rotation fetch error:', err.message);
+      return this._deriveSectorRotation();
+    }
+  }
+
+  /**
+   * Derive SSI from Fear & Greed as fallback when API charts unavailable.
+   */
+  private _deriveSsiFromFearGreed(): SsiIndexData | null {
+    const fg = _fearGreedCache?.data;
+    if (!fg) return null;
+
+    // Map Fear & Greed to a 0-100 composite (same scale but inverted for "sector health")
+    // FG < 25 = cold sectors, FG > 60 = hot sectors
+    const score = fg.fearGreedIndex;
+    const trend: SectorTrend = score > 60 ? 'hot' : score < 30 ? 'cold' : 'neutral';
+    const data: SsiIndexData = {
+      compositeScore: score,
+      change24h: 0,
+      trend,
+      source: 'derived',
+    };
+    _ssiCache = { data, fetchedAt: Date.now() };
+    return data;
+  }
+
+  /**
+   * Derive sector rotation from ETF flow + funding rate as fallback.
+   */
+  private _deriveSectorRotation(): SectorRotationData | null {
+    const etf = _etfCache?.data;
+    if (!etf) return null;
+
+    // ETF inflows = institutional risk-on → DeFi/L1 likely leading
+    // ETF outflows = risk-off → everything lagging
+    const signal: SectorRotationData['signal'] =
+      etf.signal === 'strong_bull' || etf.signal === 'bull' ? 'risk_on' :
+      etf.signal === 'strong_bear' || etf.signal === 'bear' ? 'risk_off' : 'neutral';
+
+    const data: SectorRotationData = {
+      leadingSector: signal === 'risk_on' ? 'defi' : signal === 'risk_off' ? 'stablecoins' : 'mixed',
+      laggingSector: signal === 'risk_on' ? 'stablecoins' : signal === 'risk_off' ? 'meme' : 'mixed',
+      sectorPerformance: {},
+      signal,
+      source: 'derived',
+    };
+    _sectorCache = { data, fetchedAt: Date.now() };
+    return data;
   }
 
   /** List all available analysis charts from GET /analyses. */

@@ -133,6 +133,25 @@ export class AISignalEngine {
 
             const { opens, closes, highs, lows, volumes } = klinesData;
 
+            // Guard: if klines are empty (new symbol, data unavailable), fall back to orderbook-only signal
+            if (!closes || closes.length < 10) {
+                console.warn(`[AISignalEngine] Insufficient kline data for ${symbol} (${closes?.length ?? 0} candles) — using orderbook-only signal`);
+                const bidVol = ob.bids.reduce((sum, b) => sum + b[1], 0);
+                const askVol = ob.asks.reduce((sum, a) => sum + a[1], 0);
+                const imbalance = bidVol / (askVol || 1);
+                const direction = imbalance > 1.2 ? 'long' : imbalance < 0.8 ? 'short' : 'skip';
+                return {
+                    direction: direction as 'long' | 'short' | 'skip',
+                    confidence: 0.3,
+                    score: 0.5,
+                    regime: 'SIDEWAY',
+                    atrPct: 0,
+                    tradePressure: 0.5,
+                    reasoning: `Orderbook-only signal (no kline data): imbalance=${imbalance.toFixed(2)}`,
+                    fallback: true,
+                } as any;
+            }
+
             const currentPrice = closes[closes.length - 1];
 
             // EMA9 and EMA21 for short-term momentum

@@ -163,6 +163,11 @@ export class Watcher {
     // ── Pending farm hold duration (set at signal time, applied at fill time) ──
     private _pendingFarmHoldSecs: number | null = null;
 
+    // ── Adaptive maker→taker escalation ───────────────────────────────────────
+    // After N consecutive unfilled entry cancels, escalate next entry to market (taker)
+    private _consecutiveUnfilledCancels = 0;
+    private readonly _TAKER_ESCALATION_THRESHOLD = 3;
+
     // ── Volume reconciliation ─────────────────────────────────────────────────
     private _lastVolumeReconcileAt: number = 0;
 
@@ -364,6 +369,13 @@ export class Watcher {
         this.positionManager.updateTick(markPrice);
         console.log(`Balance: ${balance.toFixed(2)} | Price: ${markPrice.toFixed(2)}`);
 
+        // CRITICAL: If we're in IDLE but position exists, correct state immediately
+        // This prevents double-orders when position detection was delayed
+        if (this.botState === 'IDLE' && position && Math.abs(position.size) > 0) {
+            console.warn(`⚠️ [STATE FIX] Position exists (${position.side} ${position.size}) but state is IDLE — correcting to IN_POSITION`);
+            await this._onEntryFilled(position);
+            return;
+        }
         if (this.sessionStartBalance === null) this.sessionStartBalance = balance;
         this.sessionCurrentPnl = balance - this.sessionStartBalance;
 
@@ -400,7 +412,9 @@ export class Watcher {
         }
 
         // ── 2. Emergency max-loss stop ─────────────────────────────────────────
-        const isMaxLossHit = this.sessionManager.updatePnL(this.sessionCurrentPnl);
+        // Skip max-loss check while PENDING: balance drops from margin hold for resting orders
+        // (especially on cross-margin exchanges like OndoPerps) — not an actual realized loss.
+        const isMaxLossHit = this.botState !== 'PENDING' && this.sessionManager.updatePnL(this.sessionCurrentPnl);
         if (isMaxLossHit) {
             console.log(`🛑 [Watcher] Emergency Stop — max loss reached.`);
             await this.telegram.sendMessage(
@@ -511,7 +525,10 @@ export class Watcher {
 
         // No fill yet — check timeout
         const waitedMs = Date.now() - this.pendingEntry.placedAt;
-        const fillTimeout = this._cfg.MODE === 'farm' ? 10_000 : 15_000;
+        const exchangeName = (this._cfg as any).EXCHANGE?.toLowerCase() ?? (this.adapter as any).exchangeName ?? '';
+        // OndoPerps PostOnly orders need more time in less liquid markets
+        const baseFillTimeout = this._cfg.MODE === 'farm' ? 10_000 : 15_000;
+        const fillTimeout = ['ondoperps'].includes(exchangeName) ? Math.max(baseFillTimeout, 30_000) : baseFillTimeout;
 
         if (waitedMs < fillTimeout) {
             console.log(`[PENDING] Waiting for fill... (${Math.floor(waitedMs / 1000)}s / ${fillTimeout / 1000}s)`);
@@ -546,6 +563,8 @@ export class Watcher {
             // Reset to IDLE so next tick can re-evaluate and place fresh order.
             // STRICT: we do NOT place a new order here — that is the next tick's job.
             console.log(`[PENDING] Cancel confirmed. Resetting to IDLE for re-evaluation next tick.`);
+            this._consecutiveUnfilledCancels++;
+            console.log(`[PENDING] Consecutive unfilled cancels: ${this._consecutiveUnfilledCancels}/${this._TAKER_ESCALATION_THRESHOLD}`);
             const savedReplaceCount = this.pendingEntry.replaceCount + 1;
             const savedDirection = this.pendingEntry.direction;
             const savedMeta = this.pendingEntry.meta;
@@ -560,19 +579,45 @@ export class Watcher {
         // First timeout: issue cancel — ONE action this tick
         console.log(`[PENDING] Fill timeout (${fillTimeout / 1000}s). Cancelling order.`);
         
+        // CRITICAL: Before cancelling, check if order already filled (race condition)
+        // On fast exchanges like OndoPerps, order can fill between ticks
+        const posBeforeCancel = await this.adapter.get_position(this.symbol, markPrice);
+        if (posBeforeCancel && Math.abs(posBeforeCancel.size) > 0) {
+            console.log(`[PENDING] Position detected before cancel — order already filled!`);
+            await this._onEntryFilled(posBeforeCancel);
+            return; // RETURN — don't cancel a filled order
+        }
+        
         // DEBUG: Check open orders BEFORE cancel to detect race condition
         const openOrdersBeforeCancel = await this.adapter.get_open_orders(this.symbol);
         console.log(`[PENDING] DEBUG: Open orders before cancel: ${openOrdersBeforeCancel.length}`);
         if (openOrdersBeforeCancel.length > 0) {
             console.log(`[PENDING] DEBUG: Order IDs: ${openOrdersBeforeCancel.map(o => o.id).join(', ')}`);
+        } else {
+            // No open orders AND no position → order was filled and closed? Or rejected?
+            // Re-check position one more time (API eventual consistency)
+            const posDoubleCheck = await this.adapter.get_position(this.symbol, markPrice);
+            if (posDoubleCheck && Math.abs(posDoubleCheck.size) > 0) {
+                console.log(`[PENDING] Position found on double-check — order filled!`);
+                await this._onEntryFilled(posDoubleCheck);
+                return;
+            }
+            // Truly no order and no position — order was rejected or expired
+            console.log(`[PENDING] No open orders and no position — order likely rejected/expired. Resetting to IDLE.`);
+            this._transitionToIdle();
+            return;
         }
         
         await this.adapter.cancel_all_orders(this.symbol);
         this.fillTracker.recordCancel('entry');
         
-        // DEBUG: Check again AFTER cancel
-        const openOrdersAfterCancel = await this.adapter.get_open_orders(this.symbol);
-        console.log(`[PENDING] DEBUG: Open orders after cancel: ${openOrdersAfterCancel.length}`);
+        // Check position AFTER cancel (race: may have filled during cancel)
+        const posAfterCancel = await this.adapter.get_position(this.symbol, markPrice);
+        if (posAfterCancel && Math.abs(posAfterCancel.size) > 0) {
+            console.log(`[PENDING] Position detected after cancel — order filled during cancel!`);
+            await this._onEntryFilled(posAfterCancel);
+            return;
+        }
         
         this.pendingEntry.cancelledOnTick = true;
         return; // ACTION: cancel — RETURN (no place in same tick)
@@ -593,6 +638,8 @@ export class Watcher {
         addTodayVolume(filledSize * position.entryPrice);
         this.botState = 'IN_POSITION';
         this.entryFilledAt = Date.now();
+        // Reset taker escalation counter on successful fill
+        this._consecutiveUnfilledCancels = 0;
 
         if (this._pendingEntrySignalMeta) {
             this._pendingEntrySignalMeta.entryTime = this.entryFilledAt;
@@ -1214,9 +1261,42 @@ export class Watcher {
 
     private async _handleIdleFarm(markPrice: number, balance: number) {
         // WAVE 3: SoSoValue Intelligence Engine — multi-signal analysis
-        console.log(`[Intelligence] Analyzing market conditions...`);
-        const intel = await this.intelligenceEngine.analyze();
-        this._lastIntelligence = intel;
+        // Skip SoSoValue for non-crypto exchanges (equities/commodities) — data is irrelevant
+        const exchangeName = (this._cfg as any).EXCHANGE?.toLowerCase() ?? (this.adapter as any).exchangeName ?? '';
+        const isNonCryptoExchange = ['ondoperps'].includes(exchangeName);
+
+        let intel: MarketIntelligence;
+        if (isNonCryptoExchange) {
+            // Use permissive defaults — SoSoValue (crypto Fear&Greed, ETF flows) is not relevant
+            intel = {
+                regime: 'choppy_neutral',
+                regimeConfidence: 0.8,
+                bullConviction: 50,
+                bearConviction: 50,
+                neutralConviction: 80,
+                recommendedStrategy: 'farm',
+                strategyReason: 'Non-crypto exchange — SoSoValue intelligence skipped',
+                baseSize: 0.78,
+                maxLeverage: 2.8,
+                confidenceMultiplier: 1.0,
+                riskLevel: 'low',
+                warnings: [],
+                signals: {
+                    fearGreed: 50,
+                    etfFlow: 'neutral',
+                    openInterest: 0,
+                    fundingRate: 0,
+                    stablecoinInflow: 0,
+                    macroRisk: 'none',
+                },
+            } as MarketIntelligence;
+            this._lastIntelligence = intel;
+            console.log(`[Intelligence] Skipped SoSoValue (non-crypto exchange: ${exchangeName}) — using neutral defaults`);
+        } else {
+            console.log(`[Intelligence] Analyzing market conditions...`);
+            intel = await this.intelligenceEngine.analyze();
+            this._lastIntelligence = intel;
+        }
 
         // Log intelligence summary
         // Wave 3: Show intelligence mode clearly
@@ -1312,6 +1392,15 @@ export class Watcher {
             filterResult = {
                 pass: true,
                 effectiveConfidence: signal.confidence,
+                dynamicMinHold: this._cfg.FARM_MIN_HOLD_SECS,
+            };
+        } else if (isNonCryptoExchange) {
+            // Non-crypto exchanges: regime detection relies on crypto data (Binance klines, L/S ratio)
+            // which doesn't exist for equities/commodities. Skip filters to avoid false rejections.
+            console.log(`[SignalFilter] BYPASS: non-crypto exchange (${exchangeName}) — regime filters skipped`);
+            filterResult = {
+                pass: true,
+                effectiveConfidence: Math.max(signal.confidence, 0.5),
                 dynamicMinHold: this._cfg.FARM_MIN_HOLD_SECS,
             };
         } else {
@@ -1483,7 +1572,22 @@ export class Watcher {
 
         console.log(`📐 [FARM] Size: ${size.toFixed(5)} BTC | conf: ${signal.confidence.toFixed(2)}`);
 
-        const order = await this.executor.placeEntryOrder(this.symbol, finalDirection, size, 0, false);
+        // SAFETY: Verify no existing position before placing entry (prevents double-position on race conditions)
+        const existingPos = await this.adapter.get_position(this.symbol);
+        if (existingPos && Math.abs(existingPos.size) > 0) {
+            console.warn(`⚠️ [FARM] Position already exists (${existingPos.side} ${existingPos.size}) — skipping entry to prevent double-position`);
+            this.botState = 'IN_POSITION';
+            await this._onEntryFilled(existingPos);
+            return;
+        }
+
+        // Adaptive maker→taker: after consecutive unfilled cancels, escalate to taker
+        const useTaker = this._consecutiveUnfilledCancels >= this._TAKER_ESCALATION_THRESHOLD;
+        if (useTaker) {
+            console.log(`⚡ [FARM] Escalating to TAKER (${this._consecutiveUnfilledCancels} consecutive unfilled cancels)`);
+        }
+
+        const order = await this.executor.placeEntryOrder(this.symbol, finalDirection, size, 0, useTaker);
         if (order) {
             this.signalEngine.invalidateCache();
             this._logEvent('ORDER_PLACED', `[FARM] ${finalDirection.toUpperCase()} ${size.toFixed(3)} @ ${order.price}`);

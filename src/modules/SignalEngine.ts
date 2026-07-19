@@ -24,7 +24,36 @@ export class SignalEngine {
 
     private async getChartSignal(symbol: string, interval: string, limit: number) {
         try {
-            // Normalize: "BTC/USD" or "BTC-USD" → "BTC", then append "USDT"
+            // If the adapter supports get_klines, use it directly (avoids Binance for non-crypto)
+            if (this.adapter.get_klines) {
+                const candles = await this.adapter.get_klines(symbol.replace('USDT', '-PERP').replace('USD.P', '-PERP'), interval === '5m' ? '5m' : interval, limit);
+                if (!candles || candles.length === 0) return null;
+
+                const lastCandle = candles[candles.length - 1];
+                const closePrice = lastCandle.c;
+                const openPrice = lastCandle.o;
+                const high = lastCandle.h;
+                const low = lastCandle.l;
+
+                const avgClose = candles.reduce((sum, c) => sum + c.c, 0) / candles.length;
+                const body = Math.abs(closePrice - openPrice);
+                const lowerTail = Math.max(0, Math.min(openPrice, closePrice) - low);
+                const upperTail = Math.max(0, high - Math.max(openPrice, closePrice));
+                const tailBullish = lowerTail > body * 1.5;
+                const tailBearish = upperTail > body * 1.5;
+
+                return {
+                    price: closePrice,
+                    avgClose,
+                    isBullish: closePrice > avgClose,
+                    isGreen: closePrice > openPrice,
+                    tailBullish,
+                    tailBearish,
+                    priceChange: ((closePrice - openPrice) / openPrice) * 100
+                };
+            }
+
+            // Fallback: Binance futures klines (crypto only)
             const base = symbol.split('/')[0].split('-')[0].toUpperCase();
             const sym = `${base}USDT`;
             const url = `https://fapi.binance.com/fapi/v1/klines`;
@@ -34,7 +63,7 @@ export class SignalEngine {
             const res = await axios.get(url, { params });
             console.log(`[Binance RES] Klines Status: ${res.status} | Data Length: ${res.data?.length}`);
 
-            const candles = res.data; // [OpenTime, Open, High, Low, Close, Volume, ...]
+            const candles = res.data;
             if (!candles || candles.length === 0) return null;
 
             const lastCandle = candles[candles.length - 1];
@@ -43,15 +72,10 @@ export class SignalEngine {
             const high = parseFloat(lastCandle[2]);
             const low = parseFloat(lastCandle[3]);
 
-            // 1. Tính SMA 10 (Trung bình giá đóng cửa)
-            const avgClose = candles.reduce((sum, c) => sum + parseFloat(c[4]), 0) / candles.length;
-
-            // 2. Phân tích Râu nến (Price Action)
+            const avgClose = candles.reduce((sum: number, c: any) => sum + parseFloat(c[4]), 0) / candles.length;
             const body = Math.abs(closePrice - openPrice);
             const lowerTail = Math.max(0, Math.min(openPrice, closePrice) - low);
             const upperTail = Math.max(0, high - Math.max(openPrice, closePrice));
-
-            // Tỷ lệ râu dưới vs nến (Bullish Hammer detection)
             const tailBullish = lowerTail > body * 1.5;
             const tailBearish = upperTail > body * 1.5;
 
@@ -77,18 +101,24 @@ export class SignalEngine {
             const normalizedBase = symbol.split('/')[0].split('-')[0].toUpperCase();
             const symbolUpper = `${normalizedBase}USDT`;
 
-            const ratioUrl = `https://fapi.binance.com/futures/data/topLongShortPositionRatio`;
-            const ratioParams = { symbol: symbolUpper, period: '15m', limit: 1 };
-            console.log(`[Binance REQ] GET ${ratioUrl} | Params: ${JSON.stringify(ratioParams)}`);
+            // Determine if this is a non-crypto exchange (no Binance data available)
+            const hasAdapterKlines = !!this.adapter.get_klines;
 
-            const [ob, trades, lsRatioRes, chart] = await Promise.all([
+            let lsRatioRes: any = { data: [null] };
+            if (!hasAdapterKlines) {
+                // Only fetch Binance L/S ratio for crypto symbols
+                const ratioUrl = `https://fapi.binance.com/futures/data/topLongShortPositionRatio`;
+                const ratioParams = { symbol: symbolUpper, period: '15m', limit: 1 };
+                console.log(`[Binance REQ] GET ${ratioUrl} | Params: ${JSON.stringify(ratioParams)}`);
+                lsRatioRes = await axios.get(ratioUrl, { params: ratioParams });
+                console.log(`[Binance RES] Ratio Data: ${JSON.stringify(lsRatioRes.data[0])}`);
+            }
+
+            const [ob, trades, chart] = await Promise.all([
                 this.adapter.get_orderbook_depth(symbol, 20),
                 this.adapter.get_recent_trades(symbol, 100),
-                axios.get(ratioUrl, { params: ratioParams }),
-                this.getChartSignal(symbolUpper, config.CHART_INTERVAL, config.CHART_LIMIT)
+                this.getChartSignal(hasAdapterKlines ? symbol : symbolUpper, config.CHART_INTERVAL, config.CHART_LIMIT)
             ]);
-            console.log(`[Binance RES] Ratio Data: ${JSON.stringify(lsRatioRes.data[0])}`);
-
             // 2. Tính Orderbook Imbalance (Continuous)
             const bidVol = ob.bids.reduce((sum, b) => sum + b[1], 0);
             const askVol = ob.asks.reduce((sum, a) => sum + a[1], 0);

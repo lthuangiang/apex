@@ -103,6 +103,13 @@ export class TenantRegistry {
   }
 
   /**
+   * Get all TenantContext instances. Used by AgentLayer for portfolio-wide observation.
+   */
+  getAllTenants(): TenantContext[] {
+    return Array.from(this.registry.values());
+  }
+
+  /**
    * Gracefully shut down all registered tenants.
    *
    * Calls `tenant.shutdown()` on every entry, which stops all running bots

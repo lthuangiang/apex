@@ -115,7 +115,7 @@ export function createAdapterFromCredentials(
         apiKeyId,
         apiKeySecret,
         baseUrl
-      }) as unknown as ExchangeAdapter;
+      });
     }
 
     case 'perpl': {
@@ -261,7 +261,7 @@ export function createAdapter(exchange: string, credentialKey: string): Exchange
         apiKeyId,
         apiKeySecret,
         baseUrl
-      }) as unknown as ExchangeAdapter;
+      });
     }
 
     case 'perpl': {

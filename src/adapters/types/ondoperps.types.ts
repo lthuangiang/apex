@@ -1,65 +1,74 @@
 // OndoPerps API Types
+// Based on https://docs.ondoperps.xyz/api-reference
 
 export interface OndoPerpsConfig {
-  apiKeyId: string;
-  apiKeySecret: string;
-  baseUrl?: string;
+  apiKeyId: string;      // "ondoKeyId_..." prefix
+  apiKeySecret: string;  // "ondoApiSecret_..." prefix
+  baseUrl?: string;      // defaults to https://api.ondoperps.xyz
 }
 
+// ── API Response Envelope ─────────────────────────────────────────────────────
+
+export interface OndoPerpsApiResponse<T> {
+  success: boolean;
+  result: T;
+  error_code?: string;
+  message?: string;
+}
+
+// ── Markets / Contracts ───────────────────────────────────────────────────────
+
+export interface OndoPerpsContract {
+  market: string;          // e.g. "NVDA-USD.P"
+  baseAsset: string;       // e.g. "NVDA"
+  quoteAsset: string;      // e.g. "USD"
+  status: string;          // e.g. "active"
+  tickSize: string;        // price tick size
+  stepSize: string;        // quantity step size
+  minOrderSize: string;    // minimum order quantity
+  maxLeverage: number;
+  markPrice: string;
+  indexPrice: string;
+  lastPrice: string;
+  volume24h: string;
+  openInterest: string;
+}
+
+// ── Orders ────────────────────────────────────────────────────────────────────
+
 export interface OndoPerpsOrderRequest {
+  market: string;                     // e.g. "NVDA-USD.P"
+  type: 'limit' | 'market';
   side: 'buy' | 'sell';
-  market: string;
-  price?: string;
-  size?: string;
-  quoteSize?: string;
+  size: string;                       // quantity in base asset
+  price?: string;                     // required for limit
   clientOrderId?: string;
-  type?: 'limit' | 'market';
-  timeInForce?: 'GTC' | 'IOC';
   postOnly?: boolean;
   reduceOnly?: boolean;
-  takeProfit?: {
-    triggerPrice: string;
-  };
-  stopLoss?: {
-    triggerPrice: string;
+  timeInForce?: 'GTC' | 'IOC' | 'FOK';
+  builderCode?: {
+    code?: string;
+    feeRateBps?: number;
   };
 }
 
 export interface OndoPerpsOrderResponse {
   orderId: string;
   clientOrderId?: string;
+  market: string;
   side: 'buy' | 'sell';
-  price: string;
-  size: string;
-  market: string;
-  filledSize: string;
-  status: 'open' | 'closed' | 'cancelled' | 'partially_filled';
-  createdAt: string;
   type: 'limit' | 'market';
-  timeInForce: 'GTC' | 'IOC';
+  size: string;
+  price: string;
+  filledSize: string;
+  avgFillPrice?: string;
+  status: 'open' | 'closed' | 'cancelled' | 'partially_filled' | 'new';
+  createdAt: string;
+  reduceOnly?: boolean;
+  postOnly?: boolean;
 }
 
-export interface OndoPerpsApiResponse<T> {
-  success: boolean;
-  result: T;
-}
-
-export interface OndoPerpsApiError {
-  success: false;
-  error_code: string;
-  message: string;
-}
-
-export interface OndoPerpsMarket {
-  market: string;
-  baseCurrency: string;
-  quoteCurrency: string;
-  quoteIncrement: string;
-  baseIncrement: string;
-  minOrderSize: string;
-  maxOrderSize: string;
-  status: 'active' | 'inactive';
-}
+// ── Positions ─────────────────────────────────────────────────────────────────
 
 export interface OndoPerpsPosition {
   market: string;
@@ -69,28 +78,81 @@ export interface OndoPerpsPosition {
   markPrice: string;
   liquidationPrice: string;
   unrealizedPnl: string;
-  realizedPnl: string;
+  realizedPnl?: string;
   leverage: number;
+  notionalValue?: string;
 }
+
+// ── Balance ───────────────────────────────────────────────────────────────────
 
 export interface OndoPerpsBalance {
-  totalEquity: string;
-  availableBalance: string;
+  marginBalance: string;
+  availableMargin: string;
   usedMargin: string;
   unrealizedPnl: string;
-  currency: string;
+  walletBalance: string;
 }
 
-export interface OndoPerpsAccountResponse {
-  accountId: string;
-  balance: OndoPerpsBalance;
-  positions: OndoPerpsPosition[];
+// ── Account ───────────────────────────────────────────────────────────────────
+
+export interface OndoPerpsAccount {
+  accountID: string;
 }
 
-// Market info cache entry
+// ── Orderbook ─────────────────────────────────────────────────────────────────
+
+export interface OndoPerpsDepth {
+  bids: [string, string][];   // [price, size][]
+  asks: [string, string][];
+  market: string;
+}
+
+// ── Trades ────────────────────────────────────────────────────────────────────
+
+export interface OndoPerpsPublicTrade {
+  id: string;
+  market: string;
+  side: 'buy' | 'sell';
+  price: string;
+  size: string;
+  createdAt: string;
+}
+
+// ── Mark Prices ───────────────────────────────────────────────────────────────
+
+export interface OndoPerpsMarkPrice {
+  market: string;
+  markPrice: string;
+  indexPrice: string;
+}
+
+// ── Candles ───────────────────────────────────────────────────────────────────
+
+export interface OndoPerpsCandle {
+  startTime: string;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: string;
+}
+
+// ── Funding Rates ─────────────────────────────────────────────────────────────
+
+export interface OndoPerpseFundingRate {
+  market: string;
+  fundingRate: string;
+  nextFundingTime: string;
+}
+
+// ── Market Info cache entry ───────────────────────────────────────────────────
+
 export interface MarketInfo {
-  quoteIncrement: number;
-  baseIncrement: number;
+  market: string;
+  tickSize: number;
+  stepSize: number;
   minOrderSize: number;
-  maxOrderSize: number;
+  maxLeverage: number;
+  priceDecimals: number;
+  sizeDecimals: number;
 }

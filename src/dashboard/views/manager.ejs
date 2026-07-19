@@ -400,6 +400,92 @@
       </div>
     </div>
 
+    <!-- ═══ Agent Intelligence Panel (Wave 3) ═══════════════════════════════ -->
+    <div class="mi-panel" id="agent-panel">
+      <div class="mi-header">
+        <div class="mi-title"><span class="mi-title-dot" style="background:#8b5cf6"></span> AGENT BRAIN — Autonomous Orchestration</div>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <span class="mi-updated" id="agent-updated">—</span>
+          <span id="agent-status-badge" class="status-pill inactive"><span class="status-dot"></span>IDLE</span>
+        </div>
+      </div>
+      <div class="mi-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
+        <div class="mi-cell">
+          <div class="mi-cell-label">Strategy</div>
+          <div class="mi-cell-value" id="agent-strategy" style="font-size:1.1rem;">—</div>
+          <div class="mi-cell-sub" id="agent-direction">—</div>
+        </div>
+        <div class="mi-cell">
+          <div class="mi-cell-label">Regime</div>
+          <div class="mi-cell-value" id="agent-regime" style="font-size:1.1rem;">—</div>
+          <div class="mi-cell-sub" id="agent-regime-conf">—</div>
+        </div>
+        <div class="mi-cell">
+          <div class="mi-cell-label">Position Size</div>
+          <div class="mi-cell-value" id="agent-size" style="font-size:1.1rem;">—</div>
+          <div class="mi-cell-sub" id="agent-exposure">Exposure: $0</div>
+        </div>
+        <div class="mi-cell">
+          <div class="mi-cell-label">Risk Gate</div>
+          <div class="mi-cell-value" id="agent-risk" style="font-size:1.1rem;">—</div>
+          <div class="mi-cell-sub" id="agent-risk-reason">—</div>
+        </div>
+      </div>
+      <!-- Performance row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:0.75rem;margin-top:0.875rem;">
+        <div class="mi-cell" style="padding:0.5rem 0.7rem;">
+          <div class="mi-cell-label" style="font-size:0.6rem;">Cycles</div>
+          <div style="font-size:0.95rem;font-weight:700;" id="agent-cycles">0</div>
+        </div>
+        <div class="mi-cell" style="padding:0.5rem 0.7rem;">
+          <div class="mi-cell-label" style="font-size:0.6rem;">Farm WR</div>
+          <div style="font-size:0.95rem;font-weight:700;color:var(--green);" id="agent-farm-wr">—</div>
+        </div>
+        <div class="mi-cell" style="padding:0.5rem 0.7rem;">
+          <div class="mi-cell-label" style="font-size:0.6rem;">Trade WR</div>
+          <div style="font-size:0.95rem;font-weight:700;color:var(--green);" id="agent-trade-wr">—</div>
+        </div>
+        <div class="mi-cell" style="padding:0.5rem 0.7rem;">
+          <div class="mi-cell-label" style="font-size:0.6rem;">Latency p50</div>
+          <div style="font-size:0.95rem;font-weight:700;" id="agent-latency">—</div>
+        </div>
+        <div class="mi-cell" style="padding:0.5rem 0.7rem;">
+          <div class="mi-cell-label" style="font-size:0.6rem;">Session PnL</div>
+          <div style="font-size:0.95rem;font-weight:700;" id="agent-pnl">$0.00</div>
+        </div>
+      </div>
+      <!-- Decision history -->
+      <div class="decision-log" style="margin-top:0.75rem;">
+        <div class="log-header"><span>Recent Decisions</span><span id="agent-decision-count">0</span></div>
+        <div id="agent-decisions-list" style="max-height:120px;overflow-y:auto;"></div>
+      </div>
+      <!-- 8-Signal Breakdown (Wave 3) -->
+      <div style="margin-top:0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.625rem 0.75rem;">
+        <div style="font-size:0.6rem;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-tertiary);margin-bottom:0.4rem;display:flex;align-items:center;gap:0.35rem;">
+          <span style="width:5px;height:5px;border-radius:50%;background:#8b5cf6;"></span>
+          8 SoSoValue Signals (Live)
+        </div>
+        <div id="agent-signals-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.4rem;">
+          <div class="ai-pill" style="justify-content:space-between;padding:0.3rem 0.5rem;"><span class="ai-pill-label">F&G</span><span class="ai-pill-val" id="sig-fg">—</span></div>
+          <div class="ai-pill" style="justify-content:space-between;padding:0.3rem 0.5rem;"><span class="ai-pill-label">ETF Flow</span><span class="ai-pill-val" id="sig-etf">—</span></div>
+          <div class="ai-pill" style="justify-content:space-between;padding:0.3rem 0.5rem;"><span class="ai-pill-label">Open Interest</span><span class="ai-pill-val" id="sig-oi">—</span></div>
+          <div class="ai-pill" style="justify-content:space-between;padding:0.3rem 0.5rem;"><span class="ai-pill-label">Funding</span><span class="ai-pill-val" id="sig-fr">—</span></div>
+          <div class="ai-pill" style="justify-content:space-between;padding:0.3rem 0.5rem;"><span class="ai-pill-label">Stablecoin</span><span class="ai-pill-val" id="sig-sc">—</span></div>
+          <div class="ai-pill" style="justify-content:space-between;padding:0.3rem 0.5rem;"><span class="ai-pill-label">Macro Risk</span><span class="ai-pill-val" id="sig-macro">—</span></div>
+          <div class="ai-pill" style="justify-content:space-between;padding:0.3rem 0.5rem;"><span class="ai-pill-label">SSI Index</span><span class="ai-pill-val" id="sig-ssi">—</span></div>
+          <div class="ai-pill" style="justify-content:space-between;padding:0.3rem 0.5rem;"><span class="ai-pill-label">Sector</span><span class="ai-pill-val" id="sig-sector">—</span></div>
+        </div>
+      </div>
+      <!-- Controls -->
+      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;align-items:center;">
+        <button class="btn btn-primary" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;" onclick="agentAction('start')">▶ Start</button>
+        <button class="btn btn-ghost" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;" onclick="agentAction('pause')">⏸ Pause</button>
+        <button class="btn btn-danger" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;" onclick="agentAction('stop')">⏹ Stop</button>
+        <a href="/performance" class="btn btn-ghost" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;text-decoration:none;margin-left:auto;">📊 Performance Analytics</a>
+      </div>
+    </div>
+    <!-- ═══ End Agent Panel ═══════════════════════════════════════════════════ -->
+
     <%- include('partials/bot-cards') %>
   </div>
 
@@ -1720,5 +1806,155 @@
     document.getElementById('btn-create-bot')?.addEventListener('click', openAddBotModal);
   </script>
   -->
+
+  <!-- ═══ Agent Panel Live Polling ═══════════════════════════════════════════ -->
+  <script>
+  (function() {
+    var AGENT_POLL_MS = 5000;
+
+    function updateAgentPanel(data) {
+      // Status badge
+      var badge = document.getElementById('agent-status-badge');
+      var state = data.lifecycleState || 'IDLE';
+      badge.textContent = state;
+      badge.className = 'status-pill ' + (state === 'RUNNING' ? 'active' : 'inactive');
+
+      // Updated time
+      document.getElementById('agent-updated').textContent = 'Cycle #' + (data.cycleCount || 0);
+
+      // Last decision
+      var d = data.lastDecision;
+      if (d) {
+        document.getElementById('agent-strategy').textContent = d.selectedStrategy || '—';
+        var dirEl = document.getElementById('agent-direction');
+        dirEl.textContent = (d.direction || '—').toUpperCase();
+        dirEl.style.color = d.direction === 'long' ? 'var(--green)' : d.direction === 'short' ? 'var(--red)' : 'var(--text-secondary)';
+
+        document.getElementById('agent-regime').textContent = (d.regime || '—').replace(/_/g, ' ');
+        document.getElementById('agent-regime-conf').textContent = ((d.confidenceScore || 0) * 100).toFixed(0) + '% confidence';
+
+        var sizeEl = document.getElementById('agent-size');
+        sizeEl.textContent = d.allocatedSize ? d.allocatedSize.toFixed(5) + ' BTC' : '—';
+
+        document.getElementById('agent-risk').textContent = d.riskGateStatus || '—';
+        document.getElementById('agent-risk').style.color = d.riskGateStatus === 'OPEN' ? 'var(--green)' : 'var(--red)';
+      }
+
+      // Risk Gate
+      if (data.riskGate) {
+        document.getElementById('agent-risk-reason').textContent = data.riskGate.reason || '—';
+      }
+
+      // Portfolio
+      if (data.portfolio) {
+        document.getElementById('agent-exposure').textContent = 'Exposure: $' + (data.portfolio.totalOpenExposureUsd || 0).toFixed(0);
+        var pnlEl = document.getElementById('agent-pnl');
+        var pnl = data.dualObjective ? data.dualObjective.sessionPnl : (data.portfolio.sessionPnl || 0);
+        pnlEl.textContent = '$' + pnl.toFixed(2);
+        pnlEl.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      }
+
+      // Cycles
+      document.getElementById('agent-cycles').textContent = data.cycleCount || 0;
+
+      // Performance
+      if (data.performance) {
+        var farmWr = data.performance.farm ? (data.performance.farm.winRate * 100).toFixed(0) + '%' : '—';
+        var tradeWr = data.performance.trade ? (data.performance.trade.winRate * 100).toFixed(0) + '%' : '—';
+        document.getElementById('agent-farm-wr').textContent = farmWr;
+        document.getElementById('agent-trade-wr').textContent = tradeWr;
+      }
+
+      // Latency
+      if (data.latency) {
+        document.getElementById('agent-latency').textContent = (data.latency.p50 || 0) + 'ms';
+      }
+
+      // 8-Signal breakdown from lastMarketContext
+      if (data.lastMarketContext && data.lastMarketContext.intelligence) {
+        var sig = data.lastMarketContext.intelligence.signals || {};
+        var fgEl = document.getElementById('sig-fg');
+        fgEl.textContent = sig.fearGreed || '—';
+        fgEl.style.color = sig.fearGreed < 30 ? 'var(--red)' : sig.fearGreed > 60 ? 'var(--green)' : 'var(--text-1)';
+
+        var etfEl = document.getElementById('sig-etf');
+        etfEl.textContent = (sig.etfFlow || '—').replace(/_/g, ' ');
+        etfEl.style.color = (sig.etfFlow || '').includes('bull') ? 'var(--green)' : (sig.etfFlow || '').includes('bear') ? 'var(--red)' : 'var(--text-2)';
+
+        var oiEl = document.getElementById('sig-oi');
+        var oiVal = sig.openInterest || 0;
+        oiEl.textContent = oiVal >= 1e9 ? (oiVal/1e9).toFixed(1) + 'B' : oiVal >= 1e6 ? (oiVal/1e6).toFixed(0) + 'M' : oiVal;
+
+        var frEl = document.getElementById('sig-fr');
+        var fr = sig.fundingRate || 0;
+        frEl.textContent = (fr * 100).toFixed(3) + '%';
+        frEl.style.color = fr > 0.005 ? 'var(--green)' : fr < -0.005 ? 'var(--red)' : 'var(--text-2)';
+
+        var scEl = document.getElementById('sig-sc');
+        var sc = sig.stablecoinInflow || 0;
+        scEl.textContent = sc >= 1e9 ? '+$' + (sc/1e9).toFixed(1) + 'B' : sc <= -1e9 ? '-$' + (Math.abs(sc)/1e9).toFixed(1) + 'B' : sc >= 0 ? '+$' + (sc/1e6).toFixed(0) + 'M' : '-$' + (Math.abs(sc)/1e6).toFixed(0) + 'M';
+        scEl.style.color = sc > 0 ? 'var(--green)' : sc < 0 ? 'var(--red)' : 'var(--text-2)';
+
+        document.getElementById('sig-macro').textContent = sig.macroRisk || 'none';
+        document.getElementById('sig-macro').style.color = sig.macroRisk === 'high' ? 'var(--red)' : sig.macroRisk === 'elevated' ? '#f5a623' : 'var(--green)';
+
+        var ssiEl = document.getElementById('sig-ssi');
+        ssiEl.textContent = sig.ssiIndex ? sig.ssiIndex.toFixed(0) : '—';
+
+        var sectorEl = document.getElementById('sig-sector');
+        sectorEl.textContent = (sig.sectorSignal || '—').replace(/_/g, ' ');
+        sectorEl.style.color = sig.sectorSignal === 'risk_on' ? 'var(--green)' : sig.sectorSignal === 'risk_off' ? 'var(--red)' : 'var(--text-2)';
+      }
+
+      // Decision history (from /agent/history could be fetched separately, use what we have)
+      renderDecisions(data.lastDecision);
+    }
+
+    var decisionsBuffer = [];
+    function renderDecisions(d) {
+      if (!d) return;
+      // Add to buffer (avoid duplicates by cycleId)
+      if (decisionsBuffer.length === 0 || decisionsBuffer[0].cycleId !== d.cycleId) {
+        decisionsBuffer.unshift(d);
+        if (decisionsBuffer.length > 10) decisionsBuffer.length = 10;
+      }
+      document.getElementById('agent-decision-count').textContent = decisionsBuffer.length;
+      var list = document.getElementById('agent-decisions-list');
+      list.innerHTML = decisionsBuffer.map(function(dec) {
+        var time = dec.timestamp ? dec.timestamp.slice(11, 19) : '—';
+        var stratColor = dec.selectedStrategy === 'FARM' ? 'var(--accent)' : dec.selectedStrategy === 'TRADE' ? '#8b5cf6' : 'var(--text-secondary)';
+        var dirColor = dec.direction === 'long' ? 'var(--green)' : dec.direction === 'short' ? 'var(--red)' : 'var(--text-tertiary)';
+        return '<div class="log-row">' +
+          '<span style="color:var(--text-tertiary);font-family:monospace;font-size:0.65rem;">' + time + '</span>' +
+          '<span style="color:' + stratColor + ';font-weight:600;font-size:0.72rem;">' + dec.selectedStrategy + '</span>' +
+          '<span style="color:' + dirColor + ';font-weight:500;font-size:0.72rem;">' + (dec.direction || '—').toUpperCase() + '</span>' +
+          '<span style="font-size:0.68rem;color:var(--text-secondary);">' + (dec.regime || '').replace(/_/g,' ') + '</span>' +
+          '<span class="' + (dec.riskGateStatus === 'OPEN' ? 'log-pass' : 'log-fail') + '" style="font-size:0.68rem;">' + dec.riskGateStatus + '</span>' +
+          '</div>';
+      }).join('');
+    }
+
+    function pollAgent() {
+      fetch('/agent/status')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) { if (data) updateAgentPanel(data); })
+        .catch(function() {});
+    }
+
+    // Initial fetch + interval
+    pollAgent();
+    setInterval(pollAgent, AGENT_POLL_MS);
+  })();
+
+  // Agent control buttons
+  function agentAction(action) {
+    fetch('/agent/' + action, { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        console.log('[Agent] ' + action + ':', data);
+      })
+      .catch(function(err) { console.error('[Agent] action failed:', err); });
+  }
+  </script>
 </body>
 </html>

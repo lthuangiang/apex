@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DRIFT — Performance Analytics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d0f14; --surface: #141820; --surface-2: #1a2030; --border: #1e2535;
+      --text-1: #e8edf5; --text-2: #8a9bb5; --text-3: #4a5a72;
+      --accent: #f5a623; --green: #1db954; --red: #e8404a; --purple: #8b5cf6;
+      --radius: 12px; --radius-sm: 8px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; background: var(--bg); color: var(--text-1); min-height: 100vh; padding: 2rem; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { font-size: 1.6rem; font-weight: 800; margin-bottom: 0.25rem; background: linear-gradient(90deg, #f5a623, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { color: var(--text-2); font-size: 0.85rem; margin-bottom: 2rem; }
+    .back-link { color: var(--accent); text-decoration: none; font-size: 0.8rem; font-weight: 600; }
+    .back-link:hover { text-decoration: underline; }
+
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 2rem; }
+    @media (max-width: 900px) { .grid-4 { grid-template-columns: 1fr 1fr; } .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+    .card-title { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 0.5rem; }
+    .card-value { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.03em; }
+    .card-sub { font-size: 0.75rem; color: var(--text-2); margin-top: 0.25rem; }
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+    .neutral { color: var(--text-2); }
+
+    .section-title { font-size: 1rem; font-weight: 700; color: var(--text-1); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .section-title::before { content: ''; width: 4px; height: 18px; border-radius: 2px; background: var(--accent); }
+
+    .chart-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 2rem; }
+    .chart-wrap canvas { max-height: 280px; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { text-align: left; padding: 0.6rem 0.75rem; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.65rem; border-bottom: 1px solid var(--border); }
+    td { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); color: var(--text-1); }
+    tr:hover td { background: var(--surface-2); }
+
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; }
+    .badge-green { background: rgba(29,185,84,0.15); color: var(--green); }
+    .badge-red { background: rgba(232,64,74,0.15); color: var(--red); }
+    .badge-purple { background: rgba(139,92,246,0.15); color: var(--purple); }
+
+    .alpha-comparison { display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: center; }
+    .alpha-vs { font-size: 1.2rem; font-weight: 800; color: var(--text-3); text-align: center; }
+    .loading { text-align: center; padding: 3rem; color: var(--text-3); }
+    .spinner { width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/dashboard" class="back-link">← Back to Dashboard</a>
+    <h1>📊 Performance Analytics</h1>
+    <p class="subtitle">SoSoValue Intelligence Engine — profitability proof & risk metrics</p>
+
+    <div id="loading" class="loading"><div class="spinner"></div><p style="margin-top:1rem;">Loading analytics...</p></div>
+    <div id="content" style="display:none;">
+
+      <!-- KPI Cards -->
+      <div class="grid-4" id="kpi-cards"></div>
+
+      <!-- Equity Curve -->
+      <div class="section-title">Equity Curve</div>
+      <div class="chart-wrap"><canvas id="equity-chart"></canvas></div>
+
+      <!-- SoSoValue Alpha Comparison -->
+      <div class="section-title">SoSoValue Alpha — WITH vs WITHOUT</div>
+      <div class="grid-2" id="alpha-section"></div>
+
+      <!-- Strategy Breakdown -->
+      <div class="section-title">Strategy Performance</div>
+      <div class="grid-2" id="strategy-section"></div>
+
+      <!-- Regime Performance -->
+      <div class="section-title">Win Rate by Market Regime</div>
+      <div class="chart-wrap"><canvas id="regime-chart"></canvas></div>
+
+      <!-- Monthly Returns -->
+      <div class="section-title">Monthly Returns</div>
+      <div class="card table-wrap" id="monthly-table"></div>
+
+      <!-- Agent Brain Stats -->
+      <div class="section-title">Agent Layer Statistics</div>
+      <div class="grid-3" id="agent-stats"></div>
+    </div>
+  </div>
+
+  <script>
+  (async function() {
+    try {
+      const res = await fetch('/agent/performance');
+      if (!res.ok) throw new Error('API error ' + res.status);
+      const data = await res.json();
+      render(data);
+    } catch(err) {
+      document.getElementById('loading').innerHTML = '<p style="color:#e8404a;">Failed to load: ' + err.message + '</p>';
+    }
+  })();
+
+  function render(data) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+
+    renderKPIs(data);
+    renderEquityCurve(data);
+    renderAlpha(data);
+    renderStrategy(data);
+    renderRegimeChart(data);
+    renderMonthly(data);
+    renderAgentStats(data);
+  }
+
+  function renderKPIs(data) {
+    const s = data.summary || {};
+    const cards = [
+      { label: 'Total Trades', value: data.totalTrades || 0, sub: 'All time', cls: '' },
+      { label: 'Win Rate', value: ((s.winRate || 0) * 100).toFixed(1) + '%', sub: 'Target: >60%', cls: (s.winRate || 0) >= 0.6 ? 'positive' : 'negative' },
+      { label: 'Total PnL', value: '$' + (s.totalPnL || 0).toFixed(2), sub: 'Profit Factor: ' + (s.profitFactor || 0).toFixed(2), cls: (s.totalPnL || 0) >= 0 ? 'positive' : 'negative' },
+      { label: 'Sharpe Ratio', value: (s.sharpeRatio || 0).toFixed(2), sub: 'Risk-adjusted return', cls: (s.sharpeRatio || 0) > 0.5 ? 'positive' : 'neutral' },
+    ];
+    document.getElementById('kpi-cards').innerHTML = cards.map(c =>
+      '<div class="card"><div class="card-title">' + c.label + '</div><div class="card-value ' + c.cls + '">' + c.value + '</div><div class="card-sub">' + c.sub + '</div></div>'
+    ).join('');
+  }
+
+  function renderEquityCurve(data) {
+    const curve = (data.summary && data.summary.equityCurve) || [];
+    if (curve.length === 0) { document.getElementById('equity-chart').parentElement.innerHTML = '<p style="color:var(--text-3);text-align:center;padding:2rem;">No equity data yet — trades will appear here</p>'; return; }
+    const ctx = document.getElementById('equity-chart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: curve.map(p => new Date(p.timestamp).toLocaleDateString()),
+        datasets: [{
+          label: 'Equity ($)',
+          data: curve.map(p => p.equity),
+          borderColor: '#f5a623',
+          backgroundColor: 'rgba(245,166,35,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { display: false }, y: { grid: { color: '#1e2535' } } } }
+    });
+  }
+
+  function renderAlpha(data) {
+    const alpha = data.sosoAlpha || {};
+    const w = alpha.tradesWithSoSoValue || {};
+    const wo = alpha.tradesWithoutSoSoValue || {};
+    document.getElementById('alpha-section').innerHTML =
+      '<div class="card"><div class="card-title">WITH SoSoValue Intelligence</div>' +
+      '<div class="card-value positive">' + ((w.winRate || 0) * 100).toFixed(0) + '% WR</div>' +
+      '<div class="card-sub">' + (w.count || 0) + ' trades | PnL: $' + (w.totalPnL || 0).toFixed(2) + '</div></div>' +
+      '<div class="card"><div class="card-title">WITHOUT SoSoValue</div>' +
+      '<div class="card-value neutral">' + ((wo.winRate || 0) * 100).toFixed(0) + '% WR</div>' +
+      '<div class="card-sub">' + (wo.count || 0) + ' trades | PnL: $' + (wo.totalPnL || 0).toFixed(2) + '</div></div>';
+  }
+
+  function renderStrategy(data) {
+    const farm = data.farmPerformance || {};
+    const trade = data.tradePerformance || {};
+    document.getElementById('strategy-section').innerHTML =
+      '<div class="card"><div class="card-title">🚜 Farm Mode</div>' +
+      '<div class="card-value">' + (farm.totalTrades || 0) + ' trades</div>' +
+      '<div class="card-sub">WR: ' + ((farm.winRate || 0) * 100).toFixed(0) + '% | PnL: $' + (farm.totalPnL || 0).toFixed(2) + ' | Sharpe: ' + (farm.sharpeRatio || 0).toFixed(2) + '</div></div>' +
+      '<div class="card"><div class="card-title">📈 Trade Mode</div>' +
+      '<div class="card-value">' + (trade.totalTrades || 0) + ' trades</div>' +
+      '<div class="card-sub">WR: ' + ((trade.winRate || 0) * 100).toFixed(0) + '% | PnL: $' + (trade.totalPnL || 0).toFixed(2) + ' | Sharpe: ' + (trade.sharpeRatio || 0).toFixed(2) + '</div></div>';
+  }
+
+  function renderRegimeChart(data) {
+    const regimes = (data.sosoAlpha && data.sosoAlpha.regimePerformance) || {};
+    const labels = Object.keys(regimes);
+    if (labels.length === 0) { document.getElementById('regime-chart').parentElement.innerHTML = '<p style="color:var(--text-3);text-align:center;padding:2rem;">No regime data yet</p>'; return; }
+    const ctx = document.getElementById('regime-chart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels.map(l => l.replace(/_/g, ' ')),
+        datasets: [{
+          label: 'Win Rate %',
+          data: labels.map(l => (regimes[l].winRate * 100).toFixed(0)),
+          backgroundColor: labels.map(l => regimes[l].winRate >= 0.6 ? 'rgba(29,185,84,0.6)' : 'rgba(232,64,74,0.6)'),
+          borderRadius: 6,
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 100, grid: { color: '#1e2535' } }, x: { grid: { display: false } } } }
+    });
+  }
+
+  function renderMonthly(data) {
+    const months = data.monthlyReturns || [];
+    if (months.length === 0) { document.getElementById('monthly-table').innerHTML = '<p style="padding:1rem;color:var(--text-3);">No monthly data yet</p>'; return; }
+    let html = '<table><thead><tr><th>Month</th><th>Trades</th><th>PnL</th><th>Win Rate</th></tr></thead><tbody>';
+    for (const m of months) {
+      const cls = m.pnl >= 0 ? 'positive' : 'negative';
+      html += '<tr><td>' + m.month + '</td><td>' + m.trades + '</td><td class="' + cls + '">$' + m.pnl.toFixed(2) + '</td><td>' + (m.winRate * 100).toFixed(0) + '%</td></tr>';
+    }
+    html += '</tbody></table>';
+    document.getElementById('monthly-table').innerHTML = html;
+  }
+
+  function renderAgentStats(data) {
+    const a = data.agent || {};
+    const items = [
+      { label: 'Agent Cycles', value: a.cycleCount || 0 },
+      { label: 'Farm Win Rate', value: ((a.farmWinRate || 0) * 100).toFixed(0) + '%', cls: 'positive' },
+      { label: 'Trade Win Rate', value: ((a.tradeWinRate || 0) * 100).toFixed(0) + '%', cls: 'positive' },
+      { label: 'Farm PnL', value: '$' + (a.farmPnl || 0).toFixed(2) },
+      { label: 'Trade PnL', value: '$' + (a.tradePnl || 0).toFixed(2) },
+      { label: 'Latency p50', value: (a.latency ? a.latency.p50 : 0) + 'ms' },
+    ];
+    document.getElementById('agent-stats').innerHTML = items.map(i =>
+      '<div class="card"><div class="card-title">' + i.label + '</div><div class="card-value ' + (i.cls || '') + '">' + i.value + '</div></div>'
+    ).join('');
+  }
+  </script>
+</body>
+</html>

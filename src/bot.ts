@@ -10,6 +10,7 @@ import { DashboardServer } from './dashboard/server.js';
 import { loadState, saveStateSync } from './ai/StateStore.js';
 import { loadBotConfigs } from './bot/loadBotConfigs.js';
 import { TenantRegistry } from './bot/TenantRegistry.js';
+import { AgentLayer } from './bot/AgentLayer.js';
 
 const {
     TELEGRAM_BOT_TOKEN,
@@ -55,6 +56,43 @@ async function bootstrap() {
     const restoredCount = await tenantRegistry.restoreAll(telegram);
     console.log(`✅ [TenantRegistry] Restored ${restoredCount} tenant(s) from ./data`);
 
+    // ── Agent Layer: Autonomous Orchestration Brain (Wave 3) ─────────────────
+    const agentLayer = new AgentLayer({
+      cycleIntervalSecs: parseInt(process.env.AGENT_CYCLE_INTERVAL_SECS || '30', 10),
+      exposureCapUsd: parseFloat(process.env.AGENT_EXPOSURE_CAP_USD || '500'),
+      consecutiveLossHalt: parseInt(process.env.AGENT_CONSECUTIVE_LOSS_HALT || '3', 10),
+      lossCooldownMins: parseInt(process.env.AGENT_LOSS_COOLDOWN_MINS || '10', 10),
+      farmCapitalRatio: parseFloat(process.env.AGENT_FARM_CAPITAL_RATIO || '0.6'),
+      tradeMinConfidence: parseFloat(process.env.TRADE_MIN_CONFIDENCE || '0.65'),
+      tradeMaxChopScore: parseFloat(process.env.TRADE_MAX_CHOP_SCORE || '0.6'),
+      dryRun: process.env.AGENT_DRY_RUN === 'true',
+      maxLossUsd: parseFloat(process.env.AGENT_MAX_LOSS_USD || '5'),
+      statePath: process.env.AGENT_STATE_PATH || './agent-state.json',
+    });
+
+    // Initialize Agent with a composite BotManager from all tenants (or first tenant)
+    // The Agent observes all tenant bots for portfolio-level decisions
+    const agentTelegramNotify = async (msg: string) => {
+      await telegram.sendMessage(msg, true).catch(() => {});
+    };
+
+    // Use first tenant's BotManager if available, or create a placeholder
+    const allTenants = tenantRegistry.getAllTenants();
+    const primaryBotManager = allTenants.length > 0
+      ? allTenants[0].botManager
+      : new (await import('./bot/BotManager.js')).BotManager();
+
+    await agentLayer.initialize(primaryBotManager, agentTelegramNotify);
+
+    // Auto-start Agent if not in dry-run or if explicitly enabled
+    if (process.env.AGENT_ENABLED !== 'false') {
+      agentLayer.start();
+      console.log(`🧠 [AgentLayer] Autonomous orchestration started (cycle: ${agentLayer.getConfig().cycleIntervalSecs}s)`);
+    }
+
+    // Register Agent with dashboard for API endpoints
+    dashboardServer.registerAgentLayer(agentLayer);
+
     dashboardServer.start();
 
     console.log(`✅ [SaaS Mode] Dashboard started on port ${dashboardPort}`);
@@ -63,6 +101,7 @@ async function bootstrap() {
     // Graceful shutdown for tenant-only mode
     const shutdown = async (signal: string) => {
         console.log(`\n🛑 [System] ${signal} received. Shutting down all tenants...`);
+        await agentLayer.stop();
         await tenantRegistry.shutdownAll();
         saveStateSync();
         await telegram.sendMessage(`⚠️ *Bot Shutting Down* (${signal}). All operations suspended.`);
