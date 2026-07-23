@@ -91,6 +91,13 @@ export class BotInstance {
     // Wave 3: Set intelligence mode from bot config (default: manual for backward compat)
     this.watcher.intelligenceMode = (config as any).intelligenceMode ?? 'manual';
     console.log(`[BotInstance:${this.id}] Intelligence mode: ${this.watcher.intelligenceMode}`);
+
+    // Reporting context for trade event + balance snapshot collection
+    this.watcher.reportingContext = {
+      botId: this.id,
+      exchange: config.exchange,
+      walletAddress: this.state.walletAddress || undefined,
+    };
     
     // Set symbol in state
     this.state.symbol = config.symbol;
@@ -207,6 +214,36 @@ export class BotInstance {
   }
 
   /**
+   * Pause the bot — stop entering new positions but keep existing positions open.
+   * The Watcher tick loop continues running (monitoring positions, exits) but
+   * skips new entry evaluation while PAUSED.
+   */
+  async pause(): Promise<void> {
+    if (this.state.botStatus !== 'RUNNING') {
+      console.log(`[BotInstance:${this.id}] Cannot pause — not running (status: ${this.state.botStatus})`);
+      return;
+    }
+
+    this.state.botStatus = 'PAUSED';
+    this.state.updatedAt = new Date().toISOString();
+    console.log(`⏸ [BotInstance:${this.id}] Paused — no new entries, positions remain open`);
+  }
+
+  /**
+   * Resume the bot from PAUSED state — return to normal RUNNING operation.
+   */
+  async resume(): Promise<void> {
+    if (this.state.botStatus !== 'PAUSED') {
+      console.log(`[BotInstance:${this.id}] Cannot resume — not paused (status: ${this.state.botStatus})`);
+      return;
+    }
+
+    this.state.botStatus = 'RUNNING';
+    this.state.updatedAt = new Date().toISOString();
+    console.log(`▶ [BotInstance:${this.id}] Resumed — normal operation`);
+  }
+
+  /**
    * Stop the bot
    * Does not force-close open positions
    * @param stopScheduler - If true, also stops the daily reset scheduler (default: false)
@@ -249,6 +286,12 @@ export class BotInstance {
     const efficiencyBps = this.state.sessionVolume > 0 
       ? (this.state.sessionPnl / this.state.sessionVolume) * 10000 
       : 0;
+
+    // COST / $1M = (Fees − PnL) ÷ volume × 1,000,000
+    // Positive = net cost; negative = net profit after fees
+    const costPerMillion = this.state.sessionVolume > 0
+      ? ((this.state.sessionFees - this.state.sessionPnl) / this.state.sessionVolume) * 1_000_000
+      : 0;
     
     const progress = session.maxLoss > 0
       ? Math.min(100, Math.abs(this.state.sessionPnl) / session.maxLoss * 100)
@@ -258,7 +301,7 @@ export class BotInstance {
       id: this.id,
       name: this.config.name,
       exchange: this.config.exchange,
-      status: this.state.botStatus === 'RUNNING' ? 'active' : 'inactive',
+      status: this.state.botStatus === 'RUNNING' ? 'active' : this.state.botStatus === 'PAUSED' ? 'paused' : 'inactive',
       symbol: this.config.symbol,
       tags: this.config.tags,
       // Wave 3: Include mode and intelligenceMode
@@ -270,6 +313,7 @@ export class BotInstance {
       sessionStartBalance: this.state.sessionStartBalance,
       currentBalance: this.state.currentBalance,
       efficiencyBps,
+      costPerMillion,
       walletAddress: this.state.walletAddress,
       uptime,
       hasPosition: this.state.openPosition !== null,

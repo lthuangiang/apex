@@ -1,0 +1,16 @@
+export { getDb, closeDb, getDbPath } from './Database.js';
+export { loadBotState, saveBotState, deleteBotState, listBotStateIds } from './StateRepository.js';
+export type { BotStateRow } from './StateRepository.js';
+export { loadWeights, saveWeights } from './WeightRepository.js';
+export type { WeightRow } from './WeightRepository.js';
+export { loadAgentState, saveAgentState } from './AgentStateRepository.js';
+export type { AgentStateRow } from './AgentStateRepository.js';
+export { insertTradeEvent, getTodaySummary, getTodayByExchange, getTodayByBot, getDailyAggregates, getRecentTrades, getAnalytics } from './TradeEventRepository.js';
+export type { TradeEvent, ReportFilter, TodaySummary, DailyAggregate } from './TradeEventRepository.js';
+export { insertSnapshot, getDailySnapshots, getAllLatestSnapshots, getLatestSnapshot, getEquityHistory, getTotalAum } from './BalanceSnapshotRepository.js';
+export type { BalanceSnapshot, BalanceSnapshotRow, SnapshotTrigger } from './BalanceSnapshotRepository.js';
+export { incrementVolume, getTodayVolume, getTodayVolumeByExchange, getTodayVolumeByBot, getVolumeHistory, getTodayCounters } from './VolumeCounterRepository.js';
+export type { VolumeCounter, VolumeFilter, VolumeSummary } from './VolumeCounterRepository.js';
+export { recordTrade, captureBalance } from './ReportingCollector.js';
+export type { TradeEventInput, BalanceSnapshotInput } from './ReportingCollector.js';
+export { startDailySnapshotScheduler, stopDailySnapshotScheduler, forceSnapshotNow } from './DailySnapshotScheduler.js';

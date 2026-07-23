@@ -1,5 +1,4 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { loadWeights, saveWeights } from '../../db/WeightRepository.js';
 
 export interface SignalWeights {
   ema: number;        // [0.05, 0.60]
@@ -24,7 +23,6 @@ export const DEFAULT_WEIGHTS: SignalWeights = {
   imbalance: 0.15,
 };
 
-const WEIGHTS_FILE = path.join(process.cwd(), 'signal-weights.json');
 const MIN_WEIGHT = 0.05;
 const MAX_WEIGHT = 0.60;
 const SUM_TOLERANCE = 0.001;
@@ -49,77 +47,59 @@ export class WeightStore implements WeightStoreInterface {
     return { ...this.weights };
   }
 
-  /** Update in-memory weights and persist to disk. */
+  /** Update in-memory weights and persist to SQLite. */
   setWeights(w: SignalWeights): void {
     this.weights = { ...w };
     this.saveToDisk();
   }
 
   /**
-   * Load weights from signal-weights.json.
-   * Falls back to DEFAULT_WEIGHTS (with a warning) if the file is missing,
-   * contains invalid JSON, or fails validation. Never throws.
+   * Load weights from SQLite (signal_weights table).
+   * Falls back to DEFAULT_WEIGHTS (with a warning) if loading fails
+   * or validation fails. Never throws.
    */
   loadFromDisk(): void {
-    if (!fs.existsSync(WEIGHTS_FILE)) {
-      this.weights = { ...DEFAULT_WEIGHTS };
-      return;
-    }
-
-    let raw: string;
     try {
-      raw = fs.readFileSync(WEIGHTS_FILE, 'utf-8');
+      const row = loadWeights();
+
+      const candidate: SignalWeights = {
+        ema: row.ema,
+        rsi: row.rsi,
+        momentum: row.momentum,
+        imbalance: row.imbalance,
+        ...(row.updatedAt ? { updatedAt: row.updatedAt } : {}),
+        ...(row.tradeCount ? { tradeCount: row.tradeCount } : {}),
+      };
+
+      if (!validateWeights(candidate)) {
+        console.warn('[WeightStore] SQLite weights failed validation (bad sum or out-of-bounds), using defaults.');
+        this.weights = { ...DEFAULT_WEIGHTS };
+        return;
+      }
+
+      this.weights = candidate;
     } catch (err) {
-      console.warn('[WeightStore] Failed to read signal-weights.json, using defaults:', err);
+      console.warn('[WeightStore] Failed to load weights from SQLite, using defaults:', err);
       this.weights = { ...DEFAULT_WEIGHTS };
-      return;
     }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      console.warn('[WeightStore] signal-weights.json contains invalid JSON, using defaults.');
-      this.weights = { ...DEFAULT_WEIGHTS };
-      return;
-    }
-
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      console.warn('[WeightStore] signal-weights.json has unexpected format, using defaults.');
-      this.weights = { ...DEFAULT_WEIGHTS };
-      return;
-    }
-
-    const candidate = parsed as SignalWeights;
-    if (!validateWeights(candidate)) {
-      console.warn('[WeightStore] signal-weights.json failed validation (bad sum or out-of-bounds weights), using defaults.');
-      this.weights = { ...DEFAULT_WEIGHTS };
-      return;
-    }
-
-    this.weights = {
-      ema: candidate.ema,
-      rsi: candidate.rsi,
-      momentum: candidate.momentum,
-      imbalance: candidate.imbalance,
-      ...(candidate.updatedAt !== undefined ? { updatedAt: candidate.updatedAt } : {}),
-      ...(candidate.tradeCount !== undefined ? { tradeCount: candidate.tradeCount } : {}),
-    };
   }
 
   /**
-   * Atomically persist current weights to signal-weights.json via a .tmp rename.
+   * Persist current weights to SQLite.
    * Logs error on failure but does not throw.
    */
   saveToDisk(): void {
-    const tmpFile = WEIGHTS_FILE + '.tmp';
     try {
-      fs.writeFileSync(tmpFile, JSON.stringify(this.weights, null, 2), 'utf-8');
-      fs.renameSync(tmpFile, WEIGHTS_FILE);
+      saveWeights({
+        ema: this.weights.ema,
+        rsi: this.weights.rsi,
+        momentum: this.weights.momentum,
+        imbalance: this.weights.imbalance,
+        updatedAt: this.weights.updatedAt ?? null,
+        tradeCount: this.weights.tradeCount ?? 0,
+      });
     } catch (err) {
-      console.error('[WeightStore] Failed to save signal-weights.json:', err);
-      // Clean up orphaned .tmp if rename failed
-      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+      console.error('[WeightStore] Failed to save weights to SQLite:', err);
     }
   }
 }

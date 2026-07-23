@@ -5,20 +5,21 @@ import { TradeLogger } from '../ai/TradeLogger.js';
 import { AISignalEngine } from '../ai/AISignalEngine.js';
 import { VolumeMonitor } from './VolumeMonitor.js';
 import { createBotSharedState, logEvent } from './BotSharedState.js';
-import type { HedgeBotConfig } from './types.js';
-import type { HedgeBotSharedState, HedgeBotStatus, ActiveLegPair } from './HedgeBotSharedState.js';
+import type { PairBotConfig } from './types.js';
+import type { PairBotSharedState, PairBotStatus, ActiveLegPair } from './PairBotSharedState.js';
+import { recordTrade } from '../db/ReportingCollector.js';
 import {
   assignDirections,
   evaluateExitConditions,
   computeCombinedPnl,
   computeLegSize,
   checkLegImbalance,
-  buildHedgeTradeRecord,
-} from './hedgeBotHelpers.js';
-import type { CompletedTrade, ExitReason } from './hedgeBotHelpers.js';
+  buildPairTradeRecord,
+} from './pairBotHelpers.js';
+import type { CompletedTrade, ExitReason } from './pairBotHelpers.js';
 
 /**
- * HedgeBot — Correlation Hedging Bot
+ * PairBot — Correlation Pair Trading Bot
  *
  * Trades two correlated assets (e.g. BTC and ETH) simultaneously on the same
  * exchange in opposite directions. One leg goes long while the other goes short,
@@ -29,10 +30,10 @@ import type { CompletedTrade, ExitReason } from './hedgeBotHelpers.js';
  *
  * Requirements: 2.1, 2.2, 2.3, 2.5
  */
-export class HedgeBot {
+export class PairBot {
   readonly id: string;
-  readonly config: HedgeBotConfig;
-  readonly state: HedgeBotSharedState;
+  readonly config: PairBotConfig;
+  readonly state: PairBotSharedState;
 
   private adapter: ExchangeAdapter;
   private telegram: TelegramManager;
@@ -75,7 +76,7 @@ export class HedgeBot {
   private _cooldownStartMs: number | null = null;
 
   constructor(
-    config: HedgeBotConfig,
+    config: PairBotConfig,
     adapter: ExchangeAdapter,
     telegram: TelegramManager,
   ) {
@@ -115,7 +116,7 @@ export class HedgeBot {
   }
 
   /**
-   * Start the HedgeBot.
+   * Start the PairBot.
    * Sets botStatus to RUNNING and launches the tick loop in the background.
    * Returns true if started successfully, false if already running.
    *
@@ -123,7 +124,7 @@ export class HedgeBot {
    */
   async start(): Promise<boolean> {
     if (this.state.botStatus === 'RUNNING') {
-      console.log(`[HedgeBot:${this.id}] Already running`);
+      console.log(`[PairBot:${this.id}] Already running`);
       return false;
     }
 
@@ -132,11 +133,11 @@ export class HedgeBot {
     this._running = true;
     this._startTime = Date.now();
 
-    console.log(`✅ [HedgeBot:${this.id}] Started`);
+    console.log(`✅ [PairBot:${this.id}] Started`);
 
     // Launch tick loop in background — do not await
     this._runTickLoop().catch((err) => {
-      console.error(`[HedgeBot:${this.id}] Tick loop crashed:`, err);
+      console.error(`[PairBot:${this.id}] Tick loop crashed:`, err);
       this.state.botStatus = 'STOPPED';
       this.state.updatedAt = new Date().toISOString();
       this._running = false;
@@ -146,14 +147,14 @@ export class HedgeBot {
   }
 
   /**
-   * Stop the HedgeBot.
+   * Stop the PairBot.
    * Sets botStatus to STOPPED and stops the tick loop.
    * Logs a warning if a hedge position is still open.
    *
    * Requirements: 2.1, 2.3
    */
   async stop(): Promise<void> {
-    console.log(`[HedgeBot:${this.id}] Stopping...`);
+    console.log(`[PairBot:${this.id}] Stopping...`);
 
     this._running = false;
     this.state.botStatus = 'STOPPED';
@@ -163,21 +164,51 @@ export class HedgeBot {
     if (this.state.hedgePosition !== null) {
       const { legA, legB } = this.state.hedgePosition;
       console.warn(
-        `[HedgeBot:${this.id}] WARNING: Stopped with active LegPair. ` +
+        `[PairBot:${this.id}] WARNING: Stopped with active LegPair. ` +
           `Positions remain open: ${legA.symbol} ${legA.side}, ${legB.symbol} ${legB.side}`,
       );
     }
 
-    console.log(`✅ [HedgeBot:${this.id}] Stopped`);
+    console.log(`✅ [PairBot:${this.id}] Stopped`);
+  }
+
+  /**
+   * Pause the PairBot — stop entering new positions but keep existing positions open.
+   * The tick loop continues running (monitoring positions, exits) but
+   * _tickIdle() returns early while PAUSED.
+   */
+  async pause(): Promise<void> {
+    if (this.state.botStatus !== 'RUNNING') {
+      console.log(`[PairBot:${this.id}] Cannot pause — not running (status: ${this.state.botStatus})`);
+      return;
+    }
+
+    this.state.botStatus = 'PAUSED';
+    this.state.updatedAt = new Date().toISOString();
+    console.log(`⏸ [PairBot:${this.id}] Paused — no new entries, positions remain open`);
+  }
+
+  /**
+   * Resume the PairBot from PAUSED state — return to normal RUNNING operation.
+   */
+  async resume(): Promise<void> {
+    if (this.state.botStatus !== 'PAUSED') {
+      console.log(`[PairBot:${this.id}] Cannot resume — not paused (status: ${this.state.botStatus})`);
+      return;
+    }
+
+    this.state.botStatus = 'RUNNING';
+    this.state.updatedAt = new Date().toISOString();
+    console.log(`▶ [PairBot:${this.id}] Resumed — normal operation`);
   }
 
   /**
    * Get current bot status for API/dashboard.
-   * Returns a HedgeBotStatus object compatible with BotStatus plus hedgePosition.
+   * Returns a PairBotStatus object compatible with BotStatus plus hedgePosition.
    *
    * Requirements: 2.2
    */
-  getStatus(): HedgeBotStatus {
+  getStatus(): PairBotStatus {
     const uptime = this._startTime
       ? Math.floor((Date.now() - this._startTime) / 60000)
       : 0;
@@ -187,6 +218,12 @@ export class HedgeBot {
         ? (this.state.sessionPnl / this.state.sessionVolume) * 10000
         : 0;
 
+    // COST / $1M = (Fees − PnL) ÷ volume × 1,000,000
+    const costPerMillion =
+      this.state.sessionVolume > 0
+        ? ((this.state.sessionFees - this.state.sessionPnl) / this.state.sessionVolume) * 1_000_000
+        : 0;
+
     // progress: 0-100, based on max loss exposure (mirrors BotInstance pattern)
     const progress = 0;
 
@@ -194,13 +231,14 @@ export class HedgeBot {
       id: this.id,
       name: this.config.name,
       exchange: this.config.exchange,
-      status: this.state.botStatus === 'RUNNING' ? 'active' : 'inactive',
+      status: this.state.botStatus === 'RUNNING' ? 'active' : this.state.botStatus === 'PAUSED' ? 'paused' : 'inactive',
       symbol: `${this.config.symbolA}/${this.config.symbolB}`,
       tags: this.config.tags,
       sessionPnl: this.state.sessionPnl,
       sessionVolume: this.state.sessionVolume,
       sessionFees: this.state.sessionFees,
       efficiencyBps,
+      costPerMillion,
       walletAddress: this.state.walletAddress,
       uptime,
       hasPosition: this.state.hedgePosition !== null,
@@ -220,7 +258,7 @@ export class HedgeBot {
    * IDLE state uses a longer interval (15s) to reduce API rate pressure.
    */
   private async _runTickLoop(): Promise<void> {
-    while (this._running && this.state.botStatus === 'RUNNING') {
+    while (this._running && (this.state.botStatus === 'RUNNING' || this.state.botStatus === 'PAUSED')) {
       await this._tick();
       // Use longer sleep in IDLE to reduce rate limit pressure from volume sampling.
       // WAITING_FILL uses short interval to detect fills quickly.
@@ -274,11 +312,16 @@ export class HedgeBot {
   // ---------------------------------------------------------------------------
 
   private async _tickIdle(): Promise<void> {
+    // PAUSED: skip new entry evaluation — keep tick loop running for monitoring
+    if (this.state.botStatus === 'PAUSED') {
+      return;
+    }
+
     // Sample volume — skip tick on error (Requirement 3.6, 4.5)
     try {
       await this.volumeMonitor.sample();
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] Volume sample failed — skipping tick:`, err);
+      console.warn(`[PairBot:${this.id}] Volume sample failed — skipping tick:`, err);
       return;
     }
 
@@ -299,7 +342,7 @@ export class HedgeBot {
       ]);
     } catch (err) {
       // Requirement 4.5: skip entry on signal engine error
-      console.error(`[HedgeBot:${this.id}] Signal engine error — skipping entry:`, err);
+      console.error(`[PairBot:${this.id}] Signal engine error — skipping entry:`, err);
       logEvent(this.id, this.state, 'ERROR', `Signal engine error: ${String(err)}`);
       return;
     }
@@ -314,7 +357,7 @@ export class HedgeBot {
 
     if (directions === null) {
       // Requirement 4.4: skip when both skip or scores are equal
-      console.log(`[HedgeBot:${this.id}] Direction assignment returned null — skipping entry (scores: A=${signalA.score.toFixed(4)}, B=${signalB.score.toFixed(4)})`);
+      console.log(`[PairBot:${this.id}] Direction assignment returned null — skipping entry (scores: A=${signalA.score.toFixed(4)}, B=${signalB.score.toFixed(4)})`);
       logEvent(this.id, this.state, 'INFO', `Entry skipped: scores too close (A=${signalA.score.toFixed(4)}, B=${signalB.score.toFixed(4)})`);
       return;
     }
@@ -347,7 +390,7 @@ export class HedgeBot {
 
   private async _tickOpening(): Promise<void> {
     if (!this._openingContext) {
-      console.error(`[HedgeBot:${this.id}] OPENING state with no context — returning to IDLE`);
+      console.error(`[PairBot:${this.id}] OPENING state with no context — returning to IDLE`);
       this.state.hedgeBotState = 'IDLE';
       return;
     }
@@ -364,19 +407,19 @@ export class HedgeBot {
         this.adapter.get_open_orders(this.config.symbolB),
       ]);
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] Failed to check open orders in OPENING — skipping tick:`, err);
+      console.warn(`[PairBot:${this.id}] Failed to check open orders in OPENING — skipping tick:`, err);
       return;
     }
 
     if (openOrdersA.length > 0 || openOrdersB.length > 0) {
-      console.log(`[HedgeBot:${this.id}] OPENING: found stale open orders (A=${openOrdersA.length}, B=${openOrdersB.length}) — cancelling this tick`);
+      console.log(`[PairBot:${this.id}] OPENING: found stale open orders (A=${openOrdersA.length}, B=${openOrdersB.length}) — cancelling this tick`);
       try {
         await Promise.all([
           openOrdersA.length > 0 ? this.adapter.cancel_all_orders(this.config.symbolA) : Promise.resolve(true),
           openOrdersB.length > 0 ? this.adapter.cancel_all_orders(this.config.symbolB) : Promise.resolve(true),
         ]);
       } catch (err) {
-        console.warn(`[HedgeBot:${this.id}] Failed to cancel stale orders in OPENING:`, err);
+        console.warn(`[PairBot:${this.id}] Failed to cancel stale orders in OPENING:`, err);
       }
       return; // next tick will place fresh orders
     }
@@ -391,7 +434,7 @@ export class HedgeBot {
         this.adapter.get_mark_price(this.config.symbolB),
       ]);
     } catch (err) {
-      console.error(`[HedgeBot:${this.id}] Failed to fetch mark prices — returning to IDLE:`, err);
+      console.error(`[PairBot:${this.id}] Failed to fetch mark prices — returning to IDLE:`, err);
       logEvent(this.id, this.state, 'ERROR', `Mark price fetch failed: ${String(err)}`);
       this._openingContext = null;
       this.state.hedgeBotState = 'IDLE';
@@ -411,7 +454,7 @@ export class HedgeBot {
         this.adapter.get_position(this.config.symbolB, markPriceB),
       ]);
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] Failed to check existing positions in OPENING — skipping tick:`, err);
+      console.warn(`[PairBot:${this.id}] Failed to check existing positions in OPENING — skipping tick:`, err);
       return;
     }
 
@@ -421,7 +464,7 @@ export class HedgeBot {
     // If both legs are already filled, skip order placement and go straight to WAITING_FILL.
     // _tickWaitingFill will detect both positions and transition to IN_PAIR.
     if (legAFilled && legBFilled) {
-      console.log(`[HedgeBot:${this.id}] OPENING: both legs already filled — transitioning to WAITING_FILL without placing orders`);
+      console.log(`[PairBot:${this.id}] OPENING: both legs already filled — transitioning to WAITING_FILL without placing orders`);
       logEvent(this.id, this.state, 'INFO', `Both legs already filled — skipping order placement, transitioning to WAITING_FILL`);
       this._openingContext.waitingFillStartMs = Date.now();
       this.state.hedgeBotState = 'WAITING_FILL';
@@ -460,7 +503,7 @@ export class HedgeBot {
           errorA = results[0].reason;
         }
       } else {
-        console.log(`[HedgeBot:${this.id}] OPENING: leg A (${this.config.symbolA}) already filled — skipping order placement`);
+        console.log(`[PairBot:${this.id}] OPENING: leg A (${this.config.symbolA}) already filled — skipping order placement`);
       }
 
       if (!legBFilled) {
@@ -470,10 +513,10 @@ export class HedgeBot {
           errorB = results[1].reason;
         }
       } else {
-        console.log(`[HedgeBot:${this.id}] OPENING: leg B (${this.config.symbolB}) already filled — skipping order placement`);
+        console.log(`[PairBot:${this.id}] OPENING: leg B (${this.config.symbolB}) already filled — skipping order placement`);
       }
     } catch (err) {
-      console.error(`[HedgeBot:${this.id}] Unexpected error during leg placement:`, err);
+      console.error(`[PairBot:${this.id}] Unexpected error during leg placement:`, err);
       this._openingContext = null;
       this.state.hedgeBotState = 'IDLE';
       return;
@@ -482,24 +525,24 @@ export class HedgeBot {
     // Requirement 5.4: if one leg failed, cancel the successful one
     if (errorA !== null || errorB !== null) {
       const failedLegs = [errorA, errorB].filter(Boolean);
-      console.error(`[HedgeBot:${this.id}] Leg placement failed (${failedLegs.length} leg(s)):`, errorA ?? errorB);
+      console.error(`[PairBot:${this.id}] Leg placement failed (${failedLegs.length} leg(s)):`, errorA ?? errorB);
       logEvent(this.id, this.state, 'ERROR', `Leg placement failed — cancelling and returning to IDLE`);
 
       // Cancel whichever leg succeeded (only newly placed orders, not pre-existing positions)
       if (orderIdA !== null) {
         try {
           await this.adapter.cancel_order(orderIdA, this.config.symbolA);
-          console.log(`[HedgeBot:${this.id}] Cancelled leg A order ${orderIdA}`);
+          console.log(`[PairBot:${this.id}] Cancelled leg A order ${orderIdA}`);
         } catch (cancelErr) {
-          console.error(`[HedgeBot:${this.id}] Failed to cancel leg A order ${orderIdA}:`, cancelErr);
+          console.error(`[PairBot:${this.id}] Failed to cancel leg A order ${orderIdA}:`, cancelErr);
         }
       }
       if (orderIdB !== null) {
         try {
           await this.adapter.cancel_order(orderIdB, this.config.symbolB);
-          console.log(`[HedgeBot:${this.id}] Cancelled leg B order ${orderIdB}`);
+          console.log(`[PairBot:${this.id}] Cancelled leg B order ${orderIdB}`);
         } catch (cancelErr) {
-          console.error(`[HedgeBot:${this.id}] Failed to cancel leg B order ${orderIdB}:`, cancelErr);
+          console.error(`[PairBot:${this.id}] Failed to cancel leg B order ${orderIdB}:`, cancelErr);
         }
       }
 
@@ -520,7 +563,7 @@ export class HedgeBot {
       'INFO',
       `Orders placed: A=${this.config.symbolA} ${sideA} ${placedA}, B=${this.config.symbolB} ${sideB} ${placedB}`,
     );
-    console.log(`[HedgeBot:${this.id}] Orders placed — waiting for fill`);
+    console.log(`[PairBot:${this.id}] Orders placed — waiting for fill`);
     this._openingContext.waitingFillStartMs = Date.now();
     this.state.hedgeBotState = 'WAITING_FILL';
   }
@@ -538,7 +581,7 @@ export class HedgeBot {
 
   private async _tickWaitingFill(): Promise<void> {
     if (!this._openingContext) {
-      console.error(`[HedgeBot:${this.id}] WAITING_FILL state with no context — cancelling and returning to IDLE`);
+      console.error(`[PairBot:${this.id}] WAITING_FILL state with no context — cancelling and returning to IDLE`);
       try {
         await Promise.all([
           this.adapter.cancel_all_orders(this.config.symbolA),
@@ -561,7 +604,7 @@ export class HedgeBot {
         this.adapter.get_mark_price(this.config.symbolB),
       ]);
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] WAITING_FILL: failed to fetch mark prices — retrying next tick:`, err);
+      console.warn(`[PairBot:${this.id}] WAITING_FILL: failed to fetch mark prices — retrying next tick:`, err);
       return;
     }
 
@@ -574,7 +617,7 @@ export class HedgeBot {
         this.adapter.get_position(this.config.symbolB, markPriceB),
       ]);
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] WAITING_FILL: failed to query positions — retrying next tick:`, err);
+      console.warn(`[PairBot:${this.id}] WAITING_FILL: failed to query positions — retrying next tick:`, err);
       return;
     }
 
@@ -587,7 +630,7 @@ export class HedgeBot {
         this.adapter.get_open_orders(this.config.symbolB),
       ]);
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] WAITING_FILL: failed to query open orders — retrying next tick:`, err);
+      console.warn(`[PairBot:${this.id}] WAITING_FILL: failed to query open orders — retrying next tick:`, err);
       return;
     }
 
@@ -601,14 +644,14 @@ export class HedgeBot {
       const sideA = ctx.longSymbol === this.config.symbolA ? 'buy' : 'sell';
       const sideB = ctx.longSymbol === this.config.symbolB ? 'buy' : 'sell';
 
-      const legA: import('./HedgeBotSharedState.js').LegState = {
+      const legA: import('./PairBotSharedState.js').LegState = {
         symbol: this.config.symbolA,
         side: sideA === 'buy' ? 'long' : 'short',
         size: posA!.size,
         entryPrice: posA!.entryPrice,
         unrealizedPnl: posA!.unrealizedPnl,
       };
-      const legB: import('./HedgeBotSharedState.js').LegState = {
+      const legB: import('./PairBotSharedState.js').LegState = {
         symbol: this.config.symbolB,
         side: sideB === 'buy' ? 'long' : 'short',
         size: posB!.size,
@@ -629,7 +672,7 @@ export class HedgeBot {
 
       logEvent(this.id, this.state, 'INFO',
         `Both legs filled: A=${this.config.symbolA} ${sideA} ${posA!.size}@${posA!.entryPrice}, B=${this.config.symbolB} ${sideB} ${posB!.size}@${posB!.entryPrice}`);
-      console.log(`✅ [HedgeBot:${this.id}] Both legs filled — entering IN_PAIR`);
+      console.log(`✅ [PairBot:${this.id}] Both legs filled — entering IN_PAIR`);
       this.state.hedgeBotState = 'IN_PAIR';
       return;
     }
@@ -637,49 +680,49 @@ export class HedgeBot {
     // ── Case 1: one filled, one rejected (not filled AND not pending) ─────────
     // The rejected leg needs to be re-placed this tick.
     if (filledA && !filledB && !pendingB) {
-      console.log(`[HedgeBot:${this.id}] WAITING_FILL Case 1: A filled, B rejected — re-placing B`);
+      console.log(`[PairBot:${this.id}] WAITING_FILL Case 1: A filled, B rejected — re-placing B`);
       const sideB = ctx.longSymbol === this.config.symbolB ? 'buy' : 'sell';
       const sizeB = computeLegSize(this.config.legValueUsd, markPriceB);
       try {
         await this.adapter.place_limit_order(this.config.symbolB, sideB, markPriceB, sizeB);
-        console.log(`[HedgeBot:${this.id}] Re-placed leg B: ${sideB} ${sizeB} @ ${markPriceB}`);
+        console.log(`[PairBot:${this.id}] Re-placed leg B: ${sideB} ${sizeB} @ ${markPriceB}`);
       } catch (err) {
-        console.error(`[HedgeBot:${this.id}] Failed to re-place leg B:`, err);
+        console.error(`[PairBot:${this.id}] Failed to re-place leg B:`, err);
       }
       return;
     }
 
     if (filledB && !filledA && !pendingA) {
-      console.log(`[HedgeBot:${this.id}] WAITING_FILL Case 1: B filled, A rejected — re-placing A`);
+      console.log(`[PairBot:${this.id}] WAITING_FILL Case 1: B filled, A rejected — re-placing A`);
       const sideA = ctx.longSymbol === this.config.symbolA ? 'buy' : 'sell';
       const sizeA = computeLegSize(this.config.legValueUsd, markPriceA);
       try {
         await this.adapter.place_limit_order(this.config.symbolA, sideA, markPriceA, sizeA);
-        console.log(`[HedgeBot:${this.id}] Re-placed leg A: ${sideA} ${sizeA} @ ${markPriceA}`);
+        console.log(`[PairBot:${this.id}] Re-placed leg A: ${sideA} ${sizeA} @ ${markPriceA}`);
       } catch (err) {
-        console.error(`[HedgeBot:${this.id}] Failed to re-place leg A:`, err);
+        console.error(`[PairBot:${this.id}] Failed to re-place leg A:`, err);
       }
       return;
     }
 
     // ── Case 2 & 3: pending orders — check timeout ────────────────────────────
-    const timedOut = elapsedMs >= HedgeBot.FILL_TIMEOUT_MS;
+    const timedOut = elapsedMs >= PairBot.FILL_TIMEOUT_MS;
 
     if (!timedOut) {
       // Still within timeout — keep waiting
-      const remaining = Math.ceil((HedgeBot.FILL_TIMEOUT_MS - elapsedMs) / 1000);
+      const remaining = Math.ceil((PairBot.FILL_TIMEOUT_MS - elapsedMs) / 1000);
       if (filledA && pendingB) {
-        console.log(`[HedgeBot:${this.id}] WAITING_FILL Case 2: A filled, B pending — waiting (${remaining}s left)`);
+        console.log(`[PairBot:${this.id}] WAITING_FILL Case 2: A filled, B pending — waiting (${remaining}s left)`);
       } else if (filledB && pendingA) {
-        console.log(`[HedgeBot:${this.id}] WAITING_FILL Case 2: B filled, A pending — waiting (${remaining}s left)`);
+        console.log(`[PairBot:${this.id}] WAITING_FILL Case 2: B filled, A pending — waiting (${remaining}s left)`);
       } else {
-        console.log(`[HedgeBot:${this.id}] WAITING_FILL Case 3: both pending — waiting (${remaining}s left)`);
+        console.log(`[PairBot:${this.id}] WAITING_FILL Case 3: both pending — waiting (${remaining}s left)`);
       }
       return;
     }
 
     // Timeout reached — cancel all pending orders, go back to OPENING for retry
-    console.warn(`[HedgeBot:${this.id}] WAITING_FILL: fill timeout (${HedgeBot.FILL_TIMEOUT_MS / 1000}s) — cancelling pending orders`);
+    console.warn(`[PairBot:${this.id}] WAITING_FILL: fill timeout (${PairBot.FILL_TIMEOUT_MS / 1000}s) — cancelling pending orders`);
     logEvent(this.id, this.state, 'WARN', `Fill timeout — cancelling pending orders and retrying`);
 
     try {
@@ -688,7 +731,7 @@ export class HedgeBot {
         pendingB ? this.adapter.cancel_all_orders(this.config.symbolB) : Promise.resolve(true),
       ]);
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] Failed to cancel pending orders on timeout:`, err);
+      console.warn(`[PairBot:${this.id}] Failed to cancel pending orders on timeout:`, err);
     }
 
     // Reset waitingFillStartMs so next OPENING tick starts fresh
@@ -705,7 +748,7 @@ export class HedgeBot {
 
   private async _tickInPair(): Promise<void> {
     if (!this.state.hedgePosition) {
-      console.error(`[HedgeBot:${this.id}] IN_PAIR state with no hedgePosition — returning to IDLE`);
+      console.error(`[PairBot:${this.id}] IN_PAIR state with no hedgePosition — returning to IDLE`);
       this.state.hedgeBotState = 'IDLE';
       return;
     }
@@ -714,7 +757,7 @@ export class HedgeBot {
     try {
       await this.adapter.get_balance();
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] get_balance failed:`, err);
+      console.warn(`[PairBot:${this.id}] get_balance failed:`, err);
     }
 
     // Fetch current positions for both symbols (Requirement 6.1, 8.3)
@@ -726,7 +769,7 @@ export class HedgeBot {
         this.adapter.get_mark_price(this.config.symbolB),
       ]);
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] Failed to fetch mark prices in IN_PAIR:`, err);
+      console.warn(`[PairBot:${this.id}] Failed to fetch mark prices in IN_PAIR:`, err);
       return;
     }
 
@@ -738,7 +781,7 @@ export class HedgeBot {
         this.adapter.get_position(this.config.symbolB, markPriceB),
       ]);
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] Failed to fetch positions in IN_PAIR:`, err);
+      console.warn(`[PairBot:${this.id}] Failed to fetch positions in IN_PAIR:`, err);
       return;
     }
 
@@ -794,7 +837,7 @@ export class HedgeBot {
         'INFO',
         `Exit triggered: reason=${exitResult.reason}, combinedPnl=${combinedPnl.toFixed(4)}`,
       );
-      console.log(`[HedgeBot:${this.id}] Exit triggered: ${exitResult.reason} (pnl=${combinedPnl.toFixed(4)})`);
+      console.log(`[PairBot:${this.id}] Exit triggered: ${exitResult.reason} (pnl=${combinedPnl.toFixed(4)})`);
       this.state.hedgeBotState = 'CLOSING';
     }
   }
@@ -806,7 +849,7 @@ export class HedgeBot {
 
   private async _tickClosing(): Promise<void> {
     if (!this.state.hedgePosition) {
-      console.error(`[HedgeBot:${this.id}] CLOSING state with no hedgePosition — returning to IDLE`);
+      console.error(`[PairBot:${this.id}] CLOSING state with no hedgePosition — returning to IDLE`);
       this.state.hedgeBotState = 'IDLE';
       return;
     }
@@ -822,7 +865,7 @@ export class HedgeBot {
         this.adapter.get_mark_price(this.config.symbolB),
       ]);
     } catch (err) {
-      console.error(`[HedgeBot:${this.id}] Failed to fetch mark prices for close — retrying next tick:`, err);
+      console.error(`[PairBot:${this.id}] Failed to fetch mark prices for close — retrying next tick:`, err);
       return;
     }
 
@@ -836,7 +879,7 @@ export class HedgeBot {
         this.adapter.get_position(this.config.symbolB, markPriceB),
       ]);
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] Failed to query current positions for close — retrying next tick:`, err);
+      console.warn(`[PairBot:${this.id}] Failed to query current positions for close — retrying next tick:`, err);
       return;
     }
 
@@ -844,7 +887,7 @@ export class HedgeBot {
     const flatB = currentPosB === null || currentPosB.size === 0;
 
     if (flatA && flatB) {
-      console.log(`[HedgeBot:${this.id}] Both positions already flat — completing close`);
+      console.log(`[PairBot:${this.id}] Both positions already flat — completing close`);
       await this._completeClose(pair, markPriceA, markPriceB);
       return;
     }
@@ -859,19 +902,19 @@ export class HedgeBot {
         this.adapter.get_open_orders(this.config.symbolB),
       ]);
     } catch (err) {
-      console.warn(`[HedgeBot:${this.id}] Failed to check open orders in CLOSING — skipping tick:`, err);
+      console.warn(`[PairBot:${this.id}] Failed to check open orders in CLOSING — skipping tick:`, err);
       return;
     }
 
     if (openOrdersA.length > 0 || openOrdersB.length > 0) {
-      console.log(`[HedgeBot:${this.id}] CLOSING: found stale open orders (A=${openOrdersA.length}, B=${openOrdersB.length}) — cancelling this tick`);
+      console.log(`[PairBot:${this.id}] CLOSING: found stale open orders (A=${openOrdersA.length}, B=${openOrdersB.length}) — cancelling this tick`);
       try {
         await Promise.all([
           openOrdersA.length > 0 ? this.adapter.cancel_all_orders(this.config.symbolA) : Promise.resolve(true),
           openOrdersB.length > 0 ? this.adapter.cancel_all_orders(this.config.symbolB) : Promise.resolve(true),
         ]);
       } catch (err) {
-        console.warn(`[HedgeBot:${this.id}] Failed to cancel stale orders in CLOSING:`, err);
+        console.warn(`[PairBot:${this.id}] Failed to cancel stale orders in CLOSING:`, err);
       }
       return; // next tick will place fresh close orders
     }
@@ -909,28 +952,28 @@ export class HedgeBot {
       const closeSideA: 'buy' | 'sell' = currentPosA.side === 'long' ? 'sell' : 'buy';
       const notionalA = currentPosA.size * markPriceA;
       if (notionalA < MIN_CLOSE_NOTIONAL_USD) {
-        console.warn(`[HedgeBot:${this.id}] Leg A notional too small ($${notionalA.toFixed(2)}) — treating as dust, skipping close`);
+        console.warn(`[PairBot:${this.id}] Leg A notional too small ($${notionalA.toFixed(2)}) — treating as dust, skipping close`);
         // Treat as flat — dust position, not worth closing
       } else {
-        console.log(`[HedgeBot:${this.id}] Closing leg A: ${this.config.symbolA} ${closeSideA} ${currentPosA.size} (notional $${notionalA.toFixed(2)})`);
+        console.log(`[PairBot:${this.id}] Closing leg A: ${this.config.symbolA} ${closeSideA} ${currentPosA.size} (notional $${notionalA.toFixed(2)})`);
         closeTasks.push(placeCloseOrder(this.config.symbolA, closeSideA, currentPosA.size, markPriceA));
       }
     } else if (flatA) {
-      console.log(`[HedgeBot:${this.id}] Leg A (${this.config.symbolA}) already flat — skipping`);
+      console.log(`[PairBot:${this.id}] Leg A (${this.config.symbolA}) already flat — skipping`);
     }
 
     if (!flatB && currentPosB) {
       const closeSideB: 'buy' | 'sell' = currentPosB.side === 'long' ? 'sell' : 'buy';
       const notionalB = currentPosB.size * markPriceB;
       if (notionalB < MIN_CLOSE_NOTIONAL_USD) {
-        console.warn(`[HedgeBot:${this.id}] Leg B notional too small ($${notionalB.toFixed(2)}) — treating as dust, skipping close`);
+        console.warn(`[PairBot:${this.id}] Leg B notional too small ($${notionalB.toFixed(2)}) — treating as dust, skipping close`);
         // Treat as flat — dust position, not worth closing
       } else {
-        console.log(`[HedgeBot:${this.id}] Closing leg B: ${this.config.symbolB} ${closeSideB} ${currentPosB.size} (notional $${notionalB.toFixed(2)})`);
+        console.log(`[PairBot:${this.id}] Closing leg B: ${this.config.symbolB} ${closeSideB} ${currentPosB.size} (notional $${notionalB.toFixed(2)})`);
         closeTasks.push(placeCloseOrder(this.config.symbolB, closeSideB, currentPosB.size, markPriceB));
       }
     } else if (flatB) {
-      console.log(`[HedgeBot:${this.id}] Leg B (${this.config.symbolB}) already flat — skipping`);
+      console.log(`[PairBot:${this.id}] Leg B (${this.config.symbolB}) already flat — skipping`);
     }
 
     if (closeTasks.length === 0) {
@@ -943,17 +986,17 @@ export class HedgeBot {
       await Promise.all(closeTasks);
     } catch (err) {
       // Requirement 7.3, 9.4: persistent failure — log critical, alert via Telegram, remain in CLOSING
-      console.error(`[HedgeBot:${this.id}] CRITICAL: Failed to close positions after retries:`, err);
+      console.error(`[PairBot:${this.id}] CRITICAL: Failed to close positions after retries:`, err);
       logEvent(this.id, this.state, 'ERROR', `CRITICAL: Close orders failed after retries: ${String(err)}`);
 
       // Alert via Telegram if enabled
       if (this.telegram.isEnabled()) {
         try {
           await this.telegram.sendMessage(
-            `🚨 [HedgeBot:${this.id}] CRITICAL: Failed to close positions after retries. Manual intervention required!`,
+            `🚨 [PairBot:${this.id}] CRITICAL: Failed to close positions after retries. Manual intervention required!`,
           );
         } catch (tgErr) {
-          console.error(`[HedgeBot:${this.id}] Telegram alert failed:`, tgErr);
+          console.error(`[PairBot:${this.id}] Telegram alert failed:`, tgErr);
         }
       }
 
@@ -974,13 +1017,13 @@ export class HedgeBot {
         if (!confirmedFlatB) confirmedFlatB = posB === null || posB.size === 0;
         if (confirmedFlatA && confirmedFlatB) break;
       } catch (err) {
-        console.warn(`[HedgeBot:${this.id}] Position poll ${poll + 1}/5 failed:`, err);
+        console.warn(`[PairBot:${this.id}] Position poll ${poll + 1}/5 failed:`, err);
       }
       if (poll < 4) await this._sleep(1000);
     }
 
     if (!confirmedFlatA || !confirmedFlatB) {
-      console.warn(`[HedgeBot:${this.id}] Positions not confirmed flat after 5 polls (flatA=${confirmedFlatA}, flatB=${confirmedFlatB})`);
+      console.warn(`[PairBot:${this.id}] Positions not confirmed flat after 5 polls (flatA=${confirmedFlatA}, flatB=${confirmedFlatB})`);
       logEvent(this.id, this.state, 'WARN', `Positions not confirmed flat after 5 polls`);
       // Remain in CLOSING — will retry on next tick with fresh position query
       return;
@@ -993,7 +1036,7 @@ export class HedgeBot {
    * Finalize a completed close: log trade record, update session stats, transition to COOLDOWN.
    */
   private async _completeClose(
-    pair: import('./HedgeBotSharedState.js').ActiveLegPair,
+    pair: import('./PairBotSharedState.js').ActiveLegPair,
     markPriceA: number,
     markPriceB: number,
   ): Promise<void> {
@@ -1041,7 +1084,7 @@ export class HedgeBot {
       shortSymbol: this._openingContext?.shortSymbol ?? this.config.symbolB,
     };
 
-    const tradeRecord = buildHedgeTradeRecord(completedTrade);
+    const tradeRecord = buildPairTradeRecord(completedTrade);
 
     // Log via TradeLogger (Requirement 9.1)
     // TradeLogger.log() expects a TradeRecord — we write the hedge record as JSON directly
@@ -1052,7 +1095,7 @@ export class HedgeBot {
         JSON.stringify(tradeRecord) + '\n',
       );
     } catch (err) {
-      console.error(`[HedgeBot:${this.id}] Failed to write trade log:`, err);
+      console.error(`[PairBot:${this.id}] Failed to write trade log:`, err);
     }
 
     // Requirement 9.4: update sessionPnl and sessionVolume
@@ -1060,13 +1103,31 @@ export class HedgeBot {
     this.state.sessionVolume += this.config.legValueUsd * 2; // both legs
     this.state.updatedAt = new Date().toISOString();
 
+    // ── Reporting: record pair trade event ────────────────────────────────────
+    recordTrade({
+      botId: this.id,
+      botType: 'pair',
+      exchange: this.config.exchange,
+      symbol: `${this.config.symbolA}/${this.config.symbolB}`,
+      direction: (this._openingContext?.longSymbol === this.config.symbolA) ? 'long' : 'short',
+      entryPrice: completedTrade.entryPriceA,
+      exitPrice: completedTrade.exitPriceA,
+      size: completedTrade.sizeA,
+      pnl: pair.combinedPnl,
+      grossPnl: pair.combinedPnl, // PairBot doesn't separate fees yet
+      fees: 0,
+      holdDurationSecs: holdDurationSecs,
+      exitReason,
+      walletAddress: this.state.walletAddress || undefined,
+    });
+
     logEvent(
       this.id,
       this.state,
       'INFO',
       `AtomicClose confirmed: reason=${exitReason}, combinedPnl=${pair.combinedPnl.toFixed(4)}, holdDuration=${holdDurationSecs}s`,
     );
-    console.log(`✅ [HedgeBot:${this.id}] AtomicClose confirmed: ${exitReason} pnl=${pair.combinedPnl.toFixed(4)}`);
+    console.log(`✅ [PairBot:${this.id}] AtomicClose confirmed: ${exitReason} pnl=${pair.combinedPnl.toFixed(4)}`);
 
     // Clear position and opening context
     this.state.hedgePosition = null;
@@ -1088,7 +1149,7 @@ export class HedgeBot {
     const elapsedMs = this._cooldownStartMs !== null ? Date.now() - this._cooldownStartMs : Infinity;
 
     if (elapsedMs >= cooldownSecs * 1000) {
-      console.log(`[HedgeBot:${this.id}] Cooldown expired (${cooldownSecs}s) — returning to IDLE`);
+      console.log(`[PairBot:${this.id}] Cooldown expired (${cooldownSecs}s) — returning to IDLE`);
       logEvent(this.id, this.state, 'INFO', `Cooldown expired — returning to IDLE`);
       this._cooldownStartMs = null;
       this.state.hedgeBotState = 'IDLE';

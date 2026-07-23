@@ -1,5 +1,5 @@
 /**
- * Bug Condition Exploration Tests — HedgeBot Double Trade Bug
+ * Bug Condition Exploration Tests — PairBot Double Trade Bug
  *
  * Property 1: Bug Condition — Already-Filled Leg Receives Duplicate Order
  *
@@ -14,16 +14,16 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fc from 'fast-check';
-import { HedgeBot } from '../HedgeBot.js';
+import { PairBot } from '../PairBot.js';
 import type { ExchangeAdapter, Position } from '../../adapters/ExchangeAdapter.js';
 import type { TelegramManager } from '../../modules/TelegramManager.js';
-import type { HedgeBotConfig } from '../types.js';
+import type { PairBotConfig } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-function makeConfig(): HedgeBotConfig {
+function makeConfig(): PairBotConfig {
   return {
     id: 'hedge-double-trade-test',
     name: 'Double Trade Bug Test',
@@ -83,10 +83,10 @@ function makePosition(
 }
 
 /**
- * Sets up a HedgeBot in OPENING state with the given _openingContext.
+ * Sets up a PairBot in OPENING state with the given _openingContext.
  * Simulates the scenario where the bot re-enters OPENING after a fill-timeout retry.
  */
-function setupBotInOpeningState(bot: HedgeBot): void {
+function setupBotInOpeningState(bot: PairBot): void {
   bot.state.hedgeBotState = 'OPENING';
   // Inject opening context as if the bot had previously entered OPENING from IDLE
   (bot as any)._openingContext = {
@@ -115,11 +115,11 @@ function setupBotInOpeningState(bot: HedgeBot): void {
 
 describe('Property 1: Bug Condition — Already-Filled Leg Receives Duplicate Order', () => {
   let adapter: ExchangeAdapter;
-  let bot: HedgeBot;
+  let bot: PairBot;
 
   beforeEach(() => {
     adapter = makeAdapter();
-    bot = new HedgeBot(makeConfig(), adapter, makeTelegram());
+    bot = new PairBot(makeConfig(), adapter, makeTelegram());
     setupBotInOpeningState(bot);
   });
 
@@ -269,7 +269,7 @@ describe('Property 1: Bug Condition — Already-Filled Leg Receives Duplicate Or
         fc.float({ min: Math.fround(10), max: Math.fround(20000), noNaN: true, noDefaultInfinity: true }),
         async (ethSize, btcPrice, ethPrice) => {
           const localAdapter = makeAdapter();
-          const localBot = new HedgeBot(makeConfig(), localAdapter, makeTelegram());
+          const localBot = new PairBot(makeConfig(), localAdapter, makeTelegram());
           setupBotInOpeningState(localBot);
 
           vi.mocked(localAdapter.get_open_orders).mockResolvedValue([]);
@@ -309,7 +309,7 @@ describe('Property 1: Bug Condition — Already-Filled Leg Receives Duplicate Or
         fc.float({ min: Math.fround(10), max: Math.fround(20000), noNaN: true, noDefaultInfinity: true }),
         async (btcSize, btcPrice, ethPrice) => {
           const localAdapter = makeAdapter();
-          const localBot = new HedgeBot(makeConfig(), localAdapter, makeTelegram());
+          const localBot = new PairBot(makeConfig(), localAdapter, makeTelegram());
           setupBotInOpeningState(localBot);
 
           vi.mocked(localAdapter.get_open_orders).mockResolvedValue([]);

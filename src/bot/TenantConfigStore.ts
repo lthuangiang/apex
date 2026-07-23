@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import type { BotConfig, HedgeBotConfig } from './types.js';
-import { validateBotConfig, validateHedgeBotConfig } from './loadBotConfigs.js';
+import type { BotConfig, PairBotConfig } from './types.js';
+import type { DeltaNeutralConfig } from './DeltaNeutralTypes.js';
+import { validateBotConfig, validatePairBotConfig, validateDeltaNeutralConfig } from './loadBotConfigs.js';
 
 /**
  * Per-tenant config persistence.
@@ -35,7 +36,7 @@ export class TenantConfigStore {
    *
    * Requirement 6.3
    */
-  load(): (BotConfig | HedgeBotConfig)[] {
+  load(): (BotConfig | PairBotConfig | DeltaNeutralConfig)[] {
     if (!fs.existsSync(this.configPath)) {
       return [];
     }
@@ -49,15 +50,22 @@ export class TenantConfigStore {
         return [];
       }
 
-      const validConfigs: (BotConfig | HedgeBotConfig)[] = [];
+      const validConfigs: (BotConfig | PairBotConfig | DeltaNeutralConfig)[] = [];
 
       for (const config of data.bots) {
-        if (config.botType === 'hedge') {
+        if (config.botType === 'hedge' || config.botType === 'pair') {
           try {
-            validateHedgeBotConfig(config);
-            validConfigs.push(config as HedgeBotConfig);
+            validatePairBotConfig(config);
+            validConfigs.push(config as PairBotConfig);
           } catch (err) {
-            console.warn(`[TenantConfigStore] Invalid hedge config skipped: ${config.id ?? 'unknown'} — ${err}`);
+            console.warn(`[TenantConfigStore] Invalid pair bot config skipped: ${config.id ?? 'unknown'} — ${err}`);
+          }
+        } else if (config.botType === 'oi-farmer' || config.botType === 'delta-neutral') {
+          try {
+            validateDeltaNeutralConfig(config);
+            validConfigs.push(config as DeltaNeutralConfig);
+          } catch (err) {
+            console.warn(`[TenantConfigStore] Invalid delta-neutral config skipped: ${config.id ?? 'unknown'} — ${err}`);
           }
         } else if (validateBotConfig(config)) {
           validConfigs.push(config);
@@ -83,7 +91,7 @@ export class TenantConfigStore {
    *
    * Requirements: 6.2, 6.4, 6.5, 7.2, 7.3
    */
-  save(configs: (BotConfig | HedgeBotConfig)[]): void {
+  save(configs: (BotConfig | PairBotConfig | DeltaNeutralConfig)[]): void {
     // Guard: ensure the config file itself is within dataDir (Requirement 7.2, 7.3)
     assertWithinDataDir(this.configPath, this.resolvedDataDir);
 

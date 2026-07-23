@@ -58,6 +58,8 @@
     .topnav-brand { display: flex; align-items: center; gap: 0.6rem; font-size: 1rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; min-width: 0; overflow: hidden; flex: 1; }
     .topnav-brand .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
     .topnav-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+    .topnav-link { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-decoration: none; padding: 0.4rem 0.75rem; border-radius: var(--radius-xs); transition: all 0.15s; }
+    .topnav-link:hover { color: var(--text-primary); background: var(--surface-2); }
     .live-indicator { display: flex; align-items: center; gap: 0.45rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 0.3rem 0.75rem 0.3rem 0.55rem; font-size: 0.78rem; font-weight: 700; color: var(--text-primary); letter-spacing: 0.06em; }
     .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; box-shadow: 0 0 0 2px rgba(29,185,84,0.25); animation: pulse 2s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
@@ -103,6 +105,8 @@
     .bot-card.inactive { opacity: 0.65; }
     .bot-card.inactive:hover { opacity: 1; }
     .bot-card.active::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #c47a10, #f5a623); border-radius: var(--radius) var(--radius) 0 0; }
+    .bot-card.paused::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, #ca8a04, #eab308); border-radius: var(--radius) var(--radius) 0 0; }
+    .bot-card.paused { opacity: 0.85; }
 
     .card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; }
     .card-identity { display: flex; flex-direction: column; gap: 0.3rem; }
@@ -113,6 +117,7 @@
     .status-pill { display: flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; padding: 0.3rem 0.65rem; border-radius: 20px; white-space: nowrap; }
     .status-pill.active { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
     .status-pill.inactive { background: var(--surface-2); color: var(--text-tertiary); border: 1px solid var(--border); }
+    .status-pill.paused { background: rgba(234, 179, 8, 0.1); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3); }
     .status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
     .status-pill.active .status-dot { animation: pulse 2s infinite; }
 
@@ -159,6 +164,8 @@
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; padding: 0.55rem 1rem; border-radius: var(--radius-xs); font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.15s; text-decoration: none; border: none; white-space: nowrap; }
     .btn-primary { background: var(--accent); color: white; flex: 1; box-shadow: 0 1px 4px rgba(245,166,35,0.3); }
     .btn-primary:hover { background: var(--accent-hover); box-shadow: 0 2px 8px rgba(245,166,35,0.4); transform: translateY(-1px); }
+    .btn-warning { background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3); flex: 1; }
+    .btn-warning:hover { background: rgba(234, 179, 8, 0.25); }
     .btn-danger { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); flex: 1; }
     .btn-danger:hover { background: #fee2e2; }
     .btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
@@ -288,6 +295,8 @@
       </div>
     </div>
     <div class="topnav-right">
+      <a href="/portfolio" class="topnav-link">Portfolio</a>
+      <a href="/reports" class="topnav-link">Reports</a>
       <div class="live-indicator"><div class="live-dot"></div><span>MAINNET</span></div>
       <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme">
         <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -388,9 +397,10 @@
 
     <div class="toolbar">
       <div class="filter-group">
-        <button class="filter-btn active" data-filter="all">All</button>
-        <button class="filter-btn" data-filter="active">Active</button>
-        <button class="filter-btn" data-filter="inactive">Inactive</button>
+        <button class="filter-btn active" data-filter="all" data-view="bots">All</button>
+        <button class="filter-btn" data-filter="active" data-view="bots">Active</button>
+        <button class="filter-btn" data-filter="inactive" data-view="bots">Inactive</button>
+        <button class="filter-btn" data-filter="accounts" data-view="accounts" id="btn-accounts-tab">🔑 Accounts</button>
       </div>
       <div style="display:flex;align-items:center;gap:0.75rem;">
         <span class="bot-count" id="bot-count-label"></span>
@@ -402,13 +412,15 @@
 
     <!-- ═══ Agent Intelligence Panel (Wave 3) ═══════════════════════════════ -->
     <div class="mi-panel" id="agent-panel">
-      <div class="mi-header">
+      <div class="mi-header" style="cursor:pointer;" onclick="toggleAgentPanel()">
         <div class="mi-title"><span class="mi-title-dot" style="background:#8b5cf6"></span> AGENT BRAIN — Autonomous Orchestration</div>
         <div style="display:flex;align-items:center;gap:0.5rem;">
           <span class="mi-updated" id="agent-updated">—</span>
           <span id="agent-status-badge" class="status-pill inactive"><span class="status-dot"></span>IDLE</span>
+          <span id="agent-collapse-icon" style="font-size:0.75rem;color:var(--text-tertiary);transition:transform 0.2s;">▼</span>
         </div>
       </div>
+      <div id="agent-panel-body" style="overflow:hidden;transition:max-height 0.3s ease;">
       <div class="mi-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
         <div class="mi-cell">
           <div class="mi-cell-label">Strategy</div>
@@ -478,18 +490,137 @@
       </div>
       <!-- Controls -->
       <div style="display:flex;gap:0.5rem;margin-top:0.75rem;align-items:center;">
-        <button class="btn btn-primary" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;" onclick="agentAction('start')">▶ Start</button>
-        <button class="btn btn-ghost" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;" onclick="agentAction('pause')">⏸ Pause</button>
-        <button class="btn btn-danger" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;" onclick="agentAction('stop')">⏹ Stop</button>
+        <button class="btn btn-primary" id="agent-btn-start" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;" onclick="agentAction('start')">▶ Start</button>
+        <button class="btn btn-ghost" id="agent-btn-pause" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;" onclick="agentAction('pause')">⏸ Pause</button>
+        <button class="btn btn-danger" id="agent-btn-stop" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;" onclick="agentAction('stop')">⏹ Stop</button>
         <a href="/performance" class="btn btn-ghost" style="flex:0;padding:0.4rem 0.85rem;font-size:0.75rem;text-decoration:none;margin-left:auto;">📊 Performance Analytics</a>
       </div>
+      </div><!-- end agent-panel-body -->
     </div>
     <!-- ═══ End Agent Panel ═══════════════════════════════════════════════════ -->
+
+    <!-- ═══ Account Registry Panel ══════════════════════════════════════════ -->
+    <div id="accounts-panel" style="display:none;">
+      <style>
+        .accounts-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+        .accounts-title { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
+        .accounts-subtitle { font-size: 0.78rem; color: var(--text-secondary); margin-top: 0.15rem; }
+        .connect-btns { display: flex; gap: 0.5rem; }
+        .connect-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.45rem 0.85rem; border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer; border: 1.5px solid var(--border); background: var(--surface-2); color: var(--text-primary); transition: all 0.15s; }
+        .connect-btn:hover { border-color: var(--accent); background: var(--accent-light); color: var(--accent); }
+        .connect-btn svg { flex-shrink: 0; }
+        .accounts-list-container { display: flex; flex-direction: column; gap: 0.5rem; }
+        .account-row { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); transition: all 0.2s; }
+        .account-row:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+        .account-row-left { display: flex; align-items: center; gap: 0.6rem; }
+        .account-row-label { font-weight: 600; font-size: 0.85rem; color: var(--text-primary); }
+        .account-row-key { font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono, monospace); }
+        .account-exchange-badge { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em; padding: 0.2rem 0.5rem; border-radius: 5px; background: var(--accent-light); color: var(--accent); text-transform: uppercase; }
+        .account-type-badge { font-size: 0.58rem; font-weight: 500; color: var(--text-tertiary); background: var(--surface-2); border: 1px solid var(--border); padding: 0.15rem 0.4rem; border-radius: 4px; }
+        .account-label { font-size: 0.9rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.35rem; }
+        .account-key { font-size: 0.72rem; font-family: 'SF Mono', 'Fira Code', monospace; color: var(--text-secondary); background: var(--surface-2); padding: 0.2rem 0.45rem; border-radius: 4px; display: inline-block; }
+        .account-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+        .account-stat-label { font-size: 0.6rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); }
+        .account-stat-value { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); margin-top: 0.1rem; }
+        .account-stat-value.balance { color: var(--green); }
+        .account-actions { display: flex; align-items: center; }
+        .account-delete-btn { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-tertiary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+        .account-delete-btn:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+        .accounts-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem 2rem; background: var(--surface); border: 2px dashed var(--border); border-radius: var(--radius); text-align: center; }
+        .accounts-empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; opacity: 0.5; }
+        .accounts-empty-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.35rem; }
+        .accounts-empty-text { font-size: 0.78rem; color: var(--text-secondary); max-width: 380px; line-height: 1.5; }
+
+        /* Connect Account Modal */
+        .connect-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+        .connect-modal-overlay.open { display: flex; }
+        .connect-modal { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow-lg); width: min(520px, 94vw); max-height: 90vh; overflow-y: auto; border: 1px solid var(--border); }
+        .connect-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+        .connect-modal-header h3 { font-size: 0.95rem; font-weight: 700; color: var(--text-primary); }
+        .connect-modal-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+        .connect-modal-footer { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.25rem; border-top: 1px solid var(--border); background: var(--surface-2); }
+        .connect-field { display: flex; flex-direction: column; gap: 0.2rem; }
+        .connect-field label { font-size: 0.68rem; font-weight: 600; color: var(--text-secondary); }
+        .connect-field input, .connect-field select { width: 100%; padding: 0.4rem 0.6rem; border: 1.5px solid var(--border); border-radius: 6px; font-size: 0.78rem; color: var(--text-primary); background: var(--surface); outline: none; transition: border-color 0.15s; }
+        .connect-field input:focus, .connect-field select:focus { border-color: var(--accent); }
+        .connect-cred-fields { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+      </style>
+
+      <div class="accounts-header">
+        <div>
+          <div class="accounts-title">Connected Accounts</div>
+          <div class="accounts-subtitle">Connect exchange accounts once, reuse across all your bots</div>
+        </div>
+        <div class="connect-btns">
+          <button class="connect-btn" onclick="openConnectModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Connect Account
+          </button>
+        </div>
+      </div>
+
+      <div id="accounts-list" class="accounts-list-container">
+        <!-- Populated by JS -->
+      </div>
+      <div id="accounts-connect-footer" style="display:none;">
+        <button class="connect-btn" onclick="openConnectModal()" style="width:100%;justify-content:center;margin-top:0.5rem;padding:0.7rem;border-style:dashed;">
+          + Connect Account
+        </button>
+      </div>
+      <div id="accounts-empty" class="accounts-empty" style="display:none;">
+        <div class="accounts-empty-icon">🔗</div>
+        <div class="accounts-empty-title">No accounts connected</div>
+        <div class="accounts-empty-text">Connect your exchange accounts to get started. Credentials are encrypted and stored locally — you only need to enter them once.</div>
+      </div>
+    </div>
+
+    <!-- Connect Account Modal -->
+    <div class="connect-modal-overlay" id="connect-modal-overlay">
+      <div class="connect-modal">
+        <div class="connect-modal-header">
+          <h3 id="connect-modal-title">Connect Exchange Account</h3>
+          <button class="cfg-close" onclick="closeConnectModal()">×</button>
+        </div>
+        <div class="connect-modal-body">
+          <div class="connect-field">
+            <label>Account Label</label>
+            <input type="text" id="connect-label" placeholder="e.g. My SoDEX Main" />
+          </div>
+          <div class="connect-field">
+            <label>Exchange</label>
+            <select id="connect-exchange" onchange="updateCredFields()">
+              <option value="">Select exchange...</option>
+              <option value="sodex">SoDEX</option>
+              <option value="dango">Dango</option>
+              <option value="decibel">Decibel</option>
+              <option value="hibachi">Hibachi</option>
+              <option value="ondoperps">OndoPerps</option>
+              <option value="perpl">Perpl</option>
+            </select>
+          </div>
+          <div class="connect-cred-fields" id="connect-cred-fields">
+            <!-- Dynamically populated based on exchange selection -->
+          </div>
+        </div>
+        <div class="connect-modal-footer">
+          <button class="btn btn-primary" id="btn-connect-save" onclick="saveConnectAccount()" style="padding:0.4rem 1rem;font-size:0.78rem;">
+            Connect Account
+          </button>
+          <button class="btn" onclick="closeConnectModal()" style="padding:0.4rem 0.8rem;font-size:0.78rem;background:var(--surface-2);border:1px solid var(--border);color:var(--text-secondary);">
+            Cancel
+          </button>
+          <span id="connect-toast" style="font-size:0.72rem;margin-left:auto;opacity:0;transition:opacity 0.3s;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- accounts-sidebar removed: Accounts tab above already shows all connected accounts -->
 
     <%- include('partials/bot-cards') %>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/js/accounts.js?v=1"></script>
   <script src="/js/manager-dashboard.js?v=2"></script>
   <!-- ── Market Intelligence polling ──────────────────────────────────── -->
   <script>
@@ -685,6 +816,15 @@
     .wz-btn-ghost:hover { background:var(--surface-2); color:var(--text-primary); border-color:var(--border-strong); }
     .wz-step-counter { font-size:.72rem; color:var(--text-tertiary); font-weight:600; }
 
+    /* ── DN Dual-layout: config left + analytics right ── */
+    .wz-dn-layout { display: flex; gap: 1.25rem; align-items: flex-start; }
+    .wz-dn-config-left { flex: 1; min-width: 0; }
+    .wz-dn-analytics-right { width: 280px; flex-shrink: 0; position: sticky; top: 0; }
+    @media (max-width: 900px) {
+      .wz-dn-layout { flex-direction: column; }
+      .wz-dn-analytics-right { width: 100%; position: static; }
+    }
+
     /* ── Wizard mobile overrides ── */
     @media (max-width: 480px) {
       .wz-modal { max-height:100vh; border-radius:16px 16px 0 0; margin-top:auto; }
@@ -807,16 +947,51 @@
               <div class="type-tile-name">Standard Bot</div>
               <div class="type-tile-desc">Farm or trade a single symbol. Best for volume generation.</div>
             </div>
-            <div class="type-tile" data-type="hedge">
+            <div class="type-tile" data-type="pair">
               <div class="type-tile-icon">⚖️</div>
-              <div class="type-tile-name">Hedge Bot</div>
+              <div class="type-tile-name">Pair Trading</div>
               <div class="type-tile-desc">Delta-neutral pair trading. Long one, short the other.</div>
+            </div>
+            <div class="type-tile" data-type="delta-neutral">
+              <div class="type-tile-icon">🌾</div>
+              <div class="type-tile-name">Delta-Neutral</div>
+              <div class="type-tile-desc">Cross-exchange delta-neutral. Hold for OI points (Perpl mPoints).</div>
             </div>
           </div>
         </div>
 
         <!-- ── Step 1: Credentials ── -->
         <div class="wz-panel" id="wz-panel-1">
+          <!-- Account Registry Selector -->
+          <div id="wz-account-selector" style="display:none;margin-bottom:1.25rem;">
+            <div class="wz-section-title" style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;">
+              Select Account
+              <span style="font-size:0.6rem;background:linear-gradient(135deg,#10b981,#059669);color:white;padding:2px 6px;border-radius:4px;font-weight:700;">SAVED</span>
+            </div>
+            <div class="wz-form-row full">
+              <div class="wz-form-group">
+                <label class="wz-label">Use a connected account</label>
+                <select class="wz-select" id="wz-account-select" style="border-color:var(--green-border);background:var(--green-bg);">
+                  <option value="">— Select a saved account —</option>
+                </select>
+                <span class="wz-hint">Credentials are encrypted and reusable across bots. No need to re-enter keys.</span>
+              </div>
+            </div>
+            <!-- Account selected confirmation -->
+            <div id="wz-account-selected-info" style="display:none;margin-top:0.65rem;padding:0.6rem 0.85rem;background:var(--green-bg);border:1px solid var(--green-border);border-radius:8px;align-items:center;gap:0.5rem;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <span style="font-size:0.78rem;color:var(--green);font-weight:600;" id="wz-account-selected-label">Account selected</span>
+            </div>
+            <!-- Or enter manually toggle -->
+            <div style="margin-top:0.75rem;text-align:center;">
+              <button type="button" id="wz-manual-creds-toggle" class="btn btn-ghost" style="font-size:0.72rem;padding:0.35rem 0.75rem;border-style:dashed;" onclick="toggleManualCredEntry()">
+                Or enter credentials manually ↓
+              </button>
+            </div>
+          </div>
+
+          <!-- Credential fields container (hidden when account selected) -->
+          <div id="wz-manual-creds-container">
           <!-- SoDEX creds -->
           <div id="wz-creds-sodex">
             <div class="wz-section-title">SoDEX Credentials</div>
@@ -990,6 +1165,7 @@
               </div>
             </div>
           </div>
+          </div><!-- /wz-manual-creds-container -->
         </div>
 
         <!-- ── Step 2: Market ── -->
@@ -1010,7 +1186,7 @@
               <input class="wz-input" type="text" id="wz-sym-manual" placeholder="e.g. BTC-USD" autocomplete="off" style="text-transform:uppercase" />
             </div>
           </div>
-          <!-- Hedge: second symbol -->
+          <!-- Pair: second symbol -->
           <div id="wz-sym-b-section" style="display:none">
             <div class="wz-section-title">Symbol B (Short leg)</div>
             <select class="wz-select" id="wz-sym-select-b">
@@ -1023,20 +1199,8 @@
 
         <!-- ── Step 3: Configure ── -->
         <div class="wz-panel" id="wz-panel-3">
-          <div class="wz-section-title">Bot Identity</div>
-          <div class="wz-form-row">
-            <div class="wz-form-group">
-              <label class="wz-label">Bot ID <span class="req">*</span></label>
-              <input class="wz-input" type="text" id="wz-id" placeholder="my-sodex-bot" autocomplete="off" />
-              <span class="wz-hint">Lowercase, hyphens only</span>
-              <span class="wz-field-error" id="err-id">Required — lowercase letters, numbers, hyphens only</span>
-            </div>
-            <div class="wz-form-group">
-              <label class="wz-label">Display Name <span class="req">*</span></label>
-              <input class="wz-input" type="text" id="wz-name" placeholder="My Bot" autocomplete="off" />
-              <span class="wz-field-error" id="err-name">Required</span>
-            </div>
-          </div>
+          <div id="wz-standard-config">
+          <div class="wz-section-title">Trading Configuration</div>
           <div class="wz-form-row">
             <div class="wz-form-group">
               <label class="wz-label">🧠 Intelligence Mode <span style="background:#22c55e;color:#000;font-size:0.65em;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:700;">WAVE 3</span></label>
@@ -1047,8 +1211,11 @@
               <span class="wz-hint" id="wz-intel-hint">Engine auto-switches Farm/Trade based on market regime</span>
             </div>
             <div class="wz-form-group">
-              <label class="wz-label">Tags</label>
-              <input class="wz-input" type="text" id="wz-tags" placeholder="Farm, TWAP" autocomplete="off" />
+              <label class="wz-label">Margin Mode</label>
+              <select class="wz-select" id="wz-margin-mode">
+                <option value="cross">Cross</option>
+                <option value="isolated">Isolated</option>
+              </select>
             </div>
           </div>
           <div class="wz-form-row" id="wz-manual-mode-section" style="display:none">
@@ -1062,9 +1229,83 @@
             </div>
           </div>
           <input type="hidden" id="wz-mode-hidden" value="farm" />
-          <!-- Hedge-only fields -->
+
+          <div class="wz-section-title" style="margin-top:1rem">Position Sizing (USD)</div>
+          <div class="wz-form-row">
+            <div class="wz-form-group">
+              <label class="wz-label">Min Order Size (USD)</label>
+              <input class="wz-input" type="number" id="wz-sizeMinUsd" placeholder="100" min="10" step="10" value="100" />
+              <span class="wz-hint">Minimum position value per trade in USD</span>
+            </div>
+            <div class="wz-form-group">
+              <label class="wz-label">Max Order Size (USD)</label>
+              <input class="wz-input" type="number" id="wz-sizeMaxUsd" placeholder="200" min="10" step="10" value="200" />
+              <span class="wz-hint">Maximum position value per trade in USD</span>
+            </div>
+          </div>
+          <div class="wz-form-row">
+            <div class="wz-form-group">
+              <label class="wz-label">Leverage</label>
+              <select class="wz-select" id="wz-leverage">
+                <option value="5" selected>5x (Loading...)</option>
+              </select>
+              <span class="wz-hint">Auto-populated from exchange max leverage for selected symbol</span>
+            </div>
+            <div class="wz-form-group">
+              <label class="wz-label">Tags</label>
+              <input class="wz-input" type="text" id="wz-tags" placeholder="Farm, TWAP" autocomplete="off" />
+            </div>
+          </div>
+          </div><!-- /wz-standard-config -->
+
+          <!-- Standard/Farm Bot: Pre-Trade Fee Estimate (visible for non-DN bots on config step) -->
+          <div id="wz-standard-fee-panel" style="display:none; margin-top:1.25rem;">
+            <div class="pre-trade-analytics">
+              <div class="pre-trade-analytics-header">
+                <div class="pre-trade-analytics-title">
+                  <span class="pre-trade-analytics-title-dot"></span>
+                  Pre-Trade Analytics
+                </div>
+                <span class="pre-trade-analytics-badge">Live</span>
+              </div>
+              <!-- Empty state -->
+              <div id="std-pta-empty" style="display:none;">
+                <div class="pre-trade-analytics-empty">
+                  <div class="pre-trade-analytics-empty-icon">📊</div>
+                  <div class="pre-trade-analytics-empty-text">
+                    Set position size to see<br>estimated round-trip fees.
+                  </div>
+                </div>
+              </div>
+              <!-- Fee estimate content -->
+              <div id="std-pta-content" style="display:none;">
+                <div class="pre-trade-standard">
+                  <div class="pre-trade-standard-header">Fee Estimate</div>
+                  <div class="pre-trade-stat-row">
+                    <span class="pre-trade-stat-label">Notional Size</span>
+                    <span class="pre-trade-stat-value" id="std-pta-notional">—</span>
+                  </div>
+                  <div class="pre-trade-stat-row">
+                    <span class="pre-trade-stat-label">Fee Rate</span>
+                    <span class="pre-trade-stat-value" id="std-pta-fee-rate">—</span>
+                  </div>
+                  <div class="pre-trade-stat-row">
+                    <span class="pre-trade-stat-label">Est. Fee per Round-Trip</span>
+                    <span class="pre-trade-stat-value negative" id="std-pta-round-trip-fee">—</span>
+                  </div>
+                  <div class="pre-trade-divider"></div>
+                  <div class="pre-trade-stat-row">
+                    <span class="pre-trade-stat-label">Funding Rate / 1h</span>
+                    <span class="pre-trade-stat-value" id="std-pta-funding">—</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pair-trading-only fields -->
           <div id="wz-hedge-config" style="display:none">
-            <div class="wz-section-title">Hedge Parameters</div>
+            <div class="wz-section-title">Pair Trading Parameters</div>
             <div class="wz-form-row">
               <div class="wz-form-group">
                 <label class="wz-label">Leg Value USD <span class="req">*</span></label>
@@ -1087,8 +1328,198 @@
               </div>
             </div>
           </div>
+
+          <!-- Delta-Neutral fields -->
+          <div id="wz-delta-neutral-config" style="display:none">
+            <div class="wz-dn-layout">
+            <div class="wz-dn-config-left">
+
+            <!-- Delta-Neutral classic config (shown directly) -->
+            <div id="wz-dn-classic-view">
+            <div class="wz-section-title" id="wz-dn-cross-exchange-title">Delta-Neutral -- Cross-Exchange</div>
+            <div id="wz-dn-cross-exchange-fields">
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Hedge Exchange <span class="req">*</span></label>
+                <select class="wz-select" id="wz-oi-exchangeB" onchange="loadHedgeSymbols(); showHedgeCreds();">
+                  <option value="ondoperps">OndoPerps</option>
+                  <option value="sodex">SoDEX</option>
+                  <option value="hibachi">Hibachi</option>
+                  <option value="decibel">Decibel</option>
+                  <option value="perpl">Perpl</option>
+                </select>
+                <span class="wz-hint">The exchange for the hedge leg (opposite side)</span>
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Primary Direction</label>
+                <select class="wz-select" id="wz-oi-direction">
+                  <option value="long">Long (primary exchange)</option>
+                  <option value="short">Short (primary exchange)</option>
+                  <option value="auto">Auto (by funding rate)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Hedge Exchange Credentials -->
+            <div class="wz-section-title" style="margin-top:1rem">Hedge Exchange Credentials</div>
+            <!-- Hedge Account Selector (from Account Registry) -->
+            <div id="wz-oi-hedge-account-selector" style="display:none;margin-bottom:0.75rem;">
+              <div class="wz-form-row full">
+                <div class="wz-form-group">
+                  <label class="wz-label">Select saved account <span style="font-size:0.62rem;color:var(--text-tertiary);font-weight:400;">(skip credentials below)</span></label>
+                  <select class="wz-select" id="wz-oi-hedge-account-select">
+                    <option value="">— Enter credentials manually —</option>
+                  </select>
+                  <span class="wz-hint">Connected accounts from Account Registry</span>
+                </div>
+              </div>
+            </div>
+            <div id="wz-oi-creds-ondoperps">
+              <div class="wz-form-row">
+                <div class="wz-form-group">
+                  <label class="wz-label">API Key ID <span class="req">*</span></label>
+                  <input class="wz-input" type="text" id="wz-oi-ondoApiKeyId" placeholder="ondoKeyId_..." autocomplete="off" />
+                </div>
+                <div class="wz-form-group">
+                  <label class="wz-label">API Key Secret <span class="req">*</span></label>
+                  <input class="wz-input" type="password" id="wz-oi-ondoApiKeySecret" placeholder="ondoApiSecret_..." autocomplete="new-password" />
+                </div>
+              </div>
+            </div>
+            <div id="wz-oi-creds-sodex" style="display:none">
+              <div class="wz-form-row">
+                <div class="wz-form-group">
+                  <label class="wz-label">API Key <span class="req">*</span></label>
+                  <input class="wz-input" type="text" id="wz-oi-sodexApiKey" placeholder="your_api_key" autocomplete="off" />
+                </div>
+                <div class="wz-form-group">
+                  <label class="wz-label">Subaccount <span class="req">*</span></label>
+                  <input class="wz-input" type="text" id="wz-oi-sodexSubaccount" placeholder="0x..." autocomplete="off" />
+                </div>
+              </div>
+              <div class="wz-form-row full">
+                <div class="wz-form-group">
+                  <label class="wz-label">Private Key <span class="req">*</span></label>
+                  <input class="wz-input" type="password" id="wz-oi-sodexSecret" placeholder="0x..." autocomplete="new-password" />
+                </div>
+              </div>
+            </div>
+            <div id="wz-oi-creds-hibachi" style="display:none">
+              <div class="wz-form-row">
+                <div class="wz-form-group">
+                  <label class="wz-label">API Key <span class="req">*</span></label>
+                  <input class="wz-input" type="text" id="wz-oi-hibachiApiKey" placeholder="API key" autocomplete="off" />
+                </div>
+                <div class="wz-form-group">
+                  <label class="wz-label">Account ID <span class="req">*</span></label>
+                  <input class="wz-input" type="text" id="wz-oi-hibachiAccountId" placeholder="12345" autocomplete="off" />
+                </div>
+              </div>
+              <div class="wz-form-row full">
+                <div class="wz-form-group">
+                  <label class="wz-label">Private Key (ECDSA) <span class="req">*</span></label>
+                  <input class="wz-input" type="password" id="wz-oi-hibachiPrivateKey" placeholder="0x..." autocomplete="new-password" />
+                </div>
+              </div>
+            </div>
+            <div id="wz-oi-creds-decibel" style="display:none">
+              <div class="wz-form-row full">
+                <div class="wz-form-group">
+                  <label class="wz-label">Private Key <span class="req">*</span></label>
+                  <input class="wz-input" type="password" id="wz-oi-decibelKey" placeholder="ed25519-priv-0x..." autocomplete="new-password" />
+                </div>
+              </div>
+            </div>
+            <div id="wz-oi-creds-perpl" style="display:none">
+              <div class="wz-form-row">
+                <div class="wz-form-group">
+                  <label class="wz-label">API Key <span class="req">*</span></label>
+                  <input class="wz-input" type="text" id="wz-oi-perplApiKey" placeholder="API key" autocomplete="off" />
+                </div>
+                <div class="wz-form-group">
+                  <label class="wz-label">Private Key (Ed25519) <span class="req">*</span></label>
+                  <input class="wz-input" type="password" id="wz-oi-perplSecret" placeholder="0x..." autocomplete="new-password" />
+                </div>
+              </div>
+            </div>
+
+            <div class="wz-form-row" style="margin-top:1rem">
+              <div class="wz-form-group">
+                <label class="wz-label">Hedge Symbol <span class="req">*</span></label>
+                <select class="wz-select" id="wz-oi-symbolB">
+                  <option value="">-- Select hedge exchange first --</option>
+                </select>
+                <span class="wz-hint" id="wz-oi-symbolB-hint">Symbol on the hedge exchange (loaded dynamically)</span>
+              </div>
+            </div>
+            </div><!-- /wz-dn-cross-exchange-fields -->
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Max Loss USD</label>
+                <input class="wz-input" type="number" id="wz-oi-maxLossUsd" placeholder="15" min="1" step="0.5" value="15" />
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Take Profit USD</label>
+                <input class="wz-input" type="number" id="wz-oi-takeProfitUsd" placeholder="5" min="0" step="0.5" value="0" />
+                <span class="wz-hint">Close when combined PnL ≥ this (0 = disabled)</span>
+              </div>
+            </div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Max Delta Divergence USD</label>
+                <input class="wz-input" type="number" id="wz-oi-maxDelta" placeholder="30" min="5" value="30" />
+                <span class="wz-hint">Rebalance trigger when legs diverge beyond this</span>
+              </div>
+            </div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Min Hold (hours)</label>
+                <input class="wz-input" type="number" id="wz-oi-minHoldHrs" placeholder="4" min="1" value="4" />
+                <span class="wz-hint">Minimum 4h for Perpl OI multiplier</span>
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Max Hold (hours)</label>
+                <input class="wz-input" type="number" id="wz-oi-maxHoldHrs" placeholder="48" min="4" value="48" />
+                <span class="wz-hint">48h+ for highest multiplier tier</span>
+              </div>
+            </div>
+            <div class="wz-section-title" style="margin-top:1rem">Position Sizing (USD)</div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Min Order Size (USD)</label>
+                <input class="wz-input" type="number" id="wz-oi-sizeMinUsd" placeholder="100" min="10" step="10" value="100" />
+                <span class="wz-hint">Minimum per-leg position value (random within range)</span>
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Max Order Size (USD)</label>
+                <input class="wz-input" type="number" id="wz-oi-sizeMaxUsd" placeholder="200" min="10" step="10" value="200" />
+                <span class="wz-hint">Maximum per-leg position value (anti-bot tracking)</span>
+              </div>
+            </div>
+            <div class="wz-form-row">
+              <div class="wz-form-group">
+                <label class="wz-label">Entry Mode</label>
+                <select class="wz-select" id="wz-oi-entryMode">
+                  <option value="taker">Taker (fast, higher fees)</option>
+                  <option value="maker-chunked">Maker Chunked (slow, ~70% less fees)</option>
+                </select>
+                <span class="wz-hint">Maker splits entry into small PostOnly orders</span>
+              </div>
+              <div class="wz-form-group">
+                <label class="wz-label">Chunk Size (USD)</label>
+                <input class="wz-input" type="number" id="wz-oi-chunkSize" placeholder="100" min="10" value="100" />
+                <span class="wz-hint">USD per maker order chunk</span>
+              </div>
+            </div>
+            </div><!-- /wz-dn-classic-view -->
+            </div><!-- /wz-dn-config-left -->
+            <div class="wz-dn-analytics-right">
+              <%- include('partials/pre-trade-analytics') %>
+            </div>
+            </div><!-- /wz-dn-layout -->
+          </div>
           <div class="wz-check-row" style="margin-top:.75rem">
-            <input type="checkbox" id="wz-autoStart" />
+            <input type="checkbox" id="wz-autoStart" checked />
             <label for="wz-autoStart">Auto-start bot after creation</label>
           </div>
         </div>
@@ -1165,6 +1596,7 @@
       state.symbol = '';
       state.symbolB = '';
       state.symbols = [];
+      _wizardAccountSelected = '';
       clearErrors();
       // Reset exchange tiles
       document.querySelectorAll('.ex-tile').forEach(function (t) {
@@ -1175,7 +1607,7 @@
         t.classList.toggle('selected', t.dataset.type === 'standard');
       });
       // Reset form inputs
-      ['wz-id','wz-name','wz-tags','wz-apiKey','wz-subaccount','wz-apiSecret',
+      ['wz-tags','wz-apiKey','wz-subaccount','wz-apiSecret',
        'wz-nodeApiKey','wz-decibelSubaccount','wz-privateKey',
        'wz-userAddress','wz-dangoPrivateKey',
        'wz-hibachiApiKey','wz-hibachiAccountId','wz-hibachiPrivateKey','wz-hibachiSecretKey'].forEach(function (id) {
@@ -1194,6 +1626,13 @@
       document.getElementById('wz-holdingPeriodSecs').value = '300';
       document.getElementById('wz-profitTargetUsd').value = '50';
       document.getElementById('wz-maxLossUsd').value = '30';
+      // Reset account selector state
+      var credsContainer = document.getElementById('wz-manual-creds-container');
+      if (credsContainer) credsContainer.style.display = '';
+      var accountInfoEl = document.getElementById('wz-account-selected-info');
+      if (accountInfoEl) accountInfoEl.style.display = 'none';
+      var toggleBtn = document.getElementById('wz-manual-creds-toggle');
+      if (toggleBtn) toggleBtn.textContent = 'Or enter credentials manually \u2193';
     }
 
     // ── Step navigation ───────────────────────────────────────────────────────
@@ -1247,11 +1686,6 @@
         state.symbolB = '';
         document.querySelectorAll('.ex-tile').forEach(function (t) { t.classList.remove('selected'); });
         tile.classList.add('selected');
-        // Auto-fill bot ID
-        var idEl = document.getElementById('wz-id');
-        if (idEl && !idEl.value) idEl.value = 'my-' + state.exchange + '-bot';
-        var nameEl = document.getElementById('wz-name');
-        if (nameEl && !nameEl.value) nameEl.value = state.exchange.charAt(0).toUpperCase() + state.exchange.slice(1) + ' Bot';
       });
     });
 
@@ -1271,22 +1705,125 @@
     });
 
     // ── Step 1: Credentials panel ─────────────────────────────────────────────
+    var _wizardAccounts = null;
+    var _wizardAccountSelected = '';
+
     function showCredsPanel() {
       ['sodex','decibel','dango','hibachi','ondoperps','perpl'].forEach(function (ex) {
         var el = document.getElementById('wz-creds-' + ex);
         if (el) el.style.display = ex === state.exchange ? '' : 'none';
       });
+      // Load accounts for account selector
+      loadWizardAccounts();
+    }
+
+    function loadWizardAccounts() {
+      var selector = document.getElementById('wz-account-selector');
+      var selectEl = document.getElementById('wz-account-select');
+      var credsContainer = document.getElementById('wz-manual-creds-container');
+      if (!selector || !selectEl) return;
+
+      fetch('/api/accounts')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          _wizardAccounts = (data.accounts || []).filter(function(a) { return a.exchange === state.exchange; });
+          if (_wizardAccounts.length === 0) {
+            selector.style.display = 'none';
+            if (credsContainer) credsContainer.style.display = '';
+            return;
+          }
+          selector.style.display = 'block';
+          selectEl.innerHTML = '<option value="">— Select a saved account —</option>' +
+            _wizardAccounts.map(function(a) {
+              return '<option value="' + a.id + '">' + a.label + ' (' + a.exchange.toUpperCase() + ' · ' + a.truncatedKey + ')</option>';
+            }).join('');
+          _wizardAccountSelected = '';
+          // Show manual creds by default, hide when account selected
+          if (credsContainer) credsContainer.style.display = '';
+          updateAccountSelectedInfo();
+        })
+        .catch(function() {
+          selector.style.display = 'none';
+          if (credsContainer) credsContainer.style.display = '';
+        });
+    }
+
+    // Handle account selection change
+    document.getElementById('wz-account-select').addEventListener('change', function() {
+      _wizardAccountSelected = this.value;
+      var credsContainer = document.getElementById('wz-manual-creds-container');
+      if (_wizardAccountSelected) {
+        // Account selected: hide manual credential fields
+        if (credsContainer) credsContainer.style.display = 'none';
+        // Update the toggle button text
+        var toggleBtn = document.getElementById('wz-manual-creds-toggle');
+        if (toggleBtn) {
+          toggleBtn.textContent = 'Or enter credentials manually \u2193';
+        }
+      } else {
+        // No account selected (manual mode): show credential fields
+        if (credsContainer) credsContainer.style.display = '';
+      }
+      updateAccountSelectedInfo();
+    });
+
+    function updateAccountSelectedInfo() {
+      var infoEl = document.getElementById('wz-account-selected-info');
+      var labelEl = document.getElementById('wz-account-selected-label');
+      if (!infoEl) return;
+
+      if (_wizardAccountSelected && _wizardAccounts) {
+        var acct = _wizardAccounts.find(function(a) { return a.id === _wizardAccountSelected; });
+        if (acct) {
+          infoEl.style.display = 'flex';
+          labelEl.textContent = '\u2713 Using: ' + acct.label + ' (' + acct.exchange.toUpperCase() + ')';
+        } else {
+          infoEl.style.display = 'none';
+        }
+      } else {
+        infoEl.style.display = 'none';
+      }
+    }
+
+    // Toggle manual credential entry when user clicks "Or enter manually"
+    window.toggleManualCredEntry = function() {
+      var credsContainer = document.getElementById('wz-manual-creds-container');
+      var toggleBtn = document.getElementById('wz-manual-creds-toggle');
+      if (!credsContainer) return;
+
+      var isHidden = credsContainer.style.display === 'none';
+      credsContainer.style.display = isHidden ? '' : 'none';
+      if (toggleBtn) {
+        toggleBtn.textContent = isHidden ? 'Hide manual credentials \u2191' : 'Or enter credentials manually \u2193';
+      }
+      // If showing manual entry, deselect the saved account
+      if (isHidden) {
+        var selectEl = document.getElementById('wz-account-select');
+        if (selectEl) selectEl.value = '';
+        _wizardAccountSelected = '';
+        updateAccountSelectedInfo();
+      }
+    };
+
+    function showWizardCredFields(show) {
+      // Legacy function — kept for backward compatibility
+      var credsEl = document.getElementById('wz-creds-' + state.exchange);
+      if (credsEl) {
+        credsEl.style.opacity = show ? '1' : '0.35';
+        credsEl.style.pointerEvents = show ? '' : 'none';
+      }
     }
 
     // ── Step 2: Symbol loading ────────────────────────────────────────────────
     var BTC_DEFAULTS = { sodex: 'BTC-USD', decibel: 'BTC/USD', dango: 'BTC-USD', hibachi: 'BTC/USDT-P', ondoperps: 'XAU-PERP', perpl: 'BTC-PERP' };
+    var marketMetadata = {}; // Stores per-symbol metadata (maxLeverage, minNotional, etc.)
 
     function loadSymbols() {
       var title = document.getElementById('wz-market-title');
-      title.textContent = state.botType === 'hedge' ? 'Symbol A (Long leg)' : 'Select Symbol';
+      title.textContent = (state.botType === 'pair' || state.botType === 'hedge') ? 'Symbol A (Long leg)' : 'Select Symbol';
 
       var bSection = document.getElementById('wz-sym-b-section');
-      bSection.style.display = state.botType === 'hedge' ? '' : 'none';
+      bSection.style.display = (state.botType === 'pair' || state.botType === 'hedge') ? '' : 'none';
 
       var loading  = document.getElementById('wz-sym-loading');
       var ready   = document.getElementById('wz-sym-ready');
@@ -1309,6 +1846,7 @@
         .then(function (r) { return r.json(); })
         .then(function (data) {
           var symbols = data.symbols;
+          marketMetadata = data.markets || {}; // Store metadata for leverage lookup
           loading.style.display = 'none';
 
           if (symbols && symbols.length > 0) {
@@ -1331,6 +1869,8 @@
             state.symbol = selected;
             if (meta) meta.textContent = 'Trading pair for ' + state.exchange.toUpperCase() + ' — ' + selected;
             if (selB) { selB.value = ''; }
+            // Update leverage dropdown from market metadata
+            updateLeverageFromMarket(selected);
           } else {
             // Live fetch failed or returned empty — show manual input
             fallback.style.display = '';
@@ -1346,10 +1886,11 @@
         });
     }
 
-    // Wire select change → state
+    // Wire select change → state + update leverage from market metadata
     document.getElementById('wz-sym-select').addEventListener('change', function () {
       state.symbol = this.value;
       hideFieldError('symbol');
+      updateLeverageFromMarket(this.value);
     });
     document.getElementById('wz-sym-select-b').addEventListener('change', function () {
       state.symbolB = this.value;
@@ -1359,12 +1900,160 @@
     document.getElementById('wz-sym-manual').addEventListener('input', function () {
       state.symbol = this.value.trim().toUpperCase();
       hideFieldError('symbol');
+      updateLeverageFromMarket(state.symbol);
     });
+
+    // Populate leverage dropdown dynamically from market metadata
+    function updateLeverageFromMarket(symbol) {
+      var levSelect = document.getElementById('wz-leverage');
+      if (!levSelect) return;
+
+      var meta = marketMetadata[symbol];
+      // Exchange-specific defaults when API doesn't return metadata
+      var exchangeDefaults = { sodex: 25, decibel: 20, dango: 10, hibachi: 20, ondoperps: 10, perpl: 20 };
+      var maxLev = meta ? (meta.maxLeverage || 20) : (exchangeDefaults[state.exchange] || 20);
+      var initLev = meta ? (meta.initLeverage || maxLev) : maxLev;
+
+      // Build options: 1x, 2x, 3x, 5x, 10x, 15x, 20x, 25x (up to maxLeverage)
+      var steps = [1, 2, 3, 5, 10, 15, 20, 25, 30, 40, 50].filter(function(v) { return v <= maxLev; });
+      // Ensure maxLev itself is in the list
+      if (steps.length === 0 || steps[steps.length - 1] !== maxLev) steps.push(maxLev);
+
+      levSelect.innerHTML = steps.map(function(v) {
+        var label = v + 'x' + (v === maxLev ? ' (Max)' : v === initLev && v !== maxLev ? ' (Default)' : '');
+        var selected = v === initLev ? ' selected' : '';
+        return '<option value="' + v + '"' + selected + '>' + label + '</option>';
+      }).join('');
+    }
 
     // ── Step 3: Hedge config visibility ──────────────────────────────────────
     function showHedgeConfig() {
-      document.getElementById('wz-hedge-config').style.display = state.botType === 'hedge' ? '' : 'none';
+      // Hedge/Pair bots now use DN-style config (same state machine)
+      document.getElementById('wz-hedge-config').style.display = 'none'; // hide legacy pair trading fields
+      document.getElementById('wz-delta-neutral-config').style.display = (state.botType === 'delta-neutral' || state.botType === 'oi-farmer' || state.botType === 'pair' || state.botType === 'hedge') ? '' : 'none';
+      // Show standalone fee panel for standard/farm bots only
+      var isDN = (state.botType === 'delta-neutral' || state.botType === 'oi-farmer' || state.botType === 'pair' || state.botType === 'hedge');
+      var isPair = false; // deprecated — pair now routes through DN
+      // Hide standard config for DN/hedge bots (they use the DN config instead)
+      var stdConfig = document.getElementById('wz-standard-config');
+      if (stdConfig) {
+        stdConfig.style.display = isDN ? 'none' : '';
+      }
+      var stdFeePanel = document.getElementById('wz-standard-fee-panel');
+      if (stdFeePanel) {
+        stdFeePanel.style.display = !isDN ? '' : 'none';
+      }
+      // Auto-load hedge symbols when Delta-Neutral panel becomes visible
+      if (isDN) loadHedgeSymbols();
+      // Initialize hedge credentials panel + account selector on first show
+      if (typeof showHedgeCreds === 'function') showHedgeCreds();
+
+      // Hide cross-exchange fields for same-exchange hedge mode
+      var crossExFields = document.getElementById('wz-dn-cross-exchange-fields');
+      var crossExTitle = document.getElementById('wz-dn-cross-exchange-title');
+      var isSameExchange = (state.botType === 'pair' || state.botType === 'hedge');
+      if (crossExFields) crossExFields.style.display = isSameExchange ? 'none' : '';
+      if (crossExTitle) crossExTitle.textContent = isSameExchange ? 'Hedge Mode (Same Exchange)' : 'Delta-Neutral -- Cross-Exchange';
     }
+
+    // ── Delta-Neutral: Show correct credentials form for hedge exchange ──────────
+    var _hedgeAccountSelected = '';
+
+    window.showHedgeCreds = function showHedgeCreds() {
+      var exchangeB = document.getElementById('wz-oi-exchangeB').value;
+      ['ondoperps','sodex','hibachi','decibel','perpl'].forEach(function (ex) {
+        var el = document.getElementById('wz-oi-creds-' + ex);
+        if (el) el.style.display = ex === exchangeB ? '' : 'none';
+      });
+      // Load saved accounts for hedge exchange
+      loadHedgeAccounts(exchangeB);
+    };
+
+    function loadHedgeAccounts(exchange) {
+      var selector = document.getElementById('wz-oi-hedge-account-selector');
+      var selectEl = document.getElementById('wz-oi-hedge-account-select');
+      if (!selector || !selectEl) return;
+
+      fetch('/api/accounts')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var accounts = (data.accounts || []).filter(function(a) { return a.exchange === exchange; });
+          if (accounts.length === 0) {
+            selector.style.display = 'none';
+            _hedgeAccountSelected = '';
+            showHedgeCredFields(true);
+            return;
+          }
+          selector.style.display = 'block';
+          selectEl.innerHTML = '<option value="">— Enter credentials manually —</option>' +
+            accounts.map(function(a) {
+              return '<option value="' + a.id + '">' + a.label + ' (' + a.truncatedKey + ')</option>';
+            }).join('');
+          _hedgeAccountSelected = '';
+          showHedgeCredFields(true);
+        })
+        .catch(function() {
+          selector.style.display = 'none';
+          _hedgeAccountSelected = '';
+        });
+    }
+
+    document.getElementById('wz-oi-hedge-account-select').addEventListener('change', function() {
+      _hedgeAccountSelected = this.value;
+      showHedgeCredFields(!_hedgeAccountSelected);
+    });
+
+    function showHedgeCredFields(show) {
+      var exchangeB = document.getElementById('wz-oi-exchangeB').value;
+      var credsEl = document.getElementById('wz-oi-creds-' + exchangeB);
+      if (credsEl) {
+        credsEl.style.opacity = show ? '1' : '0.35';
+        credsEl.style.pointerEvents = show ? '' : 'none';
+      }
+    }
+
+    // ── Delta-Neutral: Load symbols for hedge exchange ────────────────────────────
+    window.loadHedgeSymbols = function loadHedgeSymbols() {
+      var exchangeB = document.getElementById('wz-oi-exchangeB').value;
+      var select = document.getElementById('wz-oi-symbolB');
+      var hint = document.getElementById('wz-oi-symbolB-hint');
+      if (!select) return;
+
+      select.innerHTML = '<option value="">Loading symbols...</option>';
+      select.disabled = true;
+      if (hint) hint.textContent = 'Fetching symbols from ' + exchangeB + '...';
+
+      fetch('/api/exchanges/' + exchangeB + '/symbols')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var symbols = data.symbols || [];
+          select.innerHTML = '<option value="">-- Select symbol --</option>';
+          symbols.forEach(function (sym) {
+            var opt = document.createElement('option');
+            opt.value = sym;
+            opt.textContent = sym;
+            select.appendChild(opt);
+          });
+          select.disabled = false;
+          if (hint) hint.textContent = symbols.length + ' symbols available on ' + exchangeB;
+
+          // Auto-select matching symbol if primary symbol has a close match
+          if (state.symbol) {
+            var base = state.symbol.replace(/-PERP$|-USD$|\/USD$|\/USDT$|USDT$/, '').toUpperCase();
+            var match = symbols.find(function (s) {
+              return s.toUpperCase().indexOf(base) === 0;
+            });
+            if (match) {
+              select.value = match;
+            }
+          }
+        })
+        .catch(function (err) {
+          select.innerHTML = '<option value="">Failed to load symbols</option>';
+          select.disabled = false;
+          if (hint) hint.textContent = 'Error: ' + err.message;
+        });
+    };
 
     // ── Step 4: Review ────────────────────────────────────────────────────────
     function buildReview() {
@@ -1372,31 +2061,55 @@
         var grid = document.getElementById('wz-review-grid');
         if (!grid) return;
 
-        var idEl   = document.getElementById('wz-id');
-        var nameEl = document.getElementById('wz-name');
         var modeEl = document.getElementById('wz-mode');
         var tagsEl = document.getElementById('wz-tags');
         var autoEl = document.getElementById('wz-autoStart');
+        var intelEl = document.getElementById('wz-intelligence-mode');
 
-        var id   = idEl   ? idEl.value.trim()   : '';
-        var name = nameEl ? nameEl.value.trim()  : '';
-        var mode = modeEl ? modeEl.value         : 'farm';
-        var tags = tagsEl ? tagsEl.value.trim()  : '';
+        var mode = modeEl ? modeEl.value : 'farm';
+        var tags = tagsEl ? tagsEl.value.trim() : '';
+        var intel = intelEl ? intelEl.value : 'auto';
+
+        // Auto-generated values (same logic as buildPayload)
+        var exchangeNames = { sodex: 'SoDEX', decibel: 'Decibel', dango: 'Dango', hibachi: 'Hibachi', ondoperps: 'OndoPerps', perpl: 'Perpl' };
+        var autoName = (exchangeNames[state.exchange] || state.exchange) + ' ' + (state.symbol || 'Bot');
+        var isDN = (state.botType === 'delta-neutral' || state.botType === 'oi-farmer');
+        var sizeMin = isDN
+          ? (document.getElementById('wz-oi-sizeMinUsd').value || '100')
+          : (document.getElementById('wz-sizeMinUsd').value || '100');
+        var sizeMax = isDN
+          ? (document.getElementById('wz-oi-sizeMaxUsd').value || '200')
+          : (document.getElementById('wz-sizeMaxUsd').value || '200');
+        var leverage = document.getElementById('wz-leverage').value || '5';
+        var marginMode = document.getElementById('wz-margin-mode').value || 'cross';
 
         var items = [
           { label: 'Exchange',     value: state.exchange.toUpperCase(), accent: true },
-          { label: 'Bot Type',     value: state.botType === 'hedge' ? 'Hedge Bot ⚖️' : 'Standard Bot 🤖' },
-          { label: 'Bot ID',       value: id   || '(not set)' },
-          { label: 'Display Name', value: name || '(not set)' },
-          { label: 'Symbol',       value: state.botType === 'hedge'
+          { label: 'Bot Type',     value: (state.botType === 'pair' || state.botType === 'hedge') ? 'Pair Trading' : (state.botType === 'delta-neutral' || state.botType === 'oi-farmer') ? 'Delta-Neutral' : 'Standard Bot' },
+          { label: 'Bot Name',     value: autoName },
+          { label: 'Symbol',       value: (state.botType === 'pair' || state.botType === 'hedge')
               ? (state.symbol || '?') + ' / ' + (state.symbolB || '?')
               : (state.symbol || '(not set)') },
-          { label: 'Mode',         value: mode === 'farm' ? 'Farm' : 'Trade' },
+          { label: 'Intelligence', value: intel === 'auto' ? 'Auto (Agent controls)' : 'Manual (' + mode + ')' },
+          { label: 'Order Size',   value: '$' + sizeMin + ' - $' + sizeMax + ' USD' },
+          { label: 'Leverage',     value: leverage + 'x' },
+          { label: 'Margin',       value: marginMode.charAt(0).toUpperCase() + marginMode.slice(1) },
         ];
         if (tags) items.push({ label: 'Tags', value: tags });
         if (state.botType === 'hedge') {
           var lvEl = document.getElementById('wz-legValueUsd');
           items.push({ label: 'Leg Value', value: '$' + (lvEl ? lvEl.value : '1000') });
+        }
+        if (state.botType === 'delta-neutral' || state.botType === 'oi-farmer') {
+          var oiDir = document.getElementById('wz-oi-direction');
+          var oiExB = document.getElementById('wz-oi-exchangeB');
+          var oiMin = document.getElementById('wz-oi-minHoldHrs');
+          var oiMax = document.getElementById('wz-oi-maxHoldHrs');
+          items.push({ label: 'Strategy', value: 'Delta-Neutral OI Hold', accent: true });
+          items.push({ label: 'Primary (points)', value: state.exchange.toUpperCase() });
+          items.push({ label: 'Hedge Exchange', value: oiExB ? oiExB.value.toUpperCase() : '?' });
+          items.push({ label: 'Direction', value: oiDir ? oiDir.value : 'long' });
+          items.push({ label: 'Hold Time', value: (oiMin ? oiMin.value : '4') + 'h - ' + (oiMax ? oiMax.value : '48') + 'h' });
         }
         if (autoEl && autoEl.checked) {
           items.push({ label: 'Auto-start', value: 'Yes', accent: true });
@@ -1424,6 +2137,9 @@
       }
 
       if (step === 1) {
+        // Skip credential validation if a saved account is selected
+        if (_wizardAccountSelected) return true;
+
         if (state.exchange === 'sodex') {
           if (!val('wz-apiKey'))     { showFieldError('apiKey', 'API Key is required'); ok = false; }
           if (!val('wz-subaccount')) { showFieldError('subaccount', 'Subaccount address is required'); ok = false; }
@@ -1475,13 +2191,22 @@
       }
 
       if (step === 3) {
-        var id = val('wz-id');
-        if (!id) { showFieldError('id', 'Bot ID is required'); ok = false; }
-        else if (!/^[a-z0-9][a-z0-9\-]*$/.test(id)) { showFieldError('id', 'Lowercase letters, numbers, hyphens only'); ok = false; }
-        if (!val('wz-name')) { showFieldError('name', 'Display name is required'); ok = false; }
+        // Bot ID and Display Name are auto-generated — no validation needed
+        // Validate USD sizing
+        var sizeMin = parseFloat(document.getElementById('wz-sizeMinUsd').value) || 0;
+        var sizeMax = parseFloat(document.getElementById('wz-sizeMaxUsd').value) || 0;
+        if (sizeMin < 10) { ok = false; }
+        if (sizeMax < sizeMin) { ok = false; }
         if (state.botType === 'hedge') {
-          var lv = parseFloat(document.getElementById('wz-legValueUsd').value);
-          if (!lv || lv <= 0) { showFieldError('legValueUsd', 'Must be greater than 0'); ok = false; }
+          // Hedge bots now use DN config — no legacy leg value validation
+        }
+        if (state.botType === 'delta-neutral' || state.botType === 'oi-farmer') {
+          var hedgeSym = document.getElementById('wz-oi-symbolB').value;
+          if (!hedgeSym) {
+            errBanner.textContent = 'Please select a hedge symbol';
+            errBanner.classList.add('visible');
+            ok = false;
+          }
         }
         return ok;
       }
@@ -1532,6 +2257,55 @@
 
       try {
         var payload = buildPayload();
+
+        // If an account was selected from the registry, fetch its credentials
+        // and merge into payload (overriding any manually entered fields)
+        if (_wizardAccountSelected) {
+          var credRes = await fetch('/api/accounts/' + _wizardAccountSelected + '/credentials');
+          if (!credRes.ok) {
+            var credErr = await credRes.json();
+            throw new Error('Failed to load account credentials: ' + (credErr.error || 'Unknown'));
+          }
+          var credData = await credRes.json();
+          var acctCreds = credData.credentials || {};
+          // Merge account credentials into payload (exclude 'exchange' field)
+          delete acctCreds.exchange;
+          Object.assign(payload, acctCreds);
+        }
+
+        // If a hedge account was selected from registry, fetch its credentials
+        if (payload._hedgeAccountId) {
+          var hedgeCredRes = await fetch('/api/accounts/' + payload._hedgeAccountId + '/credentials');
+          if (!hedgeCredRes.ok) {
+            var hedgeCredErr = await hedgeCredRes.json();
+            throw new Error('Failed to load hedge account credentials: ' + (hedgeCredErr.error || 'Unknown'));
+          }
+          var hedgeCredData = await hedgeCredRes.json();
+          var hedgeCreds = hedgeCredData.credentials || {};
+          delete hedgeCreds.exchange;
+          // Map credentials to hedge-prefixed fields expected by the server
+          var hedgeExch = payload.exchangeB || '';
+          if (hedgeExch === 'ondoperps') {
+            payload.hedgeApiKeyId = hedgeCreds.apiKeyId;
+            payload.hedgeApiKeySecret = hedgeCreds.apiKeySecret;
+          } else if (hedgeExch === 'sodex') {
+            payload.hedgeApiKey = hedgeCreds.apiKey;
+            payload.hedgeApiSecret = hedgeCreds.apiSecret;
+            payload.hedgeSubaccount = hedgeCreds.subaccount;
+          } else if (hedgeExch === 'hibachi') {
+            payload.hedgeHibachiApiKey = hedgeCreds.hibachiApiKey;
+            payload.hedgeHibachiAccountId = hedgeCreds.hibachiAccountId;
+            payload.hedgeHibachiPrivateKey = hedgeCreds.hibachiPrivateKey;
+            payload.hedgeHibachiAccountType = hedgeCreds.hibachiAccountType || 'trustless';
+          } else if (hedgeExch === 'decibel') {
+            payload.hedgePrivateKey = hedgeCreds.privateKey;
+          } else if (hedgeExch === 'perpl') {
+            payload.hedgePerplApiKey = hedgeCreds.perplApiKey;
+            payload.hedgePerplApiKeySecret = hedgeCreds.perplApiKeySecret;
+          }
+          delete payload._hedgeAccountId;
+        }
+
         console.log('[Wizard] Submitting bot:', JSON.stringify(Object.assign({}, payload, {
           apiSecret: payload.apiSecret ? '***' : undefined,
           privateKey: payload.privateKey ? '***' : undefined,
@@ -1563,7 +2337,7 @@
                         msg.includes('authentication failed') || msg.includes('unauthorized') ||
                         msg.startsWith('missing sodex') || msg.startsWith('missing dango') ||
                         msg.startsWith('missing decibel') || msg.startsWith('missing hibachi');
-        if (isCredErr) goToStep(1);
+        if (isCredErr && state.botType !== 'delta-neutral' && state.botType !== 'oi-farmer') goToStep(1);
       } finally {
         nextBtn.disabled = false;
         // Only restore "Launch Bot" text if we're still on the final step.
@@ -1590,14 +2364,24 @@
     };
 
     function buildPayload() {
-      var id   = val('wz-id');
-      var name = val('wz-name');
+      // Auto-generate Bot ID: exchange-symbol-timestamp (no user input needed)
+      var sym = (state.symbol || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '-');
+      var id = state.exchange + '-' + sym + '-' + Date.now().toString(36);
+      // Auto-generate Display Name: "Exchange Symbol"
+      var exchangeNames = { sodex: 'SoDEX', decibel: 'Decibel', dango: 'Dango', hibachi: 'Hibachi', ondoperps: 'OndoPerps', perpl: 'Perpl' };
+      var name = (exchangeNames[state.exchange] || state.exchange) + ' ' + (state.symbol || 'Bot');
       var intelligenceMode = document.getElementById('wz-intelligence-mode').value;
       // In auto mode, default initial mode to 'farm' (engine will switch as needed)
       // In manual mode, use user-selected mode
       var mode = intelligenceMode === 'auto' ? 'farm' : document.getElementById('wz-mode').value;
       var tags = val('wz-tags').split(',').map(function (t) { return t.trim(); }).filter(Boolean);
       var autoStart = document.getElementById('wz-autoStart').checked;
+
+      // USD-based sizing (will be converted to asset units server-side)
+      var sizeMinUsd = parseFloat(document.getElementById('wz-sizeMinUsd').value) || 100;
+      var sizeMaxUsd = parseFloat(document.getElementById('wz-sizeMaxUsd').value) || 200;
+      var leverage = parseInt(document.getElementById('wz-leverage').value, 10) || 5;
+      var marginMode = document.getElementById('wz-margin-mode').value || 'cross';
 
       var base = {
         id:               id,
@@ -1611,7 +2395,13 @@
         autoStart:       autoStart,
       };
 
-      // Attach credentials
+      // If a saved account was selected, include accountId in payload
+      if (_wizardAccountSelected) {
+        base.accountId = _wizardAccountSelected;
+      }
+
+      // Attach credentials (skipped if account selected — resolved at submit time)
+      if (!_wizardAccountSelected) {
       if (state.exchange === 'sodex') {
         base.apiKey    = val('wz-apiKey');
         base.apiSecret = val('wz-apiSecret');
@@ -1646,28 +2436,106 @@
         var perplUrl = val('wz-perplBaseUrl');
         if (perplUrl) base.perplBaseUrl = perplUrl;
       }
+      } // end if (!_wizardAccountSelected)
 
-      if (state.botType === 'hedge') {
+      if (state.botType === 'pair' || state.botType === 'hedge') {
+        // Pair/Hedge bots now use DN-style config (same-exchange mode)
+        var minHoldHrs = parseFloat(document.getElementById('wz-oi-minHoldHrs').value) || 0.5;
+        var maxHoldHrs = parseFloat(document.getElementById('wz-oi-maxHoldHrs').value) || 1;
         return Object.assign({}, base, {
-          botType:               'hedge',
-          symbolA:               state.symbol,
-          symbolB:               state.symbolB,
-          legValueUsd:           parseFloat(document.getElementById('wz-legValueUsd').value) || 1000,
-          holdingPeriodSecs:     parseInt(document.getElementById('wz-holdingPeriodSecs').value, 10) || 300,
-          profitTargetUsd:       parseFloat(document.getElementById('wz-profitTargetUsd').value) || 50,
-          maxLossUsd:            parseFloat(document.getElementById('wz-maxLossUsd').value) || 30,
-          volumeSpikeMultiplier: 2.0,
-          volumeRollingWindow:   20,
-          fundingRateWeight:     0.1,
-          cooldownSecs:          30,
+          botType:                'hedge',
+          exchangeA:              state.exchange,
+          exchangeB:              state.exchange,
+          credentialKeyA:         base.credentialKey,
+          credentialKeyB:         base.credentialKey,
+          symbol:                 state.symbol,
+          symbolA:                state.symbol,
+          symbolB:                state.symbolB || state.symbol,
+          legValueUsd:            parseFloat(document.getElementById('wz-oi-sizeMinUsd').value) || 150,
+          orderSizeMinUsd:        parseFloat(document.getElementById('wz-oi-sizeMinUsd').value) || 150,
+          orderSizeMaxUsd:        parseFloat(document.getElementById('wz-oi-sizeMaxUsd').value) || 200,
+          primaryDirection:       document.getElementById('wz-oi-direction').value || 'long',
+          minHoldSecs:            Math.round(minHoldHrs * 3600),
+          maxHoldSecs:            Math.round(maxHoldHrs * 3600),
+          maxLossUsd:             parseFloat(document.getElementById('wz-oi-maxLossUsd').value) || 15,
+          takeProfitUsd:          parseFloat(document.getElementById('wz-oi-takeProfitUsd').value) || 0,
+          maxDeltaDivergenceUsd:  parseFloat(document.getElementById('wz-oi-maxDelta').value) || 30,
+          maxFundingRateThreshold: 0.01,
+          autoFlipOnFunding:      false,
+          tickIntervalSecs:       60,
+          cooldownSecs:           30,
+          entryMode:              document.getElementById('wz-oi-entryMode').value || 'taker',
+          chunkSizeUsd:           parseFloat(document.getElementById('wz-oi-chunkSize').value) || 100,
+        });
+      }
+
+      if (state.botType === 'delta-neutral' || state.botType === 'oi-farmer') {
+        var hedgeExchange = document.getElementById('wz-oi-exchangeB').value;
+        var oiSymbolB = document.getElementById('wz-oi-symbolB').value || state.symbol;
+        var minHoldHrs = parseFloat(document.getElementById('wz-oi-minHoldHrs').value) || 4;
+        var maxHoldHrs = parseFloat(document.getElementById('wz-oi-maxHoldHrs').value) || 48;
+        // credentialKeyB uses the exchange name as env prefix (reads ONDOPERPS_API_KEY_ID etc from .env)
+        var hedgeCredKey = hedgeExchange.toUpperCase();
+
+        // Collect hedge exchange credentials from the inline form
+        // If a saved account is selected, store its ID for credential fetch at submit time
+        var hedgeCreds = {};
+        if (_hedgeAccountSelected) {
+          hedgeCreds._hedgeAccountId = _hedgeAccountSelected;
+        } else if (hedgeExchange === 'ondoperps') {
+          hedgeCreds.hedgeApiKeyId = val('wz-oi-ondoApiKeyId');
+          hedgeCreds.hedgeApiKeySecret = val('wz-oi-ondoApiKeySecret');
+        } else if (hedgeExchange === 'sodex') {
+          hedgeCreds.hedgeApiKey = val('wz-oi-sodexApiKey');
+          hedgeCreds.hedgeSubaccount = val('wz-oi-sodexSubaccount');
+          hedgeCreds.hedgeApiSecret = val('wz-oi-sodexSecret');
+        } else if (hedgeExchange === 'hibachi') {
+          hedgeCreds.hedgeHibachiApiKey = val('wz-oi-hibachiApiKey');
+          hedgeCreds.hedgeHibachiAccountId = val('wz-oi-hibachiAccountId');
+          hedgeCreds.hedgeHibachiPrivateKey = val('wz-oi-hibachiPrivateKey');
+          hedgeCreds.hedgeHibachiAccountType = 'trustless';
+        } else if (hedgeExchange === 'decibel') {
+          hedgeCreds.hedgePrivateKey = val('wz-oi-decibelKey');
+        } else if (hedgeExchange === 'perpl') {
+          hedgeCreds.hedgePerplApiKey = val('wz-oi-perplApiKey');
+          hedgeCreds.hedgePerplApiKeySecret = val('wz-oi-perplSecret');
+        }
+
+        return Object.assign({}, base, hedgeCreds, {
+          botType:                'delta-neutral',
+          exchangeA:              state.exchange,
+          credentialKeyA:         base.credentialKey,
+          exchangeB:              hedgeExchange,
+          credentialKeyB:         hedgeCredKey,
+          symbol:                 state.symbol,
+          symbolA:                state.symbol,
+          symbolB:                oiSymbolB,
+          legValueUsd:            parseFloat(document.getElementById('wz-oi-sizeMaxUsd').value) || 200,
+          orderSizeMinUsd:        parseFloat(document.getElementById('wz-oi-sizeMinUsd').value) || 100,
+          orderSizeMaxUsd:        parseFloat(document.getElementById('wz-oi-sizeMaxUsd').value) || 200,
+          primaryDirection:       document.getElementById('wz-oi-direction').value,
+          minHoldSecs:            Math.round(minHoldHrs * 3600),
+          maxHoldSecs:            Math.round(maxHoldHrs * 3600),
+          maxLossUsd:             parseFloat(document.getElementById('wz-oi-maxLossUsd').value) || 15,
+          takeProfitUsd:          parseFloat(document.getElementById('wz-oi-takeProfitUsd').value) || 0,
+          maxDeltaDivergenceUsd:  parseFloat(document.getElementById('wz-oi-maxDelta').value) || 30,
+          maxFundingRateThreshold: 0.005,
+          autoFlipOnFunding:      false,
+          tickIntervalSecs:       60,
+          cooldownSecs:           300,
+          leverage:               leverage,
+          entryMode:              document.getElementById('wz-oi-entryMode').value || 'taker',
+          chunkSizeUsd:           parseFloat(document.getElementById('wz-oi-chunkSize').value) || 100,
         });
       }
 
       return Object.assign({}, base, {
         symbol:       state.symbol,
         mode:         mode,
-        orderSizeMin: 0.003,
-        orderSizeMax: 0.005,
+        orderSizeMinUsd: sizeMinUsd,
+        orderSizeMaxUsd: sizeMaxUsd,
+        leverage:     leverage,
+        marginMode:   marginMode,
       });
     }
 
@@ -1747,6 +2615,459 @@
   })();
   </script>
 
+  <!-- ═══ Connect Account Modal (accounts-sidebar) ═══════════════════════════ -->
+  <style>
+    .connect-account-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(3px);
+      z-index: 1100;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .connect-account-overlay.active {
+      display: flex;
+    }
+    .connect-account-modal {
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 16px;
+      box-shadow: var(--shadow-lg);
+      width: 100%;
+      max-width: 520px;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: wzIn 0.15s ease;
+    }
+    .cam-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .cam-header h3 {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+    }
+    .cam-close {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text-tertiary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      transition: all 0.15s;
+    }
+    .cam-close:hover {
+      border-color: var(--red);
+      color: var(--red);
+      background: var(--red-bg);
+    }
+    .cam-body {
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    .cam-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .cam-field label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-secondary);
+    }
+    .cam-field input,
+    .cam-field select {
+      width: 100%;
+      padding: 0.6rem 0.8rem;
+      border: 1.5px solid var(--border-strong);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      background: var(--surface);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .cam-field input:focus,
+    .cam-field select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(245,166,35,0.15);
+    }
+    .cam-field .cam-hint {
+      font-size: 0.65rem;
+      color: var(--text-tertiary);
+    }
+    .cam-type-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .cam-type-btn {
+      flex: 1;
+      padding: 0.55rem 0.5rem;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-2);
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .cam-type-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .cam-type-btn.selected {
+      border-color: var(--accent);
+      background: var(--accent-light);
+      color: var(--accent);
+    }
+    .cam-cred-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      padding: 1rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .cam-cred-section-title {
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-tertiary);
+      margin-bottom: 0.25rem;
+    }
+    .cam-footer {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface-2);
+      border-radius: 0 0 16px 16px;
+    }
+    .cam-submit {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.6rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      background: var(--accent);
+      color: #000;
+      box-shadow: 0 1px 8px rgba(245,166,35,0.3);
+      transition: all 0.15s;
+    }
+    .cam-submit:hover {
+      background: var(--accent-hover);
+      box-shadow: 0 2px 14px rgba(245,166,35,0.45);
+    }
+    .cam-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .cam-cancel {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1.5px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      transition: all 0.15s;
+    }
+    .cam-cancel:hover {
+      background: var(--surface);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+    .cam-toast {
+      font-size: 0.72rem;
+      margin-left: auto;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    @media (max-width: 600px) {
+      .connect-account-modal {
+        max-width: 100%;
+        border-radius: 16px 16px 0 0;
+        max-height: 95vh;
+      }
+      .connect-account-overlay {
+        align-items: flex-end;
+        padding: 0;
+      }
+      .cam-type-group {
+        flex-direction: column;
+      }
+    }
+  </style>
+
+  <div class="connect-account-overlay" id="connect-account-modal">
+    <div class="connect-account-modal">
+      <div class="cam-header">
+        <h3>Connect Account</h3>
+        <button class="cam-close" onclick="closeConnectModal()" aria-label="Close">&times;</button>
+      </div>
+      <div class="cam-body">
+        <!-- Account Type -->
+        <div class="cam-field">
+          <label>Account Type</label>
+          <div class="cam-type-group" id="cam-type-group">
+            <button type="button" class="cam-type-btn selected" data-type="cex" onclick="camSelectType(this)">CEX</button>
+            <button type="button" class="cam-type-btn" data-type="dex-wallet" onclick="camSelectType(this)">DEX</button>
+            <button type="button" class="cam-type-btn" data-type="perp-dex" onclick="camSelectType(this)">Perp DEX</button>
+          </div>
+          <input type="hidden" name="accountType" id="account-type-selector" value="cex" />
+        </div>
+
+        <!-- Exchange -->
+        <div class="cam-field">
+          <label>Exchange</label>
+          <select id="cam-exchange" onchange="camUpdateCredentials()">
+            <option value="">Select exchange...</option>
+            <option value="sodex">SoDEX</option>
+            <option value="decibel">Decibel</option>
+            <option value="dango">Dango</option>
+            <option value="hibachi">Hibachi</option>
+            <option value="ondoperps">OndoPerps</option>
+            <option value="perpl">Perpl</option>
+          </select>
+        </div>
+
+        <!-- Label -->
+        <div class="cam-field">
+          <label>Account Label</label>
+          <input type="text" id="cam-label" placeholder="e.g. My Trading Account" autocomplete="off" />
+          <span class="cam-hint">A friendly name to identify this account</span>
+        </div>
+
+        <!-- Dynamic Credential Fields -->
+        <div class="cam-cred-section" id="cam-cred-section" style="display:none;">
+          <div class="cam-cred-section-title" id="cam-cred-title">Credentials</div>
+          <div id="cam-cred-fields"></div>
+        </div>
+      </div>
+      <div class="cam-footer">
+        <button class="cam-submit" id="cam-submit-btn" onclick="camSubmitAccount()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Connect Account
+        </button>
+        <button class="cam-cancel" onclick="closeConnectModal()">Cancel</button>
+        <span class="cam-toast" id="cam-toast"></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    // ── Account Type Selection ──────────────────────────────────────────────────
+    window.camSelectType = function(btn) {
+      document.querySelectorAll('#cam-type-group .cam-type-btn').forEach(function(b) {
+        b.classList.remove('selected');
+      });
+      btn.classList.add('selected');
+      document.getElementById('account-type-selector').value = btn.dataset.type;
+      camUpdateCredentials();
+    };
+
+    // ── Credential field templates per exchange + type ─────────────────────────
+    var credTemplates = {
+      cex: {
+        sodex: [
+          { key: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Your SoDEX API key' },
+          { key: 'apiSecret', label: 'API Secret (Private Key)', type: 'password', placeholder: '0x... (EVM private key)' },
+          { key: 'subaccount', label: 'Subaccount Address', type: 'text', placeholder: '0x...' }
+        ],
+        hibachi: [
+          { key: 'hibachiApiKey', label: 'API Key', type: 'text', placeholder: 'Hibachi API key' },
+          { key: 'hibachiAccountId', label: 'Account ID', type: 'text', placeholder: 'Numeric ID' },
+          { key: 'hibachiPrivateKey', label: 'Private Key / Secret', type: 'password', placeholder: '0x... (ECDSA) or HMAC secret' }
+        ]
+      },
+      'dex-wallet': {
+        sodex: [
+          { key: 'apiSecret', label: 'Private Key (EVM)', type: 'password', placeholder: '0x... (66-char hex)' },
+          { key: 'subaccount', label: 'Wallet Address', type: 'text', placeholder: '0x...' }
+        ],
+        decibel: [
+          { key: 'privateKey', label: 'Private Key (Ed25519)', type: 'password', placeholder: 'Ed25519 private key' },
+          { key: 'subaccount', label: 'Wallet Address (optional)', type: 'text', placeholder: '0x...' }
+        ],
+        dango: [
+          { key: 'dangoPrivateKey', label: 'Private Key (Secp256k1)', type: 'password', placeholder: '64-char hex, no 0x prefix' },
+          { key: 'userAddress', label: 'Wallet Address', type: 'text', placeholder: '0x...' }
+        ],
+        hibachi: [
+          { key: 'hibachiPrivateKey', label: 'Private Key (ECDSA)', type: 'password', placeholder: '0x... (66-char hex)' }
+        ]
+      },
+      'perp-dex': {
+        ondoperps: [
+          { key: 'apiKeyId', label: 'API Key ID', type: 'text', placeholder: 'OndoPerps API key ID' },
+          { key: 'apiKeySecret', label: 'API Key Secret', type: 'password', placeholder: 'API key secret' }
+        ],
+        perpl: [
+          { key: 'perplApiKey', label: 'API Key', type: 'text', placeholder: 'Perpl API token' },
+          { key: 'perplApiKeySecret', label: 'Private Key (Ed25519)', type: 'password', placeholder: '0x... or hex without prefix' }
+        ],
+        sodex: [
+          { key: 'apiKey', label: 'API Key', type: 'text', placeholder: 'SoDEX API key' },
+          { key: 'apiSecret', label: 'Private Key', type: 'password', placeholder: '0x... (EVM private key)' },
+          { key: 'subaccount', label: 'Subaccount Address', type: 'text', placeholder: '0x...' }
+        ],
+        decibel: [
+          { key: 'privateKey', label: 'Private Key (Ed25519)', type: 'password', placeholder: 'Ed25519 private key' },
+          { key: 'nodeApiKey', label: 'Node API Key (optional)', type: 'text', placeholder: 'aptoslabs_...' }
+        ],
+        dango: [
+          { key: 'dangoPrivateKey', label: 'Private Key (Secp256k1)', type: 'password', placeholder: '64-char hex' },
+          { key: 'userAddress', label: 'User Address', type: 'text', placeholder: '0x...' }
+        ],
+        hibachi: [
+          { key: 'hibachiApiKey', label: 'API Key', type: 'text', placeholder: 'Hibachi API key' },
+          { key: 'hibachiAccountId', label: 'Account ID', type: 'text', placeholder: 'Numeric' },
+          { key: 'hibachiPrivateKey', label: 'Private Key', type: 'password', placeholder: '0x...' }
+        ]
+      }
+    };
+
+    // ── Update credential fields dynamically ──────────────────────────────────
+    window.camUpdateCredentials = function() {
+      var type = document.getElementById('account-type-selector').value;
+      var exchange = document.getElementById('cam-exchange').value;
+      var section = document.getElementById('cam-cred-section');
+      var title = document.getElementById('cam-cred-title');
+      var container = document.getElementById('cam-cred-fields');
+
+      if (!exchange) {
+        section.style.display = 'none';
+        return;
+      }
+
+      var fields = (credTemplates[type] && credTemplates[type][exchange]) || credTemplates['perp-dex'][exchange] || [];
+
+      if (fields.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+
+      section.style.display = 'flex';
+      var exchangeNames = { sodex: 'SoDEX', decibel: 'Decibel', dango: 'Dango', hibachi: 'Hibachi', ondoperps: 'OndoPerps', perpl: 'Perpl' };
+      title.textContent = (exchangeNames[exchange] || exchange) + ' Credentials';
+
+      container.innerHTML = fields.map(function(f) {
+        return '<div class="cam-field">' +
+          '<label>' + f.label + '</label>' +
+          '<input type="' + f.type + '" id="cam-cred-' + f.key + '" placeholder="' + f.placeholder + '" autocomplete="off" />' +
+        '</div>';
+      }).join('');
+    };
+
+    // ── Submit new account ────────────────────────────────────────────────────
+    window.camSubmitAccount = function() {
+      var type = document.getElementById('account-type-selector').value;
+      var exchange = document.getElementById('cam-exchange').value;
+      var label = document.getElementById('cam-label').value.trim();
+
+      if (!label) { camShowToast('Please enter an account label', 'err'); return; }
+      if (!exchange) { camShowToast('Please select an exchange', 'err'); return; }
+
+      // Collect credentials
+      var fields = (credTemplates[type] && credTemplates[type][exchange]) || credTemplates['perp-dex'][exchange] || [];
+      var credentials = { exchange: exchange };
+      for (var i = 0; i < fields.length; i++) {
+        var el = document.getElementById('cam-cred-' + fields[i].key);
+        var val = el ? el.value.trim() : '';
+        if (val) credentials[fields[i].key] = val;
+      }
+
+      // Validate at least one credential is filled
+      var hasAnyCred = Object.keys(credentials).some(function(k) { return k !== 'exchange' && credentials[k]; });
+      if (!hasAnyCred) { camShowToast('Please fill in at least one credential field', 'err'); return; }
+
+      var btn = document.getElementById('cam-submit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Connecting...';
+
+      fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label, type: type, credentials: credentials })
+      })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+        .then(function(res) {
+          btn.disabled = false;
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Connect Account';
+          if (!res.ok) { camShowToast(res.data.error || 'Failed to connect', 'err'); return; }
+          camShowToast('Account connected!', 'ok');
+          // Reset form fields
+          var labelReset = document.getElementById('cam-label');
+          if (labelReset) labelReset.value = '';
+          var exchReset = document.getElementById('cam-exchange');
+          if (exchReset) exchReset.value = '';
+          var credSectionReset = document.getElementById('cam-cred-section');
+          if (credSectionReset) credSectionReset.style.display = 'none';
+          var credFieldsReset = document.getElementById('cam-cred-fields');
+          if (credFieldsReset) credFieldsReset.innerHTML = '';
+          setTimeout(function() {
+            closeConnectModal();
+            // Refresh sidebar and accounts panel
+            if (typeof refreshAccounts === 'function') refreshAccounts();
+            if (typeof loadAccounts === 'function') loadAccounts();
+          }, 800);
+        })
+        .catch(function(err) {
+          btn.disabled = false;
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Connect Account';
+          camShowToast('Network error: ' + err.message, 'err');
+        });
+    };
+
+    function camShowToast(msg, type) {
+      var el = document.getElementById('cam-toast');
+      el.textContent = msg;
+      el.style.color = type === 'ok' ? 'var(--green)' : 'var(--red)';
+      el.style.opacity = '1';
+      setTimeout(function() { el.style.opacity = '0'; }, 3500);
+    }
+
+    // ── Close on overlay click ────────────────────────────────────────────────
+    var camOverlay = document.getElementById('connect-account-modal');
+    if (camOverlay) {
+      camOverlay.addEventListener('click', function(e) {
+        if (e.target === camOverlay) closeConnectModal();
+      });
+    }
+  })();
+  </script>
+
   <!-- Add Bot Modal - DISABLED: Using wizard instead -->
   <!--
   <div class="modal-overlay" id="add-bot-modal">
@@ -1818,6 +3139,17 @@
       var state = data.lifecycleState || 'IDLE';
       badge.textContent = state;
       badge.className = 'status-pill ' + (state === 'RUNNING' ? 'active' : 'inactive');
+
+      // Button states based on lifecycle
+      var btnStart = document.getElementById('agent-btn-start');
+      var btnPause = document.getElementById('agent-btn-pause');
+      var btnStop = document.getElementById('agent-btn-stop');
+      var isRunning = state === 'RUNNING';
+      var isPaused = state === 'PAUSED';
+      var isStopped = state === 'STOPPED' || state === 'IDLE';
+      if (btnStart) { btnStart.disabled = isRunning; btnStart.style.opacity = isRunning ? '0.4' : '1'; btnStart.style.cursor = isRunning ? 'not-allowed' : 'pointer'; }
+      if (btnPause) { btnPause.disabled = !isRunning; btnPause.style.opacity = !isRunning ? '0.4' : '1'; btnPause.style.cursor = !isRunning ? 'not-allowed' : 'pointer'; }
+      if (btnStop) { btnStop.disabled = isStopped; btnStop.style.opacity = isStopped ? '0.4' : '1'; btnStop.style.cursor = isStopped ? 'not-allowed' : 'pointer'; }
 
       // Updated time
       document.getElementById('agent-updated').textContent = 'Cycle #' + (data.cycleCount || 0);
@@ -1946,6 +3278,29 @@
     setInterval(pollAgent, AGENT_POLL_MS);
   })();
 
+  // Agent panel collapse/expand
+  var _agentCollapsed = localStorage.getItem('drift-agent-collapsed') === '1';
+  function toggleAgentPanel() {
+    _agentCollapsed = !_agentCollapsed;
+    localStorage.setItem('drift-agent-collapsed', _agentCollapsed ? '1' : '0');
+    applyAgentCollapse();
+  }
+  function applyAgentCollapse() {
+    var body = document.getElementById('agent-panel-body');
+    var icon = document.getElementById('agent-collapse-icon');
+    if (!body) return;
+    if (_agentCollapsed) {
+      body.style.maxHeight = '0';
+      body.style.overflow = 'hidden';
+      if (icon) icon.style.transform = 'rotate(-90deg)';
+    } else {
+      body.style.maxHeight = '2000px';
+      body.style.overflow = 'visible';
+      if (icon) icon.style.transform = 'rotate(0)';
+    }
+  }
+  applyAgentCollapse();
+
   // Agent control buttons
   function agentAction(action) {
     fetch('/agent/' + action, { method: 'POST' })
@@ -1955,6 +3310,655 @@
       })
       .catch(function(err) { console.error('[Agent] action failed:', err); });
   }
+  </script>
+
+  <!-- ═══ Pre-Trade Analytics — Live Recalculation (Task 3.7) ═════════════════ -->
+  <script>
+  (function() {
+    'use strict';
+
+    // ── Constants ──────────────────────────────────────────────────────────────
+    var DEFAULT_FEE_RATE = 0.0005; // 5 bps
+    var DEBOUNCE_MS = 500;
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    var ptaState = {
+      notional: 0,
+      longAccountBalance: null,
+      shortAccountBalance: null,
+      longFundingRate: null,
+      shortFundingRate: null,
+      currentPrice: null, // fetched or placeholder
+      longExchange: '',
+      shortExchange: '',
+      longSymbol: '',
+      shortSymbol: ''
+    };
+
+    // ── Utility: debounce ─────────────────────────────────────────────────────
+    var _ptaTimer = null;
+    function ptaDebounce(fn, ms) {
+      return function() {
+        clearTimeout(_ptaTimer);
+        _ptaTimer = setTimeout(fn, ms);
+      };
+    }
+
+    // ── Format helpers ────────────────────────────────────────────────────────
+    function fmtUsd(n) {
+      if (n == null || isNaN(n)) return '—';
+      return '$' + n.toFixed(2);
+    }
+    function fmtRate(r) {
+      if (r == null || isNaN(r)) return '—';
+      var pct = (r * 100).toFixed(4);
+      return (r >= 0 ? '+' : '') + pct + '%';
+    }
+    function fmtQty(n) {
+      if (n == null || isNaN(n)) return '—';
+      return n.toFixed(6);
+    }
+
+    // ── Panel visibility control ──────────────────────────────────────────────
+    function showPtaSection(section) {
+      var loading = document.getElementById('pre-trade-analytics-loading');
+      var empty = document.getElementById('pre-trade-analytics-empty');
+      var dnSection = document.getElementById('pre-trade-dn-section');
+      var stdSection = document.getElementById('pre-trade-standard-section');
+
+      if (loading) loading.style.display = section === 'loading' ? '' : 'none';
+      if (empty) empty.style.display = section === 'empty' ? '' : 'none';
+      if (dnSection) dnSection.style.display = section === 'dn' ? '' : 'none';
+      if (stdSection) stdSection.style.display = section === 'standard' ? '' : 'none';
+    }
+
+    // ── Read form inputs ──────────────────────────────────────────────────────
+    function readDnFormInputs() {
+      // Notional = min order size for DN (use DN-specific field, fallback to standard)
+      var isDN = document.getElementById('wz-delta-neutral-config');
+      var notionalEl = (isDN && isDN.style.display !== 'none')
+        ? document.getElementById('wz-oi-sizeMinUsd')
+        : document.getElementById('wz-sizeMinUsd');
+      ptaState.notional = parseFloat(notionalEl ? notionalEl.value : '0') || 0;
+
+      // Primary exchange (long by default unless direction is 'short')
+      var dirEl = document.getElementById('wz-oi-direction');
+      var direction = dirEl ? dirEl.value : 'long';
+
+      // Exchange A = primary exchange from wizard state
+      var primaryExchange = '';
+      var exTile = document.querySelector('.ex-tile.selected');
+      if (exTile) primaryExchange = exTile.dataset.exchange || '';
+
+      // Exchange B = hedge exchange
+      var hedgeExchEl = document.getElementById('wz-oi-exchangeB');
+      var hedgeExchange = hedgeExchEl ? hedgeExchEl.value : '';
+
+      // Symbol A = primary symbol
+      var symSelA = document.getElementById('wz-sym-select');
+      var symManual = document.getElementById('wz-sym-manual');
+      var primarySymbol = '';
+      if (symSelA && symSelA.value) primarySymbol = symSelA.value;
+      else if (symManual && symManual.value) primarySymbol = symManual.value;
+
+      // Symbol B = hedge symbol
+      var symBEl = document.getElementById('wz-oi-symbolB');
+      var hedgeSymbol = symBEl ? symBEl.value : '';
+
+      // Assign long/short based on direction
+      if (direction === 'short') {
+        ptaState.longExchange = hedgeExchange;
+        ptaState.longSymbol = hedgeSymbol || primarySymbol;
+        ptaState.shortExchange = primaryExchange;
+        ptaState.shortSymbol = primarySymbol;
+      } else {
+        ptaState.longExchange = primaryExchange;
+        ptaState.longSymbol = primarySymbol;
+        ptaState.shortExchange = hedgeExchange;
+        ptaState.shortSymbol = hedgeSymbol || primarySymbol;
+      }
+
+      // Account balances from account selector (if available)
+      ptaState.longAccountBalance = getAccountBalance('wz-account-select');
+      ptaState.shortAccountBalance = getAccountBalance('wz-oi-hedge-account-select');
+
+      // Swap balances if direction is 'short' (primary is short leg)
+      if (direction === 'short') {
+        var tmp = ptaState.longAccountBalance;
+        ptaState.longAccountBalance = ptaState.shortAccountBalance;
+        ptaState.shortAccountBalance = tmp;
+      }
+    }
+
+    function getAccountBalance(selectId) {
+      // Try to read balance from the accounts data cached during wizard load
+      var selectEl = document.getElementById(selectId);
+      if (!selectEl || !selectEl.value) return null;
+
+      // Look up balance from _wizardAccounts or from sidebar data
+      if (typeof _wizardAccounts !== 'undefined' && _wizardAccounts) {
+        var acct = _wizardAccounts.find(function(a) { return a.id === selectEl.value; });
+        if (acct && acct.balanceUsd != null) return acct.balanceUsd;
+      }
+      return null;
+    }
+
+    // ── Fetch funding rate ────────────────────────────────────────────────────
+    function fetchFundingRate(exchange, symbol, callback) {
+      if (!exchange || !symbol) { callback(null); return; }
+      fetch('/api/exchanges/' + encodeURIComponent(exchange) + '/funding-rate?symbol=' + encodeURIComponent(symbol))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          callback(data.fundingRate != null ? data.fundingRate : null);
+        })
+        .catch(function() { callback(null); });
+    }
+
+    // ── Core recalculation ────────────────────────────────────────────────────
+    function recalculatePta() {
+      readDnFormInputs();
+
+      // Check if we have enough data to show anything
+      if (!ptaState.notional || ptaState.notional <= 0) {
+        showPtaSection('empty');
+        return;
+      }
+
+      // Determine if this is a DN setup (we're in the DN config panel)
+      var dnConfig = document.getElementById('wz-delta-neutral-config');
+      if (!dnConfig || dnConfig.style.display === 'none') {
+        // Standard/Farm bot — use simplified view
+        recalculateStandard();
+        return;
+      }
+
+      showPtaSection('loading');
+
+      var notional = ptaState.notional;
+      var feePerLeg = notional * DEFAULT_FEE_RATE * 2; // entry + exit
+
+      // Use a placeholder price (we can't easily fetch real-time price without an extra API)
+      // For now, estimate target amount as notional / assumed price
+      var estimatedPrice = 100000; // Placeholder — BTC ~$100k default
+      var targetAmount = notional / estimatedPrice;
+
+      // Fetch funding rates for both legs in parallel
+      var longDone = false, shortDone = false;
+      var longRate = null, shortRate = null;
+
+      function tryRender() {
+        if (!longDone || !shortDone) return;
+
+        ptaState.longFundingRate = longRate;
+        ptaState.shortFundingRate = shortRate;
+
+        // Update DOM
+        updateEl('pta-long-margin', ptaState.longAccountBalance != null ? fmtUsd(ptaState.longAccountBalance) : '—');
+        updateEl('pta-long-target', fmtQty(targetAmount) + ' ≈ ' + fmtUsd(notional));
+        updateEl('pta-long-fees', '-' + fmtUsd(feePerLeg));
+        updateEl('pta-long-funding', fmtRate(longRate));
+
+        updateEl('pta-short-margin', ptaState.shortAccountBalance != null ? fmtUsd(ptaState.shortAccountBalance) : '—');
+        updateEl('pta-short-target', fmtQty(targetAmount) + ' ≈ ' + fmtUsd(notional));
+        updateEl('pta-short-fees', '-' + fmtUsd(feePerLeg));
+        updateEl('pta-short-funding', fmtRate(shortRate));
+
+        // Net calculations
+        var netFunding = ((longRate || 0) + (shortRate || 0)); // long pays, short receives (or vice versa)
+        var netHourlyCost = Math.abs(netFunding) * notional;
+        var totalFees = feePerLeg * 2; // both legs
+
+        updateEl('pta-net-funding', fmtRate(netFunding));
+        updateEl('pta-net-hourly-cost', '-' + fmtUsd(netHourlyCost));
+        updateEl('pta-net-total-fees', '-' + fmtUsd(totalFees));
+
+        // Color coding for funding rates
+        colorCode('pta-long-funding', longRate);
+        colorCode('pta-short-funding', shortRate);
+        colorCode('pta-net-funding', netFunding);
+
+        showPtaSection('dn');
+      }
+
+      fetchFundingRate(ptaState.longExchange, ptaState.longSymbol, function(rate) {
+        longRate = rate;
+        longDone = true;
+        tryRender();
+      });
+
+      fetchFundingRate(ptaState.shortExchange, ptaState.shortSymbol, function(rate) {
+        shortRate = rate;
+        shortDone = true;
+        tryRender();
+      });
+
+      // Timeout: if funding rates don't come back in 5s, render with nulls
+      setTimeout(function() {
+        if (!longDone) { longDone = true; longRate = null; }
+        if (!shortDone) { shortDone = true; shortRate = null; }
+        tryRender();
+      }, 5000);
+    }
+
+    // ── Standard/Farm bot simplified calculation ──────────────────────────────
+    function recalculateStandard() {
+      var notional = ptaState.notional;
+      var stdPanel = document.getElementById('wz-standard-fee-panel');
+      var stdEmpty = document.getElementById('std-pta-empty');
+      var stdContent = document.getElementById('std-pta-content');
+
+      if (!notional || notional <= 0) {
+        // Show the standalone panel with empty state
+        if (stdPanel) stdPanel.style.display = '';
+        if (stdEmpty) stdEmpty.style.display = '';
+        if (stdContent) stdContent.style.display = 'none';
+        showPtaSection('empty');
+        return;
+      }
+
+      var roundTripFee = notional * DEFAULT_FEE_RATE * 2;
+
+      // Update the DN-embedded panel elements (in case DN config is visible later)
+      updateEl('pta-std-notional', fmtUsd(notional));
+      updateEl('pta-std-fee-rate', (DEFAULT_FEE_RATE * 10000).toFixed(1) + ' bps');
+      updateEl('pta-std-round-trip-fee', '-' + fmtUsd(roundTripFee));
+
+      // Update the standalone standard bot fee panel elements
+      updateEl('std-pta-notional', fmtUsd(notional));
+      updateEl('std-pta-fee-rate', (DEFAULT_FEE_RATE * 10000).toFixed(1) + ' bps');
+      updateEl('std-pta-round-trip-fee', '-' + fmtUsd(roundTripFee));
+
+      // Show standalone panel with content
+      if (stdPanel) stdPanel.style.display = '';
+      if (stdEmpty) stdEmpty.style.display = 'none';
+      if (stdContent) stdContent.style.display = '';
+
+      // Fetch funding rate for the selected symbol on the primary exchange
+      var primaryExchange = '';
+      var exTile = document.querySelector('.ex-tile.selected');
+      if (exTile) primaryExchange = exTile.dataset.exchange || '';
+
+      var symSelA = document.getElementById('wz-sym-select');
+      var symManual = document.getElementById('wz-sym-manual');
+      var symbol = '';
+      if (symSelA && symSelA.value) symbol = symSelA.value;
+      else if (symManual && symManual.value) symbol = symManual.value;
+
+      fetchFundingRate(primaryExchange, symbol, function(rate) {
+        updateEl('pta-std-funding', fmtRate(rate));
+        colorCode('pta-std-funding', rate);
+        updateEl('std-pta-funding', fmtRate(rate));
+        colorCode('std-pta-funding', rate);
+      });
+
+      showPtaSection('standard');
+    }
+
+    // ── DOM helpers ───────────────────────────────────────────────────────────
+    function updateEl(id, text) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    function colorCode(id, rate) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('positive', 'negative', 'neutral');
+      if (rate == null) el.classList.add('neutral');
+      else if (rate > 0) el.classList.add('positive');
+      else if (rate < 0) el.classList.add('negative');
+      else el.classList.add('neutral');
+    }
+
+    // ── Wire up event listeners with debounce ─────────────────────────────────
+    var debouncedRecalc = ptaDebounce(recalculatePta, DEBOUNCE_MS);
+
+    // Notional / Size inputs
+    var sizeInputIds = ['wz-sizeMinUsd', 'wz-sizeMaxUsd'];
+    sizeInputIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('input', debouncedRecalc);
+    });
+
+    // Account dropdowns
+    var accountSelectIds = ['wz-account-select', 'wz-oi-hedge-account-select'];
+    accountSelectIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('change', debouncedRecalc);
+    });
+
+    // Pair/Symbol selectors
+    var symbolSelectIds = ['wz-sym-select', 'wz-oi-symbolB'];
+    symbolSelectIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('change', debouncedRecalc);
+    });
+
+    // Manual symbol input
+    var symManual = document.getElementById('wz-sym-manual');
+    if (symManual) symManual.addEventListener('input', debouncedRecalc);
+
+    // Hedge exchange change (affects funding rate source)
+    var hedgeExchEl = document.getElementById('wz-oi-exchangeB');
+    if (hedgeExchEl) hedgeExchEl.addEventListener('change', debouncedRecalc);
+
+    // Direction change (swaps long/short assignment)
+    var dirEl = document.getElementById('wz-oi-direction');
+    if (dirEl) dirEl.addEventListener('change', debouncedRecalc);
+
+    // Also trigger recalc when DN config section becomes visible
+    // (observed via MutationObserver on the panel display)
+    var dnConfigEl = document.getElementById('wz-delta-neutral-config');
+    if (dnConfigEl) {
+      var observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          if (m.attributeName === 'style') {
+            var isVisible = dnConfigEl.style.display !== 'none';
+            if (isVisible) {
+              // Small delay to let inputs populate
+              setTimeout(recalculatePta, 100);
+            }
+          }
+        });
+      });
+      observer.observe(dnConfigEl, { attributes: true, attributeFilter: ['style'] });
+    }
+
+    // Trigger recalc when standard fee panel becomes visible (non-DN bots on config step)
+    var stdFeePanelEl = document.getElementById('wz-standard-fee-panel');
+    if (stdFeePanelEl) {
+      var stdObserver = new MutationObserver(function(mutations) {
+        mutations.forEach(function(m) {
+          if (m.attributeName === 'style') {
+            var isVisible = stdFeePanelEl.style.display !== 'none';
+            if (isVisible) {
+              setTimeout(recalculatePta, 100);
+            }
+          }
+        });
+      });
+      stdObserver.observe(stdFeePanelEl, { attributes: true, attributeFilter: ['style'] });
+    }
+
+    // Initialize: show empty state
+    showPtaSection('empty');
+  })();
+  </script>
+
+  <!-- ═══ Account Registry JS ═══════════════════════════════════════════════ -->
+  <script>
+  (function() {
+    var currentConnectType = 'cex';
+    var accountsLoaded = false;
+
+    // ── View Switching: Accounts vs Bots ──────────────────────────────────────
+    var filterBtns = document.querySelectorAll('.filter-btn');
+    filterBtns.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var view = this.getAttribute('data-view');
+        filterBtns.forEach(function(b) { b.classList.remove('active'); });
+        this.classList.add('active');
+
+        var accountsPanel = document.getElementById('accounts-panel');
+        var agentPanel = document.getElementById('agent-panel');
+        var botGrid = document.getElementById('bot-cards');
+
+        if (view === 'accounts') {
+          accountsPanel.style.display = 'block';
+          if (agentPanel) agentPanel.style.display = 'none';
+          if (botGrid) botGrid.style.display = 'none';
+          if (!accountsLoaded) { loadAccounts(); accountsLoaded = true; }
+        } else {
+          accountsPanel.style.display = 'none';
+          if (agentPanel) agentPanel.style.display = '';
+          if (botGrid) botGrid.style.display = '';
+        }
+      });
+    });
+
+    // ── Load accounts from API ────────────────────────────────────────────────
+    window.loadAccounts = function loadAccounts() {
+      fetch('/api/accounts')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var accounts = data.accounts || [];
+          var listEl = document.getElementById('accounts-list');
+          var emptyEl = document.getElementById('accounts-empty');
+
+          if (accounts.length === 0) {
+            listEl.style.display = 'none';
+            emptyEl.style.display = 'flex';
+            var footer = document.getElementById('accounts-connect-footer');
+            if (footer) footer.style.display = 'none';
+            return;
+          }
+
+          listEl.style.display = 'block';
+          emptyEl.style.display = 'none';
+          var footer = document.getElementById('accounts-connect-footer');
+          if (footer) footer.style.display = 'block';
+
+          listEl.innerHTML = accounts.map(function(acc) {
+            var typeLabel = acc.type === 'cex' ? 'CEX' : acc.type === 'dex-wallet' ? 'DEX' : 'Perp DEX';
+            var balanceHtml = '';
+            if (acc.balanceUsd != null) {
+              var balStr = '$' + Number(acc.balanceUsd).toFixed(2);
+              var changeStr = '';
+              if (acc.todayChange != null && acc.todayChange !== 0) {
+                var sign = acc.todayChange >= 0 ? '+' : '';
+                var cls = acc.todayChange >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+                changeStr = '<span style="font-size:0.7rem;font-weight:600;margin-left:0.4rem;' + cls + '">' + sign + '$' + Math.abs(acc.todayChange).toFixed(2) + '</span>';
+              } else if (acc.sodBalance != null) {
+                changeStr = '<span style="font-size:0.7rem;color:var(--text-tertiary);margin-left:0.4rem">$0.00</span>';
+              }
+              balanceHtml = '<div style="display:flex;align-items:baseline;gap:0.2rem;margin-right:0.75rem">' +
+                '<span style="font-size:0.85rem;font-weight:700;color:var(--green)">' + balStr + '</span>' +
+                changeStr +
+              '</div>';
+            }
+            return '<div class="account-row">' +
+              '<div class="account-row-left">' +
+                '<span class="account-exchange-badge">' + acc.exchange + '</span>' +
+                '<span class="account-type-badge">' + typeLabel + '</span>' +
+                '<span class="account-row-label">' + escHtml(acc.label) + '</span>' +
+                '<span class="account-row-key">' + acc.truncatedKey + '</span>' +
+              '</div>' +
+              '<div style="display:flex;align-items:center">' +
+                balanceHtml +
+                '<button class="account-delete-btn" onclick="refreshAccountBalance(\'' + acc.id + '\', this)" title="Refresh balance" style="margin-right:0.3rem">' +
+                  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>' +
+                '</button>' +
+                '<button class="account-delete-btn" onclick="deleteAccount(\'' + acc.id + '\')" title="Delete account">' +
+                  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
+                '</button>' +
+              '</div>' +
+            '</div>';
+          }).join('');
+        })
+        .catch(function(err) {
+          console.error('[Accounts] Failed to load:', err);
+        });
+    };
+
+    function escHtml(s) {
+      var d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    // ── Connect Modal ─────────────────────────────────────────────────────────
+    // Uses the canonical connect-account-modal (created in accounts-sidebar flow)
+    window.openConnectModal = function(type) {
+      currentConnectType = type;
+      var modal = document.getElementById('connect-account-modal');
+      if (modal) {
+        // Set the account type via hidden input and sync visual buttons
+        var typeInput = document.getElementById('account-type-selector');
+        if (typeInput && type) typeInput.value = type;
+        // Sync visual type buttons
+        var typeGroup = document.getElementById('cam-type-group');
+        if (typeGroup) {
+          typeGroup.querySelectorAll('.cam-type-btn').forEach(function(btn) {
+            btn.classList.toggle('selected', btn.dataset.type === type);
+          });
+        }
+        // Reset form fields
+        var labelEl = document.getElementById('cam-label');
+        if (labelEl) labelEl.value = '';
+        var exchEl = document.getElementById('cam-exchange');
+        if (exchEl) exchEl.value = '';
+        var credSection = document.getElementById('cam-cred-section');
+        if (credSection) credSection.style.display = 'none';
+        // Show modal
+        modal.style.display = 'flex';
+        modal.classList.add('active');
+      }
+      // Also open legacy overlay if present (backward compat)
+      var legacy = document.getElementById('connect-modal-overlay');
+      if (legacy) legacy.classList.add('open');
+    };
+
+    window.closeConnectModal = function() {
+      var modal = document.getElementById('connect-account-modal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('active');
+      }
+      var legacy = document.getElementById('connect-modal-overlay');
+      if (legacy) legacy.classList.remove('open');
+    };
+
+    // Close on overlay click (legacy modal)
+    var legacyOverlay = document.getElementById('connect-modal-overlay');
+    if (legacyOverlay) {
+      legacyOverlay.addEventListener('click', function(e) {
+        if (e.target === this) closeConnectModal();
+      });
+    }
+
+    // ── Dynamic credential fields based on exchange ───────────────────────────
+    var exchangeFields = {
+      sodex: [
+        { key: 'apiKey', label: 'API Key', placeholder: 'Your SoDEX API key' },
+        { key: 'apiSecret', label: 'API Secret', placeholder: 'EVM private key (0x...)' },
+        { key: 'subaccount', label: 'Subaccount Address', placeholder: 'EVM subaccount address' }
+      ],
+      dango: [
+        { key: 'dangoPrivateKey', label: 'Private Key', placeholder: 'Secp256k1 private key (no 0x)' },
+        { key: 'userAddress', label: 'User Address', placeholder: '0x...' },
+        { key: 'network', label: 'Network', placeholder: 'mainnet or testnet', defaultVal: 'mainnet' }
+      ],
+      decibel: [
+        { key: 'privateKey', label: 'Private Key', placeholder: 'Ed25519 private key' },
+        { key: 'nodeApiKey', label: 'Node API Key (optional)', placeholder: '' },
+        { key: 'builderAddress', label: 'Builder Address (optional)', placeholder: '' }
+      ],
+      hibachi: [
+        { key: 'hibachiApiKey', label: 'API Key', placeholder: 'Hibachi API key' },
+        { key: 'hibachiAccountId', label: 'Account ID', placeholder: 'Numeric account ID' },
+        { key: 'hibachiAccountType', label: 'Account Type', placeholder: 'trustless or exchange_managed', defaultVal: 'trustless' },
+        { key: 'hibachiPrivateKey', label: 'Private Key (trustless)', placeholder: 'ECDSA private key (0x...)' }
+      ],
+      ondoperps: [
+        { key: 'apiKeyId', label: 'API Key ID', placeholder: 'OndoPerps API key ID' },
+        { key: 'apiKeySecret', label: 'API Key Secret', placeholder: 'API key secret' }
+      ],
+      perpl: [
+        { key: 'perplApiKey', label: 'API Key', placeholder: 'Perpl API key' },
+        { key: 'perplApiKeySecret', label: 'API Key Secret', placeholder: 'Ed25519 private key hex' }
+      ]
+    };
+
+    window.updateCredFields = function() {
+      var exchange = document.getElementById('connect-exchange').value;
+      var container = document.getElementById('connect-cred-fields');
+      var fields = exchangeFields[exchange] || [];
+
+      container.innerHTML = fields.map(function(f) {
+        return '<div class="connect-field">' +
+          '<label>' + f.label + '</label>' +
+          '<input type="password" id="cred-' + f.key + '" placeholder="' + (f.placeholder || '') + '" value="' + (f.defaultVal || '') + '" />' +
+        '</div>';
+      }).join('');
+    };
+
+    // ── Save account ──────────────────────────────────────────────────────────
+    window.saveConnectAccount = function() {
+      var label = document.getElementById('connect-label').value.trim();
+      var exchange = document.getElementById('connect-exchange').value;
+
+      if (!label) { showConnectToast('Please enter an account label', 'err'); return; }
+      if (!exchange) { showConnectToast('Please select an exchange', 'err'); return; }
+
+      var fields = exchangeFields[exchange] || [];
+      var credentials = { exchange: exchange };
+      for (var i = 0; i < fields.length; i++) {
+        var val = (document.getElementById('cred-' + fields[i].key) || {}).value || '';
+        if (val) credentials[fields[i].key] = val;
+      }
+
+      var btn = document.getElementById('btn-connect-save');
+      btn.disabled = true;
+      btn.textContent = 'Connecting...';
+
+      fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label, type: currentConnectType, credentials: credentials })
+      })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+        .then(function(res) {
+          btn.disabled = false;
+          btn.textContent = 'Connect Account';
+          if (!res.ok) { showConnectToast(res.data.error || 'Failed', 'err'); return; }
+          showConnectToast('Account connected!', 'ok');
+          setTimeout(function() { closeConnectModal(); loadAccounts(); }, 800);
+        })
+        .catch(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Connect Account';
+          showConnectToast('Network error: ' + err.message, 'err');
+        });
+    };
+
+    // ── Delete account ────────────────────────────────────────────────────────
+    window.deleteAccount = function(id) {
+      if (!confirm('Disconnect this account? Bots using it will need credentials re-entered.')) return;
+
+      fetch('/api/accounts/' + id, { method: 'DELETE' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.ok) loadAccounts();
+          else alert('Failed to disconnect: ' + (data.error || 'Unknown error'));
+        })
+        .catch(function(err) { alert('Network error: ' + err.message); });
+    };
+
+    window.refreshAccountBalance = function(id, btn) {
+      if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+
+      fetch('/api/accounts/' + id + '/refresh-balance', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.ok) {
+            showConnectToast('Balance updated: $' + Number(data.balanceUsd).toFixed(2), 'ok');
+            loadAccounts(); // reload list to show updated balance
+          } else {
+            showConnectToast('Failed: ' + (data.error || 'Unknown'), 'err');
+          }
+        })
+        .catch(function(err) { showConnectToast('Network error: ' + err.message, 'err'); })
+        .finally(function() { if (btn) { btn.disabled = false; btn.style.opacity = '1'; } });
+    };
+
+    function showConnectToast(msg, type) {
+      var el = document.getElementById('connect-toast');
+      el.textContent = msg;
+      el.style.color = type === 'ok' ? 'var(--green)' : 'var(--red)';
+      el.style.opacity = '1';
+      setTimeout(function() { el.style.opacity = '0'; }, 3000);
+    }
+  })();
   </script>
 </body>
 </html>

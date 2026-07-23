@@ -77,6 +77,15 @@ export class PerplAdapter implements ExchangeAdapter {
   private account: PerplAccount | null = null;
   private rqCounter = 0;
   private currentBlock = 0;
+  // Timestamp (ms) of the last currentBlock update — used to detect staleness.
+  private lastBlockUpdateMs = 0;
+  // Maximum age (ms) of currentBlock before we force a REST refresh.
+  // Perpl blocks are ~1s; 30s means heartbeat was missed for a while.
+  // Conservative to avoid hitting REST rate limit (~100 req/min for public endpoints).
+  private readonly BLOCK_STALE_MS = 30_000;
+  // Minimum interval between REST block refresh calls to stay well under rate limit.
+  private lastBlockRefreshAttemptMs = 0;
+  private readonly BLOCK_REFRESH_COOLDOWN_MS = 10_000;
   // Last trading-heartbeat sequence number; a gap indicates lost messages.
   // Logged only for now (force-reconnect on gap is deferred).
   private lastHeartbeatSn: number | null = null;
@@ -171,6 +180,7 @@ export class PerplAdapter implements ExchangeAdapter {
     // Grab current block from instances
     if (ctx.instances?.length) {
       this.currentBlock = ctx.instances[0].block_number || 0;
+      if (this.currentBlock > 0) this.lastBlockUpdateMs = Date.now();
     }
     for (const raw of ctx.markets) {
       const m = this.parseMarket(raw);
@@ -445,7 +455,28 @@ export class PerplAdapter implements ExchangeAdapter {
       this.applyLevels(msg.bid || [], ob.bids);
       this.applyLevels(msg.ask || [], ob.asks);
       this.orderbooks.set(marketId, ob);
-    } else if (msg.mt === 18 && msg.d) { // mark price (see deferred mt:9 note)
+    } else if (msg.mt === 9 && msg.d) { // MarketStateUpdate — periodic mark price updates
+      // msg.d is Record<MarketID, MarketState> where MarketState has mrk, bid, ask, fr, etc.
+      for (const [mkIdStr, state] of Object.entries(msg.d)) {
+        if (!state) continue;
+        const mkId = Number(mkIdStr);
+        const market = this.markets.get(mkId);
+        if (!market) continue;
+        const s = state as any;
+        if (s.mrk != null) {
+          market.state.mrk = s.mrk;
+          market.state.bid = s.bid ?? market.state.bid;
+          market.state.ask = s.ask ?? market.state.ask;
+          const ob = this.orderbooks.get(mkId) ?? { bids: new Map(), asks: new Map(), markPrice: 0 };
+          ob.markPrice = this.unscalePrice(s.mrk, market);
+          this.orderbooks.set(mkId, ob);
+        }
+        // Cache funding rate if provided in market state update
+        if (s.fr != null) {
+          (market.state as any).fr = s.fr;
+        }
+      }
+    } else if (msg.mt === 18 && msg.d) { // TradesUpdate — extract mark price if present
       const marketId = routeMarket();
       if (marketId == null) return;
       const market = this.markets.get(marketId);
@@ -467,6 +498,7 @@ export class PerplAdapter implements ExchangeAdapter {
     // Track block from any message with `at.b`
     if (msg.at?.b && msg.at.b > this.currentBlock) {
       this.currentBlock = msg.at.b;
+      this.lastBlockUpdateMs = Date.now();
     }
 
     // Debug: log non-trivial messages when we have pending orders
@@ -510,8 +542,15 @@ export class PerplAdapter implements ExchangeAdapter {
             balance: acct.b,
             lockedBalance: acct.lb,
           };
-          if (this.rqCounter === 0) {
-            this.rqCounter = Date.now();
+          // Sync rqCounter to be ahead of server's lastForwardedRq.
+          // This prevents "Request Out of Sync" errors where our rq is behind
+          // the server's last processed request number for this account.
+          const serverLfr = acct.lfr || 0;
+          if (this.rqCounter <= serverLfr) {
+            this.rqCounter = serverLfr + 1;
+            console.log(`[Perpl] rqCounter synced to lfr+1: ${this.rqCounter}`);
+          } else if (this.rqCounter === 0) {
+            this.rqCounter = Math.max(Date.now(), serverLfr + 1);
           }
         }
         break;
@@ -521,7 +560,16 @@ export class PerplAdapter implements ExchangeAdapter {
         if (this.account) {
           this.account.balance = msg.b ?? this.account.balance;
           this.account.lockedBalance = msg.lb ?? this.account.lockedBalance;
-          this.account.lastForwardedRq = msg.lfr ?? this.account.lastForwardedRq;
+          if (msg.lfr != null) {
+            this.account.lastForwardedRq = msg.lfr;
+            // Keep rqCounter ahead of server's lastForwardedRq after every update.
+            // The server advances lfr when it processes our requests or requests
+            // from other sessions on the same account.
+            if (this.rqCounter <= msg.lfr) {
+              this.rqCounter = msg.lfr + 1;
+              console.log(`[Perpl] rqCounter re-synced to lfr+1: ${this.rqCounter} (AccountUpdate)`);
+            }
+          }
         }
         break;
       }
@@ -575,7 +623,10 @@ export class PerplAdapter implements ExchangeAdapter {
       }
 
       case 100: // Heartbeat
-        if (msg.h && msg.h > this.currentBlock) this.currentBlock = msg.h;
+        if (msg.h && msg.h > this.currentBlock) {
+          this.currentBlock = msg.h;
+          this.lastBlockUpdateMs = Date.now();
+        }
         // Track heartbeat sequence; a gap means we may have missed updates.
         // Logged only for now — a force-reconnect on gap is deferred (adding a
         // second reconnect driver before the primary one is proven risks a new
@@ -706,13 +757,47 @@ export class PerplAdapter implements ExchangeAdapter {
     }, delay);
   }
 
+  /**
+   * Ensure currentBlock is fresh before sending an order.
+   * If the last block update is older than BLOCK_STALE_MS, fetch a fresh block
+   * from the REST API to prevent "Request Out of Sync" rejections.
+   *
+   * Rate limit safety: calls are throttled to at most once per BLOCK_REFRESH_COOLDOWN_MS
+   * to stay well under the ~100 req/min public REST limit.
+   */
+  private async ensureFreshBlock(): Promise<void> {
+    if (this.currentBlock > 0 && Date.now() - this.lastBlockUpdateMs < this.BLOCK_STALE_MS) {
+      return; // Block is fresh enough from WS heartbeats
+    }
+
+    // Respect cooldown to avoid hammering REST endpoint
+    if (Date.now() - this.lastBlockRefreshAttemptMs < this.BLOCK_REFRESH_COOLDOWN_MS) {
+      return; // Recently tried, don't spam
+    }
+    this.lastBlockRefreshAttemptMs = Date.now();
+
+    try {
+      const ctx = await this.fetchJson<any>(`${this.baseUrl}/v1/pub/context`);
+      if (ctx.instances?.length) {
+        const freshBlock = ctx.instances[0].block_number || 0;
+        if (freshBlock > this.currentBlock) {
+          console.log(`[Perpl] Block refresh: ${this.currentBlock} → ${freshBlock} (stale for ${Date.now() - this.lastBlockUpdateMs}ms)`);
+          this.currentBlock = freshBlock;
+          this.lastBlockUpdateMs = Date.now();
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[Perpl] Failed to refresh block from REST: ${err.message}`);
+    }
+  }
+
   private sendOrder(req: object): Promise<any> {
     return new Promise((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
         return reject(new Error('[Perpl] WebSocket not connected'));
       }
       const rq = (req as any).rq as number;
-      console.log('[Perpl] Sending order rq:', rq, 'type:', (req as any).t, 'mkt:', (req as any).mkt);
+      console.log('[Perpl] Sending order rq:', rq, 'type:', (req as any).t, 'mkt:', (req as any).mkt, 'lb:', (req as any).lb, 'block:', this.currentBlock);
       const timer = setTimeout(() => {
         this.pendingRequests.delete(rq);
         console.warn('[Perpl] Order timed out rq:', rq);
@@ -724,6 +809,13 @@ export class PerplAdapter implements ExchangeAdapter {
   }
 
   private nextRq(): number {
+    // Defensive: ensure rq is always ahead of server's lastForwardedRq.
+    // This guards against any edge case where rqCounter fell behind.
+    const lfr = this.account?.lastForwardedRq || 0;
+    if (this.rqCounter <= lfr) {
+      this.rqCounter = lfr + 1;
+      console.warn(`[Perpl] nextRq: counter was behind lfr(${lfr}), bumped to ${this.rqCounter}`);
+    }
     return ++this.rqCounter;
   }
 
@@ -775,7 +867,19 @@ export class PerplAdapter implements ExchangeAdapter {
     const market = this.getMarket(symbol);
     await this.ensureMdWs(market.id);
     const ob = this.orderbooks.get(market.id);
-    if (ob?.markPrice) return ob.markPrice;
+    if (ob && ob.markPrice > 0) return ob.markPrice;
+    // Fallback: use REST API to get current mark price (most accurate)
+    try {
+      const ctx = await this.fetchJson<any>(`${this.baseUrl}/v1/pub/context`);
+      const rawMarket = ctx.markets?.find((m: any) => m.id === market.id);
+      if (rawMarket?.state?.mrk) {
+        const freshMrk = this.unscalePrice(rawMarket.state.mrk, market);
+        // Update local state too
+        market.state.mrk = rawMarket.state.mrk;
+        if (ob) ob.markPrice = freshMrk;
+        return freshMrk;
+      }
+    } catch { /* fall through */ }
     return this.unscalePrice(market.state.mrk, market);
   }
 
@@ -828,6 +932,7 @@ export class PerplAdapter implements ExchangeAdapter {
   ): Promise<string> {
     await this.ensureMarkets();
     await this.ensureWs();
+    await this.ensureFreshBlock();
     const market = this.getMarket(symbol);
     const rq = this.nextRq();
 
@@ -859,7 +964,7 @@ export class PerplAdapter implements ExchangeAdapter {
       s: this.scaleSize(size, market),
       fl: flags,
       lv: reduceOnly ? 0 : DEFAULT_LEVERAGE,
-      lb: this.currentBlock > 0 ? this.currentBlock + 15 : 0,
+      lb: this.currentBlock > 0 ? this.currentBlock + 20 : 0,
     };
     if (linkedPosition != null) req.lp = linkedPosition;
 
@@ -870,6 +975,7 @@ export class PerplAdapter implements ExchangeAdapter {
   async cancel_order(order_id: string, symbol: string): Promise<boolean> {
     await this.ensureMarkets();
     await this.ensureWs();
+    await this.ensureFreshBlock();
     const market = this.getMarket(symbol);
     const rq = this.nextRq();
     const targetOid = parseInt(order_id);
@@ -880,7 +986,7 @@ export class PerplAdapter implements ExchangeAdapter {
       oid: targetOid,
       t: PerplOrderType.Cancel,
       p: 0, s: 0, fl: 0, lv: 0,
-      lb: this.currentBlock + 15,
+      lb: this.currentBlock + 20,
     };
     try {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) throw new Error('[Perpl] WS not connected');
@@ -951,16 +1057,41 @@ export class PerplAdapter implements ExchangeAdapter {
     const pos = [...this.positions.values()].find(p => p.mkt === marketId);
     if (!pos) return null;
 
+    // Log raw position data for debugging
+    console.log(`[Perpl] get_position raw:`, JSON.stringify(pos));
+
     const ep = this.unscalePrice(pos.ep, market);
     const size = this.unscaleSize(pos.s, market);
     const side: 'long' | 'short' = pos.sd === 1 ? 'long' : 'short';
-    const mp = markPrice ?? this.unscalePrice(market.state.mrk, market);
 
-    const unrealizedPnl = side === 'long'
-      ? (mp - ep) * size
-      : (ep - mp) * size;
+    // Prefer server-provided PnL fields if available and non-zero:
+    // - dpnl: "display PnL" from position updates (includes funding)
+    // - upnl: unrealized PnL (if server sends it)
+    let unrealizedPnl: number;
+    const serverDpnl = parseFloat((pos as any).dpnl || '0');
+    const serverUpnl = parseFloat((pos as any).upnl || '0');
 
-    return { symbol, side, size, entryPrice: ep, unrealizedPnl };
+    if (serverDpnl !== 0) {
+      // dpnl is in collateral units (scaled by 1e6 like other Amount fields)
+      unrealizedPnl = serverDpnl / 1_000_000;
+      console.log(`[Perpl] get_position using server dpnl: ${unrealizedPnl.toFixed(4)} (raw: ${serverDpnl})`);
+    } else if (serverUpnl !== 0) {
+      unrealizedPnl = serverUpnl / 1_000_000;
+      console.log(`[Perpl] get_position using server upnl: ${unrealizedPnl.toFixed(4)} (raw: ${serverUpnl})`);
+    } else {
+      // Calculate from mark price vs entry price
+      const mp = markPrice ?? await this.get_mark_price(symbol);
+      unrealizedPnl = side === 'long'
+        ? (mp - ep) * size
+        : (ep - mp) * size;
+      console.log(`[Perpl] get_position calc: side=${side} ep=${ep} mp=${mp} size=${size} → pnl=${unrealizedPnl.toFixed(4)}`);
+    }
+
+    // Parse funding from raw position (fnd field, scaled by 1e6)
+    // Positive fnd = funding received, negative = funding paid
+    const funding = parseFloat((pos as any).fnd || '0') / 1_000_000;
+
+    return { symbol, side, size, entryPrice: ep, unrealizedPnl, funding };
   }
 
   async get_balance(): Promise<number> {
@@ -1010,5 +1141,54 @@ export class PerplAdapter implements ExchangeAdapter {
   async get_price_decimals(symbol: string): Promise<number> {
     await this.ensureMarkets();
     return this.getMarket(symbol).priceDecimals;
+  }
+
+  async get_funding_rate(symbol: string): Promise<number | null> {
+    await this.ensureMarkets();
+    const market = this.getMarket(symbol);
+
+    // Check if cached market state has a funding rate (fr field from WS updates)
+    const cachedRate = (market.state as any).fr;
+    if (cachedRate != null && cachedRate !== 0) {
+      // Perpl funding rates in market state are typically in basis points or raw decimals
+      // Return as decimal (e.g., 0.0001 = 0.01%)
+      return typeof cachedRate === 'number'
+        ? cachedRate / 1_000_000 // scaled like other Perpl values
+        : parseFloat(cachedRate) / 1_000_000;
+    }
+
+    // Fallback: fetch from REST API
+    try {
+      // Use the public context endpoint which may include funding info
+      const resp = await fetch(
+        `${this.baseUrl.replace('/api', '')}/v1/markets/${market.id}/funding`,
+        { signal: AbortSignal.timeout(5000) },
+      );
+      if (resp.ok) {
+        const json = await resp.json() as any;
+        const rate = json.fundingRate ?? json.funding_rate ?? json.rate ?? null;
+        if (rate != null) return Number(rate);
+      }
+    } catch {
+      // Silently fail — funding rate is optional/best-effort
+    }
+
+    // Second fallback: try the known Perpl API endpoint
+    try {
+      const marketName = market.name || market.symbol;
+      const resp = await fetch(
+        `https://api.perpl.exchange/v1/markets/${encodeURIComponent(marketName)}/funding`,
+        { signal: AbortSignal.timeout(5000) },
+      );
+      if (resp.ok) {
+        const json = await resp.json() as any;
+        const rate = json.fundingRate ?? json.funding_rate ?? json.rate ?? null;
+        if (rate != null) return Number(rate);
+      }
+    } catch {
+      // Silently fail
+    }
+
+    return null;
   }
 }

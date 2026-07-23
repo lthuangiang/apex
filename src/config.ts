@@ -170,4 +170,20 @@ export const config = {
   // Offset bounds
   EXEC_OFFSET_MIN: 0,               // minimum offset (USD) — 0 = no floor
   EXEC_OFFSET_MAX: 5,               // maximum offset (USD) — hard ceiling
+
+  // ── Farm Micro Signal Engine (Candle Microstructure Mode) ─────────────────
+  // When enabled, FARM mode uses 1m candles + microstructure instead of AISignalEngine.
+  // Default: disabled (safe rollout). Enable with FARM_MICRO_ENABLED=true.
+  FARM_MICRO_ENABLED: false,
+  FARM_MICRO_SYMBOLS: ['BTC-USD', 'BTC-PERP', 'BTCUSDT'],
+  FARM_MICRO_INTERVAL: '1m',
+  FARM_MICRO_CANDLE_LIMIT: 30,
+  FARM_MICRO_CACHE_SECS: 10,
+  FARM_MICRO_LONG_THRESHOLD: 0.505,
+  FARM_MICRO_SHORT_THRESHOLD: 0.495,
+  FARM_MICRO_MIN_CONFIDENCE: 0.15,
+  FARM_MICRO_HIGH_VOL_MIN_CONFIDENCE: 0.35,
+  FARM_MICRO_TREND_COUNTER_THRESHOLD: 0.70,
+  FARM_MICRO_MAX_CANDLE_AGE_SECS: 120,
+  FARM_MICRO_FEE_SAFETY_MULT: 0.5,
 };

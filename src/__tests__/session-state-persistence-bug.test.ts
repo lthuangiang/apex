@@ -21,6 +21,7 @@ import { createBotSharedState, type BotSharedState } from '../bot/BotSharedState
 import { loadState, saveStateSync } from '../ai/StateStore.js';
 import { sharedState } from '../ai/sharedState.js';
 import { existsSync, unlinkSync } from 'fs';
+import { getDb } from '../db/Database.js';
 
 // ─── Minimal mocks ────────────────────────────────────────────────────────────
 
@@ -54,7 +55,11 @@ function makeMockTelegram(): TelegramManager {
 const STATE_PATH = process.env.STATE_STORE_PATH ?? './bot_state.json';
 
 beforeEach(() => {
-  // Clean up any existing state file before each test
+  // Clean up SQLite bot_state table before each test
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM bot_state').run();
+  } catch { /* ignore if db not ready */ }
   if (existsSync(STATE_PATH)) {
     unlinkSync(STATE_PATH);
   }
@@ -68,7 +73,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // Clean up state file after each test
+  // Clean up SQLite bot_state table after each test
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM bot_state').run();
+  } catch { /* ignore */ }
   if (existsSync(STATE_PATH)) {
     unlinkSync(STATE_PATH);
   }
@@ -105,8 +114,10 @@ describe('Bug Condition 1 — Single-bot restart loses session stats', () => {
     // Save state (simulating bot stop)
     saveStateSync();
 
-    // Verify state was saved
-    expect(existsSync(STATE_PATH)).toBe(true);
+    // Verify state was saved to SQLite
+    const db = getDb();
+    const row = db.prepare("SELECT session_pnl FROM bot_state WHERE bot_id = '__single__'").get();
+    expect(row).toBeDefined();
 
     // Reset sharedState to simulate bot restart
     sharedState.sessionFees = 0;

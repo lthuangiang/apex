@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { validateHedgeBotConfig } from '../loadBotConfigs.js';
-import type { HedgeBotConfig } from '../types.js';
+import { validatePairBotConfig } from '../loadBotConfigs.js';
+import type { PairBotConfig } from '../types.js';
 
-// A complete, valid HedgeBotConfig used as the baseline for all tests
-function validConfig(): HedgeBotConfig {
+// A complete, valid PairBotConfig used as the baseline for all tests
+function validConfig(): PairBotConfig {
   return {
     id: 'hedge-bot-1',
     name: 'Hedge Bot',
@@ -26,15 +26,15 @@ function validConfig(): HedgeBotConfig {
   };
 }
 
-describe('validateHedgeBotConfig — unit tests', () => {
+describe('validatePairBotConfig — unit tests', () => {
   // Requirement 1.4: valid config passes without throwing
-  it('accepts a fully valid HedgeBotConfig', () => {
-    expect(() => validateHedgeBotConfig(validConfig())).not.toThrow();
+  it('accepts a fully valid PairBotConfig', () => {
+    expect(() => validatePairBotConfig(validConfig())).not.toThrow();
   });
 
   it('accepts a valid config with optional cooldownSecs', () => {
     const config = { ...validConfig(), cooldownSecs: 60 };
-    expect(() => validateHedgeBotConfig(config)).not.toThrow();
+    expect(() => validatePairBotConfig(config)).not.toThrow();
   });
 
   // Requirement 1.4: each missing required field causes a descriptive error
@@ -42,138 +42,138 @@ describe('validateHedgeBotConfig — unit tests', () => {
   it('throws a descriptive error when "id" is missing', () => {
     const config = validConfig() as any;
     delete config.id;
-    expect(() => validateHedgeBotConfig(config)).toThrow('id');
+    expect(() => validatePairBotConfig(config)).toThrow('id');
   });
 
   it('throws a descriptive error when "name" is missing', () => {
     const config = validConfig() as any;
     delete config.name;
-    expect(() => validateHedgeBotConfig(config)).toThrow('name');
+    expect(() => validatePairBotConfig(config)).toThrow('name');
   });
 
   it('throws a descriptive error when "botType" is missing', () => {
     const config = validConfig() as any;
     delete config.botType;
-    expect(() => validateHedgeBotConfig(config)).toThrow('botType');
+    expect(() => validatePairBotConfig(config)).toThrow('botType');
   });
 
   it('throws a descriptive error when "exchange" is missing', () => {
     const config = validConfig() as any;
     delete config.exchange;
-    expect(() => validateHedgeBotConfig(config)).toThrow('exchange');
+    expect(() => validatePairBotConfig(config)).toThrow('exchange');
   });
 
   it('throws a descriptive error when "tags" is missing', () => {
     const config = validConfig() as any;
     delete config.tags;
-    expect(() => validateHedgeBotConfig(config)).toThrow('tags');
+    expect(() => validatePairBotConfig(config)).toThrow('tags');
   });
 
   it('throws a descriptive error when "autoStart" is missing', () => {
     const config = validConfig() as any;
     delete config.autoStart;
-    expect(() => validateHedgeBotConfig(config)).toThrow('autoStart');
+    expect(() => validatePairBotConfig(config)).toThrow('autoStart');
   });
 
   it('throws a descriptive error when "credentialKey" is missing', () => {
     const config = validConfig() as any;
     delete config.credentialKey;
-    expect(() => validateHedgeBotConfig(config)).toThrow('credentialKey');
+    expect(() => validatePairBotConfig(config)).toThrow('credentialKey');
   });
 
   it('throws a descriptive error when "tradeLogBackend" is missing', () => {
     const config = validConfig() as any;
     delete config.tradeLogBackend;
-    expect(() => validateHedgeBotConfig(config)).toThrow('tradeLogBackend');
+    expect(() => validatePairBotConfig(config)).toThrow('tradeLogBackend');
   });
 
   it('throws a descriptive error when "tradeLogPath" is missing', () => {
     const config = validConfig() as any;
     delete config.tradeLogPath;
-    expect(() => validateHedgeBotConfig(config)).toThrow('tradeLogPath');
+    expect(() => validatePairBotConfig(config)).toThrow('tradeLogPath');
   });
 
   it('throws a descriptive error when "symbolA" is missing', () => {
     const config = validConfig() as any;
     delete config.symbolA;
-    expect(() => validateHedgeBotConfig(config)).toThrow('symbolA');
+    expect(() => validatePairBotConfig(config)).toThrow('symbolA');
   });
 
   it('throws a descriptive error when "symbolB" is missing', () => {
     const config = validConfig() as any;
     delete config.symbolB;
-    expect(() => validateHedgeBotConfig(config)).toThrow('symbolB');
+    expect(() => validatePairBotConfig(config)).toThrow('symbolB');
   });
 
   it('throws a descriptive error when "legValueUsd" is missing', () => {
     const config = validConfig() as any;
     delete config.legValueUsd;
-    expect(() => validateHedgeBotConfig(config)).toThrow('legValueUsd');
+    expect(() => validatePairBotConfig(config)).toThrow('legValueUsd');
   });
 
   it('throws a descriptive error when "holdingPeriodSecs" is missing', () => {
     const config = validConfig() as any;
     delete config.holdingPeriodSecs;
-    expect(() => validateHedgeBotConfig(config)).toThrow('holdingPeriodSecs');
+    expect(() => validatePairBotConfig(config)).toThrow('holdingPeriodSecs');
   });
 
   it('throws a descriptive error when "profitTargetUsd" is missing', () => {
     const config = validConfig() as any;
     delete config.profitTargetUsd;
-    expect(() => validateHedgeBotConfig(config)).toThrow('profitTargetUsd');
+    expect(() => validatePairBotConfig(config)).toThrow('profitTargetUsd');
   });
 
   it('throws a descriptive error when "maxLossUsd" is missing', () => {
     const config = validConfig() as any;
     delete config.maxLossUsd;
-    expect(() => validateHedgeBotConfig(config)).toThrow('maxLossUsd');
+    expect(() => validatePairBotConfig(config)).toThrow('maxLossUsd');
   });
 
   it('throws a descriptive error when "volumeSpikeMultiplier" is missing', () => {
     const config = validConfig() as any;
     delete config.volumeSpikeMultiplier;
-    expect(() => validateHedgeBotConfig(config)).toThrow('volumeSpikeMultiplier');
+    expect(() => validatePairBotConfig(config)).toThrow('volumeSpikeMultiplier');
   });
 
   it('throws a descriptive error when "volumeRollingWindow" is missing', () => {
     const config = validConfig() as any;
     delete config.volumeRollingWindow;
-    expect(() => validateHedgeBotConfig(config)).toThrow('volumeRollingWindow');
+    expect(() => validatePairBotConfig(config)).toThrow('volumeRollingWindow');
   });
 
   it('throws a descriptive error when "fundingRateWeight" is missing', () => {
     const config = validConfig() as any;
     delete config.fundingRateWeight;
-    expect(() => validateHedgeBotConfig(config)).toThrow('fundingRateWeight');
+    expect(() => validatePairBotConfig(config)).toThrow('fundingRateWeight');
   });
 
   // Edge cases: wrong types / invalid values
   it('throws when "id" is an empty string', () => {
     const config = { ...validConfig(), id: '' };
-    expect(() => validateHedgeBotConfig(config)).toThrow('id');
+    expect(() => validatePairBotConfig(config)).toThrow('id');
   });
 
   it('throws when "botType" is not "hedge"', () => {
     const config = { ...validConfig(), botType: 'trade' } as any;
-    expect(() => validateHedgeBotConfig(config)).toThrow('botType');
+    expect(() => validatePairBotConfig(config)).toThrow('botType');
   });
 
   it('throws when "exchange" is an unsupported value', () => {
     const config = { ...validConfig(), exchange: 'binance' } as any;
-    expect(() => validateHedgeBotConfig(config)).toThrow('exchange');
+    expect(() => validatePairBotConfig(config)).toThrow('exchange');
   });
 
   it('throws when "tradeLogBackend" is an unsupported value', () => {
     const config = { ...validConfig(), tradeLogBackend: 'postgres' } as any;
-    expect(() => validateHedgeBotConfig(config)).toThrow('tradeLogBackend');
+    expect(() => validatePairBotConfig(config)).toThrow('tradeLogBackend');
   });
 
   it('throws when config is null', () => {
-    expect(() => validateHedgeBotConfig(null)).toThrow();
+    expect(() => validatePairBotConfig(null)).toThrow();
   });
 
   it('throws when config is not an object', () => {
-    expect(() => validateHedgeBotConfig('not-an-object')).toThrow();
+    expect(() => validatePairBotConfig('not-an-object')).toThrow();
   });
 });
 
@@ -185,8 +185,8 @@ import {
   assignDirections,
   evaluateExitConditions,
   computeCombinedPnl,
-} from '../hedgeBotHelpers.js';
-import type { ExitConditionInput } from '../hedgeBotHelpers.js';
+} from '../pairBotHelpers.js';
+import type { ExitConditionInput } from '../pairBotHelpers.js';
 
 // ---------------------------------------------------------------------------
 // assignDirections — direction assignment
@@ -518,7 +518,7 @@ describe('computeCombinedPnl', () => {
 // Task 6.1 / 6.2 — Unit tests for computeLegSize and checkLegImbalance
 // Requirements: 5.1, 8.1, 8.2
 // ---------------------------------------------------------------------------
-import { computeLegSize, checkLegImbalance } from '../hedgeBotHelpers.js';
+import { computeLegSize, checkLegImbalance } from '../pairBotHelpers.js';
 
 describe('computeLegSize — leg size computation (Requirement 5.1)', () => {
   it('computes size as legValueUsd / markPrice', () => {
@@ -605,15 +605,15 @@ describe('checkLegImbalance — imbalance detection (Requirements 8.1, 8.2)', ()
 });
 
 // ---------------------------------------------------------------------------
-// Task 7.4 — Unit tests for HedgeBot lifecycle and getStatus()
+// Task 7.4 — Unit tests for PairBot lifecycle and getStatus()
 // Requirements: 2.1, 2.2, 2.3
 // ---------------------------------------------------------------------------
-import { HedgeBot } from '../HedgeBot.js';
+import { PairBot } from '../PairBot.js';
 import type { ExchangeAdapter } from '../../adapters/ExchangeAdapter.js';
 import type { TelegramManager } from '../../modules/TelegramManager.js';
-import type { ActiveLegPair } from '../HedgeBotSharedState.js';
+import type { ActiveLegPair } from '../PairBotSharedState.js';
 
-/** Returns a complete, valid HedgeBotConfig for lifecycle tests. */
+/** Returns a complete, valid PairBotConfig for lifecycle tests. */
 function hedgeBotConfig() {
   return {
     id: 'hedge-lifecycle-1',
@@ -687,13 +687,13 @@ function sampleActiveLegPair(): ActiveLegPair {
   };
 }
 
-describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
+describe('PairBot — lifecycle and getStatus() unit tests', () => {
   // -------------------------------------------------------------------------
   // Requirement 2.1: start() transitions state to RUNNING
   // -------------------------------------------------------------------------
 
   it('start() transitions botStatus to RUNNING and returns true', async () => {
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
 
     expect(bot.state.botStatus).toBe('STOPPED');
 
@@ -707,7 +707,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
   });
 
   it('start() returns false when already RUNNING', async () => {
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
 
     await bot.start();
     const secondResult = await bot.start();
@@ -719,7 +719,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
   });
 
   it('start() updates updatedAt timestamp', async () => {
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
     const before = bot.state.updatedAt;
 
     // Small delay to ensure timestamp differs
@@ -736,7 +736,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
   // -------------------------------------------------------------------------
 
   it('stop() with no active pair transitions botStatus to STOPPED', async () => {
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
 
     await bot.start();
     expect(bot.state.botStatus).toBe('RUNNING');
@@ -748,7 +748,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
 
   it('stop() with no active pair does NOT log a warning', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
 
     await bot.start();
     await bot.stop();
@@ -764,7 +764,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
   it('stop() with active pair logs a warning about open positions', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const adapter = mockAdapter();
-    const bot = new HedgeBot(hedgeBotConfig(), adapter, mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), adapter, mockTelegram());
 
     // Inject an active hedge position directly into state
     bot.state.hedgePosition = sampleActiveLegPair();
@@ -782,7 +782,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
 
   it('stop() with active pair does NOT call place_limit_order (no auto-close)', async () => {
     const adapter = mockAdapter();
-    const bot = new HedgeBot(hedgeBotConfig(), adapter, mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), adapter, mockTelegram());
 
     bot.state.hedgePosition = sampleActiveLegPair();
 
@@ -794,7 +794,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
 
   it('stop() with active pair still transitions botStatus to STOPPED', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
 
     bot.state.hedgePosition = sampleActiveLegPair();
 
@@ -810,7 +810,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
   // -------------------------------------------------------------------------
 
   it('getStatus() returns all required fields when bot is STOPPED with no position', () => {
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
 
     const status = bot.getStatus();
 
@@ -827,7 +827,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
 
   it('getStatus() returns correct values when bot is STOPPED', () => {
     const config = hedgeBotConfig();
-    const bot = new HedgeBot(config, mockAdapter(), mockTelegram());
+    const bot = new PairBot(config, mockAdapter(), mockTelegram());
 
     const status = bot.getStatus();
 
@@ -843,7 +843,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
   });
 
   it('getStatus() returns status="active" when bot is RUNNING', async () => {
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
 
     await bot.start();
     const status = bot.getStatus();
@@ -854,7 +854,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
   });
 
   it('getStatus() returns status="inactive" after stop()', async () => {
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
 
     await bot.start();
     await bot.stop();
@@ -864,7 +864,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
   });
 
   it('getStatus() returns hedgePosition when an active pair is set', () => {
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
     const pair = sampleActiveLegPair();
     bot.state.hedgePosition = pair;
 
@@ -875,7 +875,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
   });
 
   it('getStatus() returns uptime > 0 after bot has been running', async () => {
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
 
     await bot.start();
 
@@ -889,7 +889,7 @@ describe('HedgeBot — lifecycle and getStatus() unit tests', () => {
   });
 
   it('getStatus() returns openPosition as null (hedge uses hedgePosition)', () => {
-    const bot = new HedgeBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
+    const bot = new PairBot(hedgeBotConfig(), mockAdapter(), mockTelegram());
     const status = bot.getStatus();
     expect(status.openPosition).toBeNull();
   });

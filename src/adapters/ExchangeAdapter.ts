@@ -13,6 +13,8 @@ export interface Position {
     size: number;
     entryPrice: number;
     unrealizedPnl: number;
+    /** Accumulated funding payment (positive = received, negative = paid). Optional. */
+    funding?: number;
 }
 
 export interface RawTrade {
@@ -64,4 +66,11 @@ export interface ExchangeAdapter {
      * callers fall back to 2 decimals when not implemented.
      */
     get_price_decimals?(symbol: string): Promise<number>;
+    /**
+     * Fetch the current funding rate for `symbol`.
+     * Returns the hourly (or per-interval) funding rate as a decimal
+     * (e.g. 0.0001 = 0.01%), or null if not available.
+     * Optional — callers should handle null gracefully.
+     */
+    get_funding_rate?(symbol: string): Promise<number | null>;
 }

@@ -49,7 +49,7 @@ export interface DailyResetTarget {
     getState(): { isRunning: boolean; currentPnL: number; currentVolumeUsd: number };
   };
   getWatcher(): { resetSession(): void };
-  readonly state: { botStatus: 'RUNNING' | 'STOPPED' };
+  readonly state: { botStatus: 'RUNNING' | 'STOPPED' | 'PAUSED' };
 }
 
 export class DailyResetScheduler {

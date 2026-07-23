@@ -1,10 +1,15 @@
-// Add Bot Modal - OndoPerps Integration
+// Add Bot Modal - OndoPerps Integration + Account Registry
+
+// Cache for loaded accounts
+let _cachedAccounts = null;
 
 function openAddBotModal() {
   const modal = document.getElementById('add-bot-modal');
   if (modal) {
     modal.style.display = 'flex';
     document.getElementById('bot-exchange').value = 'sodex';
+    _cachedAccounts = null; // reset cache on open
+    loadAccountsForBotModal();
     updateCredentialForm();
   }
 }
@@ -14,9 +19,87 @@ function closeAddBotModal() {
   if (modal) modal.style.display = 'none';
 }
 
+/**
+ * Load connected accounts and populate the account selector dropdown.
+ * If accounts exist for the selected exchange, shows the dropdown.
+ */
+function loadAccountsForBotModal() {
+  fetch('/api/accounts')
+    .then(r => r.json())
+    .then(data => {
+      _cachedAccounts = data.accounts || [];
+      updateAccountSelector();
+    })
+    .catch(() => { _cachedAccounts = []; });
+}
+
+/**
+ * Update the account selector dropdown based on the currently selected exchange.
+ * Shows matching accounts or hides the selector if none available.
+ */
+function updateAccountSelector() {
+  const exchange = document.getElementById('bot-exchange').value;
+  const container = document.getElementById('account-selector-container');
+  if (!container) return;
+
+  const matchingAccounts = (_cachedAccounts || []).filter(a => a.exchange === exchange);
+
+  if (matchingAccounts.length === 0) {
+    container.style.display = 'none';
+    container.innerHTML = '';
+    showCredentialForm(true);
+    return;
+  }
+
+  container.style.display = 'block';
+  container.innerHTML = `
+    <div class="form-group">
+      <label>Select Account <span style="font-size:0.65rem;color:var(--text-tertiary);font-weight:400">(or enter credentials below)</span></label>
+      <select id="bot-account-select" onchange="onAccountSelected()">
+        <option value="">— Enter credentials manually —</option>
+        ${matchingAccounts.map(a => `<option value="${a.id}">${a.label} (${a.truncatedKey})</option>`).join('')}
+      </select>
+    </div>
+  `;
+}
+
+/**
+ * When an account is selected from the dropdown, hide credential fields
+ * and store the account ID for submission. If "manual" is selected, show fields again.
+ */
+function onAccountSelected() {
+  const select = document.getElementById('bot-account-select');
+  const accountId = select ? select.value : '';
+
+  if (accountId) {
+    showCredentialForm(false);
+  } else {
+    showCredentialForm(true);
+  }
+}
+
+function showCredentialForm(show) {
+  const credForm = document.getElementById('credential-form');
+  if (credForm) {
+    credForm.style.display = show ? 'block' : 'none';
+    if (!show) {
+      credForm.style.opacity = '0.4';
+      credForm.style.pointerEvents = 'none';
+    } else {
+      credForm.style.opacity = '1';
+      credForm.style.pointerEvents = '';
+    }
+    // Always display, just dim when account selected
+    credForm.style.display = 'block';
+  }
+}
+
 function updateCredentialForm() {
   const exchange = document.getElementById('bot-exchange').value;
   const credForm = document.getElementById('credential-form');
+
+  // Update account selector for new exchange
+  updateAccountSelector();
 
   let html = '';
 
@@ -147,56 +230,77 @@ async function submitAddBot() {
   }
 
   let credentials = {};
+  const accountSelect = document.getElementById('bot-account-select');
+  const selectedAccountId = accountSelect ? accountSelect.value : '';
 
-  // Collect credentials based on exchange
-  switch(exchange) {
-    case 'ondoperps':
-      credentials = {
-        apiKeyId: document.getElementById('ondoperps-api-key-id').value.trim(),
-        apiKeySecret: document.getElementById('ondoperps-api-key-secret').value.trim(),
-        baseUrl: document.getElementById('ondoperps-base-url').value.trim() || undefined
-      };
-      if (!credentials.apiKeyId || !credentials.apiKeySecret) {
-        alert('API Key ID and Secret are required for OndoPerps');
+  // If an account is selected, fetch its credentials from the server
+  if (selectedAccountId) {
+    try {
+      const credRes = await fetch('/api/accounts/' + selectedAccountId + '/credentials');
+      if (!credRes.ok) {
+        const errData = await credRes.json();
+        alert('Failed to load account credentials: ' + (errData.error || 'Unknown error'));
         return;
       }
-      break;
+      const credData = await credRes.json();
+      credentials = credData.credentials || {};
+      // Remove the 'exchange' field from credentials object as it's set separately
+      delete credentials.exchange;
+    } catch (err) {
+      alert('Failed to load account credentials: ' + err.message);
+      return;
+    }
+  } else {
+    // Collect credentials manually based on exchange
+    switch(exchange) {
+      case 'ondoperps':
+        credentials = {
+          apiKeyId: document.getElementById('ondoperps-api-key-id').value.trim(),
+          apiKeySecret: document.getElementById('ondoperps-api-key-secret').value.trim(),
+          baseUrl: document.getElementById('ondoperps-base-url').value.trim() || undefined
+        };
+        if (!credentials.apiKeyId || !credentials.apiKeySecret) {
+          alert('API Key ID and Secret are required for OndoPerps');
+          return;
+        }
+        break;
 
-    case 'sodex':
-      credentials = {
-        apiKey: document.getElementById('sodex-api-key').value.trim(),
-        apiSecret: document.getElementById('sodex-api-secret').value.trim(),
-        subaccount: document.getElementById('sodex-subaccount').value.trim()
-      };
-      break;
+      case 'sodex':
+        credentials = {
+          apiKey: document.getElementById('sodex-api-key').value.trim(),
+          apiSecret: document.getElementById('sodex-api-secret').value.trim(),
+          subaccount: document.getElementById('sodex-subaccount').value.trim()
+        };
+        break;
 
-    case 'dango':
-      credentials = {
-        dangoPrivateKey: document.getElementById('dango-private-key').value.trim(),
-        userAddress: document.getElementById('dango-user-address').value.trim()
-      };
-      break;
+      case 'dango':
+        credentials = {
+          dangoPrivateKey: document.getElementById('dango-private-key').value.trim(),
+          userAddress: document.getElementById('dango-user-address').value.trim()
+        };
+        break;
 
-    case 'decibel':
-      credentials = {
-        privateKey: document.getElementById('decibel-private-key').value.trim(),
-        nodeApiKey: document.getElementById('decibel-node-api-key')?.value.trim() || ''
-      };
-      break;
+      case 'decibel':
+        credentials = {
+          privateKey: document.getElementById('decibel-private-key').value.trim(),
+          nodeApiKey: document.getElementById('decibel-node-api-key')?.value.trim() || ''
+        };
+        break;
 
-    case 'hibachi':
-      const accountType = document.getElementById('hibachi-account-type').value;
-      credentials = {
-        hibachiApiKey: document.getElementById('hibachi-api-key').value.trim(),
-        hibachiAccountId: document.getElementById('hibachi-account-id').value.trim(),
-        hibachiAccountType: accountType
-      };
-      if (accountType === 'trustless') {
-        credentials.hibachiPrivateKey = document.getElementById('hibachi-private-key')?.value.trim();
-      } else {
-        credentials.hibachiSecretKey = document.getElementById('hibachi-secret-key')?.value.trim();
-      }
-      break;
+      case 'hibachi':
+        const accountType = document.getElementById('hibachi-account-type').value;
+        credentials = {
+          hibachiApiKey: document.getElementById('hibachi-api-key').value.trim(),
+          hibachiAccountId: document.getElementById('hibachi-account-id').value.trim(),
+          hibachiAccountType: accountType
+        };
+        if (accountType === 'trustless') {
+          credentials.hibachiPrivateKey = document.getElementById('hibachi-private-key')?.value.trim();
+        } else {
+          credentials.hibachiSecretKey = document.getElementById('hibachi-secret-key')?.value.trim();
+        }
+        break;
+    }
   }
 
   const botConfig = {

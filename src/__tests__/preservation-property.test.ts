@@ -25,6 +25,7 @@ import { createBotSharedState, type BotSharedState } from '../bot/BotSharedState
 import { loadState, saveState, saveStateSync } from '../ai/StateStore.js';
 import { sharedState } from '../ai/sharedState.js';
 import { existsSync, unlinkSync, readFileSync } from 'fs';
+import { getDb, closeDb } from '../db/Database.js';
 
 // ─── Minimal mocks ────────────────────────────────────────────────────────────
 
@@ -58,7 +59,12 @@ function makeMockTelegram(): TelegramManager {
 const STATE_PATH = process.env.STATE_STORE_PATH ?? './bot_state.json';
 
 beforeEach(() => {
-  // Clean up any existing state file before each test
+  // Clean up SQLite bot_state table before each test
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM bot_state').run();
+  } catch { /* ignore if db not ready */ }
+  // Also clean up any legacy JSON file
   if (existsSync(STATE_PATH)) {
     unlinkSync(STATE_PATH);
   }
@@ -77,7 +83,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // Clean up state file after each test
+  // Clean up SQLite bot_state table after each test
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM bot_state').run();
+  } catch { /* ignore */ }
+  // Also clean up any legacy JSON file
   if (existsSync(STATE_PATH)) {
     unlinkSync(STATE_PATH);
   }
@@ -179,8 +190,10 @@ describe('Preservation 2 — Existing StateStore persistence behavior', () => {
     // Save state
     saveStateSync();
 
-    // Verify file exists
-    expect(existsSync(STATE_PATH)).toBe(true);
+    // Verify state was saved to SQLite
+    const db = getDb();
+    const row = db.prepare("SELECT session_pnl FROM bot_state WHERE bot_id = '__single__'").get();
+    expect(row).toBeDefined();
 
     // Reset state
     sharedState.sessionPnl = 0;
@@ -471,18 +484,18 @@ describe('Preservation 6 — Debounced save behavior', () => {
     // Call saveState() (debounced)
     saveState();
 
-    // Immediately check - file should NOT exist yet (debounced)
-    expect(existsSync(STATE_PATH)).toBe(false);
+    // Immediately check - SQLite should NOT have the row yet (debounced)
+    const db = getDb();
+    const row = db.prepare("SELECT session_pnl FROM bot_state WHERE bot_id = '__single__'").get() as Record<string, unknown> | undefined;
+    expect(row).toBeUndefined();
 
     // Wait for debounce delay (3 seconds + buffer)
     await new Promise(resolve => setTimeout(resolve, 3500));
 
-    // Now file should exist
-    expect(existsSync(STATE_PATH)).toBe(true);
-
-    // Verify content
-    const saved = JSON.parse(readFileSync(STATE_PATH, 'utf-8'));
-    expect(saved.sessionPnl).toBe(5.0);
+    // Now row should exist in SQLite
+    const savedRow = db.prepare("SELECT session_pnl FROM bot_state WHERE bot_id = '__single__'").get() as Record<string, unknown>;
+    expect(savedRow).toBeDefined();
+    expect(savedRow['session_pnl']).toBe(5.0);
   });
 
   it('should save immediately with saveStateSync() (no debounce)', () => {
@@ -492,12 +505,11 @@ describe('Preservation 6 — Debounced save behavior', () => {
     // Call saveStateSync() (immediate)
     saveStateSync();
 
-    // File should exist immediately
-    expect(existsSync(STATE_PATH)).toBe(true);
-
-    // Verify content
-    const saved = JSON.parse(readFileSync(STATE_PATH, 'utf-8'));
-    expect(saved.sessionPnl).toBe(10.0);
+    // Row should exist immediately in SQLite
+    const db = getDb();
+    const row = db.prepare("SELECT session_pnl FROM bot_state WHERE bot_id = '__single__'").get() as Record<string, unknown>;
+    expect(row).toBeDefined();
+    expect(row['session_pnl']).toBe(10.0);
   });
 
   it('should cancel previous debounced save when saveState() is called multiple times', async () => {
@@ -515,9 +527,10 @@ describe('Preservation 6 — Debounced save behavior', () => {
     // Wait for debounce delay
     await new Promise(resolve => setTimeout(resolve, 3500));
 
-    // File should exist with the SECOND value (first was cancelled)
-    expect(existsSync(STATE_PATH)).toBe(true);
-    const saved = JSON.parse(readFileSync(STATE_PATH, 'utf-8'));
-    expect(saved.sessionPnl).toBe(10.0);
+    // SQLite should have the SECOND value (first was cancelled)
+    const db = getDb();
+    const row = db.prepare("SELECT session_pnl FROM bot_state WHERE bot_id = '__single__'").get() as Record<string, unknown>;
+    expect(row).toBeDefined();
+    expect(row['session_pnl']).toBe(10.0);
   });
 });

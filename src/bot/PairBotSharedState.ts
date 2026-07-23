@@ -22,29 +22,30 @@ export interface ActiveLegPair {
 }
 
 /**
- * Shared state for a HedgeBot instance
- * Extends BotSharedState with hedge-specific fields
+ * Shared state for a PairBot instance
+ * Extends BotSharedState with pair-trading-specific fields
  */
-export interface HedgeBotSharedState extends BotSharedState {
+export interface PairBotSharedState extends BotSharedState {
   hedgePosition: ActiveLegPair | null;
   hedgeBotState: 'IDLE' | 'OPENING' | 'WAITING_FILL' | 'IN_PAIR' | 'CLOSING' | 'COOLDOWN';
 }
 
 /**
- * Status object returned by HedgeBot.getStatus()
+ * Status object returned by PairBot.getStatus()
  * Compatible with BotStatus but includes hedgePosition instead of openPosition
  */
-export interface HedgeBotStatus {
+export interface PairBotStatus {
   id: string;
   name: string;
   exchange: string;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'paused';
   symbol: string;          // set to "symbolA/symbolB" for display
   tags: string[];
   sessionPnl: number;
   sessionVolume: number;
   sessionFees: number;
   efficiencyBps: number;
+  costPerMillion: number;
   walletAddress: string;
   uptime: number;          // minutes
   hasPosition: boolean;
@@ -56,10 +57,10 @@ export interface HedgeBotStatus {
 }
 
 /**
- * Trade log record for a completed hedge trade cycle
+ * Trade log record for a completed pair trade cycle
  * Written via TradeLogger after each AtomicClose
  */
-export interface HedgeTradeRecord {
+export interface PairTradeRecord {
   id: string;
   botId: string;
   timestamp: string;           // exit time (ISO 8601)

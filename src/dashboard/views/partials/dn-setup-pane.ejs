@@ -1,0 +1,896 @@
+<!-- Delta-Neutral Setup Pane — Simplified Wizard-Driven -->
+<link rel="stylesheet" href="/css/sliders.css">
+<style>
+  .dn-setup-pane {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .dn-setup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+  }
+
+  .dn-setup-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .dn-setup-title-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  .dn-setup-badge {
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    background: rgba(34, 211, 238, 0.1);
+    color: var(--accent);
+  }
+
+  /* Auto Direction badge */
+  .dn-auto-direction {
+    background: rgba(34, 211, 238, 0.06);
+    border: 1px solid rgba(34, 211, 238, 0.15);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+
+  .dn-auto-direction-icon {
+    font-size: 1rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .dn-auto-direction-text {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+
+  .dn-auto-direction-title {
+    font-weight: 700;
+    color: var(--accent);
+    margin-right: 0.3rem;
+  }
+
+  /* Dual-pane flex container */
+  .dn-panes-container {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 1rem;
+  }
+
+  .dn-pane {
+    flex: 1;
+    padding: 1.25rem;
+    background: var(--surface-2);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .dn-pane.pane-long {
+    border-color: var(--green-border);
+    border-left: 3px solid var(--green);
+  }
+
+  .dn-pane.pane-short {
+    border-color: var(--red-border);
+    border-right: 3px solid var(--red);
+  }
+
+  .dn-pane-header {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .dn-pane-header.long { color: var(--green); }
+  .dn-pane-header.short { color: var(--red); }
+
+  .dn-pane-header-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  .dn-pane-header.long .dn-pane-header-dot {
+    background: var(--green);
+    box-shadow: 0 0 0 2px var(--green-bg);
+  }
+
+  .dn-pane-header.short .dn-pane-header-dot {
+    background: var(--red);
+    box-shadow: 0 0 0 2px var(--red-bg);
+  }
+
+  /* Pane display fields (read-only text) */
+  .dn-pane-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .dn-pane-field-label {
+    font-size: 0.62rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .dn-pane-field-value {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    padding: 0.4rem 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    min-height: 1.8rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .dn-pane-field-value.placeholder {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-style: italic;
+    font-size: 0.72rem;
+  }
+
+  /* Swap button between panes */
+  .dn-swap-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .dn-swap-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .dn-swap-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-light);
+    transform: rotate(180deg);
+  }
+
+  .dn-swap-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .dn-swap-hint {
+    text-align: center;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-bottom: 1.25rem;
+    font-style: italic;
+  }
+
+  /* Shared config section */
+  .dn-shared-config {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 1.25rem;
+  }
+
+  .dn-shared-config .dn-field-input {
+    background: var(--surface);
+  }
+
+  /* Stop loss slider spans full width */
+  .dn-shared-config .drift-slider {
+    grid-column: 1 / -1;
+  }
+
+  .dn-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .dn-field-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .dn-field-input {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .dn-field-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-light);
+  }
+
+  /* Input prefix/suffix */
+  .dn-input-group {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .dn-input-group:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-light);
+  }
+
+  .dn-input-prefix,
+  .dn-input-suffix {
+    padding: 0.55rem 0.5rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    background: var(--surface);
+    border: none;
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  .dn-input-group .dn-field-input {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .dn-input-group .dn-field-input:focus {
+    box-shadow: none;
+  }
+
+  /* DRIFT Advantages card */
+  .dn-advantages {
+    background: rgba(34, 211, 238, 0.04);
+    border: 1px solid rgba(34, 211, 238, 0.1);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .dn-advantages-title {
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    margin-bottom: 0.5rem;
+  }
+
+  .dn-advantages-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .dn-advantages-list li {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .dn-advantages-list li .check {
+    color: var(--green);
+    font-weight: 700;
+  }
+
+  /* Start Trading button */
+  .dn-start-btn {
+    width: 100%;
+    padding: 0.85rem 1.5rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #000;
+    background: var(--green);
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.15s;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .dn-start-btn:hover {
+    background: #24d160;
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+
+  .dn-start-btn:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .dn-start-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .dn-start-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .dn-panes-container {
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .dn-swap-wrapper {
+      padding: 0.5rem 0;
+    }
+
+    .dn-swap-btn {
+      transform: rotate(90deg);
+    }
+
+    .dn-swap-btn:hover {
+      transform: rotate(270deg);
+    }
+
+    .dn-shared-config {
+      grid-template-columns: 1fr;
+      gap: 0.875rem;
+    }
+
+    .dn-shared-config .drift-slider {
+      grid-column: 1;
+    }
+
+    .dn-setup-pane {
+      padding: 1rem;
+    }
+
+    .dn-pane {
+      padding: 1rem;
+    }
+  }
+</style>
+
+<div class="dn-setup-pane" id="dn-setup-pane">
+  <!-- Header -->
+  <div class="dn-setup-header">
+    <div class="dn-setup-title">
+      <span class="dn-setup-title-dot"></span>
+      Delta-Neutral Setup
+    </div>
+    <span class="dn-setup-badge">DRIFT</span>
+  </div>
+
+  <!-- Auto Direction Badge -->
+  <div class="dn-auto-direction">
+    <span class="dn-auto-direction-icon">&#127919;</span>
+    <div class="dn-auto-direction-text">
+      <span class="dn-auto-direction-title">Auto Direction</span>
+      &mdash; Long/Short assigned by funding rate. Lower-fee side goes long.
+    </div>
+  </div>
+
+  <!-- Dual-Pane: Long / Swap / Short -->
+  <div class="dn-panes-container">
+    <!-- Long Leg (Green) -->
+    <div class="dn-pane pane-long">
+      <div class="dn-pane-header long">
+        <span class="dn-pane-header-dot"></span>
+        Long Leg
+      </div>
+      <div class="dn-pane-field">
+        <span class="dn-pane-field-label">Exchange</span>
+        <div class="dn-pane-field-value" id="dn-long-exchange">—</div>
+      </div>
+      <div class="dn-pane-field">
+        <span class="dn-pane-field-label">Symbol</span>
+        <div class="dn-pane-field-value" id="dn-long-symbol">—</div>
+      </div>
+      <div class="dn-pane-field">
+        <span class="dn-pane-field-label">Leverage</span>
+        <div class="dn-pane-field-value" id="dn-long-lev">—</div>
+      </div>
+    </div>
+
+    <!-- Swap Button -->
+    <div class="dn-swap-wrapper">
+      <button type="button" class="dn-swap-btn" id="dn-swap-btn" title="Swap Long/Short legs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="17 1 21 5 17 9"></polyline>
+          <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+          <polyline points="7 23 3 19 7 15"></polyline>
+          <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Short Leg (Red) -->
+    <div class="dn-pane pane-short">
+      <div class="dn-pane-header short">
+        <span class="dn-pane-header-dot"></span>
+        Short Leg
+      </div>
+      <div class="dn-pane-field">
+        <span class="dn-pane-field-label">Exchange</span>
+        <div class="dn-pane-field-value" id="dn-short-exchange">—</div>
+      </div>
+      <div class="dn-pane-field">
+        <span class="dn-pane-field-label">Symbol</span>
+        <div class="dn-pane-field-value" id="dn-short-symbol">—</div>
+      </div>
+      <div class="dn-pane-field">
+        <span class="dn-pane-field-label">Leverage</span>
+        <div class="dn-pane-field-value" id="dn-short-lev">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="dn-swap-hint">Auto-assigned &mdash; swap button to override</div>
+
+  <!-- Shared Config Section -->
+  <div class="dn-shared-config">
+    <div class="dn-field">
+      <label class="dn-field-label" for="dn-notional">Notional</label>
+      <div class="dn-input-group">
+        <span class="dn-input-prefix">$</span>
+        <input type="number" class="dn-field-input" id="dn-notional" name="dn-notional" placeholder="1000" min="0" step="1" value="1000">
+      </div>
+    </div>
+
+    <div class="dn-field">
+      <label class="dn-field-label" for="dn-duration">Duration</label>
+      <div class="dn-input-group">
+        <input type="number" class="dn-field-input" id="dn-duration" name="dn-duration" placeholder="60" min="1" step="1" value="60">
+        <span class="dn-input-suffix">min</span>
+      </div>
+    </div>
+
+    <div class="drift-slider slider-stop-loss" id="dn-stop-loss-slider">
+      <div class="drift-slider-header">
+        <span class="drift-slider-label">Stop Loss</span>
+        <span class="drift-slider-value zone-red" id="dn-stop-loss-display">50%</span>
+      </div>
+      <div class="drift-slider-track-wrap">
+        <input type="range" id="dn-stop-loss-range" min="25" max="100" step="1" value="50">
+      </div>
+      <div class="drift-slider-ticks">
+        <span class="drift-slider-tick">25%</span>
+        <span class="drift-slider-tick">50%</span>
+        <span class="drift-slider-tick">75%</span>
+        <span class="drift-slider-tick">100%</span>
+      </div>
+      <div style="text-align:center;margin-top:0.2rem;">
+        <span style="font-size:0.68rem;color:var(--text-muted);" id="dn-stop-loss-usd">&asymp; $500</span>
+      </div>
+      <input type="hidden" id="dn-stop-loss" name="dn-stop-loss" value="50">
+    </div>
+  </div>
+
+  <!-- DRIFT Advantages -->
+  <div class="dn-advantages">
+    <div class="dn-advantages-title">DRIFT Advantages</div>
+    <ul class="dn-advantages-list">
+      <li><span class="check">&#10003;</span> Random order sizes (anti-bot tracking)</li>
+      <li><span class="check">&#10003;</span> Auto Long/Short by funding rate</li>
+      <li><span class="check">&#10003;</span> Cross-exchange delta-neutral</li>
+    </ul>
+  </div>
+
+  <!-- Hidden inputs for form compatibility -->
+  <input type="hidden" id="dn-long-exchange-val" name="dn-long-exchange-val" value="">
+  <input type="hidden" id="dn-short-exchange-val" name="dn-short-exchange-val" value="">
+  <input type="hidden" id="dn-long-symbol-val" name="dn-long-symbol-val" value="">
+  <input type="hidden" id="dn-short-symbol-val" name="dn-short-symbol-val" value="">
+
+  <!-- Start Trading Button -->
+  <button type="button" class="dn-start-btn" id="dn-start-trading-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+    </svg>
+    Start Trading
+  </button>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ─── Exchange Labels Map ──────────────────────────────────────────────────
+  var exchangeLabels = {
+    sodex: 'SoDEX',
+    decibel: 'Decibel',
+    dango: 'Dango',
+    hibachi: 'Hibachi',
+    ondoperps: 'OndoPerps',
+    perpl: 'Perpl'
+  };
+
+  // ─── Internal state tracking which side is which ──────────────────────────
+  var currentLong = { exchange: '', symbol: '', leverage: '' };
+  var currentShort = { exchange: '', symbol: '', leverage: '' };
+
+  // ─── DOM References ───────────────────────────────────────────────────────
+  var longExchangeEl = document.getElementById('dn-long-exchange');
+  var longSymbolEl = document.getElementById('dn-long-symbol');
+  var longLevEl = document.getElementById('dn-long-lev');
+  var shortExchangeEl = document.getElementById('dn-short-exchange');
+  var shortSymbolEl = document.getElementById('dn-short-symbol');
+  var shortLevEl = document.getElementById('dn-short-lev');
+
+  // Hidden inputs
+  var longExchangeValEl = document.getElementById('dn-long-exchange-val');
+  var shortExchangeValEl = document.getElementById('dn-short-exchange-val');
+  var longSymbolValEl = document.getElementById('dn-long-symbol-val');
+  var shortSymbolValEl = document.getElementById('dn-short-symbol-val');
+
+  // ─── Render pane display from current state ───────────────────────────────
+  function renderPanes() {
+    // Long pane
+    if (currentLong.exchange) {
+      longExchangeEl.textContent = exchangeLabels[currentLong.exchange] || currentLong.exchange;
+      longExchangeEl.classList.remove('placeholder');
+    } else {
+      longExchangeEl.textContent = '—';
+      longExchangeEl.classList.add('placeholder');
+    }
+    longSymbolEl.textContent = currentLong.symbol || '—';
+    longSymbolEl.classList.toggle('placeholder', !currentLong.symbol);
+    longLevEl.textContent = currentLong.leverage ? (currentLong.leverage + 'x') : '—';
+    longLevEl.classList.toggle('placeholder', !currentLong.leverage);
+
+    // Short pane
+    if (currentShort.exchange) {
+      shortExchangeEl.textContent = exchangeLabels[currentShort.exchange] || currentShort.exchange;
+      shortExchangeEl.classList.remove('placeholder');
+    } else {
+      shortExchangeEl.textContent = 'Select hedge exchange in Advanced Config \u25BE';
+      shortExchangeEl.classList.add('placeholder');
+    }
+    shortSymbolEl.textContent = currentShort.symbol || '—';
+    shortSymbolEl.classList.toggle('placeholder', !currentShort.symbol);
+    shortLevEl.textContent = currentShort.leverage ? (currentShort.leverage + 'x') : '—';
+    shortLevEl.classList.toggle('placeholder', !currentShort.leverage);
+
+    // Update hidden inputs
+    if (longExchangeValEl) longExchangeValEl.value = currentLong.exchange || '';
+    if (shortExchangeValEl) shortExchangeValEl.value = currentShort.exchange || '';
+    if (longSymbolValEl) longSymbolValEl.value = currentLong.symbol || '';
+    if (shortSymbolValEl) shortSymbolValEl.value = currentShort.symbol || '';
+  }
+
+  // ─── Refresh from wizard state ────────────────────────────────────────────
+  function refreshFromWizardState() {
+    var ws = window._dnWizardState || {};
+
+    // Primary exchange → Long leg by default
+    currentLong.exchange = ws.exchange || '';
+    currentLong.symbol = ws.symbol || '';
+    currentLong.leverage = ws.leverage || '';
+
+    // Hedge exchange → Short leg by default
+    currentShort.exchange = ws.hedgeExchange || '';
+    currentShort.symbol = ws.symbolB || ws.symbol || '';
+    currentShort.leverage = ws.leverage || '';
+
+    renderPanes();
+  }
+
+  // Expose for manager.ejs compatibility
+  window._dnRefreshAccounts = refreshFromWizardState;
+
+  // ─── Swap Button Logic ────────────────────────────────────────────────────
+  var swapBtn = document.getElementById('dn-swap-btn');
+  if (swapBtn) {
+    swapBtn.addEventListener('click', function() {
+      // Swap internal state
+      var tmp = { exchange: currentLong.exchange, symbol: currentLong.symbol, leverage: currentLong.leverage };
+      currentLong.exchange = currentShort.exchange;
+      currentLong.symbol = currentShort.symbol;
+      currentLong.leverage = currentShort.leverage;
+      currentShort.exchange = tmp.exchange;
+      currentShort.symbol = tmp.symbol;
+      currentShort.leverage = tmp.leverage;
+
+      renderPanes();
+    });
+  }
+
+  // ─── Stop Loss Slider Logic ───────────────────────────────────────────────
+  (function initStopLossSlider() {
+    var rangeInput = document.getElementById('dn-stop-loss-range');
+    var hiddenInput = document.getElementById('dn-stop-loss');
+    var displayEl = document.getElementById('dn-stop-loss-display');
+    var usdEl = document.getElementById('dn-stop-loss-usd');
+    var notionalInput = document.getElementById('dn-notional');
+
+    if (!rangeInput || !hiddenInput || !displayEl) return;
+
+    function getNotional() {
+      if (!notionalInput) return 1000;
+      return parseFloat(notionalInput.value) || 1000;
+    }
+
+    function getZoneClass(value) {
+      if (value <= 40) return 'zone-red';
+      if (value <= 70) return 'zone-yellow';
+      return 'zone-green';
+    }
+
+    function updateSliderDisplay() {
+      var val = parseInt(rangeInput.value, 10);
+      var notional = getNotional();
+      var usdValue = (notional * val / 100).toFixed(0);
+
+      displayEl.textContent = val + '%';
+      displayEl.classList.remove('zone-red', 'zone-yellow', 'zone-green');
+      displayEl.classList.add(getZoneClass(val));
+
+      if (usdEl) {
+        usdEl.textContent = '\u2248 $' + usdValue;
+      }
+
+      hiddenInput.value = val;
+      hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    rangeInput.addEventListener('input', updateSliderDisplay);
+    rangeInput.addEventListener('change', updateSliderDisplay);
+
+    if (notionalInput) {
+      notionalInput.addEventListener('input', updateSliderDisplay);
+      notionalInput.addEventListener('change', updateSliderDisplay);
+    }
+
+    updateSliderDisplay();
+  })();
+
+  // ─── Feedback Helpers ─────────────────────────────────────────────────────
+  function showDnError(msg) {
+    var existing = document.getElementById('dn-feedback-banner');
+    if (existing) existing.remove();
+
+    var banner = document.createElement('div');
+    banner.id = 'dn-feedback-banner';
+    banner.style.cssText = [
+      'margin-top:0.75rem',
+      'padding:0.65rem 0.875rem',
+      'font-size:0.78rem',
+      'font-weight:600',
+      'border-radius:var(--radius-xs)',
+      'background:rgba(239,68,68,0.1)',
+      'color:var(--red)',
+      'border:1px solid rgba(239,68,68,0.25)',
+      'white-space:pre-line',
+    ].join(';');
+    banner.textContent = msg;
+
+    var pane = document.getElementById('dn-setup-pane');
+    if (pane) pane.appendChild(banner);
+  }
+
+  function showDnSuccess(msg) {
+    var existing = document.getElementById('dn-feedback-banner');
+    if (existing) existing.remove();
+
+    var banner = document.createElement('div');
+    banner.id = 'dn-feedback-banner';
+    banner.style.cssText = [
+      'margin-top:0.75rem',
+      'padding:0.65rem 0.875rem',
+      'font-size:0.78rem',
+      'font-weight:600',
+      'border-radius:var(--radius-xs)',
+      'background:rgba(34,197,94,0.1)',
+      'color:var(--green)',
+      'border:1px solid rgba(34,197,94,0.25)',
+    ].join(';');
+    banner.textContent = '\u2713 ' + msg;
+
+    var pane = document.getElementById('dn-setup-pane');
+    if (pane) pane.appendChild(banner);
+  }
+
+  // ─── Start Trading Button Handler ─────────────────────────────────────────
+  var startTradingBtn = document.getElementById('dn-start-trading-btn');
+  if (startTradingBtn) {
+    startTradingBtn.addEventListener('click', async function() {
+      startTradingBtn.disabled = true;
+      startTradingBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Starting\u2026';
+
+      try {
+        // Read from current pane state
+        var longExchange = currentLong.exchange;
+        var shortExchange = currentShort.exchange;
+        var longPair = currentLong.symbol;
+        var shortPair = currentShort.symbol;
+        var longLeverage = parseInt(currentLong.leverage, 10) || 20;
+        var shortLeverage = parseInt(currentShort.leverage, 10) || 20;
+
+        // Read shared config
+        var notionalEl = document.getElementById('dn-notional');
+        var durationEl = document.getElementById('dn-duration');
+        var stopLossEl = document.getElementById('dn-stop-loss');
+
+        var notionalUsd = notionalEl ? (parseFloat(notionalEl.value) || 1000) : 1000;
+        var durationMins = durationEl ? (parseFloat(durationEl.value) || 60) : 60;
+        var stopLossPct = stopLossEl ? (parseFloat(stopLossEl.value) || 50) : 50;
+
+        // Validate
+        var errors = [];
+        if (!longExchange) errors.push('Long leg exchange not configured \u2014 complete the wizard steps first');
+        if (!shortExchange) errors.push('Short leg exchange not configured \u2014 select hedge exchange in Advanced Config');
+        if (!longPair) errors.push('Long leg symbol not set');
+        if (!shortPair) errors.push('Short leg symbol not set');
+        if (longExchange && shortExchange && longExchange === shortExchange) {
+          // Same-exchange DN (hedge mode) is allowed — skip this check
+          // errors.push('Long and Short exchanges must be different');
+        }
+
+        if (errors.length > 0) {
+          showDnError(errors.join('\n'));
+          return;
+        }
+
+        // Build payload
+        var sym = (longPair || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '-');
+        var botId = longExchange + '-' + shortExchange + '-' + sym + '-' + Date.now().toString(36);
+        var botName = (exchangeLabels[longExchange] || longExchange) + '/' + (exchangeLabels[shortExchange] || shortExchange) + ' DN ' + longPair;
+
+        var maxHoldSecs = Math.round(durationMins * 60);
+        var minHoldSecs = Math.round(maxHoldSecs * 0.2);
+        var maxLossUsd = Math.max(1, Math.round(notionalUsd * (stopLossPct / 100) * 100) / 100);
+        var legValueUsd = notionalUsd;
+        var maxDeltaDivergenceUsd = Math.max(10, Math.round(notionalUsd * 0.1 * 100) / 100);
+
+        // Get account ID from wizard state if available
+        var ws = window._dnWizardState || {};
+        var accountId = ws.accountId || '__wizard_primary__';
+
+        var payload = {
+          botType:                 'delta-neutral',
+          id:                      botId,
+          name:                    botName,
+          accountId:               accountId,
+          hedgeAccountId:          '__wizard_hedge__',
+          exchangeA:               longExchange,
+          exchangeB:               shortExchange,
+          credentialKeyA:          accountId,
+          credentialKeyB:          '__wizard_hedge__',
+          symbol:                  longPair,
+          symbolA:                 longPair,
+          symbolB:                 shortPair,
+          legValueUsd:             legValueUsd,
+          orderSizeMinUsd:         Math.round(legValueUsd * 0.5),
+          orderSizeMaxUsd:         legValueUsd,
+          primaryDirection:        'long',
+          minHoldSecs:             minHoldSecs,
+          maxHoldSecs:             maxHoldSecs,
+          maxLossUsd:              maxLossUsd,
+          takeProfitUsd:           0,
+          maxDeltaDivergenceUsd:   maxDeltaDivergenceUsd,
+          maxFundingRateThreshold: 0.005,
+          autoFlipOnFunding:       true,
+          leverage:                longLeverage,
+          hedgeLeverage:           shortLeverage,
+          tickIntervalSecs:        60,
+          cooldownSecs:            300,
+          entryMode:               'taker',
+          chunkSizeUsd:            Math.round(legValueUsd * 0.25),
+          tradeLogBackend:         'json',
+          tradeLogPath:            './trades-' + botId + '.json',
+          tags:                    ['delta-neutral', 'drift'],
+          autoStart:               true,
+        };
+
+        // POST to /api/bots
+        var resp = await fetch('/api/bots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        var json = await resp.json();
+
+        if (!resp.ok) {
+          throw new Error(json.error || json.hint || ('Server error ' + resp.status));
+        }
+
+        // Success
+        var createdId = json.id || botId;
+        showDnSuccess('Bot started! Redirecting\u2026');
+        setTimeout(function() {
+          window.location.href = '/bots/' + encodeURIComponent(createdId);
+        }, 1000);
+
+      } catch (err) {
+        console.error('[DN Setup] Start Trading error:', err);
+        showDnError(err.message || 'Failed to start bot. Check console for details.');
+      } finally {
+        startTradingBtn.disabled = false;
+        startTradingBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Start Trading';
+      }
+    });
+  }
+
+  // ─── Initialize ───────────────────────────────────────────────────────────
+  refreshFromWizardState();
+
+})();
+</script>
+
+<style>
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+</style>

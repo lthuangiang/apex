@@ -65,7 +65,7 @@ export class AISignalEngine {
         this.adapter = adapter;
         this.tradeLogger = tradeLogger ?? new TradeLogger(
             (process.env.TRADE_LOG_BACKEND ?? 'json') as 'json' | 'sqlite',
-            process.env.TRADE_LOG_PATH ?? 'trades.json',
+            process.env.TRADE_LOG_PATH ?? './data/trades.json',
         );
     }
 

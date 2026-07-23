@@ -208,7 +208,26 @@ async function fetchStats() {
 
 async function fetchBots() {
   try {
-    const newData = await fetch('/api/bots').then(r => r.json());
+    const res = await fetch('/api/bots');
+    if (!res.ok) {
+      // Server returned error (503 = manager not ready, etc.)
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      if (res.status === 503) {
+        // Manager not ready yet — show empty state, don't error
+        botsData = [];
+        renderBots();
+        return;
+      }
+      throw new Error(err.error || res.statusText);
+    }
+    const newData = await res.json();
+
+    // Ensure we got an array (not error object)
+    if (!Array.isArray(newData)) {
+      botsData = [];
+      renderBots();
+      return;
+    }
 
     // Check if bot list changed (added/removed)
     const listChanged = !botsData || botsData.length !== newData.length ||
@@ -234,12 +253,17 @@ function updateBotCards() {
     const card = document.querySelector(`[data-bot-id="${bot.id}"]`);
     if (!card) return;
 
+    // Update card class (active/paused/inactive)
+    const cardClass = bot.status === 'active' ? 'active' : bot.status === 'paused' ? 'paused' : 'inactive';
+    card.className = `bot-card ${cardClass}`;
+    card.dataset.status = bot.status;
+
     // Update status
     const statusPill = card.querySelector('.status-pill');
     if (statusPill) {
       statusPill.className = `status-pill ${bot.status}`;
       statusPill.querySelector('.status-dot');
-      const statusText = bot.status === 'active' ? 'Running' : 'Stopped';
+      const statusText = bot.status === 'active' ? '● LIVE' : bot.status === 'paused' ? '⏸ PAUSED' : '○ IDLE';
       const textNode = Array.from(statusPill.childNodes).find(n => n.nodeType === 3);
       if (textNode) textNode.textContent = statusText;
     }
@@ -247,22 +271,85 @@ function updateBotCards() {
     // Update PnL
     const pnlValue = card.querySelector('.pnl-value');
     if (pnlValue) {
-      const pnlClass = bot.sessionPnl > 0 ? 'pos' : bot.sessionPnl < 0 ? 'neg' : '';
+      const pnl = bot.sessionPnl ?? 0;
+      const pnlClass = pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : '';
       pnlValue.className = `pnl-value ${pnlClass}`;
-      pnlValue.textContent = fmtSign(bot.sessionPnl) + '$' + fmtUsd(Math.abs(bot.sessionPnl));
+      const sign = pnl > 0 ? '+' : pnl < 0 ? '-' : '';
+      pnlValue.textContent = sign + '$' + fmtUsd(Math.abs(pnl));
     }
 
-    // Update stats
+    // Update stats — different layout for DN vs standard cards
+    const isDeltaNeutral = card.querySelector('[class*="delta-neutral"]') || card.innerHTML.includes('DELTA-NEUTRAL') || bot.botType === 'hedge' || bot.botType === 'pair' || bot.botType === 'delta-neutral' || bot.botType === 'oi-farmer';
     const statValues = card.querySelectorAll('.stat-item-value');
-    if (statValues[0]) statValues[0].textContent = '$' + fmtUsd(bot.startBalance);
-    if (statValues[1]) statValues[1].textContent = '$' + fmtUsd(bot.currentBalance);
-    if (statValues[2]) statValues[2].textContent = '$' + fmtUsd(bot.sessionVolume);
-    if (statValues[3]) {
-      const eff = bot.efficiency;
-      statValues[3].className = `stat-item-value ${eff > 0 ? 'pos' : eff < 0 ? 'neg' : ''}`;
-      statValues[3].textContent = (eff != null ? eff.toFixed(1) : '0.0') + ' bps';
+
+    if (isDeltaNeutral) {
+      // DN card stats: OI-Hours, Volume, Funding, Cycles
+      const oiHoursRaw = bot.totalOiHours || 0;
+      const oiHours = oiHoursRaw > 1000 ? (oiHoursRaw / 1000).toFixed(1) + 'K' : oiHoursRaw.toFixed(0);
+      const dnVolume = bot.sessionVolume ? fmtUsd(bot.sessionVolume) : '0';
+      const fundingNet = ((bot.totalFundingReceived || 0) - (bot.totalFundingPaid || 0));
+      const fundingStr = (fundingNet >= 0 ? '+' : '') + '$' + Math.abs(fundingNet).toFixed(3);
+
+      if (statValues[0]) statValues[0].textContent = oiHours;
+      if (statValues[1]) statValues[1].textContent = '$' + dnVolume;
+      if (statValues[2]) statValues[2].textContent = fundingStr;
+      if (statValues[3]) statValues[3].textContent = String(bot.completedCycles || 0);
+    } else {
+      // Standard bot stats: Balance, Balance, Volume, Cost/$1M, Uptime
+      if (statValues[0]) statValues[0].textContent = '$' + fmtUsd(bot.startBalance);
+      if (statValues[1]) statValues[1].textContent = '$' + fmtUsd(bot.currentBalance);
+      if (statValues[2]) statValues[2].textContent = '$' + fmtUsd(bot.sessionVolume);
+      if (statValues[3]) {
+        const cpm = bot.costPerMillion ?? 0;
+        statValues[3].className = `stat-item-value ${cpm > 0 ? 'neg' : cpm < 0 ? 'pos' : ''}`;
+        statValues[3].textContent = '$' + (cpm != null ? cpm.toFixed(2) : '0.00');
+      }
+      if (statValues[4]) statValues[4].textContent = bot.uptime + 'm';
     }
-    if (statValues[4]) statValues[4].textContent = bot.uptime + 'm';
+
+    // Update action button visibility based on status
+    const isActive = bot.status === 'active';
+    const isPaused = bot.status === 'paused';
+
+    // Update DN card position data if available
+    if (isDeltaNeutral && bot.position) {
+      const legA = bot.position.primaryLeg;
+      const legB = bot.position.hedgeLeg;
+      const posRows = card.querySelectorAll('[style*="border-radius:6px"][style*="border:1px"]');
+      if (posRows[0] && legA) {
+        const rightDiv = posRows[0].querySelector('[style*="text-align:right"]');
+        if (rightDiv) {
+          const sizeEl = rightDiv.querySelector('div:first-child');
+          const pnlEl = rightDiv.querySelector('div:last-child');
+          if (sizeEl) sizeEl.textContent = legA.size.toFixed(6) + ' @ $' + legA.entryPrice.toFixed(2);
+          if (pnlEl) {
+            pnlEl.textContent = (legA.unrealizedPnl >= 0 ? '+' : '') + '$' + legA.unrealizedPnl.toFixed(3);
+            pnlEl.style.color = legA.unrealizedPnl >= 0 ? 'var(--green)' : 'var(--red)';
+          }
+        }
+      }
+      if (posRows[1] && legB) {
+        const rightDiv = posRows[1].querySelector('[style*="text-align:right"]');
+        if (rightDiv) {
+          const sizeEl = rightDiv.querySelector('div:first-child');
+          const pnlEl = rightDiv.querySelector('div:last-child');
+          if (sizeEl) sizeEl.textContent = legB.size.toFixed(6) + ' @ $' + legB.entryPrice.toFixed(2);
+          if (pnlEl) {
+            pnlEl.textContent = (legB.unrealizedPnl >= 0 ? '+' : '') + '$' + legB.unrealizedPnl.toFixed(3);
+            pnlEl.style.color = legB.unrealizedPnl >= 0 ? 'var(--green)' : 'var(--red)';
+          }
+        }
+      }
+    }
+
+    const startBtn = card.querySelector('.btn-start-bot');
+    const stopBtn = card.querySelector('.btn-stop-bot');
+    const pauseBtn = card.querySelector('.btn-pause-bot');
+    const resumeBtn = card.querySelector('.btn-resume-bot');
+    if (startBtn) startBtn.style.display = (isActive || isPaused) ? 'none' : 'flex';
+    if (stopBtn) stopBtn.style.display = (isActive || isPaused) ? 'flex' : 'none';
+    if (pauseBtn) pauseBtn.style.display = isActive ? 'flex' : 'none';
+    if (resumeBtn) resumeBtn.style.display = isPaused ? 'flex' : 'none';
 
     // Update sparkline/position widget
     drawSparkline(bot);
@@ -293,6 +380,8 @@ async function updateAISignals() {
 function renderBots() {
   const container = document.getElementById('bot-cards');
   const tmpl = document.getElementById('bot-card-template').innerHTML;
+  const oiFarmerTmpl = document.getElementById('delta-neutral-card-template');
+  const oiTmpl = oiFarmerTmpl ? oiFarmerTmpl.innerHTML : tmpl;
 
   let filtered = botsData;
   if (currentFilter === 'active')   filtered = botsData.filter(b => b.status === 'active');
@@ -358,13 +447,22 @@ function renderBots() {
   Object.values(sparklineCharts).forEach(c => c.destroy());
   Object.keys(sparklineCharts).forEach(k => delete sparklineCharts[k]);
 
-  container.innerHTML = filtered.map(bot => buildCard(tmpl, bot)).join('');
+  container.innerHTML = filtered.map(bot => {
+    if (bot.botType === 'oi-farmer' || bot.botType === 'delta-neutral' || bot.botType === 'hedge' || bot.botType === 'pair' || bot.oiFarmerState) {
+      return buildDeltaNeutralCard(oiTmpl, bot);
+    }
+    return buildCard(tmpl, bot);
+  }).join('');
 
   // Attach listeners
   container.querySelectorAll('.btn-start-bot').forEach(btn =>
     btn.addEventListener('click', () => startBot(btn.dataset.botId)));
   container.querySelectorAll('.btn-stop-bot').forEach(btn =>
     btn.addEventListener('click', () => stopBot(btn.dataset.botId)));
+  container.querySelectorAll('.btn-pause-bot').forEach(btn =>
+    btn.addEventListener('click', () => pauseBot(btn.dataset.botId)));
+  container.querySelectorAll('.btn-resume-bot').forEach(btn =>
+    btn.addEventListener('click', () => resumeBot(btn.dataset.botId)));
   container.querySelectorAll('.btn-delete-bot').forEach(btn =>
     btn.addEventListener('click', () => deleteBot(btn.dataset.botId, btn.dataset.botName)));
 
@@ -374,9 +472,10 @@ function renderBots() {
 
 function buildCard(tmpl, bot) {
   const isActive = bot.status === 'active';
+  const isPaused = bot.status === 'paused';
   const pnl = bot.sessionPnl ?? 0;
   const vol = bot.sessionVolume ?? 0;
-  const eff = bot.efficiencyBps ?? 0;
+  const costPM = bot.costPerMillion ?? 0;
   const startBalance = bot.sessionStartBalance ?? null;
   const currentBalance = bot.currentBalance ?? null;
 
@@ -399,19 +498,21 @@ function buildCard(tmpl, bot) {
     .replace(/{exchange}/g,    (bot.exchange || '').toUpperCase())
     .replace(/{strategyTags}/g, strategyTags)
     .replace(/{status}/g,      bot.status)
-    .replace(/{statusText}/g,  isActive ? '● LIVE' : '○ IDLE')
-    .replace(/{cardClass}/g,   isActive ? 'active' : 'inactive')
+    .replace(/{statusText}/g,  isActive ? '● LIVE' : isPaused ? '⏸ PAUSED' : '○ IDLE')
+    .replace(/{cardClass}/g,   isActive ? 'active' : isPaused ? 'paused' : 'inactive')
     .replace(/{pnlClass}/g,    pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : 'neutral')
     .replace(/{pnlSign}/g,     pnl > 0 ? '+' : pnl < 0 ? '-' : '')
     .replace(/{pnl}/g,         fmtUsd(Math.abs(pnl)))
     .replace(/{volume}/g,      fmtUsd(vol))
-    .replace(/{effClass}/g,    eff > 0 ? 'positive' : eff < 0 ? 'negative' : '')
-    .replace(/{efficiency}/g,  (eff != null ? eff.toFixed(1) : '0.0'))
+    .replace(/{costClass}/g,    costPM > 0 ? 'negative' : costPM < 0 ? 'positive' : '')
+    .replace(/{costPerMillion}/g, (costPM != null ? costPM.toFixed(2) : '0.00'))
     .replace(/{uptime}/g,      bot.uptime ?? 0)
     .replace(/{startBalance}/g, startBalance !== null ? fmtUsd(startBalance) : 'N/A')
     .replace(/{currentBalance}/g, currentBalance !== null ? fmtUsd(currentBalance) : 'N/A')
-    .replace(/{startDisplay}/g, isActive ? 'none' : 'flex')
-    .replace(/{stopDisplay}/g,  isActive ? 'flex' : 'none')
+    .replace(/{startDisplay}/g, isActive || isPaused ? 'none' : 'flex')
+    .replace(/{stopDisplay}/g,  isActive || isPaused ? 'flex' : 'none')
+    .replace(/{pauseDisplay}/g, isActive ? 'flex' : 'none')
+    .replace(/{resumeDisplay}/g, isPaused ? 'flex' : 'none')
     // Wave 3: Mode + Intelligence badges
     .replace(/{mode}/g, mode)
     .replace(/{modeIcon}/g, modeIcon)
@@ -427,6 +528,93 @@ function buildCard(tmpl, bot) {
     .replace(/{confidence}/g, '0')
     .replace(/{confidenceText}/g, '—')
     .replace(/{signalAge}/g, 'No signal data');
+}
+
+// ── Delta-Neutral Card Builder ────────────────────────────────────────────────────
+
+function buildDeltaNeutralCard(tmpl, bot) {
+  const isActive = bot.status === 'active';
+  const isPaused = bot.status === 'paused';
+  const pnl = bot.sessionPnl ?? 0;
+  const pos = bot.position || null;
+  const oiState = bot.oiFarmerState || 'IDLE';
+
+  // Badge label: show PAIR TRADING for same-exchange, DELTA-NEUTRAL for cross-exchange
+  const isSameExchange = bot.exchangeA && bot.exchangeB && bot.exchangeA === bot.exchangeB;
+  const dnBadgeLabel = isSameExchange ? '⚖️ PAIR TRADING' : '🌾 DELTA-NEUTRAL';
+
+  // Leg data
+  const legA = pos ? pos.primaryLeg : null;
+  const legB = pos ? pos.hedgeLeg : null;
+  const deltaExposure = pos ? (pos.deltaExposureUsd || 0).toFixed(2) : '0.00';
+
+  // Hold progress
+  let holdElapsed = '0.0';
+  let holdProgress = 0;
+  const maxHoldHrs = (bot.maxHoldSecs || 172800) / 3600;
+  if (pos && pos.entryTimestamp) {
+    const elapsedMs = Date.now() - new Date(pos.entryTimestamp).getTime();
+    const elapsedHrs = elapsedMs / 3_600_000;
+    holdElapsed = elapsedHrs.toFixed(1);
+    holdProgress = Math.min(100, (elapsedHrs / maxHoldHrs) * 100);
+  }
+
+  // OI metrics
+  const oiHoursRaw = bot.totalOiHours || 0;
+  const oiHours = oiHoursRaw > 1000 ? (oiHoursRaw / 1000).toFixed(1) + 'K' : oiHoursRaw.toFixed(0);
+  const cpm = bot.cpmUsd ? bot.cpmUsd.toFixed(2) : '0.00';
+  const dnVolume = bot.sessionVolume ? fmtUsd(bot.sessionVolume) : '0';
+  const fundingNet = ((bot.totalFundingReceived || 0) - (bot.totalFundingPaid || 0));
+  const fundingStr = (fundingNet >= 0 ? '+' : '') + '$' + Math.abs(fundingNet).toFixed(3);
+  const fundingColor = fundingNet >= 0 ? 'var(--green)' : 'var(--red)';
+
+  return tmpl
+    .replace(/{id}/g, bot.id)
+    .replace(/{name}/g, bot.name)
+    .replace(/{exchangeA}/g, (bot.exchangeA || bot.exchange || '').toUpperCase())
+    .replace(/{exchangeB}/g, (bot.exchangeB || '').toUpperCase())
+    .replace(/{status}/g, bot.status)
+    .replace(/{statusText}/g, isActive ? '● LIVE' : isPaused ? '⏸ PAUSED' : '○ IDLE')
+    .replace(/{cardClass}/g, isActive ? 'active' : isPaused ? 'paused' : 'inactive')
+    .replace(/{dnBadgeLabel}/g, dnBadgeLabel)
+    .replace(/{oiState}/g, oiState)
+    .replace(/{deltaExposure}/g, deltaExposure)
+    // Leg A
+    .replace(/{legASide}/g, legA ? legA.side.toUpperCase() : '--')
+    .replace(/{legASymbol}/g, legA ? legA.symbol : (bot.symbol || '--'))
+    .replace(/{legASize}/g, legA ? legA.size.toFixed(6) : '0')
+    .replace(/{legAEntry}/g, legA ? legA.entryPrice.toFixed(2) : '0.00')
+    .replace(/{legAPnl}/g, legA ? ((legA.unrealizedPnl >= 0 ? '+' : '') + '$' + legA.unrealizedPnl.toFixed(3)) : '$0.000')
+    .replace(/{legAPnlColor}/g, legA && legA.unrealizedPnl >= 0 ? 'var(--green)' : 'var(--red)')
+    .replace(/{legAColor}/g, legA && legA.side === 'long' ? '#1db954' : '#e8404a')
+    // Leg B
+    .replace(/{legBSide}/g, legB ? legB.side.toUpperCase() : '--')
+    .replace(/{legBSymbol}/g, legB ? legB.symbol : '--')
+    .replace(/{legBSize}/g, legB ? legB.size.toFixed(6) : '0')
+    .replace(/{legBEntry}/g, legB ? legB.entryPrice.toFixed(2) : '0.00')
+    .replace(/{legBPnl}/g, legB ? ((legB.unrealizedPnl >= 0 ? '+' : '') + '$' + legB.unrealizedPnl.toFixed(3)) : '$0.000')
+    .replace(/{legBPnlColor}/g, legB && legB.unrealizedPnl >= 0 ? 'var(--green)' : 'var(--red)')
+    .replace(/{legBColor}/g, legB && legB.side === 'long' ? '#1db954' : '#e8404a')
+    // Hold progress
+    .replace(/{holdElapsed}/g, holdElapsed)
+    .replace(/{holdTarget}/g, maxHoldHrs.toFixed(0))
+    .replace(/{holdProgress}/g, holdProgress.toFixed(1))
+    // PnL
+    .replace(/{pnlClass}/g, pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : 'neutral')
+    .replace(/{pnlSign}/g, pnl > 0 ? '+' : pnl < 0 ? '-' : '')
+    .replace(/{pnl}/g, fmtUsd(Math.abs(pnl)))
+    // OI Metrics
+    .replace(/{oiHours}/g, oiHours)
+    .replace(/{cpm}/g, cpm)
+    .replace(/{dnVolume}/g, dnVolume)
+    .replace(/{fundingNet}/g, fundingStr)
+    .replace(/{fundingColor}/g, fundingColor)
+    .replace(/{cycles}/g, String(bot.completedCycles || 0))
+    // Actions
+    .replace(/{startDisplay}/g, isActive || isPaused ? 'none' : 'flex')
+    .replace(/{stopDisplay}/g, isActive || isPaused ? 'flex' : 'none')
+    .replace(/{pauseDisplay}/g, isActive ? 'flex' : 'none')
+    .replace(/{resumeDisplay}/g, isPaused ? 'flex' : 'none');
 }
 
 // ── Sparklines ────────────────────────────────────────────────────────────────
@@ -552,6 +740,32 @@ async function stopBot(botId) {
   } catch (err) {
     alert('Failed to stop bot: ' + err.message);
     if (btn) { btn.disabled = false; btn.textContent = '■ Stop'; }
+  }
+}
+
+async function pauseBot(botId) {
+  const btn = document.querySelector(`.btn-pause-bot[data-bot-id="${botId}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Pausing…'; }
+  try {
+    const r = await fetch(`/api/bots/${botId}/pause`, { method: 'POST' });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Failed'); }
+    await refresh();
+  } catch (err) {
+    alert('Failed to pause bot: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = '⏸ Pause'; }
+  }
+}
+
+async function resumeBot(botId) {
+  const btn = document.querySelector(`.btn-resume-bot[data-bot-id="${botId}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Resuming…'; }
+  try {
+    const r = await fetch(`/api/bots/${botId}/resume`, { method: 'POST' });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.error || 'Failed'); }
+    await refresh();
+  } catch (err) {
+    alert('Failed to resume bot: ' + err.message);
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Resume'; }
   }
 }
 

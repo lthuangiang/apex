@@ -1,5 +1,5 @@
 /**
- * HedgeBot Integration Tests
+ * PairBot Integration Tests
  *
  * Tests end-to-end state machine flows using mock adapters.
  * The tick loop is driven manually by calling private tick methods directly
@@ -8,10 +8,10 @@
  * Tasks: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { HedgeBot } from '../HedgeBot.js';
+import { PairBot } from '../PairBot.js';
 import { BotManager } from '../BotManager.js';
 import { BotInstance } from '../BotInstance.js';
-import type { HedgeBotConfig, BotConfig } from '../types.js';
+import type { PairBotConfig, BotConfig } from '../types.js';
 import type { ExchangeAdapter, Position } from '../../adapters/ExchangeAdapter.js';
 import type { TelegramManager } from '../../modules/TelegramManager.js';
 import * as fs from 'fs';
@@ -20,7 +20,7 @@ import * as fs from 'fs';
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-function makeHedgeBotConfig(overrides: Partial<HedgeBotConfig> = {}): HedgeBotConfig {
+function makeHedgeBotConfig(overrides: Partial<PairBotConfig> = {}): PairBotConfig {
   return {
     id: 'hedge-integration-1',
     name: 'Integration Hedge Bot',
@@ -92,7 +92,7 @@ function makeTelegram(): TelegramManager {
  * Mock the VolumeMonitor so that shouldEnter() returns true and sample() is a no-op.
  * This lets us test the state machine entry logic without worrying about volume data.
  */
-function mockVolumeMonitorShouldEnter(bot: HedgeBot): void {
+function mockVolumeMonitorShouldEnter(bot: PairBot): void {
   const vm = bot.getVolumeMonitor();
   vi.spyOn(vm, 'sample').mockResolvedValue(undefined);
   vi.spyOn(vm, 'shouldEnter').mockReturnValue(true);
@@ -102,7 +102,7 @@ function mockVolumeMonitorShouldEnter(bot: HedgeBot): void {
  * Mock signal engines to return different scores so assignDirections() returns non-null.
  * scoreA > scoreB → symbolA (BTC-USD) is long, symbolB (ETH-USD) is short.
  */
-function mockSignalEngines(bot: HedgeBot, scoreA = 0.8, scoreB = 0.3): void {
+function mockSignalEngines(bot: PairBot, scoreA = 0.8, scoreB = 0.3): void {
   vi.spyOn(bot.getSignalEngineA(), 'getSignal').mockResolvedValue({
     score: scoreA,
     direction: 'long',
@@ -137,12 +137,12 @@ function makePosition(
 
 describe('12.1 — Full entry → fill → PROFIT_TARGET exit cycle', () => {
   let adapter: ExchangeAdapter;
-  let bot: HedgeBot;
+  let bot: PairBot;
   let appendFileSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     adapter = makeAdapter();
-    bot = new HedgeBot(makeHedgeBotConfig(), adapter, makeTelegram());
+    bot = new PairBot(makeHedgeBotConfig(), adapter, makeTelegram());
     appendFileSpy = vi.spyOn(fs.promises, 'appendFile').mockResolvedValue(undefined);
   });
 
@@ -229,12 +229,12 @@ describe('12.1 — Full entry → fill → PROFIT_TARGET exit cycle', () => {
 
 describe('12.2 — Full entry → fill → MAX_LOSS exit cycle', () => {
   let adapter: ExchangeAdapter;
-  let bot: HedgeBot;
+  let bot: PairBot;
   let appendFileSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     adapter = makeAdapter();
-    bot = new HedgeBot(makeHedgeBotConfig(), adapter, makeTelegram());
+    bot = new PairBot(makeHedgeBotConfig(), adapter, makeTelegram());
     appendFileSpy = vi.spyOn(fs.promises, 'appendFile').mockResolvedValue(undefined);
   });
 
@@ -316,11 +316,11 @@ describe('12.2 — Full entry → fill → MAX_LOSS exit cycle', () => {
 
 describe('12.3 — One-leg failure during entry', () => {
   let adapter: ExchangeAdapter;
-  let bot: HedgeBot;
+  let bot: PairBot;
 
   beforeEach(() => {
     adapter = makeAdapter();
-    bot = new HedgeBot(makeHedgeBotConfig(), adapter, makeTelegram());
+    bot = new PairBot(makeHedgeBotConfig(), adapter, makeTelegram());
   });
 
   afterEach(() => {
@@ -385,13 +385,13 @@ describe('12.3 — One-leg failure during entry', () => {
 
 describe('12.4 — Close retry with exponential backoff', () => {
   let adapter: ExchangeAdapter;
-  let bot: HedgeBot;
+  let bot: PairBot;
   let sleepSpy: ReturnType<typeof vi.spyOn>;
   let appendFileSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     adapter = makeAdapter();
-    bot = new HedgeBot(makeHedgeBotConfig(), adapter, makeTelegram());
+    bot = new PairBot(makeHedgeBotConfig(), adapter, makeTelegram());
     sleepSpy = vi.spyOn(bot as any, '_sleep').mockResolvedValue(undefined);
     appendFileSpy = vi.spyOn(fs.promises, 'appendFile').mockResolvedValue(undefined);
   });
@@ -487,11 +487,11 @@ describe('12.4 — Close retry with exponential backoff', () => {
 
 describe('12.5 — Stop with open positions', () => {
   let adapter: ExchangeAdapter;
-  let bot: HedgeBot;
+  let bot: PairBot;
 
   beforeEach(() => {
     adapter = makeAdapter();
-    bot = new HedgeBot(makeHedgeBotConfig(), adapter, makeTelegram());
+    bot = new PairBot(makeHedgeBotConfig(), adapter, makeTelegram());
   });
 
   afterEach(() => {
@@ -570,14 +570,14 @@ describe('12.6 — BotManager aggregation with mixed bot types', () => {
     telegram = makeTelegram();
   });
 
-  it('getAggregatedStats() sums sessionPnl from both BotInstance and HedgeBot', () => {
+  it('getAggregatedStats() sums sessionPnl from both BotInstance and PairBot', () => {
     // Register a standard BotInstance
     const botConfig = makeBotConfig('standard-bot-1');
     const botInstance = manager.createBot(botConfig, adapter, telegram);
 
     // Register a HedgeBot
     const hedgeConfig = makeHedgeBotConfig({ id: 'hedge-bot-agg-1' });
-    const hedgeBot = manager.createHedgeBot(hedgeConfig, adapter, telegram);
+    const hedgeBot = manager.createPairBot(hedgeConfig, adapter, telegram);
 
     // Set session stats on both
     botInstance.state.sessionPnl = 100;
@@ -603,7 +603,7 @@ describe('12.6 — BotManager aggregation with mixed bot types', () => {
     const botInstance = manager.createBot(botConfig, adapter, telegram);
 
     const hedgeConfig = makeHedgeBotConfig({ id: 'hedge-bot-agg-2' });
-    const hedgeBot = manager.createHedgeBot(hedgeConfig, adapter, telegram);
+    const hedgeBot = manager.createPairBot(hedgeConfig, adapter, telegram);
 
     botInstance.state.botStatus = 'STOPPED';
     hedgeBot.state.botStatus = 'RUNNING';
@@ -612,12 +612,12 @@ describe('12.6 — BotManager aggregation with mixed bot types', () => {
     expect(stats.activeBotCount).toBe(1);
   });
 
-  it('getAggregatedStats() handles negative PnL from HedgeBot correctly', () => {
+  it('getAggregatedStats() handles negative PnL from PairBot correctly', () => {
     const botConfig = makeBotConfig('standard-bot-3');
     const botInstance = manager.createBot(botConfig, adapter, telegram);
 
     const hedgeConfig = makeHedgeBotConfig({ id: 'hedge-bot-agg-3' });
-    const hedgeBot = manager.createHedgeBot(hedgeConfig, adapter, telegram);
+    const hedgeBot = manager.createPairBot(hedgeConfig, adapter, telegram);
 
     botInstance.state.sessionPnl = 50;
     hedgeBot.state.sessionPnl = -30;
@@ -631,7 +631,7 @@ describe('12.6 — BotManager aggregation with mixed bot types', () => {
     const botInstance = manager.createBot(botConfig, adapter, telegram);
 
     const hedgeConfig = makeHedgeBotConfig({ id: 'hedge-bot-agg-4' });
-    const hedgeBot = manager.createHedgeBot(hedgeConfig, adapter, telegram);
+    const hedgeBot = manager.createPairBot(hedgeConfig, adapter, telegram);
 
     const allBots = manager.getAllBots();
     expect(allBots).toHaveLength(2);

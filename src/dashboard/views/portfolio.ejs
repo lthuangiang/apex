@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DRIFT — Portfolio</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f14;
+      --surface: #141820;
+      --surface-2: #1a2030;
+      --border: #1e2535;
+      --border-strong: #28334a;
+      --text-primary: #e8edf5;
+      --text-secondary: #8a9bb5;
+      --text-tertiary: #4a5a72;
+      --accent: #f5a623;
+      --accent-light: rgba(245,166,35,0.12);
+      --accent-hover: #ffb83d;
+      --green: #1db954;
+      --green-bg: rgba(29,185,84,0.12);
+      --green-border: rgba(29,185,84,0.3);
+      --red: #e8404a;
+      --red-bg: rgba(232,64,74,0.12);
+      --red-border: rgba(232,64,74,0.3);
+      --yellow: #f5a623;
+      --shadow-sm: 0 1px 4px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+      --shadow-lg: 0 10px 32px rgba(0,0,0,0.65), 0 4px 8px rgba(0,0,0,0.4);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-xs: 6px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body.light {
+      --bg: #f0f2f7; --surface: #ffffff; --surface-2: #f5f7fb; --border: #dde2ee; --border-strong: #c8d0e0;
+      --text-primary: #0f1623; --text-secondary: #4a5a72; --text-tertiary: #8a9bb5;
+      --shadow-sm: 0 1px 4px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.06);
+      --shadow-lg: 0 10px 32px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.07);
+    }
+
+    /* ── Top Navigation ─────────────────────────────────────────────────── */
+    .topnav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow-sm);
+    }
+    .topnav-brand { display: flex; align-items: center; gap: 0.6rem; font-size: 1rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
+    .topnav-brand .brand-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+    .topnav-right { display: flex; align-items: center; gap: 0.75rem; }
+    .topnav-link { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); text-decoration: none; padding: 0.4rem 0.75rem; border-radius: var(--radius-xs); transition: all 0.15s; }
+    .topnav-link:hover { color: var(--text-primary); background: var(--surface-2); }
+    .topnav-link.active { color: var(--accent); background: var(--accent-light); }
+    .theme-toggle-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
+    .theme-toggle-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
+    /* ── Page Layout ────────────────────────────────────────────────────── */
+    .page { max-width: 1440px; margin: 0 auto; padding: 2rem 2rem 4rem; }
+    .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+    .page-title { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.03em; }
+    .page-subtitle { font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem; }
+    .last-updated { font-size: 0.72rem; color: var(--text-tertiary); }
+
+    /* ── Hero Stats ─────────────────────────────────────────────────────── */
+    .hero-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+    .hero-stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem 1.5rem; box-shadow: var(--shadow-sm); transition: box-shadow 0.2s; }
+    .hero-stat-card:hover { box-shadow: var(--shadow-md); }
+    .hero-stat-card.primary { background: linear-gradient(135deg, #c47a10 0%, #f5a623 100%); border-color: transparent; color: white; }
+    .hero-stat-label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); margin-bottom: 0.5rem; }
+    .hero-stat-card.primary .hero-stat-label { color: rgba(255,255,255,0.65); }
+    .hero-stat-value { font-size: 1.75rem; font-weight: 800; color: var(--text-primary); letter-spacing: -0.04em; line-height: 1; }
+    .hero-stat-card.primary .hero-stat-value { color: white; font-size: 2rem; }
+    .hero-stat-value.positive { color: var(--green); }
+    .hero-stat-value.negative { color: var(--red); }
+    .hero-stat-sub { font-size: 0.72rem; color: var(--text-tertiary); margin-top: 0.35rem; }
+    .hero-stat-card.primary .hero-stat-sub { color: rgba(255,255,255,0.55); }
+
+    /* ── Charts Section ─────────────────────────────────────────────────── */
+    .charts-section { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 1rem; margin-bottom: 2rem; }
+    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; box-shadow: var(--shadow-sm); }
+    .chart-card-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem; }
+    .chart-card-title .chart-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .chart-card-title .chart-dot.equity { background: var(--accent); }
+    .chart-card-title .chart-dot.exposure { background: #3b82f6; }
+    .chart-card-title .chart-dot.pnl { background: var(--green); }
+    .chart-container { position: relative; height: 200px; }
+    .chart-container canvas { width: 100% !important; height: 100% !important; }
+
+    /* ── Account Table ──────────────────────────────────────────────────── */
+    .table-section { margin-bottom: 2rem; }
+    .table-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .table-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
+    .table-count { font-size: 0.72rem; color: var(--text-tertiary); }
+    .accounts-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-sm); }
+    .accounts-table thead { background: var(--surface-2); }
+    .accounts-table th { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+    .accounts-table td { font-size: 0.82rem; color: var(--text-primary); padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); }
+    .accounts-table tr:last-child td { border-bottom: none; }
+    .accounts-table tr:hover td { background: var(--surface-2); }
+    .accounts-table .exchange-badge { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.06em; padding: 0.15rem 0.45rem; border-radius: 4px; background: var(--accent-light); color: var(--accent); text-transform: uppercase; }
+    .accounts-table .pnl-positive { color: var(--green); font-weight: 700; }
+    .accounts-table .pnl-negative { color: var(--red); font-weight: 700; }
+    .table-empty { text-align: center; padding: 2.5rem 1rem; color: var(--text-tertiary); font-size: 0.85rem; }
+
+    /* ── Risk Panel ─────────────────────────────────────────────────────── */
+    .risk-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow-sm); }
+    .risk-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+    .risk-panel-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); display: flex; align-items: center; gap: 0.4rem; }
+    .risk-panel-title .risk-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
+    .risk-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+    .risk-cell { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem; }
+    .risk-cell-label { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-tertiary); margin-bottom: 0.4rem; }
+    .risk-cell-value { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.03em; color: var(--text-primary); line-height: 1; }
+    .risk-cell-value.danger { color: var(--red); }
+    .risk-cell-value.warning { color: var(--yellow); }
+    .risk-cell-value.safe { color: var(--green); }
+    .risk-cell-sub { font-size: 0.68rem; color: var(--text-secondary); margin-top: 0.3rem; }
+
+    /* ── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 1100px) {
+      .charts-section { grid-template-columns: 1fr 1fr; }
+      .charts-section .chart-card:first-child { grid-column: 1 / -1; }
+      .risk-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 768px) {
+      .hero-stats { grid-template-columns: 1fr 1fr; }
+      .charts-section { grid-template-columns: 1fr; }
+      .risk-grid { grid-template-columns: 1fr 1fr; }
+      .page { padding: 1rem 1rem 3rem; }
+      .topnav { padding: 0 1rem; }
+    }
+    @media (max-width: 480px) {
+      .hero-stats { grid-template-columns: 1fr; }
+      .risk-grid { grid-template-columns: 1fr; }
+      .accounts-table { font-size: 0.75rem; }
+      .accounts-table th, .accounts-table td { padding: 0.6rem 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <script>
+    (function() {
+      if (localStorage.getItem('drift-theme') === 'light') document.body.classList.add('light');
+    })();
+  </script>
+
+  <!-- ── Top Navigation ──────────────────────────────────────────────────── -->
+  <nav class="topnav">
+    <div class="topnav-brand">
+      <span class="brand-dot"></span>
+      <span>DRIFT</span>
+    </div>
+    <div class="topnav-right">
+      <a href="/dashboard" class="topnav-link">Dashboard</a>
+      <a href="/portfolio" class="topnav-link active">Portfolio</a>
+      <a href="/reports" class="topnav-link">Reports</a>
+      <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode" aria-label="Toggle theme">
+        <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ── Page Content ─────────────────────────────────────────────────────── -->
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Portfolio Overview</h1>
+        <p class="page-subtitle">Aggregate view across all connected accounts and positions</p>
+      </div>
+      <span class="last-updated" id="portfolio-last-updated">Updating...</span>
+    </div>
+
+    <!-- ── Hero Stats ──────────────────────────────────────────────────────── -->
+    <div class="hero-stats">
+      <div class="hero-stat-card primary">
+        <div class="hero-stat-label">Total Equity</div>
+        <div class="hero-stat-value" id="portfolio-total-equity">$0.00</div>
+        <div class="hero-stat-sub" id="portfolio-total-equity-sub">across all accounts</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="hero-stat-label">Directional Bias</div>
+        <div class="hero-stat-value" id="portfolio-directional-bias">Neutral</div>
+        <div class="hero-stat-sub" id="portfolio-directional-bias-sub">net exposure</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="hero-stat-label">Unrealized PnL</div>
+        <div class="hero-stat-value" id="portfolio-unrealized-pnl">$0.00</div>
+        <div class="hero-stat-sub" id="portfolio-unrealized-pnl-sub">open positions</div>
+      </div>
+      <div class="hero-stat-card">
+        <div class="hero-stat-label">Liquidation Risk</div>
+        <div class="hero-stat-value" id="portfolio-liq-risk">Low</div>
+        <div class="hero-stat-sub" id="portfolio-liq-risk-sub">all positions healthy</div>
+      </div>
+    </div>
+
+    <!-- ── Charts ──────────────────────────────────────────────────────────── -->
+    <div class="charts-section">
+      <div class="chart-card">
+        <div class="chart-card-title">
+          <span class="chart-dot equity"></span>
+          Total Equity Over Time
+        </div>
+        <div class="chart-container">
+          <canvas id="chart-equity"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">
+          <span class="chart-dot exposure"></span>
+          Notional Exposure
+        </div>
+        <div class="chart-container">
+          <canvas id="chart-exposure"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">
+          <span class="chart-dot pnl"></span>
+          Unrealized PnL
+        </div>
+        <div class="chart-container">
+          <canvas id="chart-pnl"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Account Table ───────────────────────────────────────────────────── -->
+    <div class="table-section">
+      <div class="table-header">
+        <div class="table-title">Accounts</div>
+        <span class="table-count" id="portfolio-account-count">0 accounts</span>
+      </div>
+      <table class="accounts-table" id="portfolio-accounts-table">
+        <thead>
+          <tr>
+            <th>Exchange</th>
+            <th>Label</th>
+            <th>Balance</th>
+            <th>Open Positions</th>
+            <th>PnL</th>
+          </tr>
+        </thead>
+        <tbody id="portfolio-accounts-tbody">
+          <tr>
+            <td colspan="5" class="table-empty">Loading portfolio data...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Liquidation Risk Panel ──────────────────────────────────────────── -->
+    <div class="risk-panel">
+      <div class="risk-panel-header">
+        <div class="risk-panel-title">
+          <span class="risk-dot"></span>
+          Liquidation Risk Assessment
+        </div>
+      </div>
+      <div class="risk-grid">
+        <div class="risk-cell">
+          <div class="risk-cell-label">At Risk %</div>
+          <div class="risk-cell-value safe" id="risk-at-risk-pct">0%</div>
+          <div class="risk-cell-sub">of total equity</div>
+        </div>
+        <div class="risk-cell">
+          <div class="risk-cell-label">Liquidation Buffer</div>
+          <div class="risk-cell-value safe" id="risk-liq-buffer">—</div>
+          <div class="risk-cell-sub">distance to liquidation</div>
+        </div>
+        <div class="risk-cell">
+          <div class="risk-cell-label">Maintenance Margin</div>
+          <div class="risk-cell-value" id="risk-maintenance-margin">$0.00</div>
+          <div class="risk-cell-sub">required to hold</div>
+        </div>
+        <div class="risk-cell">
+          <div class="risk-cell-label">Average Leverage</div>
+          <div class="risk-cell-value" id="risk-avg-leverage">0x</div>
+          <div class="risk-cell-sub">across all positions</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Chart.js CDN ──────────────────────────────────────────────────────── -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- ── Portfolio Client Logic ────────────────────────────────────────────── -->
+  <script src="/js/portfolio.js"></script>
+
+  <!-- ── Theme Toggle ──────────────────────────────────────────────────────── -->
+  <script>
+  (function () {
+    function applyTheme(isLight) {
+      document.body.classList.toggle('light', isLight);
+      var moon = document.querySelector('.icon-moon');
+      var sun  = document.querySelector('.icon-sun');
+      if (moon) moon.style.display = isLight ? 'none'  : '';
+      if (sun)  sun.style.display  = isLight ? ''      : 'none';
+    }
+    applyTheme(document.body.classList.contains('light'));
+    window.toggleTheme = function () {
+      var isLight = !document.body.classList.contains('light');
+      localStorage.setItem('drift-theme', isLight ? 'light' : 'dark');
+      applyTheme(isLight);
+    };
+  })();
+  </script>
+</body>
+</html>

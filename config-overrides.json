@@ -1,3 +1,5 @@
 {
-  "FARM_MIN_HOLD_SECS": 30
+  "MODE": "farm",
+  "ORDER_SIZE_MIN": 0.001,
+  "ORDER_SIZE_MAX": 0.002
 }

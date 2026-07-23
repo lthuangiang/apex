@@ -88,10 +88,10 @@
   <!-- Hero Section -->
   <section class="hero">
     <div class="hero-content">
-      <div class="badge">LIVE · AI-POWERED TRADING</div>
+      <div class="badge">LIVE · SOSOVALUE INTELLIGENCE · AUTONOMOUS</div>
       <h1 class="hero-title">DRIFT</h1>
       <p class="hero-tagline">Dynamic Risk-Informed Futures Trading</p>
-      <p class="hero-subtitle">Multi-tenant SaaS platform for perpetual futures trading. Wallet-scoped bot management, adaptive AI signals, and hands-free automation.</p>
+      <p class="hero-subtitle">Autonomous trading platform powered by 8 SoSoValue signals. Agent Layer orchestrates strategies across 6 perp DEXes with Kelly-optimized sizing and portfolio-level risk control.</p>
 
       <div class="cta-group">
         <a href="/wallet-login" class="btn btn-primary">
@@ -103,20 +103,20 @@
 
       <div class="stats-grid">
         <div class="stat-item">
-          <div class="stat-value">3</div>
+          <div class="stat-value">4</div>
           <div class="stat-label">Strategies</div>
         </div>
         <div class="stat-item">
-          <div class="stat-value">4</div>
+          <div class="stat-value">6</div>
           <div class="stat-label">Exchanges</div>
         </div>
         <div class="stat-item">
-          <div class="stat-value">70+</div>
-          <div class="stat-label">Live Params</div>
+          <div class="stat-value">8</div>
+          <div class="stat-label">AI Signals</div>
         </div>
         <div class="stat-item">
           <div class="stat-value">24/7</div>
-          <div class="stat-label">Automated</div>
+          <div class="stat-label">Autonomous</div>
         </div>
       </div>
     </div>
@@ -125,11 +125,21 @@
   <!-- Strategies Section -->
   <section class="section strategies" id="strategies">
     <div class="section-header">
-      <h2 class="section-title">Three strategies. One system.</h2>
-      <p class="section-subtitle">Farm Mode maximizes volume, Trade Mode maximizes win rate, Hedge Bot profits from correlation divergence.</p>
+      <h2 class="section-title">Four strategies. One autonomous brain.</h2>
+      <p class="section-subtitle">Agent Layer selects the optimal strategy every 30 seconds based on 8 SoSoValue signals and 8 market regimes.</p>
     </div>
     
     <div class="strategy-cards">
+      <div class="strategy-card">
+        <div class="strategy-name">🧠 Agent Layer</div>
+        <p class="strategy-desc">Autonomous orchestration brain. Fetches 8 signals → classifies regime → selects strategy → Kelly sizing → RiskGate check → emits decision to bots. No manual intervention needed.</p>
+        <div>
+          <span class="strategy-tag">8 Regimes</span>
+          <span class="strategy-tag">Kelly Sizing</span>
+          <span class="strategy-tag">Risk Gate</span>
+        </div>
+      </div>
+
       <div class="strategy-card">
         <div class="strategy-name">🌾 Farm Mode</div>
         <p class="strategy-desc">Designed for DEXes with volume incentives (SoPoints, rebates). Always trading, never skips — falls back to price position or mean reversion when signal is weak.</p>
@@ -169,8 +179,14 @@
     <div class="features-grid">
       <div class="feature-card">
         <div class="feature-icon">🧠</div>
-        <h3 class="feature-title">AI Signal Engine</h3>
-        <p class="feature-desc">Parallel fetch: orderbook depth, recent trades, 5m klines (EMA9/21, RSI14, momentum), plus SoSoValue Fear & Greed. Adaptive weights auto-adjust every 10 trades.</p>
+        <h3 class="feature-title">8-Signal Intelligence Engine</h3>
+        <p class="feature-desc">Fetches Fear&Greed, ETF flows, Open Interest, Funding Rate, Stablecoin inflows, Macro events, SSI Index, and Sector Rotation in parallel. Classifies 8 market regimes with conviction scoring.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">🛡️</div>
+        <h3 class="feature-title">RiskGate Protection</h3>
+        <p class="feature-desc">Portfolio-level risk enforcement. Max loss halt, exposure cap ($500), consecutive loss cooldown (3 losses → 10min pause). Exit orders are never blocked — only entries are gated.</p>
       </div>
       
       <div class="feature-card">
@@ -180,6 +196,12 @@
       </div>
       
       <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3 class="feature-title">Performance Analytics</h3>
+        <p class="feature-desc">Sharpe, Sortino, Calmar ratios. Equity curve, drawdown analysis, SoSoValue alpha (WITH vs WITHOUT), regime-specific win rates. Dedicated /performance dashboard page.</p>
+      </div>
+
+      <div class="feature-card">
         <div class="feature-icon">📅</div>
         <h3 class="feature-title">Daily Budget Reset</h3>
         <p class="feature-desc">Two stop conditions: max loss and volume target. Bot stops when either hits, auto-restarts at 0:00 UTC (7:00 AM Vietnam) with fresh budget. Fully hands-free.</p>
@@ -188,25 +210,25 @@
       <div class="feature-card">
         <div class="feature-icon">🏢</div>
         <h3 class="feature-title">Multi-Tenant SaaS</h3>
-        <p class="feature-desc">Wallet-scoped bot isolation, encrypted credential storage, per-tenant config persistence. Each wallet gets isolated BotManager and data directory.</p>
+        <p class="feature-desc">Wallet-scoped bot isolation, AES-256-GCM encrypted credential storage, SIWE authentication, per-tenant config persistence. Each wallet gets its own isolated environment.</p>
       </div>
 
       <div class="feature-card">
-        <div class="feature-icon">📊</div>
-        <h3 class="feature-title">Real-Time Dashboard</h3>
-        <p class="feature-desc">Multi-bot manager view, per-bot session PnL, SSE console stream, trade history, 30+ dimension analytics, and 70+ runtime-configurable parameters.</p>
-      </div>
-      
-      <div class="feature-card">
         <div class="feature-icon">🔄</div>
-        <h3 class="feature-title">Feedback Loop</h3>
-        <p class="feature-desc">Tracks win rate per signal component, adjusts weights every 10 trades. Bounds: [0.05, 0.60], sum to 1.0. System learns from its own results.</p>
+        <h3 class="feature-title">Adaptive Feedback Loop</h3>
+        <p class="feature-desc">Tracks win rate per signal component, adjusts weights every 10 trades. Bounds: [0.05, 0.60], sum to 1.0. System learns and improves from its own trade results.</p>
       </div>
       
       <div class="feature-card">
         <div class="feature-icon">💬</div>
         <h3 class="feature-title">Telegram Control</h3>
-        <p class="feature-desc">Remote control and alerts via Telegram bot. Start/stop bots, check status, view open positions, adjust config — all from your phone.</p>
+        <p class="feature-desc">Remote control and alerts via Telegram bot. Start/stop bots, check status, view positions, receive risk halt notifications — all from your phone.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">⏱️</div>
+        <h3 class="feature-title">Backtesting Engine</h3>
+        <p class="feature-desc">Replay historical klines through the full bot logic. Configurable speed, realistic fills with slippage/fees, data gap detection, equity curve output, progress callbacks.</p>
       </div>
     </div>
   </section>
@@ -214,8 +236,8 @@
   <!-- Tech Stack Section -->
   <section class="section" style="background:#141820;border-top:1px solid #1e2535">
     <div class="section-header">
-      <h2 class="section-title">Multi-exchange support</h2>
-      <p class="section-subtitle">One unified interface, four perpetual DEXes. Tenant-isolated credentials, encrypted storage.</p>
+      <h2 class="section-title">6 Perpetual DEXes</h2>
+      <p class="section-subtitle">One unified adapter interface. Six exchanges with different signing schemes. Tenant-isolated encrypted credentials.</p>
     </div>
 
     <div class="exchange-grid">
@@ -300,13 +322,50 @@
         <p class="exchange-desc">REST API with HMAC-SHA256 auth, supports both trustless (private key) and exchange-managed accounts.</p>
       </div>
 
+      <!-- OndoPerps -->
+      <div class="exchange-card">
+        <div class="exchange-logo-wrap">
+          <svg viewBox="0 0 240 56" fill="none" xmlns="http://www.w3.org/2000/svg" class="exchange-logo-svg">
+            <!-- Ondo icon: circular ring -->
+            <circle cx="22" cy="28" r="14" stroke="#4f8fff" stroke-width="3" fill="none"/>
+            <circle cx="22" cy="28" r="6" fill="#4f8fff" opacity="0.7"/>
+            <!-- OndoPerps text -->
+            <text x="48" y="36" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="20" font-weight="700" fill="white" letter-spacing="-0.3">OndoPerps</text>
+          </svg>
+        </div>
+        <div class="exchange-tags">
+          <span class="exchange-tag">HMAC-SHA256</span>
+          <span class="exchange-tag">RWA Perps</span>
+          <span class="exchange-tag">REST</span>
+        </div>
+        <p class="exchange-desc">Real-world asset perpetual futures. HMAC-SHA256 request signing, REST API, supports market and limit orders.</p>
+      </div>
+
+      <!-- Perpl -->
+      <div class="exchange-card">
+        <div class="exchange-logo-wrap">
+          <svg viewBox="0 0 220 56" fill="none" xmlns="http://www.w3.org/2000/svg" class="exchange-logo-svg">
+            <!-- Perpl icon: infinity/perp symbol -->
+            <path d="M10 28C10 22 14 18 20 18C26 18 28 22 30 28C32 34 34 38 40 38C46 38 50 34 50 28C50 22 46 18 40 18C34 18 32 22 30 28C28 34 26 38 20 38C14 38 10 34 10 28Z" stroke="#a78bfa" stroke-width="2.5" fill="none"/>
+            <!-- Perpl text -->
+            <text x="60" y="36" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="22" font-weight="700" fill="white" letter-spacing="-0.3">Perpl</text>
+          </svg>
+        </div>
+        <div class="exchange-tags">
+          <span class="exchange-tag">Ed25519</span>
+          <span class="exchange-tag">WebSocket</span>
+          <span class="exchange-tag">Real-Time</span>
+        </div>
+        <p class="exchange-desc">WebSocket-based perpetual DEX with Ed25519 signing, real-time order management, and custom chain ID support.</p>
+      </div>
+
     </div>
   </section>
   
   <!-- CTA Section -->
   <section class="cta-section">
-    <h2 class="cta-title">Start trading smarter today.</h2>
-    <p class="cta-subtitle">Deploy the full multi-bot system in under 60 seconds.</p>
+    <h2 class="cta-title">Autonomous trading, powered by SoSoValue.</h2>
+    <p class="cta-subtitle">8 signals. 8 regimes. 6 exchanges. Kelly-optimized. Portfolio-level risk control. Deploy in 60 seconds.</p>
     <a href="/wallet-login" class="btn btn-primary">Connect Wallet →</a>
   </section>
   

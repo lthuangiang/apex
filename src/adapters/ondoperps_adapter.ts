@@ -458,6 +458,7 @@ export class OndoPerpsAdapter implements ExchangeAdapter {
       size: absSize,
       entryPrice,
       unrealizedPnl,
+      funding: parseFloat(pos.netFundingSinceNeutral ?? pos.net_funding ?? '0'),
     };
   }
 
@@ -552,5 +553,66 @@ export class OndoPerpsAdapter implements ExchangeAdapter {
     const ondoSymbol = this.toOndoSymbol(symbol);
     const info = this.getMarketInfo(ondoSymbol);
     return info?.priceDecimals ?? 2;
+  }
+
+  async get_funding_rate(symbol: string): Promise<number | null> {
+    const ondoSymbol = this.toOndoSymbol(symbol);
+
+    // Strategy 1: Try the dedicated funding rate endpoint
+    try {
+      const result = await this.publicRequest<any>(
+        'GET',
+        `/v1/perps/funding_rate?market=${encodeURIComponent(ondoSymbol)}`
+      );
+      const rate = result?.fundingRate ?? result?.funding_rate ?? result?.rate;
+      if (rate != null) {
+        return parseFloat(rate);
+      }
+    } catch {
+      // Endpoint may not exist — fall through to alternatives
+    }
+
+    // Strategy 2: Try the positions response which may include per-market funding info
+    try {
+      const raw = await this.request<any>('GET', '/v1/perps/positions');
+      let positions: any[];
+      if (Array.isArray(raw)) {
+        positions = raw;
+      } else if (raw && typeof raw === 'object') {
+        positions = Object.values(raw);
+      } else {
+        positions = [];
+      }
+
+      // Look for the position matching our market and check for funding rate fields
+      const pos = positions.find((p: any) => p?.market === ondoSymbol);
+      if (pos) {
+        const rate = pos.fundingRate ?? pos.funding_rate ?? pos.currentFundingRate ?? pos.hourlyFundingRate;
+        if (rate != null) {
+          return parseFloat(rate);
+        }
+      }
+    } catch {
+      // Positions endpoint failed — fall through
+    }
+
+    // Strategy 3: Check mark prices endpoint (sometimes includes funding rate)
+    try {
+      const markPrices = await this.publicRequest<Record<string, any>>(
+        'GET',
+        '/v1/perps/mark_prices'
+      );
+      const entry = markPrices[ondoSymbol];
+      if (entry) {
+        const rate = entry.fundingRate ?? entry.funding_rate ?? entry.nextFundingRate;
+        if (rate != null) {
+          return parseFloat(rate);
+        }
+      }
+    } catch {
+      // Mark prices endpoint failed — fall through
+    }
+
+    return null;
   }
 }

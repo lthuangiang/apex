@@ -11,6 +11,8 @@ import { loadState, saveStateSync } from './ai/StateStore.js';
 import { loadBotConfigs } from './bot/loadBotConfigs.js';
 import { TenantRegistry } from './bot/TenantRegistry.js';
 import { AgentLayer } from './bot/AgentLayer.js';
+import { closeDb } from './db/Database.js';
+import { startDailySnapshotScheduler, stopDailySnapshotScheduler } from './db/DailySnapshotScheduler.js';
 
 const {
     TELEGRAM_BOT_TOKEN,
@@ -56,6 +58,9 @@ async function bootstrap() {
     const restoredCount = await tenantRegistry.restoreAll(telegram);
     console.log(`✅ [TenantRegistry] Restored ${restoredCount} tenant(s) from ./data`);
 
+    // ── Daily Balance Snapshot Scheduler (0h UTC) ─────────────────────────────
+    startDailySnapshotScheduler(tenantRegistry);
+
     // ── Agent Layer: Autonomous Orchestration Brain (Wave 3) ─────────────────
     const agentLayer = new AgentLayer({
       cycleIntervalSecs: parseInt(process.env.AGENT_CYCLE_INTERVAL_SECS || '30', 10),
@@ -67,7 +72,7 @@ async function bootstrap() {
       tradeMaxChopScore: parseFloat(process.env.TRADE_MAX_CHOP_SCORE || '0.6'),
       dryRun: process.env.AGENT_DRY_RUN === 'true',
       maxLossUsd: parseFloat(process.env.AGENT_MAX_LOSS_USD || '5'),
-      statePath: process.env.AGENT_STATE_PATH || './agent-state.json',
+      statePath: process.env.AGENT_STATE_PATH || './data/agent-state.json',
     });
 
     // Initialize Agent with a composite BotManager from all tenants (or first tenant)
@@ -102,8 +107,10 @@ async function bootstrap() {
     const shutdown = async (signal: string) => {
         console.log(`\n🛑 [System] ${signal} received. Shutting down all tenants...`);
         await agentLayer.stop();
+        stopDailySnapshotScheduler();
         await tenantRegistry.shutdownAll();
         saveStateSync();
+        closeDb();
         await telegram.sendMessage(`⚠️ *Bot Shutting Down* (${signal}). All operations suspended.`);
         process.exit(0);
     };

@@ -664,10 +664,24 @@ export class SodexAdapter implements ExchangeAdapter {
 
     async get_balance(): Promise<number> {
         const data = await this.request('GET', `/accounts/${this.userAddress}/balances`);
-        console.log('[SodexAdapter] Raw balance response:', JSON.stringify(data, null, 2));
         const arr = Array.isArray(data) ? data : (data?.balances || data?.data || (data && Object.keys(data).length > 0 ? [data] : []));
-        const usdt = arr.find((b: any) => b.asset === 'USDT' || b.currency === 'USDT' || b.coin === 'USDT' || b.coin === 'vUSDC');
 
+        // SoDEX uses multi-collateral: each asset contributes (total × price × marginRatio) to margin.
+        // Sum all collateral contributions to get effective available margin.
+        if (arr && arr.length > 0 && arr[0]?.marginRatio !== undefined) {
+            let totalMarginUsd = 0;
+            for (const asset of arr) {
+                const total = parseFloat(asset.total || asset.collateral || '0');
+                const price = parseFloat(asset.price || '0');
+                const marginRatio = parseFloat(asset.marginRatio || '1');
+                totalMarginUsd += total * price * marginRatio;
+            }
+            console.log(`[SodexAdapter] Multi-collateral balance: $${totalMarginUsd.toFixed(2)} (${arr.length} assets)`);
+            return totalMarginUsd;
+        }
+
+        // Fallback: single-asset mode (legacy)
+        const usdt = arr.find((b: any) => b.asset === 'USDT' || b.currency === 'USDT' || b.coin === 'USDT' || b.coin === 'vUSDC');
         if (usdt) {
             const equity = usdt.equity || usdt.balance || usdt.walletBalance || usdt.availableBalance || usdt.total;
             return equity ? parseFloat(equity) : 0;

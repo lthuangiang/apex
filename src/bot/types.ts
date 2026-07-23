@@ -93,6 +93,8 @@ export interface BotStatus {
   sessionStartBalance: number | null;
   currentBalance: number | null;
   efficiencyBps: number;
+  /** (Fees − PnL) ÷ volume × $1M. Positive = net cost; negative = net profit after fees. */
+  costPerMillion: number;
   walletAddress: string;
   uptime: number;              // minutes
   hasPosition: boolean;
@@ -101,14 +103,14 @@ export interface BotStatus {
 }
 
 /**
- * HedgeBot configuration interface
- * Defines all settings needed to create and run a Correlation Hedging Bot instance
+ * PairBot configuration interface
+ * Defines all settings needed to create and run a Correlation Pair Trading Bot instance
  */
-export interface HedgeBotConfig {
+export interface PairBotConfig {
   // Identity
   id: string;
   name: string;
-  botType: 'hedge';                          // discriminant field
+  botType: 'pair' | 'hedge';                 // discriminant field ('hedge' accepted for backward compat)
   exchange: 'sodex' | 'dango' | 'decibel' | 'hibachi';
   tags: string[];
   autoStart: boolean;
@@ -118,7 +120,7 @@ export interface HedgeBotConfig {
   tradeLogBackend: 'json' | 'sqlite';
   tradeLogPath: string;
 
-  // Hedge-specific
+  // Pair-trading-specific
   symbolA: string;                           // e.g. "BTC-USD"
   symbolB: string;                           // e.g. "ETH-USD"
   legValueUsd: number;                       // USD notional per leg

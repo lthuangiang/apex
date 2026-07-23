@@ -1,4 +1,4 @@
-import type { HedgeTradeRecord } from './HedgeBotSharedState.js';
+import type { PairTradeRecord } from './PairBotSharedState.js';
 
 // ---------------------------------------------------------------------------
 // Exit condition types
@@ -17,7 +17,7 @@ export interface ExitConditionInput {
 }
 
 // ---------------------------------------------------------------------------
-// CompletedTrade — input to buildHedgeTradeRecord
+// CompletedTrade — input to buildPairTradeRecord
 // ---------------------------------------------------------------------------
 
 export interface CompletedTrade {
@@ -162,15 +162,15 @@ export function computeCombinedPnl(pnlA: number, pnlB: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// Task 5.3 — buildHedgeTradeRecord
+// Task 5.3 — buildPairTradeRecord
 // Requirements: 9.2
 // ---------------------------------------------------------------------------
 
 /**
- * Constructs a complete `HedgeTradeRecord` from a completed trade.
+ * Constructs a complete `PairTradeRecord` from a completed trade.
  * Computes `combinedPnl` and `holdDurationSecs` from the provided data.
  */
-export function buildHedgeTradeRecord(trade: CompletedTrade): HedgeTradeRecord {
+export function buildPairTradeRecord(trade: CompletedTrade): PairTradeRecord {
   const combinedPnl = computeCombinedPnl(trade.pnlA, trade.pnlB);
 
   const entryMs = new Date(trade.entryTimestamp).getTime();
@@ -230,7 +230,7 @@ export function checkLegImbalance(
   const deviation = Math.abs(legValueA - legValueB) / legValueUsd;
   if (deviation > 0.01) {
     console.warn(
-      `[HedgeBot] Leg imbalance detected: legValueA=${legValueA}, legValueB=${legValueB}, ` +
+      `[PairBot] Leg imbalance detected: legValueA=${legValueA}, legValueB=${legValueB}, ` +
         `deviation=${(deviation * 100).toFixed(4)}% (threshold: 1%). ` +
         `legValueUsd=${legValueUsd}`,
     );

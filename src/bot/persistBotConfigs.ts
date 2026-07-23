@@ -1,20 +1,20 @@
 import fs from 'fs';
 import type { BotManager } from './BotManager.js';
-import type { BotConfig, HedgeBotConfig } from './types.js';
+import type { BotConfig, PairBotConfig } from './types.js';
 import { BotInstance } from './BotInstance.js';
 
 /**
  * Save all bot configs (including runtime overrides) back to bot-configs.json.
- * Handles both BotInstance (standard) and HedgeBot entries in the registry.
+ * Handles both BotInstance (standard) and PairBot entries in the registry.
  *
  * @param manager - BotManager instance
  * @param filePath - Path to bot-configs.json
  */
 export function saveBotConfigsToFile(manager: BotManager, filePath: string): void {
-  const configs: (BotConfig | HedgeBotConfig)[] = manager.getAllBots().map(bot => {
-    // HedgeBot: no ConfigStore, persist the config as-is
+  const configs: (BotConfig | PairBotConfig)[] = manager.getAllBots().map(bot => {
+    // PairBot: no ConfigStore, persist the config as-is
     if (!(bot instanceof BotInstance)) {
-      return bot.config as HedgeBotConfig;
+      return bot.config as PairBotConfig;
     }
 
     // Standard BotInstance: merge effective ConfigStore values back in

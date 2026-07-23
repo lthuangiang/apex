@@ -43,21 +43,25 @@
       "minPositionValueUsd": 20
     },
     {
-      "id": "my-ondoperps-bot",
-      "name": "Ondoperps Bot",
-      "exchange": "ondoperps",
+      "id": "perpl-btc-perp-mrrfmuhh",
+      "name": "Perpl BTC-PERP",
+      "exchange": "perpl",
       "intelligenceMode": "manual",
-      "credentialKey": "my-ondoperps-bot",
+      "credentialKey": "perpl-btc-perp-mrrfmuhh",
       "tradeLogBackend": "json",
-      "tradeLogPath": "./trades-my-ondoperps-bot.json",
+      "tradeLogPath": "./trades-perpl-btc-perp-mrrfmuhh.json",
       "tags": [],
       "autoStart": false,
-      "apiKeyId": "ondoKeyId_46484bbf8348fefc13c56689ed3dbc04",
-      "apiKeySecret": "ondoApiSecret_5b78be44068754319325561dda0c40611285ed415929d1a8ba0069a3cd159f86",
-      "symbol": "SMSN-PERP",
+      "perplApiKey": "OgGqTSumixHfKoCu5xcfCsc1iulR_tyJFdBK8mj9nYKX5PEymyX1mw_B1dYL-xq8",
+      "perplApiKeySecret": "0x466a5c503f106a019a3cf54ef31a3566a5895588e8732790f112cfd083200cd6",
+      "symbol": "BTC-PERP",
       "mode": "farm",
-      "orderSizeMin": 0.5,
-      "orderSizeMax": 0.8,
+      "orderSizeMinUsd": 100,
+      "orderSizeMaxUsd": 200,
+      "leverage": 20,
+      "marginMode": "isolated",
+      "orderSizeMin": 0.002,
+      "orderSizeMax": 0.003,
       "farmMinHoldSecs": 120,
       "farmMaxHoldSecs": 180,
       "farmTpUsd": 0.5,
@@ -81,6 +85,38 @@
       "cooldownMinMins": 1,
       "cooldownMaxMins": 2,
       "minPositionValueUsd": 20
+    },
+    {
+      "id": "oi-farmer-nvda",
+      "name": "OI Farm NVDA (Perpl+Ondo)",
+      "botType": "delta-neutral",
+      "tags": ["oi-farm", "delta-neutral", "nvda"],
+      "autoStart": false,
+      "tradeLogBackend": "json",
+      "tradeLogPath": "./trades-oi-farmer-nvda.json",
+
+      "exchangeA": "perpl",
+      "credentialKeyA": "PERPL",
+      "exchangeB": "ondoperps",
+      "credentialKeyB": "ONDOPERPS",
+
+      "symbol": "NVDA-USD",
+      "symbolA": "NVDA-PERP",
+      "symbolB": "NVDAUSD",
+      "legValueUsd": 250,
+      "leverage": 5,
+
+      "primaryDirection": "long",
+      "minHoldSecs": 14400,
+      "maxHoldSecs": 172800,
+      "maxLossUsd": 15,
+      "maxDeltaDivergenceUsd": 30,
+
+      "maxFundingRateThreshold": 0.005,
+      "autoFlipOnFunding": false,
+
+      "tickIntervalSecs": 60,
+      "cooldownSecs": 300
     }
   ]
 }

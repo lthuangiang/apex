@@ -16,13 +16,14 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { loadAgentState, saveAgentState } from '../db/AgentStateRepository.js';
 import { SoSoValueIntelligenceEngine, type MarketIntelligence } from '../ai/SoSoValueIntelligenceEngine.js';
 import { StrategySelector, type StrategySelectionResult, type SelectedStrategy } from './StrategySelector.js';
 import { CapitalAllocator, type AllocationConfig, type AllocationResult } from './CapitalAllocator.js';
 import { RiskGate, type RiskGateConfig, type RiskGateState } from './RiskGate.js';
 import type { BotManager } from './BotManager.js';
 import type { BotInstance } from './BotInstance.js';
-import type { HedgeBot } from './HedgeBot.js';
+import type { PairBot } from './PairBot.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -114,7 +115,7 @@ const DEFAULT_CONFIG: AgentConfig = {
   tradeMaxChopScore: 0.6,
   dryRun: false,
   maxLossUsd: 5,
-  statePath: './agent-state.json',
+  statePath: './data/agent-state.json',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -458,7 +459,7 @@ export class AgentLayer {
 
     // Assign strategy to bots based on selection
     for (const bot of eligibleBots) {
-      // Only assign to BotInstance (not HedgeBot)
+      // Only assign to BotInstance (not PairBot)
       if (!('config' in bot)) continue;
       const instance = bot as BotInstance;
 
@@ -619,8 +620,14 @@ export class AgentLayer {
 
   private _persistState(): void {
     try {
-      const data = JSON.stringify(this.state, null, 2);
-      fs.writeFileSync(this.cfg.statePath, data, 'utf-8');
+      saveAgentState({
+        decisionHistory: this.state.decisionHistory,
+        cycleCount: this.state.cycleCount,
+        cycleLatencies: this.state.cycleLatencies,
+        strategyPerformance: this.state.strategyPerformance as unknown as Record<string, unknown>,
+        totalCycleTimeMs: this.state.totalCycleTimeMs,
+        lifecycleState: this.state.lifecycleState,
+      });
     } catch (err) {
       console.error('[AgentLayer] Failed to persist state:', err);
     }
@@ -628,23 +635,22 @@ export class AgentLayer {
 
   private _loadState(): void {
     try {
-      if (!fs.existsSync(this.cfg.statePath)) {
-        console.info('[AgentLayer] No persisted state found, starting fresh');
+      const loaded = loadAgentState();
+      if (!loaded) {
+        console.info('[AgentLayer] No persisted state found in SQLite, starting fresh');
         return;
       }
-      const raw = fs.readFileSync(this.cfg.statePath, 'utf-8');
-      const loaded = JSON.parse(raw) as Partial<AgentState>;
 
       // Restore meaningful fields
-      if (loaded.decisionHistory) this.state.decisionHistory = loaded.decisionHistory;
+      if (loaded.decisionHistory) this.state.decisionHistory = loaded.decisionHistory as AgentDecision[];
       if (loaded.cycleCount) this.state.cycleCount = loaded.cycleCount;
       if (loaded.cycleLatencies) this.state.cycleLatencies = loaded.cycleLatencies;
-      if (loaded.strategyPerformance) this.state.strategyPerformance = loaded.strategyPerformance;
+      if (loaded.strategyPerformance) this.state.strategyPerformance = loaded.strategyPerformance as AgentState['strategyPerformance'];
       if (loaded.totalCycleTimeMs) this.state.totalCycleTimeMs = loaded.totalCycleTimeMs;
 
-      console.log(`[AgentLayer] Restored state — ${this.state.cycleCount} previous cycles`);
+      console.log(`[AgentLayer] Restored state from SQLite — ${this.state.cycleCount} previous cycles`);
     } catch (err) {
-      console.warn('[AgentLayer] Failed to load state, starting fresh:', err);
+      console.warn('[AgentLayer] Failed to load state from SQLite, starting fresh:', err);
     }
   }
 

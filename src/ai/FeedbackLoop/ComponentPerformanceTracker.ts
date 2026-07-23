@@ -159,7 +159,7 @@ import { TradeLogger as TradeLoggerClass } from '../TradeLogger';
 import { weightStore } from './WeightStore';
 
 const tradeLogBackend = (process.env.TRADE_LOG_BACKEND ?? 'json') as 'json' | 'sqlite';
-const tradeLogPath = process.env.TRADE_LOG_PATH ?? './trades.json';
+const tradeLogPath = process.env.TRADE_LOG_PATH ?? './data/trades.json';
 const _singletonTradeLogger = new TradeLoggerClass(tradeLogBackend, tradeLogPath);
 
 export const componentPerformanceTracker = new ComponentPerformanceTracker(

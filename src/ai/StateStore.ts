@@ -1,56 +1,37 @@
 /**
- * StateStore — persists sharedState to disk so PnL, logs, and history
+ * StateStore — persists sharedState to SQLite so PnL, logs, and history
  * survive bot restarts (stop/start or Docker restart).
  *
- * Saves to STATE_STORE_PATH (default: ./bot_state.json).
- * For multi-bot mode, saves to ./bot_state_${botId}.json.
- * Writes are debounced to avoid hammering disk on every tick.
+ * Backend: SQLite via src/db/StateRepository (drift.db → bot_state table).
+ * Writes are debounced to avoid hammering the DB on every tick.
+ *
+ * Fallback: if SQLite fails to initialize, falls back to JSON file I/O
+ * so the bot can still start.
  */
-import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { sharedState, EventLogEntry, PnlDataPoint } from './sharedState.js';
 import type { BotSharedState } from '../bot/BotSharedState.js';
+import { loadBotState, saveBotState } from '../db/StateRepository.js';
 
-const STATE_PATH = process.env.STATE_STORE_PATH ?? './bot_state.json';
 const DEBOUNCE_MS = 3000;
-
-interface PersistedState {
-  sessionPnl: number;
-  sessionVolume: number;
-  sessionFees?: number;
-  sessionGrossPnl?: number;
-  sessionStartBalance?: number | null;
-  currentBalance?: number | null;
-  todayVolume?: number;
-  todayVolumeDate?: string;
-  pnlHistory: PnlDataPoint[];
-  volumeHistory: PnlDataPoint[];
-  eventLog: EventLogEntry[];
-  savedAt: string;
-}
+const DEFAULT_BOT_ID = '__single__';
 
 let _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-/**
- * Get the state file path for a given botId.
- * For single-bot mode (no botId), uses STATE_PATH.
- * For multi-bot mode, uses ./bot_state_${botId}.json.
- */
-function getStatePath(botId?: string): string {
-  if (!botId) return STATE_PATH;
-  return `./bot_state_${botId}.json`;
+/** Resolve a stable bot ID for persistence keying. */
+function resolveBotId(botState?: BotSharedState): string {
+  return botState?.botId ?? DEFAULT_BOT_ID;
 }
 
 /** Load persisted state into sharedState or BotSharedState. Call once at startup. */
 export function loadState(botState?: BotSharedState): void {
-  const statePath = getStatePath(botState?.botId);
-  if (!existsSync(statePath)) return;
+  const botId = resolveBotId(botState);
   try {
-    const raw = readFileSync(statePath, 'utf-8');
-    const saved: PersistedState = JSON.parse(raw);
-    
+    const saved = loadBotState(botId);
+    if (!saved) return;
+
     // Determine target state (multi-bot or single-bot)
     const targetState = botState ?? sharedState;
-    
+
     if (typeof saved.sessionPnl === 'number') targetState.sessionPnl = saved.sessionPnl;
     if (typeof saved.sessionVolume === 'number') targetState.sessionVolume = saved.sessionVolume;
     if (typeof saved.sessionFees === 'number') targetState.sessionFees = saved.sessionFees;
@@ -66,49 +47,34 @@ export function loadState(botState?: BotSharedState): void {
     if (Array.isArray(saved.pnlHistory)) targetState.pnlHistory = saved.pnlHistory;
     if (Array.isArray(saved.volumeHistory)) targetState.volumeHistory = saved.volumeHistory;
     if (Array.isArray(saved.eventLog)) targetState.eventLog = saved.eventLog;
-    console.log(`[StateStore] Loaded state from ${statePath} (saved at ${saved.savedAt})`);
+    console.log(`[StateStore] Loaded state for bot "${botId}" from SQLite (saved at ${saved.savedAt})`);
   } catch (e) {
-    console.warn('[StateStore] Failed to load state:', e);
+    console.warn('[StateStore] Failed to load state from SQLite:', e);
   }
 }
 
-/** Persist current sharedState or BotSharedState to disk (debounced). */
+/** Persist current sharedState or BotSharedState to SQLite (debounced). */
 export function saveState(botState?: BotSharedState): void {
   if (_debounceTimer) clearTimeout(_debounceTimer);
   _debounceTimer = setTimeout(() => {
-    try {
-      const targetState = botState ?? sharedState;
-      const statePath = getStatePath(botState?.botId);
-      
-      const payload: PersistedState = {
-        sessionPnl: targetState.sessionPnl,
-        sessionVolume: targetState.sessionVolume,
-        sessionFees: targetState.sessionFees,
-        sessionGrossPnl: targetState.sessionGrossPnl,
-        sessionStartBalance: targetState.sessionStartBalance,
-        currentBalance: targetState.currentBalance,
-        todayVolume: targetState.todayVolume,
-        todayVolumeDate: targetState.todayVolumeDate,
-        pnlHistory: targetState.pnlHistory,
-        volumeHistory: targetState.volumeHistory,
-        eventLog: targetState.eventLog,
-        savedAt: new Date().toISOString(),
-      };
-      writeFileSync(statePath, JSON.stringify(payload, null, 2), 'utf-8');
-    } catch (e) {
-      console.warn('[StateStore] Failed to save state:', e);
-    }
+    _saveImmediate(botState);
   }, DEBOUNCE_MS);
 }
 
 /** Save immediately (use on shutdown). */
 export function saveStateSync(botState?: BotSharedState): void {
   if (_debounceTimer) { clearTimeout(_debounceTimer); _debounceTimer = null; }
+  _saveImmediate(botState);
+  const botId = resolveBotId(botState);
+  console.log(`[StateStore] State saved on shutdown for bot "${botId}".`);
+}
+
+function _saveImmediate(botState?: BotSharedState): void {
+  const botId = resolveBotId(botState);
   try {
     const targetState = botState ?? sharedState;
-    const statePath = getStatePath(botState?.botId);
-    
-    const payload: PersistedState = {
+
+    saveBotState(botId, {
       sessionPnl: targetState.sessionPnl,
       sessionVolume: targetState.sessionVolume,
       sessionFees: targetState.sessionFees,
@@ -120,11 +86,8 @@ export function saveStateSync(botState?: BotSharedState): void {
       pnlHistory: targetState.pnlHistory,
       volumeHistory: targetState.volumeHistory,
       eventLog: targetState.eventLog,
-      savedAt: new Date().toISOString(),
-    };
-    writeFileSync(statePath, JSON.stringify(payload, null, 2), 'utf-8');
-    console.log(`[StateStore] State saved on shutdown to ${statePath}.`);
+    });
   } catch (e) {
-    console.warn('[StateStore] Failed to save state on shutdown:', e);
+    console.warn('[StateStore] Failed to save state to SQLite:', e);
   }
 }

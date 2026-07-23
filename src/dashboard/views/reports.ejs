@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DRIFT — Reports</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f14;
+      --surface: #141820;
+      --surface-2: #1a2030;
+      --border: #1e2535;
+      --border-strong: #28334a;
+      --text-primary: #e8edf5;
+      --text-secondary: #8a9bb5;
+      --text-tertiary: #4a5a72;
+      --accent: #f5a623;
+      --accent-light: rgba(245,166,35,0.12);
+      --green: #1db954;
+      --green-bg: rgba(29,185,84,0.12);
+      --red: #e8404a;
+      --red-bg: rgba(232,64,74,0.12);
+      --shadow-sm: 0 1px 4px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 16px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.3);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body.light {
+      --bg: #f0f2f7; --surface: #ffffff; --surface-2: #f5f7fb; --border: #dde2ee; --border-strong: #c8d0e0;
+      --text-primary: #0f1623; --text-secondary: #4a5a72; --text-tertiary: #8a9bb5;
+      --shadow-sm: 0 1px 4px rgba(0,0,0,0.08); --shadow-md: 0 4px 16px rgba(0,0,0,0.10);
+    }
+
+    .topnav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topnav-brand { font-size: 1.1rem; font-weight: 700; color: var(--accent); text-decoration: none; }
+    .topnav-links { display: flex; gap: 1.5rem; align-items: center; }
+    .topnav-links a { color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; font-weight: 500; }
+    .topnav-links a:hover, .topnav-links a.active { color: var(--accent); }
+    .theme-toggle-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; flex-shrink: 0; }
+    .theme-toggle-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
+
+    /* ── Filter Bar ───────────────────────────────────────────────────── */
+    .filter-bar {
+      display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap;
+    }
+    .filter-bar select, .filter-bar input[type="date"] {
+      background: var(--surface-2); border: 1px solid var(--border); color: var(--text-primary);
+      padding: 0.5rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.8rem;
+    }
+    .filter-bar button {
+      background: var(--accent); color: #000; border: none; padding: 0.5rem 1rem;
+      border-radius: var(--radius-sm); font-size: 0.8rem; font-weight: 600; cursor: pointer;
+    }
+    .filter-bar button:hover { opacity: 0.9; }
+
+    /* ── Hero Stats ───────────────────────────────────────────────────── */
+    .hero-stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem; margin-bottom: 1.5rem;
+    }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.2rem; box-shadow: var(--shadow-sm);
+    }
+    .stat-card .label { font-size: 0.72rem; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 0.3rem; }
+    .stat-card .value { font-size: 1.4rem; font-weight: 700; }
+    .stat-card .sub { font-size: 0.72rem; color: var(--text-secondary); margin-top: 0.2rem; }
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+
+    /* ── Section ──────────────────────────────────────────────────────── */
+    .section { margin-bottom: 2rem; }
+    .section-title { font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* ── Breakdown Table ──────────────────────────────────────────────── */
+    .data-table {
+      width: 100%; border-collapse: collapse; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+    }
+    .data-table th {
+      text-align: left; padding: 0.7rem 1rem; font-size: 0.7rem; color: var(--text-tertiary);
+      text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+    .data-table td {
+      padding: 0.7rem 1rem; font-size: 0.82rem; border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.78rem; }
+
+    /* ── Trade List ───────────────────────────────────────────────────── */
+    .trade-row { display: grid; grid-template-columns: 140px 80px 100px 80px 80px 80px 80px 1fr; gap: 0.5rem; align-items: center; }
+
+    /* ── Analytics Cards ──────────────────────────────────────────────── */
+    .analytics-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem; margin-bottom: 1.5rem;
+    }
+    .analytics-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1rem;
+    }
+    .analytics-card .title { font-size: 0.72rem; color: var(--text-tertiary); text-transform: uppercase; margin-bottom: 0.5rem; }
+    .analytics-card .big { font-size: 1.6rem; font-weight: 700; }
+
+    /* ── Regime Table ─────────────────────────────────────────────────── */
+    .regime-badge {
+      display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px;
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+    }
+    .regime-badge.trend_up { background: var(--green-bg); color: var(--green); }
+    .regime-badge.trend_down { background: var(--red-bg); color: var(--red); }
+    .regime-badge.sideway { background: var(--accent-light); color: var(--accent); }
+    .regime-badge.high_volatility { background: rgba(168,85,247,0.12); color: #a855f7; }
+
+    .loading { color: var(--text-tertiary); font-size: 0.82rem; padding: 2rem; text-align: center; }
+    .empty-state { color: var(--text-tertiary); font-size: 0.82rem; padding: 2rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <script>if (localStorage.getItem('drift-theme') === 'light') document.body.classList.add('light');</script>
+  <nav class="topnav">
+    <a href="/" class="topnav-brand">DRIFT</a>
+    <div class="topnav-links">
+      <a href="/dashboard">Dashboard</a>
+      <a href="/portfolio">Portfolio</a>
+      <a href="/reports" class="active">Reports</a>
+      <button class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle light/dark mode">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <div class="container">
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <input type="date" id="filterDate" />
+      <select id="filterExchange">
+        <option value="">All Exchanges</option>
+        <option value="sodex">SoDEX</option>
+        <option value="decibel">Decibel</option>
+        <option value="dango">Dango</option>
+        <option value="hibachi">Hibachi</option>
+        <option value="ondoperps">OndoPerps</option>
+        <option value="perpl">Perpl</option>
+      </select>
+      <select id="filterBot"><option value="">All Bots</option></select>
+      <select id="filterRange">
+        <option value="7d">7 Days</option>
+        <option value="30d">30 Days</option>
+        <option value="all">All Time</option>
+      </select>
+      <button onclick="loadReports()">Apply</button>
+    </div>
+
+    <!-- Hero Stats -->
+    <div class="hero-stats" id="heroStats">
+      <div class="stat-card"><div class="label">Today Volume</div><div class="value" id="statVolume">—</div><div class="sub" id="statTrades">— trades</div></div>
+      <div class="stat-card"><div class="label">Today PnL</div><div class="value" id="statPnl">—</div><div class="sub" id="statWinRate">— win rate</div></div>
+      <div class="stat-card"><div class="label">Today Fees</div><div class="value" id="statFees">—</div><div class="sub" id="statGrossPnl">gross —</div></div>
+      <div class="stat-card"><div class="label">Win / Loss</div><div class="value" id="statWL">—</div><div class="sub" id="statExpectancy">expectancy —</div></div>
+    </div>
+
+    <!-- Volume by Exchange -->
+    <div class="section">
+      <div class="section-title">Volume by Exchange</div>
+      <table class="data-table" id="tableExchange">
+        <thead><tr><th>Exchange</th><th>Volume</th><th>Trades</th><th>PnL</th><th>Fees</th><th>Win Rate</th></tr></thead>
+        <tbody id="exchangeBody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- Volume by Bot -->
+    <div class="section">
+      <div class="section-title">Volume by Bot</div>
+      <table class="data-table" id="tableBot">
+        <thead><tr><th>Bot</th><th>Volume</th><th>Trades</th><th>PnL</th><th>Fees</th><th>Win Rate</th></tr></thead>
+        <tbody id="botBody"><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- Analytics -->
+    <div class="section">
+      <div class="section-title">Analytics</div>
+      <div class="analytics-grid" id="analyticsGrid">
+        <div class="analytics-card"><div class="title">Win Rate</div><div class="big" id="anaWinRate">—</div></div>
+        <div class="analytics-card"><div class="title">Avg PnL / Trade</div><div class="big" id="anaAvgPnl">—</div></div>
+        <div class="analytics-card"><div class="title">Profit Factor</div><div class="big" id="anaProfitFactor">—</div></div>
+        <div class="analytics-card"><div class="title">Avg Hold (min)</div><div class="big" id="anaAvgHold">—</div></div>
+        <div class="analytics-card"><div class="title">Expectancy</div><div class="big" id="anaExpectancy">—</div></div>
+        <div class="analytics-card"><div class="title">Total Trades</div><div class="big" id="anaTotalTrades">—</div></div>
+      </div>
+    </div>
+
+    <!-- Regime Breakdown -->
+    <div class="section">
+      <div class="section-title">Performance by Regime</div>
+      <table class="data-table">
+        <thead><tr><th>Regime</th><th>Trades</th><th>Win Rate</th><th>Avg PnL</th></tr></thead>
+        <tbody id="regimeBody"><tr><td colspan="4" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <!-- Recent Trades -->
+    <div class="section">
+      <div class="section-title">Recent Trades</div>
+      <table class="data-table">
+        <thead><tr><th>Time</th><th>Bot</th><th>Exchange</th><th>Symbol</th><th>Dir</th><th>PnL</th><th>Fees</th><th>Hold</th><th>Exit</th></tr></thead>
+        <tbody id="tradesBody"><tr><td colspan="9" class="loading">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const fmt = (v, d=2) => v != null ? (v >= 0 ? '+' : '') + '$' + Math.abs(v).toFixed(d) : '—';
+    const fmtVol = v => v != null ? '$' + v.toLocaleString(undefined, {maximumFractionDigits: 0}) : '—';
+    const pct = v => v != null ? (v * 100).toFixed(1) + '%' : '—';
+
+    // Set default date to today
+    $('filterDate').value = new Date().toISOString().slice(0, 10);
+
+    function getFilters() {
+      return {
+        date: $('filterDate').value || undefined,
+        exchange: $('filterExchange').value || undefined,
+        botId: $('filterBot').value || undefined,
+        range: $('filterRange').value || '7d',
+      };
+    }
+
+    function qs(obj) {
+      return Object.entries(obj).filter(([,v]) => v).map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+    }
+
+    async function loadReports() {
+      const f = getFilters();
+      await Promise.all([
+        loadToday(f),
+        loadAnalytics(f),
+        loadTrades(f),
+      ]);
+    }
+
+    async function loadToday(f) {
+      try {
+        const res = await fetch('/api/reports/today?' + qs(f));
+        const data = await res.json();
+        const s = data.summary || {};
+
+        $('statVolume').textContent = fmtVol(s.volumeUsd);
+        $('statTrades').textContent = `${s.tradeCount || 0} trades`;
+        $('statPnl').textContent = fmt(s.pnl);
+        $('statPnl').className = 'value ' + (s.pnl >= 0 ? 'positive' : 'negative');
+        $('statWinRate').textContent = pct(s.winRate) + ' win rate';
+        $('statFees').textContent = '-$' + (s.fees || 0).toFixed(2);
+        $('statGrossPnl').textContent = 'gross ' + fmt(s.grossPnl);
+        $('statWL').textContent = `${s.wins || 0}W / ${s.losses || 0}L`;
+        $('statExpectancy').textContent = `expectancy ${fmt((s.pnl || 0) / Math.max(s.tradeCount || 1, 1))}`;
+
+        // Exchange table
+        const exRows = (data.byExchange || []).map(e =>
+          `<tr><td>${e.exchange}</td><td class="mono">${fmtVol(e.volumeUsd)}</td><td>${e.tradeCount}</td><td class="mono ${e.pnl >= 0 ? 'positive' : 'negative'}">${fmt(e.pnl)}</td><td class="mono">-$${e.fees.toFixed(2)}</td><td>${pct(e.winRate)}</td></tr>`
+        ).join('');
+        $('exchangeBody').innerHTML = exRows || '<tr><td colspan="6" class="empty-state">No trades today</td></tr>';
+
+        // Bot table
+        const botRows = (data.byBot || []).map(b =>
+          `<tr><td>${b.botId}</td><td class="mono">${fmtVol(b.volumeUsd)}</td><td>${b.tradeCount}</td><td class="mono ${b.pnl >= 0 ? 'positive' : 'negative'}">${fmt(b.pnl)}</td><td class="mono">-$${b.fees.toFixed(2)}</td><td>${pct(b.winRate)}</td></tr>`
+        ).join('');
+        $('botBody').innerHTML = botRows || '<tr><td colspan="6" class="empty-state">No trades today</td></tr>';
+      } catch (err) {
+        console.error('loadToday failed:', err);
+      }
+    }
+
+    async function loadAnalytics(f) {
+      try {
+        const res = await fetch('/api/reports/analytics?' + qs(f));
+        const a = await res.json();
+
+        $('anaWinRate').textContent = pct(a.winRate);
+        $('anaWinRate').className = 'big ' + (a.winRate >= 0.5 ? 'positive' : 'negative');
+        $('anaAvgPnl').textContent = fmt(a.avgPnl, 3);
+        $('anaAvgPnl').className = 'big ' + (a.avgPnl >= 0 ? 'positive' : 'negative');
+        $('anaProfitFactor').textContent = a.profitFactor === Infinity ? '∞' : (a.profitFactor || 0).toFixed(2);
+        $('anaAvgHold').textContent = ((a.avgHoldSecs || 0) / 60).toFixed(1);
+        $('anaExpectancy').textContent = fmt(a.expectancy, 3);
+        $('anaExpectancy').className = 'big ' + (a.expectancy >= 0 ? 'positive' : 'negative');
+        $('anaTotalTrades').textContent = a.totalTrades || 0;
+
+        // Regime breakdown
+        const regimeRows = (a.byRegime || []).map(r => {
+          const cls = (r.regime || 'unknown').toLowerCase().replace(/\s+/g, '_');
+          return `<tr><td><span class="regime-badge ${cls}">${r.regime || 'Unknown'}</span></td><td>${r.tradeCount}</td><td>${pct(r.winRate)}</td><td class="mono ${r.avgPnl >= 0 ? 'positive' : 'negative'}">${fmt(r.avgPnl, 3)}</td></tr>`;
+        }).join('');
+        $('regimeBody').innerHTML = regimeRows || '<tr><td colspan="4" class="empty-state">No data</td></tr>';
+      } catch (err) {
+        console.error('loadAnalytics failed:', err);
+      }
+    }
+
+    async function loadTrades(f) {
+      try {
+        const res = await fetch('/api/reports/trades?' + qs({ ...f, limit: 50 }));
+        const data = await res.json();
+        const trades = data.trades || [];
+
+        const rows = trades.map(t => {
+          const time = new Date(t.timestamp).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+          const holdMin = t.holdDurationSecs ? (t.holdDurationSecs / 60).toFixed(1) + 'm' : '—';
+          const dirCls = t.direction === 'long' ? 'positive' : 'negative';
+          return `<tr>
+            <td style="font-size:0.75rem">${time}</td>
+            <td>${t.botId}</td>
+            <td>${t.exchange}</td>
+            <td>${t.symbol}</td>
+            <td class="${dirCls}">${t.direction.toUpperCase()}</td>
+            <td class="mono ${t.pnl >= 0 ? 'positive' : 'negative'}">${fmt(t.pnl, 3)}</td>
+            <td class="mono">-$${(t.fees || 0).toFixed(3)}</td>
+            <td>${holdMin}</td>
+            <td style="font-size:0.72rem;color:var(--text-tertiary)">${t.exitReason || '—'}</td>
+          </tr>`;
+        }).join('');
+
+        $('tradesBody').innerHTML = rows || '<tr><td colspan="9" class="empty-state">No trades recorded yet</td></tr>';
+      } catch (err) {
+        console.error('loadTrades failed:', err);
+      }
+    }
+
+    // Auto-load on page open
+    loadReports();
+
+    // Populate bot filter from /api/bots
+    fetch('/api/bots').then(r => r.json()).then(bots => {
+      if (!Array.isArray(bots)) return;
+      const sel = $('filterBot');
+      bots.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = b.name || b.id;
+        sel.appendChild(opt);
+      });
+    }).catch(() => {});
+
+    // Theme toggle
+    function toggleTheme() {
+      const isLight = !document.body.classList.contains('light');
+      document.body.classList.toggle('light', isLight);
+      localStorage.setItem('drift-theme', isLight ? 'light' : 'dark');
+    }
+  </script>
+</body>
+</html>

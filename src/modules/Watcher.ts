@@ -14,6 +14,7 @@ import { SessionManager } from './SessionManager.js';
 import { weightStore } from '../ai/FeedbackLoop/WeightStore.js';
 import { componentPerformanceTracker } from '../ai/FeedbackLoop/ComponentPerformanceTracker.js';
 import { PositionSizer } from './PositionSizer.js';
+import { recordTrade, captureBalance } from '../db/ReportingCollector.js';
 import { getRegimeStrategyConfig, Regime } from '../ai/RegimeDetector.js';
 import { ChopDetector, SignalHistoryEntry } from '../ai/ChopDetector.js';
 import { FakeBreakoutFilter } from '../ai/FakeBreakoutFilter.js';
@@ -26,6 +27,7 @@ import { computeAdaptiveCooldown } from '../ai/AdaptiveCooldown.js';
 import { SoSoValueClient } from '../ai/SoSoValueClient.js';
 import { computeStrategyAdjustment } from '../ai/SoSoValueStrategy.js';
 import { SoSoValueIntelligenceEngine, type MarketIntelligence } from '../ai/SoSoValueIntelligenceEngine.js';
+import { FarmMicroSignalEngine, getFarmMicroConfig, type FarmMicroSignal } from './FarmMicroSignalEngine.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE MACHINE
@@ -87,6 +89,7 @@ export class Watcher {
     private symbol: string;
     private fillTracker = new FillTracker();
     private readonly marketMaker = new MarketMaker();
+    private readonly farmMicroEngine: FarmMicroSignalEngine | null = null;
     private readonly chopDetector = new ChopDetector();
     private readonly fakeBreakoutFilter = new FakeBreakoutFilter();
     private readonly sosoValueClient = new SoSoValueClient();
@@ -94,6 +97,14 @@ export class Watcher {
 
     // Wave 3: Intelligence Mode - controls auto-switch behavior
     public intelligenceMode: 'auto' | 'manual' = 'manual'; // Default: manual (backward compat)
+
+    // Reporting context — set by BotInstance after construction
+    public reportingContext: {
+      botId: string;
+      exchange: string;
+      walletAddress?: string;
+      accountId?: string;
+    } | null = null;
 
     // ── Loop control ──────────────────────────────────────────────────────────
     private isRunning = false;
@@ -190,7 +201,7 @@ export class Watcher {
             this.tradeLogger = tradeLogger;
         } else {
             const tradeLogBackend = (process.env.TRADE_LOG_BACKEND ?? 'json') as 'json' | 'sqlite';
-            const tradeLogPath = process.env.TRADE_LOG_PATH ?? './trades.json';
+            const tradeLogPath = process.env.TRADE_LOG_PATH ?? './data/trades.json';
             this.tradeLogger = new TradeLogger(tradeLogBackend, tradeLogPath);
         }
 
@@ -203,6 +214,13 @@ export class Watcher {
         };
 
         this.signalEngine = new AISignalEngine(adapter, this.tradeLogger);
+
+        // Initialize FarmMicroSignalEngine if enabled
+        const microCfg = getFarmMicroConfig();
+        if (microCfg.enabled) {
+            (this as any).farmMicroEngine = new FarmMicroSignalEngine(adapter);
+            console.log(`[FarmMicro] Engine initialized — symbols: ${microCfg.symbols.join(', ')}, interval: ${microCfg.interval}`);
+        }
     }
 
     // ── State helpers: write to botState (multi-bot) or global sharedState ────
@@ -370,11 +388,17 @@ export class Watcher {
         console.log(`Balance: ${balance.toFixed(2)} | Price: ${markPrice.toFixed(2)}`);
 
         // CRITICAL: If we're in IDLE but position exists, correct state immediately
-        // This prevents double-orders when position detection was delayed
-        if (this.botState === 'IDLE' && position && Math.abs(position.size) > 0) {
+        // This prevents double-orders when position detection was delayed.
+        // Ignore dust positions (< 50% of ORDER_SIZE_MIN) — these are residuals from
+        // partial fills, rounding, or other bots on the same account.
+        const dustThreshold = (this._cfg.ORDER_SIZE_MIN || 0.001) * 0.5;
+        if (this.botState === 'IDLE' && position && Math.abs(position.size) > dustThreshold) {
             console.warn(`⚠️ [STATE FIX] Position exists (${position.side} ${position.size}) but state is IDLE — correcting to IN_POSITION`);
             await this._onEntryFilled(position);
             return;
+        }
+        if (this.botState === 'IDLE' && position && Math.abs(position.size) > 0 && Math.abs(position.size) <= dustThreshold) {
+            console.log(`🧹 [DUST] Ignoring dust position (${position.side} ${position.size}) — below threshold ${dustThreshold.toFixed(6)}`);
         }
         if (this.sessionStartBalance === null) this.sessionStartBalance = balance;
         this.sessionCurrentPnl = balance - this.sessionStartBalance;
@@ -518,7 +542,9 @@ export class Watcher {
         }
 
         // Check fill: any position (even partial) → treat as IN_POSITION
-        if (position && Math.abs(position.size) > 0) {
+        // Ignore dust positions that pre-date our order (residuals from other bots)
+        const pendingDustThreshold = (this._cfg.ORDER_SIZE_MIN || 0.001) * 0.5;
+        if (position && Math.abs(position.size) > pendingDustThreshold) {
             await this._onEntryFilled(position);
             return; // ACTION: state transition — RETURN
         }
@@ -640,6 +666,21 @@ export class Watcher {
         this.entryFilledAt = Date.now();
         // Reset taker escalation counter on successful fill
         this._consecutiveUnfilledCancels = 0;
+
+        // ── Reporting: pre_open balance snapshot ──────────────────────────────
+        if (this.reportingContext) {
+            try {
+                const balance = await this.adapter.get_balance();
+                captureBalance({
+                    exchange: this.reportingContext.exchange,
+                    equity: balance,
+                    openPositionCount: 1,
+                    trigger: 'pre_open',
+                    walletAddress: this.reportingContext.walletAddress,
+                    accountId: this.reportingContext.accountId,
+                });
+            } catch { /* non-critical */ }
+        }
 
         if (this._pendingEntrySignalMeta) {
             this._pendingEntrySignalMeta.entryTime = this.entryFilledAt;
@@ -997,10 +1038,49 @@ export class Watcher {
             // Dust check
             const posValueUsd = Math.abs(posNow.size) * markPrice;
             if (posValueUsd < this._cfg.MIN_POSITION_VALUE_USD) {
-                console.log(`[EXITING] Dust position (${posValueUsd.toFixed(2)} USD) — skipping close`);
-                this._logEvent('WARN', `Dust position skipped (${posValueUsd.toFixed(2)})`);
+                console.log(`[EXITING] Dust position (${posValueUsd.toFixed(2)} USD) — treating as closed`);
+                this._logEvent('WARN', `Dust position treated as closed (${posValueUsd.toFixed(2)})`);
                 await this.adapter.cancel_all_orders(this.symbol);
+
+                // Fire reporting hooks even for dust close
+                if (this.reportingContext && this._pendingEntrySignalMeta) {
+                    const entryPrice = this._pendingEntrySignalMeta.entryPrice ?? markPrice;
+                    const entryTimeMs = this._pendingEntrySignalMeta.entryTime ?? this.entryFilledAt ?? Date.now();
+                    const holdSecs = (Date.now() - entryTimeMs) / 1000;
+                    const pnl = this._exitPnlSnapshot || 0;
+                    recordTrade({
+                        botId: this.reportingContext.botId,
+                        botType: 'standard',
+                        exchange: this.reportingContext.exchange,
+                        symbol: this.symbol,
+                        direction: posNow.side as 'long' | 'short',
+                        entryPrice,
+                        exitPrice: markPrice,
+                        size: this._pendingEntrySignalMeta?.entryPrice ? (this.pendingEntry?.signalMeta as any)?.size || posNow.size : posNow.size,
+                        pnl,
+                        fees: 0,
+                        holdDurationSecs: holdSecs,
+                        exitReason: 'DUST_CLOSE',
+                        regime: this._pendingEntrySignalMeta?.signalSnapshot?.regime,
+                        confidence: this._pendingEntrySignalMeta?.confidence,
+                        walletAddress: this.reportingContext.walletAddress,
+                        accountId: this.reportingContext.accountId,
+                    });
+                    try {
+                        const postBalance = await this.adapter.get_balance();
+                        captureBalance({
+                            exchange: this.reportingContext.exchange,
+                            equity: postBalance,
+                            trigger: 'post_close',
+                            walletAddress: this.reportingContext.walletAddress,
+                            accountId: this.reportingContext.accountId,
+                        });
+                    } catch { /* non-critical */ }
+                }
+
                 this.positionManager.onPositionClosed();
+                this._pendingEntrySignalMeta = null;
+                this._pendingExitTrigger = null;
                 this._transitionToCooldown('random');
                 return; // RETURN
             }
@@ -1023,8 +1103,13 @@ export class Watcher {
         }
 
         // ── Case B: Exit order placed, check fill ─────────────────────────────
-        if (!position || Math.abs(position.size) === 0) {
-            // Position gone → exit filled
+        const dustThresholdUsd = this._cfg.MIN_POSITION_VALUE_USD ?? 1;
+        const remainingValueUsd = position ? Math.abs(position.size) * markPrice : 0;
+        if (!position || Math.abs(position.size) === 0 || remainingValueUsd < dustThresholdUsd) {
+            // Position gone or only dust remains → treat as exit filled
+            if (position && remainingValueUsd > 0) {
+                console.log(`[EXITING] Dust residual (${remainingValueUsd.toFixed(4)} USD) — treating as filled`);
+            }
             await this._onExitFilled();
             return; // ACTION: state transition — RETURN
         }
@@ -1140,6 +1225,30 @@ export class Watcher {
         this.tradeLogger.log(tradeRecord);
         this._logEvent('ORDER_FILLED', `Exit filled: ${this.pendingExit.positionSide.toUpperCase()} @ ${tradeRecord.exitPrice} | PnL: ${pnlNet.toFixed(4)}`);
 
+        // ── Reporting: record trade event + volume counter ────────────────────
+        if (this.reportingContext) {
+            recordTrade({
+                botId: this.reportingContext.botId,
+                botType: 'standard',
+                exchange: this.reportingContext.exchange,
+                symbol: this.symbol,
+                direction: this.pendingExit.positionSide,
+                entryPrice,
+                exitPrice,
+                size: filledSize,
+                pnl: pnlNet,
+                grossPnl,
+                fees: feePaid,
+                holdDurationSecs: tradeRecord.holdingTimeSecs,
+                exitReason: tradeRecord.exitTrigger,
+                signalSource: tradeRecord.signalSource,
+                regime: tradeRecord.regime,
+                confidence: tradeRecord.confidence,
+                walletAddress: this.reportingContext.walletAddress,
+                accountId: this.reportingContext.accountId,
+            });
+        }
+
         // Update session cumulative stats
         this.sessionGrossPnl += grossPnl;
         this.sessionFees += feePaid;
@@ -1155,6 +1264,20 @@ export class Watcher {
         state.pnlHistory.push({ time: now, value: this.sessionCurrentPnl });
         state.volumeHistory.push({ time: now, value: this.sessionVolume });
         if (!this._botSharedState) saveState();
+
+        // ── Reporting: post_close balance snapshot ────────────────────────────
+        if (this.reportingContext) {
+            try {
+                const postBalance = await this.adapter.get_balance();
+                captureBalance({
+                    exchange: this.reportingContext.exchange,
+                    equity: postBalance,
+                    trigger: 'post_close',
+                    walletAddress: this.reportingContext.walletAddress,
+                    accountId: this.reportingContext.accountId,
+                });
+            } catch { /* non-critical — don't break trade flow */ }
+        }
 
         // Clear trade metadata
         this._pendingEntrySignalMeta = null;
@@ -1215,6 +1338,13 @@ export class Watcher {
             }
         }
 
+        // PAUSED: skip new entry evaluation but keep monitoring active.
+        // Position sync above still runs so the dashboard shows correct state.
+        const currentBotStatus = this._getState().botStatus;
+        if (currentBotStatus === 'PAUSED') {
+            return; // PAUSED — no new entries — RETURN
+        }
+
         // Guard: cancel stale open orders — ONE action this tick
         const openOrders = await this.adapter.get_open_orders(this.symbol);
         if (openOrders.length > 0) {
@@ -1264,6 +1394,22 @@ export class Watcher {
         // Skip SoSoValue for non-crypto exchanges (equities/commodities) — data is irrelevant
         const exchangeName = (this._cfg as any).EXCHANGE?.toLowerCase() ?? (this.adapter as any).exchangeName ?? '';
         const isNonCryptoExchange = ['ondoperps'].includes(exchangeName);
+
+        // ── FARM MICRO PATH ───────────────────────────────────────────────────
+        // When FarmMicroSignalEngine is enabled and symbol is eligible:
+        // Skip AISignalEngine/SoSoValue/LLM entirely. Use 1m candle microstructure.
+        const microCfg = getFarmMicroConfig();
+        const symbolNorm = this.symbol.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const microSymbols = microCfg.symbols.map(s => s.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+        const isMicroEligible = microCfg.enabled
+            && !isNonCryptoExchange
+            && this.farmMicroEngine
+            && microSymbols.some(s => symbolNorm.includes(s) || s.includes(symbolNorm));
+
+        if (isMicroEligible && this.farmMicroEngine) {
+            return await this._handleIdleFarmMicro(markPrice, balance);
+        }
+        // ── END FARM MICRO PATH — fall through to legacy ──────────────────────
 
         let intel: MarketIntelligence;
         if (isNonCryptoExchange) {
@@ -1573,12 +1719,17 @@ export class Watcher {
         console.log(`📐 [FARM] Size: ${size.toFixed(5)} BTC | conf: ${signal.confidence.toFixed(2)}`);
 
         // SAFETY: Verify no existing position before placing entry (prevents double-position on race conditions)
+        // Ignore dust positions (residuals from partial fills / other bots)
+        const dustThreshold = (this._cfg.ORDER_SIZE_MIN || 0.001) * 0.5;
         const existingPos = await this.adapter.get_position(this.symbol);
-        if (existingPos && Math.abs(existingPos.size) > 0) {
+        if (existingPos && Math.abs(existingPos.size) > dustThreshold) {
             console.warn(`⚠️ [FARM] Position already exists (${existingPos.side} ${existingPos.size}) — skipping entry to prevent double-position`);
             this.botState = 'IN_POSITION';
             await this._onEntryFilled(existingPos);
             return;
+        }
+        if (existingPos && Math.abs(existingPos.size) > 0 && Math.abs(existingPos.size) <= dustThreshold) {
+            console.log(`🧹 [FARM] Ignoring dust position (${existingPos.side} ${existingPos.size}) — proceeding with entry`);
         }
 
         // Adaptive maker→taker: after consecutive unfilled cancels, escalate to taker
@@ -1614,6 +1765,182 @@ export class Watcher {
                 order,
                 direction: finalDirection,
                 meta: { baseScore: signal.base_score, bias: 0, regime: signal.regime, finalScore: signal.score },
+                signalMeta: this._pendingEntrySignalMeta,
+                placedAt: Date.now(),
+                replaceCount: 0,
+                cancelledOnTick: false,
+            };
+        }
+        return; // ACTION: place — RETURN
+    }
+
+    // ── FARM MICRO MODE entry (candle microstructure) ─────────────────────────
+
+    private async _handleIdleFarmMicro(markPrice: number, balance: number) {
+        console.log(`🕯️ [FarmMicro] Evaluating ${this.symbol}...`);
+
+        let microSignal: FarmMicroSignal;
+        try {
+            microSignal = await this.farmMicroEngine!.evaluate(this.symbol);
+        } catch (err: any) {
+            // Engine failure → fallback to legacy FARM path (one attempt only)
+            console.error(`[FarmMicro] Engine error, falling back to legacy: ${err?.message}`);
+            this._logEvent('WARN', `[FarmMicro] Fallback to legacy: ${err?.message}`);
+            // Re-enter legacy path (skip micro check this time)
+            const signal = await this.signalEngine.getSignal(this.symbol);
+            // Use legacy direction resolution as fallback
+            const fallbackDir = signal.direction !== 'skip'
+                ? signal.direction as 'long' | 'short'
+                : (this.lastTradeContext?.side === 'long' ? 'short' : 'long');
+            return await this._executeFarmEntry(markPrice, balance, fallbackDir, signal.confidence, {
+                reasoning: `[FarmMicro fallback] ${signal.reasoning}`,
+                confidence: signal.confidence,
+                fallback: true,
+                signalSource: 'legacy_ai',
+                regime: signal.regime,
+                score: signal.score,
+            });
+        }
+
+        // ── Handle skip ───────────────────────────────────────────────────────
+        if (microSignal.direction === 'skip') {
+            console.log(`🕯️ [FarmMicro] SKIP: ${microSignal.reason}`);
+            this._lastRegime = microSignal.regime || 'unknown';
+            this._lastPipelineTrace = [{
+                gate: 'FarmMicroEngine',
+                result: 'skip',
+                reason: microSignal.reason,
+            }];
+            return; // ACTION: wait — RETURN (no forced entry, no ping-pong)
+        }
+
+        // ── MM inventory check (still active) ─────────────────────────────────
+        let finalDirection: 'long' | 'short' = microSignal.direction;
+        if (this._cfg.MM_ENABLED) {
+            const mmBias = this.marketMaker.computeEntryBias(this.lastTradeContext, this.marketMaker.getState());
+            this._pendingMMBias = mmBias;
+            if (mmBias.blocked) {
+                // Inventory hard block — force rebalance direction
+                finalDirection = (this.lastTradeContext?.side === 'long') ? 'short' : 'long';
+                console.log(`🕯️ [FarmMicro] MM inventory block → rebalance ${finalDirection.toUpperCase()}`);
+            } else {
+                console.log(`🕯️ [FarmMicro] ${microSignal.direction.toUpperCase()} score=${microSignal.score.toFixed(2)} conf=${microSignal.confidence.toFixed(2)} regime=${microSignal.regime}`);
+            }
+        }
+
+        // ── Reverse signal toggle ─────────────────────────────────────────────
+        if (this._cfg.FARM_REVERSE_SIGNAL_ENABLED) {
+            finalDirection = finalDirection === 'long' ? 'short' : 'long';
+            console.log(`🔁 [FarmMicro] Reverse-signal → ${finalDirection.toUpperCase()}`);
+        }
+
+        // ── Execute entry ─────────────────────────────────────────────────────
+        this._lastRegime = microSignal.regime || 'unknown';
+        this._lastSignal = { direction: finalDirection, score: microSignal.confidence, ts: Date.now() };
+        this._lastPipelineTrace = [{
+            gate: 'FarmMicroEngine',
+            result: 'pass',
+            reason: `score=${microSignal.score.toFixed(2)} conf=${microSignal.confidence.toFixed(2)} regime=${microSignal.regime}`,
+        }];
+
+        return await this._executeFarmEntry(markPrice, balance, finalDirection, microSignal.confidence, {
+            reasoning: microSignal.reason,
+            confidence: microSignal.confidence,
+            fallback: false,
+            signalSource: 'farm_micro',
+            regime: microSignal.regime,
+            score: microSignal.score,
+            components: microSignal.components,
+            dataQuality: microSignal.dataQuality,
+        });
+    }
+
+    // ── Shared FARM entry execution (used by both micro and legacy paths) ─────
+
+    private async _executeFarmEntry(
+        markPrice: number,
+        balance: number,
+        finalDirection: 'long' | 'short',
+        confidence: number,
+        meta: {
+            reasoning: string;
+            confidence: number;
+            fallback: boolean;
+            signalSource: 'farm_micro' | 'legacy_ai';
+            regime: string;
+            score: number;
+            components?: any;
+            dataQuality?: any;
+        },
+    ) {
+        // ── Sizing ────────────────────────────────────────────────────────────
+        const size = this._cfg.ORDER_SIZE_MIN + Math.random() * (this._cfg.ORDER_SIZE_MAX - this._cfg.ORDER_SIZE_MIN);
+
+        // ── Hold time ─────────────────────────────────────────────────────────
+        const holdSecs = this._cfg.FARM_MIN_HOLD_SECS + Math.random() * (this._cfg.FARM_MAX_HOLD_SECS - this._cfg.FARM_MIN_HOLD_SECS);
+        this._pendingFarmHoldSecs = holdSecs;
+        this.farmHoldUntil = null;
+        console.log(`[MinHold] randomHold=${holdSecs.toFixed(0)}s (FARM_MIN=${this._cfg.FARM_MIN_HOLD_SECS}s, FARM_MAX=${this._cfg.FARM_MAX_HOLD_SECS}s)`);
+
+        // ── Dynamic TP (MM) ───────────────────────────────────────────────────
+        if (this._cfg.MM_ENABLED && this._pendingEntrySpreadBps !== null) {
+            this._pendingDynamicTP = this.marketMaker.computeDynamicTP(markPrice, this._pendingEntrySpreadBps);
+        } else {
+            this._pendingDynamicTP = null;
+        }
+
+        console.log(`📐 [FARM] Size: ${size.toFixed(5)} BTC | conf: ${confidence.toFixed(2)} | src: ${meta.signalSource}`);
+
+        // ── Safety: check no existing position ────────────────────────────────
+        const dustThreshold = (this._cfg.ORDER_SIZE_MIN || 0.001) * 0.5;
+        const existingPos = await this.adapter.get_position(this.symbol);
+        if (existingPos && Math.abs(existingPos.size) > dustThreshold) {
+            console.warn(`⚠️ [FARM] Position already exists (${existingPos.side} ${existingPos.size}) — skipping entry`);
+            this.botState = 'IN_POSITION';
+            await this._onEntryFilled(existingPos);
+            return;
+        }
+
+        // ── Adaptive maker→taker escalation ───────────────────────────────────
+        const useTaker = this._consecutiveUnfilledCancels >= this._TAKER_ESCALATION_THRESHOLD;
+        if (useTaker) {
+            console.log(`⚡ [FARM] Escalating to TAKER (${this._consecutiveUnfilledCancels} unfilled cancels)`);
+        }
+
+        // ── Place order ───────────────────────────────────────────────────────
+        const order = await this.executor.placeEntryOrder(this.symbol, finalDirection, size, 0, useTaker);
+        if (order) {
+            // Invalidate caches
+            if (this.farmMicroEngine) this.farmMicroEngine.invalidateCache();
+            this.signalEngine.invalidateCache();
+
+            this._logEvent('ORDER_PLACED', `[FARM] ${finalDirection.toUpperCase()} ${size.toFixed(3)} @ ${order.price} [${meta.signalSource}]`);
+            this.botState = 'PENDING';
+            this._pendingEntrySignalMeta = {
+                reasoning: meta.reasoning,
+                confidence: meta.confidence,
+                fallback: meta.fallback,
+                entryPrice: 0,
+                signalSnapshot: {
+                    regime: meta.regime as any,
+                    momentumScore: meta.score,
+                    imbalance: 1,
+                    tradePressure: meta.components?.tradePressure ?? 0.5,
+                    atrPct: 0,
+                    bbWidth: 0,
+                    volRatio: 0,
+                    filterResult: 'pass',
+                    effectiveConfidence: confidence,
+                    dynamicMinHold: this._cfg.FARM_MIN_HOLD_SECS,
+                    signalSource: meta.signalSource,
+                    ...(meta.components ? { microComponents: meta.components } : {}),
+                    ...(meta.dataQuality ? { microDataQuality: meta.dataQuality } : {}),
+                },
+            };
+            this.pendingEntry = {
+                order,
+                direction: finalDirection,
+                meta: { baseScore: meta.score, bias: 0, regime: meta.regime, finalScore: meta.score },
                 signalMeta: this._pendingEntrySignalMeta,
                 placedAt: Date.now(),
                 replaceCount: 0,

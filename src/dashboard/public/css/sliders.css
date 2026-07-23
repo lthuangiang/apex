@@ -1,0 +1,431 @@
+/* ── DRIFT Slider Components ──────────────────────────────────────────────── */
+/* Custom range inputs with color zones (red/yellow/green), thumb, track, value label */
+/* Pure CSS + vanilla JS — no dependencies */
+
+/* ── Slider Variables ─────────────────────────────────────────────────────── */
+:root {
+  --slider-thumb-size: 18px;
+  --slider-track-height: 6px;
+  --slider-thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  --slider-thumb-bg: #fff;
+  --slider-thumb-border: var(--border);
+  --slider-label-bg: var(--bg-elevated);
+  --slider-label-color: var(--text-primary);
+  --slider-label-border: var(--border);
+}
+
+/* ── Container ────────────────────────────────────────────────────────────── */
+.drift-slider {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.drift-slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.drift-slider-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.drift-slider-value {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: var(--slider-label-bg);
+  border: 1px solid var(--slider-label-border);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  min-width: 48px;
+  text-align: center;
+  transition: color 0.2s ease;
+}
+
+/* Value color states */
+.drift-slider-value.zone-red { color: var(--red); }
+.drift-slider-value.zone-yellow { color: var(--accent); }
+.drift-slider-value.zone-green { color: var(--green); }
+
+/* ── Track Container ──────────────────────────────────────────────────────── */
+.drift-slider-track-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: calc(var(--slider-thumb-size) + 8px);
+}
+
+/* ── Range Input Reset ────────────────────────────────────────────────────── */
+.drift-slider input[type="range"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: var(--slider-track-height);
+  border-radius: calc(var(--slider-track-height) / 2);
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+/* ── Track Styling — WebKit ───────────────────────────────────────────────── */
+.drift-slider input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: var(--slider-track-height);
+  border-radius: calc(var(--slider-track-height) / 2);
+  border: none;
+}
+
+/* Color zone gradients — default: red→yellow→green (left=risky, right=safe) */
+.drift-slider.zone-risk-right input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--green) 0%,
+    var(--green) 30%,
+    var(--accent) 30%,
+    var(--accent) 60%,
+    var(--red) 60%,
+    var(--red) 100%
+  );
+}
+
+.drift-slider.zone-risk-left input[type="range"]::-webkit-slider-runnable-track,
+.drift-slider input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--red) 0%,
+    var(--red) 30%,
+    var(--accent) 30%,
+    var(--accent) 60%,
+    var(--green) 60%,
+    var(--green) 100%
+  );
+}
+
+/* Spread slider — uniform accent track */
+.drift-slider.zone-spread input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--green) 0%,
+    var(--accent) 50%,
+    var(--red) 100%
+  );
+}
+
+/* ── Track Styling — Firefox ──────────────────────────────────────────────── */
+.drift-slider input[type="range"]::-moz-range-track {
+  width: 100%;
+  height: var(--slider-track-height);
+  border-radius: calc(var(--slider-track-height) / 2);
+  border: none;
+}
+
+.drift-slider.zone-risk-right input[type="range"]::-moz-range-track {
+  background: linear-gradient(
+    to right,
+    var(--green) 0%,
+    var(--green) 30%,
+    var(--accent) 30%,
+    var(--accent) 60%,
+    var(--red) 60%,
+    var(--red) 100%
+  );
+}
+
+.drift-slider.zone-risk-left input[type="range"]::-moz-range-track,
+.drift-slider input[type="range"]::-moz-range-track {
+  background: linear-gradient(
+    to right,
+    var(--red) 0%,
+    var(--red) 30%,
+    var(--accent) 30%,
+    var(--accent) 60%,
+    var(--green) 60%,
+    var(--green) 100%
+  );
+}
+
+.drift-slider.zone-spread input[type="range"]::-moz-range-track {
+  background: linear-gradient(
+    to right,
+    var(--green) 0%,
+    var(--accent) 50%,
+    var(--red) 100%
+  );
+}
+
+/* ── Thumb Styling — WebKit ───────────────────────────────────────────────── */
+.drift-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  border-radius: 50%;
+  background: var(--slider-thumb-bg);
+  border: 2px solid var(--border);
+  box-shadow: var(--slider-thumb-shadow);
+  margin-top: calc((var(--slider-track-height) - var(--slider-thumb-size)) / 2);
+  cursor: grab;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.drift-slider input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+  border-color: var(--accent);
+}
+
+.drift-slider input[type="range"]::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.1);
+  border-color: var(--accent);
+  box-shadow: 0 2px 12px rgba(245, 166, 35, 0.4);
+}
+
+/* ── Thumb Styling — Firefox ──────────────────────────────────────────────── */
+.drift-slider input[type="range"]::-moz-range-thumb {
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  border-radius: 50%;
+  background: var(--slider-thumb-bg);
+  border: 2px solid var(--border);
+  box-shadow: var(--slider-thumb-shadow);
+  cursor: grab;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.drift-slider input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+  border-color: var(--accent);
+}
+
+.drift-slider input[type="range"]::-moz-range-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.1);
+  border-color: var(--accent);
+  box-shadow: 0 2px 12px rgba(245, 166, 35, 0.4);
+}
+
+/* ── Focus State ──────────────────────────────────────────────────────────── */
+.drift-slider input[type="range"]:focus {
+  outline: none;
+}
+
+.drift-slider input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.drift-slider input[type="range"]:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Zone Marks / Ticks ───────────────────────────────────────────────────── */
+.drift-slider-ticks {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 2px;
+  margin-top: 0.2rem;
+}
+
+.drift-slider-tick {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  text-align: center;
+  user-select: none;
+}
+
+/* ── Uncapped Toggle (for Take Profit) ────────────────────────────────────── */
+.drift-slider-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.drift-slider-toggle label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.drift-slider-toggle input[type="checkbox"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 32px;
+  height: 18px;
+  background: var(--border);
+  border-radius: 18px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.drift-slider-toggle input[type="checkbox"]::before {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  left: 3px;
+  top: 3px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.drift-slider-toggle input[type="checkbox"]:checked {
+  background: var(--green-dim);
+  border: 1px solid var(--green-border);
+}
+
+.drift-slider-toggle input[type="checkbox"]:checked::before {
+  transform: translateX(14px);
+  background: var(--green);
+}
+
+/* ── Disabled State ───────────────────────────────────────────────────────── */
+.drift-slider.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.drift-slider.disabled input[type="range"] {
+  cursor: not-allowed;
+}
+
+/* ── Slider Variants ──────────────────────────────────────────────────────── */
+
+/* Stop Loss: 25%→100% — inverted: low stop loss = high risk (red on left) */
+.drift-slider.slider-stop-loss input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--red) 0%,
+    var(--red) 33%,
+    var(--accent) 33%,
+    var(--accent) 66%,
+    var(--green) 66%,
+    var(--green) 100%
+  );
+}
+
+.drift-slider.slider-stop-loss input[type="range"]::-moz-range-track {
+  background: linear-gradient(
+    to right,
+    var(--red) 0%,
+    var(--red) 33%,
+    var(--accent) 33%,
+    var(--accent) 66%,
+    var(--green) 66%,
+    var(--green) 100%
+  );
+}
+
+/* Take Profit — green→yellow gradient */
+.drift-slider.slider-take-profit input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--green) 100%
+  );
+}
+
+.drift-slider.slider-take-profit input[type="range"]::-moz-range-track {
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--green) 100%
+  );
+}
+
+/* Spread/BPS — green (tight) → yellow → red (wide) */
+.drift-slider.slider-spread input[type="range"]::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--green) 0%,
+    var(--green) 25%,
+    var(--accent) 25%,
+    var(--accent) 60%,
+    var(--red) 60%,
+    var(--red) 100%
+  );
+}
+
+.drift-slider.slider-spread input[type="range"]::-moz-range-track {
+  background: linear-gradient(
+    to right,
+    var(--green) 0%,
+    var(--green) 25%,
+    var(--accent) 25%,
+    var(--accent) 60%,
+    var(--red) 60%,
+    var(--red) 100%
+  );
+}
+
+/* ── Light Mode Overrides ─────────────────────────────────────────────────── */
+body.light .drift-slider {
+  --slider-thumb-bg: #ffffff;
+  --slider-thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  --slider-thumb-border: #d1d5db;
+  --slider-label-bg: #f3f4f6;
+  --slider-label-color: #1f2937;
+  --slider-label-border: #e5e7eb;
+}
+
+body.light .drift-slider input[type="range"]::-webkit-slider-thumb {
+  border-color: #d1d5db;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+body.light .drift-slider input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+  border-color: var(--accent);
+}
+
+body.light .drift-slider input[type="range"]::-moz-range-thumb {
+  border-color: #d1d5db;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+body.light .drift-slider input[type="range"]::-moz-range-thumb:hover {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+  border-color: var(--accent);
+}
+
+body.light .drift-slider-value {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+  color: #1f2937;
+}
+
+body.light .drift-slider-tick {
+  color: #6b7280;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  :root {
+    --slider-thumb-size: 22px;
+    --slider-track-height: 8px;
+  }
+
+  .drift-slider-value {
+    font-size: 0.88rem;
+    padding: 0.25rem 0.6rem;
+  }
+}

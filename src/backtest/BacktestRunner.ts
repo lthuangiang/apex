@@ -4,7 +4,7 @@
  * Drives the full backtest lifecycle:
  *   1. Load klines via HistoricalDataFeed
  *   2. Instantiate BacktestAdapter
- *   3. Instantiate and start the bot (HedgeBot or BotInstance)
+ *   3. Instantiate and start the bot (PairBot or BotInstance)
  *   4. Tick loop: advance clock → bot.tickOnce() → record metrics
  *   5. Emit progress via onProgress callback
  *   6. Respect speedMultiplier for paced replay
@@ -41,7 +41,7 @@ const INTERVAL_MS: Record<string, number> = {
 };
 
 // ---------------------------------------------------------------------------
-// Duck-typed interface for bot instances (HedgeBot or BotInstance)
+// Duck-typed interface for bot instances (PairBot or BotInstance)
 // tickOnce() will be added by tasks 6.1 and 6.2.
 // ---------------------------------------------------------------------------
 
@@ -356,7 +356,7 @@ export class BacktestRunner {
    * Instantiate the appropriate bot class based on `config.botId` / `config.botConfig`.
    *
    * Supports:
-   *   - `botType: 'hedge'` → HedgeBot
+   *   - `botType: 'pair'` (or legacy 'hedge') → PairBot
    *   - everything else   → BotInstance
    *
    * Both classes will have `tickOnce()` added by tasks 6.1 and 6.2.
@@ -398,16 +398,16 @@ export class BacktestRunner {
       );
     }
 
-    const isHedgeBot = rawConfig['botType'] === 'hedge';
+    const isPairBot = rawConfig['botType'] === 'hedge' || rawConfig['botType'] === 'pair';
 
     // Create a no-op Telegram stub so bots don't need real credentials in backtest
     const telegramStub = this._createTelegramStub();
 
-    if (isHedgeBot) {
-      // Dynamically import HedgeBot to avoid circular dependency issues
-      const { HedgeBot } = await import('../bot/HedgeBot.js');
-      const hedgeConfig = rawConfig as unknown as import('../bot/types.js').HedgeBotConfig;
-      return new HedgeBot(hedgeConfig, adapter, telegramStub) as unknown as BotLike;
+    if (isPairBot) {
+      // Dynamically import PairBot to avoid circular dependency issues
+      const { PairBot } = await import('../bot/PairBot.js');
+      const pairConfig = rawConfig as unknown as import('../bot/types.js').PairBotConfig;
+      return new PairBot(pairConfig, adapter, telegramStub) as unknown as BotLike;
     } else {
       // BotInstance (farm / trade mode)
       const { BotInstance } = await import('../bot/BotInstance.js');

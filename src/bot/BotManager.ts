@@ -1,8 +1,10 @@
 import type { ExchangeAdapter } from '../adapters/ExchangeAdapter.js';
 import type { TelegramManager } from '../modules/TelegramManager.js';
 import { BotInstance } from './BotInstance.js';
-import { HedgeBot } from './HedgeBot.js';
-import type { BotConfig, HedgeBotConfig, AggregatedStats } from './types.js';
+import { PairBot } from './PairBot.js';
+import { DeltaNeutralBot } from './DeltaNeutralBot.js';
+import type { BotConfig, PairBotConfig, AggregatedStats } from './types.js';
+import type { DeltaNeutralConfig } from './DeltaNeutralTypes.js';
 
 /**
  * BotManager - Registry for managing multiple bot instances
@@ -11,10 +13,10 @@ import type { BotConfig, HedgeBotConfig, AggregatedStats } from './types.js';
  * - Create and remove bot instances
  * - Start/stop bots by ID
  * - Provide aggregated statistics
- * - Maintain bot registry (Map<botId, BotInstance | HedgeBot>)
+ * - Maintain bot registry (Map<botId, BotInstance | PairBot>)
  */
 export class BotManager {
-  private registry = new Map<string, BotInstance | HedgeBot>();
+  private registry = new Map<string, BotInstance | PairBot | DeltaNeutralBot>();
 
   /**
    * Create a new bot instance and add to registry
@@ -52,32 +54,54 @@ export class BotManager {
   }
 
   /**
-   * Create a new HedgeBot instance and add to registry
+   * Create a new PairBot instance and add to registry
    * @throws Error if bot with same ID already exists
    */
-  createHedgeBot(config: HedgeBotConfig, adapter: ExchangeAdapter, telegram: TelegramManager): HedgeBot {
+  createPairBot(config: PairBotConfig, adapter: ExchangeAdapter, telegram: TelegramManager): PairBot {
     if (this.registry.has(config.id)) {
       throw new Error(`Bot with id "${config.id}" already exists`);
     }
 
-    const instance = new HedgeBot(config, adapter, telegram);
+    const instance = new PairBot(config, adapter, telegram);
     this.registry.set(config.id, instance);
 
-    console.log(`[BotManager] Created HedgeBot: ${config.id} (${config.name})`);
+    console.log(`[BotManager] Created PairBot: ${config.id} (${config.name})`);
+    return instance;
+  }
+
+  /**
+   * Create a new DeltaNeutralBot instance and add to registry.
+   * Requires two adapters (cross-exchange delta-neutral).
+   * @throws Error if bot with same ID already exists
+   */
+  createDeltaNeutralBot(
+    config: DeltaNeutralConfig,
+    adapterA: ExchangeAdapter,
+    adapterB: ExchangeAdapter,
+    telegram: TelegramManager,
+  ): DeltaNeutralBot {
+    if (this.registry.has(config.id)) {
+      throw new Error(`Bot with id "${config.id}" already exists`);
+    }
+
+    const instance = new DeltaNeutralBot(config, adapterA, adapterB, telegram);
+    this.registry.set(config.id, instance);
+
+    console.log(`[BotManager] Created DeltaNeutralBot: ${config.id} (${config.name}) — ${config.exchangeA}+${config.exchangeB}`);
     return instance;
   }
 
   /**
    * Get a bot instance by ID
    */
-  getBot(id: string): BotInstance | HedgeBot | undefined {
+  getBot(id: string): BotInstance | PairBot | DeltaNeutralBot | undefined {
     return this.registry.get(id);
   }
 
   /**
    * Get all bot instances
    */
-  getAllBots(): (BotInstance | HedgeBot)[] {
+  getAllBots(): (BotInstance | PairBot | DeltaNeutralBot)[] {
     return Array.from(this.registry.values());
   }
 

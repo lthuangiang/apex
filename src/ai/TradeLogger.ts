@@ -24,6 +24,22 @@ export interface SignalSnapshot {
   filterResult?: string;          // 'pass' or rejection reason
   effectiveConfidence?: number;   // confidence after LLM adjustment
   dynamicMinHold?: number;        // computed min hold in seconds
+  // ── Farm Micro Signal metadata (optional, only when signalSource='farm_micro') ──
+  signalSource?: 'farm_micro' | 'legacy_ai';
+  microComponents?: {
+    candleMomentum?: number;
+    wickRejection?: number;
+    volumeAcceleration?: number;
+    tradePressure?: number;
+    orderbookImbalance?: number;
+  };
+  microDataQuality?: {
+    candleInterval?: string;
+    completedCandles?: number;
+    hasTradeData?: boolean;
+    hasOrderbookData?: boolean;
+    usedFallback?: boolean;
+  };
 }
 
 export interface TradeRecord extends SignalSnapshot {

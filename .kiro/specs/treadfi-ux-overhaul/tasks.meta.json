@@ -1,0 +1,942 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1.1. Update `BotSharedState.botStatus` type to `'RUNNING' | 'STOPPED' | 'PAUSED'`": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636769734
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636787280
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636873675
+      }
+    ],
+    "1.2. Add `pause()` and `resume()` methods to `BotInstance` class": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636769849
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636884424
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636937316
+      }
+    ],
+    "1.3. Add `pause()` and `resume()` methods to `PairBot` class": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636769969
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636947183
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637003588
+      }
+    ],
+    "1.4. Add `pause()` and `resume()` methods to `DeltaNeutralBot` class": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636770117
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637009187
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637061694
+      }
+    ],
+    "1.5. In `BotInstance` Watcher: skip entry logic when PAUSED (keep exit/monitoring active)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636770201
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637066905
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637159903
+      }
+    ],
+    "1.6. In `PairBot._tickIdle()`: return early when PAUSED": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636770333
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637164937
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637208387
+      }
+    ],
+    "1.7. In `DeltaNeutralBot._tickIdle()`: return early when PAUSED": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636770417
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637214058
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637267969
+      }
+    ],
+    "1.8. Add API routes: `POST /api/bots/:id/pause` and `POST /api/bots/:id/resume` in server.ts": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636770533
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637274304
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637336853
+      }
+    ],
+    "1.9. Update manager-dashboard.js: show Pause/Resume buttons based on bot state (Start visible when STOPPED, Pause visible when RUNNING, Resume visible when PAUSED, Stop visible when RUNNING or PAUSED)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636770618
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637341939
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637427783
+      }
+    ],
+    "1.10. Update bot card template: yellow \"PAUSED\" status pill": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636770714
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637432694
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637753204
+      }
+    ],
+    "1.11. Update delta-neutral-detail.ejs: add Pause/Resume button with correct state logic": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636770799
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784637759115
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784638002601
+      }
+    ],
+    "1.12. Verify: `npx tsc --noEmit` passes with zero errors": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636770917
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784638009722
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784638053239
+      }
+    ],
+    "2.1. Create `src/dashboard/views/partials/accounts-sidebar.ejs` — sidebar panel showing connected accounts (exchange icon, label, truncated key, balance)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636771045
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784638059984
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784638207870
+      }
+    ],
+    "2.2. Include accounts-sidebar partial in `manager.ejs` above the bot-cards section": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636771133
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784638213470
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784638295101
+      }
+    ],
+    "2.3. Create `src/dashboard/public/js/accounts.js` — client-side logic: fetch accounts, render sidebar, open connect modal": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636771236
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784638300339
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784638872574
+      }
+    ],
+    "2.4. Create \"Connect Account\" modal in manager.ejs — exchange selector, credential inputs per exchange (reuse patterns from bot wizard), label field, type selector (CEX/DEX/Perp DEX)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636771336
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784638878922
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784639177850
+      }
+    ],
+    "2.5. Wire modal submit to `POST /api/accounts` and refresh sidebar on success": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636771417
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784639183951
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784639316718
+      }
+    ],
+    "2.6. Add delete button per account (calls `DELETE /api/accounts/:id`)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636771503
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784639322501
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784639458266
+      }
+    ],
+    "2.7. Update bot creation wizard Step 1 (credentials): if accounts exist, show \"Select Account\" dropdown at top. When selected, auto-fill exchange + skip manual credential entry. Keep \"Or enter manually\" fallback.": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636771604
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784639464261
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784640360255
+      }
+    ],
+    "2.8. Update `buildPayload()` in wizard: if account selected, include `accountId` in payload (server resolves credentials from registry)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636771684
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784640366407
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784640534147
+      }
+    ],
+    "2.9. Update `POST /api/bots` handler in server.ts: if `body.accountId` present, load credentials from AccountRegistry instead of expecting inline credentials": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636771817
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784640540532
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784641072386
+      }
+    ],
+    "2.10. Verify: accounts can be connected, listed, deleted; bots can be created from saved accounts": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636771935
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784641078465
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784641201649
+      }
+    ],
+    "3.1. Create `src/dashboard/views/partials/pre-trade-analytics.ejs` — right sidebar panel": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636772034
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784641209334
+      }
+    ],
+    "3.2. Add new API route: `GET /api/exchanges/:exchange/funding-rate?symbol=X` — returns funding rate from adapter (or null if not supported)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636772121
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784642445954
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784642622409
+      }
+    ],
+    "3.3. Add `get_funding_rate?(symbol: string): Promise<number | null>` optional method to ExchangeAdapter interface": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636772218
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784642629321
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784644127928
+      }
+    ],
+    "3.4. Implement `get_funding_rate` in PerplAdapter (from market state or REST)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636772321
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784644151509
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784645035023
+      }
+    ],
+    "3.5. Implement `get_funding_rate` in OndoPerpsAdapter (from positions API response)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636772464
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784645040623
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784645351032
+      }
+    ],
+    "3.6. Include pre-trade-analytics partial in DN setup pane (right sidebar)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636772564
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784645359598
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784645544904
+      }
+    ],
+    "3.7. Client-side JS: when user changes notional/account/pair → recalculate estimated fees, fetch funding rate, update panel live": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636772662
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784645550941
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784645818494
+      }
+    ],
+    "3.8. Simplified version for Farm/Standard bot config step: show estimated fee per round-trip": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636772764
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784645824708
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784646255796
+      }
+    ],
+    "4.1. Create `src/dashboard/views/partials/dn-setup-pane.ejs` — dual-pane layout with Long (green) / Short (red) sections": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636772852
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784646264175
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784646485097
+      }
+    ],
+    "4.2. Each pane: Account dropdown (from /api/accounts), Pair dropdown (loads symbols from selected account's exchange), Leverage selector": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636772935
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784646491799
+      }
+    ],
+    "4.3. Swap button (↔) between panes: swaps account + pair assignments": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773031
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784646672358
+      }
+    ],
+    "4.4. Shared config section below panes: Notional ($), Position Duration (min), Stop Loss (slider)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773162
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784646852774
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784646929912
+      }
+    ],
+    "4.5. Replace current flat Delta-Neutral config in wizard Step 3 with the dual-pane partial": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773235
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784646935830
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784648317808
+      }
+    ],
+    "4.6. Wire \"Start Trading\" button to build the correct DeltaNeutralConfig payload from both panes": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773347
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784648325395
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784648670548
+      }
+    ],
+    "4.7. Include pre-trade-analytics panel (from Task 3) as right sidebar in the dual-pane view": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773435
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784648684144
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784648804568
+      }
+    ],
+    "4.8. Test: create a DN bot using dual-pane UI with two different accounts, verify both legs open correctly": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773518
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784648811538
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784649010058
+      }
+    ],
+    "5.1. Create `src/dashboard/views/portfolio.ejs` — full page with hero stats, charts, account table, risk panel": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773613
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784649021910
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784649381531
+      }
+    ],
+    "5.2. Add route `GET /portfolio` in server.ts → renders portfolio.ejs": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773703
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784649392113
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784649513601
+      }
+    ],
+    "5.3. Create `GET /api/portfolio` endpoint — aggregates: account balances, all bot positions, computes total equity/exposure/PnL/liquidation risk": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773802
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784649522891
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784649807888
+      }
+    ],
+    "5.4. Create `src/dashboard/public/js/portfolio.js` — polls /api/portfolio every 10s, updates stats + charts": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773884
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784649816305
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784650244102
+      }
+    ],
+    "5.5. Hero stats: Total Equity (sum of all account balances + unrealized PnL), Directional Bias (net long/short ratio), Total Unrealized PnL, Liquidation Risk indicator": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636773980
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784650253985
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784650399432
+      }
+    ],
+    "5.6. Charts (Chart.js): Total Equity over time (append to array on each poll), Notional Exposure bar chart, Unrealized PnL line chart": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636774080
+      },
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784650410526
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784684436589
+      }
+    ],
+    "5.7. Per-account table: exchange, label, balance, open positions count, PnL contribution": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636774181
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784682888204
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784682911580
+      }
+    ],
+    "5.8. Liquidation risk panel: At Risk %, Liquidation Buffer, Maintenance Margin, Average Leverage": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636774272
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784682917510
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784682923194
+      }
+    ],
+    "5.9. Add navigation link to Portfolio page in manager.ejs topnav": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636774401
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784682968093
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683044575
+      }
+    ],
+    "5.10. Support light/dark mode using existing CSS variables": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636774486
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683056561
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683061626
+      }
+    ],
+    "6.1. Create `src/dashboard/public/css/sliders.css` — custom range input styling with color zones (red/yellow/green), thumb, track, value label": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636774580
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683072859
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683320591
+      }
+    ],
+    "6.2. Implement Stop Loss slider component: replaces text input in DN config + bot wizard Step 3. Range 25%→100%, shows percentage + approximate USD value": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636774668
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683330696
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683623531
+      }
+    ],
+    "6.3. Implement Take Profit slider: range with \"Uncapped\" toggle at maximum position": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636774783
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683634304
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683782743
+      }
+    ],
+    "6.4. Implement Spread slider: 0→20 bps for market making config": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636774868
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683787776
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683957708
+      }
+    ],
+    "6.5. Each slider updates a hidden form input (for existing form submission flow)": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636774950
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683970387
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683982542
+      }
+    ],
+    "6.6. Visual feedback: color zones on track (red=high risk, green=conservative), numeric display updates in realtime": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636775034
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683989285
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683994291
+      }
+    ],
+    "6.7. Apply sliders to: DN dual-pane stop loss, bot wizard config step, delta-neutral-detail.ejs config panel": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636775120
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784683999793
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784684367576
+      }
+    ],
+    "6.8. Ensure dark/light mode compatibility via CSS variables": [
+      {
+        "executionId": "edb98aed-54ce-4216-b5e3-b9c387c1abea",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784636775219
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784684374447
+      },
+      {
+        "executionId": "2ff5bf4f-5952-4ff9-9a87-3d001f83bf5f",
+        "chatSessionId": "sess_5146bede-98b9-45c1-879f-10023eccb310",
+        "timestamp": 1784684381974
+      }
+    ]
+  }
+}

@@ -3,8 +3,10 @@ import type { TelegramManager } from '../modules/TelegramManager.js';
 import { BotManager } from './BotManager.js';
 import { TenantConfigStore } from './TenantConfigStore.js';
 import { CredentialStore } from './CredentialStore.js';
+import { AccountRegistry } from './AccountRegistry.js';
 import { createAdapterFromCredentials, createAdapter } from './adapterFactory.js';
-import type { BotConfig, HedgeBotConfig } from './types.js';
+import type { BotConfig, PairBotConfig } from './types.js';
+import type { DeltaNeutralConfig } from './DeltaNeutralTypes.js';
 
 /**
  * TenantContext — encapsulates all resources owned by a single wallet tenant.
@@ -30,6 +32,9 @@ export class TenantContext {
   /** Encrypted credential storage for this tenant */
   readonly credentialStore: CredentialStore;
 
+  /** Reusable exchange account registry for this tenant */
+  readonly accountRegistry: AccountRegistry;
+
   constructor({
     walletAddress,
     dataDir,
@@ -49,6 +54,7 @@ export class TenantContext {
     this.botManager = botManager;
     this.configStore = configStore;
     this.credentialStore = credentialStore ?? new CredentialStore(dataDir);
+    this.accountRegistry = new AccountRegistry(dataDir);
   }
 
   /**
@@ -62,7 +68,7 @@ export class TenantContext {
    * Requirement 5.8, 6.1, 6.2
    */
   persistConfigs(): void {
-    const configs = this.botManager.getAllBots().map(b => b.config);
+    const configs = this.botManager.getAllBots().map(b => b.config) as any[];
     this.configStore.save(configs);
   }
 
@@ -73,7 +79,7 @@ export class TenantContext {
    * - Rewrites `tradeLogPath` to be scoped within this tenant's `dataDir`
    * - Loads credentials from CredentialStore (encrypted) if available,
    *   otherwise falls back to credentialKey env var (legacy / single-op mode)
-   * - Creates a `BotInstance` (standard) or `HedgeBot` (hedge) via BotManager
+   * - Creates a `BotInstance` (standard) or `PairBot` (pair) via BotManager
    * - Skips configs that fail adapter creation (missing credentials) with a logged error
    *
    * Requirement 3.3, 3.4, 3.5, 5.2
@@ -90,15 +96,36 @@ export class TenantContext {
 
       try {
         // Prefer stored credentials; fall back to env var prefix for legacy configs
-        const storedCreds = this.credentialStore.load(config.id);
-        const adapter = storedCreds
-          ? createAdapterFromCredentials(scopedConfig.exchange, storedCreds)
-          : createAdapter(scopedConfig.exchange, scopedConfig.credentialKey);
-
-        if ((scopedConfig as HedgeBotConfig).botType === 'hedge') {
-          this.botManager.createHedgeBot(scopedConfig as HedgeBotConfig, adapter, telegram);
+        if ((config as any).botType === 'oi-farmer' || (config as any).botType === 'delta-neutral') {
+          // Delta-Neutral bot needs TWO adapters (cross-exchange)
+          const dnConfig = { ...config, tradeLogPath: path.join(this.dataDir, path.basename(config.tradeLogPath)) } as unknown as DeltaNeutralConfig;
+          const storedCredsA = this.credentialStore.load(config.id);
+          const adapterA = storedCredsA
+            ? createAdapterFromCredentials(dnConfig.exchangeA, storedCredsA)
+            : createAdapter(dnConfig.exchangeA, dnConfig.credentialKeyA);
+          const storedCredsB = this.credentialStore.load(config.id + '-legB');
+          let adapterB: any;
+          if (dnConfig.exchangeA === dnConfig.exchangeB) {
+            // Same-exchange DN (hedge mode): reuse same adapter
+            adapterB = adapterA;
+          } else {
+            adapterB = storedCredsB
+              ? createAdapterFromCredentials(dnConfig.exchangeB, storedCredsB)
+              : createAdapter(dnConfig.exchangeB, dnConfig.credentialKeyB);
+          }
+          this.botManager.createDeltaNeutralBot(dnConfig, adapterA, adapterB, telegram);
         } else {
-          this.botManager.createBot(scopedConfig as BotConfig, adapter, telegram);
+          const storedCreds = this.credentialStore.load(config.id);
+          const adapter = storedCreds
+            ? createAdapterFromCredentials((scopedConfig as BotConfig).exchange, storedCreds)
+            : createAdapter((scopedConfig as BotConfig).exchange, (scopedConfig as BotConfig).credentialKey);
+
+          if ((scopedConfig as PairBotConfig).botType === 'hedge' || (scopedConfig as PairBotConfig).botType === 'pair') {
+            // Hedge/Pair bots now route through DeltaNeutralBot (same-exchange mode)
+            this.botManager.createDeltaNeutralBot(scopedConfig as any, adapter, adapter, telegram);
+          } else {
+            this.botManager.createBot(scopedConfig as BotConfig, adapter, telegram);
+          }
         }
       } catch (err) {
         // Requirement 3.5: log error but continue loading other bots

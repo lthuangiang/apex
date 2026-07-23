@@ -16,7 +16,8 @@ export function registerBacktestRoutes(router: Router, botManager: BotManager) {
       }
 
       // Only SoDEX perp
-      if (bot.config.exchange !== 'sodex' || !('symbol' in bot.config) || !bot.config.symbol.includes('PERP')) {
+      const exchange = 'exchange' in bot.config ? (bot.config as any).exchange : null;
+      if (exchange !== 'sodex' || !('symbol' in bot.config) || !(bot.config as any).symbol?.includes('PERP')) {
         return res.status(400).json({
           error: 'Backtest only available for SoDEX perpetual futures'
         });

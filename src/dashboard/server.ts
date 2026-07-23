@@ -17,7 +17,7 @@ import { confidenceCalibrator } from '../ai/FeedbackLoop/ConfidenceCalibrator.js
 import type { BotManager } from '../bot/BotManager.js';
 import { BotInstance } from '../bot/BotInstance.js';
 import { saveBotConfigsToFile } from '../bot/persistBotConfigs.js';
-import { validateBotConfig, validateHedgeBotConfig } from '../bot/loadBotConfigs.js';
+import { validateBotConfig, validatePairBotConfig, validateDeltaNeutralConfig } from '../bot/loadBotConfigs.js';
 import { createAdapter as createBotAdapter, createAdapterFromCredentials } from '../bot/adapterFactory.js';
 import type { TenantRegistry } from '../bot/TenantRegistry.js';
 import type { TenantContext } from '../bot/TenantContext.js';
@@ -34,7 +34,7 @@ export interface WalletScopedRequest extends Request {
   walletAddress: string;
   tenant: TenantContext;
 }
-import type { HedgeBotConfig } from '../bot/types.js';
+import type { PairBotConfig } from '../bot/types.js';
 import type { TelegramManager } from '../modules/TelegramManager.js';
 import { generateNonce, verifySiweMessage } from '../auth/SiweAuth.js';
 import { createBacktestRouter } from './routes/backtestRoutes.js';
@@ -290,6 +290,32 @@ export class DashboardServer {
     // Performance Analytics page — standalone HTML with charts
     this.app.get('/performance', (_req, res) => {
       res.sendFile(path.join(__dirname, 'public', 'performance.html'));
+    });
+
+    // Portfolio page — aggregated view of all accounts and positions
+    this.app.get('/portfolio', (_req, res) => {
+      res.render('portfolio', (err: Error | null, html: string) => {
+        if (err) {
+          console.error('[DashboardServer] Portfolio template render error:', err);
+          res.status(500).send(`Template render error: ${err.message}`);
+          return;
+        }
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+      });
+    });
+
+    // Reports page — trade analytics, volume, PnL breakdowns
+    this.app.get('/reports', (_req, res) => {
+      res.render('reports', (err: Error | null, html: string) => {
+        if (err) {
+          console.error('[DashboardServer] Reports template render error:', err);
+          res.status(500).send(`Template render error: ${err.message}`);
+          return;
+        }
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+      });
     });
 
     this.app.get('/api/trades', async (_req, res) => {
@@ -613,7 +639,7 @@ export class DashboardServer {
     this.app.get('/api/feedback-loop/stats', async (_req, res) => {
       try {
         const backend = (process.env.TRADE_LOG_BACKEND ?? 'json') as 'json' | 'sqlite';
-        const logPath = process.env.TRADE_LOG_PATH ?? './trades.json';
+        const logPath = process.env.TRADE_LOG_PATH ?? './data/trades.json';
         const logger = new TradeLogger(backend, logPath);
         const recentTrades = await logger.readAll();
         res.json({
@@ -658,8 +684,11 @@ export class DashboardServer {
         return;
       }
       
-      // Render Bot Detail Dashboard (existing layout.ejs)
-      res.render('layout', { botId: req.params.id, exchange: bot.config.exchange, botName: bot.config.name }, (err: Error | null, html: string) => {
+      // Delta-Neutral gets its own dedicated detail page
+      const isDeltaNeutral = (bot.config as any).botType === 'oi-farmer' || (bot.config as any).botType === 'delta-neutral' || (bot.config as any).botType === 'hedge' || (bot.config as any).botType === 'pair';
+      const template = isDeltaNeutral ? 'delta-neutral-detail' : 'layout';
+      const exchangeLabel = 'exchange' in bot.config ? (bot.config as any).exchange : `${(bot.config as any).exchangeA}+${(bot.config as any).exchangeB}`;
+      res.render(template, { botId: req.params.id, exchange: exchangeLabel, botName: bot.config.name }, (err: Error | null, html: string) => {
         if (err) {
           console.error('[DashboardServer] Bot detail template render error:', err);
           res.status(500).send(`Template render error: ${err.message}`);
@@ -727,11 +756,205 @@ export class DashboardServer {
       }
     });
 
+    // ── Account Registry Routes ───────────────────────────────────────────────
+
+    // GET /api/accounts — list all connected exchange accounts for this tenant
+    this.app.get('/api/accounts', (req, res) => {
+      const tenant = (req as unknown as WalletScopedRequest).tenant;
+      if (!tenant) {
+        res.status(401).json({ error: 'Wallet login required to manage accounts' });
+        return;
+      }
+
+      try {
+        const accounts = tenant.accountRegistry.list();
+
+        // Enrich with start-of-day balance from balance_snapshots
+        const { getDb } = require('../db/Database.js');
+        const db = getDb();
+        const today = new Date().toISOString().slice(0, 10);
+
+        const enriched = accounts.map((acct: any) => {
+          // Get earliest snapshot today (the daily capture at 0h UTC or account connect)
+          const sodRow = db.prepare(`
+            SELECT equity FROM balance_snapshots
+            WHERE date(timestamp) = ? AND account_id = ?
+            ORDER BY timestamp ASC LIMIT 1
+          `).get(today, acct.id) as { equity: number } | undefined;
+
+          const sodBalance = sodRow?.equity ?? null;
+          const currentBalance = acct.balanceUsd ?? null;
+          const todayChange = (currentBalance != null && sodBalance != null)
+            ? currentBalance - sodBalance
+            : null;
+
+          return { ...acct, sodBalance, todayChange };
+        });
+
+        res.json({ accounts: enriched });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/accounts — connect a new exchange account
+    this.app.post('/api/accounts', async (req, res) => {
+      const tenant = (req as unknown as WalletScopedRequest).tenant;
+      if (!tenant) {
+        res.status(401).json({ error: 'Wallet login required to manage accounts' });
+        return;
+      }
+
+      const { label, type, credentials } = req.body as {
+        label?: string;
+        type?: string;
+        credentials?: any;
+      };
+
+      if (!label || !type || !credentials) {
+        res.status(400).json({ error: 'Missing required fields: label, type, credentials' });
+        return;
+      }
+
+      const validTypes = ['cex', 'dex-wallet', 'perp-dex'];
+      if (!validTypes.includes(type)) {
+        res.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(', ')}` });
+        return;
+      }
+
+      const validExchanges = ['sodex', 'dango', 'decibel', 'hibachi', 'ondoperps', 'perpl'];
+      if (!credentials.exchange || !validExchanges.includes(credentials.exchange)) {
+        res.status(400).json({ error: `Invalid exchange. Must be one of: ${validExchanges.join(', ')}` });
+        return;
+      }
+
+      // ── Validate credentials by calling the exchange API ────────────────────
+      let balance: number;
+      try {
+        const adapter = createAdapterFromCredentials(credentials.exchange, credentials);
+        balance = await adapter.get_balance();
+        if (typeof balance !== 'number' || isNaN(balance)) {
+          res.status(400).json({ error: 'Credentials validation failed: could not retrieve balance (invalid response)' });
+          return;
+        }
+      } catch (err: any) {
+        const msg = err?.message || String(err);
+        console.warn(`[POST /api/accounts] Credential validation failed for ${credentials.exchange}:`, msg);
+        res.status(400).json({ error: `Credentials validation failed: ${msg}` });
+        return;
+      }
+
+      // ── Save account + capture initial balance snapshot ─────────────────────
+      try {
+        const account = tenant.accountRegistry.add(label, type as any, credentials);
+
+        // Update the account's balance immediately
+        tenant.accountRegistry.updateBalance(account.id, balance);
+
+        // Capture initial balance snapshot for reporting
+        const { captureBalance } = await import('../db/ReportingCollector.js');
+        captureBalance({
+          exchange: credentials.exchange,
+          equity: balance,
+          trigger: 'daily',
+          walletAddress: tenant.walletAddress,
+          accountId: account.id,
+        });
+
+        res.status(201).json({ ok: true, account: { ...account, balanceUsd: balance, lastSyncAt: new Date().toISOString() } });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // DELETE /api/accounts/:id — disconnect an exchange account
+    this.app.delete('/api/accounts/:id', (req, res) => {
+      const tenant = (req as unknown as WalletScopedRequest).tenant;
+      if (!tenant) {
+        res.status(401).json({ error: 'Wallet login required to manage accounts' });
+        return;
+      }
+
+      try {
+        const deleted = tenant.accountRegistry.delete(req.params.id);
+        if (!deleted) {
+          res.status(404).json({ error: 'Account not found' });
+          return;
+        }
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/accounts/:id/refresh-balance — fetch live balance from exchange, update + capture snapshot
+    this.app.post('/api/accounts/:id/refresh-balance', async (req, res) => {
+      const tenant = (req as unknown as WalletScopedRequest).tenant;
+      if (!tenant) {
+        res.status(401).json({ error: 'Wallet login required' });
+        return;
+      }
+
+      const accountId = req.params.id;
+      const creds = tenant.accountRegistry.getCredentials(accountId);
+      if (!creds) {
+        res.status(404).json({ error: 'Account not found' });
+        return;
+      }
+
+      try {
+        const adapter = createAdapterFromCredentials(creds.exchange, creds);
+        const balance = await adapter.get_balance();
+
+        if (typeof balance !== 'number' || isNaN(balance)) {
+          res.status(502).json({ error: 'Exchange returned invalid balance' });
+          return;
+        }
+
+        // Update AccountRegistry
+        tenant.accountRegistry.updateBalance(accountId, balance);
+
+        // Capture balance snapshot
+        const { captureBalance } = await import('../db/ReportingCollector.js');
+        captureBalance({
+          exchange: creds.exchange,
+          equity: balance,
+          trigger: 'daily',
+          walletAddress: tenant.walletAddress,
+          accountId,
+        });
+
+        res.json({ ok: true, balanceUsd: balance, lastSyncAt: new Date().toISOString() });
+      } catch (err: any) {
+        res.status(502).json({ error: `Failed to fetch balance: ${err?.message || String(err)}` });
+      }
+    });
+
+    // GET /api/accounts/:id/credentials — get decrypted credentials (internal use for bot creation)
+    this.app.get('/api/accounts/:id/credentials', (req, res) => {
+      const tenant = (req as unknown as WalletScopedRequest).tenant;
+      if (!tenant) {
+        res.status(401).json({ error: 'Wallet login required' });
+        return;
+      }
+
+      try {
+        const creds = tenant.accountRegistry.getCredentials(req.params.id);
+        if (!creds) {
+          res.status(404).json({ error: 'Account not found' });
+          return;
+        }
+        res.json({ credentials: creds });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
     // GET /api/exchanges/:exchange/symbols — list supported symbols for an exchange
     this.app.get('/api/exchanges/:exchange/symbols', async (req, res) => {
       const exchange = (req.params.exchange as string).toLowerCase();
 
-      // SoDEX: fetch live from public API
+      // SoDEX: fetch live from public API (includes market metadata for leverage)
       if (exchange === 'sodex') {
         try {
           const { default: axios } = await import('axios');
@@ -741,11 +964,25 @@ export class DashboardServer {
             .map((s: any) => s.name as string)
             .filter(Boolean)
             .sort();
-          res.json({ symbols: symbols.length ? symbols : null });
+          // Build market metadata map for frontend (leverage, sizing, fees)
+          const markets: Record<string, { maxLeverage: number; initLeverage: number; minNotional: number; minQuantity: number; stepSize: string; makerFee: number; takerFee: number }> = {};
+          for (const m of data) {
+            if (!m.name) continue;
+            markets[m.name] = {
+              maxLeverage: Number(m.maxLeverage ?? m.initLeverage ?? 20),
+              initLeverage: Number(m.initLeverage ?? m.maxLeverage ?? 20),
+              minNotional: Number(m.minNotional ?? 10),
+              minQuantity: Number(m.minQuantity ?? 1),
+              stepSize: String(m.stepSize ?? '1'),
+              makerFee: Number(m.makerFee ?? 0.00012),
+              takerFee: Number(m.takerFee ?? 0.0004),
+            };
+          }
+          res.json({ symbols: symbols.length ? symbols : null, markets });
           return;
         } catch (err) {
           console.warn('[GET /api/exchanges/sodex/symbols] live fetch failed:', err);
-          res.json({ symbols: null }); // frontend will fall back
+          res.json({ symbols: null, markets: {} }); // frontend will fall back
           return;
         }
       }
@@ -761,12 +998,21 @@ export class DashboardServer {
           if (resp.ok) {
             const json = await resp.json() as { success: boolean; result: any[] };
             if (json.success && Array.isArray(json.result)) {
+              const markets: Record<string, { maxLeverage: number; initLeverage: number; minNotional: number }> = {};
               const symbols = json.result
                 .filter((c: any) => c.market && c.status !== 'inactive')
-                .map((c: any) => (c.market as string).replace(/-USD\.P$/, '-PERP'))
+                .map((c: any) => {
+                  const sym = (c.market as string).replace(/-USD\.P$/, '-PERP');
+                  markets[sym] = {
+                    maxLeverage: Number(c.maxLeverage ?? c.max_leverage ?? 10),
+                    initLeverage: Number(c.initLeverage ?? c.init_leverage ?? c.maxLeverage ?? 10),
+                    minNotional: Number(c.minNotional ?? c.min_notional ?? 10),
+                  };
+                  return sym;
+                })
                 .sort();
               if (symbols.length > 0) {
-                res.json({ symbols });
+                res.json({ symbols, markets });
                 return;
               }
             }
@@ -775,7 +1021,7 @@ export class DashboardServer {
           console.warn('[GET /api/exchanges/ondoperps/symbols] live fetch failed:', err);
         }
         // Fallback static list if live fetch fails
-        res.json({ symbols: null });
+        res.json({ symbols: null, markets: {} });
         return;
       }
 
@@ -790,6 +1036,80 @@ export class DashboardServer {
       res.json({ symbols });
     });
 
+    // GET /api/exchanges/:exchange/funding-rate?symbol=X — current funding rate (or null)
+    this.app.get('/api/exchanges/:exchange/funding-rate', async (req, res) => {
+      const exchange = (req.params.exchange as string).toLowerCase();
+      const symbol = (req.query.symbol as string | undefined) || '';
+
+      if (!symbol) {
+        res.json({ fundingRate: null });
+        return;
+      }
+
+      try {
+        // Try to get funding rate from a running bot's adapter first
+        const manager = this._resolveManager(req);
+        if (manager) {
+          const bots = manager.getAllBots();
+          for (const bot of bots) {
+            const cfg = bot.config as any;
+            const botExchange = (cfg.exchange || cfg.exchangeA || '').toLowerCase();
+            if (botExchange === exchange) {
+              const adapter = (bot as any).adapter || (bot as any).adapterA;
+              if (adapter && typeof adapter.get_funding_rate === 'function') {
+                const rate = await adapter.get_funding_rate(symbol);
+                res.json({ fundingRate: rate ?? null });
+                return;
+              }
+            }
+          }
+        }
+
+        // Fallback: public API fetch for known exchanges
+        if (exchange === 'sodex') {
+          const { default: axios } = await import('axios');
+          const resp = await axios.get(
+            `https://mainnet-gw.sodex.dev/api/v1/perps/markets/funding-rates`,
+            { timeout: 5000 }
+          );
+          const rates = resp.data?.data ?? [];
+          const match = rates.find((r: any) => r.name === symbol || r.symbol === symbol);
+          res.json({ fundingRate: match ? Number(match.fundingRate ?? match.funding_rate ?? 0) : null });
+          return;
+        }
+
+        if (exchange === 'perpl') {
+          const resp = await fetch(
+            `https://api.perpl.exchange/v1/markets/${encodeURIComponent(symbol)}/funding`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+          if (resp.ok) {
+            const json = await resp.json() as any;
+            res.json({ fundingRate: json.fundingRate ?? json.funding_rate ?? null });
+            return;
+          }
+        }
+
+        if (exchange === 'ondoperps') {
+          const resp = await fetch(
+            `https://api.ondoperps.xyz/v1/perps/funding-rate?symbol=${encodeURIComponent(symbol)}`,
+            { signal: AbortSignal.timeout(5000) }
+          );
+          if (resp.ok) {
+            const json = await resp.json() as any;
+            res.json({ fundingRate: json.fundingRate ?? json.funding_rate ?? null });
+            return;
+          }
+        }
+
+        // Exchange not supported or no data available
+        res.json({ fundingRate: null });
+      } catch (err) {
+        console.warn(`[GET /api/exchanges/${exchange}/funding-rate] error:`, err);
+        res.json({ fundingRate: null });
+      }
+    });
+
     // POST /api/bots - Create a new bot at runtime
     this.app.post('/api/bots', async (req, res) => {
       const manager = this._resolveManager(req);
@@ -800,15 +1120,180 @@ export class DashboardServer {
 
       const body = req.body as Record<string, unknown>;
 
+      // ── Account Registry credential resolution ─────────────────────────────
+      // If accountId is present, load credentials from AccountRegistry instead
+      // of expecting inline credentials in the request body.
+      const tenant = (req as unknown as WalletScopedRequest).tenant;
+      if (body.accountId && tenant) {
+        const creds = tenant.accountRegistry.getCredentials(body.accountId as string);
+        if (!creds) {
+          res.status(404).json({ error: `Account not found: ${body.accountId}` });
+          return;
+        }
+        // Merge credentials into body — exchange + all credential fields
+        if (!body.exchange) body.exchange = creds.exchange;
+        Object.assign(body, creds);
+      }
+
+      // For DN/OI-farmer bots: resolve hedge leg credentials from hedgeAccountId
+      if (body.hedgeAccountId && tenant) {
+        const hedgeCreds = tenant.accountRegistry.getCredentials(body.hedgeAccountId as string);
+        if (!hedgeCreds) {
+          res.status(404).json({ error: `Hedge account not found: ${body.hedgeAccountId}` });
+          return;
+        }
+        // Map hedge credentials to the hedgeXxx fields expected by DN bot creation
+        if (!body.exchangeB) body.exchangeB = hedgeCreds.exchange;
+        if (hedgeCreds.apiKeyId) body.hedgeApiKeyId = hedgeCreds.apiKeyId;
+        if (hedgeCreds.apiKeySecret) body.hedgeApiKeySecret = hedgeCreds.apiKeySecret;
+        if (hedgeCreds.apiKey) body.hedgeApiKey = hedgeCreds.apiKey;
+        if (hedgeCreds.apiSecret) body.hedgeApiSecret = hedgeCreds.apiSecret;
+        if (hedgeCreds.subaccount) body.hedgeSubaccount = hedgeCreds.subaccount;
+        if (hedgeCreds.hibachiApiKey) body.hedgeHibachiApiKey = hedgeCreds.hibachiApiKey;
+        if (hedgeCreds.hibachiAccountId) body.hedgeHibachiAccountId = hedgeCreds.hibachiAccountId;
+        if (hedgeCreds.hibachiPrivateKey) body.hedgeHibachiPrivateKey = hedgeCreds.hibachiPrivateKey;
+        if (hedgeCreds.hibachiAccountType) body.hedgeHibachiAccountType = hedgeCreds.hibachiAccountType;
+        if (hedgeCreds.privateKey) body.hedgePrivateKey = hedgeCreds.privateKey;
+        if (hedgeCreds.perplApiKey) body.hedgePerplApiKey = hedgeCreds.perplApiKey;
+        if (hedgeCreds.perplApiKeySecret) body.hedgePerplApiKeySecret = hedgeCreds.perplApiKeySecret;
+      }
+
       try {
-        const isHedge = body.botType === 'hedge';
+        const isHedge = body.botType === 'hedge' || body.botType === 'pair';
+
+        // ── USD-to-asset conversion (Wave 3 UX improvement) ──────────────────
+        // If client sends orderSizeMinUsd / orderSizeMaxUsd, convert to asset units
+        // using a rough price estimate. The Watcher will refine dynamically at runtime.
+        if (!isHedge && body.orderSizeMinUsd !== undefined) {
+          const minUsd = Number(body.orderSizeMinUsd) || 100;
+          const maxUsd = Number(body.orderSizeMaxUsd) || 200;
+          // Default price estimates per symbol prefix (rough — refined at runtime)
+          const symbol = String(body.symbol || '').toUpperCase();
+          let priceEstimate = 100000; // BTC default
+          if (symbol.startsWith('ETH')) priceEstimate = 3500;
+          else if (symbol.startsWith('SOL')) priceEstimate = 150;
+          else if (symbol.startsWith('XAU') || symbol.startsWith('GOLD')) priceEstimate = 2500;
+          else if (symbol.startsWith('AAPL') || symbol.startsWith('TSLA') || symbol.startsWith('NVDA')) priceEstimate = 200;
+          else if (symbol.startsWith('MON')) priceEstimate = 2;
+
+          body.orderSizeMin = Math.max(0.001, minUsd / priceEstimate);
+          body.orderSizeMax = Math.max(0.002, maxUsd / priceEstimate);
+          // Store USD values for display and runtime recalculation
+          body.orderSizeMinUsd = minUsd;
+          body.orderSizeMaxUsd = maxUsd;
+        }
+
+        // Store leverage + margin mode in config (passed through to adapter)
+        if (body.leverage !== undefined) {
+          body.leverage = Number(body.leverage) || 5;
+        }
+        if (!body.marginMode) {
+          body.marginMode = 'cross';
+        }
 
         if (isHedge) {
-          validateHedgeBotConfig(body);
+          // Hedge/Pair bots now use DeltaNeutralBot in same-exchange mode.
+          // Build a complete DeltaNeutralConfig with sensible defaults for missing fields.
+          const exchange = body.exchange as string;
+          const symbolA = body.symbol || body.symbolA || '';
+          const symbolB = body.symbolB || symbolA;
+          const id = body.id || `hedge-${exchange}-${symbolA}-${Date.now().toString(36)}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
+          const oiConfig: any = {
+            id,
+            name: body.name || `${exchange.charAt(0).toUpperCase() + exchange.slice(1)} ${symbolA}`,
+            botType: 'delta-neutral',
+            tags: body.tags ? (Array.isArray(body.tags) ? body.tags : String(body.tags).split(',').map((s: string) => s.trim()).filter(Boolean)) : ['hedge'],
+            autoStart: body.autoStart ?? false,
+            tradeLogBackend: 'json',
+            tradeLogPath: `./trades-${id}.json`,
+            // Exchange
+            exchangeA: exchange,
+            exchangeB: exchange,
+            credentialKeyA: body.credentialKey || body.credentialKeyA || 'inline',
+            credentialKeyB: body.credentialKey || body.credentialKeyB || 'inline',
+            // Position
+            symbol: symbolA,
+            symbolA,
+            symbolB,
+            legValueUsd: Number(body.orderSizeMinUsd || body.legValueUsd) || 100,
+            orderSizeMinUsd: Number(body.orderSizeMinUsd || body.legValueUsd) || 100,
+            orderSizeMaxUsd: Number(body.orderSizeMaxUsd || body.legValueUsd) || 200,
+            primaryDirection: body.direction || body.primaryDirection || 'long',
+            direction: body.direction || body.primaryDirection || 'long',
+            // Hold & exit
+            minHoldSecs: Number(body.minHoldSecs) || 120,
+            maxHoldSecs: Number(body.maxHoldSecs || body.holdPeriodSecs) || 1800,
+            maxLossUsd: Number(body.maxLossUsd) || 15,
+            takeProfitUsd: Number(body.takeProfitUsd) || 0,
+            maxDeltaDivergenceUsd: Number(body.maxDeltaUsd || body.maxDeltaDivergenceUsd) || 30,
+            // Funding
+            maxFundingRateThreshold: Number(body.maxFundingRateThreshold) || 0.01,
+            autoFlipOnFunding: body.autoFlipOnFunding ?? false,
+            // Timing
+            tickIntervalSecs: Number(body.tickIntervalSecs) || 60,
+            cooldownSecs: Number(body.cooldownSecs) || 30,
+            // Entry mode
+            entryMode: body.entryMode || 'taker',
+            chunkSizeUsd: Number(body.chunkSizeUsd) || 100,
+            chunkTimeoutSecs: Number(body.chunkTimeoutSecs) || 30,
+            maxMakerAttempts: Number(body.maxMakerAttempts) || 3,
+            maxTotalEntryTimeSecs: Number(body.maxTotalEntryTimeSecs) || 300,
+          };
+          // Pass inline credentials through
+          Object.assign(oiConfig, body); // merge all body fields (creds etc.)
+          // Re-set the computed fields (override body's original botType etc.)
+          oiConfig.botType = 'delta-neutral';
+          oiConfig.exchangeA = exchange;
+          oiConfig.exchangeB = exchange;
+          oiConfig.symbol = symbolA;
+          oiConfig.symbolA = symbolA;
+          oiConfig.symbolB = symbolB;
+          oiConfig.primaryDirection = oiConfig.direction || body.direction || 'long';
+          oiConfig.tags = Array.isArray(body.tags) ? body.tags : (body.tags ? String(body.tags).split(',').map((s: string) => s.trim()).filter(Boolean) : ['hedge']);
+          oiConfig.autoStart = body.autoStart ?? false;
+          oiConfig.tradeLogBackend = 'json';
+          oiConfig.tradeLogPath = `./trades-${id}.json`;
+          // Force correct sizing (body.legValueUsd from hidden field can override)
+          oiConfig.legValueUsd = Number(body.orderSizeMinUsd || body.oiSizeMinUsd) || Number(body.legValueUsd) || 100;
+          oiConfig.orderSizeMinUsd = Number(body.orderSizeMinUsd || body.oiSizeMinUsd) || Number(body.legValueUsd) || 100;
+          oiConfig.orderSizeMaxUsd = Number(body.orderSizeMaxUsd || body.oiSizeMaxUsd) || Number(body.orderSizeMinUsd || body.oiSizeMinUsd) || 200;
+          oiConfig.credentialKeyA = body.credentialKey || body.credentialKeyA || 'inline';
+          oiConfig.credentialKeyB = body.credentialKey || body.credentialKeyB || 'inline';
+
+          validateDeltaNeutralConfig(oiConfig);
           const adapter = (body.apiKey || body.privateKey || body.dangoPrivateKey || body.hibachiApiKey || body.apiKeyId || body.perplApiKey)
-            ? createAdapterFromCredentials(body.exchange as string, body as any)
-            : createBotAdapter(body.exchange as string, body.credentialKey as string);
-          const bot = manager.createHedgeBot(body as unknown as HedgeBotConfig, adapter, this._telegram as any);
+            ? createAdapterFromCredentials(exchange, body as any)
+            : createBotAdapter(exchange, body.credentialKey as string);
+          // Same-exchange: use same adapter for both legs
+          const bot = manager.createDeltaNeutralBot(oiConfig, adapter, adapter, this._telegram as any);
+          if (body.autoStart) await bot.start();
+        } else if (body.botType === 'oi-farmer' || body.botType === 'delta-neutral') {
+          validateDeltaNeutralConfig(body);
+          const oiConfig = body as any;
+          // Create adapter for primary leg (exchangeA) — credentials come inline from wizard
+          const adapterA = (body.perplApiKey || body.apiKey || body.privateKey || body.dangoPrivateKey || body.hibachiApiKey || body.apiKeyId)
+            ? createAdapterFromCredentials(oiConfig.exchangeA, body as any)
+            : createBotAdapter(oiConfig.exchangeA, oiConfig.credentialKeyA);
+          // Create adapter for hedge leg (exchangeB) — inline credentials from wizard
+          let adapterB: any;
+          const hedgeCredsMap: Record<string, any> = {
+            ondoperps: { apiKeyId: body.hedgeApiKeyId, apiKeySecret: body.hedgeApiKeySecret },
+            sodex: { apiKey: body.hedgeApiKey, apiSecret: body.hedgeApiSecret, subaccount: body.hedgeSubaccount },
+            hibachi: { hibachiApiKey: body.hedgeHibachiApiKey, hibachiAccountId: body.hedgeHibachiAccountId, hibachiPrivateKey: body.hedgeHibachiPrivateKey, hibachiAccountType: body.hedgeHibachiAccountType || 'trustless' },
+            decibel: { privateKey: body.hedgePrivateKey },
+            perpl: { perplApiKey: body.hedgePerplApiKey, perplApiKeySecret: body.hedgePerplApiKeySecret },
+          };
+          const hedgeCreds = hedgeCredsMap[oiConfig.exchangeB];
+          const hasHedgeCreds = hedgeCreds && Object.values(hedgeCreds).some((v: any) => v);
+          if (oiConfig.exchangeA === oiConfig.exchangeB && !hasHedgeCreds) {
+            // Same-exchange DN (hedge mode): reuse primary adapter for both legs
+            adapterB = adapterA;
+          } else if (hasHedgeCreds) {
+            adapterB = createAdapterFromCredentials(oiConfig.exchangeB, hedgeCreds);
+          } else {
+            adapterB = createBotAdapter(oiConfig.exchangeB, oiConfig.credentialKeyB);
+          }
+          const bot = manager.createDeltaNeutralBot(oiConfig, adapterA, adapterB, this._telegram as any);
           if (body.autoStart) await bot.start();
         } else {
           if (!validateBotConfig(body)) {
@@ -823,7 +1308,6 @@ export class DashboardServer {
         }
 
         // Persist updated config list to disk (tenant-scoped)
-        const tenant = (req as unknown as WalletScopedRequest).tenant;
         if (tenant) {
           tenant.persistConfigs();
         }
@@ -1016,6 +1500,60 @@ export class DashboardServer {
       }
     });
 
+    // POST /api/bots/:id/pause - Pause a bot (stop new entries, keep positions open)
+    this.app.post('/api/bots/:id/pause', async (req, res) => {
+      const manager = this._resolveManager(req);
+      if (!manager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+
+      const bot = manager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+
+      if (bot.state.botStatus !== 'RUNNING') {
+        res.status(400).json({ error: 'Bot is not running' });
+        return;
+      }
+
+      try {
+        await bot.pause();
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // POST /api/bots/:id/resume - Resume a paused bot
+    this.app.post('/api/bots/:id/resume', async (req, res) => {
+      const manager = this._resolveManager(req);
+      if (!manager) {
+        res.status(503).json({ error: 'Bot manager not available' });
+        return;
+      }
+
+      const bot = manager.getBot(req.params.id);
+      if (!bot) {
+        res.status(404).json({ error: 'Bot not found' });
+        return;
+      }
+
+      if (bot.state.botStatus !== 'PAUSED') {
+        res.status(400).json({ error: 'Bot is not paused' });
+        return;
+      }
+
+      try {
+        await bot.resume();
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
     // POST /api/bots/:id/close - Force close position
     this.app.post('/api/bots/:id/close', async (req, res) => {
       const manager = this._resolveManager(req);
@@ -1042,6 +1580,22 @@ export class DashboardServer {
       }
     });
 
+    // GET /api/bots/:id/status - Full bot status (used by Delta-Neutral detail page)
+    this.app.get('/api/bots/:id/status', (req, res) => {
+      const manager = this._resolveManager(req);
+      if (!manager) { res.status(503).json({ error: 'Bot manager not available' }); return; }
+      const bot = manager.getBot(req.params.id);
+      if (!bot) { res.status(404).json({ error: 'Bot not found' }); return; }
+      try {
+        const status = bot.getStatus();
+        // Also include eventLog for Delta-Neutral detail page
+        const eventLog = (bot.state as any).eventLog || [];
+        res.json({ ...status, eventLog });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
     // ── Per-Bot Control Status & Actions ──────────────────────────────────────
 
     // GET /api/bots/:id/control/status - Get bot control status
@@ -1058,15 +1612,18 @@ export class DashboardServer {
       }
       
       try {
-        // HedgeBot doesn't have a SessionManager/Watcher — return simplified status
+        // PairBot doesn't have a SessionManager/Watcher — return simplified status
         if (!(bot instanceof BotInstance)) {
+          const hasPos = 'hedgePosition' in bot.state
+            ? (bot.state as any).hedgePosition !== null
+            : ('position' in bot.state ? (bot.state as any).position !== null : false);
           res.json({
             isRunning: bot.state.botStatus === 'RUNNING',
             mode: null,
             maxLoss: null,
             currentPnL: bot.state.sessionPnl,
             uptime: 0,
-            hasPosition: bot.state.hedgePosition !== null,
+            hasPosition: hasPos,
             positionText: '',
             cooldown: null,
           });
@@ -1286,7 +1843,7 @@ export class DashboardServer {
       }
       
       try {
-        const trades = await bot.getTradeLogger().readAll();
+        const trades = await (bot as any).getTradeLogger().readAll();
         const summary = this._analyticsEngine.compute(trades);
         res.json(summary);
       } catch (err) {
@@ -1398,7 +1955,7 @@ export class DashboardServer {
       }
       
       try {
-        const trades = await bot.getTradeLogger().readAll();
+        const trades = await (bot as any).getTradeLogger().readAll();
         res.json(trades);
       } catch (err) {
         res.status(500).json({ error: String(err) });
@@ -1434,7 +1991,7 @@ export class DashboardServer {
         return;
       }
       
-      // HedgeBot uses hedgePosition instead of openPosition
+      // PairBot uses hedgePosition instead of openPosition
       const hedgePos = (bot.state as any).hedgePosition;
       if (hedgePos) {
         res.json({ type: 'hedge', hedgePosition: hedgePos });
@@ -1472,7 +2029,7 @@ export class DashboardServer {
       
       try {
         if (!(bot instanceof BotInstance)) {
-          // HedgeBot: return raw config (no ConfigStore)
+          // PairBot: return raw config (no ConfigStore)
           res.json(bot.config);
           return;
         }
@@ -1660,6 +2217,198 @@ export class DashboardServer {
       } catch (err) { res.status(500).json({ error: String(err) }); }
     });
 
+    // ── Portfolio Aggregation Route ───────────────────────────────────────────
+
+    // GET /api/portfolio — aggregates account balances and bot positions into a
+    // single portfolio snapshot: total equity, directional bias, unrealized PnL,
+    // liquidation risk, per-account breakdown, and risk metrics.
+    this.app.get('/api/portfolio', async (req, res) => {
+      const manager = this._resolveManager(req);
+      const tenant = (req as unknown as WalletScopedRequest).tenant;
+
+      try {
+        // ── 1. Collect account data from AccountRegistry ──────────────────────
+        interface AccountSummary {
+          id: string;
+          exchange: string;
+          label: string;
+          balance: number;
+          openPositions: number;
+          pnl: number;
+        }
+
+        const accountSummaries: AccountSummary[] = [];
+        let totalAccountBalance = 0;
+
+        if (tenant) {
+          try {
+            const accounts = tenant.accountRegistry.list();
+            for (const acct of accounts) {
+              const balance = acct.balanceUsd ?? 0;
+              totalAccountBalance += balance;
+              accountSummaries.push({
+                id: acct.id,
+                exchange: acct.exchange,
+                label: acct.label,
+                balance,
+                openPositions: 0, // will be incremented below from bot data
+                pnl: 0,           // will be summed from bot state below
+              });
+            }
+          } catch (acctErr) {
+            console.warn('[/api/portfolio] Failed to load accounts:', acctErr);
+          }
+        }
+
+        // ── 2. Collect position + PnL data from all bots ─────────────────────
+        let totalUnrealizedPnl = 0;
+        let totalSessionPnl = 0;
+        let totalLongNotional = 0;
+        let totalShortNotional = 0;
+        let totalNotional = 0;
+        let totalLeverage = 0;
+        let leverageSamples = 0;
+        let totalMaintenanceMargin = 0;
+        let totalPositionCount = 0;
+
+        if (manager) {
+          const bots = manager.getAllBots();
+
+          for (const bot of bots) {
+            const state = bot.state;
+            totalSessionPnl += state.sessionPnl ?? 0;
+
+            // Unrealized PnL from open position (BotInstance)
+            const pos = state.openPosition;
+            if (pos) {
+              totalUnrealizedPnl += pos.unrealizedPnl ?? 0;
+              totalPositionCount++;
+
+              // Compute notional for directional bias
+              const notional = pos.size * pos.markPrice;
+              totalNotional += notional;
+              if (pos.side === 'long') {
+                totalLongNotional += notional;
+              } else {
+                totalShortNotional += notional;
+              }
+
+              // Estimate maintenance margin (rough: 2.5% of notional is typical)
+              totalMaintenanceMargin += notional * 0.025;
+            }
+
+            // Hedge position (PairBot / DeltaNeutralBot store in hedgePosition)
+            const hedgePos = (state as any).hedgePosition;
+            if (hedgePos) {
+              totalUnrealizedPnl += hedgePos.unrealizedPnl ?? 0;
+              totalPositionCount++;
+
+              // DN positions often are net-zero by design — count the absolute notional
+              const notionalA = (hedgePos.sizeA ?? hedgePos.size ?? 0) * (hedgePos.markPriceA ?? hedgePos.markPrice ?? 0);
+              const notionalB = (hedgePos.sizeB ?? 0) * (hedgePos.markPriceB ?? 0);
+              totalNotional += notionalA + notionalB;
+              // For DN: long on A, short on B — add to respective buckets
+              totalLongNotional += notionalA;
+              totalShortNotional += notionalB;
+              totalMaintenanceMargin += (notionalA + notionalB) * 0.025;
+            }
+
+            // Leverage contribution
+            const cfg = bot.config as any;
+            const leverage = cfg.leverage ?? cfg.leverageA ?? 0;
+            if (leverage > 0) {
+              totalLeverage += leverage;
+              leverageSamples++;
+            }
+
+            // Map bot PnL back to accounts by exchange (best-effort match)
+            const botExchange = (cfg.exchange ?? cfg.exchangeA ?? '').toLowerCase();
+            if (botExchange) {
+              const matchingAccount = accountSummaries.find(a => a.exchange.toLowerCase() === botExchange);
+              if (matchingAccount) {
+                matchingAccount.pnl += state.sessionPnl ?? 0;
+                if (state.openPosition || (state as any).hedgePosition) {
+                  matchingAccount.openPositions++;
+                }
+              }
+            }
+          }
+        }
+
+        // ── 3. Compute aggregate metrics ──────────────────────────────────────
+        // Total equity = sum of account balances + unrealized PnL
+        const totalEquity = totalAccountBalance + totalUnrealizedPnl;
+
+        // Directional bias: +1 = fully long, -1 = fully short, 0 = neutral
+        let directionalBias = 0;
+        if (totalNotional > 0) {
+          directionalBias = (totalLongNotional - totalShortNotional) / totalNotional;
+          // Clamp to [-1, 1]
+          directionalBias = Math.max(-1, Math.min(1, directionalBias));
+        }
+
+        // Average leverage
+        const averageLeverage = leverageSamples > 0 ? totalLeverage / leverageSamples : 0;
+
+        // At-risk percentage: ratio of position notional to account equity
+        const atRiskPct = totalEquity > 0 ? (totalNotional / totalEquity) * 100 : 0;
+
+        // Liquidation buffer: how much equity remains above maintenance margin
+        const availableAboveMaintenance = totalEquity - totalMaintenanceMargin;
+        const liquidationBufferPct = totalEquity > 0
+          ? Math.max(0, (availableAboveMaintenance / totalEquity) * 100)
+          : 100;
+
+        // Liquidation risk tier
+        let liquidationRisk: 'low' | 'medium' | 'high';
+        if (liquidationBufferPct >= 70 || totalNotional === 0) {
+          liquidationRisk = 'low';
+        } else if (liquidationBufferPct >= 30) {
+          liquidationRisk = 'medium';
+        } else {
+          liquidationRisk = 'high';
+        }
+
+        // ── 4. Build response ─────────────────────────────────────────────────
+        res.json({
+          totalEquity: Math.round(totalEquity * 100) / 100,
+          directionalBias: Math.round(directionalBias * 10000) / 10000,
+          unrealizedPnl: Math.round(totalUnrealizedPnl * 100) / 100,
+          liquidationRisk,
+          accounts: accountSummaries.map(a => ({
+            ...a,
+            balance: Math.round(a.balance * 100) / 100,
+            pnl: Math.round(a.pnl * 100) / 100,
+          })),
+          risk: {
+            atRiskPct: Math.round(atRiskPct * 100) / 100,
+            liquidationBuffer: `${Math.round(liquidationBufferPct)}%`,
+            maintenanceMargin: Math.round(totalMaintenanceMargin * 100) / 100,
+            averageLeverage: Math.round(averageLeverage * 10) / 10,
+          },
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.error('[/api/portfolio] Error aggregating portfolio:', err);
+        // Return a safe partial response rather than a 500
+        res.json({
+          totalEquity: 0,
+          directionalBias: 0,
+          unrealizedPnl: 0,
+          liquidationRisk: 'low' as const,
+          accounts: [],
+          risk: {
+            atRiskPct: 0,
+            liquidationBuffer: '100%',
+            maintenanceMargin: 0,
+            averageLeverage: 0,
+          },
+          timestamp: new Date().toISOString(),
+          error: String(err),
+        });
+      }
+    });
+
     console.log('[DashboardServer] Manager routes registered');
   }
 
@@ -1804,7 +2553,139 @@ export class DashboardServer {
   }
 
   start(): void {
+    this._setupReportingRoutes();
     this.app.listen(this.port, () => console.log(`[DashboardServer] Listening on http://localhost:${this.port}`));
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REPORTING & ANALYTICS API
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private _setupReportingRoutes(): void {
+    // GET /api/reports/today — Today's summary: volume, PnL, fees, trades (filterable)
+    this.app.get('/api/reports/today', (req, res) => {
+      try {
+        const { getTodaySummary, getTodayByExchange, getTodayByBot } = require('../db/TradeEventRepository.js');
+        const filter: any = {};
+        if (req.query.date) filter.date = req.query.date;
+        if (req.query.botId) filter.botId = req.query.botId;
+        if (req.query.exchange) filter.exchange = req.query.exchange;
+        if (req.query.walletAddress) filter.walletAddress = req.query.walletAddress;
+
+        const summary = getTodaySummary(filter);
+        const byExchange = getTodayByExchange(filter);
+        const byBot = getTodayByBot(filter);
+
+        res.json({ summary, byExchange, byBot });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // GET /api/reports/volume — Today's volume counters (fast, pre-aggregated)
+    this.app.get('/api/reports/volume', (req, res) => {
+      try {
+        const { getTodayVolume, getTodayVolumeByExchange, getTodayVolumeByBot } = require('../db/VolumeCounterRepository.js');
+        const filter: any = {};
+        if (req.query.date) filter.date = req.query.date;
+        if (req.query.botId) filter.botId = req.query.botId;
+        if (req.query.exchange) filter.exchange = req.query.exchange;
+        if (req.query.walletAddress) filter.walletAddress = req.query.walletAddress;
+
+        const total = getTodayVolume(filter);
+        const byExchange = getTodayVolumeByExchange(filter);
+        const byBot = getTodayVolumeByBot(filter);
+
+        res.json({ total, byExchange, byBot });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // GET /api/reports/history — Daily aggregates over a date range (for charts)
+    this.app.get('/api/reports/history', (req, res) => {
+      try {
+        const { getDailyAggregates } = require('../db/TradeEventRepository.js');
+        const { getVolumeHistory } = require('../db/VolumeCounterRepository.js');
+
+        const range = (req.query.range as string) || '7d';
+        const days = range === '30d' ? 30 : range === 'all' ? 365 : 7;
+        const endDate = new Date().toISOString().slice(0, 10);
+        const startDate = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+
+        const filter: any = {};
+        if (req.query.botId) filter.botId = req.query.botId;
+        if (req.query.exchange) filter.exchange = req.query.exchange;
+        if (req.query.walletAddress) filter.walletAddress = req.query.walletAddress;
+
+        const dailyPnl = getDailyAggregates(startDate, endDate, filter);
+        const dailyVolume = getVolumeHistory(startDate, endDate, filter);
+
+        res.json({ dailyPnl, dailyVolume, startDate, endDate });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // GET /api/reports/balance-history — Balance snapshots over time
+    this.app.get('/api/reports/balance-history', (req, res) => {
+      try {
+        const { getEquityHistory, getAllLatestSnapshots, getTotalAum } = require('../db/BalanceSnapshotRepository.js');
+
+        const range = (req.query.range as string) || '7d';
+        const days = range === '30d' ? 30 : range === 'all' ? 365 : 7;
+        const endDate = new Date().toISOString().slice(0, 10);
+        const startDate = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+        const walletAddress = req.query.walletAddress as string | undefined;
+
+        const equityHistory = getEquityHistory(startDate, endDate, walletAddress);
+        const latestSnapshots = getAllLatestSnapshots(walletAddress);
+        const totalAum = getTotalAum(walletAddress);
+
+        res.json({ equityHistory, latestSnapshots, totalAum });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // GET /api/reports/analytics — Deep analytics: win rate, expectancy, regime breakdown
+    this.app.get('/api/reports/analytics', (req, res) => {
+      try {
+        const { getAnalytics } = require('../db/TradeEventRepository.js');
+        const filter: any = {};
+        if (req.query.date) filter.date = req.query.date;
+        if (req.query.botId) filter.botId = req.query.botId;
+        if (req.query.exchange) filter.exchange = req.query.exchange;
+        if (req.query.walletAddress) filter.walletAddress = req.query.walletAddress;
+
+        const analytics = getAnalytics(filter);
+        res.json(analytics);
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    // GET /api/reports/trades — Recent trade events (paginated, filterable)
+    this.app.get('/api/reports/trades', (req, res) => {
+      try {
+        const { getRecentTrades } = require('../db/TradeEventRepository.js');
+        const limit = parseInt(req.query.limit as string) || 50;
+        const offset = parseInt(req.query.offset as string) || 0;
+        const filter: any = {};
+        if (req.query.date) filter.date = req.query.date;
+        if (req.query.botId) filter.botId = req.query.botId;
+        if (req.query.exchange) filter.exchange = req.query.exchange;
+        if (req.query.walletAddress) filter.walletAddress = req.query.walletAddress;
+        if (req.query.symbol) filter.symbol = req.query.symbol;
+
+        const trades = getRecentTrades(limit, offset, filter);
+        res.json({ trades, limit, offset });
+      } catch (err) {
+        res.status(500).json({ error: String(err) });
+      }
+    });
+
+    console.log('[DashboardServer] Reporting routes registered: /api/reports/today, /api/reports/volume, /api/reports/history, /api/reports/balance-history, /api/reports/analytics, /api/reports/trades');
   }
 
 }

@@ -291,8 +291,8 @@
         <span class="stat-item-value">${volume}</span>
       </div>
       <div class="stat-item">
-        <span class="stat-item-label">Efficiency</span>
-        <span class="stat-item-value {effClass}">{efficiency} bps</span>
+        <span class="stat-item-label" title="(Fees − PnL) ÷ volume × $1M. Positive = net cost; negative = net profit after fees.">COST / $1M</span>
+        <span class="stat-item-value {costClass}">${costPerMillion}</span>
       </div>
       <div class="stat-item">
         <span class="stat-item-label">Uptime</span>
@@ -303,6 +303,128 @@
     <div class="card-actions">
       <button class="btn btn-primary btn-start-bot" data-bot-id="{id}" style="display:{startDisplay}">
         ▶ Start Bot
+      </button>
+      <button class="btn btn-warning btn-pause-bot" data-bot-id="{id}" style="display:{pauseDisplay}">
+        ⏸ Pause
+      </button>
+      <button class="btn btn-primary btn-resume-bot" data-bot-id="{id}" style="display:{resumeDisplay}">
+        ▶ Resume
+      </button>
+      <button class="btn btn-danger btn-stop-bot" data-bot-id="{id}" style="display:{stopDisplay}">
+        ■ Stop
+      </button>
+      <a href="/bots/{id}" class="btn btn-ghost">Details →</a>
+      <button class="btn btn-ghost btn-delete-bot" data-bot-id="{id}" data-bot-name="{name}" title="Delete bot" style="padding:0.55rem 0.65rem;color:var(--red);border-color:var(--red-border)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+      </button>
+    </div>
+  </div>
+</template>
+
+<!-- Delta-Neutral Bot Card Template -->
+<template id="delta-neutral-card-template">
+  <div class="bot-card {cardClass}" data-bot-id="{id}" data-status="{status}">
+    <div class="card-header">
+      <div class="card-identity">
+        <div class="card-name">{name}</div>
+        <div class="card-meta">
+          <span class="exchange-badge">{exchangeA}</span>
+          <span style="color:var(--text-tertiary);font-size:0.7rem">+</span>
+          <span class="exchange-badge">{exchangeB}</span>
+        </div>
+      </div>
+      <div class="status-pill {status}">
+        <div class="status-dot"></div>
+        {statusText}
+      </div>
+    </div>
+
+    <!-- Delta-Neutral Type Badge -->
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:0.75rem 0;align-items:center">
+      <span class="mode-badge" style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:0.75rem;font-weight:600;background:rgba(168,85,247,0.15);color:#a855f7;border:1px solid rgba(168,85,247,0.3)">
+        {dnBadgeLabel}
+      </span>
+      <span style="font-size:0.7rem;color:var(--text-tertiary)">{oiState}</span>
+    </div>
+
+    <!-- Dual Leg Position Display -->
+    <div id="oi-legs-{id}" class="oi-legs-panel" style="margin:0.75rem 0;padding:0.75rem;background:var(--surface-2);border:1px solid var(--border);border-radius:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+        <span style="font-size:0.7rem;font-weight:700;color:var(--text-secondary);letter-spacing:0.05em">POSITIONS</span>
+        <span style="font-size:0.68rem;color:var(--text-tertiary)">Delta: ${deltaExposure}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0.4rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0.5rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:0.4rem">
+            <span style="font-size:0.65rem;font-weight:700;background:{legAColor};color:white;padding:2px 5px;border-radius:3px">{legASide}</span>
+            <span style="font-size:0.75rem;font-weight:600">{legASymbol}</span>
+            <span style="font-size:0.65rem;color:var(--text-tertiary)">({exchangeA})</span>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:0.72rem;font-weight:600">{legASize} @ ${legAEntry}</div>
+            <div style="font-size:0.65rem;color:{legAPnlColor}">{legAPnl}</div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0.5rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:0.4rem">
+            <span style="font-size:0.65rem;font-weight:700;background:{legBColor};color:white;padding:2px 5px;border-radius:3px">{legBSide}</span>
+            <span style="font-size:0.75rem;font-weight:600">{legBSymbol}</span>
+            <span style="font-size:0.65rem;color:var(--text-tertiary)">({exchangeB})</span>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:0.72rem;font-weight:600">{legBSize} @ ${legBEntry}</div>
+            <div style="font-size:0.65rem;color:{legBPnlColor}">{legBPnl}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hold Progress Bar -->
+    <div style="margin:0.75rem 0">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem">
+        <span style="font-size:0.68rem;color:var(--text-secondary)">Hold Progress</span>
+        <span style="font-size:0.68rem;color:var(--text-primary);font-weight:600">{holdElapsed} / {holdTarget}h</span>
+      </div>
+      <div style="height:6px;background:var(--surface-2);border-radius:3px;overflow:hidden;border:1px solid var(--border)">
+        <div style="height:100%;width:{holdProgress}%;background:linear-gradient(90deg,#a855f7,#6366f1);border-radius:3px;transition:width 1s"></div>
+      </div>
+    </div>
+
+    <!-- Combined PnL -->
+    <div class="pnl-hero">
+      <span class="pnl-value {pnlClass}">{pnlSign}${pnl}</span>
+      <span class="pnl-label">Combined PnL</span>
+    </div>
+
+    <!-- OI Metrics Grid -->
+    <div class="card-stats" style="grid-template-columns:1fr 1fr 1fr 1fr">
+      <div class="stat-item">
+        <span class="stat-item-label">OI-Hours</span>
+        <span class="stat-item-value" style="color:#a855f7;font-weight:700">{oiHours}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-item-label">Volume</span>
+        <span class="stat-item-value">${dnVolume}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-item-label">Funding</span>
+        <span class="stat-item-value" style="color:{fundingColor}">{fundingNet}</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-item-label">Cycles</span>
+        <span class="stat-item-value">{cycles}</span>
+      </div>
+    </div>
+
+    <div class="card-actions">
+      <button class="btn btn-primary btn-start-bot" data-bot-id="{id}" style="display:{startDisplay}">
+        ▶ Start
+      </button>
+      <button class="btn btn-warning btn-pause-bot" data-bot-id="{id}" style="display:{pauseDisplay}">
+        ⏸ Pause
+      </button>
+      <button class="btn btn-primary btn-resume-bot" data-bot-id="{id}" style="display:{resumeDisplay}">
+        ▶ Resume
       </button>
       <button class="btn btn-danger btn-stop-bot" data-bot-id="{id}" style="display:{stopDisplay}">
         ■ Stop

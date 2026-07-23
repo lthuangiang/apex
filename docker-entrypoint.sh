@@ -1,8 +1,9 @@
 #!/bin/sh
-# Seed bot-configs.json to /app/data only on first run (preserves user edits)
-if [ ! -f /app/data/bot-configs.json ]; then
-  echo "[entrypoint] Seeding bot-configs.json to /app/data/"
-  cp /app/bot-configs.default.json /app/data/bot-configs.json
-fi
+# Ensure data directory exists
+mkdir -p /app/data
+
+# Wallet-based mode only — no legacy single-bot fallback.
+# All bot configs, trades, state are scoped per wallet under /app/data/{walletAddress}/
+export DATA_DIR=/app/data
 
 exec npx tsx src/bot.ts

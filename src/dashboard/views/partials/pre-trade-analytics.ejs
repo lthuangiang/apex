@@ -1,0 +1,372 @@
+<!-- Pre-Trade Analytics Panel — right sidebar, populated by client-side JS (task 3.7) -->
+<style>
+  .pre-trade-analytics {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .pre-trade-analytics-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.875rem;
+  }
+
+  .pre-trade-analytics-title {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .pre-trade-analytics-title-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  .pre-trade-analytics-badge {
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    background: rgba(34, 211, 238, 0.1);
+    color: var(--accent);
+  }
+
+  /* Leg sections (Long / Short) */
+  .pre-trade-leg {
+    margin-bottom: 0.875rem;
+    padding: 0.75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .pre-trade-leg.leg-long {
+    border-left: 3px solid var(--green, #22c55e);
+  }
+
+  .pre-trade-leg.leg-short {
+    border-left: 3px solid var(--red, #ef4444);
+  }
+
+  .pre-trade-leg-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .pre-trade-leg-header.long {
+    color: var(--green, #22c55e);
+  }
+
+  .pre-trade-leg-header.short {
+    color: var(--red, #ef4444);
+  }
+
+  .pre-trade-leg-header-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+  }
+
+  .pre-trade-leg-header.long .pre-trade-leg-header-dot {
+    background: var(--green, #22c55e);
+  }
+
+  .pre-trade-leg-header.short .pre-trade-leg-header-dot {
+    background: var(--red, #ef4444);
+  }
+
+  /* Stat rows within each leg */
+  .pre-trade-stat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+  }
+
+  .pre-trade-stat-row + .pre-trade-stat-row {
+    border-top: 1px solid var(--border);
+  }
+
+  .pre-trade-stat-label {
+    font-size: 0.68rem;
+    color: var(--text-tertiary);
+    font-weight: 500;
+  }
+
+  .pre-trade-stat-value {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+
+  .pre-trade-stat-value.positive {
+    color: var(--green, #22c55e);
+  }
+
+  .pre-trade-stat-value.negative {
+    color: var(--red, #ef4444);
+  }
+
+  .pre-trade-stat-value.neutral {
+    color: var(--text-secondary);
+  }
+
+  /* Net Position section */
+  .pre-trade-net {
+    margin-top: 0.875rem;
+    padding: 0.75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--accent, #22d3ee);
+  }
+
+  .pre-trade-net-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent, #22d3ee);
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .pre-trade-net-header-icon {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent, #22d3ee);
+  }
+
+  /* Standard bot fee estimate */
+  .pre-trade-standard {
+    margin-top: 0.875rem;
+    padding: 0.75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  .pre-trade-standard-header {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+  }
+
+  /* Loading state */
+  .pre-trade-analytics-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    gap: 0.5rem;
+    color: var(--text-tertiary);
+    font-size: 0.75rem;
+  }
+
+  .pre-trade-analytics-loading .spinner {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Empty state */
+  .pre-trade-analytics-empty {
+    text-align: center;
+    padding: 1.25rem 0.75rem;
+    color: var(--text-tertiary);
+  }
+
+  .pre-trade-analytics-empty-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.4rem;
+    opacity: 0.5;
+  }
+
+  .pre-trade-analytics-empty-text {
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--text-tertiary);
+  }
+
+  /* Divider */
+  .pre-trade-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 0.75rem 0;
+  }
+
+  /* Summary row (total cost emphasis) */
+  .pre-trade-stat-row.summary {
+    padding: 0.4rem 0;
+  }
+
+  .pre-trade-stat-row.summary .pre-trade-stat-label {
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .pre-trade-stat-row.summary .pre-trade-stat-value {
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
+  @media (max-width: 600px) {
+    .pre-trade-analytics {
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .pre-trade-leg,
+    .pre-trade-net,
+    .pre-trade-standard {
+      padding: 0.625rem;
+    }
+  }
+</style>
+
+<div class="pre-trade-analytics" id="pre-trade-analytics">
+  <div class="pre-trade-analytics-header">
+    <div class="pre-trade-analytics-title">
+      <span class="pre-trade-analytics-title-dot"></span>
+      Pre-Trade Analytics
+    </div>
+    <span class="pre-trade-analytics-badge">Live</span>
+  </div>
+
+  <!-- Loading state -->
+  <div class="pre-trade-analytics-loading" id="pre-trade-analytics-loading">
+    <div class="spinner"></div>
+    Calculating estimates...
+  </div>
+
+  <!-- Empty state (shown when no config selected yet) -->
+  <div class="pre-trade-analytics-empty" id="pre-trade-analytics-empty" style="display:none;">
+    <div class="pre-trade-analytics-empty-icon">📊</div>
+    <div class="pre-trade-analytics-empty-text">
+      Select accounts and pairs to see<br>
+      estimated costs and funding rates.
+    </div>
+  </div>
+
+  <!-- DN Bot: Dual-leg analytics (hidden by default, shown for delta-neutral bots) -->
+  <div id="pre-trade-dn-section" style="display:none;">
+    <!-- Long Leg -->
+    <div class="pre-trade-leg leg-long">
+      <div class="pre-trade-leg-header long">
+        <span class="pre-trade-leg-header-dot"></span>
+        Long Leg
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Available Margin</span>
+        <span class="pre-trade-stat-value" id="pta-long-margin">—</span>
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Target Amount</span>
+        <span class="pre-trade-stat-value" id="pta-long-target">—</span>
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Estimated Fees</span>
+        <span class="pre-trade-stat-value negative" id="pta-long-fees">—</span>
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Funding Rate / 1h</span>
+        <span class="pre-trade-stat-value" id="pta-long-funding">—</span>
+      </div>
+    </div>
+
+    <!-- Short Leg -->
+    <div class="pre-trade-leg leg-short">
+      <div class="pre-trade-leg-header short">
+        <span class="pre-trade-leg-header-dot"></span>
+        Short Leg
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Available Margin</span>
+        <span class="pre-trade-stat-value" id="pta-short-margin">—</span>
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Target Amount</span>
+        <span class="pre-trade-stat-value" id="pta-short-target">—</span>
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Estimated Fees</span>
+        <span class="pre-trade-stat-value negative" id="pta-short-fees">—</span>
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Funding Rate / 1h</span>
+        <span class="pre-trade-stat-value" id="pta-short-funding">—</span>
+      </div>
+    </div>
+
+    <!-- Net Position -->
+    <div class="pre-trade-net">
+      <div class="pre-trade-net-header">
+        <span class="pre-trade-net-header-icon"></span>
+        Net Position
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Net Sided Funding / 1h</span>
+        <span class="pre-trade-stat-value" id="pta-net-funding">—</span>
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Estimated Hourly Cost</span>
+        <span class="pre-trade-stat-value" id="pta-net-hourly-cost">—</span>
+      </div>
+      <div class="pre-trade-divider"></div>
+      <div class="pre-trade-stat-row summary">
+        <span class="pre-trade-stat-label">Total Entry + Exit Fees</span>
+        <span class="pre-trade-stat-value negative" id="pta-net-total-fees">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Standard/Farm Bot: Simple fee estimate (hidden by default) -->
+  <div id="pre-trade-standard-section" style="display:none;">
+    <div class="pre-trade-standard">
+      <div class="pre-trade-standard-header">Fee Estimate</div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Notional Size</span>
+        <span class="pre-trade-stat-value" id="pta-std-notional">—</span>
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Fee Rate</span>
+        <span class="pre-trade-stat-value" id="pta-std-fee-rate">—</span>
+      </div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Est. Fee per Round-Trip</span>
+        <span class="pre-trade-stat-value negative" id="pta-std-round-trip-fee">—</span>
+      </div>
+      <div class="pre-trade-divider"></div>
+      <div class="pre-trade-stat-row">
+        <span class="pre-trade-stat-label">Funding Rate / 1h</span>
+        <span class="pre-trade-stat-value" id="pta-std-funding">—</span>
+      </div>
+    </div>
+  </div>
+</div>

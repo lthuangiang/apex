@@ -15,7 +15,7 @@ export interface BotSharedState {
   todayVolume: number;
   todayVolumeDate: string;
   updatedAt: string;
-  botStatus: 'RUNNING' | 'STOPPED';
+  botStatus: 'RUNNING' | 'STOPPED' | 'PAUSED';
   symbol: string;
   walletAddress: string;
   pnlHistory: PnlDataPoint[];

@@ -6,9 +6,9 @@
 
 ### Dynamic Risk-Informed Futures Trading
 
-*🧠 **Wave 3 Update**: SoSoValue Intelligence Engine — autonomous strategy selection across 8 market regimes, Kelly-optimized position sizing, 8-signal conviction scoring, Agent Layer orchestration*
+*🧠 **Wave 3 Final**: SoSoValue Intelligence Engine + Cross-Exchange Delta-Neutral Farming + Autonomous Agent Layer + SQLite Reporting Analytics*
 
-*AI-powered perpetual futures bot with adaptive learning, SoSoValue macro intelligence, multi-exchange execution, and multi-wallet SaaS architecture*
+*AI-powered perpetual futures platform with 8-signal intelligence, cross-exchange delta-neutral strategies, SoDEX volume optimization, multi-wallet SaaS architecture, and real-time reporting dashboard*
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -259,6 +259,187 @@ When user selects Manual, an additional "Initial Strategy" dropdown appears.
 - **[docs/UI_CHANGES_WAVE3.md](docs/UI_CHANGES_WAVE3.md)** — UI specification with mockups
 - **[docs/intelligence-ui-preview.html](docs/intelligence-ui-preview.html)** — Interactive HTML preview
 
+---
+
+## 🏗️ Built for SoDEX — Volume Farming + Cross-Exchange DN
+
+DRIFT is purpose-built to maximize value on **SoDEX** — combining intelligent volume farming with cross-exchange delta-neutral strategies that use SoDEX as a key leg.
+
+### Why SoDEX is the Perfect Hub
+
+| Advantage | How DRIFT Uses It |
+|-----------|-------------------|
+| **0.012% maker fee** (lowest in ecosystem) | Post-Only execution keeps farming cost minimal |
+| **SoPoints rewards** for volume | Agent Layer autonomously maximizes daily volume |
+| **EIP-712 typed signing** | Native TypeScript adapter, sub-100ms order placement |
+| **Deep BTC-USD liquidity** | Reliable hedge leg for cross-exchange DN positions |
+| **Daily volume leaderboard** | DailyBudgetReset tracks target, auto-restarts at 0h UTC |
+
+### Cross-Exchange Delta-Neutral with SoDEX
+
+The core innovation: use **SoDEX as one leg** of a delta-neutral position paired with another exchange. Zero directional risk, earn points on both sides.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              DELTA-NEUTRAL: SoDEX × OndoPerps (Example)                     │
+│                                                                             │
+│  ┌──────────────────────┐         ┌──────────────────────┐                 │
+│  │   SoDEX (Leg A)      │         │  OndoPerps (Leg B)   │                 │
+│  │                       │         │                       │                 │
+│  │   LONG BTC-USD       │         │  SHORT BTC-PERP      │                 │
+│  │   $150 notional      │    ↔    │   $150 notional      │                 │
+│  │   Earn SoPoints      │         │   Earn OI Points     │                 │
+│  │   0.012% maker fee   │         │   0.08% taker fee    │                 │
+│  └──────────────────────┘         └──────────────────────┘                 │
+│                                                                             │
+│  Net exposure: $0 | Funding arb: +$0.02/8h | OI-Hours accumulating         │
+│  Combined fee: ~$0.14/cycle | Hold: 4h–72h | Auto-flip on funding reversal │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Supported Cross-Exchange Pairs:**
+
+| Primary (Points) | Hedge (Low-cost) | Use Case |
+|------------------|------------------|----------|
+| **SoDEX** | OndoPerps | SoPoints farming + OI rewards on both |
+| **SoDEX** | Perpl | SoPoints + Perpl maker rebates |
+| **SoDEX** | Hibachi | SoPoints + low-fee hedge |
+| **Perpl** | SoDEX | Perpl points farming, SoDEX as cheap hedge |
+| **OndoPerps** | SoDEX | Ondo points, SoDEX deep BTC liquidity |
+
+**Same-Exchange Hedge (Pair Bot):**
+
+SoDEX also supports **same-exchange pair trading** — long BTC + short ETH simultaneously. Profit from correlation divergence while accumulating SoPoints on both legs.
+
+### DeltaNeutralBot — Technical Flow
+
+```
+State Machine: IDLE → OPENING → IN_POSITION → CLOSING → COOLDOWN
+
+OPENING:
+  1. Chunked entry on both exchanges (maker-first, taker fallback)
+  2. Leg A fills → wait for Leg B → atomic entry confirmation
+  3. If one leg fails after 5 attempts → unwind the filled leg
+
+IN_POSITION (hold 4h–72h):
+  ├── Monitor combined PnL every tick (60s)
+  ├── Track funding payments (net funding = received - paid)
+  ├── Track OI-Hours accumulated (for points farming ROI)
+  ├── Check exit conditions:
+  │   ├── Max hold time reached → rotate
+  │   ├── Take profit hit → exit with profit
+  │   ├── Max loss hit → emergency exit
+  │   ├── Funding rate flipped → auto-flip direction (if enabled)
+  │   └── Delta divergence > threshold → rebalance or exit
+  └── Report: captureBalance(post_close) + recordTrade()
+
+METRICS TRACKED:
+  • OI-Hours = position_size × hold_time_hours
+  • CPM (Cost Per Million) = total_fees / (OI-Hours / 1,000,000)
+  • Net Funding USD = funding_received - funding_paid
+  • Combined PnL = leg_A_pnl + leg_B_pnl + net_funding
+```
+
+**Configuration Example (`bot-configs.json`):**
+
+```json
+{
+  "id": "dn-sodex-ondo-btc",
+  "name": "DN SoDEX×Ondo BTC",
+  "botType": "delta-neutral",
+  "exchangeA": "sodex",
+  "exchangeB": "ondoperps",
+  "symbol": "BTC-USD",
+  "symbolA": "BTC-USD",
+  "symbolB": "BTC-PERP",
+  "primaryDirection": "long",
+  "legValueUsd": 150,
+  "minHoldSecs": 14400,
+  "maxHoldSecs": 259200,
+  "maxLossUsd": 15,
+  "takeProfitUsd": 5,
+  "maxDeltaDivergenceUsd": 30,
+  "maxFundingRateThreshold": 0.005,
+  "autoFlipOnFunding": true,
+  "autoStart": true
+}
+```
+
+---
+
+## 📊 Reporting & Analytics System
+
+DRIFT captures every trade event, balance snapshot, and volume counter in a **SQLite database** (`drift.db`) — enabling real-time reports without relying on exchange APIs (which often lack today-volume endpoints).
+
+### Data Collection (Automatic)
+
+| Event | Trigger | Data Captured |
+|-------|---------|---------------|
+| **Trade Close** | Every position exit (Farm/Trade/DN/Hedge) | Entry/exit price, PnL, fees, hold duration, regime, confidence, exit reason |
+| **Balance Snapshot** | 0h UTC daily + pre_open + post_close | Equity, available margin, open positions, per-exchange |
+| **Volume Counter** | On every trade close (upsert) | Daily volume per exchange/bot/symbol, trade count, fees, PnL |
+
+### Reports Dashboard (`/reports`)
+
+| Section | What it shows |
+|---------|---------------|
+| **Hero Stats** | Today's volume, PnL, fees, win/loss count |
+| **Volume by Exchange** | Breakdown per exchange (SoDEX, OndoPerps, Perpl...) |
+| **Volume by Bot** | Which bot generated how much volume |
+| **Analytics** | Win rate, profit factor, expectancy, avg hold, avg PnL/trade |
+| **Regime Performance** | Win rate + avg PnL broken down by market regime |
+| **Recent Trades** | Last 50 trades with full details (filterable) |
+
+### API Endpoints
+
+```bash
+GET /api/reports/today?exchange=sodex&botId=...      # Today summary + by-exchange + by-bot
+GET /api/reports/volume?date=2026-07-23              # Fast volume counters (pre-aggregated)
+GET /api/reports/history?range=30d                   # Daily PnL/volume chart data
+GET /api/reports/balance-history?range=7d            # Equity curve, AUM over time
+GET /api/reports/analytics?botId=dn-sodex-ondo       # Win rate, expectancy, regime breakdown
+GET /api/reports/trades?limit=50&exchange=sodex      # Paginated trade history
+```
+
+### Account Balance Tracking
+
+- **On account connect**: validate credentials via live API call + capture initial balance
+- **Daily 0h UTC**: automatic balance snapshot for all accounts (DailySnapshotScheduler)
+- **On every trade**: pre_open + post_close snapshots
+- **Dashboard shows**: current balance + daily change (green/red) per account
+- **Refresh button**: manually sync balance anytime for accounts without recent trades
+
+---
+
+## 🎨 TreadFi-Inspired Dashboard UX
+
+Wave 3 completely overhauled the dashboard with patterns inspired by TreadFi's professional trading interface.
+
+### Features Implemented
+
+| Feature | Description |
+|---------|-------------|
+| **Account Registry** | Connect exchange accounts once, reuse across all bots. Validates credentials on connect. |
+| **Delta-Neutral Dual-Pane** | Side-by-side Long/Short leg configuration with swap button (↔) |
+| **Portfolio Page** | Aggregate AUM, directional bias, unrealized PnL, liquidation risk across all accounts |
+| **Pre-Trade Analytics** | Estimated fees, funding rates, margin requirements shown BEFORE starting a bot |
+| **Pause Button** | Stop new entries while keeping existing positions open (yellow indicator) |
+| **Config Sliders** | Stop loss, take profit, spread — visual red/yellow/green zones |
+| **Collapsible Agent Brain** | Full autonomous orchestration panel, collapses to save space |
+| **Reports Page** | Trade analytics, volume breakdown, regime performance (new!) |
+| **Dark/Light Mode** | All pages support both themes (persists via localStorage) |
+
+### Navigation
+
+```
+Dashboard (/dashboard) → Portfolio (/portfolio) → Reports (/reports)
+     │                        │                        │
+     ├── Bot cards            ├── Total equity        ├── Today volume/PnL
+     ├── Agent Brain panel    ├── Per-account table   ├── By exchange/bot
+     ├── Account Registry     ├── Equity curve        ├── Analytics
+     └── + New Bot wizard     └── Risk metrics        └── Trade history
+```
+
 ### Test Scripts
 
 ```bash
@@ -276,7 +457,7 @@ npx tsx src/scripts/generate-performance-report.ts
 
 ## Overview
 
-DRIFT is a multi-bot trading system for perpetual futures, supporting **4 exchanges**: **SoDEX**, **Dango**, **Decibel**, and **Hibachi**. The system runs multiple bots in parallel with 3 strategies: **Farm Mode** (maximize volume), **Trade Mode** (maximize win rate), and **Hedge Bot** (correlation divergence).
+DRIFT is a multi-bot autonomous trading system for perpetual futures, supporting **6 exchanges**: **SoDEX**, **Dango**, **Decibel**, **Hibachi**, **OndoPerps**, and **Perpl**. The system runs multiple bots in parallel with **5 strategies**: **Farm Mode** (maximize volume for SoPoints), **Trade Mode** (maximize win rate), **Delta-Neutral** (cross-exchange OI farming with funding arbitrage), **Hedge Bot** (same-exchange correlation divergence), and **Agent Layer** (autonomous orchestration brain).
 
 ### ✅ Wave 2 (Complete) — Foundation
 - **SoSoValue Fear & Greed Index** — macro sentiment drives confidence multipliers and position sizing
@@ -296,6 +477,13 @@ DRIFT is a multi-bot trading system for perpetual futures, supporting **4 exchan
 - **🎨 Dashboard Agent Panel** — live regime/strategy/risk display with Start/Pause/Stop controls
 - **📡 Agent API** — `/agent/status`, `/agent/history`, `/agent/config` (GET + PATCH), `/agent/performance`
 - **📈 Performance Dashboard** — dedicated `/performance` page with equity curve, regime chart, alpha comparison
+- **🏗️ Cross-Exchange Delta-Neutral** — SoDEX × OndoPerps/Perpl/Hibachi with OI-Hours tracking, funding arb, auto-flip
+- **🔗 Account Registry** — connect once, validate credentials live, reuse across bots (TreadFi-inspired)
+- **📊 SQLite Reporting System** — trade events + balance snapshots + volume counters in `drift.db`
+- **📋 Reports Dashboard** — `/reports` page: today volume/PnL/fees by exchange/bot, analytics, regime breakdown
+- **💰 Balance Tracking** — daily SOD capture, per-trade snapshots, today's change displayed per account
+- **🎨 TreadFi UX** — dual-pane DN setup, portfolio page, pre-trade analytics, sliders, pause button
+- **📦 Collapsible UI** — Agent Brain panel collapses to save dashboard space
 
 ---
 
@@ -720,6 +908,8 @@ Fetches 4 data sources in parallel:
 | Decibel | Ed25519 (Aptos) | Gas Station, per-order cancel |
 | Dango | Secp256k1 + GraphQL | USD notional sizing |
 | **Hibachi** | ECDSA (trustless) / HMAC-SHA256 (managed) | Two account modes, contract-based sizing |
+| **OndoPerps** | HMAC-SHA256 | RWA perps, REST API |
+| **Perpl** | Ed25519 + WebSocket | Real-time orders, custom chain ID |
 
 **Hibachi account modes:**
 - `trustless` — requires `HIBACHI_PRIVATE_KEY` (0x-prefixed 32-byte hex); signs orders client-side

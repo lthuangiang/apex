@@ -7,3 +7,8 @@ data/
 bot_state*
 trades-*.json
 CLAUDE.MD
+
+# SQLite runtime files (in case they appear outside data/)
+*.db
+*.db-wal
+*.db-shm

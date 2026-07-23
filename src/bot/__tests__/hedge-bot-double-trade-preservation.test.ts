@@ -1,5 +1,5 @@
 /**
- * Preservation Property Tests — HedgeBot Double Trade Bug
+ * Preservation Property Tests — PairBot Double Trade Bug
  *
  * Property 2: Preservation — Normal OPENING Behavior Unchanged When Neither Leg Is Filled
  *
@@ -17,16 +17,16 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fc from 'fast-check';
-import { HedgeBot } from '../HedgeBot.js';
+import { PairBot } from '../PairBot.js';
 import type { ExchangeAdapter } from '../../adapters/ExchangeAdapter.js';
 import type { TelegramManager } from '../../modules/TelegramManager.js';
-import type { HedgeBotConfig } from '../types.js';
+import type { PairBotConfig } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-function makeConfig(): HedgeBotConfig {
+function makeConfig(): PairBotConfig {
   return {
     id: 'hedge-preservation-test',
     name: 'Preservation Test Bot',
@@ -77,10 +77,10 @@ function makeTelegram(): TelegramManager {
 }
 
 /**
- * Sets up a HedgeBot in OPENING state with a standard opening context.
+ * Sets up a PairBot in OPENING state with a standard opening context.
  * longSymbol = BTC-USD, shortSymbol = ETH-USD.
  */
-function setupBotInOpeningState(bot: HedgeBot): void {
+function setupBotInOpeningState(bot: PairBot): void {
   bot.state.hedgeBotState = 'OPENING';
   (bot as any)._openingContext = {
     longSymbol: 'BTC-USD',
@@ -100,11 +100,11 @@ function setupBotInOpeningState(bot: HedgeBot): void {
 
 describe('Property 2: Preservation — Normal OPENING Behavior Unchanged When Neither Leg Is Filled', () => {
   let adapter: ExchangeAdapter;
-  let bot: HedgeBot;
+  let bot: PairBot;
 
   beforeEach(() => {
     adapter = makeAdapter();
-    bot = new HedgeBot(makeConfig(), adapter, makeTelegram());
+    bot = new PairBot(makeConfig(), adapter, makeTelegram());
     setupBotInOpeningState(bot);
   });
 

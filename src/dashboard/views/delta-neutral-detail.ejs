@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delta-Neutral — <%= botName %></title>
+  <link rel="stylesheet" href="/css/sliders.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #090b10; --surface: #11141c; --surface-2: #171c28; --surface-3: #1d2436;
+      --border: #1c2333; --border-strong: #283044; --border-accent: rgba(168,85,247,0.25);
+      --text-primary: #eaf0fa; --text-secondary: #8b9dc0; --text-tertiary: #4d5f7a;
+      --accent: #a855f7; --accent-glow: rgba(168,85,247,0.2); --accent-light: rgba(168,85,247,0.1); --accent-border: rgba(168,85,247,0.3);
+      --green: #34d399; --green-bg: rgba(52,211,153,0.1); --green-border: rgba(52,211,153,0.25);
+      --red: #f87171; --red-bg: rgba(248,113,113,0.1); --red-border: rgba(248,113,113,0.25);
+      --yellow: #fbbf24; --yellow-bg: rgba(251,191,36,0.1); --yellow-border: rgba(251,191,36,0.25);
+      --shadow-sm: 0 2px 8px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
+      --shadow-md: 0 8px 24px rgba(0,0,0,0.6), 0 2px 6px rgba(0,0,0,0.4);
+      --shadow-glow: 0 0 20px rgba(168,85,247,0.08);
+      --radius: 14px; --radius-sm: 10px; --radius-xs: 6px;
+      --font: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    }
+    body.light {
+      --bg: #f4f6fb; --surface: #ffffff; --surface-2: #f8f9fc; --surface-3: #eef1f7;
+      --border: #e2e7f0; --border-strong: #cdd5e3; --border-accent: rgba(168,85,247,0.2);
+      --text-primary: #0f172a; --text-secondary: #475569; --text-tertiary: #94a3b8;
+      --shadow-sm: 0 1px 4px rgba(0,0,0,0.06); --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+      --shadow-glow: 0 0 20px rgba(168,85,247,0.05);
+    }
+    body {
+      font-family: var(--font);
+      background: var(--bg); color: var(--text-primary); min-height: 100vh;
+      -webkit-font-smoothing: antialiased; line-height: 1.5;
+    }
+
+    /* Navigation */
+    .topnav {
+      background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 2rem; height: 60px;
+      display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100;
+      box-shadow: var(--shadow-sm); backdrop-filter: blur(12px);
+    }
+    .topnav-left { display: flex; align-items: center; gap: 1.25rem; }
+    .topnav-left a { color: var(--text-secondary); text-decoration: none; font-size: 0.8rem; font-weight: 500; transition: color 0.15s; }
+    .topnav-left a:hover { color: var(--accent); }
+    .topnav-title { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.02em; }
+    .topnav-badge { font-size: 0.62rem; padding: 4px 10px; border-radius: 5px; background: var(--accent-light); color: var(--accent); font-weight: 700; border: 1px solid var(--accent-border); letter-spacing: 0.06em; }
+    .topnav-right { display: flex; align-items: center; gap: 0.85rem; }
+    .state-pill { font-size: 0.7rem; font-weight: 700; padding: 5px 12px; border-radius: 20px; background: var(--surface-2); border: 1px solid var(--border); letter-spacing: 0.04em; }
+    .state-pill.active { background: var(--green-bg); color: var(--green); border-color: var(--green-border); animation: pulseGlow 2s infinite; }
+    .state-pill.paused { background: var(--yellow-bg); color: var(--yellow); border-color: var(--yellow-border); animation: pulseGlowYellow 2s infinite; }
+    @keyframes pulseGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); } 50% { box-shadow: 0 0 8px rgba(52,211,153,0.3); } }
+    @keyframes pulseGlowYellow { 0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,0); } 50% { box-shadow: 0 0 8px rgba(251,191,36,0.3); } }
+    .theme-btn { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; transition: all 0.15s; }
+    .theme-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+
+    /* Page layout */
+    .page { max-width: 1260px; margin: 0 auto; padding: 2rem 2.5rem; }
+
+    /* Stat cards */
+    .stats-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.85rem; margin-bottom: 1.75rem; }
+    .stat-card {
+      background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+      border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem 1.1rem;
+      box-shadow: var(--shadow-sm); transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .stat-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
+    .stat-label { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary); margin-bottom: 0.5rem; }
+    .stat-value { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1.15; }
+    .stat-sub { font-size: 0.6rem; color: var(--text-tertiary); margin-top: 0.3rem; }
+    .stat-value.positive { color: var(--green); }
+    .stat-value.negative { color: var(--red); }
+    .stat-value.accent { color: var(--accent); text-shadow: 0 0 16px rgba(168,85,247,0.3); }
+
+    /* Panels */
+    .panel {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.5rem; box-shadow: var(--shadow-sm); transition: border-color 0.2s;
+    }
+    .panel:hover { border-color: var(--border-strong); }
+    .panel-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 1rem; }
+    .content-grid { display: grid; grid-template-columns: 5fr 2.5fr; gap: 1.5rem; }
+
+    /* Leg panels */
+    .leg-panel {
+      padding: 1.1rem 1.25rem; background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); margin-bottom: 0.75rem; transition: border-color 0.15s;
+    }
+    .leg-panel:hover { border-color: var(--border-strong); }
+    .leg-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+    .leg-badge { font-size: 0.6rem; font-weight: 700; padding: 3px 8px; border-radius: 5px; color: white; letter-spacing: 0.04em; }
+    .leg-badge.primary { background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%); }
+    .leg-badge.hedge { background: linear-gradient(135deg, #64748b 0%, #475569 100%); }
+    .side-badge { font-size: 0.65rem; font-weight: 700; padding: 3px 8px; border-radius: 4px; }
+    .side-badge.long { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+    .side-badge.short { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+    .leg-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.85rem; font-size: 0.78rem; }
+    .leg-grid span { color: var(--text-tertiary); font-size: 0.6rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; display: block; margin-bottom: 3px; }
+    .leg-grid b { font-weight: 700; }
+    .leg-pnl { font-size: 0.9rem; font-weight: 800; }
+
+    /* Hold bar */
+    .hold-track { height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; border: 1px solid var(--border); }
+    .hold-fill { height: 100%; background: linear-gradient(90deg, #a855f7 0%, #6366f1 50%, #818cf8 100%); border-radius: 5px; transition: width 1s ease-out; box-shadow: 0 0 8px rgba(168,85,247,0.3); }
+
+    /* Config list */
+    .cfg-row { display: flex; justify-content: space-between; align-items: center; padding: 0.55rem 0; border-bottom: 1px solid var(--border); font-size: 0.78rem; }
+    .cfg-row:last-child { border-bottom: none; }
+    .cfg-label { color: var(--text-tertiary); font-size: 0.72rem; }
+    .cfg-value { font-weight: 700; color: var(--text-primary); font-size: 0.78rem; }
+
+    /* CPM gauge */
+    .gauge-wrap { position: relative; width: 150px; height: 150px; margin: 0.5rem auto; }
+    .gauge-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; }
+    .gauge-value { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.03em; }
+    .gauge-label { font-size: 0.6rem; color: var(--text-tertiary); margin-top: 2px; }
+
+    /* Event log */
+    .log-entry { padding: 0.45rem 0; border-bottom: 1px solid var(--border); font-size: 0.72rem; font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace; line-height: 1.5; }
+    .log-time { color: var(--text-tertiary); margin-right: 0.5rem; font-size: 0.65rem; }
+    .log-entry.error { color: var(--red); }
+
+    /* Data table */
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th { text-align: left; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); padding: 0.5rem 0.4rem; border-bottom: 1px solid var(--border); }
+    .data-table td { padding: 0.45rem 0.4rem; border-bottom: 1px solid var(--border); font-size: 0.72rem; }
+    .td-pos { color: var(--green); }
+    .td-neg { color: var(--red); }
+
+    /* Buttons */
+    .btn { padding: 0.7rem 1.5rem; border: none; border-radius: var(--radius-sm); font-weight: 700; font-size: 0.82rem; cursor: pointer; transition: all 0.2s; letter-spacing: 0.02em; }
+    .btn-start { background: linear-gradient(135deg, #34d399 0%, #059669 100%); color: white; box-shadow: 0 2px 8px rgba(52,211,153,0.25); }
+    .btn-start:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(52,211,153,0.35); }
+    .btn-pause { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-border); }
+    .btn-pause:hover { background: rgba(251,191,36,0.2); }
+    .btn-stop { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+    .btn-stop:hover { background: var(--red); color: white; }
+
+    @media (max-width: 900px) {
+      .stats-row { grid-template-columns: repeat(3, 1fr); }
+      .content-grid { grid-template-columns: 1fr; }
+      .page { padding: 1.25rem; }
+    }
+    @media (max-width: 600px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .leg-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="topnav">
+    <div class="topnav-left">
+      <a href="/dashboard">&larr; Manager</a>
+      <span class="topnav-title"><%= botName %></span>
+      <span class="topnav-badge">DELTA-NEUTRAL</span>
+    </div>
+    <div class="topnav-right">
+      <span class="state-pill" id="oi-state">--</span>
+      <span style="font-size:0.8rem;color:var(--text-tertiary)" id="oi-clock"></span>
+      <button class="theme-btn" id="theme-toggle" title="Toggle theme">&#9681;</button>
+    </div>
+  </nav>
+
+  <div class="page">
+    <!-- Hero Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">OI-Hours</div>
+        <div class="stat-value accent" id="stat-oi-hours">0</div>
+        <div class="stat-sub">notional x hours held</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label" title="(Fees − PnL) ÷ volume × $1M. Positive = net cost; negative = net profit after fees.">COST / $1M</div>
+        <div class="stat-value" id="stat-cpm">$0.00</div>
+        <div class="stat-sub">net cost per $1M volume</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Combined PnL</div>
+        <div class="stat-value" id="stat-pnl">$0.00</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Net Funding</div>
+        <div class="stat-value" id="stat-funding">$0.000</div>
+        <div class="stat-sub">received - paid</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Cycles</div>
+        <div class="stat-value" id="stat-cycles">0</div>
+        <div class="stat-sub" id="stat-avg-hold">avg hold: --</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Volume</div>
+        <div class="stat-value" id="stat-volume">$0</div>
+        <div class="stat-sub">open + close all legs</div>
+      </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="content-grid">
+      <!-- Left Column -->
+      <div style="display:flex;flex-direction:column;gap:1.5rem">
+
+        <!-- Position Panel -->
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+            <span class="panel-title" style="margin-bottom:0">Active Position</span>
+            <span id="pos-delta" style="font-size:0.72rem;padding:4px 10px;border-radius:20px;background:var(--surface-2);border:1px solid var(--border)">Delta: $0.00</span>
+          </div>
+
+          <!-- Leg A -->
+          <div class="leg-panel" id="leg-a-panel">
+            <div class="leg-header">
+              <div style="display:flex;align-items:center;gap:0.5rem">
+                <span class="leg-badge primary">PRIMARY</span>
+                <span id="leg-a-exchange" style="font-size:0.75rem;font-weight:600">--</span>
+                <span class="side-badge" id="leg-a-side">--</span>
+              </div>
+              <span class="leg-pnl" id="leg-a-pnl">$0.000</span>
+            </div>
+            <div class="leg-grid">
+              <div><span>Symbol</span><b id="leg-a-symbol">--</b></div>
+              <div><span>Size</span><b id="leg-a-size">0</b></div>
+              <div><span>Entry</span><b id="leg-a-entry">$0.00</b></div>
+              <div><span>Mark</span><b id="leg-a-mark">$0.00</b></div>
+            </div>
+          </div>
+
+          <!-- Leg B -->
+          <div class="leg-panel" id="leg-b-panel">
+            <div class="leg-header">
+              <div style="display:flex;align-items:center;gap:0.5rem">
+                <span class="leg-badge hedge">HEDGE</span>
+                <span id="leg-b-exchange" style="font-size:0.75rem;font-weight:600">--</span>
+                <span class="side-badge" id="leg-b-side">--</span>
+              </div>
+              <span class="leg-pnl" id="leg-b-pnl">$0.000</span>
+            </div>
+            <div class="leg-grid">
+              <div><span>Symbol</span><b id="leg-b-symbol">--</b></div>
+              <div><span>Size</span><b id="leg-b-size">0</b></div>
+              <div><span>Entry</span><b id="leg-b-entry">$0.00</b></div>
+              <div><span>Mark</span><b id="leg-b-mark">$0.00</b></div>
+            </div>
+          </div>
+
+          <!-- No position -->
+          <div id="no-position" style="display:none;text-align:center;padding:3rem 2rem;color:var(--text-tertiary);font-size:0.85rem;background:var(--surface-2);border-radius:var(--radius-sm);border:1px dashed var(--border)">
+            <div style="font-size:2rem;margin-bottom:0.5rem;opacity:0.5">⏸</div>
+            No active position &mdash; bot is <b id="no-pos-state" style="color:var(--text-secondary)">IDLE</b>
+          </div>
+        </div>
+
+        <!-- Hold Progress -->
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem">
+            <span class="panel-title" style="margin-bottom:0">Hold Progress</span>
+            <span id="hold-time" style="font-size:0.8rem;font-weight:600">0:00 / 0:00</span>
+          </div>
+          <div class="hold-track">
+            <div class="hold-fill" id="hold-bar" style="width:0%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:0.4rem;font-size:0.68rem;color:var(--text-tertiary)">
+            <span id="hold-min-label">Min --</span>
+            <span id="hold-max-label">Max --</span>
+          </div>
+        </div>
+
+        <!-- PnL History -->
+        <div class="panel">
+          <div class="panel-title">PnL History</div>
+          <div id="pnl-history" style="max-height:220px;overflow-y:auto">
+            <table class="data-table" style="font-size:0.72rem">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Hold</th>
+                  <th>Primary</th>
+                  <th>Hedge</th>
+                  <th>Combined</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody id="pnl-history-body">
+                <tr><td colspan="6" style="text-align:center;color:var(--text-tertiary)">No closed cycles yet</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Event Log -->
+        <div class="panel">
+          <div class="panel-title">Event Log</div>
+          <div id="event-log" style="max-height:280px;overflow-y:auto">
+            <div style="color:var(--text-tertiary);font-size:0.78rem">Waiting for events...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column -->
+      <div style="display:flex;flex-direction:column;gap:1.5rem">
+
+        <!-- Controls -->
+        <div class="panel">
+          <div class="panel-title">Controls</div>
+          <div style="display:flex;gap:0.75rem">
+            <button class="btn btn-start" id="btn-start" style="flex:1" onclick="controlBot('start')">&#9654; Start</button>
+            <button class="btn btn-pause" id="btn-pause" style="flex:1;display:none" onclick="controlBot('pause')">&#9208; Pause</button>
+            <button class="btn btn-start" id="btn-resume" style="flex:1;display:none" onclick="controlBot('resume')">&#9654; Resume</button>
+            <button class="btn btn-stop" id="btn-stop" style="flex:1" onclick="controlBot('stop')">&#9632; Stop</button>
+          </div>
+        </div>
+
+        <!-- Configuration -->
+        <div class="panel">
+          <div class="panel-title">Configuration</div>
+          <div class="cfg-row"><span class="cfg-label">Primary</span><span class="cfg-value" id="cfg-exchangeA">--</span></div>
+          <div class="cfg-row"><span class="cfg-label">Hedge</span><span class="cfg-value" id="cfg-exchangeB">--</span></div>
+          <div class="cfg-row"><span class="cfg-label">Symbol</span><span class="cfg-value" id="cfg-symbol">--</span></div>
+          <div class="cfg-row"><span class="cfg-label">Order Size</span><span class="cfg-value" id="cfg-leg-value">--</span></div>
+          <div class="cfg-row"><span class="cfg-label">Direction</span><span class="cfg-value" id="cfg-direction">--</span></div>
+          <div class="cfg-row"><span class="cfg-label">Max Hold</span><span class="cfg-value" id="cfg-max-hold">--</span></div>
+          <div class="cfg-row"><span class="cfg-label">Tick Interval</span><span class="cfg-value" id="cfg-tick">--</span></div>
+
+          <!-- Stop Loss Slider (visual, read-only for running bot) -->
+          <div class="drift-slider slider-stop-loss disabled" id="detail-sl-slider" style="margin-top:0.75rem;">
+            <div class="drift-slider-header">
+              <span class="drift-slider-label">Stop Loss</span>
+              <span class="drift-slider-value zone-yellow" id="detail-sl-display">--</span>
+            </div>
+            <div class="drift-slider-track-wrap">
+              <input type="range" id="detail-sl-range" min="0" max="100" step="1" value="50" disabled>
+            </div>
+            <div class="drift-slider-ticks">
+              <span class="drift-slider-tick">$0</span>
+              <span class="drift-slider-tick">25%</span>
+              <span class="drift-slider-tick">50%</span>
+              <span class="drift-slider-tick">75%</span>
+              <span class="drift-slider-tick">100%</span>
+            </div>
+          </div>
+
+          <!-- Max Delta Slider (visual, read-only for running bot) -->
+          <div class="drift-slider slider-spread disabled" id="detail-delta-slider" style="margin-top:0.5rem;">
+            <div class="drift-slider-header">
+              <span class="drift-slider-label">Max Delta</span>
+              <span class="drift-slider-value zone-green" id="detail-delta-display">--</span>
+            </div>
+            <div class="drift-slider-track-wrap">
+              <input type="range" id="detail-delta-range" min="0" max="100" step="1" value="10" disabled>
+            </div>
+            <div class="drift-slider-ticks">
+              <span class="drift-slider-tick">$0</span>
+              <span class="drift-slider-tick">$25</span>
+              <span class="drift-slider-tick">$50</span>
+              <span class="drift-slider-tick">$75</span>
+              <span class="drift-slider-tick">$100</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- COST / $1M Gauge -->
+        <div class="panel" style="text-align:center">
+          <div class="panel-title">COST / $1M</div>
+          <div class="gauge-wrap">
+            <svg viewBox="0 0 150 150" style="width:100%;height:100%">
+              <circle cx="75" cy="75" r="60" fill="none" stroke="var(--surface-2)" stroke-width="10"/>
+              <circle id="cpm-arc" cx="75" cy="75" r="60" fill="none" stroke="var(--accent)" stroke-width="10" stroke-dasharray="377" stroke-dashoffset="377" stroke-linecap="round" transform="rotate(-90 75 75)" style="transition:stroke-dashoffset 1s;filter:drop-shadow(0 0 4px rgba(168,85,247,0.4))"/>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-value" id="cpm-value">$0</div>
+              <div class="gauge-label">per $1M volume</div>
+            </div>
+          </div>
+          <div style="margin-top:0.75rem;font-size:0.68rem;color:var(--text-tertiary);padding:0.5rem;background:var(--surface-2);border-radius:var(--radius-xs);border:1px solid var(--border)">
+            (Fees &minus; PnL) &divide; vol &times; $1M &mdash; lower = better
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    var BOT_ID = '<%= botId %>';
+    var POLL_MS = 5000;
+
+    // Theme toggle — default to dark
+    var savedTheme = localStorage.getItem('drift-theme');
+    if (savedTheme === 'light') document.body.classList.add('light');
+    document.getElementById('theme-toggle').addEventListener('click', function() {
+      document.body.classList.toggle('light');
+      localStorage.setItem('drift-theme', document.body.classList.contains('light') ? 'light' : 'dark');
+    });
+
+    function fmtUsd(n) { return Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    function fmtPrice(n) { return (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+    function updateUI(data) {
+      // State pill
+      var stateEl = document.getElementById('oi-state');
+      var isPaused = data.status === 'paused';
+      var st = isPaused ? 'PAUSED' : (data.oiFarmerState || 'IDLE');
+      stateEl.textContent = st;
+      stateEl.className = 'state-pill' + (st === 'ACTIVE' ? ' active' : '') + (st === 'PAUSED' ? ' paused' : '');
+
+      // Controls: show/hide based on running state
+      var isRunning = data.status === 'active';
+      var btnStart = document.getElementById('btn-start');
+      var btnStop = document.getElementById('btn-stop');
+      var btnPause = document.getElementById('btn-pause');
+      var btnResume = document.getElementById('btn-resume');
+      // Start: visible only when STOPPED
+      btnStart.style.display = (!isRunning && !isPaused) ? '' : 'none';
+      // Pause: visible only when RUNNING
+      btnPause.style.display = isRunning ? '' : 'none';
+      // Resume: visible only when PAUSED
+      btnResume.style.display = isPaused ? '' : 'none';
+      // Stop: visible when RUNNING or PAUSED
+      btnStop.style.display = (isRunning || isPaused) ? '' : 'none';
+
+      // Hero stats
+      var oiHrs = data.totalOiHours || 0;
+      var oiEl = document.getElementById('stat-oi-hours');
+      oiEl.textContent = oiHrs > 10000 ? (oiHrs/1000).toFixed(1) + 'K' : oiHrs.toFixed(0);
+
+      var cpm = data.costPerMillion != null ? data.costPerMillion : (data.sessionVolume > 0 ? ((data.sessionFees - data.sessionPnl) / data.sessionVolume) * 1000000 : 0);
+      var cpmEl = document.getElementById('stat-cpm');
+      cpmEl.textContent = '$' + cpm.toFixed(2);
+      cpmEl.className = 'stat-value' + (cpm <= 0 ? ' positive' : cpm > 0 ? ' negative' : '');
+
+      var pnl = data.sessionPnl || 0;
+      var pnlEl = document.getElementById('stat-pnl');
+      pnlEl.textContent = (pnl >= 0 ? '+$' : '-$') + fmtUsd(pnl);
+      pnlEl.className = 'stat-value' + (pnl >= 0 ? ' positive' : ' negative');
+
+      var fundNet = (data.totalFundingReceived || 0) - (data.totalFundingPaid || 0);
+      var fundEl = document.getElementById('stat-funding');
+      fundEl.textContent = (fundNet >= 0 ? '+$' : '-$') + Math.abs(fundNet).toFixed(3);
+      fundEl.className = 'stat-value' + (fundNet >= 0 ? ' positive' : ' negative');
+
+      document.getElementById('stat-cycles').textContent = data.completedCycles || 0;
+      var vol = data.sessionVolume || 0;
+      document.getElementById('stat-volume').textContent = '$' + fmtUsd(vol);
+      var avgH = data.avgHoldDurationSecs || 0;
+      document.getElementById('stat-avg-hold').textContent = 'avg hold: ' + (avgH > 0 ? (avgH/3600).toFixed(1) + 'h' : '--');
+
+      // Position
+      var pos = data.position;
+      if (pos) {
+        document.getElementById('leg-a-panel').style.display = '';
+        document.getElementById('leg-b-panel').style.display = '';
+        document.getElementById('no-position').style.display = 'none';
+        document.getElementById('pos-delta').textContent = 'Delta: $' + (pos.deltaExposureUsd || 0).toFixed(2);
+
+        // Leg A
+        var a = pos.primaryLeg;
+        document.getElementById('leg-a-exchange').textContent = (a.exchange || '').toUpperCase();
+        var sA = document.getElementById('leg-a-side');
+        sA.textContent = (a.side || '').toUpperCase();
+        sA.className = 'side-badge ' + (a.side || '');
+        document.getElementById('leg-a-symbol').textContent = a.symbol || '--';
+        document.getElementById('leg-a-size').textContent = (a.size || 0).toFixed(6);
+        document.getElementById('leg-a-entry').textContent = '$' + fmtPrice(a.entryPrice);
+        document.getElementById('leg-a-mark').textContent = '$' + fmtPrice(a.currentPrice);
+        var aPnl = a.unrealizedPnl || 0;
+        var aPnlEl = document.getElementById('leg-a-pnl');
+        aPnlEl.textContent = (aPnl >= 0 ? '+' : '') + '$' + aPnl.toFixed(3);
+        aPnlEl.style.color = aPnl >= 0 ? 'var(--green)' : 'var(--red)';
+
+        // Leg B
+        var b = pos.hedgeLeg;
+        document.getElementById('leg-b-exchange').textContent = (b.exchange || '').toUpperCase();
+        var sB = document.getElementById('leg-b-side');
+        sB.textContent = (b.side || '').toUpperCase();
+        sB.className = 'side-badge ' + (b.side || '');
+        document.getElementById('leg-b-symbol').textContent = b.symbol || '--';
+        document.getElementById('leg-b-size').textContent = (b.size || 0).toFixed(6);
+        document.getElementById('leg-b-entry').textContent = '$' + fmtPrice(b.entryPrice);
+        document.getElementById('leg-b-mark').textContent = '$' + fmtPrice(b.currentPrice);
+        var bPnl = b.unrealizedPnl || 0;
+        var bPnlEl = document.getElementById('leg-b-pnl');
+        bPnlEl.textContent = (bPnl >= 0 ? '+' : '') + '$' + bPnl.toFixed(3);
+        bPnlEl.style.color = bPnl >= 0 ? 'var(--green)' : 'var(--red)';
+
+        // Hold progress
+        var entryMs = new Date(pos.entryTimestamp).getTime();
+        var elapsedSecs = (Date.now() - entryMs) / 1000;
+        var minHoldSecs = data.minHoldSecs || 14400;
+        var maxHoldSecs = data.maxHoldSecs || 172800;
+        var pct = Math.min(100, (elapsedSecs / maxHoldSecs) * 100);
+        document.getElementById('hold-time').textContent = formatHM(elapsedSecs) + ' / ' + formatHM(maxHoldSecs);
+        document.getElementById('hold-bar').style.width = pct.toFixed(1) + '%';
+        document.getElementById('hold-min-label').textContent = 'Min ' + formatHM(minHoldSecs);
+        document.getElementById('hold-max-label').textContent = 'Max ' + formatHM(maxHoldSecs);
+      } else {
+        document.getElementById('leg-a-panel').style.display = 'none';
+        document.getElementById('leg-b-panel').style.display = 'none';
+        document.getElementById('no-position').style.display = '';
+        document.getElementById('no-pos-state').textContent = st;
+        document.getElementById('hold-bar').style.width = '0%';
+        document.getElementById('hold-time').textContent = '0:00 / --';
+      }
+
+      // COST / $1M gauge (arc = 2*PI*60 = 377)
+      var cpmVal = data.costPerMillion != null ? data.costPerMillion : (data.sessionVolume > 0 ? ((data.sessionFees - data.sessionPnl) / data.sessionVolume) * 1000000 : 0);
+      var ratio = Math.min(1, Math.abs(cpmVal) / 200);
+      var offset = 377 * (1 - ratio);
+      var arc = document.getElementById('cpm-arc');
+      arc.setAttribute('stroke-dashoffset', String(offset));
+      arc.setAttribute('stroke', cpmVal <= 0 ? 'var(--green)' : cpmVal < 100 ? 'var(--accent)' : 'var(--red)');
+      document.getElementById('cpm-value').textContent = '$' + cpmVal.toFixed(0);
+
+      // Event log
+      if (data.eventLog && data.eventLog.length) {
+        var logEl = document.getElementById('event-log');
+        logEl.innerHTML = data.eventLog.slice(0, 40).map(function(e) {
+          var cls = e.type === 'ERROR' ? ' error' : '';
+          var time = new Date(e.time).toLocaleTimeString();
+          return '<div class="log-entry' + cls + '"><span class="log-time">' + time + '</span>' + e.message + '</div>';
+        }).join('');
+
+      // PnL History table
+      if (data.recentTrades && data.recentTrades.length) {
+        var tbody = document.getElementById('pnl-history-body');
+        tbody.innerHTML = data.recentTrades.map(function(t) {
+          var time = new Date(t.time).toLocaleTimeString();
+          var pnlCls = t.combined >= 0 ? 'td-pos' : 'td-neg';
+          var pnlAcls = t.pnlA >= 0 ? 'td-pos' : 'td-neg';
+          var pnlBcls = t.pnlB >= 0 ? 'td-pos' : 'td-neg';
+          var fmtP = function(v) { return (v >= 0 ? '+' : '') + '$' + v.toFixed(3); };
+          return '<tr>' +
+            '<td>' + time + '</td>' +
+            '<td>' + t.holdMins + 'm</td>' +
+            '<td class="' + pnlAcls + '">' + fmtP(t.pnlA) + '</td>' +
+            '<td class="' + pnlBcls + '">' + fmtP(t.pnlB) + '</td>' +
+            '<td class="' + pnlCls + '" style="font-weight:700">' + fmtP(t.combined) + '</td>' +
+            '<td>' + t.reason + '</td>' +
+          '</tr>';
+        }).join('');
+      }
+      }
+    }
+
+    function loadConfig(data) {
+      document.getElementById('cfg-exchangeA').textContent = (data.exchangeA || '--').toUpperCase();
+      document.getElementById('cfg-exchangeB').textContent = (data.exchangeB || '--').toUpperCase();
+      document.getElementById('cfg-symbol').textContent = data.symbol || '--';
+      var sizeMin = data.orderSizeMinUsd || data.legValueUsd || 0;
+      var sizeMax = data.orderSizeMaxUsd || data.legValueUsd || 0;
+      if (sizeMin && sizeMax && sizeMin !== sizeMax) {
+        document.getElementById('cfg-leg-value').textContent = '$' + sizeMin + ' – $' + sizeMax;
+      } else {
+        document.getElementById('cfg-leg-value').textContent = '$' + (sizeMax || sizeMin || 0);
+      }
+      document.getElementById('cfg-direction').textContent = data.primaryDirection || '--';
+      document.getElementById('cfg-max-hold').textContent = formatHM(data.maxHoldSecs || 0);
+      document.getElementById('cfg-tick').textContent = (data.tickIntervalSecs || 60) + 's';
+
+      // Stop Loss slider visualization
+      var maxLoss = data.maxLossUsd || 0;
+      var legValue = data.orderSizeMaxUsd || data.legValueUsd || 1000;
+      var slPct = legValue > 0 ? Math.round((maxLoss / legValue) * 100) : 0;
+      slPct = Math.min(100, Math.max(0, slPct));
+      var slRange = document.getElementById('detail-sl-range');
+      var slDisplay = document.getElementById('detail-sl-display');
+      if (slRange) slRange.value = slPct;
+      if (slDisplay) {
+        slDisplay.textContent = '$' + maxLoss + ' (' + slPct + '%)';
+        slDisplay.classList.remove('zone-red', 'zone-yellow', 'zone-green');
+        slDisplay.classList.add(slPct <= 33 ? 'zone-red' : slPct <= 66 ? 'zone-yellow' : 'zone-green');
+      }
+
+      // Max Delta slider visualization
+      var maxDelta = data.maxDeltaDivergenceUsd || 0;
+      var deltaPct = legValue > 0 ? Math.round((maxDelta / legValue) * 100) : 0;
+      deltaPct = Math.min(100, Math.max(0, deltaPct));
+      var deltaRange = document.getElementById('detail-delta-range');
+      var deltaDisplay = document.getElementById('detail-delta-display');
+      if (deltaRange) deltaRange.value = deltaPct;
+      if (deltaDisplay) {
+        deltaDisplay.textContent = '$' + maxDelta + ' (' + deltaPct + '%)';
+        deltaDisplay.classList.remove('zone-red', 'zone-yellow', 'zone-green');
+        deltaDisplay.classList.add(deltaPct <= 25 ? 'zone-green' : deltaPct <= 50 ? 'zone-yellow' : 'zone-red');
+      }
+    }
+
+    function formatHM(totalSecs) {
+      var h = Math.floor(totalSecs / 3600);
+      var m = Math.floor((totalSecs % 3600) / 60);
+      return h + ':' + (m < 10 ? '0' : '') + m;
+    }
+
+    async function poll() {
+      try {
+        var r = await fetch('/api/bots/' + BOT_ID + '/status');
+        if (r.ok) updateUI(await r.json());
+      } catch (e) { /* silent */ }
+    }
+
+    async function fetchConfig() {
+      try {
+        var r = await fetch('/api/bots/' + BOT_ID + '/config');
+        if (r.ok) loadConfig(await r.json());
+      } catch (e) { /* silent */ }
+    }
+
+    window.controlBot = async function(action) {
+      try {
+        await fetch('/api/bots/' + BOT_ID + '/' + action, { method: 'POST' });
+        setTimeout(poll, 500);
+      } catch (e) { alert('Failed: ' + e.message); }
+    };
+
+    // Clock
+    setInterval(function() {
+      document.getElementById('oi-clock').textContent = new Date().toLocaleTimeString();
+    }, 1000);
+
+    // Init
+    poll();
+    fetchConfig();
+    setInterval(poll, POLL_MS);
+  })();
+  </script>
+</body>
+</html>

@@ -18,7 +18,7 @@ const mockAdapter: ExchangeAdapter = {
   get_recent_trades: vi.fn(),
 };
 
-describe('HedgeBot — property-based tests', () => {
+describe('PairBot — property-based tests', () => {
   /**
    * Property 5: Rolling window never exceeds configured size
    *
@@ -128,21 +128,21 @@ describe('HedgeBot — property-based tests', () => {
 // ---------------------------------------------------------------------------
 // Imports needed for config-related properties (3.4 and 3.5)
 // ---------------------------------------------------------------------------
-import { validateHedgeBotConfig } from '../loadBotConfigs.js';
-import type { HedgeBotConfig } from '../types.js';
+import { validatePairBotConfig } from '../loadBotConfigs.js';
+import type { PairBotConfig } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Helpers shared by Property 1 and Property 2
 // ---------------------------------------------------------------------------
 
-/** Returns a complete, valid HedgeBotConfig. */
-function validHedgeBotConfig(): HedgeBotConfig {
+/** Returns a complete, valid PairBotConfig. */
+function validPairBotConfig(): PairBotConfig {
   return {
     id: 'hedge-bot-1',
-    name: 'Hedge Bot',
-    botType: 'hedge',
+    name: 'Pair Bot',
+    botType: 'pair',
     exchange: 'sodex',
-    tags: ['hedge'],
+    tags: ['pair'],
     autoStart: false,
     credentialKey: 'SODEX',
     tradeLogBackend: 'json',
@@ -160,15 +160,15 @@ function validHedgeBotConfig(): HedgeBotConfig {
 }
 
 /**
- * Arbitrary generator for valid HedgeBotConfig objects.
+ * Arbitrary generator for valid PairBotConfig objects.
  * All fields are constrained to valid domains so that JSON round-trip
  * and validation both succeed.
  */
-function arbitraryHedgeBotConfig(): fc.Arbitrary<HedgeBotConfig> {
+function arbitraryPairBotConfig(): fc.Arbitrary<PairBotConfig> {
   return fc.record({
     id: fc.stringMatching(/^[a-z][a-z0-9-]{0,19}$/),
     name: fc.string({ minLength: 1, maxLength: 40 }),
-    botType: fc.constant('hedge' as const),
+    botType: fc.constant('pair' as const),
     exchange: fc.constantFrom('sodex' as const, 'dango' as const, 'decibel' as const),
     tags: fc.array(fc.string({ minLength: 1, maxLength: 20 }), { maxLength: 5 }),
     autoStart: fc.boolean(),
@@ -187,8 +187,8 @@ function arbitraryHedgeBotConfig(): fc.Arbitrary<HedgeBotConfig> {
   });
 }
 
-/** The list of required fields that validateHedgeBotConfig checks. */
-const REQUIRED_FIELDS: (keyof HedgeBotConfig)[] = [
+/** The list of required fields that validatePairBotConfig checks. */
+const REQUIRED_FIELDS: (keyof PairBotConfig)[] = [
   'id',
   'name',
   'botType',
@@ -210,30 +210,30 @@ const REQUIRED_FIELDS: (keyof HedgeBotConfig)[] = [
 ];
 
 /** Arbitrary that picks one required field name at random. */
-function arbitraryRequiredField(): fc.Arbitrary<keyof HedgeBotConfig> {
+function arbitraryRequiredField(): fc.Arbitrary<keyof PairBotConfig> {
   return fc.constantFrom(...REQUIRED_FIELDS);
 }
 
 // ---------------------------------------------------------------------------
 // Property 2: Config validation rejects missing required fields
 // ---------------------------------------------------------------------------
-describe('HedgeBot — config validation properties', () => {
+describe('PairBot — config validation properties', () => {
   /**
    * Property 2: Config validation rejects missing required fields
    *
-   * For any required field in `HedgeBotConfig`, a config object missing that
-   * field should cause `validateHedgeBotConfig` to throw an error whose
+   * For any required field in `PairBotConfig`, a config object missing that
+   * field should cause `validatePairBotConfig` to throw an error whose
    * message names the missing field.
    *
    * **Validates: Requirements 1.4**
    */
   it('Property 2: config validation rejects missing required fields', () => {
-    // Feature: correlation-hedging-bot, Property 2: Config validation rejects missing required fields
+    // Feature: correlation-pair-trading-bot, Property 2: Config validation rejects missing required fields
     fc.assert(
       fc.property(arbitraryRequiredField(), (field) => {
-        const config = validHedgeBotConfig() as any;
+        const config = validPairBotConfig() as any;
         delete config[field];
-        expect(() => validateHedgeBotConfig(config)).toThrow(field);
+        expect(() => validatePairBotConfig(config)).toThrow(field);
       }),
       { numRuns: 100 },
     );
@@ -243,11 +243,11 @@ describe('HedgeBot — config validation properties', () => {
 // ---------------------------------------------------------------------------
 // Property 1: Config round-trip serialization
 // ---------------------------------------------------------------------------
-describe('HedgeBot — config round-trip serialization', () => {
+describe('PairBot — config round-trip serialization', () => {
   /**
    * Property 1: Config round-trip serialization
    *
-   * For any valid `HedgeBotConfig` object, serializing it to JSON and
+   * For any valid `PairBotConfig` object, serializing it to JSON and
    * deserializing it back should produce an object equal to the original.
    *
    * **Validates: Requirements 1.5**
@@ -255,7 +255,7 @@ describe('HedgeBot — config round-trip serialization', () => {
   it('Property 1: config round-trip serialization', () => {
     // Feature: correlation-hedging-bot, Property 1: Config round-trip serialization
     fc.assert(
-      fc.property(arbitraryHedgeBotConfig(), (config) => {
+      fc.property(arbitraryPairBotConfig(), (config) => {
         const serialized = JSON.stringify(config);
         const deserialized = JSON.parse(serialized);
         expect(deserialized).toEqual(config);
@@ -272,15 +272,15 @@ import {
   assignDirections,
   evaluateExitConditions,
   computeCombinedPnl,
-} from '../hedgeBotHelpers.js';
-import type { ExitConditionInput } from '../hedgeBotHelpers.js';
+} from '../pairBotHelpers.js';
+import type { ExitConditionInput } from '../pairBotHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Property 7: Direction assignment follows signal score ordering
 // Requirements: 4.2, 4.3
 // ---------------------------------------------------------------------------
 
-describe('HedgeBot — Property 7: direction assignment follows signal score ordering', () => {
+describe('PairBot — Property 7: direction assignment follows signal score ordering', () => {
   /**
    * Property 7: Direction assignment follows signal score ordering
    *
@@ -390,7 +390,7 @@ function buildExitInput(flags: {
   };
 }
 
-describe('HedgeBot — Property 10: exit condition priority ordering', () => {
+describe('PairBot — Property 10: exit condition priority ordering', () => {
   /**
    * Property 10: Exit condition priority ordering
    *
@@ -427,7 +427,7 @@ describe('HedgeBot — Property 10: exit condition priority ordering', () => {
 // Requirements: 6.5
 // ---------------------------------------------------------------------------
 
-describe('HedgeBot — Property 11: mean reversion trigger threshold', () => {
+describe('PairBot — Property 11: mean reversion trigger threshold', () => {
   /**
    * Property 11: Mean reversion trigger threshold
    *
@@ -479,7 +479,7 @@ describe('HedgeBot — Property 11: mean reversion trigger threshold', () => {
 // Requirements: 8.3, 8.4
 // ---------------------------------------------------------------------------
 
-describe('HedgeBot — Property 12: CombinedPnL arithmetic identity', () => {
+describe('PairBot — Property 12: CombinedPnL arithmetic identity', () => {
   /**
    * Property 12: CombinedPnL arithmetic identity
    *
@@ -505,14 +505,14 @@ describe('HedgeBot — Property 12: CombinedPnL arithmetic identity', () => {
 // ---------------------------------------------------------------------------
 // Tasks 6.3 – 6.4: Properties 8 and 9
 // ---------------------------------------------------------------------------
-import { computeLegSize } from '../hedgeBotHelpers.js';
+import { computeLegSize } from '../pairBotHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Property 8: Leg size computation
 // Requirements: 5.1
 // ---------------------------------------------------------------------------
 
-describe('HedgeBot — Property 8: leg size computation', () => {
+describe('PairBot — Property 8: leg size computation', () => {
   /**
    * Property 8: Leg size computation
    *
@@ -541,7 +541,7 @@ describe('HedgeBot — Property 8: leg size computation', () => {
 // Requirements: 5.3, 8.1
 // ---------------------------------------------------------------------------
 
-describe('HedgeBot — Property 9: leg value equality invariant', () => {
+describe('PairBot — Property 9: leg value equality invariant', () => {
   /**
    * Property 9: Leg value equality invariant
    *
@@ -576,10 +576,10 @@ describe('HedgeBot — Property 9: leg value equality invariant', () => {
 // Property 3: getStatus always returns all required fields
 // Requirements: 2.2
 // ---------------------------------------------------------------------------
-import { HedgeBot } from '../HedgeBot.js';
+import { PairBot } from '../PairBot.js';
 import type { ExchangeAdapter } from '../../adapters/ExchangeAdapter.js';
 import type { TelegramManager } from '../../modules/TelegramManager.js';
-import type { ActiveLegPair } from '../HedgeBotSharedState.js';
+import type { ActiveLegPair } from '../PairBotSharedState.js';
 
 /** The set of required fields that getStatus() must always return. */
 const REQUIRED_STATUS_FIELDS = [
@@ -622,20 +622,20 @@ function buildMockTelegram(): TelegramManager {
   } as unknown as TelegramManager;
 }
 
-/** Factory: creates a HedgeBot with mock dependencies. */
-function buildHedgeBot(overrides?: Partial<{
+/** Factory: creates a PairBot with mock dependencies. */
+function buildPairBot(overrides?: Partial<{
   sessionPnl: number;
   sessionVolume: number;
   botStatus: 'RUNNING' | 'STOPPED';
   hedgePosition: ActiveLegPair | null;
   startTimeDeltaMs: number | null;
-}>): HedgeBot {
+}>): PairBot {
   const config = {
     id: 'hedge-prop-test',
-    name: 'Property Test Hedge Bot',
+    name: 'Property Test Pair Bot',
     botType: 'hedge' as const,
     exchange: 'sodex' as const,
-    tags: ['hedge'],
+    tags: ['pair'],
     autoStart: false,
     credentialKey: 'SODEX',
     tradeLogBackend: 'json' as const,
@@ -651,7 +651,7 @@ function buildHedgeBot(overrides?: Partial<{
     fundingRateWeight: 0.1,
   };
 
-  const bot = new HedgeBot(config, buildMockAdapter(), buildMockTelegram());
+  const bot = new PairBot(config, buildMockAdapter(), buildMockTelegram());
 
   if (overrides) {
     if (overrides.sessionPnl !== undefined) bot.state.sessionPnl = overrides.sessionPnl;
@@ -692,11 +692,11 @@ function arbitraryHedgePosition(): fc.Arbitrary<ActiveLegPair | null> {
   return fc.oneof(fc.constant(null), legPairArb);
 }
 
-describe('HedgeBot — Property 3: getStatus() always returns all required fields', () => {
+describe('PairBot — Property 3: getStatus() always returns all required fields', () => {
   /**
    * Property 3: getStatus always returns all required fields
    *
-   * For any HedgeBot state (running or stopped, with or without active pair,
+   * For any PairBot state (running or stopped, with or without active pair,
    * with any sessionPnl / sessionVolume values), `getStatus()` should return
    * an object containing all required fields: `id`, `name`, `exchange`,
    * `status`, `tags`, `sessionPnl`, `sessionVolume`, `uptime`, and
@@ -721,7 +721,7 @@ describe('HedgeBot — Property 3: getStatus() always returns all required field
           fc.integer({ min: 0, max: 3_600_000 }),
         ),
         (botStatus, sessionPnl, sessionVolume, hedgePosition, startTimeDeltaMs) => {
-          const bot = buildHedgeBot({
+          const bot = buildPairBot({
             botStatus,
             sessionPnl,
             sessionVolume,
@@ -761,8 +761,8 @@ describe('HedgeBot — Property 3: getStatus() always returns all required field
 // Task 8.6 — Property 13: Trade log record completeness
 // Requirements: 7.5, 9.2
 // ---------------------------------------------------------------------------
-import { buildHedgeTradeRecord } from '../hedgeBotHelpers.js';
-import type { CompletedTrade, ExitReason } from '../hedgeBotHelpers.js';
+import { buildPairTradeRecord } from '../pairBotHelpers.js';
+import type { CompletedTrade, ExitReason } from '../pairBotHelpers.js';
 
 /**
  * Arbitrary generator for a valid CompletedTrade object.
@@ -812,7 +812,7 @@ function arbitraryCompletedTrade(): fc.Arbitrary<CompletedTrade> {
   );
 }
 
-describe('HedgeBot — Property 13: trade log record completeness', () => {
+describe('PairBot — Property 13: trade log record completeness', () => {
   /**
    * Property 13: Trade log record completeness
    *
@@ -824,10 +824,10 @@ describe('HedgeBot — Property 13: trade log record completeness', () => {
    *
    * **Validates: Requirements 7.5, 9.2**
    */
-  it('Property 13: buildHedgeTradeRecord always produces all required fields', () => {
+  it('Property 13: buildPairTradeRecord always produces all required fields', () => {
     fc.assert(
       fc.property(arbitraryCompletedTrade(), (trade) => {
-        const record = buildHedgeTradeRecord(trade);
+        const record = buildPairTradeRecord(trade);
         const requiredFields = [
           'botId',
           'exchange',
@@ -857,7 +857,7 @@ describe('HedgeBot — Property 13: trade log record completeness', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Task 10.4 — Property 4: BotManager aggregated stats include HedgeBot contributions
+// Task 10.4 — Property 4: BotManager aggregated stats include PairBot contributions
 // Requirements: 2.4
 // ---------------------------------------------------------------------------
 import { BotManager } from '../BotManager.js';
@@ -885,12 +885,12 @@ function buildBotConfig(id: string): BotConfig {
 }
 
 /**
- * Factory: creates a minimal HedgeBotConfig.
+ * Factory: creates a minimal PairBotConfig.
  */
-function buildHedgeBotConfig(id: string): import('../types.js').HedgeBotConfig {
+function buildPairBotConfig(id: string): import('../types.js').PairBotConfig {
   return {
     id,
-    name: `HedgeBot ${id}`,
+    name: `PairBot ${id}`,
     botType: 'hedge',
     exchange: 'sodex',
     tags: [],
@@ -910,11 +910,11 @@ function buildHedgeBotConfig(id: string): import('../types.js').HedgeBotConfig {
   };
 }
 
-describe('BotManager — Property 4: aggregated stats include HedgeBot contributions', () => {
+describe('BotManager — Property 4: aggregated stats include PairBot contributions', () => {
   /**
-   * Property 4: BotManager aggregated stats include HedgeBot contributions
+   * Property 4: BotManager aggregated stats include PairBot contributions
    *
-   * For any collection of bots registered with BotManager (including HedgeBot
+   * For any collection of bots registered with BotManager (including PairBot
    * instances), `getAggregatedStats().totalPnl` should equal the arithmetic
    * sum of `sessionPnl` across all registered bots.
    *
@@ -928,7 +928,7 @@ describe('BotManager — Property 4: aggregated stats include HedgeBot contribut
           fc.float({ noNaN: true, noDefaultInfinity: true }),
           { minLength: 0, maxLength: 3 },
         ),
-        // Array of sessionPnl values for HedgeBot bots (0–3 bots)
+        // Array of sessionPnl values for PairBot bots (0–3 bots)
         fc.array(
           fc.float({ noNaN: true, noDefaultInfinity: true }),
           { minLength: 0, maxLength: 3 },
@@ -945,11 +945,11 @@ describe('BotManager — Property 4: aggregated stats include HedgeBot contribut
             bot.state.sessionPnl = pnl;
           });
 
-          // Register HedgeBot bots with the given sessionPnl values
+          // Register PairBot bots with the given sessionPnl values
           hedgePnls.forEach((pnl, i) => {
-            const config = buildHedgeBotConfig(`hedge-${i}`);
-            const hedgeBot = manager.createHedgeBot(config, adapter, telegram);
-            hedgeBot.state.sessionPnl = pnl;
+            const config = buildPairBotConfig(`hedge-${i}`);
+            const pairBot = manager.createPairBot(config, adapter, telegram);
+            pairBot.state.sessionPnl = pnl;
           });
 
           const stats = manager.getAggregatedStats();
