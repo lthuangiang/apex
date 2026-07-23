@@ -261,9 +261,13 @@ When user selects Manual, an additional "Initial Strategy" dropdown appears.
 
 ---
 
-## 🏗️ Built for SoDEX — Volume Farming + Cross-Exchange DN
+## Wave 3: Built for SoDEX — Volume Farming + Cross-Exchange Delta-Neutral
 
 DRIFT is purpose-built to maximize value on **SoDEX** — combining intelligent volume farming with cross-exchange delta-neutral strategies that use SoDEX as a key leg.
+
+<p align="center">
+  <img src="dn.png" alt="DRIFT Architecture" width="800"/>
+</p>
 
 ### Why SoDEX is the Perfect Hub
 
