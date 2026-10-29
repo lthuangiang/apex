@@ -1,0 +1,22 @@
+{
+  "name": "@drift/runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "ioredis": "6.0.0",
+    "@nats-io/jetstream": "3.4.0",
+    "@nats-io/transport-node": "3.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "vitest": "5.0.5"
+  }
+}

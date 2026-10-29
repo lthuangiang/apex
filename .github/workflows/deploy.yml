@@ -1,0 +1,84 @@
+# Deploy lên VPS production (DEC-70, docs/DEPLOY.md). Chạy TAY: tab Actions › deploy › Run workflow.
+# GitHub Free + repo private không có "Required reviewers", nên bấm Run workflow chính là bước duyệt.
+# check → build 10 image linux/amd64 đẩy lên MỘT repo private Docker Hub, tag `<app>-<git sha>` → SSH vào VPS
+# chạy infra/deploy/deploy.sh. VPS kéo image bằng access token read-only đã `docker login` sẵn (docs/DEPLOY.md).
+name: deploy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm i -g corepack@latest && corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        app: [api, backtest, engine, jobs, marketdata, realtime, reco, scheduler, signer, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      # Access token Docker Hub quyền Read & Write; image base (node) cũng kéo bằng tài khoản này.
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          # Kiến trúc của VPS: amd64 (mặc định) hoặc arm64 qua biến repo PLATFORM (arm64 chạy QEMU, chậm).
+          platforms: ${{ vars.PLATFORM || 'linux/amd64' }}
+          push: true
+          tags: ${{ vars.DRIFT_IMAGE }}:${{ matrix.app }}-${{ github.sha }}
+          # Chỉ web dùng: Next nhúng NEXT_PUBLIC_* lúc build.
+          build-args: |
+            NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${{ vars.WALLETCONNECT_PROJECT_ID }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH key
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Copy compose and infra files
+        env:
+          TARGET: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        # .env và certs nằm sẵn trên VPS, không bao giờ đi qua GitHub.
+        run: |
+          rsync -az -e "ssh -o StrictHostKeyChecking=yes" \
+            --relative docker-compose.yml docker-compose.prod.yml \
+            infra/postgres/ infra/vault/ infra/deploy/ "$TARGET:/opt/drift/"
+      - name: Deploy
+        env:
+          TARGET: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: ssh -o StrictHostKeyChecking=yes "$TARGET" "bash /opt/drift/infra/deploy/deploy.sh '${{ github.sha }}'"

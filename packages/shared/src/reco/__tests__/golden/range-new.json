@@ -1,0 +1,68 @@
+{
+  "best": {
+    "id": "387cfbc95b377d90",
+    "strategy": "spot_grid",
+    "market": "vBTC_vUSDC",
+    "values": {
+      "market": "vBTC_vUSDC",
+      "lowerPrice": "62000",
+      "upperPrice": "72000",
+      "gridLevels": 16,
+      "spacing": "arithmetic",
+      "investment": "4800",
+      "stopPrice": "60140",
+      "maxLoss": "480",
+      "onStop": "keep_base"
+    },
+    "capital": "4800",
+    "score": 64.2,
+    "reasons": [
+      "Range 62,000–72,000 covers 90% of BTC daily closes over the last 30 days (P5–P95).",
+      "Step ≈ 1% is at least 10× the round-trip fee of 0.1%.",
+      "Stop at 60,140 sits 3% below the range; max loss 480 vUSDC = 10% of capital."
+    ],
+    "basis": "Over the last 180 days, BTC stayed range-bound on 71% of days. This describes price, not profit.",
+    "computedAt": "2026-10-27T07:00:00.000Z",
+    "inputsVersion": "reco-1"
+  },
+  "addOns": [
+    {
+      "id": "6185ab34288fe952",
+      "strategy": "spot_dca",
+      "market": "vBTC_vUSDC",
+      "values": {
+        "market": "vBTC_vUSDC",
+        "baseOrder": "350.68",
+        "safetyOrder": "350.68",
+        "maxSafetyOrders": 4,
+        "firstStepPct": "1.37",
+        "stepMultiplier": "1.2",
+        "sizeMultiplier": "1.5",
+        "takeProfitPct": "1.2",
+        "maxLoss": "320",
+        "start": "immediately"
+      },
+      "capital": "3200",
+      "score": 50,
+      "reasons": [
+        "First safety at −1.37%, the median daily move of BTC over 30 days.",
+        "4 safety orders cover a 7.35% drop; the largest 30-day drop was 7.31%.",
+        "Take profit 1.2% is above the round-trip fee of 0.1%."
+      ],
+      "basis": "vBTC_vUSDC: largest drop over the last 30 days 7.31%, median daily move 1.37%.",
+      "computedAt": "2026-10-27T07:00:00.000Z",
+      "inputsVersion": "reco-1"
+    }
+  ],
+  "notSuggested": [
+    {
+      "title": "Futures Grid",
+      "reason": "Above your 10% max drop at any useful size."
+    }
+  ],
+  "notes": [
+    "You have fewer than 30 closed positions, so these suggestions don't use your trading history."
+  ],
+  "capital": "8000",
+  "empty": null
+}

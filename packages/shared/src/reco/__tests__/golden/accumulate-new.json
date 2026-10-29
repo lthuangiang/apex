@@ -1,0 +1,67 @@
+{
+  "best": {
+    "id": "48ff402e7e612dd5",
+    "strategy": "recurring_buy",
+    "market": "vBTC_vUSDC",
+    "values": {
+      "market": "vBTC_vUSDC",
+      "amountPerBuy": "240",
+      "frequency": "weekly",
+      "dayOfWeek": 1,
+      "time": "09:00",
+      "timeZone": "Asia/Ho_Chi_Minh",
+      "ends": "after_n_buys",
+      "buyCount": 20,
+      "onLowBalance": "skip_and_notify"
+    },
+    "capital": "4800",
+    "score": 55,
+    "reasons": [
+      "You chose BTC; 20 weekly buys of 240 vUSDC.",
+      "Spot, no leverage, no funding costs.",
+      "No selling: the value follows the market."
+    ],
+    "basis": "vBTC_vUSDC: market buys every Monday 09:00, Asia/Ho_Chi_Minh.",
+    "computedAt": "2026-10-27T07:00:00.000Z",
+    "inputsVersion": "reco-1"
+  },
+  "addOns": [
+    {
+      "id": "923ab0ac8c17be1a",
+      "strategy": "recurring_buy",
+      "market": "vETH_vUSDC",
+      "values": {
+        "market": "vETH_vUSDC",
+        "amountPerBuy": "160",
+        "frequency": "weekly",
+        "dayOfWeek": 1,
+        "time": "09:00",
+        "timeZone": "Asia/Ho_Chi_Minh",
+        "ends": "after_n_buys",
+        "buyCount": 20,
+        "onLowBalance": "skip_and_notify"
+      },
+      "capital": "3200",
+      "score": 55,
+      "reasons": [
+        "You chose ETH; 20 weekly buys of 160 vUSDC.",
+        "Spot, no leverage, no funding costs.",
+        "No selling: the value follows the market."
+      ],
+      "basis": "vETH_vUSDC: market buys every Monday 09:00, Asia/Ho_Chi_Minh.",
+      "computedAt": "2026-10-27T07:00:00.000Z",
+      "inputsVersion": "reco-1"
+    }
+  ],
+  "notSuggested": [
+    {
+      "title": "Futures Grid",
+      "reason": "Above your 10% max drop at any useful size."
+    }
+  ],
+  "notes": [
+    "You have fewer than 30 closed positions, so these suggestions don't use your trading history."
+  ],
+  "capital": "8000",
+  "empty": null
+}

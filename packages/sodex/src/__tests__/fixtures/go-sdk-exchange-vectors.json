@@ -1,0 +1,48 @@
+{
+  "source": "sodex-tech/sodex-go-sdk-public@548dfd4 perps/signer + spot/signer, generated 2026-10-27 (DEC-27). Test key only.",
+  "privateKey": "0x2222222222222222222222222222222222222222222222222222222222222222",
+  "address": "0x1563915e194D8CfBA1943570603F7606A3115508",
+  "chainId": 286623,
+  "vectors": [
+    {
+      "name": "perpsNewOrderDocs",
+      "domain": "futures",
+      "payload": "{\"type\":\"newOrder\",\"params\":{\"accountID\":12345,\"symbolID\":1,\"orders\":[{\"clOrdID\":\"my-order-1\",\"modifier\":1,\"side\":1,\"type\":2,\"timeInForce\":3,\"quantity\":\"0.001\",\"reduceOnly\":false,\"positionSide\":1}]}}",
+      "payloadHash": "0x24d973a9f714c68e80bf214cbd6a39798da4022b17d43719ec6017f19f4685a7",
+      "signature": "0x0120f43c779a937112a9993194b3f94d9c441a389901c75e9a8251216c146ef66403a59d722cbf3eeb4ab77d8222ab1aa81c40323ba1aad7e88bb1787e40834c7d01",
+      "nonce": 1760373925001
+    },
+    {
+      "name": "perpsNewOrderBuilder",
+      "domain": "futures",
+      "payload": "{\"type\":\"newOrder\",\"params\":{\"accountID\":1645,\"symbolID\":2,\"orders\":[{\"clOrdID\":\"drift-b1-v3-l2-a0\",\"modifier\":1,\"side\":2,\"type\":1,\"timeInForce\":4,\"price\":\"65000.1\",\"quantity\":\"0.01\",\"reduceOnly\":true,\"positionSide\":1}],\"builder\":{\"id\":1645,\"fee\":50}}}",
+      "payloadHash": "0x2dfc1d647bd5c24c90eec21c1f3ac3d369ed5ed4136b42f6883893c92c40a26a",
+      "signature": "0x01af766d8b3abac2d0681b52001b16e3c2333e7fdd886ae09db778f5260d9f8972683ca0366a0a298718eaae74fa9ab23d6d063406094009346c97192496fb257c00",
+      "nonce": 1760373925001
+    },
+    {
+      "name": "perpsCancel",
+      "domain": "futures",
+      "payload": "{\"type\":\"cancelOrder\",\"params\":{\"accountID\":1645,\"cancels\":[{\"symbolID\":2,\"clOrdID\":\"drift-b1-v3-l2-a0\"},{\"symbolID\":2,\"orderID\":18446744073709551615}]}}",
+      "payloadHash": "0x7dff2289bb6c831768376d73f709e8f1668409fc5e11617f9974476367f7530b",
+      "signature": "0x01f82dcc84453876b5c36ecb8fa2936d46a4c8fbc504f86c4bebbcd0a6cce8537a6f176c05a8d2e1081bac2232fa6b0df41ffc65d3ee4499dbde54cba352c66dee01",
+      "nonce": 1760373925001
+    },
+    {
+      "name": "spotNewOrderBuilder",
+      "domain": "spot",
+      "payload": "{\"type\":\"batchNewOrder\",\"params\":{\"accountID\":1645,\"orders\":[{\"symbolID\":7,\"clOrdID\":\"drift-grid-1\",\"side\":1,\"type\":1,\"timeInForce\":1,\"price\":\"3511.6\",\"quantity\":\"0.0268\"}],\"builder\":{\"id\":1645,\"fee\":50}}}",
+      "payloadHash": "0xb7916ff2688cf9ff5c9fb7986147a47f84b28d73e9c40e2cae750a394c28e41f",
+      "signature": "0x016156760f414cbe318fd3eb4969ce0261cf67260108817f8177d81174c144e741106616fd836b7cc20a7817afbb24b9a2bedf2a72594b5b728e864ed38707b68700",
+      "nonce": 1760373925001
+    },
+    {
+      "name": "spotCancel",
+      "domain": "spot",
+      "payload": "{\"type\":\"batchCancelOrder\",\"params\":{\"accountID\":1645,\"cancels\":[{\"symbolID\":7,\"clOrdID\":\"drift-cx-1\",\"origClOrdID\":\"drift-grid-1\"}]}}",
+      "payloadHash": "0xb93c506c34c5e3fd3be93948956618f69ad7100b8b3696ad207484520b971f73",
+      "signature": "0x01c911044be08b6e53dcfcf7538c00cb6e3f0fb957958587cfaa1eaa0e6e8ae1841e5e76e3813f51e01b36e66e5a30882d7489e8f5ccc7ab78a21d3f3def53c8ce01",
+      "nonce": 1760373925001
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+/* Tailwind v4 + token DRIFT. App import file này một lần (ví dụ trong apps/web). */
+@import "tailwindcss";
+@import "./tokens.css";
+
+@source "../";
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-input: var(--border-input);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-tint: var(--accent-tint);
+  --color-pos: var(--pos);
+  --color-pos-bg: var(--pos-bg);
+  --color-pos-dot: var(--pos-dot);
+  --color-neg: var(--neg);
+  --color-neg-ink: var(--neg-ink);
+  --color-neg-bg: var(--neg-bg);
+  --color-neg-soft: var(--neg-soft);
+  --color-neg-border: var(--neg-border);
+  --color-neg-deep: var(--neg-deep);
+  --color-neg-text: var(--neg-text);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-bar: var(--warn-bar);
+  --color-unknown: var(--unknown);
+  --color-unknown-bg: var(--unknown-bg);
+  --color-bot-orange: var(--bot-orange);
+  --color-bot-teal: var(--bot-teal);
+  --color-cat-grid-ink: var(--cat-grid-ink);
+  --color-cat-dca-ink: var(--cat-dca-ink);
+  --color-cat-exec-bg: var(--cat-exec-bg);
+  --color-fits: var(--fits);
+  --color-ink-body: var(--ink-body);
+  --color-focus: var(--focus-ring);
+  --color-on-ink-2: var(--on-ink-2);
+  --color-on-ink-accent: var(--on-ink-accent);
+  --color-on-ink-pos: var(--on-ink-pos);
+  --color-on-ink-neg: var(--on-ink-neg);
+  --color-on-ink-neg-2: var(--on-ink-neg-2);
+
+  --radius-control: var(--radius-control);
+  --radius-tile: var(--radius-tile);
+  --radius-card: var(--radius-card);
+  --radius-hero: var(--radius-hero);
+
+  --spacing-tap: var(--tap-min);
+  --shadow-accent: var(--shadow-accent);
+  --shadow-float: var(--shadow-float);
+  --font-sans: var(--font-sans);
+  --background-image-hero: var(--hero);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--ink);
+    background: var(--bg);
+  }
+
+  /* Mọi con số dùng tabular numbers (mục 13). */
+  body {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

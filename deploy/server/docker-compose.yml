@@ -1,0 +1,414 @@
+# DRIFT — chạy cả hệ thống trên MỘT server bằng một file (DEC-70). Không build: kéo image từ Docker Hub.
+#
+#   1. Chép file này và .env.example vào một thư mục trên server, đổi .env.example thành .env rồi điền.
+#   2. docker login -u <user-docker-hub>          (token Read-only; repo private)
+#   3. docker compose up -d
+#
+# Lần đầu: tự tạo cert mTLS, tự init Vault, tự chạy migration. Sau đó xem docker compose ps.
+# Cập nhật bản mới: đổi DRIFT_TAG trong .env (hoặc giữ "latest"), rồi: docker compose pull && docker compose up -d
+# Ngay sau lần chạy đầu, chép unseal key + root token ra chỗ an toàn ngoài server:
+#   docker compose exec vault-init cat /vault/init/init.txt
+# Mất volume `vaultinit` + `vaultdata` và bản chép này = phải kết nối lại SoDEX cho mọi account.
+name: drift
+
+x-env: &env
+  NODE_ENV: production
+  DATABASE_URL: postgres://drift:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@pgbouncer:6432/drift
+  REDIS_URL: redis://redis:6379
+  NATS_URL: nats://nats:4222
+  SODEX_REST_URL: ${SODEX_REST_URL:-https://mainnet-gw.sodex.dev}
+  SODEX_WS_URL: ${SODEX_WS_URL:-wss://mainnet-gw.sodex.dev/ws}
+  SODEX_CHAIN: mainnet
+  DRIFT_BUILDER_ID: ${DRIFT_BUILDER_ID:?set DRIFT_BUILDER_ID}
+  DRIFT_BUILDER_ADDRESS: ${DRIFT_BUILDER_ADDRESS:-}
+  DRIFT_BUILDER_FEE: "10"
+  VOLUME_MAKER_ENABLED: "false"
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  API_TOTP_ENC_KEY: ${API_TOTP_ENC_KEY:?set API_TOTP_ENC_KEY}
+  API_COOKIE_SECURE: "true"
+  SMTP_URL: ${SMTP_URL:?set SMTP_URL}
+  MAIL_FROM: ${MAIL_FROM:?set MAIL_FROM}
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
+x-app: &app
+  restart: unless-stopped
+  environment: *env
+  logging: *logging
+  networks: [core]
+  depends_on: &app-deps
+    pgbouncer: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    nats: { condition: service_healthy }
+    migrate: { condition: service_completed_successfully }
+
+services:
+  # ---------- Edge: HTTPS Let's Encrypt cho APP_HOST, http → https ----------
+  traefik:
+    image: traefik:v3.6
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls.certresolver=le
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL:?set ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.tlschallenge=true
+    ports: ["80:80", "443:443"]
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro", "letsencrypt:/letsencrypt"]
+    networks: [edge]
+    restart: unless-stopped
+    logging: *logging
+
+  web:
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:web-${DRIFT_TAG:-latest}
+    environment:
+      NEXT_PUBLIC_API_URL: ""
+      NEXT_PUBLIC_WS_URL: ""
+      VOLUME_MAKER_ENABLED: "false"
+    healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/signup').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=Host(`${APP_HOST:?set APP_HOST}`)
+      - traefik.http.routers.web.entrypoints=websecure
+      - traefik.http.services.web.loadbalancer.server.port=3000
+      - traefik.docker.network=drift_edge
+    networks: [edge]
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    <<: *app
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:api-${DRIFT_TAG:-latest}
+    environment:
+      <<: *env
+      SIGNER_URL: https://signer:8090
+      SIGNER_CLIENT_CERT: /certs/api.crt
+      SIGNER_CLIENT_KEY: /certs/api.key
+      SIGNER_CLIENT_CA: /certs/ca.crt
+      RECO_URL: http://reco:8095
+      SODEX_CONNECT_ENABLED: "true"
+    depends_on:
+      <<: *app-deps
+      signer: { condition: service_healthy }
+      reco: { condition: service_healthy }
+    volumes: ["certs:/certs:ro"]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=Host(`${APP_HOST}`) && PathPrefix(`/api`)
+      - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.services.api.loadbalancer.server.port=8080
+      - traefik.docker.network=drift_edge
+    networks: [edge, core, secure]
+    healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
+
+  realtime:
+    <<: *app
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:realtime-${DRIFT_TAG:-latest}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.rt.rule=Host(`${APP_HOST}`) && PathPrefix(`/ws`)
+      - traefik.http.routers.rt.entrypoints=websecure
+      - traefik.http.services.rt.loadbalancer.server.port=8081
+      - traefik.docker.network=drift_edge
+    networks: [edge, core]
+
+  # ---------- Trading core ----------
+  engine:
+    <<: *app
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:engine-${DRIFT_TAG:-latest}
+    environment:
+      <<: *env
+      ENGINE_SHARDS: "64"
+      ENGINE_SHARD_LEASE_TTL_MS: "15000"
+      SIGNER_URL: https://signer:8090
+      SIGNER_CLIENT_CERT: /certs/engine.crt
+      SIGNER_CLIENT_KEY: /certs/engine.key
+      SIGNER_CLIENT_CA: /certs/ca.crt
+    depends_on:
+      <<: *app-deps
+      signer: { condition: service_healthy }
+    volumes: ["certs:/certs:ro"]
+    networks: [core, secure]
+    stop_grace_period: 30s
+
+  signer:
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:signer-${DRIFT_TAG:-latest}
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_TOKEN:?set VAULT_TOKEN}
+      DATABASE_URL: postgres://drift_signer:${SIGNER_DB_PASSWORD:?set SIGNER_DB_PASSWORD}@postgres:5432/drift
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SIGNER_TLS_CERT: /certs/signer.crt
+      SIGNER_TLS_KEY: /certs/signer.key
+      SIGNER_TLS_CA: /certs/ca.crt
+      SIGNER_REQUIRE_MTLS: "true"
+    volumes: ["certs:/certs:ro"]
+    tmpfs: ["/tmp"]
+    read_only: true
+    depends_on:
+      certs: { condition: service_completed_successfully }
+      vault-init: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck: { test: ["CMD", "node", "-e", "const fs=require('fs');require('https').get({host:'127.0.0.1',port:8090,path:'/healthz',servername:'signer',ca:fs.readFileSync('/certs/ca.crt'),cert:fs.readFileSync('/certs/engine.crt'),key:fs.readFileSync('/certs/engine.key')},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"], interval: 10s, retries: 5 }
+    networks: [secure]
+    restart: unless-stopped
+    logging: *logging
+
+  marketdata:
+    <<: *app
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:marketdata-${DRIFT_TAG:-latest}
+
+  scheduler:
+    <<: *app
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:scheduler-${DRIFT_TAG:-latest}
+
+  jobs:
+    <<: *app
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:jobs-${DRIFT_TAG:-latest}
+
+  reco:
+    <<: *app
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:reco-${DRIFT_TAG:-latest}
+    environment:
+      <<: *env
+      RECO_PORT: "8095"
+    healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8095/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
+
+  backtest:
+    <<: *app
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:backtest-${DRIFT_TAG:-latest}
+    deploy:
+      resources: { limits: { cpus: "1", memory: 1g } }
+
+  # Chạy migration mỗi lần `up`, xong thì thoát; các app chờ bước này.
+  migrate:
+    image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:api-${DRIFT_TAG:-latest}
+    command: ["pnpm", "--filter", "@drift/api", "db:migrate"]
+    environment: *env
+    depends_on:
+      pgbouncer: { condition: service_healthy }
+    networks: [core]
+    restart: "no"
+    logging: *logging
+
+  # ---------- Init một lần ----------
+  certs:
+    image: alpine:3.20
+    entrypoint: ["/bin/sh", "/init.sh"]
+    configs: [{ source: certs-init, target: /init.sh }]
+    volumes: ["certs:/certs"]
+    networks: [edge]
+    restart: "no"
+
+  # ---------- Data ----------
+  postgres:
+    image: timescale/timescaledb:2.16.1-pg16
+    environment:
+      POSTGRES_DB: drift
+      POSTGRES_USER: drift
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SIGNER_DB_PASSWORD: ${SIGNER_DB_PASSWORD}
+    configs: [{ source: pg-signer-role, target: /docker-entrypoint-initdb.d/01-signer-role.sh }]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    networks: [core, secure]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U drift"], interval: 5s, retries: 10 }
+    restart: unless-stopped
+    logging: *logging
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.26.1-p0
+    environment:
+      DB_HOST: postgres
+      DB_USER: drift
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: drift
+      LISTEN_PORT: "6432"
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "500"
+      DEFAULT_POOL_SIZE: "20"
+    depends_on: { postgres: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U drift -d drift"], interval: 5s, retries: 10 }
+    networks: [core, secure]
+    restart: unless-stopped
+    logging: *logging
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["redisdata:/data"]
+    networks: [core]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10 }
+    restart: unless-stopped
+    logging: *logging
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    volumes: ["natsdata:/data"]
+    networks: [core]
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"], interval: 5s, retries: 10 }
+    restart: unless-stopped
+    logging: *logging
+
+  # Vault: lưu file trên volume, vault-init tự init lần đầu và tự unseal mỗi khi Vault khởi động lại.
+  vault:
+    image: hashicorp/vault:1.17
+    cap_add: [IPC_LOCK]
+    command: ["server", "-config=/vault/prod/prod.hcl"]
+    environment: { VAULT_ADDR: "http://127.0.0.1:8200" }
+    configs: [{ source: vault-hcl, target: /vault/prod/prod.hcl }]
+    volumes: ["vaultdata:/vault/file"]
+    networks: [secure]
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8200/v1/sys/health?sealedcode=200&uninitcode=200"], interval: 5s, retries: 10 }
+    restart: unless-stopped
+    logging: *logging
+
+  vault-init:
+    image: hashicorp/vault:1.17
+    entrypoint: ["/bin/sh", "/vault/prod-init.sh"]
+    environment: { SIGNER_TOKEN: "${VAULT_TOKEN}" }
+    configs: [{ source: vault-init, target: /vault/prod-init.sh }]
+    volumes: ["vaultinit:/vault/init"]
+    depends_on: { vault: { condition: service_healthy } }
+    healthcheck: { test: ["CMD", "test", "-f", "/tmp/ready"], interval: 5s, retries: 60 }
+    networks: [secure]
+    restart: unless-stopped
+    logging: *logging
+
+configs:
+  pg-signer-role:
+    content: |
+      #!/bin/sh
+      # Chạy một lần khi Postgres khởi tạo volume mới: tạo role riêng cho signer.
+      # Quyền trên bảng cấp bằng migration (0002_signer_grants). Không có mật khẩu mặc định.
+      set -eu
+      if [ -z "$${SIGNER_DB_PASSWORD:-}" ]; then
+        echo "SIGNER_DB_PASSWORD is required" >&2
+        exit 1
+      fi
+      psql -v ON_ERROR_STOP=1 --username "$$POSTGRES_USER" --dbname "$$POSTGRES_DB" \
+        -v pw="$$SIGNER_DB_PASSWORD" <<'SQL'
+      CREATE ROLE drift_signer LOGIN PASSWORD :'pw';
+      GRANT CONNECT ON DATABASE drift TO drift_signer;
+      GRANT USAGE ON SCHEMA public TO drift_signer;
+      SQL
+  vault-hcl:
+    content: |
+      # Production 1 host (DEC-70): Vault server mode, lưu file trên named volume `vaultdata`.
+      # Chỉ nghe trong network `secure` (internal), không có cổng ra ngoài nên không bật TLS.
+      # Mất volume này = mất khoá transit `drift-api-keys` = mọi API key đã lưu không giải mã được (UI_REVIEW H1).
+      # Backup cùng volume `vaultinit` (infra/deploy/backup.sh).
+      storage "file" {
+        path = "/vault/file"
+      }
+
+      listener "tcp" {
+        address     = "0.0.0.0:8200"
+        tls_disable = 1
+      }
+
+      disable_mlock = true
+      ui            = false
+  vault-init:
+    content: |
+      #!/bin/sh
+      # Production 1 host (DEC-70). Chạy liên tục trong container `vault-init`:
+      #   - lần đầu: init (1 unseal key), bật transit, tạo khoá `drift-api-keys`, policy `signer` chỉ encrypt/decrypt
+      #     khoá đó, và token của signer (id = SIGNER_TOKEN = VAULT_TOKEN trong .env) sống 10 năm, không có quyền khác;
+      #   - mỗi 15 s: nếu Vault đang sealed (vừa restart / VPS reboot) thì unseal.
+      # Đánh đổi: unseal key nằm trong volume `vaultinit` trên cùng máy để bot tự chạy lại sau reboot. Ai có root trên
+      # VPS thì đọc được. Chép /vault/init/init.txt ra chỗ an toàn ngoài VPS (trình quản lý mật khẩu) ngay sau lần đầu.
+      set -eu
+      export VAULT_ADDR="http://vault:8200"
+      INIT=/vault/init/init.txt
+      READY=/tmp/ready
+
+      until vault status >/dev/null 2>&1 || [ $$? -eq 2 ]; do sleep 2; done
+
+      if vault status 2>/dev/null | grep -q '^Initialized *false'; then
+        vault operator init -key-shares=1 -key-threshold=1 > "$$INIT"
+        chmod 600 "$$INIT"
+        echo "vault: initialized — copy $$INIT off the server now"
+      fi
+      if [ ! -s "$$INIT" ]; then
+        echo "vault: initialized but $$INIT is missing; restore the vaultinit volume from backup" >&2
+        exit 1
+      fi
+      UNSEAL=$$(sed -n 's/^Unseal Key 1: //p' "$$INIT")
+      ROOT=$$(sed -n 's/^Initial Root Token: //p' "$$INIT")
+
+      unseal() {
+        if vault status 2>/dev/null | grep -q '^Sealed *true'; then
+          vault operator unseal "$$UNSEAL" >/dev/null
+          echo "vault: unsealed"
+        fi
+      }
+
+      unseal
+      export VAULT_TOKEN="$$ROOT"
+      vault secrets list | grep -q '^transit/' || vault secrets enable transit
+      vault read transit/keys/drift-api-keys >/dev/null 2>&1 \
+        || vault write -f transit/keys/drift-api-keys type=aes256-gcm96 >/dev/null
+      # Không cho xoá khoá transit (mất khoá = mất mọi API key đã mã hoá).
+      vault write transit/keys/drift-api-keys/config deletion_allowed=false >/dev/null
+      printf '%s\n' \
+        'path "transit/encrypt/drift-api-keys" { capabilities = ["update"] }' \
+        'path "transit/decrypt/drift-api-keys" { capabilities = ["update"] }' \
+        | vault policy write signer - >/dev/null
+      # Signer chỉ đăng nhập một lần lúc khởi động và không renew token, nên token phải sống lâu.
+      vault auth tune -max-lease-ttl=87600h token/ >/dev/null
+      vault token lookup "$$SIGNER_TOKEN" >/dev/null 2>&1 \
+        || vault token create -id="$$SIGNER_TOKEN" -policy=signer -no-default-policy -orphan -ttl=87600h >/dev/null
+      unset VAULT_TOKEN
+      touch "$$READY"
+      echo "vault: ready"
+
+      while true; do
+        sleep 15
+        unseal
+      done
+  certs-init:
+    content: |
+      #!/bin/sh
+      # Tạo CA nội bộ + cert mTLS cho api/engine ↔ signer một lần (giữ trong volume `certs`, hạn 3 năm).
+      set -eu
+      cd /certs
+      if [ -s ca.crt ] && [ -s signer.crt ] && [ -s api.crt ] && [ -s engine.crt ]; then echo "certs: present"; exit 0; fi
+      apk add --no-cache openssl >/dev/null
+      DAYS=1095
+      openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -subj "/CN=drift-internal-ca" -days $$DAYS -out ca.crt 2>/dev/null
+      issue() {
+        name="$$1"; cn="$$2"; ext="$$3"
+        openssl req -newkey rsa:2048 -nodes -keyout "$$name.key" -subj "/CN=$$cn" -out "$$name.csr" 2>/dev/null
+        if [ -n "$$ext" ]; then printf '%s\n' "$$ext" > "$$name.ext"; set -- -extfile "$$name.ext"; else set --; fi
+        openssl x509 -req -in "$$name.csr" -CA ca.crt -CAkey ca.key -CAcreateserial -days $$DAYS -out "$$name.crt" "$$@" 2>/dev/null
+        rm -f "$$name.csr" "$$name.ext"
+      }
+      issue signer signer "subjectAltName=DNS:signer,DNS:localhost,IP:127.0.0.1"
+      issue api api ""
+      issue engine engine ""
+      chmod 644 ./*.crt ./*.key
+      rm -f ca.key
+      echo "certs: created (valid $$DAYS days)"
+
+networks:
+  edge: {}
+  core: {}
+  secure: { internal: true }
+
+volumes:
+  pgdata: {}
+  redisdata: {}
+  natsdata: {}
+  vaultdata: {}
+  vaultinit: {}
+  certs: {}
+  letsencrypt: {}

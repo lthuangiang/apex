@@ -1,0 +1,29 @@
+{
+  "name": "@drift/realtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@drift/db": "workspace:*",
+    "@drift/shared": "workspace:*",
+    "@nats-io/transport-node": "3.4.0",
+    "drizzle-orm": "0.45.4",
+    "pino": "10.4.0",
+    "tsx": "4.23.15",
+    "ws": "8.22.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "11.14.0",
+    "@types/node": "22.20.5",
+    "@types/ws": "8.18.2",
+    "testcontainers": "11.14.0",
+    "vitest": "5.0.5"
+  }
+}

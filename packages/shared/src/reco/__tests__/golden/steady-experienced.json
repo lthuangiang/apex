@@ -1,0 +1,83 @@
+{
+  "best": {
+    "id": "3ae50a63ab611be7",
+    "strategy": "rebalancing",
+    "market": "vBTC_vUSDC",
+    "values": {
+      "quoteAsset": "USDC",
+      "assets": [
+        {
+          "asset": "BTC",
+          "market": "vBTC_vUSDC",
+          "weightPct": "55"
+        },
+        {
+          "asset": "ETH",
+          "market": "vETH_vUSDC",
+          "weightPct": "25"
+        },
+        {
+          "asset": "USDC",
+          "weightPct": "20"
+        }
+      ],
+      "rebalanceWhen": "threshold",
+      "thresholdPct": "8",
+      "investment": "4800",
+      "maxTradePct": "25"
+    },
+    "capital": "4800",
+    "score": 80,
+    "reasons": [
+      "BTC was net positive for you (+5,120.40, 51% win rate).",
+      "Weights follow your trading volume on these assets.",
+      "vUSDC kept at 20% or more."
+    ],
+    "basis": "Average daily volatility of the basket: 3%.",
+    "computedAt": "2026-10-27T07:00:00.000Z",
+    "inputsVersion": "reco-1"
+  },
+  "addOns": [
+    {
+      "id": "23331ebcf10d14fa",
+      "strategy": "spot_grid",
+      "market": "vBTC_vUSDC",
+      "values": {
+        "market": "vBTC_vUSDC",
+        "lowerPrice": "62000",
+        "upperPrice": "72000",
+        "gridLevels": 16,
+        "spacing": "arithmetic",
+        "investment": "3200",
+        "stopPrice": "60140",
+        "maxLoss": "320",
+        "onStop": "keep_base"
+      },
+      "capital": "3200",
+      "score": 74.2,
+      "reasons": [
+        "BTC was net positive for you (+5,120.40, 51% win rate).",
+        "Range 62,000–72,000 covers 90% of BTC daily closes over the last 30 days (P5–P95).",
+        "Step ≈ 1% is at least 10× the round-trip fee of 0.1%."
+      ],
+      "basis": "Over the last 180 days, BTC stayed range-bound on 71% of days. This describes price, not profit.",
+      "computedAt": "2026-10-27T07:00:00.000Z",
+      "inputsVersion": "reco-1"
+    }
+  ],
+  "notSuggested": [
+    {
+      "title": "Fast in-and-out trading",
+      "reason": "Your trades under 15 minutes lost 1,240.55 after fees."
+    },
+    {
+      "title": "SOL strategies",
+      "reason": "SOL: -2,234.38 net with a 38% win rate."
+    }
+  ],
+  "notes": [
+    "Positions at 8× or more caused 63% of your losses, so perp bots use 1×."
+  ],
+  "capital": "8000",
+  "empty": null
+}

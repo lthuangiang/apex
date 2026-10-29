@@ -1,0 +1,67 @@
+/* Design token DRIFT (docs/DESIGN.md mục 13). Nơi duy nhất được viết mã màu. */
+:root {
+  --bg: #eef1fa;
+  --surface: #ffffff;
+  --surface-2: #f5f7fd;
+  --border: #e3e7f5;
+  --border-input: #d5dcf2;
+  --ink: #141a33;
+  --ink-2: #3b4262;
+  --muted: #5f6684;
+  --accent: #2e62e8;
+  --accent-ink: #1d47b8;
+  --accent-tint: #e6ecfe;
+  --hero: linear-gradient(135deg, #e3e8fe, #cbd5fb);
+
+  --pos: #0f7a43;
+  --pos-bg: #ddf4e7;
+  --pos-dot: #16a05a;
+
+  --neg: #c2312f;
+  --neg-ink: #a72826;
+  --neg-bg: #fde4e1;
+  /* Thẻ Emergency ở cuối sidebar (artboard Main). */
+  --neg-soft: #fff4f2;
+  --neg-border: #f6d3cd;
+  --neg-deep: #8a2a1e;
+  --neg-text: #5b2a22;
+
+  --warn: #7a3e00;
+  --warn-bg: #fdebd3;
+  --warn-bar: #e08a2e;
+
+  --unknown: #5a2ca0;
+  --unknown-bg: #f0e6ff;
+
+  --bot-orange: #ffe3c7;
+  --bot-teal: #cdf1ec;
+
+  /* Chip nhóm chiến lược ở Strategy catalog (artboard Bots). */
+  --cat-grid-ink: #5c2e00;
+  --cat-dca-ink: #003d37;
+  --cat-exec-bg: #edeff5;
+  --fits: #0b6a39;
+  --ink-body: #1f2645;
+
+  --focus-ring: #8fb0ff;
+
+  /* Chữ trên nền tối (khối Safety của Landing, artboard "Landing · Public"). */
+  --on-ink-2: #d5dcf2;
+  --on-ink-accent: #a9beff;
+  --on-ink-pos: #7ee2a8;
+  --on-ink-neg: #ff9c9c;
+  --on-ink-neg-2: #ffc9c9;
+
+  --radius-control: 12px;
+  --radius-tile: 18px;
+  --radius-card: 24px;
+  --radius-hero: 28px;
+
+  --tap-min: 44px;
+
+  /* Bóng của mục nav đang chọn và nút primary nổi (artboard Main, Mobile-Home). */
+  --shadow-accent: 0 6px 16px rgb(46 98 232 / 0.28);
+  --shadow-float: 0 -8px 24px rgb(20 26 51 / 0.06);
+
+  --font-sans: var(--font-jakarta, "Plus Jakarta Sans"), ui-sans-serif, system-ui, sans-serif;
+}

@@ -1,0 +1,2633 @@
+{
+  "common": {
+    "missing": {
+      "notProvided": "Not provided",
+      "notAvailable": "Not available",
+      "noFillsYet": "No fills yet"
+    },
+    "badges": {
+      "live": "LIVE · MAINNET",
+      "paperComingSoon": "Paper · Coming soon",
+      "liveShort": "LIVE"
+    },
+    "permissions": {
+      "withdrawNever": "Withdraw or transfer: never"
+    },
+    "botActions": {
+      "startRequested": "Start requested · waiting for backend"
+    },
+    "brand": "DRIFT",
+    "back": "Back",
+    "errors": {
+      "generic": "Something went wrong. Try again.",
+      "network": "Can’t reach DRIFT. Check your connection and try again.",
+      "rateLimited": "Too many attempts. Try again in a minute.",
+      "retry": "Try again"
+    },
+    "nav": {
+      "label": "Main",
+      "skip": "Skip to content",
+      "workspace": "Profit Bot workspace",
+      "overview": "Overview",
+      "portfolio": "Portfolio",
+      "agent": "Trading Agent",
+      "bots": "Strategy Lab",
+      "orders": "Execution & Orders",
+      "risk": "Risk Center",
+      "analyst": "AI Analyst",
+      "revenue": "Builder Revenue",
+      "settings": "Settings",
+      "signOut": "Sign out",
+      "mobile": {
+        "overview": "Home",
+        "portfolio": "Portfolio",
+        "agent": "Agent",
+        "bots": "Strategy",
+        "more": "More"
+      },
+      "users": "Users",
+      "team": "Team"
+    },
+    "dialog": {
+      "consequences": "What happens"
+    },
+    "shell": {
+      "mainAccount": "Main account",
+      "sodexConnected": "SoDEX connected",
+      "sodexConnecting": "SoDEX connecting",
+      "sodexNotConnected": "SoDEX not connected",
+      "updatedSeconds": "Updated {n}s ago",
+      "updatedMinutes": "Updated {n}m ago",
+      "updatedHours": "Updated {n}h ago",
+      "notifications": "{n, plural, =0 {Notifications} other {Notifications, # unread}}",
+      "accountMenu": "Account menu",
+      "sodexAgoSeconds": "SoDEX · {n}s ago",
+      "sodexAgoMinutes": "SoDEX · {n}m ago",
+      "sodexAgoHours": "SoDEX · {n}h ago",
+      "sodexKeyRenew": "SoDEX · key needs renewal",
+      "waitingLong": "Waiting for SoDEX longer than usual · since {time}",
+      "agoSeconds": "{n}s ago",
+      "agoMinutes": "{n}m ago",
+      "agoHours": "{n}h ago"
+    },
+    "notConnected": {
+      "title": "SoDEX not connected",
+      "body": "Connect your SoDEX account to see your balances.",
+      "cta": "Connect SoDEX"
+    }
+  },
+  "createBot": {
+    "header": {
+      "paperComingSoon": "Paper · Coming soon"
+    },
+    "visual": {
+      "label": "Visual",
+      "preview": "Preview",
+      "backtest": "Backtest",
+      "previewEmpty": "Fill in the settings to see the preview."
+    },
+    "params": {
+      "aiParameters": "✦ AI parameters",
+      "clearParameters": "Clear parameters",
+      "chipEdited": "Edited",
+      "whyTheseValues": "Why these values",
+      "aiUnavailable": "AI parameters unavailable. Fill manually or try again.",
+      "replaceEdits": "Replace your {count, plural, one {# edit} other {# edits}} with AI parameters?"
+    },
+    "beforeStart": {
+      "title": "Before it starts",
+      "api_key": "DRIFT API key",
+      "builder_fee": "Builder fee approval",
+      "balance": "Balance on {engine}",
+      "min_size": "Order sizes",
+      "two_factor": "Two-factor auth",
+      "risk_limits": "Risk limits",
+      "fresh_price": "Price updated in the last 5 s",
+      "okDetail": {
+        "api_key": "Active",
+        "builder_fee": "0.01% · Spot and Perps",
+        "balance": "Enough for capital and fees",
+        "min_size": "Above SoDEX minimum",
+        "two_factor": "On",
+        "risk_limits": "Fits account limits",
+        "fresh_price": "Live",
+        "builder_fee_exempt": "Not charged on DRIFT’s builder account",
+        "leverage_conflict": "Matches your SoDEX setting"
+      },
+      "failDetail": {
+        "api_key": "Renew the key in Settings",
+        "builder_fee": "Approve 0.01% in Settings",
+        "balance": "Not enough available",
+        "min_size": "Below SoDEX minimum order size.",
+        "two_factor": "Turn on 2FA in Settings",
+        "risk_limits": "Outside your account risk limits",
+        "fresh_price": "No recent price",
+        "min_sizeNumbersGrid": "Smallest order ≈ {min} USDC; SoDEX minimum {required} USDC. Use at least {capital} USDC or fewer grid levels.",
+        "min_sizeNumbers": "Smallest order ≈ {min} USDC; SoDEX minimum {required} USDC. Use at least {capital} USDC.",
+        "min_sizeNoSuggestion": "Smallest order ≈ {min} USDC; SoDEX minimum {required} USDC.",
+        "balanceNumbers": "Available {available} USDC · needs {needed} USDC",
+        "fresh_priceWaiting": "Waiting for a live price from SoDEX…",
+        "api_keyUnusable": "DRIFT can’t sign with this key.",
+        "leverage_conflict": "Couldn’t read your Perps account from SoDEX.",
+        "leverage_position": "You have an open {market} position at {current}. Close it or match this bot to {current} before starting.",
+        "leverage_bot": "Your bot “{name}” runs {market} at {current}. Use {current} for this bot, or stop that bot first.",
+        "balancePerps": "Needs {needed} USDC · usable as margin {usable} · isolated {isolated}"
+      },
+      "fee": "Fees: SoDEX trading fee per fill plus DRIFT builder fee up to 0.01% ({fee}), both shown inside each fill’s fee.",
+      "ack": "I understand this bot places real orders on my SoDEX mainnet account and DRIFT charges its builder fee on them.",
+      "saveDraft": "Save draft",
+      "start": "Start on mainnet",
+      "twoFactor": "2FA code",
+      "requested": "Start requested · waiting for backend",
+      "requestedBody": "The bot shows Running only after the backend confirms it and SoDEX acknowledges the first orders.",
+      "watch": "Watch it in Trading Agent",
+      "ackVm": "I understand this bot places real post-only orders on SoDEX mainnet, will spend up to my cost budget, and does not guarantee any SoPoints. SoDEX prohibits wash trading.",
+      "sopoints": "SoDEX doesn’t publish how volume converts to SoPoints and penalises wash trading, so points are not guaranteed.",
+      "noSelfTrade": "No self-trading. Every quote is post-only, so it either rests as liquidity or is cancelled. DRIFT never places an order that could fill against your own orders, on this bot or any other.",
+      "checksIncomplete": "Fill in the settings to run the checks.",
+      "toStart": "To start:",
+      "missing": {
+        "form": "complete the settings",
+        "ack": "tick the confirmation",
+        "code": "enter your 2FA code",
+        "fix": "fix {check}",
+        "leverage": "confirm the leverage change"
+      },
+      "renewKey": "Renew key",
+      "leverage_conflict": "Leverage on SoDEX",
+      "leverageWarn": "Your {market} leverage on SoDEX is {current}. Starting this bot sets it to {target} for your whole account.",
+      "leverageAck": "I understand this changes my {market} leverage on SoDEX for my whole account.",
+      "leverageValue": "{leverage}× {mode}"
+    },
+    "backtest": {
+      "title": "Backtest",
+      "periodsLabel": "Backtest period",
+      "period": "{days}D",
+      "run": "Run backtest",
+      "again": "Run again",
+      "running": "Running…",
+      "intro": "Replays the settings on the right over past SoDEX prices, with SoDEX fees and the 0.01% builder fee. Change any field and run again.",
+      "simulating": "Simulating {count} {interval} candles…",
+      "queued": "Waiting for a backtest worker…",
+      "unavailableTitle": "Backtest unavailable for this market",
+      "unavailable": {
+        "history_short": "SoDEX history for this market is shorter than the selected period. Try 30 days or another market.",
+        "funding_short": "DRIFT doesn’t have funding history for this perp over the selected period yet. Try a shorter period later.",
+        "market_unknown": "This market isn’t available on SoDEX."
+      },
+      "failed": "Backtest failed. Try again.",
+      "outOfDate": "Out of date · run again",
+      "missing": "Not available",
+      "stats": {
+        "net": "Net result after fees",
+        "fees": "Fees paid",
+        "feesFunding": "Fees + funding",
+        "maxDd": "Max drawdown",
+        "fills": "Fills",
+        "timeInRange": "Time in range",
+        "completedCycles": "Completed cycles",
+        "maxSafetyUsed": "Max safety orders used",
+        "stopLossHits": "Stop loss hit",
+        "buysMade": "Buys made",
+        "avgBuyPrice": "Avg buy price",
+        "valueVsCost": "Value vs cost",
+        "vsBuyAndHold": "Net result vs hold",
+        "rebalances": "Rebalances",
+        "fundingCollected": "Funding collected",
+        "periodsInPosition": "Periods in position",
+        "maxLegGap": "Max leg gap",
+        "avgVsArrival": "Avg fill vs arrival price",
+        "slicesFilled": "Slices filled",
+        "worstSlippage": "Worst slice slippage",
+        "halted": "Stopped early",
+        "volumeMade": "Volume made",
+        "netCost": "Net cost",
+        "costPerMillion": "Cost per $1M",
+        "makerShare": "Maker share",
+        "maxInventory": "Max inventory reached"
+      },
+      "chart": "Simulated equity · dashed = start",
+      "assumptions": "Assumptions",
+      "a1": "Limit orders fill only when price trades through the level.",
+      "a2": "Market orders fill at the next candle open + 0.05% slippage.",
+      "a3": "SoDEX maker/taker fees and DRIFT’s 0.01% builder fee included; perps include historical funding.",
+      "a4": "Data: SoDEX {interval} candles, {from} – {to}.",
+      "interval": {
+        "1m": "1-minute",
+        "5m": "5-minute",
+        "15m": "15-minute",
+        "1h": "1-hour"
+      },
+      "disclaimer": "Simulated on past prices. Not a forecast; future results will differ."
+    },
+    "back": "← Strategy Lab",
+    "title": "Create {name}",
+    "paperSoon": "Paper · Coming soon",
+    "paperReason": "Paper trading is not available yet",
+    "previewTab": "Preview",
+    "paramsTitle": "Parameters",
+    "groups": {
+      "2": "Market",
+      "3": "Parameters",
+      "4": "Risk & exits",
+      "2perps": "Market & leverage"
+    },
+    "optional": "(optional)",
+    "manualHint": "Enter your own values, or let AI fill them in.",
+    "notForecast": "Not a profit forecast.",
+    "strategies": {
+      "spot_grid": {
+        "name": "Spot Grid",
+        "engine": "Spot",
+        "fee": "spot sells only",
+        "what": "Buys low and sells high inside a range you set.",
+        "short": "GR",
+        "catalog": "Buy low, sell high in a range"
+      },
+      "futures_grid": {
+        "name": "Futures Grid",
+        "engine": "Perps",
+        "fee": "both sides",
+        "what": "Grid on a perpetual: long, short or neutral.",
+        "short": "FG",
+        "catalog": "Grid with leverage, any direction"
+      },
+      "spot_dca": {
+        "name": "Spot DCA",
+        "engine": "Spot",
+        "fee": "spot sells only",
+        "what": "Buys, adds safety orders on dips, sells everything at take profit.",
+        "short": "DC",
+        "catalog": "Add on dips, sell at take profit"
+      },
+      "futures_dca": {
+        "name": "Futures DCA",
+        "engine": "Perps",
+        "fee": "both sides",
+        "what": "DCA on a perpetual, long or short.",
+        "short": "FD",
+        "catalog": "DCA on a perp, long or short"
+      },
+      "recurring_buy": {
+        "name": "Recurring Buy",
+        "engine": "Spot",
+        "fee": "none on buys",
+        "what": "Buys a fixed amount on a schedule. Never sells.",
+        "short": "RB",
+        "catalog": "Fixed buys on a schedule"
+      },
+      "rebalancing": {
+        "name": "Rebalancing",
+        "engine": "Spot",
+        "fee": "spot sells only",
+        "what": "Keeps 2–10 assets at target weights.",
+        "short": "RE",
+        "catalog": "Hold assets at target weights"
+      },
+      "funding_arb": {
+        "name": "Funding Arbitrage",
+        "engine": "Spot + Perps",
+        "fee": "perp both sides; spot sells",
+        "what": "Holds spot and an equal perp short to collect funding.",
+        "short": "FA",
+        "catalog": "Collect funding, price-neutral"
+      },
+      "twap": {
+        "name": "TWAP",
+        "engine": "Spot + Perps",
+        "fee": "per engine rules",
+        "what": "Splits one large order into small slices over time.",
+        "short": "TW",
+        "catalog": "Split a big order over time"
+      },
+      "volume_maker": {
+        "name": "Volume Maker",
+        "engine": "Perps",
+        "fee": "maker fills only",
+        "what": "Quotes both sides with post-only orders to add real liquidity and volume within a cost budget.",
+        "short": "VM",
+        "catalog": "Event volume, capped cost, no self-trades"
+      }
+    },
+    "fields": {
+      "market": {
+        "label": "Market",
+        "hint": "Any SoDEX spot market"
+      },
+      "contract": {
+        "label": "Contract",
+        "hint": "Any SoDEX perp"
+      },
+      "leverage": {
+        "label": "Leverage",
+        "hint": "1–3× (account cap). SoDEX market max also applies."
+      },
+      "marginMode": {
+        "label": "Margin mode",
+        "hint": "Isolated limits loss to this bot’s margin."
+      },
+      "direction": {
+        "label": "Direction",
+        "hint": ""
+      },
+      "lowerPrice": {
+        "label": "Lower price",
+        "hint": ""
+      },
+      "upperPrice": {
+        "label": "Upper price",
+        "hint": ""
+      },
+      "gridLevels": {
+        "label": "Grid levels",
+        "hint": "2–200"
+      },
+      "spacing": {
+        "label": "Spacing",
+        "hint": "Equal price gaps or equal % gaps"
+      },
+      "investment": {
+        "label": "Investment",
+        "hint": ""
+      },
+      "margin": {
+        "label": "Margin",
+        "hint": ""
+      },
+      "triggerPrice": {
+        "label": "Start when price crosses",
+        "hint": "Leave empty to start now"
+      },
+      "stopPrice": {
+        "label": "Stop if price falls below",
+        "hint": "Grid is cancelled"
+      },
+      "stopBelow": {
+        "label": "Stop if price falls below",
+        "hint": "Grid cancelled"
+      },
+      "stopAbove": {
+        "label": "Stop if price rises above",
+        "hint": "Grid cancelled"
+      },
+      "takeProfitPct": {
+        "label": "Take profit at total profit",
+        "hint": "Stops the bot once reached"
+      },
+      "maxLoss": {
+        "label": "Max loss for this bot",
+        "hint": "Bot pauses when reached"
+      },
+      "onStop": {
+        "label": "When the bot stops",
+        "hint": "Open orders are always cancelled"
+      },
+      "baseOrder": {
+        "label": "Base order",
+        "hint": "First buy at start"
+      },
+      "safetyOrder": {
+        "label": "Safety order",
+        "hint": "First extra buy"
+      },
+      "maxSafetyOrders": {
+        "label": "Max safety orders",
+        "hint": "0–20"
+      },
+      "firstStepPct": {
+        "label": "Price drop to first safety",
+        "hint": "0.1–20%"
+      },
+      "stepMultiplier": {
+        "label": "Step multiplier",
+        "hint": "1–3×"
+      },
+      "sizeMultiplier": {
+        "label": "Size multiplier",
+        "hint": "1–3×"
+      },
+      "dcaTakeProfit": {
+        "label": "Take profit",
+        "hint": "From average buy price"
+      },
+      "start": {
+        "label": "Start",
+        "hint": ""
+      },
+      "startLevel": {
+        "label": "Start when price ≤",
+        "hint": ""
+      },
+      "stopLossPct": {
+        "label": "Stop loss",
+        "hint": "From average price · sells everything"
+      },
+      "maxCycles": {
+        "label": "Max cycles",
+        "hint": "Stop after N take-profits"
+      },
+      "amountPerBuy": {
+        "label": "Amount per buy",
+        "hint": "Market order each time"
+      },
+      "frequency": {
+        "label": "Frequency",
+        "hint": ""
+      },
+      "time": {
+        "label": "Time",
+        "hint": "Your time zone"
+      },
+      "ends": {
+        "label": "Ends",
+        "hint": ""
+      },
+      "totalBudget": {
+        "label": "Total budget",
+        "hint": ""
+      },
+      "buyCount": {
+        "label": "Number of buys",
+        "hint": ""
+      },
+      "skipAbovePrice": {
+        "label": "Skip buys above price",
+        "hint": "Skipped buys are not made up"
+      },
+      "onLowBalance": {
+        "label": "If balance is too low",
+        "hint": ""
+      },
+      "quoteAsset": {
+        "label": "Quote asset",
+        "hint": "All assets valued in this"
+      },
+      "assets": {
+        "label": "Assets and weights",
+        "hint": "Total 100% · up to 10 assets"
+      },
+      "rebalanceWhen": {
+        "label": "Rebalance when",
+        "hint": ""
+      },
+      "thresholdPct": {
+        "label": "Threshold",
+        "hint": "1–50%"
+      },
+      "maxTradePct": {
+        "label": "Max trade per rebalance",
+        "hint": "Of portfolio value"
+      },
+      "rebalStopBelow": {
+        "label": "Stop if value below",
+        "hint": "Assets are kept"
+      },
+      "rebalTakeProfit": {
+        "label": "Take profit",
+        "hint": "Assets are kept"
+      },
+      "asset": {
+        "label": "Asset",
+        "hint": "Needs both markets"
+      },
+      "spotMarket": {
+        "label": "Spot market",
+        "hint": ""
+      },
+      "perpMarket": {
+        "label": "Perp market",
+        "hint": ""
+      },
+      "perpLeverage": {
+        "label": "Perp leg leverage",
+        "hint": "1–3×"
+      },
+      "enterFundingPct": {
+        "label": "Enter when funding ≥",
+        "hint": "Per funding period"
+      },
+      "exitFundingPct": {
+        "label": "Exit when funding ≤",
+        "hint": "For 3 periods in a row"
+      },
+      "maxGapPct": {
+        "label": "Max price gap between legs",
+        "hint": "0.1–5%"
+      },
+      "minMarginRatioPct": {
+        "label": "Keep perp margin ratio above",
+        "hint": ""
+      },
+      "arbMaxLoss": {
+        "label": "Max loss for this bot",
+        "hint": "Unwinds both legs"
+      },
+      "engine": {
+        "label": "Engine",
+        "hint": "Spot or perp"
+      },
+      "side": {
+        "label": "Side",
+        "hint": ""
+      },
+      "totalSize": {
+        "label": "Total size",
+        "hint": ""
+      },
+      "durationMinutes": {
+        "label": "Duration",
+        "hint": "5 min – 24 h"
+      },
+      "slices": {
+        "label": "Slices",
+        "hint": ""
+      },
+      "priceLimit": {
+        "label": "Price limit",
+        "hint": "Skip slices above"
+      },
+      "reduceOnly": {
+        "label": "Reduce-only",
+        "hint": ""
+      },
+      "maxSlippagePct": {
+        "label": "Max slippage per slice",
+        "hint": "Slice skipped if exceeded"
+      },
+      "onSkip": {
+        "label": "If slices are skipped",
+        "hint": ""
+      },
+      "name": {
+        "label": "Bot name",
+        "hint": ""
+      },
+      "vmContract": {
+        "label": "Contract",
+        "hint": "Only the most liquid perps"
+      },
+      "vmLeverage": {
+        "label": "Leverage",
+        "hint": "Fixed at 1× for Volume Maker"
+      },
+      "volumeTarget": {
+        "label": "Volume target",
+        "hint": "Bot stops when reached"
+      },
+      "orderSize": {
+        "label": "Order size per side",
+        "hint": "Post-only (GTX)"
+      },
+      "distanceBp": {
+        "label": "Distance from mid",
+        "hint": "Each side; at least one tick"
+      },
+      "maxInventory": {
+        "label": "Max inventory",
+        "hint": "Quotes skew back toward 0 above half of this"
+      },
+      "refreshSeconds": {
+        "label": "Refresh every",
+        "hint": "2–60 s; stays under SoDEX order limits"
+      },
+      "runUntil": {
+        "label": "Run until",
+        "hint": "Whichever comes first"
+      },
+      "costBudget": {
+        "label": "Cost budget",
+        "hint": "Fees + realized trading loss. Bot stops at 100%."
+      },
+      "inventoryLossStop": {
+        "label": "Inventory loss stop",
+        "hint": "Unrealized loss on inventory; closes it with a reduce-only order"
+      },
+      "vmOnStop": {
+        "label": "When the bot stops",
+        "hint": "Open quotes are always cancelled"
+      },
+      "untilAt": {
+        "label": "End date",
+        "hint": "UTC"
+      },
+      "fdcaFirstStepPct": {
+        "label": "Price move to first safety",
+        "hint": "Against your direction"
+      },
+      "twapMarket": {
+        "label": "Market",
+        "hint": ""
+      },
+      "dayOfWeek": {
+        "label": "Day",
+        "hint": ""
+      },
+      "dayOfMonth": {
+        "label": "Day of month",
+        "hint": "1–28. Empty means the 1st."
+      },
+      "rebalSchedule": {
+        "label": "Rebalance every",
+        "hint": "Checked at 00:00 in your time zone"
+      },
+      "fdcaBaseOrder": {
+        "label": "Base order",
+        "hint": "Margin for first entry"
+      },
+      "fdcaSafetyOrder": {
+        "label": "Safety order",
+        "hint": "Margin for first add"
+      },
+      "fdcaTakeProfit": {
+        "label": "Take profit",
+        "hint": "From average entry"
+      },
+      "fdcaStopLoss": {
+        "label": "Stop loss",
+        "hint": "Closes the position · must be before liquidation"
+      }
+    },
+    "options": {
+      "spacing": {
+        "arithmetic": "Arithmetic",
+        "geometric": "Geometric"
+      },
+      "marginMode": {
+        "cross": "Cross",
+        "isolated": "Isolated"
+      },
+      "direction": {
+        "neutral": "Neutral",
+        "long": "Long",
+        "short": "Short"
+      },
+      "onStopSpot": {
+        "keep_base": "Keep base asset",
+        "sell_at_market": "Sell at market"
+      },
+      "onStopPerps": {
+        "close_at_market": "Close position",
+        "keep_position": "Keep position"
+      },
+      "start": {
+        "immediately": "Immediately",
+        "price_at_or_below": "When price ≤ level"
+      },
+      "frequency": {
+        "daily": "Daily",
+        "weekly": "Weekly",
+        "monthly": "Monthly"
+      },
+      "ends": {
+        "after_budget": "After budget",
+        "after_n_buys": "After N buys",
+        "never": "Never"
+      },
+      "onLowBalance": {
+        "skip_and_notify": "Skip and notify",
+        "pause": "Pause bot"
+      },
+      "rebalanceWhen": {
+        "threshold": "Drift > threshold",
+        "schedule": "On a schedule"
+      },
+      "engine": {
+        "spot": "Spot",
+        "perps": "Perps"
+      },
+      "side": {
+        "buy": "Buy",
+        "sell": "Sell"
+      },
+      "onSkip": {
+        "add_to_end": "Add to the end",
+        "leave_unfilled": "Leave unfilled"
+      },
+      "reduceOnly": {
+        "false": "Off",
+        "true": "On"
+      },
+      "quoteAsset": {
+        "USDC": "USDC",
+        "USDT": "USDT"
+      },
+      "runUntil": {
+        "season_end": "End of current season",
+        "date": "A date I choose",
+        "target_or_budget": "Target or budget reached"
+      },
+      "vmOnStop": {
+        "close_inventory": "Close inventory (reduce-only)",
+        "keep_position": "Keep position"
+      },
+      "vmLeverage": {
+        "1": "1×"
+      },
+      "vmMarket": {
+        "BTC-USD": "BTC-USD",
+        "ETH-USD": "ETH-USD"
+      },
+      "dayOfWeek": {
+        "0": "Sun",
+        "1": "Mon",
+        "2": "Tue",
+        "3": "Wed",
+        "4": "Thu",
+        "5": "Fri",
+        "6": "Sat"
+      },
+      "rebalSchedule": {
+        "daily": "Day",
+        "weekly": "Week",
+        "monthly": "Month"
+      }
+    },
+    "errors": {
+      "twoFactor": "That 2FA code didn’t work. Try the current code or a backup code.",
+      "builderFee": "Builder fee is not approved. Approve 0.01% in Settings.",
+      "minSize": "Below SoDEX minimum order size.",
+      "checks": "Some checks didn’t pass. Fix them and try again.",
+      "state": "This action isn’t available in the bot’s current state.",
+      "invalid": "Fix the highlighted fields."
+    },
+    "ai": {
+      "filled": "✦ Filled by AI",
+      "clear": "Clear parameters",
+      "why": "Why these values",
+      "suggested": "Suggested {time} · every field stays editable · not a profit forecast",
+      "manual": "Enter your own values, or let AI fill them in.",
+      "button": "✦ AI parameters",
+      "chipAi": "AI",
+      "chipEdited": "Edited",
+      "replace": "Replace your {n, plural, one {# edit} other {# edits}} with AI parameters?",
+      "replaceCta": "Replace",
+      "keep": "Keep my edits",
+      "unavailable": "AI parameters unavailable. Fill manually or try again.",
+      "loading": "Calculating AI parameters…",
+      "example": "e.g. {value}",
+      "needsCapital": "Enter how much this bot can use, then try AI parameters again.",
+      "needsCapitalField": "Enter an amount first."
+    },
+    "preview": {
+      "title": {
+        "spot_grid": "Grid on {market}",
+        "futures_grid": "Grid on {market} · {direction}",
+        "spot_dca": "Order ladder · {market}",
+        "futures_dca": "Order ladder · {market} {direction}",
+        "recurring_buy": "Next buys · {market}",
+        "rebalancing": "Target portfolio",
+        "funding_arb": "Two legs · {market}",
+        "twap": "Execution plan · {side} {size} {base}",
+        "volume_maker": "Two-sided quotes · {market}"
+      },
+      "direction": {
+        "neutral": "Neutral",
+        "long": "Long",
+        "short": "Short",
+        "buy": "buy",
+        "sell": "sell"
+      },
+      "lastLine": "Last {price} · updated {time}",
+      "lastMissing": "Last price: Not available",
+      "valuedIn": "Valued in {quote}",
+      "grid": {
+        "upper": "Upper",
+        "lower": "Lower",
+        "last": "Last",
+        "stop": "Stop",
+        "range": "Grid range · {n} levels",
+        "lastLegend": "Last price",
+        "aria": "Grid of {n} levels from {lower} to {upper}; last price {last}; stop at {stop}"
+      },
+      "dca": {
+        "base": "Base",
+        "safety": "Safety {n}",
+        "tpSpot": "Take profit +{pct}% above average buy price",
+        "tpFutures": "Take profit +{pct}% from average entry",
+        "fillOrder": "Orders fill top to bottom as price moves against you"
+      },
+      "schedule": {
+        "buyOf": "Buy {n} of {total}",
+        "buyN": "Buy {n}",
+        "buyWhat": "Buy {amount} {unit} of {asset}"
+      },
+      "weights": {
+        "target": "Target",
+        "band": "rebalances outside {lo}–{hi}%"
+      },
+      "arb": {
+        "spotLeg": "SPOT LEG · buy",
+        "perpLeg": "PERP LEG · short {lev}×",
+        "margin": "{amount} margin",
+        "net": "NET PRICE EXPOSURE",
+        "netValue": "≈ 0",
+        "netNote": "earns funding while positive"
+      },
+      "twap": {
+        "aria": "{n} equal slices"
+      },
+      "tiles": {
+        "perLevel": {
+          "label": "Per level",
+          "value": "≈ {value} {unit}"
+        },
+        "step": {
+          "label": "Step",
+          "value": "≈ {value}%"
+        },
+        "ordersAtStart": {
+          "label": "Orders at start",
+          "value": "{count} limit"
+        },
+        "roundTrip": {
+          "label": "Round-trip fees",
+          "value": "≈ {value}%"
+        },
+        "maxCapital": {
+          "label": "Max capital",
+          "value": "{value} {unit}"
+        },
+        "maxMargin": {
+          "label": "Max margin",
+          "value": "{value} {unit}"
+        },
+        "coversDrop": {
+          "label": "Covers a drop of",
+          "value": "{value}%"
+        },
+        "coversMove": {
+          "label": "Covers a move of",
+          "value": "{value}%"
+        },
+        "dcaOrdersAtStart": {
+          "label": "Orders at start",
+          "value": "1 market + TP"
+        },
+        "safetyOrders": {
+          "label": "Safety orders",
+          "value": "{count}, as price drops"
+        },
+        "buys": {
+          "label": "Buys",
+          "value": "{count} × {amount} {unit}"
+        },
+        "nextBuy": {
+          "label": "Next buy",
+          "value": "{at}"
+        },
+        "ends": {
+          "label": "Ends",
+          "value": "{at}"
+        },
+        "builderFee": {
+          "label": "Builder fee",
+          "value": "None on buys"
+        },
+        "assets": {
+          "label": "Assets",
+          "value": "{count}"
+        },
+        "checks": {
+          "label": "Checks",
+          "value": "every {minutes} min"
+        },
+        "threshold": {
+          "label": "Threshold",
+          "value": "±{value}%"
+        },
+        "spotLeg": {
+          "label": "Spot leg",
+          "value": "+{qty} {asset}"
+        },
+        "perpLeg": {
+          "label": "Perp leg",
+          "value": "−{qty} {asset}"
+        },
+        "netExposure": {
+          "label": "Net exposure",
+          "value": "≈ 0"
+        },
+        "slice": {
+          "label": "Slice",
+          "value": "{value} {unit}"
+        },
+        "interval": {
+          "label": "Interval",
+          "minutes": "{n} min",
+          "seconds": "{n} s"
+        },
+        "orderType": {
+          "label": "Order type",
+          "value": "Limit · IOC"
+        }
+      },
+      "hints": {
+        "belowLast": "{pct}% below last price",
+        "aboveLast": "{pct}% above last price",
+        "levelsArithmetic": "2–200 · step {step} ≈ {pct}%",
+        "levelsGeometric": "2–200 · step ≈ {pct}%",
+        "durationHours": "= {h} h",
+        "durationHoursMinutes": "= {h} h {m} min",
+        "fdcaLong": "Long adds on drops",
+        "fdcaShort": "Short adds on rises"
+      }
+    },
+    "settingsLabel": "Settings",
+    "marketPicker": {
+      "placeholder": "Search markets",
+      "loading": "Loading markets…",
+      "quote": "{quote} markets",
+      "other": "Other",
+      "popular": "Popular",
+      "noMatch": "No markets match “{q}”.",
+      "sheetTitle": "Choose a market",
+      "info": {
+        "last": "Last {price}",
+        "minOrder": "Min order {amount} {quote}",
+        "maxLeverage": "Max leverage {n}×"
+      },
+      "added": "Added",
+      "watchAdd": "Add to watchlist",
+      "watchRemove": "On watchlist · remove {market}",
+      "watchSaving": "Saving…",
+      "watchFull": "Up to 8 markets",
+      "watchFailed": "Couldn't update your watchlist."
+    },
+    "picker": {
+      "loading": "Loading…",
+      "empty": "Nothing to choose yet.",
+      "clear": "Clear",
+      "close": "Close"
+    },
+    "assetPicker": {
+      "placeholder": "Search assets",
+      "noMatch": "No assets match “{q}”.",
+      "sheetTitle": "Choose an asset",
+      "arbPair": "Spot {spot} · Perp {perp}",
+      "rowAsset": "Asset {n}",
+      "rowWeight": "Weight {n}",
+      "rowRemove": "Remove asset {n}",
+      "add": "+ Add asset"
+    },
+    "sections": {
+      "amount": "Amount",
+      "strategy": "Strategy",
+      "risk": "Risk"
+    },
+    "advanced": {
+      "title": "Advanced settings",
+      "optionalUnset": "{n} optional not set",
+      "needValue": "{n, plural, one {# field needs} other {# fields need}} a value"
+    },
+    "amount": {
+      "dcaHint": "Your total is the base order plus every safety order."
+    },
+    "amountLines": {
+      "availableSpot": "Available: {amount} {asset} on Spot",
+      "availablePerps": "Available: {amount} USDC on Perps",
+      "noneSpot": "No {asset} on Spot",
+      "unavailable": "Available: Not available",
+      "maxCapital": "Max capital used: {amount} {asset}",
+      "maxMargin": "Max margin used: {amount} USDC",
+      "position": "Position up to ≈ {amount} USDC",
+      "split": "Split 50/50: {amount} {asset} on Spot · {amount} {asset} on Perps"
+    }
+  },
+  "tradingAgent": {
+    "title": "Trading Agent",
+    "stopAgent": "Stop agent…",
+    "editBot": "Edit bot",
+    "decisionsAndActions": "Decisions & actions"
+  },
+  "strategyLab": {
+    "newBot": "New bot"
+  },
+  "editBot": {
+    "retuneWithAi": "Retune with AI"
+  },
+  "onboarding": {
+    "plan": {
+      "step": "STEP 6 OF 6 · STRATEGY PLAN",
+      "title": "Strategies that fit how you trade",
+      "lead": "Built from your history and answers. They’re starting points you can edit, not forecasts.",
+      "answers": "Your answers",
+      "answerGoal": "· Goal: {goal}",
+      "answerCapital": "· Capital: {capital} USDC",
+      "answerDrop": "· Max drop: {pct}% ({amount} USDC)",
+      "answerDropUnsure": "· Max drop: not sure (starts at 5%)",
+      "answerMarkets": "· Markets: {markets}",
+      "change": "Change answers",
+      "bestFit": "BEST FIT",
+      "addOn": "GOOD ADD-ON",
+      "inPlan": "✓ In my plan",
+      "addToPlan": "+ Add to plan",
+      "why": "WHY IT FITS YOU",
+      "capital": "Capital",
+      "builderFee": "DRIFT builder fee",
+      "builderFeeValue": "≤ 0.01% per fill",
+      "leverage": "{n}× leverage",
+      "marketCheck": "Market check:",
+      "notSuggested": "What we didn’t suggest, and why",
+      "notes": "Notes",
+      "capitalPlan": "Capital plan",
+      "allocated": "Allocated of {capital}",
+      "notIncluded": "not included",
+      "beforeTrade": "Before bots can trade",
+      "keyFee": "DRIFT key + builder fee approval",
+      "signed": "✓ Signed",
+      "notSigned": "Not signed",
+      "twoFactor": "Two-factor authentication",
+      "on": "✓ On",
+      "notSet": "Not set",
+      "required": "Required before any bot runs on mainnet.",
+      "setup2fa": "Set up 2FA →",
+      "startHow": "How do you want to start?",
+      "live": "LIVE · Mainnet",
+      "liveTag": "Real funds",
+      "liveSub": "Bots place real orders on SoDEX with your DRIFT key. Needs 2FA. You confirm each bot before it starts.",
+      "paper": "Paper trading",
+      "paperTag": "Coming soon",
+      "paperSub": "Simulated bots on live prices. Not available yet.",
+      "skip": "Skip to dashboard",
+      "ctaNone": "Choose at least one bot",
+      "cta": "{n, plural, one {Review # bot for mainnet} other {Review # bots for mainnet}}",
+      "footnote": "Each bot opens its create screen with these values as AI parameters. Nothing trades until you confirm there.",
+      "editSettings": "Edit settings →",
+      "loading": "Building your plan…",
+      "unavailable": "AI parameters unavailable. Fill manually or try again.",
+      "retry": "Try again",
+      "noGoals": "Answer the questions in step 5 first."
+    },
+    "rail": {
+      "title": "Set up in about 5 minutes",
+      "body": "Bring your SoDEX history. DRIFT studies how you already trade before suggesting any strategy.",
+      "label": "Onboarding steps",
+      "steps": {
+        "account": {
+          "label": "Create account",
+          "sub": "Email"
+        },
+        "connect": {
+          "label": "Connect SoDEX",
+          "sub": "Two signatures: key + fee"
+        },
+        "import": {
+          "label": "Import history",
+          "sub": "Trades, fills, funding"
+        },
+        "analysis": {
+          "label": "Account analysis",
+          "sub": "How you actually trade"
+        },
+        "goals": {
+          "label": "Your goals",
+          "sub": "Risk and capital"
+        },
+        "plan": {
+          "label": "Strategy plan",
+          "sub": "Matched to your data"
+        }
+      },
+      "stepOf": "STEP {step} OF 6"
+    },
+    "signup": {
+      "safety": "DRIFT never asks for your seed phrase or private key, and can’t withdraw your funds.",
+      "haveAccount": "Already have an account?",
+      "signIn": "Sign in",
+      "title": "Create your DRIFT account",
+      "email": "Email",
+      "emailPlaceholder": "you@example.com",
+      "terms": "I have read the <risk>Risk Disclosure</risk>. Automated trading can lose money; DRIFT doesn’t guarantee profit.",
+      "submit": "Create account",
+      "note": "Two-factor authentication is required before any bot can trade on mainnet.",
+      "signInTitle": "Sign in to DRIFT",
+      "signInSubmit": "Sign in",
+      "noAccount": "New to DRIFT?",
+      "createAccount": "Create account",
+      "codeTitle": "Enter the 6-digit code",
+      "codeBody": "We sent it to {email}. It expires in 10 minutes.",
+      "codeLabel": "6-digit code",
+      "codeSubmit": "Verify and continue",
+      "resend": "Send a new code",
+      "twoFactorLabel": "2FA code or backup code",
+      "twoFactorBody": "This account has two-factor authentication on.",
+      "errors": {
+        "otpInvalid": "That code is wrong or expired. Request a new one.",
+        "twoFactorInvalid": "That 2FA code didn’t work. Try the current code or a backup code.",
+        "terms": "Confirm you have read the Risk Disclosure to continue.",
+        "invalidCredentials": "Wrong email or password.",
+        "emailTaken": "An account with this email already exists. Sign in instead.",
+        "passwordRules": "Use at least 12 characters that don’t include your email name.",
+        "locked": "Too many failed sign-ins. Try again in 15 minutes."
+      },
+      "password": "Password",
+      "passwordShow": "Show password",
+      "passwordHide": "Hide password",
+      "rules": {
+        "length": "12+ characters",
+        "email": "Not your email"
+      },
+      "forgot": "Forgot your password? Ask the DRIFT operator to reset it.",
+      "twoFactorSubmit": "Verify and sign in"
+    },
+    "connect": {
+      "safety": "DRIFT never asks for your seed phrase or private key. Your wallet only signs; it never sends a transaction here.",
+      "title": "Connect your SoDEX account",
+      "lead": "Two signatures from your SoDEX master wallet: one creates a DRIFT API key, one approves DRIFT’s builder fee. You never copy or paste a key.",
+      "phases": {
+        "label": "Connection steps",
+        "wallet": "Connect wallet",
+        "review": "Review & sign",
+        "confirmed": "Confirmed"
+      },
+      "connectWallet": "Connect your SoDEX master wallet",
+      "masterHint": "It must be the master wallet of your SoDEX account. SoDEX doesn’t accept builder approvals signed by an API key.",
+      "accountLine": "SoDEX account #{id} · Mainnet",
+      "key": {
+        "tag": "1 · API KEY",
+        "title": "A key for DRIFT’s bots",
+        "named": "Named <b>DRIFT</b>. DRIFT creates it and keeps it encrypted; you never see or paste it.",
+        "scope": "Lets DRIFT read your account and send the orders of bots you confirm.",
+        "expires": "Expires <b>{date}</b>. We remind you 14 days before."
+      },
+      "fee": {
+        "tag": "2 · BUILDER FEE",
+        "title": "DRIFT’s fee on bot orders",
+        "perFill": "max per fill · {bp}",
+        "onlyDrift": "Charged only on orders DRIFT sends. Your own trades on SoDEX pay nothing extra.",
+        "inside": "Shown inside the fee of every fill, not added later.",
+        "revoke": "Set to 0 anytime to revoke."
+      },
+      "howTitle": "How the builder fee applies on SoDEX",
+      "table": {
+        "market": "Market",
+        "chargedOn": "Charged on",
+        "approval": "Your approval",
+        "cap": "SoDEX cap",
+        "perps": "Perps",
+        "perpsOn": "Buys and sells",
+        "spot": "Spot",
+        "spotOn": "Sells only, in the quote asset"
+      },
+      "howNote": "The fee charged is the lower of your approval and the SoDEX cap. Each SoDEX account can approve up to 10 builders.",
+      "signKey": "Sign 1 of 2: create key",
+      "signFee": "Sign 2 of 2: approve fee",
+      "retry": "Try signing again",
+      "free": "Signing is free: no transaction, no gas.",
+      "rejectedTitle": "Signature cancelled in your wallet.",
+      "rejectedKey": "No key was created and no fee was approved. You can try again.",
+      "rejectedFee": "Your DRIFT key was created, but no fee was approved. Sign again to approve the fee.",
+      "waiting": "Waiting for your signature…",
+      "preview": {
+        "title": "Your wallet will show",
+        "domain": "Domain",
+        "domainValue": "universal · v1",
+        "check": "Check that builderID and maxFeeRate match what DRIFT showed you."
+      },
+      "creatingKey": "Signed. Registering the key on SoDEX and reading it back…",
+      "creatingFee": "Signed. Approving the fee on SoDEX and reading back your builder approvals…",
+      "unknown": "SoDEX didn’t answer in time. Checking what was applied before doing anything else…",
+      "doneTitle": "Connected · confirmed by SoDEX",
+      "done": {
+        "account": "Account",
+        "accountValue": "#{id} · {address} · Mainnet",
+        "apiKey": "API key",
+        "apiKeyValue": "DRIFT · ••{last4} · expires {date}",
+        "approval": "Builder approval",
+        "approvalValue": "DRIFT #{builderId} · up to {pct} · found in Spot and Perps approvals",
+        "equity": "Equity now"
+      },
+      "next": "Import my history",
+      "manage": "Manage or revoke the key and the fee approval anytime in DRIFT › Settings.",
+      "switchChain": "Switch your wallet to ValueChain to sign.",
+      "switchChainButton": "Switch to ValueChain",
+      "errors": {
+        "noWallet": "No browser wallet found. Install or unlock one, or use WalletConnect to sign from your phone.",
+        "accountNotFound": "This wallet has no SoDEX account. Connect the master wallet of your SoDEX account.",
+        "accountInUse": "This SoDEX account is already connected to another DRIFT account. Sign in to that account and disconnect SoDEX there first.",
+        "signatureInvalid": "That signature isn’t from the wallet you connected.",
+        "rejectedBySodex": "SoDEX rejected the request: {reason}",
+        "disabled": "Connecting SoDEX isn’t available yet."
+      },
+      "wallets": {
+        "title": "Choose your wallet",
+        "hint": "Use the wallet that holds your SoDEX master account. It only signs; it never sends a transaction here.",
+        "browser": "Browser wallet",
+        "walletConnect": "WalletConnect",
+        "wcNote": "Scan the QR code with a mobile wallet",
+        "wcUnavailable": "Not configured",
+        "notDetected": "Not detected in this browser"
+      }
+    },
+    "import": {
+      "title": "Importing your SoDEX history",
+      "subtitle": "Mainnet account {address}",
+      "progress": "{pct}% imported",
+      "progressLabel": "Import progress",
+      "overallLabel": "Overall progress",
+      "fills": "Orders & fills",
+      "fillsDone": "{count, plural, one {# fill} other {# fills}} · {from} → {to}",
+      "fillsEmpty": "No fills returned by SoDEX",
+      "fillsRunning": "{count, plural, one {# fill} other {# fills}} so far",
+      "positions": "{count, plural, one {# closed position} other {# closed positions}}",
+      "funding": "Funding payments",
+      "fundingSub": "Perpetual funding you paid and received",
+      "fundingDone": "{count, plural, one {# payment} other {# payments}} · {from} → {to}",
+      "transfers": "Deposits & withdrawals",
+      "transfersSub": "SoDEX doesn’t provide transfer history, so deposits can’t be separated from profit.",
+      "analysis": "Build your account analysis",
+      "analysisSub": "PnL after fees and funding, habits, risk",
+      "status": {
+        "done": "Done",
+        "running": "Importing",
+        "waiting": "Waiting",
+        "failed": "Failed",
+        "unavailable": "Not available"
+      },
+      "truncated": "SoDEX returned history from {from} only.",
+      "note": "We import only what SoDEX returns for this account. If any period is missing, the analysis will say so instead of filling the gap.",
+      "failed": "Part of the import failed. The analysis covers only what was imported.",
+      "retry": "Import again",
+      "skip": "Skip analysis, set up a bot myself",
+      "next": "See my analysis"
+    },
+    "analysis": {
+      "step": "STEP 4 OF 6 · ACCOUNT ANALYSIS",
+      "title": "How you’ve traded on SoDEX",
+      "subtitle": "Mainnet · {address} · {from} – {to} ({days, plural, one {# day} other {# days}})",
+      "pnlTitle": "Where your trading profit went",
+      "gross": "Gross realized PnL",
+      "grossSub": "before costs",
+      "fees": "Trading fees",
+      "funding": "Net funding",
+      "ofGross": "{pct} of gross",
+      "net": "Net result",
+      "netSub": "USDC, after all costs",
+      "winRate": "Win rate",
+      "winRateOf": "{wins} of {total}",
+      "avgWinLoss": "Avg win / avg loss",
+      "maxDrawdown": "Max drawdown",
+      "medianLeverage": "Median leverage",
+      "maxLeverage": "max {value}×",
+      "makerTaker": "Maker / taker fills",
+      "curveTitle": "Cumulative net PnL",
+      "curveSub": "USDC, after fees and funding · deposits excluded",
+      "curveLabel": "Cumulative net PnL from {start} to {end} USDC",
+      "findingsTitle": "What stands out",
+      "botChange": "What a bot changes:",
+      "costs": {
+        "tag": "COSTS",
+        "title": "Fees took {pct} of your profit",
+        "body": "{fees} of {gross} gross went to fees. {taker} of your fills were taker orders, which pay the higher fee.",
+        "bot": "limit-order strategies fill mostly as maker."
+      },
+      "holding": {
+        "tag": "HOLDING TIME",
+        "title": "Your longer trades made the money",
+        "body": "{shortCount} positions closed within 15 minutes lost {shortNet} net. {bestCount} positions held {bucket} made {bestNet}.",
+        "bot": "automate the slower style; no scalping."
+      },
+      "exits": {
+        "tag": "EXITS",
+        "title": "Losers stayed open {ratio}× longer",
+        "body": "Losing positions averaged {losers}; winners {winners}.",
+        "bot": "a fixed stop rule exits without hesitation."
+      },
+      "leverage": {
+        "tag": "LEVERAGE",
+        "title": "High leverage caused most losses",
+        "body": "Positions at 8× or more were {positions} of trades but {losses} of your total losses.",
+        "bot": "leverage is capped by a server-enforced limit."
+      },
+      "noFindings": "Nothing stands out yet.",
+      "marketTitle": "By market",
+      "market": "Market",
+      "volumeShare": "Share of volume",
+      "fees2": "Fees",
+      "netPnl": "Net PnL",
+      "holdingTitle": "Net PnL by holding time",
+      "holdingNote": "Red bars left of the line are losses; blue bars right are gains.",
+      "buckets": {
+        "<15m": "< 15 min",
+        "15m–4h": "15m – 4h",
+        "4h–1d": "4h – 1d",
+        "1–7d": "1 – 7 days",
+        ">7d": "> 7 days"
+      },
+      "newTrader": "Fewer than 30 closed positions: suggestions will rely on your goals, not your history.",
+      "unrealized": "Excludes unrealized PnL on open positions.",
+      "disclaimer": "This describes what already happened. It doesn’t predict future results, and none of it is financial advice.",
+      "empty": "No closed trades found in your SoDEX history.",
+      "waiting": "Your analysis isn’t ready yet.",
+      "back": "Back",
+      "next": "Next: your goals"
+    },
+    "goals": {
+      "title": "What do you want DRIFT to do?",
+      "lead": "Four quick questions. Your answers and your history decide what we suggest.",
+      "q1": "1. Main goal",
+      "q2": "2. Capital for bots",
+      "q3": "3. Largest drop you could sit through on that capital",
+      "q4": "4. Markets to include",
+      "options": {
+        "automate": {
+          "label": "Automate what already works",
+          "sub": "Keep my swing style, minus the costly habits."
+        },
+        "range": {
+          "label": "Earn from sideways markets",
+          "sub": "Buy low, sell high inside a range."
+        },
+        "accumulate": {
+          "label": "Build a BTC or ETH position",
+          "sub": "Buy steadily over time."
+        },
+        "steady": {
+          "label": "Grow slowly, low stress",
+          "sub": "Small, steady gains; few alerts."
+        }
+      },
+      "unit": "USDC",
+      "available": "Available now: {amount} USDC. The rest of your account stays untouched.",
+      "drop": {
+        "5": "5%",
+        "10": "10%",
+        "20": "20%",
+        "unsure": "Not sure",
+        "unsureSub": "We’ll start at 5%"
+      },
+      "dropHint": "This becomes the bot’s max-loss stop, enforced by the server.",
+      "dropWorst": "Your worst drawdown so far was {pct}%.",
+      "notes": {
+        "strongest": "your strongest",
+        "loss": "net loss so far",
+        "none": "no history"
+      },
+      "back": "Back",
+      "next": "Show my strategy plan",
+      "fromAnalysis": "From your analysis",
+      "netAfterCosts": "· Net {net} after costs",
+      "feeShare": "· Fees {pct}% of gross",
+      "worstDd": "· Worst drawdown −{pct}%",
+      "errors": {
+        "capital": "Enter an amount above 0.",
+        "assets": "Choose at least one market."
+      }
+    }
+  },
+  "settings": {
+    "sodexAccess": {
+      "revokeFee": "Revoke (set to 0)…",
+      "approveAgain": "Sign to approve 0.01% again",
+      "removeOtherBuilder": "Remove another builder approval in SoDEX first.",
+      "account": "SoDEX account #{id}",
+      "masterWallet": "Master wallet {address} · Mainnet",
+      "connected": "● Connected",
+      "keyExpiredPill": "✕ Key expired",
+      "apiKey": "API key",
+      "apiKeyValue": "DRIFT · ••{last4}",
+      "expires": "Expires",
+      "lastUsed": "Last used",
+      "keyExpiredTitle": "Key expired.",
+      "keyExpiredBody": "All LIVE bots are paused and can’t read balances. Sign once with your master wallet to create a new key; your builder fee approval is kept.",
+      "permRead": "✓ Read account data",
+      "permReadSub": "Balances, positions, orders, fills.",
+      "permTrade": "✓ Place and cancel orders",
+      "permTradeSub": "Only for bots you confirmed.",
+      "permWithdraw": "✕ Withdraw or transfer",
+      "permWithdrawSub": "Never. DRIFT only trades; it has no withdrawal or transfer feature.",
+      "renew": "Renew key (sign again)…",
+      "disconnect": "Disconnect…",
+      "feeTitle": "DRIFT builder fee",
+      "feeApproved": "● Approved",
+      "feeRevoked": "❚❚ Revoked",
+      "feeUpdating": "Updating…",
+      "feeSubOn": "max per fill · maxFeeRate 10 · builder #{builderId}",
+      "feePoint1": "Charged only on orders DRIFT sends. Perps: both sides, SoDEX cap 0.2%. Spot: sells only, SoDEX cap 2%.",
+      "feePoint2": "Shown inside the fee of each fill. Your own trades on SoDEX are never charged.",
+      "feePoint3": "DRIFT offers one rate: 0.01%. You can approve it or set it to 0.",
+      "feeOffTitle": "All LIVE bots are paused.",
+      "feeOffBody": "Open orders were kept. After you approve again, resume each bot from Trading Agent.",
+      "busyRevoking": "Waiting for signature, then reading your approvals back from SoDEX…",
+      "busyApproving": "Approving 0.01%, then reading your approvals back from SoDEX…",
+      "revokeDialog": {
+        "title": "Revoke DRIFT’s builder fee?",
+        "point1": "Your approval for DRIFT goes from 0.01% to 0.",
+        "point2": "All running bots pause right away. Their open orders stay on SoDEX.",
+        "point3": "Approve again anytime, then resume each bot.",
+        "sign": "Your master wallet signs ApproveBuilderFeeAction with maxFeeRate 0. Free, no gas. 2FA code required.",
+        "cancel": "Keep approval",
+        "cta": "Sign to revoke"
+      },
+      "notConnected": "No SoDEX account connected.",
+      "connectCta": "Connect SoDEX",
+      "disconnectDialog": {
+        "title": "Disconnect SoDEX account #{id}?",
+        "point1": "DRIFT deletes its API key. All LIVE bots pause.",
+        "point2": "Open orders stay on SoDEX and may still fill. Cancel them first in Execution & Orders if you don’t want that.",
+        "point3": "Portfolio and analysis stop updating.",
+        "point4": "Your builder fee approval stays until you set it to 0.",
+        "sign": "Your master wallet signs twice to delete DRIFT’s key on SoDEX: once for Spot, once for Perps. Free, no gas. 2FA code required.",
+        "cancel": "Keep connected",
+        "cta": "Disconnect"
+      },
+      "busyDisconnecting": "Sign {step} of 2 in your wallet, then DRIFT reads your keys back from SoDEX…",
+      "feeExempt": "This is DRIFT’s own builder account. Bots on it pay no DRIFT builder fee, so there is nothing to approve.",
+      "expiresIn": "{date} · in {n, plural, one {# day} other {# days}}",
+      "renewDialog": {
+        "title": "Renew DRIFT’s API key?",
+        "point1": "DRIFT creates a new key and stops using the old key ••{last4} once the new one works. The old key stays on SoDEX until you remove it.",
+        "point2": "Bots keep running. No orders are cancelled.",
+        "point3": "New expiry: 6 months from today.",
+        "sign": "Your master wallet signs one request. Free, no gas.",
+        "cancel": "Not now",
+        "cta": "Sign to renew"
+      },
+      "busyRenewing": "Waiting for your wallet to sign the new key…",
+      "renewed": "New key active. Resume paused bots from Trading Agent.",
+      "wallet": {
+        "lead": "Connect your SoDEX master wallet ({address}) to sign.",
+        "wrong": "This wallet isn’t the master wallet of this SoDEX account. Choose {address}.",
+        "cancel": "Cancel"
+      },
+      "keyUnusablePill": "Key unusable",
+      "keyUnusableBody": "DRIFT can't sign with this key. Renew it to resume your bots.",
+      "never": "Never"
+    },
+    "tradingDefaults": {
+      "paperComingSoon": "Paper trading: coming soon"
+    },
+    "title": "Settings",
+    "subtitle": "SoDEX access, security, notifications and defaults.",
+    "tabs": {
+      "label": "Settings sections",
+      "access": "SoDEX access",
+      "security": "Security",
+      "notifications": "Notifications",
+      "defaults": "Trading defaults",
+      "profile": "Profile"
+    },
+    "security": {
+      "tfaTitle": "Two-factor authentication",
+      "tfaOn": "● On",
+      "tfaNotSet": "▲ Not set",
+      "tfaBody": "Required before any bot runs on mainnet, and asked again when you start a LIVE bot, revoke the fee, or disconnect.",
+      "steps": {
+        "scan": "Scan QR",
+        "code": "Enter code",
+        "backup": "Save backup codes"
+      },
+      "qrLabel": "QR code for your authenticator app",
+      "scanHint": "Scan with an authenticator app, or enter this key:",
+      "next": "Next",
+      "codeLabel": "6-digit code from the app",
+      "verify": "Verify",
+      "backupHint": "Save these backup codes. Each works once if you lose your phone.",
+      "backupDone": "I saved them · turn on 2FA",
+      "enabledTitle": "2FA is on.",
+      "enabledBody": "LIVE bots can now be started.",
+      "start": "Set up 2FA",
+      "sessionsTitle": "Sign-in methods and sessions",
+      "email": "Email",
+      "verified": "Verified",
+      "current": "Current",
+      "signOut": "Sign out",
+      "codePrompt": "2FA code",
+      "errors": {
+        "invalid": "That code didn’t work. Use the current code from your app."
+      }
+    },
+    "notifications": {
+      "title": "Notifications",
+      "alwaysOn": "Always on",
+      "inApp": "In-app",
+      "email": "Email",
+      "telegram": "Telegram · Coming soon",
+      "groups": {
+        "botErrors": "Bot errors, unknown orders, paused bots",
+        "risk": "Risk alerts",
+        "keyFee": "Key and fee changes",
+        "fills": "Every fill",
+        "daily": "Daily summary"
+      }
+    },
+    "defaults": {
+      "title": "Trading defaults",
+      "mode": "Mode",
+      "modeValue": "LIVE · Mainnet",
+      "paper": "Paper trading: coming soon",
+      "maxLoss": "Default max loss",
+      "maxLossHint": "% of a bot’s capital. Shown as a suggestion in the Max loss field when you create a bot.",
+      "timezone": "Time zone",
+      "timezoneHint": "Times across DRIFT use this zone. Daily loss resets at 00:00 here.",
+      "numberFormat": "Number format",
+      "save": "Save",
+      "saved": "Saved."
+    },
+    "profile": {
+      "title": "Profile",
+      "name": "Name",
+      "email": "Email",
+      "emailHint": "Sign-in codes are sent here.",
+      "save": "Save",
+      "saved": "Saved.",
+      "export": "Export orders and fills (CSV)",
+      "exportHint": "Every order DRIFT sent for you, with its fills and fees.",
+      "delete": "Delete account…",
+      "deleteTitle": "Delete your DRIFT account?",
+      "deleteBody": "Your profile, goals and sign-in are removed. Order history stays for audit.",
+      "deleteBlockedBots": "Stop every bot first.",
+      "deleteBlockedSodex": "Disconnect SoDEX first, so DRIFT’s key is removed from SoDEX.",
+      "deleteConfirm": "Delete account",
+      "cancel": "Cancel",
+      "twoFactor": "2FA code"
+    }
+  },
+  "_pendingReview": [
+    "settings.sodexAccess.wallet.lead",
+    "settings.sodexAccess.wallet.wrong",
+    "settings.sodexAccess.wallet.cancel",
+    "common.nav.users",
+    "adminUsers.title",
+    "adminUsers.subtitle",
+    "adminUsers.forbidden",
+    "adminUsers.search",
+    "adminUsers.count",
+    "adminUsers.empty",
+    "adminUsers.cols.email",
+    "adminUsers.cols.registered",
+    "adminUsers.cols.sodex",
+    "adminUsers.cols.fee",
+    "adminUsers.cols.bots",
+    "adminUsers.cols.twoFactor",
+    "adminUsers.team",
+    "adminUsers.notConnected",
+    "adminUsers.status.connecting",
+    "adminUsers.status.connected",
+    "adminUsers.status.disconnected",
+    "adminUsers.fee.approved",
+    "adminUsers.fee.revoked",
+    "adminUsers.fee.never",
+    "adminUsers.fee.exempt",
+    "adminUsers.bots",
+    "adminUsers.on",
+    "adminUsers.off",
+    "adminUsers.prev",
+    "adminUsers.next",
+    "adminUsers.page",
+    "agent.statusLabel",
+    "createBot.picker.loading",
+    "createBot.picker.empty",
+    "createBot.picker.clear",
+    "createBot.picker.close",
+    "createBot.marketPicker.popular",
+    "createBot.marketPicker.noMatch",
+    "createBot.marketPicker.sheetTitle",
+    "createBot.marketPicker.info.last",
+    "createBot.marketPicker.info.minOrder",
+    "createBot.marketPicker.info.maxLeverage",
+    "createBot.assetPicker.placeholder",
+    "createBot.assetPicker.noMatch",
+    "createBot.assetPicker.sheetTitle",
+    "createBot.assetPicker.arbPair",
+    "createBot.assetPicker.rowAsset",
+    "createBot.assetPicker.rowWeight",
+    "createBot.assetPicker.rowRemove",
+    "createBot.assetPicker.add",
+    "createBot.fields.fdcaFirstStepPct.label",
+    "createBot.fields.twapMarket.label",
+    "createBot.fields.reduceOnly.label",
+    "createBot.preview.hints.durationHours",
+    "createBot.preview.hints.durationHoursMinutes",
+    "createBot.fields.dayOfWeek",
+    "createBot.fields.dayOfMonth",
+    "createBot.fields.time.label",
+    "createBot.options.dayOfWeek",
+    "createBot.fields.rebalSchedule",
+    "createBot.options.rebalSchedule",
+    "createBot.sections.amount",
+    "createBot.sections.strategy",
+    "createBot.sections.risk",
+    "createBot.advanced.title",
+    "createBot.advanced.optionalUnset",
+    "createBot.advanced.needValue",
+    "createBot.amount.dcaHint",
+    "createBot.amountLines.availableSpot",
+    "createBot.amountLines.availablePerps",
+    "createBot.amountLines.noneSpot",
+    "createBot.amountLines.unavailable",
+    "createBot.amountLines.maxCapital",
+    "createBot.amountLines.maxMargin",
+    "createBot.amountLines.position",
+    "createBot.amountLines.split",
+    "createBot.ai.needsCapitalField",
+    "createBot.fields.fdcaBaseOrder",
+    "createBot.fields.fdcaSafetyOrder",
+    "createBot.fields.fdcaFirstStepPct",
+    "createBot.fields.fdcaTakeProfit",
+    "createBot.fields.fdcaStopLoss",
+    "createBot.preview.hints.fdcaLong",
+    "createBot.preview.hints.fdcaShort",
+    "overview.change",
+    "overview.changeLabel",
+    "common.missing.noFillsYet",
+    "common.shell.sodexKeyRenew",
+    "settings.sodexAccess.keyUnusablePill",
+    "settings.sodexAccess.keyUnusableBody",
+    "settings.sodexAccess.never",
+    "overview.agentCard.recent",
+    "bots.renewKey",
+    "bots.moreActions",
+    "orders.showLast30",
+    "orders.clearFilters",
+    "risk.noLimitSet",
+    "risk.setLimit",
+    "common.shell.agoSeconds",
+    "common.shell.agoMinutes",
+    "common.shell.agoHours",
+    "notFound.title",
+    "notFound.backOverview",
+    "notFound.backHome",
+    "common.nav.team",
+    "overview.watchlistCard.*",
+    "createBot.marketPicker.added",
+    "createBot.marketPicker.watchAdd",
+    "createBot.marketPicker.watchRemove",
+    "createBot.marketPicker.watchSaving",
+    "createBot.marketPicker.watchFull",
+    "createBot.marketPicker.watchFailed",
+    "bots.catalog.forMarket"
+  ],
+  "bots": {
+    "title": "Strategy Lab",
+    "subtitle": "Your bots, drafts, and the strategies you can start from.",
+    "newBot": "New bot",
+    "tabs": {
+      "label": "Strategy Lab sections",
+      "mine": "My bots",
+      "catalog": "Strategy catalog"
+    },
+    "feeRevoked": {
+      "title": "All bots paused: builder fee approval is 0",
+      "body": "Open orders were kept. Approve again to resume bots one by one.",
+      "cta": "Approve fee again"
+    },
+    "filters": {
+      "status": "Status",
+      "engine": "Engine",
+      "all": "All",
+      "running": "Running",
+      "paused": "Paused",
+      "stopped": "Stopped",
+      "draft": "Draft",
+      "archived": "Archived",
+      "spot": "Spot",
+      "perps": "Perps"
+    },
+    "cols": {
+      "bot": "Bot",
+      "strategy": "Strategy",
+      "mode": "Mode",
+      "status": "Status",
+      "profit": "Profit",
+      "capital": "Capital",
+      "actions": "Actions"
+    },
+    "mode": "LIVE",
+    "open": "Open",
+    "edit": "Edit",
+    "resume": "Resume",
+    "view": "View",
+    "continue": "Continue",
+    "empty": {
+      "title": "No bots yet",
+      "body": "Pick a strategy from the catalog to set up your first bot.",
+      "cta": "Browse strategies"
+    },
+    "catalog": {
+      "fits": "Fits",
+      "risk": "Risk",
+      "setUp": "Set up {name}",
+      "comingSoon": "Coming soon",
+      "forMarket": "Strategies that can trade {market}"
+    },
+    "groups": {
+      "spot_grid": "GRID",
+      "futures_grid": "GRID",
+      "spot_dca": "DCA",
+      "futures_dca": "DCA",
+      "recurring_buy": "ACCUMULATE",
+      "rebalancing": "PORTFOLIO",
+      "funding_arb": "ARBITRAGE",
+      "twap": "EXECUTION",
+      "volume_maker": "EVENT"
+    },
+    "fits": {
+      "spot_grid": "Sideways markets.",
+      "futures_grid": "Ranges you expect to hold; can profit in a falling range (short).",
+      "spot_dca": "Dips you expect to recover.",
+      "futures_dca": "Mean-reverting moves.",
+      "recurring_buy": "Building a long-term position.",
+      "rebalancing": "A long-term basket.",
+      "funding_arb": "Persistently positive funding.",
+      "twap": "Entering or exiting size with less price impact.",
+      "volume_maker": "Taking part in volume events at a known, capped cost."
+    },
+    "risks": {
+      "spot_grid": "Price leaves the range; you hold the asset at a loss.",
+      "futures_grid": "Leverage and liquidation; funding costs.",
+      "spot_dca": "Long downtrends use all safety orders.",
+      "futures_dca": "Leverage plus averaging down can reach liquidation.",
+      "recurring_buy": "No exit; value follows the market.",
+      "rebalancing": "Sells winners early in strong trends.",
+      "funding_arb": "Funding turns negative; the two legs drift apart.",
+      "twap": "Price moves during the run.",
+      "volume_maker": "Inventory moves against you; SoPoints are not guaranteed."
+    },
+    "long": {
+      "spot_grid": "Buys low and sells high inside a price range, again and again.",
+      "futures_grid": "Grid on a perpetual contract: long, short or neutral, with leverage.",
+      "spot_dca": "Buys, then adds safety orders as price drops, and sells the whole position at a take-profit.",
+      "futures_dca": "Same as Spot DCA on a perpetual, long or short, with leverage.",
+      "recurring_buy": "Buys a fixed amount on a schedule. No selling.",
+      "rebalancing": "Keeps 2–10 assets at target weights by trading back to them.",
+      "funding_arb": "Holds spot and an equal perp short to collect funding.",
+      "twap": "Splits one large order into small slices over time.",
+      "volume_maker": "Quotes both sides with post-only orders to add liquidity and volume during SoDEX events, within a cost budget. Never trades with itself."
+    },
+    "renewKey": "Renew key",
+    "moreActions": "More actions for {name}"
+  },
+  "states": {
+    "draft": "Draft",
+    "starting": "Starting…",
+    "running": "Running",
+    "pausing": "Pausing…",
+    "paused": "Paused",
+    "resuming": "Resuming…",
+    "stopping": "Stopping…",
+    "stopped": "Stopped",
+    "error": "Error",
+    "archived": "Archived",
+    "needsAttention": "Needs attention"
+  },
+  "agent": {
+    "title": "Trading Agent",
+    "subtitle": "What each agent is doing, why, and the controls to change it.",
+    "newAgent": "New agent",
+    "none": "No agents yet. Create a bot in Strategy Lab.",
+    "pause": "Pause",
+    "resume": "Resume",
+    "start": "Start…",
+    "stop": "Stop agent…",
+    "pauseHint": "Pause (keeps open orders)",
+    "sent": "Sent {time} · waiting for backend",
+    "confirmed": "Confirmed by backend {time}",
+    "profit": "Profit since start",
+    "runtime": "Runtime",
+    "openOrders": "Open orders",
+    "lastDecision": "Last decision",
+    "decisions": "Decisions & actions",
+    "allOrders": "All orders →",
+    "cols": {
+      "time": "Time",
+      "decision": "Decision",
+      "why": "Why",
+      "result": "Result"
+    },
+    "noDecisions": "No decisions yet.",
+    "config": "Configuration",
+    "configVersion": "v{version} · {date}",
+    "editBot": "Edit bot",
+    "editHint": "Edits create v{next} and go through review. v{version} keeps running until you confirm.",
+    "stopTitle": "Stop this agent",
+    "stopBody": "Cancels its open orders on SoDEX. Your assets stay in your account; nothing is sold.",
+    "stopDialog": {
+      "title": "Stop {name}?",
+      "stay": "Your assets stay in your account. Nothing is sold.",
+      "noNew": "No new orders until you start it again.",
+      "cancel": "Keep running",
+      "cta": "Stop and cancel {count, plural, one {# order} other {# orders}}"
+    },
+    "startDialog": {
+      "title": "Start {name}?",
+      "limits": "Server-enforced risk limits apply from the first order.",
+      "cancel": "Not now",
+      "cta": "Start agent"
+    },
+    "consequences": "What happens",
+    "env": "Environment: LIVE · Mainnet, real funds. The status changes only after the backend confirms.",
+    "twoFactor": "2FA code",
+    "vm": {
+      "title": "Volume Maker",
+      "volume": "Volume made",
+      "ofTarget": "of {target}",
+      "cost": "Cost used",
+      "ofBudget": "of {budget}",
+      "perMillion": "Cost per $1M volume",
+      "makerShare": "Maker share",
+      "inventory": "Inventory",
+      "selfTrade": "Quotes blocked as self-trades"
+    },
+    "stateSub": {
+      "paused": "Confirmed {time} · open orders kept",
+      "stopping": "Sent {time} · cancelling {n, plural, one {# order} other {# orders}}",
+      "stopped": "Confirmed {time} · {n} open orders"
+    },
+    "lifecycle": {
+      "label": "Lifecycle",
+      "stopped": "Stopped",
+      "starting": "Starting",
+      "running": "Running",
+      "paused": "Paused",
+      "stopping": "Stopping"
+    },
+    "recentErrors": "Recent errors",
+    "noErrors": "No errors.",
+    "errorCode": "Code {code}",
+    "recentDecisions": "Recent decisions",
+    "stopHint": "You will see exactly what gets cancelled before anything happens.",
+    "notSet": "Not set",
+    "back": "Back to Home",
+    "noneTitle": "No agents yet",
+    "up": "Up {time}",
+    "investment": "Investment",
+    "range": "Range",
+    "priceRange": "Price range",
+    "yes": "Yes",
+    "no": "No",
+    "openGridOrders": "Open grid orders",
+    "agentsLabel": "Agents",
+    "statusLabel": "Status"
+  },
+  "orders": {
+    "title": "Execution & Orders",
+    "subtitle": "Every order DRIFT sent, and what SoDEX says happened to it.",
+    "unknownBanner": "{count, plural, one {# order has an unknown result} other {# orders have an unknown result}}",
+    "unknownBody": "DRIFT has not retried it and will not until SoDEX confirms whether it exists.",
+    "caption": "Orders",
+    "cols": {
+      "time": "Time",
+      "symbol": "Symbol",
+      "side": "Side · type",
+      "price": "Price",
+      "filled": "Filled / size",
+      "status": "Status",
+      "source": "Source"
+    },
+    "side": {
+      "buy": "Buy",
+      "sell": "Sell"
+    },
+    "type": {
+      "limit": "Limit",
+      "market": "Market"
+    },
+    "status": {
+      "open": "Open",
+      "partially_filled": "Partially filled",
+      "filled": "Filled",
+      "cancelled": "Cancelled",
+      "rejected": "Rejected",
+      "unknown": "Unknown · reconciling",
+      "not_placed": "Not placed · confirmed"
+    },
+    "empty": "No orders match these filters.",
+    "marketPrice": "Market",
+    "tabs": {
+      "label": "Order view",
+      "all": "History",
+      "open": "Open",
+      "fills": "Fills",
+      "issues": "Failed & unknown"
+    },
+    "filters": {
+      "symbol": "Symbol",
+      "side": "Side",
+      "time": "Time",
+      "all": "All",
+      "today": "Today",
+      "d7": "7 days",
+      "d30": "30 days"
+    },
+    "counts": {
+      "label": "Order counts",
+      "open": "Open",
+      "filledToday": "Filled · today",
+      "rejectedToday": "Rejected · today",
+      "slippage": "Slippage",
+      "partial": "{n} partially filled",
+      "sinceMidnight": "since 00:00",
+      "noReference": "No reference price stored yet"
+    },
+    "emptyNone": "No orders yet. Orders appear here once a bot sends them.",
+    "reviewOrder": "Review order",
+    "showLast30": "Show last 30 days",
+    "clearFilters": "Clear filters"
+  },
+  "botEdit": {
+    "title": "Edit {name}",
+    "sub": "{state} · config v{version} · changes are saved as v{next}",
+    "changeable": "Settings you can change",
+    "locked": "Locked while the bot exists",
+    "lockedHint": "To change these, stop this bot and use Duplicate in Strategy Lab.",
+    "changes": "Changes · v{version} → v{next}",
+    "noChanges": "No changes yet.",
+    "whatHappens": "What happens when you apply",
+    "applyEffect": "Open orders are cancelled and placed again from the new settings.",
+    "discard": "Discard",
+    "review": "Review and apply v{next}",
+    "history": "Version history",
+    "dialog": {
+      "title": "Apply v{next} to {name}?",
+      "keep": "Keep v{version}",
+      "apply": "Apply v{next}"
+    },
+    "applying": "Applying v{next}…",
+    "live": "v{next} is live.",
+    "retune": {
+      "title": "Retune with AI",
+      "body": "Fills the editable fields with AI parameters for current market conditions. Changed fields are marked, and you review the diff before applying.",
+      "cta": "✦ Suggest new parameters"
+    }
+  },
+  "reasons": {
+    "BUILDER_FEE_REVOKED": "Paused: builder fee approval is 0",
+    "API_KEY_EXPIRED": "Paused: DRIFT API key expired",
+    "API_KEY_DELETED": "Paused: DRIFT API key deleted",
+    "RISK_DAILY_LOSS": "Paused: daily loss limit reached",
+    "RISK_DRAWDOWN": "Paused: drawdown limit reached",
+    "BOT_MAX_LOSS": "Paused: max loss for this bot reached",
+    "ORDER_REJECTED": "Paused: SoDEX rejected an order",
+    "INSUFFICIENT_BALANCE": "Paused: balance too low",
+    "STOP_LOSS": "Stopped: stop loss reached",
+    "TAKE_PROFIT": "Stopped: take profit reached",
+    "EMERGENCY_HALT": "Stopped: emergency halt",
+    "BUDGET_DONE": "Stopped: budget used",
+    "MAX_CYCLES": "Stopped: max cycles reached",
+    "API_KEY_UNUSABLE": "Paused: DRIFT can’t sign with your API key"
+  },
+  "overview": {
+    "title": "Overview",
+    "subtitle": "Account health, profit and what needs your attention.",
+    "emergency": {
+      "title": "Emergency",
+      "body": "Stops every agent and cancels their open orders. You review before it runs.",
+      "cta": "Halt all agents…"
+    },
+    "updated": "Updated {time}",
+    "equity": "Account value (equity)",
+    "unrealized": "Unrealized PnL · open positions",
+    "ofEquity": "{pct}% of equity",
+    "realized": "Realized PnL · selected period",
+    "realizedNote": "Closed perps positions on SoDEX",
+    "available": "Available balance",
+    "availableNote": "Free to allocate",
+    "margin": "Margin in use",
+    "marginNote": "{amount} USDC locked",
+    "performance": "Performance",
+    "equitySeries": "Equity",
+    "netDeposits": "Net deposits",
+    "netDepositsNote": "Not available: SoDEX has no deposit history.",
+    "viewTable": "View as table",
+    "tableNote": "The same series is available as a timestamped table for screen readers and export.",
+    "periods": {
+      "1": "24H",
+      "7": "7D",
+      "30": "30D",
+      "all": "All"
+    },
+    "riskSnapshot": "Risk snapshot",
+    "withinLimits": "Within limits",
+    "breached": "{n, plural, one {# limit breached} other {# limits breached}}",
+    "dailyLoss": "Daily loss",
+    "maxDd": "Max drawdown · 30D",
+    "leverage": "Leverage",
+    "ofLimit": "of {limit} limit",
+    "ofCap": "of {limit} cap",
+    "notSet": "Limit not set",
+    "serverEnforced": "Server-enforced",
+    "uiOnly": "UI warning only · not enforced by server",
+    "openRisk": "Open Risk Center →",
+    "myBots": "My Profit Bots",
+    "newBot": "New bot",
+    "investment": "Investment",
+    "profit": "Profit",
+    "activity": "Recent activity",
+    "allActivity": "All orders & events →",
+    "noActivity": "No activity yet.",
+    "noAccount": "Connect your SoDEX account to see your balances.",
+    "connect": "Connect SoDEX",
+    "empty": "Not available",
+    "welcome": "Welcome back",
+    "periodsLabel": "Period",
+    "periodWord": {
+      "1": "last 24 hours",
+      "7": "last 7 days",
+      "30": "last 30 days",
+      "all": "since DRIFT started tracking"
+    },
+    "change": "{amount} USDC",
+    "agentCard": {
+      "title": "Trading Agent",
+      "open": "Open agent",
+      "updated": "Updated {time}",
+      "none": "No bots yet.",
+      "newBot": "New bot",
+      "createBot": "Create a bot",
+      "recent": "Recent actions"
+    },
+    "performanceCaption": "Equity, USDC · {period}",
+    "setLimit": "Set limit",
+    "activityTypes": {
+      "decision": "DECISION",
+      "state": "STATE",
+      "version": "CONFIG",
+      "risk": "RISK",
+      "error": "ERROR",
+      "fill": "FILL",
+      "unknown": "UNKNOWN",
+      "other": "EVENT"
+    },
+    "noBots": "No bots yet. Pick a strategy to set up your first bot.",
+    "equitySplit": "Spot {spot} · Perps {perps}",
+    "changeLabel": "Equity change · includes deposits and transfers",
+    "watchlistCard": {
+      "title": "Watchlist",
+      "note": "Price · 24h",
+      "edit": "Edit watchlist",
+      "engine": {
+        "spot": "Spot",
+        "perps": "Perps"
+      },
+      "engineLabel": "Market type",
+      "pickLabel": "Market",
+      "empty": "Your watchlist is empty.",
+      "addMarket": "Add market",
+      "addMarketPlus": "+ Add market",
+      "max": "Up to 8 markets",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "remove": "Remove {market}",
+      "moveUp": "Move {market} up",
+      "moveDown": "Move {market} down",
+      "rowMenu": "Actions for {market}",
+      "newBot": "New bot on {market}",
+      "removeItem": "Remove",
+      "notAvailable": "Not available",
+      "saveFailed": "Couldn't save your watchlist. Try again."
+    }
+  },
+  "portfolio": {
+    "title": "Portfolio",
+    "subtitle": "What you hold, what is open, and how exposed you are.",
+    "updated": "Positions updated {time}",
+    "equity": "Equity",
+    "equityNote": "Spot + margin + unrealized",
+    "available": "Available balance",
+    "availableNote": "Not locked by orders or margin",
+    "unrealized": "Unrealized PnL · {n, plural, one {# position} other {# positions}}",
+    "unrealizedNote": "At mark price",
+    "margin": "Margin in use",
+    "positions": "Holdings & positions",
+    "cols": {
+      "symbol": "Symbol",
+      "side": "Side",
+      "size": "Size",
+      "entry": "Entry",
+      "mark": "Mark",
+      "upnl": "Unrealized PnL",
+      "lev": "Lev.",
+      "liq": "Liq. price"
+    },
+    "side": {
+      "long": "Long",
+      "short": "Short"
+    },
+    "liqNote": "Liquidation price is shown only when SoDEX returns it. DRIFT does not estimate it.",
+    "notProvided": "Not provided",
+    "balances": {
+      "asset": "Asset",
+      "total": "Total",
+      "available": "Available",
+      "inOrders": "In orders",
+      "value": "Value (USDC)"
+    },
+    "noPositions": "No open positions.",
+    "pending": "{n, plural, one {# pending order locks {amount} USDC} other {# pending orders lock {amount} USDC}}",
+    "pendingNote": "Pending orders are not holdings. Review, filter or cancel them in Execution & Orders.",
+    "openOrders": "Open Execution & Orders",
+    "exposure": "Exposure",
+    "exposureNote": "Notional at mark · gross {gross} USDC",
+    "concentration": "{pct}% of exposure is {asset}.",
+    "concentrationNote": "Concentration limits are not configured, so DRIFT shows this as information, not a warning.",
+    "unpriced": "Not included in equity (no price yet): {coins}",
+    "noAccount": "Connect your SoDEX account to see your portfolio.",
+    "tabs": {
+      "label": "Holdings view",
+      "positions": "Open positions",
+      "spot": "Balances",
+      "pending": "Pending orders"
+    },
+    "search": "Search symbol",
+    "filterSide": "Side",
+    "sideAll": "All",
+    "legendLong": "Long",
+    "legendShort": "Short (striped)",
+    "noHoldings": "No spot balances.",
+    "noPending": "No pending orders.",
+    "noMatch": "No position matches these filters.",
+    "card": {
+      "size": "Size",
+      "entryMark": "Entry → mark",
+      "upnl": "Unrealized PnL",
+      "liq": "Liquidation"
+    },
+    "mobileEquity": "Equity · updated {time}",
+    "mobileTiles": {
+      "unrealized": "Unrealized",
+      "available": "Available",
+      "margin": "Margin used"
+    },
+    "mobileTabs": {
+      "positions": "Positions · {n}",
+      "spot": "Spot · {n}",
+      "pending": "Orders · {n}",
+      "positionsShort": "Positions",
+      "spotShort": "Spot",
+      "pendingShort": "Orders"
+    },
+    "marginOf": "{amount} USDC of margin",
+    "accounts": {
+      "label": "Accounts",
+      "spot": "Spot",
+      "perps": "Perps",
+      "spotValue": "Value",
+      "spotAvailable": "Available USDC",
+      "spotInOrders": "In orders",
+      "unpricedCount": "{n, plural, one {# coin without a price} other {# coins without a price}}",
+      "accountValue": "Account value",
+      "usableMargin": "Usable as margin",
+      "usableIsolated": "Usable for isolated (USDC only)",
+      "marginInUse": "Margin in use",
+      "unrealized": "Unrealized PnL",
+      "openPositions": "Open positions",
+      "haircut": "Haircut {amount} USDC",
+      "haircutNote": "Non-USDC collateral counts at its collateral ratio (Multi-Asset Margin).",
+      "docs": "How Multi-Asset Margin works",
+      "collateral": "Collateral",
+      "cols": {
+        "asset": "Asset",
+        "balance": "Balance",
+        "index": "Index price",
+        "value": "Value",
+        "ratio": "Ratio",
+        "margin": "Counts as margin"
+      },
+      "negativeUsdc": "Negative USDC balance {amount}. Your other collateral is backing it and can be liquidated if prices fall. Add USDC or convert collateral.",
+      "perpsUnavailable": "Couldn’t read your Perps account from SoDEX."
+    },
+    "availableSplit": "Spot {spot} · Perps {perps}",
+    "marginOfPerps": "{pct} · {used} of {total} USDC Perps",
+    "balancesSpot": "Spot",
+    "balancesPerps": "Perps",
+    "indexPriced": "Priced at the SoDEX index price: {coins}"
+  },
+  "risk": {
+    "title": "Risk Center",
+    "subtitle": "Your limits, how close you are, and who enforces each one.",
+    "checked": "Risk engine checked {time}",
+    "within": "Within limits",
+    "withinBody": "Server-enforced limits pass.",
+    "breachedTitle": "{n, plural, one {# limit reached} other {# limits reached}}",
+    "breachedBody": "Running agents on this account were paused by the server.",
+    "pendingNote": "The old limit stays active until the risk engine confirms the change.",
+    "limits": "Limits",
+    "legendServer": "Server-enforced: orders past the limit are blocked",
+    "legendUi": "UI warning only: you are told, nothing is blocked",
+    "of": "of {limit}",
+    "edit": "Edit…",
+    "notSet": "Not set",
+    "notAvailable": "Not available",
+    "items": {
+      "dailyLossPct": {
+        "label": "Daily loss",
+        "sub": "Realized + unrealized, resets 00:00 in your time zone",
+        "body": "When losses for the day reach this share of equity, the risk engine pauses running agents until the next reset."
+      },
+      "maxDrawdownPct": {
+        "label": "Max drawdown",
+        "sub": "Peak-to-trough equity, rolling 30 days",
+        "body": "If equity falls this far from its 30-day peak, all agents are paused by the server.",
+        "peak": "Peak {amount} USDC · {date}"
+      },
+      "perTradePct": {
+        "label": "Per-trade risk",
+        "sub": "Max notional per order, % of equity",
+        "body": "Orders larger than this share of equity are rejected before they reach SoDEX.",
+        "largest": "Largest order today"
+      },
+      "maxLeverage": {
+        "label": "Max leverage",
+        "sub": "Per position",
+        "body": "DRIFT warns you above this leverage. SoDEX’s own maximum still applies.",
+        "highest": "Highest: {market} {lev}×"
+      },
+      "maxPositions": {
+        "label": "Open positions",
+        "sub": "Count across all markets",
+        "body": "DRIFT warns you once this many are open."
+      },
+      "concentration": {
+        "label": "Concentration",
+        "sub": "Max share of exposure in one asset",
+        "body": "Not supported by the backend yet"
+      }
+    },
+    "serverEnforced": "Server-enforced",
+    "uiOnly": "UI warning only",
+    "alerts": "Alerts",
+    "noAlerts": "No alerts.",
+    "ack": "Acknowledge",
+    "acked": "Acknowledged by you",
+    "resolved": "Resolved {time}",
+    "severity": {
+      "notice": "Notice",
+      "warning": "Warning",
+      "critical": "Critical"
+    },
+    "alert": {
+      "daily_loss": {
+        "title": "Daily loss limit reached",
+        "body": "Running agents were paused at {loss}% loss. The limit resets at 00:00 in your time zone."
+      },
+      "max_drawdown": {
+        "title": "Max drawdown reached",
+        "body": "Equity fell {dd}% from its 30-day peak. Agents were paused."
+      }
+    },
+    "halt": {
+      "title": "Emergency halt",
+      "body": "Stops {agents} ({running} running, {paused} paused). Cancels {orders} on SoDEX. Does not close your {positions}. Close them in Portfolio if you need to.",
+      "agents": "{n, plural, one {# agent} other {# agents}}",
+      "orders": "{n, plural, one {# open order} other {# open orders}}",
+      "positions": "{n, plural, one {# position} other {# positions}}",
+      "cta": "Halt all agents…",
+      "note": "You review the exact list before it runs. Status updates only after the backend confirms.",
+      "dialog": "Halt all agents?",
+      "confirm": "Halt all agents",
+      "cancel": "Cancel",
+      "twoFactor": "2FA code",
+      "done": "Halt requested. Agents show Stopped once DRIFT confirms."
+    },
+    "editDialog": {
+      "title": "Change {label}",
+      "current": "Current limit",
+      "new": "New limit",
+      "cancel": "Cancel",
+      "send": "Send change to risk engine",
+      "clear": "Remove limit"
+    },
+    "noAccount": "Connect your SoDEX account to set risk limits.",
+    "withinWarn": "Within limits · {n, plural, one {# warning open} other {# warnings open}}",
+    "passCount": "{n, plural, one {# server-enforced limit passes.} other {# server-enforced limits pass.}}",
+    "seeAlerts": "See alerts",
+    "serverShort": "Server",
+    "uiShort": "UI warning",
+    "haltStops": "Stops {agents} ({running} running, {paused} paused).",
+    "haltCancels": "Cancels {orders} on SoDEX.",
+    "haltNoClose": "Does not close your {positions}. Close them in Portfolio if you need to.",
+    "noLimitSet": "No limit set",
+    "setLimit": "Set limit"
+  },
+  "analyst": {
+    "title": "AI Analyst",
+    "subtitle": "What your data shows, what it may mean, and what you could check next.",
+    "ready": "Analyst ready",
+    "briefing": "Today’s briefing",
+    "noBriefing": "Not enough data for a briefing yet.",
+    "insights": "Insights",
+    "noInsights": "Nothing stands out in your data right now.",
+    "observed": "OBSERVED DATA",
+    "interpretation": "INTERPRETATION",
+    "check": "SUGGESTED CHECK",
+    "sources": "Sources: {sources}",
+    "open": {
+      "portfolio": "Open Portfolio",
+      "bot": "Open the bot",
+      "orders": "See the fills"
+    },
+    "attention": "▲ Needs attention",
+    "notEnough": "Not enough data yet",
+    "ask": "Ask about your portfolio",
+    "question": "Question",
+    "askCta": "Ask",
+    "askSoon": "Coming soon",
+    "askNote": "Answers cite the data and timestamps they use.",
+    "disclaimer": "The analyst describes your data and suggests things to check. It does not predict prices, promise returns, or place orders. Confidence scores are not shown because DRIFT has no calibrated way to produce them yet. Not financial advice.",
+    "noInsightsTitle": "No insights yet"
+  },
+  "revenue": {
+    "title": "Builder Revenue",
+    "subtitle": "Fees SoDEX credits to DRIFT’s builder account on fills of orders DRIFT sends.",
+    "period": "Period",
+    "all": "All time",
+    "account": "Builder account #{id}",
+    "eligible": "✓ Eligible: ≥ 100 vUSDC on both engines",
+    "notEligible": "Below 100 vUSDC on an engine: users can’t approve DRIFT’s fee",
+    "synced": "Balances from {time}",
+    "earned": "Builder fees earned",
+    "earnedNote": "USDC · both engines",
+    "perps": "Perps",
+    "perpsNote": "both sides of each fill",
+    "spot": "Spot",
+    "spotNote": "sell side, quote asset",
+    "fills": "Fills · notional",
+    "effective": "effective {pct}% (fees ÷ notional)",
+    "realtime": "Credited in real time on each engine. No claim step.",
+    "reconciliation": "Reconciliation",
+    "reconNote": "Sum of builderFee on DRIFT fills, checked against the builder account’s balance change.",
+    "cols": {
+      "day": "Day",
+      "engine": "Engine",
+      "fromFills": "From fills",
+      "delta": "Balance change",
+      "diff": "Difference",
+      "status": "Status"
+    },
+    "matched": "✓ Matched",
+    "pending": "◔ {amount} held pending",
+    "pendingNoBalance": "◔ Balance not recorded",
+    "approvals": "User approvals",
+    "approved": "Approved at 0.01%",
+    "revoked": "Revoked (set to 0)",
+    "never": "Never approved",
+    "approvalsNote": "SoDEX still fills orders from accounts without an approval, at a builder fee of 0. DRIFT bots on those accounts are paused until the user approves again.",
+    "notProfit": "Not trading profit",
+    "notProfitBody": "This is DRIFT’s income. It is never included in a user’s equity, PnL or bot profit.",
+    "forbidden": "Builder Revenue is for the DRIFT team only.",
+    "noDays": "No reconciled days in this period."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "none": "No notifications.",
+    "markAll": "Mark all read",
+    "unread": "{n} unread",
+    "types": {
+      "bot_paused": "A bot was paused",
+      "bot_stopped": "A bot stopped",
+      "unknown_order": "Order result unknown · not retried",
+      "risk_alert": "Risk limit reached",
+      "key_fee": "SoDEX access changed",
+      "fill": "Order filled",
+      "daily_summary": "Daily summary"
+    }
+  },
+  "adminUsers": {
+    "title": "Users",
+    "subtitle": "Everyone registered on DRIFT. Read-only.",
+    "forbidden": "Users is for the DRIFT team only.",
+    "search": "Search by email",
+    "count": "{total, plural, one {# user} other {# users}}",
+    "empty": "No users match this search.",
+    "cols": {
+      "email": "Email",
+      "registered": "Registered",
+      "sodex": "SoDEX account",
+      "fee": "Builder fee",
+      "bots": "Bots running",
+      "twoFactor": "2FA"
+    },
+    "team": "Team",
+    "notConnected": "Not connected",
+    "status": {
+      "connecting": "Connecting",
+      "connected": "Connected",
+      "disconnected": "Disconnected"
+    },
+    "fee": {
+      "approved": "Approved",
+      "revoked": "Revoked",
+      "never": "Not approved",
+      "exempt": "Builder account"
+    },
+    "bots": "{running} of {total}",
+    "on": "On",
+    "off": "Off",
+    "prev": "Previous",
+    "next": "Next",
+    "page": "Page {page} of {pages}"
+  },
+  "landing": {
+    "metaTitle": "DRIFT · Profit bots for SoDEX",
+    "metaDescription": "Connect your SoDEX account, get a strategy matched to how you already trade, and run it on mainnet. DRIFT never withdraws or transfers your funds.",
+    "nav": {
+      "label": "Main",
+      "how": "How it works",
+      "strategies": "Strategies",
+      "safety": "Safety",
+      "fees": "Fees",
+      "faq": "FAQ",
+      "signIn": "Sign in",
+      "createAccount": "Create account",
+      "backToOverview": "Back to Overview"
+    },
+    "hero": {
+      "eyebrow": "PROFIT BOTS FOR SODEX",
+      "titleTop": "Your trading, studied.",
+      "titleBottom": "Then automated.",
+      "body": "Connect your SoDEX account by approving two sign requests in your wallet. DRIFT studies how you already trade, suggests a strategy that fits, and runs it on mainnet for you.",
+      "promisesLabel": "What DRIFT promises",
+      "promises": {
+        "withdraw": "Never withdraws your funds",
+        "seed": "Never asks for your seed phrase",
+        "revoke": "Revoke access anytime"
+      },
+      "cardLabel": "Example Trading Agent card",
+      "cardTitle": "Spot Grid · BTC/USDC",
+      "cardSub": "Trading Agent",
+      "cardStatus": "Running",
+      "cardRange": "Grid range",
+      "cardDecisions": "Decisions",
+      "cardFill1": "Sold one level, placed the buy below",
+      "cardFill2": "Bought one level, placed the sell above",
+      "cardState": "Running · confirmed by SoDEX",
+      "tagFill": "FILL",
+      "tagState": "STATE",
+      "cardPause": "❚❚ Pause",
+      "cardEdit": "Edit bot",
+      "cardStop": "■ Stop",
+      "cardNote": "Illustration. Your agent shows your own bot and data."
+    },
+    "how": {
+      "eyebrow": "HOW IT WORKS",
+      "title": "From your history to a running bot in about 5 minutes",
+      "steps": {
+        "connect": {
+          "title": "Connect SoDEX",
+          "body": "Your wallet shows two sign requests: one lets DRIFT trade for you, one approves the builder fee. No gas, no funds moved, nothing to copy or paste."
+        },
+        "import": {
+          "title": "DRIFT studies your history",
+          "body": "As soon as you connect, DRIFT imports your SoDEX trades, fills and funding by itself and shows where your profit really went."
+        },
+        "plan": {
+          "title": "Get a strategy plan",
+          "body": "A rule-based engine matches strategies to your data and your goals, and fills in the parameters. Every suggestion says why."
+        },
+        "run": {
+          "title": "Run it, watch it",
+          "body": "Backtest first if you like. Then start on mainnet and follow every decision in the Trading Agent. Pause, edit or stop at any time."
+        }
+      }
+    },
+    "strategies": {
+      "eyebrow": "STRATEGIES",
+      "title": "Eight strategies, one way to set them up",
+      "body": "Every bot is created on one screen: pick a market, check the parameters, see the checks pass, start.",
+      "filterLabel": "Filter strategies by engine",
+      "filters": {
+        "all": "All",
+        "spot": "Spot",
+        "perps": "Perps"
+      },
+      "backtest": "Backtest any setup on SoDEX price history before you start. A backtest is a simulation, not a forecast."
+    },
+    "safety": {
+      "eyebrow": "SAFETY",
+      "title": "DRIFT trades. It never moves your money.",
+      "body": "Once connected, DRIFT can read your account and place or cancel orders for bots you start. It can never withdraw or transfer, and the product has no feature for it.",
+      "read": "Read account data",
+      "readSub": "Balances, positions, orders, fills",
+      "trade": "Place and cancel orders",
+      "tradeSub": "Only for bots you confirm",
+      "withdraw": "Withdraw or transfer",
+      "withdrawSub": "Never",
+      "seedTitle": "No seed phrase, ever",
+      "seedBody": "DRIFT never asks for your seed phrase or private key. Connecting only takes two sign requests in your wallet.",
+      "limitsTitle": "Limits the server enforces",
+      "limitsBody": "Daily loss, max drawdown and per-trade risk are checked by the risk engine, not just shown in the app.",
+      "haltTitle": "One-tap emergency halt",
+      "haltBody": "Stop every agent and cancel their open orders from any screen, desktop or phone.",
+      "retryTitle": "No blind retries",
+      "retryBody": "If an order’s result is unclear, DRIFT checks with SoDEX before sending anything again."
+    },
+    "fees": {
+      "eyebrow": "FEES",
+      "title": "One fee, shown before you sign",
+      "label": "builder fee",
+      "body": "Charged by SoDEX, through Builder Codes, on fills of orders DRIFT sends for your bots. Which fills pay it depends on the strategy, and the Create screen shows it before you start. SoDEX trading fees apply as usual.",
+      "revoke": "Revoke the fee in Settings at any time. Your bots pause right away; open orders stay as they are.",
+      "liveEyebrow": "LIVE ON MAINNET",
+      "liveTitle": "Every bot trades real funds",
+      "liveBody": "Bots run on SoDEX mainnet. A bot shows Running only after SoDEX confirms it, and every pause, edit and stop waits for the same confirmation.",
+      "liveChip": "LIVE · MAINNET",
+      "paperChip": "Paper · Coming soon"
+    },
+    "faq": {
+      "eyebrow": "FAQ",
+      "title": "Questions before you connect",
+      "items": {
+        "withdraw": {
+          "q": "Can DRIFT withdraw or move my funds?",
+          "a": "No. Once connected, DRIFT can only read your account and place or cancel orders. Withdraw and transfer are blocked, and DRIFT has no feature for them anywhere in the product."
+        },
+        "sign": {
+          "q": "What do I approve when I connect?",
+          "a": "Two sign requests in your SoDEX wallet: one lets DRIFT trade for you without any withdraw or transfer permission, one approves the {fee} builder fee. Neither costs gas or moves funds."
+        },
+        "suggest": {
+          "q": "How are strategies suggested?",
+          "a": "After you connect, DRIFT imports your SoDEX history automatically. A rule-based engine reads it together with the goals you set, matches strategies and parameters, and explains each suggestion. You can clear the parameters and enter your own."
+        },
+        "paper": {
+          "q": "Can I try a bot without real money?",
+          "a": "You can backtest any setup on SoDEX price history. Paper trading is coming soon; today every bot runs live on mainnet."
+        },
+        "halt": {
+          "q": "How do I stop everything?",
+          "a": "Use Halt all agents on any screen. It stops every agent and cancels their open orders. You can also turn off the builder fee or disconnect SoDEX in Settings."
+        }
+      }
+    },
+    "cta": {
+      "title": "See what your own history suggests",
+      "body": "Create an account, connect SoDEX, and get a strategy plan. Nothing trades until you press Start."
+    },
+    "footer": {
+      "disclaimer": "Automated trading can lose money; DRIFT doesn’t guarantee profit. Past results and backtests don’t predict future results. Not financial advice.",
+      "legalLabel": "Legal",
+      "risk": "Risk Disclosure"
+    }
+  },
+  "riskDisclosure": {
+    "metaTitle": "Risk Disclosure · DRIFT",
+    "eyebrow": "RISK",
+    "title": "Risk Disclosure",
+    "updated": "Last updated Oct 29, 2026",
+    "tocLabel": "On this page",
+    "warnTitle": "Read this before you start a bot.",
+    "warnBody": "Every DRIFT bot trades real funds on SoDEX mainnet. You can lose part or all of the money a bot uses, and with leverage you can lose it fast. Only use money you can afford to lose.",
+    "sections": {
+      "loss": {
+        "title": "Real money, real losses",
+        "body": "Digital asset prices move quickly and without warning. An automated bot follows its rules whatever the market does: it keeps buying in a falling market or selling in a rising one if that is what its settings say. DRIFT does not guarantee any profit and does not predict prices."
+      },
+      "leverage": {
+        "title": "Leverage and liquidation",
+        "body": "Futures Grid, Futures DCA, Funding Arbitrage and perps TWAP use perpetual contracts. With leverage, a small price move against you becomes a large loss. If your margin falls below SoDEX’s maintenance requirement, SoDEX can liquidate your position. A liquidation happens on SoDEX and DRIFT cannot stop or reverse it."
+      },
+      "margin": {
+        "title": "Multi-Asset Margin",
+        "body": "In cross margin, SoDEX counts non-USDC assets as margin at a collateral ratio below 100%, so they are worth less as margin than their full value. Losses are settled in USDC. Your USDC balance can go negative, and an account can be liquidated even without an open position. Isolated margin uses USDC only. The Portfolio page shows how much of your balance counts as margin."
+      },
+      "sharedLeverage": {
+        "title": "Shared leverage per market",
+        "body": "On SoDEX, leverage and margin mode are set per account and per market. When a bot sets leverage on a market, it changes it for your whole account, including trades you place yourself. DRIFT blocks the start when that would affect an open position, and asks you to confirm otherwise."
+      },
+      "strategy": {
+        "title": "Strategy risks",
+        "items": {
+          "grid": "<b>Grid:</b> if price leaves your range, the grid has no levels left to trade and you hold what it bought, or the short it opened, at a loss.",
+          "dca": "<b>DCA:</b> safety orders add to a losing position. A long fall uses all safety orders and the loss grows with every one.",
+          "recurring": "<b>Recurring Buy:</b> keeps buying on schedule and never sells, whatever the price.",
+          "rebalancing": "<b>Rebalancing:</b> sells assets that rose and buys ones that fell; in a long trend this can lag simply holding.",
+          "funding": "<b>Funding Arbitrage:</b> funding rates change and can turn negative; the spot and perp legs can drift apart; the perp leg can be liquidated.",
+          "twap": "<b>TWAP:</b> slices still pay the spread and can fill at worse prices than when you started."
+        }
+      },
+      "backtest": {
+        "title": "Backtests and suggestions",
+        "body": "A backtest replays SoDEX price history with modeled fills. It is a simulation, not a forecast, and real fills, fees and slippage differ. Strategy plans and AI parameters come from rule-based software reading your data. They are not advice and can be wrong for future markets."
+      },
+      "technical": {
+        "title": "Technical risks",
+        "items": {
+          "offline": "SoDEX, networks or DRIFT can be slow or offline. Bots may miss orders, and open orders stay on SoDEX while that lasts.",
+          "unknown": "When an order’s result is unknown, DRIFT checks with SoDEX before acting again, which can delay the bot.",
+          "key": "If your SoDEX connection expires or stops working, bots pause until you reconnect.",
+          "bugs": "Software can have bugs. Server-enforced risk limits reduce, but do not remove, that risk."
+        }
+      },
+      "costs": {
+        "title": "Costs",
+        "body": "Bots that trade often pay SoDEX trading fees and the {fee} DRIFT builder fee on many fills. Perpetual positions pay or receive funding. These costs can turn a small gain into a loss."
+      },
+      "actions": {
+        "title": "What you can do",
+        "items": {
+          "limits": "Set daily loss, max drawdown and per-trade limits in Risk Center. The risk engine pauses bots that reach them.",
+          "botLimits": "Set a max loss and stop price on each bot, and keep leverage low.",
+          "halt": "Use Halt all agents to stop every bot and cancel their open orders at once.",
+          "revoke": "Turn off the builder fee or disconnect SoDEX in Settings to stop DRIFT trading entirely."
+        }
+      }
+    }
+  },
+  "notFound": {
+    "title": "This page doesn't exist.",
+    "backOverview": "Back to Overview",
+    "backHome": "Back to DRIFT"
+  }
+}

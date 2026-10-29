@@ -1,0 +1,75 @@
+{
+  "best": {
+    "id": "48ff402e7e612dd5",
+    "strategy": "recurring_buy",
+    "market": "vBTC_vUSDC",
+    "values": {
+      "market": "vBTC_vUSDC",
+      "amountPerBuy": "240",
+      "frequency": "weekly",
+      "dayOfWeek": 1,
+      "time": "09:00",
+      "timeZone": "Asia/Ho_Chi_Minh",
+      "ends": "after_n_buys",
+      "buyCount": 20,
+      "onLowBalance": "skip_and_notify"
+    },
+    "capital": "4800",
+    "score": 75,
+    "reasons": [
+      "BTC was net positive for you (+5,120.40, 51% win rate).",
+      "You chose BTC; 20 weekly buys of 240 vUSDC.",
+      "Spot, no leverage, no funding costs."
+    ],
+    "basis": "vBTC_vUSDC: market buys every Monday 09:00, Asia/Ho_Chi_Minh.",
+    "computedAt": "2026-10-27T07:00:00.000Z",
+    "inputsVersion": "reco-1"
+  },
+  "addOns": [
+    {
+      "id": "923ab0ac8c17be1a",
+      "strategy": "recurring_buy",
+      "market": "vETH_vUSDC",
+      "values": {
+        "market": "vETH_vUSDC",
+        "amountPerBuy": "160",
+        "frequency": "weekly",
+        "dayOfWeek": 1,
+        "time": "09:00",
+        "timeZone": "Asia/Ho_Chi_Minh",
+        "ends": "after_n_buys",
+        "buyCount": 20,
+        "onLowBalance": "skip_and_notify"
+      },
+      "capital": "3200",
+      "score": 75,
+      "reasons": [
+        "ETH was net positive for you (+1,009.70, 50% win rate).",
+        "You chose ETH; 20 weekly buys of 160 vUSDC.",
+        "Spot, no leverage, no funding costs."
+      ],
+      "basis": "vETH_vUSDC: market buys every Monday 09:00, Asia/Ho_Chi_Minh.",
+      "computedAt": "2026-10-27T07:00:00.000Z",
+      "inputsVersion": "reco-1"
+    }
+  ],
+  "notSuggested": [
+    {
+      "title": "Fast in-and-out trading",
+      "reason": "Your trades under 15 minutes lost 1,240.55 after fees."
+    },
+    {
+      "title": "SOL strategies",
+      "reason": "SOL: -2,234.38 net with a 38% win rate."
+    },
+    {
+      "title": "Futures Grid",
+      "reason": "Above your 10% max drop at any useful size."
+    }
+  ],
+  "notes": [
+    "Positions at 8× or more caused 63% of your losses, so perp bots use 1×."
+  ],
+  "capital": "8000",
+  "empty": null
+}

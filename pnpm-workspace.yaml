@@ -1,0 +1,37 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "e2e/*"
+minimumReleaseAgeExclude:
+  - "@typescript-eslint/eslint-plugin@8.72.1"
+  - "@typescript-eslint/parser@8.72.1"
+  - "@typescript-eslint/project-service@8.72.1"
+  - "@typescript-eslint/scope-manager@8.72.1"
+  - "@typescript-eslint/tsconfig-utils@8.72.1"
+  - "@typescript-eslint/type-utils@8.72.1"
+  - "@typescript-eslint/types@8.72.1"
+  - "@typescript-eslint/typescript-estree@8.72.1"
+  - "@typescript-eslint/utils@8.72.1"
+  - "@typescript-eslint/visitor-keys@8.72.1"
+  - typescript-eslint@8.72.1
+  - "@storybook/addon-a11y@10.6.4"
+  - "@storybook/builder-vite@10.6.4"
+  - "@storybook/react-dom-shim@10.6.4"
+  - "@storybook/react-vite@10.6.4"
+  - "@storybook/react@10.6.4"
+  - storybook@10.6.4
+  - lucide-react@1.62.0
+  - ox@0.14.59
+  - viem@2.57.12
+  - "@fastify/cookie@11.1.5"
+
+# Không chạy postinstall của dependency trừ khi được duyệt rõ ràng.
+allowBuilds:
+  unrs-resolver: false
+  esbuild: true
+  "@parcel/watcher": false
+  "@swc/core": false
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
+  "@reown/appkit": false

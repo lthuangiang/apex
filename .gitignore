@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+.env
+.env.*
+!.env.example
+!.env.production.example
+.DS_Store
+storybook-static/
+test-results/
+playwright-report/
+infra/certs/dev/

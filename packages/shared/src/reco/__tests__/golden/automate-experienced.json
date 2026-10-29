@@ -1,0 +1,83 @@
+{
+  "best": {
+    "id": "44e44175f8c38c1e",
+    "strategy": "futures_dca",
+    "market": "BTC-USD",
+    "values": {
+      "market": "BTC-USD",
+      "baseOrder": "526.02",
+      "safetyOrder": "526.02",
+      "maxSafetyOrders": 4,
+      "firstStepPct": "1.37",
+      "stepMultiplier": "1.2",
+      "sizeMultiplier": "1.5",
+      "takeProfitPct": "1.2",
+      "maxLoss": "480",
+      "leverage": 1,
+      "marginMode": "isolated",
+      "direction": "long",
+      "stopLossPct": "9.36"
+    },
+    "capital": "4800",
+    "score": 90,
+    "reasons": [
+      "BTC was net positive for you (+5,120.40, 51% win rate).",
+      "First safety at −1.37%, the median daily move of BTC over 30 days.",
+      "4 safety orders cover a 7.35% drop; the largest 30-day drop was 7.31%."
+    ],
+    "basis": "BTC-USD: largest drop over the last 30 days 7.31%, median daily move 1.37%.",
+    "computedAt": "2026-10-27T07:00:00.000Z",
+    "inputsVersion": "reco-1"
+  },
+  "addOns": [
+    {
+      "id": "23331ebcf10d14fa",
+      "strategy": "spot_grid",
+      "market": "vBTC_vUSDC",
+      "values": {
+        "market": "vBTC_vUSDC",
+        "lowerPrice": "62000",
+        "upperPrice": "72000",
+        "gridLevels": 16,
+        "spacing": "arithmetic",
+        "investment": "3200",
+        "stopPrice": "60140",
+        "maxLoss": "320",
+        "onStop": "keep_base"
+      },
+      "capital": "3200",
+      "score": 89.2,
+      "reasons": [
+        "BTC was net positive for you (+5,120.40, 51% win rate).",
+        "Range 62,000–72,000 covers 90% of BTC daily closes over the last 30 days (P5–P95).",
+        "Step ≈ 1% is at least 10× the round-trip fee of 0.1%."
+      ],
+      "basis": "Over the last 180 days, BTC stayed range-bound on 71% of days. This describes price, not profit.",
+      "computedAt": "2026-10-27T07:00:00.000Z",
+      "inputsVersion": "reco-1"
+    }
+  ],
+  "notSuggested": [
+    {
+      "title": "Fast in-and-out trading",
+      "reason": "Your trades under 15 minutes lost 1,240.55 after fees."
+    },
+    {
+      "title": "SOL strategies",
+      "reason": "SOL: -2,234.38 net with a 38% win rate."
+    },
+    {
+      "title": "Futures DCA",
+      "reason": "Above your 10% max drop at any useful size."
+    },
+    {
+      "title": "Futures Grid",
+      "reason": "Above your 10% max drop at any useful size."
+    }
+  ],
+  "notes": [
+    "Positions at 8× or more caused 63% of your losses, so perp bots use 1×."
+  ],
+  "capital": "8000",
+  "empty": null
+}

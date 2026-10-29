@@ -1,0 +1,314 @@
+# DRIFT — kiến trúc tham chiếu chạy bằng docker compose (dev / staging / 1 host production).
+# Scale ngang:   docker compose up -d --scale engine=6 --scale backtest=4 --scale api=3
+# Observability: docker compose --profile observability up -d
+# App services (profile `app`) chỉ bật được khi Dockerfile của từng app đã có (P3 trở đi).
+# Tới lúc đó: docker compose --profile dev up chỉ chạy hạ tầng (postgres, pgbouncer, redis, nats, vault).
+# Xem giải thích ở CLAUDE.md mục 3 (Kiến trúc hệ thống).
+
+x-app-env: &app-env
+  NODE_ENV: ${NODE_ENV:-production}
+  DATABASE_URL: postgres://drift:${POSTGRES_PASSWORD}@pgbouncer:6432/drift
+  REDIS_URL: redis://redis:6379
+  NATS_URL: nats://nats:4222
+  SODEX_REST_URL: ${SODEX_REST_URL}
+  SODEX_WS_URL: ${SODEX_WS_URL}
+  SODEX_CHAIN: ${SODEX_CHAIN:-mainnet}
+  DRIFT_BUILDER_ID: ${DRIFT_BUILDER_ID}
+  DRIFT_BUILDER_ADDRESS: ${DRIFT_BUILDER_ADDRESS:-}
+  DRIFT_BUILDER_FEE: "10"
+  # Chỉ bật khi có xác nhận bằng văn bản của SoDEX (VOLUME_MAKER.md mục 17.5).
+  VOLUME_MAKER_ENABLED: ${VOLUME_MAKER_ENABLED:-false}
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  API_TOTP_ENC_KEY: ${API_TOTP_ENC_KEY}
+  API_COOKIE_SECURE: ${API_COOKIE_SECURE:-true}
+  SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025}
+  MAIL_FROM: ${MAIL_FROM}
+
+x-app: &app
+  profiles: [app]
+  restart: unless-stopped
+  environment: *app-env
+  depends_on:
+    pgbouncer: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    nats: { condition: service_healthy }
+  networks: [core]
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  # ---------- Edge ----------
+  traefik:
+    image: traefik:v3.6
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --metrics.prometheus=true
+    ports: ["80:80", "443:443"]
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    networks: [edge]
+    restart: unless-stopped
+    profiles: [app]
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args: { NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: "${WALLETCONNECT_PROJECT_ID:-}" }
+    environment:
+      NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL}
+      NEXT_PUBLIC_WS_URL: ${PUBLIC_WS_URL}
+      VOLUME_MAKER_ENABLED: ${VOLUME_MAKER_ENABLED:-false}
+    healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/signup').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
+    deploy: { replicas: 2 }
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=Host(`${APP_HOST}`)
+      - traefik.http.services.web.loadbalancer.server.port=3000
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME:-drift-handoff}_edge
+    networks: [edge]
+    restart: unless-stopped
+    profiles: [app]
+
+  api:
+    <<: *app
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    environment:
+      <<: *app-env
+      SIGNER_URL: https://signer:8090
+      SIGNER_CLIENT_CERT: /certs/api.crt
+      SIGNER_CLIENT_KEY: /certs/api.key
+      SIGNER_CLIENT_CA: /certs/ca.crt
+      RECO_URL: http://reco:8095
+      SODEX_CONNECT_ENABLED: ${SODEX_CONNECT_ENABLED:-false}
+    depends_on:
+      pgbouncer: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      signer: { condition: service_healthy }
+      reco: { condition: service_healthy }
+    deploy: { replicas: 2 }
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.api.rule=Host(`${APP_HOST}`) && PathPrefix(`/api`)
+      - traefik.http.services.api.loadbalancer.server.port=8080
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME:-drift-handoff}_edge
+    volumes:
+      - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/ca.crt:/certs/ca.crt:ro
+      - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/api.crt:/certs/api.crt:ro
+      - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/api.key:/certs/api.key:ro
+    networks: [edge, core, secure]
+    healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
+
+  realtime:
+    <<: *app
+    build: { context: ., dockerfile: apps/realtime/Dockerfile }
+    deploy: { replicas: 2 }
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.rt.rule=Host(`${APP_HOST}`) && PathPrefix(`/ws`)
+      - traefik.http.services.rt.loadbalancer.server.port=8081
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME:-drift-handoff}_edge
+      - traefik.http.services.rt.loadbalancer.sticky.cookie=true
+    networks: [edge, core]
+
+  # ---------- Trading core ----------
+  engine:            # bot workers; mỗi bot chỉ có 1 worker sở hữu tại 1 thời điểm (shard lease)
+    <<: *app
+    build: { context: ., dockerfile: apps/engine/Dockerfile }
+    environment:
+      <<: *app-env
+      ENGINE_SHARDS: "64"
+      ENGINE_SHARD_LEASE_TTL_MS: "15000"
+      SIGNER_URL: https://signer:8090
+      SIGNER_CLIENT_CERT: /certs/engine.crt
+      SIGNER_CLIENT_KEY: /certs/engine.key
+      SIGNER_CLIENT_CA: /certs/ca.crt
+    deploy: { replicas: 3 }
+    volumes:
+      - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/ca.crt:/certs/ca.crt:ro
+      - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/engine.crt:/certs/engine.crt:ro
+      - ${SIGNER_CERTS_DIR:-./infra/certs/dev}/engine.key:/certs/engine.key:ro
+    networks: [core, secure]
+    stop_grace_period: 30s
+
+  signer:            # nơi duy nhất giải mã API key của DRIFT; chỉ ký, không gửi lệnh
+    build: { context: ., dockerfile: apps/signer/Dockerfile }
+    environment:
+      VAULT_ADDR: http://vault:8200
+      # Dev: token của Vault dev mode. Môi trường khác: AppRole (VAULT_ROLE_ID + VAULT_SECRET_ID).
+      VAULT_TOKEN: ${VAULT_TOKEN:-}
+      VAULT_ROLE_ID: ${VAULT_ROLE_ID:-}
+      VAULT_SECRET_ID: ${VAULT_SECRET_ID:-}
+      # Nối thẳng Postgres trong network `secure`; pgbouncer chỉ có user `drift`.
+      DATABASE_URL: postgres://drift_signer:${SIGNER_DB_PASSWORD}@postgres:5432/drift
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # mTLS bắt buộc (DEC-42). Dev: infra/certs/gen-dev-certs.sh infra/certs/dev
+      SIGNER_TLS_CERT: /certs/signer.crt
+      SIGNER_TLS_KEY: /certs/signer.key
+      SIGNER_TLS_CA: /certs/ca.crt
+      SIGNER_REQUIRE_MTLS: "true"
+    volumes: ["${SIGNER_CERTS_DIR:-./infra/certs/dev}:/certs:ro"]
+    tmpfs: ["/tmp"]
+    # Healthcheck cũng phải trình client cert (signer từ chối mọi kết nối không có cert hợp lệ).
+    healthcheck: { test: ["CMD", "node", "-e", "const fs=require('fs');require('https').get({host:'127.0.0.1',port:8090,path:'/healthz',servername:'signer',ca:fs.readFileSync('/certs/ca.crt'),cert:fs.readFileSync('/certs/engine.crt'),key:fs.readFileSync('/certs/engine.key')},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"], interval: 10s, retries: 5 }
+    deploy: { replicas: 2 }
+    networks: [secure]
+    restart: unless-stopped
+    read_only: true
+    profiles: [app]
+
+  marketdata:        # 1 bản active (leader lease), các bản còn lại standby
+    <<: *app
+    build: { context: ., dockerfile: apps/marketdata/Dockerfile }
+    deploy: { replicas: 2 }
+
+  scheduler:         # cron: recurring buy, reset daily loss, nhắc hết hạn key, tính lại market stats
+    <<: *app
+    build: { context: ., dockerfile: apps/scheduler/Dockerfile }
+    deploy: { replicas: 2 }
+
+  jobs:              # import lịch sử, account analysis, reconcile lệnh unknown, builder revenue, notifications
+    <<: *app
+    build: { context: ., dockerfile: apps/jobs/Dockerfile }
+    deploy: { replicas: 2 }
+
+  reco:              # recommendation + AI parameters engine (stateless)
+    <<: *app
+    build: { context: ., dockerfile: apps/reco/Dockerfile }
+    environment:
+      <<: *app-env
+      RECO_PORT: "8095"
+    depends_on:
+      pgbouncer: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    deploy: { replicas: 2 }
+    healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8095/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
+
+  backtest:          # worker CPU nặng, kéo job `backtest.run` từ JetStream
+    <<: *app
+    build: { context: ., dockerfile: apps/backtest/Dockerfile }
+    depends_on:
+      pgbouncer: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      nats: { condition: service_healthy }
+    deploy:
+      replicas: 2
+      resources: { limits: { cpus: "2", memory: 2g } }
+
+  migrate:           # chạy 1 lần trước khi deploy: docker compose run --rm migrate
+    <<: *app
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    command: ["pnpm", "--filter", "@drift/api", "db:migrate"]
+    restart: "no"
+    deploy: { replicas: 0 }
+
+  # ---------- Data ----------
+  postgres:
+    image: timescale/timescaledb:2.16.1-pg16
+    environment:
+      POSTGRES_DB: drift
+      POSTGRES_USER: drift
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SIGNER_DB_PASSWORD: ${SIGNER_DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/01-signer-role.sh:/docker-entrypoint-initdb.d/01-signer-role.sh:ro
+    networks: [core, secure]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U drift"], interval: 5s, retries: 10 }
+    restart: unless-stopped
+
+  pgbouncer:         # bitnami/pgbouncer đã bị gỡ khỏi Docker Hub; dùng edoburu/pgbouncer
+    image: edoburu/pgbouncer:v1.26.1-p0
+    environment:
+      DB_HOST: postgres
+      DB_USER: drift
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: drift
+      LISTEN_PORT: "6432"
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "2000"
+      DEFAULT_POOL_SIZE: "40"
+    depends_on: { postgres: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U drift -d drift"], interval: 5s, retries: 10 }
+    networks: [core, secure]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["redisdata:/data"]
+    networks: [core]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10 }
+    restart: unless-stopped
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    volumes: ["natsdata:/data"]
+    networks: [core]
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"], interval: 5s, retries: 10 }
+    restart: unless-stopped
+
+  vault:             # DEV ONLY. Server mode + file storage trên volume (DEC-55). Production dùng cloud KMS / Vault cluster.
+    image: hashicorp/vault:1.17
+    cap_add: [IPC_LOCK]
+    command: ["server", "-config=/vault/dev/dev.hcl"]
+    environment: { VAULT_ADDR: "http://127.0.0.1:8200" }
+    volumes: ["vaultdata:/vault/file", "./infra/vault/dev.hcl:/vault/dev/dev.hcl:ro"]
+    networks: [secure]
+    profiles: [dev]
+    restart: unless-stopped
+    # Healthy khi API trả lời, kể cả lúc còn sealed: vault-init unseal ngay sau đó.
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8200/v1/sys/health?sealedcode=200&uninitcode=200"], interval: 5s, retries: 10 }
+
+  mailpit:           # DEV ONLY: hộp thư giả để đọc email OTP (http://localhost:8025)
+    image: axllent/mailpit:v1.32.0
+    ports: ["127.0.0.1:8025:8025"]
+    networks: [core]
+    profiles: [dev]
+
+  vault-init:        # DEV ONLY: init lần đầu, unseal mỗi lần khởi động, token cố định cho signer, transit + khoá (idempotent)
+    image: hashicorp/vault:1.17
+    environment: { DEV_TOKEN: "${VAULT_DEV_TOKEN:-dev-only}" }
+    entrypoint: ["/bin/sh", "/vault/dev-init.sh"]
+    volumes: ["vaultinit:/vault/init", "./infra/vault/dev-init.sh:/vault/dev-init.sh:ro"]
+    depends_on: { vault: { condition: service_healthy } }
+    networks: [secure]
+    profiles: [dev]
+    restart: "no"
+
+  # ---------- Observability (profile) ----------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.108.0
+    networks: [core]
+    profiles: [observability]
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    networks: [core, edge]
+    profiles: [observability]
+  loki:
+    image: grafana/loki:3.1.1
+    networks: [core]
+    profiles: [observability]
+  grafana:
+    image: grafana/grafana:11.2.0
+    networks: [core, edge]
+    profiles: [observability]
+
+networks:
+  edge: {}
+  core: {}
+  secure: { internal: true }   # signer + vault không ra Internet; chỉ api/engine gọi được
+
+volumes:
+  vaultdata: {}
+  vaultinit: {}
+  pgdata: {}
+  redisdata: {}
+  natsdata: {}

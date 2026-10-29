@@ -1,0 +1,67 @@
+package main
+
+import (
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/shopspring/decimal"
+	"github.com/sodex-tech/sodex-go-sdk-public/common/enums"
+	ctypes "github.com/sodex-tech/sodex-go-sdk-public/common/types"
+	perpssigner "github.com/sodex-tech/sodex-go-sdk-public/perps/signer"
+	ptypes "github.com/sodex-tech/sodex-go-sdk-public/perps/types"
+	spotsigner "github.com/sodex-tech/sodex-go-sdk-public/spot/signer"
+	stypes "github.com/sodex-tech/sodex-go-sdk-public/spot/types"
+)
+
+type vec struct {
+	Name, Domain, Payload, PayloadHash, Signature string
+	Nonce                                         uint64
+}
+
+func dec(s string) *decimal.Decimal { d := decimal.RequireFromString(s); return &d }
+func u64(v uint64) *uint64           { return &v }
+func str(s string) *string           { return &s }
+
+func main() {
+	key, _ := crypto.HexToECDSA("2222222222222222222222222222222222222222222222222222222222222222")
+	const chain = uint64(286623)
+	const nonce = uint64(1760373925001)
+	ps := perpssigner.NewSigner(chain, key)
+	ss := spotsigner.NewSigner(chain, key)
+	out := []vec{}
+	add := func(name, domain string, p ctypes.ActionPayloadParams, sig []byte, err error) {
+		if err != nil { panic(err) }
+		ap := &ctypes.ActionPayload{Type: p.ActionName(), Params: p}
+		bz, _ := json.Marshal(ap)
+		h, _ := ap.Hash()
+		out = append(out, vec{name, domain, string(bz), h.Hex(), "0x" + hex.EncodeToString(sig), nonce})
+	}
+	builder := &ctypes.BuilderParams{BuilderID: 1645, FeeRate: 50}
+
+	p1 := &ptypes.NewOrderRequest{AccountID: 12345, SymbolID: 1, Orders: []*ptypes.RawOrder{{
+		ClOrdID: "my-order-1", Modifier: enums.OrderModifier(1), Side: enums.OrderSide(1), Type: enums.OrderType(2),
+		TimeInForce: enums.TimeInForce(3), Quantity: dec("0.001"), ReduceOnly: false, PositionSide: enums.PositionSide(1)}}}
+	s, err := ps.SignNewOrderRequest(p1, nonce); add("perpsNewOrderDocs", "futures", p1, s, err)
+
+	p2 := &ptypes.NewOrderRequest{AccountID: 1645, SymbolID: 2, Orders: []*ptypes.RawOrder{{
+		ClOrdID: "drift-b1-v3-l2-a0", Modifier: enums.OrderModifier(1), Side: enums.OrderSide(2), Type: enums.OrderType(1),
+		TimeInForce: enums.TimeInForce(4), Price: dec("65000.10"), Quantity: dec("0.0100"), ReduceOnly: true, PositionSide: enums.PositionSide(1)}},
+		Builder: builder}
+	s, err = ps.SignNewOrderRequest(p2, nonce); add("perpsNewOrderBuilder", "futures", p2, s, err)
+
+	p3 := &ptypes.CancelOrderRequest{AccountID: 1645, Cancels: []*ptypes.CancelOrder{{SymbolID: 2, ClOrdID: str("drift-b1-v3-l2-a0")}, {SymbolID: 2, OrderID: u64(18446744073709551615)}}}
+	s, err = ps.SignCancelOrderRequest(p3, nonce); add("perpsCancel", "futures", p3, s, err)
+
+	s1 := &stypes.BatchNewOrderRequest{AccountID: 1645, Orders: []*stypes.BatchNewOrderItem{{
+		SymbolID: 7, ClOrdID: "drift-grid-1", Side: enums.OrderSide(1), Type: enums.OrderType(1), TimeInForce: enums.TimeInForce(1),
+		Price: dec("3511.60"), Quantity: dec("0.0268")}}, Builder: builder}
+	s, err = ss.SignBatchNewOrderRequest(s1, nonce); add("spotNewOrderBuilder", "spot", s1, s, err)
+
+	s2 := &stypes.BatchCancelOrderRequest{AccountID: 1645, Cancels: []*stypes.BatchCancelOrderItem{{SymbolID: 7, ClOrdID: "drift-cx-1", OrigClOrdID: str("drift-grid-1")}}}
+	s, err = ss.SignBatchCancelOrderRequest(s2, nonce); add("spotCancel", "spot", s2, s, err)
+
+	j, _ := json.MarshalIndent(map[string]any{"privateKey": "0x2222…2222 (test only)", "address": crypto.PubkeyToAddress(key.PublicKey).Hex(), "chainId": chain, "vectors": out}, "", "  ")
+	fmt.Println(string(j))
+}

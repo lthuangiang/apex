@@ -1,0 +1,14 @@
+node_modules
+dist
+.next
+.turbo
+coverage
+pnpm-lock.yaml
+docs
+CLAUDE.md
+sodex-volume-maker-request.md
+docker-compose.yml
+storybook-static
+test-results
+playwright-report
+packages/shared/src/reco/__tests__/golden

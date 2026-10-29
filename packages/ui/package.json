@@ -1,0 +1,54 @@
+{
+  "name": "@drift/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles/theme.css",
+    "./tokens.css": "./src/styles/tokens.css"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build --quiet -o storybook-static",
+    "test:a11y": "storybook build --quiet -o storybook-static && playwright test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1",
+    "@storybook/addon-a11y": "10.6.4",
+    "@storybook/react-vite": "10.6.4",
+    "@tailwindcss/vite": "4.3.3",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "axe-core": "4.14.0",
+    "jsdom": "29.1.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "storybook": "10.6.4",
+    "tailwindcss": "4.3.3",
+    "vite": "8.3.5",
+    "vitest": "5.0.5",
+    "zod": "4.6.7"
+  },
+  "dependencies": {
+    "@drift/shared": "workspace:*",
+    "@radix-ui/react-dialog": "1.3.1",
+    "@radix-ui/react-radio-group": "1.5.1",
+    "@radix-ui/react-switch": "1.4.1",
+    "lucide-react": "1.62.0"
+  },
+  "sideEffects": [
+    "*.css"
+  ],
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

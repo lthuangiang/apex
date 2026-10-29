@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRIFT thumbnail</title>
+<style>
+@font-face { font-family: "Jakarta"; src: url("jakarta.woff2") format("woff2"); font-weight: 200 800; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1280px; height: 720px; overflow: hidden; font-family: "Jakarta", system-ui, sans-serif; }
+.t { position: relative; width: 1280px; height: 720px; overflow: hidden; background: linear-gradient(135deg, #e3e8fe 0%, #b9c6fa 100%); color: #141a33; }
+.ring { position: absolute; border-radius: 50%; border: 3px solid rgba(255,255,255,.6); }
+.brand { position: absolute; left: 64px; top: 56px; display: flex; align-items: center; gap: 16px; }
+.mark { width: 72px; height: 72px; border-radius: 20px; background: #2e62e8; display: flex; align-items: center; justify-content: center; box-shadow: 0 14px 34px rgba(46,98,232,.4); }
+.word { font-size: 44px; font-weight: 800; letter-spacing: .08em; }
+h1 { position: absolute; left: 64px; top: 190px; margin: 0; width: 640px; font-size: 92px; line-height: 1; font-weight: 800; letter-spacing: -.035em; }
+h1 span { color: #2e62e8; }
+.chip { position: absolute; left: 64px; top: 470px; display: flex; gap: 14px; }
+.chip b { display: inline-flex; align-items: center; gap: 10px; padding: 16px 26px; border-radius: 999px; font-size: 30px; font-weight: 800; }
+.shot { position: absolute; left: 730px; top: 150px; width: 680px; height: 440px; border-radius: 28px; overflow: hidden; background: #fff; box-shadow: 0 40px 90px rgba(20,26,51,.28); transform: rotate(-4deg); border: 1px solid #e3e7f5; }
+.shot .bar { height: 40px; background: #f5f7fd; border-bottom: 1px solid #e3e7f5; display: flex; align-items: center; gap: 8px; padding: 0 18px; }
+.shot .bar i { width: 12px; height: 12px; border-radius: 50%; background: #d5dcf2; }
+.shot .view { position: absolute; top: 40px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+.shot img { position: absolute; width: 1440px; transform-origin: 0 0; transform: scale(0.93) translate(-282px, -470px); }
+.foot { position: absolute; left: 64px; bottom: 48px; font-size: 22px; font-weight: 700; color: #3b4262; }
+</style>
+</head>
+<body>
+<div class="t">
+  <div class="ring" style="width:820px;height:820px;right:-260px;top:-300px"></div>
+  <div class="ring" style="width:1240px;height:1240px;right:-470px;top:-510px"></div>
+  <div class="brand">
+    <div class="mark"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15c3-6 6 2 9-3s5-5 7-4"/><path d="M4 20h16"/></svg></div>
+    <div class="word">DRIFT</div>
+  </div>
+  <h1>Your trading, <span>automated</span></h1>
+  <div class="chip">
+    <b style="background:#141a33;color:#fff">Full walkthrough</b>
+    <b style="background:#fff;color:#141a33">2 min</b>
+  </div>
+  <div class="foot">Trading bots for SoDEX</div>
+  <div class="shot"><div class="bar"><i></i><i></i><i></i></div><div class="view"><img src="shots/Agent.png" alt=""></div></div>
+</div>
+</body>
+</html>

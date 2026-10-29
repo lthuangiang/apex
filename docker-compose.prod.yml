@@ -1,0 +1,113 @@
+# DRIFT — production 1 host nhỏ (2 vCPU, 4 GB RAM; amd64 hoặc arm64). Xem docs/DEPLOY.md, DEC-70.
+# Chạy chồng lên docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app --profile prod up -d --no-build
+# Khác bản gốc:
+#   - Image lấy từ MỘT repo private trên Docker Hub (DRIFT_IMAGE, ví dụ docker.io/<user>/drift), tag
+#     `<app>-<git sha>` (Docker Hub free chỉ có 1 repo private). VPS không build.
+#   - Mỗi service 1 bản (scale lại bằng --scale khi lên máy lớn hơn), backtest giới hạn 1 CPU / 1 GB.
+#   - Traefik có HTTPS (Let's Encrypt, TLS-ALPN) và chuyển http → https.
+#   - Vault chạy profile `prod`: lưu file trên volume, tự unseal, token của signer chỉ có quyền transit.
+
+services:
+  traefik:
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls.certresolver=le
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL:?set ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.tlschallenge=true
+    volumes: ["letsencrypt:/letsencrypt"]
+    logging: &logs
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  web:
+    image: ${DRIFT_IMAGE:?set DRIFT_IMAGE}:web-${DRIFT_TAG:?set DRIFT_TAG}
+    deploy: { replicas: 1 }
+    labels:
+      - traefik.http.routers.web.entrypoints=websecure
+    logging: *logs
+
+  api:
+    image: ${DRIFT_IMAGE}:api-${DRIFT_TAG}
+    deploy: { replicas: 1 }
+    labels:
+      - traefik.http.routers.api.entrypoints=websecure
+
+  realtime:
+    image: ${DRIFT_IMAGE}:realtime-${DRIFT_TAG}
+    deploy: { replicas: 1 }
+    labels:
+      - traefik.http.routers.rt.entrypoints=websecure
+
+  engine:
+    image: ${DRIFT_IMAGE}:engine-${DRIFT_TAG}
+    deploy: { replicas: 1 }
+
+  signer:
+    image: ${DRIFT_IMAGE}:signer-${DRIFT_TAG}
+    deploy: { replicas: 1 }
+    depends_on:
+      vault-init: { condition: service_healthy }
+    logging: *logs
+
+  marketdata:
+    image: ${DRIFT_IMAGE}:marketdata-${DRIFT_TAG}
+    deploy: { replicas: 1 }
+
+  scheduler:
+    image: ${DRIFT_IMAGE}:scheduler-${DRIFT_TAG}
+    deploy: { replicas: 1 }
+
+  jobs:
+    image: ${DRIFT_IMAGE}:jobs-${DRIFT_TAG}
+    deploy: { replicas: 1 }
+
+  reco:
+    image: ${DRIFT_IMAGE}:reco-${DRIFT_TAG}
+    deploy: { replicas: 1 }
+
+  backtest:
+    image: ${DRIFT_IMAGE}:backtest-${DRIFT_TAG}
+    deploy:
+      replicas: 1
+      resources: { limits: { cpus: "1", memory: 1g } }
+
+  migrate:
+    image: ${DRIFT_IMAGE}:api-${DRIFT_TAG}
+
+  postgres:
+    logging: *logs
+  pgbouncer:
+    logging: *logs
+  redis:
+    logging: *logs
+  nats:
+    logging: *logs
+
+  vault:
+    profiles: [prod]
+    command: ["server", "-config=/vault/prod/prod.hcl"]
+    volumes: ["./infra/vault/prod.hcl:/vault/prod/prod.hcl:ro"]
+    logging: *logs
+
+  vault-init:
+    # Chạy liên tục: init lần đầu, unseal mỗi khi Vault khởi động lại (kể cả sau khi VPS reboot).
+    profiles: [prod]
+    entrypoint: ["/bin/sh", "/vault/prod-init.sh"]
+    environment: { SIGNER_TOKEN: "${VAULT_TOKEN:?set VAULT_TOKEN}" }
+    volumes: ["./infra/vault/prod-init.sh:/vault/prod-init.sh:ro"]
+    restart: unless-stopped
+    healthcheck: { test: ["CMD", "test", "-f", "/tmp/ready"], interval: 5s, retries: 60 }
+    logging: *logs
+
+  mailpit:
+    profiles: [dev]
+
+volumes:
+  letsencrypt: {}

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRIFT walkthrough</title>
+<style>
+@font-face { font-family: "Jakarta"; src: url("jakarta.woff2") format("woff2"); font-weight: 200 800; }
+:root { --bg:#eef1fa; --ink:#141a33; --ink2:#3b4262; --muted:#5f6684; --accent:#2e62e8; --tint:#e6ecfe; --pos:#0f7a43; --posbg:#ddf4e7; --neg:#c2312f; --negbg:#fde4e1; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); font-family: "Jakarta", system-ui, sans-serif; color: var(--ink); }
+.stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+.scene { position: absolute; inset: 0; opacity: 0; }
+.dark { background: var(--ink); color: #fff; }
+.hero { background: linear-gradient(135deg, #e3e8fe, #c6d0fa); }
+.rings { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,.55); }
+.mark { width: 110px; height: 110px; border-radius: 32px; background: var(--accent); display: flex; align-items: center; justify-content: center; box-shadow: 0 24px 60px rgba(46,98,232,.45); }
+.word { font-weight: 800; letter-spacing: .08em; }
+.frame { position: absolute; left: 80px; top: 56px; width: 1760px; height: 770px; border-radius: 26px; background: #fff; overflow: hidden; box-shadow: 0 34px 90px rgba(20,26,51,.16); border: 1px solid #e3e7f5; }
+.frame .bar { height: 46px; background: #f5f7fd; border-bottom: 1px solid #e3e7f5; display: flex; align-items: center; gap: 9px; padding: 0 20px; }
+.frame .bar i { width: 13px; height: 13px; border-radius: 50%; background: #d5dcf2; display: block; }
+.frame .bar span { margin-left: 18px; font-size: 16px; font-weight: 600; color: var(--muted); }
+.frame .view { position: absolute; top: 46px; left: 0; right: 0; bottom: 0; overflow: hidden; background: var(--bg); }
+.frame .pan { position: absolute; left: 0; top: 0; width: 1440px; transform-origin: 0 0; }
+.frame .pan img { display: block; width: 1440px; }
+.cap { position: absolute; left: 80px; right: 80px; top: 862px; display: flex; gap: 40px; align-items: flex-start; }
+.cap .step { flex: none; min-width: 230px; display: flex; flex-direction: column; gap: 6px; }
+.cap .step b { font-size: 18px; font-weight: 800; letter-spacing: .12em; color: var(--accent); }
+.cap .step span { font-size: 17px; font-weight: 600; color: var(--muted); }
+.cap h2 { margin: 0 0 8px; font-size: 44px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; }
+.cap p { margin: 0; font-size: 26px; line-height: 1.45; color: var(--ink2); max-width: 1300px; }
+.sample { position: absolute; right: 100px; top: 72px; z-index: 2; font-size: 15px; font-weight: 700; color: var(--muted); background: rgba(255,255,255,.9); padding: 6px 12px; border-radius: 999px; }
+.progress { position: absolute; left: 80px; right: 80px; bottom: 34px; height: 6px; border-radius: 999px; background: #d5dcf2; overflow: hidden; }
+.progress div { height: 100%; width: 0; background: var(--accent); border-radius: 999px; }
+.card { background: #fff; border-radius: 26px; box-shadow: 0 24px 60px rgba(20,26,51,.12); }
+.num { width: 60px; height: 60px; border-radius: 50%; background: var(--tint); color: var(--accent); font-size: 28px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex: none; }
+.pill { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px; font-weight: 800; }
+.phone { position: absolute; top: 70px; width: 360px; height: 740px; border-radius: 52px; background: #141a33; padding: 14px; box-shadow: 0 40px 90px rgba(20,26,51,.25); }
+.phone .screen { width: 100%; height: 100%; border-radius: 40px; overflow: hidden; background: #fff; position: relative; }
+.phone img { position: absolute; left: 0; top: 0; width: 332px; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+
+<section class="scene dark" data-scene="title">
+  <div class="rings" style="width:900px;height:900px;left:510px;top:90px;border-color:rgba(255,255,255,.08)"></div>
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px">
+    <div style="display:flex;align-items:center;gap:28px" data-el="0.2" data-fx="pop">
+      <div class="mark"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15c3-6 6 2 9-3s5-5 7-4"/><path d="M4 20h16"/></svg></div>
+      <div class="word" style="font-size:90px">DRIFT</div>
+    </div>
+    <div style="font-size:64px;font-weight:800;letter-spacing:-.02em" data-el="0.8" data-fx="up">Product walkthrough</div>
+    <div style="font-size:28px;color:#a9beff;font-weight:600" data-el="1.3" data-fx="up">From sign-up to a bot running on SoDEX mainnet</div>
+  </div>
+</section>
+
+<section class="scene" data-scene="connect">
+  <div style="position:absolute;left:80px;right:80px;top:56px;height:770px;border-radius:26px;background:linear-gradient(135deg,#e3e8fe,#c6d0fa);overflow:hidden">
+    <div class="rings" style="width:700px;height:700px;right:-160px;top:-200px"></div>
+    <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:980px;display:flex;flex-direction:column;gap:24px">
+      <div class="card" style="padding:32px 36px;display:flex;align-items:center;gap:24px" data-el="0.5" data-fx="left">
+        <div class="num">1</div>
+        <div style="flex:1"><div style="font-size:30px;font-weight:800">Sign request 1 · Let DRIFT trade for you</div><div style="font-size:23px;color:var(--muted);margin-top:6px">DRIFT can place and cancel orders for bots you start · it can never withdraw or transfer</div></div>
+        <span class="pill" style="background:var(--posbg);color:var(--pos);padding:10px 20px;font-size:21px">Approved</span>
+      </div>
+      <div class="card" style="padding:32px 36px;display:flex;align-items:center;gap:24px" data-el="1.5" data-fx="left">
+        <div class="num">2</div>
+        <div style="flex:1"><div style="font-size:30px;font-weight:800">Sign request 2 · Approve the 0.01% fee</div><div style="font-size:23px;color:var(--muted);margin-top:6px">Only on orders DRIFT sends · turn it off anytime and your bots pause</div></div>
+        <span class="pill" style="background:var(--posbg);color:var(--pos);padding:10px 20px;font-size:21px">Approved</span>
+      </div>
+      <div style="display:flex;gap:18px" data-el="2.5" data-fx="up">
+        <span class="pill" style="background:#fff;padding:14px 22px;font-size:21px;color:var(--ink2)">No gas · no funds moved</span>
+        <span class="pill" style="background:#fff;padding:14px 22px;font-size:21px;color:var(--ink2)">Never asks for your seed phrase</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="scene" data-scene="mobile">
+  <div style="position:absolute;left:80px;right:80px;top:56px;height:770px;border-radius:26px;background:linear-gradient(135deg,#e3e8fe,#c6d0fa);overflow:hidden">
+    <div class="phone" style="left:520px" data-el="0.3" data-fx="up"><div class="screen"><img data-ppan="0,0,0" src="shots/Mobile-Home.png" alt=""></div></div>
+    <div class="phone" style="left:900px" data-el="0.8" data-fx="up"><div class="screen"><img data-ppan="0,0,0" src="shots/Mobile-Agent.png" alt=""></div></div>
+  </div>
+  <div class="sample" data-el="0.5" data-fx="fade">Product UI · sample data</div>
+</section>
+
+<section class="scene hero" data-scene="outro">
+  <div class="rings" style="width:900px;height:900px;left:510px;top:90px"></div>
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;text-align:center">
+    <div style="display:flex;align-items:center;gap:26px" data-el="0.2" data-fx="pop">
+      <div class="mark" style="width:96px;height:96px;border-radius:28px"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15c3-6 6 2 9-3s5-5 7-4"/><path d="M4 20h16"/></svg></div>
+      <div class="word" style="font-size:80px">DRIFT</div>
+    </div>
+    <div style="font-size:60px;font-weight:800;letter-spacing:-.02em" data-el="0.7" data-fx="up">Create an account and connect SoDEX.</div>
+    <div style="font-size:30px;color:var(--ink2)" data-el="1.1" data-fx="up">Nothing trades until you press Start.</div>
+    <p style="font-size:21px;color:var(--ink2);max-width:1100px;margin:28px 0 0" data-el="1.6" data-fx="fade">Automated trading can lose money; DRIFT doesn’t guarantee profit. Backtests are simulations, not forecasts. Not financial advice.</p>
+  </div>
+</section>
+
+<div class="progress"><div id="bar"></div></div>
+</div>
+
+<script>
+// Mỗi cảnh: thời lượng (s), ảnh + pan [x0,y0,s0,x1,y1,s1] theo px CSS của artboard 1440, nhãn bước, tiêu đề, chú thích.
+const S = 1.222;
+const SCENES = [
+  { id: "title", dur: 5 },
+  { img: "Onboard-Signup", url: "drift / sign up", dur: 8, pan: [0, 0, S, 0, 300, S], step: "STEP 1", phase: "Onboarding",
+    title: "Create your account", body: "Sign up with your wallet or email. Two-factor authentication is required before any bot can trade on mainnet." },
+  { id: "connect", dur: 9, step: "STEP 2", phase: "Onboarding",
+    title: "Connect SoDEX from your wallet", body: "Your wallet shows two sign requests. Approve both: no gas, no funds moved, and DRIFT can never withdraw or transfer." },
+  { img: "Onboard-Import", url: "drift / onboarding / import", dur: 8, pan: [0, 0, S, 0, 400, S], step: "STEP 3", phase: "Onboarding",
+    title: "DRIFT imports your history automatically", body: "As soon as you connect, DRIFT pulls your SoDEX trades, fills and funding by itself, analyzes them and drafts a strategy plan for you." },
+  { img: "Onboard-Analysis", url: "drift / onboarding / analysis", dur: 12, pan: [0, 0, S, 0, 1100, S], step: "STEP 4", phase: "Onboarding",
+    title: "See where your profit went", body: "The analysis is ready on its own: fees, funding, holding time and leverage from your own trades. It describes the past; it doesn’t predict." },
+  { img: "Onboard-Goals", url: "drift / onboarding / goals", dur: 9, pan: [0, 0, S, 0, 640, S], step: "STEP 5", phase: "Onboarding",
+    title: "Set your goals", body: "Your main goal, the capital for bots, the largest drop you can sit through, and the markets to include." },
+  { img: "Onboard-Plan", url: "drift / onboarding / plan", dur: 11, pan: [0, 0, S, 0, 900, S], step: "STEP 6", phase: "Onboarding",
+    title: "Get a strategy plan", body: "Strategies matched to your data, with the reasons and what wasn’t suggested. Starting points you can edit, not forecasts." },
+  { img: "Create", url: "drift / bots / new / spot_grid", dur: 10, pan: [0, 0, S, 430, 150, 1.75], step: "STEP 7", phase: "Strategy Lab",
+    title: "Review the bot before it exists", body: "AI parameters fill every field from market data and your analysis. Change anything, or clear them and enter your own." },
+  { img: "Create-Backtest", url: "drift / bots / new / spot_grid · backtest", dur: 8, pan: [0, 0, S, 0, 120, S], step: "STEP 8", phase: "Strategy Lab",
+    title: "Backtest on SoDEX price history", body: "Replay the same settings over past prices with fees included. A backtest is a simulation, not a forecast." },
+  { img: "Create-Backtest", url: "drift / bots / new / spot_grid · before it starts", dur: 8, pan: [0, 1100, S, 0, 1376, S], step: "STEP 9", phase: "Strategy Lab",
+    title: "Every check passes before Start", body: "SoDEX connection, fee approval, balance, minimum order size, 2FA and risk limits. Start on mainnet stays off until they all pass." },
+  { img: "Agent", url: "drift / agent", dur: 12, pan: [0, 0, S, 0, 828, S], step: "STEP 10", phase: "Run",
+    title: "Follow the Trading Agent", body: "Every decision, why it happened and what SoDEX said. A bot shows Running only after SoDEX confirms it. Pause, edit or stop anytime." },
+  { img: "Main", url: "drift / overview", dur: 10, pan: [0, 0, S, 0, 900, S], step: "STEP 11", phase: "Run",
+    title: "Your account at a glance", body: "Equity across Spot and Perps, PnL, risk, watchlist and every bot on one screen." },
+  { img: "Portfolio", url: "drift / portfolio", dur: 9, pan: [0, 0, S, 0, 780, S], step: "STEP 12", phase: "Run",
+    title: "Portfolio across Spot and Perps", body: "Holdings, open positions and exposure, valued from SoDEX data." },
+  { img: "Risk", url: "drift / risk", dur: 9, pan: [0, 0, S, 0, 880, S], step: "STEP 13", phase: "Control",
+    title: "Risk limits the server enforces", body: "Daily loss, drawdown and per-trade limits pause bots when reached. Halt all agents cancels their orders from any screen." },
+  { img: "Connections", url: "drift / settings", dur: 9, pan: [0, 0, S, 0, 260, S], step: "STEP 14", phase: "Control",
+    title: "Stay in control of access", body: "Reconnect or disconnect SoDEX and turn off the 0.01% fee anytime. Revoking pauses every bot; open orders stay as they are." },
+  { id: "mobile", dur: 9, step: "STEP 15", phase: "Anywhere",
+    title: "On your phone", body: "The same routes on mobile: monitor bots, read decisions, pause or halt in a tap." },
+  { id: "outro", dur: 6 },
+];
+
+const stage = document.getElementById("stage");
+let t0 = 0;
+for (const s of SCENES) {
+  s.a = t0; s.b = t0 + s.dur; t0 = s.b;
+  let el = s.id ? document.querySelector(`[data-scene="${s.id}"]`) : null;
+  if (!el) {
+    el = document.createElement("section");
+    el.className = "scene";
+    el.innerHTML = `<div class="frame"><div class="bar"><i></i><i></i><i></i><span>${s.url}</span></div><div class="view"><div class="pan"><img src="shots/${s.img}.png" alt=""></div></div></div><div class="sample">Product UI · sample data</div>`;
+    stage.insertBefore(el, stage.querySelector(".progress"));
+  }
+  if (s.title) {
+    const cap = document.createElement("div");
+    cap.className = "cap";
+    cap.innerHTML = `<div class="step"><b>${s.step}</b><span>${s.phase}</span></div><div><h2>${s.title}</h2><p>${s.body}</p></div>`;
+    cap.dataset.el = "0.3"; cap.dataset.fx = "up";
+    el.appendChild(cap);
+  }
+  s.el = el;
+  s.kids = [...el.querySelectorAll("[data-el]")].map((k) => ({ k, d: Number(k.dataset.el), fx: k.dataset.fx }));
+  s.panEl = el.querySelector(".pan");
+  s.phones = [...el.querySelectorAll("[data-ppan]")].map((p) => ({ p, v: p.dataset.ppan.split(",").map(Number) }));
+}
+const DURATION = t0;
+const clamp = (x) => Math.min(1, Math.max(0, x));
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const FADE = 0.45;
+window.render = (t) => {
+  for (const s of SCENES) {
+    const local = t - s.a;
+    const vis = clamp((t - s.a + FADE) / FADE) * (1 - clamp((t - s.b + FADE) / FADE));
+    s.el.style.opacity = String(s === SCENES[0] ? 1 - clamp((t - s.b + FADE) / FADE) : vis);
+    s.el.style.display = vis <= 0 && s !== SCENES[0] ? "none" : "block";
+    for (const { k, d, fx } of s.kids) {
+      const p = easeOut(clamp((local - d) / 0.7));
+      k.style.opacity = String(p);
+      const q = 1 - p;
+      k.style.transform = fx === "up" ? `translateY(${q * 40}px)` : fx === "left" ? `translateX(${q * 70}px)` : fx === "pop" ? `scale(${0.72 + 0.28 * p})` : "";
+    }
+    if (s.panEl) {
+      const [x0, y0, s0, x1, y1, s1] = s.pan;
+      const p = easeInOut(clamp((local - 0.6) / (s.dur - 1.4)));
+      const x = x0 + (x1 - x0) * p, y = y0 + (y1 - y0) * p, sc = s0 + (s1 - s0) * p;
+      s.panEl.style.transform = `scale(${sc}) translate(${-x}px, ${-y}px)`;
+    }
+    for (const { p, v } of s.phones) {
+      const q = easeInOut(clamp((local - 1.5) / (s.dur - 2.5)));
+      p.style.transform = `translateY(${-(v[1] + (v[2] - v[1]) * q)}px)`;
+    }
+  }
+  document.getElementById("bar").style.width = `${(t / DURATION) * 100}%`;
+};
+window.DURATION = DURATION;
+window.render(0);
+</script>
+</body>
+</html>

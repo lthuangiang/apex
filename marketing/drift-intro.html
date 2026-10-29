@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRIFT intro</title>
+<style>
+@font-face { font-family: "Jakarta"; src: url("jakarta.woff2") format("woff2"); font-weight: 200 800; }
+:root { --bg:#eef1fa; --ink:#141a33; --ink2:#3b4262; --muted:#5f6684; --accent:#2e62e8; --tint:#e6ecfe; --pos:#0f7a43; --posbg:#ddf4e7; --neg:#c2312f; --negbg:#fde4e1; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); font-family: "Jakarta", system-ui, sans-serif; color: var(--ink); }
+.stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+.scene { position: absolute; inset: 0; opacity: 0; }
+[data-t] { will-change: opacity, transform; }
+.dark { background: var(--ink); color: #fff; }
+.hero { background: linear-gradient(135deg, #e3e8fe, #c6d0fa); }
+.rings { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,.55); }
+.mark { width: 120px; height: 120px; border-radius: 34px; background: var(--accent); display: flex; align-items: center; justify-content: center; box-shadow: 0 24px 60px rgba(46,98,232,.45); }
+.word { font-weight: 800; letter-spacing: .08em; }
+.eyebrow { font-size: 22px; font-weight: 800; letter-spacing: .14em; color: var(--accent); }
+.h1 { font-size: 104px; line-height: 1.02; font-weight: 800; letter-spacing: -.03em; margin: 0; }
+.h2 { font-size: 68px; line-height: 1.08; font-weight: 800; letter-spacing: -.02em; margin: 0; }
+.body { font-size: 30px; line-height: 1.5; color: var(--ink2); margin: 0; }
+.step { position: absolute; left: 120px; top: 0; bottom: 0; width: 600px; display: flex; flex-direction: column; justify-content: center; gap: 26px; }
+.num { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 30px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.frame { position: absolute; right: 100px; top: 140px; width: 1060px; height: 800px; border-radius: 28px; background: #fff; overflow: hidden; box-shadow: 0 40px 100px rgba(20,26,51,.18); border: 1px solid #e3e7f5; }
+.frame .bar { height: 46px; background: #f5f7fd; border-bottom: 1px solid #e3e7f5; display: flex; align-items: center; gap: 9px; padding: 0 20px; }
+.frame .bar i { width: 13px; height: 13px; border-radius: 50%; background: #d5dcf2; display: block; }
+.frame .view { position: absolute; top: 46px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+.frame img { position: absolute; left: 0; top: 0; width: 1440px; transform-origin: 0 0; }
+.sample { position: absolute; right: 120px; top: 958px; font-size: 18px; font-weight: 600; color: var(--muted); }
+.card { background: #fff; border-radius: 26px; box-shadow: 0 24px 60px rgba(20,26,51,.12); }
+.pill { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px; font-weight: 800; }
+.row { display: flex; align-items: center; gap: 22px; padding: 26px 30px; border-radius: 22px; font-size: 30px; font-weight: 700; }
+.hl { position: absolute; border: 4px solid var(--accent); border-radius: 22px; box-shadow: 0 0 0 9999px rgba(20,26,51,.10); }
+</style>
+</head>
+<body>
+<div class="stage">
+
+<!-- 1 · Intro -->
+<section class="scene dark" data-t="0,4.6" data-fx="fade">
+  <div class="rings" style="width:900px;height:900px;left:510px;top:90px;border-color:rgba(255,255,255,.08)" data-t="0.2,4.6" data-fx="zoom"></div>
+  <div class="rings" style="width:1400px;height:1400px;left:260px;top:-160px;border-color:rgba(255,255,255,.05)" data-t="0.4,4.6" data-fx="zoom"></div>
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px">
+    <div class="mark" data-t="0.3,4.6" data-fx="pop">
+      <svg width="66" height="66" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15c3-6 6 2 9-3s5-5 7-4"/><path d="M4 20h16"/></svg>
+    </div>
+    <div class="word" style="font-size:96px" data-t="0.9,4.6" data-fx="up">DRIFT</div>
+    <div style="font-size:30px;font-weight:600;color:#a9beff;letter-spacing:.12em" data-t="1.6,4.6" data-fx="up">PROFIT BOTS FOR SODEX</div>
+  </div>
+</section>
+
+<!-- 2 · Tagline -->
+<section class="scene hero" data-t="4.4,9.2" data-fx="fade">
+  <div class="rings" style="width:760px;height:760px;right:-180px;top:-220px"></div>
+  <div class="rings" style="width:1180px;height:1180px;right:-390px;top:-430px"></div>
+  <div style="position:absolute;left:160px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center;gap:40px">
+    <p class="h1" data-t="4.8,9.2" data-fx="up">Your trading, studied.</p>
+    <p class="h1" style="color:var(--accent)" data-t="5.9,9.2" data-fx="up">Then automated.</p>
+    <p class="body" style="max-width:1100px" data-t="7.0,9.2" data-fx="up">DRIFT reads how you already trade on SoDEX, suggests a strategy that fits, and runs it for you.</p>
+  </div>
+</section>
+
+<!-- 3 · Connect -->
+<section class="scene" data-t="9.0,15.2" data-fx="fade">
+  <div class="step">
+    <div class="num" data-t="9.3,15.2" data-fx="pop">1</div>
+    <p class="h2" data-t="9.5,15.2" data-fx="up">Connect SoDEX from your wallet</p>
+    <p class="body" data-t="10.0,15.2" data-fx="up">Approve two sign requests in your wallet. No gas, no funds moved, nothing to copy or paste.</p>
+  </div>
+  <div style="position:absolute;right:150px;top:230px;width:900px;display:flex;flex-direction:column;gap:26px">
+    <div class="card" style="padding:34px 38px;display:flex;align-items:center;gap:26px" data-t="10.4,15.2" data-fx="left">
+      <div class="num" style="background:var(--tint);color:var(--accent)">✓</div>
+      <div style="flex:1"><div style="font-size:30px;font-weight:800">Sign request 1 · Let DRIFT trade</div><div style="font-size:24px;color:var(--muted);margin-top:6px">Places and cancels orders for bots you start</div></div>
+      <span class="pill" style="background:var(--posbg);color:var(--pos);padding:10px 20px;font-size:22px">Approved</span>
+    </div>
+    <div class="card" style="padding:34px 38px;display:flex;align-items:center;gap:26px" data-t="11.4,15.2" data-fx="left">
+      <div class="num" style="background:var(--tint);color:var(--accent)">✓</div>
+      <div style="flex:1"><div style="font-size:30px;font-weight:800">Sign request 2 · Approve the 0.01% fee</div><div style="font-size:24px;color:var(--muted);margin-top:6px">Turn it off anytime; your bots pause</div></div>
+      <span class="pill" style="background:var(--posbg);color:var(--pos);padding:10px 20px;font-size:22px">Approved</span>
+    </div>
+    <div class="card" style="padding:30px 38px;display:flex;align-items:center;gap:22px;background:var(--negbg);box-shadow:none" data-t="12.4,15.2" data-fx="left">
+      <span style="font-size:34px;font-weight:800;color:var(--neg)">✕</span>
+      <div style="font-size:28px;font-weight:800;color:#6e1414">Withdraw or transfer · never</div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 · Analyze -->
+<section class="scene" data-t="15.0,21.6" data-fx="fade">
+  <div class="step" style="width:560px">
+    <div class="num" data-t="15.3,21.6" data-fx="pop">2</div>
+    <p class="h2" data-t="15.5,21.6" data-fx="up">Your history, analyzed automatically</p>
+    <p class="body" data-t="16.0,21.6" data-fx="up">Once connected, DRIFT imports your SoDEX trades by itself and shows where your profit really went.</p>
+  </div>
+  <div class="frame" data-t="15.6,21.6" data-fx="right">
+    <div class="bar"><i></i><i></i><i></i></div>
+    <div class="view"><img src="shots/Onboard-Analysis.png" data-pan="15.6,21.6,350,120,0.93,350,700,0.93" alt=""></div>
+  </div>
+  <div class="sample" data-t="16.2,21.6" data-fx="fade">Product UI · sample data</div>
+</section>
+
+<!-- 5 · Plan -->
+<section class="scene" data-t="21.4,28.2" data-fx="fade">
+  <div class="step" style="width:560px">
+    <div class="num" data-t="21.7,28.2" data-fx="pop">3</div>
+    <p class="h2" data-t="21.9,28.2" data-fx="up">Get a plan that fits your data</p>
+    <p class="body" data-t="22.4,28.2" data-fx="up">A rule-based engine fills in the parameters and says why. Every field stays editable. Backtest before you start.</p>
+  </div>
+  <div class="frame" data-t="22.0,28.2" data-fx="right">
+    <div class="bar"><i></i><i></i><i></i></div>
+    <div class="view"><img src="shots/Create.png" data-pan="22.0,28.2,0,60,0.74,600,100,1.25" alt=""></div>
+  </div>
+  <div class="sample" data-t="22.6,28.2" data-fx="fade">Product UI · sample data</div>
+</section>
+
+<!-- 6 · Agent -->
+<section class="scene" data-t="28.0,34.8" data-fx="fade">
+  <div class="step" style="width:560px">
+    <div class="num" data-t="28.3,34.8" data-fx="pop">4</div>
+    <p class="h2" data-t="28.5,34.8" data-fx="up">Watch every decision</p>
+    <p class="body" data-t="29.0,34.8" data-fx="up">The Trading Agent shows what the bot did and why. Pause, edit or stop anytime. Unclear orders are checked with SoDEX, never blindly resent.</p>
+  </div>
+  <div class="frame" data-t="28.6,34.8" data-fx="right">
+    <div class="bar"><i></i><i></i><i></i></div>
+    <div class="view"><img src="shots/Agent.png" data-pan="28.6,34.8,270,220,0.92,270,470,0.92" alt=""></div>
+  </div>
+  <div class="sample" data-t="29.2,34.8" data-fx="fade">Product UI · sample data</div>
+</section>
+
+<!-- 7 · Safety -->
+<section class="scene dark" data-t="34.6,40.0" data-fx="fade">
+  <div style="position:absolute;left:160px;top:0;bottom:0;width:820px;display:flex;flex-direction:column;justify-content:center;gap:30px">
+    <div class="eyebrow" style="color:#a9beff" data-t="34.9,40" data-fx="up">SAFETY</div>
+    <p class="h2" data-t="35.1,40" data-fx="up">DRIFT trades. It never moves your money.</p>
+    <p class="body" style="color:#d5dcf2" data-t="35.6,40" data-fx="up">No seed phrase, ever. Risk limits enforced by the server. One-tap emergency halt.</p>
+  </div>
+  <div style="position:absolute;right:160px;top:290px;width:720px;display:flex;flex-direction:column;gap:22px">
+    <div class="row" style="background:rgba(255,255,255,.07)" data-t="35.8,40" data-fx="left"><span style="color:#7ee2a8">✓</span><span style="flex:1">Read account data</span></div>
+    <div class="row" style="background:rgba(255,255,255,.07)" data-t="36.3,40" data-fx="left"><span style="color:#7ee2a8">✓</span><span style="flex:1">Place and cancel orders</span></div>
+    <div class="row" style="background:rgba(255,92,92,.16)" data-t="36.8,40" data-fx="left"><span style="color:#ff9c9c">✕</span><span style="flex:1">Withdraw or transfer</span><span style="color:#ffc9c9;font-size:26px">Never</span></div>
+  </div>
+</section>
+
+<!-- 8 · CTA -->
+<section class="scene hero" data-t="39.8,45.5" data-fx="fade">
+  <div class="rings" style="width:900px;height:900px;left:510px;top:90px"></div>
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px;text-align:center">
+    <div style="display:flex;align-items:center;gap:26px" data-t="40.1,45.5" data-fx="pop">
+      <div class="mark" style="width:96px;height:96px;border-radius:28px"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15c3-6 6 2 9-3s5-5 7-4"/><path d="M4 20h16"/></svg></div>
+      <div class="word" style="font-size:80px">DRIFT</div>
+    </div>
+    <p class="h2" data-t="40.7,45.5" data-fx="up">See what your own history suggests.</p>
+    <div style="display:flex;gap:18px" data-t="41.3,45.5" data-fx="up">
+      <span class="pill" style="background:var(--accent);color:#fff;padding:22px 42px;font-size:30px;box-shadow:0 14px 34px rgba(46,98,232,.35)">Create your account</span>
+      <span class="pill" style="background:#fde4e1;color:#8a2a1e;padding:22px 30px;font-size:24px"><span style="width:12px;height:12px;border-radius:50%;background:#c2312f"></span>LIVE · SODEX MAINNET</span>
+    </div>
+    <p style="font-size:22px;color:var(--ink2);max-width:1100px;margin:30px 0 0" data-t="41.9,45.5" data-fx="fade">Automated trading can lose money; DRIFT doesn’t guarantee profit. Backtests are simulations, not forecasts. Not financial advice.</p>
+  </div>
+</section>
+
+</div>
+<script>
+const DURATION = 45.5;
+const clamp = (x) => Math.min(1, Math.max(0, x));
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const els = [...document.querySelectorAll("[data-t]")].map((el) => {
+  const [a, b] = el.dataset.t.split(",").map(Number);
+  return { el, a, b, fx: el.dataset.fx || "fade" };
+});
+const pans = [...document.querySelectorAll("[data-pan]")].map((el) => ({ el, v: el.dataset.pan.split(",").map(Number) }));
+window.render = (t) => {
+  for (const { el, a, b, fx } of els) {
+    const pin = easeOut(clamp((t - a) / 0.7));
+    const pout = easeInOut(clamp((t - (b - 0.45)) / 0.45));
+    const scene = el.classList.contains("scene");
+    el.style.opacity = String(scene ? clamp((t - a) / 0.4) * (1 - clamp((t - (b - 0.4)) / 0.4)) : pin * (1 - pout));
+    const k = 1 - pin;
+    let tr = "";
+    if (fx === "up") tr = `translateY(${k * 46}px)`;
+    else if (fx === "left") tr = `translateX(${k * 70}px)`;
+    else if (fx === "right") tr = `translateX(${k * 120}px)`;
+    else if (fx === "zoom") tr = `scale(${0.92 + 0.08 * pin})`;
+    else if (fx === "pop") tr = `scale(${0.7 + 0.3 * easeOut(clamp((t - a) / 0.55))})`;
+    if (!scene) el.style.transform = tr;
+  }
+  for (const { el, v } of pans) {
+    const [a, b, x0, y0, s0, x1, y1, s1] = v;
+    const p = easeInOut(clamp((t - a) / (b - a)));
+    const x = x0 + (x1 - x0) * p, y = y0 + (y1 - y0) * p, s = s0 + (s1 - s0) * p;
+    el.style.transform = `scale(${s}) translate(${-x}px, ${-y}px)`;
+  }
+};
+window.DURATION = DURATION;
+window.render(0);
+</script>
+</body>
+</html>

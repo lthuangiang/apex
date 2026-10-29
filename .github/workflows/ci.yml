@@ -1,0 +1,35 @@
+# Thứ tự theo CODING_STANDARDS C15: install → lint → typecheck → unit → integration → build → e2e.
+# Integration và e2e được thêm khi có app (P3 trở đi).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: npm i -g corepack@latest && corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter @drift/ui exec playwright install --with-deps chromium
+      - run: pnpm --filter @drift/ui test:a11y
+      - run: pnpm build
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env && sed -i "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=ci-only/" .env
+      - run: docker compose --profile dev up -d --wait
+      - if: always()
+        run: docker compose --profile dev down -v
