@@ -51,22 +51,28 @@ export function TradersPage() {
   return (
     <Workspace current="traders">
       <div className="flex flex-col gap-5">
-        <PageHead title={t("list.title")} subtitle={t("list.subtitle")} />
-        <p className="m-0 text-sm font-semibold text-ink-2">
-          {data?.checking != null
-            ? t("list.checking", { done: data.checking.done, total: data.checking.total })
-            : data?.updatedOn == null
-              ? t("list.notUpdated")
-              : t("list.updated", { date: data.updatedOn })}
-        </p>
+        <PageHead
+          title={t("list.title")}
+          subtitle={t("list.subtitle")}
+          action={
+            // Artboard Leaders: trạng thái cập nhật là một chip ở góc phải tiêu đề.
+            <span className="inline-flex min-h-8 items-center rounded-full border border-border bg-surface px-3 text-[12.5px] font-bold text-ink-2 tabular-nums">
+              {data?.checking != null
+                ? t("list.checking", { done: data.checking.done, total: data.checking.total })
+                : data?.updatedOn == null
+                  ? t("list.notUpdated")
+                  : t("list.updated", { date: data.updatedOn })}
+            </span>
+          }
+        />
 
         {guideClosed ? null : (
           <section
             aria-label={t("list.guideTitle")}
-            className="flex flex-col gap-3 rounded-card border border-border bg-surface p-5"
+            className="flex flex-col gap-3.5 rounded-card border border-border bg-surface px-[22px] py-5"
           >
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="m-0 text-lg font-extrabold">{t("list.guideTitle")}</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="m-0 text-base font-extrabold">{t("list.guideTitle")}</h2>
               <button
                 type="button"
                 aria-label={t("list.guideClose")}
@@ -85,13 +91,21 @@ export function TradersPage() {
             </div>
             <ol className="m-0 grid list-none gap-3 p-0 sm:grid-cols-3">
               {([1, 2, 3] as const).map((n) => (
-                <li key={n} className="flex gap-3">
-                  <span className="flex size-8 flex-none items-center justify-center rounded-full bg-accent text-sm font-extrabold text-white">
+                // Bước 1 (đang ở đây) nổi bật, hai bước sau nhạt (artboard Leaders).
+                <li
+                  key={n}
+                  className={`flex gap-3 rounded-[16px] p-3.5 ${n === 1 ? "bg-accent-tint" : "bg-surface-2"}`}
+                >
+                  <span
+                    className={`flex size-7 flex-none items-center justify-center rounded-[9px] text-[13px] font-extrabold ${
+                      n === 1 ? "bg-accent text-white" : "bg-accent-tint text-accent-ink"
+                    }`}
+                  >
                     {n}
                   </span>
                   <span className="flex flex-col gap-0.5">
                     <strong className="text-sm">{t(`list.step${String(n) as "1"}Title`)}</strong>
-                    <span className="text-sm text-ink-2">
+                    <span className="text-[13px] leading-snug text-ink-2">
                       {t(`list.step${String(n) as "1"}Body`)}
                     </span>
                   </span>
@@ -116,7 +130,7 @@ export function TradersPage() {
                 router.replace(k === "steady" ? "/traders" : `/traders?tab=${k}`);
               }}
               className={`flex min-h-tap flex-1 items-center justify-center rounded-[12px] px-4 text-sm font-bold whitespace-nowrap sm:flex-none ${
-                tab === k ? "bg-ink text-white" : "text-ink-2 hover:bg-surface-2"
+                tab === k ? "bg-accent font-extrabold text-white" : "text-ink-2 hover:bg-surface-2"
               }`}
             >
               {t(`list.tabs.${k}`)}
@@ -125,7 +139,7 @@ export function TradersPage() {
         </div>
         {tab === "steady" ? <p className="m-0 text-sm text-ink-2">{t("list.steadyNote")}</p> : null}
         {/* Artboard luôn hiện giới hạn 8 chỗ copy realtime; khi hết chỗ thì thêm câu in đậm. */}
-        <p className="m-0 rounded-card bg-accent-tint p-4 text-sm text-accent-ink">
+        <p className="m-0 rounded-[16px] bg-accent-tint px-4 py-3 text-[13px] leading-normal text-accent-ink">
           {anyFull ? <strong>{t("list.slotsFull")} </strong> : null}
           {t("list.slotsNote")}
         </p>

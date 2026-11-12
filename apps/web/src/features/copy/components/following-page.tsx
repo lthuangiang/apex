@@ -1,16 +1,20 @@
 "use client";
 
-import { dec, notificationSettingsSchema, type NotificationGroup } from "@drift/shared";
-import { Button, EmptyState, ErrorState, Skeleton, Switch } from "@drift/ui";
+import {
+  dec,
+  notificationSettingsSchema,
+  type LeaderEventView,
+  type NotificationGroup,
+} from "@drift/shared";
+import { EmptyState, ErrorState, Skeleton, Switch } from "@drift/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 
-import { Card, PageHead, Workspace } from "@/components/workspace";
+import { PageHead, Workspace } from "@/components/workspace";
 import { api } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
 import { useFeatures } from "@/lib/queries";
 
 import { useFollow, useFollowing } from "../api";
@@ -23,6 +27,26 @@ import { EventChange } from "./trader-profile-page";
 // thật ("checked every 2 min"), cảnh báo big move chỉ trong app. Theo dõi miễn phí, không đặt lệnh.
 
 const GROUP: NotificationGroup = "copyTrading";
+
+/** Chip "Change" theo artboard WhaleWatch: mở / tăng long xanh, mở / tăng short đỏ, giảm / đóng xám. */
+function changeChip(e: LeaderEventView): string {
+  const opening = e.kind === "open" || e.kind === "add" || e.kind === "flip";
+  if (!opening) return "bg-cat-exec-bg text-ink-2";
+  return e.side === "short" ? "bg-neg-bg text-neg-ink" : "bg-pos-bg text-pos";
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+/** Giờ ngắn: hôm nay "13:58", ngày khác "Nov 12, 13:58" (giờ máy người xem). */
+function shortWhen(at: string | number): string {
+  const d = new Date(at);
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (d.toDateString() === new Date().toDateString()) return hm;
+  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${hm}`;
+}
+const formatTime = (at: number) => {
+  const d = new Date(at);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
 
 function useBigMoveSetting() {
   const qc = useQueryClient();
@@ -92,62 +116,171 @@ export function FollowingPage() {
             }
           />
         ) : (
-          <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="flex flex-col gap-5">
-              <Card title={t("following.traders")}>
-                <p className="m-0 -mt-2 text-sm text-ink-2">
-                  {t("following.count", { n: d.traders.length, limit: d.limit })}
-                </p>
-                <ul className="m-0 flex list-none flex-col gap-3 p-0">
+          <div className="flex flex-col gap-5">
+            {/* Artboard WhaleWatch: hàng trên Traders (trái) + Recent changes (phải); hàng dưới cảnh báo big move. */}
+            <div className="grid gap-5 xl:grid-cols-[minmax(280px,340px)_minmax(0,1fr)] xl:items-start">
+              <section
+                aria-labelledby="fl-traders"
+                className="flex flex-col gap-3 rounded-card border border-border bg-surface p-5"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <h2 id="fl-traders" className="m-0 text-[17px] font-extrabold">
+                    {t("following.traders")}
+                  </h2>
+                  <span className="text-[12.5px] font-bold text-ink-2 tabular-nums">
+                    {t("following.count", { n: d.traders.length, limit: d.limit })}
+                  </span>
+                </div>
+                <ul className="m-0 flex list-none flex-col gap-2 p-0">
                   {d.traders.map((tr) => (
                     <li
                       key={tr.address}
-                      className="flex flex-col gap-2 border-b border-border pb-3 last:border-b-0"
+                      className={`flex flex-col gap-1.5 rounded-[14px] px-3 py-2.5 ${
+                        tr.copying
+                          ? "border-[1.5px] border-accent bg-accent-tint"
+                          : "border border-border"
+                      }`}
                     >
                       <div className="flex items-center gap-3">
-                        <Avatar address={tr.address} />
-                        <div className="flex min-w-0 flex-1 flex-col">
-                          <Link
-                            href={`/traders/${tr.address}`}
-                            className="truncate font-bold tabular-nums text-ink"
-                          >
+                        <Avatar address={tr.address} size="sm" />
+                        <Link
+                          href={`/traders/${tr.address}`}
+                          className="flex min-w-0 flex-1 flex-col text-ink no-underline"
+                        >
+                          <strong className="truncate text-sm tabular-nums">
                             {tr.displayName ?? addr(tr.address)}
-                          </Link>
+                          </strong>
                           <span className="text-xs text-muted">
                             {tr.lastEventAt === null
                               ? t("following.none")
                               : t("following.last", { when: ago(tr.lastEventAt) })}
                           </span>
-                        </div>
+                        </Link>
                         {tr.copying ? (
-                          <span className="rounded-full bg-pos-bg px-2.5 py-1 text-xs font-bold text-pos">
+                          <span className="inline-flex h-6 items-center rounded-full bg-pos-bg px-2 text-[11.5px] font-extrabold text-pos">
                             {t("following.copying")}
                           </span>
-                        ) : null}
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={follow.isPending}
+                            onClick={() => {
+                              follow.mutate({ address: tr.address, on: false });
+                            }}
+                            className="min-h-9 rounded-[10px] px-2.5 text-xs font-bold text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-60"
+                          >
+                            {t("following.unfollow")}
+                          </button>
+                        )}
                       </div>
                       {tr.newMarkets.length === 0 ? null : (
-                        <p className="m-0 text-xs text-warn">
+                        <p className="m-0 pl-12 text-xs text-warn">
                           {t("following.newMarkets", {
                             markets: tr.newMarkets.map(base).join(", "),
                           })}
                         </p>
                       )}
-                      <Button
-                        variant="secondary"
-                        className="self-start"
-                        disabled={follow.isPending}
-                        onClick={() => {
-                          follow.mutate({ address: tr.address, on: false });
-                        }}
-                      >
-                        {t("following.unfollow")}
-                      </Button>
                     </li>
                   ))}
                 </ul>
-              </Card>
-              <Card title={t("following.alertsTitle")}>
-                <p className="m-0 text-sm text-ink-2">{t("following.alertsBody")}</p>
+              </section>
+
+              <section
+                aria-labelledby="fl-changes"
+                className="flex min-w-0 flex-col gap-2.5 rounded-card border border-border bg-surface px-2 pt-5 pb-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2.5 px-3.5">
+                  <h2 id="fl-changes" className="m-0 text-[17px] font-extrabold">
+                    {t("following.changes")}
+                  </h2>
+                  <span className="text-[12.5px] font-semibold text-ink-2 tabular-nums">
+                    {t("following.checked", {
+                      time: formatTime(q.dataUpdatedAt),
+                      minutes: Math.round(d.checkedEveryMs / 60_000),
+                    })}
+                  </span>
+                </div>
+                {d.events.length === 0 ? (
+                  <EmptyState title={t("following.none")} />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm tabular-nums">
+                      <thead>
+                        <tr className="text-xs font-bold text-ink-2">
+                          {(["when", "trader", "change", "market"] as const).map((c) => (
+                            <th
+                              key={c}
+                              className="border-b border-border px-3.5 py-2.5 font-bold whitespace-nowrap"
+                            >
+                              {t(`following.cols.${c}`)}
+                            </th>
+                          ))}
+                          <th className="border-b border-border px-3.5 py-2.5 text-right font-bold whitespace-nowrap">
+                            {t("following.cols.size")}
+                          </th>
+                          <th className="border-b border-border px-3.5 py-2.5 font-bold whitespace-nowrap">
+                            {t("following.cols.sodex")}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {d.events.map((e) => {
+                          const opening =
+                            e.kind === "open" || e.kind === "add" || e.kind === "flip";
+                          return (
+                            <tr key={`${e.address}-${e.at}-${e.coin}`}>
+                              <td className="border-b border-surface-2 px-3.5 py-3 whitespace-nowrap text-ink-2">
+                                {shortWhen(e.at)}
+                              </td>
+                              <td className="border-b border-surface-2 px-3.5 py-3 font-bold whitespace-nowrap">
+                                {addr(e.address)}
+                              </td>
+                              <td className="border-b border-surface-2 px-3.5 py-3 whitespace-nowrap">
+                                <span
+                                  className={`inline-flex h-[26px] items-center rounded-full px-2.5 text-xs font-extrabold ${changeChip(e)}`}
+                                >
+                                  <EventChange e={e} plain />
+                                </span>
+                              </td>
+                              <td className="border-b border-surface-2 px-3.5 py-3 font-bold whitespace-nowrap">
+                                {e.market === null ? e.coin : base(e.market)}
+                              </td>
+                              <td
+                                className={`border-b border-surface-2 px-3.5 py-3 text-right whitespace-nowrap ${opening ? "" : "text-ink-2"}`}
+                              >
+                                {usd(opening ? e.notional : dec(e.notional).neg().toString(), true)}
+                              </td>
+                              <td className="border-b border-surface-2 px-3.5 py-3 font-bold whitespace-nowrap">
+                                {e.market === null ? (
+                                  <span className="text-muted">{t("following.notListed")}</span>
+                                ) : (
+                                  <span className="text-pos">{t("following.listed")}</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <p className="m-0 px-3.5 text-xs text-muted">{t("following.grouped")}</p>
+              </section>
+            </div>
+
+            <section
+              aria-labelledby="fl-alerts"
+              className="flex flex-col gap-3.5 rounded-card border border-border bg-surface px-[22px] py-5"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col gap-1">
+                  <h2 id="fl-alerts" className="m-0 text-[17px] font-extrabold">
+                    {t("following.alertsTitle")}
+                  </h2>
+                  <p className="m-0 text-[13.5px] leading-normal text-ink-2">
+                    {t("following.alertsBody")}
+                  </p>
+                </div>
                 {d.bigMoveAlerts ? (
                   <Switch
                     label={alerts.on === true ? t("following.on") : t("following.off")}
@@ -156,76 +289,13 @@ export function FollowingPage() {
                       alerts.set.mutate(enabled);
                     }}
                   />
-                ) : (
-                  <p className="m-0 text-sm text-muted">{t("following.alertsOff")}</p>
-                )}
-                <p className="m-0 text-xs text-muted">{t("following.alertsWhere")}</p>
-              </Card>
-            </div>
-
-            <Card title={t("following.changes")}>
-              <p className="m-0 -mt-2 text-sm text-ink-2">
-                {t("following.checked", {
-                  time: formatDateTime(q.dataUpdatedAt),
-                  minutes: Math.round(d.checkedEveryMs / 60_000),
-                })}
-              </p>
-              {d.events.length === 0 ? (
-                <EmptyState title={t("following.none")} />
-              ) : (
-                <div className="-mx-5 overflow-x-auto px-5">
-                  <table className="w-full min-w-[640px] text-left text-sm">
-                    <thead className="text-xs text-muted">
-                      <tr>
-                        <th className="py-2 font-semibold">{t("following.cols.when")}</th>
-                        <th className="py-2 font-semibold">{t("following.cols.trader")}</th>
-                        <th className="py-2 font-semibold">{t("following.cols.change")}</th>
-                        <th className="py-2 font-semibold">{t("following.cols.market")}</th>
-                        <th className="py-2 text-right font-semibold">
-                          {t("following.cols.size")}
-                        </th>
-                        <th className="py-2 text-right font-semibold">
-                          {t("following.cols.sodex")}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {d.events.map((e) => {
-                        const opening = e.kind === "open" || e.kind === "add" || e.kind === "flip";
-                        return (
-                          <tr
-                            key={`${e.address}-${e.at}-${e.coin}`}
-                            className="border-t border-border"
-                          >
-                            <td className="py-2 whitespace-nowrap tabular-nums">
-                              {formatDateTime(e.at)}
-                            </td>
-                            <td className="py-2 tabular-nums">{addr(e.address)}</td>
-                            <td className="py-2">
-                              <EventChange e={e} />
-                            </td>
-                            <td className="py-2">{e.market === null ? e.coin : base(e.market)}</td>
-                            <td
-                              className={`py-2 text-right tabular-nums ${opening ? "" : "text-ink-2"}`}
-                            >
-                              {usd(opening ? e.notional : dec(e.notional).neg().toString(), true)}
-                            </td>
-                            <td className="py-2 text-right">
-                              {e.market === null ? (
-                                <span className="text-muted">{t("following.notListed")}</span>
-                              ) : (
-                                <span className="text-pos">{t("following.listed")}</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                ) : null}
+              </div>
+              {d.bigMoveAlerts ? null : (
+                <p className="m-0 text-sm text-muted">{t("following.alertsOff")}</p>
               )}
-              <p className="m-0 text-xs text-muted">{t("following.grouped")}</p>
-            </Card>
+              <p className="m-0 text-xs text-muted">{t("following.alertsWhere")}</p>
+            </section>
           </div>
         )}
       </div>
