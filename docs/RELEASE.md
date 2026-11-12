@@ -1,6 +1,6 @@
 # Release: người dùng gõ "release" → PM tạo tag → GitHub build → trả tag
 
-**Trạng thái:** đã duyệt (DEC-TBD-release-tags, 2026-11-12). Thay phần deploy bằng `deploy.yml` của DEC-70.
+**Trạng thái:** đã duyệt (DEC-174, 2026-11-12). Thay phần deploy bằng `deploy.yml` của DEC-70.
 
 GitHub chỉ **build và push image**. **Deploy lên prod vẫn do người dùng chạy** (tiền thật trên mainnet).
 
