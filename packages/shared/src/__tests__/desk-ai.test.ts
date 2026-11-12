@@ -100,7 +100,8 @@ describe("Desk AI scope", () => {
   });
 
   it("keeps questions about the user's bots, safety and creating a bot", () => {
-    expect(intentOf("Why did I lose money on ETH Volume Farm?")).toBe("general");
+    expect(intentOf("Why did I lose money on ETH Volume Farm?")).toBe("loss");
+    expect(intentOf("How is ETH Volume Farm doing?")).toBe("general");
     expect(intentOf("Is my money safe?")).toBe("safety");
     expect(intentOf("Start a bot for me")).toBe("create");
   });

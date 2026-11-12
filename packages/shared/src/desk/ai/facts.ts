@@ -8,6 +8,8 @@ export const DESK_AI_CONFIG = {
   promptVersion: "desk-ai-v1",
   /** Câu hỏi mỗi user mỗi ngày (DEC-165b); báo cáo sáng không tính. */
   dailyQuestions: 20,
+  /** Bot archived trong bấy nhiêu ngày gần nhất vẫn vào fact của Desk AI (DEC-193). */
+  archivedDays: 30,
   /** Lưu chat (DEC-165c). */
   retentionDays: 90,
   /** Giờ địa phương có báo cáo sáng (DEC-165d). */

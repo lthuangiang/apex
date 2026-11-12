@@ -58,8 +58,11 @@
   --spacing-tap: var(--tap-min);
   --shadow-accent: var(--shadow-accent);
   --shadow-float: var(--shadow-float);
+  --shadow-card: var(--shadow-card);
   --font-sans: var(--font-sans);
   --background-image-hero: var(--hero);
+  --background-image-ai-mark: var(--ai-mark);
+  --color-warn-border: var(--warn-border);
 }
 
 @layer base {
