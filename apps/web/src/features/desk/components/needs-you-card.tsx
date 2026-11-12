@@ -24,7 +24,7 @@ const factOf = (item: Item, name: string): string | null =>
 
 const snoozeSchema = z.object({ id: z.string(), snoozedUntil: z.string() });
 
-function useWhatif(item: Item) {
+function useWhatif(item: Item, checkedAt: string) {
   const qc = useQueryClient();
   const key = useRef(crypto.randomUUID());
   const start = useMutation({
@@ -32,11 +32,17 @@ function useWhatif(item: Item) {
       api("POST", `/api/v1/desk/needs-you/${item.id}/whatif`, whatIfViewSchema, {
         idempotencyKey: key.current,
       }),
+    // Lần bấm sau là một yêu cầu mới (khoá cũ trả lại đúng phản hồi cũ đã lưu).
+    onSettled: () => {
+      key.current = crypto.randomUUID();
+    },
   });
-  const { mutate, isIdle } = start;
+  const { mutate, isPending } = start;
+  // Trang chủ không còn so sánh hợp lệ cho việc này (chưa có, tin hàng đợi bị mất, hoặc lần trước lỗi đã lâu): bấm
+  // Compare lại mỗi lần trang chủ tải lại (`checkedAt` đổi), không chỉ lần đầu, để không chờ mãi một job đã mất.
   useEffect(() => {
-    if (item.whatif === null && isIdle) mutate();
-  }, [item.whatif, isIdle, mutate]);
+    if (item.whatif === null && !isPending) mutate();
+  }, [item.whatif, checkedAt, isPending, mutate]);
   const id = item.whatif?.id ?? start.data?.id;
   const poll = useQuery({
     queryKey: ["desk", "whatif", id],
@@ -149,10 +155,10 @@ function WhatIfRows({ w, failed }: { w: WhatIfView | null; failed: boolean }) {
   );
 }
 
-export function NeedsYouCard({ item }: { item: Item }) {
+export function NeedsYouCard({ item, checkedAt }: { item: Item; checkedAt: string }) {
   const t = useTranslations("desk.whatif");
   const qc = useQueryClient();
-  const { w, failed } = useWhatif(item);
+  const { w, failed } = useWhatif(item, checkedAt);
   const later = useRef(crypto.randomUUID());
   const snooze = useMutation({
     mutationFn: () =>
