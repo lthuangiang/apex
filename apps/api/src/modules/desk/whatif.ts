@@ -5,6 +5,7 @@ import {
   deskApplies,
   deskItems,
   deskWhatifs,
+  goals,
   outbox,
 } from "@drift/db";
 import {
@@ -12,10 +13,15 @@ import {
   applyPatch,
   botReviewResultSchema,
   ErrorCode,
+  goalGauge,
   optionsFor,
   pickOption,
   Strategy,
   WHATIF_CONFIG,
+  dec,
+  type ConfigPatch,
+  type DeskHomeView,
+  type MarginTier,
   type NeedsYouRule,
   type RiskInput,
   type WhatIfOptionResult,
@@ -23,9 +29,10 @@ import {
 } from "@drift/shared";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 
+import { riskStatusOf } from "../account/service";
 import { newVersion, type BotDeps } from "../bots/service";
 
-import { stopCheckOf } from "./needs-you";
+import { needsYou, stopCheckOf, type NeedsYouDeps } from "./needs-you";
 
 // AI Desk B+ M2 (DEC-166): so sánh 2–3 phương án cho một việc "Needs you" và Apply thành version mới "AI suggested".
 // API sinh phương án (patch config), worker `backtest` tính kết quả 7 ngày (replay lệnh thật / backtest nến). Apply đi
@@ -104,22 +111,120 @@ async function reviewBest(deps: BotDeps, botId: string) {
   return suggestion === "strong" ? parsed.data.best.params : null;
 }
 
-function view(w: typeof deskWhatifs.$inferSelect, rule: NeedsYouRule): WhatIfView {
+/** Bot + config của đúng version đã so + bậc margin SoDEX: để ghi phương án bằng lời (đòn bẩy, stop % giá). */
+interface ViewContext {
+  bot: WhatIfView["bot"];
+  config: Record<string, unknown> | null;
+  tiers: readonly MarginTier[] | undefined;
+}
+
+async function contextOf(deps: BotDeps, botId: string, version: number): Promise<ViewContext> {
+  const [row] = await deps.db
+    .select({ b: bots, config: botVersions.config })
+    .from(bots)
+    .leftJoin(botVersions, and(eq(botVersions.botId, bots.id), eq(botVersions.version, version)))
+    .where(eq(bots.id, botId))
+    .limit(1);
+  if (row === undefined) throw new AppError(ErrorCode.botNotFound, "Bot not found.");
+  const tiers = (await deps.rest.getPerpsSymbols()).find(
+    (s) => s.name === row.b.market,
+  )?.marginTiers;
+  return {
+    bot: { name: row.b.name, strategy: row.b.strategy, market: row.b.market, state: row.b.state },
+    config: (row.config as Record<string, unknown> | null) ?? null,
+    tiers,
+  };
+}
+
+function displayOf(ctx: ViewContext, patch: ConfigPatch): WhatIfView["options"][number]["display"] {
+  if (ctx.config === null) return null;
+  const config = applyPatch(ctx.config, patch);
+  const s = stopCheckOf(ctx.bot.strategy, config, ctx.tiers);
+  const leverage = typeof config.leverage === "number" ? config.leverage : null;
+  return {
+    leverage,
+    stopPct: s === null ? null : dec(s.stopDistance).mul(100).toDecimalPlaces(2).toString(),
+  };
+}
+
+function view(
+  w: typeof deskWhatifs.$inferSelect,
+  rule: NeedsYouRule,
+  ctx: ViewContext,
+): WhatIfView {
   const options = w.options as WhatIfOptionResult[];
   return {
     id: w.id,
     itemId: w.itemId,
     botId: w.botId,
+    bot: ctx.bot,
     rule,
     status: w.status,
     source: w.source,
     windowFrom: w.windowFrom.toISOString(),
     windowTo: w.windowTo.toISOString(),
     botVersion: w.botVersion,
-    options,
+    options: options.map((o) => ({ ...o, display: displayOf(ctx, o.patch) })),
     pick: w.status === "done" ? pickOption(rule, options) : null,
     error: w.error,
   };
+}
+
+const viewOf = async (deps: BotDeps, w: typeof deskWhatifs.$inferSelect, rule: NeedsYouRule) =>
+  view(w, rule, await contextOf(deps, w.botId, w.botVersion));
+
+/**
+ * Trang chủ B+ (M3): việc "Needs you" kèm so sánh mới nhất cho đúng việc + version bot + fingerprint (job còn trong
+ * `REUSE_MS`); không có thì `whatif = null` và web bấm Compare thay user (chỉ tính, không đổi bot).
+ */
+export async function deskHome(
+  deps: NeedsYouDeps & BotDeps,
+  userId: string,
+): Promise<DeskHomeView> {
+  const base = await needsYou(deps, userId);
+  const now = deps.now().getTime();
+  const items = await Promise.all(
+    base.items.map(async (item) => {
+      const [row] = await deps.db
+        .select({
+          w: deskWhatifs,
+          fingerprint: deskItems.fingerprint,
+          version: botVersions.version,
+        })
+        .from(deskWhatifs)
+        .innerJoin(deskItems, eq(deskItems.id, deskWhatifs.itemId))
+        .innerJoin(bots, eq(bots.id, deskWhatifs.botId))
+        .innerJoin(botVersions, eq(botVersions.id, bots.activeVersionId))
+        .where(
+          and(
+            eq(deskWhatifs.itemId, item.id),
+            gte(deskWhatifs.createdAt, new Date(now - REUSE_MS)),
+          ),
+        )
+        .orderBy(desc(deskWhatifs.createdAt))
+        .limit(1);
+      const fresh =
+        row !== undefined &&
+        row.w.botVersion === row.version &&
+        row.w.itemFingerprint === row.fingerprint;
+      return { ...item, whatif: fresh ? await viewOf(deps, row.w, item.rule) : null };
+    }),
+  );
+  const [g] = await deps.db.select().from(goals).where(eq(goals.userId, userId)).limit(1);
+  const risk = g === undefined ? null : await riskStatusOf(deps, userId);
+  const goal =
+    g === undefined
+      ? null
+      : {
+          goal: g.goal,
+          ...goalGauge(
+            { capital: g.capital, maxDrop: g.maxDrop },
+            risk === null
+              ? null
+              : { peakEquity: risk.status.peakEquity, equity: risk.status.equity },
+          ),
+        };
+  return { ...base, items, goal };
 }
 
 /** Compare: dùng lại job còn mới cho đúng việc + version, không thì sinh phương án và xếp job cho worker. */
@@ -145,7 +250,7 @@ export async function startWhatif(
     )
     .orderBy(desc(deskWhatifs.createdAt))
     .limit(1);
-  if (recent !== undefined) return view(recent, item.rule);
+  if (recent !== undefined) return viewOf(deps, recent, item.rule);
 
   const config = bot.config as Record<string, unknown>;
   const options = optionsFor({
@@ -186,7 +291,7 @@ export async function startWhatif(
       await tx.insert(outbox).values({ topic: "backtest.run", payload: { whatifId: row.id } });
     return row;
   });
-  return view(w, item.rule);
+  return viewOf(deps, w, item.rule);
 }
 
 export async function whatifView(deps: BotDeps, userId: string, id: string): Promise<WhatIfView> {
@@ -197,7 +302,7 @@ export async function whatifView(deps: BotDeps, userId: string, id: string): Pro
     .where(and(eq(deskWhatifs.id, id), eq(deskWhatifs.userId, userId)))
     .limit(1);
   if (row === undefined) throw new AppError(ErrorCode.notFound, "Comparison not found.");
-  return view(row.w, row.rule);
+  return viewOf(deps, row.w, row.rule);
 }
 
 /**

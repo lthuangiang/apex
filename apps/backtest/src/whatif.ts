@@ -30,13 +30,13 @@ import { loadBacktestData, loadCandles, Unavailable, userBuilderRate, type RunDe
 
 /** Nến cần sau lượt cuối: replay tối đa 15 phút sau khi vào lệnh. */
 const TAIL_MS = 20 * 60_000;
-const BACKTEST_INTERVAL = "5m";
+export const BACKTEST_INTERVAL = "5m";
 
 type Options = WhatIfOptionResult[];
 
-const usd = (n: number): string => dec(n.toFixed(6)).toDecimalPlaces(2).toString();
+export const usd = (n: number): string => dec(n.toFixed(6)).toDecimalPlaces(2).toString();
 
-function parseOrNull(strategy: string, config: unknown): Record<string, unknown> | null {
+export function parseOrNull(strategy: string, config: unknown): Record<string, unknown> | null {
   const entry = (
     STRATEGIES as Record<
       string,
@@ -47,14 +47,21 @@ function parseOrNull(strategy: string, config: unknown): Record<string, unknown>
   return r?.success === true ? (r.data as Record<string, unknown>) : null;
 }
 
-async function replayVolumeFarm(
+/** Lượt thật của Volume Builder trong [from, to) + nến 1 phút + phí thật; ít lượt / thiếu nến → lý do. */
+export async function volumeReplayInputs(
   deps: RunDeps,
   bot: typeof bots.$inferSelect,
-  config: Record<string, unknown>,
-  options: Options,
   from: number,
   to: number,
-): Promise<Options> {
+): Promise<
+  | {
+      trades: ReturnType<typeof reviewTrades>;
+      candles: Awaited<ReturnType<typeof loadCandles>>;
+      fee: { maker: number; taker: number };
+    }
+  | "not_enough_trades"
+  | "no_data"
+> {
   const rows = await deps.db
     .select({
       tag: orders.tag,
@@ -87,8 +94,7 @@ async function replayVolumeFarm(
     at: r.at.getTime(),
   }));
   const trades = reviewTrades(fs);
-  if (trades.length < WHATIF_CONFIG.minTrades)
-    return options.map((o) => ({ ...o, outcome: null, unavailable: "not_enough_trades" }));
+  if (trades.length < WHATIF_CONFIG.minTrades) return "not_enough_trades";
   const first = trades[0]?.t0 ?? from;
   const last = trades.at(-1)?.t0 ?? to;
   const candles = await loadCandles(
@@ -99,8 +105,7 @@ async function replayVolumeFarm(
     Math.floor(first / 60_000) * 60_000,
     last + TAIL_MS,
   );
-  if (candles.length === 0)
-    return options.map((o) => ({ ...o, outcome: null, unavailable: "no_data" }));
+  if (candles.length === 0) return "no_data";
   const builder = feeRateToFraction(
     await userBuilderRate(deps.db, bot.userId, bot.strategy),
   ).toNumber();
@@ -109,6 +114,21 @@ async function replayVolumeFarm(
     maker: pct(SODEX_BASE_FEE_PCT.perps.maker) + builder,
     taker: pct(SODEX_BASE_FEE_PCT.perps.taker) + builder,
   });
+  return { trades, candles, fee };
+}
+
+async function replayVolumeFarm(
+  deps: RunDeps,
+  bot: typeof bots.$inferSelect,
+  config: Record<string, unknown>,
+  options: Options,
+  from: number,
+  to: number,
+): Promise<Options> {
+  const input = await volumeReplayInputs(deps, bot, from, to);
+  if (typeof input === "string")
+    return options.map((o) => ({ ...o, outcome: null, unavailable: input }));
+  const { trades, candles, fee } = input;
   return options.map((o) => {
     const parsed = volumeFarmSchema.safeParse(applyPatch(config, o.patch));
     if (!parsed.success) return { ...o, outcome: null, unavailable: "invalid_config" };

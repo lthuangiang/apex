@@ -162,6 +162,13 @@
       "when": 1794461377764,
       "tag": "0022_desk_whatif",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794464296129,
+      "tag": "0023_desk_record",
+      "breakpoints": true
     }
   ]
 }

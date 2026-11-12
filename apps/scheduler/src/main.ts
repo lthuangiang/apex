@@ -10,6 +10,7 @@ import { getAddress } from "viem";
 import { z } from "zod";
 
 import { reconcileDay, snapshotBuilderBalances } from "./builder-revenue";
+import { queueDueRecords } from "./desk-record";
 import { leaderboardDue, noteMinHoldChanges, runLeaderboard } from "./leaderboard";
 import { computeDailyStats, utcDate } from "./market-stats";
 import { snapshotAndCheck } from "./risk";
@@ -181,6 +182,13 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
       void tick().catch((error: unknown) => {
         log.error({ err: error }, "tick failed");
       });
+      void queueDueRecords(db, Date.now())
+        .then((n) => {
+          if (n > 0) log.info({ queued: n }, "desk records queued");
+        })
+        .catch((error: unknown) => {
+          log.error({ err: error }, "desk record tick failed");
+        });
       void leaderboardTick().catch((error: unknown) => {
         log.error({ err: error }, "leaderboard tick failed");
       });
