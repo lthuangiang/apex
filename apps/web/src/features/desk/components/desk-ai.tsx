@@ -154,7 +154,7 @@ export function DeskAiPanel() {
   useEffect(() => {
     const el = scroller.current;
     if (el === null || (turns.length === 0 && !ask.isPending && !newBot)) return;
-    el.scrollTo?.({ top: el.scrollHeight, behavior: "smooth" });
+    el.scrollTop = el.scrollHeight;
   }, [turns.length, ask.isPending, newBot]);
 
   return (
@@ -171,7 +171,7 @@ export function DeskAiPanel() {
       </div>
       <div
         ref={scroller}
-        className="flex max-h-[60vh] min-h-[200px] flex-col gap-3 overflow-y-auto px-[18px] py-4 text-[14.5px] leading-relaxed xl:max-h-none xl:flex-1"
+        className="flex max-h-[60vh] min-h-[200px] scroll-smooth flex-col gap-3 overflow-y-auto px-[18px] py-4 text-[14.5px] leading-relaxed xl:max-h-none xl:flex-1"
       >
         {brief.isPending ? (
           <Skeleton className="h-12 w-full rounded-[12px]" />
