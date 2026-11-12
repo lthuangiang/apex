@@ -173,7 +173,7 @@ function view(
 const viewOf = async (deps: BotDeps, w: typeof deskWhatifs.$inferSelect, rule: NeedsYouRule) =>
   view(w, rule, await contextOf(deps, w.botId, w.botVersion));
 
-/** Thẻ Mục tiêu (DEC-TBD-desk-goal-record): goals + drawdown Risk Center; chưa có goals → null. */
+/** Thẻ Mục tiêu (DEC-177): goals + drawdown Risk Center; chưa có goals → null. */
 export async function goalOf(deps: BotDeps, userId: string): Promise<DeskHomeView["goal"]> {
   const [g] = await deps.db.select().from(goals).where(eq(goals.userId, userId)).limit(1);
   const risk = g === undefined ? null : await riskStatusOf(deps, userId);
