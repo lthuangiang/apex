@@ -9,7 +9,12 @@ import {
   liveCopyBots,
   type Db,
 } from "@drift/db";
-import { monthPnlOf, toLeaderFill, type HyperliquidClient } from "@drift/hyperliquid";
+import {
+  toLeaderFill,
+  windowOf,
+  type HlLeaderboardRow,
+  type HyperliquidClient,
+} from "@drift/hyperliquid";
 import {
   classify,
   coinIndex,
@@ -28,7 +33,42 @@ import { utcDate } from "./market-stats";
 // Ví đang được copy hoặc theo dõi luôn được tính lại (minHoldFilter hằng ngày), kể cả khi rơi khỏi top.
 
 const DAY = 86_400_000;
-export const LEADERBOARD_CANDIDATES = 200;
+export const LEADERBOARD_CANDIDATES = 300;
+
+/**
+ * Chọn ứng viên (DEC-171): top theo PnL toàn là cá mập gom vị thế bằng hàng nghìn fill nhỏ, gần như
+ * không ai qua bộ lọc. Lọc sàn an toàn rồi xếp theo ROI 30 ngày để ra trader vừa sức, giao dịch đều.
+ */
+export const CANDIDATE_FLOOR = {
+  minAccountValue: "25000",
+  maxAccountValue: "10000000",
+  minMonthPnl: "10000",
+} as const;
+/** Trang fill đầu (2.000 fill) gói trong chừng này thì dừng đọc: ví sẽ chạm trần, gần như chắc bị ẩn. */
+export const EARLY_STOP_SPAN_MS = 86_400_000;
+
+export interface Candidate {
+  row: HlLeaderboardRow;
+  /** PnL 30 ngày theo leaderboard (USD). */
+  pnl: string;
+}
+
+/** Ứng viên đêm nay: qua sàn an toàn, xếp theo ROI 30 ngày giảm dần (hoà thì PnL lớn hơn trước). Hàm thuần. */
+export function pickCandidates(rows: readonly HlLeaderboardRow[], limit: number): Candidate[] {
+  const out: { row: HlLeaderboardRow; pnl: string; roi: string }[] = [];
+  for (const row of rows) {
+    const month = windowOf(row, "month");
+    const week = windowOf(row, "week");
+    if (month === null || week === null) continue;
+    const av = dec(row.accountValue);
+    if (av.lt(CANDIDATE_FLOOR.minAccountValue) || av.gt(CANDIDATE_FLOOR.maxAccountValue)) continue;
+    if (dec(month.pnl).lt(CANDIDATE_FLOOR.minMonthPnl)) continue;
+    if (!dec(week.pnl).gt(0)) continue;
+    out.push({ row, pnl: month.pnl, roi: month.roi });
+  }
+  out.sort((a, b) => dec(b.roi).cmp(dec(a.roi)) || dec(b.pnl).cmp(dec(a.pnl)));
+  return out.slice(0, limit).map(({ row, pnl }) => ({ row, pnl }));
+}
 /** Số sự kiện gần nhất ghi cho Trader profile của mỗi ví (ví chưa ai theo dõi chỉ có dữ liệu tới lượt đêm). */
 export const PROFILE_EVENTS = 50;
 
@@ -97,15 +137,8 @@ export async function runLeaderboard(deps: LeaderboardDeps): Promise<Leaderboard
 
   let addresses: string[];
   try {
-    const rows = await deps.hl.leaderboard();
-    const top = rows
-      .map((r) => ({ r, pnl: monthPnlOf(r) }))
-      .filter(
-        (x): x is { r: (typeof rows)[number]; pnl: string } => x.pnl !== null && dec(x.pnl).gt(0),
-      )
-      .sort((a, b) => dec(b.pnl).cmp(dec(a.pnl)))
-      .slice(0, limit);
-    for (const { r, pnl } of top) {
+    const top = pickCandidates(await deps.hl.leaderboard(), limit);
+    for (const { row: r, pnl } of top) {
       const address = r.ethAddress.toLowerCase();
       const values = {
         displayName: r.displayName ?? null,
@@ -118,7 +151,7 @@ export async function runLeaderboard(deps: LeaderboardDeps): Promise<Leaderboard
         .values({ source: "hyperliquid", address, ...values })
         .onConflictDoUpdate({ target: [leaderWallets.source, leaderWallets.address], set: values });
     }
-    addresses = top.map((x) => x.r.ethAddress.toLowerCase());
+    addresses = top.map((x) => x.row.ethAddress.toLowerCase());
   } catch (error) {
     const r: LeaderboardResult = { status: "failed", candidates: 0, computed: 0, failed: [] };
     await finish(deps, date, r, error instanceof Error ? error.message : "Leaderboard failed");
@@ -167,6 +200,7 @@ export async function runLeaderboard(deps: LeaderboardDeps): Promise<Leaderboard
         from,
         LEADER_STATS.fillCap,
         "background",
+        EARLY_STOP_SPAN_MS,
       );
       const funding = await deps.hl.fundingSince(address, from, "background");
       const leaderFills = fills.map((f) => toLeaderFill(f, address));

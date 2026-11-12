@@ -53,9 +53,11 @@ export function TradersPage() {
       <div className="flex flex-col gap-5">
         <PageHead title={t("list.title")} subtitle={t("list.subtitle")} />
         <p className="m-0 text-sm font-semibold text-ink-2">
-          {data?.updatedOn == null
-            ? t("list.notUpdated")
-            : t("list.updated", { date: data.updatedOn })}
+          {data?.checking != null
+            ? t("list.checking", { done: data.checking.done, total: data.checking.total })
+            : data?.updatedOn == null
+              ? t("list.notUpdated")
+              : t("list.updated", { date: data.updatedOn })}
         </p>
 
         {guideClosed ? null : (

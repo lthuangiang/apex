@@ -67,6 +67,11 @@ export const traderListSchema = z.object({
   hidden: z.number().int(),
   hiddenBy: z.record(z.enum(HIDDEN_REASONS), z.number().int()),
   items: z.array(traderCardSchema),
+  /**
+   * Chưa có lượt nào xong mà lượt đầu đang chạy (DEC-171): danh sách là các ví đã tính xong của lượt
+   * đó, `done` / `total` là tiến độ. null khi danh sách lấy từ lượt đã xong.
+   */
+  checking: z.object({ done: z.number().int(), total: z.number().int() }).nullable(),
 });
 export type TraderList = z.infer<typeof traderListSchema>;
 

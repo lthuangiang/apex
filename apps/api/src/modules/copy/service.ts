@@ -72,6 +72,23 @@ async function requireDesk(deps: CopyDeps, userId: string): Promise<void> {
     throw new AppError(ErrorCode.forbidden, "AI Desk is not enabled for this account.");
 }
 
+/** Lượt đang chạy mới nhất (khi chưa có lượt nào xong, Find traders hiện dần các ví đã tính của lượt này). */
+async function runningRun(
+  deps: CopyDeps,
+): Promise<{ date: string; done: number; total: number } | null> {
+  const [r] = await deps.bots.db
+    .select({
+      date: leaderboardRuns.date,
+      computed: leaderboardRuns.computed,
+      candidates: leaderboardRuns.candidates,
+    })
+    .from(leaderboardRuns)
+    .where(eq(leaderboardRuns.status, "running"))
+    .orderBy(desc(leaderboardRuns.date))
+    .limit(1);
+  return r === undefined ? null : { date: r.date, done: r.computed ?? 0, total: r.candidates ?? 0 };
+}
+
 async function lastOkRun(deps: CopyDeps): Promise<string | null> {
   const [r] = await deps.bots.db
     .select({ date: leaderboardRuns.date })
@@ -137,14 +154,18 @@ export async function listTraders(
   tab: TraderTab,
 ): Promise<TraderList> {
   await requireDesk(deps, userId);
-  const day = await lastOkRun(deps);
+  const okDay = await lastOkRun(deps);
+  // Đã có lượt xong: luôn hiện lượt đó (danh sách ổn định cả khi lượt đêm nay đang chạy). Chưa có: hiện dần lượt đầu.
+  const first = okDay === null ? await runningRun(deps) : null;
+  const day = okDay ?? first?.date ?? null;
   const empty: TraderList = {
     tab,
-    updatedOn: day,
+    updatedOn: okDay,
     candidates: 0,
     hidden: 0,
     hiddenBy: Object.fromEntries(HIDDEN_REASONS.map((r) => [r, 0])) as TraderList["hiddenBy"],
     items: [],
+    checking: first === null ? null : { done: first.done, total: first.total },
   };
   if (day === null) return empty;
   // Ví có trong leaderboard của lượt `day`. Ví đọc lỗi ở lượt đó giữ thống kê gần nhất trong 7 ngày (thẻ ghi ngày

@@ -38,7 +38,10 @@ const row = (address: string, pnl: string): HlLeaderboardRow => ({
   ethAddress: address,
   accountValue: "1000000",
   displayName: null,
-  windowPerformances: [["month", { pnl, roi: "0.1", vlm: "1" }]],
+  windowPerformances: [
+    ["week", { pnl: "100", roi: "0.01", vlm: "1" }],
+    ["month", { pnl, roi: "0.1", vlm: "1" }],
+  ],
 });
 
 /** `n` episode long BTC, mỗi cái giữ 2 giờ, lãi 10 (giữ đủ lâu và đủ nhiều để vào Steady). */
@@ -75,7 +78,7 @@ function deps(
   const hl: LeaderboardDeps["hl"] = {
     leaderboard: () =>
       Promise.resolve([
-        row("0xAAA0000000000000000000000000000000000001", "500"),
+        row("0xAAA0000000000000000000000000000000000001", "50000"),
         row("0xbbb0000000000000000000000000000000000002", "-5"),
       ]),
     fillsSince: () => Promise.resolve({ fills: steadyFills(25), capped: false }),

@@ -87,6 +87,31 @@ describe("Copy Trading v1", () => {
     expect(list).toMatchObject({ updatedOn: null, items: [], hidden: 0 });
   });
 
+  it("shows traders as they are checked while the very first run is still going", async () => {
+    const T9 = "0x9990000000000000000000000000000000000009";
+    await env.pool.query(
+      "insert into leaderboard_runs (date, status, candidates, computed) values ('2026-10-20', 'running', 300, 40)",
+    );
+    await env.pool.query(
+      "insert into leader_wallets (source, address) values ('hyperliquid', $1) on conflict do nothing",
+      [T9],
+    );
+    await env.pool.query(
+      `insert into leader_stats_daily (source, address, date, stats, hidden, tabs, steady_score, profit, typical_hold_ms, computed_at)
+       values ('hyperliquid', $1, '2026-10-20', $2, '{}', '{steady,top,long,all}', 8.5, '84120', 18000000, now())`,
+      [T9, JSON.stringify(stats())],
+    );
+    const { client } = await user("copy-first-run@example.com");
+    const list = traderListSchema.parse(
+      (await client.request("GET", "/api/v1/traders?tab=steady")).json(),
+    );
+    expect(list).toMatchObject({ updatedOn: null, checking: { done: 40, total: 300 } });
+    expect(list.items.map((i) => i.address)).toEqual([T9]);
+    await env.pool.query("delete from leader_stats_daily where address = $1", [T9]);
+    await env.pool.query("delete from leader_wallets where address = $1", [T9]);
+    await env.pool.query("delete from leaderboard_runs where date = '2026-10-20'");
+  });
+
   it("lists Steady traders from the last good run and counts hidden ones by reason", async () => {
     await seedTrader(T1, stats(), ["steady", "top", "long", "all"]);
     await seedTrader(
@@ -101,6 +126,7 @@ describe("Copy Trading v1", () => {
       (await client.request("GET", "/api/v1/traders?tab=steady")).json(),
     );
     expect(list.updatedOn).toBe("2026-10-27");
+    expect(list.checking).toBeNull();
     expect(list.items.map((i) => i.address)).toEqual([T1]);
     expect(list.items[0]).toMatchObject({ slot: "open", following: false });
     expect(list.items[0]?.tags).toEqual(
