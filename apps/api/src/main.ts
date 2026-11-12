@@ -10,6 +10,7 @@ import { smtpMailer } from "./lib/mailer";
 import { httpRecoClient } from "./lib/reco-client";
 import { httpSignerClient } from "./lib/signer-client";
 import { hyperliquidProvider } from "./modules/chart/hyperliquid";
+import { anthropicLlm } from "./modules/desk/llm";
 import { redisRateLimiter } from "./plugins/rate-limit";
 
 const config = loadApiConfig(process.env);
@@ -59,6 +60,7 @@ const app = await buildApp({
     appUrl: config.DRIFT_APP_URL,
     botApi: createBotApi({ token: config.DRIFT_TELEGRAM_BOT_TOKEN ?? "" }),
   },
+  deskLlm: config.DESK_AI_API_KEY === undefined ? null : anthropicLlm(config.DESK_AI_API_KEY),
   db,
   mailer: smtpMailer(config.SMTP_URL, config.MAIL_FROM),
   totpKey: Buffer.from(config.API_TOTP_ENC_KEY, "base64"),

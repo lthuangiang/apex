@@ -1,4 +1,10 @@
-import { AppError, ErrorCode, startPaperBodySchema, whatIfApplyBodySchema } from "@drift/shared";
+import {
+  AppError,
+  deskAiAskBodySchema,
+  ErrorCode,
+  startPaperBodySchema,
+  whatIfApplyBodySchema,
+} from "@drift/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
@@ -6,6 +12,7 @@ import { parseOrThrow } from "../../lib/http";
 import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 
+import { askDeskAi, deleteDeskAiHistory, deskAiBrief, deskAiHistory } from "./ai";
 import { needsYou, snoozeItem } from "./needs-you";
 import { recordView, switchBack } from "./record";
 import { deskBots, goLive, paperView, requireDesk, startPaper, type DeskDeps } from "./service";
@@ -118,6 +125,39 @@ export function registerDeskRoutes(app: FastifyInstance, deps: DeskDeps): void {
     return idempotent(deps.bots.db, request, reply, auth.userId, deps.bots.now(), async () => ({
       status: 201,
       body: await switchBack(deps.bots, auth.userId, id),
+    }));
+  });
+
+  // AI Desk B+ M5 (DEC-164, DEC-165): Desk AI. Chỉ đọc và viết lời quanh fact; không đổi bot, không gửi lệnh.
+  const ai = (traceId: string) => ({ ...deps.bots, llm: deps.llm, traceId });
+  app.get("/api/v1/desk/ai/brief", async (request) => {
+    const userId = requireAuth(request).userId;
+    await requireDesk(deps, userId);
+    return deskAiBrief(ai(request.id), userId);
+  });
+
+  app.post("/api/v1/desk/ai/ask", async (request, reply) => {
+    const auth = requireAuth(request);
+    const body = parseOrThrow(deskAiAskBodySchema, request.body);
+    await requireDesk(deps, auth.userId);
+    return idempotent(deps.bots.db, request, reply, auth.userId, deps.bots.now(), async () => ({
+      status: 200,
+      body: await askDeskAi(ai(request.id), auth.userId, body.question, body.conversationId),
+    }));
+  });
+
+  app.get("/api/v1/desk/ai/history", async (request) => {
+    const userId = requireAuth(request).userId;
+    await requireDesk(deps, userId);
+    return deskAiHistory(deps.bots, userId);
+  });
+
+  app.delete("/api/v1/desk/ai/history", async (request, reply) => {
+    const auth = requireAuth(request);
+    await requireDesk(deps, auth.userId);
+    return idempotent(deps.bots.db, request, reply, auth.userId, deps.bots.now(), async () => ({
+      status: 200,
+      body: await deleteDeskAiHistory(deps.bots, auth.userId),
     }));
   });
 }

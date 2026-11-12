@@ -28,6 +28,7 @@ import { generatePrivateKey, privateKeyToAddress } from "viem/accounts";
 import { buildApp, type AppDeps } from "../src/app";
 import type { Mail } from "../src/lib/mailer";
 import type { RecoClient } from "../src/lib/reco-client";
+import type { DeskLlm } from "../src/modules/desk/llm";
 import { memoryRateLimiter } from "../src/plugins/rate-limit";
 
 // Postgres thật qua Testcontainers, cùng image với docker compose.
@@ -55,7 +56,11 @@ export interface TestEnv {
 export const TEST_BUILDER_ID = 1645n;
 
 export async function startTestEnv(
-  options: { connectEnabled?: boolean; telegram?: AppDeps["telegram"] } = {},
+  options: {
+    connectEnabled?: boolean;
+    telegram?: AppDeps["telegram"];
+    deskLlm?: DeskLlm | null;
+  } = {},
 ): Promise<TestEnv> {
   const container = await new PostgreSqlContainer(POSTGRES_IMAGE).start();
   const url = container.getConnectionUri();
@@ -129,6 +134,7 @@ export async function startTestEnv(
     logLevel: "info",
     now: () => clock.now,
     ...(options.telegram === undefined ? {} : { telegram: options.telegram }),
+    deskLlm: options.deskLlm ?? null,
     logStream: new Writable({
       write(chunk: Buffer, _enc, done) {
         logs.push(chunk.toString());

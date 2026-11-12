@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { DESK_AI_FACT_KEYS } from "../desk/ai/facts";
 import { decimalStringSchema, isoDateTimeSchema, uuidSchema } from "../schemas";
 
 import { botSummarySchema } from "./bots";
@@ -262,3 +263,66 @@ export const deskRecordResultSchema = z.object({
   to: isoDateTimeSchema,
 });
 export type DeskRecordResult = z.infer<typeof deskRecordResultSchema>;
+
+/* AI Desk B+ M5 (DEC-164, DEC-165): Desk AI. Câu trả lời là lời LLM đã qua kiểm tra số, hoặc câu mẫu (web dịch). */
+export const deskAiFactSchema = z.object({
+  id: z.string(),
+  key: z.enum(DESK_AI_FACT_KEYS),
+  bot: z.string().nullable(),
+  value: z.string(),
+  unit: z.enum(["usdc", "pct", "x", "count", "text"]),
+  source: z.string(),
+});
+export const deskAiTemplateKeys = ["out_of_scope", "quota", "safety", "fallback", "brief"] as const;
+export const deskAiAnswerSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("text"), text: z.string(), facts: z.array(deskAiFactSchema) }),
+  z.object({
+    kind: z.literal("template"),
+    key: z.enum(deskAiTemplateKeys),
+    params: z.record(z.string(), z.union([z.string(), z.number()])),
+    facts: z.array(deskAiFactSchema),
+  }),
+]);
+export type DeskAiAnswer = z.infer<typeof deskAiAnswerSchema>;
+export const deskAiTurnSchema = z.object({
+  id: uuidSchema,
+  kind: z.enum(["question", "brief"]),
+  question: z.string().nullable(),
+  answer: deskAiAnswerSchema,
+  createdAt: isoDateTimeSchema,
+});
+export const deskAiAskBodySchema = z.object({
+  question: z.string().trim().min(1).max(500),
+  conversationId: uuidSchema.optional(),
+});
+export const deskAiAskViewSchema = z.object({
+  conversationId: uuidSchema,
+  turn: deskAiTurnSchema,
+  questionsLeft: z.number().int(),
+});
+export type DeskAiAskView = z.infer<typeof deskAiAskViewSchema>;
+export const deskAiBriefViewSchema = z.object({
+  /** false trước 08:00 giờ địa phương (chưa có báo cáo hôm nay). */
+  available: z.boolean(),
+  conversationId: uuidSchema.nullable(),
+  turn: deskAiTurnSchema.nullable(),
+  questionsLeft: z.number().int(),
+  /** false khi LLM tắt (không có key): mọi câu trả lời là câu mẫu. */
+  llm: z.boolean(),
+});
+export type DeskAiBriefView = z.infer<typeof deskAiBriefViewSchema>;
+export const deskAiHistoryViewSchema = z.object({
+  questionsToday: z.number().int(),
+  limit: z.number().int(),
+  conversations: z.array(
+    z.object({
+      id: uuidSchema,
+      kind: z.enum(["chat", "brief"]),
+      title: z.string(),
+      localDate: z.string(),
+      createdAt: isoDateTimeSchema,
+      turns: z.array(deskAiTurnSchema),
+    }),
+  ),
+});
+export type DeskAiHistoryView = z.infer<typeof deskAiHistoryViewSchema>;
