@@ -47,6 +47,7 @@ import {
 } from "@drift/shared";
 import {
   applyFill,
+  clOrdId,
   copyMarkets,
   copyPositions,
   fnv1a64,
@@ -1719,7 +1720,7 @@ export class Engine {
     );
     if (r.strategy === Strategy.copyTrade) {
       // Copy Trade nhiều market (DEC-163): đóng từng market bằng market reduce-only; clOrdID tất định theo thứ tự
-      // market trong config.
+      // market trong config, băm từ botId đầy đủ.
       if (close) {
         const positions = copyPositions(normalizeCopyState(r.config as CopyTradeConfig, r.state));
         const markets = copyMarkets(r.config as Record<string, unknown>);
@@ -1730,7 +1731,7 @@ export class Engine {
             {
               type: "place" as const,
               order: {
-                clOrdID: `${r.botId.slice(0, 8)}-close-${String(r.version)}-${String(i)}`,
+                clOrdID: clOrdId(r.botId, r.version, `close:${String(i)}`),
                 market,
                 engine: "perps" as const,
                 side: dec(size).isPositive() ? ("sell" as const) : ("buy" as const),
@@ -1754,7 +1755,9 @@ export class Engine {
     if (close && ledger !== undefined && !dec(ledger.position).isZero()) {
       const qty = dec(ledger.position).abs().toString();
       const engine = arb ? "perps" : this.#engineOf(r);
-      const id = `${r.botId.slice(0, 8)}-close-${String(r.version)}`;
+      // Băm botId đầy đủ (DEC-186): 8 ký tự đầu của uuidv7 là thời gian, nên bot tạo trong cùng ~65 s
+      // từng có chung mã "<8 ký tự>-close-1" và lệnh đóng của bot thứ hai bị bỏ qua (unique theo account + clOrdID).
+      const id = clOrdId(r.botId, r.version, "close");
       await this.#execute(
         r,
         [
@@ -1996,9 +1999,17 @@ export class Engine {
     )
       .map((x) => x.order)
       .filter((o) => gap(o.sodexAccountId));
-    const due = [...open, ...unconfirmed].filter(
-      (o) => now - (this.#openChecks.get(o.id) ?? 0) >= OPEN_CHECK_MS,
-    );
+    // Lệnh kiểm lâu nhất trước (chưa kiểm = 0), rồi lệnh cũ nhất (DEC-185). Xếp theo `submittedAt`
+    // không thôi thì ≥ OPEN_CHECK_BATCH lệnh vẫn treo trên SoDEX (bot đang pause giữ lệnh) chiếm hết suất mỗi vòng, và
+    // lệnh mới hơn (ví dụ lệnh đóng vị thế của bot vừa Stop) không bao giờ được đối soát: fill thật không được ghi.
+    const lastCheck = (o: { id: string }) => this.#openChecks.get(o.id) ?? 0;
+    const due = [...open, ...unconfirmed]
+      .filter((o) => now - lastCheck(o) >= OPEN_CHECK_MS)
+      .sort(
+        (a, b) =>
+          lastCheck(a) - lastCheck(b) ||
+          (a.submittedAt?.getTime() ?? 0) - (b.submittedAt?.getTime() ?? 0),
+      );
     if (due.length === 0) return;
     const accounts = new Map((await this.#accountsInShard(shard)).map((a) => [a.id, a]));
     let checked = 0;
