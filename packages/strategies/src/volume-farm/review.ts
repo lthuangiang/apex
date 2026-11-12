@@ -211,10 +211,14 @@ function holdOf(t: ReviewTrade, lo: number, hi: number): number {
   return lo + (hi - lo) * h;
 }
 
+/** Lý do lượt thoát trong replay: stop loss (lệnh SL gốc trên SoDEX), TP, early profit, hết giờ giữ, hết nến. */
+export type ReplayExit = "sl" | "tp" | "early" | "hold" | "end";
+
 interface Sim {
   /** Lãi giá (tỷ lệ của notional) và phí (tỷ lệ của notional, hai chiều). */
   gross: number;
   fee: number;
+  exit: ReplayExit;
 }
 
 /**
@@ -246,13 +250,13 @@ function simulate(
     const fav = t.long ? (h - t.entry) / t.entry : (t.entry - l) / t.entry;
     const adv = t.long ? (t.entry - l) / t.entry : (h - t.entry) / t.entry;
     const elapsed = (m + 60_000 - t.t0) / 1000;
-    if (adv >= sl) return { gross: -sl, fee: fee.maker + fee.taker };
-    if (fav >= tp) return { gross: tp, fee: rt };
-    if (elapsed >= p.earlyExitSecs && fav >= early) return { gross: early, fee: rt };
+    if (adv >= sl) return { gross: -sl, fee: fee.maker + fee.taker, exit: "sl" };
+    if (fav >= tp) return { gross: tp, fee: rt, exit: "tp" };
+    if (elapsed >= p.earlyExitSecs && fav >= early) return { gross: early, fee: rt, exit: "early" };
     if (elapsed >= hold)
-      return { gross: ((close - t.entry) / t.entry) * (t.long ? 1 : -1), fee: rt };
+      return { gross: ((close - t.entry) / t.entry) * (t.long ? 1 : -1), fee: rt, exit: "hold" };
   }
-  return { gross: ((lastClose - t.entry) / t.entry) * (t.long ? 1 : -1), fee: rt };
+  return { gross: ((lastClose - t.entry) / t.entry) * (t.long ? 1 : -1), fee: rt, exit: "end" };
 }
 
 /** Lãi / lỗ của từng lượt theo USDC: [phí − lãi giá, volume]. */
@@ -311,25 +315,23 @@ const sameParams = (a: ReviewParams, b: ReviewParams) =>
   a.maxHoldSecs === b.maxHoldSecs &&
   a.slMarginPct === b.slMarginPct;
 
-export function reviewVolumeFarm(input: {
-  config: VolumeFarmConfig;
-  fills: readonly ReviewFill[];
-  candles: readonly Candle[];
-  /** Phí mỗi chiều (tỷ lệ, đã gồm builder fee); thiếu fill taker thì dùng mức của sàn. */
-  fallbackFee: { maker: number; taker: number };
-  seed: number;
-}): ReviewResult {
-  const all = buildTrades(input.fills);
-  const trades = all.filter((t) => t.notional >= MIN_NOTIONAL).sort((a, b) => a.t0 - b.t0);
-  if (trades.length < REVIEW_MIN_TRADES)
-    return { status: "insufficient", trades: trades.length, minTrades: REVIEW_MIN_TRADES };
+/** Lượt dùng cho replay: ghép từ fill, bỏ lượt khớp lẻ vài USDC, xếp theo giờ vào. */
+export function reviewTrades(fills: readonly ReviewFill[]): ReviewTrade[] {
+  return buildTrades(fills)
+    .filter((t) => t.notional >= MIN_NOTIONAL)
+    .sort((a, b) => a.t0 - b.t0);
+}
 
-  // Phí thật của bot theo từng loại lệnh.
+/** Phí mỗi chiều thật của bot (tỷ lệ notional) theo maker / taker; thiếu loại nào thì dùng mức dự phòng. */
+export function realFeeRates(
+  fills: readonly ReviewFill[],
+  fallback: { maker: number; taker: number },
+): { maker: number; taker: number } {
   let mf = 0;
   let mv = 0;
   let tf = 0;
   let tv = 0;
-  for (const f of input.fills) {
+  for (const f of fills) {
     const n = f.price * f.size;
     if (f.isMaker) {
       mf += f.fee;
@@ -339,10 +341,92 @@ export function reviewVolumeFarm(input: {
       tv += n;
     }
   }
-  const fee = {
-    maker: mv > 0 ? mf / mv : input.fallbackFee.maker,
-    taker: tv > 0 ? tf / tv : input.fallbackFee.taker,
-  };
+  return { maker: mv > 0 ? mf / mv : fallback.maker, taker: tv > 0 ? tf / tv : fallback.taker };
+}
+
+/** Một phương án để replay: tham số lối ra + đòn bẩy (đổi khoảng SL theo % margin). */
+export interface ReplayOption {
+  params: ReviewParams;
+  leverage: number;
+}
+
+export interface ReplayOutcome {
+  trades: number;
+  /** Lãi / lỗ ròng (USDC) = Σ (lãi giá − phí) × notional. */
+  net: number;
+  volume: number;
+  /** Lượt thoát bằng stop loss gốc trên SoDEX. Không mô phỏng thanh lý (DEC-172). */
+  slExits: number;
+  /** Lượt tệ nhất (USDC, âm là lỗ); null khi không có lượt. */
+  worstTrade: number | null;
+  winRatePct: number;
+  /** Ký quỹ mỗi lượt = notional trung vị ÷ đòn bẩy (USDC); null khi không có lượt. */
+  marginPerTrade: number | null;
+}
+
+/**
+ * What-if của AI Desk B+ (DEC-166): replay **lối ra** của từng phương án trên đúng lượt vào thật (cùng cách của Review
+ * this run, DEC-131). Lượt vào, notional và thời điểm giữ nguyên; chỉ lối ra đổi. Tất định: cùng dữ liệu, cùng kết quả.
+ */
+export function replayOptions(input: {
+  trades: readonly ReviewTrade[];
+  candles: readonly Candle[];
+  tpUsd: number;
+  fee: { maker: number; taker: number };
+  options: readonly ReplayOption[];
+}): ReplayOutcome[] {
+  const candles = new Map(input.candles.map((k) => [k.t, k]));
+  const notionals = input.trades.map((t) => t.notional).sort((a, b) => a - b);
+  const mid =
+    notionals.length === 0 ? null : (notionals[Math.floor((notionals.length - 1) / 2)] ?? null);
+  return input.options.map((o) => {
+    let net = 0;
+    let volume = 0;
+    let slExits = 0;
+    let wins = 0;
+    let worst: number | null = null;
+    for (const t of input.trades) {
+      const s = simulate(
+        t,
+        o.params,
+        { tpUsd: input.tpUsd, leverage: o.leverage },
+        candles,
+        input.fee,
+      );
+      const r = (s.gross - s.fee) * t.notional;
+      net += r;
+      volume += 2 * t.notional;
+      if (s.exit === "sl") slExits += 1;
+      if (s.gross > 0) wins += 1;
+      worst = worst === null || r < worst ? r : worst;
+    }
+    const n = input.trades.length;
+    return {
+      trades: n,
+      net,
+      volume,
+      slExits,
+      worstTrade: worst,
+      winRatePct: n === 0 ? 0 : (wins / n) * 100,
+      marginPerTrade: mid === null ? null : mid / o.leverage,
+    };
+  });
+}
+
+export function reviewVolumeFarm(input: {
+  config: VolumeFarmConfig;
+  fills: readonly ReviewFill[];
+  candles: readonly Candle[];
+  /** Phí mỗi chiều (tỷ lệ, đã gồm builder fee); thiếu fill taker thì dùng mức của sàn. */
+  fallbackFee: { maker: number; taker: number };
+  seed: number;
+}): ReviewResult {
+  const trades = reviewTrades(input.fills);
+  if (trades.length < REVIEW_MIN_TRADES)
+    return { status: "insufficient", trades: trades.length, minTrades: REVIEW_MIN_TRADES };
+
+  // Phí thật của bot theo từng loại lệnh.
+  const fee = realFeeRates(input.fills, input.fallbackFee);
   const candles = new Map(input.candles.map((k) => [k.t, k]));
   const c = { tpUsd: Number(input.config.tpUsd), leverage: input.config.leverage };
 

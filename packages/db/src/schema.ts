@@ -1113,3 +1113,69 @@ export const deskItems = pgTable(
     index("desk_items_user_idx").on(t.userId),
   ],
 );
+
+/**
+ * So sánh phương án của một việc "Needs you" (AI Desk B+ M2, DEC-166): worker `backtest` replay lệnh vào thật (Volume
+ * Builder) hoặc backtest nến 7 ngày (chiến lược khác) cho từng phương án. `options` là phương án + kết quả.
+ */
+export const deskWhatifs = pgTable(
+  "desk_whatifs",
+  {
+    id: id(),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => deskItems.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id),
+    /** Version của bot lúc tính (Apply chỉ khi bot vẫn ở version này). */
+    botVersion: integer("bot_version").notNull(),
+    /** Fingerprint của việc lúc tính: việc đổi (dữ liệu mới) thì tính lại. */
+    itemFingerprint: text("item_fingerprint").notNull(),
+    status: text("status", { enum: ["queued", "running", "done", "failed", "unavailable"] }).notNull(),
+    /** `replay` (lệnh vào thật) hoặc `backtest` (nến); null khi chưa chạy. */
+    source: text("source", { enum: ["replay", "backtest"] }),
+    /** `WhatIfOptionResult[]` (patch config + kết quả 7 ngày). */
+    options: jsonb("options").notNull(),
+    windowFrom: tstz("window_from").notNull(),
+    windowTo: tstz("window_to").notNull(),
+    error: text("error"),
+    finishedAt: tstz("finished_at"),
+    ...timestamps,
+  },
+  (t) => [index("desk_whatifs_item_idx").on(t.itemId, t.createdAt)],
+);
+
+/**
+ * Lần Apply một phương án (version mới "AI suggested", DEC-166): nguồn cho thành tích sau 7 ngày (M4) và Switch back.
+ * `baselineConfig` là config trước khi áp.
+ */
+export const deskApplies = pgTable(
+  "desk_applies",
+  {
+    id: id(),
+    whatifId: uuid("whatif_id")
+      .notNull()
+      .references(() => deskWhatifs.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id),
+    rule: text("rule").notNull(),
+    option: text("option").notNull(),
+    fromVersion: integer("from_version").notNull(),
+    toVersion: integer("to_version").notNull(),
+    baselineConfig: jsonb("baseline_config").notNull(),
+    appliedAt: tstz("applied_at").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("desk_applies_whatif").on(t.whatifId),
+    index("desk_applies_bot_idx").on(t.botId, t.appliedAt),
+  ],
+);

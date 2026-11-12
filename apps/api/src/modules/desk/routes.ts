@@ -1,4 +1,4 @@
-import { AppError, ErrorCode, startPaperBodySchema } from "@drift/shared";
+import { AppError, ErrorCode, startPaperBodySchema, whatIfApplyBodySchema } from "@drift/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
@@ -8,6 +8,7 @@ import { requireAuth } from "../../plugins/session";
 
 import { needsYou, snoozeItem } from "./needs-you";
 import { deskBots, goLive, paperView, requireDesk, startPaper, type DeskDeps } from "./service";
+import { applyWhatif, startWhatif, whatifView } from "./whatif";
 
 const idParams = z.object({ id: z.uuid() });
 
@@ -63,5 +64,35 @@ export function registerDeskRoutes(app: FastifyInstance, deps: DeskDeps): void {
       if (r === null) throw new AppError(ErrorCode.notFound, "Item not found.");
       return { status: 200, body: r };
     });
+  });
+
+  // AI Desk B+ M2 (DEC-166): so sánh phương án của một việc (job ở worker `backtest`), xem kết quả, Apply.
+  app.post("/api/v1/desk/needs-you/:id/whatif", async (request, reply) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(idParams, request.params);
+    await requireDesk(deps, auth.userId);
+    return idempotent(deps.bots.db, request, reply, auth.userId, deps.bots.now(), async () => ({
+      status: 200,
+      body: await startWhatif(deps.bots, auth.userId, id),
+    }));
+  });
+
+  app.get("/api/v1/desk/whatifs/:id", async (request) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(idParams, request.params);
+    await requireDesk(deps, auth.userId);
+    return whatifView(deps.bots, auth.userId, id);
+  });
+
+  // Apply tạo version mới "AI suggested" qua luồng sửa bot hiện có; user bấm, AI không tự áp.
+  app.post("/api/v1/desk/whatifs/:id/apply", async (request, reply) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(idParams, request.params);
+    const { option } = parseOrThrow(whatIfApplyBodySchema, request.body);
+    await requireDesk(deps, auth.userId);
+    return idempotent(deps.bots.db, request, reply, auth.userId, deps.bots.now(), async () => ({
+      status: 201,
+      body: await applyWhatif(deps.bots, auth.userId, id, option),
+    }));
   });
 }
