@@ -111,4 +111,4 @@ Viết bằng tiếng Việt, gồm:
 3. Lựa chọn tự đưa ra khi tài liệu không nói, và DEC đã ghi.
 4. Việc còn lại, rủi ro, câu hỏi cần người dùng chốt.
 
-Không commit hay push trừ khi người dùng yêu cầu.
+**Git:** làm theo `docs/AGENT_WORKFLOW.md`: tạo branch từ `origin/main`, commit theo Conventional Commits, push branch, mở PR vào `main` rồi dừng chờ review. Không push thẳng lên `main`, không tự merge. DEC mới ghi dạng `DEC-TBD-<slug>`.
