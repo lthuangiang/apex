@@ -3,9 +3,11 @@
 Áp dụng cho mọi agent viết code trong repo này (Copy Trading, AI Desk B+, MCP, Notifications…). Mục đích: `main` luôn chạy được, mỗi thay đổi đều được review trước khi vào `main`, và các agent chạy song song không ghi đè việc của nhau.
 
 **Vai trò**
-- **Dev agent:** code trên branch riêng, push, mở Pull Request.
-- **Reviewer** (phiên Claude chính của người dùng): review PR, yêu cầu sửa, báo kết quả.
-- **Người dùng:** quyết định merge. Chỉ merge khi reviewer đã đồng ý **và** người dùng nói "merge".
+- **Dev agent** (session "DeskLabs - DevOps"): code trên branch riêng, push, mở Pull Request.
+- **Reviewer / PM** (session "DeskLabs - PM"): review PR, yêu cầu sửa, nhận câu hỏi cần chốt và đề xuất cho người dùng, báo kết quả.
+- **Người dùng:** duyệt các câu cần chốt và quyết định merge. Chỉ merge khi reviewer đã đồng ý **và** người dùng nói "merge".
+
+Hai session chạy trên cùng máy và nhắn nhau bằng `SendMessage` (`ListAgents` để thấy nhau).
 
 ---
 
@@ -86,6 +88,27 @@ Lệnh quét cuối phải không in ra gì. Nếu phần mình làm có E2E th�
 
 - Số DEC hay bị trùng giữa các agent, nên trên branch **không dùng số**. Ghi DEC mới dạng `| DEC-TBD-<slug> | <ngày> | … |`, ví dụ `DEC-TBD-desk-facts`.
 - Reviewer gán số thật lúc merge, rồi sửa các chỗ tham chiếu trong cùng PR.
+
+### 4.1 Câu hỏi cần chốt (dev agent → PM → người dùng)
+
+Dev agent **không hỏi thẳng người dùng**. Mọi chỗ cần chốt gửi cho PM: tài liệu không nói, mục **[confirm]**, đổi một DEC, thêm dependency ngoài ARCHITECTURE mục 4, đụng tiền thật hay quyền key, hai tài liệu mâu thuẫn, ngưỡng nghiệp vụ phải tự đặt.
+
+Mỗi câu một tin (`SendMessage` tới "DeskLabs - PM"), câu không gấp thì gom lại:
+
+```text
+CẦN CHỐT · <tiêu đề ngắn> · PR/branch <…>
+Bối cảnh: chuyện gì, file:line, tài liệu/DEC liên quan.
+Phương án: A / B / (C), mỗi cái 1–2 dòng kèm hệ quả.
+Đề xuất của bạn: <A/B> vì <…>.
+Chặn việc không: Có (đang dừng) / Không (đang làm tạm theo phương án an toàn nhất: <…>).
+```
+
+PM làm:
+1. Đối chiếu `CLAUDE.md`, `docs/`, DEC liên quan. Tài liệu đã trả lời thì nhắn lại ngay, không hỏi người dùng.
+2. Còn lại thì đưa người dùng từng câu: phương án, khuyến nghị đặt đầu, lý do ngắn.
+3. Người dùng chọn xong: nhắn dev agent `ĐÃ CHỐT · <tiêu đề> · <phương án>` kèm nội dung `DEC-TBD-<slug>` cần ghi trên branch.
+
+Dev agent chỉ làm theo câu trả lời có chữ **"ĐÃ CHỐT"** từ PM. Câu không chặn việc thì vẫn làm tiếp theo phương án an toàn nhất và ghi rõ trong PR cho tới khi có câu trả lời.
 
 ---
 
