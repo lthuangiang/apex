@@ -33,7 +33,7 @@ import {
   type TraderProfile,
   type TraderTab,
 } from "@drift/shared";
-import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 
 import {
@@ -42,6 +42,7 @@ import {
   copyClashes,
   copySlotOf,
   createBot,
+  newVersion,
   startBot,
   type BotDeps,
 } from "../bots/service";
@@ -60,6 +61,11 @@ const SOURCE = "hyperliquid" as const;
 const LIST_LIMIT = 60;
 const PROFILE_EVENTS = 30;
 const FEED_EVENTS = 50;
+/** Ví đọc lỗi ở lượt đêm gần nhất giữ thống kê cũ tối đa chừng này ngày. */
+const STALE_STATS_DAYS = 7;
+/** Ngày UTC `YYYY-MM-DD` lùi `n` ngày. */
+const daysBefore = (day: string, n: number): string =>
+  new Date(Date.parse(`${day}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
 
 async function requireDesk(deps: CopyDeps, userId: string): Promise<void> {
   if (!(await aiDeskOn(deps.bots.db, userId)))
@@ -97,12 +103,8 @@ const HOUR = 3_600_000;
 export function tagsOf(s: LeaderStats): TraderCard["tags"] {
   const tags: TraderCard["tags"] = [];
   const hold = s.typicalHoldMs;
-  if (
-    hold !== null &&
-    hold >= LEADER_STATS.minHoldMs &&
-    s.coverage !== null &&
-    dec(s.coverage).gte("0.9")
-  )
+  // "Easy to copy" và "Fast trader" (< 1 giờ) không hiện cùng nhau: dưới 1 giờ thì không gắn "Easy to copy".
+  if (hold !== null && hold >= HOUR && s.coverage !== null && dec(s.coverage).gte("0.9"))
     tags.push("easy_to_copy");
   if (hold !== null && hold >= 24 * HOUR) tags.push("holds_days");
   else if (hold !== null && hold >= 2 * HOUR) tags.push("holds_hours");
@@ -145,7 +147,9 @@ export async function listTraders(
     items: [],
   };
   if (day === null) return empty;
-  const rows = await deps.bots.db
+  // Ví có trong leaderboard của lượt `day`. Ví đọc lỗi ở lượt đó giữ thống kê gần nhất trong 7 ngày (thẻ ghi ngày
+  // tính ở Trader profile), thay vì biến mất khỏi danh sách.
+  const all = await deps.bots.db
     .select({ s: leaderStatsDaily, name: leaderWallets.displayName })
     .from(leaderStatsDaily)
     .leftJoin(
@@ -155,7 +159,25 @@ export async function listTraders(
         eq(leaderWallets.address, leaderStatsDaily.address),
       ),
     )
-    .where(and(eq(leaderStatsDaily.source, SOURCE), eq(leaderStatsDaily.date, day)));
+    .where(
+      and(
+        eq(leaderStatsDaily.source, SOURCE),
+        lte(leaderStatsDaily.date, day),
+        gte(leaderStatsDaily.date, daysBefore(day, STALE_STATS_DAYS)),
+        // Tính ở lượt `day`, hoặc có trong leaderboard lượt đó nhưng đọc lỗi (dùng số của ngày trước).
+        or(
+          eq(leaderStatsDaily.date, day),
+          gte(leaderWallets.lastOnLeaderboardAt, new Date(`${day}T00:00:00Z`)),
+        ),
+      ),
+    )
+    .orderBy(desc(leaderStatsDaily.date));
+  const seen = new Set<string>();
+  const rows = all.filter((r) => {
+    if (seen.has(r.s.address)) return false;
+    seen.add(r.s.address);
+    return true;
+  });
   const hiddenBy = { ...empty.hiddenBy };
   let hidden = 0;
   for (const r of rows) {
@@ -504,6 +526,31 @@ export async function copyPreview(
   };
 }
 
+/** Bot copy còn ở draft của user cho đúng trader và đúng danh sách market (market bị khoá sau khi tạo, DEC-169). */
+async function draftCopyBot(
+  deps: CopyDeps,
+  userId: string,
+  address: string,
+  markets: readonly string[],
+): Promise<string | null> {
+  const r = await deps.bots.db.execute<{ id: string; markets: unknown }>(sql`
+    select b.id, bv.config->'markets' as markets
+    from bots b join bot_versions bv on bv.id = b.active_version_id
+    where b.user_id = ${userId} and b.strategy = ${Strategy.copyTrade} and b.state = 'draft'
+      and lower(bv.config->>'leaderAddress') = ${address.toLowerCase()}
+    order by b.created_at desc`);
+  const want = [...markets].sort().join();
+  const hit = r.rows.find(
+    (x) =>
+      Array.isArray(x.markets) &&
+      x.markets
+        .filter((m): m is string => typeof m === "string")
+        .sort()
+        .join() === want,
+  );
+  return hit?.id ?? null;
+}
+
 /** Tạo bot copy từ Review rồi chạy ngay (2FA nếu đã bật, xác nhận rủi ro), dùng luồng Start chung. */
 export async function startCopy(
   deps: CopyDeps,
@@ -524,17 +571,28 @@ export async function startCopy(
     throw new AppError(ErrorCode.validationFailed, "This trader can't be copied right now.", {
       reason: p.copyable.reason,
     });
-  const name = `Copy ${req.address.slice(0, 6)}…${req.address.slice(-4)}`;
-  const bot = await createBot(
-    deps.bots,
-    userId,
-    { strategy: Strategy.copyTrade, name, config: p.config, paramSource: "manual" },
-    ip,
-  );
+  // Start lỗi (sai 2FA, builder fee, start checks) để lại bot draft. Bấm lại thì dùng lại draft đó (version mới)
+  // thay vì tạo thêm bot "Copy 0x…" mỗi lần.
+  const reuse = await draftCopyBot(deps, userId, req.address, p.markets);
+  let botId: string;
+  if (reuse === null) {
+    const name = `Copy ${req.address.slice(0, 6)}…${req.address.slice(-4)}`;
+    botId = (
+      await createBot(
+        deps.bots,
+        userId,
+        { strategy: Strategy.copyTrade, name, config: p.config, paramSource: "manual" },
+        ip,
+      )
+    ).id;
+  } else {
+    await newVersion(deps.bots, userId, reuse, { config: p.config, paramSource: "manual" });
+    botId = reuse;
+  }
   return startBot(
     deps.bots,
     userId,
-    bot.id,
+    botId,
     { acknowledged: true, twoFactorCode: req.twoFactorCode },
     ip,
     sessionId,

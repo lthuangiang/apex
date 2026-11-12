@@ -70,7 +70,7 @@ function FitList({ p }: { p: TraderProfile }) {
             <ChecklistRow
               key={f.item}
               status={f.ok ? "pass" : "fail"}
-              statusLabel={f.ok ? "✓" : "!"}
+              statusLabel={f.ok ? t("fitOk") : t("fitWarn")}
               label={t(`fit.${f.item}.label`, data)}
               detail={t(`fit.${f.item}.detail`, data)}
             />
@@ -236,7 +236,11 @@ export function TraderProfilePage({ address }: { address: string }) {
               />
               <Metric
                 label={t("list.worstDip")}
-                value={`${usd(dec(p.card.stats.worstDip).isZero() ? "0" : `-${p.card.stats.worstDip}`) ?? ""} ▼`}
+                value={
+                  dec(p.card.stats.worstDip).isZero()
+                    ? (usd("0") ?? "")
+                    : `${usd(`-${p.card.stats.worstDip}`) ?? ""} ▼`
+                }
                 tone="neg"
                 help={t("profile.dipHelp")}
               />

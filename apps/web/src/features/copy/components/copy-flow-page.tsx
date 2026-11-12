@@ -127,6 +127,16 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
   const preview = useCopyPreview(useDebounced(req, 300));
   const f = budgetOk ? presetFields(budget, preset) : null;
   const p = preview.data;
+  // Budget lớn hơn số dư khả dụng: chỉ cảnh báo (không chặn), vì số dư thay đổi và SoDEX là nơi quyết định.
+  const overBudget = budgetOk && p?.available != null && dec(budget).gt(dec(p.available));
+  const overBudgetNote = overBudget ? (
+    <p role="status" className="m-0 rounded-card bg-warn-bg p-4 text-sm text-warn">
+      <strong>{t("budget.overBalance.title")}</strong>{" "}
+      {t("budget.overBalance.body", {
+        balance: usd(p.available, false, 2)?.replace("$", "") ?? "",
+      })}
+    </p>
+  ) : null;
   const twofa =
     me.data?.twoFactorEnabled === true &&
     !(
@@ -165,7 +175,9 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
       </Link>
       <PageHead
         title={
-          step === "budget" ? t("budget.heading", { trader: addr(address) }) : t("review.heading")
+          step === "budget"
+            ? t("budget.heading", { trader: card?.displayName ?? addr(address) })
+            : t("review.heading")
         }
         subtitle={step === "budget" ? t("budget.title") : t("review.title")}
         back={{ href: `/traders/${address}`, label: t("budget.back") }}
@@ -215,6 +227,7 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
                         balance: usd(p.available, false, 2)?.replace("$", "") ?? "",
                       })}
                 </p>
+                {overBudgetNote}
                 <div className="flex flex-wrap gap-2">
                   {AMOUNTS.map((a) => (
                     <button
@@ -465,6 +478,7 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
                   ))}
                 </dl>
               </Card>
+              {overBudgetNote}
               {p.dropped.map((d) => (
                 <p key={d.market} className="m-0 rounded-card bg-warn-bg p-4 text-sm text-warn">
                   <strong>

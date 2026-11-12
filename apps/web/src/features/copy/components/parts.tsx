@@ -136,7 +136,9 @@ export function TraderCardView({ card }: { card: Card }) {
       <div className="flex items-end justify-between gap-3">
         <div className="flex flex-col">
           <span className="text-xs font-semibold text-ink-2">{t("list.profit")}</span>
-          <span className={`text-2xl font-extrabold tabular-nums ${up ? "text-pos" : "text-neg"}`}>
+          <span
+            className={`whitespace-nowrap text-2xl font-extrabold tabular-nums ${up ? "text-pos" : "text-neg"}`}
+          >
             {profit} {up ? "▲" : "▼"}
           </span>
         </div>
