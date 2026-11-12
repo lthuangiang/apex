@@ -1,3 +1,4 @@
+import { connectEvents } from "@drift/db";
 import {
   connectBodySchema,
   connectEventBodySchema,
@@ -5,7 +6,6 @@ import {
   revokeBuilderFeeBodySchema,
   submitSignatureBodySchema,
 } from "@drift/shared";
-import { connectEvents } from "@drift/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 

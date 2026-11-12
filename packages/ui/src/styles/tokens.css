@@ -64,7 +64,14 @@
   --heat-5: #5ec962;
   --heat-6: #addc30;
   --heat-7: #fde725;
-  --heat-scale: linear-gradient(180deg, #fde725 0%, #5ec962 25%, #21918c 50%, #3b528b 75%, #440154 100%);
+  --heat-scale: linear-gradient(
+    180deg,
+    #fde725 0%,
+    #5ec962 25%,
+    #21918c 50%,
+    #3b528b 75%,
+    #440154 100%
+  );
 
   --radius-control: 12px;
   --radius-tile: 18px;

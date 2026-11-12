@@ -12,3 +12,7 @@ storybook-static
 test-results
 playwright-report
 packages/shared/src/reco/__tests__/golden
+# drizzle-kit sinh lại snapshot / journal mỗi lần `db:generate`; format tay sẽ bị ghi đè.
+packages/db/src/migrations/meta
+# Trang marketing tĩnh (asset, không phải code app); đổi khoảng trắng HTML có thể làm lệch hiển thị.
+marketing

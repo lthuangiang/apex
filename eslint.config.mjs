@@ -17,6 +17,9 @@ export default config(
       "**/storybook-static/**",
       "**/test-results/**",
       "**/playwright-report/**",
+      // Next.js tự sinh lại file này ("should not be edited"); nó import `.next/types/*` chỉ có sau `next dev` /
+      // `next build`, nên CI (chưa build) không resolve được. Không lint file sinh tự động.
+      "apps/web/next-env.d.ts",
     ],
   },
   js.configs.recommended,

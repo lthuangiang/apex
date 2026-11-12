@@ -38,13 +38,13 @@ infra/mobile/build-apk.sh --domain drift.junxcrypto.xyz
 
 Bubblewrap hỏi vài câu. Gợi ý trả lời:
 
-| Câu hỏi | Trả lời |
-|---|---|
-| Install JDK / Android SDK? | Yes |
-| Domain, URL path | giữ mặc định từ manifest |
-| Application ID | `com.drift.app` (**không đổi được sau khi lên Google Play**) |
-| Display mode | standalone |
-| Signing key | tạo key mới; đặt mật khẩu và **ghi lại** |
+| Câu hỏi                    | Trả lời                                                      |
+| -------------------------- | ------------------------------------------------------------ |
+| Install JDK / Android SDK? | Yes                                                          |
+| Domain, URL path           | giữ mặc định từ manifest                                     |
+| Application ID             | `com.drift.app` (**không đổi được sau khi lên Google Play**) |
+| Display mode               | standalone                                                   |
+| Signing key                | tạo key mới; đặt mật khẩu và **ghi lại**                     |
 
 Kết quả nằm ở `infra/mobile/out/`:
 
@@ -61,6 +61,7 @@ Project Android được lưu ở `infra/mobile/android/` (gồm `twa-manifest.j
    ```bash
    ~/.bubblewrap/jdk/*/Contents/Home/bin/keytool -printcert -jarfile infra/mobile/out/drift-<thời điểm>.apk | grep SHA256
    ```
+
 2. Thêm vào `.env` trên server (cùng thư mục với `docker-compose.yml`):
 
    ```bash
@@ -69,6 +70,7 @@ Project Android được lưu ở `infra/mobile/android/` (gồm `twa-manifest.j
    ```
 
    Nhiều khoá (ví dụ thêm key của Play App Signing) cách nhau bằng dấu phẩy.
+
 3. Khởi động lại web, không cần build lại image:
 
    ```bash
@@ -93,12 +95,12 @@ infra/mobile/build-apk.sh --install
 
 ## 5. Các lần sau
 
-| Việc | Lệnh |
-|---|---|
-| Web có bản mới | Không cần làm gì, app tự dùng bản mới |
-| Build lại với cấu hình cũ | `infra/mobile/build-apk.sh` |
+| Việc                          | Lệnh                                                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Web có bản mới                | Không cần làm gì, app tự dùng bản mới                                                                                           |
+| Build lại với cấu hình cũ     | `infra/mobile/build-apk.sh`                                                                                                     |
 | Đổi tên, màu, icon, phiên bản | sửa `infra/mobile/android/twa-manifest.json` (tăng `appVersionCode` mỗi lần nộp Play), rồi `infra/mobile/build-apk.sh --update` |
-| Không muốn gõ mật khẩu | đặt `BUBBLEWRAP_KEYSTORE_PASSWORD` và `BUBBLEWRAP_KEY_PASSWORD` trước khi chạy |
+| Không muốn gõ mật khẩu        | đặt `BUBBLEWRAP_KEYSTORE_PASSWORD` và `BUBBLEWRAP_KEY_PASSWORD` trước khi chạy                                                  |
 
 ## 6. Keystore: bắt buộc sao lưu
 

@@ -45,17 +45,18 @@ export function deviceInfo(): EventData {
   // iPad ở chế độ desktop báo UA của Mac; nhận ra nhờ màn cảm ứng.
   const iPadDesktop = ua.includes("Macintosh") && navigator.maxTouchPoints > 1;
   const mobile = iPadDesktop || /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-  const os = iPadDesktop || /iPhone|iPad|iPod/i.test(ua)
-    ? "iOS"
-    : /Android/i.test(ua)
-      ? "Android"
-      : /Mac OS X/i.test(ua)
-        ? "macOS"
-        : /Windows/i.test(ua)
-          ? "Windows"
-          : /Linux/i.test(ua)
-            ? "Linux"
-            : "other";
+  const os =
+    iPadDesktop || /iPhone|iPad|iPod/i.test(ua)
+      ? "iOS"
+      : /Android/i.test(ua)
+        ? "Android"
+        : /Mac OS X/i.test(ua)
+          ? "macOS"
+          : /Windows/i.test(ua)
+            ? "Windows"
+            : /Linux/i.test(ua)
+              ? "Linux"
+              : "other";
   const inApp = IN_APP.find(([needle]) => ua.includes(needle))?.[1] ?? null;
   const browser = inApp
     ? `${inApp} in-app`

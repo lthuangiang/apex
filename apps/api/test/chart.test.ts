@@ -1,4 +1,4 @@
-import { AppError, ErrorCode } from "@drift/shared";
+import { AppError, ErrorCode, ORDERBOOK_DEPTH } from "@drift/shared";
 import type { Kline } from "@drift/sodex";
 import { describe, expect, it } from "vitest";
 
@@ -34,7 +34,7 @@ function setup(liquidations: LiquidationProvider | null = null) {
       getOrderbook: (engine, symbol, limit) => {
         calls.push(`book:${engine}:${symbol}:${String(limit)}`);
         const rows = (from: number, step: number): [string, string][] =>
-          Array.from({ length: 12 }, (_, i) => [String(from + i * step), "0.5"]);
+          Array.from({ length: ORDERBOOK_DEPTH + 2 }, (_, i) => [String(from + i * step), "0.5"]);
         return fail
           ? Promise.reject(new Error("down"))
           : Promise.resolve({ bids: rows(99, -1), asks: rows(101, 1) });
@@ -85,15 +85,16 @@ describe("chart candles", () => {
 });
 
 describe("order book (DEC-99)", () => {
-  it("returns up to 10 perps levels per side, cached for one second", async () => {
+  // ORDERBOOK_DEPTH = 20 từ DEC-147 (Live quotes trên desktop cao bằng cột Market Making + Fills).
+  it("returns up to ORDERBOOK_DEPTH perps levels per side, cached for one second", async () => {
     const { service, calls, clock } = setup();
     const r = await service.orderbook("BTC-USD");
-    expect(r.bids).toHaveLength(10);
+    expect(r.bids).toHaveLength(ORDERBOOK_DEPTH);
     expect(r.bids[0]).toEqual({ price: "99", size: "0.5" });
     expect(r.asks[0]).toEqual({ price: "101", size: "0.5" });
     expect(r).toMatchObject({ market: "BTC-USD", at: clock.now });
     await service.orderbook("BTC-USD");
-    expect(calls).toEqual(["book:perps:BTC-USD:10"]);
+    expect(calls).toEqual([`book:perps:BTC-USD:${String(ORDERBOOK_DEPTH)}`]);
     clock.now += 1_001;
     await service.orderbook("BTC-USD");
     expect(calls).toHaveLength(2);
