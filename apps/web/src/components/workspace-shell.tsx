@@ -58,11 +58,12 @@ const ITEMS = [
   ["agent", "/agent", Bot, "main"],
   ["desk", "/desk", BrainCircuit, "main"],
   ["bots", "/bots", FlaskConical, "main"],
-  // Nhóm "Copy Trading" ngay sau Strategy Lab (DEC-163; copy bot là bot của Strategy Lab), chỉ khi bật AI Desk.
-  ["traders", "/traders", Star, "main"],
-  ["following", "/following", Eye, "main"],
   ["orders", "/orders", ListOrdered, "main"],
   ["risk", "/risk", ShieldAlert, "main"],
+  // Nhóm "Copy Trading" đứng cuối khối main, ngay trước TEAM (DEC-181, thay vị trí "ngay sau
+  // Strategy Lab" của DEC-163), để không có khoảng trống giữa Following và Execution & Orders. Chỉ khi bật AI Desk.
+  ["traders", "/traders", Star, "main"],
+  ["following", "/following", Eye, "main"],
   ["analyst", "/analyst", Sparkles, "main"],
   ["revenue", "/admin/builder-revenue", Coins, "team"],
   ["users", "/admin/users", Users, "team"],
@@ -126,12 +127,13 @@ export function WorkspaceShell({
     more: {
       label: t("mobile.more"),
       icon: <Ellipsis aria-hidden="true" size={22} />,
+      // Cùng thứ tự với sidebar (DEC-181); Settings và các mục TEAM giữ nguyên vị trí.
       items: pick([
         "desk",
-        "traders",
-        "following",
         "orders",
         "risk",
+        "traders",
+        "following",
         "analyst",
         "settings",
         "revenue",
