@@ -180,7 +180,7 @@ describe("backtest fill model", () => {
     expect(bought(over)).toBeCloseTo(bought(now), 2);
   });
 
-  // Ngưỡng ROADMAP P9 "90 ngày p95 < 20 s"; runner GitHub 2 vCPU chạy test song song nên đo không đúng: kiểm ở máy dev (DEC-TBD-ci-perf-test).
+  // Ngưỡng ROADMAP P9 "90 ngày p95 < 20 s"; runner GitHub 2 vCPU chạy test song song nên đo không đúng: kiểm ở máy dev (DEC-175).
   it.skipIf(onCi)(
     "runs 90 days of one-minute candles well under 20 s",
     () => {
