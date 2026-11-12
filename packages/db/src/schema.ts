@@ -1258,7 +1258,9 @@ export const deskAiConversations = pgTable(
   },
   (t) => [
     index("desk_ai_conversations_user_idx").on(t.userId, t.createdAt),
-    uniqueIndex("desk_ai_conversations_brief").on(t.userId, t.localDate).where(sql`kind = 'brief'`),
+    uniqueIndex("desk_ai_conversations_brief")
+      .on(t.userId, t.localDate)
+      .where(sql`kind = 'brief'`),
   ],
 );
 
