@@ -1121,7 +1121,7 @@ describe("engine", () => {
     await e2.stop();
   });
 
-  it("still records that close fill when 10+ older orders of the shard stay open on SoDEX (DEC-TBD-engine-reconcile-fair)", async () => {
+  it("still records that close fill when 10+ older orders of the shard stay open on SoDEX (DEC-185)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     const { botId } = await seedBot("running", {
@@ -1222,7 +1222,7 @@ describe("engine", () => {
     await e2.stop();
   });
 
-  it("sends a separate close for each bot of an account stopped together, once (DEC-TBD-engine-close-clordid)", async () => {
+  it("sends a separate close for each bot of an account stopped together, once (DEC-186)", async () => {
     const { eq, inArray } = await import("drizzle-orm");
     const config = {
       market: "BTC-USD",
@@ -2150,7 +2150,7 @@ describe("engine", () => {
       if ((await botState(botId))?.state !== "stopped")
         await new Promise((r) => setTimeout(r, 100));
     }
-    // Mã lệnh đóng băm từ botId đầy đủ (DEC-TBD-engine-close-clordid), theo thứ tự market trong config.
+    // Mã lệnh đóng băm từ botId đầy đủ (DEC-186), theo thứ tự market trong config.
     const mine = new Set([0, 1].map((i) => clOrdId(botId, 1, `close:${String(i)}`)));
     const closes = gw.received.filter((o) => o.tag === "close" && mine.has(o.clOrdID));
     expect(closes.map((o) => [o.market, o.side, o.quantity, o.reduceOnly])).toEqual([

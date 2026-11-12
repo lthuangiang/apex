@@ -1755,7 +1755,7 @@ export class Engine {
     if (close && ledger !== undefined && !dec(ledger.position).isZero()) {
       const qty = dec(ledger.position).abs().toString();
       const engine = arb ? "perps" : this.#engineOf(r);
-      // Băm botId đầy đủ (DEC-TBD-engine-close-clordid): 8 ký tự đầu của uuidv7 là thời gian, nên bot tạo trong cùng ~65 s
+      // Băm botId đầy đủ (DEC-186): 8 ký tự đầu của uuidv7 là thời gian, nên bot tạo trong cùng ~65 s
       // từng có chung mã "<8 ký tự>-close-1" và lệnh đóng của bot thứ hai bị bỏ qua (unique theo account + clOrdID).
       const id = clOrdId(r.botId, r.version, "close");
       await this.#execute(
@@ -1999,7 +1999,7 @@ export class Engine {
     )
       .map((x) => x.order)
       .filter((o) => gap(o.sodexAccountId));
-    // Lệnh kiểm lâu nhất trước (chưa kiểm = 0), rồi lệnh cũ nhất (DEC-TBD-engine-reconcile-fair). Xếp theo `submittedAt`
+    // Lệnh kiểm lâu nhất trước (chưa kiểm = 0), rồi lệnh cũ nhất (DEC-185). Xếp theo `submittedAt`
     // không thôi thì ≥ OPEN_CHECK_BATCH lệnh vẫn treo trên SoDEX (bot đang pause giữ lệnh) chiếm hết suất mỗi vòng, và
     // lệnh mới hơn (ví dụ lệnh đóng vị thế của bot vừa Stop) không bao giờ được đối soát: fill thật không được ghi.
     const lastCheck = (o: { id: string }) => this.#openChecks.get(o.id) ?? 0;
