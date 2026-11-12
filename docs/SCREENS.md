@@ -132,9 +132,9 @@ Các tab: SoDEX access · Security · Notifications · Trading defaults · Profi
 
 Chỉ hiện cho tài khoản được bật AI Desk (như S12, DEC-161). Sidebar: nhóm "Copy Trading" gồm "Find traders" và "Following", ngay sau Strategy Lab. Artboard: canvas "AI Desk redesign", hàng "Copy Trading v1". Logic: DEC-163, STRATEGIES.md S12.1.
 
-Đã làm theo route đề xuất (DEC-169, vẫn chờ duyệt ở OPEN_QUESTIONS 21b). Thẻ Copy Trade ở Strategy Lab dẫn tới `/traders`; màn sửa bot copy khoá trader và danh sách market.
+Route đã chốt (DEC-179). Thẻ Copy Trade ở Strategy Lab dẫn tới `/traders`; màn sửa bot copy khoá trader và danh sách market.
 
-| Route (đề xuất, **[confirm]** OPEN_QUESTIONS 21b) | Màn | Ghi chú |
+| Route (DEC-179) | Màn | Ghi chú |
 |---|---|---|
 | `/traders` | Find traders (`Leaders`) | Thẻ trader Hyperliquid; tab Steady / Top earners · 30D / Long holders / All; hướng dẫn 3 bước; dòng "N of 200 … hidden"; hết chỗ copy → "Follow · copy later" |
 | `/traders/:address` | Trader profile (`WalletStats`) | 4 chỉ số kèm một câu giải thích; checklist "good fit"; thay đổi vị thế gộp 60 giây; "Copy future trades" |
