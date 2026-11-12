@@ -3,38 +3,53 @@
 import {
   IN_APP_ONLY_GROUPS,
   notificationSettingsSchema,
+  type NotificationChannel,
   type NotificationGroup,
 } from "@drift/shared";
-import { Button, ComingSoonChip, Switch } from "@drift/ui";
+import { Button, Switch } from "@drift/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Bell, Mail } from "lucide-react";
 import { useTranslations } from "next-intl";
+import type { ReactNode } from "react";
 import { z } from "zod";
 
+import { TelegramChannel } from "@/features/notifications/components/telegram-channel";
+import {
+  maskEmail,
+  SETTINGS_GROUP_ORDER,
+  useTelegramLink,
+} from "@/features/notifications/telegram";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { useFeatures, useNotifications } from "@/lib/queries";
+import { useFeatures, useMe, useNotifications } from "@/lib/queries";
 
-// Settings › Notifications (SCREENS.md mục 8.5): nhóm "bot errors" luôn bật (switch khoá); kênh in-app và email.
+// Settings › Notifications (SCREENS.md mục 8.5, artboard NT-Settings, DEC-170): "Where we reach you" (In-app,
+// Email, Telegram) và "What we tell you" (nhóm × kênh). Nhóm Bot problems luôn bật (switch khoá).
+
+const SETTINGS_KEY = ["notifications", "settings"] as const;
 
 export function NotificationsTab() {
   const t = useTranslations("settings.notifications");
   const tn = useTranslations("notifications");
   const qc = useQueryClient();
   const settings = useQuery({
-    queryKey: ["notifications", "settings"],
+    queryKey: SETTINGS_KEY,
     queryFn: () => api("GET", "/api/v1/notifications/settings", notificationSettingsSchema),
   });
   const list = useNotifications();
+  const me = useMe();
   // Nhóm Copy Trading chỉ có ý nghĩa khi tài khoản được bật AI Desk (DEC-163).
   const aiDesk = useFeatures().data?.aiDesk === true;
+  // Cột Telegram chỉ hiện khi server bật Telegram (TELEGRAM_ENABLED).
+  const telegramOn = useTelegramLink(false).data?.status !== "disabled";
   const set = useMutation({
-    mutationFn: (b: { group: NotificationGroup; channel: "in_app" | "email"; enabled: boolean }) =>
+    mutationFn: (b: { group: NotificationGroup; channel: NotificationChannel; enabled: boolean }) =>
       api("PUT", "/api/v1/notifications/settings", notificationSettingsSchema, {
         idempotencyKey: crypto.randomUUID(),
         body: b,
       }),
     onSuccess: (data) => {
-      qc.setQueryData(["notifications", "settings"], data);
+      qc.setQueryData(SETTINGS_KEY, data);
     },
   });
   const readAll = useMutation({
@@ -47,37 +62,126 @@ export function NotificationsTab() {
     },
   });
 
+  const groups = settings.data?.groups ?? [];
+  const rows = SETTINGS_GROUP_ORDER.flatMap((g) => {
+    const row = groups.find((x) => x.group === g);
+    return row === undefined || (g === "copyTrading" && !aiDesk) ? [] : [row];
+  });
+  const channels: NotificationChannel[] = telegramOn
+    ? ["in_app", "email", "telegram"]
+    : ["in_app", "email"];
+  const channelName = (c: NotificationChannel) =>
+    c === "in_app" ? t("inApp") : c === "email" ? t("email") : t("telegramName");
+  const cols = telegramOn
+    ? "md:grid-cols-[minmax(0,1fr)_80px_80px_90px]"
+    : "md:grid-cols-[minmax(0,1fr)_80px_80px]";
+
   return (
     <div className="flex flex-col gap-5">
-      <section className="flex flex-col gap-3 rounded-card bg-surface p-5">
-        <h2 className="m-0 text-lg font-extrabold">{t("title")}</h2>
-        <ul className="m-0 flex list-none flex-col gap-4 p-0">
-          {(settings.data?.groups ?? [])
-            .filter((g) => aiDesk || g.group !== "copyTrading")
-            .map((g) => (
-              <li key={g.group} className="flex flex-col gap-2 border-b border-border pb-3">
-                <strong>{t(`groups.${g.group}`)}</strong>
-                <div className="flex flex-wrap gap-4">
-                  {(["in_app", "email"] as const).map((c) => (
-                    <Switch
-                      key={c}
-                      label={c === "in_app" ? t("inApp") : t("email")}
-                      checked={g[c]}
-                      {...(g.alwaysOn
-                        ? { disabled: true, disabledReason: t("alwaysOn") }
-                        : c === "email" && IN_APP_ONLY_GROUPS.includes(g.group)
-                          ? { disabled: true, disabledReason: t("inAppOnly") }
-                          : {})}
-                      onCheckedChange={(enabled) => {
-                        set.mutate({ group: g.group, channel: c, enabled });
-                      }}
-                    />
-                  ))}
-                </div>
-              </li>
+      <section
+        aria-labelledby="notif-where"
+        className="flex flex-col gap-3.5 rounded-card border border-border bg-surface p-5 md:px-6"
+      >
+        <h2 id="notif-where" className="m-0 text-lg font-extrabold">
+          {t("where.title")}
+        </h2>
+        <div className="grid gap-3 md:grid-cols-3">
+          <ChannelCard
+            icon={<Bell aria-hidden="true" size={20} />}
+            name={t("inApp")}
+            detail={t("where.inAppBody")}
+            on={t("where.on")}
+          />
+          <ChannelCard
+            icon={<Mail aria-hidden="true" size={20} />}
+            name={t("email")}
+            detail={me.data === undefined ? null : maskEmail(me.data.email)}
+            on={t("where.on")}
+          />
+          <TelegramChannel groups={groups} aiDesk={aiDesk} />
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="notif-what"
+        className="flex flex-col gap-1.5 rounded-card border border-border bg-surface p-5 md:px-6"
+      >
+        <h2 id="notif-what" className="m-0 mb-1.5 text-lg font-extrabold">
+          {t("what.title")}
+        </h2>
+        {settings.isError ? (
+          <p role="alert" className="m-0 text-sm text-ink-2">
+            {t("what.loadFailed")}
+          </p>
+        ) : null}
+        <div role="table" aria-label={t("what.tableLabel")} className="flex flex-col">
+          <div
+            role="row"
+            className={`hidden gap-2 py-1.5 text-[12.5px] font-extrabold text-muted md:grid ${cols}`}
+          >
+            <span role="columnheader">{t("what.type")}</span>
+            {channels.map((c) => (
+              <span key={c} role="columnheader">
+                {channelName(c)}
+              </span>
             ))}
-        </ul>
-        <ComingSoonChip label={t("telegram")} className="self-start" />
+          </div>
+          {rows.map((g) => (
+            <div
+              key={g.group}
+              role="row"
+              className={`grid grid-cols-3 items-center gap-x-2 gap-y-2 border-t border-border py-3 ${cols}`}
+            >
+              <span role="cell" className="col-span-3 md:col-span-1">
+                <b className="text-[14.5px]">{t(`what.rows.${g.group}.name`)}</b>
+                <br />
+                <span className="text-[12.5px] text-muted">{t(`what.rows.${g.group}.body`)}</span>
+              </span>
+              {channels.map((c) => {
+                const label = t("what.cellLabel", {
+                  row: t(`what.rows.${g.group}.name`),
+                  channel: channelName(c),
+                });
+                const unavailable = c === "email" && IN_APP_ONLY_GROUPS.includes(g.group);
+                return (
+                  <span key={c} role="cell" className="flex flex-col items-start gap-1">
+                    {/* Tên kênh hiện dưới 768px vì không có hàng tiêu đề cột. */}
+                    <span
+                      aria-hidden="true"
+                      className="text-[11.5px] font-bold text-muted md:hidden"
+                    >
+                      {channelName(c)}
+                    </span>
+                    {unavailable ? (
+                      <span className="text-xs text-muted">
+                        <span aria-hidden="true">—</span>
+                        <span className="sr-only">{t("what.notAvailable", { row: label })}</span>
+                      </span>
+                    ) : (
+                      <Switch
+                        hideLabel
+                        label={g.alwaysOn ? t("what.alwaysOnLabel", { row: label }) : label}
+                        checked={g[c]}
+                        disabled={g.alwaysOn || set.isPending}
+                        onCheckedChange={(enabled) => {
+                          set.mutate({ group: g.group, channel: c, enabled });
+                        }}
+                      />
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        {set.isError ? (
+          <p role="alert" className="m-0 text-xs font-semibold text-neg-ink">
+            {t("what.saveFailed")}
+          </p>
+        ) : null}
+        {telegramOn ? (
+          <p className="m-0 mt-1.5 text-[12.5px] text-muted">{t("what.note")}</p>
+        ) : null}
       </section>
 
       {/* Đích của "See all" trong panel chuông. */}
@@ -115,6 +219,30 @@ export function NotificationsTab() {
           ))}
         </ul>
       </section>
+    </div>
+  );
+}
+
+function ChannelCard({
+  icon,
+  name,
+  detail,
+  on,
+}: {
+  icon: ReactNode;
+  name: string;
+  detail: string | null;
+  on: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-[18px] bg-bg p-4">
+      <span className="text-ink-2">{icon}</span>
+      <b className="text-[15px]">{name}</b>
+      {detail === null ? null : <span className="text-[13px] text-muted">{detail}</span>}
+      <span className="inline-flex items-center gap-1.5 self-start rounded-full bg-pos-bg px-2.5 py-0.5 text-xs font-extrabold text-pos">
+        <span aria-hidden="true">●</span>
+        {on}
+      </span>
     </div>
   );
 }
