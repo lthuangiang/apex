@@ -2049,7 +2049,8 @@ describe("engine", () => {
     const state = async () =>
       (await db.select().from(botRuntime).where(eq(botRuntime.botId, botId)))[0]?.state as
         { regime?: string } | undefined;
-    // Một engine cho cả hai giai đoạn: chưa bật AI Desk thì không nạp bot; bật rồi thì vòng sau nạp và gửi nến.
+    // Một engine cho cả hai giai đoạn: chưa bật cờ Adaptive DCA thì không nạp bot; bật rồi thì vòng sau nạp và gửi nến
+    // (cờ riêng, không theo AI Desk: DEC-192).
     const e = farmEngine(gw, "adca");
     await e.tick();
     await e.onPrice("ETH-USD", "100", clock);
@@ -2058,7 +2059,7 @@ describe("engine", () => {
     const [b] = await db.select().from(bots).where(eq(bots.id, botId));
     await db
       .update(users)
-      .set({ aiDesk: true })
+      .set({ adaptiveDca: true })
       .where(eq(users.id, b?.userId ?? ""));
     await tickUntil(e, async () => (await state())?.regime !== undefined);
     expect((await state())?.regime).toBeDefined();

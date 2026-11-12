@@ -53,8 +53,7 @@ afterAll(async () => {
 async function deskUser(email: string, opts: { connect?: boolean; desk?: boolean } = {}) {
   const client = new TestClient(env.app);
   const me = meSchema.parse((await signIn(env, client, email)).json());
-  if (opts.desk !== false)
-    await env.pool.query("update users set ai_desk = true where id = $1", [me.id]);
+  await env.pool.query("update users set ai_desk = $2 where id = $1", [me.id, opts.desk !== false]);
   if (opts.connect !== false) {
     const accountID = Math.floor(Math.random() * 1e9);
     env.sodex.addUser(ADDRESS, accountID);
@@ -257,13 +256,17 @@ describe("AI Adaptive DCA (DEC-107)", () => {
     maxExposure: "1000",
     maxLoss: "150",
   };
-  it("is only available to accounts with AI Desk turned on", async () => {
-    const off = await deskUser("adca-off@example.com", { desk: false });
+  it("is only available to accounts with the Adaptive DCA flag, not just AI Desk (DEC-192)", async () => {
+    // AI Desk bật nhưng chưa có cờ Adaptive DCA → không có chiến lược này.
+    const off = await deskUser("adca-off@example.com");
     const denied = await off.client.request("POST", "/api/v1/bots", {
       body: { strategy: "adaptive_dca", name: "AI DCA", paramSource: "manual", config },
     });
     expect(errorOf(denied.json()).code).toBe("NOT_FOUND");
     const on = await deskUser("adca-on@example.com");
+    await env.pool.query(
+      "update users set adaptive_dca = true where email = 'adca-on@example.com'",
+    );
     const made = await on.client.request("POST", "/api/v1/bots", {
       body: { strategy: "adaptive_dca", name: "AI DCA", paramSource: "manual", config },
     });

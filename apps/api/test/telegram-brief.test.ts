@@ -7,7 +7,7 @@ import { queueTelegramBriefs, type TelegramBriefDeps } from "../src/modules/desk
 
 import { signIn, startTestEnv, TEST_BUILDER_ID, TestClient, type TestEnv } from "./helpers";
 
-// Morning brief qua Telegram (N4, DEC-TBD-telegram-brief): một tin mỗi ngày địa phương từ 08:00 tới trước 12:00, chỉ cho
+// Morning brief qua Telegram (N4, DEC-194): một tin mỗi ngày địa phương từ 08:00 tới trước 12:00, chỉ cho
 // user có AI Desk + Telegram active + nhóm daily bật + có bot. Không gọi LLM chỉ vì Telegram; dùng lại brief đã có.
 
 const llm = { reply: "Good morning. Your bots are running.", calls: 0 };

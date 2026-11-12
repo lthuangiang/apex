@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { renderTelegram } from "../src/telegram-render";
 
-// Morning brief qua Telegram (N4, DEC-TBD-telegram-brief): lời Desk AI hoặc câu mẫu, luôn escape, nút "Open AI Desk".
+// Morning brief qua Telegram (N4, DEC-194): lời Desk AI hoặc câu mẫu, luôn escape, nút "Open AI Desk".
 
 const APP = "https://desklabs.test";
 const brief = (data: Record<string, unknown>) =>

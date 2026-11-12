@@ -109,6 +109,16 @@ export async function aiDeskOn(db: Db, userId: string): Promise<boolean> {
   return u?.on === true;
 }
 
+/** AI Adaptive DCA (thử nghiệm, DEC-107): cờ riêng, không còn đi theo AI Desk (DEC-192). */
+export async function adaptiveDcaOn(db: Db, userId: string): Promise<boolean> {
+  const [u] = await db
+    .select({ on: users.adaptiveDca })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return u?.on === true;
+}
+
 export async function volumeBotsOn(db: Db, userId: string): Promise<boolean> {
   const [u] = await db
     .select({ on: users.volumeBots })
@@ -129,9 +139,12 @@ export async function assertStrategyAvailable(
     !(await volumeBotsOn(db, userId))
   )
     throw new AppError(ErrorCode.notFound, "Strategy not available.");
-  // Chiến lược thử nghiệm (AI Adaptive DCA, DEC-107) chỉ mở cho tài khoản được bật AI Desk.
+  // AI Adaptive DCA (thử nghiệm, DEC-107): cờ riêng. Copy Trade (DEC-161) đi theo AI Desk (DEC-192).
+  if (strategy === Strategy.adaptiveDca && !(await adaptiveDcaOn(db, userId)))
+    throw new AppError(ErrorCode.notFound, "Strategy not available.");
   if (
     (EXPERIMENTAL_STRATEGIES as readonly string[]).includes(strategy) &&
+    strategy !== Strategy.adaptiveDca &&
     !(await aiDeskOn(db, userId))
   )
     throw new AppError(ErrorCode.notFound, "Strategy not available.");

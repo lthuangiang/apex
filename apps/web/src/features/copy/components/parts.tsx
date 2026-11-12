@@ -47,7 +47,7 @@ export function Sparkline({
         fill="none"
         strokeWidth="1.6"
         vectorEffect="non-scaling-stroke"
-        className={up ? "stroke-pos" : "stroke-neg"}
+        className={up ? "stroke-accent" : "stroke-neg"}
       />
     </svg>
   );
@@ -77,12 +77,23 @@ export function TagChips({ card }: { card: Card }) {
   );
 }
 
+// Nền ô chữ đầu theo địa chỉ (artboard Leaders / WhaleWatch dùng nhiều màu để phân biệt trader).
+const TILES = ["bg-accent-tint", "bg-bot-teal", "bg-bot-orange", "bg-cat-exec-bg"] as const;
+
+export function tileOf(address: string): (typeof TILES)[number] {
+  let h = 0;
+  for (const ch of address.toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return TILES[h % TILES.length] ?? "bg-accent-tint";
+}
+
 /** Ô hai chữ đầu theo địa chỉ. */
-export function Avatar({ address }: { address: string }) {
+export function Avatar({ address, size = "md" }: { address: string; size?: "sm" | "md" }) {
   return (
     <span
       aria-hidden="true"
-      className="flex size-11 flex-none items-center justify-center rounded-[14px] bg-accent-tint text-sm font-extrabold text-accent-ink"
+      className={`flex flex-none items-center justify-center font-extrabold text-ink ${tileOf(address)} ${
+        size === "sm" ? "size-9 rounded-[12px] text-xs" : "size-10 rounded-[13px] text-[13px]"
+      }`}
     >
       {initials(address)}
     </span>
@@ -97,6 +108,7 @@ export function CopyAction({ card, label }: { card: Card; label: string }) {
     return (
       <Button
         variant="tonal"
+        className="flex-1"
         disabled={card.following || follow.isPending}
         onClick={() => {
           follow.mutate({ address: card.address, on: true });
@@ -108,7 +120,7 @@ export function CopyAction({ card, label }: { card: Card; label: string }) {
   return (
     <Link
       href={`/bots/new/copy_trade?leader=${card.address}`}
-      className="inline-flex min-h-tap items-center justify-center rounded-control bg-accent px-4 text-sm font-bold text-white"
+      className="inline-flex min-h-tap flex-1 items-center justify-center rounded-[12px] bg-accent px-4 text-sm font-extrabold text-white no-underline hover:bg-accent-ink"
     >
       {label}
     </Link>
@@ -121,11 +133,11 @@ export function TraderCardView({ card }: { card: Card }) {
   const profit = usd(s.profit, true);
   const up = !dec(s.profit).isNegative();
   return (
-    <article className="flex min-w-0 flex-col gap-4 rounded-card border border-border bg-surface p-5">
+    <article className="flex min-w-0 flex-col gap-3.5 rounded-card border border-border bg-surface p-[18px]">
       <header className="flex items-center gap-3">
         <Avatar address={card.address} />
         <div className="flex min-w-0 flex-col">
-          <span className="truncate font-extrabold tabular-nums">
+          <span className="truncate text-[15px] font-extrabold tabular-nums">
             {card.displayName ?? addr(card.address)}
           </span>
           <span className="text-xs text-muted">
@@ -137,19 +149,19 @@ export function TraderCardView({ card }: { card: Card }) {
         <div className="flex flex-col">
           <span className="text-xs font-semibold text-ink-2">{t("list.profit")}</span>
           <span
-            className={`whitespace-nowrap text-2xl font-extrabold tabular-nums ${up ? "text-pos" : "text-neg"}`}
+            className={`text-2xl font-extrabold tracking-[-0.02em] whitespace-nowrap tabular-nums ${up ? "text-pos" : "text-neg"}`}
           >
             {profit} {up ? "▲" : "▼"}
           </span>
         </div>
-        <div className="w-28">
-          <Sparkline points={card.curve} label={t("profile.curveTitle")} />
+        <div className="h-9 w-24">
+          <Sparkline points={card.curve} className="h-9 w-24" label={t("profile.curveTitle")} />
         </div>
       </div>
-      <dl className="m-0 grid grid-cols-3 gap-2 text-sm">
+      <dl className="m-0 grid grid-cols-3 gap-2 rounded-[14px] bg-surface-2 px-3 py-2.5 text-sm">
         <div className="flex flex-col gap-0.5">
           <dt className="text-xs text-muted">{t("list.worstDip")}</dt>
-          <dd className="m-0 font-bold tabular-nums">
+          <dd className={`m-0 font-bold tabular-nums ${s.worstDip === "0" ? "" : "text-neg"}`}>
             {usd(s.worstDip === "0" ? "0" : `-${s.worstDip}`)}
           </dd>
         </div>
@@ -167,10 +179,10 @@ export function TraderCardView({ card }: { card: Card }) {
         </div>
       </dl>
       <TagChips card={card} />
-      <div className="mt-auto flex flex-wrap gap-2">
+      <div className="mt-auto flex gap-2">
         <Link
           href={`/traders/${card.address}`}
-          className="inline-flex min-h-tap items-center justify-center rounded-control border border-border px-4 text-sm font-bold text-ink"
+          className="inline-flex min-h-tap flex-1 items-center justify-center rounded-[12px] border border-border-input px-4 text-sm font-bold text-ink no-underline hover:bg-surface-2"
         >
           {t("common.viewProfile")}
         </Link>

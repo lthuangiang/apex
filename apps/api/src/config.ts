@@ -45,7 +45,7 @@ const envSchema = z.object({
   TELEGRAM_ENABLED: z.stringbool().default(false),
   /** Morning brief qua Telegram (N4): chỉ chạy khi TELEGRAM_ENABLED cũng bật. */
   TELEGRAM_BRIEF_ENABLED: z.stringbool().default(true),
-  /** true: chưa có báo cáo sáng thì tạo bằng Desk AI (gọi LLM). Mặc định false: câu mẫu (DEC-TBD-telegram-brief). */
+  /** true: chưa có báo cáo sáng thì tạo bằng Desk AI (gọi LLM). Mặc định false: câu mẫu (DEC-194). */
   TELEGRAM_BRIEF_LLM: z.stringbool().default(false),
   DRIFT_TELEGRAM_BOT_USERNAME: z
     .string()

@@ -183,6 +183,13 @@
       "when": 1794487633687,
       "tag": "0025_desk_ai",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794501749050,
+      "tag": "0026_ai_desk_for_all",
+      "breakpoints": true
     }
   ]
 }

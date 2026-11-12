@@ -20,11 +20,11 @@ import { Avatar, CopyAction, Sparkline, TagChips } from "./parts";
 // Trader profile (artboard WalletStats, DEC-163): 4 chỉ số kèm một câu giải thích, checklist "good fit", thay đổi vị
 // thế gộp 60 giây (không phải từng fill), "Copy future trades" kèm câu lệnh đang mở sẽ không được copy.
 
-export function EventChange({ e }: { e: LeaderEventView }) {
+export function EventChange({ e, plain = false }: { e: LeaderEventView; plain?: boolean }) {
   const t = useTranslations("copy");
   const arrow = e.kind === "open" || e.kind === "add" ? (e.side === "short" ? "▼ " : "▲ ") : "";
   return (
-    <span className="font-semibold">
+    <span className={plain ? undefined : "font-semibold"}>
       {arrow}
       {t(`kinds.${e.kind}`, { side: e.side === null ? "" : t(`sides.${e.side}`) }).trim()}
     </span>

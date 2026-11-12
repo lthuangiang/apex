@@ -14,7 +14,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { deskAiBrief, localClock, type DeskAiDeps } from "./ai";
 import { needsYou } from "./needs-you";
 
-// Morning brief qua Telegram (N4, DEC-TBD-telegram-brief). Vòng trong api, 5 phút một lần: user có AI Desk, Telegram
+// Morning brief qua Telegram (N4, DEC-194). Vòng trong api, 5 phút một lần: user có AI Desk, Telegram
 // `active`, nhóm `daily` bật trên Telegram và ít nhất một bot chưa archive nhận một tin mỗi ngày địa phương, từ 08:00
 // (gửi bù tới trước 12:00, quá giờ thì bỏ ngày đó). Không gọi LLM chỉ vì Telegram (`llm = false`): dùng lại báo cáo
 // sáng đã tạo trên web nếu có, không thì câu mẫu từ "Needs you". Ghi notification `queued` + outbox `jobs.telegram`
