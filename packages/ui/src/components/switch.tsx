@@ -14,6 +14,8 @@ export interface SwitchProps {
   /** Lý do bị disable; luôn hiển thị (mục 12, UI). */
   disabledReason?: string;
   className?: string;
+  /** Nhãn chỉ cho screen reader (ví dụ ô trong bảng đã có tiêu đề cột). Tên đọc vẫn là `label`. */
+  hideLabel?: boolean;
 }
 
 export function Switch({
@@ -25,6 +27,7 @@ export function Switch({
   disabled = false,
   disabledReason,
   className,
+  hideLabel = false,
 }: SwitchProps) {
   const id = useId();
   const descriptionId = `${id}-description`;
@@ -38,7 +41,7 @@ export function Switch({
 
   return (
     <div className={cx("flex items-start justify-between gap-4", className)}>
-      <div className="flex min-w-0 flex-col gap-0.5">
+      <div className={cx("flex min-w-0 flex-col gap-0.5", hideLabel && "sr-only")}>
         <div className="flex flex-wrap items-center gap-2">
           <label htmlFor={id} className="text-sm font-semibold text-ink">
             {label}

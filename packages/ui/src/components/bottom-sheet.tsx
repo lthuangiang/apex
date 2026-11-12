@@ -14,6 +14,8 @@ export interface BottomSheetProps {
   footer?: ReactNode;
   /** Dưới 768px chiếm toàn màn hình (ví dụ panel thông báo); từ 768px vẫn là dialog giữa màn hình. */
   fullScreen?: boolean;
+  /** Có thì hiện nút × ở góc tiêu đề, tên đọc là chuỗi này (ví dụ "Close"). */
+  closeLabel?: string;
 }
 
 const overlayClass = "fixed inset-0 z-50 bg-ink/40";
@@ -33,6 +35,7 @@ export function BottomSheet({
   children,
   footer,
   fullScreen = false,
+  closeLabel,
 }: BottomSheetProps) {
   const returnFocus = useReturnFocus();
   return (
@@ -48,7 +51,19 @@ export function BottomSheet({
           {...returnFocus}
           {...(description ? {} : { "aria-describedby": undefined })}
         >
-          <Dialog.Title className="text-lg font-bold text-ink">{title}</Dialog.Title>
+          {closeLabel === undefined ? (
+            <Dialog.Title className="text-lg font-bold text-ink">{title}</Dialog.Title>
+          ) : (
+            <div className="flex items-start justify-between gap-3">
+              <Dialog.Title className="text-lg font-bold text-ink">{title}</Dialog.Title>
+              <Dialog.Close
+                aria-label={closeLabel}
+                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-lg text-ink"
+              >
+                <span aria-hidden="true">×</span>
+              </Dialog.Close>
+            </div>
+          )}
           {description ? (
             <Dialog.Description className="text-sm text-ink-2">{description}</Dialog.Description>
           ) : null}

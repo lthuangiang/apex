@@ -1991,7 +1991,6 @@
     "notifications": {
       "title": "Notifications",
       "alwaysOn": "Always on",
-      "inAppOnly": "In-app only for now",
       "inApp": "In-app",
       "email": "Email",
       "telegram": "Telegram · Coming soon",
@@ -2002,6 +2001,120 @@
         "fills": "Every fill",
         "daily": "Daily summary",
         "copyTrading": "Big moves by traders you follow"
+      },
+      "telegramName": "Telegram",
+      "where": {
+        "title": "Where we reach you",
+        "inAppBody": "Bell and pop-ups while DeskLabs is open.",
+        "on": "On"
+      },
+      "what": {
+        "title": "What we tell you",
+        "tableLabel": "Notification settings",
+        "type": "Type",
+        "cellLabel": "{row}, {channel}",
+        "alwaysOnLabel": "{row}, always on",
+        "notAvailable": "{row}: not available",
+        "note": "Telegram messages include amounts, like today’s profit or loss. Wallet addresses and keys are never sent.",
+        "loadFailed": "Couldn't load your notification settings. Try again in a moment.",
+        "saveFailed": "Couldn't save that change. Try again.",
+        "rows": {
+          "botErrors": {
+            "name": "Bot problems",
+            "body": "A bot paused, stopped, or an order result is unknown. Always on."
+          },
+          "risk": {
+            "name": "Risk limits",
+            "body": "A daily loss or drawdown limit paused your bots."
+          },
+          "keyFee": {
+            "name": "SoDEX access",
+            "body": "Your API key or builder fee approval changed."
+          },
+          "daily": {
+            "name": "✦ Morning brief",
+            "body": "Desk AI sums up your bots at 08:00 your time."
+          },
+          "fills": {
+            "name": "Every fill",
+            "body": "Each order that fills. Can be a lot."
+          },
+          "copyTrading": {
+            "name": "Traders you follow",
+            "body": "A trader you follow made a big move."
+          }
+        }
+      },
+      "telegramCard": {
+        "name": "Telegram",
+        "loading": "Checking Telegram…",
+        "notConnected": "Not connected",
+        "getAlerts": "Get alerts on Telegram",
+        "getAlertsBody": "Bot problems and risk alerts reach your phone in seconds.",
+        "connect": "Connect Telegram",
+        "gettingLink": "Getting a link…",
+        "waiting": "Waiting for Telegram…",
+        "waitingBody": "Tap <b>Start</b> in Telegram. This link works for {time} more.",
+        "showAgain": "Show link again",
+        "cancel": "Cancel",
+        "cancelling": "Cancelling…",
+        "connectedAs": "Connected as <b>@{username}</b> · since {date}",
+        "connectedNoUsername": "Connected · since {date}",
+        "disconnect": "Disconnect",
+        "disconnecting": "Disconnecting…",
+        "blocked": "Paused · bot blocked",
+        "blockedBody": "Telegram says you blocked DeskLabs Bot, so alerts stopped on {date}. You still get them here and by email.",
+        "connectAgain": "Connect again",
+        "disconnectDialog": {
+          "title": "Disconnect Telegram?",
+          "consequencesLabel": "What happens",
+          "stop": "Alerts stop on Telegram.",
+          "lastMessage": "DeskLabs Bot sends one last message: “Disconnected from DeskLabs.”",
+          "stillHere": "You still get alerts here and by email.",
+          "confirm": "Disconnect",
+          "cancel": "Cancel"
+        },
+        "errors": {
+          "status": "Couldn't check Telegram. Try again in a moment.",
+          "link": "Couldn't get a link. Try again.",
+          "rateLimited": "Too many links in a minute. Wait a moment and try again.",
+          "disconnect": "Couldn't disconnect. Try again."
+        }
+      },
+      "connect": {
+        "step1": "Step 1 of 2",
+        "step2": "Step 2 of 2",
+        "title": "Connect Telegram",
+        "close": "Close",
+        "body": "Open DeskLabs Bot and tap <b>Start</b>. That's it: no code to type.",
+        "qrLabel": "QR code that opens DeskLabs Bot in Telegram",
+        "onPhone": "On your phone",
+        "open": "Open Telegram",
+        "onComputer": "On a computer? Scan the code with your phone camera.",
+        "waiting": "Waiting for you to tap Start…",
+        "worksFor": "Link works for {time}",
+        "safety1": "DeskLabs Bot only sends you alerts. It can't trade, pause bots or move money.",
+        "safety2": "We never ask for your password, seed phrase or keys on Telegram.",
+        "connectedTitle": "Telegram connected",
+        "alertsGoTo": "Alerts go to <b>@{username}</b>",
+        "alertsGoToNoUsername": "Alerts go to your Telegram.",
+        "youGet": "You'll get on Telegram",
+        "always": "(always)",
+        "items": {
+          "botErrors": "Bot problems",
+          "risk": "Risk limits",
+          "keyFee": "SoDEX access changes",
+          "daily": "✦ Morning brief at 08:00",
+          "fills": "Every fill",
+          "copyTrading": "Traders you follow"
+        },
+        "change": "Change in Settings",
+        "done": "Done",
+        "expiredChip": "Link expired",
+        "expiredTitle": "That link timed out",
+        "expiredBody": "Links work for 10 minutes and only once. Get a new one and tap Start again.",
+        "newLink": "Get a new link",
+        "gettingLink": "Getting a link…"
       }
     },
     "defaults": {
@@ -2344,7 +2457,24 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": ["settings.notifications.inAppOnly"],
+  "_pendingReview": [
+    "settings.notifications.what.cellLabel",
+    "settings.notifications.what.notAvailable",
+    "settings.notifications.what.loadFailed",
+    "settings.notifications.what.saveFailed",
+    "settings.notifications.telegramCard.loading",
+    "settings.notifications.telegramCard.gettingLink",
+    "settings.notifications.telegramCard.cancelling",
+    "settings.notifications.telegramCard.connectedNoUsername",
+    "settings.notifications.telegramCard.disconnecting",
+    "settings.notifications.telegramCard.disconnectDialog",
+    "settings.notifications.telegramCard.errors",
+    "settings.notifications.connect.alertsGoToNoUsername",
+    "settings.notifications.connect.items.fills",
+    "settings.notifications.connect.items.copyTrading",
+    "settings.notifications.connect.gettingLink",
+    "settings.notifications.telegramCard.showAgain"
+  ],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",
