@@ -1,6 +1,6 @@
 "use client";
 
-import { dec, whatIfApplyViewSchema, whatIfViewSchema, type WhatIfView } from "@drift/shared";
+import { whatIfApplyViewSchema, whatIfViewSchema, type WhatIfView } from "@drift/shared";
 import { Button, ErrorState, PnLValue, Skeleton } from "@drift/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
@@ -11,7 +11,7 @@ import { PageHead, Workspace } from "@/components/workspace";
 import { api, ApiError } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 
-import { optionValues } from "./needs-you-card";
+import { optionValues, pickGain } from "../bplus";
 
 // AI Desk B+ (artboard BP-WhatIf): 2–3 phương án với kết quả 7 ngày đã qua, "My pick" của Desk AI kèm lý do (câu mẫu
 // từ luật chọn, chưa dùng LLM), Apply → version mới "AI suggested" qua luồng sửa bot hiện có. User bấm, AI không tự
@@ -105,11 +105,10 @@ function why(
   const pick = w.pick;
   if (pick === null) return null;
   const chosen = w.options.find((o) => o.key === pick.key);
-  if (pick.reason === "better_result" && chosen?.outcome != null) {
-    const keep = w.options.find((o) => o.key === "keep")?.outcome;
-    if (keep == null) return null;
-    const diff = formatMoney(dec(chosen.outcome.net).sub(keep.net).toString()) ?? "";
-    return t("why.better_result", { name: name(chosen), diff });
+  if (pick.reason === "better_result" && chosen !== undefined) {
+    const gain = pickGain(w);
+    if (gain === null) return null;
+    return t("why.better_result", { name: name(chosen), diff: formatMoney(gain) ?? "" });
   }
   if (pick.reason === "safer_best_result" && chosen !== undefined)
     return t("why.safer_best_result", { name: name(chosen) });

@@ -11,13 +11,13 @@ import { Card, PageHead, Workspace } from "@/components/workspace";
 import { api } from "@/lib/api";
 import { formatDate, formatMoney } from "@/lib/format";
 
+import { leverageChange, recordChip, type RecordChip } from "../bplus";
+
 // AI Desk B+ (artboard BP-Record): thành tích đề xuất, đo 7 ngày sau mỗi Apply, hiện cả lần làm xấu đi. Switch back chỉ
 // ở dòng "Made it worse" khi bot vẫn ở version AI đã tạo; user bấm, tạo version mới từ cấu hình cũ.
 
 type Row = DeskRecordView["rows"][number];
-type ChipKey = "helped" | "made_worse" | "no_clear_effect" | "measuring" | "unavailable";
-
-const CHIP: Record<ChipKey, string> = {
+const CHIP: Record<RecordChip, string> = {
   helped: "bg-pos-bg text-pos",
   made_worse: "bg-neg-bg text-neg-ink",
   no_clear_effect: "bg-surface-2 text-ink-2",
@@ -25,23 +25,14 @@ const CHIP: Record<ChipKey, string> = {
   unavailable: "bg-surface-2 text-ink-2",
 };
 
-const chipOf = (r: Row): ChipKey =>
-  r.status === "done" && r.verdict !== null
-    ? r.verdict
-    : r.status === "unavailable"
-      ? "unavailable"
-      : "measuring";
-
 const day = (iso: string) => formatDate(Date.parse(iso));
 
 function useChange() {
   const t = useTranslations("desk.record");
   return (r: Row) => {
     if (r.option !== "lower_leverage") return t(`change.${r.option}`);
-    const c = r.changes.find((x) => x.key === "leverage");
-    return c?.from == null || c.to === null
-      ? null
-      : t("change.lower_leverage", { from: c.from, to: c.to });
+    const c = leverageChange(r);
+    return c === null ? null : t("change.lower_leverage", c);
   };
 }
 
@@ -57,7 +48,7 @@ function RecordRow({ r }: { r: Row }) {
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["desk", "record"] }),
   });
-  const chip = chipOf(r);
+  const chip = recordChip(r);
   const compare =
     r.old !== null && r.after !== null
       ? t("compare", {

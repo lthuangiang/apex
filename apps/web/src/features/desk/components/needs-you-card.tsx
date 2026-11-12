@@ -11,34 +11,18 @@ import { z } from "zod";
 import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 
+import { optionValues, shownFix } from "../bplus";
+
 // AI Desk B+ (artboard BP-Home): một việc "Needs you" = vấn đề bằng lời thường (từ fact của quy tắc) + what-if 7 ngày
 // ("Last 7 days, as it is" so với phương án Desk AI chọn) + nút chính. Chưa có so sánh thì bấm Compare thay user: chỉ
 // tính trên dữ liệu cũ, không đổi bot. Không có số thì không hiện 0 (quy tắc 1.8).
 
 type Item = DeskHomeView["items"][number];
-type Option = WhatIfView["options"][number];
 
 const factOf = (item: Item, name: string): string | null =>
   item.facts.find((f) => f.name === name)?.value ?? null;
 
 const snoozeSchema = z.object({ id: z.string(), snoozedUntil: z.string() });
-
-/** Phương án hiện ở thẻ: lựa chọn của Desk AI nếu là một cách sửa, không thì cách sửa đầu tiên có kết quả. */
-export function shownFix(w: WhatIfView): Option | null {
-  const fixes = w.options.filter((o) => o.key !== "keep" && o.outcome !== null);
-  return fixes.find((o) => o.key === w.pick?.key) ?? fixes[0] ?? null;
-}
-
-/** Giá trị cho câu chữ của phương án: đòn bẩy / stop % sau patch (API tính từ cấu hình đúng version). */
-export function optionValues(o: Option): { leverage: string; stop: string } {
-  return {
-    leverage:
-      o.display?.leverage === undefined || o.display.leverage === null
-        ? ""
-        : String(o.display.leverage),
-    stop: o.display?.stopPct ?? "",
-  };
-}
 
 function useWhatif(item: Item) {
   const qc = useQueryClient();
