@@ -122,11 +122,11 @@ export function TradersPage() {
           ))}
         </div>
         {tab === "steady" ? <p className="m-0 text-sm text-ink-2">{t("list.steadyNote")}</p> : null}
-        {anyFull ? (
-          <p className="m-0 rounded-card bg-accent-tint p-4 text-sm text-accent-ink">
-            <strong>{t("list.slotsFull")}</strong> {t("list.slotsNote")}
-          </p>
-        ) : null}
+        {/* Artboard luôn hiện giới hạn 8 chỗ copy realtime; khi hết chỗ thì thêm câu in đậm. */}
+        <p className="m-0 rounded-card bg-accent-tint p-4 text-sm text-accent-ink">
+          {anyFull ? <strong>{t("list.slotsFull")} </strong> : null}
+          {t("list.slotsNote")}
+        </p>
 
         {list.isPending ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy="true">
@@ -152,7 +152,7 @@ export function TradersPage() {
           </div>
         )}
 
-        {data !== undefined && data.candidates > 0 ? (
+        {data !== undefined && data.hidden > 0 ? (
           <section className="flex flex-col gap-2 rounded-card border border-border bg-surface p-5 text-sm">
             <p className="m-0">
               <strong>{t("list.hidden", { hidden: data.hidden, total: data.candidates })}</strong>{" "}

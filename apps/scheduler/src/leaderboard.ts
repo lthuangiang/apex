@@ -32,6 +32,28 @@ export const LEADERBOARD_CANDIDATES = 200;
 /** Số sự kiện gần nhất ghi cho Trader profile của mỗi ví (ví chưa ai theo dõi chỉ có dữ liệu tới lượt đêm). */
 export const PROFILE_EVENTS = 50;
 
+/** Cập nhật `leaderboard_runs.updated_at` sau mỗi chừng này ví. */
+const HEARTBEAT_EVERY = 5;
+/** Lượt "running" không có nhịp tim lâu hơn mức này coi như tiến trình đã chết (một ví chậm nhất cỡ vài phút). */
+export const LEADERBOARD_STALE_MS = 20 * 60_000;
+/** Lượt lỗi chỉ thử lại sau chừng này, không gọi dồn. */
+const RETRY_FAILED_MS = 3_600_000;
+
+/**
+ * Có nên bắt đầu lượt leaderboard hôm nay không. `run` = dòng `leaderboard_runs` của ngày UTC hiện tại.
+ * Hàm thuần để test; `main.ts` gọi lúc nhận lease và mỗi 10 phút.
+ */
+export function leaderboardDue(
+  run: { status: "running" | "ok" | "failed"; updatedAt: Date } | undefined,
+  now: number,
+): boolean {
+  if (run === undefined) return true;
+  const idle = now - run.updatedAt.getTime();
+  if (run.status === "ok") return false;
+  if (run.status === "running") return idle >= LEADERBOARD_STALE_MS;
+  return idle >= RETRY_FAILED_MS;
+}
+
 export interface LeaderboardDeps {
   db: Db;
   hl: Pick<HyperliquidClient, "leaderboard" | "fillsSince" | "fundingSince" | "isVault">;
@@ -70,7 +92,7 @@ export async function runLeaderboard(deps: LeaderboardDeps): Promise<Leaderboard
     .values({ date, status: "running" })
     .onConflictDoUpdate({
       target: leaderboardRuns.date,
-      set: { status: "running", error: null, finishedAt: null },
+      set: { status: "running", error: null, finishedAt: null, updatedAt: new Date(now) },
     });
 
   let addresses: string[];
@@ -199,6 +221,12 @@ export async function runLeaderboard(deps: LeaderboardDeps): Promise<Leaderboard
       // Một ví lỗi không chặn cả lượt; ví đó giữ thống kê của ngày trước.
       failed.push(address);
     }
+    // Nhịp tim: lượt dài vài giờ; tiến trình mới nhận lease biết lượt cũ còn sống hay đã chết (`leaderboardDue`).
+    if ((computed + failed.length) % HEARTBEAT_EVERY === 0)
+      await deps.db
+        .update(leaderboardRuns)
+        .set({ candidates: all.length, computed, updatedAt: new Date(deps.now()) })
+        .where(eq(leaderboardRuns.date, date));
   }
 
   const r: LeaderboardResult = {

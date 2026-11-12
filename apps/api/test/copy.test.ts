@@ -113,6 +113,34 @@ describe("Copy Trading v1", () => {
     });
   });
 
+  it("keeps a trader the last run couldn't read, using stats from the past 7 days", async () => {
+    const T3 = "0xccc0000000000000000000000000000000000003";
+    const T4 = "0xddd0000000000000000000000000000000000004";
+    for (const [address, date] of [
+      [T3, "2026-10-24"],
+      [T4, "2026-10-10"],
+    ] as const) {
+      await env.pool.query(
+        "insert into leader_wallets (source, address, last_on_leaderboard_at) values ('hyperliquid', $1, '2026-10-27T01:00:00Z')",
+        [address],
+      );
+      await env.pool.query(
+        `insert into leader_stats_daily (source, address, date, stats, hidden, tabs, steady_score, profit, typical_hold_ms, computed_at)
+         values ('hyperliquid', $1, $2, $3, '{}', '{top,long,all}', null, '84120', 18000000, now())`,
+        [address, date, JSON.stringify(stats())],
+      );
+    }
+    const { client } = await user("copy-stale@example.com");
+    const list = traderListSchema.parse(
+      (await client.request("GET", "/api/v1/traders?tab=all")).json(),
+    );
+    const shown = list.items.map((i) => i.address);
+    expect(shown).toContain(T3);
+    expect(shown).not.toContain(T4);
+    await env.pool.query("delete from leader_stats_daily where address = any($1)", [[T3, T4]]);
+    await env.pool.query("delete from leader_wallets where address = any($1)", [[T3, T4]]);
+  });
+
   it("shows a trader profile with fit checks, recent changes and the position that won't be copied", async () => {
     await env.pool.query(
       `insert into leader_events (id, source, address, coin, market, kind, position_before, position_after, notional, price, at, seen_at, last_tid)
@@ -252,5 +280,26 @@ describe("Copy Trading v1", () => {
     });
     expect(errorOf(start.json()).details).toMatchObject({ reason: "slots_full" });
     await env.pool.query("update bots set state = 'stopped' where id = any($1)", [ids]);
+  });
+
+  it("reuses the draft copy bot when Start fails and the user tries again", async () => {
+    const { client, userId } = await user("copy-retry@example.com");
+    const accountID = Math.floor(Math.random() * 1e9);
+    env.sodex.addUser(ADDRESS, accountID);
+    await env.pool.query(
+      "insert into sodex_accounts (id, user_id, address, sodex_account_id, network, status) values (gen_random_uuid(), $1, $2, $3, 'mainnet', 'connected')",
+      [userId, ADDRESS, accountID],
+    );
+    const body = { address: T1, budget: "500", preset: "balanced", acknowledged: true };
+    // Builder fee chưa approve trên account mới: Start bị từ chối, bot ở lại draft.
+    const first = await client.request("POST", "/api/v1/copy", { body });
+    const second = await client.request("POST", "/api/v1/copy", { body });
+    expect(first.statusCode).toBeGreaterThanOrEqual(400);
+    expect(second.statusCode).toBeGreaterThanOrEqual(400);
+    const { rows } = await env.pool.query<{ n: number }>(
+      "select count(*)::int as n from bots where user_id = $1 and strategy = 'copy_trade'",
+      [userId],
+    );
+    expect(rows[0]?.n).toBe(1);
   });
 });

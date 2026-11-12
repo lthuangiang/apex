@@ -10,7 +10,7 @@ import { getAddress } from "viem";
 import { z } from "zod";
 
 import { reconcileDay, snapshotBuilderBalances } from "./builder-revenue";
-import { noteMinHoldChanges, runLeaderboard } from "./leaderboard";
+import { leaderboardDue, noteMinHoldChanges, runLeaderboard } from "./leaderboard";
 import { computeDailyStats, utcDate } from "./market-stats";
 import { snapshotAndCheck } from "./risk";
 
@@ -118,8 +118,6 @@ async function revenueTick() {
 }
 
 let leaderboardBusy = false;
-/** Lượt leaderboard đang "running" lâu hơn mức này coi như tiến trình cũ đã chết, chạy lại. */
-const LEADERBOARD_STALE_MS = 8 * 3_600_000;
 async function leaderboardTick() {
   if (!env.COPY_LEADERBOARD_ENABLED || leaderboardBusy) return;
   const now = Date.now();
@@ -128,10 +126,7 @@ async function leaderboardTick() {
     .select({ status: leaderboardRuns.status, updatedAt: leaderboardRuns.updatedAt })
     .from(leaderboardRuns)
     .where(eq(leaderboardRuns.date, utcDate(now)));
-  if (run?.status === "ok") return;
-  if (run?.status === "running" && now - run.updatedAt.getTime() < LEADERBOARD_STALE_MS) return;
-  // Lượt lỗi chỉ thử lại sau 1 giờ, không gọi dồn.
-  if (run?.status === "failed" && now - run.updatedAt.getTime() < 3_600_000) return;
+  if (!leaderboardDue(run, now)) return;
   leaderboardBusy = true;
   try {
     const r = await runLeaderboard({
@@ -170,6 +165,10 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
   onLead: () => {
     void tick().catch((error: unknown) => {
       log.error({ err: error }, "tick failed");
+    });
+    // Không đợi 10 phút đầu: tiến trình vừa nhận lease chạy (hoặc chạy tiếp) lượt leaderboard ngay nếu tới hạn.
+    void leaderboardTick().catch((error: unknown) => {
+      log.error({ err: error }, "leaderboard tick failed");
     });
     riskTimer = setInterval(() => {
       void riskTick()

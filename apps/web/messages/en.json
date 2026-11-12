@@ -2114,6 +2114,8 @@
       "holdHelp": "Median time from opening a position to closing it.",
       "winHelp": "{wins} of {total} closed positions made money.",
       "fitTitle": "Is this trader a good fit to copy?",
+      "fitOk": "Good",
+      "fitWarn": "Watch out",
       "fit": {
         "holds_long": {
           "label": "Holds trades for {hold}.",
@@ -2198,6 +2200,10 @@
       "unit": "USDC",
       "available": "Available on SoDEX: {balance} USDC. The budget stays in your account; it is the margin your copies can use.",
       "availableUnknown": "Available on SoDEX: Not available. The budget stays in your account; it is the margin your copies can use.",
+      "overBalance": {
+        "title": "Your budget is more than your SoDEX balance.",
+        "body": "You have {balance} USDC available. When a copy needs more margin than that, SoDEX rejects it and the copy bot may pause. Lower the budget or add funds on SoDEX first."
+      },
       "safetyTitle": "Pick a safety level",
       "safetyBody": "This sets leverage, stop loss and the most you can lose. You can change each one under Advanced.",
       "recommended": "Recommended",
@@ -2460,6 +2466,10 @@
     "common.nav.traders",
     "common.nav.following",
     "common.nav.sections.copy",
+    "copy.budget.overBalance.title",
+    "copy.budget.overBalance.body",
+    "copy.profile.fitOk",
+    "copy.profile.fitWarn",
     "copy.common.notEnough",
     "copy.common.notAvailable",
     "copy.common.loadError",
