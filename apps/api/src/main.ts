@@ -60,6 +60,10 @@ const app = await buildApp({
     appUrl: config.DRIFT_APP_URL,
     botApi: createBotApi({ token: config.DRIFT_TELEGRAM_BOT_TOKEN ?? "" }),
   },
+  telegramBrief: {
+    enabled: config.TELEGRAM_ENABLED && config.TELEGRAM_BRIEF_ENABLED,
+    useLlm: config.TELEGRAM_BRIEF_LLM,
+  },
   deskLlm:
     config.DESK_AI_API_KEY === undefined
       ? null

@@ -30,6 +30,20 @@ export function fill(template: string, vars: Record<string, string | number>): s
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
+
+/**
+ * Morning brief (N4): lời Desk AI đã qua kiểm tra số, hoặc câu mẫu chép từ web `desk.ai.templates.brief`. Tên bot và lời
+ * LLM là dữ liệu nên luôn escape. Payload cũ (không có lời / số việc) → câu cố định.
+ */
+function briefBody(data: Record<string, unknown>): string {
+  const text = str(data.text);
+  if (text !== null) return escapeTelegramHtml(text);
+  const count = typeof data.count === "number" ? data.count : null;
+  if (count === null) return M.bodies.daily_summary;
+  const bot = escapeTelegramHtml(str(data.bot) ?? M.aBot);
+  if (count === 0) return M.bodies.briefNone;
+  return count === 1 ? fill(M.bodies.briefOne, { bot }) : fill(M.bodies.briefMany, { count, bot });
+}
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function reasonOf(data: Record<string, unknown>): string | null {
@@ -62,7 +76,7 @@ function targetOf(row: RenderRow): { path: string; label: string } {
     case "key_fee":
       return { path: "/settings", label: M.buttons.settings };
     case "daily_summary":
-      return { path: "/desk", label: M.buttons.desk };
+      return { path: "/desk", label: M.buttons.openDesk };
     case "leader_big_move":
       return { path: "/following", label: M.buttons.following };
     case "telegram_connected":
@@ -158,7 +172,7 @@ function body(row: RenderRow): string | null {
     case "key_fee":
       return M.bodies.key_fee;
     case "daily_summary":
-      return M.bodies.daily_summary;
+      return briefBody(row.data);
     case "leader_big_move": {
       const coin = str(row.data.coin);
       return coin === null
