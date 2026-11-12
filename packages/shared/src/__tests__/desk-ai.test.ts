@@ -75,6 +75,11 @@ describe("Desk AI number check", () => {
     expect(checkNumbers("Stop at 2.4%.", facts).ok).toBe(false);
   });
 
+  it("ignores numbers inside a bot name only when the whole name is written", () => {
+    expect(checkNumbers("ETH Farm 7 is running.", facts).ok).toBe(true);
+    expect(checkNumbers("Farm 7 is running.", facts).ok).toBe(false);
+  });
+
   it("allows numbers the user typed in the question", () => {
     expect(checkNumbers("With 300 USDC more you would…", facts, "I have 300 USDC more").ok).toBe(
       true,

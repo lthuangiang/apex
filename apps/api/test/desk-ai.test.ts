@@ -17,6 +17,7 @@ import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 const FAKE_KEY = "sk-test-not-a-real-key";
 const llm = {
   reply: "Your bots are running." as string | Error,
+  stop: "end_turn" as string,
   calls: [] as { system: string; user: string }[],
 };
 const fake: DeskLlm = {
@@ -26,6 +27,7 @@ const fake: DeskLlm = {
     return Promise.resolve({
       text: llm.reply,
       model: "claude-sonnet-5-5",
+      stopReason: llm.stop,
       usage: { input: 1200, output: 80, cacheRead: 900, cacheWrite: 0 },
     });
   },
@@ -43,6 +45,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   llm.reply = "Your bots are running.";
+  llm.stop = "end_turn";
   llm.calls = [];
 });
 
@@ -159,17 +162,9 @@ describe("Desk AI", () => {
   it("stops at 20 questions a day with the template, without counting the refused one", async () => {
     const { client, userId } = await deskUser(env, "ai-quota@example.com");
     const first = await ask(client, "Hi");
-    const today = (
-      await env.pool.query<{ local_date: string }>(
-        "select local_date from desk_ai_turns where user_id = $1",
-        [userId],
-      )
-    ).rows[0]?.local_date;
-    await env.pool.query(
-      `insert into desk_ai_turns (id, conversation_id, user_id, kind, local_date, question, answer, source, prompt_version, fact_ids)
-       select gen_random_uuid(), $1, $2, 'question', $3, 'q', '{"kind":"text","text":"a","facts":[]}', 'llm', 'desk-ai-v1', '{}' from generate_series(1, 19)`,
-      [first.conversationId, userId, today],
-    );
+    // Đã hỏi 20 câu hôm nay (bảng đếm, không phụ thuộc lịch sử chat).
+    await env.pool.query("update desk_ai_usage set questions = 20 where user_id = $1", [userId]);
+    expect(first.questionsLeft).toBe(19);
     llm.calls = [];
     const over = await ask(client, "One more?");
     expect(over.turn.answer).toMatchObject({
@@ -183,6 +178,35 @@ describe("Desk AI", () => {
       (await client.request("GET", "/api/v1/desk/ai/history")).json(),
     );
     expect(h).toMatchObject({ questionsToday: 20, limit: 20 });
+  });
+
+  it("keeps the day's question count when the history is deleted", async () => {
+    const { client } = await deskUser(env, "ai-quota-delete@example.com");
+    await ask(client, "Hi");
+    const second = await ask(client, "Why?");
+    expect(second.questionsLeft).toBe(18);
+    expect((await client.request("DELETE", "/api/v1/desk/ai/history")).statusCode).toBe(200);
+    const h = deskAiHistoryViewSchema.parse(
+      (await client.request("GET", "/api/v1/desk/ai/history")).json(),
+    );
+    expect(h.questionsToday).toBe(2);
+    expect((await ask(client, "And now?")).questionsLeft).toBe(17);
+  });
+
+  it("uses the template when the answer was cut off or refused", async () => {
+    const { client, userId } = await deskUser(env, "ai-cut@example.com");
+    llm.reply = "The most you agreed to lose is 500";
+    llm.stop = "max_tokens";
+    const cut = await ask(client, "How much can I lose?");
+    expect(cut.turn.answer).toMatchObject({ kind: "template", key: "fallback" });
+    llm.stop = "refusal";
+    const refused = await ask(client, "How much can I lose?", cut.conversationId);
+    expect(refused.turn.answer).toMatchObject({ kind: "template", key: "fallback" });
+    const { rows } = await env.pool.query<{ fallback: string }>(
+      "select fallback from desk_ai_turns where user_id = $1 order by created_at",
+      [userId],
+    );
+    expect(rows.map((r) => r.fallback)).toEqual(["truncated", "refusal"]);
   });
 
   it("writes the morning brief once a day after 08:00 local time, outside the quota", async () => {

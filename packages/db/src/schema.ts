@@ -1285,7 +1285,7 @@ export const deskAiTurns = pgTable(
     answer: jsonb("answer").notNull(),
     /** `llm` khi lời LLM qua kiểm tra số; `template` khi dùng câu mẫu. */
     source: text("source").$type<"llm" | "template">().notNull(),
-    /** Vì sao dùng câu mẫu: llm_off, quota, out_of_scope, numbers, error. */
+    /** Vì sao dùng câu mẫu: llm_off, quota, out_of_scope, numbers, truncated, refusal, error. */
     fallback: text("fallback"),
     model: text("model"),
     promptVersion: text("prompt_version").notNull(),
@@ -1302,4 +1302,22 @@ export const deskAiTurns = pgTable(
     index("desk_ai_turns_conversation_idx").on(t.conversationId, t.createdAt),
     index("desk_ai_turns_quota_idx").on(t.userId, t.localDate),
   ],
+);
+
+/**
+ * Desk AI: số câu hỏi đã dùng mỗi ngày địa phương (DEC-165b, 20 câu / ngày). Tách khỏi lịch sử chat để "Delete history"
+ * không đặt lại lượt; giữ chỗ bằng một câu `insert … on conflict do update … where questions < 20` nên hai request song
+ * song ở câu thứ 20 không cùng qua.
+ */
+export const deskAiUsage = pgTable(
+  "desk_ai_usage",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    localDate: text("local_date").notNull(),
+    questions: integer("questions").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.localDate] })],
 );

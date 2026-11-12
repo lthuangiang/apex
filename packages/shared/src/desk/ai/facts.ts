@@ -15,8 +15,8 @@ export const DESK_AI_CONFIG = {
   /** Giới hạn độ dài câu hỏi và câu trả lời. */
   maxQuestionChars: 500,
   maxAnswerTokens: 600,
-  /** Giá ước tính (USD / 1M token) để ghi chi phí từng lượt; đo lại khi có hoá đơn thật. */
-  priceUsdPerMillion: { input: "3", output: "15", cacheRead: "0.3", cacheWrite: "3.75" },
+  /** Giá `claude-sonnet-5-5` (USD / 1M token; cache write loại 5 phút) để ghi chi phí ước tính từng lượt. */
+  priceUsdPerMillion: { input: "2", output: "10", cacheRead: "0.1", cacheWrite: "2.5" },
 } as const;
 
 export type DeskAiFactUnit = "usdc" | "pct" | "x" | "count" | "text";

@@ -15,6 +15,8 @@ export interface DeskLlm {
   complete(input: { system: string; user: string }): Promise<{
     text: string;
     model: string;
+    /** `end_turn` là xong; `max_tokens` (bị cắt), `refusal`… → câu mẫu. */
+    stopReason: string | null;
     usage: DeskLlmUsage;
   }>;
 }
@@ -29,6 +31,10 @@ export function anthropicLlm(apiKey: string): DeskLlm {
       const r = await client.messages.create({
         model: DESK_AI_CONFIG.model,
         max_tokens: DESK_AI_CONFIG.maxAnswerTokens,
+        // Chỉ viết lời quanh fact: không cần suy nghĩ dài. Model này mặc định bật thinking (effort high) và thinking
+        // ăn vào max_tokens; `disabled` bị từ chối (400), nên dùng `between_tools` (không có tool → không nghĩ) và effort thấp.
+        thinking: { type: "between_tools" },
+        output_config: { effort: "low" },
         // System prompt cố định: cache để lượt sau chỉ trả giá đọc cache (mục 5.11).
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: user }],
@@ -40,6 +46,7 @@ export function anthropicLlm(apiKey: string): DeskLlm {
       return {
         text,
         model: r.model,
+        stopReason: r.stop_reason,
         usage: {
           input: r.usage.input_tokens,
           output: r.usage.output_tokens,

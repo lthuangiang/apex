@@ -1,4 +1,4 @@
-import { deskAiConversations, deskAiTurns, users } from "@drift/db";
+import { deskAiConversations, deskAiTurns, deskAiUsage, users } from "@drift/db";
 import {
   AppError,
   buildPrompt,
@@ -67,18 +67,32 @@ export function localClock(now: Date, timeZone: string): { date: string; hour: n
 
 async function questionsUsed(deps: BotDeps, userId: string, date: string): Promise<number> {
   const [r] = await deps.db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(deskAiTurns)
-    .where(
-      and(
-        eq(deskAiTurns.userId, userId),
-        eq(deskAiTurns.localDate, date),
-        eq(deskAiTurns.kind, "question"),
-        // Câu bị từ chối vì hết lượt không tính thêm.
-        sql`coalesce(${deskAiTurns.fallback}, '') <> 'quota'`,
-      ),
-    );
+    .select({ n: deskAiUsage.questions })
+    .from(deskAiUsage)
+    .where(and(eq(deskAiUsage.userId, userId), eq(deskAiUsage.localDate, date)))
+    .limit(1);
   return r?.n ?? 0;
+}
+
+/**
+ * Giữ một lượt hỏi trong ngày: một câu lệnh, chỉ tăng khi còn dưới trần. Trả số đã dùng sau khi giữ, hoặc null khi đã
+ * hết 20 câu. Không bị "Delete history" đặt lại.
+ */
+async function reserveQuestion(
+  deps: BotDeps,
+  userId: string,
+  date: string,
+): Promise<number | null> {
+  const [r] = await deps.db
+    .insert(deskAiUsage)
+    .values({ userId, localDate: date, questions: 1 })
+    .onConflictDoUpdate({
+      target: [deskAiUsage.userId, deskAiUsage.localDate],
+      set: { questions: sql`${deskAiUsage.questions} + 1`, updatedAt: deps.now() },
+      setWhere: sql`${deskAiUsage.questions} < ${DESK_AI_CONFIG.dailyQuestions}`,
+    })
+    .returning({ n: deskAiUsage.questions });
+  return r?.n ?? null;
 }
 
 async function factsOf(deps: BotDeps, userId: string, used: number): Promise<DeskAiFact[]> {
@@ -131,6 +145,15 @@ async function write(
   const prompt = buildPrompt(ask, facts);
   try {
     const r = await deps.llm.complete({ system: prompt.system, user: prompt.user });
+    // Bị cắt giữa chừng (max_tokens) hay model từ chối: không hiện nửa câu, dùng câu mẫu.
+    if (r.stopReason !== "end_turn")
+      return {
+        answer: template,
+        source: "template",
+        fallback: r.stopReason === "refusal" ? "refusal" : "truncated",
+        model: r.model,
+        usage: r.usage,
+      };
     const check = checkNumbers(r.text, facts, question);
     if (r.text === "" || !check.ok)
       return {
@@ -195,7 +218,7 @@ async function saveTurn(
       outputTokens: w.usage.output,
       cacheReadTokens: w.usage.cacheRead,
       cacheWriteTokens: w.usage.cacheWrite,
-      costUsd: w.source === "llm" || w.fallback === "numbers" ? costOf(w.usage) : null,
+      costUsd: w.model === null ? null : costOf(w.usage),
       traceId: deps.traceId ?? null,
     })
     .returning();
@@ -216,12 +239,13 @@ export async function askDeskAi(
 ): Promise<DeskAiAskView> {
   const now = deps.now();
   const { date } = localClock(now, await timezoneOf(deps, userId));
-  const used = await questionsUsed(deps, userId, date);
+  const reserved = await reserveQuestion(deps, userId, date);
+  const used = reserved ?? DESK_AI_CONFIG.dailyQuestions;
   const facts = await factsOf(deps, userId, used);
   const intent = intentOf(question);
   const goalFacts = facts.filter((f) => f.key === "goal_limit" || f.key === "goal_used");
   let w: Written;
-  if (used >= DESK_AI_CONFIG.dailyQuestions)
+  if (reserved === null)
     w = {
       answer: {
         kind: "template",
@@ -286,11 +310,10 @@ export async function askDeskAi(
     w,
     w.answer.facts.map((f) => f.id),
   );
-  const counted = w.fallback === "quota" ? used : used + 1;
   return {
     conversationId: convId,
     turn,
-    questionsLeft: Math.max(0, DESK_AI_CONFIG.dailyQuestions - counted),
+    questionsLeft: Math.max(0, DESK_AI_CONFIG.dailyQuestions - used),
   };
 }
 
