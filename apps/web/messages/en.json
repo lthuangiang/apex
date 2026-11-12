@@ -2594,7 +2594,8 @@
     "notifications.toast.dismiss",
     "notifications.toast.merged",
     "notifications.types.telegram_moved",
-    "notifications.panel.body.telegramMoved"
+    "notifications.panel.body.telegramMoved",
+    "desk.whatif.retry"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -4804,6 +4805,7 @@
       "notEnough": "Not enough trades to compare",
       "noFix": "No fix to compare yet. Review the bot's settings.",
       "failed": "Couldn't compare right now.",
+      "retry": "Compare again",
       "compare": "Compare {count} options",
       "review": "Review settings",
       "later": "Later",
