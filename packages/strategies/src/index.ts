@@ -43,6 +43,7 @@ export { STRATEGIES, waitingOf, type LaunchedStrategy, type StrategyEntry } from
 export * from "./backtest";
 export { fundingArb, futuresDca, futuresGrid, rebalancing, recurringBuy, spotDca, spotGrid, twap };
 export {
+  botCapitalOf,
   copyMarkets,
   meetsMinSize,
   minSizeDetail,

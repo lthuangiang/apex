@@ -10,6 +10,7 @@ import messages from "./messages/en.json" with { type: "json" };
 
 const M = messages.telegram;
 const REASONS: Record<string, string> = messages.reasons;
+const STRATEGIES: Record<string, string> = messages.strategies;
 
 export interface RenderRow {
   type: NotificationType;
@@ -68,7 +69,36 @@ function targetOf(row: RenderRow): { path: string; label: string } {
     case "telegram_moved":
     case "telegram_blocked":
       return { path: "/settings?tab=notifications", label: M.buttons.settings };
+    case "team_signup":
+    case "team_sodex_connected":
+    case "team_bot_started":
+      return { path: "/admin/users", label: M.buttons.users };
   }
+}
+
+/**
+ * Tin báo team (DEC-184): email và ví đã che lúc fan-out (`teamMaskEmail` / `teamMaskAddress`); tên bot và market là chuỗi do
+ * user nhập nên escape. Vốn do engine tính sẵn; thiếu thì bỏ phần vốn (không ghi 0).
+ */
+function teamTitle(row: RenderRow): string {
+  const email = escapeTelegramHtml(str(row.data.email) ?? "···");
+  if (row.type === "team_signup") return fill(M.titles.team_signup, { email });
+  if (row.type === "team_sodex_connected")
+    return fill(M.titles.team_sodex_connected, {
+      email,
+      wallet: escapeTelegramHtml(str(row.data.wallet) ?? "0x…"),
+    });
+  const strategy = str(row.data.strategy);
+  const capital = str(row.data.capital);
+  const asset = str(row.data.capitalAsset);
+  const market = str(row.data.market);
+  const parts = [
+    escapeTelegramHtml(row.botName ?? str(row.data.botName) ?? M.aBot),
+    strategy === null ? null : escapeTelegramHtml(STRATEGIES[strategy] ?? strategy),
+    market === null ? null : escapeTelegramHtml(market),
+    capital === null || asset === null ? null : escapeTelegramHtml(`${capital} ${asset}`),
+  ].filter((x): x is string => x !== null);
+  return fill(M.titles.team_bot_started, { email, details: parts.join(" · ") });
 }
 
 function title(row: RenderRow): string {
@@ -96,6 +126,10 @@ function title(row: RenderRow): string {
     case "telegram_blocked":
       // Nhóm hệ thống không đi Telegram (DEC-183); nhánh này chỉ để switch đủ.
       return M.titles.key_fee;
+    case "team_signup":
+    case "team_sodex_connected":
+    case "team_bot_started":
+      return teamTitle(row);
   }
 }
 
@@ -135,6 +169,9 @@ function body(row: RenderRow): string | null {
     case "telegram_connected":
     case "telegram_moved":
     case "telegram_blocked":
+    case "team_signup":
+    case "team_sodex_connected":
+    case "team_bot_started":
       return null;
   }
 }
@@ -173,6 +210,22 @@ export function renderTelegram(rows: readonly RenderRow[], appUrl: string): Rend
     return {
       text: fill(M.merged.samePause, { n: rows.length, reason: sameReason }),
       button: { text: M.buttons.review, url: `${base}/agent` },
+    };
+  }
+  // Báo team: worker chỉ gộp CÙNG loại sự kiện ("3 new signups"), mở trang Users.
+  if (group === "teamOps") {
+    const lines = rows.slice(0, MERGED_LINES).map((r) => `• ${plain(title(r))}`);
+    if (rows.length > MERGED_LINES)
+      lines.push(fill(M.merged.more, { n: rows.length - MERGED_LINES }));
+    const head =
+      first.type === "team_signup"
+        ? M.merged.team_signup
+        : first.type === "team_sodex_connected"
+          ? M.merged.team_sodex_connected
+          : M.merged.team_bot_started;
+    return {
+      text: `${fill(head, { n: rows.length })}\n${lines.join("\n")}`,
+      button: { text: M.buttons.users, url: `${base}/admin/users` },
     };
   }
   const head =

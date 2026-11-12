@@ -37,6 +37,9 @@ import {
   NOTIFICATION_GROUPS,
   ReasonCode,
   SYSTEM_GROUPS,
+  TEAM_ONLY_GROUPS,
+  UserRole,
+  TELEGRAM_ONLY_GROUPS,
   RISK_ENFORCED,
   startOfDay,
   valuePortfolio,
@@ -652,16 +655,26 @@ export async function notificationSettingsOf(deps: AccountDeps, userId: string) 
     .select()
     .from(notificationSettings)
     .where(eq(notificationSettings.userId, userId));
+  const [u] = await deps.db
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const team = u?.role === UserRole.team;
   return {
-    // Nhóm hệ thống không có trong bảng Settings (DEC-183).
+    // Nhóm hệ thống không có trong bảng Settings (DEC-183); nhóm `teamOps` chỉ hiện với role team (DEC-184).
     groups: (Object.keys(NOTIFICATION_GROUPS) as NotificationGroup[])
       .filter((group) => !SYSTEM_GROUPS.includes(group))
+      .filter((group) => team || !TEAM_ONLY_GROUPS.includes(group))
       .map((group) => {
         const alwaysOn = ALWAYS_ON_GROUPS.includes(group);
         const val = (c: NotificationChannel) =>
-          alwaysOn ||
-          (rows.find((r) => r.type === group && r.channel === c)?.enabled ??
-            NOTIFICATION_DEFAULTS[group][c]);
+          // Nhóm chỉ Telegram: không có bản in-app hay email (DEC-184).
+          TELEGRAM_ONLY_GROUPS.includes(group) && c !== "telegram"
+            ? false
+            : alwaysOn ||
+              (rows.find((r) => r.type === group && r.channel === c)?.enabled ??
+                NOTIFICATION_DEFAULTS[group][c]);
         return {
           group,
           alwaysOn,
@@ -682,6 +695,13 @@ export async function setNotification(
 ): Promise<void> {
   if (ALWAYS_ON_GROUPS.includes(group))
     throw new AppError(ErrorCode.validationFailed, "Bot error notifications are always on.");
+  if (TEAM_ONLY_GROUPS.includes(group))
+    await requireTeam(deps.db, userId, "These notifications are for the DeskLabs team only.");
+  if (TELEGRAM_ONLY_GROUPS.includes(group) && channel !== "telegram")
+    throw new AppError(
+      ErrorCode.validationFailed,
+      "These notifications are sent on Telegram only.",
+    );
   await deps.db
     .insert(notificationSettings)
     .values({ userId, type: group, channel, enabled })

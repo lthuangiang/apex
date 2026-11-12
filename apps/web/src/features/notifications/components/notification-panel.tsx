@@ -54,6 +54,10 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   telegram_connected: { icon: Send, tone: "bg-pos-bg text-pos" },
   telegram_moved: { icon: Send, tone: "bg-bg text-ink-2" },
   telegram_blocked: { icon: Send, tone: "bg-warn-bg text-warn" },
+  // Báo team chỉ đi Telegram (DEC-184), không có bản in-app; có ở đây để map đủ loại.
+  team_signup: { icon: UserRound, tone: "bg-bg text-ink-2" },
+  team_sodex_connected: { icon: UserRound, tone: "bg-bg text-ink-2" },
+  team_bot_started: { icon: UserRound, tone: "bg-bg text-ink-2" },
 };
 /** Bot dừng đúng kế hoạch hoặc bot tiền ảo: không tô đỏ (DEC-180). */
 const QUIET_TONE = "bg-bg text-ink-2";

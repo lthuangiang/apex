@@ -21,6 +21,7 @@ import { Lease, type LeaseRedis } from "@drift/runtime";
 import {
   applyEngineEvent,
   applyReason,
+  assetOf,
   BotState,
   builderFeeRateFor,
   builderFeeRateOf,
@@ -47,6 +48,7 @@ import {
 } from "@drift/shared";
 import {
   applyFill,
+  botCapitalOf,
   clOrdId,
   copyMarkets,
   copyPositions,
@@ -1669,6 +1671,21 @@ export class Engine {
         topic: `user.${r.account.id}.bot`,
         payload: { botId: r.botId, state: next, reasonCode: reason },
       });
+      // Báo team (DEC-184): bot tiền thật vào running sau một lần Start (starting → running; resume không báo).
+      // Vốn tính sẵn ở đây (cùng hàm với Strategy Lab); jobs chỉ hiển thị.
+      if (!r.paper && b.state === BotState.starting && next === BotState.running) {
+        const cap = botCapitalOf(r.strategy, r.config);
+        await tx.insert(outbox).values({
+          topic: "jobs.team_ops",
+          payload: {
+            type: "team_bot_started",
+            botId: r.botId,
+            capital: cap.capital,
+            capitalAsset:
+              cap.capital === null ? null : cap.capitalUnit === "base" ? assetOf(r.market) : "USDC",
+          },
+        });
+      }
       if (reason !== null)
         await tx.insert(outbox).values({
           topic: "jobs.notify",
@@ -1799,6 +1816,21 @@ export class Engine {
         topic: `user.${r.account.id}.bot`,
         payload: { botId: r.botId, state: next, reasonCode: reason },
       });
+      // Báo team (DEC-184): bot tiền thật vào running sau một lần Start (starting → running; resume không báo).
+      // Vốn tính sẵn ở đây (cùng hàm với Strategy Lab); jobs chỉ hiển thị.
+      if (!r.paper && b.state === BotState.starting && next === BotState.running) {
+        const cap = botCapitalOf(r.strategy, r.config);
+        await tx.insert(outbox).values({
+          topic: "jobs.team_ops",
+          payload: {
+            type: "team_bot_started",
+            botId: r.botId,
+            capital: cap.capital,
+            capitalAsset:
+              cap.capital === null ? null : cap.capitalUnit === "base" ? assetOf(r.market) : "USDC",
+          },
+        });
+      }
       if (reason !== null)
         await tx.insert(outbox).values({
           topic: "jobs.notify",

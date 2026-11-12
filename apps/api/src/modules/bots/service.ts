@@ -56,6 +56,7 @@ import {
   meetsMinSize,
   minSizeDetail,
   requirementOf,
+  botCapitalOf,
   STRATEGIES,
   waitingOf,
   volumeFarm,
@@ -427,28 +428,6 @@ export function priceMarketsOf(market: string, strategy: string, config: unknown
   return [...new Set([market, ...copyMarkets(config as Record<string, unknown>)])];
 }
 
-/**
- * Vốn của bot theo cấu hình (cột Capital ở Strategy Lab). TWAP không có vốn quote cố định: trả tổng khối lượng
- * (`totalSize`, đơn vị base, UI_REVIEW N2). Volume Maker không có vốn cố định.
- */
-function capitalOf(
-  strategy: string,
-  config: unknown,
-): { capital: string | null; capitalUnit: "quote" | "base" } {
-  if (config === null || typeof config !== "object") return { capital: null, capitalUnit: "quote" };
-  const c = config as Record<string, unknown>;
-  try {
-    if (strategy === Strategy.twap) {
-      const size = typeof c.totalSize === "string" ? c.totalSize : null;
-      return { capital: size !== null && dec(size).gt(0) ? size : null, capitalUnit: "base" };
-    }
-    const capital = requirementOf(strategy, c).capital;
-    return { capital: dec(capital).gt(0) ? capital : null, capitalUnit: "quote" };
-  } catch {
-    return { capital: null, capitalUnit: "quote" };
-  }
-}
-
 /** Rebalancing chạy cả rổ: nhãn là tên các tài sản ("BTC · ETH · USDC") thay cho market của tài sản đầu. */
 function marketLabelOf(strategy: string, config: unknown): string | null {
   if (config === null || typeof config !== "object") return null;
@@ -494,7 +473,7 @@ export function summary(
     needsAttention: b.needsAttention,
     activeVersion: version,
     netPnl: netOf(state, marks, b.market, b.state),
-    ...capitalOf(b.strategy, config),
+    ...botCapitalOf(b.strategy, config),
     marketLabel: marketLabelOf(b.strategy, config),
     fills,
     waiting: b.state === BotState.running ? waitingView(b.strategy, config, state) : null,
