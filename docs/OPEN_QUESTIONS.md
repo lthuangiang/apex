@@ -23,5 +23,4 @@
 18. Gia hạn key (Renew): SoDEX có cho đăng ký lại key cùng tên `DRIFT` không (thay key cũ hay báo trùng), hay phải đổi tên / xoá key cũ trước? Tài liệu không ghi.
 19. Futures Grid "Must be closer than liquidation." (S2, DEC-65): ước lượng giá thanh lý của vị thế lưới *trước khi mở* bằng công thức nào (maintenance margin của SoDEX theo market/tier, vị thế khi khớp hết)? SoDEX chỉ trả `liquidationPrice` cho vị thế đang mở.
 20. Copy Trade (DEC-161): (a) SoDEX có leaderboard hoặc trade feed công khai kèm địa chỉ để khám phá ví không, hay chỉ dán địa chỉ; (b) giới hạn 10 user / IP trên WS áp cho cả `accountTrade` của ví người khác không, và có hạn mức riêng cho partner không (hiện chỉ mở 8 WS leader); (c) key DRIFT có giao dịch được trên subaccount không (để mỗi leader một danh mục riêng như Coinpilot). (d) đóng bởi DEC-162.
-21. Copy Trading v1 (DEC-163): (a) ngưỡng USD tối thiểu của cảnh báo "big move" ở Following; (b) route cho Find traders, Trader profile, Following (đề xuất trong SCREENS.md mục 8.x Copy Trading). (c) đã đo 2026-11-11 (docs/COPY_TRADING_DATA.md): khớp DEC-163.
 
