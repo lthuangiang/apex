@@ -2774,6 +2774,12 @@
     "desk.chat.capitalLabel",
     "desk.chat.foot",
     "desk.paperResult",
+    "desk.goal.usedOf",
+    "desk.goal.over",
+    "desk.home.idle",
+    "desk.ai.templates.brief",
+    "desk.ai.templates.fallbackOff",
+    "desk.ai.templates.loss",
     "settings.notifications.what.rows.teamOps",
     "settings.notifications.groups.teamOps"
   ],
@@ -4952,7 +4958,8 @@
         "paused": "Paused"
       },
       "record": "My suggestions so far: {helped} of {total} helped →",
-      "error": "Couldn't load AI Desk. Try again."
+      "error": "Couldn't load AI Desk. Try again.",
+      "idle": "No bots running · checked {ago}"
     },
     "rules": {
       "tag": "{tag} · {bot}",
@@ -5111,12 +5118,14 @@
         "automate": "Automate what already works",
         "range": "Earn from sideways markets",
         "accumulate": "Build a BTC or ETH position"
-      }
+      },
+      "usedOf": "{used} of {limit} USDC",
+      "over": "Over your limit"
     },
     "ai": {
       "title": "Desk AI",
       "history": "History",
-      "placeholder": "Ask Desk AI",
+      "placeholder": "Ask Desk AI…",
       "send": "Send",
       "chips": {
         "safe": "Is my money safe?",
@@ -5135,7 +5144,9 @@
         "safetyLimit": "Yes, within limits you set. DeskLabs can only place trades: it can't withdraw or move funds. The most you've agreed to lose is {limit} USDC.",
         "safetyPlain": "DeskLabs can only place trades: it can't withdraw or move funds.",
         "fallback": "I can't write an answer right now. Here are the numbers I have:",
-        "brief": "{count, plural, =0 {Good morning. Nothing needs you today.} one {Good morning. One thing needs you today: {bot}.} other {Good morning. # things need you today, starting with {bot}.}}"
+        "fallbackOff": "Here are the numbers I have:",
+        "loss": "Here's what each bot has made or lost so far, and what it paid in fees:",
+        "brief": "{count, plural, =0 {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. Nothing needs you today.} one {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. One thing needs you today: {bot}.} other {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. # things need you today, starting with {bot}.}}"
       },
       "facts": {
         "bot_state": "{bot} · state",

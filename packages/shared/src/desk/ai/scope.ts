@@ -2,7 +2,7 @@
 // Dự đoán giá hay khuyên mua bán coin cụ thể → từ chối bằng câu mẫu, không gọi LLM. Luật từ khoá tất định; câu nào
 // không rõ thì để LLM trả lời trong phạm vi system prompt (vẫn qua kiểm tra số).
 
-export type DeskAiIntent = "out_of_scope" | "safety" | "create" | "general";
+export type DeskAiIntent = "out_of_scope" | "safety" | "create" | "loss" | "general";
 
 const OUT_OF_SCOPE = [
   /\b(price|prices)\b.*\b(will|going to|tomorrow|next week|predict|forecast|target)\b/i,
@@ -19,5 +19,7 @@ export function intentOf(question: string): DeskAiIntent {
   if (/\b(safe|withdraw|steal|move my money|lose everything|security)\b/i.test(question))
     return "safety";
   if (/\b(start|create|make|set up|new) (a |my )?(first )?bot\b/i.test(question)) return "create";
+  // Hỏi vì sao lỗ: câu mẫu chỉ hiện lãi / lỗ và phí (khi LLM tắt / lỗi).
+  if (/\b(lose|lost|losing|loss|losses)\b/i.test(question)) return "loss";
   return "general";
 }

@@ -7,6 +7,7 @@
       "risk": "Open Risk Center",
       "settings": "Open Settings",
       "desk": "See it in AI Desk",
+      "openDesk": "Open AI Desk",
       "following": "Open Following",
       "app": "Open DeskLabs",
       "users": "Open Users"
@@ -37,6 +38,9 @@
       "risk_other": "A risk limit was hit. Running bots were paused.",
       "key_fee": "Your DeskLabs API key or builder fee approval changed.",
       "daily_summary": "Your morning brief is ready in DeskLabs.",
+      "briefNone": "Good morning. Nothing needs you today.",
+      "briefOne": "Good morning. One thing needs you today: {bot}.",
+      "briefMany": "Good morning. {count} things need you today, starting with {bot}.",
       "leader_big_move": "Market: {coin}."
     },
     "merged": {

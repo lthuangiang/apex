@@ -133,12 +133,37 @@ describe("Desk AI", () => {
     expect(env.logs.join("")).not.toContain(FAKE_KEY);
   });
 
+  it("includes bots archived in the last 30 days in the facts, not older ones (DEC-193)", async () => {
+    const { client, userId } = await deskUser(env, "ai-archived@example.com");
+    const { rows } = await env.pool.query<{ id: string }>(
+      "select id from bots where user_id = $1",
+      [userId],
+    );
+    const botId = rows[0]?.id ?? "";
+    // Mốc tính theo đồng hồ của app (cố định trong test), không theo now() của Postgres.
+    const daysAgo = (n: number) => new Date(env.clock.now.getTime() - n * 86_400_000);
+    await env.pool.query("update bots set state = 'archived', archived_at = $2 where id = $1", [
+      botId,
+      daysAgo(3),
+    ]);
+    await ask(client, "Why did I lose money?");
+    expect(llm.calls[0]?.user).toContain(`"id":"bot_state:${botId}"`);
+    expect(llm.calls[0]?.user).toContain('"value":"archived"');
+
+    await env.pool.query("update bots set archived_at = $2 where id = $1", [botId, daysAgo(31)]);
+    llm.calls = [];
+    await ask(client, "Why did I lose money?");
+    expect(llm.calls[0]?.user).not.toContain(`bot_state:${botId}`);
+  });
+
   it("replaces an answer with a number that matches no fact by the template", async () => {
     const { client, userId } = await deskUser(env, "ai-numbers@example.com");
     llm.reply = "You will probably make 37.5 USDC this week.";
     const r = await ask(client, "Why did I lose money?");
-    expect(r.turn.answer).toMatchObject({ kind: "template", key: "fallback" });
-    expect(r.turn.answer.facts.map((f) => f.key)).toContain("goal_limit");
+    expect(r.turn.answer).toMatchObject({ kind: "template", key: "loss" });
+    // Câu mẫu về lỗ: chỉ số của bot (trạng thái, lãi / lỗ, phí), không đổ cả bảng.
+    expect(r.turn.answer.facts.map((f) => f.key)).toContain("bot_state");
+    expect(r.turn.answer.facts.map((f) => f.key)).not.toContain("goal_limit");
     const { rows } = await env.pool.query<{ fallback: string }>(
       "select fallback from desk_ai_turns where user_id = $1",
       [userId],
@@ -198,10 +223,10 @@ describe("Desk AI", () => {
     llm.reply = "The most you agreed to lose is 500";
     llm.stop = "max_tokens";
     const cut = await ask(client, "How much can I lose?");
-    expect(cut.turn.answer).toMatchObject({ kind: "template", key: "fallback" });
+    expect(cut.turn.answer).toMatchObject({ kind: "template", key: "loss" });
     llm.stop = "refusal";
     const refused = await ask(client, "How much can I lose?", cut.conversationId);
-    expect(refused.turn.answer).toMatchObject({ kind: "template", key: "fallback" });
+    expect(refused.turn.answer).toMatchObject({ kind: "template", key: "loss" });
     const { rows } = await env.pool.query<{ fallback: string }>(
       "select fallback from desk_ai_turns where user_id = $1 order by created_at",
       [userId],
@@ -303,7 +328,7 @@ describe("Desk AI", () => {
   it("works fully with the model turned off", async () => {
     const { client } = await deskUser(off, "ai-off@example.com");
     const r = await ask(client, "Why did I lose money?");
-    expect(r.turn.answer).toMatchObject({ kind: "template", key: "fallback" });
+    expect(r.turn.answer).toMatchObject({ kind: "template", key: "loss", params: { off: 1 } });
     const b = deskAiBriefViewSchema.parse(
       (await client.request("GET", "/api/v1/desk/ai/brief")).json(),
     );
