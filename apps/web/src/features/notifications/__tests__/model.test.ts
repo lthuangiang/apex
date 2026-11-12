@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   actionOf,
   badgeText,
+  isIncident,
+  isQuiet,
   mergeToast,
   needsYou,
   newAlerts,
@@ -33,6 +35,55 @@ describe("needsYou", () => {
       n("f", "bot_stopped", "2026-11-12T03:00:00Z"),
     ];
     expect(needsYou(items).map((x) => x.id)).toEqual(["a", "b", "f"]);
+  });
+});
+
+describe("isIncident / isQuiet (DEC-TBD-inapp-needs-you)", () => {
+  const at = "2026-11-12T03:00:00Z";
+  it("treats real problems as incidents", () => {
+    for (const reasonCode of [
+      "RISK_DAILY_LOSS",
+      "STOP_LOSS",
+      "BUILDER_FEE_REVOKED",
+      "EMERGENCY_HALT",
+    ])
+      expect(isIncident(n("a", "bot_paused", at, { data: { reasonCode } }))).toBe(true);
+    expect(isIncident(n("a", "bot_stopped", at))).toBe(true);
+    expect(isIncident(n("a", "unknown_order", at))).toBe(true);
+    expect(isIncident(n("a", "risk_alert", at))).toBe(true);
+  });
+
+  it("does not treat a planned finish as an incident", () => {
+    for (const reasonCode of ["BUDGET_DONE", "MAX_CYCLES", "TAKE_PROFIT"]) {
+      const x = n("a", "bot_stopped", at, { data: { reasonCode } });
+      expect(isIncident(x)).toBe(false);
+      expect(isQuiet(x)).toBe(true);
+    }
+  });
+
+  it("does not treat fake-money bots as incidents, whatever the reason", () => {
+    const x = n("a", "bot_paused", at, { data: { paper: true, reasonCode: "RISK_DAILY_LOSS" } });
+    expect(isIncident(x)).toBe(false);
+    expect(isQuiet(x)).toBe(true);
+    expect(isIncident(n("a", "unknown_order", at, { data: { paper: true } }))).toBe(false);
+  });
+
+  it("other groups are neither incidents nor quiet alerts", () => {
+    expect(isIncident(n("a", "key_fee", at))).toBe(false);
+    expect(isQuiet(n("a", "key_fee", at))).toBe(false);
+  });
+
+  it("Needs you and toasts skip planned finishes and fake money", () => {
+    const items = [
+      n("real", "bot_paused", at, { data: { reasonCode: "RISK_DAILY_LOSS" } }),
+      n("budget", "bot_stopped", at, { data: { reasonCode: "BUDGET_DONE" } }),
+      n("cycles", "bot_stopped", at, { data: { reasonCode: "MAX_CYCLES" } }),
+      n("tp", "bot_stopped", at, { data: { reasonCode: "TAKE_PROFIT" } }),
+      n("paper", "bot_paused", at, { data: { paper: true, reasonCode: "STOP_LOSS" } }),
+    ];
+    expect(needsYou(items).map((x) => x.id)).toEqual(["real"]);
+    const first = newAlerts(null, []);
+    expect(newAlerts(first.seen, items).fresh.map((x) => x.id)).toEqual(["real"]);
   });
 });
 

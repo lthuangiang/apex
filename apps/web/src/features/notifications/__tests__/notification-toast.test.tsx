@@ -89,6 +89,18 @@ describe("NotificationToasts", () => {
     expect(screen.queryByText("BTC Volume Farm paused")).toBeNull();
   });
 
+  it("does not toast a planned finish or a fake-money bot (DEC-TBD-inapp-needs-you)", () => {
+    const s = setup();
+    s.push([]);
+    s.push([
+      item("b", "bot_stopped", { botId: BOT, reasonCode: "BUDGET_DONE" }),
+      item("c", "bot_stopped", { reasonCode: "MAX_CYCLES" }),
+      item("t", "bot_stopped", { reasonCode: "TAKE_PROFIT" }),
+      item("p", "bot_paused", { paper: true, reasonCode: "RISK_DAILY_LOSS" }),
+    ]);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
   it("does not toast other groups", () => {
     const s = setup();
     s.push([]);

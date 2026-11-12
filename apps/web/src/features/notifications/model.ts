@@ -1,4 +1,4 @@
-import { groupOf, type NotificationGroup, type NotificationType } from "@drift/shared";
+import { groupOf, ReasonCode, type NotificationGroup, type NotificationType } from "@drift/shared";
 
 // Logic thuần cho panel chuông và toast (docs/NOTIFICATIONS.md mục 7, artboard NT-InApp).
 
@@ -13,13 +13,37 @@ export interface NotificationItem {
 /** Nhóm có toast và thuộc tab "Needs you" (mục 7): Bot problems và Risk. */
 export const ALERT_GROUPS: readonly NotificationGroup[] = ["botErrors", "risk"];
 
-export function isAlert(n: Pick<NotificationItem, "type">): boolean {
-  return ALERT_GROUPS.includes(groupOf(n.type));
+/**
+ * Bot kết thúc đúng kế hoạch, không phải sự cố (DEC-TBD-inapp-needs-you). Backend vẫn xếp vào `botErrors`
+ * nên email/Telegram không đổi; chỉ in-app bỏ chúng khỏi Needs you và toast.
+ */
+export const PLANNED_STOP_REASONS: readonly ReasonCode[] = [
+  ReasonCode.budgetDone,
+  ReasonCode.maxCycles,
+  ReasonCode.takeProfit,
+];
+
+/**
+ * Sự cố thật cần người dùng xem (DEC-TBD-inapp-needs-you): thuộc Bot problems hoặc Risk, không phải bot
+ * tiền ảo (`data.paper`, DEC-105), và không phải bot dừng đúng kế hoạch.
+ */
+export function isIncident(n: Pick<NotificationItem, "type" | "data">): boolean {
+  if (!ALERT_GROUPS.includes(groupOf(n.type))) return false;
+  if (n.data.paper === true) return false;
+  const reason = n.data.reasonCode;
+  return !(
+    typeof reason === "string" && (PLANNED_STOP_REASONS as readonly string[]).includes(reason)
+  );
 }
 
-/** "Needs you": botErrors và risk chưa đọc. */
+/** Tin thuộc Bot problems / Risk nhưng không phải sự cố: chỉ hiện ở All, với icon trung tính (không đỏ). */
+export function isQuiet(n: Pick<NotificationItem, "type" | "data">): boolean {
+  return ALERT_GROUPS.includes(groupOf(n.type)) && !isIncident(n);
+}
+
+/** "Needs you": sự cố thật chưa đọc. */
 export function needsYou(items: readonly NotificationItem[]): NotificationItem[] {
-  return items.filter((n) => n.readAt === null && isAlert(n));
+  return items.filter((n) => n.readAt === null && isIncident(n));
 }
 
 /** Ngày lịch (YYYY-MM-DD) của một thời điểm theo múi giờ của người dùng. */
@@ -87,7 +111,7 @@ export function actionOf(
 }
 
 /**
- * Toast: những thông báo cảnh báo chưa đọc, chưa từng thấy trong tab này. Lần tải đầu chỉ ghi nhận
+ * Toast: những sự cố thật chưa đọc, chưa từng thấy trong tab này. Lần tải đầu chỉ ghi nhận
  * (không bật toast cho tin cũ). Trả về danh sách mới (mới nhất trước) và tập id đã thấy cập nhật.
  */
 export function newAlerts(
@@ -97,7 +121,7 @@ export function newAlerts(
   const next = new Set(seen ?? []);
   for (const n of items) next.add(n.id);
   if (seen === null) return { fresh: [], seen: next };
-  const fresh = items.filter((n) => !seen.has(n.id) && n.readAt === null && isAlert(n));
+  const fresh = items.filter((n) => !seen.has(n.id) && n.readAt === null && isIncident(n));
   return { fresh, seen: next };
 }
 

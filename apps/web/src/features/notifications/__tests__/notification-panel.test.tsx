@@ -18,6 +18,9 @@ import {
 // Panel chuông (docs/NOTIFICATIONS.md mục 7, artboard NT-InApp).
 
 const BOT = "6f1c2b9e-1a2b-4c3d-8e9f-0a1b2c3d4e5f";
+const { ARCHIVED_BOT } = vi.hoisted(() => ({
+  ARCHIVED_BOT: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+}));
 const now = new Date();
 const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000).toISOString();
 const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000).toISOString();
@@ -40,8 +43,16 @@ vi.mock("@/lib/api", () => ({
   api: (method: string, path: string, _schema: unknown, opts?: { idempotencyKey?: string }) => {
     state.calls.push({ method, path, idempotencyKey: opts?.idempotencyKey });
     if (path === "/api/v1/notifications") return Promise.resolve(structuredClone(state.list));
+    // Danh sách mặc định bỏ bot đã archive; `?archived=true` có cả bot đó (như listBots ở api).
     if (path === "/api/v1/bots")
       return Promise.resolve({ items: [{ id: BOT, name: "BTC Volume Farm" }] });
+    if (path === "/api/v1/bots?archived=true")
+      return Promise.resolve({
+        items: [
+          { id: BOT, name: "BTC Volume Farm" },
+          { id: ARCHIVED_BOT, name: "ETH Grid" },
+        ],
+      });
     // Server giả: đánh dấu đã đọc như markRead() ở api.
     const m = /^\/api\/v1\/notifications\/([^/]+)\/read$/.exec(path);
     if (method === "POST" && m !== null) {
@@ -125,6 +136,14 @@ beforeEach(() => {
         createdAt: daysAgo(3),
         readAt: daysAgo(3),
       },
+      {
+        // Bot đã archive, dừng đúng kế hoạch: có tên, ở All, không ở Needs you.
+        id: "55555555-5555-4555-8555-555555555555",
+        type: "bot_stopped",
+        data: { botId: ARCHIVED_BOT, reasonCode: "TAKE_PROFIT" },
+        createdAt: minutesAgo(4),
+        readAt: null,
+      },
     ],
   };
 });
@@ -146,7 +165,10 @@ describe("NotificationPanel", () => {
       expect(screen.getByText("Order result unknown · not retried")).toBeInTheDocument();
       const today = screen.getByRole("region", { name: "Today" });
       const earlier = screen.getByRole("region", { name: "Earlier" });
-      expect(within(today).getAllByRole("link")).toHaveLength(3);
+      expect(within(today).getAllByRole("link")).toHaveLength(4);
+      // Bot đã archive vẫn có tên (review PR #24 điểm 1).
+      expect(screen.getByText("ETH Grid stopped")).toBeInTheDocument();
+      expect(screen.getByText("Take profit reached.")).toBeInTheDocument();
       expect(within(earlier).getByText("Risk limit reached")).toBeInTheDocument();
       const paused = screen.getByRole("link", { name: /BTC Volume Farm paused/ });
       expect(paused).toHaveAttribute("href", `/agent/${BOT}`);
@@ -156,7 +178,7 @@ describe("NotificationPanel", () => {
     AXE_TIMEOUT,
   );
 
-  it("Needs you shows only unread bot problems and risk", async () => {
+  it("Needs you shows only unread real incidents, not a planned finish", async () => {
     const user = userEvent.setup({ delay: null });
     wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);
     const needs = await screen.findByRole("tab", { name: "Needs you · 2" });
@@ -165,6 +187,7 @@ describe("NotificationPanel", () => {
     const panel = screen.getByRole("tabpanel");
     expect(within(panel).getAllByRole("link")).toHaveLength(2);
     expect(within(panel).queryByText("SoDEX access changed")).toBeNull();
+    expect(within(panel).queryByText("ETH Grid stopped")).toBeNull();
     // Phím mũi tên chuyển tab (mẫu tablist).
     await user.keyboard("{ArrowLeft}");
     expect(screen.getByRole("tab", { name: "All" })).toHaveFocus();

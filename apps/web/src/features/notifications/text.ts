@@ -19,10 +19,12 @@ export interface NotificationText {
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
 
 export function useBotNames(): (id: unknown) => string | null {
+  // Gồm cả bot đã archive: tin cũ thường thuộc bot đã dừng rồi archive, danh sách mặc định không có
+  // (review PR #24). Key riêng để không đổi dữ liệu của query ["bots"] dùng ở chỗ khác.
   const bots = useQuery({
-    queryKey: ["bots"],
-    queryFn: () => api("GET", "/api/v1/bots", botListSchema),
-    staleTime: 5_000,
+    queryKey: ["bots", "withArchived"],
+    queryFn: () => api("GET", "/api/v1/bots?archived=true", botListSchema),
+    staleTime: 60_000,
   });
   return (id) => {
     const botId = str(id);

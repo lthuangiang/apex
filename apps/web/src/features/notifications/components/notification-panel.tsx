@@ -27,6 +27,7 @@ import { NOTIFICATIONS_KEY, useFeatures, useMe, useNotifications } from "@/lib/q
 import {
   actionOf,
   badgeText,
+  isQuiet,
   needsYou,
   splitByDay,
   targetOf,
@@ -50,6 +51,8 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   daily_summary: { icon: Sparkles, tone: "bg-accent-tint text-accent" },
   leader_big_move: { icon: UserRound, tone: "bg-bg text-ink-2" },
 };
+/** Bot dừng đúng kế hoạch hoặc bot tiền ảo: không tô đỏ (DEC-TBD-inapp-needs-you). */
+const QUIET_TONE = "bg-bg text-ink-2";
 
 /** Đánh dấu đã đọc: cập nhật cache ngay rồi gọi API (`all` = Mark all read). */
 export function useMarkRead() {
@@ -224,7 +227,8 @@ export function NotificationPanel({
       : formatDate(Date.parse(n.createdAt), timeZone).replace(/, \d{4}$/, "");
 
   const row = (n: NotificationItem, isToday: boolean) => {
-    const { icon: Icon, tone } = ICONS[n.type];
+    const { icon: Icon, tone: incidentTone } = ICONS[n.type];
+    const tone = isQuiet(n) ? QUIET_TONE : incidentTone;
     const { title, body } = text(n);
     const unreadRow = n.readAt === null;
     return (
