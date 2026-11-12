@@ -18,6 +18,7 @@ import { Card, PageHead, Workspace } from "@/components/workspace";
 import { api } from "@/lib/api";
 import { useFeatures } from "@/lib/queries";
 
+import { GoalCard } from "./goal-card";
 import { NeedsYouCard } from "./needs-you-card";
 import { PaperChip } from "./paper-chip";
 import { YourBots as AnalystNotes } from "./your-bots";
@@ -121,19 +122,22 @@ function RecordLink() {
 function Home({ v }: { v: DeskHomeView }) {
   const t = useTranslations("desk.home");
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:items-start">
-      <section aria-labelledby="needs-you" className="flex min-w-0 flex-col gap-3">
-        <h2 id="needs-you" className="m-0 text-lg font-extrabold">
-          {t("needsYou", { count: v.items.length })}
-        </h2>
-        {v.items.length === 0 ? (
-          <EmptyState title={t("nothing")} description={t("nothingBody")} />
-        ) : (
-          v.items.map((item) => <NeedsYouCard key={item.id} item={item} />)
-        )}
-        <RecordLink />
-      </section>
-      <YourBots bots={v.bots} />
+    <div className="flex flex-col gap-5">
+      <GoalCard goal={v.goal} />
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:items-start">
+        <section aria-labelledby="needs-you" className="flex min-w-0 flex-col gap-3">
+          <h2 id="needs-you" className="m-0 text-lg font-extrabold">
+            {t("needsYou", { count: v.items.length })}
+          </h2>
+          {v.items.length === 0 ? (
+            <EmptyState title={t("nothing")} description={t("nothingBody")} />
+          ) : (
+            v.items.map((item) => <NeedsYouCard key={item.id} item={item} />)
+          )}
+          <RecordLink />
+        </section>
+        <YourBots bots={v.bots} />
+      </div>
     </div>
   );
 }

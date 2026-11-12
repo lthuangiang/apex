@@ -2569,7 +2569,13 @@
     "desk.record.emptyBody",
     "desk.record.error",
     "desk.record.counts.no_clear_effect",
-    "desk.record.chip.no_clear_effect"
+    "desk.record.chip.no_clear_effect",
+    "desk.goal.usedLabel",
+    "desk.goal.notAvailable",
+    "desk.goal.none",
+    "desk.goal.goals.automate",
+    "desk.goal.goals.range",
+    "desk.goal.goals.accumulate"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -4812,6 +4818,22 @@
       "empty": "No fixes applied yet.",
       "emptyBody": "When you apply a fix from Needs you, I check back 7 days later.",
       "error": "Couldn't load your track record. Try again."
+    },
+    "goal": {
+      "title": "Your goal",
+      "change": "Change goal",
+      "line": "{goal} · lose no more than {limit} USDC",
+      "lineShort": "Lose no more than {limit} USDC",
+      "used": "Loss limit used {used} of {limit} USDC",
+      "usedLabel": "Loss limit used",
+      "notAvailable": "Not available",
+      "none": "Set a goal and a loss limit so I can tell you if you're on track.",
+      "goals": {
+        "steady": "Steady small gains",
+        "automate": "Automate what already works",
+        "range": "Earn from sideways markets",
+        "accumulate": "Build a BTC or ETH position"
+      }
     }
   },
   "connectLog": {

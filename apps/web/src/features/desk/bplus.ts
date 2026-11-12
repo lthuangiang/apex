@@ -40,3 +40,9 @@ export function leverageChange(r: Row): { from: string; to: string } | null {
   const c = r.changes.find((x) => x.key === "leverage");
   return c?.from == null || c.to === null ? null : { from: c.from, to: c.to };
 }
+
+/** Phần lỗ đã dùng / lỗ cho phép (0–1) cho thanh đo; thiếu số hoặc lỗ cho phép 0 → null. */
+export function usedRatio(goal: { limit: string; used: string | null }): number | null {
+  if (goal.used === null || !dec(goal.limit).gt(0)) return null;
+  return Math.min(1, dec(goal.used).div(goal.limit).toNumber());
+}

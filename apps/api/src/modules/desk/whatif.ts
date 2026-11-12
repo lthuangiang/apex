@@ -5,6 +5,7 @@ import {
   deskApplies,
   deskItems,
   deskWhatifs,
+  goals,
   outbox,
 } from "@drift/db";
 import {
@@ -12,6 +13,7 @@ import {
   applyPatch,
   botReviewResultSchema,
   ErrorCode,
+  goalGauge,
   optionsFor,
   pickOption,
   Strategy,
@@ -27,6 +29,7 @@ import {
 } from "@drift/shared";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 
+import { riskStatusOf } from "../account/service";
 import { newVersion, type BotDeps } from "../bots/service";
 
 import { needsYou, stopCheckOf, type NeedsYouDeps } from "./needs-you";
@@ -207,7 +210,21 @@ export async function deskHome(
       return { ...item, whatif: fresh ? await viewOf(deps, row.w, item.rule) : null };
     }),
   );
-  return { ...base, items };
+  const [g] = await deps.db.select().from(goals).where(eq(goals.userId, userId)).limit(1);
+  const risk = g === undefined ? null : await riskStatusOf(deps, userId);
+  const goal =
+    g === undefined
+      ? null
+      : {
+          goal: g.goal,
+          ...goalGauge(
+            { capital: g.capital, maxDrop: g.maxDrop },
+            risk === null
+              ? null
+              : { peakEquity: risk.status.peakEquity, equity: risk.status.equity },
+          ),
+        };
+  return { ...base, items, goal };
 }
 
 /** Compare: dùng lại job còn mới cho đúng việc + version, không thì sinh phương án và xếp job cho worker. */

@@ -360,6 +360,8 @@ describe("what-if and Apply", () => {
     expect(first.items).toHaveLength(1);
     expect(first.items[0]?.whatif).toBeNull();
     expect(first.bots.map((b) => b.health)).toEqual(["needs_you"]);
+    // Chưa lưu goals: không có thẻ Mục tiêu.
+    expect(first.goal).toBeNull();
 
     const started = whatIfViewSchema.parse(
       (
@@ -386,6 +388,33 @@ describe("what-if and Apply", () => {
       rows[0]?.id,
     ]);
     expect((await home()).items[0]?.whatif ?? null).toBeNull();
+  });
+
+  it("shows the goal gauge: capital × max drop, used from the Risk Center drawdown", async () => {
+    const { client, userId } = await deskUser("whatif-goal@example.com");
+    const put = await client.request("PUT", "/api/v1/goals", {
+      body: { goal: "steady", capital: "5000", maxDrop: "10", assets: ["BTC"] },
+    });
+    expect(put.statusCode).toBeLessThan(300);
+    const home = async () =>
+      deskHomeViewSchema.parse((await client.request("GET", "/api/v1/desk/home")).json());
+    // Chưa có snapshot equity: "Not available", không phải 0.
+    expect((await home()).goal).toEqual({ goal: "steady", limit: "500", used: null });
+
+    const { rows } = await env.pool.query<{ id: string }>(
+      "select id from sodex_accounts where user_id = $1",
+      [userId],
+    );
+    const now = env.clock.now.getTime();
+    for (const [ago, equity] of [
+      [3 * 3_600_000, "5200"],
+      [60_000, "5125"],
+    ] as const)
+      await env.pool.query(
+        "insert into equity_snapshots (sodex_account_id, at, equity) values ($1, $2, $3)",
+        [rows[0]?.id, new Date(now - ago), equity],
+      );
+    expect((await home()).goal).toEqual({ goal: "steady", limit: "500", used: "75" });
   });
 
   it("never applies keep and hides comparisons of other users", async () => {

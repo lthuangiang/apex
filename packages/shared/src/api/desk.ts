@@ -200,6 +200,14 @@ export const deskHomeItemSchema = needsYouItemSchema.extend({
 });
 export const deskHomeViewSchema = needsYouViewSchema.extend({
   items: z.array(deskHomeItemSchema),
+  /** Thẻ Mục tiêu; null khi chưa lưu goals (chỉ hiện "Change goal"). `used` null = "Not available". */
+  goal: z
+    .object({
+      goal: z.enum(["automate", "range", "accumulate", "steady"]),
+      limit: decimalStringSchema,
+      used: decimalStringSchema.nullable(),
+    })
+    .nullable(),
 });
 export type DeskHomeView = z.infer<typeof deskHomeViewSchema>;
 

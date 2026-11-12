@@ -1,7 +1,7 @@
 import type { DeskRecordView, WhatIfView } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
-import { leverageChange, optionValues, pickGain, recordChip, shownFix } from "../bplus";
+import { leverageChange, optionValues, pickGain, recordChip, shownFix, usedRatio } from "../bplus";
 
 // AI Desk B+ (DEC-166): thẻ trang chủ hiện đúng phương án Desk AI chọn, không bịa số; nhãn thành tích theo kết quả đo.
 
@@ -100,5 +100,14 @@ describe("track record row", () => {
     expect(leverageChange(row({}))).toEqual({ from: "40", to: "10" });
     expect(leverageChange(row({ option: "tighter_stop" }))).toBeNull();
     expect(leverageChange(row({ changes: [] }))).toBeNull();
+  });
+});
+
+describe("goal gauge", () => {
+  it("fills the meter by used over limit and never invents a value", () => {
+    expect(usedRatio({ limit: "500", used: "75" })).toBe(0.15);
+    expect(usedRatio({ limit: "500", used: "900" })).toBe(1);
+    expect(usedRatio({ limit: "500", used: null })).toBeNull();
+    expect(usedRatio({ limit: "0", used: "5" })).toBeNull();
   });
 });
