@@ -142,7 +142,13 @@ export function registerDeskRoutes(app: FastifyInstance, deps: DeskDeps): void {
     await requireDesk(deps, auth.userId);
     return idempotent(deps.bots.db, request, reply, auth.userId, deps.bots.now(), async () => ({
       status: 200,
-      body: await askDeskAi(ai(request.id), auth.userId, body.question, body.conversationId),
+      body: await askDeskAi(
+        ai(request.id),
+        auth.userId,
+        body.question,
+        body.conversationId,
+        body.context,
+      ),
     }));
   });
 

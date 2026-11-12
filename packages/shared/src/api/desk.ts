@@ -291,9 +291,17 @@ export const deskAiTurnSchema = z.object({
   answer: deskAiAnswerSchema,
   createdAt: isoDateTimeSchema,
 });
+/** ✦ "Ask about this" (M6): ngữ cảnh của câu hỏi. Server tự đọc dữ liệu, client chỉ gửi id. */
+export const deskAiContextSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("bot"), botId: uuidSchema }),
+  z.object({ kind: z.literal("decision"), botId: uuidSchema, eventId: uuidSchema }),
+  z.object({ kind: z.literal("portfolio") }),
+]);
+export type DeskAiContext = z.infer<typeof deskAiContextSchema>;
 export const deskAiAskBodySchema = z.object({
   question: z.string().trim().min(1).max(500),
   conversationId: uuidSchema.optional(),
+  context: deskAiContextSchema.optional(),
 });
 export const deskAiAskViewSchema = z.object({
   conversationId: uuidSchema,

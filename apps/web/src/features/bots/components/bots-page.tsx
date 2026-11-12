@@ -20,6 +20,7 @@ import { useState } from "react";
 
 import { PageHead } from "@/components/workspace";
 import { WorkspaceShell } from "@/components/workspace-shell";
+import { AskAboutThis } from "@/features/desk/components/ask-about-this";
 import { PaperChip } from "@/features/desk/components/paper-chip";
 import { api } from "@/lib/api";
 import { feeLabels, formatAmount, formatDateTime } from "@/lib/format";
@@ -338,7 +339,14 @@ export function BotsPage() {
                         <span className="flex min-w-0 flex-col">
                           <strong className="flex flex-wrap items-center gap-1.5 break-words">
                             {b.name}
-                            {b.mode === "paper" ? <PaperChip short /> : null}
+                            {b.mode === "paper" ? (
+                              <PaperChip short />
+                            ) : (
+                              <AskAboutThis
+                                context={{ kind: "bot", botId: b.id }}
+                                subtitle={b.name}
+                              />
+                            )}
                           </strong>
                           <span className="text-xs text-muted">
                             {botMarket(b, names)} · {tc(`strategies.${b.strategy}.name`)}
@@ -385,7 +393,14 @@ export function BotsPage() {
                         <span className="flex flex-col">
                           <strong className="flex flex-wrap items-center gap-1.5">
                             {b.name}
-                            {b.mode === "paper" ? <PaperChip short /> : null}
+                            {b.mode === "paper" ? (
+                              <PaperChip short />
+                            ) : (
+                              <AskAboutThis
+                                context={{ kind: "bot", botId: b.id }}
+                                subtitle={b.name}
+                              />
+                            )}
                           </strong>
                           <span className="text-xs text-muted">{botMarket(b, names)}</span>
                         </span>

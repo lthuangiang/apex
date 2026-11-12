@@ -9,6 +9,7 @@ import { useState, type ReactNode } from "react";
 
 import { NotConnected } from "@/components/not-connected";
 import { Card, PageHead, Workspace } from "@/components/workspace";
+import { AskAboutThis } from "@/features/desk/components/ask-about-this";
 import { api } from "@/lib/api";
 import { formatAmount, formatDateTime, formatMoney } from "@/lib/format";
 import { useMarketNames, type MarketNames } from "@/lib/markets";
@@ -240,6 +241,7 @@ export function PortfolioPage() {
           updated={
             pf === null ? null : { label: (ago) => t("updated", { time: ago }), at: pf.updatedAt }
           }
+          action={<AskAboutThis context={{ kind: "portfolio" }} />}
         />
         {q.isSuccess && pf === null ? <NotConnected message={t("noAccount")} /> : null}
         <div className="hidden md:block">

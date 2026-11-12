@@ -33,6 +33,9 @@ export const DESK_AI_FACT_KEYS = [
   "goal_limit",
   "goal_used",
   "questions_left",
+  "decision",
+  "decision_why",
+  "decision_result",
 ] as const;
 export type DeskAiFactKey = (typeof DESK_AI_FACT_KEYS)[number];
 
