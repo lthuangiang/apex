@@ -3,6 +3,7 @@
 #
 #   scripts/dev-up.sh              # build lại + chạy mọi service
 #   scripts/dev-up.sh web api      # chỉ build lại + restart các service này (hạ tầng / migration vẫn chạy)
+#   DEV_FULL_REPLICAS=1 scripts/dev-up.sh   # giữ số bản như docker-compose.yml (mặc định local: 1 bản / service)
 #
 # Không bao giờ chạy `docker compose down -v`: lệnh đó xoá database và dữ liệu Vault.
 set -euo pipefail
@@ -28,14 +29,35 @@ step "Migration database"
 "${COMPOSE[@]}" build migrate
 "${COMPOSE[@]}" run --rm migrate
 
+# Local chỉ chạy 1 instance mỗi service (docker-compose.yml đặt 2–3 bản cho giống production nhiều instance).
+# Máy dev nhẹ hơn và khởi động nhanh hơn. Cần thử nhiều instance (lock, race giữa engine…) thì chạy
+# `DEV_FULL_REPLICAS=1 scripts/dev-up.sh` để giữ số bản trong docker-compose.yml.
+# Đọc số bản bằng node (đã có sẵn cho pnpm); service đặt 0 bản (migrate) không bị đụng tới.
+scale_args() {
+  [ "${DEV_FULL_REPLICAS:-}" = "1" ] && return 0
+  "${COMPOSE[@]}" config --format json | node -e '
+    const only = process.argv.slice(1);
+    let s = "";
+    process.stdin.on("data", (d) => (s += d)).on("end", () => {
+      for (const [name, svc] of Object.entries(JSON.parse(s).services)) {
+        const n = svc.deploy?.replicas ?? 1;
+        if (n > 1 && (only.length === 0 || only.includes(name))) console.log(`--scale\n${name}=1`);
+      }
+    });' "$@"
+}
+
 if [ "$#" -gt 0 ]; then
   step "Build lại và restart: $*"
+  SCALE=()
+  while IFS= read -r a; do SCALE+=("$a"); done < <(scale_args "$@")
   # --no-deps: chỉ đụng tới đúng các service được nêu. Không có cờ này, build lại api còn khởi động lại signer
   # (api phụ thuộc signer), làm bot đang chạy không ký được lệnh huỷ trong vài giây (sự cố 2026-11-04, DEC-111).
-  "${COMPOSE[@]}" up -d --build --no-deps "$@"
+  "${COMPOSE[@]}" up -d --build --no-deps ${SCALE[@]+"${SCALE[@]}"} "$@"
 else
   step "Build lại và chạy mọi service"
-  "${COMPOSE[@]}" up -d --build
+  SCALE=()
+  while IFS= read -r a; do SCALE+=("$a"); done < <(scale_args)
+  "${COMPOSE[@]}" up -d --build ${SCALE[@]+"${SCALE[@]}"}
 fi
 
 step "Chờ các service healthy"
