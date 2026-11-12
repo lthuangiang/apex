@@ -102,8 +102,10 @@ Quy ước theo `docs/CODING_STANDARDS.md` C8: khoá chính `id uuid` (v7), mọ
 | `shard_epochs` | `shard` (int, khoá chính), `epoch` (bigint), `owner`, `acquired_at` | fencing token; lease thật nằm ở Redis |
 | `outbox` | `topic`, `payload jsonb`, `published_at` | relay sang NATS |
 | `idempotency_keys` | `key`, `user_id`, `request_hash`, `response jsonb`, `expires_at` | giữ 24 h |
-| `notifications` | `user_id`, `type`, `payload`, `read_at`, `channel` | |
-| `notification_settings` | `user_id`, `type`, `enabled` | loại "bot errors" luôn bật |
+| `notifications` | `user_id`, `type`, `payload`, `read_at`, `channel` (`in_app`/`email`/`telegram`), `delivery_status` (`queued`/`sent`/`failed`, chỉ bản `telegram`) | danh sách chuông chỉ đọc `channel = in_app`; bản `telegram` ghi cùng outbox `jobs.telegram` / `jobs.telegram_alert`, worker jobs gửi (docs/NOTIFICATIONS.md mục 6) |
+| `notification_settings` | `user_id`, `type` (= nhóm: `botErrors`, `risk`, `keyFee`, `daily`, `fills`, `copyTrading`, `teamOps`), `channel`, `enabled`; khoá (`user_id`, `type`, `channel`) | chỉ lưu khi user đổi khỏi mặc định (`NOTIFICATION_DEFAULTS`); `botErrors` luôn bật; `teamOps` chỉ role `team`, chỉ Telegram (DEC-191) |
+| `telegram_links` | `user_id` (khoá chính), `chat_id` (unique), `username`, `status` (`active`/`blocked`), `connected_at`, `last_sent_at`, `blocked_at` | mỗi user một chat, mỗi chat một user; Telegram trả 403 → `blocked`; `/stop` hoặc Disconnect thì xoá dòng (DEC-170) |
+| `telegram_link_tokens` | `user_id`, `token_hash` (SHA-256, unique), `expires_at`, `used_at` | token deep link `/start`: sống 10 phút, dùng một lần, mỗi user tối đa một token còn hiệu lực; không lưu token gốc |
 | `audit_log` | `user_id`, `action`, `target`, `metadata jsonb`, `ip`, `occurred_at` | mọi thao tác nhạy cảm (ký, revoke, disconnect, start/stop, 2FA) |
 | `builder_revenue_daily` | `date`, `engine`, `from_fills`, `balance_delta`, `difference`, `status` (`matched`/`pending`) | chỉ role `team` xem |
 

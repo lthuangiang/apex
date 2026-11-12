@@ -92,6 +92,39 @@ Cert mTLS hết hạn sau `CERT_DAYS` ngày. Đặt lịch nhắc tạo lại tr
    Mất cả volume `vaultinit` lẫn bản chép này = không giải mã được API key nào nữa; phải kết nối lại SoDEX cho mọi account.
 2. Mở `https://<APP_HOST>`, đăng ký, bật 2FA, kết nối SoDEX, rồi mới tạo bot.
 
+### 2.8 Telegram (DEC-170, docs/NOTIFICATIONS.md)
+Bot `@desklabsbot` đã tạo (N0). Token và webhook secret chỉ nằm trong `/opt/drift/.env` (`chmod 600`). Không dán vào log, ticket, PR hay chat.
+
+1. Điền vào `/opt/drift/.env`:
+   - `DRIFT_TELEGRAM_BOT_TOKEN`: token BotFather đưa.
+   - `DRIFT_TELEGRAM_WEBHOOK_SECRET`: tự sinh một lần bằng `openssl rand -hex 32`.
+   - `DRIFT_TELEGRAM_BOT_USERNAME=desklabsbot`, `TELEGRAM_ENABLED=true`.
+   - Tuỳ chọn: `TELEGRAM_BRIEF_ENABLED` (mặc định `true`) và `TELEGRAM_BRIEF_LLM` (mặc định `false`).
+   - `DRIFT_TELEGRAM_API_ORIGIN` **để trống** ở production; biến này chỉ dùng cho E2E.
+2. Khởi động lại hai service đọc các biến này:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app --profile prod up -d api jobs
+   ```
+3. Đăng ký webhook với Telegram (mỗi khi đổi tên miền hoặc secret). Lệnh đọc giá trị từ `.env` và không in token ra màn hình, lịch sử shell hay `ps`:
+   ```bash
+   cd /opt/drift
+   val() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | tr -d '"'; }
+   printf 'url = "https://api.telegram.org/bot%s/setWebhook"\n' "$(val DRIFT_TELEGRAM_BOT_TOKEN)" |
+     curl -sS -K - \
+       --data-urlencode "url=https://$(val APP_HOST)/api/v1/telegram/webhook" \
+       --data-urlencode "secret_token=$(val DRIFT_TELEGRAM_WEBHOOK_SECRET)" \
+       --data-urlencode 'allowed_updates=["message"]'
+   # Kỳ vọng: {"ok":true,"result":true,"description":"Webhook was set"}
+   ```
+   Lưu ý: `secret_token` vẫn xuất hiện trong `ps` khoảng một giây khi lệnh chạy. VPS chỉ có user `deploy`, nên chấp nhận được.
+4. Kiểm tra: `getWebhookInfo` trả `url`, `pending_update_count` và `last_error_message`, không chứa token.
+   ```bash
+   printf 'url = "https://api.telegram.org/bot%s/getWebhookInfo"\n' "$(val DRIFT_TELEGRAM_BOT_TOKEN)" | curl -sS -K -
+   ```
+   Rồi vào Settings › Notifications › Connect Telegram, bấm Start trong Telegram, rồi "Send a test".
+5. **Đổi token** (BotFather › Revoke): sửa `.env`, chạy lại bước 2 và bước 3. **Đổi secret:** sửa `.env`, chạy bước 2 rồi bước 3 ngay. Giữa hai bước, webhook trả 401 và Telegram tự gửi lại update sau.
+6. **Tắt khẩn cấp:** đặt `TELEGRAM_ENABLED=false`, rồi chạy bước 2. Route `/api/v1/telegram/*` trả 404, worker ngừng gửi; tin đang `queued` giữ nguyên.
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push 10 image → PM trả tag (`docs/RELEASE.md`).

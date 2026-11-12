@@ -142,7 +142,10 @@ Lỗi theo format C6. Thêm mã lỗi `TELEGRAM_NOT_CONNECTED`, `TELEGRAM_LINK_E
 3. **N2:** schema, API kết nối, webhook, Settings card.
 4. **N3:** worker gửi tin, gộp tin, xử lý trạng thái blocked.
 5. **N4:** Morning brief qua Telegram. Cần AI Desk B+ M5; trước đó gửi câu mẫu.
-6. **N5:** E2E, cập nhật `docs/SCREENS.md` 8.5, `docs/DOMAIN.md`, `docs/DEPLOY.md` (secret webhook, `setWebhook`).
+6. **N5:** E2E, cập nhật `docs/SCREENS.md` 8.5, `docs/DOMAIN.md`, `docs/DEPLOY.md` (secret webhook, `setWebhook`). **Đã làm:**
+   - E2E `e2e/flows/tests/p15-telegram.spec.ts` chạy với Bot API giả (`e2e/flows/support/telegram-mock.ts`, qua biến `DRIFT_TELEGRAM_API_ORIGIN`; biến này chỉ dùng cho E2E, production trỏ về localhost thì không khởi động).
+   - Luồng: Connect → `/start` → tin thử → cảnh báo rủi ro qua worker → `/stop`.
+   - Tài liệu: DEPLOY.md mục 2.8.
 
 ## 12. Đã chốt (DEC-170)
 

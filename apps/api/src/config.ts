@@ -59,6 +59,11 @@ const envSchema = z.object({
     .min(1)
     .optional()
     .or(z.literal("").transform(() => undefined)),
+  /** Gốc URL Telegram Bot API; chỉ đặt khi chạy E2E với Bot API giả. Trống = api.telegram.org. */
+  DRIFT_TELEGRAM_API_ORIGIN: z
+    .url()
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
   /** Gốc URL Claude API; chỉ đặt khi chạy E2E với API giả. Trống = API thật của Anthropic. */
   DESK_AI_BASE_URL: z
     .url()
@@ -91,6 +96,15 @@ export function loadApiConfig(env: Record<string, string | undefined>): ApiConfi
     ["localhost", "127.0.0.1", "::1", "[::1]"].includes(new URL(parsed.DESK_AI_BASE_URL).hostname)
   ) {
     throw new Error("DESK_AI_BASE_URL must not point to localhost in production.");
+  }
+  if (
+    env.NODE_ENV === "production" &&
+    parsed.DRIFT_TELEGRAM_API_ORIGIN !== undefined &&
+    ["localhost", "127.0.0.1", "::1", "[::1]"].includes(
+      new URL(parsed.DRIFT_TELEGRAM_API_ORIGIN).hostname,
+    )
+  ) {
+    throw new Error("DRIFT_TELEGRAM_API_ORIGIN must not point to localhost in production.");
   }
   return { ...parsed, sodex: loadSodexConfig(env) };
 }

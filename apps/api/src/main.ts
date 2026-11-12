@@ -58,7 +58,12 @@ const app = await buildApp({
     botUsername: config.DRIFT_TELEGRAM_BOT_USERNAME,
     webhookSecret: config.DRIFT_TELEGRAM_WEBHOOK_SECRET ?? null,
     appUrl: config.DRIFT_APP_URL,
-    botApi: createBotApi({ token: config.DRIFT_TELEGRAM_BOT_TOKEN ?? "" }),
+    botApi: createBotApi({
+      token: config.DRIFT_TELEGRAM_BOT_TOKEN ?? "",
+      ...(config.DRIFT_TELEGRAM_API_ORIGIN === undefined
+        ? {}
+        : { origin: config.DRIFT_TELEGRAM_API_ORIGIN }),
+    }),
   },
   deskLlm:
     config.DESK_AI_API_KEY === undefined
