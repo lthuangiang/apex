@@ -342,7 +342,7 @@ describe("engine", () => {
     await e.stop();
   });
 
-  it("tells the team once when a real-money bot starts, never for a paper bot (DEC-TBD-telegram-team-ops)", async () => {
+  it("tells the team once when a real-money bot starts, never for a paper bot (DEC-191)", async () => {
     const { eq, inArray, sql } = await import("drizzle-orm");
     const teamOps = async (id: string) =>
       (

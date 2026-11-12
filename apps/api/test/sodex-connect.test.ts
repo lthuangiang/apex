@@ -84,7 +84,7 @@ async function signAndSubmit(
   });
 }
 
-// Sự kiện báo team (DEC-TBD-telegram-team-ops) của account SoDEX này.
+// Sự kiện báo team (DEC-191) của account SoDEX này.
 const teamConnected = async (t: Trader) =>
   (
     await env.pool.query(

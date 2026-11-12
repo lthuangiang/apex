@@ -214,7 +214,7 @@ export async function registerWithPassword(
     if (created === undefined) {
       throw new AppError(ErrorCode.emailTaken, "An account with this email already exists.");
     }
-    // Báo team (DEC-184, DEC-TBD-telegram-team-ops): đăng ký mật khẩu chưa xác minh email.
+    // Báo team (DEC-184, DEC-191): đăng ký mật khẩu chưa xác minh email.
     await tx
       .insert(outbox)
       .values({ topic: "jobs.team_ops", payload: { type: "team_signup", userId: created.id } });

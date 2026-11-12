@@ -160,7 +160,7 @@ Thành viên **role `team`** (DEC-64) đã kết nối Telegram nhận tin khi c
 
 | Sự kiện | Khi nào | Nguồn |
 |---|---|---|
-| `team_signup` | tài khoản mới được tạo xong, qua mã email (đã xác minh) hoặc qua mật khẩu (**chưa** xác minh email), DEC-TBD-telegram-team-ops | `apps/api` auth |
+| `team_signup` | tài khoản mới được tạo xong, qua mã email (đã xác minh) hoặc qua mật khẩu (**chưa** xác minh email), DEC-191 | `apps/api` auth |
 | `team_sodex_connected` | kết nối SoDEX thành công (đủ hai chữ ký, DEC-25): lần approve builder fee đầu tiên được SoDEX xác nhận của account đó | `apps/api` sodex connect |
 | `team_bot_started` | bot **tiền thật** chuyển `starting → running` (engine xác nhận); Resume không báo | engine `#transition` |
 
@@ -183,4 +183,4 @@ Thành viên **role `team`** (DEC-64) đã kết nối Telegram nhận tin khi c
 - Nhóm mới `teamOps`, chỉ hiện ở Settings › Notifications với role `team`; chỉ kênh Telegram; **mặc định bật** khi thành viên team đã kết nối Telegram; tắt được.
 - API kiểm tra lại role `team` mỗi lần gửi (role bị gỡ thì ngừng nhận ngay).
 
-**Đã làm** (N3b, DEC-TBD-telegram-team-ops): outbox `jobs.team_ops` → `apps/jobs/src/team-ops.ts` fan-out → worker Telegram. Test: không gửi cho user thường; không gửi sự kiện paper / của tài khoản team; che email/ví đúng; gộp 60 giây; quét output không có địa chỉ ví đầy đủ.
+**Đã làm** (N3b, DEC-191): outbox `jobs.team_ops` → `apps/jobs/src/team-ops.ts` fan-out → worker Telegram. Test: không gửi cho user thường; không gửi sự kiện paper / của tài khoản team; che email/ví đúng; gộp 60 giây; quét output không có địa chỉ ví đầy đủ.

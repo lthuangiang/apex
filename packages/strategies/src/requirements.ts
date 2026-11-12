@@ -350,7 +350,7 @@ export function copyMarkets(c: Readonly<Record<string, unknown>>): string[] {
 }
 
 /**
- * Vốn của bot theo cấu hình (cột Capital ở Strategy Lab; tin "Bot started" gửi team, DEC-TBD-telegram-team-ops). TWAP
+ * Vốn của bot theo cấu hình (cột Capital ở Strategy Lab; tin "Bot started" gửi team, DEC-191). TWAP
  * không có vốn quote cố định: trả tổng khối lượng (`totalSize`, đơn vị base, UI_REVIEW N2). Không tính được → null.
  */
 export function botCapitalOf(
