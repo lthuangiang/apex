@@ -135,17 +135,21 @@ describe("MarketChart (IMP-05)", () => {
     expect(screen.queryByTestId("market-chart")).toBeNull();
   });
 
+  // Test đầu tiên vẽ chart khi có dữ liệu (lazy import + createChart): ~0.3 s ở máy nhưng tới 5.2 s trên runner CI
+  // 2 vCPU khi các package test song song; bước bấm "4h" một mình đã quá 1 s dưới tải. Nên có timeout riêng và
+  // waitFor dài hơn mặc định 1 s. Không đổi timeout chung.
   it("loads candles for the chosen market and timeframe", async () => {
+    const slow = { timeout: 5_000 };
     const view = render(
       wrap(<MarketChart strategy="futures_grid" values={grid()} lastPrice="100" />),
     );
     await waitFor(() => {
       expect(calls).toContain("/api/v1/markets/BTC-USD/candles?engine=perps&interval=1h");
-    });
+    }, slow);
     fireEvent.click(screen.getByRole("button", { name: "4h" }));
     await waitFor(() => {
       expect(calls).toContain("/api/v1/markets/BTC-USD/candles?engine=perps&interval=4h");
-    });
+    }, slow);
     responses.candles = candles("ETH-USD");
     view.rerender(
       wrap(
@@ -158,8 +162,8 @@ describe("MarketChart (IMP-05)", () => {
     );
     await waitFor(() => {
       expect(calls.some((c) => c.startsWith("/api/v1/markets/ETH-USD/candles"))).toBe(true);
-    });
-  });
+    }, slow);
+  }, 15_000);
 
   it("moves the dashed lines when a setting changes", async () => {
     const view = render(
