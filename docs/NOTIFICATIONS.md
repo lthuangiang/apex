@@ -151,3 +151,36 @@ Lỗi theo format C6. Thêm mã lỗi `TELEGRAM_NOT_CONNECTED`, `TELEGRAM_LINK_E
 3. Morning brief: **bật sẵn** khi vừa kết nối, tắt được.
 4. Số tiền trong tin Telegram: **có**, theo luật ở mục 5.
 5. Để sau: hỏi Desk AI ngay trong Telegram (tính vào 20 câu/ngày), giờ im lặng, push trình duyệt.
+
+## 13. Báo team qua Telegram (DEC-TBD-team-ops-alerts, người dùng chốt 2026-11-12)
+
+Thành viên **role `team`** (DEC-64) đã kết nối Telegram nhận tin khi có hoạt động mới của người dùng, để theo dõi tăng trưởng và hỗ trợ kịp lúc.
+
+**Sự kiện** (chỉ khi backend xác nhận, quy tắc 1.6):
+
+| Sự kiện | Khi nào | Nguồn |
+|---|---|---|
+| `team_signup` | tài khoản mới được tạo xong (đã xác minh email) | `apps/api` auth |
+| `team_sodex_connected` | kết nối SoDEX thành công (đủ hai chữ ký, DEC-25) | `apps/api` sodex connect |
+| `team_bot_started` | bot **tiền thật** chuyển sang `running` lần đầu của mỗi lần Start (engine xác nhận) | engine / sự kiện `state` |
+
+- Không báo bot tiền ảo (`mode = paper`, DEC-105), không báo kết nối lỗi.
+- Không báo hoạt động của chính tài khoản role `team` (tránh báo khi team tự thử).
+
+**Nội dung tin** (che bớt, Telegram là bên thứ ba):
+- Email che: 2 ký tự đầu + `···@` + tên miền (`gi···@gmail.com`).
+- Ví che: `0x` + 4 ký tự đầu + `…` + 4 ký tự cuối (`0x3e9a…11fd`). Không bao giờ gửi địa chỉ đầy đủ, key, chữ ký.
+- `team_bot_started`: tên bot (escape HTML), chiến lược, market, vốn (USDC, từ cấu hình bot).
+- Một nút URL mở trang **Users** của DeskLabs (role `team`) để xem đầy đủ; link không chứa token.
+- Ví dụ: `🆕 New signup · gi···@gmail.com` · `🔗 SoDEX connected · gi···@gmail.com · 0x3e9a…11fd` · `▶️ Bot started · gi···@gmail.com · BTC Grid · Futures Grid · BTC-USD · 200 USDC`.
+
+**Gửi:**
+- Gửi ngay; nhiều sự kiện **cùng loại** trong 60 giây gộp thành một tin (`3 new signups`, kèm tối đa 5 dòng che bớt, còn lại "+N more").
+- Fan-out: một sự kiện → một tin cho mỗi thành viên team có Telegram `active` và bật nhóm này. Đi qua worker gửi của mục 6 (giới hạn tốc độ, gửi lại, 403 → `blocked`).
+- Không tạo bản in-app hay email cho nhóm này ở v1 (chỉ Telegram).
+
+**Cài đặt:**
+- Nhóm mới `teamOps`, chỉ hiện ở Settings › Notifications với role `team`; chỉ kênh Telegram; **mặc định bật** khi thành viên team đã kết nối Telegram; tắt được.
+- API kiểm tra lại role `team` mỗi lần gửi (role bị gỡ thì ngừng nhận ngay).
+
+**Làm:** sau PR4 (worker gửi, mục 11 N3). Test: không gửi cho user thường; không gửi sự kiện paper / của tài khoản team; che email/ví đúng; gộp 60 giây; quét output không có địa chỉ ví đầy đủ.
