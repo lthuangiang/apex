@@ -39,8 +39,9 @@ jobs:
       - run: docker compose --profile dev up -d --wait $(docker compose --profile dev config --services | grep -vx vault-init)
       - run: |
           docker compose --profile dev up -d vault-init
-          code=$(docker compose --profile dev wait vault-init)
+          code=$(docker wait "$(docker compose --profile dev ps -aq vault-init)")
           docker compose --profile dev logs vault-init
+          echo "vault-init exit code: $code"
           test "$code" = "0"
       - if: always()
         run: docker compose --profile dev down -v
