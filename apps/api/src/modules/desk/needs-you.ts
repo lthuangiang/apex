@@ -1,4 +1,13 @@
-import { botReviews, bots, botVersions, deskItems, fills, orders, type Db } from "@drift/db";
+import {
+  botEvents,
+  botReviews,
+  bots,
+  botVersions,
+  deskItems,
+  fills,
+  orders,
+  type Db,
+} from "@drift/db";
 import {
   botHealth,
   botReviewResultSchema,
@@ -175,6 +184,35 @@ async function volumeFarmFills(db: Db, botId: string, since: number): Promise<Re
   }));
 }
 
+/** Sự kiện do API ghi lên bot (không phải engine): không phải mốc dừng. */
+const NON_ENGINE_DECISIONS = ["Builder fee changed"];
+
+/**
+ * Lúc bot dừng thật: sự kiện `state` (engine pause: "Paused") hoặc `decision` (log dừng của chiến lược ngay trước khi
+ * engine stop) gần nhất. Bot đã dừng thì engine không ghi thêm sự kiện, nên đây là mốc dừng; đổi tên hay lưu version
+ * không ghi `state` / `decision` (khác `bots.updatedAt`).
+ */
+async function stoppedAtOf(db: Db, botIds: readonly string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (botIds.length === 0) return out;
+  const rows = await db
+    .select({ botId: botEvents.botId, at: sql<Date>`max(${botEvents.occurredAt})` })
+    .from(botEvents)
+    .where(
+      and(
+        inArray(botEvents.botId, [...botIds]),
+        inArray(botEvents.type, ["state", "decision"]),
+        sql`coalesce(${botEvents.decision}, '') not in (${sql.join(
+          NON_ENGINE_DECISIONS.map((d) => sql`${d}`),
+          sql`, `,
+        )})`,
+      ),
+    )
+    .groupBy(botEvents.botId);
+  for (const r of rows) out.set(r.botId, new Date(r.at).getTime());
+  return out;
+}
+
 export interface NeedsYouDeps {
   db: Db;
   rest: Pick<BotDeps["rest"], "getPerpsSymbols">;
@@ -207,6 +245,10 @@ export async function collectFacts(deps: NeedsYouDeps, userId: string): Promise<
     // SoDEX không đọc được: bỏ quy tắc 1 lần này (không đoán bậc margin).
     symbols = [];
   }
+  const stopped = list
+    .filter((r) => r.b.state === "paused" || r.b.state === "stopped")
+    .map((r) => r.b.id);
+  const stopAt = await stoppedAtOf(deps.db, stopped);
   const reviews = await deps.db
     .select()
     .from(botReviews)
@@ -238,7 +280,7 @@ export async function collectFacts(deps: NeedsYouDeps, userId: string): Promise<
       net: note?.net ?? null,
       maxLoss: str(c.maxLoss),
       fees: note?.fees ?? null,
-      stoppedAt: b.state === "paused" || b.state === "stopped" ? b.updatedAt.getTime() : null,
+      stoppedAt: stopAt.get(b.id) ?? null,
       stop: stopCheckOf(b.strategy, c, tiers),
       taker:
         b.strategy === Strategy.volumeFarm
@@ -276,26 +318,36 @@ export async function needsYou(deps: NeedsYouDeps, userId: string): Promise<Need
   const candidates = facts.flatMap((b) => evaluateBot(b, now.getTime()));
   const stored = await deps.db.select().from(deskItems).where(eq(deskItems.userId, userId));
   const keyOf = (x: { botId: string; rule: string }) => `${x.botId}:${x.rule}`;
-  const storedBy = new Map(stored.map((s) => [keyOf(s), s]));
   for (const c of candidates) {
-    const prev = storedBy.get(keyOf(c));
-    // Fingerprint đổi (lần dừng mới, đòn bẩy đổi, review mới) → việc mới: bỏ trạng thái hoãn cũ.
-    const fresh =
-      prev === undefined ? true : prev.fingerprint !== c.fingerprint || prev.resolvedAt !== null;
-    const row = {
-      severity: c.severity,
-      facts: c.facts,
-      fingerprint: c.fingerprint,
-      badness: c.badness,
-      lastSeenAt: now,
-      resolvedAt: null,
-      ...(fresh ? { snoozedAt: null } : {}),
-    };
-    if (prev === undefined)
-      await deps.db
-        .insert(deskItems)
-        .values({ userId, botId: c.botId, rule: c.rule, ...row, snoozedAt: null });
-    else await deps.db.update(deskItems).set(row).where(eq(deskItems.id, prev.id));
+    // Một câu lệnh upsert theo (bot_id, rule): hai request song song không vi phạm unique. Giữ `snoozedAt` khi
+    // fingerprint không đổi và việc chưa resolved; fingerprint đổi (lần dừng mới, đòn bẩy đổi, review mới) → việc mới.
+    await deps.db
+      .insert(deskItems)
+      .values({
+        userId,
+        botId: c.botId,
+        rule: c.rule,
+        severity: c.severity,
+        facts: c.facts,
+        fingerprint: c.fingerprint,
+        badness: c.badness,
+        lastSeenAt: now,
+        snoozedAt: null,
+        resolvedAt: null,
+      })
+      .onConflictDoUpdate({
+        target: [deskItems.botId, deskItems.rule],
+        set: {
+          severity: c.severity,
+          facts: c.facts,
+          badness: c.badness,
+          lastSeenAt: now,
+          snoozedAt: sql`case when ${deskItems.fingerprint} = excluded.fingerprint and ${deskItems.resolvedAt} is null then ${deskItems.snoozedAt} else null end`,
+          fingerprint: sql`excluded.fingerprint`,
+          resolvedAt: null,
+          updatedAt: now,
+        },
+      });
   }
   const live = new Set(candidates.map(keyOf));
   const gone = stored.filter((s) => s.resolvedAt === null && !live.has(keyOf(s))).map((s) => s.id);

@@ -61,6 +61,13 @@ async function deskUser(email: string, desk = true) {
   return { client, userId: me.id, accountId: rows[0]?.id ?? "" };
 }
 
+/** Engine pause ghi `bot_events` loại `state` ("Paused", why = reason code). */
+const stopEvent = (botId: string, ago: string) =>
+  env.pool.query(
+    `insert into bot_events (id, bot_id, type, decision, why, occurred_at) values (gen_random_uuid(), $1, 'state', 'Paused', 'BOT_MAX_LOSS', now() - interval '${ago}')`,
+    [botId],
+  );
+
 const view = async (client: TestClient) =>
   needsYouViewSchema.parse((await client.request("GET", "/api/v1/desk/needs-you")).json());
 
@@ -85,10 +92,12 @@ describe("Needs you", () => {
       expect.objectContaining({ botId, health: "healthy", state: "running" }),
     ]);
 
+    // Engine pause ở max loss: ghi bot_events "Paused" (mốc dừng thật).
     await env.pool.query(
-      "update bots set state = 'paused', reason_code = 'BOT_MAX_LOSS', updated_at = now() - interval '1 hour' where id = $1",
+      "update bots set state = 'paused', reason_code = 'BOT_MAX_LOSS' where id = $1",
       [botId],
     );
+    await stopEvent(botId, "1 hour");
     const stopped = await view(client);
     expect(stopped.items.map((i) => [i.botName, i.rule])).toEqual([["ETH Grid", "max_loss_hit"]]);
     expect(stopped.items[0]?.facts.find((f) => f.name === "maxLoss")).toMatchObject({
@@ -107,8 +116,18 @@ describe("Needs you", () => {
     // Bot vẫn cần người dùng xem, dù việc đang hoãn.
     expect(snoozed.bots[0]?.health).toBe("needs_you");
 
-    // Chạy lại rồi dừng lần nữa ở max loss: dữ liệu mới → hiện lại.
-    await env.pool.query("update bots set updated_at = now() where id = $1", [botId]);
+    // Đổi tên bot (bots.updated_at đổi) và team đổi builder fee: không phải lần dừng mới → vẫn hoãn.
+    await env.pool.query("update bots set name = 'ETH Grid 2', updated_at = now() where id = $1", [
+      botId,
+    ]);
+    await env.pool.query(
+      "insert into bot_events (id, bot_id, type, decision, why, occurred_at) values (gen_random_uuid(), $1, 'decision', 'Builder fee changed', 'x', now())",
+      [botId],
+    );
+    expect((await view(client)).items).toEqual([]);
+
+    // Dừng lần nữa ở max loss: sự kiện dừng mới → hiện lại.
+    await stopEvent(botId, "0 seconds");
     expect((await view(client)).items.map((i) => i.rule)).toEqual(["max_loss_hit"]);
 
     // Bot chạy lại: việc không còn đúng → biến mất và được đánh dấu đã xong.
@@ -121,6 +140,29 @@ describe("Needs you", () => {
       [botId],
     );
     expect(rows[0]?.resolved_at).not.toBeNull();
+  });
+
+  it("survives two reads at the same time for a new item", async () => {
+    const { client } = await deskUser("needs-race@example.com");
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "futures_grid", name: "Race Grid", paramSource: "manual", config: grid },
+    });
+    const botId = botSummarySchema.parse(made.json()).id;
+    await env.pool.query(
+      "update bots set state = 'paused', reason_code = 'BOT_MAX_LOSS' where id = $1",
+      [botId],
+    );
+    await stopEvent(botId, "5 minutes");
+    const [a, b] = await Promise.all([
+      client.request("GET", "/api/v1/desk/needs-you"),
+      client.request("GET", "/api/v1/desk/needs-you"),
+    ]);
+    expect([a.statusCode, b.statusCode]).toEqual([200, 200]);
+    const { rows } = await env.pool.query<{ n: number }>(
+      "select count(*)::int as n from desk_items where bot_id = $1",
+      [botId],
+    );
+    expect(rows[0]?.n).toBe(1);
   });
 
   it("refuses to snooze an item of another user", async () => {

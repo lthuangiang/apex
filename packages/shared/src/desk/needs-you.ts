@@ -25,7 +25,21 @@ export const NEEDS_YOU_CONFIG = {
   takerWorseRatio: "0.25",
   /** Quy tắc 4: kết quả Review this run cũ hơn chừng này thì không dùng. */
   reviewMaxAgeMs: 7 * 86_400_000,
+  /**
+   * Quy tắc 2: mã dừng được coi là "chạm max loss" theo chiến lược (không đổi reason code trong chiến lược). Funding
+   * Arb phát `STOP_LOSS` khi chạm max loss (funding-arb/index.ts); Market Making `BUDGET_DONE` là dùng hết ngân sách
+   * chi phí theo kế hoạch, không phải lỗ, nên không có ở đây.
+   */
+  maxLossReasons: {
+    default: ["BOT_MAX_LOSS"],
+    funding_arb: ["BOT_MAX_LOSS", "STOP_LOSS"],
+  } as Readonly<Record<string, readonly string[]>>,
 } as const;
+
+/** Mã dừng tính là "chạm max loss" cho chiến lược này (quy tắc 2). */
+export const maxLossReasonsOf = (strategy: string): readonly string[] =>
+  NEEDS_YOU_CONFIG.maxLossReasons[strategy] ??
+  NEEDS_YOU_CONFIG.maxLossReasons.default ?? ["BOT_MAX_LOSS"];
 
 export const NEEDS_YOU_RULES = [
   "liquidation_before_stop",
@@ -138,7 +152,10 @@ export interface DeskBotFacts {
   net: string | null;
   maxLoss: string | null;
   fees: string | null;
-  /** Lúc bot dừng (ms) nếu đang dừng / pause. */
+  /**
+   * Lúc bot dừng thật (ms): sự kiện dừng gần nhất do engine ghi (bot_events), không phải `bots.updatedAt` (đổi khi đổi
+   * tên, lưu version…). null khi không dừng hoặc không có sự kiện.
+   */
   stoppedAt: number | null;
   stop: DeskStopCheck | null;
   taker: DeskTakerStats | null;
@@ -208,9 +225,10 @@ const isStoppedState = (state: string): boolean => state === "stopped" || state 
 
 /** Quy tắc 2: bot dừng vì chạm max loss (engine làm; giao diện ghi "Bot stopped", không ghi là AI). */
 export function ruleMaxLoss(b: DeskBotFacts): NeedsYouCandidate | null {
-  if (b.reasonCode !== "BOT_MAX_LOSS") return null;
+  if (b.reasonCode === null || !maxLossReasonsOf(b.strategy).includes(b.reasonCode)) return null;
   if (b.state !== "paused" && b.state !== "stopped") return null;
-  const facts = [fact(b.botId, "reasonCode", "BOT_MAX_LOSS", "text", "bot_state")];
+  // Fact giữ mã thật (ví dụ STOP_LOSS của Funding Arb).
+  const facts = [fact(b.botId, "reasonCode", b.reasonCode, "text", "bot_state")];
   if (b.maxLoss !== null) facts.push(fact(b.botId, "maxLoss", dec(b.maxLoss), "usdc", "config"));
   if (b.net !== null) facts.push(fact(b.botId, "net", dec(b.net), "usdc", "bot_state"));
   if (b.fees !== null) facts.push(fact(b.botId, "fees", dec(b.fees), "usdc", "bot_state"));
@@ -243,8 +261,21 @@ export function ruleTaker(b: DeskBotFacts): NeedsYouCandidate | null {
       fact(b.botId, "trades", t.trades, "count", "fills"),
       fact(b.botId, "takerTrades", t.takerTrades, "count", "fills"),
       fact(b.botId, "takerSharePct", share.mul(100), "pct", "fills"),
-      fact(b.botId, "takerCostPerMillion", t.takerCostPerMillion, "per_million", "fills"),
-      fact(b.botId, "makerCostPerMillion", t.makerCostPerMillion, "per_million", "fills"),
+      // 2 số lẻ: LLM (M5) không được nhắc số kiểu 12.345678901.
+      fact(
+        b.botId,
+        "takerCostPerMillion",
+        new Decimal(t.takerCostPerMillion).toDecimalPlaces(2),
+        "per_million",
+        "fills",
+      ),
+      fact(
+        b.botId,
+        "makerCostPerMillion",
+        new Decimal(t.makerCostPerMillion).toDecimalPlaces(2),
+        "per_million",
+        "fills",
+      ),
     ],
   };
 }

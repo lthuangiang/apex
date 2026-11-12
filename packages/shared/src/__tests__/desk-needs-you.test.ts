@@ -5,6 +5,7 @@ import {
   evaluateBot,
   isSnoozed,
   liquidationDistance,
+  maxLossReasonsOf,
   NEEDS_YOU_CONFIG,
   pickNeedsYou,
   ruleLiquidation,
@@ -152,6 +153,24 @@ describe("rule 2 · max loss hit", () => {
     expect(c?.facts.map((f) => f.name)).toEqual(["reasonCode", "maxLoss", "net", "fees"]);
   });
 
+  it("counts Funding Arb's STOP_LOSS as its max loss, keeping the real code in the fact", () => {
+    const c = ruleMaxLoss(
+      bot({ strategy: "funding_arb", state: "stopped", reasonCode: "STOP_LOSS" }),
+    );
+    expect(c?.facts.find((f) => f.name === "reasonCode")?.value).toBe("STOP_LOSS");
+    expect(maxLossReasonsOf("funding_arb")).toEqual(["BOT_MAX_LOSS", "STOP_LOSS"]);
+    expect(maxLossReasonsOf("spot_grid")).toEqual(["BOT_MAX_LOSS"]);
+  });
+
+  it("does not treat a planned budget end or a plain stop loss as max loss", () => {
+    expect(
+      ruleMaxLoss(bot({ strategy: "volume_maker", state: "stopped", reasonCode: "BUDGET_DONE" })),
+    ).toBeNull();
+    expect(
+      ruleMaxLoss(bot({ strategy: "futures_dca", state: "stopped", reasonCode: "STOP_LOSS" })),
+    ).toBeNull();
+  });
+
   it("ignores other stop reasons and running bots", () => {
     expect(ruleMaxLoss(bot({ state: "paused", reasonCode: "STOP_LOSS" }))).toBeNull();
     expect(ruleMaxLoss(bot({ state: "running", reasonCode: "BOT_MAX_LOSS" }))).toBeNull();
@@ -166,9 +185,12 @@ describe("rule 3 · costly taker orders", () => {
     makerCostPerMillion: makerCpm,
   });
   it("flags many, clearly more expensive taker turns", () => {
-    const c = ruleTaker(bot({ taker: taker(100, 40, 360, 213) }));
+    const c = ruleTaker(bot({ taker: taker(100, 40, 360.123456789, 213.987654) }));
     expect(c?.facts.find((f) => f.name === "takerSharePct")?.value).toBe("40");
-    expect(c?.badness).toBe("147");
+    // Fact chi phí làm tròn 2 số lẻ.
+    expect(c?.facts.find((f) => f.name === "takerCostPerMillion")?.value).toBe("360.12");
+    expect(c?.facts.find((f) => f.name === "makerCostPerMillion")?.value).toBe("213.99");
+    expect(c?.badness.slice(0, 6)).toBe("146.13");
   });
 
   it("needs enough trades, a big enough share and a real cost gap", () => {
