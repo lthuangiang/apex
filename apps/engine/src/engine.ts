@@ -1996,9 +1996,17 @@ export class Engine {
     )
       .map((x) => x.order)
       .filter((o) => gap(o.sodexAccountId));
-    const due = [...open, ...unconfirmed].filter(
-      (o) => now - (this.#openChecks.get(o.id) ?? 0) >= OPEN_CHECK_MS,
-    );
+    // Lệnh kiểm lâu nhất trước (chưa kiểm = 0), rồi lệnh cũ nhất (DEC-TBD-engine-reconcile-fair). Xếp theo `submittedAt`
+    // không thôi thì ≥ OPEN_CHECK_BATCH lệnh vẫn treo trên SoDEX (bot đang pause giữ lệnh) chiếm hết suất mỗi vòng, và
+    // lệnh mới hơn (ví dụ lệnh đóng vị thế của bot vừa Stop) không bao giờ được đối soát: fill thật không được ghi.
+    const lastCheck = (o: { id: string }) => this.#openChecks.get(o.id) ?? 0;
+    const due = [...open, ...unconfirmed]
+      .filter((o) => now - lastCheck(o) >= OPEN_CHECK_MS)
+      .sort(
+        (a, b) =>
+          lastCheck(a) - lastCheck(b) ||
+          (a.submittedAt?.getTime() ?? 0) - (b.submittedAt?.getTime() ?? 0),
+      );
     if (due.length === 0) return;
     const accounts = new Map((await this.#accountsInShard(shard)).map((a) => [a.id, a]));
     let checked = 0;
