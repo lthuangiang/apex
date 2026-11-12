@@ -46,3 +46,18 @@ export function usedRatio(goal: { limit: string; used: string | null }): number 
   if (goal.used === null || !dec(goal.limit).gt(0)) return null;
   return Math.min(1, dec(goal.used).div(goal.limit).toNumber());
 }
+
+/** USDC như mockup: số tròn không có phần lẻ ("500"), còn lại 2 chữ số ("4.95"); bỏ dấu (câu chữ tự nói lãi / lỗ). */
+export function plainUsd(value: string): string {
+  const v = dec(value).abs();
+  const fixed = v.isInteger() ? v.toFixed(0) : v.toDecimalPlaces(2).toFixed(2);
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: v.isInteger() ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(Number(fixed));
+}
+
+/** Phần trăm / bội số tối đa 2 chữ số lẻ, bỏ số 0 thừa ("4.761905" → "4.76", "2.50" → "2.5"). */
+export function plainNumber(value: string): string {
+  return dec(value).toDecimalPlaces(2).toString();
+}

@@ -176,6 +176,13 @@
       "when": 1794473186590,
       "tag": "0024_telegram_link",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794487633687,
+      "tag": "0025_desk_ai",
+      "breakpoints": true
     }
   ]
 }

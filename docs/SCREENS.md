@@ -151,11 +151,12 @@ Chỉ hiện khi team bật ở Users › AI Desk. Sidebar: Trading Agent luôn 
 
 | Route | Màn | Ghi chú |
 |---|---|---|
-| `/desk` | AI Desk B+ (BP-Home, BP-Phone) | Thẻ Mục tiêu (lỗ cho phép = vốn × maxDrop%, lỗ đã dùng = drawdown Risk Center bằng USDC; thiếu → "Not available"; chưa có goals → chỉ "Change goal") → Needs you (tối đa 3, mỗi việc có what-if 7 ngày "Last 7 days, as it is" so với phương án Desk AI chọn, nguồn + "not a forecast") → Your bots (Healthy / Watch / Needs you, bot paper có nhãn PAPER) → link "My suggestions so far" (chỉ đếm lần đã đo). Chưa có so sánh thì web bấm Compare thay user (chỉ tính, không đổi bot). Desk AI panel ở mốc LLM; "Market today" là v2 (ẩn) |
+| `/desk` | AI Desk B+ (BP-Home, BP-Phone) | Thẻ Mục tiêu (lỗ cho phép = vốn × maxDrop%, lỗ đã dùng = drawdown Risk Center bằng USDC; thiếu → "Not available"; chưa có goals → chỉ "Change goal") → Needs you (tối đa 3, mỗi việc có what-if 7 ngày "Last 7 days, as it is" so với phương án Desk AI chọn, nguồn + "not a forecast") → Your bots (Healthy / Watch / Needs you, bot paper có nhãn PAPER) → link "My suggestions so far" (chỉ đếm lần đã đo). Chưa có so sánh thì web bấm Compare thay user (chỉ tính, không đổi bot). Desk AI panel (báo cáo sáng từ 08:00 giờ địa phương, chip câu hỏi, ô "Ask Desk AI", "Not financial advice", số câu còn lại; LLM tắt → câu mẫu); "Market today" là v2 (ẩn) |
 | `/desk?tab=bots` | Your bots (DEC-105) | Nhận xét AI Analyst; `/analyst` chuyển tới đây khi AI Desk bật |
 | `/desk/new` | New bot | Recommended của DEC-105: 3 câu hỏi → một đề xuất "Suggested for you"; Goal check không đổi đề xuất; Verified trống |
 | `/desk/compare/:whatifId` | Pick a fix (BP-WhatIf) | 2–3 phương án: kết quả 7 ngày, số lượt SoDEX đóng, lượt tệ nhất, ký quỹ mỗi lượt (thiếu → "Not available"); "My pick" + lý do (câu mẫu theo luật chọn); Apply → version mới `param_source = ai`, "Applying vN…" tới khi engine áp; "Keep as it is" không Apply |
 | `/desk/record` | Did my suggestions help? (BP-Record) | Mọi lần Apply, kể cả "Made it worse"; "Still measuring" tới 7 ngày sau khi version AI được áp; Switch back chỉ ở "Made it worse" khi bot vẫn ở version AI đó |
+| `/desk/history` | History (B-History) | "Questions today: N of 20"; cuộc trò chuyện 90 ngày (Today / Earlier, báo cáo sáng); "What changed" chỉ những gì user bấm (Apply từ đề xuất); "Delete history" có hộp xác nhận |
 | `/desk/why/:suggestionId` | Why this one | Đọc đúng dữ liệu đã lưu của lần đề xuất, không tính lại; không hiện backtest |
 | `/desk/paper/:botId` | Fake-money test | Nhãn PAPER; mọi số là mô phỏng; Stop test không cần 2FA |
 | `/desk/paper/:botId/results` | Test results | Kết luận theo quy tắc `paperVerdict`; so với chỉ giữ coin luôn hiện |

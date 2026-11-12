@@ -1237,3 +1237,87 @@ export const deskApplies = pgTable(
     index("desk_applies_record_idx").on(t.recordStatus, t.appliedAt),
   ],
 );
+
+/**
+ * Desk AI (AI Desk B+ M5, DEC-165): cuộc trò chuyện của user. `brief` = báo cáo sáng, mỗi ngày địa phương một lần.
+ * Lưu 90 ngày rồi tự xoá (scheduler); user xoá được bằng "Delete history".
+ */
+export const deskAiConversations = pgTable(
+  "desk_ai_conversations",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    kind: text("kind").$type<"chat" | "brief">().notNull(),
+    /** Câu hỏi đầu tiên (chat) hoặc rỗng (brief: web dịch tiêu đề). */
+    title: text("title").notNull(),
+    /** Ngày địa phương `YYYY-MM-DD` theo `users.timezone` lúc tạo. */
+    localDate: text("local_date").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index("desk_ai_conversations_user_idx").on(t.userId, t.createdAt),
+    uniqueIndex("desk_ai_conversations_brief")
+      .on(t.userId, t.localDate)
+      .where(sql`kind = 'brief'`),
+  ],
+);
+
+/**
+ * Mỗi lượt Desk AI: câu hỏi, câu trả lời (lời LLM hoặc câu mẫu), và nhật ký (mục 5.10): model, phiên bản prompt, id
+ * fact đầu vào, token, chi phí ước tính, traceId. Không lưu key hay payload API.
+ */
+export const deskAiTurns = pgTable(
+  "desk_ai_turns",
+  {
+    id: id(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => deskAiConversations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    kind: text("kind").$type<"question" | "brief">().notNull(),
+    localDate: text("local_date").notNull(),
+    question: text("question"),
+    /** `DeskAiAnswer` (packages/shared/src/api/desk.ts). */
+    answer: jsonb("answer").notNull(),
+    /** `llm` khi lời LLM qua kiểm tra số; `template` khi dùng câu mẫu. */
+    source: text("source").$type<"llm" | "template">().notNull(),
+    /** Vì sao dùng câu mẫu: llm_off, quota, out_of_scope, numbers, truncated, refusal, error. */
+    fallback: text("fallback"),
+    model: text("model"),
+    promptVersion: text("prompt_version").notNull(),
+    factIds: text("fact_ids").array().notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+    cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
+    costUsd: numeric("cost_usd", { precision: 18, scale: 8 }),
+    traceId: text("trace_id"),
+    ...timestamps,
+  },
+  (t) => [
+    index("desk_ai_turns_conversation_idx").on(t.conversationId, t.createdAt),
+    index("desk_ai_turns_quota_idx").on(t.userId, t.localDate),
+  ],
+);
+
+/**
+ * Desk AI: số câu hỏi đã dùng mỗi ngày địa phương (DEC-165b, 20 câu / ngày). Tách khỏi lịch sử chat để "Delete history"
+ * không đặt lại lượt; giữ chỗ bằng một câu `insert … on conflict do update … where questions < 20` nên hai request song
+ * song ở câu thứ 20 không cùng qua.
+ */
+export const deskAiUsage = pgTable(
+  "desk_ai_usage",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    localDate: text("local_date").notNull(),
+    questions: integer("questions").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.localDate] })],
+);

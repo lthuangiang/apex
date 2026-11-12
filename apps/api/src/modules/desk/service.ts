@@ -48,12 +48,16 @@ import {
 import { aiParams, type RecoDeps } from "../reco/service";
 import { iso } from "../security/service";
 
+import type { DeskLlm } from "./llm";
+
 // AI Desk (DEC-105, AI_DESK_RECOMMENDED.md): bot paper chạy bằng tiền giả, kết quả theo quy tắc cố định, chuyển
 // sang tiền thật bằng một bot MỚI (không đổi `mode` tại chỗ). Không có gì ở đây gửi lệnh hay ký.
 
 export interface DeskDeps {
   bots: BotDeps;
   reco: RecoDeps;
+  /** Desk AI (DEC-165): null = LLM tắt, câu mẫu. */
+  llm: DeskLlm | null;
 }
 
 /** Lý do dừng có nghĩa là đã chạm giới hạn lỗ (stop hoặc max loss). */

@@ -173,6 +173,21 @@ function view(
 const viewOf = async (deps: BotDeps, w: typeof deskWhatifs.$inferSelect, rule: NeedsYouRule) =>
   view(w, rule, await contextOf(deps, w.botId, w.botVersion));
 
+/** Thẻ Mục tiêu (DEC-177): goals + drawdown Risk Center; chưa có goals → null. */
+export async function goalOf(deps: BotDeps, userId: string): Promise<DeskHomeView["goal"]> {
+  const [g] = await deps.db.select().from(goals).where(eq(goals.userId, userId)).limit(1);
+  const risk = g === undefined ? null : await riskStatusOf(deps, userId);
+  return g === undefined
+    ? null
+    : {
+        goal: g.goal,
+        ...goalGauge(
+          { capital: g.capital, maxDrop: g.maxDrop },
+          risk === null ? null : { peakEquity: risk.status.peakEquity, equity: risk.status.equity },
+        ),
+      };
+}
+
 /**
  * Trang chủ B+ (M3): việc "Needs you" kèm so sánh mới nhất cho đúng việc + version bot + fingerprint (job còn trong
  * `REUSE_MS`); không có thì `whatif = null` và web bấm Compare thay user (chỉ tính, không đổi bot).
@@ -214,20 +229,7 @@ export async function deskHome(
       return { ...item, whatif: fresh ? await viewOf(deps, row.w, item.rule) : null };
     }),
   );
-  const [g] = await deps.db.select().from(goals).where(eq(goals.userId, userId)).limit(1);
-  const risk = g === undefined ? null : await riskStatusOf(deps, userId);
-  const goal =
-    g === undefined
-      ? null
-      : {
-          goal: g.goal,
-          ...goalGauge(
-            { capital: g.capital, maxDrop: g.maxDrop },
-            risk === null
-              ? null
-              : { peakEquity: risk.status.peakEquity, equity: risk.status.equity },
-          ),
-        };
+  const goal = await goalOf(deps, userId);
   return { ...base, items, goal };
 }
 

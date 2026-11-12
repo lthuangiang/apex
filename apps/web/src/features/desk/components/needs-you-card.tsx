@@ -9,9 +9,8 @@ import { useEffect, useRef } from "react";
 import { z } from "zod";
 
 import { api } from "@/lib/api";
-import { formatMoney } from "@/lib/format";
 
-import { optionValues, shownFix } from "../bplus";
+import { optionValues, plainNumber, plainUsd, shownFix } from "../bplus";
 
 // AI Desk B+ (artboard BP-Home): một việc "Needs you" = vấn đề bằng lời thường (từ fact của quy tắc) + what-if 7 ngày
 // ("Last 7 days, as it is" so với phương án Desk AI chọn) + nút chính. Chưa có so sánh thì bấm Compare thay user: chỉ
@@ -89,33 +88,37 @@ function Problem({ item }: { item: Item }) {
       factOf(item, "stopDistancePct"),
     ];
     if (leverage !== null && liq !== null && stop !== null)
-      body = t("liquidation_before_stop.body", { leverage, liq, stop });
+      body = t("liquidation_before_stop.body", {
+        leverage: plainNumber(leverage),
+        liq: plainNumber(liq),
+        stop: plainNumber(stop),
+      });
   } else if (r === "max_loss_hit") {
     const maxLoss = factOf(item, "maxLoss");
     title =
       maxLoss === null
         ? t("max_loss_hit.titleNoLimit")
-        : t("max_loss_hit.title", { maxLoss: formatMoney(maxLoss) ?? maxLoss });
+        : t("max_loss_hit.title", { maxLoss: plainUsd(maxLoss) });
     const [net, fees] = [factOf(item, "net"), factOf(item, "fees")];
     if (net !== null && fees !== null && net.startsWith("-"))
-      body = t("max_loss_hit.body", {
-        net: formatMoney(net.slice(1)) ?? "",
-        fees: formatMoney(fees) ?? "",
-      });
+      body = t("max_loss_hit.body", { net: plainUsd(net), fees: plainUsd(fees) });
   } else if (r === "taker_costly") {
-    title = t("taker_costly.title", { share: factOf(item, "takerSharePct") ?? "" });
+    const share = factOf(item, "takerSharePct");
+    title = t("taker_costly.title", { share: share === null ? "" : plainNumber(share) });
     const [taker, maker] = [
       factOf(item, "takerCostPerMillion"),
       factOf(item, "makerCostPerMillion"),
     ];
-    if (taker !== null && maker !== null) body = t("taker_costly.body", { taker, maker });
+    if (taker !== null && maker !== null)
+      body = t("taker_costly.body", { taker: plainUsd(taker), maker: plainUsd(maker) });
   } else {
     title = t("better_review.title");
     const [best, current] = [
       factOf(item, "bestCostPerMillion"),
       factOf(item, "currentCostPerMillion"),
     ];
-    if (best !== null && current !== null) body = t("better_review.body", { best, current });
+    if (best !== null && current !== null)
+      body = t("better_review.body", { best: plainUsd(best), current: plainUsd(current) });
   }
   return (
     <div className="flex flex-col gap-1">

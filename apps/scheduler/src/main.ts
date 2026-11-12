@@ -10,7 +10,7 @@ import { getAddress } from "viem";
 import { z } from "zod";
 
 import { reconcileDay, snapshotBuilderBalances } from "./builder-revenue";
-import { queueDueRecords, sweepStaleDeskJobs } from "./desk-record";
+import { purgeOldDeskAiChats, queueDueRecords, sweepStaleDeskJobs } from "./desk-record";
 import { leaderboardDue, noteMinHoldChanges, runLeaderboard } from "./leaderboard";
 import { computeDailyStats, utcDate } from "./market-stats";
 import { snapshotAndCheck } from "./risk";
@@ -182,6 +182,13 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
       void tick().catch((error: unknown) => {
         log.error({ err: error }, "tick failed");
       });
+      void purgeOldDeskAiChats(db, Date.now())
+        .then((n) => {
+          if (n > 0) log.info({ deleted: n }, "old desk ai chats deleted");
+        })
+        .catch((error: unknown) => {
+          log.error({ err: error }, "desk ai purge failed");
+        });
       void sweepStaleDeskJobs(db, Date.now())
         .then((r) => {
           if (r.whatifs + r.records > 0) log.warn(r, "stale desk jobs reset");

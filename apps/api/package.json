@@ -12,6 +12,7 @@
     "set-password": "tsx src/cli/set-password.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.8.0",
     "@drift/db": "workspace:*",
     "@drift/runtime": "workspace:*",
     "@drift/shared": "workspace:*",

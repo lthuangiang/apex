@@ -16,6 +16,7 @@ import { registerChartRoutes } from "./modules/chart/routes";
 import { createChartService, type LiquidationProvider } from "./modules/chart/service";
 import { registerCopyRoutes } from "./modules/copy/routes";
 import { registerDataRoutes } from "./modules/data/routes";
+import type { DeskLlm } from "./modules/desk/llm";
 import { registerDeskRoutes } from "./modules/desk/routes";
 import { registerProfileRoutes } from "./modules/profile/routes";
 import { registerPublicRoutes } from "./modules/public/routes";
@@ -76,6 +77,8 @@ export interface AppDeps {
     appUrl: string;
     botApi: BotApi;
   };
+  /** Desk AI (DEC-165): null = LLM tắt, trả lời bằng câu mẫu. */
+  deskLlm?: DeskLlm | null;
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -159,7 +162,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
   const recoDeps = { db: deps.db, reco: deps.reco, rest: deps.sodex.rest, now };
   registerRecoRoutes(app, recoDeps);
-  registerDeskRoutes(app, { bots: botDeps, reco: recoDeps });
+  registerDeskRoutes(app, { bots: botDeps, reco: recoDeps, llm: deps.deskLlm ?? null });
   registerCopyRoutes(app, { bots: botDeps, bigMoveMinUsd: deps.copyBigMoveMinUsd ?? null });
   registerSodexRoutes(app, { ...deps.sodex, db: deps.db, totpKey: deps.totpKey, now });
   const tg = deps.telegram;

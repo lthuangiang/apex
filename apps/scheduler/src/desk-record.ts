@@ -1,5 +1,12 @@
-import { botVersions, deskApplies, deskWhatifs, outbox, type Db } from "@drift/db";
-import { RECORD_CONFIG, WHATIF_CONFIG } from "@drift/shared";
+import {
+  botVersions,
+  deskAiConversations,
+  deskApplies,
+  deskWhatifs,
+  outbox,
+  type Db,
+} from "@drift/db";
+import { DESK_AI_CONFIG, RECORD_CONFIG, WHATIF_CONFIG } from "@drift/shared";
 import { and, eq, inArray, isNotNull, lt, lte, or } from "drizzle-orm";
 
 // AI Desk B+ M4 (DEC-166): 7 ngày sau khi version "AI suggested" được áp, xếp job đo thành tích vào hàng đợi
@@ -82,4 +89,15 @@ export async function sweepStaleDeskJobs(
     )
     .returning({ id: deskApplies.id });
   return { whatifs: whatifs.length, records: records.length };
+}
+
+/** Desk AI (DEC-165c): chat lưu 90 ngày rồi tự xoá (lượt bị xoá theo, `on delete cascade`). */
+export async function purgeOldDeskAiChats(db: Db, now: number): Promise<number> {
+  const rows = await db
+    .delete(deskAiConversations)
+    .where(
+      lt(deskAiConversations.createdAt, new Date(now - DESK_AI_CONFIG.retentionDays * 86_400_000)),
+    )
+    .returning({ id: deskAiConversations.id });
+  return rows.length;
 }

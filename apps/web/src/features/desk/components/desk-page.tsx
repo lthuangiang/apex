@@ -18,13 +18,14 @@ import { Card, PageHead, Workspace } from "@/components/workspace";
 import { api } from "@/lib/api";
 import { useFeatures } from "@/lib/queries";
 
+import { DeskAiPanel } from "./desk-ai";
 import { GoalCard } from "./goal-card";
 import { NeedsYouCard } from "./needs-you-card";
 import { PaperChip } from "./paper-chip";
 import { YourBots as AnalystNotes } from "./your-bots";
 
 // AI Desk B+ (DEC-166, artboard BP-Home / BP-Phone): Needs you (tối đa 3, mỗi việc có what-if) → sức khoẻ bot. Thẻ
-// Mục tiêu, thành tích và Desk AI panel thêm ở các mốc sau; "Market today" là v2 (ẩn). Tạo bot (Recommended, paper,
+// Mục tiêu, thành tích, Desk AI panel (M5); "Market today" là v2 (ẩn). Tạo bot (Recommended, paper,
 // DEC-105) ở /desk/new. `?tab=bots` giữ nhận xét AI Analyst của DEC-105 (màn AI Analyst chuyển user AI Desk tới đây).
 // Chỉ hiện khi team bật AI Desk cho tài khoản; tắt thì quay về Overview.
 
@@ -123,7 +124,7 @@ function Home({ v }: { v: DeskHomeView }) {
   const t = useTranslations("desk.home");
   return (
     <div className="flex flex-col gap-5">
-      <GoalCard goal={v.goal} />
+      <GoalCard goal={v.goal} items={v.items} />
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:items-start">
         <section aria-labelledby="needs-you" className="flex min-w-0 flex-col gap-3">
           <h2 id="needs-you" className="m-0 text-lg font-extrabold">
@@ -137,6 +138,7 @@ function Home({ v }: { v: DeskHomeView }) {
             ))
           )}
           <RecordLink />
+          <DeskAiPanel />
         </section>
         <YourBots bots={v.bots} />
       </div>
