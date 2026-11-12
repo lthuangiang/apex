@@ -84,6 +84,16 @@ async function signAndSubmit(
   });
 }
 
+// Sự kiện báo team (DEC-TBD-telegram-team-ops) của account SoDEX này.
+const teamConnected = async (t: Trader) =>
+  (
+    await env.pool.query(
+      `select o.id from outbox o join sodex_accounts a on a.id::text = o.payload->>'sodexAccountId'
+       where o.topic = 'jobs.team_ops' and o.payload->>'type' = 'team_sodex_connected'
+         and a.sodex_account_id = $1`,
+      [String(t.accountID)],
+    )
+  ).rowCount;
 const connection = async (t: Trader) =>
   sodexConnectionSchema.parse((await t.client.request("GET", "/api/v1/sodex/connection")).json())
     .connection;
@@ -144,6 +154,7 @@ describe("connect SoDEX with two signatures", () => {
       }),
     );
     await signAndSubmit(t, await t.client.request("POST", "/api/v1/sodex/builder-fee/approval"));
+    expect(await teamConnected(t)).toBe(1);
 
     const setup = twoFactorSetupSchema.parse(
       (await t.client.request("POST", "/api/v1/security/2fa/setup")).json(),
@@ -183,6 +194,8 @@ describe("connect SoDEX with two signatures", () => {
       perps: 10,
       approved: true,
     });
+    // Approve lại sau revoke không báo team lần nữa.
+    expect(await teamConnected(t)).toBe(1);
   });
 
   it("renews the key with one signature: a new DeskLabs-<date> key replaces the old one (DEC-59)", async () => {

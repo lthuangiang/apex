@@ -115,6 +115,8 @@ export const SETTINGS_GROUP_ORDER: readonly NotificationGroup[] = [
   "daily",
   "fills",
   "copyTrading",
+  // Chỉ role team thấy (API chỉ trả nhóm này cho team, DEC-184).
+  "teamOps",
 ];
 
 /** Nhóm đang bật Telegram, theo thứ tự hiển thị; Copy Trading chỉ khi có AI Desk (DEC-163). */

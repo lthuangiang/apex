@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import type { Db } from "@drift/db";
-import { emailOtps, sessions, users } from "@drift/db";
+import { emailOtps, outbox, sessions, users } from "@drift/db";
 import { AppError, ErrorCode, OTP_LENGTH, UserRole } from "@drift/shared";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 
@@ -134,6 +134,10 @@ export async function createSession(
         .returning({ id: users.id });
       id = created?.id;
       if (id === undefined) throw new AppError(ErrorCode.otpInvalid, "Invalid or expired code.");
+      // Báo team (DEC-184): tài khoản mới, đã xác minh email bằng mã.
+      await tx
+        .insert(outbox)
+        .values({ topic: "jobs.team_ops", payload: { type: "team_signup", userId: id } });
     }
     await tx.insert(sessions).values({
       userId: id,
@@ -210,6 +214,10 @@ export async function registerWithPassword(
     if (created === undefined) {
       throw new AppError(ErrorCode.emailTaken, "An account with this email already exists.");
     }
+    // Báo team (DEC-184, DEC-TBD-telegram-team-ops): đăng ký mật khẩu chưa xác minh email.
+    await tx
+      .insert(outbox)
+      .values({ topic: "jobs.team_ops", payload: { type: "team_signup", userId: created.id } });
     return openSession(tx, created.id, now, client, true);
   });
 }

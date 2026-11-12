@@ -100,6 +100,11 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
     case "leader_big_move":
       // Copy Trading chỉ có khi bật AI Desk (DEC-163).
       return aiDesk ? "/following" : "/";
+    case "team_signup":
+    case "team_sodex_connected":
+    case "team_bot_started":
+      // Báo team chỉ đi Telegram (DEC-184); có ở đây để switch đủ.
+      return "/admin/users";
   }
 }
 
