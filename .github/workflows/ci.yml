@@ -20,7 +20,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm typecheck
-      - run: pnpm test
+      # Runner 2 vCPU: tối đa 2 package test cùng lúc để test UI không hết giờ vì bị chia CPU (#21, #24, #25).
+      - run: pnpm test --concurrency=2
       - run: pnpm --filter @drift/ui exec playwright install --with-deps chromium
       - run: pnpm --filter @drift/ui test:a11y
       - run: pnpm build
