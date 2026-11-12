@@ -2555,7 +2555,21 @@
     "desk.compare.applied",
     "desk.compare.openBot",
     "desk.compare.errors",
-    "desk.newBot"
+    "desk.newBot",
+    "desk.record.chip.unavailable",
+    "desk.record.change.tighter_stop",
+    "desk.record.change.review_settings",
+    "desk.record.whenChecked",
+    "desk.record.compare",
+    "desk.record.none",
+    "desk.record.switching",
+    "desk.record.switched",
+    "desk.record.switchError",
+    "desk.record.empty",
+    "desk.record.emptyBody",
+    "desk.record.error",
+    "desk.record.counts.no_clear_effect",
+    "desk.record.chip.no_clear_effect"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -4760,6 +4774,44 @@
     "newBot": {
       "title": "New bot",
       "back": "AI Desk"
+    },
+    "record": {
+      "back": "AI Desk",
+      "title": "Did my suggestions help?",
+      "intro": "Seven days after you apply a fix, I compare what happened with what the old settings would have done over the same days.",
+      "counts": {
+        "helped": "Helped",
+        "made_worse": "Made it worse",
+        "measuring": "Still measuring",
+        "no_clear_effect": "No clear effect"
+      },
+      "applied": "Fixes you applied",
+      "chip": {
+        "helped": "Helped",
+        "made_worse": "Made it worse",
+        "measuring": "Still measuring",
+        "no_clear_effect": "No clear effect",
+        "unavailable": "Not enough trades to compare"
+      },
+      "what": "{bot} · {change}",
+      "change": {
+        "lower_leverage": "leverage {from}× → {to}×",
+        "tighter_stop": "tighter stop loss",
+        "review_settings": "Review this run settings"
+      },
+      "whenMeasuring": "Applied {applied} · result on {due}",
+      "whenChecked": "Applied {applied} · checked {checked}",
+      "compareLabel": "Old settings → after the fix",
+      "compare": "{old} → {after} USDC",
+      "none": "—",
+      "switchBack": "Switch back",
+      "switching": "Switching back…",
+      "switched": "Switched back as v{version}",
+      "switchError": "Couldn't switch back. Try again.",
+      "foot": "\"Old settings\" is a replay over the same days, not a forecast. Small differences under 0.50 USDC count as \"no clear effect\".",
+      "empty": "No fixes applied yet.",
+      "emptyBody": "When you apply a fix from Needs you, I check back 7 days later.",
+      "error": "Couldn't load your track record. Try again."
     }
   },
   "connectLog": {

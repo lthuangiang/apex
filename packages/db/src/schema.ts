@@ -1175,10 +1175,23 @@ export const deskApplies = pgTable(
     toVersion: integer("to_version"),
     baselineConfig: jsonb("baseline_config").notNull(),
     appliedAt: tstz("applied_at").notNull(),
+    // Thành tích (M4): đo 7 ngày sau Apply. measuring → queued (scheduler xếp job) → done / unavailable.
+    recordStatus: text("record_status")
+      .$type<"measuring" | "queued" | "done" | "unavailable">()
+      .notNull()
+      .default("measuring"),
+    /** Kết quả đo: nguồn, lãi / lỗ sau khi sửa, của cấu hình cũ trên cùng các ngày, số lượt, cửa sổ. */
+    record: jsonb("record"),
+    verdict: text("verdict").$type<"helped" | "made_worse" | "no_clear_effect">(),
+    recordError: text("record_error"),
+    checkedAt: tstz("checked_at"),
+    /** Version tạo bởi Switch back (cấu hình cũ); null khi chưa quay lại, −1 trong lúc đang tạo. */
+    switchedBackVersion: integer("switched_back_version"),
     ...timestamps,
   },
   (t) => [
     uniqueIndex("desk_applies_whatif").on(t.whatifId),
     index("desk_applies_bot_idx").on(t.botId, t.appliedAt),
+    index("desk_applies_record_idx").on(t.recordStatus, t.appliedAt),
   ],
 );

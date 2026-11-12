@@ -202,3 +202,55 @@ export const deskHomeViewSchema = needsYouViewSchema.extend({
   items: z.array(deskHomeItemSchema),
 });
 export type DeskHomeView = z.infer<typeof deskHomeViewSchema>;
+
+/* AI Desk B+ M4 (DEC-166): thành tích, đo 7 ngày sau mỗi Apply. Kết quả là 7 ngày đã qua, không phải dự báo. */
+export const deskRecordRowSchema = z.object({
+  id: uuidSchema,
+  botId: uuidSchema,
+  botName: z.string(),
+  rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
+  option: z.enum(["lower_leverage", "tighter_stop", "review_settings"]),
+  changes: z.array(
+    z.object({ key: z.string(), from: z.string().nullable(), to: z.string().nullable() }),
+  ),
+  appliedAt: isoDateTimeSchema,
+  /** Ngày có kết quả (7 ngày sau khi version được áp). */
+  dueAt: isoDateTimeSchema,
+  checkedAt: isoDateTimeSchema.nullable(),
+  /** `measuring` gồm cả lúc job đang chạy; `unavailable` = không đo được (ví dụ ít lượt), không hiện 0. */
+  status: z.enum(["measuring", "done", "unavailable"]),
+  verdict: z.enum(["helped", "made_worse", "no_clear_effect"]).nullable(),
+  /** Lãi / lỗ sau khi sửa và của cấu hình cũ trên cùng các ngày (USDC); null khi chưa đo. */
+  after: decimalStringSchema.nullable(),
+  old: decimalStringSchema.nullable(),
+  source: z.enum(["replay", "backtest"]).nullable(),
+  error: z.string().nullable(),
+  /** Switch back: chỉ với "Made it worse" và khi bot vẫn ở version AI đã tạo. */
+  canSwitchBack: z.boolean(),
+  switchedBackVersion: z.number().int().nullable(),
+});
+export const deskRecordViewSchema = z.object({
+  counts: z.object({
+    helped: z.number().int(),
+    madeWorse: z.number().int(),
+    noClearEffect: z.number().int(),
+    measuring: z.number().int(),
+  }),
+  rows: z.array(deskRecordRowSchema),
+});
+export type DeskRecordView = z.infer<typeof deskRecordViewSchema>;
+export const switchBackViewSchema = z.object({
+  botId: uuidSchema,
+  version: z.number().int(),
+  status: z.enum(["pending", "active"]),
+});
+/** `desk_applies.record` (jsonb) do worker ghi. */
+export const deskRecordResultSchema = z.object({
+  source: z.enum(["replay", "backtest"]),
+  after: decimalStringSchema,
+  old: decimalStringSchema,
+  trades: z.number().int().nullable(),
+  from: isoDateTimeSchema,
+  to: isoDateTimeSchema,
+});
+export type DeskRecordResult = z.infer<typeof deskRecordResultSchema>;

@@ -138,4 +138,5 @@ export function deskNotes(bots: readonly AnalystBot[], now: number): DeskNote[] 
   });
 }
 export * from "./needs-you";
+export * from "./record";
 export * from "./whatif";

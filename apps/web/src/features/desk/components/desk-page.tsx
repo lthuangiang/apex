@@ -1,6 +1,11 @@
 "use client";
 
-import { deskBotsViewSchema, deskHomeViewSchema, type DeskHomeView } from "@drift/shared";
+import {
+  deskBotsViewSchema,
+  deskHomeViewSchema,
+  deskRecordViewSchema,
+  type DeskHomeView,
+} from "@drift/shared";
 import { EmptyState, ErrorState, Skeleton } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
@@ -96,6 +101,23 @@ function YourBots({ bots }: { bots: Bot[] }) {
   );
 }
 
+/** "My suggestions so far: 4 of 5 helped →": chỉ đếm lần đã đo xong; chưa có thì ẩn. */
+function RecordLink() {
+  const t = useTranslations("desk.home");
+  const q = useQuery({
+    queryKey: ["desk", "record"],
+    queryFn: () => api("GET", "/api/v1/desk/record", deskRecordViewSchema),
+  });
+  const c = q.data?.counts;
+  const total = c === undefined ? 0 : c.helped + c.madeWorse + c.noClearEffect;
+  if (c === undefined || total === 0) return null;
+  return (
+    <Link href="/desk/record" className="self-start text-sm font-bold text-accent-ink">
+      {t("record", { helped: c.helped, total })}
+    </Link>
+  );
+}
+
 function Home({ v }: { v: DeskHomeView }) {
   const t = useTranslations("desk.home");
   return (
@@ -109,6 +131,7 @@ function Home({ v }: { v: DeskHomeView }) {
         ) : (
           v.items.map((item) => <NeedsYouCard key={item.id} item={item} />)
         )}
+        <RecordLink />
       </section>
       <YourBots bots={v.bots} />
     </div>

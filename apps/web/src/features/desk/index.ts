@@ -4,5 +4,6 @@ export { GoLivePage } from "./components/go-live-page";
 export { NewBotPage } from "./components/new-bot-page";
 export { PaperChip } from "./components/paper-chip";
 export { PaperPage } from "./components/paper-page";
+export { RecordPage } from "./components/record-page";
 export { ResultsPage } from "./components/results-page";
 export { WhyPage } from "./components/why-page";
