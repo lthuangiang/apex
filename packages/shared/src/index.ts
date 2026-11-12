@@ -26,3 +26,4 @@ export * from "./api/desk";
 export * from "./desk";
 export * from "./leader-stats";
 export * from "./api/copy";
+export * from "./telegram";

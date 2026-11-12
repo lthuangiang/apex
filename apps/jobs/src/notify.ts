@@ -107,6 +107,13 @@ export function emailText(
         subject: "DeskLabs: a trader you follow made a big move",
         text: "Open Following in DeskLabs.",
       };
+    case "telegram_connected":
+    case "telegram_moved":
+      // Nhóm hệ thống `telegram` chỉ in-app (DEC-183); câu này chỉ để switch đủ nhánh.
+      return {
+        subject: "DeskLabs: Telegram alerts changed",
+        text: "Open Settings › Notifications in DeskLabs.",
+      };
   }
 }
 

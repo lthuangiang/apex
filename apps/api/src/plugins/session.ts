@@ -37,13 +37,20 @@ export interface SessionOptions {
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+/**
+ * Đường dẫn chính xác (không wildcard, không query) được miễn CSRF vì không đến từ trình duyệt và có cách xác
+ * thực riêng: webhook Telegram kiểm tra header secret (docs/NOTIFICATIONS.md mục 3, DEC-170).
+ */
+export const CSRF_EXEMPT_POST_PATHS: ReadonlySet<string> = new Set(["/api/v1/telegram/webhook"]);
+
 export function registerSession(app: FastifyInstance, options: SessionOptions): void {
   const { db, now } = options;
   app.decorateRequest("auth", null);
 
   app.addHook("onRequest", async (request, reply) => {
     ensureCsrfCookie(request, reply, options.cookieSecure);
-    if (MUTATING.has(request.method)) checkCsrf(request);
+    const exempt = request.method === "POST" && CSRF_EXEMPT_POST_PATHS.has(request.url);
+    if (MUTATING.has(request.method) && !exempt) checkCsrf(request);
 
     const token = request.cookies[SESSION_COOKIE];
     if (token === undefined) return;

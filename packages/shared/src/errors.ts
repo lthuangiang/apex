@@ -26,6 +26,9 @@ export const ErrorCode = {
   sodexAccountInUse: "SODEX_ACCOUNT_IN_USE",
   signatureInvalid: "SIGNATURE_INVALID",
   recoUnavailable: "RECO_UNAVAILABLE",
+  /** docs/NOTIFICATIONS.md mục 9 (DEC-170). */
+  telegramNotConnected: "TELEGRAM_NOT_CONNECTED",
+  telegramLinkExpired: "TELEGRAM_LINK_EXPIRED",
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
@@ -54,6 +57,8 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SODEX_ACCOUNT_IN_USE: 409,
   SIGNATURE_INVALID: 422,
   RECO_UNAVAILABLE: 503,
+  TELEGRAM_NOT_CONNECTED: 409,
+  TELEGRAM_LINK_EXPIRED: 410,
 };
 
 export type ErrorDetails = Record<string, unknown>;

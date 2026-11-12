@@ -7,6 +7,8 @@ import {
   orders,
   sessions,
   sodexAccounts,
+  telegramLinks,
+  telegramLinkTokens,
   users,
 } from "@drift/db";
 import {
@@ -181,6 +183,9 @@ export function registerProfileRoutes(
       await tx.delete(notificationSettings).where(eq(notificationSettings.userId, auth.userId));
       // Không giữ chỗ poll T1 cho tài khoản đã xoá (DEC-163 mục 10).
       await tx.delete(leaderFollows).where(eq(leaderFollows.userId, auth.userId));
+      // Xoá tài khoản thì xoá cả kết nối Telegram và token (docs/NOTIFICATIONS.md mục 8).
+      await tx.delete(telegramLinks).where(eq(telegramLinks.userId, auth.userId));
+      await tx.delete(telegramLinkTokens).where(eq(telegramLinkTokens.userId, auth.userId));
     });
     await audit(db, {
       userId: auth.userId,

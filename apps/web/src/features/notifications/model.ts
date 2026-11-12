@@ -93,6 +93,9 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
       return "/settings";
     case "daily_summary":
       return aiDesk ? "/desk" : "/";
+    case "telegram_connected":
+    case "telegram_moved":
+      return "/settings?tab=notifications";
     case "leader_big_move":
       // Copy Trading chỉ có khi bật AI Desk (DEC-163).
       return aiDesk ? "/following" : "/";

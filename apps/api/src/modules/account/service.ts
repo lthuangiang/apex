@@ -36,6 +36,7 @@ import {
   NOTIFICATION_DEFAULTS,
   NOTIFICATION_GROUPS,
   ReasonCode,
+  SYSTEM_GROUPS,
   RISK_ENFORCED,
   startOfDay,
   valuePortfolio,
@@ -49,6 +50,7 @@ import {
   type AdminVolumeBots,
   type AnalystView,
   type BuilderRevenueView,
+  type NotificationChannel,
   type NotificationGroup,
   type OverviewView,
   type PlatformStats,
@@ -651,14 +653,23 @@ export async function notificationSettingsOf(deps: AccountDeps, userId: string) 
     .from(notificationSettings)
     .where(eq(notificationSettings.userId, userId));
   return {
-    groups: (Object.keys(NOTIFICATION_GROUPS) as NotificationGroup[]).map((group) => {
-      const alwaysOn = ALWAYS_ON_GROUPS.includes(group);
-      const val = (c: "in_app" | "email") =>
-        alwaysOn ||
-        (rows.find((r) => r.type === group && r.channel === c)?.enabled ??
-          NOTIFICATION_DEFAULTS[group][c]);
-      return { group, alwaysOn, in_app: val("in_app"), email: val("email") };
-    }),
+    // Nhóm hệ thống không có trong bảng Settings (DEC-183).
+    groups: (Object.keys(NOTIFICATION_GROUPS) as NotificationGroup[])
+      .filter((group) => !SYSTEM_GROUPS.includes(group))
+      .map((group) => {
+        const alwaysOn = ALWAYS_ON_GROUPS.includes(group);
+        const val = (c: NotificationChannel) =>
+          alwaysOn ||
+          (rows.find((r) => r.type === group && r.channel === c)?.enabled ??
+            NOTIFICATION_DEFAULTS[group][c]);
+        return {
+          group,
+          alwaysOn,
+          in_app: val("in_app"),
+          email: val("email"),
+          telegram: val("telegram"),
+        };
+      }),
   };
 }
 
@@ -666,7 +677,7 @@ export async function setNotification(
   deps: AccountDeps,
   userId: string,
   group: NotificationGroup,
-  channel: "in_app" | "email",
+  channel: NotificationChannel,
   enabled: boolean,
 ): Promise<void> {
   if (ALWAYS_ON_GROUPS.includes(group))

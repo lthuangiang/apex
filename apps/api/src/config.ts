@@ -41,10 +41,37 @@ const envSchema = z.object({
     .regex(/^\d+(\.\d+)?$/)
     .optional()
     .or(z.literal("").transform(() => undefined)),
+  /** Notifications v2: kênh Telegram (DEC-170). Tắt thì mọi route `/api/v1/telegram/*` trả 404. */
+  TELEGRAM_ENABLED: z.stringbool().default(false),
+  DRIFT_TELEGRAM_BOT_USERNAME: z
+    .string()
+    .regex(/^[A-Za-z0-9_]{5,32}$/)
+    .default("desklabsbot"),
+  /** Bot token (production: Vault). Không bao giờ log; nằm trong URL Bot API nên URL cũng phải che. */
+  DRIFT_TELEGRAM_BOT_TOKEN: emptyToUndefined(z.string().min(20)),
+  /** Giá trị header `X-Telegram-Bot-Api-Secret-Token` (Telegram cho phép `[A-Za-z0-9_-]`, 1–256 ký tự). */
+  DRIFT_TELEGRAM_WEBHOOK_SECRET: emptyToUndefined(z.string().regex(/^[A-Za-z0-9_-]{32,256}$/)),
+  /** Gốc URL của web app cho nút "Open DeskLabs" trong tin Telegram. */
+  DRIFT_APP_URL: z.url().default("https://desklabs.xyz"),
 });
+
+function emptyToUndefined<T extends z.ZodType>(schema: T) {
+  return schema.optional().or(z.literal("").transform(() => undefined));
+}
 
 export type ApiConfig = z.infer<typeof envSchema> & { sodex: SodexConfig };
 
 export function loadApiConfig(env: Record<string, string | undefined>): ApiConfig {
-  return { ...envSchema.parse(env), sodex: loadSodexConfig(env) };
+  const parsed = envSchema.parse(env);
+  // Bật Telegram mà thiếu token hoặc secret thì không khởi động (CODING_STANDARDS C2).
+  if (
+    parsed.TELEGRAM_ENABLED &&
+    (parsed.DRIFT_TELEGRAM_BOT_TOKEN === undefined ||
+      parsed.DRIFT_TELEGRAM_WEBHOOK_SECRET === undefined)
+  ) {
+    throw new Error(
+      "TELEGRAM_ENABLED=true needs DRIFT_TELEGRAM_BOT_TOKEN and DRIFT_TELEGRAM_WEBHOOK_SECRET.",
+    );
+  }
+  return { ...parsed, sodex: loadSodexConfig(env) };
 }
