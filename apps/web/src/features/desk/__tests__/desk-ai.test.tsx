@@ -6,7 +6,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { afterEach, describe, expect, it } from "vitest";
 
 import messages from "../../../../messages/en.json";
-import { Answer } from "../components/desk-ai";
+import { Answer, greetingAt } from "../components/desk-ai";
 
 // Desk AI (DEC-164/165): câu mẫu khi LLM tắt / hết lượt / ngoài phạm vi chỉ dùng số từ fact; lời LLM hiện nguyên văn.
 
@@ -85,6 +85,24 @@ describe("Desk AI answer", () => {
     show({ kind: "template", key: "quota", params: { limit: 20 }, facts: [] });
     expect(
       screen.getByText("You've asked 20 questions today. I'll answer more tomorrow."),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("morning brief greeting", () => {
+  it("follows the viewer's local time", () => {
+    expect(greetingAt(new Date(2026, 10, 12, 8, 0))).toBe("morning");
+    expect(greetingAt(new Date(2026, 10, 12, 13, 30))).toBe("afternoon");
+    expect(greetingAt(new Date(2026, 10, 12, 22, 5))).toBe("evening");
+  });
+
+  it("writes the brief with that greeting", () => {
+    show({ kind: "template", key: "brief", params: { count: 1, bot: "Futures Grid" }, facts: [] });
+    const word = { morning: "Good morning", afternoon: "Good afternoon", evening: "Good evening" }[
+      greetingAt(new Date())
+    ];
+    expect(
+      screen.getByText(`${word}. One thing needs you today: Futures Grid.`),
     ).toBeInTheDocument();
   });
 });

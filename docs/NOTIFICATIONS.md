@@ -141,7 +141,12 @@ Lỗi theo format C6. Thêm mã lỗi `TELEGRAM_NOT_CONNECTED`, `TELEGRAM_LINK_E
 2. **N1:** in-app (panel, toast, poll 15 s).
 3. **N2:** schema, API kết nối, webhook, Settings card.
 4. **N3:** worker gửi tin, gộp tin, xử lý trạng thái blocked.
-5. **N4:** Morning brief qua Telegram. Cần AI Desk B+ M5; trước đó gửi câu mẫu.
+5. **N4:** Morning brief qua Telegram. Cần AI Desk B+ M5; trước đó gửi câu mẫu. **Đã làm** (DEC-194):
+   - Vòng trong api (`apps/api/src/modules/desk/telegram-brief.ts`) chạy 5 phút một lần.
+   - Gửi cho user có `users.ai_desk = true`, Telegram `active`, nhóm `daily` bật trên Telegram và ít nhất một bot chưa archive.
+   - Một tin mỗi ngày địa phương, từ 08:00; lỡ giờ thì gửi bù tới trước 12:00, quá giờ thì bỏ ngày đó. Hôm "Nothing needs you" vẫn gửi.
+   - Nội dung: dùng lại báo cáo sáng đã tạo trên web (lời LLM đã qua kiểm tra số); chưa có thì dùng câu mẫu từ "Needs you". Không gọi LLM chỉ vì Telegram; `TELEGRAM_BRIEF_LLM=true` thì đổi sang gọi LLM.
+   - Nút "Open AI Desk" → `/desk`. Tắt cả vòng bằng `TELEGRAM_BRIEF_ENABLED=false`.
 6. **N5:** E2E, cập nhật `docs/SCREENS.md` 8.5, `docs/DOMAIN.md`, `docs/DEPLOY.md` (secret webhook, `setWebhook`).
 
 ## 12. Đã chốt (DEC-170)
