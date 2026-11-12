@@ -1,7 +1,16 @@
 import type { DeskRecordView, WhatIfView } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
-import { leverageChange, optionValues, pickGain, recordChip, shownFix, usedRatio } from "../bplus";
+import {
+  leverageChange,
+  optionValues,
+  pickGain,
+  plainNumber,
+  plainUsd,
+  recordChip,
+  shownFix,
+  usedRatio,
+} from "../bplus";
 
 // AI Desk B+ (DEC-166): thẻ trang chủ hiện đúng phương án Desk AI chọn, không bịa số; nhãn thành tích theo kết quả đo.
 
@@ -109,5 +118,21 @@ describe("goal gauge", () => {
     expect(usedRatio({ limit: "500", used: "900" })).toBe(1);
     expect(usedRatio({ limit: "500", used: null })).toBeNull();
     expect(usedRatio({ limit: "0", used: "5" })).toBeNull();
+  });
+});
+
+describe("numbers in words", () => {
+  it("drops .00 on round USDC and keeps two decimals otherwise, without the sign", () => {
+    expect(plainUsd("500.000000")).toBe("500");
+    expect(plainUsd("-10.09")).toBe("10.09");
+    expect(plainUsd("4.9")).toBe("4.90");
+    expect(plainUsd("1250")).toBe("1,250");
+  });
+
+  it("rounds percents and leverage to at most two decimals", () => {
+    expect(plainNumber("4.761905")).toBe("4.76");
+    expect(plainNumber("12.174875")).toBe("12.17");
+    expect(plainNumber("2.50")).toBe("2.5");
+    expect(plainNumber("40")).toBe("40");
   });
 });
