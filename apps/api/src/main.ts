@@ -87,4 +87,9 @@ const shutdown = async () => {
 process.once("SIGTERM", () => void shutdown());
 process.once("SIGINT", () => void shutdown());
 
+if (config.DESK_AI_BASE_URL !== undefined)
+  app.log.warn(
+    { deskAiBaseUrl: config.DESK_AI_BASE_URL },
+    "DESK_AI_BASE_URL is set: Desk AI calls this URL instead of the Claude API (end-to-end tests only)",
+  );
 await app.listen({ host: "0.0.0.0", port: config.API_PORT });

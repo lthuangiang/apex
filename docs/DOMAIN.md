@@ -106,3 +106,15 @@ Quy ước theo `docs/CODING_STANDARDS.md` C8: khoá chính `id uuid` (v7), mọ
 | `notification_settings` | `user_id`, `type`, `enabled` | loại "bot errors" luôn bật |
 | `audit_log` | `user_id`, `action`, `target`, `metadata jsonb`, `ip`, `occurred_at` | mọi thao tác nhạy cảm (ký, revoke, disconnect, start/stop, 2FA) |
 | `builder_revenue_daily` | `date`, `engine`, `from_fills`, `balance_delta`, `difference`, `status` (`matched`/`pending`) | chỉ role `team` xem |
+
+### 7.6 AI Desk B+ (DEC-166 và các DEC đi kèm)
+
+| Bảng | Một dòng là | Ghi chú |
+|---|---|---|
+| `desk_items` | Một việc "Needs you" của một bot theo một quy tắc (unique bot × quy tắc) | `facts` jsonb là nguồn số liệu cho thẻ và Desk AI; `fingerprint` đổi → việc mới; `snoozed_at` cho "Later" 7 ngày; `resolved_at` khi quy tắc không còn đúng (DEC-173) |
+| `desk_whatifs` | Một lần so sánh phương án của một việc, cho đúng version bot | `options` jsonb (patch + kết quả 7 ngày), `status` queued → running → done / failed / unavailable; job ở hàng đợi `backtest.run {whatifId}`; job kẹt được scheduler dọn (DEC-176, #28) |
+| `desk_applies` | Một lần Apply phương án (version "AI suggested") | Giữ chỗ trước khi tạo version (mỗi so sánh Apply một lần); `baseline_config` để Switch back; cột đo Thành tích `record_status`, `record`, `verdict`, `checked_at`, `switched_back_version` (DEC-177) |
+| `desk_ai_conversations` | Một cuộc trò chuyện Desk AI (`chat`) hoặc báo cáo sáng (`brief`, mỗi user mỗi ngày địa phương một) | Xoá sau 90 ngày (scheduler) hoặc khi user bấm "Delete history" |
+| `desk_ai_turns` | Một lượt hỏi / trả lời, kèm nhật ký LLM | Câu trả lời (lời LLM hoặc câu mẫu), `fallback`, model, phiên bản prompt, id fact, token, chi phí ước tính, traceId; không lưu key |
+| `desk_ai_usage` | Số câu hỏi đã dùng của user trong một ngày địa phương | Trần 20 câu (DEC-165b); không bị "Delete history" xoá; giữ lượt bằng một câu upsert có điều kiện (DEC-189) |
+

@@ -84,5 +84,13 @@ export function loadApiConfig(env: Record<string, string | undefined>): ApiConfi
       "TELEGRAM_ENABLED=true needs DRIFT_TELEGRAM_BOT_TOKEN and DRIFT_TELEGRAM_WEBHOOK_SECRET.",
     );
   }
+  // Claude API giả chỉ dùng cho E2E: production trỏ tới máy local thì không khởi động.
+  if (
+    env.NODE_ENV === "production" &&
+    parsed.DESK_AI_BASE_URL !== undefined &&
+    ["localhost", "127.0.0.1", "::1", "[::1]"].includes(new URL(parsed.DESK_AI_BASE_URL).hostname)
+  ) {
+    throw new Error("DESK_AI_BASE_URL must not point to localhost in production.");
+  }
   return { ...parsed, sodex: loadSodexConfig(env) };
 }
