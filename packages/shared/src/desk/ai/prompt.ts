@@ -34,6 +34,9 @@ const LABEL: Record<DeskAiFact["key"], string> = {
   goal_limit: "most the user agreed to lose",
   goal_used: "loss limit used so far (drop from the 30-day equity peak)",
   questions_left: "questions left today",
+  decision: "the bot decision the user asked about (written by the engine)",
+  decision_why: "why the engine made that decision",
+  decision_result: "result of that decision",
 };
 
 export function buildPrompt(question: string, facts: readonly DeskAiFact[]): DeskAiPrompt {

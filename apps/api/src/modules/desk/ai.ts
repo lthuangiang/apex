@@ -1,4 +1,4 @@
-import { deskAiConversations, deskAiTurns, deskAiUsage, users } from "@drift/db";
+import { botEvents, bots, deskAiConversations, deskAiTurns, deskAiUsage, users } from "@drift/db";
 import {
   AppError,
   buildPrompt,
@@ -12,6 +12,7 @@ import {
   type DeskAiAnswer,
   type DeskAiAskView,
   type DeskAiBriefView,
+  type DeskAiContext,
   type DeskAiFact,
   type DeskAiHistoryView,
   type NeedsYouRule,
@@ -230,18 +231,62 @@ async function saveTurn(
   return turnView(t);
 }
 
+/**
+ * ✦ "Ask about this" (M6): kiểm tra bot / quyết định thuộc user (trước khi tính lượt), rồi thu fact về đúng bot đó và
+ * fact của quyết định (do engine ghi, không phải văn bản user nhập). Số trong quyết định là số liệu thật nên được phép.
+ */
+async function contextOf(
+  deps: BotDeps,
+  userId: string,
+  context: DeskAiContext | undefined,
+): Promise<{ botId: string | null; extra: DeskAiFact[]; text: string }> {
+  if (context === undefined || context.kind === "portfolio")
+    return { botId: null, extra: [], text: "" };
+  const [b] = await deps.db
+    .select({ id: bots.id, name: bots.name })
+    .from(bots)
+    .where(and(eq(bots.id, context.botId), eq(bots.userId, userId)))
+    .limit(1);
+  if (b === undefined) throw new AppError(ErrorCode.notFound, "Bot not found.");
+  if (context.kind === "bot") return { botId: b.id, extra: [], text: "" };
+  const [e] = await deps.db
+    .select()
+    .from(botEvents)
+    .where(and(eq(botEvents.id, context.eventId), eq(botEvents.botId, b.id)))
+    .limit(1);
+  if (e === undefined) throw new AppError(ErrorCode.notFound, "Decision not found.");
+  const fact = (key: DeskAiFact["key"], value: string | null): DeskAiFact[] =>
+    value === null || value === ""
+      ? []
+      : [{ id: `${key}:${e.id}`, key, bot: b.name, value, unit: "text", source: "decisions" }];
+  const extra = [
+    ...fact("decision", e.decision ?? e.type),
+    ...fact("decision_why", e.why),
+    ...fact("decision_result", e.result),
+  ];
+  return { botId: b.id, extra, text: extra.map((f) => f.value).join(" ") };
+}
+
 /** Hỏi Desk AI. Chỉ đọc: không đổi bot, không gửi lệnh. */
 export async function askDeskAi(
   deps: DeskAiDeps,
   userId: string,
   question: string,
   conversationId: string | undefined,
+  context?: DeskAiContext,
 ): Promise<DeskAiAskView> {
   const now = deps.now();
+  const ctx = await contextOf(deps, userId, context);
   const { date } = localClock(now, await timezoneOf(deps, userId));
   const reserved = await reserveQuestion(deps, userId, date);
   const used = reserved ?? DESK_AI_CONFIG.dailyQuestions;
-  const facts = await factsOf(deps, userId, used);
+  // Hỏi về một bot: chỉ fact của bot đó (cộng thẻ Mục tiêu, số câu còn lại) và fact của quyết định.
+  const all = await factsOf(deps, userId, used);
+  const only = ctx.botId;
+  const facts = [
+    ...(only === null ? all : all.filter((f) => !f.id.includes(":") || f.id.endsWith(`:${only}`))),
+    ...ctx.extra,
+  ];
   const intent = intentOf(question);
   const goalFacts = facts.filter((f) => f.key === "goal_limit" || f.key === "goal_used");
   let w: Written;
@@ -274,7 +319,7 @@ export async function askDeskAi(
       intent === "safety"
         ? { kind: "template", key: "safety", params: {}, facts: goalFacts }
         : { kind: "template", key: "fallback", params: {}, facts },
-      question,
+      `${question} ${ctx.text}`,
     );
 
   let convId = conversationId;

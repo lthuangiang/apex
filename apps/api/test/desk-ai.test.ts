@@ -241,6 +241,48 @@ describe("Desk AI", () => {
     ).toMatchObject({ available: false, turn: null });
   });
 
+  it("answers about one decision with that bot's facts, allowing the decision's own numbers", async () => {
+    const { client, userId } = await deskUser(env, "ai-context@example.com");
+    const { rows } = await env.pool.query<{ id: string }>(
+      "select id from bots where user_id = $1",
+      [userId],
+    );
+    const botId = rows[0]?.id ?? "";
+    const { rows: ev } = await env.pool.query<{ id: string }>(
+      "insert into bot_events (id, bot_id, type, decision, why, result, occurred_at) values (gen_random_uuid(), $1, 'decision', 'Skipped entry', 'post-only missed 3 times', null, now()) returning id",
+      [botId],
+    );
+    const eventId = ev[0]?.id ?? "";
+    llm.reply = "The bot tried 3 times to enter with a limit order and skipped this one.";
+    const r = deskAiAskViewSchema.parse(
+      (
+        await client.request("POST", "/api/v1/desk/ai/ask", {
+          body: {
+            question: "About this decision",
+            context: { kind: "decision", botId, eventId },
+          },
+        })
+      ).json(),
+    );
+    expect(r.turn.answer).toMatchObject({ kind: "text", text: llm.reply });
+    expect(llm.calls[0]?.user).toContain('"value":"post-only missed 3 times"');
+
+    // Bot của user khác: 404, không tính lượt.
+    const other = await deskUser(env, "ai-context-other@example.com");
+    const left = deskAiBriefViewSchema.parse(
+      (await other.client.request("GET", "/api/v1/desk/ai/brief")).json(),
+    ).questionsLeft;
+    const denied = await other.client.request("POST", "/api/v1/desk/ai/ask", {
+      body: { question: "About this decision", context: { kind: "decision", botId, eventId } },
+    });
+    expect(denied.statusCode).toBe(404);
+    expect(
+      deskAiBriefViewSchema.parse(
+        (await other.client.request("GET", "/api/v1/desk/ai/brief")).json(),
+      ).questionsLeft,
+    ).toBe(left);
+  });
+
   it("lists and deletes the history", async () => {
     const { client } = await deskUser(env, "ai-history@example.com");
     await ask(client, "What is a grid?");
