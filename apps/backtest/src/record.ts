@@ -6,7 +6,7 @@ import { and, asc, eq, gt, isNotNull } from "drizzle-orm";
 import { loadBacktestData, Unavailable, type RunDeps } from "./run";
 import { BACKTEST_INTERVAL, parseOrNull, usd, volumeReplayInputs } from "./whatif";
 
-// Thành tích của AI Desk B+ M4 (DEC-166, DEC-TBD-desk-goal-record): 7 ngày sau khi version "AI suggested" được áp,
+// Thành tích của AI Desk B+ M4 (DEC-166, DEC-177): 7 ngày sau khi version "AI suggested" được áp,
 // so kết quả sau khi sửa với cấu hình cũ trên cùng các ngày.
 // - Volume Builder: lãi / lỗ ròng thật của các lượt trong cửa sổ so với replay cấu hình cũ trên đúng các lượt vào đó.
 // - Chiến lược khác: backtest nến 5 phút cả cấu hình cũ lẫn mới trên cùng cửa sổ (cùng thước đo; backtest không tính

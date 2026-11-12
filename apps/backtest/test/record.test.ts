@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runRecord } from "../src/record";
 import type { RunDeps } from "../src/run";
 
-// AI Desk B+ M4 (DEC-TBD-desk-goal-record): đo thành tích Volume Builder = lượt thật sau khi sửa so với replay cấu hình
+// AI Desk B+ M4 (DEC-177): đo thành tích Volume Builder = lượt thật sau khi sửa so với replay cấu hình
 // cũ trên đúng các lượt vào đó; ít lượt → không đo (không ghi 0). Nhãn (kể cả Made it worse) test ở `verdictOf`.
 
 const APPLIED = Date.parse("2026-11-01T00:00:00Z");

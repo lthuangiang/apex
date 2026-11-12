@@ -9,7 +9,7 @@ import { formatMoney } from "@/lib/format";
 import { usedRatio } from "../bplus";
 
 // AI Desk B+ (artboard BP-Home / BP-Phone): thẻ Mục tiêu. Lỗ cho phép = vốn × maxDrop% của goals; lỗ đã dùng =
-// drawdown của Risk Center tính bằng USDC (DEC-TBD-desk-goal-record). Thiếu snapshot → "Not available", không hiện 0.
+// drawdown của Risk Center tính bằng USDC (DEC-177). Thiếu snapshot → "Not available", không hiện 0.
 // Câu Desk AI (✦) dưới thước đo thêm ở mốc LLM.
 
 export function GoalCard({ goal }: { goal: DeskHomeView["goal"] }) {
