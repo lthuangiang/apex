@@ -96,7 +96,7 @@ describe("Needs you card auto-compare", () => {
   it("stops after an error, shows it, and only asks again when the user taps Compare again", async () => {
     api.fail = true;
     const view = render(wrap(<NeedsYouCard item={item} checkedAt="t1" />));
-    expect(await screen.findByText("Couldn't compare right now.")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn’t compare right now.")).toBeInTheDocument();
     expect(posts).toHaveLength(1);
     view.rerender(wrap(<NeedsYouCard item={item} checkedAt="t2" />));
     await new Promise((r) => setTimeout(r, 50));

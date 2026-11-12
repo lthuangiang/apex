@@ -98,3 +98,23 @@ Cùng tiêu chí các đợt trước; thêm: thuật ngữ kỹ thuật (ATR, R
 
 Mọi chuỗi còn lại giữ nguyên. `_pendingReview` để trống.
 
+
+## Đợt 5 (2026-11-13, DEC-196)
+
+Người dùng giao PM tự chốt 308 key (khoảng 1.000 chuỗi) dồn từ #33 tới #47: Telegram (thẻ kết nối, hộp thoại ngắt kết nối,
+nhóm Team updates), chuông và toast, AI Desk B+ (Needs you, so sánh, thành tích, thẻ Mục tiêu, Desk AI, Ask about this, tạo bot
+qua chat, kết quả tiền ảo), Copy Trading (Find traders, hồ sơ trader, ngân sách, Following), Review this run, thống kê bot,
+Platform Stats, nhật ký Connect SoDEX, landing. Cùng tiêu chí các đợt trước: không hứa tính năng chưa có, không ngụ ý lãi, không
+từ nội bộ, đọc đúng khi lỗ, dấu nháy cong.
+
+| Key | Trước | Sau | Lý do |
+|---|---|---|---|
+| `desk.ai.facts.bot_net` | {bot} · profit so far | {bot} · profit or loss so far | Giá trị âm đọc sai khi nhãn là "profit" |
+| `copy.profile.fit.liquidations.label` | Liquidated {count} times | Liquidated once / Liquidated # times (ICU plural) | "Liquidated 1 times" sai ngữ pháp; web truyền `count` dạng số |
+| `landing.safety.limitsBody` | … checked by the engine, not just shown in the app. | … enforced by the bot itself, not just shown in the app. | "engine" là từ nội bộ |
+| 70 chuỗi (Couldn't, You'll, bot's, …) | `'` thẳng | `’` cong | Thống nhất dấu nháy |
+
+Giữ nguyên, có cân nhắc: `agent.sa.soon` ("SOON" trên tab thống kê chưa có, tab bị khoá, cùng cách với "Paper · Coming soon");
+`desk.goal.goals.range` ("Earn from sideways markets", tên mục tiêu chọn ở onboarding, không phải lời hứa lãi);
+`desk.ai.templates.fallback` ("I can't write an answer right now…", chỉ hiện khi model lỗi; khi chưa bật model dùng
+`fallbackOff`). Mọi chuỗi còn lại giữ nguyên. `_pendingReview` để trống.
