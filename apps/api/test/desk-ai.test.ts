@@ -160,8 +160,10 @@ describe("Desk AI", () => {
     const { client, userId } = await deskUser(env, "ai-numbers@example.com");
     llm.reply = "You will probably make 37.5 USDC this week.";
     const r = await ask(client, "Why did I lose money?");
-    expect(r.turn.answer).toMatchObject({ kind: "template", key: "fallback" });
-    expect(r.turn.answer.facts.map((f) => f.key)).toContain("goal_limit");
+    expect(r.turn.answer).toMatchObject({ kind: "template", key: "loss" });
+    // Câu mẫu về lỗ: chỉ số của bot (trạng thái, lãi / lỗ, phí), không đổ cả bảng.
+    expect(r.turn.answer.facts.map((f) => f.key)).toContain("bot_state");
+    expect(r.turn.answer.facts.map((f) => f.key)).not.toContain("goal_limit");
     const { rows } = await env.pool.query<{ fallback: string }>(
       "select fallback from desk_ai_turns where user_id = $1",
       [userId],
@@ -221,10 +223,10 @@ describe("Desk AI", () => {
     llm.reply = "The most you agreed to lose is 500";
     llm.stop = "max_tokens";
     const cut = await ask(client, "How much can I lose?");
-    expect(cut.turn.answer).toMatchObject({ kind: "template", key: "fallback" });
+    expect(cut.turn.answer).toMatchObject({ kind: "template", key: "loss" });
     llm.stop = "refusal";
     const refused = await ask(client, "How much can I lose?", cut.conversationId);
-    expect(refused.turn.answer).toMatchObject({ kind: "template", key: "fallback" });
+    expect(refused.turn.answer).toMatchObject({ kind: "template", key: "loss" });
     const { rows } = await env.pool.query<{ fallback: string }>(
       "select fallback from desk_ai_turns where user_id = $1 order by created_at",
       [userId],
@@ -326,7 +328,7 @@ describe("Desk AI", () => {
   it("works fully with the model turned off", async () => {
     const { client } = await deskUser(off, "ai-off@example.com");
     const r = await ask(client, "Why did I lose money?");
-    expect(r.turn.answer).toMatchObject({ kind: "template", key: "fallback" });
+    expect(r.turn.answer).toMatchObject({ kind: "template", key: "loss", params: { off: 1 } });
     const b = deskAiBriefViewSchema.parse(
       (await client.request("GET", "/api/v1/desk/ai/brief")).json(),
     );

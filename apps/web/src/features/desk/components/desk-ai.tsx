@@ -11,7 +11,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowUp } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
@@ -74,8 +74,13 @@ export function Answer({ answer }: { answer: DeskAiAnswer }) {
       greeting: greetingAt(new Date()),
     });
   else if (answer.key === "quota") lead = t("quota", { limit: Number(answer.params.limit ?? 0) });
+  else if (answer.key === "fallback")
+    lead = answer.params.off === 1 ? t("fallbackOff") : t("fallback");
   else lead = t(answer.key);
-  const list = answer.key === "fallback" || answer.key === "quota" ? answer.facts : [];
+  const list =
+    answer.key === "fallback" || answer.key === "loss" || answer.key === "quota"
+      ? answer.facts
+      : [];
   return (
     <div className="flex flex-col gap-2 text-sm text-ink">
       <p className="m-0">{lead}</p>
@@ -144,6 +149,13 @@ export function DeskAiPanel() {
     ask.mutate(question);
   };
   const questionsLeft = left ?? brief.data?.questionsLeft ?? null;
+  // Có câu hỏi / câu trả lời mới (hoặc mở tạo bot qua chat) thì cuộn khung chat xuống cuối.
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scroller.current;
+    if (el === null || (turns.length === 0 && !ask.isPending && !newBot)) return;
+    el.scrollTo?.({ top: el.scrollHeight, behavior: "smooth" });
+  }, [turns.length, ask.isPending, newBot]);
 
   return (
     <section
@@ -157,7 +169,10 @@ export function DeskAiPanel() {
           {t("history")}
         </Link>
       </div>
-      <div className="flex max-h-[60vh] min-h-[200px] flex-col gap-3 overflow-y-auto px-[18px] py-4 text-[14.5px] leading-relaxed xl:max-h-none xl:flex-1">
+      <div
+        ref={scroller}
+        className="flex max-h-[60vh] min-h-[200px] flex-col gap-3 overflow-y-auto px-[18px] py-4 text-[14.5px] leading-relaxed xl:max-h-none xl:flex-1"
+      >
         {brief.isPending ? (
           <Skeleton className="h-12 w-full rounded-[12px]" />
         ) : brief.data?.turn != null ? (

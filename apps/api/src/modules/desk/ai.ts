@@ -9,6 +9,7 @@ import {
   deskAiFacts,
   ErrorCode,
   intentOf,
+  templateFacts,
   type DeskAiAnswer,
   type DeskAiAskView,
   type DeskAiBriefView,
@@ -321,9 +322,23 @@ export async function askDeskAi(
       deps,
       question,
       facts,
+      // Câu mẫu khi LLM tắt / lỗi: chỉ số liên quan tới câu hỏi (bot được nhắc, hoặc tối đa 3 bot chưa archived).
+      // `off`: LLM chưa bật (không có key) → lời dẫn không nói "can't write an answer right now".
       intent === "safety"
         ? { kind: "template", key: "safety", params: {}, facts: goalFacts }
-        : { kind: "template", key: "fallback", params: {}, facts },
+        : intent === "loss"
+          ? {
+              kind: "template",
+              key: "loss",
+              params: { off: deps.llm === null ? 1 : 0 },
+              facts: templateFacts(question, facts, { loss: true }),
+            }
+          : {
+              kind: "template",
+              key: "fallback",
+              params: { off: deps.llm === null ? 1 : 0 },
+              facts: templateFacts(question, facts),
+            },
       `${question} ${ctx.text}`,
     );
 

@@ -3,3 +3,4 @@ export * from "./facts";
 export * from "./numbers";
 export * from "./prompt";
 export * from "./scope";
+export * from "./template-facts";
