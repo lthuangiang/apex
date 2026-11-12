@@ -22,7 +22,13 @@ import {
   type Db,
 } from "@drift/db";
 import { ReasonCode } from "@drift/shared";
-import { runBacktest, spotGrid, spotGridSchema, type OrderIntent } from "@drift/strategies";
+import {
+  clOrdId,
+  runBacktest,
+  spotGrid,
+  spotGridSchema,
+  type OrderIntent,
+} from "@drift/strategies";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { Redis } from "ioredis";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
@@ -1115,6 +1121,207 @@ describe("engine", () => {
     await e2.stop();
   });
 
+  it("still records that close fill when 10+ older orders of the shard stay open on SoDEX (DEC-185)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", {
+      strategy: "futures_grid",
+      market: "BTC-USD",
+      engine: "perps",
+      config: {
+        market: "BTC-USD",
+        direction: "long",
+        leverage: 2,
+        marginMode: "cross",
+        lowerPrice: "90",
+        upperPrice: "110",
+        gridLevels: 5,
+        spacing: "arithmetic",
+        margin: "250",
+        maxLoss: "100",
+        stopBelow: "80",
+        onStop: "keep_position",
+      },
+    });
+    const e = makeEngine(gw, "fair");
+    let rt: typeof botRuntime.$inferSelect | undefined;
+    for (let i = 0; i < 20 && rt === undefined; i += 1) {
+      await e.tick();
+      await e.onPrice("BTC-USD", "100", clock);
+      [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      if (rt === undefined) await new Promise((r) => setTimeout(r, 100));
+    }
+    const st = rt?.state as { ledger: Record<string, string> };
+    await db
+      .update(botRuntime)
+      .set({ state: { ...st, ledger: { ...st.ledger, position: "2", avgCost: "100" } } })
+      .where(eq(botRuntime.botId, botId));
+    await e.stop();
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    const e2 = makeEngine(gw, "fair2");
+    for (let i = 0; i < 10 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      await e2.tick();
+      if ((await botState(botId))?.state !== "stopped")
+        await new Promise((r) => setTimeout(r, 100));
+    }
+    const id = gw.received.find((o) => o.tag === "close")?.clOrdID ?? "";
+    const { and } = await import("drizzle-orm");
+    // clOrdID tất định có thể trùng với lệnh đóng của test trước: lọc thêm theo bot.
+    const row = async () =>
+      (
+        await db
+          .select()
+          .from(orders)
+          .where(and(eq(orders.clOrdId, id), eq(orders.botId, botId)))
+      )[0];
+    expect((await row())?.status).toBe("open");
+
+    // 12 lệnh cũ hơn của cùng account (cùng shard) vẫn "open" trong DRIFT; SoDEX chưa thấy chúng (not_found < 30 s)
+    // nên mỗi vòng chúng vẫn tới hạn kiểm mà không được giải quyết. Trước bản sửa, chúng chiếm hết 10 suất mỗi vòng.
+    const closeRow = await row();
+    for (let i = 0; i < 12; i += 1)
+      await db.insert(orders).values({
+        botId,
+        sodexAccountId: closeRow?.sodexAccountId ?? "",
+        clOrdId: `stale-${String(i)}-${String(Math.random())}`,
+        market: "BTC-USD",
+        engine: "perps",
+        side: "buy",
+        type: "limit",
+        timeInForce: "GTC",
+        size: "1",
+        status: "open",
+        tag: "grid",
+        epoch: 1,
+        submittedAt: new Date(clock - 1_000 - i),
+      });
+
+    gw.book.set(id, { status: "filled", filledQty: "2", avgPrice: "110", orderId: 78n });
+    gw.trades.set(id, [
+      {
+        tradeId: 19_001n + BigInt(Math.floor(Math.random() * 1e9)),
+        price: "110",
+        quantity: "2",
+        fee: "0.5",
+        builderFee: null,
+        isMaker: false,
+        at: clock,
+      },
+    ]);
+    clock += 20_000;
+    await e2.tick();
+    clock += 20_000;
+    await e2.tick();
+
+    expect((await row())?.status).toBe("filled");
+    const recorded = await db
+      .select()
+      .from(fills)
+      .where(eq(fills.orderId, (await row())?.id ?? ""));
+    expect(recorded).toHaveLength(1);
+    await e2.stop();
+  });
+
+  it("sends a separate close for each bot of an account stopped together, once (DEC-186)", async () => {
+    const { eq, inArray } = await import("drizzle-orm");
+    const config = {
+      market: "BTC-USD",
+      direction: "long",
+      leverage: 2,
+      marginMode: "cross",
+      lowerPrice: "90",
+      upperPrice: "110",
+      gridLevels: 5,
+      spacing: "arithmetic",
+      margin: "250",
+      maxLoss: "100",
+      stopBelow: "80",
+      onStop: "keep_position",
+    };
+    const gw = new FakeGateway();
+    const a = await seedBot("running", {
+      strategy: "futures_grid",
+      market: "BTC-USD",
+      engine: "perps",
+      config,
+    });
+    // Bot thứ hai cùng account, tạo ngay sau: uuidv7 cùng 8 ký tự đầu như bot thứ nhất.
+    const [owner] = await db.select().from(bots).where(eq(bots.id, a.botId));
+    const [b] = await db
+      .insert(bots)
+      .values({
+        userId: owner?.userId ?? "",
+        sodexAccountId: a.accountId,
+        strategy: "futures_grid",
+        market: "BTC-USD",
+        engine: "perps",
+        name: "Grid 2",
+        state: "running",
+      })
+      .returning();
+    const botB = b?.id ?? "";
+    const [vb] = await db
+      .insert(botVersions)
+      .values({ botId: botB, version: 1, paramSource: "manual", status: "active", config })
+      .returning();
+    await db
+      .update(bots)
+      .set({ activeVersionId: vb?.id ?? "" })
+      .where(eq(bots.id, botB));
+    expect(botB.slice(0, 8)).toBe(a.botId.slice(0, 8));
+    const ids = [a.botId, botB];
+
+    const e = makeEngine(gw, "pair");
+    let rts: (typeof botRuntime.$inferSelect)[] = [];
+    for (let i = 0; i < 20 && rts.length < 2; i += 1) {
+      await e.tick();
+      await e.onPrice("BTC-USD", "100", clock);
+      rts = await db.select().from(botRuntime).where(inArray(botRuntime.botId, ids));
+      if (rts.length < 2) await new Promise((r) => setTimeout(r, 100));
+    }
+    for (const rt of rts) {
+      const st = rt.state as { ledger: Record<string, string> };
+      await db
+        .update(botRuntime)
+        .set({ state: { ...st, ledger: { ...st.ledger, position: "1", avgCost: "100" } } })
+        .where(eq(botRuntime.botId, rt.botId));
+    }
+    await e.stop();
+    await db
+      .update(bots)
+      .set({ state: "stopping", closeOnStop: true })
+      .where(inArray(bots.id, ids));
+    const e2 = makeEngine(gw, "pair2");
+    const stopped = async () =>
+      (await db.select().from(bots).where(inArray(bots.id, ids))).every(
+        (x) => x.state === "stopped",
+      );
+    for (let i = 0; i < 10 && !(await stopped()); i += 1) {
+      await e2.tick();
+      if (!(await stopped())) await new Promise((r) => setTimeout(r, 100));
+    }
+    const closes = () => gw.received.filter((o) => o.tag === "close");
+    expect(closes()).toHaveLength(2);
+    expect(new Set(closes().map((o) => o.clOrdID)).size).toBe(2);
+    const sent = await db
+      .select()
+      .from(orders)
+      .where(
+        inArray(
+          orders.clOrdId,
+          closes().map((o) => o.clOrdID),
+        ),
+      );
+    expect(new Set(sent.map((o) => o.botId))).toEqual(new Set(ids));
+
+    // Engine khởi động lại: mã tất định, không gửi lại lệnh đóng đã gửi.
+    await e2.stop();
+    const e3 = makeEngine(gw, "pair3");
+    for (let i = 0; i < 3; i += 1) await e3.tick();
+    expect(closes()).toHaveLength(2);
+    await e3.stop();
+  });
+
   const farmConfig = (market: string) => ({
     market,
     leverage: 5,
@@ -1943,9 +2150,9 @@ describe("engine", () => {
       if ((await botState(botId))?.state !== "stopped")
         await new Promise((r) => setTimeout(r, 100));
     }
-    const closes = gw.received.filter(
-      (o) => o.tag === "close" && o.clOrdID.startsWith(botId.slice(0, 8)),
-    );
+    // Mã lệnh đóng băm từ botId đầy đủ (DEC-186), theo thứ tự market trong config.
+    const mine = new Set([0, 1].map((i) => clOrdId(botId, 1, `close:${String(i)}`)));
+    const closes = gw.received.filter((o) => o.tag === "close" && mine.has(o.clOrdID));
     expect(closes.map((o) => [o.market, o.side, o.quantity, o.reduceOnly])).toEqual([
       ["BTC-USD", "sell", "0.001", true],
       ["ETH-USD", "buy", "0.03", true],
