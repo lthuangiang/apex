@@ -36,7 +36,7 @@ const DAY = 86_400_000;
 export const LEADERBOARD_CANDIDATES = 300;
 
 /**
- * Chọn ứng viên (DEC-TBD-copy-candidates): top theo PnL toàn là cá mập gom vị thế bằng hàng nghìn fill nhỏ, gần như
+ * Chọn ứng viên (DEC-171): top theo PnL toàn là cá mập gom vị thế bằng hàng nghìn fill nhỏ, gần như
  * không ai qua bộ lọc. Lọc sàn an toàn rồi xếp theo ROI 30 ngày để ra trader vừa sức, giao dịch đều.
  */
 export const CANDIDATE_FLOOR = {

@@ -143,7 +143,7 @@ export class HyperliquidClient {
     cap: number,
     priority: HlPriority,
     /**
-     * Dừng sớm (DEC-TBD-copy-candidates): trang đầu đầy mà gói gọn trong chừng này ms thì ví sẽ chạm `cap` (gần như
+     * Dừng sớm (DEC-171): trang đầu đầy mà gói gọn trong chừng này ms thì ví sẽ chạm `cap` (gần như
      * chắc bị ẩn vì giữ lệnh quá ngắn). Trả `capped: true` ngay để không tốn weight đọc thêm trang.
      */
     earlyStopSpanMs?: number,

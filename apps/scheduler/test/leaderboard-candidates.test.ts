@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { pickCandidates } from "../src/leaderboard";
 
-// Chọn ứng viên leaderboard (DEC-TBD-copy-candidates): sàn an toàn rồi xếp theo ROI 30 ngày.
+// Chọn ứng viên leaderboard (DEC-171): sàn an toàn rồi xếp theo ROI 30 ngày.
 
 const row = (
   address: string,
