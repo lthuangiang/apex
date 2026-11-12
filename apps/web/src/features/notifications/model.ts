@@ -14,7 +14,7 @@ export interface NotificationItem {
 export const ALERT_GROUPS: readonly NotificationGroup[] = ["botErrors", "risk"];
 
 /**
- * Bot kết thúc đúng kế hoạch, không phải sự cố (DEC-TBD-inapp-needs-you). Backend vẫn xếp vào `botErrors`
+ * Bot kết thúc đúng kế hoạch, không phải sự cố (DEC-180). Backend vẫn xếp vào `botErrors`
  * nên email/Telegram không đổi; chỉ in-app bỏ chúng khỏi Needs you và toast.
  */
 export const PLANNED_STOP_REASONS: readonly ReasonCode[] = [
@@ -24,7 +24,7 @@ export const PLANNED_STOP_REASONS: readonly ReasonCode[] = [
 ];
 
 /**
- * Sự cố thật cần người dùng xem (DEC-TBD-inapp-needs-you): thuộc Bot problems hoặc Risk, không phải bot
+ * Sự cố thật cần người dùng xem (DEC-180): thuộc Bot problems hoặc Risk, không phải bot
  * tiền ảo (`data.paper`, DEC-105), và không phải bot dừng đúng kế hoạch.
  */
 export function isIncident(n: Pick<NotificationItem, "type" | "data">): boolean {

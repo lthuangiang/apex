@@ -89,7 +89,7 @@ Tin nhắn tự do thì bot trả lời bằng câu cố định. v1 không đư
 ## 7. In-app
 
 - **Chuông mở panel** (popover 420 px; trên điện thoại là sheet toàn màn hình), không chuyển sang Settings nữa.
-  - Tab `All` và `Needs you`. "Needs you" gồm `botErrors` và `risk` chưa đọc là sự cố thật: không tính bot dừng đúng kế hoạch (`BUDGET_DONE`, `MAX_CYCLES`, `TAKE_PROFIT`) và bot tiền ảo; các tin đó chỉ ở `All`, icon trung tính (DEC-TBD-inapp-needs-you).
+  - Tab `All` và `Needs you`. "Needs you" gồm `botErrors` và `risk` chưa đọc là sự cố thật: không tính bot dừng đúng kế hoạch (`BUDGET_DONE`, `MAX_CYCLES`, `TAKE_PROFIT`) và bot tiền ảo; các tin đó chỉ ở `All`, icon trung tính (DEC-180).
   - Nhóm theo Today / Earlier. `Mark all read`.
   - Bấm một dòng thì đánh dấu đã đọc và mở màn hình liên quan.
   - Chân panel: `Notification settings` và `See all` (danh sách đầy đủ vẫn ở Settings › Notifications).

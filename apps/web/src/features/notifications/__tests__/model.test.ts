@@ -38,7 +38,7 @@ describe("needsYou", () => {
   });
 });
 
-describe("isIncident / isQuiet (DEC-TBD-inapp-needs-you)", () => {
+describe("isIncident / isQuiet (DEC-180)", () => {
   const at = "2026-11-12T03:00:00Z";
   it("treats real problems as incidents", () => {
     for (const reasonCode of [

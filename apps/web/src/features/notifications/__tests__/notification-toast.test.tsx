@@ -89,7 +89,7 @@ describe("NotificationToasts", () => {
     expect(screen.queryByText("BTC Volume Farm paused")).toBeNull();
   });
 
-  it("does not toast a planned finish or a fake-money bot (DEC-TBD-inapp-needs-you)", () => {
+  it("does not toast a planned finish or a fake-money bot (DEC-180)", () => {
     const s = setup();
     s.push([]);
     s.push([

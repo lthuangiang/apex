@@ -51,7 +51,7 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   daily_summary: { icon: Sparkles, tone: "bg-accent-tint text-accent" },
   leader_big_move: { icon: UserRound, tone: "bg-bg text-ink-2" },
 };
-/** Bot dừng đúng kế hoạch hoặc bot tiền ảo: không tô đỏ (DEC-TBD-inapp-needs-you). */
+/** Bot dừng đúng kế hoạch hoặc bot tiền ảo: không tô đỏ (DEC-180). */
 const QUIET_TONE = "bg-bg text-ink-2";
 
 /** Đánh dấu đã đọc: cập nhật cache ngay rồi gọi API (`all` = Mark all read). */
