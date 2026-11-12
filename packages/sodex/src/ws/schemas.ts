@@ -75,10 +75,7 @@ export const wsOrderUpdateSchema = z.object({
   X: z.string(),
   z: decimal, // cumulative filled quantity
   v: decimal, // cumulative filled value
-  b: z
-    .object({ i: uint64Schema, f: z.number().int().nonnegative() })
-    .optional()
-    .catch(undefined), // builder
+  b: z.object({ i: uint64Schema, f: z.number().int().nonnegative() }).optional().catch(undefined), // builder
   E: z.number().int(), // event time ms
   T: z.number().int().optional(), // block time ms
   t: uint64Schema.nullish(), // trade ID
