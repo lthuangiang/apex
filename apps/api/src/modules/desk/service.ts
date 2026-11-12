@@ -59,7 +59,7 @@ export interface DeskDeps {
 /** Lý do dừng có nghĩa là đã chạm giới hạn lỗ (stop hoặc max loss). */
 const LOSS_STOPS: readonly string[] = [ReasonCode.stopLoss, ReasonCode.botMaxLoss];
 
-async function requireDesk(deps: DeskDeps, userId: string): Promise<void> {
+export async function requireDesk(deps: DeskDeps, userId: string): Promise<void> {
   if (!(await aiDeskOn(deps.bots.db, userId)))
     throw new AppError(ErrorCode.forbidden, "AI Desk is not enabled for this account.");
 }

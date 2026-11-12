@@ -1,4 +1,4 @@
-import { startPaperBodySchema } from "@drift/shared";
+import { AppError, ErrorCode, startPaperBodySchema } from "@drift/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
@@ -6,7 +6,8 @@ import { parseOrThrow } from "../../lib/http";
 import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 
-import { deskBots, goLive, paperView, startPaper, type DeskDeps } from "./service";
+import { needsYou, snoozeItem } from "./needs-you";
+import { deskBots, goLive, paperView, requireDesk, startPaper, type DeskDeps } from "./service";
 
 const idParams = z.object({ id: z.uuid() });
 
@@ -39,5 +40,28 @@ export function registerDeskRoutes(app: FastifyInstance, deps: DeskDeps): void {
       status: 200,
       body: await goLive(deps, auth.userId, id),
     }));
+  });
+
+  // AI Desk B+ M1 (DEC-164, DEC-166): việc "Needs you" (tối đa 3) + sức khoẻ bot. Tính lại mỗi lần đọc.
+  app.get("/api/v1/desk/needs-you", async (request) => {
+    const userId = requireAuth(request).userId;
+    await requireDesk(deps, userId);
+    return needsYou({ db: deps.bots.db, rest: deps.bots.rest, now: deps.bots.now }, userId);
+  });
+
+  // "Later" / "Not now": ẩn 7 ngày trừ khi dữ liệu xấu đi.
+  app.post("/api/v1/desk/needs-you/:id/later", async (request, reply) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(idParams, request.params);
+    await requireDesk(deps, auth.userId);
+    return idempotent(deps.bots.db, request, reply, auth.userId, deps.bots.now(), async () => {
+      const r = await snoozeItem(
+        { db: deps.bots.db, rest: deps.bots.rest, now: deps.bots.now },
+        auth.userId,
+        id,
+      );
+      if (r === null) throw new AppError(ErrorCode.notFound, "Item not found.");
+      return { status: 200, body: r };
+    });
   });
 }

@@ -1080,3 +1080,36 @@ export const leaderAlertState = pgTable(
   },
   (t) => [primaryKey({ columns: [t.source, t.address, t.coin] })],
 );
+
+/**
+ * Việc "Needs you" của AI Desk B+ (DEC-164, DEC-166): mỗi bot × quy tắc một dòng, cập nhật mỗi lần tính. `snoozedAt`:
+ * user bấm "Later" / "Not now" (ẩn 7 ngày trừ khi dữ liệu xấu đi); `resolvedAt`: quy tắc không còn đúng.
+ */
+export const deskItems = pgTable(
+  "desk_items",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id),
+    rule: text("rule", {
+      enum: ["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"],
+    }).notNull(),
+    severity: integer("severity").notNull(),
+    /** `DeskFact[]` lúc tính gần nhất (nguồn số liệu cho thẻ và cho Desk AI). */
+    facts: jsonb("facts").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    badness: money("badness").notNull(),
+    snoozedAt: tstz("snoozed_at"),
+    resolvedAt: tstz("resolved_at"),
+    lastSeenAt: tstz("last_seen_at").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("desk_items_bot_rule").on(t.botId, t.rule),
+    index("desk_items_user_idx").on(t.userId),
+  ],
+);
