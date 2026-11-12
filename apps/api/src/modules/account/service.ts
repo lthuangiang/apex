@@ -64,7 +64,7 @@ import { getAddress } from "viem";
 import { AuditAction, audit } from "../../lib/audit";
 import { listBots, type BotDeps } from "../bots/service";
 import { iso } from "../security/service";
-import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
+import type { TwoFactorDeps } from "../security/two-factor";
 
 import { builderFeeRows } from "./builder-fees";
 import { statsOverview } from "./stats-overview";
