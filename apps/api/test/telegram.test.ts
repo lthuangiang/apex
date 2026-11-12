@@ -247,11 +247,14 @@ describe("Telegram link", () => {
 
 describe("Telegram test message and /status", () => {
   it("test message: refuses before connecting, sends once connected, and allows 3 an hour", async () => {
-    const { client } = await user("tg-test@example.com");
-    const before = await client.request("POST", "/api/v1/telegram/test");
+    // Chưa kết nối: từ chối (lần gọi này cũng tính vào giới hạn 3/giờ, nên dùng tài khoản riêng).
+    const fresh = await user("tg-test-new@example.com");
+    const before = await fresh.client.request("POST", "/api/v1/telegram/test");
     expect(before.statusCode).toBe(409);
     expect(errorOf(before.body).code).toBe("TELEGRAM_NOT_CONNECTED");
     expect(sent).toHaveLength(0);
+
+    const { client } = await user("tg-test@example.com");
 
     await webhook(`/start ${(await newLink(client)).token}`, 5101);
     for (let i = 0; i < 3; i += 1) {
