@@ -80,6 +80,10 @@ function wrap(ui: ReactNode) {
   );
 }
 
+// Test có axe chạy chậm trên runner CI 2 vCPU khi các package test song song (~0.6 s ở máy, có lúc > 5 s trên CI),
+// nên có timeout riêng như dialogs.test.tsx (#21). Timeout chung giữ nguyên.
+const AXE_TIMEOUT = 15_000;
+
 async function expectNoAxeViolations(root: Element = document.body) {
   const results = await axe.run(root, {
     runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
@@ -130,26 +134,30 @@ afterEach(() => {
 });
 
 describe("NotificationPanel", () => {
-  it("groups by Today / Earlier and words rows from the bot's real name", async () => {
-    wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);
-    expect(await screen.findByText("BTC Volume Farm paused")).toBeInTheDocument();
-    expect(
-      screen.getByText("Daily loss limit reached. Open orders were kept."),
-    ).toBeInTheDocument();
-    // Không tìm thấy tên bot thì dùng nhãn chung, không đoán tên.
-    expect(screen.getByText("Order result unknown · not retried")).toBeInTheDocument();
-    const today = screen.getByRole("region", { name: "Today" });
-    const earlier = screen.getByRole("region", { name: "Earlier" });
-    expect(within(today).getAllByRole("link")).toHaveLength(3);
-    expect(within(earlier).getByText("Risk limit reached")).toBeInTheDocument();
-    const paused = screen.getByRole("link", { name: /BTC Volume Farm paused/ });
-    expect(paused).toHaveAttribute("href", `/agent/${BOT}`);
-    expect(paused).toHaveTextContent("Review →");
-    await expectNoAxeViolations();
-  });
+  it(
+    "groups by Today / Earlier and words rows from the bot's real name",
+    async () => {
+      wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);
+      expect(await screen.findByText("BTC Volume Farm paused")).toBeInTheDocument();
+      expect(
+        screen.getByText("Daily loss limit reached. Open orders were kept."),
+      ).toBeInTheDocument();
+      // Không tìm thấy tên bot thì dùng nhãn chung, không đoán tên.
+      expect(screen.getByText("Order result unknown · not retried")).toBeInTheDocument();
+      const today = screen.getByRole("region", { name: "Today" });
+      const earlier = screen.getByRole("region", { name: "Earlier" });
+      expect(within(today).getAllByRole("link")).toHaveLength(3);
+      expect(within(earlier).getByText("Risk limit reached")).toBeInTheDocument();
+      const paused = screen.getByRole("link", { name: /BTC Volume Farm paused/ });
+      expect(paused).toHaveAttribute("href", `/agent/${BOT}`);
+      expect(paused).toHaveTextContent("Review →");
+      await expectNoAxeViolations();
+    },
+    AXE_TIMEOUT,
+  );
 
   it("Needs you shows only unread bot problems and risk", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);
     const needs = await screen.findByRole("tab", { name: "Needs you · 2" });
     await user.click(needs);
@@ -163,7 +171,7 @@ describe("NotificationPanel", () => {
   });
 
   it("clicking a row marks it read with an Idempotency-Key, then navigates", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const onNavigate = vi.fn();
     wrap(<NotificationPanel variant="popover" onNavigate={onNavigate} />);
     await user.click(await screen.findByRole("link", { name: /BTC Volume Farm paused/ }));
@@ -174,7 +182,7 @@ describe("NotificationPanel", () => {
   });
 
   it("Mark all read calls the existing all/read endpoint and hides itself", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);
     await user.click(await screen.findByRole("button", { name: "Mark all read" }));
     expect(state.calls.some((c) => c.path === "/api/v1/notifications/all/read")).toBe(true);
@@ -204,29 +212,37 @@ describe("NotificationPanel", () => {
 });
 
 describe("NotificationBell (desktop)", () => {
-  it("opens the panel instead of going to Settings; Escape closes and returns focus", async () => {
-    const user = userEvent.setup();
-    wrap(<NotificationBell unread={3} />);
-    const bell = screen.getByRole("button", { name: "Notifications, 3 unread" });
-    expect(bell).toHaveAttribute("aria-expanded", "false");
-    await user.click(bell);
-    expect(bell).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument();
-    await screen.findByText("BTC Volume Farm paused");
-    await expectNoAxeViolations();
-    await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog")).toBeNull();
-    expect(bell).toHaveFocus();
-  });
+  it(
+    "opens the panel instead of going to Settings; Escape closes and returns focus",
+    async () => {
+      const user = userEvent.setup({ delay: null });
+      wrap(<NotificationBell unread={3} />);
+      const bell = screen.getByRole("button", { name: "Notifications, 3 unread" });
+      expect(bell).toHaveAttribute("aria-expanded", "false");
+      await user.click(bell);
+      expect(bell).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument();
+      await screen.findByText("BTC Volume Farm paused");
+      await expectNoAxeViolations();
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(bell).toHaveFocus();
+    },
+    AXE_TIMEOUT,
+  );
 });
 
 describe("MobileNotificationsButton (390)", () => {
-  it("opens a full-screen sheet with the same panel", async () => {
-    const user = userEvent.setup();
-    wrap(<MobileNotificationsButton unread={3} />);
-    await user.click(screen.getByRole("button", { name: "Notifications, 3 unread" }));
-    const sheet = await screen.findByRole("dialog", { name: "Notifications" });
-    expect(await within(sheet).findByText("BTC Volume Farm paused")).toBeInTheDocument();
-    await expectNoAxeViolations();
-  });
+  it(
+    "opens a full-screen sheet with the same panel",
+    async () => {
+      const user = userEvent.setup({ delay: null });
+      wrap(<MobileNotificationsButton unread={3} />);
+      await user.click(screen.getByRole("button", { name: "Notifications, 3 unread" }));
+      const sheet = await screen.findByRole("dialog", { name: "Notifications" });
+      expect(await within(sheet).findByText("BTC Volume Farm paused")).toBeInTheDocument();
+      await expectNoAxeViolations();
+    },
+    AXE_TIMEOUT,
+  );
 });
