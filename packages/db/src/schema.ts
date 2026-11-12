@@ -1135,7 +1135,9 @@ export const deskWhatifs = pgTable(
     botVersion: integer("bot_version").notNull(),
     /** Fingerprint của việc lúc tính: việc đổi (dữ liệu mới) thì tính lại. */
     itemFingerprint: text("item_fingerprint").notNull(),
-    status: text("status", { enum: ["queued", "running", "done", "failed", "unavailable"] }).notNull(),
+    status: text("status", {
+      enum: ["queued", "running", "done", "failed", "unavailable"],
+    }).notNull(),
     /** `replay` (lệnh vào thật) hoặc `backtest` (nến); null khi chưa chạy. */
     source: text("source", { enum: ["replay", "backtest"] }),
     /** `WhatIfOptionResult[]` (patch config + kết quả 7 ngày). */
