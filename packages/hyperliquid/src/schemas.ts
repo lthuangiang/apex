@@ -89,6 +89,14 @@ export function toLeaderFill(f: HlFill, user: string): TidFill {
   };
 }
 
+/** Số liệu một cửa sổ của leaderboard (`day` / `week` / `month` / `allTime`); null khi dòng không có cửa sổ đó. */
+export function windowOf(
+  row: HlLeaderboardRow,
+  window: "day" | "week" | "month" | "allTime",
+): { pnl: string; roi: string; vlm: string } | null {
+  return row.windowPerformances.find(([w]) => w === window)?.[1] ?? null;
+}
+
 /** PnL 30 ngày theo leaderboard (chỉ để chọn ứng viên; số hiển thị tính lại từ fill). */
 export function monthPnlOf(row: HlLeaderboardRow): string | null {
   return row.windowPerformances.find(([w]) => w === "month")?.[1].pnl ?? null;

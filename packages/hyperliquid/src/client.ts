@@ -142,6 +142,11 @@ export class HyperliquidClient {
     startTime: number,
     cap: number,
     priority: HlPriority,
+    /**
+     * Dừng sớm (DEC-TBD-copy-candidates): trang đầu đầy mà gói gọn trong chừng này ms thì ví sẽ chạm `cap` (gần như
+     * chắc bị ẩn vì giữ lệnh quá ngắn). Trả `capped: true` ngay để không tốn weight đọc thêm trang.
+     */
+    earlyStopSpanMs?: number,
   ): Promise<{ fills: HlFill[]; capped: boolean }> {
     const out: HlFill[] = [];
     let start = startTime;
@@ -151,6 +156,14 @@ export class HyperliquidClient {
       if (out.length >= cap) return { fills: out.slice(0, cap), capped: true };
       const last = page.at(-1);
       if (page.length < HL_PAGE.fills || last === undefined) return { fills: out, capped: false };
+      const first = page[0];
+      if (
+        earlyStopSpanMs !== undefined &&
+        out.length === page.length &&
+        first !== undefined &&
+        last.time - first.time < earlyStopSpanMs
+      )
+        return { fills: out, capped: true };
       start = last.time + 1;
     }
   }

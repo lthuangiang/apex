@@ -80,6 +80,30 @@ describe("HyperliquidClient", () => {
     expect(r.fills).toHaveLength(3000);
   });
 
+  it("stops after one page when that page is full and spans less than the early-stop window", async () => {
+    const DAY = 86_400_000;
+    // 2.000 fill trong 2.000 ms: ví giao dịch dày, sẽ chạm trần.
+    const { c, sent } = client(() =>
+      Array.from({ length: HL_PAGE.fills }, (_, i) => fillRow(1000 + i)),
+    );
+    const r = await c.fillsSince("0xabc", 1000, 10_000, "background", DAY);
+    expect(r).toMatchObject({ capped: true });
+    expect(r.fills).toHaveLength(HL_PAGE.fills);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("keeps reading when the first full page spans more than the early-stop window", async () => {
+    const DAY = 86_400_000;
+    const pages = [
+      Array.from({ length: HL_PAGE.fills }, (_, i) => fillRow(i * DAY)),
+      [fillRow(HL_PAGE.fills * DAY)],
+    ];
+    const { c, sent } = client(() => pages.shift() ?? []);
+    const r = await c.fillsSince("0xabc", 0, 10_000, "background", DAY);
+    expect(r.capped).toBe(false);
+    expect(sent).toHaveLength(2);
+  });
+
   it("charges the per-item weight and waits when the shared bucket is empty", async () => {
     // Một trang 2.000 dòng = 20 + 100 weight; 11 trang = 1.320 > 1.200 → phải chờ.
     const { c, slept } = client(() => Array.from({ length: HL_PAGE.fills }, (_, i) => fillRow(i)));

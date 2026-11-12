@@ -16,7 +16,7 @@
 
 ## Endpoint và trường dữ liệu
 
-- **Leaderboard:** `GET https://stats-data.hyperliquid.xyz/Mainnet/leaderboard` (không có trong tài liệu chính thức). JSON khoảng **39 MB**, `{ leaderboardRows: [...] }`, **48.160 dòng**. Mỗi dòng: `ethAddress`, `accountValue`, `displayName` (đa số null), `prize`, `windowPerformances: [["day"|"week"|"month"|"allTime", {pnl, roi, vlm}]]`. Ứng viên = top 200 theo `month.pnl` (top 200 ngày đo: ngưỡng ~824k USD).
+- **Leaderboard:** `GET https://stats-data.hyperliquid.xyz/Mainnet/leaderboard` (không có trong tài liệu chính thức). JSON khoảng **39 MB**, `{ leaderboardRows: [...] }`, **48.160 dòng**. Mỗi dòng: `ethAddress`, `accountValue`, `displayName` (đa số null), `prize`, `windowPerformances: [["day"|"week"|"month"|"allTime", {pnl, roi, vlm}]]`. Ứng viên (DEC-TBD-copy-candidates): lọc `accountValue` 25k–10M USD, `month.pnl` ≥ 10k, `week.pnl` > 0, rồi lấy **300 ví ROI 30 ngày cao nhất** (ngày 2026-11-12: ~1.000 ví qua sàn). Trước đó là top 200 theo `month.pnl` (ngưỡng ~824k USD), toàn cá mập và gần như luôn bị ẩn.
 - **`userFillsByTime`** `{user, startTime, aggregateByTime:false}`: tối đa **2.000 fill / lần**, xếp cũ → mới; phân trang bằng `startTime = time cuối + 1`. Trường: `coin, px, sz, side ("B"|"A"), time, startPosition, dir, closedPnl, hash, oid, crossed, fee, feeToken, tid, cloid?, twapId, liquidation?`.
   - `startPosition` là vị thế có dấu trước fill → đủ để cắt episode, không cần `dir`.
   - `dir` thấy được: `Open Long`, `Close Long`, `Open Short`, `Close Short`, `Buy`, `Sell` (spot).
@@ -37,7 +37,7 @@ SoDEX `GET /api/v1/perps/markets/symbols` ngày đo: **105 market TRADING** (g�
 
 | Tầng | Cách tính | Weight / phút |
 |---|---|---|
-| T2 leaderboard (đêm) | ≤ 200 ví × (≤ 5 trang fill × ~120 + funding ~25–45 × trang + `userRole` 60 lần đầu) | trải ~4–6 giờ ở ~500/phút |
+| T2 leaderboard (đêm) | ≤ 300 ví (ví dày dừng sau 1 trang) × (≤ 5 trang fill × ~120 + funding ~25–45 × trang + `userRole` 60 lần đầu) | trải ~4–6 giờ ở ~500/phút |
 | T1 follow | ≤ 40 ví × `userFills` (20 + ≤100) mỗi 2 phút | đọc `userFillsByTime` từ lần đọc trước nên mỗi lần ~20–25 weight → 40 × ~22 ÷ 2 ≈ **~440 / phút** (DEC-163 ước ~400) |
 | T0 copy | 8 ví × `clearinghouseState` (2) mỗi 30 s | ~32 |
 | DEC-92 (nếu bật) | như hiện tại | ~422 |
@@ -48,3 +48,12 @@ Bật DEC-92 thì T2 chạy chậm lại (bucket dùng chung có reserve), khôn
 
 - Nhiều ví top 200 theo PnL có rất ít episode trong 30 ngày (mẫu: 1 và 10 episode), nên bị ẩn bởi "< 20 episode". Tab Steady có thể ít người. Nếu cần nhiều hơn: tăng số ứng viên (ví dụ top 500, tốn thêm thời gian chạy đêm), không nới bộ lọc khi chưa hỏi.
 - Profit 30D tính lại từ fill (ví mẫu: 1,676 triệu USD) gần với `month.pnl` của leaderboard (1,728 triệu); chênh lệch vì leaderboard có unrealized và chưa cộng funding.
+
+## Đo mẫu ứng viên mới (2026-11-12, DEC-TBD-copy-candidates)
+
+10 ví lấy đều trong top 300 theo ROI (sau sàn an toàn), chạy đúng code job đêm (dừng sớm bật):
+- **1/10 qua bộ lọc** (vào Steady: 34 lệnh đóng, hold trung vị ~11 giờ, coverage 0,80). Cách cũ (top PnL): 0/13.
+- Lý do ẩn: 7 ví "< 20 lệnh đóng" (2 ví không có fill perp nào trong 30 ngày: lãi từ vị thế giữ lâu hoặc spot), 1 ví giao dịch chủ yếu market SoDEX không có (coverage 0,005).
+- Thời gian: trung bình ~4,4 giây / ví (cách cũ > 1 phút / ví) → 300 ví ≈ 25 phút.
+- Ước tính: ~10% ứng viên hiện được → khoảng 30 trader / đêm. Muốn nhiều hơn thì tăng số ứng viên (rẻ hơn nhiều so với trước) hoặc xét lại ngưỡng "20 lệnh đóng" (DEC-163, chưa đổi).
+
