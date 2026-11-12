@@ -294,7 +294,19 @@ export function FollowingPage() {
               {d.bigMoveAlerts ? null : (
                 <p className="m-0 text-sm text-muted">{t("following.alertsOff")}</p>
               )}
-              <p className="m-0 text-xs text-muted">{t("following.alertsWhere")}</p>
+              {/* Big move đi Telegram khi user bật ở Settings (DEC-170 mục 5); switch ở đây chỉ là kênh in-app. */}
+              <p className="m-0 text-xs text-muted">
+                {t.rich("following.alertsWhere", {
+                  link: (chunks) => (
+                    <Link
+                      href="/settings?tab=notifications"
+                      className="font-semibold text-accent-ink underline"
+                    >
+                      {chunks}
+                    </Link>
+                  ),
+                })}
+              </p>
             </section>
           </div>
         )}

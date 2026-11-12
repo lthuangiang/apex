@@ -2468,7 +2468,7 @@
       "alertsTitle": "Tell me about big moves",
       "alertsBody": "A big move is a new or bigger position worth at least the alert threshold and at least 3× that trader's usual size, counted over 15 minutes. At most one alert per trader and market every 10 minutes.",
       "alertsOff": "Big move alerts aren't set up yet.",
-      "alertsWhere": "Alerts show in DeskLabs. Phone and Telegram alerts come later.",
+      "alertsWhere": "Alerts show in DeskLabs. Turn on Telegram in <link>Settings › Notifications</link>.",
       "on": "On",
       "off": "Off",
       "unfollow": "Unfollow"
@@ -2665,6 +2665,7 @@
     "copy.following.off",
     "copy.following.unfollow",
     "copy.following.alertsBody",
+    "copy.following.alertsWhere",
     "settings.notifications.inAppOnly",
     "settings.notifications.groups.copyTrading",
     "notifications.types.leader_big_move",
