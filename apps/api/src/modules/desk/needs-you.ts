@@ -221,7 +221,7 @@ export interface NeedsYouDeps {
 
 /**
  * Dữ liệu thật của mọi bot thật (không draft, không paper) của user. Mặc định bỏ bot archived (Needs you, "Your bots").
- * `archivedSince`: thêm bot archived từ mốc đó (Desk AI, DEC-TBD-desk-archived) để câu trả lời về lãi / lỗ / phí đủ hơn.
+ * `archivedSince`: thêm bot archived từ mốc đó (Desk AI, DEC-193) để câu trả lời về lãi / lỗ / phí đủ hơn.
  */
 export async function collectFacts(
   deps: NeedsYouDeps,

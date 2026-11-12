@@ -123,6 +123,11 @@ export function emailText(
         subject: "DeskLabs: Telegram alerts changed",
         text: "Open Settings › Notifications in DeskLabs.",
       };
+    case "team_signup":
+    case "team_sodex_connected":
+    case "team_bot_started":
+      // Nhóm `teamOps` chỉ đi Telegram (DEC-184), không bao giờ email; nhánh này chỉ để switch đủ.
+      return { subject: "DeskLabs: team update", text: "Open Users in DeskLabs." };
   }
 }
 

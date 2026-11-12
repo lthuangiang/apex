@@ -6,7 +6,7 @@ import type { DeskAiFact } from "./facts";
 // - câu hỏi nhắc tên bot → chỉ bot đó;
 // - không nhắc → bỏ bot archived, tối đa 3 bot, lỗ / lãi lớn nhất trước;
 // - hỏi về lỗ ("loss") → chỉ trạng thái, lãi / lỗ và phí.
-// Hàm thuần, không I/O (DEC-TBD-desk-archived).
+// Hàm thuần, không I/O (DEC-193).
 
 const MAX_BOTS = 3;
 const LOSS_KEYS: readonly DeskAiFact["key"][] = ["bot_state", "bot_net", "bot_fees"];

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { intentOf, templateFacts, type DeskAiFact } from "../desk/ai";
 
-// Câu mẫu của Desk AI chỉ hiện số liên quan tới câu hỏi (DEC-TBD-desk-archived).
+// Câu mẫu của Desk AI chỉ hiện số liên quan tới câu hỏi (DEC-193).
 
 const bot = (id: string, name: string, state: string, net: string | null): DeskAiFact[] => [
   {

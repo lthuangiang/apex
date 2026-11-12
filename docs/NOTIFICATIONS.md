@@ -160,9 +160,9 @@ Thành viên **role `team`** (DEC-64) đã kết nối Telegram nhận tin khi c
 
 | Sự kiện | Khi nào | Nguồn |
 |---|---|---|
-| `team_signup` | tài khoản mới được tạo xong (đã xác minh email) | `apps/api` auth |
-| `team_sodex_connected` | kết nối SoDEX thành công (đủ hai chữ ký, DEC-25) | `apps/api` sodex connect |
-| `team_bot_started` | bot **tiền thật** chuyển sang `running` lần đầu của mỗi lần Start (engine xác nhận) | engine / sự kiện `state` |
+| `team_signup` | tài khoản mới được tạo xong, qua mã email (đã xác minh) hoặc qua mật khẩu (**chưa** xác minh email), DEC-191 | `apps/api` auth |
+| `team_sodex_connected` | kết nối SoDEX thành công (đủ hai chữ ký, DEC-25): lần approve builder fee đầu tiên được SoDEX xác nhận của account đó | `apps/api` sodex connect |
+| `team_bot_started` | bot **tiền thật** chuyển `starting → running` (engine xác nhận); Resume không báo | engine `#transition` |
 
 - Không báo bot tiền ảo (`mode = paper`, DEC-105), không báo kết nối lỗi.
 - Không báo hoạt động của chính tài khoản role `team` (tránh báo khi team tự thử).
@@ -170,7 +170,7 @@ Thành viên **role `team`** (DEC-64) đã kết nối Telegram nhận tin khi c
 **Nội dung tin** (che bớt, Telegram là bên thứ ba):
 - Email che: 2 ký tự đầu + `···@` + tên miền (`gi···@gmail.com`).
 - Ví che: `0x` + 4 ký tự đầu + `…` + 4 ký tự cuối (`0x3e9a…11fd`). Không bao giờ gửi địa chỉ đầy đủ, key, chữ ký.
-- `team_bot_started`: tên bot (escape HTML), chiến lược, market, vốn (USDC, từ cấu hình bot).
+- `team_bot_started`: tên bot (escape HTML), chiến lược, market, vốn kèm đơn vị (`botCapitalOf`: USDC, riêng TWAP là coin gốc; không tính được thì bỏ, không bao giờ ghi 0).
 - Một nút URL mở trang **Users** của DeskLabs (role `team`) để xem đầy đủ; link không chứa token.
 - Ví dụ: `🆕 New signup · gi···@gmail.com` · `🔗 SoDEX connected · gi···@gmail.com · 0x3e9a…11fd` · `▶️ Bot started · gi···@gmail.com · BTC Grid · Futures Grid · BTC-USD · 200 USDC`.
 
@@ -183,4 +183,4 @@ Thành viên **role `team`** (DEC-64) đã kết nối Telegram nhận tin khi c
 - Nhóm mới `teamOps`, chỉ hiện ở Settings › Notifications với role `team`; chỉ kênh Telegram; **mặc định bật** khi thành viên team đã kết nối Telegram; tắt được.
 - API kiểm tra lại role `team` mỗi lần gửi (role bị gỡ thì ngừng nhận ngay).
 
-**Làm:** sau PR4 (worker gửi, mục 11 N3). Test: không gửi cho user thường; không gửi sự kiện paper / của tài khoản team; che email/ví đúng; gộp 60 giây; quét output không có địa chỉ ví đầy đủ.
+**Đã làm** (N3b, DEC-191): outbox `jobs.team_ops` → `apps/jobs/src/team-ops.ts` fan-out → worker Telegram. Test: không gửi cho user thường; không gửi sự kiện paper / của tài khoản team; che email/ví đúng; gộp 60 giây; quét output không có địa chỉ ví đầy đủ.

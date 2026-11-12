@@ -17,6 +17,10 @@ export const NOTIFICATION_TYPES = [
   "telegram_connected",
   "telegram_moved",
   "telegram_blocked",
+  // Báo team qua Telegram (docs/NOTIFICATIONS.md mục 13, DEC-184): chỉ role `team`, chỉ kênh Telegram.
+  "team_signup",
+  "team_sodex_connected",
+  "team_bot_started",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -28,6 +32,7 @@ export const NOTIFICATION_GROUPS = {
   daily: ["daily_summary"],
   copyTrading: ["leader_big_move"],
   telegram: ["telegram_connected", "telegram_moved", "telegram_blocked"],
+  teamOps: ["team_signup", "team_sodex_connected", "team_bot_started"],
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
 /**
@@ -41,6 +46,10 @@ export const ALWAYS_ON_GROUPS: readonly NotificationGroup[] = ["botErrors", "tel
  * (DEC-170 thay DEC-163 mục 11 cho Telegram).
  */
 export const IN_APP_ONLY_GROUPS: readonly NotificationGroup[] = ["copyTrading", "telegram"];
+/** Nhóm chỉ cho role `team` (DEC-184): ẩn khỏi Settings của user thường, kiểm tra lại role mỗi lần gửi. */
+export const TEAM_ONLY_GROUPS: readonly NotificationGroup[] = ["teamOps"];
+/** Nhóm chỉ có kênh Telegram (DEC-184): không có bản in-app hay email ở v1. */
+export const TELEGRAM_ONLY_GROUPS: readonly NotificationGroup[] = ["teamOps"];
 export const NOTIFICATION_CHANNELS = ["in_app", "email", "telegram"] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
@@ -59,6 +68,7 @@ export const NOTIFICATION_DEFAULTS: Record<
   daily: { in_app: false, email: false, telegram: true },
   copyTrading: { in_app: true, email: false, telegram: false },
   telegram: { in_app: true, email: false, telegram: false },
+  teamOps: { in_app: false, email: false, telegram: true },
 };
 
 export function groupOf(type: NotificationType): NotificationGroup {
@@ -84,7 +94,7 @@ export const notificationListSchema = z.object({
 export const notificationSettingsSchema = z.object({
   groups: z.array(
     z.object({
-      group: z.enum(["botErrors", "risk", "keyFee", "fills", "daily", "copyTrading"]),
+      group: z.enum(["botErrors", "risk", "keyFee", "fills", "daily", "copyTrading", "teamOps"]),
       alwaysOn: z.boolean(),
       in_app: z.boolean(),
       email: z.boolean(),
@@ -94,7 +104,7 @@ export const notificationSettingsSchema = z.object({
   ),
 });
 export const notificationSettingsBodySchema = z.object({
-  group: z.enum(["botErrors", "risk", "keyFee", "fills", "daily", "copyTrading"]),
+  group: z.enum(["botErrors", "risk", "keyFee", "fills", "daily", "copyTrading", "teamOps"]),
   channel: z.enum(NOTIFICATION_CHANNELS),
   enabled: z.boolean(),
 });
@@ -124,3 +134,41 @@ export const telegramLinkStatusSchema = z.object({
   blockedAt: isoDateTimeSchema.optional(),
 });
 export type TelegramLinkStatus = z.infer<typeof telegramLinkStatusSchema>;
+
+// ---------- Báo team qua Telegram (docs/NOTIFICATIONS.md mục 13, DEC-184) ----------
+
+/**
+ * Sự kiện api / engine ghi vào outbox `jobs.team_ops` trong cùng transaction với thay đổi trạng thái. jobs fan-out cho
+ * từng thành viên team. Vốn do engine tính sẵn lúc phát (jobs chỉ hiển thị).
+ */
+export const teamOpsEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("team_signup"), userId: uuidSchema }),
+  z.object({
+    type: z.literal("team_sodex_connected"),
+    userId: uuidSchema,
+    sodexAccountId: uuidSchema,
+  }),
+  z.object({
+    type: z.literal("team_bot_started"),
+    botId: uuidSchema,
+    /** Vốn theo cấu hình; null = không tính được (bỏ phần vốn khỏi tin, không ghi 0). */
+    capital: z.string().nullable(),
+    /** "USDC", hoặc coin base với TWAP. */
+    capitalAsset: z.string().nullable(),
+  }),
+]);
+export type TeamOpsEvent = z.infer<typeof teamOpsEventSchema>;
+
+/** Email che (DEC-184): 2 ký tự đầu + `···@` + tên miền, ví dụ `gi···@gmail.com`. */
+export function teamMaskEmail(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at <= 0) return "···";
+  return `${email.slice(0, Math.min(2, at))}···@${email.slice(at + 1)}`;
+}
+
+/** Ví che (DEC-184): `0x` + 4 ký tự đầu + `…` + 4 ký tự cuối, ví dụ `0x3e9a…11fd`. Không bao giờ địa chỉ đầy đủ. */
+export function teamMaskAddress(address: string): string {
+  const hex = address.startsWith("0x") ? address.slice(2) : address;
+  if (hex.length < 8) return "0x…";
+  return `0x${hex.slice(0, 4)}…${hex.slice(-4)}`;
+}

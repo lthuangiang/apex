@@ -16,6 +16,7 @@ import { z } from "zod";
 import { runImport } from "./import";
 import { handleNotify } from "./notify";
 import { relayOnce } from "./outbox";
+import { handleTeamOps, TEAM_OPS_SUBJECT } from "./team-ops";
 import {
   handleTelegram,
   markFailed,
@@ -75,6 +76,20 @@ const stopNotify = await consume(
   "jobs-notify",
   "jobs.notify",
   (payload) => handleNotify({ db, sendEmail, telegramEnabled: env.TELEGRAM_ENABLED }, payload),
+  (msg, extra) => {
+    log.warn(extra, msg);
+  },
+);
+
+// Báo team qua Telegram (mục 13, DEC-184): fan-out sự kiện cho từng thành viên team.
+await ensureConsumer(nc, "jobs-team-ops", TEAM_OPS_SUBJECT);
+const stopTeamOps = await consume(
+  js,
+  "jobs-team-ops",
+  TEAM_OPS_SUBJECT,
+  async (payload) => {
+    await handleTeamOps({ db, telegramEnabled: env.TELEGRAM_ENABLED }, payload);
+  },
   (msg, extra) => {
     log.warn(extra, msg);
   },
@@ -152,6 +167,7 @@ async function shutdown() {
   state.running = false;
   await stopImport();
   await stopNotify();
+  await stopTeamOps();
   for (const stop of telegramStops) await stop();
   await relay;
   await nc.drain();

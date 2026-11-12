@@ -133,7 +133,7 @@ describe("Desk AI", () => {
     expect(env.logs.join("")).not.toContain(FAKE_KEY);
   });
 
-  it("includes bots archived in the last 30 days in the facts, not older ones (DEC-TBD-desk-archived)", async () => {
+  it("includes bots archived in the last 30 days in the facts, not older ones (DEC-193)", async () => {
     const { client, userId } = await deskUser(env, "ai-archived@example.com");
     const { rows } = await env.pool.query<{ id: string }>(
       "select id from bots where user_id = $1",

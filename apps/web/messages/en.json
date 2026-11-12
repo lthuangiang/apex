@@ -2000,7 +2000,8 @@
         "keyFee": "Key and fee changes",
         "fills": "Every fill",
         "daily": "Daily summary",
-        "copyTrading": "Big moves by traders you follow"
+        "copyTrading": "Big moves by traders you follow",
+        "teamOps": "Team updates"
       },
       "telegramName": "Telegram",
       "where": {
@@ -2042,6 +2043,10 @@
           "copyTrading": {
             "name": "Traders you follow",
             "body": "A trader you follow made a big move."
+          },
+          "teamOps": {
+            "name": "Team updates",
+            "body": "New signups, SoDEX connections and real-money bot starts. Telegram only."
           }
         }
       },
@@ -2774,7 +2779,9 @@
     "desk.home.idle",
     "desk.ai.templates.brief",
     "desk.ai.templates.fallbackOff",
-    "desk.ai.templates.loss"
+    "desk.ai.templates.loss",
+    "settings.notifications.what.rows.teamOps",
+    "settings.notifications.groups.teamOps"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -4006,7 +4013,10 @@
       "leader_big_move": "A trader you follow made a big move",
       "telegram_connected": "Telegram connected",
       "telegram_moved": "Telegram alerts stopped",
-      "telegram_blocked": "Telegram alerts paused"
+      "telegram_blocked": "Telegram alerts paused",
+      "team_signup": "New signup",
+      "team_sodex_connected": "SoDEX connected",
+      "team_bot_started": "Bot started"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",

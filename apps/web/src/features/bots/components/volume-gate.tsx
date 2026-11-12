@@ -24,12 +24,14 @@ export function VolumeGate({
     staleTime: 60_000,
   });
   if (features.isPending) return null;
-  // AI Adaptive DCA (thử nghiệm, DEC-107) và Copy Trade (DEC-161) đi theo cờ AI Desk.
+  // AI Adaptive DCA (thử nghiệm, DEC-107) theo cờ riêng; Copy Trade (DEC-161) theo cờ AI Desk (DEC-192).
   const on =
     strategy === "volume_maker"
       ? features.data?.volumeMaker
       : strategy === "volume_farm"
         ? features.data?.volumeFarm
-        : features.data?.aiDesk;
+        : strategy === "adaptive_dca"
+          ? features.data?.adaptiveDca
+          : features.data?.aiDesk;
   return on === true ? <>{children}</> : <NotFoundPage signedIn />;
 }

@@ -1,6 +1,12 @@
-import { bots, notifications, telegramLinks, type Db } from "@drift/db";
+import { bots, notifications, telegramLinks, users, type Db } from "@drift/db";
 import { DeferError, isBlockedResult, type BotApi } from "@drift/runtime";
-import { groupOf, NOTIFICATION_GROUPS, type NotificationType } from "@drift/shared";
+import {
+  groupOf,
+  NOTIFICATION_GROUPS,
+  TEAM_ONLY_GROUPS,
+  UserRole,
+  type NotificationType,
+} from "@drift/shared";
 import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
@@ -77,7 +83,25 @@ export async function handleTelegram(
     .limit(1);
   // Đã gửi (riêng hoặc trong một tin gộp), đã thất bại, hoặc không tồn tại: không làm gì.
   if (n?.deliveryStatus !== "queued") return;
-  const types = NOTIFICATION_GROUPS[groupOf(n.type as NotificationType)] as readonly string[];
+  const group = groupOf(n.type as NotificationType);
+  // Báo team (DEC-184): chỉ gộp CÙNG loại sự kiện; role `team` kiểm tra lại lúc gửi (bị gỡ role thì ngừng nhận ngay).
+  const types = TEAM_ONLY_GROUPS.includes(group)
+    ? [n.type]
+    : (NOTIFICATION_GROUPS[group] as readonly string[]);
+  if (TEAM_ONLY_GROUPS.includes(group)) {
+    const [u] = await deps.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, n.userId))
+      .limit(1);
+    if (u?.role !== UserRole.team) {
+      await deps.db
+        .update(notifications)
+        .set({ deliveryStatus: "failed" })
+        .where(eq(notifications.id, n.id));
+      return;
+    }
+  }
   const nowMs = deps.now().getTime();
 
   const [last] = await deps.db

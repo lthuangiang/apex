@@ -8,7 +8,8 @@
       "settings": "Open Settings",
       "desk": "See it in AI Desk",
       "following": "Open Following",
-      "app": "Open DeskLabs"
+      "app": "Open DeskLabs",
+      "users": "Open Users"
     },
     "titles": {
       "bot_paused": "🔴 <b>{bot} paused</b>",
@@ -20,7 +21,10 @@
       "key_fee": "🔑 <b>SoDEX access changed</b>",
       "fill": "✅ <b>{bot} filled an order</b>",
       "daily_summary": "✦ <b>Good morning</b>",
-      "leader_big_move": "👤 <b>A trader you follow made a big move</b>"
+      "leader_big_move": "👤 <b>A trader you follow made a big move</b>",
+      "team_signup": "🆕 <b>New signup</b> · {email}",
+      "team_sodex_connected": "🔗 <b>SoDEX connected</b> · {email} · {wallet}",
+      "team_bot_started": "▶️ <b>Bot started</b> · {email} · {details}"
     },
     "bodies": {
       "pausedReason": "{reason}. Open orders were kept.",
@@ -40,7 +44,10 @@
       "botErrors": "🔴 <b>{n} bot problems</b>",
       "risk": "🛡 <b>{n} risk alerts</b>",
       "other": "<b>{n} alerts</b>",
-      "more": "+{n} more"
+      "more": "+{n} more",
+      "team_signup": "🆕 <b>{n} new signups</b>",
+      "team_sodex_connected": "🔗 <b>{n} SoDEX connections</b>",
+      "team_bot_started": "▶️ <b>{n} bots started</b>"
     }
   },
   "reasons": {
@@ -58,5 +65,19 @@
     "EMERGENCY_HALT": "emergency halt",
     "BUDGET_DONE": "budget used",
     "MAX_CYCLES": "max cycles reached"
+  },
+  "strategies": {
+    "spot_grid": "Spot Grid",
+    "futures_grid": "Futures Grid",
+    "spot_dca": "Spot DCA",
+    "futures_dca": "Futures DCA",
+    "recurring_buy": "Recurring Buy",
+    "rebalancing": "Rebalancing",
+    "funding_arb": "Funding Arbitrage",
+    "twap": "TWAP",
+    "volume_maker": "Market Making",
+    "volume_farm": "Volume Builder",
+    "adaptive_dca": "AI Adaptive DCA",
+    "copy_trade": "Copy Trade"
   }
 }

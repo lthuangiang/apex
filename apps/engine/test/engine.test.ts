@@ -10,6 +10,7 @@ import {
   fills,
   fundingRates,
   orders,
+  outbox,
   paperAccounts,
   paperFills,
   paperSnapshots,
@@ -339,6 +340,62 @@ describe("engine", () => {
     );
     expect((await botState(botId))?.state).toBe("running");
     await e.stop();
+  });
+
+  it("tells the team once when a real-money bot starts, never for a paper bot (DEC-191)", async () => {
+    const { eq, inArray, sql } = await import("drizzle-orm");
+    const teamOps = async (id: string) =>
+      (
+        await db
+          .select()
+          .from(outbox)
+          .where(sql`${outbox.topic} = 'jobs.team_ops' and ${outbox.payload}->>'botId' = ${id}`)
+      ).map((r) => r.payload);
+    const live = await seedBot();
+    const paper = await seedBot();
+    await db.update(bots).set({ mode: "paper" }).where(eq(bots.id, paper.botId));
+    await db.insert(paperAccounts).values({
+      botId: paper.botId,
+      capital: "1000",
+      cash: "1000",
+      positions: {},
+      peakEquity: "1000",
+      startedAt: new Date(clock),
+    });
+    // Một engine chạy cả hai: bot thật qua cổng giả, bot paper qua PaperGateway.
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: new FakeGateway(),
+      paper: new PaperGateway({ db, now }),
+      workerId: "team-ops",
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+    });
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    expect((await botState(live.botId))?.state).toBe("running");
+    expect((await botState(paper.botId))?.state).toBe("running");
+    const events = await teamOps(live.botId);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "team_bot_started",
+      botId: live.botId,
+      capitalAsset: "USDC",
+    });
+    expect(Number((events[0] as { capital: string }).capital)).toBeGreaterThan(0);
+    expect(await teamOps(paper.botId)).toEqual([]);
+    await e.onPrice("vBTC_vUSDC", "101", clock + 1000);
+    expect(await teamOps(live.botId)).toHaveLength(1);
+    await e.stop();
+    await db
+      .update(bots)
+      .set({ state: "stopped" })
+      .where(inArray(bots.id, [live.botId, paper.botId]));
   });
 
   it("tags orders with the user's own builder fee, picked up on the next tick (DEC-159)", async () => {
@@ -1992,7 +2049,8 @@ describe("engine", () => {
     const state = async () =>
       (await db.select().from(botRuntime).where(eq(botRuntime.botId, botId)))[0]?.state as
         { regime?: string } | undefined;
-    // Một engine cho cả hai giai đoạn: chưa bật AI Desk thì không nạp bot; bật rồi thì vòng sau nạp và gửi nến.
+    // Một engine cho cả hai giai đoạn: chưa bật cờ Adaptive DCA thì không nạp bot; bật rồi thì vòng sau nạp và gửi nến
+    // (cờ riêng, không theo AI Desk: DEC-192).
     const e = farmEngine(gw, "adca");
     await e.tick();
     await e.onPrice("ETH-USD", "100", clock);
@@ -2001,7 +2059,7 @@ describe("engine", () => {
     const [b] = await db.select().from(bots).where(eq(bots.id, botId));
     await db
       .update(users)
-      .set({ aiDesk: true })
+      .set({ adaptiveDca: true })
       .where(eq(users.id, b?.userId ?? ""));
     await tickUntil(e, async () => (await state())?.regime !== undefined);
     expect((await state())?.regime).toBeDefined();
