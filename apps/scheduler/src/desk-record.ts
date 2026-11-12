@@ -1,4 +1,11 @@
-import { botVersions, deskAiConversations, deskApplies, deskWhatifs, outbox, type Db } from "@drift/db";
+import {
+  botVersions,
+  deskAiConversations,
+  deskApplies,
+  deskWhatifs,
+  outbox,
+  type Db,
+} from "@drift/db";
 import { DESK_AI_CONFIG, RECORD_CONFIG, WHATIF_CONFIG } from "@drift/shared";
 import { and, eq, inArray, isNotNull, lt, lte, or } from "drizzle-orm";
 
@@ -82,6 +89,7 @@ export async function sweepStaleDeskJobs(
     )
     .returning({ id: deskApplies.id });
   return { whatifs: whatifs.length, records: records.length };
+}
 
 /** Desk AI (DEC-165c): chat lưu 90 ngày rồi tự xoá (lượt bị xoá theo, `on delete cascade`). */
 export async function purgeOldDeskAiChats(db: Db, now: number): Promise<number> {

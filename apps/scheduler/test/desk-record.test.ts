@@ -135,6 +135,8 @@ describe("stale desk jobs", () => {
     // Lượt sau của queueDueRecords xếp lại job đo bị mất.
     expect(await queueDueRecords(db, NOW)).toBe(1);
     expect(await jobsFor(lost)).toBe(1);
+  });
+});
 
 describe("desk ai retention", () => {
   it("deletes chats older than 90 days with their turns, and keeps newer ones", async () => {
