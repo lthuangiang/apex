@@ -154,11 +154,16 @@ export const whatIfOptionViewSchema = z.object({
   patch: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
   outcome: whatIfOutcomeSchema.nullable(),
   unavailable: z.enum(["invalid_config", "not_enough_trades", "no_data"]).nullable(),
+  /** Đòn bẩy và khoảng stop (% giá) của cấu hình sau patch, để ghi phương án bằng lời; null khi không tính được. */
+  display: z
+    .object({ leverage: z.number().nullable(), stopPct: decimalStringSchema.nullable() })
+    .nullable(),
 });
 export const whatIfViewSchema = z.object({
   id: uuidSchema,
   itemId: uuidSchema,
   botId: uuidSchema,
+  bot: z.object({ name: z.string(), strategy: z.string(), market: z.string(), state: z.string() }),
   rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
   status: z.enum(["queued", "running", "done", "failed", "unavailable"]),
   /** `replay`: "Replayed on your real trades"; `backtest`: "Backtest on 5-minute candles". */
@@ -187,3 +192,13 @@ export const whatIfApplyViewSchema = z.object({
   status: z.enum(["pending", "active"]),
   option: z.enum(["lower_leverage", "tighter_stop", "review_settings"]),
 });
+
+/* AI Desk B+ M3 (DEC-166): trang chủ = việc "Needs you" kèm what-if mới nhất của việc đó + sức khoẻ bot. */
+export const deskHomeItemSchema = needsYouItemSchema.extend({
+  /** So sánh mới nhất cho đúng việc + version bot; null khi chưa có (web xếp so sánh). */
+  whatif: whatIfViewSchema.nullable(),
+});
+export const deskHomeViewSchema = needsYouViewSchema.extend({
+  items: z.array(deskHomeItemSchema),
+});
+export type DeskHomeView = z.infer<typeof deskHomeViewSchema>;

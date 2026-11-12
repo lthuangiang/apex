@@ -1,5 +1,6 @@
 import {
   botSummarySchema,
+  deskHomeViewSchema,
   errorResponseSchema,
   meSchema,
   needsYouViewSchema,
@@ -343,6 +344,48 @@ describe("what-if and Apply", () => {
     );
     expect(versions.map((r) => r.version)).toEqual([1]);
     expect(await applyCount()).toBe(1);
+  });
+
+  it("shows the latest comparison of each item on the home page, with each option in words", async () => {
+    const { client } = await deskUser("whatif-home@example.com");
+    const botId = await bot(client, "volume_farm", farm, "BTC Home Farm");
+    await env.pool.query("update bots set state = 'running' where id = $1", [botId]);
+    await env.pool.query(
+      "insert into bot_reviews (id, bot_id, user_id, status, result, finished_at) select gen_random_uuid(), $1, user_id, 'done', $2, now() from bots where id = $1",
+      [botId, JSON.stringify(review)],
+    );
+    const home = async () =>
+      deskHomeViewSchema.parse((await client.request("GET", "/api/v1/desk/home")).json());
+    const first = await home();
+    expect(first.items).toHaveLength(1);
+    expect(first.items[0]?.whatif).toBeNull();
+    expect(first.bots.map((b) => b.health)).toEqual(["needs_you"]);
+
+    const started = whatIfViewSchema.parse(
+      (
+        await client.request("POST", `/api/v1/desk/needs-you/${first.items[0]?.id ?? ""}/whatif`)
+      ).json(),
+    );
+    expect(started.bot).toMatchObject({ name: "BTC Home Farm", strategy: "volume_farm" });
+    expect(started.options.map((o) => o.display?.leverage)).toEqual([5, 5]);
+    await finishWhatif(started.id, { keep: "-4.95", review_settings: "-3.10" });
+    const after = await home();
+    expect(after.items[0]?.whatif).toMatchObject({
+      id: started.id,
+      status: "done",
+      pick: { key: "review_settings", reason: "better_result" },
+    });
+
+    // Bot đổi version: so sánh cũ không còn đúng, trang chủ không hiện nữa.
+    const { rows } = await env.pool.query<{ id: string }>(
+      "insert into bot_versions (id, bot_id, version, config, param_source, status, applied_at) values (gen_random_uuid(), $1, 2, $2, 'manual', 'active', now()) returning id",
+      [botId, JSON.stringify(farm)],
+    );
+    await env.pool.query("update bots set active_version_id = $2 where id = $1", [
+      botId,
+      rows[0]?.id,
+    ]);
+    expect((await home()).items[0]?.whatif ?? null).toBeNull();
   });
 
   it("never applies keep and hides comparisons of other users", async () => {

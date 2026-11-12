@@ -8,7 +8,7 @@ import { requireAuth } from "../../plugins/session";
 
 import { needsYou, snoozeItem } from "./needs-you";
 import { deskBots, goLive, paperView, requireDesk, startPaper, type DeskDeps } from "./service";
-import { applyWhatif, startWhatif, whatifView } from "./whatif";
+import { applyWhatif, deskHome, startWhatif, whatifView } from "./whatif";
 
 const idParams = z.object({ id: z.uuid() });
 
@@ -48,6 +48,13 @@ export function registerDeskRoutes(app: FastifyInstance, deps: DeskDeps): void {
     const userId = requireAuth(request).userId;
     await requireDesk(deps, userId);
     return needsYou({ db: deps.bots.db, rest: deps.bots.rest, now: deps.bots.now }, userId);
+  });
+
+  // AI Desk B+ M3: trang chủ = việc "Needs you" kèm so sánh mới nhất + sức khoẻ bot.
+  app.get("/api/v1/desk/home", async (request) => {
+    const userId = requireAuth(request).userId;
+    await requireDesk(deps, userId);
+    return deskHome(deps.bots, userId);
   });
 
   // "Later" / "Not now": ẩn 7 ngày trừ khi dữ liệu xấu đi.
