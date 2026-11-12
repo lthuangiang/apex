@@ -145,14 +145,22 @@ Sau khi mở PR, agent báo cho người dùng link PR và **dừng lại chờ 
 gh pr view <số> && gh pr diff <số>
 ```
 
-2. Lấy branch về máy, chạy lint, typecheck, test của phần liên quan. Có UI thì mở màn đó trên localhost và so với artboard.
+2. Chạy lint, typecheck, test của phần liên quan trên branch của PR. Nếu dev agent đã có worktree cho branch đó thì chạy test ngay trong worktree ấy nhưng **không sửa, không checkout, không xoá file nào** ở đó; cần sửa thử thì tạo worktree riêng. Có UI thì mở màn đó trên localhost và so với artboard.
 3. Kiểm tra theo `CLAUDE.md` mục 1, `docs/CODING_STANDARDS.md` mục 14, DEC liên quan, và mục 1 của file này.
-4. Ghi kết quả vào PR bằng một trong hai cách:
-   - `gh pr review <số> --request-changes --body "…"`, kèm danh sách lỗi có `file:line`.
-   - `gh pr review <số> --approve --body "…"`.
-5. Báo cho người dùng: đạt hay chưa, lỗi chính là gì.
+4. Ghi kết quả vào PR bằng **comment**:
 
-**Khi bị yêu cầu sửa:** dev agent sửa trên **cùng branch**, push thêm commit (không mở PR mới), rồi trả lời từng ý trong PR.
+```bash
+gh pr comment <số> --body-file review.md
+```
+
+   Dòng đầu tiên của comment là kết luận, một trong hai:
+   - `## Review: Cần sửa`, rồi mục "Phải sửa" (mỗi lỗi có `file:line`, vì sao sai, cách sửa) và mục "Nên sửa" (không chặn merge).
+   - `## Review: Đạt`, kèm lệnh đã chạy và kết quả.
+
+   Không dùng `gh pr review --approve` / `--request-changes`: dev agent và reviewer đang dùng chung một tài khoản GitHub, mà GitHub không cho tài khoản tự review PR của chính mình. Khi mỗi bên có tài khoản riêng thì dùng lại `gh pr review`.
+5. Báo cho người dùng: đạt hay chưa, lỗi chính là gì, và đưa câu nhắn cho dev agent.
+
+**Khi bị yêu cầu sửa:** dev agent sửa trên **cùng branch**, push thêm commit (không mở PR mới), rồi trả lời từng ý bằng comment trên PR. Reviewer xem lại phần đã sửa và đăng comment kết luận mới.
 
 ---
 
