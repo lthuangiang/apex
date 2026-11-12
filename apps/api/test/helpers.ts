@@ -25,7 +25,7 @@ import type pg from "pg";
 import { v7 as uuidv7 } from "uuid";
 import { generatePrivateKey, privateKeyToAddress } from "viem/accounts";
 
-import { buildApp } from "../src/app";
+import { buildApp, type AppDeps } from "../src/app";
 import type { Mail } from "../src/lib/mailer";
 import type { RecoClient } from "../src/lib/reco-client";
 import { memoryRateLimiter } from "../src/plugins/rate-limit";
@@ -54,7 +54,9 @@ export interface TestEnv {
 
 export const TEST_BUILDER_ID = 1645n;
 
-export async function startTestEnv(options: { connectEnabled?: boolean } = {}): Promise<TestEnv> {
+export async function startTestEnv(
+  options: { connectEnabled?: boolean; telegram?: AppDeps["telegram"] } = {},
+): Promise<TestEnv> {
   const container = await new PostgreSqlContainer(POSTGRES_IMAGE).start();
   const url = container.getConnectionUri();
   await runMigrations(url);
@@ -126,6 +128,7 @@ export async function startTestEnv(options: { connectEnabled?: boolean } = {}): 
     cookieSecure: false,
     logLevel: "info",
     now: () => clock.now,
+    ...(options.telegram === undefined ? {} : { telegram: options.telegram }),
     logStream: new Writable({
       write(chunk: Buffer, _enc, done) {
         logs.push(chunk.toString());

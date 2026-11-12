@@ -2592,7 +2592,9 @@
     "notifications.reasonText",
     "notifications.toast.seeAll",
     "notifications.toast.dismiss",
-    "notifications.toast.merged"
+    "notifications.toast.merged",
+    "notifications.types.telegram_moved",
+    "notifications.panel.body.telegramMoved"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -3821,7 +3823,9 @@
       "key_fee": "SoDEX access changed",
       "fill": "Order filled",
       "daily_summary": "Daily summary",
-      "leader_big_move": "A trader you follow made a big move"
+      "leader_big_move": "A trader you follow made a big move",
+      "telegram_connected": "Telegram connected",
+      "telegram_moved": "Telegram alerts stopped"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
@@ -3861,7 +3865,9 @@
         "paper": "No real money was used.",
         "unknown": "DeskLabs won't resend it until SoDEX confirms.",
         "risk": "Running bots were paused.",
-        "keyFee": "Your API key or builder fee approval changed."
+        "keyFee": "Your API key or builder fee approval changed.",
+        "telegramConnected": "Alerts also go to @{username}.",
+        "telegramMoved": "Your Telegram chat was connected to another DeskLabs account. Connect again in Settings to get alerts there."
       }
     },
     "reasonText": {

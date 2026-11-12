@@ -77,6 +77,15 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
         };
       case "daily_summary":
         return { title: t("types.daily_summary"), body: null };
+      case "telegram_connected": {
+        const username = str(n.data.username);
+        return {
+          title: t("types.telegram_connected"),
+          body: username === null ? null : t("panel.body.telegramConnected", { username }),
+        };
+      }
+      case "telegram_moved":
+        return { title: t("types.telegram_moved"), body: t("panel.body.telegramMoved") };
       case "leader_big_move": {
         const coin = str(n.data.coin);
         return { title: t("types.leader_big_move"), body: coin };

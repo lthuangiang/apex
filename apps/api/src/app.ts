@@ -21,6 +21,8 @@ import { registerPublicRoutes } from "./modules/public/routes";
 import { registerRecoRoutes } from "./modules/reco/routes";
 import { registerSodexRoutes } from "./modules/sodex/routes";
 import type { SodexDeps } from "./modules/sodex/service";
+import type { BotApi } from "./modules/telegram/bot-api";
+import { registerTelegramRoutes } from "./modules/telegram/routes";
 import { registerPlainDecimals } from "./plugins/plain-decimals";
 import { registerRateLimit, type RateLimiter } from "./plugins/rate-limit";
 import { registerSession } from "./plugins/session";
@@ -66,6 +68,14 @@ export interface AppDeps {
   rateLimits?: { perIp: number; perUser: number; windowMs: number };
   /** Copy Trading: ngưỡng USD cảnh báo big move; trống = tắt (DEC-163, OPEN_QUESTIONS 21a). */
   copyBigMoveMinUsd?: string | null;
+  /** Kênh Telegram (DEC-170). Không truyền = tắt: mọi route `/api/v1/telegram/*` trả 404. */
+  telegram?: {
+    enabled: boolean;
+    botUsername: string;
+    webhookSecret: string | null;
+    appUrl: string;
+    botApi: BotApi;
+  };
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -152,5 +162,21 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerDeskRoutes(app, { bots: botDeps, reco: recoDeps });
   registerCopyRoutes(app, { bots: botDeps, bigMoveMinUsd: deps.copyBigMoveMinUsd ?? null });
   registerSodexRoutes(app, { ...deps.sodex, db: deps.db, totpKey: deps.totpKey, now });
+  const tg = deps.telegram;
+  registerTelegramRoutes(app, {
+    enabled: tg?.enabled ?? false,
+    webhookSecret: tg?.webhookSecret ?? null,
+    deps: {
+      db: deps.db,
+      now,
+      botUsername: tg?.botUsername ?? "desklabsbot",
+      appUrl: tg?.appUrl ?? "https://desklabs.xyz",
+      botApi: tg?.botApi ?? { sendMessage: () => Promise.resolve({ ok: true }) },
+      rateLimiter: deps.rateLimiter,
+      warn: (msg, data) => {
+        app.log.warn(data, msg);
+      },
+    },
+  });
   return app;
 }

@@ -110,6 +110,7 @@ describe("portfolio, risk and notifications", () => {
       alwaysOn: false,
       in_app: true,
       email: false,
+      telegram: false,
     });
     await env.pool.query(
       "insert into notifications (id, user_id, type, payload, channel) values (gen_random_uuid(), $1, 'bot_paused', '{}', 'in_app')",

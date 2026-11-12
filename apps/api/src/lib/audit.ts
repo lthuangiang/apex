@@ -25,6 +25,8 @@ export const AuditAction = {
   aiDeskChanged: "admin.ai_desk",
   builderFeeChanged: "admin.builder_fee",
   adminUserViewed: "admin.user_viewed",
+  telegramConnected: "telegram.connected",
+  telegramDisconnected: "telegram.disconnected",
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 

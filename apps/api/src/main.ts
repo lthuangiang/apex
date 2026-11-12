@@ -10,6 +10,7 @@ import { smtpMailer } from "./lib/mailer";
 import { httpRecoClient } from "./lib/reco-client";
 import { httpSignerClient } from "./lib/signer-client";
 import { hyperliquidProvider } from "./modules/chart/hyperliquid";
+import { createBotApi } from "./modules/telegram/bot-api";
 import { redisRateLimiter } from "./plugins/rate-limit";
 
 const config = loadApiConfig(process.env);
@@ -52,6 +53,13 @@ const app = await buildApp({
   // `none`: tab Liquidation map ẩn (IMP-05, DEC-92).
   liquidations: config.LIQUIDATION_PROVIDER === "hyperliquid" ? hyperliquidProvider(redis) : null,
   copyBigMoveMinUsd: config.COPY_BIG_MOVE_MIN_USD ?? null,
+  telegram: {
+    enabled: config.TELEGRAM_ENABLED,
+    botUsername: config.DRIFT_TELEGRAM_BOT_USERNAME,
+    webhookSecret: config.DRIFT_TELEGRAM_WEBHOOK_SECRET ?? null,
+    appUrl: config.DRIFT_APP_URL,
+    botApi: createBotApi({ token: config.DRIFT_TELEGRAM_BOT_TOKEN ?? "" }),
+  },
   db,
   mailer: smtpMailer(config.SMTP_URL, config.MAIL_FROM),
   totpKey: Buffer.from(config.API_TOTP_ENC_KEY, "base64"),

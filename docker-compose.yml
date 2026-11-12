@@ -91,6 +91,12 @@ services:
       SIGNER_CLIENT_CA: /certs/ca.crt
       RECO_URL: http://reco:8095
       SODEX_CONNECT_ENABLED: ${SODEX_CONNECT_ENABLED:-false}
+      # Telegram (DEC-170, docs/NOTIFICATIONS.md). Production: token và webhook secret lấy từ Vault.
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      DRIFT_TELEGRAM_BOT_USERNAME: ${DRIFT_TELEGRAM_BOT_USERNAME:-desklabsbot}
+      DRIFT_TELEGRAM_BOT_TOKEN: ${DRIFT_TELEGRAM_BOT_TOKEN:-}
+      DRIFT_TELEGRAM_WEBHOOK_SECRET: ${DRIFT_TELEGRAM_WEBHOOK_SECRET:-}
+      DRIFT_APP_URL: https://${APP_HOST}
     depends_on:
       pgbouncer: { condition: service_healthy }
       redis: { condition: service_healthy }

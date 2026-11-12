@@ -169,6 +169,13 @@
       "when": 1794464296129,
       "tag": "0023_desk_record",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794473186590,
+      "tag": "0024_telegram_link",
+      "breakpoints": true
     }
   ]
 }

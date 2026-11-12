@@ -852,8 +852,10 @@ export const notifications = pgTable(
       .references(() => users.id),
     type: text("type").notNull(),
     payload: jsonb("payload").notNull(),
-    channel: text("channel", { enum: ["in_app", "email"] }).notNull(),
+    channel: text("channel", { enum: ["in_app", "email", "telegram"] }).notNull(),
     readAt: tstz("read_at"),
+    /** Chỉ cho bản `telegram` (docs/NOTIFICATIONS.md mục 8); null với in-app và email. */
+    deliveryStatus: text("delivery_status", { enum: ["queued", "sent", "failed"] }),
     ...timestamps,
   },
   (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
@@ -866,11 +868,51 @@ export const notificationSettings = pgTable(
       .notNull()
       .references(() => users.id),
     type: text("type").notNull(),
-    channel: text("channel", { enum: ["in_app", "email"] }).notNull(),
+    channel: text("channel", { enum: ["in_app", "email", "telegram"] }).notNull(),
     enabled: boolean("enabled").notNull(),
     ...timestamps,
   },
   (t) => [primaryKey({ columns: [t.userId, t.type, t.channel] })],
+);
+
+/**
+ * Token kết nối Telegram (docs/NOTIFICATIONS.md mục 3, DEC-170): chỉ lưu SHA-256, sống 10 phút, dùng 1 lần,
+ * mỗi user tối đa 1 token còn hiệu lực (tạo mới thì xoá token cũ).
+ */
+export const telegramLinkTokens = pgTable(
+  "telegram_link_tokens",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: tstz("expires_at").notNull(),
+    usedAt: tstz("used_at"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("telegram_link_tokens_token_hash_key").on(t.tokenHash),
+    index("telegram_link_tokens_user_idx").on(t.userId),
+  ],
+);
+
+/** Chat Telegram đã kết nối: 1 user ↔ 1 chat; một `chat_id` chỉ gắn với 1 user (mục 3 "Quy tắc"). */
+export const telegramLinks = pgTable(
+  "telegram_links",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id),
+    // Telegram: chat id vừa trong 52 bit, nên `number` không mất chính xác.
+    chatId: bigint("chat_id", { mode: "number" }).notNull(),
+    username: text("username"),
+    status: text("status", { enum: ["active", "blocked"] }).notNull(),
+    connectedAt: tstz("connected_at").notNull(),
+    lastSentAt: tstz("last_sent_at"),
+    blockedAt: tstz("blocked_at"),
+  },
+  (t) => [uniqueIndex("telegram_links_chat_id_key").on(t.chatId)],
 );
 
 /** Số dư tài khoản builder của DRIFT theo ngày và engine (đối soát builder revenue). */
