@@ -11,7 +11,6 @@ import { httpRecoClient } from "./lib/reco-client";
 import { httpSignerClient } from "./lib/signer-client";
 import { hyperliquidProvider } from "./modules/chart/hyperliquid";
 import { anthropicLlm } from "./modules/desk/llm";
-import { createBotApi } from "./modules/telegram/bot-api";
 import { redisRateLimiter } from "./plugins/rate-limit";
 
 const config = loadApiConfig(process.env);
