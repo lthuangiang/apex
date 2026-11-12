@@ -24,8 +24,14 @@ export interface DeskLlm {
 /** Hết giờ thì coi như LLM lỗi: dùng câu mẫu, không chờ lâu. */
 const TIMEOUT_MS = 20_000;
 
-export function anthropicLlm(apiKey: string): DeskLlm {
-  const client = new Anthropic({ apiKey, timeout: TIMEOUT_MS, maxRetries: 1 });
+/** `baseURL` chỉ dùng cho E2E (Claude API giả); production để trống. */
+export function anthropicLlm(apiKey: string, baseURL?: string): DeskLlm {
+  const client = new Anthropic({
+    apiKey,
+    timeout: TIMEOUT_MS,
+    maxRetries: 1,
+    ...(baseURL === undefined ? {} : { baseURL }),
+  });
   return {
     async complete({ system, user }) {
       const r = await client.messages.create({

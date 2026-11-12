@@ -60,7 +60,10 @@ const app = await buildApp({
     appUrl: config.DRIFT_APP_URL,
     botApi: createBotApi({ token: config.DRIFT_TELEGRAM_BOT_TOKEN ?? "" }),
   },
-  deskLlm: config.DESK_AI_API_KEY === undefined ? null : anthropicLlm(config.DESK_AI_API_KEY),
+  deskLlm:
+    config.DESK_AI_API_KEY === undefined
+      ? null
+      : anthropicLlm(config.DESK_AI_API_KEY, config.DESK_AI_BASE_URL),
   db,
   mailer: smtpMailer(config.SMTP_URL, config.MAIL_FROM),
   totpKey: Buffer.from(config.API_TOTP_ENC_KEY, "base64"),
@@ -84,4 +87,9 @@ const shutdown = async () => {
 process.once("SIGTERM", () => void shutdown());
 process.once("SIGINT", () => void shutdown());
 
+if (config.DESK_AI_BASE_URL !== undefined)
+  app.log.warn(
+    { deskAiBaseUrl: config.DESK_AI_BASE_URL },
+    "DESK_AI_BASE_URL is set: Desk AI calls this URL instead of the Claude API (end-to-end tests only)",
+  );
 await app.listen({ host: "0.0.0.0", port: config.API_PORT });
