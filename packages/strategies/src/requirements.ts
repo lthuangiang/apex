@@ -348,3 +348,25 @@ export function copyMarkets(c: Readonly<Record<string, unknown>>): string[] {
   if (Array.isArray(c.markets)) return c.markets.filter((m): m is string => typeof m === "string");
   return typeof c.market === "string" ? [c.market] : [];
 }
+
+/**
+ * Vốn của bot theo cấu hình (cột Capital ở Strategy Lab; tin "Bot started" gửi team, DEC-191). TWAP
+ * không có vốn quote cố định: trả tổng khối lượng (`totalSize`, đơn vị base, UI_REVIEW N2). Không tính được → null.
+ */
+export function botCapitalOf(
+  strategy: string,
+  config: unknown,
+): { capital: string | null; capitalUnit: "quote" | "base" } {
+  if (config === null || typeof config !== "object") return { capital: null, capitalUnit: "quote" };
+  const c = config as Cfg;
+  try {
+    if (strategy === Strategy.twap) {
+      const size = typeof c.totalSize === "string" ? c.totalSize : null;
+      return { capital: size !== null && dec(size).gt(0) ? size : null, capitalUnit: "base" };
+    }
+    const capital = requirementOf(strategy, c).capital;
+    return { capital: dec(capital).gt(0) ? capital : null, capitalUnit: "quote" };
+  } catch {
+    return { capital: null, capitalUnit: "quote" };
+  }
+}

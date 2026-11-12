@@ -3,6 +3,7 @@ import {
   apiKeys,
   bots,
   builderApprovals,
+  outbox,
   sodexAccounts,
   sodexSignatureRequests,
   users,
@@ -546,10 +547,37 @@ export async function reconcile(
   const target = Number(message.maxFeeRate);
   const applied = (rate: number | null) => (rate ?? 0) === target;
   if (applied(approval.spot) && applied(approval.perps)) {
-    await deps.db
-      .update(sodexSignatureRequests)
-      .set({ status: SignatureRequestStatus.succeeded, resolvedAt: now })
-      .where(eq(sodexSignatureRequests.id, id));
+    await deps.db.transaction(async (tx) => {
+      const done = await tx
+        .update(sodexSignatureRequests)
+        .set({ status: SignatureRequestStatus.succeeded, resolvedAt: now })
+        .where(
+          and(
+            eq(sodexSignatureRequests.id, id),
+            eq(sodexSignatureRequests.status, SignatureRequestStatus.unknown),
+          ),
+        )
+        .returning({ id: sodexSignatureRequests.id });
+      if (done.length === 0 || target === 0) return;
+      // Báo team (DEC-184): đủ hai chữ ký lần đầu của account (approve lại sau revoke không báo).
+      const [earlier] = await tx
+        .select({ id: sodexSignatureRequests.id })
+        .from(sodexSignatureRequests)
+        .where(
+          and(
+            eq(sodexSignatureRequests.sodexAccountId, account.id),
+            eq(sodexSignatureRequests.action, SignatureAction.approveBuilderFee),
+            eq(sodexSignatureRequests.status, SignatureRequestStatus.succeeded),
+            ne(sodexSignatureRequests.id, id),
+          ),
+        )
+        .limit(1);
+      if (earlier === undefined)
+        await tx.insert(outbox).values({
+          topic: "jobs.team_ops",
+          payload: { type: "team_sodex_connected", userId, sodexAccountId: account.id },
+        });
+    });
   }
   return getSignatureRequest(deps, userId, id);
 }

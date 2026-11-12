@@ -24,7 +24,7 @@ export function VolumeGate({
     staleTime: 60_000,
   });
   if (features.isPending) return null;
-  // AI Adaptive DCA (thử nghiệm, DEC-107) theo cờ riêng; Copy Trade (DEC-161) theo cờ AI Desk (DEC-TBD-desk-for-all).
+  // AI Adaptive DCA (thử nghiệm, DEC-107) theo cờ riêng; Copy Trade (DEC-161) theo cờ AI Desk (DEC-192).
   const on =
     strategy === "volume_maker"
       ? features.data?.volumeMaker

@@ -62,7 +62,7 @@ async function seedTrader(address: string, s: LeaderStats, tabs: string[], hidde
 async function user(email: string, desk = true) {
   const client = new TestClient(env.app);
   const me = meSchema.parse((await signIn(env, client, email)).json());
-  // AI Desk mặc định bật cho mọi tài khoản (DEC-TBD-desk-for-all): ca "tắt" phải tắt rõ ràng.
+  // AI Desk mặc định bật cho mọi tài khoản (DEC-192): ca "tắt" phải tắt rõ ràng.
   await env.pool.query("update users set ai_desk = $2 where id = $1", [me.id, desk]);
   return { client, userId: me.id };
 }

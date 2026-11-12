@@ -88,6 +88,11 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
         return { title: t("types.telegram_moved"), body: t("panel.body.telegramMoved") };
       case "telegram_blocked":
         return { title: t("types.telegram_blocked"), body: t("panel.body.telegramBlocked") };
+      case "team_signup":
+      case "team_sodex_connected":
+      case "team_bot_started":
+        // Báo team chỉ đi Telegram (DEC-184), không có bản in-app; có ở đây để switch đủ.
+        return { title: t(`types.${n.type}`), body: null };
       case "leader_big_move": {
         const coin = str(n.data.coin);
         return { title: t("types.leader_big_move"), body: coin };

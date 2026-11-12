@@ -256,7 +256,7 @@ describe("AI Adaptive DCA (DEC-107)", () => {
     maxExposure: "1000",
     maxLoss: "150",
   };
-  it("is only available to accounts with the Adaptive DCA flag, not just AI Desk (DEC-TBD-desk-for-all)", async () => {
+  it("is only available to accounts with the Adaptive DCA flag, not just AI Desk (DEC-192)", async () => {
     // AI Desk bật nhưng chưa có cờ Adaptive DCA → không có chiến lược này.
     const off = await deskUser("adca-off@example.com");
     const denied = await off.client.request("POST", "/api/v1/bots", {

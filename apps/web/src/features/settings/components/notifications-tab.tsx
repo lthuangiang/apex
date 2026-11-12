@@ -2,6 +2,7 @@
 
 import {
   IN_APP_ONLY_GROUPS,
+  TELEGRAM_ONLY_GROUPS,
   notificationSettingsSchema,
   type NotificationChannel,
   type NotificationGroup,
@@ -142,7 +143,10 @@ export function NotificationsTab() {
                   row: t(`what.rows.${g.group}.name`),
                   channel: channelName(c),
                 });
-                const unavailable = c === "email" && IN_APP_ONLY_GROUPS.includes(g.group);
+                // Nhóm báo team chỉ có Telegram (DEC-184); nhóm in-app-only không có email.
+                const unavailable =
+                  (c === "email" && IN_APP_ONLY_GROUPS.includes(g.group)) ||
+                  (c !== "telegram" && TELEGRAM_ONLY_GROUPS.includes(g.group));
                 return (
                   <span key={c} role="cell" className="flex flex-col items-start gap-1">
                     {/* Tên kênh hiện dưới 768px vì không có hàng tiêu đề cột. */}
