@@ -11,6 +11,8 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { Redis } from "ioredis";
 import { GenericContainer, Wait } from "testcontainers";
 
+import { startClaudeMock } from "./support/claude-mock";
+
 // Dựng toàn bộ hệ thống cho E2E (CODING_STANDARDS C14): Postgres + Vault + Mailpit bằng Testcontainers,
 // rồi chạy thật sodex-mock, signer, api và web. SoDEX luôn là mock: E2E không bao giờ ký lên mainnet (DEC-23).
 
@@ -21,6 +23,7 @@ export const PORTS = {
   api: 18080,
   web: 13100,
   reco: 18095,
+  claude: 18097,
 } as const;
 export const BUILDER_ID = "1645";
 /** Trader Hyperliquid seed sẵn cho spec Copy Trading (p13). */
@@ -228,6 +231,28 @@ export default async function globalSetup() {
        values ('hyperliquid', '${E2E_TRADER}', current_date, '${traderStats}', '{}', '{steady,top,long,all}', 8.5, '84120', 20400000, now());`,
   ]);
   if (copySeed.exitCode !== 0) throw new Error(`copy seed failed: ${copySeed.output}`);
+  // AI Desk B+ (p14): user `e2e-desk-*` được bật AI Desk như team bật ở Users › AI Desk.
+  const deskSeed = await postgres.exec([
+    "psql",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-U",
+    postgres.getUsername(),
+    "-d",
+    postgres.getDatabase(),
+    "-c",
+    `create function e2e_desk() returns trigger language plpgsql as $$ begin if new.email like 'e2e-desk-%' then new.ai_desk := true; end if; return new; end $$;
+     create trigger e2e_desk before insert on users for each row execute function e2e_desk();`,
+  ]);
+  if (deskSeed.exitCode !== 0) throw new Error(`desk seed failed: ${deskSeed.output}`);
+  process.env.E2E_PG = JSON.stringify({
+    id: postgres.getId(),
+    user: postgres.getUsername(),
+    db: postgres.getDatabase(),
+  });
+  // Claude API giả: Desk AI gọi tới đây (DESK_AI_BASE_URL), không bao giờ gọi Anthropic thật.
+  const claude = await startClaudeMock(PORTS.claude);
+  process.env.E2E_CLAUDE = `http://127.0.0.1:${String(PORTS.claude)}`;
 
   const mailpitApi = `http://${mailpit.getHost()}:${String(mailpit.getMappedPort(8025))}`;
   process.env.E2E_MAILPIT = mailpitApi;
@@ -344,6 +369,9 @@ export default async function globalSetup() {
       // Mọi request E2E đến từ 127.0.0.1 qua Next proxy: nâng giới hạn theo IP / user.
       API_RATE_LIMIT_PER_IP: "100000",
       API_RATE_LIMIT_PER_USER: "100000",
+      // Desk AI với Claude API giả (key giả, không phải key thật).
+      DESK_AI_API_KEY: "e2e-fake-key",
+      DESK_AI_BASE_URL: `http://127.0.0.1:${String(PORTS.claude)}`,
       LOG_LEVEL: "warn",
     }),
   ];
@@ -353,6 +381,7 @@ export default async function globalSetup() {
     await feedNc.close();
     feedRedis.disconnect();
     for (const child of children) killGroup(child);
+    claude.close();
     await Promise.all([postgres.stop(), vault.stop(), mailpit.stop(), redis.stop(), nats.stop()]);
   };
   try {

@@ -43,5 +43,5 @@ export async function signUpConnectAnd2fa(
   await page.getByRole("button", { name: "Verify" }).click();
   await page.getByRole("button", { name: "I saved them · turn on 2FA" }).click();
   await expect(page.getByText("● On")).toBeVisible();
-  return { address, accountID, secret };
+  return { address, accountID, secret, email };
 }
