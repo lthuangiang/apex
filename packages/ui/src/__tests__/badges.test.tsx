@@ -13,11 +13,13 @@ import { expectNoAxeViolations } from "../test/axe";
 const at = { dateTime: "2026-10-26T14:02:09Z", text: "Oct 26, 2:02 PM" };
 
 describe("badges", () => {
+  // First test in the file: it pays the jsdom/axe warm-up. Well under 1 s locally, but 5.3 s on the 2-vCPU CI
+  // runner while other packages test in parallel, so it gets its own timeout (same as dialogs.test.tsx, #21).
   it("renders the LIVE badge with its label", async () => {
     render(<LiveBadge label="LIVE · MAINNET" />);
     expect(screen.getByText("LIVE · MAINNET")).toBeInTheDocument();
     await expectNoAxeViolations();
-  });
+  }, 15_000);
 
   it("shows the disabled reason on the coming soon chip", async () => {
     render(<ComingSoonChip label="Paper · Coming soon" />);
