@@ -37,12 +37,21 @@ function useWhatif(item: Item, checkedAt: string) {
       key.current = crypto.randomUUID();
     },
   });
-  const { mutate, isPending } = start;
-  // Trang chủ không còn so sánh hợp lệ cho việc này (chưa có, tin hàng đợi bị mất, hoặc lần trước lỗi đã lâu): bấm
-  // Compare lại mỗi lần trang chủ tải lại (`checkedAt` đổi), không chỉ lần đầu, để không chờ mãi một job đã mất.
+  const { mutate } = start;
+  // Tự bấm Compare thay user tối đa MỘT lần cho mỗi lần trang chủ tải (`checkedAt`) khi chưa có so sánh hợp lệ. Không
+  // phụ thuộc trạng thái của lần bấm (isPending / isError), nếu không mỗi lần xong lại bấm tiếp thành vòng lặp. Đã lỗi
+  // một lần (ví dụ 429) thì thôi tự bấm: thẻ hiện lỗi và nút bấm tay.
+  const askedFor = useRef<string | null>(null);
+  const gaveUp = useRef(false);
   useEffect(() => {
-    if (item.whatif === null && !isPending) mutate();
-  }, [item.whatif, checkedAt, isPending, mutate]);
+    if (item.whatif !== null || gaveUp.current || askedFor.current === checkedAt) return;
+    askedFor.current = checkedAt;
+    mutate(undefined, {
+      onError: () => {
+        gaveUp.current = true;
+      },
+    });
+  }, [item.whatif, checkedAt, mutate]);
   const id = item.whatif?.id ?? start.data?.id;
   const poll = useQuery({
     queryKey: ["desk", "whatif", id],
@@ -55,7 +64,15 @@ function useWhatif(item: Item, checkedAt: string) {
   useEffect(() => {
     if (poll.data?.status === "done") void qc.invalidateQueries({ queryKey: ["desk", "home"] });
   }, [poll.data?.status, qc]);
-  return { w: poll.data ?? null, failed: start.isError || poll.isError };
+  return {
+    w: poll.data ?? null,
+    failed: start.isError || poll.isError,
+    pending: start.isPending,
+    /** Bấm tay sau khi lỗi: một yêu cầu, không tự thử lại. */
+    retry: () => {
+      mutate();
+    },
+  };
 }
 
 function Problem({ item }: { item: Item }) {
@@ -113,11 +130,30 @@ function Problem({ item }: { item: Item }) {
   );
 }
 
-function WhatIfRows({ w, failed }: { w: WhatIfView | null; failed: boolean }) {
+function WhatIfRows({
+  w,
+  failed,
+  pending,
+  retry,
+}: {
+  w: WhatIfView | null;
+  failed: boolean;
+  pending: boolean;
+  retry: () => void;
+}) {
   const t = useTranslations("desk.whatif");
   const tm = useTranslations("desk.compare");
   if (failed || w?.status === "failed")
-    return <p className="m-0 text-sm text-ink-2">{t("failed")}</p>;
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <p role="status" className="m-0 text-sm text-ink-2">
+          {t("failed")}
+        </p>
+        <Button variant="secondary" pending={pending} onClick={retry}>
+          {t("retry")}
+        </Button>
+      </div>
+    );
   if (w === null || w.status === "queued" || w.status === "running")
     return (
       <p className="m-0 text-sm text-ink-2" aria-live="polite">
@@ -158,7 +194,7 @@ function WhatIfRows({ w, failed }: { w: WhatIfView | null; failed: boolean }) {
 export function NeedsYouCard({ item, checkedAt }: { item: Item; checkedAt: string }) {
   const t = useTranslations("desk.whatif");
   const qc = useQueryClient();
-  const { w, failed } = useWhatif(item, checkedAt);
+  const { w, failed, pending, retry } = useWhatif(item, checkedAt);
   const later = useRef(crypto.randomUUID());
   const snooze = useMutation({
     mutationFn: () =>
@@ -174,7 +210,7 @@ export function NeedsYouCard({ item, checkedAt }: { item: Item; checkedAt: strin
       className="flex flex-col gap-3 rounded-card border border-border bg-surface p-5"
     >
       <Problem item={item} />
-      <WhatIfRows w={w} failed={failed} />
+      <WhatIfRows w={w} failed={failed} pending={pending} retry={retry} />
       <div className="flex flex-wrap items-center gap-2">
         {w !== null && fixes >= 2 ? (
           <Link
