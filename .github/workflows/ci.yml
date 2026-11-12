@@ -29,7 +29,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: cp .env.example .env && sed -i "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=ci-only/" .env
-      - run: docker compose --profile dev up -d --wait
+      # Postgres chạy 01-signer-role.sh lúc khởi tạo: thiếu SIGNER_DB_PASSWORD thì script thoát lỗi và Postgres unhealthy.
+      - run: |
+          cp .env.example .env
+          sed -i "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=ci-only/" .env
+          sed -i "s/^SIGNER_DB_PASSWORD=$/SIGNER_DB_PASSWORD=ci-only-signer/" .env
+      # `--wait` coi container chạy một lần đã thoát (vault-init, exit 0) là lỗi: chờ mọi service còn lại healthy,
+      # rồi chạy vault-init riêng và bắt buộc nó thoát với mã 0.
+      - run: docker compose --profile dev up -d --wait $(docker compose --profile dev config --services | grep -vx vault-init)
+      - run: |
+          docker compose --profile dev up -d vault-init
+          code=$(docker compose --profile dev wait vault-init)
+          docker compose --profile dev logs vault-init
+          test "$code" = "0"
       - if: always()
         run: docker compose --profile dev down -v
