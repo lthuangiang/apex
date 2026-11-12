@@ -185,7 +185,8 @@ async function limitsOf(db: Db, accountId: string) {
 
 const norm = (v: string | null) => (v === null ? null : dec(v).toString());
 
-export async function risk(deps: AccountDeps, userId: string): Promise<RiskView | null> {
+/** Trạng thái rủi ro của Risk Center (đỉnh equity 30 ngày, equity hiện tại…); dùng chung cho thẻ Mục tiêu AI Desk. */
+export async function riskStatusOf(deps: { db: Db; now: () => Date }, userId: string) {
   const a = await connected(deps.db, userId);
   if (a === null) return null;
   const [u] = await deps.db
@@ -197,7 +198,13 @@ export async function risk(deps: AccountDeps, userId: string): Promise<RiskView 
   const now = deps.now().getTime();
   const l = await limitsOf(deps.db, a.id);
   const points = await snapshots(deps.db, a.id, now - 31 * 86_400_000);
-  const status = evaluateRisk(l, points, now, tz);
+  return { a, tz, now, l, points, status: evaluateRisk(l, points, now, tz) };
+}
+
+export async function risk(deps: AccountDeps, userId: string): Promise<RiskView | null> {
+  const r = await riskStatusOf(deps, userId);
+  if (r === null) return null;
+  const { a, tz, now, l, points, status } = r;
   let pf: PortfolioView | null = null;
   try {
     pf = await portfolio(deps, userId);

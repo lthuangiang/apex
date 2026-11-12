@@ -154,11 +154,16 @@ export const whatIfOptionViewSchema = z.object({
   patch: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
   outcome: whatIfOutcomeSchema.nullable(),
   unavailable: z.enum(["invalid_config", "not_enough_trades", "no_data"]).nullable(),
+  /** Đòn bẩy và khoảng stop (% giá) của cấu hình sau patch, để ghi phương án bằng lời; null khi không tính được. */
+  display: z
+    .object({ leverage: z.number().nullable(), stopPct: decimalStringSchema.nullable() })
+    .nullable(),
 });
 export const whatIfViewSchema = z.object({
   id: uuidSchema,
   itemId: uuidSchema,
   botId: uuidSchema,
+  bot: z.object({ name: z.string(), strategy: z.string(), market: z.string(), state: z.string() }),
   rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
   status: z.enum(["queued", "running", "done", "failed", "unavailable"]),
   /** `replay`: "Replayed on your real trades"; `backtest`: "Backtest on 5-minute candles". */
@@ -187,3 +192,73 @@ export const whatIfApplyViewSchema = z.object({
   status: z.enum(["pending", "active"]),
   option: z.enum(["lower_leverage", "tighter_stop", "review_settings"]),
 });
+
+/* AI Desk B+ M3 (DEC-166): trang chủ = việc "Needs you" kèm what-if mới nhất của việc đó + sức khoẻ bot. */
+export const deskHomeItemSchema = needsYouItemSchema.extend({
+  /** So sánh mới nhất cho đúng việc + version bot; null khi chưa có (web xếp so sánh). */
+  whatif: whatIfViewSchema.nullable(),
+});
+export const deskHomeViewSchema = needsYouViewSchema.extend({
+  items: z.array(deskHomeItemSchema),
+  /** Thẻ Mục tiêu; null khi chưa lưu goals (chỉ hiện "Change goal"). `used` null = "Not available". */
+  goal: z
+    .object({
+      goal: z.enum(["automate", "range", "accumulate", "steady"]),
+      limit: decimalStringSchema,
+      used: decimalStringSchema.nullable(),
+    })
+    .nullable(),
+});
+export type DeskHomeView = z.infer<typeof deskHomeViewSchema>;
+
+/* AI Desk B+ M4 (DEC-166): thành tích, đo 7 ngày sau mỗi Apply. Kết quả là 7 ngày đã qua, không phải dự báo. */
+export const deskRecordRowSchema = z.object({
+  id: uuidSchema,
+  botId: uuidSchema,
+  botName: z.string(),
+  rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
+  option: z.enum(["lower_leverage", "tighter_stop", "review_settings"]),
+  changes: z.array(
+    z.object({ key: z.string(), from: z.string().nullable(), to: z.string().nullable() }),
+  ),
+  appliedAt: isoDateTimeSchema,
+  /** Ngày có kết quả (7 ngày sau khi version được áp). */
+  dueAt: isoDateTimeSchema,
+  checkedAt: isoDateTimeSchema.nullable(),
+  /** `measuring` gồm cả lúc job đang chạy; `unavailable` = không đo được (ví dụ ít lượt), không hiện 0. */
+  status: z.enum(["measuring", "done", "unavailable"]),
+  verdict: z.enum(["helped", "made_worse", "no_clear_effect"]).nullable(),
+  /** Lãi / lỗ sau khi sửa và của cấu hình cũ trên cùng các ngày (USDC); null khi chưa đo. */
+  after: decimalStringSchema.nullable(),
+  old: decimalStringSchema.nullable(),
+  source: z.enum(["replay", "backtest"]).nullable(),
+  error: z.string().nullable(),
+  /** Switch back: chỉ với "Made it worse" và khi bot vẫn ở version AI đã tạo. */
+  canSwitchBack: z.boolean(),
+  switchedBackVersion: z.number().int().nullable(),
+});
+export const deskRecordViewSchema = z.object({
+  counts: z.object({
+    helped: z.number().int(),
+    madeWorse: z.number().int(),
+    noClearEffect: z.number().int(),
+    measuring: z.number().int(),
+  }),
+  rows: z.array(deskRecordRowSchema),
+});
+export type DeskRecordView = z.infer<typeof deskRecordViewSchema>;
+export const switchBackViewSchema = z.object({
+  botId: uuidSchema,
+  version: z.number().int(),
+  status: z.enum(["pending", "active"]),
+});
+/** `desk_applies.record` (jsonb) do worker ghi. */
+export const deskRecordResultSchema = z.object({
+  source: z.enum(["replay", "backtest"]),
+  after: decimalStringSchema,
+  old: decimalStringSchema,
+  trades: z.number().int().nullable(),
+  from: isoDateTimeSchema,
+  to: isoDateTimeSchema,
+});
+export type DeskRecordResult = z.infer<typeof deskRecordResultSchema>;

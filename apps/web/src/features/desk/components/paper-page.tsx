@@ -49,7 +49,7 @@ export function PaperPage({ id }: { id: string }) {
   return (
     <Workspace current="desk">
       <div className="flex flex-col gap-5">
-        <Link href="/desk?tab=bots" className="self-start text-sm font-bold text-accent-ink">
+        <Link href="/desk" className="self-start text-sm font-bold text-accent-ink">
           ← {t("back")}
         </Link>
         {q.isPending ? <Skeleton className="h-64 w-full rounded-card" /> : null}

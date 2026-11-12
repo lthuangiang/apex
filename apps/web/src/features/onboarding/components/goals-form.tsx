@@ -33,7 +33,8 @@ const goalsResponse = z.object({ goals: goalsViewSchema.nullable() });
 const card = (on: boolean) =>
   `flex min-h-16 flex-col items-start gap-1.5 rounded-card border-2 p-4 text-left ${on ? "border-accent bg-accent-tint" : "border-border bg-surface"}`;
 
-export function GoalsForm() {
+/** `returnTo`: mở từ AI Desk › Change goal thì lưu xong quay lại đó thay vì đi tiếp bước 6. */
+export function GoalsForm({ returnTo }: { returnTo?: "/desk" | undefined } = {}) {
   const t = useTranslations("onboarding.goals");
   const ts = useTranslations("onboarding.signup");
   const router = useRouter();
@@ -80,7 +81,7 @@ export function GoalsForm() {
     onSuccess: (goals) => {
       // Bước 6 đọc cùng cache: ghi ngay mục tiêu vừa lưu, không để nó thấy `goals: null` cũ.
       queryClient.setQueryData(GOALS_KEY, { goals });
-      router.push("/onboarding/plan");
+      router.push(returnTo ?? "/onboarding/plan");
     },
     onError: () => {
       key.current = crypto.randomUUID();

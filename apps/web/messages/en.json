@@ -2520,7 +2520,62 @@
     "settings.notifications.inAppOnly",
     "settings.notifications.groups.copyTrading",
     "notifications.types.leader_big_move",
-    "copy.budget.budgetInvalid"
+    "copy.budget.budgetInvalid",
+    "desk.home.watching",
+    "desk.home.agoNow",
+    "desk.home.agoMinutes",
+    "desk.home.agoHours",
+    "desk.home.nothing",
+    "desk.home.nothingBody",
+    "desk.home.noBots",
+    "desk.home.noBotsBody",
+    "desk.home.startFirst",
+    "desk.home.health.paused",
+    "desk.home.error",
+    "desk.rules.max_loss_hit.titleNoLimit",
+    "desk.rules.max_loss_hit.body",
+    "desk.rules.taker_costly",
+    "desk.rules.better_review",
+    "desk.whatif.tighter_stop",
+    "desk.whatif.review_settings",
+    "desk.whatif.backtest",
+    "desk.whatif.running",
+    "desk.whatif.noFix",
+    "desk.whatif.failed",
+    "desk.whatif.review",
+    "desk.compare.introBacktest",
+    "desk.compare.name.review_settings",
+    "desk.compare.what.keepPlain",
+    "desk.compare.what.review_settings",
+    "desk.compare.notAvailable",
+    "desk.compare.why",
+    "desk.compare.footBacktest",
+    "desk.compare.applyBodyStopped",
+    "desk.compare.applying",
+    "desk.compare.applied",
+    "desk.compare.openBot",
+    "desk.compare.errors",
+    "desk.newBot",
+    "desk.record.chip.unavailable",
+    "desk.record.change.tighter_stop",
+    "desk.record.change.review_settings",
+    "desk.record.whenChecked",
+    "desk.record.compare",
+    "desk.record.none",
+    "desk.record.switching",
+    "desk.record.switched",
+    "desk.record.switchError",
+    "desk.record.empty",
+    "desk.record.emptyBody",
+    "desk.record.error",
+    "desk.record.counts.no_clear_effect",
+    "desk.record.chip.no_clear_effect",
+    "desk.goal.usedLabel",
+    "desk.goal.notAvailable",
+    "desk.goal.none",
+    "desk.goal.goals.automate",
+    "desk.goal.goals.range",
+    "desk.goal.goals.accumulate"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -4606,6 +4661,179 @@
       "noPrice": "No recent price for this market yet. Try again soon.",
       "off": "AI Desk is not turned on for your account.",
       "generic": "Couldn’t start the test. Try again."
+    },
+    "home": {
+      "watching": "Watching {count, plural, one {# bot} other {# bots}} · checked {ago}",
+      "agoNow": "just now",
+      "agoMinutes": "{n} min ago",
+      "agoHours": "{n} h ago",
+      "newBot": "New bot",
+      "needsYou": "Needs you · {count}",
+      "nothing": "Nothing needs you right now.",
+      "nothingBody": "I check your bots for risky settings, max loss stops, costly fees and better settings.",
+      "yourBots": "Your bots",
+      "noBots": "No bots yet",
+      "noBotsBody": "Tell me your limit and I'll suggest a first bot.",
+      "startFirst": "Start your first bot",
+      "health": {
+        "healthy": "Healthy",
+        "watch": "Watch",
+        "needs_you": "Needs you",
+        "stopped": "Stopped",
+        "paused": "Paused"
+      },
+      "record": "My suggestions so far: {helped} of {total} helped →",
+      "error": "Couldn't load AI Desk. Try again."
+    },
+    "rules": {
+      "tag": "{tag} · {bot}",
+      "liquidation_before_stop": {
+        "tag": "Risky",
+        "title": "Could lose a whole trade before its stop loss",
+        "body": "At {leverage}× a {liq}% drop closes the trade; your stop loss waits for {stop}%."
+      },
+      "max_loss_hit": {
+        "tag": "Stopped",
+        "title": "Stopped at your {maxLoss} USDC loss limit",
+        "titleNoLimit": "Stopped at your loss limit",
+        "body": "It lost {net} USDC, of which {fees} USDC was fees."
+      },
+      "taker_costly": {
+        "tag": "Costly",
+        "title": "{share}% of trades paid taker fees",
+        "body": "Taker trades cost {taker} USDC per 1M volume; maker trades cost {maker} USDC."
+      },
+      "better_review": {
+        "tag": "Better settings",
+        "title": "Review this run found better settings",
+        "body": "They would have cost {best} USDC per 1M volume instead of {current} USDC."
+      }
+    },
+    "whatif": {
+      "asIs": "Last 7 days, as it is",
+      "lower_leverage": "If it had used {leverage}×",
+      "tighter_stop": "With a {stop}% stop loss",
+      "review_settings": "With the Review this run settings",
+      "closed": "{count} closed by SoDEX",
+      "replay": "Replayed on your real trades · not a forecast",
+      "backtest": "Backtest on 5-minute candles · not a forecast",
+      "running": "Replaying the last 7 days…",
+      "notEnough": "Not enough trades to compare",
+      "noFix": "No fix to compare yet. Review the bot's settings.",
+      "failed": "Couldn't compare right now.",
+      "compare": "Compare {count} options",
+      "review": "Review settings",
+      "later": "Later",
+      "keepStopped": "Keep it stopped"
+    },
+    "compare": {
+      "back": "AI Desk",
+      "title": "Pick a fix",
+      "introReplay": "I replayed the bot's real trades from the last 7 days with each option. Same entries, different settings.",
+      "introBacktest": "I backtested each option on the last 7 days of 5-minute candles.",
+      "myPick": "My pick",
+      "name": {
+        "keep": "Keep as it is",
+        "lower_leverage": "Lower leverage to {leverage}×",
+        "tighter_stop": "Tighter stop loss, {stop}%",
+        "review_settings": "Use the Review this run settings"
+      },
+      "what": {
+        "keep": "{leverage}× leverage, stop loss at {stop}%.",
+        "keepPlain": "Your current settings.",
+        "lower_leverage": "Stop loss stays at {stop}% and now comes first.",
+        "tighter_stop": "Keeps {leverage}×; stop now comes before SoDEX closes it.",
+        "review_settings": "Hold time, early exit and stop loss from Review this run."
+      },
+      "metrics": {
+        "net": "Result, 7 days",
+        "closed": "Trades closed by SoDEX",
+        "worst": "Worst single trade",
+        "margin": "Money set aside per trade"
+      },
+      "notAvailable": "Not available",
+      "why": {
+        "safer_best_result": "I pick {name}: your stop loss comes before SoDEX would close the trade, and it had the best 7-day result of the fixes.",
+        "better_result": "I pick {name}: over the last 7 days it did {diff} USDC better than keeping it as it is.",
+        "keep_is_better": "I'd keep it as it is: no fix did at least 0.50 USDC better over the last 7 days.",
+        "not_enough_trades": "Not enough trades to compare"
+      },
+      "footReplay": "Replay of {count} real entries on 1-minute candles · past week only, not a forecast",
+      "footBacktest": "Backtest on 5-minute candles · past week only, not a forecast",
+      "applyTitle": "Apply: {name}",
+      "applyBody": "New version, starts after the open trade. I'll check back in 7 days and tell you if it helped.",
+      "applyBodyStopped": "New version. I'll check back in 7 days and tell you if it helped.",
+      "apply": "Apply this fix",
+      "noChange": "No change",
+      "nothingToApply": "Nothing to apply",
+      "applying": "Applying v{version}…",
+      "applied": "Applied as v{version}. I'll check back in 7 days.",
+      "openBot": "Open the bot",
+      "errors": {
+        "applied": "This fix was already applied.",
+        "version_changed": "The bot's settings changed since this comparison. Compare again.",
+        "not_done": "The comparison isn't ready yet.",
+        "no_result": "This option has no result to apply.",
+        "generic": "Couldn't apply the fix. Try again."
+      }
+    },
+    "newBot": {
+      "title": "New bot",
+      "back": "AI Desk"
+    },
+    "record": {
+      "back": "AI Desk",
+      "title": "Did my suggestions help?",
+      "intro": "Seven days after you apply a fix, I compare what happened with what the old settings would have done over the same days.",
+      "counts": {
+        "helped": "Helped",
+        "made_worse": "Made it worse",
+        "measuring": "Still measuring",
+        "no_clear_effect": "No clear effect"
+      },
+      "applied": "Fixes you applied",
+      "chip": {
+        "helped": "Helped",
+        "made_worse": "Made it worse",
+        "measuring": "Still measuring",
+        "no_clear_effect": "No clear effect",
+        "unavailable": "Not enough trades to compare"
+      },
+      "what": "{bot} · {change}",
+      "change": {
+        "lower_leverage": "leverage {from}× → {to}×",
+        "tighter_stop": "tighter stop loss",
+        "review_settings": "Review this run settings"
+      },
+      "whenMeasuring": "Applied {applied} · result on {due}",
+      "whenChecked": "Applied {applied} · checked {checked}",
+      "compareLabel": "Old settings → after the fix",
+      "compare": "{old} → {after} USDC",
+      "none": "—",
+      "switchBack": "Switch back",
+      "switching": "Switching back…",
+      "switched": "Switched back as v{version}",
+      "switchError": "Couldn't switch back. Try again.",
+      "foot": "\"Old settings\" is a replay over the same days, not a forecast. Small differences under 0.50 USDC count as \"no clear effect\".",
+      "empty": "No fixes applied yet.",
+      "emptyBody": "When you apply a fix from Needs you, I check back 7 days later.",
+      "error": "Couldn't load your track record. Try again."
+    },
+    "goal": {
+      "title": "Your goal",
+      "change": "Change goal",
+      "line": "{goal} · lose no more than {limit} USDC",
+      "lineShort": "Lose no more than {limit} USDC",
+      "used": "Loss limit used {used} of {limit} USDC",
+      "usedLabel": "Loss limit used",
+      "notAvailable": "Not available",
+      "none": "Set a goal and a loss limit so I can tell you if you're on track.",
+      "goals": {
+        "steady": "Steady small gains",
+        "automate": "Automate what already works",
+        "range": "Earn from sideways markets",
+        "accumulate": "Build a BTC or ETH position"
+      }
     }
   },
   "connectLog": {
