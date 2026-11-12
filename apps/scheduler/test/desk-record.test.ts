@@ -2,7 +2,7 @@ import { createDb, runMigrations, type Db } from "@drift/db";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { queueDueRecords } from "../src/desk-record";
+import { queueDueRecords, sweepStaleDeskJobs } from "../src/desk-record";
 
 // AI Desk B+ M4 (DEC-166): xếp job đo thành tích 7 ngày sau khi version AI thật sự được áp, mỗi lần Apply một job.
 
@@ -91,5 +91,49 @@ describe("desk record queue", () => {
     // Lượt sau không xếp lại.
     expect(await queueDueRecords(db, NOW + 60_000)).toBe(0);
     expect(await jobsFor(due)).toBe(1);
+  });
+});
+
+describe("stale desk jobs", () => {
+  it("fails lost comparisons and re-queues lost record jobs, leaving fresh ones alone", async () => {
+    const lost = await seedApply(8);
+    const fresh = await seedApply(8);
+    await pool.query(
+      "update desk_applies set record_status = 'queued', updated_at = $2 where id = $1",
+      [lost, new Date(NOW - 2 * 3_600_000)],
+    );
+    await pool.query(
+      "update desk_applies set record_status = 'queued', updated_at = $2 where id = $1",
+      [fresh, new Date(NOW - 60_000)],
+    );
+    const { rows: w } = await pool.query<{ id: string; whatif_id: string }>(
+      "select id, whatif_id from desk_applies where id = any($1)",
+      [[lost, fresh]],
+    );
+    const whatifOf = (id: string) => w.find((r) => r.id === id)?.whatif_id;
+    await pool.query("update desk_whatifs set status = 'queued', created_at = $2 where id = $1", [
+      whatifOf(lost),
+      new Date(NOW - 15 * 60_000),
+    ]);
+    await pool.query("update desk_whatifs set status = 'queued', created_at = $2 where id = $1", [
+      whatifOf(fresh),
+      new Date(NOW - 60_000),
+    ]);
+
+    expect(await sweepStaleDeskJobs(db, NOW)).toEqual({ whatifs: 1, records: 1 });
+    expect(await statusOf(lost)).toBe("measuring");
+    expect(await statusOf(fresh)).toBe("queued");
+    const { rows } = await pool.query<{ id: string; status: string; error: string | null }>(
+      "select id, status, error from desk_whatifs where id = any($1)",
+      [[whatifOf(lost), whatifOf(fresh)]],
+    );
+    expect(rows.find((r) => r.id === whatifOf(lost))).toMatchObject({
+      status: "failed",
+      error: "stale",
+    });
+    expect(rows.find((r) => r.id === whatifOf(fresh))?.status).toBe("queued");
+    // Lượt sau của queueDueRecords xếp lại job đo bị mất.
+    expect(await queueDueRecords(db, NOW)).toBe(1);
+    expect(await jobsFor(lost)).toBe(1);
   });
 });

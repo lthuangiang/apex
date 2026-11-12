@@ -417,6 +417,53 @@ describe("what-if and Apply", () => {
     expect((await home()).goal).toEqual({ goal: "steady", limit: "500", used: "75" });
   });
 
+  it("does not wait forever on a comparison whose queue message was lost", async () => {
+    const { client } = await deskUser("whatif-stale@example.com");
+    const botId = await bot(client, "volume_farm", farm, "Stale Farm");
+    await env.pool.query("update bots set state = 'running' where id = $1", [botId]);
+    await env.pool.query(
+      "insert into bot_reviews (id, bot_id, user_id, status, result, finished_at) select gen_random_uuid(), $1, user_id, 'done', $2, now() from bots where id = $1",
+      [botId, JSON.stringify(review)],
+    );
+    const home = async () =>
+      deskHomeViewSchema.parse((await client.request("GET", "/api/v1/desk/home")).json());
+    const [item] = (await home()).items;
+    const start = async () =>
+      whatIfViewSchema.parse(
+        (await client.request("POST", `/api/v1/desk/needs-you/${item?.id ?? ""}/whatif`)).json(),
+      );
+    const first = await start();
+    expect(first.status).toBe("queued");
+    // Mới xếp (< 2 phút): vẫn dùng lại.
+    const clock = env.clock.now.getTime();
+    await env.pool.query("update desk_whatifs set created_at = $2 where id = $1", [
+      first.id,
+      new Date(clock - 60_000),
+    ]);
+    expect((await start()).id).toBe(first.id);
+    expect((await home()).items[0]?.whatif?.id).toBe(first.id);
+
+    // Tin đã mất (worker bản cũ bỏ): sau 2 phút trang chủ thôi hiện, Compare xếp job mới.
+    await env.pool.query("update desk_whatifs set created_at = $2 where id = $1", [
+      first.id,
+      new Date(clock - 3 * 60_000),
+    ]);
+    expect((await home()).items[0]?.whatif ?? null).toBeNull();
+    const second = await start();
+    expect(second.id).not.toBe(first.id);
+    expect(second.status).toBe("queued");
+    const { rows } = await env.pool.query<{ status: string; error: string | null }>(
+      "select status, error from desk_whatifs where id = $1",
+      [first.id],
+    );
+    expect(rows[0]).toEqual({ status: "failed", error: "stale" });
+    const { rows: jobs } = await env.pool.query<{ n: number }>(
+      "select count(*)::int as n from outbox where payload->>'whatifId' = $1",
+      [second.id],
+    );
+    expect(jobs[0]?.n).toBe(1);
+  });
+
   it("never applies keep and hides comparisons of other users", async () => {
     const { client } = await deskUser("whatif-other@example.com");
     const keep = await client.request(

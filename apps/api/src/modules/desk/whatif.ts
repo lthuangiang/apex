@@ -203,10 +203,14 @@ export async function deskHome(
         )
         .orderBy(desc(deskWhatifs.createdAt))
         .limit(1);
+      const age = row === undefined ? 0 : now - row.w.createdAt.getTime();
       const fresh =
         row !== undefined &&
         row.w.botVersion === row.version &&
-        row.w.itemFingerprint === row.fingerprint;
+        row.w.itemFingerprint === row.fingerprint &&
+        // `queued` lâu (tin mất) hoặc `failed` đã đủ lâu: trả null để web bấm Compare, startWhatif xếp job mới.
+        !(row.w.status === "queued" && age > WHATIF_CONFIG.queuedReuseMs) &&
+        !(row.w.status === "failed" && age > WHATIF_CONFIG.failedRetryMs);
       return { ...item, whatif: fresh ? await viewOf(deps, row.w, item.rule) : null };
     }),
   );
@@ -250,7 +254,15 @@ export async function startWhatif(
     )
     .orderBy(desc(deskWhatifs.createdAt))
     .limit(1);
-  if (recent !== undefined) return viewOf(deps, recent, item.rule);
+  const lost =
+    recent?.status === "queued" &&
+    now.getTime() - recent.createdAt.getTime() > WHATIF_CONFIG.queuedReuseMs;
+  if (recent !== undefined && !lost) return viewOf(deps, recent, item.rule);
+  if (recent !== undefined)
+    await deps.db
+      .update(deskWhatifs)
+      .set({ status: "failed", error: "stale", finishedAt: now })
+      .where(and(eq(deskWhatifs.id, recent.id), eq(deskWhatifs.status, "queued")));
 
   const config = bot.config as Record<string, unknown>;
   const options = optionsFor({

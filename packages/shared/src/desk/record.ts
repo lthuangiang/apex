@@ -8,6 +8,8 @@ import { WHATIF_CONFIG, type ConfigPatch } from "./whatif";
 export const RECORD_CONFIG = {
   /** Đo sau chừng này kể từ lúc version AI được áp (DEC-166: "7 ngày sau mỗi Apply"). */
   measureMs: 7 * 86_400_000,
+  /** Dòng còn `queued` quá mức này (tin đo bị mất) → trả về `measuring` để scheduler xếp lại. */
+  staleQueuedMs: 60 * 60_000,
 } as const;
 
 export type RecordVerdict = "helped" | "made_worse" | "no_clear_effect";

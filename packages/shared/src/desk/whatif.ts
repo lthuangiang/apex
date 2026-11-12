@@ -15,6 +15,15 @@ export const WHATIF_CONFIG = {
   minTrades: 5,
   /** Chênh nhỏ hơn mức này (USDC) coi như không khác (như "No clear effect" của DEC-166). */
   noClearEffectUsd: "0.5",
+  /**
+   * Job còn `queued` lâu hơn mức này coi như tin trong hàng đợi đã mất (ví dụ worker bản cũ nhận rồi bỏ lúc deploy):
+   * không dùng lại, đánh `failed` (`stale`) và xếp job mới.
+   */
+  queuedReuseMs: 2 * 60_000,
+  /** Scheduler đánh `failed` (`stale`) job còn `queued` quá mức này. */
+  staleQueuedMs: 10 * 60_000,
+  /** Job `failed` còn hiện trên trang chủ chừng này rồi mới xếp lại (không xếp lại mỗi lần tải trang). */
+  failedRetryMs: 10 * 60_000,
 } as const;
 
 export const WHATIF_OPTION_KEYS = [

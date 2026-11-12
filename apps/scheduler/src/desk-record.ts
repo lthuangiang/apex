@@ -1,6 +1,6 @@
-import { botVersions, deskApplies, outbox, type Db } from "@drift/db";
-import { RECORD_CONFIG } from "@drift/shared";
-import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
+import { botVersions, deskApplies, deskWhatifs, outbox, type Db } from "@drift/db";
+import { RECORD_CONFIG, WHATIF_CONFIG } from "@drift/shared";
+import { and, eq, inArray, isNotNull, lt, lte, or } from "drizzle-orm";
 
 // AI Desk B+ M4 (DEC-166): 7 ngày sau khi version "AI suggested" được áp, xếp job đo thành tích vào hàng đợi
 // `backtest.run` (payload `{ applyId }`). Mốc là lúc version thật sự được áp (bot đang chạy thì engine áp sau), không
@@ -42,4 +42,44 @@ export async function queueDueRecords(db: Db, now: number): Promise<number> {
         .values(moved.map((m) => ({ topic: "backtest.run", payload: { applyId: m.id } })));
     return moved.length;
   });
+}
+
+/**
+ * Dọn job AI Desk kẹt vì tin trong hàng đợi bị mất (worker bản cũ nhận rồi bỏ lúc deploy, hoặc worker chết giữa chừng):
+ * - what-if `queued` quá `staleQueuedMs` hoặc `running` quá 3 lần mức đó → `failed` (`stale`): UI thôi chờ, trang chủ
+ *   xếp so sánh mới sau `failedRetryMs`.
+ * - Thành tích `queued` quá `RECORD_CONFIG.staleQueuedMs` → `measuring`: `queueDueRecords` xếp lại ở lượt sau. Worker
+ *   chỉ xử lý dòng `queued`, chạy trùng cũng ghi cùng kết quả.
+ */
+export async function sweepStaleDeskJobs(
+  db: Db,
+  now: number,
+): Promise<{ whatifs: number; records: number }> {
+  const whatifs = await db
+    .update(deskWhatifs)
+    .set({ status: "failed", error: "stale", finishedAt: new Date(now) })
+    .where(
+      or(
+        and(
+          eq(deskWhatifs.status, "queued"),
+          lt(deskWhatifs.createdAt, new Date(now - WHATIF_CONFIG.staleQueuedMs)),
+        ),
+        and(
+          eq(deskWhatifs.status, "running"),
+          lt(deskWhatifs.createdAt, new Date(now - 3 * WHATIF_CONFIG.staleQueuedMs)),
+        ),
+      ),
+    )
+    .returning({ id: deskWhatifs.id });
+  const records = await db
+    .update(deskApplies)
+    .set({ recordStatus: "measuring", updatedAt: new Date(now) })
+    .where(
+      and(
+        eq(deskApplies.recordStatus, "queued"),
+        lt(deskApplies.updatedAt, new Date(now - RECORD_CONFIG.staleQueuedMs)),
+      ),
+    )
+    .returning({ id: deskApplies.id });
+  return { whatifs: whatifs.length, records: records.length };
 }

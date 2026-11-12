@@ -132,7 +132,9 @@ function Home({ v }: { v: DeskHomeView }) {
           {v.items.length === 0 ? (
             <EmptyState title={t("nothing")} description={t("nothingBody")} />
           ) : (
-            v.items.map((item) => <NeedsYouCard key={item.id} item={item} />)
+            v.items.map((item) => (
+              <NeedsYouCard key={item.id} item={item} checkedAt={v.checkedAt} />
+            ))
           )}
           <RecordLink />
         </section>
