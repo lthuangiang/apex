@@ -653,7 +653,7 @@ export async function notificationSettingsOf(deps: AccountDeps, userId: string) 
     .from(notificationSettings)
     .where(eq(notificationSettings.userId, userId));
   return {
-    // Nhóm hệ thống không có trong bảng Settings (DEC-TBD-telegram-notify-group).
+    // Nhóm hệ thống không có trong bảng Settings (DEC-183).
     groups: (Object.keys(NOTIFICATION_GROUPS) as NotificationGroup[])
       .filter((group) => !SYSTEM_GROUPS.includes(group))
       .map((group) => {

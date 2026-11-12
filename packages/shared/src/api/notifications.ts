@@ -13,7 +13,7 @@ export const NOTIFICATION_TYPES = [
   "fill",
   "daily_summary",
   "leader_big_move",
-  // Trạng thái kênh Telegram (DEC-TBD-telegram-notify-group); `telegram_blocked` thêm ở N3.
+  // Trạng thái kênh Telegram (DEC-183); `telegram_blocked` thêm ở N3.
   "telegram_connected",
   "telegram_moved",
 ] as const;
@@ -30,7 +30,7 @@ export const NOTIFICATION_GROUPS = {
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
 /**
- * Nhóm hệ thống (DEC-TBD-telegram-notify-group): luôn bật, chỉ in-app (không email, không Telegram), ẩn khỏi
+ * Nhóm hệ thống (DEC-183): luôn bật, chỉ in-app (không email, không Telegram), ẩn khỏi
  * bảng Settings. Worker gửi Telegram (N3) phải bỏ qua các nhóm này.
  */
 export const SYSTEM_GROUPS: readonly NotificationGroup[] = ["telegram"];

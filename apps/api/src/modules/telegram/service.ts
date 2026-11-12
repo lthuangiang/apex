@@ -243,7 +243,7 @@ async function connect(
         set: { chatId, username, status: "active", connectedAt: now, blockedAt: null },
       });
     const movedFromUserId = moved[0]?.userId ?? null;
-    // Thông báo in-app nhóm hệ thống `telegram` (DEC-TBD-telegram-notify-group): luôn bật, không email,
+    // Thông báo in-app nhóm hệ thống `telegram` (DEC-183): luôn bật, không email,
     // không Telegram. Payload chỉ có username, không có chat id.
     await tx.insert(notifications).values({
       userId,

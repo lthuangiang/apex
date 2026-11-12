@@ -152,7 +152,7 @@ describe("Telegram link", () => {
     expect((await status(one.client)).status).toBe("not_connected");
     const rows = await env.pool.query("select user_id from telegram_links where chat_id = 5007");
     expect(rows.rows).toEqual([{ user_id: two.userId }]);
-    // In-app nhóm hệ thống (DEC-TBD-telegram-notify-group): user cũ được báo, user mới thấy "connected".
+    // In-app nhóm hệ thống (DEC-183): user cũ được báo, user mới thấy "connected".
     const notes = await env.pool.query<{ user_id: string; type: string; channel: string }>(
       "select user_id, type, channel from notifications where user_id = any($1) and type like 'telegram_%'",
       [[one.userId, two.userId]],
