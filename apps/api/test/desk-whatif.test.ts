@@ -268,6 +268,83 @@ describe("what-if and Apply", () => {
     expect(errorOf(changed.json()).details).toMatchObject({ reason: "version_changed" });
   });
 
+  it("applies once when Apply is pressed twice at the same time, and frees the slot when the version fails", async () => {
+    const { client } = await deskUser("whatif-race@example.com");
+    const botId = await bot(client, "volume_farm", farm, "ETH Farm");
+    await env.pool.query("update bots set state = 'running' where id = $1", [botId]);
+    await env.pool.query(
+      "insert into bot_reviews (id, bot_id, user_id, status, result, finished_at) select gen_random_uuid(), $1, user_id, 'done', $2, now() from bots where id = $1",
+      [botId, JSON.stringify(review)],
+    );
+    const [item] = await items(client);
+    const w = whatIfViewSchema.parse(
+      (await client.request("POST", `/api/v1/desk/needs-you/${item?.id ?? ""}/whatif`)).json(),
+    );
+    await finishWhatif(w.id, { keep: "-4", review_settings: "-2" });
+    const applyCount = async () =>
+      (
+        await env.pool.query<{ n: number }>(
+          "select count(*)::int as n from desk_applies where whatif_id = $1",
+          [w.id],
+        )
+      ).rows[0]?.n;
+
+    // Phương án có patch không hợp lệ: version mới bị từ chối, chỗ giữ được xoá.
+    const { rows } = await env.pool.query<{ options: { key: string; patch: unknown }[] }>(
+      "select options from desk_whatifs where id = $1",
+      [w.id],
+    );
+    const good = rows[0]?.options ?? [];
+    await env.pool.query("update desk_whatifs set options = $2 where id = $1", [
+      w.id,
+      JSON.stringify(
+        good.map((o) => (o.key === "review_settings" ? { ...o, patch: { leverage: 0 } } : o)),
+      ),
+    ]);
+    const bad = await client.request("POST", `/api/v1/desk/whatifs/${w.id}/apply`, {
+      body: { option: "review_settings" },
+    });
+    expect(bad.statusCode).toBeGreaterThanOrEqual(400);
+    expect(await applyCount()).toBe(0);
+    await env.pool.query("update desk_whatifs set options = $2 where id = $1", [
+      w.id,
+      JSON.stringify(good),
+    ]);
+
+    // Lần bấm kia đã giữ chỗ nhưng chưa commit: lần này phải chờ ở unique index rồi dừng, không tạo version thứ hai.
+    const other = await env.pool.connect();
+    try {
+      await other.query("begin");
+      await other.query(
+        "insert into desk_applies (id, whatif_id, user_id, bot_id, rule, option, from_version, baseline_config, applied_at) select gen_random_uuid(), id, user_id, bot_id, 'better_review', 'review_settings', 1, '{}', now() from desk_whatifs where id = $1",
+        [w.id],
+      );
+      const pending = client.request("POST", `/api/v1/desk/whatifs/${w.id}/apply`, {
+        body: { option: "review_settings" },
+      });
+      // Chờ tới khi request bị chặn bởi khoá của transaction kia.
+      for (let i = 0; i < 100; i += 1) {
+        const { rows: waiting } = await env.pool.query<{ n: number }>(
+          "select count(*)::int as n from pg_locks where not granted",
+        );
+        if ((waiting[0]?.n ?? 0) > 0) break;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      await other.query("commit");
+      const second = await pending;
+      expect(second.statusCode).toBe(409);
+      expect(errorOf(second.json()).details).toMatchObject({ reason: "applied" });
+    } finally {
+      other.release();
+    }
+    const { rows: versions } = await env.pool.query<{ version: number }>(
+      "select version from bot_versions where bot_id = $1 order by version",
+      [botId],
+    );
+    expect(versions.map((r) => r.version)).toEqual([1]);
+    expect(await applyCount()).toBe(1);
+  });
+
   it("never applies keep and hides comparisons of other users", async () => {
     const { client } = await deskUser("whatif-other@example.com");
     const keep = await client.request(

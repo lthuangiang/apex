@@ -1171,7 +1171,8 @@ export const deskApplies = pgTable(
     rule: text("rule").notNull(),
     option: text("option").notNull(),
     fromVersion: integer("from_version").notNull(),
-    toVersion: integer("to_version").notNull(),
+    // null trong lúc đang tạo version mới: dòng này giữ chỗ để mỗi so sánh chỉ Apply một lần.
+    toVersion: integer("to_version"),
     baselineConfig: jsonb("baseline_config").notNull(),
     appliedAt: tstz("applied_at").notNull(),
     ...timestamps,

@@ -1,5 +1,5 @@
 {
-  "id": "f4e61983-1b26-435c-8330-f845c31f4295",
+  "id": "89f271ca-669a-40b9-8c9a-8d773bc9cfd1",
   "prevId": "f3ea4125-29e7-49f5-b436-7d6a1588a7d0",
   "version": "7",
   "dialect": "postgresql",
@@ -1726,7 +1726,7 @@
           "name": "to_version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "baseline_config": {
           "name": "baseline_config",

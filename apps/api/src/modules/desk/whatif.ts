@@ -226,15 +226,16 @@ export async function applyWhatif(
     throw new AppError(ErrorCode.validationFailed, "This option has no result to apply.", {
       reason: "no_result",
     });
+  const applied = () =>
+    new AppError(ErrorCode.stateConflict, "This comparison was already applied.", {
+      reason: "applied",
+    });
   const [already] = await deps.db
     .select({ id: deskApplies.id })
     .from(deskApplies)
     .where(eq(deskApplies.whatifId, id))
     .limit(1);
-  if (already !== undefined)
-    throw new AppError(ErrorCode.stateConflict, "This comparison was already applied.", {
-      reason: "applied",
-    });
+  if (already !== undefined) throw applied();
   const bot = await activeVersion(deps, row.w.botId);
   if (bot.version !== row.w.botVersion)
     throw new AppError(
@@ -245,21 +246,37 @@ export async function applyWhatif(
       },
     );
   const baseline = bot.config as Record<string, unknown>;
-  const v = await newVersion(deps, userId, bot.b.id, {
-    config: applyPatch(baseline, chosen.patch),
-    paramSource: "ai",
-  });
-  await deps.db.insert(deskApplies).values({
-    whatifId: id,
-    userId,
-    botId: bot.b.id,
-    rule: row.rule,
-    option,
-    fromVersion: bot.version,
-    toVersion: v.version,
-    baselineConfig: baseline,
-    appliedAt: deps.now(),
-  });
+  // Giữ chỗ trước khi tạo version: hai lần bấm Apply cùng lúc chỉ một lần qua được unique index `desk_applies_whatif`.
+  const [held] = await deps.db
+    .insert(deskApplies)
+    .values({
+      whatifId: id,
+      userId,
+      botId: bot.b.id,
+      rule: row.rule,
+      option,
+      fromVersion: bot.version,
+      toVersion: null,
+      baselineConfig: baseline,
+      appliedAt: deps.now(),
+    })
+    .onConflictDoNothing({ target: deskApplies.whatifId })
+    .returning({ id: deskApplies.id });
+  if (held === undefined) throw applied();
+  let v: Awaited<ReturnType<typeof newVersion>>;
+  try {
+    v = await newVersion(deps, userId, bot.b.id, {
+      config: applyPatch(baseline, chosen.patch),
+      paramSource: "ai",
+    });
+  } catch (err) {
+    await deps.db.delete(deskApplies).where(eq(deskApplies.id, held.id));
+    throw err;
+  }
+  await deps.db
+    .update(deskApplies)
+    .set({ toVersion: v.version, updatedAt: deps.now() })
+    .where(eq(deskApplies.id, held.id));
   return {
     botId: bot.b.id,
     version: v.version,

@@ -6,7 +6,7 @@ CREATE TABLE "desk_applies" (
 	"rule" text NOT NULL,
 	"option" text NOT NULL,
 	"from_version" integer NOT NULL,
-	"to_version" integer NOT NULL,
+	"to_version" integer,
 	"baseline_config" jsonb NOT NULL,
 	"applied_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
