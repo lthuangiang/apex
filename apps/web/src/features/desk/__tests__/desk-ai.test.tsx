@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import type { DeskAiAnswer } from "@drift/shared";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
-import { Answer, greetingAt } from "../components/desk-ai";
+import { Answer, greetingAt, ThinkingTurn } from "../components/desk-ai";
 
 // Desk AI (DEC-164/165): câu mẫu khi LLM tắt / hết lượt / ngoài phạm vi chỉ dùng số từ fact; lời LLM hiện nguyên văn.
 
@@ -104,5 +104,36 @@ describe("morning brief greeting", () => {
     expect(
       screen.getByText(`${word}. One thing needs you today: Futures Grid.`),
     ).toBeInTheDocument();
+  });
+});
+
+describe("thinking indicator", () => {
+  it("shows the question at once and says what Desk AI is doing while the answer is slow", () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+          <ul>
+            <ThinkingTurn question="Why did I lose money?" />
+          </ul>
+        </NextIntlClientProvider>,
+      );
+      expect(screen.getByText("Why did I lose money?")).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("Thinking…");
+      act(() => {
+        vi.advanceTimersByTime(3_500);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent("Looking at your bots…");
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent("Writing the answer…");
+      act(() => {
+        vi.advanceTimersByTime(7_000);
+      });
+      expect(screen.getByRole("status")).toHaveTextContent("Double-checking the numbers…");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

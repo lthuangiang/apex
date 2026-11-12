@@ -103,6 +103,67 @@ export function Answer({ answer }: { answer: DeskAiAnswer }) {
   );
 }
 
+/** Các bước thật của một câu hỏi (đọc dữ liệu bot → viết lời → kiểm tra số), đổi theo thời gian chờ. */
+const THINKING_STEPS = [
+  { after: 0, key: "thinking" },
+  { after: 3, key: "thinkingSteps.reading" },
+  { after: 8, key: "thinkingSteps.writing" },
+  { after: 15, key: "thinkingSteps.checking" },
+] as const;
+
+/**
+ * Câu hỏi vừa gửi hiện ngay (bong bóng), bên dưới là dấu ✦ nhấp nháy + ba chấm và dòng trạng thái đổi khi chờ lâu
+ * (giống khung chat của Claude). `prefers-reduced-motion` thì đứng yên, chỉ đổi chữ.
+ */
+export function ThinkingTurn({
+  question,
+  bubble = "accent",
+}: {
+  question: string | undefined;
+  bubble?: "accent" | "ink";
+}) {
+  const t = useTranslations("desk.ai");
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const id = setInterval(() => {
+      setSeconds(Math.floor((Date.now() - started) / 1000));
+    }, 500);
+    return () => {
+      clearInterval(id);
+    };
+  }, []);
+  const step = [...THINKING_STEPS].reverse().find((s) => seconds >= s.after) ?? THINKING_STEPS[0];
+  return (
+    <li className="flex flex-col gap-2">
+      {question === undefined ? null : (
+        <p
+          className={`m-0 max-w-[85%] self-end rounded-[16px_16px_4px_16px] px-3.5 py-2 text-sm text-white ${
+            bubble === "accent" ? "bg-accent" : "bg-ink"
+          }`}
+        >
+          {question}
+        </p>
+      )}
+      <div role="status" aria-live="polite" className="flex items-center gap-2.5">
+        <span className="motion-safe:animate-pulse">
+          <AiMark size="sm" />
+        </span>
+        <span aria-hidden="true" className="flex items-center gap-1">
+          {[0, 150, 300].map((d) => (
+            <span
+              key={d}
+              className="size-1.5 rounded-full bg-accent motion-safe:animate-bounce"
+              style={{ animationDelay: `${String(d)}ms` }}
+            />
+          ))}
+        </span>
+        <span className="text-sm text-ink-2">{t(step.key)}</span>
+      </div>
+    </li>
+  );
+}
+
 function TurnView({ turn }: { turn: Turn }) {
   return (
     <li className="flex flex-col gap-2">
@@ -183,18 +244,14 @@ export function DeskAiPanel() {
           <p className="m-0 text-sm text-ink-2">{t("briefLater")}</p>
         ) : null}
         <PaperResults />
-        {turns.length === 0 ? null : (
+        {turns.length === 0 && !ask.isPending ? null : (
           <ul className="m-0 flex list-none flex-col gap-3 p-0" aria-live="polite">
             {turns.map((x) => (
               <TurnView key={x.id} turn={x} />
             ))}
+            {ask.isPending ? <ThinkingTurn question={ask.variables} /> : null}
           </ul>
         )}
-        {ask.isPending ? (
-          <p className="m-0 text-sm text-ink-2" aria-live="polite">
-            {t("thinking")}
-          </p>
-        ) : null}
         {ask.isError ? (
           <p role="alert" className="m-0 text-sm text-neg-ink">
             {t("error")}
