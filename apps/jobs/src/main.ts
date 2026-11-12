@@ -38,12 +38,24 @@ const env = z
     /** Kênh Telegram (DEC-170). Bật mà thiếu token thì không khởi động. */
     TELEGRAM_ENABLED: z.stringbool().default(false),
     DRIFT_TELEGRAM_BOT_TOKEN: z.string().optional(),
+    /** Bot API giả cho E2E; trống = api.telegram.org. Production trỏ về máy local thì không khởi động. */
+    DRIFT_TELEGRAM_API_ORIGIN: z.url().optional(),
+    NODE_ENV: z.string().optional(),
     /** Gốc URL web app cho nút trong tin Telegram (không chứa token đăng nhập). */
     DRIFT_APP_URL: z.url().default("https://desklabs.xyz"),
   })
   .refine((e) => !e.TELEGRAM_ENABLED || (e.DRIFT_TELEGRAM_BOT_TOKEN ?? "").length >= 20, {
     message: "TELEGRAM_ENABLED=true needs DRIFT_TELEGRAM_BOT_TOKEN",
   })
+  .refine(
+    (e) =>
+      e.NODE_ENV !== "production" ||
+      e.DRIFT_TELEGRAM_API_ORIGIN === undefined ||
+      !["localhost", "127.0.0.1", "::1", "[::1]"].includes(
+        new URL(e.DRIFT_TELEGRAM_API_ORIGIN).hostname,
+      ),
+    { message: "DRIFT_TELEGRAM_API_ORIGIN must not point to localhost in production" },
+  )
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "jobs" } });
 const sodex = loadSodexConfig(process.env);
@@ -106,7 +118,12 @@ if (env.TELEGRAM_ENABLED) {
         return Number(res?.[0]?.[1] ?? 0);
       },
     },
-    botApi: createBotApi({ token: env.DRIFT_TELEGRAM_BOT_TOKEN ?? "" }),
+    botApi: createBotApi({
+      token: env.DRIFT_TELEGRAM_BOT_TOKEN ?? "",
+      ...(env.DRIFT_TELEGRAM_API_ORIGIN === undefined
+        ? {}
+        : { origin: env.DRIFT_TELEGRAM_API_ORIGIN }),
+    }),
     appUrl: env.DRIFT_APP_URL,
     now: () => new Date(),
     warn: (msg: string, data: Record<string, unknown>) => {

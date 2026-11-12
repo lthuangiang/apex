@@ -12,6 +12,7 @@ import { Redis } from "ioredis";
 import { GenericContainer, Wait } from "testcontainers";
 
 import { startClaudeMock } from "./support/claude-mock";
+import { startTelegramMock } from "./support/telegram-mock";
 
 // Dựng toàn bộ hệ thống cho E2E (CODING_STANDARDS C14): Postgres + Vault + Mailpit bằng Testcontainers,
 // rồi chạy thật sodex-mock, signer, api và web. SoDEX luôn là mock: E2E không bao giờ ký lên mainnet (DEC-23).
@@ -24,7 +25,11 @@ export const PORTS = {
   web: 13100,
   reco: 18095,
   claude: 18097,
+  telegram: 18096,
 } as const;
+/** Token và webhook secret giả cho Telegram Bot API giả (không phải giá trị thật). */
+const TELEGRAM_FAKE_TOKEN = "e2e-fake-telegram-bot-token";
+const TELEGRAM_FAKE_SECRET = "e2e_fake_webhook_secret_0123456789abcdef";
 export const BUILDER_ID = "1645";
 /** Trader Hyperliquid seed sẵn cho spec Copy Trading (p13). */
 export const E2E_TRADER = "0xaaa0000000000000000000000000000000000001";
@@ -253,6 +258,11 @@ export default async function globalSetup() {
   // Claude API giả: Desk AI gọi tới đây (DESK_AI_BASE_URL), không bao giờ gọi Anthropic thật.
   const claude = await startClaudeMock(PORTS.claude);
   process.env.E2E_CLAUDE = `http://127.0.0.1:${String(PORTS.claude)}`;
+  // Telegram Bot API giả (N5): api và jobs gửi tin tới đây, không bao giờ gọi api.telegram.org.
+  const telegram = await startTelegramMock(PORTS.telegram);
+  const telegramOrigin = `http://127.0.0.1:${String(PORTS.telegram)}`;
+  process.env.E2E_TELEGRAM = telegramOrigin;
+  process.env.E2E_TELEGRAM_SECRET = TELEGRAM_FAKE_SECRET;
 
   const mailpitApi = `http://${mailpit.getHost()}:${String(mailpit.getMappedPort(8025))}`;
   process.env.E2E_MAILPIT = mailpitApi;
@@ -260,6 +270,7 @@ export default async function globalSetup() {
   process.env.E2E_WEB = `http://127.0.0.1:${String(PORTS.web)}`;
 
   const apiOrigin = `http://127.0.0.1:${String(PORTS.api)}`;
+  process.env.E2E_API = apiOrigin;
   const redisUrl = `redis://${redis.getHost()}:${String(redis.getMappedPort(6379))}`;
   const natsUrl = `nats://${nats.getHost()}:${String(nats.getMappedPort(4222))}`;
   // Thay marketdata: đẩy giá 100 cho vBTC_vUSDC mỗi giây vào NATS và Redis `md:last:*` (P7).
@@ -302,6 +313,9 @@ export default async function globalSetup() {
       SODEX_REST_WEIGHT_PER_MIN: "1000000",
       DRIFT_BUILDER_ID: BUILDER_ID,
       NODE_EXTRA_CA_CERTS: tls.cert,
+      TELEGRAM_ENABLED: "true",
+      DRIFT_TELEGRAM_BOT_TOKEN: TELEGRAM_FAKE_TOKEN,
+      DRIFT_TELEGRAM_API_ORIGIN: telegramOrigin,
       LOG_LEVEL: "warn",
     }),
     start("engine", ["--filter", "@drift/engine", "start"], {
@@ -372,6 +386,11 @@ export default async function globalSetup() {
       // Desk AI với Claude API giả (key giả, không phải key thật).
       DESK_AI_API_KEY: "e2e-fake-key",
       DESK_AI_BASE_URL: `http://127.0.0.1:${String(PORTS.claude)}`,
+      // Telegram với Bot API giả (N5).
+      TELEGRAM_ENABLED: "true",
+      DRIFT_TELEGRAM_BOT_TOKEN: TELEGRAM_FAKE_TOKEN,
+      DRIFT_TELEGRAM_WEBHOOK_SECRET: TELEGRAM_FAKE_SECRET,
+      DRIFT_TELEGRAM_API_ORIGIN: telegramOrigin,
       LOG_LEVEL: "warn",
     }),
   ];
@@ -382,6 +401,7 @@ export default async function globalSetup() {
     feedRedis.disconnect();
     for (const child of children) killGroup(child);
     claude.close();
+    telegram.close();
     await Promise.all([postgres.stop(), vault.stop(), mailpit.stop(), redis.stop(), nats.stop()]);
   };
   try {

@@ -147,7 +147,10 @@ Lỗi theo format C6. Thêm mã lỗi `TELEGRAM_NOT_CONNECTED`, `TELEGRAM_LINK_E
    - Một tin mỗi ngày địa phương, từ 08:00; lỡ giờ thì gửi bù tới trước 12:00, quá giờ thì bỏ ngày đó. Hôm "Nothing needs you" vẫn gửi.
    - Nội dung: dùng lại báo cáo sáng đã tạo trên web (lời LLM đã qua kiểm tra số); chưa có thì dùng câu mẫu từ "Needs you". Không gọi LLM chỉ vì Telegram; `TELEGRAM_BRIEF_LLM=true` thì đổi sang gọi LLM.
    - Nút "Open AI Desk" → `/desk`. Tắt cả vòng bằng `TELEGRAM_BRIEF_ENABLED=false`.
-6. **N5:** E2E, cập nhật `docs/SCREENS.md` 8.5, `docs/DOMAIN.md`, `docs/DEPLOY.md` (secret webhook, `setWebhook`).
+6. **N5:** E2E, cập nhật `docs/SCREENS.md` 8.5, `docs/DOMAIN.md`, `docs/DEPLOY.md` (secret webhook, `setWebhook`). **Đã làm:**
+   - E2E `e2e/flows/tests/p15-telegram.spec.ts` chạy với Bot API giả (`e2e/flows/support/telegram-mock.ts`, qua biến `DRIFT_TELEGRAM_API_ORIGIN`; biến này chỉ dùng cho E2E, production trỏ về localhost thì không khởi động).
+   - Luồng: Connect → `/start` → tin thử → cảnh báo rủi ro qua worker → `/stop`.
+   - Tài liệu: DEPLOY.md mục 2.8.
 
 ## 12. Đã chốt (DEC-170)
 

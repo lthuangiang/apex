@@ -110,7 +110,16 @@ Sau đó là checkbox xác nhận và nút `Start on mainnet`. Khi bấm: disabl
 Các tab: SoDEX access · Security · Notifications · Trading defaults · Profile.
 - **SoDEX access:** account, key `••last4`, ngày hết hạn, lần dùng gần nhất, quyền (Read ✓, Place/cancel ✓, Withdraw/transfer ✕ never), Renew key (ký), Disconnect (dialog + 2FA). Thẻ builder fee: Approved 0.01% → `Revoke (set to 0)…` (dialog + ký + 2FA); Revoked → `Sign to approve 0.01% again`.
 - **Security:** bật 2FA (QR → mã 6 số → backup code), các phương thức đăng nhập, danh sách phiên đăng nhập có nút sign out.
-- **Notifications:** lỗi bot / lệnh unknown / bot bị pause (luôn bật, switch bị disable), cảnh báo rủi ro, thay đổi key / phí, mọi fill, tóm tắt hằng ngày. Kênh: in-app, email (Telegram **[confirm]**).
+- **Notifications** (docs/NOTIFICATIONS.md, DEC-170; artboard NT-Settings, NT-Connect):
+  - **Bảng "What you get":** mỗi nhóm một dòng, ba kênh in-app / email / Telegram. Mặc định và nhóm luôn bật xem docs/NOTIFICATIONS.md mục 4.
+    - Bot problems luôn bật, switch bị disable.
+    - Nhóm chỉ in-app thì ô email bị khoá.
+    - "Team updates" (`teamOps`) chỉ hiện cho role `team` và chỉ có kênh Telegram (DEC-191).
+  - **Thẻ Telegram** (chỉ khi `TELEGRAM_ENABLED`; tắt thì thẻ ghi "Coming soon"). Mọi trạng thái lấy từ `GET /api/v1/telegram/link`:
+    - **Chưa kết nối:** "Get alerts on Telegram" + "Connect Telegram". Bấm thì mở dialog hai bước: QR + "Open Telegram" (deep link `t.me/desklabsbot?start=<token>`, sống 10 phút, dùng một lần), chờ tới khi user bấm Start, rồi "Telegram connected" với danh sách nhóm sẽ nhận. Link hết hạn thì có "Get a new link".
+    - **Đã kết nối:** "Connected as @username · since …", "Send a test" (3 lần / giờ), "Disconnect" (dialog liệt kê hậu quả; không hỏi 2FA vì chỉ giảm quyền).
+    - **Bị chặn** (Telegram trả 403): "Paused · bot blocked" + "Connect again".
+  - **Lệnh trong bot:** `/start`, `/status`, `/stop`, `/help` (docs/NOTIFICATIONS.md mục 5). Không lệnh nào đổi trạng thái bot. `/stop` gỡ kết nối giống Disconnect.
 - **Trading defaults:** Mode = LIVE (chỉ đọc, ghi "Paper trading: coming soon"), max loss mặc định, múi giờ, định dạng số.
 - **Profile:** tên, email, export CSV, xoá tài khoản (chỉ bật khi mọi bot đã dừng).
 
