@@ -130,7 +130,7 @@ Các tab: SoDEX access · Security · Notifications · Trading defaults · Profi
 
 ### 8.x Copy Trading (DEC-163)
 
-Chỉ hiện cho tài khoản được bật AI Desk (như S12, DEC-161). Sidebar: nhóm "Copy Trading" gồm "Find traders" và "Following", ngay sau Strategy Lab. Artboard: canvas "AI Desk redesign", hàng "Copy Trading v1". Logic: DEC-163, STRATEGIES.md S12.1.
+Chỉ hiện cho tài khoản được bật AI Desk (như S12, DEC-161). Sidebar: nhóm "Copy Trading" gồm "Find traders" và "Following", cuối khối main ngay trước TEAM (sau Execution & Orders và Risk Center; DEC-TBD-sidebar-order thay vị trí "ngay sau Strategy Lab" của DEC-163). Artboard: canvas "AI Desk redesign", hàng "Copy Trading v1". Logic: DEC-163, STRATEGIES.md S12.1.
 
 Route đã chốt (DEC-179). Thẻ Copy Trade ở Strategy Lab dẫn tới `/traders`; màn sửa bot copy khoá trader và danh sách market.
 
