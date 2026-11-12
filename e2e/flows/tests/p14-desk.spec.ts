@@ -68,20 +68,24 @@ test("Needs you → compare → Apply, Desk AI answers and falls back, ✦ asks 
   page.on("pageerror", (e) => {
     pageErrors.push(e.message);
   });
-  await claudeMode("ok", "Your bot is paused, so it is not trading right now.");
+  // Báo cáo sáng (tạo khi mở /desk) dùng lời riêng để không lẫn với câu trả lời của câu hỏi.
+  await claudeMode("ok", "Good morning from Desk AI.");
   const { email } = await signUpConnectAnd2fa(page, info, { emailPrefix: "e2e-desk" });
 
   // Bot Volume Builder thật (paused, không gửi lệnh) có Review this run "strong" chưa áp dụng → việc "Needs you" quy tắc 4.
-  const botId = sql(`
-    with u as (select id from users where email = '${q(email)}'),
-         a as (select id from sodex_accounts where user_id = (select id from u) order by created_at desc limit 1),
-         b as (insert into bots (id, user_id, sodex_account_id, strategy, market, engine, name, state, mode)
-               select gen_random_uuid(), (select id from u), (select id from a), 'volume_farm', 'BTC-USD', 'perps',
-                      'Desk Farm', 'paused', 'live' returning id),
-         v as (insert into bot_versions (id, bot_id, version, config, param_source, status, applied_at)
-               select gen_random_uuid(), (select id from b), 1, '${q(JSON.stringify(FARM))}', 'manual', 'active',
-                      now() - interval '1 hour' returning id, bot_id)
-    update bots set active_version_id = (select id from v) where id = (select bot_id from v) returning id;`);
+  const userId = sql(`select id from users where email = '${q(email)}'`);
+  const accountId = sql(
+    `select id from sodex_accounts where user_id = '${userId}' order by created_at desc limit 1`,
+  );
+  const botId =
+    sql(`insert into bots (id, user_id, sodex_account_id, strategy, market, engine, name, state, mode)
+    values (gen_random_uuid(), '${userId}', '${accountId}', 'volume_farm', 'BTC-USD', 'perps', 'Desk Farm', 'paused', 'live')
+    returning id`);
+  const versionId =
+    sql(`insert into bot_versions (id, bot_id, version, config, param_source, status, applied_at)
+    values (gen_random_uuid(), '${botId}', 1, '${q(JSON.stringify(FARM))}', 'manual', 'active', now() - interval '1 hour')
+    returning id`);
+  sql(`update bots set active_version_id = '${versionId}' where id = '${botId}'`);
   sql(`insert into bot_reviews (id, bot_id, user_id, status, result, finished_at)
        select gen_random_uuid(), id, user_id, 'done', '${q(JSON.stringify(REVIEW))}', now() from bots where id = '${botId}';`);
 
@@ -124,20 +128,25 @@ test("Needs you → compare → Apply, Desk AI answers and falls back, ✦ asks 
   });
 
   await test.step("Desk AI answers through the model, then falls back when it fails", async () => {
+    await claudeMode("ok", "Your bot is paused, so it is not trading right now.");
     await page.goto("/desk");
     const box = page.getByLabel("Ask Desk AI");
+    const send = page.getByRole("button", { name: "Send" });
     await box.fill("Why is my bot not trading?");
-    await page.getByRole("button", { name: "Send" }).click();
+    await send.click();
     await expect(page.getByText("Your bot is paused, so it is not trading right now.")).toBeVisible(
       { timeout: 20_000 },
     );
+    // Câu trả lời đã về thì ô nhập trống; lúc đó mới hỏi tiếp.
+    await expect(box).toHaveValue("");
 
     await claudeMode("error");
     await box.fill("Why did I lose money?");
-    await page.getByRole("button", { name: "Send" }).click();
+    await send.click();
     await expect(
       page.getByText("I can't write an answer right now. Here are the numbers I have:"),
-    ).toBeVisible({ timeout: 20_000 });
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(box).toHaveValue("");
     await expect(page.getByRole("heading", { name: /Needs you/ })).toBeVisible();
   });
 

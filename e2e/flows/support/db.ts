@@ -17,7 +17,7 @@ export function sql(query: string): string {
       pg.user,
       "-d",
       pg.db,
-      "-At",
+      "-qAt",
       "-c",
       query,
     ],
