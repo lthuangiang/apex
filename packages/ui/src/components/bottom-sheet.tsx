@@ -12,6 +12,8 @@ export interface BottomSheetProps {
   children: ReactNode;
   /** Nút chính ghim ở đáy, có safe-area padding (docs/DESIGN.md, Responsive). */
   footer?: ReactNode;
+  /** Dưới 768px chiếm toàn màn hình (ví dụ panel thông báo); từ 768px vẫn là dialog giữa màn hình. */
+  fullScreen?: boolean;
 }
 
 const overlayClass = "fixed inset-0 z-50 bg-ink/40";
@@ -30,6 +32,7 @@ export function BottomSheet({
   description,
   children,
   footer,
+  fullScreen = false,
 }: BottomSheetProps) {
   const returnFocus = useReturnFocus();
   return (
@@ -37,7 +40,11 @@ export function BottomSheet({
       <Dialog.Portal>
         <Dialog.Overlay className={overlayClass} />
         <Dialog.Content
-          className={dialogContentClass}
+          className={cx(
+            dialogContentClass,
+            fullScreen &&
+              "max-md:top-0 max-md:max-h-dvh max-md:rounded-none max-md:pt-[calc(1.25rem+env(safe-area-inset-top))]",
+          )}
           {...returnFocus}
           {...(description ? {} : { "aria-describedby": undefined })}
         >

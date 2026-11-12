@@ -2575,7 +2575,24 @@
     "desk.goal.none",
     "desk.goal.goals.automate",
     "desk.goal.goals.range",
-    "desk.goal.goals.accumulate"
+    "desk.goal.goals.accumulate",
+    "notifications.panel.tabsLabel",
+    "notifications.panel.loading",
+    "notifications.panel.loadFailed",
+    "notifications.panel.staleSince",
+    "notifications.panel.unreadPrefix",
+    "notifications.panel.titles.stopped",
+    "notifications.panel.titles.paper_paused",
+    "notifications.panel.titles.paper_stopped",
+    "notifications.panel.titles.fill",
+    "notifications.panel.body.stoppedReason",
+    "notifications.panel.body.keptOrders",
+    "notifications.panel.body.paper",
+    "notifications.panel.body.risk",
+    "notifications.reasonText",
+    "notifications.toast.seeAll",
+    "notifications.toast.dismiss",
+    "notifications.toast.merged"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -3809,6 +3826,66 @@
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
       "bot_stopped": "A fake-money test stopped"
+    },
+    "panel": {
+      "all": "All",
+      "needsYou": "Needs you",
+      "needsYouCount": "Needs you · {n}",
+      "tabsLabel": "Show notifications",
+      "today": "Today",
+      "earlier": "Earlier",
+      "empty": "You're all caught up.",
+      "loading": "Loading notifications…",
+      "loadFailed": "Couldn't load notifications. We'll try again shortly.",
+      "staleSince": "Couldn't refresh. Showing notifications from {time}.",
+      "unreadPrefix": "Unread:",
+      "settings": "Notification settings",
+      "seeAll": "See all",
+      "actions": {
+        "review": "Review",
+        "open": "Open",
+        "seeDesk": "See AI Desk"
+      },
+      "titles": {
+        "paused": "{bot} paused",
+        "stopped": "{bot} stopped",
+        "paper_paused": "Fake-money test {bot} paused",
+        "paper_stopped": "Fake-money test {bot} stopped",
+        "unknown": "Order result unknown · {bot}",
+        "fill": "{bot} filled an order"
+      },
+      "body": {
+        "pausedReason": "{reason}. Open orders were kept.",
+        "stoppedReason": "{reason}.",
+        "keptOrders": "Open orders were kept.",
+        "paper": "No real money was used.",
+        "unknown": "DeskLabs won't resend it until SoDEX confirms.",
+        "risk": "Running bots were paused.",
+        "keyFee": "Your API key or builder fee approval changed."
+      }
+    },
+    "reasonText": {
+      "BUILDER_FEE_REVOKED": "Builder fee approval is 0",
+      "API_KEY_EXPIRED": "DeskLabs API key expired",
+      "API_KEY_UNUSABLE": "DeskLabs can’t sign with your API key",
+      "API_KEY_DELETED": "DeskLabs API key deleted",
+      "RISK_DAILY_LOSS": "Daily loss limit reached",
+      "RISK_DRAWDOWN": "Drawdown limit reached",
+      "BOT_MAX_LOSS": "Max loss for this bot reached",
+      "ORDER_REJECTED": "SoDEX rejected an order",
+      "INSUFFICIENT_BALANCE": "Balance too low",
+      "STOP_LOSS": "Stop loss reached",
+      "TAKE_PROFIT": "Take profit reached",
+      "EMERGENCY_HALT": "Emergency halt",
+      "BUDGET_DONE": "Budget used",
+      "MAX_CYCLES": "Max cycles reached",
+      "MAX_CYCLES_VOLUME": "Volume target reached"
+    },
+    "toast": {
+      "review": "Review",
+      "seeAll": "See all",
+      "dismiss": "Dismiss",
+      "merged": "{n} alerts need you"
     }
   },
   "adminUser": {

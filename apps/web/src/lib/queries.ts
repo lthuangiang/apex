@@ -49,8 +49,10 @@ export function useNotifications(enabled = true) {
   return useQuery({
     queryKey: NOTIFICATIONS_KEY,
     queryFn: () => api("GET", "/api/v1/notifications", notificationListSchema),
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    // Poll 15 s khi tab đang hiện; tab ẩn thì ngừng (docs/NOTIFICATIONS.md mục 7, không SSE ở v1).
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
     enabled,
   });
 }

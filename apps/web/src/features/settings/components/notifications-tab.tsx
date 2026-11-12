@@ -80,7 +80,8 @@ export function NotificationsTab() {
         <ComingSoonChip label={t("telegram")} className="self-start" />
       </section>
 
-      <section className="flex flex-col gap-3 rounded-card bg-surface p-5">
+      {/* Đích của "See all" trong panel chuông. */}
+      <section id="all-notifications" className="flex flex-col gap-3 rounded-card bg-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="m-0 text-lg font-extrabold">{tn("title")}</h2>
           {list.data === undefined || list.data.unread === 0 ? null : (

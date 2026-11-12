@@ -5,7 +5,6 @@ import { AppShell, LiveBadge, type MobileNav, type NavItem } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
-  Bell,
   BrainCircuit,
   Bot,
   ChevronDown,
@@ -38,6 +37,11 @@ import {
   type ReactNode,
 } from "react";
 
+import {
+  MobileNotificationsButton,
+  NotificationBell,
+} from "@/features/notifications/components/notification-panel";
+import { NotificationToasts } from "@/features/notifications/components/notification-toast";
 import { api } from "@/lib/api";
 import { formatDateTime, shortAddress } from "@/lib/format";
 import { useFeatures, useMe, useSodexConnection, useNotifications } from "@/lib/queries";
@@ -161,6 +165,7 @@ export function WorkspaceShell({
       renderLink={({ children, ...props }) => <Link {...props}>{children}</Link>}
     >
       {children}
+      <NotificationToasts />
     </AppShell>
   );
 }
@@ -304,22 +309,10 @@ function StatusCluster() {
 }
 
 function NotificationsAndAccount({ unread }: { unread: number }) {
-  const t = useTranslations("common.shell");
   return (
     <>
-      <Link
-        href="/settings?tab=notifications"
-        aria-label={t("notifications", { n: unread })}
-        className="relative flex size-11 items-center justify-center rounded-[14px] border border-border bg-surface text-ink-2"
-      >
-        <Bell aria-hidden="true" size={20} />
-        {unread > 0 ? (
-          <span
-            aria-hidden="true"
-            className="absolute top-[9px] right-2.5 size-2 rounded-full border-2 border-surface bg-neg"
-          />
-        ) : null}
-      </Link>
+      {/* Chuông mở panel thông báo, không chuyển sang Settings nữa (docs/NOTIFICATIONS.md mục 7). */}
+      <NotificationBell unread={unread} />
       <AccountMenu />
     </>
   );
@@ -399,13 +392,7 @@ function MoreFooter() {
           <span className="text-muted tabular-nums">{shortAddress(c.address)}</span>
         </Link>
       )}
-      <Link
-        href="/settings?tab=notifications"
-        className="flex min-h-tap items-center gap-3 rounded-control px-3 text-sm font-semibold text-ink-2 no-underline"
-      >
-        <Bell aria-hidden="true" size={20} />
-        {t("notifications", { n: unread })}
-      </Link>
+      <MobileNotificationsButton unread={unread} />
       {me.data === undefined ? null : (
         <span className="truncate px-3 text-sm text-ink-2" title={me.data.email}>
           {me.data.email}
