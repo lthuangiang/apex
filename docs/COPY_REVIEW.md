@@ -99,7 +99,7 @@ Cùng tiêu chí các đợt trước; thêm: thuật ngữ kỹ thuật (ATR, R
 Mọi chuỗi còn lại giữ nguyên. `_pendingReview` để trống.
 
 
-## Đợt 5 (2026-11-13, DEC-TBD-copy-review-5)
+## Đợt 5 (2026-11-13, DEC-196)
 
 Người dùng giao PM tự chốt 308 key (khoảng 1.000 chuỗi) dồn từ #33 tới #47: Telegram (thẻ kết nối, hộp thoại ngắt kết nối,
 nhóm Team updates), chuông và toast, AI Desk B+ (Needs you, so sánh, thành tích, thẻ Mục tiêu, Desk AI, Ask about this, tạo bot
