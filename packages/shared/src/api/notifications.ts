@@ -13,9 +13,10 @@ export const NOTIFICATION_TYPES = [
   "fill",
   "daily_summary",
   "leader_big_move",
-  // Trạng thái kênh Telegram (DEC-183); `telegram_blocked` thêm ở N3.
+  // Trạng thái kênh Telegram (nhóm hệ thống `telegram`, DEC-183).
   "telegram_connected",
   "telegram_moved",
+  "telegram_blocked",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -26,7 +27,7 @@ export const NOTIFICATION_GROUPS = {
   fills: ["fill"],
   daily: ["daily_summary"],
   copyTrading: ["leader_big_move"],
-  telegram: ["telegram_connected", "telegram_moved"],
+  telegram: ["telegram_connected", "telegram_moved", "telegram_blocked"],
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
 /**

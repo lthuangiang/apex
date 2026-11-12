@@ -1,6 +1,4 @@
-import { z } from "zod";
-
-// Client Bot API tối thiểu bằng `fetch` (docs/NOTIFICATIONS.md mục 6: không thêm dependency).
+// Client Bot API tối thiểu bằng `fetch` cho api và jobs (docs/NOTIFICATIONS.md mục 6: không thêm dependency).
 // Token nằm trong URL (`/bot<token>/<method>`), nên URL không bao giờ được log hay đưa vào lỗi: chỉ ghi tên
 // method và kết quả (CLAUDE.md quy tắc 1.9).
 
@@ -34,11 +32,27 @@ export interface BotApi {
   sendMessage(message: SendMessage): Promise<BotApiResult>;
 }
 
-const responseSchema = z.object({
-  ok: z.boolean(),
-  description: z.string().optional(),
-  parameters: z.object({ retry_after: z.number().int().optional() }).optional(),
-});
+interface TelegramResponse {
+  ok: boolean;
+  description: string;
+  retryAfter: number | null;
+}
+
+function parseResponse(raw: unknown): TelegramResponse | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.ok !== "boolean") return null;
+  const params = r.parameters;
+  const retry =
+    typeof params === "object" && params !== null
+      ? (params as Record<string, unknown>).retry_after
+      : undefined;
+  return {
+    ok: r.ok,
+    description: typeof r.description === "string" ? r.description : "",
+    retryAfter: typeof retry === "number" && Number.isInteger(retry) ? retry : null,
+  };
+}
 
 export function createBotApi(options: {
   token: string;
@@ -58,13 +72,13 @@ export function createBotApi(options: {
           body: JSON.stringify(message),
           signal: AbortSignal.timeout(timeoutMs),
         });
-        const parsed = responseSchema.safeParse(await res.json().catch(() => null));
-        if (res.ok && parsed.success && parsed.data.ok) return { ok: true };
+        const parsed = parseResponse(await res.json().catch(() => null));
+        if (res.ok && parsed?.ok === true) return { ok: true };
         return {
           ok: false,
           status: res.status,
-          description: redact(parsed.success ? (parsed.data.description ?? "") : "", options.token),
-          retryAfterSec: parsed.success ? (parsed.data.parameters?.retry_after ?? null) : null,
+          description: redactToken(parsed?.description ?? "", options.token),
+          retryAfterSec: parsed?.retryAfter ?? null,
         };
       } catch (error) {
         // Lỗi fetch có thể chứa URL (gồm token): chỉ giữ tên lỗi.
@@ -76,6 +90,15 @@ export function createBotApi(options: {
 }
 
 /** Bỏ token khỏi chuỗi bất kỳ trước khi log (phòng khi Telegram lặp lại URL). */
-export function redact(text: string, token: string): string {
+export function redactToken(text: string, token: string): string {
   return token.length === 0 ? text : text.split(token).join("[redacted]");
+}
+
+/**
+ * Người dùng chặn bot / xoá chat (mục 3 "Bị chặn", mục 6): 403, hoặc 400 "chat not found". Khi đó đặt `blocked`
+ * và ngừng gửi; gửi lại không có ích.
+ */
+export function isBlockedResult(r: BotApiResult): boolean {
+  if (r.ok) return false;
+  return r.status === 403 || (r.status === 400 && /chat not found/i.test(r.description));
 }

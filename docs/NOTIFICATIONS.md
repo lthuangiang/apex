@@ -63,11 +63,11 @@ Morning brief do Desk AI viết theo luật fact (DEC-164/165). Khi LLM tắt ho
   - bất cứ thứ gì ngoài 4 ký tự cuối của key.
 - Tên bot do user đặt luôn được escape (`parse_mode: HTML`, escape `& < >`), nên không thể trở thành link hay lệnh.
 - Bot tiền giả (DEC-105): tiêu đề luôn ghi "fake-money test".
-- **Gộp tin:** nhiều sự kiện cùng nhóm trong 60 s (ví dụ revoke fee hay halt all làm pause nhiều bot) thì gửi một tin gộp, dạng "3 bots paused: builder fee approval is 0."
+- **Gộp tin:** nhiều sự kiện cùng nhóm trong 60 s (ví dụ revoke fee hay halt all làm pause nhiều bot) thì gửi một tin gộp, dạng "3 bots paused: builder fee approval is 0." Cách đếm (PM chốt, PR4): tin đầu của một nhóm chờ 5 s để gom rồi gửi 1 tin (1 sự kiện → tin thường, ≥ 2 → tin gộp); tin cùng nhóm tới trong phần còn lại của cửa sổ 60 s sau lần gửi đó được giữ và gửi chung 1 tin gộp ở cuối cửa sổ. Bot problems vẫn đi hàng ưu tiên.
 
 **Lệnh của bot (v1):**
 - `/start [token]`: kết nối. Không có token thì bot chỉ cách kết nối từ app.
-- `/status`: tên bot, trạng thái và PnL hôm nay của từng bot (từ fact backend). Giới hạn 10 lần/giờ/chat.
+- `/status`: tên bot, trạng thái và **PnL tổng** của từng bot (cùng `netPnl` với Strategy Lab, có ▲/▼ và đơn vị; thiếu → "Not available"), ví dụ "🟢 ETH Grid · running · total +12.40 USDC ▲". PnL theo ngày để sau khi có fact (DEC-TBD-telegram-status-total). Giới hạn 10 lần/giờ/chat.
 - `/stop`: ngắt kết nối.
 - `/help`: danh sách lệnh.
 

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import type { Db } from "@drift/db";
+import { createBotApi, isBlockedResult, type SendMessage } from "@drift/runtime";
 import { errorResponseSchema, escapeTelegramHtml } from "@drift/shared";
 import { fastifyCookie as cookie } from "@fastify/cookie";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -9,8 +10,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadApiConfig } from "../src/config";
 import { randomToken } from "../src/lib/crypto";
 import { registerErrorHandler } from "../src/lib/http";
-import { createBotApi, type SendMessage } from "../src/modules/telegram/bot-api";
 import { registerTelegramRoutes, TELEGRAM_WEBHOOK_PATH } from "../src/modules/telegram/routes";
+import { formatTotalPnl, pnlUnit } from "../src/modules/telegram/service";
 import { isWellFormedToken, parseCommand } from "../src/modules/telegram/update";
 import { memoryRateLimiter } from "../src/plugins/rate-limit";
 import { registerSession } from "../src/plugins/session";
@@ -140,6 +141,46 @@ describe("createBotApi", () => {
   });
 });
 
+describe("/status total PnL (DEC-TBD-telegram-status-total)", () => {
+  const b = (
+    netPnl: string | null,
+    fills = 3,
+    engine: "spot" | "perps" = "perps",
+    market = "BTC-USD",
+  ) => ({
+    netPnl,
+    fills,
+    engine,
+    market,
+  });
+  it("shows the Strategy Lab net PnL with ▲/▼ and unit, never a made-up zero", () => {
+    expect(formatTotalPnl(b("1.3249"))).toBe("+1.32 USDC ▲");
+    expect(formatTotalPnl(b("-4.951"))).toBe("−4.95 USDC ▼");
+    expect(formatTotalPnl(b("0"))).toBe("0.00 USDC");
+    expect(formatTotalPnl(b(null))).toBe("Not available");
+    expect(formatTotalPnl(b(null, 0))).toBe("No fills yet");
+    expect(formatTotalPnl(b("2", 1, "spot", "vETH_vUSDC"))).toBe("+2.00 USDC ▲");
+  });
+  it("uses the quote asset for spot, USDC otherwise", () => {
+    expect(pnlUnit({ engine: "spot", market: "vBTC_vUSDC" })).toBe("USDC");
+    expect(pnlUnit({ engine: "spot", market: "vSOL_vBTC" })).toBe("BTC");
+    expect(pnlUnit({ engine: "perps", market: "BTC-USD" })).toBe("USDC");
+  });
+});
+
+describe("isBlockedResult", () => {
+  it("treats 403 and 'chat not found' as blocked, nothing else", () => {
+    const fail = (status: number, description = "") =>
+      ({ ok: false, status, description, retryAfterSec: null }) as const;
+    expect(isBlockedResult(fail(403, "Forbidden: bot was blocked by the user"))).toBe(true);
+    expect(isBlockedResult(fail(400, "Bad Request: chat not found"))).toBe(true);
+    expect(isBlockedResult(fail(400, "Bad Request: message is too long"))).toBe(false);
+    expect(isBlockedResult(fail(429))).toBe(false);
+    expect(isBlockedResult(fail(502))).toBe(false);
+    expect(isBlockedResult({ ok: true })).toBe(false);
+  });
+});
+
 describe("loadApiConfig", () => {
   const env = {
     DATABASE_URL: "postgres://x",
@@ -195,6 +236,7 @@ async function miniApp(enabled = true): Promise<FastifyInstance> {
       botApi: { sendMessage: () => Promise.reject(new Error("must not send from webhook")) },
       rateLimiter: memoryRateLimiter(),
       warn: () => undefined,
+      listBots: () => Promise.reject(new Error("must not list bots here")),
     },
   });
   app.post("/api/v1/other", () => ({ ok: true }));

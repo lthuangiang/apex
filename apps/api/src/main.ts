@@ -1,5 +1,5 @@
 import { createDb } from "@drift/db";
-import { loadClientTls } from "@drift/runtime";
+import { loadClientTls, createBotApi } from "@drift/runtime";
 import { RedisRateLimitStore, SignedWriteClient, SodexRestClient } from "@drift/sodex";
 import { Redis } from "ioredis";
 import { z } from "zod";
@@ -10,7 +10,6 @@ import { smtpMailer } from "./lib/mailer";
 import { httpRecoClient } from "./lib/reco-client";
 import { httpSignerClient } from "./lib/signer-client";
 import { hyperliquidProvider } from "./modules/chart/hyperliquid";
-import { createBotApi } from "./modules/telegram/bot-api";
 import { redisRateLimiter } from "./plugins/rate-limit";
 
 const config = loadApiConfig(process.env);

@@ -86,6 +86,8 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
       }
       case "telegram_moved":
         return { title: t("types.telegram_moved"), body: t("panel.body.telegramMoved") };
+      case "telegram_blocked":
+        return { title: t("types.telegram_blocked"), body: t("panel.body.telegramBlocked") };
       case "leader_big_move": {
         const coin = str(n.data.coin);
         return { title: t("types.leader_big_move"), body: coin };

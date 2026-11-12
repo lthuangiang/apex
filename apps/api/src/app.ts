@@ -1,4 +1,5 @@
 import type { Db } from "@drift/db";
+import type { BotApi } from "@drift/runtime";
 import { fastifyCookie as cookie } from "@fastify/cookie";
 import Fastify, { type FastifyInstance } from "fastify";
 
@@ -10,7 +11,7 @@ import { registerAccountRoutes } from "./modules/account/routes";
 import { registerAuthRoutes } from "./modules/auth/routes";
 import { registerBacktestRoutes } from "./modules/backtests/routes";
 import { registerBotRoutes } from "./modules/bots/routes";
-import { aiDeskOn, volumeBotsOn } from "./modules/bots/service";
+import { aiDeskOn, listBots, volumeBotsOn } from "./modules/bots/service";
 import { registerChartRoutes } from "./modules/chart/routes";
 import { createChartService, type LiquidationProvider } from "./modules/chart/service";
 import { registerCopyRoutes } from "./modules/copy/routes";
@@ -21,7 +22,6 @@ import { registerPublicRoutes } from "./modules/public/routes";
 import { registerRecoRoutes } from "./modules/reco/routes";
 import { registerSodexRoutes } from "./modules/sodex/routes";
 import type { SodexDeps } from "./modules/sodex/service";
-import type { BotApi } from "./modules/telegram/bot-api";
 import { registerTelegramRoutes } from "./modules/telegram/routes";
 import { registerPlainDecimals } from "./plugins/plain-decimals";
 import { registerRateLimit, type RateLimiter } from "./plugins/rate-limit";
@@ -173,6 +173,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       appUrl: tg?.appUrl ?? "https://desklabs.xyz",
       botApi: tg?.botApi ?? { sendMessage: () => Promise.resolve({ ok: true }) },
       rateLimiter: deps.rateLimiter,
+      listBots: (userId) => listBots(botDeps, userId),
       warn: (msg, data) => {
         app.log.warn(data, msg);
       },

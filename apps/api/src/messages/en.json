@@ -12,6 +12,18 @@
     "howToConnect": "To get alerts here, open DeskLabs › Settings › Notifications and tap Connect Telegram.",
     "help": "/status · your bots right now\n/stop · stop all alerts here\n/help · this list\n\nTo change bots, open DeskLabs.",
     "freeText": "I only send alerts for now. Open DeskLabs to ask Desk AI.",
-    "disconnected": "Disconnected from DeskLabs."
+    "disconnected": "Disconnected from DeskLabs.",
+    "test": "🧪 Test message from DeskLabs. Alerts will look like this.",
+    "openDesk": "Open AI Desk",
+    "status": {
+      "title": "<b>Your bots</b>",
+      "line": "{dot} {bot} · {state} · total {pnl}",
+      "fakeMoney": " · fake money",
+      "notAvailable": "Not available",
+      "noFills": "No fills yet",
+      "none": "You have no bots yet. Open DeskLabs to start one.",
+      "more": "+{n} more in DeskLabs",
+      "rateLimited": "You can check /status 10 times an hour. Open DeskLabs to see your bots now."
+    }
   }
 }

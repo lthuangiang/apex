@@ -187,6 +187,12 @@ services:
   jobs:              # import lịch sử, account analysis, reconcile lệnh unknown, builder revenue, notifications
     <<: *app
     build: { context: ., dockerfile: apps/jobs/Dockerfile }
+    environment:
+      <<: *app-env
+      # Worker gửi Telegram (DEC-170, docs/NOTIFICATIONS.md mục 6). Production: token lấy từ Vault.
+      TELEGRAM_ENABLED: ${TELEGRAM_ENABLED:-false}
+      DRIFT_TELEGRAM_BOT_TOKEN: ${DRIFT_TELEGRAM_BOT_TOKEN:-}
+      DRIFT_APP_URL: https://${APP_HOST}
     deploy: { replicas: 2 }
 
   reco:              # recommendation + AI parameters engine (stateless)

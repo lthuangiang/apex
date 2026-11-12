@@ -1,5 +1,11 @@
 import { createDb } from "@drift/db";
-import { consume, ensureConsumer, ensureStreams, isQueueSubject } from "@drift/runtime";
+import {
+  consume,
+  createBotApi,
+  ensureConsumer,
+  ensureStreams,
+  isQueueSubject,
+} from "@drift/runtime";
 import { loadSodexConfig, RedisRateLimitStore, SodexRestClient } from "@drift/sodex";
 import { connect } from "@nats-io/transport-node";
 import { Redis } from "ioredis";
@@ -10,6 +16,13 @@ import { z } from "zod";
 import { runImport } from "./import";
 import { handleNotify } from "./notify";
 import { relayOnce } from "./outbox";
+import {
+  handleTelegram,
+  markFailed,
+  TELEGRAM_ALERT_SUBJECT,
+  TELEGRAM_MAX_DELIVER,
+  TELEGRAM_SUBJECT,
+} from "./telegram";
 
 const env = z
   .object({
@@ -21,6 +34,14 @@ const env = z
     SMTP_URL: z.string().optional(),
     MAIL_FROM: z.string().optional(),
     SODEX_EGRESS_KEY: z.string().default("default"),
+    /** Kênh Telegram (DEC-170). Bật mà thiếu token thì không khởi động. */
+    TELEGRAM_ENABLED: z.stringbool().default(false),
+    DRIFT_TELEGRAM_BOT_TOKEN: z.string().optional(),
+    /** Gốc URL web app cho nút trong tin Telegram (không chứa token đăng nhập). */
+    DRIFT_APP_URL: z.url().default("https://desklabs.xyz"),
+  })
+  .refine((e) => !e.TELEGRAM_ENABLED || (e.DRIFT_TELEGRAM_BOT_TOKEN ?? "").length >= 20, {
+    message: "TELEGRAM_ENABLED=true needs DRIFT_TELEGRAM_BOT_TOKEN",
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "jobs" } });
@@ -53,11 +74,49 @@ const stopNotify = await consume(
   js,
   "jobs-notify",
   "jobs.notify",
-  (payload) => handleNotify({ db, sendEmail }, payload),
+  (payload) => handleNotify({ db, sendEmail, telegramEnabled: env.TELEGRAM_ENABLED }, payload),
   (msg, extra) => {
     log.warn(extra, msg);
   },
 );
+
+// Worker gửi Telegram (docs/NOTIFICATIONS.md mục 6): hàng ưu tiên cho Bot problems và hàng thường.
+const telegramStops: (() => Promise<void>)[] = [];
+if (env.TELEGRAM_ENABLED) {
+  const telegramDeps = {
+    db,
+    counter: {
+      async incr(key: string, ttlMs: number) {
+        const res = await redis.multi().incr(key).pexpire(key, ttlMs, "NX").exec();
+        return Number(res?.[0]?.[1] ?? 0);
+      },
+    },
+    botApi: createBotApi({ token: env.DRIFT_TELEGRAM_BOT_TOKEN ?? "" }),
+    appUrl: env.DRIFT_APP_URL,
+    now: () => new Date(),
+    warn: (msg: string, data: Record<string, unknown>) => {
+      log.warn(data, msg);
+    },
+  };
+  for (const [name, subject, urgent] of [
+    ["jobs-telegram-alert", TELEGRAM_ALERT_SUBJECT, true],
+    ["jobs-telegram", TELEGRAM_SUBJECT, false],
+  ] as const) {
+    await ensureConsumer(nc, name, subject, { maxDeliver: TELEGRAM_MAX_DELIVER });
+    telegramStops.push(
+      await consume(
+        js,
+        name,
+        subject,
+        (payload) => handleTelegram(telegramDeps, payload, urgent),
+        (msg, extra) => {
+          log.warn(extra, msg);
+        },
+        { maxDeliver: TELEGRAM_MAX_DELIVER, onDeadLetter: (payload) => markFailed(db, payload) },
+      ),
+    );
+  }
+}
 
 const importSchema = z.object({ importId: z.uuid() });
 const stopImport = await consume(
@@ -93,6 +152,7 @@ async function shutdown() {
   state.running = false;
   await stopImport();
   await stopNotify();
+  for (const stop of telegramStops) await stop();
   await relay;
   await nc.drain();
   await pool.end();

@@ -5,7 +5,14 @@ import { safeEqual, sha256 } from "../../lib/crypto";
 import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 
-import { createLink, handleUpdate, linkStatus, unlink, type TelegramDeps } from "./service";
+import {
+  createLink,
+  handleUpdate,
+  linkStatus,
+  sendTest,
+  unlink,
+  type TelegramDeps,
+} from "./service";
 import { telegramUpdateSchema } from "./update";
 
 // Routes Telegram (docs/NOTIFICATIONS.md mục 9, DEC-170). Cờ `TELEGRAM_ENABLED` tắt (mặc định) thì mọi route
@@ -53,6 +60,16 @@ export function registerTelegramRoutes(app: FastifyInstance, options: TelegramRo
     const auth = requireAuth(request);
     return idempotent(deps.db, request, reply, auth.userId, deps.now(), async () => {
       await unlink(deps, auth.userId, request.ip);
+      return { status: 204, body: null };
+    });
+  });
+
+  // Tin thử (mục 9): 3 lần mỗi giờ; chưa kết nối hoặc bị chặn → TELEGRAM_NOT_CONNECTED.
+  app.post("/api/v1/telegram/test", async (request, reply) => {
+    ensureEnabled();
+    const auth = requireAuth(request);
+    return idempotent(deps.db, request, reply, auth.userId, deps.now(), async () => {
+      await sendTest(deps, auth.userId);
       return { status: 204, body: null };
     });
   });

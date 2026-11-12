@@ -1,3 +1,4 @@
+import type { SendMessage } from "@drift/runtime";
 import {
   errorResponseSchema,
   meSchema,
@@ -7,7 +8,6 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import type { SendMessage } from "../src/modules/telegram/bot-api";
 import { TELEGRAM_WEBHOOK_PATH } from "../src/modules/telegram/routes";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";

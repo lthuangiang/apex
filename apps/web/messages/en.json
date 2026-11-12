@@ -2473,7 +2473,9 @@
     "settings.notifications.connect.items.fills",
     "settings.notifications.connect.items.copyTrading",
     "settings.notifications.connect.gettingLink",
-    "settings.notifications.telegramCard.showAgain"
+    "settings.notifications.telegramCard.showAgain",
+    "notifications.types.telegram_blocked",
+    "notifications.panel.body.telegramBlocked"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -3704,7 +3706,8 @@
       "daily_summary": "Daily summary",
       "leader_big_move": "A trader you follow made a big move",
       "telegram_connected": "Telegram connected",
-      "telegram_moved": "Telegram alerts stopped"
+      "telegram_moved": "Telegram alerts stopped",
+      "telegram_blocked": "Telegram alerts paused"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
@@ -3746,7 +3749,8 @@
         "risk": "Running bots were paused.",
         "keyFee": "Your API key or builder fee approval changed.",
         "telegramConnected": "Alerts also go to @{username}.",
-        "telegramMoved": "Your Telegram chat was connected to another DeskLabs account. Connect again in Settings to get alerts there."
+        "telegramMoved": "Your Telegram chat was connected to another DeskLabs account. Connect again in Settings to get alerts there.",
+        "telegramBlocked": "Telegram says you blocked DeskLabs Bot. You still get alerts here and by email."
       }
     },
     "reasonText": {
