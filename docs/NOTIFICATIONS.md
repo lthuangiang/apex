@@ -67,7 +67,7 @@ Morning brief do Desk AI viết theo luật fact (DEC-164/165). Khi LLM tắt ho
 
 **Lệnh của bot (v1):**
 - `/start [token]`: kết nối. Không có token thì bot chỉ cách kết nối từ app.
-- `/status`: tên bot, trạng thái và **PnL tổng** của từng bot (cùng `netPnl` với Strategy Lab, có ▲/▼ và đơn vị; thiếu → "Not available"), ví dụ "🟢 ETH Grid · running · total +12.40 USDC ▲". PnL theo ngày để sau khi có fact (DEC-TBD-telegram-status-total). Giới hạn 10 lần/giờ/chat.
+- `/status`: tên bot, trạng thái và **PnL tổng** của từng bot (cùng `netPnl` với Strategy Lab, có ▲/▼ và đơn vị; thiếu → "Not available"), ví dụ "🟢 ETH Grid · running · total +12.40 USDC ▲". PnL theo ngày để sau khi có fact (DEC-187). Giới hạn 10 lần/giờ/chat.
 - `/stop`: ngắt kết nối.
 - `/help`: danh sách lệnh.
 

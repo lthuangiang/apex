@@ -157,7 +157,7 @@ export function pnlUnit(b: Pick<BotSummary, "engine" | "market">): string {
 }
 
 /**
- * Lãi tổng của bot cho `/status` (DEC-TBD-telegram-status-total): cùng `netPnl` với Strategy Lab, có ▲/▼ và đơn
+ * Lãi tổng của bot cho `/status` (DEC-187): cùng `netPnl` với Strategy Lab, có ▲/▼ và đơn
  * vị; chưa có lệnh khớp → "No fills yet"; không tính được → "Not available" (quy tắc 1.8).
  */
 export function formatTotalPnl(
@@ -172,7 +172,7 @@ export function formatTotalPnl(
 }
 
 /**
- * `/status` (mục 5): tên bot, trạng thái và lãi TỔNG của từng bot (DEC-TBD-telegram-status-total thay "PnL hôm
+ * `/status` (mục 5): tên bot, trạng thái và lãi TỔNG của từng bot (DEC-187 thay "PnL hôm
  * nay": backend chưa có fact PnL theo ngày). Không có nút hành động.
  */
 async function statusReply(deps: TelegramDeps, chatId: number): Promise<SendMessage> {

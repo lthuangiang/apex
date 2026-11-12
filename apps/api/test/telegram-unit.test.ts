@@ -141,7 +141,7 @@ describe("createBotApi", () => {
   });
 });
 
-describe("/status total PnL (DEC-TBD-telegram-status-total)", () => {
+describe("/status total PnL (DEC-187)", () => {
   const b = (
     netPnl: string | null,
     fills = 3,
