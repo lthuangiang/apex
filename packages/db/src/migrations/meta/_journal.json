@@ -148,6 +148,13 @@
       "when": 1794413503050,
       "tag": "0020_dec163_copy_trading",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794450996325,
+      "tag": "0021_desk_needs_you",
+      "breakpoints": true
     }
   ]
 }

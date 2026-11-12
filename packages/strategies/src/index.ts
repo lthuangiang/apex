@@ -54,6 +54,7 @@ export { costPerMillion, costUsed, volumeMaker, type VolumeMakerState } from "./
 export {
   FARM_TIMING,
   farmNet,
+  farmStopFraction,
   farmRandom,
   stepVolumeFarm,
   volumeFarm,

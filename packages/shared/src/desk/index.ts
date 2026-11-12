@@ -137,3 +137,4 @@ export function deskNotes(bots: readonly AnalystBot[], now: number): DeskNote[] 
     return { ...base, kind: "fine" };
   });
 }
+export * from "./needs-you";

@@ -100,3 +100,42 @@ export const goLiveViewSchema = z.object({
   ),
 });
 export type GoLiveView = z.infer<typeof goLiveViewSchema>;
+
+/* AI Desk B+ (DEC-164, DEC-166): việc "Needs you" và sức khoẻ bot. Câu chữ ở messages của web. */
+export const deskFactSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  value: z.string(),
+  unit: z.enum(["usdc", "pct", "x", "count", "per_million", "text", "ms"]),
+  source: z.enum(["config", "sodex_symbol", "bot_state", "fills", "review", "estimate"]),
+});
+export const needsYouItemSchema = z.object({
+  id: uuidSchema,
+  botId: uuidSchema,
+  botName: z.string(),
+  strategy: z.string(),
+  market: z.string(),
+  rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
+  severity: z.number().int(),
+  facts: z.array(deskFactSchema),
+});
+export const needsYouViewSchema = z.object({
+  checkedAt: isoDateTimeSchema,
+  items: z.array(needsYouItemSchema),
+  bots: z.array(
+    z.object({
+      botId: uuidSchema,
+      name: z.string(),
+      strategy: z.string(),
+      market: z.string(),
+      state: z.string(),
+      health: z.enum(["healthy", "watch", "needs_you"]),
+    }),
+  ),
+});
+export type NeedsYouView = z.infer<typeof needsYouViewSchema>;
+export const snoozeViewSchema = z.object({
+  id: uuidSchema,
+  rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
+  snoozedUntil: isoDateTimeSchema,
+});

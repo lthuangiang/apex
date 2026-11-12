@@ -66,6 +66,17 @@ export const perpsSymbolSchema = z.object({
   maxLeverage: z.number().int().positive(),
   /** Giây, bội số của 3600. */
   fundingInterval: z.number().int().positive(),
+  /** Bậc margin theo notional (đọc 2026-11-12). AI Desk ước tính khoảng thanh lý cho quy tắc 1 (DEC-TBD-desk-liquidation-estimate). */
+  marginTiers: z
+    .array(
+      z.object({
+        maxNotionalValue: decimal,
+        maintenanceMarginRate: decimal,
+        maxLeverage: z.number().int().positive(),
+        maintenanceDeduction: decimal,
+      }),
+    )
+    .optional(),
 });
 export type PerpsSymbol = z.infer<typeof perpsSymbolSchema>;
 
