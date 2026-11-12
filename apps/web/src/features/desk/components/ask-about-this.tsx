@@ -9,7 +9,7 @@ import { useId, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useFeatures } from "@/lib/queries";
 
-import { Answer } from "./desk-ai";
+import { Answer, ThinkingTurn } from "./desk-ai";
 
 // ✦ "Ask about this" (AI Desk B+ M6, artboard BP-AskHere, DEC-166): nút ✦ cạnh bot, quyết định hay Portfolio. Bấm thì mở
 // sheet với câu mặc định dạng chip; chỉ khi user bấm chip hoặc gửi mới hỏi Desk AI kèm ngữ cảnh (server tự đọc bot /
@@ -100,6 +100,7 @@ export function AskAboutThis({
                 </div>
               </li>
             ))}
+            {ask.isPending ? <ThinkingTurn question={ask.variables} bubble="ink" /> : null}
           </ul>
           {turns.length === 0 && !ask.isPending ? (
             <div className="flex flex-wrap gap-2">
@@ -114,7 +115,6 @@ export function AskAboutThis({
               </button>
             </div>
           ) : null}
-          {ask.isPending ? <p className="m-0 text-sm text-ink-2">{ta("thinking")}</p> : null}
           {ask.isError ? (
             <p role="alert" className="m-0 text-sm text-neg-ink">
               {ta("error")}

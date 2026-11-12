@@ -4827,6 +4827,11 @@
       "notAdvice": "Not financial advice",
       "briefLater": "Your morning brief is ready from 08:00.",
       "thinking": "Thinking…",
+      "thinkingSteps": {
+        "reading": "Looking at your bots…",
+        "writing": "Writing the answer…",
+        "checking": "Double-checking the numbers…"
+      },
       "questionsLeft": "{n, plural, one {# question} other {# questions}} left today",
       "error": "Couldn’t send your question. Try again.",
       "templates": {
