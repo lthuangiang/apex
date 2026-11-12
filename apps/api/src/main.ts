@@ -60,7 +60,10 @@ const app = await buildApp({
     appUrl: config.DRIFT_APP_URL,
     botApi: createBotApi({ token: config.DRIFT_TELEGRAM_BOT_TOKEN ?? "" }),
   },
-  deskLlm: config.DESK_AI_API_KEY === undefined ? null : anthropicLlm(config.DESK_AI_API_KEY),
+  deskLlm:
+    config.DESK_AI_API_KEY === undefined
+      ? null
+      : anthropicLlm(config.DESK_AI_API_KEY, config.DESK_AI_BASE_URL),
   db,
   mailer: smtpMailer(config.SMTP_URL, config.MAIL_FROM),
   totpKey: Buffer.from(config.API_TOTP_ENC_KEY, "base64"),

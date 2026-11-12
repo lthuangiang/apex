@@ -59,6 +59,11 @@ const envSchema = z.object({
     .min(1)
     .optional()
     .or(z.literal("").transform(() => undefined)),
+  /** Gốc URL Claude API; chỉ đặt khi chạy E2E với API giả. Trống = API thật của Anthropic. */
+  DESK_AI_BASE_URL: z
+    .url()
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
 });
 
 function emptyToUndefined<T extends z.ZodType>(schema: T) {
