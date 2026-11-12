@@ -273,7 +273,14 @@ export const deskAiFactSchema = z.object({
   unit: z.enum(["usdc", "pct", "x", "count", "text"]),
   source: z.string(),
 });
-export const deskAiTemplateKeys = ["out_of_scope", "quota", "safety", "fallback", "brief"] as const;
+export const deskAiTemplateKeys = [
+  "out_of_scope",
+  "quota",
+  "safety",
+  "fallback",
+  "loss",
+  "brief",
+] as const;
 export const deskAiAnswerSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("text"), text: z.string(), facts: z.array(deskAiFactSchema) }),
   z.object({
