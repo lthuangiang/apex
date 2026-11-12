@@ -46,6 +46,7 @@ Số mục được giữ ổn định, nên khi tài liệu ghi "mục X" thì 
 | `docs/VOLUME_MAKER.md` | 17 | bot Volume Maker (đang khoá bằng feature flag) |
 | `docs/MCP.md` | kế hoạch MCP | MCP nội bộ cho team và DeskLabs MCP cho người dùng (DEC-167) |
 | `docs/NOTIFICATIONS.md` | kế hoạch thông báo | Telegram bot + in-app (đề xuất, chờ duyệt) |
+| `docs/AGENT_WORKFLOW.md` | quy trình git | mọi agent code: branch từ `main` → PR → review → merge |
 | `docs/ROADMAP.md` | thứ tự build | lên kế hoạch, chọn việc tiếp theo |
 | `docs/DECISIONS.md` | nhật ký quyết định | khi thấy mâu thuẫn hoặc định đổi một quyết định |
 | `docs/OPEN_QUESTIONS.md` | 15 | trước khi code phần có **[confirm]** |
@@ -126,6 +127,7 @@ docker compose run --rm migrate
 
 ## 16. Cách làm việc trong repo
 
+- **Git:** không commit hay push thẳng lên `main`. Mỗi việc một branch tạo từ `origin/main`, push rồi mở PR, chờ review; chỉ merge khi người dùng nói "merge" (`docs/AGENT_WORKFLOW.md`).
 - Làm theo thứ tự trong `docs/ROADMAP.md`. Mỗi lần chỉ làm một phase; đạt tiêu chí "xong" của phase đó rồi mới sang phase tiếp theo.
 - Bắt đầu mỗi feature bằng cách đọc lại file liên quan trong `docs/` (xem bảng mục lục). Nếu tài liệu lệch với thiết kế hoặc lệch nhau, hỏi.
 - Khi một mục **[confirm]** có câu trả lời: sửa tài liệu liên quan, ghi quyết định kèm ngày vào `docs/DECISIONS.md`, và xoá câu hỏi khỏi `docs/OPEN_QUESTIONS.md`.
