@@ -1,3 +1,4 @@
+export { AskAboutThis } from "./components/ask-about-this";
 export { ComparePage } from "./components/compare-page";
 export { DeskPage } from "./components/desk-page";
 export { GoLivePage } from "./components/go-live-page";

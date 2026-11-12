@@ -2757,7 +2757,14 @@
     "desk.goal.aiNone",
     "desk.goal.aiItems",
     "desk.goal.what",
-    "desk.ai.historyPage.deleteWhat"
+    "desk.ai.historyPage.deleteWhat",
+    "desk.askHere.button",
+    "desk.askHere.title.bot",
+    "desk.askHere.title.portfolio",
+    "desk.askHere.question",
+    "desk.askHere.placeholder.bot",
+    "desk.askHere.placeholder.portfolio",
+    "desk.askHere.close"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -5151,6 +5158,25 @@
         "deleteError": "Couldn't delete the history. Try again.",
         "error": "Couldn't load your history. Try again."
       }
+    },
+    "askHere": {
+      "button": "Ask Desk AI about this",
+      "title": {
+        "decision": "About this decision",
+        "bot": "About this bot",
+        "portfolio": "About your portfolio"
+      },
+      "question": {
+        "decision": "Explain this decision",
+        "bot": "How is this bot doing?",
+        "portfolio": "How is my portfolio doing?"
+      },
+      "placeholder": {
+        "decision": "Ask about this decision",
+        "bot": "Ask about this bot",
+        "portfolio": "Ask about your portfolio"
+      },
+      "close": "Close"
     }
   },
   "connectLog": {

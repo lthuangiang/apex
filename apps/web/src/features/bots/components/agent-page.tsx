@@ -21,6 +21,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NotConnected, useSodexMissing } from "@/components/not-connected";
 import { PageHead } from "@/components/workspace";
 import { WorkspaceShell } from "@/components/workspace-shell";
+import { AskAboutThis } from "@/features/desk/components/ask-about-this";
 import { PaperChip } from "@/features/desk/components/paper-chip";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/format";
@@ -260,7 +261,11 @@ export function AgentPage({ botId }: { botId?: string }) {
                 className="m-0 flex min-w-0 items-center gap-2 text-xl font-extrabold"
               >
                 <span className="truncate">{b.name}</span>
-                {b.mode === "paper" ? <PaperChip /> : null}
+                {b.mode === "paper" ? (
+                  <PaperChip />
+                ) : (
+                  <AskAboutThis context={{ kind: "bot", botId: b.id }} subtitle={b.name} />
+                )}
               </h2>
               <span className="text-[13px] text-ink-2">
                 {botMarket(b, names)} · {tf(`strategies.${b.strategy}.name`)}
@@ -534,7 +539,17 @@ export function AgentPage({ botId }: { botId?: string }) {
                     {
                       key: "decision",
                       header: t("cols.decision"),
-                      cell: (e) => <strong>{e.decision ?? e.type}</strong>,
+                      cell: (e) => (
+                        <span className="flex items-center gap-1">
+                          <strong>{e.decision ?? e.type}</strong>
+                          {bot.mode === "paper" ? null : (
+                            <AskAboutThis
+                              context={{ kind: "decision", botId: bot.id, eventId: e.id }}
+                              subtitle={`${e.decision ?? e.type} · ${formatDateTime(e.occurredAt)} · ${bot.name}`}
+                            />
+                          )}
+                        </span>
+                      ),
                     },
                     { key: "why", header: t("cols.why"), cell: (e) => why(e.why) ?? "" },
                     {
@@ -559,7 +574,15 @@ export function AgentPage({ botId }: { botId?: string }) {
                         {clock(e.occurredAt).slice(0, 5)}
                       </span>
                       <span className="flex min-w-0 flex-col gap-0.5">
-                        <strong className="text-sm">{e.decision ?? e.type}</strong>
+                        <span className="flex items-center gap-1">
+                          <strong className="text-sm">{e.decision ?? e.type}</strong>
+                          {bot.mode === "paper" ? null : (
+                            <AskAboutThis
+                              context={{ kind: "decision", botId: bot.id, eventId: e.id }}
+                              subtitle={`${e.decision ?? e.type} · ${clock(e.occurredAt).slice(0, 5)} · ${bot.name}`}
+                            />
+                          )}
+                        </span>
                         <span className="text-xs text-ink-2">{e.result ?? why(e.why) ?? ""}</span>
                       </span>
                     </li>
