@@ -44,7 +44,7 @@ describe("Desk AI answer", () => {
     });
     expect(
       screen.getByText(
-        "Yes, within limits you set. DeskLabs can only place trades: it can't withdraw or move funds. The most you've agreed to lose is 500 USDC; you've used 75.",
+        "Yes, within limits you set. DeskLabs can only place trades: it can’t withdraw or move funds. The most you’ve agreed to lose is 500 USDC; you’ve used 75.",
       ),
     ).toBeInTheDocument();
   });
@@ -73,18 +73,18 @@ describe("Desk AI answer", () => {
         },
       ],
     });
-    expect(screen.getByText("ETH Farm · profit so far")).toBeInTheDocument();
+    expect(screen.getByText("ETH Farm · profit or loss so far")).toBeInTheDocument();
     expect(screen.getByText("−10.09 USDC")).toBeInTheDocument();
     expect(screen.getByText("4.76%")).toBeInTheDocument();
   });
 
   it("refuses price predictions and says when the daily limit is reached", () => {
     show({ kind: "template", key: "out_of_scope", params: {}, facts: [] });
-    expect(screen.getByText(/can't predict prices/)).toBeInTheDocument();
+    expect(screen.getByText(/can’t predict prices/)).toBeInTheDocument();
     cleanup();
     show({ kind: "template", key: "quota", params: { limit: 20 }, facts: [] });
     expect(
-      screen.getByText("You've asked 20 questions today. I'll answer more tomorrow."),
+      screen.getByText("You’ve asked 20 questions today. I’ll answer more tomorrow."),
     ).toBeInTheDocument();
   });
 });

@@ -61,8 +61,10 @@ function FitList({ p }: { p: TraderProfile }) {
     <Card title={t("fitTitle")}>
       <div className="flex flex-col">
         {p.fit.map((f) => {
-          const data: Record<string, string> = {
+          const data: Record<string, string | number> = {
             ...f.data,
+            // ICU plural cần số ("Liquidated once" / "Liquidated # times").
+            count: Number(f.data.count ?? 0),
             hold: holdText(f.data.holdMs === undefined ? null : Number(f.data.holdMs)) ?? "",
             share: pctText(f.data.share ?? null) ?? "",
           };

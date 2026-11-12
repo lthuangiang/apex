@@ -144,7 +144,7 @@ test("Needs you → compare → Apply, Desk AI answers and falls back, ✦ asks 
     await box.fill("Why did I lose money?");
     await send.click();
     await expect(
-      page.getByText("I can't write an answer right now. Here are the numbers I have:"),
+      page.getByText("I can’t write an answer right now. Here are the numbers I have:"),
     ).toBeVisible({ timeout: 60_000 });
     await expect(box).toHaveValue("");
     await expect(page.getByRole("heading", { name: /Needs you/ })).toBeVisible();
