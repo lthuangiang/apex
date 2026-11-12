@@ -6,7 +6,7 @@ import { Decimal, dec } from "../money";
 
 /**
  * Ngưỡng của AI Desk B+. Tài liệu chưa nói thì chọn mức an toàn và ghi ở đây (AI_DESK_BPLUS_PROMPT mục 3,
- * DEC-TBD-desk-needs-you, chờ duyệt).
+ * DEC-173, chờ duyệt).
  */
 export const NEEDS_YOU_CONFIG = {
   /** Tối đa việc trên trang chủ (DEC-166). */
@@ -81,7 +81,7 @@ export interface MarginTier {
  * Khoảng giá (tỷ lệ, 0–1) từ giá vào tới giá thanh lý **ước tính** cho margin Isolated, công thức ký quỹ duy trì
  * chuẩn: thanh lý khi margin + lãi/lỗ = notional × MMR − deduction. Long: d = (1/L − MMR + D/N)/(1 − MMR);
  * short: d = (1/L − MMR + D/N)/(1 + MMR). Bỏ qua phí và funding (giá thanh lý thật có thể gần hơn một chút).
- * Không có bậc phù hợp → null. Chỉ dùng nội bộ để so với stop loss (DEC-TBD-desk-liquidation-estimate), không hiện
+ * Không có bậc phù hợp → null. Chỉ dùng nội bộ để so với stop loss (DEC-172), không hiện
  * như giá thanh lý (SCREENS.md:166).
  */
 export function liquidationDistance(input: {
