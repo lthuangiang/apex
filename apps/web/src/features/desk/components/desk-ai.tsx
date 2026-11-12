@@ -17,9 +17,13 @@ import { formatMoney } from "@/lib/format";
 
 import { plainNumber, plainUsd } from "../bplus";
 
+import { NewBotChat } from "./new-bot-chat";
+import { PaperResults } from "./paper-result";
+
 // Desk AI panel (artboard BP-Home, B-Answer, DEC-164/165): báo cáo sáng + hỏi đáp. Lời LLM đã qua kiểm tra số ở server;
 // câu mẫu (LLM tắt / hết lượt / ngoài phạm vi / số không khớp) dịch ở đây từ `key` + fact. Desk AI chỉ đọc: không có
-// nút nào ở đây đổi bot. "Start a bot for me" mở luồng Recommended (tạo bot qua chat ở PR sau).
+// nút nào ở đây đổi bot. "Start a bot for me" mở luồng tạo bot qua chat (B-NewBot, tiền ảo trước); bài thử tiền ảo
+// đủ ngày thì báo kết quả (B-Result).
 
 type Fact = DeskAiAnswer["facts"][number];
 type Turn = DeskAiAskView["turn"];
@@ -114,6 +118,7 @@ export function DeskAiPanel() {
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const [left, setLeft] = useState<number | null>(null);
   const [text, setText] = useState("");
+  const [newBot, setNewBot] = useState(false);
   const key = useRef(crypto.randomUUID());
   const ask = useMutation({
     mutationFn: (question: string) =>
@@ -161,6 +166,7 @@ export function DeskAiPanel() {
       ) : brief.data?.available === false ? (
         <p className="m-0 text-sm text-ink-2">{t("briefLater")}</p>
       ) : null}
+      <PaperResults />
       {turns.length === 0 ? null : (
         <ul className="m-0 flex list-none flex-col gap-3 p-0" aria-live="polite">
           {turns.map((x) => (
@@ -192,13 +198,18 @@ export function DeskAiPanel() {
             {t(`chips.${k}`)}
           </button>
         ))}
-        <Link
-          href="/desk/new"
+        <button
+          type="button"
+          aria-expanded={newBot}
+          onClick={() => {
+            setNewBot((x) => !x);
+          }}
           className="inline-flex min-h-9 items-center rounded-full border border-border bg-surface px-3 text-sm font-semibold text-ink hover:bg-surface-2"
         >
           {t("chips.start")}
-        </Link>
+        </button>
       </div>
+      {newBot ? <NewBotChat /> : null}
       <form
         onSubmit={(e) => {
           e.preventDefault();

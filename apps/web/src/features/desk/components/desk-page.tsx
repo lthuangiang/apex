@@ -19,6 +19,7 @@ import { api } from "@/lib/api";
 import { useFeatures } from "@/lib/queries";
 
 import { DeskAiPanel } from "./desk-ai";
+import { FirstVisit } from "./first-visit";
 import { GoalCard } from "./goal-card";
 import { NeedsYouCard } from "./needs-you-card";
 import { PaperChip } from "./paper-chip";
@@ -122,6 +123,12 @@ function RecordLink() {
 
 function Home({ v }: { v: DeskHomeView }) {
   const t = useTranslations("desk.home");
+  const paper = useQuery({
+    queryKey: ["desk", "bots"],
+    queryFn: () => api("GET", "/api/v1/desk/bots", deskBotsViewSchema),
+  });
+  // Lần đầu, chưa có bot nào (thật lẫn tiền ảo): Desk AI là cửa vào (B-Empty).
+  if (v.bots.length === 0 && paper.data?.paper.length === 0) return <FirstVisit />;
   return (
     <div className="flex flex-col gap-5">
       <GoalCard goal={v.goal} items={v.items} />

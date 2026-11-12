@@ -2764,7 +2764,11 @@
     "desk.askHere.question",
     "desk.askHere.placeholder.bot",
     "desk.askHere.placeholder.portfolio",
-    "desk.askHere.close"
+    "desk.askHere.close",
+    "desk.chat.step",
+    "desk.chat.capitalLabel",
+    "desk.chat.foot",
+    "desk.paperResult"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -5177,6 +5181,53 @@
         "portfolio": "Ask about your portfolio"
       },
       "close": "Close"
+    },
+    "firstVisit": {
+      "title": "Hi, I'm Desk AI",
+      "body": "Tell me what you want, and I'll set up a bot for you. You'll try it with fake money first, so nothing is at risk while you learn.",
+      "start": "Start my first bot",
+      "startSub": "3 quick questions, then a plan you can try.",
+      "how": "How does a bot work?",
+      "howSub": "A 1-minute explanation in plain words.",
+      "safe": "Is my money safe?",
+      "safeSub": "What DeskLabs can and can't do with it.",
+      "own": "Or tell me in your own words",
+      "promises": {
+        "orders": "I never place orders on my own",
+        "money": "I can't move your money",
+        "data": "Every number comes from real data"
+      }
+    },
+    "chat": {
+      "title": "Start my first bot",
+      "step": "New bot · step {n} of 3",
+      "goal": "Great. First: what would you like the bot to do?",
+      "goals": {
+        "accumulate": "Build up coins slowly",
+        "range": "Earn from ups and downs",
+        "unsure": "Not sure, you pick"
+      },
+      "loss": "How much of a loss could you live with? Bots can lose money, so be honest.",
+      "losses": {
+        "5": "Very little · 5%",
+        "10": "Some · 10%",
+        "20": "A fair amount · 20%"
+      },
+      "capital": "And how much would you put in?",
+      "capitalLabel": "Amount in USDC",
+      "plan": "Here's what I'd suggest.",
+      "change": "Change something",
+      "foot": "Plan from DeskLabs' recommendation rules · a suggestion, not a promise of profit"
+    },
+    "paperResult": {
+      "title": "Your fake-money test of {name} has run for {day, plural, one {# day} other {# days}}.",
+      "bot": "Your bot (fake money)",
+      "hold": "Just holding {asset}",
+      "foot": "Same {capital} USDC, same {day, plural, one {# day} other {# days}} · {fills, plural, one {# simulated trade} other {# simulated trades}} · fees included",
+      "note": "Real orders can fill a little differently from the test, and past results are not a forecast.",
+      "start": "Use real money",
+      "keep": "Keep testing a week",
+      "open": "See the test"
     }
   },
   "connectLog": {
