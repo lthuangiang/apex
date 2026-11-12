@@ -464,6 +464,26 @@ describe("what-if and Apply", () => {
     expect(jobs[0]?.n).toBe(1);
   });
 
+  it("keeps showing a finished comparison with too few trades, so the card doesn't ask again", async () => {
+    const { client } = await deskUser("whatif-few@example.com");
+    const botId = await bot(client, "volume_farm", farm, "Few Farm");
+    await env.pool.query("update bots set state = 'running' where id = $1", [botId]);
+    await env.pool.query(
+      "insert into bot_reviews (id, bot_id, user_id, status, result, finished_at) select gen_random_uuid(), $1, user_id, 'done', $2, now() from bots where id = $1",
+      [botId, JSON.stringify(review)],
+    );
+    const home = async () =>
+      deskHomeViewSchema.parse((await client.request("GET", "/api/v1/desk/home")).json());
+    const [item] = (await home()).items;
+    const w = whatIfViewSchema.parse(
+      (await client.request("POST", `/api/v1/desk/needs-you/${item?.id ?? ""}/whatif`)).json(),
+    );
+    await finishWhatif(w.id, { keep: null, review_settings: null });
+    const again = (await home()).items[0]?.whatif;
+    expect(again).toMatchObject({ id: w.id, status: "done" });
+    expect(again?.options.every((o) => o.unavailable === "not_enough_trades")).toBe(true);
+  });
+
   it("never applies keep and hides comparisons of other users", async () => {
     const { client } = await deskUser("whatif-other@example.com");
     const keep = await client.request(
