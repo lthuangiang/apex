@@ -13,7 +13,7 @@ import { Answer } from "./desk-ai";
 
 // ✦ "Ask about this" (AI Desk B+ M6, artboard BP-AskHere, DEC-166): nút ✦ cạnh bot, quyết định hay Portfolio. Bấm thì mở
 // sheet với câu mặc định dạng chip; chỉ khi user bấm chip hoặc gửi mới hỏi Desk AI kèm ngữ cảnh (server tự đọc bot /
-// quyết định, kiểm tra thuộc user) và mới tính lượt (DEC-TBD-desk-chat). Chỉ hiện khi team bật AI Desk
+// quyết định, kiểm tra thuộc user) và mới tính lượt (DEC-190). Chỉ hiện khi team bật AI Desk
 // cho tài khoản. Desk AI chỉ đọc: không có nút nào ở đây đổi bot.
 
 type Turn = DeskAiAskView["turn"];

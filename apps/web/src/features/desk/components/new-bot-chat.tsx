@@ -14,7 +14,7 @@ import { SuggestionCard } from "./recommended";
 // Desk AI › tạo bot qua chat (artboard B-NewBot, DEC-164 vòng "tạo bot"): 3 câu hỏi của Recommended dạng nút chọn nhanh
 // → thẻ kế hoạch từ `recommend()` (POST /api/v1/reco/plan, như /desk/new) → "Try with fake money" (DEC-105). Không tạo
 // bot tiền thật từ chat: tiền thật chỉ qua "Use real money" sau bài thử. "Not sure, you pick" dùng mục tiêu `steady`
-// (DEC-TBD-desk-chat).
+// (DEC-190).
 
 const GOALS = [
   { key: "accumulate", goal: "accumulate" },
