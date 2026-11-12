@@ -126,3 +126,30 @@ export function telegramGroupsOn(
     (g) => (aiDesk || g !== "copyTrading") && groups.find((x) => x.group === g)?.telegram === true,
   );
 }
+
+/**
+ * Tin thử (NOTIFICATIONS.md mục 9): POST /api/v1/telegram/test, mỗi lần bấm một Idempotency-Key mới. Server giới
+ * hạn 3 lần mỗi giờ (RATE_LIMITED); chưa kết nối hoặc bị chặn → TELEGRAM_NOT_CONNECTED (làm mới trạng thái thẻ).
+ */
+export function useSendTelegramTest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api("POST", "/api/v1/telegram/test", z.unknown(), {
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    onError: async (error) => {
+      if (error instanceof ApiError && error.code === "TELEGRAM_NOT_CONNECTED")
+        await qc.invalidateQueries({ queryKey: TELEGRAM_LINK_KEY });
+    },
+  });
+}
+
+/** Khoá câu chữ cho kết quả của tin thử. */
+export function testErrorKey(error: unknown): "rateLimited" | "notConnected" | "generic" {
+  if (error instanceof ApiError) {
+    if (error.code === "RATE_LIMITED") return "rateLimited";
+    if (error.code === "TELEGRAM_NOT_CONNECTED") return "notConnected";
+  }
+  return "generic";
+}

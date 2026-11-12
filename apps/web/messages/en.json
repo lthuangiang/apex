@@ -2115,6 +2115,17 @@
         "expiredBody": "Links work for 10 minutes and only once. Get a new one and tap Start again.",
         "newLink": "Get a new link",
         "gettingLink": "Getting a link…"
+      },
+      "test": {
+        "send": "Send a test",
+        "sendLong": "Send a test message",
+        "sending": "Sending…",
+        "sent": "Sent. Check Telegram.",
+        "errors": {
+          "rateLimited": "You can send 3 tests an hour. Try again later.",
+          "notConnected": "Telegram isn't connected anymore. Connect again to get alerts there.",
+          "generic": "Couldn't send the test. Try again."
+        }
       }
     },
     "defaults": {

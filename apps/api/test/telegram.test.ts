@@ -1,4 +1,4 @@
-import type { SendMessage } from "@drift/runtime";
+import type { BotApiResult, SendMessage } from "@drift/runtime";
 import {
   errorResponseSchema,
   meSchema,
@@ -17,6 +17,8 @@ import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
 const SECRET = "w".repeat(40);
 const sent: SendMessage[] = [];
+/** Kết quả Bot API giả trả về cho lần gửi tiếp theo (mặc định ok). */
+let nextResult: BotApiResult = { ok: true };
 let env: TestEnv;
 const errorOf = (body: string) => errorResponseSchema.parse(JSON.parse(body)).error;
 
@@ -30,7 +32,7 @@ beforeAll(async () => {
       botApi: {
         sendMessage: (m) => {
           sent.push(m);
-          return Promise.resolve({ ok: true });
+          return Promise.resolve(nextResult);
         },
       },
     },
@@ -41,6 +43,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   sent.length = 0;
+  nextResult = { ok: true };
   env.clock.now = new Date("2026-11-12T08:00:00Z");
 });
 
@@ -239,5 +242,58 @@ describe("Telegram link", () => {
       daily: true,
       copyTrading: false,
     });
+  });
+});
+
+describe("Telegram test message and /status", () => {
+  it("test message: refuses before connecting, sends once connected, and allows 3 an hour", async () => {
+    const { client } = await user("tg-test@example.com");
+    const before = await client.request("POST", "/api/v1/telegram/test");
+    expect(before.statusCode).toBe(409);
+    expect(errorOf(before.body).code).toBe("TELEGRAM_NOT_CONNECTED");
+    expect(sent).toHaveLength(0);
+
+    await webhook(`/start ${(await newLink(client)).token}`, 5101);
+    for (let i = 0; i < 3; i += 1) {
+      const res = await client.request("POST", "/api/v1/telegram/test");
+      expect(res.statusCode).toBe(204);
+    }
+    expect(sent).toHaveLength(3);
+    expect(sent[0]).toMatchObject({ chat_id: 5101, parse_mode: "HTML" });
+    expect(sent[0]?.text).toContain("Test message from DeskLabs");
+    expect(sent[0]?.reply_markup?.inline_keyboard[0][0].url).toMatch(/^https:\/\/desklabs\.test/);
+
+    const fourth = await client.request("POST", "/api/v1/telegram/test");
+    expect(fourth.statusCode).toBe(429);
+    expect(errorOf(fourth.body).code).toBe("RATE_LIMITED");
+    expect(sent).toHaveLength(3);
+  });
+
+  it("test message: a blocked chat turns the link to blocked and says not connected", async () => {
+    const { client } = await user("tg-test-blocked@example.com");
+    await webhook(`/start ${(await newLink(client)).token}`, 5102);
+    nextResult = {
+      ok: false,
+      status: 403,
+      description: "Forbidden: bot was blocked by the user",
+      retryAfterSec: null,
+    };
+    const res = await client.request("POST", "/api/v1/telegram/test");
+    expect(res.statusCode).toBe(409);
+    expect(errorOf(res.body)).toMatchObject({ code: "TELEGRAM_NOT_CONNECTED" });
+    expect((await status(client)).status).toBe("blocked");
+  });
+
+  it("/status lists no bots for a new account and is limited to 10 an hour per chat", async () => {
+    const { client } = await user("tg-status@example.com");
+    await webhook(`/start ${(await newLink(client)).token}`, 5103);
+    const first = replyText(await webhook("/status", 5103));
+    expect(first).toBe("You have no bots yet. Open DeskLabs to start one.");
+    for (let i = 0; i < 9; i += 1) await webhook("/status", 5103);
+    expect(replyText(await webhook("/status", 5103))).toContain("10 times an hour");
+  });
+
+  it("/status from a chat that isn't connected explains how to connect", async () => {
+    expect(replyText(await webhook("/status", 5199))).toContain("Connect Telegram");
   });
 });
