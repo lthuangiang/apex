@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import messages from "../../../messages/en.json";
 import { WorkspaceShell } from "../workspace-shell";
 
-// Thứ tự sidebar và menu More (DEC-TBD-sidebar-order; Trading Agent vẫn thứ 3, DEC-108).
+// Thứ tự sidebar và menu More (DEC-181; Trading Agent vẫn thứ 3, DEC-108).
 
 const flags = vi.hoisted(() => ({ aiDesk: true }));
 
