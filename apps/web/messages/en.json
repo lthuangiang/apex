@@ -2115,6 +2115,17 @@
         "expiredBody": "Links work for 10 minutes and only once. Get a new one and tap Start again.",
         "newLink": "Get a new link",
         "gettingLink": "Getting a link…"
+      },
+      "test": {
+        "send": "Send a test",
+        "sendLong": "Send a test message",
+        "sending": "Sending…",
+        "sent": "Sent. Check Telegram.",
+        "errors": {
+          "rateLimited": "You can send 3 tests an hour. Try again later.",
+          "notConnected": "Telegram isn't connected anymore. Connect again to get alerts there.",
+          "generic": "Couldn't send the test. Try again."
+        }
       }
     },
     "defaults": {
@@ -2473,7 +2484,9 @@
     "settings.notifications.connect.items.fills",
     "settings.notifications.connect.items.copyTrading",
     "settings.notifications.connect.gettingLink",
-    "settings.notifications.telegramCard.showAgain"
+    "settings.notifications.telegramCard.showAgain",
+    "notifications.types.telegram_blocked",
+    "notifications.panel.body.telegramBlocked"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -3704,7 +3717,8 @@
       "daily_summary": "Daily summary",
       "leader_big_move": "A trader you follow made a big move",
       "telegram_connected": "Telegram connected",
-      "telegram_moved": "Telegram alerts stopped"
+      "telegram_moved": "Telegram alerts stopped",
+      "telegram_blocked": "Telegram alerts paused"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
@@ -3746,7 +3760,8 @@
         "risk": "Running bots were paused.",
         "keyFee": "Your API key or builder fee approval changed.",
         "telegramConnected": "Alerts also go to @{username}.",
-        "telegramMoved": "Your Telegram chat was connected to another DeskLabs account. Connect again in Settings to get alerts there."
+        "telegramMoved": "Your Telegram chat was connected to another DeskLabs account. Connect again in Settings to get alerts there.",
+        "telegramBlocked": "Telegram says you blocked DeskLabs Bot. You still get alerts here and by email."
       }
     },
     "reasonText": {

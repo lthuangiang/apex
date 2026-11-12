@@ -18,12 +18,14 @@ const AXE_TIMEOUT = 15_000;
 
 interface FakeServer {
   link: Record<string, unknown> | "disabled";
+  testResult: "ok" | "RATE_LIMITED" | "TELEGRAM_NOT_CONNECTED";
   createExpiresInMs: number;
   calls: { method: string; path: string }[];
 }
 
 const server: FakeServer = vi.hoisted(() => ({
   link: { status: "not_connected" },
+  testResult: "ok",
   createExpiresInMs: 10 * 60 * 1000,
   calls: [],
 }));
@@ -43,6 +45,12 @@ vi.mock("@/lib/api", async (importOriginal) => {
       server.calls.push({ method, path });
       if (path === "/api/v1/notifications/settings") return Promise.resolve({ groups });
       if (path === "/api/v1/notifications") return Promise.resolve({ items: [], unread: 0 });
+      if (path === "/api/v1/telegram/test") {
+        if (server.testResult === "ok") return Promise.resolve(null);
+        return Promise.reject(
+          new real.ApiError(server.testResult, server.testResult === "RATE_LIMITED" ? 429 : 409),
+        );
+      }
       if (path === "/api/v1/telegram/link") {
         if (server.link === "disabled") return Promise.reject(new real.ApiError("NOT_FOUND", 404));
         if (method === "GET") return Promise.resolve(server.link);
@@ -92,6 +100,7 @@ async function expectNoAxeViolations() {
 
 beforeEach(() => {
   server.link = { status: "not_connected" };
+  server.testResult = "ok";
   server.createExpiresInMs = 10 * 60 * 1000;
   server.calls = [];
 });
@@ -194,8 +203,8 @@ describe("Connect Telegram", () => {
       expect(within(done).getByText("@mai_trades")).toBeInTheDocument();
       expect(within(done).getByText("✦ Morning brief at 08:00")).toBeInTheDocument();
       expect(within(done).queryByText("Traders you follow")).toBeNull();
-      // "Send a test message" có ở N3.
-      expect(within(done).queryByRole("button", { name: /Send a test/ })).toBeNull();
+      // N3: Step 2 có "Send a test message" (artboard NT-Connect).
+      expect(within(done).getByRole("button", { name: "Send a test message" })).toBeInTheDocument();
       await user.click(within(done).getByRole("button", { name: "Done" }));
       expect(await screen.findByText("@mai_trades")).toBeInTheDocument();
     },
@@ -276,6 +285,26 @@ describe("Telegram card states", () => {
       expect(server.calls.some((c) => c.method === "DELETE")).toBe(true);
     });
     expect(await screen.findByRole("button", { name: "Connect Telegram" })).toBeInTheDocument();
+  });
+
+  it("connected: Send a test posts once and says it was sent; errors are explained", async () => {
+    server.link = { status: "active", username: "mai_trades", connectedAt: "2026-11-12T03:00:00Z" };
+    const user = userEvent.setup({ delay: null });
+    renderTab();
+    await user.click(await screen.findByRole("button", { name: "Send a test" }));
+    expect(await screen.findByText("Sent. Check Telegram.")).toBeInTheDocument();
+    expect(server.calls.filter((c) => c.path === "/api/v1/telegram/test")).toHaveLength(1);
+
+    server.testResult = "RATE_LIMITED";
+    await user.click(screen.getByRole("button", { name: "Send a test" }));
+    expect(
+      await screen.findByText("You can send 3 tests an hour. Try again later."),
+    ).toBeInTheDocument();
+
+    server.testResult = "TELEGRAM_NOT_CONNECTED";
+    await user.click(screen.getByRole("button", { name: "Send a test" }));
+    expect(await screen.findByText(/Telegram isn't connected anymore/)).toBeInTheDocument();
+    expect(server.calls.filter((c) => c.path === "/api/v1/telegram/test")).toHaveLength(3);
   });
 
   it("blocked: explains and offers Connect again", async () => {

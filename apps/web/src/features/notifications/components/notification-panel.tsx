@@ -53,6 +53,7 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   leader_big_move: { icon: UserRound, tone: "bg-bg text-ink-2" },
   telegram_connected: { icon: Send, tone: "bg-pos-bg text-pos" },
   telegram_moved: { icon: Send, tone: "bg-bg text-ink-2" },
+  telegram_blocked: { icon: Send, tone: "bg-warn-bg text-warn" },
 };
 /** Bot dừng đúng kế hoạch hoặc bot tiền ảo: không tô đỏ (DEC-180). */
 const QUIET_TONE = "bg-bg text-ink-2";

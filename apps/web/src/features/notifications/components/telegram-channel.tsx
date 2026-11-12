@@ -13,14 +13,16 @@ import { useMe } from "@/lib/queries";
 import {
   formatCountdown,
   telegramGroupsOn,
+  testErrorKey,
   useCreatedTelegramLink,
   useCreateTelegramLink,
   useDeleteTelegramLink,
+  useSendTelegramTest,
   useTelegramLink,
 } from "../telegram";
 
 // Thẻ Telegram trong "Where we reach you" (artboard NT-Settings, 4 trạng thái) và hộp thoại kết nối
-// (NT-Connect). Mọi trạng thái lấy từ backend (CLAUDE.md quy tắc 1.6); "Send a test" có ở N3 (PR4).
+// (NT-Connect). Mọi trạng thái lấy từ backend (CLAUDE.md quy tắc 1.6); "Send a test" gọi /telegram/test (N3).
 
 const bold = (chunks: ReactNode) => <b>{chunks}</b>;
 
@@ -110,6 +112,7 @@ export function TelegramChannel({
                 b: bold,
               })}
         </span>
+        <SendTest short />
         <div className="mt-1 flex flex-wrap gap-1.5">
           <Button
             variant="secondary"
@@ -252,6 +255,32 @@ export function TelegramChannel({
   );
 }
 
+/**
+ * "Send a test" (thẻ Connected, artboard NT-Settings) và "Send a test message" (Step 2, NT-Connect). Kết quả hiện
+ * ngay dưới nút; không tự gửi lại.
+ */
+function SendTest({ short = false }: { short?: boolean }) {
+  const t = useTranslations("settings.notifications.test");
+  const send = useSendTelegramTest();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Button
+        variant={short ? "secondary" : "primary"}
+        className={short ? "min-h-9 self-start text-[13px]" : "self-start"}
+        pending={send.isPending}
+        onClick={() => {
+          send.mutate();
+        }}
+      >
+        {send.isPending ? t("sending") : short ? t("send") : t("sendLong")}
+      </Button>
+      <p role="status" className="m-0 text-[13px] text-ink-2">
+        {send.isSuccess ? t("sent") : send.isError ? t(`errors.${testErrorKey(send.error)}`) : null}
+      </p>
+    </div>
+  );
+}
+
 function DisabledCard({ label }: { label: string }) {
   return (
     <div className="flex flex-col gap-1.5 rounded-[18px] bg-bg p-4">
@@ -378,7 +407,7 @@ function ConnectDialog({
             {t("change")}
           </button>
         </div>
-        {/* "Send a test message" có ở N3 (PR4), cùng endpoint /telegram/test. */}
+        <SendTest />
         <Button
           variant="secondary"
           className="self-start"

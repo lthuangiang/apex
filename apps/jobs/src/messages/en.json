@@ -1,0 +1,62 @@
+{
+  "telegram": {
+    "aBot": "A bot",
+    "buttons": {
+      "review": "Review in DeskLabs",
+      "agent": "Open Trading Agent",
+      "risk": "Open Risk Center",
+      "settings": "Open Settings",
+      "desk": "See it in AI Desk",
+      "following": "Open Following",
+      "app": "Open DeskLabs"
+    },
+    "titles": {
+      "bot_paused": "🔴 <b>{bot} paused</b>",
+      "bot_stopped": "⏹ <b>{bot} stopped</b>",
+      "paper_paused": "🧪 <b>Fake-money test {bot} paused</b>",
+      "paper_stopped": "🧪 <b>Fake-money test {bot} stopped</b>",
+      "unknown_order": "⚠️ <b>Order result unknown · {bot}</b>",
+      "risk_alert": "🛡 <b>Risk limit reached</b>",
+      "key_fee": "🔑 <b>SoDEX access changed</b>",
+      "fill": "✅ <b>{bot} filled an order</b>",
+      "daily_summary": "✦ <b>Good morning</b>",
+      "leader_big_move": "👤 <b>A trader you follow made a big move</b>"
+    },
+    "bodies": {
+      "pausedReason": "{reason}. Open orders were kept.",
+      "keptOrders": "Open orders were kept.",
+      "stoppedReason": "{reason}.",
+      "paper": "No real money was used.",
+      "unknown_order": "SoDEX didn't confirm an order. DeskLabs won't resend it until SoDEX confirms.",
+      "risk_daily_loss": "Your daily loss limit was hit. Running bots were paused.",
+      "risk_max_drawdown": "Your drawdown limit was hit. Running bots were paused.",
+      "risk_other": "A risk limit was hit. Running bots were paused.",
+      "key_fee": "Your DeskLabs API key or builder fee approval changed.",
+      "daily_summary": "Your morning brief is ready in DeskLabs.",
+      "leader_big_move": "Market: {coin}."
+    },
+    "merged": {
+      "samePause": "🔴 <b>{n} bots paused: {reason}.</b>",
+      "botErrors": "🔴 <b>{n} bot problems</b>",
+      "risk": "🛡 <b>{n} risk alerts</b>",
+      "other": "<b>{n} alerts</b>",
+      "more": "+{n} more"
+    }
+  },
+  "reasons": {
+    "BUILDER_FEE_REVOKED": "builder fee approval is 0",
+    "API_KEY_EXPIRED": "DeskLabs API key expired",
+    "API_KEY_UNUSABLE": "DeskLabs can't sign with your API key",
+    "API_KEY_DELETED": "DeskLabs API key deleted",
+    "RISK_DAILY_LOSS": "daily loss limit reached",
+    "RISK_DRAWDOWN": "drawdown limit reached",
+    "BOT_MAX_LOSS": "max loss for this bot reached",
+    "ORDER_REJECTED": "SoDEX rejected an order",
+    "INSUFFICIENT_BALANCE": "balance too low",
+    "STOP_LOSS": "stop loss reached",
+    "TAKE_PROFIT": "take profit reached",
+    "EMERGENCY_HALT": "emergency halt",
+    "BUDGET_DONE": "budget used",
+    "MAX_CYCLES": "max cycles reached"
+  }
+}

@@ -2,7 +2,9 @@ import {
   bots,
   notifications,
   notificationSettings,
+  outbox,
   sodexAccounts,
+  telegramLinks,
   users,
   type Db,
 } from "@drift/db";
@@ -12,10 +14,14 @@ import {
   NOTIFICATION_TYPES,
   ALWAYS_ON_GROUPS,
   IN_APP_ONLY_GROUPS,
+  SYSTEM_GROUPS,
+  type NotificationChannel,
   type NotificationType,
 } from "@drift/shared";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+
+import { subjectFor } from "./telegram";
 
 // Consumer `jobs.notify` (DEC-41): ghi thông báo in-app và gửi email theo cài đặt của người dùng. Nhóm
 // "bot errors" luôn bật cho in-app và email. Email chỉ có tóm tắt; chi tiết xem trong app.
@@ -30,6 +36,8 @@ export const notifyPayloadSchema = z.object({
 export interface NotifyDeps {
   db: Db;
   sendEmail: ((to: string, subject: string, text: string) => Promise<void>) | null;
+  /** `TELEGRAM_ENABLED` (DEC-170). Không truyền = tắt. */
+  telegramEnabled?: boolean;
 }
 
 const REASON_TEXT: Record<string, string> = {
@@ -109,6 +117,7 @@ export function emailText(
       };
     case "telegram_connected":
     case "telegram_moved":
+    case "telegram_blocked":
       // Nhóm hệ thống `telegram` chỉ in-app (DEC-183); câu này chỉ để switch đủ nhánh.
       return {
         subject: "DeskLabs: Telegram alerts changed",
@@ -134,7 +143,7 @@ export async function handleNotify(deps: NotifyDeps, raw: unknown): Promise<void
     .select()
     .from(notificationSettings)
     .where(and(eq(notificationSettings.userId, userId), eq(notificationSettings.type, group)));
-  const enabled = (channel: "in_app" | "email") =>
+  const enabled = (channel: NotificationChannel) =>
     ALWAYS_ON_GROUPS.includes(group) ||
     (rows.find((r) => r.channel === channel)?.enabled ?? NOTIFICATION_DEFAULTS[group][channel]);
   if (enabled("in_app"))
@@ -159,5 +168,34 @@ export async function handleNotify(deps: NotifyDeps, raw: unknown): Promise<void
         .insert(notifications)
         .values({ userId, type: p.type, payload: p.data, channel: "email", readAt: new Date() });
     }
+  }
+  // Telegram (docs/NOTIFICATIONS.md mục 6): chỉ khi bật tính năng, nhóm không phải nhóm hệ thống (DEC-183),
+  // kênh đang bật và user có chat `active`. Ghi bản `queued` + outbox trong một transaction; worker gửi.
+  if (deps.telegramEnabled && !SYSTEM_GROUPS.includes(group) && enabled("telegram")) {
+    const uid = userId;
+    await deps.db.transaction(async (tx) => {
+      const [link] = await tx
+        .select({ status: telegramLinks.status })
+        .from(telegramLinks)
+        .where(eq(telegramLinks.userId, uid))
+        .limit(1);
+      if (link?.status !== "active") return;
+      const [row] = await tx
+        .insert(notifications)
+        .values({
+          userId: uid,
+          type: p.type,
+          payload: p.data,
+          channel: "telegram",
+          deliveryStatus: "queued",
+          // Không hiện trong danh sách in-app (chỉ đọc `channel = in_app`); đánh dấu đã đọc cho rõ.
+          readAt: new Date(),
+        })
+        .returning({ id: notifications.id });
+      if (row === undefined) return;
+      await tx
+        .insert(outbox)
+        .values({ topic: subjectFor(p.type), payload: { notificationId: row.id } });
+    });
   }
 }
