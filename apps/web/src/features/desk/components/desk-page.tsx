@@ -139,7 +139,7 @@ function Home({ v }: { v: DeskHomeView }) {
   if (v.bots.length === 0 && paper.data?.paper.length === 0) return <FirstVisit />;
   // Artboard BP-Home: cột trái Mục tiêu → Needs you → Your bots; cột phải là khung chat Desk AI (dính khi cuộn).
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)] xl:items-start">
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(340px,400px)] xl:items-start">
       <div className="flex min-w-0 flex-col gap-[18px]">
         <GoalCard goal={v.goal} items={v.items} />
         <section aria-labelledby="needs-you" className="flex min-w-0 flex-col gap-3">

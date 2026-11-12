@@ -46,6 +46,12 @@ function useFactText() {
   };
 }
 
+/** Lời chào theo giờ trên máy người xem (báo cáo sáng xem lúc tối thì "Good evening"): < 12 giờ sáng, < 18 giờ chiều. */
+export function greetingAt(now: Date): "morning" | "afternoon" | "evening" {
+  const h = now.getHours();
+  return h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
+}
+
 export function Answer({ answer }: { answer: DeskAiAnswer }) {
   const t = useTranslations("desk.ai.templates");
   const factText = useFactText();
@@ -65,6 +71,7 @@ export function Answer({ answer }: { answer: DeskAiAnswer }) {
     lead = t("brief", {
       count: Number(answer.params.count ?? 0),
       bot: String(answer.params.bot ?? ""),
+      greeting: greetingAt(new Date()),
     });
   else if (answer.key === "quota") lead = t("quota", { limit: Number(answer.params.limit ?? 0) });
   else lead = t(answer.key);
@@ -141,7 +148,7 @@ export function DeskAiPanel() {
   return (
     <section
       aria-label={t("title")}
-      className="flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-border bg-surface"
+      className="flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-border-input bg-surface shadow-card xl:h-[calc(100dvh-8rem)] xl:min-h-[520px]"
     >
       <div className="flex items-center gap-2.5 border-b border-border px-[18px] py-4">
         <AiMark />
@@ -150,7 +157,7 @@ export function DeskAiPanel() {
           {t("history")}
         </Link>
       </div>
-      <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto px-[18px] py-4 text-[14.5px] leading-relaxed">
+      <div className="flex max-h-[60vh] min-h-[200px] flex-col gap-3 overflow-y-auto px-[18px] py-4 text-[14.5px] leading-relaxed xl:max-h-none xl:flex-1">
         {brief.isPending ? (
           <Skeleton className="h-12 w-full rounded-[12px]" />
         ) : brief.data?.turn != null ? (
@@ -180,7 +187,7 @@ export function DeskAiPanel() {
         ) : null}
         {newBot ? <NewBotChat /> : null}
       </div>
-      <div className="flex flex-col gap-2 border-t border-border bg-bg px-[18px] pt-3 pb-4">
+      <div className="flex flex-col gap-2 border-t border-border bg-surface-2 px-[18px] pt-3 pb-4">
         <div className="flex flex-wrap gap-1.5">
           {(["safe", "lose"] as const).map((k) => (
             <button
