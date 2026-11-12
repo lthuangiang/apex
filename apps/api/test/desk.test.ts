@@ -256,13 +256,17 @@ describe("AI Adaptive DCA (DEC-107)", () => {
     maxExposure: "1000",
     maxLoss: "150",
   };
-  it("is only available to accounts with AI Desk turned on", async () => {
-    const off = await deskUser("adca-off@example.com", { desk: false });
+  it("is only available to accounts with the Adaptive DCA flag, not just AI Desk (DEC-TBD-desk-for-all)", async () => {
+    // AI Desk bật nhưng chưa có cờ Adaptive DCA → không có chiến lược này.
+    const off = await deskUser("adca-off@example.com");
     const denied = await off.client.request("POST", "/api/v1/bots", {
       body: { strategy: "adaptive_dca", name: "AI DCA", paramSource: "manual", config },
     });
     expect(errorOf(denied.json()).code).toBe("NOT_FOUND");
     const on = await deskUser("adca-on@example.com");
+    await env.pool.query(
+      "update users set adaptive_dca = true where email = 'adca-on@example.com'",
+    );
     const made = await on.client.request("POST", "/api/v1/bots", {
       body: { strategy: "adaptive_dca", name: "AI DCA", paramSource: "manual", config },
     });

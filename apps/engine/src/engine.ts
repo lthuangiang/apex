@@ -861,10 +861,13 @@ export class Engine {
       this.#d.log.warn({ botId: bot.id }, "volume bots are not enabled for this user");
       return undefined;
     }
-    // Chiến lược thử nghiệm (DEC-107, Copy Trade DEC-161) chỉ chạy khi team bật AI Desk cho chủ tài khoản.
+    // Chiến lược thử nghiệm: AI Adaptive DCA (DEC-107) theo cờ riêng; Copy Trade (DEC-161) theo cờ AI Desk
+    // (DEC-TBD-desk-for-all).
     if (
       (EXPERIMENTAL_STRATEGIES as readonly string[]).includes(bot.strategy) &&
-      !(await this.#aiDeskOn(bot.userId))
+      !(await (bot.strategy === Strategy.adaptiveDca
+        ? this.#flagOn(bot.userId, "adaptiveDca")
+        : this.#flagOn(bot.userId, "aiDesk")))
     ) {
       this.#d.log.warn({ botId: bot.id }, "experimental strategies are not enabled for this user");
       return undefined;
@@ -996,9 +999,9 @@ export class Engine {
     return Object.prototype.hasOwnProperty.call(r.ctx.rules, market);
   }
 
-  async #aiDeskOn(userId: string): Promise<boolean> {
+  async #flagOn(userId: string, flag: "aiDesk" | "adaptiveDca"): Promise<boolean> {
     const [u] = await this.#d.db
-      .select({ on: users.aiDesk })
+      .select({ on: flag === "aiDesk" ? users.aiDesk : users.adaptiveDca })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);

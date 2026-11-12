@@ -1,5 +1,5 @@
 {
-  "id": "a46ae52c-d6ca-4ef8-91c7-701c5b80ab68",
+  "id": "bfc68fcc-4cb6-490c-a24d-e7d9f558e28d",
   "prevId": "04aacd5f-f4c3-4adf-b260-57bd5c094540",
   "version": "7",
   "dialect": "postgresql",
@@ -6316,6 +6316,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "adaptive_dca": {
+          "name": "adaptive_dca",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "twofa_enabled": {
           "name": "twofa_enabled",

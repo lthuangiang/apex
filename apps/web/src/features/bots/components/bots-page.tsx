@@ -194,7 +194,8 @@ export function BotsPage() {
     ...(features.data?.volumeMaker === true ? (["volume_maker"] as const) : []),
     ...(features.data?.volumeFarm === true ? (["volume_farm"] as const) : []),
     ...CATALOG_BASE,
-    ...(features.data?.aiDesk === true ? (["adaptive_dca", "copy_trade"] as const) : []),
+    ...(features.data?.adaptiveDca === true ? (["adaptive_dca"] as const) : []),
+    ...(features.data?.aiDesk === true ? (["copy_trade"] as const) : []),
   ].filter(
     (k) => forMarket === null || presetMarket(k, forMarket.market, forMarket.engine) !== null,
   );
