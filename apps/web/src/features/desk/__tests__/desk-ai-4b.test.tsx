@@ -97,9 +97,14 @@ const ctx = {
 };
 
 describe("✦ Ask about this", () => {
-  it("asks once with the decision as context and shows the answer", async () => {
+  it("opens without asking, then asks once with the decision as context when the chip is tapped", async () => {
     render(wrap(<AskAboutThis context={ctx} subtitle="Skipped entry · 14:02 · BTC Farm" />));
     fireEvent.click(screen.getByRole("button", { name: "Ask Desk AI about this" }));
+    expect(await screen.findByText("About this decision")).toBeInTheDocument();
+    // Mở sheet: không gọi API, không tốn lượt.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls.filter((c) => c.path === "/api/v1/desk/ai/ask")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Explain this decision" }));
     expect(
       await screen.findByText("The bot skipped because the price moved away."),
     ).toBeInTheDocument();
