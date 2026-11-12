@@ -18,6 +18,7 @@ import { registerCopyRoutes } from "./modules/copy/routes";
 import { registerDataRoutes } from "./modules/data/routes";
 import type { DeskLlm } from "./modules/desk/llm";
 import { registerDeskRoutes } from "./modules/desk/routes";
+import { startTelegramBriefs } from "./modules/desk/telegram-brief";
 import { registerProfileRoutes } from "./modules/profile/routes";
 import { registerPublicRoutes } from "./modules/public/routes";
 import { registerRecoRoutes } from "./modules/reco/routes";
@@ -79,6 +80,8 @@ export interface AppDeps {
   };
   /** Desk AI (DEC-165): null = LLM tắt, trả lời bằng câu mẫu. */
   deskLlm?: DeskLlm | null;
+  /** Morning brief qua Telegram (N4). Không truyền = tắt (test). */
+  telegramBrief?: { enabled: boolean; useLlm: boolean; everyMs?: number };
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -182,5 +185,21 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       },
     },
   });
+  const brief = deps.telegramBrief;
+  if (brief?.enabled === true && tg?.enabled === true) {
+    let stop: (() => void) | null = null;
+    app.addHook("onReady", () => {
+      stop = startTelegramBriefs(
+        { ...botDeps, llm: deps.deskLlm ?? null, useLlm: brief.useLlm },
+        app.log,
+        brief.everyMs,
+      );
+      return Promise.resolve();
+    });
+    app.addHook("onClose", () => {
+      stop?.();
+      return Promise.resolve();
+    });
+  }
   return app;
 }

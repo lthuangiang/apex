@@ -43,6 +43,10 @@ const envSchema = z.object({
     .or(z.literal("").transform(() => undefined)),
   /** Notifications v2: kênh Telegram (DEC-170). Tắt thì mọi route `/api/v1/telegram/*` trả 404. */
   TELEGRAM_ENABLED: z.stringbool().default(false),
+  /** Morning brief qua Telegram (N4): chỉ chạy khi TELEGRAM_ENABLED cũng bật. */
+  TELEGRAM_BRIEF_ENABLED: z.stringbool().default(true),
+  /** true: chưa có báo cáo sáng thì tạo bằng Desk AI (gọi LLM). Mặc định false: câu mẫu (DEC-TBD-telegram-brief). */
+  TELEGRAM_BRIEF_LLM: z.stringbool().default(false),
   DRIFT_TELEGRAM_BOT_USERNAME: z
     .string()
     .regex(/^[A-Za-z0-9_]{5,32}$/)
