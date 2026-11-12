@@ -133,6 +133,29 @@ describe("Desk AI", () => {
     expect(env.logs.join("")).not.toContain(FAKE_KEY);
   });
 
+  it("includes bots archived in the last 30 days in the facts, not older ones (DEC-TBD-desk-archived)", async () => {
+    const { client, userId } = await deskUser(env, "ai-archived@example.com");
+    const { rows } = await env.pool.query<{ id: string }>(
+      "select id from bots where user_id = $1",
+      [userId],
+    );
+    const botId = rows[0]?.id ?? "";
+    // Mốc tính theo đồng hồ của app (cố định trong test), không theo now() của Postgres.
+    const daysAgo = (n: number) => new Date(env.clock.now.getTime() - n * 86_400_000);
+    await env.pool.query("update bots set state = 'archived', archived_at = $2 where id = $1", [
+      botId,
+      daysAgo(3),
+    ]);
+    await ask(client, "Why did I lose money?");
+    expect(llm.calls[0]?.user).toContain(`"id":"bot_state:${botId}"`);
+    expect(llm.calls[0]?.user).toContain('"value":"archived"');
+
+    await env.pool.query("update bots set archived_at = $2 where id = $1", [botId, daysAgo(31)]);
+    llm.calls = [];
+    await ask(client, "Why did I lose money?");
+    expect(llm.calls[0]?.user).not.toContain(`bot_state:${botId}`);
+  });
+
   it("replaces an answer with a number that matches no fact by the template", async () => {
     const { client, userId } = await deskUser(env, "ai-numbers@example.com");
     llm.reply = "You will probably make 37.5 USDC this week.";

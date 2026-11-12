@@ -49,7 +49,8 @@ export function PageHead({
   paper = false,
 }: {
   title: string;
-  subtitle: string;
+  /** Thường là chuỗi; AI Desk thêm chấm trạng thái trước dòng "Watching …" (artboard BP-Home). */
+  subtitle: ReactNode;
   updated?: PageUpdated | null;
   action?: ReactNode;
   /** Cụm trạng thái đầy đủ (chỉ Overview, artboard Main). */

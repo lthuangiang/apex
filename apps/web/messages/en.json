@@ -2768,7 +2768,10 @@
     "desk.chat.step",
     "desk.chat.capitalLabel",
     "desk.chat.foot",
-    "desk.paperResult"
+    "desk.paperResult",
+    "desk.goal.usedOf",
+    "desk.goal.over",
+    "desk.home.idle"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -4942,7 +4945,8 @@
         "paused": "Paused"
       },
       "record": "My suggestions so far: {helped} of {total} helped →",
-      "error": "Couldn't load AI Desk. Try again."
+      "error": "Couldn't load AI Desk. Try again.",
+      "idle": "No bots running · checked {ago}"
     },
     "rules": {
       "tag": "{tag} · {bot}",
@@ -5101,12 +5105,14 @@
         "automate": "Automate what already works",
         "range": "Earn from sideways markets",
         "accumulate": "Build a BTC or ETH position"
-      }
+      },
+      "usedOf": "{used} of {limit} USDC",
+      "over": "Over your limit"
     },
     "ai": {
       "title": "Desk AI",
       "history": "History",
-      "placeholder": "Ask Desk AI",
+      "placeholder": "Ask Desk AI…",
       "send": "Send",
       "chips": {
         "safe": "Is my money safe?",

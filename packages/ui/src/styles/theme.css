@@ -60,6 +60,8 @@
   --shadow-float: var(--shadow-float);
   --font-sans: var(--font-sans);
   --background-image-hero: var(--hero);
+  --background-image-ai-mark: var(--ai-mark);
+  --color-warn-border: var(--warn-border);
 }
 
 @layer base {

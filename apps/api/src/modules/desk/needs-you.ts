@@ -219,20 +219,25 @@ export interface NeedsYouDeps {
   now: () => Date;
 }
 
-/** Dữ liệu thật của mọi bot thật (không draft / archived, không paper) của user. */
-export async function collectFacts(deps: NeedsYouDeps, userId: string): Promise<DeskBotFacts[]> {
+/**
+ * Dữ liệu thật của mọi bot thật (không draft, không paper) của user. Mặc định bỏ bot archived (Needs you, "Your bots").
+ * `archivedSince`: thêm bot archived từ mốc đó (Desk AI, DEC-TBD-desk-archived) để câu trả lời về lãi / lỗ / phí đủ hơn.
+ */
+export async function collectFacts(
+  deps: NeedsYouDeps,
+  userId: string,
+  opts: { archivedSince?: Date } = {},
+): Promise<DeskBotFacts[]> {
   const now = deps.now().getTime();
+  const state =
+    opts.archivedSince === undefined
+      ? sql`${bots.state} not in ('draft', 'archived')`
+      : sql`(${bots.state} not in ('draft', 'archived') or (${bots.state} = 'archived' and ${bots.archivedAt} >= ${opts.archivedSince}))`;
   const rows = await deps.db
     .select({ b: bots, config: botVersions.config, appliedAt: botVersions.appliedAt })
     .from(bots)
     .leftJoin(botVersions, eq(botVersions.id, bots.activeVersionId))
-    .where(
-      and(
-        eq(bots.userId, userId),
-        eq(bots.mode, "live"),
-        sql`${bots.state} not in ('draft', 'archived')`,
-      ),
-    );
+    .where(and(eq(bots.userId, userId), eq(bots.mode, "live"), state));
   const list = rows.filter((r) => r.b.strategy !== Strategy.copyTrade);
   if (list.length === 0) return [];
   const analyst = new Map(

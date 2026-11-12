@@ -127,7 +127,7 @@ function Problem({ item }: { item: Item }) {
       >
         {tag}
       </span>
-      <h3 className="m-0 text-base font-extrabold">{title}</h3>
+      <h3 className="m-0 text-[17px] font-extrabold">{title}</h3>
       {body === null ? null : <p className="m-0 text-sm text-ink-2">{body}</p>}
     </div>
   );
@@ -210,7 +210,10 @@ export function NeedsYouCard({ item, checkedAt }: { item: Item; checkedAt: strin
   return (
     <article
       aria-label={item.botName}
-      className="flex flex-col gap-3 rounded-card border border-border bg-surface p-5"
+      className={`flex flex-col gap-3.5 rounded-card bg-surface px-[22px] py-5 ${
+        // Viền theo mức độ (artboard BP-Home): rủi ro → đỏ, còn lại (dừng, phí cao…) → cam.
+        item.severity >= 3 ? "border-[1.5px] border-neg-border" : "border border-warn-border"
+      }`}
     >
       <Problem item={item} />
       <WhatIfRows w={w} failed={failed} pending={pending} retry={retry} />

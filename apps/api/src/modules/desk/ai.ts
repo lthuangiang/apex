@@ -97,7 +97,12 @@ async function reserveQuestion(
 }
 
 async function factsOf(deps: BotDeps, userId: string, used: number): Promise<DeskAiFact[]> {
-  const [bots, goal] = await Promise.all([collectFacts(deps, userId), goalOf(deps, userId)]);
+  // Bot archived trong 30 ngày vẫn là dữ liệu thật về lãi / lỗ / phí (DEC-TBD-desk-archived); Needs you thì không.
+  const archivedSince = new Date(deps.now().getTime() - DESK_AI_CONFIG.archivedDays * 86_400_000);
+  const [bots, goal] = await Promise.all([
+    collectFacts(deps, userId, { archivedSince }),
+    goalOf(deps, userId),
+  ]);
   return deskAiFacts({
     bots,
     goal: goal === null ? null : { limit: goal.limit, used: goal.used },

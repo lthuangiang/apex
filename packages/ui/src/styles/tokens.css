@@ -12,6 +12,8 @@
   --accent-ink: #1d47b8;
   --accent-tint: #e6ecfe;
   --hero: linear-gradient(135deg, #e3e8fe, #cbd5fb);
+  /* Dấu ✦ của Desk AI (artboard BP-Home). */
+  --ai-mark: linear-gradient(135deg, #2e62e8, #7a4cc8);
 
   --pos: #0f7a43;
   --pos-bg: #ddf4e7;
@@ -28,6 +30,7 @@
 
   --warn: #7a3e00;
   --warn-bg: #fdebd3;
+  --warn-border: #f0c27e;
   --warn-bar: #e08a2e;
 
   --unknown: #5a2ca0;
