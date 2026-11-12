@@ -94,7 +94,7 @@ describe("SignedWriteClient", () => {
     "returns unknown on %s and never retries",
     async (_name, fetchImpl) => {
       const result = await client(fetchImpl).write(REQUEST);
-      expect(result).toEqual({ outcome: "unknown" });
+      expect(result).toMatchObject({ outcome: "unknown" });
       expect(fetchImpl).toHaveBeenCalledTimes(1);
     },
   );

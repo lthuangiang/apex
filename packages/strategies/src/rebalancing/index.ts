@@ -29,6 +29,11 @@ export interface RebalancingState {
   rebalances: number;
   lastRebalanceAt: number | null;
   round: number;
+  /**
+   * Initial buy theo giờ (IMP-04): `part` là số phần đã mua, phần kế tiếp tới hạn ở startedAt + part × 1 h.
+   * null hoặc thiếu (state cũ) = không mua dần.
+   */
+  building?: { startedAt: number; part: number } | null;
 }
 
 const initial = (c: RebalancingConfig): RebalancingState => ({
@@ -43,7 +48,14 @@ const initial = (c: RebalancingConfig): RebalancingState => ({
   rebalances: 0,
   lastRebalanceAt: null,
   round: 0,
+  building: null,
 });
+
+export const INITIAL_PART_MS = 3_600_000;
+
+/** Số phần mua dần; null = All now. */
+export const initialParts = (c: RebalancingConfig): number | null =>
+  c.initialBuy === "over_hours" && c.initialBuyHours !== undefined ? c.initialBuyHours : null;
 
 const tradables = (c: RebalancingConfig) =>
   c.assets.filter((a) => a.asset !== c.quoteAsset && a.market !== undefined);
@@ -129,6 +141,77 @@ function rebalance(
   };
 }
 
+/**
+ * Phần thứ `k` (1..N) của Initial buy: chỉ mua, đưa mỗi tài sản tới k/N giá trị mục tiêu, vẫn chịu maxTradePct.
+ * clOrdID riêng `rebal:init:<k>:<asset>`; All now giữ nguyên cách sinh clOrdID cũ. Xong phần N thì `round` = 1
+ * như sau Initial allocation, nên các lần rebalance sau có clOrdID giống bot All now.
+ */
+function buildPart(
+  c: RebalancingConfig,
+  s: RebalancingState,
+  ctx: StepContext,
+  at: number,
+  startedAt: number,
+  k: number,
+  n: number,
+): StepResult<RebalancingState> {
+  const total = portfolioValue(c, s);
+  const fraction = dec(String(k)).div(n);
+  const cap = total.mul(c.maxTradePct).div(100);
+  const diffs = tradables(c).map((a) => {
+    const price = s.prices[a.market ?? ""] ?? "0";
+    const target = total.mul(a.weightPct).div(100).mul(fraction);
+    const current = mul(s.holdings[a.asset] ?? "0", price);
+    return { a, price, diff: Decimal.max(0, target.sub(current)) };
+  });
+  const gross = diffs.reduce((acc, d) => acc.add(d.diff), new Decimal(0));
+  const scale = gross.isZero() ? new Decimal(0) : Decimal.min(1, cap.div(gross));
+  const actions: StrategyAction[] = [];
+  const pending: RebalancingState["pending"] = {};
+  for (const d of diffs) {
+    const rules = ctx.rules[d.a.market ?? ""];
+    if (rules === undefined || d.diff.isZero()) continue;
+    const price = roundPrice(d.price, rules);
+    const qty = roundQty(d.diff.mul(scale).div(price), rules);
+    if (!meetsMinimum(price, qty, rules)) continue;
+    const id = clOrdId(ctx.botId, ctx.version, `rebal:init:${String(k)}:${d.a.asset}`);
+    pending[id] = { asset: d.a.asset, side: "buy" };
+    actions.push({
+      type: "place",
+      order: {
+        clOrdID: id,
+        market: d.a.market ?? "",
+        engine: "spot",
+        side: "buy",
+        type: "limit",
+        price,
+        quantity: qty,
+        timeInForce: "IOC",
+        reduceOnly: false,
+        tag: `rebal:${d.a.asset}`,
+      },
+    });
+  }
+  const done = k >= n;
+  actions.push({
+    type: "log",
+    decision: `Initial buy ${String(k)} of ${String(n)}`,
+    why:
+      actions.length === 0
+        ? "Nothing to buy in this part (below SoDEX minimum order size)."
+        : "Bought an equal part of each target weight.",
+  });
+  return {
+    actions,
+    state: {
+      ...s,
+      pending,
+      building: done ? null : { startedAt, part: k },
+      ...(done ? { round: 1, lastRebalanceAt: at } : {}),
+    },
+  };
+}
+
 function guards(c: RebalancingConfig, s: RebalancingState): StepResult<RebalancingState> | null {
   if (s.phase !== "running") return null;
   const total = portfolioValue(c, s);
@@ -169,6 +252,11 @@ export function stepRebalancing(
       state.phase === "waiting_prices" &&
       tradables(c).every((a) => state.prices[a.market ?? ""] !== undefined)
     ) {
+      const parts = initialParts(c);
+      if (parts !== null) {
+        const first = buildPart(c, { ...state, phase: "running" }, ctx, e.at, e.at, 1, parts);
+        return { actions: first.actions, state: { ...first.state, phase: "running" } };
+      }
       const started = rebalance(
         c,
         { ...state, phase: "running" },
@@ -181,6 +269,13 @@ export function stepRebalancing(
     return guards(c, state) ?? { actions: [], state };
   }
   if (e.type === "timer" && s.phase === "running" && Object.keys(s.pending).length === 0) {
+    const b = s.building ?? null;
+    if (b !== null) {
+      // Đang mua dần: chưa rebalance theo ngưỡng hay lịch cho tới khi mua xong phần cuối.
+      const parts = initialParts(c) ?? b.part + 1;
+      if (e.at < b.startedAt + b.part * INITIAL_PART_MS) return { actions: [], state: s };
+      return buildPart(c, s, ctx, e.at, b.startedAt, b.part + 1, parts);
+    }
     const weights = currentWeights(c, s);
     const drift = c.assets.reduce(
       (m, a) => Decimal.max(m, (weights[a.asset] ?? new Decimal(0)).sub(a.weightPct).abs()),

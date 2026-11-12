@@ -1,10 +1,10 @@
-import { backtestRuns, candles1m, fundingRates, type Db } from "@drift/db";
+import { backtestRuns, candles1m, fundingRates, userBuilderFees, type Db } from "@drift/db";
 import {
   AppError,
   BACKTEST_INTERVALS,
   backtestWindow,
   dec,
-  DRIFT_BUILDER_FEE_RATE,
+  builderFeeRateFor,
   ErrorCode,
   feeRateToFraction,
   SODEX_BASE_FEE_PCT,
@@ -33,6 +33,16 @@ const PAGE = 1000;
 
 class Unavailable extends Error {}
 
+/** Builder fee của user cho chiến lược: mức riêng team đặt (DEC-159) hoặc mặc định. */
+export async function userBuilderRate(db: Db, userId: string, strategy: string): Promise<number> {
+  const [own] = await db
+    .select({ rate: userBuilderFees.rate })
+    .from(userBuilderFees)
+    .where(and(eq(userBuilderFees.userId, userId), eq(userBuilderFees.strategy, strategy)))
+    .limit(1);
+  return builderFeeRateFor(strategy, own === undefined ? undefined : { [strategy]: own.rate });
+}
+
 async function waitOnLimit<T>(read: () => Promise<T>): Promise<T> {
   for (let i = 0; ; i += 1) {
     try {
@@ -45,7 +55,7 @@ async function waitOnLimit<T>(read: () => Promise<T>): Promise<T> {
   }
 }
 
-async function loadCandles(
+export async function loadCandles(
   deps: RunDeps,
   engine: "spot" | "perps",
   market: string,
@@ -53,6 +63,7 @@ async function loadCandles(
   from: number,
   to: number,
 ): Promise<Candle[]> {
+  const step = BACKTEST_INTERVALS[interval];
   if (interval === "1m") {
     const rows = await deps.db
       .select()
@@ -65,8 +76,40 @@ async function loadCandles(
         ),
       )
       .orderBy(asc(candles1m.ts));
-    return rows.map((r) => ({ t: r.ts.getTime(), o: r.open, h: r.high, l: r.low, c: r.close }));
+    const own = rows.map((r): Candle => ({
+      t: r.ts.getTime(),
+      o: r.open,
+      h: r.high,
+      l: r.low,
+      c: r.close,
+      v: r.volume,
+    }));
+    if (covers(own, from, to, step)) return own;
+    // `candles_1m` của DRIFT có khoảng trống (marketdata dừng): bù bằng nến 1 phút SoDEX còn giữ (DEC-102).
+    const merged = new Map(own.map((k) => [k.t, k]));
+    for (const k of await sodexCandles(deps, engine, market, interval, from, to))
+      merged.set(k.t, k);
+    return [...merged.values()].sort((a, b) => a.t - b.t);
   }
+  return sodexCandles(deps, engine, market, interval, from, to);
+}
+
+/** Đủ nến cho kỳ: ≥ 95% số nến kỳ vọng và nến đầu không trễ quá 60 bước. */
+function covers(candles: readonly Candle[], from: number, to: number, step: number): boolean {
+  return (
+    candles.length >= ((to - from) / step) * MIN_COVERAGE &&
+    (candles[0]?.t ?? Infinity) <= from + step * 60
+  );
+}
+
+async function sodexCandles(
+  deps: RunDeps,
+  engine: "spot" | "perps",
+  market: string,
+  interval: BacktestInterval,
+  from: number,
+  to: number,
+): Promise<Candle[]> {
   const step = BACKTEST_INTERVALS[interval];
   const out = new Map<number, Candle>();
   for (let start = from; start < to; start += step * PAGE) {
@@ -80,7 +123,7 @@ async function loadCandles(
       }),
     );
     for (const k of page)
-      if (k.t >= from && k.t < to) out.set(k.t, { t: k.t, o: k.o, h: k.h, l: k.l, c: k.c });
+      if (k.t >= from && k.t < to) out.set(k.t, { t: k.t, o: k.o, h: k.h, l: k.l, c: k.c, v: k.v });
   }
   return [...out.values()].sort((a, b) => a.t - b.t);
 }
@@ -112,12 +155,7 @@ export async function runJob(deps: RunDeps, runId: string): Promise<void> {
       if (sym === undefined) throw new Unavailable("market_unknown");
       const engine = spot.some((x) => x.name === m) ? "spot" : "perps";
       const candles = await loadCandles(deps, engine, m, interval, from, to);
-      const expected = (to - from) / step;
-      if (
-        candles.length < expected * MIN_COVERAGE ||
-        (candles[0]?.t ?? Infinity) > from + step * 60
-      )
-        throw new Unavailable("history_short");
+      if (!covers(candles, from, to, step)) throw new Unavailable("history_short");
       markets[m] = {
         engine,
         candles,
@@ -126,6 +164,8 @@ export async function runJob(deps: RunDeps, runId: string): Promise<void> {
           stepSize: sym.stepSize,
           minQuantity: sym.minQuantity,
           minNotional: sym.minNotional,
+          ...(sym.makerFee === undefined ? {} : { makerFee: sym.makerFee }),
+          ...(sym.takerFee === undefined ? {} : { takerFee: sym.takerFee }),
         },
       };
       if (engine === "perps") {
@@ -159,7 +199,9 @@ export async function runJob(deps: RunDeps, runId: string): Promise<void> {
           maker: pctToFraction(SODEX_BASE_FEE_PCT.perps.maker),
           taker: pctToFraction(SODEX_BASE_FEE_PCT.perps.taker),
         },
-        builder: feeRateToFraction(DRIFT_BUILDER_FEE_RATE).toString(),
+        builder: feeRateToFraction(
+          await userBuilderRate(deps.db, run.userId, run.strategy),
+        ).toString(),
       },
       slippage: BACKTEST_SLIPPAGE,
       intervalMs: step,

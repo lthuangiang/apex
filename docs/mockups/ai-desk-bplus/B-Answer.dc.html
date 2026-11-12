@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Desk AI · answer</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="desk" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; justify-content: center">
+    <section aria-label="Desk AI" class="num" style="width: 100%; max-width: 860px; display: flex; flex-direction: column; border-radius: 26px; background: #ffffff; border: 1px solid #e3e7f5; overflow: hidden">
+      <header style="display: flex; align-items: center; gap: 12px; padding: 18px 24px; border-bottom: 1px solid #eef1f8">
+        <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 13px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 18px">✦</span>
+        <strong style="font-size: 18px">Desk AI</strong>
+      </header>
+
+      <div style="display: flex; flex-direction: column; gap: 16px; padding: 24px">
+        <div style="align-self: flex-end; padding: 10px 16px; border-radius: 18px 18px 4px 18px; background: #2e62e8; color: #ffffff; font-size: 15px">Why did I lose money on ETH Volume Farm?</div>
+
+        <div style="display: flex; gap: 12px; align-items: flex-start">
+          <span aria-hidden="true" style="flex: 0 0 32px; height: 32px; border-radius: 10px; background: #eef3ff; color: #2e62e8; display: flex; align-items: center; justify-content: center; font-weight: 800">✦</span>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+            <p style="margin: 0; font-size: 16px; line-height: 1.6">Short answer: <strong>mostly fees, not bad guesses.</strong> The bot picked the right direction about half the time, which is normal. But every trade pays a small fee on the way in and out, and it made a lot of trades.</p>
+
+            <div role="img" aria-label="Of the 10.09 USDC loss, 8.70 was fees and 1.39 was price moves" style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border-radius: 16px; background: #f5f7fd">
+              <div style="display: flex; justify-content: space-between; align-items: baseline"><strong style="font-size: 14px">Where the 10.09 USDC went</strong><span style="font-size: 12.5px; color: #5f6684">Last 7 days</span></div>
+              <div style="display: flex; height: 30px; border-radius: 10px; overflow: hidden">
+                <div style="width: 86%; background: #e08a2e; color: #ffffff; font-size: 12.5px; font-weight: 800; display: flex; align-items: center; padding-left: 10px">Fees · 8.70</div>
+                <div style="width: 14%; background: #8a93a6; color: #ffffff; font-size: 12.5px; font-weight: 800; display: flex; align-items: center; justify-content: center">1.39</div>
+              </div>
+              <div style="display: flex; gap: 16px; font-size: 12.5px; color: #3b4262"><span>■ Trading fees</span><span style="color: #5f6684">■ Price moves</span></div>
+            </div>
+
+            <p style="margin: 0; font-size: 16px; line-height: 1.6">Some trades used market orders, which cost more than limit orders. If it used only limit orders, the fees would have been lower.</p>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 6px">
+              <span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid #e3e7f5; font-size: 12px; font-weight: 700; color: #3b4262">92 trades</span>
+              <span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid #e3e7f5; font-size: 12px; font-weight: 700; color: #3b4262">Fees from SoDEX fills</span>
+              <span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid #e3e7f5; font-size: 12px; font-weight: 700; color: #3b4262">Settings v1</span>
+            </div>
+
+            <article style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 18px; border: 1.5px solid #b8e2c8; background: #f6fcf8">
+              <div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 3px">
+                <strong style="font-size: 15px">Want me to make it cheaper?</strong>
+                <span style="font-size: 13.5px; color: #3b4262">Use limit orders only. It trades a little less often.</span>
+              </div>
+              <a href="B-Fix.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 12px; background: #2e62e8; color: #ffffff; font-size: 14px; font-weight: 800; text-decoration: none">Show me the fix</a>
+            </article>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 24px 22px; border-top: 1px solid #eef1f8; background: #fbfcff">
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button type="button" style="min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">What is a trading fee?</button>
+          <button type="button" style="min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">Should I turn it back on?</button>
+          <button type="button" style="min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">Compare with ETH Grid</button>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: flex-end">
+          <label style="flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; color: #5f6684">Ask Desk AI
+            <textarea rows="1" placeholder="Ask a follow-up…" style="box-sizing: border-box; width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid #d5dcf2; font: inherit; font-size: 15px; color: #141a33; resize: none"></textarea>
+          </label>
+          <button type="button" style="min-height: 48px; padding: 0 22px; border: 0; border-radius: 14px; background: #2e62e8; color: #ffffff; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer">Send</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

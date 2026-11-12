@@ -15,6 +15,11 @@ export interface NavItem {
    * `secondary`: nằm sau đường kẻ, tách khỏi nhóm điều hướng chính (Settings).
    */
   group?: "main" | "team" | "secondary";
+  /**
+   * Tên khối trong nhóm chính (ví dụ "Copy Trading", DEC-163): các mục liền nhau cùng `section` hiện thành một khối
+   * có nhãn nhỏ; mục không có `section` nằm trong khối không nhãn.
+   */
+  section?: string;
 }
 
 export interface NavLinkProps {
@@ -127,7 +132,16 @@ export function AppShell({
           <aside className="sticky top-5 hidden max-h-[calc(100dvh-2.5rem)] w-60 shrink-0 flex-col gap-5 overflow-y-auto rounded-card border border-border bg-surface px-3.5 py-5 lg:flex">
             <div className="px-2 py-1">{brand}</div>
             <nav aria-label={navLabel}>
-              <ul className="flex flex-col gap-0.5">{mainItems.map(sideItem)}</ul>
+              {sectionsOf(mainItems).map((block, i) => (
+                <div key={block.section ?? `main-${String(i)}`} className={cx(i > 0 && "mt-3")}>
+                  {block.section === undefined ? null : (
+                    <span className="block px-3 pb-1 text-[11px] font-extrabold tracking-[0.08em] text-muted uppercase">
+                      {block.section}
+                    </span>
+                  )}
+                  <ul className="flex flex-col gap-0.5">{block.items.map(sideItem)}</ul>
+                </div>
+              ))}
               {teamItems.length > 0 ? (
                 <>
                   <div aria-hidden="true" className="mx-2 my-2.5 h-px bg-border" />
@@ -170,7 +184,12 @@ export function AppShell({
             {children}
           </main>
         </div>
-        <MobileBottomNav label={navLabel} nav={mobileNav ?? { items: navItems }} link={link} />
+        <MobileBottomNav
+          label={navLabel}
+          nav={mobileNav ?? { items: navItems }}
+          link={link}
+          teamLabel={teamLabel}
+        />
       </div>
     </HeaderExtrasContext.Provider>
   );
@@ -187,13 +206,34 @@ function MobileBottomNav({
   label,
   nav,
   link,
+  teamLabel,
 }: {
   label: string;
   nav: MobileNav;
   link: (item: NavItem, className: string, content: ReactNode) => ReactNode;
+  teamLabel?: string | undefined;
 }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreCurrent = nav.more?.items.some((i) => i.current) ?? false;
+  const sheetItem = (item: NavItem) => (
+    <li key={item.key}>
+      {link(
+        item,
+        cx(
+          "flex min-h-tap items-center gap-3 rounded-control px-3 text-sm",
+          item.current
+            ? "bg-accent font-bold text-white"
+            : "font-semibold text-ink-2 hover:bg-surface-2",
+        ),
+        <>
+          <span aria-hidden="true" className="size-5 [&>svg]:size-5">
+            {item.icon}
+          </span>
+          {item.label}
+        </>,
+      )}
+    </li>
+  );
   return (
     <nav
       aria-label={label}
@@ -246,26 +286,28 @@ function MobileBottomNav({
             </button>
             <BottomSheet open={moreOpen} onOpenChange={setMoreOpen} title={nav.more.label}>
               <ul className="flex flex-col gap-1">
-                {nav.more.items.map((item) => (
-                  <li key={item.key}>
-                    {link(
-                      item,
-                      cx(
-                        "flex min-h-tap items-center gap-3 rounded-control px-3 text-sm",
-                        item.current
-                          ? "bg-accent font-bold text-white"
-                          : "font-semibold text-ink-2 hover:bg-surface-2",
-                      ),
-                      <>
-                        <span aria-hidden="true" className="size-5 [&>svg]:size-5">
-                          {item.icon}
-                        </span>
-                        {item.label}
-                      </>,
-                    )}
-                  </li>
-                ))}
+                {nav.more.items.filter((i) => i.group !== "team").map(sheetItem)}
               </ul>
+              {/* Mục của role team (Builder Revenue, Users, Platform Stats) tách nhóm như sidebar desktop. */}
+              {nav.more.items.some((i) => i.group === "team") ? (
+                <>
+                  <div aria-hidden="true" className="mx-1 my-2.5 h-px bg-border" />
+                  {teamLabel === undefined ? null : (
+                    <span
+                      id="more-team"
+                      className="block px-3 pb-1 text-[11px] font-extrabold tracking-[0.08em] text-muted uppercase"
+                    >
+                      {teamLabel}
+                    </span>
+                  )}
+                  <ul
+                    aria-labelledby={teamLabel === undefined ? undefined : "more-team"}
+                    className="flex flex-col gap-1"
+                  >
+                    {nav.more.items.filter((i) => i.group === "team").map(sheetItem)}
+                  </ul>
+                </>
+              ) : null}
               {nav.more.footer === undefined ? null : (
                 <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
                   {nav.more.footer}
@@ -277,4 +319,17 @@ function MobileBottomNav({
       </ul>
     </nav>
   );
+}
+
+/** Chia mục liền nhau theo `section`, giữ thứ tự. */
+function sectionsOf(
+  items: readonly NavItem[],
+): { section: string | undefined; items: NavItem[] }[] {
+  const out: { section: string | undefined; items: NavItem[] }[] = [];
+  for (const item of items) {
+    const last = out.at(-1);
+    if (last !== undefined && last.section === item.section) last.items.push(item);
+    else out.push({ section: item.section, items: [item] });
+  }
+  return out;
 }

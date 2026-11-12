@@ -43,7 +43,12 @@ export class SimExchange {
   apply(actions: readonly StrategyAction[], at: number): StrategyEvent[] {
     const events: StrategyEvent[] = [];
     for (const a of actions) {
-      if (a.type === "cancel") this.open.delete(a.clOrdID);
+      if (a.type === "cancel") {
+        // Khớp engine: sau khi huỷ thành công, báo `orderDone` để chiến lược dọn lệnh cancelling
+        // (DEC-100; Volume Maker giữ lệnh `cancelling` tới khi có `orderDone` hoặc hết hạn 60 s).
+        this.open.delete(a.clOrdID);
+        events.push({ type: "orderDone", at, clOrdID: a.clOrdID });
+      }
       if (a.type !== "place") continue;
       const o = a.order;
       if (this.options.rejectTags?.(o) === true) {

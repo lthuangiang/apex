@@ -2,6 +2,7 @@ import { ApiKeyStatus, SodexNetwork, UserRole } from "@drift/shared";
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  check,
   date,
   doublePrecision,
   numeric,
@@ -57,6 +58,10 @@ export const users = pgTable(
     /** Số lần sai mật khẩu liên tiếp; đủ ngưỡng thì khoá tới `loginLockedUntil` (DEC-76). */
     failedLogins: integer("failed_logins").notNull().default(0),
     loginLockedUntil: timestamp("login_locked_until", { withTimezone: true }),
+    /** Market Making và Volume Farming mở cho mọi tài khoản (DEC-94); team tắt được từng người ở Users. */
+    volumeBots: boolean("volume_bots").notNull().default(true),
+    /** AI Desk: team bật theo tài khoản ở Users (DEC-105). */
+    aiDesk: boolean("ai_desk").notNull().default(false),
     twofaEnabled: boolean("twofa_enabled").notNull().default(false),
     /** Secret TOTP đã mã hoá (AES-256-GCM); null khi chưa bật. */
     twofaSecret: text("twofa_secret"),
@@ -87,6 +92,8 @@ export const sessions = pgTable(
     absoluteExpiresAt: tstz("absolute_expires_at").notNull(),
     lastSeenAt: tstz("last_seen_at").notNull().defaultNow(),
     revokedAt: tstz("revoked_at"),
+    /** Lần cuối nhập đúng mã 2FA trên phiên này; trong 2 giờ sau đó không hỏi lại (DEC-115). */
+    twofaVerifiedAt: tstz("twofa_verified_at"),
     ip: inet("ip"),
     userAgent: text("user_agent"),
     ...timestamps,
@@ -259,6 +266,28 @@ export const auditLog = pgTable(
     ...timestamps,
   },
   (t) => [index("audit_log_user_id_idx").on(t.userId, t.occurredAt)],
+);
+
+/**
+ * Từng bước của màn Connect SoDEX phía trình duyệt (DEC-114): mở trang, ví hiện ra, chọn ví, lỗi ví, chữ ký. Chỉ để
+ * team hỗ trợ khách bị kẹt; không chứa chữ ký, key hay secret. `attemptId` gom các bước của một lần mở trang.
+ */
+export const connectEvents = pgTable(
+  "connect_events",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    attemptId: uuid("attempt_id").notNull(),
+    type: text("type").notNull(),
+    data: jsonb("data").notNull().default({}),
+    occurredAt: tstz("occurred_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("connect_events_user_idx").on(t.userId, t.occurredAt),
+    index("connect_events_time_idx").on(t.occurredAt),
+  ],
 );
 
 // ---------- P4: dữ liệu ----------
@@ -484,8 +513,17 @@ export const bots = pgTable(
     engine: text("engine", { enum: ["spot", "perps", "spot+perps"] }).notNull(),
     name: text("name").notNull(),
     state: text("state", { enum: BOT_STATES }).notNull(),
+    /**
+     * `paper`: lệnh chỉ mô phỏng trong DRIFT, không bao giờ lên SoDEX (DEC-105). Không đổi tại chỗ: dùng tiền thật
+     * là tạo bot mới.
+     */
+    mode: text("mode", { enum: ["live", "paper"] })
+      .notNull()
+      .default("live"),
     reasonCode: text("reason_code"),
     needsAttention: boolean("needs_attention").notNull().default(false),
+    /** Người dùng chọn đóng vị thế khi Stop (DEC-81); engine đọc lúc xử lý `stopping`. */
+    closeOnStop: boolean("close_on_stop").notNull().default(false),
     activeVersionId: uuid("active_version_id"),
     archivedAt: tstz("archived_at"),
     ...timestamps,
@@ -607,6 +645,57 @@ export const botEvents = pgTable(
   (t) => [index("bot_events_bot_idx").on(t.botId, t.occurredAt)],
 );
 
+/**
+ * Review sau khi chạy của bot Volume Builder (DEC-131): chạy lại lối thoát trên lệnh vào thật với nhiều bộ tham số.
+ * Worker `backtest` tính (cùng hàng đợi `backtest.run`, payload `{ reviewId }`); `result` theo `botReviewResultSchema`.
+ */
+export const botReviews = pgTable(
+  "bot_reviews",
+  {
+    id: id(),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    status: text("status", {
+      enum: ["queued", "running", "done", "failed", "unavailable"],
+    }).notNull(),
+    result: jsonb("result"),
+    error: text("error"),
+    /** Version đã tạo từ đề xuất này (nút Use these settings), null nếu chưa áp dụng. */
+    appliedVersion: integer("applied_version"),
+    finishedAt: tstz("finished_at"),
+    ...timestamps,
+  },
+  (t) => [index("bot_reviews_bot_idx").on(t.botId, t.createdAt)],
+);
+
+/**
+ * Builder fee riêng theo user × chiến lược do team đặt (DEC-159), phần mười bp, 0–`DRIFT_BUILDER_FEE_RATE`.
+ * Không có dòng = mặc định của chiến lược (`builderFeeRateOf`).
+ */
+export const userBuilderFees = pgTable(
+  "user_builder_fees",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    strategy: text("strategy").notNull(),
+    rate: integer("rate").notNull(),
+    /** Thành viên team đặt mức này. */
+    updatedBy: uuid("updated_by")
+      .notNull()
+      .references(() => users.id),
+    ...timestamps,
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.strategy] }),
+    check("user_builder_fees_rate_range", sql`${t.rate} >= 0 and ${t.rate} <= 10`),
+  ],
+);
+
 export const shardEpochs = pgTable("shard_epochs", {
   shard: integer("shard").primaryKey(),
   epoch: bigint("epoch", { mode: "number" }).notNull(),
@@ -650,7 +739,7 @@ export const aiSuggestions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id),
-    context: text("context", { enum: ["onboarding", "create", "retune"] }).notNull(),
+    context: text("context", { enum: ["onboarding", "create", "retune", "desk"] }).notNull(),
     /** Id tất định do engine tính (cùng đầu vào → cùng id). */
     engineId: text("engine_id").notNull(),
     role: text("role", { enum: ["best", "add_on", "single"] }).notNull(),
@@ -660,6 +749,10 @@ export const aiSuggestions = pgTable(
     values: jsonb("values").notNull(),
     reasons: jsonb("reasons").notNull(),
     basis: text("basis").notNull(),
+    /** Chiến lược không được chọn và lý do, lưu cùng lần đề xuất (AI Desk › Why this one). */
+    notSuggested: jsonb("not_suggested"),
+    /** Mức chịu lỗ (%) của lần đề xuất, để trang Why this one hiện đúng câu trả lời. */
+    maxDrop: text("max_drop"),
     inputsVersion: text("inputs_version").notNull(),
     computedAt: tstz("computed_at").notNull(),
     ...timestamps,
@@ -807,4 +900,183 @@ export const builderRevenueDaily = pgTable(
     ...timestamps,
   },
   (t) => [primaryKey({ columns: [t.date, t.engine] })],
+);
+
+/**
+ * Số dư giả của bot paper (DEC-105). Không liên quan ví SoDEX. `positions`: theo market, `qty` có dấu (perps âm là
+ * short, spot là lượng coin giữ), `avgCost` giá vốn. Mọi số là decimal string.
+ */
+export const paperAccounts = pgTable("paper_accounts", {
+  botId: uuid("bot_id")
+    .primaryKey()
+    .references(() => bots.id),
+  capital: money("capital").notNull(),
+  cash: money("cash").notNull(),
+  positions: jsonb("positions").notNull(),
+  fees: money("fees").notNull().default("0"),
+  funding: money("funding").notNull().default("0"),
+  fills: integer("fills").notNull().default(0),
+  peakEquity: money("peak_equity").notNull(),
+  maxDrawdown: money("max_drawdown").notNull().default("0"),
+  /** Giá đầu của tài sản chính lúc bắt đầu, để so với chỉ giữ coin. */
+  startPrice: money("start_price"),
+  startedAt: tstz("started_at").notNull(),
+  ...timestamps,
+});
+
+/** Lần khớp mô phỏng của bot paper. Bảng riêng: không bao giờ lẫn vào `fills` (volume, builder revenue, phí). */
+export const paperFills = pgTable(
+  "paper_fills",
+  {
+    id: id(),
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id),
+    market: text("market").notNull(),
+    side: text("side", { enum: ["buy", "sell"] }).notNull(),
+    price: money("price").notNull(),
+    size: money("size").notNull(),
+    fee: money("fee").notNull(),
+    isMaker: boolean("is_maker").notNull(),
+    filledAt: tstz("filled_at").notNull(),
+    ...timestamps,
+  },
+  (t) => [index("paper_fills_bot_idx").on(t.botId, t.filledAt)],
+);
+
+/** Số dư giả theo phút (biểu đồ "Simulated balance by day" gom theo ngày). */
+export const paperSnapshots = pgTable(
+  "paper_snapshots",
+  {
+    botId: uuid("bot_id")
+      .notNull()
+      .references(() => bots.id),
+    at: tstz("at").notNull(),
+    equity: money("equity").notNull(),
+  },
+  (t) => [uniqueIndex("paper_snapshots_key").on(t.botId, t.at)],
+);
+
+/*
+ * Copy Trading v1 (DEC-163, docs/COPY_TRADING_DATA.md). Ví leader chỉ đọc (Hyperliquid), không có key, không ký.
+ */
+
+/** Ví ứng viên từ leaderboard Hyperliquid. `isVault` null = chưa hỏi `userRole` (weight 60, hỏi một lần). */
+export const leaderWallets = pgTable(
+  "leader_wallets",
+  {
+    source: text("source", { enum: ["sodex", "hyperliquid"] }).notNull(),
+    address: text("address").notNull(),
+    displayName: text("display_name"),
+    isVault: boolean("is_vault"),
+    /** Giá trị tài khoản và PnL 30 ngày theo leaderboard lần thấy gần nhất (chỉ để chọn ứng viên). */
+    accountValue: money("account_value"),
+    leaderboardPnl30d: money("leaderboard_pnl_30d"),
+    lastOnLeaderboardAt: tstz("last_on_leaderboard_at"),
+    /** Fill mới nhất đã đọc (ms UTC) cho T0 / T1, để lần poll sau chỉ đọc phần mới. */
+    fillCursor: bigint("fill_cursor", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.source, t.address] })],
+);
+
+/** Một lần tính lại leaderboard (T2). Danh sách hiển thị dùng lần `ok` gần nhất; lỗi thì giữ lần trước. */
+export const leaderboardRuns = pgTable("leaderboard_runs", {
+  date: date("date").primaryKey(),
+  status: text("status", { enum: ["running", "ok", "failed"] }).notNull(),
+  candidates: integer("candidates"),
+  computed: integer("computed"),
+  error: text("error"),
+  finishedAt: tstz("finished_at"),
+  ...timestamps,
+});
+
+/** Thống kê 30 ngày của một ví theo ngày tính (`LeaderStats` trong `@drift/shared`). */
+export const leaderStatsDaily = pgTable(
+  "leader_stats_daily",
+  {
+    source: text("source", { enum: ["sodex", "hyperliquid"] }).notNull(),
+    address: text("address").notNull(),
+    date: date("date").notNull(),
+    /** `LeaderStats` đầy đủ. */
+    stats: jsonb("stats").notNull(),
+    hidden: text("hidden").array().notNull(),
+    tabs: text("tabs").array().notNull(),
+    steadyScore: doublePrecision("steady_score"),
+    profit: money("profit").notNull(),
+    typicalHoldMs: bigint("typical_hold_ms", { mode: "number" }),
+    computedAt: tstz("computed_at").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    primaryKey({ columns: [t.source, t.address, t.date] }),
+    index("leader_stats_daily_date_idx").on(t.date),
+  ],
+);
+
+/** Thay đổi vị thế của ví leader: fill cùng (ví, coin) trong 60 giây gộp thành một sự kiện (DEC-163 mục 11). */
+export const leaderEvents = pgTable(
+  "leader_events",
+  {
+    id: id(),
+    source: text("source", { enum: ["sodex", "hyperliquid"] }).notNull(),
+    address: text("address").notNull(),
+    coin: text("coin").notNull(),
+    /** Market SoDEX tương ứng; null = SoDEX không có ("Not listed"). */
+    market: text("market"),
+    kind: text("kind", {
+      enum: ["open", "add", "reduce", "close", "flip", "liquidated"],
+    }).notNull(),
+    /** Vị thế có dấu trước và sau sự kiện (đơn vị coin). */
+    positionBefore: money("position_before").notNull(),
+    positionAfter: money("position_after").notNull(),
+    /** Notional thay đổi (USD, luôn dương) và giá trung bình của các fill trong sự kiện. */
+    notional: money("notional").notNull(),
+    price: money("price").notNull(),
+    /** PnL đã chốt trừ phí (USD) khi sự kiện đóng một phần / toàn bộ; null với mở / tăng. */
+    realized: money("realized"),
+    /** Thời điểm fill đầu tiên của sự kiện và lúc DeskLabs thấy nó (độ trễ thật). */
+    at: tstz("at").notNull(),
+    seenAt: tstz("seen_at").notNull(),
+    /** tid fill cuối, để không ghi trùng khi poll lại. */
+    lastTid: text("last_tid").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index("leader_events_addr_at_idx").on(t.source, t.address, t.at),
+    uniqueIndex("leader_events_dedupe").on(t.source, t.address, t.lastTid),
+  ],
+);
+
+/** Ví người dùng theo dõi (Following, tối đa 5 / người, DEC-163 mục 10). */
+export const leaderFollows = pgTable(
+  "leader_follows",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    source: text("source", { enum: ["sodex", "hyperliquid"] }).notNull(),
+    address: text("address").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.source, t.address] }),
+    index("leader_follows_wallet_idx").on(t.source, t.address),
+  ],
+);
+
+/** Lần cảnh báo "big move" gần nhất theo (ví, coin): cách nhau ≥ 10 phút (DEC-163 mục 11). */
+export const leaderAlertState = pgTable(
+  "leader_alert_state",
+  {
+    source: text("source", { enum: ["sodex", "hyperliquid"] }).notNull(),
+    address: text("address").notNull(),
+    coin: text("coin").notNull(),
+    lastAlertAt: tstz("last_alert_at").notNull(),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.source, t.address, t.coin] })],
 );

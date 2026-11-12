@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "volume_bots" boolean DEFAULT false NOT NULL;

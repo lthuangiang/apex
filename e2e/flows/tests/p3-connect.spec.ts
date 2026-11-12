@@ -115,7 +115,7 @@ test("sign up, connect with two signatures, revoke, approve again and disconnect
 
   const done = page.getByRole("status", { name: "Connected · confirmed by SoDEX" });
   await expect(done).toBeVisible();
-  await expect(done).toContainText(/DRIFT · ••[0-9a-f]{4} · expires/);
+  await expect(done).toContainText(/DeskLabs · ••[0-9a-f]{4} · expires/);
   await expect(done).toContainText("DRIFT #1645 · up to 0.01% · found in Spot and Perps approvals");
   // Onboarding 3–4: import (jobs qua outbox → NATS) rồi phân tích.
   await page.getByRole("link", { name: "Import my history" }).click();
@@ -131,7 +131,7 @@ test("sign up, connect with two signatures, revoke, approve again and disconnect
   // Settings › SoDEX access đọc lại đúng trạng thái.
   await page.goto("/settings");
   await expect(page.getByText(`SoDEX account #${String(accountID)}`)).toBeVisible();
-  await expect(page.getByText(/^DRIFT · ••[0-9a-f]{4}$/)).toBeVisible();
+  await expect(page.getByText(/^DeskLabs · ••[0-9a-f]{4}$/)).toBeVisible();
   await expect(page.getByText("● Approved")).toBeVisible();
   await expect(page.getByText("✕ Withdraw or transfer")).toBeVisible();
 

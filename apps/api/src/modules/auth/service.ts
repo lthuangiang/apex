@@ -1,6 +1,8 @@
+import { randomBytes } from "node:crypto";
+
 import type { Db } from "@drift/db";
 import { emailOtps, sessions, users } from "@drift/db";
-import { AppError, ErrorCode, OTP_LENGTH } from "@drift/shared";
+import { AppError, ErrorCode, OTP_LENGTH, UserRole } from "@drift/shared";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 
 import { AuditAction, audit } from "../../lib/audit";
@@ -139,6 +141,8 @@ export async function createSession(
       expiresAt,
       absoluteExpiresAt: new Date(now.getTime() + SESSION_ABSOLUTE_MS),
       lastSeenAt: now,
+      // Vừa nhập đúng 2FA khi đăng nhập: tính luôn cửa sổ 2 giờ (DEC-115).
+      twofaVerifiedAt: existing?.twofaEnabled === true ? now : null,
       ip: client.ip,
       userAgent: client.userAgent,
     });
@@ -166,6 +170,7 @@ async function openSession(
   now: Date,
   client: { ip: string | null; userAgent: string | null },
   newUser: boolean,
+  twofaVerified = false,
 ): Promise<NewSession> {
   const token = randomToken();
   const expiresAt = new Date(now.getTime() + SESSION_IDLE_MS);
@@ -175,6 +180,7 @@ async function openSession(
     expiresAt,
     absoluteExpiresAt: new Date(now.getTime() + SESSION_ABSOLUTE_MS),
     lastSeenAt: now,
+    twofaVerifiedAt: twofaVerified ? now : null,
     ip: client.ip,
     userAgent: client.userAgent,
   });
@@ -262,7 +268,7 @@ export async function loginWithPassword(
       .update(users)
       .set({ failedLogins: 0, loginLockedUntil: null })
       .where(eq(users.id, user.id));
-    return openSession(tx, user.id, now, client, false);
+    return openSession(tx, user.id, now, client, false, user.twofaEnabled);
   });
 }
 
@@ -274,6 +280,66 @@ export async function setPassword(db: Db, email: string, password: string): Prom
     .where(sql`lower(${users.email}) = ${email.trim().toLowerCase()}`)
     .returning({ id: users.id });
   return updated.length > 0;
+}
+
+/**
+ * Team đặt lại mật khẩu cho một user từ trang Users (DEC-77). Cần role `team` và 2FA của người thao tác.
+ * Server sinh mật khẩu tạm (trả về một lần), thu hồi mọi phiên của user đó, bỏ khoá đăng nhập, ghi audit
+ * (không ghi mật khẩu).
+ */
+export async function resetPasswordByTeam(
+  deps: AuthDeps,
+  input: { actorId: string; targetId: string; twoFactorCode: string },
+  ip: string | null,
+): Promise<{ email: string; temporaryPassword: string }> {
+  const [actor] = await deps.db
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, input.actorId))
+    .limit(1);
+  if (actor?.role !== UserRole.team) {
+    throw new AppError(ErrorCode.forbidden, "Users is for the DeskLabs team only.");
+  }
+  // Thao tác của team: bắt buộc đã bật 2FA và luôn hỏi mã mới.
+  await verifyTwoFactor(deps, input.actorId, input.twoFactorCode, ip, {
+    required: true,
+    fresh: true,
+  });
+  const [target] = await deps.db
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(and(eq(users.id, input.targetId), isNull(users.deletedAt)))
+    .limit(1);
+  if (target === undefined) throw new AppError(ErrorCode.notFound, "User not found.");
+
+  const temporaryPassword = temporaryPasswordFor();
+  const passwordHash = await hashPassword(temporaryPassword);
+  const now = deps.now();
+  await deps.db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({ passwordHash, failedLogins: 0, loginLockedUntil: null })
+      .where(eq(users.id, target.id));
+    await tx
+      .update(sessions)
+      .set({ revokedAt: now })
+      .where(and(eq(sessions.userId, target.id), isNull(sessions.revokedAt)));
+    await audit(tx, {
+      userId: input.actorId,
+      action: AuditAction.passwordResetByTeam,
+      target: target.id,
+      ip,
+    });
+  });
+  return { email: target.email, temporaryPassword };
+}
+
+/** 20 ký tự base32 không nhầm lẫn (≈ 100 bit), nhóm 4 bằng gạch nối để đọc cho người dùng dễ. */
+function temporaryPasswordFor(): string {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(20);
+  const chars = [...bytes].map((b) => alphabet[b % alphabet.length] ?? "A").join("");
+  return chars.match(/.{4}/g)?.join("-") ?? chars;
 }
 
 export async function revokeSession(

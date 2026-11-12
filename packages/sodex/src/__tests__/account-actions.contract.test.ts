@@ -24,6 +24,8 @@ const addKey = addPermissionedApiKeyRequest({
   user: master.address,
   accountID: 1645n,
   publicKey: DRIFT_KEY,
+  // Vector Go SDK sinh với tên cũ `DRIFT`; tên mặc định đổi thì vector vẫn phải giữ (DEC-168).
+  name: "DRIFT",
   nonce: 1776000000001n,
   expiresAt: 1776000000000n,
 });

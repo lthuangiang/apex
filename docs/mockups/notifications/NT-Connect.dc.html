@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Connect Telegram</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.card{background:#fff;border:1px solid #e3e7f5;border-radius:24px}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#1d47b8}
+.muted{color:#5f6684}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:12px;border:none;background:#2e62e8;color:#fff;font:inherit;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer}
+.btn2{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:12px;border:1px solid #d5dcf2;background:#fff;color:#141a33;font:inherit;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800}
+.spin{width:18px;height:18px;border-radius:9px;border:3px solid #c6d0fa;border-top-color:#2e62e8;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</helmet>
+<div class="num" style="min-height:100vh;box-sizing:border-box;padding:48px 40px;background:rgba(20,26,51,.55);font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#141a33;display:flex;flex-wrap:wrap;gap:32px;justify-content:center;align-items:flex-start">
+
+  <div role="dialog" aria-labelledby="c1-h" style="flex:0 1 560px;background:#fff;border-radius:28px;padding:28px;display:flex;flex-direction:column;gap:18px;box-shadow:0 30px 80px rgba(10,15,40,.35)">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span class="eyebrow">Step 1 of 2</span>
+      <button type="button" aria-label="Close" style="width:40px;height:40px;border-radius:20px;border:none;background:#f2f3f7;font:inherit;font-size:18px;cursor:pointer">×</button>
+    </div>
+    <h2 id="c1-h" style="margin:0;font-size:26px;font-weight:800;letter-spacing:-.01em">Connect Telegram</h2>
+    <p style="margin:0;font-size:15px;line-height:1.55;color:#3b4262">Open DeskLabs Bot and tap <b>Start</b>. That's it: no code to type.</p>
+    <div style="display:flex;gap:20px;align-items:center;padding:18px;border-radius:20px;background:#f5f7fd">
+      <div role="img" aria-label="QR code that opens DeskLabs Bot in Telegram" style="flex:0 0 150px;height:150px;border-radius:14px;background:#fff;border:1px solid #e3e7f5;display:grid;grid-template-columns:repeat(9,1fr);gap:2px;padding:10px;box-sizing:border-box">
+        <i style="background:#141a33"></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i style="background:#141a33"></i>
+        <i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i>
+        <i style="background:#141a33"></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i style="background:#141a33"></i>
+        <i></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i></i>
+        <i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i></i><i style="background:#2aa3e0"></i><i></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i>
+        <i></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i></i>
+        <i style="background:#141a33"></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i>
+        <i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i></i><i style="background:#141a33"></i><i></i>
+        <i style="background:#141a33"></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i style="background:#141a33"></i><i></i><i style="background:#141a33"></i>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <b style="font-size:15px">On your phone</b>
+        <a href="NT-Telegram.dc.html" class="btn" style="background:#2aa3e0">Open Telegram</a>
+        <span class="muted" style="font-size:13px;line-height:1.5">On a computer? Scan the code with your phone camera.</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:#eef3ff;font-size:13.5px">
+      <span aria-hidden="true" class="spin"></span>
+      <span role="status">Waiting for you to tap Start… <span class="muted">Link works for 9:41</span></span>
+    </div>
+    <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6;color:#3b4262">
+      <li>DeskLabs Bot only sends you alerts. It can't trade, pause bots or move money.</li>
+      <li>We never ask for your password, seed phrase or keys on Telegram.</li>
+    </ul>
+  </div>
+
+  <div style="flex:0 1 560px;display:flex;flex-direction:column;gap:24px">
+    <div role="dialog" aria-labelledby="c2-h" style="background:#fff;border-radius:28px;padding:28px;display:flex;flex-direction:column;gap:16px;box-shadow:0 30px 80px rgba(10,15,40,.35)">
+      <span class="eyebrow" style="color:#0b6a39">Step 2 of 2</span>
+      <div style="display:flex;gap:14px;align-items:center">
+        <span aria-hidden="true" style="width:52px;height:52px;border-radius:26px;background:#ddf4e7;color:#0b6a39;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800">✓</span>
+        <div><h2 id="c2-h" style="margin:0;font-size:24px;font-weight:800">Telegram connected</h2><span class="muted" style="font-size:14px">Alerts go to <b style="color:#141a33">@mai_trades</b></span></div>
+      </div>
+      <div style="padding:14px 16px;border-radius:16px;background:#f5f7fd;display:flex;flex-direction:column;gap:8px;font-size:14px">
+        <b>You'll get on Telegram</b>
+        <span>✓ Bot problems <span class="muted">(always)</span></span>
+        <span>✓ Risk limits</span>
+        <span>✓ SoDEX access changes</span>
+        <span>✓ ✦ Morning brief at 08:00</span>
+        <a href="NT-Settings.dc.html" style="font-size:13px;font-weight:700;text-decoration:none">Change in Settings</a>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <button type="button" class="btn">Send a test message</button>
+        <button type="button" class="btn2">Done</button>
+      </div>
+    </div>
+
+    <div role="dialog" aria-labelledby="c3-h" style="background:#fff;border-radius:28px;padding:24px 28px;display:flex;flex-direction:column;gap:12px;box-shadow:0 30px 80px rgba(10,15,40,.35)">
+      <span class="chip" style="align-self:flex-start;background:#fde4e1;color:#a72826">Link expired</span>
+      <h2 id="c3-h" style="margin:0;font-size:20px;font-weight:800">That link timed out</h2>
+      <p style="margin:0;font-size:14px;line-height:1.55;color:#3b4262">Links work for 10 minutes and only once. Get a new one and tap Start again.</p>
+      <button type="button" class="btn" style="align-self:flex-start">Get a new link</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

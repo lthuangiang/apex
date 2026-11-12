@@ -17,6 +17,8 @@ import { api, ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import { useMe } from "@/lib/queries";
 
+import { deviceLabel } from "../device-label";
+
 // Settings › Security (artboard "Desktop · Settings", tab Security). Không có dòng "Wallet · Primary"
 // vì DRIFT không đăng nhập bằng ví (DEC-28, DEC-31).
 
@@ -296,7 +298,7 @@ function SessionsCard() {
               className="flex min-h-tap flex-wrap items-center justify-between gap-2 border-b border-border py-2 text-sm last:border-b-0"
             >
               <span className="min-w-0 break-words">
-                {[s.userAgent, s.ip, formatDate(Date.parse(s.lastSeenAt))]
+                {[deviceLabel(s.userAgent), s.ip, formatDate(Date.parse(s.lastSeenAt))]
                   .filter(Boolean)
                   .join(" · ")}
               </span>

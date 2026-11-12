@@ -1,0 +1,1 @@
+ALTER TABLE "bots" ADD COLUMN "close_on_stop" boolean DEFAULT false NOT NULL;

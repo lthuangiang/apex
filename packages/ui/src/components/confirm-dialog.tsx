@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 
 import { useReturnFocus } from "../lib/use-return-focus";
 
@@ -24,11 +24,17 @@ export interface ConfirmDialogProps {
   confirmLabel: string;
   cancelLabel: string;
   tone?: "primary" | "danger";
-  /** Thao tác nguy hiểm yêu cầu 2FA ở server; đây chỉ là ô nhập. */
+  /** Thao tác nguy hiểm yêu cầu 2FA ở server; đây chỉ là ô nhập. Không truyền khi không cần mã (DEC-115). */
   twoFactor?: TwoFactorInput;
+  /** Lỗi của thao tác khi không có ô 2FA để hiện lỗi. */
+  error?: string;
   /** Đang chờ backend; nút xác nhận bị khoá, hiện `pendingLabel`. */
   pending?: boolean;
   pendingLabel?: string;
+  /** Lựa chọn thêm trước ô 2FA (ví dụ có đóng vị thế khi Stop không). */
+  children?: ReactNode;
+  /** Khoá nút xác nhận khi lựa chọn bắt buộc chưa chọn. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
 }
 
@@ -42,8 +48,11 @@ export function ConfirmDialog({
   cancelLabel,
   tone = "primary",
   twoFactor,
+  error,
   pending = false,
   pendingLabel,
+  children,
+  confirmDisabled = false,
   onConfirm,
 }: ConfirmDialogProps) {
   const id = useId();
@@ -64,7 +73,7 @@ export function ConfirmDialog({
       <Dialog.Portal>
         <Dialog.Overlay className={dialogOverlayClass} />
         <Dialog.Content className={dialogContentClass} aria-describedby={listId} {...returnFocus}>
-          <Dialog.Title className="text-lg font-bold text-ink">{title}</Dialog.Title>
+          <Dialog.Title className="text-lg font-bold text-ink wrap-anywhere">{title}</Dialog.Title>
           <div id={listId} className="flex flex-col gap-2">
             <p className="text-sm font-semibold text-ink-2">{consequencesLabel}</p>
             <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-ink">
@@ -73,6 +82,7 @@ export function ConfirmDialog({
               ))}
             </ul>
           </div>
+          {children}
           {twoFactor ? (
             <div className="flex flex-col gap-1.5">
               <label htmlFor={codeId} className="text-sm font-semibold text-ink">
@@ -99,6 +109,11 @@ export function ConfirmDialog({
               ) : null}
             </div>
           ) : null}
+          {error !== undefined && twoFactor?.error === undefined ? (
+            <p role="alert" className="m-0 text-xs font-semibold text-neg-ink">
+              {error}
+            </p>
+          ) : null}
           <div className="flex flex-col-reverse gap-2 md:flex-row md:justify-end">
             <Dialog.Close asChild>
               <Button variant="secondary" disabled={pending}>
@@ -108,7 +123,7 @@ export function ConfirmDialog({
             <Button
               variant={tone === "danger" ? "danger" : "primary"}
               pending={pending}
-              disabled={codeMissing}
+              disabled={codeMissing || confirmDisabled}
               onClick={onConfirm}
             >
               {pending && pendingLabel ? pendingLabel : confirmLabel}

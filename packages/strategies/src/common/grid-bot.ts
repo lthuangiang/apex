@@ -12,6 +12,7 @@ import type {
   StrategyModule,
 } from "../core/types";
 
+import { entryReady, type EntryCondition, type WaitingInfo } from "./entry";
 import { gridPrices } from "./grid";
 
 /** Cấu hình chung của bot grid (Spot và Futures). */
@@ -27,7 +28,8 @@ export interface GridBotConfig {
   notional: string;
   /** Mốc để đo % take profit (Spot: investment; Perps: margin). */
   capital: string;
-  triggerPrice?: string | undefined;
+  /** First entry (IMP-01). `triggerPrice` cũ được map thành `cross`. Thiếu là Now. */
+  entry?: EntryCondition | undefined;
   stopBelow?: string | undefined;
   stopAbove?: string | undefined;
   takeProfitPct?: string | undefined;
@@ -244,11 +246,9 @@ export function stepGridBot(
     const prev = s.lastPrice;
     const state = { ...s, lastPrice: e.price };
     if (state.phase === "idle" || state.phase === "waiting_trigger") {
-      if (c.triggerPrice !== undefined) {
-        const crossed =
-          prev !== null &&
-          dec(prev).sub(c.triggerPrice).mul(dec(e.price).sub(c.triggerPrice)).lte(0);
-        if (!crossed) return { actions: [], state: { ...state, phase: "waiting_trigger" } };
+      const entry = c.entry ?? { type: "now" };
+      if (!entryReady(entry, c.direction, prev, e.price)) {
+        return { actions: [], state: { ...state, phase: "waiting_trigger" } };
       }
       return start(c, state, e.price, ctx);
     }
@@ -321,9 +321,19 @@ export function stepGridBot(
 }
 
 /** Tạo module chiến lược từ một hàm chuyển cấu hình riêng sang cấu hình grid chung. */
+/** Thông tin "Waiting for price" cho UI; chỉ khi grid chưa khởi động. */
+export function gridWaiting(c: GridBotConfig, s: GridBotState): WaitingInfo | null {
+  const entry = c.entry ?? { type: "now" };
+  if (entry.type === "now") return null;
+  return s.phase === "idle" || s.phase === "waiting_trigger"
+    ? { kind: "entry", condition: entry }
+    : null;
+}
+
 export function gridBotFor<C>(toGrid: (c: C) => GridBotConfig): StrategyModule<C, GridBotState> {
   return {
     initialState: initialGridBotState,
     step: (c, s, e, ctx) => stepGridBot(toGrid(c), s, e, ctx),
+    waiting: (c, s) => gridWaiting(toGrid(c), s),
   };
 }

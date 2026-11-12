@@ -11,6 +11,11 @@ export interface MarketDeps {
   rest: Pick<SodexRestClient, "getKlines" | "getSpotSymbols" | "getPerpsSymbols">;
   now: () => number;
   ttlMs?: number;
+  /**
+   * Giá gần nhất của nhiều market (Redis `md:last:*`, do marketdata ghi). Thiếu thì dùng `last_price` của
+   * thống kê ngày, có thể cũ cả ngày, nên khoảng grid đề xuất có thể không chứa giá hiện tại.
+   */
+  livePrices?: (markets: readonly string[]) => Promise<Record<string, string>>;
 }
 
 const CLOSES = 31;
@@ -60,12 +65,17 @@ export function marketLoader(deps: MarketDeps) {
         .selectDistinctOn([marketStatsDaily.market])
         .from(marketStatsDaily)
         .orderBy(marketStatsDaily.market, desc(marketStatsDaily.date))
-        .where(sql`${marketStatsDaily.date} >= current_date - 3`)
+        // Theo đồng hồ của service (`deps.now`), không theo `current_date` của DB: tất định khi test.
+        .where(
+          sql`${marketStatsDaily.date} >= ${new Date(deps.now() - 3 * 86_400_000).toISOString().slice(0, 10)}::date`,
+        )
     ).filter((r) => wanted.has(assetOf(r.market)));
     const [spot, perps] = await Promise.all([
       waitOnLimit(() => deps.rest.getSpotSymbols()),
       waitOnLimit(() => deps.rest.getPerpsSymbols()),
     ]);
+    const live: Record<string, string> =
+      (await deps.livePrices?.(rows.map((r) => r.market)).catch(() => ({}))) ?? {};
     const out: RecoMarket[] = [];
     for (const r of rows) {
       const s = r.engine === "spot" ? spot.find((x) => x.name === r.market) : undefined;
@@ -77,7 +87,7 @@ export function marketLoader(deps: MarketDeps) {
         engine: r.engine,
         asset: assetOf(r.market),
         quote: s?.quoteCoin ?? "vUSDC",
-        lastPrice: r.lastPrice,
+        lastPrice: live[r.market] ?? r.lastPrice,
         sigma30: r.sigma30,
         p5: r.p5,
         p95: r.p95,
@@ -86,12 +96,15 @@ export function marketLoader(deps: MarketDeps) {
         // market_stats_daily lưu tỷ lệ thô của SoDEX (0.0001 = 0.01%); engine đề xuất dùng %.
         fundingAvg7d: r.fundingAvg7d === null ? null : dec(r.fundingAvg7d).mul(100).toString(),
         fundingPos21: r.fundingPos21,
+        fundingIntervalHours: p === undefined ? null : p.fundingInterval / 3600,
         closes: await closesOf(r.engine, r.market),
         rules: {
           tickSize: sym.tickSize,
           stepSize: sym.stepSize,
           minQuantity: sym.minQuantity,
           minNotional: sym.minNotional,
+          ...(sym.makerFee === undefined ? {} : { makerFee: sym.makerFee }),
+          ...(sym.takerFee === undefined ? {} : { takerFee: sym.takerFee }),
         },
         maxLeverage: p?.maxLeverage ?? null,
       });

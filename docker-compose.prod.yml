@@ -31,6 +31,18 @@ services:
     deploy: { replicas: 1 }
     labels:
       - traefik.http.routers.web.entrypoints=websecure
+      # Tên miền cũ → APP_HOST, 301, giữ đường dẫn (DEC-150).
+      - traefik.http.routers.legacy.rule=Host(`${OLD_APP_HOST:-legacy.invalid}`)
+      - traefik.http.routers.legacy.entrypoints=websecure
+      - traefik.http.routers.legacy.service=web
+      - traefik.http.routers.legacy.middlewares=to-app-host
+      - traefik.http.middlewares.to-app-host.redirectregex.regex=^https?://[^/]+/?(.*)
+      - traefik.http.middlewares.to-app-host.redirectregex.replacement=https://${APP_HOST}/$${1}
+      - traefik.http.middlewares.to-app-host.redirectregex.permanent=true
+      - traefik.http.routers.legacy2.rule=Host(`${OLD_APP_HOST_2:-legacy2.invalid}`)
+      - traefik.http.routers.legacy2.entrypoints=websecure
+      - traefik.http.routers.legacy2.service=web
+      - traefik.http.routers.legacy2.middlewares=to-app-host
     logging: *logs
 
   api:

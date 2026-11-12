@@ -14,7 +14,7 @@ import { useRef, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
 import { feeLabels, formatDate, formatDateTime, shortAddress } from "@/lib/format";
-import { useSodexConnection } from "@/lib/queries";
+import { useSodexConnection, useTwoFactorNeeded } from "@/lib/queries";
 import { useSodexSignature } from "@/lib/use-sodex-signature";
 
 import { useMasterWallet } from "./master-wallet";
@@ -120,7 +120,9 @@ function AccountCard({ connection }: { connection: Connected }) {
         <div className="flex flex-col gap-1 rounded-[14px] bg-surface-2 px-3.5 py-3">
           <dt className="text-xs text-muted">{t("apiKey")}</dt>
           <dd className="m-0 font-bold tabular-nums">
-            {key === null ? tm("notAvailable") : t("apiKeyValue", { last4: key.last4 })}
+            {key === null
+              ? tm("notAvailable")
+              : t("apiKeyValue", { name: key.name, last4: key.last4 })}
           </dd>
         </div>
         <div className="flex flex-col gap-1 rounded-[14px] bg-surface-2 px-3.5 py-3">
@@ -174,7 +176,7 @@ function gated(ensure: () => Promise<void>, next: () => void) {
 
 const daysLeft = (iso: string) => Math.ceil((Date.parse(iso) - Date.now()) / 86_400_000);
 
-/** "Renew key (sign again)…" (DEC-59): key mới, một chữ ký của master wallet; key cũ thôi được dùng. */
+/** "Renew key (sign again)" (DEC-59): key mới, một chữ ký của master wallet; key cũ thôi được dùng. */
 function RenewButton({ connection, primary }: { connection: Connected; primary: boolean }) {
   const t = useTranslations("settings.sodexAccess");
   const tc = useTranslations("common.errors");
@@ -267,7 +269,7 @@ function RenewButton({ connection, primary }: { connection: Connected; primary: 
   );
 }
 
-/** "Disconnect…": dialog + 2FA, rồi master wallet ký xoá key ở Spot và Perps (DEC-31). */
+/** "Disconnect": dialog + 2FA, rồi master wallet ký xoá key ở Spot và Perps (DEC-31). */
 function DisconnectButton({ connection }: { connection: Connected }) {
   const t = useTranslations("settings.sodexAccess");
   const tDialog = useTranslations("common.dialog");
@@ -280,6 +282,9 @@ function DisconnectButton({ connection }: { connection: Connected }) {
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState<string | undefined>(undefined);
+  // Ô mã 2FA chỉ hiện khi cần (DEC-115); server báo cần mã thì hiện.
+  const [askCode, setAskCode] = useState(false);
+  const codeNeeded = useTwoFactorNeeded() || askCode;
   const [step, setStep] = useState<1 | 2 | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -294,7 +299,7 @@ function DisconnectButton({ connection }: { connection: Connected }) {
         "/api/v1/sodex/disconnection",
         disconnectResponseSchema,
         {
-          body: { twoFactorCode: code },
+          body: code === "" ? {} : { twoFactorCode: code },
           idempotencyKey: crypto.randomUUID(),
         },
       );
@@ -315,7 +320,10 @@ function DisconnectButton({ connection }: { connection: Connected }) {
         e instanceof ApiError &&
         (e.code === "TWO_FACTOR_INVALID" || e.code === "TWO_FACTOR_REQUIRED")
       ) {
-        setCodeError(ts("errors.invalid"));
+        setAskCode(true);
+        setCodeError(
+          e.code === "TWO_FACTOR_REQUIRED" && code === "" ? undefined : ts("errors.invalid"),
+        );
       } else {
         setOpen(false);
         setError(tc("generic"));
@@ -376,15 +384,19 @@ function DisconnectButton({ connection }: { connection: Connected }) {
         confirmLabel={t("disconnectDialog.cta")}
         cancelLabel={t("disconnectDialog.cancel")}
         tone="danger"
-        twoFactor={{
-          label: ts("codePrompt"),
-          value: code,
-          onChange: (value) => {
-            setCode(value);
-            setCodeError(undefined);
-          },
-          ...(codeError === undefined ? {} : { error: codeError }),
-        }}
+        {...(codeNeeded
+          ? {
+              twoFactor: {
+                label: ts("codePrompt"),
+                value: code,
+                onChange: (value) => {
+                  setCode(value);
+                  setCodeError(undefined);
+                },
+                ...(codeError === undefined ? {} : { error: codeError }),
+              },
+            }
+          : {})}
         pending={step !== null}
         onConfirm={() => void disconnect()}
       />
@@ -415,6 +427,9 @@ function FeeCard({ connection }: { connection: Connected }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState<string | undefined>(undefined);
+  // Ô mã 2FA chỉ hiện khi cần (DEC-115); server báo cần mã thì hiện.
+  const [askCode, setAskCode] = useState(false);
+  const codeNeeded = useTwoFactorNeeded() || askCode;
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
 
@@ -439,7 +454,10 @@ function FeeCard({ connection }: { connection: Connected }) {
         e instanceof ApiError &&
         (e.code === "TWO_FACTOR_INVALID" || e.code === "TWO_FACTOR_REQUIRED")
       ) {
-        setCodeError(ts("errors.invalid"));
+        setAskCode(true);
+        setCodeError(
+          e.code === "TWO_FACTOR_REQUIRED" && code === "" ? undefined : ts("errors.invalid"),
+        );
       } else {
         setDialogOpen(false);
         setError(tc("generic"));
@@ -455,7 +473,7 @@ function FeeCard({ connection }: { connection: Connected }) {
   const revoke = () =>
     run("revoking", () =>
       api("POST", "/api/v1/sodex/builder-fee/revocation", signatureRequestSchema, {
-        body: { twoFactorCode: code },
+        body: code === "" ? {} : { twoFactorCode: code },
         idempotencyKey: crypto.randomUUID(),
       }),
     );
@@ -570,15 +588,19 @@ function FeeCard({ connection }: { connection: Connected }) {
         confirmLabel={t("revokeDialog.cta")}
         cancelLabel={t("revokeDialog.cancel")}
         tone="danger"
-        twoFactor={{
-          label: ts("codePrompt"),
-          value: code,
-          onChange: (value) => {
-            setCode(value);
-            setCodeError(undefined);
-          },
-          ...(codeError === undefined ? {} : { error: codeError }),
-        }}
+        {...(codeNeeded
+          ? {
+              twoFactor: {
+                label: ts("codePrompt"),
+                value: code,
+                onChange: (value) => {
+                  setCode(value);
+                  setCodeError(undefined);
+                },
+                ...(codeError === undefined ? {} : { error: codeError }),
+              },
+            }
+          : {})}
         pending={busy === "revoking"}
         onConfirm={() => void revoke()}
       />

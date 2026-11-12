@@ -53,27 +53,41 @@ export const wsAckSchema = z.object({
 });
 
 /** WsSpotOrderUpdate / WsPerpsOrderUpdate (phần chung). */
+/**
+ * Số thập phân có thể rỗng: lệnh stop loss của cả vị thế (DEC-118) không có price / quantity. Rỗng, null hay thiếu
+ * đều đọc thành "0" để một lệnh như vậy không làm hỏng cả lô tin.
+ */
+const optionalDecimal = z
+  .union([decimal, z.literal("")])
+  .nullish()
+  .transform((v) => (v === undefined || v === null || v === "" ? "0" : v));
+
 export const wsOrderUpdateSchema = z.object({
   s: z.string(), // symbol
   c: z.string(), // clOrdID
   i: uint64Schema, // orderID
   S: z.enum(WsOrderSide),
-  o: z.enum(WsOrderType),
-  f: z.enum(WsTimeInForce),
-  p: decimal, // price
-  q: decimal, // original quantity
-  X: z.enum(WsOrderStatus),
+  // Loại lệnh, TIF, trạng thái: engine không dùng; nhận mọi chuỗi để lệnh stop (DEC-118) không làm hỏng lô tin.
+  o: z.string(),
+  f: z.string(),
+  p: optionalDecimal, // price
+  q: optionalDecimal, // original quantity
+  X: z.string(),
   z: decimal, // cumulative filled quantity
   v: decimal, // cumulative filled value
-  b: z.object({ i: uint64Schema, f: z.number().int().nonnegative() }).optional(), // builder
+  b: z
+    .object({ i: uint64Schema, f: z.number().int().nonnegative() })
+    .optional()
+    .catch(undefined), // builder
   E: z.number().int(), // event time ms
-  T: z.number().int(), // block time ms
+  T: z.number().int().optional(), // block time ms
   t: uint64Schema.nullish(), // trade ID
   l: decimal.nullish(), // last executed quantity
   L: decimal.nullish(), // last executed price
   n: decimal.nullish(), // commission
   m: z.boolean().nullish(), // is maker
-  x: z.enum(WsExecutionType),
+  // Engine không dùng; lệnh stop (DEC-118) có thể mang loại execution ngoài danh sách đã biết.
+  x: z.string().optional(),
   r: z.string().nullish(), // execution reason
 });
 export type WsOrderUpdate = z.infer<typeof wsOrderUpdateSchema>;
@@ -95,16 +109,48 @@ export const wsTradeSchema = z.object({
 });
 export type WsTrade = z.infer<typeof wsTradeSchema>;
 
-/** Tài liệu ghi `data` của accountOrderUpdate có thể là object hoặc mảng. */
-function parseItems<T extends z.ZodType>(schema: T, data: unknown): z.output<T>[] {
-  if (Array.isArray(data)) return z.array(schema).parse(data);
-  return [schema.parse(data)];
+/** Một tin không đọc được trong lô; `issues` chỉ có đường dẫn field và mã lỗi, không có giá trị. */
+export class WsSchemaError extends Error {
+  constructor(
+    readonly issues: string,
+    readonly items: unknown[],
+  ) {
+    super(`did not match schema (${issues})`);
+  }
 }
 
-export function parseOrderUpdates(data: unknown): WsOrderUpdate[] {
-  return parseItems(wsOrderUpdateSchema, data);
+/**
+ * Tài liệu ghi `data` của accountOrderUpdate có thể là object hoặc mảng. Đọc từng tin: tin hỏng bị bỏ riêng, các tin
+ * khác (ví dụ fill của lệnh thoát) vẫn được xử lý (DEC-118). `onInvalid` nhận mô tả lỗi để ghi log.
+ */
+function parseItems<T extends z.ZodType>(
+  schema: T,
+  data: unknown,
+  onInvalid?: (error: WsSchemaError) => void,
+): z.output<T>[] {
+  const list = Array.isArray(data) ? data : [data];
+  const out: z.output<T>[] = [];
+  const bad: unknown[] = [];
+  const issues: string[] = [];
+  for (const item of list) {
+    const r = schema.safeParse(item);
+    if (r.success) out.push(r.data);
+    else {
+      bad.push(item);
+      issues.push(...r.error.issues.map((i) => `${i.path.join(".")}:${i.code}`));
+    }
+  }
+  if (bad.length > 0) onInvalid?.(new WsSchemaError([...new Set(issues)].join(", "), bad));
+  return out;
 }
 
-export function parseTrades(data: unknown): WsTrade[] {
-  return parseItems(wsTradeSchema, data);
+export function parseOrderUpdates(
+  data: unknown,
+  onInvalid?: (error: WsSchemaError) => void,
+): WsOrderUpdate[] {
+  return parseItems(wsOrderUpdateSchema, data, onInvalid);
+}
+
+export function parseTrades(data: unknown, onInvalid?: (error: WsSchemaError) => void): WsTrade[] {
+  return parseItems(wsTradeSchema, data, onInvalid);
 }

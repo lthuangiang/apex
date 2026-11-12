@@ -35,7 +35,12 @@ function useDebounced<T>(value: T, ms: number): T {
 
 export function useDryRunChecks(strategy: Strategy, values: FormValues) {
   const config = toConfig(strategy, values);
-  const valid = STRATEGIES[strategy].schema.safeParse(config).success;
+  const parsed = STRATEGIES[strategy].schema.safeParse(config);
+  const valid = parsed.success;
+  // Field còn thiếu / sai (key đầu của path), để form nói rõ cần điền ô nào thay vì "complete the settings".
+  const invalidKeys = parsed.success
+    ? []
+    : [...new Set(parsed.error.issues.map((i) => String(i.path[0] ?? "")).filter((k) => k !== ""))];
   const key = useDebounced(valid ? JSON.stringify(config) : null, 500);
   const q = useQuery({
     queryKey: ["checks-dry", strategy, key],
@@ -47,7 +52,7 @@ export function useDryRunChecks(strategy: Strategy, values: FormValues) {
     refetchInterval: 10_000,
     placeholderData: (prev) => prev,
   });
-  return { valid, query: q, settled: key === (valid ? JSON.stringify(config) : null) };
+  return { valid, invalidKeys, query: q, settled: key === (valid ? JSON.stringify(config) : null) };
 }
 
 const money = (v: string | null | undefined) =>
@@ -120,7 +125,7 @@ export function CheckList({ checks, engine }: { checks: StartChecks; engine: str
         >
           <ChecklistRow
             status={c.ok ? "pass" : "fail"}
-            statusLabel={c.ok ? "✓" : "✕"}
+            statusLabel={c.ok ? t("passed") : t("failed")}
             label={t(c.key, { engine })}
             detail={detail(c)}
           />

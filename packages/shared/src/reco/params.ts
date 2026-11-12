@@ -1,4 +1,6 @@
+import { builderFeeRateOf } from "../fees";
 import { formatDecimal } from "../format";
+import { arbEnterPct, arbFit, arbRoundTripFeePct, type ArbFit } from "../funding-arb";
 import { Decimal, dec, roundToStep, RoundMode, toDecimalString, type DecimalInput } from "../money";
 
 import { RECO_CONFIG as C } from "./config";
@@ -9,6 +11,7 @@ import type { RecoMarket, RecoStrategy } from "./types";
 
 export interface ParamContext {
   market: RecoMarket;
+  /** Vốn của bot (quote). Rỗng: DCA tự chọn vốn nhỏ nhất đạt min size; chiến lược khác trả null. */
   capital: string;
   /** Max drop d (%). */
   maxDropPct: number;
@@ -36,6 +39,8 @@ export interface Params {
   basis: string;
   /** Lỗ ở mức stop theo % vốn (đã nhân đòn bẩy); null với chiến lược không có stop giá. */
   lossAtStopPct: number | null;
+  /** Vốn engine tự chọn khi người dùng chưa nhập (DCA: thang nhỏ nhất đạt min size). */
+  capital?: string;
 }
 
 const q = (v: DecimalInput) => toDecimalString(roundToStep(v, "0.01", RoundMode.down));
@@ -54,6 +59,42 @@ const pct = (v: DecimalInput | number, digits = 2) => `${fmt(v, digits)}%`;
 /** Notional tối thiểu của một lệnh ở giá hiện tại: max(minNotional, minQuantity × giá). */
 export function minOrderNotional(m: RecoMarket): Decimal {
   return Decimal.max(dec(m.rules.minNotional), dec(m.rules.minQuantity).mul(m.lastPrice));
+}
+
+/** Lệnh ở `price` với số quote `quote`, khối lượng làm tròn xuống theo lot: đạt min size của SoDEX không. */
+function orderFits(price: Decimal, quote: Decimal, m: RecoMarket): boolean {
+  const qty = roundToStep(quote.div(price), m.rules.stepSize, RoundMode.down);
+  return qty.gt(0) && qty.gte(m.rules.minQuantity) && price.mul(qty).gte(m.rules.minNotional);
+}
+
+/**
+ * Cùng phép tính với `meetsMinSize` của engine (packages/strategies/src/requirements.ts): mỗi mức đặt cùng
+ * một khối lượng = notional / số mức / giá trung bình, làm tròn xuống theo lot; mọi mức phải đạt min size.
+ */
+function gridFits(
+  lower: Decimal,
+  upper: Decimal,
+  levels: number,
+  spacing: "arithmetic" | "geometric",
+  notional: Decimal,
+  m: RecoMarket,
+): boolean {
+  const prices: Decimal[] = [];
+  for (let i = 0; i < levels; i += 1) {
+    const f = new Decimal(i).div(levels - 1);
+    const raw =
+      spacing === "arithmetic"
+        ? lower.add(upper.sub(lower).mul(f))
+        : lower.mul(upper.div(lower).pow(f));
+    const p = roundToStep(raw, m.rules.tickSize, RoundMode.nearest);
+    if (prices.at(-1)?.eq(p) !== true) prices.push(p);
+  }
+  if (prices.length < 2) return false;
+  const avg = prices.reduce((a, b) => a.add(b), new Decimal(0)).div(prices.length);
+  const qty = roundToStep(notional.div(prices.length).div(avg), m.rules.stepSize, RoundMode.down);
+  return prices.every(
+    (p) => qty.gt(0) && qty.gte(m.rules.minQuantity) && p.mul(qty).gte(m.rules.minNotional),
+  );
 }
 
 function dailyReturnsPct(closes: readonly string[]): Decimal[] {
@@ -110,12 +151,20 @@ export function gridParams(
   strategy: "spot_grid" | "futures_grid",
   ctx: ParamContext,
 ): Params | null {
+  if (ctx.capital.trim() === "") return null;
   const m = ctx.market;
   if (m.p5 === null || m.p95 === null || m.sigma30 === null) return null;
-  const lower = dec(tick(m.p5, m, RoundMode.up));
-  const upper = dec(tick(m.p95, m, RoundMode.down));
-  if (!upper.gt(lower)) return null;
   const stepPct = Decimal.max(ctx.feeRtPct.mul(C.grid.stepFeeMultiple), dec(C.grid.stepMinPct));
+  // P5–P95 của 30 giá đóng cửa; giá hiện tại nằm ngoài khoảng đó thì nới để giá hiện tại cách biên ít nhất
+  // một bước, nếu không grid chỉ có lệnh một phía.
+  const last = dec(m.lastPrice);
+  const step = stepPct.div(100);
+  const p5 = dec(tick(m.p5, m, RoundMode.up));
+  const p95 = dec(tick(m.p95, m, RoundMode.down));
+  const lower = Decimal.min(p5, dec(tick(last.div(step.add(1)), m, RoundMode.down)));
+  const upper = Decimal.max(p95, dec(tick(last.mul(step.add(1)), m, RoundMode.up)));
+  const widened = !lower.eq(p5) || !upper.eq(p95);
+  if (!upper.gt(lower)) return null;
   const raw =
     Math.floor(
       Decimal.ln(upper.div(lower))
@@ -124,14 +173,15 @@ export function gridParams(
     ) + 1;
   let levels = Math.min(C.grid.levelsMax, Math.max(C.grid.levelsMin, raw));
   const leverage = strategy === "futures_grid" ? leverageFor(ctx) : 1;
-  // Bỏ bớt level cho tới khi mỗi lệnh ≥ notional tối thiểu (mục 10.5).
-  const notional = dec(ctx.capital).mul(leverage);
-  const minOrder = minOrderNotional(m);
-  while (levels > C.grid.levelsMin && notional.div(levels).lt(minOrder)) levels -= 1;
-  if (notional.div(levels).lt(minOrder)) return null;
   const spacing = upper.sub(lower).div(lower).lt(C.grid.arithmeticMaxSpan)
     ? "arithmetic"
     : "geometric";
+  // Bỏ bớt level cho tới khi mọi lệnh đạt min size sau khi làm tròn lot (mục 10.5), đúng như check
+  // "Order sizes" của "Before it starts".
+  const notional = dec(ctx.capital).mul(leverage);
+  while (levels > C.grid.levelsMin && !gridFits(lower, upper, levels, spacing, notional, m))
+    levels -= 1;
+  if (!gridFits(lower, upper, levels, spacing, notional, m)) return null;
   const stopGap = Decimal.max(new Decimal(C.grid.stopMinPct), new Decimal(m.sigma30 * 100)).div(
     100,
   );
@@ -153,7 +203,9 @@ export function gridParams(
           .mul(100);
 
   const reasons = [
-    `Range ${fmt(lower, 8)}–${fmt(upper, 8)} covers 90% of ${m.asset} daily closes over the last 30 days (P5–P95).`,
+    widened
+      ? `Range ${fmt(lower, 8)}–${fmt(upper, 8)} covers 90% of ${m.asset} daily closes over the last 30 days (P5–P95), widened to include the current price ${fmt(last, 8)}.`
+      : `Range ${fmt(lower, 8)}–${fmt(upper, 8)} covers 90% of ${m.asset} daily closes over the last 30 days (P5–P95).`,
     `Step ≈ ${pct(realStep)} is at least ${String(C.grid.stepFeeMultiple)}× the round-trip fee of ${pct(ctx.feeRtPct, 3)}.`,
     `Stop at ${fmt(stop, 8)} sits ${pct(stopGap.mul(100))} below the range; max loss ${fmt(maxLoss)} ${m.quote} = ${String(ctx.maxDropPct)}% of capital.`,
   ];
@@ -170,6 +222,7 @@ export function gridParams(
         stopPrice: stop,
         maxLoss,
         onStop: "keep_base",
+        entry: "now",
       },
       reasons,
       basis,
@@ -195,6 +248,7 @@ export function gridParams(
       ...(direction === "short" ? { stopAbove } : {}),
       maxLoss,
       onStop: "close_at_market",
+      entry: "now",
     },
     reasons: [
       ...reasons.slice(0, 2),
@@ -207,10 +261,15 @@ export function gridParams(
 
 // ---------- DCA ----------
 
-export function dcaLadder(capital: DecimalInput, n: number): Decimal {
+/** Số "phần" của thang DCA: 1 (base) + Σ sizeMultiplier^i với i < n safety order. */
+function dcaUnits(n: number): Decimal {
   let units = new Decimal(1);
   for (let i = 0; i < n; i += 1) units = units.add(dec(C.dca.sizeMultiplier).pow(i));
-  return dec(capital).div(units);
+  return units;
+}
+
+export function dcaLadder(capital: DecimalInput, n: number): Decimal {
+  return dec(capital).div(dcaUnits(n));
 }
 
 function offsetPct(first: Decimal, k: number): Decimal {
@@ -227,35 +286,66 @@ export function dcaParams(strategy: "spot_dca" | "futures_dca", ctx: ParamContex
   const first = Decimal.max(dec(C.dca.firstMinPct), med).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
   let n = 1;
   while (n < C.dca.maxSafety && offsetPct(first, n).lt(dd)) n += 1;
+  const covering = n;
   const leverage = strategy === "futures_dca" ? leverageFor(ctx) : 1;
-  const unit = dcaLadder(ctx.capital, n);
-  if (unit.mul(leverage).lt(minOrderNotional(m))) return null;
-  const size = q(unit);
+  const last = dec(m.lastPrice);
+  const p1 = last.mul(new Decimal(1).sub(first.div(100)));
+  // Như check "Order sizes": lệnh base ở giá hiện tại và safety đầu ở −first%, cùng cỡ, đã nhân đòn bẩy.
+  const fits = (size: Decimal) =>
+    orderFits(last, size.mul(leverage), m) && orderFits(p1, size.mul(leverage), m);
+  let size: Decimal;
+  let capital: string;
+  if (ctx.capital.trim() === "") {
+    // Form DCA không có ô vốn: chọn thang nhỏ nhất phủ được mức giảm 30 ngày mà mỗi lệnh đạt min size.
+    size = dec(q(minOrderNotional(m).div(leverage))).add("0.01");
+    for (let i = 0; i < 200 && !fits(size); i += 1) size = dec(q(size.mul("1.01"))).add("0.01");
+    if (!fits(size)) return null;
+    capital = toDecimalString(size.mul(dcaUnits(n)).toDecimalPlaces(2, Decimal.ROUND_UP));
+  } else {
+    // Vốn nhỏ: bớt safety order cho tới khi mỗi lệnh đạt min size.
+    while (n > 1 && !fits(dec(q(dcaLadder(ctx.capital, n))))) n -= 1;
+    size = dec(q(dcaLadder(ctx.capital, n)));
+    if (!fits(size)) return null;
+    capital = q(ctx.capital);
+  }
   const tp = Decimal.max(
     dec(C.dca.tpMinPct),
     ctx.feeRtPct.mul(C.dca.tpFeeMultiple),
   ).toDecimalPlaces(2, Decimal.ROUND_UP);
   const cover = offsetPct(first, n);
-  const maxLoss = q(dec(ctx.capital).mul(ctx.maxDropPct).div(100));
+  const maxLoss = q(dec(capital).mul(ctx.maxDropPct).div(100));
   const reasons = [
     `First safety at −${pct(first)}, the median daily move of ${m.asset} over 30 days.`,
-    `${String(n)} safety orders cover a ${pct(cover)} drop; the largest 30-day drop was ${pct(dd)}.`,
+    n < covering
+      ? `${String(n)} safety orders cover a ${pct(cover)} drop (the largest 30-day drop was ${pct(dd)}); more would put each order below the SoDEX minimum.`
+      : ctx.capital.trim() === ""
+        ? `${String(n)} safety orders cover a ${pct(cover)} drop; the largest 30-day drop was ${pct(dd)}. Max capital ${fmt(capital)} ${m.quote} is the smallest ladder that meets the SoDEX minimum order.`
+        : `${String(n)} safety orders cover a ${pct(cover)} drop; the largest 30-day drop was ${pct(dd)}.`,
     `Take profit ${pct(tp)} is above the round-trip fee of ${pct(ctx.feeRtPct, 3)}.`,
   ];
   const basis = `${m.market}: largest drop over the last 30 days ${pct(dd)}, median daily move ${pct(med)}.`;
   const common = {
     market: m.market,
-    baseOrder: size,
-    safetyOrder: size,
+    baseOrder: toDecimalString(size),
+    safetyOrder: toDecimalString(size),
     maxSafetyOrders: n,
     firstStepPct: toDecimalString(first),
     stepMultiplier: C.dca.stepMultiplier,
     sizeMultiplier: C.dca.sizeMultiplier,
     takeProfitPct: toDecimalString(tp),
     maxLoss,
+    // First entry mặc định Now, Next cycle mặc định Immediately (IMP-01, IMP-02; DEC-91).
+    entry: "now",
+    nextCycle: "immediately",
   };
   if (strategy === "spot_dca") {
-    return { values: { ...common, start: "immediately" }, reasons, basis, lossAtStopPct: null };
+    return {
+      values: common,
+      reasons,
+      basis,
+      lossAtStopPct: null,
+      capital,
+    };
   }
   const stopLoss = cover.add(C.dca.stopBufferPct).toDecimalPlaces(2, Decimal.ROUND_UP);
   return {
@@ -272,15 +362,21 @@ export function dcaParams(strategy: "spot_dca" | "futures_dca", ctx: ParamContex
     ],
     basis,
     lossAtStopPct: stopLoss.mul(leverage).toNumber(),
+    capital,
   };
 }
 
 // ---------- Recurring Buy ----------
 
 export function recurringParams(ctx: ParamContext): Params | null {
+  if (ctx.capital.trim() === "") return null;
   const m = ctx.market;
-  const amount = dec(q(dec(ctx.capital).div(C.recurring.buys)));
-  if (amount.lt(minOrderNotional(m))) return null;
+  // Mỗi lần mua phải đạt min size sau khi làm tròn lot (như check "Order sizes"); vốn nhỏ thì ít lần mua hơn.
+  const last = dec(m.lastPrice);
+  let buys: number = C.recurring.buys;
+  while (buys > 1 && !orderFits(last, dec(q(dec(ctx.capital).div(buys))), m)) buys -= 1;
+  const amount = dec(q(dec(ctx.capital).div(buys)));
+  if (!orderFits(last, amount, m)) return null;
   return {
     values: {
       market: m.market,
@@ -290,11 +386,11 @@ export function recurringParams(ctx: ParamContext): Params | null {
       time: C.recurring.time,
       timeZone: ctx.timeZone,
       ends: "after_n_buys",
-      buyCount: C.recurring.buys,
+      buyCount: buys,
       onLowBalance: "skip_and_notify",
     },
     reasons: [
-      `You chose ${m.asset}; ${String(C.recurring.buys)} weekly buys of ${fmt(amount)} ${m.quote}.`,
+      `You chose ${m.asset}; ${String(buys)} weekly buys of ${fmt(amount)} ${m.quote}.`,
       "Spot, no leverage, no funding costs.",
       "No selling: the value follows the market.",
     ],
@@ -306,6 +402,7 @@ export function recurringParams(ctx: ParamContext): Params | null {
 // ---------- Rebalancing ----------
 
 export function rebalancingParams(ctx: ParamContext): Params | null {
+  if (ctx.capital.trim() === "") return null;
   const basket = ctx.basket ?? [];
   if (basket.length < 1) return null;
   const stable = C.rebalancing.stableMinPct;
@@ -372,12 +469,37 @@ export function rebalancingParams(ctx: ParamContext): Params | null {
 
 // ---------- Funding Arbitrage ----------
 
+const rawToPct = (v: string | undefined) => (v === undefined ? null : dec(v).mul(100));
+
+/** Phí khứ hồi (%) của lượt arb trên cặp này: phí maker của từng market, builder fee mặc định của chiến lược. */
+export function arbFeeOf(perp: RecoMarket, spot: RecoMarket): Decimal {
+  return arbRoundTripFeePct({
+    spotMakerPct: rawToPct(spot.rules.makerFee),
+    perpMakerPct: rawToPct(perp.rules.makerFee),
+    builderRate: builderFeeRateOf("funding_arb"),
+  });
+}
+
+/** Điều kiện đủ của Funding Arb (DEC-160): funding dương đều và thu đủ phí trong `ARB_FIT.maxBreakEvenHours`. */
+export function arbFitOf(perp: RecoMarket, spot: RecoMarket): ArbFit {
+  return arbFit({
+    avg7dPct: perp.fundingAvg7d,
+    positiveShare21: perp.fundingPos21,
+    intervalHours: perp.fundingIntervalHours ?? 1,
+    feePct: arbFeeOf(perp, spot),
+  });
+}
+
 export function fundingArbParams(ctx: ParamContext): Params | null {
   const perp = ctx.market;
   const spot = ctx.spotMarket;
-  if (spot === undefined || perp.fundingAvg7d === null || perp.fundingPos21 === null) return null;
+  // Tham số không phụ thuộc lịch sử funding; thiếu lịch sử (market mới, < 21 kỳ) chỉ đổi câu lý do.
+  if (spot === undefined || ctx.capital.trim() === "") return null;
   const half = dec(ctx.capital).div(2);
-  if (half.lt(minOrderNotional(spot)) || half.lt(minOrderNotional(perp))) return null;
+  if (!orderFits(dec(spot.lastPrice), half, spot) || !orderFits(dec(perp.lastPrice), half, perp))
+    return null;
+  const fit = arbFitOf(perp, spot);
+  const enter = arbEnterPct(arbFeeOf(perp, spot), perp.fundingIntervalHours ?? 1);
   return {
     values: {
       asset: perp.asset,
@@ -385,15 +507,19 @@ export function fundingArbParams(ctx: ParamContext): Params | null {
       perpMarket: perp.market,
       leverage: 1,
       investment: q(ctx.capital),
-      enterFundingPct: C.fundingArb.enterPct,
+      enterFundingPct: enter,
       exitFundingPct: C.fundingArb.exitPct,
       maxGapPct: C.fundingArb.maxGapPct,
       minMarginRatioPct: C.fundingArb.minMarginRatioPct,
       maxLoss: q(dec(ctx.capital).mul(ctx.maxDropPct).div(100)),
     },
     reasons: [
-      `Funding averaged ${pct(dec(perp.fundingAvg7d), 4)} per period over 7 days.`,
-      `Funding was positive in ${pct(perp.fundingPos21 * 100, 0)} of the last 21 periods.`,
+      fit.breakEvenHours === null
+        ? "7-day funding average not available yet."
+        : `Funding averaged ${pct(dec(perp.fundingAvg7d ?? "0"), 4)} per period over 7 days; at that rate it covers the round-trip fees in about ${String(Math.ceil(fit.breakEvenHours))} hours.`,
+      perp.fundingPos21 === null
+        ? `Enters only while the 7-day funding average is at least ${pct(enter, 4)} per period.`
+        : `Funding was positive in ${pct(perp.fundingPos21 * 100, 0)} of the last 21 periods.`,
       "Spot leg and an equal 1× perp short: price exposure ≈ 0.",
     ],
     basis: `${perp.market}: funding history from SoDEX. This describes funding, not profit.`,

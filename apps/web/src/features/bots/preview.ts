@@ -1,5 +1,12 @@
-import { dec, DECIMAL_STRING_PATTERN, Decimal, feeRtPct, type Strategy } from "@drift/shared";
-import { nextRun, REBALANCE_CHECK_MS, safetyOffsetPct } from "@drift/strategies";
+import {
+  builderFeeRateOf,
+  dec,
+  DECIMAL_STRING_PATTERN,
+  Decimal,
+  roundTripFeePct,
+  type Strategy,
+} from "@drift/shared";
+import { nextRun, REBALANCE_CHECK_MS, safetyOffsetPct, VM_DEFAULTS } from "@drift/strategies";
 
 import type { FormValues } from "./fields";
 
@@ -30,6 +37,8 @@ export type PreviewModel =
       direction: "long" | "short";
       rows: { index: number; size: string; offsetPct: string; price: string | null }[];
       takeProfitPct: string | null;
+      /** Khi mọi lệnh thêm đều khớp: giá trung bình và giá cần đạt để chốt lời. Null khi thiếu giá hoặc TP. */
+      allFilled: { avg: string; exit: string } | null;
       tiles: Tile[];
     }
   | { kind: "schedule"; buys: { n: number; at: number }[]; total: number | null; tiles: Tile[] }
@@ -112,7 +121,12 @@ function minStepPct(levels: readonly Decimal[]): Decimal | null {
 
 const tile = (key: string, params: Record<string, string> | null): Tile => ({ key, params });
 
-function gridModel(strategy: Strategy, v: FormValues, last: Decimal | null): PreviewModel | null {
+function gridModel(
+  strategy: Strategy,
+  v: FormValues,
+  last: Decimal | null,
+  builderRate: number,
+): PreviewModel | null {
   const lower = num(v.lowerPrice);
   const upper = num(v.upperPrice);
   const n = int(v.gridLevels);
@@ -144,7 +158,16 @@ function gridModel(strategy: Strategy, v: FormValues, last: Decimal | null): Pre
       tile("perLevel", perLevel === null ? null : { value: fmt(perLevel, 2), unit: quote }),
       tile("step", step === null ? null : { value: pct(step) }),
       tile("ordersAtStart", { count: String(atStart) }),
-      tile("roundTrip", { value: pct(feeRtPct(perps ? "perps" : "spot", null), 3) }),
+      // Phí khứ hồi maker theo mức công bố của SoDEX + builder fee của chiến lược (DEC-112).
+      tile("roundTrip", {
+        value: pct(
+          roundTripFeePct({
+            engine: perps ? "perps" : "spot",
+            builderRate,
+          }),
+          3,
+        ),
+      }),
     ],
   };
 }
@@ -192,11 +215,26 @@ function dcaModel(strategy: Strategy, v: FormValues, last: Decimal | null): Prev
   const quote = unitsOf(market)?.quote ?? "";
   const covers = rows.at(-1)?.offsetPct ?? "0";
   const tp = num(v.takeProfitPct);
+  // Giá trung bình = tổng tiền / tổng khối lượng (khối lượng mỗi lệnh = tiền / giá lệnh). Đòn bẩy nhân đều mọi lệnh
+  // nên không đổi giá trung bình.
+  const priced = rows.filter((r) => r.price !== null && dec(r.price).gt(0));
+  const qty = priced.reduce((s, r) => s.add(dec(r.size).div(r.price ?? "1")), dec("0"));
+  const avg = priced.length === rows.length && qty.gt(0) ? total.div(qty) : null;
+  const allFilled =
+    avg === null || tp === null
+      ? null
+      : {
+          avg: avg.toString(),
+          exit: avg
+            .mul(direction === "long" ? dec("1").add(tp.div(100)) : dec("1").sub(tp.div(100)))
+            .toString(),
+        };
   return {
     kind: "dca",
     direction,
     rows,
     takeProfitPct: tp?.toString() ?? null,
+    allFilled,
     tiles: [
       tile(perps ? "maxMargin" : "maxCapital", { value: fmt(total, 2), unit: quote }),
       tile(perps ? "coversMove" : "coversDrop", { value: pct(dec(covers)) }),
@@ -338,18 +376,48 @@ function twapModel(v: FormValues): PreviewModel | null {
   };
 }
 
+/**
+ * Volume Maker (DEC-99): số dư cần = max open position / đòn bẩy (như `requirementOf`), vị thế lớn nhất và
+ * mức dừng khi lỗ. Không ước tính chi phí theo khối lượng (người dùng bỏ ô đó).
+ */
+function vmModel(v: FormValues): PreviewModel | null {
+  const size = num(v.orderSize);
+  const lev = int(v.leverage);
+  if (size === null || !size.gt(0) || lev === null || lev < 1) return null;
+  const set = num(v.maxInventory);
+  const orders = num(v.maxOrders);
+  const maxPos =
+    set?.gt(0) === true
+      ? set
+      : size.mul(orders?.gt(0) === true ? orders : VM_DEFAULTS.maxInventoryMultiple);
+  const budget = num(v.costBudget);
+  return {
+    kind: "tiles",
+    tiles: [
+      tile("vmBalance", {
+        value: fmt(maxPos.div(lev).toDecimalPlaces(2, Decimal.ROUND_UP), 2),
+        unit: "USDC",
+      }),
+      tile("vmBiggestPosition", { value: fmt(maxPos, 2), unit: "USDC" }),
+      tile("vmStopsAt", budget === null ? null : { value: fmt(budget, 2), unit: "USDC" }),
+    ],
+  };
+}
+
 /** null = chưa đủ dữ liệu để vẽ: tab Preview giữ khung và hiện trạng thái trống. */
 export function previewModel(
   strategy: Strategy,
   values: FormValues,
   last: string | null,
   now: number,
+  /** Builder fee của user cho chiến lược (DEC-159); mặc định theo chiến lược. */
+  builderRate = builderFeeRateOf(strategy),
 ): PreviewModel | null {
   const p = last === null ? null : num(last);
   switch (strategy) {
     case "spot_grid":
     case "futures_grid":
-      return gridModel(strategy, values, p);
+      return gridModel(strategy, values, p, builderRate);
     case "spot_dca":
     case "futures_dca":
       return dcaModel(strategy, values, p);
@@ -362,6 +430,10 @@ export function previewModel(
     case "twap":
       return twapModel(values);
     case "volume_maker":
+      return vmModel(values);
+    case "volume_farm":
+    case "adaptive_dca":
+    case "copy_trade":
       return null;
   }
 }
@@ -398,6 +470,26 @@ export function liveHints(
         m === 0
           ? { key: "durationHours", params: { h: String(h) } }
           : { key: "durationHoursMinutes", params: { h: String(h), m: String(m) } },
+    };
+  }
+  if (strategy === "volume_farm") {
+    // SL theo % margin như SoDEX (DEC-126): hiện % giá và lỗ ước tính ở lệnh lớn nhất.
+    const sl = num(v.slMarginPct);
+    const lev = num(v.leverage);
+    const size = num(v.orderSizeMaxUsd);
+    if (sl === null || lev === null || !lev.gt(0) || !sl.gt(0)) return {};
+    const price = sl.div(lev);
+    return {
+      slMarginPct:
+        size?.gt(0) !== true
+          ? { key: "vfStopPrice", params: { price: price.toDecimalPlaces(3).toString() } }
+          : {
+              key: "vfStopLoss",
+              params: {
+                price: price.toDecimalPlaces(3).toString(),
+                usd: size.mul(price).div(100).toDecimalPlaces(2).toString(),
+              },
+            },
     };
   }
   if (strategy === "futures_dca") {

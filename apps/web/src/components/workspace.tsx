@@ -9,6 +9,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { useMe } from "@/lib/queries";
 
 import {
+  PaperPageContext,
   FullClusterContext,
   MobileLiveChip,
   MobileSodexStatus,
@@ -45,6 +46,7 @@ export function PageHead({
   action,
   full = false,
   back,
+  paper = false,
 }: {
   title: string;
   subtitle: string;
@@ -54,42 +56,46 @@ export function PageHead({
   full?: boolean;
   /** Nút ← trên mobile (artboard Mobile-Agent). */
   back?: { href: string; label: string };
+  /** Trang bài thử tiền giả: bỏ chip LIVE · MAINNET (DEC-105). */
+  paper?: boolean;
 }) {
   return (
-    <header className="flex flex-col gap-3">
-      {/* Mobile (artboard Mobile-Home, M-Portfolio): một hàng tiêu đề + chip LIVE, dòng trạng thái SoDEX. */}
-      <div className="flex flex-col gap-1 lg:hidden">
-        <div className="flex items-center justify-between gap-3">
-          {back === undefined ? null : (
-            <Link
-              href={back.href}
-              aria-label={back.label}
-              className="-ml-2.5 flex size-11 flex-none items-center justify-center text-ink"
-            >
-              <ArrowLeft aria-hidden="true" size={22} />
-            </Link>
-          )}
-          <h1 className="m-0 min-w-0 flex-1 text-2xl font-extrabold">{title}</h1>
-          <MobileLiveChip />
+    <PaperPageContext.Provider value={paper}>
+      <header className="flex flex-col gap-3">
+        {/* Mobile (artboard Mobile-Home, M-Portfolio): một hàng tiêu đề + chip LIVE, dòng trạng thái SoDEX. */}
+        <div className="flex flex-col gap-1 lg:hidden">
+          <div className="flex items-center justify-between gap-3">
+            {back === undefined ? null : (
+              <Link
+                href={back.href}
+                aria-label={back.label}
+                className="-ml-2.5 flex size-11 flex-none items-center justify-center text-ink"
+              >
+                <ArrowLeft aria-hidden="true" size={22} />
+              </Link>
+            )}
+            <h1 className="m-0 min-w-0 flex-1 text-2xl font-extrabold">{title}</h1>
+            <MobileLiveChip />
+          </div>
+          <MobileSodexStatus />
+          {action === undefined ? null : <div className="mt-2 flex">{action}</div>}
         </div>
-        <MobileSodexStatus />
-        {action === undefined ? null : <div className="mt-2 flex">{action}</div>}
-      </div>
-      <div className="hidden flex-wrap items-center justify-between gap-x-4 gap-y-3 lg:flex">
-        <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-1">
-          <h1 className="m-0 text-[28px] font-extrabold">{title}</h1>
-          <p className="m-0 text-sm text-ink-2">{subtitle}</p>
+        <div className="hidden flex-wrap items-center justify-between gap-x-4 gap-y-3 lg:flex">
+          <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-1">
+            <h1 className="m-0 text-[28px] font-extrabold">{title}</h1>
+            <p className="m-0 text-sm text-ink-2">{subtitle}</p>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2.5">
+            <FullClusterContext.Provider value={full}>
+              <PageUpdatedContext.Provider value={updated ?? null}>
+                <ShellHeaderExtras />
+              </PageUpdatedContext.Provider>
+            </FullClusterContext.Provider>
+            {action}
+          </div>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2.5">
-          <FullClusterContext.Provider value={full}>
-            <PageUpdatedContext.Provider value={updated ?? null}>
-              <ShellHeaderExtras />
-            </PageUpdatedContext.Provider>
-          </FullClusterContext.Provider>
-          {action}
-        </div>
-      </div>
-    </header>
+      </header>
+    </PaperPageContext.Provider>
   );
 }
 

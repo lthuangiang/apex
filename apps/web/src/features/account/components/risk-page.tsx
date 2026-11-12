@@ -83,7 +83,6 @@ export function RiskPage() {
   const [edit, setEdit] = useState<RiskLimitKey | null>(null);
   const [value, setValue] = useState("");
   const [haltOpen, setHaltOpen] = useState(false);
-  const [code, setCode] = useState("");
   const [halted, setHalted] = useState(false);
   const key = useRef(crypto.randomUUID());
 
@@ -114,12 +113,12 @@ export function RiskPage() {
     mutationFn: () =>
       api("POST", "/api/v1/risk/halt", z.object({ stopping: z.number() }), {
         idempotencyKey: key.current,
-        body: { twoFactorCode: code },
+        // Emergency halt không hỏi 2FA (DEC-115): khách phải dừng được ngay.
+        body: {},
       }),
     onSuccess: async () => {
       setHaltOpen(false);
       setHalted(true);
-      setCode("");
       await qc.invalidateQueries({ queryKey: ["risk"] });
     },
     onSettled: () => {
@@ -522,12 +521,7 @@ export function RiskPage() {
               confirmLabel={t("halt.confirm")}
               cancelLabel={t("halt.cancel")}
               tone="danger"
-              twoFactor={{
-                label: t("halt.twoFactor"),
-                value: code,
-                onChange: setCode,
-                ...(halt.error === null ? {} : { error: errorText(halt.error) }),
-              }}
+              {...(halt.error === null ? {} : { error: errorText(halt.error) })}
               pending={halt.isPending}
               onConfirm={() => {
                 halt.mutate();

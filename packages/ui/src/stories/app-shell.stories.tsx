@@ -34,7 +34,7 @@ const navItems = [
 function Page() {
   return (
     <AppShell
-      brand={<span className="text-lg font-extrabold">DRIFT</span>}
+      brand={<span className="text-lg font-extrabold">DeskLabs</span>}
       navItems={navItems}
       navLabel="Main"
       skipLinkLabel="Skip to content"

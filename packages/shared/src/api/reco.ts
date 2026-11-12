@@ -35,8 +35,23 @@ export const suggestionViewSchema = z.object({
   reasons: z.array(z.string()),
   basis: z.string(),
   computedAt: isoDateTimeSchema,
+  /** Chiến lược không được chọn ở lần đề xuất này và lý do (AI Desk › Why this one). */
+  notSuggested: z.array(z.object({ title: z.string(), reason: z.string() })).default([]),
+  /** Mức chịu lỗ đã chọn lúc đề xuất (`5`, `10`, `20`, `unsure`); null với đề xuất cũ. */
+  maxDrop: z.string().nullable().default(null),
+  inputsVersion: z.string().nullable().default(null),
+  /** Gợi ý không dùng lịch sử giao dịch của khách (dưới 30 vị thế đã đóng). */
+  notes: z.array(z.string()).default([]),
 });
 export type SuggestionView = z.infer<typeof suggestionViewSchema>;
+/**
+ * Body của POST /api/v1/reco/plan: `desk` = AI Desk › Recommended, chỉ một bot (DEC-105). `goals` (chỉ với `desk`):
+ * tính theo câu trả lời đang chọn trên màn hình, không lưu vào Goals của khách (DEC-95).
+ */
+export const planBodySchema = z.object({
+  context: z.enum(["onboarding", "desk"]).optional(),
+  goals: goalsBodySchema.optional(),
+});
 
 export const planViewSchema = z.object({
   best: suggestionViewSchema.nullable(),

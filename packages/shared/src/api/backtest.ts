@@ -8,7 +8,18 @@ import { BOT_STRATEGIES } from "./bots";
 // nhất còn đủ cho cả kỳ; khi `candles_1m` của DRIFT phủ đủ kỳ thì dùng 1 phút.
 
 export const BACKTEST_PERIODS = [30, 90, 180] as const;
-export type BacktestPeriod = (typeof BACKTEST_PERIODS)[number];
+/**
+ * Volume Farming đọc nến 1 phút (DEC-102): SoDEX chỉ giữ nến 1 phút dưới 7 ngày (đo ngày 2026-11-04), nên kỳ
+ * 5 ngày luôn đủ; 30 ngày chỉ chạy khi `candles_1m` của DRIFT phủ đủ kỳ.
+ */
+export const ONE_MINUTE_PERIODS = [5, 30] as const;
+export type BacktestPeriod =
+  (typeof BACKTEST_PERIODS)[number] | (typeof ONE_MINUTE_PERIODS)[number];
+/** Chiến lược chỉ backtest được trên nến 1 phút. */
+export const ONE_MINUTE_STRATEGIES: readonly string[] = ["volume_farm", "adaptive_dca"];
+export function backtestPeriodsOf(strategy: string): readonly BacktestPeriod[] {
+  return ONE_MINUTE_STRATEGIES.includes(strategy) ? ONE_MINUTE_PERIODS : BACKTEST_PERIODS;
+}
 export const BACKTEST_INTERVALS = {
   "1m": 60_000,
   "5m": 300_000,
@@ -18,6 +29,7 @@ export const BACKTEST_INTERVALS = {
 export type BacktestInterval = keyof typeof BACKTEST_INTERVALS;
 /** Nến SoDEX dùng cho từng kỳ khi DRIFT chưa có đủ nến 1 phút (đo trên mainnet ngày 2026-10-28). */
 export const SODEX_INTERVAL_FOR_PERIOD: Record<BacktestPeriod, BacktestInterval> = {
+  5: "1m",
   30: "5m",
   90: "15m",
   180: "1h",
@@ -40,7 +52,7 @@ export function dataVersion(interval: BacktestInterval, to: number): string {
 export const startBacktestBodySchema = z.object({
   strategy: z.enum(BOT_STRATEGIES),
   config: z.record(z.string(), z.unknown()),
-  periodDays: z.union([z.literal(30), z.literal(90), z.literal(180)]),
+  periodDays: z.union([z.literal(5), z.literal(30), z.literal(90), z.literal(180)]),
 });
 export type StartBacktestBody = z.infer<typeof startBacktestBodySchema>;
 

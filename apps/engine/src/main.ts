@@ -1,6 +1,6 @@
 import { apiKeys, createDb } from "@drift/db";
 import { loadClientTls } from "@drift/runtime";
-import { dec } from "@drift/shared";
+import { dec, leaderFillMessageSchema, leaderPositionMessageSchema } from "@drift/shared";
 import {
   loadSodexConfig,
   RedisRateLimitStore,
@@ -17,6 +17,7 @@ import { z } from "zod";
 import { Engine } from "./engine";
 import { HttpGateway, httpSigner, marketInfo } from "./http-gateway";
 import { withLastUsed } from "./last-used";
+import { PaperGateway } from "./paper-gateway";
 
 // engine: chạy bot cho các shard mình giữ (ARCHITECTURE.md mục 3.3). Giá từ NATS (marketdata), fill từ
 // user stream SoDEX của account thuộc shard. SIGTERM: trả lease, chờ việc dở (stop_grace_period 30 s).
@@ -33,8 +34,6 @@ const env = z
     ENGINE_SHARD_LEASE_TTL_MS: z.coerce.number().int().positive().default(15_000),
     /** Chu kỳ đọc lại approval builder fee của mỗi account (mặc định 60 s). */
     ENGINE_FEE_CHECK_MS: z.coerce.number().int().positive().default(60_000),
-    /** Chỉ bật khi có xác nhận bằng văn bản của SoDEX (VOLUME_MAKER.md mục 17.5). */
-    VOLUME_MAKER_ENABLED: z.stringbool().default(false),
   })
   .parse(process.env);
 const log = pino({
@@ -65,21 +64,56 @@ const gateway = new HttpGateway(
     },
   ),
   sodex.builderId,
+  sodex.builderExempt,
 );
+// Bot paper (DEC-105): cổng mô phỏng riêng, không có client SoDEX hay signer.
+const paper = new PaperGateway({ db, now: () => Date.now() });
 const engine = new Engine({
   db,
   redis,
   gateway,
+  paper,
   workerId: env.ENGINE_WORKER_ID,
   log,
   leaseTtlMs: env.ENGINE_SHARD_LEASE_TTL_MS,
   feeCheckMs: env.ENGINE_FEE_CHECK_MS,
-  volumeMakerEnabled: env.VOLUME_MAKER_ENABLED,
   rules: (market) => marketInfo(rest, market),
+  builderId: sodex.builderId,
+  builderExempt: sodex.builderExempt,
+  // Volume Farm (DEC-80): 10 mức mỗi phía, như apex `get_orderbook_depth(symbol, 10)`.
+  orderbook: async (market) => {
+    const b = await rest.getOrderbook("perps", market, 10);
+    const [bid] = b.bids;
+    const [ask] = b.asks;
+    if (bid === undefined || ask === undefined) return null;
+    const notional = (levels: readonly (readonly [string, string])[]) =>
+      levels.reduce((sum, [p, q]) => sum.add(dec(p).mul(q)), dec("0")).toString();
+    return {
+      bid: bid[0],
+      ask: ask[0],
+      bidNotional: notional(b.bids),
+      askNotional: notional(b.asks),
+    };
+  },
 });
 
 const nc = await connect({ servers: env.NATS_URL });
 const priceSub = nc.subscribe("md.*.price");
+// Copy Trade (DEC-161): fill và vị thế của ví leader, `marketdata` publish.
+const leaderSub = nc.subscribe("leader.*.*.*");
+void (async () => {
+  for await (const m of leaderSub) {
+    try {
+      const kind = m.subject.split(".")[3];
+      if (kind === "fill")
+        await engine.onLeaderFill(leaderFillMessageSchema.parse(m.json()), Date.now());
+      else if (kind === "position")
+        await engine.onLeaderPosition(leaderPositionMessageSchema.parse(m.json()), Date.now());
+    } catch (error) {
+      log.warn({ err: error }, "leader signal handling failed");
+    }
+  }
+})();
 const fundingSub = nc.subscribe("md.*.funding");
 void (async () => {
   for await (const m of fundingSub) {
@@ -123,6 +157,21 @@ async function syncStreams() {
         callbacks: {
           onOrderUpdate: (updates) => {
             for (const u of updates) {
+              // Kết thúc mà chưa khớp gì: cập nhật ngay, không để lệnh kẹt "open" (DEC-122).
+              const closed =
+                u.X === "REJECTED"
+                  ? "rejected"
+                  : u.X === "CANCELED" || u.X === "EXPIRED"
+                    ? "cancelled"
+                    : null;
+              if (closed !== null && !dec(u.z).gt(0)) {
+                void engine
+                  .onOrderClosed(id, u.c, closed, u.E, u.r ?? null)
+                  .catch((error: unknown) => {
+                    log.warn({ err: error }, "order close handling failed");
+                  });
+                continue;
+              }
               if (!dec(u.z).gt(0)) continue;
               void engine
                 .onFill(id, u.c, u.z, dec(u.v).div(u.z).toString(), u.n ?? "0", u.E)
@@ -150,6 +199,7 @@ async function syncStreams() {
             }
           },
           onReconnect: () => {
+            engine.onStreamGap(id);
             log.info(
               { accountId: id, kind },
               "user stream reconnected; unknown orders are reconciled by the loop",
@@ -157,6 +207,8 @@ async function syncStreams() {
           },
           onError: (error) => {
             log.warn({ err: error.message, accountId: id }, "user stream error");
+            // Một tin không đọc được có thể là fill: đối soát lệnh của account như khi stream đứt (DEC-118).
+            if (error.message.includes("did not match schema")) engine.onStreamGap(id);
           },
         },
       });

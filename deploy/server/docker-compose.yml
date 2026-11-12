@@ -22,8 +22,8 @@ x-env: &env
   DRIFT_BUILDER_ID: ${DRIFT_BUILDER_ID:?set DRIFT_BUILDER_ID}
   DRIFT_BUILDER_ADDRESS: ${DRIFT_BUILDER_ADDRESS:-}
   DRIFT_BUILDER_FEE: "10"
-  VOLUME_MAKER_ENABLED: "false"
   LOG_LEVEL: ${LOG_LEVEL:-info}
+  LIQUIDATION_PROVIDER: ${LIQUIDATION_PROVIDER:-none}
   API_TOTP_ENC_KEY: ${API_TOTP_ENC_KEY:?set API_TOTP_ENC_KEY}
   API_COOKIE_SECURE: "true"
   SMTP_URL: ${SMTP_URL:?set SMTP_URL}
@@ -70,7 +70,9 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: ""
       NEXT_PUBLIC_WS_URL: ""
-      VOLUME_MAKER_ENABLED: "false"
+      # App Android (TWA): /.well-known/assetlinks.json, xem infra/mobile/README.md.
+      ANDROID_PACKAGE_NAME: ${ANDROID_PACKAGE_NAME:-}
+      ANDROID_CERT_SHA256: ${ANDROID_CERT_SHA256:-}
     healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/signup').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
     labels:
       - traefik.enable=true
@@ -78,6 +80,18 @@ services:
       - traefik.http.routers.web.entrypoints=websecure
       - traefik.http.services.web.loadbalancer.server.port=3000
       - traefik.docker.network=drift_edge
+      # Tên miền cũ → APP_HOST, 301, giữ đường dẫn (DEC-150).
+      - traefik.http.routers.legacy.rule=Host(`${OLD_APP_HOST:-legacy.invalid}`)
+      - traefik.http.routers.legacy.entrypoints=websecure
+      - traefik.http.routers.legacy.service=web
+      - traefik.http.routers.legacy.middlewares=to-app-host
+      - traefik.http.middlewares.to-app-host.redirectregex.regex=^https?://[^/]+/?(.*)
+      - traefik.http.middlewares.to-app-host.redirectregex.replacement=https://${APP_HOST}/$${1}
+      - traefik.http.middlewares.to-app-host.redirectregex.permanent=true
+      - traefik.http.routers.legacy2.rule=Host(`${OLD_APP_HOST_2:-legacy2.invalid}`)
+      - traefik.http.routers.legacy2.entrypoints=websecure
+      - traefik.http.routers.legacy2.service=web
+      - traefik.http.routers.legacy2.middlewares=to-app-host
     networks: [edge]
     restart: unless-stopped
     logging: *logging

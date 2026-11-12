@@ -95,3 +95,74 @@ describe("twap", () => {
     expect(twapSchema.safeParse({ ...base, durationMinutes: 2 }).success).toBe(false);
   });
 });
+
+describe("twap schema", () => {
+  it("accepts a spot TWAP without reduceOnly (the form hides it for Spot)", () => {
+    const spot = twapSchema.parse({
+      market: "vETH_vUSDC",
+      engine: "spot",
+      side: "buy",
+      totalSize: "0.005",
+      durationMinutes: 60,
+      slices: 4,
+      maxSlippagePct: "0.3",
+      onSkip: "add_to_end",
+    });
+    expect(spot.reduceOnly).toBe(false);
+  });
+});
+
+describe("twap Start at (IMP-03, DEC-91)", () => {
+  // 2026-11-01 09:00 tại Asia/Ho_Chi_Minh (UTC+7) = 02:00 UTC.
+  const at = Date.UTC(2026, 10, 1, 2, 0);
+  const later = twapSchema.parse({
+    ...base,
+    start: "at",
+    startDate: Date.UTC(2026, 10, 1),
+    startTime: "09:00",
+    timeZone: "Asia/Ho_Chi_Minh",
+  });
+  const tick = (t: number, price = "100") =>
+    ({ type: "tick", at: t, market: "BTC-USD", price }) as const;
+
+  it("waits without orders until the start time in the Settings time zone", () => {
+    let s = twap.initialState(later);
+    for (const t of [at - 3_600_000, at - 1]) {
+      const r = twap.step(later, s, tick(t), ctx);
+      expect(r.actions).toEqual([]);
+      s = r.state;
+      expect(twap.waiting?.(later, s)).toEqual({ kind: "start_at", at });
+      const timer = twap.step(later, s, { type: "timer", at: t }, ctx);
+      expect(timer.actions).toEqual([]);
+    }
+    s = twap.step(later, s, tick(at, "101"), ctx).state;
+    expect(s.phase).toBe("running");
+    expect(s.startedAt).toBe(at);
+    expect(s.arrivalPrice).toBe("101");
+    expect(twap.waiting?.(later, s)).toBeNull();
+    const first = twap.step(later, s, { type: "timer", at }, ctx);
+    expect(first.actions.some((a) => a.type === "place")).toBe(true);
+  });
+
+  it("starts at once when the time has passed", () => {
+    const s = twap.step(later, twap.initialState(later), tick(at + 60_000), ctx).state;
+    expect(s.phase).toBe("running");
+  });
+
+  it("keeps old configs and old state starting now", () => {
+    expect(twap.waiting?.(base, twap.initialState(base))).toBeNull();
+    const old = { ...twap.initialState(base) };
+    const s = twap.step(base, old, tick(5), ctx).state;
+    expect(s.phase).toBe("running");
+  });
+
+  it("requires a date, a time and a time zone for At", () => {
+    const r = twapSchema.safeParse({ ...base, start: "at" });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues.map((i) => i.path.join("."))).toEqual([
+      "startDate",
+      "startTime",
+      "startTime",
+    ]);
+  });
+});

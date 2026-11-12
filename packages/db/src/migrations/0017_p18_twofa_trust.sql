@@ -1,0 +1,1 @@
+ALTER TABLE "sessions" ADD COLUMN "twofa_verified_at" timestamp with time zone;

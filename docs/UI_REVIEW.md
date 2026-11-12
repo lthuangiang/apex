@@ -1,4 +1,4 @@
-# DRIFT — Danh sách sửa UI theo thiết kế (review 2026-10-28)
+# WTS — Danh sách sửa UI theo thiết kế (review 2026-10-28)
 
 > So app chạy ở `http://localhost` với canvas "DRIFT Redesign" (render từng artboard `.dc.html`), cùng khổ 1440×900 và 375×812. Tài khoản test chưa kết nối SoDEX nên chỉ xem được trạng thái trống.
 >
@@ -744,3 +744,42 @@ Người dùng phản ánh: Portfolio có vẻ chỉ hiện dữ liệu Spot, b�
   - Đã sửa (2026-10-29, DEC-74): API `account.test.ts` (seed một lần, thay, sắp xếp, > 8, trùng, sai engine, không tồn tại, rỗng không seed lại, giữ market thiếu giá); unit `watchlist-list.test.ts`, `preset-market.test.ts`; e2e `p12-watchlist` (bàn phím, axe, lưu, menu → Create).
 - [x] Claude Code ghi DEC + cập nhật SCREENS.md mục Overview. Canvas chưa có artboard cho chế độ sửa; làm theo mô tả này, dùng component có sẵn (`MarketPicker`, nút icon, `Card`).
   - Đã sửa (2026-10-29, DEC-74): DEC-74; SCREENS.md "8.x Overview — Watchlist".
+
+## N. Rà toàn bộ màn hình + tạo bot mọi strategy (2026-10-29)
+
+Đã tạo draft cho 8 strategy trên dev (Spot Grid, Futures Grid, Spot DCA, Futures DCA, Recurring Buy, Funding Arb, TWAP, Rebalancing). Chỉ "BTC Spot Grid" (60 USDC) được chuẩn bị để Start mainnet; người dùng tự bấm Start bằng 2FA của mình.
+
+### N1. Đã sửa
+
+- [x] **Draft không start được:** Strategy Lab › Continue → Edit; link "Start on mainnet" trỏ `/agent/:id`, mà trang đó chuyển draft về Edit (DEC-57) nên vòng lặp. Sửa: Edit của bot `draft` render màn Create với config đã lưu (`CreateBot` prop `draft`): đủ checks, xác nhận, 2FA, Start; Save ghi version mới; tiêu đề "Continue {name}"; không tự điền AI đè lên. `bot-edit.tsx`, `create-bot.tsx`.
+- [x] **Save draft không có phản hồi:** thêm dòng `role="status"` "Draft saved. Find it in Strategy Lab under My bots." + link, chỉ hiện sau khi bấm Save trong phiên này.
+- [x] **Overview › My bots nhiều draft:** mỗi draft một thẻ to "No fills yet". Sửa: thẻ chỉ cho bot không phải draft; draft gom thành khối "Drafts · N" (4 mới nhất, tên · strategy · market · vốn, nút Continue, "+N more in Strategy Lab"). Thẻ Trading Agent ưu tiên bot không phải draft.
+- [x] **Mã lý do thô** `API_KEY_UNUSABLE` ở cột Why (Trading Agent › Decisions): hiện câu trong `reasons.*`.
+- [x] Funding Arb hiện hai dòng "Not available" khi chưa có portfolio: bỏ dòng trùng (`amount-lines.tsx`).
+- [x] Risk › Concentration: "Not supported by the backend yet" → "DRIFT doesn’t track this limit yet".
+- [x] Trước đó trong lượt này: TWAP `reduceOnly` mặc định `false` (Save draft Spot TWAP lỗi vì field ẩn); lỗi field zod thô → câu thân thiện + kể tên field (`field-errors.ts`).
+
+### N2. Còn mở (đã sửa hết 2026-10-29)
+
+- [x] **AI parameters Spot Grid:** khoảng gợi ý nằm trọn trên giá hiện tại (lower 80,391 > last 80,112).
+  - Đã sửa (2026-10-29): nguyên nhân là reco dùng `last_price` của `market_stats_daily` (giá đóng cửa hôm trước). Reco đọc giá hiện tại từ Redis `md:last:*` (thiếu thì dùng thống kê ngày); P5–P95 được nới để giá hiện tại cách biên ít nhất một bước, câu lý do ghi "widened to include the current price".
+- [x] **AI parameters Futures Grid:** cấu hình gợi ý không qua check min size (≈ 9.65 < 10 USDC mỗi lệnh).
+  - Đã sửa (2026-10-29): `gridFits` trong `params.ts` tính đúng như `meetsMinSize` (cùng khối lượng mọi mức, làm tròn lot, mức thấp nhất phải đạt) rồi bớt level; Spot Grid dùng chung.
+- [x] AI parameters Spot DCA / Futures DCA trả `{"suggestion": null}`; DCA hỏi "Enter how much this bot can use" nhưng form không có ô vốn.
+  - Đã sửa (2026-10-29): không có vốn (form DCA, goals chưa đặt) thì engine chọn thang nhỏ nhất phủ mức giảm 30 ngày mà mỗi lệnh đạt min size, trả `capital` = max capital; có vốn mà nhỏ thì bớt safety order thay vì trả null. DCA không bao giờ hiện câu hỏi vốn. Còn lại: thang nhỏ nhất có thể lớn hơn số dư (ETH ≈ 261 USDC); check Balance báo đúng, người dùng giảm "Max safety orders".
+- [x] Recurring Buy vẫn hỏi số tiền khi đã điền amount per buy và total budget; Funding Arb AI báo lỗi chung.
+  - Đã sửa (2026-10-29): `capitalOf` đọc theo cách kết thúc (after_budget → total budget, after_n_buys → amount × count, never → amount × 20). Gợi ý Recurring Buy bớt số lần mua khi mỗi lần dưới min size sau làm tròn lot (100 USDC → 17 lần × 5.88). Funding Arb: nguyên nhân là `funding_pos21` null (chưa đủ 21 kỳ); tham số không phụ thuộc lịch sử funding nên vẫn trả, câu lý do ghi "not available yet". Mức 2,000 vẫn chỉ áp cho kế hoạch onboarding.
+- [x] Rebalancing: `market` của bot = market của tài sản đầu (BTC/USDC), nên Overview / Strategy Lab / Agent ghi "BTC/USDC" cho rổ BTC/ETH. Cột `market` bị khoá (Edit so sánh `requirementOf().market`), cần trường hiển thị riêng (ví dụ `assetsLabel` trong `BotSummary`).
+  - Đã sửa (2026-10-29, DEC-78): `BotSummary.marketLabel` ("BTC · ETH · USDC") do api tính từ `assets`; Overview, Strategy Lab, Agent dùng `botMarket()`. Cột `market` giữ nguyên.
+- [x] Strategy Lab: draft vẫn ghi Mode "LIVE"; ETH TWAP Capital "Not available" (TWAP tính theo số lượng base).
+  - Đã sửa (2026-10-29, DEC-78): draft hiện Mode "Not started"; TWAP trả `capital` = `totalSize`, `capitalUnit = base`, hiện "0.5 ETH" (Agent ghi "Total size").
+- [x] Bot paused `API_KEY_UNUSABLE` sau khi đã Renew key: list vẫn hiện nút "Renew key" thay vì "Resume" (dựa vào `reasonCode`, không xét key mới).
+  - Đã sửa (2026-10-29, DEC-78): `botActions` nhận trạng thái key hiện tại (`useSodexConnection`); key `active` thì nút chính là "Resume", còn lại "Renew key". Unit test `bot-actions.test.ts`.
+- [x] Create: hai giá "Last" khác nhau trên cùng màn; checklist đọc màn hình bị lặp "✓ ✓:".
+  - Đã sửa (2026-10-29, DEC-78): ô Market và panel Preview cùng đọc `useMarketLast` (15 s) và làm tròn theo tick; checklist đọc "Passed:" / "Failed:" thay cho "✓:".
+- [x] Users › Reset password: email dài bị ngắt giữa chữ trong tiêu đề dialog (thêm `break-all` hoặc rút gọn).
+  - Đã sửa (2026-10-29, DEC-78): tiêu đề `ConfirmDialog` dùng `wrap-anywhere` (chỉ ngắt chuỗi dài như email).
+
+### N3. Đã kiểm, ổn
+
+Overview, Portfolio, Trading Agent, Strategy Lab (list + catalog), Execution & Orders, Risk Center, AI Analyst, Settings › SoDEX access, Builder Revenue, Users (dialog reset cần 2FA của admin), mobile 375 px (không cuộn ngang, bottom nav đủ nhãn).

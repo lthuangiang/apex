@@ -33,6 +33,8 @@ export const SodexActionType = {
   spotCancelOrder: "batchCancelOrder",
   perpsNewOrder: "newOrder",
   perpsCancelOrder: "cancelOrder",
+  /** `POST /perps/trade/orders/modify` (Go SDK `ModifyOrderRequest`): chỉ dùng cho lệnh TP/SL (DEC-118). */
+  perpsModifyOrder: "modifyOrder",
   /** `POST /perps/trade/leverage` (Go SDK `UpdateLeverageRequest`). */
   perpsUpdateLeverage: "updateLeverage",
 } as const;

@@ -11,6 +11,7 @@ import {
   NOTIFICATION_DEFAULTS,
   NOTIFICATION_TYPES,
   ALWAYS_ON_GROUPS,
+  IN_APP_ONLY_GROUPS,
   type NotificationType,
 } from "@drift/shared";
 import { and, eq } from "drizzle-orm";
@@ -33,9 +34,9 @@ export interface NotifyDeps {
 
 const REASON_TEXT: Record<string, string> = {
   BUILDER_FEE_REVOKED: "builder fee approval is 0",
-  API_KEY_EXPIRED: "DRIFT API key expired",
-  API_KEY_UNUSABLE: "DRIFT can't sign with your API key",
-  API_KEY_DELETED: "DRIFT API key deleted",
+  API_KEY_EXPIRED: "DeskLabs API key expired",
+  API_KEY_UNUSABLE: "DeskLabs can't sign with your API key",
+  API_KEY_DELETED: "DeskLabs API key deleted",
   RISK_DAILY_LOSS: "daily loss limit reached",
   RISK_DRAWDOWN: "drawdown limit reached",
   BOT_MAX_LOSS: "max loss for this bot reached",
@@ -56,39 +57,56 @@ export function emailText(
 ): { subject: string; text: string } {
   const bot = botName ?? "A bot";
   const reason = REASON_TEXT[typeof data.reasonCode === "string" ? data.reasonCode : ""] ?? "";
+  // Bài thử tiền giả (DEC-105): ghi rõ "fake money" để không ai tưởng là tiền thật.
+  if (data.paper === true && (type === "bot_paused" || type === "bot_stopped")) {
+    const verb = type === "bot_stopped" ? "stopped" : "paused";
+    return {
+      subject: `DeskLabs: fake-money test ${bot} ${verb}`,
+      text: `Your fake-money test ${bot} ${verb}: ${reason}. No real money was used. Open AI Desk to see the results.`,
+    };
+  }
   switch (type) {
     case "bot_paused":
       return {
-        subject: `DRIFT: ${bot} paused`,
-        text: `${bot} was paused: ${reason}. Open orders were kept. Open DRIFT to review it.`,
+        subject: `DeskLabs: ${bot} paused`,
+        text: `${bot} was paused: ${reason}. Open orders were kept. Open DeskLabs to review it.`,
       };
     case "bot_stopped":
       return {
-        subject: `DRIFT: ${bot} stopped`,
-        text: `${bot} stopped: ${reason}. Open DRIFT to review it.`,
+        subject: `DeskLabs: ${bot} stopped`,
+        text: `${bot} stopped: ${reason}. Open DeskLabs to review it.`,
       };
     case "unknown_order":
       return {
-        subject: `DRIFT: order result unknown on ${bot}`,
-        text: `SoDEX didn't confirm an order from ${bot}. DRIFT will not resend it until SoDEX confirms whether it exists.`,
+        subject: `DeskLabs: order result unknown on ${bot}`,
+        text: `SoDEX didn't confirm an order from ${bot}. DeskLabs will not resend it until SoDEX confirms whether it exists.`,
       };
     case "risk_alert":
       return {
-        subject: "DRIFT: risk limit reached",
+        subject: "DeskLabs: risk limit reached",
         text: `A server-enforced risk limit was reached (${typeof data.kind === "string" ? data.kind : ""}). Running bots were paused. Open the Risk Center to review.`,
       };
     case "key_fee":
       return {
-        subject: "DRIFT: SoDEX access changed",
-        text: "Your DRIFT API key or builder fee approval changed. Open Settings to review.",
+        subject: "DeskLabs: SoDEX access changed",
+        text: "Your DeskLabs API key or builder fee approval changed. Open Settings to review.",
       };
     case "fill":
       return {
-        subject: `DRIFT: ${bot} filled an order`,
-        text: `${bot} filled an order. Open DRIFT for details.`,
+        subject: `DeskLabs: ${bot} filled an order`,
+        text: `${bot} filled an order. Open DeskLabs for details.`,
       };
     case "daily_summary":
-      return { subject: "DRIFT: daily summary", text: "Your daily summary is ready in DRIFT." };
+      return {
+        subject: "DeskLabs: daily summary",
+        text: "Your daily summary is ready in DeskLabs.",
+      };
+    case "leader_big_move":
+      // Chỉ trong app ở v1 (IN_APP_ONLY_GROUPS); câu này chỉ để switch đủ nhánh.
+      return {
+        subject: "DeskLabs: a trader you follow made a big move",
+        text: "Open Following in DeskLabs.",
+      };
   }
 }
 
@@ -116,7 +134,7 @@ export async function handleNotify(deps: NotifyDeps, raw: unknown): Promise<void
     await deps.db
       .insert(notifications)
       .values({ userId, type: p.type, payload: p.data, channel: "in_app" });
-  if (enabled("email") && deps.sendEmail !== null) {
+  if (enabled("email") && deps.sendEmail !== null && !IN_APP_ONLY_GROUPS.includes(group)) {
     const [u] = await deps.db
       .select({ email: users.email })
       .from(users)

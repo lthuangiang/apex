@@ -1,0 +1,118 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>DRIFT intro v2</title><style>
+@font-face { font-family: "Jakarta"; src: url("jakarta.woff2") format("woff2"); font-weight: 200 800; }
+:root { --bg:#eef1fa; --ink:#141a33; --ink2:#3b4262; --muted:#5f6684; --accent:#2e62e8; --tint:#e6ecfe; --pos:#0f7a43; --posbg:#ddf4e7; --neg:#c2312f; --negbg:#fde4e1; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); font-family: "Jakarta", system-ui, sans-serif; color: var(--ink); }
+.stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+.scene { position: absolute; inset: 0; opacity: 0; }
+[data-t] { will-change: opacity, transform; }
+.dark { background: var(--ink); color: #fff; }
+.hero { background: linear-gradient(135deg, #e3e8fe, #c6d0fa); }
+.rings { position: absolute; border-radius: 50%; border: 2px solid rgba(255,255,255,.55); }
+.mark { width: 120px; height: 120px; border-radius: 34px; background: var(--accent); display: flex; align-items: center; justify-content: center; box-shadow: 0 24px 60px rgba(46,98,232,.45); }
+.word { font-weight: 800; letter-spacing: .08em; }
+.eyebrow { font-size: 22px; font-weight: 800; letter-spacing: .14em; color: var(--accent); }
+.h1 { font-size: 104px; line-height: 1.02; font-weight: 800; letter-spacing: -.03em; margin: 0; }
+.h2 { font-size: 68px; line-height: 1.08; font-weight: 800; letter-spacing: -.02em; margin: 0; }
+.body { font-size: 30px; line-height: 1.5; color: var(--ink2); margin: 0; }
+.step { position: absolute; left: 120px; top: 0; bottom: 0; width: 600px; display: flex; flex-direction: column; justify-content: center; gap: 26px; }
+.num { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 30px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.frame { position: absolute; right: 100px; top: 140px; width: 1060px; height: 800px; border-radius: 28px; background: #fff; overflow: hidden; box-shadow: 0 40px 100px rgba(20,26,51,.18); border: 1px solid #e3e7f5; }
+.frame .bar { height: 46px; background: #f5f7fd; border-bottom: 1px solid #e3e7f5; display: flex; align-items: center; gap: 9px; padding: 0 20px; }
+.frame .bar i { width: 13px; height: 13px; border-radius: 50%; background: #d5dcf2; display: block; }
+.frame .view { position: absolute; top: 46px; left: 0; right: 0; bottom: 0; overflow: hidden; }
+.frame img { position: absolute; left: 0; top: 0; width: 1440px; transform-origin: 0 0; }
+.sample { position: absolute; right: 120px; top: 958px; font-size: 18px; font-weight: 600; color: var(--muted); }
+.card { background: #fff; border-radius: 26px; box-shadow: 0 24px 60px rgba(20,26,51,.12); }
+.pill { display: inline-flex; align-items: center; gap: 10px; border-radius: 999px; font-weight: 800; }
+.row { display: flex; align-items: center; gap: 22px; padding: 26px 30px; border-radius: 22px; font-size: 30px; font-weight: 700; }
+.hl { position: absolute; border: 4px solid var(--accent); border-radius: 22px; box-shadow: 0 0 0 9999px rgba(20,26,51,.10); }
+</style><style>
+.big{font-size:92px;line-height:1.04;font-weight:800;letter-spacing:-.03em;margin:0}
+.sub{font-size:34px;line-height:1.35;color:var(--ink2);margin:0;font-weight:600}
+.left{position:absolute;left:100px;top:0;bottom:0;width:640px;display:flex;flex-direction:column;justify-content:center;gap:28px}
+.win{position:absolute;right:80px;top:90px;width:1040px;height:900px;border-radius:28px;background:#fff;overflow:hidden;box-shadow:0 30px 80px rgba(20,26,51,.18)}
+.win img{position:absolute;left:0;top:0;transform-origin:0 0}
+.tag{position:absolute;right:104px;bottom:112px;padding:8px 16px;border-radius:999px;background:rgba(20,26,51,.82);color:#fff;font-size:20px;font-weight:700}
+.tagl{position:absolute;left:100px;bottom:70px;font-size:22px;font-weight:700;color:var(--muted)}
+</style></head><body><div class="stage">
+<section class="scene dark" data-t="0,3.3" data-fx="fade">
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:40px;text-align:center">
+    <p class="h1" style="font-size:128px" data-t="0.1,3.3" data-fx="up">Your bot should</p>
+    <p class="h1" style="font-size:128px;color:#8FB0FF" data-t="0.5,3.3" data-fx="up">explain itself.</p>
+  </div>
+</section>
+<section class="scene hero" data-t="3.1,10.6" data-fx="fade">
+  <div class="left">
+    <p class="big" data-t="3.3,10.6" data-fx="up">Set it up<br>on the chart.</p>
+    <p class="sub" data-t="3.8,10.6" data-fx="up">See entry, safety orders and take profit before you start.</p>
+  </div>
+  <div class="win" data-t="3.4,10.6" data-fx="right">
+    <img src="v2/chart.png" style="width:1326px" data-pan="3.4,6.4,10,10,0.78,10,40,0.78" data-t="3.4,6.5" data-fx="fade" alt="">
+    <img src="v2/chart-zoom.png" style="width:1326px" data-pan="6.2,8.8,10,40,0.78,10,60,0.78" data-t="6.2,8.9" data-fx="fade" alt="">
+    <img src="v2/chart-copied.png" style="width:1326px" data-pan="8.6,10.6,10,60,0.78,10,80,0.78" data-t="8.6,10.6" data-fx="fade" alt="">
+  </div>
+  <div class="tagl" data-t="4.2,10.6" data-fx="fade">Real DRIFT screen · live SoDEX prices</div>
+</section>
+<section class="scene" data-t="10.4,16.2" data-fx="fade">
+  <div class="left">
+    <p class="big" data-t="10.6,16.2" data-fx="up">See what it<br>did, and why.</p>
+    <p class="sub" data-t="11.1,16.2" data-fx="up">Every decision is logged in plain words.</p>
+  </div>
+  <div class="win" data-t="10.7,16.2" data-fx="right"><img src="shots/Agent.png" style="width:1440px" data-pan="10.7,16.2,280,330,1.22,280,460,1.22" alt=""></div>
+  <div class="tagl" data-t="11.5,16.2" data-fx="fade">Product design · demo data</div>
+</section>
+<section class="scene" data-t="16,21.2" data-fx="fade">
+  <div class="left">
+    <p class="big" data-t="16.2,21.2" data-fx="up">You stay<br>in control.</p>
+    <p class="sub" data-t="16.7,21.2" data-fx="up">Server-side risk limits. One emergency halt.</p>
+  </div>
+  <div class="win" data-t="16.3,21.2" data-fx="right"><img src="shots/Risk.png" style="width:1440px" data-pan="16.3,21.2,280,120,1.16,280,420,1.16" alt=""></div>
+  <div class="tagl" data-t="17,21.2" data-fx="fade">Product design · demo data</div>
+</section>
+<section class="scene dark" data-t="21,25" data-fx="fade">
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px;text-align:center">
+    <div data-t="21.2,25" data-fx="pop"><div class="mark">
+      <svg width="66" height="66" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15c3-6 6 2 9-3s5-5 7-4"/><path d="M4 20h16"/></svg>
+    </div></div>
+    <div class="word" style="font-size:104px" data-t="21.5,25" data-fx="up">DRIFT</div>
+    <div style="font-size:36px;font-weight:600;color:#a9beff" data-t="21.8,25" data-fx="up">Automated trading on SoDEX</div>
+    <div style="font-size:30px;font-weight:700" data-t="22.1,25" data-fx="up">drift.junxcrypto.xyz</div>
+    <div style="font-size:21px;color:#a8b0cc;margin-top:18px" data-t="22.4,25" data-fx="fade">Trading can lose money. DRIFT does not promise profit.</div>
+  </div>
+</section>
+</div><script>
+const DURATION = 25;
+const clamp = (x) => Math.min(1, Math.max(0, x));
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+const easeInOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const els = [...document.querySelectorAll("[data-t]")].map((el) => {
+  const [a, b] = el.dataset.t.split(",").map(Number);
+  return { el, a, b, fx: el.dataset.fx || "fade" };
+});
+const pans = [...document.querySelectorAll("[data-pan]")].map((el) => ({ el, v: el.dataset.pan.split(",").map(Number) }));
+window.render = (t) => {
+  for (const { el, a, b, fx } of els) {
+    const pin = easeOut(clamp((t - a) / 0.7));
+    const pout = easeInOut(clamp((t - (b - 0.45)) / 0.45));
+    const scene = el.classList.contains("scene");
+    el.style.opacity = String(scene ? clamp((t - a) / 0.4) * (1 - clamp((t - (b - 0.4)) / 0.4)) : pin * (1 - pout));
+    const k = 1 - pin;
+    let tr = "";
+    if (fx === "up") tr = `translateY(${k * 46}px)`;
+    else if (fx === "left") tr = `translateX(${k * 70}px)`;
+    else if (fx === "right") tr = `translateX(${k * 120}px)`;
+    else if (fx === "zoom") tr = `scale(${0.92 + 0.08 * pin})`;
+    else if (fx === "pop") tr = `scale(${0.7 + 0.3 * easeOut(clamp((t - a) / 0.55))})`;
+    if (!scene) el.style.transform = tr;
+  }
+  for (const { el, v } of pans) {
+    const [a, b, x0, y0, s0, x1, y1, s1] = v;
+    const p = easeInOut(clamp((t - a) / (b - a)));
+    const x = x0 + (x1 - x0) * p, y = y0 + (y1 - y0) * p, s = s0 + (s1 - s0) * p;
+    el.style.transform = `scale(${s}) translate(${-x}px, ${-y}px)`;
+  }
+};
+window.DURATION = DURATION;
+window.render(0);
+</script></body></html>

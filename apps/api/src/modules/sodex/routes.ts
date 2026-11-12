@@ -1,9 +1,11 @@
 import {
   connectBodySchema,
+  connectEventBodySchema,
   disconnectBodySchema,
   revokeBuilderFeeBodySchema,
   submitSignatureBodySchema,
 } from "@drift/shared";
+import { connectEvents } from "@drift/db";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
@@ -27,6 +29,20 @@ const idParams = z.object({ id: z.uuid() });
 
 export function registerSodexRoutes(app: FastifyInstance, deps: SodexDeps): void {
   const { db } = deps;
+
+  // Bước của màn Connect phía trình duyệt (DEC-114). Ghi kèm user đang đăng nhập; lỗi ghi không được làm hỏng màn
+  // hình, nên luôn trả 204 khi body hợp lệ. Chỉ thêm dòng, không đọc lại, không idempotency.
+  app.post("/api/v1/sodex/connect-events", async (request, reply) => {
+    const auth = requireAuth(request);
+    const body = parseOrThrow(connectEventBodySchema, request.body);
+    await db
+      .insert(connectEvents)
+      .values({ userId: auth.userId, attemptId: body.attemptId, type: body.type, data: body.data })
+      .catch((error: unknown) => {
+        request.log.warn({ err: error }, "connect event not saved");
+      });
+    return reply.status(204).send();
+  });
 
   app.get("/api/v1/sodex/connection", async (request) =>
     getConnection(deps, requireAuth(request).userId),
@@ -66,7 +82,14 @@ export function registerSodexRoutes(app: FastifyInstance, deps: SodexDeps): void
     const body = parseOrThrow(revokeBuilderFeeBodySchema, request.body);
     return idempotent(db, request, reply, auth.userId, deps.now(), async () => ({
       status: 201,
-      body: await startBuilderFee(deps, auth.userId, false, body.twoFactorCode, request.ip),
+      body: await startBuilderFee(
+        deps,
+        auth.userId,
+        false,
+        body.twoFactorCode,
+        request.ip,
+        auth.sessionId,
+      ),
     }));
   });
 
@@ -76,7 +99,13 @@ export function registerSodexRoutes(app: FastifyInstance, deps: SodexDeps): void
     const body = parseOrThrow(disconnectBodySchema, request.body);
     return idempotent(db, request, reply, auth.userId, deps.now(), async () => ({
       status: 201,
-      body: await startDisconnect(deps, auth.userId, body.twoFactorCode, request.ip),
+      body: await startDisconnect(
+        deps,
+        auth.userId,
+        body.twoFactorCode,
+        request.ip,
+        auth.sessionId,
+      ),
     }));
   });
 

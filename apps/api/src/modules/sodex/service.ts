@@ -70,6 +70,8 @@ export interface SodexDeps extends TwoFactorDeps {
   writer: SignedWriteClient;
   signer: SignerClient;
   builderId: bigint;
+  /** Account builder được miễn builder fee (DEC-47); false = thu như mọi account (DEC-124). Thiếu = true. */
+  builderExempt?: boolean | undefined;
   /** Chỉ bật sau khi đã kiểm chứng mặt nạ 14 trên mainnet (SODEX.md mục 5.2). */
   connectEnabled: boolean;
 }
@@ -151,6 +153,7 @@ export async function getConnection(deps: SodexDeps, userId: string): Promise<So
         key === undefined
           ? null
           : {
+              name: key.name,
               last4: key.last4,
               status:
                 key.status === "active" && key.expiresAt <= now
@@ -164,7 +167,7 @@ export async function getConnection(deps: SodexDeps, userId: string): Promise<So
               lastUsedAt: key.lastUsedAt === null ? null : iso(key.lastUsedAt),
               permissions: { trade: key.status === "active", withdrawTransfer: false },
             },
-      builderFee: isBuilderAccount(account.sodexAccountId, deps.builderId)
+      builderFee: isBuilderAccount(account.sodexAccountId, deps.builderId, deps.builderExempt)
         ? {
             builderId: deps.builderId.toString(),
             spot: null,
@@ -275,10 +278,18 @@ export async function startBuilderFee(
   approve: boolean,
   twoFactorCode: string | undefined,
   ip: string | null,
+  sessionId?: string,
 ): Promise<SignatureRequest> {
   const account = await currentAccount(deps.db, userId);
   if (account === undefined) throw new AppError(ErrorCode.notFound, "No SoDEX account connected.");
-  if (!approve) await verifyTwoFactor(deps, userId, twoFactorCode, ip);
+  if (!approve)
+    await verifyTwoFactor(
+      deps,
+      userId,
+      twoFactorCode,
+      ip,
+      sessionId === undefined ? {} : { sessionId },
+    );
   const request = approveBuilderFeeRequest({
     user: getAddress(account.address),
     accountID: account.sodexAccountId,
@@ -297,14 +308,21 @@ export async function startBuilderFee(
 export async function startDisconnect(
   deps: SodexDeps,
   userId: string,
-  twoFactorCode: string,
+  twoFactorCode: string | undefined,
   ip: string | null,
+  sessionId?: string,
 ): Promise<{ spot: SignatureRequest; perps: SignatureRequest }> {
   const account = await currentAccount(deps.db, userId);
   if (account?.status !== "connected") {
     throw new AppError(ErrorCode.notFound, "No SoDEX account connected.");
   }
-  await verifyTwoFactor(deps, userId, twoFactorCode, ip);
+  await verifyTwoFactor(
+    deps,
+    userId,
+    twoFactorCode,
+    ip,
+    sessionId === undefined ? {} : { sessionId },
+  );
   const [key] = await deps.db
     .select()
     .from(apiKeys)
@@ -313,7 +331,7 @@ export async function startDisconnect(
     )
     .orderBy(desc(apiKeys.createdAt))
     .limit(1);
-  if (key === undefined) throw new AppError(ErrorCode.notFound, "No DRIFT key to revoke.");
+  if (key === undefined) throw new AppError(ErrorCode.notFound, "No DeskLabs key to revoke.");
 
   const create = async (engine: RevokeEngine) => {
     const request = revokeApiKeyRequest({
@@ -627,7 +645,7 @@ async function upsertAccount(db: Db, userId: string, address: Address, accountId
     if (held) {
       throw new AppError(
         ErrorCode.sodexAccountInUse,
-        "This SoDEX account is connected to another DRIFT user.",
+        "This SoDEX account is connected to another DeskLabs user.",
       );
     }
     const [moved] = await db

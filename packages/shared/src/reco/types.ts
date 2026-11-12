@@ -19,6 +19,8 @@ export interface MarketRulesInput {
   stepSize: string;
   minQuantity: string;
   minNotional: string;
+  /** Phí maker SoDEX của market (tỷ lệ thô, ví dụ "0.00012") từ `/symbols`; không có thì dùng mức cơ bản. */
+  makerFee?: string;
 }
 
 /** Một market của SoDEX kèm thống kê ngày (market_stats_daily) và 31 giá đóng cửa ngày gần nhất. */
@@ -37,6 +39,8 @@ export interface RecoMarket {
   /** Funding trung bình 7 ngày, tính bằng % mỗi kỳ (đã đổi từ tỷ lệ thô của SoDEX). */
   fundingAvg7d: string | null;
   fundingPos21: number | null;
+  /** Kỳ funding (giờ) của perp; thiếu thì coi là 1 giờ như mọi perp SoDEX hiện nay (DEC-160). */
+  fundingIntervalHours?: number | null;
   /** Giá đóng cửa ngày, cũ → mới. */
   closes: readonly string[];
   rules: MarketRulesInput;
@@ -51,6 +55,11 @@ export interface RecoInput {
   accountLeverageCap: number | null;
   /** Thời điểm tính (ms), truyền vào để kết quả tất định. */
   now: number;
+  /**
+   * Chỉ một bot (AI Desk › Recommended): không chọn bot phụ, bot chính dùng toàn bộ vốn. Mặc định false để
+   * onboarding giữ nguyên (bot chính + bot phụ chia 60/40).
+   */
+  single?: boolean;
 }
 
 export type RecoStrategy =

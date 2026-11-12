@@ -3,7 +3,7 @@ import { Secret, TOTP } from "otpauth";
 // TOTP RFC 6238: SHA1, 6 số, chu kỳ 30 s, chấp nhận lệch ±1 bước (DEC-29).
 
 export const TOTP_PERIOD_S = 30;
-const ISSUER = "DRIFT";
+const ISSUER = "DeskLabs";
 
 export function newTotpSecret(): string {
   return new Secret({ size: 20 }).base32;

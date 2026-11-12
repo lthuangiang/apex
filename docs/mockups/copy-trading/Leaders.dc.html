@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Find traders</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="leaders" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+    <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">Find traders to copy</h1>
+        <p style="margin: 0; font-size: 14px; color: #5f6684">Top traders from Hyperliquid's public leaderboard, re-checked from their real trades. Your copies run on SoDEX.</p>
+      </div>
+      <span class="num" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; background: #ffffff; border: 1px solid #e3e7f5; color: #3b4262; font-size: 12.5px; font-weight: 700">Hyperliquid · updated today, 06:00 UTC</span>
+    </header>
+
+    <section aria-labelledby="how-h" style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+        <h2 id="how-h" style="margin: 0; font-size: 16px; font-weight: 800">New to copy trading? It takes 3 steps.</h2>
+        <button type="button" aria-label="Hide this guide" style="width: 44px; height: 44px; border-radius: 12px; border: none; background: transparent; color: #5f6684; font: inherit; font-size: 18px; cursor: pointer">✕</button>
+      </div>
+      <ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <li style="display: flex; gap: 12px; padding: 14px; border-radius: 16px; background: #eef3ff">
+          <span style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 9px; background: #2e62e8; color: #ffffff; font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center">1</span>
+          <span style="display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 14px">Pick a trader</strong><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Start with the Steady list. Open a profile to see how they trade.</span></span>
+        </li>
+        <li style="display: flex; gap: 12px; padding: 14px; border-radius: 16px; background: #f5f7fd">
+          <span style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 9px; background: #e6ecfe; color: #1d47b8; font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center">2</span>
+          <span style="display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 14px">Choose your budget</strong><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Set how much to use and pick a safety level. We fill in the rest.</span></span>
+        </li>
+        <li style="display: flex; gap: 12px; padding: 14px; border-radius: 16px; background: #f5f7fd">
+          <span style="flex-shrink: 0; width: 28px; height: 28px; border-radius: 9px; background: #e6ecfe; color: #1d47b8; font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center">3</span>
+          <span style="display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 14px">We copy their new trades</strong><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Only trades they open after you start. You can pause any time.</span></span>
+        </li>
+      </ol>
+    </section>
+
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px">
+      <div role="tablist" aria-label="Trader lists" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 14px; background: #ffffff; border: 1px solid #e3e7f5">
+        <button type="button" role="tab" aria-selected="true" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: none; background: #2e62e8; color: #ffffff; font: inherit; font-size: 13.5px; font-weight: 800; cursor: pointer">Steady</button>
+        <button type="button" role="tab" aria-selected="false" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: none; background: transparent; color: #3b4262; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">Top earners · 30D</button>
+        <button type="button" role="tab" aria-selected="false" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: none; background: transparent; color: #3b4262; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">Long holders</button>
+        <button type="button" role="tab" aria-selected="false" style="min-height: 40px; padding: 0 16px; border-radius: 10px; border: none; background: transparent; color: #3b4262; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">All</button>
+      </div>
+      <div style="display: flex; gap: 8px">
+        <button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">Filters</button>
+        <button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">Table view</button>
+      </div>
+    </div>
+    <p style="margin: -8px 0 0; font-size: 13px; color: #5f6684">Steady: made money over 30 days with small dips, at least 20 closed trades, and no single trade making most of the profit.</p>
+    <div role="note" class="num" style="display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; border-radius: 16px; background: #eef3ff; font-size: 13px; line-height: 1.5; color: #1d47b8">
+      <span aria-hidden="true" style="font-weight: 800">i</span>
+      <span>Live copying follows up to 8 Hyperliquid traders at a time across DeskLabs. Traders other people already copy are always open. When all spots are taken, you can follow a trader and copy them when a spot opens.</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+      <sc-for list="{{traders}}" as="t" hint-placeholder-count="6">
+        <article class="num" style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; align-items: center; gap: 12px">
+            <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 13px; background: {{t.tile}}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800">{{t.initial}}</span>
+            <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1">
+              <strong style="font-size: 15px">{{t.addr}}</strong>
+              <span style="font-size: 12px; color: #5f6684">Hyperliquid · {{t.trades}} closed trades</span>
+            </span>
+          </div>
+          <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 10px">
+            <span style="display: flex; flex-direction: column; gap: 2px">
+              <span style="font-size: 12px; font-weight: 600; color: #5f6684">Profit · 30 days</span>
+              <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.02em; color: #0f7a43">{{t.pnl}}</span>
+            </span>
+            <svg width="96" height="36" viewBox="0 0 96 36" aria-hidden="true"><polyline fill="none" stroke="#2e62e8" stroke-width="2" stroke-linejoin="round" points="{{t.spark}}"></polyline></svg>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; border-radius: 14px; background: #f5f7fd">
+            <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11.5px; font-weight: 600; color: #5f6684">Worst dip</span><strong style="font-size: 13.5px; color: #c2312f">{{t.dd}}</strong></span>
+            <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11.5px; font-weight: 600; color: #5f6684">Typical hold</span><strong style="font-size: 13.5px">{{t.hold}}</strong></span>
+            <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11.5px; font-weight: 600; color: #5f6684">Win rate</span><strong style="font-size: 13.5px">{{t.win}}</strong></span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px">
+            <sc-for list="{{t.tags}}" as="g" hint-placeholder-count="2">
+              <span style="{{g.style}}">{{g.text}}</span>
+            </sc-for>
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: auto">
+            <a href="WalletStats.dc.html" style="flex: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 12px; border: 1px solid #d5dcf2; color: #141a33; text-decoration: none; font-weight: 700; font-size: 14px">View profile</a>
+            <sc-if value="{{t.open}}" hint-placeholder-val="{{true}}">
+              <a href="CopyBot.dc.html" style="flex: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 44px; border-radius: 12px; background: #2e62e8; color: #ffffff; text-decoration: none; font-weight: 800; font-size: 14px">Copy</a>
+            </sc-if>
+            <sc-if value="{{t.full}}" hint-placeholder-val="{{false}}">
+              <button type="button" style="flex: 1; min-height: 44px; border-radius: 12px; border: none; background: #e6ecfe; color: #1d47b8; font: inherit; font-weight: 800; font-size: 14px; cursor: pointer">Follow · copy later</button>
+            </sc-if>
+          </div>
+          <sc-if value="{{t.full}}" hint-placeholder-val="{{false}}">
+            <span style="margin-top: -6px; font-size: 12px; color: #5f6684">All live copy spots are taken right now.</span>
+          </sc-if>
+        </article>
+      </sc-for>
+    </div>
+
+    <div class="num" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: 18px; background: #ffffff; border: 1px dashed #c9cfe2; font-size: 13.5px; color: #3b4262">
+      <span><strong style="color: #141a33">152 of 200 leaderboard traders are hidden.</strong> They trade too fast to copy (typical hold under 15 min), have too few trades, are vaults, or mostly trade markets SoDEX doesn't list. Traders with more trades than we can load show only under All, marked "History incomplete".</span>
+      <a href="#" style="font-weight: 700; text-decoration: none">See why each was hidden</a>
+    </div>
+    <p style="margin: 0; font-size: 12.5px; color: #5f6684">Past results, not a forecast. Copying can lose money. Sample data.</p>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1320}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var tiles = ['#e6ecfe', '#cdf1ec', '#ffe3c7', '#f0e6ff', '#edeff5', '#cdf1ec'];
+    var chip = 'display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12px; font-weight: 700; ';
+    var good = chip + 'background: #ddf4e7; color: #0b6a39;';
+    var info = chip + 'background: #eef3ff; color: #1d47b8;';
+    var warn = chip + 'background: #fdebd3; color: #7a3e00;';
+    var rows = [
+      ['0x3e9a…11fd', '+$84,120 ▲', '−$9,800', '5h 40m', '62%', 118, '6,10 12,26 24,22 36,18 48,20 60,12 72,10 84,8 94,4', [['Easy to copy', good], ['All on SoDEX', info]]],
+      ['0xa1c7…b402', '+$61,300 ▲', '−$4,150', '1h 05m', '55%', 204, '6,30 14,28 24,24 36,25 48,18 60,16 72,14 84,9 94,6', [['Easy to copy', good], ['96% on SoDEX', info]]],
+      ['0x5d02…e7c9', '+$47,900 ▲', '−$12,600', '9h 12m', '49%', 63, '6,24 14,20 24,26 36,30 48,22 60,18 72,16 84,12 94,8', [['Holds for hours', good], ['72% on SoDEX', warn]]],
+      ['0xf410…2a6b', '+$38,450 ▲', '−$3,020', '42m', '60%', 241, '6,28 14,26 24,22 36,22 48,18 60,15 72,12 84,10 94,8', [['Fast trader', warn], ['All on SoDEX', info]]],
+      ['0x08bb…9d31', '+$29,700 ▲', '−$5,400', '3h 30m', '53%', 96, '6,26 14,24 24,25 36,20 48,19 60,16 72,15 84,12 94,10', [['Easy to copy', good], ['All on SoDEX', info]]],
+      ['0xc6e5…4f80', '+$22,050 ▲', '−$7,700', '1d 2h', '51%', 34, '6,22 14,25 24,20 36,18 48,21 60,16 72,13 84,12 94,10', [['Holds for days', good], ['High leverage', warn]]]
+    ];
+    var traders = rows.map(function (r, i) {
+      return {
+        addr: r[0], initial: r[0].slice(2, 4).toUpperCase(), tile: tiles[i],
+        pnl: r[1], dd: r[2], hold: r[3], win: r[4], trades: r[5], spark: r[6],
+        full: i === 4, open: i !== 4,
+        tags: r[7].map(function (g) { return { text: g[0], style: g[1] }; })
+      };
+    });
+    return { traders: traders };
+  }
+}
+</script>
+</body>
+</html>

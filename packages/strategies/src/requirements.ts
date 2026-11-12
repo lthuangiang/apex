@@ -4,6 +4,7 @@ import { safetyOffsetPct } from "./common/dca-bot";
 import { gridPrices } from "./common/grid";
 import { meetsMinimum, roundQty } from "./core/rounding";
 import type { MarketRules } from "./core/types";
+import { VM_DEFAULTS } from "./volume-maker/schema";
 
 // Yêu cầu trước khi start (SCREENS.md mục 8.2 "Before it starts"): vốn cần và kiểm tra min size SAU khi
 // làm tròn. Hàm thuần; api gọi với market info và giá hiện tại.
@@ -22,6 +23,12 @@ const s = (c: Cfg, k: string) => {
   return typeof v === "string" || typeof v === "number" ? String(v) : "0";
 };
 const n = (c: Cfg, k: string) => Number(c[k] ?? 0);
+/**
+ * Lệnh mở của Copy Trade: `fixed` = fixedNotional; `ratio` phụ thuộc cỡ lệnh của leader nên chỉ kiểm tra được trần
+ * mỗi lệnh (lệnh nhỏ hơn mức tối thiểu lúc chạy thì bot bỏ qua và ghi log).
+ */
+const copyOrder = (c: Cfg) =>
+  c.sizing === "ratio" ? s(c, "maxNotionalPerTrade") : s(c, "fixedNotional");
 
 export function requirementOf(strategy: string, c: Cfg): Requirement {
   switch (strategy) {
@@ -55,6 +62,54 @@ export function requirementOf(strategy: string, c: Cfg): Requirement {
         market: s(c, "market"),
         engine: c.engine === "perps" ? "perps" : "spot",
         capital: "0",
+      };
+    case Strategy.volumeMaker: {
+      // Margin của vị thế lớn nhất (DEC-99): max open position / đòn bẩy; thiếu thì 2 × order size (DEC-100), 5×.
+      const inv =
+        c.maxInventory !== undefined && c.maxInventory !== ""
+          ? dec(s(c, "maxInventory"))
+          : dec(s(c, "orderSize")).mul(
+              typeof c.maxOrders === "number" ? c.maxOrders : VM_DEFAULTS.maxInventoryMultiple,
+            );
+      return {
+        market: s(c, "market"),
+        engine: "perps",
+        capital: inv
+          .div(n(c, "leverage") || VM_DEFAULTS.leverage)
+          .toDecimalPlaces(2, Decimal.ROUND_UP)
+          .toString(),
+      };
+    }
+    case Strategy.adaptiveDca:
+      // Margin của vị thế lớn nhất được phép: maxExposure / đòn bẩy (DEC-107).
+      return {
+        market: s(c, "market"),
+        engine: "perps",
+        capital: dec(s(c, "maxExposure"))
+          .div(n(c, "leverage") || 1)
+          .toDecimalPlaces(2, Decimal.ROUND_UP)
+          .toString(),
+      };
+    case Strategy.copyTrade:
+      // Margin của tổng vị thế được phép: maxExposure / đòn bẩy (DEC-161). Nhiều market (DEC-163): `bots.market` lưu
+      // market đầu, như Rebalancing.
+      return {
+        market: copyMarkets(c)[0] ?? "",
+        engine: "perps",
+        capital: dec(s(c, "maxExposure"))
+          .div(n(c, "leverage") || 1)
+          .toDecimalPlaces(2, Decimal.ROUND_UP)
+          .toString(),
+      };
+    case Strategy.volumeFarm:
+      // Margin của lệnh lớn nhất: notional / đòn bẩy.
+      return {
+        market: s(c, "market"),
+        engine: "perps",
+        capital: dec(s(c, "orderSizeMaxUsd"))
+          .div(n(c, "leverage") || 1)
+          .toDecimalPlaces(2, Decimal.ROUND_UP)
+          .toString(),
       };
     default:
       return { market: s(c, "market"), engine: "spot", capital: "0" };
@@ -111,6 +166,14 @@ export function meetsMinSize(strategy: string, c: Cfg, rules: MarketRules, price
       return dec(s(c, "investment")).gte(rules.minNotional);
     case Strategy.volumeMaker:
       return meetsMinimum(price, roundQty(dec(s(c, "orderSize")).div(price), rules), rules);
+    case Strategy.volumeFarm:
+      return meetsMinimum(price, roundQty(dec(s(c, "orderSizeMinUsd")).div(price), rules), rules);
+    case Strategy.adaptiveDca: {
+      const small = Decimal.min(dec(s(c, "baseOrder")), dec(s(c, "safetyOrder")));
+      return meetsMinimum(price, roundQty(small.div(price), rules), rules);
+    }
+    case Strategy.copyTrade:
+      return meetsMinimum(price, roundQty(dec(copyOrder(c)).div(price), rules), rules);
     default:
       return false;
   }
@@ -125,6 +188,8 @@ const CAPITAL_FIELD: Partial<Record<string, string>> = {
   [Strategy.fundingArb]: "investment",
   [Strategy.rebalancing]: "investment",
   [Strategy.volumeMaker]: "orderSize",
+  [Strategy.volumeFarm]: "orderSizeMinUsd",
+  [Strategy.adaptiveDca]: "baseOrder",
 };
 
 export interface MinSizeDetail {
@@ -202,6 +267,17 @@ function sizedOrders(
       ];
     case Strategy.volumeMaker:
       return [{ price: dec(price), qty: dec(roundQty(dec(s(c, "orderSize")).div(price), rules)) }];
+    case Strategy.volumeFarm:
+      return [
+        { price: dec(price), qty: dec(roundQty(dec(s(c, "orderSizeMinUsd")).div(price), rules)) },
+      ];
+    case Strategy.adaptiveDca:
+      return [
+        { price: dec(price), qty: dec(roundQty(dec(s(c, "baseOrder")).div(price), rules)) },
+        { price: dec(price), qty: dec(roundQty(dec(s(c, "safetyOrder")).div(price), rules)) },
+      ];
+    case Strategy.copyTrade:
+      return [{ price: dec(price), qty: dec(roundQty(dec(copyOrder(c)).div(price), rules)) }];
     default:
       return [];
   }
@@ -265,4 +341,10 @@ export function minSizeDetail(
     capitalField: field,
     suggestedCapital: suggested,
   };
+}
+
+/** Market của bot copy: `markets` (DEC-163), hoặc `market` của config cũ. */
+export function copyMarkets(c: Readonly<Record<string, unknown>>): string[] {
+  if (Array.isArray(c.markets)) return c.markets.filter((m): m is string => typeof m === "string");
+  return typeof c.market === "string" ? [c.market] : [];
 }

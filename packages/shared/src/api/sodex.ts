@@ -56,15 +56,22 @@ export type SignatureRequest = z.infer<typeof signatureRequestSchema>;
 export const submitSignatureBodySchema = z.object({ signature: walletSignatureSchema });
 
 /** Disconnect: dialog + 2FA, rồi master wallet ký hai request xoá key (Spot, Perps) (DEC-31). */
-export const disconnectBodySchema = z.object({ twoFactorCode: z.string().min(6).max(11) });
+/** 2FA chỉ cần khi người dùng đã bật (DEC-115). */
+export const disconnectBodySchema = z.object({
+  twoFactorCode: z.string().min(6).max(11).optional(),
+});
 export const disconnectResponseSchema = z.object({
   spot: signatureRequestSchema,
   perps: signatureRequestSchema,
 });
 
-export const revokeBuilderFeeBodySchema = z.object({ twoFactorCode: z.string().min(6).max(11) });
+export const revokeBuilderFeeBodySchema = z.object({
+  twoFactorCode: z.string().min(6).max(11).optional(),
+});
 
 export const apiKeyViewSchema = z.object({
+  /** Tên key trên SoDEX: `DeskLabs`, `DeskLabs-<yyyymmdd>` khi renew; key tạo trước DEC-168 tên `DRIFT…`. */
+  name: z.string().min(1).max(36),
   /** Chỉ 4 ký tự cuối (quy tắc 1.9). */
   last4: z.string().length(4),
   /** `unusable`: còn active và còn hạn nhưng signer không giải mã được (UI_REVIEW H1, cần ký lại). */
@@ -98,3 +105,49 @@ export const sodexConnectionSchema = z.object({
     .nullable(),
 });
 export type SodexConnection = z.infer<typeof sodexConnectionSchema>;
+
+/**
+ * Bước của màn Connect SoDEX phía trình duyệt (DEC-114), để team biết khách kẹt ở đâu: có bấm Connect không, ví nào
+ * hiện ra, ví nào được chọn, lỗi gì, mobile hay desktop. Không bao giờ chứa chữ ký, key hay secret.
+ */
+export const CONNECT_EVENT_TYPES = [
+  "view",
+  "picker_opened",
+  "wallet_picked",
+  "wallet_connected",
+  "wallet_failed",
+  "key_requested",
+  "request_failed",
+  "sign_prompted",
+  "sign_rejected",
+  "signed",
+  "sodex_failed",
+  "fee_requested",
+  "connected",
+] as const;
+export type ConnectEventType = (typeof CONNECT_EVENT_TYPES)[number];
+
+const eventValue = z.union([
+  z.string().max(300),
+  z.number(),
+  z.boolean(),
+  z.null(),
+  z.array(z.string().max(80)).max(30),
+]);
+export const connectEventBodySchema = z.object({
+  attemptId: uuidSchema,
+  type: z.enum(CONNECT_EVENT_TYPES),
+  data: z
+    .record(z.string().max(40), eventValue)
+    .refine((d) => Object.keys(d).length <= 40, { message: "Too many fields." })
+    .default({}),
+});
+export type ConnectEventBody = z.infer<typeof connectEventBodySchema>;
+
+export const connectEventViewSchema = z.object({
+  attemptId: uuidSchema,
+  type: z.string(),
+  data: z.record(z.string(), z.unknown()),
+  at: isoDateTimeSchema,
+});
+export type ConnectEventView = z.infer<typeof connectEventViewSchema>;

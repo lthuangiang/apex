@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trader profile</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+.th{padding:10px 14px;font-size:12px;font-weight:700;color:#5f6684;text-align:left;white-space:nowrap;border-bottom:1px solid #e3e7f5}
+.td{padding:12px 14px;font-size:14px;text-align:left;white-space:nowrap;border-bottom:1px solid #eef1f8;vertical-align:middle}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="leaders" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+    <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <a href="Leaders.dc.html" style="font-size: 13px; font-weight: 700; text-decoration: none">← Find traders</a>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+          <h1 class="num" style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">0x3e9a…11fd</h1>
+          <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 14px; background: #ffffff; border: 1px solid #e3e7f5; font-size: 12.5px; font-weight: 700; color: #3b4262">Hyperliquid</span>
+          <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 14px; background: #ddf4e7; color: #0b6a39; font-size: 12.5px; font-weight: 700">✓ Easy to copy</span>
+        </div>
+        <p class="num" style="margin: 0; font-size: 13.5px; color: #5f6684">Based on 412 fills from the last 30 days · history complete · updated 06:00 UTC</p>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px">
+        <button type="button" style="min-height: 44px; padding: 0 18px; border-radius: 14px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">☆ Follow</button>
+        <a href="CopyBot.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 14px; background: #2e62e8; color: #ffffff; font-size: 14px; font-weight: 800; text-decoration: none; box-shadow: 0 8px 20px rgba(46,98,232,0.3)">Copy future trades</a>
+      </div>
+    </header>
+
+    <section aria-label="30-day results" class="num" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px">
+      <div style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12.5px; font-weight: 700; color: #5f6684">Profit · 30 days</span>
+        <span style="font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: #0f7a43">+$84,120 ▲</span>
+        <span style="font-size: 12.5px; color: #3b4262; line-height: 1.45">Closed trades, after fees and funding. Open positions not included.</span>
+      </div>
+      <div style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12.5px; font-weight: 700; color: #5f6684">Worst dip</span>
+        <span style="font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: #c2312f">−$9,800 ▼</span>
+        <span style="font-size: 12.5px; color: #3b4262; line-height: 1.45">Biggest drop from a profit high to a later low.</span>
+      </div>
+      <div style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12.5px; font-weight: 700; color: #5f6684">Typical hold</span>
+        <span style="font-size: 28px; font-weight: 800; letter-spacing: -0.02em">5h 40m</span>
+        <span style="font-size: 12.5px; color: #3b4262; line-height: 1.45">Median time from opening a position to closing it.</span>
+      </div>
+      <div style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12.5px; font-weight: 700; color: #5f6684">Win rate</span>
+        <span style="font-size: 28px; font-weight: 800; letter-spacing: -0.02em">62%</span>
+        <span style="font-size: 12.5px; color: #3b4262; line-height: 1.45">73 of 118 closed positions made money.</span>
+      </div>
+    </section>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <section aria-labelledby="fit-h" style="flex: 2 1 340px; min-width: 0; background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px">
+        <h2 id="fit-h" style="margin: 0; font-size: 17px; font-weight: 800">Is this trader a good fit to copy?</h2>
+        <ul class="num" style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px">
+          <li style="display: flex; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #f3fbf6"><span aria-hidden="true" style="color: #0f7a43; font-weight: 800">✓</span><span style="font-size: 13.5px; line-height: 1.5"><strong>Holds trades for hours.</strong> Copies placed a few seconds late still catch most of the move.</span></li>
+          <li style="display: flex; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #f3fbf6"><span aria-hidden="true" style="color: #0f7a43; font-weight: 800">✓</span><span style="font-size: 13.5px; line-height: 1.5"><strong>All trading is on markets SoDEX lists.</strong> BTC, ETH and SOL can all be copied.</span></li>
+          <li style="display: flex; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #f3fbf6"><span aria-hidden="true" style="color: #0f7a43; font-weight: 800">✓</span><span style="font-size: 13.5px; line-height: 1.5"><strong>Profit comes from many trades.</strong> The best single trade is 18% of the total.</span></li>
+          <li style="display: flex; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #fff6ea"><span aria-hidden="true" style="color: #7a3e00; font-weight: 800">!</span><span style="font-size: 13.5px; line-height: 1.5"><strong>Uses high leverage (about 12×).</strong> Your copy uses your own leverage, set in the next step.</span></li>
+          <li style="display: flex; gap: 12px; padding: 12px 14px; border-radius: 14px; background: #f3fbf6"><span aria-hidden="true" style="color: #0f7a43; font-weight: 800">✓</span><span style="font-size: 13.5px; line-height: 1.5"><strong>No liquidations</strong> in the last 30 days.</span></li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="eq-h" style="flex: 3 1 480px; min-width: 0; background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+          <h2 id="eq-h" style="margin: 0; font-size: 17px; font-weight: 800">Profit over time</h2>
+          <span style="font-size: 12.5px; color: #5f6684; font-weight: 600">Closed trades · USD</span>
+        </div>
+        <svg viewBox="0 0 640 220" width="100%" height="220" role="img" aria-label="Cumulative profit rises from zero to plus 84 thousand dollars over 30 days with one dip of 9.8 thousand around day 18">
+          <line x1="0" y1="200" x2="640" y2="200" stroke="#e3e7f5"></line>
+          <line x1="0" y1="140" x2="640" y2="140" stroke="#eef1f8"></line>
+          <line x1="0" y1="80" x2="640" y2="80" stroke="#eef1f8"></line>
+          <line x1="0" y1="20" x2="640" y2="20" stroke="#eef1f8"></line>
+          <polygon fill="#e6ecfe" points="0,200 40,192 80,180 120,170 160,166 200,150 240,138 280,128 320,110 360,96 400,120 440,112 480,90 520,72 560,58 600,44 640,28 640,200"></polygon>
+          <polyline fill="none" stroke="#2e62e8" stroke-width="2.5" stroke-linejoin="round" points="0,200 40,192 80,180 120,170 160,166 200,150 240,138 280,128 320,110 360,96 400,120 440,112 480,90 520,72 560,58 600,44 640,28"></polyline>
+        </svg>
+        <div class="num" style="display: flex; justify-content: space-between; font-size: 12px; color: #5f6684"><span>Oct 12</span><span>Oct 19</span><span>Oct 26</span><span>Nov 02</span><span>Nov 11</span></div>
+      </section>
+    </div>
+
+    <section aria-labelledby="chg-h" style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 8px 12px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 0 14px">
+        <h2 id="chg-h" style="margin: 0; font-size: 17px; font-weight: 800">Recent position changes</h2>
+        <span style="font-size: 12.5px; color: #5f6684; font-weight: 600">Fills grouped into one change per minute</span>
+      </div>
+      <div style="overflow-x: auto">
+        <table class="num" style="width: 100%; border-collapse: collapse">
+          <thead><tr><th class="th">When</th><th class="th">Change</th><th class="th">Market</th><th class="th" style="text-align: right">Size change</th><th class="th" style="text-align: right">Position after</th><th class="th" style="text-align: right">Result</th></tr></thead>
+          <tbody>
+            <tr><td class="td" style="color: #5f6684">Today 13:58</td><td class="td"><span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: #ddf4e7; color: #0b6a39; font-size: 12px; font-weight: 800">▲ Opened long</span></td><td class="td" style="font-weight: 700">BTC</td><td class="td" style="text-align: right">+$420,000</td><td class="td" style="text-align: right">$420,000 long</td><td class="td" style="text-align: right; color: #5f6684">Open</td></tr>
+            <tr><td class="td" style="color: #5f6684">Today 09:12</td><td class="td"><span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: #edeff5; color: #3b4262; font-size: 12px; font-weight: 800">Closed short</span></td><td class="td" style="font-weight: 700">ETH</td><td class="td" style="text-align: right">−$260,000</td><td class="td" style="text-align: right">Flat</td><td class="td" style="text-align: right; font-weight: 800; color: #0f7a43">+$6,240 ▲</td></tr>
+            <tr><td class="td" style="color: #5f6684">Yesterday 22:40</td><td class="td"><span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: #fde4e1; color: #8a2a1e; font-size: 12px; font-weight: 800">▼ Added to short</span></td><td class="td" style="font-weight: 700">ETH</td><td class="td" style="text-align: right">+$110,000</td><td class="td" style="text-align: right">$260,000 short</td><td class="td" style="text-align: right; color: #5f6684">Open</td></tr>
+            <tr><td class="td" style="color: #5f6684">Yesterday 15:05</td><td class="td"><span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: #edeff5; color: #3b4262; font-size: 12px; font-weight: 800">Closed long</span></td><td class="td" style="font-weight: 700">SOL</td><td class="td" style="text-align: right">−$90,000</td><td class="td" style="text-align: right">Flat</td><td class="td" style="text-align: right; font-weight: 800; color: #c2312f">−$1,180 ▼</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 22px; border-radius: 22px; background: #eef3ff; border: 1px solid #c9d6fb">
+      <span style="font-size: 14px; line-height: 1.5; color: #1d47b8"><strong>Copying starts with their next trade.</strong> The BTC long they opened today won't be copied.</span>
+      <a href="CopyBot.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 14px; background: #2e62e8; color: #ffffff; font-size: 14px; font-weight: 800; text-decoration: none">Copy future trades</a>
+    </div>
+    <p style="margin: 0; font-size: 12.5px; color: #5f6684">Past results, not a forecast. Sample data.</p>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1400}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -16,9 +16,8 @@ describe("sectionOf", () => {
     expect(sectionOf({ group: 4 })).toBe("risk");
   });
 
-  it("gives every strategy an amount field (Volume Maker excepted)", () => {
+  it("gives every strategy an amount field", () => {
     for (const [s, fields] of Object.entries(FIELDS)) {
-      if (s === "volume_maker") continue;
       const amounts = fields.filter((f) => sectionOf(f) === "amount");
       expect(amounts.length, s).toBeGreaterThan(0);
     }
@@ -32,14 +31,15 @@ describe("advancedSummary", () => {
   it("lists enum choices and counts unset optional fields", () => {
     const r = advancedSummary(adv, { spacing: "geometric" }, {}, label);
     expect(r.enums).toContain("spacing:geometric");
-    expect(r.optionalUnset).toBe(3);
+    // triggerPrice đã chuyển sang First entry (DEC-91): Advanced còn stopPrice, takeProfitPct.
+    expect(r.optionalUnset).toBe(2);
     expect(r.needValue).toBe(0);
   });
 
   it("counts fields with server errors as needing a value", () => {
-    const r = advancedSummary(adv, {}, { triggerPrice: ["Required"] }, label);
+    const r = advancedSummary(adv, {}, { stopPrice: ["Required"] }, label);
     expect(r.needValue).toBe(1);
-    expect(r.optionalUnset).toBe(2);
+    expect(r.optionalUnset).toBe(1);
   });
 
   it("counts empty required fields as needing a value", () => {

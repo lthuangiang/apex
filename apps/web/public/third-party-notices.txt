@@ -1,0 +1,8 @@
+DeskLabs web app: third-party notices
+
+TradingView Lightweight Charts™ 5.2.1
+Copyright (c) 2026 TradingView, Inc. https://www.tradingview.com/
+Licensed under the Apache License, Version 2.0: https://www.apache.org/licenses/LICENSE-2.0
+
+fancy-canvas 2.1.0 (dependency of Lightweight Charts)
+Licensed under the MIT License.

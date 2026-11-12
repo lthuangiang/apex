@@ -36,11 +36,11 @@ test("edit the watchlist, reorder, save, and start a bot from a row", async ({ p
   await expect(card.getByRole("button", { name: "Edit watchlist" })).toBeVisible();
   const rows = card.getByRole("button", { name: /^Actions for / });
   await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toHaveAccessibleName("Actions for vBTC_vUSDC");
+  await expect(rows.first()).toHaveAccessibleName(/^Actions for vBTC_vUSDC\b/);
 
   await page.reload();
   await expect(card.getByRole("button", { name: /^Actions for / }).first()).toHaveAccessibleName(
-    "Actions for vBTC_vUSDC",
+    /^Actions for vBTC_vUSDC\b/,
   );
 
   await card.getByRole("button", { name: "Actions for BTC-USD" }).click();

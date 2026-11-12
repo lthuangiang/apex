@@ -1,6 +1,7 @@
 import { ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
+import { clOrdId } from "../core/ids";
 import { currentWeights, nextScheduled, rebalancing } from "../rebalancing";
 import { rebalancingSchema } from "../rebalancing/schema";
 import { runSim } from "../sim/exchange";
@@ -144,5 +145,121 @@ describe("rebalancing schedule (DEC-67)", () => {
       rebalancingSchema.safeParse({ ...base, rebalanceWhen: "schedule", thresholdPct: undefined })
         .success,
     ).toBe(true);
+  });
+});
+
+describe("rebalancing Initial buy (IMP-04, DEC-91)", () => {
+  const H = 3_600_000;
+  const over = rebalancingSchema.parse({ ...base, initialBuy: "over_hours", initialBuyHours: 4 });
+  const id = (tag: string) => clOrdId(ctx.botId, ctx.version, tag);
+  const ids = (r: { actions: { type: string; order?: { clOrdID: string } }[] }) =>
+    r.actions.flatMap((a) => (a.type === "place" && a.order ? [a.order.clOrdID] : []));
+
+  it("requires the number of hours for Over N hours", () => {
+    const r = rebalancingSchema.safeParse({ ...base, initialBuy: "over_hours" });
+    expect(r.success).toBe(false);
+    expect(
+      rebalancingSchema.safeParse({ ...base, initialBuy: "over_hours", initialBuyHours: 1 })
+        .success,
+    ).toBe(false);
+  });
+
+  it("All now and old configs keep the original first allocation and clOrdIDs", () => {
+    const allNow = rebalancingSchema.parse({ ...base, initialBuy: "all_now" });
+    for (const c of [base, allNow]) {
+      let s = rebalancing.initialState(c);
+      s = rebalancing.step(
+        c,
+        s,
+        { type: "tick", at: 0, market: "vBTC_vUSDC", price: "100" },
+        ctx,
+      ).state;
+      const r = rebalancing.step(
+        c,
+        s,
+        { type: "tick", at: 1, market: "vETH_vUSDC", price: "10" },
+        ctx,
+      );
+      expect(ids(r).sort()).toEqual([id("rebal:1:BTC"), id("rebal:1:ETH")].sort());
+      expect(r.state.round).toBe(1);
+      expect(r.actions.some((a) => a.type === "log" && a.decision === "Initial allocation")).toBe(
+        true,
+      );
+    }
+  });
+
+  it("buys in equal hourly parts, then rebalances as usual", () => {
+    const r = runSim(
+      rebalancing,
+      over,
+      ctx,
+      [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)],
+      fees,
+    );
+    // Phần 1 của 4: BTC 125 USDC, ETH 75 USDC.
+    expect(r.state.holdings).toEqual({ BTC: "1.25", ETH: "7.5" });
+    expect(r.state.building).toEqual({ startedAt: 1, part: 1 });
+
+    let s = r.state;
+    const early = rebalancing.step(over, s, { type: "timer", at: 1 + H - 1 }, ctx);
+    expect(early.actions).toEqual([]);
+    for (let k = 2; k <= 4; k += 1) {
+      const step = rebalancing.step(over, s, { type: "timer", at: 1 + (k - 1) * H }, ctx);
+      expect(ids(step).sort()).toEqual(
+        [id(`rebal:init:${String(k)}:BTC`), id(`rebal:init:${String(k)}:ETH`)].sort(),
+      );
+      s = step.state;
+      for (const a of step.actions) {
+        if (a.type !== "place") continue;
+        s = rebalancing.step(
+          over,
+          s,
+          {
+            type: "fill",
+            clOrdID: a.order.clOrdID,
+            price: a.order.price ?? "0",
+            quantity: a.order.quantity,
+            fee: "0",
+            at: 1 + (k - 1) * H,
+          },
+          ctx,
+        ).state;
+      }
+    }
+    expect(s.holdings).toEqual({ BTC: "5", ETH: "30" });
+    expect(s.building).toBeNull();
+    expect(s.round).toBe(1);
+    expect(s.rebalances).toBe(0);
+    // Sau khi mua xong, lệch ngưỡng thì rebalance với clOrdID như bot All now.
+    s = rebalancing.step(
+      over,
+      s,
+      { type: "tick", at: 5 * H, market: "vBTC_vUSDC", price: "150" },
+      ctx,
+    ).state;
+    const next = rebalancing.step(over, s, { type: "timer", at: 5 * H + 1 }, ctx);
+    expect(ids(next)).toContain(id("rebal:2:BTC"));
+  });
+
+  it("an old running state without `building` keeps rebalancing", () => {
+    const r = runSim(
+      rebalancing,
+      base,
+      ctx,
+      [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)],
+      fees,
+    );
+    // State cũ (trước IMP-04) không có `building`.
+    const old = Object.fromEntries(
+      Object.entries(r.state).filter(([k]) => k !== "building"),
+    ) as typeof r.state;
+    const s = rebalancing.step(
+      base,
+      old,
+      { type: "tick", at: 2, market: "vBTC_vUSDC", price: "150" },
+      ctx,
+    ).state;
+    const next = rebalancing.step(base, s, { type: "timer", at: 3 }, ctx);
+    expect(ids(next).length).toBeGreaterThan(0);
   });
 });

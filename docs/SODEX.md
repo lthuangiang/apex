@@ -16,7 +16,7 @@ Tài liệu: https://sodex.com/documentation/for-developers/developers/trading/b
 
 | Khi nào | Action | Người ký | Field chính |
 |---|---|---|---|
-| Onboarding bước 2, chữ ký 1 (DEC-25) | `UserSignedAddPermissionedAPIKeyAction`, gửi `POST /api/v1/user/{userAddress}/api-keys` kèm `permissions`, **không** kèm `builder` | master wallet | `chainID, nonce, accountID, name="DRIFT", keyType=1, publicKey, expiresAt, permissions` |
+| Onboarding bước 2, chữ ký 1 (DEC-25) | `UserSignedAddPermissionedAPIKeyAction`, gửi `POST /api/v1/user/{userAddress}/api-keys` kèm `permissions`, **không** kèm `builder` | master wallet | `chainID, nonce, accountID, name="DeskLabs" (key tạo trước DEC-168 tên `DRIFT`), keyType=1, publicKey, expiresAt, permissions` |
 | Onboarding bước 2, chữ ký 2 (DEC-25) | `ApproveBuilderFeeAction`, gửi `POST /api/v1/user/{userAddress}/builders` | master wallet | `chainID, nonce, accountID, builderID=DRIFT_BUILDER_ID, maxFeeRate=50` |
 | Gia hạn key | `UserSignedAddPermissionedAPIKeyAction` với cùng `permissions` | master wallet | như chữ ký 1 |
 | Trước lệnh Perps đầu tiên của mỗi version bot (DEC-51) | `updateLeverage`, `POST /api/v1/perps/trade/leverage` | key của DRIFT | `accountID, symbolID, leverage, marginMode` |
@@ -32,13 +32,14 @@ Tài liệu: https://sodex.com/documentation/for-developers/developers/trading/b
 - Tài khoản builder của DRIFT phải có ≥ 100 vUSDC trên cả Spot và Perps thì người dùng mới approve được mức phí khác 0. Cần theo dõi điều kiện này và cảnh báo cho đội vận hành.
 
 ### 5.3 Lệnh
-- Mỗi lệnh của DRIFT mang `builder: {"id": DRIFT_BUILDER_ID, "fee": 10}` (DEC-46; account của chính builder không gắn `builder`, DEC-47) ở **cuối** payload (`id` đứng trước `fee`), và được thêm **trước** khi tính payload hash.
+- Mỗi lệnh của DRIFT mang `builder: {"id": DRIFT_BUILDER_ID, "fee": <mức>}` (DEC-46; account của chính builder không gắn `builder`, DEC-47) ở **cuối** payload. `<mức>` = mức team đặt riêng cho user × chiến lược (bảng `user_builder_fees`, DEC-159) hoặc mặc định của chiến lược (`builderFeeRateOf`, DEC-94), luôn ≤ 10 vì user chỉ approve 10 (`id` đứng trước `fee`), và được thêm **trước** khi tính payload hash.
 - Spot: `builder` đặt ở cấp batch, sau `orders`. Perps: đặt làm default của batch (cho phép override theo từng lệnh).
 - Đơn vị: `fee` / `maxFeeRate` tính bằng phần mười basis point. `10` = 1 bp = 0.01% (mức của DRIFT, DEC-46); `50` = 5 bp = 0.05%.
 - Phí thực thu = min(mức người dùng approve, trần của engine). Trần: Perps 0.2% (200), Spot 2% (2000).
 - Perps thu ở cả hai chiều. Spot chỉ thu bằng quote asset và **không thu ở chiều mua**.
 - Lệnh có builder chưa được approve vẫn khớp, nhưng builder fee = 0. Vì vậy engine phải pause bot khi approval = 0 (quy tắc 1.5).
 - Builder fee của từng fill nằm ở REST `builderFee` và WS `bf`, và **đã nằm sẵn trong** `fee` / `f`. Không cộng thêm lần nữa.
+- **Ước tính phí trước khi khớp (DEC-112):** phí SoDEX lấy từ `makerFee` / `takerFee` của từng market trên `/{spot,perps}/markets/symbols` (tỷ lệ thô; một số market Spot bằng 0), thiếu thì `SODEX_BASE_FEE_PCT`. Phí khứ hồi maker = 2 × maker + builder fee của chiến lược × số chiều bị thu (Perps 2, Spot 1). Một nguồn duy nhất: `roundTripFeePct` / `oneWayFeeFraction` trong `packages/shared/src/fees.ts`. Phí người dùng thực trả luôn lấy từ `fee` của fill, không ước tính.
 
 ### 5.4 Builder revenue
 - Phí được cộng ngay khi khớp lệnh vào tài khoản builder của DRIFT, trên đúng engine có fill đó. **Không có bước claim**, không có các giai đoạn accrued / pending / paid.

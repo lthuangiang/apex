@@ -9,9 +9,21 @@ import { STRATEGIES } from "../index";
 function shapeOf(schema: z.ZodType): Record<string, unknown> {
   let x: unknown = schema;
   for (let i = 0; i < 5 && x !== undefined; i++) {
-    const node = x as { shape?: Record<string, unknown>; _zod?: { def?: { in?: unknown } } };
+    const node = x as {
+      shape?: Record<string, unknown>;
+      _zod?: { def?: { in?: unknown; out?: unknown; type?: string } };
+    };
     if (node.shape) return node.shape;
-    x = node._zod?.def?.in;
+    // `z.preprocess` (config cũ của copy_trade, DEC-163) là pipe: object nằm ở `out`.
+    const def = node._zod?.def;
+    x =
+      def?.type === "pipe" &&
+      typeof def.in === "object" &&
+      def.in !== null &&
+      !("shape" in def.in) &&
+      def.out !== undefined
+        ? def.out
+        : def?.in;
   }
   return {};
 }

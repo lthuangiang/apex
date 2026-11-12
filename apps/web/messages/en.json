@@ -6,9 +6,9 @@
       "noFillsYet": "No fills yet"
     },
     "badges": {
-      "live": "LIVE · MAINNET",
+      "live": "Mainnet",
       "paperComingSoon": "Paper · Coming soon",
-      "liveShort": "LIVE"
+      "liveShort": "Mainnet"
     },
     "permissions": {
       "withdrawNever": "Withdraw or transfer: never"
@@ -16,18 +16,17 @@
     "botActions": {
       "startRequested": "Start requested · waiting for backend"
     },
-    "brand": "DRIFT",
+    "brand": "DeskLabs",
     "back": "Back",
     "errors": {
       "generic": "Something went wrong. Try again.",
-      "network": "Can’t reach DRIFT. Check your connection and try again.",
+      "network": "Can’t reach DeskLabs. Check your connection and try again.",
       "rateLimited": "Too many attempts. Try again in a minute.",
       "retry": "Try again"
     },
     "nav": {
       "label": "Main",
       "skip": "Skip to content",
-      "workspace": "Profit Bot workspace",
       "overview": "Overview",
       "portfolio": "Portfolio",
       "agent": "Trading Agent",
@@ -36,6 +35,8 @@
       "risk": "Risk Center",
       "analyst": "AI Analyst",
       "revenue": "Builder Revenue",
+      "users": "Users",
+      "stats": "Platform Stats",
       "settings": "Settings",
       "signOut": "Sign out",
       "mobile": {
@@ -45,8 +46,13 @@
         "bots": "Strategy",
         "more": "More"
       },
-      "users": "Users",
-      "team": "Team"
+      "team": "Team",
+      "desk": "AI Desk",
+      "traders": "Find traders",
+      "following": "Following",
+      "sections": {
+        "copy": "Copy Trading"
+      }
     },
     "dialog": {
       "consequences": "What happens"
@@ -96,7 +102,9 @@
     },
     "beforeStart": {
       "title": "Before it starts",
-      "api_key": "DRIFT API key",
+      "passed": "Passed",
+      "failed": "Failed",
+      "api_key": "DeskLabs API key",
       "builder_fee": "Builder fee approval",
       "balance": "Balance on {engine}",
       "min_size": "Order sizes",
@@ -111,7 +119,7 @@
         "two_factor": "On",
         "risk_limits": "Fits account limits",
         "fresh_price": "Live",
-        "builder_fee_exempt": "Not charged on DRIFT’s builder account",
+        "builder_fee_exempt": "Not charged on DeskLabs’ builder account",
         "leverage_conflict": "Matches your SoDEX setting"
       },
       "failDetail": {
@@ -127,37 +135,46 @@
         "min_sizeNoSuggestion": "Smallest order ≈ {min} USDC; SoDEX minimum {required} USDC.",
         "balanceNumbers": "Available {available} USDC · needs {needed} USDC",
         "fresh_priceWaiting": "Waiting for a live price from SoDEX…",
-        "api_keyUnusable": "DRIFT can’t sign with this key.",
+        "api_keyUnusable": "DeskLabs can’t sign with this key.",
         "leverage_conflict": "Couldn’t read your Perps account from SoDEX.",
         "leverage_position": "You have an open {market} position at {current}. Close it or match this bot to {current} before starting.",
         "leverage_bot": "Your bot “{name}” runs {market} at {current}. Use {current} for this bot, or stop that bot first.",
         "balancePerps": "Needs {needed} USDC · usable as margin {usable} · isolated {isolated}"
       },
-      "fee": "Fees: SoDEX trading fee per fill plus DRIFT builder fee up to 0.01% ({fee}), both shown inside each fill’s fee.",
-      "ack": "I understand this bot places real orders on my SoDEX mainnet account and DRIFT charges its builder fee on them.",
+      "fee": "Fees: SoDEX trading fee per fill plus DeskLabs builder fee {rate} ({fee}), both shown inside each fill’s fee.",
+      "ack": "I understand this bot places real orders on my SoDEX mainnet account and DeskLabs charges its builder fee on them.",
       "saveDraft": "Save draft",
+      "draftSaved": "Draft saved. Find it in Strategy Lab under My bots.",
+      "draftSavedLink": "Open My bots",
       "start": "Start on mainnet",
       "twoFactor": "2FA code",
-      "requested": "Start requested · waiting for backend",
-      "requestedBody": "The bot shows Running only after the backend confirms it and SoDEX acknowledges the first orders.",
+      "requested": "Start requested · waiting for confirmation",
+      "requestedBody": "The bot shows Running only after SoDEX acknowledges the first orders.",
       "watch": "Watch it in Trading Agent",
       "ackVm": "I understand this bot places real post-only orders on SoDEX mainnet, will spend up to my cost budget, and does not guarantee any SoPoints. SoDEX prohibits wash trading.",
       "sopoints": "SoDEX doesn’t publish how volume converts to SoPoints and penalises wash trading, so points are not guaranteed.",
-      "noSelfTrade": "No self-trading. Every quote is post-only, so it either rests as liquidity or is cancelled. DRIFT never places an order that could fill against your own orders, on this bot or any other.",
+      "noSelfTrade": "No self-trading. Every quote is post-only, so it either rests as liquidity or is cancelled. DeskLabs never places an order that could fill against your own orders, on this bot or any other.",
       "checksIncomplete": "Fill in the settings to run the checks.",
+      "checksMissing": "Fill in {fields} to run the checks.",
+      "checksLoading": "Running the checks…",
+      "checksFailedShort": "the settings the server rejected",
       "toStart": "To start:",
       "missing": {
         "form": "complete the settings",
         "ack": "tick the confirmation",
         "code": "enter your 2FA code",
         "fix": "fix {check}",
-        "leverage": "confirm the leverage change"
+        "leverage": "confirm the leverage change",
+        "field": "fill in {field}",
+        "wait": "wait for the checks"
       },
       "renewKey": "Renew key",
       "leverage_conflict": "Leverage on SoDEX",
       "leverageWarn": "Your {market} leverage on SoDEX is {current}. Starting this bot sets it to {target} for your whole account.",
       "leverageAck": "I understand this changes my {market} leverage on SoDEX for my whole account.",
-      "leverageValue": "{leverage}× {mode}"
+      "leverageValue": "{leverage}× {mode}",
+      "farmCost": "Every trade pays the SoDEX fee and DeskLabs builder fee on entry and exit, and taker fills cost more than maker fills. Short holds at high leverage can lose quickly; the bot stops at your max loss.",
+      "ackVf": "I understand this bot opens and closes real leveraged positions on my SoDEX mainnet account over and over, pays fees on every fill, and does not guarantee any SoPoints."
     },
     "backtest": {
       "title": "Backtest",
@@ -166,13 +183,13 @@
       "run": "Run backtest",
       "again": "Run again",
       "running": "Running…",
-      "intro": "Replays the settings on the right over past SoDEX prices, with SoDEX fees and the 0.01% builder fee. Change any field and run again.",
+      "intro": "Replays the settings on the right over past SoDEX prices, with SoDEX fees and the {rate} builder fee. Change any field and run again.",
       "simulating": "Simulating {count} {interval} candles…",
       "queued": "Waiting for a backtest worker…",
       "unavailableTitle": "Backtest unavailable for this market",
       "unavailable": {
-        "history_short": "SoDEX history for this market is shorter than the selected period. Try 30 days or another market.",
-        "funding_short": "DRIFT doesn’t have funding history for this perp over the selected period yet. Try a shorter period later.",
+        "history_short": "SoDEX history for this market is shorter than the selected period. Try a shorter period or another market.",
+        "funding_short": "DeskLabs doesn’t have funding history for this perp over the selected period yet. Try a shorter period later.",
         "market_unknown": "This market isn’t available on SoDEX."
       },
       "failed": "Backtest failed. Try again.",
@@ -186,7 +203,7 @@
         "fills": "Fills",
         "timeInRange": "Time in range",
         "completedCycles": "Completed cycles",
-        "maxSafetyUsed": "Max safety orders used",
+        "maxSafetyUsed": "Most extra orders used",
         "stopLossHits": "Stop loss hit",
         "buysMade": "Buys made",
         "avgBuyPrice": "Avg buy price",
@@ -204,13 +221,17 @@
         "netCost": "Net cost",
         "costPerMillion": "Cost per $1M",
         "makerShare": "Maker share",
-        "maxInventory": "Max inventory reached"
+        "maxInventory": "Max inventory reached",
+        "trades": "Trades",
+        "winRate": "Win rate before fees",
+        "exits": "Early exits",
+        "peakExposure": "Biggest position"
       },
       "chart": "Simulated equity · dashed = start",
       "assumptions": "Assumptions",
       "a1": "Limit orders fill only when price trades through the level.",
       "a2": "Market orders fill at the next candle open + 0.05% slippage.",
-      "a3": "SoDEX maker/taker fees and DRIFT’s 0.01% builder fee included; perps include historical funding.",
+      "a3": "SoDEX maker/taker fees and DeskLabs’ {rate} builder fee included; perps include historical funding.",
       "a4": "Data: SoDEX {interval} candles, {from} – {to}.",
       "interval": {
         "1m": "1-minute",
@@ -218,10 +239,12 @@
         "15m": "15-minute",
         "1h": "1-hour"
       },
-      "disclaimer": "Simulated on past prices. Not a forecast; future results will differ."
+      "disclaimer": "Simulated on past prices. Not a forecast; future results will differ.",
+      "farmNote": "No order book history: the signal uses 1-minute candles only, so live entries can differ."
     },
     "back": "← Strategy Lab",
     "title": "Create {name}",
+    "continueTitle": "Continue {name}",
     "paperSoon": "Paper · Coming soon",
     "paperReason": "Paper trading is not available yet",
     "previewTab": "Preview",
@@ -233,7 +256,7 @@
       "2perps": "Market & leverage"
     },
     "optional": "(optional)",
-    "manualHint": "Enter your own values, or let AI fill them in.",
+    "manualHint": "Enter your own values.",
     "notForecast": "Not a profit forecast.",
     "strategies": {
       "spot_grid": {
@@ -256,7 +279,7 @@
         "name": "Spot DCA",
         "engine": "Spot",
         "fee": "spot sells only",
-        "what": "Buys, adds safety orders on dips, sells everything at take profit.",
+        "what": "Buys, buys more on dips, sells everything at take profit.",
         "short": "DC",
         "catalog": "Add on dips, sell at take profit"
       },
@@ -301,12 +324,36 @@
         "catalog": "Split a big order over time"
       },
       "volume_maker": {
-        "name": "Volume Maker",
+        "name": "Market Making",
         "engine": "Perps",
         "fee": "maker fills only",
         "what": "Quotes both sides with post-only orders to add real liquidity and volume within a cost budget.",
         "short": "VM",
         "catalog": "Event volume, capped cost, no self-trades"
+      },
+      "volume_farm": {
+        "name": "Volume Builder",
+        "engine": "Perps",
+        "fee": "every fill",
+        "what": "Builds trading volume on perps, one position at a time: enters on a 1-minute signal, holds for a random time within your range, exits on take profit, stop loss or time, then repeats.",
+        "short": "VB",
+        "catalog": "Short trades on repeat to build volume"
+      },
+      "adaptive_dca": {
+        "name": "AI Adaptive DCA",
+        "engine": "Perps",
+        "fee": "every fill",
+        "what": "DCA on a perpetual that starts only when the 5-minute market suits it, spaces extra buys by volatility, and stops adding when the market turns.",
+        "short": "AD",
+        "catalog": "Smarter DCA with an exposure cap"
+      },
+      "copy_trade": {
+        "name": "Copy Trade",
+        "engine": "Perps",
+        "fee": "every fill",
+        "what": "Follows one SoDEX wallet on one perpetual: opens when it opens, scales when it adds or cuts, closes when it closes. Only positions the wallet opens after you start are copied.",
+        "short": "CT",
+        "catalog": "Follow a SoDEX wallet"
       }
     },
     "fields": {
@@ -354,10 +401,6 @@
         "label": "Margin",
         "hint": ""
       },
-      "triggerPrice": {
-        "label": "Start when price crosses",
-        "hint": "Leave empty to start now"
-      },
       "stopPrice": {
         "label": "Stop if price falls below",
         "hint": "Grid is cancelled"
@@ -383,40 +426,32 @@
         "hint": "Open orders are always cancelled"
       },
       "baseOrder": {
-        "label": "Base order",
-        "hint": "First buy at start"
+        "label": "First buy",
+        "hint": "Bought at the market price when each cycle starts"
       },
       "safetyOrder": {
-        "label": "Safety order",
-        "hint": "First extra buy"
+        "label": "Extra buy size",
+        "hint": "The first extra buy when the price drops; later ones grow by the size multiplier"
       },
       "maxSafetyOrders": {
-        "label": "Max safety orders",
-        "hint": "0–20"
+        "label": "Max extra orders",
+        "hint": "How many times the bot adds more as the price moves against you (0–20)"
       },
       "firstStepPct": {
-        "label": "Price drop to first safety",
-        "hint": "0.1–20%"
+        "label": "Add more after a drop of",
+        "hint": "How far the price must fall below the first buy before the first extra buy (0.1–20%)"
       },
       "stepMultiplier": {
-        "label": "Step multiplier",
-        "hint": "1–3×"
+        "label": "Wider gaps each time",
+        "hint": "Each next gap is this many times the previous one; 1× keeps gaps equal (1–3×)"
       },
       "sizeMultiplier": {
-        "label": "Size multiplier",
-        "hint": "1–3×"
+        "label": "Bigger orders each time",
+        "hint": "Each extra order is this many times the previous one; 1× keeps them equal (1–3×)"
       },
       "dcaTakeProfit": {
         "label": "Take profit",
-        "hint": "From average buy price"
-      },
-      "start": {
-        "label": "Start",
-        "hint": ""
-      },
-      "startLevel": {
-        "label": "Start when price ≤",
-        "hint": ""
+        "hint": "Sells everything when the price is this far above your average buy price, then a new cycle starts"
       },
       "stopLossPct": {
         "label": "Stop loss",
@@ -424,7 +459,7 @@
       },
       "maxCycles": {
         "label": "Max cycles",
-        "hint": "Stop after N take-profits"
+        "hint": "Stops the bot after this many completed cycles; leave empty to keep going"
       },
       "amountPerBuy": {
         "label": "Amount per buy",
@@ -564,43 +599,59 @@
       },
       "vmContract": {
         "label": "Contract",
-        "hint": "Only the most liquid perps"
+        "hint": "Any SoDEX perp. Thin markets fill less often and can move against your quotes."
       },
       "vmLeverage": {
         "label": "Leverage",
-        "hint": "Fixed at 1× for Volume Maker"
+        "hint": "1–40×. Lower leverage needs more balance but is safer. Your account cap and the SoDEX market max also apply."
       },
       "volumeTarget": {
-        "label": "Volume target",
-        "hint": "Bot stops when reached"
+        "label": "Stop after trading",
+        "hint": "Total volume (both sides). Leave empty to run until Stop if I lose is reached."
       },
       "orderSize": {
         "label": "Order size per side",
-        "hint": "Post-only (GTX)"
+        "hint": "Size of each quote, bid and ask, in USDC. While the bot holds a position, the side that would add to it can be smaller."
       },
       "distanceBp": {
-        "label": "Distance from mid",
-        "hint": "Each side; at least one tick"
+        "label": "Quote distance",
+        "hint": "How far from the current price to post each side, in basis points (1 bp = 0.01%). Wider means fewer fills and less exposure to fast moves."
       },
       "maxInventory": {
-        "label": "Max inventory",
-        "hint": "Quotes skew back toward 0 above half of this"
+        "label": "Max open position",
+        "hint": "Biggest position the bot may hold, in USDC. Empty = 2 × order size. While a position is open, the bot posts a reduce-only close and quotes the other side further out; at the limit it only posts the close."
       },
       "refreshSeconds": {
         "label": "Refresh every",
-        "hint": "2–60 s; stays under SoDEX order limits"
+        "hint": "How often the bot cancels and replaces its quotes, 2–60 s. It also requotes about 2 s after each fill. Faster means more API calls."
       },
       "runUntil": {
         "label": "Run until",
         "hint": "Whichever comes first"
       },
       "costBudget": {
-        "label": "Cost budget",
-        "hint": "Fees + realized trading loss. Bot stops at 100%."
+        "label": "Stop if I lose",
+        "hint": "The bot stops when fees plus realized and unrealized losses reach this amount. You get a warning at 80%. In USDC.",
+        "how": {
+          "intro": "The most this run may cost you before it stops by itself.",
+          "steps": [
+            "Cost = trading fees + realised losses + the current loss on any open position. Gains do not refill the budget.",
+            "At 80% you get a warning in Decisions; at 100% the bot stops."
+          ],
+          "note": "Market Making earns volume, not profit: expect most of the budget to go to fees."
+        }
       },
       "inventoryLossStop": {
-        "label": "Inventory loss stop",
-        "hint": "Unrealized loss on inventory; closes it with a reduce-only order"
+        "label": "Position loss limit",
+        "hint": "Optional. If the unrealized loss on the open position reaches this, the bot stops and handles the position as set in When the bot stops.",
+        "how": {
+          "intro": "An extra stop based only on the open position.",
+          "steps": [
+            "If the unrealised loss on the position the bot holds reaches this amount, the bot stops.",
+            "What happens to the position then depends on \"When the bot stops\"."
+          ],
+          "note": "Leave it empty to rely on Stop if I lose alone."
+        }
       },
       "vmOnStop": {
         "label": "When the bot stops",
@@ -611,8 +662,8 @@
         "hint": "UTC"
       },
       "fdcaFirstStepPct": {
-        "label": "Price move to first safety",
-        "hint": "Against your direction"
+        "label": "Add more after a move of",
+        "hint": "How far the price must move against you before the first extra order"
       },
       "twapMarket": {
         "label": "Market",
@@ -631,20 +682,356 @@
         "hint": "Checked at 00:00 in your time zone"
       },
       "fdcaBaseOrder": {
-        "label": "Base order",
-        "hint": "Margin for first entry"
+        "label": "First order",
+        "hint": "Margin for the first order of each cycle"
       },
       "fdcaSafetyOrder": {
-        "label": "Safety order",
-        "hint": "Margin for first add"
+        "label": "Extra order size",
+        "hint": "Margin for the first extra order; later ones grow by the size multiplier"
       },
       "fdcaTakeProfit": {
         "label": "Take profit",
-        "hint": "From average entry"
+        "hint": "Closes the position this far in your favour from the average entry, then a new cycle starts"
       },
       "fdcaStopLoss": {
         "label": "Stop loss",
         "hint": "Closes the position · must be before liquidation"
+      },
+      "vfSizeMin": {
+        "label": "Order size from",
+        "hint": "Position value per trade, leverage included"
+      },
+      "vfSizeMax": {
+        "label": "Order size to",
+        "hint": "Each trade picks a random size in this range"
+      },
+      "vfHoldMin": {
+        "label": "Hold at least",
+        "hint": "Each trade picks a random hold in this range",
+        "how": {
+          "intro": "Each trade is held for a random time between Hold min and Hold max, so trades don't all look the same.",
+          "steps": [
+            "When that time is up, the bot closes the trade, at a gain or a loss.",
+            "It can close earlier if Take profit, Early profit or the stop loss triggers.",
+            "It never holds longer than Hold max."
+          ],
+          "note": "Shorter holds = more trades and more volume per hour, and more fees."
+        }
+      },
+      "vfHoldMax": {
+        "label": "Hold at most",
+        "hint": "Closes at this time whatever the PnL"
+      },
+      "vfReverse": {
+        "label": "Reverse the signal",
+        "hint": "Go short when the signal says long, and the other way round",
+        "how": {
+          "intro": "The bot picks a direction for each trade from a short-term signal (1-minute candles, momentum, order-book imbalance and the 5-minute trend).",
+          "steps": [
+            "Off: it follows the signal (signal says up → long).",
+            "On: it trades the opposite way (signal says up → short)."
+          ],
+          "note": "If the signal says the market is unclear, the spread is too wide or the trade would go against a clear trend, the bot skips that moment in both modes."
+        }
+      },
+      "vfSideways": {
+        "label": "Only trade sideways",
+        "hint": "Skip new trades while the 5-minute trend is up, down or too volatile. Fewer trades, lower cost per volume",
+        "how": {
+          "intro": "The bot reads the 5-minute trend before each new trade.",
+          "steps": [
+            "Off: it trades in every market condition the signal allows.",
+            "On: it only opens a trade when the market moves sideways. Open trades still close as usual."
+          ],
+          "note": "Trades opened in a trend cost much more per volume than trades opened sideways."
+        }
+      },
+      "vfVolumeTarget": {
+        "label": "Stop at volume",
+        "hint": "Stops after this much traded volume; empty runs until you stop it"
+      },
+      "vfCooldown": {
+        "label": "Wait between trades",
+        "hint": "Pause after each close before the next entry"
+      },
+      "vfMaxSpread": {
+        "label": "Max spread",
+        "hint": "Skips an entry while the spread is wider",
+        "how": {
+          "intro": "Skips entries while the order book spread is wider than this (in bp, 1 bp = 0.01%).",
+          "steps": ["A wide spread means the market is thin or jumpy, so fills are worse."],
+          "note": "Raise it for less liquid markets where the spread is normally wider, otherwise the bot may rarely trade."
+        }
+      },
+      "vfAllowTaker": {
+        "label": "Use taker orders",
+        "hint": "Off: post-only orders only (lowest fees, slower). On: switches to market orders after the misses set below.",
+        "how": {
+          "intro": "Entries and exits are post-only orders placed inside the spread (lowest fees). If they don't fill they are cancelled and placed again.",
+          "steps": [
+            "Off: the bot keeps retrying post-only; slower, but always maker fees.",
+            "On: after the number of misses set below, it uses a market order instead (higher taker fee)."
+          ],
+          "note": "Stop losses always close at market, whatever this setting."
+        }
+      },
+      "vfTakerAfter": {
+        "label": "Misses before taker",
+        "hint": "Unfilled post-only orders in a row before the bot uses a market order"
+      },
+      "vfLeverage": {
+        "label": "Leverage",
+        "hint": "Up to the SoDEX maximum for this market (and your account cap if set)"
+      },
+      "vfMaxLoss": {
+        "label": "Max loss for this bot",
+        "hint": "Net loss after fees; the bot stops and closes its position"
+      },
+      "entry": {
+        "label": "First entry",
+        "hint": "Now buys at the market price when the bot starts"
+      },
+      "gridEntry": {
+        "label": "First entry",
+        "hint": "Now starts the grid at the market price as soon as the bot starts"
+      },
+      "entryPrice": {
+        "label": "Entry price",
+        "hint": "Long waits for price at or below · Short at or above"
+      },
+      "entryLow": {
+        "label": "Range low",
+        "hint": "If price jumps past the range in your favor, the bot still enters"
+      },
+      "gridEntryLow": {
+        "label": "Range low",
+        "hint": "Neutral enters only inside the range · Long and Short also enter past it"
+      },
+      "entryHigh": {
+        "label": "Range high",
+        "hint": ""
+      },
+      "nextCycle": {
+        "label": "Next cycle",
+        "hint": "What happens after a take profit"
+      },
+      "pullbackPct": {
+        "label": "Pullback",
+        "hint": "From the take-profit price · Long waits below, Short above"
+      },
+      "cooldownMinutes": {
+        "label": "Cooldown",
+        "hint": "Fixed wait after a take profit"
+      },
+      "start": {
+        "label": "Start at",
+        "hint": "Now, or a date and time you choose."
+      },
+      "startDate": {
+        "label": "Start date",
+        "hint": ""
+      },
+      "startTime": {
+        "label": "Start time",
+        "hint": "In your time zone from Settings",
+        "hintTz": "In your time zone from Settings ({tz})"
+      },
+      "initialBuy": {
+        "label": "Initial buy",
+        "hint": "Buy all at once, or spread over a few hours."
+      },
+      "initialBuyHours": {
+        "label": "Spread over",
+        "hint": "Equal parts, one each hour. Allowed 2–72 hours."
+      },
+      "vfTp": {
+        "label": "Take profit",
+        "hint": "Closes when the trade is up this much before fees (at least 1.5× the round-trip fee)",
+        "how": {
+          "intro": "Closes the trade once its profit reaches this amount in USDC.",
+          "steps": [
+            "The target is never lower than 1.5× the round-trip fees, so a take profit always covers its costs."
+          ],
+          "note": "Early profit (Advanced settings) can close a trade sooner with a smaller gain."
+        }
+      },
+      "vfSl": {
+        "label": "Stop loss",
+        "hint": "Loss on margin, like SoDEX TP/SL: closes at market at this % of margin (% price × leverage)",
+        "how": {
+          "intro": "The bot's own stop loss, as a % of the margin used, like SoDEX TP/SL.",
+          "steps": [
+            "Price distance = this % ÷ leverage. Example: 10% at 25× → the trade closes if the price moves 0.4% against you.",
+            "When it triggers, the bot closes at market right away."
+          ],
+          "note": "Stop loss on SoDEX adds a second stop on the exchange itself, slightly further away."
+        }
+      },
+      "adcaBase": {
+        "label": "First order",
+        "hint": "Position value of the first order, leverage included"
+      },
+      "adcaSafety": {
+        "label": "Extra order size",
+        "hint": "Value of the first extra order (a buy for a long, a sell for a short); each next one is larger by the size multiplier"
+      },
+      "adcaMaxSafety": {
+        "label": "Max extra orders",
+        "hint": "Allowed 1–10"
+      },
+      "adcaAtr": {
+        "label": "Spacing",
+        "hint": "Distance between orders as a multiple of ATR, the average 5-minute price range; recalculated for every order"
+      },
+      "adcaTp": {
+        "label": "Take profit",
+        "hint": "Above the average price for a long, below for a short"
+      },
+      "adcaHardStop": {
+        "label": "Hard stop",
+        "hint": "Closes the whole cycle at market when price moves this far against the average price"
+      },
+      "adcaMaxExposure": {
+        "label": "Max position",
+        "hint": "Largest position value the bot may hold, leverage included. At the cap it stops adding and waits"
+      },
+      "adcaMaxLoss": {
+        "label": "Max loss for this bot",
+        "hint": "Net loss after fees and funding; the bot stops and closes its position"
+      },
+      "adcaSizeMult": {
+        "label": "Size multiplier",
+        "hint": "Each extra order is this many times the previous one. Allowed 1–2×"
+      },
+      "adcaRsi": {
+        "label": "Entry RSI",
+        "hint": "Long starts only when the 5-minute RSI (0–100, low after a fall) is at or below this; short at or above 100 minus it"
+      },
+      "adcaCooldown": {
+        "label": "Wait after an exit",
+        "hint": "Minutes before a new cycle after an exit or a hard stop"
+      },
+      "vfExchangeStop": {
+        "label": "Stop loss on SoDEX",
+        "hint": "Also places a stop loss on SoDEX for each trade, triggered by the mark price. It closes the whole position at market even if DeskLabs is offline or the market crashes. Once the trade is up enough, it moves to break-even (fees included). It sits beyond the bot’s own stop, so the bot normally exits first.",
+        "how": {
+          "intro": "Adds a real stop order on SoDEX for every trade, as a safety net if DeskLabs goes offline.",
+          "steps": [
+            "It is placed as soon as the entry fills, 0.1% of the price further away than the bot's own stop loss, so normally the bot's stop acts first.",
+            "Once the trade is far enough in profit (see Move stop to break-even), the stop on SoDEX moves to break-even, then follows the price to lock in profit."
+          ],
+          "note": "It is triggered by the mark price and closes the whole position at market."
+        }
+      },
+      "vfEarlyFees": {
+        "label": "Early profit",
+        "hint": "Exit early once the price gain reaches this many times the round-trip fee (1–20×)",
+        "how": {
+          "intro": "Takes a smaller profit early instead of waiting for the full hold time.",
+          "steps": [
+            "After the delay set next to it (seconds), if profit ≥ this × the round-trip fees, the bot closes the trade.",
+            "Example: 3× with 10 s → after 10 seconds, any trade that has made 3 times its fees is closed."
+          ],
+          "note": "Lower = more small wins, less time exposed. Higher = lets winners run longer."
+        }
+      },
+      "vfEarlySecs": {
+        "label": "Early profit after",
+        "hint": "Seconds in the trade before an early exit is allowed"
+      },
+      "maxOrders": {
+        "label": "Max open position, in orders",
+        "hint": "How many orders' worth of position the bot may hold, 1–10. 1 = at most one order size (20 USDC at 20 per side); at the limit the bot only posts the close.",
+        "how": {
+          "intro": "Caps how much position the bot may build, as a number of orders: max position = order size per side × this number.",
+          "steps": [
+            "While under the cap, the bot keeps quoting both sides.",
+            "With a position open, the side that would add to it moves further away (2–3 ticks back), and the side that closes it stays near the price.",
+            "At the cap, the side that would add more stops quoting until the position shrinks."
+          ],
+          "note": "Example: 20 USDC per side and 1 order → at most about 20 USDC of position at a time. Higher values give more fills but more price risk."
+        }
+      },
+      "quoteLevel": {
+        "label": "Quote position in the order book",
+        "hint": "0 = at the best bid and ask (one tick inside when the spread is wide), the fastest fills. 1, 2… = that many price steps behind: fewer fills, less exposure to fast moves. Works the same on every market because it follows the live order book.",
+        "how": {
+          "intro": "Sets where your bid and ask sit in the SoDEX order book, counted in ticks (the smallest price step) from the best price.",
+          "steps": [
+            "0: your bid sits at the best bid and your ask at the best ask. If the gap between them is 3 ticks or more, the bot goes 1 tick inside it to be first in line.",
+            "1, 2, 3…: each step moves both quotes 1 tick further from the best price.",
+            "Your bid is always below your ask, so the bot never trades with itself."
+          ],
+          "note": "Lower = more fills and volume, but more fills right before the price moves against you. Higher = fewer fills and less volume. Because it counts ticks, the same value works on every market."
+        }
+      },
+      "vfStopMove": {
+        "label": "Move stop to break-even at",
+        "hint": "When the price gain reaches this many times the break-even fee (entry fee + market exit fee + slippage), the stop on SoDEX moves to break-even. From 2 more, it locks in profit and follows the best price. Lower moves sooner but small swings can close the trade.",
+        "how": {
+          "intro": "When to move the stop on SoDEX to break-even, in multiples of G. G = entry fee + taker exit fee + a little slippage: the price move needed just to cover costs.",
+          "steps": [
+            "Profit reaches this × G: the stop moves to break-even (fees included), so the trade can no longer lose.",
+            "Profit reaches (this + 2) × G: the stop locks in profit and follows the best price, 2 × G behind it.",
+            "The stop never moves back."
+          ],
+          "note": "Lower (e.g. 1–1.5) protects sooner but gets stopped at break-even more often. Higher leaves more room. The current target price is shown in Decisions when the stop is placed."
+        }
+      },
+      "smartQuoting": {
+        "label": "Smart quoting",
+        "hint": "Steps a quote back, or pulls it during a trend, when a fill is likely to be followed by a move against you. Off keeps the classic behaviour exactly.",
+        "how": {
+          "intro": "Normally the bot keeps one bid and one ask at the set position in the order book. With Smart quoting on, it watches the book and the last 30 seconds of price, and steps a quote back or pulls it when a fill is likely to be followed by a move against you:",
+          "steps": [
+            "Warm-up: for the first 6 seconds both quotes sit 2 bp further away until there is enough price data.",
+            "Lopsided book: one side of the top 10 levels holds at least 2× the other. The thin side steps back 1 bp (e.g. heavy bids → the ask steps back).",
+            "Fast move: price moved 2 bp or more in 6 seconds. The quote in the direction of the move steps back 2 bp.",
+            "Trend: price moved 5 bp or more in 30 seconds. The quote in the direction of the trend is pulled until it calms down (price rising → no ask).",
+            "Every adjustment is kept for 15 seconds after the last trigger, so quotes don't snap back in the middle of a move. Orders that close your inventory are never moved."
+          ],
+          "note": "Distances are in bp, so they mean the same on every market. It only ever quotes further away or not at all, never closer, so expect fewer fills and less volume in exchange for fewer bad fills. Works only when quotes follow the order book (Quote level). Each change of action is logged once in Decisions, and Market Making Analytics compares fills with Smart quoting on and off. Beta: thresholds may change."
+        }
+      },
+      "copyLeader": {
+        "label": "Wallet to copy",
+        "hint": "A SoDEX wallet address. Its trades are public; DeskLabs only reads them."
+      },
+      "copyDirection": {
+        "label": "Direction",
+        "hint": "Inverse takes the opposite side of every trade."
+      },
+      "copySizing": {
+        "label": "Copy size",
+        "hint": "Fixed: the same amount for each new position. Share: a % of the wallet’s position size."
+      },
+      "copyFixed": {
+        "label": "Amount per position",
+        "hint": "Position value for each new position, leverage included"
+      },
+      "copyRatio": {
+        "label": "Share of the wallet’s size",
+        "hint": "1% copies 0.01 BTC when the wallet holds 1 BTC"
+      },
+      "copyMaxPerTrade": {
+        "label": "Max per order",
+        "hint": "Largest value one copied open or add can have, leverage included"
+      },
+      "copyMaxExposure": {
+        "label": "Max position",
+        "hint": "Largest position value the bot may hold, leverage included. At the cap it stops adding"
+      },
+      "copySl": {
+        "label": "Stop loss",
+        "hint": "Close if price moves this far against the average price, then wait for the wallet’s next position"
+      },
+      "copyTp": {
+        "label": "Take profit",
+        "hint": "Close if price moves this far in your favour, then wait for the wallet’s next position"
+      },
+      "copySlippage": {
+        "label": "Max price move",
+        "hint": "Opens and adds are skipped if price has moved more than this from the wallet’s fill. Closes always go through."
       }
     },
     "options": {
@@ -668,10 +1055,6 @@
       "onStopPerps": {
         "close_at_market": "Close position",
         "keep_position": "Keep position"
-      },
-      "start": {
-        "immediately": "Immediately",
-        "price_at_or_below": "When price ≤ level"
       },
       "frequency": {
         "daily": "Daily",
@@ -720,13 +1103,6 @@
         "close_inventory": "Close inventory (reduce-only)",
         "keep_position": "Keep position"
       },
-      "vmLeverage": {
-        "1": "1×"
-      },
-      "vmMarket": {
-        "BTC-USD": "BTC-USD",
-        "ETH-USD": "ETH-USD"
-      },
       "dayOfWeek": {
         "0": "Sun",
         "1": "Mon",
@@ -740,6 +1116,33 @@
         "daily": "Day",
         "weekly": "Week",
         "monthly": "Month"
+      },
+      "entry": {
+        "now": "Now",
+        "at_price": "At price",
+        "in_range": "In a range"
+      },
+      "nextCycle": {
+        "immediately": "Immediately",
+        "after_pullback": "After pullback",
+        "cooldown": "Cooldown",
+        "same_as_entry": "Same as first entry"
+      },
+      "twapStart": {
+        "now": "Now",
+        "at": "At a time"
+      },
+      "initialBuy": {
+        "all_now": "All now",
+        "over_hours": "Over N hours"
+      },
+      "copyDirection": {
+        "follow": "Follow",
+        "inverse": "Inverse"
+      },
+      "copySizing": {
+        "fixed": "Fixed amount",
+        "ratio": "Share of wallet"
       }
     },
     "errors": {
@@ -748,7 +1151,9 @@
       "minSize": "Below SoDEX minimum order size.",
       "checks": "Some checks didn’t pass. Fix them and try again.",
       "state": "This action isn’t available in the bot’s current state.",
-      "invalid": "Fix the highlighted fields."
+      "invalid": "Fix the highlighted fields.",
+      "fieldRequired": "Enter a valid value.",
+      "invalidFields": "Fix these fields: {fields}."
     },
     "ai": {
       "filled": "✦ Filled by AI",
@@ -778,7 +1183,10 @@
         "rebalancing": "Target portfolio",
         "funding_arb": "Two legs · {market}",
         "twap": "Execution plan · {side} {size} {base}",
-        "volume_maker": "Two-sided quotes · {market}"
+        "volume_maker": "Two-sided quotes · {market}",
+        "volume_farm": "Volume Builder on {market}",
+        "adaptive_dca": "AI Adaptive DCA · {market} {direction}",
+        "copy_trade": "Copy Trade · {market} {direction}"
       },
       "direction": {
         "neutral": "Neutral",
@@ -800,8 +1208,13 @@
         "aria": "Grid of {n} levels from {lower} to {upper}; last price {last}; stop at {stop}"
       },
       "dca": {
-        "base": "Base",
-        "safety": "Safety {n}",
+        "base": "First buy",
+        "baseFutures": "First order",
+        "safety": "Extra buy {n}",
+        "safetyFutures": "Extra order {n}",
+        "intro": "The bot buys once, then buys more each time the price drops to the next step. Each extra buy lowers your average price.",
+        "introFutures": "The bot opens a position, then adds to it each time the price moves to the next step against you. Each extra order improves your average entry.",
+        "allFilled": "If every extra order fills, your average price is {avg}, and the price only needs to reach {exit} to take profit.",
         "tpSpot": "Take profit +{pct}% above average buy price",
         "tpFutures": "Take profit +{pct}% from average entry",
         "fillOrder": "Orders fill top to bottom as price moves against you"
@@ -864,7 +1277,7 @@
           "value": "1 market + TP"
         },
         "safetyOrders": {
-          "label": "Safety orders",
+          "label": "Extra orders",
           "value": "{count}, as price drops"
         },
         "buys": {
@@ -919,6 +1332,18 @@
         "orderType": {
           "label": "Order type",
           "value": "Limit · IOC"
+        },
+        "vmBalance": {
+          "label": "Balance needed",
+          "value": "{value} {unit}"
+        },
+        "vmBiggestPosition": {
+          "label": "Biggest position",
+          "value": "{value} {unit}"
+        },
+        "vmStopsAt": {
+          "label": "Stops if you lose",
+          "value": "{value} {unit}"
         }
       },
       "hints": {
@@ -929,7 +1354,9 @@
         "durationHours": "= {h} h",
         "durationHoursMinutes": "= {h} h {m} min",
         "fdcaLong": "Long adds on drops",
-        "fdcaShort": "Short adds on rises"
+        "fdcaShort": "Short adds on rises",
+        "vfStopLoss": "≈ {price}% price move · up to ≈ {usd} USDC per trade",
+        "vfStopPrice": "≈ {price}% price move"
       }
     },
     "settingsLabel": "Settings",
@@ -951,7 +1378,7 @@
       "watchRemove": "On watchlist · remove {market}",
       "watchSaving": "Saving…",
       "watchFull": "Up to 8 markets",
-      "watchFailed": "Couldn't update your watchlist."
+      "watchFailed": "Couldn’t update your watchlist."
     },
     "picker": {
       "loading": "Loading…",
@@ -964,6 +1391,17 @@
       "noMatch": "No assets match “{q}”.",
       "sheetTitle": "Choose an asset",
       "arbPair": "Spot {spot} · Perp {perp}",
+      "arbFits": "Funding has covered fees fastest",
+      "arbOthers": "Other assets",
+      "arbRate": "{rate}% per {hours}h",
+      "arbSecondary": "{rate} · fees in ~{hours}h",
+      "arbNegative": "{rate} · not covering fees",
+      "arbNoData": "Funding not available",
+      "arbPositive": "Funding paid shorts in {n} of the last 21 periods.",
+      "arbBreakEven": "At the 7-day average, funding takes about {hours} hours to cover the round-trip fees.",
+      "arbSpotVolume": "Spot traded {volume} USDC in the last 24 hours.",
+      "arbSpotVolumeNone": "Spot volume for the last 24 hours is not available.",
+      "arbNote": "Past funding, not a forecast. Funding can turn negative.",
       "rowAsset": "Asset {n}",
       "rowWeight": "Weight {n}",
       "rowRemove": "Remove asset {n}",
@@ -976,11 +1414,11 @@
     },
     "advanced": {
       "title": "Advanced settings",
-      "optionalUnset": "{n} optional not set",
+      "optionalUnset": "{n, plural, one {# optional field} other {# optional fields}} not set",
       "needValue": "{n, plural, one {# field needs} other {# fields need}} a value"
     },
     "amount": {
-      "dcaHint": "Your total is the base order plus every safety order."
+      "dcaHint": "Your total is the first buy plus every extra order."
     },
     "amountLines": {
       "availableSpot": "Available: {amount} {asset} on Spot",
@@ -991,11 +1429,62 @@
       "maxMargin": "Max margin used: {amount} USDC",
       "position": "Position up to ≈ {amount} USDC",
       "split": "Split 50/50: {amount} {asset} on Spot · {amount} {asset} on Perps"
-    }
+    },
+    "chart": {
+      "title": "{market} · {interval} · SoDEX",
+      "timeframe": "Timeframe",
+      "tabs": "Chart",
+      "price": "Price",
+      "map": "Liquidation map",
+      "intervals": {
+        "15m": "15m",
+        "1h": "1h",
+        "4h": "4h",
+        "1d": "1D"
+      },
+      "empty": "Choose a market to see its chart.",
+      "error": "Can’t load candles from SoDEX right now.",
+      "retry": "Try again",
+      "noCandles": "No candles for this market yet.",
+      "loading": "Loading candles…",
+      "priceAria": "Price candles with bot levels",
+      "mapAria": "Estimated liquidation map with price candles",
+      "priceNote": "Dashed lines come from your settings and move as you change them.",
+      "chartHint": "Scroll to zoom, drag to move. Click the chart to copy a price.",
+      "copied": "Copied {price}",
+      "copyFailed": "Price {price}. Copy it manually.",
+      "resetZoom": "Reset zoom",
+      "dcaNote": "Take profit and stop are shown from the first entry, before any extra order fills.",
+      "mapLegend": "Brighter bands: more estimated liquidations.",
+      "mapDisclaimer": "Built from a sample of Hyperliquid wallets, not the whole market and not positions on SoDEX. Price can pass straight through these zones.",
+      "mapSource": "Source: {source} · updated {time}",
+      "mapBand": "Estimated liquidations near {price}",
+      "scaleHigh": "High",
+      "scaleLow": "Low",
+      "show": "Show chart",
+      "hide": "Hide chart",
+      "levels": {
+        "upper": "Upper {price}",
+        "lower": "Lower {price}",
+        "stop": "Stop {price}",
+        "stopAbove": "Stop above {price}",
+        "entry": "Entry {price}",
+        "entryNow": "Entry {price}",
+        "entryLow": "Range low {price}",
+        "entryHigh": "Range high {price}",
+        "safety": "Extra {n} {price}",
+        "takeProfit": "Take profit {price}",
+        "skipAbove": "Skip above {price}",
+        "priceLimit": "Price limit {price}"
+      }
+    },
+    "beta": "Beta",
+    "howItWorks": "How it works",
+    "howItWorksOf": "How it works: {name}"
   },
   "tradingAgent": {
     "title": "Trading Agent",
-    "stopAgent": "Stop agent…",
+    "stopAgent": "Stop agent",
     "editBot": "Edit bot",
     "decisionsAndActions": "Decisions & actions"
   },
@@ -1023,7 +1512,7 @@
       "addToPlan": "+ Add to plan",
       "why": "WHY IT FITS YOU",
       "capital": "Capital",
-      "builderFee": "DRIFT builder fee",
+      "builderFee": "DeskLabs builder fee",
       "builderFeeValue": "≤ 0.01% per fill",
       "leverage": "{n}× leverage",
       "marketCheck": "Market check:",
@@ -1033,18 +1522,18 @@
       "allocated": "Allocated of {capital}",
       "notIncluded": "not included",
       "beforeTrade": "Before bots can trade",
-      "keyFee": "DRIFT key + builder fee approval",
+      "keyFee": "DeskLabs key + builder fee approval",
       "signed": "✓ Signed",
       "notSigned": "Not signed",
       "twoFactor": "Two-factor authentication",
       "on": "✓ On",
       "notSet": "Not set",
-      "required": "Required before any bot runs on mainnet.",
+      "required": "Optional. Recommended before you run bots with real money.",
       "setup2fa": "Set up 2FA →",
       "startHow": "How do you want to start?",
-      "live": "LIVE · Mainnet",
+      "live": "Mainnet",
       "liveTag": "Real funds",
-      "liveSub": "Bots place real orders on SoDEX with your DRIFT key. Needs 2FA. You confirm each bot before it starts.",
+      "liveSub": "Bots place real orders on SoDEX with your DeskLabs key. You confirm each bot before it starts.",
       "paper": "Paper trading",
       "paperTag": "Coming soon",
       "paperSub": "Simulated bots on live prices. Not available yet.",
@@ -1060,7 +1549,7 @@
     },
     "rail": {
       "title": "Set up in about 5 minutes",
-      "body": "Bring your SoDEX history. DRIFT studies how you already trade before suggesting any strategy.",
+      "body": "Bring your SoDEX history. DeskLabs studies how you already trade before suggesting any strategy.",
       "label": "Onboarding steps",
       "steps": {
         "account": {
@@ -1091,18 +1580,18 @@
       "stepOf": "STEP {step} OF 6"
     },
     "signup": {
-      "safety": "DRIFT never asks for your seed phrase or private key, and can’t withdraw your funds.",
+      "safety": "DeskLabs never asks for your seed phrase or private key, and can’t withdraw your funds.",
       "haveAccount": "Already have an account?",
       "signIn": "Sign in",
-      "title": "Create your DRIFT account",
+      "title": "Create your DeskLabs account",
       "email": "Email",
       "emailPlaceholder": "you@example.com",
-      "terms": "I have read the <risk>Risk Disclosure</risk>. Automated trading can lose money; DRIFT doesn’t guarantee profit.",
+      "terms": "I have read the <risk>Risk Disclosure</risk>. Automated trading can lose money; DeskLabs doesn’t guarantee profit.",
       "submit": "Create account",
-      "note": "Two-factor authentication is required before any bot can trade on mainnet.",
-      "signInTitle": "Sign in to DRIFT",
+      "note": "Two-factor authentication is optional. Turn it on in Settings › Security to protect your bots.",
+      "signInTitle": "Sign in to DeskLabs",
       "signInSubmit": "Sign in",
-      "noAccount": "New to DRIFT?",
+      "noAccount": "New to DeskLabs?",
       "createAccount": "Create account",
       "codeTitle": "Enter the 6-digit code",
       "codeBody": "We sent it to {email}. It expires in 10 minutes.",
@@ -1127,13 +1616,13 @@
         "length": "12+ characters",
         "email": "Not your email"
       },
-      "forgot": "Forgot your password? Ask the DRIFT operator to reset it.",
+      "forgot": "Forgot your password? Ask the DeskLabs operator to reset it.",
       "twoFactorSubmit": "Verify and sign in"
     },
     "connect": {
-      "safety": "DRIFT never asks for your seed phrase or private key. Your wallet only signs; it never sends a transaction here.",
+      "safety": "DeskLabs never asks for your seed phrase or private key. Your wallet only signs; it never sends a transaction here.",
       "title": "Connect your SoDEX account",
-      "lead": "Two signatures from your SoDEX master wallet: one creates a DRIFT API key, one approves DRIFT’s builder fee. You never copy or paste a key.",
+      "lead": "Two signatures from your SoDEX master wallet: one creates a DeskLabs API key, one approves DeskLabs’ builder fee. You never copy or paste a key.",
       "phases": {
         "label": "Connection steps",
         "wallet": "Connect wallet",
@@ -1145,16 +1634,16 @@
       "accountLine": "SoDEX account #{id} · Mainnet",
       "key": {
         "tag": "1 · API KEY",
-        "title": "A key for DRIFT’s bots",
-        "named": "Named <b>DRIFT</b>. DRIFT creates it and keeps it encrypted; you never see or paste it.",
-        "scope": "Lets DRIFT read your account and send the orders of bots you confirm.",
+        "title": "A key for DeskLabs’ bots",
+        "named": "Named <b>DeskLabs</b> on SoDEX. DeskLabs creates it and keeps it encrypted; you never see or paste it.",
+        "scope": "Lets DeskLabs read your account and send the orders of bots you confirm.",
         "expires": "Expires <b>{date}</b>. We remind you 14 days before."
       },
       "fee": {
         "tag": "2 · BUILDER FEE",
-        "title": "DRIFT’s fee on bot orders",
+        "title": "DeskLabs’ fee on bot orders",
         "perFill": "max per fill · {bp}",
-        "onlyDrift": "Charged only on orders DRIFT sends. Your own trades on SoDEX pay nothing extra.",
+        "onlyDrift": "Charged only on orders DeskLabs sends. Your own trades on SoDEX pay nothing extra.",
         "inside": "Shown inside the fee of every fill, not added later.",
         "revoke": "Set to 0 anytime to revoke."
       },
@@ -1176,13 +1665,13 @@
       "free": "Signing is free: no transaction, no gas.",
       "rejectedTitle": "Signature cancelled in your wallet.",
       "rejectedKey": "No key was created and no fee was approved. You can try again.",
-      "rejectedFee": "Your DRIFT key was created, but no fee was approved. Sign again to approve the fee.",
+      "rejectedFee": "Your DeskLabs key was created, but no fee was approved. Sign again to approve the fee.",
       "waiting": "Waiting for your signature…",
       "preview": {
         "title": "Your wallet will show",
         "domain": "Domain",
         "domainValue": "universal · v1",
-        "check": "Check that builderID and maxFeeRate match what DRIFT showed you."
+        "check": "Check that builderID and maxFeeRate match what DeskLabs showed you."
       },
       "creatingKey": "Signed. Registering the key on SoDEX and reading it back…",
       "creatingFee": "Signed. Approving the fee on SoDEX and reading back your builder approvals…",
@@ -1192,22 +1681,24 @@
         "account": "Account",
         "accountValue": "#{id} · {address} · Mainnet",
         "apiKey": "API key",
-        "apiKeyValue": "DRIFT · ••{last4} · expires {date}",
+        "apiKeyValue": "{name} · ••{last4} · expires {date}",
         "approval": "Builder approval",
-        "approvalValue": "DRIFT #{builderId} · up to {pct} · found in Spot and Perps approvals",
+        "approvalValue": "DeskLabs #{builderId} · up to {pct} · found in Spot and Perps approvals",
         "equity": "Equity now"
       },
       "next": "Import my history",
-      "manage": "Manage or revoke the key and the fee approval anytime in DRIFT › Settings.",
+      "manage": "Manage or revoke the key and the fee approval anytime in DeskLabs › Settings.",
       "switchChain": "Switch your wallet to ValueChain to sign.",
       "switchChainButton": "Switch to ValueChain",
       "errors": {
         "noWallet": "No browser wallet found. Install or unlock one, or use WalletConnect to sign from your phone.",
+        "wcNotStarted": "WalletConnect couldn’t start in this browser. If Lockdown Mode is on, turn it off for this site or use another browser.",
         "accountNotFound": "This wallet has no SoDEX account. Connect the master wallet of your SoDEX account.",
-        "accountInUse": "This SoDEX account is already connected to another DRIFT account. Sign in to that account and disconnect SoDEX there first.",
+        "accountInUse": "This SoDEX account is already connected to another DeskLabs account. Sign in to that account and disconnect SoDEX there first.",
         "signatureInvalid": "That signature isn’t from the wallet you connected.",
         "rejectedBySodex": "SoDEX rejected the request: {reason}",
-        "disabled": "Connecting SoDEX isn’t available yet."
+        "disabled": "Connecting SoDEX isn’t available yet.",
+        "walletDeclined": "The wallet request was closed or declined. Try again and approve the connection in your wallet."
       },
       "wallets": {
         "title": "Choose your wallet",
@@ -1323,7 +1814,7 @@
       "next": "Next: your goals"
     },
     "goals": {
-      "title": "What do you want DRIFT to do?",
+      "title": "What do you want DeskLabs to do?",
       "lead": "Four quick questions. Your answers and your history decide what we suggest.",
       "q1": "1. Main goal",
       "q2": "2. Capital for bots",
@@ -1377,7 +1868,7 @@
   },
   "settings": {
     "sodexAccess": {
-      "revokeFee": "Revoke (set to 0)…",
+      "revokeFee": "Revoke (set to 0)",
       "approveAgain": "Sign to approve 0.01% again",
       "removeOtherBuilder": "Remove another builder approval in SoDEX first.",
       "account": "SoDEX account #{id}",
@@ -1385,7 +1876,7 @@
       "connected": "● Connected",
       "keyExpiredPill": "✕ Key expired",
       "apiKey": "API key",
-      "apiKeyValue": "DRIFT · ••{last4}",
+      "apiKeyValue": "{name} · ••{last4}",
       "expires": "Expires",
       "lastUsed": "Last used",
       "keyExpiredTitle": "Key expired.",
@@ -1395,27 +1886,27 @@
       "permTrade": "✓ Place and cancel orders",
       "permTradeSub": "Only for bots you confirmed.",
       "permWithdraw": "✕ Withdraw or transfer",
-      "permWithdrawSub": "Never. DRIFT only trades; it has no withdrawal or transfer feature.",
-      "renew": "Renew key (sign again)…",
-      "disconnect": "Disconnect…",
-      "feeTitle": "DRIFT builder fee",
+      "permWithdrawSub": "Never. DeskLabs only trades; it has no withdrawal or transfer feature.",
+      "renew": "Renew key (sign again)",
+      "disconnect": "Disconnect",
+      "feeTitle": "DeskLabs builder fee",
       "feeApproved": "● Approved",
       "feeRevoked": "❚❚ Revoked",
       "feeUpdating": "Updating…",
       "feeSubOn": "max per fill · maxFeeRate 10 · builder #{builderId}",
-      "feePoint1": "Charged only on orders DRIFT sends. Perps: both sides, SoDEX cap 0.2%. Spot: sells only, SoDEX cap 2%.",
+      "feePoint1": "Charged only on orders DeskLabs sends. Perps: both sides, SoDEX cap 0.2%. Spot: sells only, SoDEX cap 2%.",
       "feePoint2": "Shown inside the fee of each fill. Your own trades on SoDEX are never charged.",
-      "feePoint3": "DRIFT offers one rate: 0.01%. You can approve it or set it to 0.",
+      "feePoint3": "DeskLabs offers one rate: 0.01%. You can approve it or set it to 0.",
       "feeOffTitle": "All LIVE bots are paused.",
       "feeOffBody": "Open orders were kept. After you approve again, resume each bot from Trading Agent.",
       "busyRevoking": "Waiting for signature, then reading your approvals back from SoDEX…",
       "busyApproving": "Approving 0.01%, then reading your approvals back from SoDEX…",
       "revokeDialog": {
-        "title": "Revoke DRIFT’s builder fee?",
-        "point1": "Your approval for DRIFT goes from 0.01% to 0.",
+        "title": "Revoke DeskLabs’ builder fee?",
+        "point1": "Your approval for DeskLabs goes from 0.01% to 0.",
         "point2": "All running bots pause right away. Their open orders stay on SoDEX.",
         "point3": "Approve again anytime, then resume each bot.",
-        "sign": "Your master wallet signs ApproveBuilderFeeAction with maxFeeRate 0. Free, no gas. 2FA code required.",
+        "sign": "Your master wallet signs ApproveBuilderFeeAction with maxFeeRate 0. Free, no gas.",
         "cancel": "Keep approval",
         "cta": "Sign to revoke"
       },
@@ -1423,20 +1914,20 @@
       "connectCta": "Connect SoDEX",
       "disconnectDialog": {
         "title": "Disconnect SoDEX account #{id}?",
-        "point1": "DRIFT deletes its API key. All LIVE bots pause.",
+        "point1": "DeskLabs deletes its API key. All LIVE bots pause.",
         "point2": "Open orders stay on SoDEX and may still fill. Cancel them first in Execution & Orders if you don’t want that.",
         "point3": "Portfolio and analysis stop updating.",
         "point4": "Your builder fee approval stays until you set it to 0.",
-        "sign": "Your master wallet signs twice to delete DRIFT’s key on SoDEX: once for Spot, once for Perps. Free, no gas. 2FA code required.",
+        "sign": "Your master wallet signs twice to delete DeskLabs’ key on SoDEX: once for Spot, once for Perps. Free, no gas.",
         "cancel": "Keep connected",
         "cta": "Disconnect"
       },
-      "busyDisconnecting": "Sign {step} of 2 in your wallet, then DRIFT reads your keys back from SoDEX…",
-      "feeExempt": "This is DRIFT’s own builder account. Bots on it pay no DRIFT builder fee, so there is nothing to approve.",
+      "busyDisconnecting": "Sign {step} of 2 in your wallet, then DeskLabs reads your keys back from SoDEX…",
+      "feeExempt": "This is DeskLabs’ own builder account. Bots on it pay no DeskLabs builder fee, so there is nothing to approve.",
       "expiresIn": "{date} · in {n, plural, one {# day} other {# days}}",
       "renewDialog": {
-        "title": "Renew DRIFT’s API key?",
-        "point1": "DRIFT creates a new key and stops using the old key ••{last4} once the new one works. The old key stays on SoDEX until you remove it.",
+        "title": "Renew DeskLabs’ API key?",
+        "point1": "DeskLabs creates a new key and stops using the old key ••{last4} once the new one works. The old key stays on SoDEX until you remove it.",
         "point2": "Bots keep running. No orders are cancelled.",
         "point3": "New expiry: 6 months from today.",
         "sign": "Your master wallet signs one request. Free, no gas.",
@@ -1451,7 +1942,7 @@
         "cancel": "Cancel"
       },
       "keyUnusablePill": "Key unusable",
-      "keyUnusableBody": "DRIFT can't sign with this key. Renew it to resume your bots.",
+      "keyUnusableBody": "DeskLabs can’t sign with this key. Renew it to resume your bots.",
       "never": "Never"
     },
     "tradingDefaults": {
@@ -1471,7 +1962,7 @@
       "tfaTitle": "Two-factor authentication",
       "tfaOn": "● On",
       "tfaNotSet": "▲ Not set",
-      "tfaBody": "Required before any bot runs on mainnet, and asked again when you start a LIVE bot, revoke the fee, or disconnect.",
+      "tfaBody": "Optional, recommended. Once it’s on, DeskLabs asks for a code when you start a LIVE bot, revoke the fee, disconnect SoDEX or delete your account. After a correct code, this device isn’t asked again for 2 hours. Stopping a bot or Emergency halt never asks for a code.",
       "steps": {
         "scan": "Scan QR",
         "code": "Enter code",
@@ -1485,7 +1976,7 @@
       "backupHint": "Save these backup codes. Each works once if you lose your phone.",
       "backupDone": "I saved them · turn on 2FA",
       "enabledTitle": "2FA is on.",
-      "enabledBody": "LIVE bots can now be started.",
+      "enabledBody": "DeskLabs asks for a code before risky actions, at most once every 2 hours on this device.",
       "start": "Set up 2FA",
       "sessionsTitle": "Sign-in methods and sessions",
       "email": "Email",
@@ -1500,6 +1991,7 @@
     "notifications": {
       "title": "Notifications",
       "alwaysOn": "Always on",
+      "inAppOnly": "In-app only for now",
       "inApp": "In-app",
       "email": "Email",
       "telegram": "Telegram · Coming soon",
@@ -1508,18 +2000,19 @@
         "risk": "Risk alerts",
         "keyFee": "Key and fee changes",
         "fills": "Every fill",
-        "daily": "Daily summary"
+        "daily": "Daily summary",
+        "copyTrading": "Big moves by traders you follow"
       }
     },
     "defaults": {
       "title": "Trading defaults",
       "mode": "Mode",
-      "modeValue": "LIVE · Mainnet",
+      "modeValue": "Mainnet",
       "paper": "Paper trading: coming soon",
       "maxLoss": "Default max loss",
       "maxLossHint": "% of a bot’s capital. Shown as a suggestion in the Max loss field when you create a bot.",
       "timezone": "Time zone",
-      "timezoneHint": "Times across DRIFT use this zone. Daily loss resets at 00:00 here.",
+      "timezoneHint": "Times across DeskLabs use this zone. Daily loss resets at 00:00 here.",
       "numberFormat": "Number format",
       "save": "Save",
       "saved": "Saved."
@@ -1528,135 +2021,494 @@
       "title": "Profile",
       "name": "Name",
       "email": "Email",
-      "emailHint": "Sign-in codes are sent here.",
+      "emailHint": "You sign in with this email.",
       "save": "Save",
       "saved": "Saved.",
       "export": "Export orders and fills (CSV)",
-      "exportHint": "Every order DRIFT sent for you, with its fills and fees.",
-      "delete": "Delete account…",
-      "deleteTitle": "Delete your DRIFT account?",
+      "exportHint": "Every order DeskLabs sent for you, with its fills and fees.",
+      "delete": "Delete account",
+      "deleteTitle": "Delete your DeskLabs account?",
       "deleteBody": "Your profile, goals and sign-in are removed. Order history stays for audit.",
       "deleteBlockedBots": "Stop every bot first.",
-      "deleteBlockedSodex": "Disconnect SoDEX first, so DRIFT’s key is removed from SoDEX.",
+      "deleteBlockedSodex": "Disconnect SoDEX first, so DeskLabs’ key is removed from SoDEX.",
       "deleteConfirm": "Delete account",
       "cancel": "Cancel",
       "twoFactor": "2FA code"
     }
   },
+  "copy": {
+    "common": {
+      "past": "Past results, not a forecast. Copying can lose money.",
+      "pastShort": "Past results, not a forecast.",
+      "hyperliquid": "Hyperliquid",
+      "notEnough": "Not enough trades",
+      "notAvailable": "Not available",
+      "historyIncomplete": "History incomplete",
+      "loadError": "Couldn't load this. Try again.",
+      "retry": "Try again",
+      "closedTrades": "Hyperliquid · {n} closed trades",
+      "follow": "☆ Follow",
+      "following": "★ Following",
+      "copy": "Copy",
+      "copyLater": "Follow · copy later",
+      "viewProfile": "View profile"
+    },
+    "tags": {
+      "easy_to_copy": "Easy to copy",
+      "holds_hours": "Holds for hours",
+      "holds_days": "Holds for days",
+      "fast_trader": "Fast trader",
+      "all_on_sodex": "All on SoDEX",
+      "partly_on_sodex": "{pct} on SoDEX",
+      "history_incomplete": "History incomplete",
+      "liquidated": "Liquidated recently"
+    },
+    "list": {
+      "title": "Find traders to copy",
+      "subtitle": "Top traders from Hyperliquid's public leaderboard, re-checked from their real trades. Your copies run on SoDEX.",
+      "updated": "Hyperliquid · updated {date} UTC",
+      "notUpdated": "Hyperliquid · not checked yet",
+      "guideTitle": "New to copy trading? It takes 3 steps.",
+      "guideClose": "Close",
+      "step1Title": "Pick a trader",
+      "step1Body": "Start with the Steady list. Open a profile to see how they trade.",
+      "step2Title": "Choose your budget",
+      "step2Body": "Set how much to use and pick a safety level. We fill in the rest.",
+      "step3Title": "We copy their new trades",
+      "step3Body": "Only trades they open after you start. You can pause any time.",
+      "tabsLabel": "Trader lists",
+      "tabs": {
+        "steady": "Steady",
+        "top": "Top earners · 30D",
+        "long": "Long holders",
+        "all": "All"
+      },
+      "steadyNote": "Steady: made money over 30 days with small dips, at least 20 closed trades, and no single trade making most of the profit.",
+      "slotsNote": "Live copying follows up to 8 Hyperliquid traders at a time across DeskLabs. Traders other people already copy are always open. When all spots are taken, you can follow a trader and copy them when a spot opens.",
+      "slotsFull": "All live copy spots are taken right now.",
+      "profit": "Profit · 30 days",
+      "worstDip": "Worst dip",
+      "typicalHold": "Typical hold",
+      "winRate": "Win rate",
+      "hidden": "{hidden} of {total} leaderboard traders are hidden.",
+      "hiddenWhy": "They trade too fast to copy (typical hold under 15 min), have too few trades, are vaults, or mostly trade markets SoDEX doesn't list. Traders with more trades than we can load show only under All, marked \"History incomplete\".",
+      "seeWhy": "See why each was hidden",
+      "hiddenBy": {
+        "fast": "Trade too fast to copy: {n}",
+        "few_trades": "Too few closed trades: {n}",
+        "vault": "Vaults: {n}",
+        "low_coverage": "Mostly markets SoDEX doesn't list: {n}"
+      },
+      "empty": "No traders here yet.",
+      "emptyBody": "The list is rebuilt from Hyperliquid once a day."
+    },
+    "profile": {
+      "title": "Trader profile",
+      "back": "← Find traders",
+      "based": "Based on {fills} fills from the last 30 days · {history} · updated {date} UTC",
+      "historyComplete": "history complete",
+      "historyIncomplete": "history incomplete",
+      "copyFuture": "Copy future trades",
+      "profitHelp": "Closed trades, after fees and funding. Open positions not included.",
+      "dipHelp": "Biggest drop from a profit high to a later low.",
+      "holdHelp": "Median time from opening a position to closing it.",
+      "winHelp": "{wins} of {total} closed positions made money.",
+      "fitTitle": "Is this trader a good fit to copy?",
+      "fit": {
+        "holds_long": {
+          "label": "Holds trades for {hold}.",
+          "detail": "Copies placed a few seconds late still catch most of the move."
+        },
+        "holds_short": {
+          "label": "Holds trades for only {hold}.",
+          "detail": "Copies arrive a few seconds late and miss most of a move this short."
+        },
+        "all_listed": {
+          "label": "All trading is on markets SoDEX lists.",
+          "detail": "{markets} can all be copied."
+        },
+        "some_unlisted": {
+          "label": "Some trading is on markets SoDEX doesn't list.",
+          "detail": "{coins} won't be copied."
+        },
+        "spread_profit": {
+          "label": "Profit comes from many trades.",
+          "detail": "The best single trade is {share} of the total."
+        },
+        "concentrated_profit": {
+          "label": "One trade made most of the profit.",
+          "detail": "The best single trade is {share} of the total."
+        },
+        "no_liquidations": {
+          "label": "No liquidations",
+          "detail": "in the last 30 days."
+        },
+        "liquidations": {
+          "label": "Liquidated {count} times",
+          "detail": "in the last 30 days."
+        }
+      },
+      "curveTitle": "Profit over time",
+      "curveSub": "Closed trades · USD",
+      "changesTitle": "Recent position changes",
+      "changesSub": "Fills grouped into one change per minute",
+      "cols": {
+        "when": "When",
+        "change": "Change",
+        "market": "Market",
+        "size": "Size change",
+        "after": "Position after",
+        "result": "Result"
+      },
+      "open": "Open",
+      "flat": "Flat",
+      "noChanges": "No position changes in the last 30 days.",
+      "notCopied": "Copying starts with their next trade.",
+      "notCopiedOpen": "The {positions} they hold now won't be copied.",
+      "blocked": {
+        "min_hold": "This trader trades too fast to copy (typical hold under 15 minutes).",
+        "no_stats": "We don't have this trader's history yet.",
+        "no_markets": "None of this trader's markets can be copied on SoDEX."
+      },
+      "notFound": "This trader isn't on our list."
+    },
+    "kinds": {
+      "open": "Opened {side}",
+      "add": "Added to {side}",
+      "reduce": "Cut {side}",
+      "close": "Closed {side}",
+      "flip": "Flipped to {side}",
+      "liquidated": "Liquidated {side}"
+    },
+    "sides": {
+      "long": "long",
+      "short": "short"
+    },
+    "steps": {
+      "trader": "1 · Trader",
+      "budget": "2 · Budget and safety",
+      "review": "3 · Review and start"
+    },
+    "budget": {
+      "title": "Copy a trader · budget and safety",
+      "back": "← Back to profile",
+      "heading": "Copy {trader}",
+      "howMuch": "How much do you want to use?",
+      "budget": "Budget",
+      "unit": "USDC",
+      "available": "Available on SoDEX: {balance} USDC. The budget stays in your account; it is the margin your copies can use.",
+      "availableUnknown": "Available on SoDEX: Not available. The budget stays in your account; it is the margin your copies can use.",
+      "safetyTitle": "Pick a safety level",
+      "safetyBody": "This sets leverage, stop loss and the most you can lose. You can change each one under Advanced.",
+      "recommended": "Recommended",
+      "presets": {
+        "careful": {
+          "name": "Careful",
+          "blurb": "Lowest risk. No leverage, small positions, tight stop."
+        },
+        "balanced": {
+          "name": "Balanced",
+          "blurb": "Some leverage with clear limits. A good place to start."
+        },
+        "bold": {
+          "name": "Bold",
+          "blurb": "Bigger positions and wider stops. Larger swings both ways."
+        }
+      },
+      "leverage": "Leverage",
+      "perTrade": "Each copied position",
+      "perTradeValue": "up to ${value}",
+      "stopLoss": "Stop loss per position",
+      "maxLoss": "Stop everything at a loss of",
+      "exposure": "All positions together stay under ${value} (budget × leverage).",
+      "marketsTitle": "Markets we'll copy",
+      "marketsBody": "Every market this trader uses that SoDEX lists. One copy bot covers all of them. If they start trading a new market later, we tell you in Following; we don't add it on our own.",
+      "advanced": "Advanced",
+      "advancedHint": "Direction, price move, margin, take profit",
+      "hide": "Hide",
+      "direction": "Direction",
+      "follow": "Follow · same side as the trader",
+      "inverse": "Inverse · opposite side",
+      "priceMove": "Max price move",
+      "priceMoveHelp": "Measured from the SoDEX price when we receive their trade, not their Hyperliquid price. If SoDEX moves further before we fill, we skip it.",
+      "margin": "Margin mode",
+      "isolated": "Isolated",
+      "cross": "Cross",
+      "takeProfit": "Take profit per position",
+      "afterTitle": "What happens after you start",
+      "after1": "We wait for the trader's next trade. Positions they already hold are not copied.",
+      "after2": "When they open, we open the same amount every time (your \"each copied position\"), however big their trade is. When they add, we add in the same proportion.",
+      "after3": "When they cut or close, we cut or close yours too.",
+      "after4": "If a position hits your stop loss, we close it and wait for their next trade.",
+      "differTitle": "Your results will differ from theirs",
+      "differBody": "You trade on SoDEX a few seconds later, at SoDEX prices, with your own size and leverage. Some trades get skipped when the price moves too far, and copies can be smaller or skipped when SoDEX liquidity is thin.",
+      "continue": "Continue to review",
+      "noLeader": "Pick a trader first.",
+      "pick": "Find traders",
+      "budgetInvalid": "Enter an amount above 0."
+    },
+    "review": {
+      "title": "Copy a trader · review and start",
+      "back": "← Budget and safety",
+      "heading": "Review and start",
+      "mainnet": "Mainnet · real funds",
+      "about": "You're about to copy",
+      "aboutLine": "Hyperliquid · {profit} in 30 days · typical hold {hold}",
+      "change": "Change",
+      "budget": "Budget",
+      "budgetValue": "{value} USDC",
+      "safety": "Safety level",
+      "safetyValue": "{name} · {lev}× leverage",
+      "perTrade": "Each copied position",
+      "perTradeValue": "up to ${value}",
+      "together": "All positions together",
+      "togetherValue": "up to ${value}",
+      "stopLoss": "Stop loss per position",
+      "maxLoss": "Stop everything at a loss of",
+      "markets": "Markets",
+      "direction": "Direction",
+      "directions": {
+        "follow": "Follow",
+        "inverse": "Inverse"
+      },
+      "dropped": {
+        "bot": {
+          "title": "{market} is left out.",
+          "body": "Your {bot} already trades {market} on this account, and SoDEX combines positions per market. Stop that bot to include {market}."
+        },
+        "unavailable": {
+          "title": "{market} is left out.",
+          "body": "SoDEX isn't trading {market} right now."
+        },
+        "leverage": {
+          "title": "{market} is left out.",
+          "body": "SoDEX doesn't allow this leverage on {market}."
+        },
+        "min_size": {
+          "title": "{market} is left out.",
+          "body": "Each copied position is below SoDEX's minimum order size on {market}."
+        }
+      },
+      "costs": "Costs",
+      "cost1": "SoDEX trading fees on every fill, as usual.",
+      "cost2": "DeskLabs builder fee: up to {fee}% of each fill.",
+      "cost3": "No subscription and no profit share.",
+      "split": "When many people copy the same trade, we split what SoDEX's order book can take without moving the price past your limit. Your copy may be smaller, or skipped.",
+      "ack": "I understand this uses real funds, past results are not a forecast, and I can lose up to my stop limit or more in fast markets.",
+      "start": "Start copying",
+      "starting": "Starting…",
+      "never": "Withdraw or transfer: never. DeskLabs can only place trades. You can pause or stop the copy at any time from Trading Agent.",
+      "twoFactor": "2FA code",
+      "full": "All live copy spots are taken right now.",
+      "noMarkets": "None of this trader's markets can be copied on this account right now.",
+      "failed": "Couldn't start the copy. Nothing was sent to SoDEX."
+    },
+    "following": {
+      "title": "Following",
+      "subtitle": "Traders you follow and what they changed recently. Following is free and places no trades.",
+      "find": "+ Find traders",
+      "traders": "Traders",
+      "count": "{n} of {limit}",
+      "copying": "Copying",
+      "last": "Last change {when}",
+      "none": "No changes yet",
+      "newMarkets": "Now also trades {markets}. Your copy doesn't include it.",
+      "changes": "Recent changes",
+      "checked": "Updated {time} · checked every {minutes} min",
+      "cols": {
+        "when": "When",
+        "trader": "Trader",
+        "change": "Change",
+        "market": "Market",
+        "size": "Size change",
+        "sodex": "On SoDEX"
+      },
+      "listed": "✓ Listed",
+      "notListed": "Not listed",
+      "grouped": "Fills within one minute are grouped into one change.",
+      "empty": "You don't follow anyone yet.",
+      "emptyBody": "Follow up to 5 traders from Find traders to see their changes here.",
+      "alertsTitle": "Tell me about big moves",
+      "alertsBody": "A big move is a new or bigger position worth at least the alert threshold and at least 3× that trader's usual size, counted over 15 minutes. At most one alert per trader and market every 10 minutes.",
+      "alertsOff": "Big move alerts aren't set up yet.",
+      "alertsWhere": "Alerts show in DeskLabs. Phone and Telegram alerts come later.",
+      "on": "On",
+      "off": "Off",
+      "unfollow": "Unfollow"
+    }
+  },
   "_pendingReview": [
-    "settings.sodexAccess.wallet.lead",
-    "settings.sodexAccess.wallet.wrong",
-    "settings.sodexAccess.wallet.cancel",
-    "common.nav.users",
-    "adminUsers.title",
-    "adminUsers.subtitle",
-    "adminUsers.forbidden",
-    "adminUsers.search",
-    "adminUsers.count",
-    "adminUsers.empty",
-    "adminUsers.cols.email",
-    "adminUsers.cols.registered",
-    "adminUsers.cols.sodex",
-    "adminUsers.cols.fee",
-    "adminUsers.cols.bots",
-    "adminUsers.cols.twoFactor",
-    "adminUsers.team",
-    "adminUsers.notConnected",
-    "adminUsers.status.connecting",
-    "adminUsers.status.connected",
-    "adminUsers.status.disconnected",
-    "adminUsers.fee.approved",
-    "adminUsers.fee.revoked",
-    "adminUsers.fee.never",
-    "adminUsers.fee.exempt",
-    "adminUsers.bots",
-    "adminUsers.on",
-    "adminUsers.off",
-    "adminUsers.prev",
-    "adminUsers.next",
-    "adminUsers.page",
-    "agent.statusLabel",
-    "createBot.picker.loading",
-    "createBot.picker.empty",
-    "createBot.picker.clear",
-    "createBot.picker.close",
-    "createBot.marketPicker.popular",
-    "createBot.marketPicker.noMatch",
-    "createBot.marketPicker.sheetTitle",
-    "createBot.marketPicker.info.last",
-    "createBot.marketPicker.info.minOrder",
-    "createBot.marketPicker.info.maxLeverage",
-    "createBot.assetPicker.placeholder",
-    "createBot.assetPicker.noMatch",
-    "createBot.assetPicker.sheetTitle",
-    "createBot.assetPicker.arbPair",
-    "createBot.assetPicker.rowAsset",
-    "createBot.assetPicker.rowWeight",
-    "createBot.assetPicker.rowRemove",
-    "createBot.assetPicker.add",
-    "createBot.fields.fdcaFirstStepPct.label",
-    "createBot.fields.twapMarket.label",
-    "createBot.fields.reduceOnly.label",
-    "createBot.preview.hints.durationHours",
-    "createBot.preview.hints.durationHoursMinutes",
-    "createBot.fields.dayOfWeek",
-    "createBot.fields.dayOfMonth",
-    "createBot.fields.time.label",
-    "createBot.options.dayOfWeek",
-    "createBot.fields.rebalSchedule",
-    "createBot.options.rebalSchedule",
-    "createBot.sections.amount",
-    "createBot.sections.strategy",
-    "createBot.sections.risk",
-    "createBot.advanced.title",
-    "createBot.advanced.optionalUnset",
-    "createBot.advanced.needValue",
-    "createBot.amount.dcaHint",
-    "createBot.amountLines.availableSpot",
-    "createBot.amountLines.availablePerps",
-    "createBot.amountLines.noneSpot",
-    "createBot.amountLines.unavailable",
-    "createBot.amountLines.maxCapital",
-    "createBot.amountLines.maxMargin",
-    "createBot.amountLines.position",
-    "createBot.amountLines.split",
-    "createBot.ai.needsCapitalField",
-    "createBot.fields.fdcaBaseOrder",
-    "createBot.fields.fdcaSafetyOrder",
-    "createBot.fields.fdcaFirstStepPct",
-    "createBot.fields.fdcaTakeProfit",
-    "createBot.fields.fdcaStopLoss",
-    "createBot.preview.hints.fdcaLong",
-    "createBot.preview.hints.fdcaShort",
-    "overview.change",
-    "overview.changeLabel",
-    "common.missing.noFillsYet",
-    "common.shell.sodexKeyRenew",
-    "settings.sodexAccess.keyUnusablePill",
-    "settings.sodexAccess.keyUnusableBody",
-    "settings.sodexAccess.never",
-    "overview.agentCard.recent",
-    "bots.renewKey",
-    "bots.moreActions",
-    "orders.showLast30",
-    "orders.clearFilters",
-    "risk.noLimitSet",
-    "risk.setLimit",
-    "common.shell.agoSeconds",
-    "common.shell.agoMinutes",
-    "common.shell.agoHours",
-    "notFound.title",
-    "notFound.backOverview",
-    "notFound.backHome",
-    "common.nav.team",
-    "overview.watchlistCard.*",
-    "createBot.marketPicker.added",
-    "createBot.marketPicker.watchAdd",
-    "createBot.marketPicker.watchRemove",
-    "createBot.marketPicker.watchSaving",
-    "createBot.marketPicker.watchFull",
-    "createBot.marketPicker.watchFailed",
-    "bots.catalog.forMarket"
+    "connectLog",
+    "onboarding.connect.errors.walletDeclined",
+    "onboarding.plan.required",
+    "onboarding.plan.liveSub",
+    "onboarding.signup.note",
+    "settings.security.tfaBody",
+    "settings.security.enabledBody",
+    "settings.sodexAccess.revokeDialog.sign",
+    "settings.sodexAccess.disconnectDialog.sign",
+    "createBot.strategies.volume_farm.name",
+    "createBot.strategies.volume_farm.what",
+    "createBot.strategies.volume_farm.short",
+    "createBot.strategies.volume_farm.catalog",
+    "createBot.fields.vfAllowTaker.label",
+    "createBot.fields.vfAllowTaker.hint",
+    "createBot.fields.vfTakerAfter.hint",
+    "createBot.preview.title.volume_farm",
+    "adminUsers.volume.on.one",
+    "adminUsers.volume.off.one",
+    "landing.fees.rates",
+    "createBot.fields.vfExchangeStop.label",
+    "createBot.fields.vfExchangeStop.hint",
+    "createBot.fields.vfTp.hint",
+    "bots.long.volume_farm",
+    "createBot.beforeStart.checksMissing",
+    "createBot.beforeStart.missing.field",
+    "createBot.beforeStart.checksLoading",
+    "createBot.beforeStart.checksFailedShort",
+    "createBot.beforeStart.missing.wait",
+    "common.nav.workspace",
+    "reasons.MAX_CYCLES_VOLUME",
+    "overview.myBots",
+    "overview.moreStopped",
+    "overview.equity",
+    "overview.changeNote",
+    "common.badges.live",
+    "common.badges.liveShort",
+    "onboarding.plan.live",
+    "settings.defaults.modeValue",
+    "bots.mode",
+    "agent.env",
+    "landing.fees.liveChip",
+    "overview.botMargin",
+    "createBot.fields.vfSl.hint",
+    "createBot.preview.hints.vfStopLoss",
+    "createBot.preview.hints.vfStopPrice",
+    "agent.vf.perMillionHint",
+    "agent.vf.costTitle",
+    "agent.vf.pricePnl",
+    "agent.vf.pricePnlHint",
+    "agent.vf.sodexFees",
+    "agent.vf.sodexFeesHint",
+    "agent.vf.builderFees",
+    "agent.vf.builderFeesHint",
+    "agent.vf.funding",
+    "agent.vf.fundingHint",
+    "agent.vf.netHint",
+    "agent.vf.share",
+    "agent.vf.session",
+    "agent.vf.ofTarget",
+    "agent.vf.noTarget",
+    "agent.vf.netLine",
+    "agent.vf.chipTrades",
+    "agent.vf.chipTradesWon",
+    "agent.vf.chipMaker",
+    "agent.vf.chipFlat",
+    "agent.vf.chipPosition",
+    "agent.vf.p1h",
+    "agent.vf.p24h",
+    "agent.vf.p7d",
+    "agent.vf.pAll",
+    "agent.vf.spent",
+    "agent.vf.priceLoss",
+    "agent.vf.howTitle",
+    "agent.vf.howPrice",
+    "agent.vf.howFees",
+    "agent.vf.howNet",
+    "agent.vf.howCpm",
+    "agent.vf.periodLabel",
+    "agent.vf.tab",
+    "agent.vf.heading",
+    "agent.vf.fromFills",
+    "agent.vd",
+    "agent.review",
+    "createBot.fields.vfEarlyFees",
+    "createBot.fields.vfEarlySecs",
+    "agent.share",
+    "createBot.fields.maxOrders",
+    "createBot.fields.quoteLevel",
+    "agent.quotes.sizeUsd",
+    "agent.quotes.sumUsd",
+    "agent.quotes.spread",
+    "agent.quotes.buyShare",
+    "agent.quotes.sellShare",
+    "agent.vm.breakdown",
+    "agent.exportData",
+    "platformStats.ov",
+    "platformStats.detailsTitle",
+    "agent.sa",
+    "createBot.fields.vfStopMove",
+    "agent.mma",
+    "createBot.fields.smartQuoting",
+    "createBot.beta",
+    "createBot.howItWorks",
+    "createBot.howItWorksOf",
+    "createBot.fields.quoteLevel.how",
+    "createBot.fields.maxOrders.how",
+    "createBot.fields.costBudget.how",
+    "createBot.fields.inventoryLossStop.how",
+    "createBot.fields.vfHoldMin.how",
+    "createBot.fields.vfReverse.how",
+    "createBot.fields.vfTp.how",
+    "createBot.fields.vfSl.how",
+    "createBot.fields.vfExchangeStop.how",
+    "createBot.fields.vfStopMove.how",
+    "createBot.fields.vfEarlyFees.how",
+    "createBot.fields.vfMaxSpread.how",
+    "createBot.fields.vfAllowTaker.how",
+    "landing",
+    "common.nav.traders",
+    "common.nav.following",
+    "common.nav.sections.copy",
+    "copy.common.notEnough",
+    "copy.common.notAvailable",
+    "copy.common.loadError",
+    "copy.common.retry",
+    "copy.common.following",
+    "copy.tags.holds_days",
+    "copy.tags.partly_on_sodex",
+    "copy.tags.history_incomplete",
+    "copy.tags.liquidated",
+    "copy.list.updated",
+    "copy.list.notUpdated",
+    "copy.list.guideClose",
+    "copy.list.tabsLabel",
+    "copy.list.hiddenBy",
+    "copy.list.empty",
+    "copy.list.emptyBody",
+    "copy.profile.fit.holds_short",
+    "copy.profile.fit.some_unlisted",
+    "copy.profile.fit.concentrated_profit",
+    "copy.profile.fit.liquidations",
+    "copy.profile.noChanges",
+    "copy.profile.notCopiedOpen",
+    "copy.profile.blocked",
+    "copy.profile.notFound",
+    "copy.profile.historyIncomplete",
+    "copy.kinds",
+    "copy.budget.availableUnknown",
+    "copy.budget.noLeader",
+    "copy.budget.pick",
+    "copy.review.dropped.unavailable",
+    "copy.review.dropped.leverage",
+    "copy.review.dropped.min_size",
+    "copy.review.starting",
+    "copy.review.twoFactor",
+    "copy.review.full",
+    "copy.review.noMarkets",
+    "copy.review.failed",
+    "copy.following.newMarkets",
+    "copy.following.none",
+    "copy.following.empty",
+    "copy.following.emptyBody",
+    "copy.following.alertsOff",
+    "copy.following.off",
+    "copy.following.unfollow",
+    "copy.following.alertsBody",
+    "settings.notifications.inAppOnly",
+    "settings.notifications.groups.copyTrading",
+    "notifications.types.leader_big_move",
+    "copy.budget.budgetInvalid"
   ],
   "bots": {
     "title": "Strategy Lab",
@@ -1693,7 +2545,8 @@
       "capital": "Capital",
       "actions": "Actions"
     },
-    "mode": "LIVE",
+    "mode": "Mainnet",
+    "modeDraft": "Not started",
     "open": "Open",
     "edit": "Edit",
     "resume": "Resume",
@@ -1705,6 +2558,7 @@
       "cta": "Browse strategies"
     },
     "catalog": {
+      "feeRate": "Builder fee {rate}",
       "fits": "Fits",
       "risk": "Risk",
       "setUp": "Set up {name}",
@@ -1720,7 +2574,10 @@
       "rebalancing": "PORTFOLIO",
       "funding_arb": "ARBITRAGE",
       "twap": "EXECUTION",
-      "volume_maker": "EVENT"
+      "volume_maker": "LIQUIDITY OPTIMIZATION",
+      "volume_farm": "VOLUME OPTIMIZATION",
+      "adaptive_dca": "DCA · EXPERIMENTAL",
+      "copy_trade": "COPY · EXPERIMENTAL"
     },
     "fits": {
       "spot_grid": "Sideways markets.",
@@ -1731,32 +2588,45 @@
       "rebalancing": "A long-term basket.",
       "funding_arb": "Persistently positive funding.",
       "twap": "Entering or exiting size with less price impact.",
-      "volume_maker": "Taking part in volume events at a known, capped cost."
+      "volume_maker": "Taking part in volume events at a known, capped cost.",
+      "volume_farm": "Building volume on perps when you accept paying fees on every trade.",
+      "adaptive_dca": "Dips you expect to recover, with a hard limit on how much the bot can hold.",
+      "copy_trade": "Wallets that hold positions for hours or days, not seconds."
     },
     "risks": {
       "spot_grid": "Price leaves the range; you hold the asset at a loss.",
       "futures_grid": "Leverage and liquidation; funding costs.",
-      "spot_dca": "Long downtrends use all safety orders.",
+      "spot_dca": "Long downtrends use all extra buys.",
       "futures_dca": "Leverage plus averaging down can reach liquidation.",
       "recurring_buy": "No exit; value follows the market.",
       "rebalancing": "Sells winners early in strong trends.",
       "funding_arb": "Funding turns negative; the two legs drift apart.",
       "twap": "Price moves during the run.",
-      "volume_maker": "Inventory moves against you; SoPoints are not guaranteed."
+      "volume_maker": "Inventory moves against you; SoPoints are not guaranteed.",
+      "volume_farm": "Fees are paid on every fill and can outweigh trading gains; leverage and fast moves can cause losses; past results don’t predict future ones; SoPoints are not guaranteed.",
+      "adaptive_dca": "Experimental and not yet proven better than a fixed DCA; leverage and fast moves can cause losses up to your limits.",
+      "copy_trade": "Experimental. The bot fills after the wallet, often at a worse price, and pays fees on every fill; copying fast traders usually loses. Past results of a wallet are not a forecast."
     },
     "long": {
       "spot_grid": "Buys low and sells high inside a price range, again and again.",
       "futures_grid": "Grid on a perpetual contract: long, short or neutral, with leverage.",
-      "spot_dca": "Buys, then adds safety orders as price drops, and sells the whole position at a take-profit.",
+      "spot_dca": "Buys, then buys more as the price drops, and sells the whole position at a take profit.",
       "futures_dca": "Same as Spot DCA on a perpetual, long or short, with leverage.",
       "recurring_buy": "Buys a fixed amount on a schedule. No selling.",
       "rebalancing": "Keeps 2–10 assets at target weights by trading back to them.",
       "funding_arb": "Holds spot and an equal perp short to collect funding.",
       "twap": "Splits one large order into small slices over time.",
-      "volume_maker": "Quotes both sides with post-only orders to add liquidity and volume during SoDEX events, within a cost budget. Never trades with itself."
+      "volume_maker": "Quotes both sides with post-only orders to add liquidity and volume during SoDEX events, within a cost budget. Never trades with itself.",
+      "volume_farm": "Opens one position at a time from 1-minute candles and the order book, holds it briefly, closes on profit, stop or time, then repeats to build traded volume.",
+      "adaptive_dca": "DCA on a perpetual that enters only when the 5-minute trend and RSI suit it, spaces extra buys by recent volatility (ATR), never goes past your position cap, and pauses or exits when the market turns against it.",
+      "copy_trade": "Watches one SoDEX wallet in real time and mirrors its position on one perpetual, in proportion. Opens and adds use limit orders capped by your max price move and are skipped when price runs away. Cuts and closes always go through. Positions the wallet held before you started are never joined. Withdraw or transfer: never."
     },
     "renewKey": "Renew key",
-    "moreActions": "More actions for {name}"
+    "moreActions": "More actions for {name}",
+    "archive": "Archive",
+    "archiveLabel": "Archive {name}",
+    "restore": "Restore",
+    "restoreLabel": "Restore {name}"
   },
   "states": {
     "draft": "Draft",
@@ -1778,11 +2648,11 @@
     "none": "No agents yet. Create a bot in Strategy Lab.",
     "pause": "Pause",
     "resume": "Resume",
-    "start": "Start…",
-    "stop": "Stop agent…",
+    "start": "Start",
+    "stop": "Stop agent",
     "pauseHint": "Pause (keeps open orders)",
     "sent": "Sent {time} · waiting for backend",
-    "confirmed": "Confirmed by backend {time}",
+    "confirmed": "Confirmed {time}",
     "profit": "Profit since start",
     "runtime": "Runtime",
     "openOrders": "Open orders",
@@ -1807,19 +2677,26 @@
       "stay": "Your assets stay in your account. Nothing is sold.",
       "noNew": "No new orders until you start it again.",
       "cancel": "Keep running",
-      "cta": "Stop and cancel {count, plural, one {# order} other {# orders}}"
+      "cta": "Stop and cancel {count, plural, one {# order} other {# orders}}",
+      "perpsChoice": "Open orders are cancelled. Choose what happens to the bot’s open perps position.",
+      "positionLegend": "Open position",
+      "closeTitle": "Close the position at market",
+      "closeBody": "DeskLabs sends a reduce-only market order for this bot’s position. Market orders pay the taker fee and may fill away from the last price.",
+      "keepTitle": "Keep the position open",
+      "keepBody": "The position stays on SoDEX with no stop or take profit from DeskLabs. You manage it yourself on SoDEX."
     },
     "startDialog": {
       "title": "Start {name}?",
       "limits": "Server-enforced risk limits apply from the first order.",
       "cancel": "Not now",
-      "cta": "Start agent"
+      "cta": "Start agent",
+      "again": "It runs again as this same bot with a fresh session. PnL and session volume start from zero; past orders stay in history. A position you kept open is not managed by this run."
     },
     "consequences": "What happens",
-    "env": "Environment: LIVE · Mainnet, real funds. The status changes only after the backend confirms.",
+    "env": "Environment: Mainnet, real funds. The status changes only after SoDEX confirms.",
     "twoFactor": "2FA code",
     "vm": {
-      "title": "Volume Maker",
+      "title": "Market Making",
       "volume": "Volume made",
       "ofTarget": "of {target}",
       "cost": "Cost used",
@@ -1827,7 +2704,17 @@
       "perMillion": "Cost per $1M volume",
       "makerShare": "Maker share",
       "inventory": "Inventory",
-      "selfTrade": "Quotes blocked as self-trades"
+      "selfTrade": "Quotes blocked as self-trades",
+      "breakdown": {
+        "title": "Cost breakdown",
+        "sodexFee": "SoDEX trading fee",
+        "builderFee": "DeskLabs builder fee",
+        "pricePnl": "Price PnL, closed",
+        "openPnl": "Open position",
+        "funding": "Funding",
+        "perMillion": "{v} / $1M",
+        "note": "Stop if I lose counts fees and any losses: {cost} of {budget} USDC used. Gains on price don't lower it, so the bot never spends more than the budget."
+      }
     },
     "stateSub": {
       "paused": "Confirmed {time} · open orders kept",
@@ -1858,13 +2745,469 @@
     "no": "No",
     "openGridOrders": "Open grid orders",
     "agentsLabel": "Agents",
-    "statusLabel": "Status"
+    "statusLabel": "Status",
+    "vf": {
+      "title": "Volume",
+      "session": "Volume this session",
+      "ofTarget": "{pct}% of {target} USDC target",
+      "net": "Net this session",
+      "perMillion": "Cost per $1M volume",
+      "note": "Volume counts both sides of each trade, in USDC. SoDEX doesn’t publish how volume converts to SoPoints, and its own totals may differ.",
+      "costTitle": "Cost breakdown",
+      "pricePnl": "Price PnL",
+      "sodexFees": "SoDEX trading fee",
+      "builderFees": "DeskLabs builder fee",
+      "funding": "Funding",
+      "share": {
+        "open": "Share",
+        "title": "Share your volume result",
+        "description": "An image with this session’s volume and cost per $1M. No wallet address, account number or balance.",
+        "costLabel": "Cost per $1M volume",
+        "inProfit": "Volume farmed in profit",
+        "volume": "Volume",
+        "trades": "Trades",
+        "maker": "Maker share",
+        "tagline": "Powered by SoDEX Builder Code",
+        "footer": "Fees and price PnL included · {date}",
+        "download": "Download image",
+        "copy": "Copy text",
+        "copied": "Copied",
+        "text": "I farmed {volume} USDC of volume on SoDEX at ${cost} per $1M ({maker}% maker) with DeskLabs {strategy}.",
+        "textProfit": "I farmed {volume} USDC of volume on SoDEX and ended +{net} USDC ({maker}% maker) with DeskLabs {strategy}.",
+        "share": "Share…",
+        "cost": "Cost"
+      },
+      "noTarget": "No volume target · runs until you stop it",
+      "netLine": "Net {net} USDC this session",
+      "chipTrades": "{trades} trades",
+      "chipTradesWon": "{trades} trades · {rate}% won",
+      "chipMaker": "{pct}% maker",
+      "chipFlat": "No open position",
+      "chipPosition": "Position {size}",
+      "spent": "{amount} USDC spent",
+      "priceLoss": "Price loss",
+      "howTitle": "How it’s calculated",
+      "howPrice": "Price PnL: gain or loss from price on closed trades, before fees.",
+      "howFees": "Fees: the SoDEX maker or taker fee on each fill. DeskLabs’ builder fee is charged by SoDEX inside the same fill fee and shown separately here.",
+      "howNet": "Net: price PnL minus fees and funding. An open position counts once it closes.",
+      "howCpm": "Cost per $1M volume: net loss ÷ volume × 1,000,000. Volume counts both sides of each trade.",
+      "periodLabel": "Volume period",
+      "tab": {
+        "session": "Session",
+        "h1": "1H",
+        "h24": "24H",
+        "d7": "7D",
+        "all": "All"
+      },
+      "heading": {
+        "session": "Volume this session",
+        "h1": "Volume · last hour",
+        "h24": "Volume · last 24 hours",
+        "d7": "Volume · last 7 days",
+        "all": "Volume · all time"
+      },
+      "fromFills": "Both sides of every fill on SoDEX, across all versions of this bot"
+    },
+    "finished": {
+      "title": "This bot has stopped",
+      "body": "Start it again with the same settings, archive it to move it out of My bots, or export its data to analyse the run.",
+      "startAgain": "Start again",
+      "archive": "Archive"
+    },
+    "quotes": {
+      "title": "Live quotes",
+      "summary": "Your quotes: {bids} bid · {asks} ask",
+      "you": "YOU",
+      "price": "Price",
+      "size": "Size",
+      "asks": "Asks",
+      "bids": "Bids",
+      "mid": "Mid {price}",
+      "noMid": "Mid not available",
+      "loading": "Loading order book…",
+      "unavailable": "Can't load the order book from SoDEX right now.",
+      "stopped": "This bot is stopped and has no quotes on the book. The prices below are the live SoDEX order book.",
+      "outside": "Your quote, outside the levels shown",
+      "sizeUsd": "Size (USDC)",
+      "sumUsd": "Sum (USDC)",
+      "spread": "Spread {bps} bps",
+      "buyShare": "B {pct}%",
+      "sellShare": "{pct}% S"
+    },
+    "fills": {
+      "title": "Fills",
+      "subtitle": "Every fill of this bot as recorded from SoDEX, newest first.",
+      "empty": "No fills yet.",
+      "error": "Can’t load fills right now.",
+      "cols": {
+        "time": "Time",
+        "side": "Side",
+        "type": "Type",
+        "price": "Price",
+        "size": "Size",
+        "value": "Value (USDC)",
+        "fee": "Fee",
+        "liquidity": "Liquidity"
+      },
+      "buy": "Buy",
+      "sell": "Sell",
+      "open": "Open",
+      "close": "Close",
+      "maker": "Maker",
+      "taker": "Taker",
+      "pagesLabel": "Fill pages",
+      "prev": "Previous",
+      "next": "Next",
+      "page": "Page {page} of {pages}"
+    },
+    "adca": {
+      "title": "AI Adaptive DCA",
+      "regime": "Market (5 min)",
+      "decision": "Last decision",
+      "atr": "ATR (5 min)",
+      "rsi": "RSI (5 min)",
+      "extraBuys": "Extra orders",
+      "exposure": "Position vs cap",
+      "cycles": "Cycles closed at profit",
+      "exits": "Early exits",
+      "ofMax": "{n} of {max}",
+      "ofCap": "{value} of {cap} USDC",
+      "regimes": {
+        "SIDEWAY": "Sideways",
+        "TREND_UP": "Trending up",
+        "TREND_DOWN": "Trending down",
+        "HIGH_VOLATILITY": "Very volatile",
+        "UNKNOWN": "Not enough data"
+      },
+      "decisions": {
+        "continue": "Continue",
+        "reduce": "Reduce",
+        "exit": "Exit"
+      },
+      "note": "Rules, not predictions: the bot reads 5-minute candles and follows fixed rules. It does not promise profit."
+    },
+    "vd": {
+      "title": "Volume",
+      "subtitle": "Volume made and what it cost",
+      "periodLabel": "Period",
+      "tab": {
+        "session": "Session",
+        "h1": "1H",
+        "h24": "24H",
+        "d7": "7D",
+        "all": "All"
+      },
+      "kpiVolume": "Volume generated",
+      "kpiVolumeSub": "Both sides of every fill",
+      "kpiTarget": "Target: {target} USDC",
+      "kpiCpm": "Net cost / $1M",
+      "kpiCpmSub": "Net loss ÷ volume × 1,000,000",
+      "kpiNet": "Net PnL",
+      "kpiNetSub": "After fees · {trades} closed trades",
+      "kpiMaker": "Trading efficiency",
+      "kpiMakerSub": "Maker share of volume",
+      "chartLabel": "Chart",
+      "chart": {
+        "volume": "Volume",
+        "maker": "Maker / Taker",
+        "fees": "Fees",
+        "pnl": "PnL"
+      },
+      "legend": {
+        "volume": "Cumulative volume",
+        "fees": "Cumulative fees",
+        "pnl": "Cumulative net PnL",
+        "target": "Target ({target})",
+        "maker": "Maker volume",
+        "taker": "Taker volume",
+        "buy": "Buy volume",
+        "sell": "Sell volume"
+      },
+      "targetReached": "Target exceeded by {pct}%",
+      "targetProgress": "{pct}% of target",
+      "breakdownTitle": "Volume breakdown",
+      "costTitle": "Cost breakdown",
+      "sodexFee": "SoDEX trading fee",
+      "builderFee": "DeskLabs builder fee",
+      "funding": "Funding",
+      "fundingSessionOnly": "Session only",
+      "pricePnl": "Price PnL",
+      "execTitle": "Execution quality",
+      "winRate": "Win rate",
+      "winRateSub": "{wins} of {trades} · before fees",
+      "fillRatio": "Fill ratio",
+      "fillRatioSub": "{filled} of {placed}",
+      "rejected": "Rejected",
+      "rejectedSub": "Refused by SoDEX",
+      "tradesPerHour": "Trades / hour",
+      "tradesPerHourSub": "In this period",
+      "footerNet": "Net result",
+      "footerNote": "Fees and price PnL included; an open position counts once it closes",
+      "viewFills": "View fills",
+      "sharePeriod": "Period: {p}"
+    },
+    "review": {
+      "title": "Review this run",
+      "subtitle": "Replays this bot's real entries with other exit settings",
+      "intro": "Checks whether other exit settings would have cost less on the trades this bot actually made. It suggests new settings only when they beat yours on trades they were not tuned on.",
+      "run": "Run review",
+      "runAgain": "Run again",
+      "running": "Reviewing…",
+      "runningNote": "Replaying every trade with 135 settings. This takes a few seconds.",
+      "failed": "The review couldn't run. Try again in a minute.",
+      "insufficient": "No closed trades to replay yet. Run the review after the bot has closed a few trades.",
+      "actual": "Actual cost / $1M",
+      "actualSub": "{trades} trades, real fills",
+      "current": "Your settings / $1M",
+      "currentSub": "Replayed on 1-minute candles",
+      "best": "Best tested / $1M",
+      "bestSub": "{delta} vs yours · 95% range on unseen trades {low} to {high}",
+      "recommended": "These settings would have cost about ${delta} less per $1M (at least ${high} less in 95% of resamples).",
+      "setting": "Setting",
+      "now": "Now",
+      "suggested": "Suggested",
+      "param": {
+        "earlyProfitFees": "Early profit",
+        "earlyExitSecs": "Early profit after",
+        "hold": "Hold",
+        "slMarginPct": "Stop loss"
+      },
+      "value": {
+        "fees": "{n}× fees",
+        "secs": "{n} s",
+        "hold": "{min}–{max} s",
+        "margin": "{n}% of margin"
+      },
+      "apply": "Use these settings",
+      "applying": "Saving…",
+      "applyStopped": "Saved as the bot's settings; the next Start uses them.",
+      "applyRunning": "The bot switches to them after its current trade.",
+      "applied": "Applied as version {version}.",
+      "noBetter": "Keep your settings: no tested setting reliably beats them.",
+      "noBetterFees": "Fees are {share}% of the cost (${fees} per $1M); exit settings can't change that. Keep your settings.",
+      "noBetterProfit": "This run made money on price; keep your settings.",
+      "taker": "{trades} trades had a market order on one side: they cost ${taker} per $1M against ${maker} for post-only trades. Turning off taker orders helps more than any exit setting.",
+      "footnote": "Tested {tested} settings on this bot's real entries; a setting must also win on the last 30% of trades. Reviewed {at}.",
+      "smallSample": "Only {trades} trades. With this little data a new setting rarely beats yours reliably, so nothing is suggested unless it clearly does. Results firm up after {solid} trades.",
+      "weakTitle": "Possible saving: about ${delta} less per $1M.",
+      "weakWarning": "Not enough data to be sure: {trades} trades, and the 95% range runs from {low} to {high} per $1M, so this could be no better or even worse. Try it with a smaller order size and review again later.",
+      "applyAnyway": "Use these settings anyway"
+    },
+    "share": {
+      "title": "Share this bot's result",
+      "description": "An image with this bot's net result, return on its investment and start date. No wallet address, account number or balance.",
+      "heroProfit": "Net profit",
+      "heroLoss": "Net result",
+      "roi": "Return on investment",
+      "fills": "Filled orders",
+      "tagline": "Powered by SoDEX Builder Code",
+      "footer": "Fees included · open positions at the last price · {date}",
+      "text": "My DeskLabs {strategy} bot on {market}: {net} ({roi}) since {since}.",
+      "textLoss": "My DeskLabs {strategy} bot on {market}: {net} ({roi}) since {since}.",
+      "since": "Since"
+    },
+    "exportData": "Export data",
+    "sa": {
+      "title": "Strategy Analytics",
+      "subtitle": "How the trades went, from this bot's real fills",
+      "deepSub": "Deep Analytics · {market}",
+      "back": "Back to the bot",
+      "periodLabel": "Period",
+      "period": {
+        "h1": "1H",
+        "h24": "24H",
+        "d7": "7D",
+        "d30": "30D",
+        "all": "All"
+      },
+      "viewDetails": "View details",
+      "unsupported": "Analytics are available for Volume Builder bots for now.",
+      "noTrades": "No closed trades in this period.",
+      "noInsights": "Nothing stands out in this period.",
+      "performance": "Performance summary",
+      "netPnl": "Net PnL",
+      "netSub": "After fees · {n} trades",
+      "vsPrev": "{v} USDC vs previous period",
+      "winRate": "Win rate",
+      "winGross": "{v} before fees",
+      "profitFactor": "Profit factor",
+      "pfSub": "Gains ÷ losses after fees; above 1 makes money",
+      "maxDd": "Max drawdown",
+      "ddSub": "Biggest fall of cumulative net PnL",
+      "equity": "Cumulative net PnL",
+      "equitySub": "After fees, by trade close",
+      "holding": "Holding time",
+      "holdingBest": "{win} won after fees · {avg} USDC per trade",
+      "holdingNone": "Not enough trades in any window",
+      "holdingChart": "Win rate after fees by holding time",
+      "tradesN": "{n} trades",
+      "bucket": {
+        "0-30s": "0–30s",
+        "30-60s": "30–60s",
+        "1-2m": "1–2m",
+        "2-5m": "2–5m",
+        "5-10m": "5–10m",
+        "10m+": "10m+"
+      },
+      "bestWorst": "Best & worst trades",
+      "best": "Best trade",
+      "worst": "Worst trade",
+      "insights": "Key insights",
+      "insight": {
+        "smallSample": "Only {n} trades in this period, so the numbers can swing a lot.",
+        "bestBucket": "Best holding window: {bucket} ({trades} trades, {winRate}% won after fees, {avgNet} USDC per trade).",
+        "feesEatWins": "Fees turn winners into losers: {gross}% of trades won on price, {net}% after fees.",
+        "exitMostly": "{pct}% of trades exited by {reason}, averaging {avgNet} USDC.",
+        "takerShare": "Only {pct}% of volume was maker; market orders cost more in fees.",
+        "lowFills": "Only {pct}% of orders filled; quotes may sit too far from the best price.",
+        "mmSmallSample": "Only {n} quote fills in this period, so the numbers can swing a lot.",
+        "mmAdverse": "After a quote fills, the price moves {bp} bp against you on average within a minute ({pct}% of fills), against {fee} bp of fees per fill.",
+        "mmSideWorse": "{side} are hit worse: {gap} bp more adverse move than the other side after a minute.",
+        "mmSmartBetter": "With Smart quoting on, fills see {bp} bp less adverse move after a minute.",
+        "mmSmartWorse": "With Smart quoting on, fills see {bp} bp more adverse move after a minute; consider turning it off."
+      },
+      "execution": "Execution quality",
+      "makerRatio": "Maker ratio",
+      "makerSub": "Share of volume filled as maker",
+      "feePerTrade": "Avg fee / trade",
+      "feePerM": "Fees / $1M",
+      "fillRate": "Fill rate",
+      "fillSub": "{f} of {p} orders",
+      "rejected": "Rejected",
+      "rejectedSub": "Refused by SoDEX",
+      "volume": "Volume",
+      "tabsLabel": "Analytics sections",
+      "tab": {
+        "overview": "Overview",
+        "holding": "Holding Time",
+        "trades": "Trade Analysis",
+        "execution": "Execution",
+        "market": "Market Insights",
+        "ai": "AI Analyst"
+      },
+      "soon": "SOON",
+      "winLoss": "Wins and losses",
+      "wins": "Winning trades",
+      "losses": "Losing trades",
+      "avg": "avg {v} USDC",
+      "grossPnl": "Price PnL",
+      "beforeFees": "Before fees",
+      "fees": "Fees",
+      "feesSub": "SoDEX + builder fee",
+      "winByHold": "Win rate by holding time",
+      "pnlByHold": "Avg net PnL by holding time",
+      "clickBucket": "Click a bar to see its trades",
+      "avgNet": "Avg PnL",
+      "holdStats": "Holding time",
+      "avgHold": "Average",
+      "medianHold": "Median",
+      "winnersHold": "Winners, avg",
+      "losersHold": "Losers, avg",
+      "byHoldTable": "Performance by holding time",
+      "colHold": "Holding time",
+      "colTrades": "Trades",
+      "colShare": "Share",
+      "colWinGross": "Won before fees",
+      "colWinNet": "Won after fees",
+      "colAvgNet": "Avg net",
+      "colTotalNet": "Total net",
+      "tradeList": "Trades",
+      "tradeListSub": "{n} trades · {net} USDC net",
+      "fResult": "Result",
+      "fSide": "Side",
+      "fHold": "Holding time",
+      "fExit": "Exit reason",
+      "fSort": "Sort by",
+      "all": "All",
+      "winning": "Winning",
+      "losing": "Losing",
+      "sortTime": "Newest",
+      "sortNet": "PnL",
+      "sortHold": "Holding time",
+      "colClosed": "Closed",
+      "colSide": "Side",
+      "colEntryExit": "Entry → exit",
+      "colExit": "Exit reason",
+      "colMfeMae": "MFE / MAE",
+      "colGross": "Price PnL",
+      "colNet": "Net",
+      "first500": "Showing the first 500 trades; narrow the filters to see others.",
+      "exitsTitle": "Exit reasons",
+      "exit": {
+        "takeProfit": "Take profit",
+        "earlyProfit": "Early profit",
+        "holdTime": "Hold time ended",
+        "maxHold": "Max hold",
+        "stopLoss": "Stop loss",
+        "exchangeStop": "Stop on SoDEX",
+        "trailing": "Trailing stop",
+        "other": "Other"
+      },
+      "detail": {
+        "title": "Trade detail",
+        "titleOf": "{side} trade · {time}",
+        "description": "Prices, orders and fills of one trade, from SoDEX fills and the bot's decisions.",
+        "loading": "Loading trade…",
+        "error": "Couldn't load this trade.",
+        "entry": "Entry",
+        "exit": "Exit",
+        "hold": "Held",
+        "net": "Net PnL",
+        "netSub": "On {notional} USDC",
+        "gross": "Price PnL",
+        "fees": "Fees",
+        "mfe": "MFE",
+        "mfeSub": "Best move in its favour",
+        "mae": "MAE",
+        "maeSub": "Worst move against it",
+        "chart": "Price around the trade",
+        "noCandles": "No 1-minute candles for this time.",
+        "entryAt": "Entry {p}",
+        "exitAt": "Exit {p}",
+        "condition": "Market when it entered",
+        "timeline": "Order timeline",
+        "orderLine": "Order {tag}: {side} {type} at {price}, {status}",
+        "fillLine": "Filled {side} {size} at {price}, fee {fee} ({liq})",
+        "version": "Settings version {v}"
+      }
+    },
+    "mma": {
+      "title": "Market Making Analytics",
+      "subtitle": "Fill by fill, from this bot's real fills",
+      "noFills": "No fills in this period.",
+      "volume": "Volume",
+      "feePerM": "Fees / $1M",
+      "feesSub": "incl. {b} USDC builder fee",
+      "adverse1m": "Adverse move · 1 min",
+      "adverseSub": "Price move after a quote fills; negative = against you",
+      "fillRate": "Fill rate",
+      "fillSub": "{f} of {p} orders",
+      "rest": "Time on book",
+      "restSub": "Median, order sent → filled",
+      "maker": "Maker share",
+      "rejected": "{n} rejected by SoDEX",
+      "adverseTitle": "Adverse selection",
+      "adverseHint": "Avg move in your favour after a quote fills; % = fills the price went against",
+      "allQuotes": "All quotes",
+      "side": {
+        "bid": "Bid fills",
+        "ask": "Ask fills"
+      },
+      "smartOn": "Smart quoting on",
+      "smartOff": "Smart quoting off",
+      "colGroup": "Group",
+      "colFills": "Fills",
+      "colAfter": "After {m} min",
+      "colAgainst": "Against · 1 min",
+      "inventoryTitle": "Inventory",
+      "inventorySub": "Max {max} USDC · flat {flat} of the time"
+    }
   },
   "orders": {
     "title": "Execution & Orders",
-    "subtitle": "Every order DRIFT sent, and what SoDEX says happened to it.",
+    "subtitle": "Every order DeskLabs sent, and what SoDEX says happened to it.",
     "unknownBanner": "{count, plural, one {# order has an unknown result} other {# orders have an unknown result}}",
-    "unknownBody": "DRIFT has not retried it and will not until SoDEX confirms whether it exists.",
+    "unknownBody": "DeskLabs has not retried it and will not until SoDEX confirms whether it exists.",
     "caption": "Orders",
     "cols": {
       "time": "Time",
@@ -1923,14 +3266,16 @@
     "emptyNone": "No orders yet. Orders appear here once a bot sends them.",
     "reviewOrder": "Review order",
     "showLast30": "Show last 30 days",
-    "clearFilters": "Clear filters"
+    "clearFilters": "Clear filters",
+    "rejectCode": "SoDEX code {code}",
+    "selfTrade": "Would have traded with your own order"
   },
   "botEdit": {
     "title": "Edit {name}",
     "sub": "{state} · config v{version} · changes are saved as v{next}",
     "changeable": "Settings you can change",
     "locked": "Locked while the bot exists",
-    "lockedHint": "To change these, stop this bot and use Duplicate in Strategy Lab.",
+    "lockedHint": "To change these, create a new bot from Strategy Lab.",
     "changes": "Changes · v{version} → v{next}",
     "noChanges": "No changes yet.",
     "whatHappens": "What happens when you apply",
@@ -1953,8 +3298,8 @@
   },
   "reasons": {
     "BUILDER_FEE_REVOKED": "Paused: builder fee approval is 0",
-    "API_KEY_EXPIRED": "Paused: DRIFT API key expired",
-    "API_KEY_DELETED": "Paused: DRIFT API key deleted",
+    "API_KEY_EXPIRED": "Paused: DeskLabs API key expired",
+    "API_KEY_DELETED": "Paused: DeskLabs API key deleted",
     "RISK_DAILY_LOSS": "Paused: daily loss limit reached",
     "RISK_DRAWDOWN": "Paused: drawdown limit reached",
     "BOT_MAX_LOSS": "Paused: max loss for this bot reached",
@@ -1965,7 +3310,8 @@
     "EMERGENCY_HALT": "Stopped: emergency halt",
     "BUDGET_DONE": "Stopped: budget used",
     "MAX_CYCLES": "Stopped: max cycles reached",
-    "API_KEY_UNUSABLE": "Paused: DRIFT can’t sign with your API key"
+    "MAX_CYCLES_VOLUME": "Stopped: volume target reached",
+    "API_KEY_UNUSABLE": "Paused: DeskLabs can’t sign with your API key"
   },
   "overview": {
     "title": "Overview",
@@ -1973,10 +3319,10 @@
     "emergency": {
       "title": "Emergency",
       "body": "Stops every agent and cancels their open orders. You review before it runs.",
-      "cta": "Halt all agents…"
+      "cta": "Halt all agents"
     },
     "updated": "Updated {time}",
-    "equity": "Account value (equity)",
+    "equity": "Account value",
     "unrealized": "Unrealized PnL · open positions",
     "ofEquity": "{pct}% of equity",
     "realized": "Realized PnL · selected period",
@@ -2009,9 +3355,18 @@
     "serverEnforced": "Server-enforced",
     "uiOnly": "UI warning only · not enforced by server",
     "openRisk": "Open Risk Center →",
-    "myBots": "My Profit Bots",
+    "drafts": {
+      "title": "Drafts · {count}",
+      "hint": "Not running. Continue to review and start.",
+      "continue": "Continue",
+      "continueLabel": "Continue {name}",
+      "more": "+{count} more in Strategy Lab"
+    },
+    "myBots": "My bots",
     "newBot": "New bot",
+    "moreStopped": "{count, plural, one {# more stopped bot} other {# more stopped bots}} in Strategy Lab →",
     "investment": "Investment",
+    "botMargin": "Margin",
     "profit": "Profit",
     "activity": "Recent activity",
     "allActivity": "All orders & events →",
@@ -2019,13 +3374,12 @@
     "noAccount": "Connect your SoDEX account to see your balances.",
     "connect": "Connect SoDEX",
     "empty": "Not available",
-    "welcome": "Welcome back",
     "periodsLabel": "Period",
     "periodWord": {
       "1": "last 24 hours",
       "7": "last 7 days",
       "30": "last 30 days",
-      "all": "since DRIFT started tracking"
+      "all": "since DeskLabs started tracking"
     },
     "change": "{amount} USDC",
     "agentCard": {
@@ -2051,7 +3405,7 @@
     },
     "noBots": "No bots yet. Pick a strategy to set up your first bot.",
     "equitySplit": "Spot {spot} · Perps {perps}",
-    "changeLabel": "Equity change · includes deposits and transfers",
+    "changeNote": "The change includes deposits and transfers.",
     "watchlistCard": {
       "title": "Watchlist",
       "note": "Price · 24h",
@@ -2076,8 +3430,9 @@
       "newBot": "New bot on {market}",
       "removeItem": "Remove",
       "notAvailable": "Not available",
-      "saveFailed": "Couldn't save your watchlist. Try again."
-    }
+      "saveFailed": "Couldn’t save your watchlist. Try again."
+    },
+    "noOpenPositions": "No open positions"
   },
   "portfolio": {
     "title": "Portfolio",
@@ -2105,7 +3460,7 @@
       "long": "Long",
       "short": "Short"
     },
-    "liqNote": "Liquidation price is shown only when SoDEX returns it. DRIFT does not estimate it.",
+    "liqNote": "Liquidation price is shown only when SoDEX returns it. DeskLabs does not estimate it.",
     "notProvided": "Not provided",
     "balances": {
       "asset": "Asset",
@@ -2121,7 +3476,7 @@
     "exposure": "Exposure",
     "exposureNote": "Notional at mark · gross {gross} USDC",
     "concentration": "{pct}% of exposure is {asset}.",
-    "concentrationNote": "Concentration limits are not configured, so DRIFT shows this as information, not a warning.",
+    "concentrationNote": "Concentration limits are not configured, so DeskLabs shows this as information, not a warning.",
     "unpriced": "Not included in equity (no price yet): {coins}",
     "noAccount": "Connect your SoDEX account to see your portfolio.",
     "tabs": {
@@ -2207,7 +3562,7 @@
     "legendServer": "Server-enforced: orders past the limit are blocked",
     "legendUi": "UI warning only: you are told, nothing is blocked",
     "of": "of {limit}",
-    "edit": "Edit…",
+    "edit": "Edit",
     "notSet": "Not set",
     "notAvailable": "Not available",
     "items": {
@@ -2231,18 +3586,18 @@
       "maxLeverage": {
         "label": "Max leverage",
         "sub": "Per position",
-        "body": "DRIFT warns you above this leverage. SoDEX’s own maximum still applies.",
+        "body": "DeskLabs warns you above this leverage. SoDEX’s own maximum still applies.",
         "highest": "Highest: {market} {lev}×"
       },
       "maxPositions": {
         "label": "Open positions",
         "sub": "Count across all markets",
-        "body": "DRIFT warns you once this many are open."
+        "body": "DeskLabs warns you once this many are open."
       },
       "concentration": {
         "label": "Concentration",
         "sub": "Max share of exposure in one asset",
-        "body": "Not supported by the backend yet"
+        "body": "DeskLabs doesn’t track this limit yet"
       }
     },
     "serverEnforced": "Server-enforced",
@@ -2273,13 +3628,13 @@
       "agents": "{n, plural, one {# agent} other {# agents}}",
       "orders": "{n, plural, one {# open order} other {# open orders}}",
       "positions": "{n, plural, one {# position} other {# positions}}",
-      "cta": "Halt all agents…",
+      "cta": "Halt all agents",
       "note": "You review the exact list before it runs. Status updates only after the backend confirms.",
       "dialog": "Halt all agents?",
       "confirm": "Halt all agents",
       "cancel": "Cancel",
       "twoFactor": "2FA code",
-      "done": "Halt requested. Agents show Stopped once DRIFT confirms."
+      "done": "Halt requested. Agents show Stopped once DeskLabs confirms."
     },
     "editDialog": {
       "title": "Change {label}",
@@ -2325,17 +3680,17 @@
     "askCta": "Ask",
     "askSoon": "Coming soon",
     "askNote": "Answers cite the data and timestamps they use.",
-    "disclaimer": "The analyst describes your data and suggests things to check. It does not predict prices, promise returns, or place orders. Confidence scores are not shown because DRIFT has no calibrated way to produce them yet. Not financial advice.",
+    "disclaimer": "The analyst describes your data and suggests things to check. It does not predict prices, promise returns, or place orders. Confidence scores are not shown because DeskLabs has no calibrated way to produce them yet. Not financial advice.",
     "noInsightsTitle": "No insights yet"
   },
   "revenue": {
     "title": "Builder Revenue",
-    "subtitle": "Fees SoDEX credits to DRIFT’s builder account on fills of orders DRIFT sends.",
+    "subtitle": "Fees SoDEX credits to DeskLabs’ builder account on fills of orders DeskLabs sends.",
     "period": "Period",
     "all": "All time",
     "account": "Builder account #{id}",
     "eligible": "✓ Eligible: ≥ 100 vUSDC on both engines",
-    "notEligible": "Below 100 vUSDC on an engine: users can’t approve DRIFT’s fee",
+    "notEligible": "Below 100 vUSDC on an engine: users can’t approve DeskLabs’ fee",
     "synced": "Balances from {time}",
     "earned": "Builder fees earned",
     "earnedNote": "USDC · both engines",
@@ -2347,7 +3702,7 @@
     "effective": "effective {pct}% (fees ÷ notional)",
     "realtime": "Credited in real time on each engine. No claim step.",
     "reconciliation": "Reconciliation",
-    "reconNote": "Sum of builderFee on DRIFT fills, checked against the builder account’s balance change.",
+    "reconNote": "Sum of builderFee on DeskLabs fills, checked against the builder account’s balance change.",
     "cols": {
       "day": "Day",
       "engine": "Engine",
@@ -2363,10 +3718,10 @@
     "approved": "Approved at 0.01%",
     "revoked": "Revoked (set to 0)",
     "never": "Never approved",
-    "approvalsNote": "SoDEX still fills orders from accounts without an approval, at a builder fee of 0. DRIFT bots on those accounts are paused until the user approves again.",
+    "approvalsNote": "SoDEX still fills orders from accounts without an approval, at a builder fee of 0. DeskLabs bots on those accounts are paused until the user approves again.",
     "notProfit": "Not trading profit",
-    "notProfitBody": "This is DRIFT’s income. It is never included in a user’s equity, PnL or bot profit.",
-    "forbidden": "Builder Revenue is for the DRIFT team only.",
+    "notProfitBody": "This is DeskLabs’ income. It is never included in a user’s equity, PnL or bot profit.",
+    "forbidden": "Builder Revenue is for the DeskLabs team only.",
     "noDays": "No reconciled days in this period."
   },
   "notifications": {
@@ -2381,13 +3736,76 @@
       "risk_alert": "Risk limit reached",
       "key_fee": "SoDEX access changed",
       "fill": "Order filled",
-      "daily_summary": "Daily summary"
+      "daily_summary": "Daily summary",
+      "leader_big_move": "A trader you follow made a big move"
+    },
+    "paperTypes": {
+      "bot_paused": "A fake-money test was paused",
+      "bot_stopped": "A fake-money test stopped"
+    }
+  },
+  "adminUser": {
+    "back": "Users",
+    "subtitle": "Registered {date} · Last seen {seen}",
+    "never": "not recorded",
+    "viewNote": "Read-only except builder fees. Every visit and every fee change is recorded in the audit log.",
+    "notFound": "This user doesn’t exist.",
+    "stats": {
+      "equity": "Equity",
+      "equityAt": "Updated {time}",
+      "botProfit": "Bot profit",
+      "volume24h": "Volume · 24 hours",
+      "volume7d": "Volume · 7 days",
+      "volumeAll": "Volume · all time",
+      "fills": "Fills",
+      "builderFees": "Builder fees paid"
+    },
+    "profitNote": "Bot profit and volume are in USD terms and include archived bots. Equity is the latest value DeskLabs recorded.",
+    "account": "Account",
+    "sodex": "SoDEX account",
+    "builderFee": "Builder fee",
+    "twoFactor": "2FA",
+    "volumeBots": "Volume bots",
+    "bots": "Bots",
+    "noBots": "This user has no bots.",
+    "orders": "Recent orders",
+    "noOrders": "No orders yet.",
+    "cols": {
+      "bot": "Bot",
+      "strategy": "Strategy",
+      "status": "Status",
+      "profit": "Profit",
+      "fills": "Fills",
+      "updated": "Updated",
+      "time": "Time",
+      "market": "Market",
+      "side": "Side",
+      "price": "Price",
+      "size": "Size"
+    },
+    "market": "Market",
+    "fees": {
+      "title": "Builder fee by strategy",
+      "intro": "Set this user’s builder fee per strategy, from 0% to 0.01% in steps of 0.001%. Their new orders use it right away, and each running bot of that strategy logs the change.",
+      "cols": {
+        "strategy": "Strategy",
+        "default": "Default",
+        "rate": "This user",
+        "edit": "Change"
+      },
+      "custom": "Custom",
+      "editLabel": "Builder fee for {strategy}",
+      "inputLabel": "New builder fee for {strategy}, in percent",
+      "save": "Save",
+      "reset": "Use default",
+      "invalid": "Allowed 0–0.01%, up to 3 decimals.",
+      "notified": "{count, plural, one {# running bot was told} other {# running bots were told}}."
     }
   },
   "adminUsers": {
     "title": "Users",
-    "subtitle": "Everyone registered on DRIFT. Read-only.",
-    "forbidden": "Users is for the DRIFT team only.",
+    "subtitle": "Everyone registered on DeskLabs. Open a user to see their stats and bots. You can reset a password and turn volume bots on or off; nothing else changes here.",
+    "forbidden": "This page is for the DeskLabs team only.",
     "search": "Search by email",
     "count": "{total, plural, one {# user} other {# users}}",
     "empty": "No users match this search.",
@@ -2396,8 +3814,13 @@
       "registered": "Registered",
       "sodex": "SoDEX account",
       "fee": "Builder fee",
-      "bots": "Bots running",
-      "twoFactor": "2FA"
+      "bots": "Bots",
+      "equity": "Equity (USD)",
+      "volume": "Volume (USD)",
+      "twoFactor": "2FA",
+      "actions": "Actions",
+      "volumeBots": "Volume bots",
+      "aiDesk": "AI Desk"
     },
     "team": "Team",
     "notConnected": "Not connected",
@@ -2417,166 +3840,265 @@
     "off": "Off",
     "prev": "Previous",
     "next": "Next",
-    "page": "Page {page} of {pages}"
+    "page": "Page {page} of {pages}",
+    "reset": {
+      "button": "Reset",
+      "title": "Reset password for {email}?",
+      "consequencesLabel": "What happens",
+      "consequences": {
+        "one": "DeskLabs creates a new temporary password and shows it to you once.",
+        "two": "The old password stops working and the user is signed out on every device.",
+        "three": "Their bots keep running. Two-factor authentication stays on if it was on."
+      },
+      "confirm": "Reset password",
+      "pending": "Resetting…",
+      "cancel": "Cancel",
+      "twoFactor": "Your 2FA code",
+      "resultTitle": "Temporary password for {email}",
+      "resultBody": "Shown only once. Send it to the user over a private channel; they sign in with it.",
+      "copy": "Copy",
+      "copied": "Copied",
+      "dismiss": "Done",
+      "errors": {
+        "twoFactor": "That 2FA code didn’t work.",
+        "twoFactorOff": "Turn on 2FA in Settings › Security before resetting passwords.",
+        "generic": "Couldn’t reset the password. Try again."
+      }
+    },
+    "volume": {
+      "turnOn": "Turn on",
+      "turnOff": "Turn off",
+      "onLabel": "Turn on volume bots for {email}",
+      "offLabel": "Turn off volume bots for {email}",
+      "onTitle": "Turn on volume bots for {email}?",
+      "offTitle": "Turn off volume bots for {email}?",
+      "on": {
+        "one": "Market Making and Volume Builder appear in their Strategy Lab and they can create and start them.",
+        "two": "Their other bots are not affected."
+      },
+      "off": {
+        "one": "Market Making and Volume Builder disappear from their Strategy Lab.",
+        "two": "Running volume bots are paused. Open positions stay open until the user closes them."
+      },
+      "confirmOn": "Turn on",
+      "confirmOff": "Turn off",
+      "pending": "Saving…",
+      "error": "Couldn’t save the change. Try again."
+    },
+    "aiDesk": {
+      "onLabel": "Turn on AI Desk for {email}",
+      "offLabel": "Turn off AI Desk for {email}",
+      "error": "Couldn’t save the change. Try again."
+    }
   },
   "landing": {
-    "metaTitle": "DRIFT · Profit bots for SoDEX",
-    "metaDescription": "Connect your SoDEX account, get a strategy matched to how you already trade, and run it on mainnet. DRIFT never withdraws or transfers your funds.",
+    "metaTitle": "{brand} · Automated trading strategies on SoDEX",
+    "metaDescription": "Market Making, Volume Builder and more run on your own SoDEX account. Every decision logged, every fill analysed, and your funds never leave your account.",
     "nav": {
       "label": "Main",
-      "how": "How it works",
       "strategies": "Strategies",
+      "lab": "Analytics",
+      "how": "How it works",
       "safety": "Safety",
       "fees": "Fees",
       "faq": "FAQ",
       "signIn": "Sign in",
-      "createAccount": "Create account",
-      "backToOverview": "Back to Overview"
+      "createAccount": "Launch app",
+      "backToOverview": "Back to Overview",
+      "menu": "Open menu",
+      "closeMenu": "Close menu"
     },
     "hero": {
-      "eyebrow": "PROFIT BOTS FOR SODEX",
-      "titleTop": "Your trading, studied.",
-      "titleBottom": "Then automated.",
-      "body": "Connect your SoDEX account by approving two sign requests in your wallet. DRIFT studies how you already trade, suggests a strategy that fits, and runs it on mainnet for you.",
-      "promisesLabel": "What DRIFT promises",
+      "eyebrow": "POWERED BY SODEX BUILDER CODE",
+      "title": "Trading strategies that run while you work.",
+      "body": "Market Making, Volume Builder and more run on your own SoDEX account while you do something else. Every decision is logged, every fill is analysed, and your funds never leave your account.",
+      "explore": "Explore strategies",
+      "promisesLabel": "What we promise",
       "promises": {
         "withdraw": "Never withdraws your funds",
-        "seed": "Never asks for your seed phrase",
+        "seed": "No seed phrase, ever",
         "revoke": "Revoke access anytime"
       },
-      "cardLabel": "Example Trading Agent card",
-      "cardTitle": "Spot Grid · BTC/USDC",
-      "cardSub": "Trading Agent",
+      "cardLabel": "Example Market Making bot",
+      "cardTitle": "BTC Market Making",
+      "cardSub": "BTC-USD · Smart quoting on",
       "cardStatus": "Running",
-      "cardRange": "Grid range",
-      "cardDecisions": "Decisions",
-      "cardFill1": "Sold one level, placed the buy below",
-      "cardFill2": "Bought one level, placed the sell above",
-      "cardState": "Running · confirmed by SoDEX",
-      "tagFill": "FILL",
-      "tagState": "STATE",
-      "cardPause": "❚❚ Pause",
-      "cardEdit": "Edit bot",
-      "cardStop": "■ Stop",
-      "cardNote": "Illustration. Your agent shows your own bot and data."
+      "price": "Price",
+      "size": "Size (USDC)",
+      "sum": "Sum",
+      "spread": "Spread {bps} bps",
+      "you": "YOU",
+      "decisions": "Decisions",
+      "dec1": "Smart quoting adjusted",
+      "dec1Why": "ask back 8 ticks (bid depth 2.4× ask depth)",
+      "dec2": "Filled",
+      "dec2Why": "bid 0.0003 BTC, maker",
+      "cardNote": "Illustration. In the app you see your own bot and data.",
+      "live": "Live",
+      "liveNote": "Live BTC-USD order book from SoDEX. YOU marks where a Market Making bot quotes; decisions are an example."
     },
-    "how": {
-      "eyebrow": "HOW IT WORKS",
-      "title": "From your history to a running bot in about 5 minutes",
-      "steps": {
-        "connect": {
-          "title": "Connect SoDEX",
-          "body": "Your wallet shows two sign requests: one lets DRIFT trade for you, one approves the builder fee. No gas, no funds moved, nothing to copy or paste."
-        },
-        "import": {
-          "title": "DRIFT studies your history",
-          "body": "As soon as you connect, DRIFT imports your SoDEX trades, fills and funding by itself and shows where your profit really went."
-        },
-        "plan": {
-          "title": "Get a strategy plan",
-          "body": "A rule-based engine matches strategies to your data and your goals, and fills in the parameters. Every suggestion says why."
-        },
-        "run": {
-          "title": "Run it, watch it",
-          "body": "Backtest first if you like. Then start on mainnet and follow every decision in the Trading Agent. Pause, edit or stop at any time."
-        }
-      }
+    "stats": {
+      "label": "Platform numbers",
+      "builtOn": "Live on",
+      "sodex": "SoDEX mainnet",
+      "volume": "Traded on SoDEX by our bots, all time",
+      "bots": "Bots launched, all time",
+      "strategies": "Strategies, one setup screen"
     },
     "strategies": {
       "eyebrow": "STRATEGIES",
-      "title": "Eight strategies, one way to set them up",
-      "body": "Every bot is created on one screen: pick a market, check the parameters, see the checks pass, start.",
-      "filterLabel": "Filter strategies by engine",
-      "filters": {
-        "all": "All",
-        "spot": "Spot",
-        "perps": "Perps"
+      "title": "Two flagship strategies, {count} more ready to run",
+      "body": "Defaults are tuned per market, every hard option explains how it works, and any setup can be backtested on SoDEX history before it touches mainnet.",
+      "feeRate": "Builder fee {rate}",
+      "beta": "BETA",
+      "mm": {
+        "body": "Quotes a bid and an ask from the SoDEX order book, earns maker volume and keeps inventory small. Set where you sit in the book with one number that works on every market.",
+        "p1": "Smart quoting steps back when the book turns lopsided, and pulls a quote during a trend",
+        "p2": "Live order book with your quotes marked",
+        "p3": "Cost cap: stops itself before it spends more than you set",
+        "cta": "Start Market Making"
       },
+      "vf": {
+        "body": "Short, maker-first trades that build volume at a low cost per million, with a stop loss on SoDEX itself for every trade.",
+        "p1": "Stop moves to break-even at the level you choose",
+        "p2": "Early profit in multiples of fees, not guesses",
+        "p3": "Review this run: replays your real trades with other settings",
+        "cta": "Start Volume Builder"
+      },
+      "more": "More strategies",
       "backtest": "Backtest any setup on SoDEX price history before you start. A backtest is a simulation, not a forecast."
+    },
+    "lab": {
+      "eyebrow": "THE LAB",
+      "title": "Every fill measured. No suggestion without proof.",
+      "body": "Bots aren't black boxes. Each one comes with analytics built from its real fills, and a review that only suggests new settings when they beat yours on trades they never saw.",
+      "items": {
+        "analytics": {
+          "title": "Strategy Analytics",
+          "body": "Holding time, trade breakdown and execution quality by period."
+        },
+        "adverse": {
+          "title": "Adverse selection",
+          "body": "How price moves 1, 3 and 5 minutes after each Market Making fill."
+        },
+        "review": {
+          "title": "Review this run",
+          "body": "Replays your real entries with other settings and suggests a change only when it wins on trades it never saw."
+        },
+        "export": {
+          "title": "Export",
+          "body": "Download every order, fill and decision as a zip."
+        }
+      },
+      "chartLabel": "Example adverse selection chart",
+      "chartTitle": "Adverse selection",
+      "chartSub": "Smart quoting off vs on",
+      "after": "After {m} min",
+      "off": "Off",
+      "on": "On",
+      "illustration": "Illustration"
+    },
+    "how": {
+      "eyebrow": "HOW IT WORKS",
+      "title": "From wallet to running bot in about 5 minutes",
+      "steps": {
+        "connect": {
+          "title": "Connect SoDEX",
+          "body": "Approve two sign requests in your wallet: one to trade, one for the builder fee. No gas, no funds moved."
+        },
+        "pick": {
+          "title": "Pick a strategy",
+          "body": "Defaults fit the market you choose, and every hard option explains how it works."
+        },
+        "run": {
+          "title": "Run on mainnet",
+          "body": "A bot shows Running only after SoDEX confirms it. Pause, edit or stop anytime."
+        },
+        "review": {
+          "title": "Review and improve",
+          "body": "Read every decision, check the analytics, and apply a review suggestion when the data backs it."
+        }
+      }
     },
     "safety": {
       "eyebrow": "SAFETY",
-      "title": "DRIFT trades. It never moves your money.",
-      "body": "Once connected, DRIFT can read your account and place or cancel orders for bots you start. It can never withdraw or transfer, and the product has no feature for it.",
-      "read": "Read account data",
-      "readSub": "Balances, positions, orders, fills",
-      "trade": "Place and cancel orders",
-      "tradeSub": "Only for bots you confirm",
-      "withdraw": "Withdraw or transfer",
-      "withdrawSub": "Never",
+      "title": "We trade. We never move your money.",
+      "body": "Once connected, the app can read your account and place or cancel orders for bots you start. Withdraw and transfer are not possible, and the product has no feature for them.",
+      "read": "Read balances, positions, orders",
+      "trade": "Place and cancel orders for your bots",
+      "withdraw": "Withdraw or transfer funds",
+      "yes": "Yes",
+      "never": "Never",
       "seedTitle": "No seed phrase, ever",
-      "seedBody": "DRIFT never asks for your seed phrase or private key. Connecting only takes two sign requests in your wallet.",
+      "seedBody": "Connecting takes two wallet signatures. Nothing to copy or paste.",
+      "stopTitle": "Stops on SoDEX itself",
+      "stopBody": "Volume Builder places a real stop on the exchange, so trades stay protected even if we go offline.",
       "limitsTitle": "Limits the server enforces",
-      "limitsBody": "Daily loss, max drawdown and per-trade risk are checked by the risk engine, not just shown in the app.",
-      "haltTitle": "One-tap emergency halt",
-      "haltBody": "Stop every agent and cancel their open orders from any screen, desktop or phone.",
-      "retryTitle": "No blind retries",
-      "retryBody": "If an order’s result is unclear, DRIFT checks with SoDEX before sending anything again."
+      "limitsBody": "Loss caps and cost budgets are checked by the engine, not just shown in the app.",
+      "haltTitle": "One-tap halt",
+      "haltBody": "Stop every bot and cancel its orders from any screen."
     },
     "fees": {
       "eyebrow": "FEES",
-      "title": "One fee, shown before you sign",
-      "label": "builder fee",
-      "body": "Charged by SoDEX, through Builder Codes, on fills of orders DRIFT sends for your bots. Which fills pay it depends on the strategy, and the Create screen shows it before you start. SoDEX trading fees apply as usual.",
-      "revoke": "Revoke the fee in Settings at any time. Your bots pause right away; open orders stay as they are.",
-      "liveEyebrow": "LIVE ON MAINNET",
-      "liveTitle": "Every bot trades real funds",
-      "liveBody": "Bots run on SoDEX mainnet. A bot shows Running only after SoDEX confirms it, and every pause, edit and stop waits for the same confirmation.",
-      "liveChip": "LIVE · MAINNET",
-      "paperChip": "Paper · Coming soon"
+      "title": "Low builder fees, shown before you sign",
+      "body": "Charged by SoDEX through Builder Codes on fills of orders your bots send. SoDEX trading fees apply as usual. Revoke the builder fee in Settings anytime; your bots pause right away.",
+      "mm": "Market Making",
+      "vf": "Volume Builder",
+      "other": "Every other strategy"
     },
     "faq": {
       "eyebrow": "FAQ",
       "title": "Questions before you connect",
       "items": {
+        "independent": {
+          "q": "Is {brand} run by SoDEX?",
+          "a": "No. {brand} is an independent team building strategies on SoDEX. Your orders go to SoDEX like any other trade."
+        },
         "withdraw": {
-          "q": "Can DRIFT withdraw or move my funds?",
-          "a": "No. Once connected, DRIFT can only read your account and place or cancel orders. Withdraw and transfer are blocked, and DRIFT has no feature for them anywhere in the product."
+          "q": "Can you withdraw or move my funds?",
+          "a": "No. The app can only read your account and place or cancel orders. Withdraw and transfer are blocked."
         },
         "sign": {
           "q": "What do I approve when I connect?",
-          "a": "Two sign requests in your SoDEX wallet: one lets DRIFT trade for you without any withdraw or transfer permission, one approves the {fee} builder fee. Neither costs gas or moves funds."
-        },
-        "suggest": {
-          "q": "How are strategies suggested?",
-          "a": "After you connect, DRIFT imports your SoDEX history automatically. A rule-based engine reads it together with the goals you set, matches strategies and parameters, and explains each suggestion. You can clear the parameters and enter your own."
+          "a": "Two sign requests in your wallet: one lets the app trade for you without any withdraw permission, one approves the builder fee (up to {fee}). Neither costs gas."
         },
         "paper": {
-          "q": "Can I try a bot without real money?",
-          "a": "You can backtest any setup on SoDEX price history. Paper trading is coming soon; today every bot runs live on mainnet."
+          "q": "Can I try without real money?",
+          "a": "You can backtest any setup on SoDEX price history. A backtest is a simulation, not a forecast. Bots run live on mainnet."
         },
         "halt": {
           "q": "How do I stop everything?",
-          "a": "Use Halt all agents on any screen. It stops every agent and cancels their open orders. You can also turn off the builder fee or disconnect SoDEX in Settings."
+          "a": "Use Halt all agents on any screen. It stops every bot and cancels its open orders."
         }
       }
     },
     "cta": {
-      "title": "See what your own history suggests",
-      "body": "Create an account, connect SoDEX, and get a strategy plan. Nothing trades until you press Start."
+      "title": "Put a strategy to work on SoDEX",
+      "body": "Connect in two signatures. Stop anytime."
     },
     "footer": {
-      "disclaimer": "Automated trading can lose money; DRIFT doesn’t guarantee profit. Past results and backtests don’t predict future results. Not financial advice.",
+      "built": "Powered by SoDEX Builder Code. Independent project, not operated by SoDEX.",
+      "disclaimer": "Trading crypto, and leveraged perpetual futures in particular, carries a high risk of loss. We don’t guarantee profit. Past results and backtests don’t predict future results. Not financial advice.",
       "legalLabel": "Legal",
       "risk": "Risk Disclosure"
     }
   },
   "riskDisclosure": {
-    "metaTitle": "Risk Disclosure · DRIFT",
+    "metaTitle": "Risk Disclosure · DeskLabs",
     "eyebrow": "RISK",
     "title": "Risk Disclosure",
     "updated": "Last updated Oct 29, 2026",
     "tocLabel": "On this page",
     "warnTitle": "Read this before you start a bot.",
-    "warnBody": "Every DRIFT bot trades real funds on SoDEX mainnet. You can lose part or all of the money a bot uses, and with leverage you can lose it fast. Only use money you can afford to lose.",
+    "warnBody": "Every DeskLabs bot trades real funds on SoDEX mainnet. You can lose part or all of the money a bot uses, and with leverage you can lose it fast. Only use money you can afford to lose.",
     "sections": {
       "loss": {
         "title": "Real money, real losses",
-        "body": "Digital asset prices move quickly and without warning. An automated bot follows its rules whatever the market does: it keeps buying in a falling market or selling in a rising one if that is what its settings say. DRIFT does not guarantee any profit and does not predict prices."
+        "body": "Digital asset prices move quickly and without warning. An automated bot follows its rules whatever the market does: it keeps buying in a falling market or selling in a rising one if that is what its settings say. DeskLabs does not guarantee any profit and does not predict prices."
       },
       "leverage": {
         "title": "Leverage and liquidation",
-        "body": "Futures Grid, Futures DCA, Funding Arbitrage and perps TWAP use perpetual contracts. With leverage, a small price move against you becomes a large loss. If your margin falls below SoDEX’s maintenance requirement, SoDEX can liquidate your position. A liquidation happens on SoDEX and DRIFT cannot stop or reverse it."
+        "body": "Futures Grid, Futures DCA, Funding Arbitrage and perps TWAP use perpetual contracts. With leverage, a small price move against you becomes a large loss. If your margin falls below SoDEX’s maintenance requirement, SoDEX can liquidate your position. A liquidation happens on SoDEX and DeskLabs cannot stop or reverse it."
       },
       "margin": {
         "title": "Multi-Asset Margin",
@@ -2584,13 +4106,13 @@
       },
       "sharedLeverage": {
         "title": "Shared leverage per market",
-        "body": "On SoDEX, leverage and margin mode are set per account and per market. When a bot sets leverage on a market, it changes it for your whole account, including trades you place yourself. DRIFT blocks the start when that would affect an open position, and asks you to confirm otherwise."
+        "body": "On SoDEX, leverage and margin mode are set per account and per market. When a bot sets leverage on a market, it changes it for your whole account, including trades you place yourself. DeskLabs blocks the start when that would affect an open position, and asks you to confirm otherwise."
       },
       "strategy": {
         "title": "Strategy risks",
         "items": {
           "grid": "<b>Grid:</b> if price leaves your range, the grid has no levels left to trade and you hold what it bought, or the short it opened, at a loss.",
-          "dca": "<b>DCA:</b> safety orders add to a losing position. A long fall uses all safety orders and the loss grows with every one.",
+          "dca": "<b>DCA:</b> extra buys add to a losing position. A long fall uses all of them and the loss grows with every one.",
           "recurring": "<b>Recurring Buy:</b> keeps buying on schedule and never sells, whatever the price.",
           "rebalancing": "<b>Rebalancing:</b> sells assets that rose and buys ones that fell; in a long trend this can lag simply holding.",
           "funding": "<b>Funding Arbitrage:</b> funding rates change and can turn negative; the spot and perp legs can drift apart; the perp leg can be liquidated.",
@@ -2604,15 +4126,15 @@
       "technical": {
         "title": "Technical risks",
         "items": {
-          "offline": "SoDEX, networks or DRIFT can be slow or offline. Bots may miss orders, and open orders stay on SoDEX while that lasts.",
-          "unknown": "When an order’s result is unknown, DRIFT checks with SoDEX before acting again, which can delay the bot.",
+          "offline": "SoDEX, networks or DeskLabs can be slow or offline. Bots may miss orders, and open orders stay on SoDEX while that lasts.",
+          "unknown": "When an order’s result is unknown, DeskLabs checks with SoDEX before acting again, which can delay the bot.",
           "key": "If your SoDEX connection expires or stops working, bots pause until you reconnect.",
           "bugs": "Software can have bugs. Server-enforced risk limits reduce, but do not remove, that risk."
         }
       },
       "costs": {
         "title": "Costs",
-        "body": "Bots that trade often pay SoDEX trading fees and the {fee} DRIFT builder fee on many fills. Perpetual positions pay or receive funding. These costs can turn a small gain into a loss."
+        "body": "Bots that trade often pay SoDEX trading fees and the {fee} DeskLabs builder fee on many fills. Perpetual positions pay or receive funding. These costs can turn a small gain into a loss."
       },
       "actions": {
         "title": "What you can do",
@@ -2620,14 +4142,493 @@
           "limits": "Set daily loss, max drawdown and per-trade limits in Risk Center. The risk engine pauses bots that reach them.",
           "botLimits": "Set a max loss and stop price on each bot, and keep leverage low.",
           "halt": "Use Halt all agents to stop every bot and cancel their open orders at once.",
-          "revoke": "Turn off the builder fee or disconnect SoDEX in Settings to stop DRIFT trading entirely."
+          "revoke": "Turn off the builder fee or disconnect SoDEX in Settings to stop DeskLabs trading entirely."
         }
       }
     }
   },
+  "platformStats": {
+    "title": "Platform Stats",
+    "subtitle": "Platform-wide analytics: users, volume, fees and bots.",
+    "period": "Period",
+    "snapshot": "Updated {time}",
+    "forbidden": "Platform Stats is for the DeskLabs team only.",
+    "usersSection": "Users",
+    "totalUsers": "Total users",
+    "connectedUsers": "Connected (SoDEX)",
+    "newUsers7d": "New · 7d",
+    "newUsers30d": "New · 30d",
+    "volumeSection": "Volume",
+    "volume24h": "Volume · 24h",
+    "volume7d": "Volume · 7d",
+    "volume30d": "Volume · 30d",
+    "volumeTotal": "Volume · all time",
+    "feesSection": "Builder Fees",
+    "fees24h": "Fees · 24h",
+    "fees7d": "Fees · 7d",
+    "fees30d": "Fees · 30d",
+    "feesTotal": "Fees · all time",
+    "botsSection": "Bots",
+    "runningBots": "Running",
+    "totalBots": "Total bots",
+    "botsCreated24h": "New bots · 24h",
+    "volumeChart": "Daily volume · last {period}d",
+    "usersChart": "Daily new users · last {period}d",
+    "detailsTitle": "Details",
+    "ov": {
+      "insightsTitle": "What needs attention",
+      "allClear": "Nothing needs attention right now.",
+      "insight": {
+        "priceMissing": {
+          "title": "No live prices",
+          "body": "Market data has no recent price. Bots can't start and running bots can't requote. Check the marketdata service."
+        },
+        "priceStale": {
+          "title": "Prices are {secs} s old",
+          "body": "Market data stopped updating. Bots can't start and running bots quote on old prices."
+        },
+        "needsAttention": {
+          "title": "{n, plural, one {# bot needs} other {# bots need}} attention",
+          "body": "Paused by an error or a limit. Open Trading Agent to see why."
+        },
+        "activationLowDrop": {
+          "title": "Only {pct}% of users connected SoDEX ({connected} of {total})",
+          "body": "Biggest drop on the Connect screen: {from} → {to}, {lost} users lost. Accounts created on SoDEX with email can't sign with DeskLabs yet."
+        },
+        "activationLow": {
+          "title": "Only {pct}% of users connected SoDEX ({connected} of {total})",
+          "body": "Most users stop before connecting a wallet."
+        },
+        "noBotsRunning": {
+          "title": "No bots running",
+          "body": "No volume or builder fees until a bot is started."
+        },
+        "volumeUp": {
+          "title": "Volume up {pct}% on the previous period",
+          "body": "More fills than the period before."
+        },
+        "volumeDown": {
+          "title": "Volume down {pct}% on the previous period",
+          "body": "Fewer fills than the period before. Check whether bots stopped or fill rates dropped."
+        },
+        "unchargedVolume": {
+          "title": "{pct}% of volume paid no builder fee",
+          "body": "Fills on DeskLabs’ own builder account are exempt, so revenue looks lower than the volume suggests."
+        },
+        "highRejects": {
+          "title": "{strategy}: {pct}% of orders rejected",
+          "body": "Mostly post-only orders that would have crossed the book. Quotes may sit too close to the price or requote too slowly."
+        },
+        "lowFills": {
+          "title": "{strategy}: only {pct}% of orders filled",
+          "body": "Quotes sit too far from the best price. Check the quote position setting."
+        },
+        "topStopReason": {
+          "title": "Most bots stopped for: {reason}",
+          "body": "{n} bots in this period."
+        },
+        "topStopUser": {
+          "title": "Most bots were stopped by their owner",
+          "body": "{n} bots in this period. Users may be giving up early: see the strategy table for fill and reject rates."
+        }
+      },
+      "kpiActive": "Active users · {period}d",
+      "kpiVolume": "Volume · {period}d",
+      "kpiRevenue": "Builder fees · {period}d",
+      "kpiActivation": "Activation",
+      "activationSub": "{conn} of {signed} users connected SoDEX",
+      "vsPrev": "{sign}{pct}% vs previous period",
+      "newThisPeriod": "New this period",
+      "noPrev": "No data before",
+      "perMillion": "${v} per $1M volume",
+      "noVolume": "No volume yet",
+      "activationTitle": "Activation funnel",
+      "activationHint": "All time, distinct users",
+      "step": {
+        "signedUp": "Signed up",
+        "connected": "Connected SoDEX",
+        "approved": "Approved builder fee",
+        "firstBot": "Created a live bot",
+        "firstFill": "Got a first fill",
+        "active7d": "Traded in the last 7 days"
+      },
+      "lost": "{n} lost",
+      "connectStep": {
+        "view": "Opened screen",
+        "picker_opened": "Clicked Connect wallet",
+        "wallet_picked": "Picked a wallet",
+        "wallet_connected": "Wallet connected",
+        "key_requested": "Asked for signature 1",
+        "sign_prompted": "Signing",
+        "signed": "Signed",
+        "fee_requested": "Asked for signature 2",
+        "connected": "Connected"
+      },
+      "healthTitle": "System health",
+      "hPrice": "Live price (BTC-USD)",
+      "hNoPrice": "None",
+      "hSecsAgo": "{s} s ago",
+      "hAttention": "Bots needing attention",
+      "hRejected": "Orders rejected · 24h",
+      "hLastFill": "Last fill",
+      "strategiesTitle": "By strategy",
+      "strategiesHint": "Last {period} days; fill and reject rates over orders sent",
+      "colStrategy": "Strategy",
+      "colBots": "Bots",
+      "colVolume": "Volume (USDC)",
+      "colFeeM": "Fees / $1M",
+      "colFill": "Filled",
+      "colReject": "Rejected",
+      "runningOf": "{r} of {n} running",
+      "stopsTitle": "Why bots stopped",
+      "stopsHint": "Last {period} days",
+      "noStops": "No bot stopped in this period.",
+      "stoppedByUser": "Stopped by the owner"
+    }
+  },
   "notFound": {
-    "title": "This page doesn't exist.",
+    "title": "This page doesn’t exist.",
     "backOverview": "Back to Overview",
-    "backHome": "Back to DRIFT"
+    "backHome": "Back to DeskLabs"
+  },
+  "waiting": {
+    "atPrice": "Waiting for price · at {price}",
+    "cross": "Waiting for price · crosses {price}",
+    "range": "Waiting for price · {low}–{high}",
+    "pullback": "Waiting for price · pullback to {price}",
+    "cooldown": "Waiting · cooldown until {time}",
+    "startAt": "Waiting · starts {time}"
+  },
+  "desk": {
+    "title": "AI Desk",
+    "subtitle": "Tell us your limit. We suggest a strategy and explain it in plain words.",
+    "tabs": {
+      "label": "AI Desk sections",
+      "recommended": "Recommended",
+      "bots": "Your bots",
+      "ask": "Ask AI"
+    },
+    "ask": {
+      "title": "Ask AI",
+      "body": "Chat to explore strategies. Every idea will be tested before it is shown.",
+      "soon": "Coming soon"
+    },
+    "paperChip": "PAPER · fake money",
+    "liveChip": "LIVE · real money",
+    "paperTag": "PAPER",
+    "questions": {
+      "title": "Answer three questions",
+      "goal": "1. What do you want?",
+      "loss": "2. How much loss can you handle?",
+      "capital": "3. How much do you want to use?",
+      "capitalOther": "Other amount",
+      "capitalHint": "In USDC. Nothing is spent until you approve it.",
+      "submit": "Show my suggestion",
+      "submitting": "Calculating…",
+      "capitalInvalid": "Enter an amount in USDC to see a suggestion.",
+      "goals": {
+        "automate": "Let a bot trade",
+        "range": "Earn from ups and downs",
+        "accumulate": "Build up coins",
+        "steady": "Keep it steady"
+      },
+      "losses": {
+        "5": "A little · 5%",
+        "10": "Some · 10%",
+        "20": "A lot · 20%"
+      },
+      "noHistory": "You have fewer than 30 closed positions, so this does not use your trading history."
+    },
+    "goalCheck": {
+      "title": "Check your goal",
+      "optional": "Optional. This does not change the suggestion.",
+      "daily": "How much would you like to earn a day?",
+      "dailyOther": "Other",
+      "sum": "{daily} USDC a day on {capital} USDC = {pct}% a year",
+      "bands": {
+        "reasonable": {
+          "tag": "Reasonable goal",
+          "text": "A modest target. It is not guaranteed, and some days will lose money."
+        },
+        "ambitious": {
+          "tag": "Very ambitious",
+          "text": "Few strategies keep this up. Chasing it means taking much more risk."
+        },
+        "unrealistic": {
+          "tag": "Not realistic",
+          "text": "Reaching this would need very high risk. You could lose most of your money."
+        }
+      },
+      "need": "Capital needed for {daily} USDC a day: {low} USDC at {lowPct}% a year, {high} USDC at {highPct}% a year. Examples, not forecasts."
+    },
+    "card": {
+      "suggested": "Suggested for you",
+      "loseUpTo": "You could lose up to",
+      "limitNote": "Bot aims to stop near this level. Fast moves can lose more.",
+      "noLimit": "No fixed limit",
+      "noLimitNote": "No loss limit. Value follows the market.",
+      "pace": "How often it trades",
+      "best": "Works best when",
+      "whenLoses": "When it loses: {text}",
+      "try": "Try with fake money",
+      "trying": "Starting the test…",
+      "why": "Why this one?",
+      "footer": "Nothing uses real money until you approve it. DeskLabs does not promise profit.",
+      "connectFirst": "Connect SoDEX to run a fake-money test. No money moves during the test.",
+      "connect": "Connect SoDEX"
+    },
+    "empty": {
+      "title": "No strategy fits your answers yet. Try a larger capital or a different goal.",
+      "why": "Why nothing fits"
+    },
+    "start": "Answer the questions to see a suggestion.",
+    "verified": {
+      "title": "Verified strategies",
+      "empty": "None yet. A strategy appears here only after it passes our tests."
+    },
+    "selfSetup": "Prefer to set everything yourself?",
+    "openLab": "Open Strategy Lab",
+    "error": "Can’t calculate a suggestion right now. Try again.",
+    "strategy": {
+      "spot_grid": {
+        "what": "Places buy orders below the price and sell orders above it, and earns small gains as the price moves up and down.",
+        "pace": "Several a day",
+        "best": "Sideways markets",
+        "lose": "A strong move out of the range leaves the bot waiting, or holding coins that fell."
+      },
+      "futures_grid": {
+        "what": "Works like a grid on a perpetual, using leverage. Gains and losses are both larger.",
+        "pace": "Many a day",
+        "best": "Sideways markets",
+        "lose": "A fast move can hit the loss limit quickly. Funding fees also apply."
+      },
+      "spot_dca": {
+        "what": "Buys, then buys more as the price drops, and sells the whole position at a take-profit.",
+        "pace": "A few a week",
+        "best": "Dips that recover",
+        "lose": "A long fall uses every extra buy and can reach the loss limit."
+      },
+      "futures_dca": {
+        "what": "Adds to a perpetual position as the price moves against it, then takes profit. Uses leverage.",
+        "pace": "A few a week",
+        "best": "Moves that bounce back",
+        "lose": "A trend that keeps going can hit the stop loss. Funding fees also apply."
+      },
+      "recurring_buy": {
+        "what": "Buys a small amount every week, whatever the price. It never sells.",
+        "pace": "Weekly",
+        "best": "Long uptrends",
+        "lose": "If the price falls for a long time, your holdings fall with it."
+      },
+      "rebalancing": {
+        "what": "Keeps your coins at a fixed mix by trimming what grew and adding to what fell.",
+        "pace": "When the mix drifts",
+        "best": "Coins moving back and forth",
+        "lose": "If all your coins fall together, your total value falls too."
+      },
+      "funding_arb": {
+        "what": "Holds the coin and an equal perpetual short to collect funding payments.",
+        "pace": "Rarely",
+        "best": "Funding that stays positive",
+        "lose": "Funding turns negative, or the two sides drift apart before the bot closes them."
+      }
+    },
+    "will": {
+      "spot_grid": "It splits {capital} USDC into buy and sell orders between {lower} and {upper}. It buys when the price falls and sells when it rises. It stops if the price drops below {stop}, or near a {maxLoss} USDC loss.",
+      "futures_grid": "It uses {capital} USDC at {leverage}× on {market}, with buy and sell orders between {lower} and {upper}. It stops if the price drops below {stop}, or near a {maxLoss} USDC loss.",
+      "spot_dca": "It buys {base} USDC of {market} first, then up to {count} more buys of {safety} USDC as the price drops, and sells everything {tp}% above the average price. It stops near a {maxLoss} USDC loss.",
+      "futures_dca": "It opens a {leverage}× long on {market} with {base} USDC, adds up to {count} more orders of {safety} USDC as the price drops, and takes profit {tp}% above the average price. It closes at a {sl}% loss, or near a {maxLoss} USDC loss.",
+      "recurring_buy": "It buys {amount} USDC of {market} every week, {count} times. It never sells.",
+      "rebalancing": "It keeps {capital} USDC split as {weights}, and trades back when a weight drifts by more than {threshold}%.",
+      "funding_arb": "It uses {capital} USDC to hold {asset} and an equal perpetual short while funding is at least {enter}% per period. It stops near a {maxLoss} USDC loss.",
+      "computed": "This suggestion was calculated at {time}."
+    },
+    "why": {
+      "back": "AI Desk",
+      "title": "Why {name}?",
+      "subtitle": "Calculated {time} from your answers and market data.",
+      "fits": "Why it fits you",
+      "market": "What the market looks like",
+      "will": "What the bot will do",
+      "notChosen": "Why not something else",
+      "nothingElse": "No other strategy was close.",
+      "whenLoses": "When it loses",
+      "noPromise": "DeskLabs does not promise profit.",
+      "lossChosen": "Its loss limit fits the {pct}% you chose.",
+      "selfSetup": "Set it up yourself",
+      "rules": "Rules version {version}",
+      "notFound": "This suggestion doesn’t exist."
+    },
+    "bots": {
+      "summary": "{running, plural, one {# bot running} other {# bots running}}. {ideas, plural, =0 {Nothing to change.} one {# idea to improve it.} other {# ideas to improve them.}}",
+      "note": "Suggestions never change a bot by themselves. You review a draft first.",
+      "empty": "You have no running bots yet. Get a suggestion in Recommended, or open Strategy Lab.",
+      "saw": "What we saw:",
+      "suggest": "What we suggest:",
+      "review": "Review draft",
+      "dismiss": "Dismiss",
+      "fees": {
+        "title": "{name} trades too often",
+        "chip": "Fees",
+        "saw": "{fills, plural, one {# fill} other {# fills}} cost {fees} {quote} in fees. Net result so far: {net} {quote}.",
+        "suggest": "Review the settings so the bot trades less often. The form shows a new draft; nothing changes until you save it."
+      },
+      "attention": {
+        "title": "{name} needs attention",
+        "chip": "Waiting",
+        "saw": "The bot flagged that it needs attention since {since}.",
+        "sawNoTime": "The bot flagged that it needs attention.",
+        "suggest": "Move its settings to the current market, or stop the bot and free your capital. Nothing changes until you save."
+      },
+      "fine": {
+        "title": "{name} looks fine",
+        "text": "It is following its plan. Nothing to do."
+      },
+      "paper": "{name} · Day {day} · simulated {net} USDC after fees",
+      "paperNoNet": "{name} · Day {day} · simulated result not available yet"
+    },
+    "paper": {
+      "back": "Your bots",
+      "subtitle": "Trading with fake money at real SoDEX prices.",
+      "balance": "Simulated balance",
+      "afterFees": "{net} after fees · Day {day}",
+      "fees": "Fake fees paid",
+      "trades": "Trades",
+      "drop": "Biggest drop",
+      "chart": "Simulated balance by day",
+      "chartStart": "Dashed line: starting {capital} USDC",
+      "waiting": "Waiting for the price to reach the first order.",
+      "limit": "Your loss limit",
+      "worst": "Worst point so far: {drop} of {limit} USDC",
+      "stopsNear": "The test stops near {limit} USDC of simulated loss.",
+      "noLimit": "This strategy has no loss limit. Its value follows the market.",
+      "did": "What the bot did",
+      "nothingYet": "Nothing yet.",
+      "gridStart": "A grid buys part of the coin at the start with a market order. Fees and the price spread on that first buy are why the test starts slightly below your capital.",
+      "bought": "Bought {size} at {price}.",
+      "sold": "Sold {size} at {price}.",
+      "disclaimer": "Nothing here touches real money. Simulated results can look better than real trading. Real orders may not fill the same way.",
+      "stop": "Stop test",
+      "stopping": "Stopping…",
+      "results": "See results",
+      "stopTitle": "Stop this fake-money test?",
+      "stopList": "What happens",
+      "stopOne": "The bot stops placing fake orders. No real money is involved.",
+      "stopTwo": "The results stay saved so you can compare them later.",
+      "cancel": "Cancel",
+      "stopped": "This test has stopped.",
+      "notFound": "This test doesn’t exist."
+    },
+    "results": {
+      "back": "Back to the test",
+      "title": "Test results · {name}",
+      "subtitle": "What happened with fake money, so you can decide.",
+      "verdict": {
+        "loss_limit": "Reached your loss limit",
+        "too_early": "Too early to judge",
+        "lost": "Lost money, within your limit",
+        "made": "Made money, within your limit"
+      },
+      "sub": {
+        "stopped": "Stopped on day {day}. No real money was lost.",
+        "running": "Day {day}. The test is still running.",
+        "early": "Day {day}. Check again after day {min}."
+      },
+      "result": "Simulated result",
+      "balance": "Balance {balance}",
+      "drop": "Biggest drop",
+      "yourLimit": "Your limit: {limit} USDC",
+      "noLimit": "No loss limit",
+      "feesTrades": "Fake fees · trades",
+      "tradesCount": "{count, plural, one {# trade} other {# trades}}",
+      "hold": "Compared with just holding {asset}",
+      "holdBetter": "Holding {asset} would have made more. {asset} moved {pct}% over the test.",
+      "holdWorse": "The bot did better than holding {asset}. {asset} moved {pct}% over the test.",
+      "holdNa": "Not available",
+      "why": "Why it turned out this way",
+      "reason": {
+        "noFills": "No orders have filled yet, so there is nothing to judge.",
+        "stopped": "The test stopped at your loss limit.",
+        "feeShareOfProfit": "Fees took {pct}% of the profit before fees.",
+        "feeShareOfLoss": "Fees were {pct}% of the loss.",
+        "limitUsed": "The worst point used {pct}% of your loss limit.",
+        "fills": "{count, plural, one {# order filled} other {# orders filled}} during the test."
+      },
+      "disclaimer": "Simulated results can look better than real trading. Real orders may not fill the same way.",
+      "next": "What do you want to do next?",
+      "useReal": "Use real money",
+      "keep": "Keep testing",
+      "another": "Try another strategy",
+      "decision": "This is your decision. DeskLabs does not promise profit."
+    },
+    "golive": {
+      "back": "Test results",
+      "title": "Use real money",
+      "subtitle": "{name}. Review before you start.",
+      "changes": "What changes from your test",
+      "moved": "The price moved, so we recalculated the settings for today.",
+      "same": "The settings for today are the same as in your test.",
+      "noRecalc": "We couldn’t recalculate the settings right now. Review them yourself before starting.",
+      "setting": "Setting",
+      "inTest": "In your test",
+      "real": "Real bot",
+      "capital": "Capital",
+      "capitalFake": "{capital} USDC, fake",
+      "capitalReal": "{capital} USDC, real",
+      "edit": "Edit settings yourself",
+      "checks": "Before it starts",
+      "checking": "Checking…",
+      "confirm": "Confirm",
+      "ack": "I understand this uses real money and I could lose more than the limit in a fast market.",
+      "code": "6-digit code from your authenticator app",
+      "start": "Start with real money",
+      "starting": "Starting…",
+      "after": "Your test stops and its results stay saved. The real bot starts fresh and may behave differently.",
+      "under30": "This test has run for {day, plural, one {# day} other {# days}}. A short test says little about how the bot will do.",
+      "failed": "Couldn’t start the real bot. {reason}"
+    },
+    "errors": {
+      "connect": "Connect SoDEX to run a fake-money test. No money moves during the test.",
+      "limit": "You can run up to {limit} fake-money tests at a time. Stop one first.",
+      "minSize": "An order would be below the SoDEX minimum size. Try a larger amount.",
+      "noPrice": "No recent price for this market yet. Try again soon.",
+      "off": "AI Desk is not turned on for your account.",
+      "generic": "Couldn’t start the test. Try again."
+    }
+  },
+  "connectLog": {
+    "title": "SoDEX connect",
+    "hint": "Each visit to the Connect SoDEX screen, newest first. Recorded from the browser; no keys or signatures are stored.",
+    "none": "No visits to the Connect screen recorded yet. Recording started with DEC-114.",
+    "lastStep": "Stopped at",
+    "device": "Device",
+    "options": "Options shown",
+    "noOptions": "No wallet option available",
+    "notDetected": "Not detected",
+    "flags": "Browser wallet flags",
+    "browserWallet": "Browser wallet",
+    "unknown": "Not recorded",
+    "requests": "Signature requests (server)",
+    "funnel": "Connect SoDEX funnel",
+    "funnelHint": "Users who reached each step of the Connect SoDEX screen in this period. Recording started with DEC-114.",
+    "noData": "No data yet for this period.",
+    "failures": "Top errors",
+    "noFailures": "No errors recorded.",
+    "devices": "Devices",
+    "steps": {
+      "view": "Opened screen",
+      "picker_opened": "Clicked Connect wallet",
+      "wallet_picked": "Picked a wallet",
+      "wallet_connected": "Wallet connected",
+      "wallet_failed": "Wallet failed",
+      "key_requested": "Asked for signature 1",
+      "request_failed": "Request failed",
+      "sign_prompted": "Signing",
+      "sign_rejected": "Signature rejected",
+      "signed": "Signed",
+      "sodex_failed": "SoDEX rejected",
+      "fee_requested": "Asked for signature 2",
+      "connected": "Connected"
+    }
   }
 }

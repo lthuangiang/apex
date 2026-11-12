@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Copy a trader · review and start</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="leaders" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+    <header style="display: flex; flex-direction: column; gap: 14px">
+      <a href="CopyBot.dc.html" style="font-size: 13px; font-weight: 700; text-decoration: none">← Budget and safety</a>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+        <h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">Review and start</h1>
+        <span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; background: #fde4e1; color: #a72826; font-size: 12.5px; font-weight: 800">● Mainnet · real funds</span>
+      </div>
+      <ol aria-label="Steps" style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px">
+        <li style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; background: #ddf4e7; color: #0b6a39; font-size: 13px; font-weight: 800">✓ 1 · Trader</li>
+        <li style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; background: #ddf4e7; color: #0b6a39; font-size: 13px; font-weight: 800">✓ 2 · Budget and safety</li>
+        <li aria-current="step" style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; background: #2e62e8; color: #ffffff; font-size: 13px; font-weight: 800">3 · Review and start</li>
+      </ol>
+    </header>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <section aria-labelledby="sum-h" style="flex: 3 1 520px; min-width: 0; background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 22px 24px; display: flex; flex-direction: column; gap: 16px">
+        <h2 id="sum-h" style="margin: 0; font-size: 18px; font-weight: 800">You're about to copy</h2>
+        <div class="num" style="display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 18px; background: #f5f7fd">
+          <span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 14px; background: #e6ecfe; display: flex; align-items: center; justify-content: center; font-weight: 800">3E</span>
+          <span style="display: flex; flex-direction: column; gap: 2px; flex: 1"><strong style="font-size: 16px">0x3e9a…11fd</strong><span style="font-size: 13px; color: #5f6684">Hyperliquid · +$84,120 in 30 days · typical hold 5h 40m</span></span>
+          <a href="Leaders.dc.html" style="font-size: 13.5px; font-weight: 700; text-decoration: none">Change</a>
+        </div>
+        <dl class="num" style="margin: 0; display: flex; flex-direction: column">
+          <div style="display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eef1f8"><dt style="font-size: 14px; color: #3b4262">Budget</dt><dd style="margin: 0; font-size: 14px; font-weight: 800">500 USDC</dd></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eef1f8"><dt style="font-size: 14px; color: #3b4262">Safety level</dt><dd style="margin: 0; font-size: 14px; font-weight: 800">Balanced · 2× leverage</dd></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eef1f8"><dt style="font-size: 14px; color: #3b4262">Each copied position</dt><dd style="margin: 0; font-size: 14px; font-weight: 800">up to $250</dd></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eef1f8"><dt style="font-size: 14px; color: #3b4262">All positions together</dt><dd style="margin: 0; font-size: 14px; font-weight: 800">up to $1,000</dd></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eef1f8"><dt style="font-size: 14px; color: #3b4262">Stop loss per position</dt><dd style="margin: 0; font-size: 14px; font-weight: 800">10%</dd></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eef1f8"><dt style="font-size: 14px; color: #3b4262">Stop everything at a loss of</dt><dd style="margin: 0; font-size: 14px; font-weight: 800; color: #c2312f">$100</dd></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #eef1f8"><dt style="font-size: 14px; color: #3b4262">Markets</dt><dd style="margin: 0; font-size: 14px; font-weight: 800">ETH, SOL</dd></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px; padding: 12px 0"><dt style="font-size: 14px; color: #3b4262">Direction</dt><dd style="margin: 0; font-size: 14px; font-weight: 800">Follow</dd></div>
+        </dl>
+        <div role="status" style="display: flex; gap: 12px; padding: 14px 16px; border-radius: 16px; background: #fff6ea; border: 1px solid #f0c27e; font-size: 13.5px; line-height: 1.5; color: #5b3a12">
+          <span aria-hidden="true" style="font-weight: 800">!</span>
+          <span><strong>BTC is left out.</strong> Your Grid bot already trades BTC on this account, and SoDEX combines positions per market. Stop that bot to include BTC.</span>
+        </div>
+      </section>
+
+      <aside style="flex: 2 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+        <section aria-labelledby="cost-h" style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px">
+          <h2 id="cost-h" style="margin: 0; font-size: 17px; font-weight: 800">Costs</h2>
+          <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.5; color: #1f2645">
+            <li>SoDEX trading fees on every fill, as usual.</li>
+            <li>DeskLabs builder fee: up to 0.01% of each fill.</li>
+            <li>No subscription and no profit share.</li>
+          </ul>
+          <p style="margin: 0; font-size: 12.5px; line-height: 1.5; color: #5f6684">When many people copy the same trade, we split what SoDEX's order book can take without moving the price past your limit. Your copy may be smaller, or skipped.</p>
+        </section>
+        <section style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 22px; display: flex; flex-direction: column; gap: 14px">
+          <label style="display: flex; gap: 12px; align-items: flex-start; font-size: 13.5px; line-height: 1.5; cursor: pointer">
+            <input type="checkbox" style="width: 20px; height: 20px; margin-top: 2px; flex-shrink: 0; accent-color: #2e62e8">
+            <span>I understand this uses real funds, past results are not a forecast, and I can lose up to my stop limit or more in fast markets.</span>
+          </label>
+          <button type="button" style="min-height: 50px; border-radius: 14px; border: none; background: #2e62e8; color: #ffffff; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 20px rgba(46,98,232,0.3)">Start copying</button>
+          <p style="margin: 0; font-size: 12.5px; color: #5f6684; line-height: 1.5">Withdraw or transfer: never. DeskLabs can only place trades. You can pause or stop the copy at any time from Trading Agent.</p>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

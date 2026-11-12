@@ -30,8 +30,8 @@ export const wagmiConfig = createConfig({
             projectId: walletConnectProjectId,
             showQrModal: true,
             metadata: {
-              name: "DRIFT",
-              description: "Profit bots for SoDEX",
+              name: "DeskLabs",
+              description: "Automated trading strategies, powered by SoDEX Builder Code",
               url: typeof window === "undefined" ? "https://localhost" : window.location.origin,
               icons: [],
             },

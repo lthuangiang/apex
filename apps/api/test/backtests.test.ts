@@ -94,4 +94,15 @@ describe("backtests API", () => {
     });
     expect(errorResponseSchema.parse(res.json()).error.code).toBe("VALIDATION_FAILED");
   });
+
+  it("only accepts the backtest periods of each strategy (DEC-102)", async () => {
+    const client = new TestClient(env.app);
+    await signIn(env, client, "bt4@example.com");
+    const res = await client.request("POST", "/api/v1/backtests", {
+      body: { strategy: "spot_grid", config: grid, periodDays: 5 },
+    });
+    const body = errorResponseSchema.parse(res.json());
+    expect(body.error.code).toBe("VALIDATION_FAILED");
+    expect(JSON.stringify(body.error)).toContain("periodDays");
+  });
 });

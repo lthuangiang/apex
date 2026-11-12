@@ -20,11 +20,20 @@ export interface RecoClient {
   plan(
     body: RecoCommon & {
       goals: { goal: string; capital: string; maxDrop: string; assets: readonly string[] };
+      /** AI Desk: chỉ một bot (DEC-105). */
+      single?: boolean;
     },
   ): Promise<RecoPlan>;
   /** null khi engine không tính được tham số cho market này (422 / 404). */
   params(
-    body: RecoCommon & { strategy: string; market: string; capital: string; maxDrop: string },
+    body: RecoCommon & {
+      strategy: string;
+      market: string;
+      capital: string;
+      maxDrop: string;
+      /** Tài sản cho giỏ Rebalancing (DEC-113). */
+      assets?: readonly string[];
+    },
   ): Promise<Suggestion | null>;
 }
 

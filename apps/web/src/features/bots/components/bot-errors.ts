@@ -2,12 +2,18 @@ import { useTranslations } from "next-intl";
 
 import { ApiError } from "@/lib/api";
 
+import { friendlyFieldErrors } from "../field-errors";
+
 // Lỗi API của các màn bot: lỗi theo field (zod schema của chiến lược) và mã lỗi → câu chữ (C6).
 
-export function fieldErrorsOf(e: unknown): Record<string, string[]> {
+/**
+ * Lỗi theo field từ server. Câu do spec chiến lược định nghĩa (STRATEGIES.md) giữ nguyên; câu mặc định của
+ * zod (thường do ô trống hoặc sai kiểu) đổi thành `fallback` (C6: không hiện message thô).
+ */
+export function fieldErrorsOf(e: unknown, fallback?: string): Record<string, string[]> {
   if (!(e instanceof ApiError)) return {};
-  const fe = (e.details as { fieldErrors?: Record<string, string[]> }).fieldErrors;
-  return fe ?? {};
+  const fe = (e.details as { fieldErrors?: Record<string, string[]> }).fieldErrors ?? {};
+  return fallback === undefined ? fe : friendlyFieldErrors(fe, fallback);
 }
 
 /** Mã lỗi → câu chữ (C6: không hiện message thô của server). */

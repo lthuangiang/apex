@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Concept B · luồng và phạm vi</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1100px; box-sizing: border-box; padding: 44px 52px; background: #f5f7fd; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 22px">
+  <div style="display: flex; align-items: center; gap: 14px">
+    <span aria-hidden="true" style="width: 48px; height: 48px; border-radius: 16px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 22px">✦</span>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #1d47b8">DeskLabs · AI Desk · concept B</span>
+      <h1 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em">Desk AI: người trông bot giúp bạn, nói chuyện bằng lời thường</h1>
+    </div>
+  </div>
+  <p style="margin: 0; max-width: 1200px; font-size: 15.5px; line-height: 1.6; color: #3b4262">Theo dõi bot, giải thích, đề xuất cách sửa, tạo bot qua hội thoại. <strong style="color: #141a33">Không bao giờ tự giao dịch</strong>: số liệu do code tính, LLM chỉ viết lời quanh số liệu; mọi thay đổi là một nút bạn bấm.</p>
+
+  <ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+    <li style="background: #ffffff; border: 1.5px solid #2e62e8; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 800; color: #1d47b8">B1 · Báo cáo sáng</span><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Desk AI mở lời; tối đa 3 thẻ Worried → Stopped → Doing fine; mỗi thẻ một nút.</span></li>
+    <li style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 800; color: #1d47b8">B2 + B3 · Bot đầu tiên</span><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Chưa có bot: "Tell me what you want". 3 câu hỏi bằng nút chọn nhanh → thẻ kế hoạch từ recommend().</span></li>
+    <li style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 800; color: #1d47b8">B4 · Fix it for me</span><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Sheet xem trước Now → After → Apply → version mới; Desk AI xác nhận trong chat.</span></li>
+    <li style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 800; color: #1d47b8">B5 · Hỏi đáp</span><span style="font-size: 13px; color: #3b4262; line-height: 1.45">4 loại câu hỏi v1: giải thích · an toàn · so sánh · tạo bot. Chip nguồn số liệu.</span></li>
+    <li style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 800; color: #1d47b8">B6 + B7 · Theo tiếp</span><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Báo kết quả tiền ảo → Use real money; lịch sử chat và việc đã làm.</span></li>
+  </ol>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; flex-grow: 1">
+    <section style="background: #ffffff; border: 1.5px solid #2e62e8; border-radius: 24px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+      <span style="align-self: flex-start; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: #2e62e8; color: #ffffff; font-size: 12px; font-weight: 800">v1</span>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.5">
+        <li>Báo cáo sáng 1 lần/ngày + khi có sự kiện (bot dừng, rủi ro)</li>
+        <li>Thẻ sửa lỗi từ 4 quy tắc: thanh lý trước stop loss · chạm max loss · lệnh taker tốn phí · Review this run có bộ tốt hơn</li>
+        <li>Hỏi đáp 4 loại, có gợi ý câu hỏi</li>
+        <li>Tạo bot qua chat (bọc Recommended + tiền ảo đã có, DEC-105)</li>
+        <li>Báo kết quả tiền ảo, nút Use real money</li>
+        <li>Trạng thái trống = cửa vào cho người mới</li>
+        <li>Lịch sử, bản phone</li>
+      </ul>
+    </section>
+    <section style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+      <span style="align-self: flex-start; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: #ddf4e7; color: #0b6a39; font-size: 12px; font-weight: 800">An toàn</span>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.5">
+        <li>Code tạo "fact" (số liệu có nguồn); LLM chỉ viết lời</li>
+        <li>Mọi số trong câu trả lời phải khớp một fact; sai → câu mẫu</li>
+        <li>Công cụ LLM: chỉ đọc + tạo bản nháp; không có công cụ thực thi</li>
+        <li>Không đọc văn bản bên ngoài; nhật ký model, prompt, fact</li>
+        <li>Hết lượt hoặc LLM lỗi → câu mẫu, app vẫn chạy</li>
+        <li>"Suggested for you", "A suggestion, not a promise of profit"</li>
+      </ul>
+    </section>
+    <section style="background: #fff6ea; border: 1px solid #f0c27e; border-radius: 24px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+      <span style="align-self: flex-start; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: #fdebd3; color: #7a3e00; font-size: 12px; font-weight: 800">Cần chốt · để sau</span>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.5; color: #5b3a12">
+        <li>Thêm LLM làm dependency, model nào, ai trả chi phí</li>
+        <li>Trần câu hỏi mỗi user mỗi ngày (mẫu: 20)</li>
+        <li>Lưu lịch sử chat bao lâu; giờ gửi báo cáo</li>
+        <li>Pháp lý: gợi ý chiến lược ≈ tư vấn đầu tư?</li>
+        <li>Để sau: phòng thử chiến lược, Verified, AI tự làm, push, đa ngôn ngữ</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

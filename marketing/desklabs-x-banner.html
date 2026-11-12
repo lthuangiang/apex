@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DeskLabs X banner</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap">
+<style>
+  /* Banner X (1500×500). Nội dung chính nằm trong vùng an toàn giữa (X cắt trên/dưới trên điện thoại,
+     avatar che góc dưới trái), nên chữ đặt giữa–phải, góc dưới trái để trống. */
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .b {
+    width: 1500px; height: 500px; position: relative; overflow: hidden;
+    font-family: "Plus Jakarta Sans", Inter, system-ui, sans-serif; color: #fff;
+    background:
+      radial-gradient(900px 520px at 1250px -80px, rgba(46, 98, 232, .55), transparent 70%),
+      radial-gradient(700px 420px at 120px 560px, rgba(126, 226, 168, .14), transparent 70%),
+      linear-gradient(135deg, #0b1124 0%, #121a36 55%, #16224a 100%);
+  }
+  .grid {
+    position: absolute; inset: 0; opacity: .07;
+    background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+    background-size: 50px 50px;
+  }
+  .copy { position: absolute; left: 440px; top: 96px; width: 560px; display: flex; flex-direction: column; gap: 18px; }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .brand span { font-size: 40px; font-weight: 800; letter-spacing: -.01em; }
+  h1 { margin: 0; font-size: 54px; line-height: 1.04; font-weight: 800; letter-spacing: -.03em; }
+  .sub { font-size: 20px; color: rgba(255,255,255,.72); font-weight: 500; }
+  .chips { display: flex; gap: 10px; margin-top: 4px; }
+  .chip { padding: 8px 14px; border-radius: 999px; font-size: 15px; font-weight: 700;
+          background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); }
+  .book {
+    position: absolute; right: 96px; top: 76px; width: 330px; padding: 18px 18px 14px;
+    border-radius: 22px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14);
+    font-variant-numeric: tabular-nums; font-size: 14px;
+  }
+  .bh { display: flex; justify-content: space-between; margin-bottom: 10px; }
+  .bh b { font-size: 15px; }
+  .run { font-size: 12px; font-weight: 800; color: #7ee2a8; display: flex; align-items: center; gap: 6px; }
+  .run i { width: 7px; height: 7px; border-radius: 9px; background: #7ee2a8; display: inline-block; }
+  .r { position: relative; display: grid; grid-template-columns: 1.2fr 1fr; padding: 5px 8px; border-radius: 6px; overflow: hidden; margin: 2px 0; }
+  .r s { position: absolute; inset: 0 0 0 auto; text-decoration: none; }
+  .r .p, .r .q { position: relative; }
+  .r .q { text-align: right; color: rgba(255,255,255,.75); }
+  .ask .p { color: #ff9aa5; } .ask s { background: rgba(255, 99, 120, .16); }
+  .bid .p { color: #7ee2a8; } .bid s { background: rgba(126, 226, 168, .16); }
+  .you { box-shadow: inset 0 0 0 2px #5b8cff; }
+  .tag { margin-left: 6px; background: #2e62e8; border-radius: 4px; padding: 0 5px; font-size: 10px; font-weight: 800; color: #fff; }
+  .mid { display: flex; justify-content: space-between; align-items: baseline; padding: 8px; margin: 6px 0;
+         border-top: 1px solid rgba(255,255,255,.12); border-bottom: 1px solid rgba(255,255,255,.12); }
+  .mid b { font-size: 18px; }
+  .mid span { font-size: 12px; color: rgba(255,255,255,.6); font-weight: 700; }
+  .dec { margin-top: 10px; font-size: 12.5px; color: rgba(255,255,255,.7); }
+  .dec b { color: #fff; }
+  .url { position: absolute; right: 96px; bottom: 74px; font-size: 18px; font-weight: 800; color: rgba(255,255,255,.85); }
+  .pow { position: absolute; left: 440px; bottom: 74px; font-size: 15px; font-weight: 600; color: rgba(255,255,255,.55); }
+</style>
+</head>
+<body>
+<div class="b">
+  <div class="grid"></div>
+  <div class="copy">
+    <div class="brand">
+      <svg width="58" height="58" viewBox="0 0 24 24" aria-hidden="true">
+        <rect width="24" height="24" rx="5.6" fill="#2E62E8"/>
+        <path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/>
+        <rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#fff"/>
+        <rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#fff" opacity=".7"/>
+      </svg>
+      <span>DeskLabs</span>
+    </div>
+    <h1>Trading strategies that run while you work.</h1>
+    <div class="sub">Market Making · Volume Builder · Grid · DCA · and more</div>
+    <div class="chips"><span class="chip">Never withdraws your funds</span><span class="chip">Every fill analysed</span></div>
+  </div>
+
+  <div class="book">
+    <div class="bh"><b>BTC Market Making</b><span class="run"><i></i>Running</span></div>
+    <div class="r ask"><s style="width:74%"></s><span class="p">74,603</span><span class="q">50,137</span></div>
+    <div class="r ask"><s style="width:50%"></s><span class="p">74,602</span><span class="q">57,024</span></div>
+    <div class="r ask you"><s style="width:26%"></s><span class="p">74,601<span class="tag">YOU</span></span><span class="q">57,053</span></div>
+    <div class="mid"><b>74,600.5</b><span>Spread 0.134 bps</span></div>
+    <div class="r bid you"><s style="width:22%"></s><span class="p">74,600<span class="tag">YOU</span></span><span class="q">39,683</span></div>
+    <div class="r bid"><s style="width:40%"></s><span class="p">74,599</span><span class="q">30,307</span></div>
+    <div class="r bid"><s style="width:68%"></s><span class="p">74,598</span><span class="q">66,149</span></div>
+    <div class="dec"><b>Smart quoting</b> · ask pulled (trend up 6 bp in 30 s)</div>
+  </div>
+
+  <div class="pow">Powered by SoDEX Builder Code</div>
+  <div class="url">desklabs.xyz</div>
+</div>
+</body>
+</html>

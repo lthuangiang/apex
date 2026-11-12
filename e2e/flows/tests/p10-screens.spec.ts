@@ -64,6 +64,6 @@ test("overview, portfolio, risk center, analyst, notifications and builder reven
   await expect(page.getByRole("switch", { name: "Email" }).first()).toBeDisabled();
 
   await page.goto("/admin/builder-revenue");
-  await expect(page.getByText("Builder Revenue is for the DRIFT team only.")).toBeVisible();
+  await expect(page.getByText("Builder Revenue is for the DeskLabs team only.")).toBeVisible();
   expect(pageErrors).toEqual([]);
 });

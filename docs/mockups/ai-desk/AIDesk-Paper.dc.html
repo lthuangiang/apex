@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRIFT Fake-money test</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EEF1FA}
+a{color:#2E62E8}a:hover{color:#1D47B8}
+.btn{transition:background-color .15s ease}
+.btn:hover{filter:brightness(0.97)}
+.btn:focus-visible,.nav:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid #8FB0FF;outline-offset:2px}
+.nav:hover{background:#F2F5FD}
+.num{font-variant-numeric:tabular-nums}
+.th{padding:10px 14px;font-size:12px;font-weight:700;color:#5F6684;text-align:left;white-space:nowrap;border-bottom:1px solid #E3E7F5}
+.td{padding:13px 14px;font-size:14px;text-align:left;border-bottom:1px solid #EEF1F8;vertical-align:top}
+@media (max-width:760px){.side-nav{flex-direction:row !important;flex-wrap:wrap}}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</helmet>
+<div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141A33; background: #EEF1FA; min-height: 100vh; box-sizing: border-box; padding: 20px; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+<aside style="flex: 1 1 236px; max-width: 100%; box-sizing: border-box; background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 20px 14px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; gap: 10px; padding: 4px 8px">
+<div style="width: 36px; height: 36px; border-radius: 11px; background: #2E62E8; display: flex; align-items: center; justify-content: center; color: #FFFFFF">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15c3-6 6 2 9-3s5-5 7-4"></path><path d="M4 20h16"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column"><span style="font-weight: 800; font-size: 18px; letter-spacing: 0.06em">DRIFT</span><span style="font-size: 12px; color: #5F6684; font-weight: 500">Profit Bot workspace</span></div>
+</div>
+<nav aria-label="Main" class="side-nav" style="display: flex; flex-direction: column; gap: 2px">
+<a href="Main.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Overview</a>
+<a href="Portfolio.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="3"></rect><path d="M16 13h2"></path><path d="M6 6V5a2 2 0 0 1 2-2h8"></path></svg>Portfolio</a>
+<a href="AIDesk.dc.html" aria-current="page" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; background: #2E62E8; color: #FFFFFF; text-decoration: none; font-weight: 700; font-size: 14px; box-shadow: 0 6px 16px rgba(46,98,232,0.28)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"></circle><circle cx="5" cy="18" r="2.5"></circle><circle cx="19" cy="18" r="2.5"></circle><path d="M10.8 7.2 6.2 15.8M13.2 7.2l4.6 8.6M7.5 18h9"></path></svg>AI Desk</a>
+<a href="Bots.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6A2 2 0 0 0 19 18l-5-9V3"></path><path d="M7.5 15h9"></path></svg>Strategy Lab</a>
+<a href="Agent.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"></rect><path d="M12 4v4M9 13v1M15 13v1M9.5 17h5"></path></svg>Trading Agent</a>
+<a href="Orders.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"></path></svg>Execution &amp; Orders</a>
+<a href="Risk.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"></path></svg>Risk Center</a>
+<div style="height: 1px; background: #E3E7F5; margin: 10px 8px"></div>
+<a href="Revenue.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="9" cy="7" rx="6" ry="3"></ellipse><path d="M3 7v5c0 1.7 2.7 3 6 3s6-1.3 6-3V7"></path><path d="M15 10.2c3 .3 6 1.4 6 2.8v5c0 1.7-2.7 3-6 3s-6-1.3-6-3v-2"></path></svg>Builder Revenue</a>
+<a href="Connections.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg>Settings</a>
+</nav>
+</aside>
+<main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+<header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 4px"><a href="AIDesk-Bots.dc.html" style="font-size: 14px; font-weight: 700; text-decoration: none">← Your bots</a>
+<h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.01em">Spot Grid · BTC</h1>
+<p style="margin: 0; font-size: 14px; color: #5F6684">Trading with fake money at real SoDEX prices.</p></div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center"><span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #141A33; color: #FFFFFF">PAPER · fake money</span><span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #FCE7C8; color: #8A4B00">Sample data</span></div>
+</header>
+<section style="border-radius: 28px; padding: 24px 28px; background: linear-gradient(135deg, #E3E8FE 0%, #CBD5FB 100%); display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between"><div><div style="font-size: 14px; color: #3B4262">Simulated balance</div><strong class="num" style="font-size: 38px; font-weight: 800">5,086.40 USDC</strong></div><span class="num" style="font-size: 16px; font-weight: 700">+86.40 after fees · Day 12</span></div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px">
+<div style="background: #FFFFFF; border-radius: 16px; padding: 14px"><div style="font-size: 13px; color: #5F6684">Fake fees paid</div><strong class="num" style="font-size: 22px">21.60 USDC</strong></div>
+<div style="background: #FFFFFF; border-radius: 16px; padding: 14px"><div style="font-size: 13px; color: #5F6684">Trades</div><strong class="num" style="font-size: 22px">64</strong></div>
+<div style="background: #FFFFFF; border-radius: 16px; padding: 14px"><div style="font-size: 13px; color: #5F6684">Biggest drop</div><strong class="num" style="font-size: 22px">−139.00 USDC</strong></div>
+</div>
+</section>
+<section aria-labelledby="ch-h" style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 10px"><h2 id="ch-h" style="margin: 0; font-size: 18px; font-weight: 800">Simulated balance by day</h2><svg viewBox="0 0 1000 240" role="img" aria-label="Simulated balance rose from 5,000 to 5,086.40 USDC over 12 days" style="display: block; width: 100%; height: auto"><line x1="0" x2="1000" y1="94.8" y2="94.8" stroke="#C9D3F5" stroke-width="1" stroke-dasharray="4 4"></line><polyline points="12.0,94.8 100.7,82.9 189.5,106.1 278.2,151.8 366.9,228.0 455.6,185.5 544.4,134.4 633.1,92.8 721.8,61.6 810.5,73.8 899.3,36.5 988.0,12.0" fill="none" stroke="#2E62E8" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline><circle cx="988.0" cy="12.0" r="5" fill="#2E62E8" stroke="#FFFFFF" stroke-width="2"></circle><circle cx="12.0" cy="94.8" r="10" fill="transparent"><title>Day 1: 5,000.00 USDC</title></circle><circle cx="100.7" cy="82.9" r="10" fill="transparent"><title>Day 2: 5,012.40 USDC</title></circle><circle cx="189.5" cy="106.1" r="10" fill="transparent"><title>Day 3: 4,988.20 USDC</title></circle><circle cx="278.2" cy="151.8" r="10" fill="transparent"><title>Day 4: 4,940.50 USDC</title></circle><circle cx="366.9" cy="228.0" r="10" fill="transparent"><title>Day 5: 4,861.00 USDC</title></circle><circle cx="455.6" cy="185.5" r="10" fill="transparent"><title>Day 6: 4,905.30 USDC</title></circle><circle cx="544.4" cy="134.4" r="10" fill="transparent"><title>Day 7: 4,958.70 USDC</title></circle><circle cx="633.1" cy="92.8" r="10" fill="transparent"><title>Day 8: 5,002.10 USDC</title></circle><circle cx="721.8" cy="61.6" r="10" fill="transparent"><title>Day 9: 5,034.60 USDC</title></circle><circle cx="810.5" cy="73.8" r="10" fill="transparent"><title>Day 10: 5,021.90 USDC</title></circle><circle cx="899.3" cy="36.5" r="10" fill="transparent"><title>Day 11: 5,060.80 USDC</title></circle><circle cx="988.0" cy="12.0" r="10" fill="transparent"><title>Day 12: 5,086.40 USDC</title></circle></svg>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #5F6684"><span>Day 1</span><span>Dashed line: starting 5,000 USDC</span><span>Day 12</span></div></section>
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch">
+<section aria-labelledby="lm-h" style="flex: 2 1 300px; min-width: 0; background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 10px">
+<h2 id="lm-h" style="margin: 0; font-size: 18px; font-weight: 800">Your loss limit</h2>
+<p class="num" style="margin: 0; font-size: 14px; color: #3B4262">Worst point so far: 139 of 500 USDC</p>
+<div role="img" aria-label="28 percent of the loss limit used at the worst point" style="height: 10px; border-radius: 999px; background: #E3E7F5; overflow: hidden"><div style="width: 28%; height: 100%; background: #2E62E8; border-radius: 999px"></div></div>
+<p style="margin: 0; font-size: 13px; color: #5F6684">The test stops near 500 USDC of simulated loss.</p>
+</section>
+<section aria-labelledby="lg-h" style="flex: 3 1 460px; min-width: 0; background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 6px">
+<h2 id="lg-h" style="margin: 0; font-size: 18px; font-weight: 800">What the bot did</h2><ul style="list-style: none; margin: 0; padding: 0"><li style="display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 10px 0; border-bottom: 1px solid #EEF1F8; font-size: 14px"><span class="num" style="flex: 0 0 130px; color: #5F6684">Today 09:12</span><span style="flex: 1 1 260px; min-width: 0">Sold 0.01 BTC at 103,000. Made 9.20 USDC after fees.</span></li><li style="display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 10px 0; border-bottom: 1px solid #EEF1F8; font-size: 14px"><span class="num" style="flex: 0 0 130px; color: #5F6684">Today 03:40</span><span style="flex: 1 1 260px; min-width: 0">Bought 0.01 BTC at 102,000.</span></li><li style="display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 10px 0; border-bottom: 1px solid #EEF1F8; font-size: 14px"><span class="num" style="flex: 0 0 130px; color: #5F6684">Yesterday 21:05</span><span style="flex: 1 1 260px; min-width: 0">Sold 0.01 BTC at 102,000. Made 9.20 USDC after fees.</span></li><li style="display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 10px 0; border-bottom: 1px solid #EEF1F8; font-size: 14px"><span class="num" style="flex: 0 0 130px; color: #5F6684">Oct 24</span><span style="flex: 1 1 260px; min-width: 0">Price fell near the bottom of the range. The bot kept buying as planned.</span></li></ul>
+</section>
+</div>
+<section style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 22px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between">
+<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 4px"><strong style="font-size: 15px">Nothing here touches real money.</strong><p style="margin: 0; font-size: 13px; line-height: 1.5; color: #5F6684">Simulated results can look better than real trading. Real orders may not fill the same way.</p></div>
+<div style="display: flex; flex-wrap: wrap; gap: 10px"><button class="btn" type="button" style="min-height: 48px; padding: 0 18px; border-radius: 14px; border: 1px solid #C9D3F5; background: #FFFFFF; color: #141A33; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center">Stop test</button><a class="btn" href="AIDesk-Result.dc.html" style="min-height: 48px; padding: 0 18px; border-radius: 14px; border: none; background: #2E62E8; color: #FFFFFF; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center">See results</a></div>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1320}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

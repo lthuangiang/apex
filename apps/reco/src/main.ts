@@ -24,8 +24,21 @@ const rest = new SodexRestClient({
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
 });
+const livePrices = async (markets: readonly string[]) => {
+  const keys = [...new Set(markets)];
+  const out: Record<string, string> = {};
+  if (keys.length === 0) return out;
+  const raw = await redis.mget(...keys.map((m) => `md:last:${m}`));
+  keys.forEach((m, i) => {
+    const v = raw[i];
+    if (v == null) return;
+    const parsed = z.object({ price: z.string() }).safeParse(JSON.parse(v));
+    if (parsed.success) out[m] = parsed.data.price;
+  });
+  return out;
+};
 const app = buildRecoApp({
-  markets: marketLoader({ db, rest, now: () => Date.now() }),
+  markets: marketLoader({ db, rest, now: () => Date.now(), livePrices }),
   logLevel: env.LOG_LEVEL,
 });
 log.info({ port: env.RECO_PORT }, "reco listening");

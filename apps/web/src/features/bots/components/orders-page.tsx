@@ -55,6 +55,15 @@ function sinceOf(key: TimeKey, now: number): number {
 export function OrdersPage({ botId }: { botId?: string }) {
   const t = useTranslations("orders");
   const te = useTranslations("common.errors");
+  // SoDEX trả mã số; DRIFT tự đặt mã chữ (SELF_TRADE_BLOCKED…). Không đoán nghĩa mã số, chỉ ghi rõ là mã của SoDEX.
+  const rejectLabel = (code: string | null) =>
+    code === null
+      ? ""
+      : /^-?\d+$/.test(code)
+        ? t("rejectCode", { code })
+        : code === "SELF_TRADE_BLOCKED"
+          ? t("selfTrade")
+          : code;
   const tm = useTranslations("common.missing");
   const me = useMe();
   const names = useMarketNames();
@@ -78,7 +87,6 @@ export function OrdersPage({ botId }: { botId?: string }) {
   const unknown = all.filter((o) => o.status === "unknown").length;
   const now = Date.now();
   const since = sinceOf(time, now);
-  const today = sinceOf("today", now);
   const at = (o: OrderView) => (o.submittedAt === null ? null : Date.parse(o.submittedAt));
   const inWindow = (o: OrderView, from: number) => {
     const ms = at(o);
@@ -92,35 +100,25 @@ export function OrdersPage({ botId }: { botId?: string }) {
   );
   const rows = filtered.filter(TABS[tab]);
   const symbols = [...new Set(all.map((o) => o.market))].sort();
-  const openCount = all.filter(TABS.open).length;
-  const partial = all.filter((o) => o.status === "partially_filled").length;
-  const filledToday = all.filter((o) => o.status === "filled" && inWindow(o, today)).length;
-  const rejectedToday = all.filter((o) => o.status === "rejected" && inWindow(o, today));
-  // API trả tối đa ORDER_LIST_LIMIT lệnh mới nhất: khi bị cắt, chỉ đếm được cửa sổ nằm trọn trong danh
-  // sách; ngoài ra hiện "Not available" thay vì một con số có thể thiếu (quy tắc 1.8).
-  const truncated = all.length >= ORDER_LIST_LIMIT;
-  const oldest = all.reduce<number | null>((m, o) => {
-    const ms = at(o);
-    return ms === null ? m : m === null ? ms : Math.min(m, ms);
-  }, null);
-  const todayComplete = !truncated || (oldest !== null && oldest < today);
+  const c = orders.data?.counts;
+  // Server đếm trên toàn bộ lệnh, nên số vẫn đúng khi danh sách bị cắt ở 200 dòng (DEC-90).
   const counts =
-    orders.isSuccess && !missing
+    c !== undefined && !missing
       ? [
           {
             key: "open",
-            value: truncated ? null : String(openCount),
-            sub: truncated ? "" : t("counts.partial", { n: partial }),
+            value: String(c.open),
+            sub: t("counts.partial", { n: c.partiallyFilled }),
           },
           {
             key: "filledToday",
-            value: todayComplete ? String(filledToday) : null,
+            value: String(c.filledToday),
             sub: t("counts.sinceMidnight"),
           },
           {
             key: "rejectedToday",
-            value: todayComplete ? String(rejectedToday.length) : null,
-            sub: rejectedToday[0]?.rejectCode ?? "",
+            value: String(c.rejectedToday),
+            sub: c.lastRejectMessage ?? rejectLabel(c.lastRejectCode),
           },
         ]
       : null;
@@ -209,6 +207,7 @@ export function OrdersPage({ botId }: { botId?: string }) {
                       className={`rounded-full px-[7px] py-px text-[11px] tabular-nums ${tab === k ? "bg-accent text-white" : "bg-border text-ink-2"}`}
                     >
                       {filtered.filter(TABS[k]).length}
+                      {all.length >= ORDER_LIST_LIMIT ? "+" : ""}
                     </span>
                   )}
                 </button>
@@ -343,7 +342,12 @@ export function OrdersPage({ botId }: { botId?: string }) {
                   <span>
                     {STATUS_ICON[o.status]} {t(`status.${o.status}`)}
                     {o.rejectCode === null ? null : (
-                      <span className="block text-xs text-muted">{o.rejectCode}</span>
+                      <span className="block text-xs text-muted">{rejectLabel(o.rejectCode)}</span>
+                    )}
+                    {o.rejectMessage === null ? null : (
+                      <span className="block text-xs text-muted wrap-anywhere">
+                        {o.rejectMessage}
+                      </span>
                     )}
                   </span>
                 ),

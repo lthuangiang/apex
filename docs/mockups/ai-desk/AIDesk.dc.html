@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRIFT AI Desk</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EEF1FA}
+a{color:#2E62E8}a:hover{color:#1D47B8}
+.btn{transition:background-color .15s ease}
+.btn:hover{filter:brightness(0.97)}
+.btn:focus-visible,.nav:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid #8FB0FF;outline-offset:2px}
+.nav:hover{background:#F2F5FD}
+.num{font-variant-numeric:tabular-nums}
+.th{padding:10px 14px;font-size:12px;font-weight:700;color:#5F6684;text-align:left;white-space:nowrap;border-bottom:1px solid #E3E7F5}
+.td{padding:13px 14px;font-size:14px;text-align:left;border-bottom:1px solid #EEF1F8;vertical-align:top}
+@media (max-width:760px){.side-nav{flex-direction:row !important;flex-wrap:wrap}}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</helmet>
+<div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141A33; background: #EEF1FA; min-height: 100vh; box-sizing: border-box; padding: 20px; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+<aside style="flex: 1 1 236px; max-width: 100%; box-sizing: border-box; background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 20px 14px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; gap: 10px; padding: 4px 8px">
+<div style="width: 36px; height: 36px; border-radius: 11px; background: #2E62E8; display: flex; align-items: center; justify-content: center; color: #FFFFFF">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15c3-6 6 2 9-3s5-5 7-4"></path><path d="M4 20h16"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column"><span style="font-weight: 800; font-size: 18px; letter-spacing: 0.06em">DRIFT</span><span style="font-size: 12px; color: #5F6684; font-weight: 500">Profit Bot workspace</span></div>
+</div>
+<nav aria-label="Main" class="side-nav" style="display: flex; flex-direction: column; gap: 2px">
+<a href="Main.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Overview</a>
+<a href="Portfolio.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="3"></rect><path d="M16 13h2"></path><path d="M6 6V5a2 2 0 0 1 2-2h8"></path></svg>Portfolio</a>
+<a href="AIDesk.dc.html" aria-current="page" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; background: #2E62E8; color: #FFFFFF; text-decoration: none; font-weight: 700; font-size: 14px; box-shadow: 0 6px 16px rgba(46,98,232,0.28)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"></circle><circle cx="5" cy="18" r="2.5"></circle><circle cx="19" cy="18" r="2.5"></circle><path d="M10.8 7.2 6.2 15.8M13.2 7.2l4.6 8.6M7.5 18h9"></path></svg>AI Desk</a>
+<a href="Bots.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6A2 2 0 0 0 19 18l-5-9V3"></path><path d="M7.5 15h9"></path></svg>Strategy Lab</a>
+<a href="Agent.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"></rect><path d="M12 4v4M9 13v1M15 13v1M9.5 17h5"></path></svg>Trading Agent</a>
+<a href="Orders.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"></path></svg>Execution &amp; Orders</a>
+<a href="Risk.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"></path></svg>Risk Center</a>
+<div style="height: 1px; background: #E3E7F5; margin: 10px 8px"></div>
+<a href="Revenue.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="9" cy="7" rx="6" ry="3"></ellipse><path d="M3 7v5c0 1.7 2.7 3 6 3s6-1.3 6-3V7"></path><path d="M15 10.2c3 .3 6 1.4 6 2.8v5c0 1.7-2.7 3-6 3s-6-1.3-6-3v-2"></path></svg>Builder Revenue</a>
+<a href="Connections.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg>Settings</a>
+</nav>
+</aside>
+<main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+<header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.01em">AI Desk</h1>
+<p style="margin: 0; font-size: 14px; color: #5F6684">Tell us your limit. We suggest a strategy and explain it in plain words.</p>
+</div>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #FCE7C8; color: #8A4B00">Sample data</span>
+</header>
+<nav aria-label="AI Desk sections" style="display: flex; flex-wrap: wrap; gap: 8px"><a href="AIDesk.dc.html" aria-current="page" style="min-height: 44px; padding: 0 18px; border-radius: 14px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 700; text-decoration: none; background: #2E62E8; color: #FFFFFF">Recommended</a>
+<a href="AIDesk-Bots.dc.html" style="min-height: 44px; padding: 0 18px; border-radius: 14px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 700; text-decoration: none; background: #FFFFFF; color: #3B4262; border: 1px solid #E3E7F5">Your bots</a>
+<a href="AIDesk-Ask.dc.html" style="min-height: 44px; padding: 0 18px; border-radius: 14px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 700; text-decoration: none; background: #FFFFFF; color: #3B4262; border: 1px solid #E3E7F5">Ask AI</a>
+</nav>
+<section aria-labelledby="pick-h" style="border-radius: 28px; padding: 24px 28px; background: linear-gradient(135deg, #E3E8FE 0%, #CBD5FB 100%); display: flex; flex-direction: column; gap: 16px">
+<h2 id="pick-h" style="margin: 0; font-size: 22px; font-weight: 800">Answer three questions</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 14px; font-weight: 700">1. What do you want?</span><div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{goals}}" as="o" hint-placeholder-count="4"><button class="btn" type="button" aria-pressed="{{o.pressed}}" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button></sc-for></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 14px; font-weight: 700">2. How much loss can you handle?</span><div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{risks}}" as="o" hint-placeholder-count="3"><button class="btn" type="button" aria-pressed="{{o.pressed}}" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button></sc-for></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 14px; font-weight: 700">3. How much do you want to use?</span><div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{caps}}" as="o" hint-placeholder-count="3"><button class="btn" type="button" aria-pressed="{{o.pressed}}" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button></sc-for></div></div>
+</div>
+</section>
+<section aria-labelledby="gc-h" style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between"><h2 id="gc-h" style="margin: 0; font-size: 18px; font-weight: 800">Check your goal</h2><span style="font-size: 13px; color: #5F6684">Optional. This does not change the suggestion.</span></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 14px; font-weight: 700">How much would you like to earn a day?</span><div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-for list="{{dailies}}" as="o" hint-placeholder-count="3"><button class="btn" type="button" aria-pressed="{{o.pressed}}" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button></sc-for></div></div>
+<div style="background: #F4F6FD; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between"><strong class="num" style="font-size: 18px">{{goalSum}}</strong><span style="{{goalPill}}">{{goalTag}}</span></div>
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #3B4262">{{goalText}}</p>
+<p class="num" style="margin: 0; font-size: 13px; color: #5F6684">{{goalNeed}}</p>
+</div>
+</section>
+<section aria-labelledby="sug-h" style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between">
+<h2 id="sug-h" style="margin: 0; font-size: 22px; font-weight: 800">{{name}}</h2>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #DCE6FF; color: #1D47B8">Suggested for you</span>
+</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3B4262; max-width: 70ch">{{what}}</p>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px">
+<div style="background: #F4F6FD; border-radius: 16px; padding: 14px"><div style="font-size: 13px; color: #5F6684">You could lose up to</div><strong class="num" style="font-size: 22px">{{maxLoss}}</strong><div style="font-size: 12px; color: #5F6684">{{lossNote}}</div></div>
+<div style="background: #F4F6FD; border-radius: 16px; padding: 14px"><div style="font-size: 13px; color: #5F6684">How often it trades</div><strong style="font-size: 22px">{{pace}}</strong></div>
+<div style="background: #F4F6FD; border-radius: 16px; padding: 14px"><div style="font-size: 13px; color: #5F6684">Works best when</div><strong style="font-size: 22px">{{best}}</strong></div>
+</div>
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #3B4262"><strong>When it loses:</strong> {{lose}}</p>
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<a class="btn" href="AIDesk-Paper.dc.html" style="min-height: 48px; padding: 0 18px; border-radius: 14px; border: none; background: #2E62E8; color: #FFFFFF; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; display: inline-flex; align-items: center; justify-content: center">Try with fake money</a>
+<a class="btn" href="AIDesk-Why.dc.html" style="min-height: 48px; padding: 0 18px; border-radius: 14px; border: 1px solid #C9D3F5; background: #FFFFFF; color: #141A33; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center">Why this one?</a>
+</div>
+<p style="margin: 0; font-size: 12px; color: #5F6684">Nothing uses real money until you approve it. DRIFT does not promise profit.</p>
+</section>
+<section aria-labelledby="ver-h" style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 6px">
+<h2 id="ver-h" style="margin: 0; font-size: 18px; font-weight: 800">Verified strategies</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #5F6684">None yet. A strategy appears here only after it passes our tests.</p>
+</section>
+<p style="margin: 0; font-size: 14px; color: #5F6684">Prefer to set everything yourself? <a href="Bots.dc.html" style="font-weight: 700">Open Strategy Lab</a></p>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1560}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { goal: 'range', risk: 10, cap: 5000, daily: 2 }; }
+  renderVals() {
+    var self = this, D = this.state.daily, C = this.state.cap, Y = D * 365 / C * 100, fm = function (n) { return n.toLocaleString('en-US', { maximumFractionDigits: 1 }); }, band = Y > 100 ? ['Not realistic', 'background: #F3E1E1; color: #8F2422', 'Reaching this would need very high risk. You could lose most of your money.'] : Y > 20 ? ['Very ambitious', 'background: #FCE7C8; color: #8A4B00', 'Few strategies keep this up. Chasing it means taking much more risk.'] : ['Reasonable goal', 'background: #DDF3E6; color: #0E6A3C', 'A modest target. It is not guaranteed, and some days will lose money.'], G = {"automate": {"label": "Let a bot trade", "name": "Futures Grid \u00b7 BTC, 2\u00d7", "what": "Works like a grid, using 2\u00d7 leverage. Gains and losses are both larger.", "limit": true, "pace": "Many a day", "best": "Sideways markets", "lose": "A fast move can hit the loss limit quickly. Funding fees also apply."}, "range": {"label": "Earn from ups and downs", "name": "Spot Grid \u00b7 BTC", "what": "Places buy orders below the price and sell orders above it, and earns small gains as the price moves up and down.", "limit": true, "pace": "Several a day", "best": "Sideways markets", "lose": "A strong move out of the range leaves the bot waiting, or holding coins that fell."}, "accumulate": {"label": "Build up coins", "name": "Recurring Buy \u00b7 BTC", "what": "Buys a small amount of BTC every Monday, whatever the price. It never sells.", "limit": false, "pace": "Weekly", "best": "Long uptrends", "lose": "If BTC falls for a long time, your holdings fall with it."}, "steady": {"label": "Keep it steady", "name": "Rebalancing \u00b7 BTC, ETH", "what": "Keeps your coins at a fixed mix by trimming what grew and adding to what fell.", "limit": false, "pace": "When the mix drifts", "best": "Coins moving back and forth", "lose": "If all your coins fall together, your total value falls too."}}, r = G[this.state.goal];
+    function opt(label, on, pick) {
+      return { label: label, pressed: on ? 'true' : 'false', pick: pick,
+        style: 'min-height: 48px; padding: 0 14px; border-radius: 14px; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; ' + (on ? 'background: #2E62E8; color: #FFFFFF; border: 1px solid #2E62E8' : 'background: #FFFFFF; color: #141A33; border: 1px solid #C9D3F5') };
+    }
+    return Object.assign({}, r, {
+      goalSum: D + ' USDC a day on ' + C.toLocaleString('en-US') + ' USDC = ' + fm(Y) + '% a year',
+      goalTag: band[0], goalText: band[2], goalPill: 'display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; ' + band[1],
+      goalNeed: 'Capital needed for ' + D + ' USDC a day: ' + (D * 3650).toLocaleString('en-US') + ' USDC at 10% a year, ' + (D * 1825).toLocaleString('en-US') + ' USDC at 20% a year. Examples, not forecasts.',
+      dailies: [0.5, 2, 5].map(function (d) { return opt(d + ' USDC', self.state.daily === d, function () { self.setState({ daily: d }); }); }),
+      maxLoss: r.limit ? (this.state.cap * this.state.risk / 100).toLocaleString('en-US') + ' USDC' : 'No fixed limit',
+      lossNote: r.limit ? 'Bot aims to stop near this level. Fast moves can lose more.' : 'Value follows the market.',
+      goals: Object.keys(G).map(function (k) { return opt(G[k].label, self.state.goal === k, function () { self.setState({ goal: k }); }); }),
+      risks: [[5,'A little · 5%'],[10,'Some · 10%'],[20,'A lot · 20%']].map(function (x) { return opt(x[1], self.state.risk === x[0], function () { self.setState({ risk: x[0] }); }); }),
+      caps: [100, 1000, 5000, 10000].map(function (c) { return opt(c.toLocaleString('en-US') + ' USDC', self.state.cap === c, function () { self.setState({ cap: c }); }); })
+    });
+  }
+}
+</script>
+</body>
+</html>

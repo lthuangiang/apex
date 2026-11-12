@@ -14,6 +14,13 @@ describe("botActions", () => {
     expect(a.more.map((m) => m.label)).toEqual(["open", "edit"]);
   });
 
+  it("resumes a key-paused bot once the current key is active again (renewed)", () => {
+    const paused = bot(BotState.paused, ReasonCode.apiKeyUnusable);
+    expect(botActions(paused, t, "active").primary).toEqual({ href: "/agent/b1", label: "resume" });
+    expect(botActions(paused, t, "unusable").primary.label).toBe("renewKey");
+    expect(botActions(paused, t, "expired").primary.label).toBe("renewKey");
+  });
+
   it("resumes other paused bots, with Edit in the menu", () => {
     const a = botActions(bot(BotState.paused, ReasonCode.builderFeeRevoked), t);
     expect(a.primary.label).toBe("resume");

@@ -128,6 +128,35 @@ Các tab: SoDEX access · Security · Notifications · Trading defaults · Profi
 - Dưới 4 ô tổng có hàng "Accounts": thẻ Spot (Value, Available USDC, In orders) và thẻ Perps (Account value theo index, Usable as margin = `am`, Usable for isolated = `ami`, Margin in use, Unrealized PnL, Open positions, haircut của Multi-Asset Margin, cảnh báo USDC âm).
 - Tab "Balances": Spot (từng coin) và Perps (bảng collateral: Asset · Balance · Index price · Value · Ratio · Counts as margin).
 
+### 8.x Copy Trading (DEC-163)
+
+Chỉ hiện cho tài khoản được bật AI Desk (như S12, DEC-161). Sidebar: nhóm "Copy Trading" gồm "Find traders" và "Following", ngay sau Strategy Lab. Artboard: canvas "AI Desk redesign", hàng "Copy Trading v1". Logic: DEC-163, STRATEGIES.md S12.1.
+
+Đã làm theo route đề xuất (DEC-169, vẫn chờ duyệt ở OPEN_QUESTIONS 21b). Thẻ Copy Trade ở Strategy Lab dẫn tới `/traders`; màn sửa bot copy khoá trader và danh sách market.
+
+| Route (đề xuất, **[confirm]** OPEN_QUESTIONS 21b) | Màn | Ghi chú |
+|---|---|---|
+| `/traders` | Find traders (`Leaders`) | Thẻ trader Hyperliquid; tab Steady / Top earners · 30D / Long holders / All; hướng dẫn 3 bước; dòng "N of 200 … hidden"; hết chỗ copy → "Follow · copy later" |
+| `/traders/:address` | Trader profile (`WalletStats`) | 4 chỉ số kèm một câu giải thích; checklist "good fit"; thay đổi vị thế gộp 60 giây; "Copy future trades" |
+| `/bots/new/copy_trade?leader=` | Budget and safety (`CopyBot`) → Review and start (`CopyReview`) | 3 bước; mức an toàn theo S12.1; Review báo market bị bỏ vì trùng bot |
+| `/following` | Following (`WhaleWatch`) | Tối đa 5 trader / user; "checked every 2 min"; cảnh báo big move trong app |
+
+Thiếu dữ liệu hiện "Not enough trades" / "History incomplete", không hiện `0` (quy tắc 1.8). Mọi số trên thẻ là lịch sử: "Past results, not a forecast."
+
+### 8.x AI Desk (DEC-105)
+
+> **Hướng mới (DEC-164, DEC-166):** `/desk` sẽ thành AI Desk concept B+ (DEC-166): thẻ Mục tiêu, Needs you có what-if, so sánh phương án, Thành tích, sức khoẻ bot, nút ✦ trên Trading Agent / Portfolio / Strategy Lab, Desk AI panel; artboard hàng "AI Desk · concept B+" (màn chat ở hàng "concept B") trên canvas "AI Desk redesign". Bảng route dưới đây là bản đang chạy (DEC-105); route mới chốt khi code (LLM, giới hạn, lưu trữ đã chốt ở DEC-165).
+
+Chỉ hiện khi team bật ở Users › AI Desk. Sidebar: Trading Agent luôn thứ 3, sau đó AI Desk → Strategy Lab (DEC-108); khi AI Desk bật, AI Analyst rời sidebar và `/analyst` chuyển sang `/desk?tab=bots`. Spec: `docs/AI_DESK_RECOMMENDED.md`.
+
+| Route | Màn | Ghi chú |
+|---|---|---|
+| `/desk` | Recommended · Your bots · Ask AI | 3 câu hỏi → một đề xuất "Suggested for you"; Goal check không đổi đề xuất; Verified trống; Ask AI "Coming soon" |
+| `/desk/why/:suggestionId` | Why this one | Đọc đúng dữ liệu đã lưu của lần đề xuất, không tính lại; không hiện backtest |
+| `/desk/paper/:botId` | Fake-money test | Nhãn PAPER; mọi số là mô phỏng; Stop test không cần 2FA |
+| `/desk/paper/:botId/results` | Test results | Kết luận theo quy tắc `paperVerdict`; so với chỉ giữ coin luôn hiện |
+| `/desk/paper/:botId/go-live` | Use real money | Tính lại bằng `aiParameters()`, kiểm tra như Start, xác nhận + 2FA, tạo bot **mới** `live` |
+
 ## 9. Toàn vẹn dữ liệu (áp dụng cho mọi màn hình)
 
 1. Mọi con số có đơn vị (USDC, USDT, %, ×), và khi cần thì kèm khung thời gian và dòng "Updated hh:mm:ss".

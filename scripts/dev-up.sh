@@ -30,7 +30,9 @@ step "Migration database"
 
 if [ "$#" -gt 0 ]; then
   step "Build lại và restart: $*"
-  "${COMPOSE[@]}" up -d --build "$@"
+  # --no-deps: chỉ đụng tới đúng các service được nêu. Không có cờ này, build lại api còn khởi động lại signer
+  # (api phụ thuộc signer), làm bot đang chạy không ký được lệnh huỷ trong vài giây (sự cố 2026-11-04, DEC-111).
+  "${COMPOSE[@]}" up -d --build --no-deps "$@"
 else
   step "Build lại và chạy mọi service"
   "${COMPOSE[@]}" up -d --build

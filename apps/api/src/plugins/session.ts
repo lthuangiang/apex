@@ -5,6 +5,7 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import { randomToken, safeEqual, sha256 } from "../lib/crypto";
+import { TWO_FACTOR_TRUST_MS } from "../modules/security/two-factor";
 
 // Phiên cookie httpOnly + chống CSRF bằng double-submit token (CODING_STANDARDS C12).
 // Phiên trượt 7 ngày, trần tuyệt đối 30 ngày (DEC-28).
@@ -18,6 +19,8 @@ export interface AuthContext {
   userId: string;
   sessionId: string;
   twoFactorEnabled: boolean;
+  /** Trong cửa sổ 2 giờ sau lần nhập đúng 2FA thì không hỏi lại (DEC-115); null khi không có. */
+  twoFactorTrustedUntil: Date | null;
 }
 
 declare module "fastify" {
@@ -53,6 +56,7 @@ export function registerSession(app: FastifyInstance, options: SessionOptions): 
         absoluteExpiresAt: sessions.absoluteExpiresAt,
         lastSeenAt: sessions.lastSeenAt,
         twoFactorEnabled: users.twofaEnabled,
+        twofaVerifiedAt: sessions.twofaVerifiedAt,
       })
       .from(sessions)
       .innerJoin(users, eq(users.id, sessions.userId))
@@ -73,6 +77,10 @@ export function registerSession(app: FastifyInstance, options: SessionOptions): 
       userId: row.userId,
       sessionId: row.sessionId,
       twoFactorEnabled: row.twoFactorEnabled,
+      twoFactorTrustedUntil:
+        row.twoFactorEnabled && row.twofaVerifiedAt !== null
+          ? new Date(row.twofaVerifiedAt.getTime() + TWO_FACTOR_TRUST_MS)
+          : null,
     };
     if (at.getTime() - row.lastSeenAt.getTime() >= SESSION_TOUCH_MS) {
       const expiresAt = new Date(

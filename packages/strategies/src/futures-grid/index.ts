@@ -1,5 +1,6 @@
 import { mul } from "@drift/shared";
 
+import { entryOf } from "../common/entry";
 import { gridBotFor, type GridBotState } from "../common/grid-bot";
 import type { StrategyModule } from "../core/types";
 
@@ -18,7 +19,10 @@ export const futuresGrid: StrategyModule<FuturesGridConfig, GridBotState> = grid
     spacing: c.spacing,
     notional: mul(c.margin, String(c.leverage)).toString(),
     capital: c.margin,
-    triggerPrice: c.triggerPrice,
+    entry: entryOf(
+      c,
+      c.triggerPrice === undefined ? undefined : { type: "cross", price: c.triggerPrice },
+    ),
     stopBelow: c.stopBelow,
     stopAbove: c.stopAbove,
     takeProfitPct: c.takeProfitPct,

@@ -82,7 +82,14 @@ export async function snapshotAndCheck(
         const list = await tx
           .select()
           .from(bots)
-          .where(and(eq(bots.sodexAccountId, a.id), inArray(bots.state, [...ACTIVE])))
+          // Giới hạn rủi ro của tiền thật không áp cho bot paper (DEC-105).
+          .where(
+            and(
+              eq(bots.sodexAccountId, a.id),
+              eq(bots.mode, "live"),
+              inArray(bots.state, [...ACTIVE]),
+            ),
+          )
           .for("update");
         for (const b of list) {
           const next = applyReason(b.state, reason);

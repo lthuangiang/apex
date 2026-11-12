@@ -12,6 +12,7 @@ import { unitsOf } from "../preview";
 
 import { AmountLines } from "./amount-lines";
 import { ArbAssetPicker, RebalanceAssets } from "./asset-pickers";
+import { HowItWorks, useHasHow } from "./how-it-works";
 import { MarketPicker } from "./market-picker";
 
 // Form tham số bot theo bố cục UI_REVIEW G2/G3 (DEC-68): Market → Amount → Strategy → Risk → Advanced
@@ -48,6 +49,7 @@ export function BotForm({
   advancedExtra,
   focusKey,
   preview,
+  afterMarket,
 }: {
   strategy: keyof typeof FIELDS;
   values: FormValues;
@@ -68,8 +70,11 @@ export function BotForm({
   focusKey?: { key: string; n: number } | null;
   /** Mobile (UI_REVIEW G5): Preview chưa có dữ liệu nằm sau Amount; có dữ liệu thì ngay trước Advanced. */
   preview?: { node: ReactNode; at: "amount" | "advanced" } | undefined;
+  /** Mobile (IMP-05): chart nằm ngay dưới ô Market. */
+  afterMarket?: ReactNode;
 }) {
   const t = useTranslations("createBot");
+  const hasHow = useHasHow();
   const names = useMarketNames();
   const markets = useMarkets();
   const root = useRef<HTMLDivElement>(null);
@@ -177,15 +182,24 @@ export function BotForm({
       );
     }
     if (f.type.kind === "bool") {
-      return (
+      const sw = (
         <Switch
           label={label}
           checked={v === true}
           onCheckedChange={(next) => {
             set(f.key, next);
           }}
+          {...(hint === "" ? {} : { description: hint })}
+          {...(f.beta === true ? { badge: t("beta") } : {})}
           {...(disabled === true ? { disabled: true } : {})}
         />
+      );
+      if (f.beta !== true || error === undefined) return sw;
+      return (
+        <div className="flex flex-col gap-1">
+          {sw}
+          <p className="m-0 text-sm text-neg-ink">⚠ {error}</p>
+        </div>
       );
     }
     if (f.type.kind === "assets") {
@@ -293,6 +307,16 @@ export function BotForm({
           {renderField(x)}
         </div>
       );
+      // "How it works" dưới cả hàng (không chen giữa hai ô cùng hàng), DEC-146.
+      const hows = row
+        .filter((x) => hasHow(x.label ?? x.key))
+        .map((x) => (
+          <HowItWorks
+            key={`how-${x.key}`}
+            labelKey={x.label ?? x.key}
+            {...(row.length === 1 ? {} : { title: t(`fields.${x.label ?? x.key}.label`) })}
+          />
+        ));
       out.push(
         row.length === 1 ? (
           cell(f)
@@ -302,6 +326,7 @@ export function BotForm({
           </div>
         ),
       );
+      out.push(...hows);
     }
     return out;
   };
@@ -336,6 +361,7 @@ export function BotForm({
               <div className="flex flex-col gap-3">{renderFields(fields)}</div>
               {s === "amount" ? <AmountLines strategy={strategy} values={values} /> : null}
             </fieldset>
+            {s === "market" ? afterMarket : null}
             {s === "amount" && previewAfterAmount ? preview.node : null}
           </Fragment>
         );

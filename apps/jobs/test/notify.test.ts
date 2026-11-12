@@ -12,7 +12,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testconta
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { handleNotify } from "../src/notify";
+import { emailText, handleNotify } from "../src/notify";
 
 let container: StartedPostgreSqlContainer;
 let db: Db;
@@ -80,7 +80,7 @@ describe("jobs.notify", () => {
     const rows = await db.select().from(notifications).where(eq(notifications.userId, userId));
     expect(rows.map((r) => r.channel).sort()).toEqual(["email", "in_app"]);
     expect(sent).toEqual([
-      `${email}|DRIFT: Grid · BTC paused|Grid · BTC was paused: daily loss limit reached. Open orders were kept. Open DRIFT to review it.`,
+      `${email}|DeskLabs: Grid · BTC paused|Grid · BTC was paused: daily loss limit reached. Open orders were kept. Open DeskLabs to review it.`,
     ]);
   });
 
@@ -102,5 +102,18 @@ describe("jobs.notify", () => {
       ),
     ).toEqual(["in_app"]);
     expect(sent).toEqual([]);
+  });
+
+  it("says a stopped paper bot was a fake-money test (DEC-105)", () => {
+    const m = emailText(
+      "bot_stopped",
+      { reasonCode: "BOT_MAX_LOSS", paper: true },
+      "Spot Grid · BTC",
+    );
+    expect(m.subject).toContain("fake-money test");
+    expect(m.text).toContain("No real money was used.");
+    expect(emailText("bot_stopped", { reasonCode: "BOT_MAX_LOSS" }, "Grid").text).not.toContain(
+      "fake",
+    );
   });
 });

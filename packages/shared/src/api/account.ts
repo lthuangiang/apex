@@ -2,7 +2,9 @@ import { z } from "zod";
 
 import { decimalStringSchema, isoDateTimeSchema, uuidSchema } from "../schemas";
 
-import { botSummarySchema } from "./bots";
+import { twoFactorCodeSchema } from "./auth";
+import { BOT_STRATEGIES, botSummarySchema } from "./bots";
+import { connectEventViewSchema } from "./sodex";
 
 // API màn Overview / Portfolio / Risk Center / AI Analyst / Builder Revenue (P10, DEC-41).
 
@@ -243,6 +245,14 @@ export const adminUsersViewSchema = z.object({
       /** `null` = chưa kết nối SoDEX; `never` = đã kết nối nhưng chưa có approval nào đọc lại được. */
       builderFee: z.enum(["approved", "revoked", "never", "exempt"]).nullable(),
       bots: z.object({ running: z.number().int(), total: z.number().int() }),
+      /** Số dư gần nhất từ equity snapshot; null khi chưa có. */
+      equity: decimalStringSchema.nullable(),
+      /** Tổng khối lượng lệnh bot đã khớp, gồm cả mở và đóng. */
+      volume: decimalStringSchema,
+      /** Admin đã bật bot khối lượng (Volume Maker, Volume Farm) cho tài khoản này (DEC-80). */
+      volumeBots: z.boolean(),
+      /** Admin đã bật AI Desk cho tài khoản này (DEC-105). */
+      aiDesk: z.boolean().default(false),
     }),
   ),
   total: z.number().int(),
@@ -250,6 +260,110 @@ export const adminUsersViewSchema = z.object({
   pageSize: z.number().int(),
 });
 export type AdminUsersView = z.infer<typeof adminUsersViewSchema>;
+
+/** Một dòng builder fee của user (DEC-159), phần mười bp: 10 = 0.01%. */
+export const builderFeeRowSchema = z.object({
+  strategy: z.enum(BOT_STRATEGIES),
+  defaultRate: z.number().int(),
+  rate: z.number().int(),
+  /** Team đã đặt mức riêng (có thể bằng mặc định). */
+  custom: z.boolean(),
+});
+export type BuilderFeeRow = z.infer<typeof builderFeeRowSchema>;
+
+/**
+ * Chi tiết một user cho team (chỉ đọc, DEC-93). Volume = Σ giá × khối lượng các lệnh bot đã khớp, gồm cả mở và
+ * đóng; số dư lấy từ equity snapshot, không gọi SoDEX. Mọi lần xem đều ghi audit.
+ */
+export const adminUserDetailSchema = z.object({
+  user: adminUsersViewSchema.shape.items.element.extend({
+    /** Lần dùng phiên gần nhất. */
+    lastSeenAt: isoDateTimeSchema.nullable(),
+  }),
+  stats: z.object({
+    equityAt: isoDateTimeSchema.nullable(),
+    volume24h: decimalStringSchema,
+    volume7d: decimalStringSchema,
+    volumeAll: decimalStringSchema,
+    fills: z.number().int(),
+    builderFees: decimalStringSchema,
+    /** Σ PnL của các bot có dữ liệu, gồm cả bot đã lưu trữ. */
+    botProfit: decimalStringSchema,
+  }),
+  bots: z.array(botSummarySchema),
+  /** Builder fee theo chiến lược của user (DEC-159). */
+  builderFees: z.array(builderFeeRowSchema),
+  /** Lịch sử kết nối SoDEX (DEC-114): bước phía trình duyệt và yêu cầu chữ ký phía server, mới nhất trước. */
+  connect: z.object({
+    events: z.array(connectEventViewSchema),
+    requests: z.array(
+      z.object({
+        action: z.string(),
+        status: z.string(),
+        sodexError: z.string().nullable(),
+        at: isoDateTimeSchema,
+      }),
+    ),
+  }),
+  orders: z.array(
+    z.object({
+      id: uuidSchema,
+      botName: z.string(),
+      market: z.string(),
+      side: z.enum(["buy", "sell"]),
+      type: z.enum(["limit", "market"]),
+      price: decimalStringSchema.nullable(),
+      size: decimalStringSchema,
+      filledSize: decimalStringSchema,
+      status: z.string(),
+      at: isoDateTimeSchema,
+    }),
+  ),
+});
+export type AdminUserDetail = z.infer<typeof adminUserDetailSchema>;
+
+/** Team bật / tắt bot khối lượng cho một user (DEC-80). Tắt thì bot khối lượng đang chạy được pause. */
+export const adminVolumeBotsBodySchema = z.object({ enabled: z.boolean() });
+export type AdminVolumeBotsBody = z.input<typeof adminVolumeBotsBodySchema>;
+export const adminVolumeBotsSchema = z.object({
+  volumeBots: z.boolean(),
+  /** Số bot khối lượng đang chạy được chuyển sang Pausing khi tắt. */
+  paused: z.number().int(),
+});
+export type AdminVolumeBots = z.infer<typeof adminVolumeBotsSchema>;
+
+/** Team đặt builder fee riêng cho một chiến lược của user; `rate: null` = về mặc định (DEC-159). */
+export const adminBuilderFeeBodySchema = z.object({
+  strategy: z.enum(BOT_STRATEGIES),
+  rate: z
+    .number()
+    .int({ message: "Use steps of 0.001%." })
+    .min(0, { message: "Allowed 0–0.01%." })
+    .max(10, { message: "Allowed 0–0.01%." })
+    .nullable(),
+});
+export type AdminBuilderFeeBody = z.input<typeof adminBuilderFeeBodySchema>;
+export const adminBuilderFeeSchema = z.object({
+  builderFees: z.array(builderFeeRowSchema),
+  /** Số bot đang chạy của chiến lược đó được ghi một dòng Decisions. */
+  notified: z.number().int(),
+});
+export type AdminBuilderFee = z.infer<typeof adminBuilderFeeSchema>;
+
+/** Team bật / tắt AI Desk cho một user (DEC-105). Tắt không dừng bot nào; chỉ ẩn AI Desk. */
+export const adminAiDeskBodySchema = z.object({ enabled: z.boolean() });
+export const adminAiDeskSchema = z.object({ aiDesk: z.boolean() });
+export type AdminAiDesk = z.infer<typeof adminAiDeskSchema>;
+
+/** Team đặt lại mật khẩu cho một user (DEC-77): cần 2FA của người thao tác. */
+export const adminResetPasswordBodySchema = z.object({ twoFactorCode: twoFactorCodeSchema });
+export type AdminResetPasswordBody = z.input<typeof adminResetPasswordBodySchema>;
+/** Mật khẩu tạm chỉ trả về đúng một lần, không lưu ở đâu khác ngoài hash. */
+export const adminResetPasswordSchema = z.object({
+  email: z.string(),
+  temporaryPassword: z.string(),
+});
+export type AdminResetPassword = z.infer<typeof adminResetPasswordSchema>;
 
 /** Watchlist của Overview (UI_REVIEW M2, DEC-74). Thứ tự trong mảng là thứ tự hiển thị. */
 export const WATCHLIST_MAX = 8;
@@ -268,3 +382,115 @@ export const watchlistBodySchema = z.object({
       message: "Duplicate market.",
     }),
 });
+
+// ─── Platform Stats (DEC-98, chỉ role `team`) ────────────────────────────────
+
+/** Một ngày trong chart thống kê nền tảng. */
+export const platformStatsDaySchema = z.object({
+  date: z.string(), // YYYY-MM-DD
+  newUsers: z.number().int(),
+  volume: z.string(), // notional (price × size), tổng của ngày
+  fees: z.string(), // builder fee, tổng của ngày
+});
+export type PlatformStatsDay = z.infer<typeof platformStatsDaySchema>;
+
+/** Bước của phễu kích hoạt (DEC-139): user khác nhau đã tới bước đó (mọi thời gian). */
+export const ACTIVATION_STEPS = [
+  "signedUp",
+  "connected",
+  "approved",
+  "firstBot",
+  "firstFill",
+  "active7d",
+] as const;
+export type ActivationStep = (typeof ACTIVATION_STEPS)[number];
+
+/** Insight tự sinh từ số liệu (DEC-139): `key` + `params` để UI dịch; sắp theo mức độ. */
+export const statsInsightSchema = z.object({
+  severity: z.enum(["critical", "warning", "info", "good"]),
+  key: z.string(),
+  params: z.record(z.string(), z.union([z.string(), z.number()])),
+});
+export type StatsInsight = z.infer<typeof statsInsightSchema>;
+
+/** Phần tổng quan có so sánh kỳ trước, phễu, theo strategy, lý do dừng, sức khoẻ, insight (DEC-139). */
+export const platformOverviewSchema = z.object({
+  kpis: z.object({
+    activeUsers: z.object({ cur: z.number().int(), prev: z.number().int() }),
+    volume: z.object({ cur: z.string(), prev: z.string() }),
+    revenue: z.object({ cur: z.string(), prev: z.string() }),
+    /** Builder fee thực thu mỗi $1M volume trong kỳ; null khi chưa có volume. */
+    revenuePerMillion: z.string().nullable(),
+    /** % volume trong kỳ không thu builder fee (account builder được miễn, hoặc fill thiếu builder fee). */
+    unchargedVolumePct: z.number().nullable(),
+  }),
+  activation: z.array(z.object({ step: z.enum(ACTIVATION_STEPS), users: z.number().int() })),
+  strategies: z.array(
+    z.object({
+      strategy: z.string(),
+      bots: z.number().int(),
+      running: z.number().int(),
+      volume: z.string(),
+      feePerMillion: z.string().nullable(),
+      ordersPlaced: z.number().int(),
+      fillRatePct: z.number().nullable(),
+      rejectRatePct: z.number().nullable(),
+    }),
+  ),
+  stops: z.array(z.object({ reason: z.string().nullable(), bots: z.number().int() })),
+  health: z.object({
+    /** Giây kể từ giá BTC-USD gần nhất của marketdata; null khi không có. */
+    priceAgeSec: z.number().nullable(),
+    needsAttention: z.number().int(),
+    rejected24h: z.number().int(),
+    lastFillAt: z.string().nullable(),
+  }),
+  insights: z.array(statsInsightSchema),
+});
+export type PlatformOverview = z.infer<typeof platformOverviewSchema>;
+
+export const platformStatsSchema = z.object({
+  /** Số ngày được truy vấn (7 | 30 | 90). */
+  period: z.number().int(),
+  /** ISO timestamp của lúc chạy query. */
+  snapshotAt: z.string(),
+  users: z.object({
+    total: z.number().int(),
+    connected: z.number().int(),
+    new24h: z.number().int(),
+    new7d: z.number().int(),
+    new30d: z.number().int(),
+  }),
+  volume: z.object({
+    total: z.string(),
+    h24: z.string(),
+    d7: z.string(),
+    d30: z.string(),
+  }),
+  fees: z.object({
+    total: z.string(),
+    h24: z.string(),
+    d7: z.string(),
+    d30: z.string(),
+  }),
+  bots: z.object({
+    total: z.number().int(),
+    running: z.number().int(),
+    created24h: z.number().int(),
+  }),
+  /** Dữ liệu theo ngày trong `period` ngày gần nhất. */
+  daily: z.array(platformStatsDaySchema),
+  /** Màn Connect SoDEX trong `period` ngày (DEC-114): số user ở từng bước, lỗi hay gặp, thiết bị. */
+  connect: z.object({
+    steps: z.array(z.object({ type: z.string(), users: z.number().int() })),
+    failures: z.array(z.object({ type: z.string(), reason: z.string(), users: z.number().int() })),
+    devices: z.array(z.object({ device: z.string(), users: z.number().int() })),
+  }),
+  overview: platformOverviewSchema,
+});
+export type PlatformStats = z.infer<typeof platformStatsSchema>;
+
+export const platformStatsQuerySchema = z.object({
+  period: z.coerce.number().int().min(7).max(90).default(30),
+});
+export type PlatformStatsQuery = z.infer<typeof platformStatsQuerySchema>;

@@ -12,3 +12,6 @@ storybook-static/
 test-results/
 playwright-report/
 infra/certs/dev/
+
+# Cấu hình deploy trên máy mình (có thể chứa mật khẩu SSH)
+infra/deploy/.deploy.local

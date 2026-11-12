@@ -11,7 +11,7 @@ import type {
   StrategyModule,
 } from "../core/types";
 
-import type { TwapConfig } from "./schema";
+import { twapStartAt, type TwapConfig } from "./schema";
 
 // S8 TWAP (STRATEGIES.md): mỗi duration/N (kiểm tra ở mỗi `timer`) đặt một lát limit IOC ở giá hiện tại ± trượt giá
 // tối đa (giới hạn trượt giá của lát). Lát vượt price limit thì bỏ qua: dồn sang lát sau hoặc để trống.
@@ -65,6 +65,9 @@ export function stepTwap(
   if (s.phase === "halted") return { actions: [], state: s };
   if (e.type === "tick" && e.market === c.market) {
     const state = { ...s, lastPrice: e.price };
+    // Start at (IMP-03): chưa tới giờ thì chỉ ghi giá, chưa đặt lát nào. Giờ đã qua thì chạy ngay.
+    const startAt = twapStartAt(c);
+    if (s.phase === "waiting" && startAt !== null && e.at < startAt) return { actions: [], state };
     if (s.phase === "waiting")
       return {
         actions: [],
@@ -169,4 +172,8 @@ export function stepTwap(
 export const twap: StrategyModule<TwapConfig, TwapState> = {
   initialState: initial,
   step: stepTwap,
+  waiting: (c, s) => {
+    const at = twapStartAt(c);
+    return s.phase === "waiting" && at !== null ? { kind: "start_at", at } : null;
+  },
 };

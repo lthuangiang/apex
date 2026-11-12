@@ -1,4 +1,11 @@
-import { errorResponseSchema, meSchema, twoFactorSetupSchema } from "@drift/shared";
+import { users } from "@drift/db";
+import {
+  adminResetPasswordSchema,
+  errorResponseSchema,
+  meSchema,
+  twoFactorSetupSchema,
+} from "@drift/shared";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { hashPassword, verifyPassword } from "../src/lib/password";
@@ -127,5 +134,67 @@ describe("email + password sign-up and sign-in", () => {
     expect(await setPassword(env.db, email, PASSWORD)).toBe(true);
     expect((await login(new TestClient(env.app), email)).statusCode).toBe(201);
     expect(await setPassword(env.db, nextEmail(), PASSWORD)).toBe(false);
+  });
+});
+
+describe("team resets a user's password (DEC-77)", () => {
+  const enable2fa = async (client: TestClient) => {
+    const setup = twoFactorSetupSchema.parse(
+      (await client.request("POST", "/api/v1/security/2fa/setup")).json(),
+    );
+    await client.request("POST", "/api/v1/security/2fa/enable", {
+      body: { code: generateTotp(setup.secret, env.clock.now) },
+    });
+    return setup.secret;
+  };
+  const makeTeam = async (email: string) => {
+    await env.db.update(users).set({ role: "team" }).where(eq(users.email, email));
+  };
+  const idOf = async (email: string) =>
+    (await env.db.select({ id: users.id }).from(users).where(eq(users.email, email)))[0]?.id ?? "";
+
+  it("returns a one-time password, signs the user out everywhere, and needs 2FA", async () => {
+    const adminEmail = nextEmail();
+    const admin = new TestClient(env.app);
+    await register(admin, adminEmail);
+    await makeTeam(adminEmail);
+    const secret = await enable2fa(admin);
+
+    const userEmail = nextEmail();
+    const user = new TestClient(env.app);
+    await register(user, userEmail);
+    const userId = await idOf(userEmail);
+
+    const noCode = await admin.request("POST", `/api/v1/admin/users/${userId}/password`, {
+      body: {},
+    });
+    expect(noCode.statusCode).toBe(400);
+
+    env.clock.now = new Date(env.clock.now.getTime() + 60_000);
+    const res = await admin.request("POST", `/api/v1/admin/users/${userId}/password`, {
+      body: { twoFactorCode: generateTotp(secret, env.clock.now) },
+    });
+    expect(res.statusCode).toBe(200);
+    const { email, temporaryPassword } = adminResetPasswordSchema.parse(res.json());
+    expect(email).toBe(userEmail);
+    expect(temporaryPassword).toMatch(/^[A-Z2-9]{4}(-[A-Z2-9]{4}){4}$/);
+
+    expect((await user.request("GET", "/api/v1/me")).statusCode).toBe(401);
+    expect(errorCode((await login(new TestClient(env.app), userEmail)).body)).toBe(
+      "INVALID_CREDENTIALS",
+    );
+    expect((await login(new TestClient(env.app), userEmail, temporaryPassword)).statusCode).toBe(
+      201,
+    );
+  });
+
+  it("is forbidden for non-team users", async () => {
+    const client = new TestClient(env.app);
+    const email = nextEmail();
+    await register(client, email);
+    const res = await client.request("POST", `/api/v1/admin/users/${await idOf(email)}/password`, {
+      body: { twoFactorCode: "123456" },
+    });
+    expect(errorCode(res.body)).toBe("FORBIDDEN");
   });
 });

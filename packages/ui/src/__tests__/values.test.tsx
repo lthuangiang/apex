@@ -26,6 +26,13 @@ describe("PnLValue", () => {
     expect(screen.getByText("0")).toHaveAttribute("data-sign", "zero");
   });
 
+  it("shows a tiny loss that rounds to 0 as neutral, without a red arrow", () => {
+    render(<PnLValue value="-0.0042" locale="en-US" missingLabel="Not available" />);
+    const el = screen.getByText("0");
+    expect(el).toHaveAttribute("data-sign", "zero");
+    expect(el).not.toHaveTextContent("▼");
+  });
+
   it("never shows 0 when the backend sent nothing", () => {
     render(<PnLValue value={null} locale="en-US" missingLabel="Not available" />);
     expect(screen.getByText("Not available")).toBeInTheDocument();

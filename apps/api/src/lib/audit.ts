@@ -20,6 +20,11 @@ export const AuditAction = {
   riskLimitChanged: "risk.limit_changed",
   emergencyHalt: "risk.emergency_halt",
   accountDeleted: "account.deleted",
+  passwordResetByTeam: "admin.password_reset",
+  volumeBotsChanged: "admin.volume_bots",
+  aiDeskChanged: "admin.ai_desk",
+  builderFeeChanged: "admin.builder_fee",
+  adminUserViewed: "admin.user_viewed",
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 

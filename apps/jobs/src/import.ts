@@ -318,6 +318,7 @@ export async function analyze(
     price: t.price,
     quantity: t.quantity,
     feeQuote: t.fee ?? "0",
+    builderFeeQuote: t.builderFee,
     isMaker: t.isMaker,
     at: t.tradedAt.getTime(),
   });

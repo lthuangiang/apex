@@ -5,10 +5,13 @@ import { ComingSoonChip, inputClassName, Skeleton } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useEffect } from "react";
 
 import { Card, PageHead, Workspace } from "@/components/workspace";
 import { api } from "@/lib/api";
+import { useFeatures } from "@/lib/queries";
 
 // AI Analyst (artboard "Desktop · AI Analyst", SCREENS.md mục 9.8): insight tất định từ dữ liệu thật, tách
 // dữ liệu quan sát / diễn giải / việc nên kiểm tra. Hỏi đáp tự do cần mô hình ngôn ngữ chưa được duyệt → Coming soon.
@@ -16,6 +19,12 @@ import { api } from "@/lib/api";
 export function AnalystPage() {
   const t = useTranslations("analyst");
   const te = useTranslations("common.errors");
+  // AI Desk bật: quy tắc của AI Analyst nằm ở AI Desk › Your bots; URL cũ chuyển sang đó (DEC-105).
+  const router = useRouter();
+  const desk = useFeatures().data?.aiDesk === true;
+  useEffect(() => {
+    if (desk) router.replace("/desk?tab=bots");
+  }, [desk, router]);
   const q = useQuery({
     queryKey: ["analyst"],
     queryFn: () => api("GET", "/api/v1/analyst", analystViewSchema),

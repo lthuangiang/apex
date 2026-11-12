@@ -60,6 +60,9 @@ export function fallbackQuote(
     strategy === "futures_grid" ||
     strategy === "futures_dca" ||
     strategy === "volume_maker" ||
+    strategy === "volume_farm" ||
+    strategy === "adaptive_dca" ||
+    strategy === "copy_trade" ||
     (strategy === "twap" && values.engine === "perps")
   )
     return "USDC";

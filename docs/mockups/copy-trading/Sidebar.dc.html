@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sidebar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1d47b8}a:hover{color:#141a33}
+</style>
+</helmet>
+<nav aria-label="Main" style="width: 248px; box-sizing: border-box; padding: 20px 14px; background: #ffffff; border: 1px solid #e3e7f5; border-radius: 20px; display: flex; flex-direction: column; gap: 14px; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+  <div style="display: flex; align-items: center; gap: 10px; padding: 4px 8px">
+    <span aria-hidden="true" style="width: 36px; height: 36px; border-radius: 11px; background: #2e62e8; display: flex; align-items: center; justify-content: center">
+      <svg width="30" height="30" viewBox="0 0 24 24"><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#ffffff"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#ffffff" opacity="0.7"></rect></svg>
+    </span>
+    <strong style="font-size: 18px; font-weight: 800; letter-spacing: -0.01em">DeskLabs</strong>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <sc-for list="{{main}}" as="item" hint-placeholder-count="7">
+      <a href="{{item.href}}" style="{{item.style}}">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.icon}}"></path></svg>
+        <span style="flex: 1">{{item.label}}</span>
+      </a>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <span style="padding: 0 12px 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #5f6684">Copy Trading</span>
+    <sc-for list="{{copy}}" as="item" hint-placeholder-count="2">
+      <a href="{{item.href}}" style="{{item.style}}">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.icon}}"></path></svg>
+        <span style="flex: 1">{{item.label}}</span>
+      </a>
+    </sc-for>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <sc-for list="{{mainB}}" as="item" hint-placeholder-count="3">
+      <a href="{{item.href}}" style="{{item.style}}">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.icon}}"></path></svg>
+        <span style="flex: 1">{{item.label}}</span>
+      </a>
+    </sc-for>
+  </div>
+
+  <sc-if value="{{showTeam}}" hint-placeholder-val="{{false}}">
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="padding: 0 12px 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #5f6684">Team</span>
+      <sc-for list="{{team}}" as="item" hint-placeholder-count="3">
+        <a href="{{item.href}}" style="{{item.style}}">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.icon}}"></path></svg>
+          <span style="flex: 1">{{item.label}}</span>
+        </a>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <div style="height: 1px; background: #e3e7f5"></div>
+  <div style="display: flex; flex-direction: column; gap: 2px">
+    <sc-for list="{{bottom}}" as="item" hint-placeholder-count="1">
+      <a href="{{item.href}}" style="{{item.style}}">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{item.icon}}"></path></svg>
+        <span style="flex: 1">{{item.label}}</span>
+      </a>
+    </sc-for>
+    <a href="#" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 12px; color: #a72826; font-size: 14px; font-weight: 700; text-decoration: none">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M9 9l6 6M15 9l-6 6"></path></svg>
+      Halt all agents
+    </a>
+  </div>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"current":{"editor":"enum","options":["overview","portfolio","agent","desk","bots","orders","risk","analyst","leaders","whale","settings","revenue","users","stats"],"default":"desk"},"aiDesk":{"editor":"boolean","default":true},"team":{"editor":"boolean","default":false},"$preview":{"width":248,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    // Khớp menu đang chạy (workspace-shell.tsx, common.nav, DEC-108). Khi AI Desk bật: AI Desk đứng sau Trading Agent và AI Analyst rời sidebar.
+    var legacy = { agents: 'agent' };
+    var cur = this.props.current ?? 'desk';
+    cur = legacy[cur] || cur;
+    var aiDesk = this.props.aiDesk ?? true;
+    var base = 'display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 12px; font-size: 14px; text-decoration: none; ';
+    var on = 'background: #2e62e8; color: #ffffff; font-weight: 700; box-shadow: 0 6px 16px rgba(46,98,232,0.28);';
+    var off = 'color: #3b4262; font-weight: 600;';
+    var I = {
+      overview: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
+      portfolio: 'M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4',
+      agent: 'M12 8V4H8M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zM2 14h2M20 14h2M15 13v2M9 13v2',
+      desk: 'M12 4.5a3 3 0 0 0-5.9-.7A3.5 3.5 0 0 0 4 10a3.5 3.5 0 0 0 2 6.3A3 3 0 0 0 12 19.5zM12 4.5a3 3 0 0 1 5.9-.7A3.5 3.5 0 0 1 20 10a3.5 3.5 0 0 1-2 6.3 3 3 0 0 1-6 3.2M12 9h3M12 14h4',
+      bots: 'M10 2v7.5L4.7 20.5a1 1 0 0 0 .9 1.5h12.8a1 1 0 0 0 .9-1.5L14 9.5V2M8.5 2h7M7 16h10',
+      orders: 'M10 6h11M10 12h11M10 18h11M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1',
+      risk: 'M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1zM12 8v4M12 16h.01',
+      analyst: 'M9.9 15.5A2 2 0 0 0 8.5 14.1L2.4 12.5a.5.5 0 0 1 0-1l6.1-1.6a2 2 0 0 0 1.4-1.4l1.6-6.1a.5.5 0 0 1 1 0l1.6 6.1a2 2 0 0 0 1.4 1.4l6.1 1.6a.5.5 0 0 1 0 1l-6.1 1.6a2 2 0 0 0-1.4 1.4l-1.6 6.1a.5.5 0 0 1-1 0z',
+      leaders: 'M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z',
+      whale: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+      revenue: 'M8 14a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM18.1 10.4A6 6 0 1 1 10.3 18M7 6h1v4M16.7 13.9l.7.7-2.8 2.8',
+      users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
+      stats: 'M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3',
+      settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z'
+    };
+    var make = function (rows) {
+      return rows.map(function (r) {
+        return { label: r[1], href: r[2] || '#', icon: I[r[0]], style: base + (r[0] === cur ? on : off) };
+      });
+    };
+    var main = [['overview', 'Overview'], ['portfolio', 'Portfolio'], ['agent', 'Trading Agent']];
+    if (aiDesk) main.push(['desk', 'AI Desk', 'Main.dc.html']);
+    main.push(['bots', 'Strategy Lab']);
+    // Nhóm Copy Trading nằm ngay sau Strategy Lab (copy bot là một bot của Strategy Lab), rồi tới phần còn lại.
+    var mainB = [['orders', 'Execution & Orders'], ['risk', 'Risk Center']];
+    if (!aiDesk) mainB.push(['analyst', 'AI Analyst']);
+    return {
+      main: make(main),
+      mainB: make(mainB),
+      copy: make([['leaders', 'Find traders', 'Leaders.dc.html'], ['whale', 'Following', 'WhaleWatch.dc.html']]),
+      showTeam: this.props.team ?? false,
+      team: make([['revenue', 'Builder Revenue'], ['users', 'Users'], ['stats', 'Platform Stats']]),
+      bottom: make([['settings', 'Settings']])
+    };
+  }
+}
+</script>
+</body>
+</html>

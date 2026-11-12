@@ -8,14 +8,21 @@ import { useMarketNames } from "@/lib/markets";
 import { FIELDS, isLaunched, visible, type FieldSpec } from "../fields";
 import { unitsOf } from "../preview";
 
+import { HowItWorksInfo } from "./how-it-works";
+
 // Configuration của Trading Agent (UI_REVIEW F2, artboard Agent): giá trị đã định dạng (không JSON), nhãn enum
 // giống form Create, đơn vị, tham số tuỳ chọn bỏ trống ghi "Not set". Gộp dòng như artboard: Price range
 // (lower – upper), Grid levels "N · spacing".
+
+/** Field bool có mặc định bật trong schema strategy. */
+const BOOL_DEFAULT_ON = new Set(["exchangeStop"]);
 
 export interface ConfigRow {
   key: string;
   label: string;
   value: string;
+  /** Key câu chữ của field, để hiện "How it works" nếu có (DEC-146). */
+  how?: string;
 }
 
 export function useConfigRows(strategy: string, market: string, config: Record<string, unknown>) {
@@ -30,6 +37,9 @@ export function useConfigRows(strategy: string, market: string, config: Record<s
 
   const format = (f: FieldSpec, v: unknown): string => {
     // Tham số người dùng bỏ trống: "Not set" (UI_REVIEW F2); "Not provided" chỉ cho dữ liệu backend thiếu.
+    // Công tắc chưa có trong config cũ lấy mặc định của schema (Smart quoting tắt, Stop loss on SoDEX bật).
+    if (f.type.kind === "bool" && v === undefined)
+      return BOOL_DEFAULT_ON.has(f.key) ? ta("yes") : ta("no");
     if (v === undefined || v === null || v === "") return ta("notSet");
     const k = f.type;
     switch (k.kind) {
@@ -90,7 +100,12 @@ export function useConfigRows(strategy: string, market: string, config: Record<s
       });
       continue;
     }
-    rows.push({ key: f.key, label: label(f), value: format(f, config[f.key]) });
+    rows.push({
+      key: f.key,
+      label: label(f),
+      value: format(f, config[f.key]),
+      how: f.label ?? f.key,
+    });
   }
   return rows;
 }
@@ -100,7 +115,10 @@ export function ConfigList({ rows }: { rows: readonly ConfigRow[] }) {
     <dl className="m-0 grid gap-x-10 gap-y-2.5 text-sm tabular-nums sm:grid-cols-2">
       {rows.map((r) => (
         <div key={r.key} className="flex min-w-0 justify-between gap-4">
-          <dt className="text-ink-2">{r.label}</dt>
+          <dt className="flex items-center gap-1 text-ink-2">
+            {r.label}
+            {r.how === undefined ? null : <HowItWorksInfo labelKey={r.how} name={r.label} />}
+          </dt>
           <dd className="m-0 text-right font-bold break-words">{r.value}</dd>
         </div>
       ))}

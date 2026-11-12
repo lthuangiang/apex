@@ -2,7 +2,9 @@ import { Decimal, dec, toDecimalString as plain } from "../money";
 
 // Định giá account (màn Overview / Portfolio, DEC-41). Mọi số lấy từ SoDEX:
 // - Spot: số dư × giá gần nhất của market `<coin>_vUSDC` (stablecoin = 1); coin không có giá → `unpriced`, không tính.
-// - Perps: `av` (cross account value, đã gồm PnL chưa chốt của vị thế cross) + Σ (`iw` + `ur`) của vị thế isolated.
+// - Perps: `av` của SoDEX = Σ số dư collateral theo index (USDC `wb` đã gồm phần isolated `iw`) + PnL chưa chốt của
+//   mọi vị thế, cross và isolated. Không cộng thêm `iw` / `ur` của vị thế isolated: làm vậy là tính hai lần
+//   (đối chiếu account 1645 ngày 2026-10-29: av 144.48 = 101.57 USDC + 2.90 vQQQ + 39.71 WSOSO + ur 0.30).
 // - Giá thanh lý, PnL chưa chốt lấy nguyên từ SoDEX; không tự ước tính (SCREENS.md mục 9.5).
 
 export const STABLE_COINS = ["vUSDC", "USDC", "vUSDT", "USDT"] as const;
@@ -88,7 +90,7 @@ export interface AccountsBreakdown {
     unpricedCoins: string[];
   };
   perps: {
-    /** `av` (+ isolated iw + ur): giá trị theo index, chưa haircut. */
+    /** `av`: giá trị theo index, chưa haircut, đã gồm margin và PnL của vị thế isolated. */
     accountValue: string;
     /** `am`: margin dùng được cho Cross, đã haircut. */
     availableMargin: string;
@@ -176,7 +178,6 @@ export function valuePortfolio(
       const size = dec(p.sz);
       if (size.isZero()) continue;
       const isolated = p.m.toUpperCase() === "ISOLATED";
-      if (isolated) perpsEquity = perpsEquity.add(p.iw ?? "0").add(p.ur);
       unrealized = unrealized.add(p.ur);
       const mark = prices[p.s] ?? null;
       positions.push({

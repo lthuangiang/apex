@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRIFT Create bot</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141A33; background: #EEF1FA; min-height: 100%; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 16px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+<a href="Bots.dc.html" style="font-size: 13px; font-weight: 700; color: #2E62E8; text-decoration: none">← Strategy Lab</a>
+<h1 style="margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.01em">Create {{s.name}}</h1>
+<span style="font-size: 14px; color: #3B4262">{{s.what}}</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<span style="{{engineStyle}}">{{s.engine}}</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; background: #C2312F; color: #FFFFFF; font-size: 12px; font-weight: 800; letter-spacing: 0.08em"><span style="width: 7px; height: 7px; border-radius: 50%; background: #FFFFFF"></span>LIVE · MAINNET</span>
+<span aria-disabled="true" title="Paper trading is not available yet" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; background: #F2F3F7; border: 1px dashed #C9CFE2; color: #5F6684; font-size: 12px; font-weight: 700">Paper · Coming soon</span>
+</div>
+</header>
+
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+
+<div style="flex: 3 1 480px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+<section aria-labelledby="vis-h" style="min-width: 0; background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px">
+<h2 id="vis-h" style="margin: 0; font-size: 17px; font-weight: 800">{{s.visTitle}}</h2>
+<span style="font-size: 13px; color: #3B4262; font-variant-numeric: tabular-nums">{{s.marketLine}}</span>
+</div>
+
+<div role="tablist" aria-label="Panel" style="display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: #F2F4FA; align-self: flex-start">
+<sc-for list="{{vTabs}}" as="t" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{t.selected}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button></sc-for>
+</div>
+
+<sc-if value="{{vPrev}}" hint-placeholder-val="{{ true }}">
+<sc-if value="{{vGrid}}" hint-placeholder-val="{{ true }}">
+<div style="position: relative; border-radius: 16px; background: #F7F9FF; padding: 8px 96px 8px 8px">
+<svg width="100%" height="240" viewBox="0 0 600 240" preserveAspectRatio="none" role="img" aria-label="{{gridAria}}" style="display: block">
+<rect x="0" y="{{g.top}}" width="600" height="{{g.band}}" fill="#E6ECFE"></rect>
+<sc-for list="{{g.lines}}" as="l"><line x1="0" x2="600" y1="{{l.y}}" y2="{{l.y}}" stroke="#9AB1F2" stroke-width="1" vector-effect="non-scaling-stroke"></line></sc-for>
+<line x1="0" x2="600" y1="{{g.stopY}}" y2="{{g.stopY}}" stroke="#C2312F" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"></line>
+<polyline points="{{g.path}}" fill="none" stroke="#141A33" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
+</svg>
+<sc-for list="{{g.labels}}" as="b"><span style="{{b.style}}">{{b.text}}</span></sc-for>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; font-weight: 600; color: #3B4262">
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 10px; border-radius: 3px; background: #E6ECFE; border: 1px solid #9AB1F2"></span>Grid range · {{g.n}} levels</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 0; border-top: 2px dashed #C2312F"></span>Stop</span>
+<span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 2px; background: #141A33"></span>Price, last 7 days</span>
+</div>
+</sc-if>
+
+<sc-if value="{{vDca}}" hint-placeholder-val="{{ false }}">
+<ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums">
+<sc-for list="{{ladder}}" as="r" hint-placeholder-count="6">
+<li style="{{r.row}}">
+<span style="width: 92px; flex: none; font-size: 13px; font-weight: 700">{{r.label}}</span>
+<div style="flex: 1; min-width: 60px; height: 12px; border-radius: 999px; background: #EEF1F8"><div style="{{r.bar}}"></div></div>
+<span style="width: 74px; flex: none; text-align: right; font-size: 13px; font-weight: 700">{{r.size}}</span>
+<span style="width: 92px; flex: none; text-align: right; font-size: 12px; color: #3B4262">{{r.price}}</span>
+</li>
+</sc-for>
+</ol>
+<div style="display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: #3B4262"><span style="padding: 6px 10px; border-radius: 999px; background: #DDF4E7; color: #0B6A39; font-weight: 700">{{tpText}}</span><span style="padding: 6px 10px; border-radius: 999px; background: #F5F7FD">Orders fill top to bottom as price moves {{dcaDir}}</span></div>
+</sc-if>
+
+<sc-if value="{{vSched}}" hint-placeholder-val="{{ false }}">
+<ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-variant-numeric: tabular-nums">
+<sc-for list="{{sched}}" as="d" hint-placeholder-count="6"><li style="padding: 12px 14px; border-radius: 14px; background: #F5F7FD; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #5F6684; font-weight: 600">{{d.n}}</span><strong style="font-size: 15px">{{d.date}}</strong><span style="font-size: 13px; color: #3B4262">Buy 150 USDT of BTC</span></li></sc-for>
+</ol>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 10px; border-radius: 999px; background: #EEF1F8"><div style="width: 0%; height: 10px; border-radius: 999px; background: #2E62E8"></div></div><span style="font-size: 12px; color: #3B4262; font-variant-numeric: tabular-nums">0 of 20 buys · 0 / 3,000 USDT used · ends Mar 15, 2027</span></div>
+</sc-if>
+
+<sc-if value="{{vWeights}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; height: 22px; border-radius: 999px; overflow: hidden"><div style="width: 50%; background: #F2A65A"></div><div style="width: 30%; background: #2E62E8"></div><div style="width: 20%; background: #19A99A"></div></div>
+<ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; font-variant-numeric: tabular-nums">
+<sc-for list="{{weights}}" as="w" hint-placeholder-count="3"><li style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #F5F7FD"><span style="{{w.dot}}"></span><strong style="flex: 1; font-size: 14px">{{w.asset}}</strong><span style="font-size: 13px">Target <strong>{{w.target}}</strong></span><span style="font-size: 12px; color: #3B4262">rebalances outside {{w.band}}</span></li></sc-for>
+</ul>
+<span style="font-size: 12px; color: #3B4262">At start DRIFT buys each asset up to its target from your 2,000 USDC.</span>
+</sc-if>
+
+<sc-if value="{{vArb}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; font-variant-numeric: tabular-nums">
+<div style="flex: 1 1 140px; padding: 14px; border-radius: 16px; background: #E6ECFE; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; font-weight: 700; color: #1D47B8">SPOT LEG · buy</span><strong style="font-size: 18px">+0.074 BTC</strong><span style="font-size: 12px; color: #3B4262">5,000 USDC</span></div>
+<div style="display: flex; align-items: center; font-size: 22px; font-weight: 800; color: #5F6684" aria-hidden="true">+</div>
+<div style="flex: 1 1 140px; padding: 14px; border-radius: 16px; background: #F0E6FF; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; font-weight: 700; color: #5A2CA0">PERP LEG · short 1×</span><strong style="font-size: 18px">−0.074 BTC</strong><span style="font-size: 12px; color: #3B4262">5,000 USDC margin</span></div>
+<div style="display: flex; align-items: center; font-size: 22px; font-weight: 800; color: #5F6684" aria-hidden="true">=</div>
+<div style="flex: 1 1 140px; padding: 14px; border-radius: 16px; background: #141A33; color: #FFFFFF; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 12px; font-weight: 700; color: #C9CEE4">NET PRICE EXPOSURE</span><strong style="font-size: 18px">≈ 0</strong><span style="font-size: 12px; color: #C9CEE4">earns funding while positive</span></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 700; color: #3B4262">BTC-PERP funding · last 21 periods</span>
+<div role="img" aria-label="Funding was positive in 18 of the last 21 periods" style="position: relative; display: flex; align-items: flex-end; gap: 3px; height: 70px; border-bottom: 1px solid #E3E7F5">
+<sc-for list="{{funding}}" as="f" hint-placeholder-count="21"><div style="{{f.style}}"></div></sc-for>
+</div>
+<span style="font-size: 12px; color: #3B4262">Enters when funding ≥ 0.005%; exits after 3 periods ≤ 0%.</span>
+</div>
+</sc-if>
+
+<sc-if value="{{vTwap}}" hint-placeholder-val="{{ false }}">
+<div role="img" aria-label="48 equal slices over 4 hours" style="display: flex; align-items: flex-end; gap: 2px; height: 80px; padding: 8px; border-radius: 14px; background: #F7F9FF">
+<sc-for list="{{slices}}" as="x" hint-placeholder-count="48"><div style="flex: 1; height: 56px; border-radius: 3px; background: #9AB1F2"></div></sc-for>
+</div>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #3B4262; font-variant-numeric: tabular-nums"><span>14:11 start</span><span>16:11</span><span>18:11 end</span></div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; font-variant-numeric: tabular-nums">
+<div style="padding: 10px 12px; border-radius: 12px; background: #F5F7FD"><span style="font-size: 12px; color: #5F6684">Each slice</span><br><strong>0.0417 BTC</strong></div>
+<div style="padding: 10px 12px; border-radius: 12px; background: #F5F7FD"><span style="font-size: 12px; color: #5F6684">Every</span><br><strong>5 minutes</strong></div>
+<div style="padding: 10px 12px; border-radius: 12px; background: #F5F7FD"><span style="font-size: 12px; color: #5F6684">Skips slices above</span><br><strong>no limit set</strong></div>
+</div>
+</sc-if>
+
+<sc-if value="{{vMaker}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-wrap: wrap; gap: 12px; font-variant-numeric: tabular-nums">
+<div aria-label="Your quotes in the order book" style="flex: 1 1 240px; min-width: 0; border-radius: 14px; background: #F7F9FF; padding: 10px; display: flex; flex-direction: column; gap: 3px; font-size: 12px">
+<div style="display: flex; justify-content: space-between; color: #5F6684; font-weight: 700; padding: 0 6px 4px"><span>Price</span><span>Size</span></div>
+<div style="display: flex; justify-content: space-between; padding: 4px 6px; color: #A72826"><span>67,226.40</span><span>1.84</span></div>
+<div style="display: flex; justify-content: space-between; padding: 4px 6px; color: #A72826"><span>67,223.10</span><span>0.62</span></div>
+<div style="display: flex; justify-content: space-between; padding: 6px; border-radius: 8px; background: #FDE4E1; color: #8A2A1E; font-weight: 800"><span>67,225.83 · your ask</span><span>0.0074</span></div>
+<div style="display: flex; justify-content: center; padding: 4px; color: #3B4262; font-weight: 700; border-top: 1px dashed #C9CFE2; border-bottom: 1px dashed #C9CFE2">Mid 67,219.11 · spread 0.6 bp</div>
+<div style="display: flex; justify-content: space-between; padding: 6px; border-radius: 8px; background: #DDF4E7; color: #0B6A39; font-weight: 800"><span>67,212.39 · your bid</span><span>0.0074</span></div>
+<div style="display: flex; justify-content: space-between; padding: 4px 6px; color: #0F7A43"><span>67,211.90</span><span>0.95</span></div>
+<div style="display: flex; justify-content: space-between; padding: 4px 6px; color: #0F7A43"><span>67,208.00</span><span>2.31</span></div>
+</div>
+<div style="flex: 1 1 220px; min-width: 0; border-radius: 14px; border: 1px solid #EEF1F8; padding: 12px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; flex-direction: column; gap: 4px"><div style="display: flex; justify-content: space-between; font-size: 12px"><strong>Cost budget</strong><span>0 / 300 USDC</span></div><div style="height: 8px; border-radius: 999px; background: #EEF1F8"><div style="width: 2%; height: 8px; border-radius: 999px; background: #E08A2E"></div></div></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><div style="display: flex; justify-content: space-between; font-size: 12px"><strong>Volume target</strong><span>0 / 1.00M USDC</span></div><div style="height: 8px; border-radius: 999px; background: #EEF1F8"><div style="width: 2%; height: 8px; border-radius: 999px; background: #2E62E8"></div></div></div>
+<div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #3B4262; padding-top: 8px; border-top: 1px dashed #E3E7F5">
+<strong style="color: #141A33">Estimated cost per $1M volume</strong>
+<div style="display: flex; justify-content: space-between"><span>SoDEX maker fee</span><span>100</span></div>
+<div style="display: flex; justify-content: space-between"><span>DRIFT builder fee [confirm rate]</span><span>100</span></div>
+<div style="display: flex; justify-content: space-between"><span>Price moving against inventory</span><span>30–120</span></div>
+<div style="display: flex; justify-content: space-between; font-weight: 800; color: #141A33"><span>Total, from last 7 days</span><span>230–320 USDC</span></div>
+</div>
+</div>
+</div>
+<div style="display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; background: #EEF3FF; font-size: 13px; line-height: 1.5; color: #1F2645">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2E62E8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"></path><path d="m9 12 2 2 4-4"></path></svg>
+<span><strong>No self-trading.</strong> Every quote is post-only, so it either rests as liquidity or is cancelled. DRIFT never places an order that could fill against your own orders, on this bot or any other.</span>
+</div>
+<div style="padding: 12px 14px; border-radius: 14px; background: #FFF6EA; font-size: 13px; line-height: 1.5; color: #5B3A12"><strong>Current SoDEX event:</strong> Layer 1 Season, Sep 1, 2026 – Jan 19, 2027, weekly snapshot Tuesday 12:00 UTC. SoDEX doesn’t publish how volume converts to SoPoints and penalises wash trading, so points are not guaranteed.</div>
+</sc-if>
+
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; font-variant-numeric: tabular-nums">
+<sc-for list="{{preview}}" as="p" hint-placeholder-count="4"><div style="padding: 10px 12px; border-radius: 12px; border: 1px solid #EEF1F8"><dt style="font-size: 12px; color: #5F6684; font-weight: 600">{{p.k}}</dt><dd style="margin: 2px 0 0; font-size: 14px; font-weight: 800">{{p.v}}</dd></div></sc-for>
+</dl>
+</sc-if>
+
+<sc-if value="{{vBt}}" hint-placeholder-val="{{ false }}">
+<sc-if value="{{btUnavailable}}" hint-placeholder-val="{{ false }}">
+<div role="status" style="padding: 18px; border-radius: 16px; background: #F6F7FB; border: 1px dashed #C9CFE2; display: flex; flex-direction: column; gap: 6px">
+<strong style="font-size: 15px">Backtest unavailable for this market</strong>
+<span style="font-size: 13px; line-height: 1.5; color: #3B4262">SoDEX history for this market is shorter than the selected period. Try 30 days or another market.</span>
+</div>
+</sc-if>
+<sc-if value="{{btAvailable}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px">
+<div role="radiogroup" aria-label="Backtest period" style="display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: #F2F4FA">
+<sc-for list="{{periods}}" as="p" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{p.checked}}" onClick="{{p.pick}}" style="{{p.style}}">{{p.label}}</button></sc-for>
+</div>
+<button type="button" onClick="{{runBt}}" disabled="{{btBusy}}" style="min-height: 40px; padding: 0 16px; border-radius: 12px; border: none; background: #141A33; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">{{btLabel}}</button>
+</div>
+<sc-if value="{{btIdle}}" hint-placeholder-val="{{ true }}">
+<div style="padding: 18px; border-radius: 16px; background: #F7F9FF; font-size: 13px; line-height: 1.5; color: #3B4262">Replays the settings on the right over past SoDEX prices, with SoDEX fees and the 0.01% builder fee. Change any field and run again.</div>
+</sc-if>
+<sc-if value="{{btRunning}}" hint-placeholder-val="{{ false }}">
+<div role="status" style="display: flex; align-items: center; gap: 12px; padding: 18px; border-radius: 16px; background: #EEF3FF; color: #1D47B8; font-size: 14px; font-weight: 700"><span style="width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid #9AB1F2; border-top-color: #2E62E8"></span>Simulating {{btCandles}} one-minute candles…</div>
+</sc-if>
+<sc-if value="{{btDone}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 12px; font-variant-numeric: tabular-nums">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px">
+<sc-for list="{{btStats}}" as="b" hint-placeholder-count="4"><div style="padding: 12px; border-radius: 12px; background: #F5F7FD; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #5F6684; font-weight: 600">{{b.k}}</span><strong style="{{b.style}}">{{b.v}}</strong></div></sc-for>
+</div>
+<div style="border-radius: 12px; background: #F7F9FF; padding: 8px">
+<svg width="100%" height="110" viewBox="0 0 600 110" preserveAspectRatio="none" role="img" aria-label="Simulated equity over the backtest period" style="display: block"><line x1="0" x2="600" y1="70" y2="70" stroke="#9AA3C2" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"></line><polyline points="0,70 40,72 80,66 120,74 160,78 200,70 240,64 280,68 320,58 360,62 400,54 440,50 480,56 520,46 560,44 600,40" fill="none" stroke="#2E62E8" stroke-width="2" vector-effect="non-scaling-stroke"></polyline></svg>
+<div style="display: flex; justify-content: space-between; font-size: 11px; color: #5F6684"><span>{{btFrom}}</span><span>Simulated equity · dashed = start</span><span>Oct 26</span></div>
+</div>
+<details style="font-size: 12px; line-height: 1.5; color: #3B4262"><summary style="cursor: pointer; font-weight: 700; color: #1D47B8">Assumptions</summary><ul style="margin: 6px 0 0; padding-left: 18px"><li>Limit orders fill only when price trades through the level.</li><li>Market orders fill at the next candle open + 0.05% slippage.</li><li>SoDEX maker/taker fees and DRIFT’s 0.01% builder fee included; perps include historical funding.</li><li>Data: SoDEX 1-minute candles, {{btFrom}} – Oct 26, 2026.</li></ul></details>
+<span style="font-size: 12px; font-weight: 600; color: #7A3E00">Simulated on past prices. Not a forecast; future results will differ.</span>
+</div>
+</sc-if>
+</sc-if>
+</sc-if>
+</section>
+<sc-if value="{{chartOn}}" hint-placeholder-val="{{ true }}">
+<section aria-labelledby="mc-h" style="min-width: 0; background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px">
+<h2 id="mc-h" style="margin: 0; font-size: 17px; font-weight: 800">{{chartTitle}}</h2>
+<div role="group" aria-label="Timeframe" style="display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: #F2F4FA"><sc-for list="{{tfs}}" as="t" hint-placeholder-count="4"><button type="button" aria-pressed="{{t.pressed}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button></sc-for></div>
+</div>
+<div role="tablist" aria-label="Chart" style="display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: #F2F4FA; align-self: flex-start"><sc-for list="{{cTabs}}" as="t" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{t.pressed}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button></sc-for></div>
+<sc-if value="{{showMap}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; gap: 8px; align-items: stretch">
+<div aria-hidden="true" style="display: flex; flex-direction: column; justify-content: space-between; align-items: center; gap: 4px; font-size: 10px; color: #5F6684"><span>High</span><div style="flex: 1; width: 14px; border-radius: 7px; background: linear-gradient(180deg, #FDE725 0%, #5EC962 25%, #21918C 50%, #3B528B 75%, #440154 100%)"></div><span>Low</span></div>
+<svg viewBox="0 0 640 320" role="img" aria-label="Estimated liquidation map with price candles" style="flex: 1; min-width: 0; height: auto; display: block; border-radius: 12px">
+<rect x="0" y="0" width="640" height="320" fill="#440154"></rect>
+<sc-for list="{{heatBars}}" as="b"><rect x="{{b.x}}" y="{{b.y}}" width="{{b.w}}" height="{{b.h}}" fill="{{b.c}}"><title>{{b.t}}</title></rect></sc-for>
+<sc-for list="{{wicks}}" as="c"><line x1="{{c.x}}" x2="{{c.x}}" y1="{{c.y1}}" y2="{{c.y2}}" stroke="{{c.c}}" stroke-width="1"></line></sc-for>
+<sc-for list="{{bodies}}" as="c"><rect x="{{c.x}}" y="{{c.y}}" width="{{c.w}}" height="{{c.h}}" fill="{{c.c}}"></rect></sc-for>
+<sc-for list="{{levels}}" as="l"><line x1="0" x2="572" y1="{{l.y}}" y2="{{l.y}}" stroke="#FFFFFF" stroke-width="1" stroke-dasharray="5 4"></line><text x="4" y="{{l.ty}}" font-size="11" font-weight="700" fill="#FFFFFF">{{l.text}}</text></sc-for>
+<sc-for list="{{ticks}}" as="t"><text x="634" y="{{t.ty}}" text-anchor="end" font-size="11" fill="#FFFFFF">{{t.text}}</text></sc-for>
+</svg>
+</div>
+<div style="padding: 10px 12px; border-radius: 12px; background: #F4F6FD; font-size: 12px; line-height: 1.5; color: #3B4262"><strong>Brighter bands: more estimated liquidations.</strong> Price often reacts near them, but it can also pass straight through. Sample data. Real data would be estimates from other exchanges, not SoDEX positions.</div>
+</sc-if>
+<sc-if value="{{showPrice}}" hint-placeholder-val="{{ false }}">
+<svg viewBox="0 0 640 320" role="img" aria-label="Price candles with bot levels" style="width: 100%; height: auto; display: block; background: #F7F9FF; border-radius: 12px">
+<sc-for list="{{ticks}}" as="t"><line x1="0" x2="572" y1="{{t.y}}" y2="{{t.y}}" stroke="#E3E7F5" stroke-width="1"></line><text x="634" y="{{t.ty}}" text-anchor="end" font-size="11" fill="#5F6684">{{t.text}}</text></sc-for>
+<sc-for list="{{wicks}}" as="c"><line x1="{{c.x}}" x2="{{c.x}}" y1="{{c.y1}}" y2="{{c.y2}}" stroke="{{c.c}}" stroke-width="1"></line></sc-for>
+<sc-for list="{{bodies}}" as="c"><rect x="{{c.x}}" y="{{c.y}}" width="{{c.w}}" height="{{c.h}}" fill="{{c.c}}"></rect></sc-for>
+<sc-for list="{{levels}}" as="l"><line x1="0" x2="572" y1="{{l.y}}" y2="{{l.y}}" stroke="#2E62E8" stroke-width="1" stroke-dasharray="5 4"></line><text x="4" y="{{l.ty}}" font-size="11" font-weight="700" fill="#1D47B8">{{l.text}}</text></sc-for>
+</svg>
+<span style="font-size: 12px; color: #5F6684">Dashed lines come from your settings and move as you change them. Sample data.</span>
+</sc-if>
+</section>
+</sc-if>
+</div>
+
+<section aria-label="Settings" style="flex: 2 1 340px; min-width: 0; background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 18px">
+<sc-if value="{{aiOn}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: linear-gradient(135deg, #EEF3FF 0%, #E3E8FE 100%); border: 1px solid #C9D6FB">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><strong style="font-size: 14px; color: #1D47B8">✦ Filled by AI</strong><span style="font-size: 12px; line-height: 1.45; color: #1F2645">{{s.aiBasis}}</span></div>
+<button type="button" onClick="{{clearAi}}" style="flex: none; min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid #9AB1F2; background: #FFFFFF; color: #1D47B8; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Clear parameters</button>
+</div>
+<details style="font-size: 12px; line-height: 1.5; color: #1F2645"><summary style="cursor: pointer; font-weight: 700; color: #1D47B8">Why these values</summary><ul style="margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px"><sc-for list="{{s.aiWhy}}" as="w" hint-placeholder-count="3"><li>{{w}}</li></sc-for></ul></details>
+<span style="font-size: 11px; color: #3B4262">Suggested 14:10:20 · every field stays editable · not a profit forecast</span>
+</div>
+</sc-if>
+<sc-if value="{{aiOff}}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #F5F7FD">
+<span style="font-size: 13px; line-height: 1.45; color: #3B4262">Enter your own values, or let AI fill them in.</span>
+<button type="button" onClick="{{useAi}}" style="flex: none; min-height: 36px; padding: 0 12px; border-radius: 10px; border: none; background: #2E62E8; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">✦ AI parameters</button>
+</div>
+</sc-if>
+<sc-for list="{{groups}}" as="grp" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 800; padding-bottom: 8px; border-bottom: 1px solid #EEF1F8">{{grp.title}}</h2>
+<sc-for list="{{grp.fields}}" as="f" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700">{{f.label}} <span style="font-weight: 500; color: #5F6684">{{f.opt}}</span><sc-if value="{{f.isAi}}" hint-placeholder-val="{{ false }}"><span style="font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 999px; background: #E6ECFE; color: #1D47B8">AI</span></sc-if></span>
+<sc-if value="{{f.isNum}}" hint-placeholder-val="{{ true }}"><label style="{{f.box}}"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">{{f.label}}</span><input type="text" inputmode="decimal" value="{{f.value}}" placeholder="{{f.ph}}" aria-invalid="{{f.invalid}}" style="flex: 1; min-width: 0; border: none; outline: none; background: transparent; font: inherit; font-size: 15px; font-weight: 600; color: #141A33; font-variant-numeric: tabular-nums"><span style="font-size: 13px; font-weight: 700; color: #3B4262">{{f.unit}}</span></label></sc-if>
+<sc-if value="{{f.isSel}}" hint-placeholder-val="{{ false }}"><select aria-label="{{f.label}}" style="min-height: 46px; padding: 0 12px; border-radius: 12px; border: 1px solid #D5DCF2; font: inherit; font-size: 15px; font-weight: 600; color: #141A33; background: #FFFFFF"><sc-for list="{{f.options}}" as="o"><option>{{o}}</option></sc-for></select></sc-if>
+<sc-if value="{{f.isSeg}}" hint-placeholder-val="{{ false }}"><div role="radiogroup" aria-label="{{f.label}}" style="display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: #F2F4FA"><sc-for list="{{f.segs}}" as="g"><span role="radio" aria-checked="{{g.checked}}" style="{{g.style}}">{{g.label}}</span></sc-for></div></sc-if>
+<span style="font-size: 12px; line-height: 1.4; color: #5F6684; font-variant-numeric: tabular-nums">{{f.hint}}</span>
+<sc-if value="{{f.hasErr}}" hint-placeholder-val="{{ false }}"><span role="alert" style="font-size: 13px; font-weight: 600; color: #A72826">⚠ {{f.err}}</span></sc-if>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</section>
+</div>
+
+<section aria-labelledby="go-h" style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 18px; display: flex; flex-direction: column; gap: 14px">
+<h2 id="go-h" style="margin: 0; font-size: 17px; font-weight: 800">Before it starts</h2>
+<sc-if value="{{notStarted}}" hint-placeholder-val="{{ true }}">
+<ul style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px">
+<sc-for list="{{checks}}" as="k" hint-placeholder-count="6"><li style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: #F5F7FD"><span style="{{k.iconStyle}}">{{k.icon}}</span><div style="display: flex; flex-direction: column"><strong style="font-size: 13px">{{k.label}}</strong><span style="font-size: 12px; color: #3B4262">{{k.detail}}</span></div></li></sc-for>
+</ul>
+<div style="padding: 12px 14px; border-radius: 14px; background: #F5F7FD; font-size: 13px; line-height: 1.5; color: #3B4262; font-variant-numeric: tabular-nums">{{feeText}}</div>
+<label style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 14px; border: 1.5px solid #D5DCF2; cursor: pointer">
+<input type="checkbox" checked="{{ack}}" onChange="{{toggleAck}}" style="width: 20px; height: 20px; margin: 1px 0 0; accent-color: #2E62E8; flex: none">
+<span style="font-size: 14px; line-height: 1.45">{{ackText}}</span>
+</label>
+<div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end">
+<button type="button" style="flex: 1 1 140px; min-height: 50px; border-radius: 14px; border: none; background: #E6ECFE; color: #1D47B8; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer">Save draft</button>
+<button type="button" onClick="{{start}}" disabled="{{startDisabled}}" style="{{startStyle}}">{{startLabel}}</button>
+</div>
+</sc-if>
+<sc-if value="{{started}}" hint-placeholder-val="{{ false }}">
+<div role="status" style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; background: #FFF6EA; border: 1px solid #F0C27E; color: #5B3A12">
+<strong style="font-size: 16px">Start requested · waiting for backend</strong>
+<span style="font-size: 14px; line-height: 1.5">The bot shows Running only after the backend confirms it and SoDEX acknowledges the first orders.</span>
+<a href="Agent.dc.html" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border-radius: 12px; background: #FFFFFF; color: #1D47B8; font-weight: 700; font-size: 14px; text-decoration: none">Watch it in Trading Agent</a>
+</div>
+</sc-if>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"strategy":{"editor":"enum","options":["sgrid","fgrid","sdca","fdca","rbuy","rebal","farb","twap","vmaker"],"default":"sgrid"},"showErrors":{"editor":"boolean","default":false,"section":"States"},"backtestUnavailable":{"editor":"boolean","default":false,"section":"States"},"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { params: 'ai', ack: false, started: false, vtab: 'preview', period: 90, bt: 'idle', ctab: 'map', tf: '1h' };
+  }
+  renderVals() {
+    var self = this;
+    var key = this.props.strategy || 'sgrid';
+    var showErr = this.props.showErrors ?? false;
+    var ai = this.state.params === 'ai';
+    var N = function (l, v, u, h, e, x) { return Object.assign({ t: 'num', l: l, v: v, u: u, h: h, e: e }, x || {}); };
+    var S = function (l, o, h) { return { t: 'sel', l: l, o: o, h: h }; };
+    var G = function (l, o, h) { return { t: 'seg', l: l, o: o, h: h }; };
+    var spotM = ['ADA/USDT', 'BTC/USDT', 'ETH/USDT', 'SOL/USDT'];
+    var perpM = ['BTC-PERP', 'ETH-PERP', 'SOL-PERP'];
+    var lev = N('Leverage', '1', '×', '1–3× (account cap). SoDEX market max also applies.', 'Above your 3.0× account cap.');
+    var mm = G('Margin mode', ['Cross', 'Isolated'], 'Isolated limits loss to this bot’s margin. [Confirm SoDEX support]');
+    var D = {
+      sgrid: { name: 'Spot Grid', engine: 'Spot', vis: 'grid', visTitle: 'Grid on ADA/USDT', marketLine: 'Last 0.3528 · updated 14:10:20', fee: 'spot sells only', what: 'Buys low and sells high inside a range you set.',
+        f2: [S('Market', spotM, 'Any SoDEX spot market')],
+        f3: [N('Lower price', '0.3200', 'USDT', '9.3% below last price', 'Must be lower than the upper price.'), N('Upper price', '0.3900', 'USDT', '10.5% above last price', 'Must be higher than the lower price.'), N('Grid levels', '10', '', '2–200 · step 0.0070 ≈ 2.0%', 'Step smaller than round-trip fees.'), G('Spacing', ['Arithmetic', 'Geometric'], 'Equal price gaps or equal % gaps'), N('Investment', '300', 'USDT', 'Available on Spot: 41,220.00', 'More than your available Spot balance.'), N('Start when price crosses', '', 'USDT', 'Leave empty to start now', 'Must be inside the grid range.', { opt: 1, ph: 'e.g. 0.3450' })],
+        f4: [N('Stop if price falls below', '0.3000', 'USDT', 'Grid is cancelled', 'Must be below the lower price.'), N('Take profit at total profit', '', '%', 'Stops the bot once reached', 'Must be above 0.', { opt: 1, ph: 'e.g. 10' }), N('Max loss for this bot', '30', 'USDT', 'Bot pauses when reached', 'Must be below the investment.'), G('When the bot stops', ['Keep ADA', 'Sell ADA at market'], 'Open orders are always cancelled')],
+        preview: [['Per level', '≈ 30 USDT'], ['Step', '≈ 2.0%'], ['Orders at start', '10 limit'], ['Round-trip fees', '≈ 0.2%']],
+        grid: { min: 0.29, max: 0.40, upper: 0.39, lower: 0.32, last: 0.3528, stop: 0.30, n: 10, fmt: 4, liq: null } },
+      fgrid: { name: 'Futures Grid', engine: 'Perps', vis: 'grid', visTitle: 'Grid on BTC-PERP · Neutral', marketLine: 'Mark 67,219.11 · funding +0.010% / 8h', fee: 'both sides', what: 'Grid on a perpetual: long, short or neutral.',
+        f2: [S('Contract', perpM, 'Any SoDEX perp'), lev, mm],
+        f3: [G('Direction', ['Neutral', 'Long', 'Short'], 'Neutral starts flat'), N('Lower price', '62,000', 'USDC', '7.8% below mark', 'Must be lower than the upper price.'), N('Upper price', '72,000', 'USDC', '7.1% above mark', 'Must be higher than the lower price.'), N('Grid levels', '20', '', '2–200 · step ≈ 0.75%', 'Step smaller than round-trip fees.'), N('Margin', '5,000', 'USDC', 'Available on Perps: 18,400.00', 'More than your available Perps balance.')],
+        f4: [N('Stop if price falls below', '60,000', 'USDC', 'Grid cancelled', 'Must be below the lower price.'), N('Stop if price rises above', '', 'USDC', 'Grid cancelled', 'Must be above the upper price.', { opt: 1, ph: 'e.g. 74,000' }), N('Max loss for this bot', '500', 'USDC', 'Bot pauses when reached', 'Must be below the margin.'), G('When the bot stops', ['Close position', 'Keep position'], 'Open orders are always cancelled')],
+        preview: [['Position at full fill', '≈ 0.074 BTC'], ['Liquidation', 'From SoDEX: 41,320'], ['Step', '≈ 0.75%'], ['Funding', '+0.010% / 8h']],
+        grid: { min: 56000, max: 74000, upper: 72000, lower: 62000, last: 67219, stop: 60000, n: 20, fmt: 0, liq: 41320 } },
+      sdca: { name: 'Spot DCA', engine: 'Spot', vis: 'dca', visTitle: 'Order ladder · ETH/USDT', marketLine: 'Last 2,753.92', fee: 'spot sells only', what: 'Buys, adds safety orders on dips, sells everything at take profit.',
+        f2: [S('Market', spotM, 'Spot market')],
+        f3: [N('Base order', '50', 'USDT', 'First buy at start', 'Below SoDEX minimum order size.'), N('Safety order', '50', 'USDT', 'First extra buy', 'Below SoDEX minimum order size.'), N('Max safety orders', '5', '', '0–20', 'Allowed 0–20.'), N('Price drop to first safety', '2', '%', '0.1–20%', 'Allowed 0.1–20%.'), N('Step multiplier', '1.2', '×', '1–3×', 'Allowed 1–3×.'), N('Size multiplier', '1.5', '×', '1–3×', 'Allowed 1–3×.'), N('Take profit', '1.5', '%', 'From average buy price', 'Must be above round-trip fees.')],
+        f4: [N('Stop loss', '', '%', 'From average price · sells everything', 'Must be larger than the last safety drop.', { opt: 1, ph: 'e.g. 20' }), N('Max cycles', '', '', 'Stop after N take-profits', 'Must be 1 or more.', { opt: 1, ph: 'unlimited' }), N('Max loss for this bot', '100', 'USDT', 'Bot pauses when reached', 'Must be below max capital used.')],
+        preview: [['Max capital', '709.38 USDT'], ['Covers a drop of', '14.9%'], ['Orders at start', '1 market + TP'], ['Safety orders', '5, as price drops']],
+        dca: { base: 2753.92, sizes: [50, 50, 75, 112.5, 168.75, 253.13], devs: [0, 2, 4.4, 7.28, 10.74, 14.88], unit: 'USDT', dir: -1, tp: 'Take profit +1.5% above average buy price' } },
+      fdca: { name: 'Futures DCA', engine: 'Perps', vis: 'dca', visTitle: 'Order ladder · BTC-PERP Long', marketLine: 'Mark 67,219.11', fee: 'both sides', what: 'DCA on a perpetual, long or short.',
+        f2: [S('Contract', perpM, 'Any SoDEX perp'), lev, mm],
+        f3: [G('Direction', ['Long', 'Short'], 'Long adds on drops'), G('First entry', ['Now', 'At price', 'In a range'], 'Now buys at the market price when the bot starts'), N('Base order', '100', 'USDC', 'Margin for first entry', 'Below SoDEX minimum order size.'), N('Safety order', '100', 'USDC', 'Margin for first add', 'Below SoDEX minimum order size.'), N('Max safety orders', '4', '', '0–20', 'Allowed 0–20.'), N('Price move to first safety', '1.5', '%', 'Against your direction', 'Allowed 0.1–20%.'), N('Step / size multiplier', '1.3 / 1.5', '×', '1–3× each', 'Allowed 1–3×.'), N('Take profit', '1.2', '%', 'From average entry', 'Must be above round-trip fees.')],
+        f4: [N('Stop loss', '12', '%', 'Closes the position · must be before liquidation', 'Must be closer than liquidation.'), N('Max loss for this bot', '400', 'USDC', 'Bot pauses when reached', 'Must be below max margin used.')],
+        preview: [['Max margin', '812.50 USDC'], ['Liquidation at full size', 'From SoDEX: 58,940'], ['Covers a move of', '9.3%'], ['Funding', '+0.010% / 8h']],
+        dca: { base: 67219.11, sizes: [100, 100, 150, 225, 337.5], devs: [0, 1.5, 3.45, 5.99, 9.28], unit: 'USDC', dir: -1, tp: 'Take profit +1.2% from average entry · stop loss −12%' } },
+      rbuy: { name: 'Recurring Buy', engine: 'Spot', vis: 'sched', visTitle: 'Next buys · BTC/USDT', marketLine: 'Last 67,219.11', fee: 'none on buys', what: 'Buys a fixed amount on a schedule. Never sells.',
+        f2: [S('Market', ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'ADA/USDT'], 'Spot market')],
+        f3: [N('Amount per buy', '150', 'USDT', 'Market order each time', 'Below SoDEX minimum order size.'), G('Frequency', ['Daily', 'Weekly', 'Monthly'], ''), S('Day and time', ['Monday 09:00 UTC+7', 'Friday 21:00 UTC+7'], 'Your time zone'), G('Ends', ['After budget', 'After N buys', 'Never'], ''), N('Total budget', '3,000', 'USDT', '20 buys', 'Must be at least one buy.')],
+        f4: [N('Skip buys above price', '', 'USDT', 'Skipped buys are not made up', 'Must be above 0.', { opt: 1, ph: 'e.g. 75,000' }), G('If balance is too low', ['Skip and notify', 'Pause bot'], '')],
+        preview: [['Buys', '20 × 150 USDT'], ['Next buy', 'Mon Nov 2, 09:00'], ['Ends', 'Mar 15, 2027'], ['Builder fee', 'None on buys']] },
+      rebal: { name: 'Rebalancing', engine: 'Spot', vis: 'weights', visTitle: 'Target portfolio', marketLine: 'Valued in USDC', fee: 'spot sells only', what: 'Keeps 2–10 assets at target weights.',
+        f2: [S('Quote asset', ['USDC', 'USDT'], 'All assets valued in this')],
+        f3: [N('BTC weight', '50', '%', '', 'Weights must add up to 100%.'), N('ETH weight', '30', '%', '', 'Weights must add up to 100%.'), N('USDC weight', '20', '%', 'Total 100% · up to 10 assets', 'Weights must add up to 100%.'), G('Rebalance when', ['Drift > threshold', 'On a schedule'], ''), N('Threshold', '5', '%', '1–50%', 'Allowed 1–50%.'), N('Investment', '2,000', 'USDC', 'Available on Spot: 41,220.00', 'More than your available Spot balance.')],
+        f4: [N('Max trade per rebalance', '25', '%', 'Of portfolio value', 'Allowed 1–100%.'), N('Stop if value below', '', 'USDC', 'Assets are kept', 'Must be below the investment.', { opt: 1, ph: 'e.g. 1,600' }), N('Take profit', '', '%', 'Assets are kept', 'Must be above 0.', { opt: 1, ph: 'e.g. 15' })],
+        preview: [['Assets', '3'], ['Trades at start', '2 buys'], ['Checks', 'every 5 min'], ['Threshold', '±5%']] },
+      farb: { name: 'Funding Arbitrage', engine: 'Spot + Perps', vis: 'arb', visTitle: 'Two legs · BTC', marketLine: 'Funding now +0.010% / 8h', fee: 'perp both sides; spot sells', what: 'Holds spot and an equal perp short to collect funding.',
+        f2: [S('Asset', ['BTC · spot + BTC-PERP', 'ETH · spot + ETH-PERP'], 'Needs both markets'), N('Perp leg leverage', '1', '×', '1–3×', 'Above your 3.0× account cap.')],
+        f3: [N('Investment', '10,000', 'USDC', 'Split 5,000 spot · 5,000 perp margin', 'Needs balance on both engines.'), N('Enter when funding ≥', '0.005', '%', 'Per funding period [confirm interval]', 'Must be above 0.'), N('Exit when funding ≤', '0', '%', 'For 3 periods in a row', 'Must be below the entry level.'), N('Max price gap between legs', '0.5', '%', '0.1–5%', 'Allowed 0.1–5%.')],
+        f4: [N('Keep perp margin ratio above', '30', '%', 'Adds margin from spot leg', 'Allowed 10–90%.'), N('Max loss for this bot', '200', 'USDC', 'Unwinds both legs', 'Must be below the investment.')],
+        preview: [['Spot leg', '+0.074 BTC'], ['Perp leg', '−0.074 BTC'], ['Net exposure', '≈ 0'], ['7-day avg funding', '+0.008%']] },
+      twap: { name: 'TWAP', engine: 'Spot + Perps', vis: 'twap', visTitle: 'Execution plan · buy 2.0 BTC', marketLine: 'Last 67,219.11 · BTC/USDT', fee: 'per engine rules', what: 'Splits one large order into small slices over time.',
+        f2: [S('Market', ['BTC/USDT · Spot', 'BTC-PERP · Perps', 'ETH/USDT · Spot', 'ETH-PERP · Perps'], 'Spot or perp')],
+        f3: [G('Side', ['Buy', 'Sell'], ''), N('Total size', '2.0', 'BTC', '≈ 134,438 USDT', 'More than your available balance.'), N('Duration', '4', 'h', '5 min – 24 h', 'Allowed 5 min – 24 h.'), N('Slices', '48', '', 'One every 5 min', 'Slice below SoDEX minimum order size.'), N('Price limit', '', 'USDT', 'Skip slices above', 'Must be above 0.', { opt: 1, ph: 'e.g. 68,000' })],
+        f4: [N('Max slippage per slice', '0.3', '%', 'Slice skipped if exceeded', 'Allowed 0.05–5%.'), G('If slices are skipped', ['Add to the end', 'Leave unfilled'], '')],
+        preview: [['Slice', '0.0417 BTC'], ['Interval', '5 min'], ['Ends', '≈ 18:11'], ['Order type', 'Limit at best ask']] },
+      vmaker: { name: 'Volume Maker', engine: 'Perps', vis: 'maker', visTitle: 'Two-sided quotes · BTC-PERP', marketLine: 'Mark 67,219.11 · spread 0.6 bp · maker fee 0.010%', fee: 'maker fills only, same 0.01% DRIFT rate', what: 'Quotes both sides with post-only orders to add real liquidity and volume within a cost budget.',
+        f2: [S('Contract', ['BTC-PERP', 'ETH-PERP'], 'Only the most liquid perps'), N('Leverage', '1', '×', 'Fixed at 1× for Volume Maker', 'Volume Maker runs at 1×.')],
+        f3: [N('Volume target', '1,000,000', 'USDC', 'Bot stops when reached', 'Must be above 0.'), N('Order size per side', '500', 'USDC', 'Post-only (GTX)', 'Below SoDEX minimum order size.'), N('Distance from mid', '1.0', 'bp', 'Each side; at least one tick', 'Must be at least one tick.'), N('Max inventory', '2,000', 'USDC', 'Quotes skew back toward 0 above half of this', 'Must be above the order size.'), N('Refresh every', '3', 's', '2–60 s; stays under SoDEX order limits', 'Allowed 2–60 s.'), S('Run until', ['End of Layer 1 Season (Jan 19, 2027)', 'A date I choose', 'Target or budget reached'], 'Whichever comes first')],
+        f4: [N('Cost budget', '300', 'USDC', 'Fees + realized trading loss. Bot stops at 100%.', 'Must be above 0.'), N('Inventory loss stop', '60', 'USDC', 'Unrealized loss on inventory; closes it with a reduce-only order', 'Must be below the budget.'), G('When the bot stops', ['Close inventory (reduce-only)', 'Keep position'], 'Open quotes are always cancelled')],
+        preview: [['Est. cost per $1M', '230–320 USDC'], ['Quotes on book', '2 (1 bid, 1 ask)'], ['Maker share', '100% (post-only)'], ['Self-trade', 'Blocked by DRIFT']] }
+    };
+    var s = D[key] || D.sgrid;
+    var AIW = {
+      sgrid: ['Range covers 95% of ADA daily closes over the last 30 days.', 'Step 2.0% is about 10× the round-trip fee, so fills stay profitable.', 'Max loss 10% of capital, from your goals (10% max drop).'],
+      fgrid: ['Neutral: BTC moved sideways in 71% of the last 180 days.', '1× leverage: your losses came mostly from ≥ 8× positions.', 'Stop 60,000 sits above the SoDEX liquidation estimate.'],
+      sdca: ['First safety at −2%: ETH’s median daily swing is 2.3%.', 'Safety orders cover a 14.9% drop, the size of ETH’s largest 30-day dip.', 'Take profit 1.5% clears round-trip fees about 7×.'],
+      fdca: ['Long only: you chose to automate your BTC swing style.', 'Stop loss −12% keeps the position well before liquidation.', 'Sizes fit your 10% max-drop answer.'],
+      rbuy: ['Weekly cadence matches your “low involvement” answer.', '150 USDT × 20 weeks uses 3,000 of your 8,000 bot capital.', 'Monday 09:00 avoids your historically busiest trading hours.'],
+      rebal: ['Weights follow your past volume: mostly BTC, then ETH.', '5% threshold rebalanced about twice a month on the last 90 days of prices.', 'USDC 20% acts as the buffer for drops.'],
+      farb: ['BTC funding was positive in 18 of the last 21 periods.', '1× perp leg keeps liquidation far away.', 'Exit after 3 non-positive periods avoids paying funding for long.'],
+      twap: ['48 slices keep each slice under 0.1% of BTC’s 5-minute volume.', '4 hours spreads the order across two liquidity sessions.', 'Max slippage 0.3% per slice is above the usual spread.'],
+      vmaker: ['1 bp from mid sits inside BTC-PERP’s median spread, so quotes fill as maker.', 'Max inventory 2,000 USDC caps price risk at about 0.3% of your account.', 'Budget 300 USDC covers 1M volume at the last 7 days’ cost.']
+    };
+    s.aiBasis = 'From ' + s.marketLine.split(' · ')[0].replace('Last ', 'last price ').replace('Mark ', 'mark ') + ', 30-day volatility and your account analysis.';
+    s.aiWhy = AIW[key] || AIW.sgrid;
+    var mk = function (f) {
+      var bad = showErr && !!f.e && !f.opt;
+      return {
+        label: f.l, opt: f.opt ? '(optional)' : '', value: ai ? (f.v || '') : '', ph: f.ph || (f.v ? 'e.g. ' + f.v : ''), unit: f.u || '', hint: f.h || '',
+        isAi: ai && !!f.v && f.t === 'num',
+        isNum: f.t === 'num', isSel: f.t === 'sel', isSeg: f.t === 'seg', options: f.o || [], hasErr: bad, err: f.e || '', invalid: bad ? 'true' : 'false',
+        box: 'display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 14px; border-radius: 12px; background: #FFFFFF; ' + (bad ? 'border: 1.5px solid #C2312F;' : 'border: 1px solid #D5DCF2;'),
+        segs: (f.o || []).map(function (o, i) { return { label: o, checked: i === 0 ? 'true' : 'false', style: 'flex: 1; display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 10px; border-radius: 9px; font-size: 13px; font-weight: 700; white-space: nowrap; ' + (i === 0 ? 'background: #FFFFFF; color: #141A33; box-shadow: 0 1px 3px rgba(20,26,51,0.12);' : 'color: #3B4262;') }; })
+      };
+    };
+    var groups = [{ title: s.engine === 'Perps' || key === 'farb' ? 'Market & leverage' : 'Market', fields: s.f2.map(mk) }, { title: 'Parameters', fields: s.f3.map(mk) }, { title: 'Risk & exits', fields: s.f4.map(mk) }];
+    var out = { s: s, groups: groups, preview: s.preview.map(function (p) { return { k: p[0], v: p[1] }; }) };
+    out.vGrid = s.vis === 'grid'; out.vDca = s.vis === 'dca'; out.vSched = s.vis === 'sched'; out.vWeights = s.vis === 'weights'; out.vArb = s.vis === 'arb'; out.vTwap = s.vis === 'twap'; out.vMaker = s.vis === 'maker';
+    if (s.grid) {
+      var g = s.grid, Y = function (p) { return Math.round((g.max - p) / (g.max - g.min) * 240 * 10) / 10; };
+      var fmt = function (p) { return p.toLocaleString('en-US', { minimumFractionDigits: g.fmt, maximumFractionDigits: g.fmt }); };
+      var top = Y(g.upper), bot = Y(g.lower), lines = [];
+      for (var i = 0; i < g.n; i++) lines.push({ y: Math.round((top + i * (bot - top) / (g.n - 1)) * 10) / 10 });
+      var ly = Y(g.last), w = [12, -8, 18, -14, 6, -20, 10, -6, 16, -10, 4, -2, 0];
+      var path = w.map(function (d, i) { return (i * 50) + ',' + (ly + d); }).join(' ');
+      var lab = function (p, text, color) { return { text: text + ' ' + fmt(p), style: 'position: absolute; right: 8px; top: calc(8px + ' + (Y(p) / 240 * 100) + '% * 240 / 256); transform: translateY(-50%); font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; white-space: nowrap; ' + color }; };
+      var labels = [lab(g.upper, 'Upper', 'background: #2E62E8; color: #FFFFFF;'), lab(g.last, 'Last', 'background: #141A33; color: #FFFFFF;'), lab(g.lower, 'Lower', 'background: #2E62E8; color: #FFFFFF;'), lab(g.stop, 'Stop', 'background: #C2312F; color: #FFFFFF;')];
+      out.g = { top: top, band: Math.round((bot - top) * 10) / 10, lines: lines, stopY: Y(g.stop), path: path, labels: labels, n: g.n };
+      out.gridAria = 'Grid of ' + g.n + ' levels from ' + fmt(g.lower) + ' to ' + fmt(g.upper) + '; last price ' + fmt(g.last) + '; stop at ' + fmt(g.stop) + (g.liq ? '; liquidation ' + fmt(g.liq) + ', below the chart' : '');
+    } else { out.g = { top: 0, band: 0, lines: [], stopY: 0, path: '', labels: [], n: 0 }; out.gridAria = ''; }
+    if (s.dca) {
+      var d = s.dca, mx = Math.max.apply(null, d.sizes);
+      out.ladder = d.sizes.map(function (sz, i) {
+        var price = d.base * (1 + d.dir * d.devs[i] / 100);
+        return {
+          label: i === 0 ? 'Base' : 'Safety ' + i, size: sz.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' ' + d.unit,
+          price: (i === 0 ? '' : '−' + d.devs[i] + '% · ') + price.toLocaleString('en-US', { maximumFractionDigits: 2 }),
+          bar: 'height: 12px; border-radius: 999px; width: ' + Math.round(sz / mx * 100) + '%; background: ' + (i === 0 ? '#141A33' : '#2E62E8'),
+          row: 'display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; ' + (i === 0 ? 'background: #EEF3FF;' : 'background: #F7F9FF;')
+        };
+      });
+      out.tpText = d.tp; out.dcaDir = 'against you';
+    } else { out.ladder = []; out.tpText = ''; out.dcaDir = ''; }
+    out.sched = ['Nov 2', 'Nov 9', 'Nov 16', 'Nov 23', 'Nov 30', 'Dec 7'].map(function (x, i) { return { n: 'Buy ' + (i + 1) + ' of 20', date: 'Mon ' + x + ' · 09:00' }; });
+    out.weights = [['BTC', '50%', '45–55%', '#F2A65A'], ['ETH', '30%', '25–35%', '#2E62E8'], ['USDC', '20%', '15–25%', '#19A99A']].map(function (w) { return { asset: w[0], target: w[1], band: w[2], dot: 'width: 12px; height: 12px; border-radius: 4px; background: ' + w[3] }; });
+    out.funding = [6, 8, 10, 7, 12, 9, 11, -3, 5, 8, 10, 13, 9, -4, 7, 10, 12, 8, -2, 9, 10].map(function (v) { return { style: 'flex: 1; border-radius: 3px 3px 0 0; height: ' + Math.abs(v) * 4 + 'px; background: ' + (v < 0 ? '#C2312F' : '#5A2CA0') + ';' + (v < 0 ? ' opacity: 0.8;' : '') }; });
+    out.slices = []; for (var k = 0; k < 48; k++) out.slices.push({ i: k });
+    var live = true;
+    var pill = 'font-size: 11px; font-weight: 800; letter-spacing: 0.04em; padding: 5px 10px; border-radius: 999px; ';
+    out.engineStyle = pill + (s.engine === 'Spot' ? 'background: #E6ECFE; color: #1D47B8;' : s.engine === 'Perps' ? 'background: #F0E6FF; color: #5A2CA0;' : 'background: #141A33; color: #FFFFFF;');
+    var segBtn = function (on) { return 'min-height: 36px; padding: 0 14px; border: none; border-radius: 9px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; ' + (on ? 'background: #FFFFFF; color: #141A33; box-shadow: 0 1px 3px rgba(20,26,51,0.12);' : 'background: transparent; color: #3B4262;'); };
+    out.vTabs = [['preview', 'Preview'], ['backtest', 'Backtest']].map(function (t) {
+      var on = self.state.vtab === t[0];
+      return { label: t[1], selected: on ? 'true' : 'false', pick: function () { self.setState({ vtab: t[0] }); }, style: segBtn(on) };
+    });
+    out.vPrev = this.state.vtab === 'preview'; out.vBt = this.state.vtab === 'backtest';
+    var unavailable = this.props.backtestUnavailable ?? false;
+    out.btUnavailable = unavailable; out.btAvailable = !unavailable;
+    out.periods = [30, 90, 180].map(function (p) {
+      var on = self.state.period === p;
+      return { label: p + 'D', checked: on ? 'true' : 'false', pick: function () { self.setState({ period: p, bt: 'idle' }); }, style: segBtn(on) };
+    });
+    var bs = this.state.bt;
+    out.btIdle = bs === 'idle'; out.btRunning = bs === 'running'; out.btDone = bs === 'done'; out.btBusy = bs === 'running';
+    out.btLabel = bs === 'done' ? 'Run again' : bs === 'running' ? 'Running…' : 'Run backtest';
+    out.btCandles = (this.state.period * 1440).toLocaleString('en-US');
+    out.btFrom = { 30: 'Sep 26', 90: 'Jul 28', 180: 'Apr 29' }[this.state.period];
+    out.runBt = function () { self.setState({ bt: 'running' }); setTimeout(function () { self.setState({ bt: 'done' }); }, 1300); };
+    var pos = 'font-size: 18px; font-weight: 800; color: #0F7A43', neg = 'font-size: 18px; font-weight: 800; color: #C2312F', neu = 'font-size: 18px; font-weight: 800';
+    var BT = {
+      sgrid: [['Net result after fees', '+19.84 USDT · +6.6%', pos], ['Fees paid', '3.12 USDT', neu], ['Max drawdown', '−4.1%', neg], ['Fills · time in range', '146 · 81%', neu]],
+      fgrid: [['Net result after fees', '+312.40 USDC · +6.2%', pos], ['Fees + funding', '61.20 USDC', neu], ['Max drawdown', '−5.3%', neg], ['Fills · time in range', '388 · 74%', neu]],
+      sdca: [['Net result after fees', '+41.06 USDT · +5.8%', pos], ['Completed cycles', '9', neu], ['Max drawdown', '−9.7%', neg], ['Max safety orders used', '4 of 5', neu]],
+      fdca: [['Net result after fees', '+58.90 USDC · +7.2%', pos], ['Completed cycles', '12', neu], ['Max drawdown', '−8.4%', neg], ['Stop loss hit', '1 time', neg]],
+      rbuy: [['Buys made', '13 of 20', neu], ['Avg buy price', '63,904.20', neu], ['Value vs cost', '+5.2%', pos], ['Skipped buys', '0', neu]],
+      rebal: [['Net result vs hold', '+1.4% vs buy-and-hold', pos], ['Rebalances', '7', neu], ['Fees paid', '6.80 USDC', neu], ['Max drawdown', '−11.2%', neg]],
+      farb: [['Funding collected', '+186.30 USDC', pos], ['Fees paid', '22.10 USDC', neu], ['Periods in position', '214 of 270', neu], ['Max leg gap', '0.38%', neu]],
+      twap: [['Avg fill vs arrival price', '+0.04%', neg], ['Slices filled', '48 of 48', neu], ['Fees paid', '67.22 USDT', neu], ['Worst slice slippage', '0.21%', neu]],
+      vmaker: [['Volume made', '1.00M USDC in 6.2 days', neu], ['Net cost', '−262 USDC · 262 per $1M', neg], ['Maker share', '100%', neu], ['Max inventory reached', '1,940 USDC', neu]]
+    };
+    out.btStats = (BT[key] || BT.sgrid).map(function (b) { return { k: b[0], v: b[1], style: b[2] }; });
+    out.aiOn = ai; out.aiOff = !ai;
+    out.clearAi = function () { self.setState({ params: 'manual' }); };
+    out.useAi = function () { self.setState({ params: 'ai' }); };
+    var ic = 'flex: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; ';
+    var c = function (pass, l, dt) { return { label: l, detail: dt, icon: pass === true ? '✓' : '–', iconStyle: ic + (pass === true ? 'background: #DDF4E7; color: #0B6A39;' : 'background: #EDEFF5; color: #3B4262;') }; };
+    out.checks = [
+      c(live ? true : null, 'DRIFT API key', live ? 'Active · ••4f2a' : 'Not needed in Paper'),
+      c(live ? true : null, 'Builder fee approval', live ? '0.01% · Spot and Perps' : 'Not needed in Paper'),
+      c(live ? true : null, 'Balance on ' + s.engine, live ? 'Enough for capital and fees' : 'Paper uses virtual balance'),
+      c(true, 'Order sizes', 'Above SoDEX minimum'),
+      c(live ? true : null, 'Two-factor auth', live ? 'On' : 'Not needed in Paper'),
+      c(true, 'Risk limits', 'Fits account limits')
+    ];
+    if (key === 'vmaker') {
+      out.checks.push(c(true, 'Self-trade guard', 'No crossing with your other bots on this market'));
+      out.checks.push(c(true, 'SoDEX request allowance', 'Enough for a 3 s refresh'));
+    }
+    out.feeText = live ? 'Fees: SoDEX trading fee per fill plus DRIFT builder fee up to 0.01% (' + s.fee + '), both shown inside each fill’s fee.' : 'Paper mode: live mainnet prices, simulated fills, no real orders and no fees.';
+    out.ack = this.state.ack;
+    out.ackText = live ? 'I understand this bot places real orders on my SoDEX mainnet account and DRIFT charges its builder fee on them.' : 'I understand this is a paper bot and places no real orders.';
+    if (key === 'vmaker') out.ackText = 'I understand this bot places real post-only orders on SoDEX mainnet, will spend up to my cost budget, and does not guarantee any SoPoints. SoDEX prohibits wash trading.';
+    out.toggleAck = function () { self.setState({ ack: !self.state.ack }); };
+    out.startDisabled = !this.state.ack;
+    out.startLabel = live ? 'Start on mainnet' : 'Start paper bot';
+    out.startStyle = 'flex: 2 1 200px; min-height: 50px; border-radius: 14px; border: none; font: inherit; font-weight: 800; font-size: 15px; cursor: pointer; ' + (this.state.ack ? (live ? 'background: #C2312F; color: #FFFFFF;' : 'background: #141A33; color: #FFFFFF;') : 'background: #E9ECF4; color: #6B7290; cursor: not-allowed;');
+    out.start = function () { self.setState({ started: true }); };
+    out.started = this.state.started; out.notStarted = !this.state.started;
+    var chart = (function () {
+      var m = String(s.visTitle).match(/[A-Z]{2,6}[-\/][A-Z]{3,4}/), nm = m ? m[0] : (s.f2 && s.f2[0] && s.f2[0].o ? s.f2[0].o[0] : 'Market');
+      var num = String(s.marketLine).match(/\d[\d,]*\.?\d*/), P = s.grid ? s.grid.last : s.dca ? s.dca.base : num ? Number(num[0].replace(/,/g, '')) : 0;
+      if (!P || key === 'rebal') return { chartOn: false };
+      var hi = s.grid ? s.grid.max : P * 1.09, lo = s.grid ? s.grid.min : P * 0.89, W = 572, H = 320, dg = P < 10 ? 4 : 0;
+      var Y = function (v) { return +((hi - v) / (hi - lo) * H).toFixed(1); };
+      var f = function (v) { return Number(v).toLocaleString('en-US', { minimumFractionDigits: dg, maximumFractionDigits: dg }); };
+      var n = 72, cw = W / n, closes = [], i;
+      for (i = 0; i < n; i += 1) { var t = i / (n - 1); closes.push(P * (1 + 0.035 * Math.cos(t * 4.6) * (1 - t) + 0.012 * Math.sin(i * 1.1) * (1 - t * 0.6) - 0.012 * Math.sin(t * 3.1))); }
+      closes[n - 1] = P;
+      var wicks = [], bodies = [], prev = closes[0];
+      closes.forEach(function (c, k) {
+        var o = prev, up = c >= o, col = up ? '#26C281' : '#F0535B', x = +(k * cw + cw / 2).toFixed(1), w = P * 0.004 * (1 + Math.abs(Math.sin(k * 2.3)));
+        wicks.push({ x: x, y1: Y(Math.max(o, c) + w), y2: Y(Math.min(o, c) - w), c: col });
+        bodies.push({ x: +(x - cw * 0.34).toFixed(1), y: Y(Math.max(o, c)), w: +(cw * 0.68).toFixed(1), h: Math.max(+Math.abs(Y(o) - Y(c)).toFixed(1), 1.5), c: col });
+        prev = c;
+      });
+      var ramp = ['#3B528B', '#2C728E', '#21918C', '#3DBC74', '#5EC962', '#ADDC30', '#FDE725'];
+      var B = [[0.94, 6, 210], [0.955, 5, 300], [0.965, 4, 260], [0.925, 3, 330], [0.905, 2, 240], [0.89, 1, 160], [0.982, 2, 180], [1.018, 2, 150], [1.032, 3, 240], [1.05, 5, 280], [1.06, 3, 200], [1.075, 2, 300], [1.088, 1, 180], [0.948, 1, 420], [1.044, 1, 400]];
+      var heatBars = B.map(function (b) { var v = P * b[0]; return { x: W - b[2], y: Y(v) - 3, w: b[2], h: 6, c: ramp[b[1]], t: 'Estimated liquidations near ' + f(v) }; });
+      var L = [];
+      if (s.grid) { L = [['Upper', s.grid.upper], ['Lower', s.grid.lower], ['Stop', s.grid.stop]]; }
+      else if (s.dca) { L = [['Entry', P]].concat(s.dca.devs.slice(1, 3).map(function (d, k) { return ['Safety ' + (k + 1), P * (1 + s.dca.dir * d / 100)]; })); }
+      var levels = L.map(function (l) { return { y: Y(l[1]), ty: Y(l[1]) - 4, text: l[0] + ' ' + f(l[1]) }; });
+      var ticks = []; for (i = 1; i < 6; i += 1) { var v = hi - (hi - lo) * i / 6; ticks.push({ y: Y(v), ty: Y(v) + 4, text: f(v) }); }
+      var hasMap = key !== 'farb' && key !== 'vmaker', map = hasMap && self.state.ctab === 'map';
+      var seg = function (label, on, pick) { return { label: label, pressed: on ? 'true' : 'false', pick: pick, style: 'min-height: 36px; padding: 0 12px; border: none; border-radius: 9px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; ' + (on ? 'background: #FFFFFF; color: #141A33' : 'background: transparent; color: #5F6684') }; };
+      return { chartOn: true, chartTitle: nm + ' · ' + self.state.tf + ' · SoDEX', showMap: map, showPrice: !map, wicks: wicks, bodies: bodies, heatBars: heatBars, levels: levels, ticks: ticks,
+        cTabs: (hasMap ? [['map', 'Liquidation map']] : []).concat([['price', 'Price']]).map(function (x) { return seg(x[1], x[0] === 'map' ? map : !map, function () { self.setState({ ctab: x[0] }); }); }),
+        tfs: ['15m', '1h', '4h', '1D'].map(function (x) { return seg(x, self.state.tf === x, function () { self.setState({ tf: x }); }); }) };
+    })();
+    return Object.assign(out, chart);
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,542 @@
+import {
+  copiedLeaders,
+  leaderEvents,
+  leaderFollows,
+  leaderStatsDaily,
+  leaderWallets,
+  leaderboardRuns,
+} from "@drift/db";
+import {
+  AppError,
+  DRIFT_BUILDER_FEE_RATE,
+  feeRateToPercent,
+  toDecimalString,
+  dec,
+  ErrorCode,
+  FOLLOW_LIMIT,
+  FOLLOW_POLL_MS,
+  FOLLOW_SYSTEM_LIMIT,
+  HIDDEN_REASONS,
+  LEADER_STATS,
+  meetsMinHold,
+  presetFields,
+  Strategy,
+  type CopyPreview,
+  type CopyRequest,
+  type CopySlot,
+  type Following,
+  type HiddenReason,
+  type LeaderEventView,
+  type LeaderStats,
+  type TraderCard,
+  type TraderList,
+  type TraderProfile,
+  type TraderTab,
+} from "@drift/shared";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { getAddress } from "viem";
+
+import {
+  account,
+  aiDeskOn,
+  copyClashes,
+  copySlotOf,
+  createBot,
+  startBot,
+  type BotDeps,
+} from "../bots/service";
+import { iso } from "../security/service";
+
+// Copy Trading v1 (DEC-163, SCREENS.md 8.x). Chỉ cho tài khoản được bật AI Desk (như S12, DEC-161). Nguồn trader:
+// Hyperliquid (DEC-162), thống kê do scheduler tính mỗi đêm; sự kiện vị thế do marketdata ghi (T0 / T1) và lượt đêm.
+
+export interface CopyDeps {
+  bots: BotDeps;
+  /** Ngưỡng USD cảnh báo big move; null = cảnh báo tắt (OPEN_QUESTIONS 21a). */
+  bigMoveMinUsd: string | null;
+}
+
+const SOURCE = "hyperliquid" as const;
+const LIST_LIMIT = 60;
+const PROFILE_EVENTS = 30;
+const FEED_EVENTS = 50;
+
+async function requireDesk(deps: CopyDeps, userId: string): Promise<void> {
+  if (!(await aiDeskOn(deps.bots.db, userId)))
+    throw new AppError(ErrorCode.forbidden, "AI Desk is not enabled for this account.");
+}
+
+async function lastOkRun(deps: CopyDeps): Promise<string | null> {
+  const [r] = await deps.bots.db
+    .select({ date: leaderboardRuns.date })
+    .from(leaderboardRuns)
+    .where(eq(leaderboardRuns.status, "ok"))
+    .orderBy(desc(leaderboardRuns.date))
+    .limit(1);
+  return r?.date ?? null;
+}
+
+const statsView = (s: LeaderStats): TraderCard["stats"] => ({
+  profit: s.profit,
+  worstDip: s.worstDip,
+  typicalHoldMs: s.typicalHoldMs,
+  winRate: s.winRate,
+  wins: s.wins,
+  closedTrades: s.closedEpisodes,
+  topTradeShare: s.topTradeShare,
+  coverage: s.coverage,
+  liquidations: s.liquidations,
+  markets: s.markets,
+  unlistedCoins: s.unlistedCoins,
+  historyIncomplete: s.historyIncomplete,
+  fills: s.fills,
+});
+
+const HOUR = 3_600_000;
+
+export function tagsOf(s: LeaderStats): TraderCard["tags"] {
+  const tags: TraderCard["tags"] = [];
+  const hold = s.typicalHoldMs;
+  if (
+    hold !== null &&
+    hold >= LEADER_STATS.minHoldMs &&
+    s.coverage !== null &&
+    dec(s.coverage).gte("0.9")
+  )
+    tags.push("easy_to_copy");
+  if (hold !== null && hold >= 24 * HOUR) tags.push("holds_days");
+  else if (hold !== null && hold >= 2 * HOUR) tags.push("holds_hours");
+  else if (hold !== null && hold < HOUR) tags.push("fast_trader");
+  if (s.coverage !== null)
+    tags.push(dec(s.coverage).gte("0.999") ? "all_on_sodex" : "partly_on_sodex");
+  if (s.liquidations > 0) tags.push("liquidated");
+  if (s.historyIncomplete) tags.push("history_incomplete");
+  return tags;
+}
+
+async function followsOf(deps: CopyDeps, userId: string): Promise<Set<string>> {
+  const rows = await deps.bots.db
+    .select({ address: leaderFollows.address })
+    .from(leaderFollows)
+    .where(and(eq(leaderFollows.userId, userId), eq(leaderFollows.source, SOURCE)));
+  return new Set(rows.map((r) => r.address));
+}
+
+function slotFor(address: string, copied: readonly string[], slots: number): CopySlot {
+  if (copied.includes(address)) return "copied";
+  return copied.length >= slots ? "full" : "open";
+}
+
+const SLOTS = 8;
+
+export async function listTraders(
+  deps: CopyDeps,
+  userId: string,
+  tab: TraderTab,
+): Promise<TraderList> {
+  await requireDesk(deps, userId);
+  const day = await lastOkRun(deps);
+  const empty: TraderList = {
+    tab,
+    updatedOn: day,
+    candidates: 0,
+    hidden: 0,
+    hiddenBy: Object.fromEntries(HIDDEN_REASONS.map((r) => [r, 0])) as TraderList["hiddenBy"],
+    items: [],
+  };
+  if (day === null) return empty;
+  const rows = await deps.bots.db
+    .select({ s: leaderStatsDaily, name: leaderWallets.displayName })
+    .from(leaderStatsDaily)
+    .leftJoin(
+      leaderWallets,
+      and(
+        eq(leaderWallets.source, leaderStatsDaily.source),
+        eq(leaderWallets.address, leaderStatsDaily.address),
+      ),
+    )
+    .where(and(eq(leaderStatsDaily.source, SOURCE), eq(leaderStatsDaily.date, day)));
+  const hiddenBy = { ...empty.hiddenBy };
+  let hidden = 0;
+  for (const r of rows) {
+    if (r.s.hidden.length > 0) hidden += 1;
+    for (const h of r.s.hidden) if (h in hiddenBy) hiddenBy[h as HiddenReason] += 1;
+  }
+  const inTab = rows.filter((r) => r.s.tabs.includes(tab));
+  const key = (r: (typeof rows)[number]): number =>
+    tab === "steady"
+      ? (r.s.steadyScore ?? 0)
+      : tab === "long"
+        ? (r.s.typicalHoldMs ?? 0)
+        : Number(r.s.profit);
+  inTab.sort((a, b) => key(b) - key(a));
+  const follows = await followsOf(deps, userId);
+  const copied = await copiedLeaders(deps.bots.db, SOURCE);
+  return {
+    ...empty,
+    candidates: rows.length,
+    hidden,
+    hiddenBy,
+    items: inTab.slice(0, LIST_LIMIT).map((r) => {
+      const stats = r.s.stats as LeaderStats;
+      return {
+        address: r.s.address,
+        displayName: r.name ?? null,
+        stats: statsView(stats),
+        curve: stats.dailyCurve,
+        tags: tagsOf(stats),
+        slot: slotFor(r.s.address, copied, SLOTS),
+        following: follows.has(r.s.address),
+      };
+    }),
+  };
+}
+
+function eventView(e: typeof leaderEvents.$inferSelect): LeaderEventView {
+  const after = dec(e.positionAfter);
+  // Đóng hết: chiều của vị thế vừa đóng ("Closed short"); còn lại: chiều của vị thế sau sự kiện.
+  const ref = after.isZero() ? dec(e.positionBefore) : after;
+  return {
+    address: e.address,
+    coin: e.coin,
+    market: e.market,
+    kind: e.kind,
+    side: ref.isZero() ? null : ref.isNegative() ? "short" : "long",
+    positionAfter: after.toString(),
+    notional: dec(e.notional).toString(),
+    positionNotional: after.abs().mul(dec(e.price)).toDecimalPlaces(2).toString(),
+    price: dec(e.price).toString(),
+    realized: e.realized === null ? null : dec(e.realized).toString(),
+    at: iso(e.at),
+    // Sự kiện của lượt đêm có `seenAt` muộn hàng giờ: không phải độ trễ của theo dõi realtime.
+    seenAfterMs:
+      e.seenAt.getTime() - e.at.getTime() > 30 * 60_000
+        ? null
+        : e.seenAt.getTime() - e.at.getTime(),
+  };
+}
+
+async function latestStats(deps: CopyDeps, address: string) {
+  const [row] = await deps.bots.db
+    .select({ s: leaderStatsDaily, name: leaderWallets.displayName })
+    .from(leaderStatsDaily)
+    .leftJoin(
+      leaderWallets,
+      and(
+        eq(leaderWallets.source, leaderStatsDaily.source),
+        eq(leaderWallets.address, leaderStatsDaily.address),
+      ),
+    )
+    .where(and(eq(leaderStatsDaily.source, SOURCE), eq(leaderStatsDaily.address, address)))
+    .orderBy(desc(leaderStatsDaily.date))
+    .limit(1);
+  return row;
+}
+
+function copyableOf(stats: LeaderStats | undefined): TraderProfile["copyable"] {
+  if (stats === undefined) return { ok: false, reason: "no_stats" };
+  if (!meetsMinHold(stats)) return { ok: false, reason: "min_hold" };
+  if (stats.markets.length === 0) return { ok: false, reason: "no_markets" };
+  return { ok: true, reason: null };
+}
+
+export async function traderProfile(
+  deps: CopyDeps,
+  userId: string,
+  address: string,
+): Promise<TraderProfile> {
+  await requireDesk(deps, userId);
+  const row = await latestStats(deps, address);
+  if (row === undefined) throw new AppError(ErrorCode.notFound, "Trader not found.");
+  const stats = row.s.stats as LeaderStats;
+  const events = await deps.bots.db
+    .select()
+    .from(leaderEvents)
+    .where(and(eq(leaderEvents.source, SOURCE), eq(leaderEvents.address, address)))
+    .orderBy(desc(leaderEvents.at))
+    .limit(PROFILE_EVENTS);
+  // Vị thế đang mở theo sự kiện gần nhất của từng coin (sẽ không được copy, DEC-161).
+  const lastByCoin = new Map<string, typeof leaderEvents.$inferSelect>();
+  for (const e of events) if (!lastByCoin.has(e.coin)) lastByCoin.set(e.coin, e);
+  const openPositions = [...lastByCoin.values()]
+    .filter((e) => !dec(e.positionAfter).isZero())
+    .map((e) => ({
+      market: e.market,
+      coin: e.coin,
+      side: dec(e.positionAfter).isNegative() ? ("short" as const) : ("long" as const),
+    }));
+  const hold = stats.typicalHoldMs;
+  const fit: TraderProfile["fit"] = [];
+  if (hold !== null)
+    fit.push({
+      item: hold >= LEADER_STATS.minHoldMs ? "holds_long" : "holds_short",
+      ok: hold >= LEADER_STATS.minHoldMs,
+      data: { holdMs: String(hold) },
+    });
+  if (stats.coverage !== null)
+    fit.push(
+      stats.unlistedCoins.length === 0
+        ? {
+            item: "all_listed",
+            ok: true,
+            data: { markets: stats.markets.map((m) => m.split("-")[0] ?? m).join(", ") },
+          }
+        : {
+            item: "some_unlisted",
+            ok: false,
+            data: { coins: stats.unlistedCoins.join(", "), coverage: stats.coverage },
+          },
+    );
+  if (stats.topTradeShare !== null)
+    fit.push(
+      dec(stats.topTradeShare).lte(LEADER_STATS.maxTopShare)
+        ? { item: "spread_profit", ok: true, data: { share: stats.topTradeShare } }
+        : { item: "concentrated_profit", ok: false, data: { share: stats.topTradeShare } },
+    );
+  fit.push(
+    stats.liquidations === 0
+      ? { item: "no_liquidations", ok: true, data: {} }
+      : { item: "liquidations", ok: false, data: { count: String(stats.liquidations) } },
+  );
+  const follows = await followsOf(deps, userId);
+  const copied = await copiedLeaders(deps.bots.db, SOURCE);
+  return {
+    card: {
+      address,
+      displayName: row.name ?? null,
+      stats: statsView(stats),
+      curve: stats.dailyCurve,
+      tags: tagsOf(stats),
+      slot: slotFor(address, copied, SLOTS),
+      following: follows.has(address),
+    },
+    hidden: row.s.hidden.filter((h): h is HiddenReason =>
+      (HIDDEN_REASONS as readonly string[]).includes(h),
+    ),
+    updatedOn: row.s.date,
+    computedAt: iso(row.s.computedAt),
+    fit,
+    events: events.map(eventView),
+    openPositions,
+    copyable: copyableOf(stats),
+  };
+}
+
+export async function follow(
+  deps: CopyDeps,
+  userId: string,
+  address: string,
+): Promise<{ following: true }> {
+  await requireDesk(deps, userId);
+  const db = deps.bots.db;
+  const mine = await followsOf(deps, userId);
+  if (mine.has(address)) return { following: true };
+  if (mine.size >= FOLLOW_LIMIT)
+    throw new AppError(
+      ErrorCode.stateConflict,
+      `You can follow up to ${String(FOLLOW_LIMIT)} traders.`,
+      {
+        reason: "follow_limit",
+      },
+    );
+  if ((await latestStats(deps, address)) === undefined)
+    throw new AppError(ErrorCode.notFound, "Trader not found.");
+  const [{ n } = { n: 0 }] = await db
+    .select({ n: sql<number>`count(distinct ${leaderFollows.address})::int` })
+    .from(leaderFollows)
+    .where(eq(leaderFollows.source, SOURCE));
+  const already = await db
+    .select({ n: count() })
+    .from(leaderFollows)
+    .where(and(eq(leaderFollows.source, SOURCE), eq(leaderFollows.address, address)));
+  if ((already[0]?.n ?? 0) === 0 && n >= FOLLOW_SYSTEM_LIMIT)
+    throw new AppError(ErrorCode.stateConflict, "Following is full right now. Try again later.", {
+      reason: "system_limit",
+    });
+  await db.insert(leaderFollows).values({ userId, source: SOURCE, address }).onConflictDoNothing();
+  return { following: true };
+}
+
+export async function unfollow(
+  deps: CopyDeps,
+  userId: string,
+  address: string,
+): Promise<{ following: false }> {
+  await requireDesk(deps, userId);
+  await deps.bots.db
+    .delete(leaderFollows)
+    .where(
+      and(
+        eq(leaderFollows.userId, userId),
+        eq(leaderFollows.source, SOURCE),
+        eq(leaderFollows.address, address),
+      ),
+    );
+  return { following: false };
+}
+
+export async function following(deps: CopyDeps, userId: string): Promise<Following> {
+  await requireDesk(deps, userId);
+  const db = deps.bots.db;
+  const addresses = [...(await followsOf(deps, userId))];
+  const copied = await copiedLeaders(db, SOURCE);
+  const names =
+    addresses.length === 0
+      ? []
+      : await db
+          .select({ address: leaderWallets.address, name: leaderWallets.displayName })
+          .from(leaderWallets)
+          .where(and(eq(leaderWallets.source, SOURCE), inArray(leaderWallets.address, addresses)));
+  const events =
+    addresses.length === 0
+      ? []
+      : await db
+          .select()
+          .from(leaderEvents)
+          .where(and(eq(leaderEvents.source, SOURCE), inArray(leaderEvents.address, addresses)))
+          .orderBy(desc(leaderEvents.at))
+          .limit(FEED_EVENTS);
+  // Market mới: trader có sự kiện mở ở market SoDEX mà bot copy của người dùng chưa theo.
+  const myCopies = await db.execute<{ address: string; markets: unknown }>(sql`
+    select lower(bv.config->>'leaderAddress') as address, bv.config->'markets' as markets
+    from bots b join bot_versions bv on bv.id = b.active_version_id
+    where b.user_id = ${userId} and b.strategy = ${Strategy.copyTrade}
+      and b.state in ('starting','running','pausing','paused','resuming')`);
+  const copyMarkets = new Map<string, Set<string>>();
+  for (const r of myCopies.rows)
+    copyMarkets.set(
+      r.address,
+      new Set(
+        Array.isArray(r.markets) ? r.markets.filter((m): m is string => typeof m === "string") : [],
+      ),
+    );
+  return {
+    limit: FOLLOW_LIMIT,
+    checkedEveryMs: FOLLOW_POLL_MS,
+    bigMoveAlerts: deps.bigMoveMinUsd !== null,
+    traders: addresses.map((address) => {
+      const mine = events.filter((e) => e.address === address);
+      const held = copyMarkets.get(address);
+      const newMarkets =
+        held === undefined
+          ? []
+          : [
+              ...new Set(
+                mine
+                  .filter(
+                    (e) =>
+                      (e.kind === "open" || e.kind === "flip") &&
+                      e.market !== null &&
+                      !held.has(e.market),
+                  )
+                  .flatMap((e) => (e.market === null ? [] : [e.market])),
+              ),
+            ];
+      return {
+        address,
+        displayName: names.find((n) => n.address === address)?.name ?? null,
+        lastEventAt: mine[0] === undefined ? null : iso(mine[0].at),
+        copying: copied.includes(address) && held !== undefined,
+        newMarkets,
+      };
+    }),
+    events: events.map(eventView),
+  };
+}
+
+/** Budget + mức an toàn → config S12, market giữ / bỏ (DEC-163 mục 6, 7). Server tính, không tin client. */
+export async function copyPreview(
+  deps: CopyDeps,
+  userId: string,
+  req: CopyRequest,
+): Promise<CopyPreview> {
+  await requireDesk(deps, userId);
+  const a = await account(deps.bots.db, userId);
+  const row = await latestStats(deps, req.address);
+  const stats = row?.s.stats as LeaderStats | undefined;
+  const fields = presetFields(req.budget, req.preset);
+  const symbols = await deps.bots.rest.getPerpsSymbols();
+  const dropped: CopyPreview["dropped"] = [];
+  const wanted = stats?.markets ?? [];
+  const clashes = await copyClashes(deps.bots, a.id, Strategy.copyTrade, wanted, null);
+  const markets: string[] = [];
+  for (const m of wanted) {
+    const clash = clashes.find((c) => c.market === m);
+    const sym = symbols.find((x) => x.name === m);
+    if (clash !== undefined)
+      dropped.push({ market: m, reason: "bot", botId: clash.botId, botName: clash.botName });
+    else if (sym?.status !== "TRADING")
+      dropped.push({ market: m, reason: "unavailable", botId: null, botName: null });
+    else if (sym.maxLeverage < fields.leverage)
+      dropped.push({ market: m, reason: "leverage", botId: null, botName: null });
+    else if (dec(fields.fixedNotional).lt(dec(sym.minNotional)))
+      dropped.push({ market: m, reason: "min_size", botId: null, botName: null });
+    else markets.push(m);
+  }
+  const config: Record<string, unknown> = {
+    leaderSource: SOURCE,
+    leaderAddress: req.address,
+    markets,
+    marginMode: req.marginMode,
+    direction: req.direction,
+    ...fields,
+    ...(req.maxSlippagePct === undefined ? {} : { maxSlippagePct: req.maxSlippagePct }),
+    ...(req.takeProfitPct === undefined ? {} : { takeProfitPct: req.takeProfitPct }),
+  };
+  let available: string | null = null;
+  try {
+    const st = await deps.bots.rest.getPerpsAccountState(getAddress(a.address));
+    available = req.marginMode === "isolated" ? st.ami : st.am;
+  } catch {
+    available = null;
+  }
+  const copyable = copyableOf(stats);
+  return {
+    address: req.address,
+    config,
+    markets,
+    dropped,
+    slot: await copySlotOf(deps.bots.db, req.address),
+    copyable: copyable.ok && markets.length === 0 ? { ok: false, reason: "no_markets" } : copyable,
+    // Approve cố định 0.01% (DEC-46); mức gắn vào lệnh ≤ mức này (DEC-94, DEC-159).
+    builderFeeMax: toDecimalString(feeRateToPercent(DRIFT_BUILDER_FEE_RATE)),
+    available,
+  };
+}
+
+/** Tạo bot copy từ Review rồi chạy ngay (2FA nếu đã bật, xác nhận rủi ro), dùng luồng Start chung. */
+export async function startCopy(
+  deps: CopyDeps,
+  userId: string,
+  req: CopyRequest & { acknowledged: true; twoFactorCode?: string | undefined },
+  ip: string | null,
+  sessionId?: string,
+) {
+  const p = await copyPreview(deps, userId, req);
+  // Hết chỗ copy realtime là điều kiện chung của hệ thống: báo trước lý do riêng của account.
+  if (p.slot === "full")
+    throw new AppError(
+      ErrorCode.stateConflict,
+      "All copy slots are taken. Follow this trader and copy later.",
+      { reason: "slots_full" },
+    );
+  if (!p.copyable.ok)
+    throw new AppError(ErrorCode.validationFailed, "This trader can't be copied right now.", {
+      reason: p.copyable.reason,
+    });
+  const name = `Copy ${req.address.slice(0, 6)}…${req.address.slice(-4)}`;
+  const bot = await createBot(
+    deps.bots,
+    userId,
+    { strategy: Strategy.copyTrade, name, config: p.config, paramSource: "manual" },
+    ip,
+  );
+  return startBot(
+    deps.bots,
+    userId,
+    bot.id,
+    { acknowledged: true, twoFactorCode: req.twoFactorCode },
+    ip,
+    sessionId,
+  );
+}

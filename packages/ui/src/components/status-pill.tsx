@@ -11,6 +11,8 @@ export interface StatusPillProps {
   reasonLabel?: string;
   needsAttention?: boolean;
   needsAttentionLabel?: string;
+  /** Câu phụ cạnh trạng thái, ví dụ "Waiting for price · at 95" khi bot Running đang chờ điều kiện vào. */
+  detail?: string;
   className?: string;
 }
 
@@ -58,6 +60,7 @@ export function StatusPill({
   reasonLabel,
   needsAttention = false,
   needsAttentionLabel,
+  detail,
   className,
 }: StatusPillProps) {
   const tone = toneOf(state);
@@ -77,6 +80,11 @@ export function StatusPill({
       {reason && reasonLabel ? (
         <span data-reason={reason} className="text-xs font-medium text-ink-2">
           {reasonLabel}
+        </span>
+      ) : null}
+      {detail ? (
+        <span data-detail="" className="text-xs font-medium text-ink-2">
+          {detail}
         </span>
       ) : null}
       {needsAttention && needsAttentionLabel ? (

@@ -6,8 +6,13 @@ import { totp } from "./totp";
 import { installWallet } from "./wallet";
 
 // Đăng ký email + mật khẩu (DEC-76), kết nối SoDEX bằng hai chữ ký, bật 2FA. Dùng cho các flow sau P3.
-export async function signUpConnectAnd2fa(page: Page, info: TestInfo) {
-  const email = `e2e-${info.project.name}-${String(Date.now())}@drift.test`;
+export async function signUpConnectAnd2fa(
+  page: Page,
+  info: TestInfo,
+  opts: { emailPrefix?: string } = {},
+) {
+  // `e2e-copy` → global-setup bật AI Desk cho tài khoản (Copy Trading, DEC-163).
+  const email = `${opts.emailPrefix ?? "e2e"}-${info.project.name}-${String(Date.now())}@drift.test`;
   const address = await installWallet(page, `0x${randomBytes(32).toString("hex")}`);
   const accountID = 500_000 + Math.floor(Math.random() * 100_000);
   const registered = await fetch(`${process.env.E2E_MOCK_CONTROL ?? ""}/__mock/users`, {

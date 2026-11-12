@@ -10,6 +10,7 @@ import { TtlCache } from "../ttl-cache";
 import {
   klineSchema,
   markPriceSchema,
+  orderbookSchema,
   perpsAccountStateSchema,
   positionSchema,
   restOrderSchema,
@@ -18,6 +19,7 @@ import {
   type Kline,
   type KlineInterval,
   type MarkPrice,
+  type Orderbook,
   type PerpsAccountState,
   type Position,
   type RestOrder,
@@ -246,6 +248,15 @@ export class SodexRestClient {
       z.object({ av: decimalStringSchema }),
     );
     return state.av;
+  }
+
+  /** Sổ lệnh `limit` mức mỗi phía (giá, khối lượng), tốt nhất trước. Dùng cho Volume Farm (DEC-80). */
+  getOrderbook(engine: Engine, symbol: string, limit: number): Promise<Orderbook> {
+    return this.#get(
+      `/${engine}/markets/${encodeURIComponent(symbol)}/orderbook?limit=${String(limit)}`,
+      RestWeight.marketInfo,
+      orderbookSchema,
+    );
   }
 
   getMarkPrices(): Promise<MarkPrice[]> {

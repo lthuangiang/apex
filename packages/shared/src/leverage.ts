@@ -30,6 +30,21 @@ export function leverageSpecOf(
   };
 }
 
+/**
+ * Mọi symbol bot đặt đòn bẩy. Copy Trade (DEC-163) giao dịch nhiều market với cùng đòn bẩy và margin mode; chiến lược
+ * khác có tối đa một symbol.
+ */
+export function leverageSpecsOf(strategy: string, market: string, config: unknown): LeverageSpec[] {
+  const one = leverageSpecOf(strategy, market, config);
+  if (one === null) return [];
+  const c = (config ?? {}) as { markets?: unknown };
+  if (strategy === Strategy.copyTrade && Array.isArray(c.markets))
+    return c.markets
+      .filter((m): m is string => typeof m === "string")
+      .map((m) => ({ ...one, market: m }));
+  return [one];
+}
+
 export interface SymbolSetting {
   leverage: number;
   marginMode: "cross" | "isolated";

@@ -1,4 +1,5 @@
-import { builderBalanceSnapshots, createDb, marketStatsDaily } from "@drift/db";
+import { builderBalanceSnapshots, createDb, leaderboardRuns, marketStatsDaily } from "@drift/db";
+import { HyperliquidClient } from "@drift/hyperliquid";
 import { Lease, runAsLeader } from "@drift/runtime";
 import { AppError, ErrorCode } from "@drift/shared";
 import { loadSodexConfig, RedisRateLimitStore, SodexRestClient } from "@drift/sodex";
@@ -9,6 +10,7 @@ import { getAddress } from "viem";
 import { z } from "zod";
 
 import { reconcileDay, snapshotBuilderBalances } from "./builder-revenue";
+import { noteMinHoldChanges, runLeaderboard } from "./leaderboard";
 import { computeDailyStats, utcDate } from "./market-stats";
 import { snapshotAndCheck } from "./risk";
 
@@ -21,6 +23,13 @@ const env = z
     REDIS_URL: z.string().min(1),
     LOG_LEVEL: z.string().default("info"),
     SODEX_EGRESS_KEY: z.string().default("default"),
+    /** Copy Trading T2 (DEC-163): bật thì tính lại leaderboard Hyperliquid mỗi đêm. */
+    COPY_LEADERBOARD_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
+    /** Giờ UTC bắt đầu lượt hằng ngày (rải ban đêm). */
+    COPY_LEADERBOARD_HOUR_UTC: z.coerce.number().int().min(0).max(23).default(1),
     /** Ví builder của DRIFT (đối soát builder revenue); trống thì bỏ qua đối soát. */
     DRIFT_BUILDER_ADDRESS: z
       .string()
@@ -43,6 +52,12 @@ const riskRest = new SodexRestClient({
   config: loadSodexConfig(process.env),
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
+});
+
+// Hyperliquid chỉ đọc; bucket chung theo IP với marketdata (DEC-163 mục 10).
+const hl = new HyperliquidClient({
+  limiter: new RedisRateLimitStore(redis),
+  bucketKey: `hl:ip:${env.SODEX_EGRESS_KEY}`,
 });
 
 async function wait<T>(read: () => Promise<T>): Promise<T> {
@@ -102,6 +117,42 @@ async function revenueTick() {
   log.info({ date: today }, "builder balances snapshotted, yesterday reconciled");
 }
 
+let leaderboardBusy = false;
+/** Lượt leaderboard đang "running" lâu hơn mức này coi như tiến trình cũ đã chết, chạy lại. */
+const LEADERBOARD_STALE_MS = 8 * 3_600_000;
+async function leaderboardTick() {
+  if (!env.COPY_LEADERBOARD_ENABLED || leaderboardBusy) return;
+  const now = Date.now();
+  if (new Date(now).getUTCHours() < env.COPY_LEADERBOARD_HOUR_UTC) return;
+  const [run] = await db
+    .select({ status: leaderboardRuns.status, updatedAt: leaderboardRuns.updatedAt })
+    .from(leaderboardRuns)
+    .where(eq(leaderboardRuns.date, utcDate(now)));
+  if (run?.status === "ok") return;
+  if (run?.status === "running" && now - run.updatedAt.getTime() < LEADERBOARD_STALE_MS) return;
+  // Lượt lỗi chỉ thử lại sau 1 giờ, không gọi dồn.
+  if (run?.status === "failed" && now - run.updatedAt.getTime() < 3_600_000) return;
+  leaderboardBusy = true;
+  try {
+    const r = await runLeaderboard({
+      db,
+      hl,
+      sodexMarkets: async () =>
+        (await wait(() => rest.getPerpsSymbols()))
+          .filter((m) => m.status === "TRADING")
+          .map((m) => m.name),
+      now: () => Date.now(),
+    });
+    log.info(
+      { status: r.status, candidates: r.candidates, computed: r.computed, failed: r.failed.length },
+      "leaderboard computed",
+    );
+    if (r.status === "ok") await noteMinHoldChanges(db, utcDate(now), Date.now());
+  } finally {
+    leaderboardBusy = false;
+  }
+}
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let riskTimer: ReturnType<typeof setInterval> | null = null;
 async function tick() {
@@ -130,6 +181,9 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
     timer = setInterval(() => {
       void tick().catch((error: unknown) => {
         log.error({ err: error }, "tick failed");
+      });
+      void leaderboardTick().catch((error: unknown) => {
+        log.error({ err: error }, "leaderboard tick failed");
       });
     }, 10 * 60_000);
   },

@@ -37,7 +37,7 @@ export function tzOffsetMs(timeZone: string, utcMs: number): number {
 }
 
 /** Giờ địa phương (y, m, d, h, min) → ms UTC. */
-function localToUtc(
+export function localToUtc(
   timeZone: string,
   y: number,
   m: number,

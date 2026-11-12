@@ -1,6 +1,7 @@
 import { dec } from "@drift/shared";
 import { z } from "zod";
 
+import { entryFields, refineEntry } from "../common/entry";
 import { marketSchema, optionalPositive, positiveDecimal } from "../common/schema";
 
 // S1 Spot Grid (STRATEGIES.md). Field "Investment ≤ free balance" và "step > round-trip fees" cần dữ
@@ -18,7 +19,9 @@ export const spotGridSchema = z
       .max(200, { message: "Allowed 2–200." }),
     spacing: z.enum(["arithmetic", "geometric"]),
     investment: positiveDecimal(),
+    /** Cũ (trước DEC-91): thay bằng `entry`; vẫn đọc được và chạy như cắt qua mức này. */
     triggerPrice: optionalPositive(),
+    ...entryFields,
     stopPrice: optionalPositive(),
     /** % trên investment. */
     takeProfitPct: optionalPositive("Must be above 0."),
@@ -48,6 +51,7 @@ export const spotGridSchema = z
         message: "Must be inside the grid range.",
       });
     }
+    refineEntry(c, ctx, { low: c.lowerPrice, high: c.upperPrice });
     if (c.stopPrice !== undefined && dec(c.stopPrice).gte(c.lowerPrice)) {
       ctx.addIssue({
         code: "custom",

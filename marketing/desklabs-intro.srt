@@ -1,0 +1,36 @@
+1
+00:00:00,350 --> 00:00:04,222
+Meet DeskLabs. Trading strategies that run while you work.
+
+2
+00:00:04,872 --> 00:00:11,774
+Market Making quotes both sides of the order book in real time, and Smart quoting steps back before the price runs.
+
+3
+00:00:12,424 --> 00:00:19,586
+Pick from ten strategies: Market Making, Volume Builder, grids, DCA, funding arbitrage and more.
+
+4
+00:00:20,236 --> 00:00:30,254
+Every agent tracks its volume, cost per $1M and where every dollar went, plus a review that tests better settings.
+
+5
+00:00:34,436 --> 00:00:43,068
+Market Making gets its own analytics: live quotes, every fill, and adverse selection 1, 3 and 5 minutes after each fill.
+
+6
+00:00:45,036 --> 00:00:49,783
+In our live test, Smart quoting cut the average loss per round trip in half.
+
+7
+00:00:50,433 --> 00:00:59,380
+On mainnet, Volume Builder traded $27,173 of volume at $114.61 per $1M, and Market Making at $138 per $1M.
+
+8
+00:01:00,030 --> 00:01:06,329
+Your funds never leave your account. No seed phrase, stops on the exchange, and a one-tap halt.
+
+9
+00:01:06,979 --> 00:01:12,537
+DeskLabs. Powered by SoDEX Builder Code. Start at desklabs.xyz
+

@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  adminUserDetailSchema,
   adminUsersViewSchema,
   builderRevenueViewSchema,
   notificationSettingsSchema,
   errorResponseSchema,
   overviewViewSchema,
   meSchema,
+  platformStatsSchema,
   portfolioResponseSchema,
   riskViewSchema,
   twoFactorSetupSchema,
@@ -55,7 +57,7 @@ describe("portfolio, risk and notifications", () => {
     expect(pf?.unpriced).toEqual([]);
   });
 
-  it("stores limits, reports them with who enforces them, and halts every bot with 2FA", async () => {
+  it("stores limits, reports them with who enforces them, and halts every bot without asking for 2FA (DEC-115)", async () => {
     const { client, userId, accountId } = await connected("acct2@example.com");
     const set = await client.request("PUT", "/api/v1/risk/limits", {
       body: { key: "dailyLossPct", value: "3" },
@@ -79,11 +81,9 @@ describe("portfolio, risk and notifications", () => {
     await client.request("POST", "/api/v1/security/2fa/enable", {
       body: { code: generateTotp(setup.secret, env.clock.now) },
     });
-    const noCode = await client.request("POST", "/api/v1/risk/halt", { body: {} });
-    expect(errorOf(noCode.body).code).toBe("TWO_FACTOR_REQUIRED");
-    env.clock.now = new Date(env.clock.now.getTime() + 30_000);
+    // 2FA đã bật nhưng Emergency halt chỉ giảm rủi ro nên không hỏi mã.
     const res = await client.request("POST", "/api/v1/risk/halt", {
-      body: { twoFactorCode: generateTotp(setup.secret, env.clock.now) },
+      body: {},
       idempotencyKey: randomUUID(),
     });
     expect(res.json()).toEqual({ stopping: 1 });
@@ -123,7 +123,7 @@ describe("portfolio, risk and notifications", () => {
     ).toBe(0);
   });
 
-  it("shows builder revenue only to the DRIFT team, with reconciled totals", async () => {
+  it("shows builder revenue only to the DeskLabs team, with reconciled totals", async () => {
     const { client, userId } = await connected("acct4@example.com");
     expect(
       errorOf((await client.request("GET", "/api/v1/admin/builder-revenue?period=2026-10")).body)
@@ -141,7 +141,7 @@ describe("portfolio, risk and notifications", () => {
     expect(v.days.map((d) => d.status)).toEqual(["pending", "pending", "matched"]);
   });
 
-  it("lists users only to the DRIFT team, read-only, with search", async () => {
+  it("lists users only to the DeskLabs team, read-only, with search", async () => {
     const { client, userId } = await connected("acct5@example.com");
     const other = new TestClient(env.app);
     await signIn(env, other, "plain_user5@example.com");
@@ -167,6 +167,98 @@ describe("portfolio, risk and notifications", () => {
     );
     expect(none.items).toHaveLength(0);
     expect((await client.request("POST", "/api/v1/admin/users")).statusCode).toBe(404);
+  });
+
+  it("shows team members one user's stats, bots and orders, and audits each view", async () => {
+    const { client, userId } = await connected("acct6@example.com");
+    const other = new TestClient(env.app);
+    const plainId = meSchema.parse((await signIn(env, other, "plain_user6@example.com")).json()).id;
+    const path = `/api/v1/admin/users/${plainId}`;
+    expect(errorOf((await other.request("GET", path)).body).code).toBe("FORBIDDEN");
+    await env.pool.query("update users set role = 'team' where id = $1", [userId]);
+    const view = adminUserDetailSchema.parse((await client.request("GET", path)).json());
+    expect(view.user.email).toBe("plain_user6@example.com");
+    expect(view.stats).toMatchObject({ volumeAll: "0", fills: 0, equityAt: null });
+    expect(view.bots).toEqual([]);
+    expect(view.orders).toEqual([]);
+    const audits = await env.pool.query(
+      "select 1 from audit_log where user_id = $1 and action = 'admin.user_viewed' and target = $2",
+      [userId, plainId],
+    );
+    expect(audits.rowCount).toBe(1);
+    const missing = "00000000-0000-4000-8000-000000000000";
+    expect(errorOf((await client.request("GET", `/api/v1/admin/users/${missing}`)).body).code).toBe(
+      "NOT_FOUND",
+    );
+  });
+});
+
+describe("connect SoDEX telemetry (DEC-114)", () => {
+  it("records browser steps, rejects bad bodies and shows them to the team", async () => {
+    const { client, userId } = await connected("acct7@example.com");
+    const user = new TestClient(env.app);
+    const plainId = meSchema.parse((await signIn(env, user, "plain_user7@example.com")).json()).id;
+    const attemptId = randomUUID();
+    const send = (body: unknown) => user.request("POST", "/api/v1/sodex/connect-events", { body });
+    expect(
+      (
+        await send({
+          attemptId,
+          type: "view",
+          data: { device: "mobile", os: "iOS", walletsDetected: [], walletConnect: true },
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect((await send({ attemptId, type: "picker_opened" })).statusCode).toBe(204);
+    expect(
+      (
+        await send({
+          attemptId,
+          type: "wallet_failed",
+          data: { wallet: "WalletConnect", reason: "wc_not_started" },
+        })
+      ).statusCode,
+    ).toBe(204);
+    // Loại bước lạ, attempt sai, dữ liệu lồng nhau: từ chối.
+    expect((await send({ attemptId, type: "hacked" })).statusCode).toBe(400);
+    expect((await send({ attemptId: "x", type: "view" })).statusCode).toBe(400);
+    expect((await send({ attemptId, type: "view", data: { a: { b: 1 } } })).statusCode).toBe(400);
+    // Chưa đăng nhập: không ghi.
+    const anon = new TestClient(env.app);
+    expect(
+      (
+        await anon.request("POST", "/api/v1/sodex/connect-events", {
+          body: { attemptId, type: "view" },
+        })
+      ).statusCode,
+    ).toBe(401);
+
+    await env.pool.query("update users set role = 'team' where id = $1", [userId]);
+    const view = adminUserDetailSchema.parse(
+      (await client.request("GET", `/api/v1/admin/users/${plainId}`)).json(),
+    );
+    expect(view.connect.events.map((e) => e.type)).toEqual([
+      "wallet_failed",
+      "picker_opened",
+      "view",
+    ]);
+    expect(view.connect.events[0]?.data).toMatchObject({ reason: "wc_not_started" });
+    expect(view.connect.requests).toEqual([]);
+
+    const stats = platformStatsSchema.parse(
+      (await client.request("GET", "/api/v1/admin/stats?period=7")).json(),
+    );
+    expect(
+      stats.connect.steps.find((s) => s.type === "picker_opened")?.users,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      stats.connect.failures.find(
+        (f) => f.type === "wallet_failed" && f.reason === "wc_not_started",
+      )?.users,
+    ).toBeGreaterThanOrEqual(1);
+    expect(stats.connect.devices.find((d) => d.device === "mobile")?.users).toBeGreaterThanOrEqual(
+      1,
+    );
   });
 });
 

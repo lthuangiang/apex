@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI Desk · B+ home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="desk" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main class="num" style="flex: 999 1 560px; min-width: 0; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+    <div style="flex: 3 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+      <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">AI Desk</h1>
+          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: #3b4262"><span style="width: 8px; height: 8px; border-radius: 50%; background: #16a05a"></span>Watching 3 bots · checked 2 min ago</span>
+        </div>
+        <a href="NewAgent.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 14px; background: #ffffff; border: 1px solid #d5dcf2; color: #141a33; font-size: 14px; font-weight: 800; text-decoration: none">+ New bot</a>
+      </header>
+
+      <section aria-labelledby="goal-h" style="display: flex; flex-direction: column; gap: 14px; padding: 22px 24px; border-radius: 26px; background: linear-gradient(135deg, #e3e8fe, #c6d0fa)">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 10px">
+          <h2 id="goal-h" style="margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #1d47b8">Your goal</h2>
+          <a href="#" style="font-size: 13px; font-weight: 700; text-decoration: none">Change goal</a>
+        </div>
+        <strong style="font-size: 22px; letter-spacing: -0.01em">Steady small gains · lose no more than 500 USDC</strong>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 700"><span>Loss limit used</span><span>75 of 500 USDC</span></div>
+          <div role="img" aria-label="15 percent of the loss limit used" style="height: 14px; border-radius: 7px; background: rgba(255,255,255,0.7); overflow: hidden"><div style="width: 15%; height: 100%; border-radius: 7px; background: #2e62e8"></div></div>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 16px; background: #ffffff">
+          <span aria-hidden="true" style="flex: 0 0 30px; height: 30px; border-radius: 10px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px">✦</span>
+          <p style="margin: 0; font-size: 15px; line-height: 1.55">You're well inside your limit. <strong>One thing is worth fixing today</strong>: BTC Volume Farm could lose a whole trade before its stop loss.</p>
+        </div>
+        <a href="BP-Record.dc.html" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border-radius: 18px; background: rgba(255,255,255,0.75); color: #141a33; font-size: 13px; font-weight: 700; text-decoration: none">My suggestions so far: <strong style="color: #0f7a43">4 of 5 helped</strong> →</a>
+      </section>
+
+      <section aria-labelledby="needs-h" style="display: flex; flex-direction: column; gap: 12px">
+        <h2 id="needs-h" style="margin: 0; font-size: 19px; font-weight: 800">Needs you · 2</h2>
+
+        <article style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; border-radius: 22px; background: #ffffff; border: 1.5px solid #f2b8b0">
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <span style="font-size: 12.5px; font-weight: 800; color: #a72826">Risky · BTC Volume Farm</span>
+            <strong style="font-size: 17px">Could lose a whole trade before its stop loss</strong>
+            <span style="font-size: 14px; line-height: 1.5; color: #3b4262">At 40× a 2.5% drop closes the trade; your stop loss waits for 5%.</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+            <div style="padding: 12px 14px; border-radius: 14px; background: #f5f7fd; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; font-weight: 700; color: #5f6684">Last 7 days, as it is</span><strong style="font-size: 16px; color: #c2312f">−4.95 USDC ▼</strong><span style="font-size: 12px; color: #5f6684">2 trades closed by SoDEX</span></div>
+            <div style="padding: 12px 14px; border-radius: 14px; background: #eef3ff; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; font-weight: 700; color: #1d47b8">If it had used 10×</span><strong style="font-size: 16px; color: #c2312f">−3.10 USDC ▼</strong><span style="font-size: 12px; color: #5f6684">0 closed by SoDEX</span></div>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+            <a href="BP-WhatIf.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 12px; background: #2e62e8; color: #ffffff; font-size: 14px; font-weight: 800; text-decoration: none">Compare 3 options</a>
+            <button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 12px; border: none; background: transparent; color: #5f6684; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Later</button>
+            <span style="font-size: 12px; color: #5f6684">Replayed on your real trades · not a forecast</span>
+          </div>
+        </article>
+
+        <article style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; border-radius: 22px; background: #ffffff; border: 1px solid #f0c27e">
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <span style="font-size: 12.5px; font-weight: 800; color: #7a3e00">Stopped · ETH Volume Farm</span>
+            <strong style="font-size: 17px">Stopped at your 10 USDC loss limit</strong>
+            <span style="font-size: 14px; line-height: 1.5; color: #3b4262">Most of the loss was fees. Limit orders only would have cost much less.</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+            <div style="padding: 12px 14px; border-radius: 14px; background: #f5f7fd; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; font-weight: 700; color: #5f6684">Last 7 days, as it is</span><strong style="font-size: 16px; color: #c2312f">−10.09 USDC ▼</strong></div>
+            <div style="padding: 12px 14px; border-radius: 14px; background: #eef3ff; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; font-weight: 700; color: #1d47b8">With limit orders only</span><strong style="font-size: 16px; color: #c2312f">−4.20 USDC ▼</strong></div>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+            <a href="BP-WhatIf.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 12px; background: #2e62e8; color: #ffffff; font-size: 14px; font-weight: 800; text-decoration: none">Resume with the fix</a>
+            <button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 12px; border: none; background: transparent; color: #5f6684; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Keep it stopped</button>
+          </div>
+        </article>
+      </section>
+
+      <section aria-labelledby="health-h" style="display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; border-radius: 22px; background: #ffffff; border: 1px solid #e3e7f5">
+        <h2 id="health-h" style="margin: 0; font-size: 16px; font-weight: 800">Your bots</h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <a href="BP-AskHere.dc.html" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 14px; background: #fde4e1; color: #8a2a1e; font-size: 14px; font-weight: 800; text-decoration: none"><span style="width: 8px; height: 8px; border-radius: 50%; background: #c2312f"></span>BTC Volume Farm · Needs you</a>
+          <a href="BP-AskHere.dc.html" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 14px; background: #fdebd3; color: #7a3e00; font-size: 14px; font-weight: 800; text-decoration: none"><span style="width: 8px; height: 8px; border-radius: 50%; background: #e08a2e"></span>ETH Volume Farm · Stopped</a>
+          <a href="BP-AskHere.dc.html" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 14px; background: #ddf4e7; color: #0b6a39; font-size: 14px; font-weight: 800; text-decoration: none"><span style="width: 8px; height: 8px; border-radius: 50%; background: #16a05a"></span>ETH Grid · Healthy</a>
+        </div>
+      </section>
+
+      <section aria-labelledby="wx-h" style="display: flex; gap: 14px; align-items: flex-start; padding: 16px 20px; border-radius: 22px; background: #ffffff; border: 1px dashed #c9cfe2">
+        <span aria-hidden="true" style="font-size: 22px">☁</span>
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <div style="display: flex; gap: 8px; align-items: center"><h2 id="wx-h" style="margin: 0; font-size: 15px; font-weight: 800">Market today</h2><span style="font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 10px; background: #f2f3f7; color: #3b4262">v2</span></div>
+          <p style="margin: 0; font-size: 14px; line-height: 1.55; color: #3b4262">ETH is moving sideways, which suits your grid. BTC is jumpy, so volume bots pay more in fees today.</p>
+        </div>
+      </section>
+    </div>
+
+    <aside aria-label="Desk AI" style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; border-radius: 24px; background: #ffffff; border: 1px solid #e3e7f5; overflow: hidden">
+      <header style="display: flex; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid #eef1f8">
+        <span aria-hidden="true" style="width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 15px">✦</span>
+        <strong style="font-size: 16px">Desk AI</strong>
+        <a href="B-History.dc.html" style="margin-left: auto; font-size: 13px; font-weight: 700; text-decoration: none">History</a>
+      </header>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px 18px">
+        <p style="margin: 0; font-size: 14.5px; line-height: 1.55">Good morning. I replayed last week for your two volume bots. Both fixes would have lost less. Ask me anything about them.</p>
+        <div style="align-self: flex-end; max-width: 85%; padding: 9px 13px; border-radius: 16px 16px 4px 16px; background: #2e62e8; color: #ffffff; font-size: 14px">Is my money safe?</div>
+        <p style="margin: 0; font-size: 14.5px; line-height: 1.55">Yes, within limits you set. DeskLabs can only place trades: it can't withdraw or move funds. The most you've agreed to lose is 500 USDC; you've used 75.</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 18px 16px; border-top: 1px solid #eef1f8; background: #fbfcff">
+        <div style="display: flex; flex-wrap: wrap; gap: 6px">
+          <button type="button" style="min-height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer">Why did I lose money?</button>
+          <button type="button" style="min-height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer">Start a bot for me</button>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center">
+          <label style="flex: 1; display: flex"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Ask Desk AI</span><input type="text" placeholder="Ask Desk AI…" style="flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid #d5dcf2; font: inherit; font-size: 14.5px; color: #141a33"></label>
+          <button type="button" aria-label="Send" style="width: 44px; height: 44px; border-radius: 22px; border: none; background: #2e62e8; color: #ffffff; font: inherit; font-size: 17px; font-weight: 800; cursor: pointer">↑</button>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1320}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

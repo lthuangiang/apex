@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { useMemo, type InputHTMLAttributes } from "react";
 
 import { formatAmount, formatInteger, stepDecimals } from "@/lib/format";
-import { useMarkets } from "@/lib/markets";
+import { useMarketLast, useMarkets } from "@/lib/markets";
 
 import { displayParts, marketItems } from "../pickers";
 
@@ -50,13 +50,17 @@ export function MarketPicker({
     [all, engine, t, added],
   );
   const m = all?.find((x) => x.name === value);
+  const live = useMarketLast(m === undefined ? null : m.name);
+  const lastPrice = live.data?.price ?? null;
   const info =
     m === undefined
       ? undefined
       : [
-          m.last === null
+          lastPrice === null
             ? null
-            : t("info.last", { price: formatAmount(m.last, stepDecimals(m.tickSize))?.text ?? "" }),
+            : t("info.last", {
+                price: formatAmount(lastPrice, stepDecimals(m.tickSize))?.text ?? "",
+              }),
           t("info.minOrder", {
             amount: formatAmount(m.minNotional)?.text ?? m.minNotional,
             quote: displayParts(m).quote,

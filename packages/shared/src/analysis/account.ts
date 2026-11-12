@@ -41,6 +41,8 @@ export interface Fill {
   quantity: string;
   /** Phí quy ra quote asset (đã gồm builder fee). */
   feeQuote: string;
+  /** Phần builder fee trong `feeQuote` (SoDEX `builderFee`); null / thiếu = không biết hoặc không có. */
+  builderFeeQuote?: string | null;
   isMaker: boolean | null;
   at: number;
 }
@@ -266,7 +268,9 @@ export function analyzeAccount(input: AccountAnalysisInput): AccountMetrics {
     const n = sum(makers.map(notional));
     return n.isZero()
       ? null
-      : sum(makers.map((f) => f.feeQuote))
+      : // Chỉ phí SoDEX: `fee` đã gồm builder fee (SODEX.md mục 5.3), mà fee_rt cộng builder fee của DRIFT riêng
+        // (DEC-112), nên trừ ra để không tính hai lần.
+        sum(makers.map((f) => sub(f.feeQuote, f.builderFeeQuote ?? "0")))
           .div(n)
           .mul(100)
           .toString();

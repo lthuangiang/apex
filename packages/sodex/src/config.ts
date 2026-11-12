@@ -19,6 +19,14 @@ export const sodexEnvSchema = z.object({
   // DEC-24: bắt buộc, không có mặc định.
   DRIFT_BUILDER_ID: positiveUint64EnvSchema,
   /**
+   * Account SoDEX của chính builder được miễn builder fee và không cần approve (DEC-47). `false`: account builder
+   * bị thu phí và phải approve như mọi account khác (DEC-124).
+   */
+  DRIFT_BUILDER_ACCOUNT_EXEMPT: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  /**
    * Hạn mức REST tự đặt trên mỗi IP egress (weight/phút). Mặc định đúng hạn mức công khai của SoDEX (1200);
    * chỉ nâng khi chạy với SoDEX mock (E2E), không bao giờ cho mainnet.
    */
@@ -30,6 +38,8 @@ export interface SodexConfig {
   wsUrl: string;
   chain: "mainnet";
   builderId: bigint;
+  /** Account builder được miễn builder fee (DEC-47); false = thu như mọi account (DEC-124). */
+  builderExempt: boolean;
   restWeightPerMinute?: number;
 }
 
@@ -40,6 +50,7 @@ export function loadSodexConfig(env: Record<string, string | undefined>): SodexC
     wsUrl: parsed.SODEX_WS_URL.replace(/\/+$/, ""),
     chain: parsed.SODEX_CHAIN,
     builderId: parsed.DRIFT_BUILDER_ID,
+    builderExempt: parsed.DRIFT_BUILDER_ACCOUNT_EXEMPT,
     restWeightPerMinute: parsed.SODEX_REST_WEIGHT_PER_MIN,
   };
 }

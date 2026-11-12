@@ -138,6 +138,27 @@ describe("WsUserStream", () => {
     expect(callbacks.onError).not.toHaveBeenCalled();
   });
 
+  it("keeps the fill when another update in the same batch does not parse (DEC-118)", () => {
+    const { stream, sockets, callbacks } = setup();
+    stream.connect();
+    sockets[0]?.emit("open");
+    // Lệnh stop của cả vị thế: không có price / quantity, loại lệnh lạ. Lệnh thoát khớp nằm cùng lô.
+    sockets[0]?.emit(
+      "message",
+      `{"channel":"accountOrderUpdate","type":"update","data":[
+{"E":1,"s":"BTC-USD","c":"stop-1","i":1,"S":"SELL","o":"STOP_MARKET","f":"IOC","p":"","q":"","X":"CANCELED","z":"0","v":"0"},
+{"E":2,"s":"BTC-USD","c":"exit-1","i":2,"S":"SELL","o":"LIMIT","f":"GTX","p":"80462","q":"0.00014","X":"FILLED","z":"0.00014","v":"11.26468","T":2},
+{"E":3,"s":"BTC-USD","i":"not-a-number","S":"SELL"}]}`,
+    );
+    const updates = callbacks.onOrderUpdate.mock.calls[0]?.[0] ?? [];
+    expect(updates.map((u) => u.c)).toEqual(["stop-1", "exit-1"]);
+    expect(updates[0]).toMatchObject({ p: "0", q: "0" });
+    expect(callbacks.onError).toHaveBeenCalledTimes(1);
+    expect(String(callbacks.onError.mock.calls[0]?.[0].message)).toMatch(
+      /accountOrderUpdate did not match schema \(.*c:invalid_type/,
+    );
+  });
+
   it("reports a rejected subscription and a malformed push", () => {
     const { stream, sockets, callbacks } = setup();
     stream.connect();

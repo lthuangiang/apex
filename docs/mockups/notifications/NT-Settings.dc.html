@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings · Notifications</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.card{background:#fff;border:1px solid #e3e7f5;border-radius:24px}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#1d47b8}
+.muted{color:#5f6684}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:12px;border:none;background:#2e62e8;color:#fff;font:inherit;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer}
+.btn2{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:12px;border:1px solid #d5dcf2;background:#fff;color:#141a33;font:inherit;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800}
+.sw{display:inline-block;position:relative;width:44px;height:26px;border-radius:13px;background:#d5dcf2;vertical-align:middle}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:10px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.sw.on{background:#2e62e8}.sw.on::after{left:21px}
+.sw.lock{opacity:.55}
+</style>
+</helmet>
+<div style="min-height:100vh;box-sizing:border-box;padding:20px;background:#f5f7fd;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#141a33">
+<div style="max-width:1400px;margin:0 auto;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+  <div style="flex:0 0 248px"><dc-import name="Sidebar" current="settings" hint-size="248px,760px"></dc-import></div>
+  <main class="num" style="flex:999 1 560px;min-width:0;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+    <div style="flex:3 1 600px;min-width:0;display:flex;flex-direction:column;gap:18px">
+      <h1 style="margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em">Settings</h1>
+      <nav aria-label="Settings tabs" style="display:flex;flex-wrap:wrap;gap:6px">
+        <a href="#" class="chip" style="min-height:36px;padding:0 14px;background:#fff;border:1px solid #e3e7f5;color:#3b4262;text-decoration:none;font-size:13.5px">SoDEX access</a>
+        <a href="#" class="chip" style="min-height:36px;padding:0 14px;background:#fff;border:1px solid #e3e7f5;color:#3b4262;text-decoration:none;font-size:13.5px">Security</a>
+        <a href="#" aria-current="page" class="chip" style="min-height:36px;padding:0 14px;background:#141a33;color:#fff;text-decoration:none;font-size:13.5px">Notifications</a>
+        <a href="#" class="chip" style="min-height:36px;padding:0 14px;background:#fff;border:1px solid #e3e7f5;color:#3b4262;text-decoration:none;font-size:13.5px">Trading defaults</a>
+        <a href="#" class="chip" style="min-height:36px;padding:0 14px;background:#fff;border:1px solid #e3e7f5;color:#3b4262;text-decoration:none;font-size:13.5px">Profile</a>
+      </nav>
+
+      <section aria-labelledby="ch-h" class="card" style="padding:22px 24px;display:flex;flex-direction:column;gap:14px">
+        <h2 id="ch-h" style="margin:0;font-size:18px;font-weight:800">Where we reach you</h2>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+          <div style="padding:16px;border-radius:18px;background:#f5f7fd;display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:22px" aria-hidden="true">🔔</span><b style="font-size:15px">In-app</b>
+            <span class="muted" style="font-size:13px">Bell and pop-ups while DeskLabs is open.</span>
+            <span class="chip" style="align-self:flex-start;background:#ddf4e7;color:#0b6a39">● On</span>
+          </div>
+          <div style="padding:16px;border-radius:18px;background:#f5f7fd;display:flex;flex-direction:column;gap:6px">
+            <span style="font-size:22px" aria-hidden="true">✉</span><b style="font-size:15px">Email</b>
+            <span class="muted" style="font-size:13px">mai•••@gmail.com</span>
+            <span class="chip" style="align-self:flex-start;background:#ddf4e7;color:#0b6a39">● On</span>
+          </div>
+          <div style="padding:16px;border-radius:18px;background:#eef3ff;border:1.5px solid #9db6f5;display:flex;flex-direction:column;gap:6px">
+            <span aria-hidden="true" style="width:28px;height:28px;border-radius:50%;background:#2aa3e0;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800">➤</span>
+            <b style="font-size:15px">Telegram</b>
+            <span style="font-size:13px">Connected as <b>@mai_trades</b> · since Nov 12</span>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+              <button type="button" class="btn2" style="min-height:36px;font-size:13px">Send a test</button>
+              <button type="button" class="btn2" style="min-height:36px;font-size:13px;color:#a72826">Disconnect</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="what-h" class="card" style="padding:22px 24px;display:flex;flex-direction:column;gap:6px">
+        <h2 id="what-h" style="margin:0 0 6px;font-size:18px;font-weight:800">What we tell you</h2>
+        <div role="table" aria-label="Notification settings" style="display:flex;flex-direction:column">
+          <div role="row" style="display:grid;grid-template-columns:1fr 80px 80px 90px;gap:8px;padding:6px 0;font-size:12.5px;font-weight:800;color:#5f6684"><span role="columnheader">Type</span><span role="columnheader">In-app</span><span role="columnheader">Email</span><span role="columnheader">Telegram</span></div>
+          <div role="row" style="display:grid;grid-template-columns:1fr 80px 80px 90px;gap:8px;align-items:center;padding:12px 0;border-top:1px solid #eef1f8">
+            <span role="cell"><b style="font-size:14.5px">Bot problems</b><br><span class="muted" style="font-size:12.5px">A bot paused, stopped, or an order result is unknown. Always on.</span></span>
+            <span role="cell"><span class="sw on lock" aria-label="In-app, always on"></span></span><span role="cell"><span class="sw on lock" aria-label="Email, always on"></span></span><span role="cell"><span class="sw on lock" aria-label="Telegram, always on"></span></span>
+          </div>
+          <div role="row" style="display:grid;grid-template-columns:1fr 80px 80px 90px;gap:8px;align-items:center;padding:12px 0;border-top:1px solid #eef1f8">
+            <span role="cell"><b style="font-size:14.5px">Risk limits</b><br><span class="muted" style="font-size:12.5px">A daily loss or drawdown limit paused your bots.</span></span>
+            <span role="cell"><span class="sw on"></span></span><span role="cell"><span class="sw on"></span></span><span role="cell"><span class="sw on"></span></span>
+          </div>
+          <div role="row" style="display:grid;grid-template-columns:1fr 80px 80px 90px;gap:8px;align-items:center;padding:12px 0;border-top:1px solid #eef1f8">
+            <span role="cell"><b style="font-size:14.5px">SoDEX access</b><br><span class="muted" style="font-size:12.5px">Your API key or builder fee approval changed.</span></span>
+            <span role="cell"><span class="sw on"></span></span><span role="cell"><span class="sw on"></span></span><span role="cell"><span class="sw on"></span></span>
+          </div>
+          <div role="row" style="display:grid;grid-template-columns:1fr 80px 80px 90px;gap:8px;align-items:center;padding:12px 0;border-top:1px solid #eef1f8">
+            <span role="cell"><b style="font-size:14.5px">✦ Morning brief</b><br><span class="muted" style="font-size:12.5px">Desk AI sums up your bots at 08:00 your time.</span></span>
+            <span role="cell"><span class="sw"></span></span><span role="cell"><span class="sw"></span></span><span role="cell"><span class="sw on"></span></span>
+          </div>
+          <div role="row" style="display:grid;grid-template-columns:1fr 80px 80px 90px;gap:8px;align-items:center;padding:12px 0;border-top:1px solid #eef1f8">
+            <span role="cell"><b style="font-size:14.5px">Every fill</b><br><span class="muted" style="font-size:12.5px">Each order that fills. Can be a lot.</span></span>
+            <span role="cell"><span class="sw"></span></span><span role="cell"><span class="sw"></span></span><span role="cell"><span class="sw"></span></span>
+          </div>
+          <div role="row" style="display:grid;grid-template-columns:1fr 80px 80px 90px;gap:8px;align-items:center;padding:12px 0;border-top:1px solid #eef1f8">
+            <span role="cell"><b style="font-size:14.5px">Traders you follow</b><br><span class="muted" style="font-size:12.5px">A trader you follow made a big move.</span></span>
+            <span role="cell"><span class="sw on"></span></span><span role="cell"><span class="muted" style="font-size:12px">—</span></span><span role="cell"><span class="sw"></span></span>
+          </div>
+        </div>
+        <p class="muted" style="margin:6px 0 0;font-size:12.5px">Telegram messages include amounts, like today’s profit or loss. Wallet addresses and keys are never sent.</p>
+      </section>
+    </div>
+
+    <aside aria-label="Telegram card states" style="flex:1 1 300px;min-width:0;display:flex;flex-direction:column;gap:12px">
+      <span class="eyebrow">Telegram card · 4 states</span>
+      <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:8px">
+        <span class="chip" style="align-self:flex-start;background:#f2f3f7;color:#3b4262">Not connected</span>
+        <b style="font-size:15px">Get alerts on Telegram</b>
+        <span class="muted" style="font-size:13px;line-height:1.5">Bot problems and risk alerts reach your phone in seconds.</span>
+        <a href="NT-Connect.dc.html" class="btn" style="align-self:flex-start">Connect Telegram</a>
+      </div>
+      <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:8px">
+        <span class="chip" style="align-self:flex-start;background:#eef3ff;color:#1d47b8">◌ Waiting for Telegram…</span>
+        <span class="muted" style="font-size:13px;line-height:1.5">Tap <b>Start</b> in Telegram. This link works for 9:41 more.</span>
+        <button type="button" class="btn2" style="align-self:flex-start;min-height:36px;font-size:13px">Cancel</button>
+      </div>
+      <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:8px">
+        <span class="chip" style="align-self:flex-start;background:#ddf4e7;color:#0b6a39">● Connected</span>
+        <span style="font-size:13px">@mai_trades · last message 08:00</span>
+      </div>
+      <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:8px;border-color:#f0c27e">
+        <span class="chip" style="align-self:flex-start;background:#fdebd3;color:#7a3e00">▲ Paused · bot blocked</span>
+        <span style="font-size:13px;line-height:1.5">Telegram says you blocked DeskLabs Bot, so alerts stopped on Nov 10. You still get them here and by email.</span>
+        <a href="NT-Connect.dc.html" class="btn2" style="align-self:flex-start;min-height:36px;font-size:13px">Connect again</a>
+      </div>
+      <div style="padding:12px 14px;border-radius:14px;background:#fff;border:1px dashed #c9cfe2;font-size:12.5px;line-height:1.5;color:#3b4262"><b>Disconnect</b> mở dialog xác nhận (không cần 2FA vì chỉ giảm quyền). Bot gửi tin cuối: "Disconnected from DeskLabs."</div>
+    </aside>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1140}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -175,7 +175,7 @@ describe("two-factor authentication", () => {
     const setup = twoFactorSetupSchema.parse(
       (await client.request("POST", "/api/v1/security/2fa/setup")).json(),
     );
-    expect(setup.otpauthUri).toMatch(/^otpauth:\/\/totp\/DRIFT:/);
+    expect(setup.otpauthUri).toMatch(/^otpauth:\/\/totp\/DeskLabs:/);
     const enabled = await client.request("POST", "/api/v1/security/2fa/enable", {
       body: { code: generateTotp(setup.secret, env.clock.now) },
     });

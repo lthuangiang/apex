@@ -32,7 +32,7 @@ test("public pages pass axe, only the landing is indexable, 404 has DRIFT chrome
   expect(problems).toEqual([]);
 
   await page.goto("/");
-  await expect(page).toHaveTitle("DRIFT · Profit bots for SoDEX");
+  await expect(page).toHaveTitle("DeskLabs · Automated trading strategies on SoDEX");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /^index/);
   await expect(page.locator('meta[property="og:image"]')).toHaveCount(1);
   await page.goto("/risk-disclosure");
@@ -47,7 +47,7 @@ test("public pages pass axe, only the landing is indexable, 404 has DRIFT chrome
     ]);
   await page.goto("/no-such-page");
   await expect(
-    page.getByRole("heading", { level: 1, name: "This page doesn't exist." }),
+    page.getByRole("heading", { level: 1, name: "This page doesn’t exist." }),
   ).toBeVisible();
   await expect(
     page.getByRole("main").getByRole("link", { name: "Back to Overview" }),

@@ -1,6 +1,6 @@
 {
   "best": {
-    "id": "d5eaf7d0ffd435d2",
+    "id": "937a683fdacb9313",
     "strategy": "rebalancing",
     "market": "vBTC_vUSDC",
     "values": {
@@ -35,11 +35,11 @@
     ],
     "basis": "Average daily volatility of the basket: 3%.",
     "computedAt": "2026-10-27T07:00:00.000Z",
-    "inputsVersion": "reco-1"
+    "inputsVersion": "reco-2"
   },
   "addOns": [
     {
-      "id": "215eb9ad1050ffe2",
+      "id": "afb832306bda3361",
       "strategy": "recurring_buy",
       "market": "vBTC_vUSDC",
       "values": {
@@ -62,7 +62,7 @@
       ],
       "basis": "vBTC_vUSDC: market buys every Monday 09:00, Asia/Ho_Chi_Minh.",
       "computedAt": "2026-10-27T07:00:00.000Z",
-      "inputsVersion": "reco-1"
+      "inputsVersion": "reco-2"
     }
   ],
   "notSuggested": [],

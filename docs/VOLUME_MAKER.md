@@ -12,15 +12,16 @@
 - API lệnh có `timeInForce`: `GTC=1`, `IOC=3`, `GTX=4` (post-only); `FOK` chưa hỗ trợ. Có `reduceOnly` (perps), `clOrdID` (`^[0-9a-zA-Z_-]{1,36}$`, duy nhất theo account). **Không có field self-trade prevention**.
 - Fill có `isMaker`, `fee`, `builderFee`. `makerFeeRate` có thể âm (rebate).
 - Rate limit: mỗi API key 20 lệnh/giây và 600 lệnh/phút; giới hạn theo địa chỉ ví là 1 request trên mỗi 1 USDC đã giao dịch luỹ kế, cộng sẵn 10.000 request ban đầu; khi bị giới hạn thì chỉ được 1 request mỗi 10 giây. Tối đa 1.000 lệnh mở (spot + perps).
+- Order book (DEC-157): engine đọc REST `getOrderbook` mỗi 3 s cho **mỗi market khác nhau** đang có bot Market Making (cache theo market, không theo bot). Mở cho mọi perp nên weight theo IP tăng theo số market đang dùng; xem giới hạn 1200 weight/phút/IP ở `docs/OPEN_QUESTIONS.md`.
 
 Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/layer-1-season), [Season 1](https://sodex.com/documentation/sopoints/season-1), [API rate limits](https://sodex.com/documentation/for-developers/developers/trading/api-rate-limits), [REST schema](https://sodex.com/documentation/for-developers/api-reference/trading-api/rest-v1/schema).
 
 ### 17.2 Bot làm gì
-- Đặt báo giá hai phía bằng lệnh **post-only (GTX)** trên BTC-PERP hoặc ETH-PERP, đòn bẩy 1×, làm mới mỗi N giây, giữ tồn kho (inventory) gần 0.
+- Đặt báo giá hai phía bằng lệnh **post-only (GTX)** trên bất kỳ perp nào đang TRADING trên SoDEX (DEC-157), đòn bẩy 1–40× (mặc định 5×, DEC-99), làm mới mỗi N giây, giữ tồn kho (inventory) gần 0.
 - Mục tiêu: tạo thanh khoản thật và khối lượng thật trong thời gian sự kiện, với **chi phí có trần**.
 - Tham số và thông báo lỗi lấy theo artboard **Create · Volume Maker** và Bot Spec mục 3d / 4.
 
-### 17.3 Quy tắc bắt buộc
+### 17.3 Quy tắc bắt buộc (chỉ cho Market Making; không áp dụng cho Volume Farming, DEC-101)
 1. **Chống self-trade do DRIFT tự làm**, vì SoDEX không có STP. Trước mỗi lần đặt hoặc thay lệnh, engine kiểm tra mọi lệnh đang mở của account trên market đó, tính trên **tất cả bot**:
    - Lệnh mua phải có giá < giá ask thấp nhất của chính account.
    - Lệnh bán phải có giá > giá bid cao nhất của chính account.
@@ -28,7 +29,14 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
    - Mỗi account chỉ có một writer (shard lease, mục 3.3), nên phép kiểm tra này không bị race.
 2. **Chỉ là maker.** Không có lệnh taker, trừ lệnh đóng reduce-only khi dừng bot. Chi phí của lệnh đó vẫn tính vào ngân sách.
 3. **Trần chi phí.** chi phí = phí đã trả + lỗ đã chốt + lỗ chưa chốt trên tồn kho. Đạt 80% thì cảnh báo, 100% thì dừng. Hiện chi phí trên mỗi 1 triệu USD khối lượng theo thời gian thực.
-4. **Tồn kho.** Vượt 50% max inventory thì nghiêng báo giá về phía giảm tồn kho. Đạt 100% thì chỉ báo giá phía giảm.
+4. **Tồn kho (DEC-100, thay quy tắc 50% / 100% cũ).** `u` = giá trị vị thế / max open position (mặc định 2 × order size, người dùng sửa được).
+   - **Flat** (vị thế dưới mức tối thiểu của SoDEX): bid và ask đối xứng ở mid·(1 ∓ d), mỗi bên một order size.
+   - **Có vị thế** (ngay từ fill đầu, không chờ 50%): phía đóng là lệnh post-only **reduce-only** ở mid·(1 ± d·(1−u)), cách mid ít nhất 1 tick; phía tăng vị thế lùi ra mid·(1 ∓ d·(2+2u)), khối lượng ≤ phần còn trống tới max open position. Vẫn báo giá hai phía để kiếm spread, không thành bot chỉ đóng lệnh.
+   - **Đạt max open position** (u ≥ 1): chỉ báo giá phía đóng.
+   - Khối lượng lệnh đóng = vị thế − phần chưa khớp của các lệnh đóng khác còn sống hoặc đang huỷ, làm tròn xuống theo lot; dưới mức tối thiểu thì không đặt.
+   - SoDEX từ chối reduce-only (không phải vì post-only / risk) 2 lần liên tiếp thì lệnh đóng chuyển sang post-only thường, vẫn giới hạn theo khối lượng trên. Chưa kiểm chứng trên mainnet việc SoDEX nhận GTX kèm reduceOnly.
+   - Fill thì báo giá lại sau tối thiểu 2 s (quy tắc 5).
+   - **Đối soát:** fill của mọi lệnh bot đã gửi đều được tính, kể cả lệnh đã huỷ / thay (giới hạn theo khối lượng còn lại của lệnh). Engine đọc lịch sử khớp của SoDEX mỗi 10 s cho mỗi account + market, và đọc vị thế thật mỗi 30 s khi đây là bot duy nhất của account trên market đó; lệch quá 30 s thì lấy vị thế SoDEX, ghi "Position re-synced from SoDEX" và gắn cờ cần chú ý. Lệnh huỷ chưa được xác nhận sau 60 s thì coi là xong.
 5. **Rate limit.** Chu kỳ làm mới ≥ 2 s; thay lệnh theo batch; tôn trọng mọi giới hạn ở 17.1. Hết hạn mức thì chạy chậm lại, không được dồn lệnh.
 6. **Cấm theo thiết kế:**
    - giao dịch giữa các account của cùng một người;
@@ -45,6 +53,7 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - Chưa có xác nhận: ẩn Volume Maker sau feature flag `VOLUME_MAKER_ENABLED=false`. Catalog không hiển thị, route trả 404.
 - Có xác nhận: ghi ngày và nội dung xác nhận vào đây, rồi mới bật flag.
 - **Trạng thái (2026-10-28):** đã code theo mục này (DEC-43), `VOLUME_MAKER_ENABLED=false` trong compose và `.env`. **Chưa có xác nhận của SoDEX.** Bật cờ ở api, engine và web cùng lúc.
+- **Thay đổi (2026-10-30, DEC-80):** bỏ cờ `VOLUME_MAKER_ENABLED`. Volume Maker (và Volume Farm mới) chỉ hiện và chạy cho tài khoản được team bật ở Users › Volume bots. Quyết định bật cho ai là của team; vẫn nên xin xác nhận của SoDEX trước khi bật rộng.
 
 ### 17.6 Theo dõi trên Trading Agent
 - Khối lượng đã tạo / mục tiêu; chi phí đã dùng / ngân sách.

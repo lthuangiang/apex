@@ -12,7 +12,7 @@ import {
 } from "@drift/shared";
 import { Button, ConfirmDialog, DataTable, Skeleton, StatusPill } from "@drift/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Pause, Plus, Square } from "lucide-react";
+import { Bot, Download, Pause, Plus, Square } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -21,29 +21,40 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { NotConnected, useSodexMissing } from "@/components/not-connected";
 import { PageHead } from "@/components/workspace";
 import { WorkspaceShell } from "@/components/workspace-shell";
-import { api } from "@/lib/api";
-import { formatDateTime, formatDuration, formatMoney } from "@/lib/format";
+import { PaperChip } from "@/features/desk/components/paper-chip";
+import { api, ApiError } from "@/lib/api";
+import { formatDateTime, formatDuration } from "@/lib/format";
 import { useMarketNames } from "@/lib/markets";
-import { useMe } from "@/lib/queries";
+import { ME_KEY, useMe, useTwoFactorNeeded } from "@/lib/queries";
 
-import { unitsOf } from "../preview";
+import { botCapital, botMarket } from "../bot-label";
 
 import { useBotErrorText } from "./bot-errors";
+import { BotFills } from "./bot-fills";
 import { BotProfit } from "./bot-profit";
 import { BOTS_KEY, useStateLabel, waitingTooLong } from "./bots-page";
 import { ConfigList, useConfigRows } from "./config-view";
+import { LiveQuotes } from "./live-quotes";
+import { MmAnalyticsCard } from "./mm-analytics";
+import { ReviewCard } from "./review-card";
+import { StrategyAnalytics } from "./strategy-analytics";
+import { VmCostBreakdown } from "./vm-cost-breakdown";
+import { VolumeDashboard } from "./volume-dashboard";
+import { PnlShare, VolumeShare } from "./volume-share";
 
 // Trading Agent (SCREENS.md mục 8.3, artboard "Agent" / "Mobile-Agent"): trạng thái lấy từ backend; mỗi thao tác
 // chỉ gửi lệnh rồi giữ trạng thái chuyển tiếp ("Pausing…") cho tới khi engine xác nhận (quy tắc 1.6). Bot `draft`
 // chỉ nằm ở Strategy Lab (DEC-57): vào `/agent/:id` của draft thì chuyển sang màn Edit, archived thì về `/bots`.
 
-type Action = "start" | "pause" | "resume" | "stop";
+type Action = "start" | "pause" | "resume" | "stop" | "archive";
 const TRANSITIONAL: readonly BotState[] = [
   BotState.starting,
   BotState.pausing,
   BotState.resuming,
   BotState.stopping,
 ];
+/** Chiến lược không dùng ảnh lãi / lỗ: bot khối lượng có ảnh volume riêng, TWAP là công cụ khớp lệnh. */
+const NO_PNL_SHARE = new Set<string>(["volume_farm", "volume_maker", "twap"]);
 const LIFECYCLE = ["stopped", "starting", "running", "paused", "stopping"] as const;
 const clock = (v: string | number) => formatDateTime(v).split(", ").at(-1) ?? "";
 
@@ -54,6 +65,9 @@ export function AgentPage({ botId }: { botId?: string }) {
   const tf = useTranslations("createBot");
   const tsh = useTranslations("common.shell");
   const tr = useTranslations("reasons");
+  // Sự kiện state lưu mã lý do (API_KEY_UNUSABLE…) ở `why`: hiện câu chữ thay cho mã.
+  const why = (text: string | null) =>
+    text !== null && /^[A-Z_]+$/.test(text) && tr.has(text) ? tr(text) : text;
   const router = useRouter();
   const qc = useQueryClient();
   const me = useMe();
@@ -78,17 +92,22 @@ export function AgentPage({ botId }: { botId?: string }) {
   const errorText = useBotErrorText();
   const missing = useSodexMissing();
   const [dialog, setDialog] = useState<"start" | "stop" | null>(null);
+  // Stop bot có chân Perps: người dùng phải chọn đóng hay giữ vị thế (DEC-81).
+  const [closeChoice, setCloseChoice] = useState<"close" | "keep" | null>(null);
   const [code, setCode] = useState("");
+  const twoFactorNeeded = useTwoFactorNeeded();
   const [sentAt, setSentAt] = useState<number | null>(null);
   const keys = useRef<Record<Action, string>>({
     start: crypto.randomUUID(),
     pause: crypto.randomUUID(),
     resume: crypto.randomUUID(),
     stop: crypto.randomUUID(),
+    archive: crypto.randomUUID(),
   });
 
   const d: BotDetail | undefined = detail.data;
   const bot = d?.bot;
+  const hasPerps = bot !== undefined && bot.engine !== "spot";
   // Draft → màn Edit; archived → Strategy Lab. Chỉ chuyển khi backend đã trả `state` (UI_REVIEW F1).
   useEffect(() => {
     if (bot === undefined) return;
@@ -102,9 +121,9 @@ export function AgentPage({ botId }: { botId?: string }) {
         idempotencyKey: keys.current[action],
         body:
           action === "start"
-            ? { acknowledged: true, twoFactorCode: code }
+            ? { acknowledged: true, ...(code === "" ? {} : { twoFactorCode: code }) }
             : action === "stop"
-              ? { twoFactorCode: code }
+              ? { closePosition: closeChoice === "close" }
               : {},
       }),
     onSuccess: async (_d, action) => {
@@ -112,8 +131,12 @@ export function AgentPage({ botId }: { botId?: string }) {
       setSentAt(Date.now());
       setDialog(null);
       setCode("");
+      setCloseChoice(null);
+      // Start vừa nhập mã: phiên được tin 2 giờ, đọc lại để lần sau không hỏi (DEC-115).
+      if (action === "start") void qc.invalidateQueries({ queryKey: ME_KEY });
       await qc.invalidateQueries({ queryKey: ["bot", id] });
       await qc.invalidateQueries({ queryKey: BOTS_KEY });
+      if (action === "archive") router.push("/bots");
     },
     onError: (_e, action) => {
       keys.current[action] = crypto.randomUUID();
@@ -172,6 +195,9 @@ export function AgentPage({ botId }: { botId?: string }) {
   const hero = (dd: BotDetail) => {
     const b = dd.bot;
     const transitional = TRANSITIONAL.includes(b.state);
+    // Share kết quả lãi / lỗ (DEC-132): bot thật đã có lệnh khớp; bot khối lượng có ảnh riêng, TWAP không có lãi / lỗ.
+    const pnlShare =
+      b.mode === "live" && b.fills > 0 && b.netPnl !== null && !NO_PNL_SHARE.has(b.strategy);
     const time = clock(sentAt ?? b.updatedAt);
     const sub =
       b.state === BotState.running
@@ -184,14 +210,13 @@ export function AgentPage({ botId }: { botId?: string }) {
               ? t("stateSub.stopping", { time, n: dd.openOrders })
               : t("sent", { time });
     const lastError = dd.events.find((e) => e.type === "error");
-    // Runtime = từ sự kiện "Running" gần nhất tới giờ, chỉ khi đang chạy (dữ liệu thật, không ước tính).
-    const runningSince =
-      b.state === BotState.running
-        ? dd.events.find((e) => e.type === "state" && e.decision === "Running")?.occurredAt
-        : undefined;
+    // Runtime = từ sự kiện "Running" gần nhất tới giờ, chỉ khi đang chạy (dữ liệu thật, không ước tính). Server
+    // trả mốc này riêng vì danh sách sự kiện chỉ có 50 dòng gần nhất.
+    const runningSince = b.state === BotState.running ? (dd.runningSince ?? undefined) : undefined;
     const runtime =
-      runningSince === undefined ? null : formatDuration(Date.now() - Date.parse(runningSince));
-    const quote = names.asset(unitsOf(b.market)?.quote ?? "");
+      runningSince === undefined
+        ? null
+        : formatDuration(Date.parse(dd.serverTime) - Date.parse(runningSince));
     const lastEvent = dd.events[0];
     const cur =
       b.state === BotState.pausing
@@ -230,11 +255,15 @@ export function AgentPage({ botId }: { botId?: string }) {
               <Bot size={26} />
             </span>
             <div className="flex min-w-0 flex-col gap-1">
-              <h2 id="agent-title" className="m-0 truncate text-xl font-extrabold">
-                {b.name}
+              <h2
+                id="agent-title"
+                className="m-0 flex min-w-0 items-center gap-2 text-xl font-extrabold"
+              >
+                <span className="truncate">{b.name}</span>
+                {b.mode === "paper" ? <PaperChip /> : null}
               </h2>
               <span className="text-[13px] text-ink-2">
-                {names.market(b.market)} · {tf(`strategies.${b.strategy}.name`)}
+                {botMarket(b, names)} · {tf(`strategies.${b.strategy}.name`)}
               </span>
               <div
                 role="status"
@@ -248,7 +277,7 @@ export function AgentPage({ botId }: { botId?: string }) {
               {waitingTooLong(b) ? (
                 <span className="text-xs font-semibold text-warn">
                   {tsh("waitingLong", { time: clock(b.updatedAt) })}
-                  {lastError?.why == null ? null : ` · ${lastError.why}`}
+                  {lastError?.why == null ? null : ` · ${why(lastError.why) ?? ""}`}
                 </span>
               ) : null}
             </div>
@@ -290,13 +319,45 @@ export function AgentPage({ botId }: { botId?: string }) {
           {tile(t("openOrders"), dd.openOrders)}
           {tile(
             t("lastDecision"),
-            lastEvent === undefined ? tm("notAvailable") : clock(lastEvent.occurredAt),
+            lastEvent === undefined
+              ? tm("notAvailable")
+              : // Hôm nay chỉ cần giờ; sự kiện cũ hơn phải có ngày, không thì đọc nhầm là vừa xảy ra.
+                formatDateTime(lastEvent.occurredAt).split(", ")[0] ===
+                  formatDateTime(dd.serverTime).split(", ")[0]
+                ? clock(lastEvent.occurredAt)
+                : formatDateTime(lastEvent.occurredAt),
           )}
         </dl>
-        {b.capital === null ? null : (
-          <span className="relative text-xs text-ink-2 tabular-nums">
-            {t("investment")}: {formatMoney(b.capital)} {quote}
-          </span>
+        {b.capital === null && !pnlShare ? null : (
+          <div className="relative flex flex-wrap items-center justify-between gap-3">
+            {b.capital === null ? (
+              <span />
+            ) : (
+              <span className="text-xs text-ink-2 tabular-nums">
+                {b.capitalUnit === "base" ? tf("fields.totalSize.label") : t("investment")}:{" "}
+                {botCapital(b, names)}
+              </span>
+            )}
+            <span className="flex flex-wrap items-center gap-2">
+              {pnlShare ? (
+                <PnlShare
+                  data={{
+                    botName: b.name,
+                    market: botMarket(b, names),
+                    strategyName: tf(`strategies.${b.strategy}.name`),
+                    net: b.netPnl ?? "0",
+                    unit:
+                      b.engine === "spot"
+                        ? names.asset(names.info(b.market)?.quote ?? "USDC")
+                        : "USDC",
+                    capital: b.capitalUnit === "quote" ? b.capital : null,
+                    since: b.createdAt,
+                    fills: b.fills,
+                  }}
+                />
+              ) : null}
+            </span>
+          </div>
         )}
       </section>
     );
@@ -340,7 +401,10 @@ export function AgentPage({ botId }: { botId?: string }) {
                   {a.name.slice(0, 1).toUpperCase()}
                 </span>
                 <span className="flex min-w-0 flex-col">
-                  <strong className="truncate text-sm text-ink">{a.name}</strong>
+                  <strong className="flex min-w-0 items-center gap-1.5 text-sm text-ink">
+                    <span className="truncate">{a.name}</span>
+                    {a.mode === "paper" ? <PaperChip short /> : null}
+                  </strong>
                   <span className="truncate text-xs text-muted">{names.market(a.market)}</span>
                 </span>
                 <span className="ml-auto">
@@ -389,7 +453,51 @@ export function AgentPage({ botId }: { botId?: string }) {
               </p>
             )}
 
-            {d.volumeMaker === null ? null : <VolumeMakerCard vm={d.volumeMaker} />}
+            {/* Market Making (desktop 5 : 3): cột trái là thẻ số liệu rồi bảng Fills, cột phải là sổ lệnh cao suốt hai
+                hàng, nên không còn khoảng trống dưới thẻ số liệu. Mobile theo thứ tự thẻ → sổ lệnh → Fills. Bot đã
+                dừng vẫn hiện sổ lệnh kèm một dòng giải thích. */}
+            {bot.strategy === "volume_maker" ? (
+              <div className="grid min-w-0 grid-cols-1 items-start gap-5 lg:grid-cols-[5fr_3fr] lg:grid-rows-[auto_1fr] lg:items-stretch">
+                {d.volumeMaker === null ? null : (
+                  <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+                    <VolumeMakerCard
+                      vm={d.volumeMaker}
+                      botName={d.bot.name}
+                      market={botMarket(d.bot, names)}
+                    />
+                  </div>
+                )}
+                {/* Cao bằng cột trái (Market Making + Fills), DEC-147. */}
+                <div className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-full">
+                  <LiveQuotes
+                    botId={bot.id}
+                    market={bot.market}
+                    stopped={bot.state === BotState.stopped}
+                  />
+                </div>
+                <div className="min-w-0 lg:col-start-1 lg:row-start-2">
+                  <BotFills botId={bot.id} />
+                </div>
+              </div>
+            ) : null}
+            {/* Market Making Analytics dưới Fills, full width (DEC-144). */}
+            {bot.strategy === "volume_maker" && d.volumeMaker !== null ? (
+              <MmAnalyticsCard botId={d.bot.id} />
+            ) : null}
+            {d.volumeFarm === null ? null : (
+              <VolumeDashboard
+                botId={d.bot.id}
+                botName={d.bot.name}
+                market={botMarket(d.bot, names)}
+                vf={d.volumeFarm}
+              />
+            )}
+            {/* Strategy Analytics ngay dưới Volume (DEC-141). */}
+            {d.volumeFarm === null ? null : <StrategyAnalytics botId={d.bot.id} />}
+            {d.volumeFarm === null || d.bot.mode === "paper" ? null : (
+              <ReviewCard botId={d.bot.id} stopped={d.bot.state === "stopped"} />
+            )}
+            {d.adaptiveDca === null ? null : <AdaptiveDcaCard a={d.adaptiveDca} />}
 
             <section
               aria-labelledby="decisions-title"
@@ -409,6 +517,7 @@ export function AgentPage({ botId }: { botId?: string }) {
               </div>
               <div className="hidden lg:block">
                 <DataTable
+                  scroll="max-h-[560px]"
                   caption={t("decisions")}
                   label={t("decisions")}
                   status={d.events.length === 0 ? "empty" : "ready"}
@@ -427,7 +536,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                       header: t("cols.decision"),
                       cell: (e) => <strong>{e.decision ?? e.type}</strong>,
                     },
-                    { key: "why", header: t("cols.why"), cell: (e) => e.why ?? "" },
+                    { key: "why", header: t("cols.why"), cell: (e) => why(e.why) ?? "" },
                     {
                       key: "result",
                       header: t("cols.result"),
@@ -451,7 +560,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                       </span>
                       <span className="flex min-w-0 flex-col gap-0.5">
                         <strong className="text-sm">{e.decision ?? e.type}</strong>
-                        <span className="text-xs text-ink-2">{e.result ?? e.why ?? ""}</span>
+                        <span className="text-xs text-ink-2">{e.result ?? why(e.why) ?? ""}</span>
                       </span>
                     </li>
                   ))
@@ -476,15 +585,19 @@ export function AgentPage({ botId }: { botId?: string }) {
                   </span>
                 </div>
                 <ConfigList rows={configRows} />
-                <Link
-                  href={`/bots/${bot.id}/edit`}
-                  className="flex min-h-tap items-center justify-center rounded-control bg-accent-tint text-sm font-bold text-accent-ink no-underline"
-                >
-                  {t("editBot")}
-                </Link>
-                <p className="m-0 text-xs text-muted">
-                  {t("editHint", { next: active.version + 1, version: active.version })}
-                </p>
+                {bot.state === BotState.stopped ? null : (
+                  <>
+                    <Link
+                      href={`/bots/${bot.id}/edit`}
+                      className="flex min-h-tap items-center justify-center rounded-control bg-accent-tint text-sm font-bold text-accent-ink no-underline"
+                    >
+                      {t("editBot")}
+                    </Link>
+                    <p className="m-0 text-xs text-muted">
+                      {t("editHint", { next: active.version + 1, version: active.version })}
+                    </p>
+                  </>
+                )}
               </section>
             )}
 
@@ -513,12 +626,60 @@ export function AgentPage({ botId }: { botId?: string }) {
                             {formatDateTime(e.occurredAt)}
                           </span>
                         </span>
-                        {e.why === null ? null : <span className="text-[13px]">{e.why}</span>}
+                        {e.why === null ? null : <span className="text-[13px]">{why(e.why)}</span>}
                       </li>
                     ))}
                 </ul>
               )}
             </section>
+
+            {bot.state === BotState.stopped ? (
+              <section
+                aria-labelledby="finished-title"
+                className="flex flex-wrap items-center justify-between gap-4 rounded-card border border-border bg-surface p-5"
+              >
+                <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-1">
+                  <h2 id="finished-title" className="m-0 text-lg font-extrabold">
+                    {t("finished.title")}
+                  </h2>
+                  <p className="m-0 text-sm text-ink-2">{t("finished.body")}</p>
+                  {act.error === null || dialog !== null ? null : (
+                    <p role="alert" className="m-0 text-sm text-neg-ink">
+                      {errorText(act.error)}
+                    </p>
+                  )}
+                </div>
+                <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                  <Button
+                    onClick={() => {
+                      setDialog("start");
+                    }}
+                  >
+                    {t("finished.startAgain")}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    pending={act.isPending}
+                    onClick={() => {
+                      act.mutate("archive");
+                    }}
+                  >
+                    {t("finished.archive")}
+                  </Button>
+                  {/* Export dữ liệu để phân tích (DEC-138): đặt cùng các thao tác khi bot đã dừng. */}
+                  {bot.mode === "live" ? (
+                    <a
+                      href={`/api/v1/bots/${bot.id}/export`}
+                      download
+                      className="inline-flex min-h-tap items-center justify-center gap-1.5 rounded-control border border-border bg-surface px-4 text-sm font-bold text-ink no-underline hover:bg-surface-2"
+                    >
+                      <Download aria-hidden="true" size={16} strokeWidth={2.4} />
+                      {t("exportData")}
+                    </a>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
 
             {can(BotCommand.stop) ? (
               <section
@@ -536,6 +697,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                     type="button"
                     className="flex min-h-[52px] items-center justify-center gap-2 rounded-[16px] border-[1.5px] border-neg bg-surface px-5 text-[15px] font-extrabold text-neg-ink"
                     onClick={() => {
+                      setCloseChoice(null);
                       setDialog("stop");
                     }}
                   >
@@ -560,9 +722,18 @@ export function AgentPage({ botId }: { botId?: string }) {
               consequencesLabel={t("consequences")}
               consequences={
                 dialog === "stop"
-                  ? [t("stopDialog.stay"), t("stopDialog.noNew"), t("env")]
-                  : [t("startDialog.limits"), t("env")]
+                  ? [
+                      hasPerps ? t("stopDialog.perpsChoice") : t("stopDialog.stay"),
+                      t("stopDialog.noNew"),
+                      t("env"),
+                    ]
+                  : [
+                      ...(bot.state === BotState.stopped ? [t("startDialog.again")] : []),
+                      t("startDialog.limits"),
+                      t("env"),
+                    ]
               }
+              confirmDisabled={dialog === "stop" && hasPerps && closeChoice === null}
               confirmLabel={
                 dialog === "stop"
                   ? t("stopDialog.cta", { count: d.openOrders })
@@ -570,17 +741,62 @@ export function AgentPage({ botId }: { botId?: string }) {
               }
               cancelLabel={dialog === "stop" ? t("stopDialog.cancel") : t("startDialog.cancel")}
               tone={dialog === "stop" ? "danger" : "primary"}
-              twoFactor={{
-                label: t("twoFactor"),
-                value: code,
-                onChange: setCode,
-                ...(act.error === null ? {} : { error: errorText(act.error) }),
-              }}
+              // Chỉ Start hỏi mã, và chỉ khi đã bật 2FA mà phiên chưa được tin (DEC-115). Stop không hỏi.
+              {...(dialog === "start" &&
+              (twoFactorNeeded ||
+                (act.error instanceof ApiError && act.error.code === "TWO_FACTOR_REQUIRED"))
+                ? {
+                    twoFactor: {
+                      label: t("twoFactor"),
+                      value: code,
+                      onChange: setCode,
+                      ...(act.error === null ? {} : { error: errorText(act.error) }),
+                    },
+                  }
+                : act.error === null
+                  ? {}
+                  : { error: errorText(act.error) })}
               pending={act.isPending}
               onConfirm={() => {
                 if (dialog !== null) act.mutate(dialog);
               }}
-            />
+            >
+              {dialog === "stop" && hasPerps ? (
+                <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+                  <legend className="mb-1 text-sm font-semibold text-ink">
+                    {t("stopDialog.positionLegend")}
+                  </legend>
+                  {(["close", "keep"] as const).map((v) => (
+                    <div
+                      key={v}
+                      className={`flex items-start gap-2.5 rounded-[14px] border px-3.5 py-3 text-sm ${closeChoice === v ? "border-accent bg-accent-tint" : "border-border"}`}
+                    >
+                      <input
+                        id={`stop-position-${v}`}
+                        type="radio"
+                        name="stop-position"
+                        value={v}
+                        checked={closeChoice === v}
+                        disabled={act.isPending}
+                        onChange={() => {
+                          setCloseChoice(v);
+                        }}
+                        aria-describedby={`stop-position-${v}-body`}
+                        className="mt-0.5"
+                      />
+                      <span className="flex flex-col gap-0.5">
+                        <label htmlFor={`stop-position-${v}`} className="cursor-pointer font-bold">
+                          {t(`stopDialog.${v}Title`)}
+                        </label>
+                        <span id={`stop-position-${v}-body`} className="text-xs text-ink-2">
+                          {t(`stopDialog.${v}Body`)}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                </fieldset>
+              ) : null}
+            </ConfirmDialog>
           </div>
         )}
       </div>
@@ -601,25 +817,89 @@ function ResultPill({ text }: { text: string }) {
   return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${tone}`}>{text}</span>;
 }
 
-function VolumeMakerCard({ vm }: { vm: NonNullable<BotDetail["volumeMaker"]> }) {
+/** Khối lượng là con số chính của Volume Farm (DEC-83): phiên này, các kỳ gần đây và chi phí để có khối lượng đó. */
+/** AI Adaptive DCA (DEC-107): thị trường bot đang đọc và quyết định gần nhất. Chỉ hiện số engine đã tính. */
+function AdaptiveDcaCard({ a }: { a: NonNullable<BotDetail["adaptiveDca"]> }) {
+  const t = useTranslations("agent.adca");
+  const tm = useTranslations("common.missing");
+  const stats: [string, string][] = [
+    [t("regime"), t(`regimes.${a.regime}`)],
+    [t("decision"), t(`decisions.${a.decision}`)],
+    [t("atr"), a.atr ?? tm("notAvailable")],
+    [t("rsi"), a.rsi ?? tm("notAvailable")],
+    [t("extraBuys"), t("ofMax", { n: a.extraBuys, max: a.maxExtraBuys })],
+    [t("exposure"), t("ofCap", { value: a.exposure, cap: a.maxExposure })],
+    [t("cycles"), String(a.cycles)],
+    [t("exits"), String(a.exits)],
+  ];
+  return (
+    <section
+      aria-labelledby="adca-title"
+      className="flex flex-col gap-3 rounded-card border border-border bg-surface p-5"
+    >
+      <h2 id="adca-title" className="m-0 text-lg font-extrabold">
+        {t("title")}
+      </h2>
+      <dl className="m-0 grid grid-cols-2 gap-3 text-sm tabular-nums sm:grid-cols-4">
+        {stats.map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-xs text-muted">{label}</dt>
+            <dd className="m-0 font-bold">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="m-0 text-xs text-muted">{t("note")}</p>
+    </section>
+  );
+}
+
+function VolumeMakerCard({
+  vm,
+  botName,
+  market,
+}: {
+  vm: NonNullable<BotDetail["volumeMaker"]>;
+  botName: string;
+  market: string;
+}) {
   const t = useTranslations("agent");
+  const tc = useTranslations("createBot.strategies");
   const tm = useTranslations("common.missing");
   return (
     <section
       aria-labelledby="vm-title"
       className="flex flex-col gap-3 rounded-card border border-border bg-surface p-5"
     >
-      <h2 id="vm-title" className="m-0 text-lg font-extrabold">
-        {t("vm.title")}
-      </h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="vm-title" className="m-0 text-lg font-extrabold">
+          {t("vm.title")}
+        </h2>
+        {Number(vm.volume) > 0 ? (
+          <VolumeShare
+            data={{
+              botName,
+              market,
+              strategyName: tc("volume_maker.name"),
+              volume: vm.volume,
+              costPerMillion: vm.costPerMillion,
+              // Chi phí của Market Making đã gồm lỗ tồn kho chưa chốt: lãi ròng = −chi phí.
+              net: String(-Number(vm.cost)),
+              trades: null,
+              makerSharePct: vm.makerSharePct,
+            }}
+          />
+        ) : null}
+      </div>
       <dl className="m-0 grid grid-cols-2 gap-3 text-sm tabular-nums sm:grid-cols-3">
         <div>
           <dt className="text-xs text-muted">{t("vm.volume")}</dt>
           <dd className="m-0 font-bold">
             {vm.volume}{" "}
-            <span className="font-normal text-muted">
-              {t("vm.ofTarget", { target: vm.volumeTarget })}
-            </span>
+            {vm.volumeTarget === null ? null : (
+              <span className="font-normal text-muted">
+                {t("vm.ofTarget", { target: vm.volumeTarget })}
+              </span>
+            )}
           </dd>
         </div>
         <div>
@@ -650,6 +930,7 @@ function VolumeMakerCard({ vm }: { vm: NonNullable<BotDetail["volumeMaker"]> }) 
           <dd className="m-0 font-bold">{vm.selfTradeBlocked}</dd>
         </div>
       </dl>
+      <VmCostBreakdown vm={vm} />
     </section>
   );
 }

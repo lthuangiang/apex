@@ -202,6 +202,28 @@ export function perpsCancelOrders(input: {
 }
 
 /**
+ * Sửa giá kích hoạt của một lệnh TP/SL Perps (Go SDK `ModifyOrderRequest`, thứ tự field
+ * `accountID, symbolID, orderID, clOrdID, price, quantity, stopPrice`). Theo tài liệu SoDEX, endpoint
+ * `POST /trade/orders/modify` chỉ nhận lệnh TP/SL và cần ít nhất một trong price / quantity / stopPrice (DEC-118).
+ */
+export function perpsModifyOrder(input: {
+  accountID: bigint;
+  symbolID: bigint;
+  clOrdID: string;
+  stopPrice: string;
+}): ActionPayload {
+  checkClOrdId(input.clOrdID);
+  const params = json.object([
+    ["accountID", json.uint(input.accountID)],
+    ["symbolID", json.uint(input.symbolID)],
+    ["clOrdID", json.string(input.clOrdID)],
+    ["stopPrice", json.decimal(input.stopPrice)],
+  ]);
+  const type = SodexActionType.perpsModifyOrder;
+  return { type, domain: ExchangeDomain.futures, ...buildPayload(type, params) };
+}
+
+/**
  * Đặt đòn bẩy và margin mode của account cho một symbol Perps (Go SDK `UpdateLeverageRequest`,
  * thứ tự field `accountID, symbolID, leverage, marginMode`). SoDEX áp dụng cho mọi lệnh sau đó
  * trên symbol này; không gửi thì lệnh dùng thiết lập sẵn có của account.

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trading Agent with Ask about this</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="agent" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main class="num" style="flex: 999 1 560px; min-width: 0; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+    <div style="flex: 3 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+      <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <span style="font-size: 13px; font-weight: 700; color: #5f6684">Trading Agent · Volume Builder · BTC-USD</span>
+          <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.01em">BTC Volume Farm</h1>
+        </div>
+        <span style="display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 16px; background: #ddf4e7; color: #0b6a39; font-size: 13px; font-weight: 800">● Running · v1</span>
+      </header>
+
+      <section aria-label="Key numbers" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <div style="padding: 16px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 4px">
+          <span style="display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 700; color: #5f6684">Net · 7 days <button type="button" aria-label="Ask about Net, 7 days" style="width: 30px; height: 30px; border-radius: 9px; border: 1px solid #d5dcf2; background: #ffffff; color: #2e62e8; font: inherit; font-size: 13px; cursor: pointer">✦</button></span>
+          <strong style="font-size: 22px; color: #c2312f">−4.95 USDC ▼</strong>
+        </div>
+        <div style="padding: 16px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 4px">
+          <span style="display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 700; color: #5f6684">Volume · 7 days <button type="button" aria-label="Ask about Volume" style="width: 30px; height: 30px; border-radius: 9px; border: 1px solid #d5dcf2; background: #ffffff; color: #2e62e8; font: inherit; font-size: 13px; cursor: pointer">✦</button></span>
+          <strong style="font-size: 22px">14,437 USDC</strong>
+        </div>
+        <div style="padding: 16px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 4px">
+          <span style="display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 700; color: #5f6684">Leverage <button type="button" aria-label="Ask about Leverage" style="width: 30px; height: 30px; border-radius: 9px; border: 1px solid #d5dcf2; background: #ffffff; color: #2e62e8; font: inherit; font-size: 13px; cursor: pointer">✦</button></span>
+          <strong style="font-size: 22px">40×</strong>
+        </div>
+      </section>
+
+      <section aria-labelledby="dec-h" style="display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; border-radius: 22px; background: #ffffff; border: 1px solid #e3e7f5">
+        <h2 id="dec-h" style="margin: 0 0 8px; font-size: 17px; font-weight: 800">Decisions</h2>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #eef1f8; font-size: 14px"><span style="width: 56px; color: #5f6684">14:08</span><span style="flex: 1">Exit · max hold reached · +0.04 USDC</span></div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 10px; margin: 0 -10px; border-radius: 12px; background: #eef3ff; border: 1.5px solid #2e62e8; font-size: 14px"><span style="width: 56px; color: #5f6684">14:02</span><span style="flex: 1; font-weight: 700">Skipped entry · post-only missed 3 times</span><span style="display: inline-flex; align-items: center; height: 30px; padding: 0 10px; border-radius: 9px; background: #2e62e8; color: #ffffff; font-size: 13px; font-weight: 800">✦ Asking</span></div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #eef1f8; font-size: 14px"><span style="width: 56px; color: #5f6684">13:55</span><span style="flex: 1">Entry · long · 150 USDC</span></div>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #eef1f8; font-size: 14px"><span style="width: 56px; color: #5f6684">13:41</span><span style="flex: 1">Stop loss · −0.88 USDC</span></div>
+        <p style="margin: 8px 0 0; font-size: 12.5px; color: #5f6684">Tip: every number and decision has a ✦. Tap it to ask Desk AI about exactly that.</p>
+      </section>
+    </div>
+
+    <aside role="complementary" aria-label="Ask about this" style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; border-radius: 24px; background: #ffffff; border: 2px solid #2e62e8; box-shadow: 0 20px 48px rgba(20,26,51,0.14); overflow: hidden">
+      <header style="display: flex; align-items: center; gap: 10px; padding: 16px 18px; border-bottom: 1px solid #eef1f8">
+        <span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px">✦</span>
+        <div style="flex: 1; display: flex; flex-direction: column"><strong style="font-size: 15px">About this decision</strong><span style="font-size: 12px; color: #5f6684">Skipped entry · 14:02 · BTC Volume Farm</span></div>
+        <button type="button" aria-label="Close" style="width: 40px; height: 40px; border-radius: 12px; border: none; background: #f5f7fd; color: #3b4262; font: inherit; font-size: 16px; cursor: pointer">✕</button>
+      </header>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 18px">
+        <p style="margin: 0; font-size: 15px; line-height: 1.6">The bot tried to enter with a <strong>limit order</strong> three times, and each time the price moved away before it filled. Your settings say to give up after 3 misses rather than chase the price, so it skipped this one.</p>
+        <p style="margin: 0; font-size: 15px; line-height: 1.6">That's a good thing: chasing with a market order costs more in fees. This week it skipped 9 entries this way.</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px">
+          <span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid #e3e7f5; font-size: 12px; font-weight: 700; color: #3b4262">Decision log</span>
+          <span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; border: 1px solid #e3e7f5; font-size: 12px; font-weight: 700; color: #3b4262">Settings v1</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <button type="button" style="min-height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 13.5px; font-weight: 700; text-align: left; cursor: pointer">Am I missing good trades?</button>
+          <button type="button" style="min-height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 13.5px; font-weight: 700; text-align: left; cursor: pointer">What does "post-only" mean?</button>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center; padding: 12px 18px 16px; border-top: 1px solid #eef1f8; background: #fbfcff">
+        <label style="flex: 1; display: flex"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Ask about this decision</span><input type="text" placeholder="Ask about this…" style="flex: 1; min-width: 0; min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid #d5dcf2; font: inherit; font-size: 14.5px; color: #141a33"></label>
+        <button type="button" aria-label="Send" style="width: 44px; height: 44px; border-radius: 22px; border: none; background: #2e62e8; color: #ffffff; font: inherit; font-size: 17px; font-weight: 800; cursor: pointer">↑</button>
+      </div>
+    </aside>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -25,6 +25,14 @@ describe("capitalOf (vốn gửi cho AI parameters)", () => {
     expect(capitalOf("spot_grid", { investment: "" })).toBeUndefined();
     expect(capitalOf("spot_grid", { investment: "0" })).toBeUndefined();
     expect(capitalOf("spot_grid", { investment: "abc" })).toBeUndefined();
-    expect(capitalOf("recurring_buy", { amountPerBuy: "25" })).toBeUndefined();
+    expect(capitalOf("recurring_buy", { amountPerBuy: "" })).toBeUndefined();
+  });
+
+  it("reads the recurring budget from the chosen end condition", () => {
+    expect(
+      capitalOf("recurring_buy", { amountPerBuy: "25", ends: "after_budget", totalBudget: "300" }),
+    ).toBe("300");
+    // "Never": số lần mua mặc định của engine đề xuất (20).
+    expect(capitalOf("recurring_buy", { amountPerBuy: "25", ends: "never" })).toBe("500");
   });
 });

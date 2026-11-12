@@ -10,6 +10,7 @@ import { useState, type ReactNode } from "react";
 
 import { NotConnected, useSodexMissing } from "@/components/not-connected";
 import { Card, PageHead, Workspace } from "@/components/workspace";
+import { botCapital, botMarket } from "@/features/bots/bot-label";
 import { BotProfit } from "@/features/bots/components/bot-profit";
 import { useStateLabel } from "@/features/bots/components/bots-page";
 import { api } from "@/lib/api";
@@ -82,6 +83,18 @@ export function OverviewPage() {
   });
   const v = q.data;
   const loading = q.isPending;
+  // Bot cần chú ý (paused / needs attention) rồi bot đang chạy lên trước; bot đã dừng chỉ hiện vài cái gần nhất,
+  // còn lại xem ở Strategy Lab, để danh sách bot cũ không lấn hết trang.
+  const notDraft = (v?.bots ?? []).filter((b) => b.state !== "draft");
+  const rank = (b: (typeof notDraft)[number]) =>
+    b.state === "stopped" ? 2 : b.state === "paused" || b.needsAttention ? 0 : 1;
+  const sorted = [...notDraft].sort(
+    (a, b) => rank(a) - rank(b) || b.updatedAt.localeCompare(a.updatedAt),
+  );
+  const activeCount = sorted.filter((b) => b.state !== "stopped").length;
+  const liveBots = sorted.slice(0, activeCount + HOME_STOPPED_SHOWN);
+  const hiddenStopped = sorted.length - liveBots.length;
+  const drafts = (v?.bots ?? []).filter((b) => b.state === "draft");
   const names = useMarketNames();
   const pf = v?.portfolio ?? null;
   const stateLabel = useStateLabel();
@@ -127,13 +140,9 @@ export function OverviewPage() {
           </svg>
           {/* 3 dòng thay cho 6 (người dùng góp ý cụm này quá cao): nhãn · số + thay đổi trong kỳ · chi tiết. */}
           <div className="relative flex min-w-0 flex-col gap-2">
-            <div className="flex flex-wrap items-baseline gap-x-1.5 text-sm font-semibold text-ink-2">
-              <span>{t("welcome")}</span>
-              <span aria-hidden="true">·</span>
-              <h2 id="equity-h" className="m-0 text-sm font-semibold">
-                {t("equity")}
-              </h2>
-            </div>
+            <h2 id="equity-h" className="m-0 text-sm font-semibold text-ink-2">
+              {t("equity")}
+            </h2>
             <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-2 tabular-nums">
               {pf === null ? (
                 loading ? (
@@ -163,15 +172,19 @@ export function OverviewPage() {
               )}
             </div>
             {pf === null ? null : (
-              <span className="text-[13px] font-medium text-ink-2 tabular-nums">
-                {t("equitySplit", {
-                  spot: formatMoney(pf.accounts.spot.value) ?? "",
-                  perps:
-                    pf.accounts.perps === null
-                      ? tm("notAvailable")
-                      : (formatMoney(pf.accounts.perps.accountValue) ?? ""),
-                })}
-                {change === null ? null : ` · ${t("changeLabel")}`}
+              <span className="flex flex-col gap-0.5">
+                <span className="text-[13px] font-medium text-ink-2 tabular-nums">
+                  {t("equitySplit", {
+                    spot: formatMoney(pf.accounts.spot.value) ?? "",
+                    perps:
+                      pf.accounts.perps === null
+                        ? tm("notAvailable")
+                        : (formatMoney(pf.accounts.perps.accountValue) ?? ""),
+                  })}
+                </span>
+                {change === null ? null : (
+                  <span className="text-xs text-muted">{t("changeNote")}</span>
+                )}
               </span>
             )}
           </div>
@@ -327,7 +340,7 @@ export function OverviewPage() {
             ) : null}
           </Card>
 
-          <AgentCard bots={v?.bots ?? []} activity={v?.activity ?? []} />
+          <AgentCard bots={v?.bots ?? []} activity={v?.activity ?? []} loading={loading} />
         </div>
 
         <div className="flex flex-wrap items-stretch gap-5">
@@ -398,7 +411,11 @@ export function OverviewPage() {
                         <div className="flex flex-wrap items-baseline justify-between gap-x-2">
                           <span className="font-semibold text-ink">{t(k)}</span>
                           <span className="tabular-nums">
-                            <strong>{shown ?? tm("notAvailable")}</strong>
+                            <strong>
+                              {/* Không có vị thế mở thì không có đòn bẩy để so, không phải "thiếu dữ liệu". */}
+                              {shown ??
+                                (k === "leverage" ? t("noOpenPositions") : tm("notAvailable"))}
+                            </strong>
                             {lim === null ? null : (
                               <span className="text-muted">
                                 {" "}
@@ -476,47 +493,65 @@ export function OverviewPage() {
               </Link>
             </div>
           ) : (
-            <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-3.5 p-0">
-              {(v?.bots ?? []).map((b) => (
-                <li
-                  key={b.id}
-                  className={`flex flex-col gap-3 rounded-[22px] border bg-surface px-[18px] py-4 ${attentionOf(stateLabel(b)) === null ? "border-border" : "border-warn-bar/50"}`}
-                >
-                  {/* Pill chỉ có trạng thái; lý do pause / cần chú ý nằm trong hộp riêng bên dưới (UI_REVIEW J3). */}
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      aria-hidden="true"
-                      className="flex size-[34px] flex-none items-center justify-center rounded-full bg-accent-tint text-[13px] font-extrabold text-accent-ink"
+            <>
+              {/* Draft chưa chạy: gom thành một khối gọn thay cho mỗi draft một thẻ to "No fills yet". */}
+              {liveBots.length === 0 ? null : (
+                <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(280px,100%),1fr))] gap-3.5 p-0">
+                  {liveBots.map((b) => (
+                    <li
+                      key={b.id}
+                      className={`flex flex-col gap-3 rounded-[22px] border bg-surface px-[18px] py-4 ${attentionOf(stateLabel(b)) !== null && needsAction(b) ? "border-warn-bar/50" : "border-border"}`}
                     >
-                      {names.market(b.market).slice(0, 1)}
-                    </span>
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <Link href={`/agent/${b.id}`} className="truncate text-[15px] font-extrabold">
-                        {b.name}
-                      </Link>
-                      <span className="truncate text-xs text-muted">{names.market(b.market)}</span>
-                    </span>
-                    <StatusPill state={b.state} label={stateLabel(b).label} />
-                  </div>
-                  <AttentionNote text={attentionOf(stateLabel(b))} />
-                  <div className="flex justify-between gap-2 tabular-nums">
-                    <span className="flex flex-col">
-                      <span className="text-xs text-muted">{t("investment")}</span>
-                      <strong className="text-lg">
-                        {b.capital === null ? tm("notAvailable") : formatMoney(b.capital)}
-                      </strong>
-                    </span>
-                    <span className="flex flex-col items-end">
-                      <span className="text-xs text-muted">{t("profit")}</span>
-                      {/* "No fills yet" là chữ phụ, không in to như một con số. */}
-                      <strong className={b.fills === 0 ? "text-sm font-semibold" : "text-lg"}>
-                        <BotProfit bot={b} />
-                      </strong>
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                      {/* Pill chỉ có trạng thái; lý do pause / cần chú ý nằm trong hộp riêng bên dưới (UI_REVIEW J3). */}
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          aria-hidden="true"
+                          className="flex size-[34px] flex-none items-center justify-center rounded-full bg-accent-tint text-[13px] font-extrabold text-accent-ink"
+                        >
+                          {botMarket(b, names).slice(0, 1)}
+                        </span>
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <Link
+                            href={`/agent/${b.id}`}
+                            className="truncate text-[15px] font-extrabold"
+                          >
+                            {b.name}
+                          </Link>
+                          <span className="truncate text-xs text-muted">{botMarket(b, names)}</span>
+                        </span>
+                        {/* Chỉ trạng thái: lý do đã nằm trong hộp bên dưới, ghi hai lần làm cắt mất tên bot. */}
+                        <StatusPill state={b.state} label={stateLabel(b).label} />
+                      </div>
+                      <AttentionNote text={attentionOf(stateLabel(b))} warn={needsAction(b)} />
+                      <div className="flex justify-between gap-2 tabular-nums">
+                        <span className="flex flex-col">
+                          <span className="text-xs text-muted">
+                            {/* Bot khối lượng: số này là margin của một lệnh, không phải vốn đầu tư. */}
+                            {MARGIN_STRATEGIES.has(b.strategy) ? t("botMargin") : t("investment")}
+                          </span>
+                          <strong className="text-lg">
+                            {botCapital(b, names) ?? tm("notAvailable")}
+                          </strong>
+                        </span>
+                        <span className="flex flex-col items-end">
+                          <span className="text-xs text-muted">{t("profit")}</span>
+                          {/* "No fills yet" là chữ phụ, không in to như một con số. */}
+                          <strong className={b.fills === 0 ? "text-sm font-semibold" : "text-lg"}>
+                            <BotProfit bot={b} />
+                          </strong>
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {hiddenStopped === 0 ? null : (
+                <Link href="/bots" className="self-start text-sm font-bold text-accent-ink">
+                  {t("moreStopped", { count: hiddenStopped })}
+                </Link>
+              )}
+              {drafts.length === 0 ? null : <DraftsCard drafts={drafts} />}
+            </>
           )}
         </section>
 
@@ -566,16 +601,29 @@ export function OverviewPage() {
   );
 }
 
+/** Bot khối lượng hiện margin thay cho "Investment". */
+const MARGIN_STRATEGIES = new Set<string>(["volume_farm", "volume_maker"]);
+
+/** Số bot đã dừng gần nhất vẫn hiện ở Home; còn lại xem ở Strategy Lab. */
+const HOME_STOPPED_SHOWN = 2;
+
 /** Lý do pause / stop (reason code) hoặc "Needs attention" của một bot; null khi không có gì cần báo. */
 function attentionOf(l: { reasonLabel?: string; needsAttentionLabel?: string }): string | null {
   return l.reasonLabel ?? l.needsAttentionLabel ?? null;
 }
 
 /** Hộp vàng dưới tên bot (artboard Main, thẻ "Needs attention"), thay cho câu dài chen trong pill. */
-function AttentionNote({ text }: { text: string | null }) {
+/** Bot cần người dùng làm gì đó (paused, needs attention); bot dừng vì đã xong việc thì chỉ là thông tin. */
+function needsAction(b: { state: string; needsAttention: boolean }): boolean {
+  return b.state === "paused" || b.needsAttention;
+}
+
+function AttentionNote({ text, warn = true }: { text: string | null; warn?: boolean }) {
   if (text === null) return null;
   return (
-    <p className="m-0 rounded-control bg-warn-bg px-3 py-2 text-xs leading-normal font-medium text-warn">
+    <p
+      className={`m-0 rounded-control px-3 py-2 text-xs leading-normal font-medium ${warn ? "bg-warn-bg text-warn" : "bg-surface-2 text-ink-2"}`}
+    >
       {text}
     </p>
   );
@@ -585,18 +633,28 @@ function AttentionNote({ text }: { text: string | null }) {
 function AgentCard({
   bots,
   activity,
+  loading,
 }: {
   bots: OverviewView["bots"];
   activity: OverviewView["activity"];
+  /** Chưa tải xong: hiện khung chờ, không hiện "No bots yet" sai. */
+  loading: boolean;
 }) {
   const t = useTranslations("overview.agentCard");
   const names = useMarketNames();
   const ts = useTranslations("createBot.strategies");
   const stateLabel = useStateLabel();
+  // Draft chỉ hiện khi chưa có bot nào khác: thẻ Agent nói về bot đang/đã chạy.
+  const byRecent = [...bots].sort(
+    (a, b) =>
+      Number(a.state === "draft") - Number(b.state === "draft") ||
+      b.updatedAt.localeCompare(a.updatedAt),
+  );
   const bot =
     bots.find((b) => b.state === "running" && !b.needsAttention) ??
     bots.find((b) => b.state === "running") ??
-    [...bots].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    bots.find((b) => b.state === "paused") ??
+    byRecent[0];
   // 3 event gần nhất của bot (cùng nguồn với Recent activity, UI_REVIEW J3) thay cho một dòng "Last action".
   const recent = bot === undefined ? [] : activity.filter((e) => e.botId === bot.id).slice(0, 3);
   const to = useTranslations("overview");
@@ -611,7 +669,9 @@ function AgentCard({
         </h2>
         {bot === undefined ? null : <StatusPill state={bot.state} label={stateLabel(bot).label} />}
       </div>
-      {bot === undefined ? (
+      {loading ? (
+        <Skeleton className="h-40 w-full rounded-[16px]" />
+      ) : bot === undefined ? (
         <>
           <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-[16px] bg-surface-2 p-5 text-center">
             <span
@@ -639,15 +699,16 @@ function AgentCard({
               <Bot size={22} />
             </span>
             <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="truncate text-[15px] font-bold">
-                {ts(`${bot.strategy}.name`)} · {names.market(bot.market)}
+              <span className="truncate text-[15px] font-bold">{bot.name}</span>
+              <span className="truncate text-xs text-muted">
+                {ts(`${bot.strategy}.name`)} · {botMarket(bot, names)}
               </span>
               <span className="text-xs text-muted tabular-nums">
                 {t("updated", { time: formatDateTime(bot.updatedAt) })}
               </span>
             </div>
           </div>
-          <AttentionNote text={attentionOf(stateLabel(bot))} />
+          <AttentionNote text={attentionOf(stateLabel(bot))} warn={needsAction(bot)} />
           {recent.length === 0 ? (
             <p className="m-0 text-[13px] text-muted">{to("noActivity")}</p>
           ) : (
@@ -682,5 +743,56 @@ function AgentCard({
         </>
       )}
     </section>
+  );
+}
+
+const DRAFTS_SHOWN = 4;
+
+/** Các draft gom trong một thẻ: tên · strategy · market, mỗi dòng có "Continue" để xem lại và start. */
+function DraftsCard({ drafts }: { drafts: OverviewView["bots"] }) {
+  const t = useTranslations("overview");
+  const ts = useTranslations("createBot.strategies");
+  const names = useMarketNames();
+  const recent = [...drafts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const more = recent.length - DRAFTS_SHOWN;
+  return (
+    <div className="flex flex-col gap-2 rounded-[22px] border border-border bg-surface px-[18px] py-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="m-0 text-[15px] font-extrabold">
+          {t("drafts.title", { count: drafts.length })}
+        </h3>
+        <span className="text-xs text-muted">{t("drafts.hint")}</span>
+      </div>
+      <ul className="m-0 flex list-none flex-col p-0">
+        {recent.slice(0, DRAFTS_SHOWN).map((b) => (
+          <li
+            key={b.id}
+            className="flex items-center gap-3 border-b border-border py-2 last:border-b-0"
+          >
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-sm font-bold">{b.name}</span>
+              <span className="truncate text-xs text-muted">
+                {ts(`${b.strategy}.name`)} · {botMarket(b, names)}
+              </span>
+            </span>
+            <span className="hidden text-sm text-ink-2 tabular-nums sm:inline">
+              {botCapital(b, names)}
+            </span>
+            <Link
+              href={`/bots/${b.id}/edit`}
+              aria-label={t("drafts.continueLabel", { name: b.name })}
+              className="flex min-h-tap items-center rounded-control bg-accent-tint px-3.5 text-sm font-bold text-accent-ink no-underline"
+            >
+              {t("drafts.continue")}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {more > 0 ? (
+        <Link href="/bots" className="text-sm font-bold">
+          {t("drafts.more", { count: more })}
+        </Link>
+      ) : null}
+    </div>
   );
 }

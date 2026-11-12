@@ -9,6 +9,7 @@ import { loadApiConfig } from "./config";
 import { smtpMailer } from "./lib/mailer";
 import { httpRecoClient } from "./lib/reco-client";
 import { httpSignerClient } from "./lib/signer-client";
+import { hyperliquidProvider } from "./modules/chart/hyperliquid";
 import { redisRateLimiter } from "./plugins/rate-limit";
 
 const config = loadApiConfig(process.env);
@@ -45,10 +46,12 @@ const app = await buildApp({
     perUser: config.API_RATE_LIMIT_PER_USER,
     windowMs: 60_000,
   },
-  volumeMakerEnabled: config.VOLUME_MAKER_ENABLED,
   lastPrice,
   prices,
   reco: httpRecoClient(config.RECO_URL),
+  // `none`: tab Liquidation map ẩn (IMP-05, DEC-92).
+  liquidations: config.LIQUIDATION_PROVIDER === "hyperliquid" ? hyperliquidProvider(redis) : null,
+  copyBigMoveMinUsd: config.COPY_BIG_MOVE_MIN_USD ?? null,
   db,
   mailer: smtpMailer(config.SMTP_URL, config.MAIL_FROM),
   totpKey: Buffer.from(config.API_TOTP_ENC_KEY, "base64"),
@@ -59,6 +62,7 @@ const app = await buildApp({
     writer: new SignedWriteClient(sodexOptions),
     signer: httpSignerClient(config.SIGNER_URL, loadClientTls(process.env, "SIGNER_CLIENT")),
     builderId: config.sodex.builderId,
+    builderExempt: config.sodex.builderExempt,
     connectEnabled: config.SODEX_CONNECT_ENABLED,
   },
 });

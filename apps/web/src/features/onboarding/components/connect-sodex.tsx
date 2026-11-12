@@ -11,14 +11,22 @@ import { Button, WalletSignaturePreview } from "@drift/ui";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
-import { useConnect, useConnection, useDisconnect, type Connector } from "wagmi";
+import { useConnect, useConnection, useConnectors, useDisconnect, type Connector } from "wagmi";
 
 import { api, ApiError } from "@/lib/api";
+import {
+  deviceInfo,
+  errorInfo,
+  logConnectEvent,
+  shortWallet,
+  type EventData,
+} from "@/lib/connect-events";
 import { feeLabels, formatDate, shortAddress } from "@/lib/format";
 import { useSodexSignature } from "@/lib/use-sodex-signature";
+import { connectWatched, WalletConnectNotStarted } from "@/lib/watch-wallet";
 
 import { StepHeading } from "./onboarding-shell";
-import { WalletPicker } from "./wallet-picker";
+import { walletOptions, WalletPicker } from "./wallet-picker";
 
 // Onboarding 2 theo DEC-25 / DEC-31: hai chữ ký master wallet (key rồi phí). Trạng thái chỉ đổi
 // sang "done" khi api xác nhận đã ĐỌC LẠI từ SoDEX (quy tắc 1.6). Không tự gửi lại khi không rõ kết quả.
@@ -44,14 +52,49 @@ export function ConnectSodex() {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
 
+  // Nhật ký từng bước (DEC-114): một attempt cho mỗi lần mở trang.
+  const connectors = useConnectors();
+  const attemptRef = useRef<string | null>(null);
+  attemptRef.current ??= crypto.randomUUID();
+  const track = (type: Parameters<typeof logConnectEvent>[1], data?: EventData) => {
+    logConnectEvent(attemptRef.current ?? crypto.randomUUID(), type, data);
+  };
+  const shownOptions = (): EventData => {
+    const o = walletOptions(connectors);
+    return {
+      walletsDetected: o.discovered.map((c) => c.name),
+      browserWallet: o.generic !== undefined,
+      walletConnect: o.wc !== undefined,
+      notDetected: o.missing,
+    };
+  };
   // Mở lại trang khi key đã có nhưng phí chưa approve: đi thẳng tới chữ ký 2.
+  // Sau đó ghi bước `view` (DEC-114), trừ khi đã kết nối xong: người đã xong không tính vào phễu.
   useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const logView = (sodex: string) => {
+      // Chờ EIP-6963 công bố ví (thường < 1 s) rồi mới ghi các lựa chọn đang có.
+      timer = setTimeout(() => {
+        if (!cancelled) track("view", { ...deviceInfo(), ...shownOptions(), sodex });
+      }, 1000);
+    };
     void api("GET", "/api/v1/sodex/connection", sodexConnectionSchema)
       .then(({ connection }) => {
-        if (connection?.status !== "connected") return;
-        if (connection.builderFee?.approved === true) setPhase({ kind: "done", connection });
+        if (cancelled) return;
+        if (connection?.status === "connected" && connection.builderFee?.approved === true) {
+          setPhase({ kind: "done", connection });
+          return;
+        }
+        logView(connection === null ? "none" : `${connection.status}, fee not approved`);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) logView("unknown");
+      });
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   const describe = (e: unknown): string => {
@@ -76,6 +119,16 @@ export function ConnectSodex() {
     try {
       await task();
     } catch (e) {
+      track(
+        "request_failed",
+        e instanceof ApiError
+          ? {
+              code: e.code,
+              status: e.status,
+              ...(typeof e.details.reason === "string" ? { reason: e.details.reason } : {}),
+            }
+          : errorInfo(e),
+      );
       setError(describe(e));
     } finally {
       busyRef.current = false;
@@ -84,6 +137,7 @@ export function ConnectSodex() {
   }
 
   async function openKeyRequest(wallet: string) {
+    track("key_requested");
     const request = await api("POST", "/api/v1/sodex/connection", signatureRequestSchema, {
       body: { address: wallet },
       idempotencyKey: crypto.randomUUID(),
@@ -92,6 +146,7 @@ export function ConnectSodex() {
   }
 
   async function openFeeRequest() {
+    track("fee_requested");
     const request = await api(
       "POST",
       "/api/v1/sodex/builder-fee/approval",
@@ -110,6 +165,7 @@ export function ConnectSodex() {
    */
   const connectWallet = () =>
     guarded(() => {
+      track("picker_opened", shownOptions());
       setPicking(true);
       return Promise.resolve();
     });
@@ -117,14 +173,32 @@ export function ConnectSodex() {
   const connectWith = (connector: Connector) =>
     guarded(async () => {
       let wallet: `0x${string}`;
+      track("wallet_picked", { id: connector.id, name: connector.name, kind: connector.type });
       try {
         // Ngắt ví đang nhớ trước, để ví hỏi lại account (MetaMask, OKX… cho chọn account khác).
         if (isConnected) await disconnectAsync();
-        wallet = (await connectAsync({ connector })).accounts[0];
-      } catch {
-        setError(t("errors.noWallet"));
+        wallet = (await connectWatched(connector, () => connectAsync({ connector }))).accounts[0];
+      } catch (e) {
+        track("wallet_failed", {
+          wallet: connector.name,
+          ...errorInfo(e),
+          ...(e instanceof WalletConnectNotStarted ? { reason: "wc_not_started" } : {}),
+        });
+        const declined =
+          e instanceof Error &&
+          (e.name === "UserRejectedRequestError" || (e as { code?: unknown }).code === 4001);
+        setError(
+          t(
+            e instanceof WalletConnectNotStarted
+              ? "errors.wcNotStarted"
+              : declined
+                ? "errors.walletDeclined"
+                : "errors.noWallet",
+          ),
+        );
         return;
       }
+      track("wallet_connected", { wallet: connector.name, address: shortWallet(wallet) });
       setPicking(false);
       await openKeyRequest(wallet);
     });
@@ -132,6 +206,7 @@ export function ConnectSodex() {
   const sign = (request: SignatureRequest, which: "key" | "fee") =>
     guarded(async () => {
       setPhase({ kind: "signing", request, which });
+      track("sign_prompted", { which });
       const outcome = await signAndSubmit(request, {
         onSigned: () => {
           setPhase({ kind: "creating", which, unknown: false });
@@ -140,25 +215,35 @@ export function ConnectSodex() {
           setPhase({ kind: "creating", which, unknown: true });
         },
       }).catch((e: unknown) => {
+        if (!(e instanceof ApiError)) track("sign_rejected", { which, ...errorInfo(e) });
         setPhase({ kind: "review", request, which, rejected: false });
         throw e;
       });
       if (outcome.kind === "rejected") {
+        track("sign_rejected", { which, reason: "user_rejected" });
         setPhase({ kind: "review", request, which, rejected: true });
         return;
       }
       if (outcome.kind === "failed") {
+        track("sodex_failed", {
+          which,
+          reason: (outcome.request.sodexError ?? "unknown").slice(0, 300),
+        });
         setPhase({ kind: "review", request: outcome.request, which, rejected: false });
         setError(t("errors.rejectedBySodex", { reason: outcome.request.sodexError ?? "" }));
         return;
       }
+      track("signed", { which });
       const { connection } = await api("GET", "/api/v1/sodex/connection", sodexConnectionSchema);
       // Account của chính builder không cần approve phí (DEC-47): xong ngay sau chữ ký 1.
       if (which === "key" && connection?.builderFee?.exempt !== true) {
         await openFeeRequest();
         return;
       }
-      if (connection !== null) setPhase({ kind: "done", connection });
+      if (connection !== null) {
+        track("connected", { builderFeeExempt: connection.builderFee?.exempt === true });
+        setPhase({ kind: "done", connection });
+      }
     });
 
   const phaseIndex =
@@ -426,6 +511,7 @@ function Done({
           {connection.apiKey === null
             ? tm("notAvailable")
             : t("done.apiKeyValue", {
+                name: connection.apiKey.name,
                 last4: connection.apiKey.last4,
                 date: formatDate(Date.parse(connection.apiKey.expiresAt)),
               })}

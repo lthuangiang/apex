@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI Desk · AI-first home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="desk" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+
+    <section aria-label="Desk AI" style="flex: 3 1 560px; min-width: 0; display: flex; flex-direction: column; border-radius: 26px; background: #ffffff; border: 1px solid #e3e7f5; overflow: hidden">
+      <header style="display: flex; align-items: center; gap: 14px; padding: 20px 24px; border-bottom: 1px solid #eef1f8">
+        <span aria-hidden="true" style="width: 48px; height: 48px; border-radius: 16px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 22px">✦</span>
+        <div style="display: flex; flex-direction: column; gap: 2px; flex: 1">
+          <h1 style="margin: 0; font-size: 22px; font-weight: 800">Desk AI</h1>
+          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #3b4262"><span style="width: 8px; height: 8px; border-radius: 50%; background: #16a05a"></span>Watching your 3 bots · last check 2 min ago</span>
+        </div>
+        <a href="B-History.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2; color: #141a33; font-size: 14px; font-weight: 700; text-decoration: none">History</a>
+      </header>
+
+      <div class="num" style="display: flex; flex-direction: column; gap: 18px; padding: 24px">
+        <div style="display: flex; gap: 12px; align-items: flex-start">
+          <span aria-hidden="true" style="flex: 0 0 34px; height: 34px; border-radius: 11px; background: #eef3ff; color: #2e62e8; display: flex; align-items: center; justify-content: center; font-weight: 800">✦</span>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+            <p style="margin: 0; font-size: 16px; line-height: 1.6">Good morning. I went through your bots overnight. <strong>One thing worries me</strong>, one bot stopped, and one is doing fine.</p>
+
+            <article style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border-radius: 18px; border: 1.5px solid #f2b8b0; background: #fff8f7">
+              <span style="font-size: 12.5px; font-weight: 800; color: #a72826">Worried · BTC Volume Farm</span>
+              <p style="margin: 0; font-size: 15px; line-height: 1.55">At 40× leverage, a 2.5% drop wipes out the trade. Your stop loss waits for 5%, so it would never get a chance. <strong>I'd lower leverage to 10×.</strong></p>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+                <a href="Suggestion.dc.html" style="display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border-radius: 12px; background: #2e62e8; color: #ffffff; font-size: 14px; font-weight: 800; text-decoration: none">Fix it for me</a>
+                <button type="button" style="min-height: 42px; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Explain more</button>
+                <span style="font-size: 12px; color: #5f6684">Checked from your settings</span>
+              </div>
+            </article>
+
+            <article style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border-radius: 18px; border: 1px solid #f0c27e; background: #fffaf2">
+              <span style="font-size: 12.5px; font-weight: 800; color: #7a3e00">Stopped · ETH Volume Farm</span>
+              <p style="margin: 0; font-size: 15px; line-height: 1.55">It stopped at the 10 USDC loss limit you set, as planned. Most of the loss was fees, not bad trades: it guessed the direction right half the time.</p>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+                <button type="button" style="min-height: 42px; padding: 0 16px; border-radius: 12px; border: none; background: #e6ecfe; color: #1d47b8; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer">What should I do?</button>
+                <span style="font-size: 12px; color: #5f6684">From 92 trades</span>
+              </div>
+            </article>
+
+            <article style="display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; border-radius: 18px; border: 1px solid #b8e2c8; background: #f6fcf8">
+              <span style="font-size: 12.5px; font-weight: 800; color: #0b6a39">Doing fine · ETH Grid</span>
+              <p style="margin: 0; font-size: 15px; line-height: 1.55">Up <strong style="color: #0f7a43">+3.12 USDC ▲</strong> this week. ETH kept bouncing inside its range, which is exactly what a grid likes. Nothing to do.</p>
+            </article>
+          </div>
+        </div>
+
+        <div style="align-self: flex-end; max-width: 72%; padding: 12px 16px; border-radius: 18px 18px 4px 18px; background: #2e62e8; color: #ffffff; font-size: 15px; line-height: 1.5">I have 500 USDC more. What should I do with it?</div>
+
+        <div style="display: flex; gap: 12px; align-items: flex-start">
+          <span aria-hidden="true" style="flex: 0 0 34px; height: 34px; border-radius: 11px; background: #eef3ff; color: #2e62e8; display: flex; align-items: center; justify-content: center; font-weight: 800">✦</span>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+            <p style="margin: 0; font-size: 16px; line-height: 1.6">Since your grid is working, a second one on BTC fits you. Before real money, try it with fake money for a week.</p>
+            <article style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 18px; border: 2px solid #2e62e8; background: #f7f9ff">
+              <div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 4px">
+                <strong style="font-size: 16px">Spot Grid on BTC · 500 USDC</strong>
+                <span style="font-size: 13.5px; color: #3b4262">Most you could lose: 50 USDC (your 10%). Works best when BTC moves sideways.</span>
+              </div>
+              <a href="NewAgent.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 12px; background: #2e62e8; color: #ffffff; font-size: 14px; font-weight: 800; text-decoration: none">Try with fake money</a>
+            </article>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 24px 22px; border-top: 1px solid #eef1f8; background: #fbfcff">
+        <div style="display: flex; flex-wrap: wrap; gap: 8px">
+          <button type="button" style="min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">Why did I lose money?</button>
+          <button type="button" style="min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">Is my money safe?</button>
+          <button type="button" style="min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">Start a bot for me</button>
+          <button type="button" style="min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #d5dcf2; background: #ffffff; color: #1d47b8; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer">What is a grid?</button>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: flex-end">
+          <label style="flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; color: #5f6684">Ask Desk AI
+            <textarea rows="2" placeholder="Ask anything, or tell me what you want…" style="box-sizing: border-box; width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid #d5dcf2; font: inherit; font-size: 15px; color: #141a33; resize: none"></textarea>
+          </label>
+          <button type="button" style="min-height: 50px; padding: 0 22px; border: 0; border-radius: 14px; background: #2e62e8; color: #ffffff; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer">Send</button>
+        </div>
+      </div>
+    </section>
+
+    <aside style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+      <section aria-labelledby="bots-h" class="num" style="display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; border-radius: 22px; background: #ffffff; border: 1px solid #e3e7f5">
+        <h2 id="bots-h" style="margin: 0 0 6px; font-size: 16px; font-weight: 800">Your bots</h2>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #eef1f8"><span style="width: 8px; height: 8px; border-radius: 50%; background: #c2312f"></span><span style="flex: 1; font-size: 14px; font-weight: 700">BTC Volume Farm</span><span style="font-size: 13px; color: #c2312f; font-weight: 700">−4.95 ▼</span></div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #eef1f8"><span style="width: 8px; height: 8px; border-radius: 50%; background: #e08a2e"></span><span style="flex: 1; font-size: 14px; font-weight: 700">ETH Volume Farm</span><span style="font-size: 13px; color: #c2312f; font-weight: 700">−10.09 ▼</span></div>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #eef1f8"><span style="width: 8px; height: 8px; border-radius: 50%; background: #16a05a"></span><span style="flex: 1; font-size: 14px; font-weight: 700">ETH Grid</span><span style="font-size: 13px; color: #0f7a43; font-weight: 700">+3.12 ▲</span></div>
+        <span style="font-size: 12px; color: #5f6684">Profit · 7 days, USDC</span>
+      </section>
+      <section aria-labelledby="can-h" style="display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; border-radius: 22px; background: #ffffff; border: 1px solid #e3e7f5">
+        <h2 id="can-h" style="margin: 0; font-size: 16px; font-weight: 800">How Desk AI works</h2>
+        <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.5; color: #3b4262">
+          <li>Reads your trades and settings every few minutes.</li>
+          <li>Every number comes from your real data, never made up.</li>
+          <li>Changes only happen when you tap a button.</li>
+          <li>It can't place orders or move money.</li>
+        </ul>
+        <a href="Permissions.dc.html" style="font-size: 13.5px; font-weight: 700">What it did</a>
+      </section>
+    </aside>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

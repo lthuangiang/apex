@@ -20,7 +20,9 @@ import { twapSchema } from "./twap/schema";
 
 export * from "./core";
 export * from "./sim";
+export * from "./paper";
 export { safetyOffsetPct } from "./common/dca-bot";
+export { entryReady, type EntryCondition, type NextCycle, type WaitingInfo } from "./common/entry";
 export { gridPrices, stepCoversFees } from "./common/grid";
 export { leverageCapIssue } from "./common/perps";
 export { nextRun } from "./recurring-buy/schedule";
@@ -37,10 +39,11 @@ export {
   twapSchema,
 };
 
-export { STRATEGIES, type LaunchedStrategy, type StrategyEntry } from "./registry";
+export { STRATEGIES, waitingOf, type LaunchedStrategy, type StrategyEntry } from "./registry";
 export * from "./backtest";
 export { fundingArb, futuresDca, futuresGrid, rebalancing, recurringBuy, spotDca, spotGrid, twap };
 export {
+  copyMarkets,
   meetsMinSize,
   minSizeDetail,
   requirementOf,
@@ -49,7 +52,67 @@ export {
 } from "./requirements";
 export { costPerMillion, costUsed, volumeMaker, type VolumeMakerState } from "./volume-maker";
 export {
-  VOLUME_MAKER_MARKETS,
+  FARM_TIMING,
+  farmNet,
+  farmRandom,
+  stepVolumeFarm,
+  volumeFarm,
+  type VolumeFarmState,
+} from "./volume-farm";
+export {
+  buildTrades,
+  currentParams,
+  REVIEW_GRID,
+  REVIEW_MIN_TRADES,
+  REVIEW_SOLID_TRADES,
+  REVIEW_STRONG_TRADES,
+  reviewVolumeFarm,
+  type ReviewFill,
+  type ReviewParams,
+  type ReviewResult,
+  type ReviewTrade,
+} from "./volume-farm/review";
+export { volumeFarmSchema, type VolumeFarmConfig } from "./volume-farm/schema";
+export { farmSignal, type FarmSignal } from "./volume-farm/signal";
+export {
+  VM_DEFAULTS,
+  VM_LEVERAGE_MAX,
+  vmMaxInventory,
   volumeMakerSchema,
   type VolumeMakerConfig,
 } from "./volume-maker/schema";
+export {
+  adaptiveDca,
+  adcaBreakEven,
+  adcaDecision,
+  adcaMarket,
+  adcaSafetyPrice,
+  regimeAllows,
+  rsi,
+  ADCA,
+  type AdaptiveDcaState,
+  type AdcaDecision,
+} from "./adaptive-dca";
+export { adaptiveDcaSchema, ADCA_DEFAULTS, type AdaptiveDcaConfig } from "./adaptive-dca/schema";
+export {
+  capTarget,
+  copyLedgerTotals,
+  copyNet,
+  copyPositions,
+  isMultiMarketCopyState,
+  copyTrade,
+  freshSize,
+  leaderMove,
+  normalizeCopyState,
+  COPY,
+  type CopyMarketState,
+  type CopyTradeState,
+  type LeaderMove,
+} from "./copy-trade";
+export {
+  copyTradeSchema,
+  leaderAddressSchema,
+  COPY_DEFAULTS,
+  COPY_MAX_MARKETS,
+  type CopyTradeConfig,
+} from "./copy-trade/schema";

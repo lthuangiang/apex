@@ -1,6 +1,6 @@
 {
   "best": {
-    "id": "44e44175f8c38c1e",
+    "id": "3d61a1024b652d94",
     "strategy": "futures_dca",
     "market": "BTC-USD",
     "values": {
@@ -13,6 +13,8 @@
       "sizeMultiplier": "1.5",
       "takeProfitPct": "1.2",
       "maxLoss": "480",
+      "entry": "now",
+      "nextCycle": "immediately",
       "leverage": 1,
       "marginMode": "isolated",
       "direction": "long",
@@ -27,34 +29,35 @@
     ],
     "basis": "BTC-USD: largest drop over the last 30 days 7.31%, median daily move 1.37%.",
     "computedAt": "2026-10-27T07:00:00.000Z",
-    "inputsVersion": "reco-1"
+    "inputsVersion": "reco-2"
   },
   "addOns": [
     {
-      "id": "23331ebcf10d14fa",
+      "id": "c64cefca09651532",
       "strategy": "spot_grid",
       "market": "vBTC_vUSDC",
       "values": {
         "market": "vBTC_vUSDC",
         "lowerPrice": "62000",
         "upperPrice": "72000",
-        "gridLevels": 16,
+        "gridLevels": 19,
         "spacing": "arithmetic",
         "investment": "3200",
         "stopPrice": "60140",
         "maxLoss": "320",
-        "onStop": "keep_base"
+        "onStop": "keep_base",
+        "entry": "now"
       },
       "capital": "3200",
       "score": 89.2,
       "reasons": [
         "BTC was net positive for you (+5,120.40, 51% win rate).",
         "Range 62,000–72,000 covers 90% of BTC daily closes over the last 30 days (P5–P95).",
-        "Step ≈ 1% is at least 10× the round-trip fee of 0.1%."
+        "Step ≈ 0.83% is at least 10× the round-trip fee of 0.08%."
       ],
       "basis": "Over the last 180 days, BTC stayed range-bound on 71% of days. This describes price, not profit.",
       "computedAt": "2026-10-27T07:00:00.000Z",
-      "inputsVersion": "reco-1"
+      "inputsVersion": "reco-2"
     }
   ],
   "notSuggested": [
@@ -67,11 +70,11 @@
       "reason": "SOL: -2,234.38 net with a 38% win rate."
     },
     {
-      "title": "Futures DCA",
+      "title": "Futures DCA · ETH",
       "reason": "Above your 10% max drop at any useful size."
     },
     {
-      "title": "Futures Grid",
+      "title": "Futures Grid · BTC",
       "reason": "Above your 10% max drop at any useful size."
     }
   ],

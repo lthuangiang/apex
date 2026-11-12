@@ -62,7 +62,8 @@ export function formatRatio(value: string | null, digits = 0): string | null {
 
 /** Khoảng thời gian dạng "11h 02m" / "3d 4h". */
 export function formatDuration(ms: number): string {
-  const minutes = Math.round(ms / 60_000);
+  // Không bao giờ âm: lệch đồng hồ không được hiện thành "-3h -46m".
+  const minutes = Math.round(Math.max(0, ms) / 60_000);
   const days = Math.floor(minutes / 1440);
   const hours = Math.floor((minutes % 1440) / 60);
   const mins = minutes % 60;

@@ -15,8 +15,8 @@ import {
 // "Approve Builder Fee" (tra ngày 2026-10-27). Body HTTP dùng `type` cho loại key, còn typed data
 // dùng `keyType`; nonce trong message phải bằng header `X-API-Nonce`.
 
-/** Tên key DRIFT (docs/SODEX.md mục 5.2). */
-export const DRIFT_API_KEY_NAME = "DRIFT";
+/** Tên key của DeskLabs cho key tạo mới (docs/SODEX.md mục 5.2, DEC-168). Key cũ giữ tên `DRIFT` đã lưu. */
+export const DRIFT_API_KEY_NAME = "DeskLabs";
 /** DEC-28: key sống 180 ngày, nhắc trước 14 ngày. */
 export const DRIFT_API_KEY_TTL_MS = 180n * 24n * 60n * 60n * 1000n;
 export const DRIFT_API_KEY_RENEW_NOTICE_MS = 14 * 24 * 60 * 60 * 1000;
@@ -41,7 +41,7 @@ export function addPermissionedApiKeyRequest(input: {
   publicKey: Address;
   nonce: bigint;
   expiresAt: bigint;
-  /** Tên key; mặc định `DRIFT`. Renew dùng `DRIFT-<yyyymmdd>` (DEC-59). SoDEX: `^[0-9a-zA-Z_-]{1,36}$`, khác `default`. */
+  /** Tên key; mặc định `DeskLabs`. Renew dùng `DeskLabs-<yyyymmdd>` (DEC-59). SoDEX: `^[0-9a-zA-Z_-]{1,36}$`, khác `default`. */
   name?: string;
 }): UniversalRequest<"UserSignedAddPermissionedAPIKeyAction"> {
   const name = input.name ?? DRIFT_API_KEY_NAME;

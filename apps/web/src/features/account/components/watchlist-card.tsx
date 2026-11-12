@@ -136,7 +136,6 @@ function ViewList({ rows }: { rows: Row[] }) {
                 type="button"
                 aria-haspopup="menu"
                 aria-expanded={menu === w.market}
-                aria-label={t("rowMenu", { market: label })}
                 className="flex w-full items-center gap-3 py-3 text-left hover:bg-surface-2"
                 onClick={() => {
                   setMenu((m) => (m === w.market ? null : w.market));
@@ -148,7 +147,10 @@ function ViewList({ rows }: { rows: Row[] }) {
                 >
                   {names.asset(base).slice(0, 1)}
                 </span>
-                <span className="flex min-w-0 flex-1 flex-col">
+                {/* Tên nút = "Actions for X" + giá hiển thị; không dùng aria-label để tên chứa chữ nhìn thấy
+                    (axe label-content-name-mismatch). Tên coin, chip và dòng market đã có trong câu này. */}
+                <span className="sr-only">{t("rowMenu", { market: label })}</span>
+                <span aria-hidden="true" className="flex min-w-0 flex-1 flex-col">
                   <span className="flex items-center gap-1.5">
                     <span className="truncate text-[15px] font-bold">{names.asset(base)}</span>
                     <span className="flex-none">

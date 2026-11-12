@@ -245,6 +245,7 @@ function fakeRecoClient(state: FakeReco): RecoClient {
             markets: state.markets,
             accountLeverageCap: body.accountLeverageCap,
             now: body.now,
+            ...(body.single === true ? { single: true } : {}),
           },
           body.timeZone,
         ),

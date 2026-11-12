@@ -303,6 +303,10 @@ export function stepFundingArb(
     }
     case "orderAck":
     case "timer":
+    case "orderDone":
+    case "positionSync":
+    case "leaderFill":
+    case "leaderPosition":
       return { actions: [], state: s };
   }
 }

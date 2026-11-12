@@ -3,7 +3,7 @@ import { SODEX_BASE_FEE_PCT } from "../fees";
 // Ngưỡng của engine đề xuất (RECO_ENGINE.md mục 10, PROP-01). Product chỉnh ở đây, không sửa code.
 // Mọi giá trị ghi "(chỉnh được)" trong tài liệu nằm ở file này.
 
-export const RECO_INPUTS_VERSION = "reco-1";
+export const RECO_INPUTS_VERSION = "reco-2";
 
 export const RECO_CONFIG = {
   /** < số vị thế đã đóng này thì coi là người mới, bỏ qua mọi quy tắc dựa trên lịch sử. */
@@ -16,8 +16,7 @@ export const RECO_CONFIG = {
     futuresDcaMinDropPct: 10,
     recurringBuyAssets: ["BTC", "ETH"],
     rebalancingMinAssets: 2,
-    fundingArbMinAvg7dPct: "0.005",
-    fundingArbMinPositiveShare21: 0.7,
+    // Funding Arb: điều kiện theo số giờ thu đủ phí và tỷ lệ kỳ dương, ở `ARB_FIT` (DEC-160).
     fundingArbMinCapital: "2000",
   },
   exclusions: {
@@ -63,11 +62,18 @@ export const RECO_CONFIG = {
     sigmaSplitPct: 3,
     maxTradePct: "25",
   },
-  fundingArb: { enterPct: "0.005", exitPct: "0", maxGapPct: "0.5", minMarginRatioPct: "30" },
+  // Ngưỡng vào lệnh tính theo phí của market (`arbEnterPct`, DEC-160).
+  fundingArb: { exitPct: "0", maxGapPct: "0.5", minMarginRatioPct: "30" },
   /**
    * Maker fee cơ bản của SoDEX (%) khi người dùng chưa có fill maker để đo (DEC-39, chờ duyệt). Nguồn: SoDEX
    * support "Trading Experience" (Spot maker 0.04%, Futures maker 0.015%). Phí thực tế theo tier của từng người.
    */
   baseMakerFeePct: { spot: SODEX_BASE_FEE_PCT.spot.maker, perps: SODEX_BASE_FEE_PCT.perps.maker },
   stablecoins: ["USDC", "USDT", "vUSDC", "vUSDT"],
+  /**
+   * Goal check của AI Desk (AI_DESK_RECOMMENDED.md mục 3.1, DEC-105, chờ duyệt): % năm ≤ reasonableMaxPct là mục tiêu
+   * vừa phải, ≤ ambitiousMaxPct là rất tham vọng, trên nữa là không thực tế. `examplePcts`: mức % năm để quy ra vốn cần,
+   * luôn ghi "Examples, not forecasts". Không bao giờ truyền vào `recommend()`.
+   */
+  goalCheck: { reasonableMaxPct: "20", ambitiousMaxPct: "100", examplePcts: ["10", "20"] },
 } as const;

@@ -90,6 +90,9 @@ export function AmountLines({ strategy, values }: { strategy: string; values: Fo
       lines.push(spotLine(asset), perpsLine());
       break;
     }
+    case "volume_maker":
+      lines.push(perpsLine());
+      break;
     case "twap": {
       if (values.engine === "perps") lines.push(perpsLine());
       else if (spotUnits !== null)
@@ -102,9 +105,11 @@ export function AmountLines({ strategy, values }: { strategy: string; values: Fo
       break;
   }
   if (lines.length === 0) return null;
+  // Spot và Perps cùng thiếu dữ liệu thì chỉ hiện một dòng "Not available".
+  const unique = [...new Set(lines)];
   return (
     <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs text-ink-2" aria-live="polite">
-      {lines.map((l) => (
+      {unique.map((l) => (
         <li key={l}>{l}</li>
       ))}
     </ul>

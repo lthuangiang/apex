@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Desk AI · new bot</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="desk" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; justify-content: center">
+    <section aria-label="Desk AI" class="num" style="width: 100%; max-width: 860px; display: flex; flex-direction: column; border-radius: 26px; background: #ffffff; border: 1px solid #e3e7f5; overflow: hidden">
+      <header style="display: flex; align-items: center; gap: 12px; padding: 18px 24px; border-bottom: 1px solid #eef1f8">
+        <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 13px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 18px">✦</span>
+        <strong style="font-size: 18px">Desk AI</strong>
+        <span style="margin-left: auto; font-size: 13px; color: #5f6684">New bot · step 3 of 3</span>
+      </header>
+
+      <div style="display: flex; flex-direction: column; gap: 16px; padding: 24px">
+        <div style="align-self: flex-end; padding: 10px 16px; border-radius: 18px 18px 4px 18px; background: #2e62e8; color: #ffffff; font-size: 15px">Start my first bot</div>
+
+        <div style="display: flex; gap: 12px; align-items: flex-start">
+          <span aria-hidden="true" style="flex: 0 0 32px; height: 32px; border-radius: 10px; background: #eef3ff; color: #2e62e8; display: flex; align-items: center; justify-content: center; font-weight: 800">✦</span>
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <p style="margin: 0; font-size: 15.5px; line-height: 1.55">Great. First: what would you like the bot to do?</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px">
+              <span style="display: inline-flex; align-items: center; min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #e3e7f5; color: #5f6684; font-size: 13.5px; font-weight: 700">Build up coins slowly</span>
+              <span style="display: inline-flex; align-items: center; min-height: 38px; padding: 0 14px; border-radius: 19px; border: 2px solid #2e62e8; background: #eef3ff; color: #1d47b8; font-size: 13.5px; font-weight: 800">✓ Earn from ups and downs</span>
+              <span style="display: inline-flex; align-items: center; min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #e3e7f5; color: #5f6684; font-size: 13.5px; font-weight: 700">Not sure, you pick</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; align-items: flex-start">
+          <span aria-hidden="true" style="flex: 0 0 32px; height: 32px; border-radius: 10px; background: #eef3ff; color: #2e62e8; display: flex; align-items: center; justify-content: center; font-weight: 800">✦</span>
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <p style="margin: 0; font-size: 15.5px; line-height: 1.55">How much of a loss could you live with? Bots can lose money, so be honest.</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px">
+              <span style="display: inline-flex; align-items: center; min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #e3e7f5; color: #5f6684; font-size: 13.5px; font-weight: 700">Very little · 5%</span>
+              <span style="display: inline-flex; align-items: center; min-height: 38px; padding: 0 14px; border-radius: 19px; border: 2px solid #2e62e8; background: #eef3ff; color: #1d47b8; font-size: 13.5px; font-weight: 800">✓ Some · 10%</span>
+              <span style="display: inline-flex; align-items: center; min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid #e3e7f5; color: #5f6684; font-size: 13.5px; font-weight: 700">A fair amount · 20%</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 12px; align-items: flex-start">
+          <span aria-hidden="true" style="flex: 0 0 32px; height: 32px; border-radius: 10px; background: #eef3ff; color: #2e62e8; display: flex; align-items: center; justify-content: center; font-weight: 800">✦</span>
+          <p style="margin: 0; font-size: 15.5px; line-height: 1.55">And how much would you put in?</p>
+        </div>
+        <div style="align-self: flex-end; padding: 10px 16px; border-radius: 18px 18px 4px 18px; background: #2e62e8; color: #ffffff; font-size: 15px">300 USDC</div>
+
+        <div style="display: flex; gap: 12px; align-items: flex-start">
+          <span aria-hidden="true" style="flex: 0 0 32px; height: 32px; border-radius: 10px; background: #eef3ff; color: #2e62e8; display: flex; align-items: center; justify-content: center; font-weight: 800">✦</span>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+            <p style="margin: 0; font-size: 15.5px; line-height: 1.55">Here's what I'd suggest. ETH has moved up and down inside a range for the last month, which suits this kind of bot.</p>
+            <article style="display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 20px; border: 2px solid #2e62e8; background: #f7f9ff">
+              <div style="display: flex; flex-direction: column; gap: 4px">
+                <span style="align-self: flex-start; height: 24px; padding: 0 10px; border-radius: 12px; background: #e6ecfe; color: #1d47b8; font-size: 11.5px; font-weight: 800; display: inline-flex; align-items: center">Suggested for you</span>
+                <strong style="font-size: 20px">Spot Grid on ETH · 300 USDC</strong>
+                <span style="font-size: 14px; line-height: 1.5; color: #3b4262">Buys a little when ETH dips, sells a little when it rises, again and again.</span>
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+                <div style="padding: 12px 14px; border-radius: 14px; background: #ffffff"><span style="display: block; font-size: 12.5px; color: #5f6684; font-weight: 700">Most you could lose</span><strong style="font-size: 18px">30 USDC</strong></div>
+                <div style="padding: 12px 14px; border-radius: 14px; background: #ffffff"><span style="display: block; font-size: 12.5px; color: #5f6684; font-weight: 700">Works best when</span><strong style="font-size: 18px">ETH moves sideways</strong></div>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px">
+                <a href="B-Result.dc.html" style="display: inline-flex; align-items: center; min-height: 46px; padding: 0 20px; border-radius: 12px; background: #2e62e8; color: #ffffff; font-size: 14.5px; font-weight: 800; text-decoration: none">Try with fake money</a>
+                <button type="button" style="min-height: 46px; padding: 0 16px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Why this one?</button>
+                <button type="button" style="min-height: 46px; padding: 0 16px; border-radius: 12px; border: none; background: transparent; color: #5f6684; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Change something</button>
+              </div>
+            </article>
+            <span style="font-size: 12px; color: #5f6684">Plan from DeskLabs' recommendation rules and 30 days of ETH prices · a suggestion, not a promise of profit</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: flex-end; padding: 16px 24px 22px; border-top: 1px solid #eef1f8; background: #fbfcff">
+        <label style="flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; color: #5f6684">Ask Desk AI
+          <textarea rows="1" placeholder="Ask about this plan…" style="box-sizing: border-box; width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid #d5dcf2; font: inherit; font-size: 15px; color: #141a33; resize: none"></textarea>
+        </label>
+        <button type="button" style="min-height: 48px; padding: 0 22px; border: 0; border-radius: 14px; background: #2e62e8; color: #ffffff; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer">Send</button>
+      </div>
+    </section>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -89,7 +89,7 @@ const connection = async (t: Trader) =>
     .connection;
 
 describe("connect SoDEX with two signatures", () => {
-  it("creates the DRIFT key, then approves 0.01%, reading both back", async () => {
+  it("creates the DeskLabs key, then approves 0.01%, reading both back", async () => {
     const t = await newTrader();
     expect(await connection(t)).toBeNull();
 
@@ -101,7 +101,7 @@ describe("connect SoDEX with two signatures", () => {
     expect(request.typedData.message).toMatchObject({
       chainID: "286623",
       accountID: String(t.accountID),
-      name: "DRIFT",
+      name: "DeskLabs",
       permissions: "14",
     });
     // expiresAt = nonce + 180 ngày (DEC-28).
@@ -145,11 +145,6 @@ describe("connect SoDEX with two signatures", () => {
     );
     await signAndSubmit(t, await t.client.request("POST", "/api/v1/sodex/builder-fee/approval"));
 
-    const noTwoFactor = await t.client.request("POST", "/api/v1/sodex/builder-fee/revocation", {
-      body: { twoFactorCode: "123456" },
-    });
-    expect(errorCode(noTwoFactor.body)).toBe("TWO_FACTOR_REQUIRED");
-
     const setup = twoFactorSetupSchema.parse(
       (await t.client.request("POST", "/api/v1/security/2fa/setup")).json(),
     );
@@ -190,7 +185,7 @@ describe("connect SoDEX with two signatures", () => {
     });
   });
 
-  it("renews the key with one signature: a new DRIFT-<date> key replaces the old one (DEC-59)", async () => {
+  it("renews the key with one signature: a new DeskLabs-<date> key replaces the old one (DEC-59)", async () => {
     const t = await newTrader();
     await signAndSubmit(
       t,
@@ -202,7 +197,7 @@ describe("connect SoDEX with two signatures", () => {
     const renew = await t.client.request("POST", "/api/v1/sodex/connection/renewal");
     const request = signatureRequestSchema.parse(renew.json());
     expect(request.typedData.primaryType).toBe("UserSignedAddPermissionedAPIKeyAction");
-    expect(String(request.typedData.message.name)).toMatch(/^DRIFT-\d{8}$/);
+    expect(String(request.typedData.message.name)).toMatch(/^DeskLabs-\d{8}$/);
     expect(request.typedData.message).toMatchObject({ permissions: "14" });
     const done = await signAndSubmit(t, renew);
     expect(signatureRequestSchema.parse(done.json()).status).toBe("succeeded");
@@ -285,7 +280,7 @@ describe("connect SoDEX with two signatures", () => {
     expect(errorCode(res.body)).toBe("SODEX_ACCOUNT_NOT_FOUND");
   });
 
-  it("refuses a SoDEX account already connected to another DRIFT user", async () => {
+  it("refuses a SoDEX account already connected to another DeskLabs user", async () => {
     const t = await newTrader();
     await t.client.request("POST", "/api/v1/sodex/connection", {
       body: { address: t.wallet.address },
@@ -298,7 +293,7 @@ describe("connect SoDEX with two signatures", () => {
     expect(errorCode(res.body)).toBe("SODEX_ACCOUNT_IN_USE");
   });
 
-  it("lets another DRIFT user connect once the account was disconnected or its owner deleted", async () => {
+  it("lets another DeskLabs user connect once the account was disconnected or its owner deleted", async () => {
     const t = await newTrader();
     await t.client.request("POST", "/api/v1/sodex/connection", {
       body: { address: t.wallet.address },
@@ -390,7 +385,29 @@ describe("disconnect", () => {
     expect(rows).toEqual([{ status: "deleted", ciphertext: "revoked" }]);
   });
 
-  it("requires 2FA", async () => {
+  it("asks for 2FA once per session, then trusts it for 2 hours (DEC-115)", async () => {
+    const { t, code } = await connectedWithTwoFactor();
+    const noCode = await t.client.request("POST", "/api/v1/sodex/disconnection", { body: {} });
+    expect(errorCode(noCode.body)).toBe("TWO_FACTOR_REQUIRED");
+    expect(
+      (
+        await t.client.request("POST", "/api/v1/sodex/disconnection", {
+          body: { twoFactorCode: code() },
+        })
+      ).statusCode,
+    ).toBe(201);
+    // Cùng phiên, trong 2 giờ: không cần mã.
+    env.clock.now = new Date(env.clock.now.getTime() + 60 * 60_000);
+    expect(
+      (await t.client.request("POST", "/api/v1/sodex/disconnection", { body: {} })).statusCode,
+    ).toBe(201);
+    // Quá 2 giờ: hỏi lại.
+    env.clock.now = new Date(env.clock.now.getTime() + 61 * 60_000);
+    const late = await t.client.request("POST", "/api/v1/sodex/disconnection", { body: {} });
+    expect(errorCode(late.body)).toBe("TWO_FACTOR_REQUIRED");
+  });
+
+  it("does not ask for 2FA when the user has not turned it on (DEC-115)", async () => {
     const t = await newTrader();
     await signAndSubmit(
       t,
@@ -398,10 +415,9 @@ describe("disconnect", () => {
         body: { address: t.wallet.address },
       }),
     );
-    const res = await t.client.request("POST", "/api/v1/sodex/disconnection", {
-      body: { twoFactorCode: "123456" },
-    });
-    expect(errorCode(res.body)).toBe("TWO_FACTOR_REQUIRED");
+    // Chưa bật 2FA thì không hỏi mã (DEC-115).
+    const res = await t.client.request("POST", "/api/v1/sodex/disconnection", { body: {} });
+    expect(res.statusCode).toBe(201);
   });
 
   it("keeps the connection when SoDEX rejects one engine", async () => {

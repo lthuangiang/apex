@@ -10,6 +10,11 @@ export const Strategy = {
   fundingArb: "funding_arb",
   twap: "twap",
   volumeMaker: "volume_maker",
+  volumeFarm: "volume_farm",
+  /** S11 AI Adaptive DCA (DEC-107). */
+  adaptiveDca: "adaptive_dca",
+  /** S12 Copy Trade (DEC-161): copy vị thế của một ví leader, chỉ cho tài khoản được bật. */
+  copyTrade: "copy_trade",
 } as const;
 export type Strategy = (typeof Strategy)[keyof typeof Strategy];
 

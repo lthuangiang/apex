@@ -6,6 +6,7 @@ import { Redis } from "ioredis";
 import pino from "pino";
 import { z } from "zod";
 
+import { runReview } from "./review";
 import { runJob } from "./run";
 
 // backtest: worker CPU nặng, kéo job `backtest.run` từ JetStream (consumer group), scale bằng replica.
@@ -31,16 +32,24 @@ const rest = new SodexRestClient({
 const nc = await connect({ servers: env.NATS_URL });
 const js = await ensureStreams(nc);
 await ensureConsumer(nc, "backtest-run", "backtest.run");
-const payload = z.object({ runId: z.uuid() });
+// Cùng hàng đợi `backtest.run` cho backtest (`runId`) và review sau khi chạy (`reviewId`, DEC-131): không phải thêm
+// subject vào stream BACKTEST đã có trên prod.
+const payload = z.union([z.object({ runId: z.uuid() }), z.object({ reviewId: z.uuid() })]);
 const stop = await consume(
   js,
   "backtest-run",
   "backtest.run",
   async (p) => {
     const started = Date.now();
-    const { runId } = payload.parse(p);
-    await runJob({ db, rest, now: () => new Date() }, runId);
-    log.info({ runId, ms: Date.now() - started }, "backtest finished");
+    const job = payload.parse(p);
+    const deps = { db, rest, now: () => new Date() };
+    if ("runId" in job) {
+      await runJob(deps, job.runId);
+      log.info({ runId: job.runId, ms: Date.now() - started }, "backtest finished");
+    } else {
+      await runReview(deps, job.reviewId);
+      log.info({ reviewId: job.reviewId, ms: Date.now() - started }, "review finished");
+    }
   },
   (msg, extra) => {
     log.warn(extra, msg);

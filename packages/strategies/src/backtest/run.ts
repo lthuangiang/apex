@@ -23,6 +23,8 @@ export interface Candle {
   h: string;
   l: string;
   c: string;
+  /** Khối lượng (base); chỉ chiến lược đọc nến (Volume Farming) cần. */
+  v?: string;
 }
 
 export interface FundingPoint {
@@ -56,6 +58,11 @@ export interface BacktestInput<C, S> {
   equityPoints?: number;
   /** Ghi lại mọi event đưa cho chiến lược (test so với engine); tắt mặc định cho nhanh. */
   recordEvents?: boolean;
+  /**
+   * Gửi kèm `timer` chừng này nến gần nhất của market (tính cả nến vừa đóng), như engine gửi cho Volume Farming.
+   * Không có sổ lệnh lịch sử nên `book` là null (tín hiệu chạy chế độ chỉ-nến).
+   */
+  snapshotCandles?: number;
 }
 
 export interface BacktestFill {
@@ -114,12 +121,19 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
     string,
     MarketRules
   >;
-  const anyEngine = input.markets[marketNames[0] ?? ""]?.engine ?? "spot";
+  const first = input.markets[marketNames[0] ?? ""];
+  const anyEngine = first?.engine ?? "spot";
+  // Như engine (DEC-112): nửa phí khứ hồi maker; Spot chỉ chịu builder fee ở chiều bán.
   const ctx: StepContext = {
     botId: "backtest",
     version: 1,
     rules,
-    feeRate: dec(input.fees[anyEngine].maker).add(input.fees.builder).toString(),
+    feeRate: dec(first?.rules.makerFee ?? input.fees[anyEngine].maker)
+      .add(dec(input.fees.builder).mul(anyEngine === "perps" ? 1 : "0.5"))
+      .toString(),
+    takerFeeRate: dec(first?.rules.takerFee ?? input.fees[anyEngine].taker)
+      .add(dec(input.fees.builder).mul(anyEngine === "perps" ? 1 : "0.5"))
+      .toString(),
   };
 
   // Gom nến theo thời điểm; chỉ dùng các mốc mà mọi market đều có nến (thị trường đồng bộ).
@@ -139,6 +153,8 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
   const engineOf = (m: string) => input.markets[m]?.engine ?? "spot";
   const open = new Map<string, Open>();
   const pendingMarket: OrderIntent[] = [];
+  /** Stop loss gốc trên sàn (DEC-118): kích hoạt khi giá chạm `price`, khớp market cả vị thế. */
+  const stops = new Map<string, { order: OrderIntent; price: Decimal }>();
   const fills: BacktestFill[] = [];
   const actions: StrategyAction[] = [];
   const events: StrategyEvent[] = [];
@@ -155,7 +171,10 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
 
   const feeOf = (o: OrderIntent, price: string, maker: boolean) => {
     const e = engineOf(o.market);
-    const base = maker ? input.fees[e].maker : input.fees[e].taker;
+    // Phí của market trên `/symbols` nếu có (một số market Spot miễn phí), không thì bảng cơ bản (DEC-112).
+    const r = input.markets[o.market]?.rules;
+    const base =
+      (maker ? r?.makerFee : r?.takerFee) ?? (maker ? input.fees[e].maker : input.fees[e].taker);
     const builder = e === "perps" || o.side === "sell" ? input.fees.builder : "0";
     return mul(mul(price, o.quantity), dec(base).add(builder));
   };
@@ -194,15 +213,30 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
   const apply = (list: readonly StrategyAction[], at: number): StrategyEvent[] => {
     const out: StrategyEvent[] = [];
     for (const a of list) {
+      if (a.type === "modifyStop") {
+        const x = stops.get(a.clOrdID);
+        if (x === undefined)
+          out.push({ type: "orderReject", at, clOrdID: a.clOrdID, code: "STOP_NOT_FOUND" });
+        else x.price = dec(a.stopPrice);
+        continue;
+      }
       if (a.type === "cancel") {
         open.delete(a.clOrdID);
+        stops.delete(a.clOrdID);
         const i = pendingMarket.findIndex((o) => o.clOrdID === a.clOrdID);
         if (i >= 0) pendingMarket.splice(i, 1);
+        // Khớp engine: huỷ thành công → `orderDone` (DEC-100, Volume Maker dọn lệnh cancelling).
+        out.push({ type: "orderDone", at, clOrdID: a.clOrdID });
         continue;
       }
       if (a.type !== "place") continue;
       const o = a.order;
       const price = last.get(o.market) ?? null;
+      if (o.stop !== undefined) {
+        out.push({ type: "orderAck", at, clOrdID: o.clOrdID });
+        stops.set(o.clOrdID, { order: o, price: dec(o.stop.price) });
+        continue;
+      }
       if (o.type === "market") {
         out.push({ type: "orderAck", at, clOrdID: o.clOrdID });
         pendingMarket.push(o);
@@ -259,6 +293,7 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
   let maxDd = new Decimal(0);
   let maxDdPct = new Decimal(0);
   const fundingIdx = new Map<string, number>();
+  const candleIdx = new Map<string, number>();
   const fundingWindow = new Map<string, FundingPoint[]>();
 
   for (const t of times) {
@@ -284,6 +319,26 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
         const prev = i === 0 ? null : (path[i - 1] ?? null);
         last.set(m, p);
         const hit: StrategyEvent[] = [];
+        const stopHits: StrategyEvent[] = [];
+        if (prev !== null && stops.size > 0) {
+          const lo = Decimal.min(prev, p);
+          const hi = Decimal.max(prev, p);
+          for (const [id, x] of [...stops]) {
+            if (x.order.market !== m) continue;
+            const q = pos.get(m) ?? new Decimal(0);
+            const closes = x.order.side === "sell" ? q.gt(0) : q.lt(0);
+            if (!closes) {
+              // Không còn vị thế để giảm: SoDEX không khớp gì, lệnh hết hiệu lực.
+              stops.delete(id);
+              continue;
+            }
+            const hitNow = x.order.side === "sell" ? lo.lte(x.price) : hi.gte(x.price);
+            if (!hitNow) continue;
+            stops.delete(id);
+            const o = { ...x.order, quantity: q.abs().toString() };
+            stopHits.push(fill(o, slipped(o, x.price.toString()), false, t));
+          }
+        }
         if (prev !== null && open.size > 0) {
           const a = Number(prev);
           const b = Number(p);
@@ -301,7 +356,7 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
             hit.push(fill(x.order, x.order.price ?? p, true, t));
           }
         }
-        feed([{ type: "tick", at: t, market: m, price: p }, ...hit]);
+        feed([...stopHits, { type: "tick", at: t, market: m, price: p }, ...hit]);
       }
     }
     // 3. Funding của các kỳ chốt trong nến này (Perps): trả = vị thế × giá × rate (dương = trả).
@@ -344,8 +399,27 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
       }
       fundingIdx.set(m, i);
     }
-    // 4. Timer mỗi nến (Recurring Buy, Rebalancing, TWAP dùng đồng hồ).
-    feed([{ type: "timer", at: t + input.intervalMs - 1 }]);
+    // 4. Timer mỗi nến (Recurring Buy, Rebalancing, TWAP dùng đồng hồ; Volume Farming cần thêm nến).
+    const at = t + input.intervalMs - 1;
+    const snap = input.snapshotCandles;
+    const m0 = marketNames[0];
+    if (snap === undefined || m0 === undefined) feed([{ type: "timer", at }]);
+    else {
+      const list = input.markets[m0]?.candles ?? [];
+      const idx = candleIdx.get(m0) ?? 0;
+      let i = idx;
+      while (i < list.length && (list[i]?.t ?? Infinity) <= t) i += 1;
+      candleIdx.set(m0, i);
+      const window = list.slice(Math.max(0, i - snap), i).map((k) => ({
+        t: k.t,
+        o: k.o,
+        h: k.h,
+        l: k.l,
+        c: k.c,
+        v: k.v ?? "0",
+      }));
+      feed([{ type: "timer", at, market: { market: m0, candles: window, book: null } }]);
+    }
     const eq = equityAt();
     curve.push({ at: t + input.intervalMs, value: eq });
     peak = Decimal.max(peak, eq);

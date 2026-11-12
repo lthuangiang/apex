@@ -52,6 +52,20 @@
   --on-ink-neg: #ff9c9c;
   --on-ink-neg-2: #ffc9c9;
 
+  /* Chart ở màn tạo bot (IMP-05, mockup Create): nến, nền chart và dải màu bản đồ thanh lý (thấp → cao). */
+  --candle-up: #26c281;
+  --candle-down: #f0535b;
+  --chart-bg: #f7f9ff;
+  --heat-bg: #440154;
+  --heat-1: #3b528b;
+  --heat-2: #2c728e;
+  --heat-3: #21918c;
+  --heat-4: #3dbc74;
+  --heat-5: #5ec962;
+  --heat-6: #addc30;
+  --heat-7: #fde725;
+  --heat-scale: linear-gradient(180deg, #fde725 0%, #5ec962 25%, #21918c 50%, #3b528b 75%, #440154 100%);
+
   --radius-control: 12px;
   --radius-tile: 18px;
   --radius-card: 24px;

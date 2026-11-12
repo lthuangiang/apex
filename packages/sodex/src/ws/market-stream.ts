@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { parseSodexJson } from "../rest/json";
 
-import { WS_PING_INTERVAL_MS, reconnectDelay } from "./constants";
+import { WS_MARKET_STALE_MS, WS_PING_INTERVAL_MS, reconnectDelay } from "./constants";
 import { wsAckSchema, wsPushSchema } from "./schemas";
 import type { WebSocketFactory, WebSocketLike } from "./user-stream";
 
@@ -54,6 +54,8 @@ export interface MarketStreamOptions {
   callbacks: MarketStreamCallbacks;
   createSocket?: WebSocketFactory;
   pingIntervalMs?: number;
+  /** Không có dữ liệu giá trong ngần này (ms) thì nối lại; mặc định `WS_MARKET_STALE_MS`. */
+  staleMs?: number;
 }
 
 export class MarketStream {
@@ -61,6 +63,9 @@ export class MarketStream {
   readonly #options: MarketStreamOptions;
   readonly #createSocket: WebSocketFactory;
   readonly #ping: number;
+  readonly #stale: number;
+  /** Lần cuối nhận nến / mark price (hoặc lúc mở socket). Pong và ack không tính. */
+  #lastData = 0;
   #ws: WebSocketLike | null = null;
   #closed = false;
   #hasConnected = false;
@@ -72,6 +77,7 @@ export class MarketStream {
     this.#options = options;
     this.#createSocket = options.createSocket ?? ((url) => new WebSocket(url));
     this.#ping = options.pingIntervalMs ?? WS_PING_INTERVAL_MS;
+    this.#stale = options.staleMs ?? WS_MARKET_STALE_MS;
   }
 
   connect(): void {
@@ -90,8 +96,12 @@ export class MarketStream {
     if (this.#closed) return;
     const ws = this.#createSocket(this.#url);
     this.#ws = ws;
+    this.#lastData = Date.now();
+    // Hẹn giờ ngay từ lúc tạo socket: kết nối treo (không open, không error) cũng bị bỏ và nối lại.
+    this.#arm(ws);
     ws.addEventListener("open", () => {
       if (this.#ws !== ws) return;
+      this.#lastData = Date.now();
       const reconnected = this.#hasConnected;
       this.#hasConnected = true;
       this.#attempt = 0;
@@ -143,12 +153,17 @@ export class MarketStream {
     if (!push.success) return;
     if (push.data.channel === "candle") {
       const candle = wsCandleSchema.safeParse(push.data.data);
-      if (candle.success) this.#options.callbacks.onCandle(candle.data);
-      else this.#options.callbacks.onError(new Error("SoDEX WS candle did not match schema"));
+      if (candle.success) {
+        this.#lastData = Date.now();
+        this.#options.callbacks.onCandle(candle.data);
+      } else this.#options.callbacks.onError(new Error("SoDEX WS candle did not match schema"));
     } else if (push.data.channel === "allMarkPrice") {
       const marks = z.array(wsMarkPriceSchema).safeParse(push.data.data);
-      if (marks.success) this.#options.callbacks.onMarkPrices?.(marks.data);
-      else this.#options.callbacks.onError(new Error("SoDEX WS allMarkPrice did not match schema"));
+      if (marks.success) {
+        this.#lastData = Date.now();
+        this.#options.callbacks.onMarkPrices?.(marks.data);
+      } else
+        this.#options.callbacks.onError(new Error("SoDEX WS allMarkPrice did not match schema"));
     }
   }
 
@@ -156,6 +171,16 @@ export class MarketStream {
     this.#clearTimer();
     this.#timer = setTimeout(() => {
       if (this.#ws !== ws) return;
+      // Còn trả pong nhưng không còn đẩy giá (mất subscription phía SoDEX): nối lại để subscribe lại.
+      if (Date.now() - this.#lastData > this.#stale) {
+        this.#options.callbacks.onError(
+          new Error(
+            `SoDEX market WS sent no prices for ${String(Math.round(this.#stale / 1000))} s; reconnecting`,
+          ),
+        );
+        this.#drop(ws);
+        return;
+      }
       if (ws.readyState === 1) ws.send(JSON.stringify({ op: "ping" }));
       this.#timer = setTimeout(() => {
         this.#drop(ws);

@@ -2,6 +2,7 @@ import { dec } from "@drift/shared";
 import { z } from "zod";
 
 import { safetyOffsetPct } from "../common/dca-bot";
+import { entryFields, nextCycleFields, refineEntry, refineNextCycle } from "../common/entry";
 import { leverageSchema, marginModeSchema } from "../common/perps";
 import { marketSchema, optionalPositive, percent, positiveDecimal } from "../common/schema";
 
@@ -25,6 +26,8 @@ export const futuresDcaSchema = z
     takeProfitPct: positiveDecimal(),
     stopLossPct: positiveDecimal(),
     maxLoss: optionalPositive(),
+    ...entryFields,
+    ...nextCycleFields,
   })
   .superRefine((c, ctx) => {
     if (dec(c.stopLossPct).lte(safetyOffsetPct(c, c.maxSafetyOrders))) {
@@ -34,5 +37,7 @@ export const futuresDcaSchema = z
         message: "Must be larger than the last safety order drop.",
       });
     }
+    refineEntry(c, ctx);
+    refineNextCycle(c, ctx);
   });
 export type FuturesDcaConfig = z.infer<typeof futuresDcaSchema>;

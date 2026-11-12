@@ -6,11 +6,13 @@ import { BotState, REASON_CODE_META, ReasonCode } from "../enums";
 describe("bot state machine", () => {
   it("only enters transitional states on user commands", () => {
     expect(applyCommand(BotState.draft, BotCommand.start)).toBe(BotState.starting);
+    expect(applyCommand(BotState.stopped, BotCommand.start)).toBe(BotState.starting);
     expect(applyCommand(BotState.running, BotCommand.pause)).toBe(BotState.pausing);
     expect(applyCommand(BotState.paused, BotCommand.resume)).toBe(BotState.resuming);
     expect(applyCommand(BotState.running, BotCommand.stop)).toBe(BotState.stopping);
     expect(applyCommand(BotState.paused, BotCommand.stop)).toBe(BotState.stopping);
     expect(applyCommand(BotState.stopped, BotCommand.archive)).toBe(BotState.archived);
+    expect(applyCommand(BotState.archived, BotCommand.unarchive)).toBe(BotState.stopped);
   });
 
   it("rejects invalid commands", () => {

@@ -25,8 +25,8 @@ export type SignedWriteOutcome =
   | { outcome: "ok"; data: unknown }
   /** SoDEX trả envelope lỗi (`code` âm): chắc chắn không được nhận. */
   | { outcome: "rejected"; status: number; sodexCode: number; sodexError: string }
-  /** Không biết SoDEX đã nhận hay chưa. */
-  | { outcome: "unknown" };
+  /** Không biết SoDEX đã nhận hay chưa. `detail`: HTTP status / đoạn đầu response, chỉ để ghi log. */
+  | { outcome: "unknown"; detail?: string };
 
 export interface SignedWriteRequest {
   /** Đường dẫn sau `/api/v1`, ví dụ `/perps/trade/orders`. */
@@ -101,15 +101,18 @@ export class SignedWriteClient {
         signal: AbortSignal.timeout(this.#timeoutMs),
       });
       text = await response.text();
-    } catch {
-      return { outcome: "unknown" };
+    } catch (error) {
+      return { outcome: "unknown", detail: `network: ${String(error).slice(0, 200)}` };
     }
 
     let body: unknown;
     try {
       body = parseSodexJson(text);
     } catch {
-      return { outcome: "unknown" };
+      return {
+        outcome: "unknown",
+        detail: `HTTP ${String(response.status)}: ${text.slice(0, 300)}`,
+      };
     }
 
     const failure = errorEnvelopeSchema.safeParse(body);
@@ -126,7 +129,7 @@ export class SignedWriteClient {
     if (response.ok && success.success) {
       return { outcome: "ok", data: success.data.data };
     }
-    return { outcome: "unknown" };
+    return { outcome: "unknown", detail: `HTTP ${String(response.status)}: ${text.slice(0, 300)}` };
   }
 
   async #checkRateLimit(request: SignedWriteRequest): Promise<void> {

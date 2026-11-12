@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRIFT AI Desk chat</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EEF1FA}
+a{color:#2E62E8}a:hover{color:#1D47B8}
+.btn{transition:background-color .15s ease}
+.btn:hover{filter:brightness(0.97)}
+.btn:focus-visible,.nav:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid #8FB0FF;outline-offset:2px}
+.nav:hover{background:#F2F5FD}
+.num{font-variant-numeric:tabular-nums}
+.th{padding:10px 14px;font-size:12px;font-weight:700;color:#5F6684;text-align:left;white-space:nowrap;border-bottom:1px solid #E3E7F5}
+.td{padding:13px 14px;font-size:14px;text-align:left;border-bottom:1px solid #EEF1F8;vertical-align:top}
+@media (max-width:760px){.side-nav{flex-direction:row !important;flex-wrap:wrap}}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</helmet>
+<div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141A33; background: #EEF1FA; min-height: 100vh; box-sizing: border-box; padding: 20px; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+<aside style="flex: 1 1 236px; max-width: 100%; box-sizing: border-box; background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 20px 14px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; gap: 10px; padding: 4px 8px">
+<div style="width: 36px; height: 36px; border-radius: 11px; background: #2E62E8; display: flex; align-items: center; justify-content: center; color: #FFFFFF">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15c3-6 6 2 9-3s5-5 7-4"></path><path d="M4 20h16"></path></svg>
+</div>
+<div style="display: flex; flex-direction: column"><span style="font-weight: 800; font-size: 18px; letter-spacing: 0.06em">DRIFT</span><span style="font-size: 12px; color: #5F6684; font-weight: 500">Profit Bot workspace</span></div>
+</div>
+<nav aria-label="Main" class="side-nav" style="display: flex; flex-direction: column; gap: 2px">
+<a href="Main.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Overview</a>
+<a href="Portfolio.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="3"></rect><path d="M16 13h2"></path><path d="M6 6V5a2 2 0 0 1 2-2h8"></path></svg>Portfolio</a>
+<a href="AIDesk.dc.html" aria-current="page" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; background: #2E62E8; color: #FFFFFF; text-decoration: none; font-weight: 700; font-size: 14px; box-shadow: 0 6px 16px rgba(46,98,232,0.28)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"></circle><circle cx="5" cy="18" r="2.5"></circle><circle cx="19" cy="18" r="2.5"></circle><path d="M10.8 7.2 6.2 15.8M13.2 7.2l4.6 8.6M7.5 18h9"></path></svg>AI Desk</a>
+<a href="Bots.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6A2 2 0 0 0 19 18l-5-9V3"></path><path d="M7.5 15h9"></path></svg>Strategy Lab</a>
+<a href="Agent.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="3"></rect><path d="M12 4v4M9 13v1M15 13v1M9.5 17h5"></path></svg>Trading Agent</a>
+<a href="Orders.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"></path></svg>Execution &amp; Orders</a>
+<a href="Risk.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"></path></svg>Risk Center</a>
+<div style="height: 1px; background: #E3E7F5; margin: 10px 8px"></div>
+<a href="Revenue.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="9" cy="7" rx="6" ry="3"></ellipse><path d="M3 7v5c0 1.7 2.7 3 6 3s6-1.3 6-3V7"></path><path d="M15 10.2c3 .3 6 1.4 6 2.8v5c0 1.7-2.7 3-6 3s-6-1.3-6-3v-2"></path></svg>Builder Revenue</a>
+<a href="Connections.dc.html" class="nav" style="display: flex; align-items: center; gap: 12px; padding: 11px 12px; border-radius: 12px; color: #3B4262; text-decoration: none; font-weight: 600; font-size: 14px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg>Settings</a>
+</nav>
+</aside>
+<main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+<header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.01em">AI Desk</h1>
+<p style="margin: 0; font-size: 14px; color: #5F6684">Explore strategy ideas with the AI team. Every idea goes through the same tests.</p>
+</div>
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #FCE7C8; color: #8A4B00">Sample data</span>
+</header>
+<nav aria-label="AI Desk sections" style="display: flex; flex-wrap: wrap; gap: 8px"><a href="AIDesk.dc.html" style="min-height: 44px; padding: 0 18px; border-radius: 14px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 700; text-decoration: none; background: #FFFFFF; color: #3B4262; border: 1px solid #E3E7F5">Recommended</a>
+<a href="AIDesk-Bots.dc.html" style="min-height: 44px; padding: 0 18px; border-radius: 14px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 700; text-decoration: none; background: #FFFFFF; color: #3B4262; border: 1px solid #E3E7F5">Your bots</a>
+<a href="AIDesk-Ask.dc.html" aria-current="page" style="min-height: 44px; padding: 0 18px; border-radius: 14px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 700; text-decoration: none; background: #2E62E8; color: #FFFFFF">Ask AI</a>
+</nav>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px"><span style="font-size: 13px; color: #5F6684">Sample step:</span><sc-for list="{{tabs}}" as="t" hint-placeholder-count="4"><button class="btn" type="button" aria-pressed="{{t.pressed}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button></sc-for></div>
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch">
+<section aria-label="Conversation" style="flex: 3 1 460px; min-width: 0; background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 12px; min-height: 640px">
+<sc-for list="{{msgs}}" as="m" hint-placeholder-count="4">
+<sc-if value="{{m.you}}" hint-placeholder-val="{{ false }}"><div style="align-self: flex-end; max-width: 70%; background: #2E62E8; color: #FFFFFF; border-radius: 18px 18px 4px 18px; padding: 12px 16px; font-size: 14px; line-height: 1.5">{{m.text}}</div></sc-if>
+<sc-if value="{{m.ai}}" hint-placeholder-val="{{ true }}"><div style="align-self: flex-start; max-width: 78%; background: #F4F6FD; border-radius: 18px 18px 18px 4px; padding: 12px 16px; font-size: 14px; line-height: 1.5">{{m.text}}</div></sc-if>
+<sc-if value="{{m.card}}" hint-placeholder-val="{{ false }}"><div style="align-self: stretch; border: 1px solid #C9D3F5; border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px"><strong style="font-size: 15px">{{m.title}}</strong><ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; line-height: 1.5; color: #3B4262"><sc-for list="{{m.lines}}" as="l" hint-placeholder-count="3"><li>{{l.t}}</li></sc-for></ul></div></sc-if>
+</sc-for>
+<div style="display: flex; flex-wrap: wrap; gap: 8px"><sc-if value="{{hasA}}" hint-placeholder-val="{{ true }}"><sc-if value="{{rep}}" hint-placeholder-val="{{ false }}"><a class="btn" href="AIDesk-Report.dc.html" style="min-height: 44px; padding: 0 16px; border-radius: 12px; border: none; background: #2E62E8; color: #FFFFFF; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center">{{a}}</a></sc-if><sc-if value="{{notRep}}" hint-placeholder-val="{{ true }}"><button class="btn" type="button" onClick="{{next}}" style="min-height: 44px; padding: 0 16px; border-radius: 12px; border: none; background: #2E62E8; color: #FFFFFF; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center">{{a}}</button></sc-if><button class="btn" type="button" style="min-height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid #C9D3F5; background: #FFFFFF; color: #141A33; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center">{{b}}</button></sc-if></div>
+<div style="flex: 1"></div>
+<form onsubmit="return false" style="display: flex; gap: 10px; align-items: flex-end">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px"><label for="ask" style="font-size: 13px; color: #5F6684">Describe a strategy idea</label><textarea id="ask" rows="2" style="box-sizing: border-box; width: 100%; border: 1px solid #C9D3F5; border-radius: 14px; padding: 12px; font: inherit; font-size: 15px; color: #141A33; background: #FFFFFF; resize: vertical"></textarea></div>
+<button class="btn" type="button" style="min-height: 44px; padding: 0 16px; border-radius: 12px; border: none; background: #2E62E8; color: #FFFFFF; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; min-height: 48px">Send</button>
+</form>
+</section>
+<aside aria-labelledby="st-h" style="flex: 2 1 300px; min-width: 0; background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 10px; align-self: flex-start">
+<h2 id="st-h" style="margin: 0; font-size: 18px; font-weight: 800">Slow Trend · ETH</h2>
+<ul style="list-style: none; margin: 0; padding: 0"><sc-for list="{{steps}}" as="s" hint-placeholder-count="5"><li style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid #EEF1F8; font-size: 14px"><span>{{s.name}}</span><span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; {{s.pill}}">{{s.state}}</span></li></sc-for></ul>
+<p style="margin: 0; font-size: 13px; line-height: 1.5; color: #3B4262">{{hint}}</p>
+<p class="num" style="margin: 0; font-size: 13px; font-weight: 700; color: #3B4262">{{tries}}</p>
+<p style="margin: 0; font-size: 12px; line-height: 1.5; color: #5F6684">AI writes the rules. Tests and verdicts come from fixed code. Chat cannot place orders or see sealed data.</p>
+</aside>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { s: '1' }; }
+  renderVals() {
+    var self = this, S = {"1": {"tab": "1 Understand", "msgs": [{"you": true, "ai": false, "card": false, "text": "Test a slow trend on ETH, but skip sideways months."}, {"you": false, "ai": false, "card": true, "title": "Here's what I'll test", "lines": [{"t": "Buy ETH when the 20-day average is above the 100-day average."}, {"t": "Sell when it falls below."}, {"t": "Stay out when volatility is low."}, {"t": "No leverage. Includes fees and slippage."}]}], "steps": [{"name": "Write the rules", "state": "Now", "pill": "background: #DCE6FF; color: #1D47B8"}, {"name": "Quick test", "state": "Next", "pill": "background: #EEF1F8; color: #5F6684"}, {"name": "Full check", "state": "Next", "pill": "background: #EEF1F8; color: #5F6684"}, {"name": "Fake money", "state": "Locked", "pill": "background: #EEF1F8; color: #5F6684"}, {"name": "Real money", "state": "Locked", "pill": "background: #EEF1F8; color: #5F6684"}], "tries": "7 of 20 tries used today", "hint": "No try is used until you press Run test.", "a": "Run test", "b": "Change something", "rep": false, "sendOff": false}, "2": {"tab": "2 Quick test", "msgs": [{"you": true, "ai": false, "card": false, "text": "Test a slow trend on ETH, but skip sideways months."}, {"you": false, "ai": false, "card": true, "title": "Here's what I'll test", "lines": [{"t": "Buy ETH when the 20-day average is above the 100-day average."}, {"t": "Sell when it falls below."}, {"t": "Stay out when volatility is low."}, {"t": "No leverage. Includes fees and slippage."}]}, {"you": false, "ai": true, "card": false, "text": "Test running on research data. 8 of 20 tries used today."}, {"you": false, "ai": false, "card": true, "title": "Quick result \u00b7 research data only", "lines": [{"t": "If you had used 5,000 USDC: +440 USDC"}, {"t": "Worst drop: \u2212700 USDC"}, {"t": "41 trades \u00b7 62 USDC in fees"}]}, {"you": false, "ai": true, "card": false, "text": "It made money in this period, but with only 41 trades. The full check will tell you more."}], "steps": [{"name": "Write the rules", "state": "Done", "pill": "background: #DDF3E6; color: #0E6A3C"}, {"name": "Quick test", "state": "Done", "pill": "background: #DDF3E6; color: #0E6A3C"}, {"name": "Full check", "state": "Now", "pill": "background: #DCE6FF; color: #1D47B8"}, {"name": "Fake money", "state": "Locked", "pill": "background: #EEF1F8; color: #5F6684"}, {"name": "Real money", "state": "Locked", "pill": "background: #EEF1F8; color: #5F6684"}], "tries": "8 of 20 tries used today", "hint": "The full check runs once per idea, on data the AI never saw.", "a": "Run full check", "b": "Change the idea", "rep": false, "sendOff": false}, "3": {"tab": "3 Full check", "msgs": [{"you": true, "ai": false, "card": false, "text": "Test a slow trend on ETH, but skip sideways months."}, {"you": false, "ai": false, "card": true, "title": "Here's what I'll test", "lines": [{"t": "Buy ETH when the 20-day average is above the 100-day average."}, {"t": "Sell when it falls below."}, {"t": "Stay out when volatility is low."}, {"t": "No leverage. Includes fees and slippage."}]}, {"you": false, "ai": true, "card": false, "text": "Test running on research data. 8 of 20 tries used today."}, {"you": false, "ai": false, "card": true, "title": "Quick result \u00b7 research data only", "lines": [{"t": "If you had used 5,000 USDC: +440 USDC"}, {"t": "Worst drop: \u2212700 USDC"}, {"t": "41 trades \u00b7 62 USDC in fees"}]}, {"you": false, "ai": true, "card": false, "text": "It made money in this period, but with only 41 trades. The full check will tell you more."}, {"you": false, "ai": true, "card": false, "text": "Full check finished. These numbers come from the test, not from me."}, {"you": false, "ai": false, "card": true, "title": "Needs more evidence", "lines": [{"t": "Made money after fees: Yes"}, {"t": "Worked on unseen data: Yes"}, {"t": "Better than holding: Not sure"}, {"t": "Could be luck: Not sure"}, {"t": "Survives small changes: Not sure"}]}], "steps": [{"name": "Write the rules", "state": "Done", "pill": "background: #DDF3E6; color: #0E6A3C"}, {"name": "Quick test", "state": "Done", "pill": "background: #DDF3E6; color: #0E6A3C"}, {"name": "Full check", "state": "Done", "pill": "background: #DDF3E6; color: #0E6A3C"}, {"name": "Fake money", "state": "Now", "pill": "background: #DCE6FF; color: #1D47B8"}, {"name": "Real money", "state": "Locked", "pill": "background: #EEF1F8; color: #5F6684"}], "tries": "8 of 20 tries used today", "hint": "Changing the rules now makes a new idea. It counts as another try.", "a": "Open report", "b": "Try a new idea", "rep": true, "sendOff": false}, "x": {"tab": "Not allowed", "msgs": [{"you": true, "ai": false, "card": false, "text": "Will BTC go up next week? Just start a bot for me."}, {"you": false, "ai": true, "card": false, "text": "I can't predict prices or start bots. I can test an idea for you, for example: buy BTC when it closes above its 50-day average. Want to try that?"}], "steps": [{"name": "Write the rules", "state": "Next", "pill": "background: #EEF1F8; color: #5F6684"}, {"name": "Quick test", "state": "Next", "pill": "background: #EEF1F8; color: #5F6684"}, {"name": "Full check", "state": "Next", "pill": "background: #EEF1F8; color: #5F6684"}, {"name": "Fake money", "state": "Locked", "pill": "background: #EEF1F8; color: #5F6684"}, {"name": "Real money", "state": "Locked", "pill": "background: #EEF1F8; color: #5F6684"}], "tries": "7 of 20 tries used today", "hint": "Chat cannot predict prices, place orders or start bots.", "a": "", "b": "", "rep": false, "sendOff": false}}, e = S[this.state.s], order = ['1','2','3'];
+    return Object.assign({}, e, {
+      hasA: e.a !== '', notRep: !e.rep,
+      next: function () { var i = order.indexOf(self.state.s); if (i >= 0 && i < 2) self.setState({ s: order[i + 1] }); },
+      tabs: Object.keys(S).map(function (k) {
+        var on = self.state.s === k;
+        return { label: S[k].tab, pressed: on ? 'true' : 'false', pick: function () { self.setState({ s: k }); },
+          style: 'min-height: 44px; padding: 0 14px; border-radius: 12px; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer; ' + (on ? 'background: #141A33; color: #FFFFFF; border: 1px solid #141A33' : 'background: #FFFFFF; color: #141A33; border: 1px solid #C9D3F5') };
+      })
+    });
+  }
+}
+</script>
+</body>
+</html>

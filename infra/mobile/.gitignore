@@ -1,0 +1,5 @@
+# Project Android do Bubblewrap sinh (gồm android.keystore: khoá ký app, không bao giờ commit) và file build.
+android/
+out/
+*.keystore
+*.jks

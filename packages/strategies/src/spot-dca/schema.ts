@@ -2,6 +2,7 @@ import { dec } from "@drift/shared";
 import { z } from "zod";
 
 import { safetyOffsetPct } from "../common/dca-bot";
+import { entryFields, nextCycleFields, refineEntry, refineNextCycle } from "../common/entry";
 import { marketSchema, optionalPositive, percent, positiveDecimal } from "../common/schema";
 
 // S3 Spot DCA (STRATEGIES.md). "≥ SoDEX min size" và "TP > round-trip fees" kiểm tra bằng dữ liệu ngoài.
@@ -19,8 +20,11 @@ export const spotDcaSchema = z
     stepMultiplier: percent(1, 3, "Allowed 1–3×."),
     sizeMultiplier: percent(1, 3, "Allowed 1–3×."),
     takeProfitPct: positiveDecimal(),
-    start: z.enum(["immediately", "price_at_or_below"]),
+    /** Cũ (trước DEC-91): thay bằng `entry`. Vẫn đọc được; config cũ có `price_at_or_below` chạy như At price. */
+    start: z.enum(["immediately", "price_at_or_below"]).optional(),
     startLevel: optionalPositive(),
+    ...entryFields,
+    ...nextCycleFields,
     stopLossPct: optionalPositive(),
     maxCycles: z.number().int().min(1, { message: "Must be 1 or more." }).optional(),
     maxLoss: optionalPositive(),
@@ -36,8 +40,10 @@ export const spotDcaSchema = z
         message: "Must be larger than the last safety order drop.",
       });
     }
-    if (c.start === "price_at_or_below" && c.startLevel === undefined) {
+    if (c.entry === undefined && c.start === "price_at_or_below" && c.startLevel === undefined) {
       ctx.addIssue({ code: "custom", path: ["startLevel"], message: "Required." });
     }
+    refineEntry(c, ctx);
+    refineNextCycle(c, ctx, c.start === "price_at_or_below");
   });
 export type SpotDcaConfig = z.infer<typeof spotDcaSchema>;

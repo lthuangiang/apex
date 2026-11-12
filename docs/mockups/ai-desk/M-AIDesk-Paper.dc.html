@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRIFT Fake-money test mobile</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EEF1FA}
+a{color:#2E62E8}a:hover{color:#1D47B8}
+.btn{transition:background-color .15s ease}
+.btn:hover{filter:brightness(0.97)}
+.btn:focus-visible,.nav:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid #8FB0FF;outline-offset:2px}
+.nav:hover{background:#F2F5FD}
+.num{font-variant-numeric:tabular-nums}
+.th{padding:10px 14px;font-size:12px;font-weight:700;color:#5F6684;text-align:left;white-space:nowrap;border-bottom:1px solid #E3E7F5}
+.td{padding:13px 14px;font-size:14px;text-align:left;border-bottom:1px solid #EEF1F8;vertical-align:top}
+@media (max-width:760px){.side-nav{flex-direction:row !important;flex-wrap:wrap}}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</helmet>
+<div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141A33; background: #EEF1FA; width: 390px; min-height: 1000px; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+<header style="display: flex; flex-direction: column; gap: 6px"><h1 style="margin: 0; font-size: 24px; font-weight: 800">Spot Grid · BTC</h1><div style="display: flex; gap: 6px; flex-wrap: wrap"><span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #141A33; color: #FFFFFF">PAPER · fake money</span><span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #FCE7C8; color: #8A4B00">Sample data</span></div></header>
+<section style="border-radius: 24px; padding: 18px; background: linear-gradient(135deg, #E3E8FE 0%, #CBD5FB 100%)"><div style="font-size: 13px; color: #3B4262">Simulated balance · Day 12</div><strong class="num" style="font-size: 30px; font-weight: 800">5,086.40 USDC</strong><div class="num" style="font-size: 14px; font-weight: 700">+86.40 after fees</div></section>
+<section style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 8px"><h2 style="margin: 0; font-size: 16px; font-weight: 800">Balance by day</h2><svg viewBox="0 0 360 180" role="img" aria-label="Simulated balance rose over 12 days" style="display: block; width: 100%; height: auto"><line x1="0" x2="360" y1="71.8" y2="71.8" stroke="#C9D3F5" stroke-width="1" stroke-dasharray="4 4"></line><polyline points="12.0,71.8 42.5,63.2 73.1,80.0 103.6,113.0 134.2,168.0 164.7,137.3 195.3,100.4 225.8,70.3 256.4,47.9 286.9,56.6 317.5,29.7 348.0,12.0" fill="none" stroke="#2E62E8" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline><circle cx="348.0" cy="12.0" r="5" fill="#2E62E8" stroke="#FFFFFF" stroke-width="2"></circle><circle cx="12.0" cy="71.8" r="10" fill="transparent"><title>Day 1: 5,000.00 USDC</title></circle><circle cx="42.5" cy="63.2" r="10" fill="transparent"><title>Day 2: 5,012.40 USDC</title></circle><circle cx="73.1" cy="80.0" r="10" fill="transparent"><title>Day 3: 4,988.20 USDC</title></circle><circle cx="103.6" cy="113.0" r="10" fill="transparent"><title>Day 4: 4,940.50 USDC</title></circle><circle cx="134.2" cy="168.0" r="10" fill="transparent"><title>Day 5: 4,861.00 USDC</title></circle><circle cx="164.7" cy="137.3" r="10" fill="transparent"><title>Day 6: 4,905.30 USDC</title></circle><circle cx="195.3" cy="100.4" r="10" fill="transparent"><title>Day 7: 4,958.70 USDC</title></circle><circle cx="225.8" cy="70.3" r="10" fill="transparent"><title>Day 8: 5,002.10 USDC</title></circle><circle cx="256.4" cy="47.9" r="10" fill="transparent"><title>Day 9: 5,034.60 USDC</title></circle><circle cx="286.9" cy="56.6" r="10" fill="transparent"><title>Day 10: 5,021.90 USDC</title></circle><circle cx="317.5" cy="29.7" r="10" fill="transparent"><title>Day 11: 5,060.80 USDC</title></circle><circle cx="348.0" cy="12.0" r="10" fill="transparent"><title>Day 12: 5,086.40 USDC</title></circle></svg>
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: #5F6684"><span>Day 1</span><span>Dashed line: starting 5,000 USDC</span><span>Day 12</span></div></section>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px"><div style="background: #F4F6FD; border-radius: 16px; padding: 14px; min-width: 0"><div style="font-size: 13px; color: #5F6684">Trades</div><strong class="num" style="font-size: 22px">64</strong></div><div style="background: #F4F6FD; border-radius: 16px; padding: 14px; min-width: 0"><div style="font-size: 13px; color: #5F6684">Biggest drop</div><strong class="num" style="font-size: 22px">−139</strong></div></div>
+<section style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><h2 style="margin: 0; font-size: 16px; font-weight: 800">Last action</h2><p style="margin: 0; font-size: 14px; line-height: 1.5; color: #3B4262">Sold 0.01 BTC at 103,000. Made 9.20 USDC after fees.</p></section>
+<a class="btn" href="AIDesk-Result.dc.html" style="min-height: 48px; padding: 0 18px; border-radius: 14px; border: none; background: #2E62E8; color: #FFFFFF; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center">See results</a>
+<button class="btn" type="button" style="min-height: 48px; padding: 0 18px; border-radius: 14px; border: 1px solid #C9D3F5; background: #FFFFFF; color: #141A33; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center">Stop test</button>
+<p style="margin: 0; font-size: 13px; line-height: 1.5; color: #5F6684">Simulated results can look better than real trading. Real orders may not fill the same way.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

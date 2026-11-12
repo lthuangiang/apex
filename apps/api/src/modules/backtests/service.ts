@@ -7,6 +7,8 @@ import {
   backtestWindow,
   dataVersion,
   ErrorCode,
+  backtestPeriodsOf,
+  ONE_MINUTE_STRATEGIES,
   SODEX_INTERVAL_FOR_PERIOD,
   type BacktestInterval,
   type BacktestView,
@@ -24,7 +26,6 @@ import { iso } from "../security/service";
 export interface BacktestDeps {
   db: Db;
   now: () => Date;
-  volumeMakerEnabled?: boolean;
 }
 
 /** JSON có khoá sắp xếp, để cùng config luôn ra cùng hash. */
@@ -81,7 +82,15 @@ export async function startBacktest(
   userId: string,
   body: StartBacktestBody,
 ): Promise<BacktestView> {
-  assertStrategyAvailable(body.strategy, deps.volumeMakerEnabled);
+  await assertStrategyAvailable(deps.db, userId, body.strategy);
+  if (!backtestPeriodsOf(body.strategy).includes(body.periodDays))
+    throw new AppError(
+      ErrorCode.validationFailed,
+      "This backtest period isn't available for this strategy.",
+      {
+        fieldErrors: { periodDays: ["Not available for this strategy."] },
+      },
+    );
   const config = parseConfig(body.strategy, body.config);
   const markets = marketsOf(body.strategy, config);
   const market = requirementOf(body.strategy, config).market;
@@ -96,7 +105,11 @@ export async function startBacktest(
     const first = cover.find((c) => c.market === m)?.first ?? null;
     return first !== null && first.getTime() <= from;
   });
-  const interval: BacktestInterval = has1m ? "1m" : SODEX_INTERVAL_FOR_PERIOD[body.periodDays];
+  // Volume Farming đọc nến 1 phút: luôn 1m; worker bù phần DRIFT thiếu bằng nến 1 phút của SoDEX (DEC-102).
+  const interval: BacktestInterval =
+    has1m || ONE_MINUTE_STRATEGIES.includes(body.strategy)
+      ? "1m"
+      : SODEX_INTERVAL_FOR_PERIOD[body.periodDays];
   const version = dataVersion(interval, to);
   const paramsHash = createHash("sha256")
     .update(canonical({ strategy: body.strategy, config }))

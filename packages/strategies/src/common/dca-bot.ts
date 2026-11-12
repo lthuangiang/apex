@@ -1,4 +1,4 @@
-import { dec, Decimal, gte, lte, ReasonCode } from "@drift/shared";
+import { dec, Decimal, ReasonCode } from "@drift/shared";
 
 import { clOrdId, without } from "../core/ids";
 import { applyFill, applyFunding, emptyLedger, netPnl, type Ledger } from "../core/ledger";
@@ -11,6 +11,8 @@ import type {
   StrategyEvent,
   StrategyModule,
 } from "../core/types";
+
+import { entryReady, type EntryCondition, type NextCycle, type WaitingInfo } from "./entry";
 
 // Lõi DCA dùng chung cho S3 Spot DCA và S4 Futures DCA (STRATEGIES.md).
 // Mỗi chu kỳ: base order (market) → các safety order limit theo khoảng cách d₁·(1+m+…+m^(k−1)) và
@@ -31,12 +33,15 @@ export interface DcaBotConfig {
   stopLossPct?: string | undefined;
   maxCycles?: number | undefined;
   maxLoss?: string | undefined;
-  /** Chỉ bắt đầu chu kỳ khi giá ≤ mức này (long) / ≥ (short). */
-  startLevel?: string | undefined;
+  /** Điều kiện vào Cycle đầu tiên (IMP-01). Thiếu là Now. */
+  entry?: EntryCondition | undefined;
+  /** Điều kiện mở các Cycle sau (IMP-02). Thiếu là Immediately. */
+  nextCycle?: NextCycle | undefined;
 }
 
 export interface DcaBotState {
-  phase: "idle" | "waiting_base" | "in_cycle" | "halted";
+  /** `waiting_entry`: chờ điều kiện vào, chưa có lệnh nào mở. State cũ chỉ có `idle`, xử lý như nhau. */
+  phase: "idle" | "waiting_entry" | "waiting_base" | "in_cycle" | "halted";
   cycle: number;
   completedCycles: number;
   ledger: Ledger;
@@ -47,6 +52,10 @@ export interface DcaBotState {
   safetiesFilled: number;
   lastPrice: string | null;
   tpAttempt: number;
+  /** Giá chốt lời của Cycle trước (After pullback). State cũ không có: coi như không chờ. */
+  lastExitPrice?: string | null;
+  /** Mốc hết Cooldown (epoch ms), tính từ lúc lệnh take profit khớp. */
+  cooldownUntil?: number | null;
 }
 
 export const initialDcaState = (): DcaBotState => ({
@@ -60,7 +69,65 @@ export const initialDcaState = (): DcaBotState => ({
   safetiesFilled: 0,
   lastPrice: null,
   tpAttempt: 0,
+  lastExitPrice: null,
+  cooldownUntil: null,
 });
+
+/**
+ * Điều kiện Cycle kế tiếp đang chờ, không xét giá hiện tại; null là không có gì để chờ.
+ * Cycle đầu dùng First entry; Cycle sau dùng Next cycle.
+ */
+export function dcaGate(c: DcaBotConfig, s: DcaBotState): WaitingInfo | null {
+  const entry = c.entry ?? { type: "now" };
+  const firstEntry = (): WaitingInfo | null =>
+    entry.type === "now" ? null : { kind: "entry", condition: entry };
+  if (s.cycle === 0) return firstEntry();
+  const next = c.nextCycle ?? { type: "immediately" };
+  switch (next.type) {
+    case "immediately":
+      return null;
+    case "same_as_entry":
+      return firstEntry();
+    case "after_pullback": {
+      const exit = s.lastExitPrice ?? null;
+      if (exit === null) return null;
+      const pct = dec(next.pct).div(100);
+      const target =
+        c.direction === "long"
+          ? dec(exit).mul(dec("1").sub(pct))
+          : dec(exit).mul(dec("1").add(pct));
+      return { kind: "pullback", price: target.toString() };
+    }
+    case "cooldown": {
+      const until = s.cooldownUntil ?? null;
+      return until === null ? null : { kind: "cooldown", until };
+    }
+  }
+}
+
+function gateOpen(
+  c: DcaBotConfig,
+  gate: WaitingInfo,
+  prev: string | null,
+  price: string,
+  at: number,
+): boolean {
+  switch (gate.kind) {
+    case "entry":
+      return entryReady(gate.condition, c.direction, prev, price);
+    case "pullback":
+      return c.direction === "long" ? dec(price).lte(gate.price) : dec(price).gte(gate.price);
+    case "cooldown":
+      return at >= gate.until;
+    case "start_at":
+      return at >= gate.at;
+  }
+}
+
+/** Thông tin "Waiting for price" cho UI; chỉ khi bot đang chờ vào Cycle. */
+export function dcaWaiting(c: DcaBotConfig, s: DcaBotState): WaitingInfo | null {
+  return s.phase === "idle" || s.phase === "waiting_entry" ? dcaGate(c, s) : null;
+}
 
 /** % khoảng cách luỹ kế tới safety thứ k (1-based). */
 export function safetyOffsetPct(
@@ -250,12 +317,15 @@ export function stepDcaBot(
     return guards(c, state, s.lastPrice ?? "0") ?? { actions: [], state };
   }
   if (e.type === "tick") {
+    const prev = s.lastPrice;
     const state = { ...s, lastPrice: e.price };
-    if (state.phase === "idle") {
-      const ready =
-        c.startLevel === undefined ||
-        (c.direction === "long" ? lte(e.price, c.startLevel) : gte(e.price, c.startLevel));
-      return ready ? startCycle(c, state, e.price, ctx) : { actions: [], state };
+    if (state.phase === "idle" || state.phase === "waiting_entry") {
+      // Chờ thì không đặt lệnh, không khoá margin (IMP-01 bước 3).
+      const gate = dcaGate(c, state);
+      if (gate !== null && !gateOpen(c, gate, prev, e.price, e.at)) {
+        return { actions: [], state: { ...state, phase: "waiting_entry" } };
+      }
+      return startCycle(c, state, e.price, ctx);
     }
     return guards(c, state, e.price) ?? { actions: [], state };
   }
@@ -291,7 +361,7 @@ export function stepDcaBot(
         {
           type: "log",
           decision: `Safety order ${String(k)} filled`,
-          why: `New average ${state.ledger.avgCost}.`,
+          why: `New average ${dec(state.ledger.avgCost).toDecimalPlaces(8).toString()}.`,
         },
       ],
       state: tp.state,
@@ -311,6 +381,8 @@ export function stepDcaBot(
       tpClOrdID: null,
       safeties: {},
       phase: "idle",
+      lastExitPrice: e.price,
+      cooldownUntil: c.nextCycle?.type === "cooldown" ? e.at + c.nextCycle.minutes * 60_000 : null,
     };
     const log: StrategyAction = {
       type: "log",
@@ -330,5 +402,9 @@ export function stepDcaBot(
 }
 
 export function dcaBotFor<C>(toDca: (c: C) => DcaBotConfig): StrategyModule<C, DcaBotState> {
-  return { initialState: initialDcaState, step: (c, s, e, ctx) => stepDcaBot(toDca(c), s, e, ctx) };
+  return {
+    initialState: initialDcaState,
+    step: (c, s, e, ctx) => stepDcaBot(toDca(c), s, e, ctx),
+    waiting: (c, s) => dcaWaiting(toDca(c), s),
+  };
 }

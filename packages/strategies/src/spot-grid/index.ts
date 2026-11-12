@@ -1,3 +1,4 @@
+import { entryOf } from "../common/entry";
 import { gridBotFor } from "../common/grid-bot";
 import type { StrategyModule } from "../core/types";
 
@@ -17,7 +18,10 @@ export const spotGrid: StrategyModule<SpotGridConfig, import("../common/grid-bot
     spacing: c.spacing,
     notional: c.investment,
     capital: c.investment,
-    triggerPrice: c.triggerPrice,
+    entry: entryOf(
+      c,
+      c.triggerPrice === undefined ? undefined : { type: "cross", price: c.triggerPrice },
+    ),
     stopBelow: c.stopPrice,
     takeProfitPct: c.takeProfitPct,
     maxLoss: c.maxLoss,

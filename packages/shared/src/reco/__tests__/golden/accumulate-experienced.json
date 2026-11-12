@@ -1,6 +1,6 @@
 {
   "best": {
-    "id": "48ff402e7e612dd5",
+    "id": "f742ef7e823429e2",
     "strategy": "recurring_buy",
     "market": "vBTC_vUSDC",
     "values": {
@@ -23,11 +23,11 @@
     ],
     "basis": "vBTC_vUSDC: market buys every Monday 09:00, Asia/Ho_Chi_Minh.",
     "computedAt": "2026-10-27T07:00:00.000Z",
-    "inputsVersion": "reco-1"
+    "inputsVersion": "reco-2"
   },
   "addOns": [
     {
-      "id": "923ab0ac8c17be1a",
+      "id": "751c5bcf7c6813c1",
       "strategy": "recurring_buy",
       "market": "vETH_vUSDC",
       "values": {
@@ -50,7 +50,7 @@
       ],
       "basis": "vETH_vUSDC: market buys every Monday 09:00, Asia/Ho_Chi_Minh.",
       "computedAt": "2026-10-27T07:00:00.000Z",
-      "inputsVersion": "reco-1"
+      "inputsVersion": "reco-2"
     }
   ],
   "notSuggested": [
@@ -63,7 +63,7 @@
       "reason": "SOL: -2,234.38 net with a 38% win rate."
     },
     {
-      "title": "Futures Grid",
+      "title": "Futures Grid · BTC",
       "reason": "Above your 10% max drop at any useful size."
     }
   ],

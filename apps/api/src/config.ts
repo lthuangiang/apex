@@ -23,12 +23,24 @@ const envSchema = z.object({
   SODEX_EGRESS_KEY: z.string().min(1).default("default"),
   /** Tắt cho tới khi mặt nạ 14 được kiểm chứng trên mainnet (SODEX.md mục 5.2). */
   SODEX_CONNECT_ENABLED: z.stringbool().default(false),
-  /** Chỉ bật khi có xác nhận bằng văn bản của SoDEX (VOLUME_MAKER.md mục 17.5). */
-  VOLUME_MAKER_ENABLED: z.stringbool().default(false),
   /** Rate limit API mỗi phút (C12); E2E nâng lên vì mọi request đến từ cùng một IP. */
   API_RATE_LIMIT_PER_IP: z.coerce.number().int().positive().default(600),
   API_RATE_LIMIT_PER_USER: z.coerce.number().int().positive().default(300),
   MAIL_FROM: z.string().min(1),
+  /**
+   * Nguồn bản đồ thanh lý (IMP-05, DEC-92). `none`: tab Liquidation map ẩn. `hyperliquid`: `marketdata` quét
+   * dữ liệu công khai của Hyperliquid, api đọc từ Redis.
+   */
+  LIQUIDATION_PROVIDER: z.enum(["none", "hyperliquid"]).default("none"),
+  /** URL và key API của nhà cung cấp; chỉ ở server, không gửi xuống trình duyệt. */
+  LIQUIDATION_API_URL: z.url().optional(),
+  LIQUIDATION_API_KEY: z.string().min(1).optional(),
+  /** Copy Trading (DEC-163): ngưỡng USD cảnh báo big move; trống = tắt (OPEN_QUESTIONS 21a). */
+  COPY_BIG_MOVE_MIN_USD: z
+    .string()
+    .regex(/^\d+(\.\d+)?$/)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
 });
 
 export type ApiConfig = z.infer<typeof envSchema> & { sodex: SodexConfig };

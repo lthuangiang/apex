@@ -1,13 +1,25 @@
 "use client";
 
+import { formatDecimal, fundingStatsSchema } from "@drift/shared";
 import { inputClassName } from "@drift/ui";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useMemo, type InputHTMLAttributes } from "react";
 
+import { api } from "@/lib/api";
+import { formatAmount } from "@/lib/format";
 import { useMarkets } from "@/lib/markets";
+import { useBuilderFeeRate } from "@/lib/queries";
 
 import type { AssetRow } from "../fields";
-import { arbPairs, displayParts, popularFirst, type PickItem } from "../pickers";
+import {
+  arbPairs,
+  displayParts,
+  popularFirst,
+  rankArbChoices,
+  type ArbChoice,
+  type PickItem,
+} from "../pickers";
 
 import { Picker } from "./picker";
 
@@ -28,15 +40,61 @@ export function ArbAssetPicker({
 }) {
   const t = useTranslations("createBot.assetPicker");
   const markets = useMarkets();
+  // Funding đã trả + volume Spot (DEC-160): tài sản thu đủ phí nhanh nhất lên đầu, kèm số liệu từng dòng.
+  const funding = useQuery({
+    queryKey: ["markets-funding"],
+    queryFn: () => api("GET", "/api/v1/markets/funding", fundingStatsSchema),
+    staleTime: 60_000,
+  });
+  const builderRate = useBuilderFeeRate("funding_arb");
   const pairs = useMemo(() => arbPairs(markets.data?.items ?? []), [markets.data]);
-  const items: PickItem[] = [...pairs.entries()]
-    .sort(([a], [b]) => popularFirst(a, b))
-    .map(([asset, p]) => ({
-      value: asset,
-      label: asset,
-      keys: [p.spot.name, p.perp.name],
-    }));
-  const p = pairs.get(value);
+  const choices = useMemo(
+    () => rankArbChoices(pairs, funding.data, builderRate),
+    [pairs, funding.data, builderRate],
+  );
+  const rate = (c: ArbChoice) =>
+    c.avg7dPct === null
+      ? null
+      : t("arbRate", {
+          rate:
+            formatDecimal(c.avg7dPct, {
+              locale: "en-US",
+              minimumFractionDigits: 4,
+              maximumFractionDigits: 4,
+            }) ?? c.avg7dPct,
+          hours: String(c.intervalHours),
+        });
+  const items: PickItem[] = choices.map((c) => {
+    const r = rate(c);
+    return {
+      value: c.asset,
+      label: c.asset,
+      keys: [c.spot.name, c.perp.name],
+      group:
+        funding.data === undefined ? undefined : c.fit.eligible ? t("arbFits") : t("arbOthers"),
+      secondary:
+        r === null
+          ? t("arbNoData")
+          : c.fit.breakEvenHours === null
+            ? t("arbNegative", { rate: r })
+            : t("arbSecondary", { rate: r, hours: String(Math.ceil(c.fit.breakEvenHours)) }),
+    };
+  });
+  const c = choices.find((x) => x.asset === value);
+  const facts =
+    c === undefined
+      ? []
+      : [
+          ...(c.positive21 === null ? [] : [t("arbPositive", { n: c.positive21 })]),
+          ...(c.fit.breakEvenHours === null
+            ? []
+            : [t("arbBreakEven", { hours: String(Math.ceil(c.fit.breakEvenHours)) })]),
+          c.spotVolume24h === null
+            ? t("arbSpotVolumeNone")
+            : t("arbSpotVolume", {
+                volume: formatAmount(c.spotVolume24h, 0)?.text ?? c.spotVolume24h,
+              }),
+        ];
   return (
     <Picker
       items={items}
@@ -56,9 +114,17 @@ export function ArbAssetPicker({
       noMatch={(q) => t("noMatch", { q })}
       sheetTitle={t("sheetTitle")}
       info={
-        p === undefined
-          ? undefined
-          : t("arbPair", { spot: p.spot.displayName, perp: p.perp.displayName })
+        c === undefined ? undefined : (
+          <>
+            {t("arbPair", { spot: c.spot.displayName, perp: c.perp.displayName })}
+            {facts.map((f) => (
+              <span key={f} className="block">
+                {f}
+              </span>
+            ))}
+            <span className="block">{t("arbNote")}</span>
+          </>
+        )
       }
     />
   );

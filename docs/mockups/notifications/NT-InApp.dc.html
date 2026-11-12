@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>In-app notifications</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.card{background:#fff;border:1px solid #e3e7f5;border-radius:24px}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#1d47b8}
+.muted{color:#5f6684}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:12px;border:none;background:#2e62e8;color:#fff;font:inherit;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer}
+.btn2{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:12px;border:1px solid #d5dcf2;background:#fff;color:#141a33;font:inherit;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800}
+.ni{display:flex;gap:12px;padding:12px 18px;text-decoration:none;color:#141a33;position:relative}
+.ni:hover{background:#f5f7fd;color:#141a33}
+.ni.unread{background:#f7f9ff}
+.ni.unread::before{content:"";position:absolute;left:7px;top:22px;width:7px;height:7px;border-radius:4px;background:#2e62e8}
+.ic{flex:0 0 34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800}
+.tx{display:flex;flex-direction:column;gap:2px;font-size:13px;line-height:1.45}
+.tx b{font-size:14px}.tx span{color:#3b4262}.tx em{font-style:normal;font-size:12px;color:#5f6684}
+</style>
+</helmet>
+<div style="min-height:100vh;box-sizing:border-box;padding:20px;background:#f5f7fd;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#141a33;position:relative">
+<div style="max-width:1400px;margin:0 auto;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">
+  <div style="flex:0 0 248px"><dc-import name="Sidebar" current="desk" hint-size="248px,760px"></dc-import></div>
+  <main class="num" style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:18px;position:relative">
+    <header style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+      <h1 style="margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em">AI Desk</h1>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="chip" style="min-height:36px;padding:0 12px;background:#fff;border:1px solid #e3e7f5;color:#3b4262">Main account</span>
+        <span class="chip" style="min-height:36px;padding:0 12px;background:#ddf4e7;color:#0b6a39">LIVE · MAINNET</span>
+        <button type="button" aria-label="Notifications, 3 unread" aria-expanded="true" style="position:relative;width:44px;height:44px;border-radius:14px;border:2px solid #2e62e8;background:#eef3ff;font:inherit;font-size:18px;cursor:pointer">🔔<span style="position:absolute;top:-6px;right:-6px;min-width:20px;height:20px;border-radius:10px;background:#c2312f;color:#fff;font-size:11.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #f5f7fd">3</span></button>
+        <span aria-hidden="true" style="width:40px;height:40px;border-radius:20px;background:#c6d0fa;display:flex;align-items:center;justify-content:center;font-weight:800">M</span>
+      </div>
+    </header>
+    <div aria-hidden="true" style="display:flex;flex-direction:column;gap:18px;opacity:.45">
+      <div style="height:220px;border-radius:26px;background:linear-gradient(135deg,#e3e8fe,#c6d0fa)"></div>
+      <div style="height:200px;border-radius:22px;background:#fff;border:1px solid #e3e7f5"></div>
+      <div style="height:160px;border-radius:22px;background:#fff;border:1px solid #e3e7f5"></div>
+    </div>
+
+    <div role="dialog" aria-labelledby="np-h" style="position:absolute;top:56px;right:48px;width:420px;max-width:100%;background:#fff;border-radius:22px;border:1px solid #e3e7f5;box-shadow:0 24px 60px rgba(20,26,51,.18);display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 18px 10px">
+        <h2 id="np-h" style="margin:0;font-size:17px;font-weight:800">Notifications</h2>
+        <button type="button" style="border:none;background:none;color:#1d47b8;font:inherit;font-size:13px;font-weight:700;cursor:pointer;min-height:36px">Mark all read</button>
+      </div>
+      <div role="tablist" style="display:flex;gap:6px;padding:0 18px 10px">
+        <button role="tab" aria-selected="true" class="chip" style="min-height:32px;padding:0 12px;border:none;background:#141a33;color:#fff;font:inherit;font-size:12.5px;font-weight:800">All</button>
+        <button role="tab" aria-selected="false" class="chip" style="min-height:32px;padding:0 12px;border:1px solid #e3e7f5;background:#fff;color:#3b4262;font:inherit;font-size:12.5px;font-weight:800">Needs you · 2</button>
+      </div>
+      <div style="padding:4px 18px;font-size:11.5px;font-weight:800;color:#5f6684;letter-spacing:.06em;text-transform:uppercase">Today</div>
+      <a href="#" class="ni unread"><span class="ic" style="background:#fde4e1;color:#a72826">⏸</span><span class="tx"><b>BTC Volume Farm paused</b><span>Daily loss limit reached. Open orders were kept.</span><em>10:42 · Review →</em></span></a>
+      <a href="#" class="ni unread"><span class="ic" style="background:#fdebd3;color:#7a3e00">?</span><span class="tx"><b>Order result unknown · ETH Grid</b><span>DeskLabs won't resend it until SoDEX confirms.</span><em>10:40 · Open →</em></span></a>
+      <a href="#" class="ni unread"><span class="ic" style="background:#eef3ff;color:#1d47b8">✦</span><span class="tx"><b>Morning brief</b><span>One thing needs you today.</span><em>08:00 · See AI Desk →</em></span></a>
+      <div style="padding:8px 18px 4px;font-size:11.5px;font-weight:800;color:#5f6684;letter-spacing:.06em;text-transform:uppercase">Earlier</div>
+      <a href="#" class="ni"><span class="ic" style="background:#ddf4e7;color:#0b6a39">➤</span><span class="tx"><b>Telegram connected</b><span>Alerts also go to @mai_trades.</span><em>Nov 12</em></span></a>
+      <a href="#" class="ni"><span class="ic" style="background:#f2f3f7;color:#3b4262">👤</span><span class="tx"><b>0xA3…91 opened a big position</b><span>A trader you follow · BTC.</span><em>Nov 11</em></span></a>
+      <div style="display:flex;justify-content:space-between;padding:12px 18px;border-top:1px solid #eef1f8;background:#fbfcff;font-size:13px;font-weight:700">
+        <a href="NT-Settings.dc.html" style="text-decoration:none">Notification settings</a>
+        <a href="#" style="text-decoration:none">See all</a>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div role="status" aria-live="assertive" style="position:absolute;right:28px;bottom:28px;width:400px;display:flex;gap:12px;align-items:flex-start;padding:16px 18px;border-radius:18px;background:#141a33;color:#fff;box-shadow:0 20px 50px rgba(20,26,51,.35);font-family:'Plus Jakarta Sans',system-ui,sans-serif">
+  <span aria-hidden="true" style="flex:0 0 32px;height:32px;border-radius:10px;background:#c2312f;display:flex;align-items:center;justify-content:center">⏸</span>
+  <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+    <b style="font-size:14.5px">BTC Volume Farm paused</b>
+    <span style="font-size:13px;color:#c9cfe2">Daily loss limit reached.</span>
+    <a href="#" style="align-self:flex-start;color:#8fb0ff;font-size:13px;font-weight:800;text-decoration:none;margin-top:2px">Review</a>
+  </div>
+  <button type="button" aria-label="Dismiss" style="width:32px;height:32px;border-radius:16px;border:none;background:rgba(255,255,255,.12);color:#fff;font:inherit;cursor:pointer">×</button>
+</div>
+
+<div style="position:absolute;left:288px;bottom:28px;width:520px;padding:14px 16px;border-radius:14px;background:#fff;border:1px dashed #c9cfe2;font-family:'Plus Jakarta Sans',system-ui,sans-serif;font-size:12.5px;line-height:1.55;color:#3b4262">
+  <b>In-app (ghi chú):</b> chuông mở panel thay vì nhảy sang Settings. "Needs you" = bot problems + risk chưa xử lý. Toast chỉ cho Bot problems + Risk, tự ẩn sau 8 s (không ẩn khi đang hover/focus), tối đa 1 toast, gộp khi nhiều. Cập nhật: giữ cách poll hiện có (<code>useNotifications</code>), hạ từ 60 s xuống 15 s khi tab đang mở; không thêm SSE ở v1. Bấm một dòng = đánh dấu đã đọc + mở màn. Rỗng: "You're all caught up."
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

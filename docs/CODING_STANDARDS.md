@@ -111,7 +111,7 @@ UI không hiển thị `message` thô của server cho người dùng; UI map `c
 ## C12. Bảo mật
 - Secret lấy từ env hoặc Vault, không commit `.env` (chỉ commit `.env.example` không có giá trị thật).
 - Phiên đăng nhập bằng cookie `httpOnly`, `Secure`, `SameSite=Lax`; có chống CSRF cho request thay đổi trạng thái.
-- 2FA được kiểm tra ở **server** cho: start bot, stop bot, revoke fee, disconnect, xoá tài khoản.
+- 2FA được kiểm tra ở **server** cho: start bot LIVE, revoke fee, disconnect, xoá tài khoản. 2FA **không bắt buộc**: chưa bật thì không hỏi; đã bật thì nhập đúng một lần trên một phiên là 2 giờ sau không hỏi lại (xoá tài khoản luôn hỏi). Stop, Pause, Emergency halt không hỏi 2FA (DEC-115).
 - Rate limit API theo user và theo IP. CSP chặt, không `unsafe-inline` cho script.
 - Kiểm tra quyền sở hữu ở mọi endpoint: người dùng chỉ thấy và thao tác bot, account của chính mình. Trang Builder Revenue chỉ cho role `team`.
 

@@ -1,4 +1,10 @@
-import type { MarketList } from "@drift/shared";
+import {
+  arbFit,
+  arbRoundTripFeePct,
+  type ArbFit,
+  type FundingStats,
+  type MarketList,
+} from "@drift/shared";
 
 import { formatAmount, stepDecimals } from "../../lib/format";
 
@@ -104,4 +110,59 @@ export function arbPairs(markets: readonly Market[]): Map<string, { spot: Market
     if (s !== undefined && !out.has(base)) out.set(base, { spot: s, perp: m });
   }
   return out;
+}
+
+/** Một tài sản Funding Arb kèm số liệu funding đã trả (DEC-160). */
+export interface ArbChoice {
+  asset: string;
+  spot: Market;
+  perp: Market;
+  /** Funding trung bình 7 ngày, % mỗi kỳ; null khi chưa có dữ liệu. */
+  avg7dPct: string | null;
+  intervalHours: number;
+  /** Số kỳ dương trong 21 kỳ gần nhất; null khi chưa đủ 21 kỳ. */
+  positive21: number | null;
+  /** Volume Spot 24 giờ (quote); null khi chưa có nến. */
+  spotVolume24h: string | null;
+  fit: ArbFit;
+}
+
+/**
+ * Xếp tài sản Funding Arb: đạt `ARB_FIT` trước, rồi theo số giờ thu đủ phí tăng dần; chưa có dữ liệu xếp cuối, theo
+ * thứ tự phổ biến. Phí theo builder fee của user (DEC-159) và mức maker cơ bản của SoDEX.
+ */
+export function rankArbChoices(
+  pairs: ReadonlyMap<string, { spot: Market; perp: Market }>,
+  stats: FundingStats | undefined,
+  builderRate: number,
+): ArbChoice[] {
+  const feePct = arbRoundTripFeePct({ builderRate });
+  const byPerp = new Map((stats?.perps ?? []).map((p) => [p.market, p]));
+  const out = [...pairs.entries()].map(([asset, p]): ArbChoice => {
+    const s = byPerp.get(p.perp.name);
+    const intervalHours = s?.intervalHours ?? 1;
+    const avg7dPct = s?.avg7dPct ?? null;
+    const positive21 = s?.positive21 ?? null;
+    return {
+      asset,
+      ...p,
+      avg7dPct,
+      intervalHours,
+      positive21,
+      spotVolume24h: stats?.spotVolume24h[p.spot.name] ?? null,
+      fit: arbFit({
+        avg7dPct,
+        positiveShare21: positive21 === null ? null : positive21 / 21,
+        intervalHours,
+        feePct,
+      }),
+    };
+  });
+  const hours = (c: ArbChoice) => c.fit.breakEvenHours ?? Number.POSITIVE_INFINITY;
+  return out.sort(
+    (a, b) =>
+      Number(b.fit.eligible) - Number(a.fit.eligible) ||
+      hours(a) - hours(b) ||
+      popularFirst(a.asset, b.asset),
+  );
 }

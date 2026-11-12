@@ -1,19 +1,26 @@
 import { notFound } from "next/navigation";
 
-import { CreateBot, isLaunched, presetMarket } from "@/features/bots";
+import { CreateBot, isLaunched, presetMarket, VolumeGate } from "@/features/bots";
+import { CopyFlowPage } from "@/features/copy";
 
-// Volume Maker: route trả 404 khi VOLUME_MAKER_ENABLED tắt (VOLUME_MAKER.md mục 17.5).
+// Bot khối lượng: chỉ mở được khi admin bật cho tài khoản (DEC-80), kiểm tra ở client bằng /api/v1/features.
 export default async function Page({
   params,
   searchParams,
 }: {
   params: Promise<{ strategy: string }>;
-  searchParams: Promise<{ suggestion?: string; market?: string; engine?: string }>;
+  searchParams: Promise<{ suggestion?: string; market?: string; engine?: string; leader?: string }>;
 }) {
   const { strategy } = await params;
-  const { suggestion, market, engine } = await searchParams;
+  const { suggestion, market, engine, leader } = await searchParams;
   if (!isLaunched(strategy)) notFound();
-  if (strategy === "volume_maker" && process.env.VOLUME_MAKER_ENABLED !== "true") notFound();
+  // Copy Trade (DEC-163): luồng 3 bước Budget and safety → Review and start, trader chọn ở Find traders.
+  if (strategy === "copy_trade")
+    return (
+      <VolumeGate strategy="copy_trade">
+        <CopyFlowPage leader={leader ?? null} />
+      </VolumeGate>
+    );
   // `?market=&engine=` từ Watchlist (DEC-74); có `suggestion` thì giá trị AI đã lưu thắng.
   const preset =
     suggestion === undefined &&
@@ -22,11 +29,18 @@ export default async function Page({
     (engine === "spot" || engine === "perps")
       ? (presetMarket(strategy, market, engine) ?? undefined)
       : undefined;
-  return (
+  const page = (
     <CreateBot
       strategy={strategy}
       preset={preset}
       {...(suggestion === undefined ? {} : { suggestionId: suggestion })}
     />
+  );
+  return strategy === "volume_maker" ||
+    strategy === "volume_farm" ||
+    strategy === "adaptive_dca" ? (
+    <VolumeGate strategy={strategy}>{page}</VolumeGate>
+  ) : (
+    page
   );
 }

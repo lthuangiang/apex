@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Desk AI track record</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="desk" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main class="num" style="flex: 999 1 560px; min-width: 0; max-width: 1000px; display: flex; flex-direction: column; gap: 20px">
+    <a href="BP-Home.dc.html" style="align-self: flex-start; font-size: 13.5px; font-weight: 700; text-decoration: none">← AI Desk</a>
+    <header style="display: flex; flex-direction: column; gap: 6px">
+      <h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">Did my suggestions help?</h1>
+      <p style="margin: 0; font-size: 15px; color: #3b4262">Seven days after you apply a fix, I compare what happened with what the old settings would have done over the same days.</p>
+    </header>
+
+    <section aria-label="Summary" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+      <div style="padding: 18px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; font-weight: 700; color: #5f6684">Helped</span><strong style="font-size: 30px; color: #0f7a43">4</strong></div>
+      <div style="padding: 18px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; font-weight: 700; color: #5f6684">Made it worse</span><strong style="font-size: 30px; color: #c2312f">1</strong></div>
+      <div style="padding: 18px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; font-weight: 700; color: #5f6684">Still measuring</span><strong style="font-size: 30px">1</strong></div>
+    </section>
+
+    <section aria-labelledby="list-h" style="display: flex; flex-direction: column; gap: 4px; padding: 20px 22px; border-radius: 24px; background: #ffffff; border: 1px solid #e3e7f5">
+      <h2 id="list-h" style="margin: 0 0 8px; font-size: 18px; font-weight: 800">Fixes you applied</h2>
+      <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+          <li style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid #eef1f8">
+            <span style="{{r.chipStyle}}">{{r.chip}}</span>
+            <div style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+              <strong style="font-size: 14.5px">{{r.what}}</strong>
+              <span style="font-size: 12.5px; color: #5f6684">{{r.when}}</span>
+            </div>
+            <div style="min-width: 220px; display: flex; flex-direction: column; gap: 2px; text-align: right">
+              <span style="font-size: 12px; color: #5f6684">Old settings → after the fix</span>
+              <strong style="font-size: 14.5px">{{r.compare}}</strong>
+            </div>
+            <sc-if value="{{r.canUndo}}" hint-placeholder-val="{{false}}">
+              <a href="#" style="display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2; color: #141a33; font-size: 13.5px; font-weight: 700; text-decoration: none">Switch back</a>
+            </sc-if>
+          </li>
+        </sc-for>
+      </ul>
+    </section>
+
+    <div style="display: flex; gap: 12px; align-items: flex-start; padding: 16px 20px; border-radius: 20px; background: #fff6ea; border: 1px solid #f0c27e">
+      <span aria-hidden="true" style="flex: 0 0 30px; height: 30px; border-radius: 10px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 13px">✦</span>
+      <p style="margin: 0; font-size: 14.5px; line-height: 1.55; color: #5b3a12">The wider grid on ETH Grid made things worse: ETH stayed in a tight range, so fewer orders filled. I now check the last 14 days of range before suggesting a wider grid.</p>
+    </div>
+    <p style="margin: 0; font-size: 12.5px; color: #5f6684">"Old settings" is a replay over the same days, not a forecast. Small differences under 0.50 USDC count as "no clear effect".</p>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var chip = function (bg, fg) { return 'flex: 0 0 auto; min-width: 110px; justify-content: center; display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 14px; background: ' + bg + '; color: ' + fg + '; font-size: 12px; font-weight: 800'; };
+    var good = chip('#ddf4e7', '#0b6a39'), bad = chip('#fde4e1', '#8a2a1e'), wait = chip('#f2f3f7', '#3b4262');
+    var rows = [
+      ['Still measuring', wait, 'BTC Volume Farm · leverage 40× → 10×', 'Applied today · result on Nov 18', '—', false],
+      ['Made it worse', bad, 'ETH Grid · wider grid range', 'Applied Nov 1 · checked Nov 8', '+1.80 → +0.60 USDC', true],
+      ['Helped', good, 'ETH Volume Farm · limit orders only', 'Applied Oct 30 · checked Nov 6', '−9.40 → −4.10 USDC', false],
+      ['Helped', good, 'BTC Volume Farm · hold time 180 → 320 s', 'Applied Oct 28 · checked Nov 4', '−6.20 → −3.90 USDC', false],
+      ['Helped', good, 'ETH Grid · stop if price falls below 2,900', 'Applied Oct 25 · checked Nov 1', '−2.10 → −0.70 USDC', false],
+      ['Helped', good, 'BTC Volume Farm · max loss 30 → 10 USDC', 'Applied Oct 22 · checked Oct 29', '−18.00 → −10.00 USDC', false]
+    ];
+    return { rows: rows.map(function (r) { return { chip: r[0], chipStyle: r[1], what: r[2], when: r[3], compare: r[4], canUndo: r[5] }; }) };
+  }
+}
+</script>
+</body>
+</html>

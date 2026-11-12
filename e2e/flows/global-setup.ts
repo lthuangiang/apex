@@ -23,6 +23,8 @@ export const PORTS = {
   reco: 18095,
 } as const;
 export const BUILDER_ID = "1645";
+/** Trader Hyperliquid seed sẵn cho spec Copy Trading (p13). */
+export const E2E_TRADER = "0xaaa0000000000000000000000000000000000001";
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const VAULT_TOKEN = "e2e-root";
 
@@ -187,6 +189,45 @@ export default async function globalSetup() {
     "insert into market_stats_daily (market, engine, date, sigma30, p5, p50, p95, last_price, trend, range_score) values ('vBTC_vUSDC', 'spot', current_date, 0.02, 92, 100, 108, 100, 0, 0.7)",
   ]);
   if (seeded.exitCode !== 0) throw new Error(`seed failed: ${seeded.output}`);
+  // Copy Trading (DEC-163), thay scheduler: một trader Hyperliquid đã tính thống kê ở lượt đêm, và tài khoản email
+  // `e2e-copy-…` được bật AI Desk khi đăng ký (không cần quyền team).
+  const traderStats = JSON.stringify({
+    profit: "84120",
+    worstDip: "9800",
+    typicalHoldMs: 20_400_000,
+    winRate: "0.62",
+    wins: 73,
+    closedEpisodes: 118,
+    topTradeShare: "0.18",
+    coverage: "1",
+    liquidations: 0,
+    medianEntryNotional: "40000",
+    markets: ["BTC-USD"],
+    unlistedCoins: [],
+    dailyCurve: [
+      [Date.now() - 2 * 86_400_000, "1000"],
+      [Date.now() - 86_400_000, "1500"],
+    ],
+    historyIncomplete: false,
+    fills: 412,
+  });
+  const copySeed = await postgres.exec([
+    "psql",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-U",
+    postgres.getUsername(),
+    "-d",
+    postgres.getDatabase(),
+    "-c",
+    `create function e2e_copy_desk() returns trigger language plpgsql as $$ begin if new.email like 'e2e-copy-%' then new.ai_desk := true; end if; return new; end $$;
+     create trigger e2e_copy_desk before insert on users for each row execute function e2e_copy_desk();
+     insert into leaderboard_runs (date, status) values (current_date, 'ok');
+     insert into leader_wallets (source, address) values ('hyperliquid', '${E2E_TRADER}');
+     insert into leader_stats_daily (source, address, date, stats, hidden, tabs, steady_score, profit, typical_hold_ms, computed_at)
+       values ('hyperliquid', '${E2E_TRADER}', current_date, '${traderStats}', '{}', '{steady,top,long,all}', 8.5, '84120', 20400000, now());`,
+  ]);
+  if (copySeed.exitCode !== 0) throw new Error(`copy seed failed: ${copySeed.output}`);
 
   const mailpitApi = `http://${mailpit.getHost()}:${String(mailpit.getMappedPort(8025))}`;
   process.env.E2E_MAILPIT = mailpitApi;
@@ -203,6 +244,9 @@ export default async function globalSetup() {
     const T = Date.now();
     feedNc.publish("md.vBTC_vUSDC.price", JSON.stringify({ s: "vBTC_vUSDC", c: "100", T }));
     void feedRedis.set("md:last:vBTC_vUSDC", JSON.stringify({ price: "100", at: T }), "PX", 60_000);
+    // Copy Trading (p13): market Perps của trader seed sẵn.
+    feedNc.publish("md.BTC-USD.price", JSON.stringify({ s: "BTC-USD", c: "100", T }));
+    void feedRedis.set("md:last:BTC-USD", JSON.stringify({ price: "100", at: T }), "PX", 60_000);
   }, 1_000);
   const children = [
     start("mock", ["--filter", "@drift/sodex-mock", "start"], {

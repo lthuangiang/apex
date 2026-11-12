@@ -26,7 +26,7 @@ Nếu có < 30 vị thế đã đóng thì coi là **người mới**: bỏ qua 
 - `trend` = ln(giá hiện tại / giá 30 ngày trước) / (σ·√30).
 - `rangeScore` = tỷ lệ số ngày trong 180 ngày qua mà giá đóng cửa nằm trong khoảng ±1.5·σ·√30 quanh đường trung bình 30 ngày.
 - `fundingAvg7d`, `fundingPositiveShare21` (tỷ lệ số kỳ funding > 0 trong 21 kỳ gần nhất).
-- `fee_rt` = chi phí một vòng mua bán = 2 × (maker fee của SoDEX + builder fee của DRIFT nếu áp dụng). Maker fee đo từ fill maker của người dùng; chưa có thì dùng mức cơ bản trong `reco/config.ts` (DEC-39).
+- `fee_rt` = chi phí một vòng mua + bán bằng lệnh maker = 2 × maker fee của SoDEX + builder fee của DRIFT theo số chiều bị thu: Perps 2 chiều, Spot chỉ chiều bán (DEC-112). Maker fee lấy theo thứ tự: đo từ fill maker của người dùng (đã trừ `builderFee` nằm sẵn trong `fee`), `makerFee` của market trên `/symbols`, rồi mức cơ bản `SODEX_BASE_FEE_PCT` (DEC-39, DEC-112). Ví dụ: Spot 2 × 0.035 + 0.01 = 0.08%; Perps 2 × (0.012 + 0.01) = 0.044%.
 - `minOrder`, `tick`, `lot`, `maxLeverage` lấy từ market info.
 
 ### 10.2 Điều kiện đủ (đạt hết thì mới là ứng viên)
@@ -39,7 +39,7 @@ Nếu có < 30 vị thế đã đóng thì coi là **người mới**: bỏ qua 
 | Futures DCA | `goal = automate` · `hasPerpsHistory` · `netPnl[market] > 0` · `d ≥ 10` |
 | Recurring Buy | `goal ∈ {accumulate, steady}` · market ∈ M ∩ nhóm coin lớn (BTC, ETH) *(chỉnh được)* |
 | Rebalancing | `|M| ≥ 2` · `goal ∈ {accumulate, steady}` |
-| Funding Arbitrage | `fundingAvg7d ≥ 0.005%` · `fundingPositiveShare21 ≥ 0.70` · `C ≥ 2,000 USDC` *(chỉnh được)* |
+| Funding Arbitrage | `arbFit` (DEC-160): funding TB 7 ngày thu đủ phí khứ hồi maker của lượt arb trong ≤ 72 h · `fundingPositiveShare21 ≥ 0.90` · `C ≥ 2,000 USDC` *(chỉnh được, `ARB_FIT`)* |
 | TWAP | không bao giờ đề xuất (là công cụ khớp lệnh, chỉ dùng khi người dùng tự chọn) |
 
 ### 10.3 Loại trừ (là nguồn cho mục "What we didn't suggest, and why")
@@ -106,7 +106,7 @@ Mọi giá làm tròn theo `tick`, mọi khối lượng theo `lot`. Level nào 
   - Mỗi lần rebalance giao dịch tối đa 25% giá trị danh mục.
 - **Funding Arbitrage**
   - Chia vốn 50/50; đòn bẩy chân perp 1×.
-  - Vào lệnh khi `fundingAvg7d ≥ 0.005%`; thoát sau 3 kỳ funding ≤ 0.
+  - Vào lệnh khi `fundingAvg7d ≥ arbEnterPct(phí, kỳ)` (mức funding thu đủ phí trong 72 h, DEC-160); thoát sau 3 kỳ funding ≤ 0.
   - Chênh lệch giữa hai chân tối đa 0.5%; giữ margin ratio ≥ 30%.
 - **TWAP** (chỉ ở màn tạo bot)
   - Mỗi lát ≤ 0.1% trung vị volume 5 phút của market.

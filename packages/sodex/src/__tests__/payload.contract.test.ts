@@ -2,9 +2,17 @@ import { keccak256, recoverTypedDataAddress, stringToBytes, type Hex } from "vie
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
 
-import { SodexOrderModifier, SodexOrderType, SodexSide, SodexTimeInForce } from "../actions/enums";
+import {
+  SodexOrderModifier,
+  SodexOrderType,
+  SodexSide,
+  SodexStopType,
+  SodexTimeInForce,
+  SodexTriggerType,
+} from "../actions/enums";
 import {
   perpsCancelOrders,
+  perpsModifyOrder,
   perpsNewOrders,
   spotCancelOrders,
   spotNewOrders,
@@ -51,6 +59,43 @@ describe("payload hashing (contract)", () => {
     });
     expect(payload.body).toBe(
       '{"accountID":1,"symbolID":2,"orders":[{"clOrdID":"my-order-1","modifier":1,"side":1,"type":1,"timeInForce":4,"price":"65000.1","quantity":"0.001","reduceOnly":false,"positionSide":1}],"builder":{"id":18446744073709551615,"fee":50}}',
+    );
+  });
+
+  it("serializes a position stop loss without quantity, triggered by mark price (DEC-118)", () => {
+    const payload = perpsNewOrders({
+      accountID: 1n,
+      symbolID: 2n,
+      orders: [
+        {
+          clOrdID: "drift-vf-1-sl",
+          modifier: SodexOrderModifier.stop,
+          side: SodexSide.sell,
+          type: SodexOrderType.market,
+          timeInForce: SodexTimeInForce.ioc,
+          stopPrice: "79500.0",
+          stopType: SodexStopType.stopLoss,
+          triggerType: SodexTriggerType.markPrice,
+          reduceOnly: true,
+        },
+      ],
+    });
+    expect(payload.body).toBe(
+      '{"accountID":1,"symbolID":2,"orders":[{"clOrdID":"drift-vf-1-sl","modifier":2,"side":2,"type":2,"timeInForce":3,"stopPrice":"79500","stopType":1,"triggerType":2,"reduceOnly":true,"positionSide":1}]}',
+    );
+  });
+
+  it("serializes modifyOrder in Go SDK field order (DEC-118)", () => {
+    const payload = perpsModifyOrder({
+      accountID: 1n,
+      symbolID: 2n,
+      clOrdID: "drift-vf-1-sl",
+      stopPrice: "80100.50",
+    });
+    expect(payload.type).toBe("modifyOrder");
+    expect(payload.domain).toBe("futures");
+    expect(payload.body).toBe(
+      '{"accountID":1,"symbolID":2,"clOrdID":"drift-vf-1-sl","stopPrice":"80100.5"}',
     );
   });
 

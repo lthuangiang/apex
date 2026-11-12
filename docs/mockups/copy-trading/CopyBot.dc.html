@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Copy a trader · budget and safety</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="leaders" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+    <header style="display: flex; flex-direction: column; gap: 14px">
+      <a href="WalletStats.dc.html" style="font-size: 13px; font-weight: 700; text-decoration: none">← Back to profile</a>
+      <h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">Copy 0x3e9a…11fd</h1>
+      <ol aria-label="Steps" style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px">
+        <li style="display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 18px; background: #ddf4e7; color: #0b6a39; font-size: 13px; font-weight: 800">✓ 1 · Trader</li>
+        <li aria-current="step" style="display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 18px; background: #2e62e8; color: #ffffff; font-size: 13px; font-weight: 800">2 · Budget and safety</li>
+        <li style="display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 18px; background: #ffffff; border: 1px solid #e3e7f5; color: #3b4262; font-size: 13px; font-weight: 700">3 · Review and start</li>
+      </ol>
+    </header>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <div style="flex: 3 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+
+        <section aria-labelledby="bud-h" style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+          <h2 id="bud-h" style="margin: 0; font-size: 18px; font-weight: 800">How much do you want to use?</h2>
+          <label class="num" style="display: flex; flex-direction: column; gap: 6px">
+            <span style="font-size: 13px; font-weight: 700">Budget</span>
+            <span style="display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 16px; border-radius: 14px; border: 1.5px solid #2e62e8; background: #f7f9ff"><input type="text" value="{{budgetText}}" style="flex: 1; min-width: 0; border: none; outline: none; background: transparent; font: inherit; font-size: 20px; font-weight: 800; color: #141a33"><span style="font-size: 14px; font-weight: 800; color: #3b4262">USDC</span></span>
+            <span style="font-size: 12.5px; color: #5f6684">Available on SoDEX: [BALANCE] USDC. The budget stays in your account; it is the margin your copies can use.</span>
+          </label>
+          <div role="group" aria-label="Quick amounts" style="display: flex; flex-wrap: wrap; gap: 8px">
+            <sc-for list="{{amounts}}" as="a" hint-placeholder-count="4">
+              <button type="button" onClick="{{a.pick}}" aria-pressed="{{a.on}}" style="{{a.style}}">{{a.label}}</button>
+            </sc-for>
+          </div>
+        </section>
+
+        <section aria-labelledby="saf-h" style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 22px 24px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <h2 id="saf-h" style="margin: 0; font-size: 18px; font-weight: 800">Pick a safety level</h2>
+            <p style="margin: 0; font-size: 13.5px; color: #5f6684">This sets leverage, stop loss and the most you can lose. You can change each one under Advanced.</p>
+          </div>
+          <div role="radiogroup" aria-label="Safety level" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+            <sc-for list="{{presets}}" as="p" hint-placeholder-count="3">
+              <button type="button" role="radio" aria-checked="{{p.on}}" onClick="{{p.pick}}" style="{{p.style}}">
+                <span style="display: flex; justify-content: space-between; align-items: center; gap: 6px"><strong style="font-size: 15px">{{p.name}}</strong><sc-if value="{{p.rec}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 10px; background: #e6ecfe; color: #1d47b8">Recommended</span></sc-if></span>
+                <span style="font-size: 13px; color: #3b4262; line-height: 1.45; text-align: left">{{p.blurb}}</span>
+              </button>
+            </sc-for>
+          </div>
+          <dl class="num" style="margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px 16px; border-radius: 16px; background: #f5f7fd">
+            <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 12px; font-weight: 600; color: #5f6684">Leverage</dt><dd style="margin: 0; font-size: 16px; font-weight: 800">{{lev}}×</dd></div>
+            <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 12px; font-weight: 600; color: #5f6684">Each copied position</dt><dd style="margin: 0; font-size: 16px; font-weight: 800">up to ${{perTrade}}</dd></div>
+            <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 12px; font-weight: 600; color: #5f6684">Stop loss per position</dt><dd style="margin: 0; font-size: 16px; font-weight: 800">{{sl}}%</dd></div>
+            <div style="display: flex; flex-direction: column; gap: 2px"><dt style="font-size: 12px; font-weight: 600; color: #5f6684">Stop everything at a loss of</dt><dd style="margin: 0; font-size: 16px; font-weight: 800; color: #c2312f">${{maxLoss}}</dd></div>
+          </dl>
+          <p class="num" style="margin: 0; font-size: 12.5px; color: #5f6684">All positions together stay under ${{exposure}} (budget × leverage).</p>
+        </section>
+
+        <section aria-labelledby="mk-h" style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px">
+          <h2 id="mk-h" style="margin: 0; font-size: 18px; font-weight: 800">Markets we'll copy</h2>
+          <p style="margin: 0; font-size: 13.5px; color: #5f6684">Every market this trader uses that SoDEX lists. One copy bot covers all of them. If they start trading a new market later, we tell you in Following; we don't add it on our own.</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 18px; background: #eef3ff; color: #1d47b8; font-size: 13.5px; font-weight: 800">✓ BTC</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 18px; background: #eef3ff; color: #1d47b8; font-size: 13.5px; font-weight: 800">✓ ETH</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 18px; background: #eef3ff; color: #1d47b8; font-size: 13.5px; font-weight: 800">✓ SOL</span>
+          </div>
+        </section>
+
+        <section style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 8px 12px">
+          <button type="button" onClick="{{toggleAdv}}" aria-expanded="{{advOpen}}" style="width: 100%; min-height: 52px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px; border: none; background: transparent; font: inherit; font-size: 15px; font-weight: 800; color: #141a33; cursor: pointer"><span>Advanced</span><span style="font-size: 13px; font-weight: 700; color: #5f6684">{{advHint}}</span></button>
+          <sc-if value="{{advOpen}}" hint-placeholder-val="{{false}}">
+            <div class="num" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 6px 12px 16px">
+              <label style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 13px; font-weight: 700">Direction</span><select style="min-height: 46px; padding: 0 12px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; font: inherit; font-size: 14px; font-weight: 600; color: #141a33"><option>Follow · same side as the trader</option><option>Inverse · opposite side</option></select></label>
+              <label style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 13px; font-weight: 700">Max price move</span><span style="display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2"><input type="text" value="0.3" style="flex: 1; min-width: 0; border: none; outline: none; background: transparent; font: inherit; font-size: 14px; font-weight: 600; color: #141a33"><span style="font-size: 13px; font-weight: 700; color: #3b4262">%</span></span><span style="font-size: 12px; color: #5f6684">Measured from the SoDEX price when we receive their trade, not their Hyperliquid price. If SoDEX moves further before we fill, we skip it.</span></label>
+              <label style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 13px; font-weight: 700">Margin mode</span><select style="min-height: 46px; padding: 0 12px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; font: inherit; font-size: 14px; font-weight: 600; color: #141a33"><option>Isolated</option><option>Cross</option></select></label>
+              <label style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 13px; font-weight: 700">Take profit per position</span><span style="display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2"><input type="text" placeholder="Off" style="flex: 1; min-width: 0; border: none; outline: none; background: transparent; font: inherit; font-size: 14px; font-weight: 600; color: #141a33"><span style="font-size: 13px; font-weight: 700; color: #3b4262">%</span></span></label>
+            </div>
+          </sc-if>
+        </section>
+      </div>
+
+      <aside style="flex: 2 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+        <section aria-labelledby="nx-h" style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px">
+          <h2 id="nx-h" style="margin: 0; font-size: 17px; font-weight: 800">What happens after you start</h2>
+          <ol style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; line-height: 1.5; color: #1f2645">
+            <li>We wait for the trader's <strong>next</strong> trade. Positions they already hold are not copied.</li>
+            <li>When they open, we open the same amount every time (your "each copied position"), however big their trade is. When they add, we add in the same proportion.</li>
+            <li>When they cut or close, we cut or close yours too.</li>
+            <li>If a position hits your stop loss, we close it and wait for their next trade.</li>
+          </ol>
+        </section>
+        <section style="background: #fff6ea; border: 1px solid #f0c27e; border-radius: 20px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px">
+          <strong style="font-size: 14px; color: #5b3a12">Your results will differ from theirs</strong>
+          <span style="font-size: 13px; line-height: 1.5; color: #5b3a12">You trade on SoDEX a few seconds later, at SoDEX prices, with your own size and leverage. Some trades get skipped when the price moves too far, and copies can be smaller or skipped when SoDEX liquidity is thin.</span>
+        </section>
+        <a href="CopyReview.dc.html" style="display: inline-flex; align-items: center; justify-content: center; min-height: 50px; border-radius: 14px; background: #2e62e8; color: #ffffff; font-size: 15px; font-weight: 800; text-decoration: none; box-shadow: 0 8px 20px rgba(46,98,232,0.3)">Continue to review</a>
+      </aside>
+    </div>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1320}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { budget: 500, preset: 'balanced', adv: false };
+  }
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var defs = {
+      careful: { name: 'Careful', lev: 1, share: 0.25, sl: 5, loss: 0.10, blurb: 'Lowest risk. No leverage, small positions, tight stop.' },
+      balanced: { name: 'Balanced', lev: 2, share: 0.25, sl: 10, loss: 0.20, blurb: 'Some leverage with clear limits. A good place to start.' },
+      bold: { name: 'Bold', lev: 3, share: 0.4, sl: 15, loss: 0.30, blurb: 'Bigger positions and wider stops. Larger swings both ways.' }
+    };
+    var d = defs[s.preset];
+    var fmt = function (n) { return Math.round(n).toLocaleString('en-US'); };
+    var exposure = s.budget * d.lev;
+    var chipBase = 'min-height: 40px; padding: 0 16px; border-radius: 12px; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; ';
+    var amounts = [100, 250, 500, 1000].map(function (v) {
+      var on = v === s.budget;
+      return { label: '$' + fmt(v), on: on, pick: function () { self.setState({ budget: v }); },
+        style: chipBase + (on ? 'border: 1.5px solid #2e62e8; background: #eef3ff; color: #1d47b8;' : 'border: 1px solid #d5dcf2; background: #ffffff; color: #141a33;') };
+    });
+    var cardBase = 'display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 16px; font: inherit; color: #141a33; cursor: pointer; text-align: left; min-height: 96px; ';
+    var presets = ['careful', 'balanced', 'bold'].map(function (k) {
+      var on = k === s.preset;
+      return { name: defs[k].name, blurb: defs[k].blurb, rec: k === 'balanced', on: on,
+        pick: function () { self.setState({ preset: k }); },
+        style: cardBase + (on ? 'border: 2px solid #2e62e8; background: #f7f9ff;' : 'border: 1px solid #d5dcf2; background: #ffffff;') };
+    });
+    return {
+      budgetText: fmt(s.budget), amounts: amounts, presets: presets,
+      lev: d.lev, perTrade: fmt(exposure * d.share), sl: d.sl, maxLoss: fmt(s.budget * d.loss), exposure: fmt(exposure),
+      advOpen: s.adv, advHint: s.adv ? 'Hide' : 'Direction, price move, margin, take profit',
+      toggleAdv: function () { self.setState({ adv: !s.adv }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

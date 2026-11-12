@@ -39,7 +39,14 @@ export function buildCsp(nonce: string, dev: boolean, walletConnect = false): st
 /** Trang chỉ dùng khi chưa đăng nhập: đã có phiên thì về Overview. */
 const SIGNED_OUT_PATHS = ["/signup", "/signin"];
 /** Trang mở cho cả hai trạng thái. `/` chưa đăng nhập là Landing, đã đăng nhập là Overview (app/page.tsx). */
-const OPEN_PATHS = ["/", "/risk-disclosure", "/robots.txt", "/opengraph-image"];
+const OPEN_PATHS = [
+  "/",
+  "/risk-disclosure",
+  "/robots.txt",
+  // App Android (TWA) và trình duyệt đọc trước khi đăng nhập (infra/mobile/README.md).
+  "/manifest.webmanifest",
+  "/.well-known/assetlinks.json",
+];
 
 /** Chặn theo cookie phiên: null = cho qua, còn lại là đường dẫn cần chuyển tới. */
 export function redirectFor(path: string, signedIn: boolean): string | null {
@@ -72,10 +79,11 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Bỏ qua API (api tự đặt header), file tĩnh, icon (app/icon.svg, apple-icon.png) và prefetch.
+  // Bỏ qua API (api tự đặt header), file tĩnh, icon (app/icon.svg, apple-icon.png, public/icons/) và prefetch.
   matcher: [
     {
-      source: "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png).*)",
+      source:
+        "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|icons/|og/).*)",
       missing: [{ type: "header", key: "next-router-prefetch" }],
     },
   ],

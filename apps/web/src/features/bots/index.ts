@@ -1,6 +1,10 @@
 export { AgentPage } from "./components/agent-page";
 export { BotEdit } from "./components/bot-edit";
+export { DeepAnalytics } from "./components/deep-analytics";
 export { BotsPage } from "./components/bots-page";
 export { CreateBot } from "./components/create-bot";
 export { OrdersPage } from "./components/orders-page";
+export { VolumeGate } from "./components/volume-gate";
 export { isLaunched, presetMarket } from "./fields";
+export { BotProfit } from "./components/bot-profit";
+export { useStateLabel } from "./components/bots-page";

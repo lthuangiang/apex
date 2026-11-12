@@ -1,6 +1,10 @@
 import {
   adminUsersQuerySchema,
+  adminAiDeskBodySchema,
+  adminBuilderFeeBodySchema,
+  adminVolumeBotsBodySchema,
   notificationSettingsBodySchema,
+  platformStatsQuerySchema,
   riskLimitsBodySchema,
   watchlistBodySchema,
 } from "@drift/shared";
@@ -11,9 +15,13 @@ import { parseOrThrow } from "../../lib/http";
 import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 
+import { setBuilderFee } from "./builder-fees";
 import {
   ackAlert,
+  adminUserDetail,
   adminUsers,
+  setAiDesk,
+  setVolumeBots,
   analyst,
   builderRevenue,
   halt,
@@ -21,6 +29,7 @@ import {
   markRead,
   notificationSettingsOf,
   overview,
+  platformStats,
   portfolio,
   risk,
   setLimit,
@@ -74,13 +83,9 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
   });
   app.post("/api/v1/risk/halt", async (request, reply) => {
     const auth = requireAuth(request);
-    const { twoFactorCode } = parseOrThrow(
-      z.object({ twoFactorCode: z.string().min(6).max(11).optional() }),
-      request.body ?? {},
-    );
     return idempotent(deps.db, request, reply, auth.userId, deps.now(), async () => ({
       status: 202,
-      body: await halt(deps, auth.userId, twoFactorCode, request.ip),
+      body: await halt(deps, auth.userId, request.ip),
     }));
   });
 
@@ -122,6 +127,33 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
     return builderRevenue(deps, requireAuth(request).userId, period);
   });
 
+  app.post("/api/v1/admin/users/:id/volume-bots", async (request) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(z.object({ id: z.uuid() }), request.params);
+    const body = parseOrThrow(adminVolumeBotsBodySchema, request.body);
+    return setVolumeBots(deps, auth.userId, id, body.enabled, request.ip);
+  });
+
+  app.post("/api/v1/admin/users/:id/ai-desk", async (request) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(z.object({ id: z.uuid() }), request.params);
+    const body = parseOrThrow(adminAiDeskBodySchema, request.body);
+    return setAiDesk(deps, auth.userId, id, body.enabled, request.ip);
+  });
+
+  app.put("/api/v1/admin/users/:id/builder-fees", async (request) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(z.object({ id: z.uuid() }), request.params);
+    const body = parseOrThrow(adminBuilderFeeBodySchema, request.body);
+    return setBuilderFee(deps, auth.userId, id, body.strategy, body.rate, request.ip);
+  });
+
+  app.get("/api/v1/admin/users/:id", async (request) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(z.object({ id: z.uuid() }), request.params);
+    return adminUserDetail(deps, auth.userId, id, request.ip);
+  });
+
   app.get("/api/v1/admin/users", async (request) =>
     adminUsers(
       deps,
@@ -129,4 +161,9 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
       parseOrThrow(adminUsersQuerySchema, request.query),
     ),
   );
+
+  app.get("/api/v1/admin/stats", async (request) => {
+    const { period } = parseOrThrow(platformStatsQuerySchema, request.query);
+    return platformStats(deps, requireAuth(request).userId, period);
+  });
 }

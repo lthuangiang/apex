@@ -168,14 +168,21 @@ export class WsUserStream {
     const push = wsPushSchema.safeParse(body);
     if (!push.success) return; // pong hoặc message khác: đã reset idle timer
 
+    // Tin hỏng chỉ bỏ riêng tin đó; các tin còn lại trong lô vẫn được xử lý (DEC-118).
+    const channel = push.data.channel;
+    const invalid = (e: Error) => {
+      this.#cb.onError(new Error(`SoDEX WS ${channel} ${e.message}`));
+    };
     try {
-      if (push.data.channel === wsChannels.accountOrderUpdate) {
-        this.#cb.onOrderUpdate(parseOrderUpdates(push.data.data));
-      } else if (push.data.channel === wsChannels.accountTrade) {
-        this.#cb.onTrade(parseTrades(push.data.data));
+      if (channel === wsChannels.accountOrderUpdate) {
+        const items = parseOrderUpdates(push.data.data, invalid);
+        if (items.length > 0) this.#cb.onOrderUpdate(items);
+      } else if (channel === wsChannels.accountTrade) {
+        const items = parseTrades(push.data.data, invalid);
+        if (items.length > 0) this.#cb.onTrade(items);
       }
     } catch {
-      this.#cb.onError(new Error(`SoDEX WS ${push.data.channel} did not match schema`));
+      this.#cb.onError(new Error(`SoDEX WS ${channel} did not match schema`));
     }
   }
 

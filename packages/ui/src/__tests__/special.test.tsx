@@ -213,6 +213,40 @@ describe("AppShell and PageHeader", () => {
     );
   });
 
+  it("groups team pages under their own heading in the More sheet", async () => {
+    const item = (key: string, label: string, group?: "team") => ({
+      key,
+      label,
+      href: `/${key}`,
+      icon: <svg />,
+      ...(group === undefined ? {} : { group }),
+    });
+    render(
+      <AppShell
+        brand="DRIFT"
+        navLabel="Main"
+        skipLinkLabel="Skip to content"
+        teamLabel="Team"
+        navItems={[item("home", "Overview")]}
+        mobileNav={{
+          items: [item("home", "Home")],
+          more: {
+            label: "More",
+            icon: <svg />,
+            items: [item("risk", "Risk Center"), item("stats", "Platform Stats", "team")],
+          },
+        }}
+      >
+        <p>content</p>
+      </AppShell>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "More" }));
+    const sheet = screen.getByRole("dialog", { name: "More" });
+    const team = within(sheet).getByRole("list", { name: "Team" });
+    expect(within(team).getByRole("link", { name: "Platform Stats" })).toBeInTheDocument();
+    expect(within(team).queryByRole("link", { name: "Risk Center" })).toBeNull();
+  });
+
   it("renders nothing for header extras outside AppShell", () => {
     const { container } = render(<ShellHeaderExtras />);
     expect(container).toBeEmptyDOMElement();

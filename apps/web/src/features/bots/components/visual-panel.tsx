@@ -2,7 +2,7 @@
 
 import {
   BACKTEST_INTERVALS,
-  BACKTEST_PERIODS,
+  backtestPeriodsOf,
   backtestViewSchema,
   dec,
   type BacktestPeriod,
@@ -14,8 +14,9 @@ import { useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
-import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { feeLabels, formatAmount, formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { useMarketNames, type MarketNames } from "@/lib/markets";
+import { useBuilderFeeRate } from "@/lib/queries";
 
 import { FIELDS, toConfig, type FormValues } from "../fields";
 import { fmtPrice, previewModel, unitsOf } from "../preview";
@@ -77,7 +78,7 @@ export function VisualPanel({
   inline?: boolean;
   values: FormValues;
   /** Giá gần nhất của market (null khi chưa chọn market hoặc SoDEX chưa có giá). */
-  last: { price: string | null; at: number | null } | null;
+  last: { market: string; price: string | null; at: number | null } | null;
 }) {
   const t = useTranslations("createBot");
   const tb = useTranslations("createBot.backtest");
@@ -86,7 +87,13 @@ export function VisualPanel({
   const ts = useTranslations(`createBot.strategies.${strategy}`);
   const names = useMarketNames();
   const [tab, setTab] = useState<"preview" | "backtest">("preview");
-  const [period, setPeriod] = useState<BacktestPeriod>(90);
+  const periods = backtestPeriodsOf(strategy);
+  // Kỳ mặc định 90 ngày; chiến lược chỉ chạy nến 1 phút (Volume Farming) mặc định kỳ ngắn nhất.
+  const [period, setPeriod] = useState<BacktestPeriod>(
+    periods.includes(90) ? 90 : (periods[0] ?? 90),
+  );
+  const rate = useBuilderFeeRate(strategy);
+  const builderRate = feeLabels(rate).pct;
   const [runId, setRunId] = useState<string | null>(null);
   const [ranWith, setRanWith] = useState<string | null>(null);
   const key = useRef(crypto.randomUUID());
@@ -168,7 +175,7 @@ export function VisualPanel({
   const unavailable =
     v?.status === "unavailable" ? tb(`unavailable.${v.error ?? "history_short"}`) : undefined;
 
-  const model = previewModel(strategy, values, last?.price ?? null, Date.now());
+  const model = previewModel(strategy, values, last?.price ?? null, Date.now(), rate);
   const title = visTitle(strategy, values, tp, ts, names);
   const marketLine =
     strategy === "rebalancing"
@@ -178,14 +185,17 @@ export function VisualPanel({
         : last.price === null || last.at === null
           ? tp("lastMissing")
           : tp("lastLine", {
-              price: fmtPrice(last.price),
+              // Cùng cách làm tròn theo tick với dòng "Last" của ô Market (UI_REVIEW N2).
+              price:
+                formatAmount(last.price, names.priceDigits(last.market))?.text ??
+                fmtPrice(last.price),
               time: formatDateTime(last.at).split(", ").at(-1) ?? "",
             });
 
   return (
     <section
       aria-labelledby="vis-title"
-      className={`flex min-w-0 flex-col gap-3.5 rounded-card border border-border bg-surface ${inline ? "p-3.5" : "sticky top-4 flex-[3_1_480px] self-start p-[18px]"}`}
+      className={`flex min-w-0 flex-col gap-3.5 rounded-card border border-border bg-surface ${inline ? "p-3.5" : "p-[18px]"}`}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="vis-title" className="m-0 text-[17px] font-extrabold">
@@ -221,7 +231,7 @@ export function VisualPanel({
         <div className="flex flex-col gap-3">
           <SegmentedControl
             label={tb("periodsLabel")}
-            options={BACKTEST_PERIODS.map((p) => ({
+            options={periods.map((p) => ({
               value: String(p),
               label: tb("period", { days: p }),
             }))}
@@ -254,7 +264,7 @@ export function VisualPanel({
               ? {}
               : { unavailableReason: `${tb("unavailableTitle")}. ${unavailable}` })}
             emptyTitle={tb("run")}
-            emptyDescription={tb("intro")}
+            emptyDescription={tb("intro", { rate: builderRate })}
             errorTitle={invalid ? t("errors.invalid") : tb("failed")}
             metrics={metrics}
             missingLabel={tb("missing")}
@@ -267,7 +277,8 @@ export function VisualPanel({
                 <strong className="text-ink">{tb("assumptions")}</strong>
                 <span>{tb("a1")}</span>
                 <span>{tb("a2")}</span>
-                <span>{tb("a3")}</span>
+                <span>{tb("a3", { rate: builderRate })}</span>
+                {strategy === "volume_farm" ? <span>{tb("farmNote")}</span> : null}
                 <span>
                   {tb("a4", {
                     interval: intervalLabel,

@@ -28,6 +28,8 @@ type Strategy = keyof typeof FIELDS;
 const paramsResponse = z.object({ suggestion: suggestionViewSchema.nullable() });
 const goalsResponse = z.object({ goals: goalsViewSchema.nullable() });
 
+const DEFAULT_ASSETS = ["BTC", "ETH"];
+
 export const supportsAi = (s: string): s is (typeof RECO_STRATEGIES)[number] =>
   (RECO_STRATEGIES as readonly string[]).includes(s);
 const marketKey = (s: Strategy) => (s === "funding_arb" ? "perpMarket" : "market");
@@ -79,7 +81,8 @@ export function useAiParameters(opts: {
     queryKey: MARKETS_KEY,
     queryFn: () => api("GET", "/api/v1/markets", marketListSchema),
     staleTime: 60_000,
-    enabled: enabled && auto,
+    // Chiến lược không có AI parameters vẫn cần danh sách market để chọn sẵn market BTC.
+    enabled: auto,
   });
 
   const apply = useCallback(
@@ -146,6 +149,22 @@ export function useAiParameters(opts: {
   });
   const started = useRef(false);
   useEffect(() => {
+    // Chiến lược không có AI parameters (AI Adaptive DCA, Volume Farm…): chỉ chọn sẵn market BTC của đúng engine,
+    // để form không bỏ trống ô Contract (DEC-113). Người dùng đổi được; tham số giữ mặc định của form.
+    if (!started.current && !enabled && auto && markets.data !== undefined) {
+      started.current = true;
+      const spec = FIELDS[strategy].find(
+        (f) => f.key === marketKey(strategy) && f.type.kind === "market" && "engine" in f.type,
+      );
+      const engine = spec !== undefined && "engine" in spec.type ? spec.type.engine : undefined;
+      const current = valuesRef.current[marketKey(strategy)];
+      if (engine === undefined || (typeof current === "string" && current !== "")) return;
+      const m = DEFAULT_ASSETS.map((asset) =>
+        markets.data.items.find((x) => x.engine === engine && assetOf(x.name) === asset),
+      ).find((x) => x !== undefined);
+      if (m !== undefined) setValues({ ...valuesRef.current, [marketKey(strategy)]: m.name });
+      return;
+    }
     if (started.current || !enabled) return;
     if (suggestionId !== undefined) {
       if (stored.data === undefined) return;
@@ -161,10 +180,16 @@ export function useAiParameters(opts: {
       fetchFor(preset);
       return;
     }
-    const assets = goals.data.goals?.assets ?? [];
-    const m = markets.data.items.find(
-      (x) => x.engine === engineOf(strategy) && assets.includes(assetOf(x.name)),
-    );
+    // Chưa có Goals (bỏ qua onboarding bước 5) vẫn điền sẵn, như người mới ở AI Desk.
+    const assets = goals.data.goals?.assets ?? DEFAULT_ASSETS;
+    // Theo thứ tự tài sản, không theo thứ tự danh sách market của SoDEX.
+    const m = assets
+      .map((asset) =>
+        markets.data.items.find(
+          (x) => x.engine === engineOf(strategy) && assetOf(x.name) === asset,
+        ),
+      )
+      .find((x) => x !== undefined);
     if (m === undefined) return;
     setValues({ ...valuesRef.current, [marketKey(strategy)]: m.name });
     fetchFor(m.name);
@@ -239,7 +264,12 @@ export function useAiParameters(opts: {
     paramSource: mode === "ai" ? (edits === 0 ? "ai" : "ai_edited") : "manual",
     loading: request.isPending || stored.isLoading,
     unavailable: request.isError || stored.isError || request.data?.suggestion === null,
-    needsCapital: request.data?.suggestion === null && sentCapital.current === undefined,
+    // DCA không có ô vốn (engine tự chọn thang nhỏ nhất), nên không bao giờ hỏi vốn.
+    needsCapital:
+      request.data?.suggestion === null &&
+      sentCapital.current === undefined &&
+      strategy !== "spot_dca" &&
+      strategy !== "futures_dca",
   };
   return {
     state,

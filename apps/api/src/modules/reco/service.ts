@@ -8,6 +8,7 @@ import {
   type AiParamsBody,
   type GoalsBody,
   type GoalsView,
+  type NotSuggested,
   type PlanView,
   type Suggestion,
   type SuggestionView,
@@ -17,6 +18,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getAddress } from "viem";
 
 import type { RecoClient, RecoCommon } from "../../lib/reco-client";
+import { aiDeskOn } from "../bots/service";
 import { iso } from "../security/service";
 
 // Mục tiêu (onboarding bước 5), kế hoạch (bước 6) và AI parameters. Engine nằm ở service `reco`; api
@@ -114,8 +116,9 @@ async function store(
   deps: RecoDeps,
   userId: string,
   s: Suggestion,
-  context: "onboarding" | "create" | "retune",
+  context: "onboarding" | "create" | "retune" | "desk",
   role: "best" | "add_on" | "single",
+  extra: { notSuggested?: NotSuggested[]; maxDrop?: string; notes?: string[] } = {},
 ): Promise<SuggestionView> {
   const [row] = await deps.db
     .insert(aiSuggestions)
@@ -130,6 +133,11 @@ async function store(
       values: s.values,
       reasons: s.reasons,
       basis: s.basis,
+      notSuggested:
+        extra.notSuggested === undefined && extra.notes === undefined
+          ? null
+          : { items: extra.notSuggested ?? [], notes: extra.notes ?? [] },
+      maxDrop: extra.maxDrop ?? null,
       inputsVersion: s.inputsVersion,
       computedAt: new Date(s.computedAt),
     })
@@ -144,18 +152,40 @@ async function store(
     reasons: s.reasons,
     basis: s.basis,
     computedAt: s.computedAt,
+    notSuggested: extra.notSuggested ?? [],
+    maxDrop: extra.maxDrop ?? null,
+    inputsVersion: s.inputsVersion,
+    notes: extra.notes ?? [],
   };
 }
 
-export async function plan(deps: RecoDeps, userId: string): Promise<PlanView> {
-  const g = await getGoals(deps, userId);
+/**
+ * Kế hoạch đề xuất. `desk` (AI Desk › Recommended, DEC-105): chỉ một bot dùng toàn bộ vốn, cần AI Desk được bật;
+ * không cần kết nối SoDEX (khi chưa kết nối thì không dùng lịch sử giao dịch). Lưu kèm `notSuggested` và mức chịu lỗ
+ * để trang Why this one hiện đúng dữ liệu của lần đề xuất này, không tính lại.
+ */
+export async function plan(
+  deps: RecoDeps,
+  userId: string,
+  context: "onboarding" | "desk" = "onboarding",
+  override?: GoalsBody,
+): Promise<PlanView> {
+  if (context === "desk" && !(await aiDeskOn(deps.db, userId)))
+    throw new AppError(ErrorCode.forbidden, "AI Desk is not enabled for this account.");
+  // AI Desk tính theo câu trả lời trên màn hình mà không ghi đè Goals đã lưu (DEC-95).
+  const g = context === "desk" && override !== undefined ? override : await getGoals(deps, userId);
   if (g === null) throw new AppError(ErrorCode.notFound, "Set your goals first.");
-  const result = await deps.reco.plan({ ...(await common(deps, userId)), goals: g });
+  const result = await deps.reco.plan({
+    ...(await common(deps, userId)),
+    goals: g,
+    ...(context === "desk" ? { single: true } : {}),
+  });
+  const extra = { notSuggested: result.notSuggested, maxDrop: g.maxDrop, notes: result.notes };
   return {
     best:
-      result.best === null ? null : await store(deps, userId, result.best, "onboarding", "best"),
+      result.best === null ? null : await store(deps, userId, result.best, context, "best", extra),
     addOns: await Promise.all(
-      result.addOns.map((s) => store(deps, userId, s, "onboarding", "add_on")),
+      result.addOns.map((s) => store(deps, userId, s, context, "add_on", extra)),
     ),
     notSuggested: result.notSuggested,
     notes: result.notes,
@@ -171,7 +201,9 @@ export async function aiParams(
   body: AiParamsBody,
 ): Promise<SuggestionView | null> {
   const g = await getGoals(deps, userId);
-  const capital = body.capital ?? g?.capital;
+  // Form DCA không có ô vốn: không có vốn thì engine tự chọn thang nhỏ nhất đạt min size ("").
+  const dca = body.strategy === "spot_dca" || body.strategy === "futures_dca";
+  const capital = body.capital ?? g?.capital ?? (dca ? "" : undefined);
   if (capital === undefined) return null;
   const s = await deps.reco.params({
     ...(await common(deps, userId)),
@@ -179,6 +211,8 @@ export async function aiParams(
     market: body.market,
     capital,
     maxDrop: g?.maxDrop ?? "10",
+    // Chưa có Goals thì dùng BTC, ETH như AI Desk (DEC-113), để Rebalancing có giỏ hai tài sản.
+    assets: g?.assets ?? ["BTC", "ETH"],
   });
   return s === null ? null : store(deps, userId, s, body.context, "single");
 }
@@ -245,6 +279,7 @@ export async function getSuggestion(
     .where(and(eq(aiSuggestions.id, id), eq(aiSuggestions.userId, userId)))
     .limit(1);
   if (row === undefined) throw new AppError(ErrorCode.notFound, "Suggestion not found.");
+  const saved = row.notSuggested as { items?: NotSuggested[]; notes?: string[] } | null;
   return {
     id: row.id,
     strategy: row.strategy as SuggestionView["strategy"],
@@ -254,5 +289,9 @@ export async function getSuggestion(
     reasons: row.reasons as string[],
     basis: row.basis,
     computedAt: iso(row.computedAt),
+    notSuggested: saved?.items ?? [],
+    maxDrop: row.maxDrop,
+    inputsVersion: row.inputsVersion,
+    notes: saved?.notes ?? [],
   };
 }

@@ -140,6 +140,8 @@ Mục tiêu: chạy được cả hệ thống bằng `docker compose` (dev, sta
 | Dữ liệu | PostgreSQL + TimescaleDB, Redis | Bot, lệnh, audit, candles |
 | Secret | Vault transit (dev) / cloud KMS (prod) | Mã hoá key của DRIFT |
 | Test | Vitest + Testing Library, Playwright, MSW (chỉ trong test) | |
+| LLM (Desk AI, DEC-165) | `@anthropic-ai/sdk`, Claude API trực tiếp, model `claude-sonnet-5-5` | Chỉ viết lời quanh fact do code tính; không có công cụ thực thi; API key riêng ở Vault, không phải gói Claude cá nhân |
+| MCP (DEC-167) | `@modelcontextprotocol/sdk`, service `apps/mcp` ở `mcp.desklabs.xyz` | SDK chính thức, Streamable HTTP + OAuth 2.1; chỉ tool đọc và bản nháp |
 
 ```
 drift/

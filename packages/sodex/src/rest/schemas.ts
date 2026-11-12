@@ -47,6 +47,9 @@ const symbolBase = {
   minNotional: decimal,
   maxNotional: decimal,
   status: z.enum([SymbolStatus.trading, SymbolStatus.halt]),
+  /** Phí cơ bản của market (tỷ lệ thô, ví dụ "0.00012"); thiếu thì dùng `SODEX_BASE_FEE_PCT` (DEC-112). */
+  makerFee: decimal.optional(),
+  takerFee: decimal.optional(),
 };
 
 export const spotSymbolSchema = z.object({

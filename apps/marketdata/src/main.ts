@@ -1,6 +1,22 @@
-import { candles1m, createDb, fundingRates } from "@drift/db";
+import {
+  candles1m,
+  copiedLeaders,
+  createDb,
+  followedLeaders,
+  fundingRates,
+  latestTypicalHold,
+  liveCopyBots,
+} from "@drift/db";
+import { chargedFetch, HlUserFillsStream, HyperliquidClient } from "@drift/hyperliquid";
 import { Lease, runAsLeader } from "@drift/runtime";
-import { AppError, ErrorCode } from "@drift/shared";
+import {
+  AppError,
+  coinIndex,
+  ErrorCode,
+  type CoinIndex,
+  type LeaderFillMessage,
+  type LeaderPositionMessage,
+} from "@drift/shared";
 import {
   loadSodexConfig,
   MarketStream,
@@ -8,6 +24,7 @@ import {
   SodexRestClient,
   type Engine,
   type WsCandle,
+  WsUserStream,
 } from "@drift/sodex";
 import { connect } from "@nats-io/transport-node";
 import { sql } from "drizzle-orm";
@@ -15,6 +32,11 @@ import { Redis } from "ioredis";
 import pino from "pino";
 import { z } from "zod";
 
+import { CopyAllocator } from "./copy-allocator";
+import { HlLeaderTracker } from "./hl-leaders";
+import { getCursor, saveLeaderEvents, setCursor } from "./leader-store";
+import { LeaderWatcher } from "./leaders";
+import { LiquidationScanner } from "./liquidations";
 import { CandleTracker, FundingTracker, marketSubject } from "./trackers";
 
 // marketdata: nơi duy nhất mở WS thị trường SoDEX (ARCHITECTURE.md mục 3.3.7). Một bản active nhờ
@@ -29,6 +51,18 @@ const env = z
     SODEX_EGRESS_KEY: z.string().default("default"),
     /** Số phút backfill bằng REST khi lên leader hoặc kết nối lại. */
     MARKETDATA_BACKFILL_MINUTES: z.coerce.number().int().positive().default(360),
+    /** `hyperliquid`: quét bản đồ thanh lý từ dữ liệu công khai (DEC-92). */
+    LIQUIDATION_PROVIDER: z.enum(["none", "hyperliquid"]).default("none"),
+    /** Chu kỳ đọc lại danh sách và vị thế ví leader của Copy Trade (DEC-161). */
+    LEADER_SYNC_MS: z.coerce.number().int().positive().default(30_000),
+    /** Số WS ví leader tối đa (SoDEX: 10 user mỗi IP trên WS). */
+    LEADER_MAX_STREAMS: z.coerce.number().int().nonnegative().default(8),
+    /** Cảnh báo "big move" (DEC-163 mục 11): notional tối thiểu USD; trống = tắt (OPEN_QUESTIONS 21a). */
+    COPY_BIG_MOVE_MIN_USD: z
+      .string()
+      .regex(/^\d+(\.\d+)?$/)
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "marketdata" } });
@@ -42,6 +76,131 @@ const rest = new SodexRestClient({
   priority: "background",
 });
 const nc = await connect({ servers: env.NATS_URL });
+let scanner: LiquidationScanner | null = null;
+let leaderTimer: ReturnType<typeof setInterval> | null = null;
+
+// Copy Trading (DEC-163 mục 5, 9): hạn mức cho tín hiệu mở / tăng (minHold, ≤ 50% độ sâu sổ SoDEX). Sổ lệnh đọc ở mức
+// tương tác (không phải job nền) vì nằm trên đường đi của tín hiệu.
+const bookRest = new SodexRestClient({
+  config: sodex,
+  rateLimit: new RedisRateLimitStore(redis),
+  egressKey: env.SODEX_EGRESS_KEY,
+});
+const allocator = new CopyAllocator({
+  bots: () => liveCopyBots(db),
+  holds: (addresses) => latestTypicalHold(db, "hyperliquid", addresses),
+  orderbook: async (market) => {
+    const b = await bookRest.getOrderbook("perps", market, 20);
+    return { bids: b.bids, asks: b.asks };
+  },
+  warn: (detail, message) => {
+    log.warn(detail, message);
+  },
+});
+/** Publish tín hiệu leader theo thứ tự cho từng ví (fill cần đọc sổ lệnh trước khi đi). */
+const leaderChains = new Map<string, Promise<void>>();
+function publishLeader(subject: string, payload: LeaderFillMessage | LeaderPositionMessage) {
+  const key = `${payload.source}:${payload.address}`;
+  const prev = leaderChains.get(key) ?? Promise.resolve();
+  const next = prev
+    .then(async () => {
+      const out = "market" in payload ? await allocator.enrich(payload) : payload;
+      nc.publish(subject, JSON.stringify(out));
+    })
+    .catch((error: unknown) => {
+      log.warn({ err: error, subject }, "leader publish failed");
+    });
+  leaderChains.set(key, next);
+  void next.then(() => {
+    if (leaderChains.get(key) === next) leaderChains.delete(key);
+  });
+}
+
+// Copy Trade (DEC-161): ví leader (nguồn SoDEX) của các bot copy đang chạy, kể cả bot paper.
+const leaders = new LeaderWatcher({
+  activeLeaders: () => copiedLeaders(db, "sodex"),
+  readPositions: async (address) => {
+    const state = await rest.getPerpsAccountState(address as `0x${string}`);
+    return Object.fromEntries(state.P.map((p) => [p.s, p.sz]));
+  },
+  openStream: (address, handlers) => {
+    const stream = new WsUserStream({
+      baseUrl: sodex.wsUrl,
+      engine: "perps",
+      user: address as `0x${string}`,
+      callbacks: {
+        onOrderUpdate: () => undefined,
+        onTrade: (trades) => {
+          handlers.onTrades(
+            trades.map((t) => ({
+              market: t.s,
+              side: t.S === "BUY" ? "buy" : "sell",
+              price: t.p,
+              quantity: t.q,
+              at: t.T,
+            })),
+          );
+        },
+        onReconnect: () => {
+          handlers.onReconnect();
+        },
+        onError: (error) => {
+          log.warn({ err: error, address }, "leader stream error");
+        },
+      },
+    });
+    stream.connect();
+    return stream;
+  },
+  publish: publishLeader,
+  now: Date.now,
+  warn: (detail, message) => {
+    log.warn(detail, message);
+  },
+  maxStreams: env.LEADER_MAX_STREAMS,
+});
+
+// Copy Trading v1 (DEC-163): ví leader Hyperliquid, chỉ đọc. Bucket weight chung theo IP với scheduler (T2).
+const hl = new HyperliquidClient({
+  limiter: new RedisRateLimitStore(redis),
+  bucketKey: `hl:ip:${env.SODEX_EGRESS_KEY}`,
+});
+let hlIndex: CoinIndex = coinIndex([]);
+const hlStream = new HlUserFillsStream({
+  callbacks: {
+    onFills: (user, fills) => {
+      hlLeaders.onWsFills(user, fills);
+    },
+    onReconnect: () => {
+      for (const a of hlLeaders.streaming)
+        void hlLeaders.refreshPositions(a).catch((error: unknown) => {
+          log.warn({ err: error, address: a }, "hyperliquid leader read after reconnect failed");
+        });
+    },
+    onError: (error) => {
+      log.warn({ err: error }, "hyperliquid leader stream error");
+    },
+  },
+});
+const hlLeaders = new HlLeaderTracker({
+  copied: () => copiedLeaders(db, "hyperliquid"),
+  followed: () => followedLeaders(db, "hyperliquid"),
+  stream: hlStream,
+  hl,
+  index: () => hlIndex,
+  publish: publishLeader,
+  getCursor: (a) => getCursor(db, "hyperliquid", a),
+  setCursor: (a, ms) => setCursor(db, "hyperliquid", a, ms),
+  onEvents: (a, events, seenAt) =>
+    saveLeaderEvents(db, "hyperliquid", a, events, seenAt, {
+      minUsd: env.COPY_BIG_MOVE_MIN_USD ?? null,
+    }),
+  now: Date.now,
+  warn: (detail, message) => {
+    log.warn(detail, message);
+  },
+});
+let hlTimers: ReturnType<typeof setInterval>[] = [];
 
 async function saveCandles(
   candles: readonly {
@@ -180,22 +339,87 @@ async function start() {
   streams = [make("spot", spotSymbols), make("perps", perpsSymbols)];
   for (const s of streams) s.connect();
   log.info({ spot: spotSymbols.length, perps: perpsSymbols.length }, "marketdata leading");
+  if (env.LIQUIDATION_PROVIDER === "hyperliquid") {
+    // Chỉ leader quét: hạn mức Hyperliquid tính theo IP, chạy hai bản là gấp đôi weight.
+    scanner = new LiquidationScanner({
+      store: redis,
+      // Cùng bucket weight Hyperliquid với Copy Trading (DEC-163 mục 10).
+      fetch: chargedFetch(new RedisRateLimitStore(redis), `hl:ip:${env.SODEX_EGRESS_KEY}`),
+      now: Date.now,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      warn: (detail, message) => {
+        log.warn(detail, message);
+      },
+    });
+    void scanner.run();
+  }
   await Promise.all([backfill("spot", spotSymbols), backfill("perps", perpsSymbols)]);
+  const syncLeaders = () => {
+    void allocator.refresh().catch((error: unknown) => {
+      log.warn({ err: error }, "copy allocator refresh failed");
+    });
+    void leaders.sync().catch((error: unknown) => {
+      log.warn({ err: error }, "leader sync failed");
+    });
+  };
+  syncLeaders();
+  leaderTimer = setInterval(syncLeaders, env.LEADER_SYNC_MS);
+
+  hlIndex = coinIndex(perpsSymbols);
+  const every = (ms: number, run: () => Promise<void>, what: string) => {
+    const go = () => {
+      void run().catch((error: unknown) => {
+        log.warn({ err: error }, what);
+      });
+    };
+    go();
+    hlTimers.push(setInterval(go, ms));
+  };
+  every(env.LEADER_SYNC_MS, () => hlLeaders.sync(), "hyperliquid leader sync failed");
+  every(120_000, () => hlLeaders.poll(), "hyperliquid follow poll failed");
+  every(10_000, () => hlLeaders.flush(), "hyperliquid leader flush failed");
 }
 
 function stop() {
   for (const s of streams) s.close();
   streams = [];
+  scanner?.stop();
+  scanner = null;
+  if (leaderTimer !== null) clearInterval(leaderTimer);
+  leaderTimer = null;
+  leaders.stop();
+  for (const t of hlTimers) clearInterval(t);
+  hlTimers = [];
+  hlStream.setUsers([]);
+}
+
+// Khởi động thất bại (SoDEX lỗi đúng lúc nhận leader) thì thử lại khi vẫn còn là leader. Trước đây chỉ ghi log rồi
+// dừng: bản này giữ lease mà không phát giá, bản kia không được lên thay, giá đứng vô hạn (local 2026-11-09).
+const START_RETRY_MAX_MS = 60_000;
+let leading = false;
+let startRetry: ReturnType<typeof setTimeout> | null = null;
+function launch(attempt = 0) {
+  void start().catch((error: unknown) => {
+    stop();
+    if (!leading) return;
+    const delay = Math.min(START_RETRY_MAX_MS, 5_000 * 2 ** attempt);
+    log.error({ err: error, retryInMs: delay }, "marketdata start failed; retrying");
+    startRetry = setTimeout(() => {
+      startRetry = null;
+      if (leading) launch(attempt + 1);
+    }, delay);
+  });
 }
 
 const stopLeader = runAsLeader(new Lease(redis, "lease:marketdata"), {
   onLead: () => {
-    void start().catch((error: unknown) => {
-      log.error({ err: error }, "marketdata start failed");
-      stop();
-    });
+    leading = true;
+    launch();
   },
   onLose: () => {
+    leading = false;
+    if (startRetry !== null) clearTimeout(startRetry);
+    startRetry = null;
     log.warn("marketdata lost leadership");
     stop();
   },

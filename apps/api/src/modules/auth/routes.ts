@@ -1,5 +1,6 @@
 import { users } from "@drift/db";
 import {
+  adminResetPasswordBodySchema,
   AppError,
   dec,
   createSessionBodySchema,
@@ -25,6 +26,7 @@ import {
   loginWithPassword,
   registerWithPassword,
   requestOtp,
+  resetPasswordByTeam,
   revokeSession,
   type AuthDeps,
 } from "./service";
@@ -71,6 +73,29 @@ export function registerAuthRoutes(
     return reply.status(201).send(await me(session.userId));
   });
 
+  // Team đặt lại mật khẩu cho user (DEC-77). Mật khẩu tạm nằm trong response nên không lưu lại để replay.
+  app.post("/api/v1/admin/users/:id/password", async (request, reply) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(z.object({ id: z.uuid() }), request.params);
+    const body = parseOrThrow(adminResetPasswordBodySchema, request.body);
+    return idempotent(
+      db,
+      request,
+      reply,
+      auth.userId,
+      deps.now(),
+      async () => ({
+        status: 200,
+        body: await resetPasswordByTeam(
+          deps,
+          { actorId: auth.userId, targetId: id, twoFactorCode: body.twoFactorCode },
+          request.ip,
+        ),
+      }),
+      { sensitive: true },
+    );
+  });
+
   app.post("/api/v1/auth/session", async (request, reply) => {
     const body = parseOrThrow(createSessionBodySchema, request.body);
     const session = await createSession(
@@ -96,7 +121,10 @@ export function registerAuthRoutes(
     return reply.status(204).send();
   });
 
-  app.get("/api/v1/me", async (request) => me(requireAuth(request).userId));
+  app.get("/api/v1/me", async (request) => {
+    const auth = requireAuth(request);
+    return me(auth.userId, auth.twoFactorTrustedUntil);
+  });
 
   app.get("/api/v1/security/sessions", async (request) => {
     const auth = requireAuth(request);
@@ -154,7 +182,7 @@ export function registerAuthRoutes(
     );
   });
 
-  async function me(userId: string): Promise<Me> {
+  async function me(userId: string, trustedUntil: Date | null = null): Promise<Me> {
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (user?.deletedAt !== null)
       throw new AppError(ErrorCode.unauthenticated, "Sign in required.");
@@ -167,6 +195,10 @@ export function registerAuthRoutes(
       defaultMaxLossPct:
         user.defaultMaxLossPct === null ? null : dec(user.defaultMaxLossPct).toString(),
       twoFactorEnabled: user.twofaEnabled,
+      twoFactorTrustedUntil:
+        user.twofaEnabled && trustedUntil !== null && trustedUntil.getTime() > deps.now().getTime()
+          ? trustedUntil.toISOString()
+          : null,
       role: user.role,
     };
   }

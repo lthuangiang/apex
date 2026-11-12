@@ -12,7 +12,9 @@ describe("API rate limit", () => {
     app.addHook("onRequest", (request, _reply, done) => {
       const user = request.headers["x-user"];
       request.auth =
-        typeof user === "string" ? { userId: user, sessionId: "s", twoFactorEnabled: false } : null;
+        typeof user === "string"
+          ? { userId: user, sessionId: "s", twoFactorEnabled: false, twoFactorTrustedUntil: null }
+          : null;
       done();
     });
     registerErrorHandler(app);

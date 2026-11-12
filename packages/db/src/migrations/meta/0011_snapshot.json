@@ -108,12 +108,8 @@
           "name": "account_analyses_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "account_analyses",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -121,12 +117,8 @@
           "name": "account_analyses_import_id_imports_id_fk",
           "tableFrom": "account_analyses",
           "tableTo": "imports",
-          "columnsFrom": [
-            "import_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["import_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -262,12 +254,8 @@
           "name": "ai_suggestions_user_id_users_id_fk",
           "tableFrom": "ai_suggestions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -385,12 +373,8 @@
           "name": "api_keys_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "api_keys",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -492,12 +476,8 @@
           "name": "audit_log_user_id_users_id_fk",
           "tableFrom": "audit_log",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -666,12 +646,8 @@
           "name": "backtest_runs_user_id_users_id_fk",
           "tableFrom": "backtest_runs",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -778,12 +754,8 @@
           "name": "bot_events_bot_id_bots_id_fk",
           "tableFrom": "bot_events",
           "tableTo": "bots",
-          "columnsFrom": [
-            "bot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["bot_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -843,12 +815,8 @@
           "name": "bot_runtime_bot_id_bots_id_fk",
           "tableFrom": "bot_runtime",
           "tableTo": "bots",
-          "columnsFrom": [
-            "bot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["bot_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -954,12 +922,8 @@
           "name": "bot_versions_bot_id_bots_id_fk",
           "tableFrom": "bot_versions",
           "tableTo": "bots",
-          "columnsFrom": [
-            "bot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["bot_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1105,12 +1069,8 @@
           "name": "bots_user_id_users_id_fk",
           "tableFrom": "bots",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1118,12 +1078,8 @@
           "name": "bots_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "bots",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1217,12 +1173,8 @@
           "name": "builder_approvals_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "builder_approvals",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1267,10 +1219,7 @@
       "compositePrimaryKeys": {
         "builder_balance_snapshots_date_engine_pk": {
           "name": "builder_balance_snapshots_date_engine_pk",
-          "columns": [
-            "date",
-            "engine"
-          ]
+          "columns": ["date", "engine"]
         }
       },
       "uniqueConstraints": {},
@@ -1350,10 +1299,7 @@
       "compositePrimaryKeys": {
         "builder_revenue_daily_date_engine_pk": {
           "name": "builder_revenue_daily_date_engine_pk",
-          "columns": [
-            "date",
-            "engine"
-          ]
+          "columns": ["date", "engine"]
         }
       },
       "uniqueConstraints": {},
@@ -1413,10 +1359,7 @@
       "compositePrimaryKeys": {
         "candles_1m_market_ts_pk": {
           "name": "candles_1m_market_ts_pk",
-          "columns": [
-            "market",
-            "ts"
-          ]
+          "columns": ["market", "ts"]
         }
       },
       "uniqueConstraints": {},
@@ -1539,12 +1482,8 @@
           "name": "equity_snapshots_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "equity_snapshots",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1552,10 +1491,7 @@
       "compositePrimaryKeys": {
         "equity_snapshots_sodex_account_id_at_pk": {
           "name": "equity_snapshots_sodex_account_id_at_pk",
-          "columns": [
-            "sodex_account_id",
-            "at"
-          ]
+          "columns": ["sodex_account_id", "at"]
         }
       },
       "uniqueConstraints": {},
@@ -1679,12 +1615,8 @@
           "name": "fills_order_id_orders_id_fk",
           "tableFrom": "fills",
           "tableTo": "orders",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1805,12 +1737,8 @@
           "name": "funding_payments_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "funding_payments",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1863,10 +1791,7 @@
       "compositePrimaryKeys": {
         "funding_rates_market_funding_time_pk": {
           "name": "funding_rates_market_funding_time_pk",
-          "columns": [
-            "market",
-            "funding_time"
-          ]
+          "columns": ["market", "funding_time"]
         }
       },
       "uniqueConstraints": {},
@@ -1929,12 +1854,8 @@
           "name": "goals_user_id_users_id_fk",
           "tableFrom": "goals",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2091,12 +2012,8 @@
           "name": "history_positions_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "history_positions",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2271,12 +2188,8 @@
           "name": "history_trades_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "history_trades",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2391,12 +2304,8 @@
           "name": "idempotency_keys_user_id_users_id_fk",
           "tableFrom": "idempotency_keys",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2503,12 +2412,8 @@
           "name": "imports_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "imports",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2615,10 +2520,7 @@
       "compositePrimaryKeys": {
         "market_stats_daily_market_date_pk": {
           "name": "market_stats_daily_market_date_pk",
-          "columns": [
-            "market",
-            "date"
-          ]
+          "columns": ["market", "date"]
         }
       },
       "uniqueConstraints": {},
@@ -2675,12 +2577,8 @@
           "name": "notification_settings_user_id_users_id_fk",
           "tableFrom": "notification_settings",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2688,11 +2586,7 @@
       "compositePrimaryKeys": {
         "notification_settings_user_id_type_channel_pk": {
           "name": "notification_settings_user_id_type_channel_pk",
-          "columns": [
-            "user_id",
-            "type",
-            "channel"
-          ]
+          "columns": ["user_id", "type", "channel"]
         }
       },
       "uniqueConstraints": {},
@@ -2783,12 +2677,8 @@
           "name": "notifications_user_id_users_id_fk",
           "tableFrom": "notifications",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3028,12 +2918,8 @@
           "name": "orders_bot_id_bots_id_fk",
           "tableFrom": "orders",
           "tableTo": "bots",
-          "columnsFrom": [
-            "bot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["bot_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3041,12 +2927,8 @@
           "name": "orders_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "orders",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3220,12 +3102,8 @@
           "name": "risk_alerts_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "risk_alerts",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3303,12 +3181,8 @@
           "name": "risk_limits_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "risk_limits",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3430,12 +3304,8 @@
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3581,12 +3451,8 @@
           "name": "sodex_accounts_user_id_users_id_fk",
           "tableFrom": "sodex_accounts",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3740,12 +3606,8 @@
           "name": "sodex_signature_requests_user_id_users_id_fk",
           "tableFrom": "sodex_signature_requests",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3753,12 +3615,8 @@
           "name": "sodex_signature_requests_sodex_account_id_sodex_accounts_id_fk",
           "tableFrom": "sodex_signature_requests",
           "tableTo": "sodex_accounts",
-          "columnsFrom": [
-            "sodex_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sodex_account_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -3766,12 +3624,8 @@
           "name": "sodex_signature_requests_api_key_id_api_keys_id_fk",
           "tableFrom": "sodex_signature_requests",
           "tableTo": "api_keys",
-          "columnsFrom": [
-            "api_key_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["api_key_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -3847,12 +3701,8 @@
           "name": "twofa_backup_codes_user_id_users_id_fk",
           "tableFrom": "twofa_backup_codes",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4055,12 +3905,8 @@
           "name": "watchlist_items_user_id_users_id_fk",
           "tableFrom": "watchlist_items",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -4068,10 +3914,7 @@
       "compositePrimaryKeys": {
         "watchlist_items_user_id_market_pk": {
           "name": "watchlist_items_user_id_market_pk",
-          "columns": [
-            "user_id",
-            "market"
-          ]
+          "columns": ["user_id", "market"]
         }
       },
       "uniqueConstraints": {},

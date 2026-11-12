@@ -69,6 +69,8 @@ export const meSchema = z.object({
   numberFormat: z.string(),
   defaultMaxLossPct: z.string().nullable().default(null),
   twoFactorEnabled: z.boolean(),
+  /** Hết cửa sổ không hỏi lại 2FA của phiên này (DEC-115); null = lần tới sẽ hỏi mã (nếu đã bật). */
+  twoFactorTrustedUntil: isoDateTimeSchema.nullable().default(null),
   role: z.enum(UserRole),
 });
 

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DRIFT AI Desk mobile</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EEF1FA}
+a{color:#2E62E8}a:hover{color:#1D47B8}
+.btn{transition:background-color .15s ease}
+.btn:hover{filter:brightness(0.97)}
+.btn:focus-visible,.nav:focus-visible,a:focus-visible,textarea:focus-visible{outline:3px solid #8FB0FF;outline-offset:2px}
+.nav:hover{background:#F2F5FD}
+.num{font-variant-numeric:tabular-nums}
+.th{padding:10px 14px;font-size:12px;font-weight:700;color:#5F6684;text-align:left;white-space:nowrap;border-bottom:1px solid #E3E7F5}
+.td{padding:13px 14px;font-size:14px;text-align:left;border-bottom:1px solid #EEF1F8;vertical-align:top}
+@media (max-width:760px){.side-nav{flex-direction:row !important;flex-wrap:wrap}}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</helmet>
+<div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141A33; background: #EEF1FA; width: 390px; min-height: 1200px; box-sizing: border-box; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+<header style="display: flex; align-items: center; justify-content: space-between; gap: 10px"><h1 style="margin: 0; font-size: 26px; font-weight: 800">AI Desk</h1><span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #FCE7C8; color: #8A4B00">Sample data</span></header>
+<nav aria-label="AI Desk sections" style="display: flex; gap: 6px"><a href="#" style="flex: 1; min-height: 44px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; text-decoration: none; background: #2E62E8; color: #FFFFFF">Recommended</a><a href="#" style="flex: 1; min-height: 44px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; text-decoration: none; background: #FFFFFF; color: #3B4262; border: 1px solid #E3E7F5">Your bots</a><a href="#" style="flex: 1; min-height: 44px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; text-decoration: none; background: #FFFFFF; color: #3B4262; border: 1px solid #E3E7F5">Ask AI</a></nav>
+<section aria-labelledby="mp-h" style="border-radius: 24px; padding: 18px; background: linear-gradient(135deg, #E3E8FE 0%, #CBD5FB 100%); display: flex; flex-direction: column; gap: 10px">
+<h2 id="mp-h" style="margin: 0; font-size: 18px; font-weight: 800">How much loss can you handle?</h2>
+<div style="display: flex; gap: 6px"><button type="button" style="flex: 1; min-height: 48px; border-radius: 14px; font: inherit; font-weight: 700; font-size: 13px; background: #FFFFFF; color: #141A33; border: 1px solid #C9D3F5">A little</button><button type="button" style="flex: 1; min-height: 48px; border-radius: 14px; font: inherit; font-weight: 700; font-size: 13px; background: #2E62E8; color: #FFFFFF; border: 1px solid #2E62E8">Some</button><button type="button" style="flex: 1; min-height: 48px; border-radius: 14px; font: inherit; font-weight: 700; font-size: 13px; background: #FFFFFF; color: #141A33; border: 1px solid #C9D3F5">A lot</button></div>
+<span style="font-size: 14px; font-weight: 700">How much do you want to use?</span>
+<div style="display: flex; gap: 6px"><button type="button" style="flex: 1; min-height: 48px; border-radius: 14px; font: inherit; font-weight: 700; font-size: 13px; background: #FFFFFF; color: #141A33; border: 1px solid #C9D3F5">1,000</button><button type="button" style="flex: 1; min-height: 48px; border-radius: 14px; font: inherit; font-weight: 700; font-size: 13px; background: #2E62E8; color: #FFFFFF; border: 1px solid #2E62E8">5,000</button><button type="button" style="flex: 1; min-height: 48px; border-radius: 14px; font: inherit; font-weight: 700; font-size: 13px; background: #FFFFFF; color: #141A33; border: 1px solid #C9D3F5">10,000</button></div>
+</section>
+<section aria-labelledby="mg-h" style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><div style="display: flex; align-items: center; justify-content: space-between; gap: 8px"><h2 id="mg-h" style="margin: 0; font-size: 16px; font-weight: 800">Check your goal</h2><span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #DDF3E6; color: #0E6A3C">Reasonable goal</span></div><strong class="num" style="font-size: 14px">2 USDC a day on 5,000 USDC = 14.6% a year</strong><p style="margin: 0; font-size: 13px; line-height: 1.5; color: #3B4262">A modest target. It is not guaranteed, and some days will lose money.</p></section>
+<section aria-labelledby="ms-h" style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; background: #DCE6FF; color: #1D47B8; align-self: flex-start">Suggested for you</span>
+<h2 id="ms-h" style="margin: 0; font-size: 20px; font-weight: 800">Spot Grid · BTC</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #3B4262">Places buy orders below the price and sell orders above it, and earns small gains as the price moves up and down.</p>
+<div style="background: #F4F6FD; border-radius: 14px; padding: 12px"><div style="font-size: 13px; color: #5F6684">You could lose up to</div><strong class="num" style="font-size: 22px">500 USDC</strong></div>
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #3B4262"><strong>When it loses:</strong> a strong move out of the range leaves the bot waiting, or holding coins that fell.</p>
+<a class="btn" href="AIDesk-Paper.dc.html" style="min-height: 48px; padding: 0 18px; border-radius: 14px; border: none; background: #2E62E8; color: #FFFFFF; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; display: inline-flex; align-items: center; justify-content: center">Try with fake money</a>
+<a class="btn" href="AIDesk-Why.dc.html" style="min-height: 48px; padding: 0 18px; border-radius: 14px; border: 1px solid #C9D3F5; background: #FFFFFF; color: #141A33; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center">Why this one?</a>
+</section>
+<section aria-labelledby="mv-h" style="background: #FFFFFF; border: 1px solid #E3E7F5; border-radius: 22px; padding: 16px; display: flex; flex-direction: column; gap: 4px">
+<h2 id="mv-h" style="margin: 0; font-size: 16px; font-weight: 800">Verified strategies</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.5; color: #5F6684">None yet. A strategy appears here only after it passes our tests.</p>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

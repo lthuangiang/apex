@@ -127,7 +127,7 @@ export function analyze(input: AnalystInput): AnalystOutput {
       observed: `Profit ${n(net, 4, true)} ${b.quote}${days === null ? "" : ` over ${count(days, "day")}`}. ${count(b.fills, "fill")} paid ${n(b.fees, 4)} ${b.quote} in fees.`,
       interpretation: "Fees explain most of the loss.",
       check:
-        "Review the bot’s settings against the fee rate in Strategy Lab. DRIFT will not change it for you.",
+        "Review the bot’s settings against the fee rate in Strategy Lab. DeskLabs will not change it for you.",
       sources: `${count(b.fills, "fill")} · bot ledger`,
       link: { kind: "orders", botId: b.id },
     });

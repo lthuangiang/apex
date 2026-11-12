@@ -1,6 +1,6 @@
 {
   "best": {
-    "id": "3ae50a63ab611be7",
+    "id": "85be20a669222736",
     "strategy": "rebalancing",
     "market": "vBTC_vUSDC",
     "values": {
@@ -35,34 +35,35 @@
     ],
     "basis": "Average daily volatility of the basket: 3%.",
     "computedAt": "2026-10-27T07:00:00.000Z",
-    "inputsVersion": "reco-1"
+    "inputsVersion": "reco-2"
   },
   "addOns": [
     {
-      "id": "23331ebcf10d14fa",
+      "id": "c64cefca09651532",
       "strategy": "spot_grid",
       "market": "vBTC_vUSDC",
       "values": {
         "market": "vBTC_vUSDC",
         "lowerPrice": "62000",
         "upperPrice": "72000",
-        "gridLevels": 16,
+        "gridLevels": 19,
         "spacing": "arithmetic",
         "investment": "3200",
         "stopPrice": "60140",
         "maxLoss": "320",
-        "onStop": "keep_base"
+        "onStop": "keep_base",
+        "entry": "now"
       },
       "capital": "3200",
       "score": 74.2,
       "reasons": [
         "BTC was net positive for you (+5,120.40, 51% win rate).",
         "Range 62,000–72,000 covers 90% of BTC daily closes over the last 30 days (P5–P95).",
-        "Step ≈ 1% is at least 10× the round-trip fee of 0.1%."
+        "Step ≈ 0.83% is at least 10× the round-trip fee of 0.08%."
       ],
       "basis": "Over the last 180 days, BTC stayed range-bound on 71% of days. This describes price, not profit.",
       "computedAt": "2026-10-27T07:00:00.000Z",
-      "inputsVersion": "reco-1"
+      "inputsVersion": "reco-2"
     }
   ],
   "notSuggested": [

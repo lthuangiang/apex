@@ -1,4 +1,4 @@
-import { aiParamsBodySchema, goalsBodySchema } from "@drift/shared";
+import { aiParamsBodySchema, goalsBodySchema, planBodySchema } from "@drift/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
@@ -36,9 +36,10 @@ export function registerRecoRoutes(app: FastifyInstance, deps: RecoDeps): void {
   // Tính lại kế hoạch là thao tác ghi (lưu ai_suggestions) nên dùng POST + Idempotency-Key.
   app.post("/api/v1/reco/plan", async (request, reply) => {
     const auth = requireAuth(request);
+    const body = parseOrThrow(planBodySchema, request.body ?? {});
     return idempotent(deps.db, request, reply, auth.userId, deps.now(), async () => ({
       status: 200,
-      body: await plan(deps, auth.userId),
+      body: await plan(deps, auth.userId, body.context ?? "onboarding", body.goals),
     }));
   });
 

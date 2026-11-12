@@ -27,10 +27,10 @@ Các trạng thái: `draft → starting → running ⇄ (pausing → paused → 
 
 | Từ | Hành động | Sang | Xác nhận |
 |---|---|---|---|
-| draft | Start on mainnet | starting → running | checkbox + 2FA |
+| draft | Start on mainnet | starting → running | checkbox + 2FA nếu đã bật (DEC-115) |
 | running | Pause | pausing → paused | không |
 | paused | Resume | resuming → running | không; chỉ khi lý do pause đã hết |
-| running / paused | Stop… | stopping → stopped | dialog liệt kê lệnh sẽ huỷ + 2FA |
+| running / paused | Stop… | stopping → stopped | dialog liệt kê lệnh sẽ huỷ, không hỏi 2FA (DEC-115) |
 | running | Apply edit vN | running (vN) | dialog diff |
 | stopped | Archive | archived | không |
 | draft | Delete | — | có (chỉ xoá được draft) |
@@ -73,6 +73,13 @@ Quy ước theo `docs/CODING_STANDARDS.md` C8: khoá chính `id uuid` (v7), mọ
 | `twofa_backup_codes` | `user_id`, `code_hash`, `used_at` | backup code 2FA, chỉ lưu hash |
 | `sodex_accounts` | `user_id`, `address`, `sodex_account_id` (bigint), `network`, `status` | một user có thể có nhiều account **[confirm]** |
 | `api_keys` | `sodex_account_id`, `name`, `public_key`, `ciphertext`, `kms_key_ref`, `last4`, `permissions_mask`, `expires_at`, `last_used_at`, `status` (`pending`/`active`/`expired`/`deleted`) | private key chỉ ở dạng mã hoá; chỉ `signer` đọc được `ciphertext` |
+| `user_builder_fees` | `user_id`, `strategy` (khoá chính kép), `rate` (phần mười bp, 0–10, CHECK), `updated_by` | builder fee riêng do team đặt (DEC-159); không có dòng = mặc định của chiến lược |
+| `leader_wallets` | `source`, `address` (khoá chính kép), `display_name`, `is_vault` (null = chưa hỏi `userRole`), `account_value`, `leaderboard_pnl_30d`, `last_on_leaderboard_at`, `fill_cursor` | ví trader ứng viên (Copy Trading, DEC-163); con trỏ fill cho T0 / T1 |
+| `leaderboard_runs` | `date` (khoá chính), `status` (`running`/`ok`/`failed`), `candidates`, `computed`, `error`, `finished_at` | một lượt tính leaderboard hằng đêm; danh sách dùng lượt `ok` gần nhất |
+| `leader_stats_daily` | `source`, `address`, `date` (khoá chính ba cột), `stats` (jsonb `LeaderStats`), `hidden[]`, `tabs[]`, `steady_score`, `profit`, `typical_hold_ms`, `computed_at` | thống kê 30 ngày theo episode của từng trader mỗi ngày |
+| `leader_events` | `id`, `source`, `address`, `coin`, `market` (null = SoDEX không có), `kind` (`open`/`add`/`reduce`/`close`/`flip`/`liquidated`), `position_before/after`, `notional`, `price`, `realized`, `at`, `seen_at`, `last_tid` (unique theo ví) | thay đổi vị thế gộp 60 giây (Trader profile, Following) |
+| `leader_follows` | `user_id`, `source`, `address` (khoá chính ba cột) | Following, tối đa 5 / người, ~40 ví toàn hệ thống; xoá khi xoá tài khoản |
+| `leader_alert_state` | `source`, `address`, `coin` (khoá chính ba cột), `last_alert_at` | cooldown 10 phút của cảnh báo big move |
 | `builder_approvals` | `sodex_account_id`, `builder_id`, `max_fee_rate_spot`, `max_fee_rate_perps` (null = SoDEX không trả approval), `read_back_at` | lần đọc lại gần nhất từ SoDEX |
 | `sodex_signature_requests` | `user_id`, `sodex_account_id`, `action` (`add_api_key`/`approve_builder_fee`/`revoke_builder_fee`), `api_key_id`, `message jsonb`, `status` (`pending`/`succeeded`/`failed`/`unknown`), `sodex_error`, `expires_at`, `submitted_at`, `resolved_at` | mỗi chữ ký master wallet (DEC-30) |
 | `goals` | `user_id`, `goal`, `capital`, `max_drop_pct`, `markets text[]` | onboarding bước 5 |

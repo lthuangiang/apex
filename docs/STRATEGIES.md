@@ -178,10 +178,10 @@ Preview: số tài sản, số lệnh lúc start, tần suất kiểm tra, ngư�
 
 | Step | Field | Default | Rule / help text | Error message |
 |---|---|---|---|---|
-| 2 | Asset | BTC | Assets with both spot and perp | Required. |
+| 2 | Asset | — | Assets with both spot and perp; xếp theo funding đã trả (DEC-160): tài sản thu đủ phí khứ hồi trong ≤ 72 h và dương ≥ 90% của 21 kỳ lên đầu, mỗi dòng ghi funding TB 7 ngày và số giờ thu đủ phí | Required. |
 | 2 | Perp leg leverage | 1× | 1–3× | Above your 3.0× account cap. |
 | 3 | Investment | — | Split 50/50 across engines; both balances checked | Needs balance on both engines. |
-| 3 | Enter when funding ≥ | 0.005% / interval | > 0 **[confirm interval]** | Must be above 0. |
+| 3 | Enter when funding ≥ | 0.0018% mỗi kỳ (= phí khứ hồi maker 0.124% / 72 kỳ 1 giờ, DEC-160) | > 0; % mỗi kỳ funding của market (mọi perp SoDEX hiện trả mỗi giờ) | Must be above 0. |
 | 3 | Exit when funding ≤ | 0% | < entry; for 3 periods | Must be below the entry level. |
 | 3 | Max price gap between legs | 0.5% | 0.1–5% | Allowed 0.1–5%. |
 | 4 | Keep perp margin ratio above | 30% | 10–90% | Allowed 10–90%. |
@@ -211,22 +211,111 @@ Preview: khối lượng mỗi lát, khoảng cách, thời điểm kết thúc,
 
 ---
 
-## S9. Volume Maker (`volume_maker`) · Perps · **khoá bằng `VOLUME_MAKER_ENABLED`**
+## S9. Volume Maker (`volume_maker`) · Perps · **chỉ cho tài khoản được team bật (DEC-80)**
 
 Hành vi và quy tắc bắt buộc ở `docs/VOLUME_MAKER.md` mục 17. Field:
 
 | Step | Field | Default | Rule / help text | Error message |
 |---|---|---|---|---|
-| 2 | Contract | BTC-PERP | BTC-PERP or ETH-PERP only | Required. |
-| 2 | Leverage | 1× | Fixed | Volume Maker runs at 1×. |
-| 3 | Volume target | 1,000,000 | > 0; bot stops when reached | Must be above 0. |
-| 3 | Order size per side | 500 | ≥ SoDEX min size; post-only | Below SoDEX minimum order size. |
-| 3 | Distance from mid | 1.0 bp | ≥ 1 tick | Must be at least one tick. |
-| 3 | Max inventory | 2,000 | > order size | Must be above the order size. |
-| 3 | Refresh every | 3 s | 2–60 s | Allowed 2–60 s. |
-| 3 | Run until | End of current season | Season end / date / target or budget | — |
-| 4 | Cost budget | 300 | > 0; warns at 80%, stops at 100% | Must be above 0. |
-| 4 | Inventory loss stop | 60 | < budget; closes reduce-only | Must be below the budget. |
-| 4 | When the bot stops | Close inventory | Close (reduce-only) / Keep position | — |
+| 2 | Contract | — | Any SoDEX perp (DEC-157) | Required. |
+| Amount | Order size per side | 500 | ≥ SoDEX min size; post-only | Below SoDEX minimum order size. |
+| Amount | Leverage | 5× | 1–40× and ≤ min(account cap, SoDEX market max) (DEC-99) | Allowed 1–40×. |
+| 4 | Stop if I lose (`costBudget`) | 300 | > 0; fees + realized + unrealized loss; warns at 80%, stops at 100% | Must be above 0. |
+| 4 | Stop after trading (`volumeTarget`) | empty | Optional, > 0; bot stops when reached | Must be above 0. |
+| Adv | Max open position (`maxInventory`) | empty = 2 × order size (DEC-100) | > order size | Must be above the order size. |
+| Adv | Quote distance | 1.0 bp | ≥ 1 tick | Must be at least one tick. |
+| Adv | Refresh every | 3 s | 2–60 s | Allowed 2–60 s. |
+| Adv | Position loss limit | empty | Optional, < budget; closes reduce-only | Must be below the budget. |
+| Adv | Run until | Target or budget reached | Target or budget / season end / date | — |
+| Adv | When the bot stops | Close inventory | Close (reduce-only) / Keep position | — |
 
-Preview: chi phí ước tính trên mỗi 1 triệu USD, số báo giá trên sổ, tỷ lệ maker, trạng thái self-trade guard. Backtest: volume made, net cost (kèm chi phí trên mỗi 1 triệu USD), maker share, max inventory reached.
+Form gọn (DEC-99): người dùng chỉ cần chọn market, order size, leverage và Stop if I lose; mọi field còn lại có mặc định trong schema. Preview: Balance needed (= max open position / leverage, cùng công thức `requirementOf`), Biggest position, Stops if you lose. Không ước tính chi phí theo khối lượng. Trading Agent hiện sổ lệnh trực tiếp, đánh dấu lệnh của bot là "YOU". Backtest: volume made, net cost (kèm chi phí trên mỗi 1 triệu USD), maker share, max inventory reached.
+
+## S10. Volume Farm (`volume_farm`) · Perps · builder fee: mọi lần khớp · **chỉ cho tài khoản được team bật (DEC-80)**
+
+Quy tắc của Market Making (VOLUME_MAKER.md mục 17.3) không áp dụng cho chiến lược này (DEC-101). Tên hiển thị: "Volume Farming" → "Scalp Farming" (DEC-102) → "Volume Builder" (DEC-116) → "Volume Farm" (DEC-120); strategy id giữ `volume_farm`. Logic là Volume Farm gốc (FarmMicro của apex, DEC-80): mỗi lượt một vị thế, vào post-only trong spread theo tín hiệu nến 1 phút + sổ lệnh; tồn kho ròng vượt một lệnh lớn nhất thì đi ngược lượt trước; cỡ lệnh và thời gian giữ ngẫu nhiên trong khoảng. Thoát theo thứ tự: SL % (market) → lãi trước phí ≥ max(TP USDC, 1.5 × phí khứ hồi) → max hold → sau 10 s lãi ≥ 3 × phí khứ hồi của lượt → hết thời gian giữ ngẫu nhiên. Early exit (10 s, `earlyProfitFees` 3, DEC-130) là mặc định của schema, không hiện trên form; config cũ có `earlyProfitUsd` thì ngưỡng = max(mức USDC đó, 3 × phí). Khi bật lệnh taker (mặc định tắt từ DEC-130): sau 3 lần post-only không khớp thì dùng market (1–10). **Stop loss trên SoDEX** (DEC-118, DEC-125): lệnh vào khớp là đặt stop gốc trên sàn (mark price, đóng cả vị thế) ở SL của bot lùi thêm 0.1% giá vào. Dời lên theo nấc, theo lãi lớn nhất đã đạt, tính bằng bội số G = khoảng hoà vốn (phí vào + phí taker ra + 0.01% trượt giá): 3 G → điểm vào lệnh; 4 G → hoà vốn; 6 G → khoá lời, bám giá tốt nhất cách 2 G, không thấp hơn hoà vốn. Không bao giờ lùi lại; mỗi nấc ghi Decisions một lần; SoDEX tự huỷ stop khi vị thế đóng. Decisions "Enter long/short" ghi giá đặt lệnh, "Closed" ghi giá vào → giá ra. Phần scalp theo ATR (DEC-102), taker only (DEC-116) và pause khi lệnh vào market bị từ chối (DEC-117) đã bỏ (DEC-120). **Review this run** (DEC-131): trên trang bot, chạy lại lối thoát trên lệnh vào thật với 135 bộ tham số; chỉ đề xuất khi tốt hơn rõ ràng (khoảng tin cậy 95%), "Use these settings" tạo version mới nguồn `ai`.
+
+| Step | Field | Default | Rule / help text | Error message |
+|---|---|---|---|---|
+| 2 | Markets (`markets`) | Mọi market của trader mà SoDEX có | 1–20 market Perps, không trùng; khoá sau khi tạo; `maxExposure` và `maxLoss` tính trên tổng | Pick at least one market. / Up to 20 markets. / Each market once. |
+| 2 | Leverage | 5× (DEC-103) | 1× to the SoDEX market max | Above the SoDEX maximum of N× for this market. |
+| 3 | Order size from / to | 200 / 500 (DEC-103) | Position value per trade, random in range; min ≥ SoDEX min size | Below SoDEX minimum order size. / Must be at least the minimum size. |
+| 3 | Hold at least / at most | 180 s / 300 s | 10–3600 s, random in range; at most = hard time stop | Allowed 10–3600 s. / Must be at least the minimum hold. |
+| 3 | Reverse the signal | Off | Không bao giờ vào ngược xu hướng 5 phút, kể cả sau khi đảo (DEC-158) | — |
+| 3 | Only trade sideways | Off | Chỉ vào lượt mới khi regime 5 phút là SIDEWAY; lượt đang mở vẫn thoát như thường (DEC-158) | — |
+| 3 | Stop loss on SoDEX | On | Stop gốc trên sàn; dời về hoà vốn khi lãi đủ | — |
+| 4 | Take profit (`tpUsd`) | 0.5 USDC | Lãi trước phí; không dưới 1.5 × phí khứ hồi | Must be above 0. |
+| 4 | Stop loss (`slMarginPct`) | 25% of margin | 1–90% margin như SoDEX TP/SL (% giá = % margin ÷ đòn bẩy); market; hint ≈ % giá và USDC | Allowed 1–90%. |
+| 4 | Max loss for this bot | — | Net loss (realized + fees + funding); stops and closes | Must be above 0. |
+| 4 | Stop at volume | empty | Optional | Must be above 0. |
+| Adv | Wait between trades | 30 s | 0–3600 s | — |
+| Adv | Max spread | 10 bp | Skips entries above | Allowed 0.1–500 bp. |
+| Adv | Use taker orders / Misses before taker | Off / 3 | 1–10 | Allowed 1–10. |
+
+Preview: không có. Backtest: 5D / 30D trên nến 1 phút (BACKTEST.md mục 11.2). Agent: Decisions "Enter long/short", "Skipped entry" (chỉ khi lý do đổi), "Stop loss set on SoDEX", "Stop loss on SoDEX moved to break-even", "Closed long/short" kèm lãi ròng sau phí.
+
+## S11. AI Adaptive DCA (`adaptive_dca`) · Perps · builder fee: mọi lần khớp · **thử nghiệm, chỉ cho tài khoản được bật AI Desk (DEC-107)**
+
+Quy tắc đầy đủ (vào lệnh, Continue / Reduce / Exit, hoà vốn, thứ tự ưu tiên) ở `docs/AI_ADAPTIVE_DCA.md` mục 3. Vốn cần = Max position / đòn bẩy. Reduce: ngừng thêm, take profit về giá hoà vốn của chu kỳ (gồm phí, funding, phí lệnh đóng). Exit: regime ngược liên tục ≥ 4 giờ. Max loss và hard stop luôn ưu tiên.
+
+| Step | Field | Default | Rule / help text | Error message |
+|---|---|---|---|---|
+| 2 | Markets (`markets`) | Mọi market của trader mà SoDEX có | 1–20 market Perps, không trùng; khoá sau khi tạo; `maxExposure` và `maxLoss` tính trên tổng | Pick at least one market. / Up to 20 markets. / Each market once. |
+| 2 | Direction | Long | Long / Short | — |
+| 3 | First order / Extra buy size | 100 / 100 | Position value, leverage included; ≥ SoDEX min size | Below SoDEX minimum order size. |
+| 3 | Leverage | 2× | 1× to the SoDEX market max | Above the SoDEX maximum of N× for this market. |
+| 3 | Max extra buys / Spacing | 4 / 2× ATR | 1–10 / 0.5–10× ATR 5 phút đã đóng, đo lại mỗi lần đặt | Allowed 1–10. / Allowed 0.5–10×. |
+| 4 | Take profit / Hard stop | 1.5% / 8% | 0.2–20% / 1–50% | Allowed 0.2–20%. / Allowed 1–50%. |
+| 4 | Max position (`maxExposure`) | 1,000 | Giá trị danh nghĩa theo giá vốn, ≥ first order; chạm trần thì không thêm lệnh | Must be at least the first order. |
+| 4 | Max loss for this bot | 150 | Net loss; stops and closes | Must be above 0. |
+| Adv | Size multiplier | 1.5× | 1–2× | Allowed 1–2×. |
+| Adv | Entry RSI | 45 | 10–90 | Allowed 10–90. |
+| Adv | Wait after an exit | 30 min | 0–1440 min | Allowed 0–1440 min. |
+| Adv | Margin mode | Isolated | Cross / Isolated | — |
+
+Agent: thẻ AI Adaptive DCA (regime, quyết định gần nhất, ATR, RSI, số lệnh thêm, vị thế / trần, chu kỳ chốt lãi, số lần Exit sớm); Decisions "Cycle N started", "Extra buy k filled", "Holding", "Reduce", "Continue", "Exit", "Hard stop", "Cycle N took profit / closed". Backtest: 5D / 30D trên nến 1 phút.
+
+## S12. Copy Trade (`copy_trade`) · Perps · builder fee: mọi lần khớp · **thử nghiệm, chỉ cho tài khoản được bật AI Desk (DEC-161)**
+
+Một bot copy **một** ví (SoDEX hoặc Hyperliquid) trên **nhiều** market Perps của SoDEX (`markets`, DEC-163; config cũ có `market` vẫn đọc được). Chỉ copy vị thế ví đó mở sau khi bot start. Mở / tăng: IOC limit tại giá fill của ví ± Max price move, giá chạy quá thì bỏ qua. Giảm / đóng: market reduce-only, luôn thực hiện. Tăng / giảm theo tỷ lệ vị thế của ví. Vốn cần = Max position / đòn bẩy. Không chạy chung market với bot thật khác trên cùng account. Chi tiết: DEC-161.
+
+| Step | Field | Default | Rule / help text | Error message |
+|---|---|---|---|---|
+| 2 | Wallet to copy (`leaderAddress`) | — | `0x` + 40 hex; khoá sau khi tạo; không phải ví của chính mình | Enter a wallet address (0x…, 42 characters). / You can't copy your own wallet. |
+| 2 | Markets (`markets`) | Mọi market của trader mà SoDEX có | 1–20 market Perps, không trùng; khoá sau khi tạo; `maxExposure` và `maxLoss` tính trên tổng | Pick at least one market. / Up to 20 markets. / Each market once. |
+| 2 | Direction | Follow | Follow / Inverse | — |
+| 3 | Copy size (`sizing`) | Fixed amount | Fixed amount / Share of wallet | — |
+| 3 | Amount per position (`fixedNotional`) | 100 | Khi Fixed; ≤ Max per order | Required. / Must not exceed the max per trade. |
+| 3 | Share of the wallet's size (`ratioPct`) | — | Khi Share; 0.01–100% | Allowed 0.01–100%. |
+| 3 | Leverage | 2× | 1× to the SoDEX market max | Above the SoDEX maximum of N× for this market. |
+| 4 | Max per order (`maxNotionalPerTrade`) | 200 | Trần một lệnh mở / tăng | Must be above 0. |
+| 4 | Max position (`maxExposure`) | 1,000 | ≥ Max per order | Must be at least the max per trade. |
+| 4 | Stop loss / Take profit | — | Tuỳ chọn; 0.5–90% / 0.5–500% từ giá vốn | Allowed 0.5–90%. / Allowed 0.5–500%. |
+| 4 | Max loss for this bot | 150 | Net loss; stops and closes | Must be above 0. |
+| Adv | Max price move (`maxSlippagePct`) | 0.3% | 0.05–2% | Allowed 0.05–2%. |
+| Adv | Margin mode | Isolated | Cross / Isolated | — |
+
+Decisions: "Copy" (leader opened / flipped / added / cut; size cut by liquidity), "Skipped" (late, price moved, no fill, below min size, rejected, not enough liquidity, trader too fast to copy), "Catch up", "Stop loss", "Take profit", "Paused", "Copy stopped".
+
+Hạn mức tín hiệu (DEC-163 mục 5, 9; DEC-169): tín hiệu mở / tăng có thể kèm `allowance` (USD) cho từng bot do marketdata phân bổ: tổng mọi bot copy cùng leader × market ≤ 50% độ sâu sổ SoDEX phía bot sẽ ăn, trong khoảng Max price move nhỏ nhất; trader không còn đạt minHoldFilter → mọi hạn mức 0. Giảm / đóng không bị hạn mức.
+
+### S12.1 Copy Trading v1: luồng người mới (DEC-163, thay một phần DEC-161)
+
+Thiết kế: canvas "AI Desk redesign", hàng "Copy Trading v1" (artboard `Leaders`, `WalletStats`, `CopyBot`, `CopyReview`, `WhaleWatch`). Câu chữ chép theo artboard.
+
+- **Leader:** chọn từ Find traders (Hyperliquid), không dán địa chỉ. Một bot = một trader × **nhiều market**: mặc định mọi market của trader mà SoDEX Perps có. Market trùng bot thật khác cùng account → bỏ market đó, báo ở bước Review (không chặn start). Market mới sau khi start → không tự thêm, báo ở Following.
+- **Bước Budget and safety** chỉ hỏi Budget và mức an toàn; form điền field S12 như sau (`sizing = fixed`):
+
+| Mức | Leverage | `fixedNotional` = `maxNotionalPerTrade` | `stopLossPct` | `maxLoss` |
+|---|---|---|---|---|
+| Careful | 1× | 25% × `maxExposure` | 5% | 10% × budget |
+| Balanced (mặc định) | 2× | 25% × `maxExposure` | 10% | 20% × budget |
+| Bold | 3× | 40% × `maxExposure` | 15% | 30% × budget |
+
+  `maxExposure` = budget × leverage. Advanced: Direction, Max price move (`maxSlippagePct`), Margin mode, Take profit.
+- **Max price move** tính từ giá SoDEX lúc nhận tín hiệu (DEC-162), không từ giá fill trên Hyperliquid.
+- **Thanh khoản:** mỗi tín hiệu mở / tăng, tổng notional của mọi bot copy cùng trader × market ≤ 50% độ sâu sổ SoDEX phía đối diện trong khoảng Max price move; vượt thì chia theo tỷ lệ, phần dưới min size → "Skipped" (thanh khoản). Giảm / đóng không bị giới hạn.
+- **minHoldFilter:** typical hold 30 ngày ≥ 15 phút; không đạt lúc start → chặn; mất điều kiện sau này → ngừng mở mới, vẫn giảm / đóng, báo người dùng.
+- **Chỗ copy realtime:** tối đa 8 trader Hyperliquid toàn hệ thống (1 IP, DEC-163 mục 10). Trader đã có người copy luôn copy được; đầy thì nút thành "Follow · copy later".
+- **Không có** "Try with fake money" cho Copy Trade (DEC-105).
+

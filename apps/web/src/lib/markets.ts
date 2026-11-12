@@ -1,4 +1,4 @@
-import { marketListSchema, type MarketList } from "@drift/shared";
+import { marketLastSchema, marketListSchema, type MarketList } from "@drift/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
@@ -52,6 +52,20 @@ export function useMarkets() {
     queryKey: MARKETS_KEY,
     queryFn: () => api("GET", "/api/v1/markets", marketListSchema),
     staleTime: 10 * 60_000,
+  });
+}
+
+/**
+ * Giá gần nhất của một market (`md:last:*`, 15 s). Mọi chỗ hiện "Last" trên cùng màn dùng chung query này để
+ * không lệch nhau (UI_REVIEW N2); `last` trong danh sách market được cache 10 phút nên không dùng để hiển thị.
+ */
+export function useMarketLast(market: string | null) {
+  return useQuery({
+    queryKey: ["market-last", market],
+    queryFn: () =>
+      api("GET", `/api/v1/markets/${encodeURIComponent(market ?? "")}/last`, marketLastSchema),
+    enabled: market !== null && market !== "",
+    refetchInterval: 15_000,
   });
 }
 

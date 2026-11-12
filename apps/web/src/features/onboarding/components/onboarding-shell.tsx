@@ -1,7 +1,10 @@
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 import { SignOutButton } from "@/components/sign-out";
+
+import { BrandMark } from "../../public/components/public-header";
 
 // Khung chung của onboarding (artboard "Onboarding 1 · Create account" / "Onboarding 2"):
 // rail các bước bên trái, nội dung bên phải; < 768px chỉ còn thanh tiến độ (artboard Mobile · Onboarding).
@@ -151,27 +154,14 @@ export function StepHeading({
   );
 }
 
+/** Logo + tên, bấm về trang chủ (Landing khi chưa đăng nhập, Overview khi đã đăng nhập), DEC-155. */
 function Brand({ label }: { label: string }) {
   return (
-    <span className="flex items-center gap-2.5">
-      <span className="flex size-10 items-center justify-center rounded-control bg-accent text-surface">
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M4 15c3-6 6 2 9-3s5-5 7-4" />
-          <path d="M4 20h16" />
-        </svg>
-      </span>
-      <span className="text-xl font-extrabold tracking-[0.06em]">{label}</span>
-    </span>
+    <Link href="/" className="flex items-center gap-2.5 self-start text-ink no-underline">
+      {/* Logo chung DeskLabs (DEC-153). */}
+      <BrandMark />
+      <span className="text-xl font-extrabold tracking-[-0.01em]">{label}</span>
+    </Link>
   );
 }
 

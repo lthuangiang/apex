@@ -4,10 +4,13 @@ import { BotState, botListSchema } from "@drift/shared";
 import { AppShell, LiveBadge, type MobileNav, type NavItem } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import {
+  BarChart3,
   Bell,
+  BrainCircuit,
   Bot,
   ChevronDown,
   Ellipsis,
+  Eye,
   House,
   Clock,
   Coins,
@@ -18,6 +21,7 @@ import {
   Settings,
   ShieldAlert,
   Sparkles,
+  Star,
   Users,
   Wallet,
   type LucideIcon,
@@ -36,7 +40,7 @@ import {
 
 import { api } from "@/lib/api";
 import { formatDateTime, shortAddress } from "@/lib/format";
-import { useMe, useSodexConnection, useNotifications } from "@/lib/queries";
+import { useFeatures, useMe, useSodexConnection, useNotifications } from "@/lib/queries";
 
 import { SignOutButton } from "./sign-out";
 
@@ -46,13 +50,19 @@ import { SignOutButton } from "./sign-out";
 const ITEMS = [
   ["overview", "/", LayoutDashboard, "main"],
   ["portfolio", "/portfolio", Wallet, "main"],
+  // Trading Agent luôn ở vị trí thứ 3 (DEC-108), dù AI Desk có bật hay không.
   ["agent", "/agent", Bot, "main"],
+  ["desk", "/desk", BrainCircuit, "main"],
   ["bots", "/bots", FlaskConical, "main"],
+  // Nhóm "Copy Trading" ngay sau Strategy Lab (DEC-163; copy bot là bot của Strategy Lab), chỉ khi bật AI Desk.
+  ["traders", "/traders", Star, "main"],
+  ["following", "/following", Eye, "main"],
   ["orders", "/orders", ListOrdered, "main"],
   ["risk", "/risk", ShieldAlert, "main"],
   ["analyst", "/analyst", Sparkles, "main"],
   ["revenue", "/admin/builder-revenue", Coins, "team"],
   ["users", "/admin/users", Users, "team"],
+  ["stats", "/admin/stats", BarChart3, "team"],
   ["settings", "/settings", Settings, "secondary"],
 ] as const satisfies readonly (readonly [
   string,
@@ -63,8 +73,10 @@ const ITEMS = [
 
 export type WorkspaceKey = (typeof ITEMS)[number][0];
 
+const COPY_ITEMS: ReadonlySet<WorkspaceKey> = new Set(["traders", "following"]);
+
 // Chỉ role `team`; api vẫn tự kiểm tra role (DEC-64).
-const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set(["revenue", "users"]);
+const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set(["revenue", "users", "stats"]);
 
 export function WorkspaceShell({
   current,
@@ -77,16 +89,22 @@ export function WorkspaceShell({
 }) {
   const t = useTranslations("common.nav");
   const tc = useTranslations("common");
-  const navItems: NavItem[] = ITEMS.filter(([key]) => !TEAM_ONLY.has(key) || isTeam).map(
-    ([key, href, Icon, group]) => ({
+  // AI Desk chỉ hiện khi team bật cho tài khoản; khi bật, AI Analyst gộp vào tab Your bots (DEC-105).
+  const desk = useFeatures().data?.aiDesk === true;
+  const navItems: NavItem[] = ITEMS.filter(
+    ([key]) =>
+      (!TEAM_ONLY.has(key) || isTeam) && (key === "desk" ? desk : key === "analyst" ? !desk : true),
+  )
+    .filter(([key]) => desk || !COPY_ITEMS.has(key))
+    .map(([key, href, Icon, group]) => ({
       key,
       label: t(key),
       href,
       icon: <Icon aria-hidden="true" size={20} />,
       current: key === current,
       group,
-    }),
-  );
+      ...(COPY_ITEMS.has(key) ? { section: t("sections.copy") } : {}),
+    }));
   const byKey = (key: WorkspaceKey) => navItems.find((i) => i.key === key);
   const pick = (keys: readonly WorkspaceKey[]) =>
     keys.flatMap((k) => {
@@ -104,7 +122,18 @@ export function WorkspaceShell({
     more: {
       label: t("mobile.more"),
       icon: <Ellipsis aria-hidden="true" size={22} />,
-      items: pick(["orders", "risk", "analyst", "revenue", "users", "settings"]),
+      items: pick([
+        "desk",
+        "traders",
+        "following",
+        "orders",
+        "risk",
+        "analyst",
+        "settings",
+        "revenue",
+        "users",
+        "stats",
+      ]),
       footer: <MoreFooter />,
     },
   };
@@ -119,10 +148,8 @@ export function WorkspaceShell({
           >
             <BrandMark />
           </span>
-          <span className="flex flex-col">
-            <span className="text-lg font-extrabold tracking-[0.06em]">{tc("brand")}</span>
-            <span className="text-xs font-medium text-muted">{t("workspace")}</span>
-          </span>
+          {/* Không còn tagline dưới tên (DEC-149). */}
+          <span className="text-lg font-extrabold tracking-[-0.01em]">{tc("brand")}</span>
         </span>
       }
       navItems={navItems}
@@ -138,22 +165,19 @@ export function WorkspaceShell({
   );
 }
 
-/** Logo: đường giá trên trục (artboard Main). */
+/** Logo DeskLabs: chữ D lồng hai vạch sổ lệnh (DEC-153). */
 function BrandMark() {
   return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 15c3-6 6 2 9-3s5-5 7-4" />
-      <path d="M4 20h16" />
+    <svg viewBox="0 0 24 24" className="size-full" aria-hidden="true">
+      <path
+        d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinejoin="round"
+      />
+      <rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="currentColor" />
+      <rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="currentColor" opacity="0.7" />
     </svg>
   );
 }
@@ -215,6 +239,8 @@ export interface PageUpdated {
  * khác chỉ có LIVE, trạng thái SoDEX và chip riêng của trang (artboard Portfolio, Agent, Bots…).
  */
 export const FullClusterContext = createContext(false);
+/** Trang của bài thử tiền giả: không hiện chip LIVE · MAINNET (DEC-105). */
+export const PaperPageContext = createContext(false);
 
 /**
  * Cụm bên phải hàng tiêu đề: account, LIVE · MAINNET, trạng thái SoDEX, thời điểm cập nhật,
@@ -226,6 +252,7 @@ function StatusCluster() {
   const conn = useSodexConnection();
   const pageUpdated = useContext(PageUpdatedContext);
   const full = useContext(FullClusterContext);
+  const paper = useContext(PaperPageContext);
   // Key hết hạn hoặc không ký được (UI_REVIEW H1): không ghi "SoDEX connected".
   const keyStatus = conn.data?.connection?.apiKey?.status;
   const keyBad = keyStatus === "unusable" || keyStatus === "expired";
@@ -236,7 +263,7 @@ function StatusCluster() {
   return (
     <>
       {c === null || !full ? null : <AccountSwitch address={c.address} />}
-      <LiveBadge label={tb("live")} className="h-8 px-3" />
+      {paper ? null : <LiveBadge label={tb("live")} className="h-8 px-3" />}
       {conn.isSuccess ? (
         keyBad ? (
           <Link
@@ -318,6 +345,8 @@ function useAgeSeconds(at: number): number {
  */
 export function MobileLiveChip() {
   const tb = useTranslations("common.badges");
+  const paper = useContext(PaperPageContext);
+  if (paper) return null;
   return <LiveBadge label={tb("liveShort")} className="h-[26px] shrink-0 px-2.5 text-[11px]" />;
 }
 

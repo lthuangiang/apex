@@ -148,6 +148,33 @@ describe("backtest fill model", () => {
     expect(r.output.positions.vBTC_vUSDC).toBe("0");
   });
 
+  it("spreads a Rebalancing Initial buy over N hours (IMP-04)", () => {
+    const flat = Array.from({ length: 6 * 60 }, (_, i) => candle(i, 100, 100, 100, 100));
+    const cfg = {
+      quoteAsset: "USDC",
+      assets: [
+        { asset: "BTC", market: "vBTC_vUSDC", weightPct: "50" },
+        { asset: "USDC", weightPct: "50" },
+      ],
+      rebalanceWhen: "threshold",
+      thresholdPct: "5",
+      investment: "1000",
+      maxTradePct: "100",
+    };
+    const now = backtest("rebalancing", cfg, data(flat));
+    const over = backtest(
+      "rebalancing",
+      { ...cfg, initialBuy: "over_hours", initialBuyHours: 4 },
+      data(flat),
+    );
+    const hours = (r: typeof now) =>
+      new Set(r.output.fills.map((f) => Math.floor((f.at - T0) / 3_600_000))).size;
+    expect(hours(now)).toBe(1);
+    expect(hours(over)).toBe(4);
+    const bought = (r: typeof now) => r.output.fills.reduce((a, f) => a + Number(f.quantity), 0);
+    expect(bought(over)).toBeCloseTo(bought(now), 2);
+  });
+
   it("runs 90 days of one-minute candles well under 20 s", () => {
     const n = 90 * 24 * 60;
     const candles = Array.from({ length: n }, (_, i) => {
@@ -160,4 +187,44 @@ describe("backtest fill model", () => {
     expect(r.candles).toBe(n);
     expect(ms).toBeLessThan(20_000);
   }, 60_000);
+});
+
+describe("Volume Farming backtest (DEC-102)", () => {
+  // 600 nến 1 phút: dao động hình sin quanh 100 cộng xu hướng nhẹ, có khối lượng.
+  const wave = Array.from({ length: 600 }, (_, i) => {
+    const mid = (k: number) => 100 + Math.sin(k / 15) * 1.5 + k * 0.002;
+    const o = mid(i);
+    const c = mid(i + 1);
+    return {
+      ...candle(i, o, Math.max(o, c) + 0.05, Math.min(o, c) - 0.05, c),
+      v: String(50 + (i % 7)),
+    };
+  });
+  const farm = {
+    market: "BTC-USD",
+    leverage: 5,
+    marginMode: "cross",
+    orderSizeMinUsd: "100",
+    orderSizeMaxUsd: "150",
+    minHoldSecs: 120,
+    maxHoldSecs: 600,
+    maxLoss: "50",
+    cooldownSecs: 0,
+  };
+
+  it("feeds 1-minute candles with the timer and reports volume, trades and win rate", () => {
+    const r = backtest("volume_farm", farm, data(wave, "perps", "BTC-USD"));
+    const metric = (k: string) => r.metrics.find((m) => m.key === k)?.value ?? null;
+    expect(Number(metric("trades"))).toBeGreaterThan(0);
+    expect(Number(metric("volumeMade"))).toBeGreaterThan(0);
+    expect(metric("winRate")).not.toBeNull();
+    expect(r.output.fills.some((f) => f.tag.startsWith("vf:"))).toBe(true);
+  });
+
+  it("is repeatable on the same candles", () => {
+    const a = backtest("volume_farm", farm, data(wave, "perps", "BTC-USD"));
+    const b = backtest("volume_farm", farm, data(wave, "perps", "BTC-USD"));
+    expect(a.net).toBe(b.net);
+    expect(a.metrics).toEqual(b.metrics);
+  });
 });

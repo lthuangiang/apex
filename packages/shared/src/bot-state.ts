@@ -10,6 +10,7 @@ export const BotCommand = {
   resume: "resume",
   stop: "stop",
   archive: "archive",
+  unarchive: "unarchive",
 } as const;
 export type BotCommand = (typeof BotCommand)[keyof typeof BotCommand];
 
@@ -17,7 +18,8 @@ export type BotCommand = (typeof BotCommand)[keyof typeof BotCommand];
 export function applyCommand(state: BotState, command: BotCommand): BotState | null {
   switch (command) {
     case BotCommand.start:
-      return state === BotState.draft ? BotState.starting : null;
+      // Bot đã dừng chạy lại ngay trên chính nó (DEC-86), không tạo bot mới.
+      return state === BotState.draft || state === BotState.stopped ? BotState.starting : null;
     case BotCommand.pause:
       return state === BotState.running ? BotState.pausing : null;
     case BotCommand.resume:
@@ -26,6 +28,8 @@ export function applyCommand(state: BotState, command: BotCommand): BotState | n
       return state === BotState.running || state === BotState.paused ? BotState.stopping : null;
     case BotCommand.archive:
       return state === BotState.stopped ? BotState.archived : null;
+    case BotCommand.unarchive:
+      return state === BotState.archived ? BotState.stopped : null;
   }
 }
 

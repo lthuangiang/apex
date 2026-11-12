@@ -12,6 +12,7 @@ export const NOTIFICATION_TYPES = [
   "key_fee",
   "fill",
   "daily_summary",
+  "leader_big_move",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -21,9 +22,12 @@ export const NOTIFICATION_GROUPS = {
   keyFee: ["key_fee"],
   fills: ["fill"],
   daily: ["daily_summary"],
+  copyTrading: ["leader_big_move"],
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
 export const ALWAYS_ON_GROUPS: readonly NotificationGroup[] = ["botErrors"];
+/** Nhóm chỉ có trong app ở v1 (DEC-163 mục 11: push / Telegram / email sau). */
+export const IN_APP_ONLY_GROUPS: readonly NotificationGroup[] = ["copyTrading"];
 export const NOTIFICATION_CHANNELS = ["in_app", "email"] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
@@ -37,6 +41,7 @@ export const NOTIFICATION_DEFAULTS: Record<
   keyFee: { in_app: true, email: true },
   fills: { in_app: false, email: false },
   daily: { in_app: false, email: false },
+  copyTrading: { in_app: true, email: false },
 };
 
 export function groupOf(type: NotificationType): NotificationGroup {
@@ -62,7 +67,7 @@ export const notificationListSchema = z.object({
 export const notificationSettingsSchema = z.object({
   groups: z.array(
     z.object({
-      group: z.enum(["botErrors", "risk", "keyFee", "fills", "daily"]),
+      group: z.enum(["botErrors", "risk", "keyFee", "fills", "daily", "copyTrading"]),
       alwaysOn: z.boolean(),
       in_app: z.boolean(),
       email: z.boolean(),
@@ -70,7 +75,7 @@ export const notificationSettingsSchema = z.object({
   ),
 });
 export const notificationSettingsBodySchema = z.object({
-  group: z.enum(["botErrors", "risk", "keyFee", "fills", "daily"]),
+  group: z.enum(["botErrors", "risk", "keyFee", "fills", "daily", "copyTrading"]),
   channel: z.enum(NOTIFICATION_CHANNELS),
   enabled: z.boolean(),
 });

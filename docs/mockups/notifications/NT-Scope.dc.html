@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notifications · scope</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.card{background:#fff;border:1px solid #e3e7f5;border-radius:24px}
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#1d47b8}
+.muted{color:#5f6684}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:12px;border:none;background:#2e62e8;color:#fff;font:inherit;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer}
+.btn2{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:12px;border:1px solid #d5dcf2;background:#fff;color:#141a33;font:inherit;font-size:14px;font-weight:800;text-decoration:none;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:800}
+
+</style>
+</helmet>
+<div class="num" style="min-height:100vh;box-sizing:border-box;padding:36px 40px;background:#f5f7fd;font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#141a33;display:flex;flex-direction:column;gap:22px">
+  <header style="display:flex;flex-direction:column;gap:6px">
+    <span class="eyebrow">Notifications v2 · luồng và phạm vi (đã duyệt, DEC-170)</span>
+    <h1 style="margin:0;font-size:32px;font-weight:800;letter-spacing:-.02em">DeskLabs Bot on Telegram + in-app alerts</h1>
+    <p style="margin:0;font-size:15.5px;line-height:1.55;color:#3b4262;max-width:980px">Một nguồn sự kiện (<code>jobs.notify</code>) → 3 kênh: <b>In-app</b> (chuông + toast), <b>Email</b> (đã có), <b>Telegram</b> (mới). Telegram chỉ <b>báo tin và mở app</b>: không có nút nào đổi bot hay tiền. Kết nối bằng 1 lần bấm Start, không gõ mã, không dán gì.</p>
+  </header>
+
+  <section class="card" style="padding:22px 24px;display:flex;flex-direction:column;gap:14px">
+    <h2 style="margin:0;font-size:18px;font-weight:800">Luồng kết nối Telegram</h2>
+    <ol style="margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px">
+      <li style="padding:14px;border-radius:16px;background:#eef3ff;display:flex;flex-direction:column;gap:6px"><b style="font-size:13px;color:#1d47b8">1 · Web</b><span style="font-size:13.5px;line-height:1.45">Settings › Notifications › <b>Connect Telegram</b></span></li>
+      <li style="padding:14px;border-radius:16px;background:#eef3ff;display:flex;flex-direction:column;gap:6px"><b style="font-size:13px;color:#1d47b8">2 · API</b><span style="font-size:13.5px;line-height:1.45">Tạo <code>link token</code> ngẫu nhiên 32 byte, chỉ lưu hash, sống <b>10 phút</b>, dùng <b>1 lần</b></span></li>
+      <li style="padding:14px;border-radius:16px;background:#eef3ff;display:flex;flex-direction:column;gap:6px"><b style="font-size:13px;color:#1d47b8">3 · Web</b><span style="font-size:13.5px;line-height:1.45">Nút <b>Open Telegram</b> (điện thoại) hoặc <b>QR</b> (máy tính) tới <code>t.me/&lt;bot&gt;?start=&lt;token&gt;</code></span></li>
+      <li style="padding:14px;border-radius:16px;background:#eef3ff;display:flex;flex-direction:column;gap:6px"><b style="font-size:13px;color:#1d47b8">4 · Telegram</b><span style="font-size:13.5px;line-height:1.45">User bấm <b>Start</b>. Webhook nhận <code>/start &lt;token&gt;</code>, kiểm tra secret header</span></li>
+      <li style="padding:14px;border-radius:16px;background:#eef3ff;display:flex;flex-direction:column;gap:6px"><b style="font-size:13px;color:#1d47b8">5 · API</b><span style="font-size:13.5px;line-height:1.45">Token hợp lệ + chat <code>private</code> → gắn <code>chat_id</code> với user, huỷ token. Bot gửi tin chào</span></li>
+      <li style="padding:14px;border-radius:16px;background:#ddf4e7;display:flex;flex-direction:column;gap:6px"><b style="font-size:13px;color:#0b6a39">6 · Web</b><span style="font-size:13.5px;line-height:1.45">Hộp thoại tự đổi sang <b>Connected</b> (poll 2 s). Gửi tin thử</span></li>
+    </ol>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;font-size:13.5px;line-height:1.5">
+      <div style="padding:12px 14px;border-radius:14px;background:#fff5f4;border:1px solid #f2d0cb"><b>Token hết hạn / đã dùng / sai</b><br>Bot trả lời "This link expired. Open DeskLabs › Settings to get a new one." Không gắn gì.</div>
+      <div style="padding:12px 14px;border-radius:14px;background:#fff5f4;border:1px solid #f2d0cb"><b>Group hoặc channel</b><br>Từ chối, chỉ nhận chat riêng 1-1. Bot không đọc tin trong group.</div>
+      <div style="padding:12px 14px;border-radius:14px;background:#fff5f4;border:1px solid #f2d0cb"><b>User block bot / xoá chat</b><br>Gửi bị 403 → kênh thành <b>Paused · bot blocked</b>, báo in-app, ngừng gửi tới khi kết nối lại.</div>
+    </div>
+  </section>
+
+  <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:20px;align-items:start">
+    <section class="card" style="padding:22px 24px;display:flex;flex-direction:column;gap:12px">
+      <h2 style="margin:0;font-size:18px;font-weight:800">Gửi gì, kênh nào (mặc định đề xuất)</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:13.5px">
+        <thead><tr style="text-align:left;color:#5f6684"><th style="padding:8px 6px">Nhóm</th><th style="padding:8px 6px">In-app</th><th style="padding:8px 6px">Email</th><th style="padding:8px 6px">Telegram</th><th style="padding:8px 6px">Toast</th></tr></thead>
+        <tbody>
+          <tr style="border-top:1px solid #eef1f8"><td style="padding:9px 6px"><b>Bot errors</b> (paused / stopped / unknown order)</td><td>luôn bật</td><td>luôn bật</td><td><b>luôn bật</b> khi đã kết nối</td><td>có</td></tr>
+          <tr style="border-top:1px solid #eef1f8"><td style="padding:9px 6px"><b>Risk</b> (giới hạn rủi ro)</td><td>bật</td><td>bật</td><td>bật</td><td>có</td></tr>
+          <tr style="border-top:1px solid #eef1f8"><td style="padding:9px 6px"><b>Key &amp; fee</b></td><td>bật</td><td>bật</td><td>bật</td><td>không</td></tr>
+          <tr style="border-top:1px solid #eef1f8"><td style="padding:9px 6px"><b>Morning brief</b> (Desk AI, 08:00)</td><td>tắt</td><td>tắt</td><td><b>bật sẵn</b>, tắt được</td><td>không</td></tr>
+          <tr style="border-top:1px solid #eef1f8"><td style="padding:9px 6px"><b>Fills</b></td><td>tắt</td><td>tắt</td><td>tắt</td><td>không</td></tr>
+          <tr style="border-top:1px solid #eef1f8"><td style="padding:9px 6px"><b>Copy Trading</b> (big move)</td><td>bật</td><td>—</td><td>tắt <span class="chip" style="background:#ddf4e7;color:#0b6a39">DEC-170</span></td><td>không</td></tr>
+        </tbody>
+      </table>
+      <p style="margin:0;font-size:12.5px" class="muted">Morning brief = <code>daily_summary</code> cũ, nay do Desk AI viết theo luật fact (DEC-164/165). LLM tắt thì gửi bản mẫu cố định.</p>
+    </section>
+
+    <section class="card" style="padding:22px 24px;display:flex;flex-direction:column;gap:10px">
+      <h2 style="margin:0;font-size:18px;font-weight:800">Luật cứng</h2>
+      <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.6">
+        <li><b>Không có nút hành động</b> trong Telegram (Pause, Stop, Apply, Halt). Chỉ nút <b>Open in DeskLabs</b>.</li>
+        <li>Tin <b>được có số tiền</b> (PnL, đã lỗ, giới hạn đã dùng) lấy từ fact backend như trong app, có ▲/▼; thiếu dữ liệu thì bỏ câu có số. <b>Không bao giờ gửi địa chỉ ví.</b></li>
+        <li>Không bao giờ gửi key, secret, mã 2FA, link đăng nhập qua Telegram.</li>
+        <li>1 user ↔ 1 chat. Kết nối lại thì thay chat cũ.</li>
+        <li>Bot token trong Vault. Webhook kiểm tra <code>X-Telegram-Bot-Api-Secret-Token</code>.</li>
+        <li>Gửi lại được (không phải thao tác tài chính): khoá theo <code>notification_id</code>, tôn trọng <code>retry_after</code> khi 429.</li>
+        <li>Tên bot do user đặt luôn được escape, không bao giờ thành link hay lệnh.</li>
+      </ul>
+    </section>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px">
+    <section class="card" style="padding:18px 22px;display:flex;flex-direction:column;gap:8px"><h3 style="margin:0;font-size:15px;font-weight:800;color:#0b6a39">v1 làm</h3><span style="font-size:13.5px;line-height:1.55">Connect / Disconnect · Send test · tin cảnh báo theo nhóm · Morning brief · lệnh <code>/status</code> <code>/help</code> <code>/stop</code> · chuông mở panel + toast · trạng thái kênh trong Settings</span></section>
+    <section class="card" style="padding:18px 22px;display:flex;flex-direction:column;gap:8px"><h3 style="margin:0;font-size:15px;font-weight:800;color:#7a3e00">Để sau</h3><span style="font-size:13.5px;line-height:1.55">Hỏi Desk AI ngay trong Telegram (tính vào 20 câu/ngày) · giờ im lặng · push trình duyệt · Discord</span></section>
+    <section class="card" style="padding:18px 22px;display:flex;flex-direction:column;gap:8px"><h3 style="margin:0;font-size:15px;font-weight:800;color:#a72826">Không làm</h3><span style="font-size:13.5px;line-height:1.55">Điều khiển bot qua Telegram · đăng nhập bằng Telegram · gửi vào group · bot đọc tin nhắn tự do của user</span></section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -5,6 +5,8 @@ import { cx } from "../lib/cx";
 
 export interface SwitchProps {
   label: string;
+  /** Nhãn nhỏ cạnh tên (ví dụ "Beta"); chỉ để nhìn, tên đọc cho screen reader vẫn là `label`. */
+  badge?: string;
   description?: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
@@ -16,6 +18,7 @@ export interface SwitchProps {
 
 export function Switch({
   label,
+  badge,
   description,
   checked,
   onCheckedChange,
@@ -36,9 +39,16 @@ export function Switch({
   return (
     <div className={cx("flex items-start justify-between gap-4", className)}>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <label htmlFor={id} className="text-sm font-semibold text-ink">
-          {label}
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor={id} className="text-sm font-semibold text-ink">
+            {label}
+          </label>
+          {badge ? (
+            <span className="rounded-full bg-accent-tint px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-accent">
+              {badge}
+            </span>
+          ) : null}
+        </div>
         {description ? (
           <p id={descriptionId} className="text-xs text-muted">
             {description}

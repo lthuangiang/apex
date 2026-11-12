@@ -172,6 +172,24 @@ describe("analyzeAccount", () => {
     expect(Number(m.takerRatio)).toBeCloseTo(22600 / 49000, 12);
   });
 
+  it("measures the SoDEX maker fee without the builder fee already inside `fee` (DEC-112)", () => {
+    const fill = (fee: string, builder: string | null) => ({
+      market: "BTC-USD",
+      side: "BUY" as const,
+      price: "100000",
+      quantity: "0.1",
+      feeQuote: fee,
+      builderFeeQuote: builder,
+      isMaker: true,
+      at: T0,
+    });
+    const run = (perpsFills: AccountAnalysisInput["perpsFills"]) =>
+      analyzeAccount({ ...input, perpsFills, spotFills: [] }).makerFeePct.perps;
+    // 10000 notional: phí 2.2 gồm builder 1 → SoDEX 1.2 = 0.012%.
+    expect(run([fill("2.2", "1")])).toBe("0.012");
+    expect(run([fill("1.2", null)])).toBe("0.012");
+  });
+
   it("reports unmatched spot sells instead of inventing a cost basis", () => {
     expect(m.unmatchedSpotSells).toEqual({ vBTC_vUSDC: "0.1" });
   });

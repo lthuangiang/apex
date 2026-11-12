@@ -1,10 +1,11 @@
 import type { AccountMetrics, HoldingBucket } from "../analysis/account";
-import { feeRateToPercent, DRIFT_BUILDER_FEE_RATE } from "../fees";
+import { DRIFT_BUILDER_FEE_RATE, roundTripFeePct } from "../fees";
 import { formatDecimal } from "../format";
 import { Decimal, dec, toDecimalString, type DecimalInput } from "../money";
 
 import { RECO_CONFIG as C, RECO_INPUTS_VERSION } from "./config";
 import {
+  arbFitOf,
   dcaLadder,
   leverageFor,
   maxDrawdown30Pct,
@@ -72,11 +73,24 @@ export function maxDropPct(d: RecoInput["goals"]["maxDrop"]): number {
   return d === "unsure" ? 5 : Number(d);
 }
 
-/** fee_rt (%) = 2 × (maker fee + builder fee của DRIFT). Maker fee đo từ fill maker của người dùng, thiếu thì dùng mức cơ bản. */
-export function feeRtPct(engine: "spot" | "perps", account: AccountMetrics | null): Decimal {
+/**
+ * fee_rt (%) của một vòng maker vào + ra (DEC-112): 2 × maker fee SoDEX + builder fee của DRIFT theo số chiều bị thu
+ * (Perps hai chiều, Spot chỉ chiều bán). Maker fee lấy theo thứ tự: đo từ fill maker của người dùng, `makerFee` của
+ * market trên `/symbols`, rồi mức cơ bản.
+ */
+export function feeRtPct(
+  engine: "spot" | "perps",
+  account: AccountMetrics | null,
+  marketMakerFee?: string | null,
+): Decimal {
   const measured = account?.makerFeePct[engine] ?? null;
-  const maker = dec(measured ?? C.baseMakerFeePct[engine]);
-  return maker.add(feeRateToPercent(DRIFT_BUILDER_FEE_RATE)).mul(2);
+  const listed =
+    marketMakerFee === undefined || marketMakerFee === null ? null : dec(marketMakerFee).mul(100);
+  return roundTripFeePct({
+    engine,
+    makerPct: measured ?? listed ?? C.baseMakerFeePct[engine],
+    builderRate: DRIFT_BUILDER_FEE_RATE,
+  });
 }
 
 interface AssetHistory {
@@ -234,7 +248,7 @@ export function recommend(input: RecoInput, timeZone: string): RecoPlan {
       market,
       capital: goals.capital,
       maxDropPct: d,
-      feeRtPct: feeRtPct(market.engine, isNew ? null : account),
+      feeRtPct: feeRtPct(market.engine, isNew ? null : account, market.rules.makerFee),
       forceOneX,
       accountLeverageCap: input.accountLeverageCap,
       timeZone,
@@ -249,7 +263,10 @@ export function recommend(input: RecoInput, timeZone: string): RecoPlan {
       p.lossAtStopPct > d &&
       (strategy === "futures_grid" || strategy === "futures_dca")
     ) {
-      excludedByDrop.add(strategy === "futures_grid" ? "Futures Grid" : "Futures DCA");
+      // Kèm tên tài sản: cùng chiến lược vẫn có thể hợp ở market khác (ví dụ Futures Grid BTC được chọn, ETH bị loại).
+      excludedByDrop.add(
+        `${strategy === "futures_grid" ? "Futures Grid" : "Futures DCA"} · ${market.asset}`,
+      );
       return;
     }
     candidates.push({
@@ -292,12 +309,7 @@ export function recommend(input: RecoInput, timeZone: string): RecoPlan {
       )
         consider("futures_dca", m);
       const spot = spotOf(m.asset);
-      if (
-        spot !== undefined &&
-        m.fundingAvg7d !== null &&
-        dec(m.fundingAvg7d).gte(C.eligibility.fundingArbMinAvg7dPct) &&
-        (m.fundingPos21 ?? 0) >= C.eligibility.fundingArbMinPositiveShare21
-      )
+      if (spot !== undefined && arbFitOf(m, spot).eligible)
         consider("funding_arb", m, { spotMarket: spot });
     }
   }
@@ -333,11 +345,15 @@ export function recommend(input: RecoInput, timeZone: string): RecoPlan {
       empty: "No strategy fits your answers yet. Try a larger capital or a different goal.",
     };
   }
-  const addOn = candidates
-    .slice(1)
-    .find(
-      (c) => c.market.market !== best.market.market || GROUP[c.strategy] !== GROUP[best.strategy],
-    );
+  const addOn =
+    input.single === true
+      ? undefined
+      : candidates
+          .slice(1)
+          .find(
+            (c) =>
+              c.market.market !== best.market.market || GROUP[c.strategy] !== GROUP[best.strategy],
+          );
 
   // ---- Chia vốn ----
   let bestCap = capital;
@@ -459,9 +475,12 @@ export function aiParameters(
   strategy: RecoStrategy,
   market: RecoMarket,
   input: Pick<RecoInput, "account" | "accountLeverageCap" | "now"> & {
+    /** Rỗng: DCA tự chọn vốn nhỏ nhất (form DCA không có ô vốn); chiến lược khác trả null. */
     capital: string;
     maxDrop: RecoInput["goals"]["maxDrop"];
     markets: readonly RecoMarket[];
+    /** Tài sản cho giỏ Rebalancing; thiếu thì giỏ chỉ có tài sản của market này nên không đủ 2 tài sản. */
+    assets?: readonly string[];
   },
   timeZone: string,
 ): Suggestion | null {
@@ -474,11 +493,21 @@ export function aiParameters(
     market,
     capital: input.capital,
     maxDropPct: maxDropPct(input.maxDrop),
-    feeRtPct: feeRtPct(market.engine, isNew ? null : account),
+    feeRtPct: feeRtPct(market.engine, isNew ? null : account, market.rules.makerFee),
     forceOneX: high !== null && Number(high) > C.exclusions.highLeverageLossShare,
     accountLeverageCap: input.accountLeverageCap,
     timeZone,
     ...(strategy === "funding_arb" && spotMarket !== undefined ? { spotMarket } : {}),
+    ...(strategy === "rebalancing"
+      ? {
+          basket: (input.assets ?? [market.asset]).flatMap((asset) => {
+            const m = input.markets.find((x) => x.engine === "spot" && x.asset === asset);
+            return m === undefined
+              ? []
+              : [{ asset, market: m.market, volumeShare: "0", sigma30: m.sigma30 }];
+          }),
+        }
+      : {}),
   };
   const p = paramsFor(strategy, ctx);
   if (p === null) return null;
@@ -487,7 +516,7 @@ export function aiParameters(
     strategy,
     market: market.market,
     values: p.values,
-    capital: input.capital,
+    capital: p.capital ?? input.capital,
     score: 0,
     reasons: p.reasons.slice(0, 3),
     basis: p.basis,

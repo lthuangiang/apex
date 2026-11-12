@@ -53,7 +53,8 @@ describe("previewModel", () => {
     // Bước nhỏ nhất ở mức trên cùng: 0.01 / 0.38 = 2.63%.
     expect(params.step).toEqual({ value: "2.63" });
     expect(params.ordersAtStart).toEqual({ count: "8" });
-    expect(params.roundTrip).toEqual({ value: "0.1" });
+    // Spot: 2 × maker 0.035% + builder 0.01% chỉ ở chiều bán (DEC-112).
+    expect(params.roundTrip).toEqual({ value: "0.08" });
   });
 
   it("geometric grid has equal % gaps", () => {
@@ -213,6 +214,18 @@ describe("helpers", () => {
 });
 
 describe("liveHints", () => {
+  it("shows a Volume Farm stop loss as % price and USDC, like SoDEX TP/SL (DEC-126)", () => {
+    const v = {
+      ...emptyValues("volume_farm"),
+      leverage: "25",
+      slMarginPct: "25",
+      orderSizeMaxUsd: "500",
+    };
+    expect(liveHints("volume_farm", v, null)).toEqual({
+      slMarginPct: { key: "vfStopLoss", params: { price: "1", usd: "5" } },
+    });
+  });
+
   it("compares grid bounds with the last price and describes the step", () => {
     const v = {
       ...emptyValues("spot_grid"),

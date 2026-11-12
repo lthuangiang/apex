@@ -5,12 +5,19 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./lib/http";
 import type { Mailer } from "./lib/mailer";
 import type { RecoClient } from "./lib/reco-client";
+import { builderFeesOf } from "./modules/account/builder-fees";
 import { registerAccountRoutes } from "./modules/account/routes";
 import { registerAuthRoutes } from "./modules/auth/routes";
 import { registerBacktestRoutes } from "./modules/backtests/routes";
 import { registerBotRoutes } from "./modules/bots/routes";
+import { aiDeskOn, volumeBotsOn } from "./modules/bots/service";
+import { registerChartRoutes } from "./modules/chart/routes";
+import { createChartService, type LiquidationProvider } from "./modules/chart/service";
+import { registerCopyRoutes } from "./modules/copy/routes";
 import { registerDataRoutes } from "./modules/data/routes";
+import { registerDeskRoutes } from "./modules/desk/routes";
 import { registerProfileRoutes } from "./modules/profile/routes";
+import { registerPublicRoutes } from "./modules/public/routes";
 import { registerRecoRoutes } from "./modules/reco/routes";
 import { registerSodexRoutes } from "./modules/sodex/routes";
 import type { SodexDeps } from "./modules/sodex/service";
@@ -43,16 +50,22 @@ export interface AppDeps {
   now?: () => Date;
   /** Thay stream log trong test. */
   logStream?: NodeJS.WritableStream;
-  sodex: Pick<SodexDeps, "rest" | "writer" | "signer" | "builderId" | "connectEnabled">;
+  sodex: Pick<
+    SodexDeps,
+    "rest" | "writer" | "signer" | "builderId" | "builderExempt" | "connectEnabled"
+  >;
   /** Giá gần nhất (Redis `md:last:<market>`, do marketdata ghi). */
   lastPrice: (market: string) => Promise<{ price: string; at: number } | null>;
   reco: RecoClient;
   /** Giá gần nhất của nhiều market (Redis `md:last:*`). */
   prices: (markets: readonly string[]) => Promise<Record<string, string>>;
   rateLimiter: RateLimiter;
-  volumeMakerEnabled?: boolean;
+  /** Nhà cung cấp bản đồ thanh lý (IMP-05). Không có / null: tab Liquidation map ẩn. */
+  liquidations?: LiquidationProvider | null;
   /** Ghi đè giới hạn (test). */
   rateLimits?: { perIp: number; perUser: number; windowMs: number };
+  /** Copy Trading: ngưỡng USD cảnh báo big move; trống = tắt (DEC-163, OPEN_QUESTIONS 21a). */
+  copyBigMoveMinUsd?: string | null;
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -79,20 +92,34 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     cookieSecure: deps.cookieSecure,
   });
   registerDataRoutes(app, { db: deps.db, now });
-  const volumeMakerEnabled = deps.volumeMakerEnabled === true;
-  app.get("/api/v1/features", () => ({ volumeMaker: volumeMakerEnabled }));
+  // Tính năng của người đang đăng nhập: bot khối lượng do admin bật ở Users (DEC-80). Chưa đăng nhập → tắt.
+  app.get("/api/v1/features", async (request) => {
+    const on = request.auth === null ? false : await volumeBotsOn(deps.db, request.auth.userId);
+    const desk = request.auth === null ? false : await aiDeskOn(deps.db, request.auth.userId);
+    // Builder fee hiệu lực của user (DEC-159); chưa đăng nhập → bảng mặc định.
+    const builderFees =
+      request.auth === null ? {} : await builderFeesOf(deps.db, request.auth.userId);
+    return { volumeMaker: on, volumeFarm: on, aiDesk: desk, builderFees };
+  });
   registerBotRoutes(app, {
     db: deps.db,
     totpKey: deps.totpKey,
     now,
     rest: deps.sodex.rest,
     builderId: deps.sodex.builderId,
+    builderExempt: deps.sodex.builderExempt,
     lastPrice: deps.lastPrice,
     prices: deps.prices,
-    volumeMakerEnabled,
     verifyApiKey: (id: string) => deps.sodex.signer.verifyApiKey(id),
   });
-  registerBacktestRoutes(app, { db: deps.db, now, volumeMakerEnabled });
+  const chart = createChartService({
+    rest: deps.sodex.rest,
+    liquidations: deps.liquidations ?? null,
+    now,
+  });
+  registerChartRoutes(app, chart);
+  registerPublicRoutes(app, { db: deps.db, now, orderbook: (m) => chart.orderbook(m) });
+  registerBacktestRoutes(app, { db: deps.db, now });
   registerProfileRoutes(app, {
     db: deps.db,
     totpKey: deps.totpKey,
@@ -105,6 +132,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     now,
     rest: deps.sodex.rest,
     builderId: deps.sodex.builderId,
+    builderExempt: deps.sodex.builderExempt,
     lastPrice: deps.lastPrice,
     prices: deps.prices,
     verifyApiKey: (id: string) => deps.sodex.signer.verifyApiKey(id),
@@ -117,8 +145,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     prices: deps.prices,
     bots: botDeps,
     builderId: deps.sodex.builderId,
+    builderExempt: deps.sodex.builderExempt,
   });
-  registerRecoRoutes(app, { db: deps.db, reco: deps.reco, rest: deps.sodex.rest, now });
+  const recoDeps = { db: deps.db, reco: deps.reco, rest: deps.sodex.rest, now };
+  registerRecoRoutes(app, recoDeps);
+  registerDeskRoutes(app, { bots: botDeps, reco: recoDeps });
+  registerCopyRoutes(app, { bots: botDeps, bigMoveMinUsd: deps.copyBigMoveMinUsd ?? null });
   registerSodexRoutes(app, { ...deps.sodex, db: deps.db, totpKey: deps.totpKey, now });
   return app;
 }

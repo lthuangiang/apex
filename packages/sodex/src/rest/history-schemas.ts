@@ -71,6 +71,13 @@ export const klineSchema = z.object({
 });
 export type Kline = z.infer<typeof klineSchema>;
 
+/** Sổ lệnh REST (`/markets/{symbol}/orderbook`): mỗi mức là [giá, khối lượng], tốt nhất trước. */
+export const orderbookSchema = z.object({
+  bids: z.array(z.tuple([decimal, decimal])),
+  asks: z.array(z.tuple([decimal, decimal])),
+});
+export type Orderbook = z.infer<typeof orderbookSchema>;
+
 export const markPriceSchema = z.object({
   symbol: z.string(),
   markPrice: decimal,
@@ -98,7 +105,11 @@ export const restOrderSchema = z.object({
     "EXPIRED",
     "TRIGGERED",
   ]),
-  origQty: decimal,
+  /** Stop loss của cả vị thế (DEC-118) không có quantity: SoDEX có thể trả rỗng. */
+  origQty: z
+    .union([decimal, z.literal("")])
+    .nullish()
+    .transform((v) => (v === undefined || v === null || v === "" ? "0" : v)),
   executedQty: decimal,
   executedValue: decimal,
   createdAt: ms,

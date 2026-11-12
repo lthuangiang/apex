@@ -7,6 +7,7 @@ import { useConnect, useConnection, useDisconnect, type Connector } from "wagmi"
 
 import { WalletPicker } from "@/features/onboarding/components/wallet-picker";
 import { shortAddress } from "@/lib/format";
+import { connectWatched, WalletConnectNotStarted } from "@/lib/watch-wallet";
 
 // Ký trong Settings (renew key, phí, disconnect) cần ví đang kết nối đúng là master wallet của account SoDEX.
 // Sau khi tải lại trang, wagmi có thể không còn nhớ ví: hỏi người dùng chọn ví trước khi mở dialog, không để
@@ -48,7 +49,8 @@ export function useMasterWallet(expected: string): {
     setError(null);
     try {
       if (isConnected) await disconnectAsync();
-      const account = (await connectAsync({ connector })).accounts[0];
+      const account = (await connectWatched(connector, () => connectAsync({ connector })))
+        .accounts[0];
       if (!same(account, expected)) {
         setError(t("wrong", { address: shortAddress(expected) }));
         return;
@@ -56,8 +58,10 @@ export function useMasterWallet(expected: string): {
       setPicking(false);
       waiter.current?.resolve();
       waiter.current = null;
-    } catch {
-      setError(tConnect("errors.noWallet"));
+    } catch (e) {
+      setError(
+        tConnect(e instanceof WalletConnectNotStarted ? "errors.wcNotStarted" : "errors.noWallet"),
+      );
     } finally {
       setBusy(false);
     }

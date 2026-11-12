@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DeskLabs intro video</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap">
+<style>
+/* Video giới thiệu DeskLabs cho X (1920×1080, 30 fps). Mọi hoạt ảnh tính từ thời gian t (window.render(t)),
+   không dùng CSS animation, để quay từng khung hình ra MP4 mượt và lặp lại được. */
+* { box-sizing: border-box; }
+body { margin: 0; background: #0b1124; }
+#v { width: 1920px; height: 1080px; position: relative; overflow: hidden; color: #fff;
+  font-family: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+  background: radial-gradient(1200px 700px at 1500px -100px, rgba(46,98,232,.45), transparent 70%),
+              radial-gradient(900px 600px at 200px 1150px, rgba(126,226,168,.12), transparent 70%),
+              linear-gradient(135deg, #0b1124 0%, #111934 55%, #15214a 100%); }
+.grid { position: absolute; inset: 0; opacity: .06;
+  background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+  background-size: 60px 60px; }
+.scene { position: absolute; inset: 0; opacity: 0; }
+.center { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.eyebrow { font-size: 22px; font-weight: 800; letter-spacing: .12em; color: #9db4ff; }
+h1 { margin: 0; font-weight: 800; letter-spacing: -.03em; }
+.mark { display: block; }
+.card { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); border-radius: 26px; }
+.cap { position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%); max-width: 1500px;
+  padding: 14px 26px; border-radius: 16px; background: rgba(5,8,20,.78); border: 1px solid rgba(255,255,255,.12);
+  font-size: 31px; font-weight: 600; line-height: 1.3; text-align: center; opacity: 0; }
+.corner { position: absolute; left: 64px; top: 52px; display: flex; align-items: center; gap: 14px; opacity: 0; }
+.corner span { font-size: 28px; font-weight: 800; }
+.prog { position: absolute; left: 0; bottom: 0; height: 6px; background: #2e62e8; }
+/* order book */
+.row { position: relative; display: grid; grid-template-columns: 1.1fr 1fr 1fr; padding: 7px 14px; border-radius: 9px; margin: 3px 0;
+  font-size: 23px; font-variant-numeric: tabular-nums; overflow: hidden; }
+.row .bar { position: absolute; top: 0; bottom: 0; right: 0; }
+.row span { position: relative; }
+.row .q, .row .s { text-align: right; color: rgba(255,255,255,.78); }
+.ask .p { color: #ff9aa5; } .ask .bar { background: rgba(255,99,120,.17); }
+.bid .p { color: #7ee2a8; } .bid .bar { background: rgba(126,226,168,.17); }
+.you { box-shadow: inset 0 0 0 3px #5b8cff; }
+.tag { margin-left: 10px; background: #2e62e8; border-radius: 6px; padding: 1px 8px; font-size: 15px; font-weight: 800; color: #fff; }
+.flash { position: absolute; inset: 0; background: rgba(255,255,255,.0); }
+.log { font-size: 23px; line-height: 1.35; padding: 14px 18px; border-radius: 14px; background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1); margin-bottom: 12px; }
+.log b { color: #fff; } .log em { font-style: normal; color: rgba(255,255,255,.62); }
+.log .t { color: rgba(255,255,255,.45); margin-right: 12px; font-variant-numeric: tabular-nums; }
+.kpi { padding: 26px 28px; }
+.kpi .l { font-size: 22px; color: rgba(255,255,255,.65); font-weight: 600; }
+.kpi .vv { font-size: 52px; font-weight: 800; letter-spacing: -.02em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.strat { padding: 26px 26px; display: flex; flex-direction: column; gap: 10px; }
+.strat b { font-size: 28px; }
+.strat em { font-style: normal; font-size: 19px; color: rgba(255,255,255,.62); }
+.pill { align-self: flex-start; font-size: 15px; font-weight: 800; padding: 4px 12px; border-radius: 999px; background: rgba(91,140,255,.22); color: #b9caff; }
+.foot { font-size: 20px; color: rgba(255,255,255,.55); }
+.safe { padding: 30px; display: flex; flex-direction: column; gap: 12px; }
+.safe b { font-size: 30px; } .safe em { font-style: normal; font-size: 21px; color: rgba(255,255,255,.65); }
+.win { border-radius: 22px; overflow: hidden; background: #eef1fa; box-shadow: 0 40px 120px -40px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.12); }
+.wbar { height: 44px; background: #1b2442; display: flex; align-items: center; gap: 9px; padding: 0 18px; }
+.wbar i { width: 13px; height: 13px; border-radius: 9px; background: #3a4566; display: inline-block; }
+.wbar span { margin-left: 18px; font-size: 18px; color: rgba(255,255,255,.6); font-weight: 600; background: rgba(255,255,255,.07); padding: 5px 16px; border-radius: 9px; }
+.wview { position: relative; width: 1600px; height: 690px; overflow: hidden; }
+.wview img { position: absolute; left: 0; top: 0; width: 1440px; transform-origin: 0 0; }
+.chip2 { position: absolute; right: 190px; top: 210px; padding: 14px 22px; border-radius: 14px; background: #2e62e8; color: #fff; font-size: 26px; font-weight: 800; box-shadow: 0 20px 50px -15px rgba(46,98,232,.8); opacity: 0; }
+</style>
+</head>
+<body>
+<div id="v">
+  <div class="grid"></div>
+
+  <!-- S1 logo -->
+  <div class="scene center" id="s1">
+    <svg class="mark" id="s1mark" width="190" height="190" viewBox="0 0 24 24"><rect width="24" height="24" rx="5.6" fill="#2E62E8"/><path id="s1d" d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-dasharray="40" stroke-dashoffset="40"/><rect id="s1b1" x="9.6" y="9" width="4.6" height="2" rx="1" fill="#fff"/><rect id="s1b2" x="9.6" y="13" width="3.2" height="2" rx="1" fill="#fff" opacity=".7"/></svg>
+    <h1 id="s1word" style="font-size:120px;margin-top:34px">DeskLabs</h1>
+    <div id="s1tag" style="font-size:44px;font-weight:600;color:rgba(255,255,255,.78);margin-top:18px">Trading strategies that run while you work.</div>
+  </div>
+
+  <!-- S2 realtime quoting -->
+  <div class="scene" id="s2">
+    <div style="position:absolute;left:150px;top:150px" class="eyebrow">REAL-TIME MARKET MAKING</div>
+    <div class="card" style="position:absolute;left:150px;top:190px;width:820px;padding:22px 28px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <b style="font-size:30px">BTC-USD · Live quotes</b>
+        <span style="font-size:20px;font-weight:800;color:#7ee2a8">● Running</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1.1fr 1fr 1fr;padding:0 14px 8px;font-size:18px;color:rgba(255,255,255,.55)"><span>Price</span><span style="text-align:right">Size (USDC)</span><span style="text-align:right">Sum</span></div>
+      <div id="asks"></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px;margin:8px 0;border-top:1px solid rgba(255,255,255,.12);border-bottom:1px solid rgba(255,255,255,.12)">
+        <b id="mid" style="font-size:34px;font-variant-numeric:tabular-nums">74,600.5</b><span id="spr" style="font-size:19px;font-weight:700;color:rgba(255,255,255,.6)">Spread 0.13 bps</span>
+      </div>
+      <div id="bids"></div>
+    </div>
+    <div style="position:absolute;left:1040px;top:190px;width:730px">
+      <div class="eyebrow" style="margin-bottom:18px">DECISIONS</div>
+      <div id="logs"></div>
+    </div>
+  </div>
+
+  <!-- S3 strategies -->
+  <div class="scene" id="s3">
+    <div style="position:absolute;left:150px;top:150px" class="eyebrow">STRATEGIES</div>
+    <h1 style="position:absolute;left:150px;top:190px;font-size:64px">Ten strategies, one setup screen</h1>
+    <div id="strats" style="position:absolute;left:150px;top:310px;width:1620px;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:22px"></div>
+  </div>
+
+  <!-- S4 UI tour: Volume tracking (ảnh trang prod) -->
+  <div class="scene" id="s4">
+    <div style="position:absolute;left:160px;top:96px" class="eyebrow">VOLUME TRACKING · ETH VOLUME BUILDER · MAINNET</div>
+    <div class="win" style="position:absolute;left:160px;top:140px;width:1600px">
+      <div class="wbar"><i></i><i></i><i></i><span>desklabs.xyz/agent</span></div>
+      <div class="wview" id="v4"><img id="img4" src="assets/ui-agent-volume-builder.png" alt=""></div>
+    </div>
+    <div class="chip2" id="c4"></div>
+  </div>
+
+  <!-- S5 UI tour: Market Making Analytics (ảnh bot MM thật) -->
+  <div class="scene" id="s5">
+    <div style="position:absolute;left:160px;top:96px" class="eyebrow">MARKET MAKING ANALYTICS · BTC MARKET MAKING</div>
+    <div class="win" style="position:absolute;left:160px;top:140px;width:1600px">
+      <div class="wbar"><i></i><i></i><i></i><span>desklabs.xyz/agent</span></div>
+      <div class="wview" id="v5"><img id="img5" src="assets/ui-agent-market-making.png" alt=""></div>
+    </div>
+    <div class="chip2" id="c5"></div>
+  </div>
+
+  <!-- S5 smart quoting result -->
+  <div class="scene center" id="s6">
+    <div class="eyebrow">SMART QUOTING · LIVE TEST</div>
+    <h1 style="font-size:72px;margin-top:16px">Average loss per round trip, halved</h1>
+    <div style="display:flex;gap:120px;align-items:flex-end;margin-top:40px;height:330px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:14px"><b id="v1val" style="font-size:54px;color:#ff9aa5">−3.41 bp</b><div id="v1bar" style="width:220px;background:#f08a3e;border-radius:18px 18px 0 0;height:0"></div><span style="font-size:26px;color:rgba(255,255,255,.7)">Before (v1)</span></div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:14px"><b id="v2val" style="font-size:54px;color:#9db4ff">−1.72 bp</b><div id="v2bar" style="width:220px;background:#5b8cff;border-radius:18px 18px 0 0;height:0"></div><span style="font-size:26px;color:rgba(255,255,255,.7)">Smart quoting v2</span></div>
+    </div>
+    <div class="foot" style="margin-top:34px">BTC-USD Market Making on SoDEX mainnet, Nov 10, 2026: 22 round trips (21 min) vs 49 round trips (53 min).</div>
+  </div>
+
+  <!-- S6 best CPM (số prod) -->
+  <div class="scene center" id="s7">
+    <div class="eyebrow">LIVE ON SODEX MAINNET</div>
+    <div style="display:flex;align-items:baseline;gap:22px;margin-top:20px"><h1 id="cpm" style="font-size:210px;line-height:1">$0</h1><span style="font-size:48px;font-weight:700;color:rgba(255,255,255,.75)">per $1M volume</span></div>
+    <div style="font-size:30px;font-weight:700;color:#9db4ff;margin-top:8px">Volume Builder · ETH-USD · 27,173 USDC volume</div>
+    <div style="display:grid;grid-template-columns:repeat(3,420px);gap:24px;margin-top:44px" id="cpmchips">
+      <div class="card kpi"><div class="l">Volume Builder · ETH</div><div class="vv">27,173<span style="font-size:26px;color:rgba(255,255,255,.65)"> USDC</span></div><div class="l" style="margin-top:4px">95 trades · 100% maker</div></div>
+      <div class="card kpi"><div class="l">Market Making · ETH</div><div class="vv">$138<span style="font-size:26px;color:rgba(255,255,255,.65)"> / $1M</span></div><div class="l" style="margin-top:4px">7,258 USDC volume · 100% maker</div></div>
+      <div class="card kpi"><div class="l">Futures DCA · INTC</div><div class="vv" style="color:#7ee2a8">+3.30%</div><div class="l" style="margin-top:4px">+3.3 USDC since Oct 30 · 6 fills</div></div>
+    </div>
+    <div class="foot" style="margin-top:34px">Real bots on SoDEX mainnet, Nov 10, 2026. Fees and price PnL included. Results vary and are not a forecast.</div>
+  </div>
+
+  <!-- S7 safety -->
+  <div class="scene" id="s8">
+    <div style="position:absolute;left:150px;top:150px" class="eyebrow">SAFETY</div>
+    <h1 style="position:absolute;left:150px;top:190px;font-size:64px">We trade. We never move your money.</h1>
+    <div id="safes" style="position:absolute;left:150px;top:330px;width:1620px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px"></div>
+  </div>
+
+  <!-- S8 CTA -->
+  <div class="scene center" id="s9">
+    <svg width="150" height="150" viewBox="0 0 24 24"><rect width="24" height="24" rx="5.6" fill="#2E62E8"/><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#fff"/><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#fff" opacity=".7"/></svg>
+    <h1 style="font-size:110px;margin-top:28px">DeskLabs</h1>
+    <div id="s8url" style="margin-top:26px;font-size:46px;font-weight:800;padding:18px 40px;border-radius:20px;background:#2e62e8">desklabs.xyz</div>
+    <div style="margin-top:30px;font-size:28px;font-weight:600;color:rgba(255,255,255,.6)">Powered by SoDEX Builder Code</div>
+  </div>
+
+  <div class="corner" id="corner"><svg width="48" height="48" viewBox="0 0 24 24"><rect width="24" height="24" rx="5.6" fill="#2E62E8"/><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#fff"/><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#fff" opacity=".7"/></svg><span>DeskLabs</span></div>
+  <div class="cap" id="cap"></div>
+  <div class="prog" id="prog"></div>
+</div>
+
+<script>
+// ---- Timeline (giây). VO bắt đầu sau `voAt` giây mỗi cảnh; thời lượng VO đo từ file âm thanh. ----
+const VO = window.VO || [3.5, 6.6, 6.8, 6.0, 6.0, 4.4, 6.9, 5.9, 5.2];
+const LINES = window.LINES || [];
+const PAD = 1.0, voAt = 0.35, TAIL = 1.6;
+const SC = []; let acc = 0;
+const MINLEN = { 3: 14.2, 4: 10.6 }; // cảnh duyệt UI cần đủ thời gian cuộn / zoom
+VO.forEach((d, i) => { const len = Math.max(d + PAD, MINLEN[i] || 0) + (i === VO.length - 1 ? TAIL : 0); SC.push({ s: acc, e: acc + len, vo: acc + voAt, d }); acc += len; });
+window.TOTAL = acc; window.SCENES = SC;
+
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = (x) => { x = clamp(x); return 1 - Math.pow(1 - x, 3); };
+const easeIO = (x) => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const $ = (id) => document.getElementById(id);
+const fmt = (n, dp = 0) => n.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+// Nhiễu tất định cho giá (không dùng Math.random để mọi lần quay giống nhau).
+const noise = (x) => { const s = Math.sin(x * 12.9898) * 43758.5453; return s - Math.floor(s); };
+const smoothNoise = (x) => { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return noise(i) * (1 - u) + noise(i + 1) * u; };
+
+// ---- dựng sẵn phần tử ----
+const asks = $("asks"), bids = $("bids");
+for (let i = 0; i < 5; i++) { asks.insertAdjacentHTML("beforeend", `<div class="row ask"><div class="bar"></div><span class="p"></span><span class="q"></span><span class="s"></span><div class="flash"></div></div>`);
+  bids.insertAdjacentHTML("beforeend", `<div class="row bid"><div class="bar"></div><span class="p"></span><span class="q"></span><span class="s"></span><div class="flash"></div></div>`); }
+const LOGS = [
+  [0.4, "14:12:01", "<b>Quoting</b> <em>· bid 74,600 / ask 74,601</em>"],
+  [1.6, "14:12:03", "<b>Filled</b> <em>· bid 0.0003 BTC · maker</em>"],
+  [2.9, "14:12:04", "<b>Closing inventory</b> <em>· ask 74,602 · reduce-only</em>"],
+  [4.0, "14:12:09", "<b>Smart quoting</b> <em>· ask back 15 ticks (price up 2.4 bp in 6 s)</em>"],
+  [5.2, "14:12:21", "<b>Smart quoting</b> <em>· ask pulled (trend up 6 bp in 30 s)</em>"],
+  [6.3, "14:12:36", "<b>Back to normal</b> <em>· quoting at the set position</em>"],
+];
+$("logs").innerHTML = LOGS.map((l) => `<div class="log"><span class="t">${l[1]}</span>${l[2]}</div>`).join("");
+const STRATS = [
+  ["Market Making", "Quotes both sides, earns maker volume", "FLAGSHIP"], ["Volume Builder", "Maker-first volume at low cost", "FLAGSHIP"],
+  ["Futures Grid", "Buys low, sells high in a range", ""], ["Spot Grid", "The same grid, no leverage", ""], ["Futures DCA", "Scales in, exits on target", ""],
+  ["Spot DCA", "Averages in on dips", ""], ["Funding Arbitrage", "Collects funding, hedged", ""], ["TWAP", "Splits a big order over time", ""],
+  ["Recurring Buy", "Buys on a schedule", ""], ["Rebalancing", "Keeps your mix on target", ""],
+];
+$("strats").innerHTML = STRATS.map((s) => `<div class="card strat">${s[2] ? `<span class="pill">${s[2]}</span>` : `<span class="pill" style="opacity:0">-</span>`}<b>${s[0]}</b><em>${s[1]}</em></div>`).join("");
+// Camera cho 2 cảnh duyệt UI: khung nhìn (x, y, w) theo toạ độ CSS của trang 1440 px; khung hiển thị 1600×690.
+const CAM4 = [[0, 0, 0, 1440], [1.8, 0, 380, 1440], [3.2, 285, 560, 1130], [5.4, 285, 560, 1130], [6.6, 285, 1110, 1130], [8.2, 285, 1110, 1130], [9.4, 285, 1420, 1130], [11.2, 285, 1420, 1130], [12.4, 285, 2150, 1130], [14.2, 285, 2150, 1130]];
+const CHIP4 = [[3.2, 5.6, "Volume made · $114.61 per $1M"], [6.6, 8.4, "Where every dollar of cost went"], [9.4, 11.4, "Strategy Analytics"], [12.4, 14.0, "Review this run: tested on real entries"]];
+const CAM5 = [[0, 0, 120, 1440], [1.6, 270, 480, 1150], [3.8, 270, 480, 1150], [5.0, 270, 1530, 1150], [6.8, 270, 1530, 1150], [8.0, 290, 1745, 660], [10.6, 290, 1745, 660]];
+const CHIP5 = [[1.6, 4.0, "Live quotes · your orders marked"], [5.0, 7.0, "Market Making Analytics"], [8.0, 10.4, "Adverse selection 1 / 3 / 5 min after each fill"]];
+function camAt(cam, lt) { if (lt <= cam[0][0]) return cam[0].slice(1); for (let i = 1; i < cam.length; i++) { const [t1, ...b] = cam[i]; const [t0, ...a] = cam[i - 1]; if (lt <= t1) { const k = easeIO((lt - t0) / (t1 - t0)); return a.map((v, j) => v + (b[j] - v) * k); } } return cam[cam.length - 1].slice(1); }
+function tour(view, img, chip, cam, chips, lt) { const [x, y, w] = camAt(cam, lt); const sc = 1600 / w; $(img).style.transform = `translate(${-x * sc}px, ${-y * sc}px) scale(${sc})`;
+  const c = chips.find((q) => lt >= q[0] - 0.2 && lt <= q[1] + 0.3); const el = $(chip); if (c) { el.textContent = c[2]; el.style.opacity = Math.min(ease((lt - c[0] + 0.2) / 0.4), clamp((c[1] + 0.3 - lt) / 0.3)); el.style.transform = `translateY(${(1 - ease((lt - c[0] + 0.2) / 0.4)) * 16}px)`; } else el.style.opacity = 0; }
+const SAFE = [["No withdrawals", "The app can only place and cancel orders for your bots."], ["No seed phrase", "Connect with two wallet signatures."], ["Stops on the exchange", "Protection stays on even if we go offline."], ["One-tap halt", "Stop every bot and cancel its orders anywhere."]];
+$("safes").innerHTML = SAFE.map((s) => `<div class="card safe"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#7ee2a8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l4 4 10-10"/></svg><b>${s[0]}</b><em>${s[1]}</em></div>`).join("");
+
+
+// Đường volume cộng dồn (hình dạng từ nhiễu tất định).
+const VPTS = (() => { const pts = []; let v = 0; for (let i = 0; i <= 60; i++) { v += 0.4 + smoothNoise(i * 0.7) * 1.2; pts.push(v); } const m = pts[pts.length - 1]; return pts.map((p) => p / m); })();
+
+function sceneAlpha(sc, t) { const fi = clamp((t - sc.s) / 0.45), fo = clamp((sc.e - t) / 0.45); return Math.min(fi, fo); }
+
+window.render = function (t) {
+  SC.forEach((sc, i) => { const el = $(`s${i + 1}`); const a = sceneAlpha(sc, t); el.style.opacity = a; el.style.transform = `translateY(${(1 - ease(clamp((t - sc.s) / 0.6))) * 30}px)`; el.style.visibility = a > 0 ? "visible" : "hidden"; });
+  // caption theo lời đọc
+  const cur = SC.findIndex((sc) => t >= sc.vo && t < sc.vo + sc.d + 0.35);
+  const cap = $("cap");
+  if (cur >= 0 && LINES[cur]) { cap.textContent = LINES[cur]; const sc = SC[cur]; cap.style.opacity = Math.min(clamp((t - sc.vo) / 0.2), clamp((sc.vo + sc.d + 0.35 - t) / 0.2)); } else cap.style.opacity = 0;
+  $("corner").style.opacity = clamp((t - SC[1].s) / 0.5) * clamp((SC[8].s - t) / 0.4);
+  $("prog").style.width = `${(t / window.TOTAL) * 100}%`;
+
+  // S1
+  { const lt = t - SC[0].s; const m = $("s1mark"); m.style.transform = `scale(${0.6 + 0.4 * ease(lt / 0.8)})`; m.style.opacity = ease(lt / 0.5);
+    $("s1d").setAttribute("stroke-dashoffset", String(40 * (1 - easeIO((lt - 0.2) / 0.9))));
+    $("s1b1").setAttribute("width", String(4.6 * ease((lt - 0.8) / 0.4))); $("s1b2").setAttribute("width", String(3.2 * ease((lt - 1.0) / 0.4)));
+    const w = $("s1word"); w.style.opacity = ease((lt - 0.7) / 0.5); w.style.transform = `translateY(${(1 - ease((lt - 0.7) / 0.6)) * 30}px)`;
+    const g = $("s1tag"); g.style.opacity = ease((lt - 1.3) / 0.6); }
+
+  // S2: sổ lệnh chạy theo thời gian thực
+  { const lt = Math.max(0, t - SC[1].s); const base = 74600 + Math.round((smoothNoise(lt * 0.9) - 0.5) * 8 + lt * 0.9);
+    const bestBid = base, bestAsk = base + 1;
+    $("mid").textContent = fmt(bestBid + 0.5, 1);
+    $("spr").textContent = `Spread ${(1 / (bestBid + 0.5) * 1e4).toFixed(3)} bps`;
+    const pulled = lt >= 5.2 && lt < 6.3; // Smart quoting rút ask
+    const back = lt >= 4.0 && lt < 5.2 ? 15 : 0;
+    const youAsk = pulled ? null : bestAsk + back, youBid = bestBid;
+    let sum = 0; const aRows = asks.children;
+    for (let i = 0; i < 5; i++) { const price = bestAsk + i; const sz = 30000 + Math.round(smoothNoise(i * 3.1 + lt * 1.7) * 90000); sum += sz;
+      const r = aRows[4 - i]; r.querySelector(".p").innerHTML = fmt(price) + (youAsk === price ? '<span class="tag">YOU</span>' : ""); r.querySelector(".q").textContent = fmt(sz); r.querySelector(".s").textContent = fmt(sum);
+      r.querySelector(".bar").style.width = `${Math.min(100, sum / 4500)}%`; r.classList.toggle("you", youAsk === price); }
+    sum = 0; const bRows = bids.children;
+    for (let i = 0; i < 5; i++) { const price = bestBid - i; const sz = 30000 + Math.round(smoothNoise(i * 2.3 + lt * 1.3 + 9) * 90000); sum += sz;
+      const r = bRows[i]; r.querySelector(".p").innerHTML = fmt(price) + (youBid === price ? '<span class="tag">YOU</span>' : ""); r.querySelector(".q").textContent = fmt(sz); r.querySelector(".s").textContent = fmt(sum);
+      r.querySelector(".bar").style.width = `${Math.min(100, sum / 4500)}%`; r.classList.toggle("you", youBid === price); }
+    // nháy khi khớp
+    const fl = Math.max(0, 1 - Math.abs(lt - 1.6) / 0.35); bRows[0].querySelector(".flash").style.background = `rgba(126,226,168,${0.45 * fl})`;
+    const fl2 = Math.max(0, 1 - Math.abs(lt - 2.9) / 0.35); aRows[3].querySelector(".flash").style.background = `rgba(255,154,165,${0.4 * fl2})`;
+    [...$("logs").children].forEach((el, i) => { const k = ease((lt - LOGS[i][0]) / 0.4); el.style.opacity = k; el.style.transform = `translateX(${(1 - k) * 40}px)`; }); }
+
+  // S3
+  { const lt = t - SC[2].s; [...$("strats").children].forEach((el, i) => { const k = ease((lt - 0.3 - i * 0.12) / 0.5); el.style.opacity = k; el.style.transform = `scale(${0.85 + 0.15 * k})`;
+      if (i < 2) el.style.boxShadow = `0 0 0 ${2 * k}px rgba(91,140,255,.8), 0 20px 60px -20px rgba(46,98,232,${0.6 * k})`; }); }
+
+  // S4 duyệt trang Volume Builder
+  tour("v4", "img4", "c4", CAM4, CHIP4, t - SC[3].s);
+
+  // S5 duyệt trang Market Making
+  tour("v5", "img5", "c5", CAM5, CHIP5, t - SC[4].s);
+
+  // S5
+  { const lt = t - SC[5].s; $("v1bar").style.height = `${210 * ease((lt - 0.3) / 0.9)}px`; $("v2bar").style.height = `${210 * (1.72 / 3.41) * ease((lt - 0.9) / 0.9)}px`;
+    $("v1val").style.opacity = ease((lt - 0.8) / 0.4); $("v2val").style.opacity = ease((lt - 1.4) / 0.4); }
+
+  // S6
+  { const lt = t - SC[6].s; const k = easeIO((lt - 0.3) / 1.6); $("cpm").textContent = "$" + fmt(114.61 * k, 2);
+    [...$("cpmchips").children].forEach((el, i) => { const q = ease((lt - 1.6 - i * 0.2) / 0.5); el.style.opacity = q; el.style.transform = `translateY(${(1 - q) * 20}px)`; }); }
+
+  // S7
+  { const lt = t - SC[7].s; [...$("safes").children].forEach((el, i) => { const k = ease((lt - 0.3 - i * 0.25) / 0.5); el.style.opacity = k; el.style.transform = `translateY(${(1 - k) * 40}px)`; }); }
+
+  // S8
+  { const lt = t - SC[8].s; const u = $("s8url"); const k = ease((lt - 0.8) / 0.6); u.style.opacity = k; u.style.transform = `scale(${0.9 + 0.1 * k})`;
+    u.style.boxShadow = `0 0 ${40 + 20 * Math.sin(lt * 4)}px rgba(46,98,232,${0.55 * k})`; }
+};
+window.render(Number(new URLSearchParams(location.search).get("t") || 0));
+</script>
+</body>
+</html>

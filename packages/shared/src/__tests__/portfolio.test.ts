@@ -72,9 +72,9 @@ describe("valuePortfolio", () => {
     expect(onlyPerps.accounts.perps).toMatchObject({ availableIsolated: null, collateral: [] });
   });
 
-  it("counts isolated positions in the perps account value", () => {
+  it("takes av as the perps value: SoDEX already includes isolated margin and PnL", () => {
     const v = valuePortfolio([], perps, {});
-    expect(v.accounts.perps).toMatchObject({ accountValue: "1080", openPositions: 2 });
+    expect(v.accounts.perps).toMatchObject({ accountValue: "1000", openPositions: 2 });
   });
 
   const perps = {
@@ -87,7 +87,7 @@ describe("valuePortfolio", () => {
       { s: "ETH-USD", m: "ISOLATED", sz: "-1", iw: "100", ep: "3000", ur: "-20", l: 2, lp: "0" },
     ],
   };
-  it("values spot at last price, adds perps account value and isolated margin, never guesses missing prices", () => {
+  it("values spot at last price, adds the perps account value, never guesses missing prices", () => {
     const v = valuePortfolio(
       [
         { coin: "vUSDC", total: "500", locked: "100" },
@@ -97,12 +97,12 @@ describe("valuePortfolio", () => {
       perps,
       { vBTC_vUSDC: "61000", "BTC-USD": "61200" },
     );
-    // 500 + 610 (spot) + 1000 (av) + 100 + (−20) (isolated) = 2190
-    expect(v.equity).toBe("2190");
+    // 500 + 610 (spot) + 1000 (av, đã gồm vị thế isolated) = 2110
+    expect(v.equity).toBe("2110");
     expect(v.available).toBe("1000");
     expect(v.unpriced).toEqual(["WSOSO"]);
     expect(v.unrealizedPnl).toBe("100");
-    expect(v.marginInUsePct).toBe("18.5185");
+    expect(v.marginInUsePct).toBe("20"); // (150 + 50) / av 1000
     expect(v.positions[1]).toMatchObject({
       side: "short",
       liquidationPrice: null,

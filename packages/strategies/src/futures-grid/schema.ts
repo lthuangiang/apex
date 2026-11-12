@@ -1,6 +1,7 @@
 import { dec } from "@drift/shared";
 import { z } from "zod";
 
+import { entryFields, refineEntry } from "../common/entry";
 import { leverageSchema, marginModeSchema } from "../common/perps";
 import { marketSchema, optionalPositive, positiveDecimal } from "../common/schema";
 
@@ -20,7 +21,9 @@ export const futuresGridSchema = z
       .max(200, { message: "Allowed 2–200." }),
     spacing: z.enum(["arithmetic", "geometric"]),
     margin: positiveDecimal(),
+    /** Cũ (trước DEC-91): thay bằng `entry`; vẫn đọc được và chạy như cắt qua mức này. */
     triggerPrice: optionalPositive(),
+    ...entryFields,
     /** Bắt buộc (STRATEGIES.md S2, UI_REVIEW G4): bot perp có đòn bẩy cần mức dừng trước thanh lý. */
     stopBelow: positiveDecimal(),
     stopAbove: optionalPositive(),
@@ -51,6 +54,7 @@ export const futuresGridSchema = z
         message: "Must be inside the grid range.",
       });
     }
+    refineEntry(c, ctx, { low: c.lowerPrice, high: c.upperPrice });
     if (dec(c.stopBelow).gte(c.lowerPrice)) {
       ctx.addIssue({
         code: "custom",

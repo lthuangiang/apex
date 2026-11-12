@@ -1,6 +1,7 @@
 import { mul } from "@drift/shared";
 
 import { dcaBotFor, type DcaBotState } from "../common/dca-bot";
+import { entryOf, nextCycleOf } from "../common/entry";
 import type { StrategyModule } from "../core/types";
 
 import type { FuturesDcaConfig } from "./schema";
@@ -21,5 +22,7 @@ export const futuresDca: StrategyModule<FuturesDcaConfig, DcaBotState> = dcaBotF
     takeProfitPct: c.takeProfitPct,
     stopLossPct: c.stopLossPct,
     maxLoss: c.maxLoss,
+    entry: entryOf(c),
+    nextCycle: nextCycleOf(c),
   }),
 );

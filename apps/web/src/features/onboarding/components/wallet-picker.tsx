@@ -14,6 +14,20 @@ const KNOWN = [
   { name: "MetaMask", match: /metamask/i },
 ] as const;
 
+/** Các lựa chọn màn hình đang hiện, dùng chung cho danh sách và nhật ký Connect (DEC-114). */
+export function walletOptions(connectors: readonly Connector[]) {
+  const discovered = connectors.filter((c) => c.type === "injected" && c.id !== "injected");
+  const generic = connectors.find((c) => c.id === "injected");
+  const wc = connectors.find((c) => c.type === "walletConnect");
+  const missing = KNOWN.filter((k) => !discovered.some((c) => k.match.test(c.name)));
+  return {
+    discovered,
+    generic: discovered.length === 0 ? generic : undefined,
+    wc,
+    missing: missing.map((k) => k.name),
+  };
+}
+
 export function WalletPicker({
   onPick,
   disabled,
@@ -23,10 +37,7 @@ export function WalletPicker({
 }) {
   const t = useTranslations("onboarding.connect.wallets");
   const connectors = useConnectors();
-  const discovered = connectors.filter((c) => c.type === "injected" && c.id !== "injected");
-  const generic = connectors.find((c) => c.id === "injected");
-  const wc = connectors.find((c) => c.type === "walletConnect");
-  const missing = KNOWN.filter((k) => !discovered.some((c) => k.match.test(c.name)));
+  const { discovered, generic, wc, missing } = walletOptions(connectors);
 
   const option = (
     key: string,
@@ -70,7 +81,7 @@ export function WalletPicker({
           }),
         )}
         {/* Ví chỉ gắn window.ethereum (không công bố EIP-6963). */}
-        {discovered.length === 0 && generic !== undefined
+        {generic !== undefined
           ? option("injected", t("browser"), undefined, () => {
               onPick(generic);
             })
@@ -86,7 +97,7 @@ export function WalletPicker({
               },
               t("wcNote"),
             )}
-        {missing.map((k) => option(k.name, k.name, undefined, null, t("notDetected")))}
+        {missing.map((name) => option(name, name, undefined, null, t("notDetected")))}
       </ul>
     </section>
   );

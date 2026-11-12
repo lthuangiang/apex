@@ -2,6 +2,7 @@ import {
   bots,
   fills,
   goals,
+  leaderFollows,
   notificationSettings,
   orders,
   sessions,
@@ -134,7 +135,8 @@ export function registerProfileRoutes(
   app.delete("/api/v1/account", async (request, reply) => {
     const auth = requireAuth(request);
     const { twoFactorCode } = parseOrThrow(deleteAccountBodySchema, request.body ?? {});
-    await verifyTwoFactor(deps, auth.userId, twoFactorCode, request.ip);
+    // Xoá tài khoản luôn hỏi mã mới khi đã bật 2FA (DEC-115).
+    await verifyTwoFactor(deps, auth.userId, twoFactorCode, request.ip, { fresh: true });
     const [active] = await db
       .select({ n: sql<number>`count(*)::int` })
       .from(bots)
@@ -177,6 +179,8 @@ export function registerProfileRoutes(
         .where(and(eq(sessions.userId, auth.userId), isNull(sessions.revokedAt)));
       await tx.delete(goals).where(eq(goals.userId, auth.userId));
       await tx.delete(notificationSettings).where(eq(notificationSettings.userId, auth.userId));
+      // Không giữ chỗ poll T1 cho tài khoản đã xoá (DEC-163 mục 10).
+      await tx.delete(leaderFollows).where(eq(leaderFollows.userId, auth.userId));
     });
     await audit(db, {
       userId: auth.userId,

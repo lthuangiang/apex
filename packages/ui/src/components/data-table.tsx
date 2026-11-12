@@ -19,6 +19,8 @@ export interface DataTableProps<Row> extends Omit<DataRegionProps, "children" | 
   columns: readonly DataTableColumn<Row>[];
   rows: readonly Row[];
   getRowKey: (row: Row) => string;
+  /** Giới hạn chiều cao (class Tailwind, ví dụ "max-h-[560px]"): quá thì cuộn dọc trong khung, header dính trên. */
+  scroll?: string;
 }
 
 /**
@@ -30,6 +32,7 @@ export function DataTable<Row>({
   columns,
   rows,
   getRowKey,
+  scroll,
   ...region
 }: DataTableProps<Row>) {
   return (
@@ -40,11 +43,14 @@ export function DataTable<Row>({
         // Vùng cuộn phải focus được bằng bàn phím (axe: scrollable-region-focusable).
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
-        className="max-w-full overflow-x-auto rounded-tile border border-border bg-surface"
+        className={cx(
+          "max-w-full overflow-x-auto rounded-tile border border-border bg-surface",
+          scroll !== undefined && `overflow-y-auto ${scroll}`,
+        )}
       >
         <table className="w-full border-collapse text-sm">
           <caption className="sr-only">{caption}</caption>
-          <thead className="bg-surface-2">
+          <thead className={cx("bg-surface-2", scroll !== undefined && "sticky top-0 z-[1]")}>
             <tr>
               {columns.map((column) => (
                 <th

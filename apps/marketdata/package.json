@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@drift/db": "workspace:*",
+    "@drift/hyperliquid": "workspace:*",
     "@drift/runtime": "workspace:*",
     "@drift/shared": "workspace:*",
     "@drift/sodex": "workspace:*",

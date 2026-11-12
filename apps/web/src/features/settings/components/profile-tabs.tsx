@@ -162,7 +162,7 @@ export function ProfileTab() {
     mutationFn: () =>
       api("DELETE", "/api/v1/account", z.unknown(), {
         idempotencyKey: crypto.randomUUID(),
-        body: { twoFactorCode: code },
+        body: code === "" ? {} : { twoFactorCode: code },
       }),
     onSuccess: () => {
       router.push("/signin");
@@ -233,12 +233,19 @@ export function ProfileTab() {
         confirmLabel={t("deleteConfirm")}
         cancelLabel={t("cancel")}
         tone="danger"
-        twoFactor={{
-          label: t("twoFactor"),
-          value: code,
-          onChange: setCode,
-          ...(remove.error === null ? {} : { error: errorText(remove.error) }),
-        }}
+        // Xoá tài khoản luôn hỏi mã khi đã bật 2FA; chưa bật thì không có ô mã (DEC-115).
+        {...(me.data?.twoFactorEnabled === true
+          ? {
+              twoFactor: {
+                label: t("twoFactor"),
+                value: code,
+                onChange: setCode,
+                ...(remove.error === null ? {} : { error: errorText(remove.error) }),
+              },
+            }
+          : remove.error === null
+            ? {}
+            : { error: errorText(remove.error) })}
         pending={remove.isPending}
         onConfirm={() => {
           remove.mutate();

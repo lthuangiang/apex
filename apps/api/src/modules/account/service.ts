@@ -6,14 +6,18 @@ import {
   builderApprovals,
   builderBalanceSnapshots,
   builderRevenueDaily,
+  connectEvents,
   equitySnapshots,
+  fills,
   notifications,
   notificationSettings,
   orders,
   outbox,
   riskAlerts,
   riskLimits,
+  sessions,
   sodexAccounts,
+  sodexSignatureRequests,
   users,
   type Db,
 } from "@drift/db";
@@ -34,19 +38,26 @@ import {
   ReasonCode,
   RISK_ENFORCED,
   startOfDay,
-  UserRole,
   valuePortfolio,
   isBuilderAccount,
+  VOLUME_STRATEGIES,
+  CONNECT_EVENT_TYPES,
+  type AdminUserDetail,
   type AdminUsersView,
+  type AdminAiDesk,
+  type AnalystBot,
+  type AdminVolumeBots,
   type AnalystView,
   type BuilderRevenueView,
   type NotificationGroup,
   type OverviewView,
+  type PlatformStats,
   type PortfolioView,
   type RiskLimitKey,
   type RiskView,
 } from "@drift/shared";
 import type { SodexRestClient } from "@drift/sodex";
+import { copyLedgerTotals, isMultiMarketCopyState } from "@drift/strategies";
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 
@@ -55,6 +66,9 @@ import { listBots, type BotDeps } from "../bots/service";
 import { iso } from "../security/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
 
+import { builderFeeRows } from "./builder-fees";
+import { statsOverview } from "./stats-overview";
+import { requireTeam } from "./team";
 import { getWatchlist } from "./watchlist";
 
 // Overview / Portfolio / Risk Center / AI Analyst / Notifications / Builder Revenue (P10, DEC-41).
@@ -74,7 +88,15 @@ export interface AccountDeps extends TwoFactorDeps {
   prices: (markets: readonly string[]) => Promise<Record<string, string>>;
   bots: BotDeps;
   builderId: bigint;
+  /** Account builder được miễn builder fee (DEC-47); false = thu như mọi account (DEC-124). Thiếu = true. */
+  builderExempt?: boolean | undefined;
 }
+
+/**
+ * Lệnh của bot thật (DEC-105): mọi số liệu tiền thật (Portfolio, Risk, Home, Users) bỏ lệnh của bot paper. Fill
+ * paper nằm ở bảng riêng `paper_fills` nên các tổng theo `fills` (volume, builder fee) vốn đã sạch.
+ */
+const LIVE_ORDER = sql`exists (select 1 from bots lb where lb.id = ${orders.botId} and lb.mode = 'live')`;
 
 async function connected(db: Db, userId: string) {
   const [a] = await db
@@ -119,7 +141,11 @@ export async function portfolio(deps: AccountDeps, userId: string): Promise<Port
     .select({ n: sql<number>`count(*)::int` })
     .from(orders)
     .where(
-      and(eq(orders.sodexAccountId, a.id), inArray(orders.status, ["open", "partially_filled"])),
+      and(
+        eq(orders.sodexAccountId, a.id),
+        inArray(orders.status, ["open", "partially_filled"]),
+        LIVE_ORDER,
+      ),
     );
   const lockedQuote = spot.find((b) => b.coin === "vUSDC")?.locked ?? "0";
   const value: PortfolioView = {
@@ -188,7 +214,9 @@ export async function risk(deps: AccountDeps, userId: string): Promise<RiskView 
   const todays = await deps.db
     .select({ price: orders.price, size: orders.size })
     .from(orders)
-    .where(and(eq(orders.sodexAccountId, a.id), gte(orders.createdAt, new Date(today))));
+    .where(
+      and(eq(orders.sodexAccountId, a.id), gte(orders.createdAt, new Date(today)), LIVE_ORDER),
+    );
   const largest = todays.reduce(
     (m, o) => (o.price === null ? m : Decimal.max(m, dec(o.price).mul(o.size))),
     new Decimal(0),
@@ -202,13 +230,17 @@ export async function risk(deps: AccountDeps, userId: string): Promise<RiskView 
   const counts = await deps.db
     .select({ state: bots.state, n: sql<number>`count(*)::int` })
     .from(bots)
-    .where(eq(bots.sodexAccountId, a.id))
+    .where(and(eq(bots.sodexAccountId, a.id), eq(bots.mode, "live")))
     .groupBy(bots.state);
   const [open] = await deps.db
     .select({ n: sql<number>`count(*)::int` })
     .from(orders)
     .where(
-      and(eq(orders.sodexAccountId, a.id), inArray(orders.status, ["open", "partially_filled"])),
+      and(
+        eq(orders.sodexAccountId, a.id),
+        inArray(orders.status, ["open", "partially_filled"]),
+        LIVE_ORDER,
+      ),
     );
   return {
     checkedAt: points.length === 0 ? null : new Date(points.at(-1)?.at ?? now).toISOString(),
@@ -308,14 +340,15 @@ export async function ackAlert(deps: AccountDeps, userId: string, alertId: strin
   if (r.length === 0) throw new AppError(ErrorCode.notFound, "Alert not found.");
 }
 
-/** Emergency halt: mọi bot đang chạy / tạm dừng chuyển `stopping` (huỷ lệnh, không đóng vị thế). Cần 2FA. */
+/**
+ * Emergency halt: mọi bot đang chạy / tạm dừng chuyển `stopping` (huỷ lệnh, không đóng vị thế). Không hỏi 2FA vì
+ * chỉ giảm rủi ro, khách phải dừng được ngay (DEC-115).
+ */
 export async function halt(
   deps: AccountDeps,
   userId: string,
-  code: string | undefined,
   ip: string | null,
 ): Promise<{ stopping: number }> {
-  await verifyTwoFactor(deps, userId, code, ip);
   const a = await connected(deps.db, userId);
   if (a === null) throw new AppError(ErrorCode.notFound, "No SoDEX account connected.");
   const n = await deps.db.transaction(async (tx) => {
@@ -394,7 +427,7 @@ export async function overview(
     .select({ e: botEvents, name: bots.name })
     .from(botEvents)
     .innerJoin(bots, eq(bots.id, botEvents.botId))
-    .where(eq(bots.userId, userId))
+    .where(and(eq(bots.userId, userId), eq(bots.mode, "live")))
     .orderBy(desc(botEvents.occurredAt))
     .limit(8);
   const watch = await getWatchlist(deps, userId).catch(() => []);
@@ -472,22 +505,24 @@ export async function overview(
   };
 }
 
-export async function analyst(deps: AccountDeps, userId: string): Promise<AnalystView> {
-  const a = await connected(deps.db, userId);
-  const now = deps.now().getTime();
-  let pf: PortfolioView | null = null;
-  try {
-    pf = a === null ? null : await portfolio(deps, userId);
-  } catch {
-    pf = null;
-  }
-  const list = await deps.db
+/**
+ * Bot thật của người dùng cho quy tắc AI Analyst (DEC-41) và AI Desk › Your bots (DEC-105): lãi ròng, phí, số lần
+ * khớp theo sổ cái của engine. Không gồm bot paper, draft hay đã archive.
+ */
+export async function analystBots(db: Db, userId: string): Promise<AnalystBot[]> {
+  const list = await db
     .select({ b: bots, state: botRuntime.state, quote: botVersions.config })
     .from(bots)
     .leftJoin(botRuntime, eq(botRuntime.botId, bots.id))
     .leftJoin(botVersions, eq(botVersions.id, bots.activeVersionId))
-    .where(and(eq(bots.userId, userId), sql`${bots.state} not in ('draft', 'archived')`));
-  const stats = await deps.db
+    .where(
+      and(
+        eq(bots.userId, userId),
+        eq(bots.mode, "live"),
+        sql`${bots.state} not in ('draft', 'archived')`,
+      ),
+    );
+  const stats = await db
     .select({
       botId: orders.botId,
       n: sql<number>`count(*)::int`,
@@ -504,6 +539,41 @@ export async function analyst(deps: AccountDeps, userId: string): Promise<Analys
       ),
     )
     .groupBy(orders.botId);
+  return list.map(({ b, state, quote }) => {
+    // Copy Trade nhiều market (DEC-163): cộng sổ cái của mọi market.
+    const ledger = isMultiMarketCopyState(state)
+      ? copyLedgerTotals(state)
+      : (state as { ledger?: { realized: string; fees: string; funding: string } } | null)?.ledger;
+    const s = stats.find((x) => x.botId === b.id);
+    const market = (quote as { market?: string } | null)?.market ?? b.market;
+    return {
+      id: b.id,
+      name: b.name,
+      state: b.state,
+      needsAttention: b.needsAttention,
+      attentionSince: b.needsAttention ? b.updatedAt.getTime() : null,
+      netPnl:
+        ledger === undefined
+          ? null
+          : dec(ledger.realized).sub(ledger.fees).sub(ledger.funding).toString(),
+      fees: ledger?.fees ?? null,
+      fills: s?.n ?? 0,
+      firstFillAt: s?.first == null ? null : new Date(s.first).getTime(),
+      quote: market.includes("_") ? (market.split("_")[1] ?? "USDC") : "USDC",
+    };
+  });
+}
+
+export async function analyst(deps: AccountDeps, userId: string): Promise<AnalystView> {
+  const a = await connected(deps.db, userId);
+  const now = deps.now().getTime();
+  let pf: PortfolioView | null = null;
+  try {
+    pf = a === null ? null : await portfolio(deps, userId);
+  } catch {
+    pf = null;
+  }
+  const bots_ = await analystBots(deps.db, userId);
   const r = a === null ? null : await risk(deps, userId).catch(() => null);
   const [u] = await deps.db
     .select({ tz: users.timezone })
@@ -515,28 +585,7 @@ export async function analyst(deps: AccountDeps, userId: string): Promise<Analys
     timeZone: u?.tz ?? "UTC",
     portfolio: pf,
     portfolioAt: pf === null ? null : now,
-    bots: list.map(({ b, state, quote }) => {
-      const ledger = (
-        state as { ledger?: { realized: string; fees: string; funding: string } } | null
-      )?.ledger;
-      const s = stats.find((x) => x.botId === b.id);
-      const market = (quote as { market?: string } | null)?.market ?? b.market;
-      return {
-        id: b.id,
-        name: b.name,
-        state: b.state,
-        needsAttention: b.needsAttention,
-        attentionSince: b.needsAttention ? b.updatedAt.getTime() : null,
-        netPnl:
-          ledger === undefined
-            ? null
-            : dec(ledger.realized).sub(ledger.fees).sub(ledger.funding).toString(),
-        fees: ledger?.fees ?? null,
-        fills: s?.n ?? 0,
-        firstFillAt: s?.first == null ? null : new Date(s.first).getTime(),
-        quote: market.includes("_") ? (market.split("_")[1] ?? "USDC") : "USDC",
-      };
-    }),
+    bots: bots_,
     limitsBreached:
       r?.status.equity == null
         ? null
@@ -635,7 +684,7 @@ export async function builderRevenue(
   userId: string,
   month: string,
 ): Promise<BuilderRevenueView> {
-  await requireTeam(deps.db, userId, "Builder Revenue is for the DRIFT team only.");
+  await requireTeam(deps.db, userId, "Builder Revenue is for the DeskLabs team only.");
   const days = await deps.db
     .select()
     .from(builderRevenueDaily)
@@ -710,43 +759,24 @@ export async function builderRevenue(
   };
 }
 
-async function requireTeam(db: Db, userId: string, message: string): Promise<void> {
-  const [u] = await db
-    .select({ role: users.role })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (u?.role !== UserRole.team) throw new AppError(ErrorCode.forbidden, message);
-}
-
 export const ADMIN_USERS_PAGE_SIZE = 50;
 
 /** Users (chỉ role `team`, chỉ đọc; DEC-64): mỗi user một dòng, account SoDEX mới nhất, phí, số bot. */
-export async function adminUsers(
+interface AdminUserRow {
+  id: string;
+  email: string;
+  role: "user" | "team";
+  createdAt: Date;
+  twoFactor: boolean;
+  volumeBots: boolean;
+  aiDesk: boolean;
+}
+
+/** Dòng user cho team: tài khoản SoDEX, builder fee, số bot, số dư và khối lượng. */
+async function adminItems(
   deps: AccountDeps,
-  userId: string,
-  query: { q: string; page: number },
-): Promise<AdminUsersView> {
-  await requireTeam(deps.db, userId, "Users is for the DRIFT team only.");
-  const pattern = `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-  const where = and(
-    isNull(users.deletedAt),
-    query.q === "" ? undefined : ilike(users.email, pattern),
-  );
-  const [totalRow] = await deps.db.select({ n: count() }).from(users).where(where);
-  const rows = await deps.db
-    .select({
-      id: users.id,
-      email: users.email,
-      role: users.role,
-      createdAt: users.createdAt,
-      twoFactor: users.twofaEnabled,
-    })
-    .from(users)
-    .where(where)
-    .orderBy(desc(users.createdAt), desc(users.id))
-    .limit(ADMIN_USERS_PAGE_SIZE)
-    .offset((query.page - 1) * ADMIN_USERS_PAGE_SIZE);
+  rows: readonly AdminUserRow[],
+): Promise<AdminUsersView["items"]> {
   const ids = rows.map((r) => r.id);
   const accounts =
     ids.length === 0
@@ -790,38 +820,465 @@ export async function adminUsers(
             running: sql<number>`count(*) filter (where ${bots.state} = ${BotState.running})::int`,
           })
           .from(bots)
+          .where(and(inArray(bots.userId, ids), eq(bots.mode, "live")))
+          .groupBy(bots.userId);
+  const equities =
+    accountIds.length === 0
+      ? []
+      : await deps.db
+          .selectDistinctOn([equitySnapshots.sodexAccountId], {
+            id: equitySnapshots.sodexAccountId,
+            equity: equitySnapshots.equity,
+          })
+          .from(equitySnapshots)
+          .where(inArray(equitySnapshots.sodexAccountId, accountIds))
+          .orderBy(equitySnapshots.sodexAccountId, desc(equitySnapshots.at));
+  const volumes =
+    ids.length === 0
+      ? []
+      : await deps.db
+          .select({
+            userId: bots.userId,
+            volume: sql<string>`coalesce(sum(${fills.price} * ${fills.size}), 0)::text`,
+          })
+          .from(fills)
+          .innerJoin(orders, eq(orders.id, fills.orderId))
+          .innerJoin(bots, eq(bots.id, orders.botId))
           .where(inArray(bots.userId, ids))
           .groupBy(bots.userId);
+  return rows.map((r) => {
+    const a = accounts.find((x) => x.userId === r.id);
+    const fee = a === undefined ? undefined : approvals.find((x) => x.id === a.id);
+    const b = botCounts.find((x) => x.userId === r.id);
+    return {
+      id: r.id,
+      email: r.email,
+      role: r.role,
+      createdAt: iso(r.createdAt),
+      twoFactor: r.twoFactor,
+      sodex:
+        a === undefined
+          ? null
+          : { address: a.address, accountId: a.accountId.toString(), status: a.status },
+      builderFee:
+        a === undefined
+          ? null
+          : isBuilderAccount(a.accountId, deps.builderId, deps.builderExempt)
+            ? "exempt"
+            : fee === undefined
+              ? "never"
+              : isBuilderFeeApproved(fee.spot) && isBuilderFeeApproved(fee.perps)
+                ? "approved"
+                : "revoked",
+      bots: { running: b?.running ?? 0, total: b?.total ?? 0 },
+      equity: a === undefined ? null : (equities.find((x) => x.id === a.id)?.equity ?? null),
+      volume: volumes.find((x) => x.userId === r.id)?.volume ?? "0",
+      volumeBots: r.volumeBots,
+      aiDesk: r.aiDesk,
+    };
+  });
+}
+
+const ADMIN_ORDERS_LIMIT = 30;
+const CONNECT_EVENTS_LIMIT = 100;
+
+/** Chi tiết một user (DEC-93): chỉ đọc, chỉ role team, mỗi lần xem ghi audit. */
+export async function adminUserDetail(
+  deps: AccountDeps,
+  userId: string,
+  targetId: string,
+  ip: string | null,
+): Promise<AdminUserDetail> {
+  await requireTeam(deps.db, userId, "Users is for the DeskLabs team only.");
+  const [row] = await deps.db
+    .select({
+      id: users.id,
+      email: users.email,
+      role: users.role,
+      createdAt: users.createdAt,
+      twoFactor: users.twofaEnabled,
+      volumeBots: users.volumeBots,
+      aiDesk: users.aiDesk,
+    })
+    .from(users)
+    .where(and(eq(users.id, targetId), isNull(users.deletedAt)))
+    .limit(1);
+  if (row === undefined) throw new AppError(ErrorCode.notFound, "User not found.");
+  const [user] = await adminItems(deps, [row]);
+  if (user === undefined) throw new AppError(ErrorCode.notFound, "User not found.");
+  const now = deps.now();
+  const since = (ms: number) => new Date(now.getTime() - ms);
+  const notional = sql`${fills.price} * ${fills.size}`;
+  const [totals] = await deps.db
+    .select({
+      volume24h: sql<string>`coalesce(sum(${notional}) filter (where ${fills.filledAt} >= ${since(86_400_000)}), 0)::text`,
+      volume7d: sql<string>`coalesce(sum(${notional}) filter (where ${fills.filledAt} >= ${since(7 * 86_400_000)}), 0)::text`,
+      volumeAll: sql<string>`coalesce(sum(${notional}), 0)::text`,
+      fills: sql<number>`count(*)::int`,
+      builderFees: sql<string>`coalesce(sum(${fills.builderFee}), 0)::text`,
+    })
+    .from(fills)
+    .innerJoin(orders, eq(orders.id, fills.orderId))
+    .innerJoin(bots, eq(bots.id, orders.botId))
+    .where(eq(bots.userId, targetId));
+  const [seen] = await deps.db
+    .select({ at: sql<Date | null>`max(${sessions.lastSeenAt})` })
+    .from(sessions)
+    .where(eq(sessions.userId, targetId));
+  const [equityRow] = await deps.db
+    .select({ at: equitySnapshots.at })
+    .from(equitySnapshots)
+    .innerJoin(sodexAccounts, eq(sodexAccounts.id, equitySnapshots.sodexAccountId))
+    .where(eq(sodexAccounts.userId, targetId))
+    .orderBy(desc(equitySnapshots.at))
+    .limit(1);
+  const botList = await listBots(deps.bots, targetId, true);
+  const connectRows = await deps.db
+    .select()
+    .from(connectEvents)
+    .where(eq(connectEvents.userId, targetId))
+    .orderBy(desc(connectEvents.occurredAt))
+    .limit(CONNECT_EVENTS_LIMIT);
+  const requestRows = await deps.db
+    .select({
+      action: sodexSignatureRequests.action,
+      status: sodexSignatureRequests.status,
+      sodexError: sodexSignatureRequests.sodexError,
+      at: sodexSignatureRequests.createdAt,
+    })
+    .from(sodexSignatureRequests)
+    .where(eq(sodexSignatureRequests.userId, targetId))
+    .orderBy(desc(sodexSignatureRequests.createdAt))
+    .limit(20);
+  const recent = await deps.db
+    .select({ order: orders, botName: bots.name })
+    .from(orders)
+    .innerJoin(bots, eq(bots.id, orders.botId))
+    .where(and(eq(bots.userId, targetId), eq(bots.mode, "live")))
+    .orderBy(desc(orders.createdAt))
+    .limit(ADMIN_ORDERS_LIMIT);
+  await audit(deps.db, { userId, action: AuditAction.adminUserViewed, target: targetId, ip });
+  const lastSeen = seen?.at ?? null;
   return {
-    items: rows.map((r) => {
-      const a = accounts.find((x) => x.userId === r.id);
-      const fee = a === undefined ? undefined : approvals.find((x) => x.id === a.id);
-      const b = botCounts.find((x) => x.userId === r.id);
-      return {
-        id: r.id,
-        email: r.email,
-        role: r.role,
-        createdAt: iso(r.createdAt),
-        twoFactor: r.twoFactor,
-        sodex:
-          a === undefined
-            ? null
-            : { address: a.address, accountId: a.accountId.toString(), status: a.status },
-        builderFee:
-          a === undefined
-            ? null
-            : isBuilderAccount(a.accountId, deps.builderId)
-              ? "exempt"
-              : fee === undefined
-                ? "never"
-                : isBuilderFeeApproved(fee.spot) && isBuilderFeeApproved(fee.perps)
-                  ? "approved"
-                  : "revoked",
-        bots: { running: b?.running ?? 0, total: b?.total ?? 0 },
-      };
-    }),
+    user: { ...user, lastSeenAt: lastSeen === null ? null : iso(new Date(lastSeen)) },
+    stats: {
+      equityAt: equityRow === undefined ? null : iso(equityRow.at),
+      volume24h: totals?.volume24h ?? "0",
+      volume7d: totals?.volume7d ?? "0",
+      volumeAll: totals?.volumeAll ?? "0",
+      fills: totals?.fills ?? 0,
+      builderFees: totals?.builderFees ?? "0",
+      botProfit: botList
+        .reduce((sum, b) => (b.netPnl === null ? sum : sum.add(b.netPnl)), new Decimal(0))
+        .toString(),
+    },
+    bots: botList,
+    builderFees: await builderFeeRows(deps.db, targetId),
+    connect: {
+      events: connectRows.map((e) => ({
+        attemptId: e.attemptId,
+        type: e.type,
+        data: e.data as Record<string, unknown>,
+        at: iso(e.occurredAt),
+      })),
+      requests: requestRows.map((r) => ({
+        action: r.action,
+        status: r.status,
+        sodexError: r.sodexError,
+        at: iso(r.at),
+      })),
+    },
+    orders: recent.map(({ order: o, botName }) => ({
+      id: o.id,
+      botName,
+      market: o.market,
+      side: o.side,
+      type: o.type,
+      price: o.price,
+      size: o.size,
+      filledSize: o.filledSize,
+      status: o.status,
+      at: iso(o.createdAt),
+    })),
+  };
+}
+
+export async function adminUsers(
+  deps: AccountDeps,
+  userId: string,
+  query: { q: string; page: number },
+): Promise<AdminUsersView> {
+  await requireTeam(deps.db, userId, "Users is for the DeskLabs team only.");
+  const pattern = `%${query.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const where = and(
+    isNull(users.deletedAt),
+    query.q === "" ? undefined : ilike(users.email, pattern),
+  );
+  const [totalRow] = await deps.db.select({ n: count() }).from(users).where(where);
+  const rows = await deps.db
+    .select({
+      id: users.id,
+      email: users.email,
+      role: users.role,
+      createdAt: users.createdAt,
+      twoFactor: users.twofaEnabled,
+      volumeBots: users.volumeBots,
+      aiDesk: users.aiDesk,
+    })
+    .from(users)
+    .where(where)
+    .orderBy(desc(users.createdAt), desc(users.id))
+    .limit(ADMIN_USERS_PAGE_SIZE)
+    .offset((query.page - 1) * ADMIN_USERS_PAGE_SIZE);
+  return {
+    items: await adminItems(deps, rows),
     total: totalRow?.n ?? 0,
     page: query.page,
     pageSize: ADMIN_USERS_PAGE_SIZE,
+  };
+}
+
+/** Team bật / tắt AI Desk cho một user (DEC-105). Chỉ ẩn / hiện AI Desk; không dừng bot nào. Ghi audit. */
+export async function setAiDesk(
+  deps: AccountDeps,
+  actorId: string,
+  targetId: string,
+  enabled: boolean,
+  ip: string | null,
+): Promise<AdminAiDesk> {
+  await requireTeam(deps.db, actorId, "Users is for the DeskLabs team only.");
+  const [u] = await deps.db
+    .update(users)
+    .set({ aiDesk: enabled })
+    .where(and(eq(users.id, targetId), isNull(users.deletedAt)))
+    .returning({ id: users.id });
+  if (u === undefined) throw new AppError(ErrorCode.notFound, "User not found.");
+  await audit(deps.db, {
+    userId: actorId,
+    action: AuditAction.aiDeskChanged,
+    target: targetId,
+    metadata: { enabled },
+    ip,
+  });
+  return { aiDesk: enabled };
+}
+
+/**
+ * Team bật / tắt bot khối lượng cho một user (DEC-80). Tắt: bot Volume Maker / Volume Farm đang Running chuyển
+ * sang Pausing (engine pause như lệnh Pause thường, không đóng vị thế); engine cũng không nạp bot khối lượng của
+ * user đã tắt. Ghi audit cho người thao tác.
+ */
+export async function setVolumeBots(
+  deps: AccountDeps,
+  actorId: string,
+  targetId: string,
+  enabled: boolean,
+  ip: string | null,
+): Promise<AdminVolumeBots> {
+  await requireTeam(deps.db, actorId, "Users is for the DeskLabs team only.");
+  return deps.db.transaction(async (tx) => {
+    const [u] = await tx
+      .update(users)
+      .set({ volumeBots: enabled })
+      .where(and(eq(users.id, targetId), isNull(users.deletedAt)))
+      .returning({ id: users.id });
+    if (u === undefined) throw new AppError(ErrorCode.notFound, "User not found.");
+    let paused = 0;
+    if (!enabled) {
+      const running = await tx
+        .update(bots)
+        .set({ state: BotState.pausing, updatedAt: new Date() })
+        .where(
+          and(
+            eq(bots.userId, targetId),
+            inArray(bots.strategy, [...VOLUME_STRATEGIES]),
+            eq(bots.state, BotState.running),
+          ),
+        )
+        .returning({ id: bots.id });
+      paused = running.length;
+    }
+    await audit(tx, {
+      userId: actorId,
+      action: AuditAction.volumeBotsChanged,
+      target: targetId,
+      metadata: { enabled, paused },
+      ip,
+    });
+    return { volumeBots: enabled, paused };
+  });
+}
+
+// ─── Platform Stats (DEC-98) ─────────────────────────────────────────────────
+
+/** Thống kê nền tảng toàn hệ thống (chỉ role `team`, DEC-98). Tổng hợp từ fills / users / bots — không cần bảng mới. */
+export async function platformStats(
+  deps: AccountDeps,
+  userId: string,
+  period: number,
+): Promise<PlatformStats> {
+  await requireTeam(deps.db, userId, "Stats is for the DeskLabs team only.");
+  const now = deps.now();
+  const since = (ms: number) => new Date(now.getTime() - ms);
+  const DAY = 86_400_000;
+  const notional = sql`${fills.price} * ${fills.size}`;
+
+  // ── Users ────────────────────────────────────────────────────────────────
+  const [userTotals] = await deps.db
+    .select({
+      total: sql<number>`count(*)::int`,
+      new24h: sql<number>`count(*) filter (where ${users.createdAt} >= ${since(DAY)})::int`,
+      new7d: sql<number>`count(*) filter (where ${users.createdAt} >= ${since(7 * DAY)})::int`,
+      new30d: sql<number>`count(*) filter (where ${users.createdAt} >= ${since(30 * DAY)})::int`,
+    })
+    .from(users)
+    .where(isNull(users.deletedAt));
+
+  const [connectedRow] = await deps.db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(sodexAccounts)
+    .where(eq(sodexAccounts.status, "connected"));
+
+  // ── Volume + Fees ────────────────────────────────────────────────────────
+  const [volTotals] = await deps.db
+    .select({
+      total: sql<string>`coalesce(sum(${notional}), 0)::text`,
+      h24: sql<string>`coalesce(sum(${notional}) filter (where ${fills.filledAt} >= ${since(DAY)}), 0)::text`,
+      d7: sql<string>`coalesce(sum(${notional}) filter (where ${fills.filledAt} >= ${since(7 * DAY)}), 0)::text`,
+      d30: sql<string>`coalesce(sum(${notional}) filter (where ${fills.filledAt} >= ${since(30 * DAY)}), 0)::text`,
+      feesTotal: sql<string>`coalesce(sum(${fills.builderFee}), 0)::text`,
+      fees24h: sql<string>`coalesce(sum(${fills.builderFee}) filter (where ${fills.filledAt} >= ${since(DAY)}), 0)::text`,
+      fees7d: sql<string>`coalesce(sum(${fills.builderFee}) filter (where ${fills.filledAt} >= ${since(7 * DAY)}), 0)::text`,
+      fees30d: sql<string>`coalesce(sum(${fills.builderFee}) filter (where ${fills.filledAt} >= ${since(30 * DAY)}), 0)::text`,
+    })
+    .from(fills);
+
+  // ── Bots ─────────────────────────────────────────────────────────────────
+  const [botTotals] = await deps.db
+    .select({
+      total: sql<number>`count(*)::int`,
+      running: sql<number>`count(*) filter (where ${bots.state} = ${BotState.running})::int`,
+      created24h: sql<number>`count(*) filter (where ${bots.createdAt} >= ${since(DAY)})::int`,
+    })
+    .from(bots)
+    .where(and(isNull(bots.archivedAt), eq(bots.mode, "live")));
+
+  // ── Daily chart ───────────────────────────────────────────────────────────
+  const periodStart = since(period * DAY);
+
+  const dailyFills = await deps.db
+    .select({
+      date: sql<string>`date_trunc('day', ${fills.filledAt} at time zone 'UTC')::date::text`,
+      volume: sql<string>`coalesce(sum(${notional}), 0)::text`,
+      fees: sql<string>`coalesce(sum(${fills.builderFee}), 0)::text`,
+    })
+    .from(fills)
+    .where(gte(fills.filledAt, periodStart))
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
+
+  const dailyUsers = await deps.db
+    .select({
+      date: sql<string>`date(${users.createdAt} at time zone 'UTC')::text`,
+      newUsers: sql<number>`count(*)::int`,
+    })
+    .from(users)
+    .where(and(isNull(users.deletedAt), gte(users.createdAt, periodStart)))
+    .groupBy(sql`1`)
+    .orderBy(sql`1`);
+
+  // Merge by date
+  const byDate = new Map<string, { newUsers: number; volume: string; fees: string }>();
+  for (const r of dailyFills) {
+    byDate.set(r.date, { newUsers: 0, volume: r.volume, fees: r.fees });
+  }
+  for (const r of dailyUsers) {
+    const ex = byDate.get(r.date);
+    if (ex !== undefined) ex.newUsers = r.newUsers;
+    else byDate.set(r.date, { newUsers: r.newUsers, volume: "0", fees: "0" });
+  }
+  const daily = [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, v]) => ({ date, ...v }));
+
+  // Màn Connect SoDEX (DEC-114): số user khác nhau ở từng bước, lỗi hay gặp, thiết bị lúc mở trang.
+  const steps = await deps.db
+    .select({
+      type: connectEvents.type,
+      users: sql<number>`count(distinct ${connectEvents.userId})::int`,
+    })
+    .from(connectEvents)
+    .where(gte(connectEvents.occurredAt, periodStart))
+    .groupBy(connectEvents.type);
+  const reason = sql<string>`coalesce(${connectEvents.data}->>'reason', ${connectEvents.data}->>'code', 'unknown')`;
+  const failures = await deps.db
+    .select({
+      type: connectEvents.type,
+      reason,
+      users: sql<number>`count(distinct ${connectEvents.userId})::int`,
+    })
+    .from(connectEvents)
+    .where(
+      and(
+        gte(connectEvents.occurredAt, periodStart),
+        inArray(connectEvents.type, [
+          "wallet_failed",
+          "request_failed",
+          "sign_rejected",
+          "sodex_failed",
+        ]),
+      ),
+    )
+    .groupBy(connectEvents.type, reason)
+    .orderBy(desc(sql`count(distinct ${connectEvents.userId})`))
+    .limit(10);
+  const device = sql<string>`coalesce(${connectEvents.data}->>'device', 'unknown')`;
+  const devices = await deps.db
+    .select({ device, users: sql<number>`count(distinct ${connectEvents.userId})::int` })
+    .from(connectEvents)
+    .where(and(gte(connectEvents.occurredAt, periodStart), eq(connectEvents.type, "view")))
+    .groupBy(device);
+
+  const connect = {
+    steps: CONNECT_EVENT_TYPES.map((type) => ({
+      type,
+      users: steps.find((x) => x.type === type)?.users ?? 0,
+    })),
+    failures,
+    devices,
+  };
+  // Tổng quan và insight (DEC-139).
+  const overview = await statsOverview(deps, period, connect, botTotals?.running ?? 0);
+
+  return {
+    period,
+    snapshotAt: iso(now),
+    overview,
+    users: {
+      total: userTotals?.total ?? 0,
+      connected: connectedRow?.n ?? 0,
+      new24h: userTotals?.new24h ?? 0,
+      new7d: userTotals?.new7d ?? 0,
+      new30d: userTotals?.new30d ?? 0,
+    },
+    volume: {
+      total: volTotals?.total ?? "0",
+      h24: volTotals?.h24 ?? "0",
+      d7: volTotals?.d7 ?? "0",
+      d30: volTotals?.d30 ?? "0",
+    },
+    fees: {
+      total: volTotals?.feesTotal ?? "0",
+      h24: volTotals?.fees24h ?? "0",
+      d7: volTotals?.fees7d ?? "0",
+      d30: volTotals?.fees30d ?? "0",
+    },
+    bots: {
+      total: botTotals?.total ?? 0,
+      running: botTotals?.running ?? 0,
+      created24h: botTotals?.created24h ?? 0,
+    },
+    daily,
+    connect,
   };
 }

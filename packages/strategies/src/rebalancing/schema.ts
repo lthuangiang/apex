@@ -30,8 +30,19 @@ export const rebalancingSchema = z
     maxTradePct: percent(1, 100, "Allowed 1–100%."),
     stopBelow: optionalPositive(),
     takeProfitPct: optionalPositive(),
+    /** Initial buy (IMPROVEMENTS IMP-04, DEC-91): thiếu là All now (hành vi cũ). Over N hours: N phần bằng nhau, mỗi giờ một phần. */
+    initialBuy: z.enum(["all_now", "over_hours"]).optional(),
+    initialBuyHours: z
+      .number()
+      .int()
+      .min(2, { message: "Allowed 2–72 hours." })
+      .max(72, { message: "Allowed 2–72 hours." })
+      .optional(),
   })
   .superRefine((c, ctx) => {
+    if (c.initialBuy === "over_hours" && c.initialBuyHours === undefined) {
+      ctx.addIssue({ code: "custom", path: ["initialBuyHours"], message: "Required." });
+    }
     if (c.rebalanceWhen === "threshold" && c.thresholdPct === undefined) {
       ctx.addIssue({ code: "custom", path: ["thresholdPct"], message: "Allowed 1–50%." });
     }

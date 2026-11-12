@@ -246,10 +246,44 @@ function metricsOf(
         { key: "maxInventory", value: st.maxInventory ?? null, unit: "quote" },
       ];
     }
+    case Strategy.adaptiveDca: {
+      const st = out.state as { completedCycles?: number; exits?: number; peakExposure?: string };
+      return [
+        { key: "completedCycles", value: String(st.completedCycles ?? 0), unit: "count" },
+        { key: "exits", value: String(st.exits ?? 0), unit: "count" },
+        { key: "peakExposure", value: st.peakExposure ?? null, unit: "quote" },
+      ];
+    }
+    case Strategy.volumeFarm: {
+      const volume = sumNotional(fills);
+      const maker = sumNotional(fills.filter((f) => f.maker));
+      const st = out.state as { trades?: number; wins?: number };
+      const trades = st.trades ?? 0;
+      return [
+        { key: "volumeMade", value: volume.toString(), unit: "quote" },
+        { key: "trades", value: String(trades), unit: "count" },
+        {
+          key: "winRate",
+          value: trades === 0 ? null : pct(new Decimal(st.wins ?? 0).div(trades).mul(100)),
+          unit: "pct",
+        },
+        {
+          key: "makerShare",
+          value: volume.isZero() ? null : pct(maker.div(volume).mul(100)),
+          unit: "pct",
+        },
+      ];
+    }
     default:
       return [];
   }
 }
+
+/** Số nến 1 phút gửi kèm timer cho chiến lược đọc nến (khớp `FARM_CANDLES` của engine). */
+const SNAPSHOT_CANDLES: Readonly<Record<string, number>> = {
+  [Strategy.volumeFarm]: 120,
+  [Strategy.adaptiveDca]: 120,
+};
 
 /** Vốn để tính % kết quả. Recurring Buy và TWAP dùng số tiền thực đã dùng. */
 function capitalOf(
@@ -295,7 +329,9 @@ export function backtest(
     >
   )[strategy];
   if (entry === undefined) throw new RangeError(`No backtest for ${strategy}`);
-  const config = entry.schema.parse(rawConfig) as Record<string, unknown>;
+  const parsed = entry.schema.parse(rawConfig) as Record<string, unknown>;
+  // Start at của TWAP là giờ thật trong tương lai; backtest chạy trên giá quá khứ nên bắt đầu từ nến đầu (IMP-03).
+  const config = strategy === Strategy.twap ? { ...parsed, start: "now" } : parsed;
   const candles = Object.fromEntries(Object.entries(data.markets).map(([m, v]) => [m, v.candles]));
   let capital = capitalOf(strategy, config, candles);
   const output = runBacktest({
@@ -307,6 +343,9 @@ export function backtest(
     slippage: data.slippage,
     intervalMs: data.intervalMs,
     capital,
+    ...(SNAPSHOT_CANDLES[strategy] === undefined
+      ? {}
+      : { snapshotCandles: SNAPSHOT_CANDLES[strategy] }),
   });
   if (strategy === Strategy.recurringBuy) {
     // % kết quả của Recurring Buy tính trên số tiền đã thực sự mua.

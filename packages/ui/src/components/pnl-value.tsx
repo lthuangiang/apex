@@ -26,13 +26,14 @@ export function PnLValue({
   if (value === null) {
     return <span className={cx("text-muted", className)}>{missingLabel}</span>;
   }
-  const zero = isZero(value);
-  const negative = isNegative(value);
   const text = formatDecimal(value, {
     locale,
     maximumFractionDigits,
     signDisplay: "exceptZero",
   });
+  // Làm tròn ra 0 (ví dụ −0.004 → "0"): hiện trung tính, không mũi tên đỏ cạnh số 0.
+  const zero = isZero(value) || (text !== null && !/[1-9]/.test(text));
+  const negative = isNegative(value);
   return (
     <span
       data-sign={zero ? "zero" : negative ? "negative" : "positive"}

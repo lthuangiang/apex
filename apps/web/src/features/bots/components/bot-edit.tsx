@@ -14,11 +14,12 @@ import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useMe } from "@/lib/queries";
 
-import { FIELDS, fromConfig, isLaunched, toConfig, type FormValues } from "../fields";
+import { FIELDS, fromConfig, isLaunched, toConfig, visible, type FormValues } from "../fields";
 
 import { AiPanel, useAiParameters } from "./ai-params";
 import { fieldErrorsOf, useBotErrorText } from "./bot-errors";
 import { BotForm } from "./bot-form";
+import { CreateBot } from "./create-bot";
 
 // Edit bot (SCREENS.md mục 8.4, artboard "Bot-Edit"): thay đổi lưu thành version mới; version cũ chạy
 // tiếp cho tới khi engine xác nhận version mới (DOMAIN.md mục 7.4). Strategy/market bị khoá.
@@ -89,20 +90,29 @@ export function BotEdit({ botId }: { botId: string }) {
       </WorkspaceShell>
     );
   }
+  // Draft chưa chạy: mở màn Create với config đã lưu để có checks, xác nhận, 2FA và Start ngay tại đây
+  // (trước đây link Start trỏ về /agent/:id, mà trang đó lại chuyển draft về Edit).
+  if (bot.state === BotState.draft) {
+    return <CreateBot strategy={strategy} draft={{ id: bot.id, name: bot.name, values: base }} />;
+  }
   const next = Math.max(...(detail.data?.versions.map((v) => v.version) ?? [active.version])) + 1;
-  const before = toConfig(strategy, base);
+  // So với config đang lưu thật (DEC-135), không so với form đã điền mặc định: config cũ thiếu field mới (ví dụ
+  // `quoteLevel`) thì hiện "— → 0" và lưu được, thay vì bị coi là không có thay đổi.
+  const stored = active.config;
+  const before = Object.fromEntries(
+    FIELDS[strategy].filter((f) => visible(f, values)).map((f) => [f.key, stored[f.key]]),
+  );
   const after = toConfig(strategy, values);
   const changes = FIELDS[strategy].filter(
     (f) => JSON.stringify(before[f.key]) !== JSON.stringify(after[f.key]),
   );
-  const isDraft = bot.state === BotState.draft;
   const label = (k: string) =>
     tf(`fields.${FIELDS[strategy].find((f) => f.key === k)?.label ?? k}.label`);
 
   return (
     <WorkspaceShell current="bots" isTeam={me.data?.role === UserRole.team}>
       <div className="flex flex-col gap-5">
-        <Link href={isDraft ? "/bots" : `/agent/${botId}`} className="text-sm font-bold">
+        <Link href={`/agent/${botId}`} className="text-sm font-bold">
           {tf("back")}
         </Link>
         <PageHead
@@ -120,7 +130,7 @@ export function BotEdit({ botId }: { botId: string }) {
             <BotForm
               strategy={strategy}
               values={values}
-              errors={fieldErrorsOf(apply.error)}
+              errors={fieldErrorsOf(apply.error, tf("errors.fieldRequired"))}
               lockedReason={t("lockedHint")}
               disabled={waitingFor !== null && !live}
               onChange={setValues}
@@ -168,12 +178,8 @@ export function BotEdit({ botId }: { botId: string }) {
                 ))}
               </ul>
             )}
-            {isDraft ? null : (
-              <>
-                <h3 className="m-0 text-sm font-bold">{t("whatHappens")}</h3>
-                <p className="m-0 text-sm text-ink-2">{t("applyEffect")}</p>
-              </>
-            )}
+            <h3 className="m-0 text-sm font-bold">{t("whatHappens")}</h3>
+            <p className="m-0 text-sm text-ink-2">{t("applyEffect")}</p>
             <div role="status" aria-live="polite">
               {waitingFor === null ? null : live ? (
                 <strong>{t("live", { next: waitingFor })}</strong>
@@ -206,11 +212,6 @@ export function BotEdit({ botId }: { botId: string }) {
                 {t("review", { next })}
               </Button>
             </div>
-            {isDraft ? (
-              <Link href={`/agent/${botId}`} className="font-bold">
-                {tf("beforeStart.start")}
-              </Link>
-            ) : null}
             <h3 className="m-0 mt-2 text-sm font-bold">{t("history")}</h3>
             <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
               {detail.data?.versions.map((v) => (
@@ -231,7 +232,7 @@ export function BotEdit({ botId }: { botId: string }) {
               (f) =>
                 `${label(f.key)}: ${JSON.stringify(before[f.key] ?? "")} → ${JSON.stringify(after[f.key] ?? "")}`,
             ),
-            ...(isDraft ? [] : [t("applyEffect")]),
+            t("applyEffect"),
           ]}
           confirmLabel={t("dialog.apply", { next })}
           cancelLabel={t("dialog.keep", { version: active.version })}

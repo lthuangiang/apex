@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Copy Trading v1 · luồng và phạm vi</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1d47b8}a:hover{color:#141a33}
+</style>
+</helmet>
+<div style="width: 1440px; height: 1040px; box-sizing: border-box; padding: 44px 52px; background: #f5f7fd; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 24px">
+  <div style="display: flex; align-items: center; gap: 14px">
+    <span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 13px; background: #2e62e8; display: flex; align-items: center; justify-content: center"><svg width="36" height="36" viewBox="0 0 24 24"><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#ffffff"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#ffffff" opacity="0.7"></rect></svg></span>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #1d47b8">DeskLabs · Copy Trading v1</span>
+      <h1 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em">Người mới: tìm trader Hyperliquid → copy trong 3 bước</h1>
+    </div>
+  </div>
+
+  <ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+    <li style="background: #ffffff; border: 1.5px solid #2e62e8; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 800; color: #1d47b8">1 · Find traders</span><strong style="font-size: 15px">Danh sách từ Hyperliquid</strong><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Thẻ dễ đọc, tab Steady mặc định, hướng dẫn 3 bước, nói rõ bao nhiêu trader bị ẩn và vì sao.</span></li>
+    <li style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 800; color: #1d47b8">2 · Trader profile</span><strong style="font-size: 15px">"Có nên copy không?"</strong><span style="font-size: 13px; color: #3b4262; line-height: 1.45">4 chỉ số kèm giải thích một câu, checklist ✓ / !, thay đổi vị thế (không phải fill).</span></li>
+    <li style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 800; color: #1d47b8">3 · Budget and safety</span><strong style="font-size: 15px">2 quyết định</strong><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Nhập budget và chọn Careful / Balanced / Bold. Market tự chọn. Phần còn lại nằm trong Advanced.</span></li>
+    <li style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 800; color: #1d47b8">4 · Review and start</span><strong style="font-size: 15px">Tóm tắt, phí, xác nhận</strong><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Mainnet, phí builder tối đa 0.01%, báo market bị loại do trùng bot, checkbox hiểu rủi ro.</span></li>
+    <li style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 800; color: #1d47b8">5 · Following</span><strong style="font-size: 15px">Theo dõi miễn phí</strong><span style="font-size: 13px; color: #3b4262; line-height: 1.45">Thay đổi gần đây có nhãn trễ ~1 phút, cảnh báo "big move" trong app.</span></li>
+  </ol>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; flex-grow: 1">
+    <section style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 17px; font-weight: 800">Có trong v1</h2>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.5">
+        <li>Leaderboard Hyperliquid, tính lại từ fill mỗi ngày</li>
+        <li>Một bot copy = một trader × nhiều market (DEC-162)</li>
+        <li>Lọc hold &lt; 15 phút trên 30 ngày, lúc start và mỗi ngày</li>
+        <li>Mức an toàn map sang field S12 đã có</li>
+        <li>Following + cảnh báo trong app</li>
+      </ul>
+    </section>
+    <section style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 17px; font-weight: 800">Chưa làm ở v1</h2>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.5; color: #3b4262">
+        <li>Ví SoDEX do team chọn (admin thêm)</li>
+        <li>Push và Telegram</li>
+        <li>% lợi nhuận (cần equity sạch nạp/rút)</li>
+        <li>Backtest phát lại fill của trader</li>
+        <li>Subaccount riêng cho từng trader</li>
+        <li>Cỡ lệnh theo mức chắc tay của trader (v1: cố định mỗi vị thế)</li>
+        <li>Tự thêm market mới của trader (v1: chỉ báo trong Following)</li>
+        <li>Thử bằng tiền ảo cho copy (DEC-105)</li>
+      </ul>
+    </section>
+    <section style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 17px; font-weight: 800">Dữ liệu theo 3 tầng</h2>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.5">
+        <li><strong>T0</strong> · đang được copy: WS, vài giây. 1 IP: Hyperliquid cho 10 user / IP → dùng 8, chừa 2 để đổi trader không rớt tín hiệu; đầy thì "Follow · copy later"</li>
+        <li><strong>T1</strong> · có người follow: poll REST trong ngân sách ~400 / 1.200 weight/phút → tối đa ~40 ví toàn hệ thống, 2 phút/lần; 5 ví / user</li>
+        <li><strong>T2</strong> · leaderboard: tính lại mỗi ngày; lỗi thì giữ danh sách cũ và ghi ngày</li>
+        <li>Chạm trần 10k fill → chỉ hiện ở All, gắn "History incomplete"</li>
+        <li>Trượt giá đo từ giá SoDEX lúc nhận tín hiệu; tổng lệnh copy mỗi tín hiệu chia theo độ sâu sổ lệnh SoDEX</li>
+      </ul>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

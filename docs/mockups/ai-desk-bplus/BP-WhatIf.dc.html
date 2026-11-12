@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI Desk · compare fixes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f5f7fd}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+button:focus-visible,a:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; padding: 20px; background: #f5f7fd; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #141a33">
+<div style="max-width: 1400px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+  <div style="flex: 0 0 248px">
+    <dc-import name="Sidebar" current="desk" hint-size="248px,760px"></dc-import>
+  </div>
+
+  <main class="num" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+    <a href="BP-Home.dc.html" style="align-self: flex-start; font-size: 13.5px; font-weight: 700; text-decoration: none">← AI Desk</a>
+    <header style="display: flex; flex-direction: column; gap: 6px">
+      <span style="font-size: 13px; font-weight: 700; color: #5f6684">BTC Volume Farm</span>
+      <h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">Pick a fix</h1>
+      <p style="margin: 0; font-size: 15px; color: #3b4262">I replayed the bot's real trades from the last 7 days with each option. Same entries, different settings.</p>
+    </header>
+
+    <div role="radiogroup" aria-label="Options" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+      <sc-for list="{{opts}}" as="o" hint-placeholder-count="3">
+        <button type="button" role="radio" aria-checked="{{o.on}}" onClick="{{o.pick}}" style="{{o.style}}">
+          <span style="display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%"><strong style="font-size: 16px">{{o.name}}</strong><sc-if value="{{o.rec}}" hint-placeholder-val="{{false}}"><span style="font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 10px; background: #e6ecfe; color: #1d47b8">✦ My pick</span></sc-if></span>
+          <span style="font-size: 13px; color: #3b4262; text-align: left; line-height: 1.45">{{o.what}}</span>
+          <span style="display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 12px; border-radius: 14px; background: #f5f7fd; box-sizing: border-box">
+            <span style="display: flex; justify-content: space-between; font-size: 13px"><span style="color: #5f6684">Result, 7 days</span><strong style="color: #c2312f">{{o.net}}</strong></span>
+            <span style="display: flex; justify-content: space-between; font-size: 13px"><span style="color: #5f6684">Trades closed by SoDEX</span><strong>{{o.liq}}</strong></span>
+            <span style="display: flex; justify-content: space-between; font-size: 13px"><span style="color: #5f6684">Worst single trade</span><strong>{{o.worst}}</strong></span>
+            <span style="display: flex; justify-content: space-between; font-size: 13px"><span style="color: #5f6684">Money set aside per trade</span><strong>{{o.margin}}</strong></span>
+          </span>
+        </button>
+      </sc-for>
+    </div>
+
+    <section style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <div style="flex: 2 1 480px; min-width: 0; display: flex; gap: 12px; align-items: flex-start; padding: 18px 20px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5">
+        <span aria-hidden="true" style="flex: 0 0 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 14px">✦</span>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <p style="margin: 0; font-size: 15px; line-height: 1.55">{{why}}</p>
+          <span style="font-size: 12.5px; color: #5f6684">Replay of 251 real entries on 1-minute candles · past week only, not a forecast · <a href="#">How the replay works</a></span>
+        </div>
+      </div>
+      <div style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; border-radius: 20px; background: #ffffff; border: 2px solid #2e62e8">
+        <strong style="font-size: 16px">{{applyTitle}}</strong>
+        <span style="font-size: 13px; color: #3b4262">New version, starts after the open trade. I'll check back in 7 days and tell you if it helped.</span>
+        <button type="button" disabled="{{isKeep}}" style="min-height: 48px; border: 0; border-radius: 14px; background: #2e62e8; color: #ffffff; font: inherit; font-size: 15px; font-weight: 800; cursor: pointer">{{applyLabel}}</button>
+      </div>
+    </section>
+  </main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { pick: 'lev' };
+  }
+  renderVals() {
+    var self = this;
+    var defs = [
+      { k: 'keep', name: 'Keep as it is', what: '40× leverage, stop loss at 5%.', net: '−4.95 USDC ▼', liq: '2', worst: '−1.90 USDC', margin: '5 USDC', why: 'Keeping it means some trades can still be closed by SoDEX before your stop loss.' },
+      { k: 'lev', name: 'Lower leverage to 10×', what: 'Stop loss stays at 5% and now comes first.', net: '−3.10 USDC ▼', liq: '0', worst: '−0.95 USDC', margin: '20 USDC', rec: true, why: 'I pick 10×: no trade was closed by SoDEX, the worst trade halved, and you keep the same stop loss. The cost is more money set aside per trade.' },
+      { k: 'sl', name: 'Tighter stop loss, 2%', what: 'Keeps 40×; stop now comes before SoDEX closes it.', net: '−4.40 USDC ▼', liq: '0', worst: '−0.85 USDC', margin: '5 USDC', why: 'A 2% stop also works, but it triggered on normal wiggles more often, so the result is close to doing nothing.' }
+    ];
+    var base = 'display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 20px; font: inherit; color: #141a33; cursor: pointer; text-align: left; ';
+    var cur = defs.filter(function (d) { return d.k === self.state.pick; })[0];
+    return {
+      opts: defs.map(function (d) {
+        var on = d.k === self.state.pick;
+        return Object.assign({}, d, { rec: !!d.rec, on: on, pick: function () { self.setState({ pick: d.k }); },
+          style: base + (on ? 'border: 2px solid #2e62e8; background: #ffffff; box-shadow: 0 12px 28px rgba(46,98,232,0.14);' : 'border: 1px solid #d5dcf2; background: #ffffff;') });
+      }),
+      why: cur.why,
+      isKeep: cur.k === 'keep',
+      applyTitle: cur.k === 'keep' ? 'No change' : 'Apply: ' + cur.name,
+      applyLabel: cur.k === 'keep' ? 'Nothing to apply' : 'Apply this fix'
+    };
+  }
+}
+</script>
+</body>
+</html>

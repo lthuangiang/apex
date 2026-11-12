@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DeskLabs share banner</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap">
+<style>
+  /* Ảnh xem trước khi chia sẻ link (Open Graph / Twitter, 1200×630). Nội dung chính đặt giữa–trái: một số app
+     (WhatsApp, Telegram, Zalo) cắt ảnh gần vuông ở giữa. */
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .b { width: 1200px; height: 630px; position: relative; overflow: hidden; color: #fff;
+    font-family: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+    background: radial-gradient(760px 520px at 1060px -60px, rgba(46,98,232,.55), transparent 70%),
+                radial-gradient(640px 420px at 80px 700px, rgba(126,226,168,.14), transparent 70%),
+                linear-gradient(135deg, #0b1124 0%, #121a36 55%, #16224a 100%); }
+  .grid { position: absolute; inset: 0; opacity: .06;
+    background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+    background-size: 48px 48px; }
+  .copy { position: absolute; left: 72px; top: 70px; width: 620px; display: flex; flex-direction: column; gap: 22px; }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  .brand span { font-size: 38px; font-weight: 800; letter-spacing: -.01em; }
+  h1 { margin: 0; font-size: 62px; line-height: 1.03; font-weight: 800; letter-spacing: -.03em; }
+  .sub { font-size: 22px; line-height: 1.45; color: rgba(255,255,255,.74); font-weight: 500; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip { padding: 8px 14px; border-radius: 999px; font-size: 16px; font-weight: 700;
+          background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); }
+  .foot { position: absolute; left: 72px; right: 72px; bottom: 44px; display: flex; justify-content: space-between; align-items: center; }
+  .pow { font-size: 17px; font-weight: 600; color: rgba(255,255,255,.58); }
+  .url { font-size: 22px; font-weight: 800; padding: 10px 20px; border-radius: 12px; background: #2e62e8; }
+  .book { position: absolute; right: 64px; top: 92px; width: 380px; padding: 20px 20px 16px; border-radius: 22px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); font-variant-numeric: tabular-nums; font-size: 15px;
+    box-shadow: 0 30px 80px -30px rgba(0,0,0,.6); }
+  .bh { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .bh b { font-size: 17px; }
+  .run { font-size: 13px; font-weight: 800; color: #7ee2a8; display: flex; align-items: center; gap: 6px; }
+  .run i { width: 8px; height: 8px; border-radius: 9px; background: #7ee2a8; display: inline-block; }
+  .r { position: relative; display: grid; grid-template-columns: 1.2fr 1fr; padding: 6px 9px; border-radius: 7px; overflow: hidden; margin: 2px 0; }
+  .r s { position: absolute; inset: 0 0 0 auto; text-decoration: none; }
+  .r .p, .r .q { position: relative; }
+  .r .q { text-align: right; color: rgba(255,255,255,.75); }
+  .ask .p { color: #ff9aa5; } .ask s { background: rgba(255,99,120,.17); }
+  .bid .p { color: #7ee2a8; } .bid s { background: rgba(126,226,168,.17); }
+  .you { box-shadow: inset 0 0 0 2px #5b8cff; }
+  .tag { margin-left: 7px; background: #2e62e8; border-radius: 5px; padding: 0 6px; font-size: 11px; font-weight: 800; color: #fff; }
+  .mid { display: flex; justify-content: space-between; align-items: baseline; padding: 9px; margin: 7px 0;
+         border-top: 1px solid rgba(255,255,255,.12); border-bottom: 1px solid rgba(255,255,255,.12); }
+  .mid b { font-size: 20px; } .mid span { font-size: 13px; color: rgba(255,255,255,.6); font-weight: 700; }
+  .stat { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat div { background: rgba(255,255,255,.06); border-radius: 12px; padding: 10px 12px; }
+  .stat em { display: block; font-style: normal; font-size: 12px; color: rgba(255,255,255,.6); font-weight: 600; }
+  .stat b { font-size: 19px; }
+</style>
+</head>
+<body>
+<div class="b">
+  <div class="grid"></div>
+  <div class="copy">
+    <div class="brand">
+      <svg width="58" height="58" viewBox="0 0 24 24" aria-hidden="true">
+        <rect width="24" height="24" rx="5.6" fill="#2E62E8"/>
+        <path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/>
+        <rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#fff"/>
+        <rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#fff" opacity=".7"/>
+      </svg>
+      <span>DeskLabs</span>
+    </div>
+    <h1>Trading strategies that run while you work.</h1>
+    <div class="sub">Market Making, Volume Builder, grids and DCA on your own SoDEX account. Every fill measured.</div>
+    <div class="chips"><span class="chip">Never withdraws your funds</span><span class="chip">No seed phrase</span><span class="chip">Live on mainnet</span></div>
+  </div>
+
+  <div class="book">
+    <div class="bh"><b>BTC Market Making</b><span class="run"><i></i>Live</span></div>
+    <div class="r ask"><s style="width:74%"></s><span class="p">74,852</span><span class="q">62,371</span></div>
+    <div class="r ask"><s style="width:50%"></s><span class="p">74,851</span><span class="q">53,134</span></div>
+    <div class="r ask you"><s style="width:30%"></s><span class="p">74,850<span class="tag">YOU</span></span><span class="q">109,700</span></div>
+    <div class="mid"><b>74,849.5</b><span>Spread 0.134 bps</span></div>
+    <div class="r bid you"><s style="width:28%"></s><span class="p">74,849<span class="tag">YOU</span></span><span class="q">93,439</span></div>
+    <div class="r bid"><s style="width:46%"></s><span class="p">74,848</span><span class="q">49,719</span></div>
+    <div class="r bid"><s style="width:66%"></s><span class="p">74,847</span><span class="q">37,941</span></div>
+    <div class="stat"><div><em>Strategies</em><b>10</b></div><div><em>Builder fee from</em><b>0.003%</b></div></div>
+  </div>
+
+  <div class="foot">
+    <span class="pow">Powered by SoDEX Builder Code</span>
+    <span class="url">desklabs.xyz</span>
+  </div>
+</div>
+</body>
+</html>

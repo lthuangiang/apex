@@ -172,6 +172,28 @@ describe("reco service", () => {
     });
   });
 
+  it("builds a Rebalancing basket from the assets in the request (DEC-113)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/params",
+      payload: {
+        account: null,
+        accountLeverageCap: null,
+        timeZone: "UTC",
+        now: NOW,
+        strategy: "rebalancing",
+        market: "vBTC_vUSDC",
+        capital: "5000",
+        maxDrop: "10",
+        assets: ["BTC"],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ values: { assets: { asset: string }[] } }>().values.assets).toEqual(
+      expect.arrayContaining([expect.objectContaining({ asset: "BTC" })]),
+    );
+  });
+
   it("rejects unknown markets and bad bodies", async () => {
     expect(
       (

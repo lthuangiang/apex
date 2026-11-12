@@ -10,11 +10,14 @@ describe("presetMarket", () => {
       engine: "perps",
       market: "BTC-USD",
     });
+    // DEC-157: Market Making nhận mọi perp.
+    expect(presetMarket("volume_maker", "SOL-USD", "perps")).toEqual({ market: "SOL-USD" });
   });
   it("skips strategies that can't use the market", () => {
     expect(presetMarket("spot_grid", "BTC-USD", "perps")).toBeNull();
     expect(presetMarket("futures_dca", "vBTC_vUSDC", "spot")).toBeNull();
     expect(presetMarket("rebalancing", "vBTC_vUSDC", "spot")).toBeNull();
     expect(presetMarket("funding_arb", "BTC-USD", "perps")).toBeNull();
+    expect(presetMarket("volume_maker", "vBTC_vUSDC", "spot")).toBeNull();
   });
 });

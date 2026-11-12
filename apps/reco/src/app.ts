@@ -22,6 +22,8 @@ const common = {
 };
 const planBody = z.object({
   ...common,
+  /** AI Desk: chỉ một bot, dùng toàn bộ vốn (DEC-105). */
+  single: z.boolean().optional(),
   goals: z.object({
     goal: z.enum(RECO_GOALS),
     capital: z.string(),
@@ -35,6 +37,8 @@ const paramsBody = z.object({
   market: z.string(),
   capital: z.string(),
   maxDrop: z.enum(MAX_DROP_OPTIONS),
+  /** Tài sản trong Goals: Rebalancing dựng giỏ từ đây (DEC-113). Thiếu thì chỉ market đang chọn. */
+  assets: z.array(z.string().min(1).max(20)).max(10).optional(),
 });
 
 export function buildRecoApp(deps: {
@@ -59,6 +63,7 @@ export function buildRecoApp(deps: {
         markets: await deps.markets(b.goals.assets),
         accountLeverageCap: b.accountLeverageCap,
         now: b.now,
+        ...(b.single === true ? { single: true } : {}),
       },
       b.timeZone,
     );
@@ -68,7 +73,8 @@ export function buildRecoApp(deps: {
     const parsed = paramsBody.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ error: "invalid body" });
     const b = parsed.data;
-    const markets = await deps.markets([assetOf(b.market)]);
+    const assets = [...new Set([assetOf(b.market), ...(b.assets ?? [])])];
+    const markets = await deps.markets(assets);
     const market = markets.find((m) => m.market === b.market);
     if (market === undefined) return reply.status(404).send({ error: "market not available" });
     const s = aiParameters(
@@ -81,6 +87,7 @@ export function buildRecoApp(deps: {
         capital: b.capital,
         maxDrop: b.maxDrop,
         markets,
+        assets,
       },
       b.timeZone,
     );

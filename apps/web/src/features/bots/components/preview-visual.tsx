@@ -226,8 +226,12 @@ function DcaLadder({
   const unit = names.asset(unitsOf(market)?.quote ?? "");
   const maxSize = Decimal.max(...model.rows.map((r) => dec(r.size)));
   const sign = model.direction === "long" ? "−" : "+";
+  const perps = strategy === "futures_dca";
   return (
     <>
+      <p className="m-0 text-[13px] leading-normal text-ink-2">
+        {t(perps ? "introFutures" : "intro")}
+      </p>
       <ol className="m-0 flex list-none flex-col gap-1.5 p-0 tabular-nums">
         {model.rows.map((r) => (
           <li
@@ -235,7 +239,9 @@ function DcaLadder({
             className={`flex items-center gap-2.5 rounded-control px-2.5 py-2 ${r.index === 0 ? "bg-accent-tint" : "bg-surface-2"}`}
           >
             <span className="w-[92px] flex-none text-[13px] font-bold">
-              {r.index === 0 ? t("base") : t("safety", { n: String(r.index) })}
+              {r.index === 0
+                ? t(perps ? "baseFutures" : "base")
+                : t(perps ? "safetyFutures" : "safety", { n: String(r.index) })}
             </span>
             <div className="h-3 min-w-[60px] flex-1 rounded-full bg-surface">
               <div
@@ -263,6 +269,11 @@ function DcaLadder({
         )}
         <span className="rounded-full bg-surface-2 px-2.5 py-1.5">{t("fillOrder")}</span>
       </div>
+      {model.allFilled === null ? null : (
+        <p className="m-0 rounded-control bg-surface-2 px-3 py-2.5 text-[13px] leading-normal text-ink-2 tabular-nums">
+          {t("allFilled", { avg: price(model.allFilled.avg), exit: price(model.allFilled.exit) })}
+        </p>
+      )}
     </>
   );
 }
