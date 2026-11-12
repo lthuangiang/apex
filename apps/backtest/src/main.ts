@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { runReview } from "./review";
 import { runJob } from "./run";
+import { runWhatif } from "./whatif";
 
 // backtest: worker CPU nặng, kéo job `backtest.run` từ JetStream (consumer group), scale bằng replica.
 
@@ -32,9 +33,13 @@ const rest = new SodexRestClient({
 const nc = await connect({ servers: env.NATS_URL });
 const js = await ensureStreams(nc);
 await ensureConsumer(nc, "backtest-run", "backtest.run");
-// Cùng hàng đợi `backtest.run` cho backtest (`runId`) và review sau khi chạy (`reviewId`, DEC-131): không phải thêm
-// subject vào stream BACKTEST đã có trên prod.
-const payload = z.union([z.object({ runId: z.uuid() }), z.object({ reviewId: z.uuid() })]);
+// Cùng hàng đợi `backtest.run` cho backtest (`runId`), review sau khi chạy (`reviewId`, DEC-131) và what-if của AI Desk
+// B+ (`whatifId`, DEC-166): không phải thêm subject vào stream BACKTEST đã có trên prod.
+const payload = z.union([
+  z.object({ runId: z.uuid() }),
+  z.object({ reviewId: z.uuid() }),
+  z.object({ whatifId: z.uuid() }),
+]);
 const stop = await consume(
   js,
   "backtest-run",
@@ -46,6 +51,9 @@ const stop = await consume(
     if ("runId" in job) {
       await runJob(deps, job.runId);
       log.info({ runId: job.runId, ms: Date.now() - started }, "backtest finished");
+    } else if ("whatifId" in job) {
+      await runWhatif(deps, job.whatifId);
+      log.info({ whatifId: job.whatifId, ms: Date.now() - started }, "what-if finished");
     } else {
       await runReview(deps, job.reviewId);
       log.info({ reviewId: job.reviewId, ms: Date.now() - started }, "review finished");

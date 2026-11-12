@@ -139,3 +139,51 @@ export const snoozeViewSchema = z.object({
   rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
   snoozedUntil: isoDateTimeSchema,
 });
+
+/* AI Desk B+ M2 (DEC-166): so sánh phương án và Apply. Kết quả là 7 ngày đã qua, không phải dự báo. */
+export const whatIfOutcomeSchema = z.object({
+  trades: z.number().int(),
+  net: decimalStringSchema,
+  /** Lượt đóng bởi stop loss gốc trên SoDEX; null khi nguồn không đếm được. Không gồm thanh lý (chưa mô phỏng). */
+  closedBySodex: z.number().int().nullable(),
+  worstTrade: decimalStringSchema.nullable(),
+  marginPerTrade: decimalStringSchema.nullable(),
+});
+export const whatIfOptionViewSchema = z.object({
+  key: z.enum(["keep", "lower_leverage", "tighter_stop", "review_settings"]),
+  patch: z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
+  outcome: whatIfOutcomeSchema.nullable(),
+  unavailable: z.enum(["invalid_config", "not_enough_trades", "no_data"]).nullable(),
+});
+export const whatIfViewSchema = z.object({
+  id: uuidSchema,
+  itemId: uuidSchema,
+  botId: uuidSchema,
+  rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
+  status: z.enum(["queued", "running", "done", "failed", "unavailable"]),
+  /** `replay`: "Replayed on your real trades"; `backtest`: "Backtest on 5-minute candles". */
+  source: z.enum(["replay", "backtest"]).nullable(),
+  windowFrom: isoDateTimeSchema,
+  windowTo: isoDateTimeSchema,
+  botVersion: z.number().int(),
+  options: z.array(whatIfOptionViewSchema),
+  pick: z
+    .object({
+      key: z.enum(["keep", "lower_leverage", "tighter_stop", "review_settings"]).nullable(),
+      reason: z.enum(["safer_best_result", "better_result", "keep_is_better", "not_enough_trades"]),
+    })
+    .nullable(),
+  /** Lý do khi `unavailable` / `failed` (ví dụ `version_changed`, `history_short`, `no_fix`). */
+  error: z.string().nullable(),
+});
+export type WhatIfView = z.infer<typeof whatIfViewSchema>;
+export const whatIfApplyBodySchema = z.object({
+  option: z.enum(["lower_leverage", "tighter_stop", "review_settings"]),
+});
+export const whatIfApplyViewSchema = z.object({
+  botId: uuidSchema,
+  version: z.number().int(),
+  /** `pending` khi bot đang chạy (engine áp: "Applying vN…"), `active` khi bot đã dừng / nháp. */
+  status: z.enum(["pending", "active"]),
+  option: z.enum(["lower_leverage", "tighter_stop", "review_settings"]),
+});

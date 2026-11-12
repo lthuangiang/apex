@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { Candle } from "../backtest/run";
-import { buildTrades, reviewVolumeFarm, type ReviewFill } from "../volume-farm/review";
+import {
+  buildTrades,
+  realFeeRates,
+  replayOptions,
+  reviewTrades,
+  reviewVolumeFarm,
+  type ReviewFill,
+} from "../volume-farm/review";
 import { volumeFarmSchema } from "../volume-farm/schema";
 
 const T0 = Date.parse("2026-11-01T00:00:00Z");
@@ -192,5 +199,67 @@ describe("volume builder review (DEC-131)", () => {
     }
     const r = reviewVolumeFarm({ config: config(), fills, candles, fallbackFee: fee, seed: 1 });
     expect(r.status === "done" && r.suggestion).toBe("none");
+  });
+});
+
+describe("what-if replay of real entries (AI Desk B+, DEC-166)", () => {
+  // Hai lượt long 100 USDC ở giá 100; phút sau giá rơi về 98 (−2%) rồi đứng yên.
+  const fills = [...trade(1, T0, 100), ...trade(2, T0 + 10 * 60_000, 100)];
+  const candles: Candle[] = Array.from({ length: 40 }, (_, k) => ({
+    t: T0 + k * 60_000,
+    o: "100",
+    h: "100",
+    l: "98",
+    c: "98",
+    v: "1",
+  }));
+  const base = { earlyProfitFees: 3, earlyExitSecs: 60, minHoldSecs: 180, maxHoldSecs: 300 };
+
+  it("replays each option on the same entries and counts stop-loss exits, worst trade and margin", () => {
+    const trades = reviewTrades(fills);
+    const [wide, tight] = replayOptions({
+      trades,
+      candles,
+      tpUsd: 0.5,
+      fee,
+      options: [
+        // SL 100% margin ở 25× = 4% giá: không chạm, ra theo giờ giữ ở 98 (−2%).
+        { params: { ...base, slMarginPct: 100 }, leverage: 25 },
+        // SL 25% margin ở 25× = 1% giá: chạm stop.
+        { params: { ...base, slMarginPct: 25 }, leverage: 25 },
+      ],
+    });
+    expect(wide).toMatchObject({ trades: 2, slExits: 0, marginPerTrade: 4 });
+    expect(tight).toMatchObject({ trades: 2, slExits: 2 });
+    // Mỗi lượt: −1% giá − phí maker + taker trên 100 USDC.
+    expect(tight?.worstTrade?.toFixed(4)).toBe((-(0.01 + fee.maker + fee.taker) * 100).toFixed(4));
+    expect((tight?.net ?? 0) > (wide?.net ?? 0)).toBe(true);
+  });
+
+  it("gives the same result for the same data", () => {
+    const run = () =>
+      replayOptions({
+        trades: reviewTrades(fills),
+        candles,
+        tpUsd: 0.5,
+        fee,
+        options: [{ params: { ...base, slMarginPct: 50 }, leverage: 10 }],
+      });
+    expect(run()).toEqual(run());
+  });
+
+  it("reports no trades instead of a zero result when there is nothing to replay", () => {
+    const [o] = replayOptions({
+      trades: [],
+      candles,
+      tpUsd: 0.5,
+      fee,
+      options: [{ params: { ...base, slMarginPct: 50 }, leverage: 10 }],
+    });
+    expect(o).toMatchObject({ trades: 0, worstTrade: null, marginPerTrade: null });
+  });
+
+  it("measures real fee rates per maker / taker side", () => {
+    expect(realFeeRates(fills, { maker: 1, taker: 2 })).toEqual({ maker: fee.maker, taker: 2 });
   });
 });

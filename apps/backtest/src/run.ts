@@ -31,7 +31,7 @@ export const BACKTEST_SLIPPAGE = "0.0005";
 const MIN_COVERAGE = 0.95;
 const PAGE = 1000;
 
-class Unavailable extends Error {}
+export class Unavailable extends Error {}
 
 /** Builder fee của user cho chiến lược: mức riêng team đặt (DEC-159) hoặc mặc định. */
 export async function userBuilderRate(db: Db, userId: string, strategy: string): Promise<number> {
@@ -128,6 +128,82 @@ async function sodexCandles(
   return [...out.values()].sort((a, b) => a.t - b.t);
 }
 
+/**
+ * Nến, quy tắc market, funding và phí cho một lần backtest (dùng chung cho `runJob` và what-if của AI Desk B+).
+ * Thiếu dữ liệu → `Unavailable`.
+ */
+export async function loadBacktestData(
+  deps: RunDeps,
+  strategy: string,
+  config: Record<string, unknown>,
+  userId: string,
+  interval: BacktestInterval,
+  from: number,
+  to: number,
+): Promise<Parameters<typeof backtest>[2]> {
+  const step = BACKTEST_INTERVALS[interval];
+  const [spot, perps] = await Promise.all([
+    waitOnLimit(() => deps.rest.getSpotSymbols()),
+    waitOnLimit(() => deps.rest.getPerpsSymbols()),
+  ]);
+  const markets: Parameters<typeof backtest>[2]["markets"] = {};
+  const funding: Parameters<typeof backtest>[2]["funding"] = {};
+  for (const m of marketsOf(strategy, config)) {
+    const sym = spot.find((x) => x.name === m) ?? perps.find((x) => x.name === m);
+    if (sym === undefined) throw new Unavailable("market_unknown");
+    const engine = spot.some((x) => x.name === m) ? "spot" : "perps";
+    const candles = await loadCandles(deps, engine, m, interval, from, to);
+    if (!covers(candles, from, to, step)) throw new Unavailable("history_short");
+    markets[m] = {
+      engine,
+      candles,
+      rules: {
+        tickSize: sym.tickSize,
+        stepSize: sym.stepSize,
+        minQuantity: sym.minQuantity,
+        minNotional: sym.minNotional,
+        ...(sym.makerFee === undefined ? {} : { makerFee: sym.makerFee }),
+        ...(sym.takerFee === undefined ? {} : { takerFee: sym.takerFee }),
+      },
+    };
+    if (engine === "perps") {
+      const rows = await deps.db
+        .select()
+        .from(fundingRates)
+        .where(
+          and(
+            eq(fundingRates.market, m),
+            gte(fundingRates.fundingTime, new Date(from)),
+            lt(fundingRates.fundingTime, new Date(to)),
+          ),
+        )
+        .orderBy(asc(fundingRates.fundingTime));
+      // SoDEX không có lịch sử funding thị trường; chỉ có phần marketdata đã ghi. Thiếu thì không chạy (DEC-40).
+      if ((rows[0]?.fundingTime.getTime() ?? Infinity) > from + 86_400_000)
+        throw new Unavailable("funding_short");
+      funding[m] = rows.map((r) => ({ at: r.fundingTime.getTime(), rate: r.rate }));
+    }
+  }
+  const pctToFraction = (v: string) => dec(v).div(100).toString();
+  return {
+    markets,
+    funding,
+    fees: {
+      spot: {
+        maker: pctToFraction(SODEX_BASE_FEE_PCT.spot.maker),
+        taker: pctToFraction(SODEX_BASE_FEE_PCT.spot.taker),
+      },
+      perps: {
+        maker: pctToFraction(SODEX_BASE_FEE_PCT.perps.maker),
+        taker: pctToFraction(SODEX_BASE_FEE_PCT.perps.taker),
+      },
+      builder: feeRateToFraction(await userBuilderRate(deps.db, userId, strategy)).toString(),
+    },
+    slippage: BACKTEST_SLIPPAGE,
+    intervalMs: step,
+  };
+}
+
 export async function runJob(deps: RunDeps, runId: string): Promise<void> {
   const [run] = await deps.db
     .select()
@@ -141,71 +217,10 @@ export async function runJob(deps: RunDeps, runId: string): Promise<void> {
     Date.parse(`${run.dataVersion.split(":")[1] ?? ""}T00:00:00Z`),
     run.periodDays as BacktestPeriod,
   );
-  const step = BACKTEST_INTERVALS[interval];
   try {
     const config = run.config as Record<string, unknown>;
-    const [spot, perps] = await Promise.all([
-      waitOnLimit(() => deps.rest.getSpotSymbols()),
-      waitOnLimit(() => deps.rest.getPerpsSymbols()),
-    ]);
-    const markets: Parameters<typeof backtest>[2]["markets"] = {};
-    const funding: Parameters<typeof backtest>[2]["funding"] = {};
-    for (const m of marketsOf(run.strategy, config)) {
-      const sym = spot.find((x) => x.name === m) ?? perps.find((x) => x.name === m);
-      if (sym === undefined) throw new Unavailable("market_unknown");
-      const engine = spot.some((x) => x.name === m) ? "spot" : "perps";
-      const candles = await loadCandles(deps, engine, m, interval, from, to);
-      if (!covers(candles, from, to, step)) throw new Unavailable("history_short");
-      markets[m] = {
-        engine,
-        candles,
-        rules: {
-          tickSize: sym.tickSize,
-          stepSize: sym.stepSize,
-          minQuantity: sym.minQuantity,
-          minNotional: sym.minNotional,
-          ...(sym.makerFee === undefined ? {} : { makerFee: sym.makerFee }),
-          ...(sym.takerFee === undefined ? {} : { takerFee: sym.takerFee }),
-        },
-      };
-      if (engine === "perps") {
-        const rows = await deps.db
-          .select()
-          .from(fundingRates)
-          .where(
-            and(
-              eq(fundingRates.market, m),
-              gte(fundingRates.fundingTime, new Date(from)),
-              lt(fundingRates.fundingTime, new Date(to)),
-            ),
-          )
-          .orderBy(asc(fundingRates.fundingTime));
-        // SoDEX không có lịch sử funding thị trường; chỉ có phần marketdata đã ghi. Thiếu thì không chạy (DEC-40).
-        if ((rows[0]?.fundingTime.getTime() ?? Infinity) > from + 86_400_000)
-          throw new Unavailable("funding_short");
-        funding[m] = rows.map((r) => ({ at: r.fundingTime.getTime(), rate: r.rate }));
-      }
-    }
-    const pctToFraction = (v: string) => dec(v).div(100).toString();
-    const r = backtest(run.strategy, config, {
-      markets,
-      funding,
-      fees: {
-        spot: {
-          maker: pctToFraction(SODEX_BASE_FEE_PCT.spot.maker),
-          taker: pctToFraction(SODEX_BASE_FEE_PCT.spot.taker),
-        },
-        perps: {
-          maker: pctToFraction(SODEX_BASE_FEE_PCT.perps.maker),
-          taker: pctToFraction(SODEX_BASE_FEE_PCT.perps.taker),
-        },
-        builder: feeRateToFraction(
-          await userBuilderRate(deps.db, run.userId, run.strategy),
-        ).toString(),
-      },
-      slippage: BACKTEST_SLIPPAGE,
-      intervalMs: step,
-    });
+    const data = await loadBacktestData(deps, run.strategy, config, run.userId, interval, from, to);
+    const r = backtest(run.strategy, config, data);
     const result: BacktestResult = {
       interval,
       candles: r.candles,
@@ -221,7 +236,7 @@ export async function runJob(deps: RunDeps, runId: string): Promise<void> {
       equity: r.equity,
       metrics: r.metrics,
       halted: r.halted,
-      perps: Object.values(markets).some((m) => m.engine === "perps"),
+      perps: Object.values(data.markets).some((m) => m.engine === "perps"),
     };
     await deps.db
       .update(backtestRuns)
