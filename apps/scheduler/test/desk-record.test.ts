@@ -2,7 +2,7 @@ import { createDb, runMigrations, type Db } from "@drift/db";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { queueDueRecords, sweepStaleDeskJobs } from "../src/desk-record";
+import { purgeOldDeskAiChats, queueDueRecords, sweepStaleDeskJobs } from "../src/desk-record";
 
 // AI Desk B+ M4 (DEC-166): xếp job đo thành tích 7 ngày sau khi version AI thật sự được áp, mỗi lần Apply một job.
 
@@ -135,5 +135,33 @@ describe("stale desk jobs", () => {
     // Lượt sau của queueDueRecords xếp lại job đo bị mất.
     expect(await queueDueRecords(db, NOW)).toBe(1);
     expect(await jobsFor(lost)).toBe(1);
+
+describe("desk ai retention", () => {
+  it("deletes chats older than 90 days with their turns, and keeps newer ones", async () => {
+    const q = async (sql: string, p: unknown[]) =>
+      (await pool.query<{ id: string }>(sql, p)).rows[0]?.id ?? "";
+    const user = await q(
+      "insert into users (id, email) values (gen_random_uuid(), $1) returning id",
+      [`ai${String(Math.random())}@x.test`],
+    );
+    const conv = (days: number) =>
+      q(
+        "insert into desk_ai_conversations (id, user_id, kind, title, local_date, created_at) values (gen_random_uuid(), $1, 'chat', 'q', '2026-01-01', $2) returning id",
+        [user, new Date(NOW - days * DAY)],
+      );
+    const old = await conv(91);
+    const recent = await conv(89);
+    for (const c of [old, recent])
+      await pool.query(
+        `insert into desk_ai_turns (id, conversation_id, user_id, kind, local_date, answer, source, prompt_version, fact_ids)
+         values (gen_random_uuid(), $1, $2, 'question', '2026-01-01', '{}', 'template', 'desk-ai-v1', '{}')`,
+        [c, user],
+      );
+    expect(await purgeOldDeskAiChats(db, NOW)).toBe(1);
+    const { rows } = await pool.query<{ conversation_id: string }>(
+      "select conversation_id from desk_ai_turns where user_id = $1",
+      [user],
+    );
+    expect(rows.map((r) => r.conversation_id)).toEqual([recent]);
   });
 });
