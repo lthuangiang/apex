@@ -51,6 +51,7 @@ Số mục được giữ ổn định, nên khi tài liệu ghi "mục X" thì 
 | `docs/DECISIONS.md` | nhật ký quyết định | khi thấy mâu thuẫn hoặc định đổi một quyết định |
 | `docs/OPEN_QUESTIONS.md` | 15 | trước khi code phần có **[confirm]** |
 | `docs/DEPLOY.md` | deploy | đưa lên VPS production, backup, rollback (DEC-70) |
+| `docs/RELEASE.md` | release | người dùng gõ "release": PM tạo tag, GitHub build image, trả tag (deploy vẫn chạy tay) |
 | `docker-compose.yml` | — | chạy toàn hệ thống |
 
 ---

@@ -8,8 +8,8 @@
 | File | Việc |
 |---|---|
 | `docker-compose.prod.yml` | Chồng lên `docker-compose.yml`: image từ 1 repo private Docker Hub, tag `<app>-<git sha>`, mỗi service 1 bản, backtest 1 CPU / 1 GB, HTTPS Let's Encrypt, Vault profile `prod` |
-| `.github/workflows/deploy.yml` | Chạy tay. check → build 10 image `linux/amd64` (biến `PLATFORM` để đổi) → push Docker Hub → SSH vào VPS chạy `deploy.sh` |
-| `infra/deploy/build-push.sh` | Cách làm tay thay workflow: build + push từ máy mình, tuỳ chọn deploy luôn |
+| `.github/workflows/release.yml` | Chạy khi push tag `vX.Y.Z` trên `main` (`docs/RELEASE.md`): kiểm tra CI của commit đã xanh → build 10 image `linux/amd64` (biến `PLATFORM` để đổi) → push Docker Hub `<app>-<tag>` + `<app>-latest` → tạo GitHub Release. **Không deploy.** Thay `deploy.yml` cũ (2026-11-12) |
+| `infra/deploy/build-push.sh` | Deploy lên VPS: `--deploy-only <tag>` cho tag do `release.yml` build; vẫn build + push từ máy mình được khi GitHub không dùng được |
 | `infra/deploy/bootstrap-vps.sh` | Chạy 1 lần bằng root trên VPS mới: Docker, user `deploy`, swap 4 GB, ufw, SSH chỉ bằng key, vá tự động, cron backup |
 | `infra/deploy/deploy.sh` | Trên VPS: pull → hạ tầng → migrate → mọi service healthy; không healthy trong 5 phút thì quay về tag trước |
 | `infra/deploy/backup.sh` | 03:15 mỗi ngày: `pg_dump` + tar volume Vault / NATS / Let's Encrypt, giữ 14 ngày, tuỳ chọn mã hoá `age` + `rclone` ra ngoài |
@@ -35,7 +35,9 @@ scp infra/deploy/bootstrap-vps.sh infra/certs/gen-dev-certs.sh root@<IP>:/root/
 ssh root@<IP> 'bash /root/bootstrap-vps.sh'
 ```
 
-### 2.3 Khoá SSH cho GitHub Actions
+### 2.3 Khoá SSH cho GitHub Actions (không còn dùng)
+Từ 2026-11-12 GitHub chỉ build, không SSH vào VPS, nên không cần khoá này. Giữ phần dưới để tham khảo nếu sau này cho Actions deploy.
+
 Trên máy mình:
 ```bash
 ssh-keygen -t ed25519 -N "" -C github-deploy -f drift_deploy
@@ -77,10 +79,9 @@ Cert mTLS hết hạn sau `CERT_DAYS` ngày. Đặt lịch nhắc tạo lại tr
 ### 2.6 GitHub
 1. `git init`, push lên repo **private**.
 2. Settings › Secrets and variables › Actions:
-   - Secrets: `VPS_HOST` (IP), `VPS_USER` (`deploy`), `VPS_SSH_KEY` (nội dung `drift_deploy`), `VPS_KNOWN_HOSTS`.
-   - Secrets thêm: `DOCKERHUB_TOKEN` (token `drift-push`).
+   - Secret: `DOCKERHUB_TOKEN` (token `drift-push`, quyền Read & Write). Người dùng tự đặt: `gh secret set DOCKERHUB_TOKEN --repo <owner>/<repo>`.
    - Variables: `DOCKERHUB_USERNAME`, `DRIFT_IMAGE` (`docker.io/<user>/drift`), `WALLETCONNECT_PROJECT_ID` (nhúng vào web lúc build; trống thì ẩn WalletConnect).
-3. GitHub Free không có "Required reviewers" cho repo private: workflow chỉ chạy khi bấm **Actions › deploy › Run workflow**.
+3. Workflow `release` chỉ chạy khi có tag `vX.Y.Z`; tag do PM tạo khi người dùng gõ "release" (`docs/RELEASE.md`).
 
 ### 2.7 Sau lần deploy đầu
 1. Vault tự init. **Ngay lập tức** chép unseal key và root token ra trình quản lý mật khẩu:
@@ -91,11 +92,11 @@ Cert mTLS hết hạn sau `CERT_DAYS` ngày. Đặt lịch nhắc tạo lại tr
 2. Mở `https://<APP_HOST>`, đăng ký, bật 2FA, kết nối SoDEX, rồi mới tạo bot.
 
 ## 3. Deploy hằng ngày
-1. Push lên `main` (CI chạy như cũ).
-2. Actions › deploy › Run workflow (nhánh `main`).
-3. Workflow build image `<DRIFT_IMAGE>:<app>-<sha>`, chép compose + `infra/` lên VPS (không chép `.env`, cert), chạy `deploy.sh <sha>`.
+1. PR merge vào `main`, CI xanh.
+2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push 10 image → PM trả tag (`docs/RELEASE.md`).
+3. Người dùng deploy: `infra/deploy/build-push.sh --deploy-only vX.Y.Z` (rollback: cùng lệnh với tag cũ).
 
-Làm tay, không qua GitHub (máy đã `docker login` bằng token `drift-push`):
+Build từ máy mình, không qua GitHub (máy đã `docker login` bằng token `drift-push`):
 ```bash
 DRIFT_IMAGE=docker.io/<user>/drift infra/deploy/build-push.sh deploy@<IP>
 ```
