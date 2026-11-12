@@ -152,7 +152,7 @@ Lỗi theo format C6. Thêm mã lỗi `TELEGRAM_NOT_CONNECTED`, `TELEGRAM_LINK_E
 4. Số tiền trong tin Telegram: **có**, theo luật ở mục 5.
 5. Để sau: hỏi Desk AI ngay trong Telegram (tính vào 20 câu/ngày), giờ im lặng, push trình duyệt.
 
-## 13. Báo team qua Telegram (DEC-TBD-team-ops-alerts, người dùng chốt 2026-11-12)
+## 13. Báo team qua Telegram (DEC-184, người dùng chốt 2026-11-12)
 
 Thành viên **role `team`** (DEC-64) đã kết nối Telegram nhận tin khi có hoạt động mới của người dùng, để theo dõi tăng trưởng và hỗ trợ kịp lúc.
 
