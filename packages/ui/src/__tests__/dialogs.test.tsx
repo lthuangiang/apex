@@ -45,21 +45,24 @@ function StopHarness({
 }
 
 describe("ConfirmDialog", () => {
+  // First test in the file: it pays the jsdom/Radix/axe warm-up. ~650 ms locally, but up to ~5.6 s on the 2-vCPU CI
+  // runner while other packages test in parallel, so it gets its own timeout. No timer delay between keystrokes.
   it("lists consequences and needs a 2FA code before confirming", async () => {
+    const user = userEvent.setup({ delay: null });
     const onConfirm = vi.fn();
     render(<StopHarness onConfirm={onConfirm} />);
-    await userEvent.click(screen.getByRole("button", { name: "Stop…" }));
+    await user.click(screen.getByRole("button", { name: "Stop…" }));
 
     const dialog = screen.getByRole("dialog", { name: "Stop bot?" });
     expect(dialog).toHaveTextContent("Cancel 12 open orders");
     const confirm = screen.getByRole("button", { name: "Stop bot" });
     expect(confirm).toBeDisabled();
 
-    await userEvent.type(screen.getByLabelText("2FA code"), "123456");
-    await userEvent.click(confirm);
+    await user.type(screen.getByLabelText("2FA code"), "123456");
+    await user.click(confirm);
     expect(onConfirm).toHaveBeenCalledOnce();
     await expectNoAxeViolations();
-  });
+  }, 15_000);
 
   it("returns focus to the trigger when closed", async () => {
     render(<StopHarness />);
