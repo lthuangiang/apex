@@ -416,12 +416,12 @@ describe("Volume bots per user (DEC-80)", () => {
     maxLoss: "20",
   };
 
-  it("offers Market Making and Volume Farming to new accounts, and hides them once the team turns them off", async () => {
+  it("offers Market Making, Volume Farming and AI Desk to new accounts, and hides the volume bots once the team turns them off", async () => {
     const { client } = await connectedUser("vm-flag@example.com");
     expect((await client.request("GET", "/api/v1/features")).json()).toMatchObject({
       volumeMaker: true,
       volumeFarm: true,
-      aiDesk: false,
+      aiDesk: true,
     });
     await env.pool.query(
       "update users set volume_bots = false where email = 'vm-flag@example.com'",
@@ -429,7 +429,7 @@ describe("Volume bots per user (DEC-80)", () => {
     expect((await client.request("GET", "/api/v1/features")).json()).toMatchObject({
       volumeMaker: false,
       volumeFarm: false,
-      aiDesk: false,
+      aiDesk: true,
     });
     for (const [strategy, config] of [
       ["volume_maker", vmConfig],
@@ -551,7 +551,7 @@ describe("Volume bots per user (DEC-80)", () => {
     expect((await client.request("GET", "/api/v1/features")).json()).toMatchObject({
       volumeMaker: true,
       volumeFarm: true,
-      aiDesk: false,
+      aiDesk: true,
     });
     const created = await client.request("POST", "/api/v1/bots", {
       body: { strategy: "volume_farm", name: "Farm", paramSource: "manual", config: farmConfig },

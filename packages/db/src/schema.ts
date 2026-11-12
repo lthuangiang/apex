@@ -61,7 +61,7 @@ export const users = pgTable(
     /** Market Making và Volume Farming mở cho mọi tài khoản (DEC-94); team tắt được từng người ở Users. */
     volumeBots: boolean("volume_bots").notNull().default(true),
     /** AI Desk: team bật theo tài khoản ở Users (DEC-105). */
-    aiDesk: boolean("ai_desk").notNull().default(false),
+    aiDesk: boolean("ai_desk").notNull().default(true),
     twofaEnabled: boolean("twofa_enabled").notNull().default(false),
     /** Secret TOTP đã mã hoá (AES-256-GCM); null khi chưa bật. */
     twofaSecret: text("twofa_secret"),

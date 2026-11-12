@@ -1993,6 +1993,12 @@ describe("engine", () => {
       (await db.select().from(botRuntime).where(eq(botRuntime.botId, botId)))[0]?.state as
         { regime?: string } | undefined;
     // Một engine cho cả hai giai đoạn: chưa bật AI Desk thì không nạp bot; bật rồi thì vòng sau nạp và gửi nến.
+    // AI Desk mặc định bật (DEC-TBD-desk-for-all): tắt rõ ràng cho giai đoạn đầu.
+    const [owner] = await db.select().from(bots).where(eq(bots.id, botId));
+    await db
+      .update(users)
+      .set({ aiDesk: false })
+      .where(eq(users.id, owner?.userId ?? ""));
     const e = farmEngine(gw, "adca");
     await e.tick();
     await e.onPrice("ETH-USD", "100", clock);

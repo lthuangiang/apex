@@ -53,8 +53,7 @@ afterAll(async () => {
 async function deskUser(email: string, opts: { connect?: boolean; desk?: boolean } = {}) {
   const client = new TestClient(env.app);
   const me = meSchema.parse((await signIn(env, client, email)).json());
-  if (opts.desk !== false)
-    await env.pool.query("update users set ai_desk = true where id = $1", [me.id]);
+  await env.pool.query("update users set ai_desk = $2 where id = $1", [me.id, opts.desk !== false]);
   if (opts.connect !== false) {
     const accountID = Math.floor(Math.random() * 1e9);
     env.sodex.addUser(ADDRESS, accountID);
