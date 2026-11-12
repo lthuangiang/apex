@@ -4,6 +4,7 @@ import {
   telegramLinkCreatedSchema,
   telegramLinkStatusSchema,
   type NotificationGroup,
+  type TelegramLinkCreated,
   type TelegramLinkStatus,
 } from "@drift/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,11 +18,13 @@ import { ApiError, api } from "@/lib/api";
 export const TELEGRAM_LINK_KEY = ["telegram", "link"] as const;
 /** Poll trạng thái mỗi 2 s khi hộp thoại kết nối đang mở (mục 3 bước 6). */
 export const TELEGRAM_POLL_MS = 2_000;
+/** Hộp thoại đã đóng mà link còn chờ: poll thưa hơn (review PR #33). */
+export const TELEGRAM_POLL_CLOSED_MS = 10_000;
 
 /**
  * Trạng thái kết nối. `disabled`: server tắt Telegram (`TELEGRAM_ENABLED=false` → 404), UI hiện "Coming soon".
- * Poll 2 s khi hộp thoại mở, hoặc khi server còn link đang chờ (hộp thoại đã đóng nhưng người dùng vẫn có thể
- * bấm Start), để thẻ tự chuyển sang Connected.
+ * Poll 2 s khi hộp thoại mở; 10 s khi hộp thoại đã đóng mà server còn link đang chờ (người dùng vẫn có thể bấm
+ * Start), để thẻ tự chuyển sang Connected.
  */
 export function useTelegramLink(dialogOpen: boolean) {
   return useQuery({
@@ -35,9 +38,32 @@ export function useTelegramLink(dialogOpen: boolean) {
       }
     },
     refetchInterval: (q) =>
-      dialogOpen || q.state.data?.status === "pending" ? TELEGRAM_POLL_MS : false,
+      dialogOpen
+        ? TELEGRAM_POLL_MS
+        : q.state.data?.status === "pending"
+          ? TELEGRAM_POLL_CLOSED_MS
+          : false,
     staleTime: 5_000,
   });
+}
+
+/**
+ * Deep link tạo trong phiên này: chỉ giữ trong cache bộ nhớ của React Query (không localStorage, không URL), để
+ * "Show link again" mở lại đúng link sau khi đóng hộp thoại hoặc chuyển tab. Tải lại trang thì mất.
+ */
+export const TELEGRAM_CREATED_KEY = ["telegram", "created"] as const;
+
+export function useCreatedTelegramLink(): TelegramLinkCreated | null {
+  return (
+    useQuery({
+      queryKey: TELEGRAM_CREATED_KEY,
+      queryFn: () => null as TelegramLinkCreated | null,
+      enabled: false,
+      staleTime: Infinity,
+      // Link sống 10 phút; giữ quá hạn đó một chút rồi bỏ.
+      gcTime: 15 * 60_000,
+    }).data ?? null
+  );
 }
 
 export function useCreateTelegramLink() {
@@ -47,7 +73,8 @@ export function useCreateTelegramLink() {
       api("POST", "/api/v1/telegram/link", telegramLinkCreatedSchema, {
         idempotencyKey: crypto.randomUUID(),
       }),
-    onSuccess: async () => {
+    onSuccess: async (created) => {
+      qc.setQueryData(TELEGRAM_CREATED_KEY, created);
       await qc.invalidateQueries({ queryKey: TELEGRAM_LINK_KEY });
     },
   });

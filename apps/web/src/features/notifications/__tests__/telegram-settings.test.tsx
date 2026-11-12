@@ -215,6 +215,48 @@ describe("Connect Telegram", () => {
   });
 });
 
+describe("Show link again", () => {
+  const posts = () =>
+    server.calls.filter((c) => c.method === "POST" && c.path === "/api/v1/telegram/link");
+
+  it("reopens the same link after the dialog was closed, without a new POST", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderTab();
+    await user.click(await screen.findByRole("button", { name: "Connect Telegram" }));
+    const dialog = await screen.findByRole("dialog", { name: "Connect Telegram" });
+    const href = within(dialog).getByRole("link", { name: "Open Telegram" }).getAttribute("href");
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    await user.click(await screen.findByRole("button", { name: "Show link again" }));
+    const again = await screen.findByRole("dialog", { name: "Connect Telegram" });
+    expect(within(again).getByRole("link", { name: "Open Telegram" })).toHaveAttribute(
+      "href",
+      href ?? "",
+    );
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("after a reload (no link in memory) makes one new link and opens it", async () => {
+    server.link = {
+      status: "pending",
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    };
+    const user = userEvent.setup({ delay: null });
+    renderTab();
+    await user.click(await screen.findByRole("button", { name: "Show link again" }));
+    const dialog = await screen.findByRole("dialog", { name: "Connect Telegram" });
+    expect(within(dialog).getByRole("link", { name: "Open Telegram" })).toHaveAttribute(
+      "href",
+      `https://t.me/desklabsbot?start=${TOKEN}`,
+    );
+    expect(posts()).toHaveLength(1);
+    // Link mới: đếm lại từ 10 phút.
+    expect(await within(dialog).findByText(/Link works for (10:00|9:5\d)/)).toBeInTheDocument();
+  });
+});
+
 describe("Telegram card states", () => {
   it("connected: Disconnect asks first, then calls DELETE", async () => {
     server.link = {

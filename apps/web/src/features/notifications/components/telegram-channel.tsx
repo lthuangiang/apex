@@ -13,6 +13,7 @@ import { useMe } from "@/lib/queries";
 import {
   formatCountdown,
   telegramGroupsOn,
+  useCreatedTelegramLink,
   useCreateTelegramLink,
   useDeleteTelegramLink,
   useTelegramLink,
@@ -51,10 +52,11 @@ export function TelegramChannel({
   const me = useMe();
   const timeZone = me.data?.timezone ?? "Asia/Ho_Chi_Minh";
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [link, setLink] = useState<TelegramLinkCreated | null>(null);
   const [confirmOff, setConfirmOff] = useState(false);
   const create = useCreateTelegramLink();
   const remove = useDeleteTelegramLink();
+  // Link tạo trong phiên này (chỉ trong bộ nhớ), để "Show link again" mở lại đúng link.
+  const link = useCreatedTelegramLink();
 
   const query = useTelegramLink(dialogOpen);
   const status = query.data;
@@ -67,11 +69,16 @@ export function TelegramChannel({
 
   const startConnect = () => {
     create.mutate(undefined, {
-      onSuccess: (created) => {
-        setLink(created);
+      onSuccess: () => {
         setDialogOpen(true);
       },
     });
+  };
+  // Còn link trong bộ nhớ và chưa hết hạn: mở lại đúng link đó. Không còn (đã tải lại trang): tạo link mới
+  // (server huỷ token cũ), đếm lại 10 phút.
+  const showAgain = () => {
+    if (link !== null && Date.parse(link.expiresAt) > Date.now()) setDialogOpen(true);
+    else startConnect();
   };
   const createError =
     create.error === null
@@ -146,16 +153,28 @@ export function TelegramChannel({
         <span className="text-[13px] leading-normal text-ink-2">
           {t.rich("waitingBody", { time: formatCountdown(left), b: bold })}
         </span>
-        <Button
-          variant="secondary"
-          className="min-h-9 self-start text-[13px]"
-          pending={remove.isPending}
-          onClick={() => {
-            remove.mutate();
-          }}
-        >
-          {remove.isPending ? t("cancelling") : t("cancel")}
-        </Button>
+        <div className="flex flex-wrap gap-1.5">
+          <Button
+            variant="secondary"
+            className="min-h-9 text-[13px]"
+            pending={create.isPending}
+            disabled={remove.isPending}
+            onClick={showAgain}
+          >
+            {create.isPending ? t("gettingLink") : t("showAgain")}
+          </Button>
+          <Button
+            variant="secondary"
+            className="min-h-9 text-[13px]"
+            pending={remove.isPending}
+            disabled={create.isPending}
+            onClick={() => {
+              remove.mutate();
+            }}
+          >
+            {remove.isPending ? t("cancelling") : t("cancel")}
+          </Button>
+        </div>
       </>
     );
   } else {

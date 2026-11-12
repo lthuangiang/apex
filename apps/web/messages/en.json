@@ -2056,6 +2056,7 @@
         "gettingLink": "Getting a link…",
         "waiting": "Waiting for Telegram…",
         "waitingBody": "Tap <b>Start</b> in Telegram. This link works for {time} more.",
+        "showAgain": "Show link again",
         "cancel": "Cancel",
         "cancelling": "Cancelling…",
         "connectedAs": "Connected as <b>@{username}</b> · since {date}",
@@ -2722,7 +2723,8 @@
     "settings.notifications.connect.alertsGoToNoUsername",
     "settings.notifications.connect.items.fills",
     "settings.notifications.connect.items.copyTrading",
-    "settings.notifications.connect.gettingLink"
+    "settings.notifications.connect.gettingLink",
+    "settings.notifications.telegramCard.showAgain"
   ],
   "bots": {
     "title": "Strategy Lab",
