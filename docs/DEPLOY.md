@@ -193,7 +193,8 @@ Phần A2: `apps/mcp` (MCP Streamable HTTP, cổng 8097) ở `https://mcp.deskla
    - `curl -s https://mcp.desklabs.xyz/.well-known/oauth-protected-resource/mcp` trả JSON có `resource: "https://mcp.desklabs.xyz/mcp"` và `authorization_servers: ["https://desklabs.xyz"]`;
    - `curl -si -X POST https://mcp.desklabs.xyz/mcp` trả `401` kèm header `WWW-Authenticate: Bearer scope="read", resource_metadata="…"`.
    - `curl -s -o /dev/null -w '%{http_code}' -X POST https://desklabs.xyz/api/v1/oauth/introspect` và `…/api/v1/mcp/calls` đều trả `403` (Traefik chặn).
-5. Rate limit (đếm trong Redis, key `mcp:rl:*`): 60 lần/phút/token, 5.000 lần/ngày/người dùng, team 120 lần/phút. Vượt → 429.
+5. Team dùng `/team/mcp` trong Claude Code (chỉ tài khoản role `team`): xem `docs/MCP.md` phụ lục A (`claude mcp add --transport http --scope user desklabs-team https://mcp.desklabs.xyz/team/mcp`, rồi `/mcp` › Authenticate).
+6. Rate limit (đếm trong Redis, key `mcp:rl:*`): 60 lần/phút/token, 5.000 lần/ngày/người dùng, team 120 lần/phút. Vượt → 429.
 
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.

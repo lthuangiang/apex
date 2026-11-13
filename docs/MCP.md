@@ -204,9 +204,10 @@ Chỉ tài khoản DeskLabs có role `team`. Mỗi người tự kết nối b�
 
 1. Thêm server (một lần, trên máy của mình):
    ```bash
-   claude mcp add --transport http desklabs-team https://mcp.desklabs.xyz/team/mcp
+   claude mcp add --transport http --scope user desklabs-team https://mcp.desklabs.xyz/team/mcp
    ```
-2. Trong Claude Code gõ `/mcp`, chọn `desklabs-team` › Authenticate. Trình duyệt mở màn "Connect an app to DeskLabs" (đăng nhập + 2FA nếu chưa), kiểm tra quyền "Read DeskLabs team support data", bấm **Allow**.
+   `--scope user`: dùng được ở mọi thư mục (mặc định `local` chỉ có trong thư mục đang mở). Kiểm tra theo tài liệu Claude Code ngày 2026-11-13 (code.claude.com/docs/en/mcp).
+2. Trong Claude Code gõ `/mcp`, chọn `desklabs-team` › Authenticate (hoặc từ shell: `claude mcp login desklabs-team`; trình duyệt không tự mở thì chép URL được in ra). Trình duyệt mở màn "Connect an app to DeskLabs" (đăng nhập + 2FA nếu chưa), kiểm tra quyền "Read DeskLabs team support data", bấm **Allow**.
 3. Hỏi bằng lời thường, ví dụ "user nào có ví kết thúc bằng 4f2a, bot của họ đang dừng vì sao?". Tool dùng: `team_find_user`, `team_connect_attempts`, `team_user_bots`, `team_bot_timeline`, `team_unknown_orders`, `team_builder_revenue`, `team_reason_code`. Mọi tool chỉ đọc.
 4. Thu hồi: Settings › Connected apps › Revoke (có hiệu lực ngay). Mất role `team` thì mọi lần gọi bị từ chối ngay ở request kế tiếp.
 
@@ -221,3 +222,5 @@ Lưu ý:
 ## Phụ lục B · Tool đọc cho người dùng đã có (B1, DEC-220)
 
 `get_portfolio_summary`, `get_risk_status`, `list_bots`, `get_bot`, `get_bot_decisions`, `explain_reason_code`, `find_traders`, `get_trader`. apps/mcp gọi route nội bộ `GET /api/v1/mcp/me/*` của api (shared secret + `x-mcp-token`). api tự introspect token và chỉ đọc dữ liệu của người giữ token, qua đúng service mà màn hình đang dùng. Output theo schema trong `packages/shared/src/api/mcp.ts`. Tool AI Desk (B2, DEC-221): `list_needs_you`, `get_whatif`, `get_track_record` qua `GET /api/v1/mcp/me/desk/*`, cùng service với màn AI Desk; mọi output có câu `notForecast`. Bản nháp (B3, DEC-223): `draft_new_bot`, `draft_bot_change` qua `POST /api/v1/mcp/me/drafts/{new,change}`; web mở `?draft=` ở `/bots/new/:strategy` và `/bots/:botId/edit` (`GET /api/v1/drafts/:id`).
+
+**Prompts có sẵn (B4, DEC-TBD-mcp-prompts):** `morning_brief` (get_portfolio_summary kỳ 1 ngày + list_needs_you + get_risk_status), `explain_my_bot` (tham số `bot` tuỳ chọn; trống thì gọi list_bots và hỏi chọn; rồi get_bot, get_bot_decisions, explain_reason_code), `find_a_trader` (tham số `goal` tuỳ chọn; find_traders rồi get_trader tối đa 3). Chỉ ở endpoint `/mcp` (scope `read`), chỉ gọi tool đã có, không thêm dữ liệu. Câu mẫu ở `apps/mcp/src/prompts.ts`: không hứa lợi nhuận, không dự báo, có "not a forecast" khi nhắc so sánh / kết quả quá khứ; chữ người dùng gõ vào tham số được rút về một dòng ≤ 200 ký tự và đặt trong ngoặc kép.

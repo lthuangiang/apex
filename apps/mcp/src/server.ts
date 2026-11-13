@@ -10,6 +10,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import type { z } from "zod";
 
 import { ApiCallError, type ApiClient, type McpCallRecord } from "./api-client";
+import { PROMPTS } from "./prompts";
 import { checkLimits, type Counter } from "./rate-limit";
 
 // DeskLabs MCP server (docs/MCP.md mục 3, DEC-167, DEC-217). Resource server OAuth: kiểm tra token bằng
@@ -280,7 +281,7 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
     // Một server MCP mỗi request (không trạng thái): chỉ tool của endpoint này và trong scope của token.
     const server = new McpServer(
       { name: e === "team" ? "desklabs-team" : "desklabs", version: "1.0.0" },
-      { capabilities: { tools: {} } },
+      { capabilities: e === "user" ? { tools: {}, prompts: {} } : { tools: {} } },
     );
     const ctx: ToolContext = { token, introspection: intro, api: deps.api, now };
     for (const tool of deps.tools) {
@@ -351,6 +352,18 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
         },
       );
     }
+    // Prompts có sẵn (B4): chỉ ở endpoint người dùng, cần scope `read` (đã kiểm tra ở trên).
+    if (e === "user")
+      for (const p of PROMPTS)
+        server.registerPrompt(
+          p.name,
+          { title: p.title, description: p.description, argsSchema: p.args },
+          (args: Record<string, string | undefined>) => ({
+            messages: [
+              { role: "user" as const, content: { type: "text" as const, text: p.text(args) } },
+            ],
+          }),
+        );
     // Không trạng thái: không truyền `sessionIdGenerator` (SDK coi như không có phiên).
     const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
     reply.hijack();
