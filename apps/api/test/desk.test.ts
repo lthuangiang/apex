@@ -298,6 +298,13 @@ describe("AI Adaptive DCA (DEC-107)", () => {
       [off.userId],
     );
     expect(log[0]?.n).toBe("1");
+    // Engine pause xong thì Resume (hoặc Start) bị từ chối rõ ràng, không để bot kẹt Resuming.
+    await env.pool.query("update bots set state = 'paused' where id = $1", [firstId]);
+    const resumed = await off.client.request("POST", `/api/v1/bots/${firstId}/actions/resume`);
+    expect(errorOf(resumed.json())).toMatchObject({
+      code: "BOT_STATE_CONFLICT",
+      details: { reason: "strategy_off" },
+    });
 
     const on = await deskUser("adca-on@example.com");
     const made = await on.client.request("POST", "/api/v1/bots", {

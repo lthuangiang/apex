@@ -1152,6 +1152,7 @@
       "minSize": "Below SoDEX minimum order size.",
       "checks": "Some checks didn’t pass. Fix them and try again.",
       "state": "This action isn’t available in the bot’s current state.",
+      "strategyOff": "This strategy is turned off for your account, so the bot can’t start or resume. Open positions are unchanged.",
       "invalid": "Fix the highlighted fields.",
       "fieldRequired": "Enter a valid value.",
       "invalidFields": "Fix these fields: {fields}."
@@ -2518,7 +2519,12 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": ["beta", "adminUsers.cols.adaptiveDca", "adminUsers.adaptiveDca"],
+  "_pendingReview": [
+    "beta",
+    "adminUsers.cols.adaptiveDca",
+    "adminUsers.adaptiveDca",
+    "createBot.errors.strategyOff"
+  ],
   "beta": {
     "label": "Beta",
     "note": "Still being tested. Use small amounts."
