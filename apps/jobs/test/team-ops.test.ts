@@ -131,6 +131,44 @@ describe("team ops fan-out", () => {
     ).toHaveLength(2);
   });
 
+  it("sends MCP alerts to the team with masked emails only (DEC-TBD-mcp-monitoring)", async () => {
+    const lead = await user({ role: "team", telegram: "active" });
+    const heavy = await user({ email: "heavy.user@example.com" });
+    const other = await user({ email: "second@example.com" });
+    const teamer = await user({ role: "team", email: "ops@desklabs.test" });
+    expect(
+      await handleTeamOps(
+        { db, telegramEnabled: true },
+        { type: "team_mcp_daily_limit", userIds: [heavy, other, teamer] },
+      ),
+    ).toBeGreaterThan(0);
+    await handleTeamOps(
+      { db, telegramEnabled: true },
+      { type: "team_mcp_tool_errors", calls: 25, errors: 5, pct: "20", tool: "get_bot" },
+    );
+    const rows = await queuedFor([lead]);
+    const daily = rows.find((r) => r.type === "team_mcp_daily_limit");
+    expect(daily?.payload).toMatchObject({ count: 2 });
+    const text = JSON.stringify(rows.map((r) => r.payload));
+    expect(text).toContain("he···@example.com");
+    expect(text).not.toContain("heavy.user@example.com");
+    // Tài khoản team không bao giờ được nêu.
+    expect(text).not.toContain("ops@");
+    expect(rows.find((r) => r.type === "team_mcp_tool_errors")?.payload).toEqual({
+      calls: 25,
+      errors: 5,
+      pct: "20",
+      tool: "get_bot",
+    });
+    // Chỉ user team chạm giới hạn: không báo.
+    expect(
+      await handleTeamOps(
+        { db, telegramEnabled: true },
+        { type: "team_mcp_daily_limit", userIds: [teamer] },
+      ),
+    ).toBe(0);
+  });
+
   it("does not report team accounts, fake-money bots, or anything when Telegram is off", async () => {
     const lead = await user({ role: "team", telegram: "active" });
     const teammate = await user({ role: "team" });

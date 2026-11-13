@@ -463,3 +463,25 @@ export const botDraftViewSchema = z.object({
   expiresAt: isoDateTimeSchema,
 });
 export type BotDraftView = z.infer<typeof botDraftViewSchema>;
+
+// ---------- M6: theo dõi MCP (DEC-TBD-mcp-monitoring) ----------
+
+/** Ngưỡng cảnh báo team qua Telegram (PM chốt). Mỗi loại tối đa 1 tin / `throttleMs`. */
+export const MCP_MONITORING = {
+  /** Lỗi tool: cửa sổ 5 phút, chỉ lượt gọi tool thật (`ok` / `error`); báo khi đủ lượt VÀ đủ tỷ lệ. */
+  errorWindowMs: 5 * 60_000,
+  errorMinCalls: 20,
+  errorMinPct: 20,
+  /** Introspect lỗi (đếm trong Redis ở apps/mcp, theo phút). */
+  introspectWindowMs: 5 * 60_000,
+  introspectMinFailures: 10,
+  /** User chạm giới hạn theo ngày trong 30 phút qua. */
+  dailyLimitWindowMs: 30 * 60_000,
+  throttleMs: 30 * 60_000,
+} as const;
+
+/** Khoá Redis đếm lỗi introspect theo phút (apps/mcp ghi, scheduler đọc). */
+export const mcpIntrospectFailKey = (minute: number) => `mcp:introspect_fail:${String(minute)}`;
+
+/** Giá trị cột `mcp_calls.tool` cho dòng bị rate limit (không đổi schema). */
+export const MCP_LIMIT_TOOL = { per_minute: "limit:per_minute", per_day: "limit:per_day" } as const;

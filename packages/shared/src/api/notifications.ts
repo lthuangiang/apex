@@ -26,6 +26,10 @@ export const NOTIFICATION_TYPES = [
   "team_signup",
   "team_sodex_connected",
   "team_bot_started",
+  // Theo dõi MCP (DEC-TBD-mcp-monitoring): chỉ role `team`, chỉ Telegram, tối đa 1 tin / loại / 30 phút.
+  "team_mcp_tool_errors",
+  "team_mcp_introspect_failing",
+  "team_mcp_daily_limit",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -37,7 +41,14 @@ export const NOTIFICATION_GROUPS = {
   daily: ["daily_summary"],
   copyTrading: ["leader_big_move", "leader_position", "copy_bot_opened", "copy_bot_skipped"],
   telegram: ["telegram_connected", "telegram_moved", "telegram_blocked"],
-  teamOps: ["team_signup", "team_sodex_connected", "team_bot_started"],
+  teamOps: [
+    "team_signup",
+    "team_sodex_connected",
+    "team_bot_started",
+    "team_mcp_tool_errors",
+    "team_mcp_introspect_failing",
+    "team_mcp_daily_limit",
+  ],
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
 /**
@@ -160,6 +171,22 @@ export const teamOpsEventSchema = z.discriminatedUnion("type", [
     capital: z.string().nullable(),
     /** "USDC", hoặc coin base với TWAP. */
     capitalAsset: z.string().nullable(),
+  }),
+  // Theo dõi MCP (DEC-TBD-mcp-monitoring), scheduler phát. Không bao giờ chứa token id hay client id.
+  z.object({
+    type: z.literal("team_mcp_tool_errors"),
+    calls: z.number().int(),
+    errors: z.number().int(),
+    /** Phần trăm làm tròn, dạng chuỗi ("25"). */
+    pct: z.string(),
+    /** Tool lỗi nhiều nhất trong cửa sổ. */
+    tool: z.string().nullable(),
+  }),
+  z.object({ type: z.literal("team_mcp_introspect_failing"), failures: z.number().int() }),
+  z.object({
+    type: z.literal("team_mcp_daily_limit"),
+    /** User chạm giới hạn ngày; jobs đọc email và che lúc fan-out (tối đa 3 email trong tin). */
+    userIds: z.array(uuidSchema).min(1).max(50),
   }),
 ]);
 export type TeamOpsEvent = z.infer<typeof teamOpsEventSchema>;

@@ -12,7 +12,8 @@
       "following": "Open Following",
       "bot": "Open bot",
       "app": "Open DeskLabs",
-      "users": "Open Users"
+      "users": "Open Users",
+      "stats": "Open Stats"
     },
     "titles": {
       "bot_paused": "🔴 <b>{bot} paused</b>",
@@ -36,7 +37,13 @@
       "copy_bot_skipped_any": "⏭ <b>Your copy bot skipped a trade</b>",
       "team_signup": "🆕 <b>New signup</b> · {email}",
       "team_sodex_connected": "🔗 <b>SoDEX connected</b> · {email} · {wallet}",
-      "team_bot_started": "▶️ <b>Bot started</b> · {email} · {details}"
+      "team_bot_started": "▶️ <b>Bot started</b> · {email} · {details}",
+      "team_mcp_tool_errors": "MCP tools failing: {errors} of {calls} calls failed in the last 5 minutes ({pct}%).",
+      "team_mcp_tool_errors_most": "Most failures: {tool}.",
+      "team_mcp_introspect_failing": "MCP can't check tokens: {failures} failures in the last 5 minutes. Claude users see 'temporarily unavailable'.",
+      "team_mcp_daily_limit": "MCP daily limit reached by {users}: {emails}.",
+      "team_mcp_user": "{n} user",
+      "team_mcp_users": "{n} users"
     },
     "bodies": {
       "pausedReason": "{reason}. Open orders were kept.",

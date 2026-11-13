@@ -99,7 +99,37 @@ function targetOf(row: RenderRow): { path: string; label: string } {
     case "team_sodex_connected":
     case "team_bot_started":
       return { path: "/admin/users", label: M.buttons.users };
+    case "team_mcp_tool_errors":
+    case "team_mcp_introspect_failing":
+    case "team_mcp_daily_limit":
+      return { path: "/admin/stats", label: M.buttons.stats };
   }
+}
+
+/** Tin theo dõi MCP (DEC-TBD-mcp-monitoring): câu PM duyệt nguyên văn; email đã che lúc fan-out. */
+function mcpTitle(row: RenderRow): string {
+  const num = (k: string) => {
+    const v = row.data[k];
+    return typeof v === "number" ? v : 0;
+  };
+  if (row.type === "team_mcp_tool_errors") {
+    const tool = str(row.data.tool);
+    const head = fill(M.titles.team_mcp_tool_errors, {
+      errors: num("errors"),
+      calls: num("calls"),
+      pct: escapeTelegramHtml(str(row.data.pct) ?? "0"),
+    });
+    return tool === null
+      ? head
+      : `${head} ${fill(M.titles.team_mcp_tool_errors_most, { tool: escapeTelegramHtml(tool) })}`;
+  }
+  if (row.type === "team_mcp_introspect_failing")
+    return fill(M.titles.team_mcp_introspect_failing, { failures: num("failures") });
+  const n = num("count");
+  return fill(M.titles.team_mcp_daily_limit, {
+    users: fill(n === 1 ? M.titles.team_mcp_user : M.titles.team_mcp_users, { n }),
+    emails: escapeTelegramHtml(str(row.data.emails) ?? "···"),
+  });
 }
 
 /**
@@ -191,6 +221,10 @@ function title(row: RenderRow): string {
     case "team_sodex_connected":
     case "team_bot_started":
       return teamTitle(row);
+    case "team_mcp_tool_errors":
+    case "team_mcp_introspect_failing":
+    case "team_mcp_daily_limit":
+      return mcpTitle(row);
   }
 }
 
@@ -251,6 +285,9 @@ function body(row: RenderRow): string | null {
     case "team_signup":
     case "team_sodex_connected":
     case "team_bot_started":
+    case "team_mcp_tool_errors":
+    case "team_mcp_introspect_failing":
+    case "team_mcp_daily_limit":
       return null;
   }
 }
@@ -292,6 +329,13 @@ export function renderTelegram(rows: readonly RenderRow[], appUrl: string): Rend
     };
   }
   // Báo team: worker chỉ gộp CÙNG loại sự kiện ("3 new signups"), mở trang Users.
+  // Theo dõi MCP: mỗi loại tối đa 1 tin / 30 phút nên hiếm khi gộp; gộp thì liệt kê từng dòng, không thêm tiêu đề.
+  if (first.type.startsWith("team_mcp_")) {
+    return {
+      text: rows.map((r) => title(r)).join("\n"),
+      button: { text: M.buttons.stats, url: `${base}/admin/stats` },
+    };
+  }
   if (group === "teamOps") {
     const lines = rows.slice(0, MERGED_LINES).map((r) => `• ${plain(title(r))}`);
     if (rows.length > MERGED_LINES)

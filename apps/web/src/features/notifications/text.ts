@@ -91,6 +91,9 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
       case "team_signup":
       case "team_sodex_connected":
       case "team_bot_started":
+      case "team_mcp_tool_errors":
+      case "team_mcp_introspect_failing":
+      case "team_mcp_daily_limit":
         // Báo team chỉ đi Telegram (DEC-184), không có bản in-app; có ở đây để switch đủ.
         return { title: t(`types.${n.type}`), body: null };
       case "leader_big_move": {

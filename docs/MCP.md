@@ -130,6 +130,7 @@ Email trả nguyên vẹn chỉ cho team; không bao giờ trả secret, key, ch
 | Nhật ký `mcp_calls` | user, client, tool, hash tham số, thời gian chạy, trạng thái, `traceId`; giữ 90 ngày; không lưu nội dung trả về |
 | Thu hồi | Revoke token có hiệu lực ngay (kiểm tra mỗi request) |
 | Kiểm tra quyền | Mọi tool kiểm tra scope + quyền sở hữu tài nguyên ở `api`; user không đọc được dữ liệu của user khác |
+| Theo dõi (DEC-TBD-mcp-monitoring) | Báo team qua Telegram (nhóm `teamOps`), mỗi loại tối đa 1 tin / 30 phút: lỗi tool ≥ 20 lượt và ≥ 20% trong 5 phút; introspect lỗi ≥ 10 lần trong 5 phút (bộ đếm Redis theo phút ở apps/mcp, vì khi introspect lỗi thì không ghi được `mcp_calls`); có user chạm giới hạn ngày trong 30 phút (dòng `rate_limited` ghi `tool` = `limit:per_day` / `limit:per_minute`). Stats (role team) có mục "Claude (MCP)": user đã kết nối, lượt gọi 24h theo tool, tỷ lệ denied / rate limited |
 
 ---
 

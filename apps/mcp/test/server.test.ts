@@ -425,6 +425,46 @@ describe("MCP server", () => {
     await team.close();
   });
 
+  it("counts introspect failures per minute in Redis, and still answers 503 when Redis fails too", async () => {
+    const hits: string[] = [];
+    const broken: ApiClient = { ...api, introspect: () => Promise.reject(new Error("api down")) };
+    const mk = (counter: { hit: (k: string, w: number) => Promise<number> }) =>
+      buildMcpApp({
+        api: broken,
+        counter,
+        publicUrl: PUBLIC,
+        issuer: "https://desklabs.test",
+        tools: TOOLS,
+        logLevel: "silent",
+        now: () => new Date("2026-11-13T10:05:30Z"),
+      });
+    const ok = mk({
+      hit: (k) => {
+        hits.push(k);
+        return Promise.resolve(1);
+      },
+    });
+    expect(
+      (await ok.inject({ method: "POST", url: "/mcp", headers: { authorization: "Bearer user" } }))
+        .statusCode,
+    ).toBe(503);
+    expect(hits).toEqual([
+      `mcp:introspect_fail:${String(Math.floor(Date.parse("2026-11-13T10:05:30Z") / 60_000))}`,
+    ]);
+    await ok.close();
+    const down = mk({ hit: () => Promise.reject(new Error("redis down")) });
+    expect(
+      (
+        await down.inject({
+          method: "POST",
+          url: "/mcp",
+          headers: { authorization: "Bearer user" },
+        })
+      ).statusCode,
+    ).toBe(503);
+    await down.close();
+  });
+
   it("answers 503, not 500, when Redis is down", async () => {
     const down = buildMcpApp({
       api,
@@ -475,6 +515,10 @@ describe("MCP server", () => {
       );
     expect(codes.slice(0, 120).every((c) => c === 200)).toBe(true);
     expect(codes[120]).toBe(429);
+    // Dòng nhật ký ghi rõ giới hạn theo phút (DEC-TBD-mcp-monitoring).
+    expect(calls.filter((c) => c.status === "rate_limited").map((c) => c.tool)).toEqual([
+      "limit:per_minute",
+    ]);
     await limited.close();
   });
 });

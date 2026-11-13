@@ -62,4 +62,29 @@ describe("team ops message", () => {
     expect(lines.at(-1)).toBe("+2 more");
     expect(r.button.url).toBe("https://desklabs.test/admin/users");
   });
+
+  it("writes the MCP alerts with the approved sentences and an Open Stats button", () => {
+    const one = (type: RenderRow["type"], data: Record<string, unknown>) =>
+      renderTelegram([{ type, data, botName: null }], "https://desklabs.test");
+    const errors = one("team_mcp_tool_errors", {
+      calls: 25,
+      errors: 5,
+      pct: "20",
+      tool: "get_bot",
+    });
+    expect(errors.text).toBe(
+      "MCP tools failing: 5 of 25 calls failed in the last 5 minutes (20%). Most failures: get_bot.",
+    );
+    expect(errors.button).toEqual({ text: "Open Stats", url: "https://desklabs.test/admin/stats" });
+    expect(one("team_mcp_introspect_failing", { failures: 12 }).text).toBe(
+      "MCP can't check tokens: 12 failures in the last 5 minutes. Claude users see 'temporarily unavailable'.",
+    );
+    expect(one("team_mcp_daily_limit", { count: 1, emails: "he···@example.com" }).text).toBe(
+      "MCP daily limit reached by 1 user: he···@example.com.",
+    );
+    expect(
+      one("team_mcp_daily_limit", { count: 2, emails: "he···@example.com, se···@example.com" })
+        .text,
+    ).toBe("MCP daily limit reached by 2 users: he···@example.com, se···@example.com.");
+  });
 });

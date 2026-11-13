@@ -194,3 +194,15 @@ Thành viên **role `team`** (DEC-64) đã kết nối Telegram nhận tin khi c
 - API kiểm tra lại role `team` mỗi lần gửi (role bị gỡ thì ngừng nhận ngay).
 
 **Đã làm** (N3b, DEC-191): outbox `jobs.team_ops` → `apps/jobs/src/team-ops.ts` fan-out → worker Telegram. Test: không gửi cho user thường; không gửi sự kiện paper / của tài khoản team; che email/ví đúng; gộp 60 giây; quét output không có địa chỉ ví đầy đủ.
+
+### 13.1 Theo dõi MCP (DEC-TBD-mcp-monitoring)
+
+Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegram của thành viên team bật nhóm `teamOps`). Scheduler kiểm tra mỗi phút; mỗi loại tối đa 1 tin / 30 phút (khoá Redis). Câu PM duyệt, nút "Open Stats" mở `/admin/stats`:
+
+| Type | Khi nào | Tin |
+|---|---|---|
+| `team_mcp_tool_errors` | ≥ 20 lượt gọi tool (ok / error) trong 5 phút và ≥ 20% lỗi | "MCP tools failing: {errors} of {calls} calls failed in the last 5 minutes ({pct}%). Most failures: {tool}." |
+| `team_mcp_introspect_failing` | ≥ 10 lần introspect lỗi trong 5 phút (bộ đếm Redis của apps/mcp; Redis lỗi thì bỏ qua lần đếm) | "MCP can't check tokens: {failures} failures in the last 5 minutes. Claude users see 'temporarily unavailable'." |
+| `team_mcp_daily_limit` | Có user (không phải team) chạm 5.000 lượt / ngày trong 30 phút qua | "MCP daily limit reached by {n user / n users}: {emails}." (tối đa 3 email đã che) |
+
+Tin không bao giờ chứa token id hay client id.
