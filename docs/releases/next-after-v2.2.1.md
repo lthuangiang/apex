@@ -11,7 +11,7 @@ PM đổi tên file theo tag khi người dùng gõ "release" (có `feat` nên d
 - Claude can only read your data. It can't place trades, change bots or move funds.
 - Claude can draft a new bot or a change to a bot for you. You open the link in DeskLabs, review it and decide; drafts last 24 hours.
 - See and revoke connected apps any time in Settings › Connected apps.
-- Ready-made prompts: morning brief, explain my bot, find a trader to copy. **(chờ merge #85)**
+- Ready-made prompts: morning brief, explain my bot, find a trader to copy (#85).
 - Guide page "Connect DeskLabs to Claude". **(chờ merge, W7)**
 
 **AI Desk**
@@ -35,7 +35,7 @@ Not financial advice. Past results are not a forecast.
 - OAuth 2.1 trong `api`: metadata, CIMD + DCR, PKCE, resource bắt buộc, token xoay, consent, Connected apps (#72, DEC-215).
 - Tool team `/team/mcp` + route nội bộ `/api/v1/mcp/team/*`; Traefik chặn `/api/v1/oauth/introspect` và `/api/v1/mcp/` từ ngoài (#75, DEC-219).
 - Tool người dùng (#78, DEC-220), AI Desk (#79, DEC-221), bản nháp + step-up scope `draft` (#84, DEC-223).
-- Prompts (#85) và theo dõi MCP: báo team qua Telegram, mục MCP ở Stats (#88). **(chờ merge)**
+- Prompts (#85, DEC-224). Theo dõi MCP: báo team qua Telegram, mục MCP ở Stats (#88) **(chờ merge)**.
 - Mọi Dockerfile có thêm dòng manifest `apps/mcp` (DEC-214); `release.yml`, `changed-apps.sh`, `build-push.sh` tính 11 app.
 
 **Migration (chạy khi deploy, tương thích ngược)**
