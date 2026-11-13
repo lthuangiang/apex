@@ -351,7 +351,7 @@
         "name": "Copy Trade",
         "engine": "Perps",
         "fee": "every fill",
-        "what": "Follows one SoDEX wallet on one perpetual: opens when it opens, scales when it adds or cuts, closes when it closes. Only positions the wallet opens after you start are copied.",
+        "what": "Copies one Hyperliquid trader on SoDEX, on every market both list: opens when they open, scales when they add or cut, closes when they close. Only positions they open after you start are copied.",
         "short": "CT",
         "catalog": "Follow a SoDEX wallet"
       }
@@ -2016,7 +2016,7 @@
         "cellLabel": "{row}, {channel}",
         "alwaysOnLabel": "{row}, always on",
         "notAvailable": "{row}: not available",
-        "note": "Telegram messages include amounts, like today’s profit or loss. Wallet addresses and keys are never sent.",
+        "note": "Telegram messages include amounts, like a bot’s total profit or loss. Wallet addresses and keys are never sent.",
         "loadFailed": "Couldn’t load your notification settings. Try again in a moment.",
         "saveFailed": "Couldn’t save that change. Try again.",
         "rows": {
@@ -2181,7 +2181,8 @@
       "following": "★ Following",
       "copy": "Copy",
       "copyLater": "Follow · copy later",
-      "viewProfile": "View profile"
+      "viewProfile": "View profile",
+      "viewProfileOf": "View profile of {trader}"
     },
     "errors": {
       "followLimit": "You can follow up to {limit} traders. Unfollow one to add another."
@@ -2472,6 +2473,7 @@
       "emptyBody": "Follow up to 5 traders from Find traders to see their changes here.",
       "alertsTitle": "Tell me about big moves",
       "alertsBody": "A big move is a new or bigger position worth at least the alert threshold and at least 3× that trader’s usual size, counted over 15 minutes. At most one alert per trader and market every 10 minutes.",
+      "alertsBodyAt": "A big move is a new or bigger position worth at least {threshold} and at least 3× that trader’s usual size, counted over 15 minutes. At most one alert per trader and market every 10 minutes.",
       "alertsOff": "Big move alerts aren’t set up yet.",
       "alertsWhere": "Alerts show in DeskLabs. Turn on Telegram in <link>Settings › Notifications</link>.",
       "on": "On",
@@ -2479,7 +2481,14 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": [],
+  "_pendingReview": [
+    "settings.notifications.what.note",
+    "overview.netDepositsNote",
+    "copy.common.viewProfileOf",
+    "copy.following.alertsBodyAt",
+    "createBot.strategies.copy_trade.what",
+    "bots.long.copy_trade"
+  ],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",
@@ -2589,7 +2598,7 @@
       "volume_maker": "Quotes both sides with post-only orders to add liquidity and volume during SoDEX events, within a cost budget. Never trades with itself.",
       "volume_farm": "Opens one position at a time from 1-minute candles and the order book, holds it briefly, closes on profit, stop or time, then repeats to build traded volume.",
       "adaptive_dca": "DCA on a perpetual that enters only when the 5-minute trend and RSI suit it, spaces extra buys by recent volatility (ATR), never goes past your position cap, and pauses or exits when the market turns against it.",
-      "copy_trade": "Watches one SoDEX wallet in real time and mirrors its position on one perpetual, in proportion. Opens and adds use limit orders capped by your max price move and are skipped when price runs away. Cuts and closes always go through. Positions the wallet held before you started are never joined. Withdraw or transfer: never."
+      "copy_trade": "Copies one Hyperliquid trader on SoDEX across every market both list, in proportion. Opens and adds use limit orders capped by your max price move and are skipped when price runs away. Cuts and closes always go through. Positions the trader held before you started are never joined. Withdraw or transfer: never."
     },
     "renewKey": "Renew key",
     "moreActions": "More actions for {name}",
@@ -3304,7 +3313,7 @@
     "performance": "Performance",
     "equitySeries": "Equity",
     "netDeposits": "Net deposits",
-    "netDepositsNote": "Not available: SoDEX has no deposit history.",
+    "netDepositsNote": "Not available. SoDEX has no deposit history.",
     "viewTable": "View as table",
     "tableNote": "The same series is available as a timestamped table for screen readers and export.",
     "periods": {
