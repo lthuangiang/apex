@@ -2474,7 +2474,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": ["desk.ai.historyPage.deleteWhat"],
+  "_pendingReview": [],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",

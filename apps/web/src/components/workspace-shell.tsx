@@ -38,6 +38,7 @@ import {
 } from "react";
 
 import {
+  MobileNotificationBell,
   MobileNotificationsButton,
   NotificationBell,
 } from "@/features/notifications/components/notification-panel";
@@ -243,7 +244,7 @@ export interface PageUpdated {
 
 /**
  * Cụm đầy đủ (account, LIVE, SoDEX, Updated, chuông, avatar) chỉ ở Overview như artboard Main; các trang
- * khác chỉ có LIVE, trạng thái SoDEX và chip riêng của trang (artboard Portfolio, Agent, Bots…).
+ * khác có LIVE, trạng thái SoDEX, chip riêng của trang và chuông (artboard Portfolio, Agent, Bots…; NT-InApp).
  */
 export const FullClusterContext = createContext(false);
 /** Trang của bài thử tiền giả: không hiện chip LIVE · MAINNET (DEC-105). */
@@ -263,7 +264,8 @@ function StatusCluster() {
   // Key hết hạn hoặc không ký được (UI_REVIEW H1): không ghi "SoDEX connected".
   const keyStatus = conn.data?.connection?.apiKey?.status;
   const keyBad = keyStatus === "unusable" || keyStatus === "expired";
-  const notes = useNotifications(full);
+  // Một query dùng chung (cùng key, cùng poll 15 s) cho chuông, toast và sheet More.
+  const notes = useNotifications();
   const c = conn.data?.connection ?? null;
   const unread = notes.data?.unread ?? 0;
 
@@ -305,17 +307,9 @@ function StatusCluster() {
       ) : c === null || !full ? null : (
         <UpdatedAgo at={conn.dataUpdatedAt} />
       )}
-      {full ? <NotificationsAndAccount unread={unread} /> : null}
-    </>
-  );
-}
-
-function NotificationsAndAccount({ unread }: { unread: number }) {
-  return (
-    <>
-      {/* Chuông mở panel thông báo, không chuyển sang Settings nữa (docs/NOTIFICATIONS.md mục 7). */}
+      {/* Chuông ở mọi trang (artboard NT-InApp), mở panel thông báo (docs/NOTIFICATIONS.md mục 7). */}
       <NotificationBell unread={unread} />
-      <AccountMenu />
+      {full ? <AccountMenu /> : null}
     </>
   );
 }
@@ -334,9 +328,15 @@ function useAgeSeconds(at: number): number {
   return Math.max(0, Math.round((now - at) / 1000));
 }
 
+/** Chuông ở hàng tiêu đề điện thoại; cùng query `useNotifications` với chuông desktop và toast. */
+export function MobileBell() {
+  const notes = useNotifications();
+  return <MobileNotificationBell unread={notes.data?.unread ?? 0} />;
+}
+
 /**
  * Trạng thái gọn cho hàng tiêu đề mobile (artboard Mobile-Home, M-Portfolio): chip LIVE nhỏ cạnh tiêu đề và
- * dòng "● SoDEX · 12s ago" dưới tiêu đề. Chọn account, chuông, avatar nằm trong sheet More.
+ * dòng "● SoDEX · 12s ago" dưới tiêu đề. Chọn account, avatar nằm trong sheet More; chuông ở cả hàng tiêu đề lẫn More.
  */
 export function MobileLiveChip() {
   const tb = useTranslations("common.badges");

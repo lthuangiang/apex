@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import messages from "../../../../messages/en.json";
 import { HistoryPage } from "../components/history-page";
 
-// Desk AI › History (artboard B-History, DEC-TBD-history-open): mỗi cuộc trò chuyện là nút có mũi tên, mở ra các lượt
+// Desk AI › History (artboard B-History, DEC-198): mỗi cuộc trò chuyện là nút có mũi tên, mở ra các lượt
 // hỏi / trả lời có giờ; Delete history phải qua hộp xác nhận.
 
 const state = vi.hoisted(() => ({

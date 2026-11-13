@@ -33,7 +33,7 @@ function ConversationItem({ c }: { c: Conversation }) {
   const title = c.kind === "brief" ? t("brief") : c.title;
   return (
     <li className="border-t border-border first:border-t-0">
-      {/* Cả dòng là nút 44 px có mũi tên, để thấy là bấm được (PM chốt, DEC-TBD-history-open). */}
+      {/* Cả dòng là nút 44 px có mũi tên, để thấy là bấm được (PM chốt, DEC-198). */}
       <button
         type="button"
         aria-expanded={open}
