@@ -4,6 +4,7 @@ import {
   dec,
   groupLeaderEvents,
   leaderSubject,
+  HIP3_MAPPED_DEXES,
   sodexMarketOf,
   type CoinIndex,
   type LeaderEvent,
@@ -33,7 +34,7 @@ export interface HlLeaderTrackerDeps {
   followed(): Promise<string[]>;
   stream: HlStream;
   hl: {
-    clearinghouseState(user: string, priority: HlPriority): Promise<HlClearinghouse>;
+    clearinghouseState(user: string, priority: HlPriority, dex?: string): Promise<HlClearinghouse>;
     userFillsByTime(user: string, startTime: number, priority: HlPriority): Promise<HlFill[]>;
   };
   index(): CoinIndex;
@@ -87,15 +88,25 @@ export class HlLeaderTracker {
     }
   }
 
-  /** Đọc vị thế qua REST và publish (sau sync, sau reconnect). Chỉ market SoDEX có. */
+  /**
+   * Đọc vị thế qua REST và publish (sau sync, sau reconnect). Chỉ market SoDEX có. Đọc cả perp gốc lẫn các dex HIP-3
+   * được map (`xyz`): engine coi market thiếu trong ảnh chụp là vị thế 0, nên một lần đọc lỗi thì không publish gì
+   * (không bao giờ gửi ảnh chụp thiếu).
+   */
   async refreshPositions(address: string): Promise<void> {
-    const state = await this.#d.hl.clearinghouseState(address, "realtime");
+    const states = await Promise.all([
+      this.#d.hl.clearinghouseState(address, "realtime"),
+      ...HIP3_MAPPED_DEXES.map((dex) => this.#d.hl.clearinghouseState(address, "realtime", dex)),
+    ]);
     const index = this.#d.index();
     const positions: Record<string, string> = {};
-    for (const p of state.assetPositions) {
+    for (const p of states.flatMap((st) => st.assetPositions)) {
       const market = sodexMarketOf(p.position.coin, index);
-      if (market !== null && !dec(p.position.szi).isZero())
-        positions[market] = dec(p.position.szi).toString();
+      if (market === null || dec(p.position.szi).isZero()) continue;
+      // `SYM` và `xyz:SYM` cùng map một market: cộng dồn (vị thế ròng của trader trên market đó).
+      positions[market] = dec(positions[market] ?? "0")
+        .add(p.position.szi)
+        .toString();
     }
     this.#d.publish(leaderSubject("hyperliquid", address, "position"), {
       source: "hyperliquid",

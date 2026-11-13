@@ -15,6 +15,7 @@ import { adaptiveDcaOn, aiDeskOn, listBots, volumeBotsOn } from "./modules/bots/
 import { registerChartRoutes } from "./modules/chart/routes";
 import { createChartService, type LiquidationProvider } from "./modules/chart/service";
 import { registerCopyRoutes } from "./modules/copy/routes";
+import { sodexVolume24h } from "./modules/copy/volume";
 import { registerDataRoutes } from "./modules/data/routes";
 import type { DeskLlm } from "./modules/desk/llm";
 import { registerDeskRoutes } from "./modules/desk/routes";
@@ -167,7 +168,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const recoDeps = { db: deps.db, reco: deps.reco, rest: deps.sodex.rest, now };
   registerRecoRoutes(app, recoDeps);
   registerDeskRoutes(app, { bots: botDeps, reco: recoDeps, llm: deps.deskLlm ?? null });
-  registerCopyRoutes(app, { bots: botDeps, bigMoveMinUsd: deps.copyBigMoveMinUsd ?? null });
+  registerCopyRoutes(app, {
+    bots: botDeps,
+    bigMoveMinUsd: deps.copyBigMoveMinUsd ?? null,
+    volume24h: sodexVolume24h(deps.sodex.rest, now),
+  });
   registerSodexRoutes(app, { ...deps.sodex, db: deps.db, totpKey: deps.totpKey, now });
   const tg = deps.telegram;
   registerTelegramRoutes(app, {

@@ -241,8 +241,13 @@ export const copyPreviewSchema = z.object({
   }),
   builderFeeMax: z.string(),
   available: decimalStringSchema.nullable(),
+  /** Market có volume 24h trên SoDEX dưới `COPY_THIN_MARKET_USD` (lệnh copy dễ bị bỏ qua hoặc nhỏ hơn). */
+  thinMarkets: z.array(z.string()).default([]),
 });
 export type CopyPreview = z.infer<typeof copyPreviewSchema>;
+
+/** Ngưỡng cảnh báo "Thin market on SoDEX" (DEC-207): volume 24h theo quote (USD). */
+export const COPY_THIN_MARKET_USD = "50000";
 
 export const copyStartSchema = copyRequestSchema.extend({
   acknowledged: z.literal(true),
