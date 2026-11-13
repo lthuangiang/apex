@@ -204,8 +204,11 @@ describe("MCP server", () => {
       "get_bot_decisions",
       "get_portfolio_summary",
       "get_risk_status",
+      "get_track_record",
       "get_trader",
+      "get_whatif",
       "list_bots",
+      "list_needs_you",
     ]);
     // Mọi tool đều chỉ đọc.
     for (const t of (await user.listTools()).tools)

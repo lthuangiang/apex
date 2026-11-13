@@ -23,7 +23,7 @@ import {
   type TeamUser,
   type TeamUserBots,
 } from "@drift/shared";
-import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from "drizzle-orm";
 
 // Dữ liệu cho tool MCP nội bộ của team (docs/MCP.md mục 5A, DEC-219). Chỉ đọc. Người gọi đã qua
 // `requireMcpCaller(…, "team")`. Không bao giờ trả key, secret, chữ ký hay message EIP-712; thiếu dữ liệu → null kèm
@@ -105,6 +105,30 @@ const orderView = (o: OrderRow) => ({
   submittedAt: atOrNull(o.submittedAt),
   reconciledAt: atOrNull(o.reconciledAt),
 });
+
+/** Con trỏ trang: `<ISO mili giây>~<id>` hoặc `<ISO>~<event|order>~<id>` (timeline). */
+const cursorOf = (t: Date, id: string, kind?: "event" | "order") =>
+  kind === undefined ? `${t.toISOString()}~${id}` : `${t.toISOString()}~${kind}~${id}`;
+
+function parseCursor(raw: string, withKind: boolean) {
+  const parts = raw.split("~");
+  const [time, a, b] = parts;
+  const kind = withKind ? a : undefined;
+  const id = withKind ? b : a;
+  const ok =
+    parts.length === (withKind ? 3 : 2) &&
+    time !== undefined &&
+    !Number.isNaN(Date.parse(time)) &&
+    id !== undefined &&
+    UUID.test(id) &&
+    (!withKind || kind === "event" || kind === "order");
+  if (!ok) throw new AppError(ErrorCode.validationFailed, "Invalid cursor.");
+  return {
+    at: new Date(time),
+    id,
+    kind: kind === "order" ? ("order" as const) : ("event" as const),
+  };
+}
 
 /** Tìm user theo id, email (không phân biệt hoa thường) hoặc 4+ ký tự cuối ví (tối đa 20 kết quả). */
 export async function teamFindUser(deps: TeamDeps, query: string): Promise<TeamFindUser> {
@@ -363,36 +387,61 @@ export async function botTimeline(
   const now = deps.now();
   const from = input.from === undefined ? new Date(0) : new Date(input.from);
   const to = input.to === undefined ? now : new Date(input.to);
-  const before = input.cursor === undefined ? null : new Date(input.cursor);
-  const evConds = [
-    eq(botEvents.botId, bot.id),
-    gte(botEvents.occurredAt, from),
-    lte(botEvents.occurredAt, to),
-    ...(before === null ? [] : [lt(botEvents.occurredAt, before)]),
-  ];
-  const ordConds = [
-    eq(orders.botId, bot.id),
-    gte(orders.createdAt, from),
-    lte(orders.createdAt, to),
-    ...(before === null ? [] : [lt(orders.createdAt, before)]),
-  ];
+  const c = input.cursor === undefined ? null : parseCursor(input.cursor, true);
+  // Thứ tự: thời điểm (cắt tới mili giây, DB lưu micro giây) giảm dần, event trước order, rồi id giảm dần. Con trỏ là
+  // (thời điểm, loại, id) của mục cuối trang trước, nên không sót hay lặp mục cùng mili giây.
+  const evT = sql`date_trunc('milliseconds', ${botEvents.occurredAt})`;
+  const ordT = sql`date_trunc('milliseconds', ${orders.createdAt})`;
+  const evAfter =
+    c === null
+      ? []
+      : [
+          c.kind === "event"
+            ? sql`(${evT} < ${c.at} or (${evT} = ${c.at} and ${botEvents.id} < ${c.id}))`
+            : sql`${evT} < ${c.at}`,
+        ];
+  const ordAfter =
+    c === null
+      ? []
+      : [
+          c.kind === "event"
+            ? sql`${ordT} <= ${c.at}`
+            : sql`(${ordT} < ${c.at} or (${ordT} = ${c.at} and ${orders.id} < ${c.id}))`,
+        ];
   const [events, ords] = await Promise.all([
     deps.db
       .select()
       .from(botEvents)
-      .where(and(...evConds))
-      .orderBy(desc(botEvents.occurredAt))
+      .where(
+        and(
+          eq(botEvents.botId, bot.id),
+          gte(botEvents.occurredAt, from),
+          lte(botEvents.occurredAt, to),
+          ...evAfter,
+        ),
+      )
+      .orderBy(desc(evT), desc(botEvents.id))
       .limit(input.limit + 1),
     deps.db
       .select()
       .from(orders)
-      .where(and(...ordConds))
-      .orderBy(desc(orders.createdAt))
+      .where(
+        and(
+          eq(orders.botId, bot.id),
+          gte(orders.createdAt, from),
+          lte(orders.createdAt, to),
+          ...ordAfter,
+        ),
+      )
+      .orderBy(desc(ordT), desc(orders.id))
       .limit(input.limit + 1),
   ]);
   const merged = [
     ...events.map((e) => ({
       t: e.occurredAt,
+      rank: 0,
+      id: e.id,
+      kind: "event" as const,
       item: {
         kind: "event" as const,
         at: at(e.occurredAt),
@@ -404,9 +453,15 @@ export async function botTimeline(
     })),
     ...ords.map((o) => ({
       t: o.createdAt,
+      rank: 1,
+      id: o.id,
+      kind: "order" as const,
       item: { kind: "order" as const, at: at(o.createdAt), order: orderView(o) },
     })),
-  ].sort((a, b) => b.t.getTime() - a.t.getTime());
+  ].sort(
+    (a, b) =>
+      b.t.getTime() - a.t.getTime() || a.rank - b.rank || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+  );
   const page = merged.slice(0, input.limit);
   const last = page[page.length - 1];
   return {
@@ -423,7 +478,10 @@ export async function botTimeline(
       reasonCode: bot.reasonCode,
     },
     items: page.map((p) => p.item),
-    nextCursor: merged.length > input.limit && last !== undefined ? at(last.t) : null,
+    nextCursor:
+      merged.length > input.limit && last !== undefined
+        ? cursorOf(last.t, last.id, last.kind)
+        : null,
   };
 }
 
@@ -435,13 +493,16 @@ export async function teamUnknownOrders(
   const now = deps.now();
   const conds: SQL[] = [eq(orders.status, OrderStatus.unknown)];
   if (input.userId !== undefined) conds.push(eq(bots.userId, input.userId));
-  if (input.cursor !== undefined) conds.push(sql`${orders.createdAt} > ${new Date(input.cursor)}`);
+  // Con trỏ (thời điểm cắt tới mili giây, id): không sót lệnh cùng mili giây (DB lưu micro giây).
+  const t = sql`date_trunc('milliseconds', ${orders.createdAt})`;
+  const c = input.cursor === undefined ? null : parseCursor(input.cursor, false);
+  if (c !== null) conds.push(sql`(${t} > ${c.at} or (${t} = ${c.at} and ${orders.id} > ${c.id}))`);
   const rows = await deps.db
     .select({ o: orders, userId: bots.userId, botName: bots.name })
     .from(orders)
     .innerJoin(bots, eq(bots.id, orders.botId))
     .where(and(...conds))
-    .orderBy(asc(orders.createdAt))
+    .orderBy(asc(t), asc(orders.id))
     .limit(input.limit + 1);
   const page = rows.slice(0, input.limit);
   const last = page[page.length - 1];
@@ -460,7 +521,10 @@ export async function teamUnknownOrders(
       order: orderView(o),
       createdAt: at(o.createdAt),
     })),
-    nextCursor: rows.length > input.limit && last !== undefined ? at(last.o.createdAt) : null,
+    nextCursor:
+      rows.length > input.limit && last !== undefined
+        ? cursorOf(last.o.createdAt, last.o.id)
+        : null,
   };
 }
 

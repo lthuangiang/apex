@@ -333,6 +333,80 @@ describe("MCP team routes", () => {
     });
   });
 
+  it("pages through items in the same millisecond without losing or repeating any", async () => {
+    const id = await newUser("same-ms@example.test");
+    const acc = await connectSodex(id, `0x${randomBytes(20).toString("hex")}`);
+    const bot =
+      (
+        await env.pool.query<{ id: string }>(
+          "insert into bots (id, user_id, sodex_account_id, strategy, market, engine, name, state) values (gen_random_uuid(), $1, $2, 'spot_grid', 'vBTC_vUSDC', 'spot', 'Same ms', 'running') returning id",
+          [id, acc],
+        )
+      ).rows[0]?.id ?? "";
+    // DB lưu micro giây: 7 mục trong cùng một mili giây (3 event, 4 order unknown) + 1 event mili giây trước.
+    const base = "2026-10-27 07:00:00.123";
+    for (const us of ["100", "200", "300"])
+      await env.pool.query(
+        "insert into bot_events (id, bot_id, type, decision, why, occurred_at) values (gen_random_uuid(), $1, 'tick', 'hold', 'x', $2::timestamptz)",
+        [bot, `${base}${us}+00`],
+      );
+    await env.pool.query(
+      "insert into bot_events (id, bot_id, type, decision, why, occurred_at) values (gen_random_uuid(), $1, 'tick', 'older', 'x', '2026-10-27 07:00:00.122+00')",
+      [bot],
+    );
+    for (const [i, us] of ["150", "250", "350", "450"].entries())
+      await env.pool.query(
+        "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, status, tag, epoch, created_at) values (gen_random_uuid(), $1, $2, $3, 'vBTC_vUSDC', 'spot', 'buy', 'limit', 'GTC', '1', 'unknown', 'g', 1, $4::timestamptz)",
+        [bot, acc, `same-${String(i)}`, `${base}${us}+00`],
+      );
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let i = 0; i < 20; i++) {
+      const page = teamBotTimelineSchema.parse(
+        (
+          await get(
+            `/api/v1/mcp/team/bots/${bot}/timeline?limit=2${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
+            teamTok,
+          )
+        ).json(),
+      );
+      for (const it of page.items)
+        seen.push(it.kind === "order" ? it.order.clOrdId : `${it.type}:${it.decision ?? ""}`);
+      cursor = page.nextCursor;
+      if (cursor === null) break;
+    }
+    expect(seen).toHaveLength(8);
+    expect(seen.filter((x) => x.startsWith("same-")).sort()).toEqual([
+      "same-0",
+      "same-1",
+      "same-2",
+      "same-3",
+    ]);
+    expect(seen[seen.length - 1]).toBe("tick:older");
+
+    const orders: string[] = [];
+    cursor = null;
+    for (let i = 0; i < 10; i++) {
+      const page = teamUnknownOrdersSchema.parse(
+        (
+          await get(
+            `/api/v1/mcp/team/unknown-orders?userId=${id}&limit=1${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`,
+            teamTok,
+          )
+        ).json(),
+      );
+      orders.push(...page.orders.map((o) => o.order.clOrdId));
+      cursor = page.nextCursor;
+      if (cursor === null) break;
+    }
+    expect([...orders].sort()).toEqual(["same-0", "same-1", "same-2", "same-3"]);
+    expect(
+      (await get(`/api/v1/mcp/team/bots/${bot}/timeline?cursor=2026-10-27T07:00:00Z`, teamTok))
+        .statusCode,
+    ).toBe(400);
+  });
+
   it("returns builder revenue with missing days listed, never as 0", async () => {
     await env.pool.query(
       "insert into builder_revenue_daily (date, engine, from_fills, fills, notional, balance_delta, difference, status) values ('2026-10-01', 'perps', '1.5', 12, '15000', '1.5', '0', 'matched'), ('2026-10-02', 'perps', '0.7', 4, '7000', null, null, 'pending')",

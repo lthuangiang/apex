@@ -20,7 +20,7 @@ import { listTraders, traderProfile, type CopyDeps } from "../copy/service";
 import { ownBotOr404 } from "./auth";
 import { botTimeline, type TimelineInput } from "./team";
 
-// Tool đọc cho người dùng (docs/MCP.md mục 5B, DEC-TBD-mcp-user-tools). Mọi hàm nhận `userId` của token (api đã tự
+// Tool đọc cho người dùng (docs/MCP.md mục 5B, DEC-220). Mọi hàm nhận `userId` của token (api đã tự
 // introspect) và chỉ đọc dữ liệu của người đó, qua đúng service mà màn hình đang dùng để số khớp. Thiếu dữ liệu →
 // null kèm lý do, không bao giờ 0 (quy tắc 1.8). Chữ do người khác nhập (tên bot, tên trader) → `userText`.
 
