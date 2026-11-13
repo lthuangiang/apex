@@ -12,7 +12,7 @@ import { deskHome, whatifView } from "../desk/whatif";
 
 import type { UserToolDeps } from "./user";
 
-// Tool AI Desk cho người dùng (docs/MCP.md mục 5B, DEC-220). Cùng service với màn AI Desk: trang chủ
+// Tool AI Desk cho người dùng (docs/MCP.md mục 5B, DEC-221). Cùng service với màn AI Desk: trang chủ
 // (`/api/v1/desk/home`), so sánh (`/api/v1/desk/whatifs/:id`), thành tích (`/api/v1/desk/record`). Chỉ đọc: không
 // bắt đầu so sánh, không Apply, không Switch back. Kết quả là 7 ngày đã qua, không phải dự báo (`notForecast`).
 
