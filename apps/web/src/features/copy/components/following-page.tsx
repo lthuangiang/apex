@@ -124,30 +124,26 @@ export function FollowingPage() {
                         tr.copying
                           ? "border-[1.5px] border-accent bg-accent-tint"
                           : "border border-border"
-                      } ${tr.address === selected ? "ring-2 ring-accent ring-offset-2 ring-offset-surface" : ""}`}
+                      }`}
                     >
                       <div className="flex items-center gap-3">
-                        <Avatar address={tr.address} size="sm" />
-                        <button
-                          type="button"
-                          aria-pressed={tr.address === selected}
-                          aria-label={t("following.filter.toggle", {
-                            trader: tr.displayName ?? addr(tr.address),
-                          })}
-                          onClick={() => {
-                            setPicked(tr.address === selected ? null : tr.address);
-                          }}
-                          className="flex min-h-tap min-w-0 flex-1 flex-col items-start rounded-[10px] text-left text-ink"
+                        {/* Avatar + tên là link sang hồ sơ trader (người dùng chọn, thay chữ "Profile"). */}
+                        <Link
+                          href={`/traders/${tr.address}`}
+                          className="flex min-h-tap min-w-0 flex-1 items-center gap-3 rounded-[10px] text-ink no-underline hover:text-accent-ink"
                         >
-                          <strong className="max-w-full truncate text-sm tabular-nums">
-                            {tr.displayName ?? addr(tr.address)}
-                          </strong>
-                          <span className="text-xs text-muted">
-                            {tr.lastEventAt === null
-                              ? t("following.none")
-                              : t("following.last", { when: ago(tr.lastEventAt) })}
+                          <Avatar address={tr.address} size="sm" />
+                          <span className="flex min-w-0 flex-col">
+                            <strong className="truncate text-sm tabular-nums">
+                              {tr.displayName ?? addr(tr.address)}
+                            </strong>
+                            <span className="text-xs text-muted">
+                              {tr.lastEventAt === null
+                                ? t("following.none")
+                                : t("following.last", { when: ago(tr.lastEventAt) })}
+                            </span>
                           </span>
-                        </button>
+                        </Link>
                         {tr.copying ? (
                           <span className="inline-flex h-6 items-center rounded-full bg-pos-bg px-2 text-[11.5px] font-extrabold text-pos">
                             {t("following.copying")}
@@ -172,23 +168,13 @@ export function FollowingPage() {
                           })}
                         </p>
                       )}
-                      {/* Mức cảnh báo riêng cho trader này (DEC-209). Link hồ sơ ở hàng này, không ở hàng tên: cột
-                          hẹp (280–340px) thì tên trader bị cắt (ảnh chụp 1440 của PR #76). */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 pl-12">
+                      {/* Mức cảnh báo riêng cho trader này (DEC-209). */}
+                      <div className="pl-12">
                         <FollowAlertSelect
                           address={tr.address}
                           trader={tr.displayName ?? addr(tr.address)}
                           level={tr.alertLevel}
                         />
-                        <Link
-                          href={`/traders/${tr.address}`}
-                          aria-label={t("following.profileOf", {
-                            trader: tr.displayName ?? addr(tr.address),
-                          })}
-                          className="inline-flex min-h-tap items-center rounded-[10px] px-2 text-xs font-bold text-accent-ink"
-                        >
-                          {t("following.profile")}
-                        </Link>
                       </div>
                     </li>
                   ))}
@@ -210,20 +196,34 @@ export function FollowingPage() {
                     })}
                   </span>
                 </div>
-                {selected === null ? null : (
-                  <p className="m-0 flex flex-wrap items-center gap-2 px-3.5 text-[13px] text-ink-2">
-                    {t("following.filter.showing", { trader: nameOf(selected) })}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPicked(null);
-                      }}
-                      className="min-h-9 rounded-[10px] px-2 font-bold text-accent-ink underline"
-                    >
-                      {t("following.filter.clear")}
-                    </button>
-                  </p>
-                )}
+                {/* Lọc theo trader bằng chip (người dùng chọn): "All traders" + một chip mỗi trader; chip đang
+                    bật có aria-pressed. */}
+                <div
+                  role="group"
+                  aria-label={t("following.filter.label")}
+                  className="flex flex-wrap gap-2 px-3.5"
+                >
+                  {[null, ...d.traders.map((tr) => tr.address)].map((a) => {
+                    const on = a === selected;
+                    return (
+                      <button
+                        key={a ?? "all"}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => {
+                          setPicked(a);
+                        }}
+                        className={`inline-flex min-h-9 items-center rounded-full border px-3 text-[12.5px] font-bold tabular-nums ${
+                          on
+                            ? "border-accent bg-accent text-white"
+                            : "border-border bg-surface text-ink-2 hover:text-ink"
+                        }`}
+                      >
+                        {a === null ? t("following.filter.all") : nameOf(a)}
+                      </button>
+                    );
+                  })}
+                </div>
                 {ev.isPending ? (
                   <Skeleton className="mx-3.5 h-48 rounded-tile" />
                 ) : ev.isError && events.length === 0 ? (

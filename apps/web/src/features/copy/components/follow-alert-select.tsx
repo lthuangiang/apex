@@ -2,6 +2,7 @@
 
 import { FOLLOW_ALERT_LEVELS, type FollowAlertLevel } from "@drift/shared";
 import { Button } from "@drift/ui";
+import { Bell, ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -24,23 +25,29 @@ export function FollowAlertSelect({
   const t = useTranslations("copy.followAlerts");
   const set = useSetFollowAlert();
   const errorText = useCopyErrorText();
-  const id = useId();
   const pending = set.isPending ? set.variables.level : null;
+  const current = pending ?? level;
+  // Pill gọn "🔔 Big moves ▾" (người dùng chọn): select gốc của trình duyệt bỏ khung mặc định, giữ bàn phím và
+  // trình đọc màn hình; vùng bấm vẫn ≥ 44px chiều cao.
   return (
     <div className="flex flex-col gap-1">
-      <span className="flex items-center gap-2">
-        <label htmlFor={id} className="text-xs font-bold text-ink-2" aria-hidden="true">
-          {t("label")}
-        </label>
+      <span className="relative inline-flex w-fit items-center">
+        <Bell
+          aria-hidden="true"
+          size={14}
+          strokeWidth={2.2}
+          className={`pointer-events-none absolute left-3 ${current === "off" ? "text-muted" : "text-accent-ink"}`}
+        />
         <select
-          id={id}
           aria-label={t("ariaLabel", { trader })}
-          value={pending ?? level}
+          value={current}
           disabled={set.isPending}
           onChange={(e) => {
             set.mutate({ address, level: e.target.value as FollowAlertLevel });
           }}
-          className="min-h-tap rounded-[10px] border border-border-input bg-surface px-2.5 text-xs font-bold text-ink disabled:opacity-60"
+          className={`min-h-tap cursor-pointer appearance-none rounded-full border border-border bg-surface py-0 pr-8 pl-8 text-xs font-bold disabled:opacity-60 ${
+            current === "off" ? "text-ink-2" : "text-ink"
+          }`}
         >
           {FOLLOW_ALERT_LEVELS.map((l) => (
             <option key={l} value={l}>
@@ -48,6 +55,12 @@ export function FollowAlertSelect({
             </option>
           ))}
         </select>
+        <ChevronDown
+          aria-hidden="true"
+          size={14}
+          strokeWidth={2.4}
+          className="pointer-events-none absolute right-3 text-ink-2"
+        />
       </span>
       {set.isError ? (
         <p role="alert" className="m-0 text-xs font-semibold text-neg-ink">
