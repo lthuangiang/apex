@@ -2440,6 +2440,68 @@ describe("engine", () => {
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
   });
 
+  it("sets leverage per market and only logs a trade on a market the copy bot doesn't have (DEC-TBD-copy-pick-markets)", async () => {
+    const { and, eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const leader = "0x5555555555555555555555555555555555555555";
+    const { botId } = await seedBot("running", {
+      strategy: "copy_trade",
+      market: "BTC-USD",
+      engine: "perps",
+      config: {
+        leaderSource: "hyperliquid",
+        leaderAddress: leader,
+        markets: ["BTC-USD", "ETH-USD"],
+        leverage: 2,
+        leverageByMarket: { "BTC-USD": 1, "ETH-USD": 3 },
+        marginMode: "isolated",
+        fixedNotional: "100",
+        maxNotionalPerTrade: "100",
+        maxExposure: "500",
+        maxLoss: "150",
+      },
+    });
+    await enableDesk(botId);
+    const e = farmEngine(gw, "copy-pick");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    await e.onPrice("ETH-USD", "2000", clock);
+    await e.onPrice("SOL-USD", "150", clock);
+    const fill = (market: string, price: string) =>
+      e.onLeaderFill(
+        {
+          source: "hyperliquid",
+          address: leader,
+          market,
+          side: "buy",
+          price,
+          quantity: "1",
+          positionAfter: "1",
+          at: clock,
+        },
+        clock + 200,
+      );
+    await fill("BTC-USD", "100000");
+    await fill("ETH-USD", "2000");
+    // Đòn bẩy đặt theo từng market trên SoDEX.
+    const set = new Map(gw.leverage.map((l) => [l.market, l.leverage]));
+    expect(set.get("BTC-USD")).toBe(1);
+    expect(set.get("ETH-USD")).toBe(3);
+    // Trader mở ở SOL (không có trong bot): không lệnh, không đặt đòn bẩy, chỉ ghi "Skipped", không gửi tin.
+    const before = gw.received.length;
+    await fill("SOL-USD", "150");
+    expect(gw.received.length).toBe(before);
+    expect(gw.leverage.some((l) => l.market === "SOL-USD")).toBe(false);
+    const events = await db
+      .select()
+      .from(botEvents)
+      .where(and(eq(botEvents.botId, botId), eq(botEvents.decision, "Skipped")));
+    expect(events.map((x) => x.why)).toEqual(["Not copied: this market isn't in your copy bot."]);
+    expect(await copyAlertRows(botId, "copy_bot_skipped")).toEqual([]);
+    await e.stop();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+  });
+
   it("retries a cancel that never left DRIFT, so a stale quote can't block the bot (DEC-111)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();

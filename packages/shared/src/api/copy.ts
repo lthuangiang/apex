@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { liquidationDistance, type MarginTier } from "../desk/needs-you";
 import { HIDDEN_REASONS, TRADER_TABS } from "../leader-stats";
 import { Decimal, dec } from "../money";
 import { decimalStringSchema, isoDateTimeSchema } from "../schemas";
@@ -161,6 +162,9 @@ export const COPY_SKIP_REASONS = [
   "no_fill",
   "min_hold",
   "low_liquidity",
+  // Trader giao dịch ở market không có trong bot (bỏ tick lúc tạo, hoặc market mới): chỉ ghi nhật ký, không gửi tin
+  // (DEC-TBD-copy-pick-markets).
+  "market_off",
   "other",
 ] as const;
 export type CopySkipReason = (typeof COPY_SKIP_REASONS)[number];
@@ -243,8 +247,17 @@ export const COPY_PRESETS = {
 export type CopyPreset = keyof typeof COPY_PRESETS;
 export const COPY_PRESET_KEYS = ["careful", "balanced", "bold"] as const;
 
+/** Trần đòn bẩy mỗi market khi người dùng tự đặt (CopyMarkets.md quy tắc 3). */
+export const COPY_MAX_LEVERAGE = 5;
+
 export const copyRequestSchema = z.object({
   address: traderAddressSchema,
+  /** Tập con market của trader người dùng tick (DEC-TBD-copy-pick-markets); thiếu = mọi market copy được. */
+  markets: z.array(z.string().min(1).max(40)).min(1).max(20).optional(),
+  /** "Set per market": đòn bẩy từng market; thiếu = theo mức an toàn (hạ về trần ở market cho thấp hơn). */
+  leverageByMarket: z
+    .record(z.string().min(1).max(40), z.number().int().min(1).max(COPY_MAX_LEVERAGE))
+    .optional(),
   budget: decimalStringSchema.refine((v) => dec(v).gt(0), { message: "Must be more than 0." }),
   preset: z.enum(COPY_PRESET_KEYS).default("balanced"),
   direction: z.enum(["follow", "inverse"]).default("follow"),
@@ -281,6 +294,126 @@ export function presetFields(
   };
 }
 
+/** Một market ứng viên khi tính kế hoạch copy. `maxLeverage` là của SoDEX; `tiers` là bậc margin (thiếu → null). */
+export interface CopyCandidate {
+  market: string;
+  maxLeverage: number;
+  tiers: readonly MarginTier[] | null;
+  /** Episode đã đóng của trader ở market này trong 30 ngày; null = chưa có dữ liệu ("Not available"). */
+  trades30d: number | null;
+}
+
+export interface CopyPlanRow {
+  market: string;
+  selected: boolean;
+  /** Đòn bẩy sẽ đặt trên SoDEX. */
+  leverage: number;
+  /** Trần đã áp: min(SoDEX max, 5, trần đòn bẩy ở Risk Center). */
+  maxLeverage: number;
+  /** Ký quỹ mỗi vị thế = cỡ mỗi lệnh copy ÷ đòn bẩy (USD). */
+  marginPerPosition: string;
+  /** Khoảng giá tới thanh lý ước tính (%, chiều xấu hơn của long / short); null khi cross hoặc thiếu bậc margin. */
+  liquidationPct: string | null;
+  trades30d: number | null;
+}
+
+/**
+ * Kế hoạch copy từ budget + mức an toàn + market đã chọn + đòn bẩy từng market (DEC-TBD-copy-pick-markets). Hàm thuần:
+ * api tính để tạo config, web tính lại để hiện ngay khi người dùng bấm.
+ * - Đòn bẩy mỗi market: per-market thì giá trị người dùng (kẹp trong [1, trần]); không thì đòn bẩy preset hạ về trần.
+ * - Cỡ mỗi lệnh copy không đổi theo đòn bẩy (budget × đòn bẩy preset × share), nhưng không vượt trần tổng.
+ * - Trần tổng = budget × đòn bẩy THẤP NHẤT trong các market đã chọn, để ký quỹ không bao giờ vượt budget (PM chốt 1B).
+ */
+export function copyPlan(input: {
+  budget: string;
+  preset: CopyPreset;
+  candidates: readonly CopyCandidate[];
+  /** Market đã chọn; thiếu = tất cả. */
+  selected?: readonly string[] | undefined;
+  leverageByMarket?: Readonly<Record<string, number>> | undefined;
+  /** Trần đòn bẩy người dùng đặt ở Risk Center; null = không đặt. */
+  riskCap: number | null;
+  marginMode: "isolated" | "cross";
+}): {
+  rows: CopyPlanRow[];
+  fields: ReturnType<typeof presetFields>;
+  /** Đòn bẩy thấp nhất trong các market đã chọn; null khi chưa chọn market nào. */
+  lowestLeverage: number | null;
+  /** Có market dùng đòn bẩy khác preset (per-market, hoặc bị hạ về trần). */
+  mixed: boolean;
+  leverageByMarket: Record<string, number>;
+} {
+  const base = presetFields(input.budget, input.preset);
+  const p = COPY_PRESETS[input.preset];
+  const chosen = new Set(input.selected ?? input.candidates.map((c) => c.market));
+  const per = input.leverageByMarket;
+  const lev: Record<string, number> = {};
+  const caps: Record<string, number> = {};
+  for (const c of input.candidates) {
+    const cap = Math.max(
+      1,
+      Math.min(c.maxLeverage, COPY_MAX_LEVERAGE, input.riskCap ?? Number.POSITIVE_INFINITY),
+    );
+    caps[c.market] = cap;
+    const want = per?.[c.market] ?? p.leverage;
+    lev[c.market] = Math.min(Math.max(1, Math.floor(want)), cap);
+  }
+  const chosenLevs = input.candidates
+    .filter((c) => chosen.has(c.market))
+    .map((c) => lev[c.market] ?? 1);
+  const lowest = chosenLevs.length === 0 ? null : Math.min(...chosenLevs);
+  const exposure = dec(input.budget)
+    .mul(lowest ?? p.leverage)
+    .toDecimalPlaces(2, Decimal.ROUND_DOWN);
+  const perTrade = Decimal.min(dec(base.fixedNotional), exposure).toDecimalPlaces(
+    2,
+    Decimal.ROUND_DOWN,
+  );
+  const fields = {
+    ...base,
+    fixedNotional: perTrade.toString(),
+    maxNotionalPerTrade: perTrade.toString(),
+    maxExposure: exposure.toString(),
+  };
+  const rows: CopyPlanRow[] = input.candidates.map((c) => {
+    const l = lev[c.market] ?? 1;
+    const liq =
+      input.marginMode !== "isolated" || c.tiers === null || c.tiers.length === 0
+        ? null
+        : (() => {
+            const ds = (["long", "short"] as const).map((side) =>
+              liquidationDistance({
+                tiers: c.tiers ?? [],
+                leverage: l,
+                notional: perTrade.toString(),
+                side,
+              }),
+            );
+            if (ds.some((d) => d === null)) return null;
+            const worst = Decimal.min(...(ds as Decimal[]));
+            return worst.mul(100).toDecimalPlaces(1, Decimal.ROUND_DOWN).toString();
+          })();
+    return {
+      market: c.market,
+      selected: chosen.has(c.market),
+      leverage: l,
+      maxLeverage: caps[c.market] ?? 1,
+      marginPerPosition: perTrade.div(l).toDecimalPlaces(2, Decimal.ROUND_DOWN).toString(),
+      liquidationPct: liq,
+      trades30d: c.trades30d,
+    };
+  });
+  const selectedRows = rows.filter((r) => r.selected);
+  const mixed = selectedRows.some((r) => r.leverage !== p.leverage);
+  return {
+    rows,
+    fields,
+    lowestLeverage: lowest,
+    mixed,
+    leverageByMarket: Object.fromEntries(selectedRows.map((r) => [r.market, r.leverage])),
+  };
+}
+
 export const COPY_DROP_REASONS = ["bot", "unavailable", "leverage", "min_size"] as const;
 
 export const copyPreviewSchema = z.object({
@@ -304,6 +437,23 @@ export const copyPreviewSchema = z.object({
   available: decimalStringSchema.nullable(),
   /** Market có volume 24h trên SoDEX dưới `COPY_THIN_MARKET_USD` (lệnh copy dễ bị bỏ qua hoặc nhỏ hơn). */
   thinMarkets: z.array(z.string()).default([]),
+  /** Mọi market copy được của trader (đã chọn hay chưa), cho bảng "Markets we'll copy" (DEC-TBD-copy-pick-markets). */
+  rows: z
+    .array(
+      z.object({
+        market: z.string(),
+        selected: z.boolean(),
+        leverage: z.number().int(),
+        maxLeverage: z.number().int(),
+        marginPerPosition: decimalStringSchema,
+        liquidationPct: decimalStringSchema.nullable(),
+        trades30d: z.number().int().nullable(),
+      }),
+    )
+    .default([]),
+  lowestLeverage: z.number().int().nullable().default(null),
+  /** Có market dùng đòn bẩy khác mức an toàn (per-market, hoặc bị hạ về trần của market). */
+  mixedLeverage: z.boolean().default(false),
 });
 export type CopyPreview = z.infer<typeof copyPreviewSchema>;
 

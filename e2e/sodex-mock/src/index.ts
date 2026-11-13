@@ -71,6 +71,19 @@ interface MockUser {
 export interface SodexMock {
   app: FastifyInstance;
   addUser(address: string, accountID: number): void;
+  /** Thêm một perp (test Copy Trading nhiều market): đòn bẩy tối đa và bậc margin tuỳ chọn. BTC-USD luôn có sẵn. */
+  addPerpSymbol(
+    name: string,
+    opts: {
+      maxLeverage: number;
+      marginTiers?: {
+        maxNotionalValue: string;
+        maintenanceMarginRate: string;
+        maxLeverage: number;
+        maintenanceDeduction: string;
+      }[];
+    },
+  ): void;
   /** Đặt approval builder trực tiếp (test). */
   setBuilder(address: string, builderID: number, rate: number): void;
   /** Lệnh đã nhận (P7): để test xem / cho khớp. */
@@ -334,6 +347,7 @@ export function buildSodexMock(
   });
 
   // ---------- Market info + lệnh (P7) ----------
+  const extraPerps: ({ name: string } & Parameters<SodexMock["addPerpSymbol"]>[1])[] = [];
   const symbol = (id: number, name: string) => ({
     id,
     name,
@@ -367,7 +381,15 @@ export function buildSodexMock(
     ok(reply, [{ ...symbol(1, "vBTC_vUSDC"), baseCoin: "vBTC", quoteCoin: "vUSDC" }]),
   );
   app.get("/api/v1/perps/markets/symbols", (_request, reply) =>
-    ok(reply, [{ ...symbol(1, "BTC-USD"), maxLeverage: 20, fundingInterval: 28800 }]),
+    ok(reply, [
+      { ...symbol(1, "BTC-USD"), maxLeverage: 20, fundingInterval: 28800 },
+      ...extraPerps.map((p, i) => ({
+        ...symbol(100 + i, p.name),
+        maxLeverage: p.maxLeverage,
+        fundingInterval: 28800,
+        ...(p.marginTiers === undefined ? {} : { marginTiers: p.marginTiers }),
+      })),
+    ]),
   );
   app.get("/api/v1/spot/accounts/:addr/balances", (request, reply) => {
     const u = user((request.params as { addr: string }).addr);
@@ -558,6 +580,11 @@ export function buildSodexMock(
 
   return {
     app,
+    addPerpSymbol(name, opts) {
+      const i = extraPerps.findIndex((p) => p.name === name);
+      if (i >= 0) extraPerps.splice(i, 1);
+      extraPerps.push({ name, ...opts });
+    },
     addUser(address, accountID) {
       users.set(address.toLowerCase(), {
         accountID,

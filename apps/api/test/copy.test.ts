@@ -68,9 +68,22 @@ async function user(email: string, desk = true) {
   return { client, userId: me.id };
 }
 
+const T3 = "0xccc0000000000000000000000000000000000003";
+const TIERS = [
+  {
+    maxNotionalValue: "1000000",
+    maintenanceMarginRate: "0.01",
+    maxLeverage: 20,
+    maintenanceDeduction: "0",
+  },
+];
+
 beforeAll(async () => {
   env = await startTestEnv();
   env.prices.set("BTC-USD", { price: "100000", at: env.clock.now.getTime() });
+  // Chọn market và đòn bẩy theo market (DEC-TBD-copy-pick-markets): ETH cho tới 10×, FIL chỉ 1×.
+  env.sodex.addPerpSymbol("ETH-USD", { maxLeverage: 10, marginTiers: TIERS });
+  env.sodex.addPerpSymbol("FIL-USD", { maxLeverage: 1 });
 });
 afterAll(async () => {
   await env.close();
@@ -405,6 +418,108 @@ describe("Copy Trading v1", () => {
     expect(q.copyable).toEqual({ ok: false, reason: "no_markets" });
     await env.pool.query("update bots set state = 'stopped' where id = $1", [otherId]);
     expect(rows).toHaveLength(1);
+  });
+
+  it("lets the user pick markets and leverage per market; the server checks and caps everything (DEC-TBD-copy-pick-markets)", async () => {
+    const { client, userId } = await user("copy-pick@example.com");
+    const accountID = Math.floor(Math.random() * 1e9);
+    env.sodex.addUser(ADDRESS, accountID);
+    const acct = (
+      await env.pool.query<{ id: string }>(
+        "insert into sodex_accounts (id, user_id, address, sodex_account_id, network, status) values (gen_random_uuid(), $1, $2, $3, 'mainnet', 'connected') returning id",
+        [userId, ADDRESS, accountID],
+      )
+    ).rows[0]?.id;
+    await seedTrader(
+      T3,
+      stats({ markets: ["BTC-USD", "ETH-USD", "FIL-USD"], episodesByMarket: { "BTC-USD": 5 } }),
+      ["steady"],
+    );
+    const post = (body: Record<string, unknown>) =>
+      client.request("POST", "/api/v1/copy/preview", {
+        body: { address: T3, budget: "500", preset: "balanced", ...body },
+      });
+    const preview = async (body: Record<string, unknown> = {}) =>
+      copyPreviewSchema.parse((await post(body)).json());
+
+    // Mặc định: mọi market; FIL hạ về 1× (không bỏ), trần tổng = 500 × 1× (ký quỹ không vượt budget).
+    const all = await preview();
+    expect(all.markets).toEqual(["BTC-USD", "ETH-USD", "FIL-USD"]);
+    expect(all.dropped).toEqual([]);
+    expect(all.rows.map((r) => [r.market, r.leverage, r.maxLeverage, r.trades30d])).toEqual([
+      ["BTC-USD", 2, 5, 5],
+      ["ETH-USD", 2, 5, 0],
+      ["FIL-USD", 1, 1, 0],
+    ]);
+    expect(all.lowestLeverage).toBe(1);
+    expect(all.mixedLeverage).toBe(true);
+    expect(all.config).toMatchObject({
+      leverage: 2,
+      leverageByMarket: { "BTC-USD": 2, "ETH-USD": 2, "FIL-USD": 1 },
+      fixedNotional: "250",
+      maxExposure: "500",
+    });
+    // Isolated + có bậc margin (ETH): khoảng thanh lý; BTC / FIL không có bậc → null ("Not available").
+    expect(all.rows.map((r) => r.liquidationPct)).toEqual([null, "48.5", null]);
+
+    // Bỏ FIL: trần về như cũ (500 × 2×), không cần leverageByMarket.
+    const two = await preview({ markets: ["BTC-USD", "ETH-USD"] });
+    expect(two.markets).toEqual(["BTC-USD", "ETH-USD"]);
+    expect(two.config.maxExposure).toBe("1000");
+    expect(two.config.leverageByMarket).toBeUndefined();
+
+    // Per-market, có trần Risk Center 4×: BTC 5 → 4, ETH 3.
+    await env.pool.query(
+      "insert into risk_limits (sodex_account_id, max_leverage, enforced) values ($1, 4, '{}')",
+      [acct],
+    );
+    const per = await preview({
+      markets: ["BTC-USD", "ETH-USD"],
+      leverageByMarket: { "BTC-USD": 5, "ETH-USD": 3 },
+    });
+    expect(
+      per.rows.filter((r) => r.selected).map((r) => [r.market, r.leverage, r.maxLeverage]),
+    ).toEqual([
+      ["BTC-USD", 4, 4],
+      ["ETH-USD", 3, 4],
+    ]);
+    expect(per.config).toMatchObject({
+      leverageByMarket: { "BTC-USD": 4, "ETH-USD": 3 },
+      maxExposure: "1500",
+    });
+
+    // Market không thuộc trader, hay đòn bẩy > 5×: 400.
+    expect((await post({ markets: ["DOGE-USD"] })).statusCode).toBe(400);
+    expect((await post({ leverageByMarket: { "BTC-USD": 6 } })).statusCode).toBe(400);
+    expect((await post({ markets: [] })).statusCode).toBe(400);
+
+    // Bot tạo từ preview: sửa không gửi leverageByMarket thì giữ; đổi thì báo "locked".
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "copy_trade", name: "Pick", paramSource: "manual", config: per.config },
+    });
+    expect(made.statusCode).toBe(201);
+    const botId = botSummarySchema.parse(made.json()).id;
+    const noPer = Object.fromEntries(
+      Object.entries(per.config).filter(([k]) => k !== "leverageByMarket"),
+    );
+    const keep = await client.request("POST", `/api/v1/bots/${botId}/versions`, {
+      body: { paramSource: "manual", config: { ...noPer, maxLoss: "90" } },
+    });
+    expect(keep.statusCode).toBe(202);
+    const v = await env.pool.query<{ config: Record<string, unknown> }>(
+      "select config from bot_versions where bot_id = $1 order by version desc limit 1",
+      [botId],
+    );
+    expect(v.rows[0]?.config.leverageByMarket).toEqual({ "BTC-USD": 4, "ETH-USD": 3 });
+    const change = await client.request("POST", `/api/v1/bots/${botId}/versions`, {
+      body: {
+        paramSource: "manual",
+        config: { ...per.config, leverageByMarket: { "BTC-USD": 1, "ETH-USD": 3 } },
+      },
+    });
+    expect(errorOf(change.json()).details.fieldErrors).toMatchObject({
+      leverageByMarket: ["locked"],
+    });
   });
 
   it("offers Follow · copy later once 8 traders are copied live, and refuses a ninth copy", async () => {

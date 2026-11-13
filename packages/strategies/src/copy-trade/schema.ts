@@ -46,6 +46,19 @@ export const copyTradeSchema = z.preprocess(
         .number()
         .int({ message: "Whole numbers only." })
         .min(1, { message: "Allowed 1× or more." }),
+      /**
+       * Đòn bẩy theo market (DEC-TBD-copy-pick-markets), key là market trong `markets`; thiếu thì dùng `leverage`.
+       * Khoá sau khi tạo bot (như `markets`).
+       */
+      leverageByMarket: z
+        .record(
+          marketSchema,
+          z
+            .number()
+            .int({ message: "Whole numbers only." })
+            .min(1, { message: "Allowed 1× or more." }),
+        )
+        .optional(),
       marginMode: z.enum(["cross", "isolated"]).default(COPY_DEFAULTS.marginMode),
       /** `inverse` vào lệnh ngược chiều leader. */
       direction: z.enum(["follow", "inverse"]).default(COPY_DEFAULTS.direction),
@@ -67,6 +80,13 @@ export const copyTradeSchema = z.preprocess(
       maxLoss: positiveDecimal(),
     })
     .superRefine((c, ctx) => {
+      for (const m of Object.keys(c.leverageByMarket ?? {}))
+        if (!c.markets.includes(m))
+          ctx.addIssue({
+            code: "custom",
+            path: ["leverageByMarket", m],
+            message: "Market is not in this copy bot.",
+          });
       if (c.sizing === "fixed" && c.fixedNotional === undefined)
         ctx.addIssue({ code: "custom", path: ["fixedNotional"], message: "Required." });
       if (c.sizing === "ratio" && c.ratioPct === undefined)

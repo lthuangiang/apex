@@ -83,6 +83,8 @@
     }
   },
   "createBot": {
+    "marketLeverage": "{market} · {lev}×",
+    "leverageRange": "{low}–{high}× (per market)",
     "notConnected": "Connect your SoDEX account to start bots. You can still set one up and save a draft.",
     "header": {
       "paperComingSoon": "Paper · Coming soon"
@@ -2412,8 +2414,46 @@
       "stopLoss": "Stop loss per position",
       "maxLoss": "Stop everything at a loss of",
       "exposure": "All positions together stay under ${value} (budget × leverage).",
+      "exposureLowest": "All positions together stay under ${value} (budget × your lowest leverage).",
       "marketsTitle": "Markets we'll copy",
-      "marketsBody": "Every market this trader uses that SoDEX lists. One copy bot covers all of them. If they start trading a new market later, we tell you in Following; we don't add it on our own.",
+      "marketsBody": "Every market this trader uses that SoDEX lists. Untick any you don't want; we skip their trades there. New markets they start later are not added on their own.",
+      "pickMarkets": {
+        "title": "Markets we'll copy · {picked} of {total}",
+        "bodyShort": "Untick any you don't want; we skip their trades there.",
+        "selectAll": "Select all",
+        "leverage": "Leverage",
+        "levSummary": "{lev}× from {preset} for every market (lower where SoDEX allows less).",
+        "levSummaryPer": "Set for each market below, up to what SoDEX allows.",
+        "perMarket": "Set per market",
+        "perMarketShort": "Set leverage per market",
+        "table": "Markets",
+        "cols": {
+          "market": "Market",
+          "trades": "Trader's trades · 30D",
+          "leverage": "Leverage",
+          "margin": "Margin per position",
+          "liq": "Liquidation if price moves"
+        },
+        "trades": "{n, plural, one {# trade} other {# trades}}",
+        "copyMarket": "Copy {market}",
+        "lower": "Lower leverage for {market}",
+        "raise": "Raise leverage for {market}",
+        "max": "max {lev}×",
+        "lev": "{lev}×",
+        "liq": "≈ {pct}%",
+        "notCopied": "Not copied",
+        "note": "Leverage doesn't change how big each copy is (up to ${perTrade}). It changes how much of your budget each position ties up, and how far the price can move against you before SoDEX closes it. All positions together still stay under ${cap}.",
+        "noteShort": "Leverage doesn't change how big each copy is. It changes how much of your budget each position ties up, and how far the price can move before SoDEX closes it.",
+        "partTitle": "You're copying part of this trader's trades.",
+        "partBody": "If they use one market to balance another (for example long one, short another), skipping one side can leave you with more risk than they have.",
+        "partBodyShort": "Skipping one side of a balanced pair can leave you with more risk than they have.",
+        "none": "Pick at least one market.",
+        "summaryTitle": "What you'll copy",
+        "summaryMarkets": "Markets",
+        "summaryLeverage": "Leverage",
+        "count": "{picked} of {total}",
+        "levRange": "{low}–{high}×"
+      },
       "advanced": "Advanced",
       "advancedHint": "Direction, price move, margin, take profit",
       "hide": "Hide",
@@ -2458,6 +2498,7 @@
       "stopLoss": "Stop loss per position",
       "maxLoss": "Stop everything at a loss of",
       "markets": "Markets",
+      "marketLev": "{market} · {lev}×",
       "direction": "Direction",
       "directions": {
         "follow": "Follow",
@@ -2555,7 +2596,11 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": [],
+  "_pendingReview": [
+    "copy.review.marketLev",
+    "createBot.marketLeverage",
+    "createBot.leverageRange"
+  ],
   "beta": {
     "label": "Beta",
     "note": "Still being tested. Use small amounts."
