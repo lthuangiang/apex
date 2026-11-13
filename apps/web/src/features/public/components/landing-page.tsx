@@ -211,7 +211,8 @@ export function LandingPage() {
             </h2>
             <p className="m-0 text-[17px] leading-relaxed text-ink-2">{t("desk.body")}</p>
           </div>
-          <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-4 p-0">
+          {/* Bốn thẻ (AI Desk, Copy Trading, Telegram, Claude): 4 cột ở 1440 như mockup LandingCard, 2 cột ở tablet. */}
+          <ul className="m-0 grid list-none grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 p-0">
             {deskItems.map(([k, Icon]) => (
               <li
                 key={k}
