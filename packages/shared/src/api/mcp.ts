@@ -352,7 +352,7 @@ export const mcpGetTraderSchema = z.object({
 });
 export type McpGetTrader = z.infer<typeof mcpGetTraderSchema>;
 
-// ---------- B2: tool AI Desk (DEC-220) ----------
+// ---------- B2: tool AI Desk (DEC-221) ----------
 // Lấy đúng service của màn AI Desk (`deskHome`, `whatifView`, `recordView`). Kết quả so sánh / thành tích là 7 ngày đã
 // qua, **không phải dự báo**: mỗi output mang câu `notForecast` cố định. AI Desk tắt → null + lý do.
 
