@@ -12,7 +12,14 @@ const config: NextConfig = {
     return Promise.resolve(
       apiOrigin === undefined
         ? []
-        : [{ source: "/api/:path*", destination: `${apiOrigin}/api/:path*` }],
+        : [
+            { source: "/api/:path*", destination: `${apiOrigin}/api/:path*` },
+            // Metadata OAuth cho MCP (DEC-TBD-mcp-oauth); production: Traefik đưa thẳng tới api.
+            {
+              source: "/.well-known/oauth-authorization-server",
+              destination: `${apiOrigin}/.well-known/oauth-authorization-server`,
+            },
+          ],
     );
   },
 };

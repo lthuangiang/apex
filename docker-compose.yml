@@ -99,6 +99,9 @@ services:
       TELEGRAM_BRIEF_ENABLED: ${TELEGRAM_BRIEF_ENABLED:-true}
       TELEGRAM_BRIEF_LLM: ${TELEGRAM_BRIEF_LLM:-false}
       DRIFT_APP_URL: https://${APP_HOST}
+      # MCP (DEC-167): gốc URL của apps/mcp và shared secret cho introspect nội bộ (trống = MCP tắt).
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://mcp.desklabs.xyz}
+      MCP_INTROSPECT_SECRET: ${MCP_INTROSPECT_SECRET:-}
       # Desk AI (DEC-165): key Claude API, chỉ api đọc; trống = LLM tắt, Desk AI dùng câu mẫu.
       DESK_AI_API_KEY: ${DESK_AI_API_KEY:-}
     depends_on:
@@ -110,7 +113,8 @@ services:
     deploy: { replicas: 2 }
     labels:
       - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`${APP_HOST}`) && PathPrefix(`/api`)
+      # /.well-known/oauth-authorization-server: metadata OAuth cho MCP (DEC-TBD-mcp-oauth).
+      - traefik.http.routers.api.rule=Host(`${APP_HOST}`) && (PathPrefix(`/api`) || Path(`/.well-known/oauth-authorization-server`))
       - traefik.http.services.api.loadbalancer.server.port=8080
       - traefik.docker.network=${COMPOSE_PROJECT_NAME:-drift-handoff}_edge
     volumes:

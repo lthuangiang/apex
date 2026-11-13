@@ -108,7 +108,7 @@ Sau đó là checkbox xác nhận và nút `Start on mainnet`. Khi bấm: disabl
 - Có lịch sử version.
 
 ### 8.5 Settings (`/settings`)
-Các tab: SoDEX access · Security · Notifications · Trading defaults · Profile.
+Các tab: SoDEX access · Security · Notifications · Connected apps · Trading defaults · Profile.
 - **SoDEX access:** account, key `••last4`, ngày hết hạn, lần dùng gần nhất, quyền (Read ✓, Place/cancel ✓, Withdraw/transfer ✕ never), Renew key (ký), Disconnect (dialog + 2FA). Thẻ builder fee: Approved 0.01% → `Revoke (set to 0)…` (dialog + ký + 2FA); Revoked → `Sign to approve 0.01% again`.
 - **Security:** bật 2FA (QR → mã 6 số → backup code), các phương thức đăng nhập, danh sách phiên đăng nhập có nút sign out.
 - **Notifications** (docs/NOTIFICATIONS.md, DEC-170; artboard NT-Settings, NT-Connect):
@@ -121,6 +121,7 @@ Các tab: SoDEX access · Security · Notifications · Trading defaults · Profi
     - **Đã kết nối:** "Connected as @username · since …", "Send a test" (3 lần / giờ), "Disconnect" (dialog liệt kê hậu quả; không hỏi 2FA vì chỉ giảm quyền).
     - **Bị chặn** (Telegram trả 403): "Paused · bot blocked" + "Connect again".
   - **Lệnh trong bot:** `/start`, `/status`, `/stop`, `/help` (docs/NOTIFICATIONS.md mục 5). Không lệnh nào đổi trạng thái bot. `/stop` gỡ kết nối giống Disconnect.
+- **Connected apps** (MCP, DEC-167, DEC-TBD-mcp-oauth): app AI user đã cho phép qua OAuth. Mỗi dòng: tên client (dữ liệu client tự khai, luôn kèm host), quyền bằng lời thường, lần dùng cuối; nút "Revoke" mở dialog, thu hồi có hiệu lực ngay. Rỗng: "No apps connected yet."
 - **Trading defaults:** Mode = LIVE (chỉ đọc, ghi "Paper trading: coming soon"), max loss mặc định, múi giờ, định dạng số.
 - **Profile:** tên, email, export CSV, xoá tài khoản (chỉ bật khi mọi bot đã dừng).
 
@@ -183,3 +184,10 @@ Chỉ hiện khi team bật ở Users › AI Desk. Sidebar: Trading Agent luôn 
 6. Giá làm tròn theo tick, khối lượng theo lot. Dùng `Intl.NumberFormat` theo định dạng số người dùng chọn; bảng dùng tabular numbers.
 7. Thời gian hiển thị theo múi giờ trong Settings (mặc định UTC+7, lưu dưới dạng tên IANA).
 8. Nội dung phân tích tách bạch *dữ liệu quan sát được*, *diễn giải* và *việc nên kiểm tra*, có nguồn và thời điểm, và ghi "not financial advice / not a forecast".
+
+### 8.x OAuth consent (`/oauth/authorize`, MCP, DEC-167)
+- authorization_endpoint của OAuth cho MCP. Chưa đăng nhập: proxy chuyển `/signin?next=…`, đăng nhập (kể cả 2FA nếu bật) rồi quay lại đúng URL.
+- api kiểm tra tham số trước (client, redirect_uri, PKCE S256, resource). Client / redirect_uri sai thì hiện "This link isn’t valid." và không redirect; lỗi khác thì trả về client kèm `error`.
+- Hiện tên client (không tin cậy) kèm host thật (host của URL client_id hoặc của redirect_uri), không logo / link từ client; danh sách quyền bằng lời thường; quyền không cấp được ghi "Not available for your account"; câu "This app can read your DeskLabs data. It can't place trades, change bots or move funds."
+- Chưa kết nối SoDEX: "Connect SoDEX first." + link, nút Allow khoá (Deny vẫn bấm được).
+- Allow / Deny: trình duyệt chuyển về `redirect_uri` kèm `code` (hoặc `error`), `state`, `iss`.

@@ -125,6 +125,21 @@ Bot `@desklabsbot` đã tạo (N0). Token và webhook secret chỉ nằm trong `
 5. **Đổi token** (BotFather › Revoke): sửa `.env`, chạy lại bước 2 và bước 3. **Đổi secret:** sửa `.env`, chạy bước 2 rồi bước 3 ngay. Giữa hai bước, webhook trả 401 và Telegram tự gửi lại update sau.
 6. **Tắt khẩn cấp:** đặt `TELEGRAM_ENABLED=false`, rồi chạy bước 2. Route `/api/v1/telegram/*` trả 404, worker ngừng gửi; tin đang `queued` giữ nguyên.
 
+### 2.9 MCP: OAuth (DEC-167, DEC-TBD-mcp-oauth)
+Phần A1: authorization server OAuth nằm trong `api`. Service `apps/mcp` và host `mcp.desklabs.xyz` thêm ở A2. Compose trên VPS do người dùng tự sửa, nên làm tay các bước sau:
+1. `/opt/drift/.env`:
+   - `MCP_INTROSPECT_SECRET`: sinh một lần bằng `openssl rand -hex 32`. Trống thì introspect tắt (MCP không hoạt động). Không dán vào log, ticket hay PR.
+   - `MCP_PUBLIC_URL=https://mcp.desklabs.xyz` (mặc định).
+   - Issuer OAuth lấy từ `DRIFT_APP_URL` (`https://<APP_HOST>`).
+2. Service `api` trong compose của VPS:
+   - thêm hai biến `MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://mcp.desklabs.xyz}` và `MCP_INTROSPECT_SECRET: ${MCP_INTROSPECT_SECRET:-}` (như `docker-compose.yml` của repo);
+   - **đổi rule Traefik** của router `api` để metadata OAuth tới được api:
+     ```yaml
+     - traefik.http.routers.api.rule=Host(`${APP_HOST}`) && (PathPrefix(`/api`) || Path(`/.well-known/oauth-authorization-server`))
+     ```
+3. `docker compose run --rm migrate` (migration bảng `oauth_clients`, `oauth_codes`, `mcp_tokens`, `mcp_calls`), rồi `up -d api scheduler web`.
+4. Kiểm tra: `curl -s https://<APP_HOST>/.well-known/oauth-authorization-server` trả JSON có `issuer`, `code_challenge_methods_supported: ["S256"]`.
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push 10 image → PM trả tag (`docs/RELEASE.md`).

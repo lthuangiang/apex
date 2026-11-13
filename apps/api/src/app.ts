@@ -21,6 +21,8 @@ import type { DeskLlm } from "./modules/desk/llm";
 import { sodexMarketSource } from "./modules/desk/market";
 import { registerDeskRoutes } from "./modules/desk/routes";
 import { startTelegramBriefs } from "./modules/desk/telegram-brief";
+import type { CimdDeps } from "./modules/oauth/cimd";
+import { registerOauthRoutes } from "./modules/oauth/routes";
 import { registerProfileRoutes } from "./modules/profile/routes";
 import { registerPublicRoutes } from "./modules/public/routes";
 import { registerRecoRoutes } from "./modules/reco/routes";
@@ -48,6 +50,14 @@ export const REDACT_PATHS = [
 ];
 
 export interface AppDeps {
+  /** OAuth cho MCP (DEC-TBD-mcp-oauth). Thiếu = issuer mặc định, introspect tắt. */
+  oauth?: {
+    issuer: string;
+    mcpPublicUrl: string;
+    introspectSecret: string | null;
+    /** Test: thay DNS / transport khi tải Client ID Metadata Document. */
+    cimd?: CimdDeps;
+  };
   db: Db;
   mailer: Mailer;
   totpKey: Buffer;
@@ -180,6 +190,23 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     volume24h: sodexVolume24h(deps.sodex.rest, now),
   });
   registerSodexRoutes(app, { ...deps.sodex, db: deps.db, totpKey: deps.totpKey, now });
+  const oauth = deps.oauth ?? {
+    issuer: "https://desklabs.xyz",
+    mcpPublicUrl: "https://mcp.desklabs.xyz",
+    introspectSecret: null,
+  };
+  const mcpBase = oauth.mcpPublicUrl.replace(/\/+$/, "");
+  registerOauthRoutes(app, {
+    deps: {
+      db: deps.db,
+      now,
+      issuer: oauth.issuer.replace(/\/+$/, ""),
+      resources: [`${mcpBase}/mcp`, `${mcpBase}/team/mcp`],
+      ...(oauth.cimd === undefined ? {} : { cimd: oauth.cimd }),
+    },
+    rateLimiter: deps.rateLimiter,
+    introspectSecret: oauth.introspectSecret,
+  });
   const tg = deps.telegram;
   registerTelegramRoutes(app, {
     enabled: tg?.enabled ?? false,

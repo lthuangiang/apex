@@ -91,6 +91,12 @@ export function EmailSignIn({ mode }: { mode: "signup" | "signin" }) {
         await api("POST", "/api/v1/auth/login", meSchema, {
           body: { email, password, ...(needsTwoFactor ? { twoFactorCode } : {}) },
         });
+        // Đến từ màn consent OAuth (MCP): quay lại đúng URL đó sau khi đăng nhập.
+        const next = new URLSearchParams(window.location.search).get("next");
+        if (next?.startsWith("/oauth/authorize?") === true) {
+          router.push(next);
+          return;
+        }
         const { connection } = await api("GET", "/api/v1/sodex/connection", sodexConnectionSchema);
         router.push(connection?.status === "connected" ? "/" : "/onboarding/connect");
       } catch (e) {
