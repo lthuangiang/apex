@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Connect DeskLabs to Claude</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+</style>
+</helmet>
+<div style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; background: #eef1fa; min-height: 100vh">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e3e7f5">
+<div style="max-width: 1180px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap">
+<a href="#top" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #141a33">
+<span style="width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); display: inline-flex; align-items: center; justify-content: center">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l5-5 4 4 7-8"></path></svg>
+</span>
+<span style="font-weight: 800; font-size: 18px; letter-spacing: -0.01em">DeskLabs</span>
+</a>
+<nav aria-label="Guide sections" style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; font-weight: 600; flex: 1 1 auto">
+<a href="#what" style="color: #3b4262; text-decoration: none">What it does</a>
+<a href="#connect" style="color: #3b4262; text-decoration: none">Connect</a>
+<a href="#permissions" style="color: #3b4262; text-decoration: none">Permissions</a>
+<a href="#drafts" style="color: #3b4262; text-decoration: none">Drafts</a>
+<a href="#faq" style="color: #3b4262; text-decoration: none">FAQ</a>
+</nav>
+<a href="#launch" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 12px; background: #2e62e8; color: #ffffff; font-weight: 700; font-size: 14px; text-decoration: none">Launch app</a>
+</div>
+</header>
+
+<main id="top">
+
+<section style="max-width: 1180px; margin: 0 auto; padding: 72px 24px 56px; display: flex; flex-wrap: wrap; gap: 48px; align-items: center">
+<div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+<span style="align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: #e6ecfe; color: #1d47b8; font-size: 13px; font-weight: 700">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg>
+DeskLabs for Claude
+</span>
+<h1 style="margin: 0; font-size: 52px; line-height: 1.08; font-weight: 800; letter-spacing: -0.025em">Ask Claude about your bots</h1>
+<p style="margin: 0; font-size: 18px; line-height: 1.6; color: #3b4262; max-width: 560px">Connect DeskLabs to Claude and ask about your bots, portfolio, risk and the traders you follow, in plain words. Claude can also draft bot settings for you to review.</p>
+<div style="display: flex; flex-direction: column; gap: 8px; max-width: 560px">
+<label for="server-url" style="font-size: 13px; font-weight: 700; color: #3b4262">Server address</label>
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<input id="server-url" readonly value="https://mcp.desklabs.xyz/mcp" style="flex: 1 1 280px; min-width: 0; min-height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 15px; color: #141a33">
+<button type="button" onClick="{{copyUrl}}" style="min-height: 48px; padding: 0 18px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+{{copyLabel}}
+</button>
+</div>
+</div>
+<div style="display: flex; gap: 10px; flex-wrap: wrap">
+<a href="#connect" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 12px; background: #2e62e8; color: #ffffff; font-weight: 700; font-size: 15px; text-decoration: none">Connect in 2 minutes</a>
+<a href="#what" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 12px; background: #ffffff; border: 1px solid #d5dcf2; color: #141a33; font-weight: 700; font-size: 15px; text-decoration: none">See what it can do</a>
+</div>
+<p style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 14px; color: #0f7a43; font-weight: 600">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+Claude can't place trades, change your bots or move money.
+</p>
+</div>
+
+<div style="flex: 1 1 420px; min-width: 0">
+<div style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; box-shadow: 0 18px 40px -24px rgba(20,26,51,0.35); padding: 22px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #5f6684; text-transform: uppercase; letter-spacing: 0.08em">
+<span style="width: 8px; height: 8px; border-radius: 999px; background: #16a05a"></span>
+Example chat in Claude
+</div>
+<div style="align-self: flex-end; max-width: 85%; background: #2e62e8; color: #ffffff; border-radius: 18px 18px 4px 18px; padding: 12px 14px; font-size: 14.5px; line-height: 1.5">How are my bots doing this week?</div>
+<div style="display: inline-flex; align-self: flex-start; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: #f5f7fd; border: 1px solid #e3e7f5; font-size: 12px; font-weight: 600; color: #3b4262">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16M12 4v16"></path></svg>
+Used DeskLabs · list_bots, get_portfolio_summary
+</div>
+<div style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 18px 18px 18px 4px; padding: 14px; font-size: 14.5px; line-height: 1.6; color: #1f2645; display: flex; flex-direction: column; gap: 8px">
+<p style="margin: 0">You have [N] bots running. Here is how each one did over the last 7 days:</p>
+<p style="margin: 0">[Bot name] · [profit or loss] · [fees]<br>[Bot name] · [profit or loss] · [fees]</p>
+<p style="margin: 0; color: #5f6684; font-size: 13px">Numbers come from your DeskLabs account. Not a forecast.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section id="what" style="background: #ffffff; border-top: 1px solid #e3e7f5; border-bottom: 1px solid #e3e7f5">
+<div style="max-width: 1180px; margin: 0 auto; padding: 64px 24px; display: flex; flex-direction: column; gap: 28px">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em">What Claude can do with DeskLabs</h2>
+<p style="margin: 0; font-size: 16px; color: #3b4262">It reads the same numbers you see in the app. It never acts on its own.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px">
+<div style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 10px">
+<span style="width: 40px; height: 40px; border-radius: 12px; background: #e6ecfe; color: #1d47b8; display: inline-flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"></path><path d="M7 15l4-4 3 3 5-6"></path></svg></span>
+<h3 style="margin: 0; font-size: 18px; font-weight: 800">Read your account</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3b4262">Bots, portfolio, profit and loss, fees, and how much of your loss limit you've used. Practice bots are kept apart from real money.</p>
+</div>
+<div style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 10px">
+<span style="width: 40px; height: 40px; border-radius: 12px; background: #e6ecfe; color: #1d47b8; display: inline-flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg></span>
+<h3 style="margin: 0; font-size: 18px; font-weight: 800">Explain what happened</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3b4262">Why a bot paused, what it decided and when, what needs you on AI Desk, and how past changes worked out.</p>
+</div>
+<div style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 10px">
+<span style="width: 40px; height: 40px; border-radius: 12px; background: #e6ecfe; color: #1d47b8; display: inline-flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"></circle><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"></path><path d="M16 4.5a3 3 0 0 1 0 6"></path><path d="M21 20c0-2.6-1.7-4.8-4-5.6"></path></svg></span>
+<h3 style="margin: 0; font-size: 18px; font-weight: 800">Look at traders</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3b4262">Browse Copy Trading lists and trader profiles, with the same filters and warnings as the app.</p>
+</div>
+<div style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 10px">
+<span style="width: 40px; height: 40px; border-radius: 12px; background: #e6ecfe; color: #1d47b8; display: inline-flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg></span>
+<h3 style="margin: 0; font-size: 18px; font-weight: 800">Draft bot settings</h3>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3b4262">Claude can prepare a new bot or a change and give you a link. You review it in DeskLabs and decide.</p>
+</div>
+</div>
+<div style="background: #fff4f2; border: 1px solid #f6d3cd; border-radius: 18px; padding: 20px 22px; display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a72826" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><circle cx="12" cy="12" r="9"></circle><path d="M5.6 5.6l12.8 12.8"></path></svg>
+<div style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<strong style="font-size: 16px; color: #5b2a22">What Claude can't do</strong>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #5b2a22">Place or cancel orders, start, pause or change a bot, apply a draft, or withdraw and move funds. It never sees your keys or signatures, and it doesn't predict prices.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section id="connect" style="max-width: 1180px; margin: 0 auto; padding: 64px 24px; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em">Connect in 2 minutes</h2>
+<p style="margin: 0; font-size: 16px; color: #3b4262">You need a DeskLabs account with SoDEX connected. Pick where you use Claude.</p>
+</div>
+<div role="tablist" aria-label="Where you use Claude" style="display: flex; gap: 8px; flex-wrap: wrap">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+<button type="button" role="tab" aria-selected="{{t.selected}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+</sc-for>
+</div>
+<div role="tabpanel" style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 28px; display: flex; flex-wrap: wrap; gap: 32px">
+<ol style="flex: 999 1 460px; min-width: 0; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 18px">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+<li style="display: flex; gap: 14px; align-items: flex-start">
+<span style="flex: none; width: 32px; height: 32px; border-radius: 999px; background: #e6ecfe; color: #1d47b8; font-weight: 800; font-size: 14px; display: inline-flex; align-items: center; justify-content: center">{{s.n}}</span>
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+<strong style="font-size: 16px">{{s.title}}</strong>
+<span style="font-size: 15px; line-height: 1.55; color: #3b4262">{{s.body}}</span>
+</div>
+</li>
+</sc-for>
+</ol>
+<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+<sc-if value="{{isCode}}" hint-placeholder-val="{{ false }}">
+<div style="background: #141a33; border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 12px; font-weight: 700; color: #aab3d6; text-transform: uppercase; letter-spacing: 0.08em">Terminal</span>
+<code style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14px; line-height: 1.6; color: #ffffff; word-break: break-all">claude mcp add --transport http desklabs https://mcp.desklabs.xyz/mcp</code>
+</div>
+</sc-if>
+<div style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 12px; font-weight: 700; color: #5f6684; text-transform: uppercase; letter-spacing: 0.08em">You'll see this in DeskLabs</span>
+<div style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px">
+<strong style="font-size: 15px">[App name] wants to use your DeskLabs account</strong>
+<span style="font-size: 13px; color: #5f6684">from [app host]</span>
+<span style="font-size: 14px; line-height: 1.5; color: #3b4262">This app can read your DeskLabs data. It can't place trades, change bots or move funds.</span>
+<div style="display: flex; gap: 8px">
+<span style="display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 10px; background: #2e62e8; color: #ffffff; font-weight: 700; font-size: 14px">Allow</span>
+<span style="display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #d5dcf2; color: #141a33; font-weight: 700; font-size: 14px">Deny</span>
+</div>
+</div>
+<span style="font-size: 13px; color: #5f6684">Check the host is the app you're using before you press Allow.</span>
+</div>
+</div>
+</div>
+</section>
+
+<section id="permissions" style="background: #ffffff; border-top: 1px solid #e3e7f5; border-bottom: 1px solid #e3e7f5">
+<div style="max-width: 1180px; margin: 0 auto; padding: 64px 24px; display: flex; flex-wrap: wrap; gap: 40px">
+<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em">Permissions</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3b4262">Claude only gets what it needs. Drafting is asked for separately, the first time you ask Claude to draft something.</p>
+</div>
+<div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+<div style="border: 1px solid #e3e7f5; border-radius: 18px; padding: 20px; display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start">
+<div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<strong style="font-size: 16px">Read your DeskLabs data</strong>
+<span style="font-size: 15px; line-height: 1.55; color: #3b4262">Bots, decisions, portfolio, risk, AI Desk and Copy Trading.</span>
+</div>
+<span style="padding: 6px 12px; border-radius: 999px; background: #e6ecfe; color: #1d47b8; font-size: 13px; font-weight: 700">Asked when you connect</span>
+</div>
+<div style="border: 1px solid #e3e7f5; border-radius: 18px; padding: 20px; display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start">
+<div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<strong style="font-size: 16px">Save bot drafts</strong>
+<span style="font-size: 15px; line-height: 1.55; color: #3b4262">Prepare new bots or changes for you to review. Nothing runs until you save or start it yourself.</span>
+</div>
+<span style="padding: 6px 12px; border-radius: 999px; background: #fdebd3; color: #7a3e00; font-size: 13px; font-weight: 700">Asked the first time Claude drafts</span>
+</div>
+<p style="margin: 0; font-size: 14px; color: #5f6684">Haven't connected SoDEX yet? Connect it in DeskLabs first. Claude has nothing to read until then.</p>
+</div>
+</div>
+</section>
+
+<section style="max-width: 1180px; margin: 0 auto; padding: 64px 24px; display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em">Try asking</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px">
+<sc-for list="{{prompts}}" as="p" hint-placeholder-count="6">
+<div style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 16px; padding: 16px 18px; display: flex; gap: 12px; align-items: flex-start">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2e62e8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>
+<span style="font-size: 15px; line-height: 1.5; color: #1f2645">{{p}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section id="drafts" style="background: #ffffff; border-top: 1px solid #e3e7f5; border-bottom: 1px solid #e3e7f5">
+<div style="max-width: 1180px; margin: 0 auto; padding: 64px 24px; display: flex; flex-direction: column; gap: 28px">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 34px; font-weight: 800; letter-spacing: -0.02em">How drafts work</h2>
+<p style="margin: 0; font-size: 16px; color: #3b4262">Claude never applies anything. You stay in control at every step.</p>
+</div>
+<ol style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px">
+<li style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; font-weight: 800; color: #1d47b8">Step 1</span>
+<strong style="font-size: 17px">Claude prepares a draft</strong>
+<span style="font-size: 15px; line-height: 1.55; color: #3b4262">It checks the settings against the same rules as the app and gives you a link.</span>
+</li>
+<li style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; font-weight: 800; color: #1d47b8">Step 2</span>
+<strong style="font-size: 17px">You open it in DeskLabs</strong>
+<span style="font-size: 15px; line-height: 1.55; color: #3b4262">The form opens filled in, marked "From Claude". Drafts last 24 hours.</span>
+</li>
+<li style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 8px">
+<span style="font-size: 13px; font-weight: 800; color: #1d47b8">Step 3</span>
+<strong style="font-size: 17px">You review and decide</strong>
+<span style="font-size: 15px; line-height: 1.55; color: #3b4262">Change anything, then save or start it yourself, with the usual checks. Or just close it.</span>
+</li>
+</ol>
+<div style="max-width: 720px; background: #ffffff; border: 1px solid #e3e7f5; border-radius: 18px; box-shadow: 0 14px 32px -24px rgba(20,26,51,0.4); padding: 18px; display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap">
+<span style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: linear-gradient(135deg, #2e62e8, #7a4cc8); color: #ffffff; font-size: 12px; font-weight: 800">From Claude</span>
+<div style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 15px; line-height: 1.5; color: #1f2645">Claude drafted these settings. Nothing changes until you review and save or start the bot yourself.</span>
+<span style="font-size: 13px; color: #5f6684">Draft expires [time].</span>
+</div>
+</div>
+</div>
+</section>
+
+<section style="max-width: 1180px; margin: 0 auto; padding: 64px 24px; display: flex; flex-wrap: wrap; gap: 24px">
+<div style="flex: 1 1 420px; min-width: 0; background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 24px; font-weight: 800">Disconnect any time</h2>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #3b4262">Go to Settings › Connected apps and press Revoke. Claude loses access straight away.</p>
+<div style="border: 1px solid #e3e7f5; border-radius: 14px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap">
+<div style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<strong style="font-size: 15px">[App name]</strong>
+<span style="font-size: 13px; color: #5f6684">[app host] · Read, Drafts · last used [time]</span>
+</div>
+<span style="display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #f6d3cd; color: #a72826; font-weight: 700; font-size: 14px">Revoke</span>
+</div>
+</div>
+<div style="flex: 1 1 420px; min-width: 0; background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-size: 24px; font-weight: 800">Limits</h2>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div style="background: #f5f7fd; border-radius: 14px; padding: 14px"><dt style="font-size: 13px; color: #5f6684">Requests per minute</dt><dd style="margin: 4px 0 0; font-size: 22px; font-weight: 800">60</dd></div>
+<div style="background: #f5f7fd; border-radius: 14px; padding: 14px"><dt style="font-size: 13px; color: #5f6684">Requests per day</dt><dd style="margin: 4px 0 0; font-size: 22px; font-weight: 800">5,000</dd></div>
+<div style="background: #f5f7fd; border-radius: 14px; padding: 14px"><dt style="font-size: 13px; color: #5f6684">A draft lasts</dt><dd style="margin: 4px 0 0; font-size: 22px; font-weight: 800">24 hours</dd></div>
+<div style="background: #f5f7fd; border-radius: 14px; padding: 14px"><dt style="font-size: 13px; color: #5f6684">Open drafts at once</dt><dd style="margin: 4px 0 0; font-size: 22px; font-weight: 800">20</dd></div>
+</dl>
+</div>
+</section>
+
+<section id="faq" style="background: #ffffff; border-top: 1px solid #e3e7f5">
+<div style="max-width: 860px; margin: 0 auto; padding: 64px 24px; display: flex; flex-direction: column; gap: 16px">
+<h2 style="margin: 0 0 8px; font-size: 34px; font-weight: 800; letter-spacing: -0.02em">Questions</h2>
+<sc-for list="{{faqs}}" as="f" hint-placeholder-count="5">
+<div style="border: 1px solid #e3e7f5; border-radius: 16px; overflow: hidden">
+<button type="button" aria-expanded="{{f.open}}" onClick="{{f.toggle}}" style="width: 100%; min-height: 56px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #ffffff; border: none; font-family: inherit; font-size: 16px; font-weight: 700; color: #141a33; text-align: left; cursor: pointer">
+<span>{{f.q}}</span>
+<span aria-hidden="true" style="font-size: 20px; color: #5f6684">{{f.sign}}</span>
+</button>
+<sc-if value="{{f.open}}" hint-placeholder-val="{{ false }}">
+<p style="margin: 0; padding: 0 18px 16px; font-size: 15px; line-height: 1.6; color: #3b4262">{{f.a}}</p>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section id="launch" style="max-width: 1180px; margin: 0 auto; padding: 56px 24px 72px">
+<div style="background: #141a33; border-radius: 28px; padding: 40px; display: flex; flex-wrap: wrap; gap: 24px; align-items: center">
+<div style="flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 30px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em">Ready to connect?</h2>
+<p style="margin: 0; font-size: 16px; color: #c9d0ec">Sign in to DeskLabs and connect SoDEX, then add DeskLabs to Claude.</p>
+</div>
+<a href="#top" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 12px; background: #ffffff; color: #141a33; font-weight: 800; font-size: 15px; text-decoration: none">Launch app</a>
+</div>
+<p style="margin: 20px 0 0; font-size: 13px; color: #5f6684; text-align: center">Not financial advice. DeskLabs only places trades for bots you start; it never withdraws or transfers funds. Powered by SoDEX Builder Code.</p>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":4300}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'web', copied: false, open: 0 };
+  }
+  renderVals() {
+    const tab = this.state.tab;
+    const tabDefs = [
+      { id: 'web', label: 'claude.ai' },
+      { id: 'desktop', label: 'Claude Desktop' },
+      { id: 'code', label: 'Claude Code' }
+    ];
+    const base = 'min-height: 44px; padding: 0 18px; border-radius: 12px; font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; ';
+    const tabs = tabDefs.map((t) => ({
+      label: t.label,
+      selected: t.id === tab ? 'true' : 'false',
+      style: base + (t.id === tab ? 'background: #141a33; color: #ffffff; border: 1px solid #141a33;' : 'background: #ffffff; color: #141a33; border: 1px solid #d5dcf2;'),
+      pick: () => this.setState({ tab: t.id })
+    }));
+    const web = [
+      { title: 'Open Settings › Connectors', body: 'In claude.ai, open Settings and go to Connectors.' },
+      { title: 'Add a custom connector', body: 'Name it DeskLabs and paste https://mcp.desklabs.xyz/mcp as the address.' },
+      { title: 'Sign in and allow', body: 'Press Connect. DeskLabs opens: sign in, check the app and host, then press Allow.' },
+      { title: 'Turn it on in a chat', body: 'In a new chat, switch DeskLabs on from the tools menu and ask your first question.' }
+    ];
+    const desktop = [
+      { title: 'Open Settings › Connectors', body: 'In Claude Desktop, open Settings and go to Connectors.' },
+      { title: 'Add a custom connector', body: 'Name it DeskLabs and paste https://mcp.desklabs.xyz/mcp as the address.' },
+      { title: 'Sign in and allow', body: 'Your browser opens DeskLabs: sign in, check the app and host, then press Allow.' },
+      { title: 'Ask away', body: 'Back in Claude Desktop, switch DeskLabs on from the tools menu and ask your first question.' }
+    ];
+    const code = [
+      { title: 'Add the server', body: 'Run the command on the right in your terminal.' },
+      { title: 'Sign in', body: 'Start Claude Code, run /mcp, choose desklabs and authenticate. Your browser opens DeskLabs.' },
+      { title: 'Allow', body: 'Check the app and host, then press Allow.' },
+      { title: 'Ask away', body: 'Ask Claude Code about your bots, for example "Why did my ETH bot pause?"' }
+    ];
+    const list = tab === 'web' ? web : tab === 'desktop' ? desktop : code;
+    const steps = list.map((s, i) => ({ n: i + 1, title: s.title, body: s.body }));
+    const faqDefs = [
+      { q: 'Is it safe to connect?', a: 'Claude only reads your DeskLabs data and can save drafts if you allow it. It can’t place trades, change bots, apply drafts or move money. DeskLabs never shares your SoDEX keys or signatures with Claude.' },
+      { q: 'Does Claude see my real-money and practice bots the same way?', a: 'No. Practice (paper) bots are shown separately and never added to your real-money numbers.' },
+      { q: 'Why does Claude ask for permission again?', a: 'Reading and drafting are separate permissions. The first time you ask Claude to draft something, DeskLabs asks you to allow drafts.' },
+      { q: 'How do I stop Claude from reading my account?', a: 'Go to Settings › Connected apps in DeskLabs and press Revoke. It takes effect straight away.' },
+      { q: 'Does Claude give financial advice?', a: 'No. It explains your data and the strategies in DeskLabs. It doesn’t predict prices or tell you what to buy or sell.' },
+      { q: 'Can I use it with other AI apps?', a: 'DeskLabs uses the open MCP standard, so other apps that support remote MCP servers with sign-in can connect too. You’ll always see the app’s host before you allow it.' }
+    ];
+    const faqs = faqDefs.map((f, i) => ({
+      q: f.q,
+      a: f.a,
+      open: this.state.open === i,
+      sign: this.state.open === i ? '−' : '+',
+      toggle: () => this.setState({ open: this.state.open === i ? -1 : i })
+    }));
+    return {
+      tabs,
+      steps,
+      isCode: tab === 'code',
+      copyLabel: this.state.copied ? 'Copied' : 'Copy',
+      copyUrl: () => {
+        try { navigator.clipboard.writeText('https://mcp.desklabs.xyz/mcp'); } catch (e) {}
+        this.setState({ copied: true });
+      },
+      prompts: [
+        'How are my bots doing this week?',
+        'Why did my ETH bot pause yesterday?',
+        'What needs my attention on AI Desk today?',
+        'How much of my loss limit have I used?',
+        'Show me steady traders I could follow.',
+        'Draft a Futures Grid on BTC with a 50 USDC max loss.'
+      ],
+      faqs
+    };
+  }
+}
+</script>
+</body>
+</html>

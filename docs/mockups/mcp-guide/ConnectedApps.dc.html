@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings · Connected apps with guide link</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1d47b8}a:hover{color:#141a33}
+</style>
+</helmet>
+<div style="width: 880px; box-sizing: border-box; padding: 32px; background: #eef1fa; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; display: flex; flex-direction: column; gap: 20px">
+
+<div style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<span style="font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: #5f6684">EMPTY STATE</span>
+<h2 style="margin: 0; font-size: 20px; font-weight: 800">Connected apps</h2>
+<p style="margin: 0; font-size: 14.5px; line-height: 1.55; color: #3b4262">AI apps you allowed to read your DeskLabs data. They can't place trades, change bots or move funds.</p>
+<div style="border: 1px dashed #d5dcf2; border-radius: 18px; padding: 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; background: #f5f7fd">
+<strong style="font-size: 16px">No apps connected yet.</strong>
+<span style="font-size: 14.5px; line-height: 1.55; color: #3b4262">Connect DeskLabs to Claude to ask about your bots in your own words.</span>
+<a href="Main.dc.html" style="margin-top: 6px; display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 12px; background: #2e62e8; color: #ffffff; font-weight: 700; font-size: 14px; text-decoration: none">How to connect Claude</a>
+</div>
+</div>
+
+<div style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<span style="font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: #5f6684">WITH APPS</span>
+<div style="border: 1px solid #e3e7f5; border-radius: 14px; padding: 14px 16px; display: flex; align-items: center; gap: 12px">
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<strong style="font-size: 15px">[App name]</strong>
+<span style="font-size: 13px; color: #5f6684">[app host] · Last used [date]</span>
+</div>
+<span style="display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #f6d3cd; color: #a72826; font-weight: 700; font-size: 14px">Revoke</span>
+</div>
+<a href="Main.dc.html" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; font-weight: 700; font-size: 14px; text-decoration: none">How to connect Claude →</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":620}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
