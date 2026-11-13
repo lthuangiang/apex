@@ -197,7 +197,7 @@ Email trả nguyên vẹn chỉ cho team; không bao giờ trả secret, key, ch
 
 ---
 
-## Phụ lục A · Cấu hình Claude Code cho team (A3, DEC-TBD-mcp-team-tools)
+## Phụ lục A · Cấu hình Claude Code cho team (A3, DEC-219)
 
 Chỉ tài khoản DeskLabs có role `team`. Mỗi người tự kết nối bằng tài khoản của mình, không dùng chung token.
 

@@ -16,7 +16,7 @@ import { ownBotOr404 } from "../src/modules/mcp/auth";
 
 import { startTestEnv, type TestEnv } from "./helpers";
 
-// Route nội bộ cho tool MCP của team (docs/MCP.md mục 5A, DEC-TBD-mcp-team-tools): api tự introspect token ở mỗi
+// Route nội bộ cho tool MCP của team (docs/MCP.md mục 5A, DEC-219): api tự introspect token ở mỗi
 // request (secret + endpoint + scope + role team), dữ liệu đúng, thiếu dữ liệu → null kèm lý do, không lộ secret;
 // tool của người dùng chỉ thấy bot của chính mình (bot người khác → 404).
 

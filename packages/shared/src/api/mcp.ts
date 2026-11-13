@@ -11,7 +11,7 @@ import {
   traderProfileSchema,
 } from "./copy";
 
-// Output của tool MCP nội bộ (docs/MCP.md mục 5A, DEC-167, DEC-TBD-mcp-team-tools). api trả, apps/mcp parse lại bằng
+// Output của tool MCP nội bộ (docs/MCP.md mục 5A, DEC-167, DEC-219). api trả, apps/mcp parse lại bằng
 // zod trước khi đưa cho client. Không bao giờ chứa key, secret, chữ ký hay payload đã ký. Thiếu dữ liệu → null kèm
 // lý do, không bao giờ 0. Chữ do người dùng nhập (tên bot) bọc trong `userText` để client biết không phải lệnh.
 

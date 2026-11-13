@@ -25,7 +25,7 @@ import {
 } from "@drift/shared";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql, type SQL } from "drizzle-orm";
 
-// Dữ liệu cho tool MCP nội bộ của team (docs/MCP.md mục 5A, DEC-TBD-mcp-team-tools). Chỉ đọc. Người gọi đã qua
+// Dữ liệu cho tool MCP nội bộ của team (docs/MCP.md mục 5A, DEC-219). Chỉ đọc. Người gọi đã qua
 // `requireMcpCaller(…, "team")`. Không bao giờ trả key, secret, chữ ký hay message EIP-712; thiếu dữ liệu → null kèm
 // lý do, không bao giờ 0. Tên bot là chữ người dùng nhập → bọc `userText`.
 

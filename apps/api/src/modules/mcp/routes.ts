@@ -39,7 +39,7 @@ import {
   type UserToolDeps,
 } from "./user";
 
-// Route nội bộ apps/mcp → api cho tool MCP (DEC-TBD-mcp-team-tools). Chỉ GET, chỉ đọc. Mỗi request tự kiểm tra shared
+// Route nội bộ apps/mcp → api cho tool MCP (DEC-219). Chỉ GET, chỉ đọc. Mỗi request tự kiểm tra shared
 // secret + token MCP (`requireMcpCaller`). Traefik chặn `/api/v1/mcp/` từ ngoài; api vẫn tự kiểm tra (phòng thủ hai lớp).
 
 export const MCP_TEAM_PREFIX = "/api/v1/mcp/team";

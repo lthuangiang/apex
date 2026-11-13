@@ -6,7 +6,7 @@ import type { FastifyRequest } from "fastify";
 import { safeEqual, sha256 } from "../../lib/crypto";
 import { introspect, type OauthDeps } from "../oauth/service";
 
-// Route nội bộ cho tool MCP (DEC-167, DEC-TBD-mcp-team-tools). apps/mcp gửi kèm shared secret và token MCP của
+// Route nội bộ cho tool MCP (DEC-167, DEC-219). apps/mcp gửi kèm shared secret và token MCP của
 // người dùng (`x-mcp-token`). api KHÔNG tin kết quả kiểm tra của apps/mcp: tự introspect token, kiểm tra endpoint
 // (RFC 8707), scope và role team ở mỗi request, rồi mọi truy vấn của tool người dùng lọc theo `userId` của token
 // (bot của người khác → 404, không nói là có tồn tại). Traefik chặn các route này từ ngoài (DEPLOY 2.10).

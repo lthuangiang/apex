@@ -116,7 +116,7 @@ services:
       # /.well-known/oauth-authorization-server: metadata OAuth cho MCP (DEC-215).
       - traefik.http.routers.api.rule=Host(`${APP_HOST}`) && (PathPrefix(`/api`) || Path(`/.well-known/oauth-authorization-server`))
       - traefik.http.services.api.loadbalancer.server.port=8080
-      # Route nội bộ apps/mcp → api (DEC-TBD-mcp-team-tools): chặn từ ngoài. apps/mcp gọi thẳng http://api:8080 trong
+      # Route nội bộ apps/mcp → api (DEC-219): chặn từ ngoài. apps/mcp gọi thẳng http://api:8080 trong
       # mạng core, không qua Traefik; api vẫn tự kiểm tra shared secret + token (hai lớp).
       - traefik.http.routers.api-internal.rule=Host(`${APP_HOST}`) && (Path(`/api/v1/oauth/introspect`) || PathPrefix(`/api/v1/mcp/`))
       - traefik.http.routers.api-internal.priority=1000

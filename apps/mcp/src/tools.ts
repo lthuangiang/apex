@@ -21,7 +21,7 @@ import { z } from "zod";
 import { reasonCodeInfo } from "./reason-codes";
 import type { ToolContext, ToolDef } from "./server";
 
-// Danh mục tool (docs/MCP.md mục 5). Tool `team_*` (A3, DEC-TBD-mcp-team-tools) đọc qua route nội bộ của api; api tự
+// Danh mục tool (docs/MCP.md mục 5). Tool `team_*` (A3, DEC-219) đọc qua route nội bộ của api; api tự
 // introspect token và kiểm tra role team ở mỗi request. Kết quả của api được parse lại bằng schema dùng chung trước
 // khi trả cho client. Mỗi kết quả có `asOf` và `source`.
 
