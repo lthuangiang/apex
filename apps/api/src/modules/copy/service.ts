@@ -15,6 +15,7 @@ import {
   dec,
   ErrorCode,
   FOLLOW_LIMIT,
+  FOLLOWING_EVENTS_PAGE,
   FOLLOW_POLL_MS,
   FOLLOW_SYSTEM_LIMIT,
   HIDDEN_REASONS,
@@ -27,6 +28,7 @@ import {
   type CopySlot,
   type FollowAlertLevel,
   type Following,
+  type FollowingEvents,
   type HiddenReason,
   type LeaderEventView,
   type LeaderStats,
@@ -602,6 +604,49 @@ export async function following(deps: CopyDeps, userId: string): Promise<Followi
       };
     }),
     events: events.map(eventView),
+  };
+}
+
+/**
+ * "Recent changes" theo trang (W4): sự kiện của các trader đang follow (hoặc một trader), mới nhất trước, mỗi trang
+ * `FOLLOWING_EVENTS_PAGE` dòng. Con trỏ `<at ms>.<id>` theo thứ tự (at, id) giảm dần nên không trùng / sót dòng khi
+ * có sự kiện mới chen vào. Trader không follow → NOT_FOUND (không lộ dữ liệu ví ngoài danh sách của người dùng).
+ */
+export async function followingEvents(
+  deps: CopyDeps,
+  userId: string,
+  q: { trader?: string | undefined; cursor?: string | undefined },
+): Promise<FollowingEvents> {
+  await requireDesk(deps, userId);
+  const followed = [...(await alertLevelsOf(deps, userId)).keys()];
+  if (q.trader !== undefined && !followed.includes(q.trader))
+    throw new AppError(ErrorCode.notFound, "Not following this trader.", {
+      reason: "not_following",
+    });
+  const addresses = q.trader === undefined ? followed : [q.trader];
+  if (addresses.length === 0) return { events: [], nextCursor: null };
+  // Con trỏ `<ms>.<uuid>` (đã qua regex ở schema). Chỉ dùng id: so (at, id) với đúng dòng đó trong DB, vì `at` lưu tới
+  // micro giây còn ms trong con trỏ bị cắt, so bằng ms sẽ sót dòng cùng mili giây ở ranh giới trang.
+  const dot = q.cursor?.indexOf(".") ?? -1;
+  const cursorId = q.cursor === undefined || dot < 0 ? undefined : q.cursor.slice(dot + 1);
+  const before =
+    cursorId === undefined
+      ? undefined
+      : sql`(${leaderEvents.at}, ${leaderEvents.id}) < (select c.at, c.id from leader_events c where c.id = ${cursorId})`;
+  const rows = await deps.bots.db
+    .select()
+    .from(leaderEvents)
+    .where(and(eq(leaderEvents.source, SOURCE), inArray(leaderEvents.address, addresses), before))
+    .orderBy(desc(leaderEvents.at), desc(leaderEvents.id))
+    .limit(FOLLOWING_EVENTS_PAGE + 1);
+  const page = rows.slice(0, FOLLOWING_EVENTS_PAGE);
+  const last = page.at(-1);
+  return {
+    events: page.map(eventView),
+    nextCursor:
+      rows.length > FOLLOWING_EVENTS_PAGE && last !== undefined
+        ? `${String(last.at.getTime())}.${last.id}`
+        : null,
   };
 }
 

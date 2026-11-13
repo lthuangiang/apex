@@ -2,6 +2,7 @@ import {
   copyRequestSchema,
   copyStartSchema,
   followAlertBodySchema,
+  followingEventsQuerySchema,
   traderAddressSchema,
   traderListQuerySchema,
 } from "@drift/shared";
@@ -16,6 +17,7 @@ import {
   copyPreview,
   follow,
   following,
+  followingEvents,
   listTraders,
   setFollowAlert,
   startCopy,
@@ -68,6 +70,15 @@ export function registerCopyRoutes(app: FastifyInstance, deps: CopyDeps): void {
   });
 
   app.get("/api/v1/following", async (request) => following(deps, requireAuth(request).userId));
+
+  // Recent changes theo trang, lọc theo trader (W4). Chỉ đọc.
+  app.get("/api/v1/following/events", async (request) =>
+    followingEvents(
+      deps,
+      requireAuth(request).userId,
+      parseOrThrow(followingEventsQuerySchema, request.query),
+    ),
+  );
 
   // Chỉ tính, không ghi: không cần Idempotency-Key.
   app.post("/api/v1/copy/preview", async (request) => {

@@ -2,6 +2,7 @@ import {
   botSummarySchema,
   copyPreviewSchema,
   errorResponseSchema,
+  followingEventsSchema,
   followingSchema,
   meSchema,
   traderListSchema,
@@ -286,6 +287,65 @@ describe("Copy Trading v1", () => {
       code: "NOT_FOUND",
       details: { reason: "not_following" },
     });
+  });
+
+  it("pages Recent changes 50 at a time with a cursor and filters by one followed trader (W4)", async () => {
+    const T7 = "0xfff0000000000000000000000000000000000007";
+    await seedTrader(T7, stats(), ["all"]);
+    // 55 sự kiện, hai cặp cùng thời điểm để kiểm tra con trỏ không trùng / sót dòng.
+    await env.pool.query(
+      `insert into leader_events (id, source, address, coin, market, kind, position_before, position_after, notional, price, at, seen_at, last_tid)
+       select gen_random_uuid(), 'hyperliquid', $1, 'ETH', 'ETH-USD', 'open', '0', '1', '1000', '3000',
+              now() - (i / 2) * interval '1 minute', now(), 'p' || i
+       from generate_series(1, 55) as i`,
+      [T7],
+    );
+    const { client } = await user("copy-pages@example.com");
+    for (const a of [T1, T7])
+      expect((await client.request("POST", `/api/v1/traders/${a}/follow`)).statusCode).toBe(200);
+    const all: { address: string; at: string }[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const qs: string = cursor === null ? "" : `?cursor=${encodeURIComponent(cursor)}`;
+      const page = followingEventsSchema.parse(
+        (await client.request("GET", `/api/v1/following/events${qs}`)).json(),
+      );
+      expect(page.events.length).toBeLessThanOrEqual(50);
+      all.push(...page.events);
+      cursor = page.nextCursor;
+      pages += 1;
+    } while (cursor !== null && pages < 5);
+    expect(pages).toBe(2);
+    // 55 của T7 + các sự kiện của T1 (test hồ sơ ở trên): hơn một trang.
+    expect(all.length).toBeGreaterThan(50);
+    // Đúng từng dòng của DB theo (at, id) giảm dần: không trùng, không sót qua ranh giới trang.
+    const { rows: db } = await env.pool.query<{ address: string; at: Date }>(
+      "select address, at from leader_events where address = any($1) order by at desc, id desc",
+      [[T1, T7]],
+    );
+    // API ghi thời điểm tới giây; so theo giây.
+    const sec = (ms: number) => Math.floor(ms / 1000);
+    expect(all.map((e) => [e.address, sec(Date.parse(e.at))])).toEqual(
+      db.map((r) => [r.address, sec(r.at.getTime())]),
+    );
+    const only = followingEventsSchema.parse(
+      (await client.request("GET", `/api/v1/following/events?trader=${T1}`)).json(),
+    );
+    expect(only.events.map((e) => e.address)).toEqual([T1, T1]);
+    expect(only.nextCursor).toBeNull();
+    const other = await client.request(
+      "GET",
+      `/api/v1/following/events?trader=0x${"9".repeat(40)}`,
+    );
+    expect(errorOf(other.json())).toMatchObject({
+      code: "NOT_FOUND",
+      details: { reason: "not_following" },
+    });
+    const bad = await client.request("GET", "/api/v1/following/events?cursor=nope");
+    expect(errorOf(bad.json()).code).toBe("VALIDATION_FAILED");
+    for (const a of [T1, T7]) await client.request("DELETE", `/api/v1/traders/${a}/follow`);
+    await env.pool.query("delete from leader_events where address = $1", [T7]);
   });
 
   it("turns budget and safety level into S12 fields on the server, and leaves out taken markets", async () => {

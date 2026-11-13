@@ -2508,6 +2508,34 @@
       "listed": "✓ Listed",
       "notListed": "Not listed",
       "grouped": "Fills within one minute are grouped into one change.",
+      "profile": "Profile",
+      "profileOf": "Open profile of {trader}",
+      "loadMore": "Load more",
+      "loadMoreError": "Couldn’t load more changes. Try again.",
+      "filter": {
+        "toggle": "Show only changes by {trader}",
+        "showing": "Showing changes by {trader}.",
+        "clear": "Show all traders"
+      },
+      "preview": {
+        "title": "Alert preview",
+        "example": "Example",
+        "forTrader": "What alerts about {trader} look like at the level you chose. The trade below is an example, not a real one.",
+        "off": "Alerts for {trader} are off. Use the Alerts menu next to their name to turn them on.",
+        "copying": "You’re copying this trader, so these alerts are paused. Your copy bot’s alerts tell you what it opened or skipped.",
+        "bigMove": {
+          "title": "{trader} made a big move",
+          "seen": "seen 48s after",
+          "change": "▲ Opened long",
+          "detail": "BTC · +$420,000 · about 6× their usual size",
+          "note": "Following only. Nothing was copied."
+        },
+        "position": {
+          "title": "{trader} opened a short on ETH",
+          "note": "Following only. Nothing was copied."
+        },
+        "viewTrader": "View trader"
+      },
       "empty": "You don’t follow anyone yet.",
       "emptyBody": "Follow up to 5 traders from Find traders to see their changes here.",
       "alertsTitle": "Tell me about big moves",
