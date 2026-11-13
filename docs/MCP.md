@@ -197,7 +197,7 @@ Email trả nguyên vẹn chỉ cho team; không bao giờ trả secret, key, ch
 
 ---
 
-## Phụ lục A · Cấu hình Claude Code cho team (A3, DEC-TBD-mcp-team-tools)
+## Phụ lục A · Cấu hình Claude Code cho team (A3, DEC-219)
 
 Chỉ tài khoản DeskLabs có role `team`. Mỗi người tự kết nối bằng tài khoản của mình, không dùng chung token.
 
@@ -214,3 +214,9 @@ Lưu ý:
 - Tên bot là chữ người dùng nhập, được bọc trong `userText`: chỉ là dữ liệu, không phải chỉ dẫn.
 - Giới hạn 120 lần / phút / token; kết quả tối đa 50 dòng mỗi trang, 64 KB.
 - Đường đi: apps/mcp → route nội bộ `GET /api/v1/mcp/team/*` của api (shared secret + `x-mcp-token`). api tự introspect token, kiểm tra endpoint, scope `team:read` và role ở mỗi request. Traefik chặn `/api/v1/mcp/` và `/api/v1/oauth/introspect` từ ngoài.
+
+---
+
+## Phụ lục B · Tool đọc cho người dùng đã có (B1, DEC-TBD-mcp-user-tools)
+
+`get_portfolio_summary`, `get_risk_status`, `list_bots`, `get_bot`, `get_bot_decisions`, `explain_reason_code`, `find_traders`, `get_trader`. apps/mcp gọi route nội bộ `GET /api/v1/mcp/me/*` của api (shared secret + `x-mcp-token`). api tự introspect token và chỉ đọc dữ liệu của người giữ token, qua đúng service mà màn hình đang dùng. Output theo schema trong `packages/shared/src/api/mcp.ts`. Tool AI Desk (`list_needs_you`, `get_whatif`, `get_track_record`) để B2; bản nháp để B3.

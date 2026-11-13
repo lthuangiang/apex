@@ -2,7 +2,16 @@ import { z } from "zod";
 
 import { decimalStringSchema, isoDateTimeSchema, uuidSchema } from "../schemas";
 
-// Output của tool MCP nội bộ (docs/MCP.md mục 5A, DEC-167, DEC-TBD-mcp-team-tools). api trả, apps/mcp parse lại bằng
+import { portfolioViewSchema, riskViewSchema } from "./account";
+import { botDetailSchema, botSummarySchema, botVersionSchema } from "./bots";
+import {
+  traderAddressSchema,
+  traderListQuerySchema,
+  traderListSchema,
+  traderProfileSchema,
+} from "./copy";
+
+// Output của tool MCP nội bộ (docs/MCP.md mục 5A, DEC-167, DEC-219). api trả, apps/mcp parse lại bằng
 // zod trước khi đưa cho client. Không bao giờ chứa key, secret, chữ ký hay payload đã ký. Thiếu dữ liệu → null kèm
 // lý do, không bao giờ 0. Chữ do người dùng nhập (tên bot) bọc trong `userText` để client biết không phải lệnh.
 
@@ -72,7 +81,7 @@ export const teamConnectAttemptsSchema = z.object({
       lastAt: isoDateTimeSchema,
       /** `connected`, hoặc bước lỗi cuối cùng (`wallet_failed`, `sign_rejected`…), hoặc `abandoned`. */
       outcome: z.string(),
-      /** Lấy từ `data.device` / `data.mobile` của bước đầu; không có → null. */
+      /** Lấy từ `data.device` của bước đầu; không có → null. */
       device: z.string().nullable(),
       steps: z.array(
         z.object({
@@ -240,3 +249,95 @@ export const teamBuilderRevenueSchema = z.object({
   missingDates: z.array(dateSchema),
 });
 export type TeamBuilderRevenue = z.infer<typeof teamBuilderRevenueSchema>;
+
+// ---------- B1: tool đọc cho người dùng (DEC-TBD-mcp-user-tools) ----------
+// Lấy đúng service mà màn hình đang dùng (Overview, Risk, Strategy Lab, Trading Agent, Copy Trading) để số khớp nhau.
+// Chỉ dữ liệu của chính người gọi (lọc theo userId của token). Tiền thật và tiền giả (paper) tách riêng, paper không
+// cộng vào tiền thật (quy tắc 1.2).
+
+export const mcpBotSummarySchema = botSummarySchema
+  .omit({ name: true })
+  .extend({ name: userTextSchema });
+export type McpBotSummary = z.infer<typeof mcpBotSummarySchema>;
+
+export const MCP_PERIODS = ["1", "7", "30", "all"] as const;
+export const mcpPortfolioInputSchema = z.object({ period: z.enum(MCP_PERIODS).default("30") });
+
+export const mcpPortfolioSummarySchema = z.object({
+  ...meta,
+  period: z.enum(MCP_PERIODS),
+  realMoney: z.object({
+    /** null khi chưa kết nối SoDEX hoặc SoDEX không trả lời (xem `reason`). */
+    portfolio: portfolioViewSchema.nullable(),
+    reason: z.enum(["sodex_not_connected"]).nullable(),
+    /** Lãi / lỗ đã chốt của bot tiền thật trong kỳ; null khi chưa có dữ liệu. */
+    realizedPnl: decimalStringSchema.nullable(),
+    realizedSince: isoDateTimeSchema,
+    bots: z.array(mcpBotSummarySchema),
+  }),
+  paper: z.object({
+    note: z.string(),
+    bots: z.array(mcpBotSummarySchema),
+  }),
+});
+export type McpPortfolioSummary = z.infer<typeof mcpPortfolioSummarySchema>;
+
+export const mcpRiskStatusSchema = z.object({
+  ...meta,
+  risk: riskViewSchema.nullable(),
+  reason: z.enum(["sodex_not_connected"]).nullable(),
+});
+export type McpRiskStatus = z.infer<typeof mcpRiskStatusSchema>;
+
+export const mcpListBotsInputSchema = z.object({
+  archived: z.enum(["true", "false"]).default("false"),
+});
+export const mcpListBotsSchema = z.object({ ...meta, bots: z.array(mcpBotSummarySchema) });
+export type McpListBots = z.infer<typeof mcpListBotsSchema>;
+
+export const mcpGetBotSchema = z.object({
+  ...meta,
+  bot: mcpBotSummarySchema,
+  /** Cấu hình version đang chạy; null khi bot chưa có version active (xem `configReason`). */
+  activeConfig: botVersionSchema
+    .pick({ version: true, config: true, paramSource: true, appliedAt: true })
+    .nullable(),
+  configReason: z.enum(["no_active_version"]).nullable(),
+  /** Version đang chờ áp dụng (sửa chưa Apply); null khi không có. */
+  pendingVersion: z.number().int().nullable(),
+  openOrders: z.number().int(),
+  runningSince: isoDateTimeSchema.nullable(),
+  volumeMaker: botDetailSchema.shape.volumeMaker,
+  volumeFarm: botDetailSchema.shape.volumeFarm,
+  adaptiveDca: botDetailSchema.shape.adaptiveDca,
+});
+export type McpGetBot = z.infer<typeof mcpGetBotSchema>;
+
+export const mcpBotDecisionsInputSchema = teamBotTimelineInputSchema;
+/** Cùng dạng timeline của team; `bot.userId` luôn là người gọi. */
+export const mcpBotDecisionsSchema = teamBotTimelineSchema;
+export type McpBotDecisions = TeamBotTimeline;
+
+/** Thẻ trader: bỏ đường cong (nặng), tên hiển thị của Hyperliquid là chữ người khác đặt → `userText`. */
+const mcpTraderCardSchema = traderListSchema.shape.items.element
+  .omit({ displayName: true, curve: true })
+  .extend({ displayName: userTextSchema.nullable() });
+
+export const mcpFindTradersInputSchema = traderListQuerySchema;
+export const mcpFindTradersSchema = z.object({
+  ...meta,
+  traders: traderListSchema
+    .omit({ items: true })
+    .extend({ items: z.array(mcpTraderCardSchema) })
+    .nullable(),
+  reason: z.enum(["copy_trading_not_enabled"]).nullable(),
+});
+export type McpFindTraders = z.infer<typeof mcpFindTradersSchema>;
+
+export const mcpGetTraderInputSchema = z.object({ address: traderAddressSchema });
+export const mcpGetTraderSchema = z.object({
+  ...meta,
+  trader: traderProfileSchema.omit({ card: true }).extend({ card: mcpTraderCardSchema }).nullable(),
+  reason: z.enum(["copy_trading_not_enabled"]).nullable(),
+});
+export type McpGetTrader = z.infer<typeof mcpGetTraderSchema>;

@@ -180,7 +180,7 @@ Phần A2: `apps/mcp` (MCP Streamable HTTP, cổng 8097) ở `https://mcp.deskla
        - traefik.http.routers.mcp.entrypoints=websecure
    ```
    Service không đọc biến nào khác của `x-app-env` (không có `DATABASE_URL`, key SoDEX hay key Claude).
-   Trong service `api`, thêm router chặn route nội bộ từ ngoài (A3, DEC-TBD-mcp-team-tools). apps/mcp gọi thẳng `http://api:8080`, không qua Traefik:
+   Trong service `api`, thêm router chặn route nội bộ từ ngoài (A3, DEC-219). apps/mcp gọi thẳng `http://api:8080`, không qua Traefik:
    ```yaml
    - traefik.http.routers.api-internal.rule=Host(`${APP_HOST}`) && (Path(`/api/v1/oauth/introspect`) || PathPrefix(`/api/v1/mcp/`))
    - traefik.http.routers.api-internal.priority=1000

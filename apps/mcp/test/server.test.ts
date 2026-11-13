@@ -48,6 +48,13 @@ const api: ApiClient = {
   },
   get: (path, token) => {
     gets.push({ path, token });
+    if (path === "/api/v1/mcp/me/risk")
+      return Promise.resolve({
+        asOf: "2026-11-13T10:00:00.000Z",
+        source: "Risk (/api/v1/risk)",
+        risk: null,
+        reason: "sodex_not_connected",
+      });
     if (path.startsWith("/api/v1/mcp/team/users?"))
       return Promise.resolve({
         asOf: "2026-11-13T10:00:00.000Z",
@@ -187,9 +194,22 @@ describe("MCP server", () => {
     expect(logged[0]?.argsHash).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(calls)).not.toContain("risk_daily_loss");
 
-    // Endpoint người dùng không thấy tool nội bộ.
+    // Endpoint người dùng chỉ thấy tool của người dùng, không thấy tool nội bộ.
     const user = await connect("/mcp", "user");
-    expect((await user.listTools()).tools).toEqual([]);
+    const names = (await user.listTools()).tools.map((t) => t.name).sort();
+    expect(names).toEqual([
+      "explain_reason_code",
+      "find_traders",
+      "get_bot",
+      "get_bot_decisions",
+      "get_portfolio_summary",
+      "get_risk_status",
+      "get_trader",
+      "list_bots",
+    ]);
+    // Mọi tool đều chỉ đọc.
+    for (const t of (await user.listTools()).tools)
+      expect(t.annotations?.readOnlyHint, t.name).toBe(true);
     await user.close();
   });
 
@@ -228,6 +248,27 @@ describe("MCP server", () => {
       "team_builder_revenue",
       "team_unknown_orders",
     ]);
+  });
+
+  it("user tools read only the caller's data through api", async () => {
+    const user = await connect("/mcp", "user");
+    const r = await user.callTool({ name: "get_risk_status", arguments: {} });
+    expect(r.structuredContent).toMatchObject({ risk: null, reason: "sodex_not_connected" });
+    expect(gets[gets.length - 1]).toEqual({ path: "/api/v1/mcp/me/risk", token: "user" });
+    const code = await user.callTool({
+      name: "explain_reason_code",
+      arguments: { code: "BUILDER_FEE_REVOKED" },
+    });
+    expect(code.structuredContent).toMatchObject({
+      code: "BUILDER_FEE_REVOKED",
+      outcome: "paused",
+    });
+    // Tham số sai bị chặn trước khi gọi api (botId phải là uuid).
+    const before = gets.length;
+    const bad = await user.callTool({ name: "get_bot", arguments: { botId: "../team/users" } });
+    expect(bad.isError).toBe(true);
+    expect(gets.length).toBe(before);
+    await user.close();
   });
 
   it("answers 503, not 500, when Redis is down", async () => {

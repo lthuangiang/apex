@@ -1,4 +1,9 @@
 import {
+  mcpBotDecisionsInputSchema,
+  mcpFindTradersInputSchema,
+  mcpGetTraderInputSchema,
+  mcpListBotsInputSchema,
+  mcpPortfolioInputSchema,
   teamBotTimelineInputSchema,
   teamBuilderRevenueInputSchema,
   teamConnectAttemptsInputSchema,
@@ -10,9 +15,10 @@ import {
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
+import { audit, AuditAction } from "../../lib/audit";
 import { parseOrThrow } from "../../lib/http";
 
-import { requireMcpCaller, type McpAuthDeps } from "./auth";
+import { requireMcpCaller, type McpAuthDeps, type McpCaller } from "./auth";
 import {
   teamBotTimeline,
   teamBuilderRevenue,
@@ -22,37 +28,85 @@ import {
   teamUserBots,
   type TeamDeps,
 } from "./team";
+import {
+  mcpBotDecisions,
+  mcpFindTraders,
+  mcpGetBot,
+  mcpGetTrader,
+  mcpListBots,
+  mcpPortfolioSummary,
+  mcpRiskStatus,
+  type UserToolDeps,
+} from "./user";
 
-// Route nội bộ apps/mcp → api cho tool MCP (DEC-TBD-mcp-team-tools). Chỉ GET, chỉ đọc. Mỗi request tự kiểm tra shared
+// Route nội bộ apps/mcp → api cho tool MCP (DEC-219). Chỉ GET, chỉ đọc. Mỗi request tự kiểm tra shared
 // secret + token MCP (`requireMcpCaller`). Traefik chặn `/api/v1/mcp/` từ ngoài; api vẫn tự kiểm tra (phòng thủ hai lớp).
 
 export const MCP_TEAM_PREFIX = "/api/v1/mcp/team";
+export const MCP_USER_PREFIX = "/api/v1/mcp/me";
 
-export function registerMcpRoutes(app: FastifyInstance, deps: McpAuthDeps & TeamDeps): void {
+export function registerMcpRoutes(
+  app: FastifyInstance,
+  deps: McpAuthDeps & TeamDeps & UserToolDeps,
+): void {
+  registerMcpUserRoutes(app, deps);
   const team = deps;
+  /** Review #75: mỗi lần team xem dữ liệu một user qua MCP → audit (target = user, kèm tool và tokenId). */
+  const viewed = async (
+    caller: McpCaller,
+    tool: string,
+    targets: readonly string[],
+    extra: Record<string, unknown> = {},
+  ) => {
+    for (const target of new Set(targets))
+      await audit(deps.db, {
+        userId: caller.userId,
+        action: AuditAction.mcpTeamUserViewed,
+        target,
+        metadata: { tool, tokenId: caller.tokenId, ...extra },
+        ip: null,
+      });
+  };
+
   app.get(`${MCP_TEAM_PREFIX}/users`, async (request) => {
-    await requireMcpCaller(deps, request, "team");
+    const caller = await requireMcpCaller(deps, request, "team");
     const q = parseOrThrow(teamFindUserInputSchema, request.query);
-    return teamFindUser(team, q.query);
+    const res = await teamFindUser(team, q.query);
+    await viewed(
+      caller,
+      "team_find_user",
+      res.users.map((u) => u.id),
+    );
+    return res;
   });
 
   app.get(`${MCP_TEAM_PREFIX}/connect-attempts`, async (request) => {
-    await requireMcpCaller(deps, request, "team");
+    const caller = await requireMcpCaller(deps, request, "team");
     const q = parseOrThrow(teamConnectAttemptsInputSchema, request.query);
-    return teamConnectAttempts(team, q);
+    const res = await teamConnectAttempts(team, q);
+    await viewed(
+      caller,
+      "team_connect_attempts",
+      q.userId !== undefined ? [q.userId] : res.attempts.map((a) => a.userId),
+    );
+    return res;
   });
 
   app.get(`${MCP_TEAM_PREFIX}/users/:userId/bots`, async (request) => {
-    await requireMcpCaller(deps, request, "team");
+    const caller = await requireMcpCaller(deps, request, "team");
     const p = parseOrThrow(teamUserBotsInputSchema, request.params);
-    return teamUserBots(team, p.userId);
+    const res = await teamUserBots(team, p.userId);
+    await viewed(caller, "team_user_bots", [p.userId]);
+    return res;
   });
 
   app.get(`${MCP_TEAM_PREFIX}/bots/:botId/timeline`, async (request) => {
-    await requireMcpCaller(deps, request, "team");
+    const caller = await requireMcpCaller(deps, request, "team");
     const p = parseOrThrow(z.object({ botId: uuidSchema }), request.params);
     const q = parseOrThrow(teamBotTimelineInputSchema.omit({ botId: true }), request.query);
-    return teamBotTimeline(team, { ...q, botId: p.botId });
+    const res = await teamBotTimeline(team, { ...q, botId: p.botId });
+    await viewed(caller, "team_bot_timeline", [res.bot.userId], { botId: p.botId });
+    return res;
   });
 
   app.get(`${MCP_TEAM_PREFIX}/unknown-orders`, async (request) => {
@@ -65,5 +119,54 @@ export function registerMcpRoutes(app: FastifyInstance, deps: McpAuthDeps & Team
     await requireMcpCaller(deps, request, "team");
     const q = parseOrThrow(teamBuilderRevenueInputSchema, request.query);
     return teamBuilderRevenue(team, q);
+  });
+}
+
+/**
+ * Tool đọc cho người dùng (B1, DEC-TBD-mcp-user-tools): endpoint `/mcp`, scope `read`. `userId` luôn lấy từ token,
+ * không bao giờ từ tham số; bot của người khác → 404.
+ */
+function registerMcpUserRoutes(app: FastifyInstance, deps: McpAuthDeps & UserToolDeps): void {
+  const me = async (request: Parameters<typeof requireMcpCaller>[1]) =>
+    (await requireMcpCaller(deps, request, "user")).userId;
+  const botParams = z.object({ botId: uuidSchema });
+
+  app.get(`${MCP_USER_PREFIX}/portfolio`, async (request) => {
+    const userId = await me(request);
+    const q = parseOrThrow(mcpPortfolioInputSchema, request.query);
+    return mcpPortfolioSummary(deps, userId, q.period);
+  });
+
+  app.get(`${MCP_USER_PREFIX}/risk`, async (request) => mcpRiskStatus(deps, await me(request)));
+
+  app.get(`${MCP_USER_PREFIX}/bots`, async (request) => {
+    const userId = await me(request);
+    const q = parseOrThrow(mcpListBotsInputSchema, request.query);
+    return mcpListBots(deps, userId, q.archived === "true");
+  });
+
+  app.get(`${MCP_USER_PREFIX}/bots/:botId`, async (request) => {
+    const userId = await me(request);
+    const p = parseOrThrow(botParams, request.params);
+    return mcpGetBot(deps, userId, p.botId);
+  });
+
+  app.get(`${MCP_USER_PREFIX}/bots/:botId/decisions`, async (request) => {
+    const userId = await me(request);
+    const p = parseOrThrow(botParams, request.params);
+    const q = parseOrThrow(mcpBotDecisionsInputSchema.omit({ botId: true }), request.query);
+    return mcpBotDecisions(deps, userId, { ...q, botId: p.botId });
+  });
+
+  app.get(`${MCP_USER_PREFIX}/traders`, async (request) => {
+    const userId = await me(request);
+    const q = parseOrThrow(mcpFindTradersInputSchema, request.query);
+    return mcpFindTraders(deps, userId, q.tab);
+  });
+
+  app.get(`${MCP_USER_PREFIX}/traders/:address`, async (request) => {
+    const userId = await me(request);
+    const p = parseOrThrow(mcpGetTraderInputSchema, request.params);
+    return mcpGetTrader(deps, userId, p.address);
   });
 }
