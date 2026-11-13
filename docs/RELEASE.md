@@ -30,7 +30,7 @@ gh secret set DOCKERHUB_TOKEN --repo lthuangiang/apex
    - có `feat` → tăng **minor**;
    - đổi **major** (thay đổi phá vỡ, đổi cách deploy, migration không tương thích ngược) → **hỏi người dùng trước**.
    - Tag cũ không đủ 3 số (`v1.0`) được coi là `v1.0.0`.
-3. **Tạo tag annotated** trên commit đầu `origin/main`, nội dung là danh sách PR (`<tiêu đề> (#<số>)`), rồi push. Nếu có bản ghi soạn sẵn ở `docs/releases/` (ví dụ `next-after-v2.2.1.md`), đổi tên file theo tag và dùng phần "Cho người dùng" làm mô tả GitHub Release:
+3. **Tạo tag annotated** trên commit đầu `origin/main`, nội dung là danh sách PR (`<tiêu đề> (#<số>)`), rồi push. Nếu có bản ghi soạn sẵn ở `docs/releases/` (ví dụ `v2.3.0.md`), đổi tên file theo tag và dùng phần "Cho người dùng" làm mô tả GitHub Release:
 
 ```bash
 git tag -a v1.1.0 origin/main -F notes.txt && git push origin v1.1.0
