@@ -120,3 +120,11 @@ Quy ước theo `docs/CODING_STANDARDS.md` C8: khoá chính `id uuid` (v7), mọ
 | `desk_ai_turns` | Một lượt hỏi / trả lời, kèm nhật ký LLM | Câu trả lời (lời LLM hoặc câu mẫu), `fallback`, model, phiên bản prompt, id fact, token, chi phí ước tính, traceId; không lưu key |
 | `desk_ai_usage` | Số câu hỏi đã dùng của user trong một ngày địa phương | Trần 20 câu (DEC-165b); không bị "Delete history" xoá; giữ lượt bằng một câu upsert có điều kiện (DEC-189) |
 
+### 7.7 OAuth và MCP (DEC-167, DEC-215)
+
+| Bảng | Nghĩa | Ghi chú |
+|---|---|---|
+| `oauth_clients` | Client OAuth của MCP; `id` là `client_id` | `kind = cimd` (client_id là URL https của Client ID Metadata Document, metadata cache 1 giờ) hoặc `dcr` (đăng ký động, `dlc_…`). `name` do client tự khai, không tin cậy. Client `dcr` không dùng 30 ngày thì xoá (scheduler) |
+| `oauth_codes` | Authorization code, dùng một lần | Chỉ lưu hash; sống 5 phút; PKCE S256 (`code_challenge`); gắn `resource` (RFC 8707) và scope đã cấp |
+| `mcp_tokens` | Access token (1 giờ) + refresh token (30 ngày) | Chỉ lưu hash. Refresh xoay mỗi lần dùng (`rotated_at`, cùng `family_id`); dùng lại refresh đã xoay → thu hồi cả họ. `revoked_at` có hiệu lực ngay (introspect mỗi request) |
+| `mcp_calls` | Nhật ký mỗi lần gọi tool MCP | user, client, endpoint (`user` / `team`), tool, hash tham số, thời gian, trạng thái, `trace_id`; không lưu nội dung trả về; xoá sau 90 ngày |
