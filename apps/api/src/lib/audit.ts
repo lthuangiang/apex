@@ -28,7 +28,7 @@ export const AuditAction = {
   adminUserViewed: "admin.user_viewed",
   telegramConnected: "telegram.connected",
   telegramDisconnected: "telegram.disconnected",
-  /** Team xem dữ liệu một user qua MCP nội bộ (DEC-TBD-mcp-user-tools): target = user, metadata có tool + tokenId. */
+  /** Team xem dữ liệu một user qua MCP nội bộ (DEC-220): target = user, metadata có tool + tokenId. */
   mcpTeamUserViewed: "mcp.team_user_viewed",
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];

@@ -134,6 +134,10 @@ test("an MCP client connects with OAuth, reads, and loses access on revoke", asy
     const summary = await client.callTool({ name: "get_portfolio_summary", arguments: {} });
     expect(summary.isError).not.toBe(true);
     expect(summary.structuredContent).toMatchObject({ realMoney: { reason: null } });
+    // B2: thành tích AI Desk (chưa có lần Apply nào) luôn kèm câu "not a forecast".
+    const record = await client.callTool({ name: "get_track_record", arguments: {} });
+    expect(record.isError).not.toBe(true);
+    expect(JSON.stringify(record.structuredContent)).toContain("not a forecast");
     await client.close();
   });
 
