@@ -44,7 +44,7 @@ export function marketFacts(m: MarketInput): DeskAiFact[] {
   const out: DeskAiFact[] = [];
   const f = (key: DeskAiFact["key"], value: string, unit: DeskAiFact["unit"], source: string) =>
     out.push({ id: `${key}:${m.market}`, key, bot: null, market: m.market, value, unit, source });
-  // Cùng hàm với Watchlist (DEC-TBD-watchlist-24h): SoDEX trả nến mới nhất trước, % 24h tính từ nến cũ nhất.
+  // Cùng hàm với Watchlist (DEC-211): SoDEX trả nến mới nhất trước, % 24h tính từ nến cũ nhất.
   const candles = byTime(m.candles);
   const change = change24hPct(m.price, candles);
   if (change !== null) f("market_change_24h_pct", change, "pct", "sodex_klines");
