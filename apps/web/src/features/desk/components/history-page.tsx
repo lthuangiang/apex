@@ -7,9 +7,10 @@ import {
 } from "@drift/shared";
 import { Button, ConfirmDialog, EmptyState, ErrorState, Skeleton } from "@drift/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { z } from "zod";
 
 import { Card, PageHead, Workspace } from "@/components/workspace";
@@ -28,26 +29,40 @@ type Conversation = DeskAiHistoryView["conversations"][number];
 function ConversationItem({ c }: { c: Conversation }) {
   const t = useTranslations("desk.ai.historyPage");
   const [open, setOpen] = useState(false);
+  const id = useId();
   const title = c.kind === "brief" ? t("brief") : c.title;
   return (
     <li className="border-t border-border first:border-t-0">
+      {/* Cả dòng là nút 44 px có mũi tên, để thấy là bấm được (PM chốt, DEC-198). */}
       <button
         type="button"
         aria-expanded={open}
+        aria-controls={id}
         onClick={() => {
           setOpen((x) => !x);
         }}
-        className="flex min-h-tap w-full items-center justify-between gap-3 py-2 text-left text-sm"
+        className="-mx-2 flex min-h-tap w-[calc(100%+1rem)] items-center gap-2 rounded-control px-2 text-left text-sm hover:bg-surface-2"
       >
-        <span className="truncate font-bold">{title}</span>
+        <ChevronRight
+          aria-hidden="true"
+          size={16}
+          className={`flex-none text-ink-2 transition-transform ${open ? "rotate-90" : ""}`}
+        />
+        <span className="min-w-0 flex-1 truncate font-bold">{title}</span>
         <span className="flex-none text-xs text-ink-2">{formatDateTime(c.createdAt)}</span>
       </button>
       {open ? (
-        <ul className="m-0 flex list-none flex-col gap-3 p-0 pb-3">
+        // Giống panel Desk AI: câu hỏi bong bóng phải nền accent, câu trả lời dùng lại Answer, có giờ từng lượt.
+        <ul id={id} className="m-0 flex list-none flex-col gap-4 p-0 pt-2 pb-4">
           {c.turns.map((x) => (
-            <li key={x.id} className="flex flex-col gap-1.5">
+            <li key={x.id} className="flex flex-col gap-2">
+              <time dateTime={x.createdAt} className="self-center text-xs text-muted">
+                {formatDateTime(x.createdAt)}
+              </time>
               {x.question === null ? null : (
-                <p className="m-0 text-sm font-semibold text-ink-2">{x.question}</p>
+                <p className="m-0 max-w-[85%] self-end rounded-[16px_16px_4px_16px] bg-accent px-3.5 py-2 text-sm text-white">
+                  {x.question}
+                </p>
               )}
               <Answer answer={x.answer} />
             </li>
