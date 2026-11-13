@@ -260,7 +260,7 @@ export const teamBuilderRevenueSchema = z.object({
 });
 export type TeamBuilderRevenue = z.infer<typeof teamBuilderRevenueSchema>;
 
-// ---------- B1: tool đọc cho người dùng (DEC-TBD-mcp-user-tools) ----------
+// ---------- B1: tool đọc cho người dùng (DEC-220) ----------
 // Lấy đúng service mà màn hình đang dùng (Overview, Risk, Strategy Lab, Trading Agent, Copy Trading) để số khớp nhau.
 // Chỉ dữ liệu của chính người gọi (lọc theo userId của token). Tiền thật và tiền giả (paper) tách riêng, paper không
 // cộng vào tiền thật (quy tắc 1.2).

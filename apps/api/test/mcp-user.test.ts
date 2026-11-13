@@ -16,7 +16,7 @@ import { sha256 } from "../src/lib/crypto";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// Tool đọc cho người dùng qua route nội bộ (docs/MCP.md mục 5B, DEC-TBD-mcp-user-tools): api tự introspect token,
+// Tool đọc cho người dùng qua route nội bộ (docs/MCP.md mục 5B, DEC-220): api tự introspect token,
 // chỉ đọc dữ liệu của người giữ token (user A không thấy bot của user B → 404), số lấy từ đúng service của màn hình,
 // thiếu dữ liệu → null + lý do (quy tắc 1.8), paper tách khỏi tiền thật, tên bot chỉ nằm trong `userText`.
 

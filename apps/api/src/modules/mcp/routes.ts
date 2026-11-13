@@ -125,7 +125,7 @@ export function registerMcpRoutes(
 }
 
 /**
- * Tool đọc cho người dùng (B1, DEC-TBD-mcp-user-tools): endpoint `/mcp`, scope `read`. `userId` luôn lấy từ token,
+ * Tool đọc cho người dùng (B1, DEC-220): endpoint `/mcp`, scope `read`. `userId` luôn lấy từ token,
  * không bao giờ từ tham số; bot của người khác → 404.
  */
 function registerMcpUserRoutes(app: FastifyInstance, deps: McpAuthDeps & UserToolDeps): void {

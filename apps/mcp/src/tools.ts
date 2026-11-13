@@ -67,7 +67,7 @@ const reasonCodeInput = {
 const ME = "/api/v1/mcp/me";
 const botId = uuid.describe("Bot id from list_bots");
 
-/** Tool đọc cho người dùng (B1, DEC-TBD-mcp-user-tools): endpoint `/mcp`, scope `read`, chỉ dữ liệu của chính họ. */
+/** Tool đọc cho người dùng (B1, DEC-220): endpoint `/mcp`, scope `read`, chỉ dữ liệu của chính họ. */
 const USER_TOOLS: readonly ToolDef[] = [
   {
     name: "get_portfolio_summary",
