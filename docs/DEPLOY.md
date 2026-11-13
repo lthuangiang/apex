@@ -140,7 +140,7 @@ Phần A1: authorization server OAuth nằm trong `api`. Service `apps/mcp` và 
 3. `docker compose run --rm migrate` (migration bảng `oauth_clients`, `oauth_codes`, `mcp_tokens`, `mcp_calls`), rồi `up -d api scheduler web`.
 4. Kiểm tra: `curl -s https://<APP_HOST>/.well-known/oauth-authorization-server` trả JSON có `issuer`, `code_challenge_methods_supported: ["S256"]`.
 
-### 2.10 MCP: service `mcp` (DEC-167, DEC-TBD-mcp-server)
+### 2.10 MCP: service `mcp` (DEC-167, DEC-217)
 Phần A2: `apps/mcp` (MCP Streamable HTTP, cổng 8097) ở `https://mcp.desklabs.xyz/mcp` (người dùng) và `/team/mcp` (team). Service chỉ gọi `api` (introspect token, ghi `mcp_calls`) và Redis (đếm rate limit); không chạm signer, engine, SoDEX hay Postgres. Làm 2.9 trước, rồi làm tay:
 1. DNS: bản ghi **A** (và **AAAA** nếu có) `mcp.desklabs.xyz` trỏ về IP của VPS. Traefik tự xin cert Let's Encrypt (TLS-ALPN) cho host mới ở lần gọi đầu.
 2. `/opt/drift/.env`:

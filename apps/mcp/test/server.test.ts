@@ -11,7 +11,7 @@ import { memoryCounter } from "../src/rate-limit";
 import { buildMcpApp } from "../src/server";
 import { TOOLS } from "../src/tools";
 
-// DeskLabs MCP server (DEC-167, DEC-TBD-mcp-server): introspect mỗi request, audience (RFC 8707), scope, role team,
+// DeskLabs MCP server (DEC-167, DEC-217): introspect mỗi request, audience (RFC 8707), scope, role team,
 // rate limit, nhật ký `mcp_calls` chỉ có hash tham số. api là bản giả; client là SDK MCP chính thức.
 
 const PUBLIC = "https://mcp.desklabs.test";

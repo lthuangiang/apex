@@ -12,7 +12,7 @@ import type { z } from "zod";
 import type { ApiClient, McpCallRecord } from "./api-client";
 import { checkLimits, type Counter } from "./rate-limit";
 
-// DeskLabs MCP server (docs/MCP.md mục 3, DEC-167, DEC-TBD-mcp-server). Resource server OAuth: kiểm tra token bằng
+// DeskLabs MCP server (docs/MCP.md mục 3, DEC-167, DEC-217). Resource server OAuth: kiểm tra token bằng
 // introspect của api ở MỌI request (revoke có hiệu lực ngay), token phải được cấp cho đúng endpoint (RFC 8707), scope
 // đủ (403 insufficient_scope), rồi chạy MCP Streamable HTTP không trạng thái. Chỉ tool đọc / bản nháp: không tool nào
 // đặt lệnh, đổi bot hay chuyển tiền. Mọi lần gọi tool ghi `mcp_calls` (hash tham số, không lưu kết quả).

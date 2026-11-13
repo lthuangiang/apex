@@ -10,7 +10,7 @@ import { expect, test } from "@playwright/test";
 
 import { signUpConnectAnd2fa } from "../support/onboard";
 
-// MCP A2 (docs/MCP.md, DEC-167, DEC-TBD-mcp-server): client MCP chính thức (SDK) tự khám phá OAuth từ apps/mcp
+// MCP A2 (docs/MCP.md, DEC-167, DEC-217): client MCP chính thức (SDK) tự khám phá OAuth từ apps/mcp
 // (401 + Protected Resource Metadata → metadata của issuer), đăng ký động, mở màn consent; người dùng bấm Allow;
 // client đổi code lấy token (PKCE) rồi gọi được /mcp. Token cấp cho /mcp không dùng được ở /team/mcp; revoke ở
 // Settings › Connected apps có hiệu lực ngay ở lần gọi kế tiếp.
