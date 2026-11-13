@@ -48,6 +48,8 @@ const OPEN_PATHS = [
   "/.well-known/assetlinks.json",
   // Metadata OAuth cho MCP (DEC-215): production do Traefik đưa thẳng tới api; dev qua rewrite của Next.
   "/.well-known/oauth-authorization-server",
+  // Trang hướng dẫn kết nối Claude (MCP M6, W7): công khai.
+  "/claude",
 ];
 /** Màn consent OAuth: chưa đăng nhập thì đăng nhập trước rồi quay lại đúng URL (giữ tham số OAuth). */
 const OAUTH_AUTHORIZE = "/oauth/authorize";

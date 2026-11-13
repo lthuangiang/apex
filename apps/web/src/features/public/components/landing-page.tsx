@@ -9,6 +9,7 @@ import {
   Download,
   FlaskConical,
   Lock,
+  MessageSquare,
   ShieldCheck,
   Sparkles,
   Waves,
@@ -46,12 +47,23 @@ export function LandingPage() {
   const mmFee = feeLabels(builderFeeRateOf(Strategy.volumeMaker)).pct;
   const vfFee = feeLabels(builderFeeRateOf(Strategy.volumeFarm)).pct;
   const steps = ["connect", "pick", "run", "review"] as const;
-  const faq = ["independent", "withdraw", "sign", "paper", "copy", "deskAi", "halt"] as const;
+  const faq = [
+    "independent",
+    "withdraw",
+    "sign",
+    "paper",
+    "copy",
+    "deskAi",
+    "claude",
+    "halt",
+  ] as const;
   // AI Desk, Copy Trading, Telegram: ba tính năng ngoài bot (README mục AI Desk / Copy Trading / Notifications).
-  const deskItems: readonly (readonly ["desk" | "copy" | "alerts", LucideIcon])[] = [
+  // Thẻ thứ 4 "Ask from Claude" (MCP M6, W7) dẫn tới trang hướng dẫn /claude.
+  const deskItems: readonly (readonly ["desk" | "copy" | "alerts" | "claude", LucideIcon])[] = [
     ["desk", Sparkles],
     ["copy", Users],
     ["alerts", Bell],
+    ["claude", MessageSquare],
   ];
   const labItems: readonly (readonly [
     "analytics" | "adverse" | "review" | "export",
@@ -199,7 +211,8 @@ export function LandingPage() {
             </h2>
             <p className="m-0 text-[17px] leading-relaxed text-ink-2">{t("desk.body")}</p>
           </div>
-          <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-4 p-0">
+          {/* Bốn thẻ (AI Desk, Copy Trading, Telegram, Claude): 4 cột ở 1440 như mockup LandingCard, 2 cột ở tablet. */}
+          <ul className="m-0 grid list-none grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 p-0">
             {deskItems.map(([k, Icon]) => (
               <li
                 key={k}
@@ -220,6 +233,15 @@ export function LandingPage() {
                     </li>
                   ))}
                 </ul>
+                {k === "claude" ? (
+                  <Link
+                    href="/claude"
+                    className="mt-auto inline-flex min-h-tap items-center gap-1.5 self-start font-bold text-accent no-underline hover:text-accent-ink"
+                  >
+                    {t("desk.items.claude.cta")}
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </Link>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -386,6 +408,14 @@ export function LandingPage() {
                 </summary>
                 <p className="m-0 px-5 pb-5 text-[15px] leading-relaxed text-ink-2">
                   {t(`faq.items.${k}.a`, { brand, fee: maxFee })}
+                  {k === "claude" ? (
+                    <>
+                      {" "}
+                      <Link href="/claude" className="font-bold text-accent">
+                        {t("faq.items.claude.link")}
+                      </Link>
+                    </>
+                  ) : null}
                 </p>
               </details>
             ))}
@@ -435,12 +465,18 @@ export function PublicFooter() {
         <p className="m-0 leading-relaxed font-semibold text-ink-body">{t("built")}</p>
         <p className="m-0 leading-relaxed">{t("disclaimer")}</p>
       </div>
-      <nav aria-label={t("legalLabel")}>
+      <nav aria-label={t("legalLabel")} className="flex flex-wrap gap-x-5">
         <Link
           href="/risk-disclosure"
           className="inline-flex min-h-tap items-center font-bold text-accent no-underline"
         >
           {t("risk")}
+        </Link>
+        <Link
+          href="/claude"
+          className="inline-flex min-h-tap items-center font-bold text-accent no-underline"
+        >
+          {t("claude")}
         </Link>
       </nav>
     </footer>

@@ -69,6 +69,8 @@ services:
       # App Android (TWA): /.well-known/assetlinks.json, xem infra/mobile/README.md.
       ANDROID_PACKAGE_NAME: ${ANDROID_PACKAGE_NAME:-}
       ANDROID_CERT_SHA256: ${ANDROID_CERT_SHA256:-}
+      # Trang /claude (W7) hiện địa chỉ server MCP: cùng biến với api / mcp.
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://mcp.desklabs.xyz}
     healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/signup').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
     deploy: { replicas: 2 }
     labels:

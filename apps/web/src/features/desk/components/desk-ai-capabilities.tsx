@@ -2,6 +2,7 @@
 
 import { DESK_AI_CONFIG } from "@drift/shared";
 import { BottomSheet } from "@drift/ui";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
@@ -57,6 +58,16 @@ export function DeskAiCapabilitiesLink() {
       </button>
       <BottomSheet open={open} onOpenChange={setOpen} title={t("title")} closeLabel={t("close")}>
         <DeskAiCapabilities quota heading={false} />
+        {/* Lối vào trang hướng dẫn /claude (MCP M6, W7). */}
+        <p className="m-0 text-sm text-ink-2">
+          {t.rich("preferClaude", {
+            link: (chunks) => (
+              <Link href="/claude" className="font-bold text-accent-ink">
+                {chunks}
+              </Link>
+            ),
+          })}
+        </p>
       </BottomSheet>
     </>
   );

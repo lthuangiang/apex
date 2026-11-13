@@ -112,6 +112,10 @@ describe("Desk AI capabilities (W6)", () => {
     const dialog = await screen.findByRole("dialog", { name: "I can help with" });
     expect(within(dialog).getByText(BLOCK)).toBeInTheDocument();
     expect(within(dialog).getByText("20 questions a day.")).toBeInTheDocument();
+    // Lối vào trang hướng dẫn /claude (W7).
+    expect(
+      within(dialog).getByRole("link", { name: "Connect DeskLabs to Claude." }),
+    ).toHaveAttribute("href", "/claude");
     // Focus nằm trong sheet.
     expect(dialog.contains(document.activeElement)).toBe(true);
     await expectNoAxeViolations();
