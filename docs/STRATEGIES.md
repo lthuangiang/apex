@@ -143,7 +143,9 @@ Preview: số lần × số tiền, lần mua tiếp theo, ngày kết thúc. Ba
 ## S6. Rebalancing (`rebalancing`) · Spot · builder fee: chỉ lệnh bán
 
 **Cách chạy:**
-1. Lúc start: mua từng tài sản tới tỷ trọng mục tiêu bằng số vốn đã cấp.
+1. Lúc start: mua từng tài sản tới tỷ trọng mục tiêu bằng số vốn đã cấp, theo "Initial buy" (DEC-TBD-rebalancing-initial-buy):
+   - **All now** (mặc định; config thiếu field cũng là All now): mua một lần như rebalance thường.
+   - **Over N hours** (N = 2–72): N phần, mỗi giờ một phần, tính từ lúc có đủ giá. Phần k chỉ mua, đưa mỗi tài sản tới k/N giá trị mục tiêu (luỹ kế), vẫn chịu "Max trade per rebalance". Phần nào dưới min size của SoDEX thì phần đó không có lệnh; vì mục tiêu là luỹ kế nên phần sau tự bù. Trong lúc mua dần không rebalance theo ngưỡng / lịch; xong phần N thì chạy rebalance thường. Field khoá sau khi tạo bot. Trading Agent hiện "Initial buy: {done} of {total} parts".
 2. Cứ 5 phút **[confirm]** tính tỷ trọng hiện tại theo giá quote asset.
 3. Kiểm tra điều kiện rebalance: với chế độ threshold, có tài sản lệch quá ngưỡng; với chế độ schedule, tới giờ hẹn.
 4. Khi rebalance: bán tài sản thừa, mua tài sản thiếu bằng lệnh limit sát giá **[confirm loại lệnh]**. Mỗi lần giao dịch không quá "Max trade per rebalance".
@@ -157,6 +159,8 @@ Preview: số lần × số tiền, lần mua tiếp theo, ngày kết thúc. Ba
 | 3 | Threshold | 5% | 1–50%. Chỉ hiện khi Rebalance when = Threshold | Allowed 1–50%. |
 | 3 | Rebalance every | Weekly | Daily / Weekly / Monthly. Chỉ hiện khi Rebalance when = Schedule. "Checked at 00:00 in your time zone"; Weekly = thứ Hai, Monthly = ngày 1 (DEC-67) | — |
 | 3 | Investment | — | ≤ free Spot balance | More than your available Spot balance. |
+| 3 | Initial buy | All now | All now / Over N hours. "Buy all at once, or spread over a few hours." Khoá sau khi tạo | — |
+| 3 | Spread over | — | 2–72 hours. Chỉ hiện khi Initial buy = Over N hours. "Equal parts, one each hour. Allowed 2–72 hours." | Allowed 2–72 hours. |
 | 4 | Max trade per rebalance | 25% | 1–100% of value | Allowed 1–100%. |
 | 4 | Stop if value below | empty | Optional; < investment | Must be below the investment. |
 | 4 | Take profit | empty | Optional | Must be above 0. |

@@ -30,7 +30,7 @@ export const rebalancingSchema = z
     maxTradePct: percent(1, 100, "Allowed 1–100%."),
     stopBelow: optionalPositive(),
     takeProfitPct: optionalPositive(),
-    /** Initial buy (IMPROVEMENTS IMP-04, DEC-91): thiếu là All now (hành vi cũ). Over N hours: N phần bằng nhau, mỗi giờ một phần. */
+    /** Initial buy (IMP-04, DEC-TBD-rebalancing-initial-buy): thiếu là All now (hành vi cũ). Over N hours: N phần bằng nhau, mỗi giờ một phần. */
     initialBuy: z.enum(["all_now", "over_hours"]).optional(),
     initialBuyHours: z
       .number()

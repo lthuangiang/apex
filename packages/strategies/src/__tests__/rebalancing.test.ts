@@ -2,7 +2,7 @@ import { ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
 import { clOrdId } from "../core/ids";
-import { currentWeights, nextScheduled, rebalancing } from "../rebalancing";
+import { currentWeights, initialBuyProgress, nextScheduled, rebalancing } from "../rebalancing";
 import { rebalancingSchema } from "../rebalancing/schema";
 import { runSim } from "../sim/exchange";
 
@@ -148,7 +148,7 @@ describe("rebalancing schedule (DEC-67)", () => {
   });
 });
 
-describe("rebalancing Initial buy (IMP-04, DEC-91)", () => {
+describe("rebalancing Initial buy (IMP-04, DEC-TBD-rebalancing-initial-buy)", () => {
   const H = 3_600_000;
   const over = rebalancingSchema.parse({ ...base, initialBuy: "over_hours", initialBuyHours: 4 });
   const id = (tag: string) => clOrdId(ctx.botId, ctx.version, tag);
@@ -239,6 +239,21 @@ describe("rebalancing Initial buy (IMP-04, DEC-91)", () => {
     ).state;
     const next = rebalancing.step(over, s, { type: "timer", at: 5 * H + 1 }, ctx);
     expect(ids(next)).toContain(id("rebal:2:BTC"));
+  });
+
+  it("reports Initial buy progress for Trading Agent only while buying in parts", () => {
+    const r = runSim(
+      rebalancing,
+      over,
+      ctx,
+      [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)],
+      fees,
+    );
+    expect(initialBuyProgress(over, r.state)).toEqual({ done: 1, total: 4 });
+    expect(initialBuyProgress(over, { building: null })).toBeNull();
+    expect(initialBuyProgress(over, {})).toBeNull();
+    // All now và config cũ không có tiến độ.
+    expect(initialBuyProgress(base, { building: { startedAt: 1, part: 1 } })).toBeNull();
   });
 
   it("an old running state without `building` keeps rebalancing", () => {

@@ -49,11 +49,13 @@ import {
   costPerMillion,
   costUsed,
   farmNet,
+  initialBuyProgress,
   isMultiMarketCopyState,
   netPnl,
   type Ledger,
   leverageCapIssue,
   meetsMinSize,
+  rebalancingSchema,
   minSizeDetail,
   requirementOf,
   botCapitalOf,
@@ -807,7 +809,22 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
           )
         : null,
     adaptiveDca: adcaStats(b.strategy, active?.config ?? null, runtime?.state ?? null),
+    initialBuy: initialBuyOf(b.strategy, active?.config ?? null, runtime?.state ?? null),
   };
+}
+
+/**
+ * Rebalancing đang mua dần (Initial buy · Over N hours, DEC-TBD-rebalancing-initial-buy): số phần đã mua / tổng số
+ * phần, cho dòng "Initial buy: {done} of {total} parts" ở Trading Agent. Chiến lược khác, All now, hay đã xong thì null.
+ */
+function initialBuyOf(strategy: string, config: unknown, state: unknown): BotDetail["initialBuy"] {
+  if (strategy !== Strategy.rebalancing || config === null || state === null) return null;
+  const c = rebalancingSchema.safeParse(config);
+  if (!c.success) return null;
+  return initialBuyProgress(
+    c.data,
+    state as { building?: { startedAt: number; part: number } | null },
+  );
 }
 
 /** Chỉ số AI Adaptive DCA từ state của engine (DEC-107); chưa chạy thì null. */

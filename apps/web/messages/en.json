@@ -2688,6 +2688,7 @@
   "agent": {
     "title": "Trading Agent",
     "subtitle": "What each bot is doing, why, and the controls to change it.",
+    "initialBuy": "Initial buy: {done} of {total} parts",
     "newAgent": "New bot",
     "none": "No bots yet. Create one in Strategy Lab.",
     "pause": "Pause",
