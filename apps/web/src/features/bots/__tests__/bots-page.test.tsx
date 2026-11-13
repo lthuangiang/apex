@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import messages from "../../../../messages/en.json";
 import { BotsPage } from "../components/bots-page";
 
-// Strategy Lab (báo cáo test E21, E22; DEC-TBD-strategy-lab-agent): phí builder trên mọi thẻ, giải thích SoPoints ở thẻ
+// Strategy Lab (báo cáo test E21, E22; DEC-210): phí builder trên mọi thẻ, giải thích SoPoints ở thẻ
 // khối lượng, khối rỗng có nút sang catalog.
 
 const tab = vi.hoisted(() => ({ value: "catalog" }));

@@ -2427,6 +2427,7 @@
       "budgetInvalid": "Enter an amount above 0."
     },
     "review": {
+      "thinMarket": "Thin market on SoDEX: copies may be skipped or smaller.",
       "title": "Copy a trader · review and start",
       "back": "← Budget and safety",
       "heading": "Review and start",
@@ -2517,18 +2518,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": [
-    "agent.subtitle",
-    "agent.newAgent",
-    "agent.none",
-    "agent.stop",
-    "agent.stopTitle",
-    "agent.noneTitle",
-    "agent.agentsLabel",
-    "agent.notConnected",
-    "bots.catalog.sopoints",
-    "createBot.notConnected"
-  ],
+  "_pendingReview": [],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",
