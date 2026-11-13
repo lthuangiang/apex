@@ -2,17 +2,17 @@
 # App nào cần build lại cho release (DEC-214). In tên app, mỗi dòng một app.
 #
 #   infra/deploy/changed-apps.sh <tag-trước> <tag-hoặc-commit>   # so sánh hai mốc
-#   infra/deploy/changed-apps.sh "" <tag>                       # không có tag trước → in cả 10 app
+#   infra/deploy/changed-apps.sh "" <tag>                       # không có tag trước → in cả 11 app
 #
 # Quy tắc theo file đổi giữa hai mốc (git diff --name-only):
 # - apps/<app>/**                                   → app đó
 # - packages/**, pnpm-lock.yaml, package.json, pnpm-workspace.yaml, tsconfig*, .dockerignore,
-#   .github/workflows/release.yml, infra/deploy/changed-apps.sh  → cả 10 app
+#   .github/workflows/release.yml, infra/deploy/changed-apps.sh  → cả 11 app
 # - còn lại (docs, e2e, infra khác…)                → không app nào
 # Biến DRY_RUN=1: in thêm lý do của từng app (để PM xem log).
 set -euo pipefail
 
-ALL_APPS=(api backtest engine jobs marketdata realtime reco scheduler signer web)
+ALL_APPS=(api backtest engine jobs marketdata mcp realtime reco scheduler signer web)
 PREV="${1:-}"
 CUR="${2:?usage: changed-apps.sh <prev-tag> <tag>}"
 

@@ -198,7 +198,6 @@ describe("OAuth for MCP", () => {
     expect(ok.headers["cache-control"]).toBe("no-store");
     const t = ok.json<Tokens>();
     expect(t).toMatchObject({ token_type: "Bearer", expires_in: 3600, scope: "read" });
-    expect((await exchange()).json()).toMatchObject({ error: "invalid_grant" });
     expect(await introspect(t.access_token)).toMatchObject({
       active: true,
       scope: ["read"],
@@ -424,5 +423,60 @@ describe("OAuth for MCP", () => {
       `/api/v1/oauth/authorize?${query({ ...base, redirect_uri: "https://evil.example/cb" })}`,
     );
     expect(outside.statusCode).toBe(400);
+  });
+
+  it("revokes the tokens of a code that is exchanged twice (OAuth 2.1 4.1.3)", async () => {
+    const clientId = await register();
+    const { client } = await user("oauth-code-reuse@example.com");
+    const { verifier, challenge } = pkce();
+    const a = await authorize(client, clientId, challenge);
+    const body = {
+      grant_type: "authorization_code",
+      code: a.redirect.searchParams.get("code") ?? "",
+      code_verifier: verifier,
+      client_id: clientId,
+      redirect_uri: REDIRECT,
+      resource: RESOURCE,
+    };
+    const t = (await form("/api/v1/oauth/token", body)).json<Tokens>();
+    expect(await introspect(t.access_token)).toMatchObject({ active: true });
+    expect((await form("/api/v1/oauth/token", body)).json()).toMatchObject({
+      error: "invalid_grant",
+    });
+    expect(await introspect(t.access_token)).toEqual({ active: false });
+  });
+
+  it("records MCP tool calls only from apps/mcp, with a hash instead of the arguments", async () => {
+    const row = {
+      tokenId: null,
+      userId: null,
+      clientId: "dlc_x",
+      endpoint: "team",
+      tool: "team_reason_code",
+      argsHash: "a".repeat(64),
+      durationMs: 12,
+      status: "ok",
+      traceId: "trace-1",
+    };
+    const denied = await env.app.inject({ method: "POST", url: "/api/v1/mcp/calls", payload: row });
+    expect(denied.statusCode).toBe(401);
+    const ok = await env.app.inject({
+      method: "POST",
+      url: "/api/v1/mcp/calls",
+      headers: { "x-mcp-introspect-secret": SECRET },
+      payload: row,
+    });
+    expect(ok.statusCode).toBe(204);
+    const { rows } = await env.pool.query(
+      "select tool, args_hash, status from mcp_calls where trace_id = 'trace-1'",
+    );
+    expect(rows).toEqual([{ tool: "team_reason_code", args_hash: "a".repeat(64), status: "ok" }]);
+    const bad = await env.app.inject({
+      method: "POST",
+      url: "/api/v1/mcp/calls",
+      headers: { "x-mcp-introspect-secret": SECRET },
+      payload: { ...row, argsHash: 'raw args {"code":1}' },
+    });
+    expect(bad.statusCode).toBe(400);
   });
 });

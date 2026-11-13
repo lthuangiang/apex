@@ -9,6 +9,8 @@ import type { DeskAiFact } from "./facts";
 export const DESK_MARKET_CONFIG = {
   /** Số market tối đa đưa vào fact (ưu tiên market có bot đang chạy). */
   maxMarkets: 5,
+  /** Số market tối đa lấy theo câu hỏi ("How's BTC today?"), cộng thêm vào market của bot. */
+  maxAsked: 3,
   /** Cửa sổ: 24 nến 1h. */
   hours: 24,
   /** Cache theo market ở api để 20 câu/ngày × nhiều user không gọi SoDEX liên tục. */
@@ -70,6 +72,67 @@ export function marketsForFacts(bots: readonly { market: string; state: string }
     (a, b) => Number(b.state === "running") - Number(a.state === "running"),
   );
   return [...new Set(order.map((b) => b.market))].slice(0, DESK_MARKET_CONFIG.maxMarkets);
+}
+
+/** Từ tiếng Anh hay gặp trùng ký hiệu coin: chỉ coi là coin khi viết HOA (ví dụ "ONE", "AI"). */
+const COMMON_WORDS: ReadonlySet<string> = new Set([
+  "a",
+  "ai",
+  "all",
+  "and",
+  "any",
+  "are",
+  "bot",
+  "buy",
+  "can",
+  "day",
+  "did",
+  "fee",
+  "for",
+  "get",
+  "how",
+  "i",
+  "is",
+  "it",
+  "low",
+  "max",
+  "me",
+  "my",
+  "new",
+  "not",
+  "now",
+  "one",
+  "or",
+  "pay",
+  "the",
+  "to",
+  "top",
+  "up",
+  "use",
+  "was",
+  "why",
+  "win",
+  "you",
+]);
+
+/**
+ * Market SoDEX được nhắc trong câu hỏi ("How's BTC today?" → `BTC-USD`), tối đa `maxAsked`. `listed` là tên symbol
+ * trên SoDEX; nhận "BTC", "btc", "BTC-USD". Từ thường trùng ký hiệu (how, one…) chỉ nhận khi viết HOA. Hàm thuần.
+ */
+export function marketsInQuestion(question: string, listed: readonly string[]): string[] {
+  const byName = new Map(listed.map((m) => [m.toUpperCase(), m] as const));
+  const out: string[] = [];
+  for (const raw of question.replace(/desk\s*ai/gi, " ").match(/[A-Za-z0-9]+(?:-[A-Za-z]+)?/g) ??
+    []) {
+    const lower = raw.toLowerCase();
+    if (COMMON_WORDS.has(lower) && raw !== raw.toUpperCase()) continue;
+    if (lower.length < 2) continue;
+    const up = raw.toUpperCase();
+    const hit = byName.get(up) ?? byName.get(`${up}-USD`);
+    if (hit !== undefined && !out.includes(hit)) out.push(hit);
+    if (out.length >= DESK_MARKET_CONFIG.maxAsked) break;
+  }
+  return out;
 }
 
 export type MarketMood = "sideways" | "jumpy" | null;

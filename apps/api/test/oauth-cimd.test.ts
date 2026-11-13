@@ -1,8 +1,12 @@
+import { createServer, request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
+
 import { describe, expect, it } from "vitest";
 
 import {
   ClientMetadataError,
   fetchClientMetadata,
+  httpsGetPinned,
   isPublicAddress,
   parseClientIdUrl,
   type CimdDeps,
@@ -145,5 +149,26 @@ describe("client ID metadata documents", () => {
     ])
       expect(() => parseClientIdUrl(bad)).toThrow(ClientMetadataError);
     expect(parseClientIdUrl(URL_ID).hostname).toBe("claude.example");
+  });
+
+  it("gives up after 3 s in total even when the server keeps dripping bytes", async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      const t = setInterval(() => res.write(" "), 200);
+      res.on("close", () => {
+        clearInterval(t);
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    const started = Date.now();
+    const err = await httpsGetPinned(new URL("https://drip.example/c.json"), "127.0.0.1", 4, {
+      request: httpRequest,
+      port,
+    }).catch((e: unknown) => e);
+    server.close();
+    expect(err).toBeInstanceOf(ClientMetadataError);
+    expect((err as Error).message).toMatch(/timed out/);
+    expect(Date.now() - started).toBeLessThan(4_500);
   });
 });
