@@ -29,9 +29,16 @@ export function deskAiFacts(input: {
   questionsUsed: number;
 }): DeskAiFact[] {
   const out: DeskAiFact[] = [];
+  // Hai bot trùng tên (chạy lại sau khi stop, archive) thì thêm "#2", "#3" theo thứ tự để phân biệt.
+  const total = new Map<string, number>();
+  for (const b of input.bots) total.set(b.name, (total.get(b.name) ?? 0) + 1);
+  const seen = new Map<string, number>();
   for (const b of input.bots) {
+    const n = (seen.get(b.name) ?? 0) + 1;
+    seen.set(b.name, n);
+    const name = (total.get(b.name) ?? 0) > 1 && n > 1 ? `${b.name} #${String(n)}` : b.name;
     const f = (key: DeskAiFact["key"], value: string, unit: DeskAiFact["unit"], source: string) =>
-      out.push({ id: `${key}:${b.botId}`, key, bot: b.name, value, unit, source });
+      out.push({ id: `${key}:${b.botId}`, key, bot: name, value, unit, source });
     f("bot_state", b.state, "text", "bot_state");
     if (b.net !== null) f("bot_net", usd(b.net), "usdc", "bot_state");
     if (b.fees !== null) f("bot_fees", usd(b.fees), "usdc", "fills");

@@ -27,6 +27,8 @@ export interface DeskMarketSource {
     price: string | null;
     quote: string | null;
   }>;
+  /** Tên các market perps đang niêm yết trên SoDEX (để nhận "BTC" trong câu hỏi); lỗi → rỗng. */
+  listed(): Promise<string[]>;
 }
 
 export function sodexMarketSource(deps: {
@@ -45,7 +47,16 @@ export function sodexMarketSource(deps: {
       return fallback;
     }
   };
+  let listedCache: { at: number; value: string[] } | null = null;
   return {
+    async listed() {
+      const now = deps.now().getTime();
+      if (listedCache !== null && now - listedCache.at < DESK_MARKET_CONFIG.cacheMs)
+        return listedCache.value;
+      const value = (await safe(deps.rest.getPerpsSymbols(), [])).map((s) => s.name);
+      if (value.length > 0) listedCache = { at: now, value };
+      return value;
+    },
     async read(engine, market) {
       const now = deps.now().getTime();
       const key = `${engine}:${market}`;
@@ -88,11 +99,15 @@ export function sodexMarketSource(deps: {
   };
 }
 
-/** Fact thị trường cho các market mà bot chưa archive của user đang dùng (tối đa 5, bot đang chạy trước). */
+/**
+ * Fact thị trường cho các market mà bot chưa archive của user đang dùng (tối đa 5, bot đang chạy trước), cộng các
+ * market `asked` được nhắc trong câu hỏi (perps).
+ */
 export async function deskMarketFacts(
   db: Db,
   source: DeskMarketSource | null | undefined,
   userId: string,
+  asked: readonly string[] = [],
 ): Promise<DeskAiFact[]> {
   if (source == null) return [];
   const rows = await db
@@ -102,7 +117,7 @@ export async function deskMarketFacts(
   const engineOf = new Map(
     rows.map((r) => [r.market, r.engine === "spot" ? "spot" : "perps"] as const),
   );
-  const markets = marketsForFacts(rows);
+  const markets = [...new Set([...asked, ...marketsForFacts(rows)])];
   const out = await Promise.all(
     markets.map(async (market) => {
       const d = await source.read(engineOf.get(market) ?? "perps", market);

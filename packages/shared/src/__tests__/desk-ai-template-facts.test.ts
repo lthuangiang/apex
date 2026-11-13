@@ -71,8 +71,12 @@ describe("templateFacts", () => {
     expect(out.some((f) => f.bot === null)).toBe(false);
   });
 
-  it("answers a loss question with state, profit and fees only", () => {
-    const out = templateFacts("Why did I lose money?", facts, { loss: true });
+  it("shows state, profit and fees only, for any question", () => {
+    const out = templateFacts("Why did I lose money?", facts);
+    expect(new Set(out.map((f) => f.key))).toEqual(new Set(["bot_state", "bot_net", "bot_fees"]));
+    expect(new Set(templateFacts("How are my bots?", facts).map((f) => f.key))).toEqual(
+      new Set(["bot_state", "bot_net", "bot_fees"]),
+    );
     expect(new Set(out.map((f) => f.key))).toEqual(new Set(["bot_state", "bot_net", "bot_fees"]));
   });
 
