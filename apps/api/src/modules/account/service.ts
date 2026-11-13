@@ -76,6 +76,7 @@ import { iso } from "../security/service";
 import type { TwoFactorDeps } from "../security/two-factor";
 
 import { builderFeeRows } from "./builder-fees";
+import { mcpStats } from "./mcp-stats";
 import { statsOverview } from "./stats-overview";
 import { requireTeam } from "./team";
 import { getWatchlist } from "./watchlist";
@@ -1346,6 +1347,7 @@ export async function platformStats(
     period,
     snapshotAt: iso(now),
     overview,
+    mcp: await mcpStats(deps.db, now),
     users: {
       total: userTotals?.total ?? 0,
       connected: connectedRow?.n ?? 0,

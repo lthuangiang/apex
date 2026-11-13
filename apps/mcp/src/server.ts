@@ -1,6 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { McpIntrospection, McpScope } from "@drift/shared";
+import {
+  MCP_LIMIT_TOOL,
+  mcpIntrospectFailKey,
+  type McpIntrospection,
+  type McpScope,
+} from "@drift/shared";
 // Subpath của "exports" trong package SDK: TypeScript resolve được, plugin import của eslint thì không.
 // eslint-disable-next-line import/no-unresolved
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -189,6 +194,10 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
         { err: err instanceof Error ? err.message : "unknown" },
         "introspect failed",
       );
+      // Theo dõi (DEC-225): đếm theo phút trong Redis; Redis lỗi thì bỏ qua lần đếm này.
+      void deps.counter
+        .hit(mcpIntrospectFailKey(Math.floor(now().getTime() / 60_000)), 600_000)
+        .catch(() => undefined);
       return reply.status(503).send({ error: "temporarily_unavailable" });
     }
     if (!intro.active) return challenge(reply, e, 401, "invalid_token");
@@ -228,7 +237,7 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
         userId: intro.userId,
         clientId: intro.clientId,
         endpoint: e,
-        tool: "-",
+        tool: MCP_LIMIT_TOOL[limited],
         argsHash: null,
         durationMs: 0,
         status: "rate_limited",

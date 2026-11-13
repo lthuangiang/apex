@@ -459,6 +459,20 @@ export const platformOverviewSchema = z.object({
 });
 export type PlatformOverview = z.infer<typeof platformOverviewSchema>;
 
+/** Mục MCP ở Stats (DEC-225): chỉ số đếm thật từ `mcp_tokens` / `mcp_calls`. */
+export const mcpPlatformStatsSchema = z.object({
+  /** User có token MCP còn refresh được (chưa thu hồi, chưa hết hạn). */
+  connectedUsers: z.number().int(),
+  calls24h: z.number().int(),
+  byTool24h: z.array(
+    z.object({ tool: z.string(), calls: z.number().int(), errors: z.number().int() }),
+  ),
+  /** Phần trăm trên mọi dòng `mcp_calls` 24h; null khi không có dòng nào ("Not available"). */
+  deniedPct24h: z.string().nullable(),
+  rateLimitedPct24h: z.string().nullable(),
+});
+export type McpPlatformStats = z.infer<typeof mcpPlatformStatsSchema>;
+
 export const platformStatsSchema = z.object({
   /** Số ngày được truy vấn (7 | 30 | 90). */
   period: z.number().int(),
@@ -497,6 +511,7 @@ export const platformStatsSchema = z.object({
     devices: z.array(z.object({ device: z.string(), users: z.number().int() })),
   }),
   overview: platformOverviewSchema,
+  mcp: mcpPlatformStatsSchema,
 });
 export type PlatformStats = z.infer<typeof platformStatsSchema>;
 

@@ -12,6 +12,7 @@ import { formatDate, formatDateTime, formatInteger, formatMoney } from "@/lib/fo
 
 import { EquityChart } from "./charts";
 import { ConnectFunnel } from "./connect-log";
+import { McpStats } from "./stats-mcp";
 import { Activation, Health, Insights, Kpis, Stops, Strategies } from "./stats-overview";
 
 // Platform Stats (chỉ role `team`; DEC-98, DEC-139): insight tự sinh và tổng quan ở trên, số chi tiết ở dưới.
@@ -237,6 +238,9 @@ export function StatsPage() {
                 />
               </div>
             </section>
+
+            {/* ── Claude (MCP) ───────────────────────────────────────── */}
+            <McpStats status={status} mcp={v?.mcp} />
 
             {/* ── Charts ─────────────────────────────────────────────── */}
             {v !== undefined && userPoints.length >= 2 ? (

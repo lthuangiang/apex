@@ -247,9 +247,38 @@ describe("connect SoDEX telemetry (DEC-114)", () => {
     expect(view.connect.events[0]?.data).toMatchObject({ reason: "wc_not_started" });
     expect(view.connect.requests).toEqual([]);
 
+    // Mục MCP (DEC-225): 0 lượt trong 24h → tỷ lệ null ("Not available"), không phải 0%.
+    const before = platformStatsSchema.parse(
+      (await client.request("GET", "/api/v1/admin/stats?period=7")).json(),
+    );
+    expect(before.mcp).toMatchObject({ calls24h: 0, deniedPct24h: null, rateLimitedPct24h: null });
+    const at = (agoMs: number) => new Date(env.clock.now.getTime() - agoMs);
+    for (const [tool, status, ago] of [
+      ["list_bots", "ok", 60_000],
+      ["list_bots", "ok", 60_000],
+      ["list_bots", "error", 60_000],
+      ["get_bot", "ok", 60_000],
+      ["-", "denied", 60_000],
+      ["limit:per_minute", "rate_limited", 60_000],
+      ["get_bot", "error", 2 * 86_400_000],
+    ] as const)
+      await env.pool.query(
+        "insert into mcp_calls (id, endpoint, tool, status, created_at) values (gen_random_uuid(), 'user', $1, $2, $3)",
+        [tool, status, at(ago)],
+      );
     const stats = platformStatsSchema.parse(
       (await client.request("GET", "/api/v1/admin/stats?period=7")).json(),
     );
+    expect(stats.mcp).toEqual({
+      connectedUsers: 0,
+      calls24h: 4,
+      byTool24h: [
+        { tool: "list_bots", calls: 3, errors: 1 },
+        { tool: "get_bot", calls: 1, errors: 0 },
+      ],
+      deniedPct24h: "16.7",
+      rateLimitedPct24h: "16.7",
+    });
     expect(
       stats.connect.steps.find((s) => s.type === "picker_opened")?.users,
     ).toBeGreaterThanOrEqual(1);

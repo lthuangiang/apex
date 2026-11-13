@@ -3789,7 +3789,10 @@
       "telegram_blocked": "Telegram alerts paused",
       "team_signup": "New signup",
       "team_sodex_connected": "SoDEX connected",
-      "team_bot_started": "Bot started"
+      "team_bot_started": "Bot started",
+      "team_mcp_tool_errors": "MCP tools failing",
+      "team_mcp_introspect_failing": "MCP can’t check tokens",
+      "team_mcp_daily_limit": "MCP daily limit reached"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
@@ -4497,6 +4500,16 @@
       "stopsHint": "Last {period} days",
       "noStops": "No bot stopped in this period.",
       "stoppedByUser": "Stopped by the owner"
+    },
+    "mcp": {
+      "section": "Claude (MCP)",
+      "connectedUsers": "Connected users",
+      "calls24h": "Calls (24h)",
+      "denied24h": "Denied (24h)",
+      "rateLimited24h": "Rate limited (24h)",
+      "byTool": "Calls by tool (24h)",
+      "cols": { "tool": "Tool", "calls": "Calls", "errors": "Errors" },
+      "none": "No MCP calls in the last 24 hours."
     }
   },
   "notFound": {

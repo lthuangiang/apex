@@ -30,18 +30,18 @@ gh secret set DOCKERHUB_TOKEN --repo lthuangiang/apex
    - có `feat` → tăng **minor**;
    - đổi **major** (thay đổi phá vỡ, đổi cách deploy, migration không tương thích ngược) → **hỏi người dùng trước**.
    - Tag cũ không đủ 3 số (`v1.0`) được coi là `v1.0.0`.
-3. **Tạo tag annotated** trên commit đầu `origin/main`, nội dung là danh sách PR (`<tiêu đề> (#<số>)`), rồi push:
+3. **Tạo tag annotated** trên commit đầu `origin/main`, nội dung là danh sách PR (`<tiêu đề> (#<số>)`), rồi push. Nếu có bản ghi soạn sẵn ở `docs/releases/` (ví dụ `next-after-v2.2.1.md`), đổi tên file theo tag và dùng phần "Cho người dùng" làm mô tả GitHub Release:
 
 ```bash
 git tag -a v1.1.0 origin/main -F notes.txt && git push origin v1.1.0
 ```
 
 4. **Theo dõi workflow** tới khi xong: `gh run watch` (chạy nền, không hỏi dồn). Fail thì đọc log, báo người dùng bước nào lỗi; **không xoá hay tạo lại tag** khi chưa được người dùng đồng ý.
-5. **Kiểm tra kết quả:** GitHub Release đã có; đủ 10 image trên Docker Hub (`docker buildx imagetools inspect <DRIFT_IMAGE>:<app>-<tag>`).
+5. **Kiểm tra kết quả:** GitHub Release đã có; đủ 11 image trên Docker Hub (`docker buildx imagetools inspect <DRIFT_IMAGE>:<app>-<tag>`).
 
 ## Dung lượng image (DEC-214)
 
-- Cả 10 Dockerfile có **phần đầu giống hệt**: node, corepack, `pnpm fetch` (kho thư viện của cả workspace), rồi manifest của mọi package. Các layer này cùng digest giữa các app và giữa các release, nên VPS chỉ tải một lần.
+- Cả 11 Dockerfile có **phần đầu giống hệt**: node, corepack, `pnpm fetch` (kho thư viện của cả workspace), rồi manifest của mọi package. Các layer này cùng digest giữa các app và giữa các release, nên VPS chỉ tải một lần.
 - Sau phần chung, mỗi app có một layer `pnpm install --filter` (vài MB, chỉ đổi khi lockfile / manifest đổi), rồi đến **mã nguồn** (layer cuối, đổi mỗi release). Web build Next sau khi chép mã nguồn.
 - **Không** thêm `ARG` / `ENV` trước bước `pnpm fetch`: chúng đổi cache key, làm mất phần dùng chung. Thêm package mới vào workspace thì thêm dòng `COPY …/package.json` của nó ở cả 11 file.
 - `.dockerignore` loại `.git`, `docs`, `.github`, `marketing` (video), nên mã nguồn trong image chỉ còn vài MB.
