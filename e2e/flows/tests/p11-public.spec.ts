@@ -62,6 +62,7 @@ test("public pages pass axe, only the landing is indexable, 404 has DRIFT chrome
   const robots = await request.get("/robots.txt");
   expect(robots.ok()).toBe(true);
   expect(await robots.text()).toContain("Disallow: /");
-  const og = await request.get("/opengraph-image");
-  expect(og.headers()["content-type"]).toContain("image/png");
+  // Ảnh chia sẻ là file tĩnh `public/og/` (DEC-156), không còn route `/opengraph-image`.
+  const og = await request.get("/og/desklabs.jpg");
+  expect(og.headers()["content-type"]).toContain("image/jpeg");
 });

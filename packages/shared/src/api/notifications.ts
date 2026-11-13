@@ -13,7 +13,7 @@ export const NOTIFICATION_TYPES = [
   "fill",
   "daily_summary",
   "leader_big_move",
-  // Trader đang follow mở mới / đóng hẳn / đảo chiều / bị thanh lý (mức `positions`, DEC-TBD-follow-alerts).
+  // Trader đang follow mở mới / đóng hẳn / đảo chiều / bị thanh lý (mức `positions`, DEC-209).
   "leader_position",
   // Trạng thái kênh Telegram (nhóm hệ thống `telegram`, DEC-183).
   "telegram_connected",

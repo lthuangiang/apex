@@ -9,7 +9,7 @@ import {
   positionSide,
 } from "../follow-alerts";
 
-// Cảnh báo follow theo mức (DEC-TBD-follow-alerts): hàm thuần.
+// Cảnh báo follow theo mức (DEC-209): hàm thuần.
 
 const NOW = 1_800_000_000_000;
 function ev(

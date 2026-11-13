@@ -478,9 +478,11 @@ function LiveChart({
   if (failed) return <>{fallback}</>;
   return (
     <div className="relative min-w-0 flex-1">
+      {/* `figure`, không phải `img`: lightweight-charts chèn link TradingView (attributionLogo) vào trong, mà `img`
+          không được chứa phần tử bấm được (axe nested-interactive). */}
       <div
         ref={box}
-        role="img"
+        role="figure"
         aria-label={label}
         className="h-[380px] w-full cursor-crosshair overflow-hidden rounded-[12px]"
       />

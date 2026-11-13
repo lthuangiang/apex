@@ -203,7 +203,7 @@ export function TraderProfilePage({ address }: { address: string }) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {p.card.following ? (
-                    // Đã follow: menu mức cảnh báo + Unfollow (DEC-TBD-follow-alerts).
+                    // Đã follow: menu mức cảnh báo + Unfollow (DEC-209).
                     <FollowingMenu address={address} level={p.followAlertLevel ?? "big_moves"} />
                   ) : (
                     <Button

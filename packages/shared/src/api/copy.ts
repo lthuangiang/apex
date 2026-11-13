@@ -109,6 +109,7 @@ export const FIT_ITEMS = [
   "concentrated_profit",
   "no_liquidations",
   "liquidations",
+  "recent_unlisted",
 ] as const;
 
 export const traderProfileSchema = z.object({
@@ -128,13 +129,13 @@ export const traderProfileSchema = z.object({
     ok: z.boolean(),
     reason: z.enum(["min_hold", "no_stats", "no_markets"]).nullable(),
   }),
-  /** Mức cảnh báo khi đang follow trader này; null = chưa follow (DEC-TBD-follow-alerts). */
+  /** Mức cảnh báo khi đang follow trader này; null = chưa follow (DEC-209). */
   followAlertLevel: z.enum(["big_moves", "positions", "off"]).nullable().optional(),
 });
 export type TraderProfile = z.infer<typeof traderProfileSchema>;
 
 /**
- * Mức cảnh báo cho mỗi trader đang follow (DEC-TBD-follow-alerts): chỉ big move (mặc định); vị thế mới, đóng hẳn,
+ * Mức cảnh báo cho mỗi trader đang follow (DEC-209): chỉ big move (mặc định); vị thế mới, đóng hẳn,
  * đảo chiều (kèm big move); hoặc tắt. Chỉ market SoDEX có; tối đa 1 tin / trader / market / 10 phút.
  */
 export const FOLLOW_ALERT_LEVELS = ["big_moves", "positions", "off"] as const;
@@ -160,7 +161,7 @@ export const followingSchema = z.object({
       copying: z.boolean(),
       /** Market mới trader giao dịch mà bot copy chưa theo (không tự thêm, DEC-163 mục 6). */
       newMarkets: z.array(z.string()),
-      /** Mức cảnh báo của trader này (DEC-TBD-follow-alerts); thiếu = `big_moves` (api cũ). */
+      /** Mức cảnh báo của trader này (DEC-209); thiếu = `big_moves` (api cũ). */
       alertLevel: z.enum(["big_moves", "positions", "off"]).default("big_moves"),
     }),
   ),

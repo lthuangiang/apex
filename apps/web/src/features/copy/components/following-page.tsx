@@ -151,7 +151,7 @@ export function FollowingPage() {
                           })}
                         </p>
                       )}
-                      {/* Mức cảnh báo riêng cho trader này (DEC-TBD-follow-alerts). */}
+                      {/* Mức cảnh báo riêng cho trader này (DEC-209). */}
                       <div className="pl-12">
                         <FollowAlertSelect
                           address={tr.address}
@@ -251,7 +251,7 @@ export function FollowingPage() {
               aria-labelledby="fl-alerts"
               className="flex flex-col gap-3.5 rounded-card border border-border bg-surface px-[22px] py-5"
             >
-              {/* Công tắc chung đã bỏ: mỗi trader có ô chọn mức riêng (DEC-TBD-follow-alerts). Khối này chỉ giải
+              {/* Công tắc chung đã bỏ: mỗi trader có ô chọn mức riêng (DEC-209). Khối này chỉ giải
                   thích ngưỡng big move (số thật từ config) và cách nhận trên Telegram. */}
               <div className="flex flex-col gap-1">
                 <h2 id="fl-alerts" className="m-0 text-[17px] font-extrabold">

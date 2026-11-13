@@ -8,7 +8,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useFollow, useSetFollowAlert } from "../api";
 import { useCopyErrorText } from "../errors";
 
-// Ô chọn "Alerts: Big moves ▾" cho một trader đang follow (DEC-TBD-follow-alerts, PM chốt vị trí A): trên hàng trader
+// Ô chọn "Alerts: Big moves ▾" cho một trader đang follow (DEC-209, PM chốt vị trí A): trên hàng trader
 // ở Following. Trạng thái lấy từ backend; đang lưu thì khoá, lỗi thì hiện câu chữ (không nuốt lỗi).
 
 export function FollowAlertSelect({

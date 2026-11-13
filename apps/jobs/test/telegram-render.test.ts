@@ -96,7 +96,7 @@ describe("renderTelegram: one event", () => {
   });
 });
 
-describe("renderTelegram: follow position alerts (DEC-TBD-follow-alerts)", () => {
+describe("renderTelegram: follow position alerts (DEC-209)", () => {
   it("says what changed without the trader's wallet address", () => {
     const m = renderTelegram(
       [

@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import messages from "../../../../messages/en.json";
 import { FollowAlertSelect, FollowingMenu } from "../components/follow-alert-select";
 
-// Mức cảnh báo mỗi trader (DEC-TBD-follow-alerts; PM chốt vị trí A).
+// Mức cảnh báo mỗi trader (DEC-209; PM chốt vị trí A).
 
 const T = "0x84b2b687df7c99702e887849f8d99bfb0fed12f2";
 

@@ -1105,7 +1105,7 @@ export const leaderFollows = pgTable(
     source: text("source", { enum: ["sodex", "hyperliquid"] }).notNull(),
     address: text("address").notNull(),
     /**
-     * Mức cảnh báo cho trader này (DEC-TBD-follow-alerts): `big_moves` (mặc định) / `positions` (mở mới, đóng hẳn,
+     * Mức cảnh báo cho trader này (DEC-209): `big_moves` (mặc định) / `positions` (mở mới, đóng hẳn,
      * đảo chiều, cộng big move) / `off`.
      */
     alertLevel: text("alert_level", { enum: ["big_moves", "positions", "off"] })
@@ -1121,7 +1121,7 @@ export const leaderFollows = pgTable(
 
 /**
  * Lần cảnh báo vị thế (mở mới / đóng hẳn / đảo chiều) gần nhất theo (ví, coin): cách nhau ≥ 10 phút
- * (DEC-TBD-follow-alerts). Tách khỏi `leader_alert_state` của big move.
+ * (DEC-209). Tách khỏi `leader_alert_state` của big move.
  */
 export const leaderPositionAlertState = pgTable(
   "leader_position_alert_state",

@@ -72,7 +72,7 @@ export function useFollow() {
   });
 }
 
-/** Đổi mức cảnh báo của một trader đang follow (DEC-TBD-follow-alerts); làm mới Following và hồ sơ. */
+/** Đổi mức cảnh báo của một trader đang follow (DEC-209); làm mới Following và hồ sơ. */
 export function useSetFollowAlert() {
   const qc = useQueryClient();
   return useMutation({

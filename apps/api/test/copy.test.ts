@@ -115,6 +115,9 @@ describe("Copy Trading v1", () => {
 
   it("lists Steady traders from the last good run and counts hidden ones by reason", async () => {
     await seedTrader(T1, stats(), ["steady", "top", "long", "all"]);
+    // Snapshot cũ còn gắn Steady cho trader bị thanh lý: API vẫn loại khỏi Steady, giữ ở All.
+    const LIQ = "0xeee0000000000000000000000000000000000005";
+    await seedTrader(LIQ, stats({ liquidations: 7 }), ["steady", "top", "long", "all"]);
     await seedTrader(
       T2,
       stats({ typicalHoldMs: 5 * 60_000, closedEpisodes: 12 }),
@@ -134,10 +137,17 @@ describe("Copy Trading v1", () => {
       expect.arrayContaining(["easy_to_copy", "holds_hours", "all_on_sodex"]),
     );
     expect(list).toMatchObject({
-      candidates: 2,
+      candidates: 3,
       hidden: 1,
       hiddenBy: { fast: 1, few_trades: 1, vault: 0 },
     });
+    const all = traderListSchema.parse(
+      (await client.request("GET", "/api/v1/traders?tab=all")).json(),
+    );
+    expect(all.items.map((i) => i.address)).toContain(LIQ);
+    expect(all.items.find((i) => i.address === LIQ)?.tags).toContain("liquidated");
+    await env.pool.query("delete from leader_stats_daily where address = $1", [LIQ]);
+    await env.pool.query("delete from leader_wallets where address = $1", [LIQ]);
   });
 
   it("keeps a trader the last run couldn't read, using stats from the past 7 days", async () => {
@@ -193,6 +203,41 @@ describe("Copy Trading v1", () => {
     expect(p.openPositions).toEqual([{ market: "BTC-USD", coin: "BTC", side: "long" }]);
     const r = await client.request("GET", `/api/v1/traders/0x${"1".repeat(40)}`);
     expect(errorOf(r.json()).code).toBe("NOT_FOUND");
+  });
+
+  it("shows the profile from the same snapshot as the list, and warns when recent trades can't be copied", async () => {
+    const T6 = "0xfff0000000000000000000000000000000000006";
+    await seedTrader(T6, stats({ profit: "94598" }), ["top", "long", "all"]);
+    await env.pool.query(
+      "insert into leaderboard_runs (date, status) values ('2026-10-27', 'ok') on conflict do nothing",
+    );
+    // Lượt đêm sau đang chạy đã tính số mới hơn: hồ sơ vẫn theo snapshot của danh sách (2026-10-27).
+    await env.pool.query(
+      `insert into leader_stats_daily (source, address, date, stats, hidden, tabs, steady_score, profit, typical_hold_ms, computed_at)
+       values ('hyperliquid', $1, '2026-10-28', $2, '{}', '{top,long,all}', null, '154981', 18000000, now())`,
+      [T6, JSON.stringify(stats({ profit: "154981" }))],
+    );
+    // 7 ngày qua: 90% notional ở GRAM (SoDEX không có).
+    await env.pool.query(
+      `insert into leader_events (id, source, address, coin, market, kind, position_before, position_after, notional, price, at, seen_at, last_tid)
+       values (gen_random_uuid(), 'hyperliquid', $1, 'GRAM', null, 'open', '0', '100', '9000', '90', now(), now(), 'g1'),
+              (gen_random_uuid(), 'hyperliquid', $1, 'BTC', 'BTC-USD', 'open', '0', '0.01', '1000', '100000', now(), now(), 'g2')`,
+      [T6],
+    );
+    const { client } = await user("copy-snapshot@example.com");
+    const p = traderProfileSchema.parse(
+      (await client.request("GET", `/api/v1/traders/${T6}`)).json(),
+    );
+    expect(p.updatedOn).toBe("2026-10-27");
+    expect(p.card.stats.profit).toBe("94598");
+    expect(p.fit.find((f) => f.item === "recent_unlisted")).toEqual({
+      item: "recent_unlisted",
+      ok: false,
+      data: { share: "0.9", coins: "GRAM" },
+    });
+    await env.pool.query("delete from leader_events where address = $1", [T6]);
+    await env.pool.query("delete from leader_stats_daily where address = $1", [T6]);
+    await env.pool.query("delete from leader_wallets where address = $1", [T6]);
   });
 
   it("follows up to 5 traders and shows their changes in Following", async () => {

@@ -56,7 +56,7 @@ export function registerCopyRoutes(app: FastifyInstance, deps: CopyDeps): void {
     }));
   });
 
-  // Mức cảnh báo của một trader đang follow (DEC-TBD-follow-alerts).
+  // Mức cảnh báo của một trader đang follow (DEC-209).
   app.put("/api/v1/traders/:address/follow/alerts", async (request, reply) => {
     const auth = requireAuth(request);
     const { address } = parseOrThrow(addressParams, request.params);

@@ -84,7 +84,7 @@ export async function saveLeaderEvents(
       })
       .onConflictDoNothing();
   }
-  // Mức cảnh báo theo từng người follow (DEC-TBD-follow-alerts). `off` không nhận gì.
+  // Mức cảnh báo theo từng người follow (DEC-209). `off` không nhận gì.
   const followers = bigMoveFollowers(
     await db
       .select({ userId: leaderFollows.userId, level: leaderFollows.alertLevel })
@@ -214,7 +214,7 @@ async function alertBigMoves(
 }
 
 /**
- * Mức `positions` (DEC-TBD-follow-alerts): báo khi trader mở vị thế mới, đóng hẳn, đảo chiều hoặc bị thanh lý;
+ * Mức `positions` (DEC-209): báo khi trader mở vị thế mới, đóng hẳn, đảo chiều hoặc bị thanh lý;
  * bỏ add / reduce. Mỗi (ví, coin) tối đa một tin / 10 phút; coin vừa có big move thì không báo thêm.
  */
 async function alertPositions(

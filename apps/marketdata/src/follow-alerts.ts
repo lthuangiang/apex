@@ -6,7 +6,7 @@ import {
   type LeaderEvent,
 } from "@drift/shared";
 
-// Quyết định cảnh báo follow (DEC-TBD-follow-alerts), hàm thuần không I/O. `leader-store.ts` đọc / ghi DB quanh đây.
+// Quyết định cảnh báo follow (DEC-209), hàm thuần không I/O. `leader-store.ts` đọc / ghi DB quanh đây.
 
 /** Chỉ market SoDEX có (`market` null = "Not listed"): áp cho mọi cảnh báo follow, kể cả big move. */
 export function listedOnly(events: readonly LeaderEvent[]): LeaderEvent[] {
