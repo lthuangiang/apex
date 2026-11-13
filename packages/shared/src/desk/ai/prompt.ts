@@ -41,7 +41,7 @@ const LABEL: Record<DeskAiFact["key"], string> = {
 
 /**
  * Fact không gửi cho LLM: số câu còn lại đã hiện ngay dưới ô hỏi, model hay chép lại vào cuối câu trả lời
- * (DEC-TBD-desk-ai-no-questions-left). Fact vẫn còn cho câu mẫu và nhật ký lượt.
+ * (DEC-199). Fact vẫn còn cho câu mẫu và nhật ký lượt.
  */
 export const PROMPT_HIDDEN_FACTS: readonly DeskAiFact["key"][] = ["questions_left"];
 

@@ -11,6 +11,7 @@ import { useMe } from "@/lib/queries";
 import {
   PaperPageContext,
   FullClusterContext,
+  MobileBell,
   MobileLiveChip,
   MobileSodexStatus,
   PageUpdatedContext,
@@ -77,6 +78,7 @@ export function PageHead({
             )}
             <h1 className="m-0 min-w-0 flex-1 text-2xl font-extrabold">{title}</h1>
             <MobileLiveChip />
+            <MobileBell />
           </div>
           <MobileSodexStatus />
           {action === undefined ? null : <div className="mt-2 flex">{action}</div>}
