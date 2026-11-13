@@ -46,6 +46,39 @@ function useFactText() {
   };
 }
 
+/** Câu mẫu "Market today" (DEC-211): mỗi market một dòng, số 24 giờ qua trên SoDEX, không dự đoán. */
+function MarketAnswer({ facts }: { facts: readonly Fact[] }) {
+  const t = useTranslations("desk.ai.templates");
+  const signed = (v: string) => `${Number(v) > 0 ? "+" : ""}${plainNumber(v)}%`;
+  const markets = [...new Set(facts.flatMap((f) => (f.market == null ? [] : [f.market])))];
+  const valueOf = (market: string, key: Fact["key"]) =>
+    facts.find((f) => f.market === market && f.key === key)?.value ?? null;
+  return (
+    <div className="flex flex-col gap-2 text-sm text-ink">
+      <p className="m-0">{t("market")}</p>
+      <ul className="m-0 flex list-none flex-col gap-1 p-0">
+        {markets.flatMap((m) => {
+          const change = valueOf(m, "market_change_24h_pct");
+          const range = valueOf(m, "market_range_24h_pct");
+          // Chỉ market có đủ hai số (thiếu thì không hiện, không bao giờ ghi 0).
+          return change === null || range === null
+            ? []
+            : [
+                <li key={m} className="tabular-nums">
+                  {t("marketLine", {
+                    market: m,
+                    change: signed(change),
+                    range: `${plainNumber(range)}%`,
+                  })}
+                </li>,
+              ];
+        })}
+      </ul>
+      <p className="m-0 text-xs text-muted">{t("marketNote")}</p>
+    </div>
+  );
+}
+
 /** Lời chào theo giờ trên máy người xem (báo cáo sáng xem lúc tối thì "Good evening"): < 12 giờ sáng, < 18 giờ chiều. */
 export function greetingAt(now: Date): "morning" | "afternoon" | "evening" {
   const h = now.getHours();
@@ -57,6 +90,7 @@ export function Answer({ answer }: { answer: DeskAiAnswer }) {
   const factText = useFactText();
   if (answer.kind === "text")
     return <p className="m-0 text-sm whitespace-pre-line text-ink">{answer.text}</p>;
+  if (answer.key === "market") return <MarketAnswer facts={answer.facts} />;
   const valueOf = (key: Fact["key"]) => answer.facts.find((f) => f.key === key)?.value ?? null;
   let lead: string;
   if (answer.key === "safety") {

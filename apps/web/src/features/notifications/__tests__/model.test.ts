@@ -116,7 +116,7 @@ describe("targetOf", () => {
     expect(targetOf(n("a", "daily_summary", at), true)).toBe("/desk");
     expect(targetOf(n("a", "daily_summary", at), false)).toBe("/");
     expect(targetOf(n("a", "leader_big_move", at), true)).toBe("/following");
-    // Bot copy tiền thật (DEC-TBD-copy-bot-alerts) mở Trading Agent của bot.
+    // Bot copy tiền thật (DEC-212) mở Trading Agent của bot.
     expect(targetOf(n("a", "copy_bot_opened", at, { data: { botId: BOT } }), true)).toBe(
       `/agent/${BOT}`,
     );

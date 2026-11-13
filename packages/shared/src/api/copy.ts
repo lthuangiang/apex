@@ -146,7 +146,7 @@ export const POSITION_ALERT_KINDS = ["open", "close", "flip", "liquidated"] as c
 export const FOLLOW_ALERT_GAP_MS = 10 * 60_000;
 
 /**
- * Cảnh báo của bot copy (DEC-TBD-copy-bot-alerts, W2b). `copy_bot_opened`: một lệnh mở / tăng / đảo chiều đã khớp
+ * Cảnh báo của bot copy (DEC-212, W2b). `copy_bot_opened`: một lệnh mở / tăng / đảo chiều đã khớp
  * (mỗi lệnh một tin, khoá chống trùng theo clOrdID). `copy_bot_skipped`: chiến lược bỏ qua một tín hiệu, lý do lấy
  * từ câu log có sẵn; tối đa 1 tin / bot / market / `FOLLOW_ALERT_GAP_MS`. Không bao giờ có địa chỉ ví hay số dư.
  */

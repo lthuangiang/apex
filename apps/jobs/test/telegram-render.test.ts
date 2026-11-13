@@ -125,7 +125,7 @@ describe("renderTelegram: follow position alerts (DEC-209)", () => {
     expect(closed.text).toContain("closed their short on ARB");
   });
 
-  it("copy bot alerts say 'Your copy bot', never the bot name (it holds the trader's wallet) (DEC-TBD-copy-bot-alerts)", () => {
+  it("copy bot alerts say 'Your copy bot', never the bot name (it holds the trader's wallet) (DEC-212)", () => {
     const opened = renderTelegram(
       [
         row(

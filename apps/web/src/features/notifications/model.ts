@@ -103,7 +103,7 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
       return aiDesk ? "/following" : "/";
     case "copy_bot_opened":
     case "copy_bot_skipped":
-      // Bot copy tiền thật (DEC-TBD-copy-bot-alerts): mở Trading Agent của bot.
+      // Bot copy tiền thật (DEC-212): mở Trading Agent của bot.
       return botId === null ? "/agent" : `/agent/${encodeURIComponent(botId)}`;
     case "team_signup":
     case "team_sodex_connected":

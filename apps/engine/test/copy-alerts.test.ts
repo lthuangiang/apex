@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import { openedAlerts, SkipGate, skipMarket, skipReason } from "../src/copy-alerts";
 
-// Cảnh báo bot copy (DEC-TBD-copy-bot-alerts): hàm thuần, chạy với đúng chiến lược copy-trade.
+// Cảnh báo bot copy (DEC-212): hàm thuần, chạy với đúng chiến lược copy-trade.
 
 const LEADER = "0x6666666666666666666666666666666666666666";
 const config: CopyTradeConfig = copyTradeSchema.parse({

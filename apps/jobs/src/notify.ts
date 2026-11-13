@@ -31,7 +31,7 @@ export const notifyPayloadSchema = z.object({
   sodexAccountId: z.uuid().optional(),
   type: z.enum(NOTIFICATION_TYPES),
   data: z.record(z.string(), z.unknown()).default({}),
-  /** Khoá chống trùng (DEC-TBD-copy-bot-alerts): đã có bản cùng user × kênh × khoá thì bỏ. */
+  /** Khoá chống trùng (DEC-212): đã có bản cùng user × kênh × khoá thì bỏ. */
   dedupeKey: z.string().min(1).max(200).optional(),
 });
 
@@ -156,7 +156,7 @@ export async function handleNotify(deps: NotifyDeps, raw: unknown): Promise<void
   const enabled = (channel: NotificationChannel) =>
     ALWAYS_ON_GROUPS.includes(group) ||
     (rows.find((r) => r.channel === channel)?.enabled ?? NOTIFICATION_DEFAULTS[group][channel]);
-  // Có khoá chống trùng (DEC-TBD-copy-bot-alerts): bản cùng user × kênh × khoá đã có thì không ghi lại (unique index
+  // Có khoá chống trùng (DEC-212): bản cùng user × kênh × khoá đã có thì không ghi lại (unique index
   // `notifications_dedupe_key`). Bản Telegram trùng thì không tạo outbox gửi lần hai (xem `row` bên dưới).
   const dedupeKey = p.dedupeKey ?? null;
   if (enabled("in_app"))

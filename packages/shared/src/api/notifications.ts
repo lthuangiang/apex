@@ -15,7 +15,7 @@ export const NOTIFICATION_TYPES = [
   "leader_big_move",
   // Trader đang follow mở mới / đóng hẳn / đảo chiều / bị thanh lý (mức `positions`, DEC-209).
   "leader_position",
-  // Bot copy khớp lệnh mở / bỏ qua tín hiệu (DEC-TBD-copy-bot-alerts).
+  // Bot copy khớp lệnh mở / bỏ qua tín hiệu (DEC-212).
   "copy_bot_opened",
   "copy_bot_skipped",
   // Trạng thái kênh Telegram (nhóm hệ thống `telegram`, DEC-183).

@@ -859,7 +859,7 @@ export const notifications = pgTable(
     /** Chỉ cho bản `telegram` (docs/NOTIFICATIONS.md mục 8); null với in-app và email. */
     deliveryStatus: text("delivery_status", { enum: ["queued", "sent", "failed"] }),
     /**
-     * Khoá chống trùng (DEC-TBD-copy-bot-alerts): tin về lệnh tiền thật (ví dụ `copy_bot_opened:<botId>:<clOrdID>`)
+     * Khoá chống trùng (DEC-212): tin về lệnh tiền thật (ví dụ `copy_bot_opened:<botId>:<clOrdID>`)
      * chỉ ghi một lần cho mỗi user × kênh, kể cả khi outbox / NATS giao lại. Null = không chống trùng.
      */
     dedupeKey: text("dedupe_key"),

@@ -16,6 +16,7 @@ import { useFeatures } from "@/lib/queries";
 import { DeskAiPanel } from "./desk-ai";
 import { FirstVisit } from "./first-visit";
 import { GoalCard } from "./goal-card";
+import { MarketToday } from "./market-today";
 import { NeedsYouCard } from "./needs-you-card";
 import { PaperChip } from "./paper-chip";
 import { YourBots as AnalystNotes } from "./your-bots";
@@ -149,6 +150,7 @@ function Home({ v }: { v: DeskHomeView }) {
           )}
         </section>
         <YourBots bots={v.bots} />
+        <MarketToday />
       </div>
       <div className="min-w-0 xl:sticky xl:top-5">
         <DeskAiPanel />

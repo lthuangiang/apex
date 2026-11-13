@@ -2126,7 +2126,7 @@ describe("engine", () => {
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.strategy, "copy_trade"));
   });
 
-  // Cảnh báo bot copy (DEC-TBD-copy-bot-alerts): chỉ thêm outbox trong transaction đang có.
+  // Cảnh báo bot copy (DEC-212): chỉ thêm outbox trong transaction đang có.
   const copyAlertRows = async (botId: string, type: string) => {
     const { and, eq, sql } = await import("drizzle-orm");
     const rows = await db
@@ -2175,7 +2175,7 @@ describe("engine", () => {
       .where(eq(users.id, b?.userId ?? ""));
   };
 
-  it("writes exactly one copy_bot_opened per filled open, even when the fill is replayed (DEC-TBD-copy-bot-alerts)", async () => {
+  it("writes exactly one copy_bot_opened per filled open, even when the fill is replayed (DEC-212)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     const leader = "0x3333333333333333333333333333333333333333";
@@ -2209,7 +2209,7 @@ describe("engine", () => {
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
   });
 
-  it("writes one copy_bot_skipped per bot and market within 10 minutes, with the reason (DEC-TBD-copy-bot-alerts)", async () => {
+  it("writes one copy_bot_skipped per bot and market within 10 minutes, with the reason (DEC-212)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     const leader = "0x4444444444444444444444444444444444444444";
@@ -2230,7 +2230,7 @@ describe("engine", () => {
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
   });
 
-  it("never writes copy bot alerts for a paper copy bot (DEC-TBD-copy-bot-alerts)", async () => {
+  it("never writes copy bot alerts for a paper copy bot (DEC-212)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     const leader = "0x5555555555555555555555555555555555555555";
