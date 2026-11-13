@@ -9,7 +9,7 @@ GitHub chỉ **build và push image**. **Deploy lên prod vẫn do người dùn
 | Thứ | Việc |
 |---|---|
 | Tag `vX.Y.Z` trên `main` | Một version. Chỉ PM tạo khi người dùng gõ "release" |
-| `.github/workflows/release.yml` | Chạy khi push tag: kiểm tra tag nằm trên `main` và CI (`ci.yml`) của commit đó đã `success` → build 10 image `linux/amd64` song song → push `<DRIFT_IMAGE>:<app>-<tag>` và `<app>-latest` → tạo GitHub Release (notes tự sinh từ PR) |
+| `.github/workflows/release.yml` | Chạy khi push tag: kiểm tra tag nằm trên `main` và CI (`ci.yml`) của commit đó đã `success` → **một job, một builder**, build lần lượt các app có thay đổi so với tag trước (`infra/deploy/changed-apps.sh`), cache registry `<DRIFT_IMAGE>:buildcache-<app>` → push `<DRIFT_IMAGE>:<app>-<tag>` và `<app>-latest`; app không đổi được gắn tag mới vào đúng image của tag trước (`imagetools create`, cùng digest) → tạo GitHub Release (notes tự sinh từ PR). Xem mục "Dung lượng image" |
 | `infra/deploy/build-push.sh --deploy-only <tag>` | Người dùng deploy tag đó lên VPS (đổi `DRIFT_TAG`, pull, migrate, up). Rollback: cùng lệnh với tag cũ |
 
 Cấu hình GitHub (Settings › Secrets and variables › Actions):
@@ -38,6 +38,18 @@ git tag -a v1.1.0 origin/main -F notes.txt && git push origin v1.1.0
 
 4. **Theo dõi workflow** tới khi xong: `gh run watch` (chạy nền, không hỏi dồn). Fail thì đọc log, báo người dùng bước nào lỗi; **không xoá hay tạo lại tag** khi chưa được người dùng đồng ý.
 5. **Kiểm tra kết quả:** GitHub Release đã có; đủ 10 image trên Docker Hub (`docker buildx imagetools inspect <DRIFT_IMAGE>:<app>-<tag>`).
+
+## Dung lượng image (DEC-214)
+
+- Cả 10 Dockerfile có **phần đầu giống hệt**: node, corepack, `pnpm fetch` (kho thư viện của cả workspace), rồi manifest của mọi package. Các layer này cùng digest giữa các app và giữa các release, nên VPS chỉ tải một lần.
+- Sau phần chung, mỗi app có một layer `pnpm install --filter` (vài MB, chỉ đổi khi lockfile / manifest đổi), rồi đến **mã nguồn** (layer cuối, đổi mỗi release). Web build Next sau khi chép mã nguồn.
+- **Không** thêm `ARG` / `ENV` trước bước `pnpm fetch`: chúng đổi cache key, làm mất phần dùng chung. Thêm package mới vào workspace thì thêm dòng `COPY …/package.json` của nó ở cả 10 file.
+- `.dockerignore` loại `.git`, `docs`, `.github`, `marketing` (video), nên mã nguồn trong image chỉ còn vài MB.
+- Chọn app (`infra/deploy/changed-apps.sh <tag-trước> <tag>`, `DRY_RUN=1` in lý do):
+  - đổi `apps/<app>/**` → build app đó;
+  - đổi `packages/**`, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`, `tsconfig*`, `.dockerignore` hay workflow → build cả 10;
+  - đổi chỗ khác (docs, e2e) → không build app nào.
+  Không có tag trước, hoặc image của tag trước không còn → build.
 6. **Trả người dùng:** tag, link Release, danh sách PR có trong bản này, và lệnh deploy:
 
 ```bash

@@ -23,7 +23,8 @@
 # Cần `docker login` trước (Docker Desktop đã đăng nhập là đủ).
 #
 # Deploy trên VPS (cd /opt/drift, một docker-compose.yml duy nhất): đổi DRIFT_TAG trong .env → docker compose pull
-# → docker compose run --rm migrate → docker compose up -d → docker system prune -af. Không chép file nào lên VPS.
+# → docker compose run --rm migrate → docker compose up -d → xoá image DRIFT cũ (giữ tag hiện tại và tag liền trước)
+# + layer treo. Không chép file nào lên VPS.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -141,9 +142,10 @@ fi
 # Dọn sau khi app mới đã lên (không phải trước khi pull) để lỗi pull / migrate không làm sập bản đang chạy.
 if [ "$DEPLOY" = 1 ]; then
   echo "==> deploy ${PREV:-none} -> $TAG on $TARGET"
-  remote "bash -s" "$TAG" <<'REMOTE'
+  remote "bash -s" "$TAG" "${PREV:-}" <<'REMOTE'
 set -euo pipefail
 TAG="$1"
+PREV="${2:-}"
 cd /opt/drift
 if grep -q '^DRIFT_TAG=' .env; then sed -i "s/^DRIFT_TAG=.*/DRIFT_TAG=$TAG/" .env; else echo "DRIFT_TAG=$TAG" >> .env; fi
 echo "DRIFT_TAG=$(sed -n 's/^DRIFT_TAG=//p' .env)"
@@ -151,7 +153,16 @@ docker compose pull
 docker compose run --rm migrate
 docker compose up -d
 docker compose ps
-docker system prune -af
+# Dọn (DEC-214): chỉ xoá image DRIFT không thuộc tag hiện tại hay tag liền trước (rollback một bản không
+# phải tải lại), rồi layer treo. Không đụng image hạ tầng (postgres, redis, nats, vault, traefik…), không prune toàn bộ.
+IMAGE="$(sed -n 's/^DRIFT_IMAGE=//p' .env | tail -n 1)"
+if [ -n "$IMAGE" ]; then
+  docker images "$IMAGE" --format '{{.Repository}}:{{.Tag}}' | while read -r ref; do
+    rel="${ref##*:}"; rel="${rel#*-}"
+    case "$rel" in "$TAG" | "$PREV" | latest) ;; *) docker rmi "$ref" >/dev/null 2>&1 || true ;; esac
+  done
+fi
+docker image prune -f
 REMOTE
   echo "deployed $TAG (rollback: infra/deploy/build-push.sh --deploy-only ${PREV:-<old tag>})"
 fi

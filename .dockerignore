@@ -10,3 +10,7 @@
 .env.*
 !.env.example
 infra/certs/dev/
+.git
+docs
+.github
+marketing
