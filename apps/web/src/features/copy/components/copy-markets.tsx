@@ -8,7 +8,7 @@ import { Card } from "@/components/workspace";
 
 import { usd } from "../format";
 
-// "Markets we'll copy" ở bước Budget and safety (artboard CopyMarkets / CopyMarkets-Mobile, DEC-TBD-copy-pick-markets):
+// "Markets we'll copy" ở bước Budget and safety (artboard CopyMarkets / CopyMarkets-Mobile, DEC-226):
 // tick market, công tắc "Set per market", nút −/+ đòn bẩy, ký quỹ mỗi vị thế và khoảng cách thanh lý ước tính. Mọi số
 // do server tính (`/api/v1/copy/preview` › `rows`), web chỉ hiện; thiếu dữ liệu → "Not available", không bao giờ 0.
 

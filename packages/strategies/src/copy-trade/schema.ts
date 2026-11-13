@@ -47,7 +47,7 @@ export const copyTradeSchema = z.preprocess(
         .int({ message: "Whole numbers only." })
         .min(1, { message: "Allowed 1× or more." }),
       /**
-       * Đòn bẩy theo market (DEC-TBD-copy-pick-markets), key là market trong `markets`; thiếu thì dùng `leverage`.
+       * Đòn bẩy theo market (DEC-226), key là market trong `markets`; thiếu thì dùng `leverage`.
        * Khoá sau khi tạo bot (như `markets`).
        */
       leverageByMarket: z

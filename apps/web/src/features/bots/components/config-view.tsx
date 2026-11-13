@@ -43,7 +43,7 @@ export function useConfigRows(strategy: string, market: string, config: Record<s
     // Copy Trade (DEC-163): nguồn trader là mã ("hyperliquid") và danh sách market là mảng, không phải chữ thường.
     if (f.key === "leaderSource" && typeof v === "string" && v !== "")
       return t.has(`options.leaderSource.${v}`) ? t(`options.leaderSource.${v}`) : v;
-    // Đòn bẩy theo market (DEC-TBD-copy-pick-markets): mỗi market kèm đòn bẩy của nó; dòng Leverage hiện khoảng.
+    // Đòn bẩy theo market (DEC-226): mỗi market kèm đòn bẩy của nó; dòng Leverage hiện khoảng.
     const perLev =
       strategy === "copy_trade" &&
       typeof config.leverageByMarket === "object" &&

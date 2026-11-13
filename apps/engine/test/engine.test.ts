@@ -2440,7 +2440,7 @@ describe("engine", () => {
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
   });
 
-  it("sets leverage per market and only logs a trade on a market the copy bot doesn't have (DEC-TBD-copy-pick-markets)", async () => {
+  it("sets leverage per market and only logs a trade on a market the copy bot doesn't have (DEC-226)", async () => {
     const { and, eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     const leader = "0x5555555555555555555555555555555555555555";

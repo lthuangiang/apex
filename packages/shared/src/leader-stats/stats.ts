@@ -51,7 +51,7 @@ export interface LeaderStats {
   /** Market SoDEX mà trader giao dịch (copy được), xếp theo notional giảm dần. */
   markets: string[];
   /**
-   * Số episode đã đóng trong 30 ngày theo market SoDEX (cột "Trader's trades · 30D", DEC-TBD-copy-pick-markets). Thiếu
+   * Số episode đã đóng trong 30 ngày theo market SoDEX (cột "Trader's trades · 30D", DEC-226). Thiếu
    * ở bản ghi cũ (trước khi có field) → web hiện "Not available", không bao giờ 0.
    */
   episodesByMarket?: Record<string, number>;

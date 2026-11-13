@@ -491,7 +491,7 @@ export class Engine {
   /** Fill của ví leader (NATS `leader.<source>.<address>.fill`). `receivedAt` = lúc engine nhận. */
   async onLeaderFill(m: LeaderFillMessage, receivedAt: number): Promise<void> {
     // Mọi bot theo ví này, kể cả bot không có market của fill: chiến lược ghi "Skipped · market_off" và không bao giờ mở
-    // lệnh ở market đó (DEC-TBD-copy-pick-markets).
+    // lệnh ở market đó (DEC-226).
     for (const r of this.#copiers(m.source, m.address)) {
       // Hạn mức do marketdata phân bổ (DEC-163 mục 9); có map mà thiếu bot này thì 0.
       const allowance = m.allowances === undefined ? undefined : (m.allowances[r.botId] ?? "0");

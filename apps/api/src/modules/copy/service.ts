@@ -653,7 +653,7 @@ export async function followingEvents(
 }
 
 /**
- * Budget + mức an toàn + market đã chọn + đòn bẩy từng market → config S12 (DEC-163 mục 7, DEC-TBD-copy-pick-markets).
+ * Budget + mức an toàn + market đã chọn + đòn bẩy từng market → config S12 (DEC-163 mục 7, DEC-226).
  * Server tính lại mọi số, không tin client: market phải thuộc danh sách copy được của trader và SoDEX đang niêm yết,
  * đòn bẩy kẹp trong [1, min(SoDEX max, 5, trần Risk Center)], trần tổng = budget × đòn bẩy thấp nhất đã chọn.
  */

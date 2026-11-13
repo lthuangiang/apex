@@ -113,7 +113,7 @@ describe("copy trade across markets", () => {
     expect(copyPositions(s)).toEqual({ "BTC-USD": "0.01", "ETH-USD": "-0.25" });
   });
 
-  it("never trades markets the bot doesn't copy (only logs Skipped, DEC-TBD-copy-pick-markets)", () => {
+  it("never trades markets the bot doesn't copy (only logs Skipped, DEC-226)", () => {
     const r = step(cfg(), priced(), lf("SOL-USD", "5", "150"));
     expect(places(r.actions)).toEqual([]);
     expect(r.actions).toEqual([{ type: "log", decision: "Skipped", why: MARKET_OFF_SKIP }]);
@@ -208,7 +208,7 @@ describe("copy trade across markets", () => {
   });
 });
 
-// DEC-TBD-copy-pick-markets: market không có trong bot → không bao giờ mở lệnh, chỉ ghi "Skipped" khi trader mở / tăng.
+// DEC-226: market không có trong bot → không bao giờ mở lệnh, chỉ ghi "Skipped" khi trader mở / tăng.
 describe("markets the user did not pick", () => {
   const offLog = { type: "log", decision: "Skipped", why: MARKET_OFF_SKIP } as const;
 

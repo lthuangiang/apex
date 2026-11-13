@@ -792,7 +792,7 @@ export function stepCopyTrade(
 
 const none2 = (s: CopyTradeState): StepResult<CopyTradeState> => ({ actions: [], state: s });
 
-/** Câu nhật ký khi trader giao dịch ở market không có trong bot (PM duyệt, DEC-TBD-copy-pick-markets). */
+/** Câu nhật ký khi trader giao dịch ở market không có trong bot (PM duyệt, DEC-226). */
 export const MARKET_OFF_SKIP = "Not copied: this market isn't in your copy bot.";
 
 /**

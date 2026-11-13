@@ -105,7 +105,7 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
   const [slip, setSlip] = useState("0.3");
   const [margin, setMargin] = useState<"isolated" | "cross">("isolated");
   const [tp, setTp] = useState("");
-  // Chọn market + đòn bẩy theo market (DEC-TBD-copy-pick-markets).
+  // Chọn market + đòn bẩy theo market (DEC-226).
   const [pick, setPick] = useState<MarketsPick>({ picked: null, perMarket: false, levs: {} });
   const [ack, setAck] = useState(false);
   const [code, setCode] = useState("");
@@ -557,7 +557,7 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
                     [t("review.maxLoss"), usd(f.maxLoss) ?? ""],
                     [
                       t("review.markets"),
-                      // Market đã chọn và đòn bẩy từng market (DEC-TBD-copy-pick-markets).
+                      // Market đã chọn và đòn bẩy từng market (DEC-226).
                       p.rows
                         .filter((r) => r.selected)
                         .map((r) => t("review.marketLev", { market: r.market, lev: r.leverage }))

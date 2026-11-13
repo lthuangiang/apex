@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { copyPlan, type CopyCandidate } from "../api/copy";
 import { leverageSpecsOf } from "../leverage";
 
-// Chọn market và đòn bẩy theo market (DEC-TBD-copy-pick-markets, CopyMarkets.md): đòn bẩy kẹp trong [1, min(SoDEX
+// Chọn market và đòn bẩy theo market (DEC-226, CopyMarkets.md): đòn bẩy kẹp trong [1, min(SoDEX
 // max, 5, trần Risk Center)]; cỡ mỗi lệnh không đổi theo đòn bẩy; trần tổng = budget × đòn bẩy thấp nhất (PM chốt 1B).
 
 const tiers = [

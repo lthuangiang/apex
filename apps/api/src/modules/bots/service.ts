@@ -390,7 +390,7 @@ async function assertLeverageCap(
     });
   }
   const accountCap = await accountLeverageCap(deps.db, sodexAccountId);
-  // Copy Trade (DEC-TBD-copy-pick-markets): kiểm từng market với đòn bẩy của nó (`leverageByMarket`, thiếu thì
+  // Copy Trade (DEC-226): kiểm từng market với đòn bẩy của nó (`leverageByMarket`, thiếu thì
   // `leverage`), trần = min(SoDEX max của market, 5×, trần Risk Center).
   if (strategy === Strategy.copyTrade) {
     const per =
@@ -1386,7 +1386,7 @@ export async function checkVersionConfig(
       throw new AppError(ErrorCode.validationFailed, "Trader can't change.", {
         fieldErrors: { leaderAddress: ["locked"] },
       });
-    // Đòn bẩy theo market khoá sau khi tạo (DEC-TBD-copy-pick-markets, PM chốt 6). Form Edit không có field này:
+    // Đòn bẩy theo market khoá sau khi tạo (DEC-226, PM chốt 6). Form Edit không có field này:
     // không gửi thì giữ giá trị đang chạy.
     if (config.leverageByMarket === undefined && before.leverageByMarket !== undefined)
       config.leverageByMarket = before.leverageByMarket;

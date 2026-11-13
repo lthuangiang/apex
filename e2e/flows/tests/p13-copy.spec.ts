@@ -41,7 +41,7 @@ test("find a trader, follow them, and start copying in three steps", async ({ pa
   await expect(
     page.getByText("All positions together stay under $1,000 (budget × leverage)."),
   ).toBeVisible();
-  // Chọn market và đòn bẩy theo market (DEC-TBD-copy-pick-markets): mặc định tick mọi market; bỏ hết thì khoá.
+  // Chọn market và đòn bẩy theo market (DEC-226): mặc định tick mọi market; bỏ hết thì khoá.
   await expect(page.getByRole("heading", { name: "Markets we'll copy · 1 of 1" })).toBeVisible();
   const btc = page.getByRole("checkbox", { name: "Copy BTC-USD" });
   await expect(btc).toBeChecked();

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import messages from "../../../../messages/en.json";
 import { isPicked, MarketsCard, WhatYoullCopy, type MarketsPick } from "../components/copy-markets";
 
-// Chọn market và đòn bẩy theo market (artboard CopyMarkets, DEC-TBD-copy-pick-markets): tick / bỏ tick, cảnh báo copy
+// Chọn market và đòn bẩy theo market (artboard CopyMarkets, DEC-226): tick / bỏ tick, cảnh báo copy
 // một phần, lỗi khi bỏ hết, per-market mở nút −/+ trong trần, số thiếu → "Not available", axe 0.
 
 vi.mock("@/components/workspace", () => ({

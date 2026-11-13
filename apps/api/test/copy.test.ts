@@ -81,7 +81,7 @@ const TIERS = [
 beforeAll(async () => {
   env = await startTestEnv();
   env.prices.set("BTC-USD", { price: "100000", at: env.clock.now.getTime() });
-  // Chọn market và đòn bẩy theo market (DEC-TBD-copy-pick-markets): ETH cho tới 10×, FIL chỉ 1×.
+  // Chọn market và đòn bẩy theo market (DEC-226): ETH cho tới 10×, FIL chỉ 1×.
   env.sodex.addPerpSymbol("ETH-USD", { maxLeverage: 10, marginTiers: TIERS });
   env.sodex.addPerpSymbol("FIL-USD", { maxLeverage: 1 });
 });
@@ -420,7 +420,7 @@ describe("Copy Trading v1", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("lets the user pick markets and leverage per market; the server checks and caps everything (DEC-TBD-copy-pick-markets)", async () => {
+  it("lets the user pick markets and leverage per market; the server checks and caps everything (DEC-226)", async () => {
     const { client, userId } = await user("copy-pick@example.com");
     const accountID = Math.floor(Math.random() * 1e9);
     env.sodex.addUser(ADDRESS, accountID);

@@ -241,7 +241,7 @@ Quy tắc của Market Making (VOLUME_MAKER.md mục 17.3) không áp dụng cho
 
 | Step | Field | Default | Rule / help text | Error message |
 |---|---|---|---|---|
-| 2 | Markets (`markets`) | Mọi market của trader mà SoDEX có | 1–20 market Perps, không trùng; người dùng bỏ tick được (DEC-TBD-copy-pick-markets); khoá sau khi tạo; `maxExposure` và `maxLoss` tính trên tổng. Trader giao dịch ở market không có trong bot → không bao giờ mở lệnh, ghi "Skipped" (`market_off`, không gửi tin) | Pick at least one market. / Up to 20 markets. / Each market once. |
+| 2 | Markets (`markets`) | Mọi market của trader mà SoDEX có | 1–20 market Perps, không trùng; người dùng bỏ tick được (DEC-226); khoá sau khi tạo; `maxExposure` và `maxLoss` tính trên tổng. Trader giao dịch ở market không có trong bot → không bao giờ mở lệnh, ghi "Skipped" (`market_off`, không gửi tin) | Pick at least one market. / Up to 20 markets. / Each market once. |
 | 2 | Leverage | 5× (DEC-103) | 1× to the SoDEX market max | Above the SoDEX maximum of N× for this market. |
 | 3 | Order size from / to | 200 / 500 (DEC-103) | Position value per trade, random in range; min ≥ SoDEX min size | Below SoDEX minimum order size. / Must be at least the minimum size. |
 | 3 | Hold at least / at most | 180 s / 300 s | 10–3600 s, random in range; at most = hard time stop | Allowed 10–3600 s. / Must be at least the minimum hold. |
@@ -268,7 +268,7 @@ Quy tắc đầy đủ (vào lệnh, Continue / Reduce / Exit, hoà vốn, thứ
 | 2 | Direction | Long | Long / Short | — |
 | 3 | First order / Extra buy size | 100 / 100 | Position value, leverage included; ≥ SoDEX min size | Below SoDEX minimum order size. |
 | 3 | Leverage | 2× | 1× to the SoDEX market max | Above the SoDEX maximum of N× for this market. |
-| 3 | Leverage per market (`leverageByMarket`) | — (dùng `leverage`) | Tuỳ chọn, `{market: int}`, key ⊆ `markets`; mỗi market trong [1, min(SoDEX max, 5, trần Risk Center)]; khoá sau khi tạo (form Edit không gửi thì giữ nguyên). Engine đặt đòn bẩy theo từng market (DEC-TBD-copy-pick-markets) | Market is not in this copy bot. / Up to 5× when you copy. |
+| 3 | Leverage per market (`leverageByMarket`) | — (dùng `leverage`) | Tuỳ chọn, `{market: int}`, key ⊆ `markets`; mỗi market trong [1, min(SoDEX max, 5, trần Risk Center)]; khoá sau khi tạo (form Edit không gửi thì giữ nguyên). Engine đặt đòn bẩy theo từng market (DEC-226) | Market is not in this copy bot. / Up to 5× when you copy. |
 | 3 | Max extra buys / Spacing | 4 / 2× ATR | 1–10 / 0.5–10× ATR 5 phút đã đóng, đo lại mỗi lần đặt | Allowed 1–10. / Allowed 0.5–10×. |
 | 4 | Take profit / Hard stop | 1.5% / 8% | 0.2–20% / 1–50% | Allowed 0.2–20%. / Allowed 1–50%. |
 | 4 | Max position (`maxExposure`) | 1,000 | Giá trị danh nghĩa theo giá vốn, ≥ first order; chạm trần thì không thêm lệnh | Must be at least the first order. |
@@ -319,7 +319,7 @@ Thiết kế: canvas "AI Desk redesign", hàng "Copy Trading v1" (artboard `Lead
 
   `maxExposure` = budget × leverage. Advanced: Direction, Max price move (`maxSlippagePct`), Margin mode, Take profit.
 
-  **Chọn market và đòn bẩy theo market (DEC-TBD-copy-pick-markets, artboard `CopyMarkets`):** mặc định tick mọi market; bỏ tick được, tối thiểu 1. Đòn bẩy mặc định theo mức an toàn, hạ về trần ở market SoDEX cho thấp hơn (không bỏ market); "Set per market" mở −/+ từng market trong [1, min(SoDEX max, 5, trần Risk Center)]. Đòn bẩy không đổi cỡ mỗi lệnh (`fixedNotional` như bảng trên, nhưng không vượt `maxExposure`). **`maxExposure` = budget × đòn bẩy THẤP NHẤT trong các market đã chọn** (PM chốt, thay quy tắc 5 của CopyMarkets.md): ký quỹ không bao giờ vượt budget; vốn yêu cầu = budget. Mỗi dòng hiện ký quỹ mỗi vị thế (= cỡ lệnh ÷ đòn bẩy), khoảng cách thanh lý ước tính (Isolated, chiều xấu hơn của long / short; Cross hoặc thiếu bậc margin → "Not available") và số episode đã đóng của trader ở market đó trong 30 ngày (`LeaderStats.episodesByMarket`; bản ghi cũ chưa có → "Not available").
+  **Chọn market và đòn bẩy theo market (DEC-226, artboard `CopyMarkets`):** mặc định tick mọi market; bỏ tick được, tối thiểu 1. Đòn bẩy mặc định theo mức an toàn, hạ về trần ở market SoDEX cho thấp hơn (không bỏ market); "Set per market" mở −/+ từng market trong [1, min(SoDEX max, 5, trần Risk Center)]. Đòn bẩy không đổi cỡ mỗi lệnh (`fixedNotional` như bảng trên, nhưng không vượt `maxExposure`). **`maxExposure` = budget × đòn bẩy THẤP NHẤT trong các market đã chọn** (PM chốt, thay quy tắc 5 của CopyMarkets.md): ký quỹ không bao giờ vượt budget; vốn yêu cầu = budget. Mỗi dòng hiện ký quỹ mỗi vị thế (= cỡ lệnh ÷ đòn bẩy), khoảng cách thanh lý ước tính (Isolated, chiều xấu hơn của long / short; Cross hoặc thiếu bậc margin → "Not available") và số episode đã đóng của trader ở market đó trong 30 ngày (`LeaderStats.episodesByMarket`; bản ghi cũ chưa có → "Not available").
 - **Max price move** tính từ giá SoDEX lúc nhận tín hiệu (DEC-162), không từ giá fill trên Hyperliquid.
 - **Thanh khoản:** mỗi tín hiệu mở / tăng, tổng notional của mọi bot copy cùng trader × market ≤ 50% độ sâu sổ SoDEX phía đối diện trong khoảng Max price move; vượt thì chia theo tỷ lệ, phần dưới min size → "Skipped" (thanh khoản). Giảm / đóng không bị giới hạn.
 - **minHoldFilter:** typical hold 30 ngày ≥ 15 phút; không đạt lúc start → chặn; mất điều kiện sau này → ngừng mở mới, vẫn giảm / đóng, báo người dùng.

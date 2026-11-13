@@ -92,7 +92,7 @@ export function requirementOf(strategy: string, c: Cfg): Requirement {
       };
     case Strategy.copyTrade:
       // Margin của tổng vị thế được phép: maxExposure / đòn bẩy (DEC-161). Nhiều market (DEC-163): `bots.market` lưu
-      // market đầu, như Rebalancing. Đòn bẩy theo market (DEC-TBD-copy-pick-markets): lấy đòn bẩy thấp nhất (= budget).
+      // market đầu, như Rebalancing. Đòn bẩy theo market (DEC-226): lấy đòn bẩy thấp nhất (= budget).
       return {
         market: copyMarkets(c)[0] ?? "",
         engine: "perps",

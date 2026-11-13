@@ -32,14 +32,14 @@ export function leverageSpecOf(
 
 /**
  * Mọi symbol bot đặt đòn bẩy. Copy Trade (DEC-163) giao dịch nhiều market cùng margin mode, đòn bẩy theo
- * `leverageByMarket` nếu có (DEC-TBD-copy-pick-markets); chiến lược khác có tối đa một symbol.
+ * `leverageByMarket` nếu có (DEC-226); chiến lược khác có tối đa một symbol.
  */
 export function leverageSpecsOf(strategy: string, market: string, config: unknown): LeverageSpec[] {
   const one = leverageSpecOf(strategy, market, config);
   if (one === null) return [];
   const c = (config ?? {}) as { markets?: unknown; leverageByMarket?: unknown };
   if (strategy === Strategy.copyTrade && Array.isArray(c.markets)) {
-    // Đòn bẩy theo market (DEC-TBD-copy-pick-markets); thiếu thì dùng `leverage` chung (config cũ).
+    // Đòn bẩy theo market (DEC-226); thiếu thì dùng `leverage` chung (config cũ).
     const per =
       typeof c.leverageByMarket === "object" && c.leverageByMarket !== null
         ? (c.leverageByMarket as Record<string, unknown>)

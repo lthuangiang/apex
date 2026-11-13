@@ -163,7 +163,7 @@ export const COPY_SKIP_REASONS = [
   "min_hold",
   "low_liquidity",
   // Trader giao dịch ở market không có trong bot (bỏ tick lúc tạo, hoặc market mới): chỉ ghi nhật ký, không gửi tin
-  // (DEC-TBD-copy-pick-markets).
+  // (DEC-226).
   "market_off",
   "other",
 ] as const;
@@ -252,7 +252,7 @@ export const COPY_MAX_LEVERAGE = 5;
 
 export const copyRequestSchema = z.object({
   address: traderAddressSchema,
-  /** Tập con market của trader người dùng tick (DEC-TBD-copy-pick-markets); thiếu = mọi market copy được. */
+  /** Tập con market của trader người dùng tick (DEC-226); thiếu = mọi market copy được. */
   markets: z.array(z.string().min(1).max(40)).min(1).max(20).optional(),
   /** "Set per market": đòn bẩy từng market; thiếu = theo mức an toàn (hạ về trần ở market cho thấp hơn). */
   leverageByMarket: z
@@ -318,7 +318,7 @@ export interface CopyPlanRow {
 }
 
 /**
- * Kế hoạch copy từ budget + mức an toàn + market đã chọn + đòn bẩy từng market (DEC-TBD-copy-pick-markets). Hàm thuần:
+ * Kế hoạch copy từ budget + mức an toàn + market đã chọn + đòn bẩy từng market (DEC-226). Hàm thuần:
  * api tính để tạo config, web tính lại để hiện ngay khi người dùng bấm.
  * - Đòn bẩy mỗi market: per-market thì giá trị người dùng (kẹp trong [1, trần]); không thì đòn bẩy preset hạ về trần.
  * - Cỡ mỗi lệnh copy không đổi theo đòn bẩy (budget × đòn bẩy preset × share), nhưng không vượt trần tổng.
@@ -437,7 +437,7 @@ export const copyPreviewSchema = z.object({
   available: decimalStringSchema.nullable(),
   /** Market có volume 24h trên SoDEX dưới `COPY_THIN_MARKET_USD` (lệnh copy dễ bị bỏ qua hoặc nhỏ hơn). */
   thinMarkets: z.array(z.string()).default([]),
-  /** Mọi market copy được của trader (đã chọn hay chưa), cho bảng "Markets we'll copy" (DEC-TBD-copy-pick-markets). */
+  /** Mọi market copy được của trader (đã chọn hay chưa), cho bảng "Markets we'll copy" (DEC-226). */
   rows: z
     .array(
       z.object({
