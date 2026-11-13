@@ -84,6 +84,12 @@ services:
     image: ${DRIFT_IMAGE}:reco-${DRIFT_TAG}
     deploy: { replicas: 1 }
 
+  mcp:
+    image: ${DRIFT_IMAGE}:mcp-${DRIFT_TAG}
+    deploy: { replicas: 1 }
+    labels:
+      - traefik.http.routers.mcp.entrypoints=websecure
+
   backtest:
     image: ${DRIFT_IMAGE}:backtest-${DRIFT_TAG}
     deploy:

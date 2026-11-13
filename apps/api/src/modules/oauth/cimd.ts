@@ -109,20 +109,34 @@ export function httpsGetPinned(
   url: URL,
   address: string,
   family: number,
+  /** Test: thay transport (http thường) và cổng. */
+  t: { request?: typeof httpsRequest; port?: number } = {},
 ): Promise<FetchedResponse> {
   return new Promise((resolve, reject) => {
-    const req = httpsRequest(
+    // Hạn tổng 3 s cho cả request (option `timeout` chỉ là idle timeout: server nhỏ giọt giữ được lâu hơn).
+    const deadline = setTimeout(() => {
+      req.destroy(new ClientMetadataError("client metadata request timed out"));
+    }, OAUTH_CONFIG.cimdTimeoutMs);
+    const done =
+      <T>(fn: (v: T) => void) =>
+      (v: T) => {
+        clearTimeout(deadline);
+        fn(v);
+      };
+    const req = (t.request ?? httpsRequest)(
       {
         host: url.hostname,
         servername: url.hostname,
-        port: 443,
+        port: t.port ?? 443,
         path: `${url.pathname}${url.search}`,
         method: "GET",
         headers: { accept: "application/json", "user-agent": "DeskLabs-OAuth" },
         // Kết nối thẳng tới IP đã kiểm tra: không resolve lại (chống DNS rebinding).
-        lookup: (_host, _opts, cb) => {
-          cb(null, address, family);
-        },
+        // Node gọi với `all: true` khi tự chọn họ địa chỉ (autoSelectFamily): khi đó callback nhận mảng.
+        lookup: ((_host: string, opts: { all?: boolean }, cb: (...a: unknown[]) => void) => {
+          if (opts.all === true) cb(null, [{ address, family }]);
+          else cb(null, address, family);
+        }) as never,
         timeout: OAUTH_CONFIG.cimdTimeoutMs,
       },
       (res) => {
@@ -137,19 +151,20 @@ export function httpsGetPinned(
           chunks.push(c);
         });
         res.on("end", () => {
+          clearTimeout(deadline);
           resolve({
             status: res.statusCode ?? 0,
             contentType: res.headers["content-type"] ?? null,
             body: Buffer.concat(chunks).toString("utf8"),
           });
         });
-        res.on("error", reject);
+        res.on("error", done(reject));
       },
     );
     req.on("timeout", () => {
       req.destroy(new ClientMetadataError("client metadata request timed out"));
     });
-    req.on("error", reject);
+    req.on("error", done(reject));
     req.end();
   });
 }

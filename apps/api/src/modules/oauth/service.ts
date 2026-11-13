@@ -11,7 +11,6 @@ import {
   type OauthConsentInfo,
 } from "@drift/shared";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
-import { v7 as uuidv7 } from "uuid";
 
 import { randomToken, safeEqual, sha256 } from "../../lib/crypto";
 
@@ -298,6 +297,12 @@ export async function decide(
 
 const pkceS256 = (verifier: string) => createHash("sha256").update(verifier).digest("base64url");
 
+/** Id họ token (uuid) suy ra tất định từ hash của authorization code. */
+export function familyOfCode(codeHash: string): string {
+  const h = createHash("sha256").update(`family:${codeHash}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-8${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
 interface TokenResponse {
   access_token: string;
   token_type: "Bearer";
@@ -344,20 +349,29 @@ export async function token(
     const { code, code_verifier: verifier, redirect_uri: redirectUri, client_id: clientId } = form;
     if (code === undefined || verifier === undefined || clientId === undefined)
       throw new OauthError("invalid_request", "code, code_verifier and client_id are required.");
-    return deps.db.transaction(async (tx) => {
+    const codeHash = sha256(code);
+    const out = await deps.db.transaction(async (tx) => {
       const [c] = await tx
         .update(oauthCodes)
         .set({ usedAt: now })
         .where(
           and(
-            eq(oauthCodes.codeHash, sha256(code)),
+            eq(oauthCodes.codeHash, codeHash),
             isNull(oauthCodes.usedAt),
             gt(oauthCodes.expiresAt, now),
           ),
         )
         .returning();
-      if (c === undefined)
+      if (c === undefined) {
+        // Code đã dùng mà bị đổi lại: có thể đã lộ. Thu hồi token cấp từ code đó SAU transaction (OAuth 2.1 mục 4.1.3).
+        const [used] = await tx
+          .select({ usedAt: oauthCodes.usedAt })
+          .from(oauthCodes)
+          .where(eq(oauthCodes.codeHash, codeHash))
+          .limit(1);
+        if (used?.usedAt != null) return { reusedCode: true as const };
         throw new OauthError("invalid_grant", "The code is invalid, expired or used.");
+      }
       if (c.clientId !== clientId || c.redirectUri !== redirectUri)
         throw new OauthError("invalid_grant", "client_id or redirect_uri does not match the code.");
       if (!safeEqual(pkceS256(verifier), c.codeChallenge))
@@ -367,13 +381,22 @@ export async function token(
         throw new OauthError("invalid_target", "resource does not match the code.");
       await tx.update(oauthClients).set({ lastUsedAt: now }).where(eq(oauthClients.id, c.clientId));
       return issue(deps, tx, {
-        familyId: uuidv7(),
+        // Họ token suy ra từ code: code bị dùng lại thì tìm lại đúng họ này mà không cần thêm cột.
+        familyId: familyOfCode(codeHash),
         userId: c.userId,
         clientId: c.clientId,
         scope: c.scope as McpScope[],
         resource: c.resource,
       });
     });
+    if ("reusedCode" in out) {
+      await deps.db
+        .update(mcpTokens)
+        .set({ revokedAt: now })
+        .where(and(eq(mcpTokens.familyId, familyOfCode(codeHash)), isNull(mcpTokens.revokedAt)));
+      throw new OauthError("invalid_grant", "The code was already used.");
+    }
+    return out;
   }
   if (form.grant_type === "refresh_token") {
     const { refresh_token: refresh, client_id: clientId } = form;
