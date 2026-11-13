@@ -209,6 +209,7 @@ Làm theo thứ tự, một lần. Mọi bước nằm ở 2.9 / 2.10; mục nà
   - [ ] service `api`: thêm `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET`; đổi rule router `api` có thêm `Path(`/.well-known/oauth-authorization-server`)` (2.9);
   - [ ] service `api`: thêm 5 label router `api-internal` + middleware `deny-external` (2.10 bước 3);
   - [ ] thêm service `mcp` (2.10 bước 3).
+  - [ ] service `web`: thêm `MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://mcp.desklabs.xyz}` (trang `/claude` hiện địa chỉ `<MCP_PUBLIC_URL>/mcp`, #90). Thiếu thì trang dùng mặc định `https://mcp.desklabs.xyz/mcp`.
 - [ ] `docker-compose.prod.yml` trên VPS: service `mcp` (image `mcp-${DRIFT_TAG}`, entrypoint `websecure`); service `api` thêm `traefik.http.routers.api-internal.entrypoints=websecure`.
 
 **Deploy:**
@@ -220,6 +221,7 @@ Làm theo thứ tự, một lần. Mọi bước nằm ở 2.9 / 2.10; mục nà
 - [ ] `curl -si -X POST https://mcp.desklabs.xyz/mcp` → `401` kèm `WWW-Authenticate: Bearer scope="read", resource_metadata="https://mcp.desklabs.xyz/.well-known/oauth-protected-resource/mcp"`.
 - [ ] `curl -s -o /dev/null -w '%{http_code}\n' -X POST https://desklabs.xyz/api/v1/oauth/introspect` và `…/api/v1/mcp/calls`, `…/api/v1/mcp/me/bots` → `403` (Traefik chặn từ ngoài).
 - [ ] `docker compose … ps mcp` → `healthy`.
+- [ ] Mở `https://desklabs.xyz/claude`: địa chỉ server hiện đúng `https://mcp.desklabs.xyz/mcp`, nút Copy chép đúng chuỗi đó.
 - [ ] Thử thật: thêm connector trong Claude (Customize › Connectors › + Add › Add custom connector, URL `https://mcp.desklabs.xyz/mcp`), Allow, hỏi "list my bots"; rồi Settings › Connected apps › Revoke và thấy Claude mất quyền ngay.
 
 **Rollback:**
