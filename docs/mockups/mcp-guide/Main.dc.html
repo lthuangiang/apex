@@ -150,7 +150,14 @@ Used DeskLabs · list_bots, get_portfolio_summary
 <sc-if value="{{isCode}}" hint-placeholder-val="{{ false }}">
 <div style="background: #141a33; border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 10px">
 <span style="font-size: 12px; font-weight: 700; color: #aab3d6; text-transform: uppercase; letter-spacing: 0.08em">Terminal</span>
-<code style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14px; line-height: 1.6; color: #ffffff; word-break: break-all">claude mcp add --transport http desklabs https://mcp.desklabs.xyz/mcp</code>
+<code style="font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 14px; line-height: 1.6; color: #ffffff; word-break: break-all">claude mcp add --transport http --scope user desklabs https://mcp.desklabs.xyz/mcp</code>
+</div>
+</sc-if>
+<sc-if value="{{isWeb}}" hint-placeholder-val="{{ true }}">
+<div style="background: #fdebd3; border: 1px solid #f0c27e; border-radius: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.55; color: #7a3e00">
+<strong style="font-size: 14.5px">Good to know</strong>
+<span>On a Team or Enterprise plan, ask your owner to add DeskLabs first. Then you only press Connect.</span>
+<span>The Free plan allows one custom connector.</span>
 </div>
 </sc-if>
 <div style="background: #f5f7fd; border: 1px solid #e3e7f5; border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 10px">
@@ -304,8 +311,7 @@ class Component extends DCLogic {
   renderVals() {
     const tab = this.state.tab;
     const tabDefs = [
-      { id: 'web', label: 'claude.ai' },
-      { id: 'desktop', label: 'Claude Desktop' },
+      { id: 'web', label: 'Claude app (web, desktop, mobile)' },
       { id: 'code', label: 'Claude Code' }
     ];
     const base = 'min-height: 44px; padding: 0 18px; border-radius: 12px; font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; ';
@@ -316,24 +322,18 @@ class Component extends DCLogic {
       pick: () => this.setState({ tab: t.id })
     }));
     const web = [
-      { title: 'Open Settings › Connectors', body: 'In claude.ai, open Settings and go to Connectors.' },
-      { title: 'Add a custom connector', body: 'Name it DeskLabs and paste https://mcp.desklabs.xyz/mcp as the address.' },
-      { title: 'Sign in and allow', body: 'Press Connect. DeskLabs opens: sign in, check the app and host, then press Allow.' },
-      { title: 'Turn it on in a chat', body: 'In a new chat, switch DeskLabs on from the tools menu and ask your first question.' }
-    ];
-    const desktop = [
-      { title: 'Open Settings › Connectors', body: 'In Claude Desktop, open Settings and go to Connectors.' },
-      { title: 'Add a custom connector', body: 'Name it DeskLabs and paste https://mcp.desklabs.xyz/mcp as the address.' },
-      { title: 'Sign in and allow', body: 'Your browser opens DeskLabs: sign in, check the app and host, then press Allow.' },
-      { title: 'Ask away', body: 'Back in Claude Desktop, switch DeskLabs on from the tools menu and ask your first question.' }
+      { title: 'Open Customize › Connectors', body: 'In claude.ai, open Customize and go to Connectors.' },
+      { title: 'Add a custom connector', body: 'Press + Add, then Add custom connector. Name it DeskLabs, paste https://mcp.desklabs.xyz/mcp and press Continue.' },
+      { title: 'Sign in and allow', body: 'Choose to sign in now. DeskLabs opens: sign in, check the app and host, then press Allow.' },
+      { title: 'Turn it on in a chat', body: 'In a chat, press + then Connectors, and switch DeskLabs on. It also works in Claude Desktop and the mobile apps; no need to add it again.' }
     ];
     const code = [
-      { title: 'Add the server', body: 'Run the command on the right in your terminal.' },
-      { title: 'Sign in', body: 'Start Claude Code, run /mcp, choose desklabs and authenticate. Your browser opens DeskLabs.' },
+      { title: 'Add the server', body: 'Run the command on the right in your terminal. Already added DeskLabs on claude.ai with the same account? Claude Code has it already: skip this step.' },
+      { title: 'Sign in', body: 'Start Claude Code, run /mcp, choose desklabs and sign in. Your browser opens DeskLabs.' },
       { title: 'Allow', body: 'Check the app and host, then press Allow.' },
       { title: 'Ask away', body: 'Ask Claude Code about your bots, for example "Why did my ETH bot pause?"' }
     ];
-    const list = tab === 'web' ? web : tab === 'desktop' ? desktop : code;
+    const list = tab === 'web' ? web : code;
     const steps = list.map((s, i) => ({ n: i + 1, title: s.title, body: s.body }));
     const faqDefs = [
       { q: 'Is it safe to connect?', a: 'Claude only reads your DeskLabs data and can save drafts if you allow it. It can’t place trades, change bots, apply drafts or move money. DeskLabs never shares your SoDEX keys or signatures with Claude.' },
@@ -354,6 +354,7 @@ class Component extends DCLogic {
       tabs,
       steps,
       isCode: tab === 'code',
+      isWeb: tab === 'web',
       copyLabel: this.state.copied ? 'Copied' : 'Copy',
       copyUrl: () => {
         try { navigator.clipboard.writeText('https://mcp.desklabs.xyz/mcp'); } catch (e) {}

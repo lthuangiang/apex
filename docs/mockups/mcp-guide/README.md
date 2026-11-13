@@ -30,5 +30,5 @@ Hero (địa chỉ server + nút Copy, câu an toàn, chat mẫu) → What Claud
 - Chữ trong ngoặc vuông (`[App name]`, `[Bot name]`, `[N]`, `[time]`) là chỗ trống minh hoạ: trên trang thật giữ dạng minh hoạ trung tính, **không** điền số giả.
 - Số giới hạn lấy từ hằng số thật (`MCP_RATE_LIMITS`, hạn bản nháp 24 giờ, tối đa 20 bản nháp), không viết cứng.
 - Địa chỉ server lấy từ cấu hình (`MCP_PUBLIC_URL` + `/mcp`), mặc định `https://mcp.desklabs.xyz/mcp`.
-- **Trước khi ra mắt:** đối chiếu các bước kết nối claude.ai / Claude Desktop / Claude Code với trang trợ giúp hiện tại của Anthropic; menu có thể đã đổi.
+- Các bước kết nối đã đối chiếu với tài liệu Anthropic ngày 2026-11-13 (DevOps, B4): support.claude.com bài 11175166, 11176164, 11725091 và code.claude.com/docs/en/mcp. Kết quả: claude.ai dùng "Customize › Connectors" → "+ Add" → "Add custom connector" → Continue → sign in; bật trong chat bằng "+" → Connectors; connector thêm trên web tự có ở Desktop, mobile và Claude Code (nên gộp thành một tab "Claude app"); Team / Enterprise do owner thêm; gói Free chỉ được 1 custom connector; Claude Code dùng `--scope user`. Trước khi ra mắt vẫn mở lại các trang đó một lần, vì menu có thể đổi.
 - Tab là `role="tablist"` có phím mũi tên; FAQ là nút có `aria-expanded`; nút Copy báo "Copied" qua `aria-live`. Axe 0 lỗi ở 1440 và 390.
