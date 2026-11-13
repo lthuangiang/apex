@@ -4164,7 +4164,7 @@
           "body": "Connect DeskLabs to Claude and ask about your bots in plain words. Claude reads; you decide.",
           "p1": "Works in claude.ai, Claude Desktop and Claude Code",
           "p2": "Claude can draft bot settings; you review and start them",
-          "p3": "It can't place trades or move money. Revoke any time",
+          "p3": "It can’t place trades or move money. Revoke any time",
           "cta": "Connect Claude"
         }
       },
@@ -4282,7 +4282,7 @@
         },
         "claude": {
           "q": "Can I use DeskLabs with Claude?",
-          "a": "Yes. Connect DeskLabs to Claude to ask about your bots and get bot drafts to review. Claude can't trade or move money.",
+          "a": "Yes. Connect DeskLabs to Claude to ask about your bots and get bot drafts to review. Claude can’t trade or move money.",
           "link": "See how to connect"
         }
       }
@@ -5278,7 +5278,7 @@
       "copied": "Copied",
       "connect": "Connect in 2 minutes",
       "see": "See what it can do",
-      "safe": "Claude can't place trades, change your bots or move money."
+      "safe": "Claude can’t place trades, change your bots or move money."
     },
     "chat": {
       "label": "Example chat in Claude",
@@ -5294,7 +5294,7 @@
       "items": {
         "read": {
           "title": "Read your account",
-          "body": "Bots, portfolio, profit and loss, fees, and how much of your loss limit you've used. Practice bots are kept apart from real money."
+          "body": "Bots, portfolio, profit and loss, fees, and how much of your loss limit you’ve used. Practice bots are kept apart from real money."
         },
         "explain": {
           "title": "Explain what happened",
@@ -5309,8 +5309,8 @@
           "body": "Claude can prepare a new bot or a change and give you a link. You review it in DeskLabs and decide."
         }
       },
-      "cantTitle": "What Claude can't do",
-      "cant": "Place or cancel orders, start, pause or change a bot, apply a draft, or withdraw and move funds. It never sees your keys or signatures, and it doesn't predict prices."
+      "cantTitle": "What Claude can’t do",
+      "cant": "Place or cancel orders, start, pause or change a bot, apply a draft, or withdraw and move funds. It never sees your keys or signatures, and it doesn’t predict prices."
     },
     "connect": {
       "title": "Connect in 2 minutes",
@@ -5360,13 +5360,13 @@
       "goodTitle": "Good to know",
       "good1": "On a Team or Enterprise plan, ask your owner to add DeskLabs first. Then you only press Connect.",
       "good2": "The Free plan allows one custom connector.",
-      "consentLabel": "You'll see this in DeskLabs",
+      "consentLabel": "You’ll see this in DeskLabs",
       "consentTitle": "[App name] wants to use your DeskLabs account",
       "consentFrom": "from [app host]",
-      "consentBody": "This app can read your DeskLabs data. It can't place trades, change bots or move funds.",
+      "consentBody": "This app can read your DeskLabs data. It can’t place trades, change bots or move funds.",
       "allow": "Allow",
       "deny": "Deny",
-      "consentCheck": "Check the host is the app you're using before you press Allow."
+      "consentCheck": "Check the host is the app you’re using before you press Allow."
     },
     "permissions": {
       "title": "Permissions",
@@ -5377,7 +5377,7 @@
       "draftTitle": "Save bot drafts",
       "draftBody": "Prepare new bots or changes for you to review. Nothing runs until you save or start it yourself.",
       "draftWhen": "Asked the first time Claude drafts",
-      "sodex": "Haven't connected SoDEX yet? Connect it in DeskLabs first. Claude has nothing to read until then."
+      "sodex": "Haven’t connected SoDEX yet? Connect it in DeskLabs first. Claude has nothing to read until then."
     },
     "try": {
       "title": "Try asking",
