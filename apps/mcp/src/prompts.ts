@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// MCP prompts có sẵn (docs/MCP.md mục 5, DEC-167, DEC-TBD-mcp-prompts): chỉ là câu mẫu để client gọi các tool đọc đã có,
+// MCP prompts có sẵn (docs/MCP.md mục 5, DEC-167, DEC-224): chỉ là câu mẫu để client gọi các tool đọc đã có,
 // không thêm dữ liệu. Không hứa lợi nhuận, không dự báo; nhắc what-if thì luôn có "not a forecast". Chữ người dùng
 // nhập vào tham số chỉ được chèn như dữ liệu trong ngoặc kép, không phải chỉ dẫn.
 
