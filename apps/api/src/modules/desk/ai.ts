@@ -24,6 +24,7 @@ import { and, asc, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import type { BotDeps } from "../bots/service";
 
 import type { DeskLlm, DeskLlmUsage } from "./llm";
+import { deskMarketFacts, type DeskMarketSource } from "./market";
 import { collectFacts, needsYou } from "./needs-you";
 import { goalOf } from "./whatif";
 
@@ -33,6 +34,8 @@ import { goalOf } from "./whatif";
 
 export interface DeskAiDeps extends BotDeps {
   llm: DeskLlm | null;
+  /** Nguồn fact "Market today" (DEC-TBD-desk-market); null = không có fact thị trường. */
+  market?: DeskMarketSource | null;
   /** traceId của request (ghi vào nhật ký lượt). */
   traceId?: string;
 }
@@ -98,18 +101,27 @@ async function reserveQuestion(
   return r?.n ?? null;
 }
 
-async function factsOf(deps: BotDeps, userId: string, used: number): Promise<DeskAiFact[]> {
+async function factsOf(
+  deps: BotDeps & { market?: DeskMarketSource | null },
+  userId: string,
+  used: number,
+): Promise<DeskAiFact[]> {
   // Bot archived trong 30 ngày vẫn là dữ liệu thật về lãi / lỗ / phí (DEC-193); Needs you thì không.
   const archivedSince = new Date(deps.now().getTime() - DESK_AI_CONFIG.archivedDays * 86_400_000);
-  const [bots, goal] = await Promise.all([
+  const [bots, goal, market] = await Promise.all([
     collectFacts(deps, userId, { archivedSince }),
     goalOf(deps, userId),
+    // SoDEX lỗi chỉ làm mất fact thị trường, không làm hỏng câu trả lời.
+    deskMarketFacts(deps.db, deps.market, userId).catch((): DeskAiFact[] => []),
   ]);
-  return deskAiFacts({
-    bots,
-    goal: goal === null ? null : { limit: goal.limit, used: goal.used },
-    questionsUsed: used,
-  });
+  return [
+    ...deskAiFacts({
+      bots,
+      goal: goal === null ? null : { limit: goal.limit, used: goal.used },
+      questionsUsed: used,
+    }),
+    ...market,
+  ];
 }
 
 function costOf(u: DeskLlmUsage): string {
@@ -293,11 +305,19 @@ export async function askDeskAi(
   const all = await factsOf(deps, userId, used);
   const only = ctx.botId;
   const facts = [
-    ...(only === null ? all : all.filter((f) => !f.id.includes(":") || f.id.endsWith(`:${only}`))),
+    ...(only === null
+      ? all
+      : all.filter((f) => f.market != null || !f.id.includes(":") || f.id.endsWith(`:${only}`))),
     ...ctx.extra,
   ];
   const intent = intentOf(question);
   const goalFacts = facts.filter((f) => f.key === "goal_limit" || f.key === "goal_used");
+  // Không có số thị trường (SoDEX lỗi, chưa có bot) → câu mẫu chung, không có danh sách rỗng.
+  const hasMarket = facts.some(
+    (f) =>
+      f.key === "market_range_24h_pct" &&
+      facts.some((g) => g.key === "market_change_24h_pct" && g.market === f.market),
+  );
   let w: Written;
   if (reserved === null)
     w = {
@@ -329,19 +349,28 @@ export async function askDeskAi(
       // `off`: LLM chưa bật (không có key) → lời dẫn không nói "can't write an answer right now".
       intent === "safety"
         ? { kind: "template", key: "safety", params: {}, facts: goalFacts }
-        : intent === "loss"
+        : intent === "market" && hasMarket
           ? {
               kind: "template",
-              key: "loss",
-              params: { off: deps.llm === null ? 1 : 0 },
-              facts: templateFacts(question, facts, { loss: true }),
+              key: "market",
+              params: {},
+              facts: facts.filter(
+                (f) => f.key === "market_change_24h_pct" || f.key === "market_range_24h_pct",
+              ),
             }
-          : {
-              kind: "template",
-              key: "fallback",
-              params: { off: deps.llm === null ? 1 : 0 },
-              facts: templateFacts(question, facts),
-            },
+          : intent === "loss"
+            ? {
+                kind: "template",
+                key: "loss",
+                params: { off: deps.llm === null ? 1 : 0 },
+                facts: templateFacts(question, facts, { loss: true }),
+              }
+            : {
+                kind: "template",
+                key: "fallback",
+                params: { off: deps.llm === null ? 1 : 0 },
+                facts: templateFacts(question, facts),
+              },
       `${question} ${ctx.text}`,
     );
 
