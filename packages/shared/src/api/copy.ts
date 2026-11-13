@@ -215,6 +215,24 @@ export const followingSchema = z.object({
 });
 export type Following = z.infer<typeof followingSchema>;
 
+/**
+ * Bảng "Recent changes" ở Following, theo trang (W4): tối đa `FOLLOWING_EVENTS_PAGE` dòng một lần, mới nhất trước,
+ * lọc theo một trader đang follow nếu có. `cursor` là chuỗi mờ do server trả (`nextCursor`); null = hết.
+ */
+export const FOLLOWING_EVENTS_PAGE = 50;
+export const followingEventsQuerySchema = z.object({
+  trader: traderAddressSchema.optional(),
+  cursor: z
+    .string()
+    .regex(/^\d{1,15}\.[0-9a-f-]{36}$/)
+    .optional(),
+});
+export const followingEventsSchema = z.object({
+  events: z.array(leaderEventViewSchema),
+  nextCursor: z.string().nullable(),
+});
+export type FollowingEvents = z.infer<typeof followingEventsSchema>;
+
 /* -------------------------------- Budget and safety → field S12 (S12.1) -------------------------------- */
 
 export const COPY_PRESETS = {

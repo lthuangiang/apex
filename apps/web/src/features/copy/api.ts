@@ -4,6 +4,7 @@ import {
   botSummarySchema,
   copyPreviewSchema,
   FOLLOW_ALERT_LEVELS,
+  followingEventsSchema,
   followingSchema,
   traderListSchema,
   traderProfileSchema,
@@ -11,7 +12,7 @@ import {
   type FollowAlertLevel,
   type TraderTab,
 } from "@drift/shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import { z } from "zod";
 
@@ -36,6 +37,29 @@ export const useFollowing = () =>
   useQuery({
     queryKey: ["following"],
     queryFn: () => api("GET", "/api/v1/following", followingSchema),
+    refetchInterval: 60_000,
+  });
+
+/**
+ * Recent changes theo trang (W4): 50 dòng một lần, "Load more" lấy trang kế bằng `nextCursor`; `trader` = lọc theo một
+ * trader đang follow. Key nằm dưới ["following"] nên follow / unfollow làm mới luôn bảng này.
+ */
+export const useFollowingEvents = (trader: string | null) =>
+  useInfiniteQuery({
+    queryKey: ["following", "events", trader],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => {
+      const q = new URLSearchParams();
+      if (trader !== null) q.set("trader", trader);
+      if (pageParam !== null) q.set("cursor", pageParam);
+      const qs = q.toString();
+      return api(
+        "GET",
+        `/api/v1/following/events${qs === "" ? "" : `?${qs}`}`,
+        followingEventsSchema,
+      );
+    },
+    getNextPageParam: (last) => last.nextCursor,
     refetchInterval: 60_000,
   });
 
