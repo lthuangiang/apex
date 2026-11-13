@@ -1,32 +1,24 @@
 "use client";
 
-import {
-  dec,
-  notificationSettingsSchema,
-  type LeaderEventView,
-  type NotificationGroup,
-} from "@drift/shared";
-import { EmptyState, ErrorState, Skeleton, Switch } from "@drift/ui";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { dec, type LeaderEventView } from "@drift/shared";
+import { EmptyState, ErrorState, Skeleton } from "@drift/ui";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 
 import { PageHead, Workspace } from "@/components/workspace";
-import { api } from "@/lib/api";
 import { useFeatures } from "@/lib/queries";
 
 import { useFollow, useFollowing } from "../api";
 import { addr, ago, base, usd } from "../format";
 
+import { FollowAlertSelect } from "./follow-alert-select";
 import { Avatar } from "./parts";
 import { EventChange } from "./trader-profile-page";
 
 // Following (artboard WhaleWatch, DEC-163 mục 11): trader đang theo dõi (≤ 5), thay đổi gần đây gộp 60 giây, độ trễ
 // thật ("checked every 2 min"), cảnh báo big move chỉ trong app. Theo dõi miễn phí, không đặt lệnh.
-
-const GROUP: NotificationGroup = "copyTrading";
 
 /** Chip "Change" theo artboard WhaleWatch: mở / tăng long xanh, mở / tăng short đỏ, giảm / đóng xám. */
 function changeChip(e: LeaderEventView): string {
@@ -48,33 +40,12 @@ const formatTime = (at: number) => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
-function useBigMoveSetting() {
-  const qc = useQueryClient();
-  const settings = useQuery({
-    queryKey: ["notifications", "settings"],
-    queryFn: () => api("GET", "/api/v1/notifications/settings", notificationSettingsSchema),
-  });
-  const set = useMutation({
-    mutationFn: (enabled: boolean) =>
-      api("PUT", "/api/v1/notifications/settings", notificationSettingsSchema, {
-        idempotencyKey: crypto.randomUUID(),
-        body: { group: GROUP, channel: "in_app", enabled },
-      }),
-    onSuccess: (data) => {
-      qc.setQueryData(["notifications", "settings"], data);
-    },
-  });
-  const on = settings.data?.groups.find((g) => g.group === GROUP)?.in_app;
-  return { on, set };
-}
-
 export function FollowingPage() {
   const t = useTranslations("copy");
   const router = useRouter();
   const features = useFeatures();
   const q = useFollowing();
   const follow = useFollow();
-  const alerts = useBigMoveSetting();
   useEffect(() => {
     if (features.data !== undefined && !features.data.aiDesk) router.replace("/");
   }, [features.data, router]);
@@ -180,6 +151,14 @@ export function FollowingPage() {
                           })}
                         </p>
                       )}
+                      {/* Mức cảnh báo riêng cho trader này (DEC-209). */}
+                      <div className="pl-12">
+                        <FollowAlertSelect
+                          address={tr.address}
+                          trader={tr.displayName ?? addr(tr.address)}
+                          level={tr.alertLevel}
+                        />
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -272,33 +251,27 @@ export function FollowingPage() {
               aria-labelledby="fl-alerts"
               className="flex flex-col gap-3.5 rounded-card border border-border bg-surface px-[22px] py-5"
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                  <h2 id="fl-alerts" className="m-0 text-[17px] font-extrabold">
-                    {t("following.alertsTitle")}
-                  </h2>
-                  <p className="m-0 text-[13.5px] leading-normal text-ink-2">
-                    {d.bigMoveMinUsd === null
-                      ? t("following.alertsBody")
-                      : t("following.alertsBodyAt", {
-                          threshold: usd(d.bigMoveMinUsd) ?? d.bigMoveMinUsd,
-                        })}
-                  </p>
-                </div>
-                {d.bigMoveAlerts ? (
-                  <Switch
-                    label={alerts.on === true ? t("following.on") : t("following.off")}
-                    checked={alerts.on === true}
-                    onCheckedChange={(enabled) => {
-                      alerts.set.mutate(enabled);
-                    }}
-                  />
-                ) : null}
+              {/* Công tắc chung đã bỏ: mỗi trader có ô chọn mức riêng (DEC-209). Khối này chỉ giải
+                  thích ngưỡng big move (số thật từ config) và cách nhận trên Telegram. */}
+              <div className="flex flex-col gap-1">
+                <h2 id="fl-alerts" className="m-0 text-[17px] font-extrabold">
+                  {t("following.alertsTitle")}
+                </h2>
+                <p className="m-0 text-[13.5px] leading-normal text-ink-2">
+                  {d.bigMoveMinUsd === null
+                    ? t("following.alertsBody")
+                    : t("following.alertsBodyAt", {
+                        threshold: usd(d.bigMoveMinUsd) ?? d.bigMoveMinUsd,
+                      })}
+                </p>
+                <p className="m-0 text-[13.5px] leading-normal text-ink-2">
+                  {t("followAlerts.explain")}
+                </p>
               </div>
               {d.bigMoveAlerts ? null : (
                 <p className="m-0 text-sm text-muted">{t("following.alertsOff")}</p>
               )}
-              {/* Big move đi Telegram khi user bật ở Settings (DEC-170 mục 5); switch ở đây chỉ là kênh in-app. */}
+              {/* Cảnh báo follow đi Telegram khi user bật nhóm Copy Trading ở Settings (DEC-170 mục 5). */}
               <p className="m-0 text-xs text-muted">
                 {t.rich("following.alertsWhere", {
                   link: (chunks) => (

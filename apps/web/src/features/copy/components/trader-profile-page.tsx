@@ -16,6 +16,7 @@ import { useFollow, useTrader } from "../api";
 import { useCopyErrorText, useFollowLimit } from "../errors";
 import { addr, base, holdText, pctText, usd } from "../format";
 
+import { FollowingMenu } from "./follow-alert-select";
 import { Avatar, CopyAction, Sparkline, TagChips } from "./parts";
 
 // Trader profile (artboard WalletStats, DEC-163): 4 chỉ số kèm một câu giải thích, checklist "good fit", thay đổi vị
@@ -201,15 +202,20 @@ export function TraderProfilePage({ address }: { address: string }) {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    disabled={follow.isPending || (!p.card.following && limit.atLimit)}
-                    onClick={() => {
-                      follow.mutate({ address, on: !p.card.following });
-                    }}
-                  >
-                    {p.card.following ? t("common.following") : t("common.follow")}
-                  </Button>
+                  {p.card.following ? (
+                    // Đã follow: menu mức cảnh báo + Unfollow (DEC-209).
+                    <FollowingMenu address={address} level={p.followAlertLevel ?? "big_moves"} />
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      disabled={follow.isPending || limit.atLimit}
+                      onClick={() => {
+                        follow.mutate({ address, on: true });
+                      }}
+                    >
+                      {t("common.follow")}
+                    </Button>
+                  )}
                   {p.copyable.ok ? (
                     <CopyAction card={p.card} label={t("profile.copyFuture")} />
                   ) : null}

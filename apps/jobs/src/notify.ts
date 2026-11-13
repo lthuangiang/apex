@@ -110,6 +110,7 @@ export function emailText(
         text: "Your daily summary is ready in DeskLabs.",
       };
     case "leader_big_move":
+    case "leader_position":
       // Chỉ trong app ở v1 (IN_APP_ONLY_GROUPS); câu này chỉ để switch đủ nhánh.
       return {
         subject: "DeskLabs: a trader you follow made a big move",
