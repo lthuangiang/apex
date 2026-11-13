@@ -221,7 +221,7 @@ describe("MarketChart (IMP-05)", () => {
 
   it("hides the Liquidation map tab when the server has no data", async () => {
     render(wrap(<MarketChart strategy="futures_grid" values={grid()} lastPrice={null} />));
-    await screen.findByRole("img", { name: "Price candles with bot levels" });
+    await screen.findByRole("figure", { name: "Price candles with bot levels" });
     expect(screen.queryByRole("tab", { name: "Liquidation map" })).toBeNull();
     expect(screen.queryByText(/estimates from other exchanges/)).toBeNull();
   });
@@ -240,7 +240,7 @@ describe("MarketChart (IMP-05)", () => {
     render(wrap(<MarketChart strategy="futures_grid" values={grid()} lastPrice={null} />));
     fireEvent.click(await screen.findByRole("tab", { name: "Liquidation map" }));
     expect(
-      screen.getByRole("img", { name: "Estimated liquidation map with price candles" }),
+      screen.getByRole("figure", { name: "Estimated liquidation map with price candles" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/not positions on SoDEX\. Price can pass straight through these zones\./),

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { signUpConnectAnd2fa } from "../support/onboard";
-import { nextTotpWindow, totp } from "../support/totp";
+import { fillTwoFactorIfAsked } from "../support/totp";
 
 // Tiêu chí P10 (docs/ROADMAP.md): Overview, Portfolio, Risk Center, AI Analyst, Notifications, Builder Revenue
 // hiện số khớp API (mock SoDEX: 100,000 vUSDC Spot + Perps account value 100,000), đủ trạng thái rỗng / có dữ liệu.
@@ -29,7 +29,7 @@ test("overview, portfolio, risk center, analyst, notifications and builder reven
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Liquidation price is shown only when SoDEX returns it. DRIFT does not estimate it.",
+      "Liquidation price is shown only when SoDEX returns it. DeskLabs does not estimate it.",
     ),
   ).toBeVisible();
 
@@ -42,13 +42,12 @@ test("overview, portfolio, risk center, analyst, notifications and builder reven
   await expect(daily.getByText("of 3%")).toBeVisible();
   await expect(page.getByText("Server-enforced").first()).toBeVisible();
   await expect(page.getByText("UI warning only").first()).toBeVisible();
-  await page.getByRole("button", { name: "Halt all agents…" }).click();
+  await page.getByRole("button", { name: "Halt all agents" }).click();
   const dialog = page.getByRole("dialog", { name: "Halt all agents?" });
-  await nextTotpWindow();
-  await dialog.getByLabel("2FA code").fill(totp(secret));
+  await fillTwoFactorIfAsked(dialog, secret);
   await dialog.getByRole("button", { name: "Halt all agents" }).click();
   await expect(
-    page.getByText("Halt requested. Agents show Stopped once DRIFT confirms."),
+    page.getByText("Halt requested. Agents show Stopped once DeskLabs confirms."),
   ).toBeVisible();
 
   await page.goto("/analyst");
@@ -60,7 +59,7 @@ test("overview, portfolio, risk center, analyst, notifications and builder reven
 
   await page.goto("/settings");
   await page.getByRole("tab", { name: "Notifications" }).click();
-  await expect(page.getByText("Bot errors, unknown orders, paused bots")).toBeVisible();
+  await expect(page.getByText("Bot problems").first()).toBeVisible();
   await expect(page.getByRole("switch", { name: "Email" }).first()).toBeDisabled();
 
   await page.goto("/admin/builder-revenue");

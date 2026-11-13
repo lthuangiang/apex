@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { expect, test } from "@playwright/test";
 
-import { nextTotpWindow, totp } from "../support/totp";
+import { fillTwoFactorIfAsked, totp } from "../support/totp";
 import { installWallet } from "../support/wallet";
 
 // Tiêu chí P3 (docs/ROADMAP.md): đăng ký → kết nối → thấy key ••last4 và approval 0.01%;
@@ -90,7 +90,7 @@ test("sign up, connect with two signatures, revoke, approve again and disconnect
 
   // Onboarding 1: email + mật khẩu (DEC-76).
   await page.goto("/signup");
-  await expect(page.getByRole("heading", { name: "Create your DRIFT account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create your DeskLabs account" })).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("e2e correct horse battery");
   await page.getByRole("checkbox").check();
@@ -116,7 +116,9 @@ test("sign up, connect with two signatures, revoke, approve again and disconnect
   const done = page.getByRole("status", { name: "Connected · confirmed by SoDEX" });
   await expect(done).toBeVisible();
   await expect(done).toContainText(/DeskLabs · ••[0-9a-f]{4} · expires/);
-  await expect(done).toContainText("DRIFT #1645 · up to 0.01% · found in Spot and Perps approvals");
+  await expect(done).toContainText(
+    "DeskLabs #1645 · up to 0.01% · found in Spot and Perps approvals",
+  );
   // Onboarding 3–4: import (jobs qua outbox → NATS) rồi phân tích.
   await page.getByRole("link", { name: "Import my history" }).click();
   await expect(page.getByRole("heading", { name: "Importing your SoDEX history" })).toBeVisible();
@@ -149,10 +151,9 @@ test("sign up, connect with two signatures, revoke, approve again and disconnect
   await expect(page.getByText("● On")).toBeVisible();
 
   await page.getByRole("tab", { name: "SoDEX access" }).click();
-  await page.getByRole("button", { name: "Revoke (set to 0)…" }).click();
-  const dialog = page.getByRole("dialog", { name: "Revoke DRIFT’s builder fee?" });
-  await nextTotpWindow();
-  await dialog.getByLabel("2FA code").fill(totp(secret));
+  await page.getByRole("button", { name: "Revoke (set to 0)" }).click();
+  const dialog = page.getByRole("dialog", { name: "Revoke DeskLabs’ builder fee?" });
+  await fillTwoFactorIfAsked(dialog, secret);
   await dialog.getByRole("button", { name: "Sign to revoke" }).click();
   await expect(page.getByText("❚❚ Revoked")).toBeVisible();
   await expect(page.getByText("All LIVE bots are paused.")).toBeVisible();
@@ -161,12 +162,11 @@ test("sign up, connect with two signatures, revoke, approve again and disconnect
   await expect(page.getByText("● Approved")).toBeVisible();
 
   // Disconnect: 2FA + hai chữ ký master wallet (Spot, Perps) (DEC-31).
-  await page.getByRole("button", { name: "Disconnect…" }).click();
+  await page.getByRole("button", { name: "Disconnect" }).click();
   const disconnect = page.getByRole("dialog", {
     name: `Disconnect SoDEX account #${String(accountID)}?`,
   });
-  await nextTotpWindow();
-  await disconnect.getByLabel("2FA code").fill(totp(secret));
+  await fillTwoFactorIfAsked(disconnect, secret);
   await disconnect.getByRole("button", { name: "Disconnect" }).click();
   await expect(page.getByText("No SoDEX account connected.")).toBeVisible();
   await expect(page.getByRole("link", { name: "Connect SoDEX" })).toBeVisible();
