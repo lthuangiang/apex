@@ -28,6 +28,8 @@ import {
   applyCommand,
   BotCommand,
   BotState,
+  byTime,
+  change24hPct,
   dec,
   Decimal,
   isBuilderFeeApproved,
@@ -462,19 +464,18 @@ export async function overview(
       let spark: string[] = [];
       if (price !== null) {
         try {
-          // 24 nến 1h trong một request: nến đầu cho % 24h, giá đóng cho sparkline.
-          const k = await deps.rest.getKlines(engine, m, {
-            interval: "1h",
-            startTime: now - 24 * 3_600_000,
-            endTime: now,
-            limit: 24,
-          });
-          const open = k[0]?.o;
+          // 24 nến 1h trong một request. SoDEX trả mới nhất trước: % 24h tính từ nến cũ nhất, sparkline theo thời
+          // gian tăng dần (trước đây lấy `k[0]` nên thực tế là % của khoảng một giờ).
+          const k = byTime(
+            await deps.rest.getKlines(engine, m, {
+              interval: "1h",
+              startTime: now - 24 * 3_600_000,
+              endTime: now,
+              limit: 24,
+            }),
+          );
           spark = k.map((c) => c.c);
-          change =
-            open === undefined || dec(open).isZero()
-              ? null
-              : dec(price).sub(open).div(open).mul(100).toDecimalPlaces(2).toString();
+          change = change24hPct(price, k);
         } catch {
           change = null;
         }
