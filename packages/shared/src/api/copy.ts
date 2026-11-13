@@ -109,6 +109,7 @@ export const FIT_ITEMS = [
   "concentrated_profit",
   "no_liquidations",
   "liquidations",
+  "recent_unlisted",
 ] as const;
 
 export const traderProfileSchema = z.object({

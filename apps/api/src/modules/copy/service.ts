@@ -280,6 +280,71 @@ async function latestStats(deps: CopyDeps, address: string) {
   return row;
 }
 
+/**
+ * Thống kê của trader trong cùng snapshot với danh sách (lượt leaderboard xong gần nhất), để số trên hồ sơ khớp thẻ
+ * (báo cáo test A4). Chưa có lượt xong, hay trader chỉ có số mới hơn lượt đó: dùng số gần nhất.
+ */
+async function snapshotStats(deps: CopyDeps, address: string) {
+  const okDay = await lastOkRun(deps);
+  if (okDay !== null) {
+    const [row] = await deps.bots.db
+      .select({ s: leaderStatsDaily, name: leaderWallets.displayName })
+      .from(leaderStatsDaily)
+      .leftJoin(
+        leaderWallets,
+        and(
+          eq(leaderWallets.source, leaderStatsDaily.source),
+          eq(leaderWallets.address, leaderStatsDaily.address),
+        ),
+      )
+      .where(
+        and(
+          eq(leaderStatsDaily.source, SOURCE),
+          eq(leaderStatsDaily.address, address),
+          lte(leaderStatsDaily.date, okDay),
+        ),
+      )
+      .orderBy(desc(leaderStatsDaily.date))
+      .limit(1);
+    if (row !== undefined) return row;
+  }
+  return latestStats(deps, address);
+}
+
+/** Phần notional 7 ngày qua ở market SoDEX không có (> 50% → "Most of their recent trades can't be copied"). */
+export const RECENT_UNLISTED = { days: 7, share: "0.5" } as const;
+
+async function recentUnlisted(
+  deps: CopyDeps,
+  address: string,
+): Promise<{ share: string; coins: string[] } | null> {
+  const since = new Date(deps.bots.now().getTime() - RECENT_UNLISTED.days * 86_400_000);
+  const rows = await deps.bots.db
+    .select({
+      coin: leaderEvents.coin,
+      listed: sql<boolean>`${leaderEvents.market} is not null`,
+      notional: sql<string>`sum(${leaderEvents.notional})::text`,
+    })
+    .from(leaderEvents)
+    .where(
+      and(
+        eq(leaderEvents.source, SOURCE),
+        eq(leaderEvents.address, address),
+        gte(leaderEvents.at, since),
+      ),
+    )
+    .groupBy(leaderEvents.coin, sql`${leaderEvents.market} is not null`);
+  const total = rows.reduce((x, r) => x.add(r.notional), dec("0"));
+  if (total.isZero()) return null;
+  const off = rows.filter((r) => !r.listed);
+  const share = off.reduce((x, r) => x.add(r.notional), dec("0")).div(total);
+  if (!share.gt(RECENT_UNLISTED.share)) return null;
+  return {
+    share: share.toDecimalPlaces(4).toString(),
+    coins: [...new Set(off.map((r) => r.coin))],
+  };
+}
+
 function copyableOf(stats: LeaderStats | undefined): TraderProfile["copyable"] {
   if (stats === undefined) return { ok: false, reason: "no_stats" };
   if (!meetsMinHold(stats)) return { ok: false, reason: "min_hold" };
@@ -293,7 +358,7 @@ export async function traderProfile(
   address: string,
 ): Promise<TraderProfile> {
   await requireDesk(deps, userId);
-  const row = await latestStats(deps, address);
+  const row = await snapshotStats(deps, address);
   if (row === undefined) throw new AppError(ErrorCode.notFound, "Trader not found.");
   const stats = row.s.stats as LeaderStats;
   const events = await deps.bots.db
@@ -345,6 +410,13 @@ export async function traderProfile(
       ? { item: "no_liquidations", ok: true, data: {} }
       : { item: "liquidations", ok: false, data: { count: String(stats.liquidations) } },
   );
+  const recent = await recentUnlisted(deps, address);
+  if (recent !== null)
+    fit.push({
+      item: "recent_unlisted",
+      ok: false,
+      data: { share: recent.share, coins: recent.coins.join(", ") },
+    });
   const follows = await followsOf(deps, userId);
   const copied = await copiedLeaders(deps.bots.db, SOURCE);
   return {
