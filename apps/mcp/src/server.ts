@@ -29,6 +29,8 @@ export interface ToolContext {
 
 export interface ToolDef {
   name: string;
+  /** false: tool ghi (chỉ bản nháp, scope `draft`); mặc định chỉ đọc. */
+  readOnly?: boolean;
   endpoint: Endpoint;
   /** Scope cần có để thấy và gọi tool. */
   scope: McpScope;
@@ -66,13 +68,27 @@ function toolErrorText(err: unknown): string {
   if (err instanceof ToolFailure) return err.userMessage;
   if (err instanceof ApiCallError) {
     if (err.status === 404) return "Not found.";
+    const body = err.body as {
+      error?: { message?: unknown; details?: { fieldErrors?: unknown } };
+    } | null;
+    const msg = body?.error?.message;
+    const safe = typeof msg === "string" && msg.length <= 200 ? msg : null;
     if (err.status === 400) {
-      const body = err.body as { error?: { message?: unknown } } | null;
-      const msg = body?.error?.message;
-      return typeof msg === "string" && msg.length <= 200
-        ? `Invalid input: ${msg}`
-        : "Invalid input.";
+      // Lỗi từng field của cấu hình (zod của chiến lược) để client sửa lại bản nháp; tối đa 10 field.
+      const fe = body?.error?.details?.fieldErrors;
+      const fields =
+        typeof fe === "object" && fe !== null
+          ? Object.entries(fe as Record<string, unknown>)
+              .slice(0, 10)
+              .map(
+                ([k, v]) =>
+                  `${k.slice(0, 60)}: ${Array.isArray(v) ? v.map(String).join(", ").slice(0, 120) : ""}`,
+              )
+          : [];
+      return [safe === null ? "Invalid input." : `Invalid input: ${safe}`, ...fields].join("\n");
     }
+    // 409: câu của DeskLabs (ví dụ đủ 20 bản nháp, bot không sửa được ở trạng thái này).
+    if (err.status === 409 && safe !== null) return safe;
     if (err.status === 401 || err.status === 403) return "Access denied.";
   }
   return "DeskLabs couldn't answer this right now. Try again.";
@@ -91,6 +107,17 @@ const canonical = (raw: string) => {
 };
 
 export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
+  const draftTools = new Set(deps.tools.filter((t) => t.scope === "draft").map((t) => t.name));
+  /** Tên tool bản nháp được gọi trong body JSON-RPC (một message hoặc batch). */
+  const draftCallsIn = (body: unknown): string[] =>
+    (Array.isArray(body) ? body : [body]).flatMap((m: unknown) => {
+      if (typeof m !== "object" || m === null) return [];
+      const msg = m as { method?: unknown; params?: { name?: unknown } };
+      const name = msg.params?.name;
+      return msg.method === "tools/call" && typeof name === "string" && draftTools.has(name)
+        ? [name]
+        : [];
+    });
   const app = Fastify({
     logger: {
       level: deps.logLevel ?? "info",
@@ -121,10 +148,16 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
   app.get("/.well-known/oauth-protected-resource/team/mcp", () => prm("team"));
   app.get("/healthz", () => ({ ok: true }));
 
-  const challenge = (reply: FastifyReply, e: Endpoint, status: 401 | 403, error?: string) => {
+  const challenge = (
+    reply: FastifyReply,
+    e: Endpoint,
+    status: 401 | 403,
+    error?: string,
+    scope: string = REQUIRED[e],
+  ) => {
     const params = [
       ...(error === undefined ? [] : [`error="${error}"`]),
-      `scope="${REQUIRED[e]}"`,
+      `scope="${scope}"`,
       `resource_metadata="${metadataUrl(e)}"`,
     ];
     return reply
@@ -216,6 +249,34 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
         });
     }
 
+    // Step-up (DEC-223, PM chốt phương án C): token chỉ có `read` vẫn thấy tool bản nháp, nhưng gọi tool đó
+    // (kể cả nằm trong batch) thì trả 403 `insufficient_scope` với scope="read draft" ở tầng HTTP, trước khi chạy tool.
+    // api kết thúc refresh của family token cũ để client chạy lại OAuth (màn consent) thay vì refresh ra token cũ.
+    if (e === "user" && !intro.scope.includes("draft")) {
+      const wanted = draftCallsIn(request.body);
+      if (wanted.length > 0) {
+        for (const tool of wanted)
+          record({
+            tokenId: intro.tokenId,
+            userId: intro.userId,
+            clientId: intro.clientId,
+            endpoint: e,
+            tool,
+            argsHash: null,
+            durationMs: 0,
+            status: "denied",
+            traceId: request.id,
+          });
+        await deps.api.stepUp(token).catch((err: unknown) => {
+          request.log.warn(
+            { err: err instanceof Error ? err.message : "unknown" },
+            "step-up refresh end failed",
+          );
+        });
+        return challenge(reply, e, 403, "insufficient_scope", "read draft");
+      }
+    }
+
     // Một server MCP mỗi request (không trạng thái): chỉ tool của endpoint này và trong scope của token.
     const server = new McpServer(
       { name: e === "team" ? "desklabs-team" : "desklabs", version: "1.0.0" },
@@ -223,14 +284,26 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
     );
     const ctx: ToolContext = { token, introspection: intro, api: deps.api, now };
     for (const tool of deps.tools) {
-      if (tool.endpoint !== e || !intro.scope.includes(tool.scope)) continue;
+      // Tool bản nháp hiện cho token `read` (step-up khi gọi), các tool khác cần đúng scope.
+      const visible =
+        intro.scope.includes(tool.scope) ||
+        (tool.scope === "draft" && intro.scope.includes("read"));
+      if (tool.endpoint !== e || !visible) continue;
       server.registerTool(
         tool.name,
         {
           title: tool.title,
           description: tool.description,
           inputSchema: tool.input,
-          annotations: { readOnlyHint: true, openWorldHint: false },
+          annotations:
+            tool.readOnly === false
+              ? {
+                  readOnlyHint: false,
+                  destructiveHint: false,
+                  idempotentHint: false,
+                  openWorldHint: false,
+                }
+              : { readOnlyHint: true, openWorldHint: false },
         },
         async (args: Record<string, unknown>) => {
           const started = Date.now();

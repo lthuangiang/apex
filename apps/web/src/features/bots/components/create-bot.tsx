@@ -24,6 +24,7 @@ import { AiPanel, useAiParameters } from "./ai-params";
 import { BetaChip, isBeta } from "./beta-chip";
 import { fieldErrorsOf, useBotErrorText } from "./bot-errors";
 import { BotForm } from "./bot-form";
+import { ClaudeDraftBanner, type FromClaude } from "./claude-draft";
 import { MarketChart } from "./market-chart";
 import { CheckList, leverageWarning, useDryRunChecks } from "./start-checks";
 import { VisualPanel } from "./visual-panel";
@@ -44,6 +45,7 @@ export function CreateBot({
   suggestionId,
   preset,
   draft,
+  fromClaude,
 }: {
   strategy: keyof typeof FIELDS;
   suggestionId?: string;
@@ -51,6 +53,8 @@ export function CreateBot({
   preset?: FormValues | undefined;
   /** Mở lại draft đã lưu (Strategy Lab › Continue): điền config đã lưu, Save ghi version mới, Start như Create. */
   draft?: { id: string; name: string; values: FormValues };
+  /** Bản nháp từ Claude (MCP, DEC-223): chỉ điền sẵn, người dùng tự Save / Start. */
+  fromClaude?: FromClaude | undefined;
 }) {
   const t = useTranslations("createBot");
   const tb = useTranslations("common.badges");
@@ -61,9 +65,10 @@ export function CreateBot({
   const [values, setValues] = useState<FormValues>(() => ({
     ...emptyValues(strategy),
     ...preset,
+    ...fromClaude?.values,
     ...draft?.values,
   }));
-  const [name, setName] = useState(draft?.name ?? "");
+  const [name, setName] = useState(draft?.name ?? fromClaude?.name ?? "");
   const [botId, setBotId] = useState<string | null>(draft?.id ?? null);
   const [dirty, setDirty] = useState(draft === undefined);
   const [savedNow, setSavedNow] = useState(false);
@@ -88,8 +93,8 @@ export function CreateBot({
     values,
     setValues: update,
     context: "create",
-    // Draft đã có tham số người dùng lưu: không tự điền AI đè lên.
-    auto: draft === undefined,
+    // Draft đã có tham số người dùng lưu, hoặc bản nháp từ Claude: không tự điền AI đè lên.
+    auto: draft === undefined && fromClaude === undefined,
     ...(suggestionId === undefined ? {} : { suggestionId }),
   });
   // Max loss mặc định của người dùng (Settings › Trading defaults): chỉ là gợi ý trong placeholder.
@@ -322,6 +327,7 @@ export function CreateBot({
             </span>
           </div>
         </header>
+        {fromClaude === undefined ? null : <ClaudeDraftBanner expiresAt={fromClaude.expiresAt} />}
         {/* Chưa kết nối SoDEX: vẫn soạn và lưu draft được, nhưng chưa start được (báo cáo test E23). */}
         {sodexMissing ? <NotConnected message={t("notConnected")} /> : null}
 

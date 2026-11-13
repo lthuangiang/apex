@@ -218,6 +218,13 @@
       "when": 1794547815718,
       "tag": "0030_adaptive_dca_for_all",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794551055552,
+      "tag": "0031_mcp_bot_drafts",
+      "breakpoints": true
     }
   ]
 }

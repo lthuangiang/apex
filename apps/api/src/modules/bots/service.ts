@@ -1317,17 +1317,16 @@ async function newRunVersion(deps: BotDeps, botId: string): Promise<void> {
 }
 
 /** Sửa bot: tạo version mới `pending`; engine áp dụng rồi mới chuyển `active` (DOMAIN.md mục 7.4). */
-export async function newVersion(
+/**
+ * Kiểm tra config cho một version mới của bot (state sửa được, schema của chiến lược, field khoá, trần đòn bẩy).
+ * Dùng chung cho Edit và bản nháp từ Claude (MCP, DEC-223) để hai bên chặn đúng như nhau.
+ */
+export async function checkVersionConfig(
   deps: BotDeps,
   userId: string,
-  botId: string,
-  input: {
-    config: unknown;
-    paramSource: "ai" | "ai_edited" | "manual";
-    aiSuggestionId?: string | undefined;
-  },
-) {
-  const b = await ownBot(deps.db, userId, botId);
+  b: typeof bots.$inferSelect,
+  raw: unknown,
+): Promise<Record<string, unknown>> {
   // Bot đã dừng cũng sửa được (DEC-131): version mới thành version đang dùng ngay, Start lần sau chạy với nó.
   if (
     b.state !== BotState.running &&
@@ -1339,7 +1338,7 @@ export async function newVersion(
       state: b.state,
     });
   }
-  const config = parseConfig(b.strategy, input.config);
+  const config = parseConfig(b.strategy, raw);
   if (b.strategy === Strategy.copyTrade)
     assertCopyLeader(b.strategy, config, (await account(deps.db, userId)).address);
   // Khoá: strategy, market (SCREENS.md mục 8.4). Copy Trade: khoá cả trader và danh sách market (DEC-163).
@@ -1367,6 +1366,36 @@ export async function newVersion(
     });
   }
   await assertLeverageCap(deps, b.sodexAccountId, b.strategy, config);
+  return config;
+}
+
+/** Kiểm tra config cho bot mới (chiến lược được mở, schema, trader copy, trần đòn bẩy). Dùng chung Create và MCP. */
+export async function checkNewBotConfig(
+  deps: BotDeps,
+  userId: string,
+  strategy: string,
+  raw: unknown,
+): Promise<Record<string, unknown>> {
+  await assertStrategyAvailable(deps.db, userId, strategy);
+  const a = await account(deps.db, userId);
+  const config = parseConfig(strategy, raw);
+  assertCopyLeader(strategy, config, a.address);
+  await assertLeverageCap(deps, a.id, strategy, config);
+  return config;
+}
+
+export async function newVersion(
+  deps: BotDeps,
+  userId: string,
+  botId: string,
+  input: {
+    config: unknown;
+    paramSource: "ai" | "ai_edited" | "manual";
+    aiSuggestionId?: string | undefined;
+  },
+) {
+  const b = await ownBot(deps.db, userId, botId);
+  const config = await checkVersionConfig(deps, userId, b, input.config);
   return deps.db.transaction(async (tx) => {
     const [{ v } = { v: 0 }] = await tx
       .select({ v: max(botVersions.version) })

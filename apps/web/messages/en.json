@@ -5207,5 +5207,12 @@
       "confirmBody": "The app loses access right away. You can connect it again later.",
       "error": "Couldn’t revoke. Try again."
     }
+  },
+  "botDraft": {
+    "chip": "From Claude",
+    "body": "Claude drafted these settings. Nothing changes until you review and save or start the bot yourself.",
+    "expires": "Draft expires {time}.",
+    "gone": "This draft is no longer available. Drafts from Claude last 24 hours.",
+    "openLab": "Open Strategy Lab"
   }
 }

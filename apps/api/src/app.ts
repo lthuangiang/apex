@@ -217,6 +217,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerMcpRoutes(app, {
     db: deps.db,
     now,
+    appUrl: oauthDeps.issuer,
     account: accountDeps,
     copy: copyDeps,
     oauth: oauthDeps,

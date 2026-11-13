@@ -1,5 +1,6 @@
 export { AgentPage } from "./components/agent-page";
 export { BotEdit } from "./components/bot-edit";
+export { ClaudeDraftCreate } from "./components/claude-draft-create";
 export { DeepAnalytics } from "./components/deep-analytics";
 export { BotsPage } from "./components/bots-page";
 export { CreateBot } from "./components/create-bot";

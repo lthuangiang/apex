@@ -1,5 +1,7 @@
 import {
   mcpBotDecisionsInputSchema,
+  mcpDraftChangeInputSchema,
+  mcpDraftNewInputSchema,
   mcpGetWhatIfInputSchema,
   mcpFindTradersInputSchema,
   mcpGetTraderInputSchema,
@@ -18,9 +20,11 @@ import { z } from "zod";
 
 import { audit, AuditAction } from "../../lib/audit";
 import { parseOrThrow } from "../../lib/http";
+import { requireAuth } from "../../plugins/session";
 
 import { requireMcpCaller, type McpAuthDeps, type McpCaller } from "./auth";
 import { mcpGetWhatIf, mcpNeedsYou, mcpTrackRecord } from "./desk";
+import { draftBotChange, draftNewBot, endRefresh, openDraft } from "./drafts";
 import {
   teamBotTimeline,
   teamBuilderRevenue,
@@ -49,9 +53,10 @@ export const MCP_USER_PREFIX = "/api/v1/mcp/me";
 
 export function registerMcpRoutes(
   app: FastifyInstance,
-  deps: McpAuthDeps & TeamDeps & UserToolDeps,
+  deps: McpAuthDeps & TeamDeps & UserToolDeps & { appUrl: string },
 ): void {
   registerMcpUserRoutes(app, deps);
+  registerDraftRoutes(app, deps);
   const team = deps;
   /** Review #75: mỗi lần team xem dữ liệu một user qua MCP → audit (target = user, kèm tool và tokenId). */
   const viewed = async (
@@ -185,5 +190,43 @@ function registerMcpUserRoutes(app: FastifyInstance, deps: McpAuthDeps & UserToo
     const userId = await me(request);
     const p = parseOrThrow(mcpGetTraderInputSchema, request.params);
     return mcpGetTrader(deps, userId, p.address);
+  });
+}
+
+/**
+ * Bản nháp từ Claude (B3, DEC-223). Route MCP cần scope `draft`; chỉ ghi `bot_drafts`, không bao giờ tạo bot,
+ * thêm version hay Start. Web đọc bản nháp bằng phiên đăng nhập để điền sẵn màn Create / Edit.
+ */
+function registerDraftRoutes(
+  app: FastifyInstance,
+  deps: McpAuthDeps & UserToolDeps & TeamDeps & { appUrl: string },
+): void {
+  const drafts = { bots: deps.account.bots, appUrl: deps.appUrl };
+
+  app.post(`${MCP_USER_PREFIX}/drafts/new`, async (request) => {
+    const caller = await requireMcpCaller(deps, request, "user", "draft");
+    const body = parseOrThrow(mcpDraftNewInputSchema, request.body);
+    return draftNewBot(drafts, caller, body);
+  });
+
+  app.post(`${MCP_USER_PREFIX}/drafts/change`, async (request) => {
+    const caller = await requireMcpCaller(deps, request, "user", "draft");
+    const body = parseOrThrow(mcpDraftChangeInputSchema, request.body);
+    return draftBotChange(drafts, caller, body);
+  });
+
+  // Step-up (PM chốt C): apps/mcp gọi khi token thiếu `draft` mà client gọi tool bản nháp. Refresh của family cũ hết
+  // hạn ngay (access token còn dùng tới khi hết 1 giờ): SDK nhận invalid_grant khi refresh, xoá token và chạy lại OAuth
+  // với scope "read draft" (màn consent), thay vì refresh ra token cũ chỉ có `read`.
+  app.post("/api/v1/mcp/step-up", async (request, reply) => {
+    const caller = await requireMcpCaller(deps, request, "user");
+    await endRefresh(deps.db, caller.tokenId, deps.now());
+    return reply.status(204).send();
+  });
+
+  app.get("/api/v1/drafts/:id", async (request) => {
+    const { userId } = requireAuth(request);
+    const { id } = parseOrThrow(z.object({ id: uuidSchema }), request.params);
+    return openDraft(drafts, userId, id);
   });
 }
