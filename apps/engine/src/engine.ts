@@ -70,6 +70,7 @@ import {
 import { and, desc, eq, gt, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
+import { openedAlerts, SkipGate, skipMarket, skippedAlert } from "./copy-alerts";
 import type { AccountRef, Gateway, LookupResult, NotSentCode } from "./gateway";
 import type { PaperGateway } from "./paper-gateway";
 
@@ -234,6 +235,8 @@ interface Runner {
   reduceRejects: number;
   /** Tương tự cho lệnh limit / post-only: bị từ chối thường chỉ vì giá chạy, nên có ngưỡng riêng cao hơn. */
   makerReduceRejects: number;
+  /** Giới hạn tin `copy_bot_skipped` của bot copy (DEC-TBD-copy-bot-alerts), trong bộ nhớ. */
+  skipGate: SkipGate;
 }
 
 /**
@@ -919,6 +922,7 @@ export class Engine {
       blocked: null,
       reduceRejects: 0,
       makerReduceRejects: 0,
+      skipGate: new SkipGate(),
     };
   }
 
@@ -1063,7 +1067,21 @@ export class Engine {
     // Nhịp đồng hồ chưa tới hạn: chiến lược trả lại đúng state cũ, không có gì để ghi.
     if (event.type === "timer" && result.state === prev && result.actions.length === 0) return;
     r.state = result.state;
+    // Bot copy tiền thật: lệnh mở vừa khớp → thêm outbox trong CÙNG transaction (DEC-TBD-copy-bot-alerts).
+    const opened = this.#copyAlerts(r, () =>
+      openedAlerts(r.botId, r.config, prev, result.state, event),
+    );
     await this.#fenced(r, async (tx) => {
+      for (const data of opened)
+        await tx.insert(outbox).values({
+          topic: "jobs.notify",
+          payload: {
+            sodexAccountId: r.account.id,
+            type: "copy_bot_opened",
+            data,
+            dedupeKey: `copy_bot_opened:${data.botId}:${data.clOrdID}`,
+          },
+        });
       await tx
         .insert(botRuntime)
         .values({
@@ -1091,7 +1109,7 @@ export class Engine {
       await this.#ack(r, event.at);
     }
     // Sự kiện thị trường: nếu lệnh chưa rời DRIFT thì hoàn tác bước này (state cũ, xoá dòng lệnh tạm) để thử lại.
-    await this.#execute(r, result.actions, event.at, accounting ? null : prev);
+    await this.#execute(r, result.actions, event.at, accounting ? null : prev, { event, prev });
   }
 
   /**
@@ -1225,11 +1243,37 @@ export class Engine {
     at: number,
     /** State trước bước chiến lược, để hoàn tác khi lệnh chưa rời DRIFT (sự kiện thị trường); null = không hoàn tác. */
     rollback: unknown = null,
+    /** Sự kiện và state trước bước chiến lược (để biết market của tin `copy_bot_skipped`). */
+    source: { event: StrategyEvent; prev: unknown } | null = null,
   ): Promise<void> {
     const places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
     const cancels = actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : []));
     for (const a of actions) {
-      if (a.type === "log") await this.#event(r, "decision", a.decision, a.why, at);
+      if (a.type === "log") {
+        // Bot copy tiền thật bỏ qua tín hiệu: thêm outbox trong CÙNG transaction ghi bot_events
+        // (DEC-TBD-copy-bot-alerts). Tối đa 1 tin / bot / market / 10 phút.
+        const skipped =
+          a.decision === "Skipped" && source !== null
+            ? this.#copyAlerts(r, () => {
+                const market = skipMarket(r.config, source.prev, source.event);
+                return r.skipGate.allow(market, at)
+                  ? [skippedAlert(r.botId, market, a.why, at)]
+                  : [];
+              })
+            : [];
+        await this.#event(r, "decision", a.decision, a.why, at, async (tx) => {
+          for (const data of skipped)
+            await tx.insert(outbox).values({
+              topic: "jobs.notify",
+              payload: {
+                sodexAccountId: r.account.id,
+                type: "copy_bot_skipped",
+                data,
+                dedupeKey: `copy_bot_skipped:${data.botId}:${data.market ?? "*"}:${String(data.at)}`,
+              },
+            });
+        });
+      }
       if (a.type === "flag")
         await this.#fenced(r, (tx) =>
           tx.update(bots).set({ needsAttention: a.needsAttention }).where(eq(bots.id, r.botId)),
@@ -1891,12 +1935,38 @@ export class Engine {
     return out;
   }
 
-  async #event(r: Runner, type: string, decision: string, why: string, at: number): Promise<void> {
-    await this.#fenced(r, (tx) =>
-      tx
+  async #event(
+    r: Runner,
+    type: string,
+    decision: string,
+    why: string,
+    at: number,
+    /** Ghi thêm trong cùng transaction (outbox cảnh báo bot copy, DEC-TBD-copy-bot-alerts). */
+    also?: (tx: Db) => Promise<void>,
+  ): Promise<void> {
+    await this.#fenced(r, async (tx) => {
+      await tx
         .insert(botEvents)
-        .values({ botId: r.botId, type, decision, why, occurredAt: new Date(at) }),
-    );
+        .values({ botId: r.botId, type, decision, why, occurredAt: new Date(at) });
+      if (also !== undefined) await also(tx);
+    });
+  }
+
+  /**
+   * Dựng dữ liệu cảnh báo bot copy (DEC-TBD-copy-bot-alerts): chỉ bot copy tiền thật; bot paper không bao giờ có tin.
+   * Không bao giờ ném lỗi ra transaction đang ghi: lỗi thì log warn (không dữ liệu nhạy cảm) và bỏ tin (PM điều kiện ii).
+   */
+  #copyAlerts<T>(r: Runner, build: () => T[]): T[] {
+    if (r.paper || r.strategy !== Strategy.copyTrade) return [];
+    try {
+      return build();
+    } catch (err) {
+      this.#d.log.warn(
+        { botId: r.botId, err: err instanceof Error ? err.name : "unknown" },
+        "copy bot alert dropped",
+      );
+      return [];
+    }
   }
 
   // ---------- đối soát & phí ----------

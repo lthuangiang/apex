@@ -145,6 +145,49 @@ export const followAlertBodySchema = z.object({ level: z.enum(FOLLOW_ALERT_LEVEL
 export const POSITION_ALERT_KINDS = ["open", "close", "flip", "liquidated"] as const;
 export const FOLLOW_ALERT_GAP_MS = 10 * 60_000;
 
+/**
+ * Cảnh báo của bot copy (DEC-TBD-copy-bot-alerts, W2b). `copy_bot_opened`: một lệnh mở / tăng / đảo chiều đã khớp
+ * (mỗi lệnh một tin, khoá chống trùng theo clOrdID). `copy_bot_skipped`: chiến lược bỏ qua một tín hiệu, lý do lấy
+ * từ câu log có sẵn; tối đa 1 tin / bot / market / `FOLLOW_ALERT_GAP_MS`. Không bao giờ có địa chỉ ví hay số dư.
+ */
+export const COPY_OPEN_MOVES = ["opened", "added", "flipped"] as const;
+export type CopyOpenMove = (typeof COPY_OPEN_MOVES)[number];
+export const COPY_SKIP_REASONS = [
+  "signal_late",
+  "signal_too_old",
+  "price_moved",
+  "below_minimum",
+  "rejected",
+  "no_fill",
+  "min_hold",
+  "low_liquidity",
+  "other",
+] as const;
+export type CopySkipReason = (typeof COPY_SKIP_REASONS)[number];
+export const copyBotOpenedDataSchema = z.object({
+  botId: z.string(),
+  clOrdID: z.string(),
+  market: z.string(),
+  move: z.enum(COPY_OPEN_MOVES),
+  side: z.enum(["long", "short"]),
+  /** Khối lượng đã khớp của lệnh (base). */
+  size: z.string(),
+  /** Giá vào trung bình của vị thế sau khi khớp. */
+  avgEntry: z.string(),
+  at: z.number(),
+});
+export type CopyBotOpenedData = z.infer<typeof copyBotOpenedDataSchema>;
+export const copyBotSkippedDataSchema = z.object({
+  botId: z.string(),
+  /** Null khi không biết tín hiệu thuộc market nào (ví dụ bước theo nhịp đồng hồ của bot nhiều market). */
+  market: z.string().nullable(),
+  reason: z.enum(COPY_SKIP_REASONS),
+  /** Câu log gốc của chiến lược (tiếng Anh). */
+  why: z.string(),
+  at: z.number(),
+});
+export type CopyBotSkippedData = z.infer<typeof copyBotSkippedDataSchema>;
+
 export const FOLLOW_LIMIT = 5;
 /** Ví theo dõi tối đa toàn hệ thống (poll 2 phút, DEC-163 mục 10). */
 export const FOLLOW_SYSTEM_LIMIT = 40;

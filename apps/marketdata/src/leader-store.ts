@@ -8,12 +8,20 @@ import {
   outbox,
   type Db,
 } from "@drift/db";
-import { bigMove, dec, type LeaderEvent, type LeaderSource, type LeaderStats } from "@drift/shared";
-import { and, desc, eq, gte } from "drizzle-orm";
+import {
+  bigMove,
+  dec,
+  Strategy,
+  type LeaderEvent,
+  type LeaderSource,
+  type LeaderStats,
+} from "@drift/shared";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 
 import {
   bigMoveFollowers,
   listedOnly,
+  notCopying,
   planPositionAlerts,
   positionFollowers,
 } from "./follow-alerts";
@@ -85,12 +93,21 @@ export async function saveLeaderEvents(
       .onConflictDoNothing();
   }
   // Mức cảnh báo theo từng người follow (DEC-209). `off` không nhận gì.
-  const followers = bigMoveFollowers(
+  const levels = bigMoveFollowers(
     await db
       .select({ userId: leaderFollows.userId, level: leaderFollows.alertLevel })
       .from(leaderFollows)
       .where(and(eq(leaderFollows.source, source), eq(leaderFollows.address, address))),
   );
+  if (levels.length === 0) return;
+  // Người đang có bot copy tiền thật chạy theo trader này nhận tin của bot thay vì tin follow (DEC-TBD-copy-bot-alerts).
+  const copying = await db.execute<{ userId: string }>(sql`
+    select distinct b.user_id as "userId"
+    from bots b join bot_versions bv on bv.id = b.active_version_id
+    where b.strategy = ${Strategy.copyTrade} and b.mode = 'live'
+      and b.state in ('starting','running','resuming')
+      and lower(bv.config->>'leaderAddress') = ${address.toLowerCase()}`);
+  const followers = notCopying(levels, new Set(copying.rows.map((r) => r.userId)));
   if (followers.length === 0) return;
   // Chỉ market SoDEX có: báo market không copy được chỉ gây nhiễu (thay đổi hành vi big move của DEC-163/179).
   const listed = listedOnly(events);

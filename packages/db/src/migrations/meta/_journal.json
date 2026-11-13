@@ -197,6 +197,13 @@
       "when": 1794536911539,
       "tag": "0027_follow_alert_level",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1794540155218,
+      "tag": "0028_copy_bot_alerts",
+      "breakpoints": true
     }
   ]
 }

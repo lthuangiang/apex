@@ -15,6 +15,9 @@ export const NOTIFICATION_TYPES = [
   "leader_big_move",
   // Trader đang follow mở mới / đóng hẳn / đảo chiều / bị thanh lý (mức `positions`, DEC-209).
   "leader_position",
+  // Bot copy khớp lệnh mở / bỏ qua tín hiệu (DEC-TBD-copy-bot-alerts).
+  "copy_bot_opened",
+  "copy_bot_skipped",
   // Trạng thái kênh Telegram (nhóm hệ thống `telegram`, DEC-183).
   "telegram_connected",
   "telegram_moved",
@@ -32,7 +35,7 @@ export const NOTIFICATION_GROUPS = {
   keyFee: ["key_fee"],
   fills: ["fill"],
   daily: ["daily_summary"],
-  copyTrading: ["leader_big_move", "leader_position"],
+  copyTrading: ["leader_big_move", "leader_position", "copy_bot_opened", "copy_bot_skipped"],
   telegram: ["telegram_connected", "telegram_moved", "telegram_blocked"],
   teamOps: ["team_signup", "team_sodex_connected", "team_bot_started"],
 } as const satisfies Record<string, readonly NotificationType[]>;

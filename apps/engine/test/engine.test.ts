@@ -2126,6 +2126,150 @@ describe("engine", () => {
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.strategy, "copy_trade"));
   });
 
+  // Cảnh báo bot copy (DEC-TBD-copy-bot-alerts): chỉ thêm outbox trong transaction đang có.
+  const copyAlertRows = async (botId: string, type: string) => {
+    const { and, eq, sql } = await import("drizzle-orm");
+    const rows = await db
+      .select({ payload: outbox.payload })
+      .from(outbox)
+      .where(
+        and(
+          eq(outbox.topic, "jobs.notify"),
+          sql`${outbox.payload}->>'type' = ${type}`,
+          sql`${outbox.payload}->'data'->>'botId' = ${botId}`,
+        ),
+      );
+    return rows.map((r) => r.payload as { data: Record<string, unknown>; dedupeKey?: string });
+  };
+  const copySpec = (leaderAddress: string) => ({
+    strategy: "copy_trade",
+    market: "BTC-USD",
+    engine: "perps" as const,
+    config: {
+      leaderSource: "sodex",
+      leaderAddress,
+      market: "BTC-USD",
+      leverage: 2,
+      fixedNotional: "100",
+      maxNotionalPerTrade: "200",
+      maxExposure: "1000",
+      maxLoss: "150",
+    },
+  });
+  const leaderFill = (address: string, positionAfter: string, at: number) => ({
+    source: "sodex" as const,
+    address,
+    market: "BTC-USD",
+    side: "buy" as const,
+    price: "100000",
+    quantity: "1",
+    positionAfter,
+    at,
+  });
+  const enableDesk = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    const [b] = await db.select().from(bots).where(eq(bots.id, botId));
+    await db
+      .update(users)
+      .set({ aiDesk: true })
+      .where(eq(users.id, b?.userId ?? ""));
+  };
+
+  it("writes exactly one copy_bot_opened per filled open, even when the fill is replayed (DEC-TBD-copy-bot-alerts)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const leader = "0x3333333333333333333333333333333333333333";
+    const { botId, accountId } = await seedBot("running", copySpec(leader));
+    await enableDesk(botId);
+    const e = farmEngine(gw, "copy-alerts");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    await e.onLeaderFill(leaderFill(leader, "1", clock), clock + 200);
+    const sent = gw.received.filter((o) => o.tag.startsWith("copy:"));
+    expect(sent).toHaveLength(1);
+    const id = sent[0]?.clOrdID ?? "";
+    await e.onFill(accountId, id, "0.001", "100100", "0.01", clock + 300);
+    // Phát lại cùng fill (reconnect / đối soát / restart) và lệnh xong phát lại: không có tin thứ hai.
+    await e.onFill(accountId, id, "0.001", "100100", "0.01", clock + 400);
+    await e.onOrderClosed(accountId, id, "cancelled", clock + 500);
+    const opened = await copyAlertRows(botId, "copy_bot_opened");
+    expect(opened).toHaveLength(1);
+    expect(opened[0]?.data).toMatchObject({
+      botId,
+      clOrdID: id,
+      market: "BTC-USD",
+      move: "opened",
+      side: "long",
+      size: "0.001",
+    });
+    expect(opened[0]?.dedupeKey).toBe(`copy_bot_opened:${botId}:${id}`);
+    // Không có địa chỉ ví hay số dư trong tin.
+    expect(JSON.stringify(opened[0])).not.toContain(leader.slice(2, 10));
+    await e.stop();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+  });
+
+  it("writes one copy_bot_skipped per bot and market within 10 minutes, with the reason (DEC-TBD-copy-bot-alerts)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const leader = "0x4444444444444444444444444444444444444444";
+    const { botId } = await seedBot("running", copySpec(leader));
+    await enableDesk(botId);
+    const e = farmEngine(gw, "copy-skips");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    // Tín hiệu mở tới trễ 6 s (> 5 s): chiến lược ghi "Skipped".
+    await e.onLeaderFill(leaderFill(leader, "1", clock), clock + 6_000);
+    await e.onLeaderFill(leaderFill(leader, "0", clock + 7_000), clock + 7_100);
+    await e.onLeaderFill(leaderFill(leader, "2", clock + 8_000), clock + 14_000);
+    const skipped = await copyAlertRows(botId, "copy_bot_skipped");
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]?.data).toMatchObject({ botId, market: "BTC-USD", reason: "signal_late" });
+    expect(gw.received.filter((o) => o.tag.startsWith("copy:"))).toEqual([]);
+    await e.stop();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+  });
+
+  it("never writes copy bot alerts for a paper copy bot (DEC-TBD-copy-bot-alerts)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const leader = "0x5555555555555555555555555555555555555555";
+    const { botId } = await seedBot("running", copySpec(leader));
+    await enableDesk(botId);
+    await db.update(bots).set({ mode: "paper" }).where(eq(bots.id, botId));
+    await db.insert(paperAccounts).values({
+      botId,
+      capital: "1000",
+      cash: "1000",
+      positions: {},
+      peakEquity: "1000",
+      startedAt: new Date(clock),
+    });
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      paper: new PaperGateway({ db, now }),
+      workerId: "copy-paper",
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+    });
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    await e.onLeaderFill(leaderFill(leader, "1", clock), clock + 6_000);
+    await e.onLeaderFill(leaderFill(leader, "0", clock + 7_000), clock + 7_100);
+    await e.onLeaderFill(leaderFill(leader, "1", clock + 8_000), clock + 8_100);
+    expect(await copyAlertRows(botId, "copy_bot_skipped")).toEqual([]);
+    expect(await copyAlertRows(botId, "copy_bot_opened")).toEqual([]);
+    expect(gw.received).toEqual([]);
+    await e.stop();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+  });
+
   it("copies one trader across markets, honours the liquidity allowance, and closes every market on stop (DEC-163)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();

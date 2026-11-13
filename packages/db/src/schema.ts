@@ -858,9 +858,19 @@ export const notifications = pgTable(
     readAt: tstz("read_at"),
     /** Chỉ cho bản `telegram` (docs/NOTIFICATIONS.md mục 8); null với in-app và email. */
     deliveryStatus: text("delivery_status", { enum: ["queued", "sent", "failed"] }),
+    /**
+     * Khoá chống trùng (DEC-TBD-copy-bot-alerts): tin về lệnh tiền thật (ví dụ `copy_bot_opened:<botId>:<clOrdID>`)
+     * chỉ ghi một lần cho mỗi user × kênh, kể cả khi outbox / NATS giao lại. Null = không chống trùng.
+     */
+    dedupeKey: text("dedupe_key"),
     ...timestamps,
   },
-  (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
+  (t) => [
+    index("notifications_user_idx").on(t.userId, t.createdAt),
+    uniqueIndex("notifications_dedupe_key")
+      .on(t.userId, t.channel, t.dedupeKey)
+      .where(sql`${t.dedupeKey} is not null`),
+  ],
 );
 
 export const notificationSettings = pgTable(

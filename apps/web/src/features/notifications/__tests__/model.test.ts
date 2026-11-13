@@ -116,6 +116,11 @@ describe("targetOf", () => {
     expect(targetOf(n("a", "daily_summary", at), true)).toBe("/desk");
     expect(targetOf(n("a", "daily_summary", at), false)).toBe("/");
     expect(targetOf(n("a", "leader_big_move", at), true)).toBe("/following");
+    // Bot copy tiền thật (DEC-TBD-copy-bot-alerts) mở Trading Agent của bot.
+    expect(targetOf(n("a", "copy_bot_opened", at, { data: { botId: BOT } }), true)).toBe(
+      `/agent/${BOT}`,
+    );
+    expect(targetOf(n("a", "copy_bot_skipped", at), true)).toBe("/agent");
   });
 
   it("sends fake-money bots to AI Desk, never to Trading Agent", () => {

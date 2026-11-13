@@ -48,6 +48,8 @@
 | `fills` | tắt | tắt | tắt | không |
 | `copyTrading` | bật | — | tắt, user tự bật (DEC-170 thay DEC-163 §11 cho Telegram) | không |
 
+Nhóm `copyTrading` gồm `leader_big_move`, `leader_position` (DEC-209) và tin của bot copy tiền thật `copy_bot_opened`, `copy_bot_skipped` (DEC-TBD-copy-bot-alerts): mỗi lệnh mở khớp một tin (chống trùng theo `dedupeKey`), Skipped tối đa 1 tin / bot / market / 10 phút; tin Telegram ghi "Your copy bot", không tên bot, không địa chỉ ví.
+
 Morning brief do Desk AI viết theo luật fact (DEC-164/165). Khi LLM tắt hoặc lỗi thì gửi câu mẫu cố định. Mọi con số trong brief phải khớp một fact (luật DEC-165), không thì dùng câu mẫu.
 
 ## 5. Nội dung tin Telegram
