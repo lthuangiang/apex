@@ -1152,6 +1152,7 @@
       "minSize": "Below SoDEX minimum order size.",
       "checks": "Some checks didn’t pass. Fix them and try again.",
       "state": "This action isn’t available in the bot’s current state.",
+      "strategyOff": "This strategy is turned off for your account, so the bot can’t start or resume. Open positions are unchanged.",
       "invalid": "Fix the highlighted fields.",
       "fieldRequired": "Enter a valid value.",
       "invalidFields": "Fix these fields: {fields}."
@@ -2519,7 +2520,11 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": ["settings.tabs.apps", "oauth"],
+  "_pendingReview": [],
+  "beta": {
+    "label": "Beta",
+    "note": "Still being tested. Use small amounts."
+  },
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",
@@ -3934,7 +3939,8 @@
       "twoFactor": "2FA",
       "actions": "Actions",
       "volumeBots": "Volume bots",
-      "aiDesk": "AI Desk"
+      "aiDesk": "AI Desk",
+      "adaptiveDca": "Adaptive DCA"
     },
     "team": "Team",
     "notConnected": "Not connected",
@@ -4003,6 +4009,20 @@
       "onLabel": "Turn on AI Desk for {email}",
       "offLabel": "Turn off AI Desk for {email}",
       "error": "Couldn’t save the change. Try again."
+    },
+    "adaptiveDca": {
+      "onLabel": "Turn on Adaptive DCA for {email}",
+      "offLabel": "Turn off Adaptive DCA for {email}",
+      "onTitle": "Turn on Adaptive DCA for {email}?",
+      "offTitle": "Turn off Adaptive DCA for {email}?",
+      "on": {
+        "one": "AI Adaptive DCA appears in their Strategy Lab and they can create and start it.",
+        "two": "Their other bots are not affected."
+      },
+      "off": {
+        "one": "AI Adaptive DCA disappears from their Strategy Lab.",
+        "two": "Running Adaptive DCA bots are paused. Open positions stay open until the user closes them."
+      }
     }
   },
   "landing": {

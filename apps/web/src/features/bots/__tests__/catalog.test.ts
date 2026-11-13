@@ -2,15 +2,22 @@ import { describe, expect, it } from "vitest";
 
 import { catalogFor, DEFAULT_CATALOG_FEATURES } from "../catalog";
 
-// Strategy Lab và Landing đếm cùng một danh mục (báo cáo test E20: catalog 11, landing ghi 10).
+// Strategy Lab và Landing đếm cùng một danh mục (báo cáo test E20). Adaptive DCA (Beta) bật cho mọi tài khoản
+// (DEC-218): tài khoản mới thấy 12 chiến lược.
 
 describe("strategy catalog", () => {
   it("counts what a new account sees in Strategy Lab", () => {
     const c = catalogFor(DEFAULT_CATALOG_FEATURES);
     expect(c.slice(0, 2)).toEqual(["volume_maker", "volume_farm"]);
     expect(c).toContain("copy_trade");
-    expect(c).not.toContain("adaptive_dca");
-    expect(c).toHaveLength(11);
+    expect(c).toContain("adaptive_dca");
+    expect(c).toHaveLength(12);
+  });
+
+  it("drops Adaptive DCA when the team turns it off for an account", () => {
+    expect(catalogFor({ ...DEFAULT_CATALOG_FEATURES, adaptiveDca: false })).not.toContain(
+      "adaptive_dca",
+    );
   });
 
   it("follows the account's flags", () => {

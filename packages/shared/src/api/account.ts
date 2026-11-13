@@ -253,6 +253,8 @@ export const adminUsersViewSchema = z.object({
       volumeBots: z.boolean(),
       /** Admin đã bật AI Desk cho tài khoản này (DEC-105). */
       aiDesk: z.boolean().default(false),
+      /** Team chưa tắt AI Adaptive DCA (Beta) cho tài khoản này (DEC-218). */
+      adaptiveDca: z.boolean().default(true),
     }),
   ),
   total: z.number().int(),
@@ -354,6 +356,14 @@ export type AdminBuilderFee = z.infer<typeof adminBuilderFeeSchema>;
 export const adminAiDeskBodySchema = z.object({ enabled: z.boolean() });
 export const adminAiDeskSchema = z.object({ aiDesk: z.boolean() });
 export type AdminAiDesk = z.infer<typeof adminAiDeskSchema>;
+
+/** Team bật / tắt AI Adaptive DCA (Beta) cho một user (DEC-218). Tắt: bot đang chạy chuyển sang Pausing. */
+export const adminAdaptiveDcaBodySchema = z.object({ enabled: z.boolean() });
+export const adminAdaptiveDcaSchema = z.object({
+  adaptiveDca: z.boolean(),
+  paused: z.number().int(),
+});
+export type AdminAdaptiveDca = z.infer<typeof adminAdaptiveDcaSchema>;
 
 /** Team đặt lại mật khẩu cho một user (DEC-77): cần 2FA của người thao tác. */
 export const adminResetPasswordBodySchema = z.object({ twoFactorCode: twoFactorCodeSchema });

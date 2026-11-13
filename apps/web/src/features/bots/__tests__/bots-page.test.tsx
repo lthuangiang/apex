@@ -13,6 +13,7 @@ import { BotsPage } from "../components/bots-page";
 // khối lượng, khối rỗng có nút sang catalog.
 
 const tab = vi.hoisted(() => ({ value: "catalog" }));
+const flags = vi.hoisted(() => ({ adaptiveDca: false }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(`tab=${tab.value}`),
   useRouter: () => ({ replace: () => undefined, push: () => undefined }),
@@ -39,7 +40,7 @@ vi.mock("@/lib/api", () => ({
         volumeMaker: true,
         volumeFarm: true,
         aiDesk: false,
-        adaptiveDca: false,
+        adaptiveDca: flags.adaptiveDca,
         builderFees: {},
       });
     if (path.startsWith("/api/v1/bots")) return Promise.resolve({ items: [] });
@@ -59,6 +60,7 @@ const show = () =>
   );
 
 afterEach(() => {
+  flags.adaptiveDca = false;
   cleanup();
 });
 
@@ -84,5 +86,24 @@ describe("Strategy Lab", () => {
       "href",
       "/bots?tab=catalog",
     );
+  });
+});
+
+describe("AI Adaptive DCA (Beta, DEC-218)", () => {
+  it("shows the Beta chip, with the short note for screen readers, on its catalog card", async () => {
+    flags.adaptiveDca = true;
+    tab.value = "catalog";
+    show();
+    const heading = await screen.findByRole("heading", { level: 2, name: /^AI Adaptive DCA/ });
+    expect(within(heading).getByText("Beta")).toHaveAttribute(
+      "title",
+      "Still being tested. Use small amounts.",
+    );
+    expect(heading).toHaveTextContent("Beta: Still being tested. Use small amounts.");
+    // Thẻ khác không có Beta.
+    const others = screen
+      .getAllByRole("heading", { level: 2 })
+      .filter((h) => h !== heading && within(h).queryByText("Beta") !== null);
+    expect(others).toEqual([]);
   });
 });
