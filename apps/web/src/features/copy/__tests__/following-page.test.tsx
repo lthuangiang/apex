@@ -150,24 +150,33 @@ describe("Following (W4)", () => {
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
   });
 
-  it("filters the table by a trader, shows it is selected, and clears on a second click", async () => {
+  it("filters the table with trader chips (aria-pressed), and All traders clears it; the card links to the profile", async () => {
     const user = userEvent.setup({ delay: null });
     wrap(<FollowingPage />);
     await screen.findByRole("table");
-    const pickB = screen.getByRole("button", { name: "Show only changes by 0xbbbb…bbbb" });
+    const chips = within(screen.getByRole("group", { name: "Show changes by" }));
+    const all = chips.getByRole("button", { name: "All traders" });
+    const pickB = chips.getByRole("button", { name: "0xbbbb…bbbb" });
+    expect(all).toHaveAttribute("aria-pressed", "true");
     expect(pickB).toHaveAttribute("aria-pressed", "false");
     await user.click(pickB);
     expect(pickB).toHaveAttribute("aria-pressed", "true");
+    expect(all).toHaveAttribute("aria-pressed", "false");
     await waitFor(() => {
       expect(rows()).toEqual(["ETH"]);
     });
     expect(state.paths).toContain(`/api/v1/following/events?trader=${B}`);
-    expect(screen.getByText("Showing changes by 0xbbbb…bbbb.")).toBeInTheDocument();
-    await user.click(pickB);
+    await user.click(all);
     expect(pickB).toHaveAttribute("aria-pressed", "false");
     await waitFor(() => {
       expect(rows()).toEqual(["BTC", "ETH"]);
     });
+    // Avatar + địa chỉ ở cột trái là link sang hồ sơ (không còn chữ "Profile").
+    expect(screen.getByRole("link", { name: /^0xbbbb…bbbb/})).toHaveAttribute(
+      "href",
+      `/traders/${B}`,
+    );
+    expect(screen.queryByText("Profile")).not.toBeInTheDocument();
   });
 
   it("previews alerts for the chosen level, marked as an example, with no axe violations", async () => {
@@ -179,10 +188,10 @@ describe("Following (W4)", () => {
     expect(within(preview).getByText("0xaaaa…aaaa made a big move")).toBeInTheDocument();
     expect(within(preview).getByText("0xaaaa…aaaa opened a short on ETH")).toBeInTheDocument();
     // Mức Off.
-    await user.click(screen.getByRole("button", { name: "Show only changes by 0xbbbb…bbbb" }));
+    await user.click(screen.getByRole("button", { name: "0xbbbb…bbbb" }));
     expect(within(preview).getByText(/^Alerts for 0xbbbb…bbbb are off\./)).toBeInTheDocument();
     // Đang copy: tin follow tạm dừng.
-    await user.click(screen.getByRole("button", { name: "Show only changes by 0xcccc…cccc" }));
+    await user.click(screen.getByRole("button", { name: "0xcccc…cccc" }));
     expect(within(preview).getByText(/^You’re copying this trader/)).toBeInTheDocument();
     expect(within(preview).getByRole("link", { name: "View trader" })).toHaveAttribute(
       "href",
