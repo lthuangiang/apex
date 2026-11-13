@@ -70,7 +70,7 @@ import {
 import { and, desc, eq, gt, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
-import { openedAlerts, SkipGate, skipMarket, skippedAlert } from "./copy-alerts";
+import { openedAlerts, SkipGate, skipMarket, skippedAlert, skipReason } from "./copy-alerts";
 import type { AccountRef, Gateway, LookupResult, NotSentCode } from "./gateway";
 import type { PaperGateway } from "./paper-gateway";
 
@@ -479,22 +479,20 @@ export class Engine {
   }
 
   /** Bot copy đang theo ví leader này (Copy Trade, DEC-161). */
-  #copiers(source: string, address: string, market?: string): Runner[] {
+  #copiers(source: string, address: string): Runner[] {
     const addr = address.toLowerCase();
     return [...this.#runners.values()].filter((r) => {
       if (r.strategy !== Strategy.copyTrade) return false;
       const c = r.config as { leaderSource?: string; leaderAddress?: string };
-      return (
-        c.leaderSource === source &&
-        c.leaderAddress === addr &&
-        (market === undefined || copyMarkets(r.config as Record<string, unknown>).includes(market))
-      );
+      return c.leaderSource === source && c.leaderAddress === addr;
     });
   }
 
   /** Fill của ví leader (NATS `leader.<source>.<address>.fill`). `receivedAt` = lúc engine nhận. */
   async onLeaderFill(m: LeaderFillMessage, receivedAt: number): Promise<void> {
-    for (const r of this.#copiers(m.source, m.address, m.market)) {
+    // Mọi bot theo ví này, kể cả bot không có market của fill: chiến lược ghi "Skipped · market_off" và không bao giờ mở
+    // lệnh ở market đó (DEC-226).
+    for (const r of this.#copiers(m.source, m.address)) {
       // Hạn mức do marketdata phân bổ (DEC-163 mục 9); có map mà thiếu bot này thì 0.
       const allowance = m.allowances === undefined ? undefined : (m.allowances[r.botId] ?? "0");
       await this.#feed(r, {
@@ -1263,8 +1261,9 @@ export class Engine {
       if (a.type === "log") {
         // Bot copy tiền thật bỏ qua tín hiệu: thêm outbox trong CÙNG transaction ghi bot_events
         // (DEC-212). Tối đa 1 tin / bot / market / 10 phút.
+        // market_off (trader giao dịch ở market không có trong bot): chỉ ghi nhật ký, không gửi tin (PM chốt 4b).
         const skipped =
-          a.decision === "Skipped" && source !== null
+          a.decision === "Skipped" && source !== null && skipReason(a.why) !== "market_off"
             ? this.#copyAlerts(r, () => {
                 const market = skipMarket(r.config, source.prev, source.event);
                 return r.skipGate.allow(market, at)

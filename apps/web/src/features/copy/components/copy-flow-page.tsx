@@ -21,6 +21,7 @@ import { useCopyPreview, useStartCopy, useTrader } from "../api";
 import { useCopyErrorText } from "../errors";
 import { addr, base, holdText, usd } from "../format";
 
+import { isPicked, MarketsCard, WhatYoullCopy, type MarketsPick } from "./copy-markets";
 import { Avatar, CopySteps } from "./parts";
 
 // Copy a trader (artboard CopyBot → CopyReview, DEC-163, STRATEGIES.md S12.1): người mới chỉ chọn Budget và mức an
@@ -29,6 +30,8 @@ import { Avatar, CopySteps } from "./parts";
 // money" cho copy (DEC-105).
 
 const AMOUNTS = ["100", "250", "500", "1000"] as const;
+/** Field số thập phân trong config server trả (chuỗi); không phải chuỗi thì dùng giá trị dự phòng. */
+const strOr = (v: unknown, fallback: string): string => (typeof v === "string" ? v : fallback);
 const DECIMAL = /^\d+(\.\d+)?$/;
 
 function TextField({
@@ -102,6 +105,8 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
   const [slip, setSlip] = useState("0.3");
   const [margin, setMargin] = useState<"isolated" | "cross">("isolated");
   const [tp, setTp] = useState("");
+  // Chọn market + đòn bẩy theo market (DEC-226).
+  const [pick, setPick] = useState<MarketsPick>({ picked: null, perMarket: false, levs: {} });
   const [ack, setAck] = useState(false);
   const [code, setCode] = useState("");
   const start = useStartCopy();
@@ -126,12 +131,52 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
             marginMode: margin,
             ...(DECIMAL.test(slip) ? { maxSlippagePct: slip } : {}),
             ...(DECIMAL.test(tp) ? { takeProfitPct: tp } : {}),
+            // Bỏ hết market: giữ yêu cầu trước đó (server cần ≥ 1), nút Continue khoá với câu "Pick at least one market."
+            ...(pick.picked !== null && pick.picked.length > 0
+              ? { markets: [...pick.picked] }
+              : {}),
+            ...(pick.perMarket
+              ? {
+                  leverageByMarket: Object.fromEntries(
+                    Object.entries(pick.levs).filter(
+                      ([m]) => pick.picked === null || pick.picked.includes(m),
+                    ),
+                  ),
+                }
+              : {}),
           },
-    [address, budget, budgetOk, preset, direction, margin, slip, tp],
+    [address, budget, budgetOk, preset, direction, margin, slip, tp, pick],
   );
   const preview = useCopyPreview(useDebounced(req, 300));
-  const f = budgetOk ? presetFields(budget, preset) : null;
   const p = preview.data;
+  // Số hiển thị lấy từ config server tính (trần tổng theo đòn bẩy thấp nhất); chưa có preview thì công thức S12.1.
+  const local = budgetOk ? presetFields(budget, preset) : null;
+  const f =
+    local === null
+      ? null
+      : p === undefined
+        ? local
+        : {
+            ...local,
+            fixedNotional: strOr(p.config.fixedNotional, local.fixedNotional),
+            maxExposure: strOr(p.config.maxExposure, local.maxExposure),
+            maxLoss: strOr(p.config.maxLoss, local.maxLoss),
+          };
+  const rows = p?.rows ?? [];
+  const pickedRows = rows.filter((r) => isPicked(pick, r.market));
+  const levOf = (r: (typeof rows)[number]) =>
+    pick.perMarket
+      ? Math.min(Math.max(1, pick.levs[r.market] ?? r.leverage), r.maxLeverage)
+      : r.leverage;
+  const noneOn = rows.length > 0 && pickedRows.length === 0;
+  const allMarkets = rows.map((r) => r.market);
+  const toggleMarket = (m: string) => {
+    setPick((cur) => {
+      const now = cur.picked ?? allMarkets;
+      const next = now.includes(m) ? now.filter((x) => x !== m) : [...now, m];
+      return { ...cur, picked: next.length === allMarkets.length ? null : next };
+    });
+  };
   // Budget lớn hơn số dư khả dụng: chỉ cảnh báo (không chặn), vì số dư thay đổi và SoDEX là nơi quyết định.
   const overBudget = budgetOk && p?.available != null && dec(budget).gt(dec(p.available));
   const overBudgetNote = overBudget ? (
@@ -293,7 +338,7 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
                       <span className="flex items-center gap-2 font-extrabold">
                         {presetName(k)}
                         {k === "balanced" ? (
-                          <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-white">
+                          <span className="rounded-[10px] bg-accent-tint px-2 py-0.5 text-[11px] font-extrabold text-accent-ink">
                             {t("budget.recommended")}
                           </span>
                         ) : null}
@@ -303,49 +348,65 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
                   ))}
                 </div>
                 {f === null ? null : (
-                  <dl className="m-0 grid gap-3 text-sm sm:grid-cols-2">
-                    <div className="flex justify-between gap-2">
-                      <dt className="text-ink-2">{t("budget.leverage")}</dt>
-                      <dd className="m-0 font-bold">{f.leverage}×</dd>
+                  // Hộp tô nền 4 cột như artboard CopyBot; số "Stop everything at a loss of" màu đỏ.
+                  <dl className="m-0 grid grid-cols-2 gap-2.5 rounded-[16px] bg-surface-2 px-4 py-3.5 sm:grid-cols-4">
+                    <div className="flex flex-col gap-0.5">
+                      <dt className="text-xs font-semibold text-ink-2">{t("budget.leverage")}</dt>
+                      <dd className="m-0 text-base font-extrabold">{f.leverage}×</dd>
                     </div>
-                    <div className="flex justify-between gap-2">
-                      <dt className="text-ink-2">{t("budget.perTrade")}</dt>
-                      <dd className="m-0 font-bold tabular-nums">
+                    <div className="flex flex-col gap-0.5">
+                      <dt className="text-xs font-semibold text-ink-2">{t("budget.perTrade")}</dt>
+                      <dd className="m-0 text-base font-extrabold tabular-nums">
                         {t("budget.perTradeValue", {
                           value: usd(f.fixedNotional)?.replace("$", "") ?? "",
                         })}
                       </dd>
                     </div>
-                    <div className="flex justify-between gap-2">
-                      <dt className="text-ink-2">{t("budget.stopLoss")}</dt>
-                      <dd className="m-0 font-bold">{f.stopLossPct}%</dd>
+                    <div className="flex flex-col gap-0.5">
+                      <dt className="text-xs font-semibold text-ink-2">{t("budget.stopLoss")}</dt>
+                      <dd className="m-0 text-base font-extrabold">{f.stopLossPct}%</dd>
                     </div>
-                    <div className="flex justify-between gap-2">
-                      <dt className="text-ink-2">{t("budget.maxLoss")}</dt>
-                      <dd className="m-0 font-bold tabular-nums">{usd(f.maxLoss)}</dd>
+                    <div className="flex flex-col gap-0.5">
+                      <dt className="text-xs font-semibold text-ink-2">{t("budget.maxLoss")}</dt>
+                      <dd className="m-0 text-base font-extrabold tabular-nums text-neg">
+                        {usd(f.maxLoss)}
+                      </dd>
                     </div>
                   </dl>
                 )}
                 {f === null ? null : (
                   <p className="m-0 text-sm text-ink-2">
-                    {t("budget.exposure", { value: usd(f.maxExposure)?.replace("$", "") ?? "" })}
+                    {t(p?.mixedLeverage === true ? "budget.exposureLowest" : "budget.exposure", {
+                      value: usd(f.maxExposure)?.replace("$", "") ?? "",
+                    })}
                   </p>
                 )}
               </Card>
 
-              <Card title={t("budget.marketsTitle")}>
-                <p className="m-0 -mt-2 text-sm text-ink-2">{t("budget.marketsBody")}</p>
-                <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
-                  {(p?.markets ?? card?.stats.markets ?? []).map((m) => (
-                    <li
-                      key={m}
-                      className="inline-flex h-8 items-center rounded-full bg-pos-bg px-3 text-sm font-bold text-pos"
-                    >
-                      ✓ {base(m)}
-                    </li>
-                  ))}
-                </ul>
-              </Card>
+              <MarketsCard
+                rows={rows.map((r) => ({ ...r, leverage: levOf(r) }))}
+                loading={preview.isPending}
+                pick={pick}
+                presetName={presetName(preset)}
+                presetLeverage={local?.leverage ?? 1}
+                perTrade={f?.fixedNotional ?? null}
+                cap={f?.maxExposure ?? null}
+                onToggle={toggleMarket}
+                onSelectAll={() => {
+                  setPick((cur) => ({ ...cur, picked: null }));
+                }}
+                onPerMarket={(on) => {
+                  // Bật per-market: bắt đầu từ đòn bẩy đang áp ở từng market.
+                  setPick((cur) => ({
+                    ...cur,
+                    perMarket: on,
+                    levs: on ? Object.fromEntries(rows.map((r) => [r.market, r.leverage])) : {},
+                  }));
+                }}
+                onLeverage={(m, lev) => {
+                  setPick((cur) => ({ ...cur, levs: { ...cur.levs, [m]: lev } }));
+                }}
+              />
 
               <section className="flex flex-col gap-3 rounded-card border border-border bg-surface p-5">
                 <button
@@ -426,13 +487,18 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
                 <strong>{t("budget.differTitle")}</strong>
                 <p className="m-0">{t("budget.differBody")}</p>
               </section>
+              <WhatYoullCopy
+                picked={pickedRows.length}
+                total={rows.length}
+                levs={pickedRows.map(levOf)}
+              />
               {preview.isError && !noSodex ? (
                 <p role="alert" className="m-0 text-sm text-neg-ink">
                   {errorText(preview.error)}
                 </p>
               ) : null}
               <Button
-                disabled={!budgetOk || p === undefined || noSodex || preview.isError}
+                disabled={!budgetOk || p === undefined || noSodex || preview.isError || noneOn}
                 onClick={() => {
                   setStep("review");
                 }}
@@ -491,7 +557,11 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
                     [t("review.maxLoss"), usd(f.maxLoss) ?? ""],
                     [
                       t("review.markets"),
-                      p.markets.map(base).join(", ") || t("common.notAvailable"),
+                      // Market đã chọn và đòn bẩy từng market (DEC-226).
+                      p.rows
+                        .filter((r) => r.selected)
+                        .map((r) => t("review.marketLev", { market: r.market, lev: r.leverage }))
+                        .join(", ") || t("common.notAvailable"),
                     ],
                     [t("review.direction"), t(`review.directions.${direction}`)],
                   ].map(([k, v]) => (

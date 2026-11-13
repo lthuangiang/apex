@@ -27,6 +27,7 @@ const SKIP_PATTERNS: readonly (readonly [RegExp, CopySkipReason])[] = [
   [/^No fill within /, "no_fill"],
   [/^This trader now trades too fast to copy/, "min_hold"],
   [/^Not enough SoDEX liquidity near the price/, "low_liquidity"],
+  [/^Not copied: this market isn't in your copy bot\./, "market_off"],
 ];
 
 export function skipReason(why: string): CopySkipReason {

@@ -4,11 +4,13 @@ import {
   copyNet,
   copyPositions,
   copyTrade,
+  MARKET_OFF_SKIP,
   normalizeCopyState,
   type CopyTradeState,
 } from "../copy-trade";
 import { copyTradeSchema, type CopyTradeConfig } from "../copy-trade/schema";
 import type { OrderIntent, StepContext, StrategyAction, StrategyEvent } from "../core/types";
+import { copyLowestLeverage, requirementOf } from "../requirements";
 
 // DEC-163 mục 6, 9: một bot copy một trader trên nhiều market; trần exposure / max loss tính tổng; hạn mức phân bổ.
 
@@ -111,9 +113,10 @@ describe("copy trade across markets", () => {
     expect(copyPositions(s)).toEqual({ "BTC-USD": "0.01", "ETH-USD": "-0.25" });
   });
 
-  it("ignores leader moves on markets the bot doesn't copy", () => {
+  it("never trades markets the bot doesn't copy (only logs Skipped, DEC-226)", () => {
     const r = step(cfg(), priced(), lf("SOL-USD", "5", "150"));
-    expect(r.actions).toEqual([]);
+    expect(places(r.actions)).toEqual([]);
+    expect(r.actions).toEqual([{ type: "log", decision: "Skipped", why: MARKET_OFF_SKIP }]);
   });
 
   it("applies maxExposure to the total of all markets", () => {
@@ -202,5 +205,61 @@ describe("copy trade across markets", () => {
     expect(s.markets["BTC-USD"]?.ledger.position).toBe("0.01");
     expect(s.orders.abc).toEqual({ side: "buy", kind: "open", market: "BTC-USD" });
     expect(s.seq).toBe(3);
+  });
+});
+
+// DEC-226: market không có trong bot → không bao giờ mở lệnh, chỉ ghi "Skipped" khi trader mở / tăng.
+describe("markets the user did not pick", () => {
+  const offLog = { type: "log", decision: "Skipped", why: MARKET_OFF_SKIP } as const;
+
+  it("never trades a market outside the bot and logs only opens, adds and flips", () => {
+    const c = cfg({ markets: ["BTC-USD"] });
+    const s0 = copyTrade.initialState(c);
+    // Mở: ghi Skipped, không có lệnh, state không đổi (không tính vào số lần bỏ qua).
+    const open = step(c, s0, lf("ETH-USD", "2", "3000"));
+    expect(open.actions).toEqual([offLog]);
+    expect(open.state).toEqual(s0);
+    // Tăng (2 → 3) và đảo chiều (3 → −1): ghi.
+    expect(
+      step(c, s0, { ...lf("ETH-USD", "3", "3000"), quantity: "1" } as StrategyEvent).actions,
+    ).toEqual([offLog]);
+    expect(
+      step(c, s0, { ...lf("ETH-USD", "-1", "3000"), side: "sell", quantity: "4" } as StrategyEvent)
+        .actions,
+    ).toEqual([offLog]);
+    // Giảm (3 → 1) và đóng (1 → 0): không ghi.
+    expect(
+      step(c, s0, { ...lf("ETH-USD", "1", "3000"), side: "sell", quantity: "2" } as StrategyEvent)
+        .actions,
+    ).toEqual([]);
+    expect(
+      step(c, s0, { ...lf("ETH-USD", "0", "3000"), side: "sell", quantity: "1" } as StrategyEvent)
+        .actions,
+    ).toEqual([]);
+  });
+
+  it("keeps leverage per market only for the bot's markets", () => {
+    expect(cfg({ leverageByMarket: { "BTC-USD": 1, "ETH-USD": 3 } }).leverageByMarket).toEqual({
+      "BTC-USD": 1,
+      "ETH-USD": 3,
+    });
+    expect(() => cfg({ markets: ["BTC-USD"], leverageByMarket: { "ETH-USD": 2 } })).toThrow();
+    expect(() => cfg({ leverageByMarket: { "BTC-USD": 0 } })).toThrow();
+    // Config cũ không có field vẫn đọc được.
+    expect(cfg().leverageByMarket).toBeUndefined();
+  });
+
+  it("needs the budget as capital: max exposure over the lowest leverage", () => {
+    const c = {
+      ...cfg({
+        fixedNotional: "500",
+        maxNotionalPerTrade: "500",
+        maxExposure: "500",
+        leverageByMarket: { "BTC-USD": 1, "ETH-USD": 3 },
+      }),
+    };
+    expect(copyLowestLeverage(c)).toBe(1);
+    expect(requirementOf("copy_trade", c).capital).toBe("500");
+    expect(copyLowestLeverage(cfg())).toBe(2);
   });
 });

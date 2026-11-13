@@ -92,12 +92,12 @@ export function requirementOf(strategy: string, c: Cfg): Requirement {
       };
     case Strategy.copyTrade:
       // Margin của tổng vị thế được phép: maxExposure / đòn bẩy (DEC-161). Nhiều market (DEC-163): `bots.market` lưu
-      // market đầu, như Rebalancing.
+      // market đầu, như Rebalancing. Đòn bẩy theo market (DEC-226): lấy đòn bẩy thấp nhất (= budget).
       return {
         market: copyMarkets(c)[0] ?? "",
         engine: "perps",
         capital: dec(s(c, "maxExposure"))
-          .div(n(c, "leverage") || 1)
+          .div(copyLowestLeverage(c) || 1)
           .toDecimalPlaces(2, Decimal.ROUND_UP)
           .toString(),
       };
@@ -341,6 +341,20 @@ export function minSizeDetail(
     capitalField: field,
     suggestedCapital: suggested,
   };
+}
+
+/** Đòn bẩy thấp nhất của bot copy trên các market của nó (`leverageByMarket`, thiếu thì `leverage`). 0 = không có. */
+export function copyLowestLeverage(c: Readonly<Record<string, unknown>>): number {
+  const base = typeof c.leverage === "number" ? c.leverage : 0;
+  const per =
+    typeof c.leverageByMarket === "object" && c.leverageByMarket !== null
+      ? (c.leverageByMarket as Record<string, unknown>)
+      : {};
+  const levs = copyMarkets(c).map((m) => {
+    const l = per[m];
+    return typeof l === "number" ? l : base;
+  });
+  return levs.length === 0 ? base : Math.min(...levs);
 }
 
 /** Market của bot copy: `markets` (DEC-163), hoặc `market` của config cũ. */

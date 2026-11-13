@@ -50,6 +50,11 @@ export interface LeaderStats {
   medianEntryNotional: string | null;
   /** Market SoDEX mà trader giao dịch (copy được), xếp theo notional giảm dần. */
   markets: string[];
+  /**
+   * Số episode đã đóng trong 30 ngày theo market SoDEX (cột "Trader's trades · 30D", DEC-226). Thiếu
+   * ở bản ghi cũ (trước khi có field) → web hiện "Not available", không bao giờ 0.
+   */
+  episodesByMarket?: Record<string, number>;
   /** Coin perp (gồm HIP-3) SoDEX không có. */
   unlistedCoins: string[];
   /** Lợi nhuận cộng dồn theo ngày (cho biểu đồ "Profit over time"), mỗi phần tử `[ms đầu ngày, USD]`. */
@@ -162,6 +167,11 @@ export function leaderStats(input: StatsInput): LeaderStats {
   const liquidations = new Set(
     fills.filter((f) => f.liquidatedSelf).map((f) => `${f.coin}:${String(f.time)}`),
   ).size;
+  const episodesByMarket: Record<string, number> = {};
+  for (const e of closed) {
+    const m = sodexMarketOf(e.coin, input.index);
+    if (m !== null) episodesByMarket[m] = (episodesByMarket[m] ?? 0) + 1;
+  }
   const entries = episodes
     .filter((e) => e.openedAt !== null && e.entryNotional.gt(0))
     .map((e) => e.entryNotional);
@@ -179,6 +189,7 @@ export function leaderStats(input: StatsInput): LeaderStats {
     liquidations,
     medianEntryNotional: entryMed === null ? null : entryMed.toDecimalPlaces(2).toString(),
     markets: [...byMarket.entries()].sort((a, b) => b[1].cmp(a[1])).map(([m]) => m),
+    episodesByMarket,
     unlistedCoins: [...unlisted].sort(),
     dailyCurve: [...daily.entries()]
       .sort((a, b) => a[0] - b[0])

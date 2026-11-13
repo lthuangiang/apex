@@ -41,10 +41,22 @@ test("find a trader, follow them, and start copying in three steps", async ({ pa
   await expect(
     page.getByText("All positions together stay under $1,000 (budget × leverage)."),
   ).toBeVisible();
-  await expect(page.getByText("✓ BTC")).toBeVisible();
+  // Chọn market và đòn bẩy theo market (DEC-226): mặc định tick mọi market; bỏ hết thì khoá.
+  await expect(page.getByRole("heading", { name: "Markets we'll copy · 1 of 1" })).toBeVisible();
+  const btc = page.getByRole("checkbox", { name: "Copy BTC-USD" });
+  await expect(btc).toBeChecked();
+  await btc.uncheck();
+  await expect(page.getByText("Pick at least one market.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue to review" })).toBeDisabled();
+  await btc.check();
+  await expect(page.getByText("Pick at least one market.")).toHaveCount(0);
+  const side = page.getByRole("region", { name: "What you'll copy" });
+  await expect(side.getByText("1 of 1")).toBeVisible();
+  await expect(side.getByText("2×")).toBeVisible();
   await page.getByRole("button", { name: "Continue to review" }).click();
 
   await expect(page.getByRole("heading", { name: "Review and start" })).toBeVisible();
+  await expect(page.getByText("BTC-USD · 2×")).toBeVisible();
   await expect(page.getByText("Mainnet · real funds")).toBeVisible();
   await expect(page.getByText("Withdraw or transfer: never.", { exact: false })).toBeVisible();
   await page.getByRole("checkbox").check();

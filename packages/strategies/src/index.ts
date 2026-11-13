@@ -44,6 +44,7 @@ export * from "./backtest";
 export { fundingArb, futuresDca, futuresGrid, rebalancing, recurringBuy, spotDca, spotGrid, twap };
 export {
   botCapitalOf,
+  copyLowestLeverage,
   copyMarkets,
   meetsMinSize,
   minSizeDetail,
@@ -110,6 +111,7 @@ export {
   copyTrade,
   freshSize,
   leaderMove,
+  MARKET_OFF_SKIP,
   normalizeCopyState,
   COPY,
   type CopyMarketState,

@@ -765,7 +765,7 @@ export function stepCopyTrade(
     case "leaderPosition":
       return c.markets.includes(e.market) ? runMarket(c, s, e.market, e, ctx) : none2(s);
     case "leaderFill":
-      return c.markets.includes(e.market) ? onLeaderFillMulti(c, s, e, ctx) : none2(s);
+      return c.markets.includes(e.market) ? onLeaderFillMulti(c, s, e, ctx) : marketOff(s, e);
     case "fill":
     case "orderDone":
     case "orderReject": {
@@ -791,6 +791,26 @@ export function stepCopyTrade(
 }
 
 const none2 = (s: CopyTradeState): StepResult<CopyTradeState> => ({ actions: [], state: s });
+
+/** Câu nhật ký khi trader giao dịch ở market không có trong bot (PM duyệt, DEC-226). */
+export const MARKET_OFF_SKIP = "Not copied: this market isn't in your copy bot.";
+
+/**
+ * Trader giao dịch ở market không có trong bot (người dùng bỏ tick lúc tạo, hoặc market trader mới dùng): không bao giờ
+ * mở lệnh. Chỉ ghi "Skipped" khi trader mở / tăng / đảo vị thế, để nhật ký không đầy vì mỗi lần cắt / đóng. Không đổi
+ * state và không tính vào số lần bỏ qua (người dùng không chọn market này).
+ */
+function marketOff(
+  s: CopyTradeState,
+  e: Extract<StrategyEvent, { type: "leaderFill" }>,
+): StepResult<CopyTradeState> {
+  const after = dec(e.positionAfter);
+  const qty = dec(e.quantity);
+  const before = e.side === "buy" ? after.sub(qty) : after.add(qty);
+  const move = leaderMove(before, after);
+  if (move !== "open" && move !== "flip" && move !== "increase") return none2(s);
+  return { actions: [log("Skipped", MARKET_OFF_SKIP)], state: s };
+}
 
 /** Vị thế đang giữ theo market (cho engine đóng khi Stop, cho API hiển thị). */
 export function copyPositions(s: CopyTradeState): Record<string, string> {

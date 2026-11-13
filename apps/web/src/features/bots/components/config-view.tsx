@@ -43,9 +43,31 @@ export function useConfigRows(strategy: string, market: string, config: Record<s
     // Copy Trade (DEC-163): nguồn trader là mã ("hyperliquid") và danh sách market là mảng, không phải chữ thường.
     if (f.key === "leaderSource" && typeof v === "string" && v !== "")
       return t.has(`options.leaderSource.${v}`) ? t(`options.leaderSource.${v}`) : v;
+    // Đòn bẩy theo market (DEC-226): mỗi market kèm đòn bẩy của nó; dòng Leverage hiện khoảng.
+    const perLev =
+      strategy === "copy_trade" &&
+      typeof config.leverageByMarket === "object" &&
+      config.leverageByMarket !== null
+        ? (config.leverageByMarket as Record<string, unknown>)
+        : null;
     if (f.key === "markets" && Array.isArray(v)) {
-      const ms = v.filter((m): m is string => typeof m === "string").map((m) => names.market(m));
+      const ms = v
+        .filter((m): m is string => typeof m === "string")
+        .map((m) => {
+          const l = perLev?.[m];
+          return typeof l === "number"
+            ? t("marketLeverage", { market: names.market(m), lev: l })
+            : names.market(m);
+        });
       return ms.length === 0 ? ta("notSet") : ms.join(", ");
+    }
+    if (f.key === "leverage" && perLev !== null) {
+      const levs = Object.values(perLev).filter((l): l is number => typeof l === "number");
+      if (levs.length > 0) {
+        const low = Math.min(...levs);
+        const high = Math.max(...levs);
+        return low === high ? `${String(low)}×` : t("leverageRange", { low, high });
+      }
     }
     if (v === undefined || v === null || v === "") return ta("notSet");
     const k = f.type;

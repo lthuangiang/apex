@@ -21,6 +21,7 @@ import {
   BotCommand,
   BotState,
   CheckKey,
+  COPY_MAX_LEVERAGE,
   dec,
   Decimal,
   ErrorCode,
@@ -388,21 +389,47 @@ async function assertLeverageCap(
       fieldErrors: { leverage: ["Market not found on SoDEX."] },
     });
   }
-  // Nhiều market (Copy Trade): trần là market có maxLeverage thấp nhất.
+  const accountCap = await accountLeverageCap(deps.db, sodexAccountId);
+  // Copy Trade (DEC-226): kiểm từng market với đòn bẩy của nó (`leverageByMarket`, thiếu thì
+  // `leverage`), trần = min(SoDEX max của market, 5×, trần Risk Center).
+  if (strategy === Strategy.copyTrade) {
+    const per =
+      typeof config.leverageByMarket === "object" && config.leverageByMarket !== null
+        ? (config.leverageByMarket as Record<string, unknown>)
+        : {};
+    const fieldErrors: Record<string, string[]> = {};
+    for (const [i, m] of markets.entries()) {
+      if (typeof m !== "string") continue;
+      const own = per[m];
+      const lev = typeof own === "number" ? own : config.leverage;
+      const issue =
+        typeof own === "number" && own > COPY_MAX_LEVERAGE
+          ? `Up to ${String(COPY_MAX_LEVERAGE)}× when you copy.`
+          : leverageCapIssue(lev, accountCap, symbols[i]?.maxLeverage ?? 0);
+      if (issue !== null)
+        fieldErrors[typeof own === "number" ? `leverageByMarket.${m}` : "leverage"] = [issue];
+    }
+    if (Object.keys(fieldErrors).length > 0)
+      throw new AppError(ErrorCode.validationFailed, "Invalid bot settings.", { fieldErrors });
+    return;
+  }
   const symbol = { maxLeverage: Math.min(...symbols.map((x) => x?.maxLeverage ?? 0)) };
-  const [limits] = await deps.db
-    .select({ maxLeverage: riskLimits.maxLeverage })
-    .from(riskLimits)
-    .where(eq(riskLimits.sodexAccountId, sodexAccountId))
-    .limit(1);
-  const accountCap =
-    limits?.maxLeverage == null ? Number.POSITIVE_INFINITY : Number(limits.maxLeverage);
   const issue = leverageCapIssue(config.leverage, accountCap, symbol.maxLeverage);
   if (issue !== null) {
     throw new AppError(ErrorCode.validationFailed, "Invalid bot settings.", {
       fieldErrors: { leverage: [issue] },
     });
   }
+}
+
+/** Trần đòn bẩy người dùng đặt ở Risk Center cho account này; không đặt → +∞. */
+export async function accountLeverageCap(db: Db, sodexAccountId: string): Promise<number> {
+  const [limits] = await db
+    .select({ maxLeverage: riskLimits.maxLeverage })
+    .from(riskLimits)
+    .where(eq(riskLimits.sodexAccountId, sodexAccountId))
+    .limit(1);
+  return limits?.maxLeverage == null ? Number.POSITIVE_INFINITY : Number(limits.maxLeverage);
 }
 
 export async function account(db: Db, userId: string) {
@@ -1358,6 +1385,20 @@ export async function checkVersionConfig(
     if (String(before.leaderAddress).toLowerCase() !== String(config.leaderAddress).toLowerCase())
       throw new AppError(ErrorCode.validationFailed, "Trader can't change.", {
         fieldErrors: { leaderAddress: ["locked"] },
+      });
+    // Đòn bẩy theo market khoá sau khi tạo (DEC-226, PM chốt 6). Form Edit không có field này:
+    // không gửi thì giữ giá trị đang chạy.
+    if (config.leverageByMarket === undefined && before.leverageByMarket !== undefined)
+      config.leverageByMarket = before.leverageByMarket;
+    const norm = (v: unknown) =>
+      typeof v === "object" && v !== null
+        ? JSON.stringify(
+            Object.entries(v as Record<string, unknown>).sort(([x], [y]) => (x < y ? -1 : 1)),
+          )
+        : "";
+    if (norm(before.leverageByMarket) !== norm(config.leverageByMarket))
+      throw new AppError(ErrorCode.validationFailed, "Leverage per market can't change.", {
+        fieldErrors: { leverageByMarket: ["locked"] },
       });
   }
   if (requirementOf(b.strategy, config).market !== b.market) {

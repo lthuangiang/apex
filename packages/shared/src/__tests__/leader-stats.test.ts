@@ -179,6 +179,17 @@ describe("leaderStats", () => {
     expect(s.unlistedCoins).toEqual(["DOGE", "xyz:TSLA"]);
   });
 
+  it("counts closed episodes per SoDEX market (column Trader's trades · 30D)", () => {
+    const s = stats([
+      ...roundTrip(NOW - 2 * DAY, HOUR, "1", "BTC", "3"),
+      ...roundTrip(NOW - DAY, HOUR, "1", "BTC", "3"),
+      ...roundTrip(NOW - DAY, HOUR, "1", "kPEPE", "1"),
+      ...roundTrip(NOW - DAY, HOUR, "1", "DOGE", "1"),
+    ]);
+    // Coin SoDEX không có (DOGE) không có dòng; market chưa có episode đóng thì không có key (api đọc là 0).
+    expect(s.episodesByMarket).toEqual({ "BTC-USD": 2, "1000PEPE-USD": 1 });
+  });
+
   it("counts xyz HIP-3 trading as on SoDEX when SoDEX lists the symbol (DEC-207)", () => {
     const s = stats(
       [

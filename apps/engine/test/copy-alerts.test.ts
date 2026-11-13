@@ -9,6 +9,7 @@ import {
   type StepContext,
   type StrategyEvent,
 } from "@drift/strategies";
+import { MARKET_OFF_SKIP } from "@drift/strategies";
 import { describe, expect, it } from "vitest";
 
 import { openedAlerts, SkipGate, skipMarket, skipReason } from "../src/copy-alerts";
@@ -180,6 +181,7 @@ describe("skipReason", () => {
     expect(skipReason("Not enough SoDEX liquidity near the price to copy this trade.")).toBe(
       "low_liquidity",
     );
+    expect(skipReason(MARKET_OFF_SKIP)).toBe("market_off");
     expect(skipReason("Something new.")).toBe("other");
   });
 

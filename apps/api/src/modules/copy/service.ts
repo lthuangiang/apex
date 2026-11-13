@@ -21,7 +21,8 @@ import {
   HIDDEN_REASONS,
   LEADER_STATS,
   meetsMinHold,
-  presetFields,
+  copyPlan,
+  type CopyCandidate,
   Strategy,
   type CopyPreview,
   type CopyRequest,
@@ -42,6 +43,7 @@ import { getAddress } from "viem";
 
 import {
   account,
+  accountLeverageCap,
   aiDeskOn,
   copyClashes,
   copySlotOf,
@@ -650,7 +652,11 @@ export async function followingEvents(
   };
 }
 
-/** Budget + mức an toàn → config S12, market giữ / bỏ (DEC-163 mục 6, 7). Server tính, không tin client. */
+/**
+ * Budget + mức an toàn + market đã chọn + đòn bẩy từng market → config S12 (DEC-163 mục 7, DEC-226).
+ * Server tính lại mọi số, không tin client: market phải thuộc danh sách copy được của trader và SoDEX đang niêm yết,
+ * đòn bẩy kẹp trong [1, min(SoDEX max, 5, trần Risk Center)], trần tổng = budget × đòn bẩy thấp nhất đã chọn.
+ */
 export async function copyPreview(
   deps: CopyDeps,
   userId: string,
@@ -660,12 +666,11 @@ export async function copyPreview(
   const a = await account(deps.bots.db, userId);
   const row = await latestStats(deps, req.address);
   const stats = row?.s.stats as LeaderStats | undefined;
-  const fields = presetFields(req.budget, req.preset);
   const symbols = await deps.bots.rest.getPerpsSymbols();
   const dropped: CopyPreview["dropped"] = [];
   const wanted = stats?.markets ?? [];
   const clashes = await copyClashes(deps.bots, a.id, Strategy.copyTrade, wanted, null);
-  const markets: string[] = [];
+  const listed: string[] = [];
   for (const m of wanted) {
     const clash = clashes.find((c) => c.market === m);
     const sym = symbols.find((x) => x.name === m);
@@ -673,19 +678,63 @@ export async function copyPreview(
       dropped.push({ market: m, reason: "bot", botId: clash.botId, botName: clash.botName });
     else if (sym?.status !== "TRADING")
       dropped.push({ market: m, reason: "unavailable", botId: null, botName: null });
-    else if (sym.maxLeverage < fields.leverage)
-      dropped.push({ market: m, reason: "leverage", botId: null, botName: null });
-    else if (dec(fields.fixedNotional).lt(dec(sym.minNotional)))
-      dropped.push({ market: m, reason: "min_size", botId: null, botName: null });
-    else markets.push(m);
+    else listed.push(m);
   }
+  if (req.markets !== undefined) {
+    const unknown = req.markets.filter((m) => !listed.includes(m));
+    if (unknown.length > 0)
+      throw new AppError(ErrorCode.validationFailed, "Invalid input.", {
+        fieldErrors: { markets: ["Pick markets from this trader's list."] },
+      });
+  }
+  if (req.leverageByMarket !== undefined) {
+    const unknown = Object.keys(req.leverageByMarket).filter((m) => !listed.includes(m));
+    if (unknown.length > 0)
+      throw new AppError(ErrorCode.validationFailed, "Invalid input.", {
+        fieldErrors: { leverageByMarket: ["Pick markets from this trader's list."] },
+      });
+  }
+  const riskCap = await accountLeverageCap(deps.bots.db, a.id);
+  const candidateOf = (m: string): CopyCandidate => {
+    const sym = symbols.find((x) => x.name === m);
+    return {
+      market: m,
+      maxLeverage: sym?.maxLeverage ?? 1,
+      tiers: sym?.marginTiers ?? null,
+      // Bản ghi cũ chưa có field → null ("Not available"); có field mà thiếu key = trader chưa đóng lệnh nào ở đây (0 thật).
+      trades30d: stats?.episodesByMarket === undefined ? null : (stats.episodesByMarket[m] ?? 0),
+    };
+  };
+  const planOf = (candidates: readonly CopyCandidate[]) =>
+    copyPlan({
+      budget: req.budget,
+      preset: req.preset,
+      candidates,
+      selected: req.markets?.filter((m) => candidates.some((c) => c.market === m)),
+      leverageByMarket: req.leverageByMarket,
+      riskCap: Number.isFinite(riskCap) ? Math.floor(riskCap) : null,
+      marginMode: req.marginMode,
+    });
+  // Cỡ mỗi lệnh copy dưới mức tối thiểu của SoDEX: bỏ market (cỡ lệnh không phụ thuộc market được chọn).
+  let candidates = listed.map(candidateOf);
+  const first = planOf(candidates);
+  candidates = candidates.filter((c) => {
+    const sym = symbols.find((x) => x.name === c.market);
+    const small = sym !== undefined && dec(first.fields.fixedNotional).lt(dec(sym.minNotional));
+    if (small) dropped.push({ market: c.market, reason: "min_size", botId: null, botName: null });
+    return !small;
+  });
+  const plan = planOf(candidates);
+  const markets = plan.rows.filter((r) => r.selected).map((r) => r.market);
   const config: Record<string, unknown> = {
     leaderSource: SOURCE,
     leaderAddress: req.address,
     markets,
     marginMode: req.marginMode,
     direction: req.direction,
-    ...fields,
+    ...plan.fields,
+    // Ghi đủ mọi market khi có market khác đòn bẩy preset (per-market, hoặc hạ về trần); không thì dùng `leverage`.
+    ...(plan.mixed ? { leverageByMarket: plan.leverageByMarket } : {}),
     ...(req.maxSlippagePct === undefined ? {} : { maxSlippagePct: req.maxSlippagePct }),
     ...(req.takeProfitPct === undefined ? {} : { takeProfitPct: req.takeProfitPct }),
   };
@@ -710,6 +759,9 @@ export async function copyPreview(
     config,
     markets,
     dropped,
+    rows: plan.rows,
+    lowestLeverage: plan.lowestLeverage,
+    mixedLeverage: plan.mixed,
     slot: await copySlotOf(deps.bots.db, req.address),
     copyable: copyable.ok && markets.length === 0 ? { ok: false, reason: "no_markets" } : copyable,
     // Approve cố định 0.01% (DEC-46); mức gắn vào lệnh ≤ mức này (DEC-94, DEC-159).
