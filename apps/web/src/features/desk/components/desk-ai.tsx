@@ -11,13 +11,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowUp } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 
 import { plainNumber, plainUsd } from "../bplus";
 
+import { DeskAiCapabilities, DeskAiCapabilitiesLink } from "./desk-ai-capabilities";
 import { AiMark } from "./goal-card";
 import { NewBotChat } from "./new-bot-chat";
 import { PaperResults } from "./paper-result";
@@ -114,8 +115,16 @@ export function greetingAt(now: Date): "morning" | "afternoon" | "evening" {
   return h < 12 ? "morning" : h < 18 ? "afternoon" : "evening";
 }
 
-export function Answer({ answer }: { answer: DeskAiAnswer }) {
+export function Answer({
+  answer,
+  onAsk,
+}: {
+  answer: DeskAiAnswer;
+  /** Gửi một câu hỏi (nút ví dụ ở câu "ngoài phạm vi"); thiếu thì ví dụ chỉ là chữ. */
+  onAsk?: (question: string) => void;
+}) {
   const t = useTranslations("desk.ai.templates");
+  const tai = useTranslations("desk.ai");
   const factText = useFactText();
   if (answer.kind === "text")
     return <p className="m-0 text-sm whitespace-pre-line text-ink">{answer.text}</p>;
@@ -145,9 +154,30 @@ export function Answer({ answer }: { answer: DeskAiAnswer }) {
     answer.key === "fallback" || answer.key === "loss" || answer.key === "quota"
       ? answer.facts
       : [];
+  // Ngoài phạm vi (W6): gợi ý hai câu hỏi làm được. Có `onAsk` (khung chat Desk AI) thì hai câu là nút gửi đúng câu đó;
+  // nơi khác (History, Ask about this) chỉ là chữ.
+  const example = (k: "bots" | "eth") => (chunks: ReactNode) =>
+    onAsk === undefined ? (
+      <span>{chunks}</span>
+    ) : (
+      <button
+        type="button"
+        onClick={() => {
+          onAsk(tai(`examples.${k}`));
+        }}
+        className="inline-flex min-h-[34px] items-center rounded-full border border-border-input bg-surface px-3 text-[12.5px] font-bold text-accent-ink hover:bg-surface-2"
+      >
+        {chunks}
+      </button>
+    );
   return (
     <div className="flex flex-col gap-2 text-sm text-ink">
       <p className="m-0">{lead}</p>
+      {answer.key === "out_of_scope" ? (
+        <p className="m-0 flex flex-wrap items-center gap-1.5">
+          {t.rich("outOfScopeTry", { bots: example("bots"), eth: example("eth") })}
+        </p>
+      ) : null}
       {list.length === 0 ? null : (
         <dl className="m-0 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1">
           {list
@@ -228,7 +258,7 @@ export function ThinkingTurn({
   );
 }
 
-function TurnView({ turn }: { turn: Turn }) {
+function TurnView({ turn, onAsk }: { turn: Turn; onAsk?: (question: string) => void }) {
   return (
     <li className="flex flex-col gap-2">
       {turn.question === null ? null : (
@@ -236,7 +266,7 @@ function TurnView({ turn }: { turn: Turn }) {
           {turn.question}
         </p>
       )}
-      <Answer answer={turn.answer} />
+      <Answer answer={turn.answer} {...(onAsk === undefined ? {} : { onAsk })} />
     </li>
   );
 }
@@ -307,11 +337,13 @@ export function DeskAiPanel() {
         ) : brief.data?.available === false ? (
           <p className="m-0 text-sm text-ink-2">{t("briefLater")}</p>
         ) : null}
+        {/* Khung chat còn trống: nói rõ Desk AI làm được gì (W6). Hỏi câu đầu tiên thì ẩn. */}
+        {turns.length === 0 && !ask.isPending ? <DeskAiCapabilities /> : null}
         <PaperResults />
         {turns.length === 0 && !ask.isPending ? null : (
           <ul className="m-0 flex list-none flex-col gap-3 p-0" aria-live="polite">
             {turns.map((x) => (
-              <TurnView key={x.id} turn={x} />
+              <TurnView key={x.id} turn={x} onAsk={send} />
             ))}
             {ask.isPending ? <ThinkingTurn question={ask.variables} /> : null}
           </ul>
@@ -379,7 +411,11 @@ export function DeskAiPanel() {
           </button>
         </form>
         <p className="m-0 flex flex-wrap justify-between gap-2 text-xs text-muted">
-          <span>{t("notAdvice")}</span>
+          <span className="flex flex-wrap items-center gap-x-2">
+            <span>{t("notAdvice")}</span>
+            <span aria-hidden="true">·</span>
+            <DeskAiCapabilitiesLink />
+          </span>
           {questionsLeft === null ? null : <span>{t("questionsLeft", { n: questionsLeft })}</span>}
         </p>
       </div>
