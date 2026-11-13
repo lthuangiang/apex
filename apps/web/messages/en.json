@@ -4155,6 +4155,14 @@
           "p1": "Bot problems, risk limits and SoDEX access changes",
           "p2": "Big moves from traders you follow, and a morning brief",
           "p3": "Messages never include wallet addresses, keys or balances"
+        },
+        "claude": {
+          "title": "Ask from Claude",
+          "body": "Connect DeskLabs to Claude and ask about your bots in plain words. Claude reads; you decide.",
+          "p1": "Works in claude.ai, Claude Desktop and Claude Code",
+          "p2": "Claude can draft bot settings; you review and start them",
+          "p3": "It can't place trades or move money. Revoke any time",
+          "cta": "Connect Claude"
         }
       },
       "note": "Copying and AI suggestions are not financial advice. Past results are not a forecast."
@@ -4268,6 +4276,11 @@
         "deskAi": {
           "q": "What does Desk AI do?",
           "a": "It explains your bots and your limits using your real numbers. It can't change a bot, place an order or predict prices, and every number it writes is checked against your data."
+        },
+        "claude": {
+          "q": "Can I use DeskLabs with Claude?",
+          "a": "Yes. Connect DeskLabs to Claude to ask about your bots and get bot drafts to review. Claude can't trade or move money.",
+          "link": "See how to connect"
         }
       }
     },
@@ -4279,7 +4292,8 @@
       "built": "Powered by SoDEX Builder Code. Independent project, not operated by SoDEX.",
       "disclaimer": "Trading crypto, and leveraged perpetual futures in particular, carries a high risk of loss. We don’t guarantee profit. Past results and backtests don’t predict future results. Not financial advice.",
       "legalLabel": "Legal",
-      "risk": "Risk Disclosure"
+      "risk": "Risk Disclosure",
+      "claude": "Connect Claude"
     }
   },
   "riskDisclosure": {
@@ -5205,7 +5219,213 @@
       "confirmTitle": "Revoke {app}?",
       "confirmWhat": "What happens",
       "confirmBody": "The app loses access right away. You can connect it again later.",
-      "error": "Couldn’t revoke. Try again."
+      "error": "Couldn’t revoke. Try again.",
+      "howTo": "How to connect Claude",
+      "howToLink": "How to connect Claude →"
     }
+  },
+  "claudeGuide": {
+    "metaTitle": "Connect DeskLabs to Claude",
+    "metaDescription": "Connect DeskLabs to Claude and ask about your bots, portfolio, risk and the traders you follow. Claude reads; you decide.",
+    "brand": "DeskLabs",
+    "navLabel": "Guide sections",
+    "nav": {
+      "what": "What it does",
+      "connect": "Connect",
+      "permissions": "Permissions",
+      "drafts": "Drafts",
+      "faq": "FAQ"
+    },
+    "launch": "Launch app",
+    "hero": {
+      "eyebrow": "DeskLabs for Claude",
+      "title": "Ask Claude about your bots",
+      "body": "Connect DeskLabs to Claude and ask about your bots, portfolio, risk and the traders you follow, in plain words. Claude can also draft bot settings for you to review.",
+      "server": "Server address",
+      "copy": "Copy",
+      "copied": "Copied",
+      "connect": "Connect in 2 minutes",
+      "see": "See what it can do",
+      "safe": "Claude can't place trades, change your bots or move money."
+    },
+    "chat": {
+      "label": "Example chat in Claude",
+      "question": "How are my bots doing this week?",
+      "tools": "Used DeskLabs · list_bots, get_portfolio_summary",
+      "answer": "You have [N] bots running. Here is how each one did over the last 7 days:",
+      "line": "[Bot name] · [profit or loss] · [fees]",
+      "note": "Numbers come from your DeskLabs account. Not a forecast."
+    },
+    "what": {
+      "title": "What Claude can do with DeskLabs",
+      "body": "It reads the same numbers you see in the app. It never acts on its own.",
+      "items": {
+        "read": {
+          "title": "Read your account",
+          "body": "Bots, portfolio, profit and loss, fees, and how much of your loss limit you've used. Practice bots are kept apart from real money."
+        },
+        "explain": {
+          "title": "Explain what happened",
+          "body": "Why a bot paused, what it decided and when, what needs you on AI Desk, and how past changes worked out."
+        },
+        "traders": {
+          "title": "Look at traders",
+          "body": "Browse Copy Trading lists and trader profiles, with the same filters and warnings as the app."
+        },
+        "draft": {
+          "title": "Draft bot settings",
+          "body": "Claude can prepare a new bot or a change and give you a link. You review it in DeskLabs and decide."
+        }
+      },
+      "cantTitle": "What Claude can't do",
+      "cant": "Place or cancel orders, start, pause or change a bot, apply a draft, or withdraw and move funds. It never sees your keys or signatures, and it doesn't predict prices."
+    },
+    "connect": {
+      "title": "Connect in 2 minutes",
+      "body": "You need a DeskLabs account with SoDEX connected. Pick where you use Claude.",
+      "tabsLabel": "Where you use Claude",
+      "tabs": {
+        "web": "Claude app (web, desktop, mobile)",
+        "code": "Claude Code"
+      },
+      "web": {
+        "s1": {
+          "title": "Open Customize › Connectors",
+          "body": "In claude.ai, open Customize and go to Connectors."
+        },
+        "s2": {
+          "title": "Add a custom connector",
+          "body": "Press + Add, then Add custom connector. Name it DeskLabs, paste {url} and press Continue."
+        },
+        "s3": {
+          "title": "Sign in and allow",
+          "body": "Choose to sign in now. DeskLabs opens: sign in, check the app and host, then press Allow."
+        },
+        "s4": {
+          "title": "Turn it on in a chat",
+          "body": "In a chat, press + then Connectors, and switch DeskLabs on. It also works in Claude Desktop and the mobile apps; no need to add it again."
+        }
+      },
+      "code": {
+        "s1": {
+          "title": "Add the server",
+          "body": "Run the command on the right in your terminal. Already added DeskLabs on claude.ai with the same account? Claude Code has it already: skip this step."
+        },
+        "s2": {
+          "title": "Sign in",
+          "body": "Start Claude Code, run /mcp, choose desklabs and sign in. Your browser opens DeskLabs."
+        },
+        "s3": {
+          "title": "Allow",
+          "body": "Check the app and host, then press Allow."
+        },
+        "s4": {
+          "title": "Ask away",
+          "body": "Ask Claude Code about your bots, for example \"Why did my ETH bot pause?\""
+        }
+      },
+      "terminal": "Terminal",
+      "goodTitle": "Good to know",
+      "good1": "On a Team or Enterprise plan, ask your owner to add DeskLabs first. Then you only press Connect.",
+      "good2": "The Free plan allows one custom connector.",
+      "consentLabel": "You'll see this in DeskLabs",
+      "consentTitle": "[App name] wants to use your DeskLabs account",
+      "consentFrom": "from [app host]",
+      "consentBody": "This app can read your DeskLabs data. It can't place trades, change bots or move funds.",
+      "allow": "Allow",
+      "deny": "Deny",
+      "consentCheck": "Check the host is the app you're using before you press Allow."
+    },
+    "permissions": {
+      "title": "Permissions",
+      "body": "Claude only gets what it needs. Drafting is asked for separately, the first time you ask Claude to draft something.",
+      "readTitle": "Read your DeskLabs data",
+      "readBody": "Bots, decisions, portfolio, risk, AI Desk and Copy Trading.",
+      "readWhen": "Asked when you connect",
+      "draftTitle": "Save bot drafts",
+      "draftBody": "Prepare new bots or changes for you to review. Nothing runs until you save or start it yourself.",
+      "draftWhen": "Asked the first time Claude drafts",
+      "sodex": "Haven't connected SoDEX yet? Connect it in DeskLabs first. Claude has nothing to read until then."
+    },
+    "try": {
+      "title": "Try asking",
+      "prompts": {
+        "p1": "How are my bots doing this week?",
+        "p2": "Why did my ETH bot pause yesterday?",
+        "p3": "What needs my attention on AI Desk today?",
+        "p4": "How much of my loss limit have I used?",
+        "p5": "Show me steady traders I could follow.",
+        "p6": "Draft a Futures Grid on BTC with a 50 USDC max loss."
+      }
+    },
+    "drafts": {
+      "title": "How drafts work",
+      "body": "Claude never applies anything. You stay in control at every step.",
+      "step": "Step {n}",
+      "s1": {
+        "title": "Claude prepares a draft",
+        "body": "It checks the settings against the same rules as the app and gives you a link."
+      },
+      "s2": {
+        "title": "You open it in DeskLabs",
+        "body": "The form opens filled in, marked \"From Claude\". Drafts last {hours, plural, one {# hour} other {# hours}}."
+      },
+      "s3": {
+        "title": "You review and decide",
+        "body": "Change anything, then save or start it yourself, with the usual checks. Or just close it."
+      },
+      "banner": "From Claude",
+      "bannerBody": "Claude drafted these settings. Nothing changes until you review and save or start the bot yourself.",
+      "bannerExpires": "Draft expires [time]."
+    },
+    "disconnect": {
+      "title": "Disconnect any time",
+      "body": "Go to Settings › Connected apps and press Revoke. Claude loses access straight away.",
+      "app": "[App name]",
+      "meta": "[app host] · Read, Drafts · last used [time]",
+      "revoke": "Revoke"
+    },
+    "limits": {
+      "title": "Limits",
+      "perMinute": "Requests per minute",
+      "perDay": "Requests per day",
+      "draftLasts": "A draft lasts",
+      "draftLastsValue": "{hours, plural, one {# hour} other {# hours}}",
+      "openDrafts": "Open drafts at once"
+    },
+    "faq": {
+      "title": "Questions",
+      "items": {
+        "safe": {
+          "q": "Is it safe to connect?",
+          "a": "Claude only reads your DeskLabs data and can save drafts if you allow it. It can’t place trades, change bots, apply drafts or move money. DeskLabs never shares your SoDEX keys or signatures with Claude."
+        },
+        "paper": {
+          "q": "Does Claude see my real-money and practice bots the same way?",
+          "a": "No. Practice (paper) bots are shown separately and never added to your real-money numbers."
+        },
+        "again": {
+          "q": "Why does Claude ask for permission again?",
+          "a": "Reading and drafting are separate permissions. The first time you ask Claude to draft something, DeskLabs asks you to allow drafts."
+        },
+        "stop": {
+          "q": "How do I stop Claude from reading my account?",
+          "a": "Go to Settings › Connected apps in DeskLabs and press Revoke. It takes effect straight away."
+        },
+        "advice": {
+          "q": "Does Claude give financial advice?",
+          "a": "No. It explains your data and the strategies in DeskLabs. It doesn’t predict prices or tell you what to buy or sell."
+        },
+        "other": {
+          "q": "Can I use it with other AI apps?",
+          "a": "DeskLabs uses the open MCP standard, so other apps that support remote MCP servers with sign-in can connect too. You’ll always see the app’s host before you allow it."
+        }
+      }
+    },
+    "ready": {
+      "title": "Ready to connect?",
+      "body": "Sign in to DeskLabs and connect SoDEX, then add DeskLabs to Claude."
+    },
+    "footer": "Not financial advice. DeskLabs only places trades for bots you start; it never withdraws or transfers funds. Powered by SoDEX Builder Code."
   }
 }
