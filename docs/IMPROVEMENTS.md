@@ -91,12 +91,6 @@ Cooldown phục vụ chiến lược. Không thêm thời gian ngẫu nhiên đ�
 
 **Đề xuất:** thêm "Start at": Now hoặc một thời điểm do khách chọn, theo múi giờ trong Settings. Không dùng Entry condition của IMP-01, vì TWAP là lệnh chia nhỏ theo thời gian.
 
-## IMP-04: Mua dần khi khởi tạo Rebalancing
-
-**Hiện trạng:** Rebalancing mua đủ tỷ trọng ngay khi Start bằng limit IOC, kể cả vốn lớn. `maxTradePct` có giới hạn nhưng chưa phải chia dần theo thời gian.
-
-**Đề xuất:** thêm "Initial buy": All now (mặc định) hoặc Over N hours. Cần chốt: chia theo phần bằng nhau hay theo thanh khoản. Ưu tiên thấp vì Rebalancing không phụ thuộc nhiều vào giá vào của một tài sản.
-
 ## IMP-05: Chart và bản đồ thanh lý ở màn tạo bot
 
 **Mục tiêu:** khách nhìn vùng giá ngay khi đặt tham số, không phải mở SoDEX hay Coinglass ở tab khác.
@@ -158,4 +152,4 @@ Mockup hiện chưa vẽ đường Skip above, Price limit, take profit và stop
 1. IMP-01, IMP-02 và bước Chart của IMP-05, làm cùng nhau.
 2. Bước Liquidation map của IMP-05, sau khi có nguồn dữ liệu.
 3. IMP-03.
-4. IMP-04.
+4. IMP-04: đã làm, xem STRATEGIES S6 "Initial buy" (DEC-222).

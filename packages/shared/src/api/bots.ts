@@ -279,6 +279,14 @@ export const botDetailSchema = z.object({
     })
     .nullable()
     .default(null),
+  /**
+   * Rebalancing đang mua dần lúc khởi tạo (Initial buy · Over N hours, DEC-222): số phần đã mua
+   * và tổng số phần (mỗi giờ một phần). null khi không mua dần hoặc đã xong.
+   */
+  initialBuy: z
+    .object({ done: z.number().int(), total: z.number().int() })
+    .nullable()
+    .default(null),
 });
 export type BotDetail = z.infer<typeof botDetailSchema>;
 
