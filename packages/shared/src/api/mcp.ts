@@ -30,6 +30,9 @@ export const userTextSchema = z.object({ userText: z.string() });
 
 const meta = { asOf: isoDateTimeSchema, source: z.string() };
 
+/** Con trỏ trang mờ (thời điểm + id): chỉ đưa lại nguyên giá trị `nextCursor` của trang trước. */
+export const mcpCursorSchema = z.string().min(1).max(120);
+
 export const teamFindUserInputSchema = z.object({
   /** Email, user id, hoặc 4 ký tự cuối địa chỉ ví. */
   query: z.string().trim().min(4).max(320),
@@ -147,8 +150,8 @@ export type TeamUserBots = z.infer<typeof teamUserBotsSchema>;
 export const teamBotTimelineInputSchema = z.object({
   botId: uuidSchema,
   ...rangeInput,
-  /** `occurredAt` của mục cuối trang trước. */
-  cursor: isoDateTimeSchema.optional(),
+  /** `nextCursor` của trang trước. */
+  cursor: mcpCursorSchema.optional(),
   limit: z.coerce.number().int().min(1).max(MCP_PAGE_MAX).default(30),
 });
 
@@ -196,13 +199,13 @@ export const teamBotTimelineSchema = z.object({
       z.object({ kind: z.literal("order"), at: isoDateTimeSchema, order: orderView }),
     ]),
   ),
-  nextCursor: isoDateTimeSchema.nullable(),
+  nextCursor: mcpCursorSchema.nullable(),
 });
 export type TeamBotTimeline = z.infer<typeof teamBotTimelineSchema>;
 
 export const teamUnknownOrdersInputSchema = z.object({
   userId: uuidSchema.optional(),
-  cursor: isoDateTimeSchema.optional(),
+  cursor: mcpCursorSchema.optional(),
   limit: z.coerce.number().int().min(1).max(MCP_PAGE_MAX).default(30),
 });
 
@@ -220,7 +223,7 @@ export const teamUnknownOrdersSchema = z.object({
       createdAt: isoDateTimeSchema,
     }),
   ),
-  nextCursor: isoDateTimeSchema.nullable(),
+  nextCursor: mcpCursorSchema.nullable(),
 });
 export type TeamUnknownOrders = z.infer<typeof teamUnknownOrdersSchema>;
 

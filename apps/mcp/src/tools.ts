@@ -44,6 +44,7 @@ const read = async <T extends z.ZodType>(ctx: ToolContext, path: string, schema:
 
 const iso = z.iso.datetime({ offset: false });
 const uuid = z.uuid();
+const cursor = z.string().min(1).max(120);
 const limit = z.number().int().min(1).max(MCP_PAGE_MAX).optional();
 
 const explainReasonCode: ToolDef["run"] = (ctx, args) => {
@@ -129,7 +130,7 @@ const USER_TOOLS: readonly ToolDef[] = [
       botId,
       from: iso.optional().describe("Start, ISO 8601 UTC"),
       to: iso.optional().describe("End, ISO 8601 UTC"),
-      cursor: iso.optional().describe("nextCursor from the previous page"),
+      cursor: cursor.optional().describe("nextCursor from the previous page, unchanged"),
       limit: limit.describe("Items per page, at most 50 (default 30)"),
     },
     run: (ctx, args) =>
@@ -278,7 +279,7 @@ export const TOOLS: readonly ToolDef[] = [
       botId: uuid.describe("Bot id"),
       from: iso.optional().describe("Start, ISO 8601 UTC"),
       to: iso.optional().describe("End, ISO 8601 UTC"),
-      cursor: iso.optional().describe("nextCursor from the previous page"),
+      cursor: cursor.optional().describe("nextCursor from the previous page, unchanged"),
       limit: limit.describe("Items per page, at most 50 (default 30)"),
     },
     run: (ctx, args) =>
@@ -297,7 +298,7 @@ export const TOOLS: readonly ToolDef[] = [
       "Read-only. Orders with an unknown result that still need reconciling with SoDEX, oldest first, with age and reconcile status.",
     input: {
       userId: uuid.optional().describe("Only this user"),
-      cursor: iso.optional().describe("nextCursor from the previous page"),
+      cursor: cursor.optional().describe("nextCursor from the previous page, unchanged"),
       limit: limit.describe("Orders per page, at most 50 (default 30)"),
     },
     run: (ctx, args) =>
