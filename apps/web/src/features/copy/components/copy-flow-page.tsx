@@ -15,9 +15,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Card, PageHead, Workspace } from "@/components/workspace";
 import { ApiError } from "@/lib/api";
-import { useFeatures, useMe } from "@/lib/queries";
+import { useFeatures, useMe, useSodexConnection } from "@/lib/queries";
 
 import { useCopyPreview, useStartCopy, useTrader } from "../api";
+import { useCopyErrorText } from "../errors";
 import { addr, base, holdText, usd } from "../format";
 
 import { Avatar, CopySteps } from "./parts";
@@ -104,6 +105,10 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
   const [ack, setAck] = useState(false);
   const [code, setCode] = useState("");
   const start = useStartCopy();
+  const conn = useSodexConnection();
+  const errorText = useCopyErrorText();
+  // Chưa kết nối SoDEX: chặn từ bước Budget (preview cần account SoDEX để đọc số dư và market).
+  const noSodex = conn.isSuccess && conn.data.connection?.status !== "connected";
   useEffect(() => {
     if (features.data !== undefined && !features.data.aiDesk) router.replace("/");
   }, [features.data, router]);
@@ -212,6 +217,20 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
         ) : step === "budget" ? (
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="flex flex-col gap-5">
+              {noSodex ? (
+                <section
+                  role="status"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-warn-bg p-4 text-sm text-ink"
+                >
+                  <strong>{t("budget.connectTitle")}</strong>
+                  <Link
+                    href="/onboarding/connect"
+                    className="inline-flex min-h-tap items-center rounded-[12px] bg-accent px-4 font-bold text-white no-underline hover:bg-accent-ink"
+                  >
+                    {t("budget.connect")}
+                  </Link>
+                </section>
+              ) : null}
               <Card title={t("budget.howMuch")}>
                 <TextField
                   label={t("budget.budget")}
@@ -407,8 +426,13 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
                 <strong>{t("budget.differTitle")}</strong>
                 <p className="m-0">{t("budget.differBody")}</p>
               </section>
+              {preview.isError && !noSodex ? (
+                <p role="alert" className="m-0 text-sm text-neg-ink">
+                  {errorText(preview.error)}
+                </p>
+              ) : null}
               <Button
-                disabled={!budgetOk || p === undefined}
+                disabled={!budgetOk || p === undefined || noSodex || preview.isError}
                 onClick={() => {
                   setStep("review");
                 }}

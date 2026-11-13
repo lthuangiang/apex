@@ -2198,6 +2198,9 @@
       "copyLater": "Follow · copy later",
       "viewProfile": "View profile"
     },
+    "errors": {
+      "followLimit": "You can follow up to {limit} traders. Unfollow one to add another."
+    },
     "tags": {
       "easy_to_copy": "Easy to copy",
       "holds_hours": "Holds for hours",
@@ -2338,6 +2341,8 @@
       "review": "3 · Review and start"
     },
     "budget": {
+      "connectTitle": "Connect SoDEX to copy",
+      "connect": "Connect SoDEX",
       "title": "Copy a trader · budget and safety",
       "back": "← Back to profile",
       "heading": "Copy {trader}",
