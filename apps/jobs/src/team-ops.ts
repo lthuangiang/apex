@@ -28,11 +28,33 @@ import { subjectFor } from "./telegram";
 export const TEAM_OPS_SUBJECT = "jobs.team_ops";
 
 interface Subject {
-  data: Record<string, string | null>;
+  data: Record<string, string | number | null>;
 }
 
 /** Dữ liệu (đã che) của sự kiện; null = không báo (tài khoản team, bot paper, không tìm thấy). */
 async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
+  // Theo dõi MCP (DEC-225): chỉ số đếm; daily limit thì email đã che, tối đa 3. Không bao giờ token id /
+  // client id.
+  if (e.type === "team_mcp_tool_errors")
+    return { data: { calls: e.calls, errors: e.errors, pct: e.pct, tool: e.tool } };
+  if (e.type === "team_mcp_introspect_failing") return { data: { failures: e.failures } };
+  if (e.type === "team_mcp_daily_limit") {
+    const rows = await db
+      .select({ email: users.email, role: users.role })
+      .from(users)
+      .where(inArray(users.id, e.userIds));
+    const shown = rows.filter((r) => r.role !== UserRole.team);
+    if (shown.length === 0) return null;
+    return {
+      data: {
+        count: shown.length,
+        emails: shown
+          .slice(0, 3)
+          .map((r) => teamMaskEmail(r.email))
+          .join(", "),
+      },
+    };
+  }
   const userOf = async (id: string) =>
     (
       await db

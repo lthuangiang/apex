@@ -13,6 +13,7 @@ import { reconcileDay, snapshotBuilderBalances } from "./builder-revenue";
 import { purgeOldDeskAiChats, queueDueRecords, sweepStaleDeskJobs } from "./desk-record";
 import { leaderboardDue, noteMinHoldChanges, runLeaderboard } from "./leaderboard";
 import { computeDailyStats, utcDate } from "./market-stats";
+import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
 import { snapshotAndCheck } from "./risk";
 
@@ -43,6 +44,7 @@ const env = z
 const log = pino({ level: env.LOG_LEVEL, base: { service: "scheduler" } });
 const { db, pool } = createDb(env.DATABASE_URL);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
+const mcpAlertStore = redisAlertStore(redis);
 const rest = new SodexRestClient({
   config: loadSodexConfig(process.env),
   rateLimit: new RedisRateLimitStore(redis),
@@ -173,6 +175,14 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
       log.error({ err: error }, "leaderboard tick failed");
     });
     riskTimer = setInterval(() => {
+      // Theo dõi MCP (DEC-225): mỗi phút, cửa sổ 5 phút.
+      void checkMcpAlerts(db, mcpAlertStore, Date.now())
+        .then((sent) => {
+          if (sent.length > 0) log.info({ sent }, "mcp alerts queued");
+        })
+        .catch((error: unknown) => {
+          log.error({ err: error }, "mcp alerts failed");
+        });
       void riskTick()
         .then(revenueTick)
         .catch((error: unknown) => {

@@ -131,6 +131,9 @@ export function emailText(
     case "team_signup":
     case "team_sodex_connected":
     case "team_bot_started":
+    case "team_mcp_tool_errors":
+    case "team_mcp_introspect_failing":
+    case "team_mcp_daily_limit":
       // Nhóm `teamOps` chỉ đi Telegram (DEC-184), không bao giờ email; nhánh này chỉ để switch đủ.
       return { subject: "DeskLabs: team update", text: "Open Users in DeskLabs." };
   }

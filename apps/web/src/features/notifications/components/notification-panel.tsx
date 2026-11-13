@@ -61,6 +61,9 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   team_signup: { icon: UserRound, tone: "bg-bg text-ink-2" },
   team_sodex_connected: { icon: UserRound, tone: "bg-bg text-ink-2" },
   team_bot_started: { icon: UserRound, tone: "bg-bg text-ink-2" },
+  team_mcp_tool_errors: { icon: UserRound, tone: "bg-bg text-ink-2" },
+  team_mcp_introspect_failing: { icon: UserRound, tone: "bg-bg text-ink-2" },
+  team_mcp_daily_limit: { icon: UserRound, tone: "bg-bg text-ink-2" },
 };
 /** Bot dừng đúng kế hoạch hoặc bot tiền ảo: không tô đỏ (DEC-180). */
 const QUIET_TONE = "bg-bg text-ink-2";
