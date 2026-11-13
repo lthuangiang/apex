@@ -2508,14 +2508,11 @@
       "listed": "✓ Listed",
       "notListed": "Not listed",
       "grouped": "Fills within one minute are grouped into one change.",
-      "profile": "Profile",
-      "profileOf": "Open profile of {trader}",
       "loadMore": "Load more",
       "loadMoreError": "Couldn’t load more changes. Try again.",
       "filter": {
-        "toggle": "Show only changes by {trader}",
-        "showing": "Showing changes by {trader}.",
-        "clear": "Show all traders"
+        "label": "Show changes by",
+        "all": "All traders"
       },
       "preview": {
         "title": "Alert preview",
@@ -2688,6 +2685,7 @@
   "agent": {
     "title": "Trading Agent",
     "subtitle": "What each bot is doing, why, and the controls to change it.",
+    "initialBuy": "Initial buy: {done} of {total} parts",
     "newAgent": "New bot",
     "none": "No bots yet. Create one in Strategy Lab.",
     "pause": "Pause",

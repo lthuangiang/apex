@@ -347,6 +347,50 @@ describe("bots API", () => {
     expect(twap).toMatchObject({ marketLabel: null, capital: "0.5", capitalUnit: "base" });
   });
 
+  it("shows Rebalancing Initial buy progress while it buys in hourly parts (DEC-222)", async () => {
+    const { client } = await connectedUser("rebal-initial@example.com");
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: {
+        strategy: "rebalancing",
+        name: "Spread",
+        paramSource: "manual",
+        config: {
+          quoteAsset: "USDC",
+          assets: [
+            { asset: "BTC", market: "vBTC_vUSDC", weightPct: "60" },
+            { asset: "USDC", weightPct: "40" },
+          ],
+          rebalanceWhen: "threshold",
+          thresholdPct: "5",
+          investment: "300",
+          maxTradePct: "25",
+          initialBuy: "over_hours",
+          initialBuyHours: 4,
+        },
+      },
+    });
+    expect(made.statusCode).toBe(201);
+    const id = made.json<{ id: string }>().id;
+    const detail = async () =>
+      botDetailSchema.parse((await client.request("GET", `/api/v1/bots/${id}`)).json());
+    // Chưa chạy: chưa có tiến độ.
+    expect((await detail()).initialBuy).toBeNull();
+    const { rows } = await env.pool.query<{ active_version_id: string }>(
+      "select active_version_id from bots where id = $1",
+      [id],
+    );
+    await env.pool.query(
+      "insert into bot_runtime (bot_id, version_id, state, epoch) values ($1, $2, $3, 1)",
+      [id, rows[0]?.active_version_id, JSON.stringify({ building: { startedAt: 1, part: 2 } })],
+    );
+    expect((await detail()).initialBuy).toEqual({ done: 2, total: 4 });
+    await env.pool.query("update bot_runtime set state = $2 where bot_id = $1", [
+      id,
+      JSON.stringify({ building: null }),
+    ]);
+    expect((await detail()).initialBuy).toBeNull();
+  });
+
   it("keeps a fee-revoked bot paused until the fee is approved again", async () => {
     const { client } = await connectedUser("bots3@example.com");
     const created = await client.request("POST", "/api/v1/bots", {

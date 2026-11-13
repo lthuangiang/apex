@@ -57,6 +57,19 @@ export const INITIAL_PART_MS = 3_600_000;
 export const initialParts = (c: RebalancingConfig): number | null =>
   c.initialBuy === "over_hours" && c.initialBuyHours !== undefined ? c.initialBuyHours : null;
 
+/**
+ * Tiến độ Initial buy cho Trading Agent ("Initial buy: {done} of {total} parts", DEC-222): chỉ khi
+ * đang mua dần (`building` còn); All now hoặc đã mua xong thì null. Hàm thuần, chỉ đọc config và state đã lưu.
+ */
+export function initialBuyProgress(
+  c: RebalancingConfig,
+  s: Pick<RebalancingState, "building">,
+): { done: number; total: number } | null {
+  const total = initialParts(c);
+  const b = s.building ?? null;
+  return total === null || b === null ? null : { done: b.part, total };
+}
+
 const tradables = (c: RebalancingConfig) =>
   c.assets.filter((a) => a.asset !== c.quoteAsset && a.market !== undefined);
 
