@@ -2479,7 +2479,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": [],
+  "_pendingReview": ["desk.firstVisit.placeholder"],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",
@@ -4916,6 +4916,7 @@
       "safe": "Is my money safe?",
       "safeSub": "What DeskLabs can and can't do with it.",
       "own": "Or tell me in your own words",
+      "placeholder": "e.g. I have 300 USDC and want small, steady gains",
       "promises": {
         "orders": "I never place orders on my own",
         "money": "I can't move your money",
