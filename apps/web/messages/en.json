@@ -5005,6 +5005,24 @@
         "market": "How’s the market today?"
       },
       "notAdvice": "Not financial advice",
+      "capabilities": {
+        "title": "I can help with",
+        "items": {
+          "bots": "How your bots are doing, and why they made or lost money",
+          "strategies": "What each strategy does and which kind of market it was built for",
+          "market": "The last 24 hours of any market on SoDEX",
+          "safety": "How safe your money is in DeskLabs"
+        },
+        "cannot": "I can’t predict prices, tell you which coin to buy or sell, or change anything for you. I only use your DeskLabs data and SoDEX prices.",
+        "link": "What can Desk AI do?",
+        "perDay": "{n, plural, one {# question} other {# questions}} a day.",
+        "preferClaude": "Prefer Claude? <link>Connect DeskLabs to Claude.</link>",
+        "close": "Close"
+      },
+      "examples": {
+        "bots": "How are my bots doing?",
+        "eth": "How’s ETH today?"
+      },
       "briefLater": "Your morning brief is ready from 08:00.",
       "thinking": "Thinking…",
       "thinkingSteps": {
@@ -5016,6 +5034,7 @@
       "error": "Couldn’t send your question. Try again.",
       "templates": {
         "out_of_scope": "I can’t predict prices or tell you which coin to buy or sell. I can explain your bots, your settings and how safe your money is.",
+        "outOfScopeTry": "Try: <bots>“How are my bots doing?”</bots> or <eth>“How’s ETH today?”</eth>",
         "quota": "You’ve asked {limit} questions today. I’ll answer more tomorrow.",
         "safety": "Yes, within limits you set. DeskLabs can only place trades: it can’t withdraw or move funds. The most you’ve agreed to lose is {limit} USDC; you’ve used {used}.",
         "safetyLimit": "Yes, within limits you set. DeskLabs can only place trades: it can’t withdraw or move funds. The most you’ve agreed to lose is {limit} USDC.",
@@ -5427,5 +5446,12 @@
       "body": "Sign in to DeskLabs and connect SoDEX, then add DeskLabs to Claude."
     },
     "footer": "Not financial advice. DeskLabs only places trades for bots you start; it never withdraws or transfers funds. Powered by SoDEX Builder Code."
+  },
+  "botDraft": {
+    "chip": "From Claude",
+    "body": "Claude drafted these settings. Nothing changes until you review and save or start the bot yourself.",
+    "expires": "Draft expires {time}.",
+    "gone": "This draft is no longer available. Drafts from Claude last 24 hours.",
+    "openLab": "Open Strategy Lab"
   }
 }

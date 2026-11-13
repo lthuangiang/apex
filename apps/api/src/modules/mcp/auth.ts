@@ -27,6 +27,7 @@ export interface McpAuthDeps {
 export interface McpCaller {
   userId: string;
   tokenId: string;
+  clientId: string;
   scope: McpScope[];
 }
 
@@ -53,7 +54,12 @@ export async function requireMcpCaller(
     intro.scope.includes(scope) &&
     (endpoint !== "team" || intro.team);
   if (!allowed) throw new AppError(ErrorCode.forbidden, "Not allowed.");
-  return { userId: intro.userId, tokenId: intro.tokenId, scope: intro.scope };
+  return {
+    userId: intro.userId,
+    tokenId: intro.tokenId,
+    clientId: intro.clientId,
+    scope: intro.scope,
+  };
 }
 
 /** Bot của chính người gọi; của người khác hay không tồn tại → 404 như nhau. */

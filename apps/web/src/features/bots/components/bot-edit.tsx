@@ -20,6 +20,7 @@ import { AiPanel, useAiParameters } from "./ai-params";
 import { BetaChip, isBeta } from "./beta-chip";
 import { fieldErrorsOf, useBotErrorText } from "./bot-errors";
 import { BotForm } from "./bot-form";
+import { ClaudeDraftBanner, ClaudeDraftGone, fromClaudeOf, useClaudeDraft } from "./claude-draft";
 import { CreateBot } from "./create-bot";
 
 // Edit bot (SCREENS.md mục 8.4, artboard "Bot-Edit"): thay đổi lưu thành version mới; version cũ chạy
@@ -27,7 +28,7 @@ import { CreateBot } from "./create-bot";
 
 const versionAck = z.object({ version: z.number(), status: z.string() });
 
-export function BotEdit({ botId }: { botId: string }) {
+export function BotEdit({ botId, draftId }: { botId: string; draftId?: string | undefined }) {
   const t = useTranslations("botEdit");
   const ts = useTranslations("states");
   const tf = useTranslations("createBot");
@@ -50,9 +51,16 @@ export function BotEdit({ botId }: { botId: string }) {
   const strategy = bot !== undefined && isLaunched(bot.strategy) ? bot.strategy : undefined;
   const base =
     strategy !== undefined && active !== undefined ? fromConfig(strategy, active.config) : null;
+  // Bản nháp từ Claude (`?draft=`, DEC-223): chỉ điền sẵn form; Apply vẫn qua hộp xác nhận như thường.
+  const claude = useClaudeDraft(draftId);
+  const from =
+    draftId !== undefined && strategy !== undefined && claude.data?.botId === botId
+      ? fromClaudeOf(strategy, claude.data)
+      : null;
+  const start = draftId === undefined ? base : from === null ? null : from.values;
   useEffect(() => {
-    if (values === null && base !== null) setValues(base);
-  }, [values, base]);
+    if (values === null && start !== null) setValues(start);
+  }, [values, start]);
 
   const live = waitingFor !== null && active !== undefined && active.version >= waitingFor;
   const apply = useMutation({
@@ -78,6 +86,8 @@ export function BotEdit({ botId }: { botId: string }) {
     },
   });
 
+  if (draftId !== undefined && (claude.isError || (claude.data !== undefined && from === null)))
+    return <ClaudeDraftGone />;
   if (
     bot === undefined ||
     strategy === undefined ||
@@ -94,7 +104,13 @@ export function BotEdit({ botId }: { botId: string }) {
   // Draft chưa chạy: mở màn Create với config đã lưu để có checks, xác nhận, 2FA và Start ngay tại đây
   // (trước đây link Start trỏ về /agent/:id, mà trang đó lại chuyển draft về Edit).
   if (bot.state === BotState.draft) {
-    return <CreateBot strategy={strategy} draft={{ id: bot.id, name: bot.name, values: base }} />;
+    return (
+      <CreateBot
+        strategy={strategy}
+        draft={{ id: bot.id, name: bot.name, values: from?.values ?? base }}
+        fromClaude={from ?? undefined}
+      />
+    );
   }
   const next = Math.max(...(detail.data?.versions.map((v) => v.version) ?? [active.version])) + 1;
   // So với config đang lưu thật (DEC-135), không so với form đã điền mặc định: config cũ thiếu field mới (ví dụ
@@ -121,6 +137,7 @@ export function BotEdit({ botId }: { botId: string }) {
           subtitle={t("sub", { state: ts(bot.state), version: active.version, next })}
         />
         {isBeta(strategy) ? <BetaChip note /> : null}
+        {from === null ? null : <ClaudeDraftBanner expiresAt={from.expiresAt} />}
         <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
           <section
             aria-labelledby="change-title"

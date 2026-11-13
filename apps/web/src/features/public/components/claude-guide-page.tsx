@@ -1,6 +1,6 @@
 "use client";
 
-import { MCP_DRAFT_LIMITS, MCP_RATE_LIMITS } from "@drift/shared";
+import { MCP_DRAFT_CONFIG, MCP_RATE_LIMITS } from "@drift/shared";
 import {
   Ban,
   ChartLine,
@@ -24,7 +24,7 @@ import { BrandMark } from "./public-header";
 
 // Trang công khai "Connect DeskLabs to Claude" (MCP M6, W7; mockup docs/mockups/mcp-guide/Main.dc.html, câu chữ PM
 // duyệt). Địa chỉ server lấy từ cấu hình (`MCP_PUBLIC_URL` + `/mcp`), số giới hạn từ hằng số thật (`MCP_RATE_LIMITS`,
-// `MCP_DRAFT_LIMITS`). Chữ trong ngoặc vuông ([N], [Bot name], [App name], [time]) là chỗ trống minh hoạ của artboard,
+// `MCP_DRAFT_CONFIG`). Chữ trong ngoặc vuông ([N], [Bot name], [App name], [time]) là chỗ trống minh hoạ của artboard,
 // giữ nguyên, không điền số giả (quy tắc 1.8).
 
 const WRAP = "mx-auto box-border w-full max-w-[1180px] px-6";
@@ -54,7 +54,7 @@ export function ClaudeGuidePage({
 }) {
   const t = useTranslations("claudeGuide");
   const launchHref = signedIn ? "/" : "/signin";
-  const hours = Math.round(MCP_DRAFT_LIMITS.ttlMs / 3_600_000);
+  const hours = Math.round(MCP_DRAFT_CONFIG.ttlMs / 3_600_000);
   return (
     <div className="min-h-dvh bg-bg text-ink">
       <header className="border-b border-border bg-surface">
@@ -255,7 +255,7 @@ export function ClaudeGuidePage({
                   ["perMinute", formatInteger(MCP_RATE_LIMITS.perTokenPerMinute)],
                   ["perDay", formatInteger(MCP_RATE_LIMITS.perUserPerDay)],
                   ["draftLasts", t("limits.draftLastsValue", { hours })],
-                  ["openDrafts", formatInteger(MCP_DRAFT_LIMITS.maxOpenPerUser)],
+                  ["openDrafts", formatInteger(MCP_DRAFT_CONFIG.maxOpen)],
                 ] as const
               ).map(([k, v]) => (
                 <div key={k} className="rounded-[14px] bg-surface-2 p-3.5">

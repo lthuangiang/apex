@@ -30,15 +30,6 @@ export const MCP_RATE_LIMITS = {
   perUserPerDay: 5_000,
 } as const;
 
-/**
- * Bản nháp bot từ MCP (docs/MCP.md, DEC-167): sống 24 giờ, tối đa 20 bản nháp đang mở mỗi user (docs/mockups/mcp-guide
- * README, PM duyệt). Trang hướng dẫn `/claude` đọc từ đây; phần lưu bản nháp (M5) dùng cùng hằng số.
- */
-export const MCP_DRAFT_LIMITS = {
-  ttlMs: 24 * 3_600_000,
-  maxOpenPerUser: 20,
-} as const;
-
 /** Thông tin màn consent (web `/oauth/consent`), do api kiểm tra tham số authorize trước. */
 export const oauthConsentInfoSchema = z.object({
   client: z.object({

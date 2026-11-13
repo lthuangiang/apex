@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { MCP_DRAFT_LIMITS, MCP_RATE_LIMITS } from "@drift/shared";
+import { MCP_DRAFT_CONFIG, MCP_RATE_LIMITS } from "@drift/shared";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
@@ -72,9 +72,9 @@ describe("Connect DeskLabs to Claude", () => {
       limits.getByText(MCP_RATE_LIMITS.perUserPerDay.toLocaleString("en-US")),
     ).toBeInTheDocument();
     expect(
-      limits.getByText(`${String(MCP_DRAFT_LIMITS.ttlMs / 3_600_000)} hours`),
+      limits.getByText(`${String(MCP_DRAFT_CONFIG.ttlMs / 3_600_000)} hours`),
     ).toBeInTheDocument();
-    expect(limits.getByText(String(MCP_DRAFT_LIMITS.maxOpenPerUser))).toBeInTheDocument();
+    expect(limits.getByText(String(MCP_DRAFT_CONFIG.maxOpen))).toBeInTheDocument();
     // Launch app: chưa đăng nhập thì sang Sign in.
     expect(screen.getAllByRole("link", { name: "Launch app" })[0]).toHaveAttribute(
       "href",

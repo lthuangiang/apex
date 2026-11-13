@@ -27,6 +27,8 @@ const disabled: ApiClient = {
   introspect: () => Promise.reject(new Error("MCP_INTROSPECT_SECRET is not set")),
   recordCall: () => Promise.resolve(),
   get: () => Promise.reject(new Error("MCP_INTROSPECT_SECRET is not set")),
+  post: () => Promise.reject(new Error("MCP_INTROSPECT_SECRET is not set")),
+  stepUp: () => Promise.resolve(),
 };
 const app = buildMcpApp({
   api:
