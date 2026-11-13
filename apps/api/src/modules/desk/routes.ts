@@ -13,6 +13,7 @@ import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 
 import { askDeskAi, deleteDeskAiHistory, deskAiBrief, deskAiHistory } from "./ai";
+import { deskMarketCard } from "./market";
 import { needsYou, snoozeItem } from "./needs-you";
 import { recordView, switchBack } from "./record";
 import { deskBots, goLive, paperView, requireDesk, startPaper, type DeskDeps } from "./service";
@@ -129,7 +130,19 @@ export function registerDeskRoutes(app: FastifyInstance, deps: DeskDeps): void {
   });
 
   // AI Desk B+ M5 (DEC-164, DEC-165): Desk AI. Chỉ đọc và viết lời quanh fact; không đổi bot, không gửi lệnh.
-  const ai = (traceId: string) => ({ ...deps.bots, llm: deps.llm, traceId });
+  const ai = (traceId: string) => ({
+    ...deps.bots,
+    llm: deps.llm,
+    market: deps.market ?? null,
+    traceId,
+  });
+  // Thẻ "Market today" (DEC-211): chỉ đọc, SoDEX lỗi thì danh sách rỗng (web ẩn thẻ).
+  app.get("/api/v1/desk/market", async (request) => {
+    const userId = requireAuth(request).userId;
+    await requireDesk(deps, userId);
+    return deskMarketCard(deps.bots.db, deps.market, userId);
+  });
+
   app.get("/api/v1/desk/ai/brief", async (request) => {
     const userId = requireAuth(request).userId;
     await requireDesk(deps, userId);

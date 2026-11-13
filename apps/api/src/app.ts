@@ -18,6 +18,7 @@ import { registerCopyRoutes } from "./modules/copy/routes";
 import { sodexVolume24h } from "./modules/copy/volume";
 import { registerDataRoutes } from "./modules/data/routes";
 import type { DeskLlm } from "./modules/desk/llm";
+import { sodexMarketSource } from "./modules/desk/market";
 import { registerDeskRoutes } from "./modules/desk/routes";
 import { startTelegramBriefs } from "./modules/desk/telegram-brief";
 import { registerProfileRoutes } from "./modules/profile/routes";
@@ -167,7 +168,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
   const recoDeps = { db: deps.db, reco: deps.reco, rest: deps.sodex.rest, now };
   registerRecoRoutes(app, recoDeps);
-  registerDeskRoutes(app, { bots: botDeps, reco: recoDeps, llm: deps.deskLlm ?? null });
+  registerDeskRoutes(app, {
+    bots: botDeps,
+    reco: recoDeps,
+    llm: deps.deskLlm ?? null,
+    market: sodexMarketSource({ rest: deps.sodex.rest, prices: deps.prices, now }),
+  });
   registerCopyRoutes(app, {
     bots: botDeps,
     bigMoveMinUsd: deps.copyBigMoveMinUsd ?? null,

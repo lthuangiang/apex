@@ -3,6 +3,7 @@ import {
   deskAiAskViewSchema,
   deskAiBriefViewSchema,
   deskAiHistoryViewSchema,
+  deskMarketViewSchema,
   meSchema,
 } from "@drift/shared";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -126,7 +127,7 @@ describe("Desk AI", () => {
     expect(rows[0]).toMatchObject({
       source: "llm",
       model: "claude-sonnet-5-5",
-      prompt_version: "desk-ai-v2",
+      prompt_version: "desk-ai-v3",
       input_tokens: 1200,
     });
     expect(rows[0]?.fact_ids).toContain("goal_limit");
@@ -336,5 +337,40 @@ describe("Desk AI", () => {
     );
     expect(b).toMatchObject({ available: true, llm: false });
     expect(b.turn?.answer).toMatchObject({ kind: "template", key: "brief" });
+  });
+
+  it("answers market questions with the last 24 hours on SoDEX, checked like any other number", async () => {
+    // LLM tắt: câu mẫu liệt kê số 24 giờ qua của market bot đang dùng (nến giả của SoDEX mock).
+    const quiet = await deskUser(off, "ai-market-off@example.com");
+    const t = await ask(quiet.client, "How's the market today?");
+    expect(t.turn.answer).toMatchObject({ kind: "template", key: "market" });
+    const keys = t.turn.answer.facts.map((f) => f.id);
+    expect(keys).toEqual(["market_change_24h_pct:BTC-USD", "market_range_24h_pct:BTC-USD"]);
+    expect(t.turn.answer.facts.every((f) => f.market === "BTC-USD" && f.bot === null)).toBe(true);
+
+    // LLM bật: prompt có fact thị trường kèm tên market; số không khớp fact → câu mẫu.
+    const { client } = await deskUser(env, "ai-market@example.com");
+    llm.reply = "BTC moved 37.5% in a day.";
+    const r = await ask(client, "How's the market today?");
+    expect(llm.calls.at(-1)?.user).toContain('"market":"BTC-USD"');
+    expect(llm.calls.at(-1)?.system).toContain("never predict or advise");
+    expect(r.turn.answer).toMatchObject({ kind: "template", key: "market" });
+    // Câu dự đoán vẫn bị chặn trước, không gọi model.
+    const before = llm.calls.length;
+    const p = await ask(client, "Will the market go up tomorrow?");
+    expect(p.turn.answer).toMatchObject({ kind: "template", key: "out_of_scope" });
+    expect(llm.calls.length).toBe(before);
+  });
+
+  it("serves the Market today card from the same SoDEX numbers, without calling the model", async () => {
+    const { client } = await deskUser(off, "ai-market-card@example.com");
+    const r = await client.request("GET", "/api/v1/desk/market");
+    expect(r.statusCode).toBe(200);
+    const v = deskMarketViewSchema.parse(r.json());
+    expect(v.items.map((i) => i.market)).toEqual(["BTC-USD"]);
+    const item = v.items[0];
+    expect(Number(item?.range)).toBeGreaterThan(0);
+    // Mood theo ngưỡng 2% / 6%; vế liên hệ chỉ khi đúng loại bot (bot ở đây là Volume Builder).
+    expect(item?.relation === null || item?.relation === "volume").toBe(true);
   });
 });
