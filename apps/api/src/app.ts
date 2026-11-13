@@ -21,6 +21,7 @@ import type { DeskLlm } from "./modules/desk/llm";
 import { sodexMarketSource } from "./modules/desk/market";
 import { registerDeskRoutes } from "./modules/desk/routes";
 import { startTelegramBriefs } from "./modules/desk/telegram-brief";
+import { registerMcpRoutes } from "./modules/mcp/routes";
 import type { CimdDeps } from "./modules/oauth/cimd";
 import { registerOauthRoutes } from "./modules/oauth/routes";
 import { registerProfileRoutes } from "./modules/profile/routes";
@@ -47,6 +48,9 @@ export const REDACT_PATHS = [
   "*.mnemonic",
   "*.code",
   "*.twoFactorCode",
+  // MCP (DEC-167): shared secret apps/mcp → api và token MCP của người dùng.
+  'req.headers["x-mcp-introspect-secret"]',
+  'req.headers["x-mcp-token"]',
 ];
 
 export interface AppDeps {
@@ -196,16 +200,24 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     introspectSecret: null,
   };
   const mcpBase = oauth.mcpPublicUrl.replace(/\/+$/, "");
+  const oauthDeps = {
+    db: deps.db,
+    now,
+    issuer: oauth.issuer.replace(/\/+$/, ""),
+    resources: [`${mcpBase}/mcp`, `${mcpBase}/team/mcp`],
+    ...(oauth.cimd === undefined ? {} : { cimd: oauth.cimd }),
+  };
   registerOauthRoutes(app, {
-    deps: {
-      db: deps.db,
-      now,
-      issuer: oauth.issuer.replace(/\/+$/, ""),
-      resources: [`${mcpBase}/mcp`, `${mcpBase}/team/mcp`],
-      ...(oauth.cimd === undefined ? {} : { cimd: oauth.cimd }),
-    },
+    deps: oauthDeps,
     rateLimiter: deps.rateLimiter,
     introspectSecret: oauth.introspectSecret,
+  });
+  registerMcpRoutes(app, {
+    db: deps.db,
+    now,
+    oauth: oauthDeps,
+    introspectSecret: oauth.introspectSecret,
+    resources: { user: `${mcpBase}/mcp`, team: `${mcpBase}/team/mcp` },
   });
   const tg = deps.telegram;
   registerTelegramRoutes(app, {

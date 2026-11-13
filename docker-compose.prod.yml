@@ -50,6 +50,7 @@ services:
     deploy: { replicas: 1 }
     labels:
       - traefik.http.routers.api.entrypoints=websecure
+      - traefik.http.routers.api-internal.entrypoints=websecure
 
   realtime:
     image: ${DRIFT_IMAGE}:realtime-${DRIFT_TAG}

@@ -180,9 +180,19 @@ Phần A2: `apps/mcp` (MCP Streamable HTTP, cổng 8097) ở `https://mcp.deskla
        - traefik.http.routers.mcp.entrypoints=websecure
    ```
    Service không đọc biến nào khác của `x-app-env` (không có `DATABASE_URL`, key SoDEX hay key Claude).
+   Trong service `api`, thêm router chặn route nội bộ từ ngoài (A3, DEC-TBD-mcp-team-tools). apps/mcp gọi thẳng `http://api:8080`, không qua Traefik:
+   ```yaml
+   - traefik.http.routers.api-internal.rule=Host(`${APP_HOST}`) && (Path(`/api/v1/oauth/introspect`) || PathPrefix(`/api/v1/mcp/`))
+   - traefik.http.routers.api-internal.priority=1000
+   - traefik.http.routers.api-internal.service=api
+   - traefik.http.routers.api-internal.middlewares=deny-external
+   - traefik.http.middlewares.deny-external.ipallowlist.sourcerange=127.0.0.1/32
+   ```
+   và trong `docker-compose.prod.yml`, service `api`: `- traefik.http.routers.api-internal.entrypoints=websecure`.
 4. Deploy bằng tag có image `mcp-<tag>` (từ release đầu tiên có A2), rồi kiểm tra:
    - `curl -s https://mcp.desklabs.xyz/.well-known/oauth-protected-resource/mcp` trả JSON có `resource: "https://mcp.desklabs.xyz/mcp"` và `authorization_servers: ["https://desklabs.xyz"]`;
    - `curl -si -X POST https://mcp.desklabs.xyz/mcp` trả `401` kèm header `WWW-Authenticate: Bearer scope="read", resource_metadata="…"`.
+   - `curl -s -o /dev/null -w '%{http_code}' -X POST https://desklabs.xyz/api/v1/oauth/introspect` và `…/api/v1/mcp/calls` đều trả `403` (Traefik chặn).
 5. Rate limit (đếm trong Redis, key `mcp:rl:*`): 60 lần/phút/token, 5.000 lần/ngày/người dùng, team 120 lần/phút. Vượt → 429.
 
 ## 3. Deploy hằng ngày

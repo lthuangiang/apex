@@ -9,7 +9,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { z } from "zod";
 
-import type { ApiClient, McpCallRecord } from "./api-client";
+import { ApiCallError, type ApiClient, type McpCallRecord } from "./api-client";
 import { checkLimits, type Counter } from "./rate-limit";
 
 // DeskLabs MCP server (docs/MCP.md mục 3, DEC-167, DEC-217). Resource server OAuth: kiểm tra token bằng
@@ -50,6 +50,34 @@ export interface McpAppDeps {
   logLevel?: string;
 }
 
+/** docs/MCP.md mục 6: tối đa 64 KB mỗi kết quả. */
+const MAX_RESULT_BYTES = 64 * 1024;
+const TOO_LARGE = "The result is too large. Narrow the time range or lower `limit`.";
+
+class ToolFailure extends Error {
+  constructor(readonly userMessage: string) {
+    super(userMessage);
+    this.name = "ToolFailure";
+  }
+}
+
+/** Câu lỗi cho client: chỉ những gì an toàn để nói (không chi tiết nội bộ, không token). */
+function toolErrorText(err: unknown): string {
+  if (err instanceof ToolFailure) return err.userMessage;
+  if (err instanceof ApiCallError) {
+    if (err.status === 404) return "Not found.";
+    if (err.status === 400) {
+      const body = err.body as { error?: { message?: unknown } } | null;
+      const msg = body?.error?.message;
+      return typeof msg === "string" && msg.length <= 200
+        ? `Invalid input: ${msg}`
+        : "Invalid input.";
+    }
+    if (err.status === 401 || err.status === 403) return "Access denied.";
+  }
+  return "DeskLabs couldn't answer this right now. Try again.";
+}
+
 const PATH: Record<Endpoint, string> = { user: "/mcp", team: "/team/mcp" };
 const REQUIRED: Record<Endpoint, McpScope> = { user: "read", team: "team:read" };
 
@@ -64,7 +92,14 @@ const canonical = (raw: string) => {
 
 export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
   const app = Fastify({
-    logger: { level: deps.logLevel ?? "info", redact: ["req.headers.authorization"] },
+    logger: {
+      level: deps.logLevel ?? "info",
+      redact: [
+        "req.headers.authorization",
+        'req.headers["x-mcp-introspect-secret"]',
+        'req.headers["x-mcp-token"]',
+      ],
+    },
     genReqId: () => randomUUID(),
     bodyLimit: 256 * 1024,
   });
@@ -142,7 +177,17 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
       });
       return challenge(reply, e, 403, "insufficient_scope");
     }
-    const limited = await checkLimits(deps.counter, intro, e === "team");
+    let limited: Awaited<ReturnType<typeof checkLimits>>;
+    try {
+      limited = await checkLimits(deps.counter, intro, e === "team");
+    } catch (err) {
+      // Redis lỗi: không cho qua khi không đếm được, nhưng trả 503 (tạm thời), không 500.
+      request.log.error(
+        { err: err instanceof Error ? err.message : "unknown" },
+        "rate limit failed",
+      );
+      return reply.status(503).send({ error: "temporarily_unavailable" });
+    }
     if (limited !== null) {
       record({
         tokenId: intro.tokenId,
@@ -192,6 +237,8 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
           const argsHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
           try {
             const result = await tool.run(ctx, args);
+            const text = JSON.stringify(result);
+            if (Buffer.byteLength(text) > MAX_RESULT_BYTES) throw new ToolFailure(TOO_LARGE);
             record({
               tokenId: intro.tokenId,
               userId: intro.userId,
@@ -204,7 +251,7 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
               traceId: request.id,
             });
             return {
-              content: [{ type: "text" as const, text: JSON.stringify(result) }],
+              content: [{ type: "text" as const, text }],
               structuredContent: result as Record<string, unknown>,
             };
           } catch (err) {
@@ -225,12 +272,7 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
             );
             return {
               isError: true,
-              content: [
-                {
-                  type: "text" as const,
-                  text: "DeskLabs couldn't answer this right now. Try again.",
-                },
-              ],
+              content: [{ type: "text" as const, text: toolErrorText(err) }],
             };
           }
         },
