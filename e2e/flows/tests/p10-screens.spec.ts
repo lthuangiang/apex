@@ -19,7 +19,7 @@ test("overview, portfolio, risk center, analyst, notifications and builder reven
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByText("200,000.00 USDC").first()).toBeVisible();
   await expect(
-    page.getByText("Not available: SoDEX has no deposit history.", { exact: false }),
+    page.getByText("Not available. SoDEX has no deposit history.", { exact: false }),
   ).toBeVisible();
 
   await page.goto("/portfolio");

@@ -30,6 +30,12 @@ test("goals, strategy plan, AI parameters, clear and fill manually", async ({ pa
   await expect(best.getByText(/covers 90% of BTC daily closes/)).toBeVisible();
   await expect(page.getByText("Paper trading")).toBeVisible();
   await page.getByRole("link", { name: /Review \d bots? for mainnet/ }).click();
+  // Bước Telegram tuỳ chọn trước khi tạo bot (W1, #55): bỏ qua.
+  await expect(page.getByRole("heading", { name: "Get alerts on Telegram" })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Skip for now" })
+    .or(page.getByRole("link", { name: "Skip for now" }))
+    .click();
 
   await expect(page.getByRole("heading", { name: "Create Spot Grid" })).toBeVisible();
   await expect(page.getByText(/✦ Filled by AI/)).toBeVisible({ timeout: 15_000 });
