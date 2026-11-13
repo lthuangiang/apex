@@ -8,7 +8,7 @@ PM đổi tên file theo tag khi người dùng gõ "release" (có `feat` nên d
 
 **Ask DeskLabs from Claude**
 - Connect DeskLabs to Claude (claude.ai, Claude Desktop, Claude Code) and ask about your account in your own words: balances, risk, bots, recent decisions, AI Desk and Copy Trading.
-- Claude can only read your data. It can't place trades, change bots or move funds.
+- Claude reads your data. It can’t place trades, change bots or move funds.
 - Claude can draft a new bot or a change to a bot for you. You open the link in DeskLabs, review it and decide; drafts last 24 hours.
 - See and revoke connected apps any time in Settings › Connected apps.
 - Ready-made prompts: morning brief, explain my bot, find a trader to copy (#85).
