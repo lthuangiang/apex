@@ -17,7 +17,7 @@ import { sha256 } from "../src/lib/crypto";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// Tool AI Desk qua MCP (docs/MCP.md mục 5B, DEC-TBD-mcp-desk-tools): cùng service với màn AI Desk (số khớp), luôn có
+// Tool AI Desk qua MCP (docs/MCP.md mục 5B, DEC-220): cùng service với màn AI Desk (số khớp), luôn có
 // câu "not a forecast", chỉ dữ liệu của người giữ token (so sánh của người khác → 404), AI Desk tắt → null + lý do,
 // tên bot chỉ nằm trong `userText`. Dữ liệu so sánh / thành tích ghi thẳng vào DB như worker (theo desk-record.test).
 

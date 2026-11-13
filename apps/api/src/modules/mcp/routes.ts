@@ -166,7 +166,7 @@ function registerMcpUserRoutes(app: FastifyInstance, deps: McpAuthDeps & UserToo
     return mcpFindTraders(deps, userId, q.tab);
   });
 
-  // B2 (DEC-TBD-mcp-desk-tools): AI Desk, chỉ đọc.
+  // B2 (DEC-220): AI Desk, chỉ đọc.
   app.get(`${MCP_USER_PREFIX}/desk/needs-you`, async (request) =>
     mcpNeedsYou(deps, await me(request)),
   );
