@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Copy · markets and leverage · mobile</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#eef1fa}
+</style>
+</helmet>
+<div style="width: 390px; box-sizing: border-box; padding: 16px; background: #eef1fa; font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; display: flex; flex-direction: column; gap: 14px">
+<section aria-labelledby="mm-title" style="background: #ffffff; border: 1.5px solid #2e62e8; border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<h2 id="mm-title" style="margin: 0; font-size: 17px; font-weight: 800">Markets we'll copy · {{countLabel}}</h2>
+<p style="margin: 0; font-size: 13.5px; line-height: 1.55; color: #3b4262">Untick any you don't want; we skip their trades there.</p>
+<label style="display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; padding: 0 12px; background: #f5f7fd; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer">
+<span>Set leverage per market</span>
+<input type="checkbox" checked="{{perMarket}}" onChange="{{togglePer}}" style="width: 20px; height: 20px; accent-color: #2e62e8">
+</label>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<div style="{{r.cardStyle}}">
+<label style="display: flex; align-items: center; gap: 10px; min-height: 44px; font-weight: 800; font-size: 15px; cursor: pointer">
+<input type="checkbox" checked="{{r.on}}" onChange="{{r.toggle}}" aria-label="Copy {{r.name}}" style="width: 20px; height: 20px; accent-color: #2e62e8">
+{{r.name}}
+<span style="margin-left: auto; font-size: 13px; font-weight: 600; color: #5f6684">{{r.trades}}</span>
+</label>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 12px; color: #5f6684">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span>Leverage</span>
+<div style="display: flex; align-items: center; gap: 4px">
+<sc-if value="{{r.editable}}" hint-placeholder-val="{{ false }}">
+<button type="button" onClick="{{r.dec}}" aria-label="Lower leverage for {{r.name}}" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #d5dcf2; background: #ffffff; font-weight: 800; color: #141a33">−</button>
+</sc-if>
+<strong style="font-size: 14px; color: #141a33">{{r.lev}}×</strong>
+<sc-if value="{{r.editable}}" hint-placeholder-val="{{ false }}">
+<button type="button" onClick="{{r.inc}}" aria-label="Raise leverage for {{r.name}}" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #d5dcf2; background: #ffffff; font-weight: 800; color: #141a33">+</button>
+</sc-if>
+</div>
+<span>max {{r.max}}×</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px"><span>Margin per position</span><strong style="font-size: 14px; color: #141a33">{{r.margin}}</strong></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><span>Liquidation if price moves</span><strong style="font-size: 14px; color: #141a33">{{r.liq}}</strong></div>
+</div>
+</div>
+</sc-for>
+<p style="margin: 0; font-size: 12.5px; line-height: 1.55; color: #5f6684">Leverage doesn't change how big each copy is. It changes how much of your budget each position ties up, and how far the price can move before SoDEX closes it.</p>
+<sc-if value="{{someOff}}" hint-placeholder-val="{{ false }}">
+<div role="status" style="background: #fdebd3; border: 1px solid #f0c27e; border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.55; color: #7a3e00"><strong>You're copying part of this trader's trades.</strong> Skipping one side of a balanced pair can leave you with more risk than they have.</div>
+</sc-if>
+</section>
+<button type="button" style="min-height: 52px; border-radius: 14px; border: none; background: #2e62e8; color: #ffffff; font-family: inherit; font-weight: 800; font-size: 16px">Continue to review</button>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":2300}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      perMarket: true,
+      on: { NEAR: true, ARB: true, FIL: false, UNI: true, AVAX: true },
+      lev: { NEAR: 2, ARB: 3, FIL: 2, UNI: 2, AVAX: 1 }
+    };
+  }
+  renderVals() {
+    const size = 250;
+    const markets = [
+      { k: 'NEAR', max: 5 }, { k: 'ARB', max: 5 }, { k: 'FIL', max: 3 }, { k: 'UNI', max: 5 }, { k: 'AVAX', max: 5 }
+    ];
+    const s = this.state;
+    const per = s.perMarket;
+    const rows = markets.map((m) => {
+      const on = s.on[m.k];
+      const lev = per ? s.lev[m.k] : Math.min(2, m.max);
+      const set = (v) => this.setState({ lev: Object.assign({}, s.lev, { [m.k]: v }) });
+      return {
+        name: m.k + '-USD', on: on, trades: '[N] trades · 30D', lev: lev, max: m.max, editable: per && on,
+        margin: on ? '$' + (size / lev).toFixed(0) : '—', liq: on ? '≈ [X]%' : 'Not copied',
+        cardStyle: 'border: 1px solid #e3e7f5; border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;' + (on ? '' : ' opacity: 0.5;'),
+        toggle: () => this.setState({ on: Object.assign({}, s.on, { [m.k]: !on }) }),
+        dec: () => set(Math.max(1, lev - 1)),
+        inc: () => set(Math.min(m.max, lev + 1))
+      };
+    });
+    const count = rows.filter((r) => r.on).length;
+    return {
+      rows: rows, perMarket: per, togglePer: () => this.setState({ perMarket: !per }),
+      countLabel: count + ' of ' + markets.length, someOff: count > 0 && count < markets.length
+    };
+  }
+}
+</script>
+</body>
+</html>
