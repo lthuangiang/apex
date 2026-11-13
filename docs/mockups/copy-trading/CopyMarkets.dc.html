@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Copy · markets and leverage</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+</style>
+</helmet>
+<div style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; background: #eef1fa; padding: 32px 24px 56px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px">
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<a href="#" style="font-size: 13px; font-weight: 700; text-decoration: none">← Back to profile</a>
+<h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">Copy 0x3e9a…11fd</h1>
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<span style="padding: 7px 12px; border-radius: 999px; background: #ddf4e7; color: #0f7a43; font-size: 13px; font-weight: 700">✓ 1 · Trader</span>
+<span style="padding: 7px 12px; border-radius: 999px; background: #2e62e8; color: #ffffff; font-size: 13px; font-weight: 700">2 · Budget and safety</span>
+<span style="padding: 7px 12px; border-radius: 999px; background: #ffffff; border: 1px solid #e3e7f5; color: #3b4262; font-size: 13px; font-weight: 700">3 · Review and start</span>
+</div>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+<div style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+
+<div style="border: 2px dashed #b9c3e6; border-radius: 24px; padding: 18px 22px; display: flex; flex-direction: column; gap: 6px; background: #f5f7fd">
+<span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #e3e7f5; color: #3b4262; font-size: 12px; font-weight: 800; letter-spacing: 0.06em">NOT PART OF THIS CHANGE</span>
+<strong style="font-size: 16px">"How much do you want to use?" and "Pick a safety level"</strong>
+<span style="font-size: 14px; line-height: 1.55; color: #3b4262">Keep both cards exactly as they are in the app today (budget, balance warning, presets, safety summary). They are collapsed here only to save space.</span>
+</div>
+
+<section aria-labelledby="mk-title" style="background: #ffffff; border: 1.5px solid #2e62e8; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap">
+<div style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #2e62e8; color: #ffffff; font-size: 12px; font-weight: 800; letter-spacing: 0.06em">CHANGED · replaces the market chips</span>
+<h2 id="mk-title" style="margin: 0; font-size: 18px; font-weight: 800">Markets we'll copy · {{countLabel}}</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #3b4262">Every market this trader uses that SoDEX lists. Untick any you don't want; we skip their trades there. New markets they start later are not added on their own.</p>
+</div>
+<div style="display: flex; gap: 8px">
+<button type="button" onClick="{{selectAll}}" style="min-height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #d5dcf2; background: #ffffff; font-family: inherit; font-weight: 700; font-size: 13px; color: #141a33; cursor: pointer">Select all</button>
+</div>
+</div>
+
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: #f5f7fd; border-radius: 14px; padding: 12px 14px">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<strong style="font-size: 14px">Leverage</strong>
+<span style="font-size: 13px; color: #3b4262">{{levSummary}}</span>
+</div>
+<label style="display: inline-flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14px; font-weight: 700; cursor: pointer">
+<input type="checkbox" checked="{{perMarket}}" onChange="{{togglePer}}" style="width: 20px; height: 20px; accent-color: #2e62e8">
+Set per market
+</label>
+</div>
+
+<div role="table" aria-label="Markets" style="display: flex; flex-direction: column; border: 1px solid #e3e7f5; border-radius: 16px; overflow: hidden">
+<div role="row" style="display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 10px 14px; background: #f5f7fd; font-size: 12px; font-weight: 700; color: #5f6684">
+<span role="columnheader">Market</span>
+<span role="columnheader">Trader's trades · 30D</span>
+<span role="columnheader">Leverage</span>
+<span role="columnheader">Margin per position</span>
+<span role="columnheader">Liquidation if price moves</span>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<div role="row" style="{{r.rowStyle}}">
+<label role="cell" style="display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; font-weight: 700; font-size: 15px">
+<input type="checkbox" checked="{{r.on}}" onChange="{{r.toggle}}" aria-label="Copy {{r.name}}" style="width: 20px; height: 20px; accent-color: #2e62e8">
+{{r.name}}
+</label>
+<span role="cell" style="font-size: 14px; color: #3b4262">{{r.trades}}</span>
+<div role="cell" style="display: flex; align-items: center; gap: 6px">
+<sc-if value="{{r.editable}}" hint-placeholder-val="{{ false }}">
+<button type="button" onClick="{{r.dec}}" aria-label="Lower leverage for {{r.name}}" style="width: 36px; height: 36px; border-radius: 10px; border: 1px solid #d5dcf2; background: #ffffff; font-size: 16px; font-weight: 800; color: #141a33; cursor: pointer">−</button>
+</sc-if>
+<span style="min-width: 32px; text-align: center; font-weight: 800; font-size: 15px">{{r.lev}}×</span>
+<sc-if value="{{r.editable}}" hint-placeholder-val="{{ false }}">
+<button type="button" onClick="{{r.inc}}" aria-label="Raise leverage for {{r.name}}" style="width: 36px; height: 36px; border-radius: 10px; border: 1px solid #d5dcf2; background: #ffffff; font-size: 16px; font-weight: 800; color: #141a33; cursor: pointer">+</button>
+</sc-if>
+<span style="font-size: 12px; color: #5f6684">max {{r.max}}×</span>
+</div>
+<span role="cell" style="font-size: 14px; font-weight: 700">{{r.margin}}</span>
+<span role="cell" style="font-size: 14px; color: #3b4262">{{r.liq}}</span>
+</div>
+</sc-for>
+</div>
+
+<p style="margin: 0; font-size: 13px; line-height: 1.55; color: #5f6684">Leverage doesn't change how big each copy is (up to $250). It changes how much of your budget each position ties up, and how far the price can move against you before SoDEX closes it. All positions together still stay under $1,000.</p>
+
+<sc-if value="{{someOff}}" hint-placeholder-val="{{ false }}">
+<div role="status" style="background: #fdebd3; border: 1px solid #f0c27e; border-radius: 14px; padding: 12px 14px; font-size: 14px; line-height: 1.55; color: #7a3e00">
+<strong>You're copying part of this trader's trades.</strong> If they use one market to balance another (for example long one, short another), skipping one side can leave you with more risk than they have.
+</div>
+</sc-if>
+<sc-if value="{{noneOn}}" hint-placeholder-val="{{ false }}">
+<p role="alert" style="margin: 0; font-size: 14px; font-weight: 700; color: #a72826">Pick at least one market.</p>
+</sc-if>
+</section>
+
+<div style="border: 2px dashed #b9c3e6; border-radius: 24px; padding: 14px 22px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: #f5f7fd">
+<strong style="font-size: 15px">Advanced · unchanged</strong>
+<span style="font-size: 13px; color: #3b4262">Keep as in the app today</span>
+</div>
+</div>
+
+<aside style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+<div style="border: 2px dashed #b9c3e6; border-radius: 24px; padding: 14px 20px; background: #f5f7fd; font-size: 13px; line-height: 1.55; color: #3b4262"><strong style="color: #141a33">Right column:</strong> keep "What happens after you start" and "Your results will differ from theirs" as in the app. Only the small "What you'll copy" card below is new.</div>
+<div style="background: #ffffff; border: 1.5px solid #2e62e8; border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+<span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #2e62e8; color: #ffffff; font-size: 12px; font-weight: 800; letter-spacing: 0.06em">NEW</span>
+<strong style="font-size: 16px">What you'll copy</strong>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<div style="background: #f5f7fd; border-radius: 12px; padding: 12px"><dt style="font-size: 12px; color: #5f6684">Markets</dt><dd style="margin: 4px 0 0; font-size: 18px; font-weight: 800">{{countShort}}</dd></div>
+<div style="background: #f5f7fd; border-radius: 12px; padding: 12px"><dt style="font-size: 12px; color: #5f6684">Leverage</dt><dd style="margin: 4px 0 0; font-size: 18px; font-weight: 800">{{levShort}}</dd></div>
+</dl>
+</div>
+<div style="background: #fdebd3; border: 1px solid #f0c27e; border-radius: 24px; padding: 18px 20px; font-size: 14px; line-height: 1.55; color: #7a3e00">
+<strong style="display: block; margin-bottom: 4px">Your results will differ from theirs</strong>
+You trade on SoDEX a few seconds later, at SoDEX prices, with your own size and leverage.
+</div>
+<button type="button" disabled="{{noneOn}}" style="min-height: 52px; border-radius: 14px; border: none; background: #2e62e8; color: #ffffff; font-family: inherit; font-weight: 800; font-size: 16px; cursor: pointer">Continue to review</button>
+</aside>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      perMarket: false,
+      on: { NEAR: true, ARB: true, FIL: true, UNI: true, AVAX: true },
+      lev: { NEAR: 2, ARB: 2, FIL: 2, UNI: 2, AVAX: 2 }
+    };
+  }
+  renderVals() {
+    const base = 2;
+    const size = 250;
+    const markets = [
+      { k: 'NEAR', max: 5 },
+      { k: 'ARB', max: 5 },
+      { k: 'FIL', max: 3 },
+      { k: 'UNI', max: 5 },
+      { k: 'AVAX', max: 5 }
+    ];
+    const s = this.state;
+    const per = s.perMarket;
+    const rows = markets.map((m) => {
+      const on = s.on[m.k];
+      const lev = per ? s.lev[m.k] : Math.min(base, m.max);
+      const set = (v) => this.setState({ lev: Object.assign({}, s.lev, { [m.k]: v }) });
+      return {
+        name: m.k + '-USD',
+        on: on,
+        trades: '[N] trades',
+        lev: lev,
+        max: m.max,
+        editable: per && on,
+        margin: on ? '$' + (size / lev).toFixed(0) : '—',
+        liq: on ? '≈ [X]%' : 'Not copied',
+        rowStyle: 'display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: center; padding: 8px 14px; border-top: 1px solid #e3e7f5;' + (on ? '' : ' opacity: 0.5;'),
+        toggle: () => this.setState({ on: Object.assign({}, s.on, { [m.k]: !on }) }),
+        dec: () => set(Math.max(1, lev - 1)),
+        inc: () => set(Math.min(m.max, lev + 1))
+      };
+    });
+    const count = rows.filter((r) => r.on).length;
+    const levs = rows.filter((r) => r.on).map((r) => r.lev);
+    const mixed = levs.length > 0 && Math.min.apply(null, levs) !== Math.max.apply(null, levs);
+    return {
+      rows: rows,
+      perMarket: per,
+      togglePer: () => this.setState({ perMarket: !per }),
+      selectAll: () => this.setState({ on: { NEAR: true, ARB: true, FIL: true, UNI: true, AVAX: true } }),
+      countLabel: count + ' of ' + markets.length,
+      countShort: count + ' of ' + markets.length,
+      someOff: count > 0 && count < markets.length,
+      noneOn: count === 0,
+      levSummary: per ? 'Set for each market below, up to what SoDEX allows.' : base + '× from Balanced for every market (lower where SoDEX allows less).',
+      levShort: levs.length === 0 ? '—' : mixed ? Math.min.apply(null, levs) + '–' + Math.max.apply(null, levs) + '×' : levs[0] + '×'
+    };
+  }
+}
+</script>
+</body>
+</html>
