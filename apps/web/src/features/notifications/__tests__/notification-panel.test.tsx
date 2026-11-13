@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
 import {
+  MobileNotificationBell,
   MobileNotificationsButton,
   NotificationBell,
   NotificationPanel,
@@ -268,4 +269,26 @@ describe("MobileNotificationsButton (390)", () => {
     },
     AXE_TIMEOUT,
   );
+});
+
+describe("MobileNotificationBell (390, header)", () => {
+  it(
+    "shows the unread count, opens the same full-screen sheet",
+    async () => {
+      const user = userEvent.setup({ delay: null });
+      wrap(<MobileNotificationBell unread={12} />);
+      const bell = screen.getByRole("button", { name: "Notifications, 12 unread" });
+      expect(bell).toHaveTextContent("9+");
+      await user.click(bell);
+      const sheet = await screen.findByRole("dialog", { name: "Notifications" });
+      expect(await within(sheet).findByText("BTC Volume Farm paused")).toBeInTheDocument();
+      await expectNoAxeViolations();
+    },
+    AXE_TIMEOUT,
+  );
+
+  it("has no badge when everything is read", () => {
+    wrap(<MobileNotificationBell unread={0} />);
+    expect(screen.getByRole("button", { name: /^Notifications/ })).toHaveTextContent("");
+  });
 });

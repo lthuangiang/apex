@@ -159,6 +159,45 @@ export function NotificationBell({ unread }: { unread: number }) {
   );
 }
 
+/** Chuông ở hàng tiêu đề điện thoại: mở cùng sheet toàn màn hình (docs/NOTIFICATIONS.md mục 7). */
+export function MobileNotificationBell({ unread }: { unread: number }) {
+  const t = useTranslations("common.shell");
+  const tn = useTranslations("notifications");
+  const [open, setOpen] = useState(false);
+  const badge = badgeText(unread);
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={t("notifications", { n: unread })}
+        aria-haspopup="dialog"
+        className="relative flex size-11 flex-none items-center justify-center rounded-[14px] border border-border bg-surface text-ink-2"
+        onClick={() => {
+          setOpen(true);
+        }}
+      >
+        <Bell aria-hidden="true" size={20} />
+        {badge === null ? null : (
+          <span
+            aria-hidden="true"
+            className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-bg bg-neg px-1 text-[11.5px] font-extrabold text-surface tabular-nums"
+          >
+            {badge}
+          </span>
+        )}
+      </button>
+      <BottomSheet open={open} onOpenChange={setOpen} title={tn("title")} fullScreen>
+        <NotificationPanel
+          variant="sheet"
+          onNavigate={() => {
+            setOpen(false);
+          }}
+        />
+      </BottomSheet>
+    </>
+  );
+}
+
 /** Dòng "Notifications" trong sheet More (điện thoại): mở sheet toàn màn hình. */
 export function MobileNotificationsButton({ unread }: { unread: number }) {
   const t = useTranslations("common.shell");
