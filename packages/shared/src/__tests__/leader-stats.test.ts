@@ -240,6 +240,12 @@ describe("classify", () => {
     expect(classify({ ...base, profit: "-1" }, false).steadyScore).toBeNull();
   });
 
+  it("keeps a trader liquidated in the last 30 days out of Steady, still in All", () => {
+    const c = classify({ ...base, liquidations: 1 }, false);
+    expect(c.tabs).toEqual(["top", "long", "all"]);
+    expect(c.steadyScore).toBeNull();
+  });
+
   it("shows history-incomplete traders only under All", () => {
     expect(classify({ ...base, historyIncomplete: true }, false).tabs).toEqual(["all"]);
   });

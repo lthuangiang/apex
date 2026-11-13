@@ -205,7 +205,11 @@ export async function listTraders(
     if (r.s.hidden.length > 0) hidden += 1;
     for (const h of r.s.hidden) if (h in hiddenBy) hiddenBy[h as HiddenReason] += 1;
   }
-  const inTab = rows.filter((r) => r.s.tabs.includes(tab));
+  // Steady không có trader bị thanh lý trong 30 ngày; lọc cả lúc đọc để snapshot cũ (tính trước luật này) cũng đúng.
+  const inTab = rows.filter(
+    (r) =>
+      r.s.tabs.includes(tab) && (tab !== "steady" || (r.s.stats as LeaderStats).liquidations === 0),
+  );
   const key = (r: (typeof rows)[number]): number =>
     tab === "steady"
       ? (r.s.steadyScore ?? 0)
