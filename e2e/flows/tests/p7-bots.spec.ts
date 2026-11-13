@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { chooseMarket, fillBotName, startButton } from "../support/bot";
 import { signUpConnectAnd2fa } from "../support/onboard";
-import { nextTotpWindow, totp } from "../support/totp";
+import { fillTwoFactorIfAsked } from "../support/totp";
 
 // Tiêu chí P7 (docs/ROADMAP.md): tạo bot → start → Running chỉ khi SoDEX ack lệnh đầu → pause/resume →
 // sửa thành v2 → stop. Giá do global-setup đẩy vào NATS `md.vBTC_vUSDC.price` mỗi giây.
@@ -36,10 +36,9 @@ test("create a Spot Grid, start it, pause, resume, edit to v2 and stop", async (
   await expect(checks.getByText("Builder fee approval")).toBeVisible();
   await expect(checks.getByText("✕")).toHaveCount(0, { timeout: 15_000 });
   await checks.getByRole("checkbox").check();
-  await nextTotpWindow();
-  await checks.getByLabel("2FA code").fill(totp(secret));
+  await fillTwoFactorIfAsked(checks, secret);
   await startButton(page).click();
-  await expect(page.getByText("Start requested · waiting for backend")).toBeVisible();
+  await expect(page.getByText("Start requested · waiting for confirmation")).toBeVisible();
   await page.getByRole("link", { name: "Watch it in Trading Agent" }).click();
 
   // Running chỉ sau khi engine gửi lệnh và mock SoDEX ack.
@@ -64,10 +63,9 @@ test("create a Spot Grid, start it, pause, resume, edit to v2 and stop", async (
 
   await page.goto(page.url().replace(/\/bots\/([^/]+)\/edit$/, "/agent/$1"));
   await expect(page.getByText("v2 ·")).toBeVisible();
-  await page.getByRole("button", { name: "Stop agent…" }).click();
+  await page.getByRole("button", { name: "Stop agent" }).click();
   const stop = page.getByRole("dialog", { name: "Stop Grid · BTC?" });
-  await nextTotpWindow();
-  await stop.getByLabel("2FA code").fill(totp(secret));
+  await fillTwoFactorIfAsked(stop, secret);
   await stop.getByRole("button", { name: /Stop and cancel/ }).click();
   await expect(status).toContainText("Stopped", { timeout: 30_000 });
 

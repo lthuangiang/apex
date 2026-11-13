@@ -1,5 +1,7 @@
 import { createHmac } from "node:crypto";
 
+import type { Locator } from "@playwright/test";
+
 // RFC 6238 (SHA1, 6 số, 30 s) để E2E nhập mã 2FA như app authenticator.
 function base32(secret: string): Buffer {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -25,4 +27,20 @@ export function totp(secret: string, at = Date.now()): string {
 export async function nextTotpWindow(): Promise<void> {
   const ms = 30_000 - (Date.now() % 30_000) + 500;
   await new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Điền mã 2FA nếu hộp thoại hỏi. Phiên vừa xác minh 2FA được tin 2 giờ (DEC-115), nên ngay sau khi bật 2FA các thao tác
+ * nhạy cảm không hỏi lại mã.
+ */
+export async function fillTwoFactorIfAsked(scope: Locator, secret: string): Promise<void> {
+  const field = scope.getByLabel("2FA code");
+  // Ô 2FA hiện cùng hộp thoại; chờ ngắn rồi coi như không hỏi.
+  const asked = await field
+    .waitFor({ timeout: 3_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!asked) return;
+  await nextTotpWindow();
+  await field.fill(totp(secret));
 }

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { createRunningGrid } from "../support/bot";
 import { signUpConnectAnd2fa } from "../support/onboard";
-import { nextTotpWindow, totp } from "../support/totp";
+import { fillTwoFactorIfAsked } from "../support/totp";
 
 // Definition of done (CODING_STANDARDS mục 14): lệnh unknown → đối soát (không gửi lại), và revoke fee → mọi bot
 // bị pause với BUILDER_FEE_REVOKED, lệnh đang mở được giữ.
@@ -47,10 +47,9 @@ test("an order with an unknown result is reconciled, never resent; revoking the 
   // Revoke fee → engine đọc lại approval → bot Paused (builder fee approval is 0); lệnh mở được giữ.
   const openBefore = placed.filter((o) => (o as { status?: string }).status === "NEW").length;
   await page.goto("/settings");
-  await page.getByRole("button", { name: "Revoke (set to 0)…" }).click();
-  const dialog = page.getByRole("dialog", { name: "Revoke DRIFT’s builder fee?" });
-  await nextTotpWindow();
-  await dialog.getByLabel("2FA code").fill(totp(secret));
+  await page.getByRole("button", { name: "Revoke (set to 0)" }).click();
+  const dialog = page.getByRole("dialog", { name: "Revoke DeskLabs’ builder fee?" });
+  await fillTwoFactorIfAsked(dialog, secret);
   await dialog.getByRole("button", { name: "Sign to revoke" }).click();
   await expect(page.getByText("❚❚ Revoked")).toBeVisible();
 
