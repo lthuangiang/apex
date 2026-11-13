@@ -2596,11 +2596,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": [
-    "copy.review.marketLev",
-    "createBot.marketLeverage",
-    "createBot.leverageRange"
-  ],
+  "_pendingReview": [],
   "beta": {
     "label": "Beta",
     "note": "Still being tested. Use small amounts."
