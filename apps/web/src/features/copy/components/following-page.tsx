@@ -148,15 +148,6 @@ export function FollowingPage() {
                               : t("following.last", { when: ago(tr.lastEventAt) })}
                           </span>
                         </button>
-                        <Link
-                          href={`/traders/${tr.address}`}
-                          aria-label={t("following.profileOf", {
-                            trader: tr.displayName ?? addr(tr.address),
-                          })}
-                          className="inline-flex min-h-9 items-center rounded-[10px] px-2 text-xs font-bold text-accent-ink"
-                        >
-                          {t("following.profile")}
-                        </Link>
                         {tr.copying ? (
                           <span className="inline-flex h-6 items-center rounded-full bg-pos-bg px-2 text-[11.5px] font-extrabold text-pos">
                             {t("following.copying")}
@@ -181,13 +172,23 @@ export function FollowingPage() {
                           })}
                         </p>
                       )}
-                      {/* Mức cảnh báo riêng cho trader này (DEC-209). */}
-                      <div className="pl-12">
+                      {/* Mức cảnh báo riêng cho trader này (DEC-209). Link hồ sơ ở hàng này, không ở hàng tên: cột
+                          hẹp (280–340px) thì tên trader bị cắt (ảnh chụp 1440 của PR #76). */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pl-12">
                         <FollowAlertSelect
                           address={tr.address}
                           trader={tr.displayName ?? addr(tr.address)}
                           level={tr.alertLevel}
                         />
+                        <Link
+                          href={`/traders/${tr.address}`}
+                          aria-label={t("following.profileOf", {
+                            trader: tr.displayName ?? addr(tr.address),
+                          })}
+                          className="inline-flex min-h-tap items-center rounded-[10px] px-2 text-xs font-bold text-accent-ink"
+                        >
+                          {t("following.profile")}
+                        </Link>
                       </div>
                     </li>
                   ))}
