@@ -135,6 +135,17 @@ describe("MCP team routes", () => {
     );
     expect(byEmail.matchedBy).toBe("email");
     expect(byEmail.users).toHaveLength(1);
+    const found = await env.pool.query<{
+      user_id: string;
+      metadata: { tool: string; tokenId: string };
+    }>(
+      "select user_id, metadata from audit_log where action = 'mcp.team_user_viewed' and target = $1",
+      [id],
+    );
+    expect(found.rows).toHaveLength(1);
+    expect(found.rows[0]?.user_id).toBe(teamId);
+    expect(found.rows[0]?.metadata.tool).toBe("team_find_user");
+    expect(found.rows[0]?.metadata.tokenId).toMatch(/^[0-9a-f-]{36}$/);
     expect(byEmail.users[0]).toMatchObject({
       id,
       email: "Finder@Example.test",
@@ -160,9 +171,24 @@ describe("MCP team routes", () => {
     const a2 = randomUUID();
     const t = (m: number) => new Date(env.clock.now.getTime() - m * 60_000);
     for (const [attempt, type, m, data] of [
-      [a1, "view", 30, { mobile: true }],
+      [
+        a1,
+        "view",
+        30,
+        {
+          device: "mobile",
+          ua: "Mozilla/5.0 (iPhone) FULL-UA",
+          extra: "client-sent junk",
+          os: "iOS",
+        },
+      ],
       [a1, "wallet_connected", 29, {}],
-      [a1, "sign_rejected", 28, { wallet: "MetaMask" }],
+      [
+        a1,
+        "sign_rejected",
+        28,
+        { wallet: "MetaMask", message: `User denied 0x${"ab".repeat(32)} request` },
+      ],
       [a2, "view", 10, { device: "desktop" }],
       [a2, "signed", 9, {}],
       [a2, "connected", 8, {}],
@@ -195,6 +221,26 @@ describe("MCP team routes", () => {
       }),
     ]);
     expect(JSON.stringify(res)).not.toContain("0xdeadbeefsig");
+    // Review #75: chỉ field trong danh sách cho phép; UA đầy đủ và field lạ bị bỏ, chuỗi hex dài bị che.
+    const view = res.attempts[1]?.steps[0]?.data;
+    expect(view).toEqual({ device: "mobile", os: "iOS" });
+    expect(res.attempts[1]?.steps[2]?.data).toEqual({
+      wallet: "MetaMask",
+      message: "User denied 0x… request",
+    });
+    expect(JSON.stringify(res)).not.toContain("FULL-UA");
+    expect(JSON.stringify(res)).not.toContain("client-sent junk");
+    // Audit: team xem dữ liệu của user này qua MCP.
+    const audits = await env.pool.query<{
+      target: string;
+      metadata: { tool: string; tokenId: string };
+    }>(
+      "select target, metadata from audit_log where action = 'mcp.team_user_viewed' and target = $1",
+      [id],
+    );
+    expect(audits.rows.map((r) => [r.target, r.metadata.tool])).toEqual([
+      [id, "team_connect_attempts"],
+    ]);
     // Thiếu cả userId lẫn attemptId → 400.
     expect((await get("/api/v1/mcp/team/connect-attempts", teamTok)).statusCode).toBe(400);
   });

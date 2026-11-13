@@ -37,6 +37,53 @@ export interface TeamDeps {
 const at = (d: Date) => d.toISOString();
 const atOrNull = (d: Date | null) => (d === null ? null : d.toISOString());
 const DAY_MS = 86_400_000;
+
+/**
+ * Field của `connect_events.data` được trả cho team (DEC-114; review #75): chỉ những gì cần để hỗ trợ. Không trả UA đầy
+ * đủ hay field lạ do client gửi. `message` của lỗi ví bị che các chuỗi hex dài (địa chỉ, chữ ký, calldata).
+ */
+const CONNECT_DATA_FIELDS = [
+  "device",
+  "os",
+  "browser",
+  "standalone",
+  "width",
+  "lang",
+  "hasEthereum",
+  "ethereumFlags",
+  "sodex",
+  "walletsDetected",
+  "browserWallet",
+  "walletConnect",
+  "notDetected",
+  "id",
+  "name",
+  "kind",
+  "wallet",
+  "address",
+  "which",
+  "reason",
+  "code",
+  "status",
+  "message",
+  "builderFeeExempt",
+] as const;
+
+const HEX_RUN = /0x[0-9a-fA-F]{12,}/g;
+
+export function connectDataView(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
+  const src = raw as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of CONNECT_DATA_FIELDS) {
+    const v = src[k];
+    if (v === undefined) continue;
+    if (typeof v === "string") out[k] = v.replace(HEX_RUN, "0x…").slice(0, 300);
+    else if (typeof v === "number" || typeof v === "boolean" || v === null) out[k] = v;
+    else if (Array.isArray(v)) out[k] = v.filter((x) => typeof x === "string").slice(0, 30);
+  }
+  return out;
+}
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type OrderRow = typeof orders.$inferSelect;
@@ -178,15 +225,8 @@ export async function teamConnectAttempts(
       : failed !== undefined
         ? failed.type
         : "abandoned";
-    const data = (first.data ?? {}) as Record<string, unknown>;
-    const device =
-      typeof data.device === "string"
-        ? data.device
-        : typeof data.mobile === "boolean"
-          ? data.mobile
-            ? "mobile"
-            : "desktop"
-          : null;
+    const data = connectDataView(first.data);
+    const device = typeof data.device === "string" ? data.device : null;
     return [
       {
         attemptId,
@@ -198,7 +238,7 @@ export async function teamConnectAttempts(
         steps: steps.map((s) => ({
           type: s.type,
           at: at(s.occurredAt),
-          data: (s.data ?? {}) as Record<string, unknown>,
+          data: connectDataView(s.data),
         })),
       },
     ];
@@ -297,18 +337,29 @@ export async function teamUserBots(deps: TeamDeps, userId: string): Promise<Team
 }
 
 /** Quyết định (bot_events) và lệnh của một bot theo thời gian, mới nhất trước; phân trang theo thời điểm. */
+export interface TimelineInput {
+  botId: string;
+  from?: string | undefined;
+  to?: string | undefined;
+  cursor?: string | undefined;
+  limit: number;
+}
+
 export async function teamBotTimeline(
   deps: TeamDeps,
-  input: {
-    botId: string;
-    from?: string | undefined;
-    to?: string | undefined;
-    cursor?: string | undefined;
-    limit: number;
-  },
+  input: TimelineInput,
 ): Promise<TeamBotTimeline> {
   const [bot] = await deps.db.select().from(bots).where(eq(bots.id, input.botId)).limit(1);
   if (bot === undefined) throw new AppError(ErrorCode.botNotFound, "Bot not found.");
+  return botTimeline(deps, bot, input);
+}
+
+/** Timeline của một bot đã được kiểm tra quyền (team: bot bất kỳ; người dùng: `ownBotOr404`). */
+export async function botTimeline(
+  deps: TeamDeps,
+  bot: typeof bots.$inferSelect,
+  input: Omit<TimelineInput, "botId">,
+): Promise<TeamBotTimeline> {
   const now = deps.now();
   const from = input.from === undefined ? new Date(0) : new Date(input.from);
   const to = input.to === undefined ? now : new Date(input.to);
