@@ -87,7 +87,8 @@ const api: ApiClient = {
         new ApiCallError(409, {
           error: {
             code: "STATE_CONFLICT",
-            message: "You have 20 open drafts. Open one in DeskLabs, or wait: drafts expire after 24 hours.",
+            message:
+              "You have 20 open drafts. Open one in DeskLabs, or wait: drafts expire after 24 hours.",
           },
         }),
       );
@@ -383,7 +384,10 @@ describe("MCP server", () => {
       arguments: { botId: "00000000-0000-4000-8000-000000000009", changes: { maxLoss: "50" } },
     });
     expect(full.content).toEqual([
-      { type: "text", text: "You have 20 open drafts. Open one in DeskLabs, or wait: drafts expire after 24 hours." },
+      {
+        type: "text",
+        text: "You have 20 open drafts. Open one in DeskLabs, or wait: drafts expire after 24 hours.",
+      },
     ]);
     await c.close();
   });
