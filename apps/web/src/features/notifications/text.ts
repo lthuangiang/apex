@@ -119,7 +119,7 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
         };
       }
       case "copy_bot_opened": {
-        // Bot copy khớp lệnh mở / tăng / đảo chiều (DEC-TBD-copy-bot-alerts). Thiếu số thì bỏ câu có số.
+        // Bot copy khớp lệnh mở / tăng / đảo chiều (DEC-212). Thiếu số thì bỏ câu có số.
         const market = str(n.data.market);
         const coin = market === null ? "" : (market.split("-")[0] ?? market);
         const move = str(n.data.move);

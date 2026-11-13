@@ -235,7 +235,7 @@ interface Runner {
   reduceRejects: number;
   /** Tương tự cho lệnh limit / post-only: bị từ chối thường chỉ vì giá chạy, nên có ngưỡng riêng cao hơn. */
   makerReduceRejects: number;
-  /** Giới hạn tin `copy_bot_skipped` của bot copy (DEC-TBD-copy-bot-alerts), trong bộ nhớ. */
+  /** Giới hạn tin `copy_bot_skipped` của bot copy (DEC-212), trong bộ nhớ. */
   skipGate: SkipGate;
 }
 
@@ -1067,7 +1067,7 @@ export class Engine {
     // Nhịp đồng hồ chưa tới hạn: chiến lược trả lại đúng state cũ, không có gì để ghi.
     if (event.type === "timer" && result.state === prev && result.actions.length === 0) return;
     r.state = result.state;
-    // Bot copy tiền thật: lệnh mở vừa khớp → thêm outbox trong CÙNG transaction (DEC-TBD-copy-bot-alerts).
+    // Bot copy tiền thật: lệnh mở vừa khớp → thêm outbox trong CÙNG transaction (DEC-212).
     const opened = this.#copyAlerts(r, () =>
       openedAlerts(r.botId, r.config, prev, result.state, event),
     );
@@ -1251,7 +1251,7 @@ export class Engine {
     for (const a of actions) {
       if (a.type === "log") {
         // Bot copy tiền thật bỏ qua tín hiệu: thêm outbox trong CÙNG transaction ghi bot_events
-        // (DEC-TBD-copy-bot-alerts). Tối đa 1 tin / bot / market / 10 phút.
+        // (DEC-212). Tối đa 1 tin / bot / market / 10 phút.
         const skipped =
           a.decision === "Skipped" && source !== null
             ? this.#copyAlerts(r, () => {
@@ -1941,7 +1941,7 @@ export class Engine {
     decision: string,
     why: string,
     at: number,
-    /** Ghi thêm trong cùng transaction (outbox cảnh báo bot copy, DEC-TBD-copy-bot-alerts). */
+    /** Ghi thêm trong cùng transaction (outbox cảnh báo bot copy, DEC-212). */
     also?: (tx: Db) => Promise<void>,
   ): Promise<void> {
     await this.#fenced(r, async (tx) => {
@@ -1953,7 +1953,7 @@ export class Engine {
   }
 
   /**
-   * Dựng dữ liệu cảnh báo bot copy (DEC-TBD-copy-bot-alerts): chỉ bot copy tiền thật; bot paper không bao giờ có tin.
+   * Dựng dữ liệu cảnh báo bot copy (DEC-212): chỉ bot copy tiền thật; bot paper không bao giờ có tin.
    * Không bao giờ ném lỗi ra transaction đang ghi: lỗi thì log warn (không dữ liệu nhạy cảm) và bỏ tin (PM điều kiện ii).
    */
   #copyAlerts<T>(r: Runner, build: () => T[]): T[] {

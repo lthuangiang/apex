@@ -100,7 +100,7 @@ export async function saveLeaderEvents(
       .where(and(eq(leaderFollows.source, source), eq(leaderFollows.address, address))),
   );
   if (levels.length === 0) return;
-  // Người đang có bot copy tiền thật chạy theo trader này nhận tin của bot thay vì tin follow (DEC-TBD-copy-bot-alerts).
+  // Người đang có bot copy tiền thật chạy theo trader này nhận tin của bot thay vì tin follow (DEC-212).
   const copying = await db.execute<{ userId: string }>(sql`
     select distinct b.user_id as "userId"
     from bots b join bot_versions bv on bv.id = b.active_version_id

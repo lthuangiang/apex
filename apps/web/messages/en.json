@@ -2518,12 +2518,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": [
-    "notifications.types.copy_bot_opened",
-    "notifications.types.copy_bot_skipped",
-    "notifications.panel.copyBot",
-    "notifications.panel.copySkip"
-  ],
+  "_pendingReview": [],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",

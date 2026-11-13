@@ -179,7 +179,7 @@ describe("NotificationPanel", () => {
     AXE_TIMEOUT,
   );
 
-  it("words copy bot alerts with the bot's name, the fill, and the skip reason (DEC-TBD-copy-bot-alerts)", async () => {
+  it("words copy bot alerts with the bot's name, the fill, and the skip reason (DEC-212)", async () => {
     state.list = {
       unread: 2,
       items: [

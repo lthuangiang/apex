@@ -104,7 +104,7 @@ describe("jobs.notify", () => {
     expect(sent).toEqual([]);
   });
 
-  it("drops a repeated copy bot alert with the same dedupe key, in-app only (DEC-TBD-copy-bot-alerts)", async () => {
+  it("drops a repeated copy bot alert with the same dedupe key, in-app only (DEC-212)", async () => {
     const { userId, accountId, botId } = await seed();
     const sent: string[] = [];
     const send = (to: string) => Promise.resolve(void sent.push(to));

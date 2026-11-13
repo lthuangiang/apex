@@ -13,7 +13,7 @@ import {
   type StrategyEvent,
 } from "@drift/strategies";
 
-// Cảnh báo của bot copy (DEC-TBD-copy-bot-alerts, W2b). Hàm thuần: engine gọi trong transaction đang có (upsert
+// Cảnh báo của bot copy (DEC-212, W2b). Hàm thuần: engine gọi trong transaction đang có (upsert
 // bot_runtime / ghi bot_events) để thêm dòng outbox. Không bao giờ ném lỗi: dữ liệu lạ thì trả rỗng / null, engine
 // bỏ tin (PM điều kiện ii). Không chứa địa chỉ ví hay số dư.
 

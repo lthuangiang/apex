@@ -14,7 +14,7 @@ const STRATEGIES: Record<string, string> = messages.strategies;
 const COPY_SKIP: Record<string, string> = messages.copySkip;
 
 /**
- * Coin của market ("BTC-USD" → "BTC"). Tin bot copy (DEC-TBD-copy-bot-alerts) không dùng tên bot: tên mặc định của bot
+ * Coin của market ("BTC-USD" → "BTC"). Tin bot copy (DEC-212) không dùng tên bot: tên mặc định của bot
  * copy chứa địa chỉ ví rút gọn của trader (mục 5 cấm), nên tiêu đề ghi "Your copy bot".
  */
 const coinOf = (market: string | null): string | null =>

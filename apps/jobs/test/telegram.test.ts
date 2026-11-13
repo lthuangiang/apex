@@ -167,7 +167,7 @@ describe("jobs.notify → Telegram queue", () => {
     expect((await enqueued(fills.userId)).rows).toHaveLength(0);
   });
 
-  it("queues a copy bot alert once per dedupe key (DEC-TBD-copy-bot-alerts)", async () => {
+  it("queues a copy bot alert once per dedupe key (DEC-212)", async () => {
     const s = await seed();
     await db
       .insert(notificationSettings)

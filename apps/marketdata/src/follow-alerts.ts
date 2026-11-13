@@ -22,7 +22,7 @@ export function bigMoveFollowers<T extends { level: FollowAlertLevel }>(
 
 /**
  * Đang có bot copy tiền thật chạy (starting / running / resuming) theo trader này thì tạm không báo theo trader: tin
- * của bot copy (DEC-TBD-copy-bot-alerts) đã nói về cùng lệnh. Bot pause, dừng hay bot paper không tính; mức đã chọn
+ * của bot copy (DEC-212) đã nói về cùng lệnh. Bot pause, dừng hay bot paper không tính; mức đã chọn
  * giữ nguyên trong DB nên tự quay lại khi bot không chạy nữa.
  */
 export function notCopying<T extends { userId: string }>(
