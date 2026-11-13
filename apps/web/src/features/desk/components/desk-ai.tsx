@@ -24,7 +24,6 @@ import { AiMark } from "./goal-card";
 import { NewBotChat } from "./new-bot-chat";
 import { PaperResults } from "./paper-result";
 
-
 // Desk AI panel (artboard BP-Home, B-Answer, DEC-164/165): báo cáo sáng + hỏi đáp. Lời LLM đã qua kiểm tra số ở server;
 // câu mẫu (LLM tắt / hết lượt / ngoài phạm vi / số không khớp) dịch ở đây từ `key` + fact. Desk AI chỉ đọc: không có
 // nút nào ở đây đổi bot. "Start a bot for me" mở luồng tạo bot qua chat (B-NewBot, tiền ảo trước); bài thử tiền ảo

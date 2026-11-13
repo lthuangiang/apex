@@ -4,8 +4,10 @@
 
 // Chỉ bỏ câu chào ở đầu (kèm tên nếu có), không bỏ phần nội dung theo sau ("Good morning, two things need you…").
 const GREETING =
-  /^\s*(?:[Gg]ood\s+(?:[Mm]orning|[Aa]fternoon|[Ee]vening|[Dd]ay)|[Hh]i|[Hh]ello|[Hh]ey)\b(?:\s+[A-Z][\w'-]*(?=[,.!]))?\s*[.!,:;—-]?\s*/;
-const QUESTIONS_LEFT = /[^.\n]*\b\d+\s+questions?\s+left\s+today\b[^.\n]*\.?/gi;
+  /^\s*(?:[Gg]ood\s+(?:[Mm]orning|[Aa]fternoon|[Ee]vening)|[Hh]i|[Hh]ello|[Hh]ey)(?:\s+(?:there|[A-Z][\w'-]*))?\s*[.!,:;—–]\s*/;
+// Chỉ bỏ cả câu khi câu đó bắt đầu ở đầu dòng hoặc sau ". " / "! " / "? ": không cắt ở dấu chấm thập phân (1.5 USDC).
+const QUESTIONS_LEFT =
+  /(?:^|(?<=[.!?]\s))[^.!?\n]*\b\d+\s+questions?\s+left\s+today\b[^.!?\n]*[.!?]?/gim;
 
 export function briefBody(text: string): string {
   return text
