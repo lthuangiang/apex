@@ -10,6 +10,13 @@ import {
   traderListSchema,
   traderProfileSchema,
 } from "./copy";
+import {
+  deskHomeItemSchema,
+  deskHomeViewSchema,
+  deskRecordRowSchema,
+  deskRecordViewSchema,
+  whatIfViewSchema,
+} from "./desk";
 
 // Output của tool MCP nội bộ (docs/MCP.md mục 5A, DEC-167, DEC-219). api trả, apps/mcp parse lại bằng
 // zod trước khi đưa cho client. Không bao giờ chứa key, secret, chữ ký hay payload đã ký. Thiếu dữ liệu → null kèm
@@ -341,3 +348,61 @@ export const mcpGetTraderSchema = z.object({
   reason: z.enum(["copy_trading_not_enabled"]).nullable(),
 });
 export type McpGetTrader = z.infer<typeof mcpGetTraderSchema>;
+
+// ---------- B2: tool AI Desk (DEC-TBD-mcp-desk-tools) ----------
+// Lấy đúng service của màn AI Desk (`deskHome`, `whatifView`, `recordView`). Kết quả so sánh / thành tích là 7 ngày đã
+// qua, **không phải dự báo**: mỗi output mang câu `notForecast` cố định. AI Desk tắt → null + lý do.
+
+/** Câu cố định trong output what-if và thành tích (PM: phải giữ "not a forecast"). */
+export const MCP_NOT_FORECAST =
+  "Replayed on the past 7 days. This is not a forecast and does not predict future profit." as const;
+
+const deskGateReason = z.enum(["ai_desk_not_enabled"]).nullable();
+
+export const mcpWhatIfSchema = whatIfViewSchema.omit({ bot: true }).extend({
+  bot: whatIfViewSchema.shape.bot.omit({ name: true }).extend({ name: userTextSchema }),
+});
+
+export const mcpNeedsYouSchema = z.object({
+  ...meta,
+  notForecast: z.literal(MCP_NOT_FORECAST),
+  needsYou: deskHomeViewSchema
+    .omit({ items: true, bots: true })
+    .extend({
+      items: z.array(
+        deskHomeItemSchema
+          .omit({ botName: true, whatif: true })
+          .extend({ botName: userTextSchema, whatif: mcpWhatIfSchema.nullable() }),
+      ),
+      bots: z.array(
+        deskHomeViewSchema.shape.bots.element.omit({ name: true }).extend({ name: userTextSchema }),
+      ),
+    })
+    .nullable(),
+  reason: deskGateReason,
+});
+export type McpNeedsYou = z.infer<typeof mcpNeedsYouSchema>;
+
+export const mcpGetWhatIfInputSchema = z.object({ whatifId: uuidSchema });
+export const mcpGetWhatIfSchema = z.object({
+  ...meta,
+  notForecast: z.literal(MCP_NOT_FORECAST),
+  whatif: mcpWhatIfSchema.nullable(),
+  reason: deskGateReason,
+});
+export type McpGetWhatIf = z.infer<typeof mcpGetWhatIfSchema>;
+
+export const mcpTrackRecordSchema = z.object({
+  ...meta,
+  notForecast: z.literal(MCP_NOT_FORECAST),
+  record: deskRecordViewSchema
+    .omit({ rows: true })
+    .extend({
+      rows: z.array(
+        deskRecordRowSchema.omit({ botName: true }).extend({ botName: userTextSchema }),
+      ),
+    })
+    .nullable(),
+  reason: deskGateReason,
+});
+export type McpTrackRecord = z.infer<typeof mcpTrackRecordSchema>;

@@ -219,4 +219,4 @@ Lưu ý:
 
 ## Phụ lục B · Tool đọc cho người dùng đã có (B1, DEC-TBD-mcp-user-tools)
 
-`get_portfolio_summary`, `get_risk_status`, `list_bots`, `get_bot`, `get_bot_decisions`, `explain_reason_code`, `find_traders`, `get_trader`. apps/mcp gọi route nội bộ `GET /api/v1/mcp/me/*` của api (shared secret + `x-mcp-token`). api tự introspect token và chỉ đọc dữ liệu của người giữ token, qua đúng service mà màn hình đang dùng. Output theo schema trong `packages/shared/src/api/mcp.ts`. Tool AI Desk (`list_needs_you`, `get_whatif`, `get_track_record`) để B2; bản nháp để B3.
+`get_portfolio_summary`, `get_risk_status`, `list_bots`, `get_bot`, `get_bot_decisions`, `explain_reason_code`, `find_traders`, `get_trader`. apps/mcp gọi route nội bộ `GET /api/v1/mcp/me/*` của api (shared secret + `x-mcp-token`). api tự introspect token và chỉ đọc dữ liệu của người giữ token, qua đúng service mà màn hình đang dùng. Output theo schema trong `packages/shared/src/api/mcp.ts`. Tool AI Desk (B2, DEC-TBD-mcp-desk-tools): `list_needs_you`, `get_whatif`, `get_track_record` qua `GET /api/v1/mcp/me/desk/*`, cùng service với màn AI Desk; mọi output có câu `notForecast`. Bản nháp để B3.

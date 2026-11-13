@@ -2,6 +2,9 @@ import {
   MCP_PAGE_MAX,
   MCP_PERIODS,
   mcpBotDecisionsSchema,
+  mcpGetWhatIfSchema,
+  mcpNeedsYouSchema,
+  mcpTrackRecordSchema,
   mcpFindTradersSchema,
   mcpGetBotSchema,
   mcpGetTraderSchema,
@@ -145,6 +148,41 @@ const USER_TOOLS: readonly ToolDef[] = [
       "Read-only. What a bot reason code (why a bot paused or stopped) means and when the bot can resume.",
     input: reasonCodeInput,
     run: explainReasonCode,
+  },
+  {
+    name: "list_needs_you",
+    endpoint: "user",
+    scope: "read",
+    title: "AI Desk: needs you",
+    description:
+      "Read-only. Up to 3 things in AI Desk that need the user's attention (rule, severity, facts and their source), the latest comparison for each if one exists, and each bot's health. Comparisons replay the past 7 days and are not a forecast. Starting a comparison or applying a change is only possible in DeskLabs.",
+    input: {},
+    run: (ctx) => read(ctx, `${ME}/desk/needs-you`, mcpNeedsYouSchema),
+  },
+  {
+    name: "get_whatif",
+    endpoint: "user",
+    scope: "read",
+    title: "AI Desk: comparison",
+    description:
+      "Read-only. One AI Desk comparison: each option (keep, lower leverage, tighter stop, review settings) with its result over the past 7 days, and which one AI Desk picked and why. Not a forecast. Applying an option is only possible in DeskLabs.",
+    input: { whatifId: uuid.describe("Comparison id (whatif.id from list_needs_you)") },
+    run: (ctx, args) =>
+      read(
+        ctx,
+        `${ME}/desk/whatifs/${encodeURIComponent(String(args.whatifId))}`,
+        mcpGetWhatIfSchema,
+      ),
+  },
+  {
+    name: "get_track_record",
+    endpoint: "user",
+    scope: "read",
+    title: "AI Desk: track record",
+    description:
+      "Read-only. Changes the user applied from AI Desk and how each did 7 days later: Helped, Made it worse, No clear effect, or Still measuring. Results are past days, not a forecast.",
+    input: {},
+    run: (ctx) => read(ctx, `${ME}/desk/record`, mcpTrackRecordSchema),
   },
   {
     name: "find_traders",

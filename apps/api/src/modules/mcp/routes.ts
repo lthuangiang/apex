@@ -1,5 +1,6 @@
 import {
   mcpBotDecisionsInputSchema,
+  mcpGetWhatIfInputSchema,
   mcpFindTradersInputSchema,
   mcpGetTraderInputSchema,
   mcpListBotsInputSchema,
@@ -19,6 +20,7 @@ import { audit, AuditAction } from "../../lib/audit";
 import { parseOrThrow } from "../../lib/http";
 
 import { requireMcpCaller, type McpAuthDeps, type McpCaller } from "./auth";
+import { mcpGetWhatIf, mcpNeedsYou, mcpTrackRecord } from "./desk";
 import {
   teamBotTimeline,
   teamBuilderRevenue,
@@ -163,6 +165,21 @@ function registerMcpUserRoutes(app: FastifyInstance, deps: McpAuthDeps & UserToo
     const q = parseOrThrow(mcpFindTradersInputSchema, request.query);
     return mcpFindTraders(deps, userId, q.tab);
   });
+
+  // B2 (DEC-TBD-mcp-desk-tools): AI Desk, chỉ đọc.
+  app.get(`${MCP_USER_PREFIX}/desk/needs-you`, async (request) =>
+    mcpNeedsYou(deps, await me(request)),
+  );
+
+  app.get(`${MCP_USER_PREFIX}/desk/whatifs/:whatifId`, async (request) => {
+    const userId = await me(request);
+    const p = parseOrThrow(mcpGetWhatIfInputSchema, request.params);
+    return mcpGetWhatIf(deps, userId, p.whatifId);
+  });
+
+  app.get(`${MCP_USER_PREFIX}/desk/record`, async (request) =>
+    mcpTrackRecord(deps, await me(request)),
+  );
 
   app.get(`${MCP_USER_PREFIX}/traders/:address`, async (request) => {
     const userId = await me(request);
