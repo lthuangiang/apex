@@ -375,18 +375,21 @@ export function AgentPage({ botId }: { botId?: string }) {
           title={t("title")}
           subtitle={t("subtitle")}
           back={{ href: "/", label: t("back") }}
+          // Chưa có bot: chỉ một nút "New bot" (trong khối rỗng), không lặp ở tiêu đề (báo cáo test E24).
           action={
-            <Link
-              href="/bots?tab=catalog"
-              className="flex min-h-tap items-center gap-2 rounded-[14px] bg-accent px-[18px] text-sm font-bold text-white no-underline shadow-accent"
-            >
-              <Plus aria-hidden="true" size={16} strokeWidth={2.4} />
-              {t("newAgent")}
-            </Link>
+            empty ? undefined : (
+              <Link
+                href="/bots?tab=catalog"
+                className="flex min-h-tap items-center gap-2 rounded-[14px] bg-accent px-[18px] text-sm font-bold text-white no-underline shadow-accent"
+              >
+                <Plus aria-hidden="true" size={16} strokeWidth={2.4} />
+                {t("newAgent")}
+              </Link>
+            )
           }
         />
 
-        {missing ? <NotConnected /> : null}
+        {missing ? <NotConnected message={t("notConnected")} /> : null}
 
         {/* Chọn agent: hàng thẻ ngang phía trên (artboard Agent), chi tiết chiếm hết chiều ngang (F1). */}
         {agents.length > 1 || (agents.length === 1 && botId !== undefined) ? (

@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
+import { NotConnected, useSodexMissing } from "@/components/not-connected";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { api, ApiError } from "@/lib/api";
 import { feeLabels } from "@/lib/format";
@@ -69,6 +70,8 @@ export function CreateBot({
   const [levAck, setLevAck] = useState(false);
   const [code, setCode] = useState("");
   const [started, setStarted] = useState(false);
+  // Lỗi đỏ chỉ hiện sau khi người dùng sửa một ô hoặc bấm Save / Start (báo cáo test E23), không ngay khi mở.
+  const [touched, setTouched] = useState(false);
   const keys = useRef({ save: crypto.randomUUID(), start: crypto.randomUUID() });
   const s = (k: string) => t(`strategies.${strategy}.${k}`);
   const marketList = useMarkets().data?.items ?? [];
@@ -231,7 +234,7 @@ export function CreateBot({
   // AI parameters cần vốn (UI_REVIEW E7): viền lỗi ô vốn còn trống và đưa con trỏ tới đó.
   const capitalKey = FIELDS[strategy].find((f) => f.amount === true)?.key;
   const capitalEmpty = capitalKey !== undefined && (values[capitalKey] ?? "") === "";
-  const needCapital = ai.state.needsCapital && !ai.state.loading && capitalEmpty;
+  const needCapital = touched && ai.state.needsCapital && !ai.state.loading && capitalEmpty;
   const [focusKey, setFocusKey] = useState<{ key: string; n: number } | null>(null);
   useEffect(() => {
     if (needCapital) setFocusKey((f) => ({ key: capitalKey, n: (f?.n ?? 0) + 1 }));
@@ -242,8 +245,10 @@ export function CreateBot({
   };
   const engine = s("engine");
   const errorText = useBotErrorText();
+  const sodexMissing = useSodexMissing();
 
   const startBot = () => {
+    setTouched(true);
     void (async () => {
       // Form đã đổi (hoặc chưa lưu): lưu draft / version mới trước, server chạy lại check khi start.
       let id = botId;
@@ -315,6 +320,8 @@ export function CreateBot({
             </span>
           </div>
         </header>
+        {/* Chưa kết nối SoDEX: vẫn soạn và lưu draft được, nhưng chưa start được (báo cáo test E23). */}
+        {sodexMissing ? <NotConnected message={t("notConnected")} /> : null}
 
         <div className="flex flex-wrap items-start gap-4">
           {isMobile ? null : (
@@ -352,7 +359,10 @@ export function CreateBot({
                   ]),
                 ),
               }}
-              onChange={update}
+              onChange={(next) => {
+                setTouched(true);
+                update(next);
+              }}
               focusKey={focusKey}
               preview={
                 isMobile ? { node: visual, at: hasPreview ? "advanced" : "amount" } : undefined
@@ -517,6 +527,7 @@ export function CreateBot({
                     className="min-h-[50px] flex-[1_1_140px]"
                     pending={save.isPending}
                     onClick={() => {
+                      setTouched(true);
                       save.mutate();
                     }}
                   >
@@ -590,6 +601,7 @@ export function CreateBot({
                 className="min-h-tap flex-[1_1_0]"
                 pending={save.isPending && !startAfterSave}
                 onClick={() => {
+                  setTouched(true);
                   save.mutate();
                 }}
               >
