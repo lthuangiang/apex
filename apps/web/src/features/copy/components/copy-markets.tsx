@@ -76,7 +76,7 @@ export function MarketsCard({
     const lev = levOf(r);
     const editable = pick.perMarket && isPicked(pick, r.market);
     return (
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex items-center gap-1.5 whitespace-nowrap">
         {editable ? (
           <button
             type="button"
@@ -194,7 +194,7 @@ export function MarketsCard({
                   key={r.market}
                   className={`border-t border-border ${isPicked(pick, r.market) ? "" : "opacity-60"}`}
                 >
-                  <th scope="row" className="px-3.5 py-2 text-left">
+                  <th scope="row" className="px-3.5 py-2 text-left whitespace-nowrap">
                     <label className="flex min-h-tap cursor-pointer items-center gap-2.5 text-[15px] font-bold">
                       {check(r)}
                       {r.market}
