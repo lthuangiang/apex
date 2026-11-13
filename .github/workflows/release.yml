@@ -1,5 +1,6 @@
-# Release (docs/RELEASE.md): push tag `vX.Y.Z` trên main → kiểm tra CI của commit đó đã xanh → build 10 image
-# `linux/amd64` song song → push Docker Hub `<DRIFT_IMAGE>:<app>-<tag>` (+ `<app>-latest`) → tạo GitHub Release.
+# Release (docs/RELEASE.md): push tag `vX.Y.Z` trên main → kiểm tra CI của commit đó đã xanh → build các app đổi
+# so với tag trước (một job, cache chung) → push Docker Hub `<DRIFT_IMAGE>:<app>-<tag>` (+ `<app>-latest`); app không
+# đổi trỏ vào image của tag trước → tạo GitHub Release.
 # Không deploy: người dùng tự chạy `infra/deploy/build-push.sh --deploy-only <tag>` (tiền thật trên mainnet).
 name: release
 
@@ -40,33 +41,64 @@ jobs:
           [ "$conclusion" = "success" ] || {
             echo "::error::CI has not passed on $GITHUB_SHA (got: ${conclusion:-no run})"; exit 1; }
 
+  # Một job, một buildx builder, build lần lượt (DEC-TBD-release-layers): phần đầu giống hệt của 10 Dockerfile (node,
+  # corepack, pnpm fetch, manifest) dùng chung cache nên cùng digest giữa các app và giữa các release; VPS chỉ tải phần
+  # đổi. Chỉ build app có thay đổi so với tag trước (infra/deploy/changed-apps.sh); app không đổi được gắn tag mới
+  # trỏ vào đúng image của tag trước (cùng digest, không build, không tải lại).
   build:
     needs: verify
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: true
-      matrix:
-        app: [api, backtest, engine, jobs, marketdata, realtime, reco, scheduler, signer, web]
+    env:
+      IMAGE: ${{ vars.DRIFT_IMAGE }}
+      TAG: ${{ github.ref_name }}
+      PLATFORM: ${{ vars.PLATFORM || 'linux/amd64' }}
+      WC: ${{ vars.WALLETCONNECT_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: apps/${{ matrix.app }}/Dockerfile
-          platforms: ${{ vars.PLATFORM || 'linux/amd64' }}
-          push: true
-          tags: |
-            ${{ vars.DRIFT_IMAGE }}:${{ matrix.app }}-${{ github.ref_name }}
-            ${{ vars.DRIFT_IMAGE }}:${{ matrix.app }}-latest
-          build-args: |
-            NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${{ vars.WALLETCONNECT_PROJECT_ID }}
-          cache-from: type=gha,scope=${{ matrix.app }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+      - name: Pick apps to build
+        id: pick
+        run: |
+          git fetch --tags --force
+          PREV="$(git describe --tags --abbrev=0 --match 'v*.*.*' "${TAG}^" 2>/dev/null || true)"
+          echo "previous tag: ${PREV:-none}"
+          BUILD="$(DRY_RUN=1 infra/deploy/changed-apps.sh "$PREV" "$TAG" | tr '\n' ' ')"
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "build: ${BUILD:-none}"
+      - name: Build changed apps, reuse the rest
+        env:
+          PREV: ${{ steps.pick.outputs.prev }}
+          BUILD: ${{ steps.pick.outputs.build }}
+        run: |
+          set -euo pipefail
+          for app in api backtest engine jobs marketdata realtime reco scheduler signer web; do
+            case " $BUILD " in *" $app "*) want=1 ;; *) want=0 ;; esac
+            # App không đổi: gắn tag mới vào image của tag trước (nếu image đó còn trên registry).
+            if [ "$want" = 0 ] && [ -n "$PREV" ] &&
+              docker buildx imagetools inspect "$IMAGE:$app-$PREV" >/dev/null 2>&1; then
+              echo "::group::$app: reuse $app-$PREV"
+              docker buildx imagetools create -t "$IMAGE:$app-$TAG" -t "$IMAGE:$app-latest" "$IMAGE:$app-$PREV"
+              echo "::endgroup::"
+              continue
+            fi
+            echo "::group::$app: build"
+            docker buildx build --platform "$PLATFORM" \
+              -f "apps/$app/Dockerfile" \
+              --build-arg "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=$WC" \
+              --cache-from "type=registry,ref=$IMAGE:buildcache-$app" \
+              --cache-to "type=registry,ref=$IMAGE:buildcache-$app,mode=max" \
+              -t "$IMAGE:$app-$TAG" -t "$IMAGE:$app-latest" \
+              --push .
+            echo "::endgroup::"
+          done
+          echo "built: ${BUILD:-none}; reused the rest from ${PREV:-none}"
 
   release:
     needs: build

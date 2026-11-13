@@ -8,7 +8,7 @@
 | File | Việc |
 |---|---|
 | `docker-compose.prod.yml` | Chồng lên `docker-compose.yml`: image từ 1 repo private Docker Hub, tag `<app>-<git sha>`, mỗi service 1 bản, backtest 1 CPU / 1 GB, HTTPS Let's Encrypt, Vault profile `prod` |
-| `.github/workflows/release.yml` | Chạy khi push tag `vX.Y.Z` trên `main` (`docs/RELEASE.md`): kiểm tra CI của commit đã xanh → build 10 image `linux/amd64` (biến `PLATFORM` để đổi) → push Docker Hub `<app>-<tag>` + `<app>-latest` → tạo GitHub Release. **Không deploy.** Thay `deploy.yml` cũ (2026-11-12) |
+| `.github/workflows/release.yml` | Chạy khi push tag `vX.Y.Z` trên `main` (`docs/RELEASE.md`): kiểm tra CI của commit đã xanh → build các app đổi so với tag trước trong một job, cache chung (biến `PLATFORM` để đổi kiến trúc) → push Docker Hub `<app>-<tag>` + `<app>-latest`; app không đổi trỏ vào image của tag trước → tạo GitHub Release. **Không deploy.** Thay `deploy.yml` cũ (2026-11-12) |
 | `infra/deploy/build-push.sh` | Deploy lên VPS: `--deploy-only <tag>` cho tag do `release.yml` build; vẫn build + push từ máy mình được khi GitHub không dùng được |
 | `infra/deploy/bootstrap-vps.sh` | Chạy 1 lần bằng root trên VPS mới: Docker, user `deploy`, swap 4 GB, ufw, SSH chỉ bằng key, vá tự động, cron backup |
 | `infra/deploy/deploy.sh` | Trên VPS: pull → hạ tầng → migrate → mọi service healthy; không healthy trong 5 phút thì quay về tag trước |
@@ -146,7 +146,7 @@ infra/deploy/build-push.sh --deploy-only <tag>     # không build: deploy (hoặ
 
 - Máy đích mặc định `root@149.28.148.63` (đổi bằng `DEPLOY_TARGET` hoặc `--deploy user@host`). SSH hỏi mật khẩu một lần, trước khi build; rsync và deploy dùng lại kết nối. Muốn khỏi gõ: `ssh-copy-id root@149.28.148.63`, hoặc để `DEPLOY_SSH_PASS=...` trong `infra/deploy/.deploy.local` (đã gitignore, cần `brew install sshpass`).
 - Chỉ build vài app: script đọc `DRIFT_TAG` đang chạy trên VPS và gắn tag mới cho các app không build, trỏ vào đúng image đang chạy (chép trên registry, không build lại), vì compose dùng một `DRIFT_TAG` chung.
-- Trên VPS (`/opt/drift`, chỉ một `docker-compose.yml`), script chạy đúng các bước làm tay: đổi `DRIFT_TAG` trong `.env` → `docker compose pull` → `docker compose run --rm migrate` → `docker compose up -d` → `docker system prune -af`. Không chép compose của repo lên VPS. Dọn image sau cùng, để pull / migrate lỗi thì bản đang chạy vẫn còn.
+- Trên VPS (`/opt/drift`, chỉ một `docker-compose.yml`), script chạy đúng các bước làm tay: đổi `DRIFT_TAG` trong `.env` → `docker compose pull` → `docker compose run --rm migrate` → `docker compose up -d` → xoá image `DRIFT_IMAGE` **không** thuộc tag hiện tại hay tag liền trước, rồi `docker image prune -f` (layer treo). Không đụng image hạ tầng, không `docker system prune -af` nữa: rollback một bản không phải tải lại, và layer chung của bản mới không bị xoá (DEC-TBD-release-layers). Không chép compose của repo lên VPS. Dọn image sau cùng, để pull / migrate lỗi thì bản đang chạy vẫn còn.
 
 Quy tắc:
 - **Migration tương thích ngược**: chỉ thêm bảng/cột; xoá hoặc đổi tên ở một lần deploy sau. `deploy.sh` rollback image chứ không rollback migration.
