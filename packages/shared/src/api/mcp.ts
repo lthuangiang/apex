@@ -425,7 +425,7 @@ export const MCP_DRAFT_CONFIG = {
 export const MCP_DRAFT_NOTE =
   "Open this link in DeskLabs to review. Claude can't apply or start it." as const;
 export const MCP_DRAFTS_FULL =
-  "You have 20 open drafts. Open or discard some in DeskLabs first." as const;
+  "You have 20 open drafts. Open one in DeskLabs, or wait: drafts expire after 24 hours." as const;
 
 const draftConfigSchema = z
   .record(z.string().max(60), z.unknown())
