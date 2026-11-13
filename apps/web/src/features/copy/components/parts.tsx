@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import { useFollow } from "../api";
+import { useCopyErrorText, useFollowLimit } from "../errors";
 import { addr, holdText, initials, pctText, usd } from "../format";
 
 // Thành phần dùng chung của Copy Trading (artboard Leaders, WalletStats, CopyBot, CopyReview).
@@ -104,18 +105,26 @@ export function Avatar({ address, size = "md" }: { address: string; size?: "sm" 
 export function CopyAction({ card, label }: { card: Card; label: string }) {
   const t = useTranslations("copy.common");
   const follow = useFollow();
+  const limit = useFollowLimit();
+  const errorText = useCopyErrorText();
   if (card.slot === "full")
     return (
-      <Button
-        variant="tonal"
-        className="flex-1"
-        disabled={card.following || follow.isPending}
-        onClick={() => {
-          follow.mutate({ address: card.address, on: true });
-        }}
-      >
-        {card.following ? t("following") : t("copyLater")}
-      </Button>
+      <div className="flex flex-1 flex-col gap-1">
+        <Button
+          variant="tonal"
+          disabled={card.following || follow.isPending || limit.atLimit}
+          onClick={() => {
+            follow.mutate({ address: card.address, on: true });
+          }}
+        >
+          {card.following ? t("following") : t("copyLater")}
+        </Button>
+        {follow.isError ? (
+          <p role="alert" className="m-0 text-xs text-neg-ink">
+            {errorText(follow.error)}
+          </p>
+        ) : null}
+      </div>
     );
   return (
     <Link
