@@ -5,20 +5,16 @@ import type { DeskAiFact } from "./facts";
 // Câu mẫu của Desk AI (LLM tắt / lỗi / số không khớp) chỉ hiện số liên quan tới câu hỏi, không đổ cả bảng mọi bot:
 // - câu hỏi nhắc tên bot → chỉ bot đó;
 // - không nhắc → bỏ bot archived, tối đa 3 bot, lỗ / lãi lớn nhất trước;
-// - hỏi về lỗ ("loss") → chỉ trạng thái, lãi / lỗ và phí.
+// - mỗi bot chỉ trạng thái, lãi / lỗ và phí (bảng ngắn; đòn bẩy, stop… để LLM giải thích khi được hỏi).
 // Hàm thuần, không I/O (DEC-193).
 
 const MAX_BOTS = 3;
-const LOSS_KEYS: readonly DeskAiFact["key"][] = ["bot_state", "bot_net", "bot_fees"];
+const SHORT_KEYS: readonly DeskAiFact["key"][] = ["bot_state", "bot_net", "bot_fees"];
 
 const botIdOf = (f: DeskAiFact): string | null =>
   f.bot === null ? null : (f.id.split(":")[1] ?? null);
 
-export function templateFacts(
-  question: string,
-  facts: readonly DeskAiFact[],
-  opts: { loss?: boolean } = {},
-): DeskAiFact[] {
+export function templateFacts(question: string, facts: readonly DeskAiFact[]): DeskAiFact[] {
   const byBot = new Map<string, DeskAiFact[]>();
   for (const f of facts) {
     const id = botIdOf(f);
@@ -47,7 +43,5 @@ export function templateFacts(
             return size(b) - size(a);
           })
           .slice(0, MAX_BOTS);
-  return chosen.flatMap(([, fs]) =>
-    opts.loss === true ? fs.filter((f) => LOSS_KEYS.includes(f.key)) : fs,
-  );
+  return chosen.flatMap(([, fs]) => fs.filter((f) => SHORT_KEYS.includes(f.key)));
 }

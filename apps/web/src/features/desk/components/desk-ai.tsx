@@ -79,6 +79,35 @@ function MarketAnswer({ facts }: { facts: readonly Fact[] }) {
   );
 }
 
+/** Chiến lược có câu "best" (`desk.strategy.*`), theo thứ tự catalog. */
+const STRATEGY_LINES = [
+  "spot_grid",
+  "futures_grid",
+  "spot_dca",
+  "futures_dca",
+  "recurring_buy",
+  "rebalancing",
+  "funding_arb",
+] as const;
+
+/** Câu mẫu "chiến lược nào hợp thị trường nào": mỗi chiến lược một dòng, không chọn hộ, không hứa lãi. */
+function StrategiesAnswer() {
+  const t = useTranslations("desk.ai.templates");
+  const tb = useTranslations("desk.strategy");
+  const tn = useTranslations("createBot.strategies");
+  return (
+    <div className="flex flex-col gap-2 text-sm text-ink">
+      <p className="m-0">{t("strategies")}</p>
+      <ul className="m-0 flex list-none flex-col gap-1 p-0">
+        {STRATEGY_LINES.map((k) => (
+          <li key={k}>{t("strategyLine", { name: tn(`${k}.name`), best: tb(`${k}.best`) })}</li>
+        ))}
+      </ul>
+      <p className="m-0 text-xs text-muted">{t("marketNote")}</p>
+    </div>
+  );
+}
+
 /** Lời chào theo giờ trên máy người xem (báo cáo sáng xem lúc tối thì "Good evening"): < 12 giờ sáng, < 18 giờ chiều. */
 export function greetingAt(now: Date): "morning" | "afternoon" | "evening" {
   const h = now.getHours();
@@ -91,6 +120,7 @@ export function Answer({ answer }: { answer: DeskAiAnswer }) {
   if (answer.kind === "text")
     return <p className="m-0 text-sm whitespace-pre-line text-ink">{answer.text}</p>;
   if (answer.key === "market") return <MarketAnswer facts={answer.facts} />;
+  if (answer.key === "strategies") return <StrategiesAnswer />;
   const valueOf = (key: Fact["key"]) => answer.facts.find((f) => f.key === key)?.value ?? null;
   let lead: string;
   if (answer.key === "safety") {
@@ -295,7 +325,7 @@ export function DeskAiPanel() {
       </div>
       <div className="flex flex-col gap-2 border-t border-border bg-surface-2 px-[18px] pt-3 pb-4">
         <div className="flex flex-wrap gap-1.5">
-          {(["safe", "lose"] as const).map((k) => (
+          {(["safe", "lose", "market"] as const).map((k) => (
             <button
               key={k}
               type="button"
