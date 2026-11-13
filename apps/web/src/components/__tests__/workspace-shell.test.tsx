@@ -103,7 +103,7 @@ describe("WorkspaceShell sidebar order", () => {
     await user.click(screen.getByRole("button", { name: "More" }));
     const sheet = await screen.findByRole("dialog", { name: "More" });
     expect(linkNames(sheet)).toEqual([
-      "AI Desk",
+      "Portfolio",
       "Execution & Orders",
       "Risk Center",
       "Find traders",
@@ -114,4 +114,22 @@ describe("WorkspaceShell sidebar order", () => {
       "Platform Stats",
     ]);
   }, 15_000);
+
+  it("the mobile bottom bar shows AI Desk instead of Portfolio when AI Desk is on", () => {
+    const bottomBar = () => {
+      const nav = screen
+        .getAllByRole("navigation")
+        .find((n) => within(n).queryByRole("button", { name: "More" }) !== null);
+      if (nav === undefined) throw new Error("bottom bar missing");
+      return linkNames(nav);
+    };
+    flags.aiDesk = true;
+    renderShell(false);
+    expect(bottomBar()).toEqual(["Home", "AI Desk", "Agent", "Strategy"]);
+    cleanup();
+    flags.aiDesk = false;
+    renderShell(false);
+    expect(bottomBar()).toEqual(["Home", "Portfolio", "Agent", "Strategy"]);
+    flags.aiDesk = true;
+  });
 });

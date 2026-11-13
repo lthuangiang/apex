@@ -503,6 +503,11 @@ export function CopyFlowPage({ leader }: { leader: string | null }) {
                 </dl>
               </Card>
               {overBudgetNote}
+              {p.thinMarkets.map((m) => (
+                <p key={`thin-${m}`} className="m-0 rounded-card bg-warn-bg p-4 text-sm text-warn">
+                  <strong>{base(m)}</strong> · {t("review.thinMarket")}
+                </p>
+              ))}
               {p.dropped.map((d) => (
                 <p key={d.market} className="m-0 rounded-card bg-warn-bg p-4 text-sm text-warn">
                   <strong>

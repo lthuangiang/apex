@@ -160,7 +160,7 @@ export function BotsPage() {
     queryFn: () => api("GET", "/api/v1/bots?archived=true", botListSchema),
     refetchInterval: 5_000,
   });
-  // `?tab=catalog` (ví dụ từ "+ New agent" ở Trading Agent) mở thẳng Strategy catalog.
+  // `?tab=catalog` (ví dụ từ "+ New bot" ở Trading Agent) mở thẳng Strategy catalog.
   const params = useSearchParams();
   const [tab, setTab] = useState<"mine" | "catalog">(
     params.get("tab") === "catalog" ? "catalog" : "mine",
@@ -229,12 +229,14 @@ export function BotsPage() {
               <dd className="m-0 text-ink-2">{t(`fits.${key}`)}</dd>
               <dt className="font-bold text-warn">{t("catalog.risk")}</dt>
               <dd className="m-0 text-ink-2">{t(`risks.${key}`)}</dd>
+              {/* Phí builder trên mọi thẻ, theo mức của tài khoản (DEC-94, DEC-159; báo cáo test E21). */}
+              <dd className="col-span-2 m-0 font-bold text-ink">
+                {t("catalog.feeRate", {
+                  rate: feeLabels(builderFeeRateFor(key, features.data?.builderFees)).pct,
+                })}
+              </dd>
               {VOLUME_KEYS.includes(key) ? (
-                <dd className="col-span-2 m-0 font-bold text-ink">
-                  {t("catalog.feeRate", {
-                    rate: feeLabels(builderFeeRateFor(key, features.data?.builderFees)).pct,
-                  })}
-                </dd>
+                <dd className="col-span-2 m-0 text-xs text-muted">{t("catalog.sopoints")}</dd>
               ) : null}
             </dl>
             <Link
@@ -379,7 +381,18 @@ export function BotsPage() {
                           ? "empty"
                           : "ready"
                   }
-                  empty={{ title: t("empty.title"), description: t("empty.body") }}
+                  empty={{
+                    title: t("empty.title"),
+                    description: t("empty.body"),
+                    action: (
+                      <Link
+                        href="/bots?tab=catalog"
+                        className="inline-flex min-h-tap items-center rounded-control bg-accent-tint px-4 text-sm font-bold text-accent-ink no-underline"
+                      >
+                        {t("empty.cta")}
+                      </Link>
+                    ),
+                  }}
                   error={{
                     title: te("generic"),
                     retryLabel: te("retry"),
