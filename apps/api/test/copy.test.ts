@@ -258,6 +258,36 @@ describe("Copy Trading v1", () => {
     expect((await client.request("DELETE", `/api/v1/traders/${T1}/follow`)).statusCode).toBe(200);
   });
 
+  it("keeps one alert level per followed trader: Big moves by default, changeable, NOT_FOUND when not following", async () => {
+    const { client } = await user("copy-alerts@example.com");
+    expect((await client.request("POST", `/api/v1/traders/${T1}/follow`)).statusCode).toBe(200);
+    const before = followingSchema.parse((await client.request("GET", "/api/v1/following")).json());
+    expect(before.traders.map((t) => t.alertLevel)).toEqual(["big_moves"]);
+    const set = await client.request("PUT", `/api/v1/traders/${T1}/follow/alerts`, {
+      body: { level: "positions" },
+    });
+    expect(set.statusCode).toBe(200);
+    expect(set.json()).toEqual({ address: T1, alertLevel: "positions" });
+    const after = followingSchema.parse((await client.request("GET", "/api/v1/following")).json());
+    expect(after.traders.map((t) => t.alertLevel)).toEqual(["positions"]);
+    const profile = (await client.request("GET", `/api/v1/traders/${T1}`)).json<{
+      followAlertLevel: string | null;
+    }>();
+    expect(profile.followAlertLevel).toBe("positions");
+    const bad = await client.request("PUT", `/api/v1/traders/${T1}/follow/alerts`, {
+      body: { level: "everything" },
+    });
+    expect(errorOf(bad.json()).code).toBe("VALIDATION_FAILED");
+    await client.request("DELETE", `/api/v1/traders/${T1}/follow`);
+    const gone = await client.request("PUT", `/api/v1/traders/${T1}/follow/alerts`, {
+      body: { level: "off" },
+    });
+    expect(errorOf(gone.json())).toMatchObject({
+      code: "NOT_FOUND",
+      details: { reason: "not_following" },
+    });
+  });
+
   it("turns budget and safety level into S12 fields on the server, and leaves out taken markets", async () => {
     const { client, userId } = await user("copy-preview@example.com");
     const accountID = Math.floor(Math.random() * 1e9);

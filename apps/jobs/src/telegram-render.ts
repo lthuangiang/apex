@@ -78,6 +78,7 @@ function targetOf(row: RenderRow): { path: string; label: string } {
     case "daily_summary":
       return { path: "/desk", label: M.buttons.openDesk };
     case "leader_big_move":
+    case "leader_position":
       return { path: "/following", label: M.buttons.following };
     case "telegram_connected":
     case "telegram_moved":
@@ -135,6 +136,21 @@ function title(row: RenderRow): string {
       return M.titles.daily_summary;
     case "leader_big_move":
       return M.titles.leader_big_move;
+    case "leader_position": {
+      // Không ghi địa chỉ ví của trader (mục 5), chỉ loại thay đổi, chiều và coin.
+      const kind = str(row.data.kind);
+      const side = row.data.side === "long" || row.data.side === "short" ? row.data.side : null;
+      const coin = escapeTelegramHtml(str(row.data.coin) ?? "");
+      const template =
+        kind === "close"
+          ? M.titles.leader_position_close
+          : kind === "flip"
+            ? M.titles.leader_position_flip
+            : kind === "liquidated"
+              ? M.titles.leader_position_liquidated
+              : M.titles.leader_position_open;
+      return fill(template, { side: side ?? M.positionSide, coin });
+    }
     case "telegram_connected":
     case "telegram_moved":
     case "telegram_blocked":
@@ -179,6 +195,8 @@ function body(row: RenderRow): string | null {
         ? null
         : fill(M.bodies.leader_big_move, { coin: escapeTelegramHtml(coin) });
     }
+    case "leader_position":
+      return M.bodies.leader_position;
     case "fill":
     case "telegram_connected":
     case "telegram_moved":

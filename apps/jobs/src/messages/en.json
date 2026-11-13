@@ -1,6 +1,7 @@
 {
   "telegram": {
     "aBot": "A bot",
+    "positionSide": "position",
     "buttons": {
       "review": "Review in DeskLabs",
       "agent": "Open Trading Agent",
@@ -23,6 +24,10 @@
       "fill": "✅ <b>{bot} filled an order</b>",
       "daily_summary": "✦ <b>Good morning</b>",
       "leader_big_move": "👤 <b>A trader you follow made a big move</b>",
+      "leader_position_open": "👤 <b>A trader you follow opened a {side} on {coin}</b>",
+      "leader_position_close": "👤 <b>A trader you follow closed their {side} on {coin}</b>",
+      "leader_position_flip": "👤 <b>A trader you follow flipped to a {side} on {coin}</b>",
+      "leader_position_liquidated": "👤 <b>A trader you follow was liquidated on {coin}</b>",
       "team_signup": "🆕 <b>New signup</b> · {email}",
       "team_sodex_connected": "🔗 <b>SoDEX connected</b> · {email} · {wallet}",
       "team_bot_started": "▶️ <b>Bot started</b> · {email} · {details}"
@@ -41,7 +46,8 @@
       "briefNone": "Good morning. Nothing needs you today.",
       "briefOne": "Good morning. One thing needs you today: {bot}.",
       "briefMany": "Good morning. {count} things need you today, starting with {bot}.",
-      "leader_big_move": "Market: {coin}."
+      "leader_big_move": "Market: {coin}.",
+      "leader_position": "Following only. Nothing was copied."
     },
     "merged": {
       "samePause": "🔴 <b>{n} bots paused: {reason}.</b>",
