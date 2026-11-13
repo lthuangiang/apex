@@ -1,3 +1,4 @@
+import { mcpCalls } from "@drift/db";
 import {
   AppError,
   ErrorCode,
@@ -37,6 +38,7 @@ export const OAUTH_PATHS = {
   register: "/api/v1/oauth/register",
   revoke: "/api/v1/oauth/revoke",
   introspect: "/api/v1/oauth/introspect",
+  calls: "/api/v1/mcp/calls",
 } as const;
 
 export const OAUTH_CSRF_EXEMPT: readonly string[] = [
@@ -44,6 +46,7 @@ export const OAUTH_CSRF_EXEMPT: readonly string[] = [
   OAUTH_PATHS.register,
   OAUTH_PATHS.revoke,
   OAUTH_PATHS.introspect,
+  OAUTH_PATHS.calls,
 ];
 
 export const INTROSPECT_SECRET_HEADER = "x-mcp-introspect-secret";
@@ -97,8 +100,30 @@ function formOf(request: FastifyRequest): Record<string, string | undefined> {
   return out;
 }
 
+const mcpCallSchema = z.object({
+  tokenId: z.uuid().nullable(),
+  userId: z.uuid().nullable(),
+  clientId: z.string().max(2000).nullable(),
+  endpoint: z.enum(["user", "team"]),
+  tool: z.string().min(1).max(100),
+  argsHash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .nullable(),
+  durationMs: z.number().int().min(0).max(600_000),
+  status: z.enum(["ok", "error", "denied", "rate_limited"]),
+  traceId: z.string().max(100),
+});
+
 export function registerOauthRoutes(app: FastifyInstance, options: OauthRouteOptions): void {
   const { deps } = options;
+  /** Endpoint nội bộ apps/mcp → api: sai / thiếu shared secret → 401, không nói lý do. */
+  const requireInternal = (request: FastifyRequest) => {
+    const secret = options.introspectSecret;
+    const header = request.headers[INTROSPECT_SECRET_HEADER];
+    if (secret === null || typeof header !== "string" || !safeEqual(sha256(header), sha256(secret)))
+      throw new AppError(ErrorCode.unauthenticated, "Sign in required.");
+  };
 
   // Chỉ trong phạm vi route OAuth: đọc body form-urlencoded (RFC 6749) mà không thêm dependency.
   app.register((scope, _opts, done) => {
@@ -170,17 +195,19 @@ export function registerOauthRoutes(app: FastifyInstance, options: OauthRouteOpt
 
     // Nội bộ (apps/mcp → api): kiểm tra token mỗi request. Sai / thiếu secret → 401, không nói lý do.
     scope.post(OAUTH_PATHS.introspect, async (request, reply) => {
-      const secret = options.introspectSecret;
-      const header = request.headers[INTROSPECT_SECRET_HEADER];
-      if (
-        secret === null ||
-        typeof header !== "string" ||
-        !safeEqual(sha256(header), sha256(secret))
-      )
-        throw new AppError(ErrorCode.unauthenticated, "Sign in required.");
+      requireInternal(request);
       const raw = formOf(request).token;
       if (raw === undefined || raw === "") return { active: false };
       return reply.header("cache-control", "no-store").send(await introspect(deps, raw));
+    });
+
+    // Nội bộ: apps/mcp ghi nhật ký một lần gọi tool (không có tham số gốc hay nội dung trả về).
+    scope.post(OAUTH_PATHS.calls, async (request, reply) => {
+      requireInternal(request);
+      const row = mcpCallSchema.safeParse(request.body);
+      if (!row.success) return reply.status(400).send({ error: "invalid_request" });
+      await deps.db.insert(mcpCalls).values(row.data);
+      return reply.status(204).send();
     });
 
     done();

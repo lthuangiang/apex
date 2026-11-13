@@ -2520,14 +2520,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": [
-    "settings.tabs.apps",
-    "oauth",
-    "beta",
-    "adminUsers.cols.adaptiveDca",
-    "adminUsers.adaptiveDca",
-    "createBot.errors.strategyOff"
-  ],
+  "_pendingReview": [],
   "beta": {
     "label": "Beta",
     "note": "Still being tested. Use small amounts."

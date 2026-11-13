@@ -2,7 +2,7 @@
 # Build image các app DRIFT và đẩy lên repo private Docker Hub; tuỳ chọn deploy luôn lên VPS (DEC-70).
 # Chạy được từ bất kỳ đâu: script tự về gốc repo.
 #
-#   infra/deploy/build-push.sh                          # build + push cả 10 app
+#   infra/deploy/build-push.sh                          # build + push cả 11 app
 #   infra/deploy/build-push.sh web api                  # chỉ một số app
 #   infra/deploy/build-push.sh --deploy                 # build + push + deploy lên DEPLOY_TARGET
 #   infra/deploy/build-push.sh --deploy engine web      # chỉ build engine, web; app khác giữ image đang chạy
@@ -38,7 +38,7 @@ IMAGE="${DRIFT_IMAGE:-docker.io/lthuangiang/drift}"
 PLATFORM="${PLATFORM:-linux/amd64}"
 # Ngày giờ phút giây lúc build (giờ máy): mỗi lần build một tag riêng, để rollback được.
 TAG="${TAG:-$(date +%Y%m%d%H%M%S)}"
-ALL_APPS=(api backtest engine jobs marketdata realtime reco scheduler signer web)
+ALL_APPS=(api backtest engine jobs marketdata mcp realtime reco scheduler signer web)
 DEFAULT_TARGET="${DEPLOY_TARGET:-root@149.28.148.63}"
 
 is_app() {
@@ -95,7 +95,7 @@ if [ "$DEPLOY" = 1 ]; then
   PREV="$(remote "sed -n 's/^DRIFT_TAG=//p' /opt/drift/.env" | tail -n 1)"
   echo "    running tag: ${PREV:-none}"
   if [ "$BUILD" = 1 ] && [ ${#APPS[@]} -ne ${#ALL_APPS[@]} ] && [ -z "$PREV" ]; then
-    echo "error: no DRIFT_TAG on $TARGET yet; build all 10 apps for the first deploy" >&2; exit 1
+    echo "error: no DRIFT_TAG on $TARGET yet; build all 11 apps for the first deploy" >&2; exit 1
   fi
 fi
 
