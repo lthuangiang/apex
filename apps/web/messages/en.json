@@ -2518,7 +2518,11 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": [],
+  "_pendingReview": ["beta", "adminUsers.cols.adaptiveDca", "adminUsers.adaptiveDca"],
+  "beta": {
+    "label": "Beta",
+    "note": "Still being tested. Use small amounts."
+  },
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",
@@ -3933,7 +3937,8 @@
       "twoFactor": "2FA",
       "actions": "Actions",
       "volumeBots": "Volume bots",
-      "aiDesk": "AI Desk"
+      "aiDesk": "AI Desk",
+      "adaptiveDca": "Adaptive DCA"
     },
     "team": "Team",
     "notConnected": "Not connected",
@@ -4002,6 +4007,20 @@
       "onLabel": "Turn on AI Desk for {email}",
       "offLabel": "Turn off AI Desk for {email}",
       "error": "Couldn’t save the change. Try again."
+    },
+    "adaptiveDca": {
+      "onLabel": "Turn on Adaptive DCA for {email}",
+      "offLabel": "Turn off Adaptive DCA for {email}",
+      "onTitle": "Turn on Adaptive DCA for {email}?",
+      "offTitle": "Turn off Adaptive DCA for {email}?",
+      "on": {
+        "one": "AI Adaptive DCA appears in their Strategy Lab and they can create and start it.",
+        "two": "Their other bots are not affected."
+      },
+      "off": {
+        "one": "AI Adaptive DCA disappears from their Strategy Lab.",
+        "two": "Running Adaptive DCA bots are paused. Open positions stay open until the user closes them."
+      }
     }
   },
   "landing": {

@@ -2029,7 +2029,7 @@ describe("engine", () => {
     await stopPaperBots();
   });
 
-  it("feeds 1-minute candles to AI Adaptive DCA bots, only for accounts with AI Desk on (DEC-107)", async () => {
+  it("feeds 1-minute candles to AI Adaptive DCA bots, only while the account's Adaptive DCA flag is on (DEC-107)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     await seedCandles("ETH-USD");
@@ -2049,14 +2049,23 @@ describe("engine", () => {
     const state = async () =>
       (await db.select().from(botRuntime).where(eq(botRuntime.botId, botId)))[0]?.state as
         { regime?: string } | undefined;
-    // Một engine cho cả hai giai đoạn: chưa bật cờ Adaptive DCA thì không nạp bot; bật rồi thì vòng sau nạp và gửi nến
-    // (cờ riêng, không theo AI Desk: DEC-192).
+    // Một engine cho cả hai giai đoạn: team tắt cờ Adaptive DCA thì không nạp bot; bật lại thì vòng sau nạp và gửi nến
+    // (cờ riêng, không theo AI Desk: DEC-192; mặc định bật cho mọi tài khoản: DEC-TBD-adaptive-dca-beta).
+    const [b] = await db.select().from(bots).where(eq(bots.id, botId));
+    const [owner] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, b?.userId ?? ""));
+    expect(owner?.adaptiveDca).toBe(true);
+    await db
+      .update(users)
+      .set({ adaptiveDca: false })
+      .where(eq(users.id, b?.userId ?? ""));
     const e = farmEngine(gw, "adca");
     await e.tick();
     await e.onPrice("ETH-USD", "100", clock);
     await e.tick();
     expect(await state()).toBeUndefined();
-    const [b] = await db.select().from(bots).where(eq(bots.id, botId));
     await db
       .update(users)
       .set({ adaptiveDca: true })

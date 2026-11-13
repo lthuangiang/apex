@@ -9,11 +9,11 @@ export interface CatalogFeatures {
   aiDesk: boolean;
 }
 
-/** Cờ của một tài khoản mới (mặc định trong DB: `volume_bots`, `ai_desk` bật; `adaptive_dca` tắt, DEC-192). */
+/** Cờ của một tài khoản mới (mặc định trong DB: `volume_bots`, `ai_desk`, `adaptive_dca` đều bật; DEC-TBD-adaptive-dca-beta). */
 export const DEFAULT_CATALOG_FEATURES: CatalogFeatures = {
   volumeMaker: true,
   volumeFarm: true,
-  adaptiveDca: false,
+  adaptiveDca: true,
   aiDesk: true,
 };
 

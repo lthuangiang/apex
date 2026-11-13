@@ -3,6 +3,7 @@
 import {
   adminResetPasswordSchema,
   adminUsersViewSchema,
+  adminAdaptiveDcaSchema,
   adminAiDeskSchema,
   adminVolumeBotsSchema,
   type AdminResetPassword,
@@ -97,6 +98,19 @@ export function UsersPage() {
         body: { enabled: !u.aiDesk },
       }),
     onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+  });
+
+  // Bật / tắt AI Adaptive DCA (Beta, DEC-TBD-adaptive-dca-beta): tắt thì pause bot đang chạy nên có hộp thoại xác nhận.
+  const [adcaTarget, setAdcaTarget] = useState<Row | null>(null);
+  const adca = useMutation({
+    mutationFn: (u: Row) =>
+      api("POST", `/api/v1/admin/users/${u.id}/adaptive-dca`, adminAdaptiveDcaSchema, {
+        body: { enabled: !u.adaptiveDca },
+      }),
+    onSuccess: async () => {
+      setAdcaTarget(null);
       await qc.invalidateQueries({ queryKey: ["admin-users"] });
     },
   });
@@ -316,6 +330,30 @@ export function UsersPage() {
                     ),
                   },
                   {
+                    key: "adaptiveDca",
+                    header: t("cols.adaptiveDca"),
+                    cell: (u: Row) => (
+                      <span className="flex items-center gap-2">
+                        <span className={u.adaptiveDca ? "font-bold text-pos" : "text-muted"}>
+                          {u.adaptiveDca ? t("on") : t("off")}
+                        </span>
+                        <Button
+                          variant="secondary"
+                          aria-label={t(
+                            u.adaptiveDca ? "adaptiveDca.offLabel" : "adaptiveDca.onLabel",
+                            { email: u.email },
+                          )}
+                          onClick={() => {
+                            adca.reset();
+                            setAdcaTarget(u);
+                          }}
+                        >
+                          {t(u.adaptiveDca ? "volume.turnOff" : "volume.turnOn")}
+                        </Button>
+                      </span>
+                    ),
+                  },
+                  {
                     key: "actions",
                     header: t("cols.actions"),
                     cell: (u: Row) => (
@@ -389,6 +427,32 @@ export function UsersPage() {
           pendingLabel={t("volume.pending")}
           onConfirm={() => {
             if (volumeTarget !== null) volume.mutate(volumeTarget);
+          }}
+        />
+        <ConfirmDialog
+          open={adcaTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setAdcaTarget(null);
+          }}
+          title={t(
+            adcaTarget?.adaptiveDca === true ? "adaptiveDca.offTitle" : "adaptiveDca.onTitle",
+            { email: adcaTarget?.email ?? "" },
+          )}
+          consequencesLabel={t("reset.consequencesLabel")}
+          consequences={[
+            ...(adcaTarget?.adaptiveDca === true
+              ? [t("adaptiveDca.off.one"), t("adaptiveDca.off.two")]
+              : [t("adaptiveDca.on.one"), t("adaptiveDca.on.two")]),
+            ...(adca.error === null ? [] : [t("volume.error")]),
+          ]}
+          confirmLabel={t(
+            adcaTarget?.adaptiveDca === true ? "volume.confirmOff" : "volume.confirmOn",
+          )}
+          cancelLabel={t("reset.cancel")}
+          pending={adca.isPending}
+          pendingLabel={t("volume.pending")}
+          onConfirm={() => {
+            if (adcaTarget !== null) adca.mutate(adcaTarget);
           }}
         />
         <ConfirmDialog

@@ -23,6 +23,7 @@ export const AuditAction = {
   passwordResetByTeam: "admin.password_reset",
   volumeBotsChanged: "admin.volume_bots",
   aiDeskChanged: "admin.ai_desk",
+  adaptiveDcaChanged: "admin.adaptive_dca",
   builderFeeChanged: "admin.builder_fee",
   adminUserViewed: "admin.user_viewed",
   telegramConnected: "telegram.connected",

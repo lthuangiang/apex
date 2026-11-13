@@ -1,5 +1,6 @@
 import {
   adminUsersQuerySchema,
+  adminAdaptiveDcaBodySchema,
   adminAiDeskBodySchema,
   adminBuilderFeeBodySchema,
   adminVolumeBotsBodySchema,
@@ -20,6 +21,7 @@ import {
   ackAlert,
   adminUserDetail,
   adminUsers,
+  setAdaptiveDca,
   setAiDesk,
   setVolumeBots,
   analyst,
@@ -139,6 +141,13 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
     const { id } = parseOrThrow(z.object({ id: z.uuid() }), request.params);
     const body = parseOrThrow(adminAiDeskBodySchema, request.body);
     return setAiDesk(deps, auth.userId, id, body.enabled, request.ip);
+  });
+
+  app.post("/api/v1/admin/users/:id/adaptive-dca", async (request) => {
+    const auth = requireAuth(request);
+    const { id } = parseOrThrow(z.object({ id: z.uuid() }), request.params);
+    const body = parseOrThrow(adminAdaptiveDcaBodySchema, request.body);
+    return setAdaptiveDca(deps, auth.userId, id, body.enabled, request.ip);
   });
 
   app.put("/api/v1/admin/users/:id/builder-fees", async (request) => {

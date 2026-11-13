@@ -36,7 +36,7 @@ export const featuresSchema = z.object({
   volumeFarm: z.boolean(),
   /** AI Desk: team bật theo tài khoản ở Users (DEC-105). */
   aiDesk: z.boolean().default(false),
-  /** AI Adaptive DCA (thử nghiệm, DEC-107): cờ riêng, team bật theo tài khoản (DEC-192). */
+  /** AI Adaptive DCA (Beta, DEC-107): cờ riêng (DEC-192), mặc định bật, team tắt được (DEC-TBD-adaptive-dca-beta). */
   adaptiveDca: z.boolean().default(false),
   /** Builder fee hiệu lực theo chiến lược của user (DEC-159), phần mười bp; thiếu key = mặc định. */
   builderFees: z.record(z.string(), z.number().int()).default({}),

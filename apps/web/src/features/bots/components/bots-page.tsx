@@ -32,6 +32,7 @@ import { botCapital, botMarket } from "../bot-label";
 import { catalogFor } from "../catalog";
 import { FIELDS, presetMarket } from "../fields";
 
+import { BetaChip, isBeta } from "./beta-chip";
 import { BotActions } from "./bot-actions";
 import { BotProfit } from "./bot-profit";
 
@@ -222,7 +223,10 @@ export function BotsPage() {
                 {tc(`strategies.${key}.engine`)}
               </span>
             </div>
-            <h2 className="m-0 text-lg font-extrabold">{tc(`strategies.${key}.name`)}</h2>
+            <h2 className="m-0 flex flex-wrap items-center gap-2 text-lg font-extrabold">
+              {tc(`strategies.${key}.name`)}
+              {isBeta(key) ? <BetaChip /> : null}
+            </h2>
             <p className="m-0 text-sm leading-normal text-ink-body">{t(`long.${key}`)}</p>
             <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[13px] leading-[1.45]">
               <dt className="font-bold text-fits">{t("catalog.fits")}</dt>
@@ -356,6 +360,12 @@ export function BotsPage() {
                           </strong>
                           <span className="text-xs text-muted">
                             {botMarket(b, names)} · {tc(`strategies.${b.strategy}.name`)}
+                            {isBeta(b.strategy) ? (
+                              <>
+                                {" "}
+                                <BetaChip />
+                              </>
+                            ) : null}
                           </span>
                         </span>
                         <StatusPill {...stateLabel(b)} />
@@ -426,7 +436,12 @@ export function BotsPage() {
                     {
                       key: "strategy",
                       header: t("cols.strategy"),
-                      cell: (b) => tc(`strategies.${b.strategy}.name`),
+                      cell: (b) => (
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          {tc(`strategies.${b.strategy}.name`)}
+                          {isBeta(b.strategy) ? <BetaChip /> : null}
+                        </span>
+                      ),
                     },
                     {
                       key: "mode",

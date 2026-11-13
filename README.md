@@ -67,7 +67,7 @@ Copy Trading follows top Hyperliquid traders on your own SoDEX account. It trade
 | 📥 **Studies your history**   | Imports your SoDEX trades, fills, funding and positions automatically and shows where your profit really went.       |
 | 🎯 **Suggests a plan**        | A deterministic engine matches strategies and parameters to your data and goals, and explains every suggestion.      |
 | 🧪 **Backtests first**        | Replays the same settings over SoDEX price history with fees included.                                               |
-| 🤖 **Runs the bot**           | 11 strategies on Spot and Perps, live on mainnet, with every decision logged in the Trading Agent.                   |
+| 🤖 **Runs the bot**           | 12 strategies on Spot and Perps, live on mainnet, with every decision logged in the Trading Agent.                   |
 | 🧭 **AI Desk**                | Watches your bots, flags what needs you, compares fixes on your own trades, and answers questions in plain words.    |
 | 👥 **Copy Trading**           | Pick a top Hyperliquid trader, set a budget and a safety level, and copy their new trades on SoDEX.                  |
 | 🔔 **Alerts**                 | Bell and pop-ups in the app, email, and Telegram via `@desklabsbot`: bot problems, risk, big moves, a morning brief. |
@@ -130,23 +130,24 @@ Desktop and mobile share the same routes; below 1024 px the sidebar becomes a bo
 
 ## 🤖 Strategies
 
-| Key             | Strategy          | Engine        | What it does                                                                    | Builder fee (default)       |
-| --------------- | ----------------- | ------------- | ------------------------------------------------------------------------------- | --------------------------- |
-| `spot_grid`     | Spot Grid         | Spot          | Buys low and sells high inside a range you set                                  | 0.01% on sells              |
-| `futures_grid`  | Futures Grid      | Perps         | Grid on a perpetual: long, short or neutral                                     | 0.01% both sides            |
-| `spot_dca`      | Spot DCA          | Spot          | Buys, adds safety orders on dips, sells everything at take profit               | 0.01% on sells              |
-| `futures_dca`   | Futures DCA       | Perps         | DCA on a perpetual, long or short                                               | 0.01% both sides            |
-| `recurring_buy` | Recurring Buy     | Spot          | Buys a fixed amount on a schedule. Never sells                                  | none                        |
-| `rebalancing`   | Rebalancing       | Spot          | Keeps 2–10 assets at target weights                                             | 0.01% on sells              |
-| `funding_arb`   | Funding Arbitrage | Spot + Perps  | Holds spot and an equal perp short to collect funding                           | perp both sides, spot sells |
-| `twap`          | TWAP              | Spot or Perps | Splits one large order into small slices over time                              | per engine                  |
-| `volume_maker`  | Market Making     | Perps         | Post-only two-sided quotes with a cost budget and self-trade guard              | 0.003%                      |
-| `volume_farm`   | Volume Builder    | Perps         | Short trades for SoDEX volume, with its own stop loss and a loss limit          | 0.005%                      |
-| `adaptive_dca`  | AI Adaptive DCA   | Perps         | DCA that spaces buys by volatility (ATR) and waits for a low RSI (experimental) | 0.01% both sides            |
-| `copy_trade`    | Copy Trade        | Perps         | Copies one Hyperliquid trader on every market listed on both                    | 0.01% both sides            |
+| Key             | Strategy          | Engine        | What it does                                                            | Builder fee (default)       |
+| --------------- | ----------------- | ------------- | ----------------------------------------------------------------------- | --------------------------- |
+| `spot_grid`     | Spot Grid         | Spot          | Buys low and sells high inside a range you set                          | 0.01% on sells              |
+| `futures_grid`  | Futures Grid      | Perps         | Grid on a perpetual: long, short or neutral                             | 0.01% both sides            |
+| `spot_dca`      | Spot DCA          | Spot          | Buys, adds safety orders on dips, sells everything at take profit       | 0.01% on sells              |
+| `futures_dca`   | Futures DCA       | Perps         | DCA on a perpetual, long or short                                       | 0.01% both sides            |
+| `recurring_buy` | Recurring Buy     | Spot          | Buys a fixed amount on a schedule. Never sells                          | none                        |
+| `rebalancing`   | Rebalancing       | Spot          | Keeps 2–10 assets at target weights                                     | 0.01% on sells              |
+| `funding_arb`   | Funding Arbitrage | Spot + Perps  | Holds spot and an equal perp short to collect funding                   | perp both sides, spot sells |
+| `twap`          | TWAP              | Spot or Perps | Splits one large order into small slices over time                      | per engine                  |
+| `volume_maker`  | Market Making     | Perps         | Post-only two-sided quotes with a cost budget and self-trade guard      | 0.003%                      |
+| `volume_farm`   | Volume Builder    | Perps         | Short trades for SoDEX volume, with its own stop loss and a loss limit  | 0.005%                      |
+| `adaptive_dca`  | AI Adaptive DCA   | Perps         | DCA that spaces buys by volatility (ATR) and waits for a low RSI (Beta) | 0.01% both sides            |
+| `copy_trade`    | Copy Trade        | Perps         | Copies one Hyperliquid trader on every market listed on both            | 0.01% both sides            |
 
-> Market Making and Volume Builder are turned on per account by the team (DEC-80). AI Adaptive DCA has its own
-> per-account flag (DEC-192). Copy Trade bots are created from Copy Trading.
+> Market Making and Volume Builder are on for every account; the team can turn them off per account (DEC-80, DEC-94).
+> AI Adaptive DCA is on for every account as a Beta; the team can turn it off per account (DEC-192,
+> DEC-TBD-adaptive-dca-beta). Copy Trade bots are created from Copy Trading.
 
 Strategy logic lives only in [`packages/strategies`](packages/strategies) as **pure `step` functions** (no I/O). The
 engine, the backtester and the unit tests all run the same code, so a backtest and a live bot make the same decisions
