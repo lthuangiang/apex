@@ -4999,7 +4999,7 @@
           "market": "The last 24 hours of any market on SoDEX",
           "safety": "How safe your money is in DeskLabs"
         },
-        "cannot": "I can't predict prices, tell you which coin to buy or sell, or change anything for you. I only use your DeskLabs data and SoDEX prices.",
+        "cannot": "I can’t predict prices, tell you which coin to buy or sell, or change anything for you. I only use your DeskLabs data and SoDEX prices.",
         "link": "What can Desk AI do?",
         "perDay": "{n, plural, one {# question} other {# questions}} a day.",
         "close": "Close"

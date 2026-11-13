@@ -90,7 +90,7 @@ describe("Desk AI capabilities (W6)", () => {
     expect(screen.getByText(BLOCK)).toBeInTheDocument();
     expect(
       screen.getByText(
-        "I can't predict prices, tell you which coin to buy or sell, or change anything for you. I only use your DeskLabs data and SoDEX prices.",
+        "I can’t predict prices, tell you which coin to buy or sell, or change anything for you. I only use your DeskLabs data and SoDEX prices.",
       ),
     ).toBeInTheDocument();
     await expectNoAxeViolations();
