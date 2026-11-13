@@ -172,7 +172,7 @@ describe("Following (W4)", () => {
       expect(rows()).toEqual(["BTC", "ETH"]);
     });
     // Avatar + địa chỉ ở cột trái là link sang hồ sơ (không còn chữ "Profile").
-    expect(screen.getByRole("link", { name: /^0xbbbb…bbbb/})).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /^0xbbbb…bbbb/ })).toHaveAttribute(
       "href",
       `/traders/${B}`,
     );
