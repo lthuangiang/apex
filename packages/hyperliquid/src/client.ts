@@ -194,9 +194,12 @@ export class HyperliquidClient {
     return out;
   }
 
-  clearinghouseState(user: string, priority: HlPriority): Promise<HlClearinghouse> {
+  /** `dex`: perp HIP-3 (ví dụ `xyz`); bỏ trống = perp gốc của Hyperliquid. */
+  clearinghouseState(user: string, priority: HlPriority, dex?: string): Promise<HlClearinghouse> {
     return this.#info(
-      { type: "clearinghouseState", user },
+      dex === undefined
+        ? { type: "clearinghouseState", user }
+        : { type: "clearinghouseState", user, dex },
       hlClearinghouseSchema,
       HL_WEIGHT.light,
       priority,

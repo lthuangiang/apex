@@ -31,7 +31,8 @@
 
 SoDEX `GET /api/v1/perps/markets/symbols` ngày đo: **105 market TRADING** (gồm cổ phiếu, hàng hoá: `TSLA-USD`, `XAUT-USD`…).
 - Perp gốc Hyperliquid `X` → `X-USD`; `kX` → `1000X-USD` (`kPEPE` → `1000PEPE-USD`, `kBONK`, `kSHIB`).
-- Spot `@N` không tính vào thống kê. Perp HIP-3 (`dex:COIN`) **không map** (sàn khác của builder khác, giá có thể khác) nhưng vẫn tính vào mẫu số của SoDEX coverage.
+- Spot `@N` không tính vào thống kê. Perp HIP-3 của dex **`xyz`** (cổ phiếu / hàng hoá, `xyz:TSLA`) **map** sang `<SYM>-USD` khi SoDEX có (DEC-TBD-hip3-xyz, thay phần HIP-3 của DEC-163). Dex HIP-3 khác (`para:TER`) không map, nhưng vẫn tính vào mẫu số của SoDEX coverage.
+- Vị thế HIP-3 không có trong `clearinghouseState` mặc định: phải gọi thêm `{ "type": "clearinghouseState", "user", "dex": "xyz" }` (đo 2026-11-13). Marketdata đọc cả hai và không publish ảnh chụp nếu một lần đọc lỗi, vì engine coi market thiếu là vị thế 0.
 
 ## Ngân sách weight dự kiến (1 IP)
 

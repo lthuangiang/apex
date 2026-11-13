@@ -40,7 +40,14 @@ describe("coin mapping", () => {
     expect(sodexMarketOf("BTC", INDEX)).toBe("BTC-USD");
     expect(sodexMarketOf("kPEPE", INDEX)).toBe("1000PEPE-USD");
     expect(sodexMarketOf("@107", INDEX)).toBeNull();
+    // HIP-3 dex `xyz` map khi SoDEX có (DEC-TBD-hip3-xyz); dex khác và spot thì không.
     expect(sodexMarketOf("xyz:TSLA", INDEX)).toBeNull();
+    const withStocks = coinIndex(["BTC-USD", "MSTR-USD"]);
+    expect(sodexMarketOf("xyz:MSTR", withStocks)).toBe("MSTR-USD");
+    expect(sodexMarketOf("para:MSTR", withStocks)).toBeNull();
+    expect(sodexMarketOf("xyz:", withStocks)).toBeNull();
+    // Cả perp gốc lẫn `xyz:` cùng ký hiệu map về một market (chấp nhận).
+    expect(sodexMarketOf("MSTR", withStocks)).toBe("MSTR-USD");
     expect(sodexMarketOf("DOGE", INDEX)).toBeNull();
   });
 });
@@ -170,6 +177,20 @@ describe("leaderStats", () => {
     expect(s.coverage).toBe("0.6667");
     expect(s.markets).toEqual(["BTC-USD", "1000PEPE-USD"]);
     expect(s.unlistedCoins).toEqual(["DOGE", "xyz:TSLA"]);
+  });
+
+  it("counts xyz HIP-3 trading as on SoDEX when SoDEX lists the symbol (DEC-TBD-hip3-xyz)", () => {
+    const s = stats(
+      [
+        ...roundTrip(NOW - DAY, HOUR, "1", "BTC", "3"),
+        ...roundTrip(NOW - DAY, HOUR, "1", "xyz:TSLA", "1"),
+        ...roundTrip(NOW - DAY, HOUR, "1", "para:TER", "1"),
+      ],
+      { index: coinIndex(["BTC-USD", "TSLA-USD"]) },
+    );
+    expect(s.coverage).toBe("0.8");
+    expect(s.markets).toEqual(["BTC-USD", "TSLA-USD"]);
+    expect(s.unlistedCoins).toEqual(["para:TER"]);
   });
 
   it("returns null coverage with no perp fills instead of 0", () => {

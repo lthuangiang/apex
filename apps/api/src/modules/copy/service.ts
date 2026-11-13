@@ -8,6 +8,7 @@ import {
 } from "@drift/db";
 import {
   AppError,
+  COPY_THIN_MARKET_USD,
   DRIFT_BUILDER_FEE_RATE,
   feeRateToPercent,
   toDecimalString,
@@ -55,6 +56,8 @@ export interface CopyDeps {
   bots: BotDeps;
   /** Ngưỡng USD cảnh báo big move; null = cảnh báo tắt (OPEN_QUESTIONS 21a). */
   bigMoveMinUsd: string | null;
+  /** Volume 24h (quote, USD) của market Perps trên SoDEX; null khi đọc lỗi. Thiếu = không cảnh báo thanh khoản. */
+  volume24h?: (market: string) => Promise<string | null>;
 }
 
 const SOURCE = "hyperliquid" as const;
@@ -535,7 +538,15 @@ export async function copyPreview(
     available = null;
   }
   const copyable = copyableOf(stats);
+  // Market mỏng trên SoDEX: chỉ cảnh báo khi đọc được volume (đọc lỗi → không cảnh báo, không đoán).
+  const thinMarkets: string[] = [];
+  if (deps.volume24h !== undefined)
+    for (const m of markets) {
+      const v = await deps.volume24h(m).catch(() => null);
+      if (v !== null && dec(v).lt(COPY_THIN_MARKET_USD)) thinMarkets.push(m);
+    }
   return {
+    thinMarkets,
     address: req.address,
     config,
     markets,

@@ -248,6 +248,8 @@ describe("Copy Trading v1", () => {
       builderFeeMax: "0.01",
       dropped: [],
     });
+    // SoDEX mock: volume 24h vài nghìn USD (< 50,000) → Review cảnh báo market mỏng (DEC-TBD-hip3-xyz).
+    expect(p.thinMarkets).toEqual(["BTC-USD"]);
 
     // Một bot thật khác đã chạy BTC-USD trên account này: Review báo BTC bị bỏ (SoDEX gộp vị thế theo symbol).
     const made = await client.request("POST", "/api/v1/bots", {

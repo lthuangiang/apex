@@ -37,13 +37,17 @@ function harness(over: Partial<HlLeaderTrackerDeps> = {}) {
     followed: () => Promise.resolve([]),
     stream: { setUsers: (u) => users.push([...u]) },
     hl: {
-      clearinghouseState: () =>
+      // Perp gốc khi không có `dex`; dex HIP-3 `xyz` trả vị thế riêng.
+      clearinghouseState: (_user, _priority, dex) =>
         Promise.resolve({
-          assetPositions: [
-            { position: { coin: "BTC", szi: "2" } },
-            { position: { coin: "HYPE", szi: "5" } },
-            { position: { coin: "kPEPE", szi: "-1000" } },
-          ],
+          assetPositions:
+            dex === undefined
+              ? [
+                  { position: { coin: "BTC", szi: "2" } },
+                  { position: { coin: "HYPE", szi: "5" } },
+                  { position: { coin: "kPEPE", szi: "-1000" } },
+                ]
+              : [],
         }),
       userFillsByTime: (user, start) => {
         polled.push([user, start]);
@@ -92,6 +96,50 @@ describe("HlLeaderTracker", () => {
         },
       ],
     ]);
+  });
+
+  it("adds xyz HIP-3 positions mapped to SoDEX, summing a symbol listed on both (DEC-TBD-hip3-xyz)", async () => {
+    const h = harness({
+      index: () => coinIndex(["BTC-USD", "TSLA-USD", "MSTR-USD"]),
+      hl: {
+        clearinghouseState: (_user, _priority, dex) =>
+          Promise.resolve({
+            assetPositions:
+              dex === "xyz"
+                ? [
+                    { position: { coin: "xyz:TSLA", szi: "3" } },
+                    { position: { coin: "xyz:MSTR", szi: "1" } },
+                    { position: { coin: "xyz:GOLD", szi: "9" } },
+                  ]
+                : [
+                    { position: { coin: "BTC", szi: "2" } },
+                    { position: { coin: "MSTR", szi: "-0.5" } },
+                  ],
+          }),
+        userFillsByTime: () => Promise.resolve([]),
+      },
+    });
+    await h.t.sync();
+    expect(h.published[0]?.[1]).toMatchObject({
+      positions: { "BTC-USD": "2", "TSLA-USD": "3", "MSTR-USD": "0.5" },
+    });
+  });
+
+  it("publishes no snapshot when the xyz read fails, so the engine never sees false zeros", async () => {
+    const warned: unknown[] = [];
+    const h = harness({
+      warn: (o) => warned.push(o),
+      hl: {
+        clearinghouseState: (_user, _priority, dex) =>
+          dex === "xyz"
+            ? Promise.reject(new Error("429"))
+            : Promise.resolve({ assetPositions: [{ position: { coin: "BTC", szi: "2" } }] }),
+        userFillsByTime: () => Promise.resolve([]),
+      },
+    });
+    await h.t.sync();
+    expect(h.published).toEqual([]);
+    expect(warned).toHaveLength(1);
   });
 
   it("keeps wallets already streaming when over the limit", async () => {
