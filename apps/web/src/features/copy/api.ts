@@ -3,10 +3,12 @@
 import {
   botSummarySchema,
   copyPreviewSchema,
+  FOLLOW_ALERT_LEVELS,
   followingSchema,
   traderListSchema,
   traderProfileSchema,
   type CopyRequest,
+  type FollowAlertLevel,
   type TraderTab,
 } from "@drift/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -63,6 +65,26 @@ export function useFollow() {
       key.current = crypto.randomUUID();
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["traders"] }),
+        qc.invalidateQueries({ queryKey: ["trader"] }),
+        qc.invalidateQueries({ queryKey: ["following"] }),
+      ]);
+    },
+  });
+}
+
+/** Đổi mức cảnh báo của một trader đang follow (DEC-TBD-follow-alerts); làm mới Following và hồ sơ. */
+export function useSetFollowAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { address: string; level: FollowAlertLevel }) =>
+      api(
+        "PUT",
+        `/api/v1/traders/${v.address}/follow/alerts`,
+        z.object({ address: z.string(), alertLevel: z.enum(FOLLOW_ALERT_LEVELS) }),
+        { idempotencyKey: crypto.randomUUID(), body: { level: v.level } },
+      ),
+    onSettled: async () => {
+      await Promise.all([
         qc.invalidateQueries({ queryKey: ["trader"] }),
         qc.invalidateQueries({ queryKey: ["following"] }),
       ]);

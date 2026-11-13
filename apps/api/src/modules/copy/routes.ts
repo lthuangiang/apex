@@ -1,6 +1,7 @@
 import {
   copyRequestSchema,
   copyStartSchema,
+  followAlertBodySchema,
   traderAddressSchema,
   traderListQuerySchema,
 } from "@drift/shared";
@@ -16,6 +17,7 @@ import {
   follow,
   following,
   listTraders,
+  setFollowAlert,
   startCopy,
   traderProfile,
   unfollow,
@@ -51,6 +53,17 @@ export function registerCopyRoutes(app: FastifyInstance, deps: CopyDeps): void {
     return idempotent(deps.bots.db, request, reply, auth.userId, deps.bots.now(), async () => ({
       status: 200,
       body: await unfollow(deps, auth.userId, address),
+    }));
+  });
+
+  // Mức cảnh báo của một trader đang follow (DEC-TBD-follow-alerts).
+  app.put("/api/v1/traders/:address/follow/alerts", async (request, reply) => {
+    const auth = requireAuth(request);
+    const { address } = parseOrThrow(addressParams, request.params);
+    const { level } = parseOrThrow(followAlertBodySchema, request.body);
+    return idempotent(deps.bots.db, request, reply, auth.userId, deps.bots.now(), async () => ({
+      status: 200,
+      body: await setFollowAlert(deps, auth.userId, address, level),
     }));
   });
 

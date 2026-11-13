@@ -96,6 +96,36 @@ describe("renderTelegram: one event", () => {
   });
 });
 
+describe("renderTelegram: follow position alerts (DEC-TBD-follow-alerts)", () => {
+  it("says what changed without the trader's wallet address", () => {
+    const m = renderTelegram(
+      [
+        row(
+          "leader_position",
+          {
+            address: "0x84b2b687df7c99702e887849f8d99bfb0fed12f2",
+            coin: "NEAR",
+            kind: "open",
+            side: "short",
+          },
+          null,
+        ),
+      ],
+      APP,
+    );
+    expect(m.text).toBe(
+      "👤 <b>A trader you follow opened a short on NEAR</b>\nFollowing only. Nothing was copied.",
+    );
+    expect(m.text).not.toMatch(/0x[0-9a-fA-F]{4,}/);
+    expect(m.button).toEqual({ text: "Open Following", url: `${APP}/following` });
+    const closed = renderTelegram(
+      [row("leader_position", { coin: "ARB", kind: "close", side: "short" }, null)],
+      APP,
+    );
+    expect(closed.text).toContain("closed their short on ARB");
+  });
+});
+
 describe("renderTelegram: merged (mục 5)", () => {
   it("3 bots paused for the same reason → one line", () => {
     const m = renderTelegram(

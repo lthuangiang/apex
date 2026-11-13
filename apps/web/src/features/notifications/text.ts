@@ -97,6 +97,27 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
         const coin = str(n.data.coin);
         return { title: t("types.leader_big_move"), body: coin };
       }
+      case "leader_position": {
+        // Trong app ghi địa chỉ rút gọn của trader (như artboard NT-InApp "0xA3…91 opened a big position").
+        const address = str(n.data.address);
+        const trader =
+          address === null ? t("panel.aTrader") : `${address.slice(0, 6)}…${address.slice(-4)}`;
+        const kind = str(n.data.kind);
+        const side = n.data.side === "short" ? t("panel.short") : t("panel.long");
+        const coin = str(n.data.coin) ?? "";
+        const key =
+          kind === "close"
+            ? "closed"
+            : kind === "flip"
+              ? "flipped"
+              : kind === "liquidated"
+                ? "liquidated"
+                : "opened";
+        return {
+          title: t(`panel.leaderPosition.${key}`, { trader, side, coin }),
+          body: t("panel.body.followOnly"),
+        };
+      }
     }
   };
 }

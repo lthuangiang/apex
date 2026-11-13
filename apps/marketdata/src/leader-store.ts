@@ -2,13 +2,21 @@ import {
   leaderAlertState,
   leaderEvents,
   leaderFollows,
+  leaderPositionAlertState,
   leaderStatsDaily,
   leaderWallets,
   outbox,
   type Db,
 } from "@drift/db";
-import { bigMove, type LeaderEvent, type LeaderSource, type LeaderStats } from "@drift/shared";
+import { bigMove, dec, type LeaderEvent, type LeaderSource, type LeaderStats } from "@drift/shared";
 import { and, desc, eq, gte } from "drizzle-orm";
+
+import {
+  bigMoveFollowers,
+  listedOnly,
+  planPositionAlerts,
+  positionFollowers,
+} from "./follow-alerts";
 
 // Ghi DB cho ví leader (DEC-163 mục 11): con trỏ fill, sự kiện vị thế, cảnh báo "big move" (chỉ trong app) cho người
 // theo dõi qua outbox `jobs.notify`. Ngưỡng USD chưa chốt (OPEN_QUESTIONS 21a): `minUsd` null = tắt cảnh báo.
@@ -76,13 +84,49 @@ export async function saveLeaderEvents(
       })
       .onConflictDoNothing();
   }
-  if (opts.minUsd === null) return;
+  // Mức cảnh báo theo từng người follow (DEC-TBD-follow-alerts). `off` không nhận gì.
+  const followers = bigMoveFollowers(
+    await db
+      .select({ userId: leaderFollows.userId, level: leaderFollows.alertLevel })
+      .from(leaderFollows)
+      .where(and(eq(leaderFollows.source, source), eq(leaderFollows.address, address))),
+  );
+  if (followers.length === 0) return;
+  // Chỉ market SoDEX có: báo market không copy được chỉ gây nhiễu (thay đổi hành vi big move của DEC-163/179).
+  const listed = listedOnly(events);
+
+  const bigMoveCoins =
+    opts.minUsd === null
+      ? new Set<string>()
+      : await alertBigMoves(db, source, address, listed, seenAt, opts.minUsd, followers);
+  await alertPositions(
+    db,
+    source,
+    address,
+    listed,
+    seenAt,
+    positionFollowers(followers),
+    bigMoveCoins,
+  );
+}
+
+/** Big move cho mọi người follow còn bật cảnh báo; trả về các coin vừa báo. */
+async function alertBigMoves(
+  db: Db,
+  source: LeaderSource,
+  address: string,
+  events: readonly LeaderEvent[],
+  seenAt: number,
+  minUsd: string,
+  followers: readonly { userId: string }[],
+): Promise<Set<string>> {
+  const alerted = new Set<string>();
   const coins = new Set(
     events
       .filter((e) => e.kind === "open" || e.kind === "add" || e.kind === "flip")
       .map((e) => e.coin),
   );
-  if (coins.size === 0) return;
+  if (coins.size === 0) return alerted;
 
   const [stats] = await db
     .select({ stats: leaderStatsDaily.stats })
@@ -91,11 +135,6 @@ export async function saveLeaderEvents(
     .orderBy(desc(leaderStatsDaily.date))
     .limit(1);
   const median = (stats?.stats as LeaderStats | undefined)?.medianEntryNotional ?? null;
-  const followers = await db
-    .select({ userId: leaderFollows.userId })
-    .from(leaderFollows)
-    .where(and(eq(leaderFollows.source, source), eq(leaderFollows.address, address)));
-  if (followers.length === 0) return;
 
   for (const coin of coins) {
     const recent = await db
@@ -134,11 +173,12 @@ export async function saveLeaderEvents(
         lastTid: r.lastTid,
       })),
       medianEntryNotional: median,
-      minUsd: opts.minUsd,
+      minUsd,
       lastAlertAt: alert?.at.getTime() ?? null,
       now: seenAt,
     });
     if (total === null) continue;
+    alerted.add(coin);
     const latest = events.filter((e) => e.coin === coin).at(-1);
     await db.transaction(async (tx) => {
       await tx
@@ -168,6 +208,68 @@ export async function saveLeaderEvents(
           },
         });
       }
+    });
+  }
+  return alerted;
+}
+
+/**
+ * Mức `positions` (DEC-TBD-follow-alerts): báo khi trader mở vị thế mới, đóng hẳn, đảo chiều hoặc bị thanh lý;
+ * bỏ add / reduce. Mỗi (ví, coin) tối đa một tin / 10 phút; coin vừa có big move thì không báo thêm.
+ */
+async function alertPositions(
+  db: Db,
+  source: LeaderSource,
+  address: string,
+  events: readonly LeaderEvent[],
+  seenAt: number,
+  followers: readonly { userId: string }[],
+  skipCoins: ReadonlySet<string>,
+): Promise<void> {
+  if (followers.length === 0) return;
+  const states = await db
+    .select({ coin: leaderPositionAlertState.coin, at: leaderPositionAlertState.lastAlertAt })
+    .from(leaderPositionAlertState)
+    .where(
+      and(
+        eq(leaderPositionAlertState.source, source),
+        eq(leaderPositionAlertState.address, address),
+      ),
+    );
+  const last = new Map(states.map((s) => [s.coin, s.at.getTime()]));
+  for (const { coin, event: e, side } of planPositionAlerts(events, last, skipCoins, seenAt)) {
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(leaderPositionAlertState)
+        .values({ source, address, coin, lastAlertAt: new Date(seenAt) })
+        .onConflictDoUpdate({
+          target: [
+            leaderPositionAlertState.source,
+            leaderPositionAlertState.address,
+            leaderPositionAlertState.coin,
+          ],
+          set: { lastAlertAt: new Date(seenAt) },
+        });
+      for (const f of followers)
+        await tx.insert(outbox).values({
+          topic: "jobs.notify",
+          payload: {
+            userId: f.userId,
+            type: "leader_position",
+            data: {
+              source,
+              address,
+              coin,
+              market: e.market,
+              kind: e.kind,
+              side,
+              notional: dec(e.notional).toDecimalPlaces(2).toString(),
+              realized: e.realized,
+              at: e.at,
+              seenAt,
+            },
+          },
+        });
     });
   }
 }
