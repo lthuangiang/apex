@@ -46,11 +46,27 @@ const OPEN_PATHS = [
   // App Android (TWA) và trình duyệt đọc trước khi đăng nhập (infra/mobile/README.md).
   "/manifest.webmanifest",
   "/.well-known/assetlinks.json",
+  // Metadata OAuth cho MCP (DEC-215): production do Traefik đưa thẳng tới api; dev qua rewrite của Next.
+  "/.well-known/oauth-authorization-server",
 ];
+/** Màn consent OAuth: chưa đăng nhập thì đăng nhập trước rồi quay lại đúng URL (giữ tham số OAuth). */
+const OAUTH_AUTHORIZE = "/oauth/authorize";
+
+/** Đường dẫn nội bộ an toàn (chặn `//host`, `/\host`), như `safeNext` của onboarding. */
+const safeNext = (raw: string | null): string | null =>
+  raw === null || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")
+    ? null
+    : raw;
 
 /** Chặn theo cookie phiên: null = cho qua, còn lại là đường dẫn cần chuyển tới. */
-export function redirectFor(path: string, signedIn: boolean): string | null {
+export function redirectFor(path: string, signedIn: boolean, search = ""): string | null {
   if (OPEN_PATHS.includes(path)) return null;
+  if (path === OAUTH_AUTHORIZE && !signedIn)
+    return `/signin?next=${encodeURIComponent(`${path}${search}`)}`;
+  if (path === "/signin" && signedIn) {
+    const next = safeNext(new URLSearchParams(search).get("next"));
+    if (next !== null) return next;
+  }
   const signedOutOnly = SIGNED_OUT_PATHS.includes(path);
   if (!signedIn && !signedOutOnly) return "/signup";
   if (signedIn && signedOutOnly) return "/";
@@ -59,7 +75,11 @@ export function redirectFor(path: string, signedIn: boolean): string | null {
 
 export function proxy(request: NextRequest) {
   // Phiên còn hạn hay không do api quyết định (401 thì client chuyển về /signup).
-  const target = redirectFor(request.nextUrl.pathname, request.cookies.has(SESSION_COOKIE));
+  const target = redirectFor(
+    request.nextUrl.pathname,
+    request.cookies.has(SESSION_COOKIE),
+    request.nextUrl.search,
+  );
   if (target !== null) return NextResponse.redirect(new URL(target, request.url));
 
   const nonce = btoa(crypto.randomUUID());

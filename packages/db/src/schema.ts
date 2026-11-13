@@ -1355,3 +1355,99 @@ export const deskAiUsage = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.localDate] })],
 );
+
+/* ---------------------------------- MCP + OAuth (docs/MCP.md, DEC-167) ---------------------------------- */
+
+/**
+ * Client OAuth của MCP. `id` là `client_id`: chuỗi ngẫu nhiên khi đăng ký động (RFC 7591, `kind = dcr`) hoặc chính URL
+ * https của Client ID Metadata Document (`kind = cimd`, metadata tải về và cache). `name` là dữ liệu client tự khai,
+ * không tin cậy: màn consent luôn hiện kèm host. Client đăng ký động không dùng 30 ngày thì xoá.
+ */
+export const oauthClients = pgTable(
+  "oauth_clients",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: ["dcr", "cimd"] }).notNull(),
+    name: text("name"),
+    redirectUris: text("redirect_uris").array().notNull(),
+    /** CIMD: lần tải metadata gần nhất (cache 1 giờ). */
+    fetchedAt: tstz("fetched_at"),
+    lastUsedAt: tstz("last_used_at"),
+    ...timestamps,
+  },
+  (t) => [index("oauth_clients_last_used_idx").on(t.lastUsedAt)],
+);
+
+/** Authorization code (một lần, sống vài phút). Chỉ lưu hash. PKCE S256 bắt buộc; gắn với `resource` (RFC 8707). */
+export const oauthCodes = pgTable("oauth_codes", {
+  codeHash: text("code_hash").primaryKey(),
+  clientId: text("client_id")
+    .notNull()
+    .references(() => oauthClients.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  redirectUri: text("redirect_uri").notNull(),
+  codeChallenge: text("code_challenge").notNull(),
+  scope: text("scope").array().notNull(),
+  resource: text("resource").notNull(),
+  expiresAt: tstz("expires_at").notNull(),
+  usedAt: tstz("used_at"),
+  ...timestamps,
+});
+
+/**
+ * Token MCP (access 1 giờ, refresh 30 ngày), chỉ lưu hash. Refresh xoay mỗi lần dùng: dòng cũ ghi `rotated_at`, dòng
+ * mới cùng `family_id`. Refresh đã xoay mà bị dùng lại → thu hồi cả họ. Revoke có hiệu lực ngay (kiểm tra mỗi request).
+ */
+export const mcpTokens = pgTable(
+  "mcp_tokens",
+  {
+    id: id(),
+    familyId: uuid("family_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.id, { onDelete: "cascade" }),
+    scope: text("scope").array().notNull(),
+    resource: text("resource").notNull(),
+    accessHash: text("access_hash").notNull(),
+    accessExpiresAt: tstz("access_expires_at").notNull(),
+    refreshHash: text("refresh_hash").notNull(),
+    refreshExpiresAt: tstz("refresh_expires_at").notNull(),
+    rotatedAt: tstz("rotated_at"),
+    revokedAt: tstz("revoked_at"),
+    lastUsedAt: tstz("last_used_at"),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("mcp_tokens_access_hash_key").on(t.accessHash),
+    uniqueIndex("mcp_tokens_refresh_hash_key").on(t.refreshHash),
+    index("mcp_tokens_user_client_idx").on(t.userId, t.clientId),
+    index("mcp_tokens_family_idx").on(t.familyId),
+  ],
+);
+
+/** Nhật ký mỗi lần gọi tool MCP (giữ 90 ngày). Không lưu tham số gốc hay nội dung trả về, chỉ hash tham số. */
+export const mcpCalls = pgTable(
+  "mcp_calls",
+  {
+    id: id(),
+    tokenId: uuid("token_id"),
+    userId: uuid("user_id"),
+    clientId: text("client_id"),
+    endpoint: text("endpoint", { enum: ["user", "team"] }).notNull(),
+    tool: text("tool").notNull(),
+    argsHash: text("args_hash"),
+    durationMs: integer("duration_ms"),
+    status: text("status", { enum: ["ok", "error", "denied", "rate_limited"] }).notNull(),
+    traceId: text("trace_id"),
+    ...timestamps,
+  },
+  (t) => [
+    index("mcp_calls_created_idx").on(t.createdAt),
+    index("mcp_calls_user_idx").on(t.userId, t.createdAt),
+  ],
+);

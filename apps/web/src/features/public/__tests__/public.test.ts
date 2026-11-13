@@ -18,6 +18,20 @@ describe("public pages (UI_REVIEW K, L)", () => {
     expect(redirectFor("/.well-known/assetlinks.json", false)).toBeNull();
   });
 
+  it("sends the OAuth consent page through sign-in and back, keeping its parameters (MCP)", () => {
+    const q = "?client_id=abc&state=x";
+    expect(redirectFor("/oauth/authorize", false, q)).toBe(
+      `/signin?next=${encodeURIComponent(`/oauth/authorize${q}`)}`,
+    );
+    expect(redirectFor("/oauth/authorize", true, q)).toBeNull();
+    expect(
+      redirectFor("/signin", true, `?next=${encodeURIComponent("/oauth/authorize?a=1")}`),
+    ).toBe("/oauth/authorize?a=1");
+    // Không bao giờ chuyển ra ngoài.
+    expect(redirectFor("/signin", true, "?next=%2F%2Fevil.example")).toBe("/");
+    expect(redirectFor("/.well-known/oauth-authorization-server", false)).toBeNull();
+  });
+
   it("keeps every other page behind a session", () => {
     expect(redirectFor("/bots", false)).toBe("/signup");
     expect(redirectFor("/risk", false)).toBe("/signup");

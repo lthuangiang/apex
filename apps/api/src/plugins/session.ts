@@ -39,9 +39,17 @@ const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * Đường dẫn chính xác (không wildcard, không query) được miễn CSRF vì không đến từ trình duyệt và có cách xác
- * thực riêng: webhook Telegram kiểm tra header secret (docs/NOTIFICATIONS.md mục 3, DEC-170).
+ * thực riêng: webhook Telegram kiểm tra header secret (docs/NOTIFICATIONS.md mục 3, DEC-170); OAuth token / register /
+ * revoke theo RFC 6749 / 7591 / 7009 (PKCE, không cookie) và introspect nội bộ (shared secret).
  */
-export const CSRF_EXEMPT_POST_PATHS: ReadonlySet<string> = new Set(["/api/v1/telegram/webhook"]);
+export const CSRF_EXEMPT_POST_PATHS: ReadonlySet<string> = new Set([
+  "/api/v1/telegram/webhook",
+  // OAuth cho MCP (DEC-215): client gọi bằng form + PKCE / bearer, không có cookie.
+  "/api/v1/oauth/token",
+  "/api/v1/oauth/register",
+  "/api/v1/oauth/revoke",
+  "/api/v1/oauth/introspect",
+]);
 
 export function registerSession(app: FastifyInstance, options: SessionOptions): void {
   const { db, now } = options;

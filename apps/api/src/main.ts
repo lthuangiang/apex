@@ -65,6 +65,11 @@ const app = await buildApp({
         : { origin: config.DRIFT_TELEGRAM_API_ORIGIN }),
     }),
   },
+  oauth: {
+    issuer: config.DRIFT_APP_URL,
+    mcpPublicUrl: config.MCP_PUBLIC_URL,
+    introspectSecret: config.MCP_INTROSPECT_SECRET ?? null,
+  },
   telegramBrief: {
     enabled: config.TELEGRAM_ENABLED && config.TELEGRAM_BRIEF_ENABLED,
     useLlm: config.TELEGRAM_BRIEF_LLM,

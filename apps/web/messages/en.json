@@ -1972,6 +1972,7 @@
       "access": "SoDEX access",
       "security": "Security",
       "notifications": "Notifications",
+      "apps": "Connected apps",
       "defaults": "Trading defaults",
       "profile": "Profile"
     },
@@ -2520,6 +2521,8 @@
     }
   },
   "_pendingReview": [
+    "settings.tabs.apps",
+    "oauth",
     "beta",
     "adminUsers.cols.adaptiveDca",
     "adminUsers.adaptiveDca",
@@ -5139,6 +5142,47 @@
       "sodex_failed": "SoDEX rejected",
       "fee_requested": "Asked for signature 2",
       "connected": "Connected"
+    }
+  },
+  "oauth": {
+    "title": "Connect an app to DeskLabs",
+    "asks": "<client></client> (<host></host>) wants access to your DeskLabs account.",
+    "unnamed": "An app",
+    "willAllow": "It will be able to:",
+    "scopes": {
+      "read": "Read your account, bots, decisions, AI Desk and Copy Trading data",
+      "draft": "Save bot drafts for you to review and apply in DeskLabs",
+      "team": "Read DeskLabs team support data"
+    },
+    "notGranted": "Not available for your account: {list}.",
+    "needsSodex": {
+      "title": "Connect SoDEX first.",
+      "body": "Apps can read your DeskLabs data only after your SoDEX account is connected.",
+      "cta": "Connect SoDEX"
+    },
+    "promise": "This app can read your DeskLabs data. It can't place trades, change bots or move funds.",
+    "allow": "Allow",
+    "deny": "Deny",
+    "error": "Couldn’t finish. Try again.",
+    "revokeHint": "You can revoke access at any time in Settings › Connected apps.",
+    "invalid": {
+      "title": "This link isn’t valid.",
+      "body": "Go back to the app and try connecting again."
+    },
+    "apps": {
+      "title": "Connected apps",
+      "body": "AI apps you allowed to read your DeskLabs data. They can't place trades, change bots or move funds.",
+      "empty": "No apps connected yet.",
+      "emptyBody": "Connect DeskLabs to Claude to ask about your bots in your own words.",
+      "unnamed": "Unnamed app",
+      "lastUsed": "Last used {date}",
+      "neverUsed": "Connected {date}, not used yet",
+      "revoke": "Revoke",
+      "cancel": "Cancel",
+      "confirmTitle": "Revoke {app}?",
+      "confirmWhat": "What happens",
+      "confirmBody": "The app loses access right away. You can connect it again later.",
+      "error": "Couldn’t revoke. Try again."
     }
   }
 }

@@ -1110,7 +1110,7 @@ export async function setAiDesk(
 
 /**
  * Team bật / tắt AI Adaptive DCA (Beta) cho một user (DEC-TBD-adaptive-dca-beta). Tắt: ẩn khỏi catalog, API tạo bot trả
- * 404, engine không nạp bot của user; bot Adaptive DCA đang Running chuyển sang Pausing (engine pause như lệnh Pause
+ * 404, engine không nạp bot của user; bot Adaptive DCA đang Running / Starting / Resuming chuyển sang Pausing (engine pause như lệnh Pause
  * thường, không đóng vị thế) để trạng thái hiển thị đúng với việc engine không chạy nữa (quy tắc 1.6). Ghi audit.
  */
 export async function setAdaptiveDca(
@@ -1137,7 +1137,8 @@ export async function setAdaptiveDca(
           and(
             eq(bots.userId, targetId),
             eq(bots.strategy, Strategy.adaptiveDca),
-            eq(bots.state, BotState.running),
+            // Cả bot đang Starting / Resuming: engine không nạp chúng khi cờ tắt (review #71).
+            inArray(bots.state, [BotState.running, BotState.starting, BotState.resuming]),
           ),
         )
         .returning({ id: bots.id });

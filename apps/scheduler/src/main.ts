@@ -13,6 +13,7 @@ import { reconcileDay, snapshotBuilderBalances } from "./builder-revenue";
 import { purgeOldDeskAiChats, queueDueRecords, sweepStaleDeskJobs } from "./desk-record";
 import { leaderboardDue, noteMinHoldChanges, runLeaderboard } from "./leaderboard";
 import { computeDailyStats, utcDate } from "./market-stats";
+import { purgeMcp } from "./mcp-purge";
 import { snapshotAndCheck } from "./risk";
 
 // scheduler: một bản active (leader lease). Hiện có job market stats hằng ngày; các job lịch khác
@@ -182,6 +183,13 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
       void tick().catch((error: unknown) => {
         log.error({ err: error }, "tick failed");
       });
+      void purgeMcp(db, Date.now())
+        .then((r) => {
+          if (r.codes + r.clients + r.calls > 0) log.info(r, "old oauth / mcp rows deleted");
+        })
+        .catch((error: unknown) => {
+          log.error({ err: error }, "mcp purge failed");
+        });
       void purgeOldDeskAiChats(db, Date.now())
         .then((n) => {
           if (n > 0) log.info({ deleted: n }, "old desk ai chats deleted");

@@ -868,8 +868,8 @@ export class Engine {
       return undefined;
     }
     // Cờ theo tài khoản chỉ chặn bot đang muốn CHẠY (starting / running / resuming). Bot đang pausing / stopping vẫn
-    // nạp để runner huỷ lệnh mở và hoàn tất Pause / Stop như thường; không thì bot kẹt Pausing và lệnh mở trên SoDEX
-    // không được xử lý (review #71, DEC-TBD-adaptive-dca-beta). Paused / stopped không có trong ENGINE_ACTIVE_STATES.
+    // nạp để runner hoàn tất Pause / Stop như thường (Pause giữ lệnh đang mở, DOMAIN.md mục 7.2); không thì bot kẹt
+    // Pausing mãi (review #71, DEC-TBD-adaptive-dca-beta). Paused / stopped không có trong ENGINE_ACTIVE_STATES.
     const wantsToRun = FLAG_GATED_STATES.has(bot.state);
     // Bot khối lượng chỉ chạy khi admin bật cho chủ tài khoản (DEC-80).
     if (wantsToRun && VOLUME.has(bot.strategy) && !(await this.#volumeBotsOn(bot.userId))) {
