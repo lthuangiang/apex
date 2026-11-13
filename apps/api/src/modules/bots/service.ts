@@ -151,6 +151,28 @@ export async function assertStrategyAvailable(
 }
 
 /**
+ * Start / Resume một bot đã có mà team đã tắt chiến lược cho tài khoản (bot khối lượng DEC-80, Adaptive DCA
+ * DEC-218): engine sẽ không nạp bot đó, nên báo rõ thay vì để bot kẹt Starting / Resuming.
+ */
+export async function assertStrategyRunnable(
+  db: Db,
+  userId: string,
+  strategy: string,
+): Promise<void> {
+  try {
+    await assertStrategyAvailable(db, userId, strategy);
+  } catch (e) {
+    if (e instanceof AppError && e.code === ErrorCode.notFound)
+      throw new AppError(
+        ErrorCode.botStateConflict,
+        "This strategy is turned off for your account.",
+        { reason: "strategy_off" },
+      );
+    throw e;
+  }
+}
+
+/**
  * Volume Farm isolated: stop loss phải chạy trước thanh lý (DEC-87). Thanh lý ở khoảng 100 / đòn bẩy % giá; lấy 90%
  * mức đó làm trần vì còn phí và maintenance margin. Cross dùng cả số dư account nên không có mức cố định để chặn.
  * Ở api, không ở schema: bot đang chạy với cấu hình cũ vẫn phải nạp được.
@@ -1133,6 +1155,8 @@ export async function startBot(
     throw new AppError(ErrorCode.validationFailed, "Start checks failed.", { failed });
   }
   const own = await ownBot(deps.db, userId, botId);
+  // Team đã tắt chiến lược cho tài khoản: báo rõ, không để bot kẹt Starting (engine không nạp).
+  await assertStrategyRunnable(deps.db, userId, own.strategy);
   // Draft lưu trước khi có quy tắc này vẫn bị chặn lúc Start.
   const [active] = await deps.db
     .select({ config: botVersions.config })
@@ -1143,10 +1167,7 @@ export async function startBot(
   await assertCopyMarketFree(deps, own);
   if (own.strategy === Strategy.copyTrade && own.mode === "live" && active !== undefined)
     await assertCopyLeaderReady(deps, active.config as Record<string, unknown>);
-  if (own.state === BotState.stopped) {
-    await assertStrategyAvailable(deps.db, userId, own.strategy);
-    await newRunVersion(deps, botId);
-  }
+  if (own.state === BotState.stopped) await newRunVersion(deps, botId);
   const b = await command(deps, userId, botId, BotCommand.start, { reasonCode: null });
   await audit(deps.db, { userId, action: AuditAction.botStarted, target: botId, ip });
   return summary(b, null, null);
@@ -1159,6 +1180,8 @@ export async function pauseBot(deps: BotDeps, userId: string, botId: string): Pr
 /** Resume chỉ khi lý do pause đã hết (DOMAIN.md mục 7.2). */
 export async function resumeBot(deps: BotDeps, userId: string, botId: string): Promise<BotSummary> {
   const b = await ownBot(deps.db, userId, botId);
+  // Team đã tắt chiến lược cho tài khoản: báo rõ, không để bot kẹt Resuming (engine không nạp).
+  await assertStrategyRunnable(deps.db, userId, b.strategy);
   if (
     b.reasonCode === ReasonCode.builderFeeRevoked ||
     b.reasonCode === ReasonCode.apiKeyExpired ||

@@ -47,9 +47,11 @@ import {
   valuePortfolio,
   isBuilderAccount,
   VOLUME_STRATEGIES,
+  Strategy,
   CONNECT_EVENT_TYPES,
   type AdminUserDetail,
   type AdminUsersView,
+  type AdminAdaptiveDca,
   type AdminAiDesk,
   type AnalystBot,
   type AdminVolumeBots,
@@ -809,6 +811,7 @@ interface AdminUserRow {
   twoFactor: boolean;
   volumeBots: boolean;
   aiDesk: boolean;
+  adaptiveDca: boolean;
 }
 
 /** Dòng user cho team: tài khoản SoDEX, builder fee, số bot, số dư và khối lượng. */
@@ -914,6 +917,7 @@ async function adminItems(
       volume: volumes.find((x) => x.userId === r.id)?.volume ?? "0",
       volumeBots: r.volumeBots,
       aiDesk: r.aiDesk,
+      adaptiveDca: r.adaptiveDca,
     };
   });
 }
@@ -938,6 +942,7 @@ export async function adminUserDetail(
       twoFactor: users.twofaEnabled,
       volumeBots: users.volumeBots,
       aiDesk: users.aiDesk,
+      adaptiveDca: users.adaptiveDca,
     })
     .from(users)
     .where(and(eq(users.id, targetId), isNull(users.deletedAt)))
@@ -1063,6 +1068,7 @@ export async function adminUsers(
       twoFactor: users.twofaEnabled,
       volumeBots: users.volumeBots,
       aiDesk: users.aiDesk,
+      adaptiveDca: users.adaptiveDca,
     })
     .from(users)
     .where(where)
@@ -1100,6 +1106,53 @@ export async function setAiDesk(
     ip,
   });
   return { aiDesk: enabled };
+}
+
+/**
+ * Team bật / tắt AI Adaptive DCA (Beta) cho một user (DEC-218). Tắt: ẩn khỏi catalog, API tạo bot trả
+ * 404, engine không nạp bot của user; bot Adaptive DCA đang Running / Starting / Resuming chuyển sang Pausing (engine pause như lệnh Pause
+ * thường, không đóng vị thế) để trạng thái hiển thị đúng với việc engine không chạy nữa (quy tắc 1.6). Ghi audit.
+ */
+export async function setAdaptiveDca(
+  deps: AccountDeps,
+  actorId: string,
+  targetId: string,
+  enabled: boolean,
+  ip: string | null,
+): Promise<AdminAdaptiveDca> {
+  await requireTeam(deps.db, actorId, "Users is for the DeskLabs team only.");
+  return deps.db.transaction(async (tx) => {
+    const [u] = await tx
+      .update(users)
+      .set({ adaptiveDca: enabled })
+      .where(and(eq(users.id, targetId), isNull(users.deletedAt)))
+      .returning({ id: users.id });
+    if (u === undefined) throw new AppError(ErrorCode.notFound, "User not found.");
+    let paused = 0;
+    if (!enabled) {
+      const running = await tx
+        .update(bots)
+        .set({ state: BotState.pausing, updatedAt: new Date() })
+        .where(
+          and(
+            eq(bots.userId, targetId),
+            eq(bots.strategy, Strategy.adaptiveDca),
+            // Cả bot đang Starting / Resuming: engine không nạp chúng khi cờ tắt (review #71).
+            inArray(bots.state, [BotState.running, BotState.starting, BotState.resuming]),
+          ),
+        )
+        .returning({ id: bots.id });
+      paused = running.length;
+    }
+    await audit(tx, {
+      userId: actorId,
+      action: AuditAction.adaptiveDcaChanged,
+      target: targetId,
+      metadata: { enabled, paused },
+      ip,
+    });
+    return { adaptiveDca: enabled, paused };
+  });
 }
 
 /**

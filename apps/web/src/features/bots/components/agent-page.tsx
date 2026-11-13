@@ -30,6 +30,7 @@ import { ME_KEY, useMe, useTwoFactorNeeded } from "@/lib/queries";
 
 import { botCapital, botMarket } from "../bot-label";
 
+import { BetaChip, isBeta } from "./beta-chip";
 import { useBotErrorText } from "./bot-errors";
 import { BotFills } from "./bot-fills";
 import { BotProfit } from "./bot-profit";
@@ -269,6 +270,12 @@ export function AgentPage({ botId }: { botId?: string }) {
               </h2>
               <span className="text-[13px] text-ink-2">
                 {botMarket(b, names)} · {tf(`strategies.${b.strategy}.name`)}
+                {isBeta(b.strategy) ? (
+                  <>
+                    {" "}
+                    <BetaChip />
+                  </>
+                ) : null}
               </span>
               <div
                 role="status"

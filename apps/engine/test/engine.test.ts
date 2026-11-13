@@ -971,6 +971,74 @@ describe("engine", () => {
     expect(gw.received).toHaveLength(0);
     await e.stop();
   });
+  it("still finishes Pause and Stop after the team turns a strategy off, without placing orders (review #71)", async () => {
+    const { eq, inArray } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const volume = {
+      strategy: "volume_maker",
+      market: "BTC-USD",
+      engine: "perps" as const,
+      config: {
+        market: "BTC-USD",
+        leverage: 1,
+        volumeTarget: "100000",
+        orderSize: "500",
+        distanceBp: "1",
+        maxInventory: "2000",
+        refreshSeconds: 3,
+        runUntil: "target_or_budget",
+        costBudget: "300",
+        inventoryLossStop: "60",
+        onStop: "close_inventory",
+      },
+    };
+    const adca = {
+      strategy: "adaptive_dca",
+      market: "ETH-USD",
+      engine: "perps" as const,
+      config: {
+        market: "ETH-USD",
+        leverage: 2,
+        baseOrder: "100",
+        safetyOrder: "100",
+        maxExposure: "1000",
+        maxLoss: "150",
+      },
+    };
+    // Admin tắt cờ thì api đưa bot đang chạy sang Pausing; engine phải nạp để hoàn tất.
+    const v = await seedBot("running", volume);
+    const a = await seedBot("running", adca);
+    const s = await seedBot("running", adca);
+    await db
+      .update(bots)
+      .set({ state: "pausing" })
+      .where(inArray(bots.id, [v.botId, a.botId]));
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, s.botId));
+    for (const id of [v.botId, a.botId, s.botId]) {
+      const [b] = await db.select().from(bots).where(eq(bots.id, id));
+      await db
+        .update(users)
+        .set({ volumeBots: false, adaptiveDca: false })
+        .where(eq(users.id, b?.userId ?? ""));
+    }
+    const e = makeEngine(gw, "w-flag-off");
+    for (let i = 0; i < 20; i += 1) {
+      await e.tick();
+      const states = await db
+        .select({ state: bots.state })
+        .from(bots)
+        .where(inArray(bots.id, [v.botId, a.botId, s.botId]));
+      if (states.every((x) => x.state === "paused" || x.state === "stopped")) break;
+    }
+    expect((await botState(v.botId))?.state).toBe("paused");
+    expect((await botState(a.botId))?.state).toBe("paused");
+    expect((await botState(s.botId))?.state).toBe("stopped");
+    // Cờ tắt: không lệnh mới nào được gửi (Pause giữ lệnh đang mở, DOMAIN.md mục 7.2).
+    await e.onPrice("BTC-USD", "100000", clock);
+    await e.onPrice("ETH-USD", "100", clock);
+    expect(gw.received.filter((o) => !o.reduceOnly)).toEqual([]);
+    await e.stop();
+  });
   it("closes the bot's perps position on Stop only when the user chose to (DEC-81)", async () => {
     const { eq } = await import("drizzle-orm");
     const futures = {
@@ -2029,7 +2097,7 @@ describe("engine", () => {
     await stopPaperBots();
   });
 
-  it("feeds 1-minute candles to AI Adaptive DCA bots, only for accounts with AI Desk on (DEC-107)", async () => {
+  it("feeds 1-minute candles to AI Adaptive DCA bots, only while the account's Adaptive DCA flag is on (DEC-107)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     await seedCandles("ETH-USD");
@@ -2049,14 +2117,23 @@ describe("engine", () => {
     const state = async () =>
       (await db.select().from(botRuntime).where(eq(botRuntime.botId, botId)))[0]?.state as
         { regime?: string } | undefined;
-    // Một engine cho cả hai giai đoạn: chưa bật cờ Adaptive DCA thì không nạp bot; bật rồi thì vòng sau nạp và gửi nến
-    // (cờ riêng, không theo AI Desk: DEC-192).
+    // Một engine cho cả hai giai đoạn: team tắt cờ Adaptive DCA thì không nạp bot; bật lại thì vòng sau nạp và gửi nến
+    // (cờ riêng, không theo AI Desk: DEC-192; mặc định bật cho mọi tài khoản: DEC-218).
+    const [b] = await db.select().from(bots).where(eq(bots.id, botId));
+    const [owner] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, b?.userId ?? ""));
+    expect(owner?.adaptiveDca).toBe(true);
+    await db
+      .update(users)
+      .set({ adaptiveDca: false })
+      .where(eq(users.id, b?.userId ?? ""));
     const e = farmEngine(gw, "adca");
     await e.tick();
     await e.onPrice("ETH-USD", "100", clock);
     await e.tick();
     expect(await state()).toBeUndefined();
-    const [b] = await db.select().from(bots).where(eq(bots.id, botId));
     await db
       .update(users)
       .set({ adaptiveDca: true })
