@@ -2474,7 +2474,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": [],
+  "_pendingReview": ["desk.ai.historyPage.deleteWhat"],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",
@@ -4874,6 +4874,7 @@
         "footer": "Desk AI never changes anything on its own. Every line above with \"You\" was a button you pressed.",
         "delete": "Delete history",
         "deleteTitle": "Delete your Desk AI history?",
+        "deleteWhat": "What happens",
         "deleteBody": "This removes your questions and answers. Your bots and the list of changes stay as they are.",
         "deleteConfirm": "Delete",
         "cancel": "Cancel",
