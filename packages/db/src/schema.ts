@@ -1104,12 +1104,34 @@ export const leaderFollows = pgTable(
       .references(() => users.id),
     source: text("source", { enum: ["sodex", "hyperliquid"] }).notNull(),
     address: text("address").notNull(),
+    /**
+     * Mức cảnh báo cho trader này (DEC-209): `big_moves` (mặc định) / `positions` (mở mới, đóng hẳn,
+     * đảo chiều, cộng big move) / `off`.
+     */
+    alertLevel: text("alert_level", { enum: ["big_moves", "positions", "off"] })
+      .notNull()
+      .default("big_moves"),
     ...timestamps,
   },
   (t) => [
     primaryKey({ columns: [t.userId, t.source, t.address] }),
     index("leader_follows_wallet_idx").on(t.source, t.address),
   ],
+);
+
+/**
+ * Lần cảnh báo vị thế (mở mới / đóng hẳn / đảo chiều) gần nhất theo (ví, coin): cách nhau ≥ 10 phút
+ * (DEC-209). Tách khỏi `leader_alert_state` của big move.
+ */
+export const leaderPositionAlertState = pgTable(
+  "leader_position_alert_state",
+  {
+    source: text("source", { enum: ["sodex", "hyperliquid"] }).notNull(),
+    address: text("address").notNull(),
+    coin: text("coin").notNull(),
+    lastAlertAt: tstz("last_alert_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.source, t.address, t.coin] })],
 );
 
 /** Lần cảnh báo "big move" gần nhất theo (ví, coin): cách nhau ≥ 10 phút (DEC-163 mục 11). */

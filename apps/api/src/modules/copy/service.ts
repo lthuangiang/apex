@@ -25,6 +25,7 @@ import {
   type CopyPreview,
   type CopyRequest,
   type CopySlot,
+  type FollowAlertLevel,
   type Following,
   type HiddenReason,
   type LeaderEventView,
@@ -137,11 +138,45 @@ export function tagsOf(s: LeaderStats): TraderCard["tags"] {
 }
 
 async function followsOf(deps: CopyDeps, userId: string): Promise<Set<string>> {
+  return new Set((await alertLevelsOf(deps, userId)).keys());
+}
+
+/** Trader đang follow → mức cảnh báo (DEC-209). */
+async function alertLevelsOf(
+  deps: CopyDeps,
+  userId: string,
+): Promise<Map<string, FollowAlertLevel>> {
   const rows = await deps.bots.db
-    .select({ address: leaderFollows.address })
+    .select({ address: leaderFollows.address, level: leaderFollows.alertLevel })
     .from(leaderFollows)
     .where(and(eq(leaderFollows.userId, userId), eq(leaderFollows.source, SOURCE)));
-  return new Set(rows.map((r) => r.address));
+  return new Map(rows.map((r) => [r.address, r.level]));
+}
+
+/** Đổi mức cảnh báo cho một trader đang follow (DEC-209). Chưa follow → NOT_FOUND. */
+export async function setFollowAlert(
+  deps: CopyDeps,
+  userId: string,
+  address: string,
+  level: FollowAlertLevel,
+): Promise<{ address: string; alertLevel: FollowAlertLevel }> {
+  await requireDesk(deps, userId);
+  const changed = await deps.bots.db
+    .update(leaderFollows)
+    .set({ alertLevel: level })
+    .where(
+      and(
+        eq(leaderFollows.userId, userId),
+        eq(leaderFollows.source, SOURCE),
+        eq(leaderFollows.address, address),
+      ),
+    )
+    .returning({ address: leaderFollows.address });
+  if (changed.length === 0)
+    throw new AppError(ErrorCode.notFound, "You don't follow this trader.", {
+      reason: "not_following",
+    });
+  return { address, alertLevel: level };
 }
 
 function slotFor(address: string, copied: readonly string[], slots: number): CopySlot {
@@ -420,7 +455,7 @@ export async function traderProfile(
       ok: false,
       data: { share: recent.share, coins: recent.coins.join(", ") },
     });
-  const follows = await followsOf(deps, userId);
+  const levels = await alertLevelsOf(deps, userId);
   const copied = await copiedLeaders(deps.bots.db, SOURCE);
   return {
     card: {
@@ -430,8 +465,9 @@ export async function traderProfile(
       curve: stats.dailyCurve,
       tags: tagsOf(stats),
       slot: slotFor(address, copied, SLOTS),
-      following: follows.has(address),
+      following: levels.has(address),
     },
+    followAlertLevel: levels.get(address) ?? null,
     hidden: row.s.hidden.filter((h): h is HiddenReason =>
       (HIDDEN_REASONS as readonly string[]).includes(h),
     ),
@@ -500,7 +536,8 @@ export async function unfollow(
 export async function following(deps: CopyDeps, userId: string): Promise<Following> {
   await requireDesk(deps, userId);
   const db = deps.bots.db;
-  const addresses = [...(await followsOf(deps, userId))];
+  const levels = await alertLevelsOf(deps, userId);
+  const addresses = [...levels.keys()];
   const copied = await copiedLeaders(db, SOURCE);
   const names =
     addresses.length === 0
@@ -561,6 +598,7 @@ export async function following(deps: CopyDeps, userId: string): Promise<Followi
         lastEventAt: mine[0] === undefined ? null : iso(mine[0].at),
         copying: copied.includes(address) && held !== undefined,
         newMarkets,
+        alertLevel: levels.get(address) ?? "big_moves",
       };
     }),
     events: events.map(eventView),

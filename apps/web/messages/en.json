@@ -2202,6 +2202,22 @@
     "errors": {
       "followLimit": "You can follow up to {limit} traders. Unfollow one to add another."
     },
+    "followAlerts": {
+      "label": "Alerts",
+      "ariaLabel": "Alerts for {trader}",
+      "menuTitle": "Alert me about",
+      "levels": {
+        "big_moves": "Big moves",
+        "positions": "New and closed positions",
+        "off": "Off"
+      },
+      "hints": {
+        "big_moves": "Only when they make a big move.",
+        "positions": "When they open, close or flip a position, plus big moves.",
+        "off": "No alerts from this trader."
+      },
+      "explain": "Pick what each trader alerts you about next to their name. Only markets SoDEX lists, and at most one alert per trader and market every 10 minutes."
+    },
     "tags": {
       "easy_to_copy": "Easy to copy",
       "holds_hours": "Holds for hours",
@@ -3730,6 +3746,7 @@
       "fill": "Order filled",
       "daily_summary": "Daily summary",
       "leader_big_move": "A trader you follow made a big move",
+      "leader_position": "A trader you follow changed a position",
       "telegram_connected": "Telegram connected",
       "telegram_moved": "Telegram alerts stopped",
       "telegram_blocked": "Telegram alerts paused",
@@ -3778,7 +3795,17 @@
         "keyFee": "Your API key or builder fee approval changed.",
         "telegramConnected": "Alerts also go to @{username}.",
         "telegramMoved": "Your Telegram chat was connected to another DeskLabs account. Connect again in Settings to get alerts there.",
-        "telegramBlocked": "Telegram says you blocked DeskLabs Bot. You still get alerts here and by email."
+        "telegramBlocked": "Telegram says you blocked DeskLabs Bot. You still get alerts here and by email.",
+        "followOnly": "Following only. Nothing was copied."
+      },
+      "aTrader": "A trader you follow",
+      "long": "long",
+      "short": "short",
+      "leaderPosition": {
+        "opened": "{trader} opened a {side} on {coin}",
+        "closed": "{trader} closed their {side} on {coin}",
+        "flipped": "{trader} flipped to a {side} on {coin}",
+        "liquidated": "{trader} was liquidated on {coin}"
       }
     },
     "reasonText": {

@@ -51,6 +51,7 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   fill: { icon: Check, tone: "bg-pos-bg text-pos" },
   daily_summary: { icon: Sparkles, tone: "bg-accent-tint text-accent" },
   leader_big_move: { icon: UserRound, tone: "bg-bg text-ink-2" },
+  leader_position: { icon: UserRound, tone: "bg-bg text-ink-2" },
   telegram_connected: { icon: Send, tone: "bg-pos-bg text-pos" },
   telegram_moved: { icon: Send, tone: "bg-bg text-ink-2" },
   telegram_blocked: { icon: Send, tone: "bg-warn-bg text-warn" },
