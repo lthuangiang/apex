@@ -457,6 +457,7 @@ export async function following(deps: CopyDeps, userId: string): Promise<Followi
     limit: FOLLOW_LIMIT,
     checkedEveryMs: FOLLOW_POLL_MS,
     bigMoveAlerts: deps.bigMoveMinUsd !== null,
+    bigMoveMinUsd: deps.bigMoveMinUsd,
     traders: addresses.map((address) => {
       const mine = events.filter((e) => e.address === address);
       const held = copyMarkets.get(address);

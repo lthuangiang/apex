@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 
 import { feeLabels } from "@/lib/format";
 
+import { catalogFor, DEFAULT_CATALOG_FEATURES } from "../../bots/catalog";
 import { LANDING_STRATEGIES } from "../strategies";
 
 import { LandingStats } from "./landing-stats";
@@ -108,7 +109,8 @@ export function LandingPage() {
           <LiveBook />
         </section>
 
-        <LandingStats strategies={LANDING_STRATEGIES.length + 2} />
+        {/* Cùng danh mục Strategy Lab hiện cho một tài khoản mới (không viết cứng số). */}
+        <LandingStats strategies={catalogFor(DEFAULT_CATALOG_FEATURES).length} />
 
         <section
           id="strategies"
