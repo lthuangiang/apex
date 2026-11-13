@@ -2479,7 +2479,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": ["copy.errors.followLimit", "copy.budget.connectTitle", "copy.budget.connect"],
+  "_pendingReview": [],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",

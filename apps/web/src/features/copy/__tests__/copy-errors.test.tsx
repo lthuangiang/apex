@@ -11,7 +11,7 @@ import messages from "../../../../messages/en.json";
 import { CopyFlowPage } from "../components/copy-flow-page";
 import { TraderProfilePage } from "../components/trader-profile-page";
 
-// Lỗi Copy / Follow không bao giờ bị nuốt (báo cáo test WinDev A1, A2; DEC-TBD-copy-follow-errors).
+// Lỗi Copy / Follow không bao giờ bị nuốt (báo cáo test WinDev A1, A2; DEC-200).
 
 const TRADER = "0xaaa0000000000000000000000000000000000001";
 const state = vi.hoisted(() => ({

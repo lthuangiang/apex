@@ -9,6 +9,7 @@ import {
   deskAiFacts,
   ErrorCode,
   intentOf,
+  promptFacts,
   templateFacts,
   type DeskAiAnswer,
   type DeskAiAskView,
@@ -161,7 +162,9 @@ async function write(
         model: r.model,
         usage: r.usage,
       };
-    const check = checkNumbers(r.text, facts, question);
+    // Chỉ những fact model đã thấy (không có số câu còn lại).
+    const seen = promptFacts(facts);
+    const check = checkNumbers(r.text, seen, question);
     if (r.text === "" || !check.ok)
       return {
         answer: template,
@@ -171,7 +174,7 @@ async function write(
         usage: r.usage,
       };
     return {
-      answer: { kind: "text", text: r.text, facts },
+      answer: { kind: "text", text: r.text, facts: seen },
       source: "llm",
       fallback: null,
       model: r.model,
