@@ -1451,3 +1451,30 @@ export const mcpCalls = pgTable(
     index("mcp_calls_user_idx").on(t.userId, t.createdAt),
   ],
 );
+
+/**
+ * Bản nháp do Claude tạo qua MCP (scope `draft`, DEC-167, DEC-TBD-mcp-drafts). Không ảnh hưởng bot nào: người dùng mở
+ * link, xem lại trên màn Create / Edit có sẵn rồi tự Save / Apply / Start. `bot_id` null = bot mới. Hết hạn sau 24 giờ;
+ * `opened_at` ghi lần đầu người dùng mở (bản đã mở không tính vào giới hạn 20 bản đang chờ).
+ */
+export const botDrafts = pgTable(
+  "bot_drafts",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    botId: uuid("bot_id").references(() => bots.id),
+    strategy: text("strategy").notNull(),
+    name: text("name"),
+    config: jsonb("config").notNull(),
+    source: text("source", { enum: ["mcp"] })
+      .notNull()
+      .default("mcp"),
+    clientId: text("client_id"),
+    expiresAt: tstz("expires_at").notNull(),
+    openedAt: tstz("opened_at"),
+    ...timestamps,
+  },
+  (t) => [index("bot_drafts_user_idx").on(t.userId, t.expiresAt)],
+);

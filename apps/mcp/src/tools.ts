@@ -2,6 +2,7 @@ import {
   MCP_PAGE_MAX,
   MCP_PERIODS,
   mcpBotDecisionsSchema,
+  mcpDraftResultSchema,
   mcpGetWhatIfSchema,
   mcpNeedsYouSchema,
   mcpTrackRecordSchema,
@@ -184,6 +185,45 @@ const USER_TOOLS: readonly ToolDef[] = [
       "Read-only. Changes the user applied from AI Desk and how each did 7 days later: Helped, Made it worse, No clear effect, or Still measuring. Results are past days, not a forecast.",
     input: {},
     run: (ctx) => read(ctx, `${ME}/desk/record`, mcpTrackRecordSchema),
+  },
+  {
+    name: "draft_new_bot",
+    endpoint: "user",
+    scope: "draft",
+    readOnly: false,
+    title: "Draft a new bot",
+    description:
+      "Creates a draft only. Saves the strategy and settings for a new bot as a draft that lasts 24 hours and returns a link. The user opens the link in DeskLabs, reviews the settings and decides to save or start the bot there. This tool never creates, starts or funds a bot. Settings are checked like the DeskLabs form; invalid fields are listed in the error. Needs the draft permission; your client will ask you to allow it the first time.",
+    input: {
+      strategy: z
+        .string()
+        .min(1)
+        .max(40)
+        .describe("Strategy id, for example spot_grid, futures_dca, recurring_buy"),
+      name: z.string().min(1).max(80).optional().describe("Bot name (optional)"),
+      config: z
+        .record(z.string(), z.unknown())
+        .describe("Strategy settings, the same fields as the DeskLabs form for that strategy"),
+    },
+    run: async (ctx, args) =>
+      mcpDraftResultSchema.parse(await ctx.api.post(`${ME}/drafts/new`, ctx.token, args)),
+  },
+  {
+    name: "draft_bot_change",
+    endpoint: "user",
+    scope: "draft",
+    readOnly: false,
+    title: "Draft a change to a bot",
+    description:
+      "Creates a draft only. Saves changes to one of the user's bots as a draft that lasts 24 hours and returns a link. Nothing changes on the bot until the user opens the link in DeskLabs and applies it there. Locked fields (strategy, market) can't change. Needs the draft permission; your client will ask you to allow it the first time.",
+    input: {
+      botId,
+      changes: z
+        .record(z.string(), z.unknown())
+        .describe('Only the settings to change, for example { "maxLoss": "50" }'),
+    },
+    run: async (ctx, args) =>
+      mcpDraftResultSchema.parse(await ctx.api.post(`${ME}/drafts/change`, ctx.token, args)),
   },
   {
     name: "find_traders",

@@ -409,3 +409,57 @@ export const mcpTrackRecordSchema = z.object({
   reason: deskGateReason,
 });
 export type McpTrackRecord = z.infer<typeof mcpTrackRecordSchema>;
+
+// ---------- B3: bản nháp từ Claude (DEC-TBD-mcp-drafts) ----------
+// Scope `draft`. Chỉ tạo bản nháp: không tool nào Save / Apply / Start. Người dùng mở link, xem lại trên màn Create /
+// Edit có sẵn (nhãn "From Claude") và tự làm theo luồng thường, kể cả "Before it starts" (startChecks).
+
+export const MCP_DRAFT_CONFIG = {
+  /** Bản nháp hết hạn sau 24 giờ (DEC-167). */
+  ttlMs: 24 * 3_600_000,
+  /** Tối đa 20 bản nháp đang chờ (chưa mở, chưa hết hạn) mỗi user. */
+  maxOpen: 20,
+} as const;
+
+/** Câu cho client MCP (không phải UI), PM duyệt. */
+export const MCP_DRAFT_NOTE =
+  "Open this link in DeskLabs to review. Claude can't apply or start it." as const;
+export const MCP_DRAFTS_FULL =
+  "You have 20 open drafts. Open or discard some in DeskLabs first." as const;
+
+const draftConfigSchema = z
+  .record(z.string().max(60), z.unknown())
+  .refine((v) => Object.keys(v).length <= 60, { message: "Too many fields." });
+
+export const mcpDraftNewInputSchema = z.object({
+  strategy: z.string().min(1).max(40),
+  name: z.string().trim().min(1).max(80).optional(),
+  config: draftConfigSchema,
+});
+
+export const mcpDraftChangeInputSchema = z.object({
+  botId: uuidSchema,
+  /** Chỉ các field muốn đổi; ghép lên cấu hình đang chạy rồi kiểm tra như màn Edit. */
+  changes: draftConfigSchema,
+});
+
+export const mcpDraftResultSchema = z.object({
+  ...meta,
+  draftId: uuidSchema,
+  kind: z.enum(["new_bot", "bot_change"]),
+  url: z.url(),
+  expiresAt: isoDateTimeSchema,
+  note: z.literal(MCP_DRAFT_NOTE),
+});
+export type McpDraftResult = z.infer<typeof mcpDraftResultSchema>;
+
+/** Web: `GET /api/v1/drafts/:id` (phiên đăng nhập) để điền sẵn màn Create / Edit. */
+export const botDraftViewSchema = z.object({
+  id: uuidSchema,
+  strategy: z.string(),
+  botId: uuidSchema.nullable(),
+  name: z.string().nullable(),
+  config: z.record(z.string(), z.unknown()),
+  expiresAt: isoDateTimeSchema,
+});
+export type BotDraftView = z.infer<typeof botDraftViewSchema>;

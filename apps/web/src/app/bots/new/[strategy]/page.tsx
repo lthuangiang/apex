@@ -1,7 +1,15 @@
 import { notFound } from "next/navigation";
 
-import { CreateBot, isLaunched, presetMarket, VolumeGate } from "@/features/bots";
+import {
+  ClaudeDraftCreate,
+  CreateBot,
+  isLaunched,
+  presetMarket,
+  VolumeGate,
+} from "@/features/bots";
 import { CopyFlowPage } from "@/features/copy";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Bot khối lượng: chỉ mở được khi admin bật cho tài khoản (DEC-80), kiểm tra ở client bằng /api/v1/features.
 export default async function Page({
@@ -9,10 +17,16 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ strategy: string }>;
-  searchParams: Promise<{ suggestion?: string; market?: string; engine?: string; leader?: string }>;
+  searchParams: Promise<{
+    suggestion?: string;
+    market?: string;
+    engine?: string;
+    leader?: string;
+    draft?: string;
+  }>;
 }) {
   const { strategy } = await params;
-  const { suggestion, market, engine, leader } = await searchParams;
+  const { suggestion, market, engine, leader, draft } = await searchParams;
   if (!isLaunched(strategy)) notFound();
   // Copy Trade (DEC-163): luồng 3 bước Budget and safety → Review and start, trader chọn ở Find traders.
   if (strategy === "copy_trade")
@@ -29,7 +43,10 @@ export default async function Page({
     (engine === "spot" || engine === "perps")
       ? (presetMarket(strategy, market, engine) ?? undefined)
       : undefined;
-  const page = (
+  // Bản nháp từ Claude (MCP, DEC-TBD-mcp-drafts): điền sẵn từ `bot_drafts`, người dùng tự Save / Start.
+  const page = UUID.test(draft ?? "") ? (
+    <ClaudeDraftCreate strategy={strategy} draftId={draft ?? ""} />
+  ) : (
     <CreateBot
       strategy={strategy}
       preset={preset}

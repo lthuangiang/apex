@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 // Subpath của "exports" trong package SDK: TypeScript resolve được, plugin import của eslint thì không.
 // eslint-disable-next-line import/no-unresolved
 import { UnauthorizedError, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js"; // prettier-ignore
@@ -71,6 +73,10 @@ class MemoryProvider implements OAuthClientProvider {
   codeVerifier() {
     return this.verifier;
   }
+  invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier" | "discovery") {
+    if (scope === "all" || scope === "tokens") this.saved = undefined;
+    if (scope === "all" || scope === "client") this.info = undefined;
+  }
 }
 
 const transportFor = (path: string, provider: MemoryProvider) =>
@@ -114,6 +120,10 @@ test("an MCP client connects with OAuth, reads, and loses access on revoke", asy
         "This app can read your DeskLabs data. It can't place trades, change bots or move funds.",
       ),
     ).toBeVisible();
+    // Lần đầu chỉ xin `read`; quyền `draft` xin sau, lúc cần (step-up).
+    await expect(
+      page.getByText("Save bot drafts for you to review and apply in DeskLabs"),
+    ).toHaveCount(0);
     await page.getByRole("button", { name: "Allow" }).click();
     await expect.poll(() => code).not.toBe("");
   });
@@ -139,6 +149,84 @@ test("an MCP client connects with OAuth, reads, and loses access on revoke", asy
     expect(record.isError).not.toBe(true);
     expect(JSON.stringify(record.structuredContent)).toContain("not a forecast");
     await client.close();
+  });
+
+  await test.step("drafting asks for the draft permission once (step-up), then works", async () => {
+    const reader = new Client({ name: "e2e", version: "1.0.0" });
+    await reader.connect(transportFor("/mcp", provider));
+    const tools = (await reader.listTools()).tools.map((t) => t.name);
+    expect(tools).toContain("draft_new_bot");
+    provider.authorizationUrl = undefined;
+    // Đọc qua hàm: TypeScript không biết callTool gán lại giá trị này.
+    const authUrl = (): URL | undefined => provider.authorizationUrl;
+    // Token chỉ có `read`: 403 insufficient_scope → refresh cũ bị từ chối → client mở lại consent với "read draft".
+    await expect(
+      reader.callTool({ name: "draft_new_bot", arguments: { strategy: "spot_grid", config: {} } }),
+    ).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(authUrl()?.searchParams.get("scope")).toBe("read draft");
+    await reader.close().catch(() => undefined);
+
+    code = "";
+    await page.goto(String(authUrl()));
+    await expect(
+      page.getByText("Save bot drafts for you to review and apply in DeskLabs"),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Allow" }).click();
+    await expect.poll(() => code).not.toBe("");
+    await transportFor("/mcp", provider).finishAuth(code);
+  });
+
+  await test.step("a draft from Claude opens prefilled; only the user saves it", async () => {
+    const client = new Client({ name: "e2e", version: "1.0.0" });
+    await client.connect(transportFor("/mcp", provider));
+    const made = await client.callTool({
+      name: "draft_new_bot",
+      arguments: {
+        strategy: "spot_grid",
+        name: "Grid from Claude",
+        config: {
+          market: "vBTC_vUSDC",
+          lowerPrice: "90",
+          upperPrice: "110",
+          gridLevels: 5,
+          spacing: "arithmetic",
+          investment: "500",
+          maxLoss: "100",
+          onStop: "keep_base",
+        },
+      },
+    });
+    expect(made.isError).not.toBe(true);
+    const out = made.structuredContent as { url: string; note: string };
+    expect(out.note).toBe("Open this link in DeskLabs to review. Claude can't apply or start it.");
+    // Bản nháp không tạo bot nào.
+    const before = await client.callTool({ name: "list_bots", arguments: {} });
+    expect(before.structuredContent).toMatchObject({ bots: [] });
+    await client.close();
+
+    await page.unroute(`${CALLBACK}**`);
+    await page.goto(out.url);
+    await expect(page.getByRole("heading", { name: "Create Spot Grid" })).toBeVisible();
+    await expect(page.getByText("From Claude")).toBeVisible();
+    await expect(
+      page.getByText(
+        "Claude drafted these settings. Nothing changes until you review and save or start the bot yourself.",
+      ),
+    ).toBeVisible();
+    await expect(page.getByLabel("Lower price")).toHaveValue("90");
+    await expect(page.getByLabel("Grid levels")).toHaveValue("5");
+    // Người dùng tự lưu bằng luồng có sẵn.
+    await page.getByRole("button", { name: "Save draft" }).click();
+    const checks = page.getByRole("region", { name: "Before it starts" });
+    await expect(checks.getByText("Builder fee approval")).toBeVisible();
+    await page.goto("/bots");
+    await expect(page.getByText("Grid from Claude")).toBeVisible();
+    // Link bản nháp không tồn tại → một câu chung, không lộ gì.
+    await page.goto(`/bots/new/spot_grid?draft=${randomUUID()}`);
+    await expect(
+      page.getByText("This draft is no longer available. Drafts from Claude last 24 hours."),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open Strategy Lab" })).toBeVisible();
   });
 
   await test.step("a /mcp token is refused at /team/mcp", async () => {

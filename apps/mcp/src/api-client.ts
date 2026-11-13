@@ -22,6 +22,10 @@ export interface ApiClient {
   recordCall(row: McpCallRecord): Promise<void>;
   /** GET nội bộ cho tool (A3+): gửi kèm token của user để api tự kiểm tra scope và quyền sở hữu. */
   get(path: string, token: string): Promise<unknown>;
+  /** Step-up (B3): kết thúc refresh của family token này để client phải chạy lại OAuth với scope mới. */
+  stepUp(token: string): Promise<void>;
+  /** POST nội bộ cho tool ghi bản nháp (B3); api tự kiểm tra scope `draft`. */
+  post(path: string, token: string, body: unknown): Promise<unknown>;
 }
 
 export function httpApiClient(
@@ -50,6 +54,30 @@ export function httpApiClient(
         signal: AbortSignal.timeout(3_000),
       });
       if (!res.ok) throw new Error(`record call failed: HTTP ${String(res.status)}`);
+    },
+    async stepUp(token) {
+      const res = await fetchImpl(`${base}/api/v1/mcp/step-up`, {
+        method: "POST",
+        headers: { ...headers, "x-mcp-token": token },
+        signal: AbortSignal.timeout(3_000),
+      });
+      if (!res.ok) throw new Error(`step-up failed: HTTP ${String(res.status)}`);
+    },
+    async post(path, token, body) {
+      const res = await fetchImpl(`${base}${path}`, {
+        method: "POST",
+        headers: {
+          ...headers,
+          "x-mcp-token": token,
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const out: unknown = await res.json().catch(() => null);
+      if (!res.ok) throw new ApiCallError(res.status, out);
+      return out;
     },
     async get(path, token) {
       const res = await fetchImpl(`${base}${path}`, {
