@@ -39,7 +39,19 @@ const LABEL: Record<DeskAiFact["key"], string> = {
   decision_result: "result of that decision",
 };
 
-export function buildPrompt(question: string, facts: readonly DeskAiFact[]): DeskAiPrompt {
+/**
+ * Fact không gửi cho LLM: số câu còn lại đã hiện ngay dưới ô hỏi, model hay chép lại vào cuối câu trả lời
+ * (DEC-TBD-desk-ai-no-questions-left). Fact vẫn còn cho câu mẫu và nhật ký lượt.
+ */
+export const PROMPT_HIDDEN_FACTS: readonly DeskAiFact["key"][] = ["questions_left"];
+
+/** Các fact được gửi cho LLM; kiểm tra số cũng chỉ dùng các fact này. */
+export function promptFacts(facts: readonly DeskAiFact[]): DeskAiFact[] {
+  return facts.filter((f) => !PROMPT_HIDDEN_FACTS.includes(f.key));
+}
+
+export function buildPrompt(question: string, all: readonly DeskAiFact[]): DeskAiPrompt {
+  const facts = promptFacts(all);
   const data = facts.map((f) => ({
     id: f.id,
     label: LABEL[f.key],
