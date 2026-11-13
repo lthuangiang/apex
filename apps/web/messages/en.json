@@ -2545,7 +2545,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": ["copy.following.filter"],
+  "_pendingReview": [],
   "beta": {
     "label": "Beta",
     "note": "Still being tested. Use small amounts."
