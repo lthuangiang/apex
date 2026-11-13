@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import messages from "../../../../messages/en.json";
 import { MarketToday } from "../components/market-today";
 
-// Thẻ "Market today" (artboard BP-Home, DEC-TBD-desk-market): câu tất định từ số 24 giờ qua, ẩn khi không có dữ liệu.
+// Thẻ "Market today" (artboard BP-Home, DEC-211): câu tất định từ số 24 giờ qua, ẩn khi không có dữ liệu.
 
 const data = vi.hoisted(() => ({ items: [] as unknown[] }));
 vi.mock("@/lib/api", () => ({ api: () => Promise.resolve(structuredClone(data)) }));

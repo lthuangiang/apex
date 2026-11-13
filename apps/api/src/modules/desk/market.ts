@@ -12,7 +12,7 @@ import {
 import type { SodexRestClient } from "@drift/sodex";
 import { and, eq, ne } from "drizzle-orm";
 
-// Nguồn dữ liệu "Market today" cho Desk AI (DEC-TBD-desk-market): 24 nến 1h SoDEX + giá hiện tại (mark với perps,
+// Nguồn dữ liệu "Market today" cho Desk AI (DEC-211): 24 nến 1h SoDEX + giá hiện tại (mark với perps,
 // giá gần nhất của marketdata với spot), giống Watchlist. Cache 60 s theo market; SoDEX lỗi thì không có fact.
 
 type Engine = "spot" | "perps";

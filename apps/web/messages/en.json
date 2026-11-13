@@ -83,6 +83,7 @@
     }
   },
   "createBot": {
+    "notConnected": "Connect your SoDEX account to start bots. You can still set one up and save a draft.",
     "header": {
       "paperComingSoon": "Paper · Coming soon"
     },
@@ -2517,7 +2518,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": ["desk.market"],
+  "_pendingReview": [],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",
@@ -2567,6 +2568,7 @@
     },
     "catalog": {
       "feeRate": "Builder fee {rate}",
+      "sopoints": "SoPoints are SoDEX’s rewards for trading volume. SoDEX decides how they’re earned.",
       "fits": "Fits",
       "risk": "Risk",
       "setUp": "Set up {name}",
@@ -2651,13 +2653,13 @@
   },
   "agent": {
     "title": "Trading Agent",
-    "subtitle": "What each agent is doing, why, and the controls to change it.",
-    "newAgent": "New agent",
-    "none": "No agents yet. Create a bot in Strategy Lab.",
+    "subtitle": "What each bot is doing, why, and the controls to change it.",
+    "newAgent": "New bot",
+    "none": "No bots yet. Create one in Strategy Lab.",
     "pause": "Pause",
     "resume": "Resume",
     "start": "Start",
-    "stop": "Stop agent",
+    "stop": "Stop bot",
     "pauseHint": "Pause (keeps open orders)",
     "sent": "Sent {time} · waiting for backend",
     "confirmed": "Confirmed {time}",
@@ -2678,7 +2680,7 @@
     "configVersion": "v{version} · {date}",
     "editBot": "Edit bot",
     "editHint": "Edits create v{next} and go through review. v{version} keeps running until you confirm.",
-    "stopTitle": "Stop this agent",
+    "stopTitle": "Stop this bot",
     "stopBody": "Cancels its open orders on SoDEX. Your assets stay in your account; nothing is sold.",
     "stopDialog": {
       "title": "Stop {name}?",
@@ -2744,7 +2746,7 @@
     "stopHint": "You will see exactly what gets cancelled before anything happens.",
     "notSet": "Not set",
     "back": "Back to Home",
-    "noneTitle": "No agents yet",
+    "noneTitle": "No bots yet",
     "up": "Up {time}",
     "investment": "Investment",
     "range": "Range",
@@ -2752,7 +2754,7 @@
     "yes": "Yes",
     "no": "No",
     "openGridOrders": "Open grid orders",
-    "agentsLabel": "Agents",
+    "agentsLabel": "Bots",
     "statusLabel": "Status",
     "vf": {
       "title": "Volume",
@@ -3209,7 +3211,8 @@
       "colAgainst": "Against · 1 min",
       "inventoryTitle": "Inventory",
       "inventorySub": "Max {max} USDC · flat {flat} of the time"
-    }
+    },
+    "notConnected": "Connect your SoDEX account so your bots can trade."
   },
   "orders": {
     "title": "Execution & Orders",

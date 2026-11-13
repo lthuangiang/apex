@@ -46,7 +46,7 @@ function useFactText() {
   };
 }
 
-/** Câu mẫu "Market today" (DEC-TBD-desk-market): mỗi market một dòng, số 24 giờ qua trên SoDEX, không dự đoán. */
+/** Câu mẫu "Market today" (DEC-211): mỗi market một dòng, số 24 giờ qua trên SoDEX, không dự đoán. */
 function MarketAnswer({ facts }: { facts: readonly Fact[] }) {
   const t = useTranslations("desk.ai.templates");
   const signed = (v: string) => `${Number(v) > 0 ? "+" : ""}${plainNumber(v)}%`;

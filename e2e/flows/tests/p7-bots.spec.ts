@@ -63,7 +63,7 @@ test("create a Spot Grid, start it, pause, resume, edit to v2 and stop", async (
 
   await page.goto(page.url().replace(/\/bots\/([^/]+)\/edit$/, "/agent/$1"));
   await expect(page.getByText("v2 ·")).toBeVisible();
-  await page.getByRole("button", { name: "Stop agent" }).click();
+  await page.getByRole("button", { name: "Stop bot" }).click();
   const stop = page.getByRole("dialog", { name: "Stop Grid · BTC?" });
   await fillTwoFactorIfAsked(stop, secret);
   await stop.getByRole("button", { name: /Stop and cancel/ }).click();

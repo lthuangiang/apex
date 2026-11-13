@@ -34,7 +34,7 @@ import { goalOf } from "./whatif";
 
 export interface DeskAiDeps extends BotDeps {
   llm: DeskLlm | null;
-  /** Nguồn fact "Market today" (DEC-TBD-desk-market); null = không có fact thị trường. */
+  /** Nguồn fact "Market today" (DEC-211); null = không có fact thị trường. */
   market?: DeskMarketSource | null;
   /** traceId của request (ghi vào nhật ký lượt). */
   traceId?: string;

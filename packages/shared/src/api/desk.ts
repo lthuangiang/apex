@@ -344,7 +344,7 @@ export const deskAiHistoryViewSchema = z.object({
 });
 export type DeskAiHistoryView = z.infer<typeof deskAiHistoryViewSchema>;
 
-/** Thẻ "Market today" ở trang chủ AI Desk (DEC-TBD-desk-market): số 24 giờ qua trên SoDEX, không dự đoán. */
+/** Thẻ "Market today" ở trang chủ AI Desk (DEC-211): số 24 giờ qua trên SoDEX, không dự đoán. */
 export const deskMarketViewSchema = z.object({
   items: z.array(
     z.object({

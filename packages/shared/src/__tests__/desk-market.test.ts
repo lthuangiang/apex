@@ -10,7 +10,7 @@ import {
   moodOf,
 } from "../desk/ai";
 
-// Market today cho Desk AI (DEC-TBD-desk-market): fact từ 24 nến 1h SoDEX, cửa sổ 24h trượt; thiếu dữ liệu thì bỏ fact.
+// Market today cho Desk AI (DEC-211): fact từ 24 nến 1h SoDEX, cửa sổ 24h trượt; thiếu dữ liệu thì bỏ fact.
 
 const H = 3_600_000;
 // SoDEX trả mới nhất trước: nến đầu (cũ nhất) mở ở 100, cao nhất 106, thấp nhất 98.

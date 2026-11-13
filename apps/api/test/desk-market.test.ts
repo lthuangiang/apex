@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { sodexMarketSource } from "../src/modules/desk/market";
 
-// Nguồn "Market today" (DEC-TBD-desk-market): cache 60 s theo market; SoDEX lỗi → không có nến / giá (không ghi 0).
+// Nguồn "Market today" (DEC-211): cache 60 s theo market; SoDEX lỗi → không có nến / giá (không ghi 0).
 
 const H = 3_600_000;
 const kline = (t: number, o: string) => ({ t, o, h: o, l: o, c: o, v: "1", q: "1", n: 1 });

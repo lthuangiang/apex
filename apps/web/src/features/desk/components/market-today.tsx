@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 
 import { plainNumber } from "../bplus";
 
-// Thẻ "Market today" (artboard BP-Home, DEC-TBD-desk-market): số 24 giờ qua trên SoDEX của market bot đang dùng, câu
+// Thẻ "Market today" (artboard BP-Home, DEC-211): số 24 giờ qua trên SoDEX của market bot đang dùng, câu
 // tất định (không gọi LLM). Nhãn theo biên độ (< 2% "moving sideways", > 6% "jumpy"); vế liên hệ chỉ khi đúng loại
 // bot của user. Không có dữ liệu → ẩn thẻ. Không dự đoán.
 

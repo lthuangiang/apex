@@ -3,7 +3,7 @@ import { dec } from "../../money";
 
 import type { DeskAiFact } from "./facts";
 
-// "Market today" cho Desk AI (DEC-TBD-desk-market): fact thị trường thật từ 24 nến 1h SoDEX (cửa sổ 24h trượt) và
+// "Market today" cho Desk AI (DEC-211): fact thị trường thật từ 24 nến 1h SoDEX (cửa sổ 24h trượt) và
 // giá hiện tại (mark với perps, giá gần nhất với spot). Chỉ mô tả quá khứ, không dự đoán. Hàm thuần, không I/O.
 
 export const DESK_MARKET_CONFIG = {

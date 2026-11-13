@@ -136,7 +136,7 @@ export function registerDeskRoutes(app: FastifyInstance, deps: DeskDeps): void {
     market: deps.market ?? null,
     traceId,
   });
-  // Thẻ "Market today" (DEC-TBD-desk-market): chỉ đọc, SoDEX lỗi thì danh sách rỗng (web ẩn thẻ).
+  // Thẻ "Market today" (DEC-211): chỉ đọc, SoDEX lỗi thì danh sách rỗng (web ẩn thẻ).
   app.get("/api/v1/desk/market", async (request) => {
     const userId = requireAuth(request).userId;
     await requireDesk(deps, userId);

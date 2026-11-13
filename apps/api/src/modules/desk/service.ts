@@ -59,7 +59,7 @@ export interface DeskDeps {
   reco: RecoDeps;
   /** Desk AI (DEC-165): null = LLM tắt, câu mẫu. */
   llm: DeskLlm | null;
-  /** Fact "Market today" (DEC-TBD-desk-market); thiếu = không có fact thị trường. */
+  /** Fact "Market today" (DEC-211); thiếu = không có fact thị trường. */
   market?: DeskMarketSource | null;
 }
 
