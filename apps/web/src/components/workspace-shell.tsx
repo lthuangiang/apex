@@ -117,11 +117,16 @@ export function WorkspaceShell({
       const item = byKey(k);
       return item === undefined ? [] : [item];
     });
-  // Bottom nav mobile (artboard Mobile-Home): Home · Portfolio · Agent (nổi) · Strategy · More.
+  // Bottom nav mobile (artboard Mobile-Home): Home · Portfolio · Agent (nổi) · Strategy · More. Bật AI Desk (mặc định)
+  // thì AI Desk thay Portfolio, Portfolio vào More (DEC-TBD-bottom-nav-desk).
+  const second: WorkspaceKey = desk ? "desk" : "portfolio";
   const mobileNav: MobileNav = {
-    items: pick(["overview", "portfolio", "agent", "bots"]).map((item) => ({
+    items: pick(["overview", second, "agent", "bots"]).map((item) => ({
       ...item,
-      label: t(`mobile.${item.key as "overview" | "portfolio" | "agent" | "bots"}`),
+      label:
+        item.key === "desk"
+          ? t("desk")
+          : t(`mobile.${item.key as "overview" | "portfolio" | "agent" | "bots"}`),
       icon: item.key === "overview" ? <House aria-hidden="true" size={22} /> : item.icon,
     })),
     featuredKey: "agent",
@@ -130,7 +135,7 @@ export function WorkspaceShell({
       icon: <Ellipsis aria-hidden="true" size={22} />,
       // Cùng thứ tự với sidebar (DEC-181); Settings và các mục TEAM giữ nguyên vị trí.
       items: pick([
-        "desk",
+        desk ? "portfolio" : "desk",
         "orders",
         "risk",
         "traders",
