@@ -20,6 +20,18 @@ export function bigMoveFollowers<T extends { level: FollowAlertLevel }>(
   return followers.filter((f) => f.level !== "off");
 }
 
+/**
+ * Đang có bot copy tiền thật chạy (starting / running / resuming) theo trader này thì tạm không báo theo trader: tin
+ * của bot copy (DEC-212) đã nói về cùng lệnh. Bot pause, dừng hay bot paper không tính; mức đã chọn
+ * giữ nguyên trong DB nên tự quay lại khi bot không chạy nữa.
+ */
+export function notCopying<T extends { userId: string }>(
+  followers: readonly T[],
+  copying: ReadonlySet<string>,
+): T[] {
+  return followers.filter((f) => !copying.has(f.userId));
+}
+
 /** Người follow nhận cảnh báo vị thế: chỉ mức `positions`. */
 export function positionFollowers<T extends { level: FollowAlertLevel }>(
   followers: readonly T[],

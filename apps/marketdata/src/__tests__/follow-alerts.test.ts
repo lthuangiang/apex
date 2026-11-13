@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   bigMoveFollowers,
   listedOnly,
+  notCopying,
   planPositionAlerts,
   positionFollowers,
   positionSide,
@@ -44,6 +45,17 @@ describe("followers by level", () => {
   it("big moves go to everyone except Off; position changes only to New and closed positions", () => {
     expect(bigMoveFollowers(f).map((x) => x.userId)).toEqual(["a", "b"]);
     expect(positionFollowers(f).map((x) => x.userId)).toEqual(["b"]);
+  });
+});
+
+describe("notCopying", () => {
+  it("mutes follow alerts for users copying this trader with a live bot; the chosen level comes back when it stops", () => {
+    const f = [
+      { userId: "a", level: "positions" as const },
+      { userId: "b", level: "big_moves" as const },
+    ];
+    expect(notCopying(f, new Set(["a"])).map((x) => x.userId)).toEqual(["b"]);
+    expect(notCopying(f, new Set())).toEqual(f);
   });
 });
 

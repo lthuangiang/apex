@@ -118,6 +118,38 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
           body: t("panel.body.followOnly"),
         };
       }
+      case "copy_bot_opened": {
+        // Bot copy khớp lệnh mở / tăng / đảo chiều (DEC-212). Thiếu số thì bỏ câu có số.
+        const market = str(n.data.market);
+        const coin = market === null ? "" : (market.split("-")[0] ?? market);
+        const move = str(n.data.move);
+        const key = move === "added" ? "added" : move === "flipped" ? "flipped" : "opened";
+        const side = n.data.side === "short" ? t("panel.short") : t("panel.long");
+        const size = str(n.data.size);
+        const price = str(n.data.avgEntry);
+        return {
+          title: t(`panel.copyBot.${key}`, { bot: bot ?? t("panel.copyBot.aBot"), side, coin }),
+          body:
+            size === null || price === null || market === null
+              ? null
+              : t("panel.copyBot.filled", { size, coin, price }),
+        };
+      }
+      case "copy_bot_skipped": {
+        const market = str(n.data.market);
+        const name = bot ?? t("panel.copyBot.aBot");
+        const reason = str(n.data.reason);
+        return {
+          title:
+            market === null
+              ? t("panel.copyBot.skippedAny", { bot: name })
+              : t("panel.copyBot.skipped", { bot: name, coin: market.split("-")[0] ?? market }),
+          body:
+            reason !== null && t.has(`panel.copySkip.${reason}`)
+              ? t(`panel.copySkip.${reason}`)
+              : t("panel.copySkip.other"),
+        };
+      }
     }
   };
 }

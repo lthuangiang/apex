@@ -2,6 +2,7 @@ import {
   bots,
   createDb,
   notifications,
+  notificationSettings,
   outbox,
   runMigrations,
   sodexAccounts,
@@ -164,6 +165,24 @@ describe("jobs.notify → Telegram queue", () => {
       { userId: fills.userId, type: "fill", data: {} },
     );
     expect((await enqueued(fills.userId)).rows).toHaveLength(0);
+  });
+
+  it("queues a copy bot alert once per dedupe key (DEC-212)", async () => {
+    const s = await seed();
+    await db
+      .insert(notificationSettings)
+      .values({ userId: s.userId, type: "copyTrading", channel: "telegram", enabled: true });
+    const msg = {
+      userId: s.userId,
+      type: "copy_bot_opened",
+      data: { botId: s.botIds[0], clOrdID: "c1", market: "BTC-USD" },
+      dedupeKey: `copy_bot_opened:${s.botIds[0] ?? ""}:c1`,
+    };
+    await handleNotify({ db, sendEmail: null, telegramEnabled: true }, msg);
+    await handleNotify({ db, sendEmail: null, telegramEnabled: true }, msg);
+    const q = await enqueued(s.userId);
+    expect(q.rows).toHaveLength(1);
+    expect(q.jobs).toHaveLength(1);
   });
 
   it("bot problems still go to Telegram when the user tried to turn them off", async () => {

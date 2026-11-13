@@ -10,6 +10,7 @@
       "desk": "See it in AI Desk",
       "openDesk": "Open AI Desk",
       "following": "Open Following",
+      "bot": "Open bot",
       "app": "Open DeskLabs",
       "users": "Open Users"
     },
@@ -28,6 +29,11 @@
       "leader_position_close": "👤 <b>A trader you follow closed their {side} on {coin}</b>",
       "leader_position_flip": "👤 <b>A trader you follow flipped to a {side} on {coin}</b>",
       "leader_position_liquidated": "👤 <b>A trader you follow was liquidated on {coin}</b>",
+      "copy_bot_opened": "🔁 <b>Your copy bot opened a {side} on {coin}</b>",
+      "copy_bot_added": "🔁 <b>Your copy bot added to its {side} on {coin}</b>",
+      "copy_bot_flipped": "🔁 <b>Your copy bot flipped to a {side} on {coin}</b>",
+      "copy_bot_skipped": "⏭ <b>Your copy bot skipped a trade on {coin}</b>",
+      "copy_bot_skipped_any": "⏭ <b>Your copy bot skipped a trade</b>",
       "team_signup": "🆕 <b>New signup</b> · {email}",
       "team_sodex_connected": "🔗 <b>SoDEX connected</b> · {email} · {wallet}",
       "team_bot_started": "▶️ <b>Bot started</b> · {email} · {details}"
@@ -47,7 +53,9 @@
       "briefOne": "Good morning. One thing needs you today: {bot}.",
       "briefMany": "Good morning. {count} things need you today, starting with {bot}.",
       "leader_big_move": "Market: {coin}.",
-      "leader_position": "Following only. Nothing was copied."
+      "leader_position": "Following only. Nothing was copied.",
+      "copy_bot_opened": "{size} {coin} at an average entry of {price}.",
+      "copy_bot_skipped": "{reason}."
     },
     "merged": {
       "samePause": "🔴 <b>{n} bots paused: {reason}.</b>",
@@ -59,6 +67,17 @@
       "team_sodex_connected": "🔗 <b>{n} SoDEX connections</b>",
       "team_bot_started": "▶️ <b>{n} bots started</b>"
     }
+  },
+  "copySkip": {
+    "signal_late": "The signal arrived too late",
+    "signal_too_old": "The signal was too old to open a position",
+    "price_moved": "The price moved too far from the trader's price",
+    "below_minimum": "The copy size is below the SoDEX minimum order size",
+    "rejected": "SoDEX rejected the copy order",
+    "no_fill": "The order didn't fill near the trader's price",
+    "min_hold": "This trader now trades too fast to copy",
+    "low_liquidity": "Not enough SoDEX liquidity near the price",
+    "other": "Open the bot to see why"
   },
   "reasons": {
     "BUILDER_FEE_REVOKED": "builder fee approval is 0",

@@ -124,6 +124,56 @@ describe("renderTelegram: follow position alerts (DEC-209)", () => {
     );
     expect(closed.text).toContain("closed their short on ARB");
   });
+
+  it("copy bot alerts say 'Your copy bot', never the bot name (it holds the trader's wallet) (DEC-212)", () => {
+    const opened = renderTelegram(
+      [
+        row(
+          "copy_bot_opened",
+          {
+            botId: BOT,
+            clOrdID: "c1",
+            market: "BTC-USD",
+            move: "opened",
+            side: "long",
+            size: "0.001",
+            avgEntry: "100100",
+          },
+          "Copy 0x84b2…12f2",
+        ),
+      ],
+      APP,
+    );
+    expect(opened.text).toBe(
+      "🔁 <b>Your copy bot opened a long on BTC</b>\n0.001 BTC at an average entry of 100100.",
+    );
+    expect(opened.text).not.toMatch(/0x[0-9a-fA-F]{4,}/);
+    expect(opened.button).toEqual({ text: "Open bot", url: `${APP}/agent/${BOT}` });
+    const added = renderTelegram(
+      [row("copy_bot_opened", { botId: BOT, market: "ETH-USD", move: "added", side: "short" })],
+      APP,
+    );
+    // Thiếu số thì bỏ câu có số (mục 5).
+    expect(added.text).toBe("🔁 <b>Your copy bot added to its short on ETH</b>");
+    const skipped = renderTelegram(
+      [
+        row(
+          "copy_bot_skipped",
+          { botId: BOT, market: "SOL-USD", reason: "price_moved" },
+          "Copy 0x84b2…12f2",
+        ),
+      ],
+      APP,
+    );
+    expect(skipped.text).toBe(
+      "⏭ <b>Your copy bot skipped a trade on SOL</b>\nThe price moved too far from the trader's price.",
+    );
+    const unknown = renderTelegram(
+      [row("copy_bot_skipped", { botId: BOT, market: null, reason: "nope" })],
+      APP,
+    );
+    expect(unknown.text).toBe("⏭ <b>Your copy bot skipped a trade</b>\nOpen the bot to see why.");
+  });
 });
 
 describe("renderTelegram: merged (mục 5)", () => {

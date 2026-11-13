@@ -101,6 +101,10 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
     case "leader_position":
       // Copy Trading chỉ có khi bật AI Desk (DEC-163).
       return aiDesk ? "/following" : "/";
+    case "copy_bot_opened":
+    case "copy_bot_skipped":
+      // Bot copy tiền thật (DEC-212): mở Trading Agent của bot.
+      return botId === null ? "/agent" : `/agent/${encodeURIComponent(botId)}`;
     case "team_signup":
     case "team_sodex_connected":
     case "team_bot_started":

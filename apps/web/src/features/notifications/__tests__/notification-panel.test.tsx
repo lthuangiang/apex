@@ -179,6 +179,52 @@ describe("NotificationPanel", () => {
     AXE_TIMEOUT,
   );
 
+  it("words copy bot alerts with the bot's name, the fill, and the skip reason (DEC-212)", async () => {
+    state.list = {
+      unread: 2,
+      items: [
+        {
+          id: "66666666-6666-4666-8666-666666666666",
+          type: "copy_bot_opened",
+          data: {
+            botId: BOT,
+            clOrdID: "c1",
+            market: "BTC-USD",
+            move: "added",
+            side: "short",
+            size: "0.002",
+            avgEntry: "99800",
+          },
+          createdAt: minutesAgo(1),
+          readAt: null,
+        },
+        {
+          id: "77777777-7777-4777-8777-777777777777",
+          type: "copy_bot_skipped",
+          data: {
+            botId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            market: "ETH-USD",
+            reason: "no_fill",
+          },
+          createdAt: minutesAgo(2),
+          readAt: null,
+        },
+      ],
+    };
+    wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);
+    expect(
+      await screen.findByText("BTC Volume Farm added to its short on BTC"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("0.002 BTC at an average entry of 99800.")).toBeInTheDocument();
+    // Không tìm thấy bot thì dùng nhãn chung.
+    expect(screen.getByText("Your copy bot skipped a trade on ETH")).toBeInTheDocument();
+    expect(screen.getByText("The order didn’t fill near the trader’s price.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /added to its short/ })).toHaveAttribute(
+      "href",
+      `/agent/${BOT}`,
+    );
+  });
+
   it("Needs you shows only unread real incidents, not a planned finish", async () => {
     const user = userEvent.setup({ delay: null });
     wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);

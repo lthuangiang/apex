@@ -104,6 +104,33 @@ describe("jobs.notify", () => {
     expect(sent).toEqual([]);
   });
 
+  it("drops a repeated copy bot alert with the same dedupe key, in-app only (DEC-212)", async () => {
+    const { userId, accountId, botId } = await seed();
+    const sent: string[] = [];
+    const send = (to: string) => Promise.resolve(void sent.push(to));
+    const msg = {
+      sodexAccountId: accountId,
+      type: "copy_bot_opened",
+      data: { botId, clOrdID: "c1", market: "BTC-USD", move: "opened", side: "long" },
+      dedupeKey: `copy_bot_opened:${botId}:c1`,
+    };
+    await handleNotify({ db, sendEmail: send }, msg);
+    await handleNotify({ db, sendEmail: send }, msg);
+    const other = {
+      ...msg,
+      data: { ...msg.data, clOrdID: "c2" },
+      dedupeKey: `copy_bot_opened:${botId}:c2`,
+    };
+    await handleNotify({ db, sendEmail: send }, other);
+    const rows = await db.select().from(notifications).where(eq(notifications.userId, userId));
+    expect(rows.map((r) => `${r.channel}|${r.dedupeKey ?? ""}`).sort()).toEqual([
+      `in_app|copy_bot_opened:${botId}:c1`,
+      `in_app|copy_bot_opened:${botId}:c2`,
+    ]);
+    // Nhóm copyTrading không gửi email.
+    expect(sent).toEqual([]);
+  });
+
   it("says a stopped paper bot was a fake-money test (DEC-105)", () => {
     const m = emailText(
       "bot_stopped",

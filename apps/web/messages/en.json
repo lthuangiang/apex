@@ -3750,6 +3750,8 @@
       "daily_summary": "Daily summary",
       "leader_big_move": "A trader you follow made a big move",
       "leader_position": "A trader you follow changed a position",
+      "copy_bot_opened": "Your copy bot opened a trade",
+      "copy_bot_skipped": "Your copy bot skipped a trade",
       "telegram_connected": "Telegram connected",
       "telegram_moved": "Telegram alerts stopped",
       "telegram_blocked": "Telegram alerts paused",
@@ -3809,6 +3811,26 @@
         "closed": "{trader} closed their {side} on {coin}",
         "flipped": "{trader} flipped to a {side} on {coin}",
         "liquidated": "{trader} was liquidated on {coin}"
+      },
+      "copyBot": {
+        "aBot": "Your copy bot",
+        "opened": "{bot} opened a {side} on {coin}",
+        "added": "{bot} added to its {side} on {coin}",
+        "flipped": "{bot} flipped to a {side} on {coin}",
+        "skipped": "{bot} skipped a trade on {coin}",
+        "skippedAny": "{bot} skipped a trade",
+        "filled": "{size} {coin} at an average entry of {price}."
+      },
+      "copySkip": {
+        "signal_late": "The signal arrived too late.",
+        "signal_too_old": "The signal was too old to open a position.",
+        "price_moved": "The price moved too far from the trader’s price.",
+        "below_minimum": "The copy size is below the SoDEX minimum order size.",
+        "rejected": "SoDEX rejected the copy order.",
+        "no_fill": "The order didn’t fill near the trader’s price.",
+        "min_hold": "This trader now trades too fast to copy.",
+        "low_liquidity": "Not enough SoDEX liquidity near the price.",
+        "other": "Open the bot to see why."
       }
     },
     "reasonText": {

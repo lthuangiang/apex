@@ -11,6 +11,14 @@ import messages from "./messages/en.json" with { type: "json" };
 const M = messages.telegram;
 const REASONS: Record<string, string> = messages.reasons;
 const STRATEGIES: Record<string, string> = messages.strategies;
+const COPY_SKIP: Record<string, string> = messages.copySkip;
+
+/**
+ * Coin của market ("BTC-USD" → "BTC"). Tin bot copy (DEC-212) không dùng tên bot: tên mặc định của bot
+ * copy chứa địa chỉ ví rút gọn của trader (mục 5 cấm), nên tiêu đề ghi "Your copy bot".
+ */
+const coinOf = (market: string | null): string | null =>
+  market === null ? null : escapeTelegramHtml(market.split("-")[0] ?? market);
 
 export interface RenderRow {
   type: NotificationType;
@@ -80,6 +88,9 @@ function targetOf(row: RenderRow): { path: string; label: string } {
     case "leader_big_move":
     case "leader_position":
       return { path: "/following", label: M.buttons.following };
+    case "copy_bot_opened":
+    case "copy_bot_skipped":
+      return { path: agent, label: M.buttons.bot };
     case "telegram_connected":
     case "telegram_moved":
     case "telegram_blocked":
@@ -151,6 +162,26 @@ function title(row: RenderRow): string {
               : M.titles.leader_position_open;
       return fill(template, { side: side ?? M.positionSide, coin });
     }
+    case "copy_bot_opened": {
+      const move = str(row.data.move);
+      const side = row.data.side === "long" || row.data.side === "short" ? row.data.side : null;
+      const template =
+        move === "added"
+          ? M.titles.copy_bot_added
+          : move === "flipped"
+            ? M.titles.copy_bot_flipped
+            : M.titles.copy_bot_opened;
+      return fill(template, {
+        side: side ?? M.positionSide,
+        coin: coinOf(str(row.data.market)) ?? "",
+      });
+    }
+    case "copy_bot_skipped": {
+      const coin = coinOf(str(row.data.market));
+      return coin === null
+        ? M.titles.copy_bot_skipped_any
+        : fill(M.titles.copy_bot_skipped, { coin });
+    }
     case "telegram_connected":
     case "telegram_moved":
     case "telegram_blocked":
@@ -197,6 +228,22 @@ function body(row: RenderRow): string | null {
     }
     case "leader_position":
       return M.bodies.leader_position;
+    case "copy_bot_opened": {
+      // Thiếu số thì bỏ câu có số (mục 5), không ghi 0.
+      const size = str(row.data.size);
+      const price = str(row.data.avgEntry);
+      const coin = coinOf(str(row.data.market));
+      if (size === null || price === null || coin === null) return null;
+      return fill(M.bodies.copy_bot_opened, {
+        size: escapeTelegramHtml(size),
+        coin,
+        price: escapeTelegramHtml(price),
+      });
+    }
+    case "copy_bot_skipped": {
+      const reason = COPY_SKIP[str(row.data.reason) ?? "other"] ?? COPY_SKIP.other ?? null;
+      return reason === null ? null : fill(M.bodies.copy_bot_skipped, { reason });
+    }
     case "fill":
     case "telegram_connected":
     case "telegram_moved":

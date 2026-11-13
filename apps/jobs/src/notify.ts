@@ -31,6 +31,8 @@ export const notifyPayloadSchema = z.object({
   sodexAccountId: z.uuid().optional(),
   type: z.enum(NOTIFICATION_TYPES),
   data: z.record(z.string(), z.unknown()).default({}),
+  /** Khoá chống trùng (DEC-212): đã có bản cùng user × kênh × khoá thì bỏ. */
+  dedupeKey: z.string().min(1).max(200).optional(),
 });
 
 export interface NotifyDeps {
@@ -111,6 +113,8 @@ export function emailText(
       };
     case "leader_big_move":
     case "leader_position":
+    case "copy_bot_opened":
+    case "copy_bot_skipped":
       // Chỉ trong app ở v1 (IN_APP_ONLY_GROUPS); câu này chỉ để switch đủ nhánh.
       return {
         subject: "DeskLabs: a trader you follow made a big move",
@@ -152,10 +156,14 @@ export async function handleNotify(deps: NotifyDeps, raw: unknown): Promise<void
   const enabled = (channel: NotificationChannel) =>
     ALWAYS_ON_GROUPS.includes(group) ||
     (rows.find((r) => r.channel === channel)?.enabled ?? NOTIFICATION_DEFAULTS[group][channel]);
+  // Có khoá chống trùng (DEC-212): bản cùng user × kênh × khoá đã có thì không ghi lại (unique index
+  // `notifications_dedupe_key`). Bản Telegram trùng thì không tạo outbox gửi lần hai (xem `row` bên dưới).
+  const dedupeKey = p.dedupeKey ?? null;
   if (enabled("in_app"))
     await deps.db
       .insert(notifications)
-      .values({ userId, type: p.type, payload: p.data, channel: "in_app" });
+      .values({ userId, type: p.type, payload: p.data, channel: "in_app", dedupeKey })
+      .onConflictDoNothing();
   if (enabled("email") && deps.sendEmail !== null && !IN_APP_ONLY_GROUPS.includes(group)) {
     const [u] = await deps.db
       .select({ email: users.email })
@@ -196,7 +204,9 @@ export async function handleNotify(deps: NotifyDeps, raw: unknown): Promise<void
           deliveryStatus: "queued",
           // Không hiện trong danh sách in-app (chỉ đọc `channel = in_app`); đánh dấu đã đọc cho rõ.
           readAt: new Date(),
+          dedupeKey,
         })
+        .onConflictDoNothing()
         .returning({ id: notifications.id });
       if (row === undefined) return;
       await tx
