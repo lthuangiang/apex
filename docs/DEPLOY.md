@@ -67,7 +67,7 @@ Cert mTLS hết hạn sau `CERT_DAYS` ngày. Đặt lịch nhắc tạo lại tr
 
 ### 2.5 Docker Hub
 1. Tạo tài khoản, tạo **một** repository tên `drift`, chọn **Private**. Image chứa toàn bộ source code: không để public.
-   Gói free chỉ có 1 repo private, nên cả 10 app chung repo này, phân biệt bằng tag `api-<sha>`, `web-<sha>`…
+   Gói free chỉ có 1 repo private, nên cả 11 app chung repo này, phân biệt bằng tag `api-<sha>`, `web-<sha>`…
 2. Account settings › Personal access tokens, tạo 2 token:
    - `drift-push`, quyền **Read & Write**: cho GitHub Actions (hoặc máy mình khi dùng `build-push.sh`).
    - `drift-vps`, quyền **Read-only**: cho VPS kéo image.
@@ -75,7 +75,7 @@ Cert mTLS hết hạn sau `CERT_DAYS` ngày. Đặt lịch nhắc tạo lại tr
    ```bash
    docker login -u <user-docker-hub>     # dán token drift-vps khi được hỏi
    ```
-4. Gói free giới hạn số lượt pull (khoảng 100 lượt / 6 giờ khi đã đăng nhập; con số Docker công bố đã đổi vài lần). Mỗi lần deploy kéo khoảng 10 image app + vài image hạ tầng: dư cho vài lần deploy mỗi ngày.
+4. Gói free giới hạn số lượt pull (khoảng 100 lượt / 6 giờ khi đã đăng nhập; con số Docker công bố đã đổi vài lần). Mỗi lần deploy kéo khoảng 11 image app + vài image hạ tầng: dư cho vài lần deploy mỗi ngày.
 
 ### 2.6 GitHub
 1. `git init`, push lên repo **private**.
@@ -126,7 +126,7 @@ Bot `@desklabsbot` đã tạo (N0). Token và webhook secret chỉ nằm trong `
 6. **Tắt khẩn cấp:** đặt `TELEGRAM_ENABLED=false`, rồi chạy bước 2. Route `/api/v1/telegram/*` trả 404, worker ngừng gửi; tin đang `queued` giữ nguyên.
 
 ### 2.9 MCP: OAuth (DEC-167, DEC-215)
-Phần A1: authorization server OAuth nằm trong `api`. Service `apps/mcp` và host `mcp.desklabs.xyz` thêm ở A2. Compose trên VPS do người dùng tự sửa, nên làm tay các bước sau:
+Phần A1: authorization server OAuth nằm trong `api`. Service `apps/mcp` và host `mcp.desklabs.xyz` ở 2.10. Compose trên VPS do người dùng tự sửa, nên làm tay các bước sau:
 1. `/opt/drift/.env`:
    - `MCP_INTROSPECT_SECRET`: sinh một lần bằng `openssl rand -hex 32`. Trống thì introspect tắt (MCP không hoạt động). Không dán vào log, ticket hay PR.
    - `MCP_PUBLIC_URL=https://mcp.desklabs.xyz` (mặc định).
@@ -140,9 +140,54 @@ Phần A1: authorization server OAuth nằm trong `api`. Service `apps/mcp` và 
 3. `docker compose run --rm migrate` (migration bảng `oauth_clients`, `oauth_codes`, `mcp_tokens`, `mcp_calls`), rồi `up -d api scheduler web`.
 4. Kiểm tra: `curl -s https://<APP_HOST>/.well-known/oauth-authorization-server` trả JSON có `issuer`, `code_challenge_methods_supported: ["S256"]`.
 
+### 2.10 MCP: service `mcp` (DEC-167, DEC-TBD-mcp-server)
+Phần A2: `apps/mcp` (MCP Streamable HTTP, cổng 8097) ở `https://mcp.desklabs.xyz/mcp` (người dùng) và `/team/mcp` (team). Service chỉ gọi `api` (introspect token, ghi `mcp_calls`) và Redis (đếm rate limit); không chạm signer, engine, SoDEX hay Postgres. Làm 2.9 trước, rồi làm tay:
+1. DNS: bản ghi **A** (và **AAAA** nếu có) `mcp.desklabs.xyz` trỏ về IP của VPS. Traefik tự xin cert Let's Encrypt (TLS-ALPN) cho host mới ở lần gọi đầu.
+2. `/opt/drift/.env`:
+   - `MCP_HOST=mcp.desklabs.xyz`: host Traefik của service `mcp`, phải khớp host của `MCP_PUBLIC_URL`.
+   - `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET`: dùng chung với `api` (2.9). Secret trống thì service vẫn chạy, healthy, nhưng mọi lần gọi `/mcp` trả 503.
+3. `docker-compose.yml` trên VPS, thêm service (như repo):
+   ```yaml
+   mcp:
+     <<: *app
+     build: { context: ., dockerfile: apps/mcp/Dockerfile }
+     environment:
+       NODE_ENV: ${NODE_ENV:-production}
+       REDIS_URL: redis://redis:6379
+       LOG_LEVEL: ${LOG_LEVEL:-info}
+       MCP_PORT: "8097"
+       API_INTERNAL_URL: http://api:8080
+       MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://mcp.desklabs.xyz}
+       DRIFT_APP_URL: https://${APP_HOST}
+       MCP_INTROSPECT_SECRET: ${MCP_INTROSPECT_SECRET:-}
+     depends_on:
+       redis: { condition: service_healthy }
+       api: { condition: service_healthy }
+     labels:
+       - traefik.enable=true
+       - traefik.http.routers.mcp.rule=Host(`${MCP_HOST:-mcp.localhost}`)
+       - traefik.http.services.mcp.loadbalancer.server.port=8097
+       - traefik.docker.network=${COMPOSE_PROJECT_NAME:-drift-handoff}_edge
+     networks: [edge, core]
+     healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8097/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
+   ```
+   và trong `docker-compose.prod.yml`:
+   ```yaml
+   mcp:
+     image: ${DRIFT_IMAGE}:mcp-${DRIFT_TAG}
+     deploy: { replicas: 1 }
+     labels:
+       - traefik.http.routers.mcp.entrypoints=websecure
+   ```
+   Service không đọc biến nào khác của `x-app-env` (không có `DATABASE_URL`, key SoDEX hay key Claude).
+4. Deploy bằng tag có image `mcp-<tag>` (từ release đầu tiên có A2), rồi kiểm tra:
+   - `curl -s https://mcp.desklabs.xyz/.well-known/oauth-protected-resource/mcp` trả JSON có `resource: "https://mcp.desklabs.xyz/mcp"` và `authorization_servers: ["https://desklabs.xyz"]`;
+   - `curl -si -X POST https://mcp.desklabs.xyz/mcp` trả `401` kèm header `WWW-Authenticate: Bearer scope="read", resource_metadata="…"`.
+5. Rate limit (đếm trong Redis, key `mcp:rl:*`): 60 lần/phút/token, 5.000 lần/ngày/người dùng, team 120 lần/phút. Vượt → 429.
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
-2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push 10 image → PM trả tag (`docs/RELEASE.md`).
+2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push 11 image → PM trả tag (`docs/RELEASE.md`).
 3. Người dùng deploy: `infra/deploy/build-push.sh --deploy-only vX.Y.Z` (rollback: cùng lệnh với tag cũ).
 
 Build từ máy mình, không qua GitHub (máy đã `docker login` bằng token `drift-push`):
@@ -155,7 +200,7 @@ Deploy từ máy mình (thay cho làm tay `ssh` → sửa `DRIFT_TAG` → `migra
 
 ```bash
 infra/deploy/build-push.sh --deploy engine web     # build 2 app, 8 app còn lại giữ image đang chạy
-infra/deploy/build-push.sh --deploy                # build cả 10 app rồi deploy
+infra/deploy/build-push.sh --deploy                # build cả 11 app rồi deploy
 infra/deploy/build-push.sh --deploy-only <tag>     # không build: deploy (hoặc rollback về) một tag đã push
 ```
 

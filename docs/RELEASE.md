@@ -43,11 +43,11 @@ git tag -a v1.1.0 origin/main -F notes.txt && git push origin v1.1.0
 
 - Cả 10 Dockerfile có **phần đầu giống hệt**: node, corepack, `pnpm fetch` (kho thư viện của cả workspace), rồi manifest của mọi package. Các layer này cùng digest giữa các app và giữa các release, nên VPS chỉ tải một lần.
 - Sau phần chung, mỗi app có một layer `pnpm install --filter` (vài MB, chỉ đổi khi lockfile / manifest đổi), rồi đến **mã nguồn** (layer cuối, đổi mỗi release). Web build Next sau khi chép mã nguồn.
-- **Không** thêm `ARG` / `ENV` trước bước `pnpm fetch`: chúng đổi cache key, làm mất phần dùng chung. Thêm package mới vào workspace thì thêm dòng `COPY …/package.json` của nó ở cả 10 file.
+- **Không** thêm `ARG` / `ENV` trước bước `pnpm fetch`: chúng đổi cache key, làm mất phần dùng chung. Thêm package mới vào workspace thì thêm dòng `COPY …/package.json` của nó ở cả 11 file.
 - `.dockerignore` loại `.git`, `docs`, `.github`, `marketing` (video), nên mã nguồn trong image chỉ còn vài MB.
 - Chọn app (`infra/deploy/changed-apps.sh <tag-trước> <tag>`, `DRY_RUN=1` in lý do):
   - đổi `apps/<app>/**` → build app đó;
-  - đổi `packages/**`, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`, `tsconfig*`, `.dockerignore` hay workflow → build cả 10;
+  - đổi `packages/**`, `pnpm-lock.yaml`, `package.json`, `pnpm-workspace.yaml`, `tsconfig*`, `.dockerignore` hay workflow → build cả 11;
   - đổi chỗ khác (docs, e2e) → không build app nào.
   Không có tag trước, hoặc image của tag trước không còn → build.
 6. **Trả người dùng:** tag, link Release, danh sách PR có trong bản này, và lệnh deploy:

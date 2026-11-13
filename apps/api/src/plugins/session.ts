@@ -49,6 +49,7 @@ export const CSRF_EXEMPT_POST_PATHS: ReadonlySet<string> = new Set([
   "/api/v1/oauth/register",
   "/api/v1/oauth/revoke",
   "/api/v1/oauth/introspect",
+  "/api/v1/mcp/calls",
 ]);
 
 export function registerSession(app: FastifyInstance, options: SessionOptions): void {
