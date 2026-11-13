@@ -3,7 +3,7 @@ import { Suspense } from "react";
 
 import { OnboardingShell, TelegramStep } from "@/features/onboarding";
 
-// Bước tuỳ chọn sau "Strategy plan": cảnh báo trên Telegram (DEC-TBD-onboarding-skip). Không đánh số trong 6 bước.
+// Bước tuỳ chọn sau "Strategy plan": cảnh báo trên Telegram (DEC-202). Không đánh số trong 6 bước.
 export default function AlertsPage() {
   const t = useTranslations("onboarding.alerts");
   return (

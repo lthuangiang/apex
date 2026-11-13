@@ -14,7 +14,7 @@ Desktop và mobile dùng **cùng một route**, layout responsive. Artboard mobi
 | `/onboarding/analysis` | Onboarding 4 · Account analysis | Mobile · Onboarding 4 |
 | `/onboarding/goals` | Onboarding 5 · Your goals | Mobile · Onboarding 5 |
 | `/onboarding/plan` | Onboarding 6 · Strategy plan | Mobile · Onboarding 6 |
-| `/onboarding/alerts?next=` | Bước tuỳ chọn "Get alerts on Telegram" (DEC-TBD-onboarding-skip; dùng lại thẻ Telegram của NT-Settings / NT-Connect) | cùng bố cục, không đánh số |
+| `/onboarding/alerts?next=` | Bước tuỳ chọn "Get alerts on Telegram" (DEC-202; dùng lại thẻ Telegram của NT-Settings / NT-Connect) | cùng bố cục, không đánh số |
 | `/` (chưa đăng nhập) | Landing · Public (trang fluid, DEC-69) | cùng artboard, responsive |
 | `/risk-disclosure` | Public · Risk Disclosure (mở cho mọi người, DEC-69) | cùng artboard, responsive |
 | `/` (đã đăng nhập) | Desktop · Overview | Mobile · Home |

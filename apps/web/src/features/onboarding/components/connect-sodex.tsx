@@ -342,7 +342,7 @@ export function ConnectSodex() {
           </Link>
         ) : (
           <span className="flex flex-wrap items-center gap-3">
-            {/* App dùng được khi chưa kết nối (DEC-TBD-onboarding-skip): xem trước rồi kết nối sau. */}
+            {/* App dùng được khi chưa kết nối (DEC-202): xem trước rồi kết nối sau. */}
             <Link
               href="/"
               className="inline-flex min-h-tap items-center text-sm font-bold text-accent no-underline"
@@ -359,7 +359,7 @@ export function ConnectSodex() {
 }
 
 /**
- * Ngay sau khi kết nối SoDEX: nhắc bật 2FA (báo cáo test C14, DEC-TBD-onboarding-skip). Đã bật hoặc bấm Skip
+ * Ngay sau khi kết nối SoDEX: nhắc bật 2FA (báo cáo test C14, DEC-202). Đã bật hoặc bấm Skip
  * thì ẩn. Không chặn bước tiếp theo.
  */
 export function TwoFactorNudge() {

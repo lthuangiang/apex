@@ -14,7 +14,7 @@ import { useFeatures } from "@/lib/queries";
 
 import { StepHeading } from "./onboarding-shell";
 
-// Bước tuỳ chọn cuối onboarding (DEC-TBD-onboarding-skip): nhận cảnh báo trên Telegram. Dùng lại thẻ Telegram và
+// Bước tuỳ chọn cuối onboarding (DEC-202): nhận cảnh báo trên Telegram. Dùng lại thẻ Telegram và
 // hộp thoại Connect của Settings › Notifications. Có Skip; server tắt Telegram thì đi thẳng tới `next`.
 
 /** Chỉ nhận đường dẫn nội bộ (không `//host`, không `/\host`): tránh open redirect qua `?next=`. */

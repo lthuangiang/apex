@@ -334,7 +334,7 @@ export function StrategyPlan() {
       </fieldset>
 
       <div className="flex flex-wrap justify-between gap-2.5">
-        {/* Cả hai lối ra đi qua bước tuỳ chọn Telegram (DEC-TBD-onboarding-skip), rồi tới đích như cũ. */}
+        {/* Cả hai lối ra đi qua bước tuỳ chọn Telegram (DEC-202), rồi tới đích như cũ. */}
         <Link
           href={alertsStepHref("/")}
           className="inline-flex min-h-12 items-center rounded-tile border border-border-input bg-surface px-4 font-bold text-ink no-underline"

@@ -13,7 +13,7 @@ import { TwoFactorNudge } from "../components/connect-sodex";
 import { StepHeading } from "../components/onboarding-shell";
 import { alertsStepHref, safeNext, TelegramStep } from "../components/telegram-step";
 
-// Onboarding W1 (báo cáo test 2026-11-13, DEC-TBD-onboarding-skip).
+// Onboarding W1 (báo cáo test 2026-11-13, DEC-202).
 
 interface TestState {
   me: { twoFactorEnabled: boolean } | undefined;
