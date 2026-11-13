@@ -195,6 +195,36 @@ Phần A2: `apps/mcp` (MCP Streamable HTTP, cổng 8097) ở `https://mcp.deskla
    - `curl -s -o /dev/null -w '%{http_code}' -X POST https://desklabs.xyz/api/v1/oauth/introspect` và `…/api/v1/mcp/calls` đều trả `403` (Traefik chặn).
 5. Rate limit (đếm trong Redis, key `mcp:rl:*`): 60 lần/phút/token, 5.000 lần/ngày/người dùng, team 120 lần/phút. Vượt → 429.
 
+### 2.11 Checklist bật MCP trên prod (gom từ 2.9 + 2.10)
+Làm theo thứ tự, một lần. Mọi bước nằm ở 2.9 / 2.10; mục này chỉ để không sót.
+
+**Trước khi deploy tag có `apps/mcp`:**
+- [ ] DNS: bản ghi A (và AAAA nếu có) `mcp.desklabs.xyz` → IP VPS. Chờ DNS cập nhật.
+- [ ] `/opt/drift/.env`:
+  - [ ] `MCP_INTROSPECT_SECRET`: sinh một lần bằng `openssl rand -hex 32`. **Cùng một giá trị** cho `api` và `mcp` (cả hai đọc chung biến này từ `.env`). Không dán vào log, ticket hay PR.
+  - [ ] `MCP_PUBLIC_URL=https://mcp.desklabs.xyz`
+  - [ ] `MCP_HOST=mcp.desklabs.xyz` (phải khớp host của `MCP_PUBLIC_URL`)
+- [ ] `docker-compose.yml` trên VPS:
+  - [ ] service `api`: thêm `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET`; đổi rule router `api` có thêm `Path(`/.well-known/oauth-authorization-server`)` (2.9);
+  - [ ] service `api`: thêm 5 label router `api-internal` + middleware `deny-external` (2.10 bước 3);
+  - [ ] thêm service `mcp` (2.10 bước 3).
+- [ ] `docker-compose.prod.yml` trên VPS: service `mcp` (image `mcp-${DRIFT_TAG}`, entrypoint `websecure`); service `api` thêm `traefik.http.routers.api-internal.entrypoints=websecure`.
+
+**Deploy:**
+- [ ] `infra/deploy/build-push.sh --deploy-only <tag>`. Script chạy migrate trước khi bật service: `0029_mcp_oauth`, `0030_adaptive_dca_for_all`, `0031_mcp_bot_drafts`. Lần này kéo cả 11 image (phần đầu Dockerfile đổi), lâu hơn bình thường.
+
+**Kiểm tra sau deploy:**
+- [ ] `curl -s https://desklabs.xyz/.well-known/oauth-authorization-server` → JSON có `"issuer":"https://desklabs.xyz"` và `"code_challenge_methods_supported":["S256"]`.
+- [ ] `curl -s https://mcp.desklabs.xyz/.well-known/oauth-protected-resource/mcp` → `resource` = `https://mcp.desklabs.xyz/mcp`, `authorization_servers` = `["https://desklabs.xyz"]`. Lần gọi đầu có thể chậm vì Traefik xin cert.
+- [ ] `curl -si -X POST https://mcp.desklabs.xyz/mcp` → `401` kèm `WWW-Authenticate: Bearer scope="read", resource_metadata="https://mcp.desklabs.xyz/.well-known/oauth-protected-resource/mcp"`.
+- [ ] `curl -s -o /dev/null -w '%{http_code}\n' -X POST https://desklabs.xyz/api/v1/oauth/introspect` và `…/api/v1/mcp/calls`, `…/api/v1/mcp/me/bots` → `403` (Traefik chặn từ ngoài).
+- [ ] `docker compose … ps mcp` → `healthy`.
+- [ ] Thử thật: thêm connector trong Claude (Customize › Connectors › + Add › Add custom connector, URL `https://mcp.desklabs.xyz/mcp`), Allow, hỏi "list my bots"; rồi Settings › Connected apps › Revoke và thấy Claude mất quyền ngay.
+
+**Rollback:**
+- Tắt MCP nhanh, không cần đổi image: để `MCP_INTROSPECT_SECRET=` trống trong `.env`, rồi `up -d api mcp`. `/mcp` trả 503, introspect của api tắt; mọi phần khác chạy như cũ. Token đã cấp không dùng được cho tới khi bật lại.
+- Quay cả bản: `infra/deploy/build-push.sh --deploy-only <tag trước>`. Migration không quay lại; bảng MCP mới không ảnh hưởng bản cũ. `0030` đã bật Adaptive DCA cho mọi tài khoản: bản cũ đọc cùng cờ nên hành vi giống nhau; muốn tắt thì team tắt từng tài khoản ở Users.
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push 11 image → PM trả tag (`docs/RELEASE.md`).
