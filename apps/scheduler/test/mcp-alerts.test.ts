@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { checkMcpAlerts, type AlertStore } from "../src/mcp-alerts";
 
-// Theo dõi MCP (DEC-TBD-mcp-monitoring): lỗi tool ≥ 20 lượt và ≥ 20% trong 5 phút; introspect lỗi ≥ 10 lần trong 5 phút
+// Theo dõi MCP (DEC-225): lỗi tool ≥ 20 lượt và ≥ 20% trong 5 phút; introspect lỗi ≥ 10 lần trong 5 phút
 // (bộ đếm Redis theo phút); user chạm giới hạn ngày trong 30 phút. Mỗi loại tối đa 1 tin / 30 phút. Không token / client id.
 
 const NOW = Date.parse("2026-11-13T10:05:30Z");

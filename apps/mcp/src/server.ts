@@ -194,7 +194,7 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
         { err: err instanceof Error ? err.message : "unknown" },
         "introspect failed",
       );
-      // Theo dõi (DEC-TBD-mcp-monitoring): đếm theo phút trong Redis; Redis lỗi thì bỏ qua lần đếm này.
+      // Theo dõi (DEC-225): đếm theo phút trong Redis; Redis lỗi thì bỏ qua lần đếm này.
       void deps.counter
         .hit(mcpIntrospectFailKey(Math.floor(now().getTime() / 60_000)), 600_000)
         .catch(() => undefined);

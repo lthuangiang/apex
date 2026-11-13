@@ -106,7 +106,7 @@ function targetOf(row: RenderRow): { path: string; label: string } {
   }
 }
 
-/** Tin theo dõi MCP (DEC-TBD-mcp-monitoring): câu PM duyệt nguyên văn; email đã che lúc fan-out. */
+/** Tin theo dõi MCP (DEC-225): câu PM duyệt nguyên văn; email đã che lúc fan-out. */
 function mcpTitle(row: RenderRow): string {
   const num = (k: string) => {
     const v = row.data[k];

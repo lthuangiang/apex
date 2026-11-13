@@ -247,7 +247,7 @@ describe("connect SoDEX telemetry (DEC-114)", () => {
     expect(view.connect.events[0]?.data).toMatchObject({ reason: "wc_not_started" });
     expect(view.connect.requests).toEqual([]);
 
-    // Mục MCP (DEC-TBD-mcp-monitoring): 0 lượt trong 24h → tỷ lệ null ("Not available"), không phải 0%.
+    // Mục MCP (DEC-225): 0 lượt trong 24h → tỷ lệ null ("Not available"), không phải 0%.
     const before = platformStatsSchema.parse(
       (await client.request("GET", "/api/v1/admin/stats?period=7")).json(),
     );

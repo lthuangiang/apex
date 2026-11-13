@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import messages from "../../../../messages/en.json";
 import { McpStats } from "../components/stats-mcp";
 
-// Mục "Claude (MCP)" ở Stats (DEC-TBD-mcp-monitoring): số đếm thật; không có lượt gọi trong 24h thì tỷ lệ hiện
+// Mục "Claude (MCP)" ở Stats (DEC-225): số đếm thật; không có lượt gọi trong 24h thì tỷ lệ hiện
 // "Not available" (không phải 0%) và bảng theo tool có câu trống.
 
 const wrap = (node: ReactNode) =>

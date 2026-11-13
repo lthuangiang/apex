@@ -2,7 +2,7 @@ import { mcpCalls, mcpTokens, type Db } from "@drift/db";
 import type { McpPlatformStats } from "@drift/shared";
 import { and, desc, gt, gte, isNull, sql } from "drizzle-orm";
 
-// Mục MCP ở Stats (role team, DEC-TBD-mcp-monitoring). Chỉ số đếm thật; không có lượt gọi nào trong 24h thì tỷ lệ là
+// Mục MCP ở Stats (role team, DEC-225). Chỉ số đếm thật; không có lượt gọi nào trong 24h thì tỷ lệ là
 // null (web hiện "Not available"), không bao giờ 0%.
 
 const pct = (n: number, total: number) =>

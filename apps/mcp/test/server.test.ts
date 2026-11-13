@@ -515,7 +515,7 @@ describe("MCP server", () => {
       );
     expect(codes.slice(0, 120).every((c) => c === 200)).toBe(true);
     expect(codes[120]).toBe(429);
-    // Dòng nhật ký ghi rõ giới hạn theo phút (DEC-TBD-mcp-monitoring).
+    // Dòng nhật ký ghi rõ giới hạn theo phút (DEC-225).
     expect(calls.filter((c) => c.status === "rate_limited").map((c) => c.tool)).toEqual([
       "limit:per_minute",
     ]);

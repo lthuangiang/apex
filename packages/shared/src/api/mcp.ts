@@ -464,7 +464,7 @@ export const botDraftViewSchema = z.object({
 });
 export type BotDraftView = z.infer<typeof botDraftViewSchema>;
 
-// ---------- M6: theo dõi MCP (DEC-TBD-mcp-monitoring) ----------
+// ---------- M6: theo dõi MCP (DEC-225) ----------
 
 /** Ngưỡng cảnh báo team qua Telegram (PM chốt). Mỗi loại tối đa 1 tin / `throttleMs`. */
 export const MCP_MONITORING = {

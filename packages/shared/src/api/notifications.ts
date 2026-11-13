@@ -26,7 +26,7 @@ export const NOTIFICATION_TYPES = [
   "team_signup",
   "team_sodex_connected",
   "team_bot_started",
-  // Theo dõi MCP (DEC-TBD-mcp-monitoring): chỉ role `team`, chỉ Telegram, tối đa 1 tin / loại / 30 phút.
+  // Theo dõi MCP (DEC-225): chỉ role `team`, chỉ Telegram, tối đa 1 tin / loại / 30 phút.
   "team_mcp_tool_errors",
   "team_mcp_introspect_failing",
   "team_mcp_daily_limit",
@@ -172,7 +172,7 @@ export const teamOpsEventSchema = z.discriminatedUnion("type", [
     /** "USDC", hoặc coin base với TWAP. */
     capitalAsset: z.string().nullable(),
   }),
-  // Theo dõi MCP (DEC-TBD-mcp-monitoring), scheduler phát. Không bao giờ chứa token id hay client id.
+  // Theo dõi MCP (DEC-225), scheduler phát. Không bao giờ chứa token id hay client id.
   z.object({
     type: z.literal("team_mcp_tool_errors"),
     calls: z.number().int(),

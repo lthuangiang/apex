@@ -175,7 +175,7 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
       log.error({ err: error }, "leaderboard tick failed");
     });
     riskTimer = setInterval(() => {
-      // Theo dõi MCP (DEC-TBD-mcp-monitoring): mỗi phút, cửa sổ 5 phút.
+      // Theo dõi MCP (DEC-225): mỗi phút, cửa sổ 5 phút.
       void checkMcpAlerts(db, mcpAlertStore, Date.now())
         .then((sent) => {
           if (sent.length > 0) log.info({ sent }, "mcp alerts queued");

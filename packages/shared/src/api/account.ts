@@ -459,7 +459,7 @@ export const platformOverviewSchema = z.object({
 });
 export type PlatformOverview = z.infer<typeof platformOverviewSchema>;
 
-/** Mục MCP ở Stats (DEC-TBD-mcp-monitoring): chỉ số đếm thật từ `mcp_tokens` / `mcp_calls`. */
+/** Mục MCP ở Stats (DEC-225): chỉ số đếm thật từ `mcp_tokens` / `mcp_calls`. */
 export const mcpPlatformStatsSchema = z.object({
   /** User có token MCP còn refresh được (chưa thu hồi, chưa hết hạn). */
   connectedUsers: z.number().int(),

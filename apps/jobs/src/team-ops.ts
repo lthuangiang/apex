@@ -33,7 +33,7 @@ interface Subject {
 
 /** Dữ liệu (đã che) của sự kiện; null = không báo (tài khoản team, bot paper, không tìm thấy). */
 async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
-  // Theo dõi MCP (DEC-TBD-mcp-monitoring): chỉ số đếm; daily limit thì email đã che, tối đa 3. Không bao giờ token id /
+  // Theo dõi MCP (DEC-225): chỉ số đếm; daily limit thì email đã che, tối đa 3. Không bao giờ token id /
   // client id.
   if (e.type === "team_mcp_tool_errors")
     return { data: { calls: e.calls, errors: e.errors, pct: e.pct, tool: e.tool } };

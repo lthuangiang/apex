@@ -195,7 +195,7 @@ Thành viên **role `team`** (DEC-64) đã kết nối Telegram nhận tin khi c
 
 **Đã làm** (N3b, DEC-191): outbox `jobs.team_ops` → `apps/jobs/src/team-ops.ts` fan-out → worker Telegram. Test: không gửi cho user thường; không gửi sự kiện paper / của tài khoản team; che email/ví đúng; gộp 60 giây; quét output không có địa chỉ ví đầy đủ.
 
-### 13.1 Theo dõi MCP (DEC-TBD-mcp-monitoring)
+### 13.1 Theo dõi MCP (DEC-225)
 
 Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegram của thành viên team bật nhóm `teamOps`). Scheduler kiểm tra mỗi phút; mỗi loại tối đa 1 tin / 30 phút (khoá Redis). Câu PM duyệt, nút "Open Stats" mở `/admin/stats`:
 

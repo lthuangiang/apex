@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { formatInteger } from "@/lib/format";
 
-// Mục "Claude (MCP)" ở Stats (role team, DEC-TBD-mcp-monitoring): chỉ số đếm thật; tỷ lệ không có (0 lượt trong 24h)
+// Mục "Claude (MCP)" ở Stats (role team, DEC-225): chỉ số đếm thật; tỷ lệ không có (0 lượt trong 24h)
 // thì hiện "Not available", không phải 0%.
 
 type ToolRow = McpPlatformStats["byTool24h"][number];

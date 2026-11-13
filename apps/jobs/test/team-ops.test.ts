@@ -131,7 +131,7 @@ describe("team ops fan-out", () => {
     ).toHaveLength(2);
   });
 
-  it("sends MCP alerts to the team with masked emails only (DEC-TBD-mcp-monitoring)", async () => {
+  it("sends MCP alerts to the team with masked emails only (DEC-225)", async () => {
     const lead = await user({ role: "team", telegram: "active" });
     const heavy = await user({ email: "heavy.user@example.com" });
     const other = await user({ email: "second@example.com" });

@@ -7,7 +7,7 @@ import {
 } from "@drift/shared";
 import { and, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 
-// Theo dõi MCP (docs/MCP.md mục 6, DEC-TBD-mcp-monitoring): mỗi phút xét 3 điều kiện, đạt thì ghi outbox `jobs.team_ops`
+// Theo dõi MCP (docs/MCP.md mục 6, DEC-225): mỗi phút xét 3 điều kiện, đạt thì ghi outbox `jobs.team_ops`
 // (jobs gửi Telegram cho team như DEC-184). Mỗi loại tối đa 1 tin / 30 phút (khoá Redis NX). Lỗi tool và giới hạn ngày
 // đọc từ `mcp_calls`; lỗi introspect đọc bộ đếm Redis theo phút của apps/mcp (khi introspect lỗi thì api có thể đang
 // lỗi, nên không ghi được `mcp_calls`). Tin không bao giờ chứa token id hay client id.
