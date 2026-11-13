@@ -1687,6 +1687,13 @@
         "equity": "Equity now"
       },
       "next": "Import my history",
+      "skip": "Skip, look around first",
+      "twoFactor": {
+        "title": "Turn on 2FA to protect your bots",
+        "body": "With 2FA on, stopping a bot, changing limits or disconnecting needs a code from your phone. It takes about a minute.",
+        "turnOn": "Turn on 2FA",
+        "skip": "Skip for now"
+      },
       "manage": "Manage or revoke the key and the fee approval anytime in DeskLabs › Settings.",
       "switchChain": "Switch your wallet to ValueChain to sign.",
       "switchChainButton": "Switch to ValueChain",
@@ -1741,6 +1748,14 @@
       "retry": "Import again",
       "skip": "Skip analysis, set up a bot myself",
       "next": "See my analysis"
+    },
+    "alerts": {
+      "title": "Get alerts on Telegram",
+      "lead": "Bot problems and risk alerts reach your phone in seconds. DeskLabs Bot only sends alerts: it can't trade, pause bots or move money.",
+      "optional": "Optional",
+      "skip": "Skip for now",
+      "continue": "Continue",
+      "safety": "We never ask for your password, seed phrase or keys on Telegram."
     },
     "analysis": {
       "step": "STEP 4 OF 6 · ACCOUNT ANALYSIS",
@@ -2479,7 +2494,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": ["desk.firstVisit.placeholder"],
+  "_pendingReview": [],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",

@@ -46,6 +46,13 @@ export function EmailSignIn({ mode }: { mode: "signup" | "signin" }) {
   const longEnough = password.length >= PASSWORD_MIN_LENGTH;
   const notEmail = password.length > 0 && !passwordContainsEmail(password, email);
   const rulesOk = longEnough && notEmail;
+  // Lỗi cũ tự ẩn khi người dùng sửa lại (báo cáo test 2026-11-13, C13).
+  const edited =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      set(v);
+      setError(null);
+    };
 
   const describe = (e: unknown): string => {
     if (!(e instanceof ApiError)) return tc("generic");
@@ -120,7 +127,7 @@ export function EmailSignIn({ mode }: { mode: "signup" | "signin" }) {
             value={email}
             readOnly={needsTwoFactor}
             onChange={(e) => {
-              setEmail(e.target.value);
+              edited(setEmail)(e.target.value);
             }}
           />
         </label>
@@ -138,7 +145,7 @@ export function EmailSignIn({ mode }: { mode: "signup" | "signin" }) {
               value={password}
               readOnly={needsTwoFactor}
               onChange={(e) => {
-                setPassword(e.target.value);
+                edited(setPassword)(e.target.value);
               }}
               className="min-h-12 min-w-0 flex-1 border-none bg-transparent text-[15px] text-ink outline-none"
               {...(mode === "signup" ? { "aria-describedby": ids.rules } : invalid)}
@@ -201,7 +208,7 @@ export function EmailSignIn({ mode }: { mode: "signup" | "signin" }) {
               type="checkbox"
               checked={agreed}
               onChange={(e) => {
-                setAgreed(e.target.checked);
+                edited(setAgreed)(e.target.checked);
               }}
               className="mt-0.5 size-[18px] flex-none accent-accent"
             />
@@ -237,7 +244,11 @@ export function EmailSignIn({ mode }: { mode: "signup" | "signin" }) {
           type="submit"
           pending={pending}
           disabled={
-            email.trim() === "" || password === "" || (needsTwoFactor && twoFactorCode === "")
+            email.trim() === "" ||
+            password === "" ||
+            // Đăng ký: khoá tới khi mật khẩu đạt cả hai quy tắc (C13).
+            (mode === "signup" && !rulesOk) ||
+            (needsTwoFactor && twoFactorCode === "")
           }
         >
           {mode === "signup"
@@ -246,9 +257,10 @@ export function EmailSignIn({ mode }: { mode: "signup" | "signin" }) {
               ? t("twoFactorSubmit")
               : t("signInSubmit")}
         </Button>
-        <p className="m-0 text-xs leading-normal text-muted">
-          {mode === "signup" ? t("note") : t("forgot")}
-        </p>
+        {/* Đăng ký: bỏ câu "2FA là tuỳ chọn" (C14); nhắc bật 2FA ngay sau bước Connect SoDEX. */}
+        {mode === "signup" ? null : (
+          <p className="m-0 text-xs leading-normal text-muted">{t("forgot")}</p>
+        )}
       </form>
     </>
   );

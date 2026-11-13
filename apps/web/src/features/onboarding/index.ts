@@ -4,3 +4,4 @@ export { AnalysisReport } from "./components/analysis-report";
 export { ImportProgress } from "./components/import-progress";
 export { GoalsForm } from "./components/goals-form";
 export { StrategyPlan } from "./components/strategy-plan";
+export { TelegramStep, alertsStepHref, safeNext } from "./components/telegram-step";
