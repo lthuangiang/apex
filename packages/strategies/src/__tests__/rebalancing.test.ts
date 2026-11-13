@@ -148,7 +148,7 @@ describe("rebalancing schedule (DEC-67)", () => {
   });
 });
 
-describe("rebalancing Initial buy (IMP-04, DEC-TBD-rebalancing-initial-buy)", () => {
+describe("rebalancing Initial buy (IMP-04, DEC-222)", () => {
   const H = 3_600_000;
   const over = rebalancingSchema.parse({ ...base, initialBuy: "over_hours", initialBuyHours: 4 });
   const id = (tag: string) => clOrdId(ctx.botId, ctx.version, tag);

@@ -143,7 +143,7 @@ Preview: số lần × số tiền, lần mua tiếp theo, ngày kết thúc. Ba
 ## S6. Rebalancing (`rebalancing`) · Spot · builder fee: chỉ lệnh bán
 
 **Cách chạy:**
-1. Lúc start: mua từng tài sản tới tỷ trọng mục tiêu bằng số vốn đã cấp, theo "Initial buy" (DEC-TBD-rebalancing-initial-buy):
+1. Lúc start: mua từng tài sản tới tỷ trọng mục tiêu bằng số vốn đã cấp, theo "Initial buy" (DEC-222):
    - **All now** (mặc định; config thiếu field cũng là All now): mua một lần như rebalance thường.
    - **Over N hours** (N = 2–72): N phần, mỗi giờ một phần, tính từ lúc có đủ giá. Phần k chỉ mua, đưa mỗi tài sản tới k/N giá trị mục tiêu (luỹ kế), vẫn chịu "Max trade per rebalance". Phần nào dưới min size của SoDEX thì phần đó không có lệnh; vì mục tiêu là luỹ kế nên phần sau tự bù. Trong lúc mua dần không rebalance theo ngưỡng / lịch; xong phần N thì chạy rebalance thường. Field khoá sau khi tạo bot. Trading Agent hiện "Initial buy: {done} of {total} parts".
 2. Cứ 5 phút **[confirm]** tính tỷ trọng hiện tại theo giá quote asset.

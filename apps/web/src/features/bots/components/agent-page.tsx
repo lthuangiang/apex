@@ -513,7 +513,7 @@ export function AgentPage({ botId }: { botId?: string }) {
               <ReviewCard botId={d.bot.id} stopped={d.bot.state === "stopped"} />
             )}
             {d.adaptiveDca === null ? null : <AdaptiveDcaCard a={d.adaptiveDca} />}
-            {/* Rebalancing đang mua dần lúc khởi tạo (DEC-TBD-rebalancing-initial-buy). */}
+            {/* Rebalancing đang mua dần lúc khởi tạo (DEC-222). */}
             {d.initialBuy === null ? null : (
               <p
                 role="status"

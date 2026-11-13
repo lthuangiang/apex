@@ -814,7 +814,7 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
 }
 
 /**
- * Rebalancing đang mua dần (Initial buy · Over N hours, DEC-TBD-rebalancing-initial-buy): số phần đã mua / tổng số
+ * Rebalancing đang mua dần (Initial buy · Over N hours, DEC-222): số phần đã mua / tổng số
  * phần, cho dòng "Initial buy: {done} of {total} parts" ở Trading Agent. Chiến lược khác, All now, hay đã xong thì null.
  */
 function initialBuyOf(strategy: string, config: unknown, state: unknown): BotDetail["initialBuy"] {

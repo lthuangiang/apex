@@ -280,7 +280,7 @@ export const botDetailSchema = z.object({
     .nullable()
     .default(null),
   /**
-   * Rebalancing đang mua dần lúc khởi tạo (Initial buy · Over N hours, DEC-TBD-rebalancing-initial-buy): số phần đã mua
+   * Rebalancing đang mua dần lúc khởi tạo (Initial buy · Over N hours, DEC-222): số phần đã mua
    * và tổng số phần (mỗi giờ một phần). null khi không mua dần hoặc đã xong.
    */
   initialBuy: z

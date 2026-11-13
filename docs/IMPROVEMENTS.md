@@ -152,4 +152,4 @@ Mockup hiện chưa vẽ đường Skip above, Price limit, take profit và stop
 1. IMP-01, IMP-02 và bước Chart của IMP-05, làm cùng nhau.
 2. Bước Liquidation map của IMP-05, sau khi có nguồn dữ liệu.
 3. IMP-03.
-4. IMP-04: đã làm, xem STRATEGIES S6 "Initial buy" (DEC-TBD-rebalancing-initial-buy).
+4. IMP-04: đã làm, xem STRATEGIES S6 "Initial buy" (DEC-222).

@@ -347,7 +347,7 @@ describe("bots API", () => {
     expect(twap).toMatchObject({ marketLabel: null, capital: "0.5", capitalUnit: "base" });
   });
 
-  it("shows Rebalancing Initial buy progress while it buys in hourly parts (DEC-TBD-rebalancing-initial-buy)", async () => {
+  it("shows Rebalancing Initial buy progress while it buys in hourly parts (DEC-222)", async () => {
     const { client } = await connectedUser("rebal-initial@example.com");
     const made = await client.request("POST", "/api/v1/bots", {
       body: {

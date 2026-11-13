@@ -420,7 +420,7 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       type: enumOf("rebalSchedule", ["daily", "weekly", "monthly"]),
       when: { key: "rebalanceWhen", is: ["schedule"] },
     },
-    // Initial buy (IMP-04, DEC-TBD-rebalancing-initial-buy): All now (mặc định) hoặc N phần bằng nhau, mỗi giờ một phần; không đổi sau khi tạo.
+    // Initial buy (IMP-04, DEC-222): All now (mặc định) hoặc N phần bằng nhau, mỗi giờ một phần; không đổi sau khi tạo.
     {
       key: "initialBuy",
       group: 3,

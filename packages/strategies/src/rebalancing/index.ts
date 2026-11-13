@@ -58,7 +58,7 @@ export const initialParts = (c: RebalancingConfig): number | null =>
   c.initialBuy === "over_hours" && c.initialBuyHours !== undefined ? c.initialBuyHours : null;
 
 /**
- * Tiến độ Initial buy cho Trading Agent ("Initial buy: {done} of {total} parts", DEC-TBD-rebalancing-initial-buy): chỉ khi
+ * Tiến độ Initial buy cho Trading Agent ("Initial buy: {done} of {total} parts", DEC-222): chỉ khi
  * đang mua dần (`building` còn); All now hoặc đã mua xong thì null. Hàm thuần, chỉ đọc config và state đã lưu.
  */
 export function initialBuyProgress(
