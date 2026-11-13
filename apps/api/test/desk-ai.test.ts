@@ -127,7 +127,7 @@ describe("Desk AI", () => {
     expect(rows[0]).toMatchObject({
       source: "llm",
       model: "claude-sonnet-5-5",
-      prompt_version: "desk-ai-v3",
+      prompt_version: "desk-ai-v4",
       input_tokens: 1200,
     });
     expect(rows[0]?.fact_ids).toContain("goal_limit");
@@ -347,13 +347,20 @@ describe("Desk AI", () => {
     const keys = t.turn.answer.facts.map((f) => f.id);
     expect(keys).toEqual(["market_change_24h_pct:BTC-USD", "market_range_24h_pct:BTC-USD"]);
     expect(t.turn.answer.facts.every((f) => f.market === "BTC-USD" && f.bot === null)).toBe(true);
+    // Câu hỏi thật trên prod: nhắc coin mà không có chữ "market" vẫn là câu hỏi thị trường.
+    const coin = await ask(quiet.client, "How BTC today?");
+    expect(coin.turn.answer).toMatchObject({ kind: "template", key: "market" });
+    expect(coin.turn.answer.facts.map((f) => f.market)).toEqual(["BTC-USD", "BTC-USD"]);
+    // Hỏi chọn chiến lược: danh sách chiến lược, không đổ số thị trường hay bảng bot.
+    const pick = await ask(quiet.client, "Which strategy fits a sideways market?");
+    expect(pick.turn.answer).toMatchObject({ kind: "template", key: "strategies", facts: [] });
 
     // LLM bật: prompt có fact thị trường kèm tên market; số không khớp fact → câu mẫu.
     const { client } = await deskUser(env, "ai-market@example.com");
     llm.reply = "BTC moved 37.5% in a day.";
     const r = await ask(client, "How's the market today?");
     expect(llm.calls.at(-1)?.user).toContain('"market":"BTC-USD"');
-    expect(llm.calls.at(-1)?.system).toContain("never predict or advise");
+    expect(llm.calls.at(-1)?.system).toContain("describe them, never predict");
     expect(r.turn.answer).toMatchObject({ kind: "template", key: "market" });
     // Câu dự đoán vẫn bị chặn trước, không gọi model.
     const before = llm.calls.length;

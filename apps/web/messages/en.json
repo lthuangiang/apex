@@ -4941,7 +4941,8 @@
       "chips": {
         "safe": "Is my money safe?",
         "lose": "Why did I lose money?",
-        "start": "Start a bot for me"
+        "start": "Start a bot for me",
+        "market": "How’s the market today?"
       },
       "notAdvice": "Not financial advice",
       "briefLater": "Your morning brief is ready from 08:00.",
@@ -4965,6 +4966,9 @@
         "market": "Last 24 hours on SoDEX:",
         "marketLine": "{market} {change} · range {range}",
         "marketNote": "Not a forecast.",
+        "market_none": "I don’t have SoDEX numbers for that market right now. I can show markets listed on SoDEX and explain your bots.",
+        "strategies": "Each strategy was built for a different kind of market. None of them is sure to make money:",
+        "strategyLine": "{name}: {best}",
         "brief": "{count, plural, =0 {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. Nothing needs you today.} one {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. One thing needs you today: {bot}.} other {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. # things need you today, starting with {bot}.}}"
       },
       "facts": {

@@ -277,6 +277,8 @@ export const deskAiFactSchema = z.object({
 export const deskAiTemplateKeys = [
   "out_of_scope",
   "market",
+  "market_none",
+  "strategies",
   "quota",
   "safety",
   "fallback",
