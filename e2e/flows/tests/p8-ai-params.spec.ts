@@ -13,7 +13,9 @@ test("goals, strategy plan, AI parameters, clear and fill manually", async ({ pa
   await signUpConnectAnd2fa(page, info);
 
   await page.goto("/onboarding/goals");
-  await expect(page.getByRole("heading", { name: "What do you want DRIFT to do?" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "What do you want DeskLabs to do?" }),
+  ).toBeVisible();
   await page.getByRole("radio", { name: /Earn from sideways markets/ }).click();
   await page.getByLabel("2. Capital for bots").fill("2000");
   await page.getByRole("radio", { name: /^10%/ }).click();

@@ -118,7 +118,7 @@ export function WorkspaceShell({
       return item === undefined ? [] : [item];
     });
   // Bottom nav mobile (artboard Mobile-Home): Home · Portfolio · Agent (nổi) · Strategy · More. Bật AI Desk (mặc định)
-  // thì AI Desk thay Portfolio, Portfolio vào More (DEC-TBD-bottom-nav-desk).
+  // thì AI Desk thay Portfolio, Portfolio vào More (DEC-207).
   const second: WorkspaceKey = desk ? "desk" : "portfolio";
   const mobileNav: MobileNav = {
     items: pick(["overview", second, "agent", "bots"]).map((item) => ({

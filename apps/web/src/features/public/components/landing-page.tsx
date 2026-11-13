@@ -343,7 +343,8 @@ export function LandingPage() {
             <h2 id="cta-title" className={H2}>
               {t("cta.title")}
             </h2>
-            <p className="m-0 text-base leading-relaxed text-accent-tint">{t("cta.body")}</p>
+            {/* Chữ trắng của khối (text-surface): accent-tint trên nền accent chưa đạt tương phản 4.5:1. */}
+            <p className="m-0 text-base leading-relaxed">{t("cta.body")}</p>
           </div>
           <div className="flex flex-wrap gap-3">
             <Link
