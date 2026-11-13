@@ -9,7 +9,7 @@ import {
   type FetchedResponse,
 } from "../src/modules/oauth/cimd";
 
-// Client ID Metadata Document: chống SSRF theo các điểm PM chốt (DEC-TBD-mcp-oauth). Không gọi mạng thật: DNS và
+// Client ID Metadata Document: chống SSRF theo các điểm PM chốt (DEC-215). Không gọi mạng thật: DNS và
 // transport được thay bằng hàm giả.
 
 const URL_ID = "https://claude.example/oauth/client.json";

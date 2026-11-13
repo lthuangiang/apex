@@ -120,7 +120,7 @@ Quy ước theo `docs/CODING_STANDARDS.md` C8: khoá chính `id uuid` (v7), mọ
 | `desk_ai_turns` | Một lượt hỏi / trả lời, kèm nhật ký LLM | Câu trả lời (lời LLM hoặc câu mẫu), `fallback`, model, phiên bản prompt, id fact, token, chi phí ước tính, traceId; không lưu key |
 | `desk_ai_usage` | Số câu hỏi đã dùng của user trong một ngày địa phương | Trần 20 câu (DEC-165b); không bị "Delete history" xoá; giữ lượt bằng một câu upsert có điều kiện (DEC-189) |
 
-### 7.7 OAuth và MCP (DEC-167, DEC-TBD-mcp-oauth)
+### 7.7 OAuth và MCP (DEC-167, DEC-215)
 
 | Bảng | Nghĩa | Ghi chú |
 |---|---|---|

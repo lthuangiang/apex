@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { ConsentPage } from "@/features/oauth";
 import { OnboardingShell } from "@/features/onboarding";
 
-// Màn consent OAuth cho MCP (authorization_endpoint, DEC-TBD-mcp-oauth).
+// Màn consent OAuth cho MCP (authorization_endpoint, DEC-215).
 export default function OauthAuthorizePage() {
   const t = useTranslations("onboarding.signup");
   return (

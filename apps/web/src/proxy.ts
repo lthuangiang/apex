@@ -46,7 +46,7 @@ const OPEN_PATHS = [
   // App Android (TWA) và trình duyệt đọc trước khi đăng nhập (infra/mobile/README.md).
   "/manifest.webmanifest",
   "/.well-known/assetlinks.json",
-  // Metadata OAuth cho MCP (DEC-TBD-mcp-oauth): production do Traefik đưa thẳng tới api; dev qua rewrite của Next.
+  // Metadata OAuth cho MCP (DEC-215): production do Traefik đưa thẳng tới api; dev qua rewrite của Next.
   "/.well-known/oauth-authorization-server",
 ];
 /** Màn consent OAuth: chưa đăng nhập thì đăng nhập trước rồi quay lại đúng URL (giữ tham số OAuth). */

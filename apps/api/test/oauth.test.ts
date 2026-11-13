@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// OAuth 2.1 cho MCP (docs/MCP.md mục 4, DEC-167, DEC-TBD-mcp-oauth): đăng ký client, consent, PKCE, resource, token
+// OAuth 2.1 cho MCP (docs/MCP.md mục 4, DEC-167, DEC-215): đăng ký client, consent, PKCE, resource, token
 // xoay, phát hiện dùng lại refresh, quyền theo SoDEX / role team, revoke có hiệu lực ngay, introspect nội bộ.
 
 const SECRET = "test-introspect-secret-0123456789abcdef";

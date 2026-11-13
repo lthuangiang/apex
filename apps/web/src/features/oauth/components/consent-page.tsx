@@ -11,7 +11,7 @@ import { z } from "zod";
 
 import { api, ApiError } from "@/lib/api";
 
-// Màn consent OAuth cho MCP (docs/MCP.md mục 4, DEC-167, DEC-TBD-mcp-oauth). api kiểm tra tham số trước; tên client do
+// Màn consent OAuth cho MCP (docs/MCP.md mục 4, DEC-167, DEC-215). api kiểm tra tham số trước; tên client do
 // client tự khai nên chỉ hiện kèm host (không logo, không link từ client). Chưa kết nối SoDEX thì không cấp read / draft.
 
 const infoView = z.union([

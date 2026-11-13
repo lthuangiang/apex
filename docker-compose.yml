@@ -113,7 +113,7 @@ services:
     deploy: { replicas: 2 }
     labels:
       - traefik.enable=true
-      # /.well-known/oauth-authorization-server: metadata OAuth cho MCP (DEC-TBD-mcp-oauth).
+      # /.well-known/oauth-authorization-server: metadata OAuth cho MCP (DEC-215).
       - traefik.http.routers.api.rule=Host(`${APP_HOST}`) && (PathPrefix(`/api`) || Path(`/.well-known/oauth-authorization-server`))
       - traefik.http.services.api.loadbalancer.server.port=8080
       - traefik.docker.network=${COMPOSE_PROJECT_NAME:-drift-handoff}_edge

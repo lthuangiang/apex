@@ -44,7 +44,7 @@ const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  */
 export const CSRF_EXEMPT_POST_PATHS: ReadonlySet<string> = new Set([
   "/api/v1/telegram/webhook",
-  // OAuth cho MCP (DEC-TBD-mcp-oauth): client gọi bằng form + PKCE / bearer, không có cookie.
+  // OAuth cho MCP (DEC-215): client gọi bằng form + PKCE / bearer, không có cookie.
   "/api/v1/oauth/token",
   "/api/v1/oauth/register",
   "/api/v1/oauth/revoke",

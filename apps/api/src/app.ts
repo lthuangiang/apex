@@ -50,7 +50,7 @@ export const REDACT_PATHS = [
 ];
 
 export interface AppDeps {
-  /** OAuth cho MCP (DEC-TBD-mcp-oauth). Thiếu = issuer mặc định, introspect tắt. */
+  /** OAuth cho MCP (DEC-215). Thiếu = issuer mặc định, introspect tắt. */
   oauth?: {
     issuer: string;
     mcpPublicUrl: string;

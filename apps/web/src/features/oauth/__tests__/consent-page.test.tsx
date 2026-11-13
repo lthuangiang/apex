@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import messages from "../../../../messages/en.json";
 import { ConsentPage } from "../components/consent-page";
 
-// Màn consent OAuth cho MCP (DEC-167, DEC-TBD-mcp-oauth): tên client không tin cậy luôn đi kèm host; chưa kết nối
+// Màn consent OAuth cho MCP (DEC-167, DEC-215): tên client không tin cậy luôn đi kèm host; chưa kết nối
 // SoDEX thì không Allow được; Allow / Deny chuyển trình duyệt theo `redirect` của api.
 
 const state = vi.hoisted(() => ({

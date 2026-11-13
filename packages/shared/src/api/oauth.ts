@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { isoDateTimeSchema } from "../schemas";
 
-// OAuth 2.1 cho MCP (docs/MCP.md mục 4, DEC-167, DEC-TBD-mcp-oauth). Authorization server nằm trong api; MCP server
+// OAuth 2.1 cho MCP (docs/MCP.md mục 4, DEC-167, DEC-215). Authorization server nằm trong api; MCP server
 // (`apps/mcp`) là resource server, kiểm tra token bằng introspect nội bộ mỗi request.
 
 export const MCP_SCOPES = ["read", "draft", "team:read"] as const;

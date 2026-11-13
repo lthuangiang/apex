@@ -121,7 +121,7 @@ Các tab: SoDEX access · Security · Notifications · Connected apps · Trading
     - **Đã kết nối:** "Connected as @username · since …", "Send a test" (3 lần / giờ), "Disconnect" (dialog liệt kê hậu quả; không hỏi 2FA vì chỉ giảm quyền).
     - **Bị chặn** (Telegram trả 403): "Paused · bot blocked" + "Connect again".
   - **Lệnh trong bot:** `/start`, `/status`, `/stop`, `/help` (docs/NOTIFICATIONS.md mục 5). Không lệnh nào đổi trạng thái bot. `/stop` gỡ kết nối giống Disconnect.
-- **Connected apps** (MCP, DEC-167, DEC-TBD-mcp-oauth): app AI user đã cho phép qua OAuth. Mỗi dòng: tên client (dữ liệu client tự khai, luôn kèm host), quyền bằng lời thường, lần dùng cuối; nút "Revoke" mở dialog, thu hồi có hiệu lực ngay. Rỗng: "No apps connected yet."
+- **Connected apps** (MCP, DEC-167, DEC-215): app AI user đã cho phép qua OAuth. Mỗi dòng: tên client (dữ liệu client tự khai, luôn kèm host), quyền bằng lời thường, lần dùng cuối; nút "Revoke" mở dialog, thu hồi có hiệu lực ngay. Rỗng: "No apps connected yet."
 - **Trading defaults:** Mode = LIVE (chỉ đọc, ghi "Paper trading: coming soon"), max loss mặc định, múi giờ, định dạng số.
 - **Profile:** tên, email, export CSV, xoá tài khoản (chỉ bật khi mọi bot đã dừng).
 

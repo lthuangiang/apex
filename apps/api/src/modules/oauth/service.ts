@@ -17,7 +17,7 @@ import { randomToken, safeEqual, sha256 } from "../../lib/crypto";
 
 import { fetchClientMetadata, isAllowedRedirectUri, type CimdDeps } from "./cimd";
 
-// Authorization server OAuth 2.1 cho MCP (docs/MCP.md mục 4, DEC-167, DEC-TBD-mcp-oauth). Client công khai + PKCE S256,
+// Authorization server OAuth 2.1 cho MCP (docs/MCP.md mục 4, DEC-167, DEC-215). Client công khai + PKCE S256,
 // token gắn với resource (RFC 8707), `iss` trong redirect (RFC 9207), client qua Client ID Metadata Document hoặc đăng
 // ký động. Token opaque, chỉ lưu hash; refresh xoay mỗi lần dùng, dùng lại refresh cũ → thu hồi cả họ.
 

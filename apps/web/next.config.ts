@@ -14,7 +14,7 @@ const config: NextConfig = {
         ? []
         : [
             { source: "/api/:path*", destination: `${apiOrigin}/api/:path*` },
-            // Metadata OAuth cho MCP (DEC-TBD-mcp-oauth); production: Traefik đưa thẳng tới api.
+            // Metadata OAuth cho MCP (DEC-215); production: Traefik đưa thẳng tới api.
             {
               source: "/.well-known/oauth-authorization-server",
               destination: `${apiOrigin}/.well-known/oauth-authorization-server`,

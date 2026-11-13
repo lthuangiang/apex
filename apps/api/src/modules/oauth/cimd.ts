@@ -5,7 +5,7 @@ import { BlockList, isIP } from "node:net";
 import { OAUTH_CONFIG } from "@drift/shared";
 import { z } from "zod";
 
-// Client ID Metadata Document (đặc tả MCP authorization, draft-ietf-oauth-client-id-metadata-document; DEC-TBD-mcp-oauth).
+// Client ID Metadata Document (đặc tả MCP authorization, draft-ietf-oauth-client-id-metadata-document; DEC-215).
 // client_id là URL https; api tải JSON metadata từ URL đó. Đây là request ra ngoài theo URL do client chọn, nên chặn SSRF
 // (PM chốt): chỉ https cổng 443; resolve DNS một lần, mọi địa chỉ phải là địa chỉ công khai, rồi kết nối thẳng tới IP đã
 // kiểm tra (chống DNS rebinding); không theo redirect; chỉ `application/json`; tối đa 16 KB; timeout 3 s; không cookie,

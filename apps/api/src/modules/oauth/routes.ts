@@ -28,7 +28,7 @@ import {
   type OauthDeps,
 } from "./service";
 
-// Routes OAuth 2.1 cho MCP (DEC-167, DEC-TBD-mcp-oauth). Token / register / revoke / introspect không dùng cookie nên
+// Routes OAuth 2.1 cho MCP (DEC-167, DEC-215). Token / register / revoke / introspect không dùng cookie nên
 // được miễn CSRF (`OAUTH_CSRF_EXEMPT`); consent và Connected apps dùng phiên đăng nhập như mọi màn khác.
 
 export const OAUTH_PATHS = {

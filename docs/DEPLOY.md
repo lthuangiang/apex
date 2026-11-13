@@ -125,7 +125,7 @@ Bot `@desklabsbot` đã tạo (N0). Token và webhook secret chỉ nằm trong `
 5. **Đổi token** (BotFather › Revoke): sửa `.env`, chạy lại bước 2 và bước 3. **Đổi secret:** sửa `.env`, chạy bước 2 rồi bước 3 ngay. Giữa hai bước, webhook trả 401 và Telegram tự gửi lại update sau.
 6. **Tắt khẩn cấp:** đặt `TELEGRAM_ENABLED=false`, rồi chạy bước 2. Route `/api/v1/telegram/*` trả 404, worker ngừng gửi; tin đang `queued` giữ nguyên.
 
-### 2.9 MCP: OAuth (DEC-167, DEC-TBD-mcp-oauth)
+### 2.9 MCP: OAuth (DEC-167, DEC-215)
 Phần A1: authorization server OAuth nằm trong `api`. Service `apps/mcp` và host `mcp.desklabs.xyz` thêm ở A2. Compose trên VPS do người dùng tự sửa, nên làm tay các bước sau:
 1. `/opt/drift/.env`:
    - `MCP_INTROSPECT_SECRET`: sinh một lần bằng `openssl rand -hex 32`. Trống thì introspect tắt (MCP không hoạt động). Không dán vào log, ticket hay PR.
