@@ -6,9 +6,9 @@ RUN npm i -g corepack@0.36.0 && corepack enable && mkdir /repo && chown node:nod
 USER node
 ENV COREPACK_HOME=/home/node/.cache/corepack
 WORKDIR /repo
-# Phần đầu (tới hết manifest) GIỐNG HỆT ở cả 10 Dockerfile: cùng cache, cùng digest, VPS chỉ tải một lần
+# Phần đầu (tới hết manifest) GIỐNG HỆT ở cả 11 Dockerfile: cùng cache, cùng digest, VPS chỉ tải một lần
 # (DEC-214). Không thêm ARG / ENV trước dòng này. Thêm package mới vào workspace thì thêm dòng COPY
-# manifest của nó ở cả 10 file.
+# manifest của nó ở cả 11 file.
 COPY --chown=node:node pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 RUN corepack install && pnpm fetch --frozen-lockfile
 COPY --chown=node:node apps/api/package.json apps/api/
@@ -16,6 +16,7 @@ COPY --chown=node:node apps/backtest/package.json apps/backtest/
 COPY --chown=node:node apps/engine/package.json apps/engine/
 COPY --chown=node:node apps/jobs/package.json apps/jobs/
 COPY --chown=node:node apps/marketdata/package.json apps/marketdata/
+COPY --chown=node:node apps/mcp/package.json apps/mcp/
 COPY --chown=node:node apps/realtime/package.json apps/realtime/
 COPY --chown=node:node apps/reco/package.json apps/reco/
 COPY --chown=node:node apps/scheduler/package.json apps/scheduler/

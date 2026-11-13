@@ -9,6 +9,7 @@ import {
   deskAiFacts,
   ErrorCode,
   intentOf,
+  marketsInQuestion,
   promptFacts,
   templateFacts,
   type DeskAiAnswer,
@@ -105,6 +106,7 @@ async function factsOf(
   deps: BotDeps & { market?: DeskMarketSource | null },
   userId: string,
   used: number,
+  asked: readonly string[] = [],
 ): Promise<DeskAiFact[]> {
   // Bot archived trong 30 ngày vẫn là dữ liệu thật về lãi / lỗ / phí (DEC-193); Needs you thì không.
   const archivedSince = new Date(deps.now().getTime() - DESK_AI_CONFIG.archivedDays * 86_400_000);
@@ -112,7 +114,7 @@ async function factsOf(
     collectFacts(deps, userId, { archivedSince }),
     goalOf(deps, userId),
     // SoDEX lỗi chỉ làm mất fact thị trường, không làm hỏng câu trả lời.
-    deskMarketFacts(deps.db, deps.market, userId).catch((): DeskAiFact[] => []),
+    deskMarketFacts(deps.db, deps.market, userId, asked).catch((): DeskAiFact[] => []),
   ]);
   return [
     ...deskAiFacts({
@@ -301,8 +303,11 @@ export async function askDeskAi(
   const { date } = localClock(now, await timezoneOf(deps, userId));
   const reserved = await reserveQuestion(deps, userId, date);
   const used = reserved ?? DESK_AI_CONFIG.dailyQuestions;
+  // Market SoDEX được nhắc trong câu hỏi ("How's BTC today?"): thêm số 24 giờ của market đó.
+  const listed = deps.market == null ? [] : await deps.market.listed().catch((): string[] => []);
+  const asked = marketsInQuestion(question, listed);
   // Hỏi về một bot: chỉ fact của bot đó (cộng thẻ Mục tiêu, số câu còn lại) và fact của quyết định.
-  const all = await factsOf(deps, userId, used);
+  const all = await factsOf(deps, userId, used, asked);
   const only = ctx.botId;
   const facts = [
     ...(only === null
@@ -310,13 +315,19 @@ export async function askDeskAi(
       : all.filter((f) => f.market != null || !f.id.includes(":") || f.id.endsWith(`:${only}`))),
     ...ctx.extra,
   ];
-  const intent = intentOf(question);
+  const intent = intentOf(question, { asksMarket: asked.length > 0 });
   const goalFacts = facts.filter((f) => f.key === "goal_limit" || f.key === "goal_used");
-  // Không có số thị trường (SoDEX lỗi, chưa có bot) → câu mẫu chung, không có danh sách rỗng.
-  const hasMarket = facts.some(
+  // Câu mẫu thị trường: market được hỏi nếu có, không thì mọi market có số. Thiếu số (SoDEX lỗi, market không niêm
+  // yết) → câu "không có số", không bao giờ đổ bảng bot.
+  const marketTemplateFacts = facts.filter(
+    (f) =>
+      (f.key === "market_change_24h_pct" || f.key === "market_range_24h_pct") &&
+      (asked.length === 0 || (f.market != null && asked.includes(f.market))),
+  );
+  const hasMarket = marketTemplateFacts.some(
     (f) =>
       f.key === "market_range_24h_pct" &&
-      facts.some((g) => g.key === "market_change_24h_pct" && g.market === f.market),
+      marketTemplateFacts.some((g) => g.key === "market_change_24h_pct" && g.market === f.market),
   );
   let w: Written;
   if (reserved === null)
@@ -349,28 +360,25 @@ export async function askDeskAi(
       // `off`: LLM chưa bật (không có key) → lời dẫn không nói "can't write an answer right now".
       intent === "safety"
         ? { kind: "template", key: "safety", params: {}, facts: goalFacts }
-        : intent === "market" && hasMarket
-          ? {
-              kind: "template",
-              key: "market",
-              params: {},
-              facts: facts.filter(
-                (f) => f.key === "market_change_24h_pct" || f.key === "market_range_24h_pct",
-              ),
-            }
-          : intent === "loss"
-            ? {
-                kind: "template",
-                key: "loss",
-                params: { off: deps.llm === null ? 1 : 0 },
-                facts: templateFacts(question, facts, { loss: true }),
-              }
-            : {
-                kind: "template",
-                key: "fallback",
-                params: { off: deps.llm === null ? 1 : 0 },
-                facts: templateFacts(question, facts),
-              },
+        : intent === "market"
+          ? hasMarket
+            ? { kind: "template", key: "market", params: {}, facts: marketTemplateFacts }
+            : { kind: "template", key: "market_none", params: {}, facts: [] }
+          : intent === "strategy"
+            ? { kind: "template", key: "strategies", params: {}, facts: [] }
+            : intent === "loss"
+              ? {
+                  kind: "template",
+                  key: "loss",
+                  params: { off: deps.llm === null ? 1 : 0 },
+                  facts: templateFacts(question, facts),
+                }
+              : {
+                  kind: "template",
+                  key: "fallback",
+                  params: { off: deps.llm === null ? 1 : 0 },
+                  facts: templateFacts(question, facts),
+                },
       `${question} ${ctx.text}`,
     );
 

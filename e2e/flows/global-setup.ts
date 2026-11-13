@@ -15,7 +15,7 @@ import { startClaudeMock } from "./support/claude-mock";
 import { startTelegramMock } from "./support/telegram-mock";
 
 // Dựng toàn bộ hệ thống cho E2E (CODING_STANDARDS C14): Postgres + Vault + Mailpit bằng Testcontainers,
-// rồi chạy thật sodex-mock, signer, api và web. SoDEX luôn là mock: E2E không bao giờ ký lên mainnet (DEC-23).
+// rồi chạy thật sodex-mock, signer, api, mcp và web. SoDEX luôn là mock: E2E không bao giờ ký lên mainnet (DEC-23).
 
 export const PORTS = {
   mock: 18099,
@@ -26,7 +26,10 @@ export const PORTS = {
   reco: 18095,
   claude: 18097,
   telegram: 18096,
+  mcp: 18094,
 } as const;
+/** Shared secret giả giữa apps/mcp và api cho introspect (không phải giá trị thật). */
+const MCP_FAKE_SECRET = "e2e_fake_mcp_introspect_secret_0123456789abcdef";
 /** Token và webhook secret giả cho Telegram Bot API giả (không phải giá trị thật). */
 const TELEGRAM_FAKE_TOKEN = "e2e-fake-telegram-bot-token";
 const TELEGRAM_FAKE_SECRET = "e2e_fake_webhook_secret_0123456789abcdef";
@@ -271,6 +274,9 @@ export default async function globalSetup() {
 
   const apiOrigin = `http://127.0.0.1:${String(PORTS.api)}`;
   process.env.E2E_API = apiOrigin;
+  const webOrigin = `http://127.0.0.1:${String(PORTS.web)}`;
+  const mcpOrigin = `http://127.0.0.1:${String(PORTS.mcp)}`;
+  process.env.E2E_MCP = mcpOrigin;
   const redisUrl = `redis://${redis.getHost()}:${String(redis.getMappedPort(6379))}`;
   const natsUrl = `nats://${nats.getHost()}:${String(nats.getMappedPort(4222))}`;
   // Thay marketdata: đẩy giá 100 cho vBTC_vUSDC mỗi giây vào NATS và Redis `md:last:*` (P7).
@@ -391,6 +397,19 @@ export default async function globalSetup() {
       DRIFT_TELEGRAM_BOT_TOKEN: TELEGRAM_FAKE_TOKEN,
       DRIFT_TELEGRAM_WEBHOOK_SECRET: TELEGRAM_FAKE_SECRET,
       DRIFT_TELEGRAM_API_ORIGIN: telegramOrigin,
+      // MCP (DEC-167): issuer OAuth là web E2E, token gắn với apps/mcp chạy local.
+      DRIFT_APP_URL: webOrigin,
+      MCP_PUBLIC_URL: mcpOrigin,
+      MCP_INTROSPECT_SECRET: MCP_FAKE_SECRET,
+      LOG_LEVEL: "warn",
+    }),
+    start("mcp", ["--filter", "@drift/mcp", "start"], {
+      MCP_PORT: String(PORTS.mcp),
+      API_INTERNAL_URL: apiOrigin,
+      MCP_PUBLIC_URL: mcpOrigin,
+      DRIFT_APP_URL: webOrigin,
+      MCP_INTROSPECT_SECRET: MCP_FAKE_SECRET,
+      REDIS_URL: redisUrl,
       LOG_LEVEL: "warn",
     }),
   ];
@@ -423,6 +442,7 @@ export default async function globalSetup() {
       waitForPort(PORTS.signer),
       waitFor(`${apiOrigin}/healthz`),
       waitFor(`http://127.0.0.1:${String(PORTS.reco)}/healthz`),
+      waitFor(`${mcpOrigin}/healthz`),
       waitFor(`http://127.0.0.1:${String(PORTS.web)}/signup`),
     ]);
   } catch (error) {

@@ -78,7 +78,7 @@ jobs:
           BUILD: ${{ steps.pick.outputs.build }}
         run: |
           set -euo pipefail
-          for app in api backtest engine jobs marketdata realtime reco scheduler signer web; do
+          for app in api backtest engine jobs marketdata mcp realtime reco scheduler signer web; do
             case " $BUILD " in *" $app "*) want=1 ;; *) want=0 ;; esac
             # App không đổi: gắn tag mới vào image của tag trước (nếu image đó còn trên registry).
             if [ "$want" = 0 ] && [ -n "$PREV" ] &&
@@ -111,5 +111,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
-            --notes "Images: \`${{ vars.DRIFT_IMAGE }}:<app>-${GITHUB_REF_NAME}\` (10 apps).
+            --notes "Images: \`${{ vars.DRIFT_IMAGE }}:<app>-${GITHUB_REF_NAME}\` (11 apps).
           Deploy: \`infra/deploy/build-push.sh --deploy-only ${GITHUB_REF_NAME}\`"

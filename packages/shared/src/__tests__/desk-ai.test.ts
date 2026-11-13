@@ -41,7 +41,7 @@ const facts: DeskAiFact[] = [
   {
     id: "bot_state:a",
     key: "bot_state",
-    bot: "ETH Farm 7",
+    bot: "ETH Farm 9",
     value: "running",
     unit: "text",
     source: "bot_state",
@@ -70,14 +70,14 @@ describe("Desk AI number check", () => {
       ok: false,
       unknown: ["37.5"],
     });
-    // "7" chỉ có trong tên bot (văn bản), không phải fact số.
-    expect(checkNumbers("In 7 days it will recover.", facts).ok).toBe(false);
+    // "9" chỉ có trong tên bot (văn bản), không phải fact số.
+    expect(checkNumbers("In 9 days it will recover.", facts).ok).toBe(false);
     expect(checkNumbers("Stop at 2.4%.", facts).ok).toBe(false);
   });
 
   it("ignores numbers inside a bot name only when the whole name is written", () => {
-    expect(checkNumbers("ETH Farm 7 is running.", facts).ok).toBe(true);
-    expect(checkNumbers("Farm 7 is running.", facts).ok).toBe(false);
+    expect(checkNumbers("ETH Farm 9 is running.", facts).ok).toBe(true);
+    expect(checkNumbers("Farm 9 is running.", facts).ok).toBe(false);
   });
 
   it("allows numbers the user typed in the question", () => {

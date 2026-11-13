@@ -57,6 +57,10 @@ const envSchema = z.object({
   DRIFT_TELEGRAM_WEBHOOK_SECRET: emptyToUndefined(z.string().regex(/^[A-Za-z0-9_-]{32,256}$/)),
   /** Gốc URL của web app cho nút "Open DeskLabs" trong tin Telegram. */
   DRIFT_APP_URL: z.url().default("https://desklabs.xyz"),
+  /** MCP (DEC-167): gốc URL của apps/mcp; token OAuth gắn với `<gốc>/mcp` và `<gốc>/team/mcp` (RFC 8707). */
+  MCP_PUBLIC_URL: z.url().default("https://mcp.desklabs.xyz"),
+  /** Shared secret cho introspect nội bộ apps/mcp → api. Trống = tắt introspect. Không bao giờ log. */
+  MCP_INTROSPECT_SECRET: emptyToUndefined(z.string().min(32)),
   /** Desk AI (DEC-165, DEC-188): key Claude API; trống = LLM tắt, Desk AI dùng câu mẫu. Không log. */
   DESK_AI_API_KEY: z
     .string()

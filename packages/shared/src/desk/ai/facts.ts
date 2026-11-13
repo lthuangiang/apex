@@ -5,7 +5,7 @@ export const DESK_AI_CONFIG = {
   /** Model Claude (DEC-165a). */
   model: "claude-sonnet-5-5",
   /** Đổi khi sửa system prompt, ghi vào nhật ký mỗi lượt. */
-  promptVersion: "desk-ai-v3",
+  promptVersion: "desk-ai-v4",
   /** Câu hỏi mỗi user mỗi ngày (DEC-165b); báo cáo sáng không tính. */
   dailyQuestions: 20,
   /** Bot archived trong bấy nhiêu ngày gần nhất vẫn vào fact của Desk AI (DEC-193). */

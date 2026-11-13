@@ -64,7 +64,7 @@ describe("market facts", () => {
     const p = buildPrompt("How's the market today?", f);
     expect(p.user).toContain('"market":"BTC-USD"');
     expect(p.user).not.toContain("userText");
-    expect(p.system).toContain("never predict or advise");
+    expect(p.system).toContain("describe them, never predict");
     expect(checkNumbers("BTC moved 4.5% with an 8.16% range.", f, "").ok).toBe(true);
     expect(checkNumbers("BTC moved 9% today.", f, "").ok).toBe(false);
   });

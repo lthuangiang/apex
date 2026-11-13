@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { PageHead } from "@/components/workspace";
 import { WorkspaceShell } from "@/components/workspace-shell";
+import { ConnectedApps } from "@/features/oauth";
 import { useMe } from "@/lib/queries";
 
 import { NotificationsTab } from "./notifications-tab";
@@ -15,7 +16,7 @@ import { SecurityTab } from "./security-tab";
 import { SodexAccessTab } from "./sodex-access-tab";
 
 // Các tab: SoDEX access · Security · Notifications · Trading defaults · Profile (SCREENS.md mục 8.5).
-const TABS = ["access", "security", "notifications", "defaults", "profile"] as const;
+const TABS = ["access", "security", "notifications", "apps", "defaults", "profile"] as const;
 
 export function SettingsPage() {
   const t = useTranslations("settings");
@@ -59,6 +60,8 @@ export function SettingsPage() {
             <SecurityTab />
           ) : tab === "notifications" ? (
             <NotificationsTab />
+          ) : tab === "apps" ? (
+            <ConnectedApps />
           ) : tab === "defaults" ? (
             <TradingDefaultsTab />
           ) : (

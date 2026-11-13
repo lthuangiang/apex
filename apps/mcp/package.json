@@ -1,0 +1,25 @@
+{
+  "name": "@drift/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@drift/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "fastify": "5.12.7",
+    "ioredis": "6.0.0",
+    "pino": "10.4.0",
+    "tsx": "4.23.15",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "vitest": "5.0.5"
+  }
+}

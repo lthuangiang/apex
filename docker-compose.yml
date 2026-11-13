@@ -99,6 +99,9 @@ services:
       TELEGRAM_BRIEF_ENABLED: ${TELEGRAM_BRIEF_ENABLED:-true}
       TELEGRAM_BRIEF_LLM: ${TELEGRAM_BRIEF_LLM:-false}
       DRIFT_APP_URL: https://${APP_HOST}
+      # MCP (DEC-167): gốc URL của apps/mcp và shared secret cho introspect nội bộ (trống = MCP tắt).
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://mcp.desklabs.xyz}
+      MCP_INTROSPECT_SECRET: ${MCP_INTROSPECT_SECRET:-}
       # Desk AI (DEC-165): key Claude API, chỉ api đọc; trống = LLM tắt, Desk AI dùng câu mẫu.
       DESK_AI_API_KEY: ${DESK_AI_API_KEY:-}
     depends_on:
@@ -110,7 +113,8 @@ services:
     deploy: { replicas: 2 }
     labels:
       - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`${APP_HOST}`) && PathPrefix(`/api`)
+      # /.well-known/oauth-authorization-server: metadata OAuth cho MCP (DEC-215).
+      - traefik.http.routers.api.rule=Host(`${APP_HOST}`) && (PathPrefix(`/api`) || Path(`/.well-known/oauth-authorization-server`))
       - traefik.http.services.api.loadbalancer.server.port=8080
       - traefik.docker.network=${COMPOSE_PROJECT_NAME:-drift-handoff}_edge
     volumes:
@@ -210,6 +214,30 @@ services:
       redis: { condition: service_healthy }
     deploy: { replicas: 2 }
     healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8095/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
+
+  mcp:               # DeskLabs MCP server (DEC-167, docs/MCP.md): chỉ gọi api, không chạm signer / engine / SoDEX
+    <<: *app
+    build: { context: ., dockerfile: apps/mcp/Dockerfile }
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      MCP_PORT: "8097"
+      API_INTERNAL_URL: http://api:8080
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://mcp.desklabs.xyz}
+      DRIFT_APP_URL: https://${APP_HOST}
+      # Cùng giá trị với biến của api; trống = MCP tắt (mọi lần gọi /mcp trả 503).
+      MCP_INTROSPECT_SECRET: ${MCP_INTROSPECT_SECRET:-}
+    depends_on:
+      redis: { condition: service_healthy }
+      api: { condition: service_healthy }
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.mcp.rule=Host(`${MCP_HOST:-mcp.localhost}`)
+      - traefik.http.services.mcp.loadbalancer.server.port=8097
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME:-drift-handoff}_edge
+    networks: [edge, core]
+    healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8097/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
 
   backtest:          # worker CPU nặng, kéo job `backtest.run` từ JetStream
     <<: *app

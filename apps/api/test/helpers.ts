@@ -60,6 +60,7 @@ export async function startTestEnv(
     connectEnabled?: boolean;
     telegram?: AppDeps["telegram"];
     deskLlm?: DeskLlm | null;
+    oauth?: AppDeps["oauth"];
   } = {},
 ): Promise<TestEnv> {
   const container = await new PostgreSqlContainer(POSTGRES_IMAGE).start();
@@ -134,6 +135,7 @@ export async function startTestEnv(
     logLevel: "info",
     now: () => clock.now,
     ...(options.telegram === undefined ? {} : { telegram: options.telegram }),
+    ...(options.oauth === undefined ? {} : { oauth: options.oauth }),
     deskLlm: options.deskLlm ?? null,
     logStream: new Writable({
       write(chunk: Buffer, _enc, done) {
