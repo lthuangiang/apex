@@ -2521,7 +2521,7 @@
         "title": "Alert preview",
         "example": "Example",
         "forTrader": "What alerts about {trader} look like at the level you chose. The trade below is an example, not a real one.",
-        "off": "Alerts for {trader} are off. Choose Big moves or Positions for this trader on this page to get them.",
+        "off": "Alerts for {trader} are off. Use the Alerts menu next to their name to turn them on.",
         "copying": "You’re copying this trader, so these alerts are paused. Your copy bot’s alerts tell you what it opened or skipped.",
         "bigMove": {
           "title": "{trader} made a big move",
