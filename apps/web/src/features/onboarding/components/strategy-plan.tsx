@@ -16,6 +16,7 @@ import { useMe, useSodexConnection } from "@/lib/queries";
 
 import { GOALS_KEY } from "./goals-form";
 import { OnboardingShell } from "./onboarding-shell";
+import { alertsStepHref } from "./telegram-step";
 
 // Onboarding 6 · Strategy plan (artboard "Onboarding 6", RECO_ENGINE.md mục 10). Mọi số lấy từ engine
 // đề xuất; mỗi bot mở màn tạo với giá trị là AI parameters, chưa giao dịch gì cho tới khi xác nhận.
@@ -333,8 +334,9 @@ export function StrategyPlan() {
       </fieldset>
 
       <div className="flex flex-wrap justify-between gap-2.5">
+        {/* Cả hai lối ra đi qua bước tuỳ chọn Telegram (DEC-TBD-onboarding-skip), rồi tới đích như cũ. */}
         <Link
-          href="/"
+          href={alertsStepHref("/")}
           className="inline-flex min-h-12 items-center rounded-tile border border-border-input bg-surface px-4 font-bold text-ink no-underline"
         >
           {t("skip")}
@@ -343,7 +345,7 @@ export function StrategyPlan() {
           <Button disabled>{t("ctaNone")}</Button>
         ) : (
           <Link
-            href={`/bots/new/${first.strategy}?suggestion=${first.id}`}
+            href={alertsStepHref(`/bots/new/${first.strategy}?suggestion=${first.id}`)}
             className="inline-flex min-h-12 items-center rounded-tile bg-accent px-5 font-bold text-white no-underline"
           >
             {t("cta", { n: included.length })}
