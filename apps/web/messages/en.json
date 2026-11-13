@@ -4006,10 +4006,11 @@
   },
   "landing": {
     "metaTitle": "{brand} · Automated trading strategies on SoDEX",
-    "metaDescription": "Market Making, Volume Builder and more run on your own SoDEX account. Every decision logged, every fill analysed, and your funds never leave your account.",
+    "metaDescription": "Trading bots, an AI desk and copy trading on your own SoDEX account. Every decision logged, every fill analysed, and your funds never leave your account.",
     "nav": {
       "label": "Main",
       "strategies": "Strategies",
+      "desk": "AI Desk & Copy",
       "lab": "Analytics",
       "how": "How it works",
       "safety": "Safety",
@@ -4080,6 +4081,36 @@
       },
       "more": "More strategies",
       "backtest": "Backtest any setup on SoDEX price history before you start. A backtest is a simulation, not a forecast."
+    },
+    "desk": {
+      "eyebrow": "MORE THAN BOTS",
+      "title": "An AI desk and copy trading, on the same safety rules",
+      "body": "Everything below runs on your own SoDEX account. It can place and cancel orders, and it can never withdraw or move your funds.",
+      "cta": "Launch app",
+      "items": {
+        "desk": {
+          "title": "AI Desk",
+          "body": "Watches your bots and tells you what needs you, in plain words.",
+          "p1": "Compares fixes on your own last 7 days of trades before you change anything",
+          "p2": "Desk AI answers questions from your real numbers, never guesses or price predictions",
+          "p3": "Try a recommended first bot with fake money before real funds"
+        },
+        "copy": {
+          "title": "Copy Trading",
+          "body": "Copy a top Hyperliquid trader on your own SoDEX account, in three steps.",
+          "p1": "Traders re-checked from their real trades, with a Steady list for beginners",
+          "p2": "You set the budget, the size of each copy, a stop loss and a total loss limit",
+          "p3": "Only trades they open after you start are copied. Pause any time"
+        },
+        "alerts": {
+          "title": "Alerts on Telegram",
+          "body": "Know when a bot needs you without keeping the app open.",
+          "p1": "Bot problems, risk limits and SoDEX access changes",
+          "p2": "Big moves from traders you follow, and a morning brief",
+          "p3": "Messages never include wallet addresses, keys or balances"
+        }
+      },
+      "note": "Copying and AI suggestions are not financial advice. Past results are not a forecast."
     },
     "lab": {
       "eyebrow": "THE LAB",
@@ -4182,6 +4213,14 @@
         "halt": {
           "q": "How do I stop everything?",
           "a": "Use Halt all agents on any screen. It stops every bot and cancels its open orders."
+        },
+        "copy": {
+          "q": "How does copy trading work?",
+          "a": "Pick a trader from Find traders, set a budget and a safety level, and review what will be copied. Your copy bot opens its own positions on SoDEX when the trader opens new ones, with your size, stop loss and loss limit. Results will differ from theirs."
+        },
+        "deskAi": {
+          "q": "What does Desk AI do?",
+          "a": "It explains your bots and your limits using your real numbers. It can't change a bot, place an order or predict prices, and every number it writes is checked against your data."
         }
       }
     },

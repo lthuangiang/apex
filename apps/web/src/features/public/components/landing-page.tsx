@@ -2,6 +2,7 @@ import { builderFeeRateOf, DRIFT_BUILDER_FEE_RATE, Strategy } from "@drift/share
 import {
   ArrowRight,
   BarChart3,
+  Bell,
   Check,
   ChevronDown,
   CircleX,
@@ -9,7 +10,9 @@ import {
   FlaskConical,
   Lock,
   ShieldCheck,
+  Sparkles,
   Waves,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -43,7 +46,13 @@ export function LandingPage() {
   const mmFee = feeLabels(builderFeeRateOf(Strategy.volumeMaker)).pct;
   const vfFee = feeLabels(builderFeeRateOf(Strategy.volumeFarm)).pct;
   const steps = ["connect", "pick", "run", "review"] as const;
-  const faq = ["independent", "withdraw", "sign", "paper", "halt"] as const;
+  const faq = ["independent", "withdraw", "sign", "paper", "copy", "deskAi", "halt"] as const;
+  // AI Desk, Copy Trading, Telegram: ba tính năng ngoài bot (README mục AI Desk / Copy Trading / Notifications).
+  const deskItems: readonly (readonly ["desk" | "copy" | "alerts", LucideIcon])[] = [
+    ["desk", Sparkles],
+    ["copy", Users],
+    ["alerts", Bell],
+  ];
   const labItems: readonly (readonly [
     "analytics" | "adverse" | "review" | "export",
     LucideIcon,
@@ -175,6 +184,54 @@ export function LandingPage() {
               ))}
             </ul>
             <p className="m-0 text-[13px] text-ink-2">{t("strategies.backtest")}</p>
+          </div>
+        </section>
+
+        <section
+          id="desk"
+          aria-labelledby="desk-title"
+          className={`${SECTION} flex flex-col gap-8 px-[clamp(20px,4vw,56px)] py-[clamp(32px,5vw,64px)]`}
+        >
+          <div className="flex max-w-[760px] flex-col gap-3">
+            <span className={`${EYEBROW} text-accent`}>{t("desk.eyebrow")}</span>
+            <h2 id="desk-title" className={H2}>
+              {t("desk.title")}
+            </h2>
+            <p className="m-0 text-[17px] leading-relaxed text-ink-2">{t("desk.body")}</p>
+          </div>
+          <ul className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-4 p-0">
+            {deskItems.map(([k, Icon]) => (
+              <li
+                key={k}
+                className="flex flex-col gap-3 rounded-[22px] border border-border bg-surface p-6"
+              >
+                <span className="flex size-11 items-center justify-center rounded-[14px] bg-accent-tint text-accent-ink">
+                  <Icon size={22} aria-hidden="true" />
+                </span>
+                <h3 className="m-0 text-lg font-extrabold">{t(`desk.items.${k}.title`)}</h3>
+                <p className="m-0 text-[15px] leading-relaxed text-ink-2">
+                  {t(`desk.items.${k}.body`)}
+                </p>
+                <ul className="m-0 flex list-none flex-col gap-2 p-0">
+                  {(["p1", "p2", "p3"] as const).map((pt) => (
+                    <li key={pt} className="flex gap-2 text-[14.5px] leading-snug text-ink">
+                      <Check size={18} className="mt-px flex-none text-pos" aria-hidden="true" />
+                      <span>{t(`desk.items.${k}.${pt}`)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link
+              href="/signup"
+              className="inline-flex min-h-tap items-center gap-2 rounded-control bg-accent px-5 text-[15px] font-extrabold text-white no-underline hover:bg-accent-ink"
+            >
+              {t("desk.cta")}
+              <ArrowRight size={18} aria-hidden="true" />
+            </Link>
+            <p className="m-0 text-[13px] text-muted">{t("desk.note")}</p>
           </div>
         </section>
 

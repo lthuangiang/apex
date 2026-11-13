@@ -16,7 +16,7 @@ export function PublicHeader({
 }) {
   const t = useTranslations("landing.nav");
   const tc = useTranslations("common");
-  const links = ["strategies", "lab", "how", "safety", "fees", "faq"] as const;
+  const links = ["strategies", "desk", "lab", "how", "safety", "fees", "faq"] as const;
   return (
     <header className="mx-auto flex w-full max-w-[1240px] flex-wrap items-center justify-between gap-x-3 gap-y-3 py-2 px-[clamp(20px,4vw,56px)] md:gap-x-6">
       <Link href="/" className="flex items-center gap-2 text-ink no-underline md:gap-2.5">
