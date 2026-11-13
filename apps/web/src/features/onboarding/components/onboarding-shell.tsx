@@ -142,8 +142,16 @@ export function StepHeading({
   return (
     <div className="flex flex-col gap-2">
       {step === undefined ? null : (
-        <span className="text-xs font-extrabold tracking-[0.08em] text-accent">
+        // Kèm tên bước như "STEP 6 OF 6 · STRATEGY PLAN" của artboard Onboarding 6 (báo cáo test C11): trên
+        // điện thoại không có rail các bước nên đây là chỗ duy nhất cho biết đang ở bước nào.
+        <span className="text-xs font-extrabold tracking-[0.08em] text-accent uppercase">
           {t("stepOf", { step })}
+          {STEPS[step - 1] === undefined ? null : (
+            <>
+              {" · "}
+              {t(`steps.${STEPS[step - 1] ?? "account"}.label`)}
+            </>
+          )}
         </span>
       )}
       <h1 className="m-0 text-[26px] font-extrabold tracking-tight md:text-[30px]">{title}</h1>

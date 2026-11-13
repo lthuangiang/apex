@@ -22,6 +22,7 @@ import {
   type EventData,
 } from "@/lib/connect-events";
 import { feeLabels, formatDate, shortAddress } from "@/lib/format";
+import { useMe } from "@/lib/queries";
 import { useSodexSignature } from "@/lib/use-sodex-signature";
 import { connectWatched, WalletConnectNotStarted } from "@/lib/watch-wallet";
 
@@ -326,8 +327,9 @@ export function ConnectSodex() {
       ) : null}
 
       {phase.kind === "done" ? <Done connection={phase.connection} pct={pct} /> : null}
+      {phase.kind === "done" ? <TwoFactorNudge /> : null}
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/signup" className="text-sm font-bold text-accent no-underline">
           {tCommon("back")}
         </Link>
@@ -339,11 +341,58 @@ export function ConnectSodex() {
             {t("next")}
           </Link>
         ) : (
-          <Button disabled>{t("next")}</Button>
+          <span className="flex flex-wrap items-center gap-3">
+            {/* App dùng được khi chưa kết nối (DEC-202): xem trước rồi kết nối sau. */}
+            <Link
+              href="/"
+              className="inline-flex min-h-tap items-center text-sm font-bold text-accent no-underline"
+            >
+              {t("skip")}
+            </Link>
+            <Button disabled>{t("next")}</Button>
+          </span>
         )}
       </div>
       <p className="m-0 text-xs text-muted">{t("manage")}</p>
     </>
+  );
+}
+
+/**
+ * Ngay sau khi kết nối SoDEX: nhắc bật 2FA (báo cáo test C14, DEC-202). Đã bật hoặc bấm Skip
+ * thì ẩn. Không chặn bước tiếp theo.
+ */
+export function TwoFactorNudge() {
+  const t = useTranslations("onboarding.connect.twoFactor");
+  const me = useMe();
+  const [skipped, setSkipped] = useState(false);
+  if (skipped || me.data === undefined || me.data.twoFactorEnabled) return null;
+  return (
+    <section
+      aria-labelledby="nudge-2fa"
+      className="flex flex-col gap-2 rounded-card border border-warn-bar bg-warn-bg p-4"
+    >
+      <h2 id="nudge-2fa" className="m-0 text-[15px] font-extrabold text-ink">
+        {t("title")}
+      </h2>
+      <p className="m-0 text-[13px] leading-normal text-ink-2">{t("body")}</p>
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/settings?tab=security"
+          className="inline-flex min-h-tap items-center rounded-control bg-accent px-4 text-sm font-bold text-surface no-underline"
+        >
+          {t("turnOn")}
+        </Link>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            setSkipped(true);
+          }}
+        >
+          {t("skip")}
+        </Button>
+      </div>
+    </section>
   );
 }
 
