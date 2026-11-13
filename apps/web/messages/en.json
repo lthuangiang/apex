@@ -2233,7 +2233,7 @@
         "long": "Long holders",
         "all": "All"
       },
-      "steadyNote": "Steady: made money over 30 days with small dips, at least 20 closed trades, and no single trade making most of the profit.",
+      "steadyNote": "Steady: made money over 30 days with small dips, at least 20 closed trades, no liquidations, and no single trade making most of the profit.",
       "slotsNote": "Live copying follows up to 8 Hyperliquid traders at a time across DeskLabs. Traders other people already copy are always open. When all spots are taken, you can follow a trader and copy them when a spot opens.",
       "slotsFull": "All live copy spots are taken right now.",
       "profit": "Profit · 30 days",
@@ -2298,6 +2298,10 @@
         "liquidations": {
           "label": "{count, plural, one {Liquidated once} other {Liquidated # times}}",
           "detail": "in the last 30 days."
+        },
+        "recent_unlisted": {
+          "label": "Most of their recent trades can’t be copied.",
+          "detail": "{share} of their trading in the last 7 days was on markets SoDEX doesn’t list ({coins})."
         }
       },
       "curveTitle": "Profit over time",
@@ -2497,7 +2501,7 @@
       "unfollow": "Unfollow"
     }
   },
-  "_pendingReview": ["copy.review.thinMarket"],
+  "_pendingReview": [],
   "bots": {
     "title": "Strategy Lab",
     "subtitle": "Your bots, drafts, and the strategies you can start from.",

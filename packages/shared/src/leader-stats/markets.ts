@@ -1,4 +1,4 @@
-// Map coin Hyperliquid → market SoDEX Perps (DEC-163, DEC-TBD-hip3-xyz):
+// Map coin Hyperliquid → market SoDEX Perps (DEC-163, DEC-207):
 // - perp gốc: `BTC` → `BTC-USD`. Hyperliquid ghi `kPEPE` cho 1000 PEPE; SoDEX ghi `1000PEPE-USD` (cùng 1000 token).
 // - perp HIP-3 của dex `xyz` (cổ phiếu / hàng hoá, `xyz:TSLA`) → `TSLA-USD` khi SoDEX có. Dex HIP-3 khác (`para:TER`) và
 //   spot (`@107`) không map.
@@ -24,7 +24,7 @@ export const isPerp = (coin: string): boolean => !coin.startsWith("@");
 /** Perp gốc của Hyperliquid (không phải spot `@N`, không phải HIP-3 `dex:COIN`). */
 export const isCorePerp = (coin: string): boolean => !coin.startsWith("@") && !coin.includes(":");
 
-/** Dex HIP-3 được map sang SoDEX (DEC-TBD-hip3-xyz). Vị thế của các dex này đọc bằng `clearinghouseState` có `dex`. */
+/** Dex HIP-3 được map sang SoDEX (DEC-207). Vị thế của các dex này đọc bằng `clearinghouseState` có `dex`. */
 export const HIP3_MAPPED_DEXES = ["xyz"] as const;
 
 /** Market SoDEX của coin Hyperliquid; null khi SoDEX không có, là spot, hay là HIP-3 của dex không map. */

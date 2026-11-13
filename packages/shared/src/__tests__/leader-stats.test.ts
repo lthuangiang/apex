@@ -40,7 +40,7 @@ describe("coin mapping", () => {
     expect(sodexMarketOf("BTC", INDEX)).toBe("BTC-USD");
     expect(sodexMarketOf("kPEPE", INDEX)).toBe("1000PEPE-USD");
     expect(sodexMarketOf("@107", INDEX)).toBeNull();
-    // HIP-3 dex `xyz` map khi SoDEX có (DEC-TBD-hip3-xyz); dex khác và spot thì không.
+    // HIP-3 dex `xyz` map khi SoDEX có (DEC-207); dex khác và spot thì không.
     expect(sodexMarketOf("xyz:TSLA", INDEX)).toBeNull();
     const withStocks = coinIndex(["BTC-USD", "MSTR-USD"]);
     expect(sodexMarketOf("xyz:MSTR", withStocks)).toBe("MSTR-USD");
@@ -179,7 +179,7 @@ describe("leaderStats", () => {
     expect(s.unlistedCoins).toEqual(["DOGE", "xyz:TSLA"]);
   });
 
-  it("counts xyz HIP-3 trading as on SoDEX when SoDEX lists the symbol (DEC-TBD-hip3-xyz)", () => {
+  it("counts xyz HIP-3 trading as on SoDEX when SoDEX lists the symbol (DEC-207)", () => {
     const s = stats(
       [
         ...roundTrip(NOW - DAY, HOUR, "1", "BTC", "3"),
@@ -259,6 +259,12 @@ describe("classify", () => {
   it("keeps Steady out when one trade makes most of the profit or profit is not positive", () => {
     expect(classify({ ...base, topTradeShare: "0.7" }, false).tabs).toEqual(["top", "long", "all"]);
     expect(classify({ ...base, profit: "-1" }, false).steadyScore).toBeNull();
+  });
+
+  it("keeps a trader liquidated in the last 30 days out of Steady, still in All", () => {
+    const c = classify({ ...base, liquidations: 1 }, false);
+    expect(c.tabs).toEqual(["top", "long", "all"]);
+    expect(c.steadyScore).toBeNull();
   });
 
   it("shows history-incomplete traders only under All", () => {

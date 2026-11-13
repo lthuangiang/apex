@@ -109,6 +109,7 @@ export const FIT_ITEMS = [
   "concentrated_profit",
   "no_liquidations",
   "liquidations",
+  "recent_unlisted",
 ] as const;
 
 export const traderProfileSchema = z.object({
@@ -230,7 +231,7 @@ export const copyPreviewSchema = z.object({
 });
 export type CopyPreview = z.infer<typeof copyPreviewSchema>;
 
-/** Ngưỡng cảnh báo "Thin market on SoDEX" (DEC-TBD-hip3-xyz): volume 24h theo quote (USD). */
+/** Ngưỡng cảnh báo "Thin market on SoDEX" (DEC-207): volume 24h theo quote (USD). */
 export const COPY_THIN_MARKET_USD = "50000";
 
 export const copyStartSchema = copyRequestSchema.extend({

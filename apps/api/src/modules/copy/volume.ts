@@ -1,7 +1,7 @@
 import { dec } from "@drift/shared";
 import type { SodexRestClient } from "@drift/sodex";
 
-// Volume 24h của market Perps trên SoDEX (cảnh báo "Thin market on SoDEX", DEC-TBD-hip3-xyz): tổng quote volume (`q`)
+// Volume 24h của market Perps trên SoDEX (cảnh báo "Thin market on SoDEX", DEC-207): tổng quote volume (`q`)
 // của 24 nến 1h, cùng cách đọc nến với Watchlist. Cache 5 phút theo market. Đọc lỗi → null (không cảnh báo).
 
 const CACHE_MS = 5 * 60_000;

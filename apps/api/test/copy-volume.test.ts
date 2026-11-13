@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { sodexVolume24h } from "../src/modules/copy/volume";
 
-// Volume 24h cho cảnh báo "Thin market on SoDEX" (DEC-TBD-hip3-xyz): tổng quote volume 24 nến 1h, đọc lỗi → null.
+// Volume 24h cho cảnh báo "Thin market on SoDEX" (DEC-207): tổng quote volume 24 nến 1h, đọc lỗi → null.
 
 const kline = (t: number, q: string) => ({ t, o: "1", h: "1", l: "1", c: "1", v: "1", q, n: 1 });
 

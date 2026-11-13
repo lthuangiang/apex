@@ -98,7 +98,7 @@ describe("HlLeaderTracker", () => {
     ]);
   });
 
-  it("adds xyz HIP-3 positions mapped to SoDEX, summing a symbol listed on both (DEC-TBD-hip3-xyz)", async () => {
+  it("adds xyz HIP-3 positions mapped to SoDEX, summing a symbol listed on both (DEC-207)", async () => {
     const h = harness({
       index: () => coinIndex(["BTC-USD", "TSLA-USD", "MSTR-USD"]),
       hl: {
