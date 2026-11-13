@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# App nào cần build lại cho release (DEC-TBD-release-layers). In tên app, mỗi dòng một app.
+# App nào cần build lại cho release (DEC-214). In tên app, mỗi dòng một app.
 #
 #   infra/deploy/changed-apps.sh <tag-trước> <tag-hoặc-commit>   # so sánh hai mốc
 #   infra/deploy/changed-apps.sh "" <tag>                       # không có tag trước → in cả 10 app

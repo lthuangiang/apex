@@ -39,7 +39,7 @@ git tag -a v1.1.0 origin/main -F notes.txt && git push origin v1.1.0
 4. **Theo dõi workflow** tới khi xong: `gh run watch` (chạy nền, không hỏi dồn). Fail thì đọc log, báo người dùng bước nào lỗi; **không xoá hay tạo lại tag** khi chưa được người dùng đồng ý.
 5. **Kiểm tra kết quả:** GitHub Release đã có; đủ 10 image trên Docker Hub (`docker buildx imagetools inspect <DRIFT_IMAGE>:<app>-<tag>`).
 
-## Dung lượng image (DEC-TBD-release-layers)
+## Dung lượng image (DEC-214)
 
 - Cả 10 Dockerfile có **phần đầu giống hệt**: node, corepack, `pnpm fetch` (kho thư viện của cả workspace), rồi manifest của mọi package. Các layer này cùng digest giữa các app và giữa các release, nên VPS chỉ tải một lần.
 - Sau phần chung, mỗi app có một layer `pnpm install --filter` (vài MB, chỉ đổi khi lockfile / manifest đổi), rồi đến **mã nguồn** (layer cuối, đổi mỗi release). Web build Next sau khi chép mã nguồn.

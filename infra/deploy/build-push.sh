@@ -153,7 +153,7 @@ docker compose pull
 docker compose run --rm migrate
 docker compose up -d
 docker compose ps
-# Dọn (DEC-TBD-release-layers): chỉ xoá image DRIFT không thuộc tag hiện tại hay tag liền trước (rollback một bản không
+# Dọn (DEC-214): chỉ xoá image DRIFT không thuộc tag hiện tại hay tag liền trước (rollback một bản không
 # phải tải lại), rồi layer treo. Không đụng image hạ tầng (postgres, redis, nats, vault, traefik…), không prune toàn bộ.
 IMAGE="$(sed -n 's/^DRIFT_IMAGE=//p' .env | tail -n 1)"
 if [ -n "$IMAGE" ]; then

@@ -41,7 +41,7 @@ jobs:
           [ "$conclusion" = "success" ] || {
             echo "::error::CI has not passed on $GITHUB_SHA (got: ${conclusion:-no run})"; exit 1; }
 
-  # Một job, một buildx builder, build lần lượt (DEC-TBD-release-layers): phần đầu giống hệt của 10 Dockerfile (node,
+  # Một job, một buildx builder, build lần lượt (DEC-214): phần đầu giống hệt của 10 Dockerfile (node,
   # corepack, pnpm fetch, manifest) dùng chung cache nên cùng digest giữa các app và giữa các release; VPS chỉ tải phần
   # đổi. Chỉ build app có thay đổi so với tag trước (infra/deploy/changed-apps.sh); app không đổi được gắn tag mới
   # trỏ vào đúng image của tag trước (cùng digest, không build, không tải lại).

@@ -7,7 +7,7 @@ USER node
 ENV COREPACK_HOME=/home/node/.cache/corepack
 WORKDIR /repo
 # Phần đầu (tới hết manifest) GIỐNG HỆT ở cả 10 Dockerfile: cùng cache, cùng digest, VPS chỉ tải một lần
-# (DEC-TBD-release-layers). Không thêm ARG / ENV trước dòng này. Thêm package mới vào workspace thì thêm dòng COPY
+# (DEC-214). Không thêm ARG / ENV trước dòng này. Thêm package mới vào workspace thì thêm dòng COPY
 # manifest của nó ở cả 10 file.
 COPY --chown=node:node pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 RUN corepack install && pnpm fetch --frozen-lockfile
