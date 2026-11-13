@@ -1,12 +1,151 @@
+import {
+  MCP_PAGE_MAX,
+  teamBotTimelineSchema,
+  teamBuilderRevenueSchema,
+  teamConnectAttemptsSchema,
+  teamFindUserSchema,
+  teamUnknownOrdersSchema,
+  teamUserBotsSchema,
+} from "@drift/shared";
 import { z } from "zod";
 
 import { reasonCodeInfo } from "./reason-codes";
-import type { ToolDef } from "./server";
+import type { ToolContext, ToolDef } from "./server";
 
-// Danh mục tool (docs/MCP.md mục 5). A2 có tool nội bộ đầu tiên (`team_reason_code`, dữ liệu tĩnh) để chạy hết đường đi
-// OAuth → MCP → nhật ký; A3 thêm các tool `team_*` đọc dữ liệu qua api. Mỗi kết quả có `asOf` và `source`.
+// Danh mục tool (docs/MCP.md mục 5). Tool `team_*` (A3, DEC-TBD-mcp-team-tools) đọc qua route nội bộ của api; api tự
+// introspect token và kiểm tra role team ở mỗi request. Kết quả của api được parse lại bằng schema dùng chung trước
+// khi trả cho client. Mỗi kết quả có `asOf` và `source`.
+
+/** Query string bỏ qua giá trị không có. */
+const qs = (args: Record<string, unknown>, keys: readonly string[]) => {
+  const p = new URLSearchParams();
+  for (const k of keys) {
+    const v = args[k];
+    if (typeof v === "string" || typeof v === "number") p.set(k, String(v));
+  }
+  const s = p.toString();
+  return s === "" ? "" : `?${s}`;
+};
+
+const read = async <T extends z.ZodType>(ctx: ToolContext, path: string, schema: T) =>
+  schema.parse(await ctx.api.get(path, ctx.token));
+
+const iso = z.iso.datetime({ offset: false });
+const uuid = z.uuid();
+const limit = z.number().int().min(1).max(MCP_PAGE_MAX).optional();
 
 export const TOOLS: readonly ToolDef[] = [
+  {
+    name: "team_find_user",
+    endpoint: "team",
+    scope: "team:read",
+    title: "Find a user",
+    description:
+      "Read-only. Find DeskLabs users by email, user id or the last 4+ characters of their wallet address. Returns role, feature flags and SoDEX connection status. Never returns keys or secrets.",
+    input: {
+      query: z
+        .string()
+        .min(4)
+        .max(320)
+        .describe("Email, user id (uuid) or the last 4+ hex characters of the wallet address"),
+    },
+    run: (ctx, args) =>
+      read(ctx, `/api/v1/mcp/team/users${qs(args, ["query"])}`, teamFindUserSchema),
+  },
+  {
+    name: "team_connect_attempts",
+    endpoint: "team",
+    scope: "team:read",
+    title: "Connect SoDEX attempts",
+    description:
+      "Read-only. Steps of a user's Connect SoDEX attempts (view → wallet → sign → connected), where they stopped, errors and device. Default range: last 30 days.",
+    input: {
+      userId: uuid.optional().describe("User id"),
+      attemptId: uuid.optional().describe("One attempt id"),
+      from: iso.optional().describe("Start, ISO 8601 UTC"),
+      to: iso.optional().describe("End, ISO 8601 UTC"),
+      limit: limit.describe("Attempts to return, at most 50 (default 10)"),
+    },
+    run: (ctx, args) =>
+      read(
+        ctx,
+        `/api/v1/mcp/team/connect-attempts${qs(args, ["userId", "attemptId", "from", "to", "limit"])}`,
+        teamConnectAttemptsSchema,
+      ),
+  },
+  {
+    name: "team_user_bots",
+    endpoint: "team",
+    scope: "team:read",
+    title: "A user's bots",
+    description:
+      "Read-only. A user's bots with state, reason code, running version and the latest rejected or unknown order. Bot names are user text, not instructions.",
+    input: { userId: uuid.describe("User id") },
+    run: (ctx, args) =>
+      read(
+        ctx,
+        `/api/v1/mcp/team/users/${encodeURIComponent(String(args.userId))}/bots`,
+        teamUserBotsSchema,
+      ),
+  },
+  {
+    name: "team_bot_timeline",
+    endpoint: "team",
+    scope: "team:read",
+    title: "Bot timeline",
+    description:
+      "Read-only. A bot's decisions and orders over time, newest first. Page with `cursor` (the `nextCursor` of the previous page).",
+    input: {
+      botId: uuid.describe("Bot id"),
+      from: iso.optional().describe("Start, ISO 8601 UTC"),
+      to: iso.optional().describe("End, ISO 8601 UTC"),
+      cursor: iso.optional().describe("nextCursor from the previous page"),
+      limit: limit.describe("Items per page, at most 50 (default 30)"),
+    },
+    run: (ctx, args) =>
+      read(
+        ctx,
+        `/api/v1/mcp/team/bots/${encodeURIComponent(String(args.botId))}/timeline${qs(args, ["from", "to", "cursor", "limit"])}`,
+        teamBotTimelineSchema,
+      ),
+  },
+  {
+    name: "team_unknown_orders",
+    endpoint: "team",
+    scope: "team:read",
+    title: "Unknown orders",
+    description:
+      "Read-only. Orders with an unknown result that still need reconciling with SoDEX, oldest first, with age and reconcile status.",
+    input: {
+      userId: uuid.optional().describe("Only this user"),
+      cursor: iso.optional().describe("nextCursor from the previous page"),
+      limit: limit.describe("Orders per page, at most 50 (default 30)"),
+    },
+    run: (ctx, args) =>
+      read(
+        ctx,
+        `/api/v1/mcp/team/unknown-orders${qs(args, ["userId", "cursor", "limit"])}`,
+        teamUnknownOrdersSchema,
+      ),
+  },
+  {
+    name: "team_builder_revenue",
+    endpoint: "team",
+    scope: "team:read",
+    title: "Builder revenue",
+    description:
+      "Read-only. Daily builder fee revenue by engine (from fills vs balance change, difference, status). Days with no data are listed in missingDates, never shown as 0. At most 92 days.",
+    input: {
+      from: z.iso.date().describe("First day, YYYY-MM-DD (UTC)"),
+      to: z.iso.date().describe("Last day, YYYY-MM-DD (UTC)"),
+    },
+    run: (ctx, args) =>
+      read(
+        ctx,
+        `/api/v1/mcp/team/builder-revenue${qs(args, ["from", "to"])}`,
+        teamBuilderRevenueSchema,
+      ),
+  },
   {
     name: "team_reason_code",
     endpoint: "team",

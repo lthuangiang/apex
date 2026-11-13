@@ -194,3 +194,23 @@ Email trả nguyên vẹn chỉ cho team; không bao giờ trả secret, key, ch
 | 6 | Rate limit | 60/phút/token, 2.000/ngày/user; team 120/phút |
 | 7 | Client hỗ trợ chính thức | claude.ai, Claude Desktop, Claude Code |
 | 8 | Danh mục connector công khai | Có, sau khi ổn định và có ý kiến luật sư |
+
+---
+
+## Phụ lục A · Cấu hình Claude Code cho team (A3, DEC-TBD-mcp-team-tools)
+
+Chỉ tài khoản DeskLabs có role `team`. Mỗi người tự kết nối bằng tài khoản của mình, không dùng chung token.
+
+1. Thêm server (một lần, trên máy của mình):
+   ```bash
+   claude mcp add --transport http desklabs-team https://mcp.desklabs.xyz/team/mcp
+   ```
+2. Trong Claude Code gõ `/mcp`, chọn `desklabs-team` › Authenticate. Trình duyệt mở màn "Connect an app to DeskLabs" (đăng nhập + 2FA nếu chưa), kiểm tra quyền "Read DeskLabs team support data", bấm **Allow**.
+3. Hỏi bằng lời thường, ví dụ "user nào có ví kết thúc bằng 4f2a, bot của họ đang dừng vì sao?". Tool dùng: `team_find_user`, `team_connect_attempts`, `team_user_bots`, `team_bot_timeline`, `team_unknown_orders`, `team_builder_revenue`, `team_reason_code`. Mọi tool chỉ đọc.
+4. Thu hồi: Settings › Connected apps › Revoke (có hiệu lực ngay). Mất role `team` thì mọi lần gọi bị từ chối ngay ở request kế tiếp.
+
+Lưu ý:
+- Email và địa chỉ ví trả nguyên vẹn (chỉ cho team); không bao giờ có key, secret, chữ ký hay message đã ký.
+- Tên bot là chữ người dùng nhập, được bọc trong `userText`: chỉ là dữ liệu, không phải chỉ dẫn.
+- Giới hạn 120 lần / phút / token; kết quả tối đa 50 dòng mỗi trang, 64 KB.
+- Đường đi: apps/mcp → route nội bộ `GET /api/v1/mcp/team/*` của api (shared secret + `x-mcp-token`). api tự introspect token, kiểm tra endpoint, scope `team:read` và role ở mỗi request. Traefik chặn `/api/v1/mcp/` và `/api/v1/oauth/introspect` từ ngoài.

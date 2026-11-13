@@ -6,7 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import type { ApiClient, McpCallRecord } from "../src/api-client";
+import { ApiCallError, type ApiClient, type McpCallRecord } from "../src/api-client";
 import { memoryCounter } from "../src/rate-limit";
 import { buildMcpApp } from "../src/server";
 import { TOOLS } from "../src/tools";
@@ -46,8 +46,30 @@ const api: ApiClient = {
     calls.push(row);
     return Promise.resolve();
   },
-  get: () => Promise.reject(new Error("not used")),
+  get: (path, token) => {
+    gets.push({ path, token });
+    if (path.startsWith("/api/v1/mcp/team/users?"))
+      return Promise.resolve({
+        asOf: "2026-11-13T10:00:00.000Z",
+        source: "users, sodex_accounts",
+        matchedBy: "wallet_tail",
+        users: [],
+      });
+    if (path.includes("/bots/") && path.includes("/timeline"))
+      return Promise.reject(
+        new ApiCallError(404, { error: { code: "BOT_NOT_FOUND", message: "Bot not found." } }),
+      );
+    if (path.startsWith("/api/v1/mcp/team/builder-revenue"))
+      return Promise.reject(
+        new ApiCallError(400, {
+          error: { code: "VALIDATION_FAILED", message: "At most 92 days." },
+        }),
+      );
+    // Trả dữ liệu sai schema: tool không được chuyển nguyên cho client.
+    return Promise.resolve({ asOf: "x", secret: "should-not-leak" });
+  },
 };
+const gets: { path: string; token: string }[] = [];
 
 let app: FastifyInstance;
 let url: string;
@@ -133,7 +155,15 @@ describe("MCP server", () => {
     expect(calls.map((c) => c.status)).toEqual(["denied", "denied"]);
 
     const team = await connect("/team/mcp", "team");
-    expect((await team.listTools()).tools.map((t) => t.name)).toEqual(["team_reason_code"]);
+    expect((await team.listTools()).tools.map((t) => t.name).sort()).toEqual([
+      "team_bot_timeline",
+      "team_builder_revenue",
+      "team_connect_attempts",
+      "team_find_user",
+      "team_reason_code",
+      "team_unknown_orders",
+      "team_user_bots",
+    ]);
     const r = await team.callTool({
       name: "team_reason_code",
       arguments: { code: "risk_daily_loss" },
@@ -161,6 +191,66 @@ describe("MCP server", () => {
     const user = await connect("/mcp", "user");
     expect((await user.listTools()).tools).toEqual([]);
     await user.close();
+  });
+
+  it("team tools read through api with the caller's token and fail safely", async () => {
+    const team = await connect("/team/mcp", "team");
+    const found = await team.callTool({ name: "team_find_user", arguments: { query: "4f2a" } });
+    expect(found.structuredContent).toMatchObject({ matchedBy: "wallet_tail", users: [] });
+    expect(gets[gets.length - 1]).toEqual({
+      path: "/api/v1/mcp/team/users?query=4f2a",
+      token: "team",
+    });
+    const missing = await team.callTool({
+      name: "team_bot_timeline",
+      arguments: { botId: "00000000-0000-4000-8000-000000000009", limit: 5 },
+    });
+    expect(missing.isError).toBe(true);
+    expect(missing.content).toEqual([{ type: "text", text: "Not found." }]);
+    expect(gets[gets.length - 1]?.path).toBe(
+      "/api/v1/mcp/team/bots/00000000-0000-4000-8000-000000000009/timeline?limit=5",
+    );
+    const tooLong = await team.callTool({
+      name: "team_builder_revenue",
+      arguments: { from: "2026-01-01", to: "2026-11-01" },
+    });
+    expect(tooLong.content).toEqual([{ type: "text", text: "Invalid input: At most 92 days." }]);
+    // api trả dữ liệu sai schema → lỗi chung, không lộ nội dung.
+    const odd = await team.callTool({
+      name: "team_unknown_orders",
+      arguments: {},
+    });
+    expect(odd.isError).toBe(true);
+    expect(JSON.stringify(odd)).not.toContain("should-not-leak");
+    await team.close();
+    expect(calls.filter((c) => c.status === "error").map((c) => c.tool)).toEqual([
+      "team_bot_timeline",
+      "team_builder_revenue",
+      "team_unknown_orders",
+    ]);
+  });
+
+  it("answers 503, not 500, when Redis is down", async () => {
+    const down = buildMcpApp({
+      api,
+      counter: { hit: () => Promise.reject(new Error("ECONNREFUSED")) },
+      publicUrl: PUBLIC,
+      issuer: "https://desklabs.test",
+      tools: TOOLS,
+      logLevel: "silent",
+    });
+    const r = await down.inject({
+      method: "POST",
+      url: "/team/mcp",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        authorization: "Bearer team",
+      },
+      payload: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+    });
+    expect(r.statusCode).toBe(503);
+    await down.close();
   });
 
   it("limits a team token to 120 requests a minute with a clear error", async () => {
