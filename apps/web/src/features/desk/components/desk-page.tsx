@@ -131,12 +131,6 @@ function YourBots({ bots }: { bots: Bot[] }) {
 
 function Home({ v }: { v: DeskHomeView }) {
   const t = useTranslations("desk.home");
-  const paper = useQuery({
-    queryKey: ["desk", "bots"],
-    queryFn: () => api("GET", "/api/v1/desk/bots", deskBotsViewSchema),
-  });
-  // Lần đầu, chưa có bot nào (thật lẫn tiền ảo): Desk AI là cửa vào (B-Empty).
-  if (v.bots.length === 0 && paper.data?.paper.length === 0) return <FirstVisit />;
   // Artboard BP-Home: cột trái Mục tiêu → Needs you → Your bots; cột phải là khung chat Desk AI (dính khi cuộn).
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(340px,400px)] xl:items-start">
@@ -180,6 +174,13 @@ export function DeskPage() {
     enabled: on && !notes,
     refetchInterval: 60_000,
   });
+  const paper = useQuery({
+    queryKey: ["desk", "bots"],
+    queryFn: () => api("GET", "/api/v1/desk/bots", deskBotsViewSchema),
+    enabled: on && !notes,
+  });
+  // Lần đầu, chưa có bot nào (thật lẫn tiền ảo): Desk AI là cửa vào (B-Empty), không có PageHead.
+  const firstVisit = !notes && q.data?.bots.length === 0 && paper.data?.paper.length === 0;
   let subtitle = t("subtitle");
   let live = false;
   if (q.data !== undefined) {
@@ -195,6 +196,12 @@ export function DeskPage() {
     live = watching > 0;
   }
 
+  if (firstVisit)
+    return (
+      <Workspace current="desk">
+        <FirstVisit />
+      </Workspace>
+    );
   return (
     <Workspace current="desk">
       <div className="flex flex-col gap-5">

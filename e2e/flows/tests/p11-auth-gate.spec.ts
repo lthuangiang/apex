@@ -12,7 +12,7 @@ test("pages need a session; signed-in users skip sign-up", async ({ page }, info
   }
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { level: 1, name: /Your trading, studied/ }),
+    page.getByRole("heading", { level: 1, name: /Trading strategies that run while you work/ }),
   ).toBeVisible();
   await page.goto("/risk-disclosure");
   await expect(page.getByRole("heading", { level: 1, name: "Risk Disclosure" })).toBeVisible();

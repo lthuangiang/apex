@@ -115,6 +115,9 @@ describe("Copy Trading v1", () => {
 
   it("lists Steady traders from the last good run and counts hidden ones by reason", async () => {
     await seedTrader(T1, stats(), ["steady", "top", "long", "all"]);
+    // Snapshot cũ còn gắn Steady cho trader bị thanh lý: API vẫn loại khỏi Steady, giữ ở All.
+    const LIQ = "0xeee0000000000000000000000000000000000005";
+    await seedTrader(LIQ, stats({ liquidations: 7 }), ["steady", "top", "long", "all"]);
     await seedTrader(
       T2,
       stats({ typicalHoldMs: 5 * 60_000, closedEpisodes: 12 }),
@@ -134,10 +137,17 @@ describe("Copy Trading v1", () => {
       expect.arrayContaining(["easy_to_copy", "holds_hours", "all_on_sodex"]),
     );
     expect(list).toMatchObject({
-      candidates: 2,
+      candidates: 3,
       hidden: 1,
       hiddenBy: { fast: 1, few_trades: 1, vault: 0 },
     });
+    const all = traderListSchema.parse(
+      (await client.request("GET", "/api/v1/traders?tab=all")).json(),
+    );
+    expect(all.items.map((i) => i.address)).toContain(LIQ);
+    expect(all.items.find((i) => i.address === LIQ)?.tags).toContain("liquidated");
+    await env.pool.query("delete from leader_stats_daily where address = $1", [LIQ]);
+    await env.pool.query("delete from leader_wallets where address = $1", [LIQ]);
   });
 
   it("keeps a trader the last run couldn't read, using stats from the past 7 days", async () => {

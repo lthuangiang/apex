@@ -45,38 +45,51 @@ export function FirstVisit() {
     if (question === "" || ask.isPending) return;
     ask.mutate(question);
   };
-  const option = (title: string, sub: string, onClick: () => void) => (
+  const option = (title: string, sub: string, onClick: () => void, primary = false) => (
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-tap flex-col items-start gap-0.5 rounded-[16px] border border-border bg-surface px-4 py-3 text-left hover:bg-surface-2"
+      className={`flex min-h-tap flex-col items-start gap-1.5 rounded-[18px] p-[18px] text-left ${
+        primary
+          ? "border-2 border-accent bg-accent-tint hover:bg-surface-2"
+          : "border border-border-input bg-surface hover:bg-surface-2"
+      }`}
     >
-      <span className="text-sm font-bold text-ink">{title}</span>
-      <span className="text-xs text-ink-2">{sub}</span>
+      <strong className="text-[15.5px] text-ink">{title}</strong>
+      <span className="text-[13.5px] leading-[1.45] text-ink-2">{sub}</span>
     </button>
   );
 
+  // Artboard B-Empty: một thẻ trắng giữa trang (tối đa 820 px), không có PageHead; chỉ một h1.
   return (
     <section
       aria-labelledby="first-visit"
-      className="flex flex-col gap-4 rounded-hero bg-hero p-5 sm:p-7"
+      className="mx-auto flex w-full max-w-[820px] flex-col gap-6 rounded-[28px] border border-border bg-surface px-5 pt-10 pb-8 sm:px-10 sm:pt-12"
     >
-      <div className="flex flex-col gap-1">
-        <h2 id="first-visit" className="m-0 flex items-center gap-2 text-xl font-extrabold">
-          <span aria-hidden="true" className="text-accent-ink">
-            ✦
-          </span>
+      <div className="flex flex-col items-center gap-3.5 text-center">
+        <span
+          aria-hidden="true"
+          className="flex size-[72px] items-center justify-center rounded-[24px] bg-ai-mark text-[32px] text-white"
+        >
+          ✦
+        </span>
+        <h1 id="first-visit" className="m-0 text-[32px] font-extrabold tracking-[-0.02em]">
           {t("title")}
-        </h2>
-        <p className="m-0 text-sm text-ink-2">{t("body")}</p>
+        </h1>
+        <p className="m-0 max-w-[560px] text-[17px] leading-[1.6] text-ink-2">{t("body")}</p>
       </div>
       {chat ? (
         <NewBotChat />
       ) : (
-        <div className="grid gap-2 sm:grid-cols-3">
-          {option(t("start"), t("startSub"), () => {
-            setChat(true);
-          })}
+        <div className="grid gap-3 sm:grid-cols-3">
+          {option(
+            t("start"),
+            t("startSub"),
+            () => {
+              setChat(true);
+            },
+            true,
+          )}
           {option(t("how"), t("howSub"), () => {
             send(t("how"));
           })}
@@ -89,7 +102,7 @@ export function FirstVisit() {
         <ul className="m-0 flex list-none flex-col gap-3 p-0" aria-live="polite">
           {turns.map((x) => (
             <li key={x.id} className="flex flex-col gap-1.5">
-              <p className="m-0 self-end rounded-[14px] bg-ink px-3 py-2 text-sm text-white">
+              <p className="m-0 max-w-[85%] self-end rounded-[16px_16px_4px_16px] bg-accent px-3.5 py-2 text-sm text-white">
                 {x.question}
               </p>
               <div className="flex gap-2">
@@ -113,26 +126,37 @@ export function FirstVisit() {
           e.preventDefault();
           send(text);
         }}
-        className="flex gap-2"
+        className="flex items-end gap-2.5"
       >
-        <label htmlFor={inputId} className="sr-only">
+        <label
+          htmlFor={inputId}
+          className="flex min-w-0 flex-1 flex-col gap-1.5 text-xs font-bold text-muted"
+        >
           {t("own")}
+          <textarea
+            id={inputId}
+            rows={2}
+            value={text}
+            maxLength={500}
+            onChange={(e) => {
+              setText(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              // Enter gửi, Shift+Enter xuống dòng.
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send(text);
+              }
+            }}
+            placeholder={t("placeholder")}
+            className="w-full resize-none rounded-[14px] border border-border-input bg-surface px-3.5 py-3 text-[15px] font-normal text-ink"
+          />
         </label>
-        <input
-          id={inputId}
-          value={text}
-          maxLength={500}
-          onChange={(e) => {
-            setText(e.target.value);
-          }}
-          placeholder={t("own")}
-          className="min-h-tap min-w-0 flex-1 rounded-[12px] border border-border-input bg-surface px-3 text-sm"
-        />
         <Button type="submit" pending={ask.isPending} disabled={text.trim() === ""}>
           {ta("send")}
         </Button>
       </form>
-      <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs text-ink-2">
+      <ul className="m-0 flex list-none flex-wrap justify-center gap-x-[22px] gap-y-2 p-0 text-[13px] text-ink-2">
         {(["orders", "money", "data"] as const).map((k) => (
           <li key={k}>✓ {t(`promises.${k}`)}</li>
         ))}

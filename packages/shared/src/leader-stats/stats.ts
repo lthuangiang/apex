@@ -217,8 +217,12 @@ export function classify(s: LeaderStats, isVault: boolean): Classified {
 
   const tabs: TraderTab[] = ["top", "long", "all"];
   const profit = dec(s.profit);
+  // Steady dành cho người mới: bị thanh lý trong 30 ngày thì không vào (vẫn ở All / Top, nhãn "Liquidated recently").
   const steady =
-    profit.gt(0) && s.topTradeShare !== null && dec(s.topTradeShare).lte(LEADER_STATS.maxTopShare);
+    profit.gt(0) &&
+    s.liquidations === 0 &&
+    s.topTradeShare !== null &&
+    dec(s.topTradeShare).lte(LEADER_STATS.maxTopShare);
   if (!steady) return { hidden, tabs, steadyScore: null };
   // Không có sụt (đường chỉ đi lên): coi sụt = 1 USD để vẫn xếp được, tránh chia cho 0.
   const dip = Decimal.max(dec(s.worstDip), 1);
