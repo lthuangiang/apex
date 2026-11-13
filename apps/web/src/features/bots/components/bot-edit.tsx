@@ -17,6 +17,7 @@ import { useMe } from "@/lib/queries";
 import { FIELDS, fromConfig, isLaunched, toConfig, visible, type FormValues } from "../fields";
 
 import { AiPanel, useAiParameters } from "./ai-params";
+import { BetaChip, isBeta } from "./beta-chip";
 import { fieldErrorsOf, useBotErrorText } from "./bot-errors";
 import { BotForm } from "./bot-form";
 import { CreateBot } from "./create-bot";
@@ -119,6 +120,7 @@ export function BotEdit({ botId }: { botId: string }) {
           title={t("title", { name: bot.name })}
           subtitle={t("sub", { state: ts(bot.state), version: active.version, next })}
         />
+        {isBeta(strategy) ? <BetaChip note /> : null}
         <div className="grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
           <section
             aria-labelledby="change-title"

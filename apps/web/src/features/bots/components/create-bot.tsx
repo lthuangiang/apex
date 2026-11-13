@@ -21,6 +21,7 @@ import { defaultBotName } from "../form-layout";
 import { liveHints, previewModel, priceMarketOf } from "../preview";
 
 import { AiPanel, useAiParameters } from "./ai-params";
+import { BetaChip, isBeta } from "./beta-chip";
 import { fieldErrorsOf, useBotErrorText } from "./bot-errors";
 import { BotForm } from "./bot-form";
 import { MarketChart } from "./market-chart";
@@ -307,6 +308,7 @@ export function CreateBot({
                 : t("continueTitle", { name: draft.name })}
             </h1>
             <p className="m-0 text-sm text-ink-2">{s("what")}</p>
+            {isBeta(strategy) ? <BetaChip note /> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span

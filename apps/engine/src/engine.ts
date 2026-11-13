@@ -283,6 +283,12 @@ const SNAPSHOT_EVERY_MS: Readonly<Record<string, number>> = {
 };
 
 const VOLUME: ReadonlySet<string> = new Set(VOLUME_STRATEGIES);
+/** Trạng thái mà cờ theo tài khoản (volume bots, Adaptive DCA, AI Desk) chặn nạp: bot đang muốn chạy. */
+const FLAG_GATED_STATES: ReadonlySet<string> = new Set<string>([
+  BotState.starting,
+  BotState.running,
+  BotState.resuming,
+]);
 
 export function shardOf(accountId: string, shards = ENGINE_SHARDS): number {
   return Number(fnv1a64(accountId) % BigInt(shards));
@@ -861,14 +867,19 @@ export class Engine {
       this.#d.log.warn({ botId: bot.id, mode: bot.mode }, "no gateway for bot mode");
       return undefined;
     }
+    // Cờ theo tài khoản chỉ chặn bot đang muốn CHẠY (starting / running / resuming). Bot đang pausing / stopping vẫn
+    // nạp để runner hoàn tất Pause / Stop như thường (Pause giữ lệnh đang mở, DOMAIN.md mục 7.2); không thì bot kẹt
+    // Pausing mãi (review #71, DEC-218). Paused / stopped không có trong ENGINE_ACTIVE_STATES.
+    const wantsToRun = FLAG_GATED_STATES.has(bot.state);
     // Bot khối lượng chỉ chạy khi admin bật cho chủ tài khoản (DEC-80).
-    if (VOLUME.has(bot.strategy) && !(await this.#volumeBotsOn(bot.userId))) {
+    if (wantsToRun && VOLUME.has(bot.strategy) && !(await this.#volumeBotsOn(bot.userId))) {
       this.#d.log.warn({ botId: bot.id }, "volume bots are not enabled for this user");
       return undefined;
     }
     // Chiến lược thử nghiệm: AI Adaptive DCA (DEC-107) theo cờ riêng; Copy Trade (DEC-161) theo cờ AI Desk
     // (DEC-192).
     if (
+      wantsToRun &&
       (EXPERIMENTAL_STRATEGIES as readonly string[]).includes(bot.strategy) &&
       !(await (bot.strategy === Strategy.adaptiveDca
         ? this.#flagOn(bot.userId, "adaptiveDca")

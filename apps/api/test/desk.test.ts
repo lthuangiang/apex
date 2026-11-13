@@ -256,17 +256,57 @@ describe("AI Adaptive DCA (DEC-107)", () => {
     maxExposure: "1000",
     maxLoss: "150",
   };
-  it("is only available to accounts with the Adaptive DCA flag, not just AI Desk (DEC-192)", async () => {
-    // AI Desk bật nhưng chưa có cờ Adaptive DCA → không có chiến lược này.
+  it("is on for new accounts (Beta); the team can turn it off per account, which pauses running bots (DEC-218)", async () => {
     const off = await deskUser("adca-off@example.com");
+    expect((await off.client.request("GET", "/api/v1/features")).json()).toMatchObject({
+      adaptiveDca: true,
+    });
+    const first = await off.client.request("POST", "/api/v1/bots", {
+      body: { strategy: "adaptive_dca", name: "AI DCA", paramSource: "manual", config },
+    });
+    expect(first.statusCode).toBe(201);
+    const firstId = botSummarySchema.parse(first.json()).id;
+    await env.pool.query("update bots set state = 'running' where id = $1", [firstId]);
+    // Chỉ team bật / tắt được; tắt thì bot đang chạy chuyển Pausing, catalog ẩn, API tạo bot trả 404.
+    const admin = new TestClient(env.app);
+    const am = meSchema.parse((await signIn(env, admin, "adca-admin@example.com")).json());
+    const path = `/api/v1/admin/users/${off.userId}/adaptive-dca`;
+    expect(
+      errorOf((await admin.request("POST", path, { body: { enabled: false } })).json()).code,
+    ).toBe("FORBIDDEN");
+    await env.pool.query("update users set role = 'team' where id = $1", [am.id]);
+    const turnedOff = await admin.request("POST", path, { body: { enabled: false } });
+    expect(turnedOff.json()).toEqual({ adaptiveDca: false, paused: 1 });
+    const { rows } = await env.pool.query<{ state: string }>(
+      "select state from bots where id = $1",
+      [firstId],
+    );
+    expect(rows[0]?.state).toBe("pausing");
+    expect((await off.client.request("GET", "/api/v1/features")).json()).toMatchObject({
+      adaptiveDca: false,
+    });
     const denied = await off.client.request("POST", "/api/v1/bots", {
       body: { strategy: "adaptive_dca", name: "AI DCA", paramSource: "manual", config },
     });
     expect(errorOf(denied.json()).code).toBe("NOT_FOUND");
-    const on = await deskUser("adca-on@example.com");
-    await env.pool.query(
-      "update users set adaptive_dca = true where email = 'adca-on@example.com'",
+    const users = (await admin.request("GET", "/api/v1/admin/users?q=adca-off")).json<{
+      items: { email: string; adaptiveDca: boolean }[];
+    }>();
+    expect(users.items.find((u) => u.email === "adca-off@example.com")?.adaptiveDca).toBe(false);
+    const { rows: log } = await env.pool.query<{ n: string }>(
+      "select count(*)::text as n from audit_log where action = 'admin.adaptive_dca' and target = $1",
+      [off.userId],
     );
+    expect(log[0]?.n).toBe("1");
+    // Engine pause xong thì Resume (hoặc Start) bị từ chối rõ ràng, không để bot kẹt Resuming.
+    await env.pool.query("update bots set state = 'paused' where id = $1", [firstId]);
+    const resumed = await off.client.request("POST", `/api/v1/bots/${firstId}/actions/resume`);
+    expect(errorOf(resumed.json())).toMatchObject({
+      code: "BOT_STATE_CONFLICT",
+      details: { reason: "strategy_off" },
+    });
+
+    const on = await deskUser("adca-on@example.com");
     const made = await on.client.request("POST", "/api/v1/bots", {
       body: { strategy: "adaptive_dca", name: "AI DCA", paramSource: "manual", config },
     });
