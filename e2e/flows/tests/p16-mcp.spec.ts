@@ -123,8 +123,17 @@ test("an MCP client connects with OAuth, reads, and loses access on revoke", asy
     expect(provider.saved?.access_token).toBeTruthy();
     const client = new Client({ name: "e2e", version: "1.0.0" });
     await client.connect(transportFor("/mcp", provider));
-    // A2 chưa có tool người dùng (B1 thêm): danh sách rỗng, không lỗi.
-    expect((await client.listTools()).tools).toEqual([]);
+    // B1: tool đọc của người dùng, không có tool nội bộ của team.
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names).toContain("list_bots");
+    expect(names.some((n) => n.startsWith("team_"))).toBe(false);
+    // Đọc thật qua api: người vừa onboard chưa có bot; portfolio là số dư SoDEX (mock) của chính họ.
+    const bots = await client.callTool({ name: "list_bots", arguments: {} });
+    expect(bots.isError).not.toBe(true);
+    expect(bots.structuredContent).toMatchObject({ bots: [] });
+    const summary = await client.callTool({ name: "get_portfolio_summary", arguments: {} });
+    expect(summary.isError).not.toBe(true);
+    expect(summary.structuredContent).toMatchObject({ realMoney: { reason: null } });
     await client.close();
   });
 

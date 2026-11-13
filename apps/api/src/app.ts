@@ -170,7 +170,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     prices: deps.prices,
     verifyApiKey: (id: string) => deps.sodex.signer.verifyApiKey(id),
   };
-  registerAccountRoutes(app, {
+  const accountDeps = {
     db: deps.db,
     totpKey: deps.totpKey,
     now,
@@ -179,7 +179,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     bots: botDeps,
     builderId: deps.sodex.builderId,
     builderExempt: deps.sodex.builderExempt,
-  });
+  };
+  registerAccountRoutes(app, accountDeps);
   const recoDeps = { db: deps.db, reco: deps.reco, rest: deps.sodex.rest, now };
   registerRecoRoutes(app, recoDeps);
   registerDeskRoutes(app, {
@@ -188,11 +189,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     llm: deps.deskLlm ?? null,
     market: sodexMarketSource({ rest: deps.sodex.rest, prices: deps.prices, now }),
   });
-  registerCopyRoutes(app, {
+  const copyDeps = {
     bots: botDeps,
     bigMoveMinUsd: deps.copyBigMoveMinUsd ?? null,
     volume24h: sodexVolume24h(deps.sodex.rest, now),
-  });
+  };
+  registerCopyRoutes(app, copyDeps);
   registerSodexRoutes(app, { ...deps.sodex, db: deps.db, totpKey: deps.totpKey, now });
   const oauth = deps.oauth ?? {
     issuer: "https://desklabs.xyz",
@@ -215,6 +217,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerMcpRoutes(app, {
     db: deps.db,
     now,
+    account: accountDeps,
+    copy: copyDeps,
     oauth: oauthDeps,
     introspectSecret: oauth.introspectSecret,
     resources: { user: `${mcpBase}/mcp`, team: `${mcpBase}/team/mcp` },
