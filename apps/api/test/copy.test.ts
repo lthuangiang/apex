@@ -324,8 +324,10 @@ describe("Copy Trading v1", () => {
       "select address, at from leader_events where address = any($1) order by at desc, id desc",
       [[T1, T7]],
     );
-    expect(all.map((e) => [e.address, Date.parse(e.at)])).toEqual(
-      db.map((r) => [r.address, r.at.getTime()]),
+    // API ghi thời điểm tới giây; so theo giây.
+    const sec = (ms: number) => Math.floor(ms / 1000);
+    expect(all.map((e) => [e.address, sec(Date.parse(e.at))])).toEqual(
+      db.map((r) => [r.address, sec(r.at.getTime())]),
     );
     const only = followingEventsSchema.parse(
       (await client.request("GET", `/api/v1/following/events?trader=${T1}`)).json(),

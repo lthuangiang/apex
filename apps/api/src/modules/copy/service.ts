@@ -37,7 +37,7 @@ import {
   type TraderProfile,
   type TraderTab,
 } from "@drift/shared";
-import { and, count, desc, eq, gte, inArray, lt, lte, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 
 import {
@@ -625,18 +625,14 @@ export async function followingEvents(
     });
   const addresses = q.trader === undefined ? followed : [q.trader];
   if (addresses.length === 0) return { events: [], nextCursor: null };
-  // Con trỏ đã qua regex `<ms>.<uuid>` ở schema.
+  // Con trỏ `<ms>.<uuid>` (đã qua regex ở schema). Chỉ dùng id: so (at, id) với đúng dòng đó trong DB, vì `at` lưu tới
+  // micro giây còn ms trong con trỏ bị cắt, so bằng ms sẽ sót dòng cùng mili giây ở ranh giới trang.
   const dot = q.cursor?.indexOf(".") ?? -1;
+  const cursorId = q.cursor === undefined || dot < 0 ? undefined : q.cursor.slice(dot + 1);
   const before =
-    q.cursor === undefined || dot < 0
+    cursorId === undefined
       ? undefined
-      : or(
-          lt(leaderEvents.at, new Date(Number(q.cursor.slice(0, dot)))),
-          and(
-            eq(leaderEvents.at, new Date(Number(q.cursor.slice(0, dot)))),
-            lt(leaderEvents.id, q.cursor.slice(dot + 1)),
-          ),
-        );
+      : sql`(${leaderEvents.at}, ${leaderEvents.id}) < (select c.at, c.id from leader_events c where c.id = ${cursorId})`;
   const rows = await deps.bots.db
     .select()
     .from(leaderEvents)
