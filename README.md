@@ -147,7 +147,7 @@ Desktop and mobile share the same routes; below 1024 px the sidebar becomes a bo
 
 > Market Making and Volume Builder are on for every account; the team can turn them off per account (DEC-80, DEC-94).
 > AI Adaptive DCA is on for every account as a Beta; the team can turn it off per account (DEC-192,
-> DEC-TBD-adaptive-dca-beta). Copy Trade bots are created from Copy Trading.
+> DEC-218). Copy Trade bots are created from Copy Trading.
 
 Strategy logic lives only in [`packages/strategies`](packages/strategies) as **pure `step` functions** (no I/O). The
 engine, the backtester and the unit tests all run the same code, so a backtest and a live bot make the same decisions

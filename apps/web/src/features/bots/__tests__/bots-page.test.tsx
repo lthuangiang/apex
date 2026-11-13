@@ -89,7 +89,7 @@ describe("Strategy Lab", () => {
   });
 });
 
-describe("AI Adaptive DCA (Beta, DEC-TBD-adaptive-dca-beta)", () => {
+describe("AI Adaptive DCA (Beta, DEC-218)", () => {
   it("shows the Beta chip, with the short note for screen readers, on its catalog card", async () => {
     flags.adaptiveDca = true;
     tab.value = "catalog";

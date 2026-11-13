@@ -253,7 +253,7 @@ export const adminUsersViewSchema = z.object({
       volumeBots: z.boolean(),
       /** Admin đã bật AI Desk cho tài khoản này (DEC-105). */
       aiDesk: z.boolean().default(false),
-      /** Team chưa tắt AI Adaptive DCA (Beta) cho tài khoản này (DEC-TBD-adaptive-dca-beta). */
+      /** Team chưa tắt AI Adaptive DCA (Beta) cho tài khoản này (DEC-218). */
       adaptiveDca: z.boolean().default(true),
     }),
   ),
@@ -357,7 +357,7 @@ export const adminAiDeskBodySchema = z.object({ enabled: z.boolean() });
 export const adminAiDeskSchema = z.object({ aiDesk: z.boolean() });
 export type AdminAiDesk = z.infer<typeof adminAiDeskSchema>;
 
-/** Team bật / tắt AI Adaptive DCA (Beta) cho một user (DEC-TBD-adaptive-dca-beta). Tắt: bot đang chạy chuyển sang Pausing. */
+/** Team bật / tắt AI Adaptive DCA (Beta) cho một user (DEC-218). Tắt: bot đang chạy chuyển sang Pausing. */
 export const adminAdaptiveDcaBodySchema = z.object({ enabled: z.boolean() });
 export const adminAdaptiveDcaSchema = z.object({
   adaptiveDca: z.boolean(),

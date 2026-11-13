@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { catalogFor, DEFAULT_CATALOG_FEATURES } from "../catalog";
 
 // Strategy Lab và Landing đếm cùng một danh mục (báo cáo test E20). Adaptive DCA (Beta) bật cho mọi tài khoản
-// (DEC-TBD-adaptive-dca-beta): tài khoản mới thấy 12 chiến lược.
+// (DEC-218): tài khoản mới thấy 12 chiến lược.
 
 describe("strategy catalog", () => {
   it("counts what a new account sees in Strategy Lab", () => {

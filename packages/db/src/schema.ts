@@ -62,7 +62,7 @@ export const users = pgTable(
     volumeBots: boolean("volume_bots").notNull().default(true),
     /** AI Desk: team bật theo tài khoản ở Users (DEC-105). */
     aiDesk: boolean("ai_desk").notNull().default(true),
-    /** AI Adaptive DCA (Beta, DEC-107): cờ riêng (DEC-192), bật cho mọi tài khoản (DEC-TBD-adaptive-dca-beta); team tắt được ở Users. */
+    /** AI Adaptive DCA (Beta, DEC-107): cờ riêng (DEC-192), bật cho mọi tài khoản (DEC-218); team tắt được ở Users. */
     adaptiveDca: boolean("adaptive_dca").notNull().default(true),
     twofaEnabled: boolean("twofa_enabled").notNull().default(false),
     /** Secret TOTP đã mã hoá (AES-256-GCM); null khi chưa bật. */

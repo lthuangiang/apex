@@ -102,7 +102,7 @@ export function UsersPage() {
     },
   });
 
-  // Bật / tắt AI Adaptive DCA (Beta, DEC-TBD-adaptive-dca-beta): tắt thì pause bot đang chạy nên có hộp thoại xác nhận.
+  // Bật / tắt AI Adaptive DCA (Beta, DEC-218): tắt thì pause bot đang chạy nên có hộp thoại xác nhận.
   const [adcaTarget, setAdcaTarget] = useState<Row | null>(null);
   const adca = useMutation({
     mutationFn: (u: Row) =>

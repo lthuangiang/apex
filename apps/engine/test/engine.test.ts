@@ -2118,7 +2118,7 @@ describe("engine", () => {
       (await db.select().from(botRuntime).where(eq(botRuntime.botId, botId)))[0]?.state as
         { regime?: string } | undefined;
     // Một engine cho cả hai giai đoạn: team tắt cờ Adaptive DCA thì không nạp bot; bật lại thì vòng sau nạp và gửi nến
-    // (cờ riêng, không theo AI Desk: DEC-192; mặc định bật cho mọi tài khoản: DEC-TBD-adaptive-dca-beta).
+    // (cờ riêng, không theo AI Desk: DEC-192; mặc định bật cho mọi tài khoản: DEC-218).
     const [b] = await db.select().from(bots).where(eq(bots.id, botId));
     const [owner] = await db
       .select()

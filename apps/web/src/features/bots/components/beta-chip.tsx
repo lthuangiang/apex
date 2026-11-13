@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
-// Nhãn "Beta" cho chiến lược còn đang thử (DEC-TBD-adaptive-dca-beta): thẻ catalog, trang tạo / sửa bot, hàng bot ở My
+// Nhãn "Beta" cho chiến lược còn đang thử (DEC-218): thẻ catalog, trang tạo / sửa bot, hàng bot ở My
 // bots, Trading Agent. Một kiểu chữ ("Beta") và một câu ngắn. Câu ngắn hiện thẳng ở trang tạo / sửa và Trading Agent;
 // ở chỗ chật (thẻ, hàng) thì nằm trong `title` và phần chữ cho trình đọc màn hình.
 

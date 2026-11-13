@@ -256,7 +256,7 @@ describe("AI Adaptive DCA (DEC-107)", () => {
     maxExposure: "1000",
     maxLoss: "150",
   };
-  it("is on for new accounts (Beta); the team can turn it off per account, which pauses running bots (DEC-TBD-adaptive-dca-beta)", async () => {
+  it("is on for new accounts (Beta); the team can turn it off per account, which pauses running bots (DEC-218)", async () => {
     const off = await deskUser("adca-off@example.com");
     expect((await off.client.request("GET", "/api/v1/features")).json()).toMatchObject({
       adaptiveDca: true,

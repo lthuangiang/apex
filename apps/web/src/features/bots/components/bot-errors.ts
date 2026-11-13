@@ -27,7 +27,7 @@ export function useBotErrorText() {
       TWO_FACTOR_REQUIRED: t("twoFactor"),
       BUILDER_FEE_NOT_APPROVED: t("builderFee"),
       ORDER_BELOW_MIN_SIZE: t("minSize"),
-      // Team đã tắt chiến lược cho tài khoản (DEC-TBD-adaptive-dca-beta, DEC-80): Start / Resume bị từ chối.
+      // Team đã tắt chiến lược cho tài khoản (DEC-218, DEC-80): Start / Resume bị từ chối.
       BOT_STATE_CONFLICT:
         (e.details as { reason?: unknown }).reason === "strategy_off"
           ? t("strategyOff")

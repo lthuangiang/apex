@@ -152,7 +152,7 @@ export async function assertStrategyAvailable(
 
 /**
  * Start / Resume một bot đã có mà team đã tắt chiến lược cho tài khoản (bot khối lượng DEC-80, Adaptive DCA
- * DEC-TBD-adaptive-dca-beta): engine sẽ không nạp bot đó, nên báo rõ thay vì để bot kẹt Starting / Resuming.
+ * DEC-218): engine sẽ không nạp bot đó, nên báo rõ thay vì để bot kẹt Starting / Resuming.
  */
 export async function assertStrategyRunnable(
   db: Db,
