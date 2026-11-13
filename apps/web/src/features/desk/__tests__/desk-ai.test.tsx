@@ -137,3 +137,39 @@ describe("thinking indicator", () => {
     }
   });
 });
+
+describe("Desk AI market answer", () => {
+  it("lists each market's last 24 hours on SoDEX, and says it's not a forecast", () => {
+    const m = (
+      key: "market_change_24h_pct" | "market_range_24h_pct",
+      market: string,
+      value: string,
+    ) => ({
+      id: `${key}:${market}`,
+      key,
+      bot: null,
+      market,
+      value,
+      unit: "pct" as const,
+      source: "sodex_klines",
+    });
+    show({
+      kind: "template",
+      key: "market",
+      params: {},
+      facts: [
+        m("market_change_24h_pct", "BTC-USD", "4.5"),
+        m("market_range_24h_pct", "BTC-USD", "8.16"),
+        m("market_change_24h_pct", "ETH-USD", "-1.2"),
+        m("market_range_24h_pct", "ETH-USD", "1.4"),
+        // Thiếu range: không hiện dòng (không bao giờ ghi 0).
+        m("market_change_24h_pct", "SOL-USD", "2"),
+      ],
+    });
+    expect(screen.getByText("Last 24 hours on SoDEX:")).toBeInTheDocument();
+    expect(screen.getByText("BTC-USD +4.5% · range 8.16%")).toBeInTheDocument();
+    expect(screen.getByText("ETH-USD -1.2% · range 1.4%")).toBeInTheDocument();
+    expect(screen.queryByText(/SOL-USD/)).not.toBeInTheDocument();
+    expect(screen.getByText("Not a forecast.")).toBeInTheDocument();
+  });
+});
