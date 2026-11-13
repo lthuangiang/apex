@@ -1033,6 +1033,12 @@
       "copySlippage": {
         "label": "Max price move",
         "hint": "Opens and adds are skipped if price has moved more than this from the wallet’s fill. Closes always go through."
+      },
+      "leaderSource": {
+        "label": "Copying from"
+      },
+      "markets": {
+        "label": "Markets"
       }
     },
     "options": {
@@ -1144,6 +1150,10 @@
       "copySizing": {
         "fixed": "Fixed amount",
         "ratio": "Share of wallet"
+      },
+      "leaderSource": {
+        "hyperliquid": "Hyperliquid",
+        "sodex": "SoDEX"
       }
     },
     "errors": {

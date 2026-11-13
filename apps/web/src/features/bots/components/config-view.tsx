@@ -40,6 +40,13 @@ export function useConfigRows(strategy: string, market: string, config: Record<s
     // Công tắc chưa có trong config cũ lấy mặc định của schema (Smart quoting tắt, Stop loss on SoDEX bật).
     if (f.type.kind === "bool" && v === undefined)
       return BOOL_DEFAULT_ON.has(f.key) ? ta("yes") : ta("no");
+    // Copy Trade (DEC-163): nguồn trader là mã ("hyperliquid") và danh sách market là mảng, không phải chữ thường.
+    if (f.key === "leaderSource" && typeof v === "string" && v !== "")
+      return t.has(`options.leaderSource.${v}`) ? t(`options.leaderSource.${v}`) : v;
+    if (f.key === "markets" && Array.isArray(v)) {
+      const ms = v.filter((m): m is string => typeof m === "string").map((m) => names.market(m));
+      return ms.length === 0 ? ta("notSet") : ms.join(", ");
+    }
     if (v === undefined || v === null || v === "") return ta("notSet");
     const k = f.type;
     switch (k.kind) {
