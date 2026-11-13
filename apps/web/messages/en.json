@@ -5037,6 +5037,7 @@
         "eth": "How’s ETH today?"
       },
       "briefLater": "Your morning brief is ready from 08:00.",
+      "greetingLine": "{greeting, select, morning {Good morning.} afternoon {Good afternoon.} other {Good evening.}}",
       "thinking": "Thinking…",
       "thinkingSteps": {
         "reading": "Looking at your bots…",

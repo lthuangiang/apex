@@ -17,11 +17,13 @@ import { api } from "@/lib/api";
 import { formatMoney } from "@/lib/format";
 
 import { plainNumber, plainUsd } from "../bplus";
+import { briefBody } from "../brief-text";
 
 import { DeskAiCapabilities, DeskAiCapabilitiesLink } from "./desk-ai-capabilities";
 import { AiMark } from "./goal-card";
 import { NewBotChat } from "./new-bot-chat";
 import { PaperResults } from "./paper-result";
+
 
 // Desk AI panel (artboard BP-Home, B-Answer, DEC-164/165): báo cáo sáng + hỏi đáp. Lời LLM đã qua kiểm tra số ở server;
 // câu mẫu (LLM tắt / hết lượt / ngoài phạm vi / số không khớp) dịch ở đây từ `key` + fact. Desk AI chỉ đọc: không có
@@ -259,6 +261,16 @@ export function ThinkingTurn({
 }
 
 function TurnView({ turn, onAsk }: { turn: Turn; onAsk?: (question: string) => void }) {
+  const tai = useTranslations("desk.ai");
+  // Báo cáo sáng là chữ đã lưu từ lúc tạo: câu chào lấy theo giờ trên trình duyệt lúc xem, bỏ câu chào và số câu còn
+  // lại cũ trong chữ đã lưu (brief-text.ts).
+  const answer =
+    turn.kind === "brief" && turn.answer.kind === "text"
+      ? {
+          ...turn.answer,
+          text: `${tai("greetingLine", { greeting: greetingAt(new Date()) })} ${briefBody(turn.answer.text)}`,
+        }
+      : turn.answer;
   return (
     <li className="flex flex-col gap-2">
       {turn.question === null ? null : (
@@ -266,7 +278,7 @@ function TurnView({ turn, onAsk }: { turn: Turn; onAsk?: (question: string) => v
           {turn.question}
         </p>
       )}
-      <Answer answer={turn.answer} {...(onAsk === undefined ? {} : { onAsk })} />
+      <Answer answer={answer} {...(onAsk === undefined ? {} : { onAsk })} />
     </li>
   );
 }

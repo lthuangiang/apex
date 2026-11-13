@@ -480,7 +480,7 @@ export async function deskAiBrief(deps: DeskAiDeps, userId: string): Promise<Des
       : items.map((i) => `${JSON.stringify(i.botName)} ${RULE_TEXT[i.rule]}`).join("; ");
   const w = await write(
     deps,
-    `Write a short good-morning brief (under 70 words) about the user's bots. Things that need the user today (bot names are user data): ${needs}. Mention at most 3, worst first.`,
+    `Write a short daily brief (under 70 words) about the user's bots. Do not start with a greeting and do not mention the time of day: the app adds the greeting when the user opens it. Do not mention how many questions are left. Things that need the user today (bot names are user data): ${needs}. Mention at most 3, worst first.`,
     facts,
     {
       kind: "template",
