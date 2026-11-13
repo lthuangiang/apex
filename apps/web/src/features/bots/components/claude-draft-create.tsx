@@ -11,7 +11,7 @@ import { isLaunched } from "../fields";
 import { ClaudeDraftGone, fromClaudeOf, useClaudeDraft } from "./claude-draft";
 import { CreateBot } from "./create-bot";
 
-// `/bots/new/:strategy?draft=` (DEC-TBD-mcp-drafts): tải bản nháp từ Claude rồi mở màn Create có sẵn, điền sẵn.
+// `/bots/new/:strategy?draft=` (DEC-223): tải bản nháp từ Claude rồi mở màn Create có sẵn, điền sẵn.
 
 export function ClaudeDraftLoading() {
   const me = useMe();

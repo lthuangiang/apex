@@ -1453,7 +1453,7 @@ export const mcpCalls = pgTable(
 );
 
 /**
- * Bản nháp do Claude tạo qua MCP (scope `draft`, DEC-167, DEC-TBD-mcp-drafts). Không ảnh hưởng bot nào: người dùng mở
+ * Bản nháp do Claude tạo qua MCP (scope `draft`, DEC-167, DEC-223). Không ảnh hưởng bot nào: người dùng mở
  * link, xem lại trên màn Create / Edit có sẵn rồi tự Save / Apply / Start. `bot_id` null = bot mới. Hết hạn sau 24 giờ;
  * `opened_at` ghi lần đầu người dùng mở (bản đã mở không tính vào giới hạn 20 bản đang chờ).
  */

@@ -249,7 +249,7 @@ export function buildMcpApp(deps: McpAppDeps): FastifyInstance {
         });
     }
 
-    // Step-up (DEC-TBD-mcp-drafts, PM chốt phương án C): token chỉ có `read` vẫn thấy tool bản nháp, nhưng gọi tool đó
+    // Step-up (DEC-223, PM chốt phương án C): token chỉ có `read` vẫn thấy tool bản nháp, nhưng gọi tool đó
     // (kể cả nằm trong batch) thì trả 403 `insufficient_scope` với scope="read draft" ở tầng HTTP, trước khi chạy tool.
     // api kết thúc refresh của family token cũ để client chạy lại OAuth (màn consent) thay vì refresh ra token cũ.
     if (e === "user" && !intro.scope.includes("draft")) {

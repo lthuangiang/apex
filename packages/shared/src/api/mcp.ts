@@ -410,7 +410,7 @@ export const mcpTrackRecordSchema = z.object({
 });
 export type McpTrackRecord = z.infer<typeof mcpTrackRecordSchema>;
 
-// ---------- B3: bản nháp từ Claude (DEC-TBD-mcp-drafts) ----------
+// ---------- B3: bản nháp từ Claude (DEC-223) ----------
 // Scope `draft`. Chỉ tạo bản nháp: không tool nào Save / Apply / Start. Người dùng mở link, xem lại trên màn Create /
 // Edit có sẵn (nhãn "From Claude") và tự làm theo luồng thường, kể cả "Before it starts" (startChecks).
 

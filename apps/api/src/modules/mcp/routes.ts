@@ -194,7 +194,7 @@ function registerMcpUserRoutes(app: FastifyInstance, deps: McpAuthDeps & UserToo
 }
 
 /**
- * Bản nháp từ Claude (B3, DEC-TBD-mcp-drafts). Route MCP cần scope `draft`; chỉ ghi `bot_drafts`, không bao giờ tạo bot,
+ * Bản nháp từ Claude (B3, DEC-223). Route MCP cần scope `draft`; chỉ ghi `bot_drafts`, không bao giờ tạo bot,
  * thêm version hay Start. Web đọc bản nháp bằng phiên đăng nhập để điền sẵn màn Create / Edit.
  */
 function registerDraftRoutes(

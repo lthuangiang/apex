@@ -2,7 +2,7 @@ import { BotEdit } from "@/features/bots";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// `?draft=`: bản nháp thay đổi từ Claude (MCP, DEC-TBD-mcp-drafts), chỉ điền sẵn form.
+// `?draft=`: bản nháp thay đổi từ Claude (MCP, DEC-223), chỉ điền sẵn form.
 export default async function Page({
   params,
   searchParams,

@@ -4,7 +4,7 @@ import { and, eq, lt, sql } from "drizzle-orm";
 
 // Dọn dữ liệu OAuth / MCP (docs/MCP.md mục 6, DEC-167): code hết hạn quá 1 ngày, client đăng ký động không dùng 30 ngày
 // (token của nó xoá theo, cascade), nhật ký `mcp_calls` quá 90 ngày, bản nháp từ Claude hết hạn quá 7 ngày
-// (DEC-TBD-mcp-drafts; web đã không mở được từ lúc hết hạn).
+// (DEC-223; web đã không mở được từ lúc hết hạn).
 
 export const MCP_CALLS_RETENTION_MS = 90 * 86_400_000;
 export const BOT_DRAFTS_RETENTION_MS = 7 * 86_400_000;

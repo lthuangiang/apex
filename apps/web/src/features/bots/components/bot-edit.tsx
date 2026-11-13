@@ -51,7 +51,7 @@ export function BotEdit({ botId, draftId }: { botId: string; draftId?: string | 
   const strategy = bot !== undefined && isLaunched(bot.strategy) ? bot.strategy : undefined;
   const base =
     strategy !== undefined && active !== undefined ? fromConfig(strategy, active.config) : null;
-  // Bản nháp từ Claude (`?draft=`, DEC-TBD-mcp-drafts): chỉ điền sẵn form; Apply vẫn qua hộp xác nhận như thường.
+  // Bản nháp từ Claude (`?draft=`, DEC-223): chỉ điền sẵn form; Apply vẫn qua hộp xác nhận như thường.
   const claude = useClaudeDraft(draftId);
   const from =
     draftId !== undefined && strategy !== undefined && claude.data?.botId === botId

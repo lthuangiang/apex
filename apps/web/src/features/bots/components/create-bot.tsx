@@ -53,7 +53,7 @@ export function CreateBot({
   preset?: FormValues | undefined;
   /** Mở lại draft đã lưu (Strategy Lab › Continue): điền config đã lưu, Save ghi version mới, Start như Create. */
   draft?: { id: string; name: string; values: FormValues };
-  /** Bản nháp từ Claude (MCP, DEC-TBD-mcp-drafts): chỉ điền sẵn, người dùng tự Save / Start. */
+  /** Bản nháp từ Claude (MCP, DEC-223): chỉ điền sẵn, người dùng tự Save / Start. */
   fromClaude?: FromClaude | undefined;
 }) {
   const t = useTranslations("createBot");

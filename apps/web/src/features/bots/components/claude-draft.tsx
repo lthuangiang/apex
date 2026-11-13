@@ -13,7 +13,7 @@ import { useMe } from "@/lib/queries";
 
 import { fromConfig, isLaunched, type FormValues } from "../fields";
 
-// Bản nháp từ Claude qua MCP (DEC-167, DEC-TBD-mcp-drafts): `?draft=<id>` trên màn Create / Edit. Chỉ điền sẵn form;
+// Bản nháp từ Claude qua MCP (DEC-167, DEC-223): `?draft=<id>` trên màn Create / Edit. Chỉ điền sẵn form;
 // người dùng vẫn tự Save / Apply / Start theo luồng thường (kể cả "Before it starts"). Bản nháp hết hạn / không tồn
 // tại / của người khác / bot đã archive: cùng một câu, không lộ là có tồn tại.
 

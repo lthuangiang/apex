@@ -43,7 +43,7 @@ export default async function Page({
     (engine === "spot" || engine === "perps")
       ? (presetMarket(strategy, market, engine) ?? undefined)
       : undefined;
-  // Bản nháp từ Claude (MCP, DEC-TBD-mcp-drafts): điền sẵn từ `bot_drafts`, người dùng tự Save / Start.
+  // Bản nháp từ Claude (MCP, DEC-223): điền sẵn từ `bot_drafts`, người dùng tự Save / Start.
   const page = UUID.test(draft ?? "") ? (
     <ClaudeDraftCreate strategy={strategy} draftId={draft ?? ""} />
   ) : (

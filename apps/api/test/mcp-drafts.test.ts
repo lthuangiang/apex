@@ -16,7 +16,7 @@ import { sha256 } from "../src/lib/crypto";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// Bản nháp từ Claude (docs/MCP.md mục 5B, DEC-TBD-mcp-drafts): cần scope `draft`; chỉ ghi `bot_drafts` (không tạo bot,
+// Bản nháp từ Claude (docs/MCP.md mục 5B, DEC-223): cần scope `draft`; chỉ ghi `bot_drafts` (không tạo bot,
 // không thêm version, không Start); config kiểm tra như màn Create / Edit; hết hạn 24 giờ; tối đa 20 bản đang chờ;
 // web chỉ mở bản nháp của chính mình, còn hạn, bot chưa archive (mọi trường hợp khác cùng một 404).
 

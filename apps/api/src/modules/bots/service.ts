@@ -1319,7 +1319,7 @@ async function newRunVersion(deps: BotDeps, botId: string): Promise<void> {
 /** Sửa bot: tạo version mới `pending`; engine áp dụng rồi mới chuyển `active` (DOMAIN.md mục 7.4). */
 /**
  * Kiểm tra config cho một version mới của bot (state sửa được, schema của chiến lược, field khoá, trần đòn bẩy).
- * Dùng chung cho Edit và bản nháp từ Claude (MCP, DEC-TBD-mcp-drafts) để hai bên chặn đúng như nhau.
+ * Dùng chung cho Edit và bản nháp từ Claude (MCP, DEC-223) để hai bên chặn đúng như nhau.
  */
 export async function checkVersionConfig(
   deps: BotDeps,

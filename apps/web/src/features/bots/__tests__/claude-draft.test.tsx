@@ -11,7 +11,7 @@ import messages from "../../../../messages/en.json";
 import { ClaudeDraftBanner } from "../components/claude-draft";
 import { ClaudeDraftCreate } from "../components/claude-draft-create";
 
-// Bản nháp từ Claude (DEC-TBD-mcp-drafts): banner "From Claude" với giờ hết hạn theo múi giờ của người dùng; bản nháp
+// Bản nháp từ Claude (DEC-223): banner "From Claude" với giờ hết hạn theo múi giờ của người dùng; bản nháp
 // không mở được (hết hạn, không tồn tại, của người khác, sai chiến lược) luôn cùng một câu và nút về Strategy Lab.
 
 type Result = "gone" | "wrong_strategy" | "bot_change";

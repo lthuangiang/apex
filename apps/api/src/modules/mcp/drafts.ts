@@ -16,7 +16,7 @@ import { checkNewBotConfig, checkVersionConfig, type BotDeps } from "../bots/ser
 
 import { ownBotOr404, type McpCaller } from "./auth";
 
-// Bản nháp từ Claude (docs/MCP.md mục 5B, DEC-167, DEC-TBD-mcp-drafts). Chỉ ghi bảng `bot_drafts`: không tạo bot, không
+// Bản nháp từ Claude (docs/MCP.md mục 5B, DEC-167, DEC-223). Chỉ ghi bảng `bot_drafts`: không tạo bot, không
 // thêm version, không Start. Config được kiểm tra bằng đúng hàm của màn Create / Edit (schema zod S1–S12, field khoá,
 // trần đòn bẩy), nên bản nháp nào mở ra cũng lưu được nếu người dùng không sửa. Hết hạn 24 giờ; tối đa 20 bản đang chờ.
 

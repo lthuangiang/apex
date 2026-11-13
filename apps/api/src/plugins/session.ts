@@ -50,7 +50,7 @@ export const CSRF_EXEMPT_POST_PATHS: ReadonlySet<string> = new Set([
   "/api/v1/oauth/revoke",
   "/api/v1/oauth/introspect",
   "/api/v1/mcp/calls",
-  // Bản nháp từ Claude (DEC-TBD-mcp-drafts): route nội bộ, xác thực bằng shared secret + token MCP, không dùng cookie.
+  // Bản nháp từ Claude (DEC-223): route nội bộ, xác thực bằng shared secret + token MCP, không dùng cookie.
   "/api/v1/mcp/me/drafts/new",
   "/api/v1/mcp/me/drafts/change",
   "/api/v1/mcp/step-up",
