@@ -278,7 +278,11 @@ export function FollowingPage() {
                     {t("following.alertsTitle")}
                   </h2>
                   <p className="m-0 text-[13.5px] leading-normal text-ink-2">
-                    {t("following.alertsBody")}
+                    {d.bigMoveMinUsd === null
+                      ? t("following.alertsBody")
+                      : t("following.alertsBodyAt", {
+                          threshold: usd(d.bigMoveMinUsd) ?? d.bigMoveMinUsd,
+                        })}
                   </p>
                 </div>
                 {d.bigMoveAlerts ? (

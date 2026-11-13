@@ -29,6 +29,7 @@ import { useMe } from "@/lib/queries";
 import { useMediaQuery } from "@/lib/use-media";
 
 import { botCapital, botMarket } from "../bot-label";
+import { catalogFor } from "../catalog";
 import { FIELDS, presetMarket } from "../fields";
 
 import { BotActions } from "./bot-actions";
@@ -190,13 +191,15 @@ export function BotsPage() {
     queryFn: () => api("GET", "/api/v1/features", featuresSchema),
     staleTime: 60_000,
   });
-  const catalog = [
-    ...(features.data?.volumeMaker === true ? (["volume_maker"] as const) : []),
-    ...(features.data?.volumeFarm === true ? (["volume_farm"] as const) : []),
-    ...CATALOG_BASE,
-    ...(features.data?.adaptiveDca === true ? (["adaptive_dca"] as const) : []),
-    ...(features.data?.aiDesk === true ? (["copy_trade"] as const) : []),
-  ].filter(
+  const catalog = catalogFor(
+    {
+      volumeMaker: features.data?.volumeMaker === true,
+      volumeFarm: features.data?.volumeFarm === true,
+      adaptiveDca: features.data?.adaptiveDca === true,
+      aiDesk: features.data?.aiDesk === true,
+    },
+    CATALOG_BASE,
+  ).filter(
     (k) => forMarket === null || presetMarket(k, forMarket.market, forMarket.engine) !== null,
   );
   const marketQuery =
