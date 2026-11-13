@@ -4939,6 +4939,9 @@
         "fallback": "I can’t write an answer right now. Here are the numbers I have:",
         "fallbackOff": "Here are the numbers I have:",
         "loss": "Here’s what each bot has made or lost so far, and what it paid in fees:",
+        "market": "Last 24 hours on SoDEX:",
+        "marketLine": "{market} {change} · range {range}",
+        "marketNote": "Not a forecast.",
         "brief": "{count, plural, =0 {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. Nothing needs you today.} one {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. One thing needs you today: {bot}.} other {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. # things need you today, starting with {bot}.}}"
       },
       "facts": {
@@ -5044,6 +5047,16 @@
       "start": "Use real money",
       "keep": "Keep testing a week",
       "open": "See the test"
+    },
+    "market": {
+      "title": "Market today",
+      "sidewaysGrid": "{asset} is moving sideways (range {range} in 24 hours), which suits your grid.",
+      "sideways": "{asset} is moving sideways (range {range} in 24 hours).",
+      "jumpyVolume": "{asset} is jumpy (range {range}), so volume bots pay more in fees today.",
+      "jumpy": "{asset} is jumpy (range {range} in 24 hours).",
+      "plain": "{asset} moved {change} in 24 hours (range {range}).",
+      "plainRange": "{asset}: range {range} in 24 hours.",
+      "foot": "Last 24 hours on SoDEX · not a forecast"
     }
   },
   "connectLog": {

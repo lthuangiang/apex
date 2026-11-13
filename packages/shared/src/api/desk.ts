@@ -269,12 +269,14 @@ export const deskAiFactSchema = z.object({
   id: z.string(),
   key: z.enum(DESK_AI_FACT_KEYS),
   bot: z.string().nullable(),
+  market: z.string().nullable().optional(),
   value: z.string(),
   unit: z.enum(["usdc", "pct", "x", "count", "text"]),
   source: z.string(),
 });
 export const deskAiTemplateKeys = [
   "out_of_scope",
+  "market",
   "quota",
   "safety",
   "fallback",
@@ -341,3 +343,17 @@ export const deskAiHistoryViewSchema = z.object({
   ),
 });
 export type DeskAiHistoryView = z.infer<typeof deskAiHistoryViewSchema>;
+
+/** Thẻ "Market today" ở trang chủ AI Desk (DEC-211): số 24 giờ qua trên SoDEX, không dự đoán. */
+export const deskMarketViewSchema = z.object({
+  items: z.array(
+    z.object({
+      market: z.string(),
+      change: z.string().nullable(),
+      range: z.string(),
+      mood: z.enum(["sideways", "jumpy"]).nullable(),
+      relation: z.enum(["grid", "volume"]).nullable(),
+    }),
+  ),
+});
+export type DeskMarketView = z.infer<typeof deskMarketViewSchema>;
