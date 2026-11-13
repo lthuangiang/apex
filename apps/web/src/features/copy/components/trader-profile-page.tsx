@@ -13,6 +13,7 @@ import { formatDateTime } from "@/lib/format";
 import { useFeatures } from "@/lib/queries";
 
 import { useFollow, useTrader } from "../api";
+import { useCopyErrorText, useFollowLimit } from "../errors";
 import { addr, base, holdText, pctText, usd } from "../format";
 
 import { Avatar, CopyAction, Sparkline, TagChips } from "./parts";
@@ -154,6 +155,8 @@ export function TraderProfilePage({ address }: { address: string }) {
   const features = useFeatures();
   const q = useTrader(address);
   const follow = useFollow();
+  const limit = useFollowLimit();
+  const errorText = useCopyErrorText();
   useEffect(() => {
     if (features.data !== undefined && !features.data.aiDesk) router.replace("/");
   }, [features.data, router]);
@@ -200,7 +203,7 @@ export function TraderProfilePage({ address }: { address: string }) {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="secondary"
-                    disabled={follow.isPending}
+                    disabled={follow.isPending || (!p.card.following && limit.atLimit)}
                     onClick={() => {
                       follow.mutate({ address, on: !p.card.following });
                     }}
@@ -212,6 +215,16 @@ export function TraderProfilePage({ address }: { address: string }) {
                   ) : null}
                 </div>
               </div>
+              {!p.card.following && limit.atLimit && limit.limit !== null ? (
+                <p role="status" className="m-0 text-sm text-ink-2">
+                  {t("errors.followLimit", { limit: limit.limit })}
+                </p>
+              ) : null}
+              {follow.isError ? (
+                <p role="alert" className="m-0 text-sm text-neg-ink">
+                  {errorText(follow.error)}
+                </p>
+              ) : null}
               <TagChips card={p.card} />
               <p className="m-0 text-xs text-muted">
                 {t("profile.based", {
