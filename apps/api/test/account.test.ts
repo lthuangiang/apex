@@ -13,6 +13,7 @@ import {
   riskViewSchema,
   twoFactorSetupSchema,
   watchlistSchema,
+  change24hPct,
 } from "@drift/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -323,6 +324,29 @@ describe("watchlist", () => {
     expect(await get()).toEqual([]);
     const ov = overviewViewSchema.parse((await client.request("GET", "/api/v1/overview")).json());
     expect(ov.watchlist).toEqual([]);
+  });
+
+  it("computes the 24h change from the oldest hourly candle, not the newest (SoDEX returns newest first)", async () => {
+    const { client } = await connected(`wl3-${randomUUID()}@drift.test`);
+    await client.request("PUT", "/api/v1/watchlist", {
+      body: { items: [{ market: "BTC-USD", engine: "perps" }] },
+    });
+    const ov = overviewViewSchema.parse((await client.request("GET", "/api/v1/overview")).json());
+    const w = ov.watchlist[0];
+    if (w === undefined) throw new Error("watchlist row missing");
+    // Cùng nến mà server đọc từ SoDEX mock (mới nhất trước): giá mở của nến cũ nhất là mốc 24h.
+    const res = await env.sodex.fetch(
+      `https://mainnet-gw.sodex.dev/api/v1/perps/markets/BTC-USD/klines?interval=1h&limit=24&startTime=${String(env.clock.now.getTime() - 24 * 3_600_000)}&endTime=${String(env.clock.now.getTime())}`,
+      { method: "GET" },
+    );
+    const k = z
+      .object({ data: z.array(z.object({ t: z.number(), o: z.string(), c: z.string() })) })
+      .parse(await res.json()).data;
+    expect(k[0]?.t).toBeGreaterThan(k.at(-1)?.t ?? 0);
+    expect(w.change24hPct).toBe(change24hPct(w.price, k));
+    expect(w.change24hPct).not.toBe(change24hPct(w.price, [k[0] ?? { t: 0, o: "0" }]));
+    // Sparkline theo thời gian tăng dần.
+    expect(w.spark).toEqual([...k].reverse().map((c) => c.c));
   });
 
   it("keeps markets without a price in the overview", async () => {

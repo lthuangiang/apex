@@ -12,6 +12,7 @@ export * from "./api/auth";
 export * from "./api/sodex";
 export * from "./analysis/account";
 export * from "./analysis/market-stats";
+export * from "./analysis/change-24h";
 export * from "./api/data";
 export * from "./analysis/findings";
 export * from "./bot-state";
