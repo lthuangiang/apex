@@ -151,6 +151,8 @@ export const followingSchema = z.object({
   ),
   events: z.array(leaderEventViewSchema),
   bigMoveAlerts: z.boolean(),
+  /** Ngưỡng USD của big move (`COPY_BIG_MOVE_MIN_USD`); null = cảnh báo tắt. */
+  bigMoveMinUsd: z.string().nullable().default(null),
 });
 export type Following = z.infer<typeof followingSchema>;
 

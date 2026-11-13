@@ -191,6 +191,8 @@ export function TraderCardView({ card }: { card: Card }) {
       <div className="mt-auto flex gap-2">
         <Link
           href={`/traders/${card.address}`}
+          // Mỗi thẻ một tên riêng cho trình đọc màn hình (báo cáo test F27).
+          aria-label={t("common.viewProfileOf", { trader: card.displayName ?? addr(card.address) })}
           className="inline-flex min-h-tap flex-1 items-center justify-center rounded-[12px] border border-border-input px-4 text-sm font-bold text-ink no-underline hover:bg-surface-2"
         >
           {t("common.viewProfile")}
