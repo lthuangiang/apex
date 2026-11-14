@@ -36,6 +36,11 @@ export const mmMarketCostSchema = z.object({
   yourRoundTrips: z.number().int(),
   /** Phí maker SoDEX + builder fee MM − PnL giá (USD / $1M); ≤ 0 thì web ghi "0 or less". */
   totalCostPerMillion: decimalStringSchema.nullable(),
+  /**
+   * Chỉ phí (phí maker SoDEX của market + builder fee MM của người xem, USD / $1M): đầu dưới của khoảng chi phí, khi giá
+   * không chạy ngược. Đầu trên là `totalCostPerMillion`.
+   */
+  feesPerMillion: decimalStringSchema,
   /** Người dùng đang có bot MM chạy ở market này. */
   yourBot: z.boolean(),
 });

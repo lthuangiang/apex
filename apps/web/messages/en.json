@@ -85,11 +85,13 @@
   "createBot": {
     "mmMarkets": {
       "suggestTitle": "Suggested for market making",
-      "suggestRow": "{market} · about {cost} per $1M · up to {capacity}/day",
+      "suggestRow": "{market} · {low}–{high} per $1M · up to {capacity}/day",
+      "suggestRowOne": "{market} · {low} per $1M · up to {capacity}/day",
       "suggestRowZero": "{market} · 0 or less per $1M · up to {capacity}/day",
       "selected": "Selected",
       "compare": "Compare all markets",
       "here": "Estimated cost here: {cost} per $1M (last 24 hours, not a forecast).",
+      "hereRange": "Estimated cost here: {low}–{high} per $1M (fees only to fees plus the usual price moves, last 24 hours, not a forecast).",
       "hereZero": "Estimated cost here: 0 or less per $1M (last 24 hours, not a forecast).",
       "hereNone": "Estimated cost here: not enough data yet.",
       "noData": "Suggestions appear once we have a day of SoDEX data.",
@@ -109,14 +111,13 @@
         "volume": "Volume 24h",
         "capacity": "Up to / day",
         "pnl": "Price PnL / $1M",
-        "total": "Total cost / $1M",
-        "data": "Data",
+        "fees": "Fees only / $1M",
+        "withMoves": "With usual price moves / $1M",
         "choose": "Choose"
       },
-      "data": {
-        "yours": "Your bots",
-        "model": "Model"
-      },
+      "showAll": "Show all markets ({n} hidden)",
+      "hideThin": "Hide markets with too little volume",
+      "notMax": "The higher number is not a maximum: costs can be higher when the price moves a lot.",
       "bps": "{v} bps",
       "steps": "{n, plural, one {# step} other {# steps}}",
       "cheapest": "Cheapest",

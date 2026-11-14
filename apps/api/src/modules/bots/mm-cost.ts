@@ -271,6 +271,7 @@ export async function mmMarketCosts(deps: BotDeps, userId: string): Promise<MmMa
         pnlPerMillion === null
           ? null
           : r.makerPerMillion.add(builder).sub(pnlPerMillion).toDecimalPlaces(2).toString(),
+      feesPerMillion: r.makerPerMillion.add(builder).toDecimalPlaces(2).toString(),
       yourBot: running.has(r.market),
     };
   });
