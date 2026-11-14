@@ -347,6 +347,54 @@ describe("copy_trade step", () => {
 });
 
 describe("copy_trade khớp trễ", () => {
+  it("lệnh mở khớp nhiều lần rồi hết hạn: cộng đủ các lần khớp, xong khi orderDone (P0.1)", () => {
+    const c = cfg();
+    const s0 = withPrice(copyTrade.initialState(c), "100000");
+    const r = run(c, s0, leaderFill("buy", "1", "1"));
+    const o = onlyPlace(r.actions);
+    const fill = (st: CopyTradeState, q: string, at: number) =>
+      run(c, st, { type: "fill", at, clOrdID: o.clOrdID, price: "100000", quantity: q, fee: "0" });
+    const a = fill(r.state, "0.003", T0 + 400);
+    const b = fill(a.state, "0.004", T0 + 450);
+    // Chưa đủ 0.01: còn chờ.
+    expect(btc(b.state).inflight?.filled).toBe("0.007");
+    const d = run(c, b.state, { type: "orderDone", at: T0 + 500, clOrdID: o.clOrdID });
+    expect(btc(d.state).inflight).toBeNull();
+    expect(btc(d.state).ledger.position).toBe("0.007");
+    expect(btc(d.state).target).toBe("0.007");
+    expect(places(d.actions)).toHaveLength(0);
+  });
+
+  it("lệnh đang chờ không có orderDone quá 60 s: coi như xong với phần đã khớp (P0.1)", () => {
+    const c = cfg();
+    const s0 = withPrice(copyTrade.initialState(c), "100000");
+    const r = run(c, s0, leaderFill("buy", "1", "1"));
+    const o = onlyPlace(r.actions);
+    const part = run(c, r.state, {
+      type: "fill",
+      at: T0 + 400,
+      clOrdID: o.clOrdID,
+      price: "100000",
+      quantity: "0.005",
+      fee: "0",
+    });
+    const early = run(c, part.state, { type: "timer", at: T0 + 300 + COPY.inflightTimeoutMs - 1 });
+    expect(btc(early.state).inflight).not.toBeNull();
+    const late = run(c, early.state, { type: "timer", at: T0 + 300 + COPY.inflightTimeoutMs });
+    expect(btc(late.state).inflight).toBeNull();
+    expect(btc(late.state).target).toBe("0.005");
+    // Fill tới sau hạn vẫn vào sổ cái như fill trễ.
+    const after = run(c, late.state, {
+      type: "fill",
+      at: T0 + 70_000,
+      clOrdID: o.clOrdID,
+      price: "100000",
+      quantity: "0.005",
+      fee: "0",
+    });
+    expect(btc(after.state).ledger.position).toBe("0.01");
+  });
+
   it("lệnh mở khớp sau orderDone, chưa có tín hiệu mới: giữ phần đã khớp", () => {
     const c = cfg();
     const f = following(c);

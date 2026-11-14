@@ -36,6 +36,11 @@ export const COPY = {
   maxOpenRejects: 3,
   /** Số lệnh gần nhất được nhớ để nhận fill tới trễ. */
   keepOrders: 20,
+  /**
+   * Lệnh IOC đang chờ quá lâu mà không có `orderDone` (tin bị mất): coi như đã xong với phần đã khớp. Fill tới sau đó
+   * vẫn vào sổ cái như fill trễ (P0.1).
+   */
+  inflightTimeoutMs: 60_000,
 } as const;
 
 type OrderKind = "open" | "reduce";
@@ -51,6 +56,8 @@ export interface CopyInflight {
   filled: string;
   /** Mục tiêu lúc đặt lệnh. Lệnh xong mà mục tiêu đã đổi (tín hiệu mới tới trong lúc chờ) thì giữ mục tiêu mới. */
   aim: string;
+  /** Lúc đặt lệnh (ms); thiếu ở state cũ thì lấy lúc timer đầu tiên thấy lệnh. */
+  at?: number;
 }
 
 /** State của một market (logic DEC-161 giữ nguyên) kèm các trường dùng chung của bot. */
@@ -175,6 +182,7 @@ function place(
   c: MarketConfig,
   s: CopyMarketView,
   ctx: StepContext,
+  now: number,
   kind: OrderKind,
   side: Side,
   qty: string,
@@ -186,7 +194,7 @@ function place(
     state: {
       ...s,
       seq: s.seq + 1,
-      inflight: { id: o.clOrdID, kind, side, qty, filled: "0", aim: s.target },
+      inflight: { id: o.clOrdID, kind, side, qty, filled: "0", aim: s.target, at: now },
       orders: Object.fromEntries(
         [...Object.entries(s.orders), [o.clOrdID, { side, kind }] as const].slice(-COPY.keepOrders),
       ),
@@ -218,7 +226,7 @@ function reconcile(
     const qty = roundQty(t.isZero() || flips ? p.abs() : p.abs().sub(t.abs()), rules);
     if (!dec(qty).gt(0))
       return none({ ...s, target: t.isZero() || flips ? s.target : p.toString() });
-    return place(c, s, ctx, "reduce", p.isPositive() ? "sell" : "buy", qty);
+    return place(c, s, ctx, now, "reduce", p.isPositive() ? "sell" : "buy", qty);
   }
   // Mở hoặc tăng.
   const ref = c.leaderSource === "sodex" ? s.refPrice : s.lastPrice;
@@ -248,7 +256,7 @@ function reconcile(
       actions: [log("Skipped", "Copy size is below the SoDEX minimum order size.")],
       state: { ...settleOpen(s), skipped: s.skipped + 1 },
     };
-  return place(c, s, ctx, "open", buy ? "buy" : "sell", qty, price);
+  return place(c, s, ctx, now, "open", buy ? "buy" : "sell", qty, price);
 }
 
 /** Lệnh đang chờ đã xong (khớp đủ, `orderDone` hoặc bị từ chối): cập nhật mục tiêu rồi đặt lệnh kế tiếp. */
@@ -532,9 +540,15 @@ function stepMarket(
       const st = { ...s, lastPrice: e.price };
       return guards(c, st, ctx, e.at) ?? none(st);
     }
-    case "timer":
+    case "timer": {
+      // Lệnh đang chờ không bao giờ có `orderDone` (tin mất): quá hạn thì coi như xong với phần đã khớp (P0.1).
+      const f = s.inflight;
+      if (f !== null && f.at === undefined) return none({ ...s, inflight: { ...f, at: e.at } });
+      if (f?.at !== undefined && e.at - f.at >= COPY.inflightTimeoutMs)
+        return complete(c, s, ctx, e.at, false);
       // Lệnh giảm còn thiếu (ví dụ sau khi khớp trễ) được đặt lại ở nhịp đồng hồ.
       return reconcile(c, s, ctx, e.at);
+    }
     case "leaderFill":
       return onLeaderFill(c, s, ctx, e);
     case "leaderPosition":
