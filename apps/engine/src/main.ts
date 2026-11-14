@@ -4,7 +4,7 @@ import {
   dec,
   leaderFillMessageSchema,
   leaderPositionMessageSchema,
-  mmGuardMessageSchema,
+  mmFairMessageSchema,
 } from "@drift/shared";
 import {
   loadSodexConfig,
@@ -105,14 +105,14 @@ const engine = new Engine({
 
 const nc = await connect({ servers: env.NATS_URL });
 const priceSub = nc.subscribe("md.*.price");
-// Binance guard của Market Making: bot bật Smart quoting rút báo giá cũ theo tín hiệu của marketdata.
-const guardSub = nc.subscribe("md.*.guard");
+// Giá Binance quy đổi cho Smart quoting của Market Making (marketdata publish).
+const fairSub = nc.subscribe("md.*.fair");
 void (async () => {
-  for await (const m of guardSub) {
+  for await (const m of fairSub) {
     try {
-      await engine.onMmGuard(mmGuardMessageSchema.parse(m.json()), Date.now());
+      await engine.onMmFair(mmFairMessageSchema.parse(m.json()), Date.now());
     } catch (error) {
-      log.warn({ err: error }, "mm guard handling failed");
+      log.warn({ err: error }, "mm binance price handling failed");
     }
   }
 })();

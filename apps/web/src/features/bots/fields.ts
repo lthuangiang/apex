@@ -730,6 +730,8 @@ export function emptyValues(strategy: keyof typeof FIELDS): FormValues {
       maxOrders: "1",
       quoteLevel: "0",
       refreshSeconds: "3",
+      // Smart quoting bật mặc định cho bot mới (DEC-242); config cũ thiếu trường này vẫn là tắt.
+      smartQuoting: true,
     });
   }
   if (strategy === "copy_trade") {
