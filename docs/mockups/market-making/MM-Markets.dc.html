@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Market Making · choose a market</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+</style>
+</helmet>
+<div style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; background: #eef1fa; padding: 32px 24px 48px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px">
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<a href="#" style="font-size: 13px; font-weight: 700; text-decoration: none">← Strategy Lab</a>
+<h1 style="margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">New bot · Market Making</h1>
+<p style="margin: 0; font-size: 15px; color: #3b4262">Step 1 of 2 · Choose a market. Cheaper markets let the same budget make more volume.</p>
+</div>
+
+<section aria-labelledby="pick" style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 420px">
+<h2 id="pick" style="margin: 0; font-size: 19px; font-weight: 800">Which market costs least to make volume on?</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #3b4262">Estimated cost for every $1M of volume, from the last 24 hours on SoDEX. Cheapest first. Not a forecast.</p>
+</div>
+<div role="group" aria-label="Sort by" style="display: flex; gap: 6px">
+<sc-for list="{{sorts}}" as="s" hint-placeholder-count="2">
+<button type="button" aria-pressed="{{s.on}}" onClick="{{s.pick}}" style="{{s.style}}">{{s.label}}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="overflow-x: auto; border: 1px solid #e3e7f5; border-radius: 16px">
+<table style="width: 100%; min-width: 900px; border-collapse: collapse; font-size: 14px">
+<thead>
+<tr style="background: #f5f7fd; color: #5f6684; font-size: 12px; text-align: left">
+<th scope="col" style="padding: 12px 14px; font-weight: 700">Market</th>
+<th scope="col" style="padding: 12px 14px; font-weight: 700; text-align: right">One price step</th>
+<th scope="col" style="padding: 12px 14px; font-weight: 700; text-align: right">Usual spread</th>
+<th scope="col" style="padding: 12px 14px; font-weight: 700; text-align: right">1-min swing</th>
+<th scope="col" style="padding: 12px 14px; font-weight: 700; text-align: right">Volume 24h</th>
+<th scope="col" style="padding: 12px 14px; font-weight: 700; text-align: right">Price PnL / $1M</th>
+<th scope="col" style="padding: 12px 14px; font-weight: 700; text-align: right">Total cost / $1M</th>
+<th scope="col" style="padding: 12px 14px"><span style="position: absolute; left: -9999px">Choose</span></th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="5">
+<tr style="{{r.rowStyle}}">
+<th scope="row" style="padding: 12px 14px; text-align: left; font-weight: 800; white-space: nowrap">{{r.name}} <span style="{{r.badgeStyle}}">{{r.badge}}</span></th>
+<td style="padding: 12px 14px; text-align: right; white-space: nowrap">{{r.tick}}</td>
+<td style="padding: 12px 14px; text-align: right; white-space: nowrap">{{r.spread}}</td>
+<td style="padding: 12px 14px; text-align: right; white-space: nowrap">{{r.swing}}</td>
+<td style="padding: 12px 14px; text-align: right; white-space: nowrap">{{r.vol}}</td>
+<td style="padding: 12px 14px; text-align: right; white-space: nowrap; font-weight: 700">{{r.pnl}}</td>
+<td style="padding: 12px 14px; text-align: right; white-space: nowrap; font-weight: 800">{{r.total}}</td>
+<td style="padding: 8px 14px; text-align: right"><button type="button" onClick="{{r.pick}}" aria-pressed="{{r.picked}}" style="{{r.btnStyle}}">{{r.btn}}</button></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+
+<details style="background: #f5f7fd; border-radius: 14px; padding: 12px 16px; font-size: 14px; line-height: 1.6; color: #3b4262">
+<summary style="cursor: pointer; font-weight: 700; color: #141a33; min-height: 28px">How we estimate the cost</summary>
+<ul style="margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px">
+<li><strong>Total cost</strong> = SoDEX maker fee + DeskLabs builder fee (0.003%) + price PnL.</li>
+<li><strong>Price PnL</strong> is what quotes lose when the price moves right after they fill. We measure it on the last 24 hours of SoDEX trades: each fill against the mid price 30 seconds later.</li>
+<li><strong>One price step</strong> is the smallest price move, as a share of the price. A bigger step means each round trip can earn more.</li>
+<li>A <strong>1-min swing</strong> that is small compared with one price step usually means cheaper market making.</li>
+</ul>
+</details>
+</section>
+
+<section style="background: #ffffff; border: 1px solid #e3e7f5; border-radius: 24px; padding: 20px 22px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center">
+<div style="flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+<strong style="font-size: 16px">{{chosenTitle}}</strong>
+<span style="font-size: 14px; color: #3b4262">{{chosenBody}}</span>
+</div>
+<button type="button" style="min-height: 48px; padding: 0 22px; border-radius: 12px; border: none; background: #2e62e8; color: #ffffff; font-family: inherit; font-weight: 800; font-size: 15px; cursor: pointer">Continue to settings</button>
+</section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1250}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sort: 'cost', picked: 'A' };
+  }
+  renderVals() {
+    const data = [
+      { id: 'A', name: '[Market A]', tick: '[3.2] bps', spread: '1 step', swing: '[1.1] bps', vol: '[$4.2M]', pnl: '+[6]', total: '[132]', cost: 132 },
+      { id: 'B', name: '[Market B]', tick: '[2.0] bps', spread: '1–2 steps', swing: '[1.4] bps', vol: '[$2.8M]', pnl: '−[14]', total: '[152]', cost: 152 },
+      { id: 'C', name: '[Market C]', tick: '[1.1] bps', spread: '1 step', swing: '[1.9] bps', vol: '[$9.6M]', pnl: '−[41]', total: '[179]', cost: 179 },
+      { id: 'ETH', name: 'ETH-USD', tick: '0.53 bps', spread: '1 step', swing: '[2.4] bps', vol: '[$31M]', pnl: '−78', total: '216', cost: 216, note: 'your bot' },
+      { id: 'D', name: '[Market D]', tick: '[0.4] bps', spread: '1 step', swing: 'Not available', vol: '[$1.1M]', pnl: 'Not available', total: 'Not available', cost: 9999 }
+    ];
+    const s = this.state;
+    const list = data.slice().sort((a, b) => (s.sort === 'cost' ? a.cost - b.cost : b.id === 'ETH' ? 1 : a.id === 'ETH' ? -1 : 0));
+    const btnBase = 'min-height: 40px; padding: 0 14px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 13px; cursor: pointer; ';
+    const rows = list.map((r, i) => {
+      const picked = s.picked === r.id;
+      const cheapest = s.sort === 'cost' && i === 0;
+      return {
+        name: r.name,
+        badge: cheapest ? 'Cheapest' : r.note === 'your bot' ? 'Your bot today' : '',
+        badgeStyle: cheapest ? 'margin-left: 6px; padding: 3px 8px; border-radius: 999px; background: #ddf4e7; color: #0f7a43; font-size: 11px; font-weight: 800' : r.note === 'your bot' ? 'margin-left: 6px; padding: 3px 8px; border-radius: 999px; background: #e3e7f5; color: #3b4262; font-size: 11px; font-weight: 800' : 'display: none',
+        tick: r.tick, spread: r.spread, swing: r.swing, vol: r.vol, pnl: r.pnl, total: r.total,
+        picked: picked ? 'true' : 'false',
+        btn: picked ? 'Chosen' : 'Choose',
+        btnStyle: btnBase + (picked ? 'background: #2e62e8; color: #ffffff; border: 1px solid #2e62e8;' : 'background: #ffffff; color: #141a33; border: 1px solid #d5dcf2;'),
+        rowStyle: 'border-top: 1px solid #e3e7f5;' + (picked ? ' background: #e6ecfe;' : ''),
+        pick: () => this.setState({ picked: r.id })
+      };
+    });
+    const chosen = data.find((r) => r.id === s.picked);
+    const sortDefs = [{ id: 'cost', label: 'Cheapest first' }, { id: 'volume', label: 'Most volume' }];
+    return {
+      rows: rows,
+      sorts: sortDefs.map((d) => ({
+        label: d.label,
+        on: s.sort === d.id ? 'true' : 'false',
+        style: 'min-height: 40px; padding: 0 14px; border-radius: 10px; font-family: inherit; font-weight: 700; font-size: 13px; cursor: pointer; ' + (s.sort === d.id ? 'background: #141a33; color: #ffffff; border: 1px solid #141a33;' : 'background: #ffffff; color: #141a33; border: 1px solid #d5dcf2;'),
+        pick: () => this.setState({ sort: d.id })
+      })),
+      chosenTitle: 'Chosen: ' + chosen.name,
+      chosenBody: chosen.total === 'Not available' ? 'We don’t have enough trades to estimate the cost on this market yet.' : 'Estimated total cost ' + chosen.total + ' USDC for every $1M of volume (last 24 hours, not a forecast).'
+    };
+  }
+}
+</script>
+</body>
+</html>
