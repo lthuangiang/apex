@@ -32,7 +32,7 @@ import { builderFeesOf } from "../account/builder-fees";
 
 import { ownBot, type BotDeps } from "./service";
 
-// Market Making: chi phí / $1M theo market (DEC-TBD-mm-cost-v1, thay phần xếp hạng của DEC-227) và Price PnL đến từ
+// Market Making: chi phí / $1M theo market (DEC-228, thay phần xếp hạng của DEC-227) và Price PnL đến từ
 // đâu (D2, DEC-227). Số quá khứ 24 giờ, không dự báo; thiếu dữ liệu → null ("not enough data"), không bao giờ 0.
 // - Chi phí ước tính cho bot của mình: PnL giá = a × bước − k × dao động 1 phút (chặn ≤ 0), hệ số mới nhất trong
 //   `mm_model_coefs` (scheduler fit hằng ngày) hoặc hệ số khởi đầu. Có bot của chính người xem ở market đó thì trộn với
@@ -214,7 +214,7 @@ async function marketPart(deps: BotDeps): Promise<MarketPart> {
   return cache;
 }
 
-/** Xếp hạng market cho bot Market Making của người xem, kèm tối đa 3 gợi ý (DEC-TBD-mm-cost-v1). */
+/** Xếp hạng market cho bot Market Making của người xem, kèm tối đa 3 gợi ý (DEC-228). */
 export async function mmMarketCosts(deps: BotDeps, userId: string): Promise<MmMarketCosts> {
   const part = await marketPart(deps);
   const now = deps.now().getTime();

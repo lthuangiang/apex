@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { fitMmModelDaily } from "../src/mm-model";
 
-// Fit hệ số mô hình chi phí Market Making mỗi ngày (DEC-TBD-mm-cost-v1).
+// Fit hệ số mô hình chi phí Market Making mỗi ngày (DEC-228).
 
 const DAY = 86_400_000;
 const NOW = Date.parse("2026-11-15T03:00:00Z");

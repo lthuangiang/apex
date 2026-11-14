@@ -11,7 +11,7 @@ import {
 } from "../mm-model";
 import { dec } from "../money";
 
-// Mô hình chi phí Market Making v1 (DEC-TBD-mm-cost-v1).
+// Mô hình chi phí Market Making v1 (DEC-228).
 
 describe("model price PnL", () => {
   it("is a × step − k × swing, never above 0", () => {

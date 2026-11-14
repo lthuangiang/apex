@@ -47,7 +47,7 @@ export function compactUsd(v: string | null): string | null {
 export type MmSort = "cost" | "volume";
 
 /**
- * "Cheapest first" giữ thứ tự API đã xếp (DEC-TBD-mm-cost-v1); "Most volume" xếp theo sức chứa / ngày. Market chưa có số
+ * "Cheapest first" giữ thứ tự API đã xếp (DEC-228); "Most volume" xếp theo sức chứa / ngày. Market chưa có số
  * luôn ở cuối (không coi thiếu là 0).
  */
 export function sortMarkets(rows: readonly MmMarketCost[], by: MmSort): MmMarketCost[] {

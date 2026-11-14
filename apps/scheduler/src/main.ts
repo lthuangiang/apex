@@ -153,7 +153,7 @@ async function leaderboardTick() {
   }
 }
 
-/** Fit hệ số mô hình chi phí Market Making cho ngày hôm qua (DEC-TBD-mm-cost-v1); tự bỏ qua nếu đã fit. */
+/** Fit hệ số mô hình chi phí Market Making cho ngày hôm qua (DEC-228); tự bỏ qua nếu đã fit. */
 async function mmModelTick() {
   const ticks = new Map(
     (await wait(() => rest.getPerpsSymbols())).map((m) => [m.name, m.tickSize] as const),

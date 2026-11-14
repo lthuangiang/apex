@@ -9,7 +9,7 @@ import { useMarketNames } from "@/lib/markets";
 
 import { compactUsd, plain, signed, sortMarkets, useMmMarketCosts, type MmSort } from "../mm-cost";
 
-// Gợi ý market cho bot Market Making ngay dưới field Contract (DEC-TBD-mm-cost-v1): tối đa 3 market rẻ nhất có đủ dữ
+// Gợi ý market cho bot Market Making ngay dưới field Contract (DEC-228): tối đa 3 market rẻ nhất có đủ dữ
 // liệu và đủ sức chứa, dòng chi phí của contract đang chọn, và "Compare all markets" mở bảng đầy đủ (sheet trên mobile,
 // dialog trên desktop). Chi phí ước tính cho bot của mình, số quá khứ 24 giờ, không dự báo; ≤ 0 ghi "0 or less".
 

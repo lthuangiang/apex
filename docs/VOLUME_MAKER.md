@@ -75,7 +75,7 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   ngay lệnh mở, chỉ giữ lệnh đóng reduce-only; mỗi lần kích hoạt gia hạn thêm 15 s; hết hạn thì báo giá lại. Decisions ghi
   "Quotes paused on a fast move" / "Quoting again after a fast move". Độc lập với Smart quoting.
 
-### 17.7 Gợi ý market theo chi phí / $1M (DEC-TBD-mm-cost-v1, thay phần xếp hạng của DEC-227)
+### 17.7 Gợi ý market theo chi phí / $1M (DEC-228, thay phần xếp hạng của DEC-227)
 - **UI:** không còn bước "Choose a market" riêng. `/bots/new/volume_maker` mở thẳng form; dưới field Contract có khối
   "Suggested for market making": tối đa 3 market (đủ dữ liệu, không "Too little volume", rẻ nhất trước), bấm thì điền
   Contract; dòng "Estimated cost here: …" cho contract đang chọn; "Compare all markets" mở bảng đầy đủ (sheet trên mobile,

@@ -1511,7 +1511,7 @@ export const mid1s = pgTable(
 );
 
 /**
- * Hệ số mô hình chi phí Market Making (DEC-TBD-mm-cost-v1): PnL giá = a × bước − k × dao động, fit mỗi ngày từ bot thật.
+ * Hệ số mô hình chi phí Market Making (DEC-228): PnL giá = a × bước − k × dao động, fit mỗi ngày từ bot thật.
  * Mỗi lần fit một dòng (version tăng dần); API dùng dòng mới nhất, chưa có dòng nào thì dùng hệ số khởi đầu (version 0).
  */
 export const mmModelCoefs = pgTable("mm_model_coefs", {

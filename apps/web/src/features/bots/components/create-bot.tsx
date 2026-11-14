@@ -379,7 +379,7 @@ export function CreateBot({
               afterMarket={
                 strategy === "volume_maker" || isMobile ? (
                   <>
-                    {/* Gợi ý market rẻ cho Market Making ngay dưới Contract (DEC-TBD-mm-cost-v1). */}
+                    {/* Gợi ý market rẻ cho Market Making ngay dưới Contract (DEC-228). */}
                     {strategy === "volume_maker" ? (
                       <MmSuggestions
                         value={typeof values.market === "string" ? values.market : ""}

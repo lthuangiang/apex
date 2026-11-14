@@ -2,7 +2,7 @@ import type { MmMarketCost } from "./api/mm-cost";
 import { roundTrips, type MarkoutFill } from "./mm-markout";
 import { dec, Decimal, type DecimalInput } from "./money";
 
-// Mô hình chi phí Market Making v1 (DEC-TBD-mm-cost-v1). Hàm thuần, không I/O.
+// Mô hình chi phí Market Making v1 (DEC-228). Hàm thuần, không I/O.
 // - PnL giá (bps trên volume) = a × bước − k × dao động 1 phút, chặn ≤ 0: không bao giờ dự kiến lãi từ giá.
 //   a ≤ 0,5 vì một vòng ăn tối đa 1 bước trên notional một chiều mà volume tính cả hai chiều.
 // - Có bot của chính người xem: trộn (n × thực + 50 × mô hình) / (n + 50), n = số vòng đóng 24 giờ.

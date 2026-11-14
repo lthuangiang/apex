@@ -13,7 +13,7 @@ import { MmSuggestions } from "../components/mm-markets";
 import { MmMarkoutCard } from "../components/mm-markout";
 import { applyMmSuggestion } from "../mm-cost";
 
-// Market Making · chi phí / $1M: gợi ý market dưới Contract (DEC-TBD-mm-cost-v1) và Price PnL đến từ đâu (D2, DEC-227).
+// Market Making · chi phí / $1M: gợi ý market dưới Contract (DEC-228) và Price PnL đến từ đâu (D2, DEC-227).
 
 const state = vi.hoisted(() => ({ empty: false }));
 
@@ -114,7 +114,7 @@ afterEach(() => {
   cleanup();
 });
 
-describe("Market Making · suggested markets under Contract (DEC-TBD-mm-cost-v1)", () => {
+describe("Market Making · suggested markets under Contract (DEC-228)", () => {
   it("offers up to 3 markets with cost and capacity, fills Contract, and states the cost of the chosen one", async () => {
     const user = userEvent.setup({ delay: null });
     const picked: string[] = [];

@@ -51,7 +51,7 @@ export type WsBookTicker = z.infer<typeof wsBookTickerSchema>;
 /** Giao dịch công khai (market-trade.md). `S` là phía chủ động (taker). */
 export const wsMarketTradeSchema = z.object({
   T: z.number().int(), // giờ khớp ms
-  /** Trade id của SoDEX; dùng để loại fill của chính bot khi mô phỏng (DEC-TBD-mm-cost-v1). */
+  /** Trade id của SoDEX; dùng để loại fill của chính bot khi mô phỏng (DEC-228). */
   t: z.union([z.number().int(), z.string()]).optional(),
   s: z.string(),
   S: z.enum(["BUY", "SELL"]),

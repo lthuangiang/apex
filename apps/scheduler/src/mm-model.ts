@@ -23,7 +23,7 @@ import {
 } from "@drift/shared";
 import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 
-// Fit hệ số mô hình chi phí Market Making mỗi ngày (DEC-TBD-mm-cost-v1). Mỗi (bot, market, ngày UTC) có ≥ 50 vòng đóng
+// Fit hệ số mô hình chi phí Market Making mỗi ngày (DEC-228). Mỗi (bot, market, ngày UTC) có ≥ 50 vòng đóng
 // là một điểm: y = PnL giá (gồm phần chưa chốt) bps trên volume, x = (bước, dao động 1 phút) của market trong ngày.
 // Chỉ bot live quoteLevel 0. Bot của team luôn được dùng; bot của user khác chỉ dùng khi có ≥ 3 tài khoản như vậy
 // (gộp, không hiện riêng ở đâu). Không có điểm nào → không ghi gì (API giữ hệ số cũ / hệ số khởi đầu).

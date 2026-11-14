@@ -67,7 +67,7 @@ const env = z
     /** Số WS ví leader tối đa (SoDEX: 10 user mỗi IP trên WS). */
     LEADER_MAX_STREAMS: z.coerce.number().int().nonnegative().default(8),
     /**
-     * Thư mục lưu thô bookTicker + trade theo giờ, giữ 48 giờ (DEC-TBD-mm-cost-v1); trống = không lưu.
+     * Thư mục lưu thô bookTicker + trade theo giờ, giữ 48 giờ (DEC-228); trống = không lưu.
      */
     MM_RAW_DIR: z.string().default(""),
     /** Cảnh báo "big move" (DEC-163 mục 11): notional tối thiểu USD; trống = tắt (OPEN_QUESTIONS 21a). */

@@ -44,7 +44,7 @@ async function connectedUser(email: string) {
 
 const at = (offsetMs: number) => new Date(env.clock.now.getTime() + offsetMs).toISOString();
 
-describe("GET /api/v1/markets/mm-cost (DEC-TBD-mm-cost-v1)", () => {
+describe("GET /api/v1/markets/mm-cost (DEC-228)", () => {
   it("estimates the cost for your own bot from the model, blends in your bot, and ranks with suggestions", async () => {
     const client = await connectedUser("mm-rank@example.com");
     // BTC-USD: 800 nến 1m có volume, giá đổi 100 ↔ 100,05 → bước ≈ 1 bps, dao động ≈ 5 bps.
