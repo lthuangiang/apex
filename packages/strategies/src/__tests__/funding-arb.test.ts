@@ -1,7 +1,7 @@
 import { ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
-import { fundingArb } from "../funding-arb";
+import { ARB_PENDING_TIMEOUT_MS, fundingArb, type FundingArbState } from "../funding-arb";
 import { fundingArbSchema } from "../funding-arb/schema";
 import { runSim } from "../sim/exchange";
 
@@ -116,5 +116,107 @@ describe("funding arbitrage", () => {
     expect(r.success ? [] : r.error.issues.map((i) => i.message)).toEqual([
       "Must be below the entry level.",
     ]);
+  });
+});
+
+describe("funding arbitrage — legs that fill in parts, end part-filled or fill late (P0.1)", () => {
+  type Ev = Parameters<typeof fundingArb.step>[2];
+  const step = (st: FundingArbState, e: Ev) => fundingArb.step(base, st, e, ctx);
+  const placesOf = (a: ReturnType<typeof step>["actions"]) =>
+    a.flatMap((x) => (x.type === "place" ? [x.order] : []));
+  /** Giá 100 cả hai market, funding đủ: đặt hai chân 10 BTC. */
+  const opening = () => {
+    let st = fundingArb.initialState(base);
+    st = step(st, { type: "tick", at: 0, market: "vBTC_vUSDC", price: "100" }).state;
+    st = step(st, { type: "tick", at: 1, market: "BTC-USD", price: "100" }).state;
+    const r = step(st, {
+      type: "fundingRate",
+      at: 2,
+      market: "BTC-USD",
+      current: "0.006",
+      avg7d: "0.006",
+    });
+    const [spot, perp] = placesOf(r.actions);
+    if (spot === undefined || perp === undefined) throw new Error("no legs");
+    return { st: r.state, spot, perp };
+  };
+  const fill = (id: string, q: string, at: number): Ev => ({
+    type: "fill",
+    at,
+    clOrdID: id,
+    price: "100",
+    quantity: q,
+    fee: "0",
+  });
+
+  it("adds up a leg that fills in parts and balances a leg that ended short with a new clOrdID each time", () => {
+    const { st, spot, perp } = opening();
+    let s1 = step(st, fill(spot.clOrdID, "10", 3)).state;
+    s1 = step(s1, fill(perp.clOrdID, "6", 4)).state;
+    s1 = step(s1, fill(perp.clOrdID, "2", 5)).state;
+    expect(s1.perp.position).toBe("-8");
+    expect(s1.phase).toBe("opening");
+    const done = step(s1, { type: "orderDone", at: 6, clOrdID: perp.clOrdID });
+    const bal = placesOf(done.actions)[0];
+    expect(bal).toMatchObject({ side: "sell", quantity: "2" });
+    // Lệnh cân chân cũng khớp thiếu rồi hết hạn: lần cân sau dùng clOrdID khác (không bị engine bỏ qua).
+    let s2 = step(done.state, fill(bal?.clOrdID ?? "", "1", 7)).state;
+    const again = step(s2, { type: "orderDone", at: 8, clOrdID: bal?.clOrdID ?? "" });
+    const bal2 = placesOf(again.actions)[0];
+    expect(bal2?.quantity).toBe("1");
+    expect(bal2?.clOrdID).not.toBe(bal?.clOrdID);
+    s2 = step(again.state, fill(bal2?.clOrdID ?? "", "1", 9)).state;
+    expect(s2.phase).toBe("in_position");
+    expect(s2.perp.position).toBe("-10");
+  });
+
+  it("closes the filled leg and pauses when the other leg did not fill at all", () => {
+    const { st, spot, perp } = opening();
+    let s1 = step(st, fill(spot.clOrdID, "10", 3)).state;
+    const r = step(s1, { type: "orderDone", at: 4, clOrdID: perp.clOrdID });
+    expect(placesOf(r.actions)).toMatchObject([{ side: "sell", quantity: "10" }]);
+    expect(r.state.phase).toBe("closing");
+    s1 = step(r.state, fill(placesOf(r.actions)[0]?.clOrdID ?? "", "10", 5)).state;
+    expect(s1.phase).toBe("halted");
+  });
+
+  it("closes the rest when a closing order ends part-filled", () => {
+    const { st, spot, perp } = opening();
+    let s1 = step(st, fill(spot.clOrdID, "10", 3)).state;
+    s1 = step(s1, fill(perp.clOrdID, "10", 4)).state;
+    expect(s1.phase).toBe("in_position");
+    // Lỗ chạm max loss → đóng hai chân.
+    const loss = step(s1, { type: "tick", at: 5, market: "vBTC_vUSDC", price: "95" });
+    const [cs, cp] = placesOf(loss.actions);
+    let s2 = step(loss.state, fill(cs?.clOrdID ?? "", "10", 6)).state;
+    s2 = step(s2, fill(cp?.clOrdID ?? "", "4", 7)).state;
+    const r = step(s2, { type: "orderDone", at: 8, clOrdID: cp?.clOrdID ?? "" });
+    const rest = placesOf(r.actions)[0];
+    expect(rest).toMatchObject({ side: "buy", quantity: "6", reduceOnly: true });
+    expect(rest?.clOrdID).not.toBe(cp?.clOrdID);
+  });
+
+  it("books a late fill and does not count a replayed fill twice", () => {
+    const { st, spot, perp } = opening();
+    let s1 = step(st, fill(spot.clOrdID, "10", 3)).state;
+    s1 = step(s1, fill(spot.clOrdID, "10", 4)).state;
+    expect(s1.spot.position).toBe("10");
+    s1 = step(s1, fill(perp.clOrdID, "10", 5)).state;
+    expect(s1.perp.position).toBe("-10");
+  });
+
+  it("treats legs with no orderDone for 60 s as ended", () => {
+    const { st, spot, perp } = opening();
+    let s1 = step(st, fill(spot.clOrdID, "10", 3)).state;
+    s1 = step(s1, fill(perp.clOrdID, "10", 3)).state;
+    expect(s1.phase).toBe("in_position");
+    const o2 = opening();
+    const half = step(o2.st, fill(o2.spot.clOrdID, "10", 3)).state;
+    const early = step(half, { type: "timer", at: 2 + ARB_PENDING_TIMEOUT_MS - 1 });
+    expect(early.state.phase).toBe("opening");
+    const late = step(early.state, { type: "timer", at: 2 + ARB_PENDING_TIMEOUT_MS });
+    // Chân perp không khớp gì sau hạn chờ: đóng chân spot.
+    expect(late.state.phase).toBe("closing");
+    expect(perp.clOrdID).toBeTruthy();
   });
 });
