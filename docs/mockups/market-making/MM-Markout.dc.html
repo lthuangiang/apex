@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Market Making bot · price PnL</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#eef1fa}
+</style>
+</helmet>
+<div style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif; color: #141a33; background: #eef1fa; padding: 32px 24px 48px">
+<div style="max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px">
+
+<div style="border: 2px dashed #b9c3e6; border-radius: 24px; padding: 18px 22px; background: #f5f7fd; display: flex; flex-direction: column; gap: 10px">
+<span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #e3e7f5; color: #3b4262; font-size: 12px; font-weight: 800; letter-spacing: 0.06em">EXISTING · Trading Agent › Market Making</span>
+<strong style="font-size: 16px">Cost breakdown (as today)</strong>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<div style="background: #ffffff; border-radius: 14px; padding: 12px"><span style="font-size: 12px; color: #5f6684">SoDEX trading fee</span><div style="font-weight: 800; color: #a72826">108.02 / $1M</div></div>
+<div style="background: #ffffff; border-radius: 14px; padding: 12px"><span style="font-size: 12px; color: #5f6684">DeskLabs builder fee</span><div style="font-weight: 800; color: #a72826">29.98 / $1M</div></div>
+<div style="background: #ffffff; border-radius: 14px; padding: 12px; outline: 2px solid #2e62e8"><span style="font-size: 12px; color: #5f6684">Price PnL, closed</span><div style="font-weight: 800; color: #a72826">78.33 / $1M</div></div>
+</div>
+</div>
+
+<section aria-labelledby="mk" style="background: #ffffff; border: 1.5px solid #2e62e8; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 16px">
+<span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #2e62e8; color: #ffffff; font-size: 12px; font-weight: 800; letter-spacing: 0.06em">NEW</span>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="mk" style="margin: 0; font-size: 19px; font-weight: 800">Where the price PnL comes from</h2>
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #3b4262">After each of your fills, how far the price moved against you. Measured on this bot's fills in the last 24 hours.</p>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<div style="background: #f5f7fd; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 13px; color: #5f6684">5 seconds after a fill</span>
+<strong style="font-size: 22px">−[0.3] bps</strong>
+<div style="height: 8px; border-radius: 999px; background: #e3e7f5"><div style="width: 25%; height: 8px; border-radius: 999px; background: #e08a2e"></div></div>
+</div>
+<div style="background: #f5f7fd; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 13px; color: #5f6684">30 seconds after</span>
+<strong style="font-size: 22px">−[0.7] bps</strong>
+<div style="height: 8px; border-radius: 999px; background: #e3e7f5"><div style="width: 58%; height: 8px; border-radius: 999px; background: #e08a2e"></div></div>
+</div>
+<div style="background: #f5f7fd; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 13px; color: #5f6684">60 seconds after</span>
+<strong style="font-size: 22px">−[0.8] bps</strong>
+<div style="height: 8px; border-radius: 999px; background: #e3e7f5"><div style="width: 66%; height: 8px; border-radius: 999px; background: #e08a2e"></div></div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px">
+<div style="border: 1px solid #e3e7f5; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 13px; color: #5f6684">One price step on ETH-USD</span>
+<strong style="font-size: 18px">0.53 bps</strong>
+<span style="font-size: 13px; color: #3b4262">Each round trip can earn at most about one step.</span>
+</div>
+<div style="border: 1px solid #e3e7f5; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 13px; color: #5f6684">Round trips that closed at a loss</span>
+<strong style="font-size: 18px">[N] of [M]</strong>
+<span style="font-size: 13px; color: #3b4262">Losers lose more steps than winners win.</span>
+</div>
+</div>
+
+<p style="margin: 0; font-size: 14px; line-height: 1.55; color: #3b4262; background: #fdebd3; border: 1px solid #f0c27e; border-radius: 14px; padding: 12px 14px; color: #7a3e00"><strong>In short:</strong> on this market a price step is smaller than how much the price usually moves in 30 seconds, so quotes tend to fill right before the price turns against them.</p>
+</section>
+
+<section aria-labelledby="lower" style="background: #ffffff; border: 1.5px solid #2e62e8; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 14px">
+<span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #2e62e8; color: #ffffff; font-size: 12px; font-weight: 800; letter-spacing: 0.06em">NEW</span>
+<h2 id="lower" style="margin: 0; font-size: 19px; font-weight: 800">Ways to lower it</h2>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px">
+<div style="border: 1px solid #e3e7f5; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+<strong style="font-size: 15px">Quote one step back</strong>
+<span style="font-size: 14px; line-height: 1.55; color: #3b4262">Fewer fills, but each fill waits for a bigger move. Volume per hour goes down.</span>
+<span style="font-size: 12px; color: #5f6684">Setting: Distance from best price</span>
+</div>
+<div style="border: 1px solid #e3e7f5; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+<strong style="font-size: 15px">Close only at your entry price or better</strong>
+<span style="font-size: 14px; line-height: 1.55; color: #3b4262">The bot never sells below what it paid. Positions can stay open longer.</span>
+<span style="font-size: 12px; color: #5f6684">New setting</span>
+</div>
+<div style="border: 1px solid #e3e7f5; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+<strong style="font-size: 15px">Pause on fast moves</strong>
+<span style="font-size: 14px; line-height: 1.55; color: #3b4262">Pull quotes when the price moves more than a few steps in a few seconds, then quote again.</span>
+<span style="font-size: 12px; color: #5f6684">New setting</span>
+</div>
+<div style="border: 1px solid #e3e7f5; border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 8px">
+<strong style="font-size: 15px">Move to a cheaper market</strong>
+<span style="font-size: 14px; line-height: 1.55; color: #3b4262">See which markets cost least per $1M right now.</span>
+<a href="MM-Markets.dc.html" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 40px; font-weight: 700; font-size: 14px; color: #1d47b8; text-decoration: none">Compare markets →</a>
+</div>
+</div>
+<p style="margin: 0; font-size: 13px; color: #5f6684">Changing a setting opens a draft of the bot. Nothing changes until you save it.</p>
+</section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1250}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
