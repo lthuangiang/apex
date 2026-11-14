@@ -596,6 +596,11 @@ export const orders = pgTable(
     reconciledAt: tstz("reconciled_at"),
     rejectCode: text("reject_code"),
     rejectMessage: text("reject_message"),
+    /**
+     * Lúc engine đã báo chiến lược lệnh này kết thúc (`orderDone` / `orderReject`); chỉ báo một lần dù user stream và
+     * đối soát cùng thấy (P0.1, rà soát strategy 2026-11-14).
+     */
+    doneFedAt: tstz("done_fed_at"),
     ...timestamps,
   },
   (t) => [

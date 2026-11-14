@@ -65,7 +65,7 @@ export class SimExchange {
         events.push(
           { type: "orderAck", at, clOrdID: o.clOrdID },
           this.#fill(o, price, this.options.takerFee, at),
-          // Khớp engine (DEC-TBD-order-done): lệnh kết thúc thì báo `orderDone`.
+          // Khớp engine (DEC-229): lệnh kết thúc thì báo `orderDone`.
           { type: "orderDone", at, clOrdID: o.clOrdID },
         );
         continue;

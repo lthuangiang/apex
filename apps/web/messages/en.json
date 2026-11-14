@@ -4645,7 +4645,11 @@
       "denied24h": "Denied (24h)",
       "rateLimited24h": "Rate limited (24h)",
       "byTool": "Calls by tool (24h)",
-      "cols": { "tool": "Tool", "calls": "Calls", "errors": "Errors" },
+      "cols": {
+        "tool": "Tool",
+        "calls": "Calls",
+        "errors": "Errors"
+      },
       "none": "No MCP calls in the last 24 hours."
     }
   },

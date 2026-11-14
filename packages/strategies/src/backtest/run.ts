@@ -253,7 +253,7 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
       out.push({ type: "orderAck", at, clOrdID: o.clOrdID });
       if (o.timeInForce === "IOC") {
         if (crossesNow) out.push(fill(o, o.price ?? price, false, at));
-        // Khớp engine (DEC-TBD-order-done): IOC kết thúc ngay, khớp hay không đều báo `orderDone`.
+        // Khớp engine (DEC-229): IOC kết thúc ngay, khớp hay không đều báo `orderDone`.
         out.push({ type: "orderDone", at, clOrdID: o.clOrdID });
         continue;
       }

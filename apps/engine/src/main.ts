@@ -157,27 +157,26 @@ async function syncStreams() {
         callbacks: {
           onOrderUpdate: (updates) => {
             for (const u of updates) {
-              // Kết thúc mà chưa khớp gì: cập nhật ngay, không để lệnh kẹt "open" (DEC-122).
+              // Lệnh kết thúc (FILLED / CANCELED / EXPIRED / REJECTED): ghi phần mới khớp trước, rồi báo chiến lược lệnh
+              // đã xong đúng một lần, kể cả khi đã khớp một phần (P0.1). Chưa khớp gì thì cập nhật luôn, không để lệnh
+              // kẹt "open" (DEC-122).
               const closed =
                 u.X === "REJECTED"
                   ? "rejected"
                   : u.X === "CANCELED" || u.X === "EXPIRED"
                     ? "cancelled"
-                    : null;
-              if (closed !== null && !dec(u.z).gt(0)) {
-                void engine
-                  .onOrderClosed(id, u.c, closed, u.E, u.r ?? null)
-                  .catch((error: unknown) => {
-                    log.warn({ err: error }, "order close handling failed");
-                  });
-                continue;
-              }
-              if (!dec(u.z).gt(0)) continue;
-              void engine
-                .onFill(id, u.c, u.z, dec(u.v).div(u.z).toString(), u.n ?? "0", u.E)
-                .catch((error: unknown) => {
-                  log.warn({ err: error }, "fill handling failed");
-                });
+                    : u.X === "FILLED"
+                      ? "filled"
+                      : null;
+              const filled = dec(u.z).gt(0);
+              if (closed === null && !filled) continue;
+              void (async () => {
+                if (filled)
+                  await engine.onFill(id, u.c, u.z, dec(u.v).div(u.z).toString(), u.n ?? "0", u.E);
+                if (closed !== null) await engine.onOrderClosed(id, u.c, closed, u.E, u.r ?? null);
+              })().catch((error: unknown) => {
+                log.warn({ err: error }, "order update handling failed");
+              });
             }
           },
           onTrade: (trades) => {
