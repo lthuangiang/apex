@@ -2,7 +2,7 @@ import { ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
 import { runSim, type SimOptions } from "../sim/exchange";
-import { sliceIntervalMs, twap } from "../twap";
+import { sliceIntervalMs, twap, TWAP_PENDING_TIMEOUT_MS, type TwapState } from "../twap";
 import { twapSchema } from "../twap/schema";
 
 const ctx = {
@@ -164,5 +164,90 @@ describe("twap Start at (IMP-03, DEC-91)", () => {
       "startTime",
       "startTime",
     ]);
+  });
+});
+
+describe("twap — slices that end part-filled (P0.1)", () => {
+  const step = (st: TwapState, e: Parameters<typeof twap.step>[2], c = base) =>
+    twap.step(c, st, e, ctx);
+  /** Bắt đầu ở giá 100, đặt lát 1 (0.25); trả về state và clOrdID của lát. */
+  const firstSlice = (c = base) => {
+    let st = twap.initialState(c);
+    st = step(st, { type: "tick", at: 0, market: "BTC-USD", price: "100" }, c).state;
+    const r = step(st, { type: "timer", at: 1 }, c);
+    const o = r.actions.find((a) => a.type === "place");
+    if (o?.type !== "place") throw new Error("no slice");
+    return { st: r.state, order: o.order };
+  };
+  const fill = (id: string, q: string, at: number) =>
+    ({ type: "fill", at, clOrdID: id, price: "100.2", quantity: q, fee: "0" }) as const;
+
+  it("adds up several fills of one slice and ends it on orderDone, carrying the rest", () => {
+    const { st, order } = firstSlice();
+    const a = step(st, fill(order.clOrdID, "0.1", 2)).state;
+    const b = step(a, fill(order.clOrdID, "0.05", 3)).state;
+    expect(b.pending).toBe(order.clOrdID);
+    expect(b.filled).toBe("0.15");
+    const d = step(b, { type: "orderDone", at: 4, clOrdID: order.clOrdID }).state;
+    expect(d.pending).toBeNull();
+    expect(d.carry).toBe("0.1");
+    // Lát kế tiếp gồm phần còn thiếu.
+    const next = step(d, { type: "timer", at: sliceIntervalMs(base) });
+    const o = next.actions.find((x) => x.type === "place");
+    expect(o?.type === "place" ? o.order.quantity : null).toBe("0.35");
+  });
+
+  it("ends a slice that did not fill at all, instead of waiting forever", () => {
+    const { st, order } = firstSlice({ ...base, onSkip: "leave_unfilled" });
+    const d = step(
+      st,
+      { type: "orderDone", at: 2, clOrdID: order.clOrdID },
+      {
+        ...base,
+        onSkip: "leave_unfilled",
+      },
+    ).state;
+    expect(d.pending).toBeNull();
+    expect(d.carry).toBe("0");
+    const next = step(
+      d,
+      { type: "timer", at: sliceIntervalMs(base) },
+      { ...base, onSkip: "leave_unfilled" },
+    );
+    expect(next.actions.some((x) => x.type === "place")).toBe(true);
+  });
+
+  it("books a fill that arrives after orderDone and takes it off the carried amount", () => {
+    const { st, order } = firstSlice();
+    const d = step(st, { type: "orderDone", at: 2, clOrdID: order.clOrdID }).state;
+    expect(d.carry).toBe("0.25");
+    const late = step(d, fill(order.clOrdID, "0.25", 3)).state;
+    expect(late.filled).toBe("0.25");
+    expect(late.ledger.position).toBe("0.25");
+    expect(late.carry).toBe("0");
+    // Không tính quá khối lượng của lát.
+    const extra = step(late, fill(order.clOrdID, "0.1", 4)).state;
+    expect(extra.filled).toBe("0.25");
+  });
+
+  it("treats a slice with no orderDone for 60 s as ended", () => {
+    const { st, order } = firstSlice();
+    const a = step(st, fill(order.clOrdID, "0.2", 2)).state;
+    const early = step(a, { type: "timer", at: 1 + TWAP_PENDING_TIMEOUT_MS - 1 }).state;
+    expect(early.pending).toBe(order.clOrdID);
+    const late = step(early, { type: "timer", at: 1 + TWAP_PENDING_TIMEOUT_MS }).state;
+    expect(late.pending).toBeNull();
+    expect(late.carry).toBe("0.05");
+  });
+
+  it("never prices a slice beyond the price limit", () => {
+    const c = { ...base, priceLimit: "100.1" };
+    const { order } = firstSlice(c);
+    // Giá 100 + 0.3% = 100.3, nhưng không vượt limit 100.1.
+    expect(order.price).toBe("100.1");
+    // Bán: không thấp hơn limit; limit lệch lưới tick thì làm tròn lên (99.95 → 100).
+    const sell = { ...base, side: "sell" as const, priceLimit: "99.9" };
+    expect(firstSlice(sell).order.price).toBe("99.9");
+    expect(firstSlice({ ...sell, priceLimit: "99.95" }).order.price).toBe("100");
   });
 });
