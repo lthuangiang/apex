@@ -190,6 +190,11 @@ describe("Market Making · suggested markets under Contract (DEC-TBD-mm-cost-v1)
     expect(cells("ZERO-USD").slice(5, 7)).toEqual(["0 or less", "Model"]);
     expect(cells("ETH-USD")[6]).toBe("Your bots");
     expect(cells("NEW-USD")[5]).toBe("Not enough data");
+    expect(
+      within(dialog).getByText(
+        "Estimated from the SoDEX maker fee, the DeskLabs builder fee and how much the price usually moves against a market-making bot on this market, over the last 24 hours. Not a forecast.",
+      ),
+    ).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Most volume" }));
     expect(names()[0]).toBe("BTC-USD");
     const r = await axe.run(document.body, AXE);

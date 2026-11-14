@@ -275,6 +275,7 @@ export function MmMarketTable({
           </tbody>
         </table>
       </div>
+      <p className="m-0 text-xs text-ink-2">{t("method")}</p>
     </div>
   );
 }
