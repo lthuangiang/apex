@@ -215,6 +215,28 @@ function halt(
   };
 }
 
+/**
+ * Lệnh có làm tăng vị thế không: đang long (hoặc phẳng) thì lệnh mua tăng; đang short (hoặc phẳng) thì lệnh bán tăng.
+ */
+export function increasesPosition(side: "buy" | "sell", position: string): boolean {
+  // So với 0 (decimal.js coi +0 là isPositive).
+  const p = dec(position);
+  return side === "buy" ? p.gte(0) : p.lte(0);
+}
+
+function pauseKeepReducing(s: GridBotState, action: StrategyAction): StepResult<GridBotState> {
+  const cancel = Object.entries(s.open).filter(([, o]) =>
+    increasesPosition(o.side, s.ledger.position),
+  );
+  const open = Object.fromEntries(
+    Object.entries(s.open).filter(([, o]) => !increasesPosition(o.side, s.ledger.position)),
+  );
+  return {
+    actions: [...cancel.map(([id]) => ({ type: "cancel" as const, clOrdID: id })), action],
+    state: { ...s, phase: "halted", open },
+  };
+}
+
 /** Kiểm tra stop / take profit / max loss sau mỗi giá mới hoặc fill. */
 function guards(c: GridBotConfig, s: GridBotState, price: string): StepResult<GridBotState> | null {
   if (
@@ -228,8 +250,9 @@ function guards(c: GridBotConfig, s: GridBotState, price: string): StepResult<Gr
     return halt(s, { type: "stop", reason: ReasonCode.takeProfit, close: c.closeOnStop }, true);
   }
   if (pnl.lte(dec(c.maxLoss).neg())) {
-    // pause giữ lệnh đang mở (DOMAIN.md mục 7.2).
-    return halt(s, { type: "pause", reason: ReasonCode.botMaxLoss }, false);
+    // Pause vì max loss (DOMAIN.md mục 7.2, DEC-238): huỷ lệnh làm tăng vị thế, giữ lệnh chỉ giảm vị
+    // thế để không lỗ thêm khi giá tiếp tục chạy ngược.
+    return pauseKeepReducing(s, { type: "pause", reason: ReasonCode.botMaxLoss });
   }
   return null;
 }
@@ -240,7 +263,19 @@ export function stepGridBot(
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<GridBotState> {
-  if (s.phase === "halted") return { actions: [], state: s };
+  if (s.phase === "halted") {
+    // Đã dừng: lệnh giảm vị thế còn giữ (pause vì max loss) vẫn có thể khớp; chỉ ghi sổ cái, không đặt lệnh mới.
+    const o = e.type === "fill" ? s.open[e.clOrdID] : undefined;
+    if (e.type !== "fill" || o === undefined) return { actions: [], state: s };
+    return {
+      actions: [],
+      state: {
+        ...s,
+        open: without(s.open, e.clOrdID),
+        ledger: applyFill(s.ledger, o.side, e.price, e.quantity, e.fee),
+      },
+    };
+  }
 
   if (e.type === "tick") {
     const prev = s.lastPrice;

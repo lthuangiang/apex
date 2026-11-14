@@ -52,7 +52,7 @@ Các trạng thái: `draft → starting → running ⇄ (pausing → paused → 
 | `EMERGENCY_HALT` | stopped | mọi bot | — |
 | `BUDGET_DONE` / `MAX_CYCLES` | stopped | một bot | — |
 
-- `paused` giữ lệnh đang mở. `stopped` huỷ lệnh của bot rồi thực hiện hành động kết thúc (giữ / bán / đóng vị thế).
+- `paused` giữ lệnh đang mở, **trừ `BOT_MAX_LOSS`**: bot huỷ mọi lệnh có thể mở thêm / tăng vị thế (grid: lệnh mua khi đang long hoặc phẳng, lệnh bán khi đang short hoặc phẳng; DCA: safety order) và chỉ giữ lệnh giảm vị thế (take profit, stop, reduce-only); lệnh giữ lại khớp sau khi pause vẫn vào sổ cái (DEC-238). `stopped` huỷ lệnh của bot rồi thực hiện hành động kết thúc (giữ / bán / đóng vị thế).
 - Giá ra khỏi range của grid **không** phải pause: bot vẫn `running`, chỉ bật cờ `needs_attention`.
 
 ### 7.3 Lệnh

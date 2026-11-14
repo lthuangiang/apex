@@ -86,10 +86,28 @@ describe("spot grid", () => {
     expect(r.halted).toEqual({ type: "stop", reason: ReasonCode.takeProfit, close: false });
   });
 
-  it("pauses on max loss and keeps open orders", () => {
+  it("pauses on max loss, cancels the buys and keeps the sells (DEC-238)", () => {
     const r = runSim(spotGrid, { ...base, maxLoss: "10" }, ctx, ticks([100, 95, 91, 89]), fees);
     expect(r.halted).toEqual({ type: "pause", reason: ReasonCode.botMaxLoss });
-    expect(r.actions.some((a) => a.type === "cancel")).toBe(false);
+    const cancelled = new Set(r.actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : [])));
+    const placed = r.actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
+    // Mọi lệnh mua còn mở bị huỷ; lệnh bán (chỉ giảm vị thế) còn nguyên.
+    expect(Object.values(r.state.open).every((o) => o.side === "sell")).toBe(true);
+    expect(Object.keys(r.state.open).length).toBeGreaterThan(0);
+    for (const o of placed.filter((x) => x.side === "buy" && x.type === "limit"))
+      if (!r.exchange.fills.some((f) => f.clOrdID === o.clOrdID))
+        expect(cancelled.has(o.clOrdID)).toBe(true);
+    // Lệnh bán còn giữ khớp sau khi đã dừng: vào sổ cái, không đặt lệnh mới.
+    const sell = Object.keys(r.state.open)[0] ?? "";
+    const after = spotGrid.step(
+      { ...base, maxLoss: "10" },
+      r.state,
+      { type: "fill", at: 9_000, clOrdID: sell, price: "105", quantity: r.state.qty, fee: "0" },
+      ctx,
+    );
+    expect(after.actions).toEqual([]);
+    expect(after.state.open[sell]).toBeUndefined();
+    expect(Number(after.state.ledger.position)).toBeLessThan(Number(r.state.ledger.position));
   });
 
   it("pauses when an order is rejected", () => {
