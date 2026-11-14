@@ -894,8 +894,17 @@ export class Engine {
       await this.#applyPendingVersion(r);
       if (bot.state === BotState.pausing)
         await this.#transition(r, EngineEvent.confirmedPaused, null);
-      else if (bot.state === BotState.resuming)
+      else if (bot.state === BotState.resuming) {
         await this.#transition(r, EngineEvent.confirmedRunning, null);
+        // Chiến lược tự pause (halted) chạy tiếp từ sổ cái và vị thế thật, dựng lại lệnh (DEC-240).
+        const prices = Object.fromEntries(
+          this.#marketsOf(r.market, r.config).flatMap((m) => {
+            const p = this.#lastPrice.get(m);
+            return p === undefined ? [] : [[m, p] as const];
+          }),
+        );
+        await this.#feed(r, { type: "resumed", at: this.#d.now(), prices });
+      }
       // Stop của người dùng: đóng vị thế của bot nếu họ chọn ở hộp thoại Stop (DEC-81).
       else if (bot.state === BotState.stopping) await this.#stopBot(r, null, bot.closeOnStop);
     }

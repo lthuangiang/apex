@@ -62,6 +62,12 @@ export type StrategyEvent =
   | { type: "marginRatio"; at: number; ratio: string }
   /** Lệnh đã xong trên SoDEX (huỷ thành công hoặc hết hạn): không còn khớp thêm được. */
   | { type: "orderDone"; at: number; clOrdID: string }
+  /**
+   * Người dùng Resume sau khi bot bị pause (engine gửi khi xác nhận running, DEC-240). Chiến lược tự pause
+   * (`halted`) thì chạy tiếp với sổ cái và vị thế giữ nguyên, dựng lại lệnh từ vị thế thật. Lúc pause engine không gửi
+   * giá, nên `prices` mang giá mới nhất engine biết của từng market của bot (thiếu market nào là chưa có giá).
+   */
+  | { type: "resumed"; at: number; prices: Record<string, string> }
   /** Vị thế thật trên SoDEX (Volume Maker đối soát với ledger, DEC-100). `size` có dấu: âm là short. */
   | { type: "positionSync"; at: number; market: string; size: string; entryPrice: string }
   /**

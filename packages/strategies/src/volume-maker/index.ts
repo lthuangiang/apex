@@ -923,6 +923,7 @@ export function stepVolumeMaker(
     case "marginRatio":
     case "leaderFill":
     case "leaderPosition":
+    case "resumed":
       return { actions: [], state: s };
   }
 }

@@ -67,6 +67,12 @@ export interface DcaBotState {
    * đã huỷ / đã thay, và biết lệnh nào đã xong. Thiếu ở state cũ: lệnh cũ coi như khớp đủ ở lần khớp đầu.
    */
   orders?: Record<string, DcaOrder>;
+  /** Giá khớp base order của Cycle đang chạy: mốc tính giá safety khi resume. State cũ không có: dùng giá vốn. */
+  basePrice?: string | null;
+  /** Số lần resume: hậu tố tag của safety đặt lại, để không dùng lại clOrdID cũ. */
+  resumes?: number;
+  /** Đã resume nhưng chưa có giá mới: dựng lại lệnh ở tick đầu tiên (DEC-240). */
+  resumeOnTick?: boolean;
 }
 
 export interface DcaOrder {
@@ -254,12 +260,17 @@ function placeSafeties(
   s: DcaBotState,
   basePrice: string,
   ctx: StepContext,
+  resume?: { from: number; suffix: string; price: string | null },
 ): StepResult<DcaBotState> {
   const rules = ctx.rules[c.market];
   const actions: StrategyAction[] = [];
+  // Resume: giữ các safety còn mở, chỉ đặt lại các mức chưa có lệnh.
+  const kept = resume === undefined ? {} : s.safeties;
+  const open = new Set(Object.values(kept));
   const safeties: Record<string, number> = {};
   if (rules === undefined) return { actions, state: s };
-  for (let k = 1; k <= c.maxSafetyOrders; k += 1) {
+  for (let k = resume?.from ?? 1; k <= c.maxSafetyOrders; k += 1) {
+    if (open.has(k)) continue;
     const off = safetyOffsetPct(c, k).div(100);
     const raw =
       c.direction === "long"
@@ -274,14 +285,27 @@ function placeSafeties(
       rules,
     );
     if (!meetsMinimum(price, qty, rules)) continue;
-    const o = intent(c, ctx, `dca:${String(s.cycle)}:so${String(k)}`, entrySide(c), qty, price);
+    // Resume: bỏ mức giá đã vượt qua (lệnh limit sẽ khớp ngay như lệnh market).
+    if (resume?.price != null) {
+      const crossed =
+        c.direction === "long" ? dec(price).gte(resume.price) : dec(price).lte(resume.price);
+      if (crossed) continue;
+    }
+    const o = intent(
+      c,
+      ctx,
+      `dca:${String(s.cycle)}:so${String(k)}${resume?.suffix ?? ""}`,
+      entrySide(c),
+      qty,
+      price,
+    );
     actions.push({ type: "place", order: o });
     safeties[o.clOrdID] = k;
   }
   return {
     actions,
     state: track(
-      { ...s, safeties },
+      { ...s, safeties: { ...kept, ...safeties } },
       Object.entries(safeties).map(([id, k]) => {
         const a = actions.find((x) => x.type === "place" && x.order.clOrdID === id);
         const qty = a?.type === "place" ? a.order.quantity : "0";
@@ -365,15 +389,41 @@ export function stepDcaBot(
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<DcaBotState> {
-  // Đã dừng: chỉ nhận fill (khớp trễ vào sổ cái) và orderDone.
-  if (s.phase === "halted" && e.type !== "fill" && e.type !== "orderDone")
+  if (e.type === "resumed") {
+    if (s.phase !== "halted") return { actions: [], state: s };
+    // Chưa có giá mới: chờ giá đầu tiên rồi mới dựng lệnh (không đặt theo giá lúc pause).
+    const p = e.prices[c.market];
+    return p === undefined
+      ? { actions: [], state: { ...s, resumeOnTick: true } }
+      : resumeDca(c, { ...s, lastPrice: p }, ctx);
+  }
+  if (e.type === "tick" && e.market === c.market && s.phase === "halted" && s.resumeOnTick === true)
+    return resumeDca(c, { ...s, lastPrice: e.price }, ctx);
+  // Đã dừng: chỉ nhận fill (khớp trễ vào sổ cái), orderDone và orderReject.
+  if (
+    s.phase === "halted" &&
+    e.type !== "fill" &&
+    e.type !== "orderDone" &&
+    e.type !== "orderReject"
+  )
     return { actions: [], state: s };
   if (e.type === "orderReject") {
-    return {
-      actions: [{ type: "pause", reason: ReasonCode.orderRejected }],
-      state: { ...s, phase: "halted" },
+    // Lệnh bị từ chối không có trên sàn: bỏ khỏi danh sách (và coi là đã xong) để resume đặt lại. Đã dừng thì không
+    // pause lần nữa.
+    const o = s.orders?.[e.clOrdID];
+    const state: DcaBotState = {
+      ...s,
+      phase: "halted",
+      safeties: without(s.safeties, e.clOrdID),
+      tpClOrdID: s.tpClOrdID === e.clOrdID ? null : s.tpClOrdID,
+      baseClOrdID: s.baseClOrdID === e.clOrdID ? null : s.baseClOrdID,
+      ...(o === undefined ? {} : { orders: { ...s.orders, [e.clOrdID]: { ...o, done: true } } }),
     };
+    return s.phase === "halted"
+      ? { actions: [], state }
+      : { actions: [{ type: "pause", reason: ReasonCode.orderRejected }], state };
   }
+
   if (e.type === "fundingPaid" && e.market === c.market) {
     const state = { ...s, ledger: applyFunding(s.ledger, e.amount) };
     return guards(c, state, s.lastPrice ?? "0") ?? { actions: [], state };
@@ -470,7 +520,7 @@ function baseDone(c: DcaBotConfig, s: DcaBotState, ctx: StepContext): StepResult
       ],
       state: { ...state, phase: "idle" },
     };
-  let next: DcaBotState = { ...state, phase: "in_cycle" };
+  let next: DcaBotState = { ...state, phase: "in_cycle", basePrice: state.ledger.avgCost };
   const safeties = placeSafeties(c, next, next.ledger.avgCost, ctx);
   next = safeties.state;
   const tp = placeTakeProfit(c, next, ctx);
@@ -541,6 +591,59 @@ function cycleDone(
   }
   // Chu kỳ mới bắt đầu ở tick kế tiếp (phase idle).
   return { actions: [...cancels, log], state };
+}
+
+/**
+ * Resume sau khi bot tự pause (DEC-240): giữ sổ cái và vị thế thật. Không có vị thế thì chờ Cycle mới như bình
+ * thường. Có vị thế thì chạy tiếp Cycle đang dở: đặt lại take profit theo vị thế, và các safety chưa khớp (nếu không còn
+ * safety nào đang mở) ở các mức giá chưa bị vượt qua. Max loss vẫn chạm thì pause lại ngay.
+ */
+function resumeDca(c: DcaBotConfig, s0: DcaBotState, ctx: StepContext): StepResult<DcaBotState> {
+  // Lệnh đã kết thúc trên sàn trong lúc dừng (orderDone) không còn mở.
+  const live = (id: string) => s0.orders?.[id]?.done !== true;
+  const s: DcaBotState = {
+    ...s0,
+    resumeOnTick: false,
+    safeties: Object.fromEntries(Object.entries(s0.safeties).filter(([id]) => live(id))),
+    tpClOrdID: s0.tpClOrdID !== null && live(s0.tpClOrdID) ? s0.tpClOrdID : null,
+  };
+  const base = s.baseClOrdID === null ? undefined : s.orders?.[s.baseClOrdID];
+  // Base order còn đang chờ kết quả: baseDone xử lý tiếp khi có orderDone.
+  if (base !== undefined && base.done !== true)
+    return { actions: [], state: { ...s, phase: "waiting_base" } };
+  if (dec(s.ledger.position).isZero())
+    return {
+      actions: cancelCycle(s),
+      state: { ...s, phase: "idle", baseClOrdID: null, safeties: {}, tpClOrdID: null },
+    };
+  const resumes = (s.resumes ?? 0) + 1;
+  let state: DcaBotState = { ...s, phase: "in_cycle", baseClOrdID: null, resumes };
+  // Max loss (hoặc stop loss) vẫn chạm: dừng lại ngay, không đặt lệnh (resume không vượt được max loss).
+  const g = state.lastPrice === null ? null : guards(c, state, state.lastPrice);
+  if (g !== null) return g;
+  const actions: StrategyAction[] = [];
+  if (state.safetiesFilled < c.maxSafetyOrders) {
+    const r = placeSafeties(c, state, state.basePrice ?? state.ledger.avgCost, ctx, {
+      from: state.safetiesFilled + 1,
+      suffix: `:r${String(resumes)}`,
+      price: state.lastPrice,
+    });
+    actions.push(...r.actions);
+    state = r.state;
+  }
+  const tp = placeTakeProfit(c, state, ctx);
+  return {
+    actions: [
+      ...actions,
+      ...tp.actions,
+      {
+        type: "log",
+        decision: `Cycle ${String(s.cycle)} resumed`,
+        why: `Orders placed again from the current position: take profit and ${String(Object.keys(state.safeties).length)} of ${String(c.maxSafetyOrders - s.safetiesFilled)} remaining safety orders.`,
+      },
+    ],
+    state: tp.state,
+  };
 }
 
 /** Lệnh đã kết thúc trên SoDEX (`orderDone`), kể cả khi mới khớp một phần. */

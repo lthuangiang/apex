@@ -93,6 +93,8 @@ export interface AdaptiveDcaState {
    * trùng fill phát lại, nhận fill trễ. Thiếu ở state cũ: lệnh cũ coi như khớp đủ ở lần khớp đầu.
    */
   orders?: Record<string, AdcaOrder>;
+  /** Số lần resume: hậu tố tag của lệnh DCA đặt lại, để không dùng lại clOrdID cũ. */
+  resumes?: number;
 }
 
 export interface AdcaOrder {
@@ -442,7 +444,9 @@ function placeSafety(
   const price = roundPrice(raw, rules);
   const qty = roundQty(notional.div(price), rules);
   if (!meetsMinimum(price, qty, rules)) return none(s);
-  const o = intent(c, ctx, `adca:${String(s.cycle)}:so${String(k)}`, entrySide(c), qty, price);
+  const r = s.resumes ?? 0;
+  const tag = `adca:${String(s.cycle)}:so${String(k)}${r > 0 ? `:r${String(r)}` : ""}`;
+  const o = intent(c, ctx, tag, entrySide(c), qty, price);
   return {
     actions: [{ type: "place", order: o }],
     state: { ...track(s, o, "entry"), safetyId: o.clOrdID },
@@ -793,6 +797,48 @@ function onOrderDone(
   return none(s);
 }
 
+/**
+ * Resume sau khi bot tự pause (DEC-240): giữ sổ cái và vị thế thật. Không có vị thế thì về chờ chu kỳ mới; có vị
+ * thế thì chạy tiếp chu kỳ: đặt lại take profit theo vị thế và lệnh DCA kế tiếp (nếu còn được phép).
+ */
+function resumeAdca(
+  c: AdaptiveDcaConfig,
+  s: AdaptiveDcaState,
+  ctx: StepContext,
+): StepResult<AdaptiveDcaState> {
+  const flat = dec(s.ledger.position).isZero();
+  const cx = cancelAll(s, [
+    { id: s.safetyId, side: "entry" },
+    ...(flat ? [{ id: s.tpId, side: "exit" as const }] : []),
+  ]);
+  const base: AdaptiveDcaState = {
+    ...s,
+    baseId: null,
+    exitId: null,
+    safetyId: null,
+    baseRejects: 0,
+    cancelled: cx.cancelled,
+    resumes: (s.resumes ?? 0) + 1,
+  };
+  if (flat)
+    return { actions: cx.actions, state: { ...base, phase: "idle", tpId: null, reduced: false } };
+  const tp = placeTp(c, { ...base, phase: "in_cycle" }, ctx);
+  const so = placeSafety(c, tp.state, ctx);
+  return {
+    actions: [
+      ...cx.actions,
+      ...tp.actions,
+      ...so.actions,
+      {
+        type: "log",
+        decision: `Cycle ${String(s.cycle)} resumed`,
+        why: "Take profit and the next order placed from the current position.",
+      },
+    ],
+    state: so.state,
+  };
+}
+
 function retryExit(
   c: AdaptiveDcaConfig,
   s: AdaptiveDcaState,
@@ -827,6 +873,10 @@ export function stepAdaptiveDca(
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<AdaptiveDcaState> {
+  if (e.type === "resumed")
+    return s.phase === "halted"
+      ? resumeAdca(c, { ...s, lastPrice: e.prices[c.market] ?? s.lastPrice }, ctx)
+      : none(s);
   if (s.phase === "halted" && e.type !== "fill" && e.type !== "orderDone") return none(s);
   switch (e.type) {
     case "tick": {

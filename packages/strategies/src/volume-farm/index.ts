@@ -901,6 +901,7 @@ export function stepVolumeFarm(
     case "positionSync":
     case "leaderFill":
     case "leaderPosition":
+    case "resumed":
       return none(s);
   }
 }

@@ -432,6 +432,25 @@ export function stepFundingArb(
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<FundingArbState> {
+  if (e.type === "resumed") {
+    if (s.phase !== "halted") return { actions: [], state: s };
+    // Resume sau khi bot tự pause (DEC-240): giữ sổ cái hai chân. Còn vị thế thì theo dõi tiếp như đang giữ
+    // (thoát theo funding / max loss như thường); không còn thì chờ funding đủ để vào lại.
+    const open = !dec(s.spot.position).isZero() || !dec(s.perp.position).isZero();
+    return {
+      actions: [],
+      state: {
+        ...s,
+        prices: { ...s.prices, ...e.prices },
+        phase: open ? "in_position" : "waiting",
+        pending: {},
+        pendingSince: null,
+        after: null,
+        rejectedLeg: null,
+        lowPeriods: 0,
+      },
+    };
+  }
   if (s.phase === "halted") return { actions: [], state: s };
   switch (e.type) {
     case "tick": {
