@@ -230,8 +230,8 @@ Hành vi và quy tắc bắt buộc ở `docs/VOLUME_MAKER.md` mục 17. Field:
 | Adv | Quote distance | 1.0 bp | ≥ 1 tick | Must be at least one tick. |
 | Adv | Refresh every | 3 s | 2–60 s | Allowed 2–60 s. |
 | Adv | Position loss limit | empty | Optional, < budget; closes reduce-only | Must be below the budget. |
-| 3 | Close only at your entry price or better (`closeAtEntry`) | Off | Hint "Fees are not included in your entry price." Close order stays post-only reduce-only at max(best, entry) for long / min(best, entry) for short; after 30 min falls back to the normal close (DEC-227) | — |
-| 3 | Pause on fast moves (`pauseOnFastMoves`) | Off | Price moves ≥ 3 ticks in 6 s → opening quotes pulled, reduce-only close kept, quote again after 15 s of calm (DEC-227) | — |
+| 3 | Close only at your entry price or better (`closeAtEntry`) · BETA | Off | Hint "Fees are not included in your entry price." Close order stays post-only reduce-only at max(best, entry) for long / min(best, entry) for short; after 30 min falls back to the normal close (DEC-227) | — |
+| 3 | Pause on fast moves (`pauseOnFastMoves`) | Off | Price moves ≥ max(3 ticks, 2 bp) in 6 s → opening quotes pulled, reduce-only close kept, quote again after 15 s of calm (DEC-227) | — |
 | Adv | Run until | Target or budget reached | Target or budget / season end / date | — |
 | Adv | When the bot stops | Close inventory | Close (reduce-only) / Keep position | — |
 

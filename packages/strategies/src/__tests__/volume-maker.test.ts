@@ -787,10 +787,10 @@ describe("volume maker — pause on fast moves (DEC-227)", () => {
     ({ type: "tick", at, market: "BTC-USD", price }) as const;
   const logs = (a: StrategyAction[]) => a.flatMap((x) => (x.type === "log" ? [x.decision] : []));
 
-  it("pulls opening quotes when the price moves 3 ticks in 6 s and quotes again after 15 s", () => {
+  it("pulls opening quotes when the price moves 2 bp in 6 s (more than 3 ticks here) and quotes again after 15 s", () => {
     const c = cfg({ pauseOnFastMoves: true });
     let { s } = run(c, [...firstQuote()]);
-    const hit = volumeMaker.step(c, s, tick(1000, "100000.3"), ctx);
+    const hit = volumeMaker.step(c, s, tick(1000, "100021"), ctx);
     expect(hit.actions.filter((a) => a.type === "cancel")).toHaveLength(2);
     expect(places(hit.actions)).toEqual([]);
     expect(logs(hit.actions)).toEqual(["Quotes paused on a fast move"]);
@@ -811,7 +811,7 @@ describe("volume maker — pause on fast moves (DEC-227)", () => {
       { type: "fill", at: 1, clOrdID: id("vm:1:bid"), price: "99990", quantity: "0.005", fee: "0" },
       ctx,
     ).state;
-    const hit = volumeMaker.step(c, s, tick(2000, "99999.7"), ctx);
+    const hit = volumeMaker.step(c, s, tick(2000, "99980"), ctx);
     const p = places(hit.actions);
     expect(p).toHaveLength(1);
     expect(p[0]).toMatchObject({ side: "sell", reduceOnly: true });
@@ -819,10 +819,11 @@ describe("volume maker — pause on fast moves (DEC-227)", () => {
 
   it("does nothing on small moves or when switched off", () => {
     const on = cfg({ pauseOnFastMoves: true });
-    const small = run(on, [...firstQuote(), tick(1000, "100000.2")]);
+    // 3 tick (0.3) nhỏ hơn 2 bp (20) ở giá 100.000: không kích hoạt.
+    const small = run(on, [...firstQuote(), tick(1000, "100019.9")]);
     expect(logs(small.all)).toEqual([]);
     expect(small.s.fastPauseUntil ?? null).toBeNull();
-    const off = run(cfg(), [...firstQuote(), tick(1000, "100001")]);
+    const off = run(cfg(), [...firstQuote(), tick(1000, "100100")]);
     expect(off.all.filter((a) => a.type === "cancel")).toHaveLength(0);
   });
 });
@@ -956,5 +957,39 @@ describe("volume maker — orders that end, and the close at stop (P0.1)", () =>
       ctx,
     ).state;
     expect(st.ledger.position).toBe("0");
+  });
+});
+
+describe("volume maker — fast-move threshold on a coarse-tick market", () => {
+  it("uses 3 price steps when they are wider than 2 bp", () => {
+    // Giá 100, bước 0.1: 3 bước = 0.3 = 30 bp > 2 bp.
+    const coarse: StepContext = {
+      ...ctx,
+      rules: {
+        "BTC-USD": { tickSize: "0.1", stepSize: "0.01", minQuantity: "0.01", minNotional: "5" },
+      },
+    };
+    const c = cfg({ pauseOnFastMoves: true });
+    let s = volumeMaker.initialState(c);
+    s = volumeMaker.step(
+      c,
+      s,
+      { type: "tick", at: 0, market: "BTC-USD", price: "100" },
+      coarse,
+    ).state;
+    const small = volumeMaker.step(
+      c,
+      s,
+      { type: "tick", at: 1000, market: "BTC-USD", price: "100.2" },
+      coarse,
+    );
+    expect(small.state.fastPauseUntil ?? null).toBeNull();
+    const hit = volumeMaker.step(
+      c,
+      s,
+      { type: "tick", at: 1000, market: "BTC-USD", price: "100.3" },
+      coarse,
+    );
+    expect(hit.state.fastPauseUntil).toBe(1000 + 15_000);
   });
 });

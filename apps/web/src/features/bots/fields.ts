@@ -564,7 +564,8 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
     // Smart quoting (DEC-144), mặc định tắt: tắt là đúng logic cũ.
     { key: "smartQuoting", group: 3, beta: true, type: { kind: "bool" } },
     // Close only at entry or better / Pause on fast moves (DEC-227), mặc định tắt.
-    { key: "closeAtEntry", group: 3, type: { kind: "bool" } },
+    // BETA (PM chốt sau bản rà soát): chưa chứng minh giảm lỗ, chưa đưa vào "Ways to lower it" cho tới replay v2.
+    { key: "closeAtEntry", group: 3, beta: true, type: { kind: "bool" } },
     { key: "pauseOnFastMoves", group: 3, type: { kind: "bool" } },
     { key: "refreshSeconds", group: 3, advanced: true, type: { kind: "int", unit: "s" } },
     {

@@ -121,32 +121,29 @@ export function MmMarkoutCard({
               </span>
             </Link>
           </li>
-          {(
-            [
-              ["close-at-entry", "closeAtEntry", "closeAtEntry"],
-              ["pause-fast", "pauseFast", "pauseOnFastMoves"],
-            ] as const
-          ).map(([suggest, key, field]) => (
-            <li key={suggest}>
-              <Link
-                href={`/bots/${botId}/edit?suggest=${suggest}`}
-                className="flex min-h-tap flex-col gap-0.5 rounded-[12px] border border-border px-3.5 py-3 text-ink no-underline hover:bg-surface-2"
-              >
-                <strong className="text-sm">{t(`ways.${key}`)}</strong>
-                <span className="text-[13px] text-ink-2">{t(`ways.${key}Body`)}</span>
-                {config === null ? null : (
-                  // Trạng thái thật theo config của bot (không dùng nhãn "New setting" của artboard).
-                  <span
-                    className={`self-start rounded-full px-2 py-[2px] text-[11px] font-extrabold ${
-                      config[field] === true ? "bg-pos-bg text-pos" : "bg-surface-2 text-ink-2"
-                    }`}
-                  >
-                    {config[field] === true ? t("ways.on") : t("ways.off")}
-                  </span>
-                )}
-              </Link>
-            </li>
-          ))}
+          {([["pause-fast", "pauseFast", "pauseOnFastMoves"]] as const).map(
+            ([suggest, key, field]) => (
+              <li key={suggest}>
+                <Link
+                  href={`/bots/${botId}/edit?suggest=${suggest}`}
+                  className="flex min-h-tap flex-col gap-0.5 rounded-[12px] border border-border px-3.5 py-3 text-ink no-underline hover:bg-surface-2"
+                >
+                  <strong className="text-sm">{t(`ways.${key}`)}</strong>
+                  <span className="text-[13px] text-ink-2">{t(`ways.${key}Body`)}</span>
+                  {config === null ? null : (
+                    // Trạng thái thật theo config của bot (không dùng nhãn "New setting" của artboard).
+                    <span
+                      className={`self-start rounded-full px-2 py-[2px] text-[11px] font-extrabold ${
+                        config[field] === true ? "bg-pos-bg text-pos" : "bg-surface-2 text-ink-2"
+                      }`}
+                    >
+                      {config[field] === true ? t("ways.on") : t("ways.off")}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ),
+          )}
           <li>
             <Link
               href="/bots/new/volume_maker"
