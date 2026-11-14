@@ -74,6 +74,10 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - **Pause on fast moves** (`pauseOnFastMoves`, mặc định tắt; **ẩn khỏi form** từ DEC-241, config cũ vẫn chạy): giá (cao nhất − thấp nhất) trong 6 s gần nhất ≥ max(3 bước giá, 2 bp của giá) → huỷ
   ngay lệnh mở, chỉ giữ lệnh đóng reduce-only; mỗi lần kích hoạt gia hạn thêm 15 s; hết hạn thì báo giá lại. Decisions ghi
   "Quotes paused on a fast move" / "Quoting again after a fast move". Độc lập với Smart quoting.
+- **Smart quoting từ DEC-TBD-mm-oracle:** bật mặc định khi tạo bot mới (config cũ thiếu trường vẫn tắt). Bỏ "khởi
+  động", "đà ngắn" và "xu hướng" của DEC-152 (backtest: khi đã định giá theo Binance, chúng chỉ làm mất fill, xu hướng còn
+  làm tăng chi phí); còn lại: định giá theo Binance, rút lệnh giá đã chạy qua, giữ lệnh nằm yên, và sổ lệnh lệch (lùi
+  phía mỏng 1 bp, giữ 15 s). Câu "How it works" trên form theo đúng các bước này.
 - **Định giá theo Binance** (một phần của **Smart quoting**; DEC-TBD-mm-oracle, thay "Binance guard" của DEC-241):
   `marketdata` nghe `bookTicker` của Binance USDT-M futures cho mọi market có bot MM mà Binance có (`BTC-USD` →
   `BTCUSDT`; danh sách đọc lại mỗi 30 s), quy đổi giá giữa Binance về SoDEX bằng chênh lệch nền (trung vị 60 s, cần ≥ 30

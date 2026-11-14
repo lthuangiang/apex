@@ -1028,17 +1028,17 @@
       },
       "smartQuoting": {
         "label": "Smart quoting",
-        "hint": "Steps a quote back, or pulls it during a trend, when a fill is likely to be followed by a move against you. Off keeps the classic behaviour exactly.",
+        "hint": "Prices quotes from the Binance futures price so they aren't picked off right before SoDEX moves, and keeps unchanged quotes in place. Off keeps the classic behaviour exactly.",
         "how": {
-          "intro": "Normally the bot keeps one bid and one ask at the set position in the order book. With Smart quoting on, it watches the book and the last 30 seconds of price, and steps a quote back or pulls it when a fill is likely to be followed by a move against you:",
+          "intro": "Normally the bot keeps one bid and one ask at the set position in the order book and replaces them every refresh. With Smart quoting on:",
           "steps": [
-            "Warm-up: for the first 6 seconds both quotes sit 2 bp further away until there is enough price data.",
-            "Lopsided book: one side of the top 10 levels holds at least 2× the other. The thin side steps back 1 bp (e.g. heavy bids → the ask steps back).",
-            "Fast move: price moved 2 bp or more in 6 seconds. The quote in the direction of the move steps back 2 bp.",
-            "Trend: price moved 5 bp or more in 30 seconds. The quote in the direction of the trend is pulled until it calms down (price rising → no ask).",
-            "Every adjustment is kept for 15 seconds after the last trigger, so quotes don't snap back in the middle of a move. Orders that close your inventory are never moved."
+            "Binance price: the bot follows the Binance futures price of the same coin, converted to SoDEX with the usual gap between the two. A quote that adds to your position is never placed more than 0.5 bp past that price (no ask below it, no bid above it).",
+            "Pulled on a move: if the Binance price moves through a resting quote that adds to your position, the bot pulls it at once and quotes again.",
+            "Quotes stay in place: a quote whose price and size haven't changed is kept instead of being cancelled and placed again, so it keeps its place in the queue.",
+            "Lopsided book: one side of the top 10 levels holds at least 2× the other. The thin side steps back 1 bp, kept for 15 seconds after the last trigger.",
+            "Orders that close your inventory always stay at the best price."
           ],
-          "note": "Distances are in bp, so they mean the same on every market. It only ever quotes further away or not at all, never closer, so expect fewer fills and less volume in exchange for fewer bad fills. Works only when quotes follow the order book (Quote level). Each change of action is logged once in Decisions, and Market Making Analytics compares fills with Smart quoting on and off. Beta: thresholds may change."
+          "note": "Binance leads SoDEX by about a quarter of a second, and a large SoDEX maker picks off small quotes right after Binance moves; Smart quoting avoids standing in its way. Expect fewer fills in exchange for a lower cost per $1M. Markets not listed on Binance futures use only the lopsided-book rule. Works only when quotes follow the order book (Quote level). Pulled quotes are logged in Decisions. Beta: thresholds may change."
         }
       },
       "closeAtEntry": {

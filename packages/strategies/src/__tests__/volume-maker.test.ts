@@ -588,17 +588,6 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
       .at(-1)?.price;
   const logsOf = (a: StrategyAction[]) => a.flatMap((x) => (x.type === "log" ? [x] : []));
   const on = cfg({ quoteLevel: 0, smartQuoting: true });
-  /** Chạy tiếp từ state `s`, trả về action của riêng đợt này. */
-  const more = (s: VolumeMakerState, events: StrategyEvent[]) => {
-    let st = s;
-    const out: StrategyAction[] = [];
-    for (const e of events) {
-      const x = volumeMaker.step(on, st, e, ctx);
-      st = x.state;
-      out.push(...x.actions);
-    }
-    return { s: st, all: out };
-  };
 
   it("changes nothing when switched off, even with a lopsided book", () => {
     const r = run(cfg({ quoteLevel: 0 }), [...firstQuote(), snap(3000, "300000", "100000")]);
@@ -607,13 +596,18 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(logsOf(r.all).some((l) => l.decision.startsWith("Smart"))).toBe(false);
   });
 
-  it("backs both sides off 2 bp while it warms up price data", () => {
-    const r = run(on, [...firstQuote(), snap(3000)]);
-    expect(last(r.all, "bid")).toBe("99979.9");
-    expect(last(r.all, "ask")).toBe("100020");
-    expect(logsOf(r.all).find((l) => l.decision === "Smart quoting adjusted")?.why).toContain(
-      "warming up",
-    );
+  it("no longer steps back or pulls quotes on fast moves, trends or warm-up (DEC-TBD-mm-oracle)", () => {
+    // Giá +3 bp trong 1.5 s, +7 bp trong 30 s, ngay sau khi bắt đầu: báo giá vẫn ở giá tốt nhất, không ghi Decisions.
+    const r = run(on, [
+      ...firstQuote(),
+      tickAt(1000, "100000"),
+      tickAt(2500, "100030"),
+      tickAt(6000, "100070"),
+      snap(6000),
+    ]);
+    expect(last(r.all, "bid")).toBe("99999.9");
+    expect(last(r.all, "ask")).toBe("100000");
+    expect(logsOf(r.all).some((l) => l.decision.startsWith("Smart"))).toBe(false);
   });
 
   it("backs the thin side off 1 bp when the book is lopsided", () => {
@@ -621,48 +615,6 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(last(r.all, "bid")).toBe("99999.9");
     expect(last(r.all, "ask")).toBe("100010");
     expect(logsOf(r.all).at(-1)?.why).toContain("bid depth 3× ask depth");
-  });
-
-  it("backs off in bp on a fast move, holds it 15 s, logs once, then returns to normal", () => {
-    let r = run(on, [...firstQuote(), tickAt(6500, "100000"), tickAt(8000, "100030"), snap(8000)]);
-    // +3 bp trong 1.5 s: ask lùi 2 bp ở giá 100030 = 201 tick.
-    expect(last(r.all, "ask")).toBe("100020.1");
-    expect(last(r.all, "bid")).toBe("99999.9");
-    const adjusted = logsOf(r.all).filter((l) => l.decision === "Smart quoting adjusted");
-    expect(adjusted).toHaveLength(1);
-    expect(adjusted[0]?.why).toContain("Ask back 201 ticks (price up 3 bp in 6 s)");
-    // Giá nhích thêm: cùng hành động (ask lùi 201 tick) → không ghi thêm dòng.
-    r = more(r.s, [tickAt(8500, "100035"), snap(11000)]);
-    expect(logsOf(r.all)).toHaveLength(0);
-    // 10 s sau, thị trường yên nhưng còn trong 15 s giữ: vẫn lùi.
-    r = more(r.s, [snap(18000)]);
-    // Smart quoting giữ lệnh nằm yên: ask vẫn ở 100020.1 (không huỷ, không đặt lại).
-    expect(
-      Object.values(r.s.orders).find((o) => o.status === "live" && o.side === "sell")?.price,
-    ).toBe("100020.1");
-    expect(logsOf(r.all)).toHaveLength(0);
-    // Lần kích hoạt cuối ở 11 s (còn +3.5 bp trong 6 s) → giữ tới 26 s; 27 s: về bình thường, một dòng.
-    r = more(r.s, [snap(27000)]);
-    expect(last(r.all, "ask")).toBe("100000");
-    expect(logsOf(r.all).map((l) => l.decision)).toEqual(["Smart quoting back to normal"]);
-  });
-
-  it("pulls the side a 30 s trend runs into", () => {
-    const r = run(on, [
-      ...firstQuote(),
-      tickAt(7000, "100030"),
-      tickAt(20000, "100060"),
-      snap(20000),
-    ]);
-    const lastQuote =
-      places(r.all)
-        .filter((o) => o.tag.startsWith("vm:"))
-        .at(-1)?.tag ?? "";
-    const cycle = lastQuote.split(":")[1];
-    const thisCycle = places(r.all).filter((o) => o.tag.split(":")[1] === cycle);
-    expect(thisCycle.some((o) => o.tag.endsWith(":ask"))).toBe(false);
-    expect(thisCycle.some((o) => o.tag.endsWith(":bid"))).toBe(true);
-    expect(logsOf(r.all).at(-1)?.why).toContain("Ask pulled (trend up 6 bp in 30 s)");
   });
 });
 

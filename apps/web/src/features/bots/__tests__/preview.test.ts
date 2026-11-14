@@ -316,3 +316,9 @@ describe("TWAP duration hint (UI_REVIEW G4)", () => {
     });
   });
 });
+
+describe("Market Making defaults", () => {
+  it("turns Smart quoting on for a new bot (DEC-TBD-mm-oracle)", () => {
+    expect(emptyValues("volume_maker").smartQuoting).toBe(true);
+  });
+});
