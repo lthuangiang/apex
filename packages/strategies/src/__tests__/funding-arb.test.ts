@@ -1,7 +1,7 @@
 import { ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
-import { ARB_PENDING_TIMEOUT_MS, fundingArb, type FundingArbState } from "../funding-arb";
+import { ARB_PENDING_TIMEOUT_MS, fundingArb, totalPnl, type FundingArbState } from "../funding-arb";
 import { fundingArbSchema } from "../funding-arb/schema";
 import { runSim } from "../sim/exchange";
 
@@ -218,5 +218,93 @@ describe("funding arbitrage — legs that fill in parts, end part-filled or fill
     // Chân perp không khớp gì sau hạn chờ: đóng chân spot.
     expect(late.state.phase).toBe("closing");
     expect(perp.clOrdID).toBeTruthy();
+  });
+});
+
+describe("funding arbitrage — price gap and missing prices", () => {
+  type Ev = Parameters<typeof fundingArb.step>[2];
+  const step = (st: FundingArbState, e: Ev, c = base) => fundingArb.step(c, st, e, ctx);
+  const rate: Ev = {
+    type: "fundingRate",
+    at: 5,
+    market: "BTC-USD",
+    current: "0.006",
+    avg7d: "0.006",
+  };
+  const withPrices = (spot: string, perp: string, c = base) => {
+    let st = fundingArb.initialState(c);
+    st = step(st, { type: "tick", at: 0, market: "vBTC_vUSDC", price: spot }, c).state;
+    return step(st, { type: "tick", at: 1, market: "BTC-USD", price: perp }, c).state;
+  };
+
+  it("does not enter while the spot / perp price gap is above Max price gap between legs", () => {
+    // 100 vs 101 = 1% > 0.5%.
+    const r = step(withPrices("100", "101"), rate);
+    expect(r.actions.some((a) => a.type === "place")).toBe(false);
+    expect(r.actions).toContainEqual({
+      type: "log",
+      decision: "Not entering",
+      why: "Price gap between legs is 1%, above 0.5%.",
+    });
+    expect(r.state.phase).toBe("waiting");
+    // Trong ngưỡng: vào lệnh.
+    expect(step(withPrices("100", "100.4"), rate).state.phase).toBe("opening");
+    // Chưa có giá spot: chưa vào.
+    let noSpot = fundingArb.initialState(base);
+    noSpot = step(noSpot, { type: "tick", at: 1, market: "BTC-USD", price: "100" }).state;
+    expect(step(noSpot, rate).actions).toEqual([]);
+  });
+
+  it("leaves the PnL not available when a leg with a position has no price, so max loss cannot fire on a 0 price", () => {
+    const st: FundingArbState = {
+      ...fundingArb.initialState(base),
+      phase: "in_position",
+      prices: { "BTC-USD": "100" },
+      spot: {
+        position: "10",
+        avgCost: "100",
+        realized: "0",
+        fees: "0",
+        funding: "0",
+        invested: "1000",
+      },
+      perp: {
+        position: "-10",
+        avgCost: "100",
+        realized: "0",
+        fees: "0",
+        funding: "0",
+        invested: "1000",
+      },
+    };
+    expect(totalPnl(base, st)).toBeNull();
+    const r = step(st, { type: "tick", at: 2, market: "BTC-USD", price: "100" });
+    expect(r.actions).toEqual([]);
+    expect(totalPnl(base, { ...st, prices: { ...st.prices, vBTC_vUSDC: "100" } })?.toString()).toBe(
+      "0",
+    );
+  });
+
+  it("balances the legs on a fixed size gap, whatever Max price gap is set to", () => {
+    const wide = { ...base, maxGapPct: "5" };
+    let st = withPrices("100", "100", wide);
+    const r = step(st, rate, wide);
+    const [spot, perp] = r.actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
+    st = step(
+      r.state,
+      { type: "fill", at: 6, clOrdID: spot?.clOrdID ?? "", price: "100", quantity: "10", fee: "0" },
+      wide,
+    ).state;
+    st = step(
+      st,
+      { type: "fill", at: 7, clOrdID: perp?.clOrdID ?? "", price: "100", quantity: "9", fee: "0" },
+      wide,
+    ).state;
+    const done = step(st, { type: "orderDone", at: 8, clOrdID: perp?.clOrdID ?? "" }, wide);
+    // Lệch 10% khối lượng > 0.5% cố định: cân lại dù maxGapPct = 5%.
+    expect(done.actions.flatMap((a) => (a.type === "place" ? [a.order] : []))[0]).toMatchObject({
+      side: "sell",
+      quantity: "1",
+    });
   });
 });

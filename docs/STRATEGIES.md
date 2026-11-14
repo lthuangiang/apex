@@ -176,7 +176,7 @@ Preview: số tài sản, số lệnh lúc start, tần suất kiểm tra, ngư�
 1. Chờ tới khi funding trung bình 7 ngày ≥ ngưỡng vào lệnh.
 2. Mua spot và short perp **cùng khối lượng tài sản**, mỗi chân dùng một nửa vốn. Đặt hai chân gần như đồng thời; nếu một chân lỗi thì đóng chân còn lại và `pause(ORDER_REJECTED)`.
 3. Mỗi kỳ funding: ghi funding nhận được.
-4. Chênh lệch khối lượng hoặc giá giữa hai chân vượt ngưỡng → cân lại.
+4. Chênh **giá** spot / perp vượt "Max price gap between legs" thì không vào lệnh (chờ lần funding sau). Chênh **khối lượng** giữa hai chân vượt 0,5% (cố định, không có trên form) thì cân lại bằng chân perp. Chân đang có vị thế mà chưa có giá thì lãi / lỗ là "Not available", max loss không kích hoạt trên giá 0 (DEC-239).
 5. Margin ratio dưới ngưỡng → chuyển margin từ chân spot **[confirm SoDEX có cho chuyển nội bộ giữa engine không]**.
 6. Funding ≤ ngưỡng thoát trong 3 kỳ liên tiếp → đóng cả hai chân, quay về trạng thái chờ.
 7. Lỗ chạm max loss → đóng cả hai chân và `stop`.
@@ -188,7 +188,7 @@ Preview: số tài sản, số lệnh lúc start, tần suất kiểm tra, ngư�
 | 3 | Investment | — | Split 50/50 across engines; both balances checked | Needs balance on both engines. |
 | 3 | Enter when funding ≥ | 0.0018% mỗi kỳ (= phí khứ hồi maker 0.124% / 72 kỳ 1 giờ, DEC-160) | > 0; % mỗi kỳ funding của market (mọi perp SoDEX hiện trả mỗi giờ) | Must be above 0. |
 | 3 | Exit when funding ≤ | 0% | < entry; for 3 periods | Must be below the entry level. |
-| 3 | Max price gap between legs | 0.5% | 0.1–5% | Allowed 0.1–5%. |
+| 3 | Max price gap between legs | 0.5% | 0.1–5%; chênh giá spot / perp tối đa để vào lệnh | Allowed 0.1–5%. |
 | 4 | Keep perp margin ratio above | 30% | 10–90% | Allowed 10–90%. |
 | 4 | Max loss for this bot | 2% of investment | < investment | Must be below the investment. |
 
