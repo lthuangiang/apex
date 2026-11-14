@@ -23,7 +23,7 @@ import { builderFeesOf } from "../account/builder-fees";
 
 import { ownBot, type BotDeps } from "./service";
 
-// Market Making: chi phí / $1M theo market (D1) và Price PnL đến từ đâu (D2), DEC-TBD-mm-cost. Số quá khứ 24 giờ, không
+// Market Making: chi phí / $1M theo market (D1) và Price PnL đến từ đâu (D2), DEC-227. Số quá khứ 24 giờ, không
 // dự báo; thiếu dữ liệu → null ("Not available"), không bao giờ 0.
 // - D1 cộng `mm_market_hourly` của 24 giờ gần nhất (marketdata ghi từ WS SoDEX); market có bot MM DeskLabs chạy trong 24
 //   giờ thì Price PnL lấy từ fill thật của các bot đó (markout 30 s với `mid_1s`). Phần dữ liệu thị trường cache 5 phút.

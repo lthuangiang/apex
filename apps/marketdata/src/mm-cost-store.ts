@@ -4,7 +4,7 @@ import { and, desc, gte, inArray, lt, sql } from "drizzle-orm";
 
 import type { HourBucket, MmCostCollector } from "./mm-cost";
 
-// Đọc / ghi DB cho dữ liệu chi phí làm market (DEC-TBD-mm-cost). Giới hạn số market nghe WS (PM chốt điều kiện 2: tài
+// Đọc / ghi DB cho dữ liệu chi phí làm market (DEC-227). Giới hạn số market nghe WS (PM chốt điều kiện 2: tài
 // liệu SoDEX không nói rõ "2.000 tin / phút" có tính tin nhận về hay không): tối đa `MM_TOP_MARKETS` market Perps có
 // volume 24h cao nhất (tính từ candles_1m) cộng mọi market đang có bot MM chạy. Market còn lại: "Not available".
 

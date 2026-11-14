@@ -296,7 +296,7 @@ async function start() {
   const spotSymbols = spot.filter((s) => s.status === "TRADING").map((s) => s.name);
   const perpsSymbols = perps.filter((s) => s.status === "TRADING").map((s) => s.name);
   const funding = new FundingTracker();
-  // Chi phí làm market (DEC-TBD-mm-cost): book ticker + giao dịch công khai trên CHÍNH kết nối perps.
+  // Chi phí làm market (DEC-227): book ticker + giao dịch công khai trên CHÍNH kết nối perps.
   const mmCost = new MmCostCollector();
   mmCost.setTickSizes(
     Object.fromEntries(

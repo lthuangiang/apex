@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 
 import type { FormValues } from "./fields";
 
-// Market Making · chi phí / $1M (DEC-TBD-mm-cost): query, định dạng số và gợi ý "Ways to lower it" (`?suggest=`).
+// Market Making · chi phí / $1M (DEC-227): query, định dạng số và gợi ý "Ways to lower it" (`?suggest=`).
 
 export function useMmMarketCosts() {
   return useQuery({

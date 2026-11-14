@@ -59,7 +59,7 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - Khối lượng đã tạo / mục tiêu; chi phí đã dùng / ngân sách.
 - Chi phí trên mỗi 1 triệu USD khối lượng; tỷ lệ maker (phải là 100%).
 - Tồn kho hiện tại; số lần `SELF_TRADE_BLOCKED`; hạn mức request còn lại.
-- **Where the price PnL comes from** (DEC-TBD-mm-cost, artboard `MM-Markout`): fill thật của chính bot 24 giờ, markout
+- **Where the price PnL comes from** (DEC-227, artboard `MM-Markout`): fill thật của chính bot 24 giờ, markout
   5 / 30 / 60 s so với giá giữa (`mid_1s`), một bước giá (tick ÷ giá giữa), số vòng mua bán đóng lỗ "N of M" (vòng = vị
   thế 0 → 0, đảo chiều tách làm hai, lỗ theo Price PnL chưa trừ phí). Câu "In short" chỉ hiện khi một bước giá nhỏ hơn
   trung vị |Δ giá giữa 30 s| trên các fill; câu "Losers lose more steps than winners win." chỉ hiện khi lỗ trung bình mỗi
@@ -68,7 +68,7 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   `quote-back` = `quoteLevel` + 1 (tối đa 20); "Move to a cheaper market" mở bước chọn market. Hai cài đặt mới
   ("Close only at your entry price or better", "Pause on fast moves") đi ở PR sau.
 
-### 17.7 Chọn market theo chi phí / $1M (DEC-TBD-mm-cost)
+### 17.7 Chọn market theo chi phí / $1M (DEC-227)
 - `/bots/new/volume_maker` không có `?market=` → bước 1 "Choose a market" (artboard `MM-Markets`); Continue mở form như
   cũ với `?market=X&engine=perps`. API `GET /api/v1/markets/mm-cost` (cache 5 phút phần dữ liệu thị trường).
 - **Nguồn:** `marketdata` nghe WS `bookTicker` + `trade` của SoDEX **trên kết nối Perps sẵn có** (không mở kết nối mới),

@@ -10,7 +10,7 @@ import {
   type MidPoint,
 } from "../mm-markout";
 
-// Chi phí làm market (DEC-TBD-mm-cost): markout theo notional, mid trong ±2 s, vòng mua bán đóng lỗ, spread trung vị,
+// Chi phí làm market (DEC-227): markout theo notional, mid trong ±2 s, vòng mua bán đóng lỗ, spread trung vị,
 // dao động 1 phút. Thiếu dữ liệu → null.
 
 const T = 1_700_000_000_000;

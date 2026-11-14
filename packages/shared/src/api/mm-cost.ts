@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { decimalStringSchema, isoDateTimeSchema } from "../schemas";
 
-// Market Making: chi phí / $1M theo market (D1) và Price PnL đến từ đâu (D2), DEC-TBD-mm-cost. Số quá khứ 24 giờ, không
+// Market Making: chi phí / $1M theo market (D1) và Price PnL đến từ đâu (D2), DEC-227. Số quá khứ 24 giờ, không
 // dự báo; thiếu dữ liệu → null ("Not available"), không bao giờ 0.
 
 export const mmMarketCostSchema = z.object({

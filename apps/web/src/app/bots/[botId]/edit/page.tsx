@@ -3,7 +3,7 @@ import { BotEdit, isMmSuggestion } from "@/features/bots";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // `?draft=`: bản nháp thay đổi từ Claude (MCP, DEC-223), chỉ điền sẵn form. `?suggest=`: gợi ý "Ways to lower it" của
-// Market Making (DEC-TBD-mm-cost), cũng chỉ điền sẵn.
+// Market Making (DEC-227), cũng chỉ điền sẵn.
 export default async function Page({
   params,
   searchParams,

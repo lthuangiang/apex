@@ -44,7 +44,7 @@ export default async function Page({
     (engine === "spot" || engine === "perps")
       ? (presetMarket(strategy, market, engine) ?? undefined)
       : undefined;
-  // Market Making chưa chọn market: bước 1 xếp hạng market theo chi phí / $1M (DEC-TBD-mm-cost).
+  // Market Making chưa chọn market: bước 1 xếp hạng market theo chi phí / $1M (DEC-227).
   const pickMarket =
     strategy === "volume_maker" &&
     preset === undefined &&

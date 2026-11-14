@@ -129,12 +129,12 @@ export function registerBotRoutes(app: FastifyInstance, deps: BotDeps): void {
     return idempotent(db, request, reply, auth.userId, deps.now(), run(202, work));
   });
 
-  // Chi phí / $1M theo market cho bước chọn market của bot Market Making (D1, DEC-TBD-mm-cost).
+  // Chi phí / $1M theo market cho bước chọn market của bot Market Making (D1, DEC-227).
   app.get("/api/v1/markets/mm-cost", async (request) =>
     mmMarketCosts(deps, requireAuth(request).userId),
   );
 
-  // Price PnL đến từ đâu: markout fill thật của bot Market Making (D2, DEC-TBD-mm-cost).
+  // Price PnL đến từ đâu: markout fill thật của bot Market Making (D2, DEC-227).
   app.get("/api/v1/bots/:id/mm-markout", async (request) => {
     const { id } = parseOrThrow(idParams, request.params);
     return mmMarkout(deps, requireAuth(request).userId, id);

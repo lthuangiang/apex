@@ -14,7 +14,7 @@ import { useMe } from "@/lib/queries";
 
 import { compactUsd, plain, signed, sortMarkets, useMmMarketCosts, type MmSort } from "../mm-cost";
 
-// Tạo bot Market Making, bước 1 (artboard MM-Markets, DEC-TBD-mm-cost): xếp hạng market Perps theo chi phí / $1M
+// Tạo bot Market Making, bước 1 (artboard MM-Markets, DEC-227): xếp hạng market Perps theo chi phí / $1M
 // khối lượng từ 24 giờ qua. Số quá khứ, không dự báo; market chưa đủ dữ liệu hiện "Not available", xếp cuối.
 // Continue mở form như hiện nay với `?market=&engine=perps`.
 

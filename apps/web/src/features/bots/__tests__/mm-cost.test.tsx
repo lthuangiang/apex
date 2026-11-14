@@ -13,7 +13,7 @@ import { MmMarketsPage } from "../components/mm-markets";
 import { MmMarkoutCard } from "../components/mm-markout";
 import { applyMmSuggestion } from "../mm-cost";
 
-// Market Making · chi phí / $1M (DEC-TBD-mm-cost): bảng xếp hạng market (D1) và Price PnL đến từ đâu (D2).
+// Market Making · chi phí / $1M (DEC-227): bảng xếp hạng market (D1) và Price PnL đến từ đâu (D2).
 
 const state = vi.hoisted(() => ({ pushed: [] as string[], updatedAt: "2026-11-14T09:58:00.000Z" }));
 

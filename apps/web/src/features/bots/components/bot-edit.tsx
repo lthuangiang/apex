@@ -36,7 +36,7 @@ export function BotEdit({
 }: {
   botId: string;
   draftId?: string | undefined;
-  /** "Ways to lower it" của Market Making (DEC-TBD-mm-cost): điền sẵn form, người dùng tự Apply. */
+  /** "Ways to lower it" của Market Making (DEC-227): điền sẵn form, người dùng tự Apply. */
   suggest?: MmSuggestion | undefined;
 }) {
   const t = useTranslations("botEdit");

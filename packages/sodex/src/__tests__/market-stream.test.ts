@@ -129,7 +129,7 @@ describe("MarketStream watchdog", () => {
   });
 });
 
-// DEC-TBD-mm-cost: bookTicker + trade cho một số market, trên CHÍNH kết nối giá hiện có (không mở kết nối mới).
+// DEC-227: bookTicker + trade cho một số market, trên CHÍNH kết nối giá hiện có (không mở kết nối mới).
 describe("MarketStream micro data", () => {
   const subs = (s: FakeSocket) =>
     s.sent

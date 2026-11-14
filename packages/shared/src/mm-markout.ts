@@ -1,6 +1,6 @@
 import { dec, Decimal } from "./money";
 
-// Hàm thuần cho chi phí làm market (DEC-TBD-mm-cost): markout của fill so với giá giữa sau Δt, vòng mua bán đóng lỗ,
+// Hàm thuần cho chi phí làm market (DEC-227): markout của fill so với giá giữa sau Δt, vòng mua bán đóng lỗ,
 // spread thường gặp, dao động 1 phút. Không I/O. Thiếu dữ liệu → null, không bao giờ 0.
 
 export interface MarkoutFill {

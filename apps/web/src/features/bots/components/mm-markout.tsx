@@ -9,7 +9,7 @@ import { useMarketNames } from "@/lib/markets";
 
 import { plain, signed, useMmMarkout } from "../mm-cost";
 
-// Trading Agent của bot Market Making (artboard MM-Markout, DEC-TBD-mm-cost): Price PnL đến từ đâu, đo trên fill thật
+// Trading Agent của bot Market Making (artboard MM-Markout, DEC-227): Price PnL đến từ đâu, đo trên fill thật
 // của chính bot 24 giờ qua, và "Ways to lower it" (mở Edit điền sẵn, người dùng tự lưu). Thiếu số → "Not available".
 
 function Tile({ label, value, note }: { label: string; value: ReactNode; note?: string }) {

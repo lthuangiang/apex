@@ -1,6 +1,6 @@
 import { dec, Decimal } from "@drift/shared";
 
-// Dữ liệu chi phí làm market (D1 / D2, DEC-TBD-mm-cost). Hàm / lớp thuần, không I/O: marketdata đẩy WS `bookTicker` và
+// Dữ liệu chi phí làm market (D1 / D2, DEC-227). Hàm / lớp thuần, không I/O: marketdata đẩy WS `bookTicker` và
 // `trade` vào, mỗi giây gọi `tick`, mỗi phút lấy `flush()` để ghi DB.
 // - Markout của một giao dịch công khai, phía maker (taker BUY → maker bán): bán `(giá − mid sau 30 s) ÷ giá`, mua ngược
 //   dấu; bps, dương = có lợi cho maker. Không có mid trong ±2 s quanh mốc 30 s thì bỏ giao dịch đó (không đoán).

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { MmCostCollector } from "../mm-cost";
 
-// Chi phí làm market (DEC-TBD-mm-cost): markout 30 s phía maker của giao dịch công khai, spread theo tick mỗi giây,
+// Chi phí làm market (DEC-227): markout 30 s phía maker của giao dịch công khai, spread theo tick mỗi giây,
 // gom theo giờ; không có mid quanh mốc 30 s thì bỏ giao dịch (không đoán); giờ không có dữ liệu thì không có dòng.
 
 const H = Date.parse("2026-11-14T10:00:00Z");

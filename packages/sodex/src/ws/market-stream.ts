@@ -74,9 +74,9 @@ function itemsOf<T>(schema: z.ZodType<T>, data: unknown): { ok: T[]; bad: number
 export interface MarketStreamCallbacks {
   onCandle(candle: WsCandle): void;
   onMarkPrices?(marks: WsMarkPrice[]): void;
-  /** Best bid / ask của các symbol trong `watchMicro` (DEC-TBD-mm-cost). */
+  /** Best bid / ask của các symbol trong `watchMicro` (DEC-227). */
   onBookTickers?(tickers: WsBookTicker[]): void;
-  /** Giao dịch công khai của các symbol trong `watchMicro` (DEC-TBD-mm-cost). */
+  /** Giao dịch công khai của các symbol trong `watchMicro` (DEC-227). */
   onTrades?(trades: WsMarketTrade[]): void;
   /** Sau mỗi lần kết nối lại: consumer backfill qua REST. */
   onReconnect(): void;
@@ -109,7 +109,7 @@ export class MarketStream {
   #hasConnected = false;
   #attempt = 0;
   #timer: ReturnType<typeof setTimeout> | null = null;
-  /** Symbol nghe `bookTicker` + `trade` (giới hạn số market, DEC-TBD-mm-cost). Dùng chung kết nối này. */
+  /** Symbol nghe `bookTicker` + `trade` (giới hạn số market, DEC-227). Dùng chung kết nối này. */
   #micro = new Set<string>();
   #id = 1;
 

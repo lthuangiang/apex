@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// Market Making · chi phí / $1M (DEC-TBD-mm-cost): bảng xếp hạng market (D1) và markout fill thật của bot (D2).
+// Market Making · chi phí / $1M (DEC-227): bảng xếp hạng market (D1) và markout fill thật của bot (D2).
 
 let env: TestEnv;
 const ADDRESS = "0x4E1e4796c10C637EDAB56461450BD8D02EFb29Db";
