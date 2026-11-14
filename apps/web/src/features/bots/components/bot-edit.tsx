@@ -15,6 +15,7 @@ import { formatDateTime } from "@/lib/format";
 import { useMe } from "@/lib/queries";
 
 import { FIELDS, fromConfig, isLaunched, toConfig, visible, type FormValues } from "../fields";
+import { applyMmSuggestion, type MmSuggestion } from "../mm-cost";
 
 import { AiPanel, useAiParameters } from "./ai-params";
 import { BetaChip, isBeta } from "./beta-chip";
@@ -28,7 +29,16 @@ import { CreateBot } from "./create-bot";
 
 const versionAck = z.object({ version: z.number(), status: z.string() });
 
-export function BotEdit({ botId, draftId }: { botId: string; draftId?: string | undefined }) {
+export function BotEdit({
+  botId,
+  draftId,
+  suggest,
+}: {
+  botId: string;
+  draftId?: string | undefined;
+  /** "Ways to lower it" của Market Making (DEC-TBD-mm-cost): điền sẵn form, người dùng tự Apply. */
+  suggest?: MmSuggestion | undefined;
+}) {
   const t = useTranslations("botEdit");
   const ts = useTranslations("states");
   const tf = useTranslations("createBot");
@@ -57,7 +67,12 @@ export function BotEdit({ botId, draftId }: { botId: string; draftId?: string | 
     draftId !== undefined && strategy !== undefined && claude.data?.botId === botId
       ? fromClaudeOf(strategy, claude.data)
       : null;
-  const start = draftId === undefined ? base : from === null ? null : from.values;
+  const start =
+    draftId !== undefined
+      ? (from?.values ?? null)
+      : base !== null && suggest !== undefined && strategy === "volume_maker"
+        ? applyMmSuggestion(base, suggest)
+        : base;
   useEffect(() => {
     if (values === null && start !== null) setValues(start);
   }, [values, start]);

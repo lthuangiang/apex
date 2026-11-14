@@ -59,3 +59,29 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - Khối lượng đã tạo / mục tiêu; chi phí đã dùng / ngân sách.
 - Chi phí trên mỗi 1 triệu USD khối lượng; tỷ lệ maker (phải là 100%).
 - Tồn kho hiện tại; số lần `SELF_TRADE_BLOCKED`; hạn mức request còn lại.
+- **Where the price PnL comes from** (DEC-TBD-mm-cost, artboard `MM-Markout`): fill thật của chính bot 24 giờ, markout
+  5 / 30 / 60 s so với giá giữa (`mid_1s`), một bước giá (tick ÷ giá giữa), số vòng mua bán đóng lỗ "N of M" (vòng = vị
+  thế 0 → 0, đảo chiều tách làm hai, lỗ theo Price PnL chưa trừ phí). Câu "In short" chỉ hiện khi một bước giá nhỏ hơn
+  trung vị |Δ giá giữa 30 s| trên các fill; câu "Losers lose more steps than winners win." chỉ hiện khi lỗ trung bình mỗi
+  đơn vị của vòng lỗ lớn hơn lãi trung bình của vòng lãi. API `GET /api/v1/bots/:id/mm-markout`.
+- **Ways to lower it**: mở `/bots/:id/edit?suggest=<option>`, chỉ điền sẵn form (không lưu nháp, không tự áp).
+  `quote-back` = `quoteLevel` + 1 (tối đa 20); "Move to a cheaper market" mở bước chọn market. Hai cài đặt mới
+  ("Close only at your entry price or better", "Pause on fast moves") đi ở PR sau.
+
+### 17.7 Chọn market theo chi phí / $1M (DEC-TBD-mm-cost)
+- `/bots/new/volume_maker` không có `?market=` → bước 1 "Choose a market" (artboard `MM-Markets`); Continue mở form như
+  cũ với `?market=X&engine=perps`. API `GET /api/v1/markets/mm-cost` (cache 5 phút phần dữ liệu thị trường).
+- **Nguồn:** `marketdata` nghe WS `bookTicker` + `trade` của SoDEX **trên kết nối Perps sẵn có** (không mở kết nối mới),
+  chỉ cho tối đa 30 market Perps volume 24h cao nhất (từ `candles_1m`) cộng mọi market đang có bot MM; danh sách tính lại
+  mỗi 5 phút. Market khác hiện "Not available". Lý do: tài liệu SoDEX ghi "2.000 tin / phút" mà không nói tính tin gửi
+  hay cả tin nhận (kiểm tra ngày 2026-11-14).
+- **Markout công khai:** mỗi giao dịch công khai, phía maker (taker BUY → maker bán), so với giá giữa 30 s sau (mid trong
+  ±2 s, không có thì bỏ giao dịch đó); gom theo giờ vào `mm_market_hourly` (giữ 48 giờ). Spread lấy mẫu mỗi giây theo
+  số tick từ book ticker còn mới (≤ 5 s), lưu histogram theo giờ.
+- **Cột:** One price step = tick ÷ giá đóng nến 1m mới nhất × 10.000; Usual spread = trung vị số tick 24 giờ; 1-min swing =
+  độ lệch chuẩn mẫu % thay đổi giữa các nến 1m 24 giờ (bps); Volume 24h = Σ close × volume nến 1m; Price PnL / $1M =
+  markout 30 s trung bình theo notional × 100 (bps → USD / $1M), ưu tiên fill maker thật của mọi bot MM live trong 24
+  giờ nếu có; Total cost / $1M = phí maker SoDEX của market (`makerFee` × 1.000.000, thiếu thì 0,012%) + builder fee MM
+  của người dùng (rate × 10) − Price PnL.
+- **Dữ liệu cũ:** giờ chưa có dữ liệu không có dòng (không bao giờ tính là 0). Dữ liệu cập nhật lần cuối cách hơn 1 giờ →
+  hiện số gần nhất kèm "Updated {time}"; không có giờ nào trong 24 giờ → "Not available".

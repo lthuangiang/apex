@@ -128,3 +128,86 @@ describe("MarketStream watchdog", () => {
     stream.close();
   });
 });
+
+// DEC-TBD-mm-cost: bookTicker + trade cho một số market, trên CHÍNH kết nối giá hiện có (không mở kết nối mới).
+describe("MarketStream micro data", () => {
+  const subs = (s: FakeSocket) =>
+    s.sent
+      .map(
+        (m) => JSON.parse(m) as { op: string; params?: { channel?: string; symbols?: string[] } },
+      )
+      .filter((m) => m.params?.channel === "bookTicker" || m.params?.channel === "trade")
+      .map((m) => [m.op, m.params?.channel, m.params?.symbols]);
+
+  it("subscribes, diffs and resubscribes on the same socket", () => {
+    vi.useFakeTimers();
+    const { stream, sockets } = setup();
+    stream.watchMicro(["BTC-USD", "ETH-USD"]);
+    stream.connect();
+    const s = sockets[0];
+    if (s === undefined) throw new Error("no socket");
+    s.emit("open");
+    expect(subs(s)).toEqual([
+      ["subscribe", "bookTicker", ["BTC-USD", "ETH-USD"]],
+      ["subscribe", "trade", ["BTC-USD", "ETH-USD"]],
+    ]);
+    s.sent.length = 0;
+    stream.watchMicro(["ETH-USD", "SOL-USD"]);
+    expect(subs(s)).toEqual([
+      ["unsubscribe", "bookTicker", ["BTC-USD"]],
+      ["unsubscribe", "trade", ["BTC-USD"]],
+      ["subscribe", "bookTicker", ["SOL-USD"]],
+      ["subscribe", "trade", ["SOL-USD"]],
+    ]);
+    // Một kết nối duy nhất.
+    expect(sockets).toHaveLength(1);
+    stream.close();
+    vi.useRealTimers();
+  });
+
+  it("routes book tickers and public trades, as object or array", () => {
+    const sockets: FakeSocket[] = [];
+    const onBookTickers = vi.fn();
+    const onTrades = vi.fn();
+    const onError = vi.fn();
+    const stream = new MarketStream({
+      baseUrl: "wss://x/ws/",
+      engine: "perps",
+      symbols: [],
+      callbacks: { onCandle: vi.fn(), onReconnect: vi.fn(), onError, onBookTickers, onTrades },
+      createSocket: (url) => {
+        const socket = new FakeSocket(url);
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    stream.connect();
+    const s = sockets[0];
+    if (s === undefined) throw new Error("no socket");
+    s.emit("open");
+    s.emit(
+      "message",
+      JSON.stringify({
+        channel: "bookTicker",
+        type: "update",
+        data: { E: 1, s: "ETH-USD", u: 9, a: "3000.5", A: "1", b: "3000", B: "2" },
+      }),
+    );
+    s.emit(
+      "message",
+      JSON.stringify({
+        channel: "trade",
+        type: "update",
+        data: [{ E: 1, T: 2, t: 7, s: "ETH-USD", S: "BUY", p: "3000.5", q: "0.1", bi: 1, si: 2 }],
+      }),
+    );
+    expect(onBookTickers).toHaveBeenCalledWith([
+      { E: 1, s: "ETH-USD", a: "3000.5", A: "1", b: "3000", B: "2" },
+    ]);
+    expect(onTrades).toHaveBeenCalledWith([
+      { T: 2, s: "ETH-USD", S: "BUY", p: "3000.5", q: "0.1" },
+    ]);
+    expect(onError).not.toHaveBeenCalled();
+    stream.close();
+  });
+});

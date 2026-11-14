@@ -37,9 +37,47 @@ export const wsMarkPriceSchema = z.object({
 });
 export type WsMarkPrice = z.infer<typeof wsMarkPriceSchema>;
 
+/** Best bid / ask của một symbol (book-ticker.md, "pushed on each block"). */
+export const wsBookTickerSchema = z.object({
+  E: z.number().int(),
+  s: z.string(),
+  a: decimalStringSchema,
+  A: decimalStringSchema,
+  b: decimalStringSchema,
+  B: decimalStringSchema,
+});
+export type WsBookTicker = z.infer<typeof wsBookTickerSchema>;
+
+/** Giao dịch công khai (market-trade.md). `S` là phía chủ động (taker). */
+export const wsMarketTradeSchema = z.object({
+  T: z.number().int(), // giờ khớp ms
+  s: z.string(),
+  S: z.enum(["BUY", "SELL"]),
+  p: decimalStringSchema,
+  q: decimalStringSchema,
+});
+export type WsMarketTrade = z.infer<typeof wsMarketTradeSchema>;
+
+/** Push có thể là một object hoặc mảng; chuẩn hoá thành mảng, bỏ phần tử sai schema. */
+function itemsOf<T>(schema: z.ZodType<T>, data: unknown): { ok: T[]; bad: number } {
+  const list = Array.isArray(data) ? data : [data];
+  const ok: T[] = [];
+  let bad = 0;
+  for (const item of list) {
+    const r = schema.safeParse(item);
+    if (r.success) ok.push(r.data);
+    else bad += 1;
+  }
+  return { ok, bad };
+}
+
 export interface MarketStreamCallbacks {
   onCandle(candle: WsCandle): void;
   onMarkPrices?(marks: WsMarkPrice[]): void;
+  /** Best bid / ask của các symbol trong `watchMicro` (DEC-TBD-mm-cost). */
+  onBookTickers?(tickers: WsBookTicker[]): void;
+  /** Giao dịch công khai của các symbol trong `watchMicro` (DEC-TBD-mm-cost). */
+  onTrades?(trades: WsMarketTrade[]): void;
   /** Sau mỗi lần kết nối lại: consumer backfill qua REST. */
   onReconnect(): void;
   onError(error: Error): void;
@@ -71,6 +109,9 @@ export class MarketStream {
   #hasConnected = false;
   #attempt = 0;
   #timer: ReturnType<typeof setTimeout> | null = null;
+  /** Symbol nghe `bookTicker` + `trade` (giới hạn số market, DEC-TBD-mm-cost). Dùng chung kết nối này. */
+  #micro = new Set<string>();
+  #id = 1;
 
   constructor(options: MarketStreamOptions) {
     this.#url = `${options.baseUrl.replace(/\/+$/, "")}/${options.engine}`;
@@ -82,6 +123,26 @@ export class MarketStream {
 
   connect(): void {
     this.#open();
+  }
+
+  /**
+   * Đặt danh sách symbol nghe `bookTicker` và `trade` trên CHÍNH kết nối này (không mở kết nối mới). Đang mở thì
+   * subscribe phần thêm, unsubscribe phần bỏ; kết nối lại thì subscribe lại toàn bộ.
+   */
+  watchMicro(symbols: readonly string[]): void {
+    const next = new Set(symbols);
+    const added = [...next].filter((s) => !this.#micro.has(s));
+    const removed = [...this.#micro].filter((s) => !next.has(s));
+    this.#micro = next;
+    const ws = this.#ws;
+    if (ws?.readyState !== 1) return;
+    if (removed.length > 0) this.#sendMicro(ws, "unsubscribe", removed);
+    if (added.length > 0) this.#sendMicro(ws, "subscribe", added);
+  }
+
+  #sendMicro(ws: WebSocketLike, op: "subscribe" | "unsubscribe", symbols: readonly string[]): void {
+    for (const channel of ["bookTicker", "trade"] as const)
+      ws.send(JSON.stringify({ op, id: this.#id++, params: { channel, symbols } }));
   }
 
   close(): void {
@@ -105,19 +166,21 @@ export class MarketStream {
       const reconnected = this.#hasConnected;
       this.#hasConnected = true;
       this.#attempt = 0;
-      let id = 1;
       for (const symbol of this.#options.symbols) {
         ws.send(
           JSON.stringify({
             op: "subscribe",
-            id: id++,
+            id: this.#id++,
             params: { channel: "candle", symbol, interval: this.#options.interval ?? "1m" },
           }),
         );
       }
       if (this.#options.markPrices === true) {
-        ws.send(JSON.stringify({ op: "subscribe", id: id++, params: { channel: "allMarkPrice" } }));
+        ws.send(
+          JSON.stringify({ op: "subscribe", id: this.#id++, params: { channel: "allMarkPrice" } }),
+        );
       }
+      if (this.#micro.size > 0) this.#sendMicro(ws, "subscribe", [...this.#micro]);
       this.#arm(ws);
       if (reconnected) this.#options.callbacks.onReconnect();
     });
@@ -157,6 +220,16 @@ export class MarketStream {
         this.#lastData = Date.now();
         this.#options.callbacks.onCandle(candle.data);
       } else this.#options.callbacks.onError(new Error("SoDEX WS candle did not match schema"));
+    } else if (push.data.channel === "bookTicker") {
+      const { ok, bad } = itemsOf(wsBookTickerSchema, push.data.data);
+      if (ok.length > 0) this.#options.callbacks.onBookTickers?.(ok);
+      if (bad > 0)
+        this.#options.callbacks.onError(new Error("SoDEX WS bookTicker did not match schema"));
+    } else if (push.data.channel === "trade") {
+      const { ok, bad } = itemsOf(wsMarketTradeSchema, push.data.data);
+      if (ok.length > 0) this.#options.callbacks.onTrades?.(ok);
+      if (bad > 0)
+        this.#options.callbacks.onError(new Error("SoDEX WS trade did not match schema"));
     } else if (push.data.channel === "allMarkPrice") {
       const marks = z.array(wsMarkPriceSchema).safeParse(push.data.data);
       if (marks.success) {

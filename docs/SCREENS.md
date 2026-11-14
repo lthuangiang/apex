@@ -25,6 +25,7 @@ Desktop và mobile dùng **cùng một route**, layout responsive. Artboard mobi
 | `/agent/:botId` | Desktop · Trading Agent | Mobile · Trading Agent |
 | `/bots` | Strategy Lab · My bots & catalog | Mobile · Strategy Lab |
 | `/bots/new/:strategy` | Create · <Strategy> (8 artboard) | Mobile · Create <Strategy> (8 artboard) |
+| `/bots/new/volume_maker` (không có `?market=`) | `MM-Markets` · Choose a market (DEC-TBD-mm-cost, VOLUME_MAKER 17.7), rồi Create như cũ | cùng artboard, bảng cuộn ngang |
 | `/bots/:botId/edit` | Strategy Lab · Edit running bot | Mobile · Edit bot |
 | `/settings` | Desktop · Settings | Mobile · Settings |
 | `/admin/builder-revenue` | Desktop · Builder Revenue (chỉ đội DRIFT) | Mobile · Builder Revenue |

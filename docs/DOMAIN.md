@@ -98,6 +98,8 @@ Quy ước theo `docs/CODING_STANDARDS.md` C8: khoá chính `id uuid` (v7), mọ
 | `ai_suggestions` | `user_id`, `context` (`onboarding`/`create`/`retune`), `strategy`, `market`, `values jsonb`, `reasons jsonb`, `basis`, `inputs_version`, `computed_at` | kết quả engine đề xuất |
 | `backtest_runs` | `user_id`, `strategy`, `market`, `params_hash`, `period_days`, `data_version`, `status`, `result jsonb`, `error`, `finished_at` | cache theo (`strategy`, `market`, `params_hash`, `period_days`, `data_version`) |
 | `candles_1m` | `market`, `ts`, `open`, `high`, `low`, `close`, `volume` | Timescale hypertable, khoá (`market`, `ts`) |
+| `mm_market_hourly` | `market`, `hour`, `notional`, `markout_notional`, `trades`, `spread_ticks jsonb`, `updated_at` | markout 30 s phía maker của giao dịch công khai + histogram spread theo tick, theo giờ; `marketdata` ghi, giữ 48 giờ (DEC-TBD-mm-cost) |
+| `mid_1s` | `market`, `ts`, `mid` | giá giữa mỗi giây, chỉ market có bot MM, giữ 48 giờ (DEC-TBD-mm-cost) |
 | `market_stats_daily` | `market`, `engine`, `date`, `sigma30`, `p5`, `p50`, `p95`, `last_price`, `trend`, `range_score`, `funding_avg7d`, `funding_pos21` | `scheduler` tính mỗi ngày (DEC-34) |
 | `shard_epochs` | `shard` (int, khoá chính), `epoch` (bigint), `owner`, `acquired_at` | fencing token; lease thật nằm ở Redis |
 | `outbox` | `topic`, `payload jsonb`, `published_at` | relay sang NATS |
