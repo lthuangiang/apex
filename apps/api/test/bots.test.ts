@@ -94,7 +94,8 @@ describe("bots API", () => {
       config: {
         market: "BTC-USD",
         leverage,
-        marginMode: "isolated",
+        // Cross: test này kiểm trần đòn bẩy, không kiểm stop trước giá thanh lý (chỉ chặn với isolated).
+        marginMode: "cross",
         direction: "short",
         lowerPrice: "90",
         upperPrice: "110",
@@ -102,6 +103,7 @@ describe("bots API", () => {
         spacing: "arithmetic",
         margin: "20",
         stopBelow: "80",
+        stopAbove: "120",
         maxLoss: "2",
         onStop: "close_at_market",
       },
@@ -139,6 +141,7 @@ describe("bots API", () => {
       spacing: "arithmetic",
       margin: "150",
       stopBelow: "80",
+      stopAbove: "120",
       maxLoss: "2",
       onStop: "close_at_market",
     };

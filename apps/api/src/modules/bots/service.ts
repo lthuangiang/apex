@@ -60,6 +60,8 @@ import {
   minSizeDetail,
   requirementOf,
   botCapitalOf,
+  gridStopLimits,
+  perpsStopMaxPct,
   STRATEGIES,
   waitingOf,
   volumeFarm,
@@ -192,6 +194,56 @@ export function assertFarmStop(strategy: string, config: Record<string, unknown>
       },
     });
   }
+}
+
+/**
+ * Futures DCA / AI Adaptive DCA / Futures Grid, margin isolated: stop phải nằm trước giá thanh lý với hệ số an toàn 90%
+ * (như Volume Farm; PM chốt sau bản rà soát strategy, DEC-237). DCA: % stop tính từ giá vốn < 90% / đòn bẩy.
+ * Grid: giả sử mọi mức phía mở vị thế đã khớp (long: mọi mức trừ mức trên cùng; short: mọi mức trừ mức dưới cùng), lỗ
+ * khi giá chạm stop không được vượt 90% margin. Cross: không chặn (web cảnh báo dưới ô stop).
+ * Futures Grid Short / Neutral bắt buộc có Stop above (kiểm ở đây chứ không ở schema để bot cũ vẫn nạp được).
+ */
+export function assertPerpsStop(strategy: string, config: Record<string, unknown>): void {
+  const fieldErrors: Record<string, string[]> = {};
+  if (
+    strategy === Strategy.futuresGrid &&
+    config.direction !== "long" &&
+    config.stopAbove === undefined
+  )
+    fieldErrors.stopAbove = ["Required."];
+  const leverage = Number(config.leverage);
+  if (config.marginMode === "isolated" && leverage > 0) {
+    const maxPct = perpsStopMaxPct(leverage);
+    const pctField =
+      strategy === Strategy.futuresDca
+        ? "stopLossPct"
+        : strategy === Strategy.adaptiveDca
+          ? "hardStopLossPct"
+          : null;
+    const pct = pctField === null ? undefined : config[pctField];
+    if (pctField !== null && typeof pct === "string" && dec(pct).gte(maxPct))
+      fieldErrors[pctField] = [
+        `Past liquidation at ${String(leverage)}× isolated. Use below ${maxPct.toString()}%.`,
+      ];
+    if (strategy === Strategy.futuresGrid)
+      Object.assign(fieldErrors, gridStopErrors(config, leverage));
+  }
+  if (Object.keys(fieldErrors).length > 0)
+    throw new AppError(ErrorCode.validationFailed, "Invalid bot settings.", { fieldErrors });
+}
+
+function gridStopErrors(
+  config: Record<string, unknown>,
+  leverage: number,
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  const { below, above } = gridStopLimits(config, leverage);
+  const fmt = (d: Decimal) => d.toSignificantDigits(6).toString();
+  if (below !== null && typeof config.stopBelow === "string" && dec(config.stopBelow).lte(below))
+    out.stopBelow = [`Past liquidation at ${String(leverage)}× isolated. Use above ${fmt(below)}.`];
+  if (above !== null && typeof config.stopAbove === "string" && dec(config.stopAbove).gte(above))
+    out.stopAbove = [`Past liquidation at ${String(leverage)}× isolated. Use below ${fmt(above)}.`];
+  return out;
 }
 
 /** Copy Trade (DEC-161, DEC-163): ví leader không được là ví của chính người dùng. Nguồn: SoDEX hoặc Hyperliquid. */
@@ -362,6 +414,7 @@ export function parseConfig(strategy: string, config: unknown): Record<string, u
   }
   const out = parsed.data as Record<string, unknown>;
   assertFarmStop(strategy, out);
+  assertPerpsStop(strategy, out);
   return out;
 }
 

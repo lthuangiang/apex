@@ -40,6 +40,8 @@ const grid = {
   maxLoss: "2",
   onStop: "close_at_market",
 };
+/** Bot tạo qua API phải có stop trước giá thanh lý (isolated, DEC-237): 5× thay vì 10×. */
+const liveGrid = { ...grid, leverage: 5 };
 
 beforeAll(async () => {
   env = await startTestEnv();
@@ -82,7 +84,7 @@ describe("Needs you", () => {
   it("raises a review item when a bot stopped at its max loss, snoozes it, and brings it back on a new stop", async () => {
     const { client } = await deskUser("needs-maxloss@example.com");
     const made = await client.request("POST", "/api/v1/bots", {
-      body: { strategy: "futures_grid", name: "ETH Grid", paramSource: "manual", config: grid },
+      body: { strategy: "futures_grid", name: "ETH Grid", paramSource: "manual", config: liveGrid },
     });
     const botId = botSummarySchema.parse(made.json()).id;
     await env.pool.query("update bots set state = 'running' where id = $1", [botId]);
@@ -145,7 +147,12 @@ describe("Needs you", () => {
   it("survives two reads at the same time for a new item", async () => {
     const { client } = await deskUser("needs-race@example.com");
     const made = await client.request("POST", "/api/v1/bots", {
-      body: { strategy: "futures_grid", name: "Race Grid", paramSource: "manual", config: grid },
+      body: {
+        strategy: "futures_grid",
+        name: "Race Grid",
+        paramSource: "manual",
+        config: liveGrid,
+      },
     });
     const botId = botSummarySchema.parse(made.json()).id;
     await env.pool.query(

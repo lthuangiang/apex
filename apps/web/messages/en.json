@@ -1419,6 +1419,7 @@
         "levelsArithmetic": "2–200 · step {step} ≈ {pct}%",
         "levelsGeometric": "2–200 · step ≈ {pct}%",
         "outsideRange": "Price is outside your range. The bot waits until the price enters it.",
+        "crossLiq": "With cross margin, liquidation depends on your whole Perps balance. This stop may be past it.",
         "durationHours": "= {h} h",
         "durationHoursMinutes": "= {h} h {m} min",
         "fdcaLong": "Long adds on drops",

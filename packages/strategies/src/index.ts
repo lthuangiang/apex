@@ -24,7 +24,7 @@ export * from "./paper";
 export { safetyOffsetPct } from "./common/dca-bot";
 export { entryReady, type EntryCondition, type NextCycle, type WaitingInfo } from "./common/entry";
 export { gridPrices, stepCoversFees } from "./common/grid";
-export { leverageCapIssue } from "./common/perps";
+export { gridStopLimits, leverageCapIssue, perpsStopMaxPct } from "./common/perps";
 export { nextRun } from "./recurring-buy/schedule";
 export { initialBuyProgress, REBALANCE_CHECK_MS, type RebalancingState } from "./rebalancing";
 export { sliceIntervalMs } from "./twap";
