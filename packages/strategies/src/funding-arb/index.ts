@@ -14,7 +14,8 @@ import type {
 
 import type { FundingArbConfig } from "./schema";
 
-// S7 Funding Arbitrage (STRATEGIES.md, DEC-36):
+// S7 Funding Arbitrage (STRATEGIES.md, DEC-36). `maxGapPct` = chênh giá spot / perp (chặn vào lệnh); lệch khối lượng
+// giữa hai chân dùng ngưỡng cố định `ARB_MAX_SIZE_GAP_PCT`.
 // chờ funding TB 7 ngày ≥ ngưỡng → mua Spot + short Perp cùng khối lượng (mỗi chân nửa vốn) →
 // ghi funding mỗi kỳ → 3 kỳ liên tiếp funding ≤ ngưỡng thoát thì đóng cả hai chân và chờ lại.
 // Margin ratio dưới ngưỡng: không chuyển margin giữa engine (chưa xác nhận SoDEX cho phép) mà đóng cả hai
@@ -114,11 +115,23 @@ function order(
   };
 }
 
-export function totalPnl(c: FundingArbConfig, s: FundingArbState): Decimal {
-  return netPnl(s.spot, s.prices[c.spotMarket] ?? "0").add(
-    netPnl(s.perp, s.prices[c.perpMarket] ?? "0"),
-  );
+/**
+ * Lãi / lỗ ròng của hai chân; chân đang có vị thế mà chưa có giá thì null ("Not available"), không định giá bằng 0
+ * (trước đây làm max loss kích hoạt giả ngay sau khi vào lệnh).
+ */
+export function totalPnl(c: FundingArbConfig, s: FundingArbState): Decimal | null {
+  const spotPrice = s.prices[c.spotMarket];
+  const perpPrice = s.prices[c.perpMarket];
+  if (spotPrice === undefined && !dec(s.spot.position).isZero()) return null;
+  if (perpPrice === undefined && !dec(s.perp.position).isZero()) return null;
+  return netPnl(s.spot, spotPrice ?? "0").add(netPnl(s.perp, perpPrice ?? "0"));
 }
+
+/**
+ * Lệch khối lượng tối đa giữa hai chân trước khi cân lại (%, cố định, không có trên form). `maxGapPct` của người dùng là
+ * chênh GIÁ giữa spot và perp (đúng tên field "Max price gap between legs"), PM chốt sau bản rà soát strategy.
+ */
+export const ARB_MAX_SIZE_GAP_PCT = "0.5";
 
 function open(
   c: FundingArbConfig,
@@ -126,11 +139,31 @@ function open(
   ctx: StepContext,
   at: number,
 ): StepResult<FundingArbState> {
-  const price = s.prices[c.perpMarket] ?? s.prices[c.spotMarket];
+  const price = s.prices[c.perpMarket];
+  const spotPrice = s.prices[c.spotMarket];
   const spotRules = ctx.rules[c.spotMarket];
   const perpRules = ctx.rules[c.perpMarket];
-  if (price === undefined || spotRules === undefined || perpRules === undefined)
+  // Cần giá của cả hai chân để so chênh giá.
+  if (
+    price === undefined ||
+    spotPrice === undefined ||
+    spotRules === undefined ||
+    perpRules === undefined
+  )
     return { actions: [], state: s };
+  // Chênh giá spot / perp vượt "Max price gap between legs": không vào lệnh, chờ lần funding sau.
+  const gapPct = dec(price).sub(spotPrice).abs().div(spotPrice).mul(100);
+  if (gapPct.gt(c.maxGapPct))
+    return {
+      actions: [
+        {
+          type: "log",
+          decision: "Not entering",
+          why: `Price gap between legs is ${gapPct.toDecimalPlaces(2).toString()}%, above ${c.maxGapPct}%.`,
+        },
+      ],
+      state: s,
+    };
   // Cùng khối lượng tài sản ở hai chân: làm tròn theo lot lớn hơn của hai market.
   const lot = Decimal.max(spotRules.stepSize, perpRules.stepSize).toString();
   const qty = roundQty(dec(c.investment).div(2).div(price), { ...spotRules, stepSize: lot });
@@ -243,7 +276,8 @@ function guards(
   ctx: StepContext,
 ): StepResult<FundingArbState> | null {
   if (s.phase !== "in_position") return null;
-  if (totalPnl(c, s).lte(dec(c.maxLoss).neg())) {
+  const pnl = totalPnl(c, s);
+  if (pnl?.lte(dec(c.maxLoss).neg()) === true) {
     return close(
       c,
       s,
@@ -361,7 +395,7 @@ function legsDone(
   const qty = perpRules === undefined ? gap.abs().toString() : roundQty(gap.abs(), perpRules);
   const price = state.prices[c.perpMarket] ?? state.prices[c.spotMarket];
   if (
-    gap.abs().div(state.spot.position).mul(100).gt(c.maxGapPct) &&
+    gap.abs().div(state.spot.position).mul(100).gt(ARB_MAX_SIZE_GAP_PCT) &&
     dec(qty).gt(0) &&
     (perpRules === undefined || price === undefined || meetsMinimum(price, qty, perpRules))
   ) {
