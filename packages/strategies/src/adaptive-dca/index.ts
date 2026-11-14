@@ -922,6 +922,7 @@ export function stepAdaptiveDca(
     case "fundingRate":
     case "marginRatio":
     case "positionSync":
+    case "guard":
     case "leaderFill":
     case "leaderPosition":
       return none(s);

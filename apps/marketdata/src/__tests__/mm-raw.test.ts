@@ -27,7 +27,10 @@ describe("raw market data recorder", () => {
     dir = await mkdtemp(join(tmpdir(), "mm-raw-"));
     const r = new MmRawRecorder(dir);
     r.book({ s: "ETH-USD", E: H + 1, b: "3000.1", B: "2", a: "3000.2", A: "1.5" }, H + 5);
-    r.trade({ s: "ETH-USD", T: H + 6, t: 991, S: "BUY", p: "3000.2", q: "0.4" }, H + 9);
+    r.trade(
+      { s: "ETH-USD", T: H + 6, t: 991, S: "BUY", p: "3000.2", q: "0.4", bi: 23342, si: 1002 },
+      H + 9,
+    );
     expect(await r.flush()).toBe(2);
     r.trade({ s: "BTC-USD", T: H + 10, S: "SELL", p: "90000", q: "0.01" }, H + 12);
     r.book({ s: "ETH-USD", E: H + 3_600_000, b: "1", B: "1", a: "2", A: "1" }, H + 3_600_001);
@@ -39,8 +42,30 @@ describe("raw market data recorder", () => {
     ]);
     expect(await lines(rawFileOf(H))).toEqual([
       { k: "b", s: "ETH-USD", r: H + 5, E: H + 1, b: "3000.1", B: "2", a: "3000.2", A: "1.5" },
-      { k: "t", s: "ETH-USD", r: H + 9, T: H + 6, i: 991, S: "BUY", p: "3000.2", q: "0.4" },
-      { k: "t", s: "BTC-USD", r: H + 12, T: H + 10, i: null, S: "SELL", p: "90000", q: "0.01" },
+      {
+        k: "t",
+        s: "ETH-USD",
+        r: H + 9,
+        T: H + 6,
+        i: 991,
+        S: "BUY",
+        p: "3000.2",
+        q: "0.4",
+        bi: 23342,
+        si: 1002,
+      },
+      {
+        k: "t",
+        s: "BTC-USD",
+        r: H + 12,
+        T: H + 10,
+        i: null,
+        S: "SELL",
+        p: "90000",
+        q: "0.01",
+        bi: null,
+        si: null,
+      },
     ]);
   });
 

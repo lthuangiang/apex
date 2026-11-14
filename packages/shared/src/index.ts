@@ -5,6 +5,7 @@ export * from "./fees";
 export * from "./funding-arb";
 export * from "./leverage";
 export * from "./leader";
+export * from "./mm-guard";
 export * from "./format";
 export * from "./money";
 export * from "./schemas";

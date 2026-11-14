@@ -104,6 +104,8 @@ export function useConfigRows(strategy: string, market: string, config: Record<s
   const rows: ConfigRow[] = [];
   const label = (f: FieldSpec) => t(`fields.${f.label ?? f.key}.label`);
   for (const f of fields) {
+    // Công tắc đã ẩn khỏi form (Close at entry / Pause on fast moves, DEC-241): chỉ hiện khi bot cũ đang bật.
+    if (f.hidden === true && f.type.kind === "bool" && config[f.key] !== true) continue;
     if (f.key === "upperPrice" && fields.some((x) => x.key === "lowerPrice")) continue;
     if (f.key === "spacing" && fields.some((x) => x.key === "gridLevels")) continue;
     if (f.key === "lowerPrice" && fields.some((x) => x.key === "upperPrice")) {

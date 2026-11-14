@@ -499,7 +499,7 @@ export function AgentPage({ botId }: { botId?: string }) {
             {/* Market Making Analytics dưới Fills, full width (DEC-144). */}
             {/* Price PnL đến từ đâu + Ways to lower it (DEC-227), trên Analytics. */}
             {bot.strategy === "volume_maker" && d.volumeMaker !== null ? (
-              <MmMarkoutCard botId={d.bot.id} config={active?.config ?? null} />
+              <MmMarkoutCard botId={d.bot.id} />
             ) : null}
             {bot.strategy === "volume_maker" && d.volumeMaker !== null ? (
               <MmAnalyticsCard botId={d.bot.id} />

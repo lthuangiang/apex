@@ -36,6 +36,7 @@ import {
   type LeaderFillMessage,
   type LeaderPositionMessage,
   leverageSpecOf,
+  type MmGuardMessage,
   leverageSpecsOf,
   type LeverageSpec,
   REASON_CODE_META,
@@ -297,6 +298,9 @@ const FLAG_GATED_STATES: ReadonlySet<string> = new Set<string>([
   BotState.resuming,
 ]);
 
+/** Giờ UTC tới mili giây (HH:MM:SS.mmm) cho Decisions của Binance guard. */
+export const clockTime = (ms: number): string => new Date(ms).toISOString().slice(11, 23);
+
 export function shardOf(accountId: string, shards = ENGINE_SHARDS): number {
   return Number(fnv1a64(accountId) % BigInt(shards));
 }
@@ -458,6 +462,43 @@ export class Engine {
 
   /** Giá mới từ marketdata (NATS `md.<market>.price`). */
   readonly #lastPrice = new Map<string, string>();
+
+  /**
+   * Binance guard (`md.<market>.guard`): báo giá phía nào đang cũ. Đưa ngay cho bot Market Making bật Smart quoting
+   * trên market đó (bot huỷ lệnh mở thêm vị thế của phía cũ). Ghi log các mốc thời gian để đo độ trễ thật.
+   */
+  async onMmGuard(msg: MmGuardMessage, recvAt: number): Promise<void> {
+    for (const r of [...this.#runners.values()].filter(
+      (x) =>
+        x.strategy === Strategy.volumeMaker &&
+        x.market === msg.s &&
+        (x.config as { smartQuoting?: boolean }).smartQuoting === true,
+    )) {
+      await this.#feed(r, {
+        type: "guard",
+        at: recvAt,
+        market: msg.s,
+        ask: msg.ask,
+        bid: msg.bid,
+        gapBp: msg.gapBp,
+        binanceAt: msg.T,
+      });
+      this.#d.log.info(
+        {
+          botId: r.botId,
+          market: msg.s,
+          ask: msg.ask,
+          bid: msg.bid,
+          gapBp: msg.gapBp,
+          binanceAt: msg.T,
+          marketdataAt: msg.at,
+          engineAt: recvAt,
+          doneAt: this.#d.now(),
+        },
+        "mm guard",
+      );
+    }
+  }
 
   async onPrice(market: string, price: string, at: number): Promise<void> {
     this.#lastPrice.set(market, price);
@@ -1135,7 +1176,9 @@ export class Engine {
       (event.type === "tick" ||
         event.type === "timer" ||
         event.type === "leaderFill" ||
-        event.type === "leaderPosition")
+        event.type === "leaderPosition" ||
+        // Binance guard cũng vậy: bot đang pause giữ nguyên lệnh đang mở (DOMAIN 7.2).
+        event.type === "guard")
     )
       return;
     // Bot Perps: đặt đòn bẩy + margin mode trên SoDEX trước khi chiến lược phản ứng với thị trường. Fill / ack /
@@ -1371,7 +1414,9 @@ export class Engine {
           tx.update(bots).set({ needsAttention: a.needsAttention }).where(eq(bots.id, r.botId)),
         );
     }
-    if (cancels.length > 0) await this.#cancel(r, cancels);
+    // Huỷ do Binance guard: ghi Decisions lúc SoDEX xác nhận, kèm giờ Binance của chính tín hiệu này.
+    const guardAt = source?.event.type === "guard" ? source.event.binanceAt : undefined;
+    if (cancels.length > 0) await this.#cancel(r, cancels, guardAt);
     for (const a of actions) if (a.type === "modifyStop") await this.#modifyStop(r, a, at);
     // Chốt cứng: lệnh Perps mở vị thế không bao giờ được gửi khi SoDEX chưa xác nhận đòn bẩy của bot.
     if (!r.leverageSet && places.some((o) => o.engine === "perps" && !o.reduceOnly)) {
@@ -1723,7 +1768,12 @@ export class Engine {
     }
   }
 
-  async #cancel(r: Runner, clOrdIDs: readonly string[]): Promise<void> {
+  async #cancel(
+    r: Runner,
+    clOrdIDs: readonly string[],
+    /** Giờ Binance của tín hiệu guard gây ra lần huỷ này (ghi Decisions khi SoDEX xác nhận); thiếu = không ghi. */
+    guardAt?: number,
+  ): Promise<void> {
     const rows = await this.#d.db
       .select()
       .from(orders)
@@ -1762,6 +1812,22 @@ export class Engine {
           },
           "cancel not confirmed",
         );
+    // Binance guard: ghi Decisions lúc SoDEX xác nhận huỷ, kèm khoảng cách từ lúc Binance chạy.
+    if (guardAt !== undefined) {
+      const done = this.#d.now();
+      for (const x of results) {
+        if (x.outcome !== "ok") continue;
+        const o = open.find((y) => y.clOrdId === x.clOrdID);
+        if (o === undefined) continue;
+        await this.#event(
+          r,
+          "decision",
+          `${o.side === "sell" ? "Ask" : "Bid"} cancelled`,
+          `SoDEX confirmed the cancel at ${clockTime(done)} UTC, ${String(done - guardAt)} ms after the move on Binance.`,
+          done,
+        );
+      }
+    }
     // Chỉ coi là đã huỷ khi SoDEX trả lời rõ: ok, hoặc từ chối (lệnh đã khớp / đã huỷ). Không rõ thì thử lại.
     const settled = new Set(results.filter((x) => x.outcome !== "unknown").map((x) => x.clOrdID));
     const done = open.filter((o) => settled.has(o.clOrdId));

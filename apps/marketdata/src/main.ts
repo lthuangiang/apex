@@ -32,6 +32,8 @@ import { Redis } from "ioredis";
 import pino from "pino";
 import { z } from "zod";
 
+import { BinanceGuard, binanceSymbolOf } from "./binance-guard";
+import { BinanceBookStream, binancePerpSymbols } from "./binance-stream";
 import { CopyAllocator } from "./copy-allocator";
 import { HlLeaderTracker } from "./hl-leaders";
 import { getCursor, saveLeaderEvents, setCursor } from "./leader-store";
@@ -70,6 +72,12 @@ const env = z
      * Thư mục lưu thô bookTicker + trade theo giờ, giữ 48 giờ (DEC-228); trống = không lưu.
      */
     MM_RAW_DIR: z.string().default(""),
+    /**
+     * Binance guard của Market Making (Smart quoting): ngưỡng lệch (bp) giữa giá Binance futures và giá SoDEX để báo
+     * "báo giá đang cũ"; 0 = tắt (không nối Binance). `MM_GUARD_HOLD_MS`: giữ tín hiệu thêm ngần này sau khi hết lệch.
+     */
+    MM_GUARD_BP: z.coerce.number().nonnegative().default(0.75),
+    MM_GUARD_HOLD_MS: z.coerce.number().int().nonnegative().default(500),
     /** Cảnh báo "big move" (DEC-163 mục 11): notional tối thiểu USD; trống = tắt (OPEN_QUESTIONS 21a). */
     COPY_BIG_MOVE_MIN_USD: z
       .string()
@@ -297,6 +305,7 @@ let streams: MarketStream[] = [];
 let mmTimers: ReturnType<typeof setInterval>[] = [];
 /** Bộ lưu thô của lần làm leader hiện tại; ghi nốt phần đệm khi dừng. */
 let mmRawNow: MmRawRecorder | null = null;
+let binanceNow: BinanceBookStream | null = null;
 
 async function start() {
   const [spot, perps] = await Promise.all([rest.getSpotSymbols(), rest.getPerpsSymbols()]);
@@ -307,6 +316,38 @@ async function start() {
   const mmCost = new MmCostCollector();
   const mmRaw = env.MM_RAW_DIR === "" ? null : new MmRawRecorder(env.MM_RAW_DIR);
   mmRawNow = mmRaw;
+  // Binance guard: chỉ khi bật; Binance không đọc được thì chạy tiếp không có guard.
+  const guard =
+    env.MM_GUARD_BP > 0
+      ? new BinanceGuard({
+          thresholdBp: env.MM_GUARD_BP,
+          holdMs: env.MM_GUARD_HOLD_MS,
+          publish: (msg) => {
+            nc.publish(marketSubject(msg.s, "guard"), JSON.stringify(msg));
+          },
+        })
+      : null;
+  const binanceSymbols =
+    guard === null
+      ? new Set<string>()
+      : await binancePerpSymbols().catch((error: unknown) => {
+          log.warn({ err: error }, "binance symbols unavailable; guard off");
+          return new Set<string>();
+        });
+  const marketOfBinance = new Map<string, string>();
+  const binanceStream =
+    guard === null
+      ? null
+      : new BinanceBookStream(
+          (symbol, bid, ask, T) => {
+            const m = marketOfBinance.get(symbol);
+            if (m !== undefined) guard.onBinance(m, bid, ask, T, Date.now());
+          },
+          (error) => {
+            log.warn({ err: error }, "binance stream error");
+          },
+        );
+  binanceNow = binanceStream;
   mmCost.setTickSizes(
     Object.fromEntries(
       perps.filter((s) => s.status === "TRADING").map((s) => [s.name, s.tickSize]),
@@ -363,6 +404,7 @@ async function start() {
                 for (const t of tickers) {
                   mmCost.onBook(t.s, t.b, t.a, at);
                   mmRaw?.book(t, at);
+                  guard?.onSodex(t.s, t.b, t.a, at);
                 }
               },
               onTrades: (
@@ -404,6 +446,16 @@ async function start() {
     const watched = [...new Set([...top, ...mm])].filter((m) => perpsSymbols.includes(m));
     perpsStream.watchMicro(watched);
     mmCost.setMidMarkets(mm);
+    if (guard !== null && binanceStream !== null) {
+      const pairs = mm.flatMap((m) => {
+        const b = binanceSymbolOf(m, binanceSymbols);
+        return b === null ? [] : [[b, m] as const];
+      });
+      marketOfBinance.clear();
+      for (const [b, m] of pairs) marketOfBinance.set(b, m);
+      guard.setMarkets(pairs.map(([, m]) => m));
+      binanceStream.setSymbols(pairs.map(([b]) => b));
+    }
   };
   const mmEvery = (ms: number, run: () => Promise<void> | void, what: string) => {
     const go = () => {
@@ -491,6 +543,8 @@ function stop() {
     log.warn({ err: error }, "mm raw write failed");
   });
   mmRawNow = null;
+  binanceNow?.close();
+  binanceNow = null;
   streams = [];
   scanner?.stop();
   scanner = null;

@@ -1,6 +1,6 @@
 # DRIFT — Deploy production (1 VPS nhỏ)
 
-> Đích: VPS 2 vCPU, 4 GB RAM, Ubuntu 24.04 **x64 (amd64)**, chạy cá nhân (2026-10-29: server Atlanta 80 GB; trước đó thử Hetzner CAX11 arm64). Quyết định: DEC-70.
+> Đích: VPS 2 vCPU, 4 GB RAM, Ubuntu 24.04 **x64 (amd64)**, chạy cá nhân (2026-11-15: server Singapore, `149.28.148.63`; tài liệu cũ ghi Atlanta 80 GB; trước đó thử Hetzner CAX11 arm64). Quyết định: DEC-70.
 > Mọi bot chạy tiền thật trên SoDEX mainnet. Làm đủ mục "Trước lần deploy đầu" rồi mới bật bot.
 
 ## 1. Thành phần

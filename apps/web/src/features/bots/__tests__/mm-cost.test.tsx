@@ -238,13 +238,8 @@ describe("Market Making · suggested markets under Contract (DEC-228)", () => {
 });
 
 describe("Market Making · where the price PnL comes from (D2)", () => {
-  it("shows markout, the price step, losing round trips, In short, and ways to lower it", async () => {
-    wrap(
-      <MmMarkoutCard
-        botId="b1"
-        config={{ quoteLevel: 1, closeAtEntry: true, pauseOnFastMoves: false }}
-      />,
-    );
+  it("shows markout, the price step, losing round trips and In short, without ways to lower it", async () => {
+    wrap(<MmMarkoutCard botId="b1" />);
     expect(await screen.findByText("−0.3 bps")).toBeInTheDocument();
     expect(screen.getByText("−0.7 bps")).toBeInTheDocument();
     expect(screen.getByText("Not available")).toBeInTheDocument();
@@ -253,30 +248,9 @@ describe("Market Making · where the price PnL comes from (D2)", () => {
     expect(screen.getByText("7 of 12")).toBeInTheDocument();
     expect(screen.getByText("Losers lose more steps than winners win.")).toBeInTheDocument();
     expect(screen.getByText("In short:")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Quote one step back/ })).toHaveAttribute(
-      "href",
-      "/bots/b1/edit?suggest=quote-back",
-    );
-    // closeAtEntry là BETA: chưa đưa vào "Ways to lower it" cho tới khi replay v2 chứng minh giảm lỗ.
-    expect(
-      screen.queryByRole("link", { name: /Close only at your entry price or better/ }),
-    ).not.toBeInTheDocument();
-    // Trạng thái thật theo config, không có nhãn "New setting".
-    expect(screen.queryByText("New setting")).not.toBeInTheDocument();
-    expect(
-      within(screen.getByRole("link", { name: /Pause on fast moves/ })).getByText("Off"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Setting: Quote position in the order book · now 1"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Pause on fast moves/ })).toHaveAttribute(
-      "href",
-      "/bots/b1/edit?suggest=pause-fast",
-    );
-    expect(screen.getByRole("link", { name: /Move to a cheaper market/ })).toHaveAttribute(
-      "href",
-      "/bots/new/volume_maker",
-    );
+    // "Ways to lower it" đã ẩn (DEC-241): gợi ý chưa đúng.
+    expect(screen.queryByText("Ways to lower it")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
     const r = await axe.run(document.body, AXE);
     expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
   }, 15_000);

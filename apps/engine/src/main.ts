@@ -1,6 +1,11 @@
 import { apiKeys, createDb } from "@drift/db";
 import { loadClientTls } from "@drift/runtime";
-import { dec, leaderFillMessageSchema, leaderPositionMessageSchema } from "@drift/shared";
+import {
+  dec,
+  leaderFillMessageSchema,
+  leaderPositionMessageSchema,
+  mmGuardMessageSchema,
+} from "@drift/shared";
 import {
   loadSodexConfig,
   RedisRateLimitStore,
@@ -100,6 +105,17 @@ const engine = new Engine({
 
 const nc = await connect({ servers: env.NATS_URL });
 const priceSub = nc.subscribe("md.*.price");
+// Binance guard của Market Making: bot bật Smart quoting rút báo giá cũ theo tín hiệu của marketdata.
+const guardSub = nc.subscribe("md.*.guard");
+void (async () => {
+  for await (const m of guardSub) {
+    try {
+      await engine.onMmGuard(mmGuardMessageSchema.parse(m.json()), Date.now());
+    } catch (error) {
+      log.warn({ err: error }, "mm guard handling failed");
+    }
+  }
+})();
 // Copy Trade (DEC-161): fill và vị thế của ví leader, `marketdata` publish.
 const leaderSub = nc.subscribe("leader.*.*.*");
 void (async () => {

@@ -899,6 +899,7 @@ export function stepVolumeFarm(
     case "fundingRate":
     case "marginRatio":
     case "positionSync":
+    case "guard":
     case "leaderFill":
     case "leaderPosition":
     case "resumed":
