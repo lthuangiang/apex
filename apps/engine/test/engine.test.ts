@@ -2286,6 +2286,42 @@ describe("engine", () => {
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
   });
 
+  it("ends a copy order that filled part of the way and then expired, after its fill and only once (P0.1)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const leader = "0x6666666666666666666666666666666666666666";
+    const { botId, accountId } = await seedBot("running", copySpec(leader));
+    const e = farmEngine(gw, "copy-partial-done");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    await e.onLeaderFill(leaderFill(leader, "1", clock), clock + 200);
+    const id = gw.received.find((o) => o.tag.startsWith("copy:"))?.clOrdID ?? "";
+    const slot = async () => {
+      const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      const st = rt?.state as {
+        markets: Record<string, { inflight: unknown; ledger: { position: string } }>;
+      };
+      return st.markets["BTC-USD"];
+    };
+    const row = async () => (await db.select().from(orders).where(eq(orders.clOrdId, id)))[0];
+    // IOC khớp một nửa rồi hết hạn: trước đây engine không báo gì, lệnh "đang chờ" kẹt mãi.
+    await e.onFill(accountId, id, "0.0005", "100100", "0.01", clock + 300);
+    expect((await slot())?.inflight).not.toBeNull();
+    await e.onOrderClosed(accountId, id, "cancelled", clock + 400);
+    expect(await slot()).toMatchObject({ inflight: null, ledger: { position: "0.0005" } });
+    const done = await row();
+    expect(done?.status).toBe("cancelled");
+    expect(Number(done?.filledSize)).toBe(0.0005);
+    expect(done?.doneFedAt).not.toBeNull();
+    // Phát lại (reconnect / đối soát): không báo lần hai, không cộng trùng.
+    await e.onFill(accountId, id, "0.0005", "100100", "0.01", clock + 500);
+    await e.onOrderClosed(accountId, id, "cancelled", clock + 600);
+    expect((await row())?.doneFedAt).toEqual(done?.doneFedAt);
+    expect((await slot())?.ledger.position).toBe("0.0005");
+    await e.stop();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+  });
+
   it("writes one copy_bot_skipped per bot and market within 10 minutes, with the reason (DEC-212)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
@@ -2580,6 +2616,35 @@ describe("engine", () => {
     // Huỷ đúng như bot yêu cầu: không thêm dòng "Order cancelled" vào Decisions.
     const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
     expect(events.some((x) => x.why?.startsWith(`${bid}:`) === true)).toBe(false);
+    await e.stop();
+    await stopMakerBots();
+  });
+
+  it("tells the strategy once that an order ended when reconciliation finds it, even if the user stream says so too (P0.1)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    gw.cancelOutcome = "unknown";
+    const { accountId } = await seedMaker();
+    const e = farmEngine(gw, "vm-done-once");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    const bid = gw.received.find((o) => o.tag.endsWith(":bid"))?.clOrdID ?? "";
+    const row = async () => (await db.select().from(orders).where(eq(orders.clOrdId, bid)))[0];
+    clock += 4_000;
+    await e.tick();
+    expect((await row())?.doneFedAt).toBeNull();
+    // SoDEX đã huỷ lệnh: đối soát đọc được và báo chiến lược.
+    const live = gw.book.get(bid);
+    if (live !== undefined && live.status !== "not_found")
+      gw.book.set(bid, { ...live, status: "cancelled" });
+    clock += 20_000;
+    await e.tick();
+    const after = await row();
+    expect(after?.status).toBe("cancelled");
+    expect(after?.doneFedAt).not.toBeNull();
+    // User stream báo CANCELED muộn: không báo lần hai.
+    await e.onOrderClosed(accountId, bid, "cancelled", clock);
+    expect((await row())?.doneFedAt).toEqual(after?.doneFedAt);
     await e.stop();
     await stopMakerBots();
   });
