@@ -65,6 +65,8 @@ export class SimExchange {
         events.push(
           { type: "orderAck", at, clOrdID: o.clOrdID },
           this.#fill(o, price, this.options.takerFee, at),
+          // Khớp engine (DEC-TBD-order-done): lệnh kết thúc thì báo `orderDone`.
+          { type: "orderDone", at, clOrdID: o.clOrdID },
         );
         continue;
       }
@@ -81,6 +83,8 @@ export class SimExchange {
       } else if (o.timeInForce !== "IOC") {
         this.open.set(o.clOrdID, o);
       }
+      // IOC kết thúc ngay (khớp hay không): báo `orderDone` như engine.
+      if (o.timeInForce === "IOC") events.push({ type: "orderDone", at, clOrdID: o.clOrdID });
     }
     return events;
   }
@@ -155,7 +159,8 @@ export function runSim<C, S>(
         (a): a is Extract<StrategyAction, { type: "pause" | "stop" }> =>
           a.type === "pause" || a.type === "stop",
       );
-      queue.push(
+      // Kết quả từ sàn (ack, khớp ngay, huỷ) tới trước các event còn xếp hàng, như engine nhận ngay sau khi gửi lệnh.
+      queue.unshift(
         ...exchange.apply(
           result.actions.filter((a) => a.type === "place" || a.type === "cancel"),
           event.at,

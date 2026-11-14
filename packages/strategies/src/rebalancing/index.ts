@@ -18,6 +18,16 @@ import type { RebalancingConfig } from "./schema";
 // quá maxTradePct giá trị danh mục. Khi dừng, tài sản giữ nguyên.
 
 export const REBALANCE_CHECK_MS = 5 * 60_000;
+/** Lô lệnh chờ quá lâu mà không có `orderDone` (tin mất) thì coi như xong với phần đã khớp (P0.1). */
+export const REBAL_PENDING_TIMEOUT_MS = 60_000;
+const KEEP_RECENT = 20;
+
+export interface RebalOrder {
+  asset: string;
+  side: "buy" | "sell";
+  qty?: string;
+  filled?: string;
+}
 
 export interface RebalancingState {
   phase: "waiting_prices" | "running" | "halted";
@@ -25,7 +35,12 @@ export interface RebalancingState {
   holdings: Record<string, string>;
   cash: string;
   fees: string;
-  pending: Record<string, { asset: string; side: "buy" | "sell" }>;
+  /** Lệnh IOC đang chờ; `qty` / `filled` thiếu ở state cũ (trước P0.1). */
+  pending: Record<string, RebalOrder>;
+  /** Lệnh đã xong gần đây, để nhận fill tới trễ (P0.1). */
+  recent?: Record<string, RebalOrder>;
+  /** Lúc đặt lô lệnh đang chờ (ms). */
+  pendingSince?: number | null;
   rebalances: number;
   lastRebalanceAt: number | null;
   round: number;
@@ -123,7 +138,7 @@ function rebalance(
     const qty = roundQty(d.diff.abs().mul(scale).div(price), rules);
     if (!meetsMinimum(price, qty, rules)) continue;
     const id = clOrdId(ctx.botId, ctx.version, `rebal:${String(round)}:${d.a.asset}`);
-    pending[id] = { asset: d.a.asset, side };
+    pending[id] = { asset: d.a.asset, side, qty, filled: "0" };
     actions.push({
       type: "place",
       order: {
@@ -147,6 +162,7 @@ function rebalance(
     state: {
       ...s,
       pending,
+      pendingSince: at,
       round,
       rebalances: s.rebalances + (round === 1 ? 0 : 1),
       lastRebalanceAt: at,
@@ -188,7 +204,7 @@ function buildPart(
     const qty = roundQty(d.diff.mul(scale).div(price), rules);
     if (!meetsMinimum(price, qty, rules)) continue;
     const id = clOrdId(ctx.botId, ctx.version, `rebal:init:${String(k)}:${d.a.asset}`);
-    pending[id] = { asset: d.a.asset, side: "buy" };
+    pending[id] = { asset: d.a.asset, side: "buy", qty, filled: "0" };
     actions.push({
       type: "place",
       order: {
@@ -219,6 +235,7 @@ function buildPart(
     state: {
       ...s,
       pending,
+      pendingSince: Object.keys(pending).length === 0 ? null : at,
       building: done ? null : { startedAt, part: k },
       ...(done ? { round: 1, lastRebalanceAt: at } : {}),
     },
@@ -252,6 +269,21 @@ export function nextScheduled(c: RebalancingConfig, last: number): number {
   return nextRun({ frequency: c.schedule, time: "00:00", timeZone: c.timeZone ?? "UTC" }, last);
 }
 
+/** Lệnh đã xong (khớp đủ / `orderDone` / quá hạn chờ): bỏ khỏi danh sách chờ, nhớ lại để nhận fill trễ. */
+function settle(s: RebalancingState, id: string): RebalancingState {
+  const o = s.pending[id];
+  if (o === undefined) return s;
+  const pending = without(s.pending, id);
+  return {
+    ...s,
+    pending,
+    pendingSince: Object.keys(pending).length === 0 ? null : (s.pendingSince ?? null),
+    recent: Object.fromEntries(
+      [...Object.entries(s.recent ?? {}), [id, o] as const].slice(-KEEP_RECENT),
+    ),
+  };
+}
+
 export function stepRebalancing(
   c: RebalancingConfig,
   s: RebalancingState,
@@ -280,6 +312,14 @@ export function stepRebalancing(
       return { actions: started.actions, state: { ...started.state, phase: "running" } };
     }
     return guards(c, state) ?? { actions: [], state };
+  }
+  if (e.type === "timer" && s.phase === "running" && Object.keys(s.pending).length > 0) {
+    // Lệnh chờ không bao giờ có `orderDone`: quá hạn thì coi như xong (state cũ thiếu giờ đặt thì bắt đầu đếm).
+    if (s.pendingSince == null) return { actions: [], state: { ...s, pendingSince: e.at } };
+    if (e.at - s.pendingSince < REBAL_PENDING_TIMEOUT_MS) return { actions: [], state: s };
+    let st = s;
+    for (const id of Object.keys(s.pending)) st = settle(st, id);
+    return { actions: [], state: st };
   }
   if (e.type === "timer" && s.phase === "running" && Object.keys(s.pending).length === 0) {
     const b = s.building ?? null;
@@ -315,26 +355,36 @@ export function stepRebalancing(
       state: { ...s, phase: "halted" },
     };
   }
+  if (e.type === "orderDone" && s.pending[e.clOrdID] !== undefined)
+    return { actions: [], state: settle(s, e.clOrdID) };
   if (e.type === "fill") {
-    const p = s.pending[e.clOrdID];
+    const live = s.pending[e.clOrdID];
+    const p = live ?? s.recent?.[e.clOrdID];
     if (p === undefined) return { actions: [], state: s };
-    const pending = without(s.pending, e.clOrdID);
-    const value = mul(e.price, e.quantity);
-    const state: RebalancingState = {
+    // Lệnh có ghi khối lượng: chỉ tính tới đủ khối lượng (fill phát lại / khớp trễ không cộng trùng).
+    const room = p.qty === undefined ? dec(e.quantity) : dec(p.qty).sub(p.filled ?? "0");
+    const q = Decimal.min(room, e.quantity);
+    if (!q.gt(0)) return { actions: [], state: s };
+    const fee = q.lt(e.quantity) ? dec(e.fee).mul(q).div(e.quantity).toString() : e.fee;
+    const value = mul(e.price, q);
+    const next: RebalOrder = { ...p, filled: add(p.filled ?? "0", q).toString() };
+    let state: RebalancingState = {
       ...s,
-      pending,
+      ...(live === undefined
+        ? { recent: { ...s.recent, [e.clOrdID]: next } }
+        : { pending: { ...s.pending, [e.clOrdID]: next } }),
       holdings: {
         ...s.holdings,
-        [p.asset]: (p.side === "buy" ? add : sub)(
-          s.holdings[p.asset] ?? "0",
-          e.quantity,
-        ).toString(),
+        [p.asset]: (p.side === "buy" ? add : sub)(s.holdings[p.asset] ?? "0", q).toString(),
       },
       cash: (p.side === "buy" ? dec(s.cash).sub(value) : dec(s.cash).add(value))
-        .sub(e.fee)
+        .sub(fee)
         .toString(),
-      fees: add(s.fees, e.fee).toString(),
+      fees: add(s.fees, fee).toString(),
     };
+    // Khớp đủ (hoặc lệnh của state cũ không ghi khối lượng): lệnh xong.
+    if (live !== undefined && (next.qty === undefined || dec(next.filled ?? "0").gte(next.qty)))
+      state = settle(state, e.clOrdID);
     return guards(c, state) ?? { actions: [], state };
   }
   return { actions: [], state: s };

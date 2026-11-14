@@ -1,7 +1,7 @@
 import { ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
-import { recurringBuy } from "../recurring-buy";
+import { RB_PENDING_TIMEOUT_MS, recurringBuy, type RecurringBuyState } from "../recurring-buy";
 import { nextRun } from "../recurring-buy/schedule";
 import { recurringBuySchema } from "../recurring-buy/schema";
 import { runSim } from "../sim/exchange";
@@ -111,5 +111,62 @@ describe("recurring buy", () => {
     expect(r.success ? [] : r.error.issues.map((i) => i.message)).toEqual([
       "Must be at least one buy.",
     ]);
+  });
+});
+
+describe("recurring buy — buys that end part-filled (P0.1)", () => {
+  const step = (st: RecurringBuyState, e: Parameters<typeof recurringBuy.step>[2]) =>
+    recurringBuy.step(base, st, e, ctx);
+  /** Giá 100.000, tới giờ mua: đặt lệnh 0.0015 BTC (150 USDC). */
+  const placed = () => {
+    let st = recurringBuy.initialState(base);
+    st = step(st, { type: "tick", at: START - WEEK, market: "vBTC_vUSDC", price: "100000" }).state;
+    const at = st.nextAt ?? START;
+    const r = step(st, { type: "timer", at });
+    const o = r.actions.find((a) => a.type === "place");
+    if (o?.type !== "place") throw new Error("no buy");
+    return { st: r.state, order: o.order, at };
+  };
+  const fill = (id: string, q: string, at: number) =>
+    ({ type: "fill", at, clOrdID: id, price: "100000", quantity: q, fee: "0" }) as const;
+
+  it("adds up several fills and counts a part-filled buy when it ends", () => {
+    const { st, order, at } = placed();
+    expect(order.quantity).toBe("0.0015");
+    const a = step(st, fill(order.clOrdID, "0.0005", at + 1)).state;
+    const b = step(a, fill(order.clOrdID, "0.0005", at + 2)).state;
+    expect(b.pending).toBe(order.clOrdID);
+    expect(b.spent).toBe("100");
+    const d = step(b, { type: "orderDone", at: at + 3, clOrdID: order.clOrdID });
+    expect(d.state).toMatchObject({ pending: null, buys: 1, skipped: 0 });
+    expect(d.actions).toEqual([{ type: "log", decision: "Buy 1 filled", why: "0.001 at 100000." }]);
+  });
+
+  it("counts a buy that did not fill as skipped, instead of waiting forever", () => {
+    const { st, order, at } = placed();
+    const d = step(st, { type: "orderDone", at: at + 1, clOrdID: order.clOrdID });
+    expect(d.state).toMatchObject({ pending: null, buys: 0, skipped: 1 });
+    // Lần sau vẫn mua theo lịch.
+    const next = step(d.state, { type: "timer", at: d.state.nextAt ?? at + WEEK });
+    expect(next.actions.some((a) => a.type === "place")).toBe(true);
+  });
+
+  it("books a fill that arrives after orderDone into the ledger and the money spent", () => {
+    const { st, order, at } = placed();
+    const d = step(st, { type: "orderDone", at: at + 1, clOrdID: order.clOrdID }).state;
+    const late = step(d, fill(order.clOrdID, "0.0015", at + 2)).state;
+    expect(late.ledger.position).toBe("0.0015");
+    expect(late.spent).toBe("150");
+    // Không tính quá khối lượng lệnh.
+    expect(step(late, fill(order.clOrdID, "0.001", at + 3)).state.spent).toBe("150");
+  });
+
+  it("treats a buy with no orderDone for 60 s as ended", () => {
+    const { st, order, at } = placed();
+    const a = step(st, fill(order.clOrdID, "0.001", at + 1)).state;
+    const early = step(a, { type: "timer", at: at + RB_PENDING_TIMEOUT_MS - 1 }).state;
+    expect(early.pending).toBe(order.clOrdID);
+    const late = step(early, { type: "timer", at: at + RB_PENDING_TIMEOUT_MS }).state;
+    expect(late).toMatchObject({ pending: null, buys: 1 });
   });
 });
