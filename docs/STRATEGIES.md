@@ -19,6 +19,7 @@
 **Cách chạy:**
 1. Tính các mức giá từ lower → upper theo spacing (arithmetic: cách đều theo giá; geometric: cách đều theo %), làm tròn theo tick.
 2. Lúc start: đặt lệnh mua limit ở mọi mức dưới giá hiện tại, lệnh bán limit ở mọi mức trên giá hiện tại (phần tài sản cơ sở để bán được mua bằng một lệnh market lúc start **[confirm cách khởi tạo]**).
+   - First entry = Now (mặc định) chỉ vào khi giá đang nằm trong khoảng lower–upper; giá đang ngoài khoảng thì bot chờ giá vào khoảng (Trading Agent hiện "Waiting for price · {lower}–{upper}"), không mua market cả vốn. Màn Create cảnh báo "Price is outside your range. The bot waits until the price enters it." nhưng không chặn Start (DEC-235).
 3. Khi một lệnh mua ở mức *i* khớp → đặt lệnh bán ở mức *i+1*. Khi lệnh bán ở mức *i* khớp → đặt lệnh mua ở mức *i−1*.
 4. Giá ra ngoài range: không đặt lệnh mới, bot vẫn `running` với cờ `needs_attention`.
 5. Giá chạm stop → `stop(STOP_LOSS)`. Tổng lợi nhuận chạm take profit → `stop(TAKE_PROFIT)`. Lỗ chạm max loss → `pause(BOT_MAX_LOSS)`.

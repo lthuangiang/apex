@@ -12,7 +12,7 @@ import type {
   StrategyModule,
 } from "../core/types";
 
-import { entryReady, type EntryCondition, type WaitingInfo } from "./entry";
+import { entryReady, waitingCondition, type EntryCondition, type WaitingInfo } from "./entry";
 import { gridPrices } from "./grid";
 
 /** Cấu hình chung của bot grid (Spot và Futures). */
@@ -325,8 +325,9 @@ export function stepGridBot(
 export function gridWaiting(c: GridBotConfig, s: GridBotState): WaitingInfo | null {
   const entry = c.entry ?? { type: "now" };
   if (entry.type === "now") return null;
+  // "within" (Spot Grid chờ giá vào khoảng) hiện như khoảng giá: "Waiting for price · {low}–{high}".
   return s.phase === "idle" || s.phase === "waiting_trigger"
-    ? { kind: "entry", condition: entry }
+    ? { kind: "entry", condition: waitingCondition(entry) }
     : null;
 }
 
