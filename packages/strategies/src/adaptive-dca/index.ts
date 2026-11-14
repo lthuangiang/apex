@@ -88,6 +88,32 @@ export interface AdaptiveDcaState {
   cancelled?: Record<string, "entry" | "exit">;
   /** Số lần liên tiếp lệnh vào chu kỳ bị từ chối; đủ `ADCA.maxBaseRejects` thì pause. */
   baseRejects?: number;
+  /**
+   * Lệnh gần đây (P0.1): chiều, khối lượng đặt / đã khớp, tiền đã khớp. Cộng dồn các lần khớp của một lệnh, không cộng
+   * trùng fill phát lại, nhận fill trễ. Thiếu ở state cũ: lệnh cũ coi như khớp đủ ở lần khớp đầu.
+   */
+  orders?: Record<string, AdcaOrder>;
+}
+
+export interface AdcaOrder {
+  kind: "entry" | "exit";
+  qty: string;
+  filled: string;
+  cost: string;
+}
+
+const KEEP_ORDERS = 30;
+
+function track(s: AdaptiveDcaState, o: OrderIntent, kind: "entry" | "exit"): AdaptiveDcaState {
+  return {
+    ...s,
+    orders: Object.fromEntries(
+      [
+        ...Object.entries(s.orders ?? {}),
+        [o.clOrdID, { kind, qty: o.quantity, filled: "0", cost: "0" }] as const,
+      ].slice(-KEEP_ORDERS),
+    ),
+  };
 }
 
 const initial = (): AdaptiveDcaState => ({
@@ -290,7 +316,7 @@ function tryEnter(
       },
     ],
     state: {
-      ...s,
+      ...track(s, o, "entry"),
       phase: "entering",
       cycle,
       baseId: o.clOrdID,
@@ -377,7 +403,12 @@ function placeTp(
   actions.push({ type: "place", order: o });
   return {
     actions,
-    state: { ...s, tpId: o.clOrdID, tpAttempt: s.tpAttempt + 1, cancelled: c0.cancelled },
+    state: {
+      ...track(s, o, "exit"),
+      tpId: o.clOrdID,
+      tpAttempt: s.tpAttempt + 1,
+      cancelled: c0.cancelled,
+    },
   };
 }
 
@@ -412,7 +443,10 @@ function placeSafety(
   const qty = roundQty(notional.div(price), rules);
   if (!meetsMinimum(price, qty, rules)) return none(s);
   const o = intent(c, ctx, `adca:${String(s.cycle)}:so${String(k)}`, entrySide(c), qty, price);
-  return { actions: [{ type: "place", order: o }], state: { ...s, safetyId: o.clOrdID } };
+  return {
+    actions: [{ type: "place", order: o }],
+    state: { ...track(s, o, "entry"), safetyId: o.clOrdID },
+  };
 }
 
 function startExit(
@@ -446,7 +480,7 @@ function startExit(
   return {
     actions: [...cancels, { type: "place", order: o }, { type: "log", decision, why }],
     state: {
-      ...s,
+      ...track(s, o, "exit"),
       phase: "exiting",
       safetyId: null,
       tpId: null,
@@ -576,106 +610,215 @@ function onTimer(
   return decision === "continue" ? placeSafety(c, next, ctx) : none(next);
 }
 
+const isFlat = (s: AdaptiveDcaState, ctx: StepContext, c: AdaptiveDcaConfig) =>
+  dec(s.ledger.position).isZero() ||
+  dec(s.ledger.position)
+    .abs()
+    .lt(ctx.rules[c.market]?.minQuantity ?? "0");
+
 function onFill(
   c: AdaptiveDcaConfig,
   s: AdaptiveDcaState,
   ctx: StepContext,
   e: Extract<StrategyEvent, { type: "fill" }>,
 ): StepResult<AdaptiveDcaState> {
-  const known =
-    e.clOrdID === s.baseId ||
-    e.clOrdID === s.safetyId ||
-    e.clOrdID === s.tpId ||
-    e.clOrdID === s.exitId;
-  const staleSide = s.cancelled?.[e.clOrdID];
-  // Bot đã dừng (max loss) hoặc lệnh đã huỷ nhưng khớp trễ: chỉ ghi sổ cái, không đặt lệnh mới từ trạng thái dừng.
-  if (s.phase === "halted" || (!known && staleSide !== undefined)) {
-    if (!known && staleSide === undefined) return none(s);
-    const kind = staleSide ?? (e.clOrdID === s.tpId || e.clOrdID === s.exitId ? "exit" : "entry");
-    const ledger = applyFill(
-      s.ledger,
-      kind === "entry" ? entrySide(c) : exitSide(c),
-      e.price,
-      e.quantity,
-      e.fee,
-    );
-    const state: AdaptiveDcaState = { ...s, ledger };
-    if (s.phase !== "in_cycle") return none(state);
+  const id = e.clOrdID;
+  const current =
+    id === s.baseId
+      ? "base"
+      : id === s.safetyId
+        ? "safety"
+        : id === s.tpId
+          ? "tp"
+          : id === s.exitId
+            ? "exit"
+            : null;
+  const rec = s.orders?.[id];
+  const kind =
+    current === "base" || current === "safety"
+      ? "entry"
+      : current !== null
+        ? "exit"
+        : (s.cancelled?.[id] ?? rec?.kind);
+  if (kind === undefined) return none(s);
+  // Chỉ tính tới đủ khối lượng lệnh: fill phát lại / khớp trễ không cộng trùng.
+  const room = rec === undefined ? dec(e.quantity) : dec(rec.qty).sub(rec.filled);
+  const q = Decimal.min(room, e.quantity);
+  if (!q.gt(0)) return none(s);
+  const fee = q.lt(e.quantity) ? dec(e.fee).mul(q).div(e.quantity).toString() : e.fee;
+  const filledQty = dec(rec?.filled ?? "0").add(q);
+  const next: AdcaOrder | undefined =
+    rec === undefined
+      ? undefined
+      : {
+          ...rec,
+          filled: filledQty.toString(),
+          cost: dec(rec.cost).add(dec(e.price).mul(q)).toString(),
+        };
+  const state: AdaptiveDcaState = {
+    ...s,
+    ledger: applyFill(s.ledger, kind === "entry" ? entrySide(c) : exitSide(c), e.price, q, fee),
+    ...(next === undefined ? {} : { orders: { ...s.orders, [id]: next } }),
+  };
+  // Bot đã dừng (max loss) hoặc lệnh đã huỷ / đã xong nhưng khớp trễ: chỉ ghi sổ cái, không đặt lệnh mới từ trạng
+  // thái dừng.
+  if (s.phase === "halted" || current === null) {
+    if (state.phase !== "in_cycle") return none(state);
     // Lệnh chốt cũ khớp trễ làm vị thế về 0: chu kỳ kết thúc.
-    if (
-      dec(ledger.position)
-        .abs()
-        .lt(ctx.rules[c.market]?.minQuantity ?? "0") ||
-      dec(ledger.position).isZero()
-    )
+    if (isFlat(state, ctx, c))
       return none({ ...state, phase: "idle", tpId: null, safetyId: null, reduced: false });
     // Còn vị thế: khối lượng đổi thì đặt lại take profit cho đúng.
     return placeTp(c, state, ctx);
   }
-  if (e.clOrdID === s.baseId || e.clOrdID === s.safetyId) {
-    const base = e.clOrdID === s.baseId;
-    const filled: AdaptiveDcaState = {
-      ...s,
-      phase: s.phase === "exiting" ? "exiting" : "in_cycle",
-      ledger: applyFill(s.ledger, entrySide(c), e.price, e.quantity, e.fee),
-      lastFillPrice: e.price,
-      ...(base
-        ? { baseId: null, baseRejects: 0 }
-        : { safetyId: null, safetiesFilled: s.safetiesFilled + 1, nextSafety: s.nextSafety + 1 }),
-    };
-    filled.peakExposure = Decimal.max(dec(s.peakExposure ?? "0"), exposure(filled)).toString();
-    if (filled.phase === "exiting") return none(filled);
-    const g = guards(c, filled, ctx);
-    if (g !== null) return g;
-    const tp = placeTp(c, filled, ctx);
-    const so = placeSafety(c, tp.state, ctx);
-    const log: StrategyAction[] = base
-      ? []
-      : [
-          {
-            type: "log",
-            decision: `Extra order ${String(s.nextSafety)} filled`,
-            why: `New average ${dec(filled.ledger.avgCost).toDecimalPlaces(8).toString()}.`,
-          },
-        ];
-    return { actions: [...tp.actions, ...so.actions, ...log], state: so.state };
+  if (current === "base" || current === "safety") {
+    // Lệnh vào chưa khớp đủ: chờ phần còn lại hoặc `orderDone`.
+    if (next !== undefined && filledQty.lt(next.qty)) return none(state);
+    return entryDone(c, state, ctx, current, next === undefined ? e.price : avgOf(next));
   }
-  if (e.clOrdID === s.tpId || e.clOrdID === s.exitId) {
-    const ledger = applyFill(s.ledger, exitSide(c), e.price, e.quantity, e.fee);
-    const flat =
-      dec(ledger.position)
-        .abs()
-        .lt(ctx.rules[c.market]?.minQuantity ?? "0") || dec(ledger.position).isZero();
-    const state: AdaptiveDcaState = { ...s, ledger };
-    if (!flat) return none(state);
-    const tp = e.clOrdID === s.tpId;
-    const cx = cancelAll(state, [{ id: s.safetyId, side: "entry" }]);
-    return {
-      actions: [
-        ...cx.actions,
+  if (!isFlat(state, ctx, c)) return none(state);
+  return cycleClosed(c, state, current === "tp", e.price, e.at);
+}
+
+const avgOf = (o: AdcaOrder) => dec(o.cost).div(o.filled).toString();
+
+/** Lệnh vào (base / DCA) đã xong với phần đã khớp: đặt take profit và lệnh DCA kế tiếp. */
+function entryDone(
+  c: AdaptiveDcaConfig,
+  s: AdaptiveDcaState,
+  ctx: StepContext,
+  which: "base" | "safety",
+  price: string,
+): StepResult<AdaptiveDcaState> {
+  const base = which === "base";
+  const filled: AdaptiveDcaState = {
+    ...s,
+    phase: s.phase === "exiting" ? "exiting" : "in_cycle",
+    lastFillPrice: price,
+    ...(base
+      ? { baseId: null, baseRejects: 0 }
+      : { safetyId: null, safetiesFilled: s.safetiesFilled + 1, nextSafety: s.nextSafety + 1 }),
+  };
+  filled.peakExposure = Decimal.max(dec(s.peakExposure ?? "0"), exposure(filled)).toString();
+  if (filled.phase === "exiting") return none(filled);
+  const g = guards(c, filled, ctx);
+  if (g !== null) return g;
+  const tp = placeTp(c, filled, ctx);
+  const so = placeSafety(c, tp.state, ctx);
+  const log: StrategyAction[] = base
+    ? []
+    : [
         {
           type: "log",
-          decision: tp ? `Cycle ${String(s.cycle)} took profit` : `Cycle ${String(s.cycle)} closed`,
-          why: `Closed at ${e.price}.`,
+          decision: `Extra order ${String(s.nextSafety)} filled`,
+          why: `New average ${dec(filled.ledger.avgCost).toDecimalPlaces(8).toString()}.`,
         },
-      ],
-      state: {
-        ...state,
-        phase: "idle",
-        tpId: null,
-        exitId: null,
-        safetyId: null,
-        cancelled: cx.cancelled,
-        completedCycles: s.completedCycles + (tp ? 1 : 0),
-        exits: s.exits + (tp ? 0 : 1),
-        cooldownUntil: tp ? s.cooldownUntil : e.at + c.cooldownMinutes * 60_000,
-        decision: "continue",
-        reduced: false,
-        againstSince: null,
+      ];
+  return { actions: [...tp.actions, ...so.actions, ...log], state: so.state };
+}
+
+/** Vị thế đã đóng hết (take profit hoặc lệnh đóng): kết thúc chu kỳ. */
+function cycleClosed(
+  c: AdaptiveDcaConfig,
+  state: AdaptiveDcaState,
+  tp: boolean,
+  price: string,
+  at: number,
+): StepResult<AdaptiveDcaState> {
+  const cx = cancelAll(state, [{ id: state.safetyId, side: "entry" }]);
+  return {
+    actions: [
+      ...cx.actions,
+      {
+        type: "log",
+        decision: tp
+          ? `Cycle ${String(state.cycle)} took profit`
+          : `Cycle ${String(state.cycle)} closed`,
+        why: `Closed at ${price}.`,
       },
-    };
+    ],
+    state: {
+      ...state,
+      phase: "idle",
+      tpId: null,
+      exitId: null,
+      safetyId: null,
+      cancelled: cx.cancelled,
+      completedCycles: state.completedCycles + (tp ? 1 : 0),
+      exits: state.exits + (tp ? 0 : 1),
+      cooldownUntil: tp ? state.cooldownUntil : at + c.cooldownMinutes * 60_000,
+      decision: "continue",
+      reduced: false,
+      againstSince: null,
+    },
+  };
+}
+
+/** Lệnh đã kết thúc trên SoDEX (`orderDone`), kể cả khi mới khớp một phần hoặc không khớp gì. */
+function onOrderDone(
+  c: AdaptiveDcaConfig,
+  s0: AdaptiveDcaState,
+  ctx: StepContext,
+  id: string,
+  at: number,
+): StepResult<AdaptiveDcaState> {
+  const s: AdaptiveDcaState =
+    s0.cancelled?.[id] === undefined
+      ? s0
+      : {
+          ...s0,
+          cancelled: Object.fromEntries(Object.entries(s0.cancelled).filter(([k]) => k !== id)),
+        };
+  if (s.phase === "halted") return none(s);
+  const rec = s.orders?.[id];
+  const filled = rec !== undefined && dec(rec.filled).gt(0);
+  if (id === s.baseId) {
+    if (filled) return entryDone(c, s, ctx, "base", avgOf(rec));
+    // Lệnh vào không khớp gì: về chờ, thử lại ở nhịp sau.
+    return none({ ...s, phase: "idle", baseId: null });
+  }
+  if (id === s.safetyId) {
+    if (filled) return entryDone(c, s, ctx, "safety", avgOf(rec));
+    return none({ ...s, safetyId: null });
+  }
+  if (id === s.tpId && s.phase === "in_cycle") {
+    // Take profit kết thúc mà vị thế chưa đóng hết: đặt lại cho phần còn lại.
+    if (isFlat(s, ctx, c)) return cycleClosed(c, s, true, s.lastPrice ?? "0", at);
+    return placeTp(c, { ...s, tpId: null }, ctx);
+  }
+  if (id === s.exitId) {
+    if (isFlat(s, ctx, c)) return cycleClosed(c, s, false, s.lastPrice ?? "0", at);
+    // Lệnh đóng hết hạn khi vị thế còn: gửi lại lệnh đóng cho phần còn lại ngay (không để vị thế không có TP / stop).
+    return retryExit(c, { ...s, exitId: null }, ctx);
   }
   return none(s);
+}
+
+function retryExit(
+  c: AdaptiveDcaConfig,
+  s: AdaptiveDcaState,
+  ctx: StepContext,
+): StepResult<AdaptiveDcaState> {
+  const rules = ctx.rules[c.market];
+  const qty = rules === undefined ? "0" : roundQty(dec(s.ledger.position).abs(), rules);
+  if (!dec(qty).gt(0)) return none({ ...s, phase: "in_cycle" });
+  const o = intent(
+    c,
+    ctx,
+    `adca:${String(s.cycle)}:exit:${String(s.exitAttempt)}`,
+    exitSide(c),
+    qty,
+    undefined,
+    true,
+  );
+  return {
+    actions: [{ type: "place", order: o }],
+    state: {
+      ...track(s, o, "exit"),
+      phase: "exiting",
+      exitId: o.clOrdID,
+      exitAttempt: s.exitAttempt + 1,
+    },
+  };
 }
 
 export function stepAdaptiveDca(
@@ -684,7 +827,7 @@ export function stepAdaptiveDca(
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<AdaptiveDcaState> {
-  if (s.phase === "halted" && e.type !== "fill") return none(s);
+  if (s.phase === "halted" && e.type !== "fill" && e.type !== "orderDone") return none(s);
   switch (e.type) {
     case "tick": {
       if (e.market !== c.market) return none(s);
@@ -723,13 +866,8 @@ export function stepAdaptiveDca(
       return e.market === c.market
         ? none({ ...s, ledger: applyFunding(s.ledger, e.amount) })
         : none(s);
-    case "orderDone": {
-      if (s.cancelled?.[e.clOrdID] === undefined) return none(s);
-      const rest = Object.fromEntries(
-        Object.entries(s.cancelled).filter(([id]) => id !== e.clOrdID),
-      );
-      return none({ ...s, cancelled: rest });
-    }
+    case "orderDone":
+      return onOrderDone(c, s, ctx, e.clOrdID, e.at);
     case "orderAck":
     case "fundingRate":
     case "marginRatio":

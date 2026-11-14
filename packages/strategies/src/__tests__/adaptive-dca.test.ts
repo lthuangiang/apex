@@ -329,3 +329,70 @@ describe("adaptive DCA cycle", () => {
     expect(adaptiveDcaSchema.safeParse({ ...cfg(), maxExposure: "50" }).success).toBe(false);
   });
 });
+
+describe("AI Adaptive DCA — orders that fill in parts, end part-filled or fill late (P0.1)", () => {
+  const c = cfg({ entryRsi: "90" });
+  /** Đặt lệnh đầu ở 79.950 (chưa khớp). */
+  const placed = () => {
+    const r = run(c, [tick(T0 - 1000, "79950"), timer(T0)]);
+    const base = places(r.all)[0];
+    if (base === undefined) throw new Error("expected a first order");
+    return { s: r.s, base };
+  };
+
+  it("adds up a first order that fills in two parts before placing the take profit", () => {
+    const { s, base } = placed();
+    const half = (Number(base.quantity) / 2).toFixed(5);
+    let r = run(c, [fill(s, base.clOrdID, "79950", half, T0 + 1000)], s);
+    expect(places(r.all)).toHaveLength(0);
+    expect(r.s.phase).toBe("entering");
+    r = run(c, [fill(r.s, base.clOrdID, "79950", half, T0 + 1100)], r.s);
+    expect(r.s.phase).toBe("in_cycle");
+    expect(places(r.all).find((o) => o.tag.includes(":tp:"))?.quantity).toBe(base.quantity);
+  });
+
+  it("starts the cycle with what filled when the first order ends part-filled, and waits when nothing filled", () => {
+    const { s, base } = placed();
+    const part = run(c, [fill(s, base.clOrdID, "79950", "0.0005", T0 + 1000)], s);
+    const done = run(c, [{ type: "orderDone", at: T0 + 1100, clOrdID: base.clOrdID }], part.s);
+    expect(done.s.phase).toBe("in_cycle");
+    expect(places(done.all).find((o) => o.tag.includes(":tp:"))?.quantity).toBe("0.0005");
+    const empty = placed();
+    const none = run(
+      c,
+      [{ type: "orderDone", at: T0 + 1100, clOrdID: empty.base.clOrdID }],
+      empty.s,
+    );
+    expect(none.s).toMatchObject({ phase: "idle", baseId: null });
+  });
+
+  it("sends the exit again for the rest when the market exit ends part-filled, instead of getting stuck", () => {
+    const hard = cfg({ entryRsi: "90", hardStopLossPct: "2" });
+    let r = entered(hard);
+    r = run(hard, [tick(T0 + 5000, "78300")], r.s);
+    const exit = places(r.all).at(-1);
+    if (exit === undefined) throw new Error("expected an exit");
+    r = run(hard, [fill(r.s, exit.clOrdID, "78300", "0.0005", T0 + 6000)], r.s);
+    expect(r.s.phase).toBe("exiting");
+    r = run(hard, [{ type: "orderDone", at: T0 + 6100, clOrdID: exit.clOrdID }], r.s);
+    const again = places(r.all).at(-1);
+    expect(again).toMatchObject({ type: "market", reduceOnly: true, side: "sell" });
+    expect(Number(again?.quantity)).toBeCloseTo(Number(exit.quantity) - 0.0005, 8);
+    expect(r.s.phase).toBe("exiting");
+    // Phần còn lại khớp: chu kỳ đóng.
+    r = run(
+      hard,
+      [fill(r.s, again?.clOrdID ?? "", "78300", again?.quantity ?? "0", T0 + 7000)],
+      r.s,
+    );
+    expect(r.s).toMatchObject({ phase: "idle", exits: 1 });
+  });
+
+  it("does not count a replayed fill twice", () => {
+    const { s, base } = placed();
+    let r = run(c, [fill(s, base.clOrdID, "79950", base.quantity, T0 + 1000)], s);
+    const pos = r.s.ledger.position;
+    r = run(c, [fill(r.s, base.clOrdID, "79950", base.quantity, T0 + 1100)], r.s);
+    expect(r.s.ledger.position).toBe(pos);
+  });
+});

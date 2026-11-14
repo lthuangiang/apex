@@ -56,6 +56,36 @@ export interface DcaBotState {
   lastExitPrice?: string | null;
   /** Mốc hết Cooldown (epoch ms), tính từ lúc lệnh take profit khớp. */
   cooldownUntil?: number | null;
+  /**
+   * Mọi lệnh gần đây (P0.1): vai trò, khối lượng đặt / đã khớp. Dùng để cộng dồn các lần khớp, nhận fill trễ của lệnh
+   * đã huỷ / đã thay, và biết lệnh nào đã xong. Thiếu ở state cũ: lệnh cũ coi như khớp đủ ở lần khớp đầu.
+   */
+  orders?: Record<string, DcaOrder>;
+}
+
+export interface DcaOrder {
+  role: "base" | "safety" | "tp";
+  /** Chỉ số safety (1-based). */
+  k?: number;
+  cycle: number;
+  qty: string;
+  filled: string;
+  /** Đã có `orderDone` (hoặc khớp đủ). */
+  done?: boolean;
+}
+
+const KEEP_ORDERS = 40;
+
+function track(s: DcaBotState, list: readonly { id: string; o: DcaOrder }[]): DcaBotState {
+  if (list.length === 0) return s;
+  return {
+    ...s,
+    orders: Object.fromEntries(
+      [...Object.entries(s.orders ?? {}), ...list.map((x) => [x.id, x.o] as const)].slice(
+        -KEEP_ORDERS,
+      ),
+    ),
+  };
 }
 
 export const initialDcaState = (): DcaBotState => ({
@@ -197,16 +227,19 @@ function startCycle(
         why: `Base order at about ${price}.`,
       },
     ],
-    state: {
-      ...s,
-      phase: "waiting_base",
-      cycle,
-      baseClOrdID: base.clOrdID,
-      safeties: {},
-      safetiesFilled: 0,
-      tpClOrdID: null,
-      tpAttempt: 0,
-    },
+    state: track(
+      {
+        ...s,
+        phase: "waiting_base",
+        cycle,
+        baseClOrdID: base.clOrdID,
+        safeties: {},
+        safetiesFilled: 0,
+        tpClOrdID: null,
+        tpAttempt: 0,
+      },
+      [{ id: base.clOrdID, o: { role: "base", cycle, qty, filled: "0" } }],
+    ),
   };
 }
 
@@ -239,7 +272,17 @@ function placeSafeties(
     actions.push({ type: "place", order: o });
     safeties[o.clOrdID] = k;
   }
-  return { actions, state: { ...s, safeties } };
+  return {
+    actions,
+    state: track(
+      { ...s, safeties },
+      Object.entries(safeties).map(([id, k]) => {
+        const a = actions.find((x) => x.type === "place" && x.order.clOrdID === id);
+        const qty = a?.type === "place" ? a.order.quantity : "0";
+        return { id, o: { role: "safety" as const, k, cycle: s.cycle, qty, filled: "0" } };
+      }),
+    ),
+  };
 }
 
 function placeTakeProfit(
@@ -255,9 +298,10 @@ function placeTakeProfit(
     c.direction === "long" ? avg.mul(dec("1").add(tp)) : avg.mul(dec("1").sub(tp)),
     rules,
   );
-  const qty = dec(s.ledger.position).abs().toString();
+  const qty = roundQty(dec(s.ledger.position).abs(), rules);
   const actions: StrategyAction[] =
     s.tpClOrdID === null ? [] : [{ type: "cancel", clOrdID: s.tpClOrdID }];
+  if (!dec(qty).gt(0)) return { actions, state: { ...s, tpClOrdID: null } };
   const o = intent(
     c,
     ctx,
@@ -268,7 +312,12 @@ function placeTakeProfit(
     c.engine === "perps",
   );
   actions.push({ type: "place", order: o });
-  return { actions, state: { ...s, tpClOrdID: o.clOrdID, tpAttempt: s.tpAttempt + 1 } };
+  return {
+    actions,
+    state: track({ ...s, tpClOrdID: o.clOrdID, tpAttempt: s.tpAttempt + 1 }, [
+      { id: o.clOrdID, o: { role: "tp", cycle: s.cycle, qty, filled: "0" } },
+    ]),
+  };
 }
 
 function cancelCycle(s: DcaBotState): StrategyAction[] {
@@ -305,7 +354,9 @@ export function stepDcaBot(
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<DcaBotState> {
-  if (s.phase === "halted") return { actions: [], state: s };
+  // Đã dừng: chỉ nhận fill (khớp trễ vào sổ cái) và orderDone.
+  if (s.phase === "halted" && e.type !== "fill" && e.type !== "orderDone")
+    return { actions: [], state: s };
   if (e.type === "orderReject") {
     return {
       actions: [{ type: "pause", reason: ReasonCode.orderRejected }],
@@ -329,74 +380,180 @@ export function stepDcaBot(
     }
     return guards(c, state, e.price) ?? { actions: [], state };
   }
+  if (e.type === "orderDone") return onOrderDone(c, s, e.clOrdID, e.at, ctx);
   if (e.type !== "fill") return { actions: [], state: s };
+  return onFill(c, s, e, ctx);
+}
 
-  if (e.clOrdID === s.baseClOrdID) {
-    let state: DcaBotState = {
-      ...s,
-      phase: "in_cycle",
-      baseClOrdID: null,
-      ledger: applyFill(s.ledger, entrySide(c), e.price, e.quantity, e.fee),
-    };
-    const safeties = placeSafeties(c, state, e.price, ctx);
-    state = safeties.state;
-    const tp = placeTakeProfit(c, state, ctx);
-    return { actions: [...safeties.actions, ...tp.actions], state: tp.state };
+/** Lệnh của state cũ (trước P0.1, chưa có `orders`): coi như khớp đủ ở lần khớp này. */
+function legacyOrder(s: DcaBotState, id: string, qty: string): DcaOrder | undefined {
+  if (id === s.baseClOrdID) return { role: "base", cycle: s.cycle, qty, filled: "0" };
+  const k = s.safeties[id];
+  if (k !== undefined) return { role: "safety", k, cycle: s.cycle, qty, filled: "0" };
+  if (id === s.tpClOrdID) return { role: "tp", cycle: s.cycle, qty, filled: "0" };
+  return undefined;
+}
+
+function onFill(
+  c: DcaBotConfig,
+  s: DcaBotState,
+  e: Extract<StrategyEvent, { type: "fill" }>,
+  ctx: StepContext,
+): StepResult<DcaBotState> {
+  const o = s.orders?.[e.clOrdID] ?? legacyOrder(s, e.clOrdID, e.quantity);
+  if (o === undefined) return { actions: [], state: s };
+  const q = Decimal.min(dec(o.qty).sub(o.filled), e.quantity);
+  if (!q.gt(0)) return { actions: [], state: s };
+  const fee = q.lt(e.quantity) ? dec(e.fee).mul(q).div(e.quantity).toString() : e.fee;
+  const side = o.role === "tp" ? exitSide(c) : entrySide(c);
+  const filled = dec(o.filled).add(q);
+  const full = filled.gte(o.qty);
+  const rec: DcaOrder = { ...o, filled: filled.toString(), ...(full ? { done: true } : {}) };
+  const state: DcaBotState = {
+    ...s,
+    ledger: applyFill(s.ledger, side, e.price, q, fee),
+    orders: { ...s.orders, [e.clOrdID]: rec },
+  };
+  // Đã dừng: fill (khớp trễ) chỉ vào sổ cái.
+  if (s.phase === "halted") return { actions: [], state };
+  if (o.role === "base" && e.clOrdID === s.baseClOrdID)
+    return full ? baseDone(c, state, ctx) : { actions: [], state };
+  if (o.role === "safety" && s.safeties[e.clOrdID] !== undefined)
+    return full ? safetyDone(c, state, e.clOrdID, ctx, e.price) : { actions: [], state };
+  if (o.role === "tp" && e.clOrdID === s.tpClOrdID) {
+    if (full || dec(state.ledger.position).isZero()) return cycleDone(c, state, e.price, e.at);
+    // TP khớp một phần: chưa sang chu kỳ mới, chờ phần còn lại.
+    return { actions: [], state };
   }
-  const k = s.safeties[e.clOrdID];
-  if (k !== undefined) {
-    const safeties = without(s.safeties, e.clOrdID);
-    const state: DcaBotState = {
-      ...s,
-      safeties,
-      safetiesFilled: s.safetiesFilled + 1,
-      ledger: applyFill(s.ledger, entrySide(c), e.price, e.quantity, e.fee),
-    };
-    const g = guards(c, state, e.price);
-    if (g !== null) return g;
-    const tp = placeTakeProfit(c, state, ctx);
+  // Khớp trễ của lệnh đã huỷ / đã thay (TP cũ, safety đã huỷ, base của chu kỳ trước): đã vào sổ cái; trong chu kỳ đang
+  // chạy thì đặt lại TP theo vị thế mới.
+  return afterLateFill(c, state, e.price, e.at, ctx);
+}
+
+function afterLateFill(
+  c: DcaBotConfig,
+  s: DcaBotState,
+  price: string,
+  at: number,
+  ctx: StepContext,
+): StepResult<DcaBotState> {
+  if (s.phase !== "in_cycle") return { actions: [], state: s };
+  if (dec(s.ledger.position).isZero()) return cycleDone(c, s, price, at);
+  const g = guards(c, s, price);
+  if (g !== null) return g;
+  return placeTakeProfit(c, s, ctx);
+}
+
+/** Base order đã xong: có khớp thì đặt safety + TP; không khớp gì thì chờ chu kỳ mới ở tick sau. */
+function baseDone(c: DcaBotConfig, s: DcaBotState, ctx: StepContext): StepResult<DcaBotState> {
+  const base = s.baseClOrdID === null ? undefined : s.orders?.[s.baseClOrdID];
+  const state: DcaBotState = { ...s, baseClOrdID: null };
+  if (base === undefined || !dec(base.filled).gt(0) || dec(state.ledger.position).isZero())
     return {
       actions: [
-        ...tp.actions,
         {
           type: "log",
-          decision: `Safety order ${String(k)} filled`,
-          why: `New average ${dec(state.ledger.avgCost).toDecimalPlaces(8).toString()}.`,
+          decision: `Cycle ${String(s.cycle)} not started`,
+          why: "The base order did not fill.",
         },
       ],
-      state: tp.state,
+      state: { ...state, phase: "idle" },
+    };
+  let next: DcaBotState = { ...state, phase: "in_cycle" };
+  const safeties = placeSafeties(c, next, next.ledger.avgCost, ctx);
+  next = safeties.state;
+  const tp = placeTakeProfit(c, next, ctx);
+  return { actions: [...safeties.actions, ...tp.actions], state: tp.state };
+}
+
+/** Safety order đã xong (khớp đủ, hoặc kết thúc sau khi khớp một phần): đặt lại TP theo vị thế mới. */
+function safetyDone(
+  c: DcaBotConfig,
+  s: DcaBotState,
+  id: string,
+  ctx: StepContext,
+  price: string,
+): StepResult<DcaBotState> {
+  const k = s.safeties[id] ?? 0;
+  const state: DcaBotState = {
+    ...s,
+    safeties: without(s.safeties, id),
+    safetiesFilled: s.safetiesFilled + 1,
+  };
+  const g = guards(c, state, price);
+  if (g !== null) return g;
+  const tp = placeTakeProfit(c, state, ctx);
+  return {
+    actions: [
+      ...tp.actions,
+      {
+        type: "log",
+        decision: `Safety order ${String(k)} filled`,
+        why: `New average ${dec(state.ledger.avgCost).toDecimalPlaces(8).toString()}.`,
+      },
+    ],
+    state: tp.state,
+  };
+}
+
+/** TP đã đóng hết vị thế: kết thúc chu kỳ. */
+function cycleDone(
+  c: DcaBotConfig,
+  s: DcaBotState,
+  price: string,
+  at: number,
+): StepResult<DcaBotState> {
+  const completed = s.completedCycles + 1;
+  const cancels: StrategyAction[] = [
+    ...Object.keys(s.safeties),
+    ...(s.tpClOrdID !== null && s.orders?.[s.tpClOrdID]?.done !== true ? [s.tpClOrdID] : []),
+  ].map((id) => ({ type: "cancel", clOrdID: id }));
+  const state: DcaBotState = {
+    ...s,
+    completedCycles: completed,
+    tpClOrdID: null,
+    safeties: {},
+    phase: "idle",
+    lastExitPrice: price,
+    cooldownUntil: c.nextCycle?.type === "cooldown" ? at + c.nextCycle.minutes * 60_000 : null,
+  };
+  const log: StrategyAction = {
+    type: "log",
+    decision: `Cycle ${String(s.cycle)} took profit`,
+    why: `Sold at ${price}.`,
+  };
+  if (c.maxCycles !== undefined && completed >= c.maxCycles) {
+    return {
+      actions: [...cancels, log, { type: "stop", reason: ReasonCode.maxCycles, close: false }],
+      state: { ...state, phase: "halted" },
     };
   }
-  if (e.clOrdID === s.tpClOrdID) {
-    const ledger = applyFill(s.ledger, exitSide(c), e.price, e.quantity, e.fee);
-    const completed = s.completedCycles + 1;
-    const cancels: StrategyAction[] = Object.keys(s.safeties).map((id) => ({
-      type: "cancel",
-      clOrdID: id,
-    }));
-    const state: DcaBotState = {
-      ...s,
-      ledger,
-      completedCycles: completed,
-      tpClOrdID: null,
-      safeties: {},
-      phase: "idle",
-      lastExitPrice: e.price,
-      cooldownUntil: c.nextCycle?.type === "cooldown" ? e.at + c.nextCycle.minutes * 60_000 : null,
-    };
-    const log: StrategyAction = {
-      type: "log",
-      decision: `Cycle ${String(s.cycle)} took profit`,
-      why: `Sold at ${e.price}.`,
-    };
-    if (c.maxCycles !== undefined && completed >= c.maxCycles) {
-      return {
-        actions: [...cancels, log, { type: "stop", reason: ReasonCode.maxCycles, close: false }],
-        state: { ...state, phase: "halted" },
-      };
-    }
-    // Chu kỳ mới bắt đầu ở tick kế tiếp (phase idle).
-    return { actions: [...cancels, log], state };
+  // Chu kỳ mới bắt đầu ở tick kế tiếp (phase idle).
+  return { actions: [...cancels, log], state };
+}
+
+/** Lệnh đã kết thúc trên SoDEX (`orderDone`), kể cả khi mới khớp một phần. */
+function onOrderDone(
+  c: DcaBotConfig,
+  s0: DcaBotState,
+  id: string,
+  at: number,
+  ctx: StepContext,
+): StepResult<DcaBotState> {
+  const o = s0.orders?.[id];
+  const s: DcaBotState =
+    o === undefined ? s0 : { ...s0, orders: { ...s0.orders, [id]: { ...o, done: true } } };
+  if (s.phase === "halted") return { actions: [], state: s };
+  if (id === s.baseClOrdID) return baseDone(c, s, ctx);
+  if (s.safeties[id] !== undefined) {
+    if (o !== undefined && dec(o.filled).gt(0))
+      return safetyDone(c, s, id, ctx, s.lastPrice ?? "0");
+    return { actions: [], state: { ...s, safeties: without(s.safeties, id) } };
+  }
+  if (id === s.tpClOrdID && s.phase === "in_cycle") {
+    // TP kết thúc mà vị thế chưa đóng hết: đặt lại TP cho phần còn lại.
+    if (dec(s.ledger.position).isZero()) return cycleDone(c, s, s.lastPrice ?? "0", at);
+    return placeTakeProfit(c, { ...s, tpClOrdID: null }, ctx);
   }
   return { actions: [], state: s };
 }

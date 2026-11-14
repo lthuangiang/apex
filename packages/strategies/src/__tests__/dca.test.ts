@@ -1,7 +1,7 @@
 import { ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
-import { safetyOffsetPct } from "../common/dca-bot";
+import { safetyOffsetPct, type DcaBotState } from "../common/dca-bot";
 import { futuresDca } from "../futures-dca";
 import { futuresDcaSchema } from "../futures-dca/schema";
 import { runSim } from "../sim/exchange";
@@ -156,5 +156,109 @@ describe("futures DCA", () => {
   it("requires a stop loss beyond the last safety", () => {
     const r = futuresDcaSchema.safeParse({ ...fut, stopLossPct: "3" });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("DCA — orders that fill in parts, end part-filled or fill late (P0.1)", () => {
+  type Ev = Parameters<typeof spotDca.step>[2];
+  const step = (st: DcaBotState, e: Ev) => spotDca.step(spot, st, e, ctx);
+  const placesOf = (a: ReturnType<typeof step>["actions"]) =>
+    a.flatMap((x) => (x.type === "place" ? [x.order] : []));
+  const fill = (id: string, price: string, q: string, at: number): Ev => ({
+    type: "fill",
+    at,
+    clOrdID: id,
+    price,
+    quantity: q,
+    fee: "0",
+  });
+  /** Tick 100: base order 1 ETH (market). */
+  const started = () => {
+    const r = step(spotDca.initialState(spot), {
+      type: "tick",
+      at: 0,
+      market: "vETH_vUSDC",
+      price: "100",
+    });
+    const base = placesOf(r.actions)[0];
+    if (base === undefined) throw new Error("no base");
+    return { st: r.state, base };
+  };
+  /** Base khớp đủ ở 100: trả state đang trong chu kỳ và lệnh TP. */
+  const inCycle = () => {
+    const { st, base } = started();
+    const r = step(st, fill(base.clOrdID, "100", "1", 1));
+    const tp = placesOf(r.actions).find((o) => o.side === "sell");
+    const so1 = placesOf(r.actions).find((o) => o.tag.endsWith(":so1"));
+    if (tp === undefined || so1 === undefined) throw new Error("no tp");
+    return { st: r.state, tp, so1 };
+  };
+
+  it("adds up a base order that fills in two parts before placing safeties and the take profit", () => {
+    const { st, base } = started();
+    const a = step(st, fill(base.clOrdID, "100", "0.4", 1));
+    expect(placesOf(a.actions)).toEqual([]);
+    expect(a.state.phase).toBe("waiting_base");
+    const b = step(a.state, fill(base.clOrdID, "100", "0.6", 2));
+    expect(b.state.phase).toBe("in_cycle");
+    expect(b.state.ledger.position).toBe("1");
+    expect(placesOf(b.actions).find((o) => o.side === "sell")?.quantity).toBe("1");
+  });
+
+  it("starts the cycle with what filled when the base order ends part-filled, and waits when nothing filled", () => {
+    const { st, base } = started();
+    const part = step(st, fill(base.clOrdID, "100", "0.5", 1)).state;
+    const r = step(part, { type: "orderDone", at: 2, clOrdID: base.clOrdID });
+    expect(r.state.phase).toBe("in_cycle");
+    expect(placesOf(r.actions).find((o) => o.side === "sell")?.quantity).toBe("0.5");
+    const none = started();
+    const d = step(none.st, { type: "orderDone", at: 2, clOrdID: none.base.clOrdID });
+    expect(d.state.phase).toBe("idle");
+    expect(d.state.baseClOrdID).toBeNull();
+    // Tick sau mở chu kỳ mới, không kẹt ở waiting_base.
+    const again = step(d.state, { type: "tick", at: 3, market: "vETH_vUSDC", price: "100" });
+    expect(placesOf(again.actions)[0]?.type).toBe("market");
+  });
+
+  it("does not start a new cycle while the take profit is only part-filled", () => {
+    const { st, tp } = inCycle();
+    const half = step(st, fill(tp.clOrdID, "101", "0.5", 5));
+    expect(half.state.phase).toBe("in_cycle");
+    expect(half.state.completedCycles).toBe(0);
+    const rest = step(half.state, fill(tp.clOrdID, "101", "0.5", 6));
+    expect(rest.state.phase).toBe("idle");
+    expect(rest.state.completedCycles).toBe(1);
+    expect(rest.state.ledger.position).toBe("0");
+  });
+
+  it("re-places the take profit for the rest when it ends part-filled", () => {
+    const { st, tp } = inCycle();
+    const half = step(st, fill(tp.clOrdID, "101", "0.4", 5)).state;
+    const r = step(half, { type: "orderDone", at: 6, clOrdID: tp.clOrdID });
+    const next = placesOf(r.actions).find((o) => o.side === "sell");
+    expect(next?.quantity).toBe("0.6");
+    expect(r.state.phase).toBe("in_cycle");
+  });
+
+  it("books a late fill of the take profit it already replaced, and sizes the new one to the real position", () => {
+    const { st, tp, so1 } = inCycle();
+    // Safety 1 khớp đủ → TP cũ bị thay bằng TP mới cho 2.0204.
+    const s1 = step(st, fill(so1.clOrdID, "98", so1.quantity, 5));
+    const tp2 = placesOf(s1.actions).find((o) => o.side === "sell");
+    expect(tp2?.quantity).toBe("2.0204");
+    // TP cũ (1 ETH) vẫn khớp trễ trước khi bị huỷ: vào sổ cái, TP mới đặt lại cho phần còn lại.
+    const late = step(s1.state, fill(tp.clOrdID, "101", "1", 6));
+    expect(late.state.ledger.position).toBe("1.0204");
+    const tp3 = placesOf(late.actions).find((o) => o.side === "sell");
+    expect(tp3?.quantity).toBe("1.0204");
+    expect(late.actions).toContainEqual({ type: "cancel", clOrdID: tp2?.clOrdID });
+  });
+
+  it("re-places the take profit after a safety that ended part-filled", () => {
+    const { st, so1 } = inCycle();
+    const part = step(st, fill(so1.clOrdID, "98", "0.5", 5)).state;
+    const r = step(part, { type: "orderDone", at: 6, clOrdID: so1.clOrdID });
+    expect(placesOf(r.actions).find((o) => o.side === "sell")?.quantity).toBe("1.5");
+    expect(r.state.safeties[so1.clOrdID]).toBeUndefined();
   });
 });
