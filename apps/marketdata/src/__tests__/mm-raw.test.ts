@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { MmRawRecorder, rawFileOf } from "../mm-raw";
 
-// Lưu thô bookTicker + trade (DEC-TBD-mm-cost-v1): file gzip theo giờ UTC, nối nhiều lần vẫn đọc được, giữ 48 giờ.
+// Lưu thô bookTicker + trade (DEC-228): file gzip theo giờ UTC, nối nhiều lần vẫn đọc được, giữ 48 giờ.
 
 let dir = "";
 afterEach(async () => {

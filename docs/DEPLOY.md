@@ -266,7 +266,7 @@ ssh deploy@<IP> 'bash /opt/drift/infra/deploy/deploy.sh <sha-cũ>'
 - Đo trên máy dev: cả stack 2–3 bản mỗi service ≈ 2.9 GB RAM. Prod 1 bản mỗi service ước ≈ 1.6–1.8 GB, còn chỗ cho Postgres cache và backtest; swap 4 GB đỡ lúc cao điểm.
 - Không chạy profile `observability` trên máy 4 GB.
 - Ổ đĩa (80 GB ở server hiện tại): image cũ bị xoá sau 72 giờ, log Docker xoay vòng 5 × 20 MB mỗi container, backup giữ 14 ngày. Theo dõi `df -h` và kích thước `candles_1m`; gần đầy thì gắn thêm ổ hoặc nâng gói.
-- Volume `mmraw` (DEC-TBD-mm-cost-v1): `marketdata` (bản leader) ghi thô bookTicker + trade của khoảng 30 market Perps ra
+- Volume `mmraw` (DEC-228): `marketdata` (bản leader) ghi thô bookTicker + trade của khoảng 30 market Perps ra
   `/home/node/mm-raw/YYYY-MM-DDTHH.ndjson.gz` (giờ UTC), tự xoá file quá 48 giờ. Ước khoảng 85 MB / ngày (đo 2026-11-14:
   ~2,8 triệu bản ghi / ngày), tức dưới 200 MB lúc đầy. Không cần backup (dữ liệu dựng lại được). Đọc thử:
   `docker compose exec marketdata sh -c 'zcat /home/node/mm-raw/$(date -u +%Y-%m-%dT%H).ndjson.gz | tail -3'`. Tắt bằng

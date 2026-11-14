@@ -2,7 +2,7 @@ import { appendFile, mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 
-// Lưu thô bookTicker + trade của các market đang nghe (DEC-TBD-mm-cost-v1), để sau này mô phỏng bot Market Making
+// Lưu thô bookTicker + trade của các market đang nghe (DEC-228), để sau này mô phỏng bot Market Making
 // (replay) và kiểm chứng với bot thật. Mỗi giờ (UTC) một file `YYYY-MM-DDTHH.ndjson.gz`. Cứ vài giây nén phần đệm
 // thành một gzip member rồi nối vào cuối file: nhiều member nối nhau vẫn là gzip hợp lệ (`zcat` đọc được), dừng đột
 // ngột chỉ mất phần chưa ghi. Giữ 48 giờ. Mỗi dòng:

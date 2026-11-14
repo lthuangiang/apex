@@ -29,6 +29,7 @@ export * from "./leader-stats";
 export * from "./api/copy";
 export * from "./api/mm-cost";
 export * from "./mm-markout";
+export * from "./mm-model";
 export * from "./api/oauth";
 export * from "./api/mcp";
 export * from "./telegram";

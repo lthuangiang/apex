@@ -16,6 +16,8 @@ export interface BottomSheetProps {
   fullScreen?: boolean;
   /** Có thì hiện nút × ở góc tiêu đề, tên đọc là chuỗi này (ví dụ "Close"). */
   closeLabel?: string;
+  /** Từ 768px: dialog rộng (tới 64rem) cho bảng nhiều cột, thay vì 32rem. */
+  wide?: boolean;
 }
 
 const overlayClass = "fixed inset-0 z-50 bg-ink/40";
@@ -36,6 +38,7 @@ export function BottomSheet({
   footer,
   fullScreen = false,
   closeLabel,
+  wide = false,
 }: BottomSheetProps) {
   const returnFocus = useReturnFocus();
   return (
@@ -44,7 +47,8 @@ export function BottomSheet({
         <Dialog.Overlay className={overlayClass} />
         <Dialog.Content
           className={cx(
-            dialogContentClass,
+            // cx không gộp class trùng: thay hẳn bề rộng tối đa thay vì thêm class thứ hai.
+            wide ? dialogContentClass.replace("md:max-w-lg", "md:max-w-5xl") : dialogContentClass,
             fullScreen &&
               "max-md:top-0 max-md:max-h-dvh max-md:rounded-none max-md:pt-[calc(1.25rem+env(safe-area-inset-top))]",
           )}

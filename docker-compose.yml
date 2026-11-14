@@ -196,7 +196,7 @@ services:
     build: { context: ., dockerfile: apps/marketdata/Dockerfile }
     environment:
       <<: *app-env
-      # Lưu thô bookTicker + trade theo giờ, giữ 48 giờ (DEC-TBD-mm-cost-v1); chỉ bản leader ghi.
+      # Lưu thô bookTicker + trade theo giờ, giữ 48 giờ (DEC-228); chỉ bản leader ghi.
       MM_RAW_DIR: /home/node/mm-raw
     volumes: [mmraw:/home/node/mm-raw]
     deploy: { replicas: 2 }

@@ -15,6 +15,7 @@ import { leaderboardDue, noteMinHoldChanges, runLeaderboard } from "./leaderboar
 import { computeDailyStats, utcDate } from "./market-stats";
 import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
+import { fitMmModelDaily } from "./mm-model";
 import { snapshotAndCheck } from "./risk";
 
 // scheduler: một bản active (leader lease). Hiện có job market stats hằng ngày; các job lịch khác
@@ -152,6 +153,15 @@ async function leaderboardTick() {
   }
 }
 
+/** Fit hệ số mô hình chi phí Market Making cho ngày hôm qua (DEC-228); tự bỏ qua nếu đã fit. */
+async function mmModelTick() {
+  const ticks = new Map(
+    (await wait(() => rest.getPerpsSymbols())).map((m) => [m.name, m.tickSize] as const),
+  );
+  const r = await fitMmModelDaily(db, ticks, Date.now());
+  if (r.status !== "skipped") log.info(r, "mm cost model fitted");
+}
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let riskTimer: ReturnType<typeof setInterval> | null = null;
 async function tick() {
@@ -220,6 +230,9 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
         });
       void leaderboardTick().catch((error: unknown) => {
         log.error({ err: error }, "leaderboard tick failed");
+      });
+      void mmModelTick().catch((error: unknown) => {
+        log.error({ err: error }, "mm cost model fit failed");
       });
     }, 10 * 60_000);
   },

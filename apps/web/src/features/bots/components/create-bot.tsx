@@ -26,6 +26,7 @@ import { fieldErrorsOf, useBotErrorText } from "./bot-errors";
 import { BotForm } from "./bot-form";
 import { ClaudeDraftBanner, type FromClaude } from "./claude-draft";
 import { MarketChart } from "./market-chart";
+import { MmSuggestions } from "./mm-markets";
 import { CheckList, leverageWarning, useDryRunChecks } from "./start-checks";
 import { VisualPanel } from "./visual-panel";
 
@@ -376,13 +377,27 @@ export function CreateBot({
                 isMobile ? { node: visual, at: hasPreview ? "advanced" : "amount" } : undefined
               }
               afterMarket={
-                isMobile ? (
-                  <MarketChart
-                    inline
-                    strategy={strategy}
-                    values={values}
-                    lastPrice={lastPrice?.price ?? null}
-                  />
+                strategy === "volume_maker" || isMobile ? (
+                  <>
+                    {/* Gợi ý market rẻ cho Market Making ngay dưới Contract (DEC-228). */}
+                    {strategy === "volume_maker" ? (
+                      <MmSuggestions
+                        value={typeof values.market === "string" ? values.market : ""}
+                        onPick={(m) => {
+                          setTouched(true);
+                          update({ ...values, market: m });
+                        }}
+                      />
+                    ) : null}
+                    {isMobile ? (
+                      <MarketChart
+                        inline
+                        strategy={strategy}
+                        values={values}
+                        lastPrice={lastPrice?.price ?? null}
+                      />
+                    ) : null}
+                  </>
                 ) : undefined
               }
               advancedExtra={

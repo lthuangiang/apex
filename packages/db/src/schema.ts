@@ -1509,3 +1509,18 @@ export const mid1s = pgTable(
   },
   (t) => [primaryKey({ columns: [t.market, t.ts] })],
 );
+
+/**
+ * Hệ số mô hình chi phí Market Making (DEC-228): PnL giá = a × bước − k × dao động, fit mỗi ngày từ bot thật.
+ * Mỗi lần fit một dòng (version tăng dần); API dùng dòng mới nhất, chưa có dòng nào thì dùng hệ số khởi đầu (version 0).
+ */
+export const mmModelCoefs = pgTable("mm_model_coefs", {
+  version: integer("version").primaryKey().generatedAlwaysAsIdentity(),
+  a: numeric("a", { precision: 20, scale: 10 }).notNull(),
+  k: numeric("k", { precision: 20, scale: 10 }).notNull(),
+  /** Số điểm (bot, market, ngày) đã dùng. */
+  points: integer("points").notNull(),
+  /** Ngày dữ liệu (UTC) của lần fit. */
+  day: date("day").notNull(),
+  createdAt: tstz("created_at").notNull().defaultNow(),
+});

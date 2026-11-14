@@ -75,20 +75,30 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   ngay lệnh mở, chỉ giữ lệnh đóng reduce-only; mỗi lần kích hoạt gia hạn thêm 15 s; hết hạn thì báo giá lại. Decisions ghi
   "Quotes paused on a fast move" / "Quoting again after a fast move". Độc lập với Smart quoting.
 
-### 17.7 Chọn market theo chi phí / $1M (DEC-227)
-- `/bots/new/volume_maker` không có `?market=` → bước 1 "Choose a market" (artboard `MM-Markets`); Continue mở form như
-  cũ với `?market=X&engine=perps`. API `GET /api/v1/markets/mm-cost` (cache 5 phút phần dữ liệu thị trường).
-- **Nguồn:** `marketdata` nghe WS `bookTicker` + `trade` của SoDEX **trên kết nối Perps sẵn có** (không mở kết nối mới),
-  chỉ cho tối đa 30 market Perps volume 24h cao nhất (từ `candles_1m`) cộng mọi market đang có bot MM; danh sách tính lại
-  mỗi 5 phút. Market khác hiện "Not available". Lý do: tài liệu SoDEX ghi "2.000 tin / phút" mà không nói tính tin gửi
-  hay cả tin nhận (kiểm tra ngày 2026-11-14).
-- **Markout công khai:** mỗi giao dịch công khai, phía maker (taker BUY → maker bán), so với giá giữa 30 s sau (mid trong
-  ±2 s, không có thì bỏ giao dịch đó); gom theo giờ vào `mm_market_hourly` (giữ 48 giờ). Spread lấy mẫu mỗi giây theo
-  số tick từ book ticker còn mới (≤ 5 s), lưu histogram theo giờ.
-- **Cột:** One price step = tick ÷ giá đóng nến 1m mới nhất × 10.000; Usual spread = trung vị số tick 24 giờ; 1-min swing =
-  độ lệch chuẩn mẫu % thay đổi giữa các nến 1m 24 giờ (bps); Volume 24h = Σ close × volume nến 1m; Price PnL / $1M =
-  markout 30 s trung bình theo notional × 100 (bps → USD / $1M), ưu tiên fill maker thật của mọi bot MM live trong 24
-  giờ nếu có; Total cost / $1M = phí maker SoDEX của market (`makerFee` × 1.000.000, thiếu thì 0,012%) + builder fee MM
-  của người dùng (rate × 10) − Price PnL.
-- **Dữ liệu cũ:** giờ chưa có dữ liệu không có dòng (không bao giờ tính là 0). Dữ liệu cập nhật lần cuối cách hơn 1 giờ →
-  hiện số gần nhất kèm "Updated {time}"; không có giờ nào trong 24 giờ → "Not available".
+### 17.7 Gợi ý market theo chi phí / $1M (DEC-228, thay phần xếp hạng của DEC-227)
+- **UI:** không còn bước "Choose a market" riêng. `/bots/new/volume_maker` mở thẳng form; dưới field Contract có khối
+  "Suggested for market making": tối đa 3 market (đủ dữ liệu, không "Too little volume", rẻ nhất trước), bấm thì điền
+  Contract; dòng "Estimated cost here: …" cho contract đang chọn; "Compare all markets" mở bảng đầy đủ (sheet trên mobile,
+  dialog trên desktop) với cột Data ("Your bots" / "Model"). Chi phí ≤ 0 ghi "0 or less". Chưa market nào đủ dữ liệu:
+  "Suggestions appear once we have a day of SoDEX data.".
+- **API** `GET /api/v1/markets/mm-cost` (phần thị trường cache 5 phút; phần của người xem tính mỗi lần): mỗi market có
+  `stepBps`, `swingBps`, `volume24h`, `capacityPerDay`, `tooLittleVolume`, `candleMinutes24h`, `activeMinutes24h`,
+  `hoursWithData`, `trades24h`, `notional24h`, `publicPricePnlPerMillion` (đối chiếu), `pricePnlPerMillion`, `source`,
+  `yourRoundTrips`, `totalCostPerMillion`; kèm `modelVersion`, `model {a, k}`, `suggested`. Danh sách đã xếp.
+- **Mô hình:** PnL giá (bps trên volume) = a × bước − k × dao động 1 phút, chặn ≤ 0. Bước = tick ÷ giá đóng nến 1m mới
+  nhất; dao động = độ lệch chuẩn mẫu % thay đổi giữa các nến 1m 24 giờ, chỉ tính khi ≥ 720 nến và ≥ 720 phút có volume
+  (thiếu → không đủ dữ liệu). Hệ số mới nhất trong `mm_model_coefs`, chưa có thì a = 0,25, k = 0,095 (version 0).
+- **Bot của người xem:** fill 24 giờ của bot MM live của chính người xem ở market đó → PnL giá gồm phần chưa chốt (vị thế
+  ròng trong cửa sổ định giá ở giá đóng nến mới nhất), trộn (n × thực + 50 × mô hình) / (n + 50), n = số vòng đóng; nguồn
+  "Your bots". Bot của người khác không bao giờ hiện trong số của người xem.
+- **Chi phí / $1M** = phí maker SoDEX của market (`makerFee` × 1.000.000, thiếu thì 0,012%) + builder fee MM của người
+  dùng (rate × 10) − PnL giá × 100.
+- **Sức chứa** "up to … / day" = 5% volume 24h; dưới $100K / ngày là "Too little volume", không gợi ý, xếp sau.
+- **Xếp hạng:** đủ dữ liệu + đủ sức chứa (chi phí tăng dần; mọi chi phí ≤ 0 coi như bằng nhau và xếp theo sức chứa), rồi
+  "Too little volume", rồi thiếu dữ liệu. "Most volume" trong bảng xếp theo sức chứa.
+- **Fit hằng ngày** (scheduler, mỗi 10 phút kiểm tra, một lần cho ngày UTC hôm qua): mỗi (bot, market, ngày) live,
+  quoteLevel 0, ≥ 50 vòng đóng, market đủ 720 phút có volume là một điểm (bước, dao động, PnL giá, trọng số = volume). Bot
+  của team luôn dùng; bot của user khác chỉ dùng khi có ≥ 3 tài khoản như vậy. Dưới 5 điểm: giữ a = 0,25, fit k; đủ 5
+  điểm: fit cả hai, a trong [0; 0,5], k ≥ 0. Không có điểm → không ghi dòng mới.
+- **Nguồn dữ liệu thị trường:** như DEC-227 (WS `bookTicker` + `trade` trên kết nối Perps sẵn có, top 30 + market có bot
+  MM; markout công khai gom theo giờ vào `mm_market_hourly`, giữ 48 giờ), cộng lưu thô theo giờ cho v2 (DEPLOY mục 4).
