@@ -65,13 +65,13 @@ export interface VolumeMakerState {
   /** Đỉnh sổ lệnh gần nhất (engine gửi kèm `timer`, DEC-135); thiếu ở state cũ. */
   book?: BookTop | null;
   bookAt?: number | null;
-  /** Giá gần đây cho đà / xu hướng của Smart quoting cũ (DEC-152); không còn dùng từ DEC-TBD-mm-oracle. */
+  /** Giá trong cửa sổ xu hướng gần nhất cho Smart quoting (DEC-144, DEC-152). */
   recent?: { t: number; p: string }[];
   /** Điều chỉnh Smart quoting đang áp dụng (để chỉ ghi Decisions khi đổi); null = bình thường. */
   smartNote?: string | null;
   /** Chữ ký hành động Smart quoting đang áp dụng ("bid:pull|ask:15"); ghi Decisions chỉ khi chữ ký đổi (DEC-152). */
   smartSig?: string | null;
-  /** Lúc Smart quoting bắt đầu có giá (khởi động, DEC-152); không còn dùng từ DEC-TBD-mm-oracle. */
+  /** Lúc Smart quoting bắt đầu có giá (để khởi động đủ dữ liệu, DEC-152). */
   smartSince?: number | null;
   /** Điều chỉnh đang được giữ của từng phía, tới `until` (DEC-152). */
   smartHold?: Partial<Record<"buy" | "sell", SmartSide & { until: number }>> | null;
@@ -166,15 +166,22 @@ const BP = new Decimal("0.0001");
 /**
  * Smart quoting v2 (DEC-144, sửa ở DEC-152 sau 10 phút chạy thật trên BTC: lùi 3 tick ≈ 0.4 bp không đủ, cửa sổ 6 s
  * quá ngắn, quay về sau 3–4 s nên lệnh bị cuốn ngay khi vừa về). Chỉ áp dụng cho lệnh mở (không chạm lệnh đóng tồn kho):
+ * - Khởi động: chưa có đủ `warmupMs` giá thì lùi cả hai phía `momentumBackoffBp`.
  * - Sổ lệnh lệch (một phía 10 mức dày ≥ `imbalanceRatio` lần phía kia): lùi phía mỏng `imbalanceBackoffBp`.
- * Đà ngắn / xu hướng / khởi động đã bỏ (DEC-TBD-mm-oracle): khi đã định giá theo Binance, backtest cho thấy chúng chỉ
- * làm mất fill, xu hướng còn làm tăng chi phí.
+ * - Đà ngắn (giá chạy ≥ `momentumBp` trong `momentumWindowMs`): lùi phía cùng chiều `momentumBackoffBp`.
+ * - Xu hướng (giá chạy ≥ `trendBp` trong `trendWindowMs`): rút hẳn lệnh mở phía cùng chiều.
  * Mọi điều chỉnh được giữ thêm `holdMs` sau lần kích hoạt cuối. Lùi theo bp, quy ra tick theo giá (tối thiểu
  * `minTicks`), nên đúng với mọi market. Chỉ lùi xa hơn / rút, không bao giờ đặt sát hơn logic thường.
  */
 export const VM_SMART = {
+  warmupMs: 6_000,
   imbalanceRatio: 2,
   imbalanceBackoffBp: 1,
+  momentumWindowMs: 6_000,
+  momentumBp: 2,
+  momentumBackoffBp: 2,
+  trendWindowMs: 30_000,
+  trendBp: 5,
   holdMs: 15_000,
   minTicks: 2,
 } as const;
@@ -183,6 +190,15 @@ export const VM_SMART = {
 function bpTicks(bp: number, mid: Decimal, rules: MarketRules): number {
   const t = mid.mul(bp).div(10_000).div(rules.tickSize).ceil().toNumber();
   return Math.max(VM_SMART.minTicks, t);
+}
+
+/** Thay đổi giá (bp) từ giá đầu tới giá cuối trong cửa sổ `ms`; null khi chưa đủ điểm. */
+function moveBp(s: VolumeMakerState, at: number, ms: number): Decimal | null {
+  const xs = (s.recent ?? []).filter((x) => at - x.t <= ms);
+  const first = xs[0];
+  const last = xs.at(-1);
+  if (first === undefined || last === undefined || first === last) return null;
+  return dec(last.p).sub(first.p).div(first.p).mul(10_000);
 }
 
 const strongest = (a: SmartSide | undefined, b: SmartSide): SmartSide =>
@@ -203,6 +219,12 @@ function smartAdjust(
   const add = (side: "buy" | "sell", x: SmartSide) => {
     now[side] = strongest(now[side], x);
   };
+  const since = s.smartSince ?? at;
+  if (at - since < VM_SMART.warmupMs) {
+    const t = bpTicks(VM_SMART.momentumBackoffBp, mid, rules);
+    add("buy", { ticks: t, pull: false, why: "warming up price data" });
+    add("sell", { ticks: t, pull: false, why: "warming up price data" });
+  }
   const bidN = dec(book.bidNotional);
   const askN = dec(book.askNotional);
   if (askN.gt(0) && bidN.gt(0)) {
@@ -221,14 +243,32 @@ function smartAdjust(
         why: `ask depth ${new Decimal(1).div(r).toDecimalPlaces(1).toString()}× bid depth`,
       });
   }
-  // Giữ điều chỉnh thêm `holdMs`: điều kiện vừa kích hoạt gia hạn, hết hạn thì bỏ.
+  const m = moveBp(s, at, VM_SMART.momentumWindowMs);
+  if (m?.abs().gte(VM_SMART.momentumBp)) {
+    const up = m.gt(0);
+    add(up ? "sell" : "buy", {
+      ticks: bpTicks(VM_SMART.momentumBackoffBp, mid, rules),
+      pull: false,
+      why: `price ${up ? "up" : "down"} ${m.abs().toDecimalPlaces(1).toString()} bp in ${String(VM_SMART.momentumWindowMs / 1000)} s`,
+    });
+  }
+  const tr = moveBp(s, at, VM_SMART.trendWindowMs);
+  if (tr?.abs().gte(VM_SMART.trendBp)) {
+    const up = tr.gt(0);
+    add(up ? "sell" : "buy", {
+      ticks: 0,
+      pull: true,
+      why: `trend ${up ? "up" : "down"} ${tr.abs().toDecimalPlaces(1).toString()} bp in ${String(VM_SMART.trendWindowMs / 1000)} s`,
+    });
+  }
+  // Giữ điều chỉnh thêm `holdMs`: điều kiện vừa kích hoạt gia hạn, hết hạn thì bỏ (khởi động không cần giữ).
   const hold: NonNullable<VolumeMakerState["smartHold"]> = {};
   const out: { buy?: SmartSide; sell?: SmartSide } = {};
   for (const side of ["buy", "sell"] as const) {
     const prev = s.smartHold?.[side];
     const live = prev !== undefined && prev.until > at ? prev : undefined;
     const fresh = now[side];
-    if (fresh !== undefined)
+    if (fresh !== undefined && fresh.why !== "warming up price data")
       hold[side] = { ...strongest(live, fresh), until: at + VM_SMART.holdMs };
     else if (live !== undefined) hold[side] = live;
     const pick = fresh === undefined ? hold[side] : strongest(hold[side], fresh);
@@ -462,7 +502,7 @@ function quote(
     );
     next = { ...next, smartNote: note, smartSig: sig };
   }
-  if (smart !== null) next = { ...next, smartHold: smart.hold };
+  if (smart !== null) next = { ...next, smartHold: smart.hold, smartSince: s.smartSince ?? at };
   const fastLogs: StrategyAction[] = [];
   if (c.pauseOnFastMoves && !paused && s.fastPauseUntil != null) {
     fastLogs.push({
@@ -802,7 +842,18 @@ export function stepVolumeMaker(
   switch (e.type) {
     case "tick": {
       if (e.market !== c.market) return { actions: [], state: s };
-      const state = { ...s, mid: e.price };
+      // Giữ giá vài giây gần nhất cho Smart quoting (DEC-144); chỉ khi bật, state cũ không đổi.
+      const recent = c.smartQuoting
+        ? [...(s.recent ?? []), { t: e.at, p: e.price }].filter(
+            (x) => e.at - x.t <= Math.max(VM_SMART.momentumWindowMs, VM_SMART.trendWindowMs),
+          )
+        : s.recent;
+      const state = {
+        ...s,
+        mid: e.price,
+        ...(recent === undefined ? {} : { recent }),
+        ...(c.smartQuoting && (s.smartSince ?? null) === null ? { smartSince: e.at } : {}),
+      };
       const g = guards(c, state, ctx, e.at);
       if (g !== null) return g;
       // Pause on fast moves: giá chạy ≥ max(3 bước giá, 2 bp) trong 6 s → rút lệnh mở ngay, giữ lệnh đóng.
