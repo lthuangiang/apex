@@ -4,6 +4,7 @@ import {
   blendPnlBps,
   capacityPerDay,
   fitModel,
+  isActiveMinute,
   MM_MODEL_SEED,
   modelPnlBps,
   rankMmMarkets,
@@ -43,6 +44,13 @@ describe("model price PnL", () => {
     expect(w.rounds).toBe(1);
     expect(windowPnl(fills, null).bps).toBeNull();
     expect(windowPnl([], "1").bps).toBeNull();
+  });
+
+  it("counts a minute as traded only with at least $50 of quote volume", () => {
+    // XPL-USD-like: a trade every minute, but $0.19.
+    expect(isActiveMinute({ close: "0.0487", volume: "4" })).toBe(false);
+    expect(isActiveMinute({ close: "100", volume: "0.5" })).toBe(true);
+    expect(isActiveMinute({ close: "100", volume: "0.49" })).toBe(false);
   });
 
   it("gives up to 5% of 24-hour volume as capacity", () => {

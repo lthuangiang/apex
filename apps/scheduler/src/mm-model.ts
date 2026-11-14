@@ -12,6 +12,7 @@ import {
   dec,
   fitModel,
   MM_FIT_MIN_ROUNDS,
+  isActiveMinute,
   MM_MIN_ACTIVE_MINUTES,
   MM_MODEL_SEED,
   Strategy,
@@ -135,7 +136,7 @@ export async function fitMmModelDaily(
     const cs = byMarket.get(g.market) ?? [];
     const tick = tickSizes.get(g.market);
     const last = cs.at(-1);
-    const active = cs.filter((c) => dec(c.volume).gt(0)).length;
+    const active = cs.filter(isActiveMinute).length;
     if (tick === undefined || last === undefined || active < MM_MIN_ACTIVE_MINUTES) continue;
     const w = windowPnl(g.fills, last.close);
     if (w.rounds < MM_FIT_MIN_ROUNDS || w.bps === null) continue;
