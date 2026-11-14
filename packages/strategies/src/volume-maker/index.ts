@@ -83,15 +83,11 @@ export interface VolumeMakerState {
   fastRecent?: { t: number; p: string }[];
   /** Đang tạm rút lệnh mở vì giá chạy nhanh, tới thời điểm này (ms); null = bình thường. */
   fastPauseUntil?: number | null;
-  /** Binance guard: phía báo giá đang cũ (đã rút lệnh mở thêm vị thế, chờ hết lệch). */
-  guardStale?: { buy: boolean; sell: boolean };
-  /** Số liệu Binance guard từ lần ghi Decisions trước: số lần rút, thời gian mỗi phía bị rút, lúc bắt đầu rút. */
-  guardWin?: {
-    since: number;
-    pulls: number;
-    heldMs: { buy: number; sell: number };
-    from: { buy: number | null; sell: number | null };
-  };
+  /** Giá Binance quy đổi gần nhất (Smart quoting) và lúc nhận. */
+  fair?: string | null;
+  fairAt?: number | null;
+  /** Số liệu định giá theo Binance từ lần ghi Decisions trước: số lệnh bị rút, số lệnh đặt lùi ra. */
+  oracleWin?: { since: number; pulls: number; clamps: number };
 }
 
 /** Điều chỉnh Smart quoting của một phía: lùi `ticks` tick, hoặc rút hẳn lệnh mở (`pull`). */
@@ -101,8 +97,11 @@ interface SmartSide {
   why: string;
 }
 
-/** Binance guard: ghi số liệu vào Decisions mỗi `logEveryMs`. */
-export const VM_GUARD = { logEveryMs: 60_000 } as const;
+/**
+ * Định giá theo Binance (Smart quoting): lệnh mở thêm vị thế không bao giờ vượt giá Binance quy đổi ± `marginBp`; lệnh
+ * mở mà giá Binance đã chạy qua thì rút. Giá cũ hơn `maxAgeMs` thì không dùng. Số liệu ghi Decisions mỗi `logEveryMs`.
+ */
+export const VM_ORACLE = { marginBp: 0.5, maxAgeMs: 3_000, logEveryMs: 60_000 } as const;
 
 /** Báo giá lại sớm (vì fill) nhưng cách lần trước ít nhất 2 s (VOLUME_MAKER.md 17.3.5). */
 export const VM_MIN_REQUOTE_MS = 2_000;
@@ -434,11 +433,27 @@ function quote(
   const extra = { buy: smart?.buy?.ticks ?? 0, sell: smart?.sell?.ticks ?? 0 };
   // Pause on fast moves: rút mọi lệnh mở, giữ lệnh đóng reduce-only (PM chốt C2).
   const paused = c.pauseOnFastMoves && s.fastPauseUntil != null && at < s.fastPauseUntil;
-  // Binance guard: phía đang cũ không đặt lệnh mở thêm vị thế (lệnh đóng vẫn đặt).
-  const stale = (side: "buy" | "sell") => c.smartQuoting && s.guardStale?.[side] === true;
   const pulled = {
-    buy: paused || smart?.buy?.pull === true || stale("buy"),
-    sell: paused || smart?.sell?.pull === true || stale("sell"),
+    buy: paused || smart?.buy?.pull === true,
+    sell: paused || smart?.sell?.pull === true,
+  };
+  // Định giá theo Binance: lệnh mở thêm vị thế không vượt giá Binance quy đổi ± lề (bán không thấp hơn, mua không cao
+  // hơn). Lệnh đóng vẫn đứng ở giá tốt nhất.
+  const fair =
+    c.smartQuoting && s.fair != null && s.fairAt != null && at - s.fairAt <= VM_ORACLE.maxAgeMs
+      ? dec(s.fair)
+      : null;
+  let clamps = 0;
+  const oracle = (side: "buy" | "sell", price: string): string => {
+    if (fair === null) return price;
+    const m = new Decimal(VM_ORACLE.marginBp).div(10_000);
+    const limit =
+      side === "sell"
+        ? roundPrice(fair.mul(new Decimal(1).add(m)), rules, RoundMode.up)
+        : roundPrice(fair.mul(new Decimal(1).sub(m)), rules, RoundMode.down);
+    const out = side === "sell" ? Decimal.max(price, limit) : Decimal.min(price, limit);
+    if (!out.eq(price)) clamps += 1;
+    return out.toString();
   };
   const sideText = (side: "buy" | "sell") => {
     const x = smart?.[side];
@@ -511,11 +526,18 @@ function quote(
       book !== null
         ? bookPrice(book, "sell", level + extra.sell, rules)
         : tickAway(mid, "sell", mid.mul(new Decimal(1).add(d)), rules);
-    const bid = order(c, ctx, "buy", bidPrice, orderQty, `vm:${String(cycle)}:bid`);
-    const ask = order(c, ctx, "sell", askPrice, orderQty, `vm:${String(cycle)}:ask`);
+    const bid = order(c, ctx, "buy", oracle("buy", bidPrice), orderQty, `vm:${String(cycle)}:bid`);
+    const ask = order(
+      c,
+      ctx,
+      "sell",
+      oracle("sell", askPrice),
+      orderQty,
+      `vm:${String(cycle)}:ask`,
+    );
     // Smart quoting rút phía đang có xu hướng chạy vào (DEC-152).
-    if (!pulled.buy && meetsMinimum(bidPrice, bid.quantity, rules)) places.push(bid);
-    if (!pulled.sell && meetsMinimum(askPrice, ask.quantity, rules)) places.push(ask);
+    if (!pulled.buy && meetsMinimum(bid.price ?? bidPrice, bid.quantity, rules)) places.push(bid);
+    if (!pulled.sell && meetsMinimum(ask.price ?? askPrice, ask.quantity, rules)) places.push(ask);
   } else {
     const long = pos.gt(0);
     const inv = pos.mul(mid).abs();
@@ -566,10 +588,12 @@ function quote(
         new Decimal(1)[long ? "sub" : "add"](d.mul(new Decimal(2).add(u.mul(2)))),
       );
       // Theo sổ lệnh: phía làm tăng vị thế lùi thêm 2 tick, 3 tick khi đã giữ quá nửa giới hạn.
-      const riskPrice =
+      const riskPrice = oracle(
+        riskSide,
         book !== null
           ? bookPrice(book, riskSide, level + (u.gte("0.5") ? 3 : 2) + extra[riskSide], rules)
-          : tickAway(mid, riskSide, riskRaw, rules);
+          : tickAway(mid, riskSide, riskRaw, rules),
+      );
       const room = maxInv.sub(inv).div(mid);
       const riskQty = roundQty(Decimal.min(orderQty, room), rules);
       if (meetsMinimum(riskPrice, riskQty, rules))
@@ -577,6 +601,27 @@ function quote(
     }
   }
 
+  // Smart quoting giữ lệnh nằm yên (giữ chỗ trong hàng chờ): lệnh mở đang sống có đúng giá và khối lượng của báo giá
+  // mới thì không huỷ, không đặt lại.
+  const kept = new Set<string>();
+  for (let i = c.smartQuoting ? places.length - 1 : -1; i >= 0; i -= 1) {
+    const p = places[i];
+    if (p === undefined || closeIds.has(p.clOrdID)) continue;
+    const same = Object.entries(s.orders).find(
+      ([id, o]) =>
+        !kept.has(id) &&
+        o.status === "live" &&
+        o.role === "open" &&
+        o.side === p.side &&
+        dec(o.price).eq(p.price ?? "0") &&
+        dec(o.qty).eq(p.quantity) &&
+        dec(o.filled).isZero(),
+    );
+    if (same === undefined) continue;
+    kept.add(same[0]);
+    orders[same[0]] = same[1];
+    places.splice(i, 1);
+  }
   let tracked = orders;
   for (const o of places) {
     const id = o.clOrdID;
@@ -597,8 +642,12 @@ function quote(
     };
   }
   next = { ...next, orders: tracked };
+  if (clamps > 0) {
+    const w = next.oracleWin ?? { since: at, pulls: 0, clamps: 0 };
+    next = { ...next, oracleWin: { ...w, clamps: w.clamps + clamps } };
+  }
   const actions = [
-    ...cancels,
+    ...cancels.filter((a) => !(a.type === "cancel" && kept.has(a.clOrdID))),
     ...places.map((o) => ({ type: "place" as const, order: o })),
     ...smartLogs,
     ...fastLogs,
@@ -733,75 +782,51 @@ function firstQuote(
 }
 
 /**
- * Binance guard: phía vừa thành "cũ" thì huỷ ngay lệnh mở thêm vị thế của phía đó (không chờ chu kỳ báo giá, lệnh đóng
- * giữ nguyên); hết cũ thì báo giá lại ở nhịp kế tiếp. Mỗi phút ghi Decisions một dòng số liệu.
+ * Giá Binance quy đổi mới: lưu lại (lần báo giá kế tiếp dùng để chặn giá lệnh mở). Lệnh mở thêm vị thế đang sống mà giá
+ * Binance đã chạy qua (ask thấp hơn, bid cao hơn) thì rút ngay và báo giá lại sớm; mỗi lệnh rút ghi Decisions kèm giờ
+ * Binance. Mỗi phút ghi một dòng số liệu nếu có rút hoặc đặt lùi ra.
  */
-function onGuard(
+function onFair(
   c: VolumeMakerConfig,
   s: VolumeMakerState,
-  e: Extract<StrategyEvent, { type: "guard" }>,
+  e: Extract<StrategyEvent, { type: "fair" }>,
 ): StepResult<VolumeMakerState> {
   if (e.market !== c.market || !c.smartQuoting) return { actions: [], state: s };
-  const prev = s.guardStale ?? { buy: false, sell: false };
-  const next = { buy: e.bid, sell: e.ask };
-  const win = s.guardWin ?? {
-    since: e.at,
-    pulls: 0,
-    heldMs: { buy: 0, sell: 0 },
-    from: { buy: null, sell: null },
-  };
-  const heldMs = { ...win.heldMs };
-  const from = { ...win.from };
-  let pulls = win.pulls;
+  const fair = dec(e.fair);
   const actions: StrategyAction[] = [];
   const orders = { ...s.orders };
-  let requoteDue = s.requoteDue;
-  for (const side of ["buy", "sell"] as const) {
-    if (next[side] && !prev[side]) {
-      pulls += 1;
-      from[side] = e.at;
-      actions.push({
-        type: "log",
-        decision: "Binance moved first",
-        why: `At ${new Date(e.binanceAt).toISOString().slice(11, 23)} UTC Binance was ${Math.abs(e.gapBp).toFixed(2)} bp ${side === "sell" ? "above" : "below"} SoDEX; pulling the ${side === "sell" ? "ask" : "bid"}.`,
-      });
-      for (const [id, o] of Object.entries(orders)) {
-        if (o.status !== "live" || o.role !== "open" || o.side !== side) continue;
-        actions.push({ type: "cancel", clOrdID: id });
-        orders[id] = { ...o, status: "cancelling", since: e.at };
-      }
-    } else if (!next[side] && prev[side]) {
-      heldMs[side] += e.at - (from[side] ?? e.at);
-      from[side] = null;
-      requoteDue = true;
-    }
+  const win = s.oracleWin ?? { since: e.at, pulls: 0, clamps: 0 };
+  let pulls = win.pulls;
+  for (const [id, o] of Object.entries(orders)) {
+    if (o.status !== "live" || o.role !== "open") continue;
+    const through = o.side === "sell" ? fair.gt(o.price) : fair.lt(o.price);
+    if (!through) continue;
+    pulls += 1;
+    actions.push({ type: "cancel", clOrdID: id });
+    actions.push({
+      type: "log",
+      decision: o.side === "sell" ? "Ask pulled" : "Bid pulled",
+      why: `At ${new Date(e.binanceAt).toISOString().slice(11, 23)} UTC the Binance price (${fair.toDecimalPlaces(2).toString()}) moved through the ${o.side === "sell" ? "ask" : "bid"} at ${o.price}.`,
+    });
+    orders[id] = { ...o, status: "cancelling", since: e.at };
   }
   let state: VolumeMakerState = {
     ...s,
     orders,
-    requoteDue,
-    guardStale: next,
-    guardWin: { ...win, pulls, heldMs, from },
+    fair: e.fair,
+    fairAt: e.at,
+    oracleWin: { ...win, pulls },
+    ...(pulls > win.pulls ? { requoteDue: true } : {}),
   };
   const span = e.at - win.since;
-  if (span >= VM_GUARD.logEveryMs) {
-    const held = (side: "buy" | "sell") =>
-      heldMs[side] + (from[side] !== null ? e.at - (from[side] ?? e.at) : 0);
-    const pct = (ms: number) => `${String(Math.round((Math.min(ms, span) / span) * 100))}%`;
-    actions.push({
-      type: "log",
-      decision: "Binance guard",
-      why: `Last ${String(Math.round(span / 1000))} s: quotes pulled ${String(pulls)} times ahead of a price move on Binance; the bid was off ${pct(held("buy"))} and the ask ${pct(held("sell"))} of the time.`,
-    });
-    state = {
-      ...state,
-      guardWin: {
-        since: e.at,
-        pulls: 0,
-        heldMs: { buy: 0, sell: 0 },
-        from: { buy: from.buy !== null ? e.at : null, sell: from.sell !== null ? e.at : null },
-      },
-    };
+  if (span >= VM_ORACLE.logEveryMs) {
+    if (pulls > 0 || win.clamps > 0)
+      actions.push({
+        type: "log",
+        decision: "Binance pricing",
+        why: `Last ${String(Math.round(span / 1000))} s: ${String(pulls)} quotes pulled after the Binance price moved through them; ${String(win.clamps)} quotes placed further out to stay ${String(VM_ORACLE.marginBp)} bp past the Binance price.`,
+      });
+    state = { ...state, oracleWin: { since: e.at, pulls: 0, clamps: 0 } };
   }
   return { actions, state };
 }
@@ -1006,8 +1031,8 @@ export function stepVolumeMaker(
         state: { ...s, ledger: { ...s.ledger, position, avgCost }, drift: null, requoteDue: true },
       };
     }
-    case "guard":
-      return onGuard(c, s, e);
+    case "fair":
+      return onFair(c, s, e);
     case "fundingPaid":
     case "fundingRate":
     case "marginRatio":
