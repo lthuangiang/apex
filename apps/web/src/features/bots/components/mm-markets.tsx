@@ -109,7 +109,7 @@ export function MmMarketsPage() {
           ) : data === undefined ? (
             <Skeleton className="h-64" />
           ) : (
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[820px] border-collapse text-sm tabular-nums">
                 <thead>
                   <tr className="text-left text-xs text-muted">

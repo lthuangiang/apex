@@ -711,3 +711,118 @@ describe("volume maker — any SoDEX perp (DEC-157)", () => {
     for (const o of [tight?.bid, tight?.ask]) expect(o?.quantity).toMatch(/^\d+$/);
   });
 });
+
+describe("volume maker — close only at your entry price or better (DEC-227)", () => {
+  const timer = (at: number) =>
+    ({
+      type: "timer",
+      at,
+      market: {
+        market: "BTC-USD",
+        candles: [],
+        book: { bid: "99999.9", ask: "100000", bidNotional: "1", askNotional: "1" },
+      },
+    }) as const;
+  const fill = (side: "bid" | "ask", price: string) =>
+    ({
+      type: "fill",
+      at: 1,
+      clOrdID: id(`vm:1:${side}`),
+      price,
+      quantity: "0.005",
+      fee: "0",
+    }) as const;
+  const close = (a: StrategyAction[]) => places(a).find((o) => o.reduceOnly);
+  const logs = (a: StrategyAction[]) => a.flatMap((x) => (x.type === "log" ? [x.decision] : []));
+
+  it("is off by default and closes at the best price", () => {
+    const c = cfg({ quoteLevel: 0 });
+    expect(c.closeAtEntry).toBe(false);
+    const { all } = run(c, [...firstQuote(), fill("bid", "100005"), timer(3000)]);
+    expect(close(all)?.price).toBe("100000");
+  });
+
+  it("sells a long no lower than the entry price and buys back a short no higher, post-only reduce-only", () => {
+    const c = cfg({ quoteLevel: 0, closeAtEntry: true });
+    const long = close(run(c, [...firstQuote(), fill("bid", "100005"), timer(3000)]).all);
+    expect(long).toMatchObject({
+      side: "sell",
+      price: "100005",
+      timeInForce: "GTX",
+      reduceOnly: true,
+    });
+    const short = close(run(c, [...firstQuote(), fill("ask", "99995.05"), timer(3000)]).all);
+    // Giá vào làm tròn về phía có lợi (mua: xuống tick).
+    expect(short).toMatchObject({ side: "buy", price: "99995" });
+    // Giá tốt nhất đã tốt hơn giá vào thì dùng giá tốt nhất.
+    const better = close(run(c, [...firstQuote(), fill("bid", "99990"), timer(3000)]).all);
+    expect(better?.price).toBe("100000");
+  });
+
+  it("falls back to the normal close after 30 minutes, logging it once", () => {
+    const c = cfg({ quoteLevel: 0, closeAtEntry: true });
+    const { s } = run(c, [...firstQuote(), fill("bid", "100005"), timer(3000)]);
+    const T = 30 * 60_000;
+    // Hai nhịp đầu chỉ dọn lệnh cũ (huỷ quá hạn → done → xoá), nhịp thứ ba báo giá.
+    let st = s;
+    for (const at of [3000, 3001]) st = volumeMaker.step(c, st, timer(T + at), ctx).state;
+    const late1 = volumeMaker.step(c, st, timer(T + 3002), ctx);
+    // Lệnh đóng cũ đang huỷ vẫn chiếm khối lượng tới khi SoDEX xác nhận xong.
+    expect(close(late1.actions)).toBeUndefined();
+    expect(logs(late1.actions)).toEqual(["Closing at the best price"]);
+    const done = volumeMaker.step(
+      c,
+      late1.state,
+      { type: "orderDone", at: T + 3003, clOrdID: id("vm:2:rc") },
+      ctx,
+    ).state;
+    const late = volumeMaker.step(c, done, timer(T + 6002), ctx);
+    expect(close(late.actions)?.price).toBe("100000");
+    expect(logs(late.actions)).toEqual([]);
+  });
+});
+
+describe("volume maker — pause on fast moves (DEC-227)", () => {
+  const tick = (at: number, price: string) =>
+    ({ type: "tick", at, market: "BTC-USD", price }) as const;
+  const logs = (a: StrategyAction[]) => a.flatMap((x) => (x.type === "log" ? [x.decision] : []));
+
+  it("pulls opening quotes when the price moves 3 ticks in 6 s and quotes again after 15 s", () => {
+    const c = cfg({ pauseOnFastMoves: true });
+    let { s } = run(c, [...firstQuote()]);
+    const hit = volumeMaker.step(c, s, tick(1000, "100000.3"), ctx);
+    expect(hit.actions.filter((a) => a.type === "cancel")).toHaveLength(2);
+    expect(places(hit.actions)).toEqual([]);
+    expect(logs(hit.actions)).toEqual(["Quotes paused on a fast move"]);
+    s = hit.state;
+    const during = volumeMaker.step(c, s, { type: "timer", at: 4000 }, ctx);
+    expect(places(during.actions)).toEqual([]);
+    const back = volumeMaker.step(c, during.state, { type: "timer", at: 16_000 }, ctx);
+    expect(places(back.actions).map((o) => o.side)).toEqual(["buy", "sell"]);
+    expect(logs(back.actions)).toEqual(["Quoting again after a fast move"]);
+  });
+
+  it("keeps the reduce-only close while paused", () => {
+    const c = cfg({ pauseOnFastMoves: true });
+    let { s } = run(c, [...firstQuote()]);
+    s = volumeMaker.step(
+      c,
+      s,
+      { type: "fill", at: 1, clOrdID: id("vm:1:bid"), price: "99990", quantity: "0.005", fee: "0" },
+      ctx,
+    ).state;
+    const hit = volumeMaker.step(c, s, tick(2000, "99999.7"), ctx);
+    const p = places(hit.actions);
+    expect(p).toHaveLength(1);
+    expect(p[0]).toMatchObject({ side: "sell", reduceOnly: true });
+  });
+
+  it("does nothing on small moves or when switched off", () => {
+    const on = cfg({ pauseOnFastMoves: true });
+    const small = run(on, [...firstQuote(), tick(1000, "100000.2")]);
+    expect(logs(small.all)).toEqual([]);
+    expect(small.s.fastPauseUntil ?? null).toBeNull();
+    const off = run(cfg(), [...firstQuote(), tick(1000, "100001")]);
+    expect(off.all.filter((a) => a.type === "cancel")).toHaveLength(0);
+  });
+});

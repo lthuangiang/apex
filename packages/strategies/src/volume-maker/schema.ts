@@ -38,6 +38,17 @@ export const volumeMakerSchema = z
      * Tắt = đúng logic cũ. Chỉ có tác dụng khi báo giá theo sổ lệnh (`quoteLevel`).
      */
     smartQuoting: z.boolean().default(false),
+    /**
+     * Close only at your entry price or better (DEC-227), mặc định tắt: lệnh đóng post-only reduce-only ở
+     * max(giá tốt nhất, giá vào) khi long / min(…) khi short; giá vào chưa gồm phí. Giữ vị thế quá 30 phút thì quay về
+     * cách đóng thường. Không đổi `inventoryLossStop` / trần chi phí.
+     */
+    closeAtEntry: z.boolean().default(false),
+    /**
+     * Pause on fast moves (DEC-227), mặc định tắt: giá chạy ≥ 3 tick trong 6 s thì rút lệnh mở, giữ lệnh đóng,
+     * báo giá lại sau 15 s yên. Độc lập với Smart quoting.
+     */
+    pauseOnFastMoves: z.boolean().default(false),
     quoteLevel: z
       .number()
       .int({ message: "Whole numbers only." })

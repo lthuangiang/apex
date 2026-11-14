@@ -65,8 +65,15 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   trung vị |Δ giá giữa 30 s| trên các fill; câu "Losers lose more steps than winners win." chỉ hiện khi lỗ trung bình mỗi
   đơn vị của vòng lỗ lớn hơn lãi trung bình của vòng lãi. API `GET /api/v1/bots/:id/mm-markout`.
 - **Ways to lower it**: mở `/bots/:id/edit?suggest=<option>`, chỉ điền sẵn form (không lưu nháp, không tự áp).
-  `quote-back` = `quoteLevel` + 1 (tối đa 20); "Move to a cheaper market" mở bước chọn market. Hai cài đặt mới
-  ("Close only at your entry price or better", "Pause on fast moves") đi ở PR sau.
+  `quote-back` = `quoteLevel` + 1 (tối đa 20); `close-at-entry` / `pause-fast` bật cài đặt tương ứng; "Move to a cheaper
+  market" mở bước chọn market.
+- **Close only at your entry price or better** (`closeAtEntry`, mặc định tắt): lệnh đóng vẫn post-only reduce-only, giá =
+  max(giá tốt nhất phía đóng, giá vào) khi long, min(…) khi short; giá vào (`avgCost`) chưa gồm phí, làm tròn tick về phía
+  có lợi. Vị thế mở (tính từ lúc rời trạng thái phẳng) quá 30 phút → đóng theo cách thường, Decisions ghi một lần
+  "Closing at the best price". Trần chi phí và `inventoryLossStop` vẫn áp dụng như cũ.
+- **Pause on fast moves** (`pauseOnFastMoves`, mặc định tắt): giá (cao nhất − thấp nhất) trong 6 s gần nhất ≥ 3 tick → huỷ
+  ngay lệnh mở, chỉ giữ lệnh đóng reduce-only; mỗi lần kích hoạt gia hạn thêm 15 s; hết hạn thì báo giá lại. Decisions ghi
+  "Quotes paused on a fast move" / "Quoting again after a fast move". Độc lập với Smart quoting.
 
 ### 17.7 Chọn market theo chi phí / $1M (DEC-227)
 - `/bots/new/volume_maker` không có `?market=` → bước 1 "Choose a market" (artboard `MM-Markets`); Continue mở form như

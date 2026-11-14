@@ -75,6 +75,14 @@ export interface VolumeMakerState {
   smartSince?: number | null;
   /** Điều chỉnh đang được giữ của từng phía, tới `until` (DEC-152). */
   smartHold?: Partial<Record<"buy" | "sell", SmartSide & { until: number }>> | null;
+  /** Lúc vị thế bắt đầu mở (từ phẳng), cho "Close only at your entry price or better"; null = phẳng. */
+  positionSince?: number | null;
+  /** Đã quá `VM_ENTRY_CLOSE_MS` và đã chuyển sang cách đóng thường (ghi Decisions một lần). */
+  entryCloseExpired?: boolean;
+  /** Giá vài giây gần nhất cho "Pause on fast moves". */
+  fastRecent?: { t: number; p: string }[];
+  /** Đang tạm rút lệnh mở vì giá chạy nhanh, tới thời điểm này (ms); null = bình thường. */
+  fastPauseUntil?: number | null;
 }
 
 /** Điều chỉnh Smart quoting của một phía: lùi `ticks` tick, hoặc rút hẳn lệnh mở (`pull`). */
@@ -258,6 +266,24 @@ function smartAdjust(
   return { ...out, hold };
 }
 
+/** "Close only at your entry price or better": giữ vị thế quá ngần này thì đóng theo cách thường (PM chốt B2). */
+export const VM_ENTRY_CLOSE_MS = 30 * 60_000;
+/** "Pause on fast moves" (PM chốt C1–C3): giá chạy ≥ `ticks` tick trong `windowMs` → rút lệnh mở `waitMs`. */
+export const VM_FAST = { ticks: 3, windowMs: 6_000, waitMs: 15_000 } as const;
+
+/** Giá chạy bao nhiêu tick trong cửa sổ (cao nhất − thấp nhất); null khi chưa đủ điểm. */
+function fastMoveTicks(xs: readonly { p: string }[], rules: MarketRules): number | null {
+  if (xs.length < 2) return null;
+  let hi = dec(xs[0]?.p ?? "0");
+  let lo = hi;
+  for (const x of xs) {
+    const p = dec(x.p);
+    if (p.gt(hi)) hi = p;
+    if (p.lt(lo)) lo = p;
+  }
+  return hi.sub(lo).div(rules.tickSize).toDecimalPlaces(0, Decimal.ROUND_DOWN).toNumber();
+}
+
 /** Sổ lệnh cũ hơn ngần này thì không dùng; báo giá theo giá khớp gần nhất, lùi 1 tick. */
 export const VM_BOOK_MAX_AGE_MS = 10_000;
 
@@ -380,7 +406,12 @@ function quote(
   // Smart quoting (DEC-144, v2 DEC-152): chỉ khi bật và có sổ lệnh mới; tắt thì không lùi, không rút, đúng logic cũ.
   const smart = c.smartQuoting && book !== null ? smartAdjust(s, book, mid, rules, at) : null;
   const extra = { buy: smart?.buy?.ticks ?? 0, sell: smart?.sell?.ticks ?? 0 };
-  const pulled = { buy: smart?.buy?.pull === true, sell: smart?.sell?.pull === true };
+  // Pause on fast moves: rút mọi lệnh mở, giữ lệnh đóng reduce-only (PM chốt C2).
+  const paused = c.pauseOnFastMoves && s.fastPauseUntil != null && at < s.fastPauseUntil;
+  const pulled = {
+    buy: paused || smart?.buy?.pull === true,
+    sell: paused || smart?.sell?.pull === true,
+  };
   const sideText = (side: "buy" | "sell") => {
     const x = smart?.[side];
     if (x === undefined) return null;
@@ -428,6 +459,18 @@ function quote(
     next = { ...next, smartNote: note, smartSig: sig };
   }
   if (smart !== null) next = { ...next, smartHold: smart.hold, smartSince: s.smartSince ?? at };
+  const fastLogs: StrategyAction[] = [];
+  if (c.pauseOnFastMoves && !paused && s.fastPauseUntil != null) {
+    fastLogs.push({
+      type: "log",
+      decision: "Quoting again after a fast move",
+      why: `Price stayed calm for ${String(VM_FAST.waitMs / 1000)} s.`,
+    });
+    next = { ...next, fastPauseUntil: null };
+  }
+  // Mốc giữ vị thế cho "Close only at your entry price or better".
+  next = { ...next, positionSince: flat ? null : (s.positionSince ?? at) };
+  if (flat) next = { ...next, entryCloseExpired: false };
 
   // Phẳng: báo giá hai phía đối xứng, mỗi phía một lệnh kích thước gốc (VOLUME_MAKER.md 17.3).
   if (flat) {
@@ -452,10 +495,27 @@ function quote(
     // Phía đóng: lệnh GTX + reduce-only, gần mid khi tồn kho lớn (ít nhất 1 tick khỏi mid).
     const closeRaw = mid.mul(new Decimal(1)[long ? "add" : "sub"](d.mul(new Decimal(1).sub(u))));
     // Theo sổ lệnh: lệnh đóng đứng ở giá tốt nhất phía đóng để thoát vị thế nhanh.
-    const closePrice =
+    const bestClose =
       book !== null
         ? bookPrice(book, closeSide, 0, rules)
         : tickAway(mid, closeSide, closeRaw, rules);
+    // Close only at your entry price or better (PM chốt B1–B2): long bán ở max(giá tốt nhất, giá vào), short mua ở
+    // min(…); giá vào chưa gồm phí. Giữ quá 30 phút → đóng theo cách thường, ghi Decisions một lần.
+    const entry = dec(s.ledger.avgCost);
+    const held = at - (next.positionSince ?? at);
+    const atEntry = c.closeAtEntry && entry.gt(0) && held < VM_ENTRY_CLOSE_MS;
+    let closePrice = bestClose;
+    if (atEntry) {
+      const e = dec(roundPrice(entry, rules, long ? RoundMode.up : RoundMode.down));
+      closePrice = (long ? Decimal.max(bestClose, e) : Decimal.min(bestClose, e)).toString();
+    } else if (c.closeAtEntry && entry.gt(0) && s.entryCloseExpired !== true) {
+      fastLogs.push({
+        type: "log",
+        decision: "Closing at the best price",
+        why: `The position was open for ${String(VM_ENTRY_CLOSE_MS / 60_000)} min without closing at your entry price or better.`,
+      });
+      next = { ...next, entryCloseExpired: true };
+    }
     const closeQty = roundQty(pos.abs().sub(pendingClose(next, closeSide)), rules);
     if (meetsMinimum(closePrice, closeQty, rules)) {
       places.push(
@@ -502,6 +562,7 @@ function quote(
     ...cancels,
     ...places.map((o) => ({ type: "place" as const, order: o })),
     ...smartLogs,
+    ...fastLogs,
   ];
   return { actions, state: next };
 }
@@ -604,6 +665,17 @@ function housekeep(s: VolumeMakerState, at: number): VolumeMakerState {
   return changed ? { ...s, orders } : s;
 }
 
+/** Báo giá đầu tiên ngay khi có giá. */
+function firstQuote(
+  c: VolumeMakerConfig,
+  state: VolumeMakerState,
+  ctx: StepContext,
+  at: number,
+): StepResult<VolumeMakerState> {
+  const { actions, state: next } = quote(c, state, ctx, at);
+  return guards(c, next, ctx, at) ?? { actions, state: next };
+}
+
 export function stepVolumeMaker(
   c: VolumeMakerConfig,
   raw: VolumeMakerState,
@@ -629,6 +701,32 @@ export function stepVolumeMaker(
       };
       const g = guards(c, state, ctx, e.at);
       if (g !== null) return g;
+      // Pause on fast moves (PM chốt C1–C3): giá chạy ≥ 3 tick trong 6 s → rút lệnh mở ngay, giữ lệnh đóng.
+      const rules = ctx.rules[c.market];
+      if (c.pauseOnFastMoves && rules !== undefined) {
+        const fastRecent = [...(state.fastRecent ?? []), { t: e.at, p: e.price }].filter(
+          (x) => e.at - x.t <= VM_FAST.windowMs,
+        );
+        const moved = fastMoveTicks(fastRecent, rules);
+        const fast = moved !== null && moved >= VM_FAST.ticks;
+        const wasPaused = state.fastPauseUntil != null && e.at < state.fastPauseUntil;
+        const withRecent: VolumeMakerState = {
+          ...state,
+          fastRecent,
+          ...(fast ? { fastPauseUntil: e.at + VM_FAST.waitMs } : {}),
+        };
+        if (fast && !wasPaused && state.lastRefresh !== null) {
+          const { actions, state: next } = quote(c, withRecent, ctx, e.at);
+          const log: StrategyAction = {
+            type: "log",
+            decision: "Quotes paused on a fast move",
+            why: `Price moved ${String(moved)} ticks in ${String(VM_FAST.windowMs / 1000)} s; quoting again after ${String(VM_FAST.waitMs / 1000)} s of calm.`,
+          };
+          return guards(c, next, ctx, e.at) ?? { actions: [...actions, log], state: next };
+        }
+        if (state.lastRefresh !== null) return { actions: [], state: withRecent };
+        return firstQuote(c, withRecent, ctx, e.at);
+      }
       // Báo giá đầu tiên ngay khi có giá.
       if (state.lastRefresh === null) {
         const { actions, state: next } = quote(c, state, ctx, e.at);
