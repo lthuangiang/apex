@@ -104,6 +104,8 @@ describe("GET /api/v1/markets/mm-cost (DEC-228)", () => {
     // PnL giá mô hình = 0,25 × ~1 − 0,095 × ~5 ≈ −0,225 bps → −22,5 / $1M; chi phí ≈ 120 + 30 + 22,5.
     expect(Number(btc?.pricePnlPerMillion)).toBeCloseTo(-22.5, 0);
     expect(Number(btc?.totalCostPerMillion)).toBeCloseTo(172.5, 0);
+    // Đầu dưới của khoảng: chỉ phí (maker 120 + builder 30).
+    expect(btc?.feesPerMillion).toBe("150");
     // Sức chứa = 5% volume 24h (≈ 2,4 triệu).
     expect(Number(btc?.capacityPerDay)).toBeCloseTo(0.05 * Number(btc?.volume24h), -1);
     expect(res.markets[1]).toMatchObject({

@@ -79,8 +79,14 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - **UI:** không còn bước "Choose a market" riêng. `/bots/new/volume_maker` mở thẳng form; dưới field Contract có khối
   "Suggested for market making": tối đa 3 market (đủ dữ liệu, không "Too little volume", rẻ nhất trước), bấm thì điền
   Contract; dòng "Estimated cost here: …" cho contract đang chọn; "Compare all markets" mở bảng đầy đủ (sheet trên mobile,
-  dialog trên desktop) với cột Data ("Your bots" / "Model"). Chi phí ≤ 0 ghi "0 or less". Chưa market nào đủ dữ liệu:
-  "Suggestions appear once we have a day of SoDEX data.".
+  dialog trên desktop). Chi phí hiện dạng **khoảng**: đầu dưới = chỉ phí (phí maker SoDEX + builder fee MM của người xem,
+  `feesPerMillion`, khi giá không chạy ngược), đầu trên = ước tính có cả lỗ giá thường gặp (`totalCostPerMillion`): dòng
+  gợi ý "{market} · {low}–{high} per $1M · up to {capacity}/day", đầu trên ≤ đầu dưới thì một số (số thấp hơn), chi phí ≤ 0
+  ghi "0 or less". Bảng có hai cột "Fees only / $1M" và "With usual price moves / $1M" (xếp theo cột thứ hai), không có cột
+  nguồn số (Your bots / Model; logic trộn vẫn giữ ở backend), dòng giải thích dưới bảng nói đầu trên không phải mức tối
+  đa. Bảng mặc định ẩn market "Too little volume" và chưa đủ dữ liệu, nút "Show all markets ({n} hidden)" ↔ "Hide markets
+  with too little volume", lựa chọn giữ trong phiên. Chưa market nào đủ dữ liệu: "Suggestions appear once we have a day of
+  SoDEX data.".
 - **API** `GET /api/v1/markets/mm-cost` (phần thị trường cache 5 phút; phần của người xem tính mỗi lần): mỗi market có
   `stepBps`, `swingBps`, `volume24h`, `capacityPerDay`, `tooLittleVolume`, `candleMinutes24h`, `activeMinutes24h`,
   `hoursWithData`, `trades24h`, `notional24h`, `publicPricePnlPerMillion` (đối chiếu), `pricePnlPerMillion`, `source`,
@@ -90,7 +96,7 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   (thiếu → không đủ dữ liệu). Hệ số mới nhất trong `mm_model_coefs`, chưa có thì a = 0,25, k = 0,095 (version 0).
 - **Bot của người xem:** fill 24 giờ của bot MM live của chính người xem ở market đó → PnL giá gồm phần chưa chốt (vị thế
   ròng trong cửa sổ định giá ở giá đóng nến mới nhất), trộn (n × thực + 50 × mô hình) / (n + 50), n = số vòng đóng; nguồn
-  "Your bots". Bot của người khác không bao giờ hiện trong số của người xem.
+  `source` = "yours" (không hiện trên bảng). Bot của người khác không bao giờ hiện trong số của người xem.
 - **Chi phí / $1M** = phí maker SoDEX của market (`makerFee` × 1.000.000, thiếu thì 0,012%) + builder fee MM của người
   dùng (rate × 10) − PnL giá × 100.
 - **Sức chứa** "up to … / day" = 5% volume 24h; dưới $100K / ngày là "Too little volume", không gợi ý, xếp sau.
