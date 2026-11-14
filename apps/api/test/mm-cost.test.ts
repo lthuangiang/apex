@@ -56,6 +56,15 @@ describe("GET /api/v1/markets/mm-cost (DEC-228)", () => {
     await env.pool.query(
       `insert into candles_1m (market, ts, open, high, low, close, volume) values ${values.join(",")}`,
     );
+    // ETH-USD: đủ 800 nến và phút nào cũng có giao dịch, nhưng chỉ ~$1 / phút → không tính là phút có volume (≥ $50),
+    // nên không đủ dữ liệu để tính dao động / chi phí (DEC-228).
+    const thin = Array.from(
+      { length: 800 },
+      (_, i) => `('ETH-USD', '${at((i - 800) * 60_000)}', 1, 1, 1, ${i % 2 ? "1.01" : "1"}, 1)`,
+    );
+    await env.pool.query(
+      `insert into candles_1m (market, ts, open, high, low, close, volume) values ${thin.join(",")}`,
+    );
     // Markout công khai chỉ để đối chiếu; một giờ cũ hơn 24 giờ không được cộng.
     for (const [hour, notional, markout] of [
       [-2, "600", "-300"],
@@ -99,14 +108,13 @@ describe("GET /api/v1/markets/mm-cost (DEC-228)", () => {
     expect(Number(btc?.capacityPerDay)).toBeCloseTo(0.05 * Number(btc?.volume24h), -1);
     expect(res.markets[1]).toMatchObject({
       market: "ETH-USD",
-      stepBps: null,
       swingBps: null,
-      volume24h: null,
-      capacityPerDay: null,
       pricePnlPerMillion: null,
       source: null,
       totalCostPerMillion: null,
-      candleMinutes24h: 0,
+      candleMinutes24h: 800,
+      activeMinutes24h: 0,
+      tooLittleVolume: true,
     });
 
     // Bot của chính người xem: 50 vòng lỗ ~0,5 bps → trộn đều với mô hình, nguồn "yours".

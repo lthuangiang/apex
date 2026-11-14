@@ -9,6 +9,7 @@ import {
   ErrorCode,
   medianMidMove,
   medianTicks,
+  isActiveMinute,
   MM_MIN_ACTIVE_MINUTES,
   MM_MIN_CANDLE_MINUTES,
   MM_MIN_CAPACITY,
@@ -181,7 +182,7 @@ async function marketPart(deps: BotDeps): Promise<MarketPart> {
     for (const h of hs)
       for (const [k, n] of Object.entries(h.spreadTicks as Record<string, number>))
         hist[k] = (hist[k] ?? 0) + n;
-    const active = cs.filter((c) => dec(c.volume).gt(0)).length;
+    const active = cs.filter(isActiveMinute).length;
     // Dao động chỉ tin được khi đủ nến và ≥ 50% số phút có volume (nến phẳng làm dao động thấp giả).
     const enough = cs.length >= MM_MIN_CANDLE_MINUTES && active >= MM_MIN_ACTIVE_MINUTES;
     const swing = enough ? swingBps(cs.map((c) => c.close)) : null;
