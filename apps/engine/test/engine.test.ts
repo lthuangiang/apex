@@ -616,6 +616,42 @@ describe("engine", () => {
       await e.stop();
     });
 
+  it("keeps the open orders of a paused Market Making bot on a Binance guard signal (DOMAIN 7.2)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", {
+      strategy: "volume_maker",
+      market: "BTC-USD",
+      engine: "perps",
+      config: {
+        market: "BTC-USD",
+        leverage: 1,
+        volumeTarget: "100000",
+        orderSize: "500",
+        distanceBp: "1",
+        maxInventory: "2000",
+        refreshSeconds: 3,
+        runUntil: "target_or_budget",
+        costBudget: "300",
+        inventoryLossStop: "60",
+        onStop: "close_inventory",
+        smartQuoting: true,
+      },
+    });
+    const e = makeEngine(gw, "w-guard-paused");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    expect(gw.received.some((o) => o.side === "sell")).toBe(true);
+    await db.update(bots).set({ state: "paused" }).where(eq(bots.id, botId));
+    const before = gw.cancelled.length;
+    await e.onMmGuard(
+      { s: "BTC-USD", ask: true, bid: false, gapBp: 1.2, T: clock, at: clock },
+      clock,
+    );
+    expect(gw.cancelled.slice(before)).toEqual([]);
+    await e.stop();
+  });
+
   it("applies an edited version: cancels old orders, activates v2 and re-places from the new config", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();

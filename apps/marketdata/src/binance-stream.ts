@@ -72,7 +72,13 @@ export class BinanceBookStream {
     );
     this.#ws = ws;
     ws.onmessage = (m) => {
-      const r = messageSchema.safeParse(JSON.parse(String(m.data)));
+      let raw: unknown;
+      try {
+        raw = JSON.parse(String(m.data));
+      } catch {
+        return;
+      }
+      const r = messageSchema.safeParse(raw);
       if (r.success) this.#onBook(r.data.data.s, r.data.data.b, r.data.data.a, r.data.data.T);
     };
     ws.onerror = (e) => {

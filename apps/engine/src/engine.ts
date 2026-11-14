@@ -207,8 +207,6 @@ export const FARM_CANDLES = 120;
 
 interface Runner {
   botId: string;
-  /** Đang xử lý tín hiệu Binance guard: giờ Binance của tín hiệu, để ghi Decisions khi SoDEX xác nhận huỷ. */
-  guardAt?: number | undefined;
   account: AccountRef;
   /** Bot paper: mọi lệnh qua `PaperGateway`, không bao giờ tới SoDEX (DEC-105). */
   paper: boolean;
@@ -476,20 +474,15 @@ export class Engine {
         x.market === msg.s &&
         (x.config as { smartQuoting?: boolean }).smartQuoting === true,
     )) {
-      r.guardAt = msg.T;
-      try {
-        await this.#feed(r, {
-          type: "guard",
-          at: recvAt,
-          market: msg.s,
-          ask: msg.ask,
-          bid: msg.bid,
-          gapBp: msg.gapBp,
-          binanceAt: msg.T,
-        });
-      } finally {
-        r.guardAt = undefined;
-      }
+      await this.#feed(r, {
+        type: "guard",
+        at: recvAt,
+        market: msg.s,
+        ask: msg.ask,
+        bid: msg.bid,
+        gapBp: msg.gapBp,
+        binanceAt: msg.T,
+      });
       this.#d.log.info(
         {
           botId: r.botId,
@@ -1183,7 +1176,9 @@ export class Engine {
       (event.type === "tick" ||
         event.type === "timer" ||
         event.type === "leaderFill" ||
-        event.type === "leaderPosition")
+        event.type === "leaderPosition" ||
+        // Binance guard cũng vậy: bot đang pause giữ nguyên lệnh đang mở (DOMAIN 7.2).
+        event.type === "guard")
     )
       return;
     // Bot Perps: đặt đòn bẩy + margin mode trên SoDEX trước khi chiến lược phản ứng với thị trường. Fill / ack /
@@ -1419,7 +1414,9 @@ export class Engine {
           tx.update(bots).set({ needsAttention: a.needsAttention }).where(eq(bots.id, r.botId)),
         );
     }
-    if (cancels.length > 0) await this.#cancel(r, cancels);
+    // Huỷ do Binance guard: ghi Decisions lúc SoDEX xác nhận, kèm giờ Binance của chính tín hiệu này.
+    const guardAt = source?.event.type === "guard" ? source.event.binanceAt : undefined;
+    if (cancels.length > 0) await this.#cancel(r, cancels, guardAt);
     for (const a of actions) if (a.type === "modifyStop") await this.#modifyStop(r, a, at);
     // Chốt cứng: lệnh Perps mở vị thế không bao giờ được gửi khi SoDEX chưa xác nhận đòn bẩy của bot.
     if (!r.leverageSet && places.some((o) => o.engine === "perps" && !o.reduceOnly)) {
@@ -1771,7 +1768,12 @@ export class Engine {
     }
   }
 
-  async #cancel(r: Runner, clOrdIDs: readonly string[]): Promise<void> {
+  async #cancel(
+    r: Runner,
+    clOrdIDs: readonly string[],
+    /** Giờ Binance của tín hiệu guard gây ra lần huỷ này (ghi Decisions khi SoDEX xác nhận); thiếu = không ghi. */
+    guardAt?: number,
+  ): Promise<void> {
     const rows = await this.#d.db
       .select()
       .from(orders)
@@ -1811,7 +1813,6 @@ export class Engine {
           "cancel not confirmed",
         );
     // Binance guard: ghi Decisions lúc SoDEX xác nhận huỷ, kèm khoảng cách từ lúc Binance chạy.
-    const guardAt = r.guardAt;
     if (guardAt !== undefined) {
       const done = this.#d.now();
       for (const x of results) {
