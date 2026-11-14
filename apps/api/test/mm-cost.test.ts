@@ -44,11 +44,19 @@ async function connectedUser(email: string) {
 
 const at = (offsetMs: number) => new Date(env.clock.now.getTime() + offsetMs).toISOString();
 
-describe("GET /api/v1/markets/mm-cost (D1)", () => {
-  it("ranks markets by cost per $1M from the last 24 hours, and shows nothing for a market without data", async () => {
+describe("GET /api/v1/markets/mm-cost (DEC-TBD-mm-cost-v1)", () => {
+  it("estimates the cost for your own bot from the model, blends in your bot, and ranks with suggestions", async () => {
     const client = await connectedUser("mm-rank@example.com");
-    // Hai giờ trong 24 giờ: 1000 notional, markout −500 bps·USD → −0,5 bps → Price PnL −50 / $1M.
-    // Một giờ cũ hơn 25 giờ không được cộng.
+    // BTC-USD: 800 nến 1m có volume, giá đổi 100 ↔ 100,05 → bước ≈ 1 bps, dao động ≈ 5 bps.
+    const values = Array.from(
+      { length: 800 },
+      (_, i) =>
+        `('BTC-USD', '${at((i - 800) * 60_000)}', 100, 100, 100, ${i % 2 ? "100.05" : "100"}, 30)`,
+    );
+    await env.pool.query(
+      `insert into candles_1m (market, ts, open, high, low, close, volume) values ${values.join(",")}`,
+    );
+    // Markout công khai chỉ để đối chiếu; một giờ cũ hơn 24 giờ không được cộng.
     for (const [hour, notional, markout] of [
       [-2, "600", "-300"],
       [-1, "400", "-200"],
@@ -58,37 +66,84 @@ describe("GET /api/v1/markets/mm-cost (D1)", () => {
         "insert into mm_market_hourly (market, hour, notional, markout_notional, trades, spread_ticks) values ('BTC-USD', $1, $2, $3, 10, $4)",
         [at(hour * 3_600_000), notional, markout, JSON.stringify({ "1": 30, "2": 10 })],
       );
-    for (const [i, close] of ["100", "101", "100"].entries())
-      await env.pool.query(
-        "insert into candles_1m (market, ts, open, high, low, close, volume) values ('BTC-USD', $1, $2, $2, $2, $2, '10')",
-        [at((i - 3) * 60_000), close],
-      );
     const res = mmMarketCostsSchema.parse(
       (await client.request("GET", "/api/v1/markets/mm-cost")).json(),
     );
-    expect(res.makerFeePerMillion).toBe("120");
-    expect(res.builderFeePerMillion).toBe("30");
-    expect(res.updatedAt).not.toBeNull();
-    const btc = res.markets.find((m) => m.market === "BTC-USD");
+    expect(res).toMatchObject({
+      makerFeePerMillion: "120",
+      builderFeePerMillion: "30",
+      modelVersion: 0,
+      model: { a: "0.25", k: "0.095" },
+      suggested: ["BTC-USD"],
+    });
+    expect(res.markets.map((m) => m.market)).toEqual(["BTC-USD", "ETH-USD"]);
+    const btc = res.markets[0];
     expect(btc).toMatchObject({
-      stepBps: "1",
+      market: "BTC-USD",
       spreadTicks: 1,
-      volume24h: "3010",
-      pricePnlPerMillion: "-50",
-      pricePnlSource: "public",
-      totalCostPerMillion: "200",
+      candleMinutes24h: 800,
+      activeMinutes24h: 800,
+      hoursWithData: 2,
+      trades24h: 20,
+      notional24h: "1000",
+      publicPricePnlPerMillion: "-50",
+      source: "model",
+      yourRoundTrips: 0,
+      tooLittleVolume: false,
       yourBot: false,
     });
-    expect(btc?.swingBps).not.toBeNull();
-    expect(res.markets.find((m) => m.market === "ETH-USD")).toMatchObject({
+    // PnL giá mô hình = 0,25 × ~1 − 0,095 × ~5 ≈ −0,225 bps → −22,5 / $1M; chi phí ≈ 120 + 30 + 22,5.
+    expect(Number(btc?.pricePnlPerMillion)).toBeCloseTo(-22.5, 0);
+    expect(Number(btc?.totalCostPerMillion)).toBeCloseTo(172.5, 0);
+    // Sức chứa = 5% volume 24h (≈ 2,4 triệu).
+    expect(Number(btc?.capacityPerDay)).toBeCloseTo(0.05 * Number(btc?.volume24h), -1);
+    expect(res.markets[1]).toMatchObject({
+      market: "ETH-USD",
       stepBps: null,
-      spreadTicks: null,
       swingBps: null,
       volume24h: null,
+      capacityPerDay: null,
       pricePnlPerMillion: null,
-      pricePnlSource: null,
+      source: null,
       totalCostPerMillion: null,
+      candleMinutes24h: 0,
     });
+
+    // Bot của chính người xem: 50 vòng lỗ ~0,5 bps → trộn đều với mô hình, nguồn "yours".
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "volume_maker", name: "MM", paramSource: "manual", config: vmConfig },
+    });
+    const id = made.json<{ id: string }>().id;
+    for (let k = 0; k < 50; k += 1)
+      for (const [side, price, dt] of [
+        ["buy", "100", 0],
+        ["sell", "99.99", 10_000],
+      ] as const) {
+        await env.pool.query(
+          "with o as (insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, status, reduce_only, tag, epoch) select gen_random_uuid(), id, sodex_account_id, $2, 'BTC-USD', 'perps', $3, 'limit', 'GTX', 1, 'filled', false, 'x', 1 from bots where id = $1 returning id) insert into fills (id, order_id, sodex_trade_id, price, size, fee, is_maker, filled_at) select gen_random_uuid(), id, $4, $5, '1', '0', true, $6 from o",
+          [
+            id,
+            `rank-${String(k)}-${side}`,
+            side,
+            770_000 + k * 2 + (side === "buy" ? 0 : 1),
+            price,
+            at(-3_600_000 + k * 30_000 + dt),
+          ],
+        );
+      }
+    const mine = mmMarketCostsSchema.parse(
+      (await client.request("GET", "/api/v1/markets/mm-cost")).json(),
+    );
+    const own = mine.markets.find((m) => m.market === "BTC-USD");
+    expect(own).toMatchObject({ source: "yours", yourRoundTrips: 50 });
+    // (50 × −0,50 + 50 × −0,225) / 100 ≈ −0,36 bps → −36 / $1M.
+    expect(Number(own?.pricePnlPerMillion)).toBeCloseTo(-36.25, 0);
+    // Người khác không thấy số của bot này.
+    const other = await connectedUser("mm-rank-other@example.com");
+    const theirs = mmMarketCostsSchema.parse(
+      (await other.request("GET", "/api/v1/markets/mm-cost")).json(),
+    );
+    expect(theirs.markets.find((m) => m.market === "BTC-USD")?.source).toBe("model");
   });
 
   it("needs a session", async () => {

@@ -46,15 +46,18 @@ export function compactUsd(v: string | null): string | null {
 
 export type MmSort = "cost" | "volume";
 
-/** Rẻ nhất trước / nhiều volume nhất trước; market chưa có số luôn ở cuối (không coi thiếu là 0). */
+/**
+ * "Cheapest first" giữ thứ tự API đã xếp (DEC-TBD-mm-cost-v1); "Most volume" xếp theo sức chứa / ngày. Market chưa có số
+ * luôn ở cuối (không coi thiếu là 0).
+ */
 export function sortMarkets(rows: readonly MmMarketCost[], by: MmSort): MmMarketCost[] {
-  const key = (r: MmMarketCost) => (by === "cost" ? r.totalCostPerMillion : r.volume24h);
+  if (by === "cost") return [...rows];
   return [...rows].sort((a, b) => {
-    const x = key(a);
-    const y = key(b);
+    const x = a.capacityPerDay;
+    const y = b.capacityPerDay;
     if (x === null || y === null)
       return x === y ? a.market.localeCompare(b.market) : x === null ? 1 : -1;
-    return by === "cost" ? Number(x) - Number(y) : Number(y) - Number(x);
+    return Number(y) - Number(x);
   });
 }
 

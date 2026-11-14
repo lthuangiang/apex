@@ -9,5 +9,4 @@ export { VolumeGate } from "./components/volume-gate";
 export { isLaunched, presetMarket } from "./fields";
 export { BotProfit } from "./components/bot-profit";
 export { useStateLabel } from "./components/bots-page";
-export { MmMarketsPage } from "./components/mm-markets";
 export { isMmSuggestion } from "./mm-cost";

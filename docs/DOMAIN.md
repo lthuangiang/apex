@@ -100,6 +100,7 @@ Quy ước theo `docs/CODING_STANDARDS.md` C8: khoá chính `id uuid` (v7), mọ
 | `candles_1m` | `market`, `ts`, `open`, `high`, `low`, `close`, `volume` | Timescale hypertable, khoá (`market`, `ts`) |
 | `mm_market_hourly` | `market`, `hour`, `notional`, `markout_notional`, `trades`, `spread_ticks jsonb`, `updated_at` | markout 30 s phía maker của giao dịch công khai + histogram spread theo tick, theo giờ; `marketdata` ghi, giữ 48 giờ (DEC-227) |
 | `mid_1s` | `market`, `ts`, `mid` | giá giữa mỗi giây, chỉ market có bot MM, giữ 48 giờ (DEC-227) |
+| `mm_model_coefs` | `version` (identity), `a`, `k`, `points`, `day`, `created_at` | hệ số mô hình chi phí Market Making, scheduler fit mỗi ngày; API dùng dòng mới nhất (DEC-TBD-mm-cost-v1) |
 | `market_stats_daily` | `market`, `engine`, `date`, `sigma30`, `p5`, `p50`, `p95`, `last_price`, `trend`, `range_score`, `funding_avg7d`, `funding_pos21` | `scheduler` tính mỗi ngày (DEC-34) |
 | `shard_epochs` | `shard` (int, khoá chính), `epoch` (bigint), `owner`, `acquired_at` | fencing token; lease thật nằm ở Redis |
 | `outbox` | `topic`, `payload jsonb`, `published_at` | relay sang NATS |

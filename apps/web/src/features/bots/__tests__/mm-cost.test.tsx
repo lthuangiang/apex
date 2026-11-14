@@ -9,22 +9,36 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
-import { MmMarketsPage } from "../components/mm-markets";
+import { MmSuggestions } from "../components/mm-markets";
 import { MmMarkoutCard } from "../components/mm-markout";
 import { applyMmSuggestion } from "../mm-cost";
 
-// Market Making · chi phí / $1M (DEC-227): bảng xếp hạng market (D1) và Price PnL đến từ đâu (D2).
+// Market Making · chi phí / $1M: gợi ý market dưới Contract (DEC-TBD-mm-cost-v1) và Price PnL đến từ đâu (D2, DEC-227).
 
-const state = vi.hoisted(() => ({ pushed: [] as string[], updatedAt: "2026-11-14T09:58:00.000Z" }));
+const state = vi.hoisted(() => ({ empty: false }));
 
-const row = (market: string, total: string | null, volume: string | null, extra = {}) => ({
+const row = (
+  market: string,
+  total: string | null,
+  capacity: string | null,
+  extra: Record<string, unknown> = {},
+) => ({
   market,
   stepBps: total === null ? null : "1.25",
   spreadTicks: total === null ? null : 1,
   swingBps: total === null ? null : "2.4",
-  volume24h: volume,
+  volume24h: capacity === null ? null : String(Number(capacity) * 20),
+  capacityPerDay: capacity,
+  tooLittleVolume: capacity !== null && Number(capacity) < 100_000,
+  candleMinutes24h: total === null ? 0 : 1440,
+  activeMinutes24h: total === null ? 0 : 1400,
+  hoursWithData: 0,
+  trades24h: 0,
+  notional24h: "0",
+  publicPricePnlPerMillion: null,
   pricePnlPerMillion: total === null ? null : String(150 - Number(total)),
-  pricePnlSource: total === null ? null : "public",
+  source: total === null ? null : "model",
+  yourRoundTrips: 0,
   totalCostPerMillion: total,
   yourBot: false,
   ...extra,
@@ -38,14 +52,22 @@ vi.mock("@/lib/api", async (importOriginal) => {
       if (path === "/api/v1/markets/mm-cost")
         return Promise.resolve({
           asOf: "2026-11-14T10:00:00.000Z",
-          updatedAt: state.updatedAt,
+          updatedAt: null,
           makerFeePerMillion: "120",
           builderFeePerMillion: "30",
-          markets: [
-            row("ETH-USD", "216", "31000000", { yourBot: true }),
-            row("NEW-USD", null, null),
-            row("SOL-USD", "132", "4200000"),
-          ],
+          modelVersion: 0,
+          model: { a: "0.25", k: "0.095" },
+          markets: state.empty
+            ? [row("NEW-USD", null, null)]
+            : [
+                row("ZERO-USD", "-12", "800000"),
+                row("SOL-USD", "132", "210000"),
+                row("ETH-USD", "216", "1550000", { yourBot: true, source: "yours" }),
+                row("BTC-USD", "228", "2700000"),
+                row("THIN-USD", "40", "47000"),
+                row("NEW-USD", null, null),
+              ],
+          suggested: state.empty ? [] : ["ZERO-USD", "SOL-USD", "ETH-USD"],
         });
       if (path === "/api/v1/bots/b1/mm-markout")
         return Promise.resolve({
@@ -68,13 +90,6 @@ vi.mock("@/lib/queries", () => ({ useMe: () => ({ data: undefined }) }));
 vi.mock("@/lib/markets", () => ({
   useMarketNames: () => ({ market: (m: string) => m }),
 }));
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: (p: string) => {
-      state.pushed.push(p);
-    },
-  }),
-}));
 
 function wrap(ui: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -86,11 +101,6 @@ function wrap(ui: ReactNode) {
     </QueryClientProvider>,
   );
 }
-
-const markets = () =>
-  within(screen.getByRole("table"))
-    .getAllByRole("rowheader")
-    .map((h) => h.textContent);
 
 const AXE = {
   runOnly: {
@@ -104,42 +114,99 @@ afterEach(() => {
   cleanup();
 });
 
-describe("Market Making · choose a market (D1)", () => {
-  it("ranks cheapest first with missing markets last, picks the cheapest, and continues to settings", async () => {
+describe("Market Making · suggested markets under Contract (DEC-TBD-mm-cost-v1)", () => {
+  it("offers up to 3 markets with cost and capacity, fills Contract, and states the cost of the chosen one", async () => {
     const user = userEvent.setup({ delay: null });
-    wrap(<MmMarketsPage />);
-    await screen.findByRole("table");
-    expect(markets()).toEqual(["SOL-USDCheapest", "ETH-USDYour bot today", "NEW-USD"]);
-    const newRow = screen.getByRole("rowheader", { name: "NEW-USD" }).closest("tr");
-    expect(within(newRow as HTMLElement).getAllByText("Not available")).toHaveLength(6);
-    expect(screen.getByRole("heading", { name: "Chosen: SOL-USD" })).toBeInTheDocument();
+    const picked: string[] = [];
+    const { rerender } = wrap(
+      <MmSuggestions
+        value=""
+        onPick={(m) => {
+          picked.push(m);
+        }}
+      />,
+    );
+    const list = within(await screen.findByRole("list"));
+    expect(list.getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "ZERO-USD · 0 or less per $1M · up to $800K/day",
+      "SOL-USD · about 132 per $1M · up to $210K/day",
+      "ETH-USD · about 216 per $1M · up to $1.6M/day",
+    ]);
+    await user.click(list.getByRole("button", { name: /^SOL-USD/ }));
+    expect(picked).toEqual(["SOL-USD"]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    rerender(
+      <QueryClientProvider client={qc}>
+        <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+          <MmSuggestions value="SOL-USD" onPick={() => undefined} />
+        </NextIntlClientProvider>
+      </QueryClientProvider>,
+    );
+    const sol = await screen.findByRole("button", { name: /^SOL-USD.*Selected$/ });
+    expect(sol).toHaveAttribute("aria-pressed", "true");
     expect(
-      screen.getByText(
-        "Estimated total cost 132 USDC for every $1M of volume (last 24 hours, not a forecast).",
-      ),
+      screen.getByText("Estimated cost here: 132 per $1M (last 24 hours, not a forecast)."),
     ).toBeInTheDocument();
-    // Dữ liệu mới (2 phút trước): không hiện dòng Updated.
-    expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Most volume" }));
-    expect(markets()).toEqual(["ETH-USDYour bot today", "SOL-USD", "NEW-USD"]);
-    await user.click(screen.getByRole("button", { name: "Choose NEW-USD" }));
-    expect(
-      screen.getByText("We don’t have enough trades to estimate the cost on this market yet."),
-    ).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Choose ETH-USD" }));
-    await user.click(screen.getByRole("button", { name: "Continue to settings" }));
-    expect(state.pushed).toEqual(["/bots/new/volume_maker?market=ETH-USD&engine=perps"]);
-    expect(screen.getByText(/DeskLabs builder fee \(0\.003%\)/)).toBeInTheDocument();
     const r = await axe.run(document.body, AXE);
     expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
   }, 15_000);
 
-  it("says when the numbers are more than an hour old", async () => {
-    state.updatedAt = "2026-11-14T08:30:00.000Z";
-    wrap(<MmMarketsPage />);
-    expect(await screen.findByText(/^Updated /)).toBeInTheDocument();
-    state.updatedAt = "2026-11-14T09:58:00.000Z";
+  it("compares all markets in a dialog with the Data column, and Choose fills Contract and closes it", async () => {
+    const user = userEvent.setup({ delay: null });
+    const picked: string[] = [];
+    wrap(
+      <MmSuggestions
+        value="NEW-USD"
+        onPick={(m) => {
+          picked.push(m);
+        }}
+      />,
+    );
+    expect(
+      await screen.findByText("Estimated cost here: not enough data yet."),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Compare all markets" }));
+    const dialog = await screen.findByRole("dialog", { name: "Compare all markets" });
+    const names = () =>
+      within(within(dialog).getByRole("table"))
+        .getAllByRole("rowheader")
+        .map((h) => h.textContent);
+    expect(names()).toEqual([
+      "ZERO-USDCheapest",
+      "SOL-USD",
+      "ETH-USDYour bot today",
+      "BTC-USD",
+      "THIN-USDToo little volume",
+      "NEW-USD",
+    ]);
+    const cells = (m: string) =>
+      within(
+        within(dialog)
+          .getByRole("rowheader", { name: new RegExp(`^${m}`) })
+          .closest("tr") as HTMLElement,
+      )
+        .getAllByRole("cell")
+        .map((c) => c.textContent);
+    expect(cells("ZERO-USD").slice(5, 7)).toEqual(["0 or less", "Model"]);
+    expect(cells("ETH-USD")[6]).toBe("Your bots");
+    expect(cells("NEW-USD")[5]).toBe("Not enough data");
+    await user.click(within(dialog).getByRole("button", { name: "Most volume" }));
+    expect(names()[0]).toBe("BTC-USD");
+    const r = await axe.run(document.body, AXE);
+    expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+    await user.click(within(dialog).getByRole("button", { name: "Choose ETH-USD" }));
+    expect(picked).toEqual(["ETH-USD"]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  }, 15_000);
+
+  it("explains that suggestions need a day of data", async () => {
+    state.empty = true;
+    wrap(<MmSuggestions value="" onPick={() => undefined} />);
+    expect(
+      await screen.findByText("Suggestions appear once we have a day of SoDEX data."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Compare all markets" })).not.toBeInTheDocument();
+    state.empty = false;
   });
 });
 
