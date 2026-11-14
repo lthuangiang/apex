@@ -178,6 +178,11 @@ services:
   marketdata:
     <<: *app
     image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:marketdata-${DRIFT_TAG:-latest}
+    environment:
+      <<: *env
+      # Lưu thô bookTicker + trade theo giờ, giữ 48 giờ (DEC-TBD-mm-cost-v1); ~85 MB / ngày.
+      MM_RAW_DIR: /home/node/mm-raw
+    volumes: [mmraw:/home/node/mm-raw]
 
   scheduler:
     <<: *app
@@ -420,6 +425,7 @@ networks:
 
 volumes:
   pgdata: {}
+  mmraw: {}
   redisdata: {}
   natsdata: {}
   vaultdata: {}

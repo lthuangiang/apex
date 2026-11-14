@@ -205,7 +205,7 @@ describe("MarketStream micro data", () => {
       { E: 1, s: "ETH-USD", a: "3000.5", A: "1", b: "3000", B: "2" },
     ]);
     expect(onTrades).toHaveBeenCalledWith([
-      { T: 2, s: "ETH-USD", S: "BUY", p: "3000.5", q: "0.1" },
+      { T: 2, t: 7, s: "ETH-USD", S: "BUY", p: "3000.5", q: "0.1" },
     ]);
     expect(onError).not.toHaveBeenCalled();
     stream.close();
