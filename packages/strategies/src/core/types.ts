@@ -48,7 +48,13 @@ export type StrategyEvent =
    * Nhịp đồng hồ. Volume Farm nhận kèm dữ liệu thị trường (engine đọc `candles_1m` và orderbook REST, tối đa
    * mỗi 3 s): các chiến lược khác bỏ qua `market`.
    */
-  | { type: "timer"; at: number; market?: MarketSnapshot }
+  | {
+      type: "timer";
+      at: number;
+      market?: MarketSnapshot;
+      /** Đỉnh sổ lệnh của mọi market chiến lược dùng (Rebalancing đặt IOC theo ask / bid); null khi đọc lỗi. */
+      books?: Readonly<Record<string, BookTop | null>>;
+    }
   | { type: "fundingPaid"; at: number; market: string; amount: string }
   /** Funding của market (engine lấy từ market_stats / marketdata). */
   | { type: "fundingRate"; at: number; market: string; current: string; avg7d: string | null }

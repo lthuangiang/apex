@@ -149,7 +149,7 @@ Preview: số lần × số tiền, lần mua tiếp theo, ngày kết thúc. Ba
    - **Over N hours** (N = 2–72): N phần, mỗi giờ một phần, tính từ lúc có đủ giá. Phần k chỉ mua, đưa mỗi tài sản tới k/N giá trị mục tiêu (luỹ kế), vẫn chịu "Max trade per rebalance". Phần nào dưới min size của SoDEX thì phần đó không có lệnh; vì mục tiêu là luỹ kế nên phần sau tự bù. Trong lúc mua dần không rebalance theo ngưỡng / lịch; xong phần N thì chạy rebalance thường. Field khoá sau khi tạo bot. Trading Agent hiện "Initial buy: {done} of {total} parts".
 2. Cứ 5 phút **[confirm]** tính tỷ trọng hiện tại theo giá quote asset.
 3. Kiểm tra điều kiện rebalance: với chế độ threshold, có tài sản lệch quá ngưỡng; với chế độ schedule, tới giờ hẹn.
-4. Khi rebalance: bán tài sản thừa, mua tài sản thiếu bằng lệnh limit sát giá **[confirm loại lệnh]**. Mỗi lần giao dịch không quá "Max trade per rebalance".
+4. Khi rebalance: bán tài sản thừa, mua tài sản thiếu bằng lệnh limit IOC đặt ở **ask × (1 + 0,3%)** khi mua và **bid × (1 − 0,3%)** khi bán (biên trượt giá cố định, không có trên form). Engine gửi đỉnh sổ lệnh Spot của mọi market trong giỏ mỗi 60 s; sổ lệnh cũ hơn 3 phút hoặc thiếu market nào thì chờ, không đặt theo giá khớp gần nhất. **Tổng** các lệnh của một lần rebalance (kể cả lần mua đầu All now) không quá "Max trade per rebalance" × giá trị danh mục; lần mua đầu bị giới hạn thì log "Bought {pct}% of the target allocation; the rest follows in the next rebalances." (DEC-236)
 5. Giá trị danh mục dưới ngưỡng → `stop(STOP_LOSS)`. Đạt take profit → `stop(TAKE_PROFIT)`. Khi dừng, tài sản được giữ nguyên.
 
 | Step | Field | Default | Rule / help text | Error message |

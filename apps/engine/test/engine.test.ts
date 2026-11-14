@@ -2682,3 +2682,58 @@ describe("engine", () => {
     await stopMakerBots();
   });
 });
+
+describe("Rebalancing order books (IOC at ask / bid)", () => {
+  it("feeds the spot order book of every basket market with the timer, at most once a minute", async () => {
+    const { eq } = await import("drizzle-orm");
+    const calls: string[] = [];
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", {
+      strategy: "rebalancing",
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      config: {
+        quoteAsset: "USDC",
+        assets: [
+          { asset: "BTC", market: "vBTC_vUSDC", weightPct: "50" },
+          { asset: "ETH", market: "vETH_vUSDC", weightPct: "30" },
+          { asset: "USDC", weightPct: "20" },
+        ],
+        rebalanceWhen: "threshold",
+        thresholdPct: "5",
+        investment: "1000",
+        maxTradePct: "100",
+      },
+    });
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: "rebal-books",
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      orderbook: (market, engine) => {
+        calls.push(`${engine ?? "perps"}:${market}`);
+        return Promise.resolve({ bid: "99", ask: "101", bidNotional: "1", askNotional: "1" });
+      },
+    });
+    await e.tick();
+    await e.tick();
+    expect(calls.sort()).toEqual(["spot:vBTC_vUSDC", "spot:vETH_vUSDC"]);
+    clock += 61_000;
+    await e.tick();
+    expect(calls).toHaveLength(4);
+    // Có giá và sổ lệnh: lần mua đầu đặt IOC theo ask + 0,3% (101 × 1,003 = 101,303 → 101 theo tick 1).
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    await e.onPrice("vETH_vUSDC", "10", clock);
+    const placed = gw.received.filter((o) => o.tag.startsWith("rebal:"));
+    expect(placed.map((o) => o.timeInForce)).toEqual(["IOC", "IOC"]);
+    expect(placed.every((o) => o.price === "101")).toBe(true);
+    await e.stop();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+  });
+});

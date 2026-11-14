@@ -2,6 +2,7 @@ import { ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
 import { clOrdId } from "../core/ids";
+import type { StrategyEvent } from "../core/types";
 import {
   currentWeights,
   initialBuyProgress,
@@ -11,7 +12,7 @@ import {
   type RebalancingState,
 } from "../rebalancing";
 import { rebalancingSchema } from "../rebalancing/schema";
-import { runSim } from "../sim/exchange";
+import { runSim, type SimOptions } from "../sim/exchange";
 
 const rules = { tickSize: "0.01", stepSize: "0.0001", minQuantity: "0.0001", minNotional: "1" };
 const ctx = {
@@ -36,16 +37,49 @@ const base = rebalancingSchema.parse({
 const t = (at: number, market: string, price: number) => ({ at, market, price: String(price) });
 const timers = (at: number) =>
   at % 1000 === 0 && at > 1000 ? [{ type: "timer" as const, at }] : [];
+/**
+ * Sổ lệnh giả cho test: ask = giá / 1,003 và bid = giá / 0,997, để giá lệnh IOC (ask × 1,003 / bid × 0,997) đúng bằng giá
+ * gần nhất như các test trước khi đặt lệnh theo sổ lệnh; test riêng bên dưới kiểm cách tính giá theo ask / bid.
+ */
+const book = (p: string) => ({
+  bid: (Math.floor((Number(p) / 0.997) * 1e8) / 1e8).toFixed(8),
+  ask: (Math.ceil((Number(p) / 1.003) * 1e8) / 1e8).toFixed(8),
+  bidNotional: "1000000",
+  askNotional: "1000000",
+});
+/** Timer mang sổ lệnh của cả hai market (giá BTC 100, ETH 10 trừ khi truyền khác). */
+const bookTimer = (at: number, btc = "100", eth = "10") =>
+  ({
+    type: "timer",
+    at,
+    books: { vBTC_vUSDC: book(btc), vETH_vUSDC: book(eth) },
+  }) as const;
+/**
+ * runSim kèm sổ lệnh: mỗi tick gửi thêm một timer mang đỉnh sổ lệnh (bid = ask = giá gần nhất) của mọi market đã có giá,
+ * như engine gửi mỗi 60 s. Lệnh IOC đặt ở ask × 1,003 (mua) / bid × 0,997 (bán).
+ */
+function sim(
+  config: typeof base,
+  ticks: { at: number; market: string; price: string }[],
+  options: SimOptions = fees,
+  extra: (at: number) => StrategyEvent[] = () => [],
+) {
+  const prices: Record<string, string> = {};
+  const sorted = [...ticks].sort((a, b) => a.at - b.at);
+  return runSim(rebalancing, config, ctx, ticks, options, (at) => {
+    for (const k of sorted) if (k.at <= at) prices[k.market] = k.price;
+    const books = Object.fromEntries(Object.entries(prices).map(([m, p]) => [m, book(p)]));
+    const ev = extra(at);
+    // Đã có timer ở thời điểm này thì gắn sổ lệnh vào nó (không thêm một nhịp rebalance thứ hai).
+    if (ev.some((x) => x.type === "timer"))
+      return ev.map((x) => (x.type === "timer" ? { ...x, books } : x));
+    return [...ev, { type: "timer", at, books }];
+  });
+}
 
 describe("rebalancing", () => {
   it("allocates to target weights once every price is known", () => {
-    const r = runSim(
-      rebalancing,
-      base,
-      ctx,
-      [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)],
-      fees,
-    );
+    const r = sim(base, [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)], fees);
     expect(r.state.holdings).toEqual({ BTC: "5", ETH: "30" });
     expect(Number(r.state.cash)).toBeCloseTo(200, 10);
     const w = currentWeights(base, r.state);
@@ -53,10 +87,8 @@ describe("rebalancing", () => {
   });
 
   it("rebalances when a weight drifts past the threshold, selling the winner first", () => {
-    const r = runSim(
-      rebalancing,
+    const r = sim(
       base,
-      ctx,
       [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10), t(2000, "vBTC_vUSDC", 150)],
       fees,
       timers,
@@ -69,10 +101,8 @@ describe("rebalancing", () => {
   });
 
   it("caps each rebalance at the max trade size", () => {
-    const r = runSim(
-      rebalancing,
+    const r = sim(
       { ...base, maxTradePct: "1" },
-      ctx,
       [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10), t(2000, "vBTC_vUSDC", 150)],
       fees,
       timers,
@@ -84,18 +114,14 @@ describe("rebalancing", () => {
   });
 
   it("stops below the floor and on take profit, keeping assets", () => {
-    const low = runSim(
-      rebalancing,
+    const low = sim(
       { ...base, stopBelow: "900" },
-      ctx,
       [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10), t(2, "vBTC_vUSDC", 70)],
       fees,
     );
     expect(low.halted).toEqual({ type: "stop", reason: ReasonCode.stopLoss, close: false });
-    const tp = runSim(
-      rebalancing,
+    const tp = sim(
       { ...base, takeProfitPct: "10" },
-      ctx,
       [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10), t(2, "vBTC_vUSDC", 125)],
       fees,
     );
@@ -103,7 +129,7 @@ describe("rebalancing", () => {
   });
 
   it("pauses when an order is rejected", () => {
-    const r = runSim(rebalancing, base, ctx, [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)], {
+    const r = sim(base, [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)], {
       ...fees,
       rejectTags: (o) => o.tag === "rebal:ETH",
     });
@@ -174,7 +200,7 @@ describe("rebalancing Initial buy (IMP-04, DEC-222)", () => {
   it("All now and old configs keep the original first allocation and clOrdIDs", () => {
     const allNow = rebalancingSchema.parse({ ...base, initialBuy: "all_now" });
     for (const c of [base, allNow]) {
-      let s = rebalancing.initialState(c);
+      let s = rebalancing.step(c, rebalancing.initialState(c), bookTimer(0), ctx).state;
       s = rebalancing.step(
         c,
         s,
@@ -196,13 +222,7 @@ describe("rebalancing Initial buy (IMP-04, DEC-222)", () => {
   });
 
   it("buys in equal hourly parts, then rebalances as usual", () => {
-    const r = runSim(
-      rebalancing,
-      over,
-      ctx,
-      [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)],
-      fees,
-    );
+    const r = sim(over, [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)], fees);
     // Phần 1 của 4: BTC 125 USDC, ETH 75 USDC.
     expect(r.state.holdings).toEqual({ BTC: "1.25", ETH: "7.5" });
     expect(r.state.building).toEqual({ startedAt: 1, part: 1 });
@@ -211,7 +231,7 @@ describe("rebalancing Initial buy (IMP-04, DEC-222)", () => {
     const early = rebalancing.step(over, s, { type: "timer", at: 1 + H - 1 }, ctx);
     expect(early.actions).toEqual([]);
     for (let k = 2; k <= 4; k += 1) {
-      const step = rebalancing.step(over, s, { type: "timer", at: 1 + (k - 1) * H }, ctx);
+      const step = rebalancing.step(over, s, bookTimer(1 + (k - 1) * H), ctx);
       expect(ids(step).sort()).toEqual(
         [id(`rebal:init:${String(k)}:BTC`), id(`rebal:init:${String(k)}:ETH`)].sort(),
       );
@@ -244,18 +264,12 @@ describe("rebalancing Initial buy (IMP-04, DEC-222)", () => {
       { type: "tick", at: 5 * H, market: "vBTC_vUSDC", price: "150" },
       ctx,
     ).state;
-    const next = rebalancing.step(over, s, { type: "timer", at: 5 * H + 1 }, ctx);
+    const next = rebalancing.step(over, s, bookTimer(5 * H + 1), ctx);
     expect(ids(next)).toContain(id("rebal:2:BTC"));
   });
 
   it("reports Initial buy progress for Trading Agent only while buying in parts", () => {
-    const r = runSim(
-      rebalancing,
-      over,
-      ctx,
-      [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)],
-      fees,
-    );
+    const r = sim(over, [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)], fees);
     expect(initialBuyProgress(over, r.state)).toEqual({ done: 1, total: 4 });
     expect(initialBuyProgress(over, { building: null })).toBeNull();
     expect(initialBuyProgress(over, {})).toBeNull();
@@ -264,13 +278,7 @@ describe("rebalancing Initial buy (IMP-04, DEC-222)", () => {
   });
 
   it("an old running state without `building` keeps rebalancing", () => {
-    const r = runSim(
-      rebalancing,
-      base,
-      ctx,
-      [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)],
-      fees,
-    );
+    const r = sim(base, [t(0, "vBTC_vUSDC", 100), t(1, "vETH_vUSDC", 10)], fees);
     // State cũ (trước IMP-04) không có `building`.
     const old = Object.fromEntries(
       Object.entries(r.state).filter(([k]) => k !== "building"),
@@ -291,7 +299,7 @@ describe("rebalancing — orders that end part-filled (P0.1)", () => {
     rebalancing.step(base, st, e, ctx);
   /** Có đủ giá: đặt lô Initial allocation (BTC 5 @ 100, ETH 30 @ 10). */
   const allocated = () => {
-    let st = rebalancing.initialState(base);
+    let st = step(rebalancing.initialState(base), bookTimer(0)).state;
     st = step(st, { type: "tick", at: 0, market: "vBTC_vUSDC", price: "100" }).state;
     const r = step(st, { type: "tick", at: 1, market: "vETH_vUSDC", price: "10" });
     const ids = Object.keys(r.state.pending);
@@ -342,5 +350,79 @@ describe("rebalancing — orders that end part-filled (P0.1)", () => {
     const late = step(early, { type: "timer", at: 1 + REBAL_PENDING_TIMEOUT_MS }).state;
     expect(late.pending).toEqual({});
     expect(late.holdings.BTC).toBe("1");
+  });
+});
+
+describe("rebalancing — IOC at ask / bid and waiting for the order book", () => {
+  const step = (st: RebalancingState, e: Parameters<typeof rebalancing.step>[2], c = base) =>
+    rebalancing.step(c, st, e, ctx);
+  const realBooks = (at: number) =>
+    ({
+      type: "timer",
+      at,
+      books: {
+        vBTC_vUSDC: { bid: "99.9", ask: "100.1", bidNotional: "1", askNotional: "1" },
+        vETH_vUSDC: { bid: "9.99", ask: "10.01", bidNotional: "1", askNotional: "1" },
+      },
+    }) as const;
+  const prices = (st: RebalancingState) => {
+    let s1 = step(st, { type: "tick", at: 0, market: "vBTC_vUSDC", price: "100" }).state;
+    s1 = step(s1, { type: "tick", at: 1, market: "vETH_vUSDC", price: "10" }).state;
+    return s1;
+  };
+
+  it("does not start without an order book, then buys at ask + 0.3% once it arrives", () => {
+    const waiting = prices(rebalancing.initialState(base));
+    expect(waiting.phase).toBe("waiting_prices");
+    const r = step(waiting, realBooks(2));
+    const orders = r.actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
+    // 100.1 × 1.003 = 100.4003 → 100.40 (làm tròn xuống); 10.01 × 1.003 = 10.04003 → 10.04.
+    expect(orders.map((o) => [o.tag, o.price]).sort()).toEqual([
+      ["rebal:BTC", "100.4"],
+      ["rebal:ETH", "10.04"],
+    ]);
+    expect(r.state.phase).toBe("running");
+  });
+
+  it("sells at bid − 0.3% when rebalancing", () => {
+    let st = step(rebalancing.initialState(base), realBooks(0)).state;
+    st = prices(st);
+    for (const [id, o] of Object.entries(st.pending))
+      st = step(st, {
+        type: "fill",
+        at: 3,
+        clOrdID: id,
+        price: o.asset === "BTC" ? "100" : "10",
+        quantity: o.qty ?? "0",
+        fee: "0",
+      }).state;
+    st = step(st, { type: "tick", at: 4, market: "vBTC_vUSDC", price: "150" }).state;
+    const r = step(st, realBooks(10_000));
+    const sell = r.actions
+      .flatMap((a) => (a.type === "place" ? [a.order] : []))
+      .find((o) => o.side === "sell");
+    // 99.9 × 0.997 = 99.6003 → 99.61 (làm tròn lên).
+    expect(sell?.price).toBe("99.61");
+  });
+
+  it("waits instead of using the last price when the order book is stale", () => {
+    let st = step(rebalancing.initialState(base), realBooks(0)).state;
+    st = prices(st);
+    st = { ...st, pending: {} };
+    const late = step(st, { type: "timer", at: 1_000_000 });
+    expect(late.actions).toEqual([]);
+  });
+
+  it("says how much of the first allocation it bought when Max trade per rebalance caps it", () => {
+    const capped = rebalancingSchema.parse({ ...base, maxTradePct: "25" });
+    let st = step(rebalancing.initialState(capped), realBooks(0), capped).state;
+    st = step(st, { type: "tick", at: 0, market: "vBTC_vUSDC", price: "100" }, capped).state;
+    const r = step(st, { type: "tick", at: 1, market: "vETH_vUSDC", price: "10" }, capped);
+    // Cần mua 800 (BTC 500 + ETH 300), trần 250 → 31%.
+    expect(r.actions).toContainEqual({
+      type: "log",
+      decision: "Initial allocation",
+      why: "Bought 31% of the target allocation; the rest follows in the next rebalances.",
+    });
   });
 });
