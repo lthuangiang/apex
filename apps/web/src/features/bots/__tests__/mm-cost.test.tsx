@@ -257,14 +257,12 @@ describe("Market Making · where the price PnL comes from (D2)", () => {
       "href",
       "/bots/b1/edit?suggest=quote-back",
     );
+    // closeAtEntry là BETA: chưa đưa vào "Ways to lower it" cho tới khi replay v2 chứng minh giảm lỗ.
     expect(
-      screen.getByRole("link", { name: /Close only at your entry price or better/ }),
-    ).toHaveAttribute("href", "/bots/b1/edit?suggest=close-at-entry");
+      screen.queryByRole("link", { name: /Close only at your entry price or better/ }),
+    ).not.toBeInTheDocument();
     // Trạng thái thật theo config, không có nhãn "New setting".
     expect(screen.queryByText("New setting")).not.toBeInTheDocument();
-    expect(
-      within(screen.getByRole("link", { name: /Close only at your entry/ })).getByText("On"),
-    ).toBeInTheDocument();
     expect(
       within(screen.getByRole("link", { name: /Pause on fast moves/ })).getByText("Off"),
     ).toBeInTheDocument();
@@ -290,7 +288,6 @@ describe("Market Making · where the price PnL comes from (D2)", () => {
     });
     expect(applyMmSuggestion({}, "quote-back").quoteLevel).toBe("1");
     expect(applyMmSuggestion({ quoteLevel: "20" }, "quote-back").quoteLevel).toBe("20");
-    expect(applyMmSuggestion({ closeAtEntry: false }, "close-at-entry").closeAtEntry).toBe(true);
     expect(applyMmSuggestion({}, "pause-fast").pauseOnFastMoves).toBe(true);
   });
 });

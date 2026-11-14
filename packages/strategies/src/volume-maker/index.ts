@@ -268,11 +268,18 @@ function smartAdjust(
 
 /** "Close only at your entry price or better": giữ vị thế quá ngần này thì đóng theo cách thường (PM chốt B2). */
 export const VM_ENTRY_CLOSE_MS = 30 * 60_000;
-/** "Pause on fast moves" (PM chốt C1–C3): giá chạy ≥ `ticks` tick trong `windowMs` → rút lệnh mở `waitMs`. */
-export const VM_FAST = { ticks: 3, windowMs: 6_000, waitMs: 15_000 } as const;
+/**
+ * "Pause on fast moves": giá (cao nhất − thấp nhất) trong `windowMs` ≥ max(`ticks` bước giá, `minBp` bp của giá) → rút lệnh
+ * mở `waitMs`. Ngưỡng tối thiểu theo bp để không bật liên tục ở market có bước giá rất nhỏ (BTC 3 tick ≈ 0,45 bp), PM
+ * chốt sau bản rà soát strategy (thay ngưỡng 3 tick của C1).
+ */
+export const VM_FAST = { ticks: 3, minBp: 2, windowMs: 6_000, waitMs: 15_000 } as const;
 
-/** Giá chạy bao nhiêu tick trong cửa sổ (cao nhất − thấp nhất); null khi chưa đủ điểm. */
-function fastMoveTicks(xs: readonly { p: string }[], rules: MarketRules): number | null {
+/** Giá chạy trong cửa sổ (cao nhất − thấp nhất) và ngưỡng kích hoạt (giá); null khi chưa đủ điểm. */
+function fastMove(
+  xs: readonly { p: string }[],
+  rules: MarketRules,
+): { range: Decimal; threshold: Decimal; bp: Decimal } | null {
   if (xs.length < 2) return null;
   let hi = dec(xs[0]?.p ?? "0");
   let lo = hi;
@@ -281,7 +288,14 @@ function fastMoveTicks(xs: readonly { p: string }[], rules: MarketRules): number
     if (p.gt(hi)) hi = p;
     if (p.lt(lo)) lo = p;
   }
-  return hi.sub(lo).div(rules.tickSize).toDecimalPlaces(0, Decimal.ROUND_DOWN).toNumber();
+  const last = dec(xs.at(-1)?.p ?? "0");
+  if (last.lte(0)) return null;
+  const range = hi.sub(lo);
+  const threshold = Decimal.max(
+    dec(rules.tickSize).mul(VM_FAST.ticks),
+    last.mul(VM_FAST.minBp).div(10_000),
+  );
+  return { range, threshold, bp: range.div(last).mul(10_000) };
 }
 
 /** Sổ lệnh cũ hơn ngần này thì không dùng; báo giá theo giá khớp gần nhất, lùi 1 tick. */
@@ -729,14 +743,14 @@ export function stepVolumeMaker(
       };
       const g = guards(c, state, ctx, e.at);
       if (g !== null) return g;
-      // Pause on fast moves (PM chốt C1–C3): giá chạy ≥ 3 tick trong 6 s → rút lệnh mở ngay, giữ lệnh đóng.
+      // Pause on fast moves: giá chạy ≥ max(3 bước giá, 2 bp) trong 6 s → rút lệnh mở ngay, giữ lệnh đóng.
       const rules = ctx.rules[c.market];
       if (c.pauseOnFastMoves && rules !== undefined) {
         const fastRecent = [...(state.fastRecent ?? []), { t: e.at, p: e.price }].filter(
           (x) => e.at - x.t <= VM_FAST.windowMs,
         );
-        const moved = fastMoveTicks(fastRecent, rules);
-        const fast = moved !== null && moved >= VM_FAST.ticks;
+        const moved = fastMove(fastRecent, rules);
+        const fast = moved?.range.gte(moved.threshold) === true;
         const wasPaused = state.fastPauseUntil != null && e.at < state.fastPauseUntil;
         const withRecent: VolumeMakerState = {
           ...state,
@@ -748,7 +762,7 @@ export function stepVolumeMaker(
           const log: StrategyAction = {
             type: "log",
             decision: "Quotes paused on a fast move",
-            why: `Price moved ${String(moved)} ticks in ${String(VM_FAST.windowMs / 1000)} s; quoting again after ${String(VM_FAST.waitMs / 1000)} s of calm.`,
+            why: `Price moved ${moved.bp.toDecimalPlaces(1).toString()} bp in ${String(VM_FAST.windowMs / 1000)} s; quoting again after ${String(VM_FAST.waitMs / 1000)} s of calm.`,
           };
           return guards(c, next, ctx, e.at) ?? { actions: [...actions, log], state: next };
         }
