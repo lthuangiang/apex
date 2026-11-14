@@ -440,6 +440,7 @@ function quote(
   }
 
   const places: OrderIntent[] = [];
+  const closeIds = new Set<string>();
   let next = { ...s, orders, cycle, lastRefresh: at, requoteDue: false };
   const smartLogs: StrategyAction[] = [];
   if (c.smartQuoting && sig !== (s.smartSig ?? null)) {
@@ -518,9 +519,17 @@ function quote(
     }
     const closeQty = roundQty(pos.abs().sub(pendingClose(next, closeSide)), rules);
     if (meetsMinimum(closePrice, closeQty, rules)) {
-      places.push(
-        order(c, ctx, closeSide, closePrice, closeQty, `vm:${String(cycle)}:rc`, s.closeReduceOnly),
+      const rc = order(
+        c,
+        ctx,
+        closeSide,
+        closePrice,
+        closeQty,
+        `vm:${String(cycle)}:rc`,
+        s.closeReduceOnly,
       );
+      closeIds.add(rc.clOrdID);
+      places.push(rc);
     }
     // Phía làm tăng vị thế: lùi xa ít nhất gấp đôi khoảng cách, bỏ hẳn khi chạm giới hạn.
     if (u.lt(1) && !pulled[long ? "buy" : "sell"]) {
@@ -543,7 +552,9 @@ function quote(
   let tracked = orders;
   for (const o of places) {
     const id = o.clOrdID;
-    const role = o.reduceOnly ? "close" : "open";
+    // Vai trò lưu theo lúc đặt, không suy từ reduceOnly: sau khi chuyển sang lệnh đóng post-only thường (SoDEX từ chối
+    // reduce-only), lệnh đóng vẫn là "close" để tính phần còn treo khi đặt lệnh đóng kế tiếp.
+    const role = closeIds.has(id) ? "close" : "open";
     tracked = {
       ...tracked,
       [id]: {
@@ -573,6 +584,7 @@ function halt(
   ctx: StepContext,
   reason: ReasonCode,
   why: string,
+  at: number,
 ): StepResult<VolumeMakerState> {
   const pos = dec(s.ledger.position);
   const close = c.onStop === "close_inventory" && !pos.isZero();
@@ -583,26 +595,34 @@ function halt(
     if (o.status === "live") actions.push({ type: "cancel", clOrdID: id });
   }
   actions.push({ type: "log", decision: "Volume Maker stopped", why });
-  if (close && rules !== undefined) {
-    actions.push({
-      type: "place",
-      order: order(
-        c,
-        ctx,
-        pos.gt(0) ? "sell" : "buy",
-        "0",
-        roundQty(pos.abs(), rules),
-        `vm:${String(s.cycle)}:close`,
-        true,
-        true,
-      ),
-    });
-  }
-  actions.push({ type: "stop", reason, close: false });
   const orders: Record<string, TrackedOrder> = {};
   for (const [id, o] of Object.entries(s.orders)) {
-    orders[id] = o.status === "live" ? { ...o, status: "cancelling" } : o;
+    orders[id] = o.status === "live" ? { ...o, status: "cancelling", since: at } : o;
   }
+  if (close && rules !== undefined) {
+    const o = order(
+      c,
+      ctx,
+      pos.gt(0) ? "sell" : "buy",
+      "0",
+      roundQty(pos.abs(), rules),
+      `vm:${String(s.cycle)}:close`,
+      true,
+      true,
+    );
+    actions.push({ type: "place", order: o });
+    // Ghi sổ lệnh đóng để fill của nó vào sổ cái (phí taker, trượt giá) dù bot đã dừng.
+    orders[o.clOrdID] = {
+      side: o.side,
+      role: "close",
+      price: "0",
+      qty: o.quantity,
+      filled: "0",
+      status: "live",
+      since: at,
+    };
+  }
+  actions.push({ type: "stop", reason, close: false });
   return { actions, state: { ...s, phase: "halted", orders, requoteDue: false } };
 }
 
@@ -620,15 +640,23 @@ function guards(
       ctx,
       ReasonCode.budgetDone,
       `Cost ${used.toDecimalPlaces(2).toString()} reached the budget of ${c.costBudget}.`,
+      at,
     );
   const unrealized =
     s.mid === null ? new Decimal(0) : dec(s.ledger.position).mul(dec(s.mid).sub(s.ledger.avgCost));
   if (c.inventoryLossStop !== undefined && unrealized.neg().gte(c.inventoryLossStop))
-    return halt(c, s, ctx, ReasonCode.stopLoss, `Inventory loss reached ${c.inventoryLossStop}.`);
+    return halt(
+      c,
+      s,
+      ctx,
+      ReasonCode.stopLoss,
+      `Inventory loss reached ${c.inventoryLossStop}.`,
+      at,
+    );
   if (c.volumeTarget !== undefined && dec(s.volume).gte(c.volumeTarget))
-    return halt(c, s, ctx, ReasonCode.maxCycles, `Volume target ${c.volumeTarget} reached.`);
+    return halt(c, s, ctx, ReasonCode.maxCycles, `Volume target ${c.volumeTarget} reached.`, at);
   if (c.runUntil !== "target_or_budget" && c.untilAt !== undefined && at >= c.untilAt)
-    return halt(c, s, ctx, ReasonCode.maxCycles, "Run time ended.");
+    return halt(c, s, ctx, ReasonCode.maxCycles, "Run time ended.", at);
   if (!s.warned && used.gte(dec(c.costBudget).mul("0.8"))) {
     return {
       actions: [
@@ -781,6 +809,8 @@ export function stepVolumeMaker(
         orders,
         requoteDue: true,
       };
+      // Đã dừng: fill (lệnh đóng lúc dừng, khớp trễ) chỉ vào sổ cái, không chạy lại guard (không đặt thêm lệnh đóng).
+      if (state.phase === "halted") return { actions: [], state };
       return guards(c, state, ctx, e.at) ?? { actions: [], state };
     }
     case "orderAck": {

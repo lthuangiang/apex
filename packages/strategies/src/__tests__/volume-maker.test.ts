@@ -826,3 +826,135 @@ describe("volume maker — pause on fast moves (DEC-227)", () => {
     expect(off.all.filter((a) => a.type === "cancel")).toHaveLength(0);
   });
 });
+
+describe("volume maker — orders that end, and the close at stop (P0.1)", () => {
+  const stopWithInventory = () => {
+    const c = cfg({ costBudget: "10", inventoryLossStop: "5" });
+    const { s } = run(c, [...firstQuote()]);
+    const a = volumeMaker.step(
+      c,
+      s,
+      {
+        type: "fill",
+        at: 1,
+        clOrdID: id("vm:1:bid"),
+        price: "99990",
+        quantity: "0.005",
+        fee: "8.2",
+      },
+      ctx,
+    );
+    const b = volumeMaker.step(
+      c,
+      a.state,
+      {
+        type: "fill",
+        at: 2,
+        clOrdID: id("vm:1:ask"),
+        price: "100010",
+        quantity: "0.001",
+        fee: "2",
+      },
+      ctx,
+    );
+    return { c, r: b };
+  };
+
+  it("books the market close sent at stop, in parts, without sending another close", () => {
+    const { c, r } = stopWithInventory();
+    const close = places(r.actions)[0];
+    if (close === undefined) throw new Error("no close");
+    expect(r.state.orders[close.clOrdID]).toMatchObject({ role: "close", status: "live" });
+    const p1 = volumeMaker.step(
+      c,
+      r.state,
+      {
+        type: "fill",
+        at: 3,
+        clOrdID: close.clOrdID,
+        price: "99900",
+        quantity: "0.002",
+        fee: "0.1",
+      },
+      ctx,
+    );
+    expect(p1.actions).toEqual([]);
+    expect(p1.state.ledger.position).toBe("0.002");
+    const p2 = volumeMaker.step(
+      c,
+      p1.state,
+      {
+        type: "fill",
+        at: 4,
+        clOrdID: close.clOrdID,
+        price: "99900",
+        quantity: "0.002",
+        fee: "0.1",
+      },
+      ctx,
+    );
+    expect(p2.actions).toEqual([]);
+    expect(p2.state.ledger.position).toBe("0");
+    expect(p2.state.orders[close.clOrdID]?.status).toBe("done");
+    // Phí taker của lệnh đóng đã vào chi phí.
+    expect(Number(p2.state.ledger.fees)).toBeCloseTo(10.4, 6);
+  });
+
+  it("keeps a close order as a close after switching to plain post-only closes", () => {
+    const c = cfg();
+    let { s } = run(c, [...firstQuote()]);
+    s = volumeMaker.step(
+      c,
+      s,
+      { type: "fill", at: 1, clOrdID: id("vm:1:bid"), price: "99990", quantity: "0.005", fee: "0" },
+      ctx,
+    ).state;
+    s = { ...s, closeReduceOnly: false };
+    const r = volumeMaker.step(c, s, { type: "timer", at: 2000 }, ctx);
+    const rc = places(r.actions).find((o) => o.tag.endsWith(":rc"));
+    expect(rc?.reduceOnly).toBe(false);
+    expect(r.state.orders[rc?.clOrdID ?? ""]?.role).toBe("close");
+    // Lệnh đóng đang huỷ vẫn chiếm phần khối lượng: lần báo giá sau không đặt lệnh đóng trùng.
+    const again = volumeMaker.step(c, r.state, { type: "timer", at: 5000 }, ctx);
+    expect(places(again.actions).filter((o) => o.tag.endsWith(":rc"))).toEqual([]);
+  });
+
+  it("counts a close that filled part of the way and then expired, and a fill that arrives after orderDone", () => {
+    const c = cfg();
+    let { s } = run(c, [...firstQuote()]);
+    s = volumeMaker.step(
+      c,
+      s,
+      { type: "fill", at: 1, clOrdID: id("vm:1:bid"), price: "99990", quantity: "0.005", fee: "0" },
+      ctx,
+    ).state;
+    const r = volumeMaker.step(c, s, { type: "timer", at: 2000 }, ctx);
+    const rc = places(r.actions).find((o) => o.tag.endsWith(":rc"));
+    const rcId = rc?.clOrdID ?? "";
+    let st = volumeMaker.step(
+      c,
+      r.state,
+      { type: "fill", at: 2100, clOrdID: rcId, price: "100000", quantity: "0.002", fee: "0" },
+      ctx,
+    ).state;
+    st = volumeMaker.step(c, st, { type: "orderDone", at: 2200, clOrdID: rcId }, ctx).state;
+    expect(st.orders[rcId]?.status).toBe("done");
+    expect(st.ledger.position).toBe("0.003");
+    // Fill tới trễ sau orderDone vẫn được tính, tối đa phần chưa khớp.
+    st = volumeMaker.step(
+      c,
+      st,
+      { type: "fill", at: 2300, clOrdID: rcId, price: "100000", quantity: "0.001", fee: "0" },
+      ctx,
+    ).state;
+    expect(st.ledger.position).toBe("0.002");
+    // Khớp trễ quá phần chưa khớp (0.005 − 0.003) thì chỉ tính tới đủ khối lượng lệnh.
+    st = volumeMaker.step(
+      c,
+      st,
+      { type: "fill", at: 2400, clOrdID: rcId, price: "100000", quantity: "0.004", fee: "0" },
+      ctx,
+    ).state;
+    expect(st.ledger.position).toBe("0");
+  });
+});
