@@ -45,6 +45,7 @@ import {
   seedCurrentHour,
   topVolumeMarkets,
 } from "./mm-cost-store";
+import { MmRawRecorder } from "./mm-raw";
 import { CandleTracker, FundingTracker, marketSubject } from "./trackers";
 
 // marketdata: nơi duy nhất mở WS thị trường SoDEX (ARCHITECTURE.md mục 3.3.7). Một bản active nhờ
@@ -65,6 +66,10 @@ const env = z
     LEADER_SYNC_MS: z.coerce.number().int().positive().default(30_000),
     /** Số WS ví leader tối đa (SoDEX: 10 user mỗi IP trên WS). */
     LEADER_MAX_STREAMS: z.coerce.number().int().nonnegative().default(8),
+    /**
+     * Thư mục lưu thô bookTicker + trade theo giờ, giữ 48 giờ (DEC-TBD-mm-cost-v1); trống = không lưu.
+     */
+    MM_RAW_DIR: z.string().default(""),
     /** Cảnh báo "big move" (DEC-163 mục 11): notional tối thiểu USD; trống = tắt (OPEN_QUESTIONS 21a). */
     COPY_BIG_MOVE_MIN_USD: z
       .string()
@@ -290,6 +295,8 @@ function onCandles(closed: WsCandle[]) {
 
 let streams: MarketStream[] = [];
 let mmTimers: ReturnType<typeof setInterval>[] = [];
+/** Bộ lưu thô của lần làm leader hiện tại; ghi nốt phần đệm khi dừng. */
+let mmRawNow: MmRawRecorder | null = null;
 
 async function start() {
   const [spot, perps] = await Promise.all([rest.getSpotSymbols(), rest.getPerpsSymbols()]);
@@ -298,6 +305,8 @@ async function start() {
   const funding = new FundingTracker();
   // Chi phí làm market (DEC-227): book ticker + giao dịch công khai trên CHÍNH kết nối perps.
   const mmCost = new MmCostCollector();
+  const mmRaw = env.MM_RAW_DIR === "" ? null : new MmRawRecorder(env.MM_RAW_DIR);
+  mmRawNow = mmRaw;
   mmCost.setTickSizes(
     Object.fromEntries(
       perps.filter((s) => s.status === "TRADING").map((s) => [s.name, s.tickSize]),
@@ -347,13 +356,30 @@ async function start() {
         },
         ...(engine === "perps"
           ? {
-              onBookTickers: (tickers: { s: string; b: string; a: string; E: number }[]) => {
-                for (const t of tickers) mmCost.onBook(t.s, t.b, t.a, Date.now());
+              onBookTickers: (
+                tickers: { s: string; b: string; B: string; a: string; A: string; E: number }[],
+              ) => {
+                const at = Date.now();
+                for (const t of tickers) {
+                  mmCost.onBook(t.s, t.b, t.a, at);
+                  mmRaw?.book(t, at);
+                }
               },
               onTrades: (
-                trades: { s: string; T: number; S: "BUY" | "SELL"; p: string; q: string }[],
+                trades: {
+                  s: string;
+                  T: number;
+                  t?: number | string | undefined;
+                  S: "BUY" | "SELL";
+                  p: string;
+                  q: string;
+                }[],
               ) => {
-                for (const t of trades) mmCost.onTrade(t.s, t.T, t.S, t.p, t.q);
+                const at = Date.now();
+                for (const t of trades) {
+                  mmCost.onTrade(t.s, t.T, t.S, t.p, t.q);
+                  mmRaw?.trade(t, at);
+                }
               },
             }
           : {}),
@@ -398,6 +424,22 @@ async function start() {
   );
   mmEvery(60_000, () => saveFlush(db, mmCost.flush(Date.now())), "mm cost save failed");
   mmEvery(3_600_000, () => purgeMmCost(db, Date.now()), "mm cost purge failed");
+  if (mmRaw !== null) {
+    mmEvery(
+      5_000,
+      async () => {
+        await mmRaw.flush();
+      },
+      "mm raw write failed",
+    );
+    mmEvery(
+      3_600_000,
+      async () => {
+        await mmRaw.purge(Date.now());
+      },
+      "mm raw purge failed",
+    );
+  }
   log.info({ spot: spotSymbols.length, perps: perpsSymbols.length }, "marketdata leading");
   if (env.LIQUIDATION_PROVIDER === "hyperliquid") {
     // Chỉ leader quét: hạn mức Hyperliquid tính theo IP, chạy hai bản là gấp đôi weight.
@@ -444,6 +486,11 @@ function stop() {
   for (const s of streams) s.close();
   for (const t of mmTimers) clearInterval(t);
   mmTimers = [];
+  // Ghi nốt phần đệm (không chờ: stop chạy đồng bộ khi mất leader).
+  void mmRawNow?.flush().catch((error: unknown) => {
+    log.warn({ err: error }, "mm raw write failed");
+  });
+  mmRawNow = null;
   streams = [];
   scanner?.stop();
   scanner = null;

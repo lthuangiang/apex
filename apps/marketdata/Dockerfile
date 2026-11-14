@@ -34,4 +34,6 @@ COPY --chown=node:node e2e/sodex-mock/package.json e2e/sodex-mock/
 ENV NODE_ENV=production
 RUN pnpm install --offline --frozen-lockfile --filter "@drift/marketdata..."
 COPY --chown=node:node . .
+# Thư mục lưu thô (DEC-TBD-mm-cost-v1): tạo sẵn với quyền node để named volume mount vào nhận đúng chủ sở hữu.
+RUN mkdir -p /home/node/mm-raw
 CMD ["pnpm", "--filter", "@drift/marketdata", "start"]

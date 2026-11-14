@@ -194,6 +194,11 @@ services:
   marketdata:        # 1 bản active (leader lease), các bản còn lại standby
     <<: *app
     build: { context: ., dockerfile: apps/marketdata/Dockerfile }
+    environment:
+      <<: *app-env
+      # Lưu thô bookTicker + trade theo giờ, giữ 48 giờ (DEC-TBD-mm-cost-v1); chỉ bản leader ghi.
+      MM_RAW_DIR: /home/node/mm-raw
+    volumes: [mmraw:/home/node/mm-raw]
     deploy: { replicas: 2 }
 
   scheduler:         # cron: recurring buy, reset daily loss, nhắc hết hạn key, tính lại market stats
@@ -367,6 +372,7 @@ networks:
 
 volumes:
   vaultdata: {}
+  mmraw: {}
   vaultinit: {}
   pgdata: {}
   redisdata: {}
