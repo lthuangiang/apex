@@ -17,7 +17,10 @@ jobs:
           node-version-file: .nvmrc
       - run: npm i -g corepack@latest && corepack enable
       - run: pnpm install --frozen-lockfile
+      # ESLint có kiểm tra kiểu trên cả repo: mặc định ~4 GB heap không còn đủ (#98 hết bộ nhớ).
       - run: pnpm lint
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
       - run: pnpm format:check
       - run: pnpm typecheck
       # Runner 2 vCPU: tối đa 2 package test cùng lúc để test UI không hết giờ vì bị chia CPU (#21, #24, #25).
