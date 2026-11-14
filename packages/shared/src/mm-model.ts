@@ -20,6 +20,16 @@ export const MM_BLEND_ROUNDS = 50;
 /** Ngưỡng dữ liệu của mô hình: ≥ 12 giờ nến 1m, ≥ 50% số phút trong 24 giờ có volume. */
 export const MM_MIN_CANDLE_MINUTES = 720;
 export const MM_MIN_ACTIVE_MINUTES = 720;
+/**
+ * Một phút chỉ tính là "có volume" khi volume quote của phút đó ≥ $50: market thưa trên SoDEX gần như phút nào cũng có
+ * giao dịch rất nhỏ (XPL-USD trung vị $0,2 / phút, đo 2026-11-14), nên đếm volume > 0 không chặn được (DEC-228).
+ */
+export const MM_ACTIVE_MINUTE_MIN_USD = 50;
+
+/** Nến 1 phút có đủ volume quote (close × volume ≥ `MM_ACTIVE_MINUTE_MIN_USD`) để tính là một phút có giao dịch. */
+export function isActiveMinute(c: { close: DecimalInput; volume: DecimalInput }): boolean {
+  return dec(c.close).mul(c.volume).gte(MM_ACTIVE_MINUTE_MIN_USD);
+}
 /** Một điểm fit chỉ tính khi bot có ≥ 50 vòng đóng trong ngày; dưới 5 điểm thì giữ a, chỉ fit k. */
 export const MM_FIT_MIN_ROUNDS = 50;
 export const MM_FIT_MIN_POINTS = 5;
