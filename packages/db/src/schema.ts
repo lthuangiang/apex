@@ -1478,3 +1478,34 @@ export const botDrafts = pgTable(
   },
   (t) => [index("bot_drafts_user_idx").on(t.userId, t.expiresAt)],
 );
+
+/**
+ * Chi phí làm market theo giờ (D1, DEC-227), marketdata ghi từ WS `trade` + `bookTicker` của SoDEX cho tối đa 30
+ * market volume cao nhất + market có bot MM. `markoutNotional` = Σ notional × markout 30 s (bps, phía maker). Giờ chưa có
+ * dữ liệu thì không có dòng (không bao giờ ghi 0). Giữ 48 giờ.
+ */
+export const mmMarketHourly = pgTable(
+  "mm_market_hourly",
+  {
+    market: text("market").notNull(),
+    hour: tstz("hour").notNull(),
+    notional: money("notional").notNull(),
+    markoutNotional: money("markout_notional").notNull(),
+    trades: integer("trades").notNull(),
+    /** Số mẫu spread (mỗi giây) theo số tick: `{ "1": 3400, "2": 120 }`. */
+    spreadTicks: jsonb("spread_ticks").notNull(),
+    updatedAt: tstz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.market, t.hour] })],
+);
+
+/** Giá giữa mỗi giây (D2 markout 5 / 30 / 60 s), chỉ market đang có bot MM; giữ 48 giờ (DEC-227). */
+export const mid1s = pgTable(
+  "mid_1s",
+  {
+    market: text("market").notNull(),
+    ts: tstz("ts").notNull(),
+    mid: money("mid").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.market, t.ts] })],
+);

@@ -83,6 +83,51 @@
     }
   },
   "createBot": {
+    "mmMarkets": {
+      "pageTitle": "New bot · Market Making",
+      "step": "Step 1 of 2 · Choose a market. Cheaper markets let the same budget make more volume.",
+      "title": "Which market costs least to make volume on?",
+      "subtitle": "Estimated cost for every $1M of volume, from the last 24 hours on SoDEX. Cheapest first. Not a forecast.",
+      "updated": "Updated {time}",
+      "sortLabel": "Sort markets",
+      "sort": {
+        "cost": "Cheapest first",
+        "volume": "Most volume"
+      },
+      "col": {
+        "market": "Market",
+        "step": "One price step",
+        "spread": "Usual spread",
+        "swing": "1-min swing",
+        "volume": "Volume 24h",
+        "pnl": "Price PnL / $1M",
+        "total": "Total cost / $1M",
+        "choose": "Choose"
+      },
+      "bps": "{v} bps",
+      "steps": "{n, plural, one {# step} other {# steps}}",
+      "cheapest": "Cheapest",
+      "yourBot": "Your bot today",
+      "choose": "Choose",
+      "chosen": "Chosen",
+      "how": {
+        "title": "How we estimate the cost",
+        "totalLead": "Total cost",
+        "total": "= SoDEX maker fee + DeskLabs builder fee ({pct}) + price PnL.",
+        "pnlLead": "Price PnL",
+        "pnl": "is what quotes lose when the price moves right after they fill. We measure it on the last 24 hours of SoDEX trades: each fill against the mid price 30 seconds later.",
+        "stepLead": "One price step",
+        "stepBody": "is the smallest price move, as a share of the price. A bigger step means each round trip can earn more.",
+        "swingPre": "A",
+        "swingLead": "1-min swing",
+        "swingBody": "that is small compared with one price step usually means cheaper market making."
+      },
+      "chosenTitle": "Chosen: {market}",
+      "chosenBody": "Estimated total cost {total} USDC for every $1M of volume (last 24 hours, not a forecast).",
+      "chosenNone": "We don’t have enough trades to estimate the cost on this market yet.",
+      "continue": "Continue to settings",
+      "error": "Couldn't load the markets."
+    },
     "marketLeverage": "{market} · {lev}×",
     "leverageRange": "{low}–{high}× (per market)",
     "notConnected": "Connect your SoDEX account to start bots. You can still set one up and save a draft.",
@@ -2734,6 +2779,33 @@
     "needsAttention": "Needs attention"
   },
   "agent": {
+    "mmMarkout": {
+      "title": "Where the price PnL comes from",
+      "subtitle": "After each of your fills, how far the price moved against you. Measured on this bot's fills in the last 24 hours.",
+      "after5": "5 seconds after a fill",
+      "after30": "30 seconds after",
+      "after60": "60 seconds after",
+      "bps": "{v} bps",
+      "step": "One price step on {market}",
+      "stepNote": "Each round trip can earn at most about one step.",
+      "losing": "Round trips that closed at a loss",
+      "losingValue": "{n} of {m}",
+      "losersMore": "Losers lose more steps than winners win.",
+      "inShortLead": "In short:",
+      "inShort": "on this market a price step is smaller than how much the price usually moves in 30 seconds, so quotes tend to fill right before the price turns against them.",
+      "noFills": "No fills in the last 24 hours yet.",
+      "error": "Couldn't load the price PnL details.",
+      "ways": {
+        "title": "Ways to lower it",
+        "quoteBack": "Quote one step back",
+        "quoteBackBody": "Fewer fills, but each fill waits for a bigger move. Volume per hour goes down.",
+        "setting": "Setting: {name}",
+        "cheaper": "Move to a cheaper market",
+        "cheaperBody": "See which markets cost least per $1M right now.",
+        "compare": "Compare markets →",
+        "note": "Changing a setting opens a draft of the bot. Nothing changes until you save it."
+      }
+    },
     "title": "Trading Agent",
     "subtitle": "What each bot is doing, why, and the controls to change it.",
     "initialBuy": "Initial buy: {done} of {total} parts",

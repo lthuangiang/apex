@@ -37,6 +37,14 @@ import { HlLeaderTracker } from "./hl-leaders";
 import { getCursor, saveLeaderEvents, setCursor } from "./leader-store";
 import { LeaderWatcher } from "./leaders";
 import { LiquidationScanner } from "./liquidations";
+import { MmCostCollector } from "./mm-cost";
+import {
+  mmBotMarkets,
+  purgeMmCost,
+  saveFlush,
+  seedCurrentHour,
+  topVolumeMarkets,
+} from "./mm-cost-store";
 import { CandleTracker, FundingTracker, marketSubject } from "./trackers";
 
 // marketdata: nơi duy nhất mở WS thị trường SoDEX (ARCHITECTURE.md mục 3.3.7). Một bản active nhờ
@@ -281,12 +289,20 @@ function onCandles(closed: WsCandle[]) {
 }
 
 let streams: MarketStream[] = [];
+let mmTimers: ReturnType<typeof setInterval>[] = [];
 
 async function start() {
   const [spot, perps] = await Promise.all([rest.getSpotSymbols(), rest.getPerpsSymbols()]);
   const spotSymbols = spot.filter((s) => s.status === "TRADING").map((s) => s.name);
   const perpsSymbols = perps.filter((s) => s.status === "TRADING").map((s) => s.name);
   const funding = new FundingTracker();
+  // Chi phí làm market (DEC-227): book ticker + giao dịch công khai trên CHÍNH kết nối perps.
+  const mmCost = new MmCostCollector();
+  mmCost.setTickSizes(
+    Object.fromEntries(
+      perps.filter((s) => s.status === "TRADING").map((s) => [s.name, s.tickSize]),
+    ),
+  );
   const make = (engine: Engine, symbols: string[]) => {
     const tracker = new CandleTracker();
     return new MarketStream({
@@ -329,6 +345,18 @@ async function start() {
               });
           }
         },
+        ...(engine === "perps"
+          ? {
+              onBookTickers: (tickers: { s: string; b: string; a: string; E: number }[]) => {
+                for (const t of tickers) mmCost.onBook(t.s, t.b, t.a, Date.now());
+              },
+              onTrades: (
+                trades: { s: string; T: number; S: "BUY" | "SELL"; p: string; q: string }[],
+              ) => {
+                for (const t of trades) mmCost.onTrade(t.s, t.T, t.S, t.p, t.q);
+              },
+            }
+          : {}),
         onReconnect: () => void backfill(engine, symbols),
         onError: (error) => {
           log.warn({ err: error.message, engine }, "market stream error");
@@ -336,8 +364,40 @@ async function start() {
       },
     });
   };
-  streams = [make("spot", spotSymbols), make("perps", perpsSymbols)];
+  const perpsStream = make("perps", perpsSymbols);
+  streams = [make("spot", spotSymbols), perpsStream];
   for (const s of streams) s.connect();
+  await seedCurrentHour(db, mmCost, Date.now()).catch((error: unknown) => {
+    log.warn({ err: error }, "mm cost seed failed");
+  });
+  const mmWatch = async () => {
+    const [top, mm] = await Promise.all([
+      topVolumeMarkets(db, perpsSymbols, Date.now()),
+      mmBotMarkets(db),
+    ]);
+    const watched = [...new Set([...top, ...mm])].filter((m) => perpsSymbols.includes(m));
+    perpsStream.watchMicro(watched);
+    mmCost.setMidMarkets(mm);
+  };
+  const mmEvery = (ms: number, run: () => Promise<void> | void, what: string) => {
+    const go = () => {
+      void Promise.resolve()
+        .then(run)
+        .catch((error: unknown) => {
+          log.warn({ err: error }, what);
+        });
+    };
+    go();
+    mmTimers.push(setInterval(go, ms));
+  };
+  mmEvery(5 * 60_000, mmWatch, "mm cost watch list failed");
+  mmTimers.push(
+    setInterval(() => {
+      mmCost.tick(Date.now());
+    }, 1_000),
+  );
+  mmEvery(60_000, () => saveFlush(db, mmCost.flush(Date.now())), "mm cost save failed");
+  mmEvery(3_600_000, () => purgeMmCost(db, Date.now()), "mm cost purge failed");
   log.info({ spot: spotSymbols.length, perps: perpsSymbols.length }, "marketdata leading");
   if (env.LIQUIDATION_PROVIDER === "hyperliquid") {
     // Chỉ leader quét: hạn mức Hyperliquid tính theo IP, chạy hai bản là gấp đôi weight.
@@ -382,6 +442,8 @@ async function start() {
 
 function stop() {
   for (const s of streams) s.close();
+  for (const t of mmTimers) clearInterval(t);
+  mmTimers = [];
   streams = [];
   scanner?.stop();
   scanner = null;

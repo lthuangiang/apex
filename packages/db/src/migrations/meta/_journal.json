@@ -225,6 +225,13 @@
       "when": 1794551055552,
       "tag": "0031_mcp_bot_drafts",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794630564524,
+      "tag": "0032_mm_cost",
+      "breakpoints": true
     }
   ]
 }

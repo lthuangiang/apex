@@ -16,6 +16,7 @@ import { requireAuth } from "../../plugins/session";
 import { botAnalytics, tradeDetail } from "./analytics";
 import { exportBot } from "./export";
 import { fundingStats } from "./funding";
+import { mmMarketCosts, mmMarkout } from "./mm-cost";
 import { applyReview, latestReview, startReview } from "./review";
 import {
   botDetail,
@@ -126,6 +127,17 @@ export function registerBotRoutes(app: FastifyInstance, deps: BotDeps): void {
       }
     };
     return idempotent(db, request, reply, auth.userId, deps.now(), run(202, work));
+  });
+
+  // Chi phí / $1M theo market cho bước chọn market của bot Market Making (D1, DEC-227).
+  app.get("/api/v1/markets/mm-cost", async (request) =>
+    mmMarketCosts(deps, requireAuth(request).userId),
+  );
+
+  // Price PnL đến từ đâu: markout fill thật của bot Market Making (D2, DEC-227).
+  app.get("/api/v1/bots/:id/mm-markout", async (request) => {
+    const { id } = parseOrThrow(idParams, request.params);
+    return mmMarkout(deps, requireAuth(request).userId, id);
   });
 
   // Funding đã trả + volume Spot 24 giờ cho ô chọn tài sản Funding Arb (DEC-160).

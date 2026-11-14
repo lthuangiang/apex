@@ -4,6 +4,7 @@ import {
   ClaudeDraftCreate,
   CreateBot,
   isLaunched,
+  MmMarketsPage,
   presetMarket,
   VolumeGate,
 } from "@/features/bots";
@@ -43,8 +44,16 @@ export default async function Page({
     (engine === "spot" || engine === "perps")
       ? (presetMarket(strategy, market, engine) ?? undefined)
       : undefined;
+  // Market Making chưa chọn market: bước 1 xếp hạng market theo chi phí / $1M (DEC-227).
+  const pickMarket =
+    strategy === "volume_maker" &&
+    preset === undefined &&
+    suggestion === undefined &&
+    !UUID.test(draft ?? "");
   // Bản nháp từ Claude (MCP, DEC-223): điền sẵn từ `bot_drafts`, người dùng tự Save / Start.
-  const page = UUID.test(draft ?? "") ? (
+  const page = pickMarket ? (
+    <MmMarketsPage />
+  ) : UUID.test(draft ?? "") ? (
     <ClaudeDraftCreate strategy={strategy} draftId={draft ?? ""} />
   ) : (
     <CreateBot

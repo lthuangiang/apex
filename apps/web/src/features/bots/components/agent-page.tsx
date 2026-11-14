@@ -38,6 +38,7 @@ import { BOTS_KEY, useStateLabel, waitingTooLong } from "./bots-page";
 import { ConfigList, useConfigRows } from "./config-view";
 import { LiveQuotes } from "./live-quotes";
 import { MmAnalyticsCard } from "./mm-analytics";
+import { MmMarkoutCard } from "./mm-markout";
 import { ReviewCard } from "./review-card";
 import { StrategyAnalytics } from "./strategy-analytics";
 import { VmCostBreakdown } from "./vm-cost-breakdown";
@@ -496,6 +497,10 @@ export function AgentPage({ botId }: { botId?: string }) {
               </div>
             ) : null}
             {/* Market Making Analytics dưới Fills, full width (DEC-144). */}
+            {/* Price PnL đến từ đâu + Ways to lower it (DEC-227), trên Analytics. */}
+            {bot.strategy === "volume_maker" && d.volumeMaker !== null ? (
+              <MmMarkoutCard botId={d.bot.id} />
+            ) : null}
             {bot.strategy === "volume_maker" && d.volumeMaker !== null ? (
               <MmAnalyticsCard botId={d.bot.id} />
             ) : null}
