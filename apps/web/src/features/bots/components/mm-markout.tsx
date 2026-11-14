@@ -111,6 +111,25 @@ export function MmMarkoutCard({ botId }: { botId: string }) {
               </span>
             </Link>
           </li>
+          {(
+            [
+              ["close-at-entry", "closeAtEntry"],
+              ["pause-fast", "pauseFast"],
+            ] as const
+          ).map(([suggest, key]) => (
+            <li key={suggest}>
+              <Link
+                href={`/bots/${botId}/edit?suggest=${suggest}`}
+                className="flex min-h-tap flex-col gap-0.5 rounded-[12px] border border-border px-3.5 py-3 text-ink no-underline hover:bg-surface-2"
+              >
+                <strong className="text-sm">{t(`ways.${key}`)}</strong>
+                <span className="text-[13px] text-ink-2">{t(`ways.${key}Body`)}</span>
+                <span className="self-start rounded-full bg-accent-tint px-2 py-[2px] text-[11px] font-extrabold text-accent-ink">
+                  {t("ways.newSetting")}
+                </span>
+              </Link>
+            </li>
+          ))}
           <li>
             <Link
               href="/bots/new/volume_maker"

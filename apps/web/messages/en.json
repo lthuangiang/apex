@@ -1041,6 +1041,14 @@
           "note": "Distances are in bp, so they mean the same on every market. It only ever quotes further away or not at all, never closer, so expect fewer fills and less volume in exchange for fewer bad fills. Works only when quotes follow the order book (Quote level). Each change of action is logged once in Decisions, and Market Making Analytics compares fills with Smart quoting on and off. Beta: thresholds may change."
         }
       },
+      "closeAtEntry": {
+        "label": "Close only at your entry price or better",
+        "hint": "Fees are not included in your entry price."
+      },
+      "pauseOnFastMoves": {
+        "label": "Pause on fast moves",
+        "hint": "Pull quotes when the price moves more than a few steps in a few seconds, then quote again."
+      },
       "copyLeader": {
         "label": "Wallet to copy",
         "hint": "A SoDEX wallet address. Its trades are public; DeskLabs only reads them."
@@ -2799,6 +2807,11 @@
         "title": "Ways to lower it",
         "quoteBack": "Quote one step back",
         "quoteBackBody": "Fewer fills, but each fill waits for a bigger move. Volume per hour goes down.",
+        "closeAtEntry": "Close only at your entry price or better",
+        "closeAtEntryBody": "The bot never sells below what it paid. Positions can stay open longer.",
+        "pauseFast": "Pause on fast moves",
+        "pauseFastBody": "Pull quotes when the price moves more than a few steps in a few seconds, then quote again.",
+        "newSetting": "New setting",
         "setting": "Setting: {name}",
         "cheaper": "Move to a cheaper market",
         "cheaperBody": "See which markets cost least per $1M right now.",

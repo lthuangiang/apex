@@ -58,7 +58,7 @@ export function sortMarkets(rows: readonly MmMarketCost[], by: MmSort): MmMarket
   });
 }
 
-export const MM_SUGGESTIONS = ["quote-back"] as const;
+export const MM_SUGGESTIONS = ["quote-back", "close-at-entry", "pause-fast"] as const;
 export type MmSuggestion = (typeof MM_SUGGESTIONS)[number];
 
 export function isMmSuggestion(v: string | undefined): v is MmSuggestion {
@@ -71,6 +71,8 @@ const SUGGEST: Record<MmSuggestion, (values: FormValues) => FormValues> = {
     const now = typeof raw === "string" && /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : 0;
     return { ...values, quoteLevel: String(Math.min(20, now + 1)) };
   },
+  "close-at-entry": (values) => ({ ...values, closeAtEntry: true }),
+  "pause-fast": (values) => ({ ...values, pauseOnFastMoves: true }),
 };
 
 /** Điền sẵn form Edit theo gợi ý (D-c): chỉ đổi giá trị trong form, người dùng tự Apply. */
