@@ -1,8 +1,10 @@
-import { add, dec, Decimal, mul, ReasonCode, sub } from "@drift/shared";
+import { add, dec, Decimal, mul, ReasonCode, RoundMode, sub } from "@drift/shared";
 
 import { clOrdId, without } from "../core/ids";
 import { meetsMinimum, roundPrice, roundQty } from "../core/rounding";
 import type {
+  BookTop,
+  MarketRules,
   StepContext,
   StepResult,
   StrategyAction,
@@ -14,12 +16,39 @@ import { nextRun } from "../recurring-buy/schedule";
 import type { RebalancingConfig } from "./schema";
 
 // S6 Rebalancing (STRATEGIES.md, DEC-36): lúc start mua từng tài sản tới tỷ trọng mục tiêu; `timer`
-// mỗi 5 phút tính lại tỷ trọng theo giá quote. Lệnh limit IOC tại giá hiện tại; mỗi lần giao dịch không
-// quá maxTradePct giá trị danh mục. Khi dừng, tài sản giữ nguyên.
+// mỗi 5 phút tính lại tỷ trọng theo giá quote. Lệnh limit IOC tại ask (mua) / bid (bán) ± 0,3%; tổng các lệnh của một
+// lần rebalance không quá maxTradePct giá trị danh mục. Khi dừng, tài sản giữ nguyên.
 
 export const REBALANCE_CHECK_MS = 5 * 60_000;
 /** Lô lệnh chờ quá lâu mà không có `orderDone` (tin mất) thì coi như xong với phần đã khớp (P0.1). */
 export const REBAL_PENDING_TIMEOUT_MS = 60_000;
+/**
+ * Lệnh IOC đặt theo giá ask (mua) / bid (bán) ± biên trượt giá cố định (PM chốt sau bản rà soát strategy; không có field
+ * trên form). Sổ lệnh cũ hơn `REBAL_BOOK_MAX_AGE_MS` hoặc thiếu market nào thì chờ, không quay về giá khớp gần nhất.
+ */
+export const REBAL_SLIPPAGE = "0.003";
+export const REBAL_BOOK_MAX_AGE_MS = 180_000;
+
+/** Có sổ lệnh còn mới cho mọi market giao dịch. */
+function booksReady(c: RebalancingConfig, s: RebalancingState, at: number): boolean {
+  if (s.booksAt == null || at - s.booksAt > REBAL_BOOK_MAX_AGE_MS) return false;
+  return tradables(c).every((a) => s.books?.[a.market ?? ""] !== undefined);
+}
+
+/** Giá lệnh IOC: mua = ask × (1 + trượt giá) làm tròn xuống, bán = bid × (1 − trượt giá) làm tròn lên. */
+function iocPrice(
+  s: RebalancingState,
+  market: string,
+  side: "buy" | "sell",
+  rules: MarketRules,
+): string | null {
+  const b = s.books?.[market];
+  if (b === undefined) return null;
+  const slip = dec(REBAL_SLIPPAGE);
+  return side === "buy"
+    ? roundPrice(dec(b.ask).mul(dec("1").add(slip)), rules, RoundMode.down)
+    : roundPrice(dec(b.bid).mul(dec("1").sub(slip)), rules, RoundMode.up);
+}
 const KEEP_RECENT = 20;
 
 export interface RebalOrder {
@@ -41,6 +70,9 @@ export interface RebalancingState {
   recent?: Record<string, RebalOrder>;
   /** Lúc đặt lô lệnh đang chờ (ms). */
   pendingSince?: number | null;
+  /** Đỉnh sổ lệnh gần nhất của từng market (engine gửi kèm `timer` mỗi 60 s) và lúc nhận. */
+  books?: Record<string, BookTop>;
+  booksAt?: number | null;
   rebalances: number;
   lastRebalanceAt: number | null;
   round: number;
@@ -134,7 +166,8 @@ function rebalance(
     const rules = ctx.rules[d.a.market ?? ""];
     if (rules === undefined || d.diff.isZero()) continue;
     const side = d.diff.isNegative() ? "sell" : "buy";
-    const price = roundPrice(d.price, rules);
+    const price = iocPrice(s, d.a.market ?? "", side, rules);
+    if (price === null) continue;
     const qty = roundQty(d.diff.abs().mul(scale).div(price), rules);
     if (!meetsMinimum(price, qty, rules)) continue;
     const id = clOrdId(ctx.botId, ctx.version, `rebal:${String(round)}:${d.a.asset}`);
@@ -156,7 +189,16 @@ function rebalance(
     });
   }
   if (actions.length === 0) return { actions: [], state: s };
-  actions.push({ type: "log", decision: round === 1 ? "Initial allocation" : "Rebalanced", why });
+  // Lần mua đầu bị giới hạn bởi Max trade per rebalance: nói đúng đã mua bao nhiêu phần, phần còn lại ở các lần sau.
+  const reason =
+    round === 1 && scale.lt(1)
+      ? `Bought ${scale.mul(100).toDecimalPlaces(0, Decimal.ROUND_DOWN).toString()}% of the target allocation; the rest follows in the next rebalances.`
+      : why;
+  actions.push({
+    type: "log",
+    decision: round === 1 ? "Initial allocation" : "Rebalanced",
+    why: reason,
+  });
   return {
     actions,
     state: {
@@ -200,7 +242,8 @@ function buildPart(
   for (const d of diffs) {
     const rules = ctx.rules[d.a.market ?? ""];
     if (rules === undefined || d.diff.isZero()) continue;
-    const price = roundPrice(d.price, rules);
+    const price = iocPrice(s, d.a.market ?? "", "buy", rules);
+    if (price === null) continue;
     const qty = roundQty(d.diff.mul(scale).div(price), rules);
     if (!meetsMinimum(price, qty, rules)) continue;
     const id = clOrdId(ctx.botId, ctx.version, `rebal:init:${String(k)}:${d.a.asset}`);
@@ -284,35 +327,63 @@ function settle(s: RebalancingState, id: string): RebalancingState {
   };
 }
 
+/** Đủ giá và sổ lệnh của mọi market: mua lần đầu (All now hoặc phần 1 của Over N hours). */
+function readyToStart(c: RebalancingConfig, s: RebalancingState, at: number): boolean {
+  return (
+    s.phase === "waiting_prices" &&
+    tradables(c).every((a) => s.prices[a.market ?? ""] !== undefined) &&
+    booksReady(c, s, at)
+  );
+}
+
+function startAllocation(
+  c: RebalancingConfig,
+  state: RebalancingState,
+  ctx: StepContext,
+  at: number,
+): StepResult<RebalancingState> {
+  const parts = initialParts(c);
+  if (parts !== null) {
+    const first = buildPart(c, { ...state, phase: "running" }, ctx, at, at, 1, parts);
+    return { actions: first.actions, state: { ...first.state, phase: "running" } };
+  }
+  const started = rebalance(
+    c,
+    { ...state, phase: "running" },
+    ctx,
+    at,
+    "Bought each asset up to its target weight.",
+  );
+  return { actions: started.actions, state: { ...started.state, phase: "running" } };
+}
+
 export function stepRebalancing(
   c: RebalancingConfig,
-  s: RebalancingState,
+  s0: RebalancingState,
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<RebalancingState> {
-  if (s.phase === "halted") return { actions: [], state: s };
+  if (s0.phase === "halted") return { actions: [], state: s0 };
+  // Đỉnh sổ lệnh engine gửi kèm timer: giữ bản mới nhất của từng market (đọc lỗi thì giữ bản cũ).
+  const s: RebalancingState =
+    e.type === "timer" && e.books !== undefined
+      ? {
+          ...s0,
+          books: {
+            ...s0.books,
+            ...Object.fromEntries(
+              Object.entries(e.books).flatMap(([m, b]) => (b === null ? [] : [[m, b] as const])),
+            ),
+          },
+          booksAt: e.at,
+        }
+      : s0;
   if (e.type === "tick") {
     const state = { ...s, prices: { ...s.prices, [e.market]: e.price } };
-    if (
-      state.phase === "waiting_prices" &&
-      tradables(c).every((a) => state.prices[a.market ?? ""] !== undefined)
-    ) {
-      const parts = initialParts(c);
-      if (parts !== null) {
-        const first = buildPart(c, { ...state, phase: "running" }, ctx, e.at, e.at, 1, parts);
-        return { actions: first.actions, state: { ...first.state, phase: "running" } };
-      }
-      const started = rebalance(
-        c,
-        { ...state, phase: "running" },
-        ctx,
-        e.at,
-        "Bought each asset up to its target weight.",
-      );
-      return { actions: started.actions, state: { ...started.state, phase: "running" } };
-    }
+    if (readyToStart(c, state, e.at)) return startAllocation(c, state, ctx, e.at);
     return guards(c, state) ?? { actions: [], state };
   }
+  if (e.type === "timer" && readyToStart(c, s, e.at)) return startAllocation(c, s, ctx, e.at);
   if (e.type === "timer" && s.phase === "running" && Object.keys(s.pending).length > 0) {
     // Lệnh chờ không bao giờ có `orderDone`: quá hạn thì coi như xong (state cũ thiếu giờ đặt thì bắt đầu đếm).
     if (s.pendingSince == null) return { actions: [], state: { ...s, pendingSince: e.at } };
@@ -327,6 +398,8 @@ export function stepRebalancing(
       // Đang mua dần: chưa rebalance theo ngưỡng hay lịch cho tới khi mua xong phần cuối.
       const parts = initialParts(c) ?? b.part + 1;
       if (e.at < b.startedAt + b.part * INITIAL_PART_MS) return { actions: [], state: s };
+      // Phần kế tiếp cần sổ lệnh còn mới; chưa có thì chờ (không đếm phần).
+      if (!booksReady(c, s, e.at)) return { actions: [], state: s };
       return buildPart(c, s, ctx, e.at, b.startedAt, b.part + 1, parts);
     }
     const weights = currentWeights(c, s);
@@ -339,6 +412,8 @@ export function stepRebalancing(
         ? c.thresholdPct !== undefined && drift.gt(c.thresholdPct)
         : s.lastRebalanceAt === null || e.at >= nextScheduled(c, s.lastRebalanceAt);
     if (!due) return { actions: [], state: s };
+    // Chưa có sổ lệnh còn mới cho mọi market: chờ lần sau, không đặt lệnh theo giá khớp gần nhất.
+    if (!booksReady(c, s, e.at)) return { actions: [], state: s };
     return rebalance(
       c,
       s,

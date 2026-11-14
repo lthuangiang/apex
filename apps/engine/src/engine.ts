@@ -143,10 +143,10 @@ export interface EngineDeps {
   /** Chu kỳ kiểm tra approval phí của mỗi account. */
   feeCheckMs?: number;
   /**
-   * Đỉnh sổ lệnh Perps (REST orderbook) cho Volume Farm; null khi không đọc được. Không truyền thì Volume Farm
-   * chỉ dùng nến (tín hiệu chạy chế độ chỉ-nến như apex).
+   * Đỉnh sổ lệnh (REST orderbook) cho Volume Farm / Market Making (Perps) và Rebalancing (Spot); null khi không đọc
+   * được. Không truyền thì Volume Farm chỉ dùng nến (tín hiệu chạy chế độ chỉ-nến như apex).
    */
-  orderbook?: (market: string) => Promise<BookTop | null>;
+  orderbook?: (market: string, engine?: "spot" | "perps") => Promise<BookTop | null>;
   /** Cổng mô phỏng cho bot paper (DEC-105). Không truyền thì engine không nạp bot paper nào. */
   paper?: PaperGateway;
 }
@@ -282,6 +282,13 @@ const SNAPSHOT_EVERY_MS: Readonly<Record<string, number>> = {
   [Strategy.adaptiveDca]: 60_000,
 };
 
+/** Chiến lược nhận kèm đỉnh sổ lệnh của mọi market nó dùng với `timer`, và chu kỳ gửi (Rebalancing: IOC theo ask / bid). */
+const BOOKS_EVERY_MS: Readonly<Record<string, number>> = {
+  [Strategy.rebalancing]: 60_000,
+};
+/** Đỉnh sổ lệnh đọc gần đây được dùng chung cho mọi bot cùng market trong chừng này. */
+const BOOK_CACHE_MS = 3_000;
+
 const VOLUME: ReadonlySet<string> = new Set(VOLUME_STRATEGIES);
 /** Trạng thái mà cờ theo tài khoản (volume bots, Adaptive DCA, AI Desk) chặn nạp: bot đang muốn chạy. */
 const FLAG_GATED_STATES: ReadonlySet<string> = new Set<string>([
@@ -305,6 +312,9 @@ export class Engine {
   readonly #lastFeeCheck = new Map<string, number>();
   readonly #snapshots = new Map<string, { at: number; snap: MarketSnapshot }>();
   readonly #snapshotFed = new Map<string, number>();
+  /** Lần gần nhất gửi đỉnh sổ lệnh cho bot (`BOOKS_EVERY_MS`). */
+  readonly #booksFed = new Map<string, number>();
+  readonly #books = new Map<string, { at: number; book: BookTop | null }>();
   readonly #openChecks = new Map<string, number>();
   /** Lần cuối user stream của account có thể đã mất tin (đứt kết nối, engine vừa nạp bot). */
   readonly #streamGaps = new Map<string, number>();
@@ -388,8 +398,32 @@ export class Engine {
           r,
           market === null ? { type: "timer", at } : { type: "timer", at, market },
         );
-      } else await this.#feed(r, { type: "timer", at });
+      } else {
+        const booksEvery = BOOKS_EVERY_MS[r.strategy];
+        const due =
+          booksEvery !== undefined && at - (this.#booksFed.get(r.botId) ?? 0) >= booksEvery;
+        if (!due) {
+          await this.#feed(r, { type: "timer", at });
+          continue;
+        }
+        this.#booksFed.set(r.botId, at);
+        const books: Record<string, BookTop | null> = {};
+        // Rebalancing chỉ có market Spot.
+        for (const m of this.#marketsOf(r.market, r.config))
+          books[m] = await this.#bookTop(m, at, "spot");
+        await this.#feed(r, { type: "timer", at, books });
+      }
     }
+  }
+
+  /** Đỉnh sổ lệnh của một market, dùng chung giữa các bot trong `BOOK_CACHE_MS`; đọc lỗi → null. */
+  async #bookTop(market: string, at: number, engine: "spot" | "perps"): Promise<BookTop | null> {
+    const key = `${engine}:${market}`;
+    const hit = this.#books.get(key);
+    if (hit !== undefined && at - hit.at < BOOK_CACHE_MS) return hit.book;
+    const book = await this.#d.orderbook(market, engine).catch(() => null);
+    this.#books.set(key, { at, book });
+    return book;
   }
 
   /**

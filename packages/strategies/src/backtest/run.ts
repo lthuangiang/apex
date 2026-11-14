@@ -409,8 +409,17 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
     const at = t + input.intervalMs - 1;
     const snap = input.snapshotCandles;
     const m0 = marketNames[0];
-    if (snap === undefined || m0 === undefined) feed([{ type: "timer", at }]);
-    else {
+    if (snap === undefined || m0 === undefined) {
+      // Đỉnh sổ lệnh giả từ giá gần nhất (bid = ask = giá) cho chiến lược đặt IOC theo ask / bid (Rebalancing); backtest
+      // không có sổ lệnh thật.
+      const books = Object.fromEntries(
+        [...last.entries()].map(([m, p]) => [
+          m,
+          { bid: p, ask: p, bidNotional: "0", askNotional: "0" },
+        ]),
+      );
+      feed([{ type: "timer", at, books }]);
+    } else {
       const list = input.markets[m0]?.candles ?? [];
       const idx = candleIdx.get(m0) ?? 0;
       let i = idx;

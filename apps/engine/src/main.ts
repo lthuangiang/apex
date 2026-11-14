@@ -81,8 +81,9 @@ const engine = new Engine({
   builderId: sodex.builderId,
   builderExempt: sodex.builderExempt,
   // Volume Farm (DEC-80): 10 mức mỗi phía, như apex `get_orderbook_depth(symbol, 10)`.
-  orderbook: async (market) => {
-    const b = await rest.getOrderbook("perps", market, 10);
+  // Rebalancing (Spot) cũng đọc đỉnh sổ lệnh để đặt IOC theo ask / bid.
+  orderbook: async (market, engine = "perps") => {
+    const b = await rest.getOrderbook(engine, market, 10);
     const [bid] = b.bids;
     const [ask] = b.asks;
     if (bid === undefined || ask === undefined) return null;
