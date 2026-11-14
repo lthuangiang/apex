@@ -1043,7 +1043,7 @@
       },
       "closeAtEntry": {
         "label": "Close only at your entry price or better",
-        "hint": "Fees are not included in your entry price."
+        "hint": "Fees are not included in your entry price. If a position can't close this way within 30 minutes, the bot closes it at the best price."
       },
       "pauseOnFastMoves": {
         "label": "Pause on fast moves",
@@ -2811,8 +2811,10 @@
         "closeAtEntryBody": "The bot never sells below what it paid. Positions can stay open longer.",
         "pauseFast": "Pause on fast moves",
         "pauseFastBody": "Pull quotes when the price moves more than a few steps in a few seconds, then quote again.",
-        "newSetting": "New setting",
+        "on": "On",
+        "off": "Off",
         "setting": "Setting: {name}",
+        "settingValue": "Setting: {name} · now {value}",
         "cheaper": "Move to a cheaper market",
         "cheaperBody": "See which markets cost least per $1M right now.",
         "compare": "Compare markets →",

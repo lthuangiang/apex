@@ -145,7 +145,12 @@ describe("Market Making · choose a market (D1)", () => {
 
 describe("Market Making · where the price PnL comes from (D2)", () => {
   it("shows markout, the price step, losing round trips, In short, and ways to lower it", async () => {
-    wrap(<MmMarkoutCard botId="b1" />);
+    wrap(
+      <MmMarkoutCard
+        botId="b1"
+        config={{ quoteLevel: 1, closeAtEntry: true, pauseOnFastMoves: false }}
+      />,
+    );
     expect(await screen.findByText("−0.3 bps")).toBeInTheDocument();
     expect(screen.getByText("−0.7 bps")).toBeInTheDocument();
     expect(screen.getByText("Not available")).toBeInTheDocument();
@@ -161,6 +166,17 @@ describe("Market Making · where the price PnL comes from (D2)", () => {
     expect(
       screen.getByRole("link", { name: /Close only at your entry price or better/ }),
     ).toHaveAttribute("href", "/bots/b1/edit?suggest=close-at-entry");
+    // Trạng thái thật theo config, không có nhãn "New setting".
+    expect(screen.queryByText("New setting")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("link", { name: /Close only at your entry/ })).getByText("On"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("link", { name: /Pause on fast moves/ })).getByText("Off"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Setting: Quote position in the order book · now 1"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Pause on fast moves/ })).toHaveAttribute(
       "href",
       "/bots/b1/edit?suggest=pause-fast",

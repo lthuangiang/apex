@@ -22,7 +22,14 @@ function Tile({ label, value, note }: { label: string; value: ReactNode; note?: 
   );
 }
 
-export function MmMarkoutCard({ botId }: { botId: string }) {
+export function MmMarkoutCard({
+  botId,
+  config,
+}: {
+  botId: string;
+  /** Config đang chạy của bot: hiện trạng thái thật của từng cài đặt; null = chưa biết (không hiện). */
+  config: Record<string, unknown> | null;
+}) {
   const t = useTranslations("agent.mmMarkout");
   const tm = useTranslations("common.missing");
   const te = useTranslations("common.errors");
@@ -31,6 +38,7 @@ export function MmMarkoutCard({ botId }: { botId: string }) {
   const q = useMmMarkout(botId);
   const m = q.data;
   const na = tm("notAvailable");
+  const level = typeof config?.quoteLevel === "number" ? config.quoteLevel : null;
   const bps = (v: string | null) => {
     const s = signed(v, 2);
     return s === null ? na : t("bps", { v: s });
@@ -107,16 +115,18 @@ export function MmMarkoutCard({ botId }: { botId: string }) {
               <strong className="text-sm">{t("ways.quoteBack")}</strong>
               <span className="text-[13px] text-ink-2">{t("ways.quoteBackBody")}</span>
               <span className="text-xs text-muted">
-                {t("ways.setting", { name: tf("quoteLevel.label") })}
+                {level === null
+                  ? t("ways.setting", { name: tf("quoteLevel.label") })
+                  : t("ways.settingValue", { name: tf("quoteLevel.label"), value: level })}
               </span>
             </Link>
           </li>
           {(
             [
-              ["close-at-entry", "closeAtEntry"],
-              ["pause-fast", "pauseFast"],
+              ["close-at-entry", "closeAtEntry", "closeAtEntry"],
+              ["pause-fast", "pauseFast", "pauseOnFastMoves"],
             ] as const
-          ).map(([suggest, key]) => (
+          ).map(([suggest, key, field]) => (
             <li key={suggest}>
               <Link
                 href={`/bots/${botId}/edit?suggest=${suggest}`}
@@ -124,9 +134,16 @@ export function MmMarkoutCard({ botId }: { botId: string }) {
               >
                 <strong className="text-sm">{t(`ways.${key}`)}</strong>
                 <span className="text-[13px] text-ink-2">{t(`ways.${key}Body`)}</span>
-                <span className="self-start rounded-full bg-accent-tint px-2 py-[2px] text-[11px] font-extrabold text-accent-ink">
-                  {t("ways.newSetting")}
-                </span>
+                {config === null ? null : (
+                  // Trạng thái thật theo config của bot (không dùng nhãn "New setting" của artboard).
+                  <span
+                    className={`self-start rounded-full px-2 py-[2px] text-[11px] font-extrabold ${
+                      config[field] === true ? "bg-pos-bg text-pos" : "bg-surface-2 text-ink-2"
+                    }`}
+                  >
+                    {config[field] === true ? t("ways.on") : t("ways.off")}
+                  </span>
+                )}
               </Link>
             </li>
           ))}
