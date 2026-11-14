@@ -2,7 +2,14 @@ import { ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
 import { clOrdId } from "../core/ids";
-import { currentWeights, initialBuyProgress, nextScheduled, rebalancing } from "../rebalancing";
+import {
+  currentWeights,
+  initialBuyProgress,
+  nextScheduled,
+  REBAL_PENDING_TIMEOUT_MS,
+  rebalancing,
+  type RebalancingState,
+} from "../rebalancing";
 import { rebalancingSchema } from "../rebalancing/schema";
 import { runSim } from "../sim/exchange";
 
@@ -276,5 +283,64 @@ describe("rebalancing Initial buy (IMP-04, DEC-222)", () => {
     ).state;
     const next = rebalancing.step(base, s, { type: "timer", at: 3 }, ctx);
     expect(ids(next).length).toBeGreaterThan(0);
+  });
+});
+
+describe("rebalancing — orders that end part-filled (P0.1)", () => {
+  const step = (st: RebalancingState, e: Parameters<typeof rebalancing.step>[2]) =>
+    rebalancing.step(base, st, e, ctx);
+  /** Có đủ giá: đặt lô Initial allocation (BTC 5 @ 100, ETH 30 @ 10). */
+  const allocated = () => {
+    let st = rebalancing.initialState(base);
+    st = step(st, { type: "tick", at: 0, market: "vBTC_vUSDC", price: "100" }).state;
+    const r = step(st, { type: "tick", at: 1, market: "vETH_vUSDC", price: "10" });
+    const ids = Object.keys(r.state.pending);
+    const btc = ids.find((id) => r.state.pending[id]?.asset === "BTC") ?? "";
+    const eth = ids.find((id) => r.state.pending[id]?.asset === "ETH") ?? "";
+    return { st: r.state, btc, eth };
+  };
+  const fill = (id: string, price: string, q: string, at: number) =>
+    ({ type: "fill", at, clOrdID: id, price, quantity: q, fee: "0" }) as const;
+
+  it("adds up several fills, ends a part-filled order on orderDone and rebalances again later", () => {
+    const { st, btc, eth } = allocated();
+    let s1 = step(st, fill(btc, "100", "2", 2)).state;
+    s1 = step(s1, fill(btc, "100", "1", 3)).state;
+    expect(s1.pending[btc]?.filled).toBe("3");
+    s1 = step(s1, { type: "orderDone", at: 4, clOrdID: btc }).state;
+    s1 = step(s1, fill(eth, "10", "30", 5)).state;
+    expect(s1.pending).toEqual({});
+    expect(s1.holdings).toEqual({ BTC: "3", ETH: "30" });
+    // Không còn lệnh chờ: lần kiểm tra kế tiếp thấy BTC lệch và mua thêm.
+    const next = step(s1, { type: "timer", at: 10_000 });
+    expect(next.actions.some((a) => a.type === "place")).toBe(true);
+  });
+
+  it("does not get stuck when an order does not fill at all", () => {
+    const { st, btc, eth } = allocated();
+    let s1 = step(st, { type: "orderDone", at: 2, clOrdID: btc }).state;
+    s1 = step(s1, { type: "orderDone", at: 3, clOrdID: eth }).state;
+    expect(s1.pending).toEqual({});
+    expect(step(s1, { type: "timer", at: 10_000 }).actions.some((a) => a.type === "place")).toBe(
+      true,
+    );
+  });
+
+  it("books a fill that arrives after orderDone, up to the order size", () => {
+    const { st, btc } = allocated();
+    const d = step(st, { type: "orderDone", at: 2, clOrdID: btc }).state;
+    const late = step(d, fill(btc, "100", "5", 3)).state;
+    expect(late.holdings.BTC).toBe("5");
+    expect(step(late, fill(btc, "100", "1", 4)).state.holdings.BTC).toBe("5");
+  });
+
+  it("treats orders with no orderDone for 60 s as ended", () => {
+    const { st, btc } = allocated();
+    const a = step(st, fill(btc, "100", "1", 2)).state;
+    const early = step(a, { type: "timer", at: 1 + REBAL_PENDING_TIMEOUT_MS - 1 }).state;
+    expect(Object.keys(early.pending)).toHaveLength(2);
+    const late = step(early, { type: "timer", at: 1 + REBAL_PENDING_TIMEOUT_MS }).state;
+    expect(late.pending).toEqual({});
+    expect(late.holdings.BTC).toBe("1");
   });
 });

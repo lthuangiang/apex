@@ -1,4 +1,4 @@
-import { add, dec, gt, ReasonCode } from "@drift/shared";
+import { add, dec, Decimal, gt, ReasonCode } from "@drift/shared";
 
 import { clOrdId } from "../core/ids";
 import { applyFill, emptyLedger, type Ledger } from "../core/ledger";
@@ -11,6 +11,9 @@ import type { RecurringBuyConfig } from "./schema";
 // S5 Recurring Buy: `timer` là nhịp đồng hồ (engine gửi mỗi vòng, backtest mỗi nến); chỉ hành động khi đã tới
 // `nextAt`. Mỗi lần: bỏ qua nếu giá > ngưỡng; nếu không thì mua market đúng số tiền. Lần bị bỏ qua (kể cả lần
 // lỡ khi engine dừng) không mua bù. Hết ngân sách / đủ số lần → stop(BUDGET_DONE).
+// Lệnh mua có thể khớp nhiều lần rồi hết hạn (P0.1): cộng dồn theo lệnh, lần mua xong khi khớp đủ hoặc có
+// `orderDone` (khớp một phần vẫn tính là một lần mua, không khớp gì thì là một lần bỏ qua). Fill tới trễ vẫn vào sổ
+// cái và số tiền đã chi. Lệnh chờ quá 60 s mà không có `orderDone` thì coi như xong.
 
 export interface RecurringBuyState {
   phase: "running" | "halted";
@@ -21,7 +24,15 @@ export interface RecurringBuyState {
   pending: string | null;
   nextAt: number | null;
   ledger: Ledger;
+  /** Các lệnh gần nhất: khối lượng đặt, đã khớp và tiền đã chi (thiếu ở state cũ). */
+  orders?: Record<string, { qty: string; filled: string; cost: string }>;
+  /** Lúc đặt lệnh đang chờ (ms). */
+  pendingAt?: number | null;
 }
+
+/** Lệnh chờ quá lâu mà không có `orderDone` (tin mất) thì coi như xong với phần đã khớp. */
+export const RB_PENDING_TIMEOUT_MS = 60_000;
+const KEEP_ORDERS = 5;
 
 const initial = (): RecurringBuyState => ({
   phase: "running",
@@ -40,6 +51,41 @@ function done(c: RecurringBuyConfig, s: RecurringBuyState): boolean {
   return false;
 }
 
+/** Lệnh mua đang chờ đã xong (khớp đủ / `orderDone` / quá hạn chờ). */
+function finishBuy(c: RecurringBuyConfig, s: RecurringBuyState): StepResult<RecurringBuyState> {
+  const o = s.pending === null ? undefined : s.orders?.[s.pending];
+  const base: RecurringBuyState = { ...s, pending: null, pendingAt: null };
+  if (o === undefined || !dec(o.filled).gt(0)) {
+    return {
+      actions: [
+        {
+          type: "log",
+          decision: "Buy skipped",
+          why: "The order did not fill; skipped buys are not made up.",
+        },
+      ],
+      state: { ...base, skipped: s.skipped + 1 },
+    };
+  }
+  const state: RecurringBuyState = { ...base, buys: s.buys + 1 };
+  if (done(c, state))
+    return {
+      actions: [{ type: "stop", reason: ReasonCode.budgetDone, close: false }],
+      state: { ...state, phase: "halted" },
+    };
+  const avg = dec(o.cost).div(o.filled).toString();
+  return {
+    actions: [
+      {
+        type: "log",
+        decision: `Buy ${String(state.buys)} filled`,
+        why: `${o.filled} at ${avg}.`,
+      },
+    ],
+    state,
+  };
+}
+
 export function stepRecurringBuy(
   c: RecurringBuyConfig,
   s: RecurringBuyState,
@@ -54,7 +100,13 @@ export function stepRecurringBuy(
   if (e.type === "timer") {
     // Chưa có lịch (chưa có giá) thì đặt lịch; chưa tới giờ hoặc lệnh trước chưa xong thì chờ.
     if (s.nextAt === null) return { actions: [], state: { ...s, nextAt: nextRun(c, e.at) } };
-    if (e.at < s.nextAt || s.pending !== null) return { actions: [], state: s };
+    if (s.pending !== null) {
+      // Lệnh chờ không bao giờ có `orderDone`: quá hạn thì coi như xong (state cũ thiếu giờ đặt thì bắt đầu đếm).
+      if (s.pendingAt == null) return { actions: [], state: { ...s, pendingAt: e.at } };
+      if (e.at - s.pendingAt < RB_PENDING_TIMEOUT_MS) return { actions: [], state: s };
+      return finishBuy(c, s);
+    }
+    if (e.at < s.nextAt) return { actions: [], state: s };
     const state = { ...s, nextAt: nextRun(c, e.at) };
     const rules = ctx.rules[c.market];
     if (s.lastPrice === null || rules === undefined) {
@@ -106,7 +158,16 @@ export function stepRecurringBuy(
           },
         },
       ],
-      state: { ...state, pending: id },
+      state: {
+        ...state,
+        pending: id,
+        pendingAt: e.at,
+        orders: Object.fromEntries(
+          [...Object.entries(s.orders ?? {}), [id, { qty, filled: "0", cost: "0" }] as const].slice(
+            -KEEP_ORDERS,
+          ),
+        ),
+      },
     };
   }
   if (e.type === "orderReject" && e.clOrdID === s.pending) {
@@ -127,29 +188,37 @@ export function stepRecurringBuy(
       state,
     };
   }
-  if (e.type === "fill" && e.clOrdID === s.pending) {
+  if (e.type === "orderDone" && e.clOrdID === s.pending) return finishBuy(c, s);
+  if (e.type === "fill") {
+    const o = s.orders?.[e.clOrdID];
+    // State cũ (trước P0.1) không có `orders`: lệnh đang chờ nhận đủ khối lượng như trước.
+    if (o === undefined && e.clOrdID !== s.pending) return { actions: [], state: s };
+    const room = o === undefined ? dec(e.quantity) : dec(o.qty).sub(o.filled);
+    const q = Decimal.min(room, e.quantity);
+    if (!q.gt(0)) return { actions: [], state: s };
+    const fee = q.lt(e.quantity) ? dec(e.fee).mul(q).div(e.quantity).toString() : e.fee;
+    const cost = dec(e.price).mul(q);
+    const record = {
+      qty: o?.qty ?? q.toString(),
+      filled: add(o?.filled ?? "0", q).toString(),
+      cost: add(o?.cost ?? "0", cost).toString(),
+    };
     const state: RecurringBuyState = {
       ...s,
-      pending: null,
-      buys: s.buys + 1,
-      spent: add(s.spent, dec(e.price).mul(e.quantity)).toString(),
-      ledger: applyFill(s.ledger, "buy", e.price, e.quantity, e.fee),
+      spent: add(s.spent, cost).toString(),
+      ledger: applyFill(s.ledger, "buy", e.price, q, fee),
+      orders: { ...s.orders, [e.clOrdID]: record },
     };
-    if (done(c, state))
-      return {
-        actions: [{ type: "stop", reason: ReasonCode.budgetDone, close: false }],
-        state: { ...state, phase: "halted" },
-      };
-    return {
-      actions: [
-        {
-          type: "log",
-          decision: `Buy ${String(state.buys)} filled`,
-          why: `${e.quantity} at ${e.price}.`,
-        },
-      ],
-      state,
-    };
+    if (e.clOrdID !== s.pending) {
+      // Khớp trễ sau khi lần mua đã xong: chỉ vào sổ cái và số tiền đã chi.
+      return done(c, state)
+        ? {
+            actions: [{ type: "stop", reason: ReasonCode.budgetDone, close: false }],
+            state: { ...state, phase: "halted" },
+          }
+        : { actions: [], state };
+    }
+    return dec(record.filled).gte(record.qty) ? finishBuy(c, state) : { actions: [], state };
   }
   return { actions: [], state: s };
 }

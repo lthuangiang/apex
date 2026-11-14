@@ -253,6 +253,8 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
       out.push({ type: "orderAck", at, clOrdID: o.clOrdID });
       if (o.timeInForce === "IOC") {
         if (crossesNow) out.push(fill(o, o.price ?? price, false, at));
+        // Khớp engine (DEC-229): IOC kết thúc ngay, khớp hay không đều báo `orderDone`.
+        out.push({ type: "orderDone", at, clOrdID: o.clOrdID });
         continue;
       }
       if (crossesNow) {
@@ -306,7 +308,11 @@ export function runBacktest<C, S>(input: BacktestInput<C, S>): BacktestOutput<S>
     for (const o of due) {
       const c = row.get(o.market);
       if (c === undefined) continue;
-      marketFills.push(fill(o, slipped(o, c.o), false, t));
+      marketFills.push(fill(o, slipped(o, c.o), false, t), {
+        type: "orderDone",
+        at: t,
+        clOrdID: o.clOrdID,
+      });
     }
     if (marketFills.length > 0) feed(marketFills);
     // 2. Đi theo đường giá trong nến, từng market.
