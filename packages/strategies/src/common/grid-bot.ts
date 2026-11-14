@@ -59,6 +59,8 @@ export interface GridBotState {
   lastPrice: string | null;
   outOfRange: boolean;
   initClOrdID: string | null;
+  /** Đã resume nhưng chưa có giá mới: dựng lại lệnh ở tick đầu tiên (DEC-240). */
+  resumeOnTick?: boolean;
 }
 
 export const initialGridBotState = (): GridBotState => ({
@@ -181,6 +183,66 @@ function start(
   };
 }
 
+/**
+ * Resume sau khi bot tự pause (DEC-240): giữ sổ cái và vị thế, đặt lại lệnh ở các mức chưa có lệnh quanh giá
+ * hiện tại (mua phía dưới, bán phía trên), không mua / bán market. Phía cần vị thế (long: bán, short: mua) chỉ đặt trong
+ * phần vị thế còn trống, mức gần giá trước. Grid chưa khởi động thì quay về chờ khởi động như mới. Max loss vẫn chạm
+ * thì pause lại ngay.
+ */
+function resumeGrid(
+  c: GridBotConfig,
+  s0: GridBotState,
+  ctx: StepContext,
+): StepResult<GridBotState> {
+  let s = s0;
+  s = { ...s, resumeOnTick: false };
+  // Chưa từng khởi động (chưa có mức): chờ khởi động như mới. Đã đặt lệnh khởi tạo thì không đặt lại (clOrdID trùng sẽ bị
+  // engine bỏ qua): dựng lệnh từ vị thế thật như bình thường.
+  if (s.levels.length === 0) return { actions: [], state: { ...s, phase: "idle" } };
+  s = { ...s, initClOrdID: null };
+  const price = s.lastPrice;
+  if (price === null) return { actions: [], state: { ...s, phase: "running" } };
+  // Max loss (hoặc stop / take profit) vẫn chạm: dừng lại ngay, không đặt lệnh (resume không vượt được max loss).
+  const g = guards(c, { ...s, phase: "running" }, price);
+  if (g !== null) return g;
+  const busy = new Set(Object.values(s.open).map((o) => o.level));
+  const openQty = (side: "buy" | "sell") =>
+    dec(s.qty).mul(Object.values(s.open).filter((o) => o.side === side).length);
+  const pos = dec(s.ledger.position);
+  let room = {
+    sell: c.direction === "long" ? pos.sub(openQty("sell")) : null,
+    buy: c.direction === "short" ? pos.neg().sub(openQty("buy")) : null,
+  };
+  const want = [
+    ...s.levels
+      .map((p, i) => ({ p, i, side: "sell" as const }))
+      .filter((x) => gt(x.p, price))
+      .sort((a, b) => dec(a.p).cmp(b.p)),
+    ...s.levels
+      .map((p, i) => ({ p, i, side: "buy" as const }))
+      .filter((x) => dec(x.p).lt(price))
+      .sort((a, b) => dec(b.p).cmp(a.p)),
+  ].filter((x) => !busy.has(x.i));
+  let state: GridBotState = { ...s, phase: "running" };
+  const actions: StrategyAction[] = [];
+  for (const x of want) {
+    const left = room[x.side];
+    if (left !== null) {
+      if (left.lt(s.qty)) continue;
+      room = { ...room, [x.side]: left.sub(s.qty) };
+    }
+    const r = order(c, ctx, state, x.i, x.side);
+    actions.push({ type: "place", order: r.intent });
+    state = r.state;
+  }
+  actions.push({
+    type: "log",
+    decision: "Grid resumed",
+    why: `Orders placed again around ${price} from the current position: ${String(actions.length)} placed.`,
+  });
+  return { actions, state };
+}
+
 /** Sau khi lệnh market mở vị thế khớp: đặt phía còn lại (long → bán phía trên, short → mua phía dưới). */
 function placeDeferred(
   c: GridBotConfig,
@@ -264,6 +326,18 @@ export function stepGridBot(
   ctx: StepContext,
 ): StepResult<GridBotState> {
   if (s.phase === "halted") {
+    if (e.type === "resumed") {
+      // Chưa có giá mới: chờ giá đầu tiên rồi mới dựng lệnh (không đặt theo giá lúc pause).
+      const p = e.prices[c.market];
+      return p === undefined
+        ? { actions: [], state: { ...s, resumeOnTick: true } }
+        : resumeGrid(c, { ...s, lastPrice: p }, ctx);
+    }
+    if (e.type === "tick" && e.market === c.market && s.resumeOnTick === true)
+      return resumeGrid(c, { ...s, lastPrice: e.price }, ctx);
+    // Lệnh bị từ chối / kết thúc trên sàn trong lúc dừng: bỏ khỏi danh sách để resume đặt lại mức đó.
+    if ((e.type === "orderReject" || e.type === "orderDone") && s.open[e.clOrdID] !== undefined)
+      return { actions: [], state: { ...s, open: without(s.open, e.clOrdID) } };
     // Đã dừng: lệnh giảm vị thế còn giữ (pause vì max loss) vẫn có thể khớp; chỉ ghi sổ cái, không đặt lệnh mới.
     const o = e.type === "fill" ? s.open[e.clOrdID] : undefined;
     if (e.type !== "fill" || o === undefined) return { actions: [], state: s };
@@ -307,7 +381,9 @@ export function stepGridBot(
   }
 
   if (e.type === "orderReject") {
-    return halt(s, { type: "pause", reason: ReasonCode.orderRejected }, false);
+    // Lệnh bị từ chối không có trên sàn: bỏ khỏi danh sách để resume đặt lại mức đó.
+    const state = { ...s, open: without(s.open, e.clOrdID) };
+    return halt(state, { type: "pause", reason: ReasonCode.orderRejected }, false);
   }
 
   if (e.type === "fill") {

@@ -88,6 +88,20 @@ export function stepTwap(
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<TwapState> {
+  // Resume sau khi bot tự pause (DEC-240): chạy tiếp từ lát kế tiếp với sổ cái và phần đã khớp như cũ.
+  if (e.type === "resumed")
+    return s.phase === "halted"
+      ? {
+          actions: [],
+          state: {
+            ...s,
+            phase: s.startedAt === null ? "waiting" : "running",
+            lastPrice: e.prices[c.market] ?? s.lastPrice,
+            pending: null,
+            pendingAt: null,
+          },
+        }
+      : { actions: [], state: s };
   if (s.phase === "halted") return { actions: [], state: s };
   if (e.type === "tick" && e.market === c.market) {
     const state = { ...s, lastPrice: e.price };

@@ -92,6 +92,18 @@ export function stepRecurringBuy(
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<RecurringBuyState> {
+  if (e.type === "resumed") {
+    // Resume (DEC-240): lần mua đã lỡ trong lúc pause không mua bù; lần kế tiếp theo lịch tính từ lúc resume.
+    // Bot tự pause thì chạy tiếp với sổ cái và số tiền đã chi như cũ.
+    const late = s.nextAt !== null && s.nextAt <= e.at;
+    const state: RecurringBuyState = {
+      ...s,
+      ...(late ? { nextAt: nextRun(c, e.at) } : {}),
+      lastPrice: e.prices[c.market] ?? s.lastPrice,
+      ...(s.phase === "halted" ? { phase: "running", pending: null, pendingAt: null } : {}),
+    };
+    return { actions: [], state };
+  }
   if (s.phase === "halted") return { actions: [], state: s };
   if (e.type === "tick" && e.market === c.market) {
     const state = { ...s, lastPrice: e.price, nextAt: s.nextAt ?? nextRun(c, e.at) };

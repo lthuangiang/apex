@@ -533,6 +533,22 @@ function stepMarket(
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<CopyMarketView> {
+  // Resume sau khi bot tự pause (DEC-240): giữ sổ cái và vị thế, quên lệnh đang chờ (fill trễ vẫn vào sổ cái qua
+  // `orders`), đếm lại số lần lỗi, rồi đưa vị thế về mục tiêu (tín hiệu mở đã quá hạn thì bỏ qua như thường).
+  if (e.type === "resumed")
+    return reconcile(
+      c,
+      {
+        ...s,
+        phase: "following",
+        inflight: null,
+        openRejects: 0,
+        reduceAttempts: 0,
+        lastPrice: e.prices[c.market] ?? s.lastPrice,
+      },
+      ctx,
+      e.at,
+    );
   if (s.phase === "halted" && e.type !== "fill" && e.type !== "orderDone") return none(s);
   switch (e.type) {
     case "tick": {
@@ -786,7 +802,9 @@ export function stepCopyTrade(
       const m = s.orders[e.clOrdID]?.market;
       return m === undefined ? none2(s) : runMarket(c, s, m, e, ctx);
     }
+    case "resumed":
     case "timer": {
+      if (e.type === "resumed" && s.phase !== "halted") return none2(s);
       let st = s;
       const actions: StrategyAction[] = [];
       for (const m of c.markets) {

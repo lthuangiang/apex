@@ -535,6 +535,40 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("rebuilds a grid paused by a rejected order from the latest price on Resume, keeping its ledger (DEC-240)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    gw.reject = { code: "-1", message: "insufficient balance" };
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    clock += 1;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("paused");
+    expect((await botState(botId))?.reasonCode).toBe(ReasonCode.orderRejected);
+    gw.reject = null;
+    const before = gw.received.length;
+    // Lúc pause engine không đưa giá cho chiến lược, chỉ nhớ giá mới nhất.
+    await e.onPrice("vBTC_vUSDC", "102", clock);
+    expect(gw.received).toHaveLength(before);
+    await db.update(bots).set({ state: "resuming", reasonCode: null }).where(eq(bots.id, botId));
+    clock += 1;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("running");
+    // Mọi lệnh trước đều bị từ chối nên vị thế 0: chỉ đặt lệnh mua ở các mức dưới giá 102, không bán.
+    const placed = gw.received.slice(before);
+    expect(placed.map((o) => `${o.side}@${o.price ?? ""}`).sort()).toEqual(
+      ["buy@100", "buy@95", "buy@90"].sort(),
+    );
+    const ids = gw.received.map((o) => o.clOrdID);
+    expect(new Set(ids).size).toBe(ids.length);
+    // Resume lần nữa khi đang chạy (không halted) không đặt thêm gì.
+    await e.tick();
+    expect(gw.received).toHaveLength(before + 3);
+    await e.stop();
+  });
+
   it("applies an edited version: cancels old orders, activates v2 and re-places from the new config", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();

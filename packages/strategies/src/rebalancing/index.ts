@@ -81,6 +81,8 @@ export interface RebalancingState {
    * null hoặc thiếu (state cũ) = không mua dần.
    */
   building?: { startedAt: number; part: number } | null;
+  /** Số lần resume: hậu tố tag của lệnh mua lần đầu đặt lại, để không dùng lại clOrdID cũ. */
+  resumes?: number;
 }
 
 const initial = (c: RebalancingConfig): RebalancingState => ({
@@ -246,7 +248,9 @@ function buildPart(
     if (price === null) continue;
     const qty = roundQty(d.diff.mul(scale).div(price), rules);
     if (!meetsMinimum(price, qty, rules)) continue;
-    const id = clOrdId(ctx.botId, ctx.version, `rebal:init:${String(k)}:${d.a.asset}`);
+    const r = s.resumes ?? 0;
+    const tag = `rebal:init:${String(k)}${r > 0 ? `:r${String(r)}` : ""}:${d.a.asset}`;
+    const id = clOrdId(ctx.botId, ctx.version, tag);
     pending[id] = { asset: d.a.asset, side: "buy", qty, filled: "0" };
     actions.push({
       type: "place",
@@ -357,13 +361,34 @@ function startAllocation(
   return { actions: started.actions, state: { ...started.state, phase: "running" } };
 }
 
+/**
+ * Resume sau khi bot tự pause (DEC-240): giữ số dư thật, coi các lệnh IOC còn chờ là đã xong (fill trễ vẫn được
+ * nhận). Chưa mua được gì thì mua lần đầu lại từ đầu; đang mua dần thì mua tiếp phần kế; còn lại rebalance như thường.
+ */
+function resume(s: RebalancingState): StepResult<RebalancingState> {
+  let st: RebalancingState = { ...s, resumes: (s.resumes ?? 0) + 1 };
+  for (const id of Object.keys(s.pending)) st = settle(st, id);
+  const empty = Object.values(st.holdings).every((h) => dec(h).isZero());
+  const restart = empty && (st.building ?? null) === null;
+  return {
+    actions: [],
+    state: { ...st, phase: restart ? "waiting_prices" : "running", pendingSince: null },
+  };
+}
+
 export function stepRebalancing(
   c: RebalancingConfig,
   s0: RebalancingState,
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<RebalancingState> {
-  if (s0.phase === "halted") return { actions: [], state: s0 };
+  if (e.type === "resumed")
+    return s0.phase === "halted"
+      ? resume({ ...s0, prices: { ...s0.prices, ...e.prices } })
+      : { actions: [], state: s0 };
+  // Đã dừng: chỉ nhận fill (khớp trễ vào số dư) và orderDone.
+  if (s0.phase === "halted" && e.type !== "fill" && e.type !== "orderDone")
+    return { actions: [], state: s0 };
   // Đỉnh sổ lệnh engine gửi kèm timer: giữ bản mới nhất của từng market (đọc lỗi thì giữ bản cũ).
   const s: RebalancingState =
     e.type === "timer" && e.books !== undefined
