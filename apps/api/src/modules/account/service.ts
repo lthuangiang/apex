@@ -77,6 +77,7 @@ import type { TwoFactorDeps } from "../security/two-factor";
 
 import { builderFeeRows } from "./builder-fees";
 import { mcpStats } from "./mcp-stats";
+import { REALIZED_PAGE, sumRealized } from "./realized";
 import { statsOverview } from "./stats-overview";
 import { requireTeam } from "./team";
 import { getWatchlist } from "./watchlist";
@@ -390,8 +391,6 @@ export async function halt(
   return { stopping: n };
 }
 
-const REALIZED_LIMIT = 1000;
-
 export async function overview(
   deps: AccountDeps,
   userId: string,
@@ -424,18 +423,17 @@ export async function overview(
   const curve = points.filter((_, i) => i % step === 0 || i === points.length - 1);
   let realized: string | null = null;
   try {
-    const closed = await deps.rest.getPositionsHistory(getAddress(a.address), {
-      startTime: since,
-      limit: REALIZED_LIMIT,
-    });
-    // Chạm giới hạn 1000 dòng thì tổng có thể thiếu: trả null thay vì một con số sai (quy tắc 1.8).
-    realized =
-      closed.length >= REALIZED_LIMIT
-        ? null
-        : closed
-            .filter((p) => p.updatedAt >= since)
-            .reduce((s, p) => s.add(p.realizedPnL), new Decimal(0))
-            .toString();
+    // Đọc nhiều trang: bot Market Making đóng hàng nghìn vị thế nhỏ mỗi ngày, một trang 1000 dòng không đủ.
+    const address = getAddress(a.address);
+    realized = await sumRealized(
+      (endTime) =>
+        deps.rest.getPositionsHistory(address, {
+          startTime: since,
+          ...(endTime === undefined ? {} : { endTime }),
+          limit: REALIZED_PAGE,
+        }),
+      since,
+    );
   } catch {
     realized = null;
   }
