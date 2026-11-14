@@ -346,9 +346,14 @@ function guards(c: DcaBotConfig, s: DcaBotState, price: string): StepResult<DcaB
     }
   }
   if (c.maxLoss !== undefined && netPnl(s.ledger, price).lte(dec(c.maxLoss).neg())) {
+    // Pause vì max loss (DOMAIN.md mục 7.2, DEC-238): huỷ safety order (làm tăng vị thế), giữ take profit
+    // (chỉ giảm vị thế). Fill của take profit khi đã dừng vẫn vào sổ cái.
     return {
-      actions: [{ type: "pause", reason: ReasonCode.botMaxLoss }],
-      state: { ...s, phase: "halted" },
+      actions: [
+        ...Object.keys(s.safeties).map((id) => ({ type: "cancel" as const, clOrdID: id })),
+        { type: "pause", reason: ReasonCode.botMaxLoss },
+      ],
+      state: { ...s, phase: "halted", safeties: {} },
     };
   }
   return null;

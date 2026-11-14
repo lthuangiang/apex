@@ -262,3 +262,42 @@ describe("DCA — orders that fill in parts, end part-filled or fill late (P0.1)
     expect(r.state.safeties[so1.clOrdID]).toBeUndefined();
   });
 });
+
+describe("DCA — pause at max loss keeps only the take profit (DEC-238)", () => {
+  it("cancels the safety orders, keeps the take profit, and books its fill after the pause", () => {
+    const c = { ...spot, maxLoss: "5" };
+    let st = spotDca.initialState(c);
+    let r = spotDca.step(c, st, { type: "tick", at: 0, market: "vETH_vUSDC", price: "100" }, ctx);
+    const base = r.actions.flatMap((a) => (a.type === "place" ? [a.order] : []))[0];
+    r = spotDca.step(
+      c,
+      r.state,
+      { type: "fill", at: 1, clOrdID: base?.clOrdID ?? "", price: "100", quantity: "1", fee: "0" },
+      ctx,
+    );
+    const tp = r.actions
+      .flatMap((a) => (a.type === "place" ? [a.order] : []))
+      .find((o) => o.side === "sell");
+    const safeties = Object.keys(r.state.safeties);
+    expect(safeties).toHaveLength(3);
+    st = r.state;
+    const hit = spotDca.step(
+      c,
+      st,
+      { type: "tick", at: 2, market: "vETH_vUSDC", price: "94" },
+      ctx,
+    );
+    expect(hit.actions).toContainEqual({ type: "pause", reason: "BOT_MAX_LOSS" });
+    const cancelled = hit.actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : []));
+    expect(cancelled.sort()).toEqual([...safeties].sort());
+    expect(cancelled).not.toContain(tp?.clOrdID);
+    const after = spotDca.step(
+      c,
+      hit.state,
+      { type: "fill", at: 3, clOrdID: tp?.clOrdID ?? "", price: "101", quantity: "1", fee: "0" },
+      ctx,
+    );
+    expect(after.actions).toEqual([]);
+    expect(after.state.ledger.position).toBe("0");
+  });
+});
