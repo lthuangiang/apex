@@ -126,3 +126,36 @@ describe("spot grid", () => {
     );
   });
 });
+
+describe("spot grid — waits for the price to enter the range", () => {
+  const placesOf = (a: readonly { type: string }[]) =>
+    a.flatMap((x) => (x.type === "place" ? [x] : []));
+
+  it("does not buy at market while the price is below or above the range", () => {
+    const below = runSim(spotGrid, base, ctx, ticks([80, 85, 89]), fees);
+    expect(placesOf(below.actions)).toEqual([]);
+    expect(below.state.phase).toBe("waiting_trigger");
+    expect(spotGrid.waiting?.(base, below.state)).toEqual({
+      kind: "entry",
+      condition: { type: "in_range", low: "90", high: "110" },
+    });
+    const above = runSim(spotGrid, base, ctx, ticks([120, 115]), fees);
+    expect(placesOf(above.actions)).toEqual([]);
+  });
+
+  it("starts the grid once the price enters the range", () => {
+    const r = runSim(spotGrid, base, ctx, ticks([80, 100]), fees);
+    const first = r.actions.flatMap((a) => (a.type === "place" ? [a.order] : []))[0];
+    expect(first).toMatchObject({ type: "market", side: "buy", quantity: "2" });
+    expect(r.state.phase).toBe("running");
+  });
+
+  it("starts at once when the price is already inside", () => {
+    expect(spotGrid.waiting?.(base, spotGrid.initialState(base))).toEqual({
+      kind: "entry",
+      condition: { type: "in_range", low: "90", high: "110" },
+    });
+    const r = runSim(spotGrid, base, ctx, ticks([100]), fees);
+    expect(r.state.phase).toBe("running");
+  });
+});

@@ -514,6 +514,16 @@ export function liveHints(
   }
   const lower = num(v.lowerPrice);
   const upper = num(v.upperPrice);
+  // Spot Grid với First entry = Now: giá đang ngoài khoảng thì bot chờ giá vào khoảng (không mua market).
+  if (
+    strategy === "spot_grid" &&
+    (v.entry === undefined || v.entry === "" || v.entry === "now") &&
+    p?.gt(0) === true &&
+    lower !== null &&
+    upper !== null &&
+    (p.lt(lower) || p.gt(upper))
+  )
+    out.entry = { key: "outsideRange", params: {} };
   const n = int(v.gridLevels);
   if (lower !== null && upper !== null && n !== null && n >= 2 && lower.gt(0) && upper.gt(lower)) {
     const step = minStepPct(

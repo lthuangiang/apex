@@ -1418,6 +1418,7 @@
         "aboveLast": "{pct}% above last price",
         "levelsArithmetic": "2–200 · step {step} ≈ {pct}%",
         "levelsGeometric": "2–200 · step ≈ {pct}%",
+        "outsideRange": "Price is outside your range. The bot waits until the price enters it.",
         "durationHours": "= {h} h",
         "durationHoursMinutes": "= {h} h {m} min",
         "fdcaLong": "Long adds on drops",

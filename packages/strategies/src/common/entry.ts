@@ -32,7 +32,12 @@ export type EntryCondition =
   /** Cắt qua P (giá trước và giá sau nằm hai phía, hoặc chạm). `triggerPrice` cũ của Grid. */
   | { type: "cross"; price: string }
   /** Long: giá ≤ H. Short: giá ≥ L. Neutral: L ≤ giá ≤ H. */
-  | { type: "in_range"; low: string; high: string };
+  | { type: "in_range"; low: string; high: string }
+  /**
+   * L ≤ giá ≤ H ở mọi hướng. Spot Grid mặc định chờ giá vào khoảng lưới thay vì mua market khi giá đang ngoài khoảng
+   * (PM chốt sau bản rà soát strategy). UI hiện như `in_range`.
+   */
+  | { type: "within"; low: string; high: string };
 
 export type NextCycle =
   | { type: "immediately" }
@@ -95,6 +100,8 @@ export function entryReady(
       // Giá nhảy qua cả khoảng theo chiều có lợi vẫn vào (đã chốt ở IMP-01; form có cảnh báo).
       if (direction === "long") return lte(price, entry.high);
       if (direction === "short") return gte(price, entry.low);
+      return gte(price, entry.low) && lte(price, entry.high);
+    case "within":
       return gte(price, entry.low) && lte(price, entry.high);
   }
 }
@@ -170,7 +177,14 @@ export function refineNextCycle(
 
 /** Điều kiện chờ để hiện trên UI ("Waiting for price"); dữ liệu cho `BotSummary.waiting`. */
 export type WaitingInfo =
-  | { kind: "entry"; condition: Exclude<EntryCondition, { type: "now" }> }
+  | { kind: "entry"; condition: Exclude<EntryCondition, { type: "now" } | { type: "within" }> }
   | { kind: "pullback"; price: string }
   | { kind: "cooldown"; until: number }
   | { kind: "start_at"; at: number };
+
+/** Điều kiện hiển thị cho UI ("Waiting for price"): "within" hiện như khoảng giá `in_range`. */
+export function waitingCondition(
+  entry: Exclude<EntryCondition, { type: "now" }>,
+): Extract<WaitingInfo, { kind: "entry" }>["condition"] {
+  return entry.type === "within" ? { type: "in_range", low: entry.low, high: entry.high } : entry;
+}

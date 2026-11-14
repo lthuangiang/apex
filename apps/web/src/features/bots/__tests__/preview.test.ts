@@ -226,6 +226,22 @@ describe("liveHints", () => {
     });
   });
 
+  it("warns that a Spot Grid waits when the price is outside its range", () => {
+    const v = { ...emptyValues("spot_grid"), lowerPrice: "85000", upperPrice: "105000" };
+    expect(liveHints("spot_grid", v, "75954").entry).toEqual({ key: "outsideRange", params: {} });
+    expect(liveHints("spot_grid", v, "110000").entry).toEqual({ key: "outsideRange", params: {} });
+    expect(liveHints("spot_grid", v, "95000").entry).toBeUndefined();
+    // Đã chọn điều kiện vào khác: không cảnh báo.
+    expect(liveHints("spot_grid", { ...v, entry: "at_price" }, "75954").entry).toBeUndefined();
+    expect(
+      liveHints(
+        "futures_grid",
+        { ...emptyValues("futures_grid"), lowerPrice: "85000", upperPrice: "105000" },
+        "75954",
+      ).entry,
+    ).toBeUndefined();
+  });
+
   it("compares grid bounds with the last price and describes the step", () => {
     const v = {
       ...emptyValues("spot_grid"),

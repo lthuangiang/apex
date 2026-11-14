@@ -12,7 +12,13 @@ import type {
   StrategyModule,
 } from "../core/types";
 
-import { entryReady, type EntryCondition, type NextCycle, type WaitingInfo } from "./entry";
+import {
+  entryReady,
+  waitingCondition,
+  type EntryCondition,
+  type NextCycle,
+  type WaitingInfo,
+} from "./entry";
 
 // Lõi DCA dùng chung cho S3 Spot DCA và S4 Futures DCA (STRATEGIES.md).
 // Mỗi chu kỳ: base order (market) → các safety order limit theo khoảng cách d₁·(1+m+…+m^(k−1)) và
@@ -110,7 +116,7 @@ export const initialDcaState = (): DcaBotState => ({
 export function dcaGate(c: DcaBotConfig, s: DcaBotState): WaitingInfo | null {
   const entry = c.entry ?? { type: "now" };
   const firstEntry = (): WaitingInfo | null =>
-    entry.type === "now" ? null : { kind: "entry", condition: entry };
+    entry.type === "now" ? null : { kind: "entry", condition: waitingCondition(entry) };
   if (s.cycle === 0) return firstEntry();
   const next = c.nextCycle ?? { type: "immediately" };
   switch (next.type) {
