@@ -86,7 +86,7 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   `hoursWithData`, `trades24h`, `notional24h`, `publicPricePnlPerMillion` (đối chiếu), `pricePnlPerMillion`, `source`,
   `yourRoundTrips`, `totalCostPerMillion`; kèm `modelVersion`, `model {a, k}`, `suggested`. Danh sách đã xếp.
 - **Mô hình:** PnL giá (bps trên volume) = a × bước − k × dao động 1 phút, chặn ≤ 0. Bước = tick ÷ giá đóng nến 1m mới
-  nhất; dao động = độ lệch chuẩn mẫu % thay đổi giữa các nến 1m 24 giờ, chỉ tính khi ≥ 720 nến và ≥ 720 phút có volume
+  nhất; dao động = độ lệch chuẩn mẫu % thay đổi giữa các nến 1m 24 giờ, chỉ tính khi ≥ 720 nến và ≥ 720 phút có volume (một phút có volume = volume quote ≥ $50; market thưa gần như phút nào cũng có giao dịch vài cent, nên đếm volume > 0 không chặn được)
   (thiếu → không đủ dữ liệu). Hệ số mới nhất trong `mm_model_coefs`, chưa có thì a = 0,25, k = 0,095 (version 0).
 - **Bot của người xem:** fill 24 giờ của bot MM live của chính người xem ở market đó → PnL giá gồm phần chưa chốt (vị thế
   ròng trong cửa sổ định giá ở giá đóng nến mới nhất), trộn (n × thực + 50 × mô hình) / (n + 50), n = số vòng đóng; nguồn
