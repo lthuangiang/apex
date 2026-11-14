@@ -83,6 +83,15 @@ export interface VolumeMakerState {
   fastRecent?: { t: number; p: string }[];
   /** Đang tạm rút lệnh mở vì giá chạy nhanh, tới thời điểm này (ms); null = bình thường. */
   fastPauseUntil?: number | null;
+  /** Binance guard: phía báo giá đang cũ (đã rút lệnh mở thêm vị thế, chờ hết lệch). */
+  guardStale?: { buy: boolean; sell: boolean };
+  /** Số liệu Binance guard từ lần ghi Decisions trước: số lần rút, thời gian mỗi phía bị rút, lúc bắt đầu rút. */
+  guardWin?: {
+    since: number;
+    pulls: number;
+    heldMs: { buy: number; sell: number };
+    from: { buy: number | null; sell: number | null };
+  };
 }
 
 /** Điều chỉnh Smart quoting của một phía: lùi `ticks` tick, hoặc rút hẳn lệnh mở (`pull`). */
@@ -91,6 +100,9 @@ interface SmartSide {
   pull: boolean;
   why: string;
 }
+
+/** Binance guard: ghi số liệu vào Decisions mỗi `logEveryMs`. */
+export const VM_GUARD = { logEveryMs: 60_000 } as const;
 
 /** Báo giá lại sớm (vì fill) nhưng cách lần trước ít nhất 2 s (VOLUME_MAKER.md 17.3.5). */
 export const VM_MIN_REQUOTE_MS = 2_000;
@@ -422,9 +434,11 @@ function quote(
   const extra = { buy: smart?.buy?.ticks ?? 0, sell: smart?.sell?.ticks ?? 0 };
   // Pause on fast moves: rút mọi lệnh mở, giữ lệnh đóng reduce-only (PM chốt C2).
   const paused = c.pauseOnFastMoves && s.fastPauseUntil != null && at < s.fastPauseUntil;
+  // Binance guard: phía đang cũ không đặt lệnh mở thêm vị thế (lệnh đóng vẫn đặt).
+  const stale = (side: "buy" | "sell") => c.smartQuoting && s.guardStale?.[side] === true;
   const pulled = {
-    buy: paused || smart?.buy?.pull === true,
-    sell: paused || smart?.sell?.pull === true,
+    buy: paused || smart?.buy?.pull === true || stale("buy"),
+    sell: paused || smart?.sell?.pull === true || stale("sell"),
   };
   const sideText = (side: "buy" | "sell") => {
     const x = smart?.[side];
@@ -718,6 +732,80 @@ function firstQuote(
   return guards(c, next, ctx, at) ?? { actions, state: next };
 }
 
+/**
+ * Binance guard: phía vừa thành "cũ" thì huỷ ngay lệnh mở thêm vị thế của phía đó (không chờ chu kỳ báo giá, lệnh đóng
+ * giữ nguyên); hết cũ thì báo giá lại ở nhịp kế tiếp. Mỗi phút ghi Decisions một dòng số liệu.
+ */
+function onGuard(
+  c: VolumeMakerConfig,
+  s: VolumeMakerState,
+  e: Extract<StrategyEvent, { type: "guard" }>,
+): StepResult<VolumeMakerState> {
+  if (e.market !== c.market || !c.smartQuoting) return { actions: [], state: s };
+  const prev = s.guardStale ?? { buy: false, sell: false };
+  const next = { buy: e.bid, sell: e.ask };
+  const win = s.guardWin ?? {
+    since: e.at,
+    pulls: 0,
+    heldMs: { buy: 0, sell: 0 },
+    from: { buy: null, sell: null },
+  };
+  const heldMs = { ...win.heldMs };
+  const from = { ...win.from };
+  let pulls = win.pulls;
+  const actions: StrategyAction[] = [];
+  const orders = { ...s.orders };
+  let requoteDue = s.requoteDue;
+  for (const side of ["buy", "sell"] as const) {
+    if (next[side] && !prev[side]) {
+      pulls += 1;
+      from[side] = e.at;
+      actions.push({
+        type: "log",
+        decision: "Binance moved first",
+        why: `At ${new Date(e.binanceAt).toISOString().slice(11, 23)} UTC Binance was ${Math.abs(e.gapBp).toFixed(2)} bp ${side === "sell" ? "above" : "below"} SoDEX; pulling the ${side === "sell" ? "ask" : "bid"}.`,
+      });
+      for (const [id, o] of Object.entries(orders)) {
+        if (o.status !== "live" || o.role !== "open" || o.side !== side) continue;
+        actions.push({ type: "cancel", clOrdID: id });
+        orders[id] = { ...o, status: "cancelling", since: e.at };
+      }
+    } else if (!next[side] && prev[side]) {
+      heldMs[side] += e.at - (from[side] ?? e.at);
+      from[side] = null;
+      requoteDue = true;
+    }
+  }
+  let state: VolumeMakerState = {
+    ...s,
+    orders,
+    requoteDue,
+    guardStale: next,
+    guardWin: { ...win, pulls, heldMs, from },
+  };
+  const span = e.at - win.since;
+  if (span >= VM_GUARD.logEveryMs) {
+    const held = (side: "buy" | "sell") =>
+      heldMs[side] + (from[side] !== null ? e.at - (from[side] ?? e.at) : 0);
+    const pct = (ms: number) => `${String(Math.round((Math.min(ms, span) / span) * 100))}%`;
+    actions.push({
+      type: "log",
+      decision: "Binance guard",
+      why: `Last ${String(Math.round(span / 1000))} s: quotes pulled ${String(pulls)} times ahead of a price move on Binance; the bid was off ${pct(held("buy"))} and the ask ${pct(held("sell"))} of the time.`,
+    });
+    state = {
+      ...state,
+      guardWin: {
+        since: e.at,
+        pulls: 0,
+        heldMs: { buy: 0, sell: 0 },
+        from: { buy: from.buy !== null ? e.at : null, sell: from.sell !== null ? e.at : null },
+      },
+    };
+  }
+  return { actions, state };
+}
+
 export function stepVolumeMaker(
   c: VolumeMakerConfig,
   raw: VolumeMakerState,
@@ -918,6 +1006,8 @@ export function stepVolumeMaker(
         state: { ...s, ledger: { ...s.ledger, position, avgCost }, drift: null, requoteDue: true },
       };
     }
+    case "guard":
+      return onGuard(c, s, e);
     case "fundingPaid":
     case "fundingRate":
     case "marginRatio":

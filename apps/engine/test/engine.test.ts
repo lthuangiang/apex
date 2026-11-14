@@ -569,6 +569,53 @@ describe("engine", () => {
     await e.stop();
   });
 
+  for (const smartQuoting of [true, false])
+    it(`${smartQuoting ? "cancels" : "leaves"} a Market Making ask on a Binance guard signal when Smart quoting is ${smartQuoting ? "on" : "off"}`, async () => {
+      const { eq } = await import("drizzle-orm");
+      const gw = new FakeGateway();
+      const { botId } = await seedBot("running", {
+        strategy: "volume_maker",
+        market: "BTC-USD",
+        engine: "perps",
+        config: {
+          market: "BTC-USD",
+          leverage: 1,
+          volumeTarget: "100000",
+          orderSize: "500",
+          distanceBp: "1",
+          maxInventory: "2000",
+          refreshSeconds: 3,
+          runUntil: "target_or_budget",
+          costBudget: "300",
+          inventoryLossStop: "60",
+          onStop: "close_inventory",
+          smartQuoting,
+        },
+      });
+      const e = makeEngine(gw, `w-guard-${String(smartQuoting)}`);
+      await e.tick();
+      await e.onPrice("BTC-USD", "100000", clock);
+      const ask = gw.received.filter((o) => o.side === "sell").at(-1)?.clOrdID;
+      expect(ask).toBeDefined();
+      const before = gw.cancelled.length;
+      await e.onMmGuard(
+        { s: "BTC-USD", ask: true, bid: false, gapBp: 1.2, T: clock - 150, at: clock - 20 },
+        clock,
+      );
+      // Bật Smart quoting: huỷ ngay đúng ask đang mở (không chờ chu kỳ báo giá), không đụng bid; tắt: không làm gì.
+      expect(gw.cancelled.slice(before)).toEqual(smartQuoting ? [ask] : []);
+      const decisions = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).map(
+        (x) => `${x.decision ?? ""} | ${x.why ?? ""}`,
+      );
+      if (smartQuoting) {
+        expect(decisions.some((d) => d.startsWith("Binance moved first | At "))).toBe(true);
+        expect(decisions).toContain(
+          `Ask cancelled | SoDEX confirmed the cancel at ${new Date(clock).toISOString().slice(11, 23)} UTC, 150 ms after the move on Binance.`,
+        );
+      } else expect(decisions.some((d) => d.startsWith("Binance moved first"))).toBe(false);
+      await e.stop();
+    });
+
   it("applies an edited version: cancels old orders, activates v2 and re-places from the new config", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();

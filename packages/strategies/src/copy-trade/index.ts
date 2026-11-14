@@ -591,6 +591,7 @@ function stepMarket(
     case "fundingRate":
     case "marginRatio":
     case "positionSync":
+    case "guard":
       return none(s);
   }
 }
@@ -818,6 +819,7 @@ export function stepCopyTrade(
     case "fundingRate":
     case "marginRatio":
     case "positionSync":
+    case "guard":
       return none2(s);
   }
 }

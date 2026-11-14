@@ -993,3 +993,88 @@ describe("volume maker — fast-move threshold on a coarse-tick market", () => {
     expect(hit.state.fastPauseUntil).toBe(1000 + 15_000);
   });
 });
+
+describe("volume maker — Binance guard in Smart quoting", () => {
+  const on = cfg({ quoteLevel: 0, smartQuoting: true });
+  const snap = (at: number) =>
+    ({
+      type: "timer",
+      at,
+      market: {
+        market: "BTC-USD",
+        candles: [],
+        book: { bid: "99999.9", ask: "100000", bidNotional: "100000", askNotional: "100000" },
+      },
+    }) as const;
+  const guard = (at: number, ask: boolean, bid = false) =>
+    ({
+      type: "guard",
+      at,
+      market: "BTC-USD",
+      ask,
+      bid,
+      gapBp: bid ? -0.81 : 0.93,
+      binanceAt: Date.UTC(2026, 10, 15, 0, 12, 29, 412) + at,
+    }) as const;
+  const sideOf = (tag: string) =>
+    tag.endsWith(":bid") ? "bid" : tag.endsWith(":ask") ? "ask" : tag;
+
+  it("cancels the stale side's quote at once, keeps the other, and quotes it again when it clears", () => {
+    const r = run(on, [...firstQuote(), snap(7000)]);
+    let s = r.s;
+    const step = (e: StrategyEvent) => {
+      const x = volumeMaker.step(on, s, e, ctx);
+      s = x.state;
+      return x.actions;
+    };
+    const live = () =>
+      Object.entries(s.orders)
+        .filter(([, o]) => o.status === "live")
+        .map(([, o]) => o.side);
+    expect(live().sort()).toEqual(["buy", "sell"]);
+    // Binance cao hơn: ask cũ → huỷ ngay ask (không chờ chu kỳ báo giá), bid giữ nguyên.
+    const out = step(guard(7500, true));
+    expect(out.filter((a) => a.type === "cancel")).toHaveLength(1);
+    expect(out).toContainEqual({
+      type: "log",
+      decision: "Binance moved first",
+      why: "At 00:12:36.912 UTC Binance was 0.93 bp above SoDEX; pulling the ask.",
+    });
+    expect(live()).toEqual(["buy"]);
+    // Báo giá lại khi ask còn cũ: chỉ đặt bid.
+    expect(places(step(snap(10_500))).map((o) => sideOf(o.tag))).toEqual(["bid"]);
+    // Hết cũ: báo giá lại sớm, có cả ask.
+    step(guard(11_000, false));
+    expect(s.requoteDue).toBe(true);
+    expect(
+      places(step(snap(13_000)))
+        .map((o) => sideOf(o.tag))
+        .sort(),
+    ).toEqual(["ask", "bid"]);
+  });
+
+  it("is ignored when Smart quoting is off", () => {
+    const c = cfg({ quoteLevel: 0 });
+    const r = run(c, [...firstQuote(), guard(1000, true)]);
+    expect(r.s.guardStale).toBeUndefined();
+  });
+
+  it("logs once a minute how often and how long each side was pulled", () => {
+    const r = run(on, [
+      ...firstQuote(),
+      snap(7000),
+      guard(10_000, true),
+      guard(13_000, false),
+      guard(20_000, false, true),
+      guard(21_000, false),
+      guard(70_000, true),
+    ]);
+    const logs = r.all.flatMap((a) =>
+      a.type === "log" && a.decision === "Binance guard" ? [a] : [],
+    );
+    expect(logs).toHaveLength(1);
+    expect(logs[0]?.why).toBe(
+      "Last 60 s: quotes pulled 3 times ahead of a price move on Binance; the bid was off 2% and the ask 5% of the time.",
+    );
+  });
+});

@@ -71,6 +71,20 @@ export type StrategyEvent =
   /** Vị thế thật trên SoDEX (Volume Maker đối soát với ledger, DEC-100). `size` có dấu: âm là short. */
   | { type: "positionSync"; at: number; market: string; size: string; entryPrice: string }
   /**
+   * Binance guard (Market Making): giá Binance đã lệch khỏi giá SoDEX nên báo giá phía đó đang cũ. `ask`: Binance cao
+   * hơn (ask dễ bị khớp trước khi giá SoDEX tăng); `bid`: ngược lại. Engine gửi khi trạng thái đổi. `gapBp`: độ lệch đã
+   * trừ chênh lệch nền; `binanceAt`: giờ Binance của lần cập nhật gây ra tín hiệu.
+   */
+  | {
+      type: "guard";
+      at: number;
+      market: string;
+      ask: boolean;
+      bid: boolean;
+      gapBp: number;
+      binanceAt: number;
+    }
+  /**
    * Fill của ví leader (Copy Trade, DEC-161). `at` = lúc engine nhận, `leaderAt` = lúc leader khớp; `quantity` luôn
    * dương. `positionAfter` có dấu (âm là short): vị thế của leader trên market sau fill này, tính theo market SoDEX.
    */

@@ -7,7 +7,8 @@ import { gzipSync } from "node:zlib";
 // thành một gzip member rồi nối vào cuối file: nhiều member nối nhau vẫn là gzip hợp lệ (`zcat` đọc được), dừng đột
 // ngột chỉ mất phần chưa ghi. Giữ 48 giờ. Mỗi dòng:
 //   {"k":"b","s":market,"r":giờ nhận ms,"E":giờ SoDEX ms,"b","B","a","A"}  (best bid / ask và size)
-//   {"k":"t","s":market,"r":giờ nhận ms,"T":giờ khớp ms,"i":trade id,"S":phía taker,"p","q"}
+//   {"k":"t","s":market,"r":giờ nhận ms,"T":giờ khớp ms,"i":trade id,"S":phía taker,"p","q","bi","si"}
+//   (`bi` / `si`: account SoDEX bên mua / bán; null ở file cũ hoặc khi SoDEX không gửi)
 
 export const MM_RAW_KEEP_MS = 48 * 3_600_000;
 const HOUR = 3_600_000;
@@ -30,10 +31,30 @@ export class MmRawRecorder {
   }
 
   trade(
-    t: { s: string; T: number; t?: number | string | undefined; S: string; p: string; q: string },
+    t: {
+      s: string;
+      T: number;
+      t?: number | string | undefined;
+      S: string;
+      p: string;
+      q: string;
+      bi?: number | string | undefined;
+      si?: number | string | undefined;
+    },
     at: number,
   ): void {
-    this.#push(at, { k: "t", s: t.s, r: at, T: t.T, i: t.t ?? null, S: t.S, p: t.p, q: t.q });
+    this.#push(at, {
+      k: "t",
+      s: t.s,
+      r: at,
+      T: t.T,
+      i: t.t ?? null,
+      S: t.S,
+      p: t.p,
+      q: t.q,
+      bi: t.bi ?? null,
+      si: t.si ?? null,
+    });
   }
 
   /** Nén phần đệm và nối vào file của từng giờ. Trả về số dòng đã ghi. */

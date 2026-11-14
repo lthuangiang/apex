@@ -57,6 +57,9 @@ export const wsMarketTradeSchema = z.object({
   S: z.enum(["BUY", "SELL"]),
   p: decimalStringSchema,
   q: decimalStringSchema,
+  /** Account SoDEX của bên mua / bên bán (`S` cho biết ai là taker). Dùng để biết ai khớp lệnh của maker. */
+  bi: z.union([z.number().int(), z.string()]).optional(),
+  si: z.union([z.number().int(), z.string()]).optional(),
 });
 export type WsMarketTrade = z.infer<typeof wsMarketTradeSchema>;
 

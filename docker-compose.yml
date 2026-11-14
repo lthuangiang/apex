@@ -198,6 +198,9 @@ services:
       <<: *app-env
       # Lưu thô bookTicker + trade theo giờ, giữ 48 giờ (DEC-228); chỉ bản leader ghi.
       MM_RAW_DIR: /home/node/mm-raw
+      # Binance guard của Market Making (Smart quoting): ngưỡng lệch (bp); 0 = tắt.
+      MM_GUARD_BP: ${MM_GUARD_BP:-0.75}
+      MM_GUARD_HOLD_MS: ${MM_GUARD_HOLD_MS:-500}
     volumes: [mmraw:/home/node/mm-raw]
     deploy: { replicas: 2 }
 

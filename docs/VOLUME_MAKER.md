@@ -64,16 +64,27 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   thế 0 → 0, đảo chiều tách làm hai, lỗ theo Price PnL chưa trừ phí). Câu "In short" chỉ hiện khi một bước giá nhỏ hơn
   trung vị |Δ giá giữa 30 s| trên các fill; câu "Losers lose more steps than winners win." chỉ hiện khi lỗ trung bình mỗi
   đơn vị của vòng lỗ lớn hơn lãi trung bình của vòng lãi. API `GET /api/v1/bots/:id/mm-markout`.
-- **Ways to lower it**: mở `/bots/:id/edit?suggest=<option>`, chỉ điền sẵn form (không lưu nháp, không tự áp).
+- **Ways to lower it** (**đã ẩn**, DEC-241: gợi ý chưa đúng; logic `?suggest=` vẫn còn): mở `/bots/:id/edit?suggest=<option>`, chỉ điền sẵn form (không lưu nháp, không tự áp).
   `quote-back` = `quoteLevel` + 1 (tối đa 20); `pause-fast` bật cài đặt tương ứng (closeAtEntry là BETA, không có trong "Ways to lower it" cho tới khi replay v2 chứng minh giảm lỗ); "Move to a cheaper
   market" mở bước chọn market.
-- **Close only at your entry price or better** (`closeAtEntry`, mặc định tắt, BETA): lệnh đóng vẫn post-only reduce-only, giá =
+- **Close only at your entry price or better** (`closeAtEntry`, mặc định tắt, BETA; **ẩn khỏi form** từ DEC-241, config cũ vẫn chạy): lệnh đóng vẫn post-only reduce-only, giá =
   max(giá tốt nhất phía đóng, giá vào) khi long, min(…) khi short; giá vào (`avgCost`) chưa gồm phí, làm tròn tick về phía
   có lợi. Vị thế mở (tính từ lúc rời trạng thái phẳng) quá 30 phút → đóng theo cách thường, Decisions ghi một lần
   "Closing at the best price". Trần chi phí và `inventoryLossStop` vẫn áp dụng như cũ.
-- **Pause on fast moves** (`pauseOnFastMoves`, mặc định tắt): giá (cao nhất − thấp nhất) trong 6 s gần nhất ≥ max(3 bước giá, 2 bp của giá) → huỷ
+- **Pause on fast moves** (`pauseOnFastMoves`, mặc định tắt; **ẩn khỏi form** từ DEC-241, config cũ vẫn chạy): giá (cao nhất − thấp nhất) trong 6 s gần nhất ≥ max(3 bước giá, 2 bp của giá) → huỷ
   ngay lệnh mở, chỉ giữ lệnh đóng reduce-only; mỗi lần kích hoạt gia hạn thêm 15 s; hết hạn thì báo giá lại. Decisions ghi
   "Quotes paused on a fast move" / "Quoting again after a fast move". Độc lập với Smart quoting.
+- **Binance guard** (một phần của **Smart quoting**, DEC-241): `marketdata` nghe `bookTicker` của Binance USDT-M
+  futures cho mọi market có bot MM mà Binance có (`BTC-USD` → `BTCUSDT`), so giá giữa Binance với giá giữa SoDEX, trừ
+  chênh lệch nền (trung vị 60 s, cần ≥ 30 mẫu). Lệch ≥ `MM_GUARD_BP` (mặc định 0,75 bp; 0 = tắt) → gửi
+  `md.<market>.guard` "ask cũ" (Binance cao hơn) hoặc "bid cũ", giữ thêm `MM_GUARD_HOLD_MS` (500 ms) sau khi hết lệch.
+  Engine đưa ngay cho bot bật Smart quoting trên market đó: bot **huỷ ngay** lệnh mở thêm vị thế của phía cũ (không chờ chu
+  kỳ báo giá 2 s; lệnh đóng giữ nguyên), không đặt lại phía đó cho tới khi hết cũ, rồi báo giá lại ở nhịp kế tiếp.
+  Decisions: "Binance moved first" (giờ Binance tới mili giây, độ lệch, phía bị rút), "Ask cancelled" / "Bid cancelled"
+  (giờ SoDEX xác nhận huỷ và số ms tính từ lúc Binance chạy), mỗi phút "Binance guard" (số lần rút, % thời gian mỗi phía
+  bị rút). Engine log `mm guard` với các mốc thời gian. Lý do (đo trên mainnet 2026-11-14): Binance đi trước giá SoDEX
+  BTC khoảng 0,25 s; account SoDEX 23342 (MM lớn) gom báo giá của maker nhỏ 0,25–0,5 s sau khi Binance chạy (169 / 170
+  fill của một bot thật); giá trade công khai giữ `bi` / `si` (account mua / bán) trong file thô.
 
 ### 17.7 Gợi ý market theo chi phí / $1M (DEC-228, thay phần xếp hạng của DEC-227)
 - **UI:** không còn bước "Choose a market" riêng. `/bots/new/volume_maker` mở thẳng form; dưới field Contract có khối

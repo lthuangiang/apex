@@ -535,6 +535,7 @@ export function stepFundingArb(
     }
     case "orderAck":
     case "positionSync":
+    case "guard":
     case "leaderFill":
     case "leaderPosition":
       return { actions: [], state: s };
