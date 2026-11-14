@@ -242,6 +242,37 @@ describe("liveHints", () => {
     ).toBeUndefined();
   });
 
+  it("warns under the stop when cross margin may put it past liquidation", () => {
+    const hint = { key: "crossLiq", params: {} };
+    const dca = { ...emptyValues("futures_dca"), marginMode: "cross", leverage: "20" };
+    expect(liveHints("futures_dca", { ...dca, stopLossPct: "12" }, null).stopLossPct).toEqual(hint);
+    expect(
+      liveHints("futures_dca", { ...dca, stopLossPct: "4" }, null).stopLossPct,
+    ).toBeUndefined();
+    // Isolated: API chặn hẳn, không cần gợi ý này.
+    expect(
+      liveHints("futures_dca", { ...dca, marginMode: "isolated", stopLossPct: "12" }, null)
+        .stopLossPct,
+    ).toBeUndefined();
+    const grid = {
+      ...emptyValues("futures_grid"),
+      marginMode: "cross",
+      leverage: "10",
+      direction: "neutral",
+      lowerPrice: "90",
+      upperPrice: "110",
+      gridLevels: "5",
+      spacing: "arithmetic",
+      margin: "100",
+      stopBelow: "86",
+      stopAbove: "114",
+    };
+    const h = liveHints("futures_grid", grid, null);
+    expect(h.stopBelow).toEqual(hint);
+    expect(h.stopAbove).toEqual(hint);
+    expect(liveHints("futures_grid", { ...grid, stopBelow: "87" }, null).stopBelow).toBeUndefined();
+  });
+
   it("compares grid bounds with the last price and describes the step", () => {
     const v = {
       ...emptyValues("spot_grid"),

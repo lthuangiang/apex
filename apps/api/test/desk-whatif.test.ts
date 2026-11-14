@@ -217,7 +217,8 @@ describe("what-if and Apply", () => {
 
   it("does not queue a job when there is no concrete fix, and refuses options without a result", async () => {
     const { client } = await deskUser("whatif-nofix@example.com");
-    const botId = await bot(client, "futures_grid", grid, "ETH Grid");
+    // Bot tạo qua API phải có stop trước giá thanh lý (isolated): 5× thay vì 10×.
+    const botId = await bot(client, "futures_grid", { ...grid, leverage: 5 }, "ETH Grid");
     await env.pool.query(
       "update bots set state = 'paused', reason_code = 'BOT_MAX_LOSS' where id = $1",
       [botId],

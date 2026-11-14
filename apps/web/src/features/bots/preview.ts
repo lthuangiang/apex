@@ -6,7 +6,14 @@ import {
   roundTripFeePct,
   type Strategy,
 } from "@drift/shared";
-import { nextRun, REBALANCE_CHECK_MS, safetyOffsetPct, VM_DEFAULTS } from "@drift/strategies";
+import {
+  gridStopLimits,
+  nextRun,
+  perpsStopMaxPct,
+  REBALANCE_CHECK_MS,
+  safetyOffsetPct,
+  VM_DEFAULTS,
+} from "@drift/strategies";
 
 import type { FormValues } from "./fields";
 
@@ -455,6 +462,55 @@ export interface LiveHint {
  * Field không có trong kết quả thì giữ gợi ý tĩnh.
  */
 export function liveHints(
+  strategy: Strategy,
+  v: FormValues,
+  last: string | null,
+): Record<string, LiveHint> {
+  return { ...baseHints(strategy, v, last), ...crossStopHints(strategy, v) };
+}
+
+/**
+ * Cross margin: stop có thể nằm sau giá thanh lý (giá thanh lý tuỳ cả số dư Perps nên không chặn như isolated,
+ * DEC-237). Cùng ngưỡng với API: DCA % stop ≥ 90% / đòn bẩy; Grid lỗ tại stop với vị thế đầy > 90% margin.
+ */
+function crossStopHints(strategy: Strategy, v: FormValues): Record<string, LiveHint> {
+  if (v.marginMode !== "cross") return {};
+  const lev = int(v.leverage);
+  if (lev === null || lev <= 0) return {};
+  const hint = { key: "crossLiq", params: {} };
+  const out: Record<string, LiveHint> = {};
+  const field =
+    strategy === "futures_dca"
+      ? "stopLossPct"
+      : strategy === "adaptive_dca"
+        ? "hardStopLossPct"
+        : null;
+  if (field !== null) {
+    const pctv = num(v[field]);
+    if (pctv?.gte(perpsStopMaxPct(lev)) === true) out[field] = hint;
+  }
+  if (strategy === "futures_grid") {
+    const cfg = {
+      direction: v.direction,
+      lowerPrice: v.lowerPrice,
+      upperPrice: v.upperPrice,
+      gridLevels: int(v.gridLevels),
+      spacing: v.spacing,
+      margin: v.margin,
+    };
+    if (num(v.lowerPrice) === null || num(v.upperPrice) === null || num(v.margin) === null)
+      return out;
+    if (cfg.gridLevels === null || cfg.gridLevels < 2) return out;
+    const { below, above } = gridStopLimits(cfg, lev);
+    const sb = num(v.stopBelow);
+    const sa = num(v.stopAbove);
+    if (below !== null && sb?.lte(below) === true) out.stopBelow = hint;
+    if (above !== null && sa?.gte(above) === true) out.stopAbove = hint;
+  }
+  return out;
+}
+
+function baseHints(
   strategy: Strategy,
   v: FormValues,
   last: string | null,

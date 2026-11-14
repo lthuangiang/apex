@@ -63,8 +63,8 @@ Preview: order size per level, step %, số lệnh lúc start, round-trip fees. 
 | 3 | Spacing | Arithmetic | Arithmetic or Geometric | — |
 | 3 | Margin | — | ≤ free Perps balance | More than your available Perps balance. |
 | 3 | Start when price crosses | empty | Optional | Must be inside the grid range. |
-| 4 | Stop if price falls below | lower − 3% | Below lower; must be before liquidation | Must be closer than liquidation. |
-| 4 | Stop if price rises above | empty | Optional; above upper | Must be above the upper price. |
+| 4 | Stop if price falls below | lower − 3% | Below lower; isolated: lỗ khi chạm stop với mọi mức long đã khớp (mọi mức trừ mức trên cùng) ≤ 90% margin; cross: chỉ cảnh báo dưới ô (DEC-237) | Past liquidation at {L}× isolated. Use above {price}. |
+| 4 | Stop if price rises above | — | **Bắt buộc với Short / Neutral**; above upper; isolated: lỗ khi chạm stop với mọi mức short đã khớp (mọi mức trừ mức dưới cùng) ≤ 90% margin; cross: chỉ cảnh báo | Required. / Past liquidation at {L}× isolated. Use below {price}. |
 | 4 | Max loss for this bot | 10% of margin | < margin | Must be below the margin. |
 | 4 | When the bot stops | Close position at market | Close at market / Keep position | — |
 
@@ -115,7 +115,7 @@ Preview: vốn tối đa dùng, mức giảm được bao phủ, số lệnh lú
 | 3 | Price move to first safety | 1.5% | 0.1–20% | Allowed 0.1–20%. |
 | 3 | Step / size multiplier | 1.3× / 1.5× | 1–3× | Allowed 1–3×. |
 | 3 | Take profit | 1.2% | > round-trip fees | Must be above round-trip fees. |
-| 4 | Stop loss | 12% | Required; must be before liquidation | Must be closer than liquidation. |
+| 4 | Stop loss | 12% | Required; isolated: < 90% / đòn bẩy (tính từ giá vốn); cross: chỉ cảnh báo dưới ô "With cross margin, liquidation depends on your whole Perps balance. This stop may be past it." (DEC-237) | Past liquidation at {L}× isolated. Use below {pct}%. |
 | 4 | Max loss for this bot | — | < max margin used | Must be below max margin used. |
 
 Preview: margin tối đa dùng, liquidation khi đủ size (từ SoDEX), mức biến động được bao phủ, funding. Backtest: net result, completed cycles, max drawdown, stop loss hits.
