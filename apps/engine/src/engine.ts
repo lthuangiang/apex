@@ -574,57 +574,96 @@ export class Engine {
     fee: string,
     at: number,
   ): Promise<void> {
-    const key = `${accountId}:${clOrdID}`;
-    const next = (this.#fillQueues.get(key) ?? Promise.resolve())
-      .catch(() => undefined)
-      .then(() => this.#applyOrderFill(accountId, clOrdID, totalFilled, avgPrice, fee, at));
-    this.#fillQueues.set(key, next);
-    try {
-      await next;
-    } finally {
-      if (this.#fillQueues.get(key) === next) this.#fillQueues.delete(key);
-    }
+    await this.#inOrderQueue(accountId, clOrdID, () =>
+      this.#applyOrderFill(accountId, clOrdID, totalFilled, avgPrice, fee, at),
+    );
   }
 
   /**
-   * User stream báo lệnh đã kết thúc mà chưa khớp gì (REJECTED / CANCELED / EXPIRED, DEC-122). Post-only có thể được
-   * SoDEX nhận rồi bị bộ khớp lệnh từ chối sau; trước đây DRIFT chỉ đọc fill nên lệnh kẹt "open" và chặn lệnh ngược
-   * chiều như self-trade (DEC-121). Có khớp một phần thì để fill và đối soát xử lý.
+   * Lệnh đã kết thúc trên SoDEX (FILLED / CANCELED / EXPIRED / REJECTED), từ user stream hoặc đối soát. Báo chiến lược
+   * đúng một lần mỗi lệnh (`orders.done_fed_at`): `orderReject` khi bị từ chối mà chưa khớp gì, còn lại `orderDone`,
+   * kể cả khi đã khớp một phần rồi hết hạn / bị huỷ (trước đây chỉ báo khi chưa khớp gì nên chiến lược đợi mãi phần
+   * còn lại). Chạy chung hàng đợi với fill của lệnh đó nên fill luôn tới chiến lược trước. Lệnh chưa khớp gì thì cập
+   * nhật trạng thái luôn, không để kẹt "open" (DEC-122).
    */
   async onOrderClosed(
     accountId: string,
     clOrdID: string,
-    state: "rejected" | "cancelled",
+    state: "rejected" | "cancelled" | "filled",
     at: number,
     reason: string | null = null,
+  ): Promise<void> {
+    await this.#inOrderQueue(accountId, clOrdID, () =>
+      this.#finishOrder(accountId, clOrdID, state, at, reason),
+    );
+  }
+
+  async #finishOrder(
+    accountId: string,
+    clOrdID: string,
+    state: "rejected" | "cancelled" | "filled",
+    at: number,
+    reason: string | null,
   ): Promise<void> {
     const [o] = await this.#d.db
       .select()
       .from(orders)
       .where(and(eq(orders.sodexAccountId, accountId), eq(orders.clOrdId, clOrdID)))
       .limit(1);
-    if (o === undefined || dec(o.filledSize).gt(0)) return;
-    if (!["open", "partially_filled", "unknown"].includes(o.status)) return;
+    if (o?.doneFedAt !== null) return;
     const r = this.#runners.get(o.botId);
     if (r === undefined || r.paper) return;
-    await this.#fenced(r, (tx) =>
-      tx
-        .update(orders)
-        .set({
-          status: state,
-          reconciledAt: new Date(at),
-          ...(state === "rejected" ? { rejectCode: reason ?? "REJECTED" } : {}),
-        })
-        .where(eq(orders.id, o.id)),
-    );
+    const nothing = !dec(o.filledSize).gt(0);
+    const open = ["open", "partially_filled", "unknown"].includes(o.status);
+    const rejected = state === "rejected" && nothing;
+    const status = rejected
+      ? "rejected"
+      : dec(o.filledSize).gte(o.size)
+        ? "filled"
+        : open
+          ? "cancelled"
+          : o.status;
+    const fed = await this.#markDone(r, o.id, {
+      ...(open ? { status, reconciledAt: new Date(at) } : {}),
+      ...(rejected && open ? { rejectCode: reason ?? "REJECTED" } : {}),
+    });
+    if (!fed) return;
     this.#pendingCancels.get(o.botId)?.delete(clOrdID);
     this.#openChecks.delete(o.id);
     await this.#feed(
       r,
-      state === "rejected"
-        ? { type: "orderReject", at, clOrdID, code: reason ?? "REJECTED" }
+      rejected
+        ? { type: "orderReject", at, clOrdID, code: o.rejectCode ?? reason ?? "REJECTED" }
         : { type: "orderDone", at, clOrdID },
     );
+  }
+
+  /** Đánh dấu đã báo kết thúc (chỉ lần đầu thắng); `true` khi lần gọi này là lần đánh dấu. */
+  async #markDone(
+    fence: { shard: number; epoch: number },
+    orderId: string,
+    set: Partial<typeof orders.$inferInsert> = {},
+  ): Promise<boolean> {
+    const rows = await this.#fenced(fence, (tx) =>
+      tx
+        .update(orders)
+        .set({ ...set, doneFedAt: new Date(this.#d.now()) })
+        .where(and(eq(orders.id, orderId), isNull(orders.doneFedAt)))
+        .returning({ id: orders.id }),
+    );
+    return rows.length > 0;
+  }
+
+  /** Các việc của cùng một lệnh (fill, kết thúc) chạy lần lượt theo thứ tự tới. */
+  async #inOrderQueue(accountId: string, clOrdID: string, run: () => Promise<void>): Promise<void> {
+    const key = `${accountId}:${clOrdID}`;
+    const next = (this.#fillQueues.get(key) ?? Promise.resolve()).catch(() => undefined).then(run);
+    this.#fillQueues.set(key, next);
+    try {
+      await next;
+    } finally {
+      if (this.#fillQueues.get(key) === next) this.#fillQueues.delete(key);
+    }
   }
 
   /** User stream có thể đã mất tin: đối soát lệnh Volume Farm của account trong ít phút tới (DEC-87). */
@@ -1705,7 +1744,9 @@ export class Engine {
     if (r.strategy !== Strategy.volumeMaker) return;
     const at = this.#d.now();
     for (const res of results) {
-      if (res.outcome === "ok")
+      const o = open.find((x) => x.clOrdId === res.clOrdID);
+      // Đánh dấu đã báo: tin CANCELED tới sau từ user stream không báo lần hai.
+      if (res.outcome === "ok" && o !== undefined && (await this.#markDone(r, o.id)))
         await this.#feed(r, { type: "orderDone", at, clOrdID: res.clOrdID });
     }
   }
@@ -2148,9 +2189,7 @@ export class Engine {
               .where(eq(orders.id, o.id)),
           );
           this.#openChecks.delete(o.id);
-          const r = this.#runners.get(o.botId);
-          if (r !== undefined)
-            await this.#feed(r, { type: "orderDone", at: now, clOrdID: o.clOrdId });
+          await this.onOrderClosed(o.sodexAccountId, o.clOrdId, "cancelled", now);
           continue;
         }
         // Ngoài 500 lệnh lịch sử gần nhất: không suy đoán kết quả, chuyển sang Failed & unknown để người dùng thấy.
@@ -2430,6 +2469,12 @@ export class Engine {
         })
         .where(eq(botRuntime.botId, o.botId));
     });
+    // Lệnh đã kết thúc trên SoDEX: báo chiến lược một lần (sau fill ở trên, cùng hàng đợi của lệnh).
+    if (
+      r !== undefined &&
+      (found.status === "filled" || found.status === "cancelled" || found.status === "rejected")
+    )
+      await this.onOrderClosed(account.id, o.clOrdId, found.status, now);
   }
 
   /** Approval phí khác 50 → pause mọi bot của account (quy tắc 1.5), xử lý ở engine. */
