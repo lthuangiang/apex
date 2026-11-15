@@ -80,7 +80,9 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - **Định giá theo Binance** (một phần của **Smart quoting**; DEC-242, thay "Binance guard" của DEC-241):
   `marketdata` nghe `bookTicker` của Binance USDT-M futures cho mọi market có bot MM mà Binance có (`BTC-USD` →
   `BTCUSDT`; danh sách đọc lại mỗi 30 s), quy đổi giá giữa Binance về SoDEX bằng chênh lệch nền (trung vị 60 s, cần ≥ 30
-  mẫu) và gửi `md.<market>.fair` khi giá đổi ≥ 0,25 bp (không dày hơn 250 ms, nhắc lại mỗi 2 s). Bot bật Smart quoting:
+  mẫu) và gửi `md.<market>.fair` khi giá đổi ≥ 0,25 bp (không dày hơn 250 ms, nhắc lại mỗi 2 s); lần cập nhật Binance cuối
+  đã nhận quá 1 s thì không gửi và không lấy mẫu nền (DEC-243). Bot chỉ dùng giá có giờ Binance trong vòng 1,5 s
+  (không phải theo lúc engine nhận). Bot bật Smart quoting:
   (1) lệnh **mở thêm vị thế** không bao giờ vượt giá này ± 0,5 bp (`VM_ORACLE.marginBp`): ask ≥ giá × 1,00005 (làm tròn
   lên tick), bid ≤ giá × 0,99995 (làm tròn xuống); lệnh đóng vẫn đứng ở giá tốt nhất; giá cũ hơn 3 s thì không dùng.
   (2) Lệnh mở đang sống mà giá Binance đã chạy qua (ask thấp hơn, bid cao hơn) thì rút ngay và báo giá lại sớm.

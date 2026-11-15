@@ -86,6 +86,8 @@ export interface VolumeMakerState {
   /** Giá Binance quy đổi gần nhất (Smart quoting) và lúc nhận. */
   fair?: string | null;
   fairAt?: number | null;
+  /** Giờ Binance của giá đó: độ mới tính theo giờ này (luồng Binance khựng thì giá cũ dù engine vừa nhận). */
+  fairBinanceAt?: number | null;
   /** Số liệu định giá theo Binance từ lần ghi Decisions trước: số lệnh bị rút, số lệnh đặt lùi ra. */
   oracleWin?: { since: number; pulls: number; clamps: number };
 }
@@ -99,9 +101,10 @@ interface SmartSide {
 
 /**
  * Định giá theo Binance (Smart quoting): lệnh mở thêm vị thế không bao giờ vượt giá Binance quy đổi ± `marginBp`; lệnh
- * mở mà giá Binance đã chạy qua thì rút. Giá cũ hơn `maxAgeMs` thì không dùng. Số liệu ghi Decisions mỗi `logEveryMs`.
+ * mở mà giá Binance đã chạy qua thì rút. Giá cũ hơn `maxAgeMs` (tính theo giờ Binance) thì không dùng. Số liệu ghi
+ * Decisions mỗi `logEveryMs`.
  */
-export const VM_ORACLE = { marginBp: 0.5, maxAgeMs: 3_000, logEveryMs: 60_000 } as const;
+export const VM_ORACLE = { marginBp: 0.5, maxAgeMs: 1_500, logEveryMs: 60_000 } as const;
 
 /** Báo giá lại sớm (vì fill) nhưng cách lần trước ít nhất 2 s (VOLUME_MAKER.md 17.3.5). */
 export const VM_MIN_REQUOTE_MS = 2_000;
@@ -440,7 +443,10 @@ function quote(
   // Định giá theo Binance: lệnh mở thêm vị thế không vượt giá Binance quy đổi ± lề (bán không thấp hơn, mua không cao
   // hơn). Lệnh đóng vẫn đứng ở giá tốt nhất.
   const fair =
-    c.smartQuoting && s.fair != null && s.fairAt != null && at - s.fairAt <= VM_ORACLE.maxAgeMs
+    c.smartQuoting &&
+    s.fair != null &&
+    s.fairBinanceAt != null &&
+    at - s.fairBinanceAt <= VM_ORACLE.maxAgeMs
       ? dec(s.fair)
       : null;
   let clamps = 0;
@@ -792,6 +798,9 @@ function onFair(
   e: Extract<StrategyEvent, { type: "fair" }>,
 ): StepResult<VolumeMakerState> {
   if (e.market !== c.market || !c.smartQuoting) return { actions: [], state: s };
+  // Giá Binance đã cũ (luồng Binance khựng, tin tới trễ): không dùng để rút lệnh; lần báo giá kế tiếp cũng bỏ qua.
+  if (e.at - e.binanceAt > VM_ORACLE.maxAgeMs)
+    return { actions: [], state: { ...s, fair: e.fair, fairAt: e.at, fairBinanceAt: e.binanceAt } };
   const fair = dec(e.fair);
   const actions: StrategyAction[] = [];
   const orders = { ...s.orders };
@@ -815,6 +824,7 @@ function onFair(
     orders,
     fair: e.fair,
     fairAt: e.at,
+    fairBinanceAt: e.binanceAt,
     oracleWin: { ...win, pulls },
     ...(pulls > win.pulls ? { requoteDue: true } : {}),
   };

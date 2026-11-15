@@ -43,6 +43,18 @@ describe("BinanceFair", () => {
     expect(sent.at(-1)?.T).toBe(40_601);
   });
 
+  it("sends nothing while the Binance feed is stalled for more than 1 s", () => {
+    const { f, sent } = setup();
+    const n = sent.length;
+    // Chỉ có SoDEX cập nhật, Binance im từ 40 s: không gửi giá cũ.
+    f.onSodex("BTC-USD", "99990", "99992", 42_500);
+    f.onSodex("BTC-USD", "99980", "99982", 44_000);
+    expect(sent).toHaveLength(n);
+    // Binance có lại: gửi ngay.
+    f.onBinance("BTC-USD", "100030", "100032", 44_101, 44_100);
+    expect(sent.length).toBeGreaterThan(n);
+  });
+
   it("forgets a market that is no longer watched", () => {
     const { f, sent } = setup();
     f.setMarkets([]);
