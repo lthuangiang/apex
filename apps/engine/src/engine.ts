@@ -115,6 +115,12 @@ export const CANCEL_RETRY_MS = 5_000;
  * vào và nằm đó như lệnh mồ côi. Lệnh nhận chưa quá `windowMs` thì huỷ lại sau `retryMs` thay vì `CANCEL_RETRY_MS`.
  */
 export const CANCEL_NOT_BOOKED = { windowMs: 5_000, retryMs: 1_000 } as const;
+/**
+ * Lệnh huỷ tới khi lệnh đặt còn đang gửi (DEC-254): dòng lệnh chưa có hoặc còn `unknown` chưa được nhận. Giữ trong danh
+ * sách chờ huỷ và huỷ ngay khi lệnh đặt được nhận (thử lại sau `CANCEL_NOT_BOOKED.retryMs` nếu không); dòng mãi không
+ * xuất hiện thì bỏ sau `maxMs`. Trước đây lệnh huỷ bị bỏ, lệnh vào sổ và nằm tới lúc quét lệnh mồ côi (~25 s).
+ */
+export const CANCEL_INFLIGHT = { maxMs: 10_000 } as const;
 /** Market Making: lệnh còn "open" lâu hơn mức này mà chiến lược không còn theo dõi thì engine huỷ (DEC-111). */
 export const MAKER_ORPHAN_MS = 15_000;
 /** Bot paper: ghi số dư giả mỗi phút (biểu đồ theo ngày ở trang Fake-money test, DEC-105). */
@@ -335,6 +341,8 @@ export class Engine {
   /** Lệnh đang chờ huỷ lại theo bot (huỷ trước đó chưa được SoDEX xác nhận), và lần thử gần nhất. */
   readonly #pendingCancels = new Map<string, Set<string>>();
   readonly #cancelRetryAt = new Map<string, number>();
+  /** Lệnh huỷ đang chờ lệnh đặt được nhận (DEC-254): clOrdID → lúc bắt đầu chờ. */
+  readonly #inflightCancels = new Map<string, number>();
   /** Lần cuối ghi số dư giả của bot paper. */
   readonly #paperSnapAt = new Map<string, number>();
   #stopped = false;
@@ -1549,6 +1557,9 @@ export class Engine {
             });
             await this.#ack(r, at);
             await this.#feed(r, { type: "orderAck", at, clOrdID: res.clOrdID });
+            // Chiến lược đã rút lệnh này lúc nó còn đang gửi (DEC-254): huỷ ngay khi SoDEX nhận.
+            if (this.#pendingCancels.get(r.botId)?.has(res.clOrdID) === true)
+              await this.#cancel(r, [res.clOrdID]);
           } else if (res.outcome === "not_sent") {
             // Chưa rời DRIFT: không phải `unknown`, không cần đối soát. Ghi not_placed để sổ lệnh đúng.
             await this.#fenced(r, (tx) =>
@@ -1781,10 +1792,31 @@ export class Engine {
       .where(and(eq(orders.sodexAccountId, r.account.id), inArray(orders.clOrdId, [...clOrdIDs])));
     const open = rows.filter((o) => o.status === "open" || o.status === "partially_filled");
     const pending = this.#pendingCancels.get(r.botId) ?? new Set<string>();
+    // Lệnh đặt còn đang gửi (chưa có dòng, hoặc `unknown` chưa được nhận): giữ chờ huỷ, huỷ khi lệnh được nhận (DEC-254).
+    const startedAt = this.#d.now();
+    const inflight = clOrdIDs.filter((id) => {
+      const row = rows.find((o) => o.clOrdId === id);
+      if (row !== undefined && !(row.status === "unknown" && row.ackedAt === null)) {
+        this.#inflightCancels.delete(id);
+        return false;
+      }
+      const since = this.#inflightCancels.get(id) ?? startedAt;
+      if (startedAt - since >= CANCEL_INFLIGHT.maxMs) {
+        this.#inflightCancels.delete(id);
+        return false;
+      }
+      this.#inflightCancels.set(id, since);
+      return true;
+    });
     // Không còn gì mở: bỏ khỏi danh sách chờ huỷ lại.
-    for (const id of clOrdIDs) if (!open.some((o) => o.clOrdId === id)) pending.delete(id);
+    for (const id of clOrdIDs)
+      if (!open.some((o) => o.clOrdId === id) && !inflight.includes(id)) pending.delete(id);
+    for (const id of inflight) pending.add(id);
+    if (inflight.length > 0)
+      this.#cancelRetryAt.set(r.botId, startedAt - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
     if (open.length === 0) {
       if (pending.size === 0) this.#pendingCancels.delete(r.botId);
+      else this.#pendingCancels.set(r.botId, pending);
       return;
     }
     let results: Awaited<ReturnType<Gateway["cancel"]>>;

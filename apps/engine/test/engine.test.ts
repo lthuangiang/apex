@@ -76,6 +76,8 @@ class FakeGateway implements Gateway {
   notSent: NotSentCode | null = null;
   /** SoDEX từ chối mọi lệnh với mã + câu lỗi này. */
   reject: { code: string; message: string | null } | null = null;
+  /** Giữ lần submit kế tiếp tới khi promise này xong (lệnh "đang gửi"). */
+  hold: Promise<void> | null = null;
   #id = 1n;
 
   setLeverage(
@@ -108,6 +110,11 @@ class FakeGateway implements Gateway {
     builderFeeRate?: number,
   ): Promise<SubmitResult[]> {
     this.builderRates.push(builderFeeRate);
+    const held = this.hold;
+    if (held !== null) {
+      this.hold = null;
+      return held.then(() => this.submit(_a, list, fence, builderFeeRate));
+    }
     // Signer từ chối ký với epoch cũ (fencing ở signer).
     if (fence.epoch < this.rejectEpochBelow) return Promise.reject(new Error("stale epoch"));
     const code = this.notSent;
@@ -617,6 +624,39 @@ describe("engine", () => {
       } else expect(decisions.some((d) => d.startsWith("Ask pulled"))).toBe(false);
       await e.stop();
     });
+
+  it("cancels a quote pulled while it was still being sent, as soon as SoDEX takes it (DEC-254)", async () => {
+    const { and, eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", mmSmart(true));
+    const e = makeEngine(gw, "w-inflight");
+    await e.tick();
+    let release: () => void = () => undefined;
+    gw.hold = new Promise<void>((r) => {
+      release = r;
+    });
+    const placing = e.onPrice("BTC-USD", "100000", clock);
+    // Lệnh đã ghi (unknown) và đang chờ SoDEX trả lời.
+    let ask: { clOrdId: string; price: string | null } | undefined;
+    for (let i = 0; i < 50 && ask === undefined; i += 1) {
+      [ask] = await db
+        .select({ clOrdId: orders.clOrdId, price: orders.price })
+        .from(orders)
+        .where(and(eq(orders.botId, botId), eq(orders.side, "sell"), eq(orders.status, "unknown")));
+      if (ask === undefined) await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(ask).toBeDefined();
+    // Binance chạy xuyên ask khi lệnh còn đang gửi: lệnh huỷ không bị bỏ.
+    await e.onMmFair(
+      { s: "BTC-USD", fair: String(Number(ask?.price) + 5), T: clock - 100, at: clock - 20 },
+      clock,
+    );
+    expect(gw.cancelled).not.toContain(ask?.clOrdId);
+    release();
+    await placing;
+    expect(gw.cancelled).toContain(ask?.clOrdId);
+    await e.stop();
+  });
 
   it("keeps the open orders of a paused Market Making bot when the Binance price moves (DOMAIN 7.2)", async () => {
     const { eq } = await import("drizzle-orm");
