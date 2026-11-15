@@ -133,6 +133,13 @@ export const VM_MIN_REQUOTE_MS = 2_000;
  * mức. Mỗi `logEveryMs` ghi số request đã gửi.
  */
 export const VM_BOOK_STREAM = { minRequoteMs: 1_500, freshMs: 1_500, logEveryMs: 60_000 } as const;
+/**
+ * Lệnh mở đang huỷ quá ngần này mà SoDEX chưa xác nhận (DEC-253): phía đó không đặt thêm lệnh mở cho tới khi có xác
+ * nhận (hoặc hết `VM_STALE_CANCEL_MS`). Lệnh huỷ tới trước khi lệnh vào sổ thì SoDEX trả `OrderNotFound`, lệnh vào sổ
+ * sau đó và vẫn có thể khớp; đặt thêm lệnh cùng phía lúc đó làm vị thế vượt "Holds up to" (2026-11-15: hai lệnh mua cùng
+ * khớp, vị thế gấp đôi). Lệnh vừa huỷ trong chu kỳ này không tính (xác nhận thường về sau ~0,4 s).
+ */
+export const VM_UNSURE_CANCEL_MS = 1_000;
 /** Lệnh đang huỷ mà không có `orderDone` sau ngần này thì coi như xong (đối soát vị thế bù phần lỡ). */
 export const VM_STALE_CANCEL_MS = 60_000;
 /** Lệnh `done` được giữ để nhận fill tới muộn. */
@@ -432,6 +439,11 @@ function quote(
   const extra = { buy: smart?.buy?.ticks ?? 0, sell: smart?.sell?.ticks ?? 0 };
   // Pause on fast moves: rút mọi lệnh mở, giữ lệnh đóng reduce-only (PM chốt C2).
   const paused = c.pauseOnFastMoves && s.fastPauseUntil != null && at < s.fastPauseUntil;
+  // Lệnh mở đang huỷ chưa được xác nhận quá VM_UNSURE_CANCEL_MS: có thể vẫn khớp, không đặt thêm cùng phía (DEC-253).
+  const unsure = { buy: false, sell: false };
+  for (const o of Object.values(s.orders))
+    if (o.status === "cancelling" && o.role === "open" && at - o.since >= VM_UNSURE_CANCEL_MS)
+      unsure[o.side] = true;
   const pulled = {
     buy: paused || smart?.buy?.pull === true,
     sell: paused || smart?.sell?.pull === true,
@@ -624,13 +636,28 @@ function quote(
     orders[same[0]] = same[1];
     places.splice(i, 1);
   }
+  // Phía còn lệnh mở chưa xác nhận huỷ: không đặt lệnh mở mới, giữ nguyên lệnh mở đang nằm (DEC-253).
+  for (const side of ["buy", "sell"] as const) {
+    if (!unsure[side]) continue;
+    for (let i = places.length - 1; i >= 0; i -= 1) {
+      const p = places[i];
+      if (p?.side === side && !closeIds.has(p.clOrdID)) places.splice(i, 1);
+    }
+    for (const [id, o] of Object.entries(s.orders))
+      if (o.status === "live" && o.role === "open" && o.side === side) {
+        kept.add(id);
+        orders[id] = o;
+      }
+  }
+  // Đặt lại theo sổ lệnh (DEC-248): chỉ lệnh mở của các phía được nêu; lệnh đóng không bao giờ bị đụng ở đây (huỷ nó
+  // thì lệnh đóng mới chỉ được đặt sau khi SoDEX xác nhận huỷ, vị thế nằm không có lệnh đóng).
   if (only !== undefined) {
     for (let i = places.length - 1; i >= 0; i -= 1) {
       const p = places[i];
-      if (p !== undefined && !only.has(p.side)) places.splice(i, 1);
+      if (p !== undefined && (!only.has(p.side) || closeIds.has(p.clOrdID))) places.splice(i, 1);
     }
     for (const [id, o] of Object.entries(s.orders))
-      if (o.status === "live" && !only.has(o.side)) {
+      if (o.status === "live" && (!only.has(o.side) || o.role === "close")) {
         kept.add(id);
         orders[id] = o;
       }
@@ -1156,8 +1183,15 @@ function stepCore(
       const o = s.orders[e.clOrdID];
       if (o === undefined) return { actions: [], state: s };
       if (o.status === "done") return { actions: [], state: s };
-      // Lệnh đóng đã huỷ xong mà còn vị thế: đặt lại lệnh đóng sớm (≥ VM_MIN_REQUOTE_MS), không chờ hết chu kỳ.
-      const reclose = o.role === "close" && !dec(s.ledger.position).isZero();
+      // Lệnh đóng đã huỷ xong mà còn vị thế: đặt lại lệnh đóng sớm (≥ VM_MIN_REQUOTE_MS), không chờ hết chu kỳ. Lệnh
+      // mở đã huỷ xong mà phía đó không còn lệnh mở nào: phía đó có thể đang chờ xác nhận này (DEC-253), báo giá lại sớm.
+      const openGap =
+        o.role === "open" &&
+        !Object.entries(s.orders).some(
+          ([id, x]) =>
+            id !== e.clOrdID && x.role === "open" && x.side === o.side && x.status === "live",
+        );
+      const reclose = (o.role === "close" && !dec(s.ledger.position).isZero()) || openGap;
       return {
         actions: [],
         state: {

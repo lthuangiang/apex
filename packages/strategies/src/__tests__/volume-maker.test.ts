@@ -6,6 +6,7 @@ import { requirementOf } from "../requirements";
 import {
   costPerMillion,
   VM_KEEP_DONE_MS,
+  VM_STALE_CANCEL_MS,
   volumeMaker,
   type VolumeMakerState,
 } from "../volume-maker";
@@ -48,6 +49,14 @@ function run(c: VolumeMakerConfig, events: StrategyEvent[]) {
   return { s, all };
 }
 const places = (a: StrategyAction[]) => a.flatMap((x) => (x.type === "place" ? [x.order] : []));
+/** SoDEX xác nhận mọi lệnh đang huỷ (engine gửi `orderDone`). */
+function confirmed(c: VolumeMakerConfig, s: VolumeMakerState, at: number): VolumeMakerState {
+  let st = s;
+  for (const [id, o] of Object.entries(s.orders))
+    if (o.status === "cancelling")
+      st = volumeMaker.step(c, st, { type: "orderDone", at, clOrdID: id }, ctx).state;
+  return st;
+}
 /** Lần tick đầu tiên luôn báo giá chu kỳ 1: bid `vm:1:bid`, ask `vm:1:ask`. */
 const firstQuote = () => [{ type: "tick", at: 0, market: "BTC-USD", price: "100000" }] as const;
 
@@ -373,6 +382,7 @@ describe("volume maker inventory-aware quoting (DEC-100)", () => {
       ctx,
     ).state;
     expect(s.ledger.position).toBe("0");
+    s = confirmed(c, s, 3000);
     // Cycle 3: flat → two-sided symmetric quoting (no reduce-only).
     const r = volumeMaker.step(c, s, { type: "timer", at: 4500 }, ctx);
     const p = places(r.actions);
@@ -737,7 +747,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     const close = places(r1.all).find((o) => o.reduceOnly);
     expect(close?.side).toBe("sell");
     const r = more(r1.s, [bookAt(12000, "99989", "99990")]);
-    expect(r.all.filter((x) => x.type === "cancel")).toHaveLength(0);
+    expect(r.all.some((x) => x.type === "cancel" && x.clOrdID === close?.clOrdID)).toBe(false);
   });
 
   it("re-places the close soon after SoDEX confirms its cancel while a position is held (DEC-248)", () => {
@@ -776,6 +786,34 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     ]).s;
     const r = more(st, [snap(at)]);
     expect(places(r.all).length).toBeGreaterThan(0);
+  });
+
+  it("adds no opening quote on a side whose cancel SoDEX has not confirmed, until it does (DEC-253)", () => {
+    // Bid bị rút lúc 7.5 s (Binance chạy qua), SoDEX chưa xác nhận huỷ.
+    let r = more(quotedAt7s().s, [fairAt(7500, "99999")]);
+    const pulledId = r.all.find((x) => x.type === "cancel");
+    expect(pulledId).toBeDefined();
+    // 3 s sau vẫn chưa xác nhận: không đặt bid mới (có thể bid cũ vẫn khớp), ask vẫn giữ.
+    r = more(r.s, [snap(10_600)]);
+    expect(places(r.all).filter((o) => o.side === "buy")).toHaveLength(0);
+    expect(r.all.some((x) => x.type === "cancel" && r.s.orders[x.clOrdID]?.side === "sell")).toBe(
+      false,
+    );
+    // SoDEX xác nhận → báo giá lại sớm, bid quay lại.
+    const id = pulledId?.type === "cancel" ? pulledId.clOrdID : "";
+    r = more(r.s, [{ type: "orderDone", at: 11_000, clOrdID: id }]);
+    expect(r.s.requoteDue).toBe(true);
+    r = more(r.s, [snap(13_000)]);
+    expect(places(r.all).filter((o) => o.side === "buy")).toHaveLength(1);
+  });
+
+  it("stops waiting for a cancel confirmation after 60 s (DEC-253)", () => {
+    let r = more(quotedAt7s().s, [fairAt(7500, "99999")]);
+    r = more(r.s, [snap(10_600)]);
+    expect(places(r.all).filter((o) => o.side === "buy")).toHaveLength(0);
+    // Không bao giờ có xác nhận: hết VM_STALE_CANCEL_MS thì coi như xong, bid quay lại (đối soát vị thế bù phần lỡ).
+    r = more(r.s, [snap(7500 + VM_STALE_CANCEL_MS + 3000)]);
+    expect(places(r.all).filter((o) => o.side === "buy")).toHaveLength(1);
   });
 
   it("does not cut without Smart quoting (DEC-249)", () => {
@@ -920,7 +958,7 @@ describe("volume maker — pause on fast moves (DEC-227)", () => {
     expect(hit.actions.filter((a) => a.type === "cancel")).toHaveLength(2);
     expect(places(hit.actions)).toEqual([]);
     expect(logs(hit.actions)).toEqual(["Quotes paused on a fast move"]);
-    s = hit.state;
+    s = confirmed(c, hit.state, 1500);
     const during = volumeMaker.step(c, s, { type: "timer", at: 4000 }, ctx);
     expect(places(during.actions)).toEqual([]);
     const back = volumeMaker.step(c, during.state, { type: "timer", at: 16_000 }, ctx);
@@ -1166,6 +1204,8 @@ describe("volume maker — Binance pricing and resting quotes in Smart quoting",
   it("ignores a Binance price older than 1.5 s by its Binance time", () => {
     const b = runFrom(on, run(on, [...firstQuote()]).s);
     b.step(fair(1000, "100010"));
+    for (const [id, o] of Object.entries(b.s.orders))
+      if (o.status === "cancelling") b.step({ type: "orderDone", at: 1500, clOrdID: id });
     expect(priceOf(b.step(snap(7000)), "ask")).toBe("100000");
   });
 

@@ -90,6 +90,9 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   "Position cut". Chỉ khi bật Smart quoting.
 - **Lệnh đóng:** SoDEX xác nhận huỷ một lệnh đóng mà bot còn vị thế thì báo giá lại sớm (≥ `VM_MIN_REQUOTE_MS`), không
   chờ hết chu kỳ (DEC-248).
+- **Lệnh mở chờ xác nhận huỷ** (DEC-253): lệnh mở đang huỷ quá 1 s mà SoDEX chưa xác nhận thì phía đó không đặt lệnh
+  mở mới và giữ nguyên lệnh mở đang nằm, tới khi có `orderDone` hoặc hết 60 s; lệnh đóng và phía kia không bị ảnh hưởng.
+  Đặt lại theo sổ lệnh không bao giờ huỷ lệnh đóng.
 - **Dọn lệnh cũ không chặn báo giá** (DEC-251): nhịp đồng hồ dọn lệnh đã xong quá `VM_KEEP_DONE_MS` rồi báo giá luôn trong
   cùng nhịp.
 - **Định giá theo Binance** (một phần của **Smart quoting**; DEC-242, thay "Binance guard" của DEC-241):
