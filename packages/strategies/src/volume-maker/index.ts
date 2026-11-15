@@ -964,6 +964,13 @@ export function stepVolumeMaker(
   if (!c.smartQuoting) return r;
   // Đếm request lệnh gửi SoDEX (DEC-248): mỗi phút một dòng Decisions để theo dõi hạn mức theo địa chỉ ví.
   const sent = r.actions.filter((a) => a.type === "place" || a.type === "cancel").length;
+  // Không gửi gì và chưa hết cửa sổ: trả nguyên kết quả để nhịp không có gì mới không phải ghi state.
+  if (
+    sent === 0 &&
+    r.state.reqWin !== undefined &&
+    e.at - r.state.reqWin.since < VM_BOOK_STREAM.logEveryMs
+  )
+    return r;
   const win = r.state.reqWin ?? { since: e.at, n: 0 };
   const n = win.n + sent;
   const span = e.at - win.since;
