@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import { clOrdId } from "../core/ids";
 import type { StepContext, StrategyAction, StrategyEvent } from "../core/types";
 import { requirementOf } from "../requirements";
-import { costPerMillion, volumeMaker, type VolumeMakerState } from "../volume-maker";
+import {
+  costPerMillion,
+  VM_KEEP_DONE_MS,
+  volumeMaker,
+  type VolumeMakerState,
+} from "../volume-maker";
 import { vmMaxInventory, volumeMakerSchema, type VolumeMakerConfig } from "../volume-maker/schema";
 
 const ctx: StepContext = {
@@ -623,46 +628,166 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(logsOf(r.all).at(-1)?.why).toContain("bid depth 3× ask depth");
   });
 
-  it("backs off in bp on a fast move, holds it 15 s, logs once, then returns to normal", () => {
+  it("no longer backs off on a fast move or pulls on a trend (DEC-247)", () => {
+    // +3 bp trong 1.5 s rồi +6 bp trong 30 s: trước DEC-247 ask lùi 2 bp rồi bị rút; giờ giữ nguyên ở giá tốt nhất.
     let r = run(on, [...firstQuote(), tickAt(6500, "100000"), tickAt(8000, "100030"), snap(8000)]);
-    // +3 bp trong 1.5 s: ask lùi 2 bp ở giá 100030 = 201 tick.
-    expect(last(r.all, "ask")).toBe("100020.1");
-    expect(last(r.all, "bid")).toBe("99999.9");
-    const adjusted = logsOf(r.all).filter((l) => l.decision === "Smart quoting adjusted");
-    expect(adjusted).toHaveLength(1);
-    expect(adjusted[0]?.why).toContain("Ask back 201 ticks (price up 3 bp in 6 s)");
-    // Giá nhích thêm: cùng hành động (ask lùi 201 tick) → không ghi thêm dòng.
-    r = more(r.s, [tickAt(8500, "100035"), snap(11000)]);
-    expect(logsOf(r.all)).toHaveLength(0);
-    // 10 s sau, thị trường yên nhưng còn trong 15 s giữ: vẫn lùi.
-    r = more(r.s, [snap(18000)]);
-    // Smart quoting giữ lệnh nằm yên: ask vẫn ở 100020.1 (không huỷ, không đặt lại).
-    expect(
-      Object.values(r.s.orders).find((o) => o.status === "live" && o.side === "sell")?.price,
-    ).toBe("100020.1");
-    expect(logsOf(r.all)).toHaveLength(0);
-    // Lần kích hoạt cuối ở 11 s (còn +3.5 bp trong 6 s) → giữ tới 26 s; 27 s: về bình thường, một dòng.
-    r = more(r.s, [snap(27000)]);
     expect(last(r.all, "ask")).toBe("100000");
-    expect(logsOf(r.all).map((l) => l.decision)).toEqual(["Smart quoting back to normal"]);
+    expect(last(r.all, "bid")).toBe("99999.9");
+    r = more(r.s, [tickAt(20000, "100060"), snap(20000)]);
+    expect(logsOf(r.all).filter((l) => l.decision === "Smart quoting adjusted")).toHaveLength(0);
   });
 
-  it("pulls the side a 30 s trend runs into", () => {
-    const r = run(on, [
-      ...firstQuote(),
-      tickAt(7000, "100030"),
-      tickAt(20000, "100060"),
-      snap(20000),
+  const bookAt = (at: number, bid: string, ask: string) =>
+    ({ type: "book", at, market: "BTC-USD", bid, ask }) as const;
+  const quotedAt7s = () => run(on, [...firstQuote(), tickAt(7000, "100000"), snap(7000)]);
+
+  it("moves only the side the best price left behind, at most every 1.5 s (DEC-248)", () => {
+    const r0 = quotedAt7s();
+    expect(last(r0.all, "ask")).toBe("100000");
+    // 1 s sau lần báo giá trước: chỉ lưu giá, chưa gửi gì.
+    let r = more(r0.s, [bookAt(8000, "100000.9", "100001")]);
+    expect(r.all).toHaveLength(0);
+    // 1.6 s: bid tốt nhất lên trên bid của mình → đặt lại bid; ask vẫn nằm (giá chạy về phía nó).
+    r = more(r.s, [bookAt(8600, "100000.9", "100001")]);
+    expect(last(r.all, "bid")).toBe("100000.9");
+    expect(last(r.all, "ask")).toBeUndefined();
+    expect(r.all.filter((x) => x.type === "cancel")).toHaveLength(1);
+  });
+
+  it("keeps both quotes when the price moves into them, and leaves a filled side to the timer (DEC-248)", () => {
+    // Bid tốt nhất xuống dưới bid của mình (bid đã bị khớp / sắp khớp), ask không đổi: không gửi gì.
+    const r = more(quotedAt7s().s, [bookAt(8600, "99999.5", "100000")]);
+    expect(r.all).toHaveLength(0);
+  });
+
+  it("sends nothing when the live price still matches the resting quotes (DEC-248)", () => {
+    const r = more(quotedAt7s().s, [bookAt(8600, "99999.9", "100000")]);
+    expect(r.all).toHaveLength(0);
+  });
+
+  it("keeps the live price when the 3 s REST book is older, taking only its depth (DEC-248)", () => {
+    const r = more(quotedAt7s().s, [bookAt(8100, "100000.9", "100001"), snap(9000, "5", "7")]);
+    expect(r.s.book).toEqual({
+      bid: "100000.9",
+      ask: "100001",
+      bidNotional: "5",
+      askNotional: "7",
+    });
+  });
+
+  it("ignores the live book when Smart quoting is off (DEC-248)", () => {
+    const off = cfg({ quoteLevel: 0 });
+    let st = run(off, [...firstQuote(), snap(7000)]).s;
+    const x = volumeMaker.step(off, st, bookAt(8100, "100000.9", "100001"), ctx);
+    st = x.state;
+    expect(x.actions).toHaveLength(0);
+    expect(st.book?.bid).toBe("99999.9");
+  });
+
+  const fairAt = (at: number, fair: string) =>
+    ({ type: "fair", at, market: "BTC-USD", fair, binanceAt: at }) as const;
+  const longAt = () => {
+    const r0 = quotedAt7s();
+    const bid = places(r0.all)
+      .filter((o) => o.side === "buy")
+      .at(-1);
+    return more(r0.s, [
+      {
+        type: "fill",
+        at: 7100,
+        clOrdID: bid?.clOrdID ?? "",
+        price: bid?.price ?? "0",
+        quantity: bid?.quantity ?? "0",
+        fee: "0",
+      },
+    ]).s;
+  };
+
+  it("cuts the position at market when Binance runs 15 bp against the entry (DEC-249)", () => {
+    const s0 = longAt();
+    expect(s0.ledger.position).toBe("0.005");
+    // −10 bp: chưa cắt.
+    let r = more(s0, [fairAt(8000, "99899.9")]);
+    expect(places(r.all)).toHaveLength(0);
+    // −16 bp: huỷ mọi lệnh, bán cả vị thế bằng market IOC reduce-only.
+    r = more(r.s, [fairAt(8100, "99839.9")]);
+    const cut = places(r.all);
+    expect(cut).toEqual([
+      expect.objectContaining({
+        side: "sell",
+        type: "market",
+        timeInForce: "IOC",
+        reduceOnly: true,
+        quantity: "0.005",
+        tag: "vm:2:cut:close",
+      }),
     ]);
-    const lastQuote =
-      places(r.all)
-        .filter((o) => o.tag.startsWith("vm:"))
-        .at(-1)?.tag ?? "";
-    const cycle = lastQuote.split(":")[1];
-    const thisCycle = places(r.all).filter((o) => o.tag.split(":")[1] === cycle);
-    expect(thisCycle.some((o) => o.tag.endsWith(":ask"))).toBe(false);
-    expect(thisCycle.some((o) => o.tag.endsWith(":bid"))).toBe(true);
-    expect(logsOf(r.all).at(-1)?.why).toContain("Ask pulled (trend up 6 bp in 30 s)");
+    expect(r.all.some((x) => x.type === "cancel")).toBe(true);
+    expect(logsOf(r.all).find((l) => l.decision === "Position cut")?.why).toBe(
+      "At 00:00:08.100 UTC the Binance price (99839.9) was 16 bp against your long entry at 99999.9. Closed 0.005 at market.",
+    );
+    // Trong 5 s sau: không cắt lần nữa.
+    r = more(r.s, [fairAt(9000, "99800")]);
+    expect(places(r.all)).toHaveLength(0);
+  });
+
+  it("leaves the close order to the normal cycle when the live price moves (DEC-248)", () => {
+    // Đang long, lệnh đóng (bán) nằm ở 100000; ask tốt nhất xuống 99990 → không huỷ lệnh đóng.
+    const r1 = more(longAt(), [snap(10100)]);
+    const close = places(r1.all).find((o) => o.reduceOnly);
+    expect(close?.side).toBe("sell");
+    const r = more(r1.s, [bookAt(12000, "99989", "99990")]);
+    expect(r.all.filter((x) => x.type === "cancel")).toHaveLength(0);
+  });
+
+  it("re-places the close soon after SoDEX confirms its cancel while a position is held (DEC-248)", () => {
+    const r1 = more(longAt(), [snap(10100)]);
+    const closeId = places(r1.all).find((o) => o.reduceOnly)?.clOrdID ?? "";
+    // Chu kỳ kế tiếp huỷ lệnh đóng (không đặt lại vì lệnh cũ còn đang huỷ).
+    let r = more(r1.s, [snap(13200)]);
+    expect(r.s.orders[closeId]?.status).toBe("cancelling");
+    r = more(r.s, [{ type: "orderDone", at: 13500, clOrdID: closeId }]);
+    expect(r.s.requoteDue).toBe(true);
+  });
+
+  it("keeps quoting on a tick that also drops orders older than 10 minutes (DEC-251)", () => {
+    // Lệnh xong từ đầu phiên quá hạn giữ đúng lúc fill cần báo giá lại: vẫn phải đặt lệnh trong cùng nhịp.
+    const r0 = quotedAt7s();
+    const bid = places(r0.all)
+      .filter((o) => o.side === "buy")
+      .at(-1);
+    const old = Object.fromEntries(
+      Object.entries(r0.s.orders).map(([id, o]) => [
+        id,
+        { ...o, status: "done" as const, since: 0 },
+      ]),
+    );
+    const at = VM_KEEP_DONE_MS + 1;
+    let st: VolumeMakerState = { ...r0.s, orders: old, lastRefresh: at - 5000 };
+    st = more(st, [
+      {
+        type: "fill",
+        at: at - 3000,
+        clOrdID: bid?.clOrdID ?? "",
+        price: "99999.9",
+        quantity: "0.005",
+        fee: "0",
+      },
+    ]).s;
+    const r = more(st, [snap(at)]);
+    expect(places(r.all).length).toBeGreaterThan(0);
+  });
+
+  it("does not cut without Smart quoting (DEC-249)", () => {
+    const off = cfg({ quoteLevel: 0 });
+    const x = volumeMaker.step(off, longAt(), fairAt(8100, "99000"), ctx);
+    expect(places(x.actions)).toHaveLength(0);
+  });
+
+  it("logs the number of order requests sent to SoDEX each minute (DEC-248)", () => {
+    const r = run(on, [...firstQuote(), tickAt(7000, "100000"), snap(7000), snap(61000)]);
+    const line = logsOf(r.all).find((l) => l.decision === "Order requests");
+    expect(line?.why).toMatch(/^Last 61 s: \d+ requests to SoDEX \(new orders and cancels\)\.$/);
   });
 });
 
@@ -766,13 +891,11 @@ describe("volume maker — close only at your entry price or better (DEC-227)", 
     const c = cfg({ quoteLevel: 0, closeAtEntry: true });
     const { s } = run(c, [...firstQuote(), fill("bid", "100005"), timer(3000)]);
     const T = 30 * 60_000;
-    // Hai nhịp đầu chỉ dọn lệnh cũ (huỷ quá hạn → done → xoá), nhịp thứ ba báo giá.
-    let st = s;
-    for (const at of [3000, 3001]) st = volumeMaker.step(c, st, timer(T + at), ctx).state;
-    const late1 = volumeMaker.step(c, st, timer(T + 3002), ctx);
+    // Nhịp đầu dọn lệnh cũ rồi báo giá luôn (DEC-251): lệnh đóng ở giá tốt nhất, ghi một lần.
+    const late1 = volumeMaker.step(c, s, timer(T + 3000), ctx);
+    expect(logs(late1.actions)).toEqual(["Closing at the best price"]);
     // Lệnh đóng cũ đang huỷ vẫn chiếm khối lượng tới khi SoDEX xác nhận xong.
     expect(close(late1.actions)).toBeUndefined();
-    expect(logs(late1.actions)).toEqual(["Closing at the best price"]);
     const done = volumeMaker.step(
       c,
       late1.state,

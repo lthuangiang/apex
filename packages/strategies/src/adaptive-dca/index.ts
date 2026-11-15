@@ -923,6 +923,7 @@ export function stepAdaptiveDca(
     case "marginRatio":
     case "positionSync":
     case "fair":
+    case "book":
     case "leaderFill":
     case "leaderPosition":
       return none(s);

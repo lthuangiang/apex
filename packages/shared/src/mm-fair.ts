@@ -12,3 +12,16 @@ export const mmFairMessageSchema = z.object({
   at: z.number().int(),
 });
 export type MmFairMessage = z.infer<typeof mmFairMessageSchema>;
+
+/**
+ * Giá mua / bán tốt nhất trên SoDEX của một market (`md.<market>.book`, marketdata publish từ WS `bookTicker`, DEC-248),
+ * chỉ khi giá đổi và chỉ cho market có bot Market Making. `E`: giờ SoDEX; `at`: giờ marketdata nhận.
+ */
+export const mmBookMessageSchema = z.object({
+  s: z.string(),
+  b: z.string(),
+  a: z.string(),
+  E: z.number().int(),
+  at: z.number().int(),
+});
+export type MmBookMessage = z.infer<typeof mmBookMessageSchema>;

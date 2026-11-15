@@ -75,8 +75,23 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   ngay lệnh mở, chỉ giữ lệnh đóng reduce-only; mỗi lần kích hoạt gia hạn thêm 15 s; hết hạn thì báo giá lại. Decisions ghi
   "Quotes paused on a fast move" / "Quoting again after a fast move". Độc lập với Smart quoting.
 - **Smart quoting từ DEC-242:** bật mặc định khi tạo bot mới (config cũ thiếu trường vẫn tắt); muốn ra volume
-  nhanh thì tắt. Gồm: định giá theo Binance, rút lệnh giá đã chạy qua, giữ lệnh nằm yên, cộng các bước của DEC-152 (khởi
-  động, sổ lệnh lệch, đà ngắn, xu hướng). Câu "How it works" trên form theo đúng các bước này.
+  nhanh thì tắt. Gồm: định giá theo Binance, rút lệnh giá đã chạy qua, giữ lệnh nằm yên, sổ lệnh SoDEX thời gian thực
+  (DEC-248), cắt vị thế khi giá chạy ngược (DEC-249), cộng hai bước còn lại của DEC-152 (khởi động, sổ lệnh lệch). Đà ngắn
+  và xu hướng đã bỏ (DEC-247). Câu "How it works" trên form theo đúng các bước này.
+- **Sổ lệnh SoDEX thời gian thực** (DEC-248): `marketdata` gửi `md.<market>.book` (giá mua / bán tốt nhất từ WS
+  `bookTicker`, chỉ khi giá đổi, chỉ market có bot MM; market có bot mới được thêm vào kết nối WS ngay ở vòng 30 s). Bot
+  bật Smart quoting: lệnh **mở** đang sống bị giá tốt nhất bỏ lại phía sau (bid tốt nhất cao hơn bid của mình, ask tốt nhất
+  thấp hơn ask của mình) thì đặt lại riêng phía đó ngay, cách lần báo giá trước ≥ 1,5 s (`VM_BOOK_STREAM`). Giá chạy về
+  phía lệnh thì giữ nguyên; lệnh đóng và phía vừa khớp để chu kỳ thường. Giá WS còn mới (≤ 1,5 s) thì sổ lệnh REST 3 s chỉ
+  cập nhật độ dày 10 mức, không đè giá. Decisions mỗi phút: "Order requests" (số request đặt + huỷ gửi SoDEX) để theo dõi
+  hạn mức theo ví (17.1).
+- **Cắt vị thế** (DEC-249): đang giữ vị thế mà giá Binance quy đổi chạy ngược giá vào ≥ 15 bp (`VM_CUT`) thì huỷ mọi lệnh
+  và đóng cả vị thế bằng lệnh market IOC reduce-only (tag `vm:<cycle>:cut:close`); không cắt lại trong 5 s. Decisions
+  "Position cut". Chỉ khi bật Smart quoting.
+- **Lệnh đóng:** SoDEX xác nhận huỷ một lệnh đóng mà bot còn vị thế thì báo giá lại sớm (≥ `VM_MIN_REQUOTE_MS`), không
+  chờ hết chu kỳ (DEC-248).
+- **Dọn lệnh cũ không chặn báo giá** (DEC-251): nhịp đồng hồ dọn lệnh đã xong quá `VM_KEEP_DONE_MS` rồi báo giá luôn trong
+  cùng nhịp.
 - **Định giá theo Binance** (một phần của **Smart quoting**; DEC-242, thay "Binance guard" của DEC-241):
   `marketdata` nghe `bookTicker` của Binance USDT-M futures cho mọi market có bot MM mà Binance có (`BTC-USD` →
   `BTCUSDT`; danh sách đọc lại mỗi 30 s), quy đổi giá giữa Binance về SoDEX bằng chênh lệch nền (trung vị 60 s, cần ≥ 30

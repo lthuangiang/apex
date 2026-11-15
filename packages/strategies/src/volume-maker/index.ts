@@ -65,7 +65,14 @@ export interface VolumeMakerState {
   /** Đỉnh sổ lệnh gần nhất (engine gửi kèm `timer`, DEC-135); thiếu ở state cũ. */
   book?: BookTop | null;
   bookAt?: number | null;
+  /** Lần cuối nhận giá sổ lệnh qua WS (DEC-248); còn mới thì REST 3 s chỉ cập nhật độ dày, không đè giá. */
+  bookStreamAt?: number | null;
+  /** Đếm request lệnh (đặt + huỷ) gửi SoDEX trong cửa sổ 1 phút, ghi Decisions (DEC-248). */
+  reqWin?: { since: number; n: number };
+  /** Lần cắt vị thế gần nhất (DEC-249). */
+  cutAt?: number | null;
   /** Giá trong cửa sổ xu hướng gần nhất cho Smart quoting (DEC-144, DEC-152). */
+  /** Giá gần đây cho momentum / trend; không còn ghi từ DEC-247, giữ để đọc state cũ. */
   recent?: { t: number; p: string }[];
   /** Điều chỉnh Smart quoting đang áp dụng (để chỉ ghi Decisions khi đổi); null = bình thường. */
   smartNote?: string | null;
@@ -106,8 +113,26 @@ interface SmartSide {
  */
 export const VM_ORACLE = { marginBp: 0.5, maxAgeMs: 1_500, logEveryMs: 60_000 } as const;
 
+/**
+ * Cắt vị thế (DEC-249, chỉ khi bật Smart quoting): đang giữ vị thế mà giá Binance quy đổi đã chạy ngược giá vào
+ * ≥ `bp` thì huỷ mọi lệnh và đóng cả vị thế bằng lệnh market IOC reduce-only. Lệnh đóng post-only không đuổi kịp giá
+ * chạy một chiều (2026-11-15: BTC +1% trong 2 phút, 16 lệnh đóng bị từ chối PostOnly, lỗ ~97 bp trên một lệnh).
+ * Backtest BTC / ETH 4.5 giờ: ngưỡng 15 bp kích hoạt 1–4 lần / giờ, CPM gần như không đổi lúc thường. Không cắt lại
+ * trong `coolMs` khi lệnh cắt trước chưa xong.
+ */
+export const VM_CUT = { bp: 15, coolMs: 5_000 } as const;
+
 /** Báo giá lại sớm (vì fill) nhưng cách lần trước ít nhất 2 s (VOLUME_MAKER.md 17.3.5). */
 export const VM_MIN_REQUOTE_MS = 2_000;
+/**
+ * Sổ lệnh thời gian thực (DEC-248, chỉ khi bật Smart quoting): giá tốt nhất SoDEX chạy ra xa lệnh của mình (bid tốt nhất
+ * cao hơn bid của mình, ask tốt nhất thấp hơn ask của mình) thì đặt lại riêng phía đó, cách lần báo giá trước ít nhất
+ * `minRequoteMs`. Giá chạy về phía lệnh thì giữ nguyên (việc rút theo giá Binance lo phần an toàn), phía vừa bị khớp chờ
+ * chu kỳ thường: đuổi theo giá lúc đang chạy làm lệnh bị từ chối PostOnly và tốn request (chạy thử 2026-11-15: 37%
+ * PostOnly, ~85 request / phút với 1 s, hai phía). Giá WS còn mới trong `freshMs` thì REST 3 s chỉ cập nhật độ dày 10
+ * mức. Mỗi `logEveryMs` ghi số request đã gửi.
+ */
+export const VM_BOOK_STREAM = { minRequoteMs: 1_500, freshMs: 1_500, logEveryMs: 60_000 } as const;
 /** Lệnh đang huỷ mà không có `orderDone` sau ngần này thì coi như xong (đối soát vị thế bù phần lỡ). */
 export const VM_STALE_CANCEL_MS = 60_000;
 /** Lệnh `done` được giữ để nhận fill tới muộn. */
@@ -169,10 +194,10 @@ const BP = new Decimal("0.0001");
 /**
  * Smart quoting v2 (DEC-144, sửa ở DEC-152 sau 10 phút chạy thật trên BTC: lùi 3 tick ≈ 0.4 bp không đủ, cửa sổ 6 s
  * quá ngắn, quay về sau 3–4 s nên lệnh bị cuốn ngay khi vừa về). Chỉ áp dụng cho lệnh mở (không chạm lệnh đóng tồn kho):
- * - Khởi động: chưa có đủ `warmupMs` giá thì lùi cả hai phía `momentumBackoffBp`.
+ * - Khởi động: chưa có đủ `warmupMs` giá thì lùi cả hai phía `warmupBackoffBp`.
  * - Sổ lệnh lệch (một phía 10 mức dày ≥ `imbalanceRatio` lần phía kia): lùi phía mỏng `imbalanceBackoffBp`.
- * - Đà ngắn (giá chạy ≥ `momentumBp` trong `momentumWindowMs`): lùi phía cùng chiều `momentumBackoffBp`.
- * - Xu hướng (giá chạy ≥ `trendBp` trong `trendWindowMs`): rút hẳn lệnh mở phía cùng chiều.
+ * Đà ngắn (momentum) và xu hướng (trend) đã bỏ ở DEC-247: backtest cho thấy kẹp theo giá Binance (DEC-242) làm thay
+ * tốt hơn, còn hai tín hiệu này làm BTC đắt hơn và giảm mạnh số lệnh khớp.
  * Mọi điều chỉnh được giữ thêm `holdMs` sau lần kích hoạt cuối. Lùi theo bp, quy ra tick theo giá (tối thiểu
  * `minTicks`), nên đúng với mọi market. Chỉ lùi xa hơn / rút, không bao giờ đặt sát hơn logic thường.
  */
@@ -180,11 +205,7 @@ export const VM_SMART = {
   warmupMs: 6_000,
   imbalanceRatio: 2,
   imbalanceBackoffBp: 1,
-  momentumWindowMs: 6_000,
-  momentumBp: 2,
-  momentumBackoffBp: 2,
-  trendWindowMs: 30_000,
-  trendBp: 5,
+  warmupBackoffBp: 2,
   holdMs: 15_000,
   minTicks: 2,
 } as const;
@@ -193,15 +214,6 @@ export const VM_SMART = {
 function bpTicks(bp: number, mid: Decimal, rules: MarketRules): number {
   const t = mid.mul(bp).div(10_000).div(rules.tickSize).ceil().toNumber();
   return Math.max(VM_SMART.minTicks, t);
-}
-
-/** Thay đổi giá (bp) từ giá đầu tới giá cuối trong cửa sổ `ms`; null khi chưa đủ điểm. */
-function moveBp(s: VolumeMakerState, at: number, ms: number): Decimal | null {
-  const xs = (s.recent ?? []).filter((x) => at - x.t <= ms);
-  const first = xs[0];
-  const last = xs.at(-1);
-  if (first === undefined || last === undefined || first === last) return null;
-  return dec(last.p).sub(first.p).div(first.p).mul(10_000);
 }
 
 const strongest = (a: SmartSide | undefined, b: SmartSide): SmartSide =>
@@ -224,7 +236,7 @@ function smartAdjust(
   };
   const since = s.smartSince ?? at;
   if (at - since < VM_SMART.warmupMs) {
-    const t = bpTicks(VM_SMART.momentumBackoffBp, mid, rules);
+    const t = bpTicks(VM_SMART.warmupBackoffBp, mid, rules);
     add("buy", { ticks: t, pull: false, why: "warming up price data" });
     add("sell", { ticks: t, pull: false, why: "warming up price data" });
   }
@@ -245,24 +257,6 @@ function smartAdjust(
         pull: false,
         why: `ask depth ${new Decimal(1).div(r).toDecimalPlaces(1).toString()}× bid depth`,
       });
-  }
-  const m = moveBp(s, at, VM_SMART.momentumWindowMs);
-  if (m?.abs().gte(VM_SMART.momentumBp)) {
-    const up = m.gt(0);
-    add(up ? "sell" : "buy", {
-      ticks: bpTicks(VM_SMART.momentumBackoffBp, mid, rules),
-      pull: false,
-      why: `price ${up ? "up" : "down"} ${m.abs().toDecimalPlaces(1).toString()} bp in ${String(VM_SMART.momentumWindowMs / 1000)} s`,
-    });
-  }
-  const tr = moveBp(s, at, VM_SMART.trendWindowMs);
-  if (tr?.abs().gte(VM_SMART.trendBp)) {
-    const up = tr.gt(0);
-    add(up ? "sell" : "buy", {
-      ticks: 0,
-      pull: true,
-      why: `trend ${up ? "up" : "down"} ${tr.abs().toDecimalPlaces(1).toString()} bp in ${String(VM_SMART.trendWindowMs / 1000)} s`,
-    });
   }
   // Giữ điều chỉnh thêm `holdMs`: điều kiện vừa kích hoạt gia hạn, hết hạn thì bỏ (khởi động không cần giữ).
   const hold: NonNullable<VolumeMakerState["smartHold"]> = {};
@@ -417,6 +411,8 @@ function quote(
   s: VolumeMakerState,
   ctx: StepContext,
   at: number,
+  /** Chỉ đặt lại các phía này (DEC-248); phía khác giữ nguyên lệnh đang sống, không đặt thêm. */
+  only?: ReadonlySet<"buy" | "sell">,
 ): { actions: StrategyAction[]; state: VolumeMakerState } {
   const rules = ctx.rules[c.market];
   if (rules === undefined || s.mid === null) return { actions: [], state: s };
@@ -628,6 +624,17 @@ function quote(
     orders[same[0]] = same[1];
     places.splice(i, 1);
   }
+  if (only !== undefined) {
+    for (let i = places.length - 1; i >= 0; i -= 1) {
+      const p = places[i];
+      if (p !== undefined && !only.has(p.side)) places.splice(i, 1);
+    }
+    for (const [id, o] of Object.entries(s.orders))
+      if (o.status === "live" && !only.has(o.side)) {
+        kept.add(id);
+        orders[id] = o;
+      }
+  }
   let tracked = orders;
   for (const o of places) {
     const id = o.clOrdID;
@@ -796,12 +803,15 @@ function onFair(
   c: VolumeMakerConfig,
   s: VolumeMakerState,
   e: Extract<StrategyEvent, { type: "fair" }>,
+  ctx: StepContext,
 ): StepResult<VolumeMakerState> {
   if (e.market !== c.market || !c.smartQuoting) return { actions: [], state: s };
   // Giá Binance đã cũ (luồng Binance khựng, tin tới trễ): không dùng để rút lệnh; lần báo giá kế tiếp cũng bỏ qua.
   if (e.at - e.binanceAt > VM_ORACLE.maxAgeMs)
     return { actions: [], state: { ...s, fair: e.fair, fairAt: e.at, fairBinanceAt: e.binanceAt } };
   const fair = dec(e.fair);
+  const cut = cutPosition(c, s, e, fair, ctx);
+  if (cut !== null) return cut;
   const actions: StrategyAction[] = [];
   const orders = { ...s.orders };
   const win = s.oracleWin ?? { since: e.at, pulls: 0, clamps: 0 };
@@ -841,7 +851,138 @@ function onFair(
   return { actions, state };
 }
 
+/** Cắt vị thế khi giá Binance chạy ngược giá vào ≥ `VM_CUT.bp` (DEC-249); null khi không cần cắt. */
+function cutPosition(
+  c: VolumeMakerConfig,
+  s: VolumeMakerState,
+  e: Extract<StrategyEvent, { type: "fair" }>,
+  fair: Decimal,
+  ctx: StepContext,
+): StepResult<VolumeMakerState> | null {
+  const rules = ctx.rules[c.market];
+  const pos = dec(s.ledger.position);
+  const entry = dec(s.ledger.avgCost);
+  if (rules === undefined || s.mid === null || !entry.gt(0) || isFlat(pos, s.mid, rules))
+    return null;
+  if (s.cutAt != null && e.at - s.cutAt < VM_CUT.coolMs) return null;
+  const long = pos.gt(0);
+  const against = (long ? entry.sub(fair) : fair.sub(entry)).div(entry).mul(10_000);
+  if (against.lt(VM_CUT.bp)) return null;
+  const actions: StrategyAction[] = [];
+  const orders: Record<string, TrackedOrder> = {};
+  for (const [id, o] of Object.entries(s.orders)) {
+    if (o.status === "live") {
+      actions.push({ type: "cancel", clOrdID: id });
+      orders[id] = { ...o, status: "cancelling", since: e.at };
+    } else orders[id] = o;
+  }
+  const qty = roundQty(pos.abs(), rules);
+  const o = order(
+    c,
+    ctx,
+    long ? "sell" : "buy",
+    "0",
+    qty,
+    `vm:${String(s.cycle)}:cut:close`,
+    true,
+    true,
+  );
+  actions.push({ type: "place", order: o });
+  orders[o.clOrdID] = {
+    side: o.side,
+    role: "close",
+    price: "0",
+    qty,
+    filled: "0",
+    status: "live",
+    since: e.at,
+  };
+  actions.push({
+    type: "log",
+    decision: "Position cut",
+    why: `At ${new Date(e.binanceAt).toISOString().slice(11, 23)} UTC the Binance price (${fair.toDecimalPlaces(2).toString()}) was ${against.toDecimalPlaces(1).toString()} bp against your ${long ? "long" : "short"} entry at ${entry.toDecimalPlaces(2).toString()}. Closed ${qty} at market.`,
+  });
+  return {
+    actions,
+    state: {
+      ...s,
+      orders,
+      cutAt: e.at,
+      fair: e.fair,
+      fairAt: e.at,
+      fairBinanceAt: e.binanceAt,
+      requoteDue: true,
+    },
+  };
+}
+
+/**
+ * Giá tốt nhất SoDEX mới (DEC-248): lưu lại; cách lần báo giá trước ≥ `minRequoteMs` và giá đã chạy ra xa lệnh của mình
+ * thì đặt lại riêng phía đó. Chỉ trả hành động khi có lệnh cần đặt / huỷ (không thì không tăng chu kỳ).
+ */
+function onBook(
+  c: VolumeMakerConfig,
+  s: VolumeMakerState,
+  e: Extract<StrategyEvent, { type: "book" }>,
+  ctx: StepContext,
+): StepResult<VolumeMakerState> {
+  if (e.market !== c.market || !c.smartQuoting || !dec(e.bid).lt(e.ask))
+    return { actions: [], state: s };
+  const book: BookTop = {
+    bid: e.bid,
+    ask: e.ask,
+    bidNotional: s.book?.bidNotional ?? "0",
+    askNotional: s.book?.askNotional ?? "0",
+  };
+  const state: VolumeMakerState = { ...s, book, bookAt: e.at, bookStreamAt: e.at };
+  if (s.lastRefresh === null || e.at - s.lastRefresh < VM_BOOK_STREAM.minRequoteMs)
+    return { actions: [], state };
+  // Chỉ phía có lệnh mở đang sống bị giá tốt nhất bỏ lại phía sau. Lệnh đóng để chu kỳ thường lo: huỷ nó ở đây thì
+  // lệnh đóng mới chỉ được đặt khi SoDEX xác nhận huỷ (tránh đóng hai lần), vị thế nằm không có lệnh đóng.
+  const behind = new Set<"buy" | "sell">();
+  for (const o of Object.values(s.orders)) {
+    if (o.status !== "live" || o.role !== "open") continue;
+    if (o.side === "buy" && dec(o.price).lt(e.bid)) behind.add("buy");
+    if (o.side === "sell" && dec(o.price).gt(e.ask)) behind.add("sell");
+  }
+  if (behind.size === 0) return { actions: [], state };
+  const g = guards(c, state, ctx, e.at);
+  if (g !== null) return g;
+  const { actions, state: next } = quote(c, state, ctx, e.at, behind);
+  if (!actions.some((a) => a.type === "place" || a.type === "cancel"))
+    return { actions: [], state };
+  return guards(c, next, ctx, e.at) ?? { actions, state: next };
+}
+
 export function stepVolumeMaker(
+  c: VolumeMakerConfig,
+  raw: VolumeMakerState,
+  e: StrategyEvent,
+  ctx: StepContext,
+): StepResult<VolumeMakerState> {
+  const r = stepCore(c, raw, e, ctx);
+  if (!c.smartQuoting) return r;
+  // Đếm request lệnh gửi SoDEX (DEC-248): mỗi phút một dòng Decisions để theo dõi hạn mức theo địa chỉ ví.
+  const sent = r.actions.filter((a) => a.type === "place" || a.type === "cancel").length;
+  const win = r.state.reqWin ?? { since: e.at, n: 0 };
+  const n = win.n + sent;
+  const span = e.at - win.since;
+  if (span < VM_BOOK_STREAM.logEveryMs)
+    return { ...r, state: { ...r.state, reqWin: { since: win.since, n } } };
+  const log: StrategyAction[] =
+    n > 0
+      ? [
+          {
+            type: "log",
+            decision: "Order requests",
+            why: `Last ${String(Math.round(span / 1000))} s: ${String(n)} requests to SoDEX (new orders and cancels).`,
+          },
+        ]
+      : [];
+  return { actions: [...r.actions, ...log], state: { ...r.state, reqWin: { since: e.at, n: 0 } } };
+}
+
+function stepCore(
   c: VolumeMakerConfig,
   raw: VolumeMakerState,
   e: StrategyEvent,
@@ -852,16 +993,9 @@ export function stepVolumeMaker(
   switch (e.type) {
     case "tick": {
       if (e.market !== c.market) return { actions: [], state: s };
-      // Giữ giá vài giây gần nhất cho Smart quoting (DEC-144); chỉ khi bật, state cũ không đổi.
-      const recent = c.smartQuoting
-        ? [...(s.recent ?? []), { t: e.at, p: e.price }].filter(
-            (x) => e.at - x.t <= Math.max(VM_SMART.momentumWindowMs, VM_SMART.trendWindowMs),
-          )
-        : s.recent;
       const state = {
         ...s,
         mid: e.price,
-        ...(recent === undefined ? {} : { recent }),
         ...(c.smartQuoting && (s.smartSince ?? null) === null ? { smartSince: e.at } : {}),
       };
       const g = guards(c, state, ctx, e.at);
@@ -900,14 +1034,23 @@ export function stepVolumeMaker(
       return { actions: [], state };
     }
     case "timer": {
-      if (e.market?.market === c.market && e.market.book !== null)
-        s = { ...s, book: e.market.book, bookAt: e.at };
+      if (e.market?.market === c.market && e.market.book !== null) {
+        const ws = s.bookStreamAt != null && e.at - s.bookStreamAt <= VM_BOOK_STREAM.freshMs;
+        const rest = e.market.book;
+        s =
+          ws && s.book != null
+            ? {
+                ...s,
+                book: { ...s.book, bidNotional: rest.bidNotional, askNotional: rest.askNotional },
+              }
+            : { ...s, book: rest, bookAt: e.at };
+      }
       const g = guards(c, s, ctx, e.at);
       if (g !== null) return g;
-      const hk = housekeep(s, e.at);
-      if (s.lastRefresh === null || hk !== s) {
-        if (hk !== s) return { actions: [], state: hk };
-      }
+      // Dọn lệnh cũ rồi xử lý tiếp trong cùng nhịp (DEC-251). Trước đây nhịp nào có dọn thì bỏ qua báo giá; bot chạy
+      // quá VM_KEEP_DONE_MS (10 phút) thì gần như nhịp nào cũng có một lệnh vừa quá hạn, bot đứng hàng chục giây không
+      // đặt lệnh (2026-11-15: khoảng trống 38–42 s, có lần hơn 2 phút, lệnh đóng không được đặt khi đang giữ vị thế).
+      s = housekeep(s, e.at);
       const elapsed = s.lastRefresh !== null ? e.at - s.lastRefresh : Infinity;
       const due = s.requoteDue && elapsed >= VM_MIN_REQUOTE_MS;
       const interval = elapsed >= c.refreshSeconds * 1000;
@@ -1006,11 +1149,14 @@ export function stepVolumeMaker(
       const o = s.orders[e.clOrdID];
       if (o === undefined) return { actions: [], state: s };
       if (o.status === "done") return { actions: [], state: s };
+      // Lệnh đóng đã huỷ xong mà còn vị thế: đặt lại lệnh đóng sớm (≥ VM_MIN_REQUOTE_MS), không chờ hết chu kỳ.
+      const reclose = o.role === "close" && !dec(s.ledger.position).isZero();
       return {
         actions: [],
         state: {
           ...s,
           orders: { ...s.orders, [e.clOrdID]: { ...o, status: "done", since: e.at } },
+          ...(reclose ? { requoteDue: true } : {}),
         },
       };
     }
@@ -1042,7 +1188,9 @@ export function stepVolumeMaker(
       };
     }
     case "fair":
-      return onFair(c, s, e);
+      return onFair(c, s, e, ctx);
+    case "book":
+      return onBook(c, s, e, ctx);
     case "fundingPaid":
     case "fundingRate":
     case "marginRatio":

@@ -48,6 +48,7 @@ import {
   topVolumeMarkets,
 } from "./mm-cost-store";
 import { MmRawRecorder } from "./mm-raw";
+import { SodexBookRelay } from "./sodex-book";
 import { CandleTracker, FundingTracker, marketSubject } from "./trackers";
 
 // marketdata: nơi duy nhất mở WS thị trường SoDEX (ARCHITECTURE.md mục 3.3.7). Một bản active nhờ
@@ -314,6 +315,10 @@ async function start() {
   const fair = new BinanceFair((msg) => {
     nc.publish(marketSubject(msg.s, "fair"), JSON.stringify(msg));
   });
+  // Giá tốt nhất SoDEX thời gian thực cho bot Market Making (DEC-248).
+  const bookRelay = new SodexBookRelay((msg) => {
+    nc.publish(marketSubject(msg.s, "book"), JSON.stringify(msg));
+  });
   const binanceSymbols = await binancePerpSymbols().catch((error: unknown) => {
     log.warn({ err: error }, "binance symbols unavailable; no Binance pricing");
     return new Set<string>();
@@ -386,6 +391,7 @@ async function start() {
                   mmCost.onBook(t.s, t.b, t.a, at);
                   mmRaw?.book(t, at);
                   fair.onSodex(t.s, t.b, t.a, at);
+                  bookRelay.onSodex(t.s, t.b, t.a, t.E, at);
                 }
               },
               onTrades: (
@@ -430,7 +436,12 @@ async function start() {
   };
   // Giá Binance cho các market có bot Market Making: đọc lại mỗi 30 s để bot mới có giá sớm.
   const fairWatch = async () => {
-    const pairs = (await mmBotMarkets(db)).flatMap((m) => {
+    const mm = (await mmBotMarkets(db)).filter((m) => perpsSymbols.includes(m));
+    bookRelay.setMarkets(mm);
+    // Market có bot mới phải có trên kết nối bookTicker ngay, không chờ vòng 5 phút của mmWatch.
+    const missing = mm.filter((m) => !perpsStream.microSymbols.has(m));
+    if (missing.length > 0) perpsStream.watchMicro([...perpsStream.microSymbols, ...missing]);
+    const pairs = mm.flatMap((m) => {
       const b = binanceSymbolOf(m, binanceSymbols);
       return b === null ? [] : [[b, m] as const];
     });
