@@ -1791,7 +1791,13 @@ export class Engine {
       .from(orders)
       .where(and(eq(orders.sodexAccountId, r.account.id), inArray(orders.clOrdId, [...clOrdIDs])));
     const open = rows.filter((o) => o.status === "open" || o.status === "partially_filled");
-    const pending = this.#pendingCancels.get(r.botId) ?? new Set<string>();
+    // Một Set dùng chung cho mọi lần huỷ của bot (DEC-254): hai lần huỷ chạy song song từng giữ hai Set riêng, lần xong
+    // sau với Set rỗng xoá luôn mục của lần kia và lệnh chờ huỷ bị mất (lệnh mồ côi nằm tới lúc quét).
+    let pending = this.#pendingCancels.get(r.botId);
+    if (pending === undefined) {
+      pending = new Set<string>();
+      this.#pendingCancels.set(r.botId, pending);
+    }
     // Lệnh đặt còn đang gửi (chưa có dòng, hoặc `unknown` chưa được nhận): giữ chờ huỷ, huỷ khi lệnh được nhận (DEC-254).
     const startedAt = this.#d.now();
     const inflight = clOrdIDs.filter((id) => {
@@ -1815,8 +1821,6 @@ export class Engine {
     if (inflight.length > 0)
       this.#cancelRetryAt.set(r.botId, startedAt - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
     if (open.length === 0) {
-      if (pending.size === 0) this.#pendingCancels.delete(r.botId);
-      else this.#pendingCancels.set(r.botId, pending);
       return;
     }
     let results: Awaited<ReturnType<Gateway["cancel"]>>;
@@ -1829,7 +1833,6 @@ export class Engine {
     } catch (error) {
       // Request huỷ không rời DRIFT (signer lỗi…): lệnh vẫn sống trên SoDEX, giữ "open" và thử lại ở vòng sau.
       for (const o of open) pending.add(o.clOrdId);
-      this.#pendingCancels.set(r.botId, pending);
       throw error;
     }
     // Huỷ không thành (SoDEX từ chối hoặc không rõ): ghi log để lần ra vì sao lệnh còn sống trên sàn.
@@ -1877,8 +1880,6 @@ export class Engine {
       if (settled.has(o.clOrdId)) pending.delete(o.clOrdId);
       else pending.add(o.clOrdId);
     }
-    if (pending.size === 0) this.#pendingCancels.delete(r.botId);
-    else this.#pendingCancels.set(r.botId, pending);
     if (done.length > 0)
       await this.#fenced(r, (tx) =>
         tx
