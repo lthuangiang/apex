@@ -676,23 +676,42 @@ export async function listBots(
   return rows.map((r) => summary(r.bot, r.version, r.state, r.config, r.fills, marks));
 }
 
+/** Chi phí / $1M của phiên Volume Farm: max(0, −net) ÷ volume × 1M; chưa có khối lượng thì null (trang bot dùng chung). */
+function farmCostPerMillion(st: VolumeFarmState): string | null {
+  const volume = dec(st.volume);
+  return volume.isZero()
+    ? null
+    : Decimal.max(0, farmNet(st).neg()).div(volume).mul(1_000_000).toDecimalPlaces(2).toString();
+}
+
 /**
- * Chi phí trên mỗi 1 triệu USD khối lượng của mọi bot Market Making của một user, theo id bot. Cùng nguồn (state
- * runtime) và cùng công thức (`costPerMillion`) với trang bot (`vmStats`), đọc một lần cho cả user.
- * Bot chưa có state không nằm trong map.
+ * Chi phí trên mỗi 1 triệu USD khối lượng của mọi bot Market Making và Volume Farm của một user, theo id bot. Cùng nguồn
+ * (state runtime) và cùng công thức với trang bot (`vmStats`, `farmStats`), đọc một lần cho cả user. Bot chưa có state
+ * không nằm trong map.
  */
-export async function vmCostPerMillionByBot(
+export async function costPerMillionByBot(
   db: Db,
   userId: string,
 ): Promise<Map<string, string | null>> {
   const rows = await db
-    .select({ botId: botRuntime.botId, state: botRuntime.state })
+    .select({ botId: botRuntime.botId, state: botRuntime.state, strategy: bots.strategy })
     .from(botRuntime)
     .innerJoin(bots, eq(bots.id, botRuntime.botId))
-    .where(and(eq(bots.userId, userId), eq(bots.strategy, Strategy.volumeMaker)));
+    .where(
+      and(
+        eq(bots.userId, userId),
+        inArray(bots.strategy, [Strategy.volumeMaker, Strategy.volumeFarm]),
+      ),
+    );
   return new Map(
-    rows.flatMap((r) =>
-      r.state === null ? [] : [[r.botId, costPerMillion(r.state as VolumeMakerState)] as const],
+    rows.map(
+      (r) =>
+        [
+          r.botId,
+          r.strategy === Strategy.volumeMaker
+            ? costPerMillion(r.state as VolumeMakerState)
+            : farmCostPerMillion(r.state as VolumeFarmState),
+        ] as const,
     ),
   );
 }
@@ -795,9 +814,7 @@ async function vfStats(
       pricePnl: dec(st.ledger.realized).toDecimalPlaces(4).toString(),
       funding: dec(st.ledger.funding).toDecimalPlaces(4).toString(),
       net: net.toDecimalPlaces(4).toString(),
-      costPerMillion: volume.isZero()
-        ? null
-        : Decimal.max(0, net.neg()).div(volume).mul(1_000_000).toDecimalPlaces(2).toString(),
+      costPerMillion: farmCostPerMillion(st),
     },
     volume1h: money(v?.h1),
     volume24h: money(v?.h24),

@@ -584,7 +584,7 @@ describe("Volume bots per user (DEC-80)", () => {
     expect(log[0]?.n).toBe("3");
   });
 
-  it("shows the team the same cost per $1M as the bot page, only for Market Making bots", async () => {
+  it("shows the team the same cost per $1M as the bot page, only for Market Making and Volume Farm bots", async () => {
     const { client } = await connectedUser("cpm-user@example.com");
     const me = meSchema.parse((await client.request("GET", "/api/v1/me")).json());
     const make = async (strategy: string, name: string, config: unknown) => {
@@ -598,6 +598,7 @@ describe("Volume bots per user (DEC-80)", () => {
     const idle = await make("volume_maker", "MM idle", vmConfig);
     const empty = await make("volume_maker", "MM empty", vmConfig);
     const gridId = await make("spot_grid", "Grid", grid);
+    const farm = await make("volume_farm", "Farm", farmConfig);
     const runtime = async (id: string, state: unknown) => {
       const { rows } = await env.pool.query<{ active_version_id: string }>(
         "select active_version_id from bots where id = $1",
@@ -632,6 +633,12 @@ describe("Volume bots per user (DEC-80)", () => {
       selfTradeBlocked: 0,
     });
     await runtime(gridId, { ledger: ledger("1", "5") });
+    // Volume Farm: lãi giá 1 − phí 4 = −3 trên khối lượng 10,000 → 300 trên $1M.
+    await runtime(farm, { volume: "10000", trades: 1, wins: 0, ledger: ledger("4", "1") });
+    const farmPage = botDetailSchema.parse(
+      (await client.request("GET", `/api/v1/bots/${farm}`)).json(),
+    ).volumeFarm?.session.costPerMillion;
+    expect(farmPage).toBe("300");
     await env.pool.query("update bots set state = 'running' where id = $1", [mm]);
     const fromBotPage = botDetailSchema.parse(
       (await client.request("GET", `/api/v1/bots/${mm}`)).json(),
@@ -646,6 +653,7 @@ describe("Volume bots per user (DEC-80)", () => {
     );
     const cpm = (id: string) => detail.bots.find((b) => b.id === id)?.costPerMillion;
     expect(cpm(mm)).toBe(fromBotPage);
+    expect(cpm(farm)).toBe(farmPage);
     // Chưa chạy (không có state) hoặc chưa có khối lượng: null, không phải 0.
     expect(cpm(idle)).toBeNull();
     expect(cpm(empty)).toBeNull();

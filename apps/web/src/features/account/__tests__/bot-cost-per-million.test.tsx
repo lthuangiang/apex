@@ -27,6 +27,13 @@ describe("BotCostPerMillion", () => {
     expect(container).toHaveTextContent(/^250$/);
   });
 
+  it("shows the cost per $1M of a Volume Farm bot too", () => {
+    const { container } = wrap(
+      <BotCostPerMillion bot={{ strategy: "volume_farm", costPerMillion: "300" }} />,
+    );
+    expect(container).toHaveTextContent(/^300$/);
+  });
+
   it("shows Not available, never 0, when the bot has no volume yet", () => {
     const { container } = wrap(
       <BotCostPerMillion bot={{ strategy: "volume_maker", costPerMillion: null }} />,

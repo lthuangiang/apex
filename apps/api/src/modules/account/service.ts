@@ -71,7 +71,7 @@ import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, sql } from "dri
 import { getAddress } from "viem";
 
 import { AuditAction, audit } from "../../lib/audit";
-import { listBots, vmCostPerMillionByBot, type BotDeps } from "../bots/service";
+import { costPerMillionByBot, listBots, type BotDeps } from "../bots/service";
 import { iso } from "../security/service";
 import type { TwoFactorDeps } from "../security/two-factor";
 
@@ -976,7 +976,7 @@ export async function adminUserDetail(
     .orderBy(desc(equitySnapshots.at))
     .limit(1);
   const botList = await listBots(deps.bots, targetId, true);
-  const cpm = await vmCostPerMillionByBot(deps.db, targetId);
+  const cpm = await costPerMillionByBot(deps.db, targetId);
   const connectRows = await deps.db
     .select()
     .from(connectEvents)
@@ -1016,7 +1016,7 @@ export async function adminUserDetail(
         .reduce((sum, b) => (b.netPnl === null ? sum : sum.add(b.netPnl)), new Decimal(0))
         .toString(),
     },
-    // Cost per $1M volume chỉ có ở Market Making, cùng số với trang bot của người dùng.
+    // Cost per $1M volume chỉ có ở Market Making và Volume Farm, cùng số với trang bot của người dùng.
     bots: botList.map((b) => ({ ...b, costPerMillion: cpm.get(b.id) ?? null })),
     builderFees: await builderFeeRows(deps.db, targetId),
     connect: {
