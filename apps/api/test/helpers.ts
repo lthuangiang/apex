@@ -196,7 +196,9 @@ export class TestClient {
       ...(options.body === undefined ? {} : { payload: options.body as object }),
     });
     for (const c of response.cookies) {
-      if (c.value === "" || (c.expires !== undefined && c.expires.getTime() <= Date.now() - 1e9)) {
+      // Cookie bị xoá (`clearCookie` đặt hạn năm 1970). Không so với giờ thật: test chạy với đồng hồ giả cố định, so
+      // với giờ thật thì cookie phiên hợp lệ sẽ bị coi là hết hạn khi ngày thật đi qua hạn của nó.
+      if (c.value === "" || (c.expires !== undefined && c.expires.getTime() < CLEARED_BEFORE)) {
         this.cookies.delete(c.name);
       } else {
         this.cookies.set(c.name, c.value);
@@ -215,6 +217,9 @@ export function lastCode(mails: Mail[]): string {
   if (match?.[1] === undefined) throw new Error("No OTP mail");
   return match[1];
 }
+
+/** Cookie hết hạn trước mốc này coi là cookie đã bị xoá. */
+const CLEARED_BEFORE = Date.UTC(2001, 0, 1);
 
 export async function signIn(
   env: TestEnv,

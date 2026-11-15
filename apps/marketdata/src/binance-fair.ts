@@ -10,12 +10,23 @@ const BASIS_SAMPLE_MS = 1_000;
 /** Cần ngần này mẫu chênh lệch nền trước khi gửi giá. */
 const BASIS_MIN_SAMPLES = 30;
 
-export const FAIR_PUBLISH = { moveBp: 0.25, minGapMs: 250, heartbeatMs: 2_000 } as const;
+/**
+ * Gửi khi giá đổi ≥ `moveBp`, không dày hơn `minGapMs`, nhắc lại sau `heartbeatMs`. Không gửi (và không lấy mẫu chênh
+ * lệch nền) khi lần cập nhật Binance cuối đã nhận quá `maxBinanceAgeMs`: luồng Binance khựng thì bot không dùng giá cũ.
+ */
+export const FAIR_PUBLISH = {
+  moveBp: 0.25,
+  minGapMs: 250,
+  heartbeatMs: 2_000,
+  maxBinanceAgeMs: 1_000,
+} as const;
 
 interface MarketState {
   sodex: number | null;
   binance: number | null;
   binanceT: number;
+  /** Lúc nhận lần cập nhật Binance cuối (giờ máy marketdata). */
+  binanceAt: number;
   samples: { at: number; bp: number }[];
   lastSample: number;
   sent: { fair: number; at: number } | null;
@@ -52,6 +63,7 @@ export class BinanceFair {
           sodex: null,
           binance: null,
           binanceT: 0,
+          binanceAt: Number.NEGATIVE_INFINITY,
           samples: [],
           lastSample: Number.NEGATIVE_INFINITY,
           sent: null,
@@ -70,11 +82,13 @@ export class BinanceFair {
     if (s === undefined) return;
     s.binance = (Number(bid) + Number(ask)) / 2;
     s.binanceT = T;
+    s.binanceAt = at;
     this.#check(market, s, at);
   }
 
   #check(market: string, s: MarketState, at: number): void {
     if (s.sodex === null || s.binance === null || s.sodex <= 0) return;
+    if (at - s.binanceAt > FAIR_PUBLISH.maxBinanceAgeMs) return;
     if (at - s.lastSample >= BASIS_SAMPLE_MS) {
       s.samples.push({ at, bp: ((s.binance - s.sodex) / s.sodex) * 10_000 });
       s.lastSample = at;

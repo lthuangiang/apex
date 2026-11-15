@@ -1009,14 +1009,9 @@ describe("volume maker — Binance pricing and resting quotes in Smart quoting",
         book: { bid: "99999.9", ask: "100000", bidNotional: "100000", askNotional: "100000" },
       },
     }) as const;
-  const fair = (at: number, price: string) =>
-    ({
-      type: "fair",
-      at,
-      market: "BTC-USD",
-      fair: price,
-      binanceAt: Date.UTC(2026, 10, 15, 0, 12, 29, 412) + at,
-    }) as const;
+  // Giờ Binance đi trước lúc engine nhận 50 ms (như prod); `age` để mô phỏng giá Binance cũ.
+  const fair = (at: number, price: string, age = 50) =>
+    ({ type: "fair", at, market: "BTC-USD", fair: price, binanceAt: at - age }) as const;
   const priceOf = (a: StrategyAction[], side: "bid" | "ask") =>
     places(a).find((o) => o.tag.endsWith(`:${side}`))?.price;
   const runFrom = (c: VolumeMakerConfig, start: VolumeMakerState) => {
@@ -1045,10 +1040,23 @@ describe("volume maker — Binance pricing and resting quotes in Smart quoting",
     ).toBe("99999.9");
   });
 
-  it("ignores a Binance price older than 3 s", () => {
+  it("ignores a Binance price older than 1.5 s by its Binance time", () => {
     const b = runFrom(on, run(on, [...firstQuote()]).s);
     b.step(fair(1000, "100010"));
     expect(priceOf(b.step(snap(7000)), "ask")).toBe("100000");
+  });
+
+  it("does not pull or price from a stale Binance price even when the engine just received it", () => {
+    const b = runFrom(on, run(on, [...firstQuote(), snap(7000)]).s);
+    // Luồng Binance khựng: tin tới lúc 7.5 s nhưng giờ Binance là 5 s trước.
+    expect(b.step(fair(7500, "100003", 5000))).toEqual([]);
+    expect(b.s.requoteDue).toBe(false);
+    expect(
+      Object.values(b.s.orders)
+        .filter((o) => o.status === "live")
+        .map((o) => o.side)
+        .sort(),
+    ).toEqual(["buy", "sell"]);
   });
 
   it("pulls a resting quote the Binance price moved through, logs it with the Binance time, and requotes soon", () => {
@@ -1058,7 +1066,7 @@ describe("volume maker — Binance pricing and resting quotes in Smart quoting",
     expect(out).toContainEqual({
       type: "log",
       decision: "Ask pulled",
-      why: "At 00:12:36.912 UTC the Binance price (100003) moved through the ask at 100000.",
+      why: "At 00:00:07.450 UTC the Binance price (100003) moved through the ask at 100000.",
     });
     expect(b.s.requoteDue).toBe(true);
     expect(
