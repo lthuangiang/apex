@@ -575,6 +575,8 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       optional: true,
       type: dec("quote"),
     },
+    // Pause if trading costs more than (DEC-244): USD trên mỗi $1M volume, trống = tắt.
+    { key: "pauseAboveCostPerMillion", group: 4, optional: true, type: dec("quote") },
     {
       key: "runUntil",
       group: 4,

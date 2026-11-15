@@ -49,6 +49,11 @@ export const volumeMakerSchema = z
      * báo giá lại sau 15 s yên. Độc lập với Smart quoting.
      */
     pauseOnFastMoves: z.boolean().default(false),
+    /**
+     * Pause if trading costs more than (DEC-244), USD trên mỗi $1M volume; thiếu = tắt. Chi phí (phí + lỗ
+     * giá, gồm phần chưa chốt) của 30 phút gần nhất vượt mức này thì rút lệnh mở thêm vị thế 10 phút, lệnh đóng vẫn giữ.
+     */
+    pauseAboveCostPerMillion: positiveDecimal().optional(),
     quoteLevel: z
       .number()
       .int({ message: "Whole numbers only." })

@@ -24,3 +24,6 @@
 19. Futures Grid "Must be closer than liquidation." (S2, DEC-65): ước lượng giá thanh lý của vị thế lưới *trước khi mở* bằng công thức nào (maintenance margin của SoDEX theo market/tier, vị thế khi khớp hết)? SoDEX chỉ trả `liquidationPrice` cho vị thế đang mở.
 20. Copy Trade (DEC-161): (a) SoDEX có leaderboard hoặc trade feed công khai kèm địa chỉ để khám phá ví không, hay chỉ dán địa chỉ; (b) giới hạn 10 user / IP trên WS áp cho cả `accountTrade` của ví người khác không, và có hạn mức riêng cho partner không (hiện chỉ mở 8 WS leader); (c) key DRIFT có giao dịch được trên subaccount không (để mỗi leader một danh mục riêng như Coinpilot). (d) đóng bởi DEC-162.
 
+## Dead-man switch của SoDEX (2026-11-15)
+Sodextra dùng một "safety timer / dead-man switch": nhờ SoDEX tự huỷ mọi lệnh nếu bot không gia hạn trong một khoảng thời gian (bot hoặc mạng hỏng thì lệnh không treo trên sổ). Tài liệu SoDEX trong repo (`docs/SODEX.md`, `packages/sodex`) không mô tả API này. **[confirm]** SoDEX có action / endpoint đó không, tên và payload ra sao (ký như lệnh thường?), giới hạn thời gian? Có xác nhận thì thêm vào engine cho mọi bot Market Making.
+
