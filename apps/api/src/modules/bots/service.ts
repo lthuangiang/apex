@@ -676,6 +676,27 @@ export async function listBots(
   return rows.map((r) => summary(r.bot, r.version, r.state, r.config, r.fills, marks));
 }
 
+/**
+ * Chi phí trên mỗi 1 triệu USD khối lượng của mọi bot Market Making của một user, theo id bot. Cùng nguồn (state
+ * runtime) và cùng công thức (`costPerMillion`) với trang bot (`vmStats`), đọc một lần cho cả user.
+ * Bot chưa có state không nằm trong map.
+ */
+export async function vmCostPerMillionByBot(
+  db: Db,
+  userId: string,
+): Promise<Map<string, string | null>> {
+  const rows = await db
+    .select({ botId: botRuntime.botId, state: botRuntime.state })
+    .from(botRuntime)
+    .innerJoin(bots, eq(bots.id, botRuntime.botId))
+    .where(and(eq(bots.userId, userId), eq(bots.strategy, Strategy.volumeMaker)));
+  return new Map(
+    rows.flatMap((r) =>
+      r.state === null ? [] : [[r.botId, costPerMillion(r.state as VolumeMakerState)] as const],
+    ),
+  );
+}
+
 async function vmStats(
   deps: BotDeps,
   botId: string,

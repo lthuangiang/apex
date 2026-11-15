@@ -14,6 +14,7 @@ import { formatAmount, formatDate, formatDateTime, shortAddress } from "@/lib/fo
 import { useMarketNames } from "@/lib/markets";
 import { useMe } from "@/lib/queries";
 
+import { BotCostPerMillion } from "./bot-cost-per-million";
 import { BuilderFeeCard } from "./builder-fee-card";
 import { ConnectAttempts } from "./connect-log";
 
@@ -47,6 +48,7 @@ export function UserDetailPage({ id }: { id: string }) {
   const t = useTranslations("adminUser");
   const tu = useTranslations("adminUsers");
   const tc = useTranslations("createBot");
+  const ta = useTranslations("agent");
   const tm = useTranslations("common.missing");
   const names = useMarketNames();
   const me = useMe();
@@ -173,6 +175,13 @@ export function UserDetailPage({ id }: { id: string }) {
                     header: t("cols.profit"),
                     numeric: true,
                     cell: (b: Bot) => <BotProfit bot={b} />,
+                  },
+                  {
+                    // Chỉ bot Market Making có số này; cùng nhãn và cách hiện với trang bot.
+                    key: "costPerMillion",
+                    header: ta("vm.perMillion"),
+                    numeric: true,
+                    cell: (b: Bot) => <BotCostPerMillion bot={b} />,
                   },
                   {
                     key: "fills",
