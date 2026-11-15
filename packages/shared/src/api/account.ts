@@ -292,7 +292,12 @@ export const adminUserDetailSchema = z.object({
     /** Σ PnL của các bot có dữ liệu, gồm cả bot đã lưu trữ. */
     botProfit: decimalStringSchema,
   }),
-  bots: z.array(botSummarySchema),
+  bots: z.array(
+    botSummarySchema.extend({
+      /** Chi phí trên mỗi 1 triệu USD khối lượng (Market Making); null với chiến lược khác hoặc khi chưa có khối lượng. */
+      costPerMillion: decimalStringSchema.nullable(),
+    }),
+  ),
   /** Builder fee theo chiến lược của user (DEC-159). */
   builderFees: z.array(builderFeeRowSchema),
   /** Lịch sử kết nối SoDEX (DEC-114): bước phía trình duyệt và yêu cầu chữ ký phía server, mới nhất trước. */
