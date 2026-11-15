@@ -116,6 +116,11 @@ export class MarketStream {
   #timer: ReturnType<typeof setTimeout> | null = null;
   /** Symbol nghe `bookTicker` + `trade` (giới hạn số market, DEC-227). Dùng chung kết nối này. */
   #micro = new Set<string>();
+
+  /** Symbol đang nghe `bookTicker` + `trade`. */
+  get microSymbols(): ReadonlySet<string> {
+    return this.#micro;
+  }
   #id = 1;
 
   constructor(options: MarketStreamOptions) {

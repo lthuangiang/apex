@@ -75,6 +75,8 @@ export type StrategyEvent =
    * lệch nền (trung vị 60 s), dùng làm giá hợp lý. `binanceAt`: giờ Binance của lần cập nhật.
    */
   | { type: "fair"; at: number; market: string; fair: string; binanceAt: number }
+  /** Giá mua / bán tốt nhất SoDEX theo thời gian thực (WS `bookTicker`, DEC-248); chỉ gửi khi giá đổi. */
+  | { type: "book"; at: number; market: string; bid: string; ask: string }
   /**
    * Fill của ví leader (Copy Trade, DEC-161). `at` = lúc engine nhận, `leaderAt` = lúc leader khớp; `quantity` luôn
    * dương. `positionAfter` có dấu (âm là short): vị thế của leader trên market sau fill này, tính theo market SoDEX.

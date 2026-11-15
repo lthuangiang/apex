@@ -900,6 +900,7 @@ export function stepVolumeFarm(
     case "marginRatio":
     case "positionSync":
     case "fair":
+    case "book":
     case "leaderFill":
     case "leaderPosition":
     case "resumed":

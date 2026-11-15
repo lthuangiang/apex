@@ -36,6 +36,7 @@ import {
   type LeaderFillMessage,
   type LeaderPositionMessage,
   leverageSpecOf,
+  type MmBookMessage,
   type MmFairMessage,
   leverageSpecsOf,
   type LeverageSpec,
@@ -109,6 +110,11 @@ export const MAKER_POSITION_MS = 30_000;
  * ngược chiều bằng kiểm tra self-trade (sự cố 2026-11-04, DEC-111).
  */
 export const CANCEL_RETRY_MS = 5_000;
+/**
+ * SoDEX trả `OrderNotFound` cho lệnh huỷ gửi ngay sau khi lệnh đặt được nhận (DEC-250): lệnh chưa vào sổ, lát sau mới
+ * vào và nằm đó như lệnh mồ côi. Lệnh nhận chưa quá `windowMs` thì huỷ lại sau `retryMs` thay vì `CANCEL_RETRY_MS`.
+ */
+export const CANCEL_NOT_BOOKED = { windowMs: 5_000, retryMs: 1_000 } as const;
 /** Market Making: lệnh còn "open" lâu hơn mức này mà chiến lược không còn theo dõi thì engine huỷ (DEC-111). */
 export const MAKER_ORPHAN_MS = 15_000;
 /** Bot paper: ghi số dư giả mỗi phút (biểu đồ theo ngày ở trang Fake-money test, DEC-105). */
@@ -481,6 +487,17 @@ export class Engine {
         fair: msg.fair,
         binanceAt: msg.T,
       });
+  }
+
+  /** Giá tốt nhất SoDEX (WS, DEC-248) cho bot Market Making bật Smart quoting. */
+  async onMmBook(msg: MmBookMessage, recvAt: number): Promise<void> {
+    for (const r of [...this.#runners.values()].filter(
+      (x) =>
+        x.strategy === Strategy.volumeMaker &&
+        x.market === msg.s &&
+        (x.config as { smartQuoting?: boolean }).smartQuoting === true,
+    ))
+      await this.#feed(r, { type: "book", at: recvAt, market: msg.s, bid: msg.b, ask: msg.a });
   }
 
   async onPrice(market: string, price: string, at: number): Promise<void> {
@@ -1161,7 +1178,8 @@ export class Engine {
         event.type === "leaderFill" ||
         event.type === "leaderPosition" ||
         // Giá Binance cũng vậy: bot đang pause giữ nguyên lệnh đang mở (DOMAIN 7.2).
-        event.type === "fair")
+        event.type === "fair" ||
+        event.type === "book")
     )
       return;
     // Bot Perps: đặt đòn bẩy + margin mode trên SoDEX trước khi chiến lược phản ứng với thị trường. Fill / ack /
@@ -1811,6 +1829,15 @@ export class Engine {
         );
       }
     }
+    // Lệnh vừa được nhận mà SoDEX chưa thấy (OrderNotFound): huỷ lại sớm, trước khi nó kịp vào sổ và nằm đó.
+    const now = this.#d.now();
+    const notBooked = results.some((x) => {
+      if (x.outcome !== "unknown" || x.detail?.includes("OrderNotFound") !== true) return false;
+      const ackedAt = open.find((y) => y.clOrdId === x.clOrdID)?.ackedAt?.getTime();
+      return ackedAt !== undefined && now - ackedAt < CANCEL_NOT_BOOKED.windowMs;
+    });
+    if (notBooked)
+      this.#cancelRetryAt.set(r.botId, now - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
     // Chỉ coi là đã huỷ khi SoDEX trả lời rõ: ok, hoặc từ chối (lệnh đã khớp / đã huỷ). Không rõ thì thử lại.
     const settled = new Set(results.filter((x) => x.outcome !== "unknown").map((x) => x.clOrdID));
     const done = open.filter((o) => settled.has(o.clOrdId));

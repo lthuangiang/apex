@@ -592,6 +592,7 @@ function stepMarket(
     case "marginRatio":
     case "positionSync":
     case "fair":
+    case "book":
       return none(s);
   }
 }
@@ -820,6 +821,7 @@ export function stepCopyTrade(
     case "marginRatio":
     case "positionSync":
     case "fair":
+    case "book":
       return none2(s);
   }
 }

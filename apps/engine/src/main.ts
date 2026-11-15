@@ -4,6 +4,7 @@ import {
   dec,
   leaderFillMessageSchema,
   leaderPositionMessageSchema,
+  mmBookMessageSchema,
   mmFairMessageSchema,
 } from "@drift/shared";
 import {
@@ -113,6 +114,17 @@ void (async () => {
       await engine.onMmFair(mmFairMessageSchema.parse(m.json()), Date.now());
     } catch (error) {
       log.warn({ err: error }, "mm binance price handling failed");
+    }
+  }
+})();
+// Giá tốt nhất SoDEX thời gian thực cho Market Making (DEC-248, marketdata publish).
+const bookSub = nc.subscribe("md.*.book");
+void (async () => {
+  for await (const m of bookSub) {
+    try {
+      await engine.onMmBook(mmBookMessageSchema.parse(m.json()), Date.now());
+    } catch (error) {
+      log.warn({ err: error }, "mm sodex book handling failed");
     }
   }
 })();
