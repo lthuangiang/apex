@@ -597,6 +597,16 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     }) as const;
   const tickAt = (at: number, price: string) =>
     ({ type: "tick", at, market: "BTC-USD", price }) as const;
+  const snap2 = (at: number, bid: string, ask: string) =>
+    ({
+      type: "timer",
+      at,
+      market: {
+        market: "BTC-USD",
+        candles: [],
+        book: { bid, ask, bidNotional: "100000", askNotional: "100000" },
+      },
+    }) as const;
   const last = (a: StrategyAction[], side: "bid" | "ask") =>
     places(a)
       .filter((o) => o.tag.endsWith(`:${side}`))
@@ -788,32 +798,69 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(places(r.all).length).toBeGreaterThan(0);
   });
 
+  /** Báo giá lúc 7 s, mọi lệnh huỷ trước đó đã được SoDEX xác nhận. */
+  const clean = () => confirmed(on, quotedAt7s().s, 7200);
+  const opens = (a: StrategyAction[], side: "buy" | "sell") =>
+    places(a).filter((o) => o.side === side && !o.reduceOnly);
+
   it("adds no opening quote on a side whose cancel SoDEX has not confirmed, until it does (DEC-253)", () => {
-    // Bid bị rút lúc 7.5 s (Binance chạy qua), SoDEX chưa xác nhận huỷ.
-    let r = more(quotedAt7s().s, [fairAt(7500, "99999")]);
-    const pulledId = r.all.find((x) => x.type === "cancel");
-    expect(pulledId).toBeDefined();
-    // 3 s sau vẫn chưa xác nhận: không đặt bid mới (có thể bid cũ vẫn khớp), ask vẫn giữ.
-    r = more(r.s, [snap(10_600)]);
-    expect(places(r.all).filter((o) => o.side === "buy")).toHaveLength(0);
-    expect(r.all.some((x) => x.type === "cancel" && r.s.orders[x.clOrdID]?.side === "sell")).toBe(
-      false,
-    );
+    // Bid bị rút lúc 7.5 s (Binance chạy qua), SoDEX chưa xác nhận huỷ; ask không bị rút.
+    let r = more(clean(), [fairAt(7500, "99999")]);
+    const pulled = r.all.find((x) => x.type === "cancel");
+    const pulledId = pulled?.type === "cancel" ? pulled.clOrdID : "";
+    expect(r.s.orders[pulledId]?.side).toBe("buy");
+    // Sổ lệnh đổi để cả hai phía cần đặt lại: phía bán vẫn đặt, phía mua thì không (bid cũ có thể vẫn khớp).
+    r = more(r.s, [snap2(10_600, "100000.9", "100001")]);
+    expect(opens(r.all, "buy")).toHaveLength(0);
+    expect(opens(r.all, "sell")).toHaveLength(1);
     // SoDEX xác nhận → báo giá lại sớm, bid quay lại.
-    const id = pulledId?.type === "cancel" ? pulledId.clOrdID : "";
-    r = more(r.s, [{ type: "orderDone", at: 11_000, clOrdID: id }]);
+    r = more(r.s, [{ type: "orderDone", at: 11_000, clOrdID: pulledId }]);
     expect(r.s.requoteDue).toBe(true);
-    r = more(r.s, [snap(13_000)]);
-    expect(places(r.all).filter((o) => o.side === "buy")).toHaveLength(1);
+    r = more(r.s, [snap2(13_000, "100000.9", "100001")]);
+    expect(opens(r.all, "buy")).toHaveLength(1);
+  });
+
+  it("blocks a side even when the pull happened just before the next requote (DEC-253)", () => {
+    // Rút bid lúc 8.6 s, báo giá lại lúc 9 s (0.4 s sau): chưa có xác nhận thì không đặt bid mới.
+    let r = more(clean(), [fairAt(8600, "99999")]);
+    r = more(r.s, [snap2(9000, "99999.5", "100000")]);
+    expect(opens(r.all, "buy")).toHaveLength(0);
+  });
+
+  it("still cancels a resting opening order on a blocked side, so the position cannot grow past the limit (DEC-253)", () => {
+    // Đang long; phía bán còn ask mở cũ đang huỷ chưa xác nhận và một ask mở đang nằm: lệnh đóng được đặt, ask mở đang
+    // nằm bị huỷ (không giữ lại để cộng với lệnh mồ côi thành short gấp đôi).
+    const s0 = longAt();
+    const liveAsk = Object.entries(s0.orders).find(
+      ([, o]) => o.status === "live" && o.side === "sell" && o.role === "open",
+    )?.[0];
+    expect(liveAsk).toBeDefined();
+    expect(
+      Object.values(s0.orders).some((o) => o.status === "cancelling" && o.side === "sell"),
+    ).toBe(true);
+    const r = more(s0, [snap(10_100)]);
+    expect(r.all).toContainEqual({ type: "cancel", clOrdID: liveAsk });
+    expect(places(r.all).find((o) => o.reduceOnly)?.side).toBe("sell");
+    expect(opens(r.all, "sell")).toHaveLength(0);
+  });
+
+  it("does not requote early on a confirmed cancel when the side already has its replacement (DEC-253)", () => {
+    // Chu kỳ thường: huỷ bid cũ, đặt bid mới trong cùng lần báo giá; xác nhận huỷ bid cũ không gây báo giá thêm.
+    const r1 = more(clean(), [snap2(10_100, "99999.8", "100000")]);
+    const cancelled = r1.all.find((x) => x.type === "cancel");
+    expect(opens(r1.all, "buy")).toHaveLength(1);
+    const id = cancelled?.type === "cancel" ? cancelled.clOrdID : "";
+    const r = more(r1.s, [{ type: "orderDone", at: 10_500, clOrdID: id }]);
+    expect(r.s.requoteDue).toBe(false);
   });
 
   it("stops waiting for a cancel confirmation after 60 s (DEC-253)", () => {
-    let r = more(quotedAt7s().s, [fairAt(7500, "99999")]);
-    r = more(r.s, [snap(10_600)]);
-    expect(places(r.all).filter((o) => o.side === "buy")).toHaveLength(0);
+    let r = more(clean(), [fairAt(7500, "99999")]);
+    r = more(r.s, [snap2(10_600, "99999.5", "100000")]);
+    expect(opens(r.all, "buy")).toHaveLength(0);
     // Không bao giờ có xác nhận: hết VM_STALE_CANCEL_MS thì coi như xong, bid quay lại (đối soát vị thế bù phần lỡ).
-    r = more(r.s, [snap(7500 + VM_STALE_CANCEL_MS + 3000)]);
-    expect(places(r.all).filter((o) => o.side === "buy")).toHaveLength(1);
+    r = more(r.s, [snap2(7500 + VM_STALE_CANCEL_MS + 3000, "99999.5", "100000")]);
+    expect(opens(r.all, "buy")).toHaveLength(1);
   });
 
   it("does not cut without Smart quoting (DEC-249)", () => {
@@ -1193,6 +1240,9 @@ describe("volume maker — Binance pricing and resting quotes in Smart quoting",
     const b = runFrom(on, run(on, [...firstQuote()]).s);
     // Binance quy đổi 100010: ask không thấp hơn 100010 × 1.00005 = 100015.0005 → 100015.1 (làm tròn lên tick 0.1).
     b.step(fair(6500, "100010"));
+    // SoDEX xác nhận các lệnh vừa rút (DEC-253: chưa xác nhận thì phía đó chưa đặt lại).
+    for (const [id, o] of Object.entries(b.s.orders))
+      if (o.status === "cancelling") b.step({ type: "orderDone", at: 6900, clOrdID: id });
     const out = b.step(snap(7000));
     expect(priceOf(out, "ask")).toBe("100015.1");
     // Bid đã thấp hơn giá Binance − 0.5 bp: giữ nguyên ở giá tốt nhất (lệnh cũ nằm yên).
