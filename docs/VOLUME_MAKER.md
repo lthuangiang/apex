@@ -71,16 +71,6 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   max(giá tốt nhất phía đóng, giá vào) khi long, min(…) khi short; giá vào (`avgCost`) chưa gồm phí, làm tròn tick về phía
   có lợi. Vị thế mở (tính từ lúc rời trạng thái phẳng) quá 30 phút → đóng theo cách thường, Decisions ghi một lần
   "Closing at the best price". Trần chi phí và `inventoryLossStop` vẫn áp dụng như cũ.
-- **Orders per side** (`levelsPerSide`, 1–3, trống = 1; DEC-245): ngoài lệnh ở `quoteLevel`, mỗi phía đặt thêm lệnh ở
-  các mức kế tiếp (+1, +2 bước giá), mỗi lệnh một order size, tag `vm:<cycle>:l2:bid` / `l3:ask`… Chỉ khi báo giá theo
-  sổ lệnh (có `quoteLevel` và sổ lệnh còn mới). Số mức ≤ floor(vị thế tối đa ÷ order size); phía rủi ro khi đang giữ vị
-  thế thì tổng khối lượng các mức không vượt phần còn trống tới vị thế tối đa. Smart quoting vẫn áp cho từng lệnh (kẹp
-  theo giá Binance, giữ lệnh đang nằm, rút phía bị xu hướng chạy vào).
-- **Pause if cost per $1M is above** (`pauseAboveCostPerMillion`, USD / $1M, trống = tắt; DEC-244): mỗi
-  phút lấy mẫu volume và chi phí cộng dồn (phí + lỗ giá, gồm phần chưa chốt = −`netPnl`). Chi phí / $1M của 30 phút gần
-  nhất vượt mức (chỉ đo khi volume trong cửa sổ ≥ 25 × order size) thì rút lệnh mở thêm vị thế 10 phút, lệnh đóng vẫn đặt;
-  hết 10 phút báo giá lại và đo lại từ đầu. Decisions: "Paused on high cost" (chi phí, ngưỡng) / "Quoting again after a
-  cost pause". Không phải trạng thái pause của bot (bot vẫn Running, ngân sách vẫn tính như cũ).
 - **Pause on fast moves** (`pauseOnFastMoves`, mặc định tắt; **ẩn khỏi form** từ DEC-241, config cũ vẫn chạy): giá (cao nhất − thấp nhất) trong 6 s gần nhất ≥ max(3 bước giá, 2 bp của giá) → huỷ
   ngay lệnh mở, chỉ giữ lệnh đóng reduce-only; mỗi lần kích hoạt gia hạn thêm 15 s; hết hạn thì báo giá lại. Decisions ghi
   "Quotes paused on a fast move" / "Quoting again after a fast move". Độc lập với Smart quoting.

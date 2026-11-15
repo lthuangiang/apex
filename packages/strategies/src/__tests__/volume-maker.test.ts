@@ -566,36 +566,6 @@ describe("volume maker — quotes by order book level (DEC-135)", () => {
       expect(Number(q.bid)).toBeLessThan(Number(q.ask));
     }
   });
-
-  const extra = (c: VolumeMakerConfig) =>
-    places(run(c, [...firstQuote(), book("99999.9", "100000")]).all)
-      .filter((o) =>
-        ["l2:bid", "l2:ask", "l3:bid", "l3:ask"].some((t) => o.clOrdID === id(`vm:2:${t}`)),
-      )
-      .map((o) => ({ side: o.side, price: o.price, quantity: o.quantity }));
-
-  it("orders per side adds the next book levels, one order size each (DEC-245)", () => {
-    expect(extra(cfg({ quoteLevel: 0, levelsPerSide: 3, maxInventory: "1500" }))).toEqual([
-      { side: "buy", price: "99999.8", quantity: "0.005" },
-      { side: "sell", price: "100000.1", quantity: "0.005" },
-      { side: "buy", price: "99999.7", quantity: "0.005" },
-      { side: "sell", price: "100000.2", quantity: "0.005" },
-    ]);
-  });
-
-  it("orders per side never stacks more order sizes than the max position (DEC-245)", () => {
-    expect(extra(cfg({ quoteLevel: 0, levelsPerSide: 3, maxInventory: "1000" }))).toHaveLength(2);
-    expect(extra(cfg({ quoteLevel: 0, levelsPerSide: 3, maxInventory: "600" }))).toHaveLength(0);
-  });
-
-  it("orders per side only applies when quoting by book level (DEC-245)", () => {
-    expect(extra(cfg({ levelsPerSide: 3, maxInventory: "1500" }))).toHaveLength(0);
-  });
-
-  it("rejects orders per side outside 1–3", () => {
-    expect(() => cfg({ levelsPerSide: 4 })).toThrow();
-    expect(() => cfg({ levelsPerSide: 0 })).toThrow();
-  });
 });
 
 describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
@@ -1127,83 +1097,5 @@ describe("volume maker — Binance pricing and resting quotes in Smart quoting",
     const c = cfg({ quoteLevel: 0 });
     const r = run(c, [...firstQuote(), fair(1000, "100003")]);
     expect(r.s.fair).toBeUndefined();
-  });
-});
-
-describe("volume maker — pause if trading costs more than", () => {
-  const withLimit = cfg({ quoteLevel: 0, pauseAboveCostPerMillion: "200" });
-  const tick = (at: number, price = "100000") =>
-    ({ type: "tick", at, market: "BTC-USD", price }) as const;
-  const snap = (at: number) =>
-    ({
-      type: "timer",
-      at,
-      market: {
-        market: "BTC-USD",
-        candles: [],
-        book: { bid: "99999.9", ask: "100000", bidNotional: "100000", askNotional: "100000" },
-      },
-    }) as const;
-  /** Bot đã báo giá; mẫu chi phí đầu tiên ở 0 s (volume 0, chi phí 0), rồi tới `at` thì đã làm `volume` với `fees`. */
-  const traded = (c: VolumeMakerConfig, volume: string, fees: string) => {
-    const r = run(c, [tick(0), snap(1000)]);
-    return {
-      ...r.s,
-      costSamples: [{ t: 0, vol: "0", cost: "0" }],
-      volume,
-      ledger: { ...r.s.ledger, fees },
-    };
-  };
-  const step = (c: VolumeMakerConfig, s: VolumeMakerState, e: StrategyEvent) =>
-    volumeMaker.step(c, s, e, ctx);
-  const opening = (a: StrategyAction[]) =>
-    places(a).filter((o) => o.tag.endsWith(":bid") || o.tag.endsWith(":ask"));
-
-  it("pulls the opening quotes for 10 minutes when the last 30 minutes cost more than the limit", () => {
-    // $20.000 volume, $8 phí → $400 / $1M > $200.
-    const out = step(withLimit, traded(withLimit, "20000", "8"), tick(60_000));
-    expect(out.actions).toContainEqual({
-      type: "log",
-      decision: "Paused on high cost",
-      why: "Cost was $400 per $1M over the last 30 min, above your $200 limit. Quotes that add to the position are off for 10 min; closing orders stay.",
-    });
-    expect(out.state.costPauseUntil).toBe(60_000 + 10 * 60_000);
-    expect(opening(out.actions)).toEqual([]);
-    // Còn trong 10 phút: lần báo giá kế tiếp vẫn không đặt lệnh mở.
-    expect(opening(step(withLimit, out.state, snap(70_000)).actions)).toEqual([]);
-  });
-
-  it("quotes again after the pause and measures the cost from then on", () => {
-    const paused = step(withLimit, traded(withLimit, "20000", "8"), tick(60_000)).state;
-    // Có thể cần vài nhịp dọn lệnh cũ (housekeep) trước khi báo giá lại: gom action của các nhịp.
-    let st = paused;
-    const acts: StrategyAction[] = [];
-    for (let k = 1; k <= 5; k += 1) {
-      const x = step(withLimit, st, snap(60_000 + 10 * 60_000 + k * 3000));
-      st = x.state;
-      acts.push(...x.actions);
-    }
-    const out = { actions: acts, state: st };
-    expect(
-      out.actions.some(
-        (a) => a.type === "log" && a.decision === "Quoting again after a cost pause",
-      ),
-    ).toBe(true);
-    expect(opening(out.actions).length).toBeGreaterThan(0);
-    expect(out.state.costPauseUntil).toBeNull();
-    expect(out.state.costSamples).toEqual([]);
-  });
-
-  it("keeps quoting below the limit, before enough volume, or without a limit", () => {
-    // $150 / $1M < $200.
-    expect(
-      step(withLimit, traded(withLimit, "20000", "3"), tick(60_000)).state.costPauseUntil,
-    ).toBeUndefined();
-    // Chỉ $5.000 volume (< 25 × $500): chưa đủ để đo.
-    expect(
-      step(withLimit, traded(withLimit, "5000", "8"), tick(60_000)).state.costPauseUntil,
-    ).toBeUndefined();
-    const off = cfg({ quoteLevel: 0 });
-    expect(step(off, traded(off, "20000", "8"), tick(60_000)).state.costPauseUntil).toBeUndefined();
   });
 });

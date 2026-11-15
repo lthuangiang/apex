@@ -1,7 +1,7 @@
 import { dec, Decimal, ReasonCode, RoundMode } from "@drift/shared";
 
 import { clOrdId } from "../core/ids";
-import { applyFill, emptyLedger, netPnl, type Ledger } from "../core/ledger";
+import { applyFill, emptyLedger, type Ledger } from "../core/ledger";
 import { meetsMinimum, roundPrice, roundQty } from "../core/rounding";
 import type {
   BookTop,
@@ -83,10 +83,6 @@ export interface VolumeMakerState {
   fastRecent?: { t: number; p: string }[];
   /** Đang tạm rút lệnh mở vì giá chạy nhanh, tới thời điểm này (ms); null = bình thường. */
   fastPauseUntil?: number | null;
-  /** Mẫu volume và chi phí cộng dồn mỗi phút cho "Pause if trading costs more than". */
-  costSamples?: { t: number; vol: string; cost: string }[];
-  /** Đang tạm rút lệnh mở vì chi phí cao, tới thời điểm này (ms); null = bình thường. */
-  costPauseUntil?: number | null;
   /** Giá Binance quy đổi gần nhất (Smart quoting) và lúc nhận. */
   fair?: string | null;
   fairAt?: number | null;
@@ -109,48 +105,6 @@ interface SmartSide {
  * Decisions mỗi `logEveryMs`.
  */
 export const VM_ORACLE = { marginBp: 0.5, maxAgeMs: 1_500, logEveryMs: 60_000 } as const;
-
-/**
- * "Pause if trading costs more than": chi phí / $1M đo trên `windowMs` gần nhất (mẫu mỗi `sampleMs`), chỉ khi volume
- * trong cửa sổ ≥ `minVolumeOrders` × order size (tránh vài fill đầu làm sai số). Vượt mức thì rút lệnh mở `coolMs`.
- */
-export const VM_COST_PAUSE = {
-  windowMs: 30 * 60_000,
-  sampleMs: 60_000,
-  coolMs: 10 * 60_000,
-  minVolumeOrders: 25,
-} as const;
-
-/**
- * Lấy mẫu chi phí và kiểm tra ngưỡng. Trả về state mới và chi phí / $1M khi vừa vượt ngưỡng (null = không vượt / tắt /
- * đang tạm dừng / chưa đủ volume).
- */
-function costCheck(
-  c: VolumeMakerConfig,
-  s: VolumeMakerState,
-  at: number,
-): { state: VolumeMakerState; trip: Decimal | null } {
-  const limit = c.pauseAboveCostPerMillion;
-  if (limit === undefined || s.mid === null) return { state: s, trip: null };
-  const cost = netPnl(s.ledger, s.mid).neg();
-  const prev = s.costSamples ?? [];
-  const last = prev.at(-1);
-  const samples =
-    last === undefined || at - last.t >= VM_COST_PAUSE.sampleMs
-      ? [...prev, { t: at, vol: s.volume, cost: cost.toString() }].filter(
-          (x) => at - x.t <= VM_COST_PAUSE.windowMs + VM_COST_PAUSE.sampleMs,
-        )
-      : prev;
-  const state: VolumeMakerState = { ...s, costSamples: samples };
-  if (s.costPauseUntil != null && at < s.costPauseUntil) return { state, trip: null };
-  const first = samples.find((x) => at - x.t <= VM_COST_PAUSE.windowMs);
-  if (first === undefined) return { state, trip: null };
-  const vol = dec(s.volume).sub(first.vol);
-  if (vol.lt(dec(c.orderSize).mul(VM_COST_PAUSE.minVolumeOrders))) return { state, trip: null };
-  const cpm = cost.sub(first.cost).div(vol).mul(1_000_000);
-  if (cpm.lte(limit)) return { state, trip: null };
-  return { state: { ...state, costPauseUntil: at + VM_COST_PAUSE.coolMs }, trip: cpm };
-}
 
 /** Báo giá lại sớm (vì fill) nhưng cách lần trước ít nhất 2 s (VOLUME_MAKER.md 17.3.5). */
 export const VM_MIN_REQUOTE_MS = 2_000;
@@ -477,19 +431,11 @@ function quote(
   // Báo giá theo sổ lệnh khi config có `quoteLevel` và có sổ lệnh mới (DEC-135).
   const book = c.quoteLevel === undefined ? null : freshBook(s, at);
   const level = c.quoteLevel ?? 0;
-  // Orders per side: chỉ khi báo giá theo sổ lệnh, và không nhiều hơn số order size vừa vị thế tối đa.
-  const levels =
-    book === null
-      ? 1
-      : Math.max(1, Math.min(c.levelsPerSide ?? 1, maxInv.div(c.orderSize).floor().toNumber()));
   // Smart quoting (DEC-144, v2 DEC-152): chỉ khi bật và có sổ lệnh mới; tắt thì không lùi, không rút, đúng logic cũ.
   const smart = c.smartQuoting && book !== null ? smartAdjust(s, book, mid, rules, at) : null;
   const extra = { buy: smart?.buy?.ticks ?? 0, sell: smart?.sell?.ticks ?? 0 };
   // Pause on fast moves: rút mọi lệnh mở, giữ lệnh đóng reduce-only (PM chốt C2).
-  const fastPaused = c.pauseOnFastMoves && s.fastPauseUntil != null && at < s.fastPauseUntil;
-  // "Pause if trading costs more than": như Pause on fast moves, chỉ rút lệnh mở thêm vị thế.
-  const costPaused = s.costPauseUntil != null && at < s.costPauseUntil;
-  const paused = fastPaused || costPaused;
+  const paused = c.pauseOnFastMoves && s.fastPauseUntil != null && at < s.fastPauseUntil;
   const pulled = {
     buy: paused || smart?.buy?.pull === true,
     sell: paused || smart?.sell?.pull === true,
@@ -564,15 +510,7 @@ function quote(
   }
   if (smart !== null) next = { ...next, smartHold: smart.hold, smartSince: s.smartSince ?? at };
   const fastLogs: StrategyAction[] = [];
-  if (s.costPauseUntil != null && !costPaused) {
-    fastLogs.push({
-      type: "log",
-      decision: "Quoting again after a cost pause",
-      why: `${String(VM_COST_PAUSE.coolMs / 60_000)} minutes passed; the cost is measured again from now.`,
-    });
-    next = { ...next, costPauseUntil: null, costSamples: [] };
-  }
-  if (c.pauseOnFastMoves && !fastPaused && s.fastPauseUntil != null) {
+  if (c.pauseOnFastMoves && !paused && s.fastPauseUntil != null) {
     fastLogs.push({
       type: "log",
       decision: "Quoting again after a fast move",
@@ -606,22 +544,6 @@ function quote(
     // Smart quoting rút phía đang có xu hướng chạy vào (DEC-152).
     if (!pulled.buy && meetsMinimum(bid.price ?? bidPrice, bid.quantity, rules)) places.push(bid);
     if (!pulled.sell && meetsMinimum(ask.price ?? askPrice, ask.quantity, rules)) places.push(ask);
-    // Orders per side: các mức kế tiếp của sổ lệnh, mỗi mức một order size.
-    if (book !== null)
-      for (let i = 1; i < levels; i += 1)
-        for (const side of ["buy", "sell"] as const) {
-          if (pulled[side]) continue;
-          const px = oracle(side, bookPrice(book, side, level + extra[side] + i, rules));
-          const o = order(
-            c,
-            ctx,
-            side,
-            px,
-            orderQty,
-            `vm:${String(cycle)}:l${String(i + 1)}:${side === "buy" ? "bid" : "ask"}`,
-          );
-          if (meetsMinimum(px, o.quantity, rules)) places.push(o);
-        }
   } else {
     const long = pos.gt(0);
     const inv = pos.mul(mid).abs();
@@ -682,21 +604,6 @@ function quote(
       const riskQty = roundQty(Decimal.min(orderQty, room), rules);
       if (meetsMinimum(riskPrice, riskQty, rules))
         places.push(order(c, ctx, riskSide, riskPrice, riskQty, `vm:${String(cycle)}:${riskSide}`));
-      // Orders per side: thêm các mức kế tiếp, tổng không vượt phần còn trống tới vị thế tối đa.
-      let left = room.sub(riskQty);
-      if (book !== null)
-        for (let i = 1; i < levels && left.gt(0); i += 1) {
-          const px = oracle(
-            riskSide,
-            bookPrice(book, riskSide, level + (u.gte("0.5") ? 3 : 2) + extra[riskSide] + i, rules),
-          );
-          const q = roundQty(Decimal.min(orderQty, left), rules);
-          if (!meetsMinimum(px, q, rules)) break;
-          places.push(
-            order(c, ctx, riskSide, px, q, `vm:${String(cycle)}:l${String(i + 1)}:${riskSide}`),
-          );
-          left = left.sub(q);
-        }
     }
   }
 
@@ -951,7 +858,7 @@ export function stepVolumeMaker(
             (x) => e.at - x.t <= Math.max(VM_SMART.momentumWindowMs, VM_SMART.trendWindowMs),
           )
         : s.recent;
-      let state: VolumeMakerState = {
+      const state = {
         ...s,
         mid: e.price,
         ...(recent === undefined ? {} : { recent }),
@@ -959,19 +866,6 @@ export function stepVolumeMaker(
       };
       const g = guards(c, state, ctx, e.at);
       if (g !== null) return g;
-      // Pause if trading costs more than: vượt ngưỡng thì rút lệnh mở ngay (giữ lệnh đóng), ghi Decisions một lần.
-      const cost = costCheck(c, state, e.at);
-      if (cost.trip !== null && cost.state.lastRefresh !== null) {
-        const { actions, state: next } = quote(c, cost.state, ctx, e.at);
-        const limit = dec(c.pauseAboveCostPerMillion ?? "0");
-        const log: StrategyAction = {
-          type: "log",
-          decision: "Paused on high cost",
-          why: `Cost was $${cost.trip.toDecimalPlaces(0).toString()} per $1M over the last ${String(VM_COST_PAUSE.windowMs / 60_000)} min, above your $${limit.toDecimalPlaces(0).toString()} limit. Quotes that add to the position are off for ${String(VM_COST_PAUSE.coolMs / 60_000)} min; closing orders stay.`,
-        };
-        return guards(c, next, ctx, e.at) ?? { actions: [...actions, log], state: next };
-      }
-      state = cost.state;
       // Pause on fast moves: giá chạy ≥ max(3 bước giá, 2 bp) trong 6 s → rút lệnh mở ngay, giữ lệnh đóng.
       const rules = ctx.rules[c.market];
       if (c.pauseOnFastMoves && rules !== undefined) {
