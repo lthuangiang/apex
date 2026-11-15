@@ -54,6 +54,16 @@ export const volumeMakerSchema = z
      * giá, gồm phần chưa chốt) của 30 phút gần nhất vượt mức này thì rút lệnh mở thêm vị thế 10 phút, lệnh đóng vẫn giữ.
      */
     pauseAboveCostPerMillion: positiveDecimal().optional(),
+    /**
+     * Orders per side (DEC-245), 1–3, thiếu = 1: mỗi phía đặt thêm lệnh ở các mức kế tiếp của sổ lệnh (mỗi lệnh
+     * một order size), giữ chỗ trong hàng chờ khi giá dịch. Chỉ khi báo giá theo sổ lệnh; không vượt vị thế tối đa.
+     */
+    levelsPerSide: z
+      .number()
+      .int({ message: "Whole numbers only." })
+      .min(1, { message: "Allowed 1–3." })
+      .max(3, { message: "Allowed 1–3." })
+      .optional(),
     quoteLevel: z
       .number()
       .int({ message: "Whole numbers only." })

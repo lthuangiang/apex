@@ -561,6 +561,8 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
     { key: "maxOrders", group: 3, advanced: true, type: { kind: "int" } },
     // Vị trí báo giá theo mức sổ lệnh (DEC-135), thay khoảng cách bp: tự đúng với mọi market.
     { key: "quoteLevel", group: 3, advanced: true, type: { kind: "int" } },
+    // Orders per side (DEC-245): 1–3, trống = 1; không vượt số order size vừa "Holds up to".
+    { key: "levelsPerSide", group: 3, advanced: true, optional: true, type: { kind: "int" } },
     // Smart quoting (DEC-144), mặc định tắt: tắt là đúng logic cũ.
     { key: "smartQuoting", group: 3, beta: true, type: { kind: "bool" } },
     // Close only at entry or better / Pause on fast moves (DEC-227): ẩn khỏi form (DEC-241) vì chưa thấy tác
