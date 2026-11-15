@@ -477,11 +477,6 @@ function quote(
   // Báo giá theo sổ lệnh khi config có `quoteLevel` và có sổ lệnh mới (DEC-135).
   const book = c.quoteLevel === undefined ? null : freshBook(s, at);
   const level = c.quoteLevel ?? 0;
-  // Orders per side: chỉ khi báo giá theo sổ lệnh, và không nhiều hơn số order size vừa vị thế tối đa.
-  const levels =
-    book === null
-      ? 1
-      : Math.max(1, Math.min(c.levelsPerSide ?? 1, maxInv.div(c.orderSize).floor().toNumber()));
   // Smart quoting (DEC-144, v2 DEC-152): chỉ khi bật và có sổ lệnh mới; tắt thì không lùi, không rút, đúng logic cũ.
   const smart = c.smartQuoting && book !== null ? smartAdjust(s, book, mid, rules, at) : null;
   const extra = { buy: smart?.buy?.ticks ?? 0, sell: smart?.sell?.ticks ?? 0 };
@@ -606,22 +601,6 @@ function quote(
     // Smart quoting rút phía đang có xu hướng chạy vào (DEC-152).
     if (!pulled.buy && meetsMinimum(bid.price ?? bidPrice, bid.quantity, rules)) places.push(bid);
     if (!pulled.sell && meetsMinimum(ask.price ?? askPrice, ask.quantity, rules)) places.push(ask);
-    // Orders per side: các mức kế tiếp của sổ lệnh, mỗi mức một order size.
-    if (book !== null)
-      for (let i = 1; i < levels; i += 1)
-        for (const side of ["buy", "sell"] as const) {
-          if (pulled[side]) continue;
-          const px = oracle(side, bookPrice(book, side, level + extra[side] + i, rules));
-          const o = order(
-            c,
-            ctx,
-            side,
-            px,
-            orderQty,
-            `vm:${String(cycle)}:l${String(i + 1)}:${side === "buy" ? "bid" : "ask"}`,
-          );
-          if (meetsMinimum(px, o.quantity, rules)) places.push(o);
-        }
   } else {
     const long = pos.gt(0);
     const inv = pos.mul(mid).abs();
@@ -682,21 +661,6 @@ function quote(
       const riskQty = roundQty(Decimal.min(orderQty, room), rules);
       if (meetsMinimum(riskPrice, riskQty, rules))
         places.push(order(c, ctx, riskSide, riskPrice, riskQty, `vm:${String(cycle)}:${riskSide}`));
-      // Orders per side: thêm các mức kế tiếp, tổng không vượt phần còn trống tới vị thế tối đa.
-      let left = room.sub(riskQty);
-      if (book !== null)
-        for (let i = 1; i < levels && left.gt(0); i += 1) {
-          const px = oracle(
-            riskSide,
-            bookPrice(book, riskSide, level + (u.gte("0.5") ? 3 : 2) + extra[riskSide] + i, rules),
-          );
-          const q = roundQty(Decimal.min(orderQty, left), rules);
-          if (!meetsMinimum(px, q, rules)) break;
-          places.push(
-            order(c, ctx, riskSide, px, q, `vm:${String(cycle)}:l${String(i + 1)}:${riskSide}`),
-          );
-          left = left.sub(q);
-        }
     }
   }
 

@@ -566,36 +566,6 @@ describe("volume maker — quotes by order book level (DEC-135)", () => {
       expect(Number(q.bid)).toBeLessThan(Number(q.ask));
     }
   });
-
-  const extra = (c: VolumeMakerConfig) =>
-    places(run(c, [...firstQuote(), book("99999.9", "100000")]).all)
-      .filter((o) =>
-        ["l2:bid", "l2:ask", "l3:bid", "l3:ask"].some((t) => o.clOrdID === id(`vm:2:${t}`)),
-      )
-      .map((o) => ({ side: o.side, price: o.price, quantity: o.quantity }));
-
-  it("orders per side adds the next book levels, one order size each (DEC-245)", () => {
-    expect(extra(cfg({ quoteLevel: 0, levelsPerSide: 3, maxInventory: "1500" }))).toEqual([
-      { side: "buy", price: "99999.8", quantity: "0.005" },
-      { side: "sell", price: "100000.1", quantity: "0.005" },
-      { side: "buy", price: "99999.7", quantity: "0.005" },
-      { side: "sell", price: "100000.2", quantity: "0.005" },
-    ]);
-  });
-
-  it("orders per side never stacks more order sizes than the max position (DEC-245)", () => {
-    expect(extra(cfg({ quoteLevel: 0, levelsPerSide: 3, maxInventory: "1000" }))).toHaveLength(2);
-    expect(extra(cfg({ quoteLevel: 0, levelsPerSide: 3, maxInventory: "600" }))).toHaveLength(0);
-  });
-
-  it("orders per side only applies when quoting by book level (DEC-245)", () => {
-    expect(extra(cfg({ levelsPerSide: 3, maxInventory: "1500" }))).toHaveLength(0);
-  });
-
-  it("rejects orders per side outside 1–3", () => {
-    expect(() => cfg({ levelsPerSide: 4 })).toThrow();
-    expect(() => cfg({ levelsPerSide: 0 })).toThrow();
-  });
 });
 
 describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {

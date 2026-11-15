@@ -1052,10 +1052,6 @@
         "label": "Pause on fast moves",
         "hint": "Pull quotes when the price moves more than a few steps in a few seconds, then quote again."
       },
-      "levelsPerSide": {
-        "label": "Orders per side",
-        "hint": "1 to 3, empty = 1. Extra orders sit one price step further back each, one order size each, so you keep your place in line when the price moves. Only when quoting by order book position, and never more orders than your max position holds."
-      },
       "pauseAboveCostPerMillion": {
         "label": "Pause if cost per $1M is above",
         "hint": "Leave empty to keep trading. If the last 30 minutes cost more than this per $1M of volume (fees and price moves), quotes that add to your position stop for 10 minutes; closing orders stay."
