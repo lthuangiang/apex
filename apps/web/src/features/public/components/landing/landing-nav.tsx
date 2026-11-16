@@ -45,7 +45,7 @@ export function LandingNav({ links, home = "#" }: { links: readonly NavLink[]; h
   return (
     <nav
       aria-label={t("label")}
-      className="mx-auto box-border flex w-full max-w-[1240px] flex-wrap items-center gap-x-7 gap-y-3 px-4 py-3.5 md:px-8 md:py-[22px]"
+      className="mx-auto box-border flex w-full max-w-[1240px] flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3.5 sm:gap-x-7 md:px-8 md:py-[22px]"
     >
       <a
         href={home}
@@ -62,7 +62,10 @@ export function LandingNav({ links, home = "#" }: { links: readonly NavLink[]; h
         ))}
       </div>
       <div className="ml-auto flex items-center gap-2.5 md:gap-3">
-        <ThemeToggle />
+        {/* Dưới 640 px nút đổi theme nằm trong menu (artboard Mobile: thanh chỉ có logo, Launch app và menu). */}
+        <div className="hidden sm:flex">
+          <ThemeToggle />
+        </div>
         <Link
           href="/signin"
           className="hidden text-sm font-semibold text-l-text no-underline hover:opacity-85 lg:inline"
@@ -146,6 +149,9 @@ function LandingMenu({ links }: { links: readonly NavLink[] }) {
             </a>
           ))}
           <div className="my-1 h-px bg-l-line" />
+          <div className="flex px-1 py-1 sm:hidden">
+            <ThemeToggle />
+          </div>
           <Link
             href="/signin"
             onClick={close}
