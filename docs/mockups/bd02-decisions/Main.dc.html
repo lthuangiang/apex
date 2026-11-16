@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent decisions</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+a:focus-visible,button:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="num" style="box-sizing: border-box; padding: 24px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif">
+  <section aria-labelledby="decisions-title" style="max-width: 1232px; margin: 0 auto; box-sizing: border-box; padding: 20px; border-radius: 24px; border: 1px solid #e3e7f5; background: #ffffff; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <h2 id="decisions-title" style="margin: 0; font-size: 18px; font-weight: 800">Decisions &amp; actions</h2>
+      <a href="Orders.dc.html" style="margin-left: auto; font-size: 13px; font-weight: 700; text-decoration: none">All orders →</a>
+    </div>
+
+    <div role="presentation" style="display: grid; grid-template-columns: 150px 240px minmax(0, 1fr) 230px; gap: 12px; padding: 10px 12px; border-radius: 12px; background: #f5f7fd; font-size: 12.5px; font-weight: 700; color: #5f6684">
+      <span>Time</span><span>Decision</span><span>Why</span><span>Result</span>
+    </div>
+
+    <sc-if value="{{isLoading}}" hint-placeholder-val="{{ false }}">
+      <div aria-busy="true" style="display: flex; flex-direction: column">
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Loading decisions…</span>
+        <sc-for list="{{skeleton}}" as="k" hint-placeholder-count="6">
+          <div aria-hidden="true" style="display: grid; grid-template-columns: 150px 240px minmax(0, 1fr) 230px; gap: 12px; align-items: center; padding: 16px 12px; border-bottom: 1px solid #eef1f8">
+            <span style="height: 12px; width: 110px; border-radius: 6px; background: #eceff7"></span>
+            <span style="height: 14px; width: {{k.w1}}; border-radius: 6px; background: #e3e7f5"></span>
+            <span style="height: 12px; width: {{k.w2}}; border-radius: 6px; background: #eceff7"></span>
+            <span style="height: 24px; width: 92px; border-radius: 12px; background: #eceff7"></span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isEmpty}}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 40px 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center">
+        <strong style="font-size: 15px">No decisions yet.</strong>
+        <span style="font-size: 13.5px; color: #5f6684">Each decision appears here with its order, once the bot starts.</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{isReady}}" hint-placeholder-val="{{ true }}">
+      <ol style="margin: 0; padding: 0; list-style: none; max-height: 900px; overflow-y: auto">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+          <li style="border-bottom: 1px solid #eef1f8">
+            <sc-if value="{{r.single}}" hint-placeholder-val="{{ true }}">
+              <div style="display: grid; grid-template-columns: 150px 240px minmax(0, 1fr) 230px; gap: 12px; align-items: center; padding: 13px 12px; font-size: 14px">
+                <span style="color: #3b4262">{{r.time}}</span>
+                <strong style="{{r.nameStyle}}">{{r.name}}</strong>
+                <span style="color: #3b4262; line-height: 1.45">{{r.why}}</span>
+                <span>
+                  <sc-if value="{{r.hasOrder}}" hint-placeholder-val="{{ true }}">
+                    <a href="Orders.dc.html" aria-label="{{r.aria}}" style="{{r.pill}}">{{r.result}}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 9l6-6M4.5 3H9v4.5" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></a>
+                  </sc-if>
+                  <sc-if value="{{r.noOrder}}" hint-placeholder-val="{{ false }}">
+                    <span style="{{r.pill}}">{{r.result}}</span>
+                  </sc-if>
+                </span>
+              </div>
+            </sc-if>
+            <sc-if value="{{r.group}}" hint-placeholder-val="{{ false }}">
+              <button type="button" aria-expanded="{{r.expanded}}" aria-controls="{{r.panelId}}" onClick="{{r.toggle}}" style="width: 100%; display: grid; grid-template-columns: 150px 240px minmax(0, 1fr) 230px; gap: 12px; align-items: center; padding: 13px 12px; border: 0; background: {{r.bg}}; color: #141a33; font: inherit; font-size: 14px; text-align: left; cursor: pointer">
+                <span style="color: #3b4262">{{r.range}}</span>
+                <span style="display: flex; align-items: center; gap: 8px">
+                  <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" style="{{r.chevron}}"><path d="M5 3l4 4-4 4" fill="none" stroke="#3b4262" stroke-width="1.8"></path></svg>
+                  <strong style="font-weight: 700">{{r.name}}</strong>
+                  <span style="padding: 1px 7px; border-radius: 10px; background: #e6ecfe; color: #1d47b8; font-size: 12px; font-weight: 800">×{{r.count}}</span>
+                </span>
+                <span style="color: #3b4262; line-height: 1.45">{{r.why}}</span>
+                <span style="display: flex; flex-wrap: wrap; gap: 6px">
+                  <sc-for list="{{r.summary}}" as="s" hint-placeholder-count="2">
+                    <span style="{{s.pill}}">{{s.text}}</span>
+                  </sc-for>
+                </span>
+              </button>
+              <sc-if value="{{r.open}}" hint-placeholder-val="{{ false }}">
+                <ol id="{{r.panelId}}" aria-label="{{r.panelLabel}}" style="margin: 0 0 8px; padding: 0; list-style: none; border-radius: 12px; background: #f5f7fd">
+                  <sc-for list="{{r.children}}" as="c" hint-placeholder-count="4">
+                    <li style="display: grid; grid-template-columns: 150px 240px minmax(0, 1fr) 230px; gap: 12px; align-items: center; padding: 9px 12px; border-bottom: 1px solid #e9edf8; font-size: 13.5px">
+                      <span style="padding-left: 22px; color: #3b4262">{{c.time}}</span>
+                      <span style="padding-left: 22px; color: #3b4262">{{r.name}}</span>
+                      <span style="color: #3b4262">{{c.why}}</span>
+                      <span><a href="Orders.dc.html" aria-label="{{c.aria}}" style="{{c.pill}}">{{c.result}}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 9l6-6M4.5 3H9v4.5" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></a></span>
+                    </li>
+                  </sc-for>
+                  <sc-if value="{{r.more}}" hint-placeholder-val="{{ false }}">
+                    <li style="padding: 8px 12px 10px 184px">
+                      <button type="button" style="min-height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">{{r.moreLabel}}</button>
+                    </li>
+                  </sc-if>
+                </ol>
+              </sc-if>
+            </sc-if>
+          </li>
+        </sc-for>
+      </ol>
+    </sc-if>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["ready","empty","loading"],"default":"ready"},"$preview":{"width":1280,"height":1180}}'>
+class Component extends DCLogic {
+  tone(r) {
+    const base = 'display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 11px; border-radius: 14px; font-size: 12.5px; font-weight: 700; text-decoration: none; white-space: nowrap; ';
+    if (r === 'Filled' || r === 'Partially filled') return base + 'background: #ddf4e7; color: #0f7a43';
+    if (r === 'Open') return base + 'background: #e6ecfe; color: #1d47b8';
+    if (r.indexOf('Unknown') === 0) return base + 'background: #f0e6ff; color: #5a2ca0';
+    if (r === 'Rejected') return base + 'background: #fde4e1; color: #a72826';
+    return base + 'background: #f5f7fd; color: #3b4262; box-shadow: inset 0 0 0 1px #e3e7f5';
+  }
+  renderVals() {
+    const self = this;
+    const state = this.props.state || 'ready';
+    const open = (this.state && this.state.open) || { g2: true };
+    const id = 'd3c3qyn-1-2r4czs6192';
+    const single = function (time, name, why, result, important, n) {
+      const hasOrder = result !== '';
+      return { single: true, group: false, time: time, name: name, why: why, result: result, hasOrder: hasOrder && result !== '', noOrder: !hasOrder && result !== '',
+        pill: self.tone(result), aria: result + '. Show order …' + n + ' in Orders',
+        nameStyle: 'font-weight: 700; color: ' + (important ? '#141a33' : '#141a33') };
+    };
+    const child = function (t, why, result, n) {
+      return { time: t, why: why, result: result, pill: self.tone(result), aria: result + '. Show order …' + n + ' in Orders' };
+    };
+    const group = function (key, range, name, count, why, summary, children, more) {
+      const isOpen = !!open[key];
+      return { single: false, group: true, range: range, name: name, count: String(count), why: why,
+        summary: summary.map(function (s) { return { text: s[0], pill: self.tone(s[1]) }; }),
+        children: children, open: isOpen, expanded: isOpen ? 'true' : 'false', panelId: 'grp-' + key,
+        panelLabel: count + ' ' + name + ' decisions',
+        bg: isOpen ? '#f5f7fd' : 'transparent',
+        chevron: 'flex: none; transition: transform .15s; transform: rotate(' + (isOpen ? '90deg' : '0deg') + ')',
+        more: !!more, moreLabel: more || '',
+        toggle: function () { const o = Object.assign({}, open); o[key] = !isOpen; self.setState({ open: o }); } };
+    };
+    const rows = [
+      single('Nov 16, 14:43:20', 'Position cut', 'Binance price ran 15 bp against the entry. Closed the whole position at market, reduce-only.', 'Filled', true, '4f1-0'),
+      group('g1', '14:42:12 – 14:43:05', 'Ask pulled', 9, 'Binance price moved past the ask, so the ask was pulled.',
+        [['8 cancelled', 'Cancelled'], ['1 open', 'Open']], [], null),
+      single('Nov 16, 14:42:58', 'Order filled', 'Bid filled 0.0109 ETH at 1,824.6, maker.', 'Filled', true, '3e9-0'),
+      group('g2', '14:41:40 – 14:42:51', 'Bid pulled', 12, 'Binance price moved past the bid, so the bid was pulled.',
+        [['11 cancelled', 'Cancelled'], ['1 filled', 'Filled']],
+        [child('14:42:51', 'Bid at 1,824.6', 'Filled', '3e9-0'),
+         child('14:42:44', 'Bid at 1,824.5', 'Cancelled', '3e8-0'),
+         child('14:42:38', 'Bid at 1,824.7', 'Cancelled', '3e7-0'),
+         child('14:42:31', 'Bid at 1,824.4', 'Cancelled', '3e6-0'),
+         child('14:42:25', 'Bid at 1,824.6', 'Cancelled', '3e5-0')], 'Show all 12'),
+      single('Nov 16, 14:41:10', 'Quote skipped', 'It would have traded with your own order (SELF_TRADE_BLOCKED).', 'Rejected', false, '3c2-0'),
+      single('Nov 16, 14:40:02', 'Bid pulled', 'Binance price moved past the bid, so the bid was pulled.', 'Cancelled', false, '3d1-0'),
+      single('Nov 16, 14:39:40', 'Order sent', 'Ask 0.0109 ETH at 1,825.1, post-only. SoDEX did not answer in time.', 'Unknown · reconciling', true, '3d0-0'),
+      single('Nov 16, 14:38:12', 'Order rejected', 'SoDEX refused the order: post-only would have taken liquidity.', 'Rejected', true, '3cf-0'),
+      single('Nov 16, 14:30:00', 'Paused', 'You paused the bot. Open orders were cancelled.', '', true, '')
+    ];
+    return {
+      isReady: state === 'ready', isEmpty: state === 'empty', isLoading: state === 'loading',
+      rows: rows,
+      skeleton: [{ w1: '150px', w2: '70%' }, { w1: '120px', w2: '55%' }, { w1: '170px', w2: '80%' }, { w1: '130px', w2: '60%' }, { w1: '150px', w2: '72%' }, { w1: '110px', w2: '50%' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

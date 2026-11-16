@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent decisions phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}
+a:focus-visible,button:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="num" style="width: 390px; height: 1500px; box-sizing: border-box; padding: 16px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif">
+  <section aria-labelledby="m-dec" style="box-sizing: border-box; padding: 16px; border-radius: 24px; border: 1px solid #e3e7f5; background: #ffffff; display: flex; flex-direction: column; gap: 6px">
+    <div style="display: flex; align-items: center">
+      <h2 id="m-dec" style="margin: 0; font-size: 17px; font-weight: 800">Recent decisions</h2>
+      <a href="MobileOrders.dc.html" style="margin-left: auto; display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; font-weight: 700; text-decoration: none">All orders →</a>
+    </div>
+    <ol style="margin: 0; padding: 0; list-style: none">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+        <li style="border-bottom: 1px solid #eef1f8">
+          <sc-if value="{{r.single}}" hint-placeholder-val="{{ true }}">
+            <div style="display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 10px; padding: 10px 0">
+              <span style="font-size: 12px; color: #5f6684; padding-top: 2px">{{r.time}}</span>
+              <span style="display: flex; flex-direction: column; gap: 6px">
+                <strong style="font-size: 14px">{{r.name}}</strong>
+                <span style="font-size: 12.5px; line-height: 1.45; color: #3b4262">{{r.why}}</span>
+                <sc-if value="{{r.hasOrder}}" hint-placeholder-val="{{ true }}">
+                  <a href="MobileOrders.dc.html" aria-label="{{r.aria}}" style="{{r.pill}}">{{r.result}}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 9l6-6M4.5 3H9v4.5" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></a>
+                </sc-if>
+                <sc-if value="{{r.noOrder}}" hint-placeholder-val="{{ false }}">
+                  <span style="{{r.pill}}">{{r.result}}</span>
+                </sc-if>
+              </span>
+            </div>
+          </sc-if>
+          <sc-if value="{{r.group}}" hint-placeholder-val="{{ false }}">
+            <button type="button" aria-expanded="{{r.expanded}}" aria-controls="{{r.panelId}}" onClick="{{r.toggle}}" style="width: 100%; display: grid; grid-template-columns: 48px minmax(0, 1fr) 20px; gap: 10px; padding: 10px 0; border: 0; background: transparent; color: #141a33; font: inherit; text-align: left; cursor: pointer">
+              <span style="font-size: 12px; color: #5f6684; padding-top: 2px">{{r.start}}</span>
+              <span style="display: flex; flex-direction: column; gap: 6px">
+                <span style="display: flex; align-items: center; gap: 6px"><strong style="font-size: 14px">{{r.name}}</strong><span style="padding: 1px 7px; border-radius: 10px; background: #e6ecfe; color: #1d47b8; font-size: 12px; font-weight: 800">×{{r.count}}</span></span>
+                <span style="font-size: 12px; color: #5f6684">{{r.range}}</span>
+                <span style="display: flex; flex-wrap: wrap; gap: 6px">
+                  <sc-for list="{{r.summary}}" as="s" hint-placeholder-count="2"><span style="{{s.pill}}">{{s.text}}</span></sc-for>
+                </span>
+              </span>
+              <svg width="16" height="16" viewBox="0 0 14 14" aria-hidden="true" style="{{r.chevron}}"><path d="M5 3l4 4-4 4" fill="none" stroke="#3b4262" stroke-width="1.8"></path></svg>
+            </button>
+            <sc-if value="{{r.open}}" hint-placeholder-val="{{ false }}">
+              <ol id="{{r.panelId}}" aria-label="{{r.panelLabel}}" style="margin: 0 0 10px; padding: 4px 10px; list-style: none; border-radius: 14px; background: #f5f7fd">
+                <sc-for list="{{r.children}}" as="c" hint-placeholder-count="4">
+                  <li style="display: flex; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid #e9edf8">
+                    <span style="flex: 0 0 64px; font-size: 12px; color: #5f6684">{{c.time}}</span>
+                    <span style="flex: 1; min-width: 0; font-size: 12.5px; color: #3b4262">{{c.price}}</span>
+                    <a href="MobileOrders.dc.html" aria-label="{{c.aria}}" style="{{c.pill}}">{{c.result}}<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 9l6-6M4.5 3H9v4.5" fill="none" stroke="currentColor" stroke-width="1.6"></path></svg></a>
+                  </li>
+                </sc-for>
+                <li style="padding: 6px 0">
+                  <button type="button" style="width: 100%; min-height: 44px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Show all 12</button>
+                </li>
+              </ol>
+            </sc-if>
+          </sc-if>
+        </li>
+      </sc-for>
+    </ol>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1500}}'>
+class Component extends DCLogic {
+  tone(r) {
+    const base = 'align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 12px; border-radius: 16px; font-size: 12.5px; font-weight: 700; text-decoration: none; white-space: nowrap; ';
+    if (r === 'Filled') return base + 'background: #ddf4e7; color: #0f7a43';
+    if (r === 'Open') return base + 'background: #e6ecfe; color: #1d47b8';
+    if (r.indexOf('Unknown') === 0) return base + 'background: #f0e6ff; color: #5a2ca0';
+    if (r === 'Rejected') return base + 'background: #fde4e1; color: #a72826';
+    return base + 'background: #f5f7fd; color: #3b4262; box-shadow: inset 0 0 0 1px #e3e7f5';
+  }
+  renderVals() {
+    const self = this;
+    const open = (this.state && this.state.open) || { g2: true };
+    const single = function (time, name, why, result, n) {
+      const linked = result !== '';
+      return { single: true, group: false, time: time, name: name, why: why, result: result, hasOrder: linked, noOrder: !linked && result !== '', pill: self.tone(result), aria: result + '. Show order …' + n + ' in Orders' };
+    };
+    const group = function (key, start, range, name, count, summary, children) {
+      const isOpen = !!open[key];
+      return { single: false, group: true, start: start, range: range, name: name, count: String(count),
+        summary: summary.map(function (s) { return { text: s[0], pill: self.tone(s[1]).replace('min-height: 32px', 'min-height: 26px') }; }),
+        children: children.map(function (c) { return { time: c[0], price: c[1], result: c[2], pill: self.tone(c[2]).replace('align-self: flex-start; ', ''), aria: c[2] + '. Show order …' + c[3] + ' in Orders' }; }),
+        open: isOpen, expanded: isOpen ? 'true' : 'false', panelId: 'm-' + key, panelLabel: count + ' ' + name + ' decisions',
+        chevron: 'margin-top: 2px; transform: rotate(' + (isOpen ? '90deg' : '0deg') + ')',
+        toggle: function () { const o = Object.assign({}, open); o[key] = !isOpen; self.setState({ open: o }); } };
+    };
+    return {
+      rows: [
+        single('14:43', 'Position cut', 'Binance price ran 15 bp against the entry. Closed the whole position at market.', 'Filled', '4f1-0'),
+        group('g1', '14:42', '14:42:12 – 14:43:05', 'Ask pulled', 9, [['8 cancelled', 'Cancelled'], ['1 open', 'Open']], []),
+        single('14:42', 'Order filled', 'Bid filled 0.0109 ETH at 1,824.6, maker.', 'Filled', '3e9-0'),
+        group('g2', '14:41', '14:41:40 – 14:42:51', 'Bid pulled', 12, [['11 cancelled', 'Cancelled'], ['1 filled', 'Filled']],
+          [['14:42:51', 'Bid at 1,824.6', 'Filled', '3e9-0'], ['14:42:44', 'Bid at 1,824.5', 'Cancelled', '3e8-0'], ['14:42:38', 'Bid at 1,824.7', 'Cancelled', '3e7-0'], ['14:42:31', 'Bid at 1,824.4', 'Cancelled', '3e6-0']]),
+        single('14:41', 'Quote skipped', 'It would have traded with your own order (SELF_TRADE_BLOCKED).', 'Rejected', '3c2-0'),
+        single('14:39', 'Order sent', 'Ask 0.0109 ETH at 1,825.1. SoDEX did not answer in time.', 'Unknown · reconciling', '3d0-0'),
+        single('14:30', 'Paused', 'You paused the bot. Open orders were cancelled.', '', '')
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

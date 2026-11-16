@@ -177,3 +177,50 @@ describe("spot grid — waits for the price to enter the range", () => {
     expect(r.state.phase).toBe("running");
   });
 });
+
+describe("spot grid — late fills after a stop (rule 1.7)", () => {
+  const cfg = { ...base, stopPrice: "85", onStop: "sell_at_market" as const };
+  // Đi từng bước: lệnh init (market) chưa khớp, rồi giá chạm Stop price.
+  const halted = () => {
+    const r0 = spotGrid.step(
+      cfg,
+      spotGrid.initialState(cfg),
+      { type: "tick", at: 0, market: "vBTC_vUSDC", price: "100" },
+      ctx,
+    );
+    const placed = r0.actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
+    const init = placed.find((o) => o.tag === "grid:init")?.clOrdID ?? "";
+    const buy = placed.find((o) => o.type === "limit" && o.side === "buy")?.clOrdID ?? "";
+    const r1 = spotGrid.step(
+      cfg,
+      r0.state,
+      { type: "tick", at: 1, market: "vBTC_vUSDC", price: "84" },
+      ctx,
+    );
+    expect(r1.actions.some((a) => a.type === "stop")).toBe(true);
+    return { s: r1.state, init, buy };
+  };
+  const fill = (clOrdID: string, quantity: string, price: string) =>
+    ({ type: "fill", at: 2, clOrdID, price, quantity, fee: "0" }) as const;
+
+  it("books a late fill of the opening market order so the close covers it", () => {
+    const { s, init } = halted();
+    const a = spotGrid.step(cfg, s, fill(init, "1.5", "100"), ctx);
+    expect(a.actions).toEqual([]);
+    expect(a.state.ledger.position).toBe("1.5");
+    // Phần khớp sau của cùng lệnh cũng được tính.
+    const b = spotGrid.step(cfg, a.state, fill(init, "0.5", "100"), ctx);
+    expect(b.state.ledger.position).toBe("2");
+  });
+
+  it("books a late fill of an order it cancelled when it stopped", () => {
+    const { s, buy } = halted();
+    const a = spotGrid.step(cfg, s, fill(buy, "1", "95"), ctx);
+    expect(a.actions).toEqual([]);
+    expect(a.state.ledger.position).toBe("1");
+    // Sàn báo lệnh kết thúc: bỏ khỏi danh sách.
+    const b = spotGrid.step(cfg, a.state, { type: "orderDone", at: 3, clOrdID: buy }, ctx);
+    expect(b.state.cancelled?.[buy]).toBeUndefined();
+    expect(b.actions).toEqual([]);
+  });
+});

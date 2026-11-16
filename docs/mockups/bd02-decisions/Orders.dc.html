@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Orders with highlighted order</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+a:focus-visible,button:focus-visible,tr:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="num" style="box-sizing: border-box; padding: 24px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif">
+  <div style="max-width: 1232px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px">
+    <header style="display: flex; flex-direction: column; gap: 4px">
+      <h1 style="margin: 0; font-size: 28px; font-weight: 800">Execution &amp; Orders</h1>
+      <p style="margin: 0; font-size: 14.5px; color: #3b4262">Every order DeskLabs sent, and what SoDEX says happened to it.</p>
+    </header>
+
+    <div role="status" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 16px; border-radius: 18px; background: #e6ecfe; color: #141a33; font-size: 14px">
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="7.5" fill="none" stroke="#1d47b8" stroke-width="1.6"></circle><path d="M9 5.5v4M9 12v.5" stroke="#1d47b8" stroke-width="1.8"></path></svg>
+      <span>{{bannerText}} <strong>Bid pulled · 14:42:51</strong></span>
+      <a href="Main.dc.html" style="margin-left: auto; display: inline-flex; align-items: center; min-height: 44px; font-weight: 700; text-decoration: none">← Back to decisions</a>
+    </div>
+
+    <section aria-label="Orders" style="border-radius: 24px; border: 1px solid #e3e7f5; background: #ffffff; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+      <div role="tablist" aria-label="Order view" style="display: flex; gap: 6px; flex-wrap: wrap">
+        <span role="tab" aria-selected="true" style="padding: 8px 14px; border-radius: 12px; background: #141a33; color: #ffffff; font-size: 13.5px; font-weight: 700">History</span>
+        <span role="tab" aria-selected="false" style="padding: 8px 14px; border-radius: 12px; border: 1px solid #e3e7f5; font-size: 13.5px; font-weight: 700">Open</span>
+        <span role="tab" aria-selected="false" style="padding: 8px 14px; border-radius: 12px; border: 1px solid #e3e7f5; font-size: 13.5px; font-weight: 700">Fills</span>
+        <span role="tab" aria-selected="false" style="padding: 8px 14px; border-radius: 12px; border: 1px solid #e3e7f5; font-size: 13.5px; font-weight: 700">Failed &amp; unknown</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px">
+        <span style="padding: 7px 12px; border-radius: 12px; border: 1px solid #d5dcf2">Bot: ETH Market Making</span>
+        <span style="padding: 7px 12px; border-radius: 12px; border: 1px solid #d5dcf2">Time: Today</span>
+        <sc-if value="{{filtered}}" hint-placeholder-val="{{ false }}">
+          <span style="display: inline-flex; align-items: center; gap: 6px; padding: 0 4px 0 12px; border-radius: 12px; background: #e6ecfe; color: #1d47b8; font-weight: 700">Order …3e9-0
+            <button type="button" aria-label="Clear order filter" style="width: 32px; height: 32px; border: 0; border-radius: 10px; background: transparent; color: #1d47b8; cursor: pointer; font: inherit; font-size: 16px">×</button>
+          </span>
+        </sc-if>
+      </div>
+      <div style="overflow-x: auto; border-radius: 12px; border: 1px solid #eef1f8">
+        <table style="width: 100%; min-width: 860px; border-collapse: collapse; font-size: 14px">
+          <caption style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Orders</caption>
+          <thead>
+            <tr style="background: #f5f7fd; color: #5f6684; font-size: 12.5px; text-align: left">
+              <th scope="col" style="padding: 10px 14px">Time</th><th scope="col" style="padding: 10px 14px">Symbol</th><th scope="col" style="padding: 10px 14px">Side · type</th>
+              <th scope="col" style="padding: 10px 14px; text-align: right">Price</th><th scope="col" style="padding: 10px 14px; text-align: right">Filled / size</th>
+              <th scope="col" style="padding: 10px 14px">Status</th><th scope="col" style="padding: 10px 14px">Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{orders}}" as="o" hint-placeholder-count="7">
+              <tr tabindex="{{o.tab}}" aria-current="{{o.current}}" style="{{o.rowStyle}}">
+                <td style="padding: 12px 14px; white-space: nowrap">{{o.time}}<sc-if value="{{o.hl}}" hint-placeholder-val="{{ false }}"><span style="display: block; margin-top: 3px; font-size: 11.5px; font-weight: 800; color: #1d47b8">From Decisions</span></sc-if></td>
+                <td style="padding: 12px 14px">ETH-USD</td>
+                <td style="padding: 12px 14px">{{o.side}}</td>
+                <td style="padding: 12px 14px; text-align: right">{{o.price}}</td>
+                <td style="padding: 12px 14px; text-align: right">{{o.filled}}</td>
+                <td style="padding: 12px 14px"><span style="{{o.pill}}">{{o.status}}</span></td>
+                <td style="padding: 12px 14px; color: #3b4262">ETH Market Making</td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+      <sc-if value="{{filtered}}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 0; font-size: 13px; color: #5f6684">Showing 1 order. <button type="button" style="min-height: 36px; padding: 0 10px; border: 0; background: transparent; color: #1d47b8; font: inherit; font-weight: 700; cursor: pointer">Clear filters</button></p>
+      </sc-if>
+    </section>
+    <p style="margin: 0; font-size: 12.5px; color: #5f6684">Highlight: accent-tint background + 2px accent outline for 2.5 s, then the outline fades; the "From Decisions" label stays. Focus moves to the row (tabindex -1), so Esc / Tab continue from there.</p>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"variant":{"editor":"enum","options":["onPage","filtered"],"default":"onPage"},"$preview":{"width":1280,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const filtered = (this.props.variant || 'onPage') === 'filtered';
+    const tone = function (s) {
+      const base = 'display: inline-flex; align-items: center; min-height: 26px; padding: 0 10px; border-radius: 13px; font-size: 12.5px; font-weight: 700; ';
+      if (s === 'Filled') return base + 'background: #ddf4e7; color: #0f7a43';
+      if (s === 'Open') return base + 'background: #e6ecfe; color: #1d47b8';
+      return base + 'background: #f5f7fd; color: #3b4262; box-shadow: inset 0 0 0 1px #e3e7f5';
+    };
+    const all = [
+      ['14:43:20', 'Sell · Market', 'Market', '0.0109 / 0.0109', 'Filled', false],
+      ['14:43:05', 'Sell · Limit', '1,825.3', '0 / 0.0109', 'Open', false],
+      ['14:42:58', 'Sell · Limit', '1,825.1', '0 / 0.0109', 'Cancelled', false],
+      ['14:42:51', 'Buy · Limit', '1,824.6', '0.0109 / 0.0109', 'Filled', true],
+      ['14:42:44', 'Buy · Limit', '1,824.5', '0 / 0.0109', 'Cancelled', false],
+      ['14:42:38', 'Buy · Limit', '1,824.7', '0 / 0.0109', 'Cancelled', false],
+      ['14:42:31', 'Buy · Limit', '1,824.4', '0 / 0.0109', 'Cancelled', false]
+    ];
+    const rows = (filtered ? all.filter(function (r) { return r[5]; }) : all).map(function (r) {
+      return { time: 'Nov 16, ' + r[0], side: r[1], price: r[2], filled: r[3], status: r[4], pill: tone(r[4]), hl: r[5],
+        tab: r[5] ? '-1' : '', current: r[5] ? 'true' : 'false',
+        rowStyle: r[5] ? 'background: #e6ecfe; outline: 2px solid #2e62e8; outline-offset: -2px' : 'border-top: 1px solid #eef1f8' };
+    });
+    return {
+      filtered: filtered,
+      bannerText: filtered ? 'This order is older than the loaded page, so Orders is filtered to it:' : 'Showing the order from Decisions:',
+      orders: rows
+    };
+  }
+}
+</script>
+</body>
+</html>

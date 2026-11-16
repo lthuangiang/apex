@@ -5,13 +5,15 @@ import {
   backtestPeriodsOf,
   backtestViewSchema,
   dec,
+  riskViewSchema,
   type BacktestPeriod,
   type BacktestResult,
 } from "@drift/shared";
 import { BacktestPanel, SegmentedControl } from "@drift/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { z } from "zod";
 
 import { api, ApiError } from "@/lib/api";
 import { feeLabels, formatAmount, formatDate, formatDateTime, formatMoney } from "@/lib/format";
@@ -68,13 +70,29 @@ function EquityChart({ result, label }: { result: BacktestResult; label: string 
   );
 }
 
+/** "+12.5%" / "−62.9%" / "0%": phần trăm có dấu, tối đa 2 chữ số thập phân. */
+export function signedPct(v: string): string {
+  const d = dec(v).toDecimalPlaces(2);
+  // Lỗ / lãi rất nhỏ làm tròn về 0: "0%", không ra "−0%" (review #150).
+  if (d.isZero()) return "0%";
+  return `${d.isNegative() ? "−" : "+"}${d.abs().toString()}%`;
+}
+
+/** Chỉ số tiền là lãi / lỗ (có dấu + / −); các số khác (khối lượng, chi phí, vị thế) không có dấu (BT-01). */
+const SIGNED_METRICS = new Set(["fundingCollected", "vsBuyAndHold"]);
+/** Giới hạn rủi ro của account (Risk Center); cùng query key với trang Risk nên dùng chung cache. */
+const riskResponse = z.object({ risk: riskViewSchema.nullable() });
+
 export function VisualPanel({
   strategy,
   values,
   last,
   inline = false,
+  onBacktest,
 }: {
   strategy: Strategy;
+  /** Kết quả backtest mới nhất còn khớp tham số (null khi chưa chạy hoặc đã cũ), để form cảnh báo cạnh Start (BT-01). */
+  onBacktest?: (r: BacktestResult | null) => void;
   /** Mobile: nằm trong form (UI_REVIEW G5); desktop: cột trái, dính đỉnh khi cuộn (G1). */
   inline?: boolean;
   values: FormValues;
@@ -140,12 +158,33 @@ export function VisualPanel({
         ? "error"
         : "empty";
   const stale = status === "ready" && ranWith !== signature;
+  const current = status === "ready" && !stale ? result : null;
+  const risk = useQuery({
+    queryKey: ["risk"],
+    queryFn: () => api("GET", "/api/v1/risk", riskResponse),
+  });
+  const ddLimit = risk.data?.risk?.limits.maxDrawdownPct ?? null;
+  useEffect(() => {
+    onBacktest?.(current);
+  }, [current, onBacktest]);
   const intervalLabel = result === null ? "" : tb(`interval.${result.interval}`);
-  const signed = (x: string) => formatMoney(x, true) ?? "";
+  // BT-01: mọi số tiền có đơn vị; chỉ lãi / lỗ mới có dấu + / − (khối lượng, chi phí không có dấu).
+  const quote = names.asset(
+    unitsOf(typeof values.market === "string" ? values.market : "")?.quote ?? "USDC",
+  );
+  // Không format được (dữ liệu lỗi) thì null → "Not available", không hiện " USDC" trống (review #150).
+  const money = (x: string, sign = false) => {
+    const m = formatMoney(x, sign);
+    return m === null ? null : `${m} ${quote}`;
+  };
+  // Sụt giảm hiển thị (2 chữ số); so với giới hạn bằng chính số này để chữ và màu khớp nhau.
+  const dd = result === null ? null : dec(result.maxDrawdownPct).toDecimalPlaces(2);
+  // Không sụt (hoặc sụt làm tròn về 0): "0%", không "−0%" (review #150).
+  const ddText = dd === null ? "" : dd.isZero() ? "0%" : `−${dd.abs().toString()}%`;
   const metric = (m: BacktestResult["metrics"][number]) => {
     if (m.value === null) return null;
     if (m.unit === "pct") return `${dec(m.value).toDecimalPlaces(2).toString()}%`;
-    if (m.unit === "quote") return signed(m.value);
+    if (m.unit === "quote") return money(m.value, SIGNED_METRICS.has(m.key));
     if (m.unit === "price") return formatMoney(m.value) ?? "";
     return m.value;
   };
@@ -155,19 +194,37 @@ export function VisualPanel({
       : [
           {
             label: tb("stats.net"),
-            value: `${signed(result.net)} · ${dec(result.netPct).toDecimalPlaces(2).toString()}%`,
+            // Vốn 0 thì % không có nghĩa: chỉ hiện số tiền (review #150).
+            value: dec(result.capital).isZero()
+              ? money(result.net, true)
+              : tb("stats.netValue", {
+                  net: money(result.net, true) ?? "",
+                  pct: signedPct(result.netPct),
+                  capital: money(result.capital) ?? "",
+                }),
+            ...(dec(result.net).isNegative() ? { tone: "neg" as const } : {}),
           },
           {
             label: result.perps ? tb("stats.feesFunding") : tb("stats.fees"),
-            value:
-              formatMoney(
-                result.perps ? dec(result.fees).add(result.funding).toString() : result.fees,
-              ) ?? null,
+            value: money(
+              result.perps ? dec(result.fees).add(result.funding).toString() : result.fees,
+            ),
           },
-          {
-            label: tb("stats.maxDd"),
-            value: `−${dec(result.maxDrawdownPct).toDecimalPlaces(2).toString()}%`,
-          },
+          // BT-01 (DevOps chốt): chỉ tô cảnh báo khi sụt giảm ≥ giới hạn Max drawdown người dùng đặt ở Risk Center,
+          // và nói rõ là so với giới hạn đó; chưa đặt giới hạn thì trung tính.
+          ddLimit !== null && dd?.gte(ddLimit) === true
+            ? {
+                label: tb("stats.maxDd"),
+                value: tb("stats.maxDdOver", {
+                  dd: ddText,
+                  limit: `${dec(ddLimit).toString()}%`,
+                }),
+                tone: "neg" as const,
+              }
+            : {
+                label: tb("stats.maxDd"),
+                value: ddText,
+              },
           ...result.metrics.map((m) => ({ label: tb(`stats.${m.key}`), value: metric(m) })),
           ...(result.halted === null
             ? []
@@ -175,6 +232,8 @@ export function VisualPanel({
                 {
                   label: tb("stats.halted"),
                   value: reasonLabel({ reasonCode: result.halted, strategy, config }),
+                  tone: "neg" as const,
+                  wide: true,
                 },
               ]),
         ];
