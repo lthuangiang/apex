@@ -6,7 +6,7 @@ Bản chép của design sheet "Market Making Fee Tiers" (https://claude.ai/arti
 |---|---|
 | `index.html` | Toàn bộ sheet: 1 landing (đã làm ở #171), 2a–2d Strategy Lab và form tạo MM, 3 câu chữ, 5a–5b Settings › SoDEX access (ST-02), 6 thông báo đổi bậc, 7 câu hỏi đã chốt |
 
-## Đã code (DEC-TBD-mm-fee-tier-ui)
+## Đã code (DEC-285)
 
 - 2b + 2c: thẻ Market Making trong Strategy catalog (`apps/web/src/components/mm-fee-tiers.tsx`).
 - 2d: dòng phí "Before it starts" của form tạo Market Making, kèm bảng bậc.
