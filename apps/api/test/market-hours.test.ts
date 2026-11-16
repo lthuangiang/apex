@@ -23,6 +23,7 @@ const EST_MARKET = `ME${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const EMPTY_MARKET = `MN${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const SHOCK_MARKET = `MS${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const CUT_MARKET = `MK${randomUUID().slice(0, 6).toUpperCase()}-USD`;
+const POS_MARKET = `MP${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const errorOf = (body: string) => errorResponseSchema.parse(JSON.parse(body)).error;
 
 beforeAll(async () => {
@@ -31,6 +32,7 @@ beforeAll(async () => {
   env.sodex.addPerpSymbol(EST_MARKET, { maxLeverage: 10 });
   env.sodex.addPerpSymbol(EMPTY_MARKET, { maxLeverage: 10 });
   env.sodex.addPerpSymbol(CUT_MARKET, { maxLeverage: 10 });
+  env.sodex.addPerpSymbol(POS_MARKET, { maxLeverage: 10 });
   // Sau ngày Mỹ đổi giờ (Chủ nhật 2026-11-01): EDT (UTC−4) trước, EST (UTC−5) sau.
   env.clock.now = new Date("2026-11-02T23:00:00Z");
 });
@@ -212,6 +214,11 @@ describe("GET /api/v1/admin/market-hours", () => {
       cutCostBp: "4",
       cuts: 0,
       cutNotional: null,
+      // Không có bot Market Making: không có cỡ cắt → không tính phần cắt.
+      botHourVolume: null,
+      maxPosition: null,
+      cutShare: null,
+      cutShareSource: null,
       calibration: null,
       calibrationHours: 0,
     });
@@ -232,7 +239,6 @@ describe("GET /api/v1/admin/market-hours", () => {
       estShockCostPerMillion: h5?.estCostPerMillion,
       estDays: 1,
       shockDays: 0,
-      cutShare: null,
     });
     // Giờ không có nến: null ("n/a"), không bao giờ 0.
     expect(v.hours[6]?.volatility).toMatchObject({
@@ -310,6 +316,12 @@ describe("GET /api/v1/admin/market-hours", () => {
       cutCostBp: "6",
       cuts: 5,
       cutNotional: "99.98",
+      // Đủ lệnh cắt thật: cỡ cắt ÷ volume một bot-hour (mọi giờ) = 99.98 ÷ (5 × 99.98 ÷ 3 bot-hour) = 0.6. Bot chưa có
+      // cấu hình đang chạy → không có vị thế tối đa (không cần khi đã đủ lệnh cắt).
+      botHourVolume: "166.63",
+      maxPosition: null,
+      cutShare: "0.6",
+      cutShareSource: "cuts",
       // Chỉ một giờ có ≥ 3 bot-hour: chưa đủ giờ để hiệu chỉnh.
       calibration: null,
       calibrationHours: 1,
@@ -332,7 +344,6 @@ describe("GET /api/v1/admin/market-hours", () => {
     expect(h5?.volatility).toMatchObject({
       estDays: 2,
       shockDays: 1,
-      cutShare: "0.6",
       estShockCostPerMillion: expected.toDecimalPlaces(2).toString(),
     });
     // Ngày điển hình vẫn dùng dao động trung vị (không có phần cắt) nên thấp hơn.
@@ -340,6 +351,89 @@ describe("GET /api/v1/admin/market-hours", () => {
     // Biến động 15 phút lớn nhất của giờ vẫn là ngày sốc (cửa sổ sớm nhất chứa 05:30).
     expect(h5?.volatility.maxMove15Bp).toBe("30");
     expect(h5?.volatility.maxMove15At).toBe("2026-11-02T05:16:00.000Z");
+  });
+
+  it("sizes a cut from the bots' max open position when there are too few real cuts", async () => {
+    const { client, userId } = await teamUser();
+    const market = POS_MARKET;
+    // Một ngày, 05:00–05:59 UTC ngày 2/11, có biến động 15 phút 30 bp → ngày sốc.
+    const closes = Array.from({ length: 60 }, (_, i) =>
+      i === 30 ? "100.3" : i % 2 === 0 ? "100.1" : "100",
+    );
+    const values = closes.map(
+      (c, i) =>
+        `('${market}', '2026-11-02T05:${String(i).padStart(2, "0")}:00Z', ${c}, ${c} + 0.05, ${c} - 0.05, ${c}, 1)`,
+    );
+    await env.pool.query(
+      `insert into candles_1m (market, ts, open, high, low, close, volume) values ${values.join(",")}`,
+    );
+    const { rows: coefs } = await env.pool.query<{ version: number }>(
+      "insert into mm_model_coefs (a, k, points, day) values (0.2, 0.1, 5, '2026-11-02') returning version",
+    );
+    const { rows: acc } = await env.pool.query<{ id: string }>(
+      "insert into sodex_accounts (id, user_id, address, sodex_account_id, network, status) values (gen_random_uuid(), $1, $2, $3, 'mainnet', 'connected') returning id",
+      [userId, "0x4E1e4796c10C637EDAB56461450BD8D02EFb29Db", Math.floor(Math.random() * 1e9)],
+    );
+    // Một bot Market Making thật: order size $20 × max orders 1 = vị thế tối đa $20. Lệnh maker ở giờ 05 và 06 (2
+    // bot-hour), fill 2 × 1 @ 100 = $200 → $100 một bot-hour. Không có lệnh cắt.
+    const { rows: bot } = await env.pool.query<{ id: string }>(
+      "insert into bots (id, user_id, sodex_account_id, strategy, market, engine, name, state, mode) values (gen_random_uuid(), $1, $2, 'volume_maker', $3, 'perps', 'MP', 'running', 'live') returning id",
+      [userId, acc[0]?.id, market],
+    );
+    const botId = bot[0]?.id ?? "";
+    const { rows: ver } = await env.pool.query<{ id: string }>(
+      "insert into bot_versions (id, bot_id, version, config, param_source, status) values (gen_random_uuid(), $1, 1, $2, 'manual', 'active') returning id",
+      [botId, JSON.stringify({ market, orderSize: "20", maxOrders: 1, distanceBp: "1" })],
+    );
+    await env.pool.query("update bots set active_version_id = $1 where id = $2", [
+      ver[0]?.id,
+      botId,
+    ]);
+    for (const [i, at] of ["2026-11-02T05:20:00Z", "2026-11-02T06:20:00Z"].entries()) {
+      const { rows } = await env.pool.query<{ id: string }>(
+        "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, price, size, status, tag, epoch, created_at) values (gen_random_uuid(), $1, $2, $3, $4, 'perps', 'buy', 'limit', 'GTX', 100, 1, 'filled', $5, 1, $6) returning id",
+        [
+          botId,
+          acc[0]?.id,
+          `mp-${String(i)}-${randomUUID().slice(0, 8)}`,
+          market,
+          `vm:${String(i)}:bid`,
+          at,
+        ],
+      );
+      await env.pool.query(
+        "insert into fills (id, order_id, sodex_trade_id, price, size, fee, is_maker, filled_at) values (gen_random_uuid(), $1, $2, 100, 1, 0.015, true, $3)",
+        [rows[0]?.id, Math.floor(Math.random() * 1e12), at],
+      );
+    }
+    const v = marketHoursViewSchema.parse(
+      (
+        await client.request("GET", `/api/v1/admin/market-hours?market=${market}&days=7&tz=UTC`)
+      ).json(),
+    );
+    expect(v.estimate).toMatchObject({
+      modelVersion: coefs[0]?.version,
+      cuts: 0,
+      cutSlippageBp: null,
+      cutCostBp: "4",
+      cutNotional: null,
+      botHourVolume: "100",
+      maxPosition: "20",
+      cutShare: "0.2",
+      cutShareSource: "position",
+    });
+    const s = swingBps(closes);
+    if (s === null) throw new Error("no swing");
+    // Ngày sốc cộng 4 bp (chỉ phí taker) × 0.2 × 100 = $80.
+    const expected = modelCostPerMillion(
+      new Decimal("1.5"),
+      modelPnlBps(new Decimal(1), s, "0.2", "0.1"),
+    ).add(80);
+    expect(v.hours[5]?.volatility).toMatchObject({
+      estDays: 1,
+      shockDays: 1,
+      estShockCostPerMillion: expected.toDecimalPlaces(2).toString(),
+    });
   });
 
   it("finds each hour's largest 1-minute range and largest 15-minute move, in the viewer's local hour", async () => {

@@ -82,6 +82,11 @@ export function usd(v: string | null): string | null {
   const d = dec(v);
   return `$${d.abs().lt(10) ? d.toFixed(2) : d.toFixed(0)}`;
 }
+/** Tỷ lệ → phần trăm, 2 chữ số có nghĩa dưới 10% (vd "2.9", "0.69"), số nguyên từ 10% (vd "60"). */
+export function pct(v: string): string {
+  const d = dec(v).mul(100);
+  return d.abs().lt(10) ? d.toSignificantDigits(2).toString() : d.toFixed(0);
+}
 /** Ngày địa phương "YYYY-MM-DD" từ API (đã theo múi giờ người xem) → "Nov 15, 2026". */
 const dayLabel = (d: string): string => formatDate(Date.parse(`${d}T00:00:00Z`), "UTC");
 /** Mốc thời gian ISO → ngày theo múi giờ `tz`. */
@@ -379,7 +384,7 @@ function CutCalc({ est }: { est: MarketHoursView["estimate"] }) {
   const t = useTranslations("marketHours.calc");
   return (
     <>
-      {est.cutSlippageBp === null || est.cutNotional === null
+      {est.cutSlippageBp === null
         ? t("cutTakerOnly", {
             taker: Number(est.cutTakerBp).toFixed(1),
             n: est.cuts,
@@ -389,8 +394,21 @@ function CutCalc({ est }: { est: MarketHoursView["estimate"] }) {
             taker: Number(est.cutTakerBp).toFixed(1),
             slip: Number(est.cutSlippageBp).toFixed(1),
             n: est.cuts,
-            notional: usd(est.cutNotional) ?? "",
           })}{" "}
+      {est.cutShare === null || est.botHourVolume === null
+        ? t("cutNone", { min: MARKET_HOURS_MIN_CUTS })
+        : est.cutShareSource === "cuts"
+          ? t("cutSizeMeasured", {
+              notional: usd(est.cutNotional) ?? "",
+              volume: usd(est.botHourVolume) ?? "",
+              pct: pct(est.cutShare),
+            })
+          : t("cutSizePosition", {
+              min: MARKET_HOURS_MIN_CUTS,
+              position: usd(est.maxPosition) ?? "",
+              volume: usd(est.botHourVolume) ?? "",
+              pct: pct(est.cutShare),
+            })}{" "}
       <strong className="text-ink">
         {est.calibration === null
           ? t("calibrationNa", { min: MARKET_HOURS_CALIBRATION_MIN_HOURS })
@@ -785,7 +803,6 @@ const hourOf = (v: MarketHoursView, h: number): MarketHoursHour =>
       estShockCostPerMillion: null,
       estDays: null,
       shockDays: null,
-      cutShare: null,
       maxRangeBp: null,
       maxRangeAt: null,
       maxMove15Bp: null,
@@ -812,9 +829,19 @@ function shockTip(
       days: x.estDays,
       bp: est.shockBp,
       cut: Number(est.cutCostBp).toFixed(1),
-    }) +
+    }) + cutSuffix(t, est)
+  );
+}
+
+/** Đuôi tooltip / dòng 390 px của "incl. shock days": cách tính chi phí và cỡ một lần cắt. */
+function cutSuffix(
+  t: ReturnType<typeof useTranslations<"marketHours.vol">>,
+  est: MarketHoursView["estimate"],
+): string {
+  if (est.cutShareSource === null) return t("noCut");
+  return (
     (est.cutSlippageBp === null ? t("takerOnly") : "") +
-    (x.cutShare === null ? t("fullCut") : "")
+    (est.cutShareSource === "position" ? t("positionCut") : "")
   );
 }
 
@@ -1157,6 +1184,7 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
   const t = useTranslations("marketHours");
   const tm = useTranslations("marketHours.mobile");
   const tb = useTranslations("marketHours.botBlock");
+  const tv = useTranslations("marketHours.vol");
   const markAt = new Map(markers.map((m) => [m.hour, m]));
   const [open, setOpen] = useState<number>(markers.find((m) => m.us)?.hour ?? -1);
   return (
@@ -1288,7 +1316,7 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                           shock: x.volatility.shockDays,
                           days: x.volatility.estDays,
                           bp: v.estimate.shockBp,
-                        }) + (v.estimate.cutSlippageBp === null ? t("vol.takerOnly") : "")}
+                        }) + cutSuffix(tv, v.estimate)}
                   </span>
                 </div>
               ) : null}

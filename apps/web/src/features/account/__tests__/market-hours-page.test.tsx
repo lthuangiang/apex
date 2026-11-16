@@ -74,7 +74,6 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
         estShockCostPerMillion: h === 3 ? null : h === 21 ? "336.1" : "95.25",
         estDays: h === 3 ? null : 30,
         shockDays: h === 3 ? null : h === 21 ? 9 : 1,
-        cutShare: null,
         // Giờ 08 (Kolkata): một phút 133 bp và chuỗi 15 phút 276 bp (bắt đầu 08:57 Kolkata = 03:27 UTC).
         maxRangeBp: h === 3 ? null : h === 8 ? "133.24" : "8.5",
         maxRangeAt:
@@ -119,6 +118,11 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
       cutCostBp: "4",
       cuts: 2,
       cutNotional: null,
+      // Chưa đủ lệnh cắt thật: cỡ cắt = vị thế tối đa trung bình $20 ÷ $698 volume một bot-hour.
+      botHourVolume: "698",
+      maxPosition: "20",
+      cutShare: "0.0287",
+      cutShareSource: "position",
       calibration: "1.42",
       calibrationHours: 18,
     },
@@ -269,7 +273,7 @@ describe("Market hours page", () => {
     expect(screen.getAllByTitle("03:00 · Not available").length).toBeGreaterThan(0);
     // "incl. shock days": số ngày sốc, chi phí cắt và giả định trong tooltip (chưa đủ lệnh cắt thật → chỉ phí taker).
     const shock = screen.getByTitle(
-      "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · assumes taker fee only · assumes one cut of the full $1M",
+      "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · assumes taker fee only · cut size = bots' max open position",
     );
     expect(shock).toHaveTextContent("$336");
     expect(shock).toHaveClass("bg-mh-cost-3");
@@ -281,10 +285,17 @@ describe("Market hours page", () => {
       screen.getByText(/Est\. CPM uses the same model as the Market Making cost card/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/cut cost in bp × 100 × \(one cut's size ÷ one bot's volume in that hour\)/),
+      screen.getByText(
+        /cut cost in bp × 100 × \(one cut's size ÷ one Market Making bot's average volume per hour\)/,
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/Cut cost: taker fee 4\.0 bp only\. There are 2 real position cuts/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /With fewer than 5 real cuts, one cut's size is taken as the bots' max open position: \$20 on average \(Max inventory, or order size × max orders\), against \$698 average volume per bot-hour of Market Making bots in this period \(2\.9%\)\. Real cuts are usually smaller, so this is an upper bound\./,
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -297,16 +308,15 @@ describe("Market hours page", () => {
     setRespond(() =>
       Promise.resolve(
         view({
-          hours: view().hours.map((h) => ({
-            ...h,
-            volatility: { ...h.volatility, cutShare: h.hour === 21 ? "0.05" : null },
-          })),
           estimate: {
             ...view().estimate,
             cutSlippageBp: "2.5",
             cutCostBp: "6.5",
             cuts: 12,
             cutNotional: "2400",
+            botHourVolume: "48000",
+            cutShare: "0.05",
+            cutShareSource: "cuts",
             calibration: null,
             calibrationHours: 1,
           },
@@ -315,26 +325,51 @@ describe("Market hours page", () => {
     );
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
-    // Đủ lệnh cắt: không ghi "taker fee only"; giờ có cỡ cắt đo được thì không ghi giả định cắt trọn $1M.
+    // Đủ lệnh cắt: không ghi "taker fee only", cỡ cắt đo từ lệnh cắt thật nên không có đuôi giả định.
     expect(
       screen.getByTitle(
         "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 6.5 bp",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByTitle(
-        /^00:00 · avg \$95 .* cut cost 6\.5 bp · assumes one cut of the full \$1M$/,
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTitle(/^00:00 · avg \$95 .* cut cost 6\.5 bp$/)).toBeInTheDocument();
     expect(screen.queryByTitle(/assumes taker fee only/)).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/max open position/)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /Cut cost: taker fee 4\.0 bp plus 2\.5 bp average slippage, measured from 12 real position cuts.*One cut's size is \$2400/,
+        /Cut cost: taker fee 4\.0 bp plus 2\.5 bp average slippage, measured from 12 real position cuts.*One cut's size is \$2400, the average of those cuts, against \$48000 average volume per bot-hour of Market Making bots in this period \(5%\)\./,
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
         "Over the hours with enough bot data, real bot cost compared with this estimate: Not available (fewer than 3 hours with 3 or more bot-hours).",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves position cuts out and says so when there are too few real cuts and nothing to size one", async () => {
+    setRespond(() =>
+      Promise.resolve(
+        view({
+          estimate: {
+            ...view().estimate,
+            botHourVolume: null,
+            maxPosition: null,
+            cutShare: null,
+            cutShareSource: null,
+          },
+        }),
+      ),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    expect(
+      screen.getByTitle(
+        "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · position cuts not included (too few real cuts)",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Position cuts not included \(too few real cuts\): fewer than 5 real cuts, and no Market Making bot volume in this period to size one\./,
       ),
     ).toBeInTheDocument();
   });
@@ -442,7 +477,7 @@ describe("Market hours page", () => {
     // Giờ 07: 1 / 30 ngày sốc; chưa đủ lệnh cắt thật → chỉ phí taker.
     expect(
       screen.getByText(
-        "$95 (model) · 1 of 30 days had a 15-min move of 15 bp or more · assumes taker fee only",
+        "$95 (model) · 1 of 30 days had a 15-min move of 15 bp or more · assumes taker fee only · cut size = bots' max open position",
       ),
     ).toBeInTheDocument();
   });
@@ -487,7 +522,7 @@ describe("Market hours page", () => {
       ],
       [
         "Est. CPM · incl. shock days (model)",
-        "CPM (cost per $1M of volume): model cost averaged over every day, including days with sharp moves. On days when the price ran 15 bp or more within 15 minutes, it adds the cost of a position cut (taker fee plus slippage).",
+        "CPM (cost per $1M of volume): model cost averaged over every day, including days with sharp moves. On days when the price ran 15 bp or more within 15 minutes, it adds the cost of a position cut (taker fee plus slippage), scaled by one cut's size against one bot's volume per hour.",
         1,
       ],
       ["Price move against makers, 30 s later (bp)", markout, 1],

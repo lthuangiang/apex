@@ -99,9 +99,9 @@ export interface ShockHourDay {
  * "Est. CPM · incl. shock days" của một giờ (DEC-TBD-market-hours-shock). Với mỗi ngày có dao động:
  *   chi phí ngày = modelCostPerMillion(phí, modelPnlBps(bước, dao động của ngày đó, a, k))
  *                + (biến động 15 phút lớn nhất của giờ đó ngày đó ≥ shockBp ? cutCostBps × cutShare × 100 : 0)
- * rồi lấy trung bình cộng (mean, không phải trung vị) qua các ngày. `cutShare` = notional một lần cắt ÷ volume của
- * giờ đó mà lần cắt được chia vào (1 = cắt trọn $1M). Ngày không tính được dao động bị bỏ qua; không có ngày nào →
- * null.
+ * rồi lấy trung bình cộng (mean, không phải trung vị) qua các ngày. `cutShare` = notional một lần cắt ÷ volume trung
+ * bình một bot-hour (`cutShareOf`); null = không tính phần cắt (quá ít lệnh cắt thật và không có vị thế tối đa để ước
+ * lượng), ngày sốc vẫn được đếm. Ngày không tính được dao động bị bỏ qua; không có ngày nào → null.
  */
 export function shockDayCostPerMillion(
   days: readonly ShockHourDay[],
@@ -111,11 +111,12 @@ export function shockDayCostPerMillion(
     a: DecimalInput;
     k: DecimalInput;
     cutCostBps: Decimal;
-    cutShare: Decimal;
+    cutShare: Decimal | null;
     shockBp: DecimalInput;
   },
 ): { mean: Decimal | null; days: number; shockDays: number } {
-  const extra = p.cutCostBps.mul(p.cutShare).mul(PER_MILLION_FROM_BPS);
+  const extra =
+    p.cutShare === null ? new Decimal(0) : p.cutCostBps.mul(p.cutShare).mul(PER_MILLION_FROM_BPS);
   let sum = new Decimal(0);
   let n = 0;
   let shockDays = 0;

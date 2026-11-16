@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   calibrationRatio,
+  cutShareOf,
   cutStats,
   fillCostPerMillion,
   marketHoursQuerySchema,
   marketHoursViewSchema,
   minuteRangeBp,
+  mmCutBasis,
   moveBp,
   quantile,
   timeZoneSchema,
@@ -157,5 +159,44 @@ describe("calibrationRatio", () => {
   it("is not available with fewer than 3 hours", () => {
     expect(calibrationRatio([p("140", "100"), p("120", "100"), p("1", "0")])).toBeNull();
     expect(calibrationRatio([])).toBeNull();
+  });
+});
+
+describe("cut size share (DEC-TBD-market-hours-shock)", () => {
+  it("averages volume per bot-hour over every hour and max position weighted by bot-hours", () => {
+    // Bot 1: 21 bot-hour, $14 700, max $20. Bot 2: 3 bot-hour, chưa có fill, max $100. Bot 3: cấu hình hỏng.
+    const b = mmCutBasis([
+      { botHours: 21, volume: "14700", maxPosition: "20" },
+      { botHours: 3, volume: null, maxPosition: "100" },
+      { botHours: 6, volume: "300", maxPosition: null },
+      { botHours: 0, volume: "999", maxPosition: "999" },
+    ]);
+    // (14 700 + 300) ÷ 30 = 500; (20 × 21 + 100 × 3) ÷ 24 = 30.
+    expect(b.botHourVolume?.toString()).toBe("500");
+    expect(b.maxPosition?.toString()).toBe("30");
+    expect(mmCutBasis([])).toEqual({ botHourVolume: null, maxPosition: null });
+    expect(mmCutBasis([{ botHours: 2, volume: null, maxPosition: "20" }])).toEqual({
+      botHourVolume: null,
+      maxPosition: dec("20"),
+    });
+  });
+
+  it("sizes a cut from real cuts when there are enough, else from max open position, else leaves it out", () => {
+    const v = dec("500");
+    expect(
+      cutShareOf({ cutNotional: dec("100"), maxPosition: dec("30"), botHourVolume: v }),
+    ).toEqual({ share: dec("0.2"), source: "cuts" });
+    expect(cutShareOf({ cutNotional: null, maxPosition: dec("30"), botHourVolume: v })).toEqual({
+      share: dec("0.06"),
+      source: "position",
+    });
+    expect(cutShareOf({ cutNotional: null, maxPosition: null, botHourVolume: v })).toEqual({
+      share: null,
+      source: null,
+    });
+    // Không có volume bot-hour: không chia được → không tính phần cắt, kể cả khi đủ lệnh cắt.
+    expect(
+      cutShareOf({ cutNotional: dec("100"), maxPosition: dec("30"), botHourVolume: null }),
+    ).toEqual({ share: null, source: null });
   });
 });

@@ -196,5 +196,15 @@ describe("shock-day estimate (DEC-TBD-market-hours-shock)", () => {
       shockDayCostPerMillion([{ swingBps: dec("5"), move15Bp: null }], p).mean?.toString(),
     ).toBe("180");
     expect(shockDayCostPerMillion([], p)).toEqual({ mean: null, days: 0, shockDays: 0 });
+    // Không có cỡ cắt (quá ít lệnh cắt thật, không có vị thế tối đa): bỏ phần cắt, vẫn đếm ngày sốc.
+    const noCut = shockDayCostPerMillion(
+      [
+        { swingBps: dec("5"), move15Bp: dec("14.9") },
+        { swingBps: dec("12"), move15Bp: dec("15") },
+      ],
+      { ...p, cutShare: null },
+    );
+    expect(noCut.mean?.toString()).toBe("215");
+    expect(noCut).toMatchObject({ days: 2, shockDays: 1 });
   });
 });

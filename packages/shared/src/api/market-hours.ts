@@ -47,7 +47,7 @@ export const MARKET_HOURS_HOT_RATIO = 2;
 export const MARKET_HOURS_MAX_MISSING_PRICE = 0.2;
 /**
  * Cần ít nhất chừng này lệnh "Position cut" thật (có fill, có giá tham chiếu) trong kỳ thì mới dùng trượt giá và cỡ lệnh
- * cắt đo được; ít hơn → chỉ phí taker và giả định cắt trọn $1M (DEC-TBD-market-hours-shock).
+ * cắt đo được; ít hơn → chỉ phí taker và cỡ cắt lấy theo vị thế tối đa của bot (DEC-TBD-market-hours-shock).
  */
 export const MARKET_HOURS_MIN_CUTS = 5;
 /** Hiệu chỉnh "real ÷ estimate" cần ít nhất chừng này giờ có ≥ 3 bot-hour; ít hơn → "Not available". */
@@ -79,11 +79,6 @@ const hourSchema = z.object({
     /** Số ngày tính được và số ngày "sốc" (biến động 15 phút lớn nhất ≥ 15 bp) của giờ đó; null khi không có ngày nào. */
     estDays: z.number().int().nonnegative().nullable(),
     shockDays: z.number().int().nonnegative().nullable(),
-    /**
-     * Notional một lần cắt ÷ volume của một bot trong một giờ đó (đo từ lệnh cắt thật và khối 3). null = không đo được,
-     * giả định 1 (một lần cắt trọn $1M).
-     */
-    cutShare: decimalStringSchema.nullable(),
     /** Range 1 phút lớn nhất trong kỳ (bp) của nến bắt đầu trong giờ đó, và mốc bắt đầu của nến; null khi thiếu nến. */
     maxRangeBp: decimalStringSchema.nullable(),
     maxRangeAt: isoDateTimeSchema.nullable(),
@@ -156,6 +151,19 @@ export const marketHoursViewSchema = z.object({
     /** Số lệnh cắt thật (có fill) của market trong kỳ, và notional trung bình một lệnh (null khi chưa đủ). */
     cuts: z.number().int().nonnegative(),
     cutNotional: decimalStringSchema.nullable(),
+    /**
+     * Volume trung bình một bot-hour của bot Market Making tiền thật trên market trong kỳ (Σ notional fill ÷ số bot-hour,
+     * mọi giờ); null khi không có bot-hour hoặc volume.
+     */
+    botHourVolume: decimalStringSchema.nullable(),
+    /** Vị thế tối đa trung bình (USDC, `vmMaxInventory` của cấu hình đang chạy, trọng số theo bot-hour); null khi thiếu. */
+    maxPosition: decimalStringSchema.nullable(),
+    /**
+     * Cỡ một lần cắt ÷ `botHourVolume` (`cutShareOf`): từ lệnh cắt thật (`cuts`, khi đủ `MARKET_HOURS_MIN_CUTS`), không đủ
+     * thì từ vị thế tối đa (`position`); null = không tính phần cắt ("position cuts not included").
+     */
+    cutShare: decimalStringSchema.nullable(),
+    cutShareSource: z.enum(["cuts", "position"]).nullable(),
     /**
      * Hiệu chỉnh: trung vị qua các giờ có ≥ 3 bot-hour của (Cost per $1M thật ÷ "incl. shock days"); null khi dưới
      * `MARKET_HOURS_CALIBRATION_MIN_HOURS` giờ.
@@ -280,7 +288,8 @@ export interface CutFill {
  * - `slippageBps` = trượt giá trung bình theo notional trên các fill có giá tham chiếu, dương = bất lợi (mua cao hơn /
  *   bán thấp hơn giá tham chiếu): Σ chiều × (giá khớp − ref) ÷ ref × notional ÷ Σ notional × 10 000;
  * - `notional` = notional trung bình của một lệnh cắt.
- * Dưới `MARKET_HOURS_MIN_CUTS` lệnh có giá tham chiếu → `slippageBps` và `notional` là null (chỉ phí taker, cắt trọn $1M).
+ * Dưới `MARKET_HOURS_MIN_CUTS` lệnh có giá tham chiếu → `slippageBps` và `notional` là null (chỉ phí taker; cỡ cắt theo
+ * `cutShareOf`).
  */
 export function cutStats(fills: readonly CutFill[]): {
   cuts: number;
@@ -310,6 +319,62 @@ export function cutStats(fills: readonly CutFill[]): {
     slippageBps: enough ? weighted.div(pricedNotional).mul(10_000) : null,
     notional: enough ? total.div(orders.size) : null,
   };
+}
+
+/** Một bot Market Making trong kỳ: số bot-hour, Σ notional fill (null khi chưa có fill) và vị thế tối đa (USDC). */
+export interface MmBotPeriod {
+  botHours: number;
+  volume: string | null;
+  maxPosition: string | null;
+}
+
+/**
+ * Mẫu số và cỡ cắt dự phòng cho phần cắt vị thế (DEC-TBD-market-hours-shock), qua MỌI giờ của kỳ:
+ * - `botHourVolume` = Σ volume ÷ Σ bot-hour (null khi không có bot-hour hoặc volume = 0);
+ * - `maxPosition` = trung bình vị thế tối đa, trọng số theo bot-hour (bot không đọc được cấu hình bị bỏ; null khi không
+ *   còn bot nào).
+ */
+export function mmCutBasis(bots: readonly MmBotPeriod[]): {
+  botHourVolume: Decimal | null;
+  maxPosition: Decimal | null;
+} {
+  let hours = 0;
+  let volume = new Decimal(0);
+  let posHours = 0;
+  let pos = new Decimal(0);
+  for (const b of bots) {
+    if (b.botHours <= 0) continue;
+    hours += b.botHours;
+    if (b.volume !== null) volume = volume.add(dec(b.volume));
+    if (b.maxPosition !== null && dec(b.maxPosition).gt(0)) {
+      posHours += b.botHours;
+      pos = pos.add(dec(b.maxPosition).mul(b.botHours));
+    }
+  }
+  return {
+    botHourVolume: hours === 0 || !volume.gt(0) ? null : volume.div(hours),
+    maxPosition: posHours === 0 ? null : pos.div(posHours),
+  };
+}
+
+/**
+ * Phần notional của một lần cắt so với volume một bot-hour (DEC-TBD-market-hours-shock), một số cho mọi giờ:
+ * - đủ `MARKET_HOURS_MIN_CUTS` lệnh cắt thật (`cutNotional` khác null) → notional trung bình một lệnh cắt ÷
+ *   `botHourVolume` (`cuts`);
+ * - không đủ → vị thế tối đa trung bình (Max inventory, hoặc order size × max orders) ÷ `botHourVolume` (`position`):
+ *   engine không để vị thế vượt xa mức này, nên đây là cận trên của một lần cắt;
+ * - thiếu cả hai, hoặc không có volume → null: không tính phần cắt.
+ */
+export function cutShareOf(p: {
+  cutNotional: Decimal | null;
+  maxPosition: Decimal | null;
+  botHourVolume: Decimal | null;
+}): { share: Decimal | null; source: "cuts" | "position" | null } {
+  const v = p.botHourVolume;
+  if (v?.gt(0) !== true) return { share: null, source: null };
+  if (p.cutNotional !== null) return { share: p.cutNotional.div(v), source: "cuts" };
+  if (p.maxPosition !== null) return { share: p.maxPosition.div(v), source: "position" };
+  return { share: null, source: null };
 }
 
 /**
