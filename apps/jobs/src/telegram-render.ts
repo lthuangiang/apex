@@ -1,4 +1,9 @@
-import { escapeTelegramHtml, groupOf, type NotificationType } from "@drift/shared";
+import {
+  escapeTelegramHtml,
+  feeTierChangeText,
+  groupOf,
+  type NotificationType,
+} from "@drift/shared";
 
 import messages from "./messages/en.json" with { type: "json" };
 
@@ -55,6 +60,36 @@ function briefBody(data: Record<string, unknown>): string {
 }
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/**
+ * Tin bậc builder fee đổi (DEC-261, câu duyệt 2026-11-16). Volume làm tròn xuống (không bao giờ ghi cao hơn
+ * thật); thiếu số thì chỉ câu mức mới / cũ. Payload sai dạng → tiêu đề chung, không có câu (không đoán số).
+ */
+export function feeTierMessage(data: Record<string, unknown>): {
+  title: string;
+  body: string | null;
+} {
+  const x = feeTierChangeText(data);
+  if (x === null) return { title: M.titles.key_fee, body: null };
+  const usdc = (amount: string | null) => (amount === null ? "" : fill(M.bodies.usdc, { amount }));
+  const vars = {
+    rate: x.vars.rate,
+    previous: x.vars.previous,
+    volume: usdc(x.vars.volume),
+    min: usdc(x.vars.min),
+  };
+  return {
+    title: fill(x.title === "lowered" ? M.titles.fee_tier_lowered : M.titles.fee_tier_back, vars),
+    body: fill(
+      x.body === "lowered"
+        ? M.bodies.fee_tier_lowered
+        : x.body === "raised"
+          ? M.bodies.fee_tier_raised
+          : M.bodies.fee_tier_rates,
+      vars,
+    ),
+  };
+}
+
 function reasonOf(data: Record<string, unknown>): string | null {
   const code = str(data.reasonCode);
   return code === null ? null : (REASONS[code] ?? null);
@@ -84,6 +119,8 @@ function targetOf(row: RenderRow): { path: string; label: string } {
       return { path: "/risk", label: M.buttons.risk };
     case "key_fee":
       return { path: "/settings", label: M.buttons.settings };
+    case "fee_tier_changed":
+      return { path: "/settings?tab=access", label: M.buttons.settings };
     case "daily_summary":
       return { path: "/desk", label: M.buttons.openDesk };
     case "leader_big_move":
@@ -172,6 +209,8 @@ function title(row: RenderRow): string {
       return M.titles.risk_alert;
     case "key_fee":
       return M.titles.key_fee;
+    case "fee_tier_changed":
+      return feeTierMessage(row.data).title;
     case "fill":
       return fill(M.titles.fill, { bot });
     case "daily_summary":
@@ -253,6 +292,8 @@ function body(row: RenderRow): string | null {
     }
     case "key_fee":
       return M.bodies.key_fee;
+    case "fee_tier_changed":
+      return feeTierMessage(row.data).body;
     case "daily_summary":
       return briefBody(row.data);
     case "leader_big_move": {
