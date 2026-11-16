@@ -1989,14 +1989,14 @@ export class Engine {
 
   /** pause giữ lệnh đang mở (DOMAIN.md mục 7.2). */
   async #pauseBot(r: Runner, reason: Reason): Promise<void> {
-    await this.#fenced(r, async (tx) => {
+    const changed = await this.#fenced(r, async (tx) => {
       const [b] = await tx
         .select({ state: bots.state })
         .from(bots)
         .where(eq(bots.id, r.botId))
         .for("update");
       const next = b === undefined ? null : applyReason(b.state, reason);
-      if (next === null) return;
+      if (next === null) return false;
       await tx.update(bots).set({ state: next, reasonCode: reason }).where(eq(bots.id, r.botId));
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
@@ -2010,8 +2010,11 @@ export class Engine {
           data: { botId: r.botId, reasonCode: reason, ...(r.paper ? { paper: true } : {}) },
         },
       });
+      return true;
     });
-    await this.#event(r, "state", "Paused", reason, this.#d.now());
+    // Chỉ ghi "Paused" khi state thật sự đổi: bot đang stopping / stopped / paused nhận thêm lệnh pause (ví dụ lệnh
+    // reduce-only bị từ chối lúc Stop) thì `applyReason` trả null và không có gì xảy ra (DEC-256).
+    if (changed) await this.#event(r, "state", "Paused", reason, this.#d.now());
   }
 
   /** stop huỷ lệnh của bot rồi (nếu cấu hình) đóng vị thế bằng lệnh reduce-only (DOMAIN.md mục 7.2). */

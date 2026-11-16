@@ -638,6 +638,37 @@ describe("engine", () => {
       await e.stop();
     });
 
+  it("logs Paused only when the pause changes the bot's state (DEC-256)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const paused = async (botId: string) =>
+      (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+        (x) => x.decision === "Paused",
+      ).length;
+    const gw = new FakeGateway();
+    const running = await seedBot("running");
+    const stopping = await seedBot("running");
+    const e = makeEngine(gw, "w-paused-log");
+    // Chờ engine nạp cả hai bot (nhận shard có thể mất vài nhịp).
+    const loaded = async () => {
+      const ids = (await e.activeAccounts()).map((a) => a.id);
+      return ids.includes(running.accountId) && ids.includes(stopping.accountId);
+    };
+    for (let i = 0; i < 20 && !(await loaded()); i += 1) await e.tick();
+    expect(await loaded()).toBe(true);
+    // Bot đang Stop: pause không đổi gì (applyReason trả null), nên không có dòng "Paused" trong Decisions.
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, stopping.botId));
+    await e.pauseAccount(stopping.accountId, ReasonCode.builderFeeRevoked);
+    expect((await botState(stopping.botId))?.state).toBe("stopping");
+    expect(await paused(stopping.botId)).toBe(0);
+    // Bot đang chạy: pause thật, có đúng một dòng "Paused"; pause lần nữa (đã paused) không thêm dòng.
+    await e.pauseAccount(running.accountId, ReasonCode.builderFeeRevoked);
+    expect((await botState(running.botId))?.state).toBe("paused");
+    expect(await paused(running.botId)).toBe(1);
+    await e.pauseAccount(running.accountId, ReasonCode.builderFeeRevoked);
+    expect(await paused(running.botId)).toBe(1);
+    await e.stop();
+  });
+
   it("cancels a quote pulled while it was still being sent, as soon as SoDEX takes it (DEC-254)", async () => {
     const { and, eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
