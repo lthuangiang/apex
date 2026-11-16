@@ -71,7 +71,7 @@ export interface VolumeMakerState {
   reqWin?: {
     since: number;
     n: number;
-    /** Khoảng dài nhất (ms) giữa hai lần xét báo giá (`lastRefresh`) trong cửa sổ (DEC-TBD-ops-page). */
+    /** Khoảng dài nhất (ms) giữa hai lần xét báo giá (`lastRefresh`) trong cửa sổ (DEC-268). */
     gap?: number;
   };
   /** Lần cắt vị thế gần nhất (DEC-249). */
@@ -1025,7 +1025,7 @@ export function stepVolumeMaker(
   if (!c.smartQuoting) return r;
   // Đếm request lệnh gửi SoDEX (DEC-248): mỗi phút một dòng Decisions để theo dõi hạn mức theo địa chỉ ví.
   const sent = r.actions.filter((a) => a.type === "place" || a.type === "cancel").length;
-  // Khoảng giữa hai lần xét báo giá (DEC-TBD-ops-page): lần xét mới thì đo từ lần trước.
+  // Khoảng giữa hai lần xét báo giá (DEC-268): lần xét mới thì đo từ lần trước.
   const before = raw.lastRefresh;
   const after = r.state.lastRefresh;
   const step = before !== null && after !== null && after > before ? after - before : 0;

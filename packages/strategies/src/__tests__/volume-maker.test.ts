@@ -1210,7 +1210,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(line?.why).toMatch(
       /^Last 61 s: \d+ requests to SoDEX \(new orders and cancels\)\. Longest gap between quotes: \d+\.\d s\.$/,
     );
-    // Xét báo giá lúc 0 s, 7 s, 61 s: khoảng dài nhất 54 s (DEC-TBD-ops-page).
+    // Xét báo giá lúc 0 s, 7 s, 61 s: khoảng dài nhất 54 s (DEC-268).
     expect(line?.why).toContain("Longest gap between quotes: 54.0 s.");
   });
 
