@@ -14,10 +14,14 @@ import {
   MM_MIN_CANDLE_MINUTES,
   MM_MIN_CAPACITY,
   MM_MODEL_SEED,
+  mmBuilderFeeBps,
+  modelCostPerMillion,
   modelPnlBps,
+  PER_MILLION_FROM_BPS,
+  perpsMakerFeeBps,
   rankMmMarkets,
   roundTrips,
-  SODEX_BASE_FEE_PCT,
+  stepBpsOf,
   Strategy,
   swingBps,
   windowPnl,
@@ -43,7 +47,6 @@ import { ownBot, type BotDeps } from "./service";
 
 const DAY = 86_400_000;
 const CACHE_MS = 5 * 60_000;
-const PER_MILLION_FROM_BPS = 100; // $1M × bps / 10.000
 
 interface MarketRow {
   market: string;
@@ -61,7 +64,8 @@ interface MarketRow {
   /** PnL giá mô hình (bps); null khi thiếu dữ liệu đầu vào. */
   modelBps: Decimal | null;
   lastClose: string | null;
-  makerPerMillion: Decimal;
+  /** Phí maker SoDEX của market (bps). */
+  makerBps: Decimal;
 }
 interface MarketPart {
   at: number;
@@ -73,8 +77,8 @@ let cache: MarketPart | null = null;
 
 const fmt = (d: Decimal | null, dp = 2) => (d === null ? null : d.toDecimalPlaces(dp).toString());
 
-/** Hệ số mô hình mới nhất, hoặc hệ số khởi đầu (version 0). */
-async function latestModel(deps: BotDeps): Promise<MarketPart["model"]> {
+/** Hệ số mô hình mới nhất, hoặc hệ số khởi đầu (version 0). Dùng chung với Market hours. */
+export async function latestMmModel(deps: Pick<BotDeps, "db">): Promise<MarketPart["model"]> {
   const [row] = await deps.db
     .select({ version: mmModelCoefs.version, a: mmModelCoefs.a, k: mmModelCoefs.k })
     .from(mmModelCoefs)
@@ -139,7 +143,7 @@ async function marketPart(deps: BotDeps): Promise<MarketPart> {
   const since = new Date(now - DAY);
   const symbols = (await deps.rest.getPerpsSymbols()).filter((s) => s.status === "TRADING");
   const names = symbols.map((s) => s.name);
-  const model = await latestModel(deps);
+  const model = await latestMmModel(deps);
   const hourly = await deps.db
     .select()
     .from(mmMarketHourly)
@@ -169,13 +173,11 @@ async function marketPart(deps: BotDeps): Promise<MarketPart> {
     byMarket.set(c.market, list);
   }
   let updatedAt: number | null = null;
-  const baseMaker = dec(SODEX_BASE_FEE_PCT.perps.maker).div(100);
   const rows = symbols.map((s): MarketRow => {
     const hs = hourly.filter((h) => h.market === s.name);
     for (const h of hs) updatedAt = Math.max(updatedAt ?? 0, h.updatedAt.getTime());
     const cs = byMarket.get(s.name) ?? [];
     const last = cs.at(-1);
-    const mid = last === undefined ? null : dec(last.close);
     const notional = hs.reduce((a, h) => a.add(dec(h.notional)), new Decimal(0));
     const markout = hs.reduce((a, h) => a.add(dec(h.markoutNotional)), new Decimal(0));
     const hist: Record<string, number> = {};
@@ -186,7 +188,7 @@ async function marketPart(deps: BotDeps): Promise<MarketPart> {
     // Dao động chỉ tin được khi đủ nến và ≥ 50% số phút có volume (nến phẳng làm dao động thấp giả).
     const enough = cs.length >= MM_MIN_CANDLE_MINUTES && active >= MM_MIN_ACTIVE_MINUTES;
     const swing = enough ? swingBps(cs.map((c) => c.close)) : null;
-    const step = mid === null || mid.lte(0) ? null : dec(s.tickSize).div(mid).mul(10_000);
+    const step = stepBpsOf(s.tickSize, last?.close ?? null);
     const vol =
       cs.length === 0
         ? null
@@ -208,7 +210,7 @@ async function marketPart(deps: BotDeps): Promise<MarketPart> {
         : null,
       modelBps: step === null || swing === null ? null : modelPnlBps(step, swing, model.a, model.k),
       lastClose: last?.close ?? null,
-      makerPerMillion: (s.makerFee === undefined ? baseMaker : dec(s.makerFee)).mul(1_000_000),
+      makerBps: perpsMakerFeeBps(s.makerFee),
     };
   });
   cache = { at: now, updatedAt, model, rows };
@@ -220,8 +222,9 @@ export async function mmMarketCosts(deps: BotDeps, userId: string): Promise<MmMa
   const part = await marketPart(deps);
   const now = deps.now().getTime();
   const rate = (await builderFeesOf(deps.db, userId))[Strategy.volumeMaker] ?? 0;
-  // Builder fee theo phần mười bp: 3 → 0,003% → 30 USD / $1M.
-  const builder = new Decimal(rate).mul(10);
+  // Builder fee theo phần mười bp: 3 → 0,3 bp → 30 USD / $1M.
+  const builderBps = mmBuilderFeeBps(rate);
+  const builder = builderBps.mul(PER_MILLION_FROM_BPS);
   const mine = await deps.db
     .selectDistinct({ market: bots.market })
     .from(bots)
@@ -243,13 +246,14 @@ export async function mmMarketCosts(deps: BotDeps, userId: string): Promise<MmMa
     ),
     new Date(now - DAY),
   );
-  const base = dec(SODEX_BASE_FEE_PCT.perps.maker).div(100).mul(1_000_000);
+  const base = perpsMakerFeeBps(undefined).mul(PER_MILLION_FROM_BPS);
   const rows = part.rows.map((r): MmMarketCost => {
     const ownFills = own.get(r.market) ?? [];
     const w = ownFills.length === 0 ? null : windowPnl(ownFills, r.lastClose);
     const rounds = w?.rounds ?? 0;
     const pnl = r.modelBps === null ? null : blendPnlBps(r.modelBps, w?.bps ?? null, rounds);
     const pnlPerMillion = pnl === null ? null : pnl.mul(PER_MILLION_FROM_BPS);
+    const feesBps = r.makerBps.add(builderBps);
     return {
       market: r.market,
       stepBps: fmt(r.stepBps),
@@ -268,10 +272,8 @@ export async function mmMarketCosts(deps: BotDeps, userId: string): Promise<MmMa
       source: pnl === null ? null : rounds > 0 && w?.bps != null ? "yours" : "model",
       yourRoundTrips: rounds,
       totalCostPerMillion:
-        pnlPerMillion === null
-          ? null
-          : r.makerPerMillion.add(builder).sub(pnlPerMillion).toDecimalPlaces(2).toString(),
-      feesPerMillion: r.makerPerMillion.add(builder).toDecimalPlaces(2).toString(),
+        pnl === null ? null : modelCostPerMillion(feesBps, pnl).toDecimalPlaces(2).toString(),
+      feesPerMillion: feesBps.mul(PER_MILLION_FROM_BPS).toDecimalPlaces(2).toString(),
       yourBot: running.has(r.market),
     };
   });
@@ -303,10 +305,7 @@ export async function mmMarkout(deps: BotDeps, userId: string, botId: string): P
   const series = mids.get(b.market) ?? [];
   const symbol = (await deps.rest.getPerpsSymbols()).find((s) => s.name === b.market);
   const lastMid = series.at(-1);
-  const step =
-    symbol === undefined || lastMid === undefined || dec(lastMid.mid).lte(0)
-      ? null
-      : dec(symbol.tickSize).div(dec(lastMid.mid)).mul(10_000);
+  const step = symbol === undefined ? null : stepBpsOf(symbol.tickSize, lastMid?.mid ?? null);
   const move30 = medianMidMove(list, series, 30_000);
   return {
     asOf: new Date(now).toISOString(),

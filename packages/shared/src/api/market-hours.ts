@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { swingBps } from "../mm-markout";
 import { dec, Decimal } from "../money";
 import { decimalStringSchema, isoDateTimeSchema } from "../schemas";
 
@@ -56,6 +57,10 @@ const hourSchema = z.object({
     hotPct: z.number().nullable(),
     /** Trung vị range 1 phút theo bước 5 phút (12 ô); null khi thiếu. */
     fiveMin: z.array(decimalStringSchema.nullable()).length(12),
+    /** Trung vị qua các ngày của dao động 1 phút (độ lệch chuẩn % đổi giá đóng, bps) của giờ đó; null khi thiếu nến. */
+    swingBp: decimalStringSchema.nullable(),
+    /** Chi phí ước tính / $1M của mô hình Market Making (DEC-228) cho giờ đó; null khi thiếu nến hoặc mô hình. */
+    estCostPerMillion: decimalStringSchema.nullable(),
   }),
   cost: z.object({
     /** Markout 30 s phía maker (bp, dương = có lợi cho maker), trung vị qua các giờ trong kỳ. */
@@ -98,8 +103,26 @@ export const marketHoursViewSchema = z.object({
   /** Số ngày (theo múi giờ người xem) trong kỳ có dữ liệu khối 2. */
   markoutDays: z.number().int().nonnegative(),
   fillsSince: isoDateTimeSchema.nullable(),
+  /**
+   * Đầu vào chung của dòng "Estimated cost per $1M (model)". `unavailable` khác null thì cả dòng là n/a:
+   * `no_candles` = market không có nến trong kỳ (không tính được bước giá); `no_market_info` = không đọc được tick size
+   * của market từ SoDEX.
+   */
+  estimate: z.object({
+    feesBp: decimalStringSchema,
+    stepBp: decimalStringSchema.nullable(),
+    modelVersion: z.number().int().nonnegative(),
+    unavailable: z.enum(["no_candles", "no_market_info"]).nullable(),
+  }),
 });
 export type MarketHoursView = z.infer<typeof marketHoursViewSchema>;
+export type MarketHoursEstimate = MarketHoursView["estimate"];
+
+/** Trung vị qua các ngày của dao động 1 phút (`swingBps`) của từng nhóm giá đóng (một nhóm = một giờ của một ngày). */
+export function medianSwingBps(groups: readonly (readonly string[])[]): Decimal | null {
+  const xs = groups.map((g) => swingBps(g)).filter((x): x is Decimal => x !== null);
+  return quantile(xs, 0.5);
+}
 
 /** Range 1 phút (bp) = (cao − thấp) ÷ ((cao + thấp) / 2) × 10 000; giá không hợp lệ → null. */
 export function minuteRangeBp(high: string, low: string): Decimal | null {

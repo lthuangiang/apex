@@ -1,6 +1,11 @@
 "use client";
 
-import { marketHoursViewSchema, type MarketHoursHour, type MarketHoursView } from "@drift/shared";
+import {
+  dec,
+  marketHoursViewSchema,
+  type MarketHoursHour,
+  type MarketHoursView,
+} from "@drift/shared";
 import { SegmentedControl } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -58,7 +63,12 @@ function usdShort(v: string | null): string | null {
   if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
   return `$${n.toFixed(0)}`;
 }
-const usd = (v: string | null): string | null => (v === null ? null : `$${Number(v).toFixed(0)}`);
+/** Tiền theo đô; dưới $10 (trị tuyệt đối) thì có cent để phí nhỏ không thành "$0" (vd "$0.31"). Tính bằng Decimal. */
+export function usd(v: string | null): string | null {
+  if (v === null) return null;
+  const d = dec(v);
+  return `$${d.abs().lt(10) ? d.toFixed(2) : d.toFixed(0)}`;
+}
 /** Ngày địa phương "YYYY-MM-DD" từ API (đã theo múi giờ người xem) → "Nov 15, 2026". */
 const dayLabel = (d: string): string => formatDate(Date.parse(`${d}T00:00:00Z`), "UTC");
 /** Mốc thời gian ISO → ngày theo múi giờ `tz`. */
@@ -280,7 +290,7 @@ function HowToRead({
           <div>
             <dt className="font-extrabold text-ink">{t("calc.volTitle")}</dt>
             <dd className="m-0 mt-0.5">
-              {t("calc.volBody")} {since(v?.candlesSince)}
+              {t("calc.volBody")} {t("calc.estBody")} {since(v?.candlesSince)}
             </dd>
           </div>
           <div>
@@ -434,6 +444,22 @@ function Desktop({
             return <Num key={h} v={p === null ? null : `${String(p)}%`} line={line(h)} />;
           }),
         )}
+        {row(
+          t("vol.est"),
+          H.map((h) => (
+            <EstCell key={h} x={hourOf(v, h).volatility} est={v.estimate} hour={h} line={line(h)} />
+          )),
+        )}
+        <Legend
+          label={t("vol.estLegend")}
+          items={(["c0", "c1", "c2", "c3"] as const).map((k, i) => [
+            COST_BG[i] ?? "",
+            t(`botBlock.${k}`),
+          ])}
+          extra={[]}
+        >
+          <span>{t("botBlock.naLegend")}</span>
+        </Legend>
         <div className="mt-1.5 mb-1 flex flex-col gap-2 rounded-tile bg-surface-2 p-3">
           <div className="flex flex-wrap items-baseline gap-2.5">
             <strong className="text-[13.5px]">
@@ -521,10 +547,64 @@ function Desktop({
 const hourOf = (v: MarketHoursView, h: number): MarketHoursHour =>
   v.hours[h] ?? {
     hour: h,
-    volatility: { medianBp: null, p90Bp: null, ratio: null, hotPct: null, fiveMin: [] },
+    volatility: {
+      medianBp: null,
+      p90Bp: null,
+      ratio: null,
+      hotPct: null,
+      fiveMin: [],
+      swingBp: null,
+      estCostPerMillion: null,
+    },
     cost: { markoutBp: null, spreadTicks: null },
     bots: { costPerMillion: null, volume: null, fees: null, botHours: 0, thin: false },
   };
+
+/**
+ * Ô "Estimated cost per $1M (model)": cùng 4 bậc màu với Cost per $1M của khối 3. Cả dòng n/a khi mô hình không tính
+ * được cho market (lý do trong tooltip); một giờ không có nến → n/a.
+ */
+function EstCell({
+  x,
+  est,
+  hour,
+  line,
+}: {
+  x: MarketHoursHour["volatility"];
+  est: MarketHoursView["estimate"];
+  hour: number;
+  line: string;
+}) {
+  const t = useTranslations("marketHours.vol");
+  const tb = useTranslations("marketHours.botBlock");
+  const cost = usd(x.estCostPerMillion);
+  if (cost === null || x.estCostPerMillion === null || x.swingBp === null)
+    return (
+      <span
+        title={
+          est.unavailable === null
+            ? tb("tipNa", { hour: pad(hour) })
+            : t("estNa", { hour: pad(hour), reason: t(`estReason.${est.unavailable}`) })
+        }
+        className={`${CELL} ${line} ${HATCH}`}
+      >
+        {tb("na")}
+      </span>
+    );
+  return (
+    <span
+      title={t("estTip", {
+        hour: pad(hour),
+        cost,
+        swing: Number(x.swingBp).toFixed(1),
+        fees: Number(est.feesBp).toFixed(1),
+      })}
+      className={`${CELL} ${line} ${costBg(Number(x.estCostPerMillion))}`}
+    >
+      {cost}
+    </span>
+  );
+}
 
 function BlockHead({
   title,
@@ -737,6 +817,18 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                       volume: usdShort(x.bots.volume) ?? tb("na"),
                       botHours: x.bots.botHours,
                     })}
+                  </span>
+                  <span className="text-[11.5px] text-ink-2">
+                    <strong className="text-ink">{tm("est")}</strong>{" "}
+                    {x.volatility.estCostPerMillion === null || x.volatility.swingBp === null
+                      ? v.estimate.unavailable === null
+                        ? tb("na")
+                        : `${tb("na")} · ${t(`vol.estReason.${v.estimate.unavailable}`)}`
+                      : tm("estLine", {
+                          cost: usd(x.volatility.estCostPerMillion) ?? tb("na"),
+                          swing: Number(x.volatility.swingBp).toFixed(1),
+                          fees: Number(v.estimate.feesBp).toFixed(1),
+                        })}
                   </span>
                 </div>
               ) : null}

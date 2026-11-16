@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
-import { MarketHoursPage } from "../components/market-hours-page";
+import { MarketHoursPage, usd } from "../components/market-hours-page";
 
 // Market hours (docs/mockups/market-hours): múi giờ của trình duyệt (ở đây Asia/Kolkata +5:30) + nút đổi sang UTC;
 // thiếu số → "n/a", không bao giờ 0; ô mẫu mỏng gắn "Thin"; trạng thái rỗng / lỗi / không phải team; axe.
@@ -68,6 +68,8 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
         ratio: h === 3 ? null : h === 20 ? "2.4" : "1",
         hotPct: h === 3 ? null : h === 20 ? 60 : 0,
         fiveMin: Array.from({ length: 12 }, () => "4.2"),
+        swingBp: h === 3 ? null : h === 21 ? "12.43" : "4.1",
+        estCostPerMillion: h === 3 ? null : h === 21 ? "214.37" : "88.5",
       },
       cost: { markoutBp: h === 3 ? null : "-1.2", spreadTicks: h === 3 ? null : 1.5 },
       bots:
@@ -76,7 +78,7 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
           : {
               costPerMillion: "150",
               volume: "73000",
-              fees: "10.2",
+              fees: h === 5 ? "0.3125" : "10.2",
               botHours: h === 4 ? 2 : 8,
               thin: h === 4,
             },
@@ -94,6 +96,7 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
     markoutSince: "2026-11-12T00:00:00.000Z",
     markoutDays: 4,
     fillsSince: "2026-10-20T00:00:00.000Z",
+    estimate: { feesBp: "0.7", stepBp: "1.02", modelVersion: 3, unavailable: null },
     ...over,
   };
 }
@@ -172,6 +175,60 @@ describe("Market hours page", () => {
     expect(screen.getByText(/Kept for 90 days\./)).toBeInTheDocument();
   });
 
+  it("shows the model's estimated cost per $1M for every hour, with a tooltip, under block 1", async () => {
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    expect(screen.getByText("Estimated cost per $1M (model)")).toBeInTheDocument();
+    const cell = screen.getByTitle(
+      "21:00 · est. $214 per $1M · median 1-min swing 12.4 bp · fees 0.7 bp",
+    );
+    expect(cell).toHaveTextContent("$214");
+    expect(cell).toHaveClass("bg-mh-cost-2");
+    expect(screen.getByTitle(/^00:00 · est\. \$89 per \$1M/)).toHaveClass("bg-mh-cost-0");
+    // Giờ không có nến: n/a, không bao giờ 0.
+    expect(screen.getAllByTitle("03:00 · Not available").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        /Estimated cost per \$1M uses the same model as the Market Making cost card/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the whole estimate row as n/a with the reason when the model can't run for the market", async () => {
+    setRespond(() =>
+      Promise.resolve(
+        view({
+          hours: view().hours.map((h) => ({
+            ...h,
+            volatility: { ...h.volatility, estCostPerMillion: null },
+          })),
+          estimate: { feesBp: "1.5", stepBp: null, modelVersion: 0, unavailable: "no_market_info" },
+        }),
+      ),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    expect(
+      screen.getByTitle(
+        "12:00 · Not available · SoDEX market info (tick size) is not available for this market.",
+      ),
+    ).toHaveTextContent("n/a");
+    expect(screen.queryByTitle(/est\. \$/)).not.toBeInTheDocument();
+  });
+
+  it("shows cents for money under $10 so small fees are never $0", async () => {
+    expect(usd("0.3125")).toBe("$0.31");
+    expect(usd("0.004")).toBe("$0.00");
+    expect(usd("9.995")).toBe("$10.00");
+    expect(usd("10.2")).toBe("$10");
+    expect(usd("249.99")).toBe("$250");
+    expect(usd("-3.5")).toBe("$-3.50");
+    expect(usd(null)).toBeNull();
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    expect(screen.getByText("$0.31")).toBeInTheDocument();
+  });
+
   it("opens an hour's details on the phone layout", async () => {
     const user = userEvent.setup({ delay: null });
     show();
@@ -188,6 +245,10 @@ describe("Market hours page", () => {
         /Median 4\.3 bp · p90 9\.1 bp · spread 1\.5 ticks · volume \$73K · 8 bot-hours/,
       ),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("$89 (model) · median 1-min swing 4.1 bp · fees 0.7 bp"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Est. / $1M")).toBeInTheDocument();
   });
 
   it("has no accessibility violations", async () => {
