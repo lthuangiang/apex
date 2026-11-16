@@ -137,7 +137,7 @@ export function TradersPage() {
             </button>
           ))}
         </div>
-        {/* Ngưỡng thật của Steady, đọc từ cùng hằng số với bộ lọc (DEC-TBD-steady-dip). */}
+        {/* Ngưỡng thật của Steady, đọc từ cùng hằng số với bộ lọc (DEC-264). */}
         {tab === "steady" ? (
           <p className="m-0 text-sm text-ink-2">{t("list.steadyNote", steadyThresholds())}</p>
         ) : null}

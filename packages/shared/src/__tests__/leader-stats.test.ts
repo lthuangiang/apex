@@ -279,7 +279,7 @@ describe("classify", () => {
     expect(c.steadyScore).toBeNull();
   });
 
-  it("keeps big dips and fast traders out of Steady (CT-01, DEC-TBD-steady-dip)", () => {
+  it("keeps big dips and fast traders out of Steady (CT-01, DEC-264)", () => {
     const out = (s: Partial<LeaderStats>) => classify({ ...base, ...s }, false).tabs;
     // Ba ví dụ của UX: sụt 65%, 115%, 142% lợi nhuận.
     expect(out({ profit: "437831", worstDip: "283955" })).not.toContain("steady");

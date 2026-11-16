@@ -19,11 +19,11 @@ export const LEADER_STATS = {
   /** Steady: episode tốt nhất chiếm tối đa chừng này phần lợi nhuận. */
   maxTopShare: "0.6",
   /**
-   * Steady: sụt lớn nhất tối đa chừng này phần lợi nhuận 30 ngày (DEC-TBD-steady-dip, sửa DEC-163; trước đây Steady
+   * Steady: sụt lớn nhất tối đa chừng này phần lợi nhuận 30 ngày (DEC-264, sửa DEC-163; trước đây Steady
    * không xét sụt nên trader sụt hơn cả lợi nhuận vẫn vào).
    */
   steadyMaxDipShare: "0.5",
-  /** Giữ lệnh dưới mức này: nhãn "Fast trader", và không vào Steady (DEC-TBD-steady-dip). */
+  /** Giữ lệnh dưới mức này: nhãn "Fast trader", và không vào Steady (DEC-264). */
   fastHoldMs: 60 * 60_000,
   /** Hyperliquid chỉ trả 10.000 fill gần nhất (docs/COPY_TRADING_DATA.md). */
   fillCap: 10_000,
@@ -221,7 +221,7 @@ export interface Classified {
   steadyScore: string | null;
 }
 
-/** Ngưỡng Steady để hiện dưới định nghĩa (cùng nguồn với `classify`, DEC-TBD-steady-dip). */
+/** Ngưỡng Steady để hiện dưới định nghĩa (cùng nguồn với `classify`, DEC-264). */
 export function steadyThresholds(): {
   dipPct: string;
   minTrades: number;
@@ -251,7 +251,7 @@ export function classify(s: LeaderStats, isVault: boolean): Classified {
   const tabs: TraderTab[] = ["top", "long", "all"];
   const profit = dec(s.profit);
   // Steady dành cho người mới: bị thanh lý trong 30 ngày thì không vào (vẫn ở All / Top, nhãn "Liquidated recently").
-  // DEC-TBD-steady-dip: thêm sụt ≤ 50% lợi nhuận và giữ lệnh ≥ 1 giờ; thiếu dữ liệu thì không vào Steady.
+  // DEC-264: thêm sụt ≤ 50% lợi nhuận và giữ lệnh ≥ 1 giờ; thiếu dữ liệu thì không vào Steady.
   const steady =
     profit.gt(0) &&
     s.liquidations === 0 &&

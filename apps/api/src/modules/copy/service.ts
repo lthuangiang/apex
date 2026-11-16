@@ -125,7 +125,7 @@ const statsView = (s: LeaderStats): TraderCard["stats"] => ({
 });
 
 const HOUR = 3_600_000;
-/** Ngưỡng nhãn "Fast trader" = ngưỡng loại khỏi Steady (DEC-TBD-steady-dip). */
+/** Ngưỡng nhãn "Fast trader" = ngưỡng loại khỏi Steady (DEC-264). */
 const FAST_MS = LEADER_STATS.fastHoldMs;
 
 export function tagsOf(s: LeaderStats): TraderCard["tags"] {
@@ -250,7 +250,7 @@ export async function listTraders(
     if (r.s.hidden.length > 0) hidden += 1;
     for (const h of r.s.hidden) if (h in hiddenBy) hiddenBy[h as HiddenReason] += 1;
   }
-  // Steady xét lại đủ luật lúc đọc (thanh lý, sụt, giữ lệnh; DEC-TBD-steady-dip) để snapshot cũ (tính trước luật mới)
+  // Steady xét lại đủ luật lúc đọc (thanh lý, sụt, giữ lệnh; DEC-264) để snapshot cũ (tính trước luật mới)
   // cũng đúng ngay, không chờ lần chạy scheduler kế tiếp.
   const inTab = rows.filter(
     (r) =>
