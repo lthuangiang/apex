@@ -250,7 +250,11 @@ interface Runner {
   /** Market đã được SoDEX xác nhận đòn bẩy cho version này (CP-01): lần thử sau không đặt / ghi lại. */
   leverageDone: Set<string>;
   /** Lần đặt đòn bẩy đang chạy: sự kiện tới cùng lúc chờ chung, không đặt song song (CP-01). */
-  leverageRun: Promise<"ok" | "rejected" | "unknown" | "not_sent"> | null;
+  /** Lần đặt đòn bẩy đang chạy, gắn với version lúc bắt đầu (đổi version giữa chừng thì không dùng chung kết quả). */
+  leverageRun: {
+    versionId: string;
+    p: Promise<"ok" | "rejected" | "unknown" | "not_sent">;
+  } | null;
   /** Request chưa rời DRIFT (signer lỗi): chờ backoff tới `nextAt`; quá hạn thì pause (UI_REVIEW H1). */
   blocked: { since: number; attempts: number; nextAt: number; code: NotSentCode } | null;
   /** Số lệnh market reduce-only bị SoDEX từ chối liên tiếp (vị thế trong sổ bot có thể lệch SoDEX). */
@@ -1276,12 +1280,13 @@ export class Engine {
     at: number,
   ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
     // Sự kiện tới cùng lúc (giá, Binance, nhịp) chờ chung một lần đặt (CP-01: trước đây BTC-USD ghi 7 lần trong 2 s).
-    if (r.leverageRun !== null) return r.leverageRun;
-    r.leverageRun = this.#ensureLeverageAll(r, at);
+    if (r.leverageRun?.versionId === r.versionId) return r.leverageRun.p;
+    const run = { versionId: r.versionId, p: this.#ensureLeverageAll(r, at) };
+    r.leverageRun = run;
     try {
-      return await r.leverageRun;
+      return await run.p;
     } finally {
-      r.leverageRun = null;
+      if (r.leverageRun === run) r.leverageRun = null;
     }
   }
 
@@ -1291,6 +1296,10 @@ export class Engine {
   ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
     // Copy Trade đặt cùng đòn bẩy cho mọi market (DEC-163); chiến lược khác có tối đa một symbol. Market đã xác nhận thì
     // bỏ qua; Decisions ghi một dòng gộp cho các market vừa xác nhận (CP-01).
+    // Version đổi giữa chừng (áp version mới reset leverageSet / leverageDone): kết quả của lần này thuộc version cũ,
+    // không được đánh dấu xong cho version mới; nhịp sau đặt lại theo cấu hình mới.
+    const versionId = r.versionId;
+    const done = r.leverageDone;
     const specs = leverageSpecsOf(r.strategy, r.market, r.config);
     const confirmed: LeverageSpec[] = [];
     const log = async () => {
@@ -1301,17 +1310,22 @@ export class Engine {
     };
     for (const spec of specs) {
       const key = `${spec.market}:${String(spec.leverage)}:${spec.marginMode}`;
-      if (r.leverageDone.has(key)) continue;
+      if (done.has(key)) continue;
       const res = await this.#ensureLeverageOne(r, spec, at);
+      if (r.versionId !== versionId) {
+        await log();
+        return "not_sent";
+      }
       if (res !== "ok") {
         await log();
         r.leverageSet = false;
         return res;
       }
-      r.leverageDone.add(key);
+      done.add(key);
       confirmed.push(spec);
     }
     await log();
+    if (r.versionId !== versionId) return "not_sent";
     r.leverageSet = true;
     return "ok";
   }

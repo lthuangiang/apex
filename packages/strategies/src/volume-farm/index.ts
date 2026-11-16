@@ -374,7 +374,7 @@ function tryEnter(
   if (c.sidewaysOnly && sig.regime !== "SIDEWAY")
     return skipEntry(
       "SIDEWAYS_ONLY",
-      `The market is in ${regime}, and this bot only trades sideways markets.`,
+      `Right now it is ${regime}, and this bot only trades sideways markets.`,
     );
   let direction: "long" | "short" = sig.direction;
   const notes: string[] = [];
