@@ -1444,7 +1444,7 @@ export async function stopBot(
   // Chỉ bot có chân Perps mới có vị thế để đóng; bot Spot luôn giữ tài sản (DOMAIN.md 7.2).
   const close = closePosition && own.engine !== "spot";
   // Người dùng tự Stop: xoá reason code cũ (ví dụ pause vì max loss), để sự kiện "Stopped" ghi STOPPED_BY_USER. Emergency
-  // halt và chiến lược dừng tự đặt reason code của chúng (DEC-TBD-bot-stopped-event).
+  // halt và chiến lược dừng tự đặt reason code của chúng (DEC-275).
   const b = await command(deps, userId, botId, BotCommand.stop, {
     closeOnStop: close,
     reasonCode: null,
