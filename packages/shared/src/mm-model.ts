@@ -100,8 +100,8 @@ export interface ShockHourDay {
  *   chi phí ngày = modelCostPerMillion(phí, modelPnlBps(bước, dao động của ngày đó, a, k))
  *                + (biến động 15 phút lớn nhất của giờ đó ngày đó ≥ shockBp ? cutCostBps × cutShare × 100 : 0)
  * rồi lấy trung bình cộng (mean, không phải trung vị) qua các ngày. `cutShare` = notional một lần cắt ÷ volume trung
- * bình một bot-hour (`cutShareOf`); null = không tính phần cắt (quá ít lệnh cắt thật và không có vị thế tối đa để ước
- * lượng), ngày sốc vẫn được đếm. Ngày không tính được dao động bị bỏ qua; không có ngày nào → null.
+ * bình một bot-hour (`cutSizing`: R × order size ÷ volume một bot-hour); null = không tính phần cắt (không có volume
+ * bot Market Making nào để so), ngày sốc vẫn được đếm. Ngày không tính được dao động bị bỏ qua; không có ngày nào → null.
  */
 export function shockDayCostPerMillion(
   days: readonly ShockHourDay[],
@@ -131,6 +131,17 @@ export function shockDayCostPerMillion(
     n += 1;
   }
   return { mean: n === 0 ? null : sum.div(n), days: n, shockDays };
+}
+
+/**
+ * "Est. CPM · calibrated" (DEC-293) = "incl. shock days" × C, với C = trung vị (CPM thật ÷ "incl.
+ * shock days") của bot thật trong 14 ngày (`calibrationOf`). Thiếu "incl. shock days" → null.
+ */
+export function calibratedCostPerMillion(
+  shockCost: Decimal | null,
+  factor: DecimalInput,
+): Decimal | null {
+  return shockCost === null ? null : shockCost.mul(dec(factor));
 }
 
 /** Trộn số thật của bot người xem với mô hình theo số vòng đóng. */

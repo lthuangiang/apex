@@ -4,6 +4,7 @@ import { medianSwingBps } from "../api/market-hours";
 import { swingBps } from "../mm-markout";
 import {
   blendPnlBps,
+  calibratedCostPerMillion,
   capacityPerDay,
   fitModel,
   isActiveMinute,
@@ -206,5 +207,13 @@ describe("shock-day estimate (DEC-289)", () => {
     );
     expect(noCut.mean?.toString()).toBe("215");
     expect(noCut).toMatchObject({ days: 2, shockDays: 1 });
+  });
+});
+
+describe("calibrated cost per $1M (DEC-293)", () => {
+  it("scales incl. shock days by the calibration factor, and stays null without an estimate", () => {
+    expect(calibratedCostPerMillion(dec("215"), "1.4")?.toString()).toBe("301");
+    expect(calibratedCostPerMillion(dec("215"), "1")?.toString()).toBe("215");
+    expect(calibratedCostPerMillion(null, "1.4")).toBeNull();
   });
 });

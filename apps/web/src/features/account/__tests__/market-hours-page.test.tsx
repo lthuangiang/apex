@@ -52,6 +52,8 @@ vi.mock("@/lib/api", () => ({
 const setRespond = (fn: (path: string) => Promise<unknown>) => {
   mock.state.respond = fn;
 };
+/** Thoát ký tự đặc biệt để ghép câu chữ vào RegExp. */
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
   return {
@@ -72,6 +74,8 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
         estCostPerMillion: h === 3 ? null : h === 21 ? "214.37" : "88.5",
         // "incl. shock days": giờ 21 có 9 / 30 ngày sốc → trung bình cao hơn ngày điển hình.
         estShockCostPerMillion: h === 3 ? null : h === 21 ? "336.1" : "95.25",
+        // "calibrated" = "incl. shock days" × 1.42.
+        estCalibratedCostPerMillion: h === 3 ? null : h === 21 ? "477.26" : "135.26",
         estDays: h === 3 ? null : 30,
         shockDays: h === 3 ? null : h === 21 ? 9 : 1,
         // Giờ 08 (Kolkata): một phút 133 bp và chuỗi 15 phút 276 bp (bắt đầu 08:57 Kolkata = 03:27 UTC).
@@ -118,12 +122,14 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
       cutCostBp: "4",
       cuts: 2,
       cutNotional: null,
-      // Chưa đủ lệnh cắt thật: cỡ cắt = vị thế tối đa trung bình $20 ÷ $698 volume một bot-hour.
-      botHourVolume: "698",
-      maxPosition: "20",
-      cutShare: "0.0287",
-      cutShareSource: "position",
+      // Chưa đủ lệnh cắt thật: cỡ cắt = R (2×) × order size, volume một bot-hour = 34.9× order size → 5.7%.
+      positionRatio: "2.04",
+      positionRatioSource: "market",
+      fillsPerBotHour: "34.9",
+      cutShare: "0.0573",
+      cutScope: { source: "market", botHours: 37, marketBotHours: 37, markets: [] },
       calibration: "1.42",
+      calibrationScope: { source: "market", botHours: 37, marketBotHours: 37, markets: [] },
       calibrationHours: 18,
     },
     ...over,
@@ -273,7 +279,7 @@ describe("Market hours page", () => {
     expect(screen.getAllByTitle("03:00 · Not available").length).toBeGreaterThan(0);
     // "incl. shock days": số ngày sốc, chi phí cắt và giả định trong tooltip (chưa đủ lệnh cắt thật → chỉ phí taker).
     const shock = screen.getByTitle(
-      "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · assumes taker fee only · cut size = bots' max open position",
+      "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · assumes taker fee only · cut size 2.0× order size (5.7% of a bot-hour's volume) · Calibrated on BTC-USD bots (14 days, 37 hours)",
     );
     expect(shock).toHaveTextContent("$336");
     expect(shock).toHaveClass("bg-mh-cost-3");
@@ -294,17 +300,159 @@ describe("Market hours page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /With fewer than 5 real cuts, one cut's size is taken as the bots' max open position: \$20 on average \(Max inventory, or order size × max orders\), against \$698 average volume per bot-hour of Market Making bots in this period \(2\.9%\)\. Real cuts are usually smaller, so this is an upper bound\./,
+        /One cut's size is 2\.0× the bot's order size: the median, over live Market Making bots in the last 14 days, of the largest position each bot held \(from its fills\) divided by its order size\. A bot-hour fills 34\.9× the order size, so one cut is 5\.7% of one bot-hour's volume\. Source: Calibrated on BTC-USD bots \(14 days, 37 hours\)\./,
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Over the hours with enough bot data, real bot cost was 1.4× this estimate.",
+        "Est. CPM · calibrated = incl. shock days × 1.42: the median, over 18 hours with 3 or more bot-hours of live Market Making bots in the last 14 days, of real CPM divided by the incl. shock days estimate for that hour. Source: Calibrated on BTC-USD bots (14 days, 37 hours).",
       ),
     ).toBeInTheDocument();
   });
 
-  it("uses measured cut slippage when there are enough real cuts, and says when calibration is not available", async () => {
+  it("shows the calibrated row after the two model rows, with the factor and its source in each tooltip", async () => {
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const typical = screen.getByText("Est. CPM · typical day (model)");
+    const shockLabel = screen.getByText("Est. CPM · incl. shock days (model)");
+    // Nhãn dòng desktop (chi tiết giờ 390 px cũng có nhãn này, trong <strong>).
+    const label = screen.getByText("Est. CPM · calibrated", { selector: "span" });
+    expect(typical.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      shockLabel.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const cell = screen.getByTitle(
+      "21:00 · $477 per $1M · incl. shock days $336 × 1.42 · Calibrated on BTC-USD bots (14 days, 37 hours)",
+    );
+    expect(cell).toHaveTextContent("$477");
+    expect(cell).toHaveClass("bg-mh-cost-3");
+    expect(
+      screen.getByTitle(/^00:00 · \$135 per \$1M · incl\. shock days \$95 × 1\.42 · /),
+    ).toHaveClass("bg-mh-cost-1");
+    // Giờ không có nến: n/a, không bao giờ 0.
+    expect(screen.getAllByTitle("03:00 · Not available").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("says where the calibration comes from: all markets pooled, or the stored default", async () => {
+    setRespond(() =>
+      Promise.resolve(
+        view({
+          market: "SOL-USD",
+          estimate: {
+            ...view().estimate,
+            positionRatioSource: "pooled",
+            cutScope: {
+              source: "pooled",
+              botHours: 52,
+              marketBotHours: 0,
+              markets: ["BTC-USD", "ETH-USD"],
+            },
+            calibration: "1.1",
+            calibrationScope: {
+              source: "pooled",
+              botHours: 52,
+              marketBotHours: 0,
+              markets: ["BTC-USD", "ETH-USD"],
+            },
+            calibrationHours: 25,
+          },
+        }),
+      ),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const pooled = "No bots on this market: calibrated on all markets (BTC-USD, ETH-USD; 14 days)";
+    expect(
+      screen.getByTitle(new RegExp(`^21:00 · \\$477 per \\$1M · .* × 1\\.10 · ${esc(pooled)}$`)),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTitle(new RegExp(`^21:00 · avg \\$336 .*· ${esc(pooled)}$`)),
+    ).toBeInTheDocument();
+    // Cách tính: cả cỡ cắt và hệ số C ghi nguồn.
+    expect(screen.getAllByText(new RegExp(`Source: ${esc(pooled)}\\.`))).toHaveLength(2);
+    cleanup();
+
+    // Market có bot (5 bot-hour) nhưng chưa đủ ô để hiệu chỉnh: câu "Not enough bot data on this market" cho C, còn
+    // cỡ cắt vẫn từ bot của market này.
+    setRespond(() =>
+      Promise.resolve(
+        view({
+          market: "SOL-USD",
+          estimate: {
+            ...view().estimate,
+            cutScope: { source: "market", botHours: 5, marketBotHours: 5, markets: [] },
+            calibration: "1.1",
+            calibrationScope: {
+              source: "pooled",
+              botHours: 52,
+              marketBotHours: 5,
+              markets: ["BTC-USD", "ETH-USD"],
+            },
+            calibrationHours: 25,
+          },
+        }),
+      ),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const thin =
+      "Not enough bot data on this market: calibrated on all markets (BTC-USD, ETH-USD; 14 days)";
+    expect(
+      screen.getByTitle(new RegExp(`^21:00 · \\$477 per \\$1M · .* × 1\\.10 · ${esc(thin)}$`)),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTitle(
+        new RegExp(`^21:00 · avg \\$336 .*· Calibrated on SOL-USD bots \\(14 days, 5 hours\\)$`),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(new RegExp(`Source: ${esc(thin)}\\.`))).toHaveLength(1);
+    expect(screen.queryByText(/No bots on this market/)).not.toBeInTheDocument();
+    cleanup();
+
+    setRespond(() =>
+      Promise.resolve(
+        view({
+          estimate: {
+            ...view().estimate,
+            positionRatio: "2",
+            positionRatioSource: "default",
+            // F = 80 mặc định: phần cắt = 2 ÷ 80 = 2.5%.
+            fillsPerBotHour: "80",
+            cutShare: "0.025",
+            cutScope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
+            calibration: "1",
+            calibrationScope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
+            calibrationHours: 0,
+          },
+        }),
+      ),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const fallback = "No bot data yet: default calibration from Nov 15, 2026";
+    expect(
+      screen.getByTitle(new RegExp(`^21:00 · \\$477 per \\$1M · .* × 1\\.00 · ${esc(fallback)}$`)),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`Est. CPM · calibrated = incl. shock days × 1.00. Source: ${fallback}.`),
+    ).toBeInTheDocument();
+    // Không có bot nào: phần cắt vẫn có (R = 2, F = 80), tooltip ghi nguồn mặc định.
+    expect(
+      screen.getByTitle(
+        `21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · assumes taker fee only · cut size 2.0× order size (2.5% of a bot-hour's volume) · ${fallback}`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        new RegExp(
+          `A bot-hour fills 80\\.0× the order size, so one cut is 2\\.5% of one bot-hour's volume\\. Source: ${esc(fallback)}\\.`,
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Position cuts not included/)).not.toBeInTheDocument();
+  });
+
+  it("uses measured cut slippage and cut size when there are enough real cuts", async () => {
     setRespond(() =>
       Promise.resolve(
         view({
@@ -314,48 +462,37 @@ describe("Market hours page", () => {
             cutCostBp: "6.5",
             cuts: 12,
             cutNotional: "2400",
-            botHourVolume: "48000",
+            positionRatio: "1.6",
+            positionRatioSource: "cuts",
             cutShare: "0.05",
-            cutShareSource: "cuts",
-            calibration: null,
-            calibrationHours: 1,
           },
         }),
       ),
     );
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
-    // Đủ lệnh cắt: không ghi "taker fee only", cỡ cắt đo từ lệnh cắt thật nên không có đuôi giả định.
+    // Đủ lệnh cắt: không ghi "taker fee only", cỡ cắt đo từ lệnh cắt thật.
     expect(
       screen.getByTitle(
-        "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 6.5 bp",
+        "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 6.5 bp · cut size 1.6× order size, from real cuts (5% of a bot-hour's volume) · Calibrated on BTC-USD bots (14 days, 37 hours)",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByTitle(/^00:00 · avg \$95 .* cut cost 6\.5 bp$/)).toBeInTheDocument();
     expect(screen.queryByTitle(/assumes taker fee only/)).not.toBeInTheDocument();
-    expect(screen.queryByTitle(/max open position/)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /Cut cost: taker fee 4\.0 bp plus 2\.5 bp average slippage, measured from 12 real position cuts.*One cut's size is \$2400, the average of those cuts, against \$48000 average volume per bot-hour of Market Making bots in this period \(5%\)\./,
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Over the hours with enough bot data, real bot cost compared with this estimate: Not available (fewer than 3 hours with 3 or more bot-hours).",
+        /Cut cost: taker fee 4\.0 bp plus 2\.5 bp average slippage, measured from 12 real position cuts.*One cut's size is 1\.6× the bot's order size, the average of those real cuts \(\$2400 each\)\. A bot-hour fills 34\.9× the order size, so one cut is 5% of one bot-hour's volume\./,
       ),
     ).toBeInTheDocument();
   });
 
-  it("leaves position cuts out and says so when there are too few real cuts and nothing to size one", async () => {
+  it("leaves position cuts out and says so when no bot has volume to size one", async () => {
     setRespond(() =>
       Promise.resolve(
         view({
           estimate: {
             ...view().estimate,
-            botHourVolume: null,
-            maxPosition: null,
+            fillsPerBotHour: null,
             cutShare: null,
-            cutShareSource: null,
           },
         }),
       ),
@@ -364,12 +501,12 @@ describe("Market hours page", () => {
     await screen.findByText("1 · Market volatility on SoDEX");
     expect(
       screen.getByTitle(
-        "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · position cuts not included (too few real cuts)",
+        "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · position cuts not included (no bot volume to size one)",
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Position cuts not included \(too few real cuts\): fewer than 5 real cuts, and no Market Making bot volume in this period to size one\./,
+        /Position cuts not included: no live Market Making bot has volume in the last 14 days to size a cut against\./,
       ),
     ).toBeInTheDocument();
   });
@@ -380,7 +517,12 @@ describe("Market hours page", () => {
         view({
           hours: view().hours.map((h) => ({
             ...h,
-            volatility: { ...h.volatility, estCostPerMillion: null, estShockCostPerMillion: null },
+            volatility: {
+              ...h.volatility,
+              estCostPerMillion: null,
+              estShockCostPerMillion: null,
+              estCalibratedCostPerMillion: null,
+            },
           })),
           estimate: {
             ...view().estimate,
@@ -394,11 +536,11 @@ describe("Market hours page", () => {
     );
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
-    // Cả hai dòng Est. CPM đều n/a kèm lý do.
+    // Cả ba dòng Est. CPM đều n/a kèm lý do.
     const na = screen.getAllByTitle(
       "12:00 · Not available · SoDEX market info (tick size) is not available for this market.",
     );
-    expect(na).toHaveLength(2);
+    expect(na).toHaveLength(3);
     for (const c of na) expect(c).toHaveTextContent("n/a");
     expect(screen.queryByTitle(/avg \$/)).not.toBeInTheDocument();
     expect(screen.queryByTitle(/est\. \$/)).not.toBeInTheDocument();
@@ -474,10 +616,16 @@ describe("Market hours page", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Est. CPM · typical day")).toBeInTheDocument();
     expect(screen.getByText("Est. CPM · incl. shock days")).toBeInTheDocument();
-    // Giờ 07: 1 / 30 ngày sốc; chưa đủ lệnh cắt thật → chỉ phí taker.
+    // Giờ 07: 1 / 30 ngày sốc; chưa đủ lệnh cắt thật → chỉ phí taker, cỡ cắt = R × order size.
     expect(
       screen.getByText(
-        "$95 (model) · 1 of 30 days had a 15-min move of 15 bp or more · assumes taker fee only · cut size = bots' max open position",
+        "$95 (model) · 1 of 30 days had a 15-min move of 15 bp or more · assumes taker fee only · cut size 2.0× order size (5.7% of a bot-hour's volume) · Calibrated on BTC-USD bots (14 days, 37 hours)",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Est. CPM · calibrated", { selector: "strong" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "$135 · incl. shock days $95 × 1.42 · Calibrated on BTC-USD bots (14 days, 37 hours)",
       ),
     ).toBeInTheDocument();
   });
@@ -523,6 +671,11 @@ describe("Market hours page", () => {
       [
         "Est. CPM · incl. shock days (model)",
         "CPM (cost per $1M of volume): model cost averaged over every day, including days with sharp moves. On days when the price ran 15 bp or more within 15 minutes, it adds the cost of a position cut (taker fee plus slippage), scaled by one cut's size against one bot's volume per hour.",
+        1,
+      ],
+      [
+        "Est. CPM · calibrated",
+        "CPM (cost per $1M of volume): the shock-day model scaled by how much real DeskLabs bots actually paid compared with it over the last 14 days. Source: Calibrated on BTC-USD bots (14 days, 37 hours).",
         1,
       ],
       ["Price move against makers, 30 s later (bp)", markout, 1],

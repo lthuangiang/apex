@@ -1,17 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  calibrationOf,
   calibrationRatio,
-  cutShareOf,
+  cutSizing,
   cutStats,
   fillCostPerMillion,
   marketHoursQuerySchema,
   marketHoursViewSchema,
   minuteRangeBp,
-  mmCutBasis,
   moveBp,
+  positionStats,
   quantile,
   timeZoneSchema,
+  type MmBotWindow,
 } from "../api/market-hours";
 import { dec } from "../money";
 
@@ -98,12 +100,19 @@ describe("heatmap", () => {
 });
 
 describe("cutStats (DEC-289)", () => {
-  const cut = (orderId: string, side: "buy" | "sell", price: string, ref: string | null) => ({
+  const cut = (
+    orderId: string,
+    side: "buy" | "sell",
+    price: string,
+    ref: string | null,
+    orderSize: string | null = "100",
+  ) => ({
     orderId,
     side,
     price,
     size: "2",
     ref,
+    orderSize,
   });
 
   it("measures notional-weighted slippage against the price before the cut, adverse is positive", () => {
@@ -124,6 +133,26 @@ describe("cutStats (DEC-289)", () => {
       .mul(10_000);
     expect(s.slippageBps?.toFixed(6)).toBe(expected.toFixed(6));
     expect(s.notional?.toString()).toBe("199.984");
+    // Order size $100: mỗi lệnh cắt ≈ 2× order size → trung bình 199.984 ÷ 100.
+    expect(s.sizeRatio?.toString()).toBe("1.99984");
+  });
+
+  it("averages cut notional ÷ the bot's order size per cut order, skipping cuts without an order size", () => {
+    const s = cutStats([
+      // Lệnh "a" khớp hai fill: notional 199.96 + 199.94 = 399.9 ÷ order size 100.
+      cut("a", "sell", "99.98", "100"),
+      cut("a", "sell", "99.97", "100"),
+      cut("b", "sell", "99.98", "100", "50"),
+      cut("c", "sell", "99.98", "100", null),
+      cut("d", "sell", "99.98", "100"),
+      cut("e", "sell", "99.98", "100"),
+    ]);
+    // (3.999 + 3.9992 + 1.9996 + 1.9996) ÷ 4
+    expect(s.sizeRatio?.toString()).toBe("2.99935");
+    expect(
+      cutStats(["a", "b", "c", "d", "e"].map((id) => cut(id, "sell", "99.98", "100", null)))
+        .sizeRatio,
+    ).toBeNull();
   });
 
   it("has no slippage or size with fewer than 5 priced cuts, so the estimate uses the taker fee only", () => {
@@ -136,8 +165,8 @@ describe("cutStats (DEC-289)", () => {
       cut("e", "sell", "99.98", "100"),
     ]);
     expect(s.cuts).toBe(5);
-    expect(s).toMatchObject({ slippageBps: null, notional: null });
-    expect(cutStats([])).toEqual({ cuts: 0, slippageBps: null, notional: null });
+    expect(s).toMatchObject({ slippageBps: null, notional: null, sizeRatio: null });
+    expect(cutStats([])).toEqual({ cuts: 0, slippageBps: null, notional: null, sizeRatio: null });
   });
 });
 
@@ -162,41 +191,131 @@ describe("calibrationRatio", () => {
   });
 });
 
-describe("cut size share (DEC-289)", () => {
-  it("averages volume per bot-hour over every hour and max position weighted by bot-hours", () => {
-    // Bot 1: 21 bot-hour, $14 700, max $20. Bot 2: 3 bot-hour, chưa có fill, max $100. Bot 3: cấu hình hỏng.
-    const b = mmCutBasis([
-      { botHours: 21, volume: "14700", maxPosition: "20" },
-      { botHours: 3, volume: null, maxPosition: "100" },
-      { botHours: 6, volume: "300", maxPosition: null },
-      { botHours: 0, volume: "999", maxPosition: "999" },
+describe("cut size from position ÷ order size (DEC-293)", () => {
+  const bot = (
+    market: string,
+    botHours: number,
+    volume: string | null,
+    maxPosition: string | null,
+    orderSize: string | null,
+  ): MmBotWindow => ({ market, botHours, volume, maxPosition, orderSize });
+
+  it("takes the median of max position ÷ order size and volume per bot-hour in order-size units", () => {
+    const s = positionStats([
+      // $20 order size, max $40 → 2×; $700 over 1 bot-hour → 35 order sizes.
+      bot("ETH-USD", 1, "700", "40", "20"),
+      // $10 order size, max $35 → 3.5×; $300 over 2 bot-hours → 30 order sizes.
+      bot("BTC-USD", 2, "300", "35", "10"),
+      // $50 order size, max $60 → 1.2×; no fills in volume (null) but still counts its bot-hours.
+      bot("BTC-USD", 3, null, "60", "50"),
+      // Unreadable config, or no bot-hours: left out.
+      bot("SOL-USD", 4, "999", "999", null),
+      bot("SOL-USD", 0, "999", "999", "10"),
     ]);
-    // (14 700 + 300) ÷ 30 = 500; (20 × 21 + 100 × 3) ÷ 24 = 30.
-    expect(b.botHourVolume?.toString()).toBe("500");
-    expect(b.maxPosition?.toString()).toBe("30");
-    expect(mmCutBasis([])).toEqual({ botHourVolume: null, maxPosition: null });
-    expect(mmCutBasis([{ botHours: 2, volume: null, maxPosition: "20" }])).toEqual({
-      botHourVolume: null,
-      maxPosition: dec("20"),
+    expect(s.ratio?.toString()).toBe("2");
+    // (35 + 30) ÷ (1 + 2 + 3)
+    expect(s.fillsPerBotHour?.toFixed(4)).toBe("10.8333");
+    expect(s.botHours).toBe(6);
+    expect(s.markets).toEqual(["BTC-USD", "ETH-USD"]);
+    expect(positionStats([])).toEqual({
+      ratio: null,
+      fillsPerBotHour: null,
+      botHours: 0,
+      markets: [],
     });
   });
 
-  it("sizes a cut from real cuts when there are enough, else from max open position, else leaves it out", () => {
-    const v = dec("500");
-    expect(
-      cutShareOf({ cutNotional: dec("100"), maxPosition: dec("30"), botHourVolume: v }),
-    ).toEqual({ share: dec("0.2"), source: "cuts" });
-    expect(cutShareOf({ cutNotional: null, maxPosition: dec("30"), botHourVolume: v })).toEqual({
-      share: dec("0.06"),
-      source: "position",
+  it("uses this market's bots, then all markets pooled, then the defaults R = 2 and F = 80", () => {
+    const bots = [bot("ETH-USD", 2, "800", "60", "20"), bot("BTC-USD", 4, "400", "10", "10")];
+    // ETH: R = 3, 800 ÷ 20 ÷ 2 = 20 order sizes per bot-hour → share = 3 ÷ 20.
+    expect(cutSizing(bots, "ETH-USD", null)).toEqual({
+      ratio: dec("3"),
+      ratioSource: "market",
+      fillsPerBotHour: dec("20"),
+      cutShare: dec("0.15"),
+      scope: { source: "market", botHours: 2, marketBotHours: 2, markets: [] },
     });
-    expect(cutShareOf({ cutNotional: null, maxPosition: null, botHourVolume: v })).toEqual({
-      share: null,
-      source: null,
+    // No bots on SOL: pooled R = median(3, 1) = 2, fills = (40 + 40) ÷ 6.
+    const pooled = cutSizing(bots, "SOL-USD", null);
+    expect(pooled).toMatchObject({
+      ratio: dec("2"),
+      ratioSource: "pooled",
+      scope: { source: "pooled", botHours: 6, marketBotHours: 0, markets: ["BTC-USD", "ETH-USD"] },
     });
-    // Không có volume bot-hour: không chia được → không tính phần cắt, kể cả khi đủ lệnh cắt.
-    expect(
-      cutShareOf({ cutNotional: dec("100"), maxPosition: dec("30"), botHourVolume: null }),
-    ).toEqual({ share: null, source: null });
+    expect(pooled.cutShare.toString()).toBe(dec("2").div(dec("80").div("6")).toString());
+    // No bot data at all: R = 2 and F = 80 by default, so the cut share still exists: 2 ÷ 80.
+    expect(cutSizing([], "SOL-USD", null)).toEqual({
+      ratio: dec("2"),
+      ratioSource: "default",
+      fillsPerBotHour: dec("80"),
+      cutShare: dec("0.025"),
+      scope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
+    });
+  });
+
+  it("pools when this market has bots but none usable, and remembers that it had bots", () => {
+    // SOL bot has no readable order size: not usable, but SOL did have 5 bot-hours.
+    const sol = bot("SOL-USD", 5, "100", "20", null);
+    const bots = [sol, bot("BTC-USD", 4, "400", "10", "10")];
+    expect(cutSizing(bots, "SOL-USD", null).scope).toEqual({
+      source: "pooled",
+      botHours: 4,
+      marketBotHours: 5,
+      markets: ["BTC-USD"],
+    });
+    // Only unusable bots anywhere: defaults, still with this market's bot-hours.
+    expect(cutSizing([sol], "SOL-USD", null)).toMatchObject({
+      fillsPerBotHour: dec("80"),
+      scope: { source: "default", botHours: 0, marketBotHours: 5, markets: [] },
+    });
+  });
+
+  it("uses the measured cut size ÷ order size instead of R when there are enough real cuts", () => {
+    const s = cutSizing([bot("ETH-USD", 2, "800", "60", "20")], "ETH-USD", dec("1.5"));
+    expect(s).toMatchObject({ ratio: dec("1.5"), ratioSource: "cuts" });
+    expect(s.cutShare.toString()).toBe("0.075");
+  });
+});
+
+describe("calibration factor C with fallbacks (DEC-293)", () => {
+  const p = (real: string, est: string) => ({ real: dec(real), est: dec(est) });
+  const three = [p("150", "100"), p("200", "100"), p("250", "100")];
+
+  it("uses this market's hours when there are enough, without loading other markets", async () => {
+    let loaded = false;
+    const c = await calibrationOf({ pairs: three, botHours: 12 }, () => {
+      loaded = true;
+      return Promise.resolve({ pairs: [], botHours: 0, markets: [] });
+    });
+    expect(loaded).toBe(false);
+    expect(c).toEqual({
+      factor: dec("2"),
+      hours: 3,
+      scope: { source: "market", botHours: 12, marketBotHours: 12, markets: [] },
+    });
+  });
+
+  it("pools every market when this one has too few hours, else falls back to C = 1.0", async () => {
+    const pooled = await calibrationOf({ pairs: [p("100", "100")], botHours: 1 }, () =>
+      Promise.resolve({ pairs: three, botHours: 30, markets: ["BTC-USD", "ETH-USD"] }),
+    );
+    expect(pooled).toEqual({
+      factor: dec("2"),
+      hours: 3,
+      // This market had bots (1 bot-hour) but too few cells: "Not enough bot data on this market".
+      scope: { source: "pooled", botHours: 30, marketBotHours: 1, markets: ["BTC-USD", "ETH-USD"] },
+    });
+    const noBots = await calibrationOf({ pairs: [], botHours: 0 }, () =>
+      Promise.resolve({ pairs: three, botHours: 30, markets: ["BTC-USD", "ETH-USD"] }),
+    );
+    expect(noBots.scope.marketBotHours).toBe(0);
+    const fallback = await calibrationOf({ pairs: [], botHours: 0 }, () =>
+      Promise.resolve({ pairs: [p("100", "100")], botHours: 1, markets: ["BTC-USD"] }),
+    );
+    expect(fallback).toEqual({
+      factor: dec("1"),
+      hours: 0,
+      scope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
+    });
   });
 });

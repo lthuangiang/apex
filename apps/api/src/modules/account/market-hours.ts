@@ -1,12 +1,16 @@
 import { type Db } from "@drift/db";
 import {
-  calibrationRatio,
+  calibratedCostPerMillion,
+  calibrationOf,
   cutCostBps,
-  cutShareOf,
+  cutSizing,
   cutStats,
   dec,
   Decimal,
+  decimalStringSchema,
   fillCostPerMillion,
+  MARKET_HOURS_CALIBRATION_DAYS,
+  MARKET_HOURS_CALIBRATION_DEFAULTS,
   MARKET_HOURS_HOT_RATIO,
   MARKET_HOURS_THIN_BOT_HOURS,
   marketHoursQuerySchema,
@@ -14,7 +18,6 @@ import {
   medianTicks,
   minuteRangeBp,
   mmBuilderFeeBps,
-  mmCutBasis,
   modelCostPerMillion,
   modelPnlBps,
   moveBp,
@@ -31,10 +34,10 @@ import {
   type MarketHoursHour,
   type MarketHoursQuery,
   type MarketHoursView,
-  type MmBotPeriod,
+  type MmBotWindow,
 } from "@drift/shared";
 import type { SodexRestClient } from "@drift/sodex";
-import { VM_CUT, vmMaxInventory } from "@drift/strategies";
+import { VM_CUT } from "@drift/strategies";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -86,7 +89,13 @@ export async function marketHours(
     strategy: q.strategy,
     tz: q.tz,
   };
-  if (market === null)
+  const calFrom = new Date(now - MARKET_HOURS_CALIBRATION_DAYS * DAY_MS);
+  if (market === null) {
+    // Không có market nào: vẫn trả R / C mặc định để chú thích có nguồn, dòng ước tính là n/a (no_candles).
+    const sizing = cutSizing([], "", null);
+    const cal = await calibrationOf({ pairs: [], botHours: 0 }, () =>
+      Promise.resolve({ pairs: [], botHours: 0, markets: [] }),
+    );
     return {
       ...base,
       hours: emptyHours(),
@@ -106,68 +115,60 @@ export async function marketHours(
         cutCostBp: str(perpsTakerFeeBps(undefined)) ?? "0",
         cuts: 0,
         cutNotional: null,
-        botHourVolume: null,
-        maxPosition: null,
-        cutShare: null,
-        cutShareSource: null,
-        calibration: null,
-        calibrationHours: 0,
+        ...sizingOut(sizing),
+        ...calibrationOut(cal),
       },
     };
-  const [vol, moves, cost, bots, model, info, cutFills, mmBots] = await Promise.all([
+  }
+  const [vol, moves, cost, bots, model, symbols, cutFills, mmBots] = await Promise.all([
     volatility(deps.db, market, from, q.tz),
     largestMoves15(deps.db, market, from, q.tz),
     makerCost(deps.db, market, from, q.tz),
     botHours(deps.db, { market, from, tz: q.tz, strategies }),
     latestMmModel(deps),
-    marketInfo(deps, market),
+    deps.rest.getPerpsSymbols().catch(() => null),
     positionCuts(deps.db, { market, from }),
-    mmBotPeriods(deps.db, { market, from }),
+    mmBotWindows(deps.db, calFrom),
   ]);
-  // Hai dòng "Est. CPM" (DEC-289): cùng mô hình với thẻ chi phí Market Making (mm-cost.ts, DEC-228).
-  // Bước giá = tick ÷ giá đóng của nến 1 phút mới nhất; phí = maker SoDEX của market + builder fee Market Making mặc
-  // định. "typical day" dùng dao động trung vị qua các ngày; "incl. shock days" xem `shockDayCostPerMillion`.
-  const feesBps = estimateFeesBps(info?.makerFee);
-  const step = info === null ? null : stepBpsOf(info.tickSize, vol.lastClose);
-  const cuts = cutStats(cutFills);
-  const takerBps = perpsTakerFeeBps(info?.takerFee);
-  const cutBps = cutCostBps(takerBps, cuts.slippageBps);
-  // Cỡ một lần cắt ÷ volume một bot-hour, một số cho mọi giờ (`cutShareOf`): lệnh cắt thật nếu đủ, không thì vị thế tối
-  // đa của bot; thiếu cả hai → không tính phần cắt. Chỉ bot Market Making, không theo bộ lọc Strategy của khối 3.
-  const basis = mmCutBasis(mmBots);
-  const cut = cutShareOf({
-    cutNotional: cuts.notional,
-    maxPosition: basis.maxPosition,
-    botHourVolume: basis.botHourVolume,
-  });
+  const ctx: EstimateContext = { model, symbols, mmBots };
+  // Hai dòng "Est. CPM" của mô hình (DEC-289) cho kỳ của trang; xem `estimateFor`.
+  const e = estimateFor(market, vol, moves, cutFills, ctx);
+  // Dòng "calibrated" (DEC-293): C đo trên 14 ngày, theo thứ tự market này → mọi market gộp lại
+  // → mặc định. Ô của market khác chỉ được tải khi market này không đủ ô.
+  const calibrationCtx = { db: deps.db, from: calFrom, tz: q.tz, ctx };
+  const ownPairs =
+    botHoursOf(mmBots, market) > 0 ? await calibrationPairs(calibrationCtx, market) : [];
+  const cal = await calibrationOf(
+    { pairs: ownPairs, botHours: botHoursOf(mmBots, market) },
+    async () => {
+      const others = [...new Set(mmBots.filter((b) => b.botHours > 0).map((b) => b.market))]
+        .filter((m) => m !== market)
+        .sort();
+      const lists = await Promise.all(others.map((m) => calibrationPairs(calibrationCtx, m)));
+      const used = [
+        ...(ownPairs.length > 0 ? [{ m: market, pairs: ownPairs }] : []),
+        ...others.flatMap((m, i) => {
+          const pairs = lists[i] ?? [];
+          return pairs.length > 0 ? [{ m, pairs }] : [];
+        }),
+      ];
+      return {
+        pairs: used.flatMap((x) => x.pairs),
+        botHours: used.reduce((s, x) => s + botHoursOf(mmBots, x.m), 0),
+        markets: used.map((x) => x.m).sort(),
+      };
+    },
+  );
   const estOf = (swing: Decimal | null): string | null =>
-    step === null || swing === null
+    e.step === null || swing === null
       ? null
-      : str(modelCostPerMillion(feesBps, modelPnlBps(step, swing, model.a, model.k)));
+      : str(modelCostPerMillion(e.feesBps, modelPnlBps(e.step, swing, model.a, model.k)));
   const hours: MarketHoursHour[] = Array.from({ length: 24 }, (_, h) => {
     const vh = vol.hours[h];
     const mv = moves.hourly.get(h);
     const b = bots.hours[h] ?? emptyHour().bots;
-    const shock =
-      step === null
-        ? null
-        : shockDayCostPerMillion(
-            vol.dates
-              .filter((d) => (vol.closes.get(`${d}|${String(h)}`)?.length ?? 0) > 0)
-              .map((d) => ({
-                swingBps: swingBps(vol.closes.get(`${d}|${String(h)}`) ?? []),
-                move15Bp: moves.daily.get(`${d}|${String(h)}`) ?? null,
-              })),
-            {
-              stepBps: step,
-              feesBps,
-              a: model.a,
-              k: model.k,
-              cutCostBps: cutBps,
-              cutShare: cut.share,
-              shockBp: new Decimal(VM_CUT.bp),
-            },
-          );
+    const shock = e.shock[h] ?? null;
+    const shockMean = shock?.mean ?? null;
     return {
       hour: h,
       volatility:
@@ -177,7 +178,8 @@ export async function marketHours(
               ...vh.out,
               swingBp: str(vh.swing),
               estCostPerMillion: estOf(vh.swing),
-              estShockCostPerMillion: str(shock?.mean ?? null),
+              estShockCostPerMillion: str(shockMean),
+              estCalibratedCostPerMillion: str(calibratedCostPerMillion(shockMean, cal.factor)),
               estDays: shock === null || shock.days === 0 ? null : shock.days,
               shockDays: shock === null || shock.days === 0 ? null : shock.shockDays,
               maxMove15Bp: str(mv?.bp ?? null),
@@ -187,31 +189,19 @@ export async function marketHours(
       bots: b,
     };
   });
-  // Hiệu chỉnh: giờ có ≥ 3 bot-hour và có Cost per $1M thật, so với "incl. shock days".
-  const pairs = hours.flatMap((x) =>
-    x.bots.botHours >= MARKET_HOURS_THIN_BOT_HOURS &&
-    x.bots.costPerMillion !== null &&
-    x.volatility.estShockCostPerMillion !== null
-      ? [{ real: dec(x.bots.costPerMillion), est: dec(x.volatility.estShockCostPerMillion) }]
-      : [],
-  );
   const estimate: MarketHoursEstimate = {
-    feesBp: str(feesBps) ?? "0",
-    stepBp: str(step),
+    feesBp: str(e.feesBps) ?? "0",
+    stepBp: str(e.step),
     modelVersion: model.version,
-    unavailable: vol.lastClose === null ? "no_candles" : step === null ? "no_market_info" : null,
+    unavailable: vol.lastClose === null ? "no_candles" : e.step === null ? "no_market_info" : null,
     shockBp: VM_CUT.bp,
-    cutTakerBp: str(takerBps) ?? "0",
-    cutSlippageBp: str(cuts.slippageBps),
-    cutCostBp: str(cutBps) ?? "0",
-    cuts: cuts.cuts,
-    cutNotional: str(cuts.notional),
-    botHourVolume: str(basis.botHourVolume),
-    maxPosition: str(basis.maxPosition),
-    cutShare: str(cut.share, 4),
-    cutShareSource: cut.source,
-    calibration: str(calibrationRatio(pairs)),
-    calibrationHours: pairs.filter((x) => x.est.gt(0)).length,
+    cutTakerBp: str(e.takerBps) ?? "0",
+    cutSlippageBp: str(e.cuts.slippageBps),
+    cutCostBp: str(e.cutBps) ?? "0",
+    cuts: e.cuts.cuts,
+    cutNotional: str(e.cuts.notional),
+    ...sizingOut(e.sizing),
+    ...calibrationOut(cal),
   };
   return {
     ...base,
@@ -229,79 +219,166 @@ export async function marketHours(
 const estimateFeesBps = (makerFee: string | undefined): Decimal =>
   perpsMakerFeeBps(makerFee).add(mmBuilderFeeBps());
 
-/** Tick size, phí maker và taker của perp từ SoDEX; không có market đó hoặc SoDEX lỗi → null (dòng ước tính là n/a). */
-async function marketInfo(
-  deps: Deps,
-  market: string,
-): Promise<{
-  tickSize: string;
-  makerFee: string | undefined;
-  takerFee: string | undefined;
-} | null> {
-  const symbols = await deps.rest.getPerpsSymbols().catch(() => null);
-  const s = symbols?.find((x) => x.name === market);
-  return s === undefined
-    ? null
-    : { tickSize: s.tickSize, makerFee: s.makerFee, takerFee: s.takerFee };
+type PerpsSymbols = Awaited<ReturnType<SodexRestClient["getPerpsSymbols"]>>;
+
+/** Đầu vào dùng chung cho mọi market của một lần tải trang: hệ số mô hình, symbol SoDEX (null = lỗi), bot 14 ngày. */
+interface EstimateContext {
+  model: Awaited<ReturnType<typeof latestMmModel>>;
+  symbols: PerpsSymbols | null;
+  mmBots: MmBotWindow[];
 }
 
 /**
+ * Ước tính của mô hình cho một market (DEC-289, DEC-293), cùng mô hình với thẻ chi phí Market
+ * Making (mm-cost.ts, DEC-228). Bước giá = tick ÷ giá đóng của nến 1 phút mới nhất; phí = maker SoDEX của market +
+ * builder fee Market Making mặc định. `shock[h]` = "incl. shock days" của giờ h (`shockDayCostPerMillion`), với cỡ một
+ * lần cắt = R × order size so với volume một bot-hour (`cutSizing`, chỉ bot Market Making, không theo bộ lọc Strategy).
+ * Không có tick size (market không có trên SoDEX / SoDEX lỗi) hoặc không có nến → `step` null, mọi giờ null.
+ */
+function estimateFor(
+  market: string,
+  vol: Awaited<ReturnType<typeof volatility>>,
+  moves: Awaited<ReturnType<typeof largestMoves15>>,
+  cutFills: readonly CutFill[],
+  ctx: EstimateContext,
+) {
+  const info = ctx.symbols?.find((x) => x.name === market);
+  const feesBps = estimateFeesBps(info?.makerFee);
+  const step = info === undefined ? null : stepBpsOf(info.tickSize, vol.lastClose);
+  const cuts = cutStats(cutFills);
+  const takerBps = perpsTakerFeeBps(info?.takerFee);
+  const cutBps = cutCostBps(takerBps, cuts.slippageBps);
+  const sizing = cutSizing(ctx.mmBots, market, cuts.sizeRatio);
+  const shock = Array.from({ length: 24 }, (_, h) =>
+    step === null
+      ? null
+      : shockDayCostPerMillion(
+          vol.dates
+            .filter((d) => (vol.closes.get(`${d}|${String(h)}`)?.length ?? 0) > 0)
+            .map((d) => ({
+              swingBps: swingBps(vol.closes.get(`${d}|${String(h)}`) ?? []),
+              move15Bp: moves.daily.get(`${d}|${String(h)}`) ?? null,
+            })),
+          {
+            stepBps: step,
+            feesBps,
+            a: ctx.model.a,
+            k: ctx.model.k,
+            cutCostBps: cutBps,
+            cutShare: sizing.cutShare,
+            shockBp: new Decimal(VM_CUT.bp),
+          },
+        ),
+  );
+  return { feesBps, step, cuts, takerBps, cutBps, sizing, shock };
+}
+
+/**
+ * Ô hiệu chỉnh của một market (DEC-293): mỗi giờ địa phương có ≥ 3 bot-hour của bot Market
+ * Making tiền thật trong 14 ngày và có CPM thật (cùng công thức khối 3) → { CPM thật, "incl. shock days" của 14 ngày đó }.
+ * Market không có nến / tick size → không có ô.
+ */
+async function calibrationPairs(
+  c: { db: Db; from: Date; tz: string; ctx: EstimateContext },
+  market: string,
+): Promise<{ real: Decimal; est: Decimal }[]> {
+  const [vol, moves, cutFills, cells] = await Promise.all([
+    volatility(c.db, market, c.from, c.tz),
+    largestMoves15(c.db, market, c.from, c.tz),
+    positionCuts(c.db, { market, from: c.from }),
+    botHourCells(c.db, { market, from: c.from, tz: c.tz, strategies: [Strategy.volumeMaker] }),
+  ]);
+  const e = estimateFor(market, vol, moves, cutFills, c.ctx);
+  return cells.flatMap((b, h) => {
+    const est = e.shock[h]?.mean ?? null;
+    return b.botHours >= MARKET_HOURS_THIN_BOT_HOURS && b.costPerMillion !== null && est !== null
+      ? [{ real: dec(b.costPerMillion), est }]
+      : [];
+  });
+}
+
+/** Σ bot-hour (14 ngày) của bot Market Making tiền thật trên market. */
+const botHoursOf = (bots: readonly MmBotWindow[], market: string): number =>
+  bots.filter((b) => b.market === market).reduce((s, b) => s + b.botHours, 0);
+
+const sizingOut = (s: ReturnType<typeof cutSizing>) => ({
+  positionRatio: str(s.ratio) ?? MARKET_HOURS_CALIBRATION_DEFAULTS.positionRatio,
+  positionRatioSource: s.ratioSource,
+  fillsPerBotHour: str(s.fillsPerBotHour),
+  cutShare: str(s.cutShare, 4),
+  cutScope: s.scope,
+});
+
+const calibrationOut = (c: Awaited<ReturnType<typeof calibrationOf>>) => ({
+  calibration: str(c.factor) ?? MARKET_HOURS_CALIBRATION_DEFAULTS.calibration,
+  calibrationScope: c.scope,
+  calibrationHours: c.hours,
+});
+
+/**
  * Fill của lệnh "Position cut" thật (tag `vm:<n>:cut:close`, market IOC reduce-only, DEC-249) của bot tiền thật trên
- * market trong kỳ. Giá tham chiếu = close của nến 1 phút đã đóng ngay trước phút tạo lệnh cắt (giá cuối cùng trước khi
- * cắt); thiếu nến → null.
+ * market trong kỳ, kèm order size của cấu hình đang chạy. Giá tham chiếu = close của nến 1 phút đã đóng ngay trước phút
+ * tạo lệnh cắt (giá cuối cùng trước khi cắt); thiếu nến → null.
  */
 async function positionCuts(db: Db, q: { market: string; from: Date }): Promise<CutFill[]> {
   const r = await db.execute(sql`
     select o.id::text as "orderId", o.side as side, f.price::text as price, f.size::text as size,
-           c.close::text as ref
+           c.close::text as ref, bv.config as config
       from bots b
       join orders o on o.bot_id = b.id and o.created_at >= ${q.from} and o.tag like '%:cut:%'
       join fills f on f.order_id = o.id
       left join candles_1m c
         on c.market = b.market and c.ts = date_trunc('minute', o.created_at) - interval '1 minute'
+      left join bot_versions bv on bv.id = b.active_version_id
       where b.market = ${q.market} and b.mode = 'live' and b.strategy = ${Strategy.volumeMaker}`);
-  return rowsOf<CutFill>(r);
+  return rowsOf<Omit<CutFill, "orderSize"> & { config: unknown }>(r).map(({ config, ...x }) => ({
+    ...x,
+    orderSize: orderSizeOf(config),
+  }));
 }
 
-/** Đủ trường của cấu hình Market Making để tính vị thế tối đa (`vmMaxInventory`); cấu hình hỏng → bỏ bot đó. */
-const vmPositionConfigSchema = z.object({
-  orderSize: z.string(),
-  maxInventory: z.string().optional(),
-  maxOrders: z.number().int().positive().optional(),
-});
+/** Order size (USDC) của cấu hình Market Making; cấu hình hỏng / thiếu → null (bot đó bị bỏ khỏi R và số fill). */
+const vmOrderSizeSchema = z.object({ orderSize: decimalStringSchema });
+const orderSizeOf = (config: unknown): string | null => {
+  const c = vmOrderSizeSchema.safeParse(config);
+  return c.success ? c.data.orderSize : null;
+};
 
 /**
- * Mỗi bot Market Making tiền thật trên market trong kỳ (DEC-289): số bot-hour (giờ UTC có ít nhất một
- * lệnh tạo trong kỳ, như khối 3), Σ notional fill trong kỳ (lệnh tạo từ 1 ngày trước kỳ, như khối 3) và vị thế tối đa
- * của cấu hình đang chạy. Không theo bộ lọc Strategy: phần cắt chỉ là của Market Making.
+ * Mỗi bot Market Making tiền thật (mọi market) có lệnh tạo trong 14 ngày (DEC-293):
+ * - bot-hour = giờ UTC có ít nhất một lệnh tạo trong cửa sổ (như khối 3);
+ * - fill trong cửa sổ (lệnh tạo từ 1 ngày trước cửa sổ, như khối 3) đi theo orders_bot_idx (bot_id, created_at) +
+ *   fills_order_idx; vị thế = tổng chạy của size có dấu (mua +, bán −) theo filled_at (window function, coi vị thế
+ *   đầu cửa sổ là 0); vị thế lớn nhất = max |vị thế| × giá fill đó (USDC); volume = Σ giá × size;
+ * - order size từ cấu hình đang chạy.
  */
-async function mmBotPeriods(db: Db, q: { market: string; from: Date }): Promise<MmBotPeriod[]> {
+async function mmBotWindows(db: Db, from: Date): Promise<MmBotWindow[]> {
   const r = await db.execute(sql`
     with h as (
       select o.bot_id, count(distinct date_trunc('hour', o.created_at))::int as n
         from bots b
-        join orders o on o.bot_id = b.id and o.created_at >= ${q.from}
-        where b.market = ${q.market} and b.mode = 'live' and b.strategy = ${Strategy.volumeMaker}
+        join orders o on o.bot_id = b.id and o.created_at >= ${from}
+        where b.mode = 'live' and b.strategy = ${Strategy.volumeMaker}
         group by 1),
-    v as (
-      select o.bot_id, sum(f.price * f.size)::text as volume
+    f as (
+      select o.bot_id, f.price, f.size,
+             sum(case when o.side = 'buy' then f.size else -f.size end)
+               over (partition by o.bot_id order by f.filled_at, f.id rows unbounded preceding) as pos
         from h
-        join orders o on o.bot_id = h.bot_id and o.created_at >= ${new Date(q.from.getTime() - DAY_MS)}
-        join fills f on f.order_id = o.id and f.filled_at >= ${q.from}
-        group by 1)
-    select h.n as "botHours", v.volume as volume, bv.config as config
+        join orders o on o.bot_id = h.bot_id and o.created_at >= ${new Date(from.getTime() - DAY_MS)}
+        join fills f on f.order_id = o.id and f.filled_at >= ${from}),
+    g as (
+      select bot_id, sum(price * size)::text as volume, max(abs(pos) * price)::text as max_pos
+        from f group by 1)
+    select b.market as market, h.n as "botHours", g.volume as volume, g.max_pos as "maxPosition",
+           bv.config as config
       from h
       join bots b on b.id = h.bot_id
-      left join v on v.bot_id = h.bot_id
+      left join g on g.bot_id = h.bot_id
       left join bot_versions bv on bv.id = b.active_version_id`);
-  return rowsOf<{ botHours: number; volume: string | null; config: unknown }>(r).map((x) => {
-    const c = vmPositionConfigSchema.safeParse(x.config);
-    return {
-      botHours: x.botHours,
-      volume: x.volume,
-      maxPosition: c.success ? vmMaxInventory(c.data) : null,
-    };
-  });
+  return rowsOf<Omit<MmBotWindow, "orderSize"> & { config: unknown }>(r).map(
+    ({ config, ...x }) => ({ ...x, orderSize: orderSizeOf(config) }),
+  );
 }
 
 function emptyHour(): Omit<MarketHoursHour, "hour"> {
@@ -315,6 +392,7 @@ function emptyHour(): Omit<MarketHoursHour, "hour"> {
       swingBp: null,
       estCostPerMillion: null,
       estShockCostPerMillion: null,
+      estCalibratedCostPerMillion: null,
       estDays: null,
       shockDays: null,
       maxRangeBp: null,
@@ -518,15 +596,59 @@ async function makerCost(db: Db, market: string, from: Date, tz: string) {
  * user đó (bản public sau này); không có thì mọi user (bản team). Bot-hour = cặp (bot, giờ) có ít nhất một lệnh được
  * tạo trong giờ đó (DevOps chốt).
  */
-export async function botHours(
-  db: Db,
-  q: { market: string; from: Date; tz: string; strategies: string[]; userId?: string },
-) {
-  const own = q.userId === undefined ? sql`true` : sql`b.user_id = ${q.userId}`;
-  const strategies = sql.join(
+export async function botHours(db: Db, q: BotHoursQuery) {
+  const { own, strategies } = botFilter(q);
+  // Fill sớm nhất, chính xác mà không quét hết lệnh: với mỗi bot, lấy lệnh tạo sớm nhất có fill (đi theo
+  // orders_bot_idx (bot_id, created_at), LIMIT 1) → t1 và fill đầu của nó f1. Fill sớm hơn f1 (nếu có) thuộc lệnh tạo
+  // trong [t1, f1], nên chỉ cần quét đoạn index đó. Planner ước lượng đoạn [t1, f1] quá rộng nên tổng cost vượt
+  // jit_above_cost và JIT tốn ~300 ms cho truy vấn chỉ vài ms: tắt JIT trong transaction riêng của truy vấn này.
+  const [hours, [first]] = await Promise.all([
+    botHourCells(db, q),
+    db.transaction(async (tx) => {
+      await tx.execute(sql`set local jit = off`);
+      return rowsOf<{ since: unknown }>(
+        await tx.execute(sql`
+      with first as (
+        select b.id as bot_id, o1.created_at as t1,
+               (select min(f.filled_at) from fills f where f.order_id = o1.id) as f1
+          from bots b
+          cross join lateral (
+            select o.id, o.created_at from orders o
+              where o.bot_id = b.id and exists (select 1 from fills f where f.order_id = o.id)
+              order by o.created_at
+              limit 1) o1
+          where b.market = ${q.market} and b.mode = 'live' and b.strategy in (${strategies}) and ${own})
+      select min((select min(f.filled_at) from fills f where f.order_id = o.id)) as since
+        from first x
+        join orders o on o.bot_id = x.bot_id and o.created_at >= x.t1 and o.created_at <= x.f1`),
+      );
+    }),
+  ]);
+  return { hours, since: iso(first?.since) };
+}
+
+interface BotHoursQuery {
+  market: string;
+  from: Date;
+  tz: string;
+  strategies: string[];
+  userId?: string;
+}
+
+const botFilter = (q: BotHoursQuery) => ({
+  own: q.userId === undefined ? sql`true` : sql`b.user_id = ${q.userId}`,
+  strategies: sql.join(
     q.strategies.map((s) => sql`${s}`),
     sql`, `,
-  );
+  ),
+});
+
+/**
+ * 24 ô giờ địa phương của khối 3 (CPM thật, volume, phí, bot-hour); dùng cả cho ô hiệu chỉnh C
+ * (DEC-293, chỉ Market Making, 14 ngày).
+ */
+async function botHourCells(db: Db, q: BotHoursQuery): Promise<MarketHoursHour["bots"][]> {
+  const { own, strategies } = botFilter(q);
   // Chặn lệnh tạo trước kỳ quá 1 ngày để dùng orders_bot_idx: fill của lệnh nằm chờ hơn 1 ngày trước kỳ không được
   // tính (ghi trong DEC-283).
   const fills = await db.execute(sql`
@@ -546,29 +668,6 @@ export async function botHours(
       join orders o on o.bot_id = b.id and o.created_at >= ${q.from}
       where b.market = ${q.market} and b.mode = 'live' and b.strategy in (${strategies}) and ${own}
       group by 1`);
-  // Fill sớm nhất, chính xác mà không quét hết lệnh: với mỗi bot, lấy lệnh tạo sớm nhất có fill (đi theo
-  // orders_bot_idx (bot_id, created_at), LIMIT 1) → t1 và fill đầu của nó f1. Fill sớm hơn f1 (nếu có) thuộc lệnh tạo
-  // trong [t1, f1], nên chỉ cần quét đoạn index đó. Planner ước lượng đoạn [t1, f1] quá rộng nên tổng cost vượt
-  // jit_above_cost và JIT tốn ~300 ms cho truy vấn chỉ vài ms: tắt JIT trong transaction riêng của truy vấn này.
-  const [first] = await db.transaction(async (tx) => {
-    await tx.execute(sql`set local jit = off`);
-    return rowsOf<{ since: unknown }>(
-      await tx.execute(sql`
-      with first as (
-        select b.id as bot_id, o1.created_at as t1,
-               (select min(f.filled_at) from fills f where f.order_id = o1.id) as f1
-          from bots b
-          cross join lateral (
-            select o.id, o.created_at from orders o
-              where o.bot_id = b.id and exists (select 1 from fills f where f.order_id = o.id)
-              order by o.created_at
-              limit 1) o1
-          where b.market = ${q.market} and b.mode = 'live' and b.strategy in (${strategies}) and ${own})
-      select min((select min(f.filled_at) from fills f where f.order_id = o.id)) as since
-        from first x
-        join orders o on o.bot_id = x.bot_id and o.created_at >= x.t1 and o.created_at <= x.f1`),
-    );
-  });
   const byHour = Array.from({ length: 24 }, () => [] as CostFill[]);
   for (const x of rowsOf<{
     h: number;
@@ -580,7 +679,7 @@ export async function botHours(
   }>(fills))
     byHour[x.h]?.push({ side: x.side, price: x.price, size: x.size, fee: x.fee, ref: x.ref });
   const counts = new Map(rowsOf<{ h: number; n: number }>(active).map((x) => [x.h, x.n]));
-  const hours = Array.from({ length: 24 }, (_, h) => {
+  return Array.from({ length: 24 }, (_, h) => {
     const fs = byHour[h] ?? [];
     const n = counts.get(h) ?? 0;
     if (fs.length === 0)
@@ -600,5 +699,4 @@ export async function botHours(
       thin: n < MARKET_HOURS_THIN_BOT_HOURS,
     };
   });
-  return { hours, since: iso(first?.since) };
 }
