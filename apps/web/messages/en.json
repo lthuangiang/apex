@@ -1099,6 +1099,72 @@
         "label": "Markets"
       }
     },
+    "fieldsByStrategy": {
+      "volume_maker": {
+        "orderSize": {
+          "hint": "Each quote is this size. At {size} USDC the bot keeps a {size} USDC buy order and a {size} USDC sell order in the order book.",
+          "hintShort": "Each quote is this size."
+        },
+        "smartQuoting": {
+          "hint": "Follows the Binance price and the live SoDEX order book so your quotes are picked off less, and closes a position that runs 15 bp against you. Fewer fills, lower cost per $1M. Turn it off for faster volume.",
+          "hintOff": "Off: the bot quotes at the set position and replaces its quotes every refresh. More fills, higher cost per $1M."
+        },
+        "costBudget": {
+          "label": "Stop when costs reach",
+          "hint": "Everything this run costs you: fees plus trading losses, closed and still open. At {budget} USDC the bot stops once the run has cost {budget} USDC. You get a warning at {warn} USDC.",
+          "hintShort": "Everything this run costs you: fees plus trading losses, closed and still open."
+        },
+        "volumeTarget": {
+          "label": "Stop after this much volume",
+          "hint": "Buys and sells both count. At 100,000 USDC the bot stops when it has traded 100,000 USDC. Leave empty to run until costs reach the limit above.",
+          "placeholder": "100,000"
+        },
+        "runUntil": {
+          "label": "Also stop at",
+          "hint": "Optional end time. The bot stops at that time even if it has not reached the cost or volume limit.",
+          "options": {
+            "target_or_budget": "No end time",
+            "season_end": "End of the SoPoints season",
+            "date": "A date I choose"
+          }
+        },
+        "inventoryLossStop": {
+          "hint": "Only the position the bot holds now, not fees or losses already taken. At 0.5 USDC: if the bot holds {size} USDC of {base} and {base} falls {pct}%, the bot stops. Leave empty to rely on Stop when costs reach.",
+          "hintShort": "Only the position the bot holds now, not fees or losses already taken. Leave empty to rely on Stop when costs reach.",
+          "placeholder": "0.5",
+          "how": {
+            "intro": "An extra stop based only on the open position.",
+            "steps": [
+              "If the unrealised loss on the position the bot holds reaches this amount, the bot stops.",
+              "What happens to the position then depends on \"When the bot stops\"."
+            ],
+            "note": "Leave it empty to rely on Stop when costs reach alone."
+          }
+        },
+        "maxOrders": {
+          "label": "Max position",
+          "unit": "orders",
+          "hint": "How much the bot may hold, counted in orders, 1–10. 1 = up to {size} USDC; 3 = up to {size3} USDC. When it is full, the bot only posts the order that closes it.",
+          "hintShort": "How much the bot may hold, counted in orders, 1–10. When it is full, the bot only posts the order that closes it."
+        },
+        "quoteLevel": {
+          "label": "Where to quote",
+          "unit": "steps back",
+          "hint": "0 = at the best buy and sell price, the most fills. 1, 2… = that many price steps behind the best price: fewer fills, fewer quotes caught by a fast move."
+        },
+        "refreshSeconds": {
+          "hint": "How often the bot rechecks its quotes, 2–60 s. With Smart quoting it also moves a quote at once when the SoDEX or Binance price runs past it; quotes that still fit stay in place."
+        },
+        "onStop": {
+          "label": "When the bot stops",
+          "hint": "Open orders are always cancelled. Close: the bot sells or buys back what it holds. Keep: what it holds stays in your SoDEX account.",
+          "options": {
+            "close_inventory": "Close the position",
+            "keep_position": "Keep the position"
+          }
+        }
+      }
+    },
     "options": {
       "spacing": {
         "arithmetic": "Arithmetic",
@@ -1484,6 +1550,14 @@
       "strategy": "Strategy",
       "risk": "Risk"
     },
+    "sectionsByStrategy": {
+      "volume_maker": {
+        "risk": {
+          "title": "When to stop",
+          "intro": "The bot stops at whichever comes first."
+        }
+      }
+    },
     "advanced": {
       "title": "Advanced settings",
       "optionalUnset": "{n, plural, one {# optional field} other {# optional fields}} not set",
@@ -1552,7 +1626,41 @@
     },
     "beta": "Beta",
     "howItWorks": "How it works",
-    "howItWorksOf": "How it works: {name}"
+    "howItWorksOf": "How it works: {name}",
+    "lossCaps": {
+      "title": "How your losses are capped",
+      "introOn": "Three checks run together. With {size} USDC orders:",
+      "introOnShort": "Three checks run together.",
+      "introOff": "Without Smart quoting there is no position cut. Set a position loss limit if you want one. With {size} USDC orders:",
+      "introOffShort": "Without Smart quoting there is no position cut. Set a position loss limit if you want one.",
+      "watches": "Watches",
+      "then": "Then",
+      "cost": {
+        "title": "Stop when costs reach",
+        "watches": "Everything the run cost: fees and losses",
+        "then": "The bot stops"
+      },
+      "cut": {
+        "title": "Position cut",
+        "watches": "The Binance price running 15 bp against the position you hold (about {cut} USDC on {size} USDC)",
+        "watchesShort": "The Binance price running 15 bp against the position you hold",
+        "then": "The position is closed at market and the bot keeps running"
+      },
+      "posLoss": {
+        "title": "Position loss limit",
+        "watches": "The open loss on the position the bot holds right now",
+        "then": "The bot stops; the position is handled as set in When the bot stops"
+      },
+      "max": {
+        "title": "Max position",
+        "watchesOn": "How much the bot holds (set below, {max} USDC now)",
+        "watchesOnShort": "How much the bot holds (set below)",
+        "watchesOff": "How much the bot holds ({max} USDC now)",
+        "watchesOffShort": "How much the bot holds",
+        "then": "The bot only posts the order that closes it"
+      },
+      "footOn": "Position cut is part of Smart quoting. Turn Smart quoting off to set a position loss limit in USDC instead."
+    }
   },
   "tradingAgent": {
     "title": "Trading Agent",
@@ -2695,6 +2803,7 @@
       "actions": "Actions"
     },
     "mode": "Mainnet",
+    "modePaper": "Paper",
     "modeDraft": "Not started",
     "open": "Open",
     "edit": "Edit",
@@ -2896,7 +3005,7 @@
         "openPnl": "Open position",
         "funding": "Funding",
         "perMillion": "{v} / $1M",
-        "note": "Stop if I lose counts fees and any losses: {cost} of {budget} USDC used. Gains on price don’t lower it, so the bot never spends more than the budget."
+        "note": "Stop when costs reach counts fees and any losses: {cost} of {budget} USDC used. Gains on price don’t lower it, so the bot never spends more than the budget."
       }
     },
     "stateSub": {
@@ -3494,6 +3603,7 @@
     "RISK_DRAWDOWN": "Paused: drawdown limit reached",
     "BOT_MAX_LOSS": "Paused: max loss for this bot reached",
     "ORDER_REJECTED": "Paused: SoDEX rejected an order",
+    "ORDER_REJECTED_PAPER": "Paused: a simulated order was rejected",
     "INSUFFICIENT_BALANCE": "Paused: balance too low",
     "STOP_LOSS": "Stopped: stop loss reached",
     "TAKE_PROFIT": "Stopped: take profit reached",
@@ -3501,7 +3611,11 @@
     "BUDGET_DONE": "Stopped: budget used",
     "MAX_CYCLES": "Stopped: max cycles reached",
     "MAX_CYCLES_VOLUME": "Stopped: volume target reached",
-    "API_KEY_UNUSABLE": "Paused: DeskLabs can’t sign with your API key"
+    "API_KEY_UNUSABLE": "Paused: DeskLabs can’t sign with your API key",
+    "MAX_CYCLES_END_TIME": "Stopped: end time reached",
+    "MAX_CYCLES_MM": "Stopped: target reached",
+    "MM_BUDGET_DONE": "Stopped: cost limit reached",
+    "MM_STOP_LOSS": "Stopped: position loss limit reached"
   },
   "overview": {
     "title": "Overview",
@@ -3970,7 +4084,9 @@
         "paper_paused": "Fake-money test {bot} paused",
         "paper_stopped": "Fake-money test {bot} stopped",
         "unknown": "Order result unknown · {bot}",
-        "fill": "{bot} filled an order"
+        "fill": "{bot} filled an order",
+        "feeLowered": "Market Making fee lowered to {rate}",
+        "feeBack": "Market Making fee back to {rate}"
       },
       "body": {
         "pausedReason": "{reason}. Open orders were kept.",
@@ -3983,7 +4099,10 @@
         "telegramConnected": "Alerts also go to @{username}.",
         "telegramMoved": "Your Telegram chat was connected to another DeskLabs account. Connect again in Settings to get alerts there.",
         "telegramBlocked": "Telegram says you blocked DeskLabs Bot. You still get alerts here and by email.",
-        "followOnly": "Following only. Nothing was copied."
+        "followOnly": "Following only. Nothing was copied.",
+        "feeLowered": "Your Market Making volume in the last 30 days reached {volume}. New orders pay {rate} instead of {previous}.",
+        "feeRaised": "Your Market Making volume in the last 30 days fell to {volume}, below {min}. New orders pay {rate} instead of {previous}.",
+        "feeRates": "New orders pay {rate} instead of {previous}."
       },
       "aTrader": "A trader you follow",
       "long": "long",
@@ -4013,7 +4132,8 @@
         "min_hold": "This trader now trades too fast to copy.",
         "low_liquidity": "Not enough SoDEX liquidity near the price.",
         "other": "Open the bot to see why."
-      }
+      },
+      "usdc": "{amount} USDC"
     },
     "reasonText": {
       "BUILDER_FEE_REVOKED": "Builder fee approval is 0",

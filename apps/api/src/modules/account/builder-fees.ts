@@ -1,15 +1,30 @@
-import { botEvents, bots, builderFeeOverridesOf, userBuilderFees, users, type Db } from "@drift/db";
+import {
+  botEvents,
+  bots,
+  builderFeeOverridesOf,
+  feeTierBotIds,
+  feeTierVolumes,
+  userBuilderFees,
+  userFeeTiers,
+  users,
+  type Db,
+} from "@drift/db";
 import {
   AppError,
   BOT_STRATEGIES,
   builderFeeRateFor,
   builderFeeRateOf,
   ENGINE_ACTIVE_STATES,
+  Decimal,
   ErrorCode,
+  FEE_TIER_WINDOW_DAYS,
   feeRateToPercent,
+  nextFeeTierOf,
+  Strategy,
   type AdminBuilderFee,
   type BuilderFeeOverrides,
   type BuilderFeeRow,
+  type MmFee,
 } from "@drift/shared";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
@@ -38,6 +53,76 @@ export async function builderFeeOverrides(db: Db, userId: string): Promise<Build
 export async function builderFeesOf(db: Db, userId: string): Promise<Record<string, number>> {
   const own = await builderFeeOverrides(db, userId);
   return Object.fromEntries(BOT_STRATEGIES.map((s) => [s, builderFeeRateFor(s, own)]));
+}
+
+/**
+ * Thẻ builder fee Market Making của user (GET /features, DEC-261). Volume tính trực tiếp cho riêng user này
+ * bằng cùng hàm với job theo giờ (`feeTierVolumes`): đi từ bot MM tiền thật của user qua orders_bot_idx rồi
+ * fills_order_idx, nên chi phí tỷ lệ với số fill MM 30 ngày của một user, không quét bảng fills. Mức hiệu lực vẫn là mức
+ * engine đang dùng (bảng `user_fee_tiers` do job ghi), có thể chậm tới một giờ so với volume ở đây.
+ */
+export async function mmFeeOf(db: Db, userId: string, now: Date): Promise<MmFee> {
+  const strategy = Strategy.volumeMaker;
+  const [team, tier, botIds] = await Promise.all([
+    db
+      .select({ rate: userBuilderFees.rate })
+      .from(userBuilderFees)
+      .where(and(eq(userBuilderFees.userId, userId), eq(userBuilderFees.strategy, strategy)))
+      .limit(1),
+    db
+      .select({ rate: userFeeTiers.rate })
+      .from(userFeeTiers)
+      .where(and(eq(userFeeTiers.userId, userId), eq(userFeeTiers.strategy, strategy)))
+      .limit(1),
+    feeTierBotIds(db, { userId, strategy }),
+  ]);
+  const custom = team[0]?.rate;
+  const tiered = tier[0]?.rate;
+  const source = custom !== undefined ? "custom" : tiered !== undefined ? "tier" : "default";
+  const rate = builderFeeRateFor(
+    strategy,
+    custom !== undefined
+      ? { [strategy]: custom }
+      : tiered !== undefined
+        ? { [strategy]: tiered }
+        : undefined,
+  );
+  // Chưa từng có bot MM tiền thật → null (UI tự xử lý, không hiện $0). Có bot mà không khớp gì → "0" là dữ liệu thật.
+  const since = new Date(now.getTime() - FEE_TIER_WINDOW_DAYS * 86_400_000);
+  const sum =
+    botIds.length === 0
+      ? null
+      : ((await feeTierVolumes(db, botIds, since)).find((v) => v.strategy === strategy)?.volume ??
+        "0");
+  const volume30d = sum === null ? null : new Decimal(sum).toFixed();
+  // Bậc kế tiếp theo mức hiệu lực (không theo volume trực tiếp): dòng bậc có thể chậm tới một giờ so với volume.
+  const next = source === "custom" ? null : nextFeeTierOf(strategy, rate);
+  return {
+    rate,
+    source,
+    volume30d,
+    nextVolume: next === null ? null : String(next.minVolume),
+    nextRate: next?.rate ?? null,
+  };
+}
+
+/** Giữ thẻ phí MM của mỗi user ngần này trong process (GET /features gọi ở nhiều màn hình). */
+export const MM_FEE_CACHE_MS = 2 * 60_000;
+const MM_FEE_CACHE_MAX = 10_000;
+const mmFeeCache = new Map<string, { at: number; value: MmFee }>();
+
+/** `mmFeeOf` có cache trong process ~2 phút theo user; team đổi mức tay thì xoá ngay (`setBuilderFee`). */
+export async function cachedMmFeeOf(db: Db, userId: string, now: Date): Promise<MmFee> {
+  const hit = mmFeeCache.get(userId);
+  if (hit !== undefined && now.getTime() - hit.at < MM_FEE_CACHE_MS && now.getTime() >= hit.at)
+    return hit.value;
+  const value = await mmFeeOf(db, userId, now);
+  if (mmFeeCache.size >= MM_FEE_CACHE_MAX)
+    for (const [k, v] of mmFeeCache)
+      if (now.getTime() - v.at >= MM_FEE_CACHE_MS) mmFeeCache.delete(k);
+  if (mmFeeCache.size >= MM_FEE_CACHE_MAX) mmFeeCache.clear();
+  mmFeeCache.set(userId, { at: now.getTime(), value });
+  return value;
 }
 
 /** Bảng builder fee của user cho trang Users của team. */
@@ -125,5 +210,6 @@ export async function setBuilderFee(
     });
     return count;
   });
+  mmFeeCache.delete(targetId);
   return { builderFees: await builderFeeRows(deps.db, targetId), notified };
 }

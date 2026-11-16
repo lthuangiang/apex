@@ -3,8 +3,10 @@ import {
   bots,
   builderFeeOverridesOf,
   createDb,
+  feeTierVolumes,
   fills,
   orders,
+  outbox,
   runMigrations,
   sodexAccounts,
   userBuilderFees,
@@ -14,10 +16,10 @@ import {
 } from "@drift/db";
 import { builderFeeRateFor } from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { refreshFeeTiers } from "../src/fee-tiers";
+import { feeTierDedupeKey, refreshFeeTiers } from "../src/fee-tiers";
 
 let container: StartedPostgreSqlContainer;
 let db: Db;
@@ -68,7 +70,12 @@ async function seed(strategy = "volume_maker", mode: "live" | "paper" = "live") 
 }
 
 /** Một fill có notional `usd` (giá 100 000), `daysAgo` ngày trước NOW. */
-async function fill(s: { accountId: string; botId: string }, usd: number, daysAgo: number) {
+async function fill(
+  s: { accountId: string; botId: string },
+  usd: number,
+  daysAgo: number,
+  orderDaysAgo?: number,
+) {
   const [o] = await db
     .insert(orders)
     .values({
@@ -84,6 +91,7 @@ async function fill(s: { accountId: string; botId: string }, usd: number, daysAg
       status: "filled",
       tag: "vm",
       epoch: 1,
+      ...(orderDaysAgo === undefined ? {} : { createdAt: new Date(NOW - orderDaysAgo * DAY) }),
     })
     .returning();
   await db.insert(fills).values({
@@ -103,6 +111,15 @@ const events = async (botId: string) =>
   (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
     (e) => e.decision === "Builder fee changed",
   );
+
+/** Thông báo `jobs.notify` đã ghi vào outbox cho user. */
+const notices = async (userId: string) =>
+  (
+    await db
+      .select({ payload: outbox.payload })
+      .from(outbox)
+      .where(and(eq(outbox.topic, "jobs.notify"), sql`${outbox.payload}->>'userId' = ${userId}`))
+  ).map((r) => r.payload);
 
 describe("builder fee tiers (DEC-258)", () => {
   it("puts Market Making volume into tiers: under 200K 0.3 bp, from 200K 0.2 bp, from 1M 0.1 bp", async () => {
@@ -124,7 +141,7 @@ describe("builder fee tiers (DEC-258)", () => {
     const [row] = await db.select().from(userFeeTiers).where(eq(userFeeTiers.userId, mid.userId));
     expect(Number(row?.volume)).toBe(200_000);
     expect((await events(mid.botId))[0]?.why).toBe(
-      "Your volume with this strategy over the last 30 days is 200,000 USDC, so your builder fee is now 0.002% (was 0.003%). New orders use it.",
+      "Your 30-day Market Making volume reached 200,000 USDC, so the rate is now 0.002% (was 0.003%). New orders use it.",
     );
     expect(await events(small.botId)).toEqual([]);
   });
@@ -154,7 +171,7 @@ describe("builder fee tiers (DEC-258)", () => {
       [],
     );
     expect((await events(s.botId)).map((e) => e.why)).toContain(
-      "Your volume with this strategy over the last 30 days is 0 USDC, so your builder fee is now 0.003% (was 0.002%). New orders use it.",
+      "Your 30-day Market Making volume fell to 0 USDC, so the rate is now 0.003% (was 0.002%). New orders use it.",
     );
   });
 
@@ -167,6 +184,8 @@ describe("builder fee tiers (DEC-258)", () => {
     await refreshFeeTiers(db, NOW);
     expect(await rateOf(s.userId)).toBe(5);
     expect(await events(s.botId)).toEqual([]);
+    // Mức đặt tay (source = custom): không bao giờ gửi thông báo bậc.
+    expect(await notices(s.userId)).toEqual([]);
   });
 
   it("does nothing new on a second run with the same volume", async () => {
@@ -175,5 +194,66 @@ describe("builder fee tiers (DEC-258)", () => {
     await refreshFeeTiers(db, NOW);
     await refreshFeeTiers(db, NOW + 60_000);
     expect(await events(s.botId)).toHaveLength(1);
+  });
+
+  it("tells the user once when the tier changes, in the same run, with a per-day dedupe key", async () => {
+    const s = await seed();
+    await fill(s, 250_000.7, 1);
+    await refreshFeeTiers(db, NOW);
+    await refreshFeeTiers(db, NOW + 60_000);
+    expect(await notices(s.userId)).toEqual([
+      {
+        userId: s.userId,
+        type: "fee_tier_changed",
+        data: {
+          strategy: "volume_maker",
+          rate: 2,
+          previousRate: 3,
+          volume: "250000.7",
+          droppedBelow: null,
+        },
+        dedupeKey: "fee_tier_changed:volume_maker:2:2026-11-16",
+      },
+    ]);
+    expect(feeTierDedupeKey("volume_maker", 2, NOW)).toBe(
+      "fee_tier_changed:volume_maker:2:2026-11-16",
+    );
+  });
+
+  it("names the tier the user fell out of when the rate goes back up", async () => {
+    const s = await seed();
+    await fill(s, 1_200_000, 25);
+    await fill(s, 300_000, 1);
+    await refreshFeeTiers(db, NOW);
+    expect(await rateOf(s.userId)).toBe(1);
+    // 10 ngày sau: fill 1,2M ra khỏi cửa sổ, còn 300K → bậc 0.2 bp.
+    await refreshFeeTiers(db, NOW + 10 * DAY);
+    expect(await rateOf(s.userId)).toBe(2);
+    const raised = (await notices(s.userId)).find(
+      (p) => (p as { data: { rate: number } }).data.rate === 2,
+    );
+    expect(raised).toMatchObject({
+      data: { rate: 2, previousRate: 1, volume: "300000", droppedBelow: "1000000" },
+      dedupeKey: "fee_tier_changed:volume_maker:2:2026-11-26",
+    });
+  });
+
+  it("tells a user with no running bot too, since the next bot uses the new rate", async () => {
+    const s = await seed();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, s.botId));
+    await fill(s, 250_000, 1);
+    await refreshFeeTiers(db, NOW);
+    expect(await events(s.botId)).toEqual([]);
+    expect(await notices(s.userId)).toHaveLength(1);
+  });
+
+  it("reads orders back to 7 days before the window, not the whole order history", async () => {
+    const s = await seed();
+    // Lệnh tạo 35 ngày trước (trong biên 7 ngày), khớp hôm qua: được tính.
+    await fill(s, 150_000, 1, 35);
+    // Lệnh tạo 40 ngày trước (ngoài biên), khớp hôm qua: không đọc tới.
+    await fill(s, 900_000, 1, 40);
+    const [v] = await feeTierVolumes(db, [s.botId], new Date(NOW - 30 * DAY));
+    expect(Number(v?.volume)).toBe(150_000);
   });
 });

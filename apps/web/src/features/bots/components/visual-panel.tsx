@@ -20,6 +20,7 @@ import { useBuilderFeeRate } from "@/lib/queries";
 
 import { FIELDS, toConfig, type FormValues } from "../fields";
 import { fmtPrice, previewModel, unitsOf } from "../preview";
+import { useReasonLabel } from "../stop-reason";
 
 import { fieldErrorsOf } from "./bot-errors";
 import { PreviewVisual } from "./preview-visual";
@@ -82,7 +83,7 @@ export function VisualPanel({
 }) {
   const t = useTranslations("createBot");
   const tb = useTranslations("createBot.backtest");
-  const tr = useTranslations("reasons");
+  const reasonLabel = useReasonLabel();
   const tp = useTranslations("createBot.preview");
   const ts = useTranslations(`createBot.strategies.${strategy}`);
   const names = useMarketNames();
@@ -170,7 +171,12 @@ export function VisualPanel({
           ...result.metrics.map((m) => ({ label: tb(`stats.${m.key}`), value: metric(m) })),
           ...(result.halted === null
             ? []
-            : [{ label: tb("stats.halted"), value: tr(result.halted) }]),
+            : [
+                {
+                  label: tb("stats.halted"),
+                  value: reasonLabel({ reasonCode: result.halted, strategy, config }),
+                },
+              ]),
         ];
   const unavailable =
     v?.status === "unavailable" ? tb(`unavailable.${v.error ?? "history_short"}`) : undefined;

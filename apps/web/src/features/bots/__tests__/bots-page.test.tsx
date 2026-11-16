@@ -14,6 +14,7 @@ import { BotsPage } from "../components/bots-page";
 
 const tab = vi.hoisted(() => ({ value: "catalog" }));
 const flags = vi.hoisted(() => ({ adaptiveDca: false }));
+const list = vi.hoisted(() => ({ items: [] as unknown[] }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(`tab=${tab.value}`),
   useRouter: () => ({ replace: () => undefined, push: () => undefined }),
@@ -29,8 +30,18 @@ vi.mock("@/components/workspace", () => ({
     </header>
   ),
 }));
-vi.mock("@/lib/queries", () => ({ useMe: () => ({ data: { role: "user" } }) }));
-vi.mock("@/lib/markets", () => ({ useMarketNames: () => (m: string) => m }));
+vi.mock("@/lib/queries", () => ({
+  useMe: () => ({ data: { role: "user" } }),
+  useSodexConnection: () => ({ data: undefined, isSuccess: false, isPending: true }),
+}));
+vi.mock("@/lib/markets", () => ({
+  useMarketNames: () =>
+    Object.assign((m: string) => m, {
+      market: (m: string) => m,
+      asset: (a: string) => a,
+      info: () => undefined,
+    }),
+}));
 vi.mock("@/lib/use-media", () => ({ useMediaQuery: () => false }));
 vi.mock("@/lib/api", () => ({
   ApiError: class extends Error {},
@@ -43,7 +54,7 @@ vi.mock("@/lib/api", () => ({
         adaptiveDca: flags.adaptiveDca,
         builderFees: {},
       });
-    if (path.startsWith("/api/v1/bots")) return Promise.resolve({ items: [] });
+    if (path.startsWith("/api/v1/bots")) return Promise.resolve({ items: list.items });
     return new Promise(() => undefined);
   },
 }));
@@ -61,6 +72,7 @@ const show = () =>
 
 afterEach(() => {
   flags.adaptiveDca = false;
+  list.items = [];
   cleanup();
 });
 
@@ -105,5 +117,39 @@ describe("AI Adaptive DCA (Beta, DEC-218)", () => {
       .getAllByRole("heading", { level: 2 })
       .filter((h) => h !== heading && within(h).queryByText("Beta") !== null);
     expect(others).toEqual([]);
+  });
+});
+
+describe("paper bots in the bot list (SL-01, PB-01)", () => {
+  it("shows Paper as the mode and names the rejected order as simulated", async () => {
+    tab.value = "mine";
+    list.items = [
+      {
+        id: "01a1ab7e-2236-76d7-b9a7-37aa8624c581",
+        name: "Futures Grid · BTC",
+        strategy: "futures_grid",
+        market: "BTC-USD",
+        engine: "perps",
+        state: "paused",
+        reasonCode: "ORDER_REJECTED",
+        needsAttention: false,
+        activeVersion: 1,
+        netPnl: "-0.02",
+        capital: "100",
+        capitalUnit: "quote",
+        marketLabel: null,
+        fills: 1,
+        waiting: null,
+        mode: "paper",
+        createdAt: "2026-11-05T11:35:00.000Z",
+        updatedAt: "2026-11-05T11:35:36.000Z",
+      },
+    ];
+    show();
+    const row = (await screen.findByText("Futures Grid · BTC")).closest("tr") as HTMLElement;
+    expect(within(row).getByText("Paper")).toBeInTheDocument();
+    expect(within(row).queryByText("Mainnet")).toBeNull();
+    expect(within(row).getByText("Paused: a simulated order was rejected")).toBeInTheDocument();
+    expect(within(row).queryByText(/SoDEX rejected/)).toBeNull();
   });
 });
