@@ -246,6 +246,8 @@ interface Runner {
   blocked: { since: number; attempts: number; nextAt: number; code: NotSentCode } | null;
   /** Số lệnh market reduce-only bị SoDEX từ chối liên tiếp (vị thế trong sổ bot có thể lệch SoDEX). */
   reduceRejects: number;
+  /** Đang báo chiến lược các lệnh mở không gửi vì bot đã dừng (DEC-255), để không lặp. */
+  droppingOpens: boolean;
   /** Tương tự cho lệnh limit / post-only: bị từ chối thường chỉ vì giá chạy, nên có ngưỡng riêng cao hơn. */
   makerReduceRejects: number;
   /** Giới hạn tin `copy_bot_skipped` của bot copy (DEC-212), trong bộ nhớ. */
@@ -1061,6 +1063,7 @@ export class Engine {
       leverageUnknown: false,
       blocked: null,
       reduceRejects: 0,
+      droppingOpens: false,
       makerReduceRejects: 0,
       skipGate: new SkipGate(),
     };
@@ -1389,7 +1392,7 @@ export class Engine {
     /** Sự kiện và state trước bước chiến lược (để biết market của tin `copy_bot_skipped`). */
     source: { event: StrategyEvent; prev: unknown } | null = null,
   ): Promise<void> {
-    const places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
+    let places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
     const cancels = actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : []));
     for (const a of actions) {
       if (a.type === "log") {
@@ -1433,6 +1436,35 @@ export class Engine {
       if (lev !== "ok") {
         if (lev !== "not_sent") await this.#pauseBot(r, ReasonCode.orderRejected);
         return;
+      }
+    }
+    // Bot vừa được yêu cầu dừng / pause trong lúc bước này chạy (DEC-255): đọc lại trạng thái ngay trước khi gửi, không
+    // gửi lệnh mở vị thế; lệnh reduce-only (đóng) vẫn đi. Trước đây chỉ kiểm tra ở đầu sự kiện: một sự kiện giá bắt đầu
+    // trước lúc Stop vẫn đặt được lệnh mua sau lúc Stop, khớp khi bot đã dừng và vị thế nằm lại không ai đóng.
+    if (places.some((o) => !o.reduceOnly)) {
+      const st = await this.#currentState(r.botId);
+      if (st !== BotState.starting && st !== BotState.running && st !== BotState.resuming) {
+        const dropped = places.filter((o) => !o.reduceOnly);
+        places = places.filter((o) => o.reduceOnly);
+        this.#d.log.info(
+          { botId: r.botId, state: st, dropped: dropped.length },
+          "opening orders not sent: bot is no longer running",
+        );
+        // Báo chiến lược để nó không coi các lệnh này là đang sống; không lặp lại nếu chính bước này sinh lệnh mới.
+        if (!r.droppingOpens) {
+          r.droppingOpens = true;
+          try {
+            for (const o of dropped)
+              await this.#feed(r, {
+                type: "orderReject",
+                at,
+                clOrdID: o.clOrdID,
+                code: "BOT_NOT_RUNNING",
+              });
+          } finally {
+            r.droppingOpens = false;
+          }
+        }
       }
     }
     if (places.length > 0) {

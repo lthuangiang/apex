@@ -78,6 +78,9 @@ class FakeGateway implements Gateway {
   reject: { code: string; message: string | null } | null = null;
   /** Giữ lần submit kế tiếp tới khi promise này xong (lệnh "đang gửi"). */
   hold: Promise<void> | null = null;
+  /** Giữ lần huỷ kế tiếp tới khi promise này xong; `cancelHeld` = đang bị giữ. */
+  holdCancel: Promise<void> | null = null;
+  cancelHeld = false;
   #id = 1n;
 
   setLeverage(
@@ -165,6 +168,15 @@ class FakeGateway implements Gateway {
     return Promise.resolve(this.modifyStopOutcome);
   }
   cancel(_a: AccountRef, list: readonly { clOrdID: string }[]): Promise<CancelResult[]> {
+    const held = this.holdCancel;
+    if (held !== null) {
+      this.holdCancel = null;
+      this.cancelHeld = true;
+      return held.then(() => {
+        this.cancelHeld = false;
+        return this.cancel(_a, list);
+      });
+    }
     if (this.cancelNotSent > 0) {
       this.cancelNotSent -= 1;
       return Promise.reject(new Error("not sent: signer_unavailable"));
@@ -655,6 +667,41 @@ describe("engine", () => {
     release();
     await placing;
     expect(gw.cancelled).toContain(ask?.clOrdId);
+    await e.stop();
+  });
+
+  it("sends no opening order when the bot is stopped while an event is being handled (DEC-255)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    // Báo giá theo sổ lệnh (quoteLevel 0) để sổ lệnh thời gian thực đặt lại được bid (DEC-248).
+    const base = mmSmart(true);
+    const { botId } = await seedBot("running", {
+      ...base,
+      config: { ...base.config, quoteLevel: 0 },
+    });
+    const e = makeEngine(gw, "w-stop-race");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    const bid = gw.received.filter((o) => o.side === "buy").at(-1);
+    expect(bid).toBeDefined();
+    const placed = gw.received.length;
+    // Sổ lệnh chạy lên: bot huỷ bid cũ rồi đặt bid mới. Lệnh huỷ bị giữ; trong lúc đó người dùng bấm Stop.
+    let release: () => void = () => undefined;
+    gw.holdCancel = new Promise<void>((r) => {
+      release = r;
+    });
+    const up = String(Number(bid?.price) + 3);
+    const moving = e.onMmBook(
+      { s: "BTC-USD", b: up, a: String(Number(up) + 0.1), E: clock + 2000, at: clock + 2000 },
+      clock + 2000,
+    );
+    for (let i = 0; i < 50 && !gw.cancelHeld; i += 1) await new Promise((r) => setTimeout(r, 20));
+    expect(gw.cancelHeld).toBe(true);
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    release();
+    await moving;
+    // Lệnh huỷ vẫn đi, nhưng không có lệnh mở mới nào tới SoDEX sau lúc Stop.
+    expect(gw.received.slice(placed).filter((o) => !o.reduceOnly)).toEqual([]);
     await e.stop();
   });
 
