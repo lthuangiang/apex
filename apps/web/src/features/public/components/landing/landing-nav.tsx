@@ -39,12 +39,24 @@ export function Logo() {
   );
 }
 
-export function LandingNav({ links, home = "#" }: { links: readonly NavLink[]; home?: string }) {
+export function LandingNav({
+  links,
+  home = "#",
+  label,
+  cta,
+}: {
+  links: readonly NavLink[];
+  home?: string;
+  /** Tên vùng nav; mặc định "Main" của landing. */
+  label?: string;
+  /** Trang MCP (artboard McpPage): chỉ một nút "Launch app", không có Sign in. */
+  cta?: NavLink;
+}) {
   const t = useTranslations("landing.nav");
   const brand = useTranslations("common")("brand");
   return (
     <nav
-      aria-label={t("label")}
+      aria-label={label ?? t("label")}
       className="mx-auto box-border flex w-full max-w-[1240px] flex-wrap items-center gap-x-3 gap-y-3 px-4 py-3.5 sm:gap-x-7 md:px-8 md:py-[22px]"
     >
       <a
@@ -66,26 +78,28 @@ export function LandingNav({ links, home = "#" }: { links: readonly NavLink[]; h
         <div className="hidden sm:flex">
           <ThemeToggle />
         </div>
+        {cta === undefined ? (
+          <Link
+            href="/signin"
+            className="hidden text-sm font-semibold text-l-text no-underline hover:opacity-85 lg:inline"
+          >
+            {t("signIn")}
+          </Link>
+        ) : null}
         <Link
-          href="/signin"
-          className="hidden text-sm font-semibold text-l-text no-underline hover:opacity-85 lg:inline"
-        >
-          {t("signIn")}
-        </Link>
-        <Link
-          href="/signup"
+          href={cta?.href ?? "/signup"}
           className="inline-flex min-h-11 items-center rounded-lg bg-l-primary px-3.5 text-sm font-semibold text-l-on-primary no-underline hover:opacity-90 md:px-[18px]"
         >
-          {t("createAccount")}
+          {cta?.label ?? t("createAccount")}
         </Link>
-        <LandingMenu links={links} />
+        <LandingMenu links={links} signIn={cta === undefined} />
       </div>
     </nav>
   );
 }
 
 /** Menu dưới 1024 px: các link anchor và Sign in. Đóng khi bấm một link, bấm ra ngoài hoặc Esc. */
-function LandingMenu({ links }: { links: readonly NavLink[] }) {
+function LandingMenu({ links, signIn }: { links: readonly NavLink[]; signIn: boolean }) {
   const t = useTranslations("landing.nav");
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -152,13 +166,15 @@ function LandingMenu({ links }: { links: readonly NavLink[] }) {
           <div className="flex px-1 py-1 sm:hidden">
             <ThemeToggle />
           </div>
-          <Link
-            href="/signin"
-            onClick={close}
-            className="flex min-h-11 items-center rounded-lg px-3 text-[15px] font-semibold text-l-accent no-underline hover:bg-l-surface-2"
-          >
-            {t("signIn")}
-          </Link>
+          {signIn ? (
+            <Link
+              href="/signin"
+              onClick={close}
+              className="flex min-h-11 items-center rounded-lg px-3 text-[15px] font-semibold text-l-accent no-underline hover:bg-l-surface-2"
+            >
+              {t("signIn")}
+            </Link>
+          ) : null}
         </div>
       ) : null}
     </div>

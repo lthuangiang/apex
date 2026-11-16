@@ -31,6 +31,10 @@
   --color-l-primary: var(--l-primary);
   --color-l-on-primary: var(--l-on-primary);
   --color-l-focus: var(--l-focus);
+  --color-l-term-bg: var(--l-term-bg);
+  --color-l-term-text: var(--l-term-text);
+  --color-l-term-line: var(--l-term-line);
+  --color-l-term-muted: var(--l-term-muted);
   --font-display: var(--font-space-grotesk, "Space Grotesk"), ui-sans-serif, system-ui, sans-serif;
   --font-body: var(--font-inter, "Inter"), ui-sans-serif, system-ui, sans-serif;
   --font-num: var(--font-jetbrains-mono, "JetBrains Mono"), ui-monospace, monospace;
@@ -60,6 +64,11 @@
   --l-primary: #2e62e8;
   --l-on-primary: #ffffff;
   --l-focus: #5b8cff;
+  /* Khung Terminal ở trang MCP: luôn nền tối, cả hai theme (artboard McpPage). */
+  --l-term-bg: #0b1020;
+  --l-term-text: #eef1fb;
+  --l-term-line: #232b4d;
+  --l-term-muted: #9aa3c4;
   color-scheme: light;
   background: var(--l-bg);
   color: var(--l-text);

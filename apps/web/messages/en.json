@@ -5659,6 +5659,7 @@
       "faq": "FAQ"
     },
     "launch": "Launch app",
+    "disconnectLimitsLabel": "Disconnect and limits",
     "hero": {
       "eyebrow": "DeskLabs for Claude",
       "title": "Ask Claude about your bots",
@@ -5731,7 +5732,7 @@
       "code": {
         "s1": {
           "title": "Add the server",
-          "body": "Run the command on the right in your terminal. Already added DeskLabs on claude.ai with the same account? Claude Code has it already: skip this step."
+          "body": "Run the command below in your terminal. Already added DeskLabs on claude.ai with the same account? Claude Code has it already: skip this step."
         },
         "s2": {
           "title": "Sign in",
