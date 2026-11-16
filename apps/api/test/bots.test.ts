@@ -838,6 +838,101 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(detail.events.some((e) => e.decision === "Running")).toBe(false);
     expect(Date.parse(detail.runningSince ?? "")).toBe(started.getTime());
   });
+
+  it("gives each decision the result of its real orders and counts real refusals (BD-02, BD-05)", async () => {
+    const { client } = await connectedUser(`result-${randomUUID()}@drift.test`);
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "Results", paramSource: "manual", config: grid },
+    });
+    const id = made.json<{ id: string }>().id;
+    const { rows } = await env.pool.query<{ acc: string }>(
+      "select sodex_account_id as acc from bots where id = $1",
+      [id],
+    );
+    const acc = rows[0]?.acc ?? "";
+    const at = env.clock.now;
+    const order = (clOrdId: string, status: string, filled: string, rejectCode: string | null) =>
+      env.pool.query(
+        "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, status, reject_code, tag, epoch, created_at) values (gen_random_uuid(), $1, $2, $3, 'vBTC_vUSDC', 'spot', 'buy', 'limit', 'GTX', 1, $4, $5, $6, 'grid', 1, $7)",
+        [id, acc, clOrdId, filled, status, rejectCode, at],
+      );
+    const decision = (name: string, ids: string[] | null, ago: number) =>
+      env.pool.query(
+        "insert into bot_events (id, bot_id, type, decision, payload, occurred_at) values (gen_random_uuid(), $1, 'decision', $2, $3, $4)",
+        [
+          id,
+          name,
+          JSON.stringify(ids === null ? {} : { orders: ids }),
+          new Date(at.getTime() - ago),
+        ],
+      );
+    const tag = randomUUID().slice(0, 8);
+    await order(`f-${tag}`, "filled", "1", null);
+    await order(`c-${tag}`, "cancelled", "0", null);
+    await order(`p-${tag}`, "rejected", "0", "PostOnly");
+    await order(`x-${tag}`, "rejected", "0", "-1");
+    await order(`r-${tag}`, "rejected", "0", "RISK_PER_TRADE");
+    await decision("Bought at level 1", [`f-${tag}`], 4_000);
+    await decision("Bought at level 2", [`c-${tag}`], 3_000);
+    await decision("Bought at level 3", [`p-${tag}`], 2_000);
+    await decision("Price left the grid range", null, 1_000);
+    const detail = botDetailSchema.parse(
+      (await client.request("GET", `/api/v1/bots/${id}`)).json(),
+    );
+    const outcome = (d: string) => detail.events.find((e) => e.decision === d)?.outcome;
+    expect(outcome("Bought at level 1")).toBe("filled");
+    expect(outcome("Bought at level 2")).toBe("cancelled");
+    expect(outcome("Bought at level 3")).toBe("rejected");
+    // Quyết định không đặt lệnh: không có kết quả (không đoán).
+    expect(outcome("Price left the grid range")).toBeNull();
+    // Post-only cross là bình thường; giới hạn rủi ro của DeskLabs đếm riêng, không gọi là SoDEX từ chối.
+    expect(detail.refusedRecently).toBe(1);
+    expect(detail.blockedByRiskRecently).toBe(1);
+  });
+
+  it("ends the last run of a stopped bot at its first pause or stop after Running (BD-06)", async () => {
+    const { client } = await connectedUser(`runtime-end-${randomUUID()}@drift.test`);
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "Ended", paramSource: "manual", config: grid },
+    });
+    const id = made.json<{ id: string }>().id;
+    const now = env.clock.now.getTime();
+    const ev = (decision: string, ago: number) =>
+      env.pool.query(
+        "insert into bot_events (id, bot_id, type, decision, occurred_at) values (gen_random_uuid(), $1, 'state', $2, $3)",
+        [id, decision, new Date(now - ago)],
+      );
+    await ev("Running", 3 * 3_600_000);
+    await ev("Paused", 2 * 3_600_000);
+    await ev("Stopped", 3_600_000);
+    await env.pool.query("update bots set state = 'stopped' where id = $1", [id]);
+    const detail = botDetailSchema.parse(
+      (await client.request("GET", `/api/v1/bots/${id}`)).json(),
+    );
+    expect(Date.parse(detail.runningSince ?? "")).toBe(now - 3 * 3_600_000);
+    // Lần chạy dừng ở lần pause (2 giờ trước), không phải lúc Stop sau đó.
+    expect(Date.parse(detail.runningUntil ?? "")).toBe(now - 2 * 3_600_000);
+  });
+
+  it("clears the old pause reason when the user stops a paused bot (BD-06)", async () => {
+    const { client } = await connectedUser(`stop-clears-${randomUUID()}@drift.test`);
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "Paused", paramSource: "manual", config: grid },
+    });
+    const id = made.json<{ id: string }>().id;
+    await env.pool.query(
+      "update bots set state = 'paused', reason_code = 'BOT_MAX_LOSS' where id = $1",
+      [id],
+    );
+    const stop = await client.request("POST", `/api/v1/bots/${id}/actions/stop`, { body: {} });
+    expect(stop.statusCode).toBe(202);
+    const { rows } = await env.pool.query<{ state: string; reason_code: string | null }>(
+      "select state, reason_code from bots where id = $1",
+      [id],
+    );
+    // Engine sẽ ghi "Stopped" với STOPPED_BY_USER ("Stopped by you"), không phải BOT_MAX_LOSS.
+    expect(rows[0]).toEqual({ state: "stopping", reason_code: null });
+  });
 });
 
 describe("Waiting for price (IMP-01, DEC-91)", () => {

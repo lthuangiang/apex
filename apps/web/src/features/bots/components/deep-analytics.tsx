@@ -20,6 +20,8 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Workspace } from "@/components/workspace";
 import { api } from "@/lib/api";
 
+import { rejectBreakdown } from "../reject-text";
+
 import {
   AreaLine,
   GroupBars,
@@ -605,6 +607,7 @@ function Trades({
 
 function Execution({ a }: { a: BotAnalytics }) {
   const t = useTranslations("agent.sa");
+  const tr = useTranslations("agent.rejects");
   const te = useTranslations("agent.sa.exit");
   const e = a.execution;
   return (
@@ -617,7 +620,11 @@ function Execution({ a }: { a: BotAnalytics }) {
             value={pctText(e.fillRatePct)}
             sub={t("fillSub", { f: e.ordersFilled, p: e.ordersPlaced })}
           />
-          <Stat label={t("rejected")} value={String(e.rejected)} sub={t("rejectedSub")} />
+          <Stat
+            label={t("rejected")}
+            value={String(e.rejected)}
+            sub={rejectBreakdown(tr, e.rejected, e.rejectedSplit) ?? t("rejectedSub")}
+          />
           <Stat
             label={t("feePerTrade")}
             value={e.feePerTrade === null ? "—" : `$${e.feePerTrade.toFixed(4)}`}
