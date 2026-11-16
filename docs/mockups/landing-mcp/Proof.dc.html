@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DeskLabs analytics and Claude</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a:hover{opacity:.85}
+button:focus-visible,a:focus-visible{outline:2px solid #5b8cff;outline-offset:2px}
+</style>
+</helmet>
+<div style="background: {{c.bg}}; color: {{c.text}}; font-family: Inter, system-ui, sans-serif">
+
+  <section id="analytics" aria-labelledby="h-analytics" style="border-top: 1px solid {{c.line}}">
+    <div style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 88px 32px 72px; display: flex; flex-direction: column; gap: 32px">
+      <div style="display: flex; flex-wrap: wrap; gap: 20px 64px; align-items: flex-end">
+        <div style="flex: 1 1 520px; display: flex; flex-direction: column; gap: 14px">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">In the app</span>
+          <h2 id="h-analytics" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 44px; line-height: 1.05; letter-spacing: -0.015em">Each strategy gets the analytics it needs</h2>
+        </div>
+        <p style="flex: 1 1 380px; margin: 0; font-size: 16px; line-height: 1.6; color: {{c.text2}}">Market Making is judged by what happens after each quote fills. Volume Builder is judged trade by trade. Both are built from the bot’s real SoDEX fills.</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 20px">
+
+        <article aria-labelledby="h-mma" style="border: 1px solid {{c.line}}; border-radius: 12px; background: {{c.surface}}; padding: 20px; display: flex; flex-direction: column; gap: 18px">
+          <header style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap">
+            <h3 id="h-mma" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 20px">Market Making Analytics</h3>
+            <span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: {{c.muted}}">Example · ETH-USD</span>
+          </header>
+          <dl style="margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: {{c.line}}; border: 1px solid {{c.line}}; border-radius: 8px; overflow: hidden">
+            <sc-for list="{{mmKpis}}" as="k" hint-placeholder-count="4">
+              <div style="background: {{c.surface}}; padding: 12px; display: flex; flex-direction: column; gap: 4px">
+                <dt style="font-size: 12px; color: {{c.muted}}">{{k.label}}</dt>
+                <dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 500">{{k.value}}</dd>
+                <dd style="margin: 0; font-size: 11.5px; color: {{c.muted}}">{{k.sub}}</dd>
+              </div>
+            </sc-for>
+          </dl>
+
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <figure style="margin: 0; display: flex; flex-direction: column; gap: 10px">
+              <figcaption style="display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 14px">Adverse selection</strong><span style="font-size: 12px; color: {{c.muted}}">Fills the price went against, 1 min after</span></figcaption>
+              <sc-for list="{{adverse}}" as="a" hint-placeholder-count="3">
+                <div style="display: grid; grid-template-columns: 78px minmax(0, 1fr) 46px; align-items: center; gap: 8px; font-size: 12.5px">
+                  <span style="color: {{c.text2}}">{{a.group}}</span>
+                  <span aria-hidden="true" style="position: relative; height: 10px; border-radius: 3px; background: {{c.track}}">
+                    <span style="{{a.bar}}"></span>
+                    <span style="position: absolute; left: 50%; top: -3px; width: 1px; height: 16px; background: {{c.muted}}"></span>
+                  </span>
+                  <span style="font-family: 'JetBrains Mono', monospace; text-align: right">{{a.pct}}</span>
+                </div>
+              </sc-for>
+              <span style="font-size: 11.5px; color: {{c.muted}}">Line = 50%, a coin flip</span>
+            </figure>
+            <figure style="margin: 0; display: flex; flex-direction: column; gap: 8px">
+              <figcaption style="display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 14px">Inventory</strong><span style="font-size: 12px; color: {{c.muted}}">Max 40.00 USDC · flat 95.4% of the time</span></figcaption>
+              <svg viewBox="0 0 240 110" width="100%" role="img" aria-label="Example inventory over 13 hours: mostly flat at zero, with short positions up to plus or minus 20 USDC">
+                <line x1="0" y1="15" x2="240" y2="15" stroke="{{c.line}}" stroke-width="1"></line>
+                <line x1="0" y1="55" x2="240" y2="55" stroke="{{c.muted}}" stroke-width="1" stroke-dasharray="3 3"></line>
+                <line x1="0" y1="95" x2="240" y2="95" stroke="{{c.line}}" stroke-width="1"></line>
+                <polyline points="{{invPoints}}" fill="none" stroke="{{c.bid}}" stroke-width="1.6"></polyline>
+                <text x="0" y="11" font-family="JetBrains Mono, monospace" font-size="9" fill="{{c.muted}}">+20</text>
+                <text x="0" y="107" font-family="JetBrains Mono, monospace" font-size="9" fill="{{c.muted}}">−20</text>
+              </svg>
+            </figure>
+          </div>
+          <p style="margin: 0; padding: 10px 12px; border-radius: 8px; background: {{c.surface2}}; font-size: 13px; line-height: 1.5"><strong style="font-weight: 600">Key insight · </strong><span style="color: {{c.text2}}">Bid fills are hit worse: 1.2 bp more adverse move than the other side after a minute.</span></p>
+        </article>
+
+        <article aria-labelledby="h-vbd" style="border: 1px solid {{c.line}}; border-radius: 12px; background: {{c.surface}}; padding: 20px; display: flex; flex-direction: column; gap: 18px">
+          <header style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap">
+            <h3 id="h-vbd" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 20px">Volume Builder · Volume and analytics</h3>
+            <span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: {{c.muted}}">Example · ETH-USD</span>
+          </header>
+          <dl style="margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: {{c.line}}; border: 1px solid {{c.line}}; border-radius: 8px; overflow: hidden">
+            <sc-for list="{{vbKpis}}" as="k" hint-placeholder-count="4">
+              <div style="background: {{c.surface}}; padding: 12px; display: flex; flex-direction: column; gap: 4px">
+                <dt style="font-size: 12px; color: {{c.muted}}">{{k.label}}</dt>
+                <dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 500">{{k.value}}</dd>
+                <dd style="margin: 0; font-size: 11.5px; color: {{c.muted}}">{{k.sub}}</dd>
+              </div>
+            </sc-for>
+          </dl>
+
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <figure style="margin: 0; display: flex; flex-direction: column; gap: 8px">
+              <figcaption style="display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 14px">Trades by holding time</strong><span style="font-size: 12px; color: {{c.muted}}">Number of closed trades</span></figcaption>
+              <div aria-hidden="true" style="height: 92px; display: flex; align-items: flex-end; gap: 6px; border-bottom: 1px solid {{c.line}}">
+                <sc-for list="{{hold}}" as="h" hint-placeholder-count="6">
+                  <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: {{c.muted}}">{{h.n}}</span>
+                    <span style="{{h.bar}}"></span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display: flex; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: {{c.muted}}">
+                <sc-for list="{{hold}}" as="h" hint-placeholder-count="6"><span style="flex: 1; text-align: center">{{h.label}}</span></sc-for>
+              </div>
+              <p style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); margin: 0">Example: 15 trades held 0 to 30 seconds, 14 held 30 to 60 seconds, 11 held 1 to 2 minutes, 17 held 2 to 5 minutes, 2 held 5 to 10 minutes, none longer.</p>
+            </figure>
+            <figure style="margin: 0; display: flex; flex-direction: column; gap: 10px">
+              <figcaption style="display: flex; flex-direction: column; gap: 2px"><strong style="font-size: 14px">Volume breakdown</strong><span style="font-size: 12px; color: {{c.muted}}">Share of volume</span></figcaption>
+              <sc-for list="{{split}}" as="s" hint-placeholder-count="2">
+                <div style="display: flex; flex-direction: column; gap: 5px">
+                  <div style="display: flex; justify-content: space-between; font-size: 12px"><span>{{s.a}}</span><span style="color: {{c.text2}}">{{s.b}}</span></div>
+                  <div aria-hidden="true" style="display: flex; height: 10px; border-radius: 3px; overflow: hidden; background: {{c.track}}"><span style="{{s.bar}}"></span></div>
+                </div>
+              </sc-for>
+            </figure>
+          </div>
+          <p style="margin: 0; padding: 10px 12px; border-radius: 8px; background: {{c.surface2}}; font-size: 13px; line-height: 1.5"><strong style="font-weight: 600">Review this run · </strong><span style="color: {{c.text2}}">replays the bot’s real entries with other exit settings, and suggests a change only when it wins on trades it was not tuned on.</span></p>
+        </article>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: {{c.muted}}">Examples from real DeskLabs bots. Your bot shows its own numbers. Not a forecast.</p>
+    </div>
+  </section>
+
+  <section id="claude" aria-labelledby="h-claude" style="border-top: 1px solid {{c.line}}; background: {{c.band}}">
+    <div style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 88px 32px; display: flex; flex-wrap: wrap; gap: 40px 64px; align-items: flex-start">
+      <div style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 20px">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">DeskLabs for Claude</span>
+        <h2 id="h-claude" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 44px; line-height: 1.05; letter-spacing: -0.015em">Ask Claude about your bots</h2>
+        <p style="margin: 0; font-size: 16px; line-height: 1.6; color: {{c.text2}}">Connect DeskLabs to Claude and ask about your bots, portfolio, risk and the traders you follow, in plain words. Claude can also draft bot settings for you to review.</p>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <label for="mcp-url" style="font-size: 12.5px; color: {{c.muted}}">Server address</label>
+          <div style="display: flex; gap: 8px">
+            <input id="mcp-url" type="text" readonly="readonly" value="https://mcp.desklabs.xyz/mcp" style="flex: 1; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid {{c.line}}; background: {{c.surface}}; color: {{c.text}}; font-family: 'JetBrains Mono', monospace; font-size: 13.5px">
+            <button type="button" style="min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid {{c.btnBorder}}; background: transparent; color: {{c.text}}; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Copy</button>
+          </div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px">
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 20px; border-radius: 8px; background: #2e62e8; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 600">Connect in 2 minutes</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 18px; border-radius: 8px; border: 1px solid {{c.btnBorder}}; color: {{c.text}}; text-decoration: none; font-size: 15px; font-weight: 600">See what it can do</a>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; border: 1px solid {{c.line}}; font-size: 14px">
+          <caption style="text-align: left; padding: 0 0 8px; font-size: 13px; color: {{c.muted}}">What Claude gets</caption>
+          <tbody>
+            <tr style="border-bottom: 1px solid {{c.line}}; background: {{c.surface}}"><th scope="row" style="padding: 12px 14px; text-align: left; font-weight: 500">Read your DeskLabs data</th><td style="padding: 12px 14px; text-align: right; font-size: 12.5px; color: {{c.text2}}">Asked when you connect</td></tr>
+            <tr style="border-bottom: 1px solid {{c.line}}; background: {{c.surface}}"><th scope="row" style="padding: 12px 14px; text-align: left; font-weight: 500">Save bot drafts</th><td style="padding: 12px 14px; text-align: right; font-size: 12.5px; color: {{c.text2}}">Asked the first time Claude drafts</td></tr>
+            <tr style="background: {{c.neverBg}}"><th scope="row" style="padding: 12px 14px; text-align: left; font-weight: 600">Trade, change bots or move money</th><td style="padding: 12px 14px; text-align: right; font-family: 'JetBrains Mono', monospace; color: {{c.never}}">Never</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <figure aria-label="Example chat in Claude" style="flex: 1 1 480px; margin: 0; border: 1px solid {{c.line}}; border-radius: 12px; background: {{c.surface}}; overflow: hidden">
+        <div style="padding: 10px 16px; border-bottom: 1px solid {{c.line}}; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: {{c.muted}}">Example chat in Claude</div>
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px">
+          <p style="margin: 0; align-self: flex-end; max-width: 80%; padding: 10px 14px; border-radius: 12px 12px 4px 12px; background: #2e62e8; color: #ffffff; font-size: 14.5px">How are my bots doing this week?</p>
+          <span style="align-self: flex-start; padding: 4px 10px; border-radius: 6px; border: 1px solid {{c.line}}; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: {{c.text2}}">Used DeskLabs · list_bots, get_portfolio_summary</span>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14.5px; line-height: 1.55">
+            <p style="margin: 0">You have [N] bots running. Here is how each one did over the last 7 days:</p>
+            <p style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.text2}}">[Bot name] · [profit or loss] · [fees]<br>[Bot name] · [profit or loss] · [fees]</p>
+            <p style="margin: 0; font-size: 12.5px; color: {{c.muted}}">Numbers come from your DeskLabs account. Not a forecast.</p>
+          </div>
+          <p style="margin: 0; align-self: flex-end; max-width: 80%; padding: 10px 14px; border-radius: 12px 12px 4px 12px; background: #2e62e8; color: #ffffff; font-size: 14.5px">Draft a Futures Grid on BTC with a 50 USDC max loss.</p>
+          <div style="border: 1px solid {{c.line}}; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 6px; background: {{c.surface2}}">
+            <strong style="font-size: 14px">From Claude</strong>
+            <span style="font-size: 13.5px; color: {{c.text2}}">Claude drafted these settings. Nothing changes until you review and save or start the bot yourself.</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{c.muted}}">Draft expires [time].</span>
+          </div>
+        </div>
+      </figure>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":1900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const P = {
+      dark: { bg: '#0b1020', band: '#0e1428', surface: '#11172c', surface2: '#161d38', track: '#1b2240', line: '#232b4d', text: '#eef1fb', text2: '#b7bfdc', muted: '#9aa3c4', never: '#ff9a8c', neverBg: '#2a1620', bid: '#5fd9a4', ask: '#ff9a8c', bar: '#5b8cff', bar2: '#2c3560', btnBorder: '#2c3560' },
+      light: { bg: '#f7f8fc', band: '#eef1f8', surface: '#ffffff', surface2: '#eef2ff', track: '#eceff7', line: '#dfe3f0', text: '#10152b', text2: '#3b4262', muted: '#5a6283', never: '#b42318', neverBg: '#fdecea', bid: '#0f7a4f', ask: '#b42318', bar: '#2e62e8', bar2: '#c9d0e6', btnBorder: '#c9d0e6' }
+    };
+    const theme = this.props.theme || 'dark';
+    const c = P[theme] || P.dark;
+    const adverse = [['All quotes', 50.3], ['Bid fills', 50.9], ['Ask fills', 49.6]].map(function (a) {
+      return { group: a[0], pct: a[1].toFixed(1) + '%', bar: 'position: absolute; left: 0; top: 0; height: 10px; border-radius: 3px; width: ' + a[1] + '%; background: ' + (a[1] > 50 ? c.ask : c.bid) };
+    });
+    const inv = [55,55,55,55,15,55,55,55,55,55,95,55,55,55,55,55,15,55,55,55,55,55,55,95,55,55,55,55,55,15,55,55,55,55,55,55,95,55,55,55,55,55,55,15,55,55,55,55];
+    let pts = '';
+    for (let i = 0; i < inv.length; i += 1) {
+      const x0 = (i * 240 / inv.length).toFixed(1), x1 = ((i + 1) * 240 / inv.length).toFixed(1);
+      pts += x0 + ',' + inv[i] + ' ' + x1 + ',' + inv[i] + ' ';
+    }
+    const holdRaw = [['0–30s', 15], ['30–60s', 14], ['1–2m', 11], ['2–5m', 17], ['5–10m', 2], ['10m+', 0]];
+    const hold = holdRaw.map(function (h) {
+      return { label: h[0], n: String(h[1]), bar: 'width: 100%; height: ' + Math.max(2, Math.round(h[1] / 17 * 70)) + 'px; border-radius: 3px 3px 0 0; background: ' + c.bar };
+    });
+    const split = [
+      { a: 'Buy 50.0%', b: 'Sell 50.0%', bar: 'width: 50%; background: ' + c.bar },
+      { a: 'Maker 88.3%', b: 'Taker 11.7%', bar: 'width: 88.3%; background: ' + c.bid }
+    ];
+    return {
+      c: c,
+      invPoints: pts.trim(),
+      adverse: adverse,
+      hold: hold,
+      split: split,
+      mmKpis: [
+        { label: 'Volume', value: '50,786.76', sub: 'USDC' },
+        { label: 'Fill rate', value: '37.8%', sub: '2,558 of 6,759 orders' },
+        { label: 'Time on book', value: '2.9 s', sub: 'Median, order sent → filled' },
+        { label: 'Maker share', value: '100.0%', sub: 'Of volume' }
+      ],
+      vbKpis: [
+        { label: 'Volume generated', value: '17,276.23', sub: 'Both sides of every fill' },
+        { label: 'Trading efficiency', value: '88.3%', sub: 'Maker share of volume' },
+        { label: 'Fill ratio', value: '40%', sub: '107 of 268' },
+        { label: 'Trades / hour', value: '1.9', sub: 'In this period' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
