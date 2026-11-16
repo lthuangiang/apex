@@ -245,8 +245,8 @@ Quy tắc của Market Making (VOLUME_MAKER.md mục 17.3) không áp dụng cho
 | Step | Field | Default | Rule / help text | Error message |
 |---|---|---|---|---|
 | 2 | Markets (`markets`) | Mọi market của trader mà SoDEX có | 1–20 market Perps, không trùng; người dùng bỏ tick được (DEC-226); khoá sau khi tạo; `maxExposure` và `maxLoss` tính trên tổng. Trader giao dịch ở market không có trong bot → không bao giờ mở lệnh, ghi "Skipped" (`market_off`, không gửi tin) | Pick at least one market. / Up to 20 markets. / Each market once. |
-| 2 | Leverage | 5× (DEC-103) | 1× to the SoDEX market max | Above the SoDEX maximum of N× for this market. |
-| 3 | Order size from / to | 200 / 500 (DEC-103) | Position value per trade, random in range; min ≥ SoDEX min size | Below SoDEX minimum order size. / Must be at least the minimum size. |
+| 2 | Leverage | Mức SoDEX đang đặt cho market của account, tối đa 25×; không biết thì 25× (DEC-133, DEC-TBD-vb-account-leverage) | 1× to the SoDEX market max | Above the SoDEX maximum of N× for this market. |
+| 3 | Order size from / to | 100 / 200 (DEC-133) | Position value per trade, random in range; min ≥ SoDEX min size | Below SoDEX minimum order size. / Must be at least the minimum size. |
 | 3 | Hold at least / at most | 180 s / 300 s | 10–3600 s, random in range; at most = hard time stop | Allowed 10–3600 s. / Must be at least the minimum hold. |
 | 3 | Reverse the signal | Off | Không bao giờ vào ngược xu hướng 5 phút, kể cả sau khi đảo (DEC-158) | — |
 | 3 | Only trade sideways | Off | Chỉ vào lượt mới khi regime 5 phút là SIDEWAY; lượt đang mở vẫn thoát như thường (DEC-158) | — |

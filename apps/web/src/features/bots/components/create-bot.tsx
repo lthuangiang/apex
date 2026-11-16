@@ -16,7 +16,7 @@ import { useMarketLast, useMarkets } from "@/lib/markets";
 import { ME_KEY, useBuilderFeeRate, useMe, useTwoFactorNeeded } from "@/lib/queries";
 import { BELOW_LG, useMediaQuery } from "@/lib/use-media";
 
-import { emptyValues, FIELDS, toConfig, type FormValues } from "../fields";
+import { accountLeverageDefault, emptyValues, FIELDS, toConfig, type FormValues } from "../fields";
 import { defaultBotName } from "../form-layout";
 import { liveHints, previewModel, priceMarketOf } from "../preview";
 
@@ -83,8 +83,19 @@ export function CreateBot({
   const s = (k: string) => t(`strategies.${strategy}.${k}`);
   const marketList = useMarkets().data?.items ?? [];
   const defaultName = defaultBotName(s("name"), values, marketList);
+  // CB-01: Volume Builder lấy đòn bẩy SoDEX đang đặt cho market của account làm mặc định (tối đa VF_DEFAULT_LEVERAGE),
+  // một lần, khi chưa ai đặt đòn bẩy (người dùng, AI parameters, bản nháp, preset).
+  const levFromAccount = useRef(
+    strategy === "volume_farm" &&
+      draft === undefined &&
+      fromClaude === undefined &&
+      preset?.leverage === undefined,
+  );
   const update = useCallback((next: FormValues) => {
-    setValues(next);
+    setValues((prev) => {
+      if (prev.leverage !== next.leverage) levFromAccount.current = false;
+      return next;
+    });
     setDirty(true);
     setAck(false);
     setLevAck(false);
@@ -192,6 +203,14 @@ export function CreateBot({
     (start.error instanceof ApiError && start.error.code === "TWO_FACTOR_REQUIRED");
   const [startAfterSave, setStartAfterSave] = useState(false);
   const levWarn = leverageWarning(checks.data);
+  const accountLev = levWarn?.currentLeverage;
+  useEffect(() => {
+    if (!levFromAccount.current) return;
+    const next = accountLeverageDefault(accountLev);
+    if (next === null) return;
+    levFromAccount.current = false;
+    setValues((v) => (v.leverage === next ? v : { ...v, leverage: next }));
+  }, [accountLev]);
   const levText = (lev: string | null | undefined, mode: string | null | undefined) =>
     t("beforeStart.leverageValue", { leverage: lev ?? "", mode: mode ?? "" });
   // Điều kiện còn thiếu để bật Start, hiện ngay trên nút (UI_REVIEW H2); mỗi mục là link tới chỗ cần sửa.
