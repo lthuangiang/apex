@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   botEvents,
   botReviews,
@@ -5,21 +7,28 @@ import {
   botVersions,
   deskItems,
   fills,
+  goals,
   orders,
   type Db,
 } from "@drift/db";
 import {
+  AppError,
   botHealth,
   botReviewResultSchema,
   dec,
   Decimal,
   deskNotes,
+  ErrorCode,
   evaluateBot,
+  goalGauge,
+  goalLossOver,
   NEEDS_YOU_CONFIG,
   pickNeedsYou,
   Strategy,
   type BotHealth,
+  type AccountRule,
   type DeskBotFacts,
+  type DeskHomeView,
   type DeskStopCheck,
   type DeskTakerStats,
   type MarginTier,
@@ -38,7 +47,7 @@ import {
 } from "@drift/strategies";
 import { and, desc, eq, gte, inArray, isNull, like, sql } from "drizzle-orm";
 
-import { analystBots } from "../account/service";
+import { analystBots, riskStatusOf } from "../account/service";
 import type { BotDeps } from "../bots/service";
 
 // AI Desk B+ M1 (DEC-164, DEC-166): gom dữ liệu thật thành `DeskBotFacts`, chạy 4 quy tắc (hàm thuần ở
@@ -317,6 +326,53 @@ export async function collectFacts(
  * Tính lại việc của user: upsert từng việc còn đúng, đánh dấu `resolved` việc không còn đúng, rồi chọn tối đa 3 việc
  * không hoãn. Trả kèm sức khoẻ từng bot.
  */
+/** Thẻ Mục tiêu (DEC-177): goals + drawdown Risk Center; chưa có goals → null. */
+export async function goalOf(
+  deps: { db: Db; now: () => Date },
+  userId: string,
+): Promise<DeskHomeView["goal"]> {
+  const [g] = await deps.db.select().from(goals).where(eq(goals.userId, userId)).limit(1);
+  if (g === undefined) return null;
+  const risk = await riskStatusOf(deps, userId);
+  return {
+    goal: g.goal,
+    ...goalGauge(
+      { capital: g.capital, maxDrop: g.maxDrop },
+      risk === null ? null : { peakEquity: risk.status.peakEquity, equity: risk.status.equity },
+    ),
+  };
+}
+
+/**
+ * Id tất định cho việc cấp account (không lưu ở `desk_items`, DEC-272): cùng user + loại việc thì
+ * cùng id, để web dùng làm key và snooze trả lỗi rõ ràng.
+ */
+export function accountItemId(userId: string, rule: AccountRule): string {
+  const h = createHash("sha1").update(`desk-account-item:${userId}:${rule}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${((parseInt(h.slice(16, 17), 16) & 0x3) | 0x8).toString(16)}${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
+
+/** Việc "lỗ đã vượt giới hạn của mục tiêu" (RS-01): tính lúc đọc, không lưu, không hoãn; thiếu dữ liệu thì không có. */
+async function accountItems(deps: NeedsYouDeps, userId: string): Promise<NeedsYouView["items"]> {
+  const goal = await goalOf(deps, userId);
+  if (goal?.used == null || !goalLossOver(goal)) return [];
+  return [
+    {
+      id: accountItemId(userId, "goal_loss_over"),
+      botId: null,
+      botName: "",
+      strategy: "",
+      market: "",
+      rule: "goal_loss_over",
+      severity: 3,
+      facts: [
+        { id: "goal_used", name: "goal_used", value: goal.used, unit: "usdc", source: "risk" },
+        { id: "goal_limit", name: "goal_limit", value: goal.limit, unit: "usdc", source: "goal" },
+      ],
+    },
+  ];
+}
+
 export async function needsYou(deps: NeedsYouDeps, userId: string): Promise<NeedsYouView> {
   const now = deps.now();
   const facts = await collectFacts(deps, userId);
@@ -379,21 +435,26 @@ export async function needsYou(deps: NeedsYouDeps, userId: string): Promise<Need
   );
   const idOf = new Map(current.map((s) => [keyOf(s), s.id]));
   const nameOf = new Map(facts.map((f) => [f.botId, f]));
+  const account = await accountItems(deps, userId);
   return {
     checkedAt: now.toISOString(),
-    items: picked.map((c: NeedsYouCandidate) => {
-      const b = nameOf.get(c.botId);
-      return {
-        id: idOf.get(keyOf(c)) ?? "",
-        botId: c.botId,
-        botName: b?.name ?? "",
-        strategy: b?.strategy ?? "",
-        market: b?.market ?? "",
-        rule: c.rule,
-        severity: c.severity,
-        facts: c.facts,
-      };
-    }),
+    // Việc cấp account đứng trước; tổng vẫn tối đa NEEDS_YOU_CONFIG.maxItems.
+    items: [
+      ...account,
+      ...picked.map((c: NeedsYouCandidate) => {
+        const b = nameOf.get(c.botId);
+        return {
+          id: idOf.get(keyOf(c)) ?? "",
+          botId: c.botId,
+          botName: b?.name ?? "",
+          strategy: b?.strategy ?? "",
+          market: b?.market ?? "",
+          rule: c.rule,
+          severity: c.severity,
+          facts: c.facts,
+        };
+      }),
+    ].slice(0, NEEDS_YOU_CONFIG.maxItems),
     bots: facts.map((b) => ({
       botId: b.botId,
       name: b.name,
@@ -411,6 +472,12 @@ export async function snoozeItem(
   userId: string,
   itemId: string,
 ): Promise<{ id: string; rule: NeedsYouRule; snoozedUntil: string } | null> {
+  // Việc cấp account không lưu nên không hoãn được: báo lỗi rõ ràng, không âm thầm bỏ qua (DEC-272).
+  if (itemId === accountItemId(userId, "goal_loss_over"))
+    throw new AppError(
+      ErrorCode.stateConflict,
+      "This item can't be snoozed. It clears when your losses are back within your goal's limit.",
+    );
   const now = deps.now();
   const [row] = await deps.db
     .update(deskItems)

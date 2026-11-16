@@ -247,14 +247,29 @@ export class PaperGateway implements Gateway {
    * Giá mới của market: khớp các lệnh paper đang treo bị giá đi xuyên qua (market: khớp ở giá này ± trượt giá).
    * Ghi `paper_fills` + số dư giả trong một transaction mỗi lệnh; trả fill cho engine.
    */
-  async onPrice(market: string, price: string, at: number): Promise<PaperFillEvent[]> {
+  async onPrice(
+    market: string,
+    price: string,
+    at: number,
+    /**
+     * Chỉ lệnh của các bot này (engine đang chạy chúng). Bot không còn runner thì engine không ghi được fill vào dòng
+     * lệnh, nên khớp lệnh của nó sẽ khớp lại ở mỗi lần giá sau (PB-01).
+     */
+    botIds: readonly string[],
+  ): Promise<PaperFillEvent[]> {
     this.setPrice(market, price);
+    if (botIds.length === 0) return [];
     const rows = await this.d.db
       .select({ order: orders, strategy: bots.strategy, userId: bots.userId })
       .from(orders)
       .innerJoin(bots, eq(bots.id, orders.botId))
       .where(
-        and(eq(bots.mode, "paper"), eq(orders.market, market), inArray(orders.status, [...OPEN])),
+        and(
+          eq(bots.mode, "paper"),
+          inArray(orders.botId, [...botIds]),
+          eq(orders.market, market),
+          inArray(orders.status, [...OPEN]),
+        ),
       );
     const out: PaperFillEvent[] = [];
     // Builder fee riêng của user cho chiến lược (team đặt tay DEC-159, rồi bậc volume DEC-258), như lệnh thật.

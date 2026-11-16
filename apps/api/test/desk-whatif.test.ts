@@ -418,6 +418,61 @@ describe("what-if and Apply", () => {
     expect((await home()).goal).toEqual({ goal: "steady", limit: "500", used: "75" });
   });
 
+  it("adds a Needs you item once losses pass the goal's limit, with no bot, no comparison and no snooze (RS-01)", async () => {
+    const { client, userId } = await deskUser("whatif-goal-over@example.com");
+    await client.request("PUT", "/api/v1/goals", {
+      body: { goal: "steady", capital: "5000", maxDrop: "10", assets: ["BTC"] },
+    });
+    const home = async () =>
+      deskHomeViewSchema.parse((await client.request("GET", "/api/v1/desk/home")).json());
+    const needs = async () =>
+      needsYouViewSchema.parse((await client.request("GET", "/api/v1/desk/needs-you")).json());
+    // Chưa tính được mức đã dùng: không có việc (không hiện 0).
+    expect((await home()).items).toEqual([]);
+    const { rows } = await env.pool.query<{ id: string }>(
+      "select id from sodex_accounts where user_id = $1",
+      [userId],
+    );
+    const now = env.clock.now.getTime();
+    const snap = (ago: number, equity: string) =>
+      env.pool.query(
+        "insert into equity_snapshots (sodex_account_id, at, equity) values ($1, $2, $3)",
+        [rows[0]?.id, new Date(now - ago), equity],
+      );
+    await snap(3 * 3_600_000, "5200");
+    // Đúng bằng giới hạn (500 / 500): chưa tính là vượt.
+    await snap(120_000, "4700");
+    expect((await home()).items).toEqual([]);
+    // Vượt (600 / 500): một việc cấp account, đứng đầu, không có bot và không có so sánh.
+    await snap(60_000, "4600");
+    const h = await home();
+    expect(h.items[0]).toMatchObject({
+      rule: "goal_loss_over",
+      botId: null,
+      whatif: null,
+      severity: 3,
+    });
+    expect(h.items[0]?.facts.map((f) => [f.name, f.value])).toEqual([
+      ["goal_used", "600"],
+      ["goal_limit", "500"],
+    ]);
+    // Cùng một số việc ở mọi nơi đọc Needs you.
+    expect((await needs()).items.length).toBe(h.items.length);
+    // Không hoãn được: lỗi chuẩn, không âm thầm bỏ qua.
+    const later = await client.request(
+      "POST",
+      `/api/v1/desk/needs-you/${h.items[0]?.id ?? ""}/later`,
+    );
+    expect(errorOf(later.json()).code).toBe("STATE_CONFLICT");
+    // Không có bot nên không có so sánh: lỗi rõ ràng, không 404 mơ hồ.
+    const compare = await client.request(
+      "POST",
+      `/api/v1/desk/needs-you/${h.items[0]?.id ?? ""}/whatif`,
+    );
+    expect(errorOf(compare.json()).code).toBe("STATE_CONFLICT");
+    expect((await home()).items[0]?.rule).toBe("goal_loss_over");
+  });
+
   it("does not wait forever on a comparison whose queue message was lost", async () => {
     const { client } = await deskUser("whatif-stale@example.com");
     const botId = await bot(client, "volume_farm", farm, "Stale Farm");
