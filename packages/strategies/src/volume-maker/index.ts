@@ -684,6 +684,21 @@ function quote(
   return { actions, state: next };
 }
 
+/** Quyết định ghi vào Decisions khi Volume Maker tự dừng (`halt`). */
+export const VOLUME_MAKER_STOPPED = "Volume Maker stopped";
+const RUN_TIME_ENDED = "Run time ended.";
+const volumeTargetReached = (target: string) => `Volume target ${target} reached.`;
+
+/**
+ * Lý do MAX_CYCLES theo câu `why` mà `halt` đã ghi (DEC-TBD-mm-form-copy): đủ volume target hay hết giờ. Đọc từ
+ * nhật ký lúc dừng, không suy từ config hiện tại (config có thể đã sửa sau khi dừng). Câu khác thì null.
+ */
+export function volumeMakerStopCause(why: string | null): "volume_target" | "end_time" | null {
+  if (why === null) return null;
+  if (why === RUN_TIME_ENDED) return "end_time";
+  return /^Volume target \S+ reached\.$/.test(why) ? "volume_target" : null;
+}
+
 function halt(
   c: VolumeMakerConfig,
   s: VolumeMakerState,
@@ -700,7 +715,7 @@ function halt(
   for (const [id, o] of Object.entries(s.orders)) {
     if (o.status === "live") actions.push({ type: "cancel", clOrdID: id });
   }
-  actions.push({ type: "log", decision: "Volume Maker stopped", why });
+  actions.push({ type: "log", decision: VOLUME_MAKER_STOPPED, why });
   const orders: Record<string, TrackedOrder> = {};
   for (const [id, o] of Object.entries(s.orders)) {
     orders[id] = o.status === "live" ? { ...o, status: "cancelling", since: at } : o;
@@ -760,9 +775,9 @@ function guards(
       at,
     );
   if (c.volumeTarget !== undefined && dec(s.volume).gte(c.volumeTarget))
-    return halt(c, s, ctx, ReasonCode.maxCycles, `Volume target ${c.volumeTarget} reached.`, at);
+    return halt(c, s, ctx, ReasonCode.maxCycles, volumeTargetReached(c.volumeTarget), at);
   if (c.runUntil !== "target_or_budget" && c.untilAt !== undefined && at >= c.untilAt)
-    return halt(c, s, ctx, ReasonCode.maxCycles, "Run time ended.", at);
+    return halt(c, s, ctx, ReasonCode.maxCycles, RUN_TIME_ENDED, at);
   if (!s.warned && used.gte(dec(c.costBudget).mul("0.8"))) {
     return {
       actions: [

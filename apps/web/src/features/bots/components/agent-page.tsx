@@ -29,7 +29,7 @@ import { useMarketNames } from "@/lib/markets";
 import { ME_KEY, useMe, useTwoFactorNeeded } from "@/lib/queries";
 
 import { botCapital, botMarket } from "../bot-label";
-import { useReasonLabel } from "../stop-reason";
+import { stopEventIdOf, useReasonLabel } from "../stop-reason";
 
 import { BetaChip, isBeta } from "./beta-chip";
 import { useBotErrorText } from "./bot-errors";
@@ -110,13 +110,15 @@ export function AgentPage({ botId }: { botId?: string }) {
   const d: BotDetail | undefined = detail.data;
   const bot = d?.bot;
   // Sự kiện state lưu mã lý do (API_KEY_UNUSABLE…) ở `why`: hiện câu chữ thay cho mã. `stopDetail` của API chỉ nói
-  // về lần dừng hiện tại, nên chỉ dùng khi mã của sự kiện trùng mã bot đang mang.
-  const why = (text: string | null) =>
+  // về lần dừng hiện tại, nên chỉ dùng cho sự kiện mới nhất mang mã bot đang có; sự kiện cũ hơn dùng nhãn chung.
+  const currentStopEvent = stopEventIdOf(d);
+  const why = (text: string | null, eventId?: string) =>
     text !== null && /^[A-Z_]+$/.test(text) && tr.has(text)
       ? reasonLabel({
           reasonCode: text,
           strategy: bot?.strategy,
-          stopDetail: bot?.reasonCode === text ? bot.stopDetail : null,
+          stopDetail:
+            eventId !== undefined && eventId === currentStopEvent ? bot?.stopDetail : null,
         })
       : text;
   const hasPerps = bot !== undefined && bot.engine !== "spot";
@@ -594,7 +596,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                         </span>
                       ),
                     },
-                    { key: "why", header: t("cols.why"), cell: (e) => why(e.why) ?? "" },
+                    { key: "why", header: t("cols.why"), cell: (e) => why(e.why, e.id) ?? "" },
                     {
                       key: "result",
                       header: t("cols.result"),
@@ -626,7 +628,9 @@ export function AgentPage({ botId }: { botId?: string }) {
                             />
                           )}
                         </span>
-                        <span className="text-xs text-ink-2">{e.result ?? why(e.why) ?? ""}</span>
+                        <span className="text-xs text-ink-2">
+                          {e.result ?? why(e.why, e.id) ?? ""}
+                        </span>
                       </span>
                     </li>
                   ))
@@ -692,7 +696,9 @@ export function AgentPage({ botId }: { botId?: string }) {
                             {formatDateTime(e.occurredAt)}
                           </span>
                         </span>
-                        {e.why === null ? null : <span className="text-[13px]">{why(e.why)}</span>}
+                        {e.why === null ? null : (
+                          <span className="text-[13px]">{why(e.why, e.id)}</span>
+                        )}
                       </li>
                     ))}
                 </ul>

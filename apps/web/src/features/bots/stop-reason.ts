@@ -56,6 +56,26 @@ export function stopReasonKey(i: StopReasonInput): string {
   return "MAX_CYCLES_MM";
 }
 
+/** Id của sự kiện mới nhất có `why` = mã lý do bot đang mang (lần dừng hiện tại); undefined khi không có. */
+export function stopEventIdOf(
+  d:
+    | {
+        bot: { reasonCode: string | null };
+        events: readonly { id: string; why: string | null; occurredAt: string }[];
+      }
+    | undefined,
+): string | undefined {
+  const code = d?.bot.reasonCode;
+  if (d === undefined || code === null || code === undefined) return undefined;
+  let best: { id: string; at: number } | undefined;
+  for (const e of d.events) {
+    if (e.why !== code) continue;
+    const at = Date.parse(e.occurredAt);
+    if (best === undefined || at > best.at) best = { id: e.id, at };
+  }
+  return best?.id;
+}
+
 /** Hook: input → câu chữ lý do. */
 export function useReasonLabel() {
   const tr = useTranslations("reasons");

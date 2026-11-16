@@ -65,11 +65,13 @@ import {
   STRATEGIES,
   waitingOf,
   volumeFarm,
+  VOLUME_MAKER_STOPPED,
+  volumeMakerStopCause,
   type MarketRules,
   type VolumeFarmState,
   type VolumeMakerState,
 } from "@drift/strategies";
-import { and, desc, eq, gte, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, max, or, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 
 import { AuditAction, audit } from "../../lib/audit";
@@ -572,30 +574,44 @@ function waitingView(strategy: string, config: unknown, state: unknown): BotSumm
 }
 
 /**
- * Lý do cụ thể của Market Making dừng với MAX_CYCLES (DEC-TBD-mm-form-copy), cùng thứ tự với `guards` của engine:
- * khối lượng phiên (state runtime) ≥ volume target → `volume_target`; không thì runUntil season_end / date →
- * `end_time`; còn lại (hoặc có target mà thiếu state runtime) null, UI hiện nhãn chung.
+ * Lý do cụ thể của Market Making dừng với MAX_CYCLES (DEC-TBD-mm-form-copy), lấy từ nhật ký chiến lược ghi lúc dừng
+ * ("Volume Maker stopped" · "Volume target … reached." / "Run time ended."), không suy từ config: sửa bot đã dừng
+ * sẽ kích hoạt version mới ngay, nên config hiện tại có thể khác lúc dừng. Một query cho cả danh sách: với mỗi bot,
+ * sự kiện mới nhất trong {Volume Maker stopped, state Running}; nếu mới nhất là Running (đã chạy lại sau lần dừng đó)
+ * hoặc không có thì null.
  */
-export function stopDetailOf(
-  strategy: string,
-  reasonCode: string | null,
-  config: unknown,
-  state: unknown,
-): BotSummary["stopDetail"] {
-  if (strategy !== Strategy.volumeMaker || reasonCode !== ReasonCode.maxCycles) return null;
-  if (typeof config !== "object" || config === null) return null;
-  const c = config as { volumeTarget?: unknown; runUntil?: unknown };
-  const volume =
-    typeof state === "object" && state !== null
-      ? (state as { volume?: unknown }).volume
-      : undefined;
-  const isNum = (v: unknown): v is string => typeof v === "string" && /^\d+(\.\d+)?$/.test(v);
-  if (isNum(c.volumeTarget) && isNum(volume) && dec(volume).gte(c.volumeTarget))
-    return "volume_target";
-  // Có volume target mà không đọc được khối lượng: không khẳng định là hết giờ.
-  if (isNum(c.volumeTarget) && !isNum(volume)) return null;
-  if (c.runUntil === "season_end" || c.runUntil === "date") return "end_time";
-  return null;
+export async function stopDetailsOf(
+  db: Db,
+  list: readonly Pick<typeof bots.$inferSelect, "id" | "strategy" | "reasonCode">[],
+): Promise<Map<string, NonNullable<BotSummary["stopDetail"]>>> {
+  const ids = list
+    .filter((b) => b.strategy === Strategy.volumeMaker && b.reasonCode === ReasonCode.maxCycles)
+    .map((b) => b.id);
+  const out = new Map<string, NonNullable<BotSummary["stopDetail"]>>();
+  if (ids.length === 0) return out;
+  const rows = await db
+    .selectDistinctOn([botEvents.botId], {
+      botId: botEvents.botId,
+      decision: botEvents.decision,
+      why: botEvents.why,
+    })
+    .from(botEvents)
+    .where(
+      and(
+        inArray(botEvents.botId, ids),
+        or(
+          eq(botEvents.decision, VOLUME_MAKER_STOPPED),
+          and(eq(botEvents.type, "state"), eq(botEvents.decision, "Running")),
+        ),
+      ),
+    )
+    .orderBy(botEvents.botId, desc(botEvents.occurredAt), desc(botEvents.createdAt));
+  for (const r of rows) {
+    if (r.decision !== VOLUME_MAKER_STOPPED) continue;
+    const cause = volumeMakerStopCause(r.why);
+    if (cause !== null) out.set(r.botId, cause);
+  }
+  return out;
 }
 
 export function summary(
@@ -605,6 +621,7 @@ export function summary(
   config: unknown = null,
   fills = 0,
   marks: Readonly<Record<string, string>> = {},
+  stopDetail: BotSummary["stopDetail"] = null,
 ): BotSummary {
   return {
     id: b.id,
@@ -622,7 +639,7 @@ export function summary(
     fills,
     waiting: b.state === BotState.running ? waitingView(b.strategy, config, state) : null,
     mode: b.mode,
-    stopDetail: stopDetailOf(b.strategy, b.reasonCode, config, state),
+    stopDetail,
     createdAt: iso(b.createdAt),
     updatedAt: iso(b.updatedAt),
   };
@@ -701,7 +718,13 @@ export async function listBots(
   const marks: Record<string, string> = await deps
     .prices(rows.flatMap((r) => priceMarketsOf(r.bot.market, r.bot.strategy, r.config)))
     .catch(() => ({}));
-  return rows.map((r) => summary(r.bot, r.version, r.state, r.config, r.fills, marks));
+  const details = await stopDetailsOf(
+    deps.db,
+    rows.map((r) => r.bot),
+  );
+  return rows.map((r) =>
+    summary(r.bot, r.version, r.state, r.config, r.fills, marks, details.get(r.bot.id) ?? null),
+  );
 }
 
 /** Chi phí / $1M của phiên Volume Farm: max(0, −net) ÷ volume × 1M; chưa có khối lượng thì null (trang bot dùng chung). */
@@ -915,6 +938,7 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
       active?.config ?? null,
       filled?.n ?? 0,
       marks,
+      (await stopDetailsOf(deps.db, [b])).get(b.id) ?? null,
     ),
     versions: versions.map((v) => ({
       id: v.id,

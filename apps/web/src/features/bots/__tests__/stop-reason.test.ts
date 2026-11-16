@@ -2,7 +2,7 @@ import { ReasonCode } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
 import en from "../../../../messages/en.json";
-import { stopReasonKey, type StopReasonInput } from "../stop-reason";
+import { stopEventIdOf, stopReasonKey, type StopReasonInput } from "../stop-reason";
 
 // Nhãn lý do dừng của Market Making (artboard StopReasons, DEC-TBD-mm-form-copy). Mã thật lấy từ `guards` của
 // packages/strategies/src/volume-maker: BUDGET_DONE (costBudget), STOP_LOSS (inventoryLossStop), MAX_CYCLES
@@ -110,5 +110,48 @@ describe("stop reason labels", () => {
     );
     // Stats gộp mọi chiến lược: không có strategy.
     expect(label({ reasonCode: ReasonCode.stopLoss })).toBe("Stopped: stop loss reached");
+  });
+});
+
+describe("which Decisions event gets the current stop detail", () => {
+  const ev = (id: string, why: string | null, at: string) => ({ id, why, occurredAt: at });
+
+  it("only the latest event with the bot's current reason code", () => {
+    const d = {
+      bot: { reasonCode: ReasonCode.maxCycles },
+      events: [
+        ev("new", ReasonCode.maxCycles, "2026-11-16T10:00:00.000Z"),
+        ev("other", "Volume Maker stopped", "2026-11-16T09:59:59.000Z"),
+        ev("old", ReasonCode.maxCycles, "2026-11-10T10:00:00.000Z"),
+      ],
+    };
+    expect(stopEventIdOf(d)).toBe("new");
+    // Thứ tự trong mảng không quan trọng.
+    expect(stopEventIdOf({ ...d, events: [...d.events].reverse() })).toBe("new");
+    // Ở sự kiện cũ, nhãn là nhãn chung.
+    const keyFor = (id: string) =>
+      stopReasonKey({
+        reasonCode: ReasonCode.maxCycles,
+        strategy: "volume_maker",
+        stopDetail: id === stopEventIdOf(d) ? "volume_target" : null,
+      });
+    expect(reasons[keyFor("new")]).toBe("Stopped: volume target reached");
+    expect(reasons[keyFor("old")]).toBe("Stopped: target reached");
+  });
+
+  it("none when the bot has no reason code or no matching event", () => {
+    expect(stopEventIdOf(undefined)).toBeUndefined();
+    expect(
+      stopEventIdOf({
+        bot: { reasonCode: null },
+        events: [ev("a", ReasonCode.maxCycles, "2026-11-16T10:00:00.000Z")],
+      }),
+    ).toBeUndefined();
+    expect(
+      stopEventIdOf({
+        bot: { reasonCode: ReasonCode.maxCycles },
+        events: [ev("a", ReasonCode.budgetDone, "2026-11-16T10:00:00.000Z")],
+      }),
+    ).toBeUndefined();
   });
 });
