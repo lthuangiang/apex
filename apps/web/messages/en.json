@@ -4505,6 +4505,7 @@
         "cta": "Start Volume Builder"
       },
       "more": "More strategies",
+      "moreRegionLabel": "More strategies",
       "backtest": "Backtest any setup on SoDEX price history before you start. A backtest is a simulation, not a forecast.",
       "feeRateLower": "Builder fee {rate}, lower at volume",
       "colStrategy": "Strategy",
@@ -4660,6 +4661,7 @@
     },
     "compare": {
       "title": "How they differ",
+      "regionLabel": "Strategy comparison",
       "question": "Question",
       "otherCol": "Other strategies",
       "tradesQ": "How it trades",

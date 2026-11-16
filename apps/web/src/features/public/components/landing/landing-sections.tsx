@@ -114,7 +114,15 @@ function Strategies() {
         </div>
         <div className="flex flex-col gap-3">
           <h3 className="m-0 font-display text-xl">{t("compare.title")}</h3>
-          <div className="overflow-x-auto rounded-[10px] border border-l-line">
+          <div
+            role="region"
+            aria-label={t("compare.regionLabel")}
+            // Bảng rộng hơn màn hình điện thoại: vùng cuộn phải focus được bằng bàn phím
+            // (axe: scrollable-region-focusable), như DataTable của @drift/ui.
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+            tabIndex={0}
+            className="overflow-x-auto rounded-[10px] border border-l-line"
+          >
             <table className="w-full min-w-[760px] border-collapse text-[14.5px] leading-normal">
               <thead>
                 <tr className="bg-l-surface text-left">
@@ -157,7 +165,14 @@ function Strategies() {
               {t("strategies.feeRate", { rate: maxFee })}
             </span>
           </div>
-          <div className="overflow-x-auto rounded-[10px] border border-l-line">
+          <div
+            role="region"
+            aria-label={t("strategies.moreRegionLabel")}
+            // Vùng cuộn ngang trên điện thoại: phải focus được bằng bàn phím (axe: scrollable-region-focusable).
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+            tabIndex={0}
+            className="overflow-x-auto rounded-[10px] border border-l-line"
+          >
             <table className="w-full min-w-[640px] border-collapse text-[14.5px]">
               <thead>
                 <tr className="bg-l-surface text-left text-[12.5px] text-l-muted">
@@ -283,7 +298,7 @@ function Safety() {
   return (
     <section id="safety" aria-labelledby="h-safety" className="border-t border-l-line bg-l-band">
       <div className={`${WRAP} gap-12 py-16 md:flex-row md:flex-wrap md:gap-x-16 md:py-[88px]`}>
-        <div className="flex min-w-0 flex-[1_1_440px] flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-5 md:flex-[1_1_440px]">
           <span className="font-num text-[13px] text-l-muted">
             {Index({ n: 3, label: t("nav.safety") })}
           </span>
@@ -320,7 +335,7 @@ function Safety() {
             </tbody>
           </table>
         </div>
-        <dl className="m-0 grid min-w-0 flex-[1_1_480px] grid-cols-1 gap-px self-start border border-l-line bg-l-line sm:grid-cols-2">
+        <dl className="m-0 grid min-w-0 grid-cols-1 gap-px self-start border border-l-line bg-l-line sm:grid-cols-2 md:flex-[1_1_480px]">
           {facts.map(([title, body]) => (
             <div key={title} className="flex flex-col gap-2.5 bg-l-surface p-6">
               <dt className="font-display text-lg font-bold">{t(`safety.${title}`)}</dt>
@@ -350,7 +365,7 @@ function Fees() {
   return (
     <section id="fees" aria-labelledby="h-fees" className="border-t border-l-line">
       <div className={`${WRAP} gap-10 py-16 md:flex-row md:flex-wrap md:gap-x-16 md:py-[88px]`}>
-        <div className="flex min-w-0 flex-[1_1_400px] flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-5 md:flex-[1_1_400px]">
           <span className="font-num text-[13px] text-l-muted">
             {Index({ n: 4, label: t("nav.fees") })}
           </span>
@@ -362,7 +377,7 @@ function Fees() {
           </h2>
           <p className="m-0 text-base leading-relaxed text-l-text-2">{t("fees.body")}</p>
         </div>
-        <div className="min-w-0 flex-[1_1_520px] overflow-x-auto">
+        <div className="min-w-0 overflow-x-auto md:flex-[1_1_520px]">
           <table className="w-full border-collapse text-[15px]">
             <thead>
               <tr className="border-b border-l-line text-left text-[12.5px] text-l-muted">
@@ -465,7 +480,7 @@ function Faq() {
   return (
     <section id="faq" aria-labelledby="h-faq" className="border-t border-l-line">
       <div className={`${WRAP} gap-8 py-16 md:flex-row md:flex-wrap md:gap-x-16 md:py-[88px]`}>
-        <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-3.5">
+        <div className="flex min-w-0 flex-col gap-3.5 md:flex-[1_1_320px]">
           <span className="font-num text-[13px] text-l-muted">
             {Index({ n: 5, label: t("nav.faq") })}
           </span>
@@ -476,7 +491,7 @@ function Faq() {
             {t("faq.title")}
           </h2>
         </div>
-        <div className="min-w-0 flex-[2_1_560px] border-t border-l-line">
+        <div className="min-w-0 border-t border-l-line md:flex-[2_1_560px]">
           {FAQ.map((k, i) => {
             const isOpen = open === i;
             return (
@@ -527,7 +542,7 @@ function Cta() {
   return (
     <section aria-labelledby="h-cta" className="border-t border-l-line bg-l-band">
       <div className={`${WRAP} gap-6 py-16 md:flex-row md:flex-wrap md:items-center md:gap-x-12`}>
-        <div className="flex min-w-0 flex-[1_1_480px] flex-col gap-2.5">
+        <div className="flex min-w-0 flex-col gap-2.5 md:flex-[1_1_480px]">
           <h2 id="h-cta" className="m-0 font-display text-[28px] tracking-[-0.01em] md:text-4xl">
             {t("cta.title")}
           </h2>
@@ -558,7 +573,7 @@ export function LandingFooter() {
   return (
     <footer className="border-t border-l-line">
       <div className={`${WRAP} gap-4 pt-8 pb-12 md:flex-row md:flex-wrap md:gap-x-12`}>
-        <div className="flex min-w-0 flex-[1_1_520px] flex-col gap-2">
+        <div className="flex min-w-0 flex-col gap-2 md:flex-[1_1_520px]">
           <strong className="font-display text-[17px]">{brand}</strong>
           <span className="text-[13.5px] font-semibold">{t("built")}</span>
           <span className="text-[13px] leading-relaxed text-l-muted">{t("disclaimer")}</span>

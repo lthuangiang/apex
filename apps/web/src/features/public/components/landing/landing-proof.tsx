@@ -184,7 +184,7 @@ function ClaudeBand({ serverUrl }: { serverUrl: string }) {
       <div
         className={`${SECTION} gap-10 py-16 md:flex-row md:flex-wrap md:items-start md:gap-x-16 md:py-[88px]`}
       >
-        <div className="flex min-w-0 flex-[1_1_420px] flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-5 md:flex-[1_1_420px]">
           <span className="font-num text-[13px] text-l-muted">{t("hero.eyebrow")}</span>
           <h2 id="h-claude" className={H2}>
             {t("hero.title")}
@@ -272,7 +272,7 @@ function ClaudeBand({ serverUrl }: { serverUrl: string }) {
         </div>
         <figure
           aria-label={t("chat.label")}
-          className="m-0 min-w-0 flex-[1_1_480px] overflow-hidden rounded-xl border border-l-line bg-l-surface"
+          className="m-0 min-w-0 overflow-hidden md:flex-[1_1_480px] rounded-xl border border-l-line bg-l-surface"
         >
           <div className="border-b border-l-line px-4 py-2.5 font-num text-[11.5px] text-l-muted">
             {t("chat.label")}

@@ -106,6 +106,20 @@ describe("landing content", () => {
     await expectNoAxeViolations();
   }, 30_000);
 
+  it("lets keyboard users scroll the wide strategy tables on a phone", () => {
+    // jsdom không có layout nên axe không thấy scrollable-region-focusable; e2e mobile-390 (p11-public) chạy axe thật.
+    show();
+    for (const [name, table] of [
+      ["Strategy comparison", "How it trades"],
+      ["More strategies", "What it does"],
+    ] as const) {
+      const box = screen.getByRole("region", { name });
+      expect(box).toHaveAttribute("tabindex", "0");
+      expect(box).toHaveClass("overflow-x-auto");
+      expect(within(box).getByRole("table")).toHaveTextContent(table);
+    }
+  });
+
   it("keeps the safety promises and the SoDEX builder line", () => {
     show();
     expect(
