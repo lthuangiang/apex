@@ -9,7 +9,13 @@ import type { HourBucket, MmCostCollector } from "./mm-cost";
 // volume 24h cao nhất (tính từ candles_1m) cộng mọi market đang có bot MM chạy. Market còn lại: "Not available".
 
 export const MM_TOP_MARKETS = 30;
-export const MM_KEEP_MS = 48 * 3_600_000;
+/**
+ * `mm_market_hourly` giữ 90 ngày (DEC-TBD-mm-hourly-90d, thay phần "giữ 48 giờ" của DEC-227): team Ops cần đủ ngày để
+ * so chi phí làm market theo giờ trong ngày. Mỗi market một dòng / giờ nên 90 ngày × ~30 market ≈ 65K dòng.
+ */
+export const MM_KEEP_MS = 90 * 24 * 3_600_000;
+/** `mid_1s` (giá giữa mỗi giây, chỉ market có bot MM) vẫn giữ 48 giờ như DEC-227: bảng lớn, chỉ D2 cần. */
+export const MID_KEEP_MS = 48 * 3_600_000;
 const HOUR = 3_600_000;
 
 /** Market có bot MM đang chạy (cần `mid_1s` cho D2 và ưu tiên fill thật ở D1). */
@@ -103,7 +109,6 @@ export async function saveFlush(
 }
 
 export async function purgeMmCost(db: Db, now: number): Promise<void> {
-  const cutoff = new Date(now - MM_KEEP_MS);
-  await db.delete(mmMarketHourly).where(lt(mmMarketHourly.hour, cutoff));
-  await db.delete(mid1s).where(lt(mid1s.ts, cutoff));
+  await db.delete(mmMarketHourly).where(lt(mmMarketHourly.hour, new Date(now - MM_KEEP_MS)));
+  await db.delete(mid1s).where(lt(mid1s.ts, new Date(now - MID_KEEP_MS)));
 }
