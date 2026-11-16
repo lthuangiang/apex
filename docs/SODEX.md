@@ -32,7 +32,7 @@ Tài liệu: https://sodex.com/documentation/for-developers/developers/trading/b
 - Tài khoản builder của DRIFT phải có ≥ 100 vUSDC trên cả Spot và Perps thì người dùng mới approve được mức phí khác 0. Cần theo dõi điều kiện này và cảnh báo cho đội vận hành.
 
 ### 5.3 Lệnh
-- Mỗi lệnh của DRIFT mang `builder: {"id": DRIFT_BUILDER_ID, "fee": <mức>}` (DEC-46; account của chính builder không gắn `builder`, DEC-47) ở **cuối** payload. `<mức>` = mức team đặt riêng cho user × chiến lược (bảng `user_builder_fees`, DEC-159) hoặc mặc định của chiến lược (`builderFeeRateOf`, DEC-94), luôn ≤ 10 vì user chỉ approve 10 (`id` đứng trước `fee`), và được thêm **trước** khi tính payload hash.
+- Mỗi lệnh của DRIFT mang `builder: {"id": DRIFT_BUILDER_ID, "fee": <mức>}` (DEC-46; account của chính builder không gắn `builder`, DEC-47) ở **cuối** payload. `<mức>` = mức team đặt riêng cho user × chiến lược (bảng `user_builder_fees`, DEC-159), không có thì mức theo bậc volume (bảng `user_fee_tiers`, DEC-258) hoặc mặc định của chiến lược (`builderFeeRateOf`, DEC-94), luôn ≤ 10 vì user chỉ approve 10 (`id` đứng trước `fee`), và được thêm **trước** khi tính payload hash.
 - Spot: `builder` đặt ở cấp batch, sau `orders`. Perps: đặt làm default của batch (cho phép override theo từng lệnh).
 - Đơn vị: `fee` / `maxFeeRate` tính bằng phần mười basis point. `10` = 1 bp = 0.01% (mức của DRIFT, DEC-46); `50` = 5 bp = 0.05%.
 - Phí thực thu = min(mức người dùng approve, trần của engine). Trần: Perps 0.2% (200), Spot 2% (2000).
