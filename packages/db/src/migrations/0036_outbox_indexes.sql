@@ -1,0 +1,2 @@
+CREATE INDEX "outbox_topic_created_idx" ON "outbox" USING btree ("topic","created_at");--> statement-breakpoint
+CREATE INDEX "outbox_bot_state_idx" ON "outbox" USING btree (("payload"->>'botId'),"created_at") WHERE "outbox"."topic" like 'user.%.bot';

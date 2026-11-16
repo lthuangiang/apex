@@ -253,6 +253,13 @@
       "when": 1794800174742,
       "tag": "0035_fee_tiers",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794816139240,
+      "tag": "0036_outbox_indexes",
+      "breakpoints": true
     }
   ]
 }
