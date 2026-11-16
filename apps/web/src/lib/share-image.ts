@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 /**
- * Ảnh xem trước khi chia sẻ link (Open Graph / X card, DEC-156, DEC-TBD-share-images): file tĩnh ở `public/og/`,
+ * Ảnh xem trước khi chia sẻ link (Open Graph / X card, DEC-156, DEC-281): file tĩnh ở `public/og/`,
  * proxy cho qua (matcher bỏ `og/`). Nguồn: `docs/mockups/share-images/` (bản tối). Ảnh không có số live.
  */
 export const SHARE_IMAGES = {

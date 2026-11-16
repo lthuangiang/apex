@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("claudeGuide");
-  // Tiêu đề tab, meta description và câu chữ khi chia sẻ link dùng chung một bộ; ảnh share riêng (DEC-TBD-share-images).
+  // Tiêu đề tab, meta description và câu chữ khi chia sẻ link dùng chung một bộ; ảnh share riêng (DEC-281).
   const title = t("shareTitle");
   const description = t("shareDescription");
   return { title, description, ...shareMetadata("claude", title, description) };

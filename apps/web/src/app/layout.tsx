@@ -17,7 +17,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "desklabs.xyz";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  // Mặc định khi chia sẻ link: ảnh + câu chữ của Landing (DEC-TBD-share-images). Trang nào có ảnh riêng thì tự đặt.
+  // Mặc định khi chia sẻ link: ảnh + câu chữ của Landing (DEC-281). Trang nào có ảnh riêng thì tự đặt.
   const t = await getTranslations("landing");
   const brand = (await getTranslations("common"))("brand");
   return {

@@ -19,7 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
   if (await signedIn()) return {};
   const t = await getTranslations("landing");
   const brand = (await getTranslations("common"))("brand");
-  // Tiêu đề tab, meta description và câu chữ khi chia sẻ link dùng chung một bộ (DEC-TBD-share-images).
+  // Tiêu đề tab, meta description và câu chữ khi chia sẻ link dùng chung một bộ (DEC-281).
   const title = t("shareTitle", { brand });
   const description = t("shareDescription");
   return {

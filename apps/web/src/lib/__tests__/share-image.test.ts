@@ -23,7 +23,7 @@ function jpegSize(buf: Buffer): { width: number; height: number } {
   throw new Error("no SOF marker");
 }
 
-describe("share images (DEC-156, DEC-TBD-share-images)", () => {
+describe("share images (DEC-156, DEC-281)", () => {
   it.each(Object.entries(SHARE_IMAGES))(
     "%s is a 1200×630 JPG under 300 KB in public/",
     (_key, image) => {
