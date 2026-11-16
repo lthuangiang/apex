@@ -12,6 +12,7 @@ import {
   mmBuilderFeeBps,
   modelCostPerMillion,
   modelPnlBps,
+  moveBp,
   perpsMakerFeeBps,
   quantile,
   stepBpsOf,
@@ -32,7 +33,8 @@ import { requireTeam } from "./team";
 
 // Market hours cho team Ops (docs/mockups/market-hours, DEC-283). Chỉ đọc. Giờ / ngày theo múi giờ của
 // người xem: Postgres đổi mốc thời gian sang giờ địa phương (`AT TIME ZONE`), trung vị tính bằng decimal ở đây.
-//   Khối 1: candles_1m của market (khoá chính (market, ts)).
+//   Khối 1: candles_1m của market (khoá chính (market, ts)), kèm range 1 phút lớn nhất và biến động 15 phút lớn nhất
+//   của mỗi giờ trong kỳ (DEC-TBD-market-hours-help).
 //   Khối 2: mm_market_hourly (theo giờ UTC; múi giờ lệch 30 phút thì gán theo phút bắt đầu, xấp xỉ, DevOps chấp nhận).
 //   Khối 3: fill của bot Market Making / Volume Builder tiền thật (mọi user ở bản team). Hàm tính nhận `userId?` để bản
 //   public sau này chỉ lấy bot của người xem.
@@ -88,8 +90,9 @@ export async function marketHours(
         unavailable: "no_candles",
       },
     };
-  const [vol, cost, bots, model, info] = await Promise.all([
+  const [vol, moves, cost, bots, model, info] = await Promise.all([
     volatility(deps.db, market, from, q.tz),
+    largestMoves15(deps.db, market, from, q.tz),
     makerCost(deps.db, market, from, q.tz),
     botHours(deps.db, { market, from, tz: q.tz, strategies }),
     latestMmModel(deps),
@@ -111,12 +114,19 @@ export async function marketHours(
       : str(modelCostPerMillion(feesBps, modelPnlBps(step, swing, model.a, model.k)));
   const hours: MarketHoursHour[] = Array.from({ length: 24 }, (_, h) => {
     const vh = vol.hours[h];
+    const mv = moves.get(h);
     return {
       hour: h,
       volatility:
         vh === undefined
           ? emptyHour().volatility
-          : { ...vh.out, swingBp: str(vh.swing), estCostPerMillion: estOf(vh.swing) },
+          : {
+              ...vh.out,
+              swingBp: str(vh.swing),
+              estCostPerMillion: estOf(vh.swing),
+              maxMove15Bp: str(mv?.bp ?? null),
+              maxMove15At: mv?.at ?? null,
+            },
       cost: cost.hours[h] ?? emptyHour().cost,
       bots: bots.hours[h] ?? emptyHour().bots,
     };
@@ -157,6 +167,10 @@ function emptyHour(): Omit<MarketHoursHour, "hour"> {
       fiveMin: Array.from({ length: 12 }, () => null),
       swingBp: null,
       estCostPerMillion: null,
+      maxRangeBp: null,
+      maxRangeAt: null,
+      maxMove15Bp: null,
+      maxMove15At: null,
     },
     cost: { markoutBp: null, spreadTicks: null },
     bots: { costPerMillion: null, volume: null, fees: null, botHours: 0, thin: false },
@@ -198,7 +212,7 @@ async function volatility(db: Db, market: string, from: Date, tz: string) {
     select to_char(ts at time zone ${tz}, 'YYYY-MM-DD') as d,
            extract(hour from ts at time zone ${tz})::int as h,
            (extract(minute from ts at time zone ${tz})::int / 5) as m5,
-           high::text as high, low::text as low, close::text as close
+           ts, high::text as high, low::text as low, close::text as close
       from candles_1m
       where market = ${market} and ts >= ${from}
       order by ts`);
@@ -213,11 +227,14 @@ async function volatility(db: Db, market: string, from: Date, tz: string) {
   );
   // Giá đóng theo (ngày, giờ), theo thứ tự thời gian (truy vấn đã order by ts).
   const closes = new Map<string, string[]>();
+  // Nến có range lớn nhất của mỗi giờ địa phương trong kỳ (bằng nhau thì giữ nến sớm nhất).
+  const maxRange: ({ bp: Decimal; ts: unknown } | null)[] = Array.from({ length: 24 }, () => null);
   let lastClose: string | null = null;
   for (const x of rowsOf<{
     d: string;
     h: number;
     m5: number;
+    ts: unknown;
     high: string;
     low: string;
     close: string;
@@ -226,6 +243,8 @@ async function volatility(db: Db, market: string, from: Date, tz: string) {
     lastClose = x.close;
     const v = minuteRangeBp(x.high, x.low);
     if (v === null) continue;
+    const top = maxRange[x.h];
+    if (top === undefined || top === null || v.gt(top.bp)) maxRange[x.h] = { bp: v, ts: x.ts };
     const k = `${x.d}|${String(x.h)}`;
     listOf(byDayHour, k).push(v);
     listOf(byDay, x.d).push(v);
@@ -256,11 +275,45 @@ async function volatility(db: Db, market: string, from: Date, tz: string) {
         ratio: str(quantile(ratios, 0.5)),
         hotPct: ratios.length === 0 ? null : Math.round((hot / ratios.length) * 100),
         fiveMin: (byFive[h] ?? []).map((xs) => str(quantile(xs, 0.5))),
+        maxRangeBp: str(maxRange[h]?.bp ?? null),
+        maxRangeAt: iso(maxRange[h]?.ts),
       },
       swing: medianSwingBps(dates.map((d) => closes.get(`${d}|${String(h)}`) ?? [])),
     };
   });
   return { hours, heatmap, since: iso(first?.since), lastClose };
+}
+
+/**
+ * Khối 1, dòng "Largest 15-min move": với mỗi nến (một mốc bắt đầu), cửa sổ 15 phút [ts, ts + 14 phút] lấy close cao
+ * nhất và thấp nhất bằng window function RANGE trên index (market, ts), một lượt quét, không self-join. Mỗi giờ địa
+ * phương giữ cửa sổ có (cao − thấp) ÷ thấp lớn nhất (so bằng numeric; bằng nhau thì cửa sổ sớm nhất); bp tính bằng
+ * Decimal ở đây. Cửa sổ bắt đầu trong kỳ có thể chứa nến sau đó, không chứa nến trước kỳ.
+ */
+async function largestMoves15(
+  db: Db,
+  market: string,
+  from: Date,
+  tz: string,
+): Promise<Map<number, { bp: Decimal; at: string | null }>> {
+  const r = await db.execute(sql`
+    with w as (
+      select ts,
+             max(close) over f as hi,
+             min(close) over f as lo
+        from candles_1m
+        where market = ${market} and ts >= ${from}
+        window f as (order by ts range between current row and interval '14 minutes' following)
+    )
+    select distinct on (h) h, ts, hi::text as hi, lo::text as lo
+      from (select extract(hour from ts at time zone ${tz})::int as h, ts, hi, lo from w where lo > 0) x
+      order by h, (hi - lo) / lo desc, ts`);
+  const out = new Map<number, { bp: Decimal; at: string | null }>();
+  for (const x of rowsOf<{ h: number; ts: unknown; hi: string; lo: string }>(r)) {
+    const bp = moveBp(x.hi, x.lo);
+    if (bp !== null) out.set(x.h, { bp, at: iso(x.ts) });
+  }
+  return out;
 }
 
 /** Khối 2: markout 30 s phía maker và spread theo giờ địa phương (dòng giờ UTC của mm_market_hourly). */

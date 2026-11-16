@@ -70,6 +70,13 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
         fiveMin: Array.from({ length: 12 }, () => "4.2"),
         swingBp: h === 3 ? null : h === 21 ? "12.43" : "4.1",
         estCostPerMillion: h === 3 ? null : h === 21 ? "214.37" : "88.5",
+        // Giờ 08 (Kolkata): một phút 133 bp và chuỗi 15 phút 276 bp (bắt đầu 08:57 Kolkata = 03:27 UTC).
+        maxRangeBp: h === 3 ? null : h === 8 ? "133.24" : "8.5",
+        maxRangeAt:
+          h === 3 ? null : h === 8 ? "2026-11-15T03:31:00.000Z" : "2026-11-14T00:00:00.000Z",
+        maxMove15Bp: h === 3 ? null : h === 8 ? "276.43" : "30.2",
+        maxMove15At:
+          h === 3 ? null : h === 8 ? "2026-11-15T03:27:00.000Z" : "2026-11-14T00:00:00.000Z",
       },
       cost: { markoutBp: h === 3 ? null : "-1.2", spreadTicks: h === 3 ? null : 1.5 },
       bots:
@@ -221,6 +228,42 @@ describe("Market hours page", () => {
     expect(screen.queryByTitle(/est\. \$/)).not.toBeInTheDocument();
   });
 
+  it("shows each hour's largest 1-minute range and 15-minute move, with colour bins and ▲ for shocks", async () => {
+    const user = userEvent.setup({ delay: null });
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    expect(screen.getByText("Largest 1-min range (bp)")).toBeInTheDocument();
+    expect(screen.getByText("Largest 15-min move (bp)")).toBeInTheDocument();
+    // 03:31 UTC = 09:01 Kolkata; 03:27 UTC = 08:57 Kolkata.
+    const range = screen.getByTitle("133.2 bp · Nov 15, 2026, 09:01 (your time zone)");
+    expect(range).toHaveTextContent("133▲");
+    expect(range).toHaveClass("bg-mh-shock-3");
+    const move = screen.getByTitle("276.4 bp · starts Nov 15, 2026, 08:57");
+    expect(move).toHaveTextContent("276▲");
+    expect(move).toHaveClass("bg-mh-shock-3");
+    // Dưới ngưỡng: bậc thấp, không có ▲.
+    const calm = screen.getAllByTitle("30.2 bp · starts Nov 14, 2026, 05:30");
+    expect(calm[0]).toHaveTextContent(/^30$/);
+    expect(calm[0]).toHaveClass("bg-mh-shock-1");
+    expect(screen.getAllByTitle(/^8\.5 bp · /)[0]).toHaveClass("bg-mh-shock-0");
+    // Chú giải ghi rõ ngưỡng.
+    expect(screen.getByText("Largest moves (bp)")).toBeInTheDocument();
+    expect(screen.getByText("100 or more ▲")).toBeInTheDocument();
+    // 390 px: chi tiết giờ 08 có cả hai số.
+    const row = screen
+      .getAllByRole("button", { expanded: false })
+      .find((b) => within(b).queryByText("08") !== null);
+    expect(row).toBeDefined();
+    if (row === undefined) return;
+    await user.click(row);
+    expect(
+      screen.getByText("133.2 bp · Nov 15, 2026, 09:01 (your time zone) ▲", { exact: false }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("276.4 bp · starts Nov 15, 2026, 08:57 ▲", { exact: false }),
+    ).toBeInTheDocument();
+  });
+
   it("shows cents for money under $10 so small fees are never $0", async () => {
     expect(usd("0.3125")).toBe("$0.31");
     expect(usd("0.004")).toBe("$0.00");
@@ -268,6 +311,10 @@ describe("Market hours page", () => {
       "Share of days in the period where this hour's typical swing was more than 2× that day's normal.";
     const markout =
       "How far the price moved against the resting (maker) side 30 seconds after public trades on SoDEX. Higher means makers got picked off more.";
+    const maxRange =
+      "The single wildest minute in this hour during the period: biggest (high − low) of a 1-minute candle, as a share of price.";
+    const maxMove15 =
+      "The furthest the price ran within any 15 minutes starting in this hour during the period. Shocks like this cause most position cuts.";
     const cost =
       "What DeskLabs bots really paid per $1M traded in this hour: fees plus the price move one minute after each fill. Counts only fills with a price one minute later.";
     // [nhãn, câu giải thích, số nút (desktop + tiêu đề cột 390 px)]
@@ -280,6 +327,11 @@ describe("Market hours page", () => {
       ],
       ["× day median", ratio, 2],
       ["Hot days (> 2× day median)", hot, 1],
+      ["Largest 1-min range (bp)", maxRange, 1],
+      ["Largest 15-min move (bp)", maxMove15, 1],
+      // Chi tiết giờ 390 px (mặc định mở giờ US open).
+      ["Largest 1-min range", maxRange, 1],
+      ["Largest 15-min move", maxMove15, 1],
       [
         "Estimated cost per $1M (model, floor)",
         "A floor estimate from market data: SoDEX maker fee plus the default Market Making builder fee, plus the price loss the model expects from this hour's 1-minute moves, per $1M of volume. It leaves out position cuts and taker fills, so real bots usually cost more.",

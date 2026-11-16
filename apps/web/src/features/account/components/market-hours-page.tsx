@@ -50,6 +50,16 @@ export function volBucket(ratio: number): number {
 export function costBucket(cost: number): number {
   return cost < 120 ? 0 : cost < 170 ? 1 : cost < 230 ? 2 : 3;
 }
+const SHOCK_BG = ["bg-mh-shock-0", "bg-mh-shock-1", "bg-mh-shock-2", "bg-mh-shock-3"] as const;
+/** Ngưỡng bậc cao nhất của "Largest 1-min range" / "Largest 15-min move": từ đây ô có thêm dấu ▲. */
+export const SHOCK_HOT_BP = 100;
+/**
+ * Bậc màu "Largest …" (bp): dưới 25 · 25–50 · 50–100 · từ 100 (▲). Thang lấy từ khối 1: range 1 phút điển hình vài bp,
+ * giờ nóng là > 2× trung vị ngày; 100 bp (1%) trong một phút / 15 phút là cú sốc.
+ */
+export function shockBucket(bp: number): number {
+  return bp < 25 ? 0 : bp < 50 ? 1 : bp < SHOCK_HOT_BP ? 2 : 3;
+}
 const volBg = (ratio: number): string => VOL_BG[volBucket(ratio)] ?? "";
 /** Hàng "× day median" có chữ: chỉ dùng ba bậc nhạt để chữ đạt tương phản. */
 const volBgText = (ratio: number): string => VOL_BG[Math.min(volBucket(ratio), 2)] ?? "";
@@ -74,6 +84,17 @@ export function usd(v: string | null): string | null {
 const dayLabel = (d: string): string => formatDate(Date.parse(`${d}T00:00:00Z`), "UTC");
 /** Mốc thời gian ISO → ngày theo múi giờ `tz`. */
 const instantLabel = (iso: string, tz: string): string => formatDate(Date.parse(iso), tz);
+/** Mốc thời gian ISO → ngày giờ theo múi giờ `tz`, vd "Nov 15, 2026, 08:57". */
+const instantTimeLabel = (iso: string, tz: string): string =>
+  new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: tz,
+  }).format(Date.parse(iso));
 
 export function MarketHoursPage() {
   const t = useTranslations("marketHours");
@@ -453,6 +474,60 @@ function Desktop({
           }),
         )}
         {row(
+          t("vol.maxRange"),
+          "maxRange",
+          H.map((h) => {
+            const x = hourOf(v, h).volatility;
+            return (
+              <ShockCell
+                key={h}
+                bp={x.maxRangeBp}
+                tip={
+                  x.maxRangeBp === null || x.maxRangeAt === null
+                    ? null
+                    : t("vol.maxRangeTip", {
+                        value: Number(x.maxRangeBp).toFixed(1),
+                        at: instantTimeLabel(x.maxRangeAt, v.tz),
+                      })
+                }
+                hour={h}
+                line={line(h)}
+              />
+            );
+          }),
+        )}
+        {row(
+          t("vol.maxMove15"),
+          "maxMove15",
+          H.map((h) => {
+            const x = hourOf(v, h).volatility;
+            return (
+              <ShockCell
+                key={h}
+                bp={x.maxMove15Bp}
+                tip={
+                  x.maxMove15Bp === null || x.maxMove15At === null
+                    ? null
+                    : t("vol.maxMove15Tip", {
+                        value: Number(x.maxMove15Bp).toFixed(1),
+                        at: instantTimeLabel(x.maxMove15At, v.tz),
+                      })
+                }
+                hour={h}
+                line={line(h)}
+              />
+            );
+          }),
+        )}
+        <Legend
+          label={t("vol.shockLegend")}
+          items={(["s0", "s1", "s2", "s3"] as const).map((k, i) => [
+            SHOCK_BG[i] ?? "",
+            t(`vol.${k}`),
+          ])}
+          extra={[]}
+        />
+        {row(
           t("vol.est"),
           "est",
           H.map((h) => (
@@ -570,6 +645,10 @@ const hourOf = (v: MarketHoursView, h: number): MarketHoursHour =>
       fiveMin: [],
       swingBp: null,
       estCostPerMillion: null,
+      maxRangeBp: null,
+      maxRangeAt: null,
+      maxMove15Bp: null,
+      maxMove15At: null,
     },
     cost: { markoutBp: null, spreadTicks: null },
     bots: { costPerMillion: null, volume: null, fees: null, botHours: 0, thin: false },
@@ -626,6 +705,8 @@ type HelpKey =
   | "p90Bp"
   | "ratio"
   | "hotDays"
+  | "maxRange"
+  | "maxMove15"
   | "est"
   | "markout"
   | "spread"
@@ -747,6 +828,38 @@ function RowHelp({ label, help }: { label: string; help: HelpKey }) {
           </span>
         </span>
       )}
+    </span>
+  );
+}
+
+/** Ô "Largest 1-min range" / "Largest 15-min move": số bp làm tròn, 4 bậc tím, ▲ từ SHOCK_HOT_BP; thiếu nến → n/a. */
+function ShockCell({
+  bp,
+  tip,
+  hour,
+  line,
+}: {
+  bp: string | null;
+  tip: string | null;
+  hour: number;
+  line: string;
+}) {
+  const tb = useTranslations("marketHours.botBlock");
+  if (bp === null || tip === null)
+    return (
+      <span title={tb("tipNa", { hour: pad(hour) })} className={`${CELL} ${line} ${HATCH}`}>
+        {tb("na")}
+      </span>
+    );
+  const n = Number(bp);
+  return (
+    <span title={tip} className={`${CELL} ${line} ${SHOCK_BG[shockBucket(n)] ?? ""}`}>
+      {n.toFixed(0)}
+      {n >= SHOCK_HOT_BP ? (
+        <span aria-hidden="true" className="block text-[8.5px] leading-none">
+          ▲
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -969,6 +1082,25 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                       botHours: x.bots.botHours,
                     })}
                   </span>
+                  {(
+                    [
+                      ["maxRange", x.volatility.maxRangeBp, x.volatility.maxRangeAt],
+                      ["maxMove15", x.volatility.maxMove15Bp, x.volatility.maxMove15At],
+                    ] as const
+                  ).map(([k, bp, at]) => (
+                    <span key={k} className="flex items-center gap-1 text-[11.5px] text-ink-2">
+                      <span>
+                        <strong className="text-ink">{tm(k)}</strong>{" "}
+                        {bp === null || at === null
+                          ? tb("na")
+                          : `${t(`vol.${k}Tip`, {
+                              value: Number(bp).toFixed(1),
+                              at: instantTimeLabel(at, v.tz),
+                            })}${Number(bp) >= SHOCK_HOT_BP ? " ▲" : ""}`}
+                      </span>
+                      <RowHelp label={tm(k)} help={k} />
+                    </span>
+                  ))}
                   <span className="text-[11.5px] text-ink-2">
                     <strong className="text-ink">{tm("est")}</strong>{" "}
                     {x.volatility.estCostPerMillion === null || x.volatility.swingBp === null

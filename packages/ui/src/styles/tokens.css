@@ -86,6 +86,11 @@
   --mh-cost-1: #fde0bd;
   --mh-cost-2: #f9c48c;
   --mh-cost-3: #f2a25a;
+  /* 4 bậc tím cho "Largest 1-min range" / "Largest 15-min move" (bp); bậc cao nhất có thêm dấu ▲. */
+  --mh-shock-0: #f5effc;
+  --mh-shock-1: #e6d6f7;
+  --mh-shock-2: #d2b6ef;
+  --mh-shock-3: #bb92e4;
   --mh-hatch: #e3e7f5;
 
   --radius-control: 12px;
