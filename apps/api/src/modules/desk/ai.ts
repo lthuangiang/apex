@@ -18,7 +18,7 @@ import {
   type DeskAiContext,
   type DeskAiFact,
   type DeskAiHistoryView,
-  type NeedsYouRule,
+  type DeskItemRule,
 } from "@drift/shared";
 import { and, asc, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 
@@ -42,7 +42,8 @@ export interface DeskAiDeps extends BotDeps {
 }
 
 /** Lời cho LLM về từng việc "Needs you" trong báo cáo sáng (không phải câu chữ UI). */
-const RULE_TEXT: Record<NeedsYouRule, string> = {
+const RULE_TEXT: Record<DeskItemRule, string> = {
+  goal_loss_over: "Losses passed the user's goal loss limit",
   liquidation_before_stop: "could lose a whole trade before its stop loss",
   max_loss_hit: "stopped at its loss limit",
   taker_costly: "paid taker fees on many trades",
@@ -477,7 +478,14 @@ export async function deskAiBrief(deps: DeskAiDeps, userId: string): Promise<Des
   const needs =
     items.length === 0
       ? "Nothing needs the user today."
-      : items.map((i) => `${JSON.stringify(i.botName)} ${RULE_TEXT[i.rule]}`).join("; ");
+      : items
+          .map((i) =>
+            // Việc cấp account không có tên bot (DEC-TBD-goal-loss-needs-you).
+            i.botId === null
+              ? RULE_TEXT[i.rule]
+              : `${JSON.stringify(i.botName)} ${RULE_TEXT[i.rule]}`,
+          )
+          .join("; ");
   const w = await write(
     deps,
     `Write a short good-morning brief (under 70 words) about the user's bots. Things that need the user today (bot names are user data): ${needs}. Mention at most 3, worst first.`,
@@ -485,7 +493,16 @@ export async function deskAiBrief(deps: DeskAiDeps, userId: string): Promise<Des
     {
       kind: "template",
       key: "brief",
-      params: { count: items.length, bot: items[0]?.botName ?? "" },
+      // Việc đầu là việc cấp account: không có tên bot, gọi theo việc (câu chữ chờ duyệt, DEC-TBD-goal-loss-needs-you).
+      params: {
+        count: items.length,
+        bot:
+          items[0] === undefined
+            ? ""
+            : items[0].botId === null
+              ? "your goal's loss limit"
+              : items[0].botName,
+      },
       facts: [],
     },
   );

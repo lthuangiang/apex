@@ -4997,6 +4997,12 @@
         "title": "Could lose a whole trade before its stop loss",
         "body": "At {leverage}× a {liq}% drop closes the trade; your stop loss waits for {stop}%."
       },
+      "goal_loss_over": {
+        "tag": "Your goal",
+        "title": "Losses passed your goal’s limit: {used} of {limit} USDC.",
+        "review": "Review your bots",
+        "change": "Change goal"
+      },
       "max_loss_hit": {
         "tag": "Stopped",
         "title": "Stopped at your {maxLoss} USDC loss limit",
@@ -5135,8 +5141,10 @@
       "notAvailable": "Not available",
       "none": "Set a goal and a loss limit so I can tell you if you’re on track.",
       "aiNone": "Nothing needs fixing today.",
+      "aiGoalOver": "{count, plural, one {One thing is} other {# things are}} worth fixing today, starting with your losses, which passed your goal’s limit.",
       "aiItems": "{count, plural, one {One thing is} other {# things are}} worth fixing today: {bot} {what}.",
       "what": {
+        "goal_loss_over": "passed your goal’s loss limit",
         "liquidation_before_stop": "could lose a whole trade before its stop loss",
         "max_loss_hit": "stopped at its loss limit",
         "taker_costly": "pays taker fees on many trades",

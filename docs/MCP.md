@@ -107,7 +107,7 @@ Email trả nguyên vẹn chỉ cho team; không bao giờ trả secret, key, ch
 | | `explain_reason_code` | read | giải thích bằng lời thường |
 | Copy Trading | `find_traders` | read | danh sách theo tab (Steady…), số đã ẩn và lý do (DEC-163) |
 | | `get_trader` | read | thống kê episode, checklist good fit, thay đổi vị thế |
-| AI Desk (sau B+) | `list_needs_you` | read | tối đa 3 việc, mức độ, nguồn |
+| AI Desk (sau B+) | `list_needs_you` | read | tối đa 3 việc, mức độ, nguồn; việc `goal_loss_over` (lỗ vượt giới hạn của mục tiêu) có `botId: null`, `whatif: null` (DEC-TBD-goal-loss-needs-you) |
 | | `get_whatif` | read | các phương án, kết quả 7 ngày, "not a forecast" |
 | | `get_track_record` | read | Helped / Made it worse / Still measuring |
 | Bản nháp | `draft_bot_change` | draft | tạo bản nháp thay đổi cho một bot; trả **link** mở màn duyệt trong DeskLabs |
