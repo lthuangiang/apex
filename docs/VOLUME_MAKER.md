@@ -97,7 +97,9 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - **Huỷ rồi mới đặt** (DEC-TBD-mm-requote-limit): mỗi lần báo giá lại, phía nào có lệnh mở đang nằm bị huỷ thì chờ SoDEX
   xác nhận huỷ (`orderDone`) rồi mới đặt lệnh mở mới cho phía đó; xác nhận tới là đặt ngay (chỉ phía đó, không chờ nhịp
   đồng hồ). Huỷ và đặt cùng lúc thì lệnh cũ có thể khớp khi lệnh huỷ đang đi và lệnh mới cũng khớp: vị thế vượt "Holds up
-  to". Lệnh đóng, và lệnh mở Smart quoting giữ nằm yên (cùng giá), không đổi.
+  to". Đặt lại ngay khi xác nhận tối đa một lần mỗi 2 s cho mỗi phía (`VM_MIN_REQUOTE_MS`); sớm hơn thì để nhịp đồng hồ.
+  Lần đặt lại này không tính là một lần báo giá (không đổi `lastRefresh`). Lệnh đóng, và lệnh mở Smart quoting giữ nằm yên
+  (cùng giá), không đổi.
 - **Dọn lệnh cũ không chặn báo giá** (DEC-251): nhịp đồng hồ dọn lệnh đã xong quá `VM_KEEP_DONE_MS` rồi báo giá luôn trong
   cùng nhịp.
 - **Định giá theo Binance** (một phần của **Smart quoting**; DEC-242, thay "Binance guard" của DEC-241):
