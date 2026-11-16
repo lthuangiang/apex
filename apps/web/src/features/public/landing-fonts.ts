@@ -1,6 +1,6 @@
 import localFont from "next/font/local";
 
-// Font của landing và trang MCP (DEC-TBD-fonts-self-host): tự host từ gói npm @fontsource-variable (OFL-1.1), subset latin,
+// Font của landing và trang MCP (DEC-280): tự host từ gói npm @fontsource-variable (OFL-1.1), subset latin,
 // bản variable. Build không phụ thuộc Google Fonts, CSP `font-src 'self'` vẫn đủ. Chỉ module của landing / trang MCP
 // import file này, nên app không nạp các font này (bước 2 đổi font cả app là PR riêng). Các trang import thẳng từ file
 // component (không qua barrel `features/public`), để route của app không kéo theo font này. `preload: false`: route `/`
