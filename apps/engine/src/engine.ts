@@ -164,6 +164,11 @@ export interface EngineDeps {
   paper?: PaperGateway;
 }
 
+/** Lý do "Leverage set". Bot paper không gửi gì tới SoDEX (PaperGateway, DEC-105) nên không ghi "SoDEX confirmed". */
+function leverageWhy(paper: boolean, what: string): string {
+  return paper ? `Simulated ${what}. Nothing was sent to SoDEX.` : `SoDEX confirmed ${what}.`;
+}
+
 /** Engine (Spot / Perps) mà bot giao dịch, theo chiến lược và cấu hình. */
 function engineOfBot(strategy: string, config: unknown): "spot" | "perps" {
   if (
@@ -242,6 +247,10 @@ interface Runner {
   leverageSet: boolean;
   /** Lần `updateLeverage` trước không rõ kết quả: phải đọc lại SoDEX trước khi gửi lại (quy tắc 1.7). */
   leverageUnknown: boolean;
+  /** Market đã được SoDEX xác nhận đòn bẩy cho version này (CP-01): lần thử sau không đặt / ghi lại. */
+  leverageDone: Set<string>;
+  /** Lần đặt đòn bẩy đang chạy: sự kiện tới cùng lúc chờ chung, không đặt song song (CP-01). */
+  leverageRun: Promise<"ok" | "rejected" | "unknown" | "not_sent"> | null;
   /** Request chưa rời DRIFT (signer lỗi): chờ backoff tới `nextAt`; quá hạn thì pause (UI_REVIEW H1). */
   blocked: { since: number; attempts: number; nextAt: number; code: NotSentCode } | null;
   /** Số lệnh market reduce-only bị SoDEX từ chối liên tiếp (vị thế trong sổ bot có thể lệch SoDEX). */
@@ -1060,6 +1069,8 @@ export class Engine {
       awaitingFirstAck: bot.state === BotState.starting,
       leverageSet: false,
       leverageUnknown: false,
+      leverageDone: new Set(),
+      leverageRun: null,
       blocked: null,
       reduceRejects: 0,
       makerReduceRejects: 0,
@@ -1117,6 +1128,7 @@ export class Engine {
     r.state = entry.module.initialState(config);
     r.ctx = { ...r.ctx, version: pending.version };
     r.leverageSet = false;
+    r.leverageDone = new Set();
     await this.#event(
       r,
       "version",
@@ -1265,15 +1277,43 @@ export class Engine {
     r: Runner,
     at: number,
   ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
-    // Copy Trade đặt cùng đòn bẩy cho mọi market (DEC-163); chiến lược khác có tối đa một symbol.
+    // Sự kiện tới cùng lúc (giá, Binance, nhịp) chờ chung một lần đặt (CP-01: trước đây BTC-USD ghi 7 lần trong 2 s).
+    if (r.leverageRun !== null) return r.leverageRun;
+    r.leverageRun = this.#ensureLeverageAll(r, at);
+    try {
+      return await r.leverageRun;
+    } finally {
+      r.leverageRun = null;
+    }
+  }
+
+  async #ensureLeverageAll(
+    r: Runner,
+    at: number,
+  ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
+    // Copy Trade đặt cùng đòn bẩy cho mọi market (DEC-163); chiến lược khác có tối đa một symbol. Market đã xác nhận thì
+    // bỏ qua; Decisions ghi một dòng gộp cho các market vừa xác nhận (CP-01).
     const specs = leverageSpecsOf(r.strategy, r.market, r.config);
+    const confirmed: LeverageSpec[] = [];
+    const log = async () => {
+      const first = confirmed[0];
+      if (first === undefined) return;
+      const what = `${String(first.leverage)}× ${first.marginMode} on ${confirmed.map((x) => x.market).join(", ")}`;
+      await this.#event(r, "decision", "Leverage set", leverageWhy(r.paper, what), at);
+    };
     for (const spec of specs) {
+      const key = `${spec.market}:${String(spec.leverage)}:${spec.marginMode}`;
+      if (r.leverageDone.has(key)) continue;
       const res = await this.#ensureLeverageOne(r, spec, at);
       if (res !== "ok") {
+        await log();
         r.leverageSet = false;
         return res;
       }
+      r.leverageDone.add(key);
+      confirmed.push(spec);
     }
+    await log();
     r.leverageSet = true;
     return "ok";
   }
@@ -1294,9 +1334,7 @@ export class Engine {
       current = undefined;
     }
     if (current?.leverage === spec.leverage && current.marginMode === spec.marginMode) {
-      r.leverageSet = true;
       r.leverageUnknown = false;
-      await this.#event(r, "decision", "Leverage set", `SoDEX confirmed ${what}.`, at);
       return "ok";
     }
     // Vị thế đang mở trên symbol với thiết lập khác: không đổi đòn bẩy của cả account (DEC-58), không retry.
@@ -1323,9 +1361,7 @@ export class Engine {
     });
     r.leverageUnknown = res.outcome === "unknown";
     if (res.outcome === "ok") {
-      r.leverageSet = true;
       r.blocked = null;
-      await this.#event(r, "decision", "Leverage set", `SoDEX confirmed ${what}.`, at);
     } else if (res.outcome === "rejected") {
       await this.#event(
         r,
