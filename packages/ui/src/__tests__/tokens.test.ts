@@ -81,4 +81,12 @@ describe("design tokens", () => {
   it.each(["accent", "neg", "ink"])("keeps white text on %s at 4.5:1 or more", (bg) => {
     expect(contrast(WHITE, token(bg))).toBeGreaterThanOrEqual(4.5);
   });
+
+  // Market hours: ô có số dùng chữ ink trên các bậc xanh 0–2 (hàng "× day median") và mọi bậc cam (Cost per $1M).
+  it.each(["mh-vol-0", "mh-vol-1", "mh-vol-2", "mh-cost-0", "mh-cost-1", "mh-cost-2", "mh-cost-3"])(
+    "keeps ink text on %s at 4.5:1 or more",
+    (bg) => {
+      expect(contrast(token("ink"), token(bg))).toBeGreaterThanOrEqual(4.5);
+    },
+  );
 });

@@ -49,6 +49,16 @@
   --color-chart-bg: var(--chart-bg);
   --color-heat-bg: var(--heat-bg);
   --background-image-heat-scale: var(--heat-scale);
+  --color-mh-vol-0: var(--mh-vol-0);
+  --color-mh-vol-1: var(--mh-vol-1);
+  --color-mh-vol-2: var(--mh-vol-2);
+  --color-mh-vol-3: var(--mh-vol-3);
+  --color-mh-vol-4: var(--mh-vol-4);
+  --color-mh-cost-0: var(--mh-cost-0);
+  --color-mh-cost-1: var(--mh-cost-1);
+  --color-mh-cost-2: var(--mh-cost-2);
+  --color-mh-cost-3: var(--mh-cost-3);
+  --color-mh-hatch: var(--mh-hatch);
 
   --radius-control: var(--radius-control);
   --radius-tile: var(--radius-tile);
