@@ -4,6 +4,7 @@ import { botDetailSchema, BotState, UserRole } from "@drift/shared";
 import { Button, ConfirmDialog } from "@drift/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
@@ -14,6 +15,7 @@ import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useMe } from "@/lib/queries";
 
+import { labelKeyOf } from "../field-copy";
 import { FIELDS, fromConfig, isLaunched, toConfig, visible, type FormValues } from "../fields";
 import { applyMmSuggestion, type MmSuggestion } from "../mm-cost";
 
@@ -76,6 +78,12 @@ export function BotEdit({
   useEffect(() => {
     if (values === null && start !== null) setValues(start);
   }, [values, start]);
+  // Bot archived chỉ đọc (BD-01, DEC-263): link Edit cũ đưa về trang bot, không sửa được.
+  const router = useRouter();
+  const archived = bot?.state === BotState.archived;
+  useEffect(() => {
+    if (archived) router.replace(`/agent/${botId}`);
+  }, [archived, botId, router]);
 
   const live = waitingFor !== null && active !== undefined && active.version >= waitingFor;
   const apply = useMutation({
@@ -105,6 +113,7 @@ export function BotEdit({
     return <ClaudeDraftGone />;
   if (
     bot === undefined ||
+    archived ||
     strategy === undefined ||
     active === undefined ||
     values === null ||
@@ -139,7 +148,11 @@ export function BotEdit({
     (f) => JSON.stringify(before[f.key]) !== JSON.stringify(after[f.key]),
   );
   const label = (k: string) =>
-    tf(`fields.${FIELDS[strategy].find((f) => f.key === k)?.label ?? k}.label`);
+    tf(
+      labelKeyOf(strategy, FIELDS[strategy].find((f) => f.key === k) ?? { key: k }, (x) =>
+        tf.has(x),
+      ),
+    );
 
   return (
     <WorkspaceShell current="bots" isTeam={me.data?.role === UserRole.team}>

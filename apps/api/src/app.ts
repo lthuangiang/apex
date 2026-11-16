@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { registerErrorHandler } from "./lib/http";
 import type { Mailer } from "./lib/mailer";
 import type { RecoClient } from "./lib/reco-client";
-import { builderFeesOf } from "./modules/account/builder-fees";
+import { builderFeesOf, cachedMmFeeOf } from "./modules/account/builder-fees";
 import { registerAccountRoutes } from "./modules/account/routes";
 import { registerAuthRoutes } from "./modules/auth/routes";
 import { registerBacktestRoutes } from "./modules/backtests/routes";
@@ -132,7 +132,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     // Builder fee hiệu lực của user (DEC-159); chưa đăng nhập → bảng mặc định.
     const builderFees =
       request.auth === null ? {} : await builderFeesOf(deps.db, request.auth.userId);
-    return { volumeMaker: on, volumeFarm: on, aiDesk: desk, adaptiveDca: adca, builderFees };
+    // Thẻ builder fee Market Making (DEC-261): cache ~2 phút theo user; tắt bot khối lượng → null, không truy vấn.
+    const mmFee =
+      request.auth === null || !on
+        ? null
+        : await cachedMmFeeOf(deps.db, request.auth.userId, now());
+    return { volumeMaker: on, volumeFarm: on, aiDesk: desk, adaptiveDca: adca, builderFees, mmFee };
   });
   registerBotRoutes(app, {
     db: deps.db,
