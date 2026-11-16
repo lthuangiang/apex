@@ -2434,7 +2434,7 @@
         "long": "Long holders",
         "all": "All"
       },
-      "steadyNote": "Steady: made money over 30 days with small dips, at least 20 closed trades, no liquidations, and no single trade making most of the profit.",
+      "steadyNote": "Steady: profit over 30 days, worst dip at most {dipPct}% of that profit, at least {minTrades} closed trades, no single trade over {topPct}% of profit, holds trades {holdHours}h or longer, no liquidation.",
       "slotsNote": "Live copying follows up to 8 Hyperliquid traders at a time across DeskLabs. Traders other people already copy are always open. When all spots are taken, you can follow a trader and copy them when a spot opens.",
       "slotsFull": "All live copy spots are taken right now.",
       "profit": "Profit · 30 days",
@@ -3653,6 +3653,7 @@
     },
     "riskSnapshot": "Risk snapshot",
     "withinLimits": "Within limits",
+    "noLimits": "No limits set",
     "breached": "{n, plural, one {# limit breached} other {# limits breached}}",
     "dailyLoss": "Daily loss",
     "maxDd": "Max drawdown · 30D",
@@ -3862,6 +3863,9 @@
     "subtitle": "Your limits, how close you are, and who enforces each one.",
     "checked": "Risk engine checked {time}",
     "within": "Within limits",
+    "noneSet": "No limits set",
+    "noneSetBody": "Set a limit below and DeskLabs checks it for you.",
+    "uiOnlyBody": "No server-enforced limit is set. Your limits show warnings here only.",
     "withinBody": "Server-enforced limits pass.",
     "breachedTitle": "{n, plural, one {# limit reached} other {# limits reached}}",
     "breachedBody": "Running agents on this account were paused by the server.",
@@ -4057,7 +4061,8 @@
       "team_bot_started": "Bot started",
       "team_mcp_tool_errors": "MCP tools failing",
       "team_mcp_introspect_failing": "MCP can’t check tokens",
-      "team_mcp_daily_limit": "MCP daily limit reached"
+      "team_mcp_daily_limit": "MCP daily limit reached",
+      "team_invariant": "Money invariant check"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
@@ -5127,6 +5132,12 @@
         "title": "Could lose a whole trade before its stop loss",
         "body": "At {leverage}× a {liq}% drop closes the trade; your stop loss waits for {stop}%."
       },
+      "goal_loss_over": {
+        "tag": "Your goal",
+        "title": "Losses passed your goal’s limit: {used} of {limit} USDC.",
+        "review": "Review your bots",
+        "change": "Change goal"
+      },
       "max_loss_hit": {
         "tag": "Stopped",
         "title": "Stopped at your {maxLoss} USDC loss limit",
@@ -5265,6 +5276,7 @@
       "notAvailable": "Not available",
       "none": "Set a goal and a loss limit so I can tell you if you’re on track.",
       "aiNone": "Nothing needs fixing today.",
+      "aiGoalOver": "{count, plural, one {One thing is} other {# things are}} worth fixing today, starting with your losses, which passed your goal’s limit.",
       "aiItems": "{count, plural, one {One thing is} other {# things are}} worth fixing today: {bot} {what}.",
       "what": {
         "liquidation_before_stop": "could lose a whole trade before its stop loss",
@@ -5336,7 +5348,7 @@
         "market_none": "I don’t have SoDEX numbers for that market right now. I can show markets listed on SoDEX and explain your bots.",
         "strategies": "Each strategy was built for a different kind of market. None of them is sure to make money:",
         "strategyLine": "{name}: {best}",
-        "brief": "{count, plural, =0 {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. Nothing needs you today.} one {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. One thing needs you today: {bot}.} other {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. # things need you today, starting with {bot}.}}"
+        "brief": "{count, plural, =0 {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. Nothing needs you today.} one {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. One thing needs you today: {first, select, goal {your goal’s loss limit} other {{bot}}}.} other {{greeting, select, morning {Good morning} afternoon {Good afternoon} other {Good evening}}. # things need you today, starting with {first, select, goal {your goal’s loss limit} other {{bot}}}.}}"
       },
       "facts": {
         "bot_state": "{bot} · state",

@@ -17,7 +17,7 @@ import { DeskAiPanel } from "./desk-ai";
 import { FirstVisit } from "./first-visit";
 import { GoalCard } from "./goal-card";
 import { MarketToday } from "./market-today";
-import { NeedsYouCard } from "./needs-you-card";
+import { GoalLossCard, NeedsYouCard } from "./needs-you-card";
 import { PaperChip } from "./paper-chip";
 import { YourBots as AnalystNotes } from "./your-bots";
 
@@ -144,9 +144,13 @@ function Home({ v }: { v: DeskHomeView }) {
           {v.items.length === 0 ? (
             <EmptyState title={t("nothing")} description={t("nothingBody")} />
           ) : (
-            v.items.map((item) => (
-              <NeedsYouCard key={item.id} item={item} checkedAt={v.checkedAt} />
-            ))
+            v.items.map((item) =>
+              item.botId === null ? (
+                <GoalLossCard key={item.id} item={item} />
+              ) : (
+                <NeedsYouCard key={item.id} item={item} checkedAt={v.checkedAt} />
+              ),
+            )
           )}
         </section>
         <YourBots bots={v.bots} />

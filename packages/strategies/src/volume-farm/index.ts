@@ -32,6 +32,14 @@ import { farmSignal, type FarmRegime } from "./signal";
 // - Stop loss gốc trên SoDEX (DEC-118): đặt ngay khi lệnh vào khớp, xa hơn SL của bot 25% khoảng SL. Lãi ≥ 1.5 ×
 //   khoảng hoà vốn (phí vào + phí taker ra + trượt giá) thì dời stop trên sàn về hoà vốn, một lần (DEC-120).
 
+/** Tên chế độ thị trường bằng lời thường cho Decisions (BD-03). */
+const REGIME_TEXT: Record<FarmRegime, string> = {
+  SIDEWAY: "a sideways market",
+  TREND_UP: "an uptrend",
+  TREND_DOWN: "a downtrend",
+  HIGH_VOLATILITY: "a very volatile market",
+  UNKNOWN: "a market without a clear trend",
+};
 export const FARM_TIMING = {
   entryFillMs: 10_000,
   exitFillMs: 15_000,
@@ -339,35 +347,55 @@ function tryEnter(
     confidence: sig.confidence,
     regime: sig.regime,
   };
-  const skipEntry = (reason: string): StepResult<VolumeFarmState> => {
-    // Chỉ ghi khi lý do đổi (mã trước dấu ":"), để Decisions không bị lặp mỗi 5 s.
-    const code = reason.split(":")[0] ?? reason;
+  // Câu Decisions bằng lời thường (BD-03): `code` cố định để chỉ ghi khi lý do đổi (Decisions không lặp mỗi 5 s),
+  // `why` là câu người dùng đọc.
+  const skipEntry = (code: string, why: string): StepResult<VolumeFarmState> => {
     const state = { ...s, lastSignal, lastSkip: code };
     return s.lastSkip === code
       ? none(state)
-      : { actions: [{ type: "log", decision: "Skipped entry", why: reason }], state };
+      : { actions: [{ type: "log", decision: "Skipped entry", why }], state };
   };
-  if (sig.direction === "skip") return skipEntry(sig.reason);
+  const regime = REGIME_TEXT[sig.regime];
+  if (sig.direction === "skip") {
+    const code = sig.reason.split(":")[0] ?? sig.reason;
+    if (code === "COUNTER_TREND_BLOCKED")
+      return skipEntry(
+        code,
+        `The signal pointed ${sig.score >= 0.5 ? "long" : "short"} against ${regime}, so the bot waits. Details: score ${sig.score.toFixed(2)}.`,
+      );
+    if (code === "SPREAD_TOO_WIDE" && sig.spreadBps !== null)
+      return skipEntry(
+        code,
+        `The spread is ${sig.spreadBps.toFixed(1)} bp, wider than the ${c.maxSpreadBps} bp limit, so the bot waits.`,
+      );
+    return skipEntry(code, sig.reason);
+  }
   // DEC-158: lượt vào khi có xu hướng tốn 385–659 mỗi 1M so với 143–169 khi đi ngang (export BTC / ETH 11-10, 11-11).
   if (c.sidewaysOnly && sig.regime !== "SIDEWAY")
-    return skipEntry(`SIDEWAYS_ONLY: regime ${sig.regime}`);
+    return skipEntry(
+      "SIDEWAYS_ONLY",
+      `The market is in ${regime}, and this bot only trades sideways markets.`,
+    );
   let direction: "long" | "short" = sig.direction;
   const notes: string[] = [];
   // Tồn kho ròng vượt một lệnh lớn nhất: buộc đi ngược lượt trước (apex MM inventory hard block).
   if (dec(s.netExposure).abs().gt(c.orderSizeMaxUsd) && s.lastSide !== null) {
     direction = s.lastSide === "long" ? "short" : "long";
-    notes.push("inventory rebalance");
+    notes.push(`Went ${direction} to bring the position back toward zero.`);
   }
   if (c.reverseSignal) {
     direction = direction === "long" ? "short" : "long";
-    notes.push("reversed");
+    notes.push(`Reversed to ${direction} because "Reverse the signal" is on.`);
     // DEC-158: chặn ngược xu hướng nằm trong farmSignal, chạy trước khi đảo; kiểm lại trên hướng sau khi đảo để
     // Reverse không mở lệnh ngược xu hướng (bot BTC 11-11: 116 / 116 lượt long giữa lúc giá giảm).
     if (
       (sig.regime === "TREND_UP" && direction === "short") ||
       (sig.regime === "TREND_DOWN" && direction === "long")
     )
-      return skipEntry(`COUNTER_TREND_BLOCKED: ${sig.regime} blocked reversed ${direction}`);
+      return skipEntry(
+        "COUNTER_TREND_BLOCKED",
+        `"Reverse the signal" would trade ${direction} against ${regime}, so the bot waits.`,
+      );
   }
   const side = direction === "long" ? "buy" : "sell";
   const cycle = s.cycle + 1;
@@ -396,8 +424,14 @@ function tryEnter(
   }
   if (!taker && price === null) return none(s);
   const o = intent(c, ctx, side, qty, `vf:${String(cycle)}:in:${String(s.unfilled)}`, price, false);
-  const at_ = price === null ? `market, last ${ref}` : `post-only at ${price}`;
-  const why = `${at_}; ${sig.reason}; conf ${sig.confidence.toFixed(2)}${notes.length > 0 ? `; ${notes.join(", ")}` : ""}; ${usd.toDecimalPlaces(2).toString()} USDC, hold ${String(holdSecs)} s.`;
+  // BD-03: câu đầu bằng lời thường (tín hiệu, điều chỉnh, lệnh), chi tiết kỹ thuật sau "Details:".
+  const at_ = price === null ? `Market order, last price ${ref}` : `Post-only at ${price}`;
+  const why = [
+    `Signal pointed ${sig.direction} in ${regime}.`,
+    ...notes,
+    `${at_}, ${usd.toDecimalPlaces(2).toString()} USDC, hold ${String(holdSecs)} s.`,
+    `Details: score ${sig.score.toFixed(2)}, confidence ${sig.confidence.toFixed(2)}.`,
+  ].join(" ");
   return {
     actions: [
       // Stop của lượt trước chưa chắc đã được SoDEX huỷ: gửi huỷ; engine bỏ qua nếu đã xác nhận huỷ (DEC-119).
