@@ -88,7 +88,7 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - **Cắt vị thế** (DEC-249): đang giữ vị thế mà giá Binance quy đổi chạy ngược giá vào ≥ 15 bp (`VM_CUT`) thì huỷ mọi lệnh
   và đóng cả vị thế bằng lệnh market IOC reduce-only (tag `vm:<cycle>:cut:close`); không cắt lại trong 5 s. Decisions
   "Position cut". Chỉ khi bật Smart quoting.
-- **Giữ phía tăng vị thế khi đang cắt** (DEC-TBD-mm-cut-hold): lệnh cắt chưa có kết quả thì không đặt lệnh mở ở phía làm
+- **Giữ phía tăng vị thế khi đang cắt** (DEC-260): lệnh cắt chưa có kết quả thì không đặt lệnh mở ở phía làm
   tăng vị thế (long → mua, short → bán), kể cả khi SoDEX xác nhận huỷ lệnh mở phía đó hay tới nhịp đồng hồ. Gỡ khi lệnh
   cắt xong (khớp hết, bị từ chối, `orderDone`) hoặc 60 s (`VM_STALE_CANCEL_MS`) sau lúc cắt (đối soát vị thế bù phần lỡ).
   Lệnh cắt chưa có kết quả thì không cắt lại. Phía đóng và lệnh đóng không đổi.

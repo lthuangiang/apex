@@ -807,7 +807,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     ]);
   });
 
-  describe("holds the side that grows the position while a cut is in flight (DEC-TBD-mm-cut-hold)", () => {
+  describe("holds the side that grows the position while a cut is in flight (DEC-260)", () => {
     /** Đang long, còn một bid mở đang nằm; Binance chạy 16 bp ngược: cắt (lệnh cắt chưa có kết quả). */
     const cutWithBid = () => {
       const long = longAt();
