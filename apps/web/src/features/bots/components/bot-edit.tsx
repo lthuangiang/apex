@@ -4,6 +4,7 @@ import { botDetailSchema, BotState, UserRole } from "@drift/shared";
 import { Button, ConfirmDialog } from "@drift/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
@@ -76,6 +77,12 @@ export function BotEdit({
   useEffect(() => {
     if (values === null && start !== null) setValues(start);
   }, [values, start]);
+  // Bot archived chỉ đọc (BD-01, DEC-TBD-archived-view): link Edit cũ đưa về trang bot, không sửa được.
+  const router = useRouter();
+  const archived = bot?.state === BotState.archived;
+  useEffect(() => {
+    if (archived) router.replace(`/agent/${botId}`);
+  }, [archived, botId, router]);
 
   const live = waitingFor !== null && active !== undefined && active.version >= waitingFor;
   const apply = useMutation({
@@ -105,6 +112,7 @@ export function BotEdit({
     return <ClaudeDraftGone />;
   if (
     bot === undefined ||
+    archived ||
     strategy === undefined ||
     active === undefined ||
     values === null ||

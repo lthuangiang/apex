@@ -491,7 +491,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                   <LiveQuotes
                     botId={bot.id}
                     market={bot.market}
-                    stopped={bot.state === BotState.stopped}
+                    stopped={bot.state === BotState.stopped || archived}
                   />
                 </div>
                 <div className="min-w-0 lg:col-start-1 lg:row-start-2">
@@ -517,7 +517,8 @@ export function AgentPage({ botId }: { botId?: string }) {
             )}
             {/* Strategy Analytics ngay dưới Volume (DEC-141). */}
             {d.volumeFarm === null ? null : <StrategyAnalytics botId={d.bot.id} />}
-            {d.volumeFarm === null || d.bot.mode === "paper" ? null : (
+            {/* Bot archived chỉ đọc: không Run review / Apply (BD-01). */}
+            {d.volumeFarm === null || d.bot.mode === "paper" || archived ? null : (
               <ReviewCard botId={d.bot.id} stopped={d.bot.state === "stopped"} />
             )}
             {d.adaptiveDca === null ? null : <AdaptiveDcaCard a={d.adaptiveDca} />}
@@ -741,11 +742,6 @@ export function AgentPage({ botId }: { botId?: string }) {
                     {t("archived.title")}
                   </h2>
                   <p className="m-0 text-sm text-ink-2">{t("archived.body")}</p>
-                  {act.error === null ? null : (
-                    <p role="alert" className="m-0 text-sm text-neg-ink">
-                      {errorText(act.error)}
-                    </p>
-                  )}
                 </div>
                 <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
                   <Button
