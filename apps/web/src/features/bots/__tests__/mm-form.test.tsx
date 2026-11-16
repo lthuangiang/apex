@@ -24,6 +24,8 @@ vi.mock("../components/market-picker", () => ({
 vi.mock("../components/amount-lines", () => ({ AmountLines: () => null }));
 
 afterEach(cleanup);
+// Gõ phím + axe trên cả form: chậm khi máy bận (cùng mức timeout với mm-cost.test.tsx).
+vi.setConfig({ testTimeout: 20_000 });
 
 function Harness({
   strategy,

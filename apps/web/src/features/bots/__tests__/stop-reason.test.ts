@@ -52,7 +52,7 @@ describe("stop reason labels", () => {
   it("uses the API stopDetail first (bot list)", () => {
     expect(label(mm({ stopDetail: "volume_target" }))).toBe("Stopped: volume target reached");
     expect(label(mm({ stopDetail: "end_time" }))).toBe("Stopped: end time reached");
-    expect(label(mm({ stopDetail: null }))).toBe("Stopped: volume target or end time reached");
+    expect(label(mm({ stopDetail: null }))).toBe("Stopped: target reached");
     // stopDetail chỉ áp dụng cho MAX_CYCLES.
     expect(label(mm({ reasonCode: ReasonCode.budgetDone, stopDetail: "end_time" }))).toBe(
       "Stopped: cost limit reached",
@@ -67,7 +67,7 @@ describe("stop reason labels", () => {
       "Stopped: end time reached",
     );
     expect(label(mm({ config: { runUntil: "target_or_budget", volumeTarget: "abc" } }))).toBe(
-      "Stopped: volume target or end time reached",
+      "Stopped: target reached",
     );
   });
 
@@ -79,10 +79,10 @@ describe("stop reason labels", () => {
 
   it("generic label when the data cannot tell (never a wrong specific claim)", () => {
     // Bot list: chỉ có strategy.
-    expect(label(mm({}))).toBe("Stopped: volume target or end time reached");
+    expect(label(mm({}))).toBe("Stopped: target reached");
     // Có cả target và end time, không có khối lượng.
     expect(label(mm({ config: { runUntil: "date", volumeTarget: "50000" } }))).toBe(
-      "Stopped: volume target or end time reached",
+      "Stopped: target reached",
     );
   });
 
