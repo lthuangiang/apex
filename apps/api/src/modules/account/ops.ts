@@ -21,7 +21,7 @@ import { botCostPerMillion } from "../bots/service";
 
 import { requireTeam } from "./team";
 
-// Trang Bot Monitor của team (tên cũ "Ops"; docs/mockups/ops, DEC-TBD-ops-redesign, thay bố cục DEC-276). Chỉ role
+// Trang Bot Monitor của team (tên cũ "Ops"; docs/mockups/ops, DEC-288, thay bố cục DEC-276). Chỉ role
 // team, chỉ đọc. Mọi truy vấn chặn theo thời gian và đi qua index: orders_bot_idx (bot_id, created_at),
 // fills_order_idx, bot_events_bot_idx, outbox_topic_created_idx và outbox_bot_state_idx (#163). Gom theo bot trong SQL
 // (không N+1). Số không tính được → null ("Not available"), không bao giờ 0.

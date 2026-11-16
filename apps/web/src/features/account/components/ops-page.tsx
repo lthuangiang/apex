@@ -16,7 +16,7 @@ import { clockWithZone, compactUsd, usd } from "../ops-format";
 
 import { BotsPanel, HealthChip, useReasonText, type Strat } from "./ops-bots";
 
-// Trang Bot Monitor của team (tên cũ "Ops"; docs/mockups/ops, DEC-TBD-ops-redesign, thay bố cục DEC-276). Chỉ đọc.
+// Trang Bot Monitor của team (tên cũ "Ops"; docs/mockups/ops, DEC-288, thay bố cục DEC-276). Chỉ đọc.
 // Bộ lọc Show: Active (mặc định) hoặc All bots (phân trang 50, tìm kiếm), giữ trên URL `?show=all&tab=vb&q=&page=`.
 // Làm mới tay hoặc tự động 30 s (không nhanh hơn); 403 thì ngừng làm mới; làm mới lỗi thì giữ dữ liệu cũ và ghi rõ là
 // cũ. Số không có → "Not available", không bao giờ 0. Giờ theo múi giờ của trình duyệt.

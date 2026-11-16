@@ -1,6 +1,6 @@
 import { permanentRedirect } from "next/navigation";
 
-// Trang Ops đổi tên thành Bot Monitor (DEC-TBD-ops-redesign): link cũ chuyển hẳn sang /admin/bot-monitor, giữ query.
+// Trang Ops đổi tên thành Bot Monitor (DEC-288): link cũ chuyển hẳn sang /admin/bot-monitor, giữ query.
 export default async function Page({
   searchParams,
 }: {

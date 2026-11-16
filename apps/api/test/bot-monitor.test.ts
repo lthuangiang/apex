@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// Trang Bot Monitor (tên cũ Ops; docs/mockups/ops, DEC-TBD-ops-redesign): phạm vi Active / All bots, nhãn, Cost / $1M
+// Trang Bot Monitor (tên cũ Ops; docs/mockups/ops, DEC-288): phạm vi Active / All bots, nhãn, Cost / $1M
 // 24 giờ (công thức Market hours) và quyền team. Mỗi test tạo user riêng và chỉ xét bot của user đó (DB dùng chung).
 
 let env: TestEnv;

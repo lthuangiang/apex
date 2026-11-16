@@ -70,7 +70,7 @@ const ITEMS = [
   ["revenue", "/admin/builder-revenue", Coins, "team"],
   ["users", "/admin/users", Users, "team"],
   ["stats", "/admin/stats", BarChart3, "team"],
-  // Bot Monitor (tên cũ Ops, DEC-TBD-ops-redesign); /admin/ops chuyển hẳn sang đây.
+  // Bot Monitor (tên cũ Ops, DEC-288); /admin/ops chuyển hẳn sang đây.
   ["ops", "/admin/bot-monitor", Activity, "team"],
   // Market hours (DEC-283): ngay sau Bot Monitor.
   ["marketHours", "/admin/market-hours", Clock, "team"],

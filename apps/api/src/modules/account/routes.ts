@@ -173,7 +173,7 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
     ),
   );
 
-  // Trang Bot Monitor của team (tên cũ Ops; DEC-TBD-ops-redesign): chỉ role team. `?show=active|all&strategy=&q=&page=`.
+  // Trang Bot Monitor của team (tên cũ Ops; DEC-288): chỉ role team. `?show=active|all&strategy=&q=&page=`.
   app.get("/api/v1/admin/ops", async (request) =>
     teamOps(
       { db: deps.db, now: deps.now, log: request.log },

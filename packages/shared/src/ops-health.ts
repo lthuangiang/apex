@@ -1,7 +1,7 @@
 import { quantile } from "./api/market-hours";
 import { dec, Decimal } from "./money";
 
-// Nhãn sức khoẻ của trang Bot Monitor (docs/mockups/ops, quyết định 2–3; DEC-TBD-ops-redesign). Hàm thuần, so sánh
+// Nhãn sức khoẻ của trang Bot Monitor (docs/mockups/ops, quyết định 2–3; DEC-288). Hàm thuần, so sánh
 // bằng decimal. Ngưỡng ghi "proposal" trên canvas dùng làm mức ban đầu.
 
 export const OPS_RULES = {

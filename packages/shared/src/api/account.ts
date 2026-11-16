@@ -527,7 +527,7 @@ export const platformStatsQuerySchema = z.object({
 export type PlatformStatsQuery = z.infer<typeof platformStatsQuerySchema>;
 
 /**
- * Trang Bot Monitor của team (tên cũ "Ops"; docs/mockups/ops, DEC-TBD-ops-redesign, thay bố cục DEC-276). Mọi số không
+ * Trang Bot Monitor của team (tên cũ "Ops"; docs/mockups/ops, DEC-288, thay bố cục DEC-276). Mọi số không
  * tính được là null (UI: "Not available" / "n/a"), không bao giờ 0 thay cho "không biết".
  */
 export const TEAM_OPS_STRATEGIES = ["volume_maker", "volume_farm"] as const;
