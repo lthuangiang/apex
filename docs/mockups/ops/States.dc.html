@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ops · states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="num" style="width: 1440px; box-sizing: border-box; padding: 32px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px">
+
+  <section aria-label="Loading" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-size: 18px; font-weight: 800">1 · Loading (first load)</h2>
+    <div aria-busy="true" style="padding: 18px; border-radius: 22px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 12px; min-height: 560px">
+      <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Loading Ops…</span>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <sc-for list="{{six}}" as="k" hint-placeholder-count="6"><span aria-hidden="true" style="height: 92px; border-radius: 16px; background: #eceff7"></span></sc-for>
+      </div>
+      <span aria-hidden="true" style="height: 120px; border-radius: 16px; background: #eceff7"></span>
+      <span aria-hidden="true" style="width: 300px; height: 44px; border-radius: 14px; background: #eceff7"></span>
+      <sc-for list="{{six}}" as="k" hint-placeholder-count="6"><span aria-hidden="true" style="height: 44px; border-radius: 10px; background: #f1f3f9"></span></sc-for>
+      <p style="margin: 0; font-size: 13px; color: #3b4262">Header, purpose line and How to read this page show at once (they need no data). Numbers show as grey blocks, never as 0.</p>
+    </div>
+  </section>
+
+  <section aria-label="Empty" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-size: 18px; font-weight: 800">2 · Empty (no volume bots ran in 24 h)</h2>
+    <div style="padding: 18px; border-radius: 22px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 12px; min-height: 560px">
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <sc-for list="{{emptyTiles}}" as="k" hint-placeholder-count="6">
+          <div style="padding: 12px; border-radius: 16px; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 12px; font-weight: 700; color: #3b4262">{{k.l}}</span>
+            <span style="font-size: 18px; font-weight: 700; color: #5f6684">{{k.v}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 40px 16px; text-align: center">
+        <svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#5f6684" stroke-width="1.6" stroke-linecap="round"><path d="M3 17l5-5 4 3 8-8"></path><path d="M3 21h18"></path></svg>
+        <strong style="font-size: 17px">No Market Making or Volume Builder bots ran in the last 24 hours.</strong>
+        <span style="font-size: 14px; color: #3b4262; max-width: 460px">Real-money bots show up here as soon as one starts. Practice bots are never listed.</span>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: #3b4262">Counts are real zeros (0 bots ran), so they show 0. Volume and cost have nothing to measure, so they show Not available.</p>
+    </div>
+  </section>
+
+  <section aria-label="Error" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-size: 18px; font-weight: 800">3 · Error (first load failed)</h2>
+    <div style="padding: 18px; border-radius: 22px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 12px; min-height: 420px">
+      <div role="alert" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 40px 16px; text-align: center">
+        <svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#a72826" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01" stroke-width="2.6"></path></svg>
+        <strong style="font-size: 17px">Couldn’t load Ops.</strong>
+        <span style="font-size: 14px; color: #3b4262">No bot was changed. Try again in a moment.</span>
+        <button type="button" style="min-height: 44px; padding: 0 18px; border-radius: 12px; border: 0; background: #2e62e8; color: #ffffff; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Try again</button>
+      </div>
+      <div style="padding: 12px 14px; border-radius: 14px; background: #f5f7fd; font-size: 13.5px; color: #141a33"><strong>Not on the team (403):</strong> “Ops is for the DeskLabs team only.” No Refresh button, no auto-refresh.</div>
+    </div>
+  </section>
+
+  <section aria-label="Stale" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-size: 18px; font-weight: 800">4 · Stale (a refresh failed, last data kept)</h2>
+    <div style="padding: 18px; border-radius: 22px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 12px; min-height: 420px">
+      <div role="status" style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #fdebd3; color: #7a3e00; font-size: 14px; font-weight: 600; line-height: 1.45">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 18px; margin-top: 2px"><path d="M12 3l10 18H2z"></path><path d="M12 10v5"></path><path d="M12 18h.01"></path></svg>
+        <span>Couldn’t refresh at 11:44:10 UTC. Showing data from 11:42:10 UTC (2 min old). We’ll try again in 30 s.</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; opacity: .78">
+        <sc-for list="{{staleTiles}}" as="k" hint-placeholder-count="6">
+          <div style="padding: 12px; border-radius: 16px; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 12px; font-weight: 700; color: #3b4262">{{k.l}}</span>
+            <span style="font-size: 18px; font-weight: 800">{{k.v}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: #3b4262">Rows stay as they were. “Checked” keeps the old time. After 5 min of failed refreshes (proposal), the bar turns red: “Data is more than 5 min old. Don’t rely on it for live decisions.” SAMPLE numbers.</p>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      six: [1, 2, 3, 4, 5, 6],
+      emptyTiles: [{ l: 'Bots', v: '0 running' }, { l: 'Volume, last hour', v: 'Not available' }, { l: 'Volume, last 24 h', v: 'Not available' }, { l: 'Cost per $1M, 24 h', v: 'Not available' }, { l: 'Active alerts', v: '0 bots' }, { l: 'Need attention', v: '0 bots' }],
+      staleTiles: [{ l: 'Bots', v: '7 running' }, { l: 'Volume, last hour', v: '$1.21M' }, { l: 'Volume, last 24 h', v: '$34.40M' }, { l: 'Cost per $1M, 24 h', v: '$278.42' }, { l: 'Active alerts', v: '2 bots' }, { l: 'Need attention', v: '6 bots' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

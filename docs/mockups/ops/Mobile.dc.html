@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ops · phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="num" style="width: 390px; box-sizing: border-box; padding: 16px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 14px">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+    <button type="button" aria-label="Open menu" style="width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid #e3e7f5; background: #ffffff; color: #141a33"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button>
+    <span style="font-size: 12px; font-weight: 800; padding: 4px 8px; border-radius: 8px; background: #f0e6ff; color: #5a2ca0">SAMPLE DATA</span>
+  </div>
+
+  <header style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-size: 26px; font-weight: 800">Ops</h1>
+    <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #3b4262">Check that every real-money volume bot is healthy and cheap, and what to look at when one is not. Read only.</p>
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+      <span style="font-size: 12.5px; color: #3b4262">Checked 11:42:10 UTC · every 30 s</span>
+      <button type="button" style="min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; font: inherit; font-size: 14px; font-weight: 700">Refresh</button>
+    </div>
+  </header>
+
+  <section aria-label="All volume bots right now" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+    <sc-for list="{{tiles}}" as="k" hint-placeholder-count="6">
+      <div style="{{k.box}}">
+        <span style="font-size: 12px; font-weight: 700; color: #3b4262">{{k.label}}</span>
+        <span style="font-size: 20px; font-weight: 800">{{k.value}}</span>
+        <span style="font-size: 12px; color: #3b4262; line-height: 1.35">{{k.sub}}</span>
+      </div>
+    </sc-for>
+  </section>
+  <p style="margin: -6px 0 0; font-size: 12px; color: #3b4262">Tap How to read this page for how each number is counted.</p>
+
+  <section aria-labelledby="m-attn" style="padding: 14px; border-radius: 18px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 8px">
+    <h2 id="m-attn" style="margin: 0; font-size: 16px; font-weight: 800">Look at these first</h2>
+    <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px">
+      <sc-for list="{{attention}}" as="a" hint-placeholder-count="6">
+        <li style="display: flex; flex-direction: column; gap: 4px; padding: 10px; border-radius: 12px; background: #f8f9fd">
+          <span style="display: flex; align-items: center; gap: 8px"><span style="{{a.chip}}"><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{a.icon}}"></path></svg>{{a.health}}</span><strong style="font-size: 14px">{{a.name}}</strong></span>
+          <span style="font-size: 13px; line-height: 1.45">{{a.reason}}</span>
+        </li>
+      </sc-for>
+    </ul>
+  </section>
+
+  <details style="padding: 4px 14px; border-radius: 18px; background: #ffffff; border: 1px solid #e3e7f5; font-size: 13.5px; line-height: 1.5">
+    <summary style="cursor: pointer; font-weight: 800; min-height: 44px; display: flex; align-items: center">How to read this page</summary>
+    <p style="margin: 0 0 12px; color: #3b4262">Same text as desktop: the three labels with their rules, then the words list (bp, cost per $1M, maker share, quoting gap, position cut, untracked order, round, invariant P1–P7), then how each summary number is counted.</p>
+  </details>
+
+  <div role="tablist" aria-label="Strategy" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 14px; background: #ffffff; border: 1px solid #e3e7f5">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="2">
+      <button type="button" role="tab" aria-selected="{{t.on}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}} <span style="font-weight: 600; color: #5f6684">{{t.count}}</span></button>
+    </sc-for>
+  </div>
+
+  <ul aria-label="{{listLabel}}" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px">
+    <sc-for list="{{cards}}" as="r" hint-placeholder-count="5">
+      <li style="padding: 14px; border-radius: 18px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px">
+          <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <strong style="font-size: 15px">{{r.name}}</strong>
+            <span style="font-size: 12.5px; color: #3b4262">{{r.market}} · {{r.age}} · <a href="#">{{r.owner}}</a></span>
+            <span style="{{r.stateStyle}}">{{r.state}}</span>
+          </span>
+          <span style="{{r.chip}}"><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{r.icon}}"></path></svg>{{r.health}}</span>
+        </div>
+        <dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px">
+          <sc-for list="{{r.kv}}" as="m" hint-placeholder-count="6">
+            <div style="{{m.box}}"><dt style="font-size: 11.5px; font-weight: 700; color: #3b4262">{{m.l}}</dt><dd style="{{m.vs}}">{{m.v}}</dd></div>
+          </sc-for>
+        </dl>
+        <button type="button" aria-expanded="{{r.open}}" aria-controls="{{r.pid}}" onClick="{{r.toggle}}" style="min-height: 44px; border-radius: 12px; border: 1px solid #d5dcf2; background: #f5f7fd; color: #141a33; font: inherit; font-size: 14px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px">{{r.btn}}<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{r.chev}}"></path></svg></button>
+        <sc-if value="{{r.isOpen}}" hint-placeholder-val="{{ false }}">
+          <div id="{{r.pid}}" style="display: flex; flex-direction: column; gap: 8px">
+            <strong style="font-size: 14px">Why</strong>
+            <ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.5"><sc-for list="{{r.why}}" as="w" hint-placeholder-count="2"><li>{{w}}</li></sc-for></ul>
+            <strong style="font-size: 14px">Last 5 decisions and alerts</strong>
+            <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px">
+              <sc-for list="{{r.log}}" as="e" hint-placeholder-count="5">
+                <li style="padding: 8px 10px; border-radius: 10px; background: #f8f9fd; font-size: 13px; line-height: 1.45; display: flex; flex-direction: column; gap: 2px">
+                  <span><span style="color: #3b4262">{{e.at}}</span> · <strong style="{{e.ns}}">{{e.name}}</strong></span>
+                  <span style="color: #3b4262">{{e.why}}</span>
+                </li>
+              </sc-for>
+            </ol>
+          </div>
+        </sc-if>
+      </li>
+    </sc-for>
+  </ul>
+  <p style="margin: 0; font-size: 12.5px; color: #3b4262">Cards show the six numbers that matter most on a phone. The rest are in Details.</p>
+  <footer style="padding: 4px 0 16px; font-size: 13px; color: #3b4262">Past numbers. Nothing on this page changes bots.</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":2600}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const self = this;
+    const s = this.state || {};
+    const tab = s.tab || 'mm';
+    const H = {
+      ok: { name: 'Healthy', chip: 'background: #ddf4e7; color: #0f7a43', icon: 'M20 6L9 17l-5-5' },
+      check: { name: 'Check', chip: 'background: #fdebd3; color: #7a3e00', icon: 'M12 4v10M12 19.5h.01' },
+      bad: { name: 'Problem', chip: 'background: #fde4e1; color: #a72826', icon: 'M6 6l12 12M18 6L6 18' }
+    };
+    const chip = function (h) { return 'display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; flex: 0 0 auto; ' + H[h].chip; };
+    const st = { Running: 'background: #ddf4e7; color: #0f7a43', Paused: 'background: #edeff5; color: #3b4262', Stopping: 'background: #fdebd3; color: #7a3e00', Stopped: 'background: #edeff5; color: #3b4262' };
+    const kv = function (l, v, f) {
+      const na = v === 'Not available' || v.indexOf('n/a') === 0;
+      return { l: l, v: (f === 'bad' ? '✕ ' : f === 'warn' ? '▲ ' : '') + v, box: 'display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border-radius: 10px; ' + (f === 'bad' ? 'background: #fde4e1' : f === 'warn' ? 'background: #fdebd3' : 'background: #f8f9fd'),
+        vs: 'margin: 0; font-size: 14px; font-weight: ' + (na ? 500 : 800) + '; color: ' + (f === 'bad' ? '#a72826' : f === 'warn' ? '#7a3e00' : na ? '#5f6684' : '#141a33') };
+    };
+    const ln = function (at, name, why, a) { return { at: at, name: name, why: why, ns: 'color: ' + (a ? '#a72826' : '#141a33') }; };
+    const MM = [
+      { h: 'bad', name: 'SOL quotes', market: 'SOL-USD', age: '2 d', owner: 'User ··7c20e1b4', state: 'Running', st: 'Running', id: 'a',
+        kv: [kv('Cost / $1M (24h)', '$612.80', 'warn'), kv('Volume 1h · 24h', '$96.4K · $1.92M'), kv('Position vs max', '112%', 'bad'), kv('Requests / min', '38.0'), kv('Position cuts (24h)', '6', 'warn'), kv('Latest alert', 'P1 · active', 'bad')],
+        why: ['P1 failing since 10:41: position $1,180 over limit $1,050.', 'Cost per $1M over 2× the median (proposal).', '3 position cuts in the last hour (proposal).'],
+        log: [ln('11:39', 'Order requests', 'Last 60 s: 38 requests to SoDEX (new orders and cancels). Longest gap between quotes: 4.2 s.'), ln('11:31', 'Position cut', 'At 11:31 UTC the Binance price (187.42) was 16 bp against your long entry at 187.72. Closed 5.2 at market.'), ln('10:42', 'Alert · P1 failing', 'position $1,180 over limit $1,050', 1), ln('10:18', 'Position cut', 'At 10:18 UTC the Binance price (188.95) was 15 bp against your long entry at 189.23. Closed 4.8 at market.'), ln('10:05', 'Quotes paused on a fast move', 'SAMPLE text.')] },
+      { h: 'bad', name: 'BTC mm 2', market: 'BTC-USD', age: '5 d', owner: 'User ··a41f09c2', state: 'Stopping · 9 min', st: 'Stopping', id: 'b',
+        kv: [kv('Cost / $1M (24h)', '$190.30'), kv('Volume 1h · 24h', 'Not available · $3.10M'), kv('Position vs max', '0%'), kv('Requests / min', 'Not available'), kv('Position cuts (24h)', '0'), kv('Latest alert', 'P7 · active', 'bad')],
+        why: ['P7 failing: stopping for 9 min (limit 5 min).'], log: [ln('11:38', 'Alert · P7 failing', 'stopping for 7 min', 1), ln('11:33', 'Volume Maker stopped', 'SAMPLE text.'), ln('11:32', 'Order requests', 'SAMPLE text.'), ln('11:31', 'Order requests', 'SAMPLE text.'), ln('11:20', 'Smart quoting adjusted', 'SAMPLE text.')] },
+      { h: 'check', name: 'ETH mm night', market: 'ETH-USD', age: '11 d', owner: 'User ··0d93ee57', state: 'Running', st: 'Running', id: 'c',
+        kv: [kv('Cost / $1M (24h)', '$341.10'), kv('Volume 1h · 24h', '$118.9K · $2.71M'), kv('Requests / min', '61.5', 'warn'), kv('Quoting gap (1h)', '74 s', 'warn'), kv('Untracked (24h)', '1', 'warn'), kv('Latest alert', 'P5 · resolved 03:12')],
+        why: ['Requests / min 61.5, above 55.', 'Quoting gap 74 s (proposal: above 60 s).', '1 untracked order cancelled at 08:14.'], log: [ln('11:41', 'Order requests', 'SAMPLE text.'), ln('11:40', 'Quoting again after a fast move', 'SAMPLE text.'), ln('11:38', 'Quotes paused on a fast move', 'SAMPLE text.'), ln('08:14', 'Cancelled 1 untracked order', 'SAMPLE text.'), ln('03:12', 'Alert · P5 resolved', 'quoting again', 1)] },
+      { h: 'ok', name: 'BTC maker 01', market: 'BTC-USD', age: '6 d', owner: 'User ··a41f09c2', state: 'Running', st: 'Running', id: 'd',
+        kv: [kv('Cost / $1M (24h)', '$182.40'), kv('Volume 1h · 24h', '$412.3K · $9.84M'), kv('Maker share (24h)', '96.1%'), kv('Requests / min', '48.2'), kv('Quoting gap (1h)', '3.1 s'), kv('Latest alert', 'None')],
+        why: ['Nothing over a threshold.'], log: [ln('11:41', 'Order requests', 'SAMPLE text.'), ln('11:40', 'Order requests', 'SAMPLE text.'), ln('11:22', 'Smart quoting adjusted', 'SAMPLE text.'), ln('10:58', 'Smart quoting back to normal', 'SAMPLE text.'), ln('10:41', 'Binance pricing', 'SAMPLE text.')] }
+    ];
+    const VB = [
+      { h: 'bad', name: 'SOL vb', market: 'SOL-USD', age: '1 d', owner: 'User ··7c20e1b4', state: 'Paused · ORDER_REJECTED', st: 'Paused', id: 'e',
+        kv: [kv('Cost / $1M (24h)', '$402.00', 'warn'), kv('Volume 1h · 24h', 'Not available · $0.88M'), kv('Rounds (24h) · won', '96 · 47%'), kv('Entries post-only · market', '0 · 96'), kv('Market rejects (24h)', '3 in a row', 'bad'), kv('SoDEX stop hits (24h)', '4')],
+        why: ['SoDEX refused 3 market entries in a row at 11:02 and the bot paused.'], log: [ln('11:02', 'Market entries rejected', 'SoDEX rejected 3 market entries in a row (SAMPLE_CODE). Check your margin on SoDEX, then resume the bot.'), ln('10:58', 'Closed short', 'SAMPLE text.'), ln('10:57', 'Enter short', 'SAMPLE text.'), ln('10:57', 'Stop loss set on SoDEX', 'SAMPLE text.'), ln('10:41', 'Skipped entry', 'The spread is 6.2 bp, wider than the 5 bp limit, so the bot waits.')] },
+      { h: 'check', name: 'ETH taker run', market: 'ETH-USD', age: '4 d', owner: 'User ··0d93ee57', state: 'Running', st: 'Running', id: 'f',
+        kv: [kv('Cost / $1M (24h)', '$498.00', 'warn'), kv('Volume 1h · 24h', '$260.1K · $6.02M'), kv('Rounds (24h) · won', '302 · 49%'), kv('Entries post-only · market', '0 · 302'), kv('Market rejects (24h)', '1', 'warn'), kv('Avg hold', '48 s')],
+        why: ['Cost per $1M over 2× the median (proposal).', '1 market entry refused at 07:55.'], log: [ln('11:41', 'Closed long', 'SAMPLE text.'), ln('11:40', 'Enter long', 'SAMPLE text.'), ln('11:39', 'Closed short', 'SAMPLE text.'), ln('11:39', 'Enter short', 'SAMPLE text.'), ln('07:55', 'Order rejected', 'SAMPLE text.')] },
+      { h: 'check', name: 'BTC sideways', market: 'BTC-USD', age: '2 d', owner: 'User ··5e8812aa', state: 'Running', st: 'Running', id: 'g',
+        kv: [kv('Cost / $1M (24h)', '$139.80'), kv('Volume 1h · 24h', '$22.0K · $0.41M'), kv('Rounds (24h) · won', '12 · 67%'), kv('Waits (24h)', '21 · sideways only', 'warn'), kv('Market rejects (24h)', '0'), kv('Avg hold', '3 min 10 s')],
+        why: ['Stale candles at 11:20.'], log: [ln('11:21', 'Skipped entry', 'Right now it is an uptrend, and this bot only trades sideways markets.'), ln('11:20', 'Skipped entry', 'STALE_CANDLES: newest candle closed 94 s ago'), ln('10:02', 'Closed short', 'SAMPLE text.'), ln('09:58', 'Enter short', 'SAMPLE text.'), ln('09:31', 'Waiting', 'Hour 9:00 UTC is blocked.')] }
+    ];
+    const list = tab === 'mm' ? MM : VB;
+    const openId = s.open === undefined ? (tab === 'mm' ? 'a' : 'e') : s.open;
+    const seg = function (on) { return 'min-height: 44px; border-radius: 11px; border: 0; font: inherit; font-size: 14px; font-weight: 800; background: ' + (on ? '#2e62e8' : 'transparent') + '; color: ' + (on ? '#ffffff' : '#141a33'); };
+    const tile = function (l, v, sub, f) { return { label: l, value: v, sub: sub, box: 'padding: 12px; border-radius: 16px; background: #ffffff; display: flex; flex-direction: column; gap: 2px; border: 1px solid ' + (f === 'bad' ? '#f3c2bc' : f === 'check' ? '#f2cf9f' : '#e3e7f5') }; };
+    return {
+      tiles: [tile('Bots', '7 running', '2 paused · 1 stopping · 1 stopped'), tile('Volume, 1 h', '$1.21M', 'MM $715.6K · VB $492.5K'), tile('Volume, 24 h', '$34.40M', 'MM $20.72M · VB $13.68M'), tile('Cost per $1M, 24 h', '$278.42', 'MM $249.89 · VB $321.62'), tile('Active alerts', '2 bots', 'P1 · P7', 'bad'), tile('Need attention', '6 bots', '3 Problem · 3 Check', 'check')],
+      attention: [['bad', 'SOL quotes', 'P1 failing since 10:41: position over its limit.'], ['bad', 'BTC mm 2', 'P7 failing: stopping for 9 min.'], ['bad', 'SOL vb', 'Paused: SoDEX refused 3 market entries in a row.'], ['check', 'ETH mm night', 'Requests / min 61.5 · quoting gap 74 s · 1 untracked order.'], ['check', 'ETH taker run', 'Cost per $1M over 2× the median · 1 market entry refused.'], ['check', 'BTC sideways', 'Stale candles at 11:20.']].map(function (a) { return { health: H[a[0]].name, chip: chip(a[0]), icon: H[a[0]].icon, name: a[1], reason: a[2] }; }),
+      tabs: [['mm', 'Market Making', '6'], ['vb', 'Volume Builder', '5']].map(function (t) { return { label: t[1], count: t[2], on: t[0] === tab ? 'true' : 'false', style: seg(t[0] === tab), pick: function () { self.setState({ tab: t[0], open: undefined }); } }; }),
+      listLabel: tab === 'mm' ? 'Market Making bots' : 'Volume Builder bots',
+      cards: list.map(function (r) {
+        const open = openId === r.id;
+        return { name: r.name, market: r.market, age: r.age, owner: r.owner, state: r.state,
+          stateStyle: 'align-self: flex-start; margin-top: 2px; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; ' + st[r.st],
+          chip: chip(r.h), icon: H[r.h].icon, health: H[r.h].name, kv: r.kv, why: r.why, log: r.log,
+          open: open ? 'true' : 'false', isOpen: open, pid: 'm-' + r.id, btn: open ? 'Hide details' : 'Details',
+          chev: open ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6', toggle: function () { self.setState({ open: open ? null : r.id }); } };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
