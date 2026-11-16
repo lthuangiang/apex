@@ -19,11 +19,13 @@ export async function generateMetadata(): Promise<Metadata> {
   if (await signedIn()) return {};
   const t = await getTranslations("landing");
   const brand = (await getTranslations("common"))("brand");
+  // Tiêu đề tab, meta description và câu chữ khi chia sẻ link dùng chung một bộ (DEC-TBD-share-images).
+  const title = t("shareTitle", { brand });
+  const description = t("shareDescription");
   return {
-    title: t("metaTitle", { brand }),
-    description: t("metaDescription"),
-    // Câu chữ khi chia sẻ link (DEC-TBD-share-images) khác tiêu đề tab.
-    ...shareMetadata("landing", t("shareTitle", { brand }), t("shareDescription")),
+    title,
+    description,
+    ...shareMetadata("landing", title, description),
     robots: { index: true, follow: true },
   };
 }
