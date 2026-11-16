@@ -48,6 +48,8 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   unknown_order: { icon: CircleHelp, tone: "bg-warn-bg text-warn" },
   risk_alert: { icon: ShieldAlert, tone: "bg-neg-bg text-neg-ink" },
   key_fee: { icon: KeyRound, tone: "bg-warn-bg text-warn" },
+  // Không phải sự cố: tông trung tính, chỉ ở tab All.
+  fee_tier_changed: { icon: KeyRound, tone: "bg-bg text-ink-2" },
   fill: { icon: Check, tone: "bg-pos-bg text-pos" },
   daily_summary: { icon: Sparkles, tone: "bg-accent-tint text-accent" },
   leader_big_move: { icon: UserRound, tone: "bg-bg text-ink-2" },

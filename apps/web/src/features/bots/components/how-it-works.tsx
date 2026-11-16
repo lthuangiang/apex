@@ -4,24 +4,17 @@ import { Info } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
 
-// "How it works" cho option khó hiểu (DEC-145, DEC-146): nội dung ở `createBot.fields.<label>.how` (intro, steps, note).
-// Dùng chung cho form tạo / sửa bot và phần Configuration trên trang bot.
+// "How it works" cho option khó hiểu (DEC-145, DEC-146): nội dung ở `createBot.<howKey>` (intro, steps, note), với
+// `howKey` = `fields.<label>.how` hoặc bản riêng của chiến lược `fieldsByStrategy.<strategy>.<field>.how`
+// (`howBaseOf` trong field-copy.ts). Dùng chung cho form tạo / sửa bot và phần Configuration trên trang bot.
 
-/** Field có phần giải thích không (theo key câu chữ của field). */
-export function useHasHow() {
+function HowBody({ howKey }: { howKey: string }) {
   const t = useTranslations("createBot");
-  return (labelKey: string) => t.has(`fields.${labelKey}.how.intro`);
-}
-
-function HowBody({ labelKey }: { labelKey: string }) {
-  const t = useTranslations("createBot");
-  const steps = t.has(`fields.${labelKey}.how.steps`)
-    ? (t.raw(`fields.${labelKey}.how.steps`) as unknown)
-    : null;
-  const note = t.has(`fields.${labelKey}.how.note`) ? t(`fields.${labelKey}.how.note`) : null;
+  const steps = t.has(`${howKey}.steps`) ? (t.raw(`${howKey}.steps`) as unknown) : null;
+  const note = t.has(`${howKey}.note`) ? t(`${howKey}.note`) : null;
   return (
     <div className="flex flex-col gap-2 text-left font-normal text-ink-2">
-      <p className="m-0">{t(`fields.${labelKey}.how.intro`)}</p>
+      <p className="m-0">{t(`${howKey}.intro`)}</p>
       {Array.isArray(steps) ? (
         <ul className="m-0 flex list-disc flex-col gap-1 pl-4">
           {steps.map((s) => (
@@ -34,16 +27,16 @@ function HowBody({ labelKey }: { labelKey: string }) {
   );
 }
 
-export function HowItWorks({ labelKey, title }: { labelKey: string; title?: string }) {
+export function HowItWorks({ howKey, title }: { howKey: string; title?: string }) {
   const t = useTranslations("createBot");
-  if (!t.has(`fields.${labelKey}.how.intro`)) return null;
+  if (!t.has(`${howKey}.intro`)) return null;
   return (
     <details className="rounded-[12px] border border-border bg-surface-2 px-3 py-2 text-xs">
       <summary className="cursor-pointer font-semibold text-accent">
         {title === undefined ? t("howItWorks") : t("howItWorksOf", { name: title })}
       </summary>
       <div className="mt-2">
-        <HowBody labelKey={labelKey} />
+        <HowBody howKey={howKey} />
       </div>
     </details>
   );
@@ -53,7 +46,7 @@ export function HowItWorks({ labelKey, title }: { labelKey: string; title?: stri
  * Icon ⓘ cạnh nhãn, bấm mở popup "How it works" (trang bot, DEC-146). Popup định vị `fixed` theo icon, giữ trong
  * màn hình; đóng khi bấm ra ngoài, Esc hoặc bấm lại icon.
  */
-export function HowItWorksInfo({ labelKey, name }: { labelKey: string; name: string }) {
+export function HowItWorksInfo({ howKey, name }: { howKey: string; name: string }) {
   const t = useTranslations("createBot");
   const btn = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -86,7 +79,7 @@ export function HowItWorksInfo({ labelKey, name }: { labelKey: string; name: str
     };
   }, [pos]);
 
-  if (!t.has(`fields.${labelKey}.how.intro`)) return null;
+  if (!t.has(`${howKey}.intro`)) return null;
   const toggle = () => {
     if (pos !== null) {
       setPos(null);
@@ -121,7 +114,7 @@ export function HowItWorksInfo({ labelKey, name }: { labelKey: string; name: str
           className="fixed z-50 max-h-[60vh] overflow-y-auto rounded-[14px] border border-border bg-surface p-4 text-xs shadow-lg"
         >
           <p className="m-0 mb-2 text-sm font-extrabold text-ink">{name}</p>
-          <HowBody labelKey={labelKey} />
+          <HowBody howKey={howKey} />
         </div>
       )}
     </>

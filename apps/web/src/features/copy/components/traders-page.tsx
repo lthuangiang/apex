@@ -1,6 +1,6 @@
 "use client";
 
-import { HIDDEN_REASONS, TRADER_TABS, type TraderTab } from "@drift/shared";
+import { HIDDEN_REASONS, steadyThresholds, TRADER_TABS, type TraderTab } from "@drift/shared";
 import { EmptyState, ErrorState, Skeleton } from "@drift/ui";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -137,7 +137,10 @@ export function TradersPage() {
             </button>
           ))}
         </div>
-        {tab === "steady" ? <p className="m-0 text-sm text-ink-2">{t("list.steadyNote")}</p> : null}
+        {/* Ngưỡng thật của Steady, đọc từ cùng hằng số với bộ lọc (DEC-264). */}
+        {tab === "steady" ? (
+          <p className="m-0 text-sm text-ink-2">{t("list.steadyNote", steadyThresholds())}</p>
+        ) : null}
         {/* Artboard luôn hiện giới hạn 8 chỗ copy realtime; khi hết chỗ thì thêm câu in đậm. */}
         <p className="m-0 rounded-[16px] bg-accent-tint px-4 py-3 text-[13px] leading-normal text-accent-ink">
           {anyFull ? <strong>{t("list.slotsFull")} </strong> : null}

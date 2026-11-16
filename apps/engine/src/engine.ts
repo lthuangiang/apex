@@ -13,7 +13,7 @@ import {
   riskLimits,
   shardEpochs,
   sodexAccounts,
-  userBuilderFees,
+  builderFeeOverridesOf,
   users,
   type Db,
 } from "@drift/db";
@@ -2231,14 +2231,8 @@ export class Engine {
 
   /** Như `#builderFees` cho nhiều user trong một truy vấn (mỗi vòng `#syncBots`). */
   async #builderFeesOf(userIds: readonly string[]): Promise<Map<string, BuilderFeeOverrides>> {
-    const out = new Map<string, Record<string, number>>();
-    if (userIds.length === 0) return out;
-    const rows = await this.#d.db
-      .select()
-      .from(userBuilderFees)
-      .where(inArray(userBuilderFees.userId, [...new Set(userIds)]));
-    for (const r of rows) out.set(r.userId, { ...out.get(r.userId), [r.strategy]: r.rate });
-    return out;
+    // Mức theo bậc volume rồi mức team đặt tay (DEC-159, DEC-258), cùng nguồn với API và backtest.
+    return builderFeeOverridesOf(this.#d.db, userIds);
   }
 
   async #event(

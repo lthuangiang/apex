@@ -5,7 +5,7 @@ import {
   paperAccounts,
   paperFills,
   paperSnapshots,
-  userBuilderFees,
+  builderFeeOverridesOf,
   type Db,
 } from "@drift/db";
 import {
@@ -250,19 +250,19 @@ export class PaperGateway implements Gateway {
   async onPrice(market: string, price: string, at: number): Promise<PaperFillEvent[]> {
     this.setPrice(market, price);
     const rows = await this.d.db
-      .select({ order: orders, strategy: bots.strategy, ownRate: userBuilderFees.rate })
+      .select({ order: orders, strategy: bots.strategy, userId: bots.userId })
       .from(orders)
       .innerJoin(bots, eq(bots.id, orders.botId))
-      // Builder fee riêng của user cho chiến lược (DEC-159), như lệnh thật.
-      .leftJoin(
-        userBuilderFees,
-        and(eq(userBuilderFees.userId, bots.userId), eq(userBuilderFees.strategy, bots.strategy)),
-      )
       .where(
         and(eq(bots.mode, "paper"), eq(orders.market, market), inArray(orders.status, [...OPEN])),
       );
     const out: PaperFillEvent[] = [];
-    for (const { order: o, strategy, ownRate } of rows) {
+    // Builder fee riêng của user cho chiến lược (team đặt tay DEC-159, rồi bậc volume DEC-258), như lệnh thật.
+    const own = await builderFeeOverridesOf(
+      this.d.db,
+      rows.map((r) => r.userId),
+    );
+    for (const { order: o, strategy, userId } of rows) {
       const intent = toPaperOrder(o);
       if (!paperCrosses(intent, price)) continue;
       const qty = dec(o.size).sub(o.filledSize);
@@ -272,7 +272,7 @@ export class PaperGateway implements Gateway {
       const builder = builderRateOnFill(
         o.engine,
         o.side,
-        builderFeeRateFor(strategy, ownRate === null ? undefined : { [strategy]: ownRate }),
+        builderFeeRateFor(strategy, own.get(userId)),
       );
       const rate = maker ? makerRate(o.engine, builder) : takerRate(o.engine, builder);
       const fee = dec(fillPrice).mul(qty).mul(rate).toString();
