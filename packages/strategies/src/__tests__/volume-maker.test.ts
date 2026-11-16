@@ -1207,7 +1207,25 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
   it("logs the number of order requests sent to SoDEX each minute (DEC-248)", () => {
     const r = run(on, [...firstQuote(), tickAt(7000, "100000"), snap(7000), snap(61000)]);
     const line = logsOf(r.all).find((l) => l.decision === "Order requests");
-    expect(line?.why).toMatch(/^Last 61 s: \d+ requests to SoDEX \(new orders and cancels\)\.$/);
+    expect(line?.why).toMatch(
+      /^Last 61 s: \d+ requests to SoDEX \(new orders and cancels\)\. Longest gap between quotes: \d+\.\d s\.$/,
+    );
+    // Xét báo giá lúc 0 s, 7 s, 61 s: khoảng dài nhất 54 s (DEC-268).
+    expect(line?.why).toContain("Longest gap between quotes: 54.0 s.");
+  });
+
+  it("still logs the line when a stuck bot sent nothing for the whole window (review #157)", () => {
+    // Bot đã tự dừng báo giá từ lúc 0 s (halted), cửa sổ đếm bắt đầu lúc 0 s với 0 request.
+    const s0 = {
+      ...run(on, [...firstQuote()]).s,
+      phase: "halted" as const,
+      reqWin: { since: 0, n: 0, gap: 0 },
+    };
+    const r = volumeMaker.step(on, s0, tickAt(61_000, "100000"), ctx);
+    const line = logsOf(r.actions).find((l) => l.decision === "Order requests");
+    expect(line?.why).toBe(
+      "Last 61 s: 0 requests to SoDEX (new orders and cancels). Longest gap between quotes: 61.0 s.",
+    );
   });
 });
 
