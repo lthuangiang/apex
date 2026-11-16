@@ -277,11 +277,13 @@ function VbExample() {
       <div className="flex flex-wrap items-baseline gap-2.5">
         <strong className="font-display text-[17px]">ETH-USD</strong>
         <span className="hidden text-[13px] text-l-muted sm:inline">{t("sub")}</span>
+        {/* 390 px (artboard Mobile): thẻ gọn "One round", không có khối tín hiệu và ba ô giải thích. */}
+        <span className="text-xs text-l-muted sm:hidden">{t("round")}</span>
         <span className="ml-auto rounded border border-l-line px-2 py-0.5 font-num text-[11.5px] text-l-muted">
           {t("example")}
         </span>
       </div>
-      <div className="flex flex-col gap-2.5 rounded-lg border border-l-line px-3.5 py-3">
+      <div className="hidden flex-col gap-2.5 rounded-lg border border-l-line px-3.5 py-3 sm:flex">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="text-[13px] font-semibold">{t("signalTitle")}</span>
           <span className="ml-auto font-num text-[11.5px] text-l-muted">{t("signalSource")}</span>
@@ -305,8 +307,50 @@ function VbExample() {
           <Chip>{t("spreadOk")}</Chip>
         </div>
       </div>
-      <span className="text-[13px] font-semibold">{t("tradeTitle")}</span>
-      <figure className="m-0">
+      <span className="hidden text-[13px] font-semibold sm:inline">{t("tradeTitle")}</span>
+      <figure className="m-0 sm:hidden">
+        <svg viewBox="0 0 440 150" width="100%" role="img" aria-label={t("chartAria")}>
+          <line
+            x1="16"
+            y1="31.7"
+            x2="424"
+            y2="31.7"
+            className="stroke-l-focus"
+            strokeWidth="1.4"
+            strokeDasharray="4 4"
+          />
+          <text x="424" y="24" textAnchor="end" className="fill-l-muted font-num" fontSize="13">
+            {t("chartBeShort", { price: "1,820.3" })}
+          </text>
+          <line
+            x1="16"
+            y1="112.8"
+            x2="424"
+            y2="112.8"
+            className="stroke-l-ask"
+            strokeWidth="1.4"
+            strokeDasharray="4 4"
+          />
+          <text x="424" y="132" textAnchor="end" className="fill-l-ask font-num" fontSize="13">
+            {t("chartSlShort", { price: "1,808.5" })}
+          </text>
+          <polyline
+            points="16,58 40,54 64,50.3 92,56 120,52 150,47 180,44 210,46 240,41 270,43 300,38 330,35.1"
+            fill="none"
+            className="stroke-l-text"
+            strokeWidth="2.2"
+          />
+          <circle cx="64" cy="50.3" r="6" className="fill-l-bid" />
+          <text x="64" y="76" textAnchor="middle" className="fill-l-text-2 font-num" fontSize="13">
+            {t("chartInShort")}
+          </text>
+          <circle cx="330" cy="35.1" r="6" fill="none" className="stroke-l-bid" strokeWidth="2.4" />
+          <text x="330" y="60" textAnchor="middle" className="fill-l-text-2 font-num" fontSize="13">
+            {t("chartOutShort", { s: 19 })}
+          </text>
+        </svg>
+      </figure>
+      <figure className="m-0 hidden sm:block">
         <svg viewBox="0 0 440 150" width="100%" role="img" aria-label={t("chartAria")}>
           <line
             x1="16"
@@ -387,13 +431,15 @@ function VbExample() {
           </li>
         ))}
       </ol>
-      <Facts
-        items={[
-          [t("volTitle"), t("volBody")],
-          [t("costTitle"), t("costBody")],
-          [t("makerTitle"), t("makerBody")],
-        ]}
-      />
+      <div className="hidden sm:block">
+        <Facts
+          items={[
+            [t("volTitle"), t("volBody")],
+            [t("costTitle"), t("costBody")],
+            [t("makerTitle"), t("makerBody")],
+          ]}
+        />
+      </div>
     </div>
   );
 }

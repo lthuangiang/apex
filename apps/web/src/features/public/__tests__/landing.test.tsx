@@ -20,13 +20,13 @@ vi.mock("@/lib/api", () => ({ api: (...args: unknown[]) => apiMock(...args) as u
 
 const KEY = "desklabs.landing.theme";
 
-const show = () =>
+const show = (initialTheme: "light" | "dark" | null = null) =>
   render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
       <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
-        <LandingPage serverUrl="https://mcp.example.test/mcp" />
+        <LandingPage serverUrl="https://mcp.example.test/mcp" initialTheme={initialTheme} />
       </NextIntlClientProvider>
     </QueryClientProvider>,
   );
@@ -70,6 +70,15 @@ describe("landing theme", () => {
     await waitFor(() => {
       expect(shell()).toHaveAttribute("data-theme", "dark");
     });
+  });
+
+  it("draws the saved dark theme on the first paint and keeps it in a cookie", async () => {
+    const user = userEvent.setup({ delay: null });
+    // Theme từ cookie (server đọc): đúng ngay lần vẽ đầu, không chớp sáng.
+    show("dark");
+    expect(shell()).toHaveAttribute("data-theme", "dark");
+    await user.click(screen.getByRole("button", { name: "Switch to light" }));
+    expect(document.cookie).toContain("desklabs_landing_theme=light");
   });
 
   it("still works when the browser blocks storage", async () => {
@@ -120,9 +129,10 @@ describe("landing content", () => {
     expect(vb).toHaveFocus();
     const panel = screen.getByRole("tabpanel");
     expect(within(panel).getByText("Example")).toBeInTheDocument();
+    // Hai bản biểu đồ (390 px và rộng hơn; CSS chọn một), cùng tên cho trình đọc màn hình.
     expect(
-      within(panel).getByRole("img", { name: /^Example round: long entry at 1,817\.6/ }),
-    ).toBeInTheDocument();
+      within(panel).getAllByRole("img", { name: /^Example round: long entry at 1,817\.6/ }),
+    ).toHaveLength(2);
     expect(screen.getByText(/^Example round\. In the app/)).toBeInTheDocument();
   });
 

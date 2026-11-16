@@ -4,11 +4,12 @@ import { useTranslations } from "next-intl";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { LANDING_FONTS } from "../landing-fonts";
+import { LANDING_THEME_COOKIE, type LandingTheme } from "../landing-theme-cookie";
 
 // Theme của landing và trang MCP (DEC trong PR #166): mặc định SÁNG; nút mặt trời / mặt trăng đổi theme và nhớ lựa chọn
 // (localStorage, bọc try/catch: trình duyệt chặn storage thì vẫn chạy, chỉ không nhớ). App không dùng theme này.
 
-export type LandingTheme = "light" | "dark";
+export type { LandingTheme };
 const KEY = "desklabs.landing.theme";
 
 const Ctx = createContext<{ theme: LandingTheme; toggle: () => void }>({
@@ -31,15 +32,28 @@ function store(theme: LandingTheme): void {
   } catch {
     // Không nhớ được (private mode, storage bị chặn): theme vẫn đổi trong phiên này.
   }
+  try {
+    document.cookie = `${LANDING_THEME_COOKIE}=${theme}; path=/; max-age=31536000; samesite=lax`;
+  } catch {
+    // Cookie bị chặn: lần sau có thể chớp sáng một nhịp, theme vẫn đúng sau khi đọc localStorage.
+  }
 }
 
 /** Khối gốc của landing / trang MCP: token màu `l-*`, font mới, theme. */
-export function LandingShell({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<LandingTheme>("light");
+export function LandingShell({
+  children,
+  initialTheme = null,
+}: {
+  children: ReactNode;
+  /** Theme đọc từ cookie ở server; null → mặc định sáng, rồi đọc localStorage. */
+  initialTheme?: LandingTheme | null;
+}) {
+  const [theme, setTheme] = useState<LandingTheme>(initialTheme ?? "light");
   useEffect(() => {
+    if (initialTheme !== null) return;
     const saved = readStored();
     if (saved !== null) setTheme(saved);
-  }, []);
+  }, [initialTheme]);
   const toggle = () => {
     setTheme((t) => {
       const next = t === "dark" ? "light" : "dark";

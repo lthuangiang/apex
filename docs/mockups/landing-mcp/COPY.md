@@ -1,6 +1,6 @@
 # Landing + MCP page: final copy (approved by user 16/11/2026)
 
-Source of truth for layout: canvas https://claude.ai/artifact/TJb5NfGrcKwmNMDt1sFmB3. Local copies of every artboard sit next to this file, in `project/*.dc.html`.
+Source of truth for layout: canvas https://claude.ai/artifact/TJb5NfGrcKwmNMDt1sFmB3. Local copies of every artboard sit next to this file, as `*.dc.html` in `docs/mockups/landing-mcp/`.
 
 - Landing = `FullPage.dc.html`. It imports `Main.dc.html` (hero), `Proof.dc.html` (Analytics + Claude) and `Sections.dc.html`.
 - MCP page `/claude` = `McpPage.dc.html`.

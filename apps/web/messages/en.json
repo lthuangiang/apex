@@ -811,9 +811,7 @@
         "hint": "Skips an entry while the spread is wider",
         "how": {
           "intro": "Skips entries while the order book spread is wider than this (in bp, 1 bp = 0.01%).",
-          "steps": [
-            "A wide spread means the market is thin or jumpy, so fills are worse."
-          ],
+          "steps": ["A wide spread means the market is thin or jumpy, so fills are worse."],
           "note": "Raise it for less liquid markets where the spread is normally wider, otherwise the bot may rarely trade."
         }
       },
@@ -4356,14 +4354,9 @@
       "title": "Volume on SoDEX, built mostly with maker orders.",
       "body": "Market Making and Volume Builder trade on your own SoDEX account. Each bot logs why it acted, shows what every $1M of volume cost you, and stops at the loss limit you set.",
       "promisesLabel": "What DeskLabs can do on your account",
-      "cardLabel": "Example Market Making bot",
-      "cardTitle": "BTC Market Making",
-      "cardSub": "BTC-USD · Smart quoting on",
       "cardStatus": "Running",
       "price": "Price",
       "size": "Size (USDC)",
-      "sum": "Sum",
-      "spread": "Spread {bps} bps",
       "you": "YOU",
       "decisions": "Decisions",
       "dec1": "Ask requoted",
@@ -4371,8 +4364,6 @@
       "dec2": "Filled",
       "dec2Why": "bid 0.0003 BTC, maker",
       "cardNote": "Illustration. In the app you see your own bot, the live SoDEX book and your real numbers.",
-      "live": "Live",
-      "liveNote": "Live BTC-USD order book from SoDEX. YOU marks where a Market Making bot quotes; decisions are an example.",
       "status": "On SoDEX mainnet · Powered by SoDEX Builder Code",
       "watch": "Watch a bot work",
       "withdrawLabel": "Withdraw or transfer",
@@ -4428,7 +4419,12 @@
         "costBody": "Net loss ÷ volume × 1,000,000",
         "makerTitle": "Maker share",
         "makerBody": "Of your volume",
-        "note": "Example round. In the app you see every round your bot makes, with its real volume and cost."
+        "note": "Example round. In the app you see every round your bot makes, with its real volume and cost.",
+        "round": "One round",
+        "chartBeShort": "Break-even {price}",
+        "chartSlShort": "Stop on SoDEX {price}",
+        "chartInShort": "Enter",
+        "chartOutShort": "Exit · {s} s"
       }
     },
     "stats": {

@@ -4,7 +4,9 @@ import { cookies } from "next/headers";
 import { getTranslations } from "next-intl/server";
 
 import { OverviewPage } from "@/features/account";
-import { LandingPage, mcpServerUrl } from "@/features/public";
+import { LandingPage } from "@/features/public/components/landing-page";
+import { LANDING_THEME_COOKIE, themeFromCookie } from "@/features/public/landing-theme-cookie";
+import { mcpServerUrl } from "@/features/public/mcp-url";
 import { SHARE_IMAGE } from "@/lib/share-image";
 
 // `/`: chưa đăng nhập → Landing (UI_REVIEW mục K), đã đăng nhập → Overview. Cùng quy tắc cookie với proxy.ts.
@@ -40,9 +42,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function Page() {
   // Địa chỉ server MCP cho khối Claude trên landing: cùng env `MCP_PUBLIC_URL` với trang /claude.
-  return (await signedIn()) ? (
-    <OverviewPage />
-  ) : (
-    <LandingPage serverUrl={mcpServerUrl(process.env.MCP_PUBLIC_URL)} />
-  );
+  if (await signedIn()) return <OverviewPage />;
+  // Theme người xem đã chọn (cookie) để vẽ đúng ngay lần đầu, không chớp sáng.
+  const theme = themeFromCookie((await cookies()).get(LANDING_THEME_COOKIE)?.value);
+  return <LandingPage serverUrl={mcpServerUrl(process.env.MCP_PUBLIC_URL)} initialTheme={theme} />;
 }
