@@ -4186,6 +4186,67 @@ describe("insufficient margin rejects (margin guard)", () => {
     expect(gw.received.length).toBeGreaterThanOrEqual(6);
     expect((await botState(botId))?.state).toBe("running");
     expect(await pausedNotices(botId)).toHaveLength(0);
+    // Post-only bị từ chối là bình thường (NORMAL_REJECT_CODES): không ghi Decisions.
+    expect(await refusedLines(botId)).toHaveLength(0);
+    await e.stop();
+    await stopAll();
+  });
+
+  // DEC-TBD-reject-visibility-dust: lệnh bị SoDEX từ chối vì lý do thật phải hiện trong Decisions, tối đa một dòng mỗi
+  // lý do mỗi phút, kèm số lần.
+  const refusedLines = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
+    return events
+      .filter((x) => x.decision?.startsWith("Order refused by SoDEX: ") === true)
+      .sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+  };
+
+  it("writes one Decisions line per reject reason per minute, with the count", async () => {
+    await stopAll();
+    const gw = new FakeGateway();
+    gw.reject = { code: "-1", message: "order price out of range" };
+    const { botId } = await seedBot("running", mm);
+    const e = engineFor(gw, "w-refused-1");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    // ~32 s của từ chối liên tục: chỉ một dòng, ghi ngay ở lần đầu.
+    await step(e, 8);
+    const first = await refusedLines(botId);
+    expect(gw.received.length).toBeGreaterThanOrEqual(8);
+    expect(first).toHaveLength(1);
+    expect(first[0]?.type).toBe("error");
+    expect(first[0]?.decision).toBe(
+      "Order refused by SoDEX: order price out of range (1 in the last minute).",
+    );
+    expect(first[0]?.why).toMatch(/^SoDEX code -1\. Last: (buy|sell) /);
+    // Qua mốc 60 s: thêm đúng một dòng, đếm các lần trong phút vừa qua.
+    await step(e, 8);
+    const lines = await refusedLines(botId);
+    expect(lines).toHaveLength(2);
+    const n = Number(/\((\d+) in the last minute\)\.$/.exec(lines[1]?.decision ?? "")?.[1]);
+    expect(n).toBeGreaterThan(1);
+    expect(n).toBeLessThanOrEqual(gw.received.length);
+    // Không phải thiếu margin: không pause.
+    expect((await botState(botId))?.state).toBe("running");
+    await e.stop();
+    await stopAll();
+  });
+
+  it("shows the margin reject reason in Decisions before the margin pause", async () => {
+    await stopAll();
+    const gw = new FakeGateway();
+    gw.reject = MARGIN;
+    const { botId } = await seedBot("running", mm);
+    const e = engineFor(gw, "w-refused-2");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    await step(e, 5);
+    expect((await botState(botId))?.state).toBe("paused");
+    const lines = await refusedLines(botId);
+    expect(lines.map((x) => x.decision)).toEqual([
+      "Order refused by SoDEX: insufficient margin (1 in the last minute).",
+    ]);
     await e.stop();
     await stopAll();
   });

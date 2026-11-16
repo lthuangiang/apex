@@ -1,4 +1,4 @@
-import { dec, Decimal, ReasonCode, RoundMode } from "@drift/shared";
+import { dec, Decimal, NORMAL_REJECT_CODES, ReasonCode, RoundMode } from "@drift/shared";
 
 import { clOrdId } from "../core/ids";
 import { applyFill, emptyLedger, type Ledger } from "../core/ledger";
@@ -106,6 +106,11 @@ export interface VolumeMakerState {
   oracleWin?: { since: number; pulls: number; clamps: number };
   /** Lần đặt lại riêng một phía gần nhất sau khi SoDEX xác nhận huỷ (DEC-257), để giới hạn tần suất. */
   sideQuoteAt?: Partial<Record<"buy" | "sell", number>>;
+  /**
+   * Vị thế lẻ (dưới mức tối thiểu SoDEX, khác 0) mà lệnh mở ở phía đi qua 0 (long → bán, short → mua) bị SoDEX từ chối
+   * vì thiếu margin: không báo giá phía đó tới khi vị thế đổi hoặc người dùng Resume (DEC-TBD-reject-visibility-dust).
+   */
+  dustHold?: { side: "buy" | "sell"; position: string } | null;
 }
 
 /** Điều chỉnh Smart quoting của một phía: lùi `ticks` tick, hoặc rút hẳn lệnh mở (`pull`). */
@@ -536,6 +541,14 @@ function quote(
     });
     next = { ...next, fastPauseUntil: null };
   }
+  // Vị thế lẻ mà phía đi qua 0 đã bị từ chối vì thiếu margin (DEC-TBD-reject-visibility-dust): lệnh đó không reduce-only
+  // (vị thế dưới mức tối thiểu thì không đặt được lệnh đóng) nên cần thêm margin; gửi lại chỉ bị từ chối tiếp. Bỏ phía đó
+  // tới khi vị thế đổi.
+  const dustHold =
+    s.dustHold != null && flat && !pos.isZero() && dec(s.dustHold.position).eq(pos)
+      ? s.dustHold
+      : null;
+  if ((s.dustHold ?? null) !== dustHold) next = { ...next, dustHold };
   // Mốc giữ vị thế cho "Close only at your entry price or better".
   next = { ...next, positionSince: flat ? null : (s.positionSince ?? at) };
   if (flat) next = { ...next, entryCloseExpired: false };
@@ -560,8 +573,18 @@ function quote(
       `vm:${String(cycle)}:ask`,
     );
     // Smart quoting rút phía đang có xu hướng chạy vào (DEC-152).
-    if (!pulled.buy && meetsMinimum(bid.price ?? bidPrice, bid.quantity, rules)) places.push(bid);
-    if (!pulled.sell && meetsMinimum(ask.price ?? askPrice, ask.quantity, rules)) places.push(ask);
+    if (
+      !pulled.buy &&
+      dustHold?.side !== "buy" &&
+      meetsMinimum(bid.price ?? bidPrice, bid.quantity, rules)
+    )
+      places.push(bid);
+    if (
+      !pulled.sell &&
+      dustHold?.side !== "sell" &&
+      meetsMinimum(ask.price ?? askPrice, ask.quantity, rules)
+    )
+      places.push(ask);
   } else {
     const long = pos.gt(0);
     const inv = pos.mul(mid).abs();
@@ -1202,11 +1225,27 @@ function stepCore(
           ],
           state,
         };
-      // Lệnh đóng reduce-only bị từ chối: có thể SoDEX không chấp nhận GTX kèm reduceOnly.
+      // Vị thế lẻ (dưới mức tối thiểu, khác 0) mà lệnh mở phía đi qua 0 bị từ chối vì thiếu margin: lệnh đó không
+      // reduce-only nên cần margin mới; không gửi lại phía đó tới khi vị thế đổi (DEC-TBD-reject-visibility-dust).
+      const rules = ctx.rules[c.market];
+      const pos = dec(s.ledger.position);
+      const mid = s.mid ?? o.price;
+      if (
+        e.insufficientMargin === true &&
+        o.role === "open" &&
+        rules !== undefined &&
+        !pos.isZero() &&
+        o.side === (pos.gt(0) ? "sell" : "buy") &&
+        isFlat(pos, mid, rules)
+      )
+        state = { ...state, dustHold: { side: o.side, position: s.ledger.position } };
+      // Lệnh đóng reduce-only bị từ chối: có thể SoDEX không chấp nhận GTX kèm reduceOnly. Post-only bị từ chối (mã SoDEX
+      // `PostOnly`, mã giả lập `POST_ONLY_WOULD_TRADE`) chỉ là giá chạy, không tính.
       if (
         o.role === "close" &&
         s.closeReduceOnly &&
         e.code !== "POST_ONLY_WOULD_TRADE" &&
+        e.code !== NORMAL_REJECT_CODES.postOnly &&
         e.code !== "RISK_PER_TRADE"
       ) {
         const closeRejects = s.closeRejects + 1;
@@ -1315,8 +1354,10 @@ function stepCore(
     case "marginRatio":
     case "leaderFill":
     case "leaderPosition":
-    case "resumed":
       return { actions: [], state: s };
+    case "resumed":
+      // Người dùng Resume (thường sau khi nạp thêm tiền): báo giá lại phía đi qua 0 như bình thường.
+      return { actions: [], state: s.dustHold == null ? s : { ...s, dustHold: null } };
   }
 }
 

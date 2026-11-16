@@ -43,7 +43,14 @@ export type StrategyEvent =
   | { type: "tick"; at: number; market: string; price: string }
   | { type: "fill"; at: number; clOrdID: string; price: string; quantity: string; fee: string }
   | { type: "orderAck"; at: number; clOrdID: string }
-  | { type: "orderReject"; at: number; clOrdID: string; code: string }
+  | {
+      type: "orderReject";
+      at: number;
+      clOrdID: string;
+      code: string;
+      /** SoDEX từ chối vì thiếu margin (`isInsufficientMarginReject` của engine); thiếu = không phải / không rõ. */
+      insufficientMargin?: boolean;
+    }
   /**
    * Nhịp đồng hồ. Volume Farm nhận kèm dữ liệu thị trường (engine đọc `candles_1m` và orderbook REST, tối đa
    * mỗi 3 s): các chiến lược khác bỏ qua `market`.

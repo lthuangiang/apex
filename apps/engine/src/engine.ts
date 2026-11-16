@@ -40,6 +40,7 @@ import {
   type MmFairMessage,
   leverageSpecsOf,
   type LeverageSpec,
+  NORMAL_REJECT_CODES,
   REASON_CODE_META,
   ReasonCode,
   type ReasonCode as Reason,
@@ -268,6 +269,8 @@ interface Runner {
   marginRejects: number;
   /** Thời điểm các lần bị từ chối vì thiếu margin trong `MARGIN_REJECT_WINDOW_MS` gần nhất (ack không xoá). */
   marginRejectTimes: number[];
+  /** Lần SoDEX từ chối lệnh vì lý do thật gần đây, theo lý do: để ghi Decisions tối đa một dòng mỗi phút mỗi lý do. */
+  rejectLog: Map<string, { times: number[]; loggedAt: number | null }>;
   /** Giới hạn tin `copy_bot_skipped` của bot copy (DEC-212), trong bộ nhớ. */
   skipGate: SkipGate;
 }
@@ -294,6 +297,16 @@ export const MARGIN_REJECT_WINDOW_MS = 60_000;
 /** Câu trong Decisions khi pause vì thiếu margin (câu chữ đã duyệt). */
 export const MARGIN_PAUSE_WHY =
   "Paused: not enough margin on SoDEX. Add funds or lower the order size or leverage, then resume.";
+
+/**
+ * Lệnh bị SoDEX từ chối vì lý do thật (không phải post-only / chặn tự khớp, `NORMAL_REJECT_CODES`) được ghi Decisions,
+ * tối đa một dòng mỗi lý do trong `REJECT_LOG_WINDOW_MS`, kèm số lần trong cửa sổ đó. Sự cố 2026-11-15: 21 438 lần
+ * "insufficient margin" trong 15 giờ không có dòng nào trong Decisions (DEC-TBD-reject-visibility-dust).
+ */
+export const REJECT_LOG_WINDOW_MS = 60_000;
+/** Câu Decisions cho lệnh bị SoDEX từ chối (câu chữ đã duyệt). */
+export const rejectLogText = (reason: string, n: number): string =>
+  `Order refused by SoDEX: ${reason} (${String(n)} in the last minute).`;
 
 /** Backoff khi request chưa rời DRIFT: 2 s → 4 s → … tối đa 60 s; quá 5 lần hoặc 5 phút thì pause bot. */
 export const NOT_SENT_BACKOFF = {
@@ -746,6 +759,9 @@ export class Engine {
     this.#pendingCancels.get(o.botId)?.delete(clOrdID);
     this.#inflightCancels.delete(clOrdID);
     this.#openChecks.delete(o.id);
+    // Bị từ chối sau khi đã được nhận (user stream / đối soát). Lệnh bị từ chối ngay lúc gửi đã ghi ở #execute.
+    if (rejected && open)
+      await this.#logReject(r, o.rejectCode ?? reason ?? "REJECTED", null, o, at);
     await this.#feed(
       r,
       rejected
@@ -1099,6 +1115,7 @@ export class Engine {
       makerReduceRejects: 0,
       marginRejects: 0,
       marginRejectTimes: [],
+      rejectLog: new Map(),
       skipGate: new SkipGate(),
     };
   }
@@ -1715,13 +1732,21 @@ export class Engine {
               { botId: r.botId, clOrdID: res.clOrdID, code: res.code, message: res.message },
               r.paper ? "paper order rejected (simulated)" : "order rejected by SoDEX",
             );
+            if (!r.paper) await this.#logReject(r, res.code, res.message, sent, at);
             // Đếm trước khi báo chiến lược: bước chiến lược có thể gửi tiếp lệnh mới trong cùng lượt.
-            if (isInsufficientMarginReject(res.code, res.message)) {
+            const margin = isInsufficientMarginReject(res.code, res.message);
+            if (margin) {
               r.marginRejects += 1;
               r.marginRejectTimes.push(this.#d.now());
               marginRejected = { o: sent, message: res.message };
             }
-            await this.#feed(r, { type: "orderReject", at, clOrdID: res.clOrdID, code: res.code });
+            await this.#feed(r, {
+              type: "orderReject",
+              at,
+              clOrdID: res.clOrdID,
+              code: res.code,
+              ...(margin ? { insufficientMargin: true } : {}),
+            });
             // Stop loss gốc bị từ chối (DEC-118) không phải lệnh đóng thật: chiến lược tự giữ SL, không pause.
             if (sent?.reduceOnly === true && sent.stop === undefined)
               reduceRejected = { o: sent, res };
@@ -1910,6 +1935,41 @@ export class Engine {
     );
     await this.#pauseBot(r, ReasonCode.orderRejected);
     return true;
+  }
+
+  /**
+   * Ghi Decisions khi SoDEX từ chối lệnh vì lý do thật (mọi mã trừ `NORMAL_REJECT_CODES`), tối đa một dòng mỗi lý do
+   * trong `REJECT_LOG_WINDOW_MS`, kèm số lần trong cửa sổ đó: một cơn từ chối liên tục không làm ngập Decisions.
+   * Loại `error` nên cũng hiện trong "Recent errors"; số đếm "Refused by SoDEX" (BD-05) vẫn đọc từ bảng `orders`.
+   */
+  async #logReject(
+    r: Runner,
+    code: string,
+    message: string | null,
+    o: { side: string; quantity?: string; size?: string; market: string } | undefined,
+    at: number,
+  ): Promise<void> {
+    const normal: readonly string[] = Object.values(NORMAL_REJECT_CODES);
+    if (normal.includes(code)) return;
+    const text = message?.trim() ?? "";
+    const reason = text === "" ? code : text;
+    const key = `${code}|${reason}`;
+    const now = this.#d.now();
+    const entry = r.rejectLog.get(key) ?? { times: [], loggedAt: null };
+    entry.times = entry.times.filter((t) => t > now - REJECT_LOG_WINDOW_MS);
+    entry.times.push(now);
+    r.rejectLog.set(key, entry);
+    if (entry.loggedAt !== null && now - entry.loggedAt < REJECT_LOG_WINDOW_MS) return;
+    entry.loggedAt = now;
+    const qty = o?.quantity ?? o?.size;
+    const last = o === undefined || qty === undefined ? "" : ` Last: ${o.side} ${qty} ${o.market}.`;
+    await this.#event(
+      r,
+      "error",
+      rejectLogText(reason, entry.times.length),
+      `SoDEX code ${code}.${last}`,
+      at,
+    );
   }
 
   async #ack(r: Runner, at: number): Promise<void> {
