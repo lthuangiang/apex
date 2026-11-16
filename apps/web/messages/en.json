@@ -37,6 +37,7 @@
       "revenue": "Builder Revenue",
       "users": "Users",
       "stats": "Platform Stats",
+      "ops": "Ops",
       "settings": "Settings",
       "signOut": "Sign out",
       "mobile": {
@@ -195,6 +196,8 @@
       "draftSaved": "Draft saved. Find it in Strategy Lab under My bots.",
       "draftSavedLink": "Open My bots",
       "start": "Start on mainnet",
+      "backtestLost": "Your last backtest lost {net} ({pct}) over {days, plural, =0 {less than a day} one {# day} other {# days}}. A backtest is a simulation, not a forecast.",
+      "backtestLostNoPct": "Your last backtest lost {net} over {days, plural, =0 {less than a day} one {# day} other {# days}}. A backtest is a simulation, not a forecast.",
       "twoFactor": "2FA code",
       "requested": "Start requested · waiting for confirmation",
       "requestedBody": "The bot shows Running only after SoDEX acknowledges the first orders.",
@@ -245,9 +248,11 @@
       "missing": "Not available",
       "stats": {
         "net": "Net result after fees",
+        "netValue": "{net} · {pct} of {capital}",
         "fees": "Fees paid",
         "feesFunding": "Fees + funding",
         "maxDd": "Max drawdown",
+        "maxDdOver": "{dd} · over your {limit} limit",
         "fills": "Fills",
         "timeInRange": "Time in range",
         "completedCycles": "Completed cycles",
@@ -3596,6 +3601,7 @@
     }
   },
   "reasons": {
+    "STOPPED_BY_USER": "Stopped by you",
     "BUILDER_FEE_REVOKED": "Paused: builder fee approval is 0",
     "API_KEY_EXPIRED": "Paused: DeskLabs API key expired",
     "API_KEY_DELETED": "Paused: DeskLabs API key deleted",
@@ -4633,6 +4639,30 @@
           "revoke": "Turn off the builder fee or disconnect SoDEX in Settings to stop DeskLabs trading entirely."
         }
       }
+    }
+  },
+  "teamOps": {
+    "title": "Ops",
+    "subtitle": "Live Market Making and Volume Farm bots: cost, volume, request rate and money checks. Updates every 30 s.",
+    "refresh": "Refresh",
+    "checked": "Checked {time}",
+    "empty": "No Market Making or Volume Farm bots ran in the last 24 hours.",
+    "forbidden": "Ops is for the DeskLabs team only.",
+    "error": "Couldn’t load Ops. Try Refresh.",
+    "stale": "Couldn’t refresh. Showing the last data that loaded.",
+    "none": "None",
+    "invariantValue": "{invariant} · {time} · {detail}",
+    "cols": {
+      "bot": "Bot",
+      "state": "Status",
+      "costPerMillion": "Cost / $1M",
+      "volumeHour": "Volume (1h)",
+      "requestsPerMinute": "Requests / min (last minute)",
+      "makerShare": "Maker share (1h)",
+      "untracked": "Cancelled untracked orders (24h)",
+      "cuts": "Position cuts (24h)",
+      "quoteGap": "Longest quoting gap (1h)",
+      "invariant": "Latest invariant violation"
     }
   },
   "platformStats": {

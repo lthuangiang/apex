@@ -79,6 +79,18 @@ export interface ReasonCodeMeta {
   scope: ReasonScope;
 }
 
+/** `why` của sự kiện "Stopped" khi người dùng tự bấm Stop (không có reason code, BD-06). Không phải reason code. */
+export const STOPPED_BY_USER = "STOPPED_BY_USER";
+
+/**
+ * Dừng đúng kế hoạch (MM-01): hết budget, đủ volume target hoặc hết giờ chạy. Không có việc gì cho người dùng: engine
+ * tắt cờ Needs attention, UI không hiện.
+ */
+export const PLANNED_STOP_REASONS: readonly ReasonCode[] = [
+  ReasonCode.budgetDone,
+  ReasonCode.maxCycles,
+];
+
 /** Kết quả và phạm vi của từng reason code, chép từ DOMAIN.md mục 7.2. */
 export const REASON_CODE_META: Readonly<Record<ReasonCode, ReasonCodeMeta>> = {
   BUILDER_FEE_REVOKED: { outcome: BotState.paused, scope: ReasonScope.account },

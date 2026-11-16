@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Orders phone highlighted</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}
+a:focus-visible,button:focus-visible,li:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="num" style="width: 390px; height: 1100px; box-sizing: border-box; padding: 16px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 12px">
+  <h1 style="margin: 0; font-size: 24px; font-weight: 800">Execution &amp; Orders</h1>
+  <div role="status" style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 18px; background: #e6ecfe; font-size: 13.5px">
+    <span>Showing the order from Decisions: <strong>Bid pulled · 14:42:51</strong></span>
+    <a href="Mobile.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; font-weight: 700; text-decoration: none">← Back to decisions</a>
+  </div>
+  <section aria-label="Orders" style="border-radius: 24px; border: 1px solid #e3e7f5; background: #ffffff; padding: 12px">
+    <ul style="margin: 0; padding: 0; list-style: none">
+      <sc-for list="{{orders}}" as="o" hint-placeholder-count="5">
+        <li tabindex="{{o.tab}}" aria-current="{{o.current}}" style="{{o.style}}">
+          <span style="display: flex; justify-content: space-between; gap: 8px"><strong style="font-size: 14px">{{o.side}} · {{o.price}}</strong><span style="{{o.pill}}">{{o.status}}</span></span>
+          <span style="font-size: 12.5px; color: #3b4262">Nov 16, {{o.time}} · ETH-USD · {{o.filled}}</span>
+          <sc-if value="{{o.hl}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11.5px; font-weight: 800; color: #1d47b8">From Decisions</span></sc-if>
+        </li>
+      </sc-for>
+    </ul>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tone = function (s) {
+      const b = 'display: inline-flex; align-items: center; min-height: 24px; padding: 0 9px; border-radius: 12px; font-size: 12px; font-weight: 700; ';
+      if (s === 'Filled') return b + 'background: #ddf4e7; color: #0f7a43';
+      if (s === 'Open') return b + 'background: #e6ecfe; color: #1d47b8';
+      return b + 'background: #f5f7fd; color: #3b4262; box-shadow: inset 0 0 0 1px #e3e7f5';
+    };
+    const all = [
+      ['14:43:05', 'Sell', '1,825.3', '0 / 0.0109', 'Open', false],
+      ['14:42:58', 'Sell', '1,825.1', '0 / 0.0109', 'Cancelled', false],
+      ['14:42:51', 'Buy', '1,824.6', '0.0109 / 0.0109', 'Filled', true],
+      ['14:42:44', 'Buy', '1,824.5', '0 / 0.0109', 'Cancelled', false],
+      ['14:42:38', 'Buy', '1,824.7', '0 / 0.0109', 'Cancelled', false]
+    ];
+    return {
+      orders: all.map(function (r) {
+        return { time: r[0], side: r[1], price: r[2], filled: r[3], status: r[4], pill: tone(r[4]), hl: r[5],
+          tab: r[5] ? '-1' : '', current: r[5] ? 'true' : 'false',
+          style: 'display: flex; flex-direction: column; gap: 4px; padding: 12px 10px; border-radius: 14px; ' + (r[5] ? 'background: #e6ecfe; outline: 2px solid #2e62e8; outline-offset: -2px' : 'border-bottom: 1px solid #eef1f8') };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
