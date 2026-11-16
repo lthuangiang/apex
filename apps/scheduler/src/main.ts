@@ -168,9 +168,12 @@ let feeTiersAt = 0;
 async function feeTierTick() {
   const now = Date.now();
   if (now - feeTiersAt < FEE_TIER_REFRESH_MS) return;
+  const r = await refreshFeeTiers(db, now, (err, at) => {
+    log.error({ err, ...at }, "builder fee tier failed");
+  });
+  // Lượt lỗi toàn bộ (ném lỗi) thì thử lại ở vòng 10 phút sau, không chờ cả giờ.
   feeTiersAt = now;
-  const r = await refreshFeeTiers(db, now);
-  if (r.changed > 0) log.info(r, "builder fee tiers changed");
+  if (r.changed > 0 || r.failed > 0) log.info(r, "builder fee tiers changed");
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
