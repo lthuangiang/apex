@@ -2013,7 +2013,7 @@ export class Engine {
       return true;
     });
     // Chỉ ghi "Paused" khi state thật sự đổi: bot đang stopping / stopped / paused nhận thêm lệnh pause (ví dụ lệnh
-    // reduce-only bị từ chối lúc Stop) thì `applyReason` trả null và không có gì xảy ra (DEC-TBD-paused-log).
+    // reduce-only bị từ chối lúc Stop) thì `applyReason` trả null và không có gì xảy ra (DEC-256).
     if (changed) await this.#event(r, "state", "Paused", reason, this.#d.now());
   }
 

@@ -637,7 +637,7 @@ describe("engine", () => {
       await e.stop();
     });
 
-  it("logs Paused only when the pause changes the bot's state (DEC-TBD-paused-log)", async () => {
+  it("logs Paused only when the pause changes the bot's state (DEC-256)", async () => {
     const { eq } = await import("drizzle-orm");
     const paused = async (botId: string) =>
       (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
