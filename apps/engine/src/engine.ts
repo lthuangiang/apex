@@ -1390,7 +1390,7 @@ export class Engine {
     /** Sự kiện và state trước bước chiến lược (để biết market của tin `copy_bot_skipped`). */
     source: { event: StrategyEvent; prev: unknown } | null = null,
   ): Promise<void> {
-    let places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
+    const places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
     const cancels = actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : []));
     for (const a of actions) {
       if (a.type === "log") {
@@ -1441,28 +1441,7 @@ export class Engine {
     // đặt được lệnh mua sau lúc Stop, khớp khi bot đã dừng và vị thế nằm lại không ai đóng. Chỉ áp cho bước chiến lược
     // (`source`): lệnh đóng do engine dựng khi Stop (`#stopBot`, Spot không reduce-only) luôn đi. Chỉ khi đang dừng / đã
     // dừng; bot pause giữ hành vi cũ.
-    if (source !== null && places.some((o) => !o.reduceOnly)) {
-      const st = await this.#currentState(r.botId);
-      if (st === BotState.stopping || st === BotState.stopped) {
-        const dropped = places.filter((o) => !o.reduceOnly);
-        places = places.filter((o) => o.reduceOnly);
-        this.#d.log.info(
-          { botId: r.botId, state: st, dropped: dropped.length },
-          "opening orders not sent: bot is stopping",
-        );
-        // Báo chiến lược để nó không coi các lệnh này là đang sống. Không báo tiếp nếu chính bước này là phản hồi của một
-        // lần báo như vậy (không lặp); bot đang dừng nên lệnh pause của chiến lược (nếu có) không đổi trạng thái.
-        const echo = source.event.type === "orderReject" && source.event.code === "BOT_NOT_RUNNING";
-        if (!echo)
-          for (const o of dropped)
-            await this.#feed(r, {
-              type: "orderReject",
-              at,
-              clOrdID: o.clOrdID,
-              code: "BOT_NOT_RUNNING",
-            });
-      }
-    }
+    // CI-only revert of DEC-255: no re-read of the bot state before sending opening orders.
     if (places.length > 0) {
       // Ghi trước (unknown) rồi mới gửi; đã có (chạy lại sau chuyển shard) thì không gửi lại.
       const fresh = await this.#fenced(r, async (tx) => {
