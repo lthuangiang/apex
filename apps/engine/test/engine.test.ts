@@ -594,6 +594,82 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("keeps the user's Close position when the strategy stops during the user's Stop (keep_base)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running", {
+      strategy: "spot_grid",
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      config: {
+        market: "vBTC_vUSDC",
+        lowerPrice: "90",
+        upperPrice: "110",
+        gridLevels: 5,
+        spacing: "arithmetic",
+        investment: "500",
+        maxLoss: "100",
+        stopPrice: "85",
+        onStop: "keep_base",
+      },
+    });
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    const buy = gw.received.find((o) => o.side === "buy" && o.type === "limit");
+    expect(init).toBeDefined();
+    expect(buy).toBeDefined();
+    await e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock + 1);
+    // Người dùng bấm Stop kèm Close position (engine chưa tới nhịp xử lý).
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    // Lệnh mua khớp ở 84, dưới Stop price 85: chiến lược dừng (STOP_LOSS) với keep_base.
+    await e.onFill(accountId, buy?.clOrdID ?? "", buy?.quantity ?? "0", "84", "0", clock + 2);
+    const b = await botState(botId);
+    expect(b?.state).toBe("stopped");
+    expect(b?.reasonCode).toBe(ReasonCode.stopLoss);
+    const close = gw.received.filter((o) => o.tag === "close");
+    expect(close).toHaveLength(1);
+    expect(close[0]?.side).toBe("sell");
+    expect(close[0]?.quantity).toBe(
+      String(Number(init?.quantity ?? "0") + Number(buy?.quantity ?? "0")),
+    );
+    await e.stop();
+  });
+
+  it("does not reuse an old Close position choice when the bot was started again", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running", {
+      strategy: "spot_grid",
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      config: {
+        market: "vBTC_vUSDC",
+        lowerPrice: "90",
+        upperPrice: "110",
+        gridLevels: 5,
+        spacing: "arithmetic",
+        investment: "500",
+        maxLoss: "100",
+        stopPrice: "85",
+        onStop: "keep_base",
+      },
+    });
+    // closeOnStop còn từ lần Stop trước (Start không reset): bot đang running thì không phải lựa chọn hiện tại.
+    await db.update(bots).set({ closeOnStop: true }).where(eq(bots.id, botId));
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    await e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock + 1);
+    clock += 1_000;
+    await e.onPrice("vBTC_vUSDC", "84", clock);
+    expect((await botState(botId))?.state).toBe("stopped");
+    expect(gw.received.filter((o) => o.tag === "close")).toEqual([]);
+    await e.stop();
+  });
+
   it("keeps a strategy stop waiting until its unknown order is reconciled, and keeps its reason (rule 1.7)", async () => {
     const gw = new FakeGateway();
     gw.timeoutNext = "applied";

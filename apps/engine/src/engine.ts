@@ -2054,7 +2054,18 @@ export class Engine {
   }
 
   /** stop huỷ lệnh của bot rồi (nếu cấu hình) đóng vị thế bằng lệnh reduce-only (DOMAIN.md mục 7.2). */
-  async #stopBot(r: Runner, reason: Reason | null, close: boolean): Promise<void> {
+  async #stopBot(r: Runner, reason: Reason | null, closeIn: boolean): Promise<void> {
+    let close = closeIn;
+    // Chiến lược dừng trong lúc người dùng đang Stop kèm "Close position" (bot `stopping`, closeOnStop = true): giữ lựa
+    // chọn của người dùng (keep_base của chiến lược không bỏ được lệnh đóng người dùng đã chọn). Chỉ đọc khi `stopping`:
+    // closeOnStop của lần Stop cũ không được reset lúc Start.
+    if (reason !== null && !close) {
+      const [b] = await this.#d.db
+        .select({ state: bots.state, closeOnStop: bots.closeOnStop })
+        .from(bots)
+        .where(eq(bots.id, r.botId));
+      close = b?.state === BotState.stopping && b.closeOnStop;
+    }
     const open = await this.#d.db
       .select({ clOrdId: orders.clOrdId })
       .from(orders)
@@ -2207,10 +2218,11 @@ export class Engine {
         .where(eq(bots.id, r.botId))
         .for("update");
       if (b === undefined || b.state === BotState.stopped || b.state === BotState.archived) return;
-      // Người dùng đã chọn đóng vị thế khi Stop (bấm Stop trước đó) thì giữ lựa chọn đó.
+      // Người dùng đang Stop kèm đóng vị thế thì giữ lựa chọn đó (closeOnStop chỉ có nghĩa khi bot đang `stopping`).
+      const userClose = b.state === BotState.stopping && b.closeOnStop;
       await tx
         .update(bots)
-        .set({ state: BotState.stopping, reasonCode: reason, closeOnStop: close || b.closeOnStop })
+        .set({ state: BotState.stopping, reasonCode: reason, closeOnStop: close || userClose })
         .where(eq(bots.id, r.botId));
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
