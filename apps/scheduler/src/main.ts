@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { reconcileDay, snapshotBuilderBalances } from "./builder-revenue";
 import { purgeOldDeskAiChats, queueDueRecords, sweepStaleDeskJobs } from "./desk-record";
+import { FEE_TIER_REFRESH_MS, refreshFeeTiers } from "./fee-tiers";
 import { leaderboardDue, noteMinHoldChanges, runLeaderboard } from "./leaderboard";
 import { computeDailyStats, utcDate } from "./market-stats";
 import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
@@ -162,6 +163,16 @@ async function mmModelTick() {
   if (r.status !== "skipped") log.info(r, "mm cost model fitted");
 }
 
+/** Builder fee theo bậc volume (DEC-TBD-mm-fee-tiers): mỗi giờ một lần. */
+let feeTiersAt = 0;
+async function feeTierTick() {
+  const now = Date.now();
+  if (now - feeTiersAt < FEE_TIER_REFRESH_MS) return;
+  feeTiersAt = now;
+  const r = await refreshFeeTiers(db, now);
+  if (r.changed > 0) log.info(r, "builder fee tiers changed");
+}
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let riskTimer: ReturnType<typeof setInterval> | null = null;
 async function tick() {
@@ -183,6 +194,9 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
     // Không đợi 10 phút đầu: tiến trình vừa nhận lease chạy (hoặc chạy tiếp) lượt leaderboard ngay nếu tới hạn.
     void leaderboardTick().catch((error: unknown) => {
       log.error({ err: error }, "leaderboard tick failed");
+    });
+    void feeTierTick().catch((error: unknown) => {
+      log.error({ err: error }, "builder fee tiers failed");
     });
     riskTimer = setInterval(() => {
       // Theo dõi MCP (DEC-225): mỗi phút, cửa sổ 5 phút.
@@ -233,6 +247,9 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
       });
       void mmModelTick().catch((error: unknown) => {
         log.error({ err: error }, "mm cost model fit failed");
+      });
+      void feeTierTick().catch((error: unknown) => {
+        log.error({ err: error }, "builder fee tiers failed");
       });
     }, 10 * 60_000);
   },
