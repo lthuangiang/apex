@@ -195,7 +195,7 @@ function WhatIfRows({
 }
 
 /**
- * Việc cấp account (RS-01, DEC-TBD-goal-loss-needs-you): lỗ đã vượt giới hạn của mục tiêu. Không có bot nên không có
+ * Việc cấp account (RS-01, DEC-272): lỗ đã vượt giới hạn của mục tiêu. Không có bot nên không có
  * so sánh what-if và không hoãn được; tự hết khi lỗ về dưới giới hạn hoặc người dùng đổi mục tiêu.
  */
 export function GoalLossCard({ item }: { item: Item }) {

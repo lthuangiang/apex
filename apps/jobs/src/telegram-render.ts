@@ -53,7 +53,7 @@ function briefBody(data: Record<string, unknown>): string {
   if (text !== null) return escapeTelegramHtml(text);
   const count = typeof data.count === "number" ? data.count : null;
   if (count === null) return M.bodies.daily_summary;
-  // Việc đầu là việc cấp account (DEC-TBD-goal-loss-needs-you): gọi theo việc, không có tên bot.
+  // Việc đầu là việc cấp account (DEC-272): gọi theo việc, không có tên bot.
   const bot = data.first === "goal" ? M.goalLimit : escapeTelegramHtml(str(data.bot) ?? M.aBot);
   if (count === 0) return M.bodies.briefNone;
   return count === 1 ? fill(M.bodies.briefOne, { bot }) : fill(M.bodies.briefMany, { count, bot });

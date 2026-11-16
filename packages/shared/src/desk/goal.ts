@@ -10,7 +10,7 @@ export interface GoalGauge {
 }
 
 /**
- * Việc "Needs you" cấp account (RS-01, DEC-TBD-goal-loss-needs-you): lỗ đã vượt giới hạn của mục tiêu. So bằng decimal;
+ * Việc "Needs you" cấp account (RS-01, DEC-272): lỗ đã vượt giới hạn của mục tiêu. So bằng decimal;
  * bằng đúng giới hạn chưa tính là vượt. Không có mục tiêu hoặc chưa tính được mức đã dùng thì false (không tạo việc).
  */
 export function goalLossOver(g: { limit: string; used: string | null } | null): boolean {

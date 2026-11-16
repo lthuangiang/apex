@@ -45,7 +45,7 @@ const STOP_FIELD: Partial<Record<string, RiskInput["stopField"]>> = {
 };
 
 async function ownItem(deps: BotDeps, userId: string, itemId: string) {
-  // Việc cấp account không có bot nên không có so sánh (DEC-TBD-goal-loss-needs-you): báo rõ, không 404 mơ hồ.
+  // Việc cấp account không có bot nên không có so sánh (DEC-272): báo rõ, không 404 mơ hồ.
   if (itemId === accountItemId(userId, "goal_loss_over"))
     throw new AppError(ErrorCode.stateConflict, "This item has no comparison.");
   const [item] = await deps.db

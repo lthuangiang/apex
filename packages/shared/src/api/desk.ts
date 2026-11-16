@@ -121,7 +121,7 @@ export const deskFactSchema = z.object({
 });
 export const needsYouItemSchema = z.object({
   id: uuidSchema,
-  /** null: việc cấp account (`goal_loss_over`, DEC-TBD-goal-loss-needs-you); khi đó botName / strategy / market rỗng. */
+  /** null: việc cấp account (`goal_loss_over`, DEC-272); khi đó botName / strategy / market rỗng. */
   botId: uuidSchema.nullable(),
   botName: z.string(),
   strategy: z.string(),

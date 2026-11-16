@@ -34,7 +34,7 @@ export interface TelegramBriefDeps extends DeskAiDeps {
 /** Dữ liệu của tin: lời Desk AI (đã qua kiểm tra số) hoặc tham số câu mẫu. */
 export type BriefPayload =
   | { localDate: string; text: string }
-  /** `first`: việc đầu là việc cấp account (`goal`, không có tên bot) hay của bot (DEC-TBD-goal-loss-needs-you). */
+  /** `first`: việc đầu là việc cấp account (`goal`, không có tên bot) hay của bot (DEC-272). */
   | { localDate: string; count: number; bot: string; first: "goal" | "bot" };
 
 async function savedBrief(deps: TelegramBriefDeps, userId: string, date: string) {

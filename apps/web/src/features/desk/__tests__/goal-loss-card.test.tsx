@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import messages from "../../../../messages/en.json";
 import { GoalLossCard } from "../components/needs-you-card";
 
-// RS-01 (DEC-TBD-goal-loss-needs-you): việc cấp account không có bot: không link sửa bot, không Later, không so sánh.
+// RS-01 (DEC-272): việc cấp account không có bot: không link sửa bot, không Later, không so sánh.
 
 vi.mock("@/lib/api", () => ({ api: () => new Promise(() => undefined) }));
 

@@ -49,7 +49,7 @@ export const NEEDS_YOU_RULES = [
 ] as const;
 export type NeedsYouRule = (typeof NEEDS_YOU_RULES)[number];
 /**
- * Việc không thuộc bot nào (DEC-TBD-goal-loss-needs-you): tính lúc đọc, không lưu ở `desk_items`, không hoãn được, tự
+ * Việc không thuộc bot nào (DEC-272): tính lúc đọc, không lưu ở `desk_items`, không hoãn được, tự
  * hết khi điều kiện hết đúng.
  */
 export const ACCOUNT_RULES = ["goal_loss_over"] as const;

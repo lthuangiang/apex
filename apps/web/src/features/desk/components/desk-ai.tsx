@@ -144,7 +144,7 @@ export function Answer({
     lead = t("brief", {
       count: Number(answer.params.count ?? 0),
       bot: String(answer.params.bot ?? ""),
-      // Việc đầu là việc cấp account (DEC-TBD-goal-loss-needs-you): câu lấy từ i18n, không từ API.
+      // Việc đầu là việc cấp account (DEC-272): câu lấy từ i18n, không từ API.
       first: answer.params.first === "goal" ? "goal" : "bot",
       greeting: greetingAt(new Date()),
     });

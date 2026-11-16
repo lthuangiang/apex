@@ -17,7 +17,7 @@ describe("desk goal gauge", () => {
   });
 });
 
-describe("goal loss over (RS-01, DEC-TBD-goal-loss-needs-you)", () => {
+describe("goal loss over (RS-01, DEC-272)", () => {
   it("is over only when used passes the limit, never at the limit or without data", () => {
     expect(goalLossOver({ limit: "500", used: "500.01" })).toBe(true);
     expect(goalLossOver({ limit: "500", used: "500" })).toBe(false);

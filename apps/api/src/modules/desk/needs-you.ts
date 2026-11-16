@@ -344,7 +344,7 @@ export async function goalOf(
 }
 
 /**
- * Id tất định cho việc cấp account (không lưu ở `desk_items`, DEC-TBD-goal-loss-needs-you): cùng user + loại việc thì
+ * Id tất định cho việc cấp account (không lưu ở `desk_items`, DEC-272): cùng user + loại việc thì
  * cùng id, để web dùng làm key và snooze trả lỗi rõ ràng.
  */
 export function accountItemId(userId: string, rule: AccountRule): string {
@@ -472,7 +472,7 @@ export async function snoozeItem(
   userId: string,
   itemId: string,
 ): Promise<{ id: string; rule: NeedsYouRule; snoozedUntil: string } | null> {
-  // Việc cấp account không lưu nên không hoãn được: báo lỗi rõ ràng, không âm thầm bỏ qua (DEC-TBD-goal-loss-needs-you).
+  // Việc cấp account không lưu nên không hoãn được: báo lỗi rõ ràng, không âm thầm bỏ qua (DEC-272).
   if (itemId === accountItemId(userId, "goal_loss_over"))
     throw new AppError(
       ErrorCode.stateConflict,

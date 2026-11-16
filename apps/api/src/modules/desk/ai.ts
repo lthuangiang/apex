@@ -480,7 +480,7 @@ export async function deskAiBrief(deps: DeskAiDeps, userId: string): Promise<Des
       ? "Nothing needs the user today."
       : items
           .map((i) =>
-            // Việc cấp account không có tên bot (DEC-TBD-goal-loss-needs-you).
+            // Việc cấp account không có tên bot (DEC-272).
             i.botId === null
               ? RULE_TEXT[i.rule]
               : `${JSON.stringify(i.botName)} ${RULE_TEXT[i.rule]}`,
@@ -493,7 +493,7 @@ export async function deskAiBrief(deps: DeskAiDeps, userId: string): Promise<Des
     {
       kind: "template",
       key: "brief",
-      // Việc đầu là việc cấp account (DEC-TBD-goal-loss-needs-you): không có tên bot; `first` báo cho web / Telegram tự
+      // Việc đầu là việc cấp account (DEC-272): không có tên bot; `first` báo cho web / Telegram tự
       // lấy câu từ i18n, API không viết câu tiếng Anh.
       params: {
         count: items.length,
