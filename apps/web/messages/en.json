@@ -3741,6 +3741,7 @@
     "within": "Within limits",
     "noneSet": "No limits set",
     "noneSetBody": "Set a limit below and DeskLabs checks it for you.",
+    "uiOnlyBody": "No server-enforced limit is set. Your limits show warnings here only.",
     "withinBody": "Server-enforced limits pass.",
     "breachedTitle": "{n, plural, one {# limit reached} other {# limits reached}}",
     "breachedBody": "Running agents on this account were paused by the server.",

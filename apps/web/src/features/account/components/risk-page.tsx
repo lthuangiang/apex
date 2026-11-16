@@ -372,7 +372,7 @@ export function RiskPage() {
             >
               <span
                 aria-hidden="true"
-                className={`flex size-12 flex-none items-center justify-center rounded-[14px] bg-surface ${openAlerts.length === 0 ? "text-pos" : "text-neg-ink"}`}
+                className={`flex size-12 flex-none items-center justify-center rounded-[14px] bg-surface ${openAlerts.length > 0 ? "text-neg-ink" : limitsSet(r) === 0 ? "text-ink-2" : "text-pos"}`}
               >
                 <ShieldCheck size={26} />
               </span>
@@ -387,9 +387,11 @@ export function RiskPage() {
                 <span className="text-sm text-ink-body">
                   {openAlerts.length > 0
                     ? t("breachedBody")
-                    : serverLimitsSet(r) === 0
+                    : limitsSet(r) === 0
                       ? t("noneSetBody")
-                      : t("passCount", { n: serverLimitsSet(r) })}
+                      : serverLimitsSet(r) === 0
+                        ? t("uiOnlyBody")
+                        : t("passCount", { n: serverLimitsSet(r) })}
                 </span>
               </div>
               {openAlerts.length === 0 ? null : (
