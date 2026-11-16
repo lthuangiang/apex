@@ -29,6 +29,7 @@ import { useMarketNames } from "@/lib/markets";
 import { ME_KEY, useMe, useTwoFactorNeeded } from "@/lib/queries";
 
 import { botCapital, botMarket } from "../bot-label";
+import { stopEventIdOf, useReasonLabel } from "../stop-reason";
 
 import { BetaChip, isBeta } from "./beta-chip";
 import { useBotErrorText } from "./bot-errors";
@@ -68,9 +69,7 @@ export function AgentPage({ botId }: { botId?: string }) {
   const tf = useTranslations("createBot");
   const tsh = useTranslations("common.shell");
   const tr = useTranslations("reasons");
-  // Sự kiện state lưu mã lý do (API_KEY_UNUSABLE…) ở `why`: hiện câu chữ thay cho mã.
-  const why = (text: string | null) =>
-    text !== null && /^[A-Z_]+$/.test(text) && tr.has(text) ? tr(text) : text;
+  const reasonLabel = useReasonLabel();
   const router = useRouter();
   const qc = useQueryClient();
   const me = useMe();
@@ -110,6 +109,18 @@ export function AgentPage({ botId }: { botId?: string }) {
 
   const d: BotDetail | undefined = detail.data;
   const bot = d?.bot;
+  // Sự kiện state lưu mã lý do (API_KEY_UNUSABLE…) ở `why`: hiện câu chữ thay cho mã. `stopDetail` của API chỉ nói
+  // về lần dừng hiện tại, nên chỉ dùng cho sự kiện mới nhất mang mã bot đang có; sự kiện cũ hơn dùng nhãn chung.
+  const currentStopEvent = stopEventIdOf(d);
+  const why = (text: string | null, eventId?: string) =>
+    text !== null && /^[A-Z_]+$/.test(text) && tr.has(text)
+      ? reasonLabel({
+          reasonCode: text,
+          strategy: bot?.strategy,
+          stopDetail:
+            eventId !== undefined && eventId === currentStopEvent ? bot?.stopDetail : null,
+        })
+      : text;
   const hasPerps = bot !== undefined && bot.engine !== "spot";
   // Draft → màn Edit; archived → Strategy Lab. Chỉ chuyển khi backend đã trả `state` (UI_REVIEW F1).
   useEffect(() => {
@@ -284,7 +295,9 @@ export function AgentPage({ botId }: { botId?: string }) {
                 aria-label={t("statusLabel")}
                 className="flex flex-wrap items-center gap-2"
               >
-                <StatusPill {...stateLabel(b)} />
+                <StatusPill
+                  {...stateLabel(b, { config: active?.config, volume: dd.volumeMaker })}
+                />
                 <span className="text-xs text-ink-2 tabular-nums">{sub}</span>
               </div>
               {waitingTooLong(b) ? (
@@ -407,7 +420,15 @@ export function AgentPage({ botId }: { botId?: string }) {
                 key={a.id}
                 href={`/agent/${a.id}`}
                 aria-current={a.id === id ? "page" : undefined}
-                title={a.reasonCode === null ? undefined : tr(a.reasonCode)}
+                title={
+                  a.reasonCode === null
+                    ? undefined
+                    : reasonLabel({
+                        reasonCode: a.reasonCode,
+                        strategy: a.strategy,
+                        stopDetail: a.stopDetail,
+                      })
+                }
                 className={`flex min-w-[220px] flex-none items-center gap-2.5 rounded-[16px] border px-3.5 py-2.5 no-underline ${a.id === id ? "border-accent bg-accent-tint" : "border-border bg-surface"}`}
               >
                 <span
@@ -575,7 +596,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                         </span>
                       ),
                     },
-                    { key: "why", header: t("cols.why"), cell: (e) => why(e.why) ?? "" },
+                    { key: "why", header: t("cols.why"), cell: (e) => why(e.why, e.id) ?? "" },
                     {
                       key: "result",
                       header: t("cols.result"),
@@ -607,7 +628,9 @@ export function AgentPage({ botId }: { botId?: string }) {
                             />
                           )}
                         </span>
-                        <span className="text-xs text-ink-2">{e.result ?? why(e.why) ?? ""}</span>
+                        <span className="text-xs text-ink-2">
+                          {e.result ?? why(e.why, e.id) ?? ""}
+                        </span>
                       </span>
                     </li>
                   ))
@@ -673,7 +696,9 @@ export function AgentPage({ botId }: { botId?: string }) {
                             {formatDateTime(e.occurredAt)}
                           </span>
                         </span>
-                        {e.why === null ? null : <span className="text-[13px]">{why(e.why)}</span>}
+                        {e.why === null ? null : (
+                          <span className="text-[13px]">{why(e.why, e.id)}</span>
+                        )}
                       </li>
                     ))}
                 </ul>
