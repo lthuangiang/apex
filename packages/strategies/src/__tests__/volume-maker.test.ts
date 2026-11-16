@@ -1763,29 +1763,129 @@ describe("volume maker — dust position and margin rejects (DEC-291)", () => {
     expect(ask?.reduceOnly).toBe(false);
   });
 
-  it("stops sending the sell that crosses zero after a margin reject, until the position changes", () => {
+  it("closes the dust with one market IOC reduce-only order after the margin reject, then quotes both sides", () => {
+    let s = dustLong();
+    const q = stepAll(s, { type: "timer", at: 3_000 });
+    const ask = q.placed.find((o) => o.side === "sell");
+    if (ask === undefined) throw new Error("no ask");
+    expect(ask.quantity).toBe("0.0108");
+    const all: StrategyAction[] = [];
+    const r = volumeMaker.step(
+      c,
+      q.state,
+      { type: "orderReject", at: 3_000, clOrdID: ask.clOrdID, ...MARGIN },
+      ethCtx,
+    );
+    s = r.state;
+    all.push(...r.actions);
+    // Đúng một lệnh: market IOC reduce-only, bán đúng bằng vị thế; lệnh đang sống (bid) bị huỷ trước.
+    const close = places(r.actions);
+    expect(close).toHaveLength(1);
+    expect(close[0]).toMatchObject({
+      side: "sell",
+      type: "market",
+      timeInForce: "IOC",
+      reduceOnly: true,
+      quantity: "0.0031",
+      tag: `vm:${String(s.cycle)}:dust:close`,
+    });
+    expect(close[0]?.price).toBeUndefined();
+    const cancels = r.actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : []));
+    const bid = q.placed.find((o) => o.side === "buy");
+    if (bid === undefined) throw new Error("no bid");
+    expect(cancels).toEqual([bid.clOrdID]);
+    expect(s.dustHold).toEqual({ side: "sell", position: "0.0031" });
+    // SoDEX xác nhận huỷ bid.
+    s = volumeMaker.step(
+      c,
+      s,
+      { type: "orderDone", at: 3_000, clOrdID: bid.clOrdID },
+      ethCtx,
+    ).state;
+
+    // Còn chờ kết quả: các nhịp làm mới và lần từ chối trùng không gửi lệnh đóng thứ hai, không đặt lệnh mở nào.
+    let at = 6_100;
+    for (let i = 0; i < 5; i += 1) {
+      const t = volumeMaker.step(c, s, { type: "timer", at }, ethCtx);
+      s = t.state;
+      all.push(...t.actions);
+      const dup = volumeMaker.step(
+        c,
+        s,
+        { type: "orderReject", at, clOrdID: ask.clOrdID, ...MARGIN },
+        ethCtx,
+      );
+      s = dup.state;
+      all.push(...dup.actions);
+      at += 3_100;
+    }
+    expect(places(all)).toHaveLength(1);
+
+    // Khớp hết: ghi Decisions, bỏ giữ phía bán, lần báo giá sau đủ hai phía như phẳng.
+    const id = close[0]?.clOrdID ?? "";
+    const f = volumeMaker.step(
+      c,
+      s,
+      { type: "fill", at, clOrdID: id, price: "1839.5", quantity: "0.0031", fee: "0" },
+      ethCtx,
+    );
+    s = f.state;
+    expect(s.ledger.position).toBe("0");
+    expect(s.dustHold ?? null).toBeNull();
+    expect(f.actions).toEqual([
+      {
+        type: "log",
+        decision:
+          "Closed a small leftover position of 0.0031 ETH at market (below the SoDEX minimum), so quoting can continue.",
+        why: "Market IOC reduce-only sell 0.0031 ETH-USD.",
+      },
+    ]);
+    const after = stepAll(s, { type: "timer", at: at + 3_100 });
+    expect(after.placed.map((o) => [o.side, o.quantity, o.reduceOnly])).toEqual([
+      ["buy", "0.0108", false],
+      ["sell", "0.0108", false],
+    ]);
+  });
+
+  it("holds the sell and does not loop when SoDEX rejects the dust close, until the position changes", () => {
     let s = dustLong();
     let at = 3_000;
     const sells: string[] = [];
-    // 30 nhịp làm mới như export: SoDEX từ chối mọi lệnh bán vì thiếu margin.
+    const closes: string[] = [];
+    // 30 nhịp làm mới như export: SoDEX từ chối mọi lệnh bán vì thiếu margin, và từ chối cả lệnh đóng vị thế lẻ.
     for (let i = 0; i < 30; i += 1) {
       const r = stepAll(s, { type: "timer", at });
       s = r.state;
       for (const o of r.placed) {
         if (o.side !== "sell") continue;
         sells.push(o.clOrdID);
-        s = volumeMaker.step(
+        const x = volumeMaker.step(
           c,
           s,
           { type: "orderReject", at, clOrdID: o.clOrdID, ...MARGIN },
           ethCtx,
-        ).state;
+        );
+        s = x.state;
+        for (const p of places(x.actions)) {
+          closes.push(p.clOrdID);
+          const y = volumeMaker.step(
+            c,
+            s,
+            { type: "orderReject", at, clOrdID: p.clOrdID, code: "-1" },
+            ethCtx,
+          );
+          expect(y.actions).toEqual([]);
+          s = y.state;
+        }
       }
       at += 3_100;
     }
-    // Chỉ lệnh bán đầu tiên được gửi; sau lần từ chối đó không còn lệnh bán không reduce-only cần margin nào.
+    // Chỉ lệnh bán đầu tiên và một lệnh đóng vị thế lẻ được gửi; sau đó không gửi lại gì ở phía bán.
     expect(sells).toHaveLength(1);
+    expect(closes).toHaveLength(1);
     expect(s.dustHold).toEqual({ side: "sell", position: "0.0031" });
+    // Lệnh đóng lẻ bị từ chối không làm lệnh đóng chuyển sang không reduce-only.
+    expect(s.closeReduceOnly).toBe(true);
     // Phía mua vẫn báo giá (lệnh mua làm vị thế đủ lớn để có lệnh đóng reduce-only).
     const r = stepAll(s, { type: "timer", at });
     expect(r.placed.map((o) => o.side)).toEqual(["buy"]);
@@ -1835,19 +1935,37 @@ describe("volume maker — dust position and margin rejects (DEC-291)", () => {
     const r = stepAll(s, { type: "timer", at: 3_000 });
     const ask = r.placed.find((o) => o.side === "sell");
     if (ask === undefined) throw new Error("no ask");
-    s = volumeMaker.step(
+    const x = volumeMaker.step(
       c,
       r.state,
       { type: "orderReject", at: 3_000, clOrdID: ask.clOrdID, ...MARGIN },
+      ethCtx,
+    );
+    const close = places(x.actions)[0];
+    if (close === undefined) throw new Error("no dust close");
+    s = volumeMaker.step(
+      c,
+      x.state,
+      { type: "orderReject", at: 3_000, clOrdID: close.clOrdID, code: "-1" },
       ethCtx,
     ).state;
     expect(stepAll(s, { type: "timer", at: 6_100 }).placed.some((o) => o.side === "sell")).toBe(
       false,
     );
     s = volumeMaker.step(c, s, { type: "resumed", at: 7_000, prices: {} }, ethCtx).state;
-    expect(stepAll(s, { type: "timer", at: 9_200 }).placed.some((o) => o.side === "sell")).toBe(
-      true,
+    const again = stepAll(s, { type: "timer", at: 9_200 });
+    const ask2 = again.placed.find((o) => o.side === "sell");
+    if (ask2 === undefined) throw new Error("no ask after resume");
+    // Resume mở đợt mới: lần từ chối vì thiếu margin kế tiếp gửi lại đúng một lệnh đóng vị thế lẻ.
+    const y = volumeMaker.step(
+      c,
+      again.state,
+      { type: "orderReject", at: 9_200, clOrdID: ask2.clOrdID, ...MARGIN },
+      ethCtx,
     );
+    expect(places(y.actions).map((o) => [o.tag, o.quantity, o.reduceOnly])).toEqual([
+      [`vm:${String(y.state.cycle)}:dust:close`, "0.0031", true],
+    ]);
   });
 
   it("does not hold a side when a full-size (not dust) position is margin-rejected", () => {
