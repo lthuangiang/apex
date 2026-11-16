@@ -246,8 +246,6 @@ interface Runner {
   blocked: { since: number; attempts: number; nextAt: number; code: NotSentCode } | null;
   /** Số lệnh market reduce-only bị SoDEX từ chối liên tiếp (vị thế trong sổ bot có thể lệch SoDEX). */
   reduceRejects: number;
-  /** Đang báo chiến lược các lệnh mở không gửi vì bot đã dừng (DEC-255), để không lặp. */
-  droppingOpens: boolean;
   /** Tương tự cho lệnh limit / post-only: bị từ chối thường chỉ vì giá chạy, nên có ngưỡng riêng cao hơn. */
   makerReduceRejects: number;
   /** Giới hạn tin `copy_bot_skipped` của bot copy (DEC-212), trong bộ nhớ. */
@@ -714,6 +712,7 @@ export class Engine {
     });
     if (!fed) return;
     this.#pendingCancels.get(o.botId)?.delete(clOrdID);
+    this.#inflightCancels.delete(clOrdID);
     this.#openChecks.delete(o.id);
     await this.#feed(
       r,
@@ -1063,7 +1062,6 @@ export class Engine {
       leverageUnknown: false,
       blocked: null,
       reduceRejects: 0,
-      droppingOpens: false,
       makerReduceRejects: 0,
       skipGate: new SkipGate(),
     };
@@ -1438,33 +1436,31 @@ export class Engine {
         return;
       }
     }
-    // Bot vừa được yêu cầu dừng / pause trong lúc bước này chạy (DEC-255): đọc lại trạng thái ngay trước khi gửi, không
-    // gửi lệnh mở vị thế; lệnh reduce-only (đóng) vẫn đi. Trước đây chỉ kiểm tra ở đầu sự kiện: một sự kiện giá bắt đầu
-    // trước lúc Stop vẫn đặt được lệnh mua sau lúc Stop, khớp khi bot đã dừng và vị thế nằm lại không ai đóng.
-    if (places.some((o) => !o.reduceOnly)) {
+    // Bot vừa được yêu cầu dừng trong lúc bước chiến lược này chạy (DEC-255): đọc lại trạng thái ngay trước khi gửi, không
+    // gửi lệnh mở vị thế của chiến lược. Trước đây chỉ kiểm tra ở đầu sự kiện: một sự kiện giá bắt đầu trước lúc Stop vẫn
+    // đặt được lệnh mua sau lúc Stop, khớp khi bot đã dừng và vị thế nằm lại không ai đóng. Chỉ áp cho bước chiến lược
+    // (`source`): lệnh đóng do engine dựng khi Stop (`#stopBot`, Spot không reduce-only) luôn đi. Chỉ khi đang dừng / đã
+    // dừng; bot pause giữ hành vi cũ.
+    if (source !== null && places.some((o) => !o.reduceOnly)) {
       const st = await this.#currentState(r.botId);
-      if (st !== BotState.starting && st !== BotState.running && st !== BotState.resuming) {
+      if (st === BotState.stopping || st === BotState.stopped) {
         const dropped = places.filter((o) => !o.reduceOnly);
         places = places.filter((o) => o.reduceOnly);
         this.#d.log.info(
           { botId: r.botId, state: st, dropped: dropped.length },
-          "opening orders not sent: bot is no longer running",
+          "opening orders not sent: bot is stopping",
         );
-        // Báo chiến lược để nó không coi các lệnh này là đang sống; không lặp lại nếu chính bước này sinh lệnh mới.
-        if (!r.droppingOpens) {
-          r.droppingOpens = true;
-          try {
-            for (const o of dropped)
-              await this.#feed(r, {
-                type: "orderReject",
-                at,
-                clOrdID: o.clOrdID,
-                code: "BOT_NOT_RUNNING",
-              });
-          } finally {
-            r.droppingOpens = false;
-          }
-        }
+        // Báo chiến lược để nó không coi các lệnh này là đang sống. Không báo tiếp nếu chính bước này là phản hồi của một
+        // lần báo như vậy (không lặp); bot đang dừng nên lệnh pause của chiến lược (nếu có) không đổi trạng thái.
+        const echo = source.event.type === "orderReject" && source.event.code === "BOT_NOT_RUNNING";
+        if (!echo)
+          for (const o of dropped)
+            await this.#feed(r, {
+              type: "orderReject",
+              at,
+              clOrdID: o.clOrdID,
+              code: "BOT_NOT_RUNNING",
+            });
       }
     }
     if (places.length > 0) {
@@ -1540,6 +1536,11 @@ export class Engine {
           // định nên lần thử sau (sau backoff) sinh lại đúng các lệnh này.
           const ids = toSend.map((o) => o.clOrdID);
           r.state = rollback;
+          // clOrdID tất định: lần đặt lại sau backoff không được bị một lệnh huỷ cũ đang chờ huỷ mất (DEC-254).
+          for (const id of ids) {
+            this.#pendingCancels.get(r.botId)?.delete(id);
+            this.#inflightCancels.delete(id);
+          }
           await this.#fenced(r, async (tx) => {
             await tx
               .delete(orders)
@@ -1591,7 +1592,13 @@ export class Engine {
             await this.#feed(r, { type: "orderAck", at, clOrdID: res.clOrdID });
             // Chiến lược đã rút lệnh này lúc nó còn đang gửi (DEC-254): huỷ ngay khi SoDEX nhận.
             if (this.#pendingCancels.get(r.botId)?.has(res.clOrdID) === true)
-              await this.#cancel(r, [res.clOrdID]);
+              try {
+                await this.#cancel(r, [res.clOrdID]);
+              } catch (error) {
+                // Lệnh vẫn trong danh sách chờ huỷ, vòng sau thử lại; các kết quả còn lại của lô vẫn phải được ghi.
+                if (error instanceof FencedError) throw error;
+                this.#d.log.warn({ err: error, botId: r.botId }, "cancel after ack failed");
+              }
           } else if (res.outcome === "not_sent") {
             // Chưa rời DRIFT: không phải `unknown`, không cần đối soát. Ghi not_placed để sổ lệnh đúng.
             await this.#fenced(r, (tx) =>

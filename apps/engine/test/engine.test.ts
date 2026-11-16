@@ -1296,6 +1296,40 @@ describe("engine", () => {
     }
   });
 
+  it("still sends the Spot close on Stop, which is not reduce-only (DEC-81, DEC-255)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w-spot-close");
+    let rt: typeof botRuntime.$inferSelect | undefined;
+    for (let i = 0; i < 20 && rt === undefined; i += 1) {
+      await e.tick();
+      await e.onPrice("vBTC_vUSDC", "100", clock);
+      [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      if (rt === undefined) await new Promise((r) => setTimeout(r, 100));
+    }
+    // Bot đang giữ 2 BTC (sổ cái) rồi người dùng bấm Stop và chọn đóng vị thế.
+    const st = rt?.state as { ledger: Record<string, string> };
+    await db
+      .update(botRuntime)
+      .set({ state: { ...st, ledger: { ...st.ledger, position: "2", avgCost: "100" } } })
+      .where(eq(botRuntime.botId, botId));
+    await e.stop();
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    gw.received.length = 0;
+    const e2 = makeEngine(gw, "w2-spot-close");
+    for (let i = 0; i < 10 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      await e2.tick();
+      if ((await botState(botId))?.state !== "stopped")
+        await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(gw.received.filter((o) => o.tag === "close")).toEqual([
+      expect.objectContaining({ side: "sell", reduceOnly: false, quantity: "2" }),
+    ]);
+    expect((await botState(botId))?.state).toBe("stopped");
+    await e2.stop();
+  });
+
   it("pauses and stops a bot waiting for its entry price without sending orders (IMP-01, DEC-91)", async () => {
     const { eq } = await import("drizzle-orm");
     const waiting = {
