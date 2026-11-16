@@ -10,7 +10,7 @@ import {
 } from "@drift/shared";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
-// Builder fee theo bậc volume (DEC-TBD-mm-fee-tiers): tính lại volume tiền thật 30 ngày của từng user cho mỗi chiến
+// Builder fee theo bậc volume (DEC-258): tính lại volume tiền thật 30 ngày của từng user cho mỗi chiến
 // lược có bậc, ghi `user_fee_tiers` (chỉ khi khác mặc định). Engine đọc lại mức mỗi vòng nên lệnh mới dùng ngay; không
 // phải ký lại vì mọi bậc đều dưới mức user đã approve. Mức team đặt tay (`user_builder_fees`) luôn thắng.
 

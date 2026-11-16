@@ -100,7 +100,7 @@ describe("builder fee per user (DEC-159)", () => {
   });
 });
 
-describe("builder fee tiers (DEC-TBD-mm-fee-tiers)", () => {
+describe("builder fee tiers (DEC-258)", () => {
   it("lowers the Market Making fee from 200K and 1M of 30-day volume, never to 0", () => {
     expect(tierRateOf("volume_maker", "0")).toBe(3);
     expect(tierRateOf("volume_maker", "199999.99")).toBe(3);

@@ -704,7 +704,7 @@ export const userBuilderFees = pgTable(
 );
 
 /**
- * Builder fee theo bậc volume (DEC-TBD-mm-fee-tiers): scheduler tính lại mỗi giờ từ volume 30 ngày. Chỉ có dòng khi mức
+ * Builder fee theo bậc volume (DEC-258): scheduler tính lại mỗi giờ từ volume 30 ngày. Chỉ có dòng khi mức
  * khác mặc định. Mức team đặt ở `user_builder_fees` luôn thắng.
  */
 export const userFeeTiers = pgTable(

@@ -33,7 +33,7 @@ const PAGE = 1000;
 
 export class Unavailable extends Error {}
 
-/** Builder fee của user cho chiến lược: mức team đặt (DEC-159), mức theo bậc (DEC-TBD-mm-fee-tiers) hoặc mặc định. */
+/** Builder fee của user cho chiến lược: mức team đặt (DEC-159), mức theo bậc (DEC-258) hoặc mặc định. */
 export async function userBuilderRate(db: Db, userId: string, strategy: string): Promise<number> {
   return builderFeeRateFor(strategy, (await builderFeeOverridesOf(db, [userId])).get(userId));
 }

@@ -163,7 +163,7 @@ async function mmModelTick() {
   if (r.status !== "skipped") log.info(r, "mm cost model fitted");
 }
 
-/** Builder fee theo bậc volume (DEC-TBD-mm-fee-tiers): mỗi giờ một lần. */
+/** Builder fee theo bậc volume (DEC-258): mỗi giờ một lần. */
 let feeTiersAt = 0;
 async function feeTierTick() {
   const now = Date.now();

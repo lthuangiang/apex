@@ -29,7 +29,7 @@ async function teamOverrides(db: Db, userId: string): Promise<BuilderFeeOverride
   return Object.fromEntries(rows.map((r) => [r.strategy, r.rate]));
 }
 
-/** Mức riêng hiệu lực của user: theo bậc volume, team đặt tay ghi đè (DEC-TBD-mm-fee-tiers). */
+/** Mức riêng hiệu lực của user: theo bậc volume, team đặt tay ghi đè (DEC-258). */
 export async function builderFeeOverrides(db: Db, userId: string): Promise<BuilderFeeOverrides> {
   return (await builderFeeOverridesOf(db, [userId])).get(userId) ?? {};
 }

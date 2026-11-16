@@ -104,7 +104,7 @@ const events = async (botId: string) =>
     (e) => e.decision === "Builder fee changed",
   );
 
-describe("builder fee tiers (DEC-TBD-mm-fee-tiers)", () => {
+describe("builder fee tiers (DEC-258)", () => {
   it("puts Market Making volume into tiers: under 200K 0.3 bp, from 200K 0.2 bp, from 1M 0.1 bp", async () => {
     const small = await seed();
     await fill(small, 199_000, 1);

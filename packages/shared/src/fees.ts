@@ -21,7 +21,7 @@ export function builderFeeRateOf(strategy: string): number {
 }
 
 /**
- * Bậc builder fee Market Making theo volume MM tiền thật của user trong `FEE_TIER_WINDOW_DAYS` ngày (DEC-TBD-mm-fee-tiers):
+ * Bậc builder fee Market Making theo volume MM tiền thật của user trong `FEE_TIER_WINDOW_DAYS` ngày (DEC-258):
  * dưới 200K giữ mặc định 0.3 bp, từ 200K là 0.2 bp, từ 1M là 0.1 bp. Không bao giờ 0 (SoDEX: 0 là không dùng builder
  * code). Xếp từ ngưỡng cao xuống.
  */
