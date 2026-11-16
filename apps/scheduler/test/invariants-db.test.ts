@@ -111,7 +111,8 @@ describe("P4 filled net with a watermark", () => {
     await fill("buy", "0.003", new Date(t0));
     await fill("sell", "0.001", new Date(t0 + 1_000));
     const store = mapStore();
-    const q = { botId, versionId: "v1", from };
+    // Đồng hồ DB đã xa: mốc không bị lùi, hành vi như đọc tới upTo.
+    const q = { botId, versionId: "v1", from, now: t0 + 3_600_000 };
     expect(await p4FilledNet(db, store, { ...q, upTo: new Date(t0 + 2_000) })).toEqual({
       net: "0.002",
       decimals: 3,
@@ -142,6 +143,26 @@ describe("P4 filled net with a watermark", () => {
     ).toBe("0.0005");
   });
 
+  it("still counts a fill that commits after a check with an earlier created_at", async () => {
+    const { botId, fill } = await seedBot();
+    const t0 = Date.parse("2026-11-16T10:00:00Z");
+    const q = { botId, versionId: "v1", from: new Date(t0 - 60_000) };
+    await fill("buy", "0.003", new Date(t0));
+    const store = mapStore();
+    expect(
+      (await p4FilledNet(db, store, { ...q, upTo: new Date(t0 + 2_000), now: t0 + 2_000 })).net,
+    ).toBe("0.003");
+    // Commit trễ: created_at (t0 + 1 s) trước lần kiểm tra vừa rồi.
+    await fill("sell", "0.001", new Date(t0 + 1_000));
+    expect(
+      (await p4FilledNet(db, store, { ...q, upTo: new Date(t0 + 70_000), now: t0 + 70_000 })).net,
+    ).toBe("0.002");
+    // Lượt sau nữa vẫn đúng (mốc đã qua hai fill, không đếm lại).
+    expect(
+      (await p4FilledNet(db, store, { ...q, upTo: new Date(t0 + 200_000), now: t0 + 200_000 })).net,
+    ).toBe("0.002");
+  });
+
   it("re-reads the version when the watermark is unreadable", async () => {
     const { botId, fill } = await seedBot();
     const t0 = Date.parse("2026-11-16T09:30:00Z");
@@ -155,6 +176,7 @@ describe("P4 filled net with a watermark", () => {
           versionId: "v1",
           from: new Date(t0 - 1_000),
           upTo: new Date(t0 + 1_000),
+          now: t0 + 1_000,
         })
       ).net,
     ).toBe("0.01");

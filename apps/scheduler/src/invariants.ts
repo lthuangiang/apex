@@ -39,6 +39,8 @@ export const PROD_INVARIANTS = {
    * lệnh cũ hơn thì không thấy; chấp nhận vì lệnh MM được làm mới mỗi vài giây).
    */
   p4OrderLagMs: 86_400_000,
+  /** P4: mốc lưu lùi lại chừng này so với đồng hồ DB (fill commit trễ / đồng hồ engine lệch vẫn được cộng sau). */
+  p4CommitLagMs: 60_000,
   /** P4: mốc tổng fill của một version giữ trong Redis chừng này (làm mới mỗi lượt). */
   p4WatermarkMs: 2 * 86_400_000,
   /** Đánh dấu "sai ở lần trước"; > 1 phút để lần kế tiếp còn thấy. */
@@ -459,6 +461,7 @@ export async function loadSnapshots(
       versionId: r.versionId,
       from,
       upTo: r.runtimeAt,
+      now,
     });
     nets.push({ botId: r.b.id, ...x, resynced: resync !== undefined });
   }
@@ -501,12 +504,14 @@ const p4Key = (botId: string, versionId: string | null) =>
 
 /**
  * Tổng fill của version tới `upTo`. Lần đầu (hoặc mất mốc) đọc cả version một lần; các lượt sau chỉ đọc fill ghi sau mốc,
- * của lệnh tạo trong `p4OrderLagMs` trước mốc. Lượt chưa có sổ cái mới thì dùng lại mốc.
+ * của lệnh tạo trong `p4OrderLagMs` trước mốc. Mốc lưu lùi lại `p4CommitLagMs` so với đồng hồ DB: fill có created_at sớm
+ * nhưng commit trễ (hoặc đồng hồ engine lệch) vẫn được cộng ở lượt sau, không bị bỏ vĩnh viễn. Mỗi lượt cộng lại phần đuôi
+ * sau mốc.
  */
 export async function p4FilledNet(
   db: Db,
   store: Pick<InvariantStore, "get" | "put">,
-  q: { botId: string; versionId: string | null; from: Date; upTo: Date },
+  q: { botId: string; versionId: string | null; from: Date; upTo: Date; now: number },
 ): Promise<{ net: string; decimals: number }> {
   const key = p4Key(q.botId, q.versionId);
   const saved = await store.get(key);
@@ -521,36 +526,49 @@ export async function p4FilledNet(
     }
   }
   const upTo = q.upTo.getTime();
-  if (wm !== null && upTo <= wm.at) return { net: wm.net, decimals: wm.decimals };
+  const base = wm?.at ?? null;
+  // Mốc mới: không vượt sổ cái của engine, và lùi lại một biên so với đồng hồ DB.
+  const safe = Math.min(upTo, q.now - PROD_INVARIANTS.p4CommitLagMs);
+  const lo = base === null ? null : Math.min(base, upTo);
   const ordersFrom =
-    wm === null
-      ? q.from
-      : new Date(Math.max(q.from.getTime(), wm.at - PROD_INVARIANTS.p4OrderLagMs));
-  const fillCond =
-    wm === null
-      ? and(eq(fills.orderId, orders.id), lte(fills.createdAt, q.upTo))
-      : and(
-          eq(fills.orderId, orders.id),
-          gt(fills.createdAt, new Date(wm.at)),
-          lte(fills.createdAt, q.upTo),
-        );
+    lo === null ? q.from : new Date(Math.max(q.from.getTime(), lo - PROD_INVARIANTS.p4OrderLagMs));
+  const signed = sql`case when ${orders.side} = buy then ${fills.size} else -${fills.size} end`;
   const [x] = await db
     .select({
-      net: sql<string>`coalesce(sum(case when ${orders.side} = 'buy' then ${fills.size} else -${fills.size} end), 0)::text`,
-      decimals: sql<number>`coalesce(max(length(rtrim(split_part(${orders.size}::text, '.', 2), '0'))), -1)::int`,
+      // Fill trong (mốc, upTo]: cộng vào; fill trong (upTo, mốc] (sổ cái cũ hơn mốc): trừ ra.
+      tail: sql<string>`coalesce(sum(case when ${fills.createdAt} <= ${q.upTo} then ${signed} else -(${signed}) end), 0)::text`,
+      // Phần tới mốc mới (để lưu).
+      safe: sql<string>`coalesce(sum(case when ${fills.createdAt} <= ${new Date(safe)} and ${fills.createdAt} <= ${q.upTo} then ${signed} else 0 end), 0)::text`,
+      decimals: sql<number>`coalesce(max(length(rtrim(split_part(${orders.size}::text, ., 2), 0))), -1)::int`,
     })
     .from(orders)
-    .leftJoin(fills, fillCond)
+    .leftJoin(
+      fills,
+      and(
+        eq(fills.orderId, orders.id),
+        ...(base === null
+          ? [lte(fills.createdAt, q.upTo)]
+          : upTo >= base
+            ? [gt(fills.createdAt, new Date(base)), lte(fills.createdAt, q.upTo)]
+            : [gt(fills.createdAt, q.upTo), lte(fills.createdAt, new Date(base))]),
+      ),
+    )
     .where(and(eq(orders.botId, q.botId), gte(orders.createdAt, ordersFrom)));
-  const next: P4Watermark = {
-    at: upTo,
-    net: dec(wm?.net ?? "0")
-      .add(x?.net ?? "0")
-      .toString(),
-    decimals: Math.max(wm?.decimals ?? -1, x?.decimals ?? -1),
-  };
-  await store.put(key, JSON.stringify(next), PROD_INVARIANTS.p4WatermarkMs);
-  return { net: next.net, decimals: next.decimals };
+  const decimals = Math.max(wm?.decimals ?? -1, x?.decimals ?? -1);
+  const net = dec(wm?.net ?? "0").add(x?.tail ?? "0");
+  if (base === null || safe > base)
+    await store.put(
+      key,
+      JSON.stringify({
+        at: safe,
+        net: dec(wm?.net ?? "0")
+          .add(x?.safe ?? "0")
+          .toString(),
+        decimals,
+      } satisfies P4Watermark),
+      PROD_INVARIANTS.p4WatermarkMs,
+    );
+  return { net: net.toString(), decimals };
 }
 
 /** Một lượt kiểm tra; trả số tin đã ghi outbox và thời gian chạy (để log). */
