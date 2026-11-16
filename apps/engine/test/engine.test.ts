@@ -552,6 +552,10 @@ describe("engine", () => {
     const e = makeEngine(gw, "w-result");
     await e.tick();
     await e.onPrice("vBTC_vUSDC", "100", clock);
+    // Lệnh market mở vị thế ban đầu khớp trước: grid chạy hẳn rồi mới đặt lệnh đối ứng sau mỗi fill.
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    expect(init).toBeDefined();
+    await e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock);
     const buy = gw.received.find((o) => o.side === "buy" && o.type === "limit");
     expect(buy).toBeDefined();
     const before = gw.received.length;

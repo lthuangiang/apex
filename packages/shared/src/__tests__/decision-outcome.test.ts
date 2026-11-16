@@ -27,6 +27,17 @@ describe("decision outcome (BD-02)", () => {
     expect(decisionOutcome([o("rejected"), o("not_placed")])).toBe("rejected");
     expect(decisionOutcome([o("not_placed")])).toBe("not_placed");
   });
+
+  it("says Unknown whenever an order is unknown, even next to a fill (it may have filled)", () => {
+    expect(decisionOutcome([o("filled", "1"), o("unknown")])).toBe("unknown");
+    expect(decisionOutcome([o("open"), o("unknown")])).toBe("unknown");
+  });
+
+  it("never says Filled when some of the decision's orders are missing", () => {
+    // Quyết định đặt 2 lệnh, chỉ tìm thấy 1 (đã khớp đủ).
+    expect(decisionOutcome([o("filled", "1")], 2)).toBe("partly_filled");
+    expect(decisionOutcome([o("filled", "1")], 1)).toBe("filled");
+  });
 });
 
 describe("normal reject codes (BD-05)", () => {

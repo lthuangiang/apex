@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { BotState, ReasonCode, Strategy } from "../enums";
+import { dec } from "../money";
 import { decimalStringSchema, isoDateTimeSchema, uuidSchema } from "../schemas";
 
 // API bot (SCREENS.md mục 8.2–8.4, CODING_STANDARDS C7). `config` được api parse bằng zod schema của
@@ -148,18 +149,26 @@ export const decisionOutcomeSchema = z.enum(DECISION_OUTCOMES);
 export type DecisionOutcome = z.infer<typeof decisionOutcomeSchema>;
 
 /**
- * Kết quả gộp của các lệnh một quyết định đặt: có khớp thì Filled (khớp đủ mọi lệnh) hoặc Partly filled; chưa khớp gì
- * thì theo thứ tự Open → Unknown → Cancelled → Rejected → Not placed. Không có lệnh nào tìm thấy → null (không đoán).
+ * Kết quả gộp của các lệnh một quyết định đặt, chỉ từ các lệnh tìm thấy trong DB (`list`) trên tổng số lệnh quyết định
+ * đã đặt (`expected`):
+ * - có lệnh `unknown` → Unknown, vì lệnh đó có thể đã khớp (quy tắc 1.7, 1.8: không đoán);
+ * - có khớp → Filled chỉ khi tìm thấy ĐỦ lệnh và mọi lệnh khớp đủ; còn lại Partially filled;
+ * - chưa khớp gì → Open → Cancelled → Rejected → Not placed.
+ * Không tìm thấy lệnh nào → null.
  */
 export function decisionOutcome(
   list: readonly { status: string; filledSize: string }[],
+  expected: number = list.length,
 ): DecisionOutcome | null {
   if (list.length === 0) return null;
-  const filledAny = list.some((o) => Number(o.filledSize) > 0);
-  if (filledAny) return list.every((o) => o.status === "filled") ? "filled" : "partly_filled";
   const has = (s: string) => list.some((o) => o.status === s);
-  if (has("open") || has("partially_filled")) return "open";
   if (has("unknown")) return "unknown";
+  const filledAny = list.some((o) => dec(o.filledSize).gt(0));
+  if (filledAny)
+    return list.length >= expected && list.every((o) => o.status === "filled")
+      ? "filled"
+      : "partly_filled";
+  if (has("open") || has("partially_filled")) return "open";
   if (has("cancelled")) return "cancelled";
   if (has("rejected")) return "rejected";
   return "not_placed";

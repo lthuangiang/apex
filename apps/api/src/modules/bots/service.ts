@@ -935,15 +935,26 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
       : await deps.db
           .select({ clOrdId: orders.clOrdId, status: orders.status, filledSize: orders.filledSize })
           .from(orders)
-          .where(and(eq(orders.botId, botId), inArray(orders.clOrdId, placedIds)));
+          // (account, clOrdID) đi qua index orders_account_cl_ord_key; trang này poll mỗi 5 s.
+          .where(
+            and(
+              eq(orders.sodexAccountId, b.sodexAccountId),
+              inArray(orders.clOrdId, placedIds),
+              eq(orders.botId, botId),
+            ),
+          );
   const placedBy = new Map(placedRows.map((o) => [o.clOrdId, o]));
-  const outcomeOf = (payload: unknown) =>
-    decisionOutcome(
-      eventOrders(payload).flatMap((id) => {
+  const outcomeOf = (payload: unknown) => {
+    const ids = eventOrders(payload);
+    // Lệnh không còn trong DB (bị chặn trước khi lưu, hoặc hoàn tác) không được tính như đã khớp đủ.
+    return decisionOutcome(
+      ids.flatMap((id) => {
         const o = placedBy.get(id);
         return o === undefined ? [] : [o];
       }),
+      ids.length,
     );
+  };
   const [open] = await deps.db
     .select({ n: sql<number>`count(*)::int` })
     .from(orders)
