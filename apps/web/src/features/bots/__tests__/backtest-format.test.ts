@@ -9,5 +9,7 @@ describe("backtest percent (BT-01)", () => {
     expect(signedPct("-62.9")).toBe("−62.9%");
     expect(signedPct("12.456")).toBe("+12.46%");
     expect(signedPct("0")).toBe("0%");
+    // Lỗ rất nhỏ làm tròn về 0: không "−0%" (review #150).
+    expect(signedPct("-0.001")).toBe("0%");
   });
 });

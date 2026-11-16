@@ -72,7 +72,9 @@ function EquityChart({ result, label }: { result: BacktestResult; label: string 
 /** "+12.5%" / "−62.9%" / "0%": phần trăm có dấu, tối đa 2 chữ số thập phân. */
 export function signedPct(v: string): string {
   const d = dec(v).toDecimalPlaces(2);
-  return `${d.isNegative() ? "−" : d.isZero() ? "" : "+"}${d.abs().toString()}%`;
+  // Lỗ / lãi rất nhỏ làm tròn về 0: "0%", không ra "−0%" (review #150).
+  if (d.isZero()) return "0%";
+  return `${d.isNegative() ? "−" : "+"}${d.abs().toString()}%`;
 }
 
 /** Chỉ số tiền là lãi / lỗ (có dấu + / −); các số khác (khối lượng, chi phí, vị thế) không có dấu (BT-01). */
@@ -169,7 +171,13 @@ export function VisualPanel({
   const quote = names.asset(
     unitsOf(typeof values.market === "string" ? values.market : "")?.quote ?? "USDC",
   );
-  const money = (x: string, sign = false) => `${formatMoney(x, sign) ?? ""} ${quote}`;
+  // Không format được (dữ liệu lỗi) thì null → "Not available", không hiện " USDC" trống (review #150).
+  const money = (x: string, sign = false) => {
+    const m = formatMoney(x, sign);
+    return m === null ? null : `${m} ${quote}`;
+  };
+  // Sụt giảm hiển thị (2 chữ số); so với giới hạn bằng chính số này để chữ và màu khớp nhau.
+  const dd = result === null ? null : dec(result.maxDrawdownPct).toDecimalPlaces(2);
   const metric = (m: BacktestResult["metrics"][number]) => {
     if (m.value === null) return null;
     if (m.unit === "pct") return `${dec(m.value).toDecimalPlaces(2).toString()}%`;
@@ -183,11 +191,14 @@ export function VisualPanel({
       : [
           {
             label: tb("stats.net"),
-            value: tb("stats.netValue", {
-              net: money(result.net, true),
-              pct: signedPct(result.netPct),
-              capital: money(result.capital),
-            }),
+            // Vốn 0 thì % không có nghĩa: chỉ hiện số tiền (review #150).
+            value: dec(result.capital).isZero()
+              ? money(result.net, true)
+              : tb("stats.netValue", {
+                  net: money(result.net, true) ?? "",
+                  pct: signedPct(result.netPct),
+                  capital: money(result.capital) ?? "",
+                }),
             ...(dec(result.net).isNegative() ? { tone: "neg" as const } : {}),
           },
           {
@@ -198,11 +209,11 @@ export function VisualPanel({
           },
           // BT-01 (DevOps chốt): chỉ tô cảnh báo khi sụt giảm ≥ giới hạn Max drawdown người dùng đặt ở Risk Center,
           // và nói rõ là so với giới hạn đó; chưa đặt giới hạn thì trung tính.
-          ddLimit !== null && dec(result.maxDrawdownPct).gte(ddLimit)
+          ddLimit !== null && dd?.gte(ddLimit) === true
             ? {
                 label: tb("stats.maxDd"),
                 value: tb("stats.maxDdOver", {
-                  dd: `−${dec(result.maxDrawdownPct).toDecimalPlaces(2).toString()}%`,
+                  dd: `−${dd.toString()}%`,
                   limit: `${dec(ddLimit).toString()}%`,
                 }),
                 tone: "neg" as const,

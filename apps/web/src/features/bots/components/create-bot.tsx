@@ -34,7 +34,7 @@ import { ClaudeDraftBanner, type FromClaude } from "./claude-draft";
 import { MarketChart } from "./market-chart";
 import { MmSuggestions } from "./mm-markets";
 import { CheckList, leverageWarning, useDryRunChecks } from "./start-checks";
-import { signedPct, VisualPanel } from "./visual-panel";
+import { VisualPanel } from "./visual-panel";
 
 // Create (SCREENS.md mục 8.2, artboard "Create"): cột trái (flex 3) là phần trực quan, cột phải (flex 2)
 // là Settings, "Before it starts" nằm dưới hai cột. Lưu draft trước; checks do server tính theo draft
@@ -203,9 +203,10 @@ export function CreateBot({
   const backtestLost =
     backtest !== null && dec(backtest.net).isNegative()
       ? t("beforeStart.backtestLost", {
-          net: `${formatMoney(backtest.net, true) ?? ""} ${names.asset(unitsOf(typeof values.market === "string" ? values.market : "")?.quote ?? "USDC")}`,
-          pct: signedPct(backtest.netPct),
-          days: Math.round((backtest.to - backtest.from) / 86_400_000),
+          // Câu đã nói "lost": dùng trị tuyệt đối, không "lost −5.03" (review #150).
+          net: `${formatMoney(dec(backtest.net).abs().toString()) ?? ""} ${names.asset(unitsOf(typeof values.market === "string" ? values.market : "")?.quote ?? "USDC")}`,
+          pct: `${dec(backtest.netPct).abs().toDecimalPlaces(2).toString()}%`,
+          days: Math.floor((backtest.to - backtest.from) / 86_400_000),
         })
       : null;
   const levWarn = leverageWarning(checks.data);
