@@ -71,6 +71,8 @@ class FakeGateway implements Gateway {
   readonly leverage: { market: string; leverage: number; marginMode: string; before: number }[] =
     [];
   leverageOutcome: LeverageResult = { outcome: "ok" };
+  /** Giữ lần đặt đòn bẩy kế tiếp tới khi promise này xong (đang đặt). */
+  holdLeverage: Promise<void> | null = null;
   /** Thiết lập trên "SoDEX" theo market (đọc lại bằng readLeverage). */
   readonly settings = new Map<string, LeverageSetting>();
   /** Signer lỗi: mọi submit trả not_sent với mã này. */
@@ -89,9 +91,16 @@ class FakeGateway implements Gateway {
     input: { market: string; leverage: number; marginMode: "cross" | "isolated" },
   ): Promise<LeverageResult> {
     this.leverage.push({ ...input, before: this.received.length });
-    if (this.leverageOutcome.outcome === "ok")
-      this.settings.set(input.market, { leverage: input.leverage, marginMode: input.marginMode });
-    return Promise.resolve(this.leverageOutcome);
+    const outcome = this.leverageOutcome;
+    const apply = () => {
+      if (outcome.outcome === "ok")
+        this.settings.set(input.market, { leverage: input.leverage, marginMode: input.marginMode });
+      return outcome;
+    };
+    const held = this.holdLeverage;
+    if (held === null) return Promise.resolve(apply());
+    this.holdLeverage = null;
+    return held.then(apply);
   }
   /** Vị thế đang mở theo market (đọc lại bằng readLeverage). */
   readonly positions = new Map<string, LeverageSetting>();
@@ -546,6 +555,58 @@ describe("engine", () => {
     expect(logged).toHaveLength(1);
     expect(logged[0]?.why).toMatch(/^SoDEX confirmed 1× (cross|isolated) on BTC-USD.$/);
     await e.stop();
+  });
+
+  it("sets the new version's leverage when the version changes while leverage is being set (#159)", async () => {
+    const gw = new FakeGateway();
+    const vm = (leverage: number) => ({
+      market: "BTC-USD",
+      leverage,
+      orderSize: "500",
+      distanceBp: "1",
+      maxOrders: 1,
+      refreshSeconds: 3,
+      runUntil: "target_or_budget",
+      costBudget: "100000",
+      onStop: "close_inventory",
+    });
+    const { botId } = await seedBot("running", {
+      strategy: "volume_maker",
+      market: "BTC-USD",
+      engine: "perps",
+      config: vm(1),
+    });
+    const { eq } = await import("drizzle-orm");
+    const e = makeEngine(gw, "w-lev-race");
+    try {
+      await e.tick();
+      let release: () => void = () => undefined;
+      gw.holdLeverage = new Promise<void>((res) => {
+        release = res;
+      });
+      // Đang đặt 1× (SoDEX chưa trả lời) thì người dùng lưu version mới 2×.
+      const first = e.onPrice("BTC-USD", "100000", clock);
+      await db.insert(botVersions).values({
+        botId,
+        version: 2,
+        paramSource: "manual",
+        status: "pending",
+        config: vm(2),
+      });
+      release();
+      await first;
+      // Áp version ở nhịp sau (không chạy tick chồng lên lần ghi có fence đang dở).
+      await e.tick();
+      clock += 1_000;
+      await e.onPrice("BTC-USD", "100001", clock);
+      // 1× đã xác nhận của version cũ không được tính là xong cho version mới: 2× được đặt, SoDEX ở 2×.
+      expect(gw.leverage.map((l) => l.leverage)).toEqual([1, 2]);
+      expect(gw.settings.get("BTC-USD")?.leverage).toBe(2);
+    } finally {
+      await e.stop();
+      // Bot nằm lại trong DB dùng chung: dừng hẳn để engine của test sau không chạy bot BTC-USD này.
+      await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+    }
   });
 
   it("marks a timed-out order unknown, never resends it, and reconciles it", async () => {
