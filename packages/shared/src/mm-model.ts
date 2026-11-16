@@ -96,7 +96,7 @@ export interface ShockHourDay {
 }
 
 /**
- * "Est. CPM · incl. shock days" của một giờ (DEC-TBD-market-hours-shock). Với mỗi ngày có dao động:
+ * "Est. CPM · incl. shock days" của một giờ (DEC-289). Với mỗi ngày có dao động:
  *   chi phí ngày = modelCostPerMillion(phí, modelPnlBps(bước, dao động của ngày đó, a, k))
  *                + (biến động 15 phút lớn nhất của giờ đó ngày đó ≥ shockBp ? cutCostBps × cutShare × 100 : 0)
  * rồi lấy trung bình cộng (mean, không phải trung vị) qua các ngày. `cutShare` = notional một lần cắt ÷ volume trung

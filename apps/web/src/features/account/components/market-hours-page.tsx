@@ -377,7 +377,7 @@ function HowToRead({
 // Cột nhãn 272 px: nhãn dài nhất ("Price move against makers, 30 s later (bp)") + nút ⓘ nằm trên một dòng ở 1440.
 // Chú giải thụt vào 275 px (= nhãn + khe 3 px) để thẳng với cột giờ đầu tiên.
 /**
- * Phần "How these numbers are calculated" về lần cắt vị thế và hiệu chỉnh (DEC-TBD-market-hours-shock): chi phí cắt đo
+ * Phần "How these numbers are calculated" về lần cắt vị thế và hiệu chỉnh (DEC-289): chi phí cắt đo
  * từ lệnh cắt thật hay chỉ phí taker, và tỷ lệ chi phí thật ÷ "incl. shock days".
  */
 function CutCalc({ est }: { est: MarketHoursView["estimate"] }) {

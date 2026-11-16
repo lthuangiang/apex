@@ -156,7 +156,7 @@ describe("ranking", () => {
   });
 });
 
-describe("shock-day estimate (DEC-TBD-market-hours-shock)", () => {
+describe("shock-day estimate (DEC-289)", () => {
   it("reads the perps taker fee in bps, falling back to the SoDEX base fee", () => {
     expect(perpsTakerFeeBps("0.0004").toString()).toBe("4");
     expect(perpsTakerFeeBps(undefined).toString()).toBe("4");

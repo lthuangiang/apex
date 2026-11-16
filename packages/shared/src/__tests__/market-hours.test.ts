@@ -97,7 +97,7 @@ describe("heatmap", () => {
   });
 });
 
-describe("cutStats (DEC-TBD-market-hours-shock)", () => {
+describe("cutStats (DEC-289)", () => {
   const cut = (orderId: string, side: "buy" | "sell", price: string, ref: string | null) => ({
     orderId,
     side,
@@ -162,7 +162,7 @@ describe("calibrationRatio", () => {
   });
 });
 
-describe("cut size share (DEC-TBD-market-hours-shock)", () => {
+describe("cut size share (DEC-289)", () => {
   it("averages volume per bot-hour over every hour and max position weighted by bot-hours", () => {
     // Bot 1: 21 bot-hour, $14 700, max $20. Bot 2: 3 bot-hour, chưa có fill, max $100. Bot 3: cấu hình hỏng.
     const b = mmCutBasis([

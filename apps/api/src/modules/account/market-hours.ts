@@ -124,7 +124,7 @@ export async function marketHours(
     positionCuts(deps.db, { market, from }),
     mmBotPeriods(deps.db, { market, from }),
   ]);
-  // Hai dòng "Est. CPM" (DEC-TBD-market-hours-shock): cùng mô hình với thẻ chi phí Market Making (mm-cost.ts, DEC-228).
+  // Hai dòng "Est. CPM" (DEC-289): cùng mô hình với thẻ chi phí Market Making (mm-cost.ts, DEC-228).
   // Bước giá = tick ÷ giá đóng của nến 1 phút mới nhất; phí = maker SoDEX của market + builder fee Market Making mặc
   // định. "typical day" dùng dao động trung vị qua các ngày; "incl. shock days" xem `shockDayCostPerMillion`.
   const feesBps = estimateFeesBps(info?.makerFee);
@@ -271,7 +271,7 @@ const vmPositionConfigSchema = z.object({
 });
 
 /**
- * Mỗi bot Market Making tiền thật trên market trong kỳ (DEC-TBD-market-hours-shock): số bot-hour (giờ UTC có ít nhất một
+ * Mỗi bot Market Making tiền thật trên market trong kỳ (DEC-289): số bot-hour (giờ UTC có ít nhất một
  * lệnh tạo trong kỳ, như khối 3), Σ notional fill trong kỳ (lệnh tạo từ 1 ngày trước kỳ, như khối 3) và vị thế tối đa
  * của cấu hình đang chạy. Không theo bộ lọc Strategy: phần cắt chỉ là của Market Making.
  */
@@ -440,7 +440,7 @@ async function volatility(db: Db, market: string, from: Date, tz: string) {
  * phương giữ cửa sổ có (cao − thấp) ÷ thấp lớn nhất (so bằng numeric; bằng nhau thì cửa sổ sớm nhất); bp tính bằng
  * Decimal ở đây. Cửa sổ bắt đầu trong kỳ có thể chứa nến sau đó, không chứa nến trước kỳ.
  * Trả về cả giá trị lớn nhất của từng (ngày, giờ) địa phương (`daily`, khoá "YYYY-MM-DD|h") cho dòng "incl. shock days"
- * (DEC-TBD-market-hours-shock); `hourly` là lớn nhất qua các ngày (bằng nhau thì cửa sổ sớm nhất).
+ * (DEC-289); `hourly` là lớn nhất qua các ngày (bằng nhau thì cửa sổ sớm nhất).
  */
 async function largestMoves15(
   db: Db,

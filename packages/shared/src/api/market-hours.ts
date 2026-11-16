@@ -47,7 +47,7 @@ export const MARKET_HOURS_HOT_RATIO = 2;
 export const MARKET_HOURS_MAX_MISSING_PRICE = 0.2;
 /**
  * Cần ít nhất chừng này lệnh "Position cut" thật (có fill, có giá tham chiếu) trong kỳ thì mới dùng trượt giá và cỡ lệnh
- * cắt đo được; ít hơn → chỉ phí taker và cỡ cắt lấy theo vị thế tối đa của bot (DEC-TBD-market-hours-shock).
+ * cắt đo được; ít hơn → chỉ phí taker và cỡ cắt lấy theo vị thế tối đa của bot (DEC-289).
  */
 export const MARKET_HOURS_MIN_CUTS = 5;
 /** Hiệu chỉnh "real ÷ estimate" cần ít nhất chừng này giờ có ≥ 3 bot-hour; ít hơn → "Not available". */
@@ -283,7 +283,7 @@ export interface CutFill {
 }
 
 /**
- * Số đo lệnh cắt thật của một market trong kỳ (DEC-TBD-market-hours-shock):
+ * Số đo lệnh cắt thật của một market trong kỳ (DEC-289):
  * - `cuts` = số lệnh cắt có fill;
  * - `slippageBps` = trượt giá trung bình theo notional trên các fill có giá tham chiếu, dương = bất lợi (mua cao hơn /
  *   bán thấp hơn giá tham chiếu): Σ chiều × (giá khớp − ref) ÷ ref × notional ÷ Σ notional × 10 000;
@@ -329,7 +329,7 @@ export interface MmBotPeriod {
 }
 
 /**
- * Mẫu số và cỡ cắt dự phòng cho phần cắt vị thế (DEC-TBD-market-hours-shock), qua MỌI giờ của kỳ:
+ * Mẫu số và cỡ cắt dự phòng cho phần cắt vị thế (DEC-289), qua MỌI giờ của kỳ:
  * - `botHourVolume` = Σ volume ÷ Σ bot-hour (null khi không có bot-hour hoặc volume = 0);
  * - `maxPosition` = trung bình vị thế tối đa, trọng số theo bot-hour (bot không đọc được cấu hình bị bỏ; null khi không
  *   còn bot nào).
@@ -358,7 +358,7 @@ export function mmCutBasis(bots: readonly MmBotPeriod[]): {
 }
 
 /**
- * Phần notional của một lần cắt so với volume một bot-hour (DEC-TBD-market-hours-shock), một số cho mọi giờ:
+ * Phần notional của một lần cắt so với volume một bot-hour (DEC-289), một số cho mọi giờ:
  * - đủ `MARKET_HOURS_MIN_CUTS` lệnh cắt thật (`cutNotional` khác null) → notional trung bình một lệnh cắt ÷
  *   `botHourVolume` (`cuts`);
  * - không đủ → vị thế tối đa trung bình (Max inventory, hoặc order size × max orders) ÷ `botHourVolume` (`position`):
@@ -378,7 +378,7 @@ export function cutShareOf(p: {
 }
 
 /**
- * Hiệu chỉnh (DEC-TBD-market-hours-shock): trung vị qua các giờ của (chi phí thật ÷ ước tính), chỉ giờ có ước tính > 0.
+ * Hiệu chỉnh (DEC-289): trung vị qua các giờ của (chi phí thật ÷ ước tính), chỉ giờ có ước tính > 0.
  * Dưới `MARKET_HOURS_CALIBRATION_MIN_HOURS` giờ → null ("Not available").
  */
 export function calibrationRatio(
