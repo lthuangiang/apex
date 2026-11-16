@@ -25,7 +25,7 @@ Desktop và mobile dùng **cùng một route**, layout responsive. Artboard mobi
 | `/agent/:botId` | Desktop · Trading Agent | Mobile · Trading Agent |
 | `/bots` | Strategy Lab · My bots & catalog | Mobile · Strategy Lab |
 | `/bots/new/:strategy` | Create · <Strategy> (8 artboard) | Mobile · Create <Strategy> (8 artboard) |
-| `/bots/new/volume_maker` | Create · Market Making; dưới Contract có "Suggested for market making" (khoảng chi phí) + "Compare all markets" (ẩn market thưa mặc định, DEC-228, VOLUME_MAKER 17.7) | sheet bám đáy, bảng cuộn ngang |
+| `/bots/new/volume_maker` | Create · Market Making; dưới Contract có "Suggested for market making" (khoảng chi phí) + "Compare all markets" (ẩn market thưa mặc định, DEC-228, VOLUME_MAKER 17.7); câu chữ field, section "When to stop" và khối "How your losses are capped" theo thiết kế "MM form explained" (DEC-262, STRATEGIES.md S9) | sheet bám đáy, bảng cuộn ngang |
 | `/bots/:botId/edit` | Strategy Lab · Edit running bot | Mobile · Edit bot |
 | `/settings` | Desktop · Settings | Mobile · Settings |
 | `/admin/builder-revenue` | Desktop · Builder Revenue (chỉ đội DRIFT) | Mobile · Builder Revenue |
@@ -95,7 +95,7 @@ Sau đó là checkbox xác nhận và nút `Start on mainnet`. Khi bấm: disabl
 
 ### 8.3 Trading Agent (`/agent/:botId`)
 
-- Bot `draft` chỉ nằm ở Strategy Lab: `/agent/:botId` của bot `draft` chuyển (replace) sang `/bots/:botId/edit`, `archived` sang `/bots` (DEC-57).
+- Bot `draft` chỉ nằm ở Strategy Lab: `/agent/:botId` của bot `draft` chuyển (replace) sang `/bots/:botId/edit` (DEC-57). Bot `archived` mở được ở chế độ chỉ đọc (DEC-263, thay phần archived của DEC-57): hàng archived ở Strategy Lab có View + Restore; trang bot ghi "This bot is archived", giữ nhật ký, phân tích, cấu hình, Export (bot thật); không có Edit, Start, Archive; thao tác duy nhất là Restore. Không hiện trong thẻ chọn bot.
 - Header: tên bot, badge trạng thái kèm reason code, runtime, version cấu hình.
 - Thanh vòng đời (Stopped → Starting → Running → Paused → Stopping); bước hiện tại được tô, bước đang chờ backend thì dùng viền nét đứt.
 - Các nút theo trạng thái: Pause / Resume / Start…, "Stop agent…" đặt tách riêng ở cuối trang.

@@ -30,6 +30,17 @@ const ITEMS: readonly { key: RiskLimitKey; server: boolean; unit: "%" | "×" | "
   { key: "maxPositions", server: false, unit: "" },
 ];
 
+/**
+ * Số giới hạn người dùng đã đặt (RS-01): không đặt giới hạn nào thì không được ghi "Within limits", và chỉ đếm giới hạn
+ * server đã đặt trong câu "N server-enforced limits pass".
+ */
+export function limitsSet(r: Pick<RiskView, "limits">): number {
+  return ITEMS.filter((i) => r.limits[i.key] !== null).length;
+}
+export function serverLimitsSet(r: Pick<RiskView, "limits">): number {
+  return ITEMS.filter((i) => i.server && r.limits[i.key] !== null).length;
+}
+
 /** Giá trị hiện tại dạng số (để tính % so với giới hạn); null khi backend không có. */
 function currentNumber(r: RiskView, key: RiskLimitKey): string | null {
   const s = r.status;
@@ -361,20 +372,26 @@ export function RiskPage() {
             >
               <span
                 aria-hidden="true"
-                className={`flex size-12 flex-none items-center justify-center rounded-[14px] bg-surface ${openAlerts.length === 0 ? "text-pos" : "text-neg-ink"}`}
+                className={`flex size-12 flex-none items-center justify-center rounded-[14px] bg-surface ${openAlerts.length > 0 ? "text-neg-ink" : limitsSet(r) === 0 ? "text-ink-2" : "text-pos"}`}
               >
                 <ShieldCheck size={26} />
               </span>
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <strong className="text-base">
-                  {openAlerts.length === 0
-                    ? t("within")
-                    : t("breachedTitle", { n: openAlerts.length })}
+                  {openAlerts.length > 0
+                    ? t("breachedTitle", { n: openAlerts.length })
+                    : limitsSet(r) === 0
+                      ? t("noneSet")
+                      : t("within")}
                 </strong>
                 <span className="text-sm text-ink-body">
                   {openAlerts.length > 0
                     ? t("breachedBody")
-                    : t("passCount", { n: ITEMS.filter((i) => i.server).length })}
+                    : limitsSet(r) === 0
+                      ? t("noneSetBody")
+                      : serverLimitsSet(r) === 0
+                        ? t("uiOnlyBody")
+                        : t("passCount", { n: serverLimitsSet(r) })}
                 </span>
               </div>
               {openAlerts.length === 0 ? null : (

@@ -52,7 +52,14 @@ export {
   type MinSizeDetail,
   type Requirement,
 } from "./requirements";
-export { costPerMillion, costUsed, volumeMaker, type VolumeMakerState } from "./volume-maker";
+export {
+  costPerMillion,
+  costUsed,
+  VOLUME_MAKER_STOPPED,
+  volumeMaker,
+  volumeMakerStopCause,
+  type VolumeMakerState,
+} from "./volume-maker";
 export {
   FARM_TIMING,
   farmNet,
