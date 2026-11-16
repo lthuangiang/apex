@@ -4,6 +4,7 @@ import {
   adminAiDeskBodySchema,
   adminBuilderFeeBodySchema,
   adminVolumeBotsBodySchema,
+  marketHoursQuerySchema,
   notificationSettingsBodySchema,
   platformStatsQuerySchema,
   riskLimitsBodySchema,
@@ -17,6 +18,7 @@ import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 
 import { setBuilderFee } from "./builder-fees";
+import { marketHours } from "./market-hours";
 import {
   ackAlert,
   adminUserDetail,
@@ -171,6 +173,11 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
     ),
   );
 
+  // Market hours cho team Ops (DEC-TBD-market-hours): tz là tên IANA, kiểm bằng zod; sai → lỗi C6.
+  app.get("/api/v1/admin/market-hours", async (request) => {
+    const q = parseOrThrow(marketHoursQuerySchema, request.query);
+    return marketHours(deps, requireAuth(request).userId, q);
+  });
   app.get("/api/v1/admin/stats", async (request) => {
     const { period } = parseOrThrow(platformStatsQuerySchema, request.query);
     return platformStats(deps, requireAuth(request).userId, period);
