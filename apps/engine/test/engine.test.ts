@@ -511,6 +511,63 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("logs Paused and Running when the user pauses and resumes, so Runtime ends at the pause (BD-06)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w-pause-runtime");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const step = async (state: "pausing" | "resuming" | "stopping", until: string) => {
+      await db.update(bots).set({ state }).where(eq(bots.id, botId));
+      for (let i = 0; i < 4 && (await botState(botId))?.state !== until; i += 1) {
+        clock += 1_000;
+        await e.tick();
+      }
+      expect((await botState(botId))?.state).toBe(until);
+    };
+    await step("pausing", "paused");
+    const pausedAt = clock;
+    clock += 3 * 86_400_000;
+    await step("resuming", "running");
+    const resumedAt = clock;
+    clock += 3_600_000;
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    await step("stopping", "stopped");
+    const states = (await db.select().from(botEvents).where(eq(botEvents.botId, botId)))
+      .filter((x) => x.type === "state")
+      .sort((x, y) => x.occurredAt.getTime() - y.occurredAt.getTime())
+      .map((x) => [x.decision, x.occurredAt.getTime()] as const);
+    // Mỗi lần đổi trạng thái đúng một event, đúng lúc engine xác nhận.
+    expect(states.map(([d]) => d)).toEqual(["Paused", "Running", "Stopped"]);
+    expect(states[0]?.[1]).toBe(pausedAt);
+    expect(states[1]?.[1]).toBe(resumedAt);
+    await e.stop();
+  });
+
+  it("clears Needs attention when a planned stop finishes through stopping (MM-01)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w-planned");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    // Như chiến lược dừng vì hết budget khi còn lệnh unknown: bot ở stopping, reason_code BUDGET_DONE, cờ còn bật từ
+    // cảnh báo 80% budget.
+    await db
+      .update(bots)
+      .set({ state: "stopping", reasonCode: ReasonCode.budgetDone, needsAttention: true })
+      .where(eq(bots.id, botId));
+    for (let i = 0; i < 3 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    const b = await botState(botId);
+    expect(b?.state).toBe("stopped");
+    expect(b?.needsAttention).toBe(false);
+    await e.stop();
+  });
+
   it("logs a Stopped event saying who stopped the bot (BD-06)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
