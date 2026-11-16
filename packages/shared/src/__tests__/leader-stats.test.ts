@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   classify,
+  steadyThresholds,
   coinIndex,
   episodesOf,
   LEADER_STATS,
@@ -276,6 +277,27 @@ describe("classify", () => {
     const c = classify({ ...base, liquidations: 1 }, false);
     expect(c.tabs).toEqual(["top", "long", "all"]);
     expect(c.steadyScore).toBeNull();
+  });
+
+  it("keeps big dips and fast traders out of Steady (CT-01, DEC-TBD-steady-dip)", () => {
+    const out = (s: Partial<LeaderStats>) => classify({ ...base, ...s }, false).tabs;
+    // Ba ví dụ của UX: sụt 65%, 115%, 142% lợi nhuận.
+    expect(out({ profit: "437831", worstDip: "283955" })).not.toContain("steady");
+    expect(out({ profit: "35464", worstDip: "40695" })).not.toContain("steady");
+    expect(out({ profit: "3737", worstDip: "5313" })).not.toContain("steady");
+    // Giữ lệnh 44 phút (nhãn "Fast trader"): vẫn ở Top / All, không ở Steady.
+    expect(out({ typicalHoldMs: 44 * MIN })).toEqual(["top", "long", "all"]);
+    // Biên: sụt đúng 50% lợi nhuận và giữ đúng 1 giờ vẫn vào Steady.
+    expect(out({ profit: "1000", worstDip: "500", typicalHoldMs: HOUR })).toContain("steady");
+  });
+
+  it("states the Steady thresholds from the same constants", () => {
+    expect(steadyThresholds()).toEqual({
+      dipPct: "50",
+      minTrades: 20,
+      topPct: "60",
+      holdHours: "1",
+    });
   });
 
   it("shows history-incomplete traders only under All", () => {

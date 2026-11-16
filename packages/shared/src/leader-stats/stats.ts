@@ -1,4 +1,4 @@
-import { Decimal, dec } from "../money";
+import { Decimal, DECIMAL_STRING_PATTERN, dec } from "../money";
 
 import { episodesOf, type Episode, type LeaderFill } from "./episodes";
 import { isPerp, sodexMarketOf, type CoinIndex } from "./markets";
@@ -18,6 +18,13 @@ export const LEADER_STATS = {
   minCoverage: "0.5",
   /** Steady: episode tốt nhất chiếm tối đa chừng này phần lợi nhuận. */
   maxTopShare: "0.6",
+  /**
+   * Steady: sụt lớn nhất tối đa chừng này phần lợi nhuận 30 ngày (DEC-TBD-steady-dip, sửa DEC-163; trước đây Steady
+   * không xét sụt nên trader sụt hơn cả lợi nhuận vẫn vào).
+   */
+  steadyMaxDipShare: "0.5",
+  /** Giữ lệnh dưới mức này: nhãn "Fast trader", và không vào Steady (DEC-TBD-steady-dip). */
+  fastHoldMs: 60 * 60_000,
   /** Hyperliquid chỉ trả 10.000 fill gần nhất (docs/COPY_TRADING_DATA.md). */
   fillCap: 10_000,
 } as const;
@@ -214,6 +221,21 @@ export interface Classified {
   steadyScore: string | null;
 }
 
+/** Ngưỡng Steady để hiện dưới định nghĩa (cùng nguồn với `classify`, DEC-TBD-steady-dip). */
+export function steadyThresholds(): {
+  dipPct: string;
+  minTrades: number;
+  topPct: string;
+  holdHours: string;
+} {
+  return {
+    dipPct: dec(LEADER_STATS.steadyMaxDipShare).mul(100).toString(),
+    minTrades: LEADER_STATS.minEpisodes,
+    topPct: dec(LEADER_STATS.maxTopShare).mul(100).toString(),
+    holdHours: String(LEADER_STATS.fastHoldMs / 3_600_000),
+  };
+}
+
 export function classify(s: LeaderStats, isVault: boolean): Classified {
   const hidden: HiddenReason[] = [];
   if (s.closedEpisodes < LEADER_STATS.minEpisodes) hidden.push("few_trades");
@@ -229,11 +251,16 @@ export function classify(s: LeaderStats, isVault: boolean): Classified {
   const tabs: TraderTab[] = ["top", "long", "all"];
   const profit = dec(s.profit);
   // Steady dành cho người mới: bị thanh lý trong 30 ngày thì không vào (vẫn ở All / Top, nhãn "Liquidated recently").
+  // DEC-TBD-steady-dip: thêm sụt ≤ 50% lợi nhuận và giữ lệnh ≥ 1 giờ; thiếu dữ liệu thì không vào Steady.
   const steady =
     profit.gt(0) &&
     s.liquidations === 0 &&
     s.topTradeShare !== null &&
-    dec(s.topTradeShare).lte(LEADER_STATS.maxTopShare);
+    dec(s.topTradeShare).lte(LEADER_STATS.maxTopShare) &&
+    DECIMAL_STRING_PATTERN.test(s.worstDip) &&
+    dec(s.worstDip).lte(profit.mul(LEADER_STATS.steadyMaxDipShare)) &&
+    s.typicalHoldMs !== null &&
+    s.typicalHoldMs >= LEADER_STATS.fastHoldMs;
   if (!steady) return { hidden, tabs, steadyScore: null };
   // Không có sụt (đường chỉ đi lên): coi sụt = 1 USD để vẫn xếp được, tránh chia cho 0.
   const dip = Decimal.max(dec(s.worstDip), 1);

@@ -19,6 +19,7 @@ import {
   FOLLOW_POLL_MS,
   FOLLOW_SYSTEM_LIMIT,
   HIDDEN_REASONS,
+  classify,
   LEADER_STATS,
   meetsMinHold,
   copyPlan,
@@ -124,16 +125,18 @@ const statsView = (s: LeaderStats): TraderCard["stats"] => ({
 });
 
 const HOUR = 3_600_000;
+/** Ngưỡng nhãn "Fast trader" = ngưỡng loại khỏi Steady (DEC-TBD-steady-dip). */
+const FAST_MS = LEADER_STATS.fastHoldMs;
 
 export function tagsOf(s: LeaderStats): TraderCard["tags"] {
   const tags: TraderCard["tags"] = [];
   const hold = s.typicalHoldMs;
   // "Easy to copy" và "Fast trader" (< 1 giờ) không hiện cùng nhau: dưới 1 giờ thì không gắn "Easy to copy".
-  if (hold !== null && hold >= HOUR && s.coverage !== null && dec(s.coverage).gte("0.9"))
+  if (hold !== null && hold >= FAST_MS && s.coverage !== null && dec(s.coverage).gte("0.9"))
     tags.push("easy_to_copy");
   if (hold !== null && hold >= 24 * HOUR) tags.push("holds_days");
   else if (hold !== null && hold >= 2 * HOUR) tags.push("holds_hours");
-  else if (hold !== null && hold < HOUR) tags.push("fast_trader");
+  else if (hold !== null && hold < FAST_MS) tags.push("fast_trader");
   if (s.coverage !== null)
     tags.push(dec(s.coverage).gte("0.999") ? "all_on_sodex" : "partly_on_sodex");
   if (s.liquidations > 0) tags.push("liquidated");
@@ -247,10 +250,12 @@ export async function listTraders(
     if (r.s.hidden.length > 0) hidden += 1;
     for (const h of r.s.hidden) if (h in hiddenBy) hiddenBy[h as HiddenReason] += 1;
   }
-  // Steady không có trader bị thanh lý trong 30 ngày; lọc cả lúc đọc để snapshot cũ (tính trước luật này) cũng đúng.
+  // Steady xét lại đủ luật lúc đọc (thanh lý, sụt, giữ lệnh; DEC-TBD-steady-dip) để snapshot cũ (tính trước luật mới)
+  // cũng đúng ngay, không chờ lần chạy scheduler kế tiếp.
   const inTab = rows.filter(
     (r) =>
-      r.s.tabs.includes(tab) && (tab !== "steady" || (r.s.stats as LeaderStats).liquidations === 0),
+      r.s.tabs.includes(tab) &&
+      (tab !== "steady" || classify(r.s.stats as LeaderStats, false).tabs.includes("steady")),
   );
   const key = (r: (typeof rows)[number]): number =>
     tab === "steady"
