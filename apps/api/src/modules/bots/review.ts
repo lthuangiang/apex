@@ -58,7 +58,10 @@ export async function startReview(
   userId: string,
   botId: string,
 ): Promise<BotReviewView> {
-  await reviewable(deps, userId, botId);
+  const b = await reviewable(deps, userId, botId);
+  // Bot archived chỉ đọc (BD-01, DEC-263): không tạo review / job backtest mới.
+  if (b.state === "archived")
+    throw new AppError(ErrorCode.botStateConflict, "Restore the bot to review it.");
   const [pending] = await deps.db
     .select()
     .from(botReviews)

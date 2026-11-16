@@ -30,6 +30,22 @@ export const BOT_STRATEGIES = [
   ...EXPERIMENTAL_STRATEGIES,
 ] as const;
 
+/**
+ * Thẻ builder fee Market Making (DEC-258, DEC-261). `rate` là mức hiệu lực (phần mười bp). `source`: team
+ * đặt tay (`custom`, DEC-159) / theo bậc volume (`tier`) / mặc định. `volume30d`: volume MM tiền thật 30 ngày (USD), null
+ * khi user chưa từng có bot MM tiền thật; có bot mà không khớp gì là "0". `nextVolume` / `nextRate`: ngưỡng và mức của
+ * bậc có mức cao nhất thấp hơn hẳn `rate` (theo mức hiệu lực, không theo volume trực tiếp); null ở bậc cao nhất hoặc khi
+ * `custom`. null cả object khi chưa đăng nhập hoặc user không được dùng bot khối lượng.
+ */
+export const mmFeeSchema = z.object({
+  rate: z.number().int(),
+  source: z.enum(["tier", "custom", "default"]),
+  volume30d: decimalStringSchema.nullable(),
+  nextVolume: decimalStringSchema.nullable(),
+  nextRate: z.number().int().nullable(),
+});
+export type MmFee = z.infer<typeof mmFeeSchema>;
+
 /** Tính năng của người dùng đang đăng nhập: `volumeBots` do admin bật ở Users (DEC-80). */
 export const featuresSchema = z.object({
   volumeMaker: z.boolean(),
@@ -40,6 +56,8 @@ export const featuresSchema = z.object({
   adaptiveDca: z.boolean().default(false),
   /** Builder fee hiệu lực theo chiến lược của user (DEC-159), phần mười bp; thiếu key = mặc định. */
   builderFees: z.record(z.string(), z.number().int()).default({}),
+  /** Thẻ builder fee Market Making; null khi chưa đăng nhập. */
+  mmFee: mmFeeSchema.nullable().default(null),
 });
 
 export const createBotBodySchema = z.object({
@@ -105,6 +123,11 @@ export const botSummarySchema = z.object({
   waiting: botWaitingSchema.nullable().default(null),
   /** `paper`: tiền giả, lệnh chỉ mô phỏng trong DRIFT (DEC-105). UI gắn nhãn PAPER ở mọi nơi hiện bot. */
   mode: z.enum(["live", "paper"]).default("live"),
+  /**
+   * Market Making dừng với MAX_CYCLES (DEC-262): `volume_target` khi khối lượng phiên ≥ volume target,
+   * `end_time` khi tới giờ kết thúc (runUntil season_end / date); null khi không áp dụng hoặc không xác định được.
+   */
+  stopDetail: z.enum(["volume_target", "end_time"]).nullable().default(null),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 });
