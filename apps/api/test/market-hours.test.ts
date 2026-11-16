@@ -21,6 +21,7 @@ let env: TestEnv;
 const MARKET = `MH${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const EST_MARKET = `ME${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const EMPTY_MARKET = `MN${randomUUID().slice(0, 6).toUpperCase()}-USD`;
+const SHOCK_MARKET = `MS${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const errorOf = (body: string) => errorResponseSchema.parse(JSON.parse(body)).error;
 
 beforeAll(async () => {
@@ -217,6 +218,61 @@ describe("GET /api/v1/admin/market-hours", () => {
     expect(Number(h5?.estCostPerMillion)).toBeCloseTo(230.8, 0);
     // Giờ không có nến: null ("n/a"), không bao giờ 0.
     expect(v.hours[6]?.volatility).toMatchObject({ swingBp: null, estCostPerMillion: null });
+  });
+
+  it("finds each hour's largest 1-minute range and largest 15-minute move, in the viewer's local hour", async () => {
+    const { client } = await teamUser();
+    // 2026-11-01 07:00–08:59 UTC: range thường 10 bp, close 100. Nến 07:20 range 200 bp (close vẫn 100). Chuỗi tăng dần
+    // trong nhiều phút: close 07:40–07:44 = 100.3 … 101.5, giữ 101.5 tới 08:02, từ 08:03 về 100.
+    const at = (m: number) => new Date(Date.parse("2026-11-01T07:00:00Z") + m * 60_000);
+    const values = Array.from({ length: 120 }, (_, m) => {
+      const close =
+        m >= 40 && m <= 44
+          ? (100 + (m - 39) * 0.3).toFixed(1)
+          : m > 44 && m <= 62
+            ? "101.5"
+            : "100";
+      const h = m === 20 ? "101" : (Number(close) + 0.05).toFixed(2);
+      const l = m === 20 ? "99" : (Number(close) - 0.05).toFixed(2);
+      return `('${SHOCK_MARKET}', '${at(m).toISOString()}', ${close}, ${h}, ${l}, ${close}, 1)`;
+    });
+    await env.pool.query(
+      `insert into candles_1m (market, ts, open, high, low, close, volume) values ${values.join(",")}`,
+    );
+    const get = async (tz: string) =>
+      marketHoursViewSchema.parse(
+        (
+          await client.request(
+            "GET",
+            `/api/v1/admin/market-hours?market=${SHOCK_MARKET}&days=7&tz=${tz}`,
+          )
+        ).json(),
+      );
+    const utc = await get("UTC");
+    expect(utc.hours[7]?.volatility).toMatchObject({
+      maxRangeBp: "200",
+      maxRangeAt: "2026-11-01T07:20:00.000Z",
+      // Cửa sổ sớm nhất chứa cả close 100 (07:30) và 101.5 (07:44): (101.5 − 100) ÷ 100 × 1e4.
+      maxMove15Bp: "150",
+      maxMove15At: "2026-11-01T07:30:00.000Z",
+    });
+    // Cửa sổ bắt đầu 08:00 vắt sang 08:03 (giảm về 100) được tính cho giờ bắt đầu (08).
+    expect(utc.hours[8]?.volatility.maxMove15Bp).toBe("150");
+    expect(utc.hours[8]?.volatility.maxMove15At).toBe("2026-11-01T08:00:00.000Z");
+    // Range 1 phút của 08:xx: (101.55 − 101.45) ÷ 101.5 × 1e4 ≈ 9.85 bp (close 101.5) là lớn nhất.
+    expect(utc.hours[8]?.volatility.maxRangeBp).toBe("10");
+    // Giờ không có nến: null ("n/a"), không bao giờ 0.
+    expect(utc.hours[9]?.volatility).toMatchObject({
+      maxRangeBp: null,
+      maxRangeAt: null,
+      maxMove15Bp: null,
+      maxMove15At: null,
+    });
+    // Kolkata (+5:30): nến 07:20 UTC = 12:50 → giờ 12; cửa sổ 07:30 UTC = 13:00 → giờ 13.
+    const kolkata = await get("Asia%2FKolkata");
+    expect(kolkata.hours[12]?.volatility.maxRangeBp).toBe("200");
+    expect(kolkata.hours[13]?.volatility.maxMove15At).toBe("2026-11-01T07:30:00.000Z");
+    expect(kolkata.hours[13]?.volatility.maxRangeBp).toBe("10");
   });
 
   it("shows the estimate as unavailable, with the reason, when there are no candles or no market info", async () => {

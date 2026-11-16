@@ -5,6 +5,7 @@ import {
   marketHoursQuerySchema,
   marketHoursViewSchema,
   minuteRangeBp,
+  moveBp,
   quantile,
   timeZoneSchema,
 } from "../api/market-hours";
@@ -18,6 +19,15 @@ describe("minute range", () => {
     expect(minuteRangeBp("100", "100")?.toString()).toBe("0");
     expect(minuteRangeBp("0", "0")).toBeNull();
     expect(minuteRangeBp("99", "101")).toBeNull();
+  });
+});
+
+describe("window move", () => {
+  it("is (highest − lowest) ÷ lowest in bp, and null for bad prices", () => {
+    expect(moveBp("101.5", "100")?.toString()).toBe("150");
+    expect(moveBp("100", "100")?.toString()).toBe("0");
+    expect(moveBp("1", "0")).toBeNull();
+    expect(moveBp("99", "100")).toBeNull();
   });
 });
 

@@ -82,11 +82,21 @@ describe("design tokens", () => {
     expect(contrast(WHITE, token(bg))).toBeGreaterThanOrEqual(4.5);
   });
 
-  // Market hours: ô có số dùng chữ ink trên các bậc xanh 0–2 (hàng "× day median") và mọi bậc cam (Cost per $1M).
-  it.each(["mh-vol-0", "mh-vol-1", "mh-vol-2", "mh-cost-0", "mh-cost-1", "mh-cost-2", "mh-cost-3"])(
-    "keeps ink text on %s at 4.5:1 or more",
-    (bg) => {
-      expect(contrast(token("ink"), token(bg))).toBeGreaterThanOrEqual(4.5);
-    },
-  );
+  // Market hours: ô có số dùng chữ ink trên các bậc xanh 0–2 (hàng "× day median"), mọi bậc cam (Cost per $1M) và mọi
+  // bậc tím (Largest 1-min range / 15-min move).
+  it.each([
+    "mh-vol-0",
+    "mh-vol-1",
+    "mh-vol-2",
+    "mh-cost-0",
+    "mh-cost-1",
+    "mh-cost-2",
+    "mh-cost-3",
+    "mh-shock-0",
+    "mh-shock-1",
+    "mh-shock-2",
+    "mh-shock-3",
+  ])("keeps ink text on %s at 4.5:1 or more", (bg) => {
+    expect(contrast(token("ink"), token(bg))).toBeGreaterThanOrEqual(4.5);
+  });
 });
