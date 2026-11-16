@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DeskLabs hero phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0b1020}
+a{color:#9db8ff}a:hover{color:#ffffff}
+button:focus-visible,a:focus-visible{outline:2px solid #9db8ff;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 390px; height: 1560px; box-sizing: border-box; background: #0b1020; color: #eef1fb; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column">
+  <nav aria-label="Main" style="padding: 14px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #1b2240">
+    <a href="#" style="display: flex; align-items: center; gap: 8px; color: #eef1fb; text-decoration: none; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#2E62E8"></rect><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#FFFFFF"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#FFFFFF" opacity="0.7"></rect></svg>
+      DeskLabs
+    </a>
+    <a href="#" style="margin-left: auto; display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 8px; background: #2e62e8; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600">Launch app</a>
+    <button type="button" aria-label="Open menu" style="width: 44px; height: 44px; border: 1px solid #2c3560; border-radius: 8px; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 9h14M2 13h14" stroke="#eef1fb" stroke-width="1.8"></path></svg>
+    </button>
+  </nav>
+
+  <section aria-label="Intro" style="padding: 32px 16px 24px; display: flex; flex-direction: column; gap: 20px">
+    <p style="margin: 0; display: flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: #9aa3c4">
+      <span aria-hidden="true" style="width: 7px; height: 7px; border-radius: 50%; background: #3ccf91"></span>
+      On SoDEX mainnet · Powered by SoDEX Builder Code
+    </p>
+    <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 40px; line-height: 1.04; letter-spacing: -0.02em">Volume on SoDEX, built mostly with maker orders.</h1>
+    <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #b7bfdc">Market Making and Volume Builder trade on your own SoDEX account. Each bot logs why it acted, shows what every $1M of volume cost you, and stops at the loss limit you set.</p>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <a href="#" style="display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 8px; background: #2e62e8; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600">Launch app</a>
+      <a href="#panel" style="display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 8px; border: 1px solid #2c3560; color: #eef1fb; text-decoration: none; font-size: 16px; font-weight: 600">Watch a bot work</a>
+    </div>
+    <dl aria-label="What DeskLabs can do on your account" style="margin: 0; display: flex; flex-direction: column; border-top: 1px solid #232b4d">
+      <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #232b4d"><dt style="font-size: 13.5px; color: #9aa3c4">Withdraw or transfer</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #ff9a8c">Never</dd></div>
+      <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #232b4d"><dt style="font-size: 13.5px; color: #9aa3c4">Seed phrase</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 14px">Never asked</dd></div>
+      <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #232b4d"><dt style="font-size: 13.5px; color: #9aa3c4">Connect</dt><dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 14px">Two signatures</dd></div>
+    </dl>
+  </section>
+
+  <section id="panel" aria-label="Example bot" style="margin: 0 16px; border: 1px solid #232b4d; border-radius: 12px; background: #11172c; overflow: hidden">
+    <div role="tablist" aria-label="Strategy" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid #232b4d">
+      <button type="button" role="tab" aria-selected="{{mmSelected}}" onClick="{{pickMm}}" style="{{mmTab}}"><span>Market Making</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9aa3c4">Fee 0.003%</span></button>
+      <button type="button" role="tab" aria-selected="{{vbSelected}}" onClick="{{pickVb}}" style="{{vbTab}}"><span>Volume Builder</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #9aa3c4">Fee 0.005%</span></button>
+    </div>
+    <sc-if value="{{isMm}}" hint-placeholder-val="{{ true }}">
+      <div style="padding: 14px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: baseline; gap: 8px"><strong style="font-family: 'Space Grotesk', sans-serif; font-size: 16px">BTC-USD</strong><span style="margin-left: auto; font-size: 12px; color: #3ccf91">● Running</span></div>
+        <table style="width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; font-size: 12.5px">
+          <thead><tr style="color: #9aa3c4; font-size: 11px"><th scope="col" style="text-align: left; font-weight: 400; padding: 0 0 6px">Price</th><th scope="col" style="text-align: right; font-weight: 400; padding: 0 0 6px">Size (USDC)</th></tr></thead>
+          <tbody>
+            <sc-for list="{{book}}" as="row" hint-placeholder-count="6">
+              <tr style="{{row.rowStyle}}"><td style="{{row.priceStyle}}">{{row.price}}<sc-if value="{{row.you}}" hint-placeholder-val="{{ false }}"><span style="margin-left: 6px; padding: 1px 5px; border-radius: 4px; background: #2e62e8; color: #ffffff; font-size: 10px">YOU</span></sc-if></td><td style="text-align: right; padding: 6px">{{row.size}}</td></tr>
+            </sc-for>
+          </tbody>
+        </table>
+        <div style="border-top: 1px solid #232b4d; padding-top: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px">
+          <div><span style="font-family: 'JetBrains Mono', monospace; color: #9aa3c4">14:42:07</span> <strong style="font-weight: 600">Ask requoted</strong> <span style="color: #b7bfdc">· best ask moved away</span></div>
+          <div><span style="font-family: 'JetBrains Mono', monospace; color: #9aa3c4">14:42:11</span> <strong style="font-weight: 600">Filled</strong> <span style="color: #b7bfdc">· bid 0.0003 BTC, maker</span></div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{isVb}}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 14px 14px 0; display: flex; align-items: baseline; gap: 8px"><strong style="font-family: 'Space Grotesk', sans-serif; font-size: 16px">ETH-USD</strong><span style="font-size: 12px; color: #9aa3c4">One round</span><span style="margin-left: auto; padding: 1px 6px; border-radius: 4px; border: 1px solid #232b4d; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #9aa3c4">Example</span></div>
+      <svg viewBox="0 0 440 150" width="100%" role="img" aria-label="Example round: long entry at 1,817.6, stop loss on SoDEX at 1,808.5, break-even trigger at 1,820.3, closed at 1,819.8 after 19 seconds" style="display: block; padding: 6px 8px 0; box-sizing: border-box">
+        <line x1="16" y1="31.7" x2="424" y2="31.7" stroke="#5b8cff" stroke-width="1.4" stroke-dasharray="4 4"></line>
+        <text x="424" y="24" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="13" fill="#9aa3c4">Break-even 1,820.3</text>
+        <line x1="16" y1="112.8" x2="424" y2="112.8" stroke="#ff9a8c" stroke-width="1.4" stroke-dasharray="4 4"></line>
+        <text x="424" y="132" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="13" fill="#ff9a8c">Stop on SoDEX 1,808.5</text>
+        <polyline points="16,58 40,54 64,50.3 92,56 120,52 150,47 180,44 210,46 240,41 270,43 300,38 330,35.1" fill="none" stroke="#eef1fb" stroke-width="2.2"></polyline>
+        <circle cx="64" cy="50.3" r="6" fill="#5fd9a4"></circle>
+        <text x="64" y="76" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="13" fill="#b7bfdc">Enter</text>
+        <circle cx="330" cy="35.1" r="6" fill="none" stroke="#5fd9a4" stroke-width="2.4"></circle>
+        <text x="330" y="60" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="13" fill="#b7bfdc">Exit · 19 s</text>
+      </svg>
+      <ol style="margin: 0; padding: 0 14px 10px; list-style: none">
+        <sc-for list="{{trades}}" as="t" hint-placeholder-count="4">
+          <li style="display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-bottom: 1px solid #1b2240; font-size: 13.5px">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #9aa3c4">{{t.time}}</span>
+            <span style="display: flex; flex-direction: column; gap: 2px"><strong style="font-weight: 600">{{t.event}}</strong><span style="font-size: 12.5px; color: #b7bfdc">{{t.detail}}</span></span>
+          </li>
+        </sc-for>
+      </ol>
+    </sc-if>
+    <p style="margin: 0; padding: 10px 14px; border-top: 1px solid #232b4d; font-size: 11.5px; color: #9aa3c4">Illustration. In the app you see your own bot, the live SoDEX book and your real numbers.</p>
+  </section>
+
+  <section aria-label="Platform numbers" style="margin-top: 28px; border-top: 1px solid #232b4d; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr))">
+    <div style="padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid #232b4d; border-bottom: 1px solid #232b4d"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 500; color: #9db8ff">[totalVolume]</strong><span style="font-size: 12px; color: #9aa3c4">Traded on SoDEX by DeskLabs bots, all time</span></div>
+    <div style="padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid #232b4d"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 500; color: #9db8ff">[botsLaunched]</strong><span style="font-size: 12px; color: #9aa3c4">Bots launched, all time</span></div>
+    <div style="padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid #232b4d"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 500">0.003%</strong><span style="font-size: 12px; color: #9aa3c4">Market Making builder fee, lower at volume</span></div>
+    <div style="padding: 18px 16px; display: flex; flex-direction: column; gap: 4px"><strong style="font-family: 'JetBrains Mono', monospace; font-size: 18px; font-weight: 500">0.005%</strong><span style="font-size: 12px; color: #9aa3c4">Volume Builder builder fee</span></div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"start":{"editor":"enum","options":["mm","vb"],"default":"mm"},"$preview":{"width":390,"height":1560}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tab = (this.state && this.state.tab) || this.props.start || 'mm';
+    const base = 'min-height: 56px; padding: 10px 14px; border: 0; font: inherit; font-size: 13.5px; font-weight: 600; text-align: left; display: flex; flex-direction: column; gap: 2px; cursor: pointer; ';
+    const on = base + 'border-bottom: 2px solid #5b8cff; background: #161d38; color: #eef1fb';
+    const off = base + 'border-bottom: 2px solid transparent; background: transparent; color: #b7bfdc';
+    const rows = [['74,603','50,133','Ask',false],['74,602','56,996','Ask',false],['74,601','57,070','Ask',true],['74,600','39,687','Bid',true],['74,599','30,287','Bid',false],['74,598','66,168','Bid',false]];
+    const book = rows.map(function (r) {
+      return { price: r[0], size: r[1], you: r[3],
+        rowStyle: r[3] ? 'background: #18214a; outline: 1px solid #2e62e8' : '',
+        priceStyle: 'padding: 6px; color: ' + (r[2] === 'Ask' ? '#ff9a8c' : '#5fd9a4') };
+    });
+    return {
+      isMm: tab === 'mm', isVb: tab === 'vb',
+      mmSelected: tab === 'mm' ? 'true' : 'false', vbSelected: tab === 'vb' ? 'true' : 'false',
+      mmTab: tab === 'mm' ? on : off, vbTab: tab === 'vb' ? on : off,
+      pickMm: () => this.setState({ tab: 'mm' }),
+      pickVb: () => this.setState({ tab: 'vb' }),
+      book: book,
+      trades: [
+        { time: '0 s', event: 'Enter long', detail: 'Post-only at 1,817.6, so it fills as maker' },
+        { time: '0 s', event: 'Stop loss set on SoDEX', detail: 'SoDEX closes the position at 1,808.5, even if DeskLabs is offline' },
+        { time: '', event: 'Break-even', detail: 'The stop moves to break-even once price reaches 1,820.3' },
+        { time: '19 s', event: 'Closed long', detail: 'Early profit: a gain bigger than a multiple of the fees you set' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

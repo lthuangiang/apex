@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DeskLabs landing sections</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a:hover{opacity:.85}
+button:focus-visible,a:focus-visible{outline:2px solid #5b8cff;outline-offset:2px}
+</style>
+</helmet>
+<div style="background: {{c.bg}}; color: {{c.text}}; font-family: Inter, system-ui, sans-serif">
+
+  <section id="strategies" aria-labelledby="h-strategies" style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 96px 32px 72px; display: flex; flex-direction: column; gap: 40px">
+    <div style="display: flex; flex-wrap: wrap; gap: 24px 64px; align-items: flex-end">
+      <div style="flex: 1 1 520px; display: flex; flex-direction: column; gap: 14px">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">01 · Strategies</span>
+        <h2 id="h-strategies" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 44px; line-height: 1.05; letter-spacing: -0.015em">Two flagship strategies, 8 more ready to run</h2>
+      </div>
+      <p style="flex: 1 1 380px; margin: 0; font-size: 16px; line-height: 1.6; color: {{c.text2}}">Defaults are tuned per market, every hard option explains how it works, and any setup can be backtested on SoDEX history before it touches mainnet.</p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); border-top: 1px solid {{c.line}}; border-bottom: 1px solid {{c.line}}">
+      <article style="padding: 32px 40px 32px 0; display: flex; flex-direction: column; gap: 18px; border-right: 1px solid {{c.line}}">
+        <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap">
+          <h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Market Making</h3>
+          <span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.accent}}">Builder fee 0.003%, lower at volume</span>
+        </div>
+        <p style="margin: 0; font-size: 15.5px; line-height: 1.6; color: {{c.text2}}">Quotes a bid and an ask from the SoDEX order book, earns maker volume and keeps inventory small. Set where you sit in the book with one number that works on every market.</p>
+        <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column">
+          <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; border-top: 1px solid {{c.line2}}; font-size: 15px; line-height: 1.5"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">01</span><span>Smart quoting follows the live SoDEX book and the Binance price, and closes the position if price runs 15 bp against it <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{c.accent}}">BETA</span></span></li>
+          <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; border-top: 1px solid {{c.line2}}; font-size: 15px; line-height: 1.5"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">02</span><span>Live order book with your quotes marked</span></li>
+          <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; border-top: 1px solid {{c.line2}}; font-size: 15px; line-height: 1.5"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">03</span><span>Cost cap: stops itself before it spends more than you set</span></li>
+        </ol>
+        <a href="#" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 48px; padding: 0 20px; border-radius: 8px; background: #2e62e8; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 600">Start Market Making</a>
+      </article>
+      <article style="padding: 32px 0 32px 40px; display: flex; flex-direction: column; gap: 18px">
+        <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap">
+          <h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Volume Builder</h3>
+          <span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.accent}}">Builder fee 0.005%</span>
+        </div>
+        <p style="margin: 0; font-size: 15.5px; line-height: 1.6; color: {{c.text2}}">Short, maker-first trades that build volume at a low cost per million, with a stop loss on SoDEX itself for every trade.</p>
+        <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column">
+          <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; border-top: 1px solid {{c.line2}}; font-size: 15px; line-height: 1.5"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">01</span><span>Stop moves to break-even at the level you choose</span></li>
+          <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; border-top: 1px solid {{c.line2}}; font-size: 15px; line-height: 1.5"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">02</span><span>Early profit in multiples of fees, not guesses</span></li>
+          <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; border-top: 1px solid {{c.line2}}; font-size: 15px; line-height: 1.5"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">03</span><span>Review this run: replays your real trades with other settings</span></li>
+        </ol>
+        <a href="#" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 48px; padding: 0 20px; border-radius: 8px; background: #2e62e8; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 600">Start Volume Builder</a>
+      </article>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 20px">How they differ</h3>
+      <div style="overflow-x: auto; border: 1px solid {{c.line}}; border-radius: 10px">
+        <table style="width: 100%; min-width: 760px; border-collapse: collapse; font-size: 14.5px; line-height: 1.5">
+          <thead>
+            <tr style="background: {{c.surface}}; text-align: left">
+              <th scope="col" style="padding: 12px 18px; width: 18%"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Question</span></th>
+              <th scope="col" style="padding: 12px 18px; font-weight: 600">Market Making</th>
+              <th scope="col" style="padding: 12px 18px; font-weight: 600">Volume Builder</th>
+              <th scope="col" style="padding: 12px 18px; font-weight: 600; color: {{c.text2}}">Other strategies</th>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{compare}}" as="r" hint-placeholder-count="5">
+              <tr style="border-top: 1px solid {{c.line2}}; vertical-align: top">
+                <th scope="row" style="padding: 14px 18px; text-align: left; font-size: 13px; font-weight: 500; color: {{c.muted}}">{{r.q}}</th>
+                <td style="padding: 14px 18px">{{r.mm}}</td>
+                <td style="padding: 14px 18px">{{r.vb}}</td>
+                <td style="padding: 14px 18px; color: {{c.text2}}">{{r.other}}</td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: baseline; gap: 12px">
+        <h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 20px">More strategies</h3>
+        <span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">Builder fee 0.01%</span>
+      </div>
+      <div style="overflow-x: auto; border: 1px solid {{c.line}}; border-radius: 10px">
+        <table style="width: 100%; min-width: 640px; border-collapse: collapse; font-size: 14.5px">
+          <thead>
+            <tr style="background: {{c.surface}}; color: {{c.muted}}; font-size: 12.5px; text-align: left">
+              <th scope="col" style="padding: 12px 18px; font-weight: 500">Strategy</th>
+              <th scope="col" style="padding: 12px 18px; font-weight: 500">Market</th>
+              <th scope="col" style="padding: 12px 18px; font-weight: 500">What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{more}}" as="s" hint-placeholder-count="8">
+              <tr style="border-top: 1px solid {{c.line2}}">
+                <th scope="row" style="padding: 13px 18px; text-align: left; font-weight: 600; white-space: nowrap">{{s.name}}</th>
+                <td style="padding: 13px 18px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: {{c.text2}}; white-space: nowrap">{{s.market}}</td>
+                <td style="padding: 13px 18px; color: {{c.text2}}">{{s.body}}</td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: {{c.muted}}">Backtest any setup on SoDEX price history before you start. A backtest is a simulation, not a forecast.</p>
+    </div>
+  </section>
+
+  <section id="how" aria-labelledby="h-how" style="border-top: 1px solid {{c.line}}">
+    <div style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 88px 32px; display: flex; flex-direction: column; gap: 40px">
+      <div style="display: flex; flex-direction: column; gap: 14px">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">02 · How it works</span>
+        <h2 id="h-how" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 44px; line-height: 1.05; letter-spacing: -0.015em">From wallet to running bot in about 5 minutes</h2>
+      </div>
+      <ol style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0">
+        <sc-for list="{{steps}}" as="st" hint-placeholder-count="4">
+          <li style="padding: 24px 28px 8px 0; border-top: 2px solid {{st.bar}}; display: flex; flex-direction: column; gap: 12px">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 40px; line-height: 1; color: {{st.numColor}}">{{st.n}}</span>
+            <h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 21px">{{st.title}}</h3>
+            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: {{c.text2}}">{{st.body}}</p>
+          </li>
+        </sc-for>
+      </ol>
+    </div>
+  </section>
+
+  <section id="safety" aria-labelledby="h-safety" style="border-top: 1px solid {{c.line}}; background: {{c.band}}">
+    <div style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 88px 32px; display: flex; flex-wrap: wrap; gap: 48px 64px">
+      <div style="flex: 1 1 440px; display: flex; flex-direction: column; gap: 20px">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">03 · Safety</span>
+        <h2 id="h-safety" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 44px; line-height: 1.05; letter-spacing: -0.015em">We trade. We never move your money.</h2>
+        <p style="margin: 0; font-size: 16px; line-height: 1.6; color: {{c.text2}}">Once connected, the app can read your account and place or cancel orders for bots you start. Withdraw and transfer are not possible, and the product has no feature for them.</p>
+        <table style="width: 100%; border-collapse: collapse; border: 1px solid {{c.line}}; font-size: 15px">
+          <caption style="text-align: left; padding: 0 0 10px; font-size: 13px; color: {{c.muted}}">What the app can do on your SoDEX account</caption>
+          <tbody>
+            <tr style="border-bottom: 1px solid {{c.line}}; background: {{c.surface}}"><th scope="row" style="padding: 14px 18px; text-align: left; font-weight: 500">Read balances, positions, orders</th><td style="padding: 14px 18px; text-align: right; font-family: 'JetBrains Mono', monospace; color: {{c.live}}">Yes</td></tr>
+            <tr style="border-bottom: 1px solid {{c.line}}; background: {{c.surface}}"><th scope="row" style="padding: 14px 18px; text-align: left; font-weight: 500">Place and cancel orders for your bots</th><td style="padding: 14px 18px; text-align: right; font-family: 'JetBrains Mono', monospace; color: {{c.live}}">Yes</td></tr>
+            <tr style="background: {{c.neverBg}}"><th scope="row" style="padding: 14px 18px; text-align: left; font-weight: 600">Withdraw or transfer funds</th><td style="padding: 14px 18px; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 500; color: {{c.never}}">Never</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <dl style="flex: 1 1 480px; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: {{c.line}}; border: 1px solid {{c.line}}; align-self: flex-start">
+        <sc-for list="{{facts}}" as="f" hint-placeholder-count="4">
+          <div style="background: {{c.surface}}; padding: 24px; display: flex; flex-direction: column; gap: 10px">
+            <dt style="font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700">{{f.title}}</dt>
+            <dd style="margin: 0; font-size: 14.5px; line-height: 1.55; color: {{c.text2}}">{{f.body}}</dd>
+          </div>
+        </sc-for>
+      </dl>
+    </div>
+  </section>
+
+  <section id="fees" aria-labelledby="h-fees" style="border-top: 1px solid {{c.line}}">
+    <div style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 88px 32px; display: flex; flex-wrap: wrap; gap: 40px 64px">
+      <div style="flex: 1 1 400px; display: flex; flex-direction: column; gap: 20px">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">04 · Fees</span>
+        <h2 id="h-fees" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 44px; line-height: 1.05; letter-spacing: -0.015em">Low builder fees, shown before you sign</h2>
+        <p style="margin: 0; font-size: 16px; line-height: 1.6; color: {{c.text2}}">Charged by SoDEX through Builder Codes on fills of orders your bots send. SoDEX trading fees apply as usual. Revoke the builder fee in Settings anytime; your bots pause right away.</p>
+      </div>
+      <div style="flex: 1 1 520px; overflow-x: auto">
+        <table style="width: 100%; border-collapse: collapse; font-size: 15px">
+          <thead>
+            <tr style="color: {{c.muted}}; font-size: 12.5px; text-align: left; border-bottom: 1px solid {{c.line}}">
+              <th scope="col" style="padding: 0 0 12px; font-weight: 500">Strategy</th>
+              <th scope="col" style="padding: 0 0 12px; font-weight: 500">Market Making volume, 30 days</th>
+              <th scope="col" style="padding: 0 0 12px; font-weight: 500; text-align: right">Builder fee</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom: 1px solid {{c.line2}}"><th scope="row" rowspan="3" style="padding: 16px 16px 16px 0; text-align: left; vertical-align: top; font-weight: 600">Market Making</th><td style="padding: 16px 0; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: {{c.text2}}">Under $200K</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px">0.003%</td></tr>
+            <tr style="border-bottom: 1px solid {{c.line2}}"><td style="padding: 16px 0; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: {{c.text2}}">$200K to $1M</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px">0.002%</td></tr>
+            <tr style="border-bottom: 1px solid {{c.line}}"><td style="padding: 16px 0; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: {{c.text2}}">$1M and above</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px; color: {{c.accent}}">0.001%</td></tr>
+            <tr style="border-bottom: 1px solid {{c.line}}"><th scope="row" style="padding: 16px 16px 16px 0; text-align: left; font-weight: 600">Volume Builder</th><td style="padding: 16px 0; font-size: 13.5px; color: {{c.muted}}">One rate</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px">0.005%</td></tr>
+            <tr><th scope="row" style="padding: 16px 16px 16px 0; text-align: left; font-weight: 600">Every other strategy</th><td style="padding: 16px 0; font-size: 13.5px; color: {{c.muted}}">One rate</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px">0.01%</td></tr>
+          </tbody>
+        </table>
+        <p style="margin: 14px 0 0; font-size: 13px; color: {{c.muted}}">Market Making volume counts fills of your real-money Market Making bots. The rate updates every hour; no new signature needed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-more" style="border-top: 1px solid {{c.line}}">
+    <div style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 56px 32px; display: flex; flex-direction: column; gap: 24px">
+      <h2 id="h-more" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 22px">Also in the app, on the same safety rules</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); border-top: 1px solid {{c.line}}">
+        <sc-for list="{{extras}}" as="x" hint-placeholder-count="4">
+          <div style="padding: 20px 24px 8px 0; display: flex; flex-direction: column; gap: 8px">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 600">{{x.title}}</h3>
+            <p style="margin: 0; font-size: 14px; line-height: 1.55; color: {{c.text2}}">{{x.body}}</p>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: {{c.muted}}">Copying and AI suggestions are not financial advice. Past results are not a forecast.</p>
+    </div>
+  </section>
+
+  <section id="faq" aria-labelledby="h-faq" style="border-top: 1px solid {{c.line}}">
+    <div style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 88px 32px; display: flex; flex-wrap: wrap; gap: 32px 64px">
+      <div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 14px">
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">05 · FAQ</span>
+        <h2 id="h-faq" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 44px; line-height: 1.05; letter-spacing: -0.015em">Questions before you connect</h2>
+      </div>
+      <div style="flex: 2 1 560px; border-top: 1px solid {{c.line}}">
+        <sc-for list="{{faq}}" as="q" hint-placeholder-count="8">
+          <div style="border-bottom: 1px solid {{c.line}}">
+            <h3 style="margin: 0">
+              <button type="button" aria-expanded="{{q.expanded}}" onClick="{{q.toggle}}" style="width: 100%; min-height: 60px; padding: 16px 0; border: 0; background: transparent; color: {{c.text}}; font: inherit; font-size: 16.5px; font-weight: 600; text-align: left; display: flex; align-items: center; gap: 16px; cursor: pointer">
+                <span style="flex: 1">{{q.q}}</span>
+                <span aria-hidden="true" style="font-family: 'JetBrains Mono', monospace; font-size: 18px; color: {{c.muted}}">{{q.sign}}</span>
+              </button>
+            </h3>
+            <sc-if value="{{q.open}}" hint-placeholder-val="{{ false }}">
+              <p style="margin: 0; padding: 0 40px 20px 0; font-size: 15px; line-height: 1.65; color: {{c.text2}}">{{q.a}}</p>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-cta" style="border-top: 1px solid {{c.line}}; background: {{c.band}}">
+    <div style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 64px 32px; display: flex; flex-wrap: wrap; align-items: center; gap: 24px 48px">
+      <div style="flex: 1 1 480px; display: flex; flex-direction: column; gap: 10px">
+        <h2 id="h-cta" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 36px; letter-spacing: -0.01em">Put a strategy to work on SoDEX</h2>
+        <p style="margin: 0; font-size: 16px; color: {{c.text2}}">Connect in two signatures. Stop anytime.</p>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px">
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 52px; padding: 0 24px; border-radius: 8px; background: #2e62e8; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600">Launch app</a>
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 52px; padding: 0 22px; border-radius: 8px; border: 1px solid {{c.btnBorder}}; color: {{c.text}}; text-decoration: none; font-size: 16px; font-weight: 600">Sign in</a>
+      </div>
+    </div>
+  </section>
+
+  <footer style="border-top: 1px solid {{c.line}}">
+    <div style="max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 32px 32px 48px; display: flex; flex-wrap: wrap; gap: 16px 48px">
+      <div style="flex: 1 1 520px; display: flex; flex-direction: column; gap: 8px">
+        <strong style="font-family: 'Space Grotesk', sans-serif; font-size: 17px">DeskLabs</strong>
+        <span style="font-size: 13.5px; font-weight: 600">Powered by SoDEX Builder Code. Independent project, not operated by SoDEX.</span>
+        <span style="font-size: 13px; line-height: 1.6; color: {{c.muted}}">Trading crypto, and leveraged perpetual futures in particular, carries a high risk of loss. We don’t guarantee profit. Past results and backtests don’t predict future results. Not financial advice.</span>
+      </div>
+      <nav aria-label="Legal" style="display: flex; gap: 20px; font-size: 14px">
+        <a href="#" style="color: {{c.accent}}">Risk Disclosure</a>
+        <a href="#" style="color: {{c.accent}}">Connect Claude</a>
+      </nav>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1440,"height":4900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const P = {
+      dark: { bg: '#0b1020', band: '#0e1428', surface: '#11172c', line: '#232b4d', line2: '#1b2240', text: '#eef1fb', text2: '#b7bfdc', muted: '#9aa3c4', accent: '#9db8ff', never: '#ff9a8c', neverBg: '#2a1620', live: '#5fd9a4', btnBorder: '#2c3560' },
+      light: { bg: '#f7f8fc', band: '#eef1f8', surface: '#ffffff', line: '#dfe3f0', line2: '#eceff7', text: '#10152b', text2: '#3b4262', muted: '#5a6283', accent: '#1d47b8', never: '#b42318', neverBg: '#fdecea', live: '#0f7a4f', btnBorder: '#c9d0e6' }
+    };
+    const theme = this.props.theme || 'dark';
+    const c = P[theme] || P.dark;
+    const open = (this.state && this.state.open !== undefined) ? this.state.open : 1;
+    const faqRaw = [
+      ['Is DeskLabs run by SoDEX?', 'No. DeskLabs is an independent team building strategies on SoDEX. Your orders go to SoDEX like any other trade.'],
+      ['Can you withdraw or move my funds?', 'No. The app can only read your account and place or cancel orders. Withdraw and transfer are blocked.'],
+      ['What do I approve when I connect?', 'Two sign requests in your wallet: one lets the app trade for you without any withdraw permission, one approves the builder fee (up to 0.01%). Neither costs gas.'],
+      ['Can I try without real money?', 'You can backtest any setup on SoDEX price history, and AI Desk lets you try a bot with fake money first. Both are simulations, not forecasts.'],
+      ['How do I stop everything?', 'Use Halt all agents on any screen. It stops every bot and cancels its open orders.'],
+      ['How does copy trading work?', 'Pick a trader from Find traders, set a budget and a safety level, and review what will be copied. Your copy bot opens its own positions on SoDEX when the trader opens new ones, with your size, stop loss and loss limit. Results will differ from theirs.'],
+      ['What does Desk AI do?', 'It explains your bots and your limits using your real numbers. It can’t change a bot, place an order or predict prices, and every number it writes is checked against your data.'],
+      ['Can I use DeskLabs with Claude?', 'Yes. Connect DeskLabs to Claude to ask about your bots and get bot drafts to review. Claude can’t trade or move money.']
+    ];
+    const self = this;
+    const faq = faqRaw.map(function (x, i) {
+      const isOpen = open === i;
+      return { q: x[0], a: x[1], open: isOpen, expanded: isOpen ? 'true' : 'false', sign: isOpen ? '−' : '+',
+        toggle: function () { self.setState({ open: isOpen ? -1 : i }); } };
+    });
+    const steps = [
+      ['01', 'Connect SoDEX', 'Approve two sign requests in your wallet: one to trade, one for the builder fee. No gas, no funds moved.'],
+      ['02', 'Pick a strategy', 'Defaults fit the market you choose, and every hard option explains how it works.'],
+      ['03', 'Run on mainnet', 'A bot shows Running only after SoDEX confirms it. Pause, edit or stop anytime.'],
+      ['04', 'Review and improve', 'Read every decision, check the analytics, and apply a review suggestion when the data backs it.']
+    ].map(function (s, i) { return { n: s[0], title: s[1], body: s[2], bar: i === 0 ? '#2e62e8' : c.line, numColor: i === 0 ? c.accent : c.muted }; });
+    return {
+      c: c,
+      more: [
+        { name: 'Spot Grid', market: 'Spot', body: 'Buys low and sells high inside a range you set.' },
+        { name: 'Futures Grid', market: 'Perps', body: 'Grid on a perpetual: long, short or neutral.' },
+        { name: 'Spot DCA', market: 'Spot', body: 'Buys, buys more on dips, sells everything at take profit.' },
+        { name: 'Futures DCA', market: 'Perps', body: 'DCA on a perpetual, long or short.' },
+        { name: 'Recurring Buy', market: 'Spot', body: 'Buys a fixed amount on a schedule. Never sells.' },
+        { name: 'Rebalancing', market: 'Spot', body: 'Keeps 2–10 assets at target weights.' },
+        { name: 'Funding Arbitrage', market: 'Spot + Perps', body: 'Holds spot and an equal perp short to collect funding.' },
+        { name: 'TWAP', market: 'Spot + Perps', body: 'Splits one large order into small slices over time.' }
+      ],
+      steps: steps,
+      compare: [
+        { q: 'How it trades', mm: 'Keeps a post-only bid and ask in the SoDEX book; requotes when the best price moves away', vb: 'One position at a time, post-only inside the spread; market orders only if you turn them on', other: 'Grid levels, DCA steps, a schedule or target weights' },
+        { q: 'Picks a direction', mm: 'No. Stays near flat and leans to close after a fill', vb: 'Yes. Scores 1-minute candles and the order book, and skips trades against the 5-minute trend', other: 'You choose it: long, short, neutral or buy only' },
+        { q: 'How long a trade lasts', mm: 'No single trade. Quotes refresh every few seconds', vb: 'Seconds to minutes, within the hold time you set', other: 'Hours to weeks, until a target or schedule' },
+        { q: 'What protects you', mm: 'Stops at your cost cap; with Smart quoting, closes the position at market if price runs 15 bp against it', vb: 'A stop loss on SoDEX itself, moved to break-even as price moves your way', other: 'Stop loss and limits per strategy' },
+        { q: 'Builder fee', mm: '0.003%, lower at volume', vb: '0.005%', other: '0.01%' }
+      ],
+      facts: [
+        { title: 'No seed phrase, ever', body: 'Connecting takes two wallet signatures. Nothing to copy or paste.' },
+        { title: 'Stops on SoDEX itself', body: 'Volume Builder places a real stop on the exchange, so trades stay protected even if we go offline.' },
+        { title: 'Limits the server enforces', body: 'Loss caps and cost budgets are enforced by the bot itself, not just shown in the app.' },
+        { title: 'One-tap halt', body: 'Stop every bot and cancel its orders from any screen.' }
+      ],
+      extras: [
+        { title: 'AI Desk', body: 'Watches your bots and tells you what needs you, in plain words.' },
+        { title: 'Copy Trading', body: 'Copy a top Hyperliquid trader on your own SoDEX account, in three steps.' },
+        { title: 'Alerts on Telegram', body: 'Know when a bot needs you without keeping the app open.' }
+      ],
+      faq: faq
+    };
+  }
+}
+</script>
+</body>
+</html>

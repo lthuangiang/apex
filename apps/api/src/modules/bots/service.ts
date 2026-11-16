@@ -910,8 +910,9 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     .where(eq(botRuntime.botId, botId))
     .limit(1);
   // Runtime cần mốc "Running" gần nhất; bot ghi nhiều sự kiện (Volume Farm) đẩy mốc này ra khỏi 50 sự kiện ở trên.
+  // BD-06: bot đã dừng cũng có Runtime của lần chạy gần nhất (từ "Running" tới "Stopped" sau đó).
   const [since] =
-    b.state === BotState.running
+    b.state === BotState.running || b.state === BotState.stopped || b.state === BotState.archived
       ? await deps.db
           .select({ at: botEvents.occurredAt })
           .from(botEvents)
@@ -923,6 +924,23 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
             ),
           )
           .orderBy(desc(botEvents.occurredAt))
+          .limit(1)
+      : [];
+  const [until] =
+    since !== undefined && b.state !== BotState.running
+      ? await deps.db
+          .select({ at: botEvents.occurredAt })
+          .from(botEvents)
+          .where(
+            and(
+              eq(botEvents.botId, botId),
+              eq(botEvents.type, "state"),
+              // Lần chạy kết thúc ở lần dừng đầu tiên sau "Running": pause, đang dừng hoặc đã dừng.
+              inArray(botEvents.decision, ["Paused", "Stopping", "Stopped"]),
+              gte(botEvents.occurredAt, since.at),
+            ),
+          )
+          .orderBy(botEvents.occurredAt)
           .limit(1)
       : [];
   const [open] = await deps.db
@@ -967,7 +985,12 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     })),
     openOrders: open?.n ?? 0,
     serverTime: iso(deps.now()),
-    runningSince: since === undefined ? null : iso(since.at),
+    // Bot đã dừng mà không có sự kiện "Stopped" (dừng trước khi engine ghi sự kiện này) thì không có Runtime.
+    runningSince:
+      since === undefined || (b.state !== BotState.running && until === undefined)
+        ? null
+        : iso(since.at),
+    runningUntil: until === undefined ? null : iso(until.at),
     volumeMaker: await vmStats(
       deps,
       botId,
@@ -1428,7 +1451,12 @@ export async function stopBot(
   // Dừng bot chỉ giảm rủi ro nên không hỏi 2FA (DEC-115, thay phần Stop của C12).
   // Chỉ bot có chân Perps mới có vị thế để đóng; bot Spot luôn giữ tài sản (DOMAIN.md 7.2).
   const close = closePosition && own.engine !== "spot";
-  const b = await command(deps, userId, botId, BotCommand.stop, { closeOnStop: close });
+  // Người dùng tự Stop: xoá reason code cũ (ví dụ pause vì max loss), để sự kiện "Stopped" ghi STOPPED_BY_USER. Emergency
+  // halt và chiến lược dừng tự đặt reason code của chúng (DEC-275).
+  const b = await command(deps, userId, botId, BotCommand.stop, {
+    closeOnStop: close,
+    reasonCode: null,
+  });
   await audit(deps.db, {
     userId,
     action: AuditAction.botStopped,

@@ -1,6 +1,12 @@
 "use client";
 
-import { botSummarySchema, dec, DECIMAL_STRING_PATTERN, UserRole } from "@drift/shared";
+import {
+  botSummarySchema,
+  dec,
+  DECIMAL_STRING_PATTERN,
+  UserRole,
+  type BacktestResult,
+} from "@drift/shared";
 import { Button, ComingSoonChip, Field, inputClassName, LiveBadge } from "@drift/ui";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -11,8 +17,8 @@ import { z } from "zod";
 import { NotConnected, useSodexMissing } from "@/components/not-connected";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { api, ApiError } from "@/lib/api";
-import { feeLabels } from "@/lib/format";
-import { useMarketLast, useMarkets } from "@/lib/markets";
+import { feeLabels, formatMoney } from "@/lib/format";
+import { useMarketLast, useMarketNames, useMarkets } from "@/lib/markets";
 import { ME_KEY, useBuilderFeeRate, useMe, useTwoFactorNeeded } from "@/lib/queries";
 import { BELOW_LG, useMediaQuery } from "@/lib/use-media";
 
@@ -26,7 +32,7 @@ import {
   type FormValues,
 } from "../fields";
 import { defaultBotName } from "../form-layout";
-import { liveHints, previewModel, priceMarketOf } from "../preview";
+import { liveHints, previewModel, priceMarketOf, unitsOf } from "../preview";
 
 import { AiPanel, useAiParameters } from "./ai-params";
 import { BetaChip, isBeta } from "./beta-chip";
@@ -210,6 +216,26 @@ export function CreateBot({
     useTwoFactorNeeded() ||
     (start.error instanceof ApiError && start.error.code === "TWO_FACTOR_REQUIRED");
   const [startAfterSave, setStartAfterSave] = useState(false);
+  const names = useMarketNames();
+  // BT-01: backtest gần nhất (còn khớp tham số) lỗ thì cảnh báo cạnh nút Start on mainnet.
+  const [backtest, setBacktest] = useState<BacktestResult | null>(null);
+  // Xét theo số đã làm tròn để hiển thị: lỗ làm tròn về 0.00 thì không cảnh báo (review #150).
+  const lostRounded = backtest === null ? null : dec(backtest.net).toDecimalPlaces(2);
+  const backtestLost =
+    backtest !== null && lostRounded !== null && lostRounded.isNegative() && !lostRounded.isZero()
+      ? (() => {
+          const params = {
+            // Câu đã nói "lost": dùng trị tuyệt đối, không "lost −5.03" (review #150).
+            net: `${formatMoney(lostRounded.abs().toString()) ?? ""} ${names.asset(unitsOf(typeof values.market === "string" ? values.market : "")?.quote ?? "USDC")}`,
+            pct: `${dec(backtest.netPct).abs().toDecimalPlaces(2).toString()}%`,
+            days: Math.floor((backtest.to - backtest.from) / 86_400_000),
+          };
+          // Vốn 0: % không có nghĩa, bỏ phần %.
+          return dec(backtest.capital).isZero()
+            ? t("beforeStart.backtestLostNoPct", params)
+            : t("beforeStart.backtestLost", params);
+        })()
+      : null;
   const levWarn = leverageWarning(checks.data);
   const accountLev = levWarn?.currentLeverage;
   // Đặt đòn bẩy tự động như một lần sửa form: bản đã lưu không còn khớp và phải xác nhận lại đổi đòn bẩy (DEC-58).
@@ -338,7 +364,13 @@ export function CreateBot({
   const isMobile = useMediaQuery(BELOW_LG);
   const hasPreview = previewModel(strategy, values, lastPrice?.price ?? null, Date.now()) !== null;
   const visual = (
-    <VisualPanel strategy={strategy} values={values} last={lastPrice} inline={isMobile} />
+    <VisualPanel
+      strategy={strategy}
+      values={values}
+      last={lastPrice}
+      inline={isMobile}
+      onBacktest={setBacktest}
+    />
   );
 
   return (
@@ -608,6 +640,14 @@ export function CreateBot({
                   </Button>
                 </div>
               </div>
+              {backtestLost === null ? null : (
+                <p
+                  role="note"
+                  className="m-0 rounded-tile bg-neg-soft px-3.5 py-2.5 text-[13px] font-semibold text-neg-text"
+                >
+                  {backtestLost}
+                </p>
+              )}
               {missing.length === 0 ? null : (
                 <p className="m-0 text-sm text-ink-2">
                   <strong>{t("beforeStart.toStart")}</strong>{" "}
