@@ -561,6 +561,47 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("keeps a strategy stop waiting until its unknown order is reconciled, and keeps its reason (rule 1.7)", async () => {
+    const gw = new FakeGateway();
+    gw.timeoutNext = "applied";
+    const { botId } = await seedBot("running", {
+      strategy: "spot_grid",
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      config: {
+        market: "vBTC_vUSDC",
+        lowerPrice: "90",
+        upperPrice: "110",
+        gridLevels: 5,
+        spacing: "arithmetic",
+        investment: "500",
+        maxLoss: "100",
+        stopPrice: "85",
+        onStop: "keep_base",
+      },
+    });
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const unknown = (await db.select().from(orders)).find(
+      (o) => o.botId === botId && o.status === "unknown",
+    );
+    expect(unknown).toBeDefined();
+    // Giá xuống dưới Stop price: chiến lược dừng, nhưng còn lệnh unknown (SoDEX thật ra đã nhận).
+    clock += 1_000;
+    await e.onPrice("vBTC_vUSDC", "80", clock);
+    expect((await botState(botId))?.state).not.toBe("stopped");
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 6_000;
+      await e.tick();
+    }
+    const b = await botState(botId);
+    expect(b?.state).toBe("stopped");
+    expect(b?.reasonCode).not.toBeNull();
+    expect(gw.cancelled).toContain(unknown?.clOrdId);
+    await e.stop();
+  });
+
   it("marks a lost order not_placed after the grace period and pauses the bot", async () => {
     const gw = new FakeGateway();
     gw.timeoutNext = "lost";

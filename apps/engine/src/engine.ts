@@ -242,6 +242,11 @@ interface Runner {
   leverageSet: boolean;
   /** Lần `updateLeverage` trước không rõ kết quả: phải đọc lại SoDEX trước khi gửi lại (quy tắc 1.7). */
   leverageUnknown: boolean;
+  /**
+   * Chiến lược đã yêu cầu dừng (halt) nhưng bot còn lệnh `unknown`: thử lại mỗi nhịp tới khi #reconcile đối soát xong
+   * (quy tắc 1.7), giữ lý do dừng và tin báo. Chiến lược đã halted nên không đặt lệnh mới trong lúc chờ.
+   */
+  pendingStop: { reason: Reason; close: boolean } | null;
   /** Request chưa rời DRIFT (signer lỗi): chờ backoff tới `nextAt`; quá hạn thì pause (UI_REVIEW H1). */
   blocked: { since: number; attempts: number; nextAt: number; code: NotSentCode } | null;
   /** Số lệnh market reduce-only bị SoDEX từ chối liên tiếp (vị thế trong sổ bot có thể lệch SoDEX). */
@@ -957,6 +962,9 @@ export class Engine {
       }
       // Stop của người dùng: đóng vị thế của bot nếu họ chọn ở hộp thoại Stop (DEC-81).
       else if (bot.state === BotState.stopping) await this.#stopBot(r, null, bot.closeOnStop);
+      // Dừng do chiến lược đang chờ lệnh `unknown` được đối soát (quy tắc 1.7).
+      else if (r.pendingStop !== null)
+        await this.#stopBot(r, r.pendingStop.reason, r.pendingStop.close);
     }
   }
 
@@ -1060,6 +1068,7 @@ export class Engine {
       awaitingFirstAck: bot.state === BotState.starting,
       leverageSet: false,
       leverageUnknown: false,
+      pendingStop: null,
       blocked: null,
       reduceRejects: 0,
       makerReduceRejects: 0,
@@ -2040,7 +2049,9 @@ export class Engine {
         { botId: r.botId, unknown: unknown?.n, reason },
         "stop waits for unknown orders to be reconciled",
       );
-      if (reason === null) return;
+      // Stop của người dùng: bot vẫn `stopping`, nhịp sau gọi lại. Dừng do chiến lược: nhớ lại để nhịp sau gọi lại.
+      if (reason !== null) r.pendingStop = { reason, close };
+      return;
     }
     if (r.strategy === Strategy.copyTrade) {
       // Copy Trade nhiều market (DEC-163): đóng từng market bằng market reduce-only; clOrdID tất định theo thứ tự
