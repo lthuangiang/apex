@@ -293,6 +293,8 @@ export const botDetailSchema = z.object({
   blockedByRiskRecently: z.number().int().default(0),
   /** Mốc "Running" gần nhất khi bot đang chạy; null khi không chạy hoặc chưa có. Runtime tính từ đây. */
   runningSince: isoDateTimeSchema.nullable().default(null),
+  /** Lúc lần chạy gần nhất dừng (sự kiện "Stopped", BD-06); null khi đang chạy hoặc không biết. */
+  runningUntil: isoDateTimeSchema.nullable().default(null),
   /** Chỉ số theo dõi của Volume Maker (VOLUME_MAKER.md mục 17.6); null với chiến lược khác hoặc chưa chạy. */
   volumeMaker: z
     .object({

@@ -71,6 +71,8 @@ class FakeGateway implements Gateway {
   readonly leverage: { market: string; leverage: number; marginMode: string; before: number }[] =
     [];
   leverageOutcome: LeverageResult = { outcome: "ok" };
+  /** Giữ lần đặt đòn bẩy kế tiếp tới khi promise này xong (đang đặt). */
+  holdLeverage: Promise<void> | null = null;
   /** Thiết lập trên "SoDEX" theo market (đọc lại bằng readLeverage). */
   readonly settings = new Map<string, LeverageSetting>();
   /** Signer lỗi: mọi submit trả not_sent với mã này. */
@@ -89,9 +91,16 @@ class FakeGateway implements Gateway {
     input: { market: string; leverage: number; marginMode: "cross" | "isolated" },
   ): Promise<LeverageResult> {
     this.leverage.push({ ...input, before: this.received.length });
-    if (this.leverageOutcome.outcome === "ok")
-      this.settings.set(input.market, { leverage: input.leverage, marginMode: input.marginMode });
-    return Promise.resolve(this.leverageOutcome);
+    const outcome = this.leverageOutcome;
+    const apply = () => {
+      if (outcome.outcome === "ok")
+        this.settings.set(input.market, { leverage: input.leverage, marginMode: input.marginMode });
+      return outcome;
+    };
+    const held = this.holdLeverage;
+    if (held === null) return Promise.resolve(apply());
+    this.holdLeverage = null;
+    return held.then(apply);
   }
   /** Vị thế đang mở theo market (đọc lại bằng readLeverage). */
   readonly positions = new Map<string, LeverageSetting>();
@@ -203,7 +212,10 @@ class FakeGateway implements Gateway {
       [...this.trades].flatMap(([clOrdID, list]) => list.map((t) => ({ ...t, clOrdID }))),
     );
   }
+  /** Giả SoDEX / mạng lỗi khi tra lệnh (HttpGateway.lookup ném lỗi). */
+  lookupError: Error | null = null;
   lookup(_a: AccountRef, o: { clOrdID: string }): Promise<LookupResult> {
+    if (this.lookupError !== null) return Promise.reject(this.lookupError);
     return Promise.resolve(this.book.get(o.clOrdID) ?? { status: "not_found" });
   }
   readonly trades = new Map<string, OrderTrade[]>();
@@ -512,6 +524,148 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("logs Paused and Running when the user pauses and resumes, so Runtime ends at the pause (BD-06)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w-pause-runtime");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const step = async (state: "pausing" | "resuming" | "stopping", until: string) => {
+      await db.update(bots).set({ state }).where(eq(bots.id, botId));
+      for (let i = 0; i < 4 && (await botState(botId))?.state !== until; i += 1) {
+        clock += 1_000;
+        await e.tick();
+      }
+      expect((await botState(botId))?.state).toBe(until);
+    };
+    await step("pausing", "paused");
+    const pausedAt = clock;
+    clock += 3 * 86_400_000;
+    await step("resuming", "running");
+    const resumedAt = clock;
+    clock += 3_600_000;
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    await step("stopping", "stopped");
+    const states = (await db.select().from(botEvents).where(eq(botEvents.botId, botId)))
+      .filter((x) => x.type === "state")
+      .sort((x, y) => x.occurredAt.getTime() - y.occurredAt.getTime())
+      .map((x) => [x.decision, x.occurredAt.getTime()] as const);
+    // Mỗi lần đổi trạng thái đúng một event, đúng lúc engine xác nhận.
+    expect(states.map(([d]) => d)).toEqual(["Paused", "Running", "Stopped"]);
+    expect(states[0]?.[1]).toBe(pausedAt);
+    expect(states[1]?.[1]).toBe(resumedAt);
+    await e.stop();
+  });
+
+  it("clears Needs attention when a planned stop finishes through stopping (MM-01)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w-planned");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    // Như chiến lược dừng vì hết budget khi còn lệnh unknown: bot ở stopping, reason_code BUDGET_DONE, cờ còn bật từ
+    // cảnh báo 80% budget.
+    await db
+      .update(bots)
+      .set({ state: "stopping", reasonCode: ReasonCode.budgetDone, needsAttention: true })
+      .where(eq(bots.id, botId));
+    for (let i = 0; i < 3 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    const b = await botState(botId);
+    expect(b?.state).toBe("stopped");
+    expect(b?.needsAttention).toBe(false);
+    await e.stop();
+  });
+
+  it("logs a Stopped event saying who stopped the bot (BD-06)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w-stopped");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    for (let i = 0; i < 3 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    const stopped = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.type === "state" && x.decision === "Stopped",
+    );
+    expect(stopped.map((x) => x.why)).toEqual(["STOPPED_BY_USER"]);
+    // Đúng một lần: các nhịp sau không ghi thêm.
+    for (let i = 0; i < 3; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    const again = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.type === "state" && x.decision === "Stopped",
+    );
+    expect(again).toHaveLength(1);
+    await e.stop();
+  });
+
+  it("writes the strategy's reason in the Stopped event when the strategy stops the bot (BD-06)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", {
+      strategy: "spot_grid",
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      config: {
+        market: "vBTC_vUSDC",
+        lowerPrice: "90",
+        upperPrice: "110",
+        gridLevels: 5,
+        spacing: "arithmetic",
+        investment: "500",
+        maxLoss: "100",
+        stopPrice: "85",
+        onStop: "keep_base",
+      },
+    });
+    const e = makeEngine(gw, "w-stopped-reason");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    clock += 1_000;
+    await e.onPrice("vBTC_vUSDC", "80", clock);
+    expect((await botState(botId))?.state).toBe("stopped");
+    const stopped = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.type === "state" && x.decision === "Stopped",
+    );
+    expect(stopped.map((x) => x.why)).toEqual([ReasonCode.stopLoss]);
+    await e.stop();
+  });
+
+  it("writes EMERGENCY_HALT, not STOPPED_BY_USER, after an emergency halt (BD-06)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w-stopped-halt");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    // Như API emergency halt: stopping kèm reason code trong cùng lần ghi.
+    await db
+      .update(bots)
+      .set({ state: "stopping", reasonCode: ReasonCode.emergencyHalt })
+      .where(eq(bots.id, botId));
+    for (let i = 0; i < 3 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    const stopped = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.type === "state" && x.decision === "Stopped",
+    );
+    expect(stopped.map((x) => x.why)).toEqual([ReasonCode.emergencyHalt]);
+    await e.stop();
+  });
+
   it("sets leverage once and logs one line when events arrive together (CP-01)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
@@ -578,6 +732,58 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("sets the new version's leverage when the version changes while leverage is being set (#159)", async () => {
+    const gw = new FakeGateway();
+    const vm = (leverage: number) => ({
+      market: "BTC-USD",
+      leverage,
+      orderSize: "500",
+      distanceBp: "1",
+      maxOrders: 1,
+      refreshSeconds: 3,
+      runUntil: "target_or_budget",
+      costBudget: "100000",
+      onStop: "close_inventory",
+    });
+    const { botId } = await seedBot("running", {
+      strategy: "volume_maker",
+      market: "BTC-USD",
+      engine: "perps",
+      config: vm(1),
+    });
+    const { eq } = await import("drizzle-orm");
+    const e = makeEngine(gw, "w-lev-race");
+    try {
+      await e.tick();
+      let release: () => void = () => undefined;
+      gw.holdLeverage = new Promise<void>((res) => {
+        release = res;
+      });
+      // Đang đặt 1× (SoDEX chưa trả lời) thì người dùng lưu version mới 2×.
+      const first = e.onPrice("BTC-USD", "100000", clock);
+      await db.insert(botVersions).values({
+        botId,
+        version: 2,
+        paramSource: "manual",
+        status: "pending",
+        config: vm(2),
+      });
+      release();
+      await first;
+      // Áp version ở nhịp sau (không chạy tick chồng lên lần ghi có fence đang dở).
+      await e.tick();
+      clock += 1_000;
+      await e.onPrice("BTC-USD", "100001", clock);
+      // 1× đã xác nhận của version cũ không được tính là xong cho version mới: 2× được đặt, SoDEX ở 2×.
+      expect(gw.leverage.map((l) => l.leverage)).toEqual([1, 2]);
+      expect(gw.settings.get("BTC-USD")?.leverage).toBe(2);
+    } finally {
+      await e.stop();
+      // Bot nằm lại trong DB dùng chung: dừng hẳn để engine của test sau không chạy bot BTC-USD này.
+      await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+    }
+  });
+
   it("marks a timed-out order unknown, never resends it, and reconciles it", async () => {
     const gw = new FakeGateway();
     gw.timeoutNext = "applied";
@@ -600,6 +806,88 @@ describe("engine", () => {
     expect(after?.reconciledAt).not.toBeNull();
     expect(gw.received.filter((o) => o.tag === "grid:init")).toHaveLength(sends);
     await e.stop();
+  });
+
+  it("keeps the tick going when looking up one unknown order fails, and reconciles it later (#154 follow-up)", async () => {
+    const gw = new FakeGateway();
+    gw.timeoutNext = "applied";
+    const { botId } = await seedBot();
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    gw.lookupError = new Error("network down");
+    clock += 6_000;
+    // Tra lệnh lỗi: nhịp không ném lỗi, lệnh vẫn unknown.
+    await expect(e.tick()).resolves.toBeUndefined();
+    const still = (await db.select().from(orders)).find(
+      (o) => o.botId === botId && o.status === "unknown",
+    );
+    expect(still).toBeDefined();
+    gw.lookupError = null;
+    clock += 1_000;
+    await e.tick();
+    const after = (await db.select().from(orders)).find((o) => o.id === still?.id);
+    expect(after?.status).toBe("open");
+    await e.stop();
+  });
+
+  it("stops a bot whose unknown order was never placed: not_found → not_placed → stopped (#154 follow-up)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    gw.timeoutNext = "lost";
+    const { botId } = await seedBot();
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const lost = (await db.select().from(orders)).find(
+      (o) => o.botId === botId && o.status === "unknown",
+    );
+    expect(lost).toBeDefined();
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 31_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    expect((await db.select().from(orders)).find((o) => o.id === lost?.id)?.status).toBe(
+      "not_placed",
+    );
+    await e.stop();
+  });
+
+  it("waits for reconciling before closing the position on Stop, and survives a restart while stopping (#154 follow-up)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    gw.timeoutNext = "applied";
+    const { botId, accountId } = await seedBot();
+    const a = makeEngine(gw, "w-restart");
+    await a.tick();
+    await a.onPrice("vBTC_vUSDC", "100", clock);
+    const unknown = (await db.select().from(orders)).find(
+      (o) => o.botId === botId && o.status === "unknown",
+    );
+    expect(unknown).toBeDefined();
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    await a.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    // Chưa đối soát: chưa có lệnh đóng vị thế.
+    expect(
+      (await db.select().from(orders)).filter((o) => o.botId === botId && o.tag === "close"),
+    ).toEqual([]);
+    // Engine khởi động lại giữa lúc stopping (cùng workerId, sở hữu shard của bot).
+    await a.stop();
+    const b = makeEngine(gw, "w-restart");
+    await b.tick();
+    expect(b.ownedShards).toContain(shardOf(accountId, SHARDS));
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 6_000;
+      await b.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    expect(gw.cancelled).toContain(unknown?.clOrdId);
+    await b.stop();
   });
 
   it("keeps a stopping bot in stopping until its unknown order is reconciled, then cancels it (rule 1.7)", async () => {

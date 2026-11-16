@@ -17,6 +17,7 @@ import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 
 import { setBuilderFee } from "./builder-fees";
+import { teamOps } from "./ops";
 import {
   ackAlert,
   adminUserDetail,
@@ -169,6 +170,11 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
       requireAuth(request).userId,
       parseOrThrow(adminUsersQuerySchema, request.query),
     ),
+  );
+
+  // Trang Ops của team (PR C, DEC-276): chỉ role team.
+  app.get("/api/v1/admin/ops", async (request) =>
+    teamOps({ db: deps.db, now: deps.now, log: request.log }, requireAuth(request).userId),
   );
 
   app.get("/api/v1/admin/stats", async (request) => {

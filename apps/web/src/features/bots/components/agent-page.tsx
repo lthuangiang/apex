@@ -233,11 +233,14 @@ export function AgentPage({ botId }: { botId?: string }) {
     const lastError = dd.events.find((e) => e.type === "error");
     // Runtime = từ sự kiện "Running" gần nhất tới giờ, chỉ khi đang chạy (dữ liệu thật, không ước tính). Server
     // trả mốc này riêng vì danh sách sự kiện chỉ có 50 dòng gần nhất.
-    const runningSince = b.state === BotState.running ? (dd.runningSince ?? undefined) : undefined;
+    // Bot đang chạy: tới giờ server. Bot đã dừng: lần chạy gần nhất, từ "Running" tới "Stopped" (BD-06).
+    const runningSince = dd.runningSince ?? undefined;
+    const runningEnd =
+      b.state === BotState.running ? dd.serverTime : (dd.runningUntil ?? undefined);
     const runtime =
-      runningSince === undefined
+      runningSince === undefined || runningEnd === undefined
         ? null
-        : formatDuration(Date.parse(dd.serverTime) - Date.parse(runningSince));
+        : formatDuration(Date.parse(runningEnd) - Date.parse(runningSince));
     const lastEvent = dd.events[0];
     const cur =
       b.state === BotState.pausing

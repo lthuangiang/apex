@@ -730,6 +730,14 @@ export async function listBots(
   );
 }
 
+/** Chi phí mỗi $1M của một bot Market Making / Volume Farm từ state runtime (cùng công thức trang bot, #129). */
+export function botCostPerMillion(strategy: string, state: unknown): string | null {
+  if (state === null || state === undefined) return null;
+  if (strategy === Strategy.volumeMaker) return costPerMillion(state as VolumeMakerState);
+  if (strategy === Strategy.volumeFarm) return farmCostPerMillion(state as VolumeFarmState);
+  return null;
+}
+
 /** Chi phí / $1M của phiên Volume Farm: max(0, −net) ÷ volume × 1M; chưa có khối lượng thì null (trang bot dùng chung). */
 function farmCostPerMillion(st: VolumeFarmState): string | null {
   const volume = dec(st.volume);
@@ -912,8 +920,9 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     .where(eq(botRuntime.botId, botId))
     .limit(1);
   // Runtime cần mốc "Running" gần nhất; bot ghi nhiều sự kiện (Volume Farm) đẩy mốc này ra khỏi 50 sự kiện ở trên.
+  // BD-06: bot đã dừng cũng có Runtime của lần chạy gần nhất (từ "Running" tới "Stopped" sau đó).
   const [since] =
-    b.state === BotState.running
+    b.state === BotState.running || b.state === BotState.stopped || b.state === BotState.archived
       ? await deps.db
           .select({ at: botEvents.occurredAt })
           .from(botEvents)
@@ -955,6 +964,23 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
       ids.length,
     );
   };
+  const [until] =
+    since !== undefined && b.state !== BotState.running
+      ? await deps.db
+          .select({ at: botEvents.occurredAt })
+          .from(botEvents)
+          .where(
+            and(
+              eq(botEvents.botId, botId),
+              eq(botEvents.type, "state"),
+              // Lần chạy kết thúc ở lần dừng đầu tiên sau "Running": pause, đang dừng hoặc đã dừng.
+              inArray(botEvents.decision, ["Paused", "Stopping", "Stopped"]),
+              gte(botEvents.occurredAt, since.at),
+            ),
+          )
+          .orderBy(botEvents.occurredAt)
+          .limit(1)
+      : [];
   const [open] = await deps.db
     .select({ n: sql<number>`count(*)::int` })
     .from(orders)
@@ -1015,7 +1041,12 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     serverTime: iso(deps.now()),
     refusedRecently: refused?.n ?? 0,
     blockedByRiskRecently: refused?.risk ?? 0,
-    runningSince: since === undefined ? null : iso(since.at),
+    // Bot đã dừng mà không có sự kiện "Stopped" (dừng trước khi engine ghi sự kiện này) thì không có Runtime.
+    runningSince:
+      since === undefined || (b.state !== BotState.running && until === undefined)
+        ? null
+        : iso(since.at),
+    runningUntil: until === undefined ? null : iso(until.at),
     volumeMaker: await vmStats(
       deps,
       botId,
@@ -1476,7 +1507,12 @@ export async function stopBot(
   // Dừng bot chỉ giảm rủi ro nên không hỏi 2FA (DEC-115, thay phần Stop của C12).
   // Chỉ bot có chân Perps mới có vị thế để đóng; bot Spot luôn giữ tài sản (DOMAIN.md 7.2).
   const close = closePosition && own.engine !== "spot";
-  const b = await command(deps, userId, botId, BotCommand.stop, { closeOnStop: close });
+  // Người dùng tự Stop: xoá reason code cũ (ví dụ pause vì max loss), để sự kiện "Stopped" ghi STOPPED_BY_USER. Emergency
+  // halt và chiến lược dừng tự đặt reason code của chúng (DEC-275).
+  const b = await command(deps, userId, botId, BotCommand.stop, {
+    closeOnStop: close,
+    reasonCode: null,
+  });
   await audit(deps.db, {
     userId,
     action: AuditAction.botStopped,

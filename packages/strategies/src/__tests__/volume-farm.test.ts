@@ -971,7 +971,7 @@ describe("volume farm — trend filters (DEC-158)", () => {
     const trend = run(cfg({ sidewaysOnly: true }), [at(0.0001)]);
     expect(places(trend.all)).toEqual([]);
     expect(skips(trend.all)).toEqual([
-      "The market is in an uptrend, and this bot only trades sideways markets.",
+      "Right now it is an uptrend, and this bot only trades sideways markets.",
     ]);
     // Không ghi lại cùng lý do ở nhịp sau.
     expect(skips(run(cfg({ sidewaysOnly: true }), [at(0.0001)], trend.s).all)).toEqual([]);

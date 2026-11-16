@@ -47,6 +47,8 @@ import {
   sub,
   VOLUME_STRATEGIES,
   exceedsPerTrade,
+  PLANNED_STOP_REASONS,
+  STOPPED_BY_USER,
 } from "@drift/shared";
 import {
   applyFill,
@@ -250,7 +252,11 @@ interface Runner {
   /** Market đã được SoDEX xác nhận đòn bẩy cho version này (CP-01): lần thử sau không đặt / ghi lại. */
   leverageDone: Set<string>;
   /** Lần đặt đòn bẩy đang chạy: sự kiện tới cùng lúc chờ chung, không đặt song song (CP-01). */
-  leverageRun: Promise<"ok" | "rejected" | "unknown" | "not_sent"> | null;
+  /** Lần đặt đòn bẩy đang chạy, gắn với version lúc bắt đầu (đổi version giữa chừng thì không dùng chung kết quả). */
+  leverageRun: {
+    versionId: string;
+    p: Promise<"ok" | "rejected" | "unknown" | "not_sent">;
+  } | null;
   /** Request chưa rời DRIFT (signer lỗi): chờ backoff tới `nextAt`; quá hạn thì pause (UI_REVIEW H1). */
   blocked: { since: number; attempts: number; nextAt: number; code: NotSentCode } | null;
   /** Số lệnh market reduce-only bị SoDEX từ chối liên tiếp (vị thế trong sổ bot có thể lệch SoDEX). */
@@ -1276,12 +1282,20 @@ export class Engine {
     at: number,
   ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
     // Sự kiện tới cùng lúc (giá, Binance, nhịp) chờ chung một lần đặt (CP-01: trước đây BTC-USD ghi 7 lần trong 2 s).
-    if (r.leverageRun !== null) return r.leverageRun;
-    r.leverageRun = this.#ensureLeverageAll(r, at);
+    const prev = r.leverageRun;
+    if (prev?.versionId === r.versionId) return prev.p;
+    // Lượt của version cũ còn đang gửi: chờ nó xong (bỏ qua kết quả) rồi mới đặt cho version mới. Nếu chạy chồng, SoDEX có
+    // thể áp lệnh mới trước, lệnh cũ sau: account ở đòn bẩy cũ mà engine tưởng là mới. Không tốn thêm request.
+    const p =
+      prev === null
+        ? this.#ensureLeverageAll(r, at)
+        : prev.p.catch(() => undefined).then(() => this.#ensureLeverageAll(r, at));
+    const run = { versionId: r.versionId, p };
+    r.leverageRun = run;
     try {
-      return await r.leverageRun;
+      return await run.p;
     } finally {
-      r.leverageRun = null;
+      if (r.leverageRun === run) r.leverageRun = null;
     }
   }
 
@@ -1291,6 +1305,10 @@ export class Engine {
   ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
     // Copy Trade đặt cùng đòn bẩy cho mọi market (DEC-163); chiến lược khác có tối đa một symbol. Market đã xác nhận thì
     // bỏ qua; Decisions ghi một dòng gộp cho các market vừa xác nhận (CP-01).
+    // Version đổi giữa chừng (áp version mới reset leverageSet / leverageDone): kết quả của lần này thuộc version cũ,
+    // không được đánh dấu xong cho version mới; nhịp sau đặt lại theo cấu hình mới.
+    const versionId = r.versionId;
+    const done = r.leverageDone;
     const specs = leverageSpecsOf(r.strategy, r.market, r.config);
     const confirmed: LeverageSpec[] = [];
     const log = async () => {
@@ -1301,17 +1319,22 @@ export class Engine {
     };
     for (const spec of specs) {
       const key = `${spec.market}:${String(spec.leverage)}:${spec.marginMode}`;
-      if (r.leverageDone.has(key)) continue;
+      if (done.has(key)) continue;
       const res = await this.#ensureLeverageOne(r, spec, at);
+      if (r.versionId !== versionId) {
+        await log();
+        return "not_sent";
+      }
       if (res !== "ok") {
         await log();
         r.leverageSet = false;
         return res;
       }
-      r.leverageDone.add(key);
+      done.add(key);
       confirmed.push(spec);
     }
     await log();
+    if (r.versionId !== versionId) return "not_sent";
     r.leverageSet = true;
     return "ok";
   }
@@ -1822,11 +1845,10 @@ export class Engine {
   async #ack(r: Runner, at: number): Promise<void> {
     if (!r.awaitingFirstAck) return;
     r.awaitingFirstAck = false;
-    await this.#transition(r, EngineEvent.confirmedRunning, null);
-    await this.#event(
+    await this.#transition(
       r,
-      "state",
-      "Running",
+      EngineEvent.confirmedRunning,
+      null,
       // Bot paper không gửi gì lên SoDEX: không được ghi là SoDEX đã xác nhận (DEC-105).
       r.paper
         ? "Simulated orders placed. Nothing was sent to SoDEX."
@@ -1987,7 +2009,14 @@ export class Engine {
     }
   }
 
-  async #transition(r: Runner, event: EngineEvent, reason: Reason | null): Promise<void> {
+  async #transition(
+    r: Runner,
+    event: EngineEvent,
+    reason: Reason | null,
+    /** `why` của event "Running" / "Paused"; null với Pause / Resume của người dùng. */
+    why: string | null = null,
+    at: number = this.#d.now(),
+  ): Promise<void> {
     await this.#fenced(r, async (tx) => {
       const [b] = await tx
         .select({ state: bots.state })
@@ -2005,6 +2034,16 @@ export class Engine {
         topic: `user.${r.account.id}.bot`,
         payload: { botId: r.botId, state: next, reasonCode: reason },
       });
+      // Mốc Runtime (BD-06): Start, Resume và Pause của người dùng đều ghi event "Running" / "Paused" cùng transaction với
+      // lần đổi trạng thái, để Runtime của lần chạy tính đúng (trước đây Pause / Resume của người dùng không ghi gì).
+      if (next === BotState.running || next === BotState.paused)
+        await tx.insert(botEvents).values({
+          botId: r.botId,
+          type: "state",
+          decision: next === BotState.running ? "Running" : "Paused",
+          why,
+          occurredAt: new Date(at),
+        });
       // Báo team (DEC-184): bot tiền thật vào running sau một lần Start (starting → running; resume không báo).
       // Vốn tính sẵn ở đây (cùng hàm với Strategy Lab); jobs chỉ hiển thị.
       if (!r.paper && b.state === BotState.starting && next === BotState.running) {
@@ -2182,7 +2221,7 @@ export class Engine {
     const haltReason = reason === null ? await this.#haltReasonOf(r.botId) : null;
     const deferred = await this.#fenced(r, async (tx) => {
       const [b] = await tx
-        .select({ state: bots.state, closeOnStop: bots.closeOnStop })
+        .select({ state: bots.state, reasonCode: bots.reasonCode, closeOnStop: bots.closeOnStop })
         .from(bots)
         .where(eq(bots.id, r.botId))
         .for("update");
@@ -2204,10 +2243,33 @@ export class Engine {
           ? applyEngineEvent(b.state, EngineEvent.confirmedStopped)
           : applyReason(b.state, reason);
       if (next === null) return false;
+      // Dừng đúng kế hoạch (MM-01): không còn việc gì cho người dùng, tắt cờ Needs attention (ví dụ cảnh báo 80% budget).
+      // Lý do lấy cả từ dòng bot: chiến lược dừng đúng kế hoạch mà đi qua `stopping` (còn lệnh unknown) thì lượt cuối
+      // không có reason, nhưng bots.reason_code đã là BUDGET_DONE / MAX_CYCLES.
+      const why = reason ?? b.reasonCode;
+      const planned =
+        next === BotState.stopped &&
+        why !== null &&
+        (PLANNED_STOP_REASONS as readonly string[]).includes(why);
       await tx
         .update(bots)
-        .set({ state: next, ...(reason === null ? {} : { reasonCode: reason }) })
+        .set({
+          state: next,
+          ...(reason === null ? {} : { reasonCode: reason }),
+          ...(planned ? { needsAttention: false } : {}),
+        })
         .where(eq(bots.id, r.botId));
+      // Sự kiện "Stopped" (BD-06) cùng transaction với lần đổi trạng thái: đúng một lần, không mất khi engine chết giữa
+      // chừng. why = reason code của lần dừng (chiến lược dừng đã qua `stopping` thì lấy từ bots.reason_code), hoặc
+      // STOPPED_BY_USER khi người dùng bấm Stop.
+      if (next === BotState.stopped)
+        await tx.insert(botEvents).values({
+          botId: r.botId,
+          type: "state",
+          decision: "Stopped",
+          why: reason ?? b.reasonCode ?? STOPPED_BY_USER,
+          occurredAt: new Date(this.#d.now()),
+        });
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
         payload: { botId: r.botId, state: next, reasonCode: reason ?? haltReason },
@@ -2437,64 +2499,79 @@ export class Engine {
     for (const o of pending) {
       const r = this.#runners.get(o.botId);
       if (r?.shard !== shard) continue;
-      const found = await r.gateway.lookup(r.account, {
-        clOrdID: o.clOrdId,
-        market: o.market,
-        engine: o.engine,
-      });
-      if (found.status === "not_found") {
-        if (now - (o.submittedAt?.getTime() ?? now) < NOT_FOUND_AFTER_MS) continue;
-        await this.#fenced(r, (tx) =>
-          tx
-            .update(orders)
-            .set({ status: "not_placed", reconciledAt: new Date(now) })
-            .where(eq(orders.id, o.id)),
+      // Một lệnh tra lỗi (SoDEX / mạng) không được làm hỏng cả vòng của shard: #reconcileOpen, huỷ lại, phí, đồng hồ
+      // của mọi bot vẫn chạy; lệnh này thử lại ở nhịp sau (follow-up #154).
+      try {
+        await this.#reconcileOne(r, o, now);
+      } catch (error) {
+        if (error instanceof FencedError) throw error;
+        this.#d.log.warn(
+          { err: error, botId: r.botId, clOrdID: o.clOrdId },
+          "reconcile failed for one order; retrying next tick",
         );
-        await this.#event(
-          r,
-          "reconcile",
-          "Order not placed",
-          `${o.clOrdId} was not found on SoDEX.`,
-          now,
-        );
-        await this.#feed(r, {
-          type: "orderReject",
-          at: now,
-          clOrdID: o.clOrdId,
-          code: "NOT_PLACED",
-        });
-        continue;
       }
+    }
+  }
+
+  /** Đối soát một lệnh `unknown` với SoDEX. */
+  async #reconcileOne(r: Runner, o: typeof orders.$inferSelect, now: number): Promise<void> {
+    const found = await r.gateway.lookup(r.account, {
+      clOrdID: o.clOrdId,
+      market: o.market,
+      engine: o.engine,
+    });
+    if (found.status === "not_found") {
+      if (now - (o.submittedAt?.getTime() ?? now) < NOT_FOUND_AFTER_MS) return;
       await this.#fenced(r, (tx) =>
         tx
           .update(orders)
-          .set({
-            status:
-              found.status === "partially_filled" || found.status === "filled"
-                ? "open"
-                : found.status,
-            sodexOrderId: found.orderId,
-            reconciledAt: new Date(now),
-            ackedAt: o.ackedAt ?? new Date(now),
-          })
+          .set({ status: "not_placed", reconciledAt: new Date(now) })
           .where(eq(orders.id, o.id)),
       );
       await this.#event(
         r,
         "reconcile",
-        "Order found on SoDEX",
-        `${o.clOrdId} is ${found.status}.`,
+        "Order not placed",
+        `${o.clOrdId} was not found on SoDEX.`,
         now,
       );
-      if (found.status === "rejected") {
-        await this.#feed(r, { type: "orderReject", at: now, clOrdID: o.clOrdId, code: "REJECTED" });
-        continue;
-      }
-      await this.#ack(r, now);
-      await this.#feed(r, { type: "orderAck", at: now, clOrdID: o.clOrdId });
-      if (dec(found.filledQty).gt(0) && found.avgPrice !== null) {
-        await this.onFill(r.account.id, o.clOrdId, found.filledQty, found.avgPrice, "0", now);
-      }
+      await this.#feed(r, {
+        type: "orderReject",
+        at: now,
+        clOrdID: o.clOrdId,
+        code: "NOT_PLACED",
+      });
+      return;
+    }
+    await this.#fenced(r, (tx) =>
+      tx
+        .update(orders)
+        .set({
+          status:
+            found.status === "partially_filled" || found.status === "filled"
+              ? "open"
+              : found.status,
+          sodexOrderId: found.orderId,
+          reconciledAt: new Date(now),
+          ackedAt: o.ackedAt ?? new Date(now),
+        })
+        .where(eq(orders.id, o.id)),
+    );
+    await this.#event(
+      r,
+      "reconcile",
+      "Order found on SoDEX",
+      `${o.clOrdId} is ${found.status}.`,
+      now,
+    );
+    if (found.status === "rejected") {
+      await this.#feed(r, { type: "orderReject", at: now, clOrdID: o.clOrdId, code: "REJECTED" });
+      return;
+    }
+    await this.#ack(r, now);
+    await this.#feed(r, { type: "orderAck", at: now, clOrdID: o.clOrdId });
+    if (dec(found.filledQty).gt(0) && found.avgPrice !== null) {
+      await this.onFill(r.account.id, o.clOrdId, found.filledQty, found.avgPrice, "0", now);
     }
   }
 
