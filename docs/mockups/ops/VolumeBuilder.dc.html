@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ops · Volume Builder</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="num" style="width: 1440px; box-sizing: border-box; padding: 32px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 16px">
+
+  <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px">
+    <h1 style="margin: 0; font-size: 26px; font-weight: 800">Volume Builder section</h1>
+    <span style="padding: 4px 10px; border-radius: 8px; background: #f0e6ff; color: #5a2ca0; font-size: 12px; font-weight: 800; letter-spacing: .04em">SAMPLE DATA</span>
+  </div>
+  <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3b4262; max-width: 980px">The Volume Builder tab of the Ops page. Volume Builder has no quotes and no request line, so its health is told by how rounds open and end. Under the table: how each bot entered, how its rounds ended, and why it waited.</p>
+
+  <section aria-labelledby="h-entries" style="padding: 18px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <h2 id="h-entries" style="margin: 0; font-size: 16px; font-weight: 800">How entries were sent (24 h)</h2>
+      <span style="font-size: 12.5px; color: #3b4262">Post-only = rests on the book, maker fee. Market = after N post-only misses in a row the bot sends a market order (“Market orders after”); with N = 0 every entry and exit is a market order.</span>
+    </div>
+    <div role="list" style="display: flex; flex-direction: column; gap: 8px">
+      <sc-for list="{{entries}}" as="b" hint-placeholder-count="5">
+        <div role="listitem" style="display: grid; grid-template-columns: 150px 130px minmax(0, 1fr) 230px; gap: 12px; align-items: center; font-size: 13px">
+          <span style="font-weight: 700">{{b.name}}</span>
+          <span style="color: #3b4262">{{b.mode}}</span>
+          <span style="display: flex; height: 20px; border-radius: 5px; overflow: hidden; background: #f5f7fd">
+            <span style="{{b.postBar}}"></span><span style="{{b.mktBar}}"></span>
+          </span>
+          <span><strong>{{b.post}}</strong> post-only · <strong>{{b.mkt}}</strong> market</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display: flex; gap: 16px; font-size: 12px; color: #3b4262">
+      <span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 3px; background: #4f78e6"></span>Post-only</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px"><span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 3px; background: repeating-linear-gradient(45deg, #e08a2e 0 4px, #f6c48f 4px 8px)"></span>Market (striped)</span>
+    </div>
+  </section>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+    <section aria-labelledby="h-exits" style="padding: 18px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <h2 id="h-exits" style="margin: 0; font-size: 16px; font-weight: 800">How rounds ended (24 h)</h2>
+        <span style="font-size: 12.5px; color: #3b4262">From the reason at the start of each “Closed long / short” line.</span>
+      </div>
+      <div role="table" aria-label="How rounds ended" style="display: flex; flex-direction: column; font-size: 13px">
+        <div role="row" style="display: grid; grid-template-columns: 130px repeat(6, minmax(0, 1fr)); background: #f5f7fd; border-radius: 10px; font-size: 11.5px; font-weight: 800; color: #3b4262; line-height: 1.25">
+          <span role="columnheader" style="padding: 8px">Bot</span>
+          <sc-for list="{{exitHeads}}" as="h" hint-placeholder-count="6"><span role="columnheader" style="padding: 8px; text-align: right">{{h}}</span></sc-for>
+        </div>
+        <sc-for list="{{exits}}" as="r" hint-placeholder-count="5">
+          <div role="row" style="display: grid; grid-template-columns: 130px repeat(6, minmax(0, 1fr)); border-bottom: 1px solid #eef1f8">
+            <span role="cell" style="padding: 8px; font-weight: 700">{{r.name}}</span>
+            <sc-for list="{{r.v}}" as="x" hint-placeholder-count="6"><span role="cell" style="{{x.s}}">{{x.t}}</span></sc-for>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size: 12px; color: #3b4262">SoDEX stop = the stop-loss order resting on SoDEX closed the round (“Stop loss on SoDEX at …”). Bot stop = the bot’s own stop-loss exit.</span>
+    </section>
+
+    <section aria-labelledby="h-waits" style="padding: 18px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <h2 id="h-waits" style="margin: 0; font-size: 16px; font-weight: 800">Why bots waited (24 h)</h2>
+        <span style="font-size: 12.5px; color: #3b4262">Times the bot started waiting for each reason (“Skipped entry” and “Waiting” lines). A reason is logged once when it changes, so these are not counts of missed entries.</span>
+      </div>
+      <div role="table" aria-label="Why bots waited" style="display: flex; flex-direction: column; font-size: 13px">
+        <div role="row" style="display: grid; grid-template-columns: 130px repeat(6, minmax(0, 1fr)); background: #f5f7fd; border-radius: 10px; font-size: 11.5px; font-weight: 800; color: #3b4262; line-height: 1.25">
+          <span role="columnheader" style="padding: 8px">Bot</span>
+          <sc-for list="{{waitHeads}}" as="h" hint-placeholder-count="6"><span role="columnheader" style="padding: 8px; text-align: right">{{h}}</span></sc-for>
+        </div>
+        <sc-for list="{{waits}}" as="r" hint-placeholder-count="5">
+          <div role="row" style="display: grid; grid-template-columns: 130px repeat(6, minmax(0, 1fr)); border-bottom: 1px solid #eef1f8">
+            <span role="cell" style="padding: 8px; font-weight: 700">{{r.name}}</span>
+            <sc-for list="{{r.v}}" as="x" hint-placeholder-count="6"><span role="cell" style="{{x.s}}">{{x.t}}</span></sc-for>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size: 12px; color: #3b4262">▲ Stale candles = the newest 1-minute candle was too old to trust, so the bot could not read the market. In the last hour it is Check. The other reasons are the bot following its settings.</span>
+    </section>
+  </div>
+
+  <section aria-labelledby="h-vguide" style="padding: 18px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px">
+      <h2 id="h-vguide" style="margin: 0; font-size: 17px; font-weight: 800">Column guide · Volume Builder</h2>
+      <span style="font-size: 13px; color: #3b4262">Source tags: <strong>today</strong> = already in the Ops API · <strong>new field</strong> = data is stored, the API must add it · <strong>needs data</strong> = not recorded yet.</span>
+    </div>
+    <div role="table" aria-label="Volume Builder columns" style="display: flex; flex-direction: column; border: 1px solid #e3e7f5; border-radius: 14px; overflow: hidden">
+      <div role="row" style="display: grid; grid-template-columns: 190px 330px minmax(0, 1fr) 250px 120px; background: #f5f7fd; font-size: 12px; font-weight: 800; color: #3b4262">
+        <span role="columnheader" style="padding: 10px 12px">Column</span>
+        <span role="columnheader" style="padding: 10px 12px">What it tells you</span>
+        <span role="columnheader" style="padding: 10px 12px">How it’s computed</span>
+        <span role="columnheader" style="padding: 10px 12px">Turns Check / Problem when</span>
+        <span role="columnheader" style="padding: 10px 12px">Source</span>
+      </div>
+      <sc-for list="{{guide}}" as="g" hint-placeholder-count="12">
+        <div role="row" style="display: grid; grid-template-columns: 190px 330px minmax(0, 1fr) 250px 120px; border-top: 1px solid #eef1f8; font-size: 13px; line-height: 1.45">
+          <span role="cell" style="padding: 10px 12px; font-weight: 800">{{g.col}}</span>
+          <span role="cell" style="padding: 10px 12px">{{g.what}}</span>
+          <span role="cell" style="padding: 10px 12px; color: #3b4262">{{g.how}}</span>
+          <span role="cell" style="padding: 10px 12px">{{g.rule}}</span>
+          <span role="cell" style="padding: 10px 12px"><span style="{{g.tagStyle}}">{{g.tag}}</span></span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1600}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tag = function (t) {
+      const m = { today: 'background: #ddf4e7; color: #0f7a43', 'new field': 'background: #e6ecfe; color: #1d47b8', 'needs data': 'background: #fde4e1; color: #a72826' };
+      return 'display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; ' + m[t];
+    };
+    const ent = [['ETH taker run', 'After 0 misses', 0, 302], ['SOL vb', 'After 0 misses', 0, 96], ['BTC volume A', 'After 3 misses', 140, 24], ['ETH vb 2', 'After 3 misses', 60, 11], ['BTC sideways', 'Post-only only', 12, 0]];
+    const cell = 'padding: 8px; text-align: right; ';
+    const mk = function (vals, flagIdx) {
+      return vals.map(function (v, i) {
+        const flag = flagIdx !== undefined && i === flagIdx && v > 0;
+        return { t: (flag ? '▲ ' : '') + v, s: cell + (flag ? 'background: #fdebd3; color: #7a3e00; font-weight: 800' : v === 0 ? 'color: #5f6684' : 'font-weight: 700') };
+      });
+    };
+    const guide = [
+      ['Health', 'Whether this bot needs a look.', 'The rules in How to read this page.', 'See the legend.', 'new field'],
+      ['Cost / $1M (24h)', 'How much the bot paid per $1M traded.', '(Σ fills.fee − Σ price PnL) ÷ Σ notional × 1,000,000, fills in 24 h (Market hours formula). Today’s page shows the run total from bot_runtime.state.', 'Above 2× the Volume Builder median (proposal).', 'new field'],
+      ['Volume 1h · 24h', 'How much it traded.', 'Σ fills.price × fills.size in 60 min / 24 h.', 'Not coloured.', 'today (1h) · new field (24h)'],
+      ['Rounds (24h) · won', 'How many trades closed, and how often the price went our way.', 'Count of bot_events “Closed long” / “Closed short”. Won = “price PnL X” > 0, before fees (DEC-129).', 'Not coloured.', 'new field'],
+      ['Avg net / round', 'What one round cost after fees.', 'Mean of “net Y USDC after fees” in those lines.', 'Not coloured.', 'new field'],
+      ['Entries post-only · market', 'Whether the bot is paying taker fees.', '“Enter long / short” lines: “Post-only at …” vs “Market order, …”. (fills.is_maker on vf:N:in orders gives the real maker / taker split.)', 'Not coloured; explains a high cost.', 'new field'],
+      ['SoDEX stop hits (24h)', 'How often the safety stop on SoDEX closed a round.', '“Closed …” lines whose reason starts with “Stop loss on SoDEX at”.', 'Not coloured (no agreed threshold).', 'new field'],
+      ['Waits (24h) · top reason', 'Why the bot didn’t enter.', '“Skipped entry” lines by text: against an uptrend / downtrend = counter-trend; “The spread is …” = spread too wide; “only trades sideways markets” = sideways only; “STALE_CANDLES” = stale candles; “below the SoDEX minimum”; “Waiting” = blocked hour.', 'Stale candles in the last hour: Check.', 'new field'],
+      ['Market rejects (24h)', 'Whether SoDEX refuses market entries (often margin).', 'orders with tag vf:N:in:K, type market, status rejected, with orders.reject_code; plus bot_events “Market entries rejected” (3 in a row → pause ORDER_REJECTED).', 'Any: Check · the pause: Problem.', 'new field'],
+      ['Avg hold', 'How long a round stays open.', 'Time from the entry fill to the exit fill (fills.filled_at by order tag), rounds closed in 24 h.', 'Not coloured.', 'new field'],
+      ['Latest alert', 'The last money-safety check that failed.', 'outbox jobs.team_ops team_invariant. For Volume Builder only P2, P3 and P7 apply (P1, P4, P5 are Market Making only).', 'Active: Problem · resolved in 24 h: Check.', 'today'],
+      ['Exact count of skipped entries', 'How many entries were really missed.', 'The bot logs a reason only when it changes, so the count of skipped checks is not stored.', '—', 'needs data'],
+      ['Requests / min for Volume Builder', 'Request budget use, like Market Making.', 'Volume Builder writes no “Order requests” line.', '—', 'needs data']
+    ];
+    return {
+      entries: ent.map(function (e) {
+        const tot = e[2] + e[3];
+        return { name: e[0], mode: e[1], post: e[2], mkt: e[3],
+          postBar: 'height: 100%; width: ' + (tot ? e[2] / tot * 100 : 0) + '%; background: #4f78e6',
+          mktBar: 'height: 100%; width: ' + (tot ? e[3] / tot * 100 : 0) + '%; background: repeating-linear-gradient(45deg, #e08a2e 0 4px, #f6c48f 4px 8px)' };
+      }),
+      exitHeads: ['Take profit', 'Early profit', 'Hold time ended', 'Max hold', 'Bot stop', 'SoDEX stop'],
+      exits: [['ETH taker run', [88, 41, 120, 30, 12, 11]], ['BTC volume A', [52, 38, 49, 18, 4, 3]], ['SOL vb', [21, 9, 44, 15, 3, 4]], ['ETH vb 2', [20, 17, 22, 8, 3, 1]], ['BTC sideways', [5, 2, 3, 2, 0, 0]]].map(function (r) { return { name: r[0], v: mk(r[1]) }; }),
+      waitHeads: ['Counter-trend', 'Spread too wide', 'Sideways only', 'Stale candles', 'Below SoDEX minimum', 'Blocked hour'],
+      waits: [['BTC sideways', [0, 0, 18, 1, 0, 2]], ['BTC volume A', [7, 1, 0, 0, 0, 0]], ['ETH vb 2', [4, 0, 0, 0, 0, 0]], ['SOL vb', [0, 2, 0, 0, 0, 0]], ['ETH taker run', [0, 0, 0, 0, 0, 0]]].map(function (r) { return { name: r[0], v: mk(r[1], 3) }; }),
+      guide: guide.map(function (g) { const first = g[4].split(' ')[0] === 'today' ? 'today' : g[4].indexOf('needs') === 0 ? 'needs data' : 'new field'; return { col: g[0], what: g[1], how: g[2], rule: g[3], tag: g[4], tagStyle: tag(first) }; })
+    };
+  }
+}
+</script>
+</body>
+</html>

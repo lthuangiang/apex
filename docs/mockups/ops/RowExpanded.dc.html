@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ops · Row expanded</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="num" style="width: 1440px; box-sizing: border-box; padding: 32px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 18px">
+  <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px">
+    <h1 style="margin: 0; font-size: 26px; font-weight: 800">Row expanded</h1>
+    <span style="padding: 4px 10px; border-radius: 8px; background: #f0e6ff; color: #5a2ca0; font-size: 12px; font-weight: 800; letter-spacing: .04em">SAMPLE DATA</span>
+  </div>
+  <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3b4262; max-width: 1000px">Pressing the chevron (a real button with aria-expanded and aria-controls) opens the row below itself. Left: why the bot got its label, one plain sentence per rule it broke. Right: its last 5 Decisions lines and alerts, newest first; alerts are in red with the word “Alert” so colour is not the only sign. One row open at a time.</p>
+
+  <sc-for list="{{cards}}" as="k" hint-placeholder-count="2">
+    <section aria-label="{{k.name}}" style="padding: 16px; border-radius: 22px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 12.5px; font-weight: 800; color: #5f6684; letter-spacing: .04em">{{k.kind}}</span>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px; border-radius: 14px; background: #f8f9fd">
+        <button type="button" aria-expanded="true" aria-controls="x" aria-label="Hide details for {{k.name}}" style="width: 36px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; cursor: pointer"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"></path></svg></button>
+        <span style="display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 800; background: #fde4e1; color: #a72826"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>Problem</span>
+        <span style="display: flex; flex-direction: column"><strong style="font-size: 15px">{{k.name}}</strong><span style="font-size: 12.5px; color: #3b4262">{{k.meta}} · <a href="#">{{k.owner}}</a></span></span>
+        <span style="{{k.stateStyle}}">{{k.state}}</span>
+        <span style="margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px">
+          <sc-for list="{{k.kpis}}" as="p" hint-placeholder-count="4"><span style="{{p.s}}"><span style="font-size: 11.5px; font-weight: 700; color: #3b4262">{{p.l}}</span><strong style="font-size: 14px">{{p.v}}</strong></span></sc-for>
+        </span>
+      </div>
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr); gap: 20px; padding: 4px 6px 6px">
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 800">Why it’s labelled Problem</h2>
+          <ul style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.55">
+            <sc-for list="{{k.why}}" as="w" hint-placeholder-count="3"><li>{{w}}</li></sc-for>
+          </ul>
+          <div style="padding: 10px 12px; border-radius: 12px; background: #f5f7fd; font-size: 13px; line-height: 1.5; color: #3b4262">
+            <strong style="color: #141a33">What to look at</strong><br>{{k.look}}
+          </div>
+          <span style="font-size: 12.5px; color: #3b4262">Bot ··{{k.tail}} · owner <a href="#">{{k.owner}}</a> (opens /admin/users/:id). Ops never changes the bot; the owner or the user page does.</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 800">Last 5 decisions and alerts</h2>
+          <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px">
+            <sc-for list="{{k.log}}" as="e" hint-placeholder-count="5">
+              <li style="display: grid; grid-template-columns: 84px 210px minmax(0, 1fr); gap: 12px; padding: 8px 10px; border-radius: 10px; background: #f8f9fd; font-size: 13.5px; line-height: 1.45">
+                <span style="color: #3b4262">{{e.at}}</span>
+                <span style="{{e.ns}}">{{e.name}}</span>
+                <span style="color: #3b4262">{{e.why}}</span>
+              </li>
+            </sc-for>
+          </ol>
+          <span style="font-size: 12.5px; color: #3b4262">Times in UTC. Lines come from bot_events (decision + why) and alerts from outbox jobs.team_ops, merged by time. “Order requests” lines are left out when other lines exist, so the 5 rows say something (proposal).</span>
+        </div>
+      </div>
+    </section>
+  </sc-for>
+
+  <section style="padding: 16px; border-radius: 22px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 8px">
+    <h2 style="margin: 0; font-size: 15px; font-weight: 800">A Healthy row, expanded</h2>
+    <p style="margin: 0; font-size: 14px; color: #3b4262">Left side reads “Nothing over a threshold.” The right side still lists the last 5 lines, so the team can see the bot is alive. A bot with no lines in 7 days shows “No decisions in the last 7 days.”</p>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const kpi = function (l, v, flag) { return { l: l, v: v, s: 'display: flex; flex-direction: column; padding: 6px 10px; border-radius: 10px; ' + (flag === 'bad' ? 'background: #fde4e1; color: #a72826' : flag === 'warn' ? 'background: #fdebd3; color: #7a3e00' : 'background: #ffffff; border: 1px solid #e3e7f5') }; };
+    const ln = function (at, name, why, alert) { return { at: at, name: name, why: why, ns: 'font-weight: 800; color: ' + (alert ? '#a72826' : '#141a33') }; };
+    const pill = function (bg, fg) { return 'padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: ' + bg + '; color: ' + fg; };
+    return {
+      cards: [
+        { kind: 'MARKET MAKING', name: 'SOL quotes', meta: 'SOL-USD · 2 d', owner: 'User ··7c20e1b4', tail: '3f0a9d21', state: 'Running', stateStyle: pill('#ddf4e7', '#0f7a43'),
+          kpis: [kpi('Cost / $1M (24h)', '▲ $612.80', 'warn'), kpi('Position vs max', '✕ 112%', 'bad'), kpi('Cuts (1h · 24h)', '▲ 3 · 6', 'warn'), kpi('Requests / min', '38.0')],
+          why: ['P1 has been failing since 10:41: position $1,180 over limit $1,050.', 'Cost per $1M (24h) is $612.80, over 2× the Market Making median of $216.90 (proposal).', '3 position cuts in the last hour (proposal: 2 or more is Check).'],
+          look: 'Is the position going back toward zero? If P1 still fails at the next check, contact the owner from their user page. Several cuts in an hour usually mean the market is running; see Market hours for this hour.',
+          log: [ln('11:39:00', 'Order requests', 'Last 60 s: 38 requests to SoDEX (new orders and cancels). Longest gap between quotes: 4.2 s.'), ln('11:31:12', 'Position cut', 'At 11:31 UTC the Binance price (187.42) was 16 bp against your long entry at 187.72. Closed 5.2 at market.'), ln('10:42:00', 'Alert · P1 failing', 'position $1,180 over limit $1,050', 1), ln('10:18:40', 'Position cut', 'At 10:18 UTC the Binance price (188.95) was 15 bp against your long entry at 189.23. Closed 4.8 at market.'), ln('10:05:07', 'Quotes paused on a fast move', 'SAMPLE text from the bot’s Decisions line.')] },
+        { kind: 'VOLUME BUILDER', name: 'SOL vb', meta: 'SOL-USD · 1 d', owner: 'User ··7c20e1b4', tail: '4d02f6b9', state: 'Paused · ORDER_REJECTED', stateStyle: pill('#edeff5', '#3b4262'),
+          kpis: [kpi('Cost / $1M (24h)', '▲ $402.00', 'warn'), kpi('Market rejects (24h)', '✕ 3 in a row', 'bad'), kpi('Rounds (24h)', '96 · 47% won'), kpi('Entries', '0 post-only · 96 market')],
+          why: ['SoDEX refused 3 market entries in a row at 11:02 and the bot paused (ORDER_REJECTED).', 'Cost per $1M (24h) is $402.00, over 2× the Volume Builder median of $166.90 (proposal). Every entry is a market order.'],
+          look: 'The reject code is in the first line. Usually margin: the owner checks their balance on SoDEX, then resumes the bot themselves. Ops cannot resume it.',
+          log: [ln('11:02:18', 'Market entries rejected', 'SoDEX rejected 3 market entries in a row (SAMPLE_CODE). Check your margin on SoDEX, then resume the bot.'), ln('10:58:40', 'Closed short', 'Hold time 64 s ended (PnL −0.41); entry 187.10 → exit 187.25; price PnL −0.4100, net −1.0300 USDC after fees.'), ln('10:57:36', 'Enter short', 'Signal pointed short in a downtrend. Market order, last price 187.10, 412.00 USDC, hold 64 s. Details: score 0.31, confidence 0.62.'), ln('10:57:30', 'Stop loss set on SoDEX', 'SAMPLE text from the bot’s Decisions line.'), ln('10:41:02', 'Skipped entry', 'The spread is 6.2 bp, wider than the 5 bp limit, so the bot waits.')] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

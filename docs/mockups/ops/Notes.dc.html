@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ops · data sources</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f5f7fd;padding:1px 4px;border-radius:4px}
+</style>
+</helmet>
+<div style="width: 1440px; box-sizing: border-box; padding: 32px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 18px">
+  <h1 style="margin: 0; font-size: 26px; font-weight: 800">Notes · every metric and where its data comes from</h1>
+  <p style="margin: 0; font-size: 14.5px; line-height: 1.5; color: #3b4262; max-width: 1100px">Read from origin/main on 2026-11-16: <code>apps/api/src/modules/account/ops.ts</code>, <code>packages/shared/src/api/account.ts</code> (teamOpsViewSchema), <code>apps/scheduler/src/invariants.ts</code>, <code>packages/strategies/src/volume-maker</code> and <code>volume-farm</code>, <code>apps/engine/src/engine.ts</code>. Tags: <strong style="color: #0f7a43">today</strong> = in the Ops API now · <strong style="color: #1d47b8">new field</strong> = data is stored, API must compute it · <strong style="color: #a72826">needs data</strong> = not recorded anywhere yet.</p>
+
+  <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+    <section style="padding: 16px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 17px; font-weight: 800">{{g.title}}</h2>
+      <div role="table" aria-label="{{g.title}}" style="display: flex; flex-direction: column; border: 1px solid #e3e7f5; border-radius: 12px; overflow: hidden">
+        <div role="row" style="display: grid; grid-template-columns: 220px minmax(0, 1fr) 120px; background: #f5f7fd; font-size: 12px; font-weight: 800; color: #3b4262">
+          <span role="columnheader" style="padding: 8px 12px">Metric</span>
+          <span role="columnheader" style="padding: 8px 12px">Source (table.column or bot_events decision)</span>
+          <span role="columnheader" style="padding: 8px 12px">Tag</span>
+        </div>
+        <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="8">
+          <div role="row" style="display: grid; grid-template-columns: 220px minmax(0, 1fr) 120px; border-top: 1px solid #eef1f8; font-size: 13px; line-height: 1.45">
+            <span role="cell" style="padding: 8px 12px; font-weight: 700">{{r.m}}</span>
+            <span role="cell" style="padding: 8px 12px; color: #3b4262">{{r.s}}</span>
+            <span role="cell" style="padding: 8px 12px"><span style="{{r.ts}}">{{r.t}}</span></span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+  </sc-for>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+    <section style="padding: 16px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 17px; font-weight: 800">Thresholds</h2>
+      <ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.6">
+        <sc-for list="{{thresholds}}" as="t" hint-placeholder-count="10"><li><strong>{{t.k}}</strong> {{t.v}}</li></sc-for>
+      </ul>
+    </section>
+    <section style="padding: 16px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 17px; font-weight: 800">Needs data (not recorded today)</h2>
+      <ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.6">
+        <sc-for list="{{needs}}" as="n" hint-placeholder-count="4"><li>{{n}}</li></sc-for>
+      </ul>
+      <h2 style="margin: 8px 0 0; font-size: 17px; font-weight: 800">Open questions</h2>
+      <ol style="margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.6">
+        <sc-for list="{{questions}}" as="q" hint-placeholder-count="8"><li>{{q}}</li></sc-for>
+      </ol>
+    </section>
+  </div>
+
+  <section style="padding: 16px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 8px">
+    <h2 style="margin: 0; font-size: 17px; font-weight: 800">Build notes</h2>
+    <ul style="margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.6">
+      <sc-for list="{{build}}" as="b" hint-placeholder-count="8"><li>{{b}}</li></sc-for>
+    </ul>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ts = function (t) {
+      const m = { today: 'background: #ddf4e7; color: #0f7a43', 'new field': 'background: #e6ecfe; color: #1d47b8', 'needs data': 'background: #fde4e1; color: #a72826' };
+      return 'display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; ' + m[t];
+    };
+    const row = function (m, s, t) { return { m: m, s: s, t: t, ts: ts(t) }; };
+    const groups = [
+      { title: 'Summary (top of page)', rows: [
+        row('Running / paused / stopping', 'bots.state where bots.mode = live and bots.strategy in (volume_maker, volume_farm). Same filter as ops.ts.', 'today'),
+        row('Stopped in 24 h', 'outbox topic user.<account>.bot, payload.state stopping / stopped, created_at within 24 h (ops.ts already uses it to decide which stopped bots to show).', 'new field'),
+        row('Volume 1 h (total)', 'Σ fills.price × fills.size, fills.filled_at in 60 min, joined to orders.bot_id (= Σ of each bot’s volumeHour).', 'today'),
+        row('Volume 24 h (total)', 'Same sum, fills.filled_at in 24 h (orders.created_at bound 48 h).', 'new field'),
+        row('Cost per $1M, 24 h (total)', '(Σ fills.fee − Σ price PnL) ÷ Σ notional × 1e6 over all these bots’ fills in 24 h; price PnL per fill = side × (candles_1m close − fill price) × size, the Market hours formula (DEC-283 block 3).', 'new field'),
+        row('Active alerts', 'outbox topic jobs.team_ops, payload.type team_invariant: latest row per (botId, invariant) has status failing.', 'new field'),
+        row('Need attention', 'Count of rows labelled Problem or Check by the health rules.', 'new field')
+      ] },
+      { title: 'Market Making rows', rows: [
+        row('Bot, market, owner, state', 'bots.name, bots.market, bots.user_id (link /admin/users/:id), bots.state; ··last 8 of bots.id.', 'today'),
+        row('Age', 'bots.created_at (or first running row in outbox user.<account>.bot).', 'new field'),
+        row('Stopping for N min', 'outbox user.<account>.bot, state stopping, created_at (same source as P7).', 'new field'),
+        row('Cost / $1M (24h)', 'fills.fee, fills.price, fills.size + candles_1m close (Market hours formula). Today: run total from bot_runtime.state (botCostPerMillion).', 'new field'),
+        row('Volume 1h', 'Σ fills.price × fills.size, 60 min.', 'today'),
+        row('Volume 24h', 'Same, 24 h.', 'new field'),
+        row('Maker share (24h)', 'fills.is_maker (null left out of both sides). Today only 1 h.', 'new field'),
+        row('Requests / min', 'bot_events decision “Order requests”, why “Last N s: K requests…” (≤ 5 min old), K × 60 ÷ N. Smart quoting bots only.', 'today'),
+        row('Longest quoting gap (1h)', 'Max of “Longest gap between quotes: X s.” in “Order requests” lines of 60 min (DEC-267).', 'today'),
+        row('Position cuts (24h / 1h)', 'bot_events decision “Position cut”. 1 h count is a new filter.', 'today'),
+        row('Untracked orders (24h)', 'bot_events decision “Cancelled N untracked order(s)” (engine.ts).', 'today'),
+        row('Position vs max', 'bot_runtime.state.ledger.position × state.mid ÷ state.maxInventory (same inputs as P1).', 'new field'),
+        row('Latest alert (active / resolved)', 'outbox jobs.team_ops team_invariant: payload.invariant, detail, status, created_at. Today only failing rows are read.', 'today'),
+        row('Fast-move pauses (in details)', 'bot_events “Quotes paused on a fast move” / “Quoting again after a fast move”.', 'new field')
+      ] },
+      { title: 'Volume Builder rows', rows: [
+        row('Cost / $1M, volume, alert', 'Same as Market Making. Alerts: only P2, P3, P7 apply to Volume Builder.', 'new field'),
+        row('Rounds (24h)', 'bot_events decision “Closed long” / “Closed short”.', 'new field'),
+        row('Won before fees', '“price PnL X” in the Closed line, X > 0 (DEC-129; same parser as volume-analytics).', 'new field'),
+        row('Avg net / round', '“net Y USDC after fees” in the Closed line.', 'new field'),
+        row('Entries post-only · market', 'bot_events “Enter long / short”: why has “Post-only at” or “Market order,”. Real maker / taker: fills.is_maker on orders tagged vf:N:in:K.', 'new field'),
+        row('How rounds ended', 'Start of the Closed why: “Take profit”, “Early profit”, “Hold time … ended”, “Max hold”, “Stop loss …” (bot), “Stop loss on SoDEX at” (exchange stop).', 'new field'),
+        row('SoDEX stop hits', 'Closed lines starting “Stop loss on SoDEX at”.', 'new field'),
+        row('Waits by reason', 'bot_events “Skipped entry” why text: counter-trend (“against …, so the bot waits” or “Reverse the signal” would trade…), “The spread is …”, “only trades sideways markets”, “STALE_CANDLES:”, “below the SoDEX minimum”; “Waiting” = blocked hour.', 'new field'),
+        row('Market rejects', 'orders: tag vf:N:in:K, type market, status rejected, reject_code. Pause: bot_events “Market entries rejected”.', 'new field'),
+        row('Avg hold', 'fills.filled_at of the entry order (tag vf:N:in:…) to the exit fill of the same round N.', 'new field'),
+        row('Stop not set on SoDEX (details)', 'bot_events “Stop loss on SoDEX not set”.', 'new field')
+      ] }
+    ];
+    return {
+      groups: groups,
+      thresholds: [
+        { k: 'Existing (DEC-274):', v: 'P1 position × mid > (max inventory + one order size) × 1.05 · P3 open orders 60 s after stop · P5 no quote for refreshSeconds + 30 s · P7 stopping > 5 min · alert only after 2 failed checks in a row.' },
+        { k: 'Existing (DEC-249):', v: 'position cut at 15 bp against entry (shown, not a page threshold).' },
+        { k: 'Existing (DEC-259):', v: '3 market entries refused in a row pauses the bot (Problem).' },
+        { k: 'Given in the brief, not found in docs:', v: '55 requests / min → Check. SoDEX’s own rule (VOLUME_MAKER.md 17.1) is 1 request per 1 USDC traded + 10,000 at start.' },
+        { k: 'Proposal:', v: 'quoting gap > 60 s → Check; > 5 min → Problem.' },
+        { k: 'Proposal:', v: '2+ position cuts in the last hour → Check.' },
+        { k: 'Proposal:', v: 'cost / $1M (24h) > 2× its strategy’s median across the listed bots → Check (needs at least 3 bots with volume, else not applied).' },
+        { k: 'Proposal:', v: 'any untracked order, any market reject, an alert resolved in 24 h, stale candles in 1 h → Check.' },
+        { k: 'Proposal:', v: 'stale banner turns red after 5 min without a good refresh.' }
+      ],
+      needs: [
+        'Exact number of skipped entries: Volume Builder logs a reason only when it changes, so only “times it started waiting” exists.',
+        'Requests / min and quoting gap for Market Making bots without Smart quoting: the “Order requests” line is only written with Smart quoting on.',
+        'Requests / min for Volume Builder: no request counter line exists.',
+        'P6 (requests / min invariant) is planned in DEC-274 for a later PR; until then the 55 / min rule is a page rule, not an alert.'
+      ],
+      questions: [
+        'Is 55 requests / min the agreed budget per wallet, or should it follow SoDEX’s rule (1 request per 1 USDC traded)? It is not in docs.',
+        'Do you agree with the (proposal) thresholds, and with Problem / Check / Healthy as the three labels?',
+        'Cost / $1M: switch the column to 24 h fills (Market hours formula) as drawn, or keep the run total the bot page shows? They will not match each other.',
+        'Owner label: show “User ··7c20e1b4” (no email, as DEC-276), or a display name if one exists?',
+        'Should paused-by-owner and stopped bots get a Health label, or a neutral “Not running” label?',
+        'Tabs (drawn) or both sections stacked on one long page?',
+        'In details, hide the minute-by-minute “Order requests” lines so the last 5 rows say something?',
+        'Times in UTC (like Decisions) or in the viewer’s time zone (like Market hours)?'
+      ],
+      build: [
+        'The page is read only: no pause, resume or stop anywhere. Footer: “Past numbers. Nothing on this page changes bots.”',
+        'Missing values show “Not available” (or “n/a · Smart quoting off” where the bot never writes the line). 0 only when it is a real count.',
+        'Health chip = icon + word + tint; flagged cells = ▲ or ✕ + tint + screen-reader text. Colour is never the only sign. Pairs used: #0f7a43 on #ddf4e7, #7a3e00 on #fdebd3, #a72826 on #fde4e1 (all above 4.5:1).',
+        'Row expanders are buttons with aria-expanded and aria-controls; column i buttons are real buttons with aria-label and write into a polite live region above the table.',
+        'Desktop table scrolls sideways inside its box below ~1300 px wide; below lg it becomes cards (Mobile 390 artboard), all targets ≥ 44 px.',
+        'Sort: Problem, Check, Healthy; then volume in the last hour, highest first.',
+        'Auto-refresh every 30 s, never faster; 403 stops refreshing (as today).',
+        'New copy needs approval; all of it is in English on the artboards.'
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

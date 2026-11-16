@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ops · Market Making</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="num" style="width: 1440px; box-sizing: border-box; padding: 32px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 16px">
+
+  <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px">
+    <h1 style="margin: 0; font-size: 26px; font-weight: 800">Market Making section</h1>
+    <span style="padding: 4px 10px; border-radius: 8px; background: #f0e6ff; color: #5a2ca0; font-size: 12px; font-weight: 800; letter-spacing: .04em">SAMPLE DATA</span>
+  </div>
+  <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #3b4262; max-width: 980px">The Market Making tab of the Ops page. Under the table, two small charts answer the two questions the team asks most: is any bot close to the request budget, and is any bot holding too much? The column guide below is what each column’s i shows.</p>
+
+  <section aria-labelledby="h-charts" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+    <h2 id="h-charts" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Charts</h2>
+    <figure style="margin: 0; padding: 18px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 10px">
+      <figcaption style="display: flex; flex-direction: column; gap: 2px">
+        <strong style="font-size: 15px">Requests per minute vs the 55 / min budget</strong>
+        <span style="font-size: 12.5px; color: #3b4262">New orders + cancels in the last minute, from each bot’s “Order requests” line. Bots without Smart quoting don’t write it.</span>
+      </figcaption>
+      <div role="list" style="display: flex; flex-direction: column; gap: 8px">
+        <sc-for list="{{req}}" as="b" hint-placeholder-count="6">
+          <div role="listitem" style="display: grid; grid-template-columns: 150px minmax(0, 1fr) 120px; gap: 10px; align-items: center; font-size: 13px">
+            <span style="font-weight: 700">{{b.name}}</span>
+            <span style="position: relative; height: 18px; border-radius: 5px; background: #f5f7fd">
+              <span style="{{b.bar}}"></span>
+              <span aria-hidden="true" style="position: absolute; top: -4px; bottom: -4px; left: 68.75%; width: 2px; background: #141a33"></span>
+            </span>
+            <span style="{{b.valStyle}}">{{b.val}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size: 12px; color: #3b4262">Scale 0–80 / min. Black line = 55 / min. Orange bar with ▲ = above 55 (Check).</span>
+    </figure>
+    <figure style="margin: 0; padding: 18px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 10px">
+      <figcaption style="display: flex; flex-direction: column; gap: 2px">
+        <strong style="font-size: 15px">Position vs max inventory</strong>
+        <span style="font-size: 12.5px; color: #3b4262">Position size × mid price ÷ Max inventory, now. P1 fails a little above 100% (max inventory + one order size, × 1.05).</span>
+      </figcaption>
+      <div role="list" style="display: flex; flex-direction: column; gap: 8px">
+        <sc-for list="{{inv}}" as="b" hint-placeholder-count="6">
+          <div role="listitem" style="display: grid; grid-template-columns: 150px minmax(0, 1fr) 120px; gap: 10px; align-items: center; font-size: 13px">
+            <span style="font-weight: 700">{{b.name}}</span>
+            <span style="position: relative; height: 18px; border-radius: 5px; background: #f5f7fd">
+              <span style="{{b.bar}}"></span>
+              <span aria-hidden="true" style="position: absolute; top: -4px; bottom: -4px; left: 80%; width: 2px; background: #141a33"></span>
+            </span>
+            <span style="{{b.valStyle}}">{{b.val}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <span style="font-size: 12px; color: #3b4262">Scale 0–125%. Black line = 100% of max. Red bar with ✕ = P1 failing (Problem).</span>
+    </figure>
+  </section>
+
+  <section aria-labelledby="h-guide" style="padding: 18px; border-radius: 20px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px">
+      <h2 id="h-guide" style="margin: 0; font-size: 17px; font-weight: 800">Column guide · Market Making</h2>
+      <span style="font-size: 13px; color: #3b4262">Source tags: <strong>today</strong> = already in the Ops API · <strong>new field</strong> = data is stored, the API must add it · <strong>needs data</strong> = not recorded yet.</span>
+    </div>
+    <div role="table" aria-label="Market Making columns" style="display: flex; flex-direction: column; border: 1px solid #e3e7f5; border-radius: 14px; overflow: hidden">
+      <div role="row" style="display: grid; grid-template-columns: 190px 360px minmax(0, 1fr) 250px 110px; background: #f5f7fd; font-size: 12px; font-weight: 800; color: #3b4262">
+        <span role="columnheader" style="padding: 10px 12px">Column</span>
+        <span role="columnheader" style="padding: 10px 12px">What it tells you</span>
+        <span role="columnheader" style="padding: 10px 12px">How it’s computed</span>
+        <span role="columnheader" style="padding: 10px 12px">Turns Check / Problem when</span>
+        <span role="columnheader" style="padding: 10px 12px">Source</span>
+      </div>
+      <sc-for list="{{guide}}" as="g" hint-placeholder-count="10">
+        <div role="row" style="display: grid; grid-template-columns: 190px 360px minmax(0, 1fr) 250px 110px; border-top: 1px solid #eef1f8; font-size: 13px; line-height: 1.45">
+          <span role="cell" style="padding: 10px 12px; font-weight: 800">{{g.col}}</span>
+          <span role="cell" style="padding: 10px 12px; color: #141a33">{{g.what}}</span>
+          <span role="cell" style="padding: 10px 12px; color: #3b4262">{{g.how}}</span>
+          <span role="cell" style="padding: 10px 12px; color: #141a33">{{g.rule}}</span>
+          <span role="cell" style="padding: 10px 12px"><span style="{{g.tagStyle}}">{{g.tag}}</span></span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tag = function (t) {
+      const m = { today: 'background: #ddf4e7; color: #0f7a43', 'new field': 'background: #e6ecfe; color: #1d47b8', 'needs data': 'background: #fde4e1; color: #a72826' };
+      return 'display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; ' + m[t];
+    };
+    const barStyle = function (pct, kind) {
+      const col = kind === 'bad' ? '#c2312f' : kind === 'warn' ? '#e08a2e' : '#4f78e6';
+      return 'position: absolute; left: 0; top: 0; bottom: 0; width: ' + Math.min(100, pct) + '%; border-radius: 5px; background: ' + col;
+    };
+    const val = function (kind) { return 'font-weight: 700; color: ' + (kind === 'bad' ? '#a72826' : kind === 'warn' ? '#7a3e00' : '#141a33'); };
+    const reqSrc = [['ETH mm night', 61.5, 'warn'], ['BTC maker 01', 48.2, ''], ['SOL quotes', 38.0, ''], ['BTC mm 2', null, ''], ['ETH maker b', null, ''], ['BTC basic quotes', null, 'off']];
+    const invSrc = [['SOL quotes', 112, 'bad'], ['ETH mm night', 64, ''], ['BTC maker 01', 41, ''], ['BTC basic quotes', 22, ''], ['BTC mm 2', 0, ''], ['ETH maker b', 0, '']];
+    const guide = [
+      ['Health', 'Whether this bot needs a look.', 'The rules in How to read this page, checked on every refresh.', 'See the legend.', 'new field'],
+      ['Bot', 'Name, market, age, owner, state.', 'bots.name, bots.market, bots.created_at (age), bots.user_id → /admin/users/:id, bots.state. Stopping time from the outbox user.<account>.bot row.', '—', 'today'],
+      ['Cost / $1M (24h)', 'How much the bot paid per $1M traded.', '(Σ fills.fee − Σ price PnL) ÷ Σ notional × 1,000,000 over fills in 24 h. Price PnL of a fill = side × (1-minute close − fill price) × size, as on Market hours. Today’s page shows the run total from bot_runtime.state instead.', 'Above 2× the Market Making median (proposal).', 'new field'],
+      ['Volume 1h · 24h', 'How much it traded.', 'Σ fills.price × fills.size, fills in the last 60 min / 24 h, joined to orders by bot.', 'Not coloured.', 'today (1h) · new field (24h)'],
+      ['Maker share (24h)', 'How much volume was made by resting orders.', 'Maker notional ÷ notional, only fills where fills.is_maker is known.', 'Not coloured (no agreed threshold).', 'today (1h) · new field (24h)'],
+      ['Requests / min', 'How close the wallet is to SoDEX’s request budget.', 'Latest bot_events “Order requests” (≤ 5 min old): requests × 60 ÷ window seconds.', 'Above 55 / min: Check.', 'today'],
+      ['Longest quoting gap (1h)', 'Whether the bot stood still.', 'Largest “Longest gap between quotes: X s.” in “Order requests” lines of the last hour.', 'Above 60 s: Check · above 5 min: Problem (both proposal).', 'today'],
+      ['Position cuts (24h)', 'How often a fast move forced a market close.', 'Count of bot_events decision “Position cut”.', '2 or more in the last hour: Check (proposal).', 'today (24h) · new field (1h)'],
+      ['Untracked orders (24h)', 'Orders on SoDEX the engine did not know about.', 'Sum of n in bot_events “Cancelled n untracked order(s)”.', 'Any: Check.', 'today'],
+      ['Position vs max', 'Whether the bot holds too much.', '|bot_runtime.state.ledger.position| × state.mid ÷ state.maxInventory.', 'P1 failing: Problem.', 'new field'],
+      ['Latest alert', 'The last money-safety check that failed.', 'Newest outbox jobs.team_ops row type team_invariant for this bot; Active when its latest status is failing, resolved when a later resolved row exists.', 'Active: Problem · resolved in 24 h: Check.', 'today (failing) · new field (resolved)'],
+      ['Requests / quoting gap for bots without Smart quoting', 'Same as above, for every Market Making bot.', 'The “Order requests” line is only written with Smart quoting on.', '—', 'needs data']
+    ];
+    return {
+      req: reqSrc.map(function (r) {
+        const na = r[1] === null;
+        return { name: r[0], bar: na ? 'display: none' : barStyle(r[1] / 80 * 100, r[2]), val: na ? (r[2] === 'off' ? 'n/a · Smart quoting off' : 'Not available') : (r[2] === 'warn' ? '▲ ' : '') + r[1].toFixed(1) + ' / min', valStyle: na ? 'color: #5f6684; font-size: 12px' : val(r[2]) };
+      }),
+      inv: invSrc.map(function (r) {
+        return { name: r[0], bar: barStyle(r[1] / 125 * 100, r[2]), val: (r[2] === 'bad' ? '✕ ' : '') + r[1] + '% of max', valStyle: val(r[2]) };
+      }),
+      guide: guide.map(function (g) { const first = g[4].split(' ')[0] === 'today' ? 'today' : g[4].indexOf('needs') === 0 ? 'needs data' : 'new field'; return { col: g[0], what: g[1], how: g[2], rule: g[3], tag: g[4], tagStyle: tag(first) }; })
+    };
+  }
+}
+</script>
+</body>
+</html>
