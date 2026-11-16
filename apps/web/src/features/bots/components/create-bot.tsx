@@ -17,7 +17,14 @@ import { ME_KEY, useBuilderFeeRate, useMe, useTwoFactorNeeded } from "@/lib/quer
 import { BELOW_LG, useMediaQuery } from "@/lib/use-media";
 
 import { labelKeyOf } from "../field-copy";
-import { emptyValues, FIELDS, toConfig, type FormValues } from "../fields";
+import {
+  accountLeverageDefault,
+  emptyValues,
+  FIELDS,
+  toConfig,
+  VF_DEFAULT_LEVERAGE,
+  type FormValues,
+} from "../fields";
 import { defaultBotName } from "../form-layout";
 import { liveHints, previewModel, priceMarketOf } from "../preview";
 
@@ -84,7 +91,18 @@ export function CreateBot({
   const s = (k: string) => t(`strategies.${strategy}.${k}`);
   const marketList = useMarkets().data?.items ?? [];
   const defaultName = defaultBotName(s("name"), values, marketList);
+  // CB-01: Volume Builder lấy đòn bẩy SoDEX đang đặt cho market của account làm mặc định (tối đa VF_DEFAULT_LEVERAGE),
+  // theo từng market, tới khi có người đặt đòn bẩy (người dùng, AI parameters, bản nháp, preset).
+  const levFromAccount = useRef(
+    strategy === "volume_farm" &&
+      draft === undefined &&
+      fromClaude === undefined &&
+      preset?.leverage === undefined,
+  );
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
   const update = useCallback((next: FormValues) => {
+    if (next.leverage !== valuesRef.current.leverage) levFromAccount.current = false;
     setValues(next);
     setDirty(true);
     setAck(false);
@@ -193,6 +211,28 @@ export function CreateBot({
     (start.error instanceof ApiError && start.error.code === "TWO_FACTOR_REQUIRED");
   const [startAfterSave, setStartAfterSave] = useState(false);
   const levWarn = leverageWarning(checks.data);
+  const accountLev = levWarn?.currentLeverage;
+  // Đặt đòn bẩy tự động như một lần sửa form: bản đã lưu không còn khớp và phải xác nhận lại đổi đòn bẩy (DEC-58).
+  const setAutoLeverage = useCallback((next: string) => {
+    if (valuesRef.current.leverage === next) return;
+    setValues((v) => ({ ...v, leverage: next }));
+    setDirty(true);
+    setAck(false);
+    setLevAck(false);
+  }, []);
+  // Đổi market khi đòn bẩy vẫn là mặc định: về 25× rồi chờ mức account của market mới.
+  const vfMarket = strategy === "volume_farm" ? values.market : undefined;
+  const lastMarket = useRef(vfMarket);
+  useEffect(() => {
+    if (lastMarket.current === vfMarket) return;
+    lastMarket.current = vfMarket;
+    if (levFromAccount.current) setAutoLeverage(String(VF_DEFAULT_LEVERAGE));
+  }, [vfMarket, setAutoLeverage]);
+  useEffect(() => {
+    if (!levFromAccount.current) return;
+    const next = accountLeverageDefault(accountLev);
+    if (next !== null) setAutoLeverage(next);
+  }, [accountLev, setAutoLeverage]);
   const levText = (lev: string | null | undefined, mode: string | null | undefined) =>
     t("beforeStart.leverageValue", { leverage: lev ?? "", mode: mode ?? "" });
   // Điều kiện còn thiếu để bật Start, hiện ngay trên nút (UI_REVIEW H2); mỗi mục là link tới chỗ cần sửa.
