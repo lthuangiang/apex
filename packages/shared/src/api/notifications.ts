@@ -30,6 +30,8 @@ export const NOTIFICATION_TYPES = [
   "team_mcp_tool_errors",
   "team_mcp_introspect_failing",
   "team_mcp_daily_limit",
+  // Bất biến tiền thật trên prod (DEC-TBD-prod-invariants): scheduler phát, chỉ role `team`, chỉ Telegram.
+  "team_invariant",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -48,6 +50,7 @@ export const NOTIFICATION_GROUPS = {
     "team_mcp_tool_errors",
     "team_mcp_introspect_failing",
     "team_mcp_daily_limit",
+    "team_invariant",
   ],
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
@@ -183,6 +186,15 @@ export const teamOpsEventSchema = z.discriminatedUnion("type", [
     tool: z.string().nullable(),
   }),
   z.object({ type: z.literal("team_mcp_introspect_failing"), failures: z.number().int() }),
+  z.object({
+    type: z.literal("team_invariant"),
+    invariant: z.enum(["P1", "P2", "P3", "P4", "P5"]),
+    /** `failing`: sai ở 2 lần kiểm tra liền nhau; `resolved`: đúng trở lại. */
+    status: z.enum(["failing", "resolved"]),
+    botId: uuidSchema,
+    /** Số liệu ngắn đã format, tiếng Anh (không ví, không key); rỗng với `resolved`. */
+    detail: z.string().max(200),
+  }),
   z.object({
     type: z.literal("team_mcp_daily_limit"),
     /** User chạm giới hạn ngày; jobs đọc email và che lúc fan-out (tối đa 3 email trong tin). */

@@ -102,8 +102,25 @@ function targetOf(row: RenderRow): { path: string; label: string } {
     case "team_mcp_tool_errors":
     case "team_mcp_introspect_failing":
     case "team_mcp_daily_limit":
+    case "team_invariant":
       return { path: "/admin/stats", label: M.buttons.stats };
   }
+}
+
+/** Bất biến tiền thật (DEC-TBD-prod-invariants): không ví / key; bot ghi `··` + 4 ký tự cuối id. */
+function invariantTitle(row: RenderRow): string {
+  const s = (k: string) => escapeTelegramHtml(str(row.data[k]) ?? "");
+  const vars = {
+    invariant: s("invariant"),
+    strategy: s("strategy"),
+    market: s("market"),
+    bot: s("bot"),
+    paper: row.data.mode === "paper" ? " · paper" : "",
+    detail: s("detail"),
+  };
+  return row.data.status === "resolved"
+    ? fill(M.titles.team_invariant_resolved, vars)
+    : fill(M.titles.team_invariant, vars);
 }
 
 /** Tin theo dõi MCP (DEC-225): câu PM duyệt nguyên văn; email đã che lúc fan-out. */
@@ -225,6 +242,8 @@ function title(row: RenderRow): string {
     case "team_mcp_introspect_failing":
     case "team_mcp_daily_limit":
       return mcpTitle(row);
+    case "team_invariant":
+      return invariantTitle(row);
   }
 }
 
@@ -288,6 +307,7 @@ function body(row: RenderRow): string | null {
     case "team_mcp_tool_errors":
     case "team_mcp_introspect_failing":
     case "team_mcp_daily_limit":
+    case "team_invariant":
       return null;
   }
 }

@@ -64,6 +64,7 @@ const ICONS: Record<NotificationItem["type"], { icon: LucideIcon; tone: string }
   team_mcp_tool_errors: { icon: UserRound, tone: "bg-bg text-ink-2" },
   team_mcp_introspect_failing: { icon: UserRound, tone: "bg-bg text-ink-2" },
   team_mcp_daily_limit: { icon: UserRound, tone: "bg-bg text-ink-2" },
+  team_invariant: { icon: UserRound, tone: "bg-bg text-ink-2" },
 };
 /** Bot dừng đúng kế hoạch hoặc bot tiền ảo: không tô đỏ (DEC-180). */
 const QUIET_TONE = "bg-bg text-ink-2";

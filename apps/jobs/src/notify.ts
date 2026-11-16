@@ -134,6 +134,7 @@ export function emailText(
     case "team_mcp_tool_errors":
     case "team_mcp_introspect_failing":
     case "team_mcp_daily_limit":
+    case "team_invariant":
       // Nhóm `teamOps` chỉ đi Telegram (DEC-184), không bao giờ email; nhánh này chỉ để switch đủ.
       return { subject: "DeskLabs: team update", text: "Open Users in DeskLabs." };
   }
