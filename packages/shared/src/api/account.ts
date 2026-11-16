@@ -531,6 +531,8 @@ export type PlatformStatsQuery = z.infer<typeof platformStatsQuerySchema>;
  */
 export const teamOpsBotSchema = z.object({
   botId: uuidSchema,
+  /** Chủ bot: link sang trang admin của user (route của bot chỉ chủ bot mở được). */
+  userId: uuidSchema,
   name: z.string(),
   strategy: z.string(),
   market: z.string(),

@@ -727,7 +727,6 @@ export async function listBots(
   );
 }
 
-/** Chi phí / $1M của phiên Volume Farm: max(0, −net) ÷ volume × 1M; chưa có khối lượng thì null (trang bot dùng chung). */
 /** Chi phí mỗi $1M của một bot Market Making / Volume Farm từ state runtime (cùng công thức trang bot, #129). */
 export function botCostPerMillion(strategy: string, state: unknown): string | null {
   if (state === null || state === undefined) return null;
@@ -736,6 +735,7 @@ export function botCostPerMillion(strategy: string, state: unknown): string | nu
   return null;
 }
 
+/** Chi phí / $1M của phiên Volume Farm: max(0, −net) ÷ volume × 1M; chưa có khối lượng thì null (trang bot dùng chung). */
 function farmCostPerMillion(st: VolumeFarmState): string | null {
   const volume = dec(st.volume);
   return volume.isZero()

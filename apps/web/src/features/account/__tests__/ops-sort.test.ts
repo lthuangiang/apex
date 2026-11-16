@@ -6,6 +6,7 @@ import { sortOps } from "../components/ops-page";
 
 const row = (id: string, volumeHour: string | null, at: string | null) => ({
   botId: id,
+  userId: "01a1d823-0000-7000-8000-0000000000aa",
   name: id,
   strategy: "volume_maker",
   market: "BTC-USD",

@@ -9,6 +9,7 @@ import {
   overviewViewSchema,
   meSchema,
   platformStatsSchema,
+  teamOpsViewSchema,
   portfolioResponseSchema,
   riskViewSchema,
   twoFactorSetupSchema,
@@ -385,5 +386,24 @@ describe("watchlist", () => {
     });
     const ov = overviewViewSchema.parse((await client.request("GET", "/api/v1/overview")).json());
     expect(ov.watchlist.map((w) => [w.market, w.engine])).toEqual([["vBTC_vUSDC", "spot"]]);
+  });
+});
+
+describe("GET /api/v1/admin/ops (DEC-TBD-ops-page)", () => {
+  it("is for the team only: 401 signed out, 403 for users, 200 with bots for the team", async () => {
+    const anon = new TestClient(env.app);
+    expect((await anon.request("GET", "/api/v1/admin/ops")).statusCode).toBe(401);
+    const client = new TestClient(env.app);
+    const me = meSchema.parse((await signIn(env, client, `ops-${randomUUID()}@drift.test`)).json());
+    const denied = await client.request("GET", "/api/v1/admin/ops");
+    expect(denied.statusCode).toBe(403);
+    expect(errorOf(denied.body).code).toBe("FORBIDDEN");
+    await env.pool.query("update users set role = 'team' where id = $1", [me.id]);
+    const ok = await client.request("GET", "/api/v1/admin/ops");
+    expect(ok.statusCode).toBe(200);
+    const view = teamOpsViewSchema.parse(ok.json());
+    // Không có bot Market Making / Volume Farm nào trong 24 giờ: danh sách rỗng, không có hàng 0 giả.
+    expect(Array.isArray(view.bots)).toBe(true);
+    for (const b of view.bots) expect(b.volumeHour).not.toBe("0");
   });
 });

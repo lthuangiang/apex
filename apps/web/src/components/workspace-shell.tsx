@@ -84,7 +84,7 @@ export type WorkspaceKey = (typeof ITEMS)[number][0];
 const COPY_ITEMS: ReadonlySet<WorkspaceKey> = new Set(["traders", "following"]);
 
 // Chỉ role `team`; api vẫn tự kiểm tra role (DEC-64).
-const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set(["revenue", "users", "stats"]);
+const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set(["revenue", "users", "stats", "ops"]);
 
 export function WorkspaceShell({
   current,
@@ -147,6 +147,7 @@ export function WorkspaceShell({
         "revenue",
         "users",
         "stats",
+        "ops",
       ]),
       footer: <MoreFooter />,
     },

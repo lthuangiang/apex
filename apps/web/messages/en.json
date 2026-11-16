@@ -4630,6 +4630,8 @@
     "checked": "Checked {time}",
     "empty": "No Market Making or Volume Farm bots ran in the last 24 hours.",
     "forbidden": "Ops is for the DeskLabs team only.",
+    "error": "Couldn’t load Ops. Try Refresh.",
+    "stale": "Couldn’t refresh. Showing the last data that loaded.",
     "none": "None",
     "invariantValue": "{invariant} · {time} · {detail}",
     "cols": {

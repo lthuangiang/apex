@@ -19,6 +19,8 @@ const REQUESTS_FRESH_MS = 5 * 60_000;
  * toàn rộng (lệnh Market Making nằm trên sổ vài phút; lệnh Volume Farm giữ tối đa 1 giờ).
  */
 const ORDER_AGE_BOUND_MS = 25 * HOUR;
+/** Outbox / bot dừng: chỉ đọc chừng này về trước (chặn quét cả bảng). */
+const LOOKBACK_MS = 7 * DAY;
 
 /** "Last 61 s: 40 requests to SoDEX (…). Longest gap between quotes: 3.0 s." → số đọc được. */
 export function parseOrderRequests(why: string | null): {
@@ -63,19 +65,47 @@ export async function teamOps(
           inArray(bots.state, ["running", "paused", "stopping"]),
           and(
             inArray(bots.state, ["stopped", "archived"]),
-            gte(bots.updatedAt, new Date(now - DAY)),
+            gte(bots.updatedAt, new Date(now - LOOKBACK_MS)),
           ),
         ),
       ),
     );
-  if (rows.length === 0) return { checkedAt: new Date(now).toISOString(), bots: [] };
-  const ids = rows.map((r) => r.b.id);
+  // Bot dừng: lấy mốc stopping / stopped từ outbox `user.<account>.bot` (giống PR B), không dùng `updated_at`.
+  const stoppedIds = rows
+    .filter((r) => r.b.state === "stopped" || r.b.state === "archived")
+    .map((r) => r.b.id);
+  const stops =
+    stoppedIds.length === 0
+      ? []
+      : await deps.db
+          .selectDistinctOn([sql`${outbox.payload}->>'botId'`], {
+            botId: sql<string>`${outbox.payload}->>'botId'`,
+            at: outbox.createdAt,
+          })
+          .from(outbox)
+          .where(
+            and(
+              sql`${outbox.topic} like 'user.%.bot'`,
+              sql`${outbox.payload}->>'state' in ('stopping', 'stopped')`,
+              inArray(sql<string>`${outbox.payload}->>'botId'`, stoppedIds),
+              gte(outbox.createdAt, new Date(now - LOOKBACK_MS)),
+            ),
+          )
+          .orderBy(sql`${outbox.payload}->>'botId'`, sql`${outbox.createdAt} desc`);
+  const recentStop = new Set(stops.filter((x) => now - x.at.getTime() <= DAY).map((x) => x.botId));
+  const shown = rows.filter(
+    (r) => !(r.b.state === "stopped" || r.b.state === "archived") || recentStop.has(r.b.id),
+  );
+  if (shown.length === 0) return { checkedAt: new Date(now).toISOString(), bots: [] };
+  const ids = shown.map((r) => r.b.id);
 
   const notional = sql`${fills.price} * ${fills.size}`;
   const volumes = await deps.db
     .select({
       botId: orders.botId,
       total: sql<string>`sum(${notional})::text`,
+      // Maker share: chỉ fill biết maker / taker (`is_maker` khác null) ở cả tử lẫn mẫu.
+      known: sql<string>`coalesce(sum(case when ${fills.isMaker} is not null then ${notional} else 0 end), 0)::text`,
       maker: sql<string>`coalesce(sum(case when ${fills.isMaker} then ${notional} else 0 end), 0)::text`,
     })
     .from(fills)
@@ -103,8 +133,12 @@ export async function teamOps(
         gte(botEvents.occurredAt, new Date(now - DAY)),
         or(
           eq(botEvents.decision, "Position cut"),
-          eq(botEvents.decision, "Order requests"),
           sql`${botEvents.decision} like 'Cancelled % untracked order%'`,
+          // "Order requests" ghi mỗi phút: chỉ 1 giờ gần nhất (Requests / min và quoting gap).
+          and(
+            eq(botEvents.decision, "Order requests"),
+            gte(botEvents.occurredAt, new Date(now - HOUR)),
+          ),
         ),
       ),
     )
@@ -116,6 +150,7 @@ export async function teamOps(
     .where(
       and(
         eq(outbox.topic, "jobs.team_ops"),
+        gte(outbox.createdAt, new Date(now - LOOKBACK_MS)),
         sql`${outbox.payload}->>'type' = 'team_invariant'`,
         sql`${outbox.payload}->>'status' = 'failing'`,
         inArray(sql<string>`${outbox.payload}->>'botId'`, ids),
@@ -124,20 +159,31 @@ export async function teamOps(
     .orderBy(desc(outbox.createdAt))
     .limit(500);
 
-  const out = rows.map(({ b, state }) => {
-    const v = volumes.find((x) => x.botId === b.id);
+  // Gom theo bot một lần (không lọc lại cho từng bot).
+  const eventsOf = new Map<string, typeof events>();
+  for (const e of events) eventsOf.set(e.botId, [...(eventsOf.get(e.botId) ?? []), e]);
+  const volumeOf = new Map(volumes.map((v) => [v.botId, v]));
+  const violationOf = new Map<string, (typeof violations)[number]>();
+  for (const x of violations) {
+    const id = (x.payload as { botId?: string }).botId;
+    if (id !== undefined && !violationOf.has(id)) violationOf.set(id, x);
+  }
+
+  const out = shown.map(({ b, state }) => {
+    const v = volumeOf.get(b.id);
     const total = v === undefined ? null : dec(v.total);
-    const mine = events.filter((e) => e.botId === b.id);
+    const known = v === undefined ? null : dec(v.known);
+    const mine = eventsOf.get(b.id) ?? [];
     const requests = mine.filter((e) => e.decision === "Order requests");
     const latest = requests[0];
-    const lastHour = requests.filter((e) => now - e.at.getTime() <= HOUR);
-    const gaps = lastHour
+    const gaps = requests
       .map((e) => parseOrderRequests(e.why).gapSec)
       .filter((g): g is string => g !== null);
-    const inv = violations.find((x) => (x.payload as { botId?: string }).botId === b.id);
+    const inv = violationOf.get(b.id);
     const p = inv?.payload as { invariant?: string; detail?: string } | undefined;
     return {
       botId: b.id,
+      userId: b.userId,
       name: b.name,
       strategy: b.strategy,
       market: b.market,
@@ -149,9 +195,9 @@ export async function teamOps(
           ? null
           : parseOrderRequests(latest.why).perMinute,
       makerSharePct:
-        total === null || total.isZero() || v === undefined
+        known === null || known.isZero() || v === undefined
           ? null
-          : dec(v.maker).div(total).mul(100).toDecimalPlaces(1).toString(),
+          : dec(v.maker).div(known).mul(100).toDecimalPlaces(1).toString(),
       untrackedCancels: mine.reduce((n, e) => n + untrackedCount(e.decision), 0),
       positionCuts: mine.filter((e) => e.decision === "Position cut").length,
       maxQuoteGapSec:
