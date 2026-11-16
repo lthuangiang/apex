@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { OPS_HEALTH, OPS_REASON_CODES } from "../ops-health";
 import { decimalStringSchema, isoDateTimeSchema, uuidSchema } from "../schemas";
 
 import { twoFactorCodeSchema } from "./auth";
@@ -526,38 +527,162 @@ export const platformStatsQuerySchema = z.object({
 export type PlatformStatsQuery = z.infer<typeof platformStatsQuerySchema>;
 
 /**
- * Trang Ops của team (PR C, DEC-276): một hàng mỗi bot Market Making / Volume Farm thật đang chạy hoặc dừng
- * trong 24 giờ. Mọi số không tính được là null (UI: "Not available"), không bao giờ 0 thay cho "không biết".
+ * Trang Bot Monitor của team (tên cũ "Ops"; docs/mockups/ops, DEC-TBD-ops-redesign, thay bố cục DEC-276). Mọi số không
+ * tính được là null (UI: "Not available" / "n/a"), không bao giờ 0 thay cho "không biết".
  */
+export const TEAM_OPS_STRATEGIES = ["volume_maker", "volume_farm"] as const;
+export const teamOpsQuerySchema = z.object({
+  /** Active (mặc định) hoặc All bots (phân trang trong SQL, theo từng chiến lược). */
+  show: z.enum(["active", "all"]).default("active"),
+  /** Chỉ dùng ở All bots: tab đang xem. */
+  strategy: z.enum(TEAM_OPS_STRATEGIES).default("volume_maker"),
+  /** Chỉ dùng ở All bots: tìm theo tên bot, market hoặc user id. */
+  q: z.string().trim().max(100).optional(),
+  page: z.coerce.number().int().min(1).max(100_000).default(1),
+});
+export type TeamOpsQuery = z.infer<typeof teamOpsQuerySchema>;
+
+export const teamOpsReasonSchema = z.object({
+  code: z.enum(OPS_REASON_CODES),
+  invariant: z.string().optional(),
+  detail: z.string().optional(),
+  value: dec.optional(),
+  median: dec.optional(),
+  count: z.number().int().optional(),
+  at: isoDateTimeSchema.nullable().optional(),
+  until: isoDateTimeSchema.optional(),
+});
+
+const countSchema = z.number().int().nonnegative();
+
 export const teamOpsBotSchema = z.object({
   botId: uuidSchema,
   /** Chủ bot: link sang trang admin của user (route của bot chỉ chủ bot mở được). */
   userId: uuidSchema,
   name: z.string(),
-  strategy: z.string(),
+  strategy: z.enum(TEAM_OPS_STRATEGIES),
   market: z.string(),
   state: z.string(),
-  /** Cùng công thức với trang bot (#129). */
-  costPerMillion: decimalStringSchema.nullable(),
-  /** Σ giá × khối lượng của fill trong 60 phút (USDC); null khi không có fill. */
-  volumeHour: decimalStringSchema.nullable(),
-  /** Từ dòng "Order requests" gần nhất (≤ 5 phút), quy về mỗi phút; null với bot không ghi dòng đó. */
-  requestsPerMinute: decimalStringSchema.nullable(),
-  /** Tỷ lệ notional khớp maker trong 60 phút, 0–100; null khi không có fill. */
-  makerSharePct: decimalStringSchema.nullable(),
-  /** Số lệnh "Cancelled untracked order" trong 24 giờ. */
-  untrackedCancels: z.number().int(),
-  /** Số lần "Position cut" trong 24 giờ. */
-  positionCuts: z.number().int(),
-  /** Khoảng dài nhất giữa hai lần xét báo giá trong 60 phút (giây), từ dòng "Order requests"; null khi không có. */
-  maxQuoteGapSec: decimalStringSchema.nullable(),
-  /** Lần vi phạm bất biến gần nhất (DEC-274); null = chưa có vi phạm nào. */
-  latestInvariant: z
-    .object({ invariant: z.string(), at: isoDateTimeSchema, detail: z.string() })
+  reasonCode: z.string().nullable(),
+  createdAt: isoDateTimeSchema,
+  /** Mốc stopping / stopped gần nhất từ outbox `user.<account>.bot` (7 ngày); null khi không có. */
+  stopAt: isoDateTimeSchema.nullable(),
+  health: z.enum(OPS_HEALTH),
+  reasons: z.array(teamOpsReasonSchema),
+  /** Cost / $1M: 24 giờ fill (công thức Market hours) hoặc, với bot không chạy ở All bots, cả đợt chạy (bot_runtime). */
+  costPerMillion: dec.nullable(),
+  costScope: z.enum(["day", "lifetime"]),
+  /** Σ giá × khối lượng fill trong 60 phút / 24 giờ (USDC); null khi không có fill. */
+  volumeHour: dec.nullable(),
+  volumeDay: dec.nullable(),
+  /** Tỷ lệ notional khớp maker trong 24 giờ, 0–100; fill chưa rõ maker / taker bỏ khỏi cả tử lẫn mẫu. */
+  makerSharePct: dec.nullable(),
+  /** Market Making: Smart quoting bật trong cấu hình đang chạy; null với Volume Builder hoặc thiếu cấu hình. */
+  smartQuoting: z.boolean().nullable(),
+  /** Từ dòng "Order requests" gần nhất (≤ 5 phút), quy về mỗi phút. */
+  requestsPerMinute: dec.nullable(),
+  /** Khoảng dài nhất giữa hai lần xét báo giá trong 60 phút (giây). */
+  maxQuoteGapSec: dec.nullable(),
+  positionCutsDay: countSchema,
+  positionCutsHour: countSchema,
+  untrackedCancels: countSchema,
+  /** |vị thế| × mid ÷ max inventory × 100, từ bot_runtime; null khi thiếu số. */
+  positionPct: dec.nullable(),
+  /** Cảnh báo bất biến mới nhất trong 7 ngày (DEC-274): đang sai, hoặc đã hết sai. */
+  alert: z
+    .object({
+      invariant: z.string(),
+      status: z.enum(["active", "resolved"]),
+      /** active: lúc bắt đầu sai; resolved: lúc hết sai. */
+      at: isoDateTimeSchema,
+      detail: z.string(),
+    })
     .nullable(),
+  /** Volume Builder (24 giờ, từ Decisions và lệnh); null với Market Making. */
+  vb: z
+    .object({
+      rounds: countSchema,
+      /** Số lượt có price PnL > 0, trước phí (DEC-129). */
+      roundsWon: countSchema,
+      /** Trung bình "net … USDC after fees"; null khi không có lượt. */
+      avgNet: dec.nullable(),
+      entriesPostOnly: countSchema,
+      entriesMarket: countSchema,
+      /** "Market orders after" của cấu hình: null = chỉ post-only (không bật taker) hoặc thiếu cấu hình. */
+      takerAfter: z.number().int().nullable(),
+      exits: z.object({
+        takeProfit: countSchema,
+        earlyProfit: countSchema,
+        holdEnded: countSchema,
+        maxHold: countSchema,
+        botStop: countSchema,
+        sodexStop: countSchema,
+      }),
+      waits: z.object({
+        counterTrend: countSchema,
+        spread: countSchema,
+        sideways: countSchema,
+        stale: countSchema,
+        belowMinimum: countSchema,
+        blockedHour: countSchema,
+      }),
+      marketRejects: countSchema,
+    })
+    .nullable(),
+  /**
+   * 5 quyết định / cảnh báo gần nhất trong 7 ngày, mới nhất trước; bỏ dòng "Order requests". Dòng cảnh báo: `name` là
+   * mã bất biến (P1…), `alert` là failing / resolved; dòng Decisions: `alert` null.
+   */
+  log: z.array(
+    z.object({
+      at: isoDateTimeSchema,
+      name: z.string(),
+      why: z.string().nullable(),
+      alert: z.enum(["failing", "resolved"]).nullable(),
+    }),
+  ),
 });
+
+const teamOpsStrategySummarySchema = z.object({
+  running: countSchema,
+  paused: countSchema,
+  stopping: countSchema,
+  stoppedDay: countSchema,
+  volumeHour: dec.nullable(),
+  volumeDay: dec.nullable(),
+  costPerMillion: dec.nullable(),
+  makerSharePct: dec.nullable(),
+  rounds: countSchema,
+  roundsWonPct: dec.nullable(),
+});
+
 export const teamOpsViewSchema = z.object({
   checkedAt: isoDateTimeSchema,
+  show: z.enum(["active", "all"]),
+  /** Ô tóm tắt luôn tính trên nhóm Active (bot đang có mặt), kể cả khi xem All bots. */
+  summary: z.object({
+    total: teamOpsStrategySummarySchema,
+    volume_maker: teamOpsStrategySummarySchema,
+    volume_farm: teamOpsStrategySummarySchema,
+    alerts: z.array(z.object({ botId: uuidSchema, name: z.string(), invariant: z.string() })),
+    alertBots: countSchema,
+    problem: countSchema,
+    check: countSchema,
+  }),
+  /** "Look at these first": bot Problem rồi Check của nhóm Active. */
+  attention: z.array(teamOpsBotSchema),
+  /** Active: mọi bot của nhóm Active (cả hai chiến lược). All bots: một trang của chiến lược đang xem. */
   bots: z.array(teamOpsBotSchema),
+  /** Số bot mỗi tab: Active = số hàng; All bots = tổng khớp tìm kiếm. */
+  counts: z.object({ volume_maker: countSchema, volume_farm: countSchema }),
+  page: z
+    .object({
+      strategy: z.enum(TEAM_OPS_STRATEGIES),
+      page: z.number().int().min(1),
+      pageSize: z.number().int().min(1),
+      total: countSchema,
+    })
+    .nullable(),
 });
 export type TeamOpsView = z.infer<typeof teamOpsViewSchema>;
+export type TeamOpsBot = z.infer<typeof teamOpsBotSchema>;

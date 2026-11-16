@@ -181,10 +181,29 @@ export function fillCostPerMillion(fills: readonly CostFill[]): {
     priced = priced.add(n);
     pricedFees = pricedFees.add(dec(f.fee));
   }
-  const missing = volume.isZero() ? new Decimal(1) : volume.sub(priced).div(volume);
-  const costPerMillion =
-    priced.gt(0) && missing.lte(MARKET_HOURS_MAX_MISSING_PRICE)
-      ? pricedFees.sub(pnl).div(priced).mul(1_000_000)
-      : null;
-  return { costPerMillion, volume, fees };
+  return {
+    costPerMillion: costPerMillionOfSums({ volume, priced, pricedFees, pnl }),
+    volume,
+    fees,
+  };
+}
+
+/** Tổng của một nhóm fill cho Cost per $1M (SQL có thể cộng sẵn, rồi gọi `costPerMillionOfSums`). */
+export interface CostSums {
+  /** Σ giá × size của mọi fill. */
+  volume: Decimal;
+  /** Σ giá × size của fill có giá tham chiếu. */
+  priced: Decimal;
+  /** Σ phí của fill có giá tham chiếu. */
+  pricedFees: Decimal;
+  /** Σ price PnL (chiều × (giá tham chiếu − giá khớp) × size) của fill có giá tham chiếu. */
+  pnl: Decimal;
+}
+
+/** Cùng công thức `fillCostPerMillion`, từ các tổng (trang Bot Monitor cộng trong SQL, không kéo từng fill về). */
+export function costPerMillionOfSums(s: CostSums): Decimal | null {
+  const missing = s.volume.isZero() ? new Decimal(1) : s.volume.sub(s.priced).div(s.volume);
+  return s.priced.gt(0) && missing.lte(MARKET_HOURS_MAX_MISSING_PRICE)
+    ? s.pricedFees.sub(s.pnl).div(s.priced).mul(1_000_000)
+    : null;
 }
