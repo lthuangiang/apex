@@ -11,8 +11,11 @@ import {
   MM_MODEL_SEED,
   modelCostPerMillion,
   modelPnlBps,
+  cutCostBps,
   perpsMakerFeeBps,
+  perpsTakerFeeBps,
   rankMmMarkets,
+  shockDayCostPerMillion,
   stepBpsOf,
   windowPnl,
 } from "../mm-model";
@@ -150,5 +153,58 @@ describe("ranking", () => {
 
   it("suggests nothing when no market has enough data and volume", () => {
     expect(rankMmMarkets([row("A", null, null), row("B", "5", "1", true)]).suggested).toEqual([]);
+  });
+});
+
+describe("shock-day estimate (DEC-289)", () => {
+  it("reads the perps taker fee in bps, falling back to the SoDEX base fee", () => {
+    expect(perpsTakerFeeBps("0.0004").toString()).toBe("4");
+    expect(perpsTakerFeeBps(undefined).toString()).toBe("4");
+    expect(perpsTakerFeeBps("0.00035").toString()).toBe("3.5");
+  });
+
+  it("prices a cut as taker fee plus measured slippage, or the taker fee alone", () => {
+    expect(cutCostBps(dec("4"), dec("2.5")).toString()).toBe("6.5");
+    expect(cutCostBps(dec("4"), null).toString()).toBe("4");
+  });
+
+  it("averages each day's own model cost and adds one cut on days with a 15 bp move", () => {
+    const p = {
+      stepBps: dec("1"),
+      feesBps: dec("1.5"),
+      a: "0.2",
+      k: "0.1",
+      cutCostBps: dec("4"),
+      cutShare: dec("0.5"),
+      shockBp: dec("15"),
+    };
+    // Ngày 1: dao động 5 → PnL min(0, 0.2 − 0.5) = −0.3 → (1.5 + 0.3) × 100 = 180. Không sốc (14.9 bp).
+    // Ngày 2: dao động 12 → PnL −1.0 → 250, sốc (15 bp đúng ngưỡng) → + 4 × 0.5 × 100 = 200 → 450.
+    // Ngày 3: thiếu dao động → bỏ qua. Trung bình (180 + 450) ÷ 2 = 315 (mean, không phải trung vị).
+    const r = shockDayCostPerMillion(
+      [
+        { swingBps: dec("5"), move15Bp: dec("14.9") },
+        { swingBps: dec("12"), move15Bp: dec("15") },
+        { swingBps: null, move15Bp: dec("80") },
+      ],
+      p,
+    );
+    expect(r.mean?.toString()).toBe("315");
+    expect(r).toMatchObject({ days: 2, shockDays: 1 });
+    // Thiếu biến động 15 phút → không tính là ngày sốc.
+    expect(
+      shockDayCostPerMillion([{ swingBps: dec("5"), move15Bp: null }], p).mean?.toString(),
+    ).toBe("180");
+    expect(shockDayCostPerMillion([], p)).toEqual({ mean: null, days: 0, shockDays: 0 });
+    // Không có cỡ cắt (quá ít lệnh cắt thật, không có vị thế tối đa): bỏ phần cắt, vẫn đếm ngày sốc.
+    const noCut = shockDayCostPerMillion(
+      [
+        { swingBps: dec("5"), move15Bp: dec("14.9") },
+        { swingBps: dec("12"), move15Bp: dec("15") },
+      ],
+      { ...p, cutShare: null },
+    );
+    expect(noCut.mean?.toString()).toBe("215");
+    expect(noCut).toMatchObject({ days: 2, shockDays: 1 });
   });
 });

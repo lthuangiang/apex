@@ -55,6 +55,7 @@ export {
 export {
   costPerMillion,
   costUsed,
+  VM_CUT,
   VOLUME_MAKER_STOPPED,
   volumeMaker,
   volumeMakerStopCause,

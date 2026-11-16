@@ -77,6 +77,62 @@ export function modelCostPerMillion(feesBps: Decimal, pnlBps: Decimal): Decimal 
   return feesBps.sub(pnlBps).mul(PER_MILLION_FROM_BPS);
 }
 
+/** Phí taker SoDEX của một perp (bps): `takerFee` (tỷ lệ) của symbol, không có thì `SODEX_BASE_FEE_PCT`. */
+export function perpsTakerFeeBps(takerFee: DecimalInput | undefined): Decimal {
+  return takerFee === undefined
+    ? dec(SODEX_BASE_FEE_PCT.perps.taker).mul(100)
+    : dec(takerFee).mul(10_000);
+}
+
+/** Chi phí một lần cắt vị thế (bps trên notional bị cắt) = phí taker + trượt giá trung bình đo được (null → chỉ phí). */
+export function cutCostBps(takerBps: Decimal, slippageBps: Decimal | null): Decimal {
+  return slippageBps === null ? takerBps : takerBps.add(slippageBps);
+}
+
+/** Một ngày của một giờ: dao động 1 phút của chính ngày đó và biến động 15 phút lớn nhất bắt đầu trong giờ đó (bp). */
+export interface ShockHourDay {
+  swingBps: Decimal | null;
+  move15Bp: Decimal | null;
+}
+
+/**
+ * "Est. CPM · incl. shock days" của một giờ (DEC-289). Với mỗi ngày có dao động:
+ *   chi phí ngày = modelCostPerMillion(phí, modelPnlBps(bước, dao động của ngày đó, a, k))
+ *                + (biến động 15 phút lớn nhất của giờ đó ngày đó ≥ shockBp ? cutCostBps × cutShare × 100 : 0)
+ * rồi lấy trung bình cộng (mean, không phải trung vị) qua các ngày. `cutShare` = notional một lần cắt ÷ volume trung
+ * bình một bot-hour (`cutShareOf`); null = không tính phần cắt (quá ít lệnh cắt thật và không có vị thế tối đa để ước
+ * lượng), ngày sốc vẫn được đếm. Ngày không tính được dao động bị bỏ qua; không có ngày nào → null.
+ */
+export function shockDayCostPerMillion(
+  days: readonly ShockHourDay[],
+  p: {
+    stepBps: Decimal;
+    feesBps: Decimal;
+    a: DecimalInput;
+    k: DecimalInput;
+    cutCostBps: Decimal;
+    cutShare: Decimal | null;
+    shockBp: DecimalInput;
+  },
+): { mean: Decimal | null; days: number; shockDays: number } {
+  const extra =
+    p.cutShare === null ? new Decimal(0) : p.cutCostBps.mul(p.cutShare).mul(PER_MILLION_FROM_BPS);
+  let sum = new Decimal(0);
+  let n = 0;
+  let shockDays = 0;
+  for (const d of days) {
+    if (d.swingBps === null) continue;
+    let cost = modelCostPerMillion(p.feesBps, modelPnlBps(p.stepBps, d.swingBps, p.a, p.k));
+    if (d.move15Bp?.gte(p.shockBp) === true) {
+      cost = cost.add(extra);
+      shockDays += 1;
+    }
+    sum = sum.add(cost);
+    n += 1;
+  }
+  return { mean: n === 0 ? null : sum.div(n), days: n, shockDays };
+}
+
 /** Trộn số thật của bot người xem với mô hình theo số vòng đóng. */
 export function blendPnlBps(model: Decimal, actual: Decimal | null, rounds: number): Decimal {
   if (actual === null || rounds <= 0) return model;

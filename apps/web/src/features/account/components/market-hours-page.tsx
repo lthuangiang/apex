@@ -2,6 +2,8 @@
 
 import {
   dec,
+  MARKET_HOURS_CALIBRATION_MIN_HOURS,
+  MARKET_HOURS_MIN_CUTS,
   marketHoursViewSchema,
   type MarketHoursHour,
   type MarketHoursView,
@@ -79,6 +81,11 @@ export function usd(v: string | null): string | null {
   if (v === null) return null;
   const d = dec(v);
   return `$${d.abs().lt(10) ? d.toFixed(2) : d.toFixed(0)}`;
+}
+/** Tỷ lệ → phần trăm, 2 chữ số có nghĩa dưới 10% (vd "2.9", "0.69"), số nguyên từ 10% (vd "60"). */
+export function pct(v: string): string {
+  const d = dec(v).mul(100);
+  return d.abs().lt(10) ? d.toSignificantDigits(2).toString() : d.toFixed(0);
 }
 /** Ngày địa phương "YYYY-MM-DD" từ API (đã theo múi giờ người xem) → "Nov 15, 2026". */
 const dayLabel = (d: string): string => formatDate(Date.parse(`${d}T00:00:00Z`), "UTC");
@@ -340,7 +347,13 @@ function HowToRead({
           <div>
             <dt className="font-extrabold text-ink">{t("calc.volTitle")}</dt>
             <dd className="m-0 mt-0.5">
-              {t("calc.volBody")} {t("calc.estBody")} {since(v?.candlesSince)}
+              {t("calc.volBody")}{" "}
+              {v === undefined ? null : (
+                <>
+                  {t("calc.estBody", { bp: v.estimate.shockBp })} <CutCalc est={v.estimate} />{" "}
+                </>
+              )}
+              {since(v?.candlesSince)}
             </dd>
           </div>
           <div>
@@ -363,6 +376,48 @@ function HowToRead({
 
 // Cột nhãn 272 px: nhãn dài nhất ("Price move against makers, 30 s later (bp)") + nút ⓘ nằm trên một dòng ở 1440.
 // Chú giải thụt vào 275 px (= nhãn + khe 3 px) để thẳng với cột giờ đầu tiên.
+/**
+ * Phần "How these numbers are calculated" về lần cắt vị thế và hiệu chỉnh (DEC-289): chi phí cắt đo
+ * từ lệnh cắt thật hay chỉ phí taker, và tỷ lệ chi phí thật ÷ "incl. shock days".
+ */
+function CutCalc({ est }: { est: MarketHoursView["estimate"] }) {
+  const t = useTranslations("marketHours.calc");
+  return (
+    <>
+      {est.cutSlippageBp === null
+        ? t("cutTakerOnly", {
+            taker: Number(est.cutTakerBp).toFixed(1),
+            n: est.cuts,
+            min: MARKET_HOURS_MIN_CUTS,
+          })
+        : t("cutMeasured", {
+            taker: Number(est.cutTakerBp).toFixed(1),
+            slip: Number(est.cutSlippageBp).toFixed(1),
+            n: est.cuts,
+          })}{" "}
+      {est.cutShare === null || est.botHourVolume === null
+        ? t("cutNone", { min: MARKET_HOURS_MIN_CUTS })
+        : est.cutShareSource === "cuts"
+          ? t("cutSizeMeasured", {
+              notional: usd(est.cutNotional) ?? "",
+              volume: usd(est.botHourVolume) ?? "",
+              pct: pct(est.cutShare),
+            })
+          : t("cutSizePosition", {
+              min: MARKET_HOURS_MIN_CUTS,
+              position: usd(est.maxPosition) ?? "",
+              volume: usd(est.botHourVolume) ?? "",
+              pct: pct(est.cutShare),
+            })}{" "}
+      <strong className="text-ink">
+        {est.calibration === null
+          ? t("calibrationNa", { min: MARKET_HOURS_CALIBRATION_MIN_HOURS })
+          : t("calibration", { ratio: Number(est.calibration).toFixed(1) })}
+      </strong>
+    </>
+  );
+}
+
 const COLS = "grid grid-cols-[272px_repeat(24,minmax(0,1fr))] gap-[3px]";
 const GRID = `${COLS} items-center`;
 const CELL =
@@ -616,9 +671,24 @@ function Desktop({
         />
         <Marked marked={marked}>
           {row(
-            t("vol.est"),
-            "est",
-            H.map((h) => <EstCell key={h} x={hourOf(v, h).volatility} est={v.estimate} hour={h} />),
+            t("vol.estTypical"),
+            "estTypical",
+            H.map((h) => (
+              <EstCell
+                key={h}
+                x={hourOf(v, h).volatility}
+                est={v.estimate}
+                hour={h}
+                kind="typical"
+              />
+            )),
+          )}
+          {row(
+            t("vol.estShock"),
+            "estShock",
+            H.map((h) => (
+              <EstCell key={h} x={hourOf(v, h).volatility} est={v.estimate} hour={h} kind="shock" />
+            )),
           )}
         </Marked>
         <Legend
@@ -730,6 +800,9 @@ const hourOf = (v: MarketHoursView, h: number): MarketHoursHour =>
       fiveMin: [],
       swingBp: null,
       estCostPerMillion: null,
+      estShockCostPerMillion: null,
+      estDays: null,
+      shockDays: null,
       maxRangeBp: null,
       maxRangeAt: null,
       maxMove15Bp: null,
@@ -739,23 +812,70 @@ const hourOf = (v: MarketHoursView, h: number): MarketHoursHour =>
     bots: { costPerMillion: null, volume: null, fees: null, botHours: 0, thin: false },
   };
 
+/** Tooltip của ô "Est. CPM · incl. shock days"; null khi giờ đó không có số. */
+function shockTip(
+  t: ReturnType<typeof useTranslations<"marketHours.vol">>,
+  x: MarketHoursHour["volatility"],
+  est: MarketHoursView["estimate"],
+  hour: number,
+): string | null {
+  const cost = usd(x.estShockCostPerMillion);
+  if (cost === null || x.estDays === null || x.shockDays === null) return null;
+  return (
+    t("estShockTip", {
+      hour: pad(hour),
+      cost,
+      shock: x.shockDays,
+      days: x.estDays,
+      bp: est.shockBp,
+      cut: Number(est.cutCostBp).toFixed(1),
+    }) + cutSuffix(t, est)
+  );
+}
+
+/** Đuôi tooltip / dòng 390 px của "incl. shock days": cách tính chi phí và cỡ một lần cắt. */
+function cutSuffix(
+  t: ReturnType<typeof useTranslations<"marketHours.vol">>,
+  est: MarketHoursView["estimate"],
+): string {
+  if (est.cutShareSource === null) return t("noCut");
+  return (
+    (est.cutSlippageBp === null ? t("takerOnly") : "") +
+    (est.cutShareSource === "position" ? t("positionCut") : "")
+  );
+}
+
 /**
- * Ô "Estimated cost per $1M (model, floor)":cùng 4 bậc màu với Cost per $1M của khối 3. Cả dòng n/a khi mô hình không tính
- * được cho market (lý do trong tooltip); một giờ không có nến → n/a.
+ * Ô "Est. CPM · typical day (model)" và "Est. CPM · incl. shock days (model)": cùng 4 bậc màu với CPM của khối 3. Cả
+ * dòng n/a khi mô hình không tính được cho market (lý do trong tooltip); một giờ không có nến → n/a.
  */
 function EstCell({
   x,
   est,
   hour,
+  kind,
 }: {
   x: MarketHoursHour["volatility"];
   est: MarketHoursView["estimate"];
   hour: number;
+  kind: "typical" | "shock";
 }) {
   const t = useTranslations("marketHours.vol");
   const tb = useTranslations("marketHours.botBlock");
-  const cost = usd(x.estCostPerMillion);
-  if (cost === null || x.estCostPerMillion === null || x.swingBp === null)
+  const value = kind === "typical" ? x.estCostPerMillion : x.estShockCostPerMillion;
+  const cost = usd(value);
+  const tip =
+    kind === "shock"
+      ? shockTip(t, x, est, hour)
+      : x.swingBp === null || cost === null
+        ? null
+        : t("estTip", {
+            hour: pad(hour),
+            cost,
+            swing: Number(x.swingBp).toFixed(1),
+            fees: Number(est.feesBp).toFixed(1),
+          });
+  if (cost === null || value === null || tip === null)
     return (
       <span
         title={
@@ -769,15 +889,7 @@ function EstCell({
       </span>
     );
   return (
-    <span
-      title={t("estTip", {
-        hour: pad(hour),
-        cost,
-        swing: Number(x.swingBp).toFixed(1),
-        fees: Number(est.feesBp).toFixed(1),
-      })}
-      className={`${CELL} ${costBg(Number(x.estCostPerMillion))}`}
-    >
+    <span title={tip} className={`${CELL} ${costBg(Number(value))}`}>
       {cost}
     </span>
   );
@@ -790,7 +902,8 @@ type HelpKey =
   | "hotDays"
   | "maxRange"
   | "maxMove15"
-  | "est"
+  | "estTypical"
+  | "estShock"
   | "markout"
   | "spread"
   | "cost"
@@ -1072,6 +1185,7 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
   const t = useTranslations("marketHours");
   const tm = useTranslations("marketHours.mobile");
   const tb = useTranslations("marketHours.botBlock");
+  const tv = useTranslations("marketHours.vol");
   const markAt = new Map(markers.map((m) => [m.hour, m]));
   const [open, setOpen] = useState<number>(markers.find((m) => m.us)?.hour ?? -1);
   return (
@@ -1189,6 +1303,21 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                           swing: Number(x.volatility.swingBp).toFixed(1),
                           fees: Number(v.estimate.feesBp).toFixed(1),
                         })}
+                  </span>
+                  <span className="text-[11.5px] text-ink-2">
+                    <strong className="text-ink">{tm("estShock")}</strong>{" "}
+                    {x.volatility.estShockCostPerMillion === null ||
+                    x.volatility.estDays === null ||
+                    x.volatility.shockDays === null
+                      ? v.estimate.unavailable === null
+                        ? tb("na")
+                        : `${tb("na")} · ${t(`vol.estReason.${v.estimate.unavailable}`)}`
+                      : tm("estShockLine", {
+                          cost: usd(x.volatility.estShockCostPerMillion) ?? tb("na"),
+                          shock: x.volatility.shockDays,
+                          days: x.volatility.estDays,
+                          bp: v.estimate.shockBp,
+                        }) + cutSuffix(tv, v.estimate)}
                   </span>
                 </div>
               ) : null}
