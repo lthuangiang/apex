@@ -7,7 +7,7 @@ import { OverviewPage } from "@/features/account";
 import { LandingPage } from "@/features/public/components/landing-page";
 import { LANDING_THEME_COOKIE, themeFromCookie } from "@/features/public/landing-theme-cookie";
 import { mcpServerUrl } from "@/features/public/mcp-url";
-import { SHARE_IMAGE } from "@/lib/share-image";
+import { shareMetadata } from "@/lib/share-image";
 
 // `/`: chưa đăng nhập → Landing (UI_REVIEW mục K), đã đăng nhập → Overview. Cùng quy tắc cookie với proxy.ts.
 
@@ -19,23 +19,13 @@ export async function generateMetadata(): Promise<Metadata> {
   if (await signedIn()) return {};
   const t = await getTranslations("landing");
   const brand = (await getTranslations("common"))("brand");
-  const title = t("metaTitle", { brand });
+  // Tiêu đề tab, meta description và câu chữ khi chia sẻ link dùng chung một bộ (DEC-281).
+  const title = t("shareTitle", { brand });
+  const description = t("shareDescription");
   return {
     title,
-    description: t("metaDescription"),
-    openGraph: {
-      title,
-      description: t("metaDescription"),
-      type: "website",
-      siteName: "DeskLabs",
-      images: [SHARE_IMAGE],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description: t("metaDescription"),
-      images: [SHARE_IMAGE],
-    },
+    description,
+    ...shareMetadata("landing", title, description),
     robots: { index: true, follow: true },
   };
 }
