@@ -97,7 +97,7 @@ export interface VolumeMakerState {
   fairBinanceAt?: number | null;
   /** Số liệu định giá theo Binance từ lần ghi Decisions trước: số lệnh bị rút, số lệnh đặt lùi ra. */
   oracleWin?: { since: number; pulls: number; clamps: number };
-  /** Lần đặt lại riêng một phía gần nhất sau khi SoDEX xác nhận huỷ (DEC-TBD-mm-requote-limit), để giới hạn tần suất. */
+  /** Lần đặt lại riêng một phía gần nhất sau khi SoDEX xác nhận huỷ (DEC-257), để giới hạn tần suất. */
   sideQuoteAt?: Partial<Record<"buy" | "sell", number>>;
 }
 
@@ -437,7 +437,7 @@ function quote(
   // Lệnh mở đã gửi huỷ ở một bước trước mà SoDEX chưa xác nhận (DEC-253): lệnh huỷ tới trước khi lệnh vào sổ thì SoDEX
   // trả `OrderNotFound`, lệnh vào sổ sau đó và vẫn có thể khớp; đặt thêm lệnh mở cùng phía lúc đó làm vị thế vượt "Holds
   // up to" (2026-11-15: hai lệnh mua cùng khớp, vị thế gấp đôi). Phía đó không đặt lệnh mở mới tới khi có `orderDone`
-  // (hoặc hết `VM_STALE_CANCEL_MS`). Lệnh mở bị huỷ ngay trong lần báo giá này cũng tính (DEC-TBD-mm-requote-limit, xem
+  // (hoặc hết `VM_STALE_CANCEL_MS`). Lệnh mở bị huỷ ngay trong lần báo giá này cũng tính (DEC-257, xem
   // dưới).
   const unsure = { buy: false, sell: false };
   for (const o of Object.values(s.orders))
@@ -647,7 +647,7 @@ function quote(
         orders[id] = o;
       }
   }
-  // Huỷ rồi mới đặt (DEC-TBD-mm-requote-limit): huỷ và đặt cùng lúc thì lệnh cũ có thể khớp trong lúc lệnh huỷ đang đi,
+  // Huỷ rồi mới đặt (DEC-257): huỷ và đặt cùng lúc thì lệnh cũ có thể khớp trong lúc lệnh huỷ đang đi,
   // lệnh mới cũng khớp (harness tranh chấp: tới 2× "Holds up to"). Lệnh đóng không bị ảnh hưởng.
   for (const [id, o] of Object.entries(s.orders))
     if (o.status === "live" && o.role === "open" && !kept.has(id)) unsure[o.side] = true;
@@ -1192,7 +1192,7 @@ function stepCore(
         orders: { ...s.orders, [e.clOrdID]: { ...o, status: "done", since: e.at } },
         ...(reclose ? { requoteDue: true } : {}),
       };
-      // Huỷ rồi mới đặt (DEC-TBD-mm-requote-limit): SoDEX xác nhận lệnh mở bot đã xin huỷ, phía đó không còn lệnh mở
+      // Huỷ rồi mới đặt (DEC-257): SoDEX xác nhận lệnh mở bot đã xin huỷ, phía đó không còn lệnh mở
       // nào khác: đặt lại ngay đúng phía đó, nên phía đó chỉ trống một vòng SoDEX. Mỗi phía tối đa một lần mỗi
       // VM_MIN_REQUOTE_MS (giá Binance chạy liên tục thì rút → xác nhận → đặt → rút… không thành vòng request); chưa tới
       // hạn thì để `requoteDue` cho nhịp đồng hồ như trước.

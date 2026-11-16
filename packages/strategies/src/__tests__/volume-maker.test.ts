@@ -40,7 +40,7 @@ const id = (tag: string) => clOrdId(ctx.botId, ctx.version, tag);
 
 /**
  * Chạy chuỗi sự kiện. Mặc định SoDEX xác nhận ngay mọi lệnh huỷ (engine gửi `orderDone` liền sau), như thường thấy;
- * từ DEC-TBD-mm-requote-limit lệnh mở mới của một phía chỉ được đặt sau xác nhận đó. `confirm: false` để giữ lệnh huỷ
+ * từ DEC-257 lệnh mở mới của một phía chỉ được đặt sau xác nhận đó. `confirm: false` để giữ lệnh huỷ
  * chưa xác nhận (test DEC-253).
  */
 function run(c: VolumeMakerConfig, events: StrategyEvent[], opts: { confirm?: boolean } = {}) {
@@ -69,7 +69,7 @@ function confirmed(c: VolumeMakerConfig, s: VolumeMakerState, at: number): Volum
 }
 /**
  * Một bước rồi SoDEX xác nhận ngay các lệnh huỷ của bước đó (engine gửi `orderDone`): lệnh mở mới của phía bị huỷ chỉ
- * được đặt sau xác nhận (DEC-TBD-mm-requote-limit). Trả mọi hành động của bước và các lần xác nhận.
+ * được đặt sau xác nhận (DEC-257). Trả mọi hành động của bước và các lần xác nhận.
  */
 function stepConfirmed(c: VolumeMakerConfig, s: VolumeMakerState, e: StrategyEvent) {
   const r = volumeMaker.step(c, s, e, ctx);
@@ -415,7 +415,7 @@ describe("volume maker inventory-aware quoting (DEC-100)", () => {
     expect(s.ledger.position).toBe("0");
     s = confirmed(c, s, 3000);
     // Cycle sau: flat → two-sided symmetric quoting (no reduce-only). Mỗi phía đặt lại sau khi SoDEX xác nhận huỷ lệnh
-    // cũ (DEC-TBD-mm-requote-limit). Lần đặt lại phía bán lúc 3 s không làm lùi lần báo giá đầy đủ: 4.5 s vẫn huỷ cả hai.
+    // cũ (DEC-257). Lần đặt lại phía bán lúc 3 s không làm lùi lần báo giá đầy đủ: 4.5 s vẫn huỷ cả hai.
     const t = volumeMaker.step(c, s, { type: "timer", at: 4500 }, ctx);
     expect(t.actions.filter((a) => a.type === "cancel")).toHaveLength(2);
     // SoDEX xác nhận sau một vòng (0.5 s): mỗi phía đặt lại một lần.
@@ -579,7 +579,7 @@ describe("volume maker — quotes by order book level (DEC-135)", () => {
     }) as const;
   const quoted = (c: VolumeMakerConfig, bid: string, ask: string) => {
     const r = run(c, [...firstQuote(), book(bid, ask)]);
-    // Lần báo giá thứ hai: mỗi phía đặt lại sau khi SoDEX xác nhận huỷ lệnh cũ (DEC-TBD-mm-requote-limit).
+    // Lần báo giá thứ hai: mỗi phía đặt lại sau khi SoDEX xác nhận huỷ lệnh cũ (DEC-257).
     const p = places(r.all).slice(2);
     return {
       bid: p.findLast((o) => o.side === "buy")?.price,
@@ -657,7 +657,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
   const logsOf = (a: StrategyAction[]) => a.flatMap((x) => (x.type === "log" ? [x] : []));
   const on = cfg({ quoteLevel: 0, smartQuoting: true });
   /** Chạy tiếp từ state `s`, trả về action của riêng đợt này. */
-  /** Như `run`: mặc định SoDEX xác nhận ngay mọi lệnh huỷ (DEC-TBD-mm-requote-limit); `confirm: false` để giữ lại. */
+  /** Như `run`: mặc định SoDEX xác nhận ngay mọi lệnh huỷ (DEC-257); `confirm: false` để giữ lại. */
   const more = (s: VolumeMakerState, events: StrategyEvent[], opts: { confirm?: boolean } = {}) => {
     let st = s;
     const out: StrategyAction[] = [];
@@ -800,7 +800,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(places(r.all)).toHaveLength(0);
   });
 
-  it("places no opening quote when SoDEX confirms the cancels of a cut right away (DEC-TBD-mm-requote-limit)", () => {
+  it("places no opening quote when SoDEX confirms the cancels of a cut right away (DEC-257)", () => {
     const r = more(longAt(), [fairAt(8100, "99839.9")]);
     expect(places(r.all)).toEqual([
       expect.objectContaining({ type: "market", reduceOnly: true, quantity: "0.005" }),
@@ -867,7 +867,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     const pulledId = pulled?.type === "cancel" ? pulled.clOrdID : "";
     expect(r.s.orders[pulledId]?.side).toBe("buy");
     // Sổ lệnh đổi để cả hai phía cần đặt lại: phía mua không đặt (bid cũ có thể vẫn khớp); phía bán cũng chờ, vì ask đang
-    // nằm bị huỷ ngay trong lần này (DEC-TBD-mm-requote-limit).
+    // nằm bị huỷ ngay trong lần này (DEC-257).
     r = more(r.s, [snap2(10_600, "100000.9", "100001")], keep);
     expect(opens(r.all, "buy")).toHaveLength(0);
     expect(opens(r.all, "sell")).toHaveLength(0);
@@ -913,7 +913,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(opens(r.all, "sell")).toHaveLength(0);
   });
 
-  it("cancels first and quotes the side again only once SoDEX confirms the old order is gone (DEC-TBD-mm-requote-limit)", () => {
+  it("cancels first and quotes the side again only once SoDEX confirms the old order is gone (DEC-257)", () => {
     // Chu kỳ thường: huỷ bid cũ, chưa đặt bid mới (bid cũ có thể khớp trong lúc lệnh huỷ đang đi).
     const r1 = more(clean(), [snap2(10_100, "99999.8", "100000")], { confirm: false });
     const cancelled = r1.all.find(
@@ -937,7 +937,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     return x?.type === "cancel" ? x.clOrdID : "";
   };
 
-  it("quotes a side again on confirmation at most once every 2 s, leaving the rest to the timer (DEC-TBD-mm-requote-limit)", () => {
+  it("quotes a side again on confirmation at most once every 2 s, leaving the rest to the timer (DEC-257)", () => {
     // Binance chạy liên tục: rút → xác nhận → đặt → rút → xác nhận. Lần đặt lại thứ hai trong 2 s chờ nhịp đồng hồ.
     const keep = { confirm: false };
     let n = 0;
@@ -958,7 +958,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(n).toBe(3);
   });
 
-  it("keeps a full requote that was already due when it quotes one side again (DEC-TBD-mm-requote-limit)", () => {
+  it("keeps a full requote that was already due when it quotes one side again (DEC-257)", () => {
     const keep = { confirm: false };
     let r = more({ ...clean(), requoteDue: true }, [fairAt(7500, "99999")], keep);
     r = more(r.s, [{ type: "orderDone", at: 7600, clOrdID: pulledBid(r) }], keep);
@@ -966,7 +966,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(r.s.requoteDue).toBe(true);
   });
 
-  it("does not quote again when SoDEX reports a live order gone that the bot never cancelled (DEC-TBD-mm-requote-limit)", () => {
+  it("does not quote again when SoDEX reports a live order gone that the bot never cancelled (DEC-257)", () => {
     const s0 = clean();
     const liveAsk = Object.entries(s0.orders).find(
       ([, o]) => o.status === "live" && o.side === "sell" && o.role === "open",
@@ -980,7 +980,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(r.s.requoteDue).toBe(true);
   });
 
-  it("does not quote again for a cancelled order that filled before the cancel landed (DEC-TBD-mm-requote-limit)", () => {
+  it("does not quote again for a cancelled order that filled before the cancel landed (DEC-257)", () => {
     const keep = { confirm: false };
     let r = more(clean(), [fairAt(7500, "99999")], keep);
     const id = pulledBid(r);
@@ -1055,7 +1055,7 @@ describe("volume maker — any SoDEX perp (DEC-157)", () => {
       const r = volumeMaker.step(c, s, e, alt);
       s = r.state;
       all.push(...r.actions);
-      // SoDEX xác nhận ngay lệnh huỷ: phía đó mới đặt lại (DEC-TBD-mm-requote-limit).
+      // SoDEX xác nhận ngay lệnh huỷ: phía đó mới đặt lại (DEC-257).
       for (const a of r.actions)
         if (a.type === "cancel" && s.orders[a.clOrdID]?.status === "cancelling") {
           const x = volumeMaker.step(
@@ -1405,7 +1405,7 @@ describe("volume maker — Binance pricing and resting quotes in Smart quoting",
     const b = runFrom(on, run(on, [...firstQuote()]).s);
     // Binance quy đổi 100010: ask không thấp hơn 100010 × 1.00005 = 100015.0005 → 100015.1 (làm tròn lên tick 0.1).
     b.step(fair(6500, "100010"));
-    // SoDEX xác nhận các lệnh vừa rút: phía đó đặt lại ngay lúc xác nhận (DEC-253, DEC-TBD-mm-requote-limit).
+    // SoDEX xác nhận các lệnh vừa rút: phía đó đặt lại ngay lúc xác nhận (DEC-253, DEC-257).
     const out: StrategyAction[] = [];
     for (const [id, o] of Object.entries(b.s.orders))
       if (o.status === "cancelling")

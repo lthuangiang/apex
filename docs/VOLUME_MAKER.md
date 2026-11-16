@@ -94,7 +94,7 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   đặt lệnh mở mới (lệnh mở đang nằm vẫn bị huỷ như thường), tới khi có `orderDone` hoặc hết 60 s; lệnh đóng và phía kia
   không bị ảnh hưởng.
   Đặt lại theo sổ lệnh không bao giờ huỷ lệnh đóng.
-- **Huỷ rồi mới đặt** (DEC-TBD-mm-requote-limit): mỗi lần báo giá lại, phía nào có lệnh mở đang nằm bị huỷ thì chờ SoDEX
+- **Huỷ rồi mới đặt** (DEC-257): mỗi lần báo giá lại, phía nào có lệnh mở đang nằm bị huỷ thì chờ SoDEX
   xác nhận huỷ (`orderDone`) rồi mới đặt lệnh mở mới cho phía đó; xác nhận tới là đặt ngay (chỉ phía đó, không chờ nhịp
   đồng hồ). Huỷ và đặt cùng lúc thì lệnh cũ có thể khớp khi lệnh huỷ đang đi và lệnh mới cũng khớp: vị thế vượt "Holds up
   to". Đặt lại ngay khi xác nhận tối đa một lần mỗi 2 s cho mỗi phía (`VM_MIN_REQUOTE_MS`); sớm hơn thì để nhịp đồng hồ.
