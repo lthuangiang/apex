@@ -511,6 +511,26 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("logs a Stopped event saying who stopped the bot (BD-06)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w-stopped");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    for (let i = 0; i < 3 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    const stopped = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.type === "state" && x.decision === "Stopped",
+    );
+    expect(stopped.map((x) => x.why)).toEqual(["STOPPED_BY_USER"]);
+    await e.stop();
+  });
+
   it("marks a timed-out order unknown, never resends it, and reconciles it", async () => {
     const gw = new FakeGateway();
     gw.timeoutNext = "applied";

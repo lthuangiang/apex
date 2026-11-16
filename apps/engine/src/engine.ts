@@ -164,6 +164,9 @@ export interface EngineDeps {
   paper?: PaperGateway;
 }
 
+/** Lý do của sự kiện "Stopped" khi người dùng tự bấm Stop (không có reason code, BD-06). */
+export const STOPPED_BY_USER = "STOPPED_BY_USER";
+
 /** Engine (Spot / Perps) mà bot giao dịch, theo chiến lược và cấu hình. */
 function engineOfBot(strategy: string, config: unknown): "spot" | "perps" {
   if (
@@ -2088,18 +2091,18 @@ export class Engine {
         this.#d.now(),
       );
     }
-    await this.#fenced(r, async (tx) => {
+    const next = await this.#fenced(r, async (tx) => {
       const [b] = await tx
         .select({ state: bots.state })
         .from(bots)
         .where(eq(bots.id, r.botId))
         .for("update");
-      if (b === undefined) return;
+      if (b === undefined) return null;
       const next =
         reason === null
           ? applyEngineEvent(b.state, EngineEvent.confirmedStopped)
           : applyReason(b.state, reason);
-      if (next === null) return;
+      if (next === null) return null;
       await tx
         .update(bots)
         .set({ state: next, ...(reason === null ? {} : { reasonCode: reason }) })
@@ -2132,7 +2135,12 @@ export class Engine {
             data: { botId: r.botId, reasonCode: reason, ...(r.paper ? { paper: true } : {}) },
           },
         });
+      return next;
     });
+    // Sự kiện "Stopped" (BD-06): lúc dừng và ai / vì sao (reason code, hoặc STOPPED_BY_USER khi người dùng bấm Stop),
+    // để trang bot hiện lý do dừng và tính Runtime của lần chạy vừa xong.
+    if (next === BotState.stopped)
+      await this.#event(r, "state", "Stopped", reason ?? STOPPED_BY_USER, this.#d.now());
     this.#runners.delete(r.botId);
   }
 
