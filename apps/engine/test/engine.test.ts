@@ -3193,6 +3193,13 @@ describe("engine race harness (DEC-TBD-race-harness)", () => {
     // Bất biến 3 theo thời gian: lệnh nằm trên SoDEX mà bot không theo dõi là "live" quá UNTRACKED_MS (đồng hồ giả). Dưới
     // mức quét lệnh mồ côi của engine (MAKER_ORPHAN_MS 15 s) để lưới an toàn đó không che lỗi.
     const UNTRACKED_MS = 12_000;
+    /** Chẩn đoán: trạng thái dòng lệnh của engine (status, đã ack chưa, đã báo orderDone chưa). */
+    const rowOf = async (id: string) => {
+      const [o] = await db.select().from(orders).where(eq(orders.clOrdId, id));
+      return o === undefined
+        ? "no order row"
+        : `row ${o.status}${o.ackedAt === null ? " unacked" : ""}${o.doneFedAt === null ? "" : " done fed"}`;
+    };
     const untrackedSince = new Map<string, number>();
     const flagged = new Set<string>();
     const checkUntracked = async () => {
@@ -3213,7 +3220,7 @@ describe("engine race harness (DEC-TBD-race-harness)", () => {
         if (clock - since > UNTRACKED_MS && !flagged.has(id)) {
           flagged.add(id);
           violations.push(
-            `invariant 3: ${o.tag} open on SoDEX for ${String(clock - since)} ms while the bot does not track it as live (${cur.orders?.[id]?.status ?? "unknown"})`,
+            `invariant 3: ${o.tag} open on SoDEX for ${String(clock - since)} ms while the bot does not track it as live (strategy ${cur.orders?.[id]?.status ?? "none"}, ${await rowOf(id)})`,
           );
         }
       }
@@ -3272,7 +3279,7 @@ describe("engine race harness (DEC-TBD-race-harness)", () => {
         kind === "grid" ? st.open?.[id] !== undefined : st.orders?.[id]?.status === "live";
       if (stopped ? !o.reduceOnly : !tracked)
         violations.push(
-          `invariant 3: ${o.tag} still open on SoDEX but not tracked as live (${stopped ? "bot stopped" : (st.orders?.[id]?.status ?? "unknown")})`,
+          `invariant 3: ${o.tag} still open on SoDEX but not tracked as live (${stopped ? "bot stopped" : `strategy ${st.orders?.[id]?.status ?? "none"}`}, ${await rowOf(id)})`,
         );
     }
     // Bất biến 4: mỗi fill vào sổ cái đúng một lần.
@@ -3318,6 +3325,8 @@ describe("engine race harness (DEC-TBD-race-harness)", () => {
     for (let i = 0; i < 20 && !(await e.activeAccounts()).some((a) => a.id === accountId); i += 1)
       await e.tick();
     gw.leverageOutcome = { outcome: "ok" };
+    // "not_sent" lúc kích hoạt đặt bot vào backoff: chờ qua backoff để sự kiện giá kế tiếp đọc lại đòn bẩy.
+    clock += 10 * 60_000;
     gw.beforeReadLeverage = async () => {
       await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
     };
