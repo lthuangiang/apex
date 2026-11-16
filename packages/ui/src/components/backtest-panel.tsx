@@ -13,6 +13,10 @@ export interface BacktestMetric {
   label: string;
   /** Giá trị đã format; `null` thì hiện `missingLabel`, không hiện 0. */
   value: string | null;
+  /** `neg`: kết quả xấu (lỗ, sụt giảm lớn, dừng vì max loss) tô màu cảnh báo (BT-01). */
+  tone?: "neg";
+  /** Ô rộng hai cột (giá trị là câu dài, ví dụ lý do dừng). */
+  wide?: boolean;
 }
 
 export interface BacktestPanelProps {
@@ -142,13 +146,21 @@ export function BacktestPanel({
           {metrics.map((metric) => (
             <div
               key={metric.label}
-              className="flex min-w-0 flex-col gap-1 rounded-tile bg-surface-2 p-3"
+              className={cx(
+                "flex min-w-0 flex-col gap-1 rounded-tile p-3",
+                metric.tone === "neg" ? "bg-neg-soft" : "bg-surface-2",
+                metric.wide === true && "col-span-2",
+              )}
             >
               <dt className="text-xs font-semibold text-muted">{metric.label}</dt>
               <dd
                 className={cx(
                   "break-words text-base font-bold tabular-nums",
-                  metric.value === null ? "text-muted" : "text-ink",
+                  metric.value === null
+                    ? "text-muted"
+                    : metric.tone === "neg"
+                      ? "text-neg-text"
+                      : "text-ink",
                 )}
               >
                 {metric.value ?? missingLabel}
