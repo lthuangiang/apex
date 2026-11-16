@@ -432,7 +432,14 @@ function exitReason(
   )
     return { why: `Stop loss ${stopLabel(c)} at ${m}`, stop: true };
   const pnl = pos.mul(dec(m).sub(avg));
-  const feeRt = pos.abs().mul(avg).mul(ctx.feeRate).mul(2);
+  // Phí khứ hồi theo loại lệnh thật (DEC-TBD-vf-taker-only): chiều vào theo lệnh đã khớp, chiều ra là taker khi bot chạy
+  // toàn taker (`takerAfter` 0); không thì maker như trước. Tính theo maker cả hai chiều thì TP / early profit ở chế
+  // độ taker chốt "lãi" mà vẫn lỗ sau phí.
+  const maker = dec(ctx.feeRate);
+  const takerRate = dec(ctx.takerFeeRate ?? ctx.feeRate);
+  const entryFee = s.entryTaker === true ? takerRate : maker;
+  const exitFee = c.allowTaker && c.takerAfter === 0 ? takerRate : maker;
+  const feeRt = pos.abs().mul(avg).mul(entryFee.add(exitFee));
   const tp = Decimal.max(dec(c.tpUsd), feeRt.mul("1.5"));
   const held = Math.floor((at - s.openedAt) / 1000);
   const p = pnl.toDecimalPlaces(2).toString();
