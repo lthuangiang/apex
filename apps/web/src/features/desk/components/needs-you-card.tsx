@@ -194,6 +194,43 @@ function WhatIfRows({
   );
 }
 
+/**
+ * Việc cấp account (RS-01, DEC-272): lỗ đã vượt giới hạn của mục tiêu. Không có bot nên không có
+ * so sánh what-if và không hoãn được; tự hết khi lỗ về dưới giới hạn hoặc người dùng đổi mục tiêu.
+ */
+export function GoalLossCard({ item }: { item: Item }) {
+  const t = useTranslations("desk.rules.goal_loss_over");
+  const [used, limit] = [factOf(item, "goal_used"), factOf(item, "goal_limit")];
+  if (used === null || limit === null) return null;
+  return (
+    <article
+      aria-label={t("tag")}
+      className="flex flex-col gap-3.5 rounded-card border-[1.5px] border-neg-border bg-surface px-[22px] py-5"
+    >
+      <div className="flex flex-col gap-1">
+        <span className="text-xs font-extrabold text-neg-ink">{t("tag")}</span>
+        <h3 className="m-0 text-[17px] font-extrabold">
+          {t("title", { used: plainUsd(used), limit: plainUsd(limit) })}
+        </h3>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href="/bots"
+          className="inline-flex min-h-tap items-center rounded-[12px] bg-accent px-4 text-sm font-bold text-white hover:bg-accent-ink"
+        >
+          {t("review")}
+        </Link>
+        <Link
+          href="/onboarding/goals?from=desk"
+          className="inline-flex min-h-tap items-center rounded-[12px] border border-border-input px-4 text-sm font-bold text-ink no-underline"
+        >
+          {t("change")}
+        </Link>
+      </div>
+    </article>
+  );
+}
+
 export function NeedsYouCard({ item, checkedAt }: { item: Item; checkedAt: string }) {
   const t = useTranslations("desk.whatif");
   const qc = useQueryClient();
@@ -225,7 +262,7 @@ export function NeedsYouCard({ item, checkedAt }: { item: Item; checkedAt: strin
           >
             {t("compare", { count: w.options.length })}
           </Link>
-        ) : w?.status === "unavailable" ? (
+        ) : w?.status === "unavailable" && item.botId !== null ? (
           <Link
             href={`/bots/${item.botId}/edit`}
             className="inline-flex min-h-tap items-center rounded-[12px] bg-accent px-4 text-sm font-bold text-white hover:bg-accent-ink"

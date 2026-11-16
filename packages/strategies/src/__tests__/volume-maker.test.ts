@@ -828,7 +828,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(places(r.all)).toHaveLength(0);
   });
 
-  it("places no opening quote when SoDEX confirms the cancels of a cut right away (DEC-257)", () => {
+  it("keeps only the market close when SoDEX confirms the cut cancels of the closing side right away (DEC-257)", () => {
     const r = more(longAt(), [fairAt(8100, "99839.9")]);
     expect(places(r.all)).toEqual([
       expect.objectContaining({ type: "market", reduceOnly: true, quantity: "0.005" }),
