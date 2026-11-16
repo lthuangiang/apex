@@ -4010,3 +4010,183 @@ describe("engine race harness (DEC-270)", () => {
       },
     );
 });
+
+// Sự cố 2026-11-15: bot Market Making bị SoDEX từ chối "insufficient margin" (code -1) 21 438 lần trong 15 giờ mà không
+// pause. Engine phải pause ORDER_REJECTED sau 3 lần liên tiếp hoặc 5 lần trong 60 s; post-only bị từ chối không tính.
+describe("insufficient margin rejects (margin guard)", () => {
+  const MARGIN = { code: "-1", message: "insufficient margin" };
+  const mm = {
+    strategy: "volume_maker",
+    market: "BTC-USD",
+    engine: "perps" as const,
+    config: {
+      market: "BTC-USD",
+      leverage: 20,
+      orderSize: "500",
+      distanceBp: "1",
+      maxOrders: 1,
+      refreshSeconds: 3,
+      runUntil: "target_or_budget",
+      costBudget: "4000",
+      onStop: "close_inventory",
+      smartQuoting: true,
+    },
+  };
+
+  /** Gateway theo kịch bản từng lệnh: hết kịch bản thì dùng `fallback` (null = SoDEX nhận lệnh). */
+  class ScriptGateway extends FakeGateway {
+    plan: ({ code: string; message: string | null } | null)[] = [];
+    fallback: { code: string; message: string | null } | null = null;
+    override async submit(
+      a: AccountRef,
+      list: readonly OrderIntent[],
+      fence: Fence,
+      rate?: number,
+    ): Promise<SubmitResult[]> {
+      const out: SubmitResult[] = [];
+      for (const o of list) {
+        const step = this.plan.length > 0 ? this.plan.shift() : this.fallback;
+        if (step !== null && step !== undefined) {
+          this.received.push(o);
+          out.push({ clOrdID: o.clOrdID, outcome: "rejected", ...step });
+        } else out.push(...(await super.submit(a, [o], fence, rate)));
+      }
+      return out;
+    }
+  }
+
+  const engineFor = (gw: Gateway, id: string) =>
+    new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: id,
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+    });
+
+  /** Một nhịp làm mới báo giá: đồng hồ +4 s (refresh 3 s), nhịp engine và một tin giá (giá đổi để báo giá lại). */
+  let px = 0;
+  async function step(e: Engine, n = 1) {
+    for (let i = 0; i < n; i += 1) {
+      clock += 4_000;
+      px += 1;
+      await e.tick();
+      await e.onPrice("BTC-USD", String(100_000 + (px % 2) * 50), clock);
+    }
+  }
+  const pausedNotices = async (botId: string) => {
+    const { sql } = await import("drizzle-orm");
+    return db
+      .select({ payload: outbox.payload })
+      .from(outbox)
+      .where(
+        sql`${outbox.topic} = 'jobs.notify' and ${outbox.payload}->>'type' = 'bot_paused' and ${outbox.payload}->'data'->>'botId' = ${botId}`,
+      );
+  };
+  const stopAll = async () => {
+    const { eq } = await import("drizzle-orm");
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.strategy, "volume_maker"));
+  };
+
+  it("pauses a Market Making bot after 3 margin rejects in a row, notifies once and sends nothing more", async () => {
+    const { eq } = await import("drizzle-orm");
+    await stopAll();
+    const gw = new FakeGateway();
+    gw.reject = MARGIN;
+    const { botId } = await seedBot("running", mm);
+    const e = engineFor(gw, "w-margin-1");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    await step(e, 5);
+    const b = await botState(botId);
+    expect(b?.state).toBe("paused");
+    expect(b?.reasonCode).toBe(ReasonCode.orderRejected);
+    // Pause ngay khi tới lần thứ 3 (một lô bid + ask = 2 lệnh, nên tối đa 4 lệnh rời DRIFT).
+    expect(gw.received.length).toBeGreaterThanOrEqual(3);
+    expect(gw.received.length).toBeLessThanOrEqual(4);
+    const sent = gw.received.length;
+    const notices = await pausedNotices(botId);
+    expect(notices).toHaveLength(1);
+    expect((notices[0]?.payload as { data: { reasonCode: string } }).data.reasonCode).toBe(
+      ReasonCode.orderRejected,
+    );
+    const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
+    expect(
+      events.filter(
+        (x) =>
+          x.decision ===
+          "Paused: not enough margin on SoDEX. Add funds or lower the order size or leverage, then resume.",
+      ),
+    ).toHaveLength(1);
+    // Đang pause: không gửi thêm lệnh nào dù giá và đồng hồ chạy.
+    await step(e, 10);
+    expect(gw.received).toHaveLength(sent);
+    expect(await pausedNotices(botId)).toHaveLength(1);
+
+    // Resume (người dùng đã nạp thêm tiền): báo giá lại.
+    gw.reject = null;
+    await db.update(bots).set({ state: "resuming", reasonCode: null }).where(eq(bots.id, botId));
+    await step(e, 2);
+    expect((await botState(botId))?.state).toBe("running");
+    expect(gw.received.length).toBeGreaterThan(sent);
+    await e.stop();
+    await stopAll();
+  });
+
+  it("resets the count when SoDEX accepts an order in between", async () => {
+    await stopAll();
+    const gw = new ScriptGateway();
+    // 2 bị từ chối, 1 được nhận, 2 bị từ chối: chưa lần nào đủ 3 liên tiếp, và chưa đủ 5 trong 60 s.
+    gw.plan = [MARGIN, MARGIN, null, MARGIN, MARGIN];
+    const { botId } = await seedBot("running", mm);
+    const e = engineFor(gw, "w-margin-2");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    for (let i = 0; i < 10 && gw.plan.length > 0; i += 1) await step(e);
+    expect(gw.plan).toHaveLength(0);
+    expect((await botState(botId))?.state).toBe("running");
+    expect(await pausedNotices(botId)).toHaveLength(0);
+    await e.stop();
+    await stopAll();
+  });
+
+  it("pauses on 5 margin rejects within 60 s even when other orders are accepted in between", async () => {
+    await stopAll();
+    const gw = new ScriptGateway();
+    gw.plan = [MARGIN, null, MARGIN, null, MARGIN, null, MARGIN, null, MARGIN];
+    gw.fallback = null;
+    const { botId } = await seedBot("running", mm);
+    const e = engineFor(gw, "w-margin-3");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    for (let i = 0; i < 12 && gw.plan.length > 0; i += 1) await step(e);
+    expect(gw.plan).toHaveLength(0);
+    const b = await botState(botId);
+    expect(b?.state).toBe("paused");
+    expect(b?.reasonCode).toBe(ReasonCode.orderRejected);
+    expect(await pausedNotices(botId)).toHaveLength(1);
+    await e.stop();
+    await stopAll();
+  });
+
+  it("does not count post-only rejects", async () => {
+    await stopAll();
+    const gw = new FakeGateway();
+    gw.reject = { code: "PostOnly", message: null };
+    const { botId } = await seedBot("running", mm);
+    const e = engineFor(gw, "w-margin-4");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    await step(e, 8);
+    expect(gw.received.length).toBeGreaterThanOrEqual(6);
+    expect((await botState(botId))?.state).toBe("running");
+    expect(await pausedNotices(botId)).toHaveLength(0);
+    await e.stop();
+    await stopAll();
+  });
+});
