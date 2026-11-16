@@ -5924,12 +5924,13 @@
     "how": {
       "title": "How to read this",
       "volTitle": "Market volatility",
-      "volBody": ": how much the price jumps around within a minute. Darker cells mean that hour moved more than usual for that day.",
+      "volBody": "How much the price jumps around within a minute. Darker cells mean that hour moved more than usual for that day.",
       "costTitle": "Cost to make markets",
-      "costBody": ": when someone’s resting order gets filled, how far the price moves against them in the next 30 seconds, and how wide the gap between the best buy and sell price was.",
+      "costBody": "When someone’s resting order gets filled, how far the price moves against them in the next 30 seconds, and how wide the gap between the best buy and sell price was.",
       "botsTitle": "DeskLabs bots",
-      "botsBody": ": what real-money bots paid for every $1M they traded in that hour. If only a few bots ran in an hour, its number is marked Thin sample and is less reliable.",
-      "note": "Hours are shown in your time zone. These are past numbers, not a forecast."
+      "botsBody": "What real-money bots paid for every $1M they traded in that hour. If only a few bots ran in an hour, its number is marked Thin sample and is less reliable.",
+      "note": "Hours are shown in your time zone. These are past numbers, not a forecast.",
+      "cpm": "CPM = cost per $1M of volume (fees plus price loss)."
     },
     "calc": {
       "title": "How these numbers are calculated",
@@ -5941,7 +5942,8 @@
       "botsBody": "Data: the real fills of live Market Making and Volume Builder bots; practice bots are left out. Cost per $1M = fees paid minus the price move on each fill one minute later, per $1M of volume, counting only fills that have a price one minute later. It is a markout estimate, not realised profit or loss. A bot-hour is one bot running for one hour, so 3 bots running for an hour is 3 bot-hours. An hour counts for a bot when it placed at least one order in that hour. Fewer than 3 bot-hours is a Thin sample.",
       "estBody": "Estimated cost per $1M uses the same model as the Market Making cost card: fees plus the price loss the model expects from that hour's 1-minute swings, per $1M of volume. It leaves out position cuts and taker fills, so it is a floor: real bots usually cost more. It is an estimate from market data, not a forecast.",
       "since": "Available since {date}.",
-      "kept": "Kept for 90 days."
+      "kept": "Kept for 90 days.",
+      "cpm": "CPM = cost per $1M of volume (fees plus price loss)."
     },
     "help": {
       "about": "About {label}",
@@ -5951,10 +5953,10 @@
       "hotDays": "Share of days in the period where this hour's typical swing was more than 2× that day's normal.",
       "maxRange": "The single wildest minute in this hour during the period: biggest (high − low) of a 1-minute candle, as a share of price.",
       "maxMove15": "The furthest the price ran within any 15 minutes starting in this hour during the period. Shocks like this cause most position cuts.",
-      "est": "A floor estimate from market data: SoDEX maker fee plus the default Market Making builder fee, plus the price loss the model expects from this hour's 1-minute moves, per $1M of volume. It leaves out position cuts and taker fills, so real bots usually cost more.",
+      "est": "CPM (cost per $1M of volume): a floor estimate from market data. SoDEX maker fee plus the default Market Making builder fee, plus the price loss the model expects from this hour's 1-minute moves, per $1M of volume. It leaves out position cuts and taker fills, so real bots usually cost more.",
       "markout": "How far the price moved against the resting (maker) side 30 seconds after public trades on SoDEX. Higher means makers got picked off more.",
       "spread": "Typical gap between the best bid and best ask, in price steps.",
-      "cost": "What DeskLabs bots really paid per $1M traded in this hour: fees plus the price move one minute after each fill. Counts only fills with a price one minute later.",
+      "cost": "CPM (cost per $1M of volume): what DeskLabs bots really paid per $1M traded in this hour, fees plus the price move one minute after each fill. Counts only fills with a price one minute later.",
       "volume": "Value of all fills by DeskLabs bots in this hour, both buy and sell.",
       "fees": "SoDEX trading fees plus builder fees paid on those fills.",
       "botHours": "One bot active for one hour. An hour counts for a bot when it placed at least one order in it. Fewer than 3 is a thin sample."
@@ -5972,6 +5974,7 @@
     "vol": {
       "title": "1 · Market volatility on SoDEX",
       "sub": "1-minute candles · each cell = that hour on that day, compared with the day’s median",
+      "dataSince": "Data since {date}",
       "medianBp": "Median 1-min range (bp)",
       "p90Bp": "p90 1-min range (bp)",
       "ratio": "× day median",
@@ -5994,8 +5997,8 @@
       "s1": "25–50",
       "s2": "50–100",
       "s3": "100 or more ▲",
-      "est": "Estimated cost per $1M (model, floor)",
-      "estLegend": "Estimated cost per $1M (model, floor)",
+      "est": "Est. CPM (model, floor)",
+      "estLegend": "CPM",
       "estTip": "{hour}:00 · est. {cost} per $1M · median 1-min swing {swing} bp · fees {fees} bp",
       "estNa": "{hour}:00 · Not available · {reason}",
       "estReason": {
@@ -6024,11 +6027,11 @@
       "title": "3 · DeskLabs bots (real money), all users",
       "sub": "{strategies} · live bots only, practice bots left out",
       "both": "Market Making + Volume Builder",
-      "cost": "Cost per $1M",
+      "cost": "CPM",
       "volume": "Volume",
       "fees": "Fees",
       "botHours": "Bot-hours (bots × hours)",
-      "legend": "Cost per $1M",
+      "legend": "CPM",
       "c0": "under $120",
       "c1": "$120–170",
       "c2": "$170–230",
@@ -6045,10 +6048,10 @@
       "ratio": "× day median",
       "hot": "Hot days",
       "markout": "Move vs makers 30 s",
-      "cost": "Cost / $1M",
+      "cost": "CPM",
       "detail": "{from}–{to} · median 1-min range, 5-minute steps",
       "line": "Median {med} bp · p90 {p90} bp · spread {spread} ticks · volume {volume} · {botHours} bot-hours",
-      "est": "Est. / $1M",
+      "est": "Est. CPM",
       "maxRange": "Largest 1-min range",
       "maxMove15": "Largest 15-min move",
       "estLine": "{cost} (model) · median 1-min swing {swing} bp · fees {fees} bp",
