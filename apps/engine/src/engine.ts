@@ -1590,15 +1590,7 @@ export class Engine {
             });
             await this.#ack(r, at);
             await this.#feed(r, { type: "orderAck", at, clOrdID: res.clOrdID });
-            // Chiến lược đã rút lệnh này lúc nó còn đang gửi (DEC-254): huỷ ngay khi SoDEX nhận.
-            if (this.#pendingCancels.get(r.botId)?.has(res.clOrdID) === true)
-              try {
-                await this.#cancel(r, [res.clOrdID]);
-              } catch (error) {
-                // Lệnh vẫn trong danh sách chờ huỷ, vòng sau thử lại; các kết quả còn lại của lô vẫn phải được ghi.
-                if (error instanceof FencedError) throw error;
-                this.#d.log.warn({ err: error, botId: r.botId }, "cancel after ack failed");
-              }
+            // CI-only revert of DEC-254: no cancel right after the ack.
           } else if (res.outcome === "not_sent") {
             // Chưa rời DRIFT: không phải `unknown`, không cần đối soát. Ghi not_placed để sổ lệnh đúng.
             await this.#fenced(r, (tx) =>
@@ -1839,20 +1831,8 @@ export class Engine {
     }
     // Lệnh đặt còn đang gửi (chưa có dòng, hoặc `unknown` chưa được nhận): giữ chờ huỷ, huỷ khi lệnh được nhận (DEC-254).
     const startedAt = this.#d.now();
-    const inflight = clOrdIDs.filter((id) => {
-      const row = rows.find((o) => o.clOrdId === id);
-      if (row !== undefined && !(row.status === "unknown" && row.ackedAt === null)) {
-        this.#inflightCancels.delete(id);
-        return false;
-      }
-      const since = this.#inflightCancels.get(id) ?? startedAt;
-      if (startedAt - since >= CANCEL_INFLIGHT.maxMs) {
-        this.#inflightCancels.delete(id);
-        return false;
-      }
-      this.#inflightCancels.set(id, since);
-      return true;
-    });
+    // CI-only revert of DEC-254: cancels for orders still being sent are dropped, not kept for the ack.
+    const inflight: string[] = [];
     // Không còn gì mở: bỏ khỏi danh sách chờ huỷ lại.
     for (const id of clOrdIDs)
       if (!open.some((o) => o.clOrdId === id) && !inflight.includes(id)) pending.delete(id);
