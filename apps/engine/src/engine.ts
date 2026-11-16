@@ -523,14 +523,12 @@ export class Engine {
     const paper = this.#d.paper;
     if (paper !== undefined) {
       paper.setPrice(market, price);
-      if (
-        [...this.#runners.values()].some(
-          (x) => x.paper && (x.market === market || this.#watches(x, market)),
-        )
-      ) {
-        for (const f of await paper.onPrice(market, price, at))
+      const ids = [...this.#runners.values()]
+        .filter((x) => x.paper && (x.market === market || this.#watches(x, market)))
+        .map((x) => x.botId);
+      if (ids.length > 0)
+        for (const f of await paper.onPrice(market, price, at, ids))
           await this.onFill(f.accountId, f.clOrdID, f.totalFilled, f.avgPrice, f.fee, at);
-      }
     }
     for (const r of [...this.#runners.values()].filter(
       (x) => x.market === market || this.#watches(x, market),
@@ -1658,7 +1656,7 @@ export class Engine {
             const sent = toSend.find((o) => o.clOrdID === res.clOrdID);
             this.#d.log.warn(
               { botId: r.botId, clOrdID: res.clOrdID, code: res.code, message: res.message },
-              "order rejected by SoDEX",
+              r.paper ? "paper order rejected (simulated)" : "order rejected by SoDEX",
             );
             await this.#feed(r, { type: "orderReject", at, clOrdID: res.clOrdID, code: res.code });
             // Stop loss gốc bị từ chối (DEC-118) không phải lệnh đóng thật: chiến lược tự giữ SL, không pause.
@@ -2078,6 +2076,13 @@ export class Engine {
       );
       if (reason === null) return;
     }
+    // Bot paper (PB-01): lệnh đóng market cần giá để mô phỏng; chưa có giá thì PaperGateway từ chối (NO_PRICE), lệnh
+    // đóng thành `rejected` và bot dừng với vị thế giả còn mở. Kiểm tra giá TRƯỚC khi đặt lệnh đóng: chưa có thì Stop
+    // của người dùng giữ `stopping` (nhịp sau thử lại, chưa gửi gì); dừng do chiến lược thì ghi warn.
+    if (r.paper && close && !this.#paperPriced(r)) {
+      this.#d.log.warn({ botId: r.botId }, "paper close waits: no price for its market yet");
+      if (reason === null) return;
+    }
     if (r.strategy === Strategy.copyTrade) {
       // Copy Trade nhiều market (DEC-163): đóng từng market bằng market reduce-only; clOrdID tất định theo thứ tự
       // market trong config, băm từ botId đầy đủ.
@@ -2139,6 +2144,14 @@ export class Engine {
         this.#d.now(),
       );
     }
+    // Bot paper (PB-01): lệnh đóng market chỉ khớp ở lần giá kế tiếp khi bot còn runner; bot sắp bị bỏ khỏi runner nên
+    // khớp ngay ở giá hiện tại, không để lệnh đóng nằm "open" mãi và vị thế giả không bao giờ được đóng.
+    if (r.paper && !(await this.#fillPaperNow(r))) {
+      // Chưa có giá cho market của lệnh đóng (vừa khởi động / đổi shard): Stop của người dùng giữ bot ở `stopping`,
+      // nhịp sau thử lại (lệnh đóng không gửi lại vì trùng clOrdID). Dừng do chiến lược thì không có lần thử lại: ghi warn.
+      this.#d.log.warn({ botId: r.botId }, "paper close not filled: no price for its market yet");
+      if (reason === null) return;
+    }
     await this.#fenced(r, async (tx) => {
       const [b] = await tx
         .select({ state: bots.state })
@@ -2185,6 +2198,42 @@ export class Engine {
         });
     });
     this.#runners.delete(r.botId);
+  }
+
+  /** Market của bot paper đã có giá mô phỏng (cùng nguồn `PaperGateway.priceOf` mà lệnh paper dùng). */
+  #paperPriced(r: Runner): boolean {
+    const paper = this.#d.paper;
+    if (paper === undefined) return true;
+    return paper.priceOf(r.market) !== null;
+  }
+
+  /**
+   * Khớp ngay các lệnh paper đang mở của bot ở giá gần nhất của từng market (lệnh limit chỉ khớp khi giá đã qua).
+   * Trả false khi còn lệnh market (lệnh đóng) đang mở vì market của nó chưa có giá.
+   */
+  async #fillPaperNow(r: Runner): Promise<boolean> {
+    const paper = this.#d.paper;
+    if (paper === undefined) return true;
+    const at = this.#d.now();
+    const priced = new Set<string>();
+    for (const market of new Set([r.market, ...Object.keys(r.ctx.rules)])) {
+      const price = this.#lastPrice.get(market) ?? paper.priceOf(market);
+      if (price === null) continue;
+      priced.add(market);
+      for (const f of await paper.onPrice(market, price, at, [r.botId]))
+        await this.onFill(f.accountId, f.clOrdID, f.totalFilled, f.avgPrice, f.fee, at);
+    }
+    const waiting = await this.#d.db
+      .select({ market: orders.market })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          eq(orders.type, "market"),
+          inArray(orders.status, ["open", "partially_filled"]),
+        ),
+      );
+    return waiting.every((o) => priced.has(o.market));
   }
 
   /** Engine của lệnh đóng khi Stop: Futures Grid / DCA, Volume Maker / Farm và TWAP chạy Perps đều là Perps. */
