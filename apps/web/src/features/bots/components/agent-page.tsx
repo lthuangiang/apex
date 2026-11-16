@@ -383,8 +383,8 @@ export function AgentPage({ botId }: { botId?: string }) {
     <WorkspaceShell current="agent" isTeam={me.data?.role === UserRole.team}>
       <div className="flex flex-col gap-5">
         <PageHead
-          // Bot paper: bỏ chip Mainnet ở hàng tiêu đề (PB-01, DEC-105).
-          paper={bot?.mode === "paper"}
+          // Bot paper: bỏ chip Mainnet ở hàng tiêu đề (PB-01, DEC-105); chưa biết chế độ (đang tải) thì cũng chưa hiện.
+          paper={bot?.mode === "paper" || (id !== undefined && bot === undefined)}
           title={t("title")}
           subtitle={t("subtitle")}
           back={{ href: "/", label: t("back") }}
