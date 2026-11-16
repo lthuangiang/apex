@@ -3010,11 +3010,21 @@ class RaceGateway extends FakeGateway {
   price = "0";
   /** Trạng thái bot trong DB lúc nhận lệnh (bất biến 2). */
   botState: () => Promise<string | undefined> = () => Promise.resolve(undefined);
+  /** Gọi khi engine đọc đòn bẩy (sau lần kiểm tra trạng thái đầu sự kiện, trước lần đọc lại của DEC-255). */
+  beforeReadLeverage: (() => Promise<void>) | null = null;
   constructor(
     private readonly rnd: () => number,
     private readonly maxDelayMs = 12,
+    /** Tỉ lệ lệnh limit vào sổ mà phản hồi submit là `unknown` (timeout): đường huỷ lệnh chưa được nhận của DEC-254. */
+    private readonly unknownProb = 0,
   ) {
     super();
+  }
+  override async readLeverage(a: AccountRef, market: string) {
+    const hook = this.beforeReadLeverage;
+    this.beforeReadLeverage = null;
+    if (hook !== null) await hook();
+    return super.readLeverage(a, market);
   }
   #wait() {
     return new Promise((r) => setTimeout(r, Math.floor(this.rnd() * this.maxDelayMs)));
@@ -3045,7 +3055,8 @@ class RaceGateway extends FakeGateway {
     const st = await this.botState();
     if (st === "stopping" || st === "stopped")
       for (const o of list)
-        if (!o.reduceOnly)
+        // Lệnh đóng engine dựng khi Stop (tag `close`; Spot không có reduce-only) luôn được đi (DEC-255).
+        if (!o.reduceOnly && o.tag !== "close")
           this.violations.push(
             `invariant 2: opening order ${o.tag} reached SoDEX while the bot was ${st}`,
           );
@@ -3069,6 +3080,10 @@ class RaceGateway extends FakeGateway {
         this.open.set(o.clOrdID, o);
         this.book.set(o.clOrdID, { status: "open", filledQty: "0", avgPrice: null, orderId: id });
         if (this.#crosses(o, this.price)) this.#fill(o, o.price ?? this.price);
+        if (this.rnd() < this.unknownProb) {
+          out.push({ clOrdID: o.clOrdID, outcome: "unknown" });
+          continue;
+        }
       }
       out.push({ clOrdID: o.clOrdID, outcome: "ok", orderId: id });
     }
@@ -3145,7 +3160,8 @@ describe("engine race harness (DEC-TBD-race-harness)", () => {
   ): Promise<string[]> {
     const { eq } = await import("drizzle-orm");
     const rnd = seededRandom(seed);
-    const gw = new RaceGateway(rnd);
+    // MM: 15% lệnh limit có phản hồi `unknown` (lệnh vẫn vào sổ), để có lệnh huỷ tới khi lệnh chưa được nhận (DEC-254).
+    const gw = new RaceGateway(rnd, 12, kind === "grid" ? 0 : 0.15);
     const spec = kind === "grid" ? grid : mm(kind === "mm-smart");
     const market = spec.market;
     const { botId, accountId } = await seedBot("running", spec);
@@ -3174,6 +3190,35 @@ describe("engine race harness (DEC-TBD-race-harness)", () => {
     // "Holds up to 1" × 500 USDC, cộng 5% cho giá chạy giữa hai lần khớp.
     const limit = kind === "grid" ? null : 500 * 1.05;
     const violations: string[] = [];
+    // Bất biến 3 theo thời gian: lệnh nằm trên SoDEX mà bot không theo dõi là "live" quá UNTRACKED_MS (đồng hồ giả). Dưới
+    // mức quét lệnh mồ côi của engine (MAKER_ORPHAN_MS 15 s) để lưới an toàn đó không che lỗi.
+    const UNTRACKED_MS = 12_000;
+    const untrackedSince = new Map<string, number>();
+    const flagged = new Set<string>();
+    const checkUntracked = async () => {
+      const [row] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      const cur = (row?.state ?? {}) as {
+        orders?: Record<string, { status: string }>;
+        open?: Record<string, unknown>;
+      };
+      for (const [id, o] of gw.open) {
+        const tracked =
+          kind === "grid" ? cur.open?.[id] !== undefined : cur.orders?.[id]?.status === "live";
+        if (tracked || o.reduceOnly || o.tag === "close") {
+          untrackedSince.delete(id);
+          continue;
+        }
+        const since = untrackedSince.get(id) ?? clock;
+        untrackedSince.set(id, since);
+        if (clock - since > UNTRACKED_MS && !flagged.has(id)) {
+          flagged.add(id);
+          violations.push(
+            `invariant 3: ${o.tag} open on SoDEX for ${String(clock - since)} ms while the bot does not track it as live (${cur.orders?.[id]?.status ?? "unknown"})`,
+          );
+        }
+      }
+      for (const id of [...untrackedSince.keys()]) if (!gw.open.has(id)) untrackedSince.delete(id);
+    };
     for (let s = 0; s < STEPS; s += 1) {
       clock += 250;
       price += Math.round((rnd() * 2 - 1) * (rnd() < 0.05 ? 4 : 1)) * tick;
@@ -3202,13 +3247,16 @@ describe("engine race harness (DEC-TBD-race-harness)", () => {
           await j();
         }),
       );
+      await checkUntracked();
     }
     // Dọn: không còn tin giá mới; engine thử huỷ lại, đối soát, hoàn tất Stop.
-    for (let k = 0; k < 10; k += 1) {
+    // 20 nhịp × 1,5 s: đủ cho đối soát lệnh `unknown` (RECONCILE_AFTER_MS 5 s) và các lần huỷ lại.
+    for (let k = 0; k < 20; k += 1) {
       clock += 1_500;
       await e.tick();
       await fills();
       await new Promise((r) => setTimeout(r, 30));
+      await checkUntracked();
     }
     await fills();
     const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
@@ -3247,6 +3295,40 @@ describe("engine race harness (DEC-TBD-race-harness)", () => {
           expect(await race(kind, seed * 101, Math.floor(STEPS / 2))).toEqual([]);
         },
       );
+  it("sends no opening order when Stop lands while the first quote is being worked out (DEC-255)", async () => {
+    // Lần đọc đòn bẩy của sự kiện giá đầu tiên nằm giữa lần kiểm tra trạng thái đầu sự kiện và lần đọc lại ngay trước khi
+    // gửi (DEC-255): Stop chen đúng chỗ đó. Lúc kích hoạt, đặt đòn bẩy "not_sent" để chưa coi là đã đặt.
+    const { eq } = await import("drizzle-orm");
+    const gw = new RaceGateway(seededRandom(7), 0);
+    gw.leverageOutcome = { outcome: "not_sent", code: "signer_unavailable" };
+    const { botId, accountId } = await seedBot("running", mm(false));
+    gw.botState = async () => (await botState(botId))?.state;
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: "race-stop-gate",
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+    });
+    for (let i = 0; i < 20 && !(await e.activeAccounts()).some((a) => a.id === accountId); i += 1)
+      await e.tick();
+    gw.leverageOutcome = { outcome: "ok" };
+    gw.beforeReadLeverage = async () => {
+      await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    };
+    gw.move("100000");
+    clock += 250;
+    await e.onPrice("BTC-USD", "100000", clock);
+    expect(gw.beforeReadLeverage).toBeNull();
+    await e.stop();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+    expect(gw.violations).toEqual([]);
+  });
   for (let seed = 1; seed <= SEEDS; seed += 1)
     it(
       `keeps the money invariants: mm-smart, seed ${String(seed)}, no Stop`,
