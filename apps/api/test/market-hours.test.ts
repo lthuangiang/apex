@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// Market hours (docs/mockups/market-hours, DEC-TBD-market-hours): giờ / ngày theo múi giờ người xem (Postgres
+// Market hours (docs/mockups/market-hours, DEC-283): giờ / ngày theo múi giờ người xem (Postgres
 // AT TIME ZONE), kể cả múi giờ lệch 30 phút và ngày Mỹ đổi giờ; khối 3 từ fill thật; chỉ team.
 
 let env: TestEnv;

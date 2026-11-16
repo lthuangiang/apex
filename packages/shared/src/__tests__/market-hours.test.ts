@@ -10,7 +10,7 @@ import {
 } from "../api/market-hours";
 import { dec } from "../money";
 
-// Market hours (DEC-TBD-market-hours): range 1 phút, trung vị / p90, Cost per $1M từ fill thật (markout 60 s), múi giờ.
+// Market hours (DEC-283): range 1 phút, trung vị / p90, Cost per $1M từ fill thật (markout 60 s), múi giờ.
 
 describe("minute range", () => {
   it("is (high − low) ÷ mid in bp, and null for bad prices", () => {

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { dec, Decimal } from "../money";
 import { decimalStringSchema, isoDateTimeSchema } from "../schemas";
 
-// Market hours (docs/mockups/market-hours, DEC-TBD-market-hours): ba khối theo giờ trong ngày, theo múi giờ của người
+// Market hours (docs/mockups/market-hours, DEC-283): ba khối theo giờ trong ngày, theo múi giờ của người
 // xem. Khối 1 = biến động từ nến 1 phút; khối 2 = chi phí làm market đo từ giao dịch công khai (mm_market_hourly);
 // khối 3 = fill thật của bot Market Making / Volume Builder tiền thật. Số quá khứ, không dự báo; thiếu → null.
 

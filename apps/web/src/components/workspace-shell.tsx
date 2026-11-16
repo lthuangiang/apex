@@ -71,7 +71,7 @@ const ITEMS = [
   ["users", "/admin/users", Users, "team"],
   ["stats", "/admin/stats", BarChart3, "team"],
   ["ops", "/admin/ops", Activity, "team"],
-  // Market hours (DEC-TBD-market-hours): ngay sau Ops.
+  // Market hours (DEC-283): ngay sau Ops.
   ["marketHours", "/admin/market-hours", Clock, "team"],
   ["settings", "/settings", Settings, "secondary"],
 ] as const satisfies readonly (readonly [

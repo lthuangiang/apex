@@ -21,7 +21,7 @@ import { parseOrThrow } from "../../lib/http";
 
 import { requireTeam } from "./team";
 
-// Market hours cho team Ops (docs/mockups/market-hours, DEC-TBD-market-hours). Chỉ đọc. Giờ / ngày theo múi giờ của
+// Market hours cho team Ops (docs/mockups/market-hours, DEC-283). Chỉ đọc. Giờ / ngày theo múi giờ của
 // người xem: Postgres đổi mốc thời gian sang giờ địa phương (`AT TIME ZONE`), trung vị tính bằng decimal ở đây.
 //   Khối 1: candles_1m của market (khoá chính (market, ts)).
 //   Khối 2: mm_market_hourly (theo giờ UTC; múi giờ lệch 30 phút thì gán theo phút bắt đầu, xấp xỉ, DevOps chấp nhận).
@@ -239,7 +239,7 @@ export async function botHours(
     sql`, `,
   );
   // Chặn lệnh tạo trước kỳ quá 1 ngày để dùng orders_bot_idx: fill của lệnh nằm chờ hơn 1 ngày trước kỳ không được
-  // tính (ghi trong DEC-TBD-market-hours).
+  // tính (ghi trong DEC-283).
   const fills = await db.execute(sql`
     select extract(hour from f.filled_at at time zone ${q.tz})::int as h,
            o.side as side, f.price::text as price, f.size::text as size, f.fee::text as fee,

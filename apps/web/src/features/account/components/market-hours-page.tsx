@@ -19,7 +19,7 @@ import {
   type Marker,
 } from "../market-hours-time";
 
-// Market hours cho team Ops (docs/mockups/market-hours, DEC-TBD-market-hours). Ba khối dùng chung 24 cột giờ theo múi
+// Market hours cho team Ops (docs/mockups/market-hours, DEC-283). Ba khối dùng chung 24 cột giờ theo múi
 // giờ của người xem (có nút đổi sang UTC). Chỉ đọc; số quá khứ, không dự báo; thiếu → "n/a" / "Not available", không
 // bao giờ 0.
 
