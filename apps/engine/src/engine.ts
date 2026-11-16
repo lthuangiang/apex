@@ -301,7 +301,7 @@ export const MARGIN_PAUSE_WHY =
 /**
  * Lệnh bị SoDEX từ chối vì lý do thật (không phải post-only / chặn tự khớp, `NORMAL_REJECT_CODES`) được ghi Decisions,
  * tối đa một dòng mỗi lý do trong `REJECT_LOG_WINDOW_MS`, kèm số lần trong cửa sổ đó. Sự cố 2026-11-15: 21 438 lần
- * "insufficient margin" trong 15 giờ không có dòng nào trong Decisions (DEC-TBD-reject-visibility-dust).
+ * "insufficient margin" trong 15 giờ không có dòng nào trong Decisions (DEC-291).
  */
 export const REJECT_LOG_WINDOW_MS = 60_000;
 /** Câu Decisions cho lệnh bị SoDEX từ chối (câu chữ đã duyệt). */

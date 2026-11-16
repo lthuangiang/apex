@@ -108,7 +108,7 @@ export interface VolumeMakerState {
   sideQuoteAt?: Partial<Record<"buy" | "sell", number>>;
   /**
    * Vị thế lẻ (dưới mức tối thiểu SoDEX, khác 0) mà lệnh mở ở phía đi qua 0 (long → bán, short → mua) bị SoDEX từ chối
-   * vì thiếu margin: không báo giá phía đó tới khi vị thế đổi hoặc người dùng Resume (DEC-TBD-reject-visibility-dust).
+   * vì thiếu margin: không báo giá phía đó tới khi vị thế đổi hoặc người dùng Resume (DEC-291).
    */
   dustHold?: { side: "buy" | "sell"; position: string } | null;
 }
@@ -541,7 +541,7 @@ function quote(
     });
     next = { ...next, fastPauseUntil: null };
   }
-  // Vị thế lẻ mà phía đi qua 0 đã bị từ chối vì thiếu margin (DEC-TBD-reject-visibility-dust): lệnh đó không reduce-only
+  // Vị thế lẻ mà phía đi qua 0 đã bị từ chối vì thiếu margin (DEC-291): lệnh đó không reduce-only
   // (vị thế dưới mức tối thiểu thì không đặt được lệnh đóng) nên cần thêm margin; gửi lại chỉ bị từ chối tiếp. Bỏ phía đó
   // tới khi vị thế đổi.
   const dustHold =
@@ -1226,7 +1226,7 @@ function stepCore(
           state,
         };
       // Vị thế lẻ (dưới mức tối thiểu, khác 0) mà lệnh mở phía đi qua 0 bị từ chối vì thiếu margin: lệnh đó không
-      // reduce-only nên cần margin mới; không gửi lại phía đó tới khi vị thế đổi (DEC-TBD-reject-visibility-dust).
+      // reduce-only nên cần margin mới; không gửi lại phía đó tới khi vị thế đổi (DEC-291).
       const rules = ctx.rules[c.market];
       const pos = dec(s.ledger.position);
       const mid = s.mid ?? o.price;

@@ -4192,7 +4192,7 @@ describe("insufficient margin rejects (margin guard)", () => {
     await stopAll();
   });
 
-  // DEC-TBD-reject-visibility-dust: lệnh bị SoDEX từ chối vì lý do thật phải hiện trong Decisions, tối đa một dòng mỗi
+  // DEC-291: lệnh bị SoDEX từ chối vì lý do thật phải hiện trong Decisions, tối đa một dòng mỗi
   // lý do mỗi phút, kèm số lần.
   const refusedLines = async (botId: string) => {
     const { eq } = await import("drizzle-orm");

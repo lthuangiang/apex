@@ -1689,8 +1689,8 @@ describe("volume maker — Binance pricing and resting quotes in Smart quoting",
 // Export prod 2026-11-15 (ETH-USD, orderSize 20, Smart quoting): bot giữ long 0.0031 ETH (≈ 5.7 USD, dưới mức tối thiểu
 // 10 USD của SoDEX) từ 09:12 tới 23:33 UTC. Không đặt được lệnh đóng reduce-only, nên bot báo giá như phẳng: lệnh bán
 // 0.011 không reduce-only, cần margin mới, bị từ chối "insufficient margin" hàng nghìn lần
-// (DEC-TBD-reject-visibility-dust).
-describe("volume maker — dust position and margin rejects (DEC-TBD-reject-visibility-dust)", () => {
+// (DEC-291).
+describe("volume maker — dust position and margin rejects (DEC-291)", () => {
   const ethCtx: StepContext = {
     botId: "vm-dust",
     version: 1,
