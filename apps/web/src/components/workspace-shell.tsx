@@ -70,8 +70,9 @@ const ITEMS = [
   ["revenue", "/admin/builder-revenue", Coins, "team"],
   ["users", "/admin/users", Users, "team"],
   ["stats", "/admin/stats", BarChart3, "team"],
-  ["ops", "/admin/ops", Activity, "team"],
-  // Market hours (DEC-283): ngay sau Ops.
+  // Bot Monitor (tên cũ Ops, DEC-288); /admin/ops chuyển hẳn sang đây.
+  ["ops", "/admin/bot-monitor", Activity, "team"],
+  // Market hours (DEC-283): ngay sau Bot Monitor.
   ["marketHours", "/admin/market-hours", Clock, "team"],
   ["settings", "/settings", Settings, "secondary"],
 ] as const satisfies readonly (readonly [

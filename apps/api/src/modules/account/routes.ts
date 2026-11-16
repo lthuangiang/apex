@@ -173,9 +173,13 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
     ),
   );
 
-  // Trang Ops của team (PR C, DEC-276): chỉ role team.
+  // Trang Bot Monitor của team (tên cũ Ops; DEC-288): chỉ role team. `?show=active|all&strategy=&q=&page=`.
   app.get("/api/v1/admin/ops", async (request) =>
-    teamOps({ db: deps.db, now: deps.now, log: request.log }, requireAuth(request).userId),
+    teamOps(
+      { db: deps.db, now: deps.now, log: request.log },
+      requireAuth(request).userId,
+      request.query,
+    ),
   );
 
   // Market hours cho team Ops (DEC-283): tz là tên IANA, kiểm bằng zod sau bước kiểm quyền; sai → lỗi C6.

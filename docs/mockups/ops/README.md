@@ -2,6 +2,8 @@
 
 Nguồn: canvas "Ops page redesign" (https://claude.ai/artifact/8eRHikEqQrWxNxsKAKgtzK). Người dùng duyệt qua ảnh chụp (`shots/`, số mẫu). Thay bố cục trang Ops cũ (DEC-276).
 
+**Đổi tên (người dùng yêu cầu 2026-11-16, DEC-288):** trang tên **"Bot Monitor"** (nav dưới TEAM và sheet More trên mobile, h1, câu 403 "Bot Monitor is for the DeskLabs team only."). Route mới `/admin/bot-monitor`; `/admin/ops` chuyển hẳn (permanent redirect, giữ query) sang route mới. API vẫn là `GET /api/v1/admin/ops`, tên nội bộ vẫn là "ops". Chữ "Ops" trên artboard đọc thành "Bot Monitor".
+
 | File | Nội dung | Phạm vi |
 |---|---|---|
 | `Main.dc.html` | Trang desktop: mục đích, 6 ô tóm tắt, "Look at these first", "How to read this page", tab Market Making / Volume Builder, dòng mở chi tiết | **Code** |
