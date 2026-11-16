@@ -474,6 +474,12 @@ export const outbox = pgTable(
     index("outbox_unpublished_idx")
       .on(t.createdAt)
       .where(sql`${t.publishedAt} is null`),
+    // Đọc theo topic và thời gian (tin team_ops, trang Ops của team).
+    index("outbox_topic_created_idx").on(t.topic, t.createdAt),
+    // Mốc Start / Stop của bot từ dòng `user.<account>.bot` (bất biến prod, trang Ops): theo botId trong payload.
+    index("outbox_bot_state_idx")
+      .on(sql`(${t.payload}->>'botId')`, t.createdAt)
+      .where(sql`${t.topic} like 'user.%.bot'`),
   ],
 );
 
