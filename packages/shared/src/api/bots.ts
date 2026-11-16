@@ -31,7 +31,7 @@ export const BOT_STRATEGIES = [
 ] as const;
 
 /**
- * Thẻ builder fee Market Making (DEC-258, DEC-TBD-mm-fee-card). `rate` là mức hiệu lực (phần mười bp). `source`: team
+ * Thẻ builder fee Market Making (DEC-258, DEC-261). `rate` là mức hiệu lực (phần mười bp). `source`: team
  * đặt tay (`custom`, DEC-159) / theo bậc volume (`tier`) / mặc định. `volume30d`: volume MM tiền thật 30 ngày (USD), null
  * khi user chưa từng có bot MM tiền thật; có bot mà không khớp gì là "0". `nextVolume` / `nextRate`: ngưỡng và mức của
  * bậc có mức cao nhất thấp hơn hẳn `rate` (theo mức hiệu lực, không theo volume trực tiếp); null ở bậc cao nhất hoặc khi

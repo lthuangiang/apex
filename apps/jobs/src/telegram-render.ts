@@ -60,7 +60,7 @@ function briefBody(data: Record<string, unknown>): string {
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
- * Tin bậc builder fee đổi (DEC-TBD-mm-fee-card, câu duyệt 2026-11-16). Volume làm tròn xuống (không bao giờ ghi cao hơn
+ * Tin bậc builder fee đổi (DEC-261, câu duyệt 2026-11-16). Volume làm tròn xuống (không bao giờ ghi cao hơn
  * thật); thiếu số thì chỉ câu mức mới / cũ. Payload sai dạng → tiêu đề chung, không có câu (không đoán số).
  */
 export function feeTierMessage(data: Record<string, unknown>): {

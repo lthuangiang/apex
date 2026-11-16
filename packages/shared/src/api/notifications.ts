@@ -11,7 +11,7 @@ export const NOTIFICATION_TYPES = [
   "unknown_order",
   "risk_alert",
   "key_fee",
-  // Builder fee theo bậc volume đổi (DEC-258, DEC-TBD-mm-fee-card): scheduler phát, tối đa 1 tin / user × chiến lược / ngày.
+  // Builder fee theo bậc volume đổi (DEC-258, DEC-261): scheduler phát, tối đa 1 tin / user × chiến lược / ngày.
   "fee_tier_changed",
   "fill",
   "daily_summary",
@@ -99,7 +99,7 @@ export function groupOf(type: NotificationType): NotificationGroup {
 }
 
 /**
- * `data` của `fee_tier_changed` (DEC-TBD-mm-fee-card). Mức là phần mười bp. `volume`: volume tiền thật 30 ngày (USD,
+ * `data` của `fee_tier_changed` (DEC-261). Mức là phần mười bp. `volume`: volume tiền thật 30 ngày (USD,
  * chuỗi thập phân chưa làm tròn) lúc tính; null = không có số (tin chỉ ghi mức mới / cũ). `droppedBelow`: khi mức tăng
  * lại, ngưỡng của bậc user vừa rơi khỏi (USD); null khi mức giảm hoặc không xác định được.
  */

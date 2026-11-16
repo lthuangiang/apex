@@ -56,7 +56,7 @@ export async function builderFeesOf(db: Db, userId: string): Promise<Record<stri
 }
 
 /**
- * Thẻ builder fee Market Making của user (GET /features, DEC-TBD-mm-fee-card). Volume tính trực tiếp cho riêng user này
+ * Thẻ builder fee Market Making của user (GET /features, DEC-261). Volume tính trực tiếp cho riêng user này
  * bằng cùng hàm với job theo giờ (`feeTierVolumes`): đi từ bot MM tiền thật của user qua orders_bot_idx rồi
  * fills_order_idx, nên chi phí tỷ lệ với số fill MM 30 ngày của một user, không quét bảng fills. Mức hiệu lực vẫn là mức
  * engine đang dùng (bảng `user_fee_tiers` do job ghi), có thể chậm tới một giờ so với volume ở đây.

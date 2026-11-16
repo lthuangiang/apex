@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// Thẻ builder fee Market Making ở GET /api/v1/features (DEC-258, DEC-TBD-mm-fee-card).
+// Thẻ builder fee Market Making ở GET /api/v1/features (DEC-258, DEC-261).
 
 let env: TestEnv;
 const ADDRESS = "0x4E1e4796c10C637EDAB56461450BD8D02EFb29Db";

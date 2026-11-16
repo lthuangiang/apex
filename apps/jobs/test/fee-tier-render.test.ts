@@ -4,7 +4,7 @@ import { emailText } from "../src/notify";
 import { subjectFor, TELEGRAM_SUBJECT } from "../src/telegram";
 import { renderTelegram } from "../src/telegram-render";
 
-// Tin bậc builder fee Market Making đổi (DEC-258, DEC-TBD-mm-fee-card; câu duyệt 2026-11-16). Không cần Postgres.
+// Tin bậc builder fee Market Making đổi (DEC-258, DEC-261; câu duyệt 2026-11-16). Không cần Postgres.
 
 const APP = "https://desklabs.test";
 const lowered = {

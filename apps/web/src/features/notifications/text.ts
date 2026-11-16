@@ -71,7 +71,7 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
       case "key_fee":
         return { title: t("types.key_fee"), body: t("panel.body.keyFee") };
       case "fee_tier_changed": {
-        // Bậc builder fee MM đổi (DEC-TBD-mm-fee-card): cùng câu với Telegram, không emoji. Volume làm tròn xuống; thiếu
+        // Bậc builder fee MM đổi (DEC-261): cùng câu với Telegram, không emoji. Volume làm tròn xuống; thiếu
         // số thì chỉ câu mức mới / cũ. Payload sai dạng → tiêu đề chung của nhóm, không đoán số.
         const x = feeTierChangeText(n.data);
         if (x === null) return { title: t("types.key_fee"), body: null };

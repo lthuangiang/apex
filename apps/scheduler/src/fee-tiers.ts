@@ -34,7 +34,7 @@ const STRATEGY_NAMES: Readonly<Record<string, string>> = { volume_maker: "Market
 const pct = (rate: number) => `${feeRateToPercent(rate).toString()}%`;
 
 /**
- * Khoá chống trùng của thông báo `fee_tier_changed` (DEC-TBD-mm-fee-card): một tin / user × chiến lược × mức mới / ngày
+ * Khoá chống trùng của thông báo `fee_tier_changed` (DEC-261): một tin / user × chiến lược × mức mới / ngày
  * UTC. Xuống rồi lên lại trong cùng ngày thì cả hai tin đều đi (mức khác nhau); cùng một mức lặp lại trong ngày thì không.
  */
 export function feeTierDedupeKey(strategy: string, rate: number, now: number): string {

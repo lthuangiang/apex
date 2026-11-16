@@ -132,7 +132,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     // Builder fee hiệu lực của user (DEC-159); chưa đăng nhập → bảng mặc định.
     const builderFees =
       request.auth === null ? {} : await builderFeesOf(deps.db, request.auth.userId);
-    // Thẻ builder fee Market Making (DEC-TBD-mm-fee-card): cache ~2 phút theo user; tắt bot khối lượng → null, không truy vấn.
+    // Thẻ builder fee Market Making (DEC-261): cache ~2 phút theo user; tắt bot khối lượng → null, không truy vấn.
     const mmFee =
       request.auth === null || !on
         ? null
