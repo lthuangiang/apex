@@ -1,4 +1,4 @@
-import { dec } from "@drift/shared";
+import { dec, type Decimal } from "@drift/shared";
 
 import { formatAmount } from "@/lib/format";
 
@@ -10,7 +10,7 @@ import type { FieldSpec, FormValues } from "./fields";
 
 /** `t.has` của namespace `createBot`. */
 export type HasKey = (key: string) => boolean;
-type Spec = Pick<FieldSpec, "key" | "label">;
+type Spec = Pick<FieldSpec, "key" | "label" | "noHow">;
 
 const overBase = (strategy: string, f: Spec) => `fieldsByStrategy.${strategy}.${f.key}`;
 const sharedBase = (f: Spec) => `fields.${f.label ?? f.key}`;
@@ -26,6 +26,7 @@ export const labelKeyOf = (strategy: string, f: Spec, has: HasKey) =>
 
 /** Gốc của "How it works" (`<gốc>.intro`, `.steps`, `.note`); null khi field không có. */
 export function howBaseOf(strategy: string, f: Spec, has: HasKey): string | null {
+  if (f.noHow === true) return null;
   const over = `${overBase(strategy, f)}.how`;
   if (has(`${over}.intro`)) return over;
   const shared = `${sharedBase(f)}.how`;
@@ -65,11 +66,23 @@ export function positiveOf(v: FormValues[string] | undefined): string | null {
   return dec(s).toString();
 }
 
-const fmt = (v: string) => formatAmount(v)?.text ?? v;
+/**
+ * Số hiển thị trong câu chữ: chỉ khi là số dương hữu hạn và sau khi làm tròn vẫn khác 0 (không "0", không "< 0.0001").
+ * `sig`: số chữ số có nghĩa giữ lại (≥ 2).
+ */
+function shown(d: Decimal, sig?: number): string | null {
+  if (!d.isFinite() || d.lte(0)) return null;
+  const v = sig === undefined ? d : d.toSignificantDigits(sig);
+  const text = formatAmount(v.toString())?.text;
+  if (text === undefined || text.startsWith("<")) return null;
+  const plain = text.replace(/,/g, "");
+  if (!POSITIVE.test(plain) || dec(plain).lte(0)) return null;
+  return text;
+}
 
 /**
- * Số trong câu chữ Market Making lấy từ giá trị đang có trên form (thiết kế "MM form explained"). Ô trống hoặc sai
- * thì số đó là null, và câu chữ dùng bản không có số (không bao giờ hiện 0 hay NaN, CLAUDE.md 1.8).
+ * Số trong câu chữ Market Making lấy từ giá trị đang có trên form (thiết kế "MM form explained"). Ô trống hoặc sai,
+ * hay số làm tròn về 0, thì số đó là null, và câu chữ dùng bản không có số (không bao giờ hiện 0 hay NaN, CLAUDE.md 1.8).
  */
 export function mmNumbers(values: FormValues): {
   size: string | null;
@@ -87,16 +100,13 @@ export function mmNumbers(values: FormValues): {
   const budget = positiveOf(values.costBudget);
   const orders = positiveOf(values.maxOrders);
   return {
-    size: size === null ? null : fmt(size),
-    size3: size === null ? null : fmt(dec(size).mul(3).toString()),
-    budget: budget === null ? null : fmt(budget),
-    warn: budget === null ? null : fmt(dec(budget).mul("0.8").toString()),
-    max: size === null || orders === null ? null : fmt(dec(size).mul(orders).toString()),
-    cut: size === null ? null : fmt(dec(size).mul("0.0015").toSignificantDigits(2).toString()),
-    lossPct:
-      size === null
-        ? null
-        : dec("0.5").div(size).mul(100).toDecimalPlaces(2).toSignificantDigits(3).toString(),
+    size: size === null ? null : shown(dec(size)),
+    size3: size === null ? null : shown(dec(size).mul(3)),
+    budget: budget === null ? null : shown(dec(budget)),
+    warn: budget === null ? null : shown(dec(budget).mul("0.8")),
+    max: size === null || orders === null ? null : shown(dec(size).mul(orders)),
+    cut: size === null ? null : shown(dec(size).mul("0.0015"), 2),
+    lossPct: size === null ? null : shown(dec("0.5").div(size).mul(100), 3),
   };
 }
 
@@ -124,7 +134,7 @@ const HINT_PARAMS: Partial<
       // Ví dụ chỉ có nghĩa khi giá giảm dưới 100%.
       return n.size === null ||
         n.lossPct === null ||
-        dec(n.lossPct).gte(100) ||
+        dec(n.lossPct.replace(/,/g, "")).gte(100) ||
         base === null ||
         base === ""
         ? null
@@ -156,8 +166,18 @@ export function hintOf(
     : { key: `${over}.hint`, params };
 }
 
-/** Ô có được vẽ không theo `renderIf` (giá trị vẫn gửi lên, khác `when`). */
-export function rendered(f: Pick<FieldSpec, "renderIf">, values: FormValues): boolean {
+/**
+ * Ô có được vẽ không theo `renderIf` (giá trị vẫn gửi lên, khác `when`). Ô đang có giá trị hoặc đang có lỗi thì vẫn vẽ,
+ * để người dùng thấy và sửa được (schema vẫn kiểm tra giá trị đó, ví dụ Position loss limit < Stop when costs reach).
+ */
+export function rendered(
+  f: Pick<FieldSpec, "key" | "renderIf">,
+  values: FormValues,
+  errors: Record<string, readonly string[]> = {},
+): boolean {
   if (f.renderIf === undefined) return true;
-  return (values[f.renderIf.key] === true) === f.renderIf.is;
+  if ((values[f.renderIf.key] === true) === f.renderIf.is) return true;
+  const v = values[f.key];
+  if (typeof v === "string" && v.trim() !== "") return true;
+  return (errors[f.key]?.length ?? 0) > 0;
 }

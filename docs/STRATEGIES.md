@@ -230,7 +230,7 @@ Hành vi và quy tắc bắt buộc ở `docs/VOLUME_MAKER.md` mục 17. Field:
 | Adv | Max open position (`maxInventory`) | empty = 2 × order size (DEC-100) | > order size | Must be above the order size. |
 | Adv | Quote distance | 1.0 bp | ≥ 1 tick | Must be at least one tick. |
 | Adv | Refresh every | 3 s | 2–60 s | Allowed 2–60 s. |
-| 4 | Position loss limit (`inventoryLossStop`) | empty | Optional, < budget; closes reduce-only. Chỉ hiện khi tắt Smart quoting, trong khối "How your losses are capped"; giá trị đã lưu vẫn giữ và engine vẫn dùng (DEC-TBD-mm-form-copy) | Must be below the budget. |
+| 4 | Position loss limit (`inventoryLossStop`) | empty | Optional, < budget; closes reduce-only. Chỉ hiện khi tắt Smart quoting (hoặc khi ô có giá trị / lỗi), trong khối "How your losses are capped"; giá trị đã lưu vẫn giữ và engine vẫn dùng (DEC-TBD-mm-form-copy) | Must be below the budget. |
 | 3 | Close only at your entry price or better (`closeAtEntry`) · BETA | Off | Hint "Fees are not included in your entry price." Close order stays post-only reduce-only at max(best, entry) for long / min(best, entry) for short; after 30 min falls back to the normal close (DEC-227) | — |
 | 3 | Pause on fast moves (`pauseOnFastMoves`) | Off | Price moves ≥ max(3 ticks, 2 bp) in 6 s → opening quotes pulled, reduce-only close kept, quote again after 15 s of calm (DEC-227) | — |
 | 4 | Also stop at (`runUntil`) | No end time | No end time / End of the SoPoints season / A date I choose (kèm ô End date) | — |

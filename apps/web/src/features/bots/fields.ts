@@ -52,6 +52,8 @@ export interface FieldSpec {
   advanced?: boolean | undefined;
   /** Tính năng đang thử nghiệm: nhãn "Beta" và mục "How it works" (`fields.<label>.how`). */
   beta?: boolean | undefined;
+  /** Không hiện "How it works" chung của field (thiết kế của chiến lược không có, DEC-TBD-mm-form-copy). */
+  noHow?: boolean | undefined;
   /** Field cùng `row` nằm chung một hàng (xuống cột dưới 480 px). */
   row?: string | undefined;
   /** Độ rộng trong hàng: wide = 2/3, narrow = 1/3; mặc định chia đều. */
@@ -562,12 +564,13 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       width: "narrow",
       type: { kind: "int", unit: "×" },
     },
-    { key: "costBudget", group: 4, type: dec("quote") },
+    // Thiết kế "MM form explained" không có "How it works" ở Stop when costs reach / Max position / Where to quote.
+    { key: "costBudget", group: 4, noHow: true, type: dec("quote") },
     { key: "volumeTarget", group: 4, optional: true, type: dec("quote") },
     // Vị thế tối đa theo số lệnh (DEC-133), dễ hiểu hơn số USDC.
-    { key: "maxOrders", group: 3, advanced: true, type: { kind: "int" } },
+    { key: "maxOrders", group: 3, advanced: true, noHow: true, type: { kind: "int" } },
     // Vị trí báo giá theo mức sổ lệnh (DEC-135), thay khoảng cách bp: tự đúng với mọi market.
-    { key: "quoteLevel", group: 3, advanced: true, type: { kind: "int" } },
+    { key: "quoteLevel", group: 3, advanced: true, noHow: true, type: { kind: "int" } },
     // Smart quoting (DEC-144), mặc định tắt: tắt là đúng logic cũ.
     { key: "smartQuoting", group: 3, beta: true, type: { kind: "bool" } },
     // Close only at entry or better / Pause on fast moves (DEC-227): ẩn khỏi form (DEC-241) vì chưa thấy tác

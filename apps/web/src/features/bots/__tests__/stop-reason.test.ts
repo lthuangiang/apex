@@ -49,6 +49,28 @@ describe("stop reason labels", () => {
     );
   });
 
+  it("uses the API stopDetail first (bot list)", () => {
+    expect(label(mm({ stopDetail: "volume_target" }))).toBe("Stopped: volume target reached");
+    expect(label(mm({ stopDetail: "end_time" }))).toBe("Stopped: end time reached");
+    expect(label(mm({ stopDetail: null }))).toBe("Stopped: volume target or end time reached");
+    // stopDetail chỉ áp dụng cho MAX_CYCLES.
+    expect(label(mm({ reasonCode: ReasonCode.budgetDone, stopDetail: "end_time" }))).toBe(
+      "Stopped: cost limit reached",
+    );
+  });
+
+  it("a volume target of 0 or junk counts as not set", () => {
+    expect(label(mm({ config: { runUntil: "date", volumeTarget: "0" } }))).toBe(
+      "Stopped: end time reached",
+    );
+    expect(label(mm({ config: { runUntil: "date", volumeTarget: 0 } }))).toBe(
+      "Stopped: end time reached",
+    );
+    expect(label(mm({ config: { runUntil: "target_or_budget", volumeTarget: "abc" } }))).toBe(
+      "Stopped: volume target or end time reached",
+    );
+  });
+
   it("volume target from config when it is the only possible cause", () => {
     expect(label(mm({ config: { runUntil: "target_or_budget", volumeTarget: "50000" } }))).toBe(
       "Stopped: volume target reached",

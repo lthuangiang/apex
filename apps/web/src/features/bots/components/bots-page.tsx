@@ -125,7 +125,7 @@ export function useStateLabel() {
   const waiting = useWaitingText();
   return (
     b: Pick<BotSummary, "state" | "reasonCode" | "needsAttention"> &
-      Partial<Pick<BotSummary, "waiting" | "strategy">>,
+      Partial<Pick<BotSummary, "waiting" | "strategy" | "stopDetail">>,
     /** Config / khối lượng của bot khi nơi gọi có, để nhãn lý do dừng cụ thể hơn (stop-reason.ts). */
     extra?: Pick<StopReasonInput, "config" | "volume">,
   ) => ({
@@ -137,7 +137,12 @@ export function useStateLabel() {
       : {
           reason: b.reasonCode,
           // Cùng reason code nhưng nhãn theo chiến lược (MAX_CYCLES của bot khối lượng là volume target…).
-          reasonLabel: reasonLabel({ reasonCode: b.reasonCode, strategy: b.strategy, ...extra }),
+          reasonLabel: reasonLabel({
+            reasonCode: b.reasonCode,
+            strategy: b.strategy,
+            stopDetail: b.stopDetail,
+            ...extra,
+          }),
         }),
     ...(b.needsAttention ? { needsAttention: true, needsAttentionLabel: t("needsAttention") } : {}),
   });

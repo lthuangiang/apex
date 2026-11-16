@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
 import { BotForm } from "../components/bot-form";
-import { emptyValues, FIELDS, type FormValues } from "../fields";
+import { emptyValues, FIELDS, fromConfig, type FormValues } from "../fields";
 
 // Form Market Making theo thiết kế "MM form explained" (DEC-TBD-mm-form-copy): câu chữ riêng, số theo order size,
 // khối "How your losses are capped" đổi theo Smart quoting, Position loss limit chỉ hiện khi tắt Smart quoting.
@@ -25,11 +25,19 @@ vi.mock("../components/amount-lines", () => ({ AmountLines: () => null }));
 
 afterEach(cleanup);
 
-function Harness({ strategy, init }: { strategy: keyof typeof FIELDS; init: FormValues }) {
+function Harness({
+  strategy,
+  init,
+  errors = {},
+}: {
+  strategy: keyof typeof FIELDS;
+  init: FormValues;
+  errors?: Record<string, string[]>;
+}) {
   const [values, setValues] = useState<FormValues>(init);
   return (
     <NextIntlClientProvider locale="en" messages={messages}>
-      <BotForm strategy={strategy} values={values} onChange={setValues} errors={{}} />
+      <BotForm strategy={strategy} values={values} onChange={setValues} errors={errors} />
     </NextIntlClientProvider>
   );
 }
@@ -155,6 +163,79 @@ describe("How your losses are capped", () => {
     await run();
     await userEvent.click(screen.getByRole("switch", { name: /Smart quoting/ }));
     await run();
+  });
+});
+
+describe("Position loss limit stays visible when it matters", () => {
+  const limitHint =
+    "Only the position the bot holds now, not fees or losses already taken. At 0.5 USDC: if the bot holds 20 USDC of BTC and BTC falls 2.5%, the bot stops. Leave empty to rely on Stop when costs reach.";
+
+  it("create: a value typed with Smart quoting off stays visible after turning it back on", async () => {
+    render(<Harness strategy="volume_maker" init={mmInit()} />);
+    const sw = screen.getByRole("switch", { name: /Smart quoting/ });
+    await userEvent.click(sw);
+    await userEvent.type(screen.getByLabelText("Position loss limit (optional)"), "0.7");
+    await userEvent.click(sw);
+    expect(screen.getByTestId("loss-caps")).toHaveAttribute("data-smart", "on");
+    expect(screen.getByLabelText("Position loss limit (optional)")).toHaveValue("0.7");
+    expect(screen.getByText(limitHint)).toBeInTheDocument();
+    // Xoá trống thì ô lại ẩn (Smart quoting bật).
+    await userEvent.clear(screen.getByLabelText("Position loss limit (optional)"));
+    expect(screen.queryByLabelText("Position loss limit (optional)")).toBeNull();
+  });
+
+  it("edit: a saved limit with Smart quoting on is shown with its hint", () => {
+    const init = fromConfig("volume_maker", {
+      market: "BTC-USD",
+      orderSize: "20",
+      leverage: 5,
+      costBudget: "10",
+      maxOrders: 1,
+      quoteLevel: 0,
+      refreshSeconds: 3,
+      smartQuoting: true,
+      inventoryLossStop: "0.7",
+      runUntil: "target_or_budget",
+      onStop: "close_inventory",
+    });
+    render(<Harness strategy="volume_maker" init={init} />);
+    expect(screen.getByLabelText("Position loss limit (optional)")).toHaveValue("0.7");
+    expect(screen.getByText(limitHint)).toBeInTheDocument();
+  });
+
+  it("edit: a server error on the limit shows the field even when empty and Smart quoting is on", () => {
+    render(
+      <Harness
+        strategy="volume_maker"
+        init={mmInit()}
+        errors={{ inventoryLossStop: ["Must be below the budget."] }}
+      />,
+    );
+    expect(screen.getByLabelText("Position loss limit (optional)")).toBeInTheDocument();
+    expect(screen.getByText(/Must be below the budget\./)).toBeInTheDocument();
+  });
+});
+
+describe("How it works panels", () => {
+  const summaries = (c: HTMLElement) =>
+    [...c.querySelectorAll("details > summary")].map((x) => x.textContent);
+
+  it("Market Making keeps only Smart quoting's panel (none under the cost, max position or quote fields)", () => {
+    const { container } = render(<Harness strategy="volume_maker" init={mmInit()} />);
+    expect(summaries(container)).toEqual(["How it works"]);
+    const details = container.querySelector("details");
+    expect(details?.textContent).toContain("Normally the bot keeps one bid and one ask");
+    expect(container.textContent).not.toContain(messages.createBot.fields.costBudget.how.intro);
+    expect(container.textContent).not.toContain(messages.createBot.fields.maxOrders.how.intro);
+    expect(container.textContent).not.toContain(messages.createBot.fields.quoteLevel.how.intro);
+  });
+
+  it("other strategies still show their panels", () => {
+    const { container } = render(
+      <Harness strategy="volume_farm" init={emptyValues("volume_farm")} />,
+    );
+    expect(summaries(container).length).toBeGreaterThan(0);
+    expect(container.textContent).toContain(messages.createBot.fields.vfReverse.how.intro);
   });
 });
 

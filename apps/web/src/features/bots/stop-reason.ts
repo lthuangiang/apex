@@ -8,11 +8,14 @@ import { useTranslations } from "next-intl";
 // Volume Maker (`packages/strategies/src/volume-maker/index.ts`, hàm `guards`):
 // - BUDGET_DONE: chi phí chạm `costBudget` ("Stop when costs reach").
 // - STOP_LOSS: lỗ chưa chốt trên vị thế chạm `inventoryLossStop` ("Position loss limit").
-// - MAX_CYCLES: đủ `volumeTarget`, hoặc tới `untilAt` khi `runUntil` là season_end / date.
+// - MAX_CYCLES: đủ `volumeTarget`, hoặc tới `untilAt` khi `runUntil` là season_end / date. API tính sẵn
+//   `BotSummary.stopDetail` từ state runtime + config; nơi không có thì tự suy từ khối lượng / config.
 
 export interface StopReasonInput {
   reasonCode: string;
   strategy?: string | null | undefined;
+  /** `BotSummary.stopDetail` do API tính (Market Making dừng với MAX_CYCLES). */
+  stopDetail?: "volume_target" | "end_time" | null | undefined;
   /** Config của version đang chạy (nếu nơi hiển thị có). */
   config?: Record<string, unknown> | null | undefined;
   /** Volume Maker: khối lượng phiên và volume target theo engine (`BotDetail.volumeMaker`). */
@@ -20,8 +23,11 @@ export interface StopReasonInput {
 }
 
 const POSITIVE = /^\d+(\.\d+)?$/;
-const num = (v: unknown): string | null =>
-  typeof v === "string" && POSITIVE.test(v) ? v : typeof v === "number" && v > 0 ? String(v) : null;
+/** Số dương (volume target); "0", số âm hay chữ thì null. */
+const num = (v: unknown): string | null => {
+  const s = typeof v === "number" && Number.isFinite(v) ? String(v) : v;
+  return typeof s === "string" && POSITIVE.test(s) && dec(s).gt(0) ? s : null;
+};
 
 /** Key trong namespace `reasons`. */
 export function stopReasonKey(i: StopReasonInput): string {
@@ -31,13 +37,14 @@ export function stopReasonKey(i: StopReasonInput): string {
   if (code === ReasonCode.budgetDone) return "MM_BUDGET_DONE";
   if (code === ReasonCode.stopLoss) return "MM_STOP_LOSS";
   if (code !== ReasonCode.maxCycles) return code;
+  if (i.stopDetail === "volume_target") return "MAX_CYCLES_VOLUME";
+  if (i.stopDetail === "end_time") return "MAX_CYCLES_END_TIME";
 
-  const target = i.volume?.volumeTarget ?? num(i.config?.volumeTarget);
+  const target = num(i.volume?.volumeTarget ?? i.config?.volumeTarget);
   const traded = i.volume?.volume ?? null;
   // Engine xét volume target trước end time; có khối lượng thật thì biết chắc lý do.
   if (traded !== null && POSITIVE.test(traded)) {
-    if (target !== null && POSITIVE.test(target) && dec(traded).gte(target))
-      return "MAX_CYCLES_VOLUME";
+    if (target !== null && dec(traded).gte(target)) return "MAX_CYCLES_VOLUME";
     // MAX_CYCLES chỉ có hai nguồn: chưa đủ target thì là hết giờ.
     return "MAX_CYCLES_END_TIME";
   }

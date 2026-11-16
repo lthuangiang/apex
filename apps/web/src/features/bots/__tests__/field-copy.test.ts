@@ -102,8 +102,11 @@ describe("per-strategy field copy", () => {
     expect(text(ph("inventoryLossStop") ?? "")).toBe("0.5");
   });
 
-  it("How it works: kept for Market Making fields that have one", () => {
-    expect(howBaseOf("volume_maker", mm("costBudget"), has)).toBe("fields.costBudget.how");
+  it("How it works: only where the Market Making design keeps it", () => {
+    // Thiết kế không có "How it works" ở Stop when costs reach / Max position / Where to quote.
+    expect(howBaseOf("volume_maker", mm("costBudget"), has)).toBeNull();
+    expect(howBaseOf("volume_maker", mm("maxOrders"), has)).toBeNull();
+    expect(howBaseOf("volume_maker", mm("quoteLevel"), has)).toBeNull();
     expect(howBaseOf("volume_maker", mm("smartQuoting"), has)).toBe("fields.smartQuoting.how");
     // Ghi chú nhắc nhãn mới "Stop when costs reach".
     const own = howBaseOf("volume_maker", mm("inventoryLossStop"), has);
@@ -186,6 +189,33 @@ describe("Market Making hints use the current form values", () => {
       max: null,
       cut: null,
     });
+    // ≥ 2 chữ số có nghĩa, không làm tròn về 0.
+    expect(mmNumbers(mmValues({ orderSize: "7" }))).toMatchObject({
+      lossPct: "7.14",
+      cut: "0.011",
+    });
+    expect(mmNumbers(mmValues({ orderSize: "20000" }))).toMatchObject({ lossPct: "0.0025" });
+  });
+
+  it("numbers that would round to 0 or show as “< …” fall back to the short sentence", () => {
+    // 0.5 / 10,000,000 × 100 = 0.000005% → hiển thị "< 0.0001": không dùng.
+    const big = mmNumbers(mmValues({ orderSize: "10000000" }));
+    expect(big.lossPct).toBeNull();
+    expect(big.size).toBe("10,000,000");
+    const tiny = mmNumbers(mmValues({ orderSize: "0.00001", costBudget: "0.00001" }));
+    expect(tiny.cut).toBeNull();
+    expect(tiny.size).toBeNull();
+    expect(tiny.warn).toBeNull();
+    const h = hintOf(
+      "volume_maker",
+      mm("inventoryLossStop"),
+      mmValues({ orderSize: "10000000" }),
+      has,
+      "BTC",
+    );
+    expect(h.key).toBe("fieldsByStrategy.volume_maker.inventoryLossStop.hintShort");
+    const o = hintOf("volume_maker", mm("orderSize"), mmValues({ orderSize: "0.00001" }), has);
+    expect(o.key).toBe("fieldsByStrategy.volume_maker.orderSize.hintShort");
   });
 });
 
@@ -197,6 +227,18 @@ describe("Position loss limit with Smart quoting", () => {
     expect(rendered(f, { smartQuoting: false })).toBe(true);
     // Config cũ thiếu smartQuoting = tắt.
     expect(rendered(f, {})).toBe(true);
+  });
+
+  it("stays rendered with Smart quoting on while it has a value or an error", () => {
+    expect(rendered(f, { smartQuoting: true, inventoryLossStop: "0.7" })).toBe(true);
+    expect(rendered(f, { smartQuoting: true, inventoryLossStop: "  " })).toBe(false);
+    expect(
+      rendered(
+        f,
+        { smartQuoting: true, inventoryLossStop: "" },
+        { inventoryLossStop: ["Must be below the budget."] },
+      ),
+    ).toBe(true);
   });
 
   it("keeps a saved value in the submitted config even when Smart quoting is on", () => {

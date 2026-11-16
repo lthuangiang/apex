@@ -571,6 +571,33 @@ function waitingView(strategy: string, config: unknown, state: unknown): BotSumm
   return w;
 }
 
+/**
+ * Lý do cụ thể của Market Making dừng với MAX_CYCLES (DEC-TBD-mm-form-copy), cùng thứ tự với `guards` của engine:
+ * khối lượng phiên (state runtime) ≥ volume target → `volume_target`; không thì runUntil season_end / date →
+ * `end_time`; còn lại (hoặc có target mà thiếu state runtime) null, UI hiện nhãn chung.
+ */
+export function stopDetailOf(
+  strategy: string,
+  reasonCode: string | null,
+  config: unknown,
+  state: unknown,
+): BotSummary["stopDetail"] {
+  if (strategy !== Strategy.volumeMaker || reasonCode !== ReasonCode.maxCycles) return null;
+  if (typeof config !== "object" || config === null) return null;
+  const c = config as { volumeTarget?: unknown; runUntil?: unknown };
+  const volume =
+    typeof state === "object" && state !== null
+      ? (state as { volume?: unknown }).volume
+      : undefined;
+  const isNum = (v: unknown): v is string => typeof v === "string" && /^\d+(\.\d+)?$/.test(v);
+  if (isNum(c.volumeTarget) && isNum(volume) && dec(volume).gte(c.volumeTarget))
+    return "volume_target";
+  // Có volume target mà không đọc được khối lượng: không khẳng định là hết giờ.
+  if (isNum(c.volumeTarget) && !isNum(volume)) return null;
+  if (c.runUntil === "season_end" || c.runUntil === "date") return "end_time";
+  return null;
+}
+
 export function summary(
   b: typeof bots.$inferSelect,
   version: number | null,
@@ -595,6 +622,7 @@ export function summary(
     fills,
     waiting: b.state === BotState.running ? waitingView(b.strategy, config, state) : null,
     mode: b.mode,
+    stopDetail: stopDetailOf(b.strategy, b.reasonCode, config, state),
     createdAt: iso(b.createdAt),
     updatedAt: iso(b.updatedAt),
   };

@@ -109,11 +109,15 @@ export function AgentPage({ botId }: { botId?: string }) {
 
   const d: BotDetail | undefined = detail.data;
   const bot = d?.bot;
-  // Sự kiện state lưu mã lý do (API_KEY_UNUSABLE…) ở `why`: hiện câu chữ thay cho mã. Sự kiện là quá khứ, nên chỉ
-  // theo chiến lược, không theo khối lượng hiện tại.
+  // Sự kiện state lưu mã lý do (API_KEY_UNUSABLE…) ở `why`: hiện câu chữ thay cho mã. `stopDetail` của API chỉ nói
+  // về lần dừng hiện tại, nên chỉ dùng khi mã của sự kiện trùng mã bot đang mang.
   const why = (text: string | null) =>
     text !== null && /^[A-Z_]+$/.test(text) && tr.has(text)
-      ? reasonLabel({ reasonCode: text, strategy: bot?.strategy })
+      ? reasonLabel({
+          reasonCode: text,
+          strategy: bot?.strategy,
+          stopDetail: bot?.reasonCode === text ? bot.stopDetail : null,
+        })
       : text;
   const hasPerps = bot !== undefined && bot.engine !== "spot";
   // Draft → màn Edit; archived → Strategy Lab. Chỉ chuyển khi backend đã trả `state` (UI_REVIEW F1).
@@ -417,7 +421,11 @@ export function AgentPage({ botId }: { botId?: string }) {
                 title={
                   a.reasonCode === null
                     ? undefined
-                    : reasonLabel({ reasonCode: a.reasonCode, strategy: a.strategy })
+                    : reasonLabel({
+                        reasonCode: a.reasonCode,
+                        strategy: a.strategy,
+                        stopDetail: a.stopDetail,
+                      })
                 }
                 className={`flex min-w-[220px] flex-none items-center gap-2.5 rounded-[16px] border px-3.5 py-2.5 no-underline ${a.id === id ? "border-accent bg-accent-tint" : "border-border bg-surface"}`}
               >

@@ -97,7 +97,7 @@ export function BotForm({
     (f) =>
       f.hidden !== true &&
       visible(f, values) &&
-      rendered(f, values) &&
+      rendered(f, values, errors) &&
       (lockedReason === undefined || f.locked !== true),
   );
   // Field có `slot` vẽ trong khối riêng (Position loss limit trong "How your losses are capped").

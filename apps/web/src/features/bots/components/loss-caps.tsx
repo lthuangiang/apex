@@ -53,7 +53,7 @@ export function LossCaps({
   children,
 }: {
   values: FormValues;
-  /** Ô Position loss limit, chỉ khi tắt Smart quoting. */
+  /** Ô Position loss limit: khi tắt Smart quoting, hoặc khi bật mà ô vẫn có giá trị / lỗi. */
   children?: ReactNode;
 }) {
   const t = useTranslations("createBot.lossCaps");
@@ -115,7 +115,8 @@ export function LossCaps({
         )}
         <CapCard tone="plain" title={t("max.title")} watches={maxWatches} then={t("max.then")} />
       </div>
-      {smart ? <p className="m-0 text-[13px] leading-snug text-muted">{t("footOn")}</p> : children}
+      {children}
+      {smart ? <p className="m-0 text-[13px] leading-snug text-muted">{t("footOn")}</p> : null}
     </section>
   );
 }
