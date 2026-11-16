@@ -2,10 +2,10 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { headers } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
-import { getMessages } from "next-intl/server";
+import { getMessages, getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
 
-import { SHARE_IMAGE } from "@/lib/share-image";
+import { shareMetadata } from "@/lib/share-image";
 
 import { Providers } from "./providers";
 import "./globals.css";
@@ -17,12 +17,14 @@ export async function generateMetadata(): Promise<Metadata> {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "desklabs.xyz";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  // Mặc định khi chia sẻ link: ảnh + câu chữ của Landing (DEC-TBD-share-images). Trang nào có ảnh riêng thì tự đặt.
+  const t = await getTranslations("landing");
+  const brand = (await getTranslations("common"))("brand");
   return {
     metadataBase: new URL(`${proto}://${host}`),
     title: "DeskLabs",
     robots: { index: false, follow: false },
-    openGraph: { siteName: "DeskLabs", type: "website", images: [SHARE_IMAGE] },
-    twitter: { card: "summary_large_image", images: [SHARE_IMAGE] },
+    ...shareMetadata("landing", t("shareTitle", { brand }), t("shareDescription")),
   };
 }
 

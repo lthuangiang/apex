@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 
 import { ClaudeGuidePage } from "@/features/public/components/claude-guide-page";
 import { mcpServerUrl } from "@/features/public/mcp-url";
+import { shareMetadata } from "@/lib/share-image";
 
 // Trang công khai "Connect DeskLabs to Claude" (MCP M6, W7). Địa chỉ server đọc từ env `MCP_PUBLIC_URL` lúc chạy (cùng
 // biến với api / mcp), nên đổi tên miền chỉ cần đặt env và khởi động lại web.
@@ -12,7 +13,12 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("claudeGuide");
-  return { title: t("metaTitle"), description: t("metaDescription") };
+  return {
+    title: t("metaTitle"),
+    description: t("metaDescription"),
+    // Ảnh share riêng của /claude (DEC-TBD-share-images).
+    ...shareMetadata("claude", t("shareTitle"), t("shareDescription")),
+  };
 }
 
 export default async function Page() {
