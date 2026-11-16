@@ -61,6 +61,15 @@ const hourSchema = z.object({
     swingBp: decimalStringSchema.nullable(),
     /** Chi phí ước tính / $1M của mô hình Market Making (DEC-228) cho giờ đó; null khi thiếu nến hoặc mô hình. */
     estCostPerMillion: decimalStringSchema.nullable(),
+    /** Range 1 phút lớn nhất trong kỳ (bp) của nến bắt đầu trong giờ đó, và mốc bắt đầu của nến; null khi thiếu nến. */
+    maxRangeBp: decimalStringSchema.nullable(),
+    maxRangeAt: isoDateTimeSchema.nullable(),
+    /**
+     * Biến động 15 phút lớn nhất trong kỳ (bp) = (close cao nhất − close thấp nhất) ÷ close thấp nhất × 10 000 trong cửa
+     * sổ 15 phút bắt đầu trong giờ đó, và mốc bắt đầu cửa sổ; null khi thiếu nến.
+     */
+    maxMove15Bp: decimalStringSchema.nullable(),
+    maxMove15At: isoDateTimeSchema.nullable(),
   }),
   cost: z.object({
     /** Markout 30 s phía maker (bp, dương = có lợi cho maker), trung vị qua các giờ trong kỳ. */
@@ -131,6 +140,14 @@ export function minuteRangeBp(high: string, low: string): Decimal | null {
   const mid = h.add(l).div(2);
   if (!mid.gt(0) || h.lt(l)) return null;
   return h.sub(l).div(mid).mul(10_000);
+}
+
+/** Biến động trong một cửa sổ (bp) = (cao nhất − thấp nhất) ÷ thấp nhất × 10 000; giá không hợp lệ → null. */
+export function moveBp(highest: string, lowest: string): Decimal | null {
+  const h = dec(highest);
+  const l = dec(lowest);
+  if (!l.gt(0) || h.lt(l)) return null;
+  return h.sub(l).div(l).mul(10_000);
 }
 
 /** Phân vị q (0..1) theo nội suy tuyến tính (như percentile_cont của Postgres); rỗng → null. */

@@ -58,6 +58,10 @@
   --color-mh-cost-1: var(--mh-cost-1);
   --color-mh-cost-2: var(--mh-cost-2);
   --color-mh-cost-3: var(--mh-cost-3);
+  --color-mh-shock-0: var(--mh-shock-0);
+  --color-mh-shock-1: var(--mh-shock-1);
+  --color-mh-shock-2: var(--mh-shock-2);
+  --color-mh-shock-3: var(--mh-shock-3);
   --color-mh-hatch: var(--mh-hatch);
 
   --radius-control: var(--radius-control);
