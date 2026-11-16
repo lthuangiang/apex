@@ -39,12 +39,21 @@ export interface FieldSpec {
   clears?: readonly string[];
   /** Chỉ hiện khi field khác có giá trị này. */
   when?: { key: string; is: readonly string[] };
+  /**
+   * Chỉ vẽ ô khi công tắc `key` bật (`is: true`) hoặc tắt (`is: false`). Khác `when`: giá trị vẫn gửi lên trong
+   * config, nên config cũ giữ nguyên giá trị (Position loss limit khi bật Smart quoting, DEC-262).
+   */
+  renderIf?: { key: string; is: boolean };
+  /** Vẽ trong khối riêng thay cho section (Position loss limit trong "How your losses are capped"). */
+  slot?: "lossCaps";
   /** Hiện trong nhóm Amount, ngay sau Market (UI_REVIEW G2). */
   amount?: boolean | undefined;
   /** Nằm trong "Advanced settings" (đóng mặc định). */
   advanced?: boolean | undefined;
   /** Tính năng đang thử nghiệm: nhãn "Beta" và mục "How it works" (`fields.<label>.how`). */
   beta?: boolean | undefined;
+  /** Không hiện "How it works" chung của field (thiết kế của chiến lược không có, DEC-262). */
+  noHow?: boolean | undefined;
   /** Field cùng `row` nằm chung một hàng (xuống cột dưới 480 px). */
   row?: string | undefined;
   /** Độ rộng trong hàng: wide = 2/3, narrow = 1/3; mặc định chia đều. */
@@ -555,12 +564,13 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       width: "narrow",
       type: { kind: "int", unit: "×" },
     },
-    { key: "costBudget", group: 4, type: dec("quote") },
+    // Thiết kế "MM form explained" không có "How it works" ở Stop when costs reach / Max position / Where to quote.
+    { key: "costBudget", group: 4, noHow: true, type: dec("quote") },
     { key: "volumeTarget", group: 4, optional: true, type: dec("quote") },
     // Vị thế tối đa theo số lệnh (DEC-133), dễ hiểu hơn số USDC.
-    { key: "maxOrders", group: 3, advanced: true, type: { kind: "int" } },
+    { key: "maxOrders", group: 3, advanced: true, noHow: true, type: { kind: "int" } },
     // Vị trí báo giá theo mức sổ lệnh (DEC-135), thay khoảng cách bp: tự đúng với mọi market.
-    { key: "quoteLevel", group: 3, advanced: true, type: { kind: "int" } },
+    { key: "quoteLevel", group: 3, advanced: true, noHow: true, type: { kind: "int" } },
     // Smart quoting (DEC-144), mặc định tắt: tắt là đúng logic cũ.
     { key: "smartQuoting", group: 3, beta: true, type: { kind: "bool" } },
     // Close only at entry or better / Pause on fast moves (DEC-227): ẩn khỏi form (DEC-241) vì chưa thấy tác
@@ -568,26 +578,28 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
     { key: "closeAtEntry", group: 3, beta: true, hidden: true, type: { kind: "bool" } },
     { key: "pauseOnFastMoves", group: 3, hidden: true, type: { kind: "bool" } },
     { key: "refreshSeconds", group: 3, advanced: true, type: { kind: "int", unit: "s" } },
-    {
-      key: "inventoryLossStop",
-      group: 4,
-      advanced: true,
-      optional: true,
-      type: dec("quote"),
-    },
+    // "Also stop at" nằm trong "When to stop" (thiết kế "MM form explained", DEC-262).
     {
       key: "runUntil",
       group: 4,
-      advanced: true,
       type: enumOf("runUntil", ["target_or_budget", "season_end", "date"]),
     },
     {
       key: "untilAt",
       label: "untilAt",
       group: 4,
-      advanced: true,
       type: { kind: "date" },
       when: { key: "runUntil", is: ["season_end", "date"] },
+    },
+    // Position loss limit chỉ hiện khi tắt Smart quoting (bật thì Position cut thay thế), trong khối
+    // "How your losses are capped". Config cũ đặt giá trị khi bật Smart quoting vẫn giữ và engine vẫn dùng.
+    {
+      key: "inventoryLossStop",
+      group: 4,
+      optional: true,
+      renderIf: { key: "smartQuoting", is: false },
+      slot: "lossCaps",
+      type: dec("quote"),
     },
     {
       key: "onStop",
@@ -769,9 +781,10 @@ export function emptyValues(strategy: keyof typeof FIELDS): FormValues {
     });
   }
   if (strategy === "volume_farm") {
-    // Mặc định DEC-133 (người dùng chọn): lệnh 100–200 USDC, đòn bẩy 25×, stop loss 10% margin (0.4% giá).
+    // Mặc định DEC-133 (người dùng chọn): lệnh 100–200 USDC, đòn bẩy 25×, stop loss 10% margin (0.4% giá). Form thay
+    // đòn bẩy bằng mức account đang đặt cho market khi biết (CB-01, `accountLeverageDefault`).
     Object.assign(out, {
-      leverage: "25",
+      leverage: String(VF_DEFAULT_LEVERAGE),
       orderSizeMinUsd: "100",
       orderSizeMaxUsd: "200",
       // DEC-130: giữ 180–300 s, không dùng lệnh taker (lượt có chiều taker tốn 326–398 USDC mỗi 1M, maker 213).
@@ -790,6 +803,20 @@ export function emptyValues(strategy: keyof typeof FIELDS): FormValues {
     });
   }
   return out;
+}
+
+/** Đòn bẩy mặc định của Volume Builder khi không biết mức account đang đặt (DEC-133). */
+export const VF_DEFAULT_LEVERAGE = 25;
+
+/**
+ * CB-01 (người dùng chọn, 16/11): đòn bẩy mặc định của Volume Builder = mức SoDEX đang đặt cho market của account, tối
+ * đa `VF_DEFAULT_LEVERAGE`, để tạo bot không đổi đòn bẩy cả account ngoài ý muốn. Không biết mức đó thì null (giữ 25×).
+ */
+export function accountLeverageDefault(current: unknown): string | null {
+  if (current === null || current === undefined || current === "") return null;
+  const n = Number(current);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return String(Math.min(n, VF_DEFAULT_LEVERAGE));
 }
 
 export function visible(f: FieldSpec, values: FormValues): boolean {

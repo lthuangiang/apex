@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Info, OctagonAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
+import { useReasonLabel } from "@/features/bots/stop-reason";
 import { formatDateTime, formatInteger, formatMoney } from "@/lib/format";
 
 // Phần tổng quan của Platform Stats (DEC-139): insight tự sinh, KPI so với kỳ trước, phễu kích hoạt, sức khoẻ hệ
@@ -32,7 +33,7 @@ function Panel({ title, children, sub }: { title: string; sub?: string; children
 export function Insights({ items }: { items: readonly StatsInsight[] }) {
   const t = useTranslations("platformStats.ov");
   const ts = useTranslations("createBot.strategies");
-  const tr = useTranslations("reasons");
+  const reasonLabel = useReasonLabel();
   const tc = useTranslations("platformStats.ov.connectStep");
   if (items.length === 0)
     return (
@@ -42,8 +43,10 @@ export function Insights({ items }: { items: readonly StatsInsight[] }) {
     );
   const params = (i: StatsInsight) => {
     const p: Record<string, string | number> = { ...i.params };
-    if (typeof p.strategy === "string") p.strategy = ts(`${p.strategy}.name`);
-    if (typeof p.reason === "string" && p.reason !== "") p.reason = tr(p.reason);
+    const strategy = typeof p.strategy === "string" ? p.strategy : undefined;
+    if (typeof p.reason === "string" && p.reason !== "")
+      p.reason = reasonLabel({ reasonCode: p.reason, strategy });
+    if (strategy !== undefined) p.strategy = ts(`${strategy}.name`);
     if (typeof p.from === "string") p.from = tc(p.from);
     if (typeof p.to === "string") p.to = tc(p.to);
     return p;
@@ -275,7 +278,8 @@ export function Strategies({ o, period }: { o: PlatformOverview; period: number 
 
 export function Stops({ o, period }: { o: PlatformOverview; period: number }) {
   const t = useTranslations("platformStats.ov");
-  const tr = useTranslations("reasons");
+  // Gộp theo reason code trên mọi chiến lược: không biết chiến lược, nên nhãn chung (stop-reason.ts).
+  const reasonLabel = useReasonLabel();
   const total = Math.max(
     1,
     o.stops.reduce((n, s) => n + s.bots, 0),
@@ -289,7 +293,9 @@ export function Stops({ o, period }: { o: PlatformOverview; period: number }) {
           {o.stops.map((s) => (
             <li key={s.reason ?? "user"} className="flex flex-col gap-1">
               <div className="flex items-baseline justify-between gap-2 text-sm">
-                <span>{s.reason === null ? t("stoppedByUser") : tr(s.reason)}</span>
+                <span>
+                  {s.reason === null ? t("stoppedByUser") : reasonLabel({ reasonCode: s.reason })}
+                </span>
                 <strong className="tabular-nums">{formatInteger(s.bots)}</strong>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">

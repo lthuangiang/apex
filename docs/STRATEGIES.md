@@ -225,18 +225,20 @@ Hành vi và quy tắc bắt buộc ở `docs/VOLUME_MAKER.md` mục 17. Field:
 | 2 | Contract | — | Any SoDEX perp (DEC-157) | Required. |
 | Amount | Order size per side | 500 | ≥ SoDEX min size; post-only | Below SoDEX minimum order size. |
 | Amount | Leverage | 5× | 1–40× and ≤ min(account cap, SoDEX market max) (DEC-99) | Allowed 1–40×. |
-| 4 | Stop if I lose (`costBudget`) | 300 | > 0; fees + realized + unrealized loss; warns at 80%, stops at 100% | Must be above 0. |
-| 4 | Stop after trading (`volumeTarget`) | empty | Optional, > 0; bot stops when reached | Must be above 0. |
+| 4 | Stop when costs reach (`costBudget`) | 300 | > 0; fees + realized + unrealized loss; warns at 80%, stops at 100% | Must be above 0. |
+| 4 | Stop after this much volume (`volumeTarget`) | empty | Optional, > 0; bot stops when reached | Must be above 0. |
 | Adv | Max open position (`maxInventory`) | empty = 2 × order size (DEC-100) | > order size | Must be above the order size. |
 | Adv | Quote distance | 1.0 bp | ≥ 1 tick | Must be at least one tick. |
 | Adv | Refresh every | 3 s | 2–60 s | Allowed 2–60 s. |
-| Adv | Position loss limit | empty | Optional, < budget; closes reduce-only | Must be below the budget. |
+| 4 | Position loss limit (`inventoryLossStop`) | empty | Optional, < budget; closes reduce-only. Chỉ hiện khi tắt Smart quoting (hoặc khi ô có giá trị / lỗi), trong khối "How your losses are capped"; giá trị đã lưu vẫn giữ và engine vẫn dùng (DEC-262) | Must be below the budget. |
 | 3 | Close only at your entry price or better (`closeAtEntry`) · BETA | Off | Hint "Fees are not included in your entry price." Close order stays post-only reduce-only at max(best, entry) for long / min(best, entry) for short; after 30 min falls back to the normal close (DEC-227) | — |
 | 3 | Pause on fast moves (`pauseOnFastMoves`) | Off | Price moves ≥ max(3 ticks, 2 bp) in 6 s → opening quotes pulled, reduce-only close kept, quote again after 15 s of calm (DEC-227) | — |
-| Adv | Run until | Target or budget reached | Target or budget / season end / date | — |
-| Adv | When the bot stops | Close inventory | Close (reduce-only) / Keep position | — |
+| 4 | Also stop at (`runUntil`) | No end time | No end time / End of the SoPoints season / A date I choose (kèm ô End date) | — |
+| Adv | When the bot stops (`onStop`) | Close the position | Close the position (reduce-only) / Keep the position | — |
 
-Form gọn (DEC-99): người dùng chỉ cần chọn market, order size, leverage và Stop if I lose; mọi field còn lại có mặc định trong schema. Preview: Balance needed (= max open position / leverage, cùng công thức `requirementOf`), Biggest position, Stops if you lose. Không ước tính chi phí theo khối lượng. Trading Agent hiện sổ lệnh trực tiếp, đánh dấu lệnh của bot là "YOU". Backtest: volume made, net cost (kèm chi phí trên mỗi 1 triệu USD), maker share, max inventory reached.
+Câu chữ form theo thiết kế "MM form explained" (DEC-262): nhãn / hint / đơn vị riêng của Market Making ở `createBot.fieldsByStrategy.volume_maker.<field>` trong en.json (thắng câu chữ chung `createBot.fields`); hint có số lấy theo order size, Stop when costs reach và max orders đang nhập, ô trống thì câu không có số. Section Risk tên "When to stop"; sau đó là khối "How your losses are capped" (Smart quoting bật: Stop when costs reach · Position cut · Max position; tắt: Position loss limit thay Position cut, kèm ô nhập). Max position đơn vị "orders", Where to quote (`quoteLevel`) đơn vị "steps back".
+
+Form gọn (DEC-99): người dùng chỉ cần chọn market, order size, leverage và Stop when costs reach (trước là Stop if I lose); mọi field còn lại có mặc định trong schema. Preview: Balance needed (= max open position / leverage, cùng công thức `requirementOf`), Biggest position, Stops if you lose. Không ước tính chi phí theo khối lượng. Trading Agent hiện sổ lệnh trực tiếp, đánh dấu lệnh của bot là "YOU". Backtest: volume made, net cost (kèm chi phí trên mỗi 1 triệu USD), maker share, max inventory reached.
 
 ## S10. Volume Farm (`volume_farm`) · Perps · builder fee: mọi lần khớp · **chỉ cho tài khoản được team bật (DEC-80)**
 
@@ -245,8 +247,8 @@ Quy tắc của Market Making (VOLUME_MAKER.md mục 17.3) không áp dụng cho
 | Step | Field | Default | Rule / help text | Error message |
 |---|---|---|---|---|
 | 2 | Markets (`markets`) | Mọi market của trader mà SoDEX có | 1–20 market Perps, không trùng; người dùng bỏ tick được (DEC-226); khoá sau khi tạo; `maxExposure` và `maxLoss` tính trên tổng. Trader giao dịch ở market không có trong bot → không bao giờ mở lệnh, ghi "Skipped" (`market_off`, không gửi tin) | Pick at least one market. / Up to 20 markets. / Each market once. |
-| 2 | Leverage | 5× (DEC-103) | 1× to the SoDEX market max | Above the SoDEX maximum of N× for this market. |
-| 3 | Order size from / to | 200 / 500 (DEC-103) | Position value per trade, random in range; min ≥ SoDEX min size | Below SoDEX minimum order size. / Must be at least the minimum size. |
+| 2 | Leverage | Mức SoDEX đang đặt cho market của account, tối đa 25×; không biết thì 25× (DEC-133, DEC-265) | 1× to the SoDEX market max | Above the SoDEX maximum of N× for this market. |
+| 3 | Order size from / to | 100 / 200 (DEC-133) | Position value per trade, random in range; min ≥ SoDEX min size | Below SoDEX minimum order size. / Must be at least the minimum size. |
 | 3 | Hold at least / at most | 180 s / 300 s | 10–3600 s, random in range; at most = hard time stop | Allowed 10–3600 s. / Must be at least the minimum hold. |
 | 3 | Reverse the signal | Off | Không bao giờ vào ngược xu hướng 5 phút, kể cả sau khi đảo (DEC-158) | — |
 | 3 | Only trade sideways | Off | Chỉ vào lượt mới khi regime 5 phút là SIDEWAY; lượt đang mở vẫn thoát như thường (DEC-158) | — |
@@ -257,7 +259,7 @@ Quy tắc của Market Making (VOLUME_MAKER.md mục 17.3) không áp dụng cho
 | 4 | Stop at volume | empty | Optional | Must be above 0. |
 | Adv | Wait between trades | 30 s | 0–3600 s | — |
 | Adv | Max spread | 10 bp | Skips entries above | Allowed 0.1–500 bp. |
-| Adv | Use taker orders / Misses before taker | Off / 3 | 1–10 | Allowed 1–10. |
+| Adv | Use taker orders / Market orders after (misses) | Off / 3 | 0–10 (0 = mọi lệnh vào / thoát là market ngay khi bật taker, DEC-259) | Allowed 0–10. |
 
 Preview: không có. Backtest: 5D / 30D trên nến 1 phút (BACKTEST.md mục 11.2). Agent: Decisions "Enter long/short", "Skipped entry" (chỉ khi lý do đổi), "Stop loss set on SoDEX", "Stop loss on SoDEX moved to break-even", "Closed long/short" kèm lãi ròng sau phí.
 
