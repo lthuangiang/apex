@@ -38,7 +38,7 @@ async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
   if (e.type === "team_mcp_tool_errors")
     return { data: { calls: e.calls, errors: e.errors, pct: e.pct, tool: e.tool } };
   if (e.type === "team_mcp_introspect_failing") return { data: { failures: e.failures } };
-  // Bất biến tiền thật (DEC-273): báo cả bot paper (ghi rõ mode); không ví / key / email.
+  // Bất biến tiền thật (DEC-274): báo cả bot paper (ghi rõ mode); không ví / key / email.
   if (e.type === "team_invariant") {
     const [b] = await db
       .select({ strategy: bots.strategy, market: bots.market, mode: bots.mode })

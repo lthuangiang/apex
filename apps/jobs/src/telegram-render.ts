@@ -145,7 +145,7 @@ function targetOf(row: RenderRow): { path: string; label: string } {
   }
 }
 
-/** Bất biến tiền thật (DEC-273): không ví / key; bot ghi `··` + 8 ký tự cuối id. */
+/** Bất biến tiền thật (DEC-274): không ví / key; bot ghi `··` + 8 ký tự cuối id. */
 function invariantTitle(row: RenderRow): string {
   const s = (k: string) => escapeTelegramHtml(str(row.data[k]) ?? "");
   const vars = {

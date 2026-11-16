@@ -11,7 +11,7 @@ import {
 import { dec, Decimal, Strategy, type TeamOpsEvent } from "@drift/shared";
 import { and, eq, gt, gte, inArray, lte, not, or, sql } from "drizzle-orm";
 
-// Bất biến tiền thật trên prod (DEC-273; DevOps chọn theo ủy quyền, chờ người dùng xác nhận). Mỗi
+// Bất biến tiền thật trên prod (DEC-274; DevOps chọn theo ủy quyền, chờ người dùng xác nhận). Mỗi
 // phút, chỉ đọc DB: không gọi SoDEX, không tự sửa, không đặt lệnh. Một bất biến sai ở 2 lần kiểm tra liền nhau
 // (≥ 2 phút) mới báo `jobs.team_ops`; mỗi (bất biến, bot) tối đa 1 tin / 30 phút; đúng trở lại, hoặc bot không còn
 // được xét, thì 1 tin "resolved". Chỉ xét bot running / stopping / paused và bot dừng trong 1 giờ qua. Mọi so sánh
