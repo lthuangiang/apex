@@ -125,7 +125,7 @@ export function useStateLabel() {
   const waiting = useWaitingText();
   return (
     b: Pick<BotSummary, "state" | "reasonCode" | "needsAttention"> &
-      Partial<Pick<BotSummary, "waiting" | "strategy" | "stopDetail">>,
+      Partial<Pick<BotSummary, "waiting" | "strategy" | "stopDetail" | "mode">>,
     /** Config / khối lượng của bot khi nơi gọi có, để nhãn lý do dừng cụ thể hơn (stop-reason.ts). */
     extra?: Pick<StopReasonInput, "config" | "volume">,
   ) => ({
@@ -140,6 +140,7 @@ export function useStateLabel() {
           reasonLabel: reasonLabel({
             reasonCode: b.reasonCode,
             strategy: b.strategy,
+            mode: b.mode,
             stopDetail: b.stopDetail,
             ...extra,
           }),
@@ -449,7 +450,13 @@ export function BotsPage() {
                     {
                       key: "mode",
                       header: t("cols.mode"),
-                      cell: (b) => (b.state === BotState.draft ? t("modeDraft") : t("mode")),
+                      // Chế độ lấy từ `bots.mode` (SL-01): bot paper không bao giờ ghi "Mainnet".
+                      cell: (b) =>
+                        b.state === BotState.draft
+                          ? t("modeDraft")
+                          : b.mode === "paper"
+                            ? t("modePaper")
+                            : t("mode"),
                     },
                     {
                       key: "status",

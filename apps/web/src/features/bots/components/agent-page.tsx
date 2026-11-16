@@ -117,6 +117,7 @@ export function AgentPage({ botId }: { botId?: string }) {
       ? reasonLabel({
           reasonCode: text,
           strategy: bot?.strategy,
+          mode: bot?.mode,
           stopDetail:
             eventId !== undefined && eventId === currentStopEvent ? bot?.stopDetail : null,
         })
@@ -393,6 +394,8 @@ export function AgentPage({ botId }: { botId?: string }) {
     <WorkspaceShell current="agent" isTeam={me.data?.role === UserRole.team}>
       <div className="flex flex-col gap-5">
         <PageHead
+          // Bot paper: bỏ chip Mainnet ở hàng tiêu đề (PB-01, DEC-105); chưa biết chế độ (đang tải) thì cũng chưa hiện.
+          paper={bot?.mode === "paper" || (id !== undefined && bot === undefined)}
           title={t("title")}
           subtitle={t("subtitle")}
           back={{ href: "/", label: t("back") }}
@@ -426,6 +429,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                     : reasonLabel({
                         reasonCode: a.reasonCode,
                         strategy: a.strategy,
+                        mode: a.mode,
                         stopDetail: a.stopDetail,
                       })
                 }
