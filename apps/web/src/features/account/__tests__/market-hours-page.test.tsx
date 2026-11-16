@@ -70,6 +70,11 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
         fiveMin: Array.from({ length: 12 }, () => "4.2"),
         swingBp: h === 3 ? null : h === 21 ? "12.43" : "4.1",
         estCostPerMillion: h === 3 ? null : h === 21 ? "214.37" : "88.5",
+        // "incl. shock days": giờ 21 có 9 / 30 ngày sốc → trung bình cao hơn ngày điển hình.
+        estShockCostPerMillion: h === 3 ? null : h === 21 ? "336.1" : "95.25",
+        estDays: h === 3 ? null : 30,
+        shockDays: h === 3 ? null : h === 21 ? 9 : 1,
+        cutShare: null,
         // Giờ 08 (Kolkata): một phút 133 bp và chuỗi 15 phút 276 bp (bắt đầu 08:57 Kolkata = 03:27 UTC).
         maxRangeBp: h === 3 ? null : h === 8 ? "133.24" : "8.5",
         maxRangeAt:
@@ -103,7 +108,20 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
     markoutSince: "2026-11-12T00:00:00.000Z",
     markoutDays: 4,
     fillsSince: "2026-10-20T00:00:00.000Z",
-    estimate: { feesBp: "0.7", stepBp: "1.02", modelVersion: 3, unavailable: null },
+    estimate: {
+      feesBp: "0.7",
+      stepBp: "1.02",
+      modelVersion: 3,
+      unavailable: null,
+      shockBp: 15,
+      cutTakerBp: "4",
+      cutSlippageBp: null,
+      cutCostBp: "4",
+      cuts: 2,
+      cutNotional: null,
+      calibration: "1.42",
+      calibrationHours: 18,
+    },
     ...over,
   };
 }
@@ -232,16 +250,15 @@ describe("Market hours page", () => {
   it("shows the model's estimated cost per $1M for every hour, with a tooltip, under block 1", async () => {
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
-    // Nhãn dòng gọn (CPM) vẫn ghi rõ là mức sàn; chú giải chỉ "CPM"; CPM được giải nghĩa trong How to read this.
-    expect(screen.getByText("Est. CPM (model, floor)")).toBeInTheDocument();
+    // Hai dòng thay cho dòng "(model, floor)" cũ; chú giải chỉ "CPM"; CPM được giải nghĩa trong How to read this.
+    expect(screen.getByText("Est. CPM · typical day (model)")).toBeInTheDocument();
+    expect(screen.getByText("Est. CPM · incl. shock days (model)")).toBeInTheDocument();
+    expect(screen.queryByText(/floor/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Estimated cost per \$1M \(model/)).not.toBeInTheDocument();
     expect(screen.getAllByText("CPM").length).toBeGreaterThanOrEqual(3);
     expect(
       screen.getAllByText("CPM = cost per $1M of volume (fees plus price loss).").length,
     ).toBeGreaterThanOrEqual(1);
-    expect(
-      screen.getByText(/It leaves out position cuts and taker fills, so it is a floor/),
-    ).toBeInTheDocument();
     const cell = screen.getByTitle(
       "21:00 · est. $214 per $1M · median 1-min swing 12.4 bp · fees 0.7 bp",
     );
@@ -250,9 +267,74 @@ describe("Market hours page", () => {
     expect(screen.getByTitle(/^00:00 · est\. \$89 per \$1M/)).toHaveClass("bg-mh-cost-0");
     // Giờ không có nến: n/a, không bao giờ 0.
     expect(screen.getAllByTitle("03:00 · Not available").length).toBeGreaterThan(0);
+    // "incl. shock days": số ngày sốc, chi phí cắt và giả định trong tooltip (chưa đủ lệnh cắt thật → chỉ phí taker).
+    const shock = screen.getByTitle(
+      "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · assumes taker fee only · assumes one cut of the full $1M",
+    );
+    expect(shock).toHaveTextContent("$336");
+    expect(shock).toHaveClass("bg-mh-cost-3");
+    expect(screen.getByTitle(/^00:00 · avg \$95 per \$1M · 1 of 30 days/)).toHaveClass(
+      "bg-mh-cost-0",
+    );
+    // Cách tính, giả định và hiệu chỉnh nằm trong "How these numbers are calculated".
+    expect(
+      screen.getByText(/Est\. CPM uses the same model as the Market Making cost card/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/cut cost in bp × 100 × \(one cut's size ÷ one bot's volume in that hour\)/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Cut cost: taker fee 4\.0 bp only\. There are 2 real position cuts/),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Estimated cost per \$1M uses the same model as the Market Making cost card/,
+        "Over the hours with enough bot data, real bot cost was 1.4× this estimate.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("uses measured cut slippage when there are enough real cuts, and says when calibration is not available", async () => {
+    setRespond(() =>
+      Promise.resolve(
+        view({
+          hours: view().hours.map((h) => ({
+            ...h,
+            volatility: { ...h.volatility, cutShare: h.hour === 21 ? "0.05" : null },
+          })),
+          estimate: {
+            ...view().estimate,
+            cutSlippageBp: "2.5",
+            cutCostBp: "6.5",
+            cuts: 12,
+            cutNotional: "2400",
+            calibration: null,
+            calibrationHours: 1,
+          },
+        }),
+      ),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    // Đủ lệnh cắt: không ghi "taker fee only"; giờ có cỡ cắt đo được thì không ghi giả định cắt trọn $1M.
+    expect(
+      screen.getByTitle(
+        "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 6.5 bp",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTitle(
+        /^00:00 · avg \$95 .* cut cost 6\.5 bp · assumes one cut of the full \$1M$/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByTitle(/assumes taker fee only/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Cut cost: taker fee 4\.0 bp plus 2\.5 bp average slippage, measured from 12 real position cuts.*One cut's size is \$2400/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Over the hours with enough bot data, real bot cost compared with this estimate: Not available (fewer than 3 hours with 3 or more bot-hours).",
       ),
     ).toBeInTheDocument();
   });
@@ -263,19 +345,27 @@ describe("Market hours page", () => {
         view({
           hours: view().hours.map((h) => ({
             ...h,
-            volatility: { ...h.volatility, estCostPerMillion: null },
+            volatility: { ...h.volatility, estCostPerMillion: null, estShockCostPerMillion: null },
           })),
-          estimate: { feesBp: "1.5", stepBp: null, modelVersion: 0, unavailable: "no_market_info" },
+          estimate: {
+            ...view().estimate,
+            feesBp: "1.5",
+            stepBp: null,
+            modelVersion: 0,
+            unavailable: "no_market_info",
+          },
         }),
       ),
     );
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
-    expect(
-      screen.getByTitle(
-        "12:00 · Not available · SoDEX market info (tick size) is not available for this market.",
-      ),
-    ).toHaveTextContent("n/a");
+    // Cả hai dòng Est. CPM đều n/a kèm lý do.
+    const na = screen.getAllByTitle(
+      "12:00 · Not available · SoDEX market info (tick size) is not available for this market.",
+    );
+    expect(na).toHaveLength(2);
+    for (const c of na) expect(c).toHaveTextContent("n/a");
+    expect(screen.queryByTitle(/avg \$/)).not.toBeInTheDocument();
     expect(screen.queryByTitle(/est\. \$/)).not.toBeInTheDocument();
   });
 
@@ -347,7 +437,14 @@ describe("Market hours page", () => {
     expect(
       screen.getByText("$89 (model) · median 1-min swing 4.1 bp · fees 0.7 bp"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Est. CPM")).toBeInTheDocument();
+    expect(screen.getByText("Est. CPM · typical day")).toBeInTheDocument();
+    expect(screen.getByText("Est. CPM · incl. shock days")).toBeInTheDocument();
+    // Giờ 07: 1 / 30 ngày sốc; chưa đủ lệnh cắt thật → chỉ phí taker.
+    expect(
+      screen.getByText(
+        "$95 (model) · 1 of 30 days had a 15-min move of 15 bp or more · assumes taker fee only",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("explains every row label with an info button that opens on click, hover or focus and closes on Escape", async () => {
@@ -384,8 +481,13 @@ describe("Market hours page", () => {
       ["Largest 1-min range", maxRange, 1],
       ["Largest 15-min move", maxMove15, 1],
       [
-        "Est. CPM (model, floor)",
-        "CPM (cost per $1M of volume): a floor estimate from market data. SoDEX maker fee plus the default Market Making builder fee, plus the price loss the model expects from this hour's 1-minute moves, per $1M of volume. It leaves out position cuts and taker fills, so real bots usually cost more.",
+        "Est. CPM · typical day (model)",
+        "CPM (cost per $1M of volume): model cost on a normal day for this hour, fees plus the price loss expected from the typical 1-minute swing.",
+        1,
+      ],
+      [
+        "Est. CPM · incl. shock days (model)",
+        "CPM (cost per $1M of volume): model cost averaged over every day, including days with sharp moves. On days when the price ran 15 bp or more within 15 minutes, it adds the cost of a position cut (taker fee plus slippage).",
         1,
       ],
       ["Price move against makers, 30 s later (bp)", markout, 1],
