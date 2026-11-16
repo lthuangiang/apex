@@ -2240,64 +2240,79 @@ export class Engine {
     for (const o of pending) {
       const r = this.#runners.get(o.botId);
       if (r?.shard !== shard) continue;
-      const found = await r.gateway.lookup(r.account, {
-        clOrdID: o.clOrdId,
-        market: o.market,
-        engine: o.engine,
-      });
-      if (found.status === "not_found") {
-        if (now - (o.submittedAt?.getTime() ?? now) < NOT_FOUND_AFTER_MS) continue;
-        await this.#fenced(r, (tx) =>
-          tx
-            .update(orders)
-            .set({ status: "not_placed", reconciledAt: new Date(now) })
-            .where(eq(orders.id, o.id)),
+      // Một lệnh tra lỗi (SoDEX / mạng) không được làm hỏng cả vòng của shard: #reconcileOpen, huỷ lại, phí, đồng hồ
+      // của mọi bot vẫn chạy; lệnh này thử lại ở nhịp sau (follow-up #154).
+      try {
+        await this.#reconcileOne(r, o, now);
+      } catch (error) {
+        if (error instanceof FencedError) throw error;
+        this.#d.log.warn(
+          { err: error, botId: r.botId, clOrdID: o.clOrdId },
+          "reconcile failed for one order; retrying next tick",
         );
-        await this.#event(
-          r,
-          "reconcile",
-          "Order not placed",
-          `${o.clOrdId} was not found on SoDEX.`,
-          now,
-        );
-        await this.#feed(r, {
-          type: "orderReject",
-          at: now,
-          clOrdID: o.clOrdId,
-          code: "NOT_PLACED",
-        });
-        continue;
       }
+    }
+  }
+
+  /** Đối soát một lệnh `unknown` với SoDEX. */
+  async #reconcileOne(r: Runner, o: typeof orders.$inferSelect, now: number): Promise<void> {
+    const found = await r.gateway.lookup(r.account, {
+      clOrdID: o.clOrdId,
+      market: o.market,
+      engine: o.engine,
+    });
+    if (found.status === "not_found") {
+      if (now - (o.submittedAt?.getTime() ?? now) < NOT_FOUND_AFTER_MS) return;
       await this.#fenced(r, (tx) =>
         tx
           .update(orders)
-          .set({
-            status:
-              found.status === "partially_filled" || found.status === "filled"
-                ? "open"
-                : found.status,
-            sodexOrderId: found.orderId,
-            reconciledAt: new Date(now),
-            ackedAt: o.ackedAt ?? new Date(now),
-          })
+          .set({ status: "not_placed", reconciledAt: new Date(now) })
           .where(eq(orders.id, o.id)),
       );
       await this.#event(
         r,
         "reconcile",
-        "Order found on SoDEX",
-        `${o.clOrdId} is ${found.status}.`,
+        "Order not placed",
+        `${o.clOrdId} was not found on SoDEX.`,
         now,
       );
-      if (found.status === "rejected") {
-        await this.#feed(r, { type: "orderReject", at: now, clOrdID: o.clOrdId, code: "REJECTED" });
-        continue;
-      }
-      await this.#ack(r, now);
-      await this.#feed(r, { type: "orderAck", at: now, clOrdID: o.clOrdId });
-      if (dec(found.filledQty).gt(0) && found.avgPrice !== null) {
-        await this.onFill(r.account.id, o.clOrdId, found.filledQty, found.avgPrice, "0", now);
-      }
+      await this.#feed(r, {
+        type: "orderReject",
+        at: now,
+        clOrdID: o.clOrdId,
+        code: "NOT_PLACED",
+      });
+      return;
+    }
+    await this.#fenced(r, (tx) =>
+      tx
+        .update(orders)
+        .set({
+          status:
+            found.status === "partially_filled" || found.status === "filled"
+              ? "open"
+              : found.status,
+          sodexOrderId: found.orderId,
+          reconciledAt: new Date(now),
+          ackedAt: o.ackedAt ?? new Date(now),
+        })
+        .where(eq(orders.id, o.id)),
+    );
+    await this.#event(
+      r,
+      "reconcile",
+      "Order found on SoDEX",
+      `${o.clOrdId} is ${found.status}.`,
+      now,
+    );
+    if (found.status === "rejected") {
+      await this.#feed(r, { type: "orderReject", at: now, clOrdID: o.clOrdId, code: "REJECTED" });
+      return;
+    }
+    await this.#ack(r, now);
+    await this.#feed(r, { type: "orderAck", at: now, clOrdID: o.clOrdId });
+    if (dec(found.filledQty).gt(0) && found.avgPrice !== null) {
+      await this.onFill(r.account.id, o.clOrdId, found.filledQty, found.avgPrice, "0", now);
     }
   }
 
