@@ -37,6 +37,7 @@
       "revenue": "Builder Revenue",
       "users": "Users",
       "stats": "Platform Stats",
+      "ops": "Ops",
       "settings": "Settings",
       "signOut": "Sign out",
       "mobile": {
@@ -4502,6 +4503,28 @@
           "revoke": "Turn off the builder fee or disconnect SoDEX in Settings to stop DeskLabs trading entirely."
         }
       }
+    }
+  },
+  "teamOps": {
+    "title": "Ops",
+    "subtitle": "Live Market Making and Volume Farm bots: cost, volume, request rate and money checks. Updates every 30 s.",
+    "refresh": "Refresh",
+    "checked": "Checked {time}",
+    "empty": "No Market Making or Volume Farm bots ran in the last 24 hours.",
+    "forbidden": "Ops is for the DeskLabs team only.",
+    "none": "None",
+    "invariantValue": "{invariant} · {time} · {detail}",
+    "cols": {
+      "bot": "Bot",
+      "state": "Status",
+      "costPerMillion": "Cost / $1M",
+      "volumeHour": "Volume (1h)",
+      "requestsPerMinute": "Requests / min (last minute)",
+      "makerShare": "Maker share (1h)",
+      "untracked": "Cancelled untracked orders (24h)",
+      "cuts": "Position cuts (24h)",
+      "quoteGap": "Longest quoting gap (1h)",
+      "invariant": "Latest invariant violation"
     }
   },
   "platformStats": {

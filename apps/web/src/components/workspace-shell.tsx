@@ -4,6 +4,7 @@ import { BotState, botListSchema } from "@drift/shared";
 import { AppShell, LiveBadge, type MobileNav, type NavItem } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
   BarChart3,
   BrainCircuit,
   Bot,
@@ -69,6 +70,7 @@ const ITEMS = [
   ["revenue", "/admin/builder-revenue", Coins, "team"],
   ["users", "/admin/users", Users, "team"],
   ["stats", "/admin/stats", BarChart3, "team"],
+  ["ops", "/admin/ops", Activity, "team"],
   ["settings", "/settings", Settings, "secondary"],
 ] as const satisfies readonly (readonly [
   string,
