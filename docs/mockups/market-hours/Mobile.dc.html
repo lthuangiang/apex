@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Market hours phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}
+a:focus-visible,button:focus-visible,select:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<div class="num" style="width: 390px; height: 2000px; box-sizing: border-box; padding: 16px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 12px">
+  <header style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-size: 24px; font-weight: 800">Market hours</h1>
+    <p style="margin: 0; font-size: 13.5px; color: #3b4262">How much SoDEX markets move, what quoting costs and what our bots paid, hour by hour. Past numbers, not a forecast.</p>
+    <span style="align-self: flex-start; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 4px 4px 10px; border-radius: 10px; background: #ffffff; border: 1px solid #e3e7f5; font-size: 12px; font-weight: 700">Times in your time zone: Asia/Ho_Chi_Minh (UTC+7)<button type="button" aria-pressed="false" style="min-height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid #d5dcf2; background: #f5f7fd; color: #141a33; font: inherit; font-size: 12px; font-weight: 700">Show in UTC</button></span>
+  </header>
+  <section aria-label="Filters" style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 18px; background: #ffffff; border: 1px solid #e3e7f5">
+    <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 700; color: #3b4262">Market
+      <select style="min-height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; font: inherit; font-size: 14px; font-weight: 600"><option>BTC-USD</option><option>ETH-USD</option></select>
+    </label>
+    <div role="group" aria-label="Period" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 14px; background: #f5f7fd">
+      <button type="button" aria-pressed="false" style="min-height: 44px; border: 0; border-radius: 11px; background: transparent; color: #3b4262; font: inherit; font-size: 13.5px; font-weight: 700">7 days</button>
+      <button type="button" aria-pressed="true" style="min-height: 44px; border: 0; border-radius: 11px; background: #ffffff; color: #141a33; font: inherit; font-size: 13.5px; font-weight: 700; box-shadow: 0 1px 2px rgba(20,26,51,.12)">30 days</button>
+    </div>
+    <div role="group" aria-label="Strategy" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 3px; border-radius: 14px; background: #f5f7fd">
+      <button type="button" aria-pressed="false" style="min-height: 44px; border: 0; border-radius: 11px; background: transparent; color: #3b4262; font: inherit; font-size: 12.5px; font-weight: 700">Market Making</button>
+      <button type="button" aria-pressed="false" style="min-height: 44px; border: 0; border-radius: 11px; background: transparent; color: #3b4262; font: inherit; font-size: 12.5px; font-weight: 700">Volume Builder</button>
+      <button type="button" aria-pressed="true" style="min-height: 44px; border: 0; border-radius: 11px; background: #ffffff; color: #141a33; font: inherit; font-size: 12.5px; font-weight: 700; box-shadow: 0 1px 2px rgba(20,26,51,.12)">Both</button>
+    </div>
+  </section>
+  <details style="padding: 12px; border-radius: 18px; background: #ffffff; border: 1px solid #e3e7f5; font-size: 13.5px">
+    <summary style="min-height: 28px; font-weight: 800; cursor: pointer">How to read this</summary>
+    <p style="margin: 8px 0 0; color: #3b4262; line-height: 1.5">Same three blocks as on desktop: market volatility, cost to make markets, and what DeskLabs bots paid per $1M. Each row is one hour; tap it for the details.</p>
+    <p style="margin: 6px 0 0; color: #3b4262; line-height: 1.5">Markers, in your time zone: 07:00 · 00:00 UTC, 09:00 · 02:00 UTC, 15:00 · 08:00 UTC, 16:00 · 09:00 UTC, US stock open 21:30 · 14:30 UTC (follows New York time), 23:00 · 16:00 UTC.</p>
+    <p style="margin: 6px 0 0; font-weight: 700; color: #1d47b8">How these numbers are calculated (same text as desktop)</p>
+  </details>
+  <section aria-label="Hour by hour" style="padding: 12px; border-radius: 24px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 8px">
+    <span style="align-self: flex-start; padding: 3px 9px; border-radius: 10px; background: #fdebd3; color: #7a3e00; font-size: 11.5px; font-weight: 700">Cost to make markets: collecting since Nov 12, 2026</span>
+    <div role="presentation" style="display: grid; grid-template-columns: 52px repeat(4, minmax(0, 1fr)); gap: 4px; font-size: 10.5px; font-weight: 700; color: #5f6684; text-align: center">
+      <span style="text-align: left">Hour</span><span>× day median</span><span>Hot days</span><span>Move vs makers 30 s</span><span>Cost / $1M</span>
+    </div>
+    <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="24">
+        <li>
+          <button type="button" aria-expanded="{{r.open}}" onClick="{{r.pick}}" style="{{r.style}}">
+            <span style="text-align: left; display: flex; flex-direction: column"><strong style="font-size: 13px">{{r.h}}</strong><span style="font-size: 9.5px; font-weight: 800; color: #a35a00">{{r.marker}}</span></span>
+            <span style="{{r.heat}}">{{r.ratio}}</span>
+            <span>{{r.hot}}</span>
+            <span>{{r.mk}}</span>
+            <span style="{{r.cost}}">{{r.c}}<sc-if value="{{r.thin}}" hint-placeholder-val="{{ false }}"><span style="display: block; font-size: 8.5px; font-weight: 800; color: #7a3e00">Thin</span></sc-if></span>
+          </button>
+          <sc-if value="{{r.isOpen}}" hint-placeholder-val="{{ false }}">
+            <div style="margin: 4px 0 6px; padding: 10px; border-radius: 12px; background: #f5f7fd; display: flex; flex-direction: column; gap: 6px">
+              <span style="font-size: 12px; font-weight: 700">{{r.h}}:00–{{r.h}}:59 · median 1-min range, 5-minute steps</span>
+              <div style="display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; align-items: end; height: 64px">
+                <sc-for list="{{r.detail}}" as="b" hint-placeholder-count="12"><span style="{{b}}"></span></sc-for>
+              </div>
+              <span style="font-size: 11.5px; color: #3b4262">Median {{r.med}} bp · p90 {{r.p90}} bp · spread {{r.spread}} ticks · volume {{r.vol}} · {{r.bh}} bot-hours</span>
+            </div>
+          </sc-if>
+        </li>
+      </sc-for>
+    </ol>
+  </section>
+  <p style="margin: 0; font-size: 12px; color: #5f6684">Sample values for layout only. Tap an hour for 5-minute steps and the full numbers.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":2000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const self = this;
+    const sel = (this.state && this.state.hour !== undefined) ? this.state.hour : 21;
+    const F = [0.9,0.8,0.7,0.65,0.65,0.7,0.85,1.3,1.2,1.4,1.1,1.0,0.95,1.0,1.05,1.45,1.5,1.2,1.1,1.15,1.3,2.1,2.4,1.6];
+    const markers = { 7: '00 UTC', 9: '02 UTC', 15: '08 UTC', 16: '09 UTC', 21: 'US open', 23: '16 UTC' };
+    const heat = ['#eef2ff', '#c9d6fb', '#93adf3'];
+    const cs = ['#fff4e8', '#fde0bd', '#f9c48c', '#f2a25a'];
+    const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    const chip = 'display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 30px; border-radius: 6px; ';
+    return {
+      rows: F.map(function (f, h) {
+        const bh = h === 4 ? 0 : (h >= 2 && h <= 5 ? 2 : h <= 1 ? 4 : 7 + (h % 3));
+        const na = bh === 0, thin = bh > 0 && bh < 3;
+        const c = Math.round(95 * f + 40);
+        const open = h === sel;
+        const detail = [];
+        for (let i = 0; i < 12; i += 1) { const v = 4.2 * f * (i === 6 ? 2.2 : i === 7 ? 1.6 : 0.8 + ((i * 7) % 5) / 10); detail.push('height: ' + Math.round(Math.min(56, v * 2.6)) + 'px; border-radius: 2px 2px 0 0; background: ' + (i === 6 && h === 21 ? '#e08a2e' : '#4f78e6')); }
+        return {
+          h: pad(h), marker: markers[h] || '', ratio: f.toFixed(1) + '×', hot: Math.max(0, Math.min(100, Math.round((f - 1) * 60))) + '%',
+          mk: '−' + (0.4 + 0.5 * f).toFixed(1), c: na ? 'n/a' : '$' + c, thin: thin,
+          med: (4.2 * f).toFixed(1), p90: (4.2 * f * 2.1).toFixed(1), spread: (1 + f * 0.6).toFixed(1), vol: na ? 'Not available' : '$' + Math.round(30 * f + 10) + 'K', bh: String(bh),
+          heat: chip + 'background: ' + heat[f < 0.75 ? 0 : f < 1.25 ? 1 : 2],
+          cost: chip + (na || thin ? 'background: repeating-linear-gradient(45deg, #fff4e8 0 4px, #ffffff 4px 8px)' : 'background: ' + cs[c < 120 ? 0 : c < 170 ? 1 : c < 230 ? 2 : 3]),
+          open: open ? 'true' : 'false', isOpen: open, detail: detail,
+          pick: function () { self.setState({ hour: open ? -1 : h }); },
+          style: 'width: 100%; display: grid; grid-template-columns: 52px repeat(4, minmax(0, 1fr)); gap: 4px; align-items: center; min-height: 44px; padding: 3px 4px; border: 0; border-radius: 10px; font: inherit; font-size: 12px; font-weight: 600; text-align: center; color: #141a33; cursor: pointer; background: ' + (open ? '#e6ecfe' : (markers[h] ? '#fffaf3' : 'transparent'))
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

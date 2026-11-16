@@ -110,6 +110,12 @@ PM làm:
 
 Dev agent chỉ làm theo câu trả lời có chữ **"ĐÃ CHỐT"** từ PM. Câu không chặn việc thì vẫn làm tiếp theo phương án an toàn nhất và ghi rõ trong PR cho tới khi có câu trả lời.
 
+### 4.2 Thiết kế đã duyệt nằm trong `docs/mockups/`
+
+- Khi người dùng duyệt một thiết kế (canvas của UX), DevOps chép **ngay** các artboard trong phạm vi code vào `docs/mockups/<tên-việc>/`, kèm `README.md` ghi nguồn (link canvas, version), ngày duyệt, artboard nào để code và artboard nào chỉ để tham khảo, cùng các quy tắc chốt khi review. Việc chép đi bằng một PR docs riêng và merge trước khi dev bắt đầu code.
+- Dev agent code theo `docs/mockups/`, không cần quyền mở canvas. Bản trong repo là nguồn chung cho mọi agent (dev, reviewer, UX).
+- Canvas đổi sau khi duyệt thì UX báo DevOps chép lại (một PR docs mới). Bản trong repo khác canvas thì hỏi DevOps, không tự chọn.
+
 ---
 
 ## 5. Phạm vi file khi chạy song song

@@ -195,6 +195,8 @@
       "draftSaved": "Draft saved. Find it in Strategy Lab under My bots.",
       "draftSavedLink": "Open My bots",
       "start": "Start on mainnet",
+      "backtestLost": "Your last backtest lost {net} ({pct}) over {days, plural, =0 {less than a day} one {# day} other {# days}}. A backtest is a simulation, not a forecast.",
+      "backtestLostNoPct": "Your last backtest lost {net} over {days, plural, =0 {less than a day} one {# day} other {# days}}. A backtest is a simulation, not a forecast.",
       "twoFactor": "2FA code",
       "requested": "Start requested · waiting for confirmation",
       "requestedBody": "The bot shows Running only after SoDEX acknowledges the first orders.",
@@ -245,9 +247,11 @@
       "missing": "Not available",
       "stats": {
         "net": "Net result after fees",
+        "netValue": "{net} · {pct} of {capital}",
         "fees": "Fees paid",
         "feesFunding": "Fees + funding",
         "maxDd": "Max drawdown",
+        "maxDdOver": "{dd} · over your {limit} limit",
         "fills": "Fills",
         "timeInRange": "Time in range",
         "completedCycles": "Completed cycles",
@@ -4058,7 +4062,8 @@
       "team_bot_started": "Bot started",
       "team_mcp_tool_errors": "MCP tools failing",
       "team_mcp_introspect_failing": "MCP can’t check tokens",
-      "team_mcp_daily_limit": "MCP daily limit reached"
+      "team_mcp_daily_limit": "MCP daily limit reached",
+      "team_invariant": "Money invariant check"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",
