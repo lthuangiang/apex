@@ -164,6 +164,14 @@ export interface EngineDeps {
   paper?: PaperGateway;
 }
 
+/**
+ * Lý do "Leverage set". Bot paper không gửi gì tới SoDEX (PaperGateway, DEC-105) nên không được ghi "SoDEX confirmed"
+ * (PB-01; câu chữ mới, chờ duyệt).
+ */
+function leverageWhy(paper: boolean, what: string): string {
+  return paper ? `Simulated ${what}. Nothing was sent to SoDEX.` : `SoDEX confirmed ${what}.`;
+}
+
 /** Engine (Spot / Perps) mà bot giao dịch, theo chiến lược và cấu hình. */
 function engineOfBot(strategy: string, config: unknown): "spot" | "perps" {
   if (
@@ -514,14 +522,12 @@ export class Engine {
     const paper = this.#d.paper;
     if (paper !== undefined) {
       paper.setPrice(market, price);
-      if (
-        [...this.#runners.values()].some(
-          (x) => x.paper && (x.market === market || this.#watches(x, market)),
-        )
-      ) {
-        for (const f of await paper.onPrice(market, price, at))
+      const ids = [...this.#runners.values()]
+        .filter((x) => x.paper && (x.market === market || this.#watches(x, market)))
+        .map((x) => x.botId);
+      if (ids.length > 0)
+        for (const f of await paper.onPrice(market, price, at, ids))
           await this.onFill(f.accountId, f.clOrdID, f.totalFilled, f.avgPrice, f.fee, at);
-      }
     }
     for (const r of [...this.#runners.values()].filter(
       (x) => x.market === market || this.#watches(x, market),
@@ -1296,7 +1302,7 @@ export class Engine {
     if (current?.leverage === spec.leverage && current.marginMode === spec.marginMode) {
       r.leverageSet = true;
       r.leverageUnknown = false;
-      await this.#event(r, "decision", "Leverage set", `SoDEX confirmed ${what}.`, at);
+      await this.#event(r, "decision", "Leverage set", leverageWhy(r.paper, what), at);
       return "ok";
     }
     // Vị thế đang mở trên symbol với thiết lập khác: không đổi đòn bẩy của cả account (DEC-58), không retry.
@@ -1325,7 +1331,7 @@ export class Engine {
     if (res.outcome === "ok") {
       r.leverageSet = true;
       r.blocked = null;
-      await this.#event(r, "decision", "Leverage set", `SoDEX confirmed ${what}.`, at);
+      await this.#event(r, "decision", "Leverage set", leverageWhy(r.paper, what), at);
     } else if (res.outcome === "rejected") {
       await this.#event(
         r,
@@ -2088,6 +2094,9 @@ export class Engine {
         this.#d.now(),
       );
     }
+    // Bot paper (PB-01): lệnh đóng market chỉ khớp ở lần giá kế tiếp khi bot còn runner; bot sắp bị bỏ khỏi runner nên
+    // khớp ngay ở giá hiện tại, không để lệnh đóng nằm "open" mãi và vị thế giả không bao giờ được đóng.
+    if (r.paper) await this.#fillPaperNow(r);
     await this.#fenced(r, async (tx) => {
       const [b] = await tx
         .select({ state: bots.state })
@@ -2134,6 +2143,19 @@ export class Engine {
         });
     });
     this.#runners.delete(r.botId);
+  }
+
+  /** Khớp ngay các lệnh paper đang mở của bot ở giá gần nhất của từng market (lệnh limit chỉ khớp khi giá đã qua). */
+  async #fillPaperNow(r: Runner): Promise<void> {
+    const paper = this.#d.paper;
+    if (paper === undefined) return;
+    const at = this.#d.now();
+    for (const market of new Set([r.market, ...Object.keys(r.ctx.rules)])) {
+      const price = this.#lastPrice.get(market) ?? paper.priceOf(market);
+      if (price === null) continue;
+      for (const f of await paper.onPrice(market, price, at, [r.botId]))
+        await this.onFill(f.accountId, f.clOrdID, f.totalFilled, f.avgPrice, f.fee, at);
+    }
   }
 
   /** Engine của lệnh đóng khi Stop: Futures Grid / DCA, Volume Maker / Farm và TWAP chạy Perps đều là Perps. */

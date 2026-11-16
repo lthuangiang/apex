@@ -2259,6 +2259,66 @@ describe("engine", () => {
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.mode, "paper"));
   }
 
+  it("fills a paper bot's close at the last price on Stop, so no paper order stays open (PB-01)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const p = await seedPaper();
+    const e = paperEngine(gw, "paper-stop");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    // Giá xuống qua mức mua 95: lệnh mua giả khớp, bot giữ BTC giả.
+    clock += 1_000;
+    await e.onPrice("vBTC_vUSDC", "94", clock);
+    const bought = await db.select().from(paperFills).where(eq(paperFills.botId, p.botId));
+    expect(bought.length).toBeGreaterThan(0);
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, p.botId));
+    for (let i = 0; i < 3; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    expect((await botState(p.botId))?.state).toBe("stopped");
+    const rows = await db.select().from(orders).where(eq(orders.botId, p.botId));
+    expect(rows.filter((o) => o.status === "open" || o.status === "partially_filled")).toEqual([]);
+    expect(rows.find((o) => o.tag === "close")?.status).toBe("filled");
+    // Bot paper không bao giờ gửi gì qua cổng thật (quy tắc 2, DEC-105).
+    expect(gw.received).toEqual([]);
+    await e.stop();
+  });
+
+  it("never fills the open paper order of a bot the engine no longer runs (PB-01)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const stopped = await seedPaper();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, stopped.botId));
+    // Lệnh đóng cũ còn "open" (như trước bản sửa): không bot nào chạy nó nên engine không ghi được fill vào dòng lệnh.
+    await db.insert(orders).values({
+      botId: stopped.botId,
+      sodexAccountId: stopped.accountId,
+      clOrdId: "stuck-paper-close",
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      side: "sell",
+      type: "market",
+      timeInForce: "IOC",
+      size: "1",
+      status: "open",
+      reduceOnly: false,
+      tag: "close",
+      epoch: 1,
+    });
+    const running = await seedPaper();
+    const e = paperEngine(gw, "paper-other");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    clock += 1_000;
+    await e.onPrice("vBTC_vUSDC", "101", clock);
+    expect(await db.select().from(paperFills).where(eq(paperFills.botId, stopped.botId))).toEqual(
+      [],
+    );
+    await e.stop();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, running.botId));
+  });
+
   it("runs a paper bot without ever calling the real gateway or the signer, even with an API key", async () => {
     const { eq } = await import("drizzle-orm");
     const real = new FakeGateway();
