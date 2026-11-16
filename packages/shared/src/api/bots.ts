@@ -175,6 +175,24 @@ export function decisionOutcome(
 }
 
 /**
+ * Lệnh đại diện cho kết quả của một quyết định (BD-02: pill Result link tới lệnh này trong Execution & Orders): lệnh đầu
+ * tiên có trạng thái khớp với kết quả gộp; không có thì lệnh đầu tiên. Không tìm thấy lệnh nào → null.
+ */
+export function outcomeOrder(
+  list: readonly { clOrdId: string; status: string; filledSize: string }[],
+  outcome: DecisionOutcome | null,
+): string | null {
+  if (outcome === null || list.length === 0) return null;
+  const match = (o: { status: string; filledSize: string }): boolean =>
+    outcome === "partly_filled"
+      ? dec(o.filledSize).gt(0)
+      : outcome === "open"
+        ? o.status === "open" || o.status === "partially_filled"
+        : o.status === outcome;
+  return (list.find(match) ?? list[0])?.clOrdId ?? null;
+}
+
+/**
  * Mã reject của SoDEX coi là bình thường (BD-05, DevOps chốt theo ủy quyền): lệnh post-only sẽ khớp ngay (`PostOnly`) và
  * chặn tự khớp với lệnh của chính mình (`SELF_TRADE_BLOCKED`). Mọi mã khác (kể cả mã trống, mã mới) là bị từ chối vì lý do
  * khác.
@@ -203,6 +221,8 @@ export const botEventSchema = z.object({
   result: z.string().nullable(),
   /** Kết quả theo lệnh thật (BD-02); null khi quyết định không đặt lệnh hoặc event cũ chưa gắn lệnh. */
   outcome: decisionOutcomeSchema.nullable().default(null),
+  /** clOrdID của lệnh đại diện cho `outcome` (`outcomeOrder`), để pill Result link tới lệnh; null khi không có lệnh. */
+  order: z.string().nullable().default(null),
   occurredAt: isoDateTimeSchema,
 });
 

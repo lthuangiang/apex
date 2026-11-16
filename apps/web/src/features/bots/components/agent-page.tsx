@@ -9,9 +9,8 @@ import {
   BotState,
   UserRole,
   type BotDetail,
-  type DecisionOutcome,
 } from "@drift/shared";
-import { Button, ConfirmDialog, DataTable, Skeleton, StatusPill } from "@drift/ui";
+import { Button, ConfirmDialog, Skeleton, StatusPill } from "@drift/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Download, Pause, Plus, Square } from "lucide-react";
 import Link from "next/link";
@@ -38,6 +37,7 @@ import { BotFills } from "./bot-fills";
 import { BotProfit } from "./bot-profit";
 import { BOTS_KEY, useStateLabel, waitingTooLong } from "./bots-page";
 import { ConfigList, useConfigRows } from "./config-view";
+import { DecisionsList } from "./decisions-list";
 import { LiveQuotes } from "./live-quotes";
 import { MmAnalyticsCard } from "./mm-analytics";
 import { MmMarkoutCard } from "./mm-markout";
@@ -66,7 +66,6 @@ const clock = (v: string | number) => formatDateTime(v).split(", ").at(-1) ?? ""
 export function AgentPage({ botId }: { botId?: string }) {
   const names = useMarketNames();
   const t = useTranslations("agent");
-  const tOutcome = useTranslations("agent.outcomes");
   const tRejects = useTranslations("agent.rejects");
   const tm = useTranslations("common.missing");
   const tf = useTranslations("createBot");
@@ -579,87 +578,22 @@ export function AgentPage({ botId }: { botId?: string }) {
                   {t("allOrders")}
                 </Link>
               </div>
-              <div className="hidden lg:block">
-                <DataTable
-                  scroll="max-h-[560px]"
-                  caption={t("decisions")}
-                  label={t("decisions")}
-                  status={d.events.length === 0 ? "empty" : "ready"}
-                  empty={{ title: t("noDecisions") }}
-                  error={{ title: "" }}
-                  rows={d.events}
-                  getRowKey={(e) => e.id}
-                  columns={[
-                    {
-                      key: "time",
-                      header: t("cols.time"),
-                      cell: (e) => formatDateTime(e.occurredAt),
-                    },
-                    {
-                      key: "decision",
-                      header: t("cols.decision"),
-                      cell: (e) => (
-                        <span className="flex items-center gap-1">
-                          <strong>{e.decision ?? e.type}</strong>
-                          {bot.mode === "paper" ? null : (
-                            <AskAboutThis
-                              context={{ kind: "decision", botId: bot.id, eventId: e.id }}
-                              subtitle={`${e.decision ?? e.type} · ${formatDateTime(e.occurredAt)} · ${bot.name}`}
-                            />
-                          )}
-                        </span>
+              <DecisionsList
+                botId={bot.id}
+                events={d.events}
+                why={(e) => why(e.why, e.id) ?? null}
+                legacy={(text) => <ResultPill text={text} />}
+                {...(bot.mode === "paper"
+                  ? {}
+                  : {
+                      ask: (e: (typeof d.events)[number], time: string) => (
+                        <AskAboutThis
+                          context={{ kind: "decision", botId: bot.id, eventId: e.id }}
+                          subtitle={`${e.decision ?? e.type} · ${time} · ${bot.name}`}
+                        />
                       ),
-                    },
-                    { key: "why", header: t("cols.why"), cell: (e) => why(e.why, e.id) ?? "" },
-                    {
-                      key: "result",
-                      header: t("cols.result"),
-                      cell: (e) =>
-                        e.result !== null ? (
-                          <ResultPill text={e.result} />
-                        ) : e.outcome !== null ? (
-                          <OutcomePill outcome={e.outcome} />
-                        ) : (
-                          ""
-                        ),
-                    },
-                  ]}
-                />
-              </div>
-              {/* Mobile: danh sách giờ · hành động đậm · kết quả (artboard Mobile-Agent), không dùng bảng. */}
-              <ul className="m-0 flex list-none flex-col p-0 lg:hidden">
-                {d.events.length === 0 ? (
-                  <li className="py-3 text-sm text-ink-2">{t("noDecisions")}</li>
-                ) : (
-                  d.events.slice(0, 10).map((e) => (
-                    <li
-                      key={e.id}
-                      className="flex gap-3 border-b border-border py-2.5 tabular-nums last:border-b-0"
-                    >
-                      <span className="w-14 flex-none text-xs text-muted">
-                        {clock(e.occurredAt).slice(0, 5)}
-                      </span>
-                      <span className="flex min-w-0 flex-col gap-0.5">
-                        <span className="flex items-center gap-1">
-                          <strong className="text-sm">{e.decision ?? e.type}</strong>
-                          {bot.mode === "paper" ? null : (
-                            <AskAboutThis
-                              context={{ kind: "decision", botId: bot.id, eventId: e.id }}
-                              subtitle={`${e.decision ?? e.type} · ${clock(e.occurredAt).slice(0, 5)} · ${bot.name}`}
-                            />
-                          )}
-                        </span>
-                        <span className="text-xs text-ink-2">
-                          {e.result ??
-                            (e.outcome === null ? null : tOutcome(e.outcome)) ??
-                            why(e.why, e.id) ??
-                            ""}
-                        </span>
-                      </span>
-                    </li>
-                  ))
-                )}
-              </ul>
+                    })}
+              />
             </section>
 
             {active === undefined ? null : (
@@ -947,20 +881,6 @@ export function AgentPage({ botId }: { botId?: string }) {
       </div>
     </WorkspaceShell>
   );
-}
-
-/** Kết quả theo lệnh thật (BD-02): cùng kiểu pill, màu theo loại. */
-function OutcomePill({ outcome }: { outcome: DecisionOutcome }) {
-  const t = useTranslations("agent.outcomes");
-  const tone =
-    outcome === "filled" || outcome === "partly_filled"
-      ? "bg-pos-bg text-pos"
-      : outcome === "open"
-        ? "bg-accent-tint text-accent-ink"
-        : outcome === "unknown"
-          ? "bg-unknown-bg text-unknown"
-          : "bg-surface-2 text-ink-2";
-  return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${tone}`}>{t(outcome)}</span>;
 }
 
 /** Kết quả của một quyết định: pill màu theo loại (artboard Agent). */

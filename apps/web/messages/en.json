@@ -3030,14 +3030,22 @@
     "recentErrors": "Recent errors",
     "noErrors": "No errors.",
     "refusedRecently": "{n, plural, one {# order refused by SoDEX in the last 24 hours} other {# orders refused by SoDEX in the last 24 hours}}",
-    "outcomes": {
-      "filled": "Filled",
-      "partly_filled": "Partially filled",
-      "open": "Open",
-      "cancelled": "Cancelled",
-      "rejected": "Rejected",
-      "unknown": "Unknown",
-      "not_placed": "Not placed"
+    "decisionsList": {
+      "emptyBody": "Each decision appears here with its order, once the bot starts.",
+      "showOrder": "{result}. Show order …{tail} in Orders",
+      "count": "×{n}",
+      "range": "{from} – {to}",
+      "groupPanel": "{n} {name} decisions",
+      "showAll": "Show all {n}",
+      "summary": {
+        "unknown": "{n} unknown",
+        "rejected": "{n} rejected",
+        "open": "{n} open",
+        "partially_filled": "{n} partially filled",
+        "filled": "{n} filled",
+        "cancelled": "{n} cancelled",
+        "not_placed": "{n} not placed"
+      }
     },
     "rejects": {
       "postOnly": "{n} would have crossed the book (normal for post-only)",
@@ -3588,7 +3596,17 @@
     "showLast30": "Show last 30 days",
     "clearFilters": "Clear filters",
     "rejectCode": "SoDEX code {code}",
-    "selfTrade": "Would have traded with your own order"
+    "selfTrade": "Would have traded with your own order",
+    "fromDecisions": {
+      "banner": "Showing the order from Decisions:",
+      "bannerFiltered": "This order is older than the loaded page, so Orders is filtered to it:",
+      "which": "{decision} · {time}",
+      "back": "← Back to decisions",
+      "label": "From Decisions",
+      "chip": "Order …{tail}",
+      "clearOrder": "Clear order filter",
+      "showingOne": "Showing 1 order."
+    }
   },
   "botEdit": {
     "title": "Edit {name}",

@@ -885,6 +885,14 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(outcome("Bought at level 3")).toBe("rejected");
     // Quyết định không đặt lệnh: không có kết quả (không đoán).
     expect(outcome("Price left the grid range")).toBeNull();
+    // Pill Result link tới đúng lệnh (clOrdID); Orders lọc được theo lệnh đó.
+    const order_ = (d: string) => detail.events.find((e) => e.decision === d)?.order;
+    expect(order_("Bought at level 1")).toBe(`f-${tag}`);
+    expect(order_("Price left the grid range")).toBeNull();
+    const one = orderListSchema.parse(
+      (await client.request("GET", `/api/v1/orders?botId=${id}&order=c-${tag}`)).json(),
+    );
+    expect(one.items.map((o) => o.clOrdId)).toEqual([`c-${tag}`]);
     // Post-only cross là bình thường; giới hạn rủi ro của DeskLabs đếm riêng, không gọi là SoDEX từ chối.
     expect(detail.refusedRecently).toBe(1);
     expect(detail.blockedByRiskRecently).toBe(1);

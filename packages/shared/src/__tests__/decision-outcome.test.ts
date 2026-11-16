@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decisionOutcome, NORMAL_REJECT_CODES } from "../api/bots";
+import { decisionOutcome, NORMAL_REJECT_CODES, outcomeOrder } from "../api/bots";
 
 // BD-02: kết quả của một quyết định theo trạng thái thật của các lệnh nó đặt. BD-05: mã reject bình thường.
 
@@ -43,5 +43,24 @@ describe("decision outcome (BD-02)", () => {
 describe("normal reject codes (BD-05)", () => {
   it("are SoDEX's post-only cross and self-trade block, nothing else", () => {
     expect(Object.values(NORMAL_REJECT_CODES).sort()).toEqual(["PostOnly", "SELF_TRADE_BLOCKED"]);
+  });
+});
+
+describe("outcome order (BD-02 links)", () => {
+  const p = (clOrdId: string, status: string, filledSize = "0") => ({
+    clOrdId,
+    status,
+    filledSize,
+  });
+  it("links to the order that matches the outcome, else the first one", () => {
+    const list = [p("a", "cancelled"), p("b", "filled", "1"), p("c", "unknown")];
+    expect(outcomeOrder(list, "unknown")).toBe("c");
+    expect(outcomeOrder(list, "partly_filled")).toBe("b");
+    expect(outcomeOrder([p("a", "cancelled"), p("b", "partially_filled")], "open")).toBe("b");
+    expect(outcomeOrder([p("a", "cancelled")], "rejected")).toBe("a");
+  });
+  it("is null without orders or outcome", () => {
+    expect(outcomeOrder([], "filled")).toBeNull();
+    expect(outcomeOrder([p("a", "filled", "1")], null)).toBeNull();
   });
 });
