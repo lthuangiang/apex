@@ -25,6 +25,7 @@ const tag = () => randomUUID().slice(0, 6).toUpperCase();
 const A = `CA${tag()}-USD`;
 const B = `CB${tag()}-USD`;
 const NONE = `CN${tag()}-USD`;
+const THIN = `CT${tag()}-USD`;
 const HOURS = [5, 6, 7] as const;
 // Mọi giờ cùng một dãy close: xen kẽ 100.1 / 100 (biến động 15 phút 10 bp < 15: không có ngày sốc, nên "incl. shock
 // days" = chi phí mô hình của ngày đó, không có phần cắt). Close của nến hh:01 = 100 = giá tham chiếu của fill hh:00.
@@ -32,9 +33,9 @@ const closes = Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? "100.1" : "10
 
 beforeAll(async () => {
   env = await startTestEnv();
-  for (const m of [A, B, NONE]) env.sodex.addPerpSymbol(m, { maxLeverage: 10 });
+  for (const m of [A, B, NONE, THIN]) env.sodex.addPerpSymbol(m, { maxLeverage: 10 });
   env.clock.now = new Date("2026-11-02T23:00:00Z");
-  const values = [A, B, NONE].flatMap((m) =>
+  const values = [A, B, NONE, THIN].flatMap((m) =>
     HOURS.flatMap((h) =>
       closes.map(
         (c, i) =>
@@ -170,11 +171,12 @@ describe("Est. CPM · calibrated", () => {
     expect(v.estimate).toMatchObject({
       positionRatio: "2",
       positionRatioSource: "default",
-      fillsPerBotHour: null,
-      cutShare: null,
-      cutScope: { source: "default", botHours: 0, markets: [] },
+      // F = 80 mặc định: phần cắt vẫn có khi chưa có bot nào = 2 ÷ 80.
+      fillsPerBotHour: "80",
+      cutShare: "0.025",
+      cutScope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
       calibration: "1",
-      calibrationScope: { source: "default", botHours: 0, markets: [] },
+      calibrationScope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
       calibrationHours: 0,
     });
     const h5 = v.hours[5]?.volatility;
@@ -200,8 +202,8 @@ describe("Est. CPM · calibrated", () => {
       positionRatioSource: "market",
       fillsPerBotHour: s2(fA),
       cutShare: rA.div(fA).toDecimalPlaces(4).toString(),
-      cutScope: { source: "market", botHours: 9, markets: [] },
-      calibrationScope: { source: "market", botHours: 9, markets: [] },
+      cutScope: { source: "market", botHours: 9, marketBotHours: 9, markets: [] },
+      calibrationScope: { source: "market", botHours: 9, marketBotHours: 9, markets: [] },
       calibrationHours: 3,
     });
     const cA = quantile(ratiosOf(fillsA), 0.5);
@@ -224,8 +226,14 @@ describe("Est. CPM · calibrated", () => {
       positionRatio: s2(r),
       positionRatioSource: "pooled",
       fillsPerBotHour: s2(f),
-      cutScope: { source: "pooled", botHours: 18, markets: [A, B].sort() },
-      calibrationScope: { source: "pooled", botHours: 18, markets: [A, B].sort() },
+      // NONE không có bot nào: "No bots on this market" (marketBotHours = 0).
+      cutScope: { source: "pooled", botHours: 18, marketBotHours: 0, markets: [A, B].sort() },
+      calibrationScope: {
+        source: "pooled",
+        botHours: 18,
+        marketBotHours: 0,
+        markets: [A, B].sort(),
+      },
       calibrationHours: 6,
     });
     expect(v.estimate.cutShare).toBe(r?.div(f).toDecimalPlaces(4).toString());
@@ -235,5 +243,26 @@ describe("Est. CPM · calibrated", () => {
     expect(v.hours[5]?.volatility.estCalibratedCostPerMillion).toBe(
       s2(c === null ? null : est.mul(c)),
     );
+  });
+
+  it("pools C when this market has bots but too few qualifying hours, and says it had bots", async () => {
+    const { userId, client } = await teamUser();
+    // Một bot trên THIN, chỉ giờ 05: 1 bot-hour → không có ô ≥ 3 bot-hour; R và F vẫn lấy từ chính bot này.
+    await seedBot(userId, THIN, "20", fillsA.slice(0, 2));
+    const v = await get(client, THIN);
+    expect(v.estimate).toMatchObject({
+      positionRatioSource: "market",
+      cutScope: { source: "market", botHours: 1, marketBotHours: 1, markets: [] },
+      // Ô chỉ có ở A và B; THIN có 1 bot-hour → "Not enough bot data on this market".
+      calibrationScope: {
+        source: "pooled",
+        botHours: 18,
+        marketBotHours: 1,
+        markets: [A, B].sort(),
+      },
+      calibrationHours: 6,
+    });
+    const c = quantile([...ratiosOf(fillsA), ...ratiosOf(fillsB)], 0.5);
+    expect(v.estimate.calibration).toBe(s2(c));
   });
 });

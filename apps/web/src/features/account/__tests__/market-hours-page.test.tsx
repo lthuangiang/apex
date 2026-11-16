@@ -127,9 +127,9 @@ function view(over: Partial<MarketHoursView> = {}): MarketHoursView {
       positionRatioSource: "market",
       fillsPerBotHour: "34.9",
       cutShare: "0.0573",
-      cutScope: { source: "market", botHours: 37, markets: [] },
+      cutScope: { source: "market", botHours: 37, marketBotHours: 37, markets: [] },
       calibration: "1.42",
-      calibrationScope: { source: "market", botHours: 37, markets: [] },
+      calibrationScope: { source: "market", botHours: 37, marketBotHours: 37, markets: [] },
       calibrationHours: 18,
     },
     ...over,
@@ -341,9 +341,19 @@ describe("Market hours page", () => {
           estimate: {
             ...view().estimate,
             positionRatioSource: "pooled",
-            cutScope: { source: "pooled", botHours: 52, markets: ["BTC-USD", "ETH-USD"] },
+            cutScope: {
+              source: "pooled",
+              botHours: 52,
+              marketBotHours: 0,
+              markets: ["BTC-USD", "ETH-USD"],
+            },
             calibration: "1.1",
-            calibrationScope: { source: "pooled", botHours: 52, markets: ["BTC-USD", "ETH-USD"] },
+            calibrationScope: {
+              source: "pooled",
+              botHours: 52,
+              marketBotHours: 0,
+              markets: ["BTC-USD", "ETH-USD"],
+            },
             calibrationHours: 25,
           },
         }),
@@ -362,6 +372,43 @@ describe("Market hours page", () => {
     expect(screen.getAllByText(new RegExp(`Source: ${esc(pooled)}\\.`))).toHaveLength(2);
     cleanup();
 
+    // Market có bot (5 bot-hour) nhưng chưa đủ ô để hiệu chỉnh: câu "Not enough bot data on this market" cho C, còn
+    // cỡ cắt vẫn từ bot của market này.
+    setRespond(() =>
+      Promise.resolve(
+        view({
+          market: "SOL-USD",
+          estimate: {
+            ...view().estimate,
+            cutScope: { source: "market", botHours: 5, marketBotHours: 5, markets: [] },
+            calibration: "1.1",
+            calibrationScope: {
+              source: "pooled",
+              botHours: 52,
+              marketBotHours: 5,
+              markets: ["BTC-USD", "ETH-USD"],
+            },
+            calibrationHours: 25,
+          },
+        }),
+      ),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const thin =
+      "Not enough bot data on this market: calibrated on all markets (BTC-USD, ETH-USD; 14 days)";
+    expect(
+      screen.getByTitle(new RegExp(`^21:00 · \\$477 per \\$1M · .* × 1\\.10 · ${esc(thin)}$`)),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTitle(
+        new RegExp(`^21:00 · avg \\$336 .*· Calibrated on SOL-USD bots \\(14 days, 5 hours\\)$`),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(new RegExp(`Source: ${esc(thin)}\\.`))).toHaveLength(1);
+    expect(screen.queryByText(/No bots on this market/)).not.toBeInTheDocument();
+    cleanup();
+
     setRespond(() =>
       Promise.resolve(
         view({
@@ -369,11 +416,12 @@ describe("Market hours page", () => {
             ...view().estimate,
             positionRatio: "2",
             positionRatioSource: "default",
-            fillsPerBotHour: null,
-            cutShare: null,
-            cutScope: { source: "default", botHours: 0, markets: [] },
+            // F = 80 mặc định: phần cắt = 2 ÷ 80 = 2.5%.
+            fillsPerBotHour: "80",
+            cutShare: "0.025",
+            cutScope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
             calibration: "1",
-            calibrationScope: { source: "default", botHours: 0, markets: [] },
+            calibrationScope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
             calibrationHours: 0,
           },
         }),
@@ -388,13 +436,20 @@ describe("Market hours page", () => {
     expect(
       screen.getByText(`Est. CPM · calibrated = incl. shock days × 1.00. Source: ${fallback}.`),
     ).toBeInTheDocument();
+    // Không có bot nào: phần cắt vẫn có (R = 2, F = 80), tooltip ghi nguồn mặc định.
+    expect(
+      screen.getByTitle(
+        `21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · assumes taker fee only · cut size 2.0× order size (2.5% of a bot-hour's volume) · ${fallback}`,
+      ),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         new RegExp(
-          `Position cuts not included: no live Market Making bot has volume in the last 14 days to size a cut against\\. Source: ${esc(fallback)}\\.`,
+          `A bot-hour fills 80\\.0× the order size, so one cut is 2\\.5% of one bot-hour's volume\\. Source: ${esc(fallback)}\\.`,
         ),
       ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/Position cuts not included/)).not.toBeInTheDocument();
   });
 
   it("uses measured cut slippage and cut size when there are enough real cuts", async () => {

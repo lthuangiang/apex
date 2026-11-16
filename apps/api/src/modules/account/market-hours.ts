@@ -10,8 +10,7 @@ import {
   decimalStringSchema,
   fillCostPerMillion,
   MARKET_HOURS_CALIBRATION_DAYS,
-  MARKET_HOURS_DEFAULT_CALIBRATION,
-  MARKET_HOURS_DEFAULT_POSITION_RATIO,
+  MARKET_HOURS_CALIBRATION_DEFAULTS,
   MARKET_HOURS_HOT_RATIO,
   MARKET_HOURS_THIN_BOT_HOURS,
   marketHoursQuerySchema,
@@ -303,7 +302,7 @@ const botHoursOf = (bots: readonly MmBotWindow[], market: string): number =>
   bots.filter((b) => b.market === market).reduce((s, b) => s + b.botHours, 0);
 
 const sizingOut = (s: ReturnType<typeof cutSizing>) => ({
-  positionRatio: str(s.ratio) ?? MARKET_HOURS_DEFAULT_POSITION_RATIO,
+  positionRatio: str(s.ratio) ?? MARKET_HOURS_CALIBRATION_DEFAULTS.positionRatio,
   positionRatioSource: s.ratioSource,
   fillsPerBotHour: str(s.fillsPerBotHour),
   cutShare: str(s.cutShare, 4),
@@ -311,7 +310,7 @@ const sizingOut = (s: ReturnType<typeof cutSizing>) => ({
 });
 
 const calibrationOut = (c: Awaited<ReturnType<typeof calibrationOf>>) => ({
-  calibration: str(c.factor) ?? MARKET_HOURS_DEFAULT_CALIBRATION,
+  calibration: str(c.factor) ?? MARKET_HOURS_CALIBRATION_DEFAULTS.calibration,
   calibrationScope: c.scope,
   calibrationHours: c.hours,
 });

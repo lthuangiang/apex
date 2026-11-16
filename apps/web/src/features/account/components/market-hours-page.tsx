@@ -2,7 +2,7 @@
 
 import {
   dec,
-  MARKET_HOURS_DEFAULT_CALIBRATION_DATE,
+  MARKET_HOURS_CALIBRATION_DEFAULTS,
   MARKET_HOURS_MIN_CUTS,
   marketHoursViewSchema,
   type MarketHoursCalibrationScope,
@@ -101,8 +101,11 @@ function useSourceText(): (scope: MarketHoursCalibrationScope, market: string | 
     scope.source === "market"
       ? t("market", { market: market ?? "", n: scope.botHours })
       : scope.source === "pooled"
-        ? t("pooled", { markets: scope.markets.join(", ") })
-        : t("default", { date: dayLabel(MARKET_HOURS_DEFAULT_CALIBRATION_DATE) });
+        ? // Market có bot nhưng chưa đủ dữ liệu khác với market không có bot nào trong 14 ngày.
+          t(scope.marketBotHours > 0 ? "pooledThin" : "pooled", {
+            markets: scope.markets.join(", "),
+          })
+        : t("default", { date: dayLabel(MARKET_HOURS_CALIBRATION_DEFAULTS.date) });
 }
 /** Hệ số C hiển thị: 2 chữ số thập phân (vd "1.42"). */
 const factor = (v: string): string => Number(v).toFixed(2);

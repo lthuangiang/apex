@@ -225,7 +225,7 @@ describe("cut size from position ÷ order size (DEC-TBD-market-hours-calibrated)
     });
   });
 
-  it("uses this market's bots, then all markets pooled, then the default R = 2 with no cut share", () => {
+  it("uses this market's bots, then all markets pooled, then the defaults R = 2 and F = 80", () => {
     const bots = [bot("ETH-USD", 2, "800", "60", "20"), bot("BTC-USD", 4, "400", "10", "10")];
     // ETH: R = 3, 800 ÷ 20 ÷ 2 = 20 order sizes per bot-hour → share = 3 ÷ 20.
     expect(cutSizing(bots, "ETH-USD", null)).toEqual({
@@ -233,30 +233,47 @@ describe("cut size from position ÷ order size (DEC-TBD-market-hours-calibrated)
       ratioSource: "market",
       fillsPerBotHour: dec("20"),
       cutShare: dec("0.15"),
-      scope: { source: "market", botHours: 2, markets: [] },
+      scope: { source: "market", botHours: 2, marketBotHours: 2, markets: [] },
     });
     // No bots on SOL: pooled R = median(3, 1) = 2, fills = (40 + 40) ÷ 6.
     const pooled = cutSizing(bots, "SOL-USD", null);
     expect(pooled).toMatchObject({
       ratio: dec("2"),
       ratioSource: "pooled",
-      scope: { source: "pooled", botHours: 6, markets: ["BTC-USD", "ETH-USD"] },
+      scope: { source: "pooled", botHours: 6, marketBotHours: 0, markets: ["BTC-USD", "ETH-USD"] },
     });
-    expect(pooled.cutShare?.toString()).toBe(dec("2").div(dec("80").div("6")).toString());
-    // No bot data at all: R = 2 default, nothing to size a cut against.
+    expect(pooled.cutShare.toString()).toBe(dec("2").div(dec("80").div("6")).toString());
+    // No bot data at all: R = 2 and F = 80 by default, so the cut share still exists: 2 ÷ 80.
     expect(cutSizing([], "SOL-USD", null)).toEqual({
       ratio: dec("2"),
       ratioSource: "default",
-      fillsPerBotHour: null,
-      cutShare: null,
-      scope: { source: "default", botHours: 0, markets: [] },
+      fillsPerBotHour: dec("80"),
+      cutShare: dec("0.025"),
+      scope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
+    });
+  });
+
+  it("pools when this market has bots but none usable, and remembers that it had bots", () => {
+    // SOL bot has no readable order size: not usable, but SOL did have 5 bot-hours.
+    const sol = bot("SOL-USD", 5, "100", "20", null);
+    const bots = [sol, bot("BTC-USD", 4, "400", "10", "10")];
+    expect(cutSizing(bots, "SOL-USD", null).scope).toEqual({
+      source: "pooled",
+      botHours: 4,
+      marketBotHours: 5,
+      markets: ["BTC-USD"],
+    });
+    // Only unusable bots anywhere: defaults, still with this market's bot-hours.
+    expect(cutSizing([sol], "SOL-USD", null)).toMatchObject({
+      fillsPerBotHour: dec("80"),
+      scope: { source: "default", botHours: 0, marketBotHours: 5, markets: [] },
     });
   });
 
   it("uses the measured cut size ÷ order size instead of R when there are enough real cuts", () => {
     const s = cutSizing([bot("ETH-USD", 2, "800", "60", "20")], "ETH-USD", dec("1.5"));
     expect(s).toMatchObject({ ratio: dec("1.5"), ratioSource: "cuts" });
-    expect(s.cutShare?.toString()).toBe("0.075");
+    expect(s.cutShare.toString()).toBe("0.075");
   });
 });
 
@@ -274,7 +291,7 @@ describe("calibration factor C with fallbacks (DEC-TBD-market-hours-calibrated)"
     expect(c).toEqual({
       factor: dec("2"),
       hours: 3,
-      scope: { source: "market", botHours: 12, markets: [] },
+      scope: { source: "market", botHours: 12, marketBotHours: 12, markets: [] },
     });
   });
 
@@ -285,15 +302,20 @@ describe("calibration factor C with fallbacks (DEC-TBD-market-hours-calibrated)"
     expect(pooled).toEqual({
       factor: dec("2"),
       hours: 3,
-      scope: { source: "pooled", botHours: 30, markets: ["BTC-USD", "ETH-USD"] },
+      // This market had bots (1 bot-hour) but too few cells: "Not enough bot data on this market".
+      scope: { source: "pooled", botHours: 30, marketBotHours: 1, markets: ["BTC-USD", "ETH-USD"] },
     });
+    const noBots = await calibrationOf({ pairs: [], botHours: 0 }, () =>
+      Promise.resolve({ pairs: three, botHours: 30, markets: ["BTC-USD", "ETH-USD"] }),
+    );
+    expect(noBots.scope.marketBotHours).toBe(0);
     const fallback = await calibrationOf({ pairs: [], botHours: 0 }, () =>
       Promise.resolve({ pairs: [p("100", "100")], botHours: 1, markets: ["BTC-USD"] }),
     );
     expect(fallback).toEqual({
       factor: dec("1"),
       hours: 0,
-      scope: { source: "default", botHours: 0, markets: [] },
+      scope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
     });
   });
 });

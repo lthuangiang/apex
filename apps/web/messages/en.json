@@ -6311,6 +6311,7 @@
     "source": {
       "market": "Calibrated on {market} bots (14 days, {n} hours)",
       "pooled": "No bots on this market: calibrated on all markets ({markets}; 14 days)",
+      "pooledThin": "Not enough bot data on this market: calibrated on all markets ({markets}; 14 days)",
       "default": "No bot data yet: default calibration from {date}"
     },
     "markers": "Markers",

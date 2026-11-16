@@ -214,15 +214,15 @@ describe("GET /api/v1/admin/market-hours", () => {
       cutCostBp: "4",
       cuts: 0,
       cutNotional: null,
-      // Không có bot Market Making đọc được order size (bot của test trước không có cấu hình): R mặc định, không có
-      // volume để so → không tính phần cắt; C mặc định 1.0.
+      // Không có bot Market Making đọc được order size (bot của test trước không có cấu hình): R = 2 và F = 80 mặc
+      // định → phần cắt 2 ÷ 80; C mặc định 1.0.
       positionRatio: "2",
       positionRatioSource: "default",
-      fillsPerBotHour: null,
-      cutShare: null,
-      cutScope: { source: "default", botHours: 0, markets: [] },
+      fillsPerBotHour: "80",
+      cutShare: "0.025",
+      cutScope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
       calibration: "1",
-      calibrationScope: { source: "default", botHours: 0, markets: [] },
+      calibrationScope: { source: "default", botHours: 0, marketBotHours: 0, markets: [] },
       calibrationHours: 0,
     });
     const swing = swingBps(closes);
@@ -338,10 +338,10 @@ describe("GET /api/v1/admin/market-hours", () => {
       positionRatioSource: "cuts",
       fillsPerBotHour: "3.33",
       cutShare: "0.6",
-      cutScope: { source: "market", botHours: 3, markets: [] },
+      cutScope: { source: "market", botHours: 3, marketBotHours: 3, markets: [] },
       // Chỉ một ô (giờ 05) có ≥ 3 bot-hour ở mọi market: không đủ để hiệu chỉnh → C mặc định.
       calibration: "1",
-      calibrationScope: { source: "default", botHours: 0, markets: [] },
+      calibrationScope: { source: "default", botHours: 0, marketBotHours: 3, markets: [] },
       calibrationHours: 0,
     });
     const h5 = v.hours[5];
@@ -441,7 +441,7 @@ describe("GET /api/v1/admin/market-hours", () => {
       positionRatioSource: "market",
       fillsPerBotHour: "5",
       cutShare: "1",
-      cutScope: { source: "market", botHours: 2, markets: [] },
+      cutScope: { source: "market", botHours: 2, marketBotHours: 2, markets: [] },
     });
     const s = swingBps(closes);
     if (s === null) throw new Error("no swing");
