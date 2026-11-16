@@ -71,6 +71,8 @@ export interface VolumeMakerState {
   reqWin?: { since: number; n: number };
   /** Lần cắt vị thế gần nhất (DEC-249). */
   cutAt?: number | null;
+  /** clOrdID lệnh cắt gần nhất; chưa có kết quả thì giữ phía làm tăng vị thế (DEC-260). */
+  cutId?: string | null;
   /** Giá trong cửa sổ xu hướng gần nhất cho Smart quoting (DEC-144, DEC-152). */
   /** Giá gần đây cho momentum / trend; không còn ghi từ DEC-247, giữ để đọc state cũ. */
   recent?: { t: number; p: string }[];
@@ -97,6 +99,8 @@ export interface VolumeMakerState {
   fairBinanceAt?: number | null;
   /** Số liệu định giá theo Binance từ lần ghi Decisions trước: số lệnh bị rút, số lệnh đặt lùi ra. */
   oracleWin?: { since: number; pulls: number; clamps: number };
+  /** Lần đặt lại riêng một phía gần nhất sau khi SoDEX xác nhận huỷ (DEC-257), để giới hạn tần suất. */
+  sideQuoteAt?: Partial<Record<"buy" | "sell", number>>;
 }
 
 /** Điều chỉnh Smart quoting của một phía: lùi `ticks` tick, hoặc rút hẳn lệnh mở (`pull`). */
@@ -435,11 +439,16 @@ function quote(
   // Lệnh mở đã gửi huỷ ở một bước trước mà SoDEX chưa xác nhận (DEC-253): lệnh huỷ tới trước khi lệnh vào sổ thì SoDEX
   // trả `OrderNotFound`, lệnh vào sổ sau đó và vẫn có thể khớp; đặt thêm lệnh mở cùng phía lúc đó làm vị thế vượt "Holds
   // up to" (2026-11-15: hai lệnh mua cùng khớp, vị thế gấp đôi). Phía đó không đặt lệnh mở mới tới khi có `orderDone`
-  // (hoặc hết `VM_STALE_CANCEL_MS`). Lệnh huỷ trong chính lần báo giá này chưa nằm trong `s.orders` nên chu kỳ thường
-  // (huỷ cũ, đặt mới) không bị chặn.
+  // (hoặc hết `VM_STALE_CANCEL_MS`). Lệnh mở bị huỷ ngay trong lần báo giá này cũng tính (DEC-257, xem
+  // dưới).
   const unsure = { buy: false, sell: false };
   for (const o of Object.values(s.orders))
     if (o.status === "cancelling" && o.role === "open") unsure[o.side] = true;
+  // Lệnh cắt vị thế (market reduce-only) chưa có kết quả (DEC-260): không đặt lệnh mở ở phía làm tăng vị thế
+  // (long → mua, short → bán), kể cả khi SoDEX vừa xác nhận huỷ lệnh mở phía đó hay tới nhịp đồng hồ. Gỡ khi lệnh cắt
+  // xong (khớp hết, bị từ chối, `orderDone`), hoặc sau `VM_STALE_CANCEL_MS` như các chặn khác (đối soát vị thế bù phần lỡ).
+  const cut = pendingCut(s, at);
+  if (cut !== null) unsure[cut.side === "sell" ? "buy" : "sell"] = true;
   const pulled = {
     buy: paused || smart?.buy?.pull === true,
     sell: paused || smart?.sell?.pull === true,
@@ -632,12 +641,6 @@ function quote(
     orders[same[0]] = same[1];
     places.splice(i, 1);
   }
-  // Phía còn lệnh mở chưa xác nhận huỷ: chỉ bỏ lệnh mở mới (DEC-253). Lệnh mở đang nằm vẫn bị huỷ như thường (huỷ
-  // không bao giờ làm tăng vị thế); lệnh đóng không bị ảnh hưởng.
-  for (let i = places.length - 1; i >= 0; i -= 1) {
-    const p = places[i];
-    if (p !== undefined && unsure[p.side] && !closeIds.has(p.clOrdID)) places.splice(i, 1);
-  }
   // Đặt lại theo sổ lệnh (DEC-248): chỉ lệnh mở của các phía được nêu; lệnh đóng không bao giờ bị đụng ở đây (huỷ nó
   // thì lệnh đóng mới chỉ được đặt sau khi SoDEX xác nhận huỷ, vị thế nằm không có lệnh đóng).
   if (only !== undefined) {
@@ -650,6 +653,16 @@ function quote(
         kept.add(id);
         orders[id] = o;
       }
+  }
+  // Huỷ rồi mới đặt (DEC-257): huỷ và đặt cùng lúc thì lệnh cũ có thể khớp trong lúc lệnh huỷ đang đi,
+  // lệnh mới cũng khớp (harness tranh chấp: tới 2× "Holds up to"). Lệnh đóng không bị ảnh hưởng.
+  for (const [id, o] of Object.entries(s.orders))
+    if (o.status === "live" && o.role === "open" && !kept.has(id)) unsure[o.side] = true;
+  // Phía còn lệnh mở chưa xác nhận huỷ: chỉ bỏ lệnh mở mới (DEC-253). Lệnh mở đang nằm vẫn bị huỷ như thường (huỷ
+  // không bao giờ làm tăng vị thế); lệnh đóng không bị ảnh hưởng.
+  for (let i = places.length - 1; i >= 0; i -= 1) {
+    const p = places[i];
+    if (p !== undefined && unsure[p.side] && !closeIds.has(p.clOrdID)) places.splice(i, 1);
   }
   let tracked = orders;
   for (const o of places) {
@@ -882,6 +895,14 @@ function onFair(
   return { actions, state };
 }
 
+/** Lệnh cắt gần nhất còn chưa có kết quả và chưa quá `VM_STALE_CANCEL_MS` (DEC-260); null nếu không có. */
+function pendingCut(s: VolumeMakerState, at: number): TrackedOrder | null {
+  const cut = s.cutId == null ? undefined : s.orders[s.cutId];
+  // Tính từ lúc cắt, không từ `since` (đổi khi lệnh cắt chuyển sang cancelling), nên chặn tối đa ~60 s.
+  const from = s.cutAt ?? cut?.since ?? at;
+  return cut !== undefined && cut.status !== "done" && at - from < VM_STALE_CANCEL_MS ? cut : null;
+}
+
 /** Cắt vị thế khi giá Binance chạy ngược giá vào ≥ `VM_CUT.bp` (DEC-249); null khi không cần cắt. */
 function cutPosition(
   c: VolumeMakerConfig,
@@ -896,6 +917,9 @@ function cutPosition(
   if (rules === undefined || s.mid === null || !entry.gt(0) || isFlat(pos, s.mid, rules))
     return null;
   if (s.cutAt != null && e.at - s.cutAt < VM_CUT.coolMs) return null;
+  // Lệnh cắt trước chưa có kết quả (DEC-260): không cắt lại. Tránh đóng hai lần bằng market, trùng clOrdID
+  // `vm:<cycle>:cut:close`, và lần cắt mới bị từ chối gỡ chặn trong khi lần đầu vẫn đang đi.
+  if (pendingCut(s, e.at) !== null) return null;
   const long = pos.gt(0);
   const against = (long ? entry.sub(fair) : fair.sub(entry)).div(entry).mul(10_000);
   if (against.lt(VM_CUT.bp)) return null;
@@ -939,6 +963,7 @@ function cutPosition(
       ...s,
       orders,
       cutAt: e.at,
+      cutId: o.clOrdID,
       fair: e.fair,
       fairAt: e.at,
       fairBinanceAt: e.binanceAt,
@@ -1196,14 +1221,44 @@ function stepCore(
             id !== e.clOrdID && x.role === "open" && x.side === o.side && x.status === "live",
         );
       const reclose = (o.role === "close" && !dec(s.ledger.position).isZero()) || openGap;
-      return {
-        actions: [],
-        state: {
-          ...s,
-          orders: { ...s.orders, [e.clOrdID]: { ...o, status: "done", since: e.at } },
-          ...(reclose ? { requoteDue: true } : {}),
-        },
+      const state: VolumeMakerState = {
+        ...s,
+        orders: { ...s.orders, [e.clOrdID]: { ...o, status: "done", since: e.at } },
+        ...(reclose ? { requoteDue: true } : {}),
       };
+      // Huỷ rồi mới đặt (DEC-257): SoDEX xác nhận lệnh mở bot đã xin huỷ, phía đó không còn lệnh mở
+      // nào khác: đặt lại ngay đúng phía đó, nên phía đó chỉ trống một vòng SoDEX. Mỗi phía tối đa một lần mỗi
+      // VM_MIN_REQUOTE_MS (giá Binance chạy liên tục thì rút → xác nhận → đặt → rút… không thành vòng request); chưa tới
+      // hạn thì để `requoteDue` cho nhịp đồng hồ như trước.
+      const stillUnsure = Object.entries(state.orders).some(
+        ([, x]) => x.role === "open" && x.side === o.side && x.status === "cancelling",
+      );
+      const lastSide = s.sideQuoteAt?.[o.side] ?? null;
+      if (
+        o.status === "cancelling" &&
+        openGap &&
+        !stillUnsure &&
+        state.phase === "running" &&
+        state.lastRefresh !== null &&
+        (lastSide === null || e.at - lastSide >= VM_MIN_REQUOTE_MS)
+      ) {
+        const q = quote(c, state, ctx, e.at, new Set([o.side]));
+        const sent = q.actions.filter((a) => a.type === "place" || a.type === "cancel");
+        // Không có gì để gửi (ví dụ phía đó đang bị rút): giữ nguyên state như `onBook`, không tính là một lần báo giá.
+        if (sent.length === 0) return { actions: [], state };
+        // Chỉ lấy lệnh và số chu kỳ (clOrdID không trùng); không đổi `lastRefresh`, lần báo giá đầy đủ đang chờ, ghi chú
+        // Smart quoting hay "Pause on fast moves".
+        const next: VolumeMakerState = {
+          ...state,
+          requoteDue: s.requoteDue,
+          orders: q.state.orders,
+          cycle: q.state.cycle,
+          ...(q.state.oracleWin === undefined ? {} : { oracleWin: q.state.oracleWin }),
+          sideQuoteAt: { ...s.sideQuoteAt, [o.side]: e.at },
+        };
+        return guards(c, next, ctx, e.at) ?? { actions: sent, state: next };
+      }
+      return { actions: [], state };
     }
     case "positionSync": {
       if (e.market !== c.market) return { actions: [], state: s };

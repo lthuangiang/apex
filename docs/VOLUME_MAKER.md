@@ -88,12 +88,22 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 - **Cắt vị thế** (DEC-249): đang giữ vị thế mà giá Binance quy đổi chạy ngược giá vào ≥ 15 bp (`VM_CUT`) thì huỷ mọi lệnh
   và đóng cả vị thế bằng lệnh market IOC reduce-only (tag `vm:<cycle>:cut:close`); không cắt lại trong 5 s. Decisions
   "Position cut". Chỉ khi bật Smart quoting.
+- **Giữ phía tăng vị thế khi đang cắt** (DEC-260): lệnh cắt chưa có kết quả thì không đặt lệnh mở ở phía làm
+  tăng vị thế (long → mua, short → bán), kể cả khi SoDEX xác nhận huỷ lệnh mở phía đó hay tới nhịp đồng hồ. Gỡ khi lệnh
+  cắt xong (khớp hết, bị từ chối, `orderDone`) hoặc 60 s (`VM_STALE_CANCEL_MS`) sau lúc cắt (đối soát vị thế bù phần lỡ).
+  Lệnh cắt chưa có kết quả thì không cắt lại. Phía đóng và lệnh đóng không đổi.
 - **Lệnh đóng:** SoDEX xác nhận huỷ một lệnh đóng mà bot còn vị thế thì báo giá lại sớm (≥ `VM_MIN_REQUOTE_MS`), không
   chờ hết chu kỳ (DEC-248).
 - **Lệnh mở chờ xác nhận huỷ** (DEC-253): còn lệnh mở đã gửi huỷ ở bước trước mà SoDEX chưa xác nhận thì phía đó không
   đặt lệnh mở mới (lệnh mở đang nằm vẫn bị huỷ như thường), tới khi có `orderDone` hoặc hết 60 s; lệnh đóng và phía kia
   không bị ảnh hưởng.
   Đặt lại theo sổ lệnh không bao giờ huỷ lệnh đóng.
+- **Huỷ rồi mới đặt** (DEC-257): mỗi lần báo giá lại, phía nào có lệnh mở đang nằm bị huỷ thì chờ SoDEX
+  xác nhận huỷ (`orderDone`) rồi mới đặt lệnh mở mới cho phía đó; xác nhận tới là đặt ngay (chỉ phía đó, không chờ nhịp
+  đồng hồ). Huỷ và đặt cùng lúc thì lệnh cũ có thể khớp khi lệnh huỷ đang đi và lệnh mới cũng khớp: vị thế vượt "Holds up
+  to". Đặt lại ngay khi xác nhận tối đa một lần mỗi 2 s cho mỗi phía (`VM_MIN_REQUOTE_MS`); sớm hơn thì để nhịp đồng hồ.
+  Lần đặt lại này không tính là một lần báo giá (không đổi `lastRefresh`). Lệnh đóng, và lệnh mở Smart quoting giữ nằm yên
+  (cùng giá), không đổi.
 - **Dọn lệnh cũ không chặn báo giá** (DEC-251): nhịp đồng hồ dọn lệnh đã xong quá `VM_KEEP_DONE_MS` rồi báo giá luôn trong
   cùng nhịp.
 - **Định giá theo Binance** (một phần của **Smart quoting**; DEC-242, thay "Binance guard" của DEC-241):

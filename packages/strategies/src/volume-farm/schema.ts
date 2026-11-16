@@ -59,13 +59,16 @@ export const volumeFarmSchema = z
     reverseSignal: z.boolean().default(false),
     /** Chỉ vào lượt mới khi regime 5 phút là SIDEWAY (DEC-158). Lượt đang mở vẫn thoát như thường. */
     sidewaysOnly: z.boolean().default(false),
-    /** Sau `takerAfter` lần lệnh post-only không khớp liên tiếp thì vào / thoát bằng lệnh taker. */
+    /**
+     * Sau `takerAfter` lần lệnh post-only không khớp liên tiếp thì vào / thoát bằng lệnh taker. 0 (với `allowTaker`) =
+     * mọi lệnh vào / thoát là market IOC ngay, không đặt post-only (DEC-259, bật lại phần DEC-116).
+     */
     allowTaker: z.boolean().default(false),
     takerAfter: z
       .number()
       .int({ message: "Whole numbers only." })
-      .min(1, { message: "Allowed 1–10." })
-      .max(10, { message: "Allowed 1–10." })
+      .min(0, { message: "Allowed 0–10." })
+      .max(10, { message: "Allowed 0–10." })
       .default(3),
     /**
      * Đặt stop loss gốc trên SoDEX cho mỗi lượt (DEC-118): kích hoạt theo mark price, đóng cả vị thế bằng market,
