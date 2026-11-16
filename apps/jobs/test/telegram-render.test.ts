@@ -250,3 +250,39 @@ describe("rate limits (mục 6)", () => {
     expect(subjectFor("daily_summary")).toBe(TELEGRAM_SUBJECT);
   });
 });
+
+describe("renderTelegram: prod invariants (team)", () => {
+  const inv = (data: Record<string, unknown>) =>
+    renderTelegram(
+      [
+        row(
+          "team_invariant",
+          {
+            invariant: "P5",
+            strategy: "Market Making",
+            market: "BTC-USD",
+            bot: "··0a1b2c3d",
+            ...data,
+          },
+          null,
+        ),
+      ],
+      APP,
+    ).text;
+
+  it("writes the detail of a failing invariant", () => {
+    expect(inv({ status: "failing", detail: "no quote for 40 s" })).toContain(
+      "<b>Invariant P5</b> · Market Making BTC-USD ··0a1b2c3d · no quote for 40 s",
+    );
+  });
+
+  it("adds the reason to a resolved message only when there is one", () => {
+    expect(inv({ status: "resolved", detail: "" })).toContain(
+      "<b>Invariant P5 OK again</b> · Market Making BTC-USD ··0a1b2c3d",
+    );
+    expect(inv({ status: "resolved", detail: "" })).not.toContain("··0a1b2c3d ·");
+    expect(inv({ status: "resolved", detail: "no longer checked" })).toContain(
+      "··0a1b2c3d · no longer checked",
+    );
+  });
+});

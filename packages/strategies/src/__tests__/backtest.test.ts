@@ -229,6 +229,13 @@ describe("Volume Farming backtest (DEC-102)", () => {
     expect(Number(metric("volumeMade"))).toBeGreaterThan(0);
     expect(metric("winRate")).not.toBeNull();
     expect(r.output.fills.some((f) => f.tag.startsWith("vf:"))).toBe(true);
+    // BT-01: chi phí ròng và chi phí mỗi $1M như Market Making (cost = −net; per $1M = cost ÷ volume × 1.000.000).
+    const cost = Number(metric("netCost"));
+    expect(cost).toBeCloseTo(-Number(r.net), 6);
+    expect(Number(metric("costPerMillion"))).toBeCloseTo(
+      (cost / Number(metric("volumeMade"))) * 1_000_000,
+      1,
+    );
   });
 
   it("is repeatable on the same candles", () => {

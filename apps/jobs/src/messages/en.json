@@ -46,7 +46,9 @@
       "team_mcp_introspect_failing": "MCP can't check tokens: {failures} failures in the last 5 minutes. Claude users see 'temporarily unavailable'.",
       "team_mcp_daily_limit": "MCP daily limit reached by {users}: {emails}.",
       "team_mcp_user": "{n} user",
-      "team_mcp_users": "{n} users"
+      "team_mcp_users": "{n} users",
+      "team_invariant": "⚠️ <b>Invariant {invariant}</b> · {strategy} {market} {bot}{paper} · {detail}",
+      "team_invariant_resolved": "✅ <b>Invariant {invariant} OK again</b> · {strategy} {market} {bot}{paper}{detail}"
     },
     "bodies": {
       "pausedReason": "{reason}. Open orders were kept.",

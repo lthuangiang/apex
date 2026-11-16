@@ -259,8 +259,18 @@ function metricsOf(
       const maker = sumNotional(fills.filter((f) => f.maker));
       const st = out.state as { trades?: number; wins?: number };
       const trades = st.trades ?? 0;
+      // Chi phí ròng và chi phí mỗi $1M như Market Making (BT-01): cost = −net, per $1M = cost ÷ volume × 1.000.000.
+      const cost = dec(out.net).neg();
       return [
         { key: "volumeMade", value: volume.toString(), unit: "quote" },
+        { key: "netCost", value: cost.toString(), unit: "quote" },
+        {
+          key: "costPerMillion",
+          value: volume.isZero()
+            ? null
+            : cost.div(volume).mul(1_000_000).toDecimalPlaces(2).toString(),
+          unit: "quote",
+        },
         { key: "trades", value: String(trades), unit: "count" },
         {
           key: "winRate",
