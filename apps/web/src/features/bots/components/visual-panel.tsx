@@ -179,6 +179,8 @@ export function VisualPanel({
   };
   // Sụt giảm hiển thị (2 chữ số); so với giới hạn bằng chính số này để chữ và màu khớp nhau.
   const dd = result === null ? null : dec(result.maxDrawdownPct).toDecimalPlaces(2);
+  // Không sụt (hoặc sụt làm tròn về 0): "0%", không "−0%" (review #150).
+  const ddText = dd === null ? "" : dd.isZero() ? "0%" : `−${dd.abs().toString()}%`;
   const metric = (m: BacktestResult["metrics"][number]) => {
     if (m.value === null) return null;
     if (m.unit === "pct") return `${dec(m.value).toDecimalPlaces(2).toString()}%`;
@@ -214,14 +216,14 @@ export function VisualPanel({
             ? {
                 label: tb("stats.maxDd"),
                 value: tb("stats.maxDdOver", {
-                  dd: `−${dd.toString()}%`,
+                  dd: ddText,
                   limit: `${dec(ddLimit).toString()}%`,
                 }),
                 tone: "neg" as const,
               }
             : {
                 label: tb("stats.maxDd"),
-                value: `−${dec(result.maxDrawdownPct).toDecimalPlaces(2).toString()}%`,
+                value: ddText,
               },
           ...result.metrics.map((m) => ({ label: tb(`stats.${m.key}`), value: metric(m) })),
           ...(result.halted === null

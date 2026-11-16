@@ -201,14 +201,22 @@ export function CreateBot({
   const names = useMarketNames();
   // BT-01: backtest gần nhất (còn khớp tham số) lỗ thì cảnh báo cạnh nút Start on mainnet.
   const [backtest, setBacktest] = useState<BacktestResult | null>(null);
+  // Xét theo số đã làm tròn để hiển thị: lỗ làm tròn về 0.00 thì không cảnh báo (review #150).
+  const lostRounded = backtest === null ? null : dec(backtest.net).toDecimalPlaces(2);
   const backtestLost =
-    backtest !== null && dec(backtest.net).isNegative()
-      ? t("beforeStart.backtestLost", {
-          // Câu đã nói "lost": dùng trị tuyệt đối, không "lost −5.03" (review #150).
-          net: `${formatMoney(dec(backtest.net).abs().toString()) ?? ""} ${names.asset(unitsOf(typeof values.market === "string" ? values.market : "")?.quote ?? "USDC")}`,
-          pct: `${dec(backtest.netPct).abs().toDecimalPlaces(2).toString()}%`,
-          days: Math.floor((backtest.to - backtest.from) / 86_400_000),
-        })
+    backtest !== null && lostRounded !== null && lostRounded.isNegative() && !lostRounded.isZero()
+      ? (() => {
+          const params = {
+            // Câu đã nói "lost": dùng trị tuyệt đối, không "lost −5.03" (review #150).
+            net: `${formatMoney(lostRounded.abs().toString()) ?? ""} ${names.asset(unitsOf(typeof values.market === "string" ? values.market : "")?.quote ?? "USDC")}`,
+            pct: `${dec(backtest.netPct).abs().toDecimalPlaces(2).toString()}%`,
+            days: Math.floor((backtest.to - backtest.from) / 86_400_000),
+          };
+          // Vốn 0: % không có nghĩa, bỏ phần %.
+          return dec(backtest.capital).isZero()
+            ? t("beforeStart.backtestLostNoPct", params)
+            : t("beforeStart.backtestLost", params);
+        })()
       : null;
   const levWarn = leverageWarning(checks.data);
   const levText = (lev: string | null | undefined, mode: string | null | undefined) =>

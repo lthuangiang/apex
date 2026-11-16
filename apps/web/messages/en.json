@@ -196,6 +196,7 @@
       "draftSavedLink": "Open My bots",
       "start": "Start on mainnet",
       "backtestLost": "Your last backtest lost {net} ({pct}) over {days, plural, =0 {less than a day} one {# day} other {# days}}. A backtest is a simulation, not a forecast.",
+      "backtestLostNoPct": "Your last backtest lost {net} over {days, plural, =0 {less than a day} one {# day} other {# days}}. A backtest is a simulation, not a forecast.",
       "twoFactor": "2FA code",
       "requested": "Start requested · waiting for confirmation",
       "requestedBody": "The bot shows Running only after SoDEX acknowledges the first orders.",
