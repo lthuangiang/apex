@@ -4,6 +4,7 @@ import {
   BotState,
   botListSchema,
   featuresSchema,
+  PLANNED_STOP_REASONS,
   ReasonCode,
   UserRole,
   type BotSummary,
@@ -123,7 +124,7 @@ export function useWaitingText() {
 export function plannedStop(b: { state: string; reasonCode: string | null }): boolean {
   return (
     b.state === BotState.stopped &&
-    (b.reasonCode === ReasonCode.budgetDone || b.reasonCode === ReasonCode.maxCycles)
+    (PLANNED_STOP_REASONS as readonly string[]).includes(b.reasonCode ?? "")
   );
 }
 

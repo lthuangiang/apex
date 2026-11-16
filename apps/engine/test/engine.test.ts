@@ -528,6 +528,104 @@ describe("engine", () => {
       (x) => x.type === "state" && x.decision === "Stopped",
     );
     expect(stopped.map((x) => x.why)).toEqual(["STOPPED_BY_USER"]);
+    // Đúng một lần: các nhịp sau không ghi thêm.
+    for (let i = 0; i < 3; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    const again = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.type === "state" && x.decision === "Stopped",
+    );
+    expect(again).toHaveLength(1);
+    await e.stop();
+  });
+
+  it("writes the strategy's reason in the Stopped event when the strategy stops the bot (BD-06)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", {
+      strategy: "spot_grid",
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      config: {
+        market: "vBTC_vUSDC",
+        lowerPrice: "90",
+        upperPrice: "110",
+        gridLevels: 5,
+        spacing: "arithmetic",
+        investment: "500",
+        maxLoss: "100",
+        stopPrice: "85",
+        onStop: "keep_base",
+      },
+    });
+    const e = makeEngine(gw, "w-stopped-reason");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    clock += 1_000;
+    await e.onPrice("vBTC_vUSDC", "80", clock);
+    expect((await botState(botId))?.state).toBe("stopped");
+    const stopped = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.type === "state" && x.decision === "Stopped",
+    );
+    expect(stopped.map((x) => x.why)).toEqual([ReasonCode.stopLoss]);
+    await e.stop();
+  });
+
+  it("writes EMERGENCY_HALT, not STOPPED_BY_USER, after an emergency halt (BD-06)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w-stopped-halt");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    // Như API emergency halt: stopping kèm reason code trong cùng lần ghi.
+    await db
+      .update(bots)
+      .set({ state: "stopping", reasonCode: ReasonCode.emergencyHalt })
+      .where(eq(bots.id, botId));
+    for (let i = 0; i < 3 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    const stopped = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.type === "state" && x.decision === "Stopped",
+    );
+    expect(stopped.map((x) => x.why)).toEqual([ReasonCode.emergencyHalt]);
+    await e.stop();
+  });
+
+  it("sets leverage once and logs one line when events arrive together (CP-01)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", {
+      strategy: "volume_maker",
+      market: "BTC-USD",
+      engine: "perps",
+      config: {
+        market: "BTC-USD",
+        leverage: 1,
+        orderSize: "500",
+        distanceBp: "1",
+        maxOrders: 1,
+        refreshSeconds: 3,
+        runUntil: "target_or_budget",
+        costBudget: "100000",
+        onStop: "close_inventory",
+      },
+    });
+    const e = makeEngine(gw, "w-lev");
+    await e.tick();
+    await Promise.all(
+      [0, 1, 2, 3, 4].map((i) => e.onPrice("BTC-USD", String(100_000 + i), clock + i)),
+    );
+    expect(gw.leverage.filter((l) => l.market === "BTC-USD")).toHaveLength(1);
+    const logged = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.decision === "Leverage set",
+    );
+    expect(logged).toHaveLength(1);
+    expect(logged[0]?.why).toMatch(/^SoDEX confirmed 1× (cross|isolated) on BTC-USD.$/);
     await e.stop();
   });
 
@@ -552,6 +650,32 @@ describe("engine", () => {
     expect(after?.status).toBe("open");
     expect(after?.reconciledAt).not.toBeNull();
     expect(gw.received.filter((o) => o.tag === "grid:init")).toHaveLength(sends);
+    await e.stop();
+  });
+
+  it("keeps a stopping bot in stopping until its unknown order is reconciled, then cancels it (rule 1.7)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    gw.timeoutNext = "applied";
+    const { botId } = await seedBot();
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const unknown = (await db.select().from(orders)).find(
+      (o) => o.botId === botId && o.status === "unknown",
+    );
+    expect(unknown).toBeDefined();
+    // Người dùng bấm Stop khi lệnh còn unknown (SoDEX thật ra đã nhận lệnh).
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    // Đối soát thấy lệnh đang mở → lượt Stop sau huỷ rồi mới dừng.
+    for (let i = 0; i < 3 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 6_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    expect(gw.cancelled).toContain(unknown?.clOrdId);
     await e.stop();
   });
 

@@ -47,6 +47,8 @@ import {
   sub,
   VOLUME_STRATEGIES,
   exceedsPerTrade,
+  PLANNED_STOP_REASONS,
+  STOPPED_BY_USER,
 } from "@drift/shared";
 import {
   applyFill,
@@ -164,8 +166,10 @@ export interface EngineDeps {
   paper?: PaperGateway;
 }
 
-/** Lý do của sự kiện "Stopped" khi người dùng tự bấm Stop (không có reason code, BD-06). */
-export const STOPPED_BY_USER = "STOPPED_BY_USER";
+/** Lý do "Leverage set". Bot paper không gửi gì tới SoDEX (PaperGateway, DEC-105) nên không ghi "SoDEX confirmed". */
+function leverageWhy(paper: boolean, what: string): string {
+  return paper ? `Simulated ${what}. Nothing was sent to SoDEX.` : `SoDEX confirmed ${what}.`;
+}
 
 /** Engine (Spot / Perps) mà bot giao dịch, theo chiến lược và cấu hình. */
 function engineOfBot(strategy: string, config: unknown): "spot" | "perps" {
@@ -245,6 +249,10 @@ interface Runner {
   leverageSet: boolean;
   /** Lần `updateLeverage` trước không rõ kết quả: phải đọc lại SoDEX trước khi gửi lại (quy tắc 1.7). */
   leverageUnknown: boolean;
+  /** Market đã được SoDEX xác nhận đòn bẩy cho version này (CP-01): lần thử sau không đặt / ghi lại. */
+  leverageDone: Set<string>;
+  /** Lần đặt đòn bẩy đang chạy: sự kiện tới cùng lúc chờ chung, không đặt song song (CP-01). */
+  leverageRun: Promise<"ok" | "rejected" | "unknown" | "not_sent"> | null;
   /** Request chưa rời DRIFT (signer lỗi): chờ backoff tới `nextAt`; quá hạn thì pause (UI_REVIEW H1). */
   blocked: { since: number; attempts: number; nextAt: number; code: NotSentCode } | null;
   /** Số lệnh market reduce-only bị SoDEX từ chối liên tiếp (vị thế trong sổ bot có thể lệch SoDEX). */
@@ -1063,6 +1071,8 @@ export class Engine {
       awaitingFirstAck: bot.state === BotState.starting,
       leverageSet: false,
       leverageUnknown: false,
+      leverageDone: new Set(),
+      leverageRun: null,
       blocked: null,
       reduceRejects: 0,
       makerReduceRejects: 0,
@@ -1120,6 +1130,7 @@ export class Engine {
     r.state = entry.module.initialState(config);
     r.ctx = { ...r.ctx, version: pending.version };
     r.leverageSet = false;
+    r.leverageDone = new Set();
     await this.#event(
       r,
       "version",
@@ -1268,15 +1279,43 @@ export class Engine {
     r: Runner,
     at: number,
   ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
-    // Copy Trade đặt cùng đòn bẩy cho mọi market (DEC-163); chiến lược khác có tối đa một symbol.
+    // Sự kiện tới cùng lúc (giá, Binance, nhịp) chờ chung một lần đặt (CP-01: trước đây BTC-USD ghi 7 lần trong 2 s).
+    if (r.leverageRun !== null) return r.leverageRun;
+    r.leverageRun = this.#ensureLeverageAll(r, at);
+    try {
+      return await r.leverageRun;
+    } finally {
+      r.leverageRun = null;
+    }
+  }
+
+  async #ensureLeverageAll(
+    r: Runner,
+    at: number,
+  ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
+    // Copy Trade đặt cùng đòn bẩy cho mọi market (DEC-163); chiến lược khác có tối đa một symbol. Market đã xác nhận thì
+    // bỏ qua; Decisions ghi một dòng gộp cho các market vừa xác nhận (CP-01).
     const specs = leverageSpecsOf(r.strategy, r.market, r.config);
+    const confirmed: LeverageSpec[] = [];
+    const log = async () => {
+      const first = confirmed[0];
+      if (first === undefined) return;
+      const what = `${String(first.leverage)}× ${first.marginMode} on ${confirmed.map((x) => x.market).join(", ")}`;
+      await this.#event(r, "decision", "Leverage set", leverageWhy(r.paper, what), at);
+    };
     for (const spec of specs) {
+      const key = `${spec.market}:${String(spec.leverage)}:${spec.marginMode}`;
+      if (r.leverageDone.has(key)) continue;
       const res = await this.#ensureLeverageOne(r, spec, at);
       if (res !== "ok") {
+        await log();
         r.leverageSet = false;
         return res;
       }
+      r.leverageDone.add(key);
+      confirmed.push(spec);
     }
+    await log();
     r.leverageSet = true;
     return "ok";
   }
@@ -1297,9 +1336,7 @@ export class Engine {
       current = undefined;
     }
     if (current?.leverage === spec.leverage && current.marginMode === spec.marginMode) {
-      r.leverageSet = true;
       r.leverageUnknown = false;
-      await this.#event(r, "decision", "Leverage set", `SoDEX confirmed ${what}.`, at);
       return "ok";
     }
     // Vị thế đang mở trên symbol với thiết lập khác: không đổi đòn bẩy của cả account (DEC-58), không retry.
@@ -1326,9 +1363,7 @@ export class Engine {
     });
     r.leverageUnknown = res.outcome === "unknown";
     if (res.outcome === "ok") {
-      r.leverageSet = true;
       r.blocked = null;
-      await this.#event(r, "decision", "Leverage set", `SoDEX confirmed ${what}.`, at);
     } else if (res.outcome === "rejected") {
       await this.#event(
         r,
@@ -2030,6 +2065,21 @@ export class Engine {
       r,
       open.map((o) => o.clOrdId),
     );
+    // Lệnh có kết quả `unknown` (timeout) có thể đã nằm trên SoDEX (quy tắc 1.7). Trước đây Stop bỏ qua chúng rồi bỏ
+    // runner, nên không ai đối soát / huỷ: lệnh mồ côi nằm lại (harness tranh chấp). Stop của người dùng giữ bot ở
+    // `stopping` tới khi #reconcile đối soát xong (≤ NOT_FOUND_AFTER_MS); lệnh hoá ra đang mở thì lượt sau huỷ ở trên.
+    // Lệnh đóng vị thế cũng chờ, vì lệnh unknown còn có thể khớp và đổi vị thế.
+    const [unknown] = await this.#d.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(orders)
+      .where(and(eq(orders.botId, r.botId), eq(orders.status, "unknown")));
+    if ((unknown?.n ?? 0) > 0) {
+      this.#d.log.warn(
+        { botId: r.botId, unknown: unknown?.n, reason },
+        "stop waits for unknown orders to be reconciled",
+      );
+      if (reason === null) return;
+    }
     if (r.strategy === Strategy.copyTrade) {
       // Copy Trade nhiều market (DEC-163): đóng từng market bằng market reduce-only; clOrdID tất định theo thứ tự
       // market trong config, băm từ botId đầy đủ.
@@ -2091,22 +2141,40 @@ export class Engine {
         this.#d.now(),
       );
     }
-    const next = await this.#fenced(r, async (tx) => {
+    await this.#fenced(r, async (tx) => {
       const [b] = await tx
-        .select({ state: bots.state })
+        .select({ state: bots.state, reasonCode: bots.reasonCode })
         .from(bots)
         .where(eq(bots.id, r.botId))
         .for("update");
-      if (b === undefined) return null;
+      if (b === undefined) return;
       const next =
         reason === null
           ? applyEngineEvent(b.state, EngineEvent.confirmedStopped)
           : applyReason(b.state, reason);
-      if (next === null) return null;
+      if (next === null) return;
+      // Dừng đúng kế hoạch (MM-01): không còn việc gì cho người dùng, tắt cờ Needs attention (ví dụ cảnh báo 80% budget).
+      const planned =
+        next === BotState.stopped && reason !== null && PLANNED_STOP_REASONS.includes(reason);
       await tx
         .update(bots)
-        .set({ state: next, ...(reason === null ? {} : { reasonCode: reason }) })
+        .set({
+          state: next,
+          ...(reason === null ? {} : { reasonCode: reason }),
+          ...(planned ? { needsAttention: false } : {}),
+        })
         .where(eq(bots.id, r.botId));
+      // Sự kiện "Stopped" (BD-06) cùng transaction với lần đổi trạng thái: đúng một lần, không mất khi engine chết giữa
+      // chừng. why = reason code của lần dừng (chiến lược dừng đã qua `stopping` thì lấy từ bots.reason_code), hoặc
+      // STOPPED_BY_USER khi người dùng bấm Stop.
+      if (next === BotState.stopped)
+        await tx.insert(botEvents).values({
+          botId: r.botId,
+          type: "state",
+          decision: "Stopped",
+          why: reason ?? b.reasonCode ?? STOPPED_BY_USER,
+          occurredAt: new Date(this.#d.now()),
+        });
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
         payload: { botId: r.botId, state: next, reasonCode: reason },
@@ -2135,12 +2203,7 @@ export class Engine {
             data: { botId: r.botId, reasonCode: reason, ...(r.paper ? { paper: true } : {}) },
           },
         });
-      return next;
     });
-    // Sự kiện "Stopped" (BD-06): lúc dừng và ai / vì sao (reason code, hoặc STOPPED_BY_USER khi người dùng bấm Stop),
-    // để trang bot hiện lý do dừng và tính Runtime của lần chạy vừa xong.
-    if (next === BotState.stopped)
-      await this.#event(r, "state", "Stopped", reason ?? STOPPED_BY_USER, this.#d.now());
     this.#runners.delete(r.botId);
   }
 

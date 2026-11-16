@@ -927,7 +927,8 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
             and(
               eq(botEvents.botId, botId),
               eq(botEvents.type, "state"),
-              eq(botEvents.decision, "Stopped"),
+              // Lần chạy kết thúc ở lần dừng đầu tiên sau "Running": pause, đang dừng hoặc đã dừng.
+              inArray(botEvents.decision, ["Paused", "Stopping", "Stopped"]),
               gte(botEvents.occurredAt, since.at),
             ),
           )
