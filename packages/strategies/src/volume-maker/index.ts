@@ -1033,7 +1033,8 @@ export function stepVolumeMaker(
   const open = after === null ? 0 : e.at - after;
   const longest = Math.max(gap, open);
   const log: StrategyAction[] =
-    n > 0
+    // Bot đứng hẳn (0 request) vẫn ghi khi khoảng hở đang mở dài hết cửa sổ: đó chính là trường hợp cần thấy (review #157).
+    n > 0 || open >= VM_BOOK_STREAM.logEveryMs
       ? [
           {
             type: "log",
