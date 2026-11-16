@@ -1443,7 +1443,12 @@ export async function stopBot(
   // Dừng bot chỉ giảm rủi ro nên không hỏi 2FA (DEC-115, thay phần Stop của C12).
   // Chỉ bot có chân Perps mới có vị thế để đóng; bot Spot luôn giữ tài sản (DOMAIN.md 7.2).
   const close = closePosition && own.engine !== "spot";
-  const b = await command(deps, userId, botId, BotCommand.stop, { closeOnStop: close });
+  // Người dùng tự Stop: xoá reason code cũ (ví dụ pause vì max loss), để sự kiện "Stopped" ghi STOPPED_BY_USER. Emergency
+  // halt và chiến lược dừng tự đặt reason code của chúng (DEC-TBD-bot-stopped-event).
+  const b = await command(deps, userId, botId, BotCommand.stop, {
+    closeOnStop: close,
+    reasonCode: null,
+  });
   await audit(deps.db, {
     userId,
     action: AuditAction.botStopped,

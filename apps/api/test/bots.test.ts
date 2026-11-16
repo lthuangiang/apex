@@ -862,6 +862,26 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     // Lần chạy dừng ở lần pause (2 giờ trước), không phải lúc Stop sau đó.
     expect(Date.parse(detail.runningUntil ?? "")).toBe(now - 2 * 3_600_000);
   });
+
+  it("clears the old pause reason when the user stops a paused bot (BD-06)", async () => {
+    const { client } = await connectedUser(`stop-clears-${randomUUID()}@drift.test`);
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "Paused", paramSource: "manual", config: grid },
+    });
+    const id = made.json<{ id: string }>().id;
+    await env.pool.query(
+      "update bots set state = 'paused', reason_code = 'BOT_MAX_LOSS' where id = $1",
+      [id],
+    );
+    const stop = await client.request("POST", `/api/v1/bots/${id}/actions/stop`, { body: {} });
+    expect(stop.statusCode).toBe(202);
+    const { rows } = await env.pool.query<{ state: string; reason_code: string | null }>(
+      "select state, reason_code from bots where id = $1",
+      [id],
+    );
+    // Engine sẽ ghi "Stopped" với STOPPED_BY_USER ("Stopped by you"), không phải BOT_MAX_LOSS.
+    expect(rows[0]).toEqual({ state: "stopping", reason_code: null });
+  });
 });
 
 describe("Waiting for price (IMP-01, DEC-91)", () => {
