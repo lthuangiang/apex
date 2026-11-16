@@ -2,9 +2,10 @@
 
 import {
   dec,
-  MARKET_HOURS_CALIBRATION_MIN_HOURS,
+  MARKET_HOURS_DEFAULT_CALIBRATION_DATE,
   MARKET_HOURS_MIN_CUTS,
   marketHoursViewSchema,
+  type MarketHoursCalibrationScope,
   type MarketHoursHour,
   type MarketHoursView,
 } from "@drift/shared";
@@ -89,6 +90,22 @@ export function pct(v: string): string {
 }
 /** Ngày địa phương "YYYY-MM-DD" từ API (đã theo múi giờ người xem) → "Nov 15, 2026". */
 const dayLabel = (d: string): string => formatDate(Date.parse(`${d}T00:00:00Z`), "UTC");
+
+/**
+ * Câu nguồn hiệu chỉnh (DEC-TBD-market-hours-calibrated, người dùng duyệt): bot của market này → mọi market gộp lại →
+ * hằng số mặc định (kèm ngày đo).
+ */
+function useSourceText(): (scope: MarketHoursCalibrationScope, market: string | null) => string {
+  const t = useTranslations("marketHours.source");
+  return (scope, market) =>
+    scope.source === "market"
+      ? t("market", { market: market ?? "", n: scope.botHours })
+      : scope.source === "pooled"
+        ? t("pooled", { markets: scope.markets.join(", ") })
+        : t("default", { date: dayLabel(MARKET_HOURS_DEFAULT_CALIBRATION_DATE) });
+}
+/** Hệ số C hiển thị: 2 chữ số thập phân (vd "1.42"). */
+const factor = (v: string): string => Number(v).toFixed(2);
 /** Mốc thời gian ISO → ngày theo múi giờ `tz`. */
 const instantLabel = (iso: string, tz: string): string => formatDate(Date.parse(iso), tz);
 /** Mốc thời gian ISO → ngày giờ theo múi giờ `tz`, vd "Nov 15, 2026, 08:57". */
@@ -350,7 +367,8 @@ function HowToRead({
               {t("calc.volBody")}{" "}
               {v === undefined ? null : (
                 <>
-                  {t("calc.estBody", { bp: v.estimate.shockBp })} <CutCalc est={v.estimate} />{" "}
+                  {t("calc.estBody", { bp: v.estimate.shockBp })}{" "}
+                  <CutCalc est={v.estimate} market={v.market} />{" "}
                 </>
               )}
               {since(v?.candlesSince)}
@@ -377,11 +395,15 @@ function HowToRead({
 // Cột nhãn 272 px: nhãn dài nhất ("Price move against makers, 30 s later (bp)") + nút ⓘ nằm trên một dòng ở 1440.
 // Chú giải thụt vào 275 px (= nhãn + khe 3 px) để thẳng với cột giờ đầu tiên.
 /**
- * Phần "How these numbers are calculated" về lần cắt vị thế và hiệu chỉnh (DEC-289): chi phí cắt đo
- * từ lệnh cắt thật hay chỉ phí taker, và tỷ lệ chi phí thật ÷ "incl. shock days".
+ * Phần "How these numbers are calculated" về lần cắt vị thế và hiệu chỉnh (DEC-289, DEC-TBD-market-hours-calibrated):
+ * chi phí cắt đo từ lệnh cắt thật hay chỉ phí taker, cỡ cắt = R × order size so với volume một bot-hour, và dòng
+ * "calibrated" = "incl. shock days" × C, mỗi số kèm nguồn.
  */
-function CutCalc({ est }: { est: MarketHoursView["estimate"] }) {
+function CutCalc({ est, market }: { est: MarketHoursView["estimate"]; market: string | null }) {
   const t = useTranslations("marketHours.calc");
+  const sourceOf = useSourceText();
+  const cutSource = sourceOf(est.cutScope, market);
+  const calSource = sourceOf(est.calibrationScope, market);
   return (
     <>
       {est.cutSlippageBp === null
@@ -395,24 +417,23 @@ function CutCalc({ est }: { est: MarketHoursView["estimate"] }) {
             slip: Number(est.cutSlippageBp).toFixed(1),
             n: est.cuts,
           })}{" "}
-      {est.cutShare === null || est.botHourVolume === null
-        ? t("cutNone", { min: MARKET_HOURS_MIN_CUTS })
-        : est.cutShareSource === "cuts"
-          ? t("cutSizeMeasured", {
-              notional: usd(est.cutNotional) ?? "",
-              volume: usd(est.botHourVolume) ?? "",
-              pct: pct(est.cutShare),
-            })
-          : t("cutSizePosition", {
-              min: MARKET_HOURS_MIN_CUTS,
-              position: usd(est.maxPosition) ?? "",
-              volume: usd(est.botHourVolume) ?? "",
-              pct: pct(est.cutShare),
-            })}{" "}
+      {est.cutShare === null || est.fillsPerBotHour === null
+        ? t("cutNone", { source: cutSource })
+        : t(est.positionRatioSource === "cuts" ? "cutSizeCuts" : "cutSizeRatio", {
+            ratio: Number(est.positionRatio).toFixed(1),
+            notional: usd(est.cutNotional) ?? "",
+            fills: Number(est.fillsPerBotHour).toFixed(1),
+            pct: pct(est.cutShare),
+            source: cutSource,
+          })}{" "}
       <strong className="text-ink">
-        {est.calibration === null
-          ? t("calibrationNa", { min: MARKET_HOURS_CALIBRATION_MIN_HOURS })
-          : t("calibration", { ratio: Number(est.calibration).toFixed(1) })}
+        {est.calibrationScope.source === "default"
+          ? t("calibratedDefault", { factor: factor(est.calibration), source: calSource })
+          : t("calibrated", {
+              factor: factor(est.calibration),
+              hours: est.calibrationHours,
+              source: calSource,
+            })}
       </strong>
     </>
   );
@@ -483,11 +504,17 @@ function Desktop({
   const heat = trimLeadingEmptyDays(v.heatmap);
   const roomy = v.days <= 7;
   const firstDay = heat[0]?.date;
-  const row = (labelText: string, help: HelpKey, cells: ReactNode[]) => (
+  const sourceOf = useSourceText();
+  const row = (
+    labelText: string,
+    help: HelpKey,
+    cells: ReactNode[],
+    helpValues?: Record<string, string>,
+  ) => (
     <div className={GRID}>
       <span className="flex items-center gap-1 pr-2 text-xs leading-tight font-bold whitespace-nowrap">
         <span className="min-w-0">{labelText}</span>
-        <RowHelp label={labelText} help={help} />
+        <RowHelp label={labelText} help={help} values={helpValues} />
       </span>
       {cells}
     </div>
@@ -678,6 +705,7 @@ function Desktop({
                 key={h}
                 x={hourOf(v, h).volatility}
                 est={v.estimate}
+                market={v.market}
                 hour={h}
                 kind="typical"
               />
@@ -687,8 +715,30 @@ function Desktop({
             t("vol.estShock"),
             "estShock",
             H.map((h) => (
-              <EstCell key={h} x={hourOf(v, h).volatility} est={v.estimate} hour={h} kind="shock" />
+              <EstCell
+                key={h}
+                x={hourOf(v, h).volatility}
+                est={v.estimate}
+                market={v.market}
+                hour={h}
+                kind="shock"
+              />
             )),
+          )}
+          {row(
+            t("vol.estCalibrated"),
+            "estCalibrated",
+            H.map((h) => (
+              <EstCell
+                key={h}
+                x={hourOf(v, h).volatility}
+                est={v.estimate}
+                market={v.market}
+                hour={h}
+                kind="calibrated"
+              />
+            )),
+            { source: sourceOf(v.estimate.calibrationScope, v.market) },
           )}
         </Marked>
         <Legend
@@ -801,6 +851,7 @@ const hourOf = (v: MarketHoursView, h: number): MarketHoursHour =>
       swingBp: null,
       estCostPerMillion: null,
       estShockCostPerMillion: null,
+      estCalibratedCostPerMillion: null,
       estDays: null,
       shockDays: null,
       maxRangeBp: null,
@@ -818,6 +869,7 @@ function shockTip(
   x: MarketHoursHour["volatility"],
   est: MarketHoursView["estimate"],
   hour: number,
+  cutSource: string,
 ): string | null {
   const cost = usd(x.estShockCostPerMillion);
   if (cost === null || x.estDays === null || x.shockDays === null) return null;
@@ -829,52 +881,91 @@ function shockTip(
       days: x.estDays,
       bp: est.shockBp,
       cut: Number(est.cutCostBp).toFixed(1),
-    }) + cutSuffix(t, est)
-  );
-}
-
-/** Đuôi tooltip / dòng 390 px của "incl. shock days": cách tính chi phí và cỡ một lần cắt. */
-function cutSuffix(
-  t: ReturnType<typeof useTranslations<"marketHours.vol">>,
-  est: MarketHoursView["estimate"],
-): string {
-  if (est.cutShareSource === null) return t("noCut");
-  return (
-    (est.cutSlippageBp === null ? t("takerOnly") : "") +
-    (est.cutShareSource === "position" ? t("positionCut") : "")
+    }) + cutSuffix(t, est, cutSource)
   );
 }
 
 /**
- * Ô "Est. CPM · typical day (model)" và "Est. CPM · incl. shock days (model)": cùng 4 bậc màu với CPM của khối 3. Cả
- * dòng n/a khi mô hình không tính được cho market (lý do trong tooltip); một giờ không có nến → n/a.
+ * Đuôi tooltip / dòng 390 px của "incl. shock days": cách tính chi phí và cỡ một lần cắt (R × order size, phần trăm
+ * volume một bot-hour, nguồn).
+ */
+function cutSuffix(
+  t: ReturnType<typeof useTranslations<"marketHours.vol">>,
+  est: MarketHoursView["estimate"],
+  cutSource: string,
+): string {
+  if (est.cutShare === null) return t("noCut");
+  return (
+    (est.cutSlippageBp === null ? t("takerOnly") : "") +
+    t(est.positionRatioSource === "cuts" ? "cutSizeCuts" : "cutSize", {
+      ratio: Number(est.positionRatio).toFixed(1),
+      pct: pct(est.cutShare),
+      source: cutSource,
+    })
+  );
+}
+
+/** Tooltip / dòng 390 px của "Est. CPM · calibrated": giá trị, "incl. shock days" × C và nguồn của C. */
+function calibratedTip(
+  t: ReturnType<typeof useTranslations<"marketHours.vol">>,
+  x: MarketHoursHour["volatility"],
+  est: MarketHoursView["estimate"],
+  hour: number,
+  calSource: string,
+): string | null {
+  const cost = usd(x.estCalibratedCostPerMillion);
+  const shock = usd(x.estShockCostPerMillion);
+  if (cost === null || shock === null) return null;
+  return t("estCalibratedTip", {
+    hour: pad(hour),
+    cost,
+    shock,
+    factor: factor(est.calibration),
+    source: calSource,
+  });
+}
+
+/**
+ * Ô "Est. CPM · typical day (model)", "Est. CPM · incl. shock days (model)" và "Est. CPM · calibrated": cùng 4 bậc
+ * màu với CPM của khối 3. Cả dòng n/a khi mô hình không tính được cho market (lý do trong tooltip); một giờ không có
+ * nến → n/a.
  */
 function EstCell({
   x,
   est,
+  market,
   hour,
   kind,
 }: {
   x: MarketHoursHour["volatility"];
   est: MarketHoursView["estimate"];
+  market: string | null;
   hour: number;
-  kind: "typical" | "shock";
+  kind: "typical" | "shock" | "calibrated";
 }) {
   const t = useTranslations("marketHours.vol");
   const tb = useTranslations("marketHours.botBlock");
-  const value = kind === "typical" ? x.estCostPerMillion : x.estShockCostPerMillion;
+  const sourceOf = useSourceText();
+  const value =
+    kind === "typical"
+      ? x.estCostPerMillion
+      : kind === "shock"
+        ? x.estShockCostPerMillion
+        : x.estCalibratedCostPerMillion;
   const cost = usd(value);
   const tip =
     kind === "shock"
-      ? shockTip(t, x, est, hour)
-      : x.swingBp === null || cost === null
-        ? null
-        : t("estTip", {
-            hour: pad(hour),
-            cost,
-            swing: Number(x.swingBp).toFixed(1),
-            fees: Number(est.feesBp).toFixed(1),
-          });
+      ? shockTip(t, x, est, hour, sourceOf(est.cutScope, market))
+      : kind === "calibrated"
+        ? calibratedTip(t, x, est, hour, sourceOf(est.calibrationScope, market))
+        : x.swingBp === null || cost === null
+          ? null
+          : t("estTip", {
+              hour: pad(hour),
+              cost,
+              swing: Number(x.swingBp).toFixed(1),
+              fees: Number(est.feesBp).toFixed(1),
+            });
   if (cost === null || value === null || tip === null)
     return (
       <span
@@ -904,6 +995,7 @@ type HelpKey =
   | "maxMove15"
   | "estTypical"
   | "estShock"
+  | "estCalibrated"
   | "markout"
   | "spread"
   | "cost"
@@ -916,7 +1008,16 @@ type HelpKey =
  * chạm. Bấm / chạm thì ghim mở tới khi bấm lại, bấm ra ngoài hoặc Esc. Popup `fixed` theo nút để không bị cắt bởi
  * khung cuộn ngang của lưới.
  */
-function RowHelp({ label, help }: { label: string; help: HelpKey }) {
+function RowHelp({
+  label,
+  help,
+  values,
+}: {
+  label: string;
+  help: HelpKey;
+  /** Tham số của câu giải thích (vd `{source}` của "calibrated"). */
+  values?: Record<string, string> | undefined;
+}) {
   const t = useTranslations("marketHours.help");
   const wrap = useRef<HTMLSpanElement>(null);
   const btn = useRef<HTMLButtonElement>(null);
@@ -1021,7 +1122,7 @@ function RowHelp({ label, help }: { label: string; help: HelpKey }) {
             role="tooltip"
             className="block rounded-tile border border-border bg-surface px-3.5 py-3 text-left text-[13px] leading-relaxed font-normal tracking-normal break-words whitespace-normal text-ink normal-case shadow-lg"
           >
-            {t(help)}
+            {t(help, values)}
           </span>
         </span>
       )}
@@ -1186,6 +1287,7 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
   const tm = useTranslations("marketHours.mobile");
   const tb = useTranslations("marketHours.botBlock");
   const tv = useTranslations("marketHours.vol");
+  const sourceOf = useSourceText();
   const markAt = new Map(markers.map((m) => [m.hour, m]));
   const [open, setOpen] = useState<number>(markers.find((m) => m.us)?.hour ?? -1);
   return (
@@ -1317,7 +1419,21 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                           shock: x.volatility.shockDays,
                           days: x.volatility.estDays,
                           bp: v.estimate.shockBp,
-                        }) + cutSuffix(tv, v.estimate)}
+                        }) + cutSuffix(tv, v.estimate, sourceOf(v.estimate.cutScope, v.market))}
+                  </span>
+                  <span className="text-[11.5px] text-ink-2">
+                    <strong className="text-ink">{tm("estCalibrated")}</strong>{" "}
+                    {x.volatility.estCalibratedCostPerMillion === null ||
+                    x.volatility.estShockCostPerMillion === null
+                      ? v.estimate.unavailable === null
+                        ? tb("na")
+                        : `${tb("na")} · ${t(`vol.estReason.${v.estimate.unavailable}`)}`
+                      : tm("estCalibratedLine", {
+                          cost: usd(x.volatility.estCalibratedCostPerMillion) ?? tb("na"),
+                          shock: usd(x.volatility.estShockCostPerMillion) ?? tb("na"),
+                          factor: factor(v.estimate.calibration),
+                          source: sourceOf(v.estimate.calibrationScope, v.market),
+                        })}
                   </span>
                 </div>
               ) : null}

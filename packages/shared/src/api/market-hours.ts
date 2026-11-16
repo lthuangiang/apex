@@ -47,11 +47,32 @@ export const MARKET_HOURS_HOT_RATIO = 2;
 export const MARKET_HOURS_MAX_MISSING_PRICE = 0.2;
 /**
  * Cần ít nhất chừng này lệnh "Position cut" thật (có fill, có giá tham chiếu) trong kỳ thì mới dùng trượt giá và cỡ lệnh
- * cắt đo được; ít hơn → chỉ phí taker và cỡ cắt lấy theo vị thế tối đa của bot (DEC-289).
+ * cắt đo được; ít hơn → chỉ phí taker và cỡ cắt = R × order size (DEC-289, DEC-TBD-market-hours-calibrated).
  */
 export const MARKET_HOURS_MIN_CUTS = 5;
-/** Hiệu chỉnh "real ÷ estimate" cần ít nhất chừng này giờ có ≥ 3 bot-hour; ít hơn → "Not available". */
+/** Hệ số C (real ÷ "incl. shock days") của một phạm vi cần ít nhất chừng này ô (giờ × market) có ≥ 3 bot-hour. */
 export const MARKET_HOURS_CALIBRATION_MIN_HOURS = 3;
+/** Cửa sổ đo R, số fill một bot-hour và C (ngày), không theo kỳ 7 / 30 ngày của trang (DEC-TBD-market-hours-calibrated). */
+export const MARKET_HOURS_CALIBRATION_DAYS = 14;
+/**
+ * Mặc định khi chưa có bot Market Making nào có dữ liệu trong 14 ngày (DEC-TBD-market-hours-calibrated, đo ngày
+ * `MARKET_HOURS_DEFAULT_CALIBRATION_DATE`): R = vị thế lớn nhất ÷ order size ≈ 2 (khoảng 1.2–3.5×), C = 1.0.
+ */
+export const MARKET_HOURS_DEFAULT_POSITION_RATIO = "2";
+export const MARKET_HOURS_DEFAULT_CALIBRATION = "1";
+export const MARKET_HOURS_DEFAULT_CALIBRATION_DATE = "2026-11-15";
+/** Nguồn của R, phần cắt và C: bot của market này → mọi market gộp lại → hằng số mặc định. */
+export const MARKET_HOURS_CALIBRATION_SOURCES = ["market", "pooled", "default"] as const;
+export type MarketHoursCalibrationSource = (typeof MARKET_HOURS_CALIBRATION_SOURCES)[number];
+
+const calibrationScopeSchema = z.object({
+  source: z.enum(MARKET_HOURS_CALIBRATION_SOURCES),
+  /** Bot-hour (14 ngày) của bot Market Making tiền thật đã dùng; 0 khi `default`. */
+  botHours: z.number().int().nonnegative(),
+  /** Các market đã gộp khi `pooled` (theo tên); rỗng ở nguồn khác. */
+  markets: z.array(z.string()),
+});
+export type MarketHoursCalibrationScope = z.infer<typeof calibrationScopeSchema>;
 
 const hourSchema = z.object({
   hour: z.number().int().min(0).max(23),
@@ -76,6 +97,11 @@ const hourSchema = z.object({
      * một lần cắt vị thế vào ngày có biến động 15 phút ≥ 15 bp (`shockDayCostPerMillion`); null khi thiếu nến / mô hình.
      */
     estShockCostPerMillion: decimalStringSchema.nullable(),
+    /**
+     * "Est. CPM · calibrated" = "incl. shock days" × `estimate.calibration` (`calibratedCostPerMillion`); null chỉ khi
+     * "incl. shock days" null (thiếu nến / mô hình).
+     */
+    estCalibratedCostPerMillion: decimalStringSchema.nullable(),
     /** Số ngày tính được và số ngày "sốc" (biến động 15 phút lớn nhất ≥ 15 bp) của giờ đó; null khi không có ngày nào. */
     estDays: z.number().int().nonnegative().nullable(),
     shockDays: z.number().int().nonnegative().nullable(),
@@ -152,23 +178,25 @@ export const marketHoursViewSchema = z.object({
     cuts: z.number().int().nonnegative(),
     cutNotional: decimalStringSchema.nullable(),
     /**
-     * Volume trung bình một bot-hour của bot Market Making tiền thật trên market trong kỳ (Σ notional fill ÷ số bot-hour,
-     * mọi giờ); null khi không có bot-hour hoặc volume.
+     * R dùng cho cỡ một lần cắt = R × order size (DEC-TBD-market-hours-calibrated): đủ `MARKET_HOURS_MIN_CUTS` lệnh cắt
+     * thật → trung bình (notional lệnh cắt ÷ order size của bot) (`cuts`); không thì trung vị qua bot Market Making của
+     * (vị thế lớn nhất ÷ order size) trong 14 ngày theo `cutScope`; không có bot nào → `MARKET_HOURS_DEFAULT_POSITION_RATIO`.
      */
-    botHourVolume: decimalStringSchema.nullable(),
-    /** Vị thế tối đa trung bình (USDC, `vmMaxInventory` của cấu hình đang chạy, trọng số theo bot-hour); null khi thiếu. */
-    maxPosition: decimalStringSchema.nullable(),
-    /**
-     * Cỡ một lần cắt ÷ `botHourVolume` (`cutShareOf`): từ lệnh cắt thật (`cuts`, khi đủ `MARKET_HOURS_MIN_CUTS`), không đủ
-     * thì từ vị thế tối đa (`position`); null = không tính phần cắt ("position cuts not included").
-     */
+    positionRatio: decimalStringSchema,
+    positionRatioSource: z.enum(["cuts", ...MARKET_HOURS_CALIBRATION_SOURCES]),
+    /** Volume một bot-hour tính theo đơn vị order size (Σ volume ÷ order size ÷ Σ bot-hour, 14 ngày); null khi không có. */
+    fillsPerBotHour: decimalStringSchema.nullable(),
+    /** Cỡ một lần cắt ÷ volume một bot-hour = R ÷ `fillsPerBotHour`; null = không tính phần cắt (không có volume bot). */
     cutShare: decimalStringSchema.nullable(),
-    cutShareSource: z.enum(["cuts", "position"]).nullable(),
+    /** Phạm vi bot dùng cho R (khi không từ lệnh cắt) và `fillsPerBotHour`. */
+    cutScope: calibrationScopeSchema,
     /**
-     * Hiệu chỉnh: trung vị qua các giờ có ≥ 3 bot-hour của (Cost per $1M thật ÷ "incl. shock days"); null khi dưới
-     * `MARKET_HOURS_CALIBRATION_MIN_HOURS` giờ.
+     * C: trung vị qua các ô (giờ địa phương × market) có ≥ 3 bot-hour Market Making trong 14 ngày của (CPM thật ÷ "incl.
+     * shock days"), theo `calibrationScope`; không đủ ô ở mọi phạm vi → `MARKET_HOURS_DEFAULT_CALIBRATION`. Không bao giờ null.
      */
-    calibration: decimalStringSchema.nullable(),
+    calibration: decimalStringSchema,
+    calibrationScope: calibrationScopeSchema,
+    /** Số ô đã dùng cho C (0 khi mặc định). */
     calibrationHours: z.number().int().nonnegative(),
   }),
 });
@@ -273,13 +301,17 @@ export function costPerMillionOfSums(s: CostSums): Decimal | null {
     : null;
 }
 
-/** Một fill của lệnh "Position cut" (market IOC reduce-only): `ref` = giá tham chiếu trước lúc cắt (null khi thiếu). */
+/**
+ * Một fill của lệnh "Position cut" (market IOC reduce-only): `ref` = giá tham chiếu trước lúc cắt (null khi thiếu);
+ * `orderSize` = order size (USDC) trong cấu hình đang chạy của bot (null khi không đọc được).
+ */
 export interface CutFill {
   orderId: string;
   side: "buy" | "sell";
   price: string;
   size: string;
   ref: string | null;
+  orderSize: string | null;
 }
 
 /**
@@ -287,17 +319,22 @@ export interface CutFill {
  * - `cuts` = số lệnh cắt có fill;
  * - `slippageBps` = trượt giá trung bình theo notional trên các fill có giá tham chiếu, dương = bất lợi (mua cao hơn /
  *   bán thấp hơn giá tham chiếu): Σ chiều × (giá khớp − ref) ÷ ref × notional ÷ Σ notional × 10 000;
- * - `notional` = notional trung bình của một lệnh cắt.
- * Dưới `MARKET_HOURS_MIN_CUTS` lệnh có giá tham chiếu → `slippageBps` và `notional` là null (chỉ phí taker; cỡ cắt theo
- * `cutShareOf`).
+ * - `notional` = notional trung bình của một lệnh cắt;
+ * - `sizeRatio` = trung bình qua các lệnh cắt có order size của (notional lệnh cắt ÷ order size của bot)
+ *   (DEC-TBD-market-hours-calibrated); null khi không lệnh nào có order size.
+ * Dưới `MARKET_HOURS_MIN_CUTS` lệnh có giá tham chiếu → `slippageBps`, `notional`, `sizeRatio` là null (chỉ phí taker;
+ * cỡ cắt theo R).
  */
 export function cutStats(fills: readonly CutFill[]): {
   cuts: number;
   slippageBps: Decimal | null;
   notional: Decimal | null;
+  sizeRatio: Decimal | null;
 } {
   const orders = new Set<string>();
   const priced = new Set<string>();
+  // Notional và order size của từng lệnh cắt (một lệnh có thể khớp nhiều fill).
+  const perOrder = new Map<string, { notional: Decimal; orderSize: Decimal | null }>();
   let total = new Decimal(0);
   let weighted = new Decimal(0);
   let pricedNotional = new Decimal(0);
@@ -306,6 +343,12 @@ export function cutStats(fills: readonly CutFill[]): {
     const p = dec(f.price);
     const n = p.mul(dec(f.size));
     total = total.add(n);
+    const o = perOrder.get(f.orderId);
+    const size = f.orderSize === null ? null : dec(f.orderSize);
+    perOrder.set(f.orderId, {
+      notional: (o?.notional ?? new Decimal(0)).add(n),
+      orderSize: o?.orderSize ?? (size?.gt(0) === true ? size : null),
+    });
     if (f.ref === null || !dec(f.ref).gt(0)) continue;
     const ref = dec(f.ref);
     const slip = (f.side === "buy" ? p.sub(ref) : ref.sub(p)).div(ref);
@@ -314,72 +357,148 @@ export function cutStats(fills: readonly CutFill[]): {
     priced.add(f.orderId);
   }
   const enough = priced.size >= MARKET_HOURS_MIN_CUTS && pricedNotional.gt(0);
+  const ratios = [...perOrder.values()].flatMap((o) =>
+    o.orderSize === null ? [] : [o.notional.div(o.orderSize)],
+  );
   return {
     cuts: orders.size,
     slippageBps: enough ? weighted.div(pricedNotional).mul(10_000) : null,
     notional: enough ? total.div(orders.size) : null,
+    sizeRatio:
+      enough && ratios.length > 0
+        ? ratios.reduce((a, b) => a.add(b), new Decimal(0)).div(ratios.length)
+        : null,
   };
 }
 
-/** Một bot Market Making trong kỳ: số bot-hour, Σ notional fill (null khi chưa có fill) và vị thế tối đa (USDC). */
-export interface MmBotPeriod {
+/**
+ * Một bot Market Making tiền thật trong 14 ngày (DEC-TBD-market-hours-calibrated): market, số bot-hour (giờ có ≥ 1 lệnh
+ * tạo), Σ notional fill, vị thế lớn nhất (max |Σ size có dấu theo filled_at| × giá fill, USDC) và order size (USDC)
+ * của cấu hình đang chạy. null khi không có fill / không đọc được cấu hình.
+ */
+export interface MmBotWindow {
+  market: string;
   botHours: number;
   volume: string | null;
   maxPosition: string | null;
+  orderSize: string | null;
 }
 
 /**
- * Mẫu số và cỡ cắt dự phòng cho phần cắt vị thế (DEC-289), qua MỌI giờ của kỳ:
- * - `botHourVolume` = Σ volume ÷ Σ bot-hour (null khi không có bot-hour hoặc volume = 0);
- * - `maxPosition` = trung bình vị thế tối đa, trọng số theo bot-hour (bot không đọc được cấu hình bị bỏ; null khi không
- *   còn bot nào).
+ * R và số fill một bot-hour của một nhóm bot (DEC-TBD-market-hours-calibrated). Chỉ bot có order size > 0:
+ * - `ratio` = trung vị (vị thế lớn nhất ÷ order size) qua các bot có vị thế lớn nhất > 0;
+ * - `fillsPerBotHour` = Σ (volume ÷ order size) ÷ Σ bot-hour qua các bot có bot-hour > 0 (volume một bot-hour theo đơn vị
+ *   order size, nên dùng được cho mọi market và mọi order size); null khi không có volume;
+ * - `botHours` = Σ bot-hour của các bot đã dùng; `markets` = market của các bot đó (theo tên).
  */
-export function mmCutBasis(bots: readonly MmBotPeriod[]): {
-  botHourVolume: Decimal | null;
-  maxPosition: Decimal | null;
+export function positionStats(bots: readonly MmBotWindow[]): {
+  ratio: Decimal | null;
+  fillsPerBotHour: Decimal | null;
+  botHours: number;
+  markets: string[];
 } {
+  const ratios: Decimal[] = [];
+  let units = new Decimal(0);
   let hours = 0;
-  let volume = new Decimal(0);
-  let posHours = 0;
-  let pos = new Decimal(0);
+  const markets = new Set<string>();
   for (const b of bots) {
-    if (b.botHours <= 0) continue;
+    const size = b.orderSize === null ? null : dec(b.orderSize);
+    if (size === null || !size.gt(0) || b.botHours <= 0) continue;
+    const pos = b.maxPosition === null ? null : dec(b.maxPosition);
+    if (pos?.gt(0) === true) ratios.push(pos.div(size));
     hours += b.botHours;
-    if (b.volume !== null) volume = volume.add(dec(b.volume));
-    if (b.maxPosition !== null && dec(b.maxPosition).gt(0)) {
-      posHours += b.botHours;
-      pos = pos.add(dec(b.maxPosition).mul(b.botHours));
-    }
+    markets.add(b.market);
+    if (b.volume !== null) units = units.add(dec(b.volume).div(size));
   }
   return {
-    botHourVolume: hours === 0 || !volume.gt(0) ? null : volume.div(hours),
-    maxPosition: posHours === 0 ? null : pos.div(posHours),
+    ratio: quantile(ratios, 0.5),
+    fillsPerBotHour: hours === 0 || !units.gt(0) ? null : units.div(hours),
+    botHours: hours,
+    markets: [...markets].sort(),
   };
 }
 
 /**
- * Phần notional của một lần cắt so với volume một bot-hour (DEC-289), một số cho mọi giờ:
- * - đủ `MARKET_HOURS_MIN_CUTS` lệnh cắt thật (`cutNotional` khác null) → notional trung bình một lệnh cắt ÷
- *   `botHourVolume` (`cuts`);
- * - không đủ → vị thế tối đa trung bình (Max inventory, hoặc order size × max orders) ÷ `botHourVolume` (`position`):
- *   engine không để vị thế vượt xa mức này, nên đây là cận trên của một lần cắt;
- * - thiếu cả hai, hoặc không có volume → null: không tính phần cắt.
+ * Cỡ một lần cắt cho "incl. shock days" (DEC-TBD-market-hours-calibrated), một số cho mọi giờ của market:
+ * - R: đủ lệnh cắt thật (`cutRatio` khác null) → `cutRatio` (`cuts`); không thì R của bot market này (`market`), không
+ *   có thì R của mọi market gộp lại (`pooled`), không có nữa thì `MARKET_HOURS_DEFAULT_POSITION_RATIO` (`default`);
+ * - `fillsPerBotHour` theo cùng thứ tự market → pooled (không có mặc định);
+ * - `cutShare` = R ÷ `fillsPerBotHour` (= R × order size ÷ volume một bot-hour); null khi không có volume bot nào
+ *   (không tính phần cắt).
+ * `scope` = phạm vi bot của R / `fillsPerBotHour` (market → pooled → default).
  */
-export function cutShareOf(p: {
-  cutNotional: Decimal | null;
-  maxPosition: Decimal | null;
-  botHourVolume: Decimal | null;
-}): { share: Decimal | null; source: "cuts" | "position" | null } {
-  const v = p.botHourVolume;
-  if (v?.gt(0) !== true) return { share: null, source: null };
-  if (p.cutNotional !== null) return { share: p.cutNotional.div(v), source: "cuts" };
-  if (p.maxPosition !== null) return { share: p.maxPosition.div(v), source: "position" };
-  return { share: null, source: null };
+export function cutSizing(
+  bots: readonly MmBotWindow[],
+  market: string,
+  cutRatio: Decimal | null,
+): {
+  ratio: Decimal;
+  ratioSource: "cuts" | MarketHoursCalibrationSource;
+  fillsPerBotHour: Decimal | null;
+  cutShare: Decimal | null;
+  scope: MarketHoursCalibrationScope;
+} {
+  const own = positionStats(bots.filter((b) => b.market === market));
+  const all = positionStats(bots);
+  const scope: MarketHoursCalibrationScope =
+    own.ratio !== null && own.fillsPerBotHour !== null
+      ? { source: "market", botHours: own.botHours, markets: [] }
+      : all.ratio !== null && all.fillsPerBotHour !== null
+        ? { source: "pooled", botHours: all.botHours, markets: all.markets }
+        : { source: "default", botHours: 0, markets: [] };
+  const stats = scope.source === "market" ? own : scope.source === "pooled" ? all : null;
+  const ratio = cutRatio ?? stats?.ratio ?? new Decimal(MARKET_HOURS_DEFAULT_POSITION_RATIO);
+  const fills = stats?.fillsPerBotHour ?? null;
+  return {
+    ratio,
+    ratioSource: cutRatio !== null ? "cuts" : scope.source,
+    fillsPerBotHour: fills,
+    cutShare: fills === null ? null : ratio.div(fills),
+    scope,
+  };
 }
 
 /**
- * Hiệu chỉnh (DEC-289): trung vị qua các giờ của (chi phí thật ÷ ước tính), chỉ giờ có ước tính > 0.
- * Dưới `MARKET_HOURS_CALIBRATION_MIN_HOURS` giờ → null ("Not available").
+ * C (DEC-TBD-market-hours-calibrated): ô của market này đủ `MARKET_HOURS_CALIBRATION_MIN_HOURS` → trung vị của chúng
+ * (`market`); không thì gộp ô của mọi market (`pooled`, `pooled()` chỉ được gọi khi cần vì phải tải nến của từng
+ * market); không đủ nữa → `MARKET_HOURS_DEFAULT_CALIBRATION` (`default`). Không bao giờ null.
+ */
+export async function calibrationOf(
+  own: { pairs: readonly { real: Decimal; est: Decimal }[]; botHours: number },
+  pooled: () => Promise<{
+    pairs: readonly { real: Decimal; est: Decimal }[];
+    botHours: number;
+    markets: string[];
+  }>,
+): Promise<{ factor: Decimal; hours: number; scope: MarketHoursCalibrationScope }> {
+  const mine = calibrationRatio(own.pairs);
+  if (mine !== null)
+    return {
+      factor: mine,
+      hours: usablePairs(own.pairs),
+      scope: { source: "market", botHours: own.botHours, markets: [] },
+    };
+  const p = await pooled();
+  const all = calibrationRatio(p.pairs);
+  if (all !== null)
+    return {
+      factor: all,
+      hours: usablePairs(p.pairs),
+      scope: { source: "pooled", botHours: p.botHours, markets: p.markets },
+    };
+  return {
+    factor: new Decimal(MARKET_HOURS_DEFAULT_CALIBRATION),
+    hours: 0,
+    scope: { source: "default", botHours: 0, markets: [] },
+  };
+}
+
+const usablePairs = (pairs: readonly { est: Decimal }[]): number =>
+  pairs.filter((x) => x.est.gt(0)).length;
+
+/**
+ * Hiệu chỉnh (DEC-289): trung vị qua các ô của (chi phí thật ÷ ước tính), chỉ ô có ước tính > 0.
+ * Dưới `MARKET_HOURS_CALIBRATION_MIN_HOURS` ô → null (phạm vi đó không đủ dữ liệu).
  */
 export function calibrationRatio(
   pairs: readonly { real: Decimal; est: Decimal }[],
