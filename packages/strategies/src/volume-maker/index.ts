@@ -1079,7 +1079,11 @@ function stepCore(
       // Dọn lệnh cũ rồi xử lý tiếp trong cùng nhịp (DEC-251). Trước đây nhịp nào có dọn thì bỏ qua báo giá; bot chạy
       // quá VM_KEEP_DONE_MS (10 phút) thì gần như nhịp nào cũng có một lệnh vừa quá hạn, bot đứng hàng chục giây không
       // đặt lệnh (2026-11-15: khoảng trống 38–42 s, có lần hơn 2 phút, lệnh đóng không được đặt khi đang giữ vị thế).
-      s = housekeep(s, e.at);
+      // CI-only revert of DEC-251: a tick that tidied old orders skips quoting.
+      const tidied = housekeep(s, e.at);
+      if (Object.keys(tidied.orders).length !== Object.keys(s.orders).length)
+        return { actions: [], state: tidied };
+      s = tidied;
       const elapsed = s.lastRefresh !== null ? e.at - s.lastRefresh : Infinity;
       const due = s.requoteDue && elapsed >= VM_MIN_REQUOTE_MS;
       const interval = elapsed >= c.refreshSeconds * 1000;
