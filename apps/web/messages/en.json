@@ -52,7 +52,8 @@
       "following": "Following",
       "sections": {
         "copy": "Copy Trading"
-      }
+      },
+      "marketHours": "Market hours"
     },
     "dialog": {
       "consequences": "What happens"
@@ -5753,5 +5754,121 @@
     "expires": "Draft expires {time}.",
     "gone": "This draft is no longer available. Drafts from Claude last 24 hours.",
     "openLab": "Open Strategy Lab"
+  },
+  "marketHours": {
+    "title": "Market hours",
+    "subtitle": "How much SoDEX markets move, what quoting costs and what our bots paid, hour by hour. Past numbers, not a forecast.",
+    "forbidden": "Market hours is for the DeskLabs team only.",
+    "tzLocal": "Times in your time zone: {tz} ({offset})",
+    "tzUtc": "Times in UTC",
+    "showUtc": "Show in UTC",
+    "showLocal": "Show my time zone",
+    "filters": "Filters",
+    "market": "Market",
+    "period": "Period",
+    "days": "{n} days",
+    "bots": "Bots",
+    "strategy": "Strategy",
+    "strategies": {
+      "both": "Both",
+      "volume_maker": "Market Making",
+      "volume_farm": "Volume Builder"
+    },
+    "how": {
+      "title": "How to read this",
+      "volTitle": "Market volatility",
+      "volBody": ": how much the price jumps around within a minute. Darker cells mean that hour moved more than usual for that day.",
+      "costTitle": "Cost to make markets",
+      "costBody": ": when someone’s resting order gets filled, how far the price moves against them in the next 30 seconds, and how wide the gap between the best buy and sell price was.",
+      "botsTitle": "DeskLabs bots",
+      "botsBody": ": what real-money bots paid for every $1M they traded in that hour. If only a few bots ran in an hour, its number is marked Thin sample and is less reliable.",
+      "note": "Hours are shown in your time zone. These are past numbers, not a forecast."
+    },
+    "calc": {
+      "title": "How these numbers are calculated",
+      "volTitle": "1 · Market volatility",
+      "volBody": "Data: SoDEX 1-minute price candles. For each minute we take the gap between its highest and lowest price, as a share of the price, in basis points (bp; 1 bp = 0.01%). For each hour of each day we take the middle value (median) of its 60 minutes and compare it with the median of the whole day. An hour counts as hot on a day when it is more than 2× that day’s median.",
+      "costTitle": "2 · Cost to make markets",
+      "costBody": "Data: public trades on SoDEX. After each trade we look at the price 30 seconds later: if it moved against the side whose order was resting in the book (the maker), that is the cost in bp. Spread is the gap between the best buy and sell price, counted in the smallest price steps (ticks). Both are medians per hour.",
+      "botsTitle": "3 · DeskLabs bots",
+      "botsBody": "Data: the real fills of live Market Making and Volume Builder bots; practice bots are left out. Cost per $1M = fees paid minus the price move on each fill one minute later, per $1M of volume. It is a markout estimate, not realised profit or loss. A bot-hour is one bot running for one hour, so 3 bots running for an hour is 3 bot-hours. An hour counts for a bot when it placed at least one order in that hour. Fewer than 3 bot-hours is a Thin sample.",
+      "since": "Available since {date}.",
+      "kept": "Kept for 90 days."
+    },
+    "grid": "Hour by hour",
+    "hour": "Hour",
+    "hourAria": "Show {hour}:00 in 5-minute steps",
+    "markerAria": "{label}. Marker: {marker}",
+    "loading": "Loading market hours…",
+    "empty": "No data for {market} in the last {days} days.",
+    "emptyHint": "Pick another market or period.",
+    "errorTitle": "Couldn’t load market hours.",
+    "errorBody": "Nothing was changed. Try again in a moment.",
+    "retry": "Try again",
+    "vol": {
+      "title": "1 · Market volatility on SoDEX",
+      "sub": "1-minute candles · each cell = that hour on that day, compared with the day’s median",
+      "medianBp": "Median 1-min range (bp)",
+      "p90Bp": "p90 1-min range (bp)",
+      "ratio": "× day median",
+      "hotDays": "Hot days (> 2× day median)",
+      "legend": "× day median",
+      "b0": "under 0.75×",
+      "b1": "0.75–1.25×",
+      "b2": "1.25–2×",
+      "b3": "2–3× (hot)",
+      "b4": "over 3×",
+      "cellTip": "{date} · {hour}:00 · median 1-min range {bp} bp · {ratio}× day median",
+      "hot": " · hot",
+      "cellNa": "{date} · {hour}:00 · Not available"
+    },
+    "markers": "Markers",
+    "marker": "{local} · {utc} UTC",
+    "usOpen": "US stock open",
+    "usShort": "US open",
+    "utcShort": "{utc} UTC",
+    "usNote": "US stock open follows New York time, so it moves by an hour when the US changes its clocks.",
+    "detailTitle": "{from}–{to}",
+    "detailUs": " · US stock open at {time}",
+    "detailSub": "Median 1-min range in 5-minute steps · pick an hour above",
+    "cost": {
+      "title": "2 · Cost to make markets",
+      "sub": "Public SoDEX trades, maker side",
+      "collecting": "Collecting since {date} · {n} of {days} days",
+      "halfHour": "Approximate in half-hour time zones: this block is collected by UTC hour.",
+      "markout": "Price move against makers, 30 s later (bp)",
+      "spread": "Spread (ticks)"
+    },
+    "botBlock": {
+      "title": "3 · DeskLabs bots (real money), all users",
+      "sub": "{strategies} · live bots only, practice bots left out",
+      "both": "Market Making + Volume Builder",
+      "cost": "Cost per $1M",
+      "volume": "Volume",
+      "fees": "Fees",
+      "botHours": "Bot-hours (bots × hours)",
+      "legend": "Cost per $1M",
+      "c0": "under $120",
+      "c1": "$120–170",
+      "c2": "$170–230",
+      "c3": "over $230",
+      "thin": "Thin",
+      "thinLegend": "Thin sample: fewer than 3 bot-hours (bots running × hours)",
+      "na": "n/a",
+      "naLegend": "n/a = Not available",
+      "tip": "{hour}:00 · {cost} · {botHours} bot-hours · volume {volume}",
+      "tipThin": " · Thin sample",
+      "tipNa": "{hour}:00 · Not available"
+    },
+    "mobile": {
+      "ratio": "× day median",
+      "hot": "Hot days",
+      "markout": "Move vs makers 30 s",
+      "cost": "Cost / $1M",
+      "detail": "{from}–{to} · median 1-min range, 5-minute steps",
+      "line": "Median {med} bp · p90 {p90} bp · spread {spread} ticks · volume {volume} · {botHours} bot-hours",
+      "hint": "Tap an hour for 5-minute steps and the full numbers."
+    },
+    "footer": "Past numbers, not a forecast; nothing on this page pauses or changes bots."
   }
 }

@@ -69,6 +69,8 @@ const ITEMS = [
   ["revenue", "/admin/builder-revenue", Coins, "team"],
   ["users", "/admin/users", Users, "team"],
   ["stats", "/admin/stats", BarChart3, "team"],
+  // Market hours (DEC-TBD-market-hours): ngay sau Ops khi trang Ops (#158) vào main.
+  ["marketHours", "/admin/market-hours", Clock, "team"],
   ["settings", "/settings", Settings, "secondary"],
 ] as const satisfies readonly (readonly [
   string,
@@ -82,7 +84,7 @@ export type WorkspaceKey = (typeof ITEMS)[number][0];
 const COPY_ITEMS: ReadonlySet<WorkspaceKey> = new Set(["traders", "following"]);
 
 // Chỉ role `team`; api vẫn tự kiểm tra role (DEC-64).
-const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set(["revenue", "users", "stats"]);
+const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set(["revenue", "users", "stats", "marketHours"]);
 
 export function WorkspaceShell({
   current,
