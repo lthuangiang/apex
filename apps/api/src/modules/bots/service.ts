@@ -82,6 +82,8 @@ import { AuditAction, audit } from "../../lib/audit";
 import { iso } from "../security/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
 
+import { botSummaryLine } from "./summary-line";
+
 // Bot CRUD và hành động trạng thái (SCREENS.md mục 8.2–8.4, DOMAIN.md mục 7). API chỉ đưa bot vào
 // trạng thái chuyển tiếp; engine xác nhận trạng thái cuối (quy tắc 1.6).
 
@@ -644,6 +646,7 @@ export function summary(
     waiting: b.state === BotState.running ? waitingView(b.strategy, config, state) : null,
     mode: b.mode,
     stopDetail,
+    summary: botSummaryLine(b.strategy, config),
     createdAt: iso(b.createdAt),
     updatedAt: iso(b.updatedAt),
   };
