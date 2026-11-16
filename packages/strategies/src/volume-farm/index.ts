@@ -63,6 +63,8 @@ export interface VolumeFarmState {
   cooldownUntil: number;
   unfilled: number;
   exitUnfilled: number;
+  /** Lệnh vào market bị SoDEX từ chối liên tiếp (DEC-TBD-vf-taker-only); đủ `VF_MARKET_REJECTS` thì pause. */
+  marketRejects?: number;
   lastSide: "long" | "short" | null;
   /** Σ notional các lượt long − Σ lượt short đã đóng (quote). */
   netExposure: string;
@@ -165,6 +167,9 @@ const initial = (): VolumeFarmState => ({
   lastSkip: null,
   lastSignal: null,
 });
+
+/** Số lệnh vào market bị từ chối liên tiếp thì pause bot (DEC-117, bật lại ở DEC-TBD-vf-taker-only). */
+export const VF_MARKET_REJECTS = 3;
 
 const none = (s: VolumeFarmState): StepResult<VolumeFarmState> => ({ actions: [], state: s });
 
@@ -758,6 +763,7 @@ function onFill(
       openedAt: state.openedAt ?? e.at,
       holdUntil: first ? e.at + (state.holdSecs ?? c.minHoldSecs) * 1000 : state.holdUntil,
       unfilled: 0,
+      marketRejects: 0,
       ...(first
         ? {
             openRealized: before.realized,
@@ -856,6 +862,36 @@ export function stepVolumeFarm(
     case "orderReject": {
       if (s.entry?.id === e.clOrdID) {
         const open = !dust(s, ctx, c.market);
+        // Lệnh vào market bị từ chối (thiếu margin…): không gửi lại mãi; đủ ngưỡng thì pause để người dùng xem
+        // (DEC-117 bật lại cho chế độ taker, DEC-TBD-vf-taker-only).
+        if (s.entry.taker && !open) {
+          const n = (s.marketRejects ?? 0) + 1;
+          if (n >= VF_MARKET_REJECTS)
+            return {
+              actions: [
+                {
+                  type: "log",
+                  decision: "Market entries rejected",
+                  why: `SoDEX rejected ${String(n)} market entries in a row (${e.code}). Check your margin on SoDEX, then resume the bot.`,
+                },
+                { type: "pause", reason: ReasonCode.orderRejected },
+              ],
+              state: {
+                ...s,
+                phase: "idle",
+                entry: null,
+                unfilled: s.unfilled + 1,
+                marketRejects: 0,
+              },
+            };
+          return none({
+            ...s,
+            phase: "idle",
+            entry: null,
+            unfilled: s.unfilled + 1,
+            marketRejects: n,
+          });
+        }
         // Post-only bị từ chối vì sẽ khớp ngay (giá đã chạy): coi như một lần không khớp.
         return none({
           ...s,

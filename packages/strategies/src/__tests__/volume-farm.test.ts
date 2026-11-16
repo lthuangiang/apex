@@ -191,6 +191,34 @@ describe("volume farm cycle", () => {
     });
   });
 
+  it("pauses after 3 market entries in a row are rejected instead of retrying forever (DEC-TBD-vf-taker-only)", () => {
+    const c = cfg({ takerAfter: 0, cooldownSecs: 0 });
+    let r = run(c, [timer(T0)]);
+    const pauses: StrategyAction[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const id = r.s.entry?.id ?? "";
+      expect(r.s.entry?.taker).toBe(true);
+      r = run(
+        c,
+        [
+          {
+            type: "orderReject",
+            at: T0 + i * 10_000 + 500,
+            clOrdID: id,
+            code: "INSUFFICIENT_MARGIN",
+          },
+        ],
+        r.s,
+      );
+      pauses.push(...r.all.filter((a) => a.type === "pause"));
+      if (i < 2) {
+        expect(pauses).toHaveLength(0);
+        r = run(c, [timer(T0 + (i + 1) * 10_000)], r.s);
+      }
+    }
+    expect(pauses).toEqual([{ type: "pause", reason: "ORDER_REJECTED" }]);
+  });
+
   it("stays post-only with 0 misses when taker orders are off (DEC-TBD-vf-taker-only)", () => {
     const r = run(cfg({ allowTaker: false, takerAfter: 0 }), [timer(T0)]);
     expect(first(places(r.all))).toMatchObject({ type: "limit", timeInForce: "GTX" });
