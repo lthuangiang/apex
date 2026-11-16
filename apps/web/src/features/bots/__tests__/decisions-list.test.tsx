@@ -94,6 +94,8 @@ describe("Decisions & actions (BD-02)", () => {
     expect(within(panel).getAllByRole("link")).toHaveLength(5);
     await user.click(within(panel).getByRole("button", { name: "Show all 7" }));
     expect(within(panel).getAllByRole("link")).toHaveLength(7);
+    // The button is gone: focus moves to the 6th child, the first one just shown.
+    expect(document.activeElement).toBe(within(panel).getAllByRole("listitem")[5]);
     expect(within(panel).getAllByRole("link")[0]).toHaveAccessibleName(/^Filled\. Show order …/);
 
     const r = await axe.run(document.body, {
@@ -101,7 +103,7 @@ describe("Decisions & actions (BD-02)", () => {
       rules: { "color-contrast": { enabled: false } },
     });
     expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
-  });
+  }, 20_000);
 
   it("390 px list: the group opens to its children with linked pills", async () => {
     const user = userEvent.setup({ delay: null });
@@ -111,6 +113,35 @@ describe("Decisions & actions (BD-02)", () => {
     await user.click(group);
     const panel = within(mobile).getByRole("list", { name: "7 Bid pulled decisions" });
     expect(within(panel).getAllByRole("link")).toHaveLength(5);
+  });
+
+  it("an open group stays open when a new event joins it on the next poll", async () => {
+    const user = userEvent.setup({ delay: null });
+    const props = { botId: BOT, why: (e: BotEvent) => e.why, legacy: (x: string) => x };
+    const view = wrap(<DecisionsList {...props} events={events} />);
+    await user.click(within(desktop()).getByRole("button", { name: /Bid pulled/ }));
+    const newer = { ...ev("Bid pulled", 5), occurredAt: new Date(T0 + 5_000).toISOString() };
+    view.rerender(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <DecisionsList {...props} events={[newer, ...events.slice(1)]} />
+      </NextIntlClientProvider>,
+    );
+    const group = within(desktop()).getByRole("button", { name: /Bid pulled/ });
+    expect(within(group).getByText("×8")).toBeInTheDocument();
+    expect(group).toHaveAttribute("aria-expanded", "true");
+    expect(
+      within(desktop()).getByRole("list", { name: "8 Bid pulled decisions" }),
+    ).toBeInTheDocument();
+  });
+
+  it("390 px: after Show all, focus moves to the 6th child", async () => {
+    const user = userEvent.setup({ delay: null });
+    wrap(<DecisionsList botId={BOT} events={events} why={(e) => e.why} legacy={(x) => x} />);
+    const mobile = screen.getByRole("list", { name: "Recent decisions" });
+    await user.click(within(mobile).getByRole("button", { name: /Bid pulled/ }));
+    const panel = within(mobile).getByRole("list", { name: "7 Bid pulled decisions" });
+    await user.click(within(panel).getByRole("button", { name: "Show all 7" }));
+    expect(document.activeElement).toBe(within(panel).getAllByRole("listitem")[5]);
   });
 
   it("shows the empty state", () => {

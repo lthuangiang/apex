@@ -3,7 +3,7 @@
 import type { DecisionOutcome } from "@drift/shared";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { formatDateTime } from "@/lib/format";
 
@@ -23,6 +23,9 @@ import {
 const GRID = "grid grid-cols-[150px_240px_minmax(0,1fr)_230px] gap-3";
 /** Số dòng con hiện trước khi bấm "Show all". */
 const FIRST_CHILDREN = 5;
+/** Dòng con thứ 6 nhận focus sau "Show all". */
+const firstMore = (i: number) =>
+  i === FIRST_CHILDREN ? { tabIndex: -1, "data-first-more": "" } : {};
 /** Mobile: số dòng (đơn hoặc nhóm) hiện, như danh sách cũ. */
 const MOBILE_ROWS = 10;
 
@@ -110,14 +113,25 @@ function Summary({ events, small = false }: { events: readonly BotEvent[]; small
 function useOpen() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [all, setAll] = useState<Record<string, boolean>>({});
+  // Sau "Show all": chuyển focus tới dòng con thứ 6 (dòng đầu tiên vừa hiện), vì nút "Show all" biến mất.
+  const [focusPanel, setFocusPanel] = useState<string | null>(null);
+  useEffect(() => {
+    if (focusPanel === null) return;
+    setFocusPanel(null);
+    document
+      .getElementById(focusPanel)
+      ?.querySelector<HTMLElement>(":scope > li[data-first-more]")
+      ?.focus();
+  }, [focusPanel]);
   return {
     isOpen: (k: string) => open[k] === true,
     toggle: (k: string) => {
       setOpen((o) => ({ ...o, [k]: o[k] !== true }));
     },
     showsAll: (k: string) => all[k] === true,
-    showAll: (k: string) => {
+    showAll: (k: string, panelId: string) => {
       setAll((a) => ({ ...a, [k]: true }));
+      setFocusPanel(panelId);
     },
   };
 }
@@ -218,9 +232,10 @@ export function DecisionsList({
                     aria-label={tl("groupPanel", { n: r.events.length, name: r.name })}
                     className="m-0 mb-2 list-none rounded-control bg-surface-2 p-0"
                   >
-                    {children(r).map((c) => (
+                    {children(r).map((c, i) => (
                       <li
                         key={c.id}
+                        {...firstMore(i)}
                         className={`${GRID} items-center border-b border-border px-3 py-[9px] text-[13.5px]`}
                       >
                         <span className="pl-[22px] text-ink-2">{clock(c.occurredAt)}</span>
@@ -236,7 +251,7 @@ export function DecisionsList({
                         <button
                           type="button"
                           onClick={() => {
-                            open.showAll(r.key);
+                            open.showAll(r.key, `grp-${r.key}`);
                           }}
                           className="min-h-9 cursor-pointer rounded-[10px] border border-border-input bg-surface px-3 text-[13px] font-bold text-ink"
                         >
@@ -307,9 +322,10 @@ export function DecisionsList({
                   aria-label={tl("groupPanel", { n: r.events.length, name: r.name })}
                   className="m-0 mb-2.5 list-none rounded-[14px] bg-surface-2 px-2.5 py-1"
                 >
-                  {children(r).map((c) => (
+                  {children(r).map((c, i) => (
                     <li
                       key={c.id}
+                      {...firstMore(i)}
                       className="flex items-center gap-2.5 border-b border-border py-1"
                     >
                       <span className="flex-[0_0_64px] text-xs text-muted">
@@ -326,7 +342,7 @@ export function DecisionsList({
                       <button
                         type="button"
                         onClick={() => {
-                          open.showAll(r.key);
+                          open.showAll(r.key, `m-grp-${r.key}`);
                         }}
                         className="min-h-tap w-full cursor-pointer rounded-control border border-border-input bg-surface text-[13px] font-bold text-ink"
                       >

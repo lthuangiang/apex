@@ -16,7 +16,7 @@ import { formatAmount, formatDateTime } from "@/lib/format";
 import { useMarketNames } from "@/lib/markets";
 import { useMe } from "@/lib/queries";
 
-import { orderTail } from "../decision-groups";
+import { isKnownDecision, orderTail, validIsoTime } from "../decision-groups";
 
 import { BOTS_KEY } from "./bots-page";
 
@@ -129,13 +129,24 @@ export function OrdersPage({
       inWindow(o, since),
   );
   const tabRows = filtered.filter(TABS[tab]);
-  // BD-02: lệnh mở từ Decisions. Có trong danh sách đang hiện → làm nổi bật; không có (cũ hơn trang đang tải hoặc bị bộ
-  // lọc ẩn) → lọc theo đúng lệnh đó, có chip để bỏ lọc.
+  // BD-02: lệnh mở từ Decisions. Chọn MỘT lần, ở lần tải đầu: có trong danh sách đang hiện → làm nổi bật; không có (cũ
+  // hơn trang đang tải hoặc bị bộ lọc mặc định ẩn) → lọc theo đúng lệnh đó, có chip để bỏ lọc. Đổi tab / bộ lọc / thời
+  // gian sau đó không bao giờ chuyển sang chế độ lọc một lệnh.
   const [cleared, setCleared] = useState(false);
   const focus = cleared ? undefined : order;
-  const onPage = focus !== undefined && tabRows.some((o) => o.clOrdId === focus);
+  const [mode, setMode] = useState<"highlight" | "filter" | null>(null);
+  const firstMode =
+    mode ??
+    (focus !== undefined && orders.isSuccess
+      ? tabRows.some((o) => o.clOrdId === focus)
+        ? "highlight"
+        : "filter"
+      : null);
+  useEffect(() => {
+    if (mode === null && firstMode !== null) setMode(firstMode);
+  }, [mode, firstMode]);
   const local = focus === undefined ? [] : all.filter((o) => o.clOrdId === focus);
-  const narrowed = focus !== undefined && orders.isSuccess && !onPage;
+  const narrowed = focus !== undefined && firstMode === "filter";
   const one = useQuery({
     queryKey: ["orders", botId, "order", focus],
     enabled: narrowed && local.length === 0,
@@ -153,6 +164,12 @@ export function OrdersPage({
     router.replace(`/orders${botId === undefined ? "" : `?botId=${botId}`}`, { scroll: false });
   };
   const target = rows.some((o) => o.clOrdId === focus);
+  // "Older than the loaded page" chỉ khi bộ lọc một lệnh thật sự đang hiện lệnh đó và lệnh đó không có trên trang đã tải.
+  const olderShown = narrowed && target && local.length === 0;
+  // `decision` / `at` đến từ URL: chỉ ghi lại tên quyết định đã biết và thời điểm ISO hợp lệ, phần nào sai thì bỏ.
+  const shownDecision = decision !== undefined && isKnownDecision(decision) ? decision : null;
+  const iso = decidedAt === undefined ? null : validIsoTime(decidedAt);
+  const shownTime = iso === null ? null : (formatDateTime(iso).split(", ").at(-1) ?? null);
   const [flash, setFlash] = useState(true);
   const moved = useRef(false);
   useEffect(() => {
@@ -217,13 +234,12 @@ export function OrdersPage({
             className="flex flex-col gap-1 rounded-[18px] bg-accent-tint px-3.5 py-3 text-[13.5px] text-ink md:flex-row md:flex-wrap md:items-center md:gap-x-3.5 md:gap-y-2 md:px-4 md:text-sm"
           >
             <span>
-              {narrowed ? tf("bannerFiltered") : tf("banner")}{" "}
-              {decision === undefined || decidedAt === undefined ? null : (
+              {olderShown ? tf("bannerFiltered") : tf("banner")}{" "}
+              {shownDecision === null && shownTime === null ? null : (
                 <strong>
-                  {tf("which", {
-                    decision,
-                    time: formatDateTime(decidedAt).split(", ").at(-1) ?? "",
-                  })}
+                  {shownDecision !== null && shownTime !== null
+                    ? tf("which", { decision: shownDecision, time: shownTime })
+                    : (shownDecision ?? shownTime)}
                 </strong>
               )}
             </span>
@@ -402,6 +418,16 @@ export function OrdersPage({
                       {names.market(o.market)} · {formatAmount(o.filledSize, q)?.text ?? ""} /{" "}
                       {formatAmount(o.size, q)?.text ?? ""}
                     </span>
+                    {/* Thông tin bảng cũ vẫn có ở 390 px: loại lệnh, bot nguồn, lý do bị từ chối. */}
+                    <span className="text-xs text-muted">
+                      {t(`type.${o.type}`)} · {botName.get(o.botId) ?? tm("notAvailable")}
+                    </span>
+                    {o.rejectCode === null ? null : (
+                      <span className="text-xs text-muted">{rejectLabel(o.rejectCode)}</span>
+                    )}
+                    {o.rejectMessage === null ? null : (
+                      <span className="text-xs text-muted wrap-anywhere">{o.rejectMessage}</span>
+                    )}
                     {isFocus(o) ? (
                       <span className="text-[11.5px] font-extrabold text-accent-ink">
                         {tf("label")}

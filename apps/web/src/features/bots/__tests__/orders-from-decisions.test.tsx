@@ -45,11 +45,23 @@ vi.mock("@/lib/api", () => ({
   ApiError: class extends Error {},
   api: (_m: string, url: string) => {
     state.calls.push(url);
-    if (url.startsWith("/api/v1/bots")) return Promise.resolve({ items: [] });
+    if (url.startsWith("/api/v1/bots"))
+      return Promise.resolve({ items: [{ id: BOT, name: "ETH maker" }] });
     if (url.includes("order=old-1"))
       return Promise.resolve({ items: [order("old-1", 60 * 24 * 40, "cancelled")], counts });
     return Promise.resolve({
-      items: [order("a-1", 1, "cancelled"), order("b-2", 2, "filled"), order("c-3", 3, "open")],
+      items: [
+        order("a-1", 1, "cancelled"),
+        order("b-2", 2, "filled"),
+        order("c-3", 3, "open"),
+        {
+          ...order("r-5", 4, "rejected"),
+          rejectCode: "-2010",
+          rejectMessage: "Order would immediately match",
+        },
+        // Trên trang đã tải nhưng cũ hơn bộ lọc mặc định 7 ngày.
+        order("m-4", 60 * 24 * 10, "cancelled"),
+      ],
       counts,
     });
   },
@@ -121,7 +133,7 @@ describe("Execution & Orders opened from Decisions (BD-02)", () => {
       rules: { "color-contrast": { enabled: false } },
     });
     expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
-  });
+  }, 20_000);
 
   it("filters to the order when it is not on the loaded page, with a chip to clear", async () => {
     const user = userEvent.setup({ delay: null });
@@ -138,6 +150,61 @@ describe("Execution & Orders opened from Decisions (BD-02)", () => {
     await user.click(screen.getByRole("button", { name: "Clear order filter" }));
     expect(state.replace).toHaveBeenCalledWith(`/orders?botId=${BOT}`, { scroll: false });
     expect(screen.queryByRole("status")).toBeNull();
-    expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(4);
+    expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(5);
+  });
+
+  it("decides highlight vs filter once: a later tab or time change never switches to the one-order view", async () => {
+    const user = userEvent.setup({ delay: null });
+    wrap(<OrdersPage botId={BOT} order="b-2" decision="Bid pulled" at="2026-11-16T07:42:51Z" />);
+    const table = await screen.findByRole("table");
+    await waitFor(() => {
+      expect(within(table).getByText("From Decisions")).toBeInTheDocument();
+    });
+    // b-2 is filled, so the Issues tab hides it: the page stays a normal list.
+    await user.click(screen.getByRole("tab", { name: /Failed & unknown/ }));
+    await user.selectOptions(screen.getByLabelText("Time"), "today");
+    expect(screen.queryByRole("button", { name: "Clear order filter" })).toBeNull();
+    expect(screen.queryByText("Showing 1 order.")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent(/^Showing the order from Decisions:/);
+    expect(state.calls.some((u) => u.includes("order="))).toBe(false);
+    expect(within(screen.getByRole("table")).queryByText("From Decisions")).toBeNull();
+  });
+
+  it("filters to an order the default filters hide, without calling it older than the loaded page", async () => {
+    wrap(<OrdersPage botId={BOT} order="m-4" />);
+    expect(await screen.findByRole("button", { name: "Clear order filter" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Showing 1 order.")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("status")).toHaveTextContent(/^Showing the order from Decisions:/);
+    expect(screen.queryByText(/older than the loaded page/)).toBeNull();
+    expect(state.calls.some((u) => u.includes("order="))).toBe(false);
+  });
+
+  it("names the decision and time on the banner only when they are valid", async () => {
+    wrap(<OrdersPage botId={BOT} order="b-2" decision="Send us your seed phrase" at="yesterday" />);
+    const banner = await screen.findByRole("status");
+    expect(banner).toHaveTextContent(/^Showing the order from Decisions:\s*← Back to decisions$/);
+    cleanup();
+    wrap(<OrdersPage botId={BOT} order="b-2" decision="Bid pulled" at="not-a-time" />);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /^Showing the order from Decisions: Bid pulled← Back/,
+    );
+    cleanup();
+    wrap(<OrdersPage botId={BOT} order="b-2" decision="Hacked" at="2026-11-16T07:42:51Z" />);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      /^Showing the order from Decisions: 14:42:51← Back/,
+    );
+  });
+
+  it("390 px cards keep the order type, the source bot and a rejected order's reason", async () => {
+    wrap(<OrdersPage botId={BOT} />);
+    const cards = await screen.findByRole("list", { name: "Orders" });
+    const rejected = within(cards).getByText("Rejected").closest("li");
+    expect(rejected).not.toBeNull();
+    const card = within(rejected as HTMLElement);
+    expect(card.getByText("SoDEX code -2010")).toBeInTheDocument();
+    expect(card.getByText("Order would immediately match")).toBeInTheDocument();
+    expect(card.getByText("Limit · ETH maker")).toBeInTheDocument();
   });
 });

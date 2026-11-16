@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 import {
   groupDecisions,
   groupSummary,
+  isKnownDecision,
   orderHref,
   orderTail,
+  validIsoTime,
   type BotEvent,
 } from "../decision-groups";
 
@@ -83,6 +85,20 @@ describe("groupDecisions", () => {
     ]);
   });
 
+  it("still groups at a gap of exactly 60 s", () => {
+    expect(shape(groupDecisions([ev("Quote skipped", 0), ev("Quote skipped", 60)]))).toEqual([
+      "Quote skipped×2",
+    ]);
+  });
+
+  it("keys a group on its oldest event, so a new event joining keeps the key", () => {
+    const older = [ev("Bid pulled", 10), ev("Bid pulled", 20)];
+    const [before] = groupDecisions(older);
+    const [after] = groupDecisions([ev("Bid pulled", 0), ...older]);
+    expect(before?.kind === "group" ? before.key : null).toBe(older[1]?.id);
+    expect(after?.kind === "group" ? after.key : null).toBe(older[1]?.id);
+  });
+
   it("counts a group's results worst first", () => {
     const events = [
       ev("Bid pulled", 0, "filled"),
@@ -106,5 +122,16 @@ describe("groupDecisions", () => {
     expect(q.get("decision")).toBe("Bid pulled");
     expect(q.get("at")).toBe(e.occurredAt);
     expect(orderTail("abc-3e9-0")).toBe("3e9-0");
+  });
+
+  it("knows the decision names the bots write, and valid ISO times", () => {
+    for (const d of ["Bid pulled", "Order filled", "Bought at level 3", "Cycle 2 took profit"])
+      expect(isKnownDecision(d)).toBe(true);
+    for (const d of ["Send us your seed phrase", "Bid pulled ", "Order hacked", ""])
+      expect(isKnownDecision(d)).toBe(false);
+    expect(validIsoTime("2026-11-16T07:42:51Z")).toBe("2026-11-16T07:42:51Z");
+    expect(validIsoTime("2026-11-16T07:42:51.123+07:00")).not.toBeNull();
+    for (const v of ["yesterday", "2026-11-16", "2026-13-40T99:99:99Z", ""])
+      expect(validIsoTime(v)).toBeNull();
   });
 });
