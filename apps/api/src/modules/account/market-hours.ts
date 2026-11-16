@@ -34,7 +34,7 @@ import { requireTeam } from "./team";
 // Market hours cho team Ops (docs/mockups/market-hours, DEC-283). Chỉ đọc. Giờ / ngày theo múi giờ của
 // người xem: Postgres đổi mốc thời gian sang giờ địa phương (`AT TIME ZONE`), trung vị tính bằng decimal ở đây.
 //   Khối 1: candles_1m của market (khoá chính (market, ts)), kèm range 1 phút lớn nhất và biến động 15 phút lớn nhất
-//   của mỗi giờ trong kỳ (DEC-TBD-market-hours-help).
+//   của mỗi giờ trong kỳ (DEC-287).
 //   Khối 2: mm_market_hourly (theo giờ UTC; múi giờ lệch 30 phút thì gán theo phút bắt đầu, xấp xỉ, DevOps chấp nhận).
 //   Khối 3: fill của bot Market Making / Volume Builder tiền thật (mọi user ở bản team). Hàm tính nhận `userId?` để bản
 //   public sau này chỉ lấy bot của người xem.
