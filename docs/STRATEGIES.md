@@ -257,7 +257,7 @@ Quy tắc của Market Making (VOLUME_MAKER.md mục 17.3) không áp dụng cho
 | 4 | Stop at volume | empty | Optional | Must be above 0. |
 | Adv | Wait between trades | 30 s | 0–3600 s | — |
 | Adv | Max spread | 10 bp | Skips entries above | Allowed 0.1–500 bp. |
-| Adv | Use taker orders / Market orders after (misses) | Off / 3 | 0–10 (0 = mọi lệnh vào / thoát là market ngay khi bật taker, DEC-TBD-vf-taker-only) | Allowed 0–10. |
+| Adv | Use taker orders / Market orders after (misses) | Off / 3 | 0–10 (0 = mọi lệnh vào / thoát là market ngay khi bật taker, DEC-259) | Allowed 0–10. |
 
 Preview: không có. Backtest: 5D / 30D trên nến 1 phút (BACKTEST.md mục 11.2). Agent: Decisions "Enter long/short", "Skipped entry" (chỉ khi lý do đổi), "Stop loss set on SoDEX", "Stop loss on SoDEX moved to break-even", "Closed long/short" kèm lãi ròng sau phí.
 

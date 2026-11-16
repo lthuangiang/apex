@@ -61,7 +61,7 @@ export const volumeFarmSchema = z
     sidewaysOnly: z.boolean().default(false),
     /**
      * Sau `takerAfter` lần lệnh post-only không khớp liên tiếp thì vào / thoát bằng lệnh taker. 0 (với `allowTaker`) =
-     * mọi lệnh vào / thoát là market IOC ngay, không đặt post-only (DEC-TBD-vf-taker-only, bật lại phần DEC-116).
+     * mọi lệnh vào / thoát là market IOC ngay, không đặt post-only (DEC-259, bật lại phần DEC-116).
      */
     allowTaker: z.boolean().default(false),
     takerAfter: z

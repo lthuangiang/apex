@@ -164,7 +164,7 @@ describe("volume farm cycle", () => {
     expect(o).toMatchObject({ type: "market", timeInForce: "IOC" });
   });
 
-  it("enters and exits with market orders right away when taker is on and misses before taker is 0 (DEC-TBD-vf-taker-only)", () => {
+  it("enters and exits with market orders right away when taker is on and misses before taker is 0 (DEC-259)", () => {
     const c = cfg({ takerAfter: 0 });
     let r = run(c, [timer(T0)]);
     const entry = first(places(r.all));
@@ -191,7 +191,7 @@ describe("volume farm cycle", () => {
     });
   });
 
-  it("pauses after 3 market entries in a row are rejected instead of retrying forever (DEC-TBD-vf-taker-only)", () => {
+  it("pauses after 3 market entries in a row are rejected instead of retrying forever (DEC-259)", () => {
     const c = cfg({ takerAfter: 0, cooldownSecs: 0 });
     let r = run(c, [timer(T0)]);
     const pauses: StrategyAction[] = [];
@@ -219,12 +219,12 @@ describe("volume farm cycle", () => {
     expect(pauses).toEqual([{ type: "pause", reason: "ORDER_REJECTED" }]);
   });
 
-  it("stays post-only with 0 misses when taker orders are off (DEC-TBD-vf-taker-only)", () => {
+  it("stays post-only with 0 misses when taker orders are off (DEC-259)", () => {
     const r = run(cfg({ allowTaker: false, takerAfter: 0 }), [timer(T0)]);
     expect(first(places(r.all))).toMatchObject({ type: "limit", timeInForce: "GTX" });
   });
 
-  it("prices the take-profit floor with taker fees when every order is a taker (DEC-TBD-vf-taker-only)", () => {
+  it("prices the take-profit floor with taker fees when every order is a taker (DEC-259)", () => {
     // Lượt 0.002 BTC ở 80 000 = 160 USDC. Maker 0.017% / taker 0.045% mỗi chiều. TP đặt rất nhỏ để sàn phí quyết định.
     const tx: StepContext = { ...ctx, feeRate: "0.00017", takerFeeRate: "0.00045" };
     const reason = (c: VolumeFarmConfig, price: string) => {

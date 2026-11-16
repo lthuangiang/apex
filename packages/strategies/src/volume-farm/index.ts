@@ -63,7 +63,7 @@ export interface VolumeFarmState {
   cooldownUntil: number;
   unfilled: number;
   exitUnfilled: number;
-  /** Lệnh vào market bị SoDEX từ chối liên tiếp (DEC-TBD-vf-taker-only); đủ `VF_MARKET_REJECTS` thì pause. */
+  /** Lệnh vào market bị SoDEX từ chối liên tiếp (DEC-259); đủ `VF_MARKET_REJECTS` thì pause. */
   marketRejects?: number;
   lastSide: "long" | "short" | null;
   /** Σ notional các lượt long − Σ lượt short đã đóng (quote). */
@@ -168,7 +168,7 @@ const initial = (): VolumeFarmState => ({
   lastSignal: null,
 });
 
-/** Số lệnh vào market bị từ chối liên tiếp thì pause bot (DEC-117, bật lại ở DEC-TBD-vf-taker-only). */
+/** Số lệnh vào market bị từ chối liên tiếp thì pause bot (DEC-117, bật lại ở DEC-259). */
 export const VF_MARKET_REJECTS = 3;
 
 const none = (s: VolumeFarmState): StepResult<VolumeFarmState> => ({ actions: [], state: s });
@@ -437,7 +437,7 @@ function exitReason(
   )
     return { why: `Stop loss ${stopLabel(c)} at ${m}`, stop: true };
   const pnl = pos.mul(dec(m).sub(avg));
-  // Phí khứ hồi theo loại lệnh thật (DEC-TBD-vf-taker-only): chiều vào theo lệnh đã khớp, chiều ra là taker khi bot chạy
+  // Phí khứ hồi theo loại lệnh thật (DEC-259): chiều vào theo lệnh đã khớp, chiều ra là taker khi bot chạy
   // toàn taker (`takerAfter` 0); không thì maker như trước. Tính theo maker cả hai chiều thì TP / early profit ở chế
   // độ taker chốt "lãi" mà vẫn lỗ sau phí.
   const maker = dec(ctx.feeRate);
@@ -863,7 +863,7 @@ export function stepVolumeFarm(
       if (s.entry?.id === e.clOrdID) {
         const open = !dust(s, ctx, c.market);
         // Lệnh vào market bị từ chối (thiếu margin…): không gửi lại mãi; đủ ngưỡng thì pause để người dùng xem
-        // (DEC-117 bật lại cho chế độ taker, DEC-TBD-vf-taker-only).
+        // (DEC-117 bật lại cho chế độ taker, DEC-259).
         if (s.entry.taker && !open) {
           const n = (s.marketRejects ?? 0) + 1;
           if (n >= VF_MARKET_REJECTS)
