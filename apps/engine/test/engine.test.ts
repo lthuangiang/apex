@@ -670,6 +670,67 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("keeps the user's Close position when their Stop commits while the strategy stop is cancelling on SoDEX", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running", {
+      strategy: "spot_grid",
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      config: {
+        market: "vBTC_vUSDC",
+        lowerPrice: "90",
+        upperPrice: "110",
+        gridLevels: 5,
+        spacing: "arithmetic",
+        investment: "500",
+        maxLoss: "100",
+        stopPrice: "85",
+        onStop: "keep_base",
+      },
+    });
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    await e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock + 1);
+    // Lệnh huỷ của chiến lược trả unknown: lệnh còn `open`, nên Stop của chiến lược huỷ lại lần hai. Giữ lần huỷ thứ hai
+    // (sau khi Stop đã đọc closeOnStop) để Stop của người dùng commit đúng lúc đó.
+    gw.cancelOutcome = "unknown";
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const cancel = gw.cancel.bind(gw);
+    let calls = 0;
+    gw.cancel = (a, list) => {
+      calls += 1;
+      if (calls === 2) gw.holdCancel = held;
+      return cancel(a, list);
+    };
+    clock += 1_000;
+    const halting = e.onPrice("vBTC_vUSDC", "84", clock);
+    for (let i = 0; i < 100 && !gw.cancelHeld; i += 1) await new Promise((r) => setTimeout(r, 10));
+    expect(gw.cancelHeld).toBe(true);
+    // Người dùng bấm Stop kèm Close position (API: running → stopping, closeOnStop = true).
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    release();
+    await halting;
+    gw.cancelOutcome = "ok";
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 6_000;
+      await e.tick();
+    }
+    const b = await botState(botId);
+    expect(b?.state).toBe("stopped");
+    expect(b?.reasonCode).toBe(ReasonCode.stopLoss);
+    const close = gw.received.filter((o) => o.tag === "close");
+    expect(close).toHaveLength(1);
+    expect(close[0]?.side).toBe("sell");
+    expect(close[0]?.quantity).toBe(init?.quantity);
+    await e.stop();
+  });
+
   it("keeps a strategy stop waiting until its unknown order is reconciled, and keeps its reason (rule 1.7)", async () => {
     const gw = new FakeGateway();
     gw.timeoutNext = "applied";
