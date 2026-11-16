@@ -928,7 +928,8 @@ function RowHelp({ label, help }: { label: string; help: HelpKey }) {
   const show = () => {
     const r = btn.current?.getBoundingClientRect();
     if (r === undefined) return;
-    const width = Math.min(300, window.innerWidth - 32);
+    // Popup tự xuống dòng (`whitespace-normal`): ô nhãn của dòng là `whitespace-nowrap`, kế thừa sẽ làm chữ tràn khung.
+    const width = Math.min(340, window.innerWidth - 32);
     const left = Math.max(16, Math.min(r.left - 12, window.innerWidth - width - 16));
     setPos({ top: r.bottom, left, width });
   };
@@ -1018,7 +1019,7 @@ function RowHelp({ label, help }: { label: string; help: HelpKey }) {
           <span
             id={id}
             role="tooltip"
-            className="block rounded-tile border border-border bg-surface px-3 py-2.5 text-left text-xs leading-normal font-normal text-ink-2 shadow-lg"
+            className="block rounded-tile border border-border bg-surface px-3.5 py-3 text-left text-[13px] leading-relaxed font-normal tracking-normal break-words whitespace-normal text-ink normal-case shadow-lg"
           >
             {t(help)}
           </span>
