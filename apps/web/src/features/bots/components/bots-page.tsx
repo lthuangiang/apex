@@ -31,6 +31,7 @@ import { useMediaQuery } from "@/lib/use-media";
 import { botCapital, botMarket } from "../bot-label";
 import { catalogFor } from "../catalog";
 import { FIELDS, presetMarket } from "../fields";
+import { useReasonLabel, type StopReasonInput } from "../stop-reason";
 
 import { BetaChip, isBeta } from "./beta-chip";
 import { BotActions } from "./bot-actions";
@@ -118,23 +119,15 @@ export function useWaitingText() {
   };
 }
 
-const VOLUME_TARGET_STRATEGIES = new Set<string>(["volume_farm"]);
-
-/**
- * Khoá câu lý do theo chế độ bot: bot paper không gửi gì tới SoDEX (DEC-105), nên lệnh bị từ chối là lệnh giả
- * (PB-01). Các mã khác dùng chung câu với bot thật.
- */
-export function reasonKey(code: string, mode: string | undefined): string {
-  return mode === "paper" && code === ReasonCode.orderRejected ? "ORDER_REJECTED_PAPER" : code;
-}
-
 export function useStateLabel() {
   const t = useTranslations("states");
-  const tr = useTranslations("reasons");
+  const reasonLabel = useReasonLabel();
   const waiting = useWaitingText();
   return (
     b: Pick<BotSummary, "state" | "reasonCode" | "needsAttention"> &
-      Partial<Pick<BotSummary, "waiting" | "strategy" | "mode">>,
+      Partial<Pick<BotSummary, "waiting" | "strategy" | "stopDetail" | "mode">>,
+    /** Config / khối lượng của bot khi nơi gọi có, để nhãn lý do dừng cụ thể hơn (stop-reason.ts). */
+    extra?: Pick<StopReasonInput, "config" | "volume">,
   ) => ({
     state: b.state,
     label: t(b.state),
@@ -143,11 +136,14 @@ export function useStateLabel() {
       ? {}
       : {
           reason: b.reasonCode,
-          // Bot khối lượng dừng vì đủ volume target, không phải "max cycles" (cùng reason code MAX_CYCLES).
-          reasonLabel:
-            b.reasonCode === ReasonCode.maxCycles && VOLUME_TARGET_STRATEGIES.has(b.strategy ?? "")
-              ? tr("MAX_CYCLES_VOLUME")
-              : tr(reasonKey(b.reasonCode, b.mode)),
+          // Cùng reason code nhưng nhãn theo chiến lược (MAX_CYCLES của bot khối lượng là volume target…).
+          reasonLabel: reasonLabel({
+            reasonCode: b.reasonCode,
+            strategy: b.strategy,
+            mode: b.mode,
+            stopDetail: b.stopDetail,
+            ...extra,
+          }),
         }),
     ...(b.needsAttention ? { needsAttention: true, needsAttentionLabel: t("needsAttention") } : {}),
   });
