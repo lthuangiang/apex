@@ -123,6 +123,11 @@ export const botSummarySchema = z.object({
   waiting: botWaitingSchema.nullable().default(null),
   /** `paper`: tiền giả, lệnh chỉ mô phỏng trong DRIFT (DEC-105). UI gắn nhãn PAPER ở mọi nơi hiện bot. */
   mode: z.enum(["live", "paper"]).default("live"),
+  /**
+   * Market Making dừng với MAX_CYCLES (DEC-262): `volume_target` khi khối lượng phiên ≥ volume target,
+   * `end_time` khi tới giờ kết thúc (runUntil season_end / date); null khi không áp dụng hoặc không xác định được.
+   */
+  stopDetail: z.enum(["volume_target", "end_time"]).nullable().default(null),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 });

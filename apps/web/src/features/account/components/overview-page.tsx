@@ -18,6 +18,7 @@ import { formatDateTime, formatMoney } from "@/lib/format";
 import { useMarketNames } from "@/lib/markets";
 
 import { EquityChart, Meter } from "./charts";
+import { limitsSet } from "./risk-page";
 import { WatchlistCard } from "./watchlist-card";
 
 // Overview (artboard "Main" / "Mobile-Home"). Mọi số đến từ backend; thiếu thì "Not available".
@@ -355,9 +356,13 @@ export function OverviewPage() {
                 </h2>
                 {r === null ? null : (
                   <span
-                    className={`rounded-full px-2.5 py-1 text-xs font-bold ${r.breached === 0 ? "bg-pos-bg text-pos" : "bg-neg-bg text-neg-ink"}`}
+                    className={`rounded-full px-2.5 py-1 text-xs font-bold ${r.breached > 0 ? "bg-neg-bg text-neg-ink" : limitsSet(r) === 0 ? "bg-surface-2 text-ink-2" : "bg-pos-bg text-pos"}`}
                   >
-                    {r.breached === 0 ? t("withinLimits") : t("breached", { n: r.breached })}
+                    {r.breached > 0
+                      ? t("breached", { n: r.breached })
+                      : limitsSet(r) === 0
+                        ? t("noLimits")
+                        : t("withinLimits")}
                   </span>
                 )}
               </div>

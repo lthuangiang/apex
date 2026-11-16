@@ -7,7 +7,9 @@ import {
   costPerMillion,
   VM_KEEP_DONE_MS,
   VM_STALE_CANCEL_MS,
+  VOLUME_MAKER_STOPPED,
   volumeMaker,
+  volumeMakerStopCause,
   type VolumeMakerState,
 } from "../volume-maker";
 import { vmMaxInventory, volumeMakerSchema, type VolumeMakerConfig } from "../volume-maker/schema";
@@ -210,6 +212,32 @@ describe("volume maker quoting", () => {
       ctx,
     );
     expect(r2.actions.find((x) => x.type === "stop")).toMatchObject({ reason: "MAX_CYCLES" });
+    // Nhật ký lúc dừng cho biết lý do MAX_CYCLES (API đọc để hiện "volume target reached").
+    const log = r2.actions.find((x) => x.type === "log" && x.decision === VOLUME_MAKER_STOPPED);
+    expect(log?.type === "log" ? volumeMakerStopCause(log.why) : null).toBe("volume_target");
+  });
+
+  it("reads the MAX_CYCLES cause back from the stop log", () => {
+    expect(volumeMakerStopCause("Volume target 100000 reached.")).toBe("volume_target");
+    expect(volumeMakerStopCause("Volume target 2500.5 reached.")).toBe("volume_target");
+    expect(volumeMakerStopCause("Run time ended.")).toBe("end_time");
+    expect(volumeMakerStopCause("Cost 10 reached the budget of 10.")).toBeNull();
+    expect(volumeMakerStopCause("Inventory loss reached 0.5.")).toBeNull();
+    expect(volumeMakerStopCause(null)).toBeNull();
+  });
+
+  it("logs “Run time ended.” when the end time passes", () => {
+    const t = cfg({ runUntil: "date", untilAt: 5 });
+    const s2 = run(t, [...firstQuote()]).s;
+    const r = volumeMaker.step(
+      t,
+      s2,
+      { type: "tick", at: 10, market: "BTC-USD", price: "100000" },
+      ctx,
+    );
+    expect(r.actions.find((x) => x.type === "stop")).toMatchObject({ reason: "MAX_CYCLES" });
+    const log = r.actions.find((x) => x.type === "log" && x.decision === VOLUME_MAKER_STOPPED);
+    expect(log?.type === "log" ? volumeMakerStopCause(log.why) : null).toBe("end_time");
   });
 
   it("counts quotes the engine blocked as self-trades", () => {
@@ -1179,7 +1207,25 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
   it("logs the number of order requests sent to SoDEX each minute (DEC-248)", () => {
     const r = run(on, [...firstQuote(), tickAt(7000, "100000"), snap(7000), snap(61000)]);
     const line = logsOf(r.all).find((l) => l.decision === "Order requests");
-    expect(line?.why).toMatch(/^Last 61 s: \d+ requests to SoDEX \(new orders and cancels\)\.$/);
+    expect(line?.why).toMatch(
+      /^Last 61 s: \d+ requests to SoDEX \(new orders and cancels\)\. Longest gap between quotes: \d+\.\d s\.$/,
+    );
+    // Xét báo giá lúc 0 s, 7 s, 61 s: khoảng dài nhất 54 s (DEC-268).
+    expect(line?.why).toContain("Longest gap between quotes: 54.0 s.");
+  });
+
+  it("still logs the line when a stuck bot sent nothing for the whole window (review #157)", () => {
+    // Bot đã tự dừng báo giá từ lúc 0 s (halted), cửa sổ đếm bắt đầu lúc 0 s với 0 request.
+    const s0 = {
+      ...run(on, [...firstQuote()]).s,
+      phase: "halted" as const,
+      reqWin: { since: 0, n: 0, gap: 0 },
+    };
+    const r = volumeMaker.step(on, s0, tickAt(61_000, "100000"), ctx);
+    const line = logsOf(r.actions).find((l) => l.decision === "Order requests");
+    expect(line?.why).toBe(
+      "Last 61 s: 0 requests to SoDEX (new orders and cancels). Longest gap between quotes: 61.0 s.",
+    );
   });
 });
 
