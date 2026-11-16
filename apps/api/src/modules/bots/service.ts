@@ -574,7 +574,7 @@ function waitingView(strategy: string, config: unknown, state: unknown): BotSumm
 }
 
 /**
- * Lý do cụ thể của Market Making dừng với MAX_CYCLES (DEC-TBD-mm-form-copy), lấy từ nhật ký chiến lược ghi lúc dừng
+ * Lý do cụ thể của Market Making dừng với MAX_CYCLES (DEC-262), lấy từ nhật ký chiến lược ghi lúc dừng
  * ("Volume Maker stopped" · "Volume target … reached." / "Run time ended."), không suy từ config: sửa bot đã dừng
  * sẽ kích hoạt version mới ngay, nên config hiện tại có thể khác lúc dừng. Một query cho cả danh sách: với mỗi bot,
  * sự kiện mới nhất trong {Volume Maker stopped, state Running}; nếu mới nhất là Running (đã chạy lại sau lần dừng đó)

@@ -6,7 +6,7 @@ import { useId, type ReactNode } from "react";
 import { mmNumbers } from "../field-copy";
 import type { FormValues } from "../fields";
 
-// "How your losses are capped" của Market Making (thiết kế "MM form explained", DEC-TBD-mm-form-copy): ba kiểm tra
+// "How your losses are capped" của Market Making (thiết kế "MM form explained", DEC-262): ba kiểm tra
 // chạy cùng lúc. Smart quoting bật: Stop when costs reach · Position cut · Max position. Tắt: Position loss limit
 // thay Position cut, và ô Position loss limit (`children`) nằm cuối khối. Số lấy từ form; ô trống thì bỏ số.
 

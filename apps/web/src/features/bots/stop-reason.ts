@@ -2,7 +2,7 @@ import { dec, ReasonCode } from "@drift/shared";
 import { useTranslations } from "next-intl";
 
 // Nhãn lý do dừng / tạm dừng của bot, dùng chung cho danh sách bot, Trading Agent, Backtest và Stats
-// (DEC-TBD-mm-form-copy, artboard StopReasons). Market Making dùng chung reason code với chiến lược khác, nên
+// (DEC-262, artboard StopReasons). Market Making dùng chung reason code với chiến lược khác, nên
 // nhãn tuỳ theo chiến lược và dữ liệu có được. Thiếu dữ liệu thì nhãn chung, không bao giờ khẳng định sai.
 //
 // Volume Maker (`packages/strategies/src/volume-maker/index.ts`, hàm `guards`):

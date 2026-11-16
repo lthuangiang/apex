@@ -703,7 +703,7 @@ const RUN_TIME_ENDED = "Run time ended.";
 const volumeTargetReached = (target: string) => `Volume target ${target} reached.`;
 
 /**
- * Lý do MAX_CYCLES theo câu `why` mà `halt` đã ghi (DEC-TBD-mm-form-copy): đủ volume target hay hết giờ. Đọc từ
+ * Lý do MAX_CYCLES theo câu `why` mà `halt` đã ghi (DEC-262): đủ volume target hay hết giờ. Đọc từ
  * nhật ký lúc dừng, không suy từ config hiện tại (config có thể đã sửa sau khi dừng). Câu khác thì null.
  */
 export function volumeMakerStopCause(why: string | null): "volume_target" | "end_time" | null {

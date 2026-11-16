@@ -12,7 +12,7 @@ import {
 } from "../field-copy";
 import { emptyValues, FIELDS, fromConfig, toConfig, type FieldSpec } from "../fields";
 
-// Câu chữ field theo chiến lược (DEC-TBD-mm-form-copy): bản riêng của Market Making thắng, chiến lược khác giữ
+// Câu chữ field theo chiến lược (DEC-262): bản riêng của Market Making thắng, chiến lược khác giữ
 // nguyên câu chữ chung; số trong hint theo giá trị đang có trên form, ô trống thì bỏ số.
 
 const get = (key: string): unknown =>

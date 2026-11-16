@@ -14,7 +14,7 @@ import { stopDetailsOf, summary } from "../src/modules/bots/service";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// Market Making dừng với MAX_CYCLES: API cho biết là đủ volume target hay hết giờ (DEC-TBD-mm-form-copy), đọc từ
+// Market Making dừng với MAX_CYCLES: API cho biết là đủ volume target hay hết giờ (DEC-262), đọc từ
 // nhật ký "Volume Maker stopped" lúc dừng, không từ config hiện tại (sửa bot đã dừng kích hoạt version mới ngay).
 
 let env: TestEnv;

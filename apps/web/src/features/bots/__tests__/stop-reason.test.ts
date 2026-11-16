@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import en from "../../../../messages/en.json";
 import { stopEventIdOf, stopReasonKey, type StopReasonInput } from "../stop-reason";
 
-// Nhãn lý do dừng của Market Making (artboard StopReasons, DEC-TBD-mm-form-copy). Mã thật lấy từ `guards` của
+// Nhãn lý do dừng của Market Making (artboard StopReasons, DEC-262). Mã thật lấy từ `guards` của
 // packages/strategies/src/volume-maker: BUDGET_DONE (costBudget), STOP_LOSS (inventoryLossStop), MAX_CYCLES
 // (volumeTarget hoặc runUntil).
 

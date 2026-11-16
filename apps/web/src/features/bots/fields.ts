@@ -41,7 +41,7 @@ export interface FieldSpec {
   when?: { key: string; is: readonly string[] };
   /**
    * Chỉ vẽ ô khi công tắc `key` bật (`is: true`) hoặc tắt (`is: false`). Khác `when`: giá trị vẫn gửi lên trong
-   * config, nên config cũ giữ nguyên giá trị (Position loss limit khi bật Smart quoting, DEC-TBD-mm-form-copy).
+   * config, nên config cũ giữ nguyên giá trị (Position loss limit khi bật Smart quoting, DEC-262).
    */
   renderIf?: { key: string; is: boolean };
   /** Vẽ trong khối riêng thay cho section (Position loss limit trong "How your losses are capped"). */
@@ -52,7 +52,7 @@ export interface FieldSpec {
   advanced?: boolean | undefined;
   /** Tính năng đang thử nghiệm: nhãn "Beta" và mục "How it works" (`fields.<label>.how`). */
   beta?: boolean | undefined;
-  /** Không hiện "How it works" chung của field (thiết kế của chiến lược không có, DEC-TBD-mm-form-copy). */
+  /** Không hiện "How it works" chung của field (thiết kế của chiến lược không có, DEC-262). */
   noHow?: boolean | undefined;
   /** Field cùng `row` nằm chung một hàng (xuống cột dưới 480 px). */
   row?: string | undefined;
@@ -578,7 +578,7 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
     { key: "closeAtEntry", group: 3, beta: true, hidden: true, type: { kind: "bool" } },
     { key: "pauseOnFastMoves", group: 3, hidden: true, type: { kind: "bool" } },
     { key: "refreshSeconds", group: 3, advanced: true, type: { kind: "int", unit: "s" } },
-    // "Also stop at" nằm trong "When to stop" (thiết kế "MM form explained", DEC-TBD-mm-form-copy).
+    // "Also stop at" nằm trong "When to stop" (thiết kế "MM form explained", DEC-262).
     {
       key: "runUntil",
       group: 4,

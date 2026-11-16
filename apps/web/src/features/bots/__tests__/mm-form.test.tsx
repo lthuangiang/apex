@@ -11,7 +11,7 @@ import messages from "../../../../messages/en.json";
 import { BotForm } from "../components/bot-form";
 import { emptyValues, FIELDS, fromConfig, type FormValues } from "../fields";
 
-// Form Market Making theo thiết kế "MM form explained" (DEC-TBD-mm-form-copy): câu chữ riêng, số theo order size,
+// Form Market Making theo thiết kế "MM form explained" (DEC-262): câu chữ riêng, số theo order size,
 // khối "How your losses are capped" đổi theo Smart quoting, Position loss limit chỉ hiện khi tắt Smart quoting.
 
 vi.mock("@/lib/markets", () => ({

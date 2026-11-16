@@ -4,7 +4,7 @@ import { formatAmount } from "@/lib/format";
 
 import type { FieldSpec, FormValues } from "./fields";
 
-// Câu chữ field theo chiến lược (DEC-TBD-mm-form-copy): `createBot.fieldsByStrategy.<strategy>.<field key>.<leaf>`
+// Câu chữ field theo chiến lược (DEC-262): `createBot.fieldsByStrategy.<strategy>.<field key>.<leaf>`
 // thắng khi có, không thì dùng câu chữ chung `createBot.fields.<label>.<leaf>`. Hiện chỉ Market Making
 // (`volume_maker`) có câu chữ riêng; chiến lược khác hiện y như trước. Mọi key trả về tương đối với `createBot`.
 
