@@ -3024,6 +3024,21 @@
     },
     "recentErrors": "Recent errors",
     "noErrors": "No errors.",
+    "refusedRecently": "{n, plural, one {# order refused by SoDEX in the last 24 hours} other {# orders refused by SoDEX in the last 24 hours}}",
+    "outcomes": {
+      "filled": "Filled",
+      "partly_filled": "Partly filled",
+      "open": "Open",
+      "cancelled": "Cancelled",
+      "rejected": "Rejected",
+      "unknown": "Unknown",
+      "not_placed": "Not placed"
+    },
+    "rejects": {
+      "postOnly": "{n} would have crossed the book (normal for post-only)",
+      "selfTrade": "{n} blocked to avoid trading with yourself",
+      "other": "{n} refused for other reasons"
+    },
     "errorCode": "Code {code}",
     "recentDecisions": "Recent decisions",
     "stopHint": "You will see exactly what gets cancelled before anything happens.",

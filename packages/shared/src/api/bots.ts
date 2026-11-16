@@ -134,12 +134,62 @@ export const botSummarySchema = z.object({
 export type BotSummary = z.infer<typeof botSummarySchema>;
 export const botListSchema = z.object({ items: z.array(botSummarySchema) });
 
+/** Kết quả của một quyết định theo trạng thái thật của các lệnh nó đặt (BD-02). */
+export const DECISION_OUTCOMES = [
+  "filled",
+  "partly_filled",
+  "open",
+  "unknown",
+  "cancelled",
+  "rejected",
+  "not_placed",
+] as const;
+export const decisionOutcomeSchema = z.enum(DECISION_OUTCOMES);
+export type DecisionOutcome = z.infer<typeof decisionOutcomeSchema>;
+
+/**
+ * Kết quả gộp của các lệnh một quyết định đặt: có khớp thì Filled (khớp đủ mọi lệnh) hoặc Partly filled; chưa khớp gì
+ * thì theo thứ tự Open → Unknown → Cancelled → Rejected → Not placed. Không có lệnh nào tìm thấy → null (không đoán).
+ */
+export function decisionOutcome(
+  list: readonly { status: string; filledSize: string }[],
+): DecisionOutcome | null {
+  if (list.length === 0) return null;
+  const filledAny = list.some((o) => Number(o.filledSize) > 0);
+  if (filledAny) return list.every((o) => o.status === "filled") ? "filled" : "partly_filled";
+  const has = (s: string) => list.some((o) => o.status === s);
+  if (has("open") || has("partially_filled")) return "open";
+  if (has("unknown")) return "unknown";
+  if (has("cancelled")) return "cancelled";
+  if (has("rejected")) return "rejected";
+  return "not_placed";
+}
+
+/**
+ * Mã reject của SoDEX coi là bình thường (BD-05, DevOps chốt theo ủy quyền): lệnh post-only sẽ khớp ngay (`PostOnly`) và
+ * chặn tự khớp với lệnh của chính mình (`SELF_TRADE_BLOCKED`). Mọi mã khác (kể cả mã trống, mã mới) là bị từ chối vì lý do
+ * khác.
+ */
+export const NORMAL_REJECT_CODES = {
+  postOnly: "PostOnly",
+  selfTrade: "SELF_TRADE_BLOCKED",
+} as const;
+
+/** Số lệnh bị từ chối theo loại (BD-05): post-only sẽ khớp ngay, chặn tự khớp; phần còn lại là lý do khác. */
+export const rejectSplitSchema = z.object({
+  postOnly: z.number().int(),
+  selfTrade: z.number().int(),
+});
+export type RejectSplit = z.infer<typeof rejectSplitSchema>;
+
 export const botEventSchema = z.object({
   id: uuidSchema,
   type: z.string(),
   decision: z.string().nullable(),
   why: z.string().nullable(),
   result: z.string().nullable(),
+  /** Kết quả theo lệnh thật (BD-02); null khi quyết định không đặt lệnh hoặc event cũ chưa gắn lệnh. */
+  outcome: decisionOutcomeSchema.nullable().default(null),
   occurredAt: isoDateTimeSchema,
 });
 
@@ -221,6 +271,8 @@ export const botDetailSchema = z.object({
   openOrders: z.number().int().nonnegative(),
   /** Giờ server: Runtime tính theo mốc này, không phụ thuộc đồng hồ máy người dùng (DEC-88). */
   serverTime: isoDateTimeSchema,
+  /** Lệnh SoDEX từ chối trong 24 giờ qua vì lý do khác post-only / chặn tự khớp (BD-05, "Recent errors"). */
+  refusedRecently: z.number().int().default(0),
   /** Mốc "Running" gần nhất khi bot đang chạy; null khi không chạy hoặc chưa có. Runtime tính từ đây. */
   runningSince: isoDateTimeSchema.nullable().default(null),
   /** Chỉ số theo dõi của Volume Maker (VOLUME_MAKER.md mục 17.6); null với chiến lược khác hoặc chưa chạy. */
@@ -523,6 +575,7 @@ export const volumeAnalyticsSchema = z.object({
     ordersPlaced: z.number().int(),
     ordersFilled: z.number().int(),
     ordersRejected: z.number().int(),
+    rejectedSplit: rejectSplitSchema,
   }),
 });
 export type VolumeAnalytics = z.infer<typeof volumeAnalyticsSchema>;
@@ -686,6 +739,7 @@ export const botAnalyticsSchema = z.object({
     ordersFilled: z.number().int(),
     fillRatePct: z.number().nullable(),
     rejected: z.number().int(),
+    rejectedSplit: rejectSplitSchema,
   }),
   exits: z.array(
     z.object({ reason: z.enum(EXIT_REASONS), trades: z.number().int(), avgNet: z.number() }),
@@ -766,6 +820,7 @@ export const mmAnalyticsSchema = z.object({
   ordersFilled: z.number().int(),
   fillRatePct: z.number().nullable(),
   rejected: z.number().int(),
+  rejectedSplit: rejectSplitSchema,
   /** Thời gian lệnh đứng trên sổ tới khi khớp (giây, trung vị). */
   medianRestSecs: z.number().nullable(),
   /** Khớp bất lợi của lệnh báo giá (không tính lệnh đóng tồn kho), theo phút sau khi khớp. */

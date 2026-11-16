@@ -9,6 +9,7 @@ import {
   BotState,
   UserRole,
   type BotDetail,
+  type DecisionOutcome,
 } from "@drift/shared";
 import { Button, ConfirmDialog, DataTable, Skeleton, StatusPill } from "@drift/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -65,6 +66,7 @@ const clock = (v: string | number) => formatDateTime(v).split(", ").at(-1) ?? ""
 export function AgentPage({ botId }: { botId?: string }) {
   const names = useMarketNames();
   const t = useTranslations("agent");
+  const tOutcome = useTranslations("agent.outcomes");
   const tm = useTranslations("common.missing");
   const tf = useTranslations("createBot");
   const tsh = useTranslations("common.shell");
@@ -608,7 +610,14 @@ export function AgentPage({ botId }: { botId?: string }) {
                     {
                       key: "result",
                       header: t("cols.result"),
-                      cell: (e) => (e.result === null ? "" : <ResultPill text={e.result} />),
+                      cell: (e) =>
+                        e.result !== null ? (
+                          <ResultPill text={e.result} />
+                        ) : e.outcome !== null ? (
+                          <OutcomePill outcome={e.outcome} />
+                        ) : (
+                          ""
+                        ),
                     },
                   ]}
                 />
@@ -637,7 +646,10 @@ export function AgentPage({ botId }: { botId?: string }) {
                           )}
                         </span>
                         <span className="text-xs text-ink-2">
-                          {e.result ?? why(e.why, e.id) ?? ""}
+                          {e.result ??
+                            (e.outcome === null ? null : tOutcome(e.outcome)) ??
+                            why(e.why, e.id) ??
+                            ""}
                         </span>
                       </span>
                     </li>
@@ -686,8 +698,17 @@ export function AgentPage({ botId }: { botId?: string }) {
               <h2 id="errors-title" className="m-0 text-lg font-extrabold">
                 {t("recentErrors")}
               </h2>
+              {/* BD-05: lệnh SoDEX từ chối vì lý do thật (không phải post-only / chặn tự khớp) cũng là lỗi: không ghi
+                  "No errors." khi có. */}
+              {d.refusedRecently > 0 ? (
+                <p className="m-0 text-sm text-neg-text">
+                  {t("refusedRecently", { n: d.refusedRecently })}
+                </p>
+              ) : null}
               {d.events.filter((e) => e.type === "error").length === 0 ? (
-                <p className="m-0 text-sm text-ink-2">{t("noErrors")}</p>
+                d.refusedRecently > 0 ? null : (
+                  <p className="m-0 text-sm text-ink-2">{t("noErrors")}</p>
+                )
               ) : (
                 <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
                   {d.events
@@ -916,6 +937,20 @@ export function AgentPage({ botId }: { botId?: string }) {
       </div>
     </WorkspaceShell>
   );
+}
+
+/** Kết quả theo lệnh thật (BD-02): cùng kiểu pill, màu theo loại. */
+function OutcomePill({ outcome }: { outcome: DecisionOutcome }) {
+  const t = useTranslations("agent.outcomes");
+  const tone =
+    outcome === "filled" || outcome === "partly_filled"
+      ? "bg-pos-bg text-pos"
+      : outcome === "open"
+        ? "bg-accent-tint text-accent-ink"
+        : outcome === "unknown"
+          ? "bg-unknown-bg text-unknown"
+          : "bg-surface-2 text-ink-2";
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${tone}`}>{t(outcome)}</span>;
 }
 
 /** Kết quả của một quyết định: pill màu theo loại (artboard Agent). */

@@ -1,5 +1,10 @@
 import { botVersions, candles1m, fills, orders } from "@drift/db";
-import { MM_HORIZONS, type BotAnalytics, type MmAnalytics } from "@drift/shared";
+import {
+  MM_HORIZONS,
+  NORMAL_REJECT_CODES,
+  type BotAnalytics,
+  type MmAnalytics,
+} from "@drift/shared";
 import { and, asc, eq, gte, like, lte, sql } from "drizzle-orm";
 
 import type { BotDeps } from "./service";
@@ -154,6 +159,8 @@ export async function mmAnalytics(
       placed: sql<number>`count(*)::int`,
       filled: sql<number>`count(*) filter (where ${orders.filledSize} > 0)::int`,
       rejected: sql<number>`count(*) filter (where ${orders.status} = 'rejected')::int`,
+      rejPostOnly: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${NORMAL_REJECT_CODES.postOnly})::int`,
+      rejSelfTrade: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${NORMAL_REJECT_CODES.selfTrade})::int`,
     })
     .from(orders)
     .where(
@@ -174,6 +181,7 @@ export async function mmAnalytics(
     ordersFilled: ord?.filled ?? 0,
     fillRatePct: pct(ord?.filled ?? 0, ord?.placed ?? 0),
     rejected: ord?.rejected ?? 0,
+    rejectedSplit: { postOnly: ord?.rejPostOnly ?? 0, selfTrade: ord?.rejSelfTrade ?? 0 },
     medianRestSecs: median(fs.flatMap((f) => (f.restSecs === null ? [] : [round(f.restSecs, 1)]))),
     adverse: adv,
     bySide: (["bid", "ask"] as const).map((side) => {

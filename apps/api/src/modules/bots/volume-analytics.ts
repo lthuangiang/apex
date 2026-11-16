@@ -1,5 +1,11 @@
 import { botEvents, botVersions, fills, orders } from "@drift/db";
-import { dec, Strategy, type VolumeAnalytics, type VolumePeriod } from "@drift/shared";
+import {
+  dec,
+  NORMAL_REJECT_CODES,
+  Strategy,
+  type VolumeAnalytics,
+  type VolumePeriod,
+} from "@drift/shared";
 import { and, eq, gte, sql } from "drizzle-orm";
 
 import { iso } from "../security/service";
@@ -94,6 +100,8 @@ export async function volumeAnalytics(
       placed: sql<number>`count(*)::int`,
       filled: sql<number>`count(*) filter (where ${orders.filledSize} > 0)::int`,
       rejected: sql<number>`count(*) filter (where ${orders.status} = 'rejected')::int`,
+      rejPostOnly: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${NORMAL_REJECT_CODES.postOnly})::int`,
+      rejSelfTrade: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${NORMAL_REJECT_CODES.selfTrade})::int`,
     })
     .from(orders)
     .where(
@@ -161,6 +169,7 @@ export async function volumeAnalytics(
       ordersPlaced: ord?.placed ?? 0,
       ordersFilled: ord?.filled ?? 0,
       ordersRejected: ord?.rejected ?? 0,
+      rejectedSplit: { postOnly: ord?.rejPostOnly ?? 0, selfTrade: ord?.rejSelfTrade ?? 0 },
     },
   };
 }

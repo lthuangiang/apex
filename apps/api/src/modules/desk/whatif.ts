@@ -187,7 +187,9 @@ export async function deskHome(
   const now = deps.now().getTime();
   const items = await Promise.all(
     base.items.map(async (item) => {
-      // Việc cấp account (không có bot) không có so sánh what-if.
+      // Việc cấp account (không có bot) không có so sánh what-if. `goal_loss_over` luôn có botId null, nhưng vẫn kiểm cả
+      // hai: `item.botId === null` để TypeScript thu hẹp botId thành string cho truy vấn bên dưới, còn rule để rõ ý (review
+      // #153).
       if (item.botId === null || item.rule === "goal_loss_over") return { ...item, whatif: null };
       const [row] = await deps.db
         .select({

@@ -6,6 +6,8 @@ import { BarChart3 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState, type ReactNode } from "react";
 
+import { rejectBreakdown } from "../reject-text";
+
 import { AreaLine, GroupBars, PeriodTabs, pctText, Stat } from "./analytics-parts";
 import { useBotAnalytics } from "./strategy-analytics";
 
@@ -82,6 +84,7 @@ function AdverseTable({ m }: { m: MmAnalytics }) {
 export function MmAnalyticsCard({ botId }: { botId: string }) {
   const t = useTranslations("agent.mma");
   const ts = useTranslations("agent.sa");
+  const tr = useTranslations("agent.rejects");
   const [period, setPeriod] = useState<AnalyticsPeriod>("d7");
   const q = useBotAnalytics(botId, period);
   const a = q.data;
@@ -140,7 +143,9 @@ export function MmAnalyticsCard({ botId }: { botId: string }) {
             <Stat
               label={t("maker")}
               value={pctText(m.makerPct)}
-              sub={t("rejected", { n: m.rejected })}
+              sub={
+                rejectBreakdown(tr, m.rejected, m.rejectedSplit) ?? t("rejected", { n: m.rejected })
+              }
             />
           </div>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
