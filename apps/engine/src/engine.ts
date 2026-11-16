@@ -2063,6 +2063,21 @@ export class Engine {
       r,
       open.map((o) => o.clOrdId),
     );
+    // Lệnh có kết quả `unknown` (timeout) có thể đã nằm trên SoDEX (quy tắc 1.7). Trước đây Stop bỏ qua chúng rồi bỏ
+    // runner, nên không ai đối soát / huỷ: lệnh mồ côi nằm lại (harness tranh chấp). Stop của người dùng giữ bot ở
+    // `stopping` tới khi #reconcile đối soát xong (≤ NOT_FOUND_AFTER_MS); lệnh hoá ra đang mở thì lượt sau huỷ ở trên.
+    // Lệnh đóng vị thế cũng chờ, vì lệnh unknown còn có thể khớp và đổi vị thế.
+    const [unknown] = await this.#d.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(orders)
+      .where(and(eq(orders.botId, r.botId), eq(orders.status, "unknown")));
+    if ((unknown?.n ?? 0) > 0) {
+      this.#d.log.warn(
+        { botId: r.botId, unknown: unknown?.n, reason },
+        "stop waits for unknown orders to be reconciled",
+      );
+      if (reason === null) return;
+    }
     if (r.strategy === Strategy.copyTrade) {
       // Copy Trade nhiều market (DEC-163): đóng từng market bằng market reduce-only; clOrdID tất định theo thứ tự
       // market trong config, băm từ botId đầy đủ.

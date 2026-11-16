@@ -68,7 +68,12 @@ export interface VolumeMakerState {
   /** Lần cuối nhận giá sổ lệnh qua WS (DEC-248); còn mới thì REST 3 s chỉ cập nhật độ dày, không đè giá. */
   bookStreamAt?: number | null;
   /** Đếm request lệnh (đặt + huỷ) gửi SoDEX trong cửa sổ 1 phút, ghi Decisions (DEC-248). */
-  reqWin?: { since: number; n: number };
+  reqWin?: {
+    since: number;
+    n: number;
+    /** Khoảng dài nhất (ms) giữa hai lần xét báo giá (`lastRefresh`) trong cửa sổ (DEC-268). */
+    gap?: number;
+  };
   /** Lần cắt vị thế gần nhất (DEC-249). */
   cutAt?: number | null;
   /** clOrdID lệnh cắt gần nhất; chưa có kết quả thì giữ phía làm tăng vị thế (DEC-260). */
@@ -1020,29 +1025,43 @@ export function stepVolumeMaker(
   if (!c.smartQuoting) return r;
   // Đếm request lệnh gửi SoDEX (DEC-248): mỗi phút một dòng Decisions để theo dõi hạn mức theo địa chỉ ví.
   const sent = r.actions.filter((a) => a.type === "place" || a.type === "cancel").length;
-  // Không gửi gì và chưa hết cửa sổ: trả nguyên kết quả để nhịp không có gì mới không phải ghi state.
+  // Khoảng giữa hai lần xét báo giá (DEC-268): lần xét mới thì đo từ lần trước.
+  const before = raw.lastRefresh;
+  const after = r.state.lastRefresh;
+  const step = before !== null && after !== null && after > before ? after - before : 0;
+  // Không gửi gì, không có lần xét mới và chưa hết cửa sổ: trả nguyên kết quả để nhịp không có gì mới không phải ghi
+  // state.
   if (
     sent === 0 &&
+    step === 0 &&
     r.state.reqWin !== undefined &&
     e.at - r.state.reqWin.since < VM_BOOK_STREAM.logEveryMs
   )
     return r;
   const win = r.state.reqWin ?? { since: e.at, n: 0 };
   const n = win.n + sent;
+  const gap = Math.max(win.gap ?? 0, step);
   const span = e.at - win.since;
   if (span < VM_BOOK_STREAM.logEveryMs)
-    return { ...r, state: { ...r.state, reqWin: { since: win.since, n } } };
+    return { ...r, state: { ...r.state, reqWin: { since: win.since, n, gap } } };
+  // Tính cả khoảng đang mở (từ lần xét gần nhất tới lúc ghi), để bot đứng hẳn vẫn hiện khoảng dài.
+  const open = after === null ? 0 : e.at - after;
+  const longest = Math.max(gap, open);
   const log: StrategyAction[] =
-    n > 0
+    // Bot đứng hẳn (0 request) vẫn ghi khi khoảng hở đang mở dài hết cửa sổ: đó chính là trường hợp cần thấy (review #157).
+    n > 0 || open >= VM_BOOK_STREAM.logEveryMs
       ? [
           {
             type: "log",
             decision: "Order requests",
-            why: `Last ${String(Math.round(span / 1000))} s: ${String(n)} requests to SoDEX (new orders and cancels).`,
+            why: `Last ${String(Math.round(span / 1000))} s: ${String(n)} requests to SoDEX (new orders and cancels). Longest gap between quotes: ${(longest / 1000).toFixed(1)} s.`,
           },
         ]
       : [];
-  return { actions: [...r.actions, ...log], state: { ...r.state, reqWin: { since: e.at, n: 0 } } };
+  return {
+    actions: [...r.actions, ...log],
+    state: { ...r.state, reqWin: { since: e.at, n: 0, gap: 0 } },
+  };
 }
 
 function stepCore(

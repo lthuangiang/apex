@@ -50,7 +50,7 @@ import { PnlShare, VolumeShare } from "./volume-share";
 // chỉ gửi lệnh rồi giữ trạng thái chuyển tiếp ("Pausing…") cho tới khi engine xác nhận (quy tắc 1.6). Bot `draft`
 // chỉ nằm ở Strategy Lab (DEC-57): vào `/agent/:id` của draft thì chuyển sang màn Edit, archived thì về `/bots`.
 
-type Action = "start" | "pause" | "resume" | "stop" | "archive";
+type Action = "start" | "pause" | "resume" | "stop" | "archive" | "unarchive";
 const TRANSITIONAL: readonly BotState[] = [
   BotState.starting,
   BotState.pausing,
@@ -105,6 +105,7 @@ export function AgentPage({ botId }: { botId?: string }) {
     resume: crypto.randomUUID(),
     stop: crypto.randomUUID(),
     archive: crypto.randomUUID(),
+    unarchive: crypto.randomUUID(),
   });
 
   const d: BotDetail | undefined = detail.data;
@@ -117,16 +118,17 @@ export function AgentPage({ botId }: { botId?: string }) {
       ? reasonLabel({
           reasonCode: text,
           strategy: bot?.strategy,
+          mode: bot?.mode,
           stopDetail:
             eventId !== undefined && eventId === currentStopEvent ? bot?.stopDetail : null,
         })
       : text;
   const hasPerps = bot !== undefined && bot.engine !== "spot";
-  // Draft → màn Edit; archived → Strategy Lab. Chỉ chuyển khi backend đã trả `state` (UI_REVIEW F1).
+  // Draft → màn Edit (DEC-57). Bot archived xem được ở chế độ chỉ đọc (BD-01, DEC-263): nhật ký,
+  // phân tích, cấu hình, export; thao tác duy nhất là Restore. Chỉ chuyển khi backend đã trả `state` (UI_REVIEW F1).
   useEffect(() => {
     if (bot === undefined) return;
     if (bot.state === BotState.draft) router.replace(`/bots/${bot.id}/edit`);
-    else if (bot.state === BotState.archived) router.replace("/bots");
   }, [bot, router]);
 
   const act = useMutation({
@@ -161,8 +163,8 @@ export function AgentPage({ botId }: { botId?: string }) {
     bot !== undefined && applyCommand(bot.state, cmd) !== null;
   const active = d?.versions.find((v) => v.status === "active");
   const configRows = useConfigRows(bot?.strategy ?? "", bot?.market ?? "", active?.config ?? {});
-  const redirecting =
-    bot !== undefined && (bot.state === BotState.draft || bot.state === BotState.archived);
+  const redirecting = bot?.state === BotState.draft;
+  const archived = bot?.state === BotState.archived;
   const loading = list.isPending || (id !== undefined && (detail.isPending || redirecting));
   const empty = !loading && id === undefined && list.isSuccess;
 
@@ -220,9 +222,11 @@ export function AgentPage({ botId }: { botId?: string }) {
           ? t("stateSub.paused", { time })
           : b.state === BotState.stopped
             ? t("stateSub.stopped", { time, n: dd.openOrders })
-            : b.state === BotState.stopping
-              ? t("stateSub.stopping", { time, n: dd.openOrders })
-              : t("sent", { time });
+            : b.state === BotState.archived
+              ? t("stateSub.archived", { time })
+              : b.state === BotState.stopping
+                ? t("stateSub.stopping", { time, n: dd.openOrders })
+                : t("sent", { time });
     const lastError = dd.events.find((e) => e.type === "error");
     // Runtime = từ sự kiện "Running" gần nhất tới giờ, chỉ khi đang chạy (dữ liệu thật, không ước tính). Server
     // trả mốc này riêng vì danh sách sự kiện chỉ có 50 dòng gần nhất.
@@ -393,6 +397,8 @@ export function AgentPage({ botId }: { botId?: string }) {
     <WorkspaceShell current="agent" isTeam={me.data?.role === UserRole.team}>
       <div className="flex flex-col gap-5">
         <PageHead
+          // Bot paper: bỏ chip Mainnet ở hàng tiêu đề (PB-01, DEC-105); chưa biết chế độ (đang tải) thì cũng chưa hiện.
+          paper={bot?.mode === "paper" || (id !== undefined && bot === undefined)}
           title={t("title")}
           subtitle={t("subtitle")}
           back={{ href: "/", label: t("back") }}
@@ -426,6 +432,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                     : reasonLabel({
                         reasonCode: a.reasonCode,
                         strategy: a.strategy,
+                        mode: a.mode,
                         stopDetail: a.stopDetail,
                       })
                 }
@@ -509,7 +516,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                   <LiveQuotes
                     botId={bot.id}
                     market={bot.market}
-                    stopped={bot.state === BotState.stopped}
+                    stopped={bot.state === BotState.stopped || archived}
                   />
                 </div>
                 <div className="min-w-0 lg:col-start-1 lg:row-start-2">
@@ -535,7 +542,8 @@ export function AgentPage({ botId }: { botId?: string }) {
             )}
             {/* Strategy Analytics ngay dưới Volume (DEC-141). */}
             {d.volumeFarm === null ? null : <StrategyAnalytics botId={d.bot.id} />}
-            {d.volumeFarm === null || d.bot.mode === "paper" ? null : (
+            {/* Bot archived chỉ đọc: không Run review / Apply (BD-01). */}
+            {d.volumeFarm === null || d.bot.mode === "paper" || archived ? null : (
               <ReviewCard botId={d.bot.id} stopped={d.bot.state === "stopped"} />
             )}
             {d.adaptiveDca === null ? null : <AdaptiveDcaCard a={d.adaptiveDca} />}
@@ -655,7 +663,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                   </span>
                 </div>
                 <ConfigList rows={configRows} />
-                {bot.state === BotState.stopped ? null : (
+                {bot.state === BotState.stopped || archived ? null : (
                   <>
                     <Link
                       href={`/bots/${bot.id}/edit`}
@@ -739,6 +747,40 @@ export function AgentPage({ botId }: { botId?: string }) {
                     {t("finished.archive")}
                   </Button>
                   {/* Export dữ liệu để phân tích (DEC-138): đặt cùng các thao tác khi bot đã dừng. */}
+                  {bot.mode === "live" ? (
+                    <a
+                      href={`/api/v1/bots/${bot.id}/export`}
+                      download
+                      className="inline-flex min-h-tap items-center justify-center gap-1.5 rounded-control border border-border bg-surface px-4 text-sm font-bold text-ink no-underline hover:bg-surface-2"
+                    >
+                      <Download aria-hidden="true" size={16} strokeWidth={2.4} />
+                      {t("exportData")}
+                    </a>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+
+            {archived ? (
+              <section
+                aria-labelledby="archived-title"
+                className="flex flex-wrap items-center justify-between gap-4 rounded-card border border-border bg-surface p-5"
+              >
+                <div className="flex min-w-0 flex-[1_1_280px] flex-col gap-1">
+                  <h2 id="archived-title" className="m-0 text-lg font-extrabold">
+                    {t("archived.title")}
+                  </h2>
+                  <p className="m-0 text-sm text-ink-2">{t("archived.body")}</p>
+                </div>
+                <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                  <Button
+                    pending={act.isPending && act.variables === "unarchive"}
+                    onClick={() => {
+                      act.mutate("unarchive");
+                    }}
+                  >
+                    {t("archived.restore")}
+                  </Button>
                   {bot.mode === "live" ? (
                     <a
                       href={`/api/v1/bots/${bot.id}/export`}

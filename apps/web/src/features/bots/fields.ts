@@ -781,9 +781,10 @@ export function emptyValues(strategy: keyof typeof FIELDS): FormValues {
     });
   }
   if (strategy === "volume_farm") {
-    // Mặc định DEC-133 (người dùng chọn): lệnh 100–200 USDC, đòn bẩy 25×, stop loss 10% margin (0.4% giá).
+    // Mặc định DEC-133 (người dùng chọn): lệnh 100–200 USDC, đòn bẩy 25×, stop loss 10% margin (0.4% giá). Form thay
+    // đòn bẩy bằng mức account đang đặt cho market khi biết (CB-01, `accountLeverageDefault`).
     Object.assign(out, {
-      leverage: "25",
+      leverage: String(VF_DEFAULT_LEVERAGE),
       orderSizeMinUsd: "100",
       orderSizeMaxUsd: "200",
       // DEC-130: giữ 180–300 s, không dùng lệnh taker (lượt có chiều taker tốn 326–398 USDC mỗi 1M, maker 213).
@@ -802,6 +803,20 @@ export function emptyValues(strategy: keyof typeof FIELDS): FormValues {
     });
   }
   return out;
+}
+
+/** Đòn bẩy mặc định của Volume Builder khi không biết mức account đang đặt (DEC-133). */
+export const VF_DEFAULT_LEVERAGE = 25;
+
+/**
+ * CB-01 (người dùng chọn, 16/11): đòn bẩy mặc định của Volume Builder = mức SoDEX đang đặt cho market của account, tối
+ * đa `VF_DEFAULT_LEVERAGE`, để tạo bot không đổi đòn bẩy cả account ngoài ý muốn. Không biết mức đó thì null (giữ 25×).
+ */
+export function accountLeverageDefault(current: unknown): string | null {
+  if (current === null || current === undefined || current === "") return null;
+  const n = Number(current);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return String(Math.min(n, VF_DEFAULT_LEVERAGE));
 }
 
 export function visible(f: FieldSpec, values: FormValues): boolean {

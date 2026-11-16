@@ -568,6 +568,32 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("keeps a stopping bot in stopping until its unknown order is reconciled, then cancels it (rule 1.7)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    gw.timeoutNext = "applied";
+    const { botId } = await seedBot();
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const unknown = (await db.select().from(orders)).find(
+      (o) => o.botId === botId && o.status === "unknown",
+    );
+    expect(unknown).toBeDefined();
+    // Người dùng bấm Stop khi lệnh còn unknown (SoDEX thật ra đã nhận lệnh).
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    // Đối soát thấy lệnh đang mở → lượt Stop sau huỷ rồi mới dừng.
+    for (let i = 0; i < 3 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 6_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    expect(gw.cancelled).toContain(unknown?.clOrdId);
+    await e.stop();
+  });
+
   it("marks a lost order not_placed after the grace period and pauses the bot", async () => {
     const gw = new FakeGateway();
     gw.timeoutNext = "lost";
