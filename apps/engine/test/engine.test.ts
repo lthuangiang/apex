@@ -26,6 +26,7 @@ import { ReasonCode } from "@drift/shared";
 import {
   clOrdId,
   runBacktest,
+  seededRandom,
   spotGrid,
   spotGridSchema,
   type OrderIntent,
@@ -2959,4 +2960,268 @@ describe("Rebalancing order books (IOC at ask / bid)", () => {
     await e.stop();
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
   });
+});
+
+/**
+ * SoDEX giả cho harness tranh chấp của engine (DEC-TBD-race-harness): độ trễ ngẫu nhiên thật (ms) ở chiều đi và chiều
+ * về, lệnh vào sổ lúc tới SoDEX, lệnh huỷ tới trước lúc vào sổ trả OrderNotFound (lệnh vẫn vào sổ sau đó), khớp khi giá
+ * chạy qua. Ghi vi phạm bất biến 2 ngay lúc nhận lệnh: lệnh mở tới khi bot đã stopping / stopped.
+ */
+class RaceGateway extends FakeGateway {
+  /** Lệnh đang nằm trên "SoDEX". */
+  readonly open = new Map<string, OrderIntent>();
+  /** Lệnh đã gửi, chưa tới SoDEX. */
+  readonly arriving = new Set<string>();
+  /** Lệnh khớp chờ harness báo cho engine (`onFill`). */
+  readonly fills: { clOrdID: string; qty: string; price: string }[] = [];
+  readonly violations: string[] = [];
+  position = "0";
+  price = "0";
+  /** Trạng thái bot trong DB lúc nhận lệnh (bất biến 2). */
+  botState: () => Promise<string | undefined> = () => Promise.resolve(undefined);
+  constructor(
+    private readonly rnd: () => number,
+    private readonly maxDelayMs = 12,
+  ) {
+    super();
+  }
+  #wait() {
+    return new Promise((r) => setTimeout(r, Math.floor(this.rnd() * this.maxDelayMs)));
+  }
+  #crosses(o: OrderIntent, price: string) {
+    const p = Number(o.price ?? price);
+    return o.side === "buy" ? Number(price) <= p : Number(price) >= p;
+  }
+  #fill(o: OrderIntent, price: string) {
+    this.open.delete(o.clOrdID);
+    const q = Number(o.quantity);
+    this.position = String(Number(this.position) + (o.side === "buy" ? q : -q));
+    this.book.set(o.clOrdID, {
+      status: "filled",
+      filledQty: o.quantity,
+      avgPrice: price,
+      orderId: BigInt(this.received.length),
+    });
+    this.fills.push({ clOrdID: o.clOrdID, qty: o.quantity, price });
+  }
+  /** Giá mới: lệnh limit bị giá chạy qua thì khớp ở giá đặt. */
+  move(price: string) {
+    this.price = price;
+    for (const o of [...this.open.values()])
+      if (this.#crosses(o, price)) this.#fill(o, o.price ?? price);
+  }
+  override async submit(_a: AccountRef, list: readonly OrderIntent[]): Promise<SubmitResult[]> {
+    const st = await this.botState();
+    if (st === "stopping" || st === "stopped")
+      for (const o of list)
+        if (!o.reduceOnly)
+          this.violations.push(
+            `invariant 2: opening order ${o.tag} reached SoDEX while the bot was ${st}`,
+          );
+    for (const o of list) this.arriving.add(o.clOrdID);
+    await this.#wait();
+    const out: SubmitResult[] = [];
+    for (const o of list) {
+      this.arriving.delete(o.clOrdID);
+      this.received.push(o);
+      const id = BigInt(this.received.length);
+      if (o.type === "market") this.#fill(o, this.price);
+      else if (o.timeInForce === "GTX" && this.#crosses(o, this.price)) {
+        out.push({
+          clOrdID: o.clOrdID,
+          outcome: "rejected",
+          code: "POST_ONLY_WOULD_TRADE",
+          message: null,
+        });
+        continue;
+      } else {
+        this.open.set(o.clOrdID, o);
+        this.book.set(o.clOrdID, { status: "open", filledQty: "0", avgPrice: null, orderId: id });
+        if (this.#crosses(o, this.price)) this.#fill(o, o.price ?? this.price);
+      }
+      out.push({ clOrdID: o.clOrdID, outcome: "ok", orderId: id });
+    }
+    await this.#wait();
+    return out;
+  }
+  override async cancel(
+    _a: AccountRef,
+    list: readonly { clOrdID: string }[],
+  ): Promise<CancelResult[]> {
+    await this.#wait();
+    const out = list.map((x): CancelResult => {
+      if (this.open.has(x.clOrdID)) {
+        this.open.delete(x.clOrdID);
+        this.cancelled.push(x.clOrdID);
+        const b = this.book.get(x.clOrdID);
+        if (b !== undefined && b.status !== "not_found")
+          this.book.set(x.clOrdID, { ...b, status: "cancelled" });
+        return { clOrdID: x.clOrdID, outcome: "ok" };
+      }
+      if (this.arriving.has(x.clOrdID))
+        return { clOrdID: x.clOrdID, outcome: "unknown", detail: "OrderNotFound" };
+      return { clOrdID: x.clOrdID, outcome: "rejected", code: "ORDER_NOT_OPEN" };
+    });
+    await this.#wait();
+    return out;
+  }
+}
+
+describe("engine race harness (DEC-TBD-race-harness)", () => {
+  const SEEDS = Number(process.env.RACE_ENGINE_SEEDS ?? "2");
+  const STEPS = Number(process.env.RACE_ENGINE_STEPS ?? "120");
+  const mm = (smartQuoting: boolean) => ({
+    strategy: "volume_maker",
+    market: "BTC-USD",
+    engine: "perps" as const,
+    config: {
+      market: "BTC-USD",
+      leverage: 1,
+      orderSize: "500",
+      distanceBp: "1",
+      maxOrders: 1,
+      refreshSeconds: 3,
+      runUntil: "target_or_budget",
+      costBudget: "100000",
+      onStop: "close_inventory",
+      smartQuoting,
+    },
+  });
+  const grid = {
+    strategy: "spot_grid",
+    market: "vBTC_vUSDC",
+    engine: "spot" as const,
+    config: {
+      market: "vBTC_vUSDC",
+      lowerPrice: "90",
+      upperPrice: "110",
+      gridLevels: 5,
+      spacing: "arithmetic",
+      investment: "500",
+      maxLoss: "100",
+      onStop: "keep_base",
+    },
+  };
+
+  /**
+   * Một kịch bản: giá đi ngẫu nhiên; mỗi bước bắn song song tin giá, nhịp engine, giá Binance (MM) và tin khớp, theo thứ
+   * tự ngẫu nhiên; Stop chen giữa ở `stopAt`. Sau đó để engine dọn (vài nhịp, đồng hồ +1,5 s) rồi kiểm bất biến.
+   */
+  async function race(
+    kind: "mm" | "mm-smart" | "grid",
+    seed: number,
+    stopAt: number | null,
+  ): Promise<string[]> {
+    const { eq } = await import("drizzle-orm");
+    const rnd = seededRandom(seed);
+    const gw = new RaceGateway(rnd);
+    const spec = kind === "grid" ? grid : mm(kind === "mm-smart");
+    const market = spec.market;
+    const { botId, accountId } = await seedBot("running", spec);
+    gw.botState = async () => (await botState(botId))?.state;
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: `race-${kind}-${String(seed)}`,
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+    });
+    for (let i = 0; i < 20 && !(await e.activeAccounts()).some((a) => a.id === accountId); i += 1)
+      await e.tick();
+    let price = kind === "grid" ? 100 : 100_000;
+    const tick = kind === "grid" ? 1 : 3;
+    gw.move(String(price));
+    const fills = async () => {
+      for (const f of gw.fills.splice(0))
+        await e.onFill(accountId, f.clOrdID, f.qty, f.price, "0", clock);
+    };
+    // "Holds up to 1" × 500 USDC, cộng 5% cho giá chạy giữa hai lần khớp.
+    const limit = kind === "grid" ? null : 500 * 1.05;
+    const violations: string[] = [];
+    for (let s = 0; s < STEPS; s += 1) {
+      clock += 250;
+      price += Math.round((rnd() * 2 - 1) * (rnd() < 0.05 ? 4 : 1)) * tick;
+      gw.move(String(price));
+      if (limit !== null && Math.abs(Number(gw.position)) * price > limit)
+        violations.push(`invariant 1: position ${gw.position} above the bot's limit`);
+      const at = clock;
+      const jobs: (() => Promise<unknown>)[] = [() => e.onPrice(market, String(price), at), fills];
+      if (s % 4 === 0) jobs.push(() => e.tick());
+      if (kind !== "grid" && rnd() < 0.4) {
+        const fair = String(price + Math.round((rnd() * 2 - 1) * 8));
+        jobs.push(() => e.onMmFair({ s: market, fair, T: at - 50, at: at - 10 }, at));
+      }
+      if (s === stopAt)
+        jobs.push(async () => {
+          await new Promise((r) => setTimeout(r, Math.floor(rnd() * 15)));
+          await db
+            .update(bots)
+            .set({ state: "stopping", closeOnStop: true })
+            .where(eq(bots.id, botId));
+        });
+      jobs.sort(() => rnd() - 0.5);
+      await Promise.all(
+        jobs.map(async (j) => {
+          await new Promise((r) => setTimeout(r, Math.floor(rnd() * 8)));
+          await j();
+        }),
+      );
+    }
+    // Dọn: không còn tin giá mới; engine thử huỷ lại, đối soát, hoàn tất Stop.
+    for (let k = 0; k < 10; k += 1) {
+      clock += 1_500;
+      await e.tick();
+      await fills();
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    await fills();
+    const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+    const st = (rt?.state ?? {}) as {
+      orders?: Record<string, { status: string }>;
+      open?: Record<string, unknown>;
+      ledger?: { position: string };
+    };
+    const stopped = (await botState(botId))?.state === "stopped";
+    // Bất biến 3: lệnh còn nằm trên SoDEX phải là lệnh bot đang theo dõi; bot đã dừng thì không còn lệnh mở.
+    for (const [id, o] of gw.open) {
+      const tracked =
+        kind === "grid" ? st.open?.[id] !== undefined : st.orders?.[id]?.status === "live";
+      if (stopped ? !o.reduceOnly : !tracked)
+        violations.push(
+          `invariant 3: ${o.tag} still open on SoDEX but not tracked as live (${stopped ? "bot stopped" : (st.orders?.[id]?.status ?? "unknown")})`,
+        );
+    }
+    // Bất biến 4: mỗi fill vào sổ cái đúng một lần.
+    const ours = Number(st.ledger?.position ?? "0");
+    if (Math.abs(ours - Number(gw.position)) > 1e-9)
+      violations.push(
+        `invariant 4: bot ledger position ${String(ours)} differs from SoDEX ${gw.position}`,
+      );
+    await e.stop();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+    return [...gw.violations, ...violations];
+  }
+
+  for (const kind of ["mm", "mm-smart", "grid"] as const)
+    for (let seed = 1; seed <= SEEDS; seed += 1)
+      it(
+        `keeps the money invariants: ${kind}, seed ${String(seed)}, Stop half way`,
+        { timeout: 180_000 },
+        async () => {
+          expect(await race(kind, seed * 101, Math.floor(STEPS / 2))).toEqual([]);
+        },
+      );
+  for (let seed = 1; seed <= SEEDS; seed += 1)
+    it(
+      `keeps the money invariants: mm-smart, seed ${String(seed)}, no Stop`,
+      { timeout: 180_000 },
+      async () => {
+        expect(await race("mm-smart", seed * 211, null)).toEqual([]);
+      },
+    );
 });
