@@ -551,7 +551,7 @@ export const teamOpsBotSchema = z.object({
   positionCuts: z.number().int(),
   /** Khoảng dài nhất giữa hai lần xét báo giá trong 60 phút (giây), từ dòng "Order requests"; null khi không có. */
   maxQuoteGapSec: decimalStringSchema.nullable(),
-  /** Lần vi phạm bất biến gần nhất (DEC-TBD-prod-invariants); null = chưa có vi phạm nào. */
+  /** Lần vi phạm bất biến gần nhất (DEC-274); null = chưa có vi phạm nào. */
   latestInvariant: z
     .object({ invariant: z.string(), at: isoDateTimeSchema, detail: z.string() })
     .nullable(),

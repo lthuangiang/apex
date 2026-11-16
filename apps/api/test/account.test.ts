@@ -449,7 +449,7 @@ describe("GET /api/v1/admin/ops (DEC-TBD-ops-page)", () => {
     await fill("sell", "0.05", true, 2 * 3_600_000);
     const event = (botId: string, decision: string, why: string | null, ago: number) =>
       env.pool.query(
-        "insert into bot_events (bot_id, type, decision, why, occurred_at) values ($1, 'log', $2, $3, $4)",
+        "insert into bot_events (id, bot_id, type, decision, why, occurred_at) values (gen_random_uuid(), $1, 'log', $2, $3, $4)",
         [botId, decision, why, at(ago)],
       );
     await event(
@@ -468,11 +468,22 @@ describe("GET /api/v1/admin/ops (DEC-TBD-ops-page)", () => {
     await event(live, "Cancelled 2 untracked orders", null, 3 * 3_600_000);
     await event(live, "Position cut", null, 25 * 3_600_000);
     const outbox = (topic: string, payload: object, ago: number) =>
-      env.pool.query("insert into outbox (topic, payload, created_at) values ($1, $2, $3)", [
-        topic,
-        JSON.stringify(payload),
-        at(ago),
-      ]);
+      env.pool.query(
+        "insert into outbox (id, topic, payload, created_at) values (gen_random_uuid(), $1, $2, $3)",
+        [topic, JSON.stringify(payload), at(ago)],
+      );
+    // Cost / $1M (cùng công thức trang bot): phí 150 + lỗ đã chốt 50 trên 2,000,000 khối lượng = 100.
+    await env.pool.query(
+      "insert into bot_runtime (bot_id, version_id, state, epoch) values ($1, gen_random_uuid(), $2, 1)",
+      [
+        live,
+        JSON.stringify({
+          volume: "2000000",
+          mid: null,
+          ledger: { position: "0", avgCost: "0", fees: "150", realized: "-50" },
+        }),
+      ],
+    );
     await outbox(
       "jobs.team_ops",
       { type: "team_invariant", invariant: "P1", status: "failing", botId: live, detail: "older" },
@@ -496,6 +507,7 @@ describe("GET /api/v1/admin/ops (DEC-TBD-ops-page)", () => {
     const mine = view.bots.filter((b) => b.userId === me.id);
     expect(mine.map((b) => b.name).sort()).toEqual(["Ops MM live", "Ops MM stopped today"]);
     expect(mine.find((b) => b.botId === live)).toMatchObject({
+      costPerMillion: "100",
       volumeHour: "1700",
       // Maker share chỉ tính fill biết maker / taker: 1,000 / 1,500.
       makerSharePct: "66.7",
