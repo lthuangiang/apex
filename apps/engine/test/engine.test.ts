@@ -76,6 +76,11 @@ class FakeGateway implements Gateway {
   notSent: NotSentCode | null = null;
   /** SoDEX từ chối mọi lệnh với mã + câu lỗi này. */
   reject: { code: string; message: string | null } | null = null;
+  /** Giữ lần submit kế tiếp tới khi promise này xong (lệnh "đang gửi"). */
+  hold: Promise<void> | null = null;
+  /** Giữ lần huỷ kế tiếp tới khi promise này xong; `cancelHeld` = đang bị giữ. */
+  holdCancel: Promise<void> | null = null;
+  cancelHeld = false;
   #id = 1n;
 
   setLeverage(
@@ -108,6 +113,11 @@ class FakeGateway implements Gateway {
     builderFeeRate?: number,
   ): Promise<SubmitResult[]> {
     this.builderRates.push(builderFeeRate);
+    const held = this.hold;
+    if (held !== null) {
+      this.hold = null;
+      return held.then(() => this.submit(_a, list, fence, builderFeeRate));
+    }
     // Signer từ chối ký với epoch cũ (fencing ở signer).
     if (fence.epoch < this.rejectEpochBelow) return Promise.reject(new Error("stale epoch"));
     const code = this.notSent;
@@ -158,6 +168,15 @@ class FakeGateway implements Gateway {
     return Promise.resolve(this.modifyStopOutcome);
   }
   cancel(_a: AccountRef, list: readonly { clOrdID: string }[]): Promise<CancelResult[]> {
+    const held = this.holdCancel;
+    if (held !== null) {
+      this.holdCancel = null;
+      this.cancelHeld = true;
+      return held.then(() => {
+        this.cancelHeld = false;
+        return this.cancel(_a, list);
+      });
+    }
     if (this.cancelNotSent > 0) {
       this.cancelNotSent -= 1;
       return Promise.reject(new Error("not sent: signer_unavailable"));
@@ -617,6 +636,74 @@ describe("engine", () => {
       } else expect(decisions.some((d) => d.startsWith("Ask pulled"))).toBe(false);
       await e.stop();
     });
+
+  it("cancels a quote pulled while it was still being sent, as soon as SoDEX takes it (DEC-254)", async () => {
+    const { and, eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", mmSmart(true));
+    const e = makeEngine(gw, "w-inflight");
+    await e.tick();
+    let release: () => void = () => undefined;
+    gw.hold = new Promise<void>((r) => {
+      release = r;
+    });
+    const placing = e.onPrice("BTC-USD", "100000", clock);
+    // Lệnh đã ghi (unknown) và đang chờ SoDEX trả lời.
+    let ask: { clOrdId: string; price: string | null } | undefined;
+    for (let i = 0; i < 50 && ask === undefined; i += 1) {
+      [ask] = await db
+        .select({ clOrdId: orders.clOrdId, price: orders.price })
+        .from(orders)
+        .where(and(eq(orders.botId, botId), eq(orders.side, "sell"), eq(orders.status, "unknown")));
+      if (ask === undefined) await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(ask).toBeDefined();
+    // Binance chạy xuyên ask khi lệnh còn đang gửi: lệnh huỷ không bị bỏ.
+    await e.onMmFair(
+      { s: "BTC-USD", fair: String(Number(ask?.price) + 5), T: clock - 100, at: clock - 20 },
+      clock,
+    );
+    expect(gw.cancelled).not.toContain(ask?.clOrdId);
+    release();
+    await placing;
+    expect(gw.cancelled).toContain(ask?.clOrdId);
+    await e.stop();
+  });
+
+  it("sends no opening order when the bot is stopped while an event is being handled (DEC-255)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    // Báo giá theo sổ lệnh (quoteLevel 0) để sổ lệnh thời gian thực đặt lại được bid (DEC-248).
+    const base = mmSmart(true);
+    const { botId } = await seedBot("running", {
+      ...base,
+      config: { ...base.config, quoteLevel: 0 },
+    });
+    const e = makeEngine(gw, "w-stop-race");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    const bid = gw.received.filter((o) => o.side === "buy").at(-1);
+    expect(bid).toBeDefined();
+    const placed = gw.received.length;
+    // Sổ lệnh chạy lên: bot huỷ bid cũ rồi đặt bid mới. Lệnh huỷ bị giữ; trong lúc đó người dùng bấm Stop.
+    let release: () => void = () => undefined;
+    gw.holdCancel = new Promise<void>((r) => {
+      release = r;
+    });
+    const up = String(Number(bid?.price) + 3);
+    const moving = e.onMmBook(
+      { s: "BTC-USD", b: up, a: String(Number(up) + 0.1), E: clock + 2000, at: clock + 2000 },
+      clock + 2000,
+    );
+    for (let i = 0; i < 50 && !gw.cancelHeld; i += 1) await new Promise((r) => setTimeout(r, 20));
+    expect(gw.cancelHeld).toBe(true);
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    release();
+    await moving;
+    // Lệnh huỷ vẫn đi, nhưng không có lệnh mở mới nào tới SoDEX sau lúc Stop.
+    expect(gw.received.slice(placed).filter((o) => !o.reduceOnly)).toEqual([]);
+    await e.stop();
+  });
 
   it("keeps the open orders of a paused Market Making bot when the Binance price moves (DOMAIN 7.2)", async () => {
     const { eq } = await import("drizzle-orm");
@@ -1207,6 +1294,40 @@ describe("engine", () => {
       expect((await botState(botId))?.state).toBe("stopped");
       await e2.stop();
     }
+  });
+
+  it("still sends the Spot close on Stop, which is not reduce-only (DEC-81, DEC-255)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running");
+    const e = makeEngine(gw, "w-spot-close");
+    let rt: typeof botRuntime.$inferSelect | undefined;
+    for (let i = 0; i < 20 && rt === undefined; i += 1) {
+      await e.tick();
+      await e.onPrice("vBTC_vUSDC", "100", clock);
+      [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      if (rt === undefined) await new Promise((r) => setTimeout(r, 100));
+    }
+    // Bot đang giữ 2 BTC (sổ cái) rồi người dùng bấm Stop và chọn đóng vị thế.
+    const st = rt?.state as { ledger: Record<string, string> };
+    await db
+      .update(botRuntime)
+      .set({ state: { ...st, ledger: { ...st.ledger, position: "2", avgCost: "100" } } })
+      .where(eq(botRuntime.botId, botId));
+    await e.stop();
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    gw.received.length = 0;
+    const e2 = makeEngine(gw, "w2-spot-close");
+    for (let i = 0; i < 10 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      await e2.tick();
+      if ((await botState(botId))?.state !== "stopped")
+        await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(gw.received.filter((o) => o.tag === "close")).toEqual([
+      expect.objectContaining({ side: "sell", reduceOnly: false, quantity: "2" }),
+    ]);
+    expect((await botState(botId))?.state).toBe("stopped");
+    await e2.stop();
   });
 
   it("pauses and stops a bot waiting for its entry price without sending orders (IMP-01, DEC-91)", async () => {

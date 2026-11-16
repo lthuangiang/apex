@@ -115,6 +115,12 @@ export const CANCEL_RETRY_MS = 5_000;
  * vào và nằm đó như lệnh mồ côi. Lệnh nhận chưa quá `windowMs` thì huỷ lại sau `retryMs` thay vì `CANCEL_RETRY_MS`.
  */
 export const CANCEL_NOT_BOOKED = { windowMs: 5_000, retryMs: 1_000 } as const;
+/**
+ * Lệnh huỷ tới khi lệnh đặt còn đang gửi (DEC-254): dòng lệnh chưa có hoặc còn `unknown` chưa được nhận. Giữ trong danh
+ * sách chờ huỷ và huỷ ngay khi lệnh đặt được nhận (thử lại sau `CANCEL_NOT_BOOKED.retryMs` nếu không); dòng mãi không
+ * xuất hiện thì bỏ sau `maxMs`. Trước đây lệnh huỷ bị bỏ, lệnh vào sổ và nằm tới lúc quét lệnh mồ côi (~25 s).
+ */
+export const CANCEL_INFLIGHT = { maxMs: 10_000 } as const;
 /** Market Making: lệnh còn "open" lâu hơn mức này mà chiến lược không còn theo dõi thì engine huỷ (DEC-111). */
 export const MAKER_ORPHAN_MS = 15_000;
 /** Bot paper: ghi số dư giả mỗi phút (biểu đồ theo ngày ở trang Fake-money test, DEC-105). */
@@ -335,6 +341,8 @@ export class Engine {
   /** Lệnh đang chờ huỷ lại theo bot (huỷ trước đó chưa được SoDEX xác nhận), và lần thử gần nhất. */
   readonly #pendingCancels = new Map<string, Set<string>>();
   readonly #cancelRetryAt = new Map<string, number>();
+  /** Lệnh huỷ đang chờ lệnh đặt được nhận (DEC-254): clOrdID → lúc bắt đầu chờ. */
+  readonly #inflightCancels = new Map<string, number>();
   /** Lần cuối ghi số dư giả của bot paper. */
   readonly #paperSnapAt = new Map<string, number>();
   #stopped = false;
@@ -704,6 +712,7 @@ export class Engine {
     });
     if (!fed) return;
     this.#pendingCancels.get(o.botId)?.delete(clOrdID);
+    this.#inflightCancels.delete(clOrdID);
     this.#openChecks.delete(o.id);
     await this.#feed(
       r,
@@ -1381,7 +1390,7 @@ export class Engine {
     /** Sự kiện và state trước bước chiến lược (để biết market của tin `copy_bot_skipped`). */
     source: { event: StrategyEvent; prev: unknown } | null = null,
   ): Promise<void> {
-    const places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
+    let places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
     const cancels = actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : []));
     for (const a of actions) {
       if (a.type === "log") {
@@ -1425,6 +1434,33 @@ export class Engine {
       if (lev !== "ok") {
         if (lev !== "not_sent") await this.#pauseBot(r, ReasonCode.orderRejected);
         return;
+      }
+    }
+    // Bot vừa được yêu cầu dừng trong lúc bước chiến lược này chạy (DEC-255): đọc lại trạng thái ngay trước khi gửi, không
+    // gửi lệnh mở vị thế của chiến lược. Trước đây chỉ kiểm tra ở đầu sự kiện: một sự kiện giá bắt đầu trước lúc Stop vẫn
+    // đặt được lệnh mua sau lúc Stop, khớp khi bot đã dừng và vị thế nằm lại không ai đóng. Chỉ áp cho bước chiến lược
+    // (`source`): lệnh đóng do engine dựng khi Stop (`#stopBot`, Spot không reduce-only) luôn đi. Chỉ khi đang dừng / đã
+    // dừng; bot pause giữ hành vi cũ.
+    if (source !== null && places.some((o) => !o.reduceOnly)) {
+      const st = await this.#currentState(r.botId);
+      if (st === BotState.stopping || st === BotState.stopped) {
+        const dropped = places.filter((o) => !o.reduceOnly);
+        places = places.filter((o) => o.reduceOnly);
+        this.#d.log.info(
+          { botId: r.botId, state: st, dropped: dropped.length },
+          "opening orders not sent: bot is stopping",
+        );
+        // Báo chiến lược để nó không coi các lệnh này là đang sống. Không báo tiếp nếu chính bước này là phản hồi của một
+        // lần báo như vậy (không lặp); bot đang dừng nên lệnh pause của chiến lược (nếu có) không đổi trạng thái.
+        const echo = source.event.type === "orderReject" && source.event.code === "BOT_NOT_RUNNING";
+        if (!echo)
+          for (const o of dropped)
+            await this.#feed(r, {
+              type: "orderReject",
+              at,
+              clOrdID: o.clOrdID,
+              code: "BOT_NOT_RUNNING",
+            });
       }
     }
     if (places.length > 0) {
@@ -1500,6 +1536,11 @@ export class Engine {
           // định nên lần thử sau (sau backoff) sinh lại đúng các lệnh này.
           const ids = toSend.map((o) => o.clOrdID);
           r.state = rollback;
+          // clOrdID tất định: lần đặt lại sau backoff không được bị một lệnh huỷ cũ đang chờ huỷ mất (DEC-254).
+          for (const id of ids) {
+            this.#pendingCancels.get(r.botId)?.delete(id);
+            this.#inflightCancels.delete(id);
+          }
           await this.#fenced(r, async (tx) => {
             await tx
               .delete(orders)
@@ -1549,6 +1590,15 @@ export class Engine {
             });
             await this.#ack(r, at);
             await this.#feed(r, { type: "orderAck", at, clOrdID: res.clOrdID });
+            // Chiến lược đã rút lệnh này lúc nó còn đang gửi (DEC-254): huỷ ngay khi SoDEX nhận.
+            if (this.#pendingCancels.get(r.botId)?.has(res.clOrdID) === true)
+              try {
+                await this.#cancel(r, [res.clOrdID]);
+              } catch (error) {
+                // Lệnh vẫn trong danh sách chờ huỷ, vòng sau thử lại; các kết quả còn lại của lô vẫn phải được ghi.
+                if (error instanceof FencedError) throw error;
+                this.#d.log.warn({ err: error, botId: r.botId }, "cancel after ack failed");
+              }
           } else if (res.outcome === "not_sent") {
             // Chưa rời DRIFT: không phải `unknown`, không cần đối soát. Ghi not_placed để sổ lệnh đúng.
             await this.#fenced(r, (tx) =>
@@ -1780,11 +1830,36 @@ export class Engine {
       .from(orders)
       .where(and(eq(orders.sodexAccountId, r.account.id), inArray(orders.clOrdId, [...clOrdIDs])));
     const open = rows.filter((o) => o.status === "open" || o.status === "partially_filled");
-    const pending = this.#pendingCancels.get(r.botId) ?? new Set<string>();
+    // Một Set dùng chung cho mọi lần huỷ của bot (DEC-254): hai lần huỷ chạy song song từng giữ hai Set riêng, lần xong
+    // sau với Set rỗng xoá luôn mục của lần kia và lệnh chờ huỷ bị mất (lệnh mồ côi nằm tới lúc quét).
+    let pending = this.#pendingCancels.get(r.botId);
+    if (pending === undefined) {
+      pending = new Set<string>();
+      this.#pendingCancels.set(r.botId, pending);
+    }
+    // Lệnh đặt còn đang gửi (chưa có dòng, hoặc `unknown` chưa được nhận): giữ chờ huỷ, huỷ khi lệnh được nhận (DEC-254).
+    const startedAt = this.#d.now();
+    const inflight = clOrdIDs.filter((id) => {
+      const row = rows.find((o) => o.clOrdId === id);
+      if (row !== undefined && !(row.status === "unknown" && row.ackedAt === null)) {
+        this.#inflightCancels.delete(id);
+        return false;
+      }
+      const since = this.#inflightCancels.get(id) ?? startedAt;
+      if (startedAt - since >= CANCEL_INFLIGHT.maxMs) {
+        this.#inflightCancels.delete(id);
+        return false;
+      }
+      this.#inflightCancels.set(id, since);
+      return true;
+    });
     // Không còn gì mở: bỏ khỏi danh sách chờ huỷ lại.
-    for (const id of clOrdIDs) if (!open.some((o) => o.clOrdId === id)) pending.delete(id);
+    for (const id of clOrdIDs)
+      if (!open.some((o) => o.clOrdId === id) && !inflight.includes(id)) pending.delete(id);
+    for (const id of inflight) pending.add(id);
+    if (inflight.length > 0)
+      this.#cancelRetryAt.set(r.botId, startedAt - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
     if (open.length === 0) {
-      if (pending.size === 0) this.#pendingCancels.delete(r.botId);
       return;
     }
     let results: Awaited<ReturnType<Gateway["cancel"]>>;
@@ -1797,7 +1872,6 @@ export class Engine {
     } catch (error) {
       // Request huỷ không rời DRIFT (signer lỗi…): lệnh vẫn sống trên SoDEX, giữ "open" và thử lại ở vòng sau.
       for (const o of open) pending.add(o.clOrdId);
-      this.#pendingCancels.set(r.botId, pending);
       throw error;
     }
     // Huỷ không thành (SoDEX từ chối hoặc không rõ): ghi log để lần ra vì sao lệnh còn sống trên sàn.
@@ -1845,8 +1919,6 @@ export class Engine {
       if (settled.has(o.clOrdId)) pending.delete(o.clOrdId);
       else pending.add(o.clOrdId);
     }
-    if (pending.size === 0) this.#pendingCancels.delete(r.botId);
-    else this.#pendingCancels.set(r.botId, pending);
     if (done.length > 0)
       await this.#fenced(r, (tx) =>
         tx
