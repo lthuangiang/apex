@@ -156,7 +156,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     now,
   });
   registerChartRoutes(app, chart);
-  registerPublicRoutes(app, { db: deps.db, now, orderbook: (m) => chart.orderbook(m) });
+  registerPublicRoutes(app, { db: deps.db, now });
   registerBacktestRoutes(app, { db: deps.db, now });
   registerProfileRoutes(app, {
     db: deps.db,

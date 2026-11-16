@@ -4,7 +4,7 @@ import { featuresSchema } from "@drift/shared";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-import { NotFoundPage } from "@/features/public";
+import { NotFoundPage } from "@/features/public/components/not-found-page";
 import { api } from "@/lib/api";
 
 /**

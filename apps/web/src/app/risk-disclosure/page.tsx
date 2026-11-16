@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { getTranslations } from "next-intl/server";
 
-import { RiskDisclosurePage } from "@/features/public";
+import { RiskDisclosurePage } from "@/features/public/components/risk-disclosure-page";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("riskDisclosure");
