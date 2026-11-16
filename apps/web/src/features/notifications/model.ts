@@ -91,6 +91,9 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
       return "/risk";
     case "key_fee":
       return "/settings";
+    case "fee_tier_changed":
+      // Settings › SoDEX access (tab `access`), nơi có builder fee.
+      return "/settings?tab=access";
     case "daily_summary":
       return aiDesk ? "/desk" : "/";
     case "telegram_connected":

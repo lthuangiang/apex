@@ -8,7 +8,9 @@ import {
   DRIFT_BUILDER_FEE_RATE,
   feeRateToFraction,
   feeRateToPercent,
+  formatVolumeUsd,
   isBuilderAccount,
+  nextFeeTierOf,
   isBuilderFeeApproved,
   oneWayFeeFraction,
   roundTripFeePct,
@@ -113,5 +115,22 @@ describe("builder fee tiers (DEC-258)", () => {
   it("leaves strategies without tiers at their default", () => {
     expect(tierRateOf("volume_farm", "5000000")).toBe(5);
     expect(tierRateOf("spot_grid", "5000000")).toBe(10);
+  });
+});
+
+describe("next fee tier and volume text (DEC-258)", () => {
+  it("names the tier with the highest rate below the effective rate, and none at the top", () => {
+    expect(nextFeeTierOf("volume_maker", 3)).toEqual({ minVolume: 200_000, rate: 2 });
+    expect(nextFeeTierOf("volume_maker", 2)).toEqual({ minVolume: 1_000_000, rate: 1 });
+    expect(nextFeeTierOf("volume_maker", 1)).toBeNull();
+    // Mức team đặt tay cao hơn mặc định vẫn có bậc kế tiếp; API trả null khi custom.
+    expect(nextFeeTierOf("volume_maker", 10)).toEqual({ minVolume: 200_000, rate: 2 });
+    expect(nextFeeTierOf("spot_grid", 10)).toBeNull();
+  });
+
+  it("rounds volume down to the dollar so it never shows more than real", () => {
+    expect(formatVolumeUsd("199999.6")).toBe("199,999");
+    expect(formatVolumeUsd("1000000")).toBe("1,000,000");
+    expect(formatVolumeUsd("0")).toBe("0");
   });
 });

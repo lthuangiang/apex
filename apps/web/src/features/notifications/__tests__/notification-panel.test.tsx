@@ -225,6 +225,61 @@ describe("NotificationPanel", () => {
     );
   });
 
+  it("words a Market Making fee tier change, opens SoDEX access, and keeps it out of Needs you", async () => {
+    const user = userEvent.setup({ delay: null });
+    state.list = {
+      unread: 2,
+      items: [
+        {
+          id: "88888888-8888-4888-8888-888888888888",
+          type: "fee_tier_changed",
+          data: {
+            strategy: "volume_maker",
+            rate: 2,
+            previousRate: 3,
+            volume: "250000.9",
+            droppedBelow: null,
+          },
+          createdAt: minutesAgo(1),
+          readAt: null,
+        },
+        {
+          id: "99999999-9999-4999-8999-999999999999",
+          type: "fee_tier_changed",
+          data: {
+            strategy: "volume_maker",
+            rate: 2,
+            previousRate: 1,
+            volume: "999999.99",
+            droppedBelow: "1000000",
+          },
+          createdAt: minutesAgo(2),
+          readAt: null,
+        },
+      ],
+    };
+    wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);
+    expect(await screen.findByText("Market Making fee lowered to 0.002%")).toBeInTheDocument();
+    // Volume làm tròn xuống, không bao giờ cao hơn thật.
+    expect(
+      screen.getByText(
+        "Your Market Making volume in the last 30 days reached 250,000 USDC. New orders pay 0.002% instead of 0.003%.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Market Making fee back to 0.002%")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Your Market Making volume in the last 30 days fell to 999,999 USDC, below 1,000,000 USDC. New orders pay 0.002% instead of 0.001%.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /fee lowered/ })).toHaveAttribute(
+      "href",
+      "/settings?tab=access",
+    );
+    await user.click(screen.getByRole("tab", { name: /Needs you/ }));
+    expect(within(screen.getByRole("tabpanel")).queryByText(/Market Making fee/)).toBeNull();
+  });
+
   it("Needs you shows only unread real incidents, not a planned finish", async () => {
     const user = userEvent.setup({ delay: null });
     wrap(<NotificationPanel variant="popover" onNavigate={() => undefined} />);

@@ -1,4 +1,13 @@
-import { botEvents, bots, fills, orders, userBuilderFees, userFeeTiers, type Db } from "@drift/db";
+import {
+  botEvents,
+  bots,
+  feeTierBotIds,
+  feeTierVolumes,
+  outbox,
+  userBuilderFees,
+  userFeeTiers,
+  type Db,
+} from "@drift/db";
 import {
   builderFeeRateOf,
   Decimal,
@@ -6,9 +15,11 @@ import {
   FEE_TIER_WINDOW_DAYS,
   FEE_TIERS,
   feeRateToPercent,
+  formatVolumeUsd,
   tierRateOf,
+  type FeeTierChangedData,
 } from "@drift/shared";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 // Builder fee theo bậc volume (DEC-258): tính lại volume tiền thật 30 ngày của từng user cho mỗi chiến
 // lược có bậc, ghi `user_fee_tiers` (chỉ khi khác mặc định). Engine đọc lại mức mỗi vòng nên lệnh mới dùng ngay; không
@@ -17,10 +28,18 @@ import { and, eq, gte, inArray, sql } from "drizzle-orm";
 /** Tính lại không dày hơn ngần này. */
 export const FEE_TIER_REFRESH_MS = 60 * 60_000;
 
+/** Tên chiến lược có bậc trong câu Decisions (hiện chỉ Market Making). */
+const STRATEGY_NAMES: Readonly<Record<string, string>> = { volume_maker: "Market Making" };
+
 const pct = (rate: number) => `${feeRateToPercent(rate).toString()}%`;
-// Làm tròn xuống: không bao giờ ghi volume cao hơn thật (199 999,6 không thành "200,000").
-const usd = (v: Decimal) =>
-  v.toDecimalPlaces(0, Decimal.ROUND_DOWN).toNumber().toLocaleString("en-US");
+
+/**
+ * Khoá chống trùng của thông báo `fee_tier_changed` (DEC-261): một tin / user × chiến lược × mức mới / ngày
+ * UTC. Xuống rồi lên lại trong cùng ngày thì cả hai tin đều đi (mức khác nhau); cùng một mức lặp lại trong ngày thì không.
+ */
+export function feeTierDedupeKey(strategy: string, rate: number, now: number): string {
+  return `fee_tier_changed:${strategy}:${String(rate)}:${new Date(now).toISOString().slice(0, 10)}`;
+}
 
 export async function refreshFeeTiers(
   db: Db,
@@ -31,26 +50,8 @@ export async function refreshFeeTiers(
   if (strategies.length === 0) return { users: 0, changed: 0, failed: 0 };
   const since = new Date(now - FEE_TIER_WINDOW_DAYS * 86_400_000);
   // Bắt đầu từ các bot có bậc (đi qua orders_bot_idx rồi fills_order_idx), không quét cả bảng fills theo giờ khớp.
-  const tiered = (
-    await db
-      .select({ id: bots.id })
-      .from(bots)
-      .where(and(inArray(bots.strategy, strategies), eq(bots.mode, "live")))
-  ).map((b) => b.id);
-  const volumes =
-    tiered.length === 0
-      ? []
-      : await db
-          .select({
-            userId: bots.userId,
-            strategy: bots.strategy,
-            volume: sql<string>`coalesce(sum(${fills.price} * ${fills.size}), 0)::text`,
-          })
-          .from(fills)
-          .innerJoin(orders, eq(orders.id, fills.orderId))
-          .innerJoin(bots, eq(bots.id, orders.botId))
-          .where(and(inArray(orders.botId, tiered), gte(fills.filledAt, since)))
-          .groupBy(bots.userId, bots.strategy);
+  // Cùng hàm với thẻ phí MM ở GET /features.
+  const volumes = await feeTierVolumes(db, await feeTierBotIds(db), since);
   const current = await db
     .select()
     .from(userFeeTiers)
@@ -112,10 +113,30 @@ export async function refreshFeeTiers(
               botId: b.id,
               type: "decision",
               decision: "Builder fee changed",
-              why: `Your volume with this strategy over the last ${String(FEE_TIER_WINDOW_DAYS)} days is ${usd(volume)} USDC, so your builder fee is now ${pct(rate)} (was ${pct(before)}). New orders use it.`,
+              // Câu đã duyệt 2026-11-16 (DevOps theo uỷ quyền, chờ user xác nhận).
+              why: `Your ${String(FEE_TIER_WINDOW_DAYS)}-day ${STRATEGY_NAMES[strategy] ?? strategy} volume ${rate < before ? "reached" : "fell to"} ${formatVolumeUsd(volume)} USDC, so the rate is now ${pct(rate)} (was ${pct(before)}). New orders use it.`,
               occurredAt: new Date(now),
             })),
           );
+        // Báo user (nhóm keyFee) trong CÙNG transaction, kể cả khi không có bot nào đang chạy.
+        const dropped =
+          rate > before ? FEE_TIERS[strategy]?.find((t) => t.rate === before) : undefined;
+        const data: FeeTierChangedData = {
+          strategy,
+          rate,
+          previousRate: before,
+          volume: volume.toFixed(),
+          droppedBelow: dropped === undefined ? null : String(dropped.minVolume),
+        };
+        await tx.insert(outbox).values({
+          topic: "jobs.notify",
+          payload: {
+            userId,
+            type: "fee_tier_changed",
+            data,
+            dedupeKey: feeTierDedupeKey(strategy, rate, now),
+          },
+        });
         return true;
       })
       .catch((error: unknown) => {
