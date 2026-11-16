@@ -440,8 +440,7 @@ function quote(
   // (hoặc hết `VM_STALE_CANCEL_MS`). Lệnh mở bị huỷ ngay trong lần báo giá này cũng tính (DEC-257, xem
   // dưới).
   const unsure = { buy: false, sell: false };
-  for (const o of Object.values(s.orders))
-    if (o.status === "cancelling" && o.role === "open") unsure[o.side] = true;
+  // CI-only revert of DEC-253: cancels from an earlier step no longer block the side.
   const pulled = {
     buy: paused || smart?.buy?.pull === true,
     sell: paused || smart?.sell?.pull === true,
