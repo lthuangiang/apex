@@ -38,6 +38,26 @@ async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
   if (e.type === "team_mcp_tool_errors")
     return { data: { calls: e.calls, errors: e.errors, pct: e.pct, tool: e.tool } };
   if (e.type === "team_mcp_introspect_failing") return { data: { failures: e.failures } };
+  // Bất biến tiền thật (DEC-274): báo cả bot paper (ghi rõ mode); không ví / key / email.
+  if (e.type === "team_invariant") {
+    const [b] = await db
+      .select({ strategy: bots.strategy, market: bots.market, mode: bots.mode })
+      .from(bots)
+      .where(eq(bots.id, e.botId))
+      .limit(1);
+    if (b === undefined) return null;
+    return {
+      data: {
+        invariant: e.invariant,
+        status: e.status,
+        strategy: b.strategy,
+        market: b.market,
+        mode: b.mode,
+        bot: `··${e.botId.slice(-8)}`,
+        detail: e.detail,
+      },
+    };
+  }
   if (e.type === "team_mcp_daily_limit") {
     const rows = await db
       .select({ email: users.email, role: users.role })

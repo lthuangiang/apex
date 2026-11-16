@@ -116,6 +116,7 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
     case "team_mcp_tool_errors":
     case "team_mcp_introspect_failing":
     case "team_mcp_daily_limit":
+    case "team_invariant":
       return "/admin/stats";
   }
 }
