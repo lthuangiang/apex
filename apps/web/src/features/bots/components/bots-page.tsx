@@ -47,6 +47,8 @@ export const BOTS_KEY = ["bots"] as const;
 const VOLUME_KEYS: readonly string[] = ["volume_maker", "volume_farm"];
 // Chiến lược thử nghiệm (AI Adaptive DCA, DEC-107): chỉ hiện khi team bật AI Desk cho tài khoản.
 const EXPERIMENTAL_KEYS: readonly string[] = ["adaptive_dca", "copy_trade"];
+/** Thứ tự thẻ ngay sau Market Making và Volume Builder trong catalog. */
+const FEATURED_AFTER_VOLUME: readonly string[] = ["copy_trade", "adaptive_dca"];
 const CATALOG_BASE = (Object.keys(FIELDS) as (keyof typeof FIELDS)[]).filter(
   (k) => !VOLUME_KEYS.includes(k) && !EXPERIMENTAL_KEYS.includes(k),
 );
@@ -532,10 +534,14 @@ export function BotsPage() {
                   {t("catalog.forMarket", { market: names.market(forMarket.market) })}
                 </p>
               )}
-              {/* Một lưới chung: Market Making và Volume Builder đứng đầu (DEC-133), cùng cỡ thẻ với các chiến lược khác. */}
+              {/* Một lưới chung: Market Making và Volume Builder đứng đầu (DEC-133), rồi Copy Trade và AI Adaptive DCA
+                  (người dùng yêu cầu 2026-11-16), rồi các chiến lược khác; cùng cỡ thẻ. */}
               {catalogList([
                 ...catalog.filter((k) => VOLUME_KEYS.includes(k)),
-                ...catalog.filter((k) => !VOLUME_KEYS.includes(k)),
+                ...FEATURED_AFTER_VOLUME.flatMap((f) => catalog.filter((k) => k === f)),
+                ...catalog.filter(
+                  (k) => !VOLUME_KEYS.includes(k) && !FEATURED_AFTER_VOLUME.includes(k),
+                ),
               ])}
             </>
           )}
