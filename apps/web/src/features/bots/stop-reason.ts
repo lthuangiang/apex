@@ -14,6 +14,8 @@ import { useTranslations } from "next-intl";
 export interface StopReasonInput {
   reasonCode: string;
   strategy?: string | null | undefined;
+  /** `bots.mode`: bot paper không gửi gì tới SoDEX (DEC-105), nên lệnh bị từ chối là lệnh giả (PB-01). */
+  mode?: string | null | undefined;
   /** `BotSummary.stopDetail` do API tính (Market Making dừng với MAX_CYCLES). */
   stopDetail?: "volume_target" | "end_time" | null | undefined;
   /** Config của version đang chạy (nếu nơi hiển thị có). */
@@ -32,6 +34,7 @@ const num = (v: unknown): string | null => {
 /** Key trong namespace `reasons`. */
 export function stopReasonKey(i: StopReasonInput): string {
   const code = i.reasonCode;
+  if (i.mode === "paper" && code === ReasonCode.orderRejected) return "ORDER_REJECTED_PAPER";
   if (i.strategy === "volume_farm" && code === ReasonCode.maxCycles) return "MAX_CYCLES_VOLUME";
   if (i.strategy !== "volume_maker") return code;
   if (code === ReasonCode.budgetDone) return "MM_BUDGET_DONE";

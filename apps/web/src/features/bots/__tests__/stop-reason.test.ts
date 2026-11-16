@@ -17,6 +17,18 @@ const mm = (over: Partial<StopReasonInput>): StopReasonInput => ({
 });
 
 describe("stop reason labels", () => {
+  it("a paper bot's rejected order is a simulated reject (PB-01); a live bot keeps the SoDEX label", () => {
+    expect(stopReasonKey({ reasonCode: ReasonCode.orderRejected, mode: "paper" })).toBe(
+      "ORDER_REJECTED_PAPER",
+    );
+    expect(stopReasonKey({ reasonCode: ReasonCode.orderRejected, mode: "live" })).toBe(
+      ReasonCode.orderRejected,
+    );
+    expect(stopReasonKey({ reasonCode: ReasonCode.stopLoss, mode: "paper" })).toBe(
+      ReasonCode.stopLoss,
+    );
+  });
+
   it("cost limit and position loss limit", () => {
     expect(label(mm({ reasonCode: ReasonCode.budgetDone }))).toBe("Stopped: cost limit reached");
     expect(label(mm({ reasonCode: ReasonCode.stopLoss }))).toBe(

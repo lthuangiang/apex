@@ -2431,7 +2431,7 @@
         "long": "Long holders",
         "all": "All"
       },
-      "steadyNote": "Steady: made money over 30 days with small dips, at least 20 closed trades, no liquidations, and no single trade making most of the profit.",
+      "steadyNote": "Steady: profit over 30 days, worst dip at most {dipPct}% of that profit, at least {minTrades} closed trades, no single trade over {topPct}% of profit, holds trades {holdHours}h or longer, no liquidation.",
       "slotsNote": "Live copying follows up to 8 Hyperliquid traders at a time across DeskLabs. Traders other people already copy are always open. When all spots are taken, you can follow a trader and copy them when a spot opens.",
       "slotsFull": "All live copy spots are taken right now.",
       "profit": "Profit · 30 days",
@@ -2804,6 +2804,7 @@
       "actions": "Actions"
     },
     "mode": "Mainnet",
+    "modePaper": "Paper",
     "modeDraft": "Not started",
     "open": "Open",
     "edit": "Edit",
@@ -3011,7 +3012,8 @@
     "stateSub": {
       "paused": "Confirmed {time} · open orders kept",
       "stopping": "Sent {time} · cancelling {n, plural, one {# order} other {# orders}}",
-      "stopped": "Confirmed {time} · {n} open orders"
+      "stopped": "Confirmed {time} · {n} open orders",
+      "archived": "Archived · last change {time}"
     },
     "lifecycle": {
       "label": "Lifecycle",
@@ -3105,6 +3107,11 @@
       "body": "Start it again with the same settings, archive it to move it out of My bots, or export its data to analyse the run.",
       "startAgain": "Start again",
       "archive": "Archive"
+    },
+    "archived": {
+      "title": "This bot is archived",
+      "body": "Read-only. Restore it to run it again or change its settings.",
+      "restore": "Restore"
     },
     "quotes": {
       "title": "Live quotes",
@@ -3597,6 +3604,7 @@
     "RISK_DRAWDOWN": "Paused: drawdown limit reached",
     "BOT_MAX_LOSS": "Paused: max loss for this bot reached",
     "ORDER_REJECTED": "Paused: SoDEX rejected an order",
+    "ORDER_REJECTED_PAPER": "Paused: a simulated order was rejected",
     "INSUFFICIENT_BALANCE": "Paused: balance too low",
     "STOP_LOSS": "Stopped: stop loss reached",
     "TAKE_PROFIT": "Stopped: take profit reached",
@@ -3642,6 +3650,7 @@
     },
     "riskSnapshot": "Risk snapshot",
     "withinLimits": "Within limits",
+    "noLimits": "No limits set",
     "breached": "{n, plural, one {# limit breached} other {# limits breached}}",
     "dailyLoss": "Daily loss",
     "maxDd": "Max drawdown · 30D",
@@ -3851,6 +3860,9 @@
     "subtitle": "Your limits, how close you are, and who enforces each one.",
     "checked": "Risk engine checked {time}",
     "within": "Within limits",
+    "noneSet": "No limits set",
+    "noneSetBody": "Set a limit below and DeskLabs checks it for you.",
+    "uiOnlyBody": "No server-enforced limit is set. Your limits show warnings here only.",
     "withinBody": "Server-enforced limits pass.",
     "breachedTitle": "{n, plural, one {# limit reached} other {# limits reached}}",
     "breachedBody": "Running agents on this account were paused by the server.",
