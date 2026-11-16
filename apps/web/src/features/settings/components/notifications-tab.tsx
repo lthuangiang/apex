@@ -20,6 +20,7 @@ import {
   SETTINGS_GROUP_ORDER,
   useTelegramLink,
 } from "@/features/notifications/telegram";
+import { useNotificationText } from "@/features/notifications/text";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useFeatures, useMe, useNotifications } from "@/lib/queries";
@@ -32,6 +33,7 @@ const SETTINGS_KEY = ["notifications", "settings"] as const;
 export function NotificationsTab() {
   const t = useTranslations("settings.notifications");
   const tn = useTranslations("notifications");
+  const textOf = useNotificationText();
   const qc = useQueryClient();
   const settings = useQuery({
     queryKey: SETTINGS_KEY,
@@ -216,7 +218,10 @@ export function NotificationsTab() {
                 {/* Bài thử tiền giả (DEC-105) ghi rõ "fake-money test". */}
                 {n.data.paper === true && (n.type === "bot_paused" || n.type === "bot_stopped")
                   ? tn(`paperTypes.${n.type}`)
-                  : tn(`types.${n.type}`)}
+                  : n.type === "fee_tier_changed"
+                    ? // Bậc builder fee đổi: tiêu đề có mức mới ("Market Making fee lowered to 0.002%").
+                      textOf(n).title
+                    : tn(`types.${n.type}`)}
               </span>
               <span className="text-muted tabular-nums">{formatDateTime(n.createdAt)}</span>
             </li>

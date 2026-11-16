@@ -68,9 +68,16 @@ export interface VolumeMakerState {
   /** Lần cuối nhận giá sổ lệnh qua WS (DEC-248); còn mới thì REST 3 s chỉ cập nhật độ dày, không đè giá. */
   bookStreamAt?: number | null;
   /** Đếm request lệnh (đặt + huỷ) gửi SoDEX trong cửa sổ 1 phút, ghi Decisions (DEC-248). */
-  reqWin?: { since: number; n: number };
+  reqWin?: {
+    since: number;
+    n: number;
+    /** Khoảng dài nhất (ms) giữa hai lần xét báo giá (`lastRefresh`) trong cửa sổ (DEC-268). */
+    gap?: number;
+  };
   /** Lần cắt vị thế gần nhất (DEC-249). */
   cutAt?: number | null;
+  /** clOrdID lệnh cắt gần nhất; chưa có kết quả thì giữ phía làm tăng vị thế (DEC-260). */
+  cutId?: string | null;
   /** Giá trong cửa sổ xu hướng gần nhất cho Smart quoting (DEC-144, DEC-152). */
   /** Giá gần đây cho momentum / trend; không còn ghi từ DEC-247, giữ để đọc state cũ. */
   recent?: { t: number; p: string }[];
@@ -442,6 +449,11 @@ function quote(
   const unsure = { buy: false, sell: false };
   for (const o of Object.values(s.orders))
     if (o.status === "cancelling" && o.role === "open") unsure[o.side] = true;
+  // Lệnh cắt vị thế (market reduce-only) chưa có kết quả (DEC-260): không đặt lệnh mở ở phía làm tăng vị thế
+  // (long → mua, short → bán), kể cả khi SoDEX vừa xác nhận huỷ lệnh mở phía đó hay tới nhịp đồng hồ. Gỡ khi lệnh cắt
+  // xong (khớp hết, bị từ chối, `orderDone`), hoặc sau `VM_STALE_CANCEL_MS` như các chặn khác (đối soát vị thế bù phần lỡ).
+  const cut = pendingCut(s, at);
+  if (cut !== null) unsure[cut.side === "sell" ? "buy" : "sell"] = true;
   const pulled = {
     buy: paused || smart?.buy?.pull === true,
     sell: paused || smart?.sell?.pull === true,
@@ -690,6 +702,21 @@ function quote(
   return { actions, state: next };
 }
 
+/** Quyết định ghi vào Decisions khi Volume Maker tự dừng (`halt`). */
+export const VOLUME_MAKER_STOPPED = "Volume Maker stopped";
+const RUN_TIME_ENDED = "Run time ended.";
+const volumeTargetReached = (target: string) => `Volume target ${target} reached.`;
+
+/**
+ * Lý do MAX_CYCLES theo câu `why` mà `halt` đã ghi (DEC-262): đủ volume target hay hết giờ. Đọc từ
+ * nhật ký lúc dừng, không suy từ config hiện tại (config có thể đã sửa sau khi dừng). Câu khác thì null.
+ */
+export function volumeMakerStopCause(why: string | null): "volume_target" | "end_time" | null {
+  if (why === null) return null;
+  if (why === RUN_TIME_ENDED) return "end_time";
+  return /^Volume target \S+ reached\.$/.test(why) ? "volume_target" : null;
+}
+
 function halt(
   c: VolumeMakerConfig,
   s: VolumeMakerState,
@@ -706,7 +733,7 @@ function halt(
   for (const [id, o] of Object.entries(s.orders)) {
     if (o.status === "live") actions.push({ type: "cancel", clOrdID: id });
   }
-  actions.push({ type: "log", decision: "Volume Maker stopped", why });
+  actions.push({ type: "log", decision: VOLUME_MAKER_STOPPED, why });
   const orders: Record<string, TrackedOrder> = {};
   for (const [id, o] of Object.entries(s.orders)) {
     orders[id] = o.status === "live" ? { ...o, status: "cancelling", since: at } : o;
@@ -766,9 +793,9 @@ function guards(
       at,
     );
   if (c.volumeTarget !== undefined && dec(s.volume).gte(c.volumeTarget))
-    return halt(c, s, ctx, ReasonCode.maxCycles, `Volume target ${c.volumeTarget} reached.`, at);
+    return halt(c, s, ctx, ReasonCode.maxCycles, volumeTargetReached(c.volumeTarget), at);
   if (c.runUntil !== "target_or_budget" && c.untilAt !== undefined && at >= c.untilAt)
-    return halt(c, s, ctx, ReasonCode.maxCycles, "Run time ended.", at);
+    return halt(c, s, ctx, ReasonCode.maxCycles, RUN_TIME_ENDED, at);
   if (!s.warned && used.gte(dec(c.costBudget).mul("0.8"))) {
     return {
       actions: [
@@ -873,6 +900,14 @@ function onFair(
   return { actions, state };
 }
 
+/** Lệnh cắt gần nhất còn chưa có kết quả và chưa quá `VM_STALE_CANCEL_MS` (DEC-260); null nếu không có. */
+function pendingCut(s: VolumeMakerState, at: number): TrackedOrder | null {
+  const cut = s.cutId == null ? undefined : s.orders[s.cutId];
+  // Tính từ lúc cắt, không từ `since` (đổi khi lệnh cắt chuyển sang cancelling), nên chặn tối đa ~60 s.
+  const from = s.cutAt ?? cut?.since ?? at;
+  return cut !== undefined && cut.status !== "done" && at - from < VM_STALE_CANCEL_MS ? cut : null;
+}
+
 /** Cắt vị thế khi giá Binance chạy ngược giá vào ≥ `VM_CUT.bp` (DEC-249); null khi không cần cắt. */
 function cutPosition(
   c: VolumeMakerConfig,
@@ -887,6 +922,9 @@ function cutPosition(
   if (rules === undefined || s.mid === null || !entry.gt(0) || isFlat(pos, s.mid, rules))
     return null;
   if (s.cutAt != null && e.at - s.cutAt < VM_CUT.coolMs) return null;
+  // Lệnh cắt trước chưa có kết quả (DEC-260): không cắt lại. Tránh đóng hai lần bằng market, trùng clOrdID
+  // `vm:<cycle>:cut:close`, và lần cắt mới bị từ chối gỡ chặn trong khi lần đầu vẫn đang đi.
+  if (pendingCut(s, e.at) !== null) return null;
   const long = pos.gt(0);
   const against = (long ? entry.sub(fair) : fair.sub(entry)).div(entry).mul(10_000);
   if (against.lt(VM_CUT.bp)) return null;
@@ -930,6 +968,7 @@ function cutPosition(
       ...s,
       orders,
       cutAt: e.at,
+      cutId: o.clOrdID,
       fair: e.fair,
       fairAt: e.at,
       fairBinanceAt: e.binanceAt,
@@ -986,29 +1025,43 @@ export function stepVolumeMaker(
   if (!c.smartQuoting) return r;
   // Đếm request lệnh gửi SoDEX (DEC-248): mỗi phút một dòng Decisions để theo dõi hạn mức theo địa chỉ ví.
   const sent = r.actions.filter((a) => a.type === "place" || a.type === "cancel").length;
-  // Không gửi gì và chưa hết cửa sổ: trả nguyên kết quả để nhịp không có gì mới không phải ghi state.
+  // Khoảng giữa hai lần xét báo giá (DEC-268): lần xét mới thì đo từ lần trước.
+  const before = raw.lastRefresh;
+  const after = r.state.lastRefresh;
+  const step = before !== null && after !== null && after > before ? after - before : 0;
+  // Không gửi gì, không có lần xét mới và chưa hết cửa sổ: trả nguyên kết quả để nhịp không có gì mới không phải ghi
+  // state.
   if (
     sent === 0 &&
+    step === 0 &&
     r.state.reqWin !== undefined &&
     e.at - r.state.reqWin.since < VM_BOOK_STREAM.logEveryMs
   )
     return r;
   const win = r.state.reqWin ?? { since: e.at, n: 0 };
   const n = win.n + sent;
+  const gap = Math.max(win.gap ?? 0, step);
   const span = e.at - win.since;
   if (span < VM_BOOK_STREAM.logEveryMs)
-    return { ...r, state: { ...r.state, reqWin: { since: win.since, n } } };
+    return { ...r, state: { ...r.state, reqWin: { since: win.since, n, gap } } };
+  // Tính cả khoảng đang mở (từ lần xét gần nhất tới lúc ghi), để bot đứng hẳn vẫn hiện khoảng dài.
+  const open = after === null ? 0 : e.at - after;
+  const longest = Math.max(gap, open);
   const log: StrategyAction[] =
-    n > 0
+    // Bot đứng hẳn (0 request) vẫn ghi khi khoảng hở đang mở dài hết cửa sổ: đó chính là trường hợp cần thấy (review #157).
+    n > 0 || open >= VM_BOOK_STREAM.logEveryMs
       ? [
           {
             type: "log",
             decision: "Order requests",
-            why: `Last ${String(Math.round(span / 1000))} s: ${String(n)} requests to SoDEX (new orders and cancels).`,
+            why: `Last ${String(Math.round(span / 1000))} s: ${String(n)} requests to SoDEX (new orders and cancels). Longest gap between quotes: ${(longest / 1000).toFixed(1)} s.`,
           },
         ]
       : [];
-  return { actions: [...r.actions, ...log], state: { ...r.state, reqWin: { since: e.at, n: 0 } } };
+  return {
+    actions: [...r.actions, ...log],
+    state: { ...r.state, reqWin: { since: e.at, n: 0, gap: 0 } },
+  };
 }
 
 function stepCore(
