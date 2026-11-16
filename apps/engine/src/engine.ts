@@ -164,6 +164,11 @@ export interface EngineDeps {
   paper?: PaperGateway;
 }
 
+/** Lý do "Leverage set". Bot paper không gửi gì tới SoDEX (PaperGateway, DEC-105) nên không ghi "SoDEX confirmed". */
+function leverageWhy(paper: boolean, what: string): string {
+  return paper ? `Simulated ${what}. Nothing was sent to SoDEX.` : `SoDEX confirmed ${what}.`;
+}
+
 /** Engine (Spot / Perps) mà bot giao dịch, theo chiến lược và cấu hình. */
 function engineOfBot(strategy: string, config: unknown): "spot" | "perps" {
   if (
@@ -242,6 +247,10 @@ interface Runner {
   leverageSet: boolean;
   /** Lần `updateLeverage` trước không rõ kết quả: phải đọc lại SoDEX trước khi gửi lại (quy tắc 1.7). */
   leverageUnknown: boolean;
+  /** Market đã được SoDEX xác nhận đòn bẩy cho version này (CP-01): lần thử sau không đặt / ghi lại. */
+  leverageDone: Set<string>;
+  /** Lần đặt đòn bẩy đang chạy: sự kiện tới cùng lúc chờ chung, không đặt song song (CP-01). */
+  leverageRun: Promise<"ok" | "rejected" | "unknown" | "not_sent"> | null;
   /** Request chưa rời DRIFT (signer lỗi): chờ backoff tới `nextAt`; quá hạn thì pause (UI_REVIEW H1). */
   blocked: { since: number; attempts: number; nextAt: number; code: NotSentCode } | null;
   /** Số lệnh market reduce-only bị SoDEX từ chối liên tiếp (vị thế trong sổ bot có thể lệch SoDEX). */
@@ -514,14 +523,12 @@ export class Engine {
     const paper = this.#d.paper;
     if (paper !== undefined) {
       paper.setPrice(market, price);
-      if (
-        [...this.#runners.values()].some(
-          (x) => x.paper && (x.market === market || this.#watches(x, market)),
-        )
-      ) {
-        for (const f of await paper.onPrice(market, price, at))
+      const ids = [...this.#runners.values()]
+        .filter((x) => x.paper && (x.market === market || this.#watches(x, market)))
+        .map((x) => x.botId);
+      if (ids.length > 0)
+        for (const f of await paper.onPrice(market, price, at, ids))
           await this.onFill(f.accountId, f.clOrdID, f.totalFilled, f.avgPrice, f.fee, at);
-      }
     }
     for (const r of [...this.#runners.values()].filter(
       (x) => x.market === market || this.#watches(x, market),
@@ -1060,6 +1067,8 @@ export class Engine {
       awaitingFirstAck: bot.state === BotState.starting,
       leverageSet: false,
       leverageUnknown: false,
+      leverageDone: new Set(),
+      leverageRun: null,
       blocked: null,
       reduceRejects: 0,
       makerReduceRejects: 0,
@@ -1117,6 +1126,7 @@ export class Engine {
     r.state = entry.module.initialState(config);
     r.ctx = { ...r.ctx, version: pending.version };
     r.leverageSet = false;
+    r.leverageDone = new Set();
     await this.#event(
       r,
       "version",
@@ -1265,15 +1275,43 @@ export class Engine {
     r: Runner,
     at: number,
   ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
-    // Copy Trade đặt cùng đòn bẩy cho mọi market (DEC-163); chiến lược khác có tối đa một symbol.
+    // Sự kiện tới cùng lúc (giá, Binance, nhịp) chờ chung một lần đặt (CP-01: trước đây BTC-USD ghi 7 lần trong 2 s).
+    if (r.leverageRun !== null) return r.leverageRun;
+    r.leverageRun = this.#ensureLeverageAll(r, at);
+    try {
+      return await r.leverageRun;
+    } finally {
+      r.leverageRun = null;
+    }
+  }
+
+  async #ensureLeverageAll(
+    r: Runner,
+    at: number,
+  ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
+    // Copy Trade đặt cùng đòn bẩy cho mọi market (DEC-163); chiến lược khác có tối đa một symbol. Market đã xác nhận thì
+    // bỏ qua; Decisions ghi một dòng gộp cho các market vừa xác nhận (CP-01).
     const specs = leverageSpecsOf(r.strategy, r.market, r.config);
+    const confirmed: LeverageSpec[] = [];
+    const log = async () => {
+      const first = confirmed[0];
+      if (first === undefined) return;
+      const what = `${String(first.leverage)}× ${first.marginMode} on ${confirmed.map((x) => x.market).join(", ")}`;
+      await this.#event(r, "decision", "Leverage set", leverageWhy(r.paper, what), at);
+    };
     for (const spec of specs) {
+      const key = `${spec.market}:${String(spec.leverage)}:${spec.marginMode}`;
+      if (r.leverageDone.has(key)) continue;
       const res = await this.#ensureLeverageOne(r, spec, at);
       if (res !== "ok") {
+        await log();
         r.leverageSet = false;
         return res;
       }
+      r.leverageDone.add(key);
+      confirmed.push(spec);
     }
+    await log();
     r.leverageSet = true;
     return "ok";
   }
@@ -1294,9 +1332,7 @@ export class Engine {
       current = undefined;
     }
     if (current?.leverage === spec.leverage && current.marginMode === spec.marginMode) {
-      r.leverageSet = true;
       r.leverageUnknown = false;
-      await this.#event(r, "decision", "Leverage set", `SoDEX confirmed ${what}.`, at);
       return "ok";
     }
     // Vị thế đang mở trên symbol với thiết lập khác: không đổi đòn bẩy của cả account (DEC-58), không retry.
@@ -1323,9 +1359,7 @@ export class Engine {
     });
     r.leverageUnknown = res.outcome === "unknown";
     if (res.outcome === "ok") {
-      r.leverageSet = true;
       r.blocked = null;
-      await this.#event(r, "decision", "Leverage set", `SoDEX confirmed ${what}.`, at);
     } else if (res.outcome === "rejected") {
       await this.#event(
         r,
@@ -1622,7 +1656,7 @@ export class Engine {
             const sent = toSend.find((o) => o.clOrdID === res.clOrdID);
             this.#d.log.warn(
               { botId: r.botId, clOrdID: res.clOrdID, code: res.code, message: res.message },
-              "order rejected by SoDEX",
+              r.paper ? "paper order rejected (simulated)" : "order rejected by SoDEX",
             );
             await this.#feed(r, { type: "orderReject", at, clOrdID: res.clOrdID, code: res.code });
             // Stop loss gốc bị từ chối (DEC-118) không phải lệnh đóng thật: chiến lược tự giữ SL, không pause.
@@ -2018,7 +2052,18 @@ export class Engine {
   }
 
   /** stop huỷ lệnh của bot rồi (nếu cấu hình) đóng vị thế bằng lệnh reduce-only (DOMAIN.md mục 7.2). */
-  async #stopBot(r: Runner, reason: Reason | null, close: boolean): Promise<void> {
+  async #stopBot(r: Runner, reason: Reason | null, closeIn: boolean): Promise<void> {
+    let close = closeIn;
+    // Chiến lược dừng trong lúc người dùng đang Stop kèm "Close position" (bot `stopping`, closeOnStop = true): giữ lựa
+    // chọn của người dùng (keep_base của chiến lược không bỏ được lệnh đóng người dùng đã chọn). Chỉ đọc khi `stopping`:
+    // closeOnStop của lần Stop cũ không được reset lúc Start.
+    if (reason !== null && !close) {
+      const [b] = await this.#d.db
+        .select({ state: bots.state, closeOnStop: bots.closeOnStop })
+        .from(bots)
+        .where(eq(bots.id, r.botId));
+      close = b?.state === BotState.stopping && b.closeOnStop;
+    }
     const open = await this.#d.db
       .select({ clOrdId: orders.clOrdId })
       .from(orders)
@@ -2040,6 +2085,16 @@ export class Engine {
         { botId: r.botId, unknown: unknown?.n, reason },
         "stop waits for unknown orders to be reconciled",
       );
+      // Stop của người dùng: bot vẫn `stopping`, nhịp sau gọi lại. Dừng do chiến lược: ghi xuống DB thành `stopping` kèm
+      // lý do (bền qua restart / đổi shard), để đường Stop của người dùng làm nốt và giữ lý do + tin báo.
+      if (reason !== null) await this.#haltToStopping(r, reason, close);
+      return;
+    }
+    // Bot paper (PB-01): lệnh đóng market cần giá để mô phỏng; chưa có giá thì PaperGateway từ chối (NO_PRICE), lệnh
+    // đóng thành `rejected` và bot dừng với vị thế giả còn mở. Kiểm tra giá TRƯỚC khi đặt lệnh đóng: chưa có thì Stop
+    // của người dùng giữ `stopping` (nhịp sau thử lại, chưa gửi gì); dừng do chiến lược thì ghi warn.
+    if (r.paper && close && !this.#paperPriced(r)) {
+      this.#d.log.warn({ botId: r.botId }, "paper close waits: no price for its market yet");
       if (reason === null) return;
     }
     if (r.strategy === Strategy.copyTrade) {
@@ -2103,25 +2158,48 @@ export class Engine {
         this.#d.now(),
       );
     }
-    await this.#fenced(r, async (tx) => {
+    // Bot paper (PB-01): lệnh đóng market chỉ khớp ở lần giá kế tiếp khi bot còn runner; bot sắp bị bỏ khỏi runner nên
+    // khớp ngay ở giá hiện tại, không để lệnh đóng nằm "open" mãi và vị thế giả không bao giờ được đóng.
+    if (r.paper && !(await this.#fillPaperNow(r))) {
+      // Chưa có giá cho market của lệnh đóng (vừa khởi động / đổi shard): Stop của người dùng giữ bot ở `stopping`,
+      // nhịp sau thử lại (lệnh đóng không gửi lại vì trùng clOrdID). Dừng do chiến lược thì không có lần thử lại: ghi warn.
+      this.#d.log.warn({ botId: r.botId }, "paper close not filled: no price for its market yet");
+      if (reason === null) return;
+    }
+    // Dừng do chiến lược đã qua `stopping` (lệnh unknown phải đối soát trước): lý do lấy từ event "Stopping" đã ghi, để
+    // tin `bot_stopped` vẫn được gửi. Stop của người dùng không có event này nên không gửi tin.
+    const haltReason = reason === null ? await this.#haltReasonOf(r.botId) : null;
+    const deferred = await this.#fenced(r, async (tx) => {
       const [b] = await tx
-        .select({ state: bots.state })
+        .select({ state: bots.state, closeOnStop: bots.closeOnStop })
         .from(bots)
         .where(eq(bots.id, r.botId))
         .for("update");
-      if (b === undefined) return;
+      if (b === undefined) return false;
+      // Stop kèm "Close position" của người dùng commit SAU lần đọc ở đầu hàm (trong lúc huỷ lệnh trên SoDEX): chưa có lệnh
+      // đóng mà vị thế còn. Không kết thúc; chuyển sang `stopping` giữ lý do, để nhịp Stop sau gửi lệnh đóng.
+      if (
+        reason !== null &&
+        !close &&
+        b.state === BotState.stopping &&
+        b.closeOnStop &&
+        this.#hasPosition(r)
+      ) {
+        await this.#writeHaltStopping(tx, r, reason, true);
+        return true;
+      }
       const next =
         reason === null
           ? applyEngineEvent(b.state, EngineEvent.confirmedStopped)
           : applyReason(b.state, reason);
-      if (next === null) return;
+      if (next === null) return false;
       await tx
         .update(bots)
         .set({ state: next, ...(reason === null ? {} : { reasonCode: reason }) })
         .where(eq(bots.id, r.botId));
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
-        payload: { botId: r.botId, state: next, reasonCode: reason },
+        payload: { botId: r.botId, state: next, reasonCode: reason ?? haltReason },
       });
       // Báo team (DEC-184): bot tiền thật vào running sau một lần Start (starting → running; resume không báo).
       // Vốn tính sẵn ở đây (cùng hàm với Strategy Lab); jobs chỉ hiển thị.
@@ -2138,17 +2216,118 @@ export class Engine {
           },
         });
       }
-      if (reason !== null)
+      const notify = reason ?? haltReason;
+      if (notify !== null)
         await tx.insert(outbox).values({
           topic: "jobs.notify",
           payload: {
             sodexAccountId: r.account.id,
             type: next === "stopped" ? "bot_stopped" : "bot_paused",
-            data: { botId: r.botId, reasonCode: reason, ...(r.paper ? { paper: true } : {}) },
+            data: { botId: r.botId, reasonCode: notify, ...(r.paper ? { paper: true } : {}) },
           },
         });
+      return false;
     });
+    if (deferred) return;
     this.#runners.delete(r.botId);
+  }
+
+  /**
+   * Chiến lược dừng (halt) khi bot còn lệnh `unknown` (quy tắc 1.7): chuyển bot sang `stopping` kèm lý do và lựa chọn
+   * đóng vị thế trong một transaction có fence, rồi ghi event "Stopping" với lý do. UI hiện "Stopping…" đúng sự thật
+   * (quy tắc 1.6); đường Stop của người dùng làm nốt khi đã đối soát xong.
+   */
+  async #haltToStopping(r: Runner, reason: Reason, close: boolean): Promise<void> {
+    await this.#fenced(r, async (tx) => {
+      const [b] = await tx
+        .select({ state: bots.state, closeOnStop: bots.closeOnStop })
+        .from(bots)
+        .where(eq(bots.id, r.botId))
+        .for("update");
+      if (b === undefined || b.state === BotState.stopped || b.state === BotState.archived) return;
+      // Người dùng đang Stop kèm đóng vị thế thì giữ lựa chọn đó (closeOnStop chỉ có nghĩa khi bot đang `stopping`).
+      const userClose = b.state === BotState.stopping && b.closeOnStop;
+      await this.#writeHaltStopping(tx, r, reason, close || userClose);
+    });
+  }
+
+  /** Ghi (trong transaction đang giữ khoá dòng bot): `stopping` + lý do + lựa chọn đóng, outbox và event "Stopping". */
+  async #writeHaltStopping(tx: Db, r: Runner, reason: Reason, close: boolean): Promise<void> {
+    await tx
+      .update(bots)
+      .set({ state: BotState.stopping, reasonCode: reason, closeOnStop: close })
+      .where(eq(bots.id, r.botId));
+    await tx.insert(outbox).values({
+      topic: `user.${r.account.id}.bot`,
+      payload: { botId: r.botId, state: BotState.stopping, reasonCode: reason },
+    });
+    // Cùng transaction: lý do của lần dừng không mất nếu engine chết giữa chừng (#haltReasonOf đọc lại event này).
+    await tx.insert(botEvents).values({
+      botId: r.botId,
+      type: "state",
+      decision: "Stopping",
+      why: reason,
+      occurredAt: new Date(this.#d.now()),
+    });
+  }
+
+  /** Bot còn vị thế theo sổ cái (cùng nguồn với lệnh đóng khi Stop). */
+  #hasPosition(r: Runner): boolean {
+    if (r.strategy === Strategy.copyTrade)
+      return Object.values(
+        copyPositions(normalizeCopyState(r.config as CopyTradeConfig, r.state)),
+      ).some((s) => !dec(s).isZero());
+    const st = r.state as { ledger?: { position: string }; perp?: { position: string } };
+    const ledger = r.strategy === Strategy.fundingArb ? st.perp : st.ledger;
+    return ledger !== undefined && !dec(ledger.position).isZero();
+  }
+
+  /** Lý do của lần dừng do chiến lược đang chờ đối soát: event trạng thái gần nhất là "Stopping" kèm reason code. */
+  async #haltReasonOf(botId: string): Promise<Reason | null> {
+    const [e] = await this.#d.db
+      .select({ decision: botEvents.decision, why: botEvents.why })
+      .from(botEvents)
+      .where(and(eq(botEvents.botId, botId), eq(botEvents.type, "state")))
+      .orderBy(desc(botEvents.occurredAt))
+      .limit(1);
+    if (e?.decision !== "Stopping" || e.why === null) return null;
+    return (Object.values(ReasonCode) as string[]).includes(e.why) ? (e.why as Reason) : null;
+  }
+
+  /** Market của bot paper đã có giá mô phỏng (cùng nguồn `PaperGateway.priceOf` mà lệnh paper dùng). */
+  #paperPriced(r: Runner): boolean {
+    const paper = this.#d.paper;
+    if (paper === undefined) return true;
+    return paper.priceOf(r.market) !== null;
+  }
+
+  /**
+   * Khớp ngay các lệnh paper đang mở của bot ở giá gần nhất của từng market (lệnh limit chỉ khớp khi giá đã qua).
+   * Trả false khi còn lệnh market (lệnh đóng) đang mở vì market của nó chưa có giá.
+   */
+  async #fillPaperNow(r: Runner): Promise<boolean> {
+    const paper = this.#d.paper;
+    if (paper === undefined) return true;
+    const at = this.#d.now();
+    const priced = new Set<string>();
+    for (const market of new Set([r.market, ...Object.keys(r.ctx.rules)])) {
+      const price = this.#lastPrice.get(market) ?? paper.priceOf(market);
+      if (price === null) continue;
+      priced.add(market);
+      for (const f of await paper.onPrice(market, price, at, [r.botId]))
+        await this.onFill(f.accountId, f.clOrdID, f.totalFilled, f.avgPrice, f.fee, at);
+    }
+    const waiting = await this.#d.db
+      .select({ market: orders.market })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          eq(orders.type, "market"),
+          inArray(orders.status, ["open", "partially_filled"]),
+        ),
+      );
+    return waiting.every((o) => priced.has(o.market));
   }
 
   /** Engine của lệnh đóng khi Stop: Futures Grid / DCA, Volume Maker / Farm và TWAP chạy Perps đều là Perps. */

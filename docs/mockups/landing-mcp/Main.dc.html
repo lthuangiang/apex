@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DeskLabs hero</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a:hover{opacity:.85}
+button:focus-visible,a:focus-visible{outline:2px solid #5b8cff;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 980px; background: {{c.bg}}; color: {{c.text}}; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column">
+
+  <nav aria-label="Main" style="width: 100%; max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 22px 32px; display: flex; flex-wrap: wrap; align-items: center; gap: 28px">
+    <a href="#" style="display: flex; align-items: center; gap: 10px; color: {{c.text}}; text-decoration: none; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 20px">
+      <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#2E62E8"></rect><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#FFFFFF"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#FFFFFF" opacity="0.7"></rect></svg>
+      DeskLabs
+    </a>
+    <div style="display: flex; flex-wrap: wrap; gap: 24px; font-size: 14px">
+      <a href="{{links.strategies}}" style="color: {{c.text2}}; text-decoration: none">Strategies</a>
+      <a href="{{links.analytics}}" style="color: {{c.text2}}; text-decoration: none">Analytics</a>
+      <a href="{{links.how}}" style="color: {{c.text2}}; text-decoration: none">How it works</a>
+      <a href="{{links.safety}}" style="color: {{c.text2}}; text-decoration: none">Safety</a>
+      <a href="{{links.fees}}" style="color: {{c.text2}}; text-decoration: none">Fees</a>
+      <a href="{{links.faq}}" style="color: {{c.text2}}; text-decoration: none">FAQ</a>
+      <a href="{{links.claude}}" style="color: {{c.text2}}; text-decoration: none">Claude</a>
+    </div>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 12px">
+      <button type="button" aria-label="{{themeLabel}}" onClick="{{toggleTheme}}" style="width: 44px; height: 44px; border-radius: 8px; border: 1px solid {{c.btnBorder}}; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer">
+        <sc-if value="{{isDark}}" hint-placeholder-val="{{ true }}">
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="3.5" fill="none" stroke="{{c.text}}" stroke-width="1.6"></circle><path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M3.7 14.3l1.4-1.4M12.9 5.1l1.4-1.4" stroke="{{c.text}}" stroke-width="1.6"></path></svg>
+        </sc-if>
+        <sc-if value="{{isLight}}" hint-placeholder-val="{{ false }}">
+          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M14.5 11.2A6 6 0 0 1 6.8 3.5a6 6 0 1 0 7.7 7.7z" fill="none" stroke="{{c.text}}" stroke-width="1.6"></path></svg>
+        </sc-if>
+      </button>
+      <a href="#" style="color: {{c.text}}; text-decoration: none; font-size: 14px; font-weight: 600">Sign in</a>
+      <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 8px; background: #2e62e8; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 600">Launch app</a>
+    </div>
+  </nav>
+
+  <main style="width: 100%; max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 56px 32px 64px; display: flex; flex-wrap: wrap; gap: 56px; align-items: flex-start">
+
+    <section aria-label="Intro" style="flex: 1 1 500px; min-width: 0; display: flex; flex-direction: column; gap: 28px">
+      <p style="margin: 0; display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: {{c.muted}}">
+        <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: {{c.live}}"></span>
+        On SoDEX mainnet · Powered by SoDEX Builder Code
+      </p>
+      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 62px; line-height: 1.02; letter-spacing: -0.02em">Volume on SoDEX, built mostly with maker orders.</h1>
+      <p style="margin: 0; max-width: 520px; font-size: 18px; line-height: 1.6; color: {{c.text2}}">Market Making and Volume Builder trade on your own SoDEX account. Each bot logs why it acted, shows what every $1M of volume cost you, and stops at the loss limit you set.</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px">
+        <a href="#" style="display: inline-flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 24px; border-radius: 8px; background: #2e62e8; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600">Launch app
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="#ffffff" stroke-width="1.8"></path></svg>
+        </a>
+        <a href="#panel" style="display: inline-flex; align-items: center; min-height: 52px; padding: 0 22px; border-radius: 8px; border: 1px solid {{c.btnBorder}}; color: {{c.text}}; text-decoration: none; font-size: 16px; font-weight: 600">Watch a bot work</a>
+      </div>
+
+      <dl aria-label="What DeskLabs can do on your account" style="margin: 8px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid {{c.line}}; border-bottom: 1px solid {{c.line}}">
+        <div style="padding: 16px 16px 16px 0; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid {{c.line}}">
+          <dt style="font-size: 12.5px; color: {{c.muted}}">Withdraw or transfer</dt>
+          <dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 500; color: {{c.never}}">Never</dd>
+        </div>
+        <div style="padding: 16px; display: flex; flex-direction: column; gap: 6px; border-right: 1px solid {{c.line}}">
+          <dt style="font-size: 12.5px; color: {{c.muted}}">Seed phrase</dt>
+          <dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 500">Never asked</dd>
+        </div>
+        <div style="padding: 16px; display: flex; flex-direction: column; gap: 6px">
+          <dt style="font-size: 12.5px; color: {{c.muted}}">Connect</dt>
+          <dd style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 500">Two signatures</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section id="panel" aria-label="Example bot" style="flex: 1 1 460px; min-width: 0; border: 1px solid {{c.line}}; border-radius: 12px; background: {{c.surface}}; overflow: hidden">
+      <div role="tablist" aria-label="Strategy" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid {{c.line}}">
+        <button type="button" role="tab" aria-selected="{{mmSelected}}" onClick="{{pickMm}}" style="{{mmTab}}">
+          <span>Market Making</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{c.muted}}">Builder fee 0.003%</span>
+        </button>
+        <button type="button" role="tab" aria-selected="{{vbSelected}}" onClick="{{pickVb}}" style="{{vbTab}}">
+          <span>Volume Builder</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: {{c.muted}}">Builder fee 0.005%</span>
+        </button>
+      </div>
+
+      <sc-if value="{{isMm}}" hint-placeholder-val="{{ true }}">
+        <div style="padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; align-items: baseline; gap: 10px">
+            <strong style="font-family: 'Space Grotesk', sans-serif; font-size: 17px">BTC-USD</strong>
+            <span style="font-size: 13px; color: {{c.muted}}">Sits in the book on both sides, no direction</span>
+            <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: {{c.live}}"><span aria-hidden="true" style="width: 7px; height: 7px; border-radius: 50%; background: {{c.live}}"></span>Running</span>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; font-size: 13px">
+            <thead>
+              <tr style="color: {{c.muted}}; font-size: 11.5px">
+                <th scope="col" style="text-align: left; font-weight: 400; padding: 0 0 8px">Price</th>
+                <th scope="col" style="text-align: right; font-weight: 400; padding: 0 0 8px">Size (USDC)</th>
+                <th scope="col" style="text-align: right; font-weight: 400; padding: 0 0 8px">Side</th>
+              </tr>
+            </thead>
+            <tbody>
+              <sc-for list="{{book}}" as="row" hint-placeholder-count="6">
+                <tr style="{{row.rowStyle}}">
+                  <td style="{{row.priceStyle}}">{{row.price}}<sc-if value="{{row.you}}" hint-placeholder-val="{{ false }}"><span style="margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: #2e62e8; color: #ffffff; font-size: 10.5px; font-weight: 500">YOU</span></sc-if></td>
+                  <td style="text-align: right; padding: 7px 8px">{{row.size}}</td>
+                  <td style="text-align: right; padding: 7px 8px; color: {{c.muted}}">{{row.side}}</td>
+                </tr>
+              </sc-for>
+            </tbody>
+          </table>
+          <div style="border-top: 1px solid {{c.line}}; padding-top: 12px; display: flex; flex-direction: column; gap: 8px">
+            <span style="font-size: 12px; color: {{c.muted}}">Decisions</span>
+            <div style="display: flex; gap: 12px; font-size: 13.5px"><span style="font-family: 'JetBrains Mono', monospace; color: {{c.muted}}">14:42:07</span><span><strong style="font-weight: 600">Ask requoted</strong> <span style="color: {{c.text2}}">· best ask moved away, ask placed again at the new price</span></span></div>
+            <div style="display: flex; gap: 12px; font-size: 13.5px"><span style="font-family: 'JetBrains Mono', monospace; color: {{c.muted}}">14:42:11</span><span><strong style="font-weight: 600">Filled</strong> <span style="color: {{c.text2}}">· bid 0.0003 BTC, maker</span></span></div>
+          </div>
+          <dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: {{c.line}}; border: 1px solid {{c.line}}; border-radius: 8px; overflow: hidden">
+            <div style="background: {{c.surface}}; padding: 11px 12px; display: flex; flex-direction: column; gap: 3px"><dt style="font-size: 13px; font-weight: 600">Both sides</dt><dd style="margin: 0; font-size: 12px; color: {{c.muted}}">A bid and an ask, post-only, near the mid</dd></div>
+            <div style="background: {{c.surface}}; padding: 11px 12px; display: flex; flex-direction: column; gap: 3px"><dt style="font-size: 13px; font-weight: 600">After a fill</dt><dd style="margin: 0; font-size: 12px; color: {{c.muted}}">The closing quote moves closer, the other backs off</dd></div>
+            <div style="background: {{c.surface}}; padding: 11px 12px; display: flex; flex-direction: column; gap: 3px"><dt style="font-size: 13px; font-weight: 600">Cost cap</dt><dd style="margin: 0; font-size: 12px; color: {{c.muted}}">Stops at your limit; Smart quoting closes the position if price runs 15 bp against it</dd></div>
+          </dl>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isVb}}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 18px 20px; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; align-items: baseline; gap: 10px">
+            <strong style="font-family: 'Space Grotesk', sans-serif; font-size: 17px">ETH-USD</strong>
+            <span style="font-size: 13px; color: {{c.muted}}">Reads a signal, then takes one short trade</span>
+            <span style="margin-left: auto; padding: 2px 8px; border-radius: 4px; border: 1px solid {{c.line}}; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: {{c.muted}}">Example</span>
+          </div>
+          <div style="border: 1px solid {{c.line}}; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+            <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap">
+              <span style="font-size: 13px; font-weight: 600">1 · Signal before entry</span>
+              <span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: {{c.muted}}">1-min candles + order book</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: {{c.muted}}">
+              <span>Short</span>
+              <div aria-hidden="true" style="flex: 1; position: relative; height: 8px; border-radius: 4px; background: {{c.line}}">
+                <div style="position: absolute; left: 50%; top: -4px; width: 1px; height: 16px; background: {{c.muted}}"></div>
+                <div style="position: absolute; left: 50%; top: 0; width: 8.3%; height: 8px; border-radius: 0 4px 4px 0; background: {{c.bid}}"></div>
+                <div style="position: absolute; left: 58.3%; top: -3px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: {{c.bid}}; border: 2px solid {{c.surface}}; box-sizing: border-box"></div>
+              </div>
+              <span>Long</span>
+            </div>
+            <p style="margin: 0; font-size: 13.5px"><strong style="font-family: 'JetBrains Mono', monospace; font-weight: 500">Score 0.583</strong> <span style="color: {{c.text2}}">· above 0.5, so long</span></p>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px">
+              <span style="padding: 3px 8px; border-radius: 4px; background: {{c.surface2}}">5-min trend: SIDEWAY</span>
+              <span style="padding: 3px 8px; border-radius: 4px; background: {{c.surface2}}">Not against the trend ✓</span>
+              <span style="padding: 3px 8px; border-radius: 4px; background: {{c.surface2}}">Spread OK ✓</span>
+            </div>
+          </div>
+          <span style="font-size: 13px; font-weight: 600">2 · One trade, protected on SoDEX</span>
+          <figure style="margin: 0; display: flex; flex-direction: column; gap: 6px">
+            <svg viewBox="0 0 440 150" width="100%" role="img" aria-label="Example round: long entry at 1,817.6, stop loss on SoDEX at 1,808.5, break-even trigger at 1,820.3, closed at 1,819.8 after 19 seconds">
+              <line x1="16" y1="31.7" x2="424" y2="31.7" stroke="#5b8cff" stroke-width="1.2" stroke-dasharray="4 4"></line>
+              <text x="424" y="25" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10.5" fill="{{c.muted}}">Break-even trigger 1,820.3</text>
+              <line x1="16" y1="112.8" x2="424" y2="112.8" stroke="{{c.ask}}" stroke-width="1.2" stroke-dasharray="4 4"></line>
+              <text x="424" y="127" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10.5" fill="{{c.ask}}">Stop loss on SoDEX 1,808.5</text>
+              <polyline points="16,58 40,54 64,50.3 92,56 120,52 150,47 180,44 210,46 240,41 270,43 300,38 330,35.1" fill="none" stroke="{{c.text}}" stroke-width="1.8"></polyline>
+              <polyline points="330,35.1 360,37 390,41 424,39" fill="none" stroke="{{c.muted}}" stroke-width="1.4" stroke-dasharray="2 3"></polyline>
+              <circle cx="64" cy="50.3" r="5" fill="{{c.bid}}"></circle>
+              <text x="64" y="72" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="{{c.text2}}">Enter 1,817.6</text>
+              <circle cx="330" cy="35.1" r="5" fill="none" stroke="{{c.bid}}" stroke-width="2"></circle>
+              <text x="330" y="57" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10.5" fill="{{c.text2}}">Exit 1,819.8</text>
+              <text x="16" y="146" font-family="JetBrains Mono, monospace" font-size="10" fill="{{c.muted}}">0 s</text>
+              <text x="330" y="146" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="{{c.muted}}">19 s</text>
+            </svg>
+          </figure>
+          <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column">
+            <sc-for list="{{trades}}" as="t" hint-placeholder-count="4">
+              <li style="display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid {{c.line2}}; font-size: 14px">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: {{c.muted}}">{{t.time}}</span>
+                <span style="display: flex; flex-direction: column; gap: 2px"><strong style="font-weight: 600">{{t.event}}</strong><span style="font-size: 13px; color: {{c.text2}}">{{t.detail}}</span></span>
+              </li>
+            </sc-for>
+          </ol>
+          <dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: {{c.line}}; border: 1px solid {{c.line}}; border-radius: 8px; overflow: hidden">
+            <div style="background: {{c.surface}}; padding: 11px 12px; display: flex; flex-direction: column; gap: 3px"><dt style="font-size: 13px; font-weight: 600">Volume</dt><dd style="margin: 0; font-size: 12px; color: {{c.muted}}">Both sides of every fill</dd></div>
+            <div style="background: {{c.surface}}; padding: 11px 12px; display: flex; flex-direction: column; gap: 3px"><dt style="font-size: 13px; font-weight: 600">Net cost / $1M</dt><dd style="margin: 0; font-size: 12px; color: {{c.muted}}">Net loss ÷ volume × 1,000,000</dd></div>
+            <div style="background: {{c.surface}}; padding: 11px 12px; display: flex; flex-direction: column; gap: 3px"><dt style="font-size: 13px; font-weight: 600">Maker share</dt><dd style="margin: 0; font-size: 12px; color: {{c.muted}}">Of your volume</dd></div>
+          </dl>
+        </div>
+      </sc-if>
+
+      <p style="margin: 0; padding: 12px 20px; border-top: 1px solid {{c.line}}; font-size: 12px; color: {{c.muted}}">{{footnote}}</p>
+    </section>
+  </main>
+
+  <section aria-label="Platform numbers" style="border-top: 1px solid {{c.line}}; margin-top: auto">
+    <div style="width: 100%; max-width: 1240px; margin: 0 auto; box-sizing: border-box; padding: 0 32px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))">
+      <div style="padding: 22px 20px 22px 0; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid {{c.line}}">
+        <strong style="font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 500; color: {{c.accent}}">[totalVolume]</strong>
+        <span style="font-size: 13px; color: {{c.muted}}">Traded on SoDEX by DeskLabs bots, all time</span>
+      </div>
+      <div style="padding: 22px 20px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid {{c.line}}">
+        <strong style="font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 500; color: {{c.accent}}">[botsLaunched]</strong>
+        <span style="font-size: 13px; color: {{c.muted}}">Bots launched, all time</span>
+      </div>
+      <div style="padding: 22px 20px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid {{c.line}}">
+        <strong style="font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 500">0.003%</strong>
+        <span style="font-size: 13px; color: {{c.muted}}">Market Making builder fee, lower at volume</span>
+      </div>
+      <div style="padding: 22px 20px; display: flex; flex-direction: column; gap: 4px">
+        <strong style="font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 500">0.005%</strong>
+        <span style="font-size: 13px; color: {{c.muted}}">Volume Builder builder fee</span>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"start":{"editor":"enum","options":["mm","vb"],"default":"mm"},"inPage":{"editor":null},"onToggleTheme":{"editor":null},"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const P = {
+      dark: { bg: '#0b1020', surface: '#11172c', surface2: '#161d38', line: '#232b4d', line2: '#1b2240', text: '#eef1fb', text2: '#b7bfdc', muted: '#9aa3c4', accent: '#9db8ff', never: '#ff9a8c', ask: '#ff9a8c', bid: '#5fd9a4', live: '#3ccf91', youBg: '#18214a', btnBorder: '#2c3560' },
+      light: { bg: '#f7f8fc', surface: '#ffffff', surface2: '#eef2ff', line: '#dfe3f0', line2: '#eceff7', text: '#10152b', text2: '#3b4262', muted: '#5a6283', accent: '#1d47b8', never: '#b42318', ask: '#b42318', bid: '#0f7a4f', live: '#0f7a4f', youBg: '#e8eeff', btnBorder: '#c9d0e6' }
+    };
+    const s = this.state || {};
+    const shared = typeof this.props.onToggleTheme === 'function';
+    const theme = (shared ? this.props.theme : s.theme) || this.props.theme || 'dark';
+    const inPage = !!this.props.inPage;
+    const links = inPage ? { analytics: "#analytics", claude: "#claude", strategies: "#strategies", how: '#how', safety: '#safety', fees: '#fees', faq: '#faq' } : { analytics: "Proof.dc.html", claude: "Proof.dc.html", strategies: "Sections.dc.html", how: 'Sections.dc.html', safety: 'Sections.dc.html', fees: 'Sections.dc.html', faq: 'Sections.dc.html' };
+    const tab = s.tab || this.props.start || 'mm';
+    const c = P[theme] || P.dark;
+    const tabBase = 'min-height: 64px; padding: 12px 20px; border: 0; font: inherit; font-size: 14.5px; font-weight: 600; text-align: left; display: flex; flex-direction: column; gap: 3px; cursor: pointer; ';
+    const on = tabBase + 'border-bottom: 2px solid #2e62e8; background: ' + c.surface2 + '; color: ' + c.text;
+    const off = tabBase + 'border-bottom: 2px solid transparent; background: transparent; color: ' + c.text2;
+    const rows = [['74,603','50,133','Ask',false],['74,602','56,996','Ask',false],['74,601','57,070','Ask',true],['74,600','39,687','Bid',true],['74,599','30,287','Bid',false],['74,598','66,168','Bid',false]];
+    const book = rows.map(function (r) {
+      return {
+        price: r[0], size: r[1], side: r[2], you: r[3],
+        rowStyle: r[3] ? 'background: ' + c.youBg + '; outline: 1px solid #2e62e8' : '',
+        priceStyle: 'padding: 7px 8px; color: ' + (r[2] === 'Ask' ? c.ask : c.bid)
+      };
+    });
+    return {
+      c: c,
+      isDark: theme === 'dark', isLight: theme === 'light',
+      themeLabel: theme === 'dark' ? 'Switch to light' : 'Switch to dark',
+      links: links,
+      footnote: tab === 'vb' ? 'Example round. In the app you see every round your bot makes, with its real volume and cost.' : 'Illustration. In the app you see your own bot, the live SoDEX book and your real numbers.',
+      toggleTheme: () => (shared ? this.props.onToggleTheme() : this.setState({ theme: theme === 'dark' ? 'light' : 'dark' })),
+      isMm: tab === 'mm', isVb: tab === 'vb',
+      mmSelected: tab === 'mm' ? 'true' : 'false', vbSelected: tab === 'vb' ? 'true' : 'false',
+      mmTab: tab === 'mm' ? on : off, vbTab: tab === 'vb' ? on : off,
+      pickMm: () => this.setState({ tab: 'mm' }),
+      pickVb: () => this.setState({ tab: 'vb' }),
+      book: book,
+      trades: [
+        { time: '0 s', event: 'Enter long', detail: 'Post-only at 1,817.6, so it fills as maker' },
+        { time: '0 s', event: 'Stop loss set on SoDEX', detail: 'SoDEX closes the position at 1,808.5, even if DeskLabs is offline' },
+        { time: '', event: 'Break-even', detail: 'The stop moves to break-even once price reaches 1,820.3' },
+        { time: '19 s', event: 'Closed long', detail: 'Early profit: a gain bigger than a multiple of the fees you set' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

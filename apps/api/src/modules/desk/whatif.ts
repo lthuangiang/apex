@@ -5,7 +5,6 @@ import {
   deskApplies,
   deskItems,
   deskWhatifs,
-  goals,
   outbox,
 } from "@drift/db";
 import {
@@ -13,7 +12,6 @@ import {
   applyPatch,
   botReviewResultSchema,
   ErrorCode,
-  goalGauge,
   optionsFor,
   pickOption,
   Strategy,
@@ -29,10 +27,9 @@ import {
 } from "@drift/shared";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 
-import { riskStatusOf } from "../account/service";
 import { newVersion, type BotDeps } from "../bots/service";
 
-import { needsYou, stopCheckOf, type NeedsYouDeps } from "./needs-you";
+import { accountItemId, goalOf, needsYou, stopCheckOf, type NeedsYouDeps } from "./needs-you";
 
 // AI Desk B+ M2 (DEC-166): so sánh 2–3 phương án cho một việc "Needs you" và Apply thành version mới "AI suggested".
 // API sinh phương án (patch config), worker `backtest` tính kết quả 7 ngày (replay lệnh thật / backtest nến). Apply đi
@@ -48,6 +45,9 @@ const STOP_FIELD: Partial<Record<string, RiskInput["stopField"]>> = {
 };
 
 async function ownItem(deps: BotDeps, userId: string, itemId: string) {
+  // Việc cấp account không có bot nên không có so sánh (DEC-272): báo rõ, không 404 mơ hồ.
+  if (itemId === accountItemId(userId, "goal_loss_over"))
+    throw new AppError(ErrorCode.stateConflict, "This item has no comparison.");
   const [item] = await deps.db
     .select()
     .from(deskItems)
@@ -173,20 +173,7 @@ function view(
 const viewOf = async (deps: BotDeps, w: typeof deskWhatifs.$inferSelect, rule: NeedsYouRule) =>
   view(w, rule, await contextOf(deps, w.botId, w.botVersion));
 
-/** Thẻ Mục tiêu (DEC-177): goals + drawdown Risk Center; chưa có goals → null. */
-export async function goalOf(deps: BotDeps, userId: string): Promise<DeskHomeView["goal"]> {
-  const [g] = await deps.db.select().from(goals).where(eq(goals.userId, userId)).limit(1);
-  const risk = g === undefined ? null : await riskStatusOf(deps, userId);
-  return g === undefined
-    ? null
-    : {
-        goal: g.goal,
-        ...goalGauge(
-          { capital: g.capital, maxDrop: g.maxDrop },
-          risk === null ? null : { peakEquity: risk.status.peakEquity, equity: risk.status.equity },
-        ),
-      };
-}
+export { goalOf };
 
 /**
  * Trang chủ B+ (M3): việc "Needs you" kèm so sánh mới nhất cho đúng việc + version bot + fingerprint (job còn trong
@@ -200,6 +187,8 @@ export async function deskHome(
   const now = deps.now().getTime();
   const items = await Promise.all(
     base.items.map(async (item) => {
+      // Việc cấp account (không có bot) không có so sánh what-if.
+      if (item.botId === null || item.rule === "goal_loss_over") return { ...item, whatif: null };
       const [row] = await deps.db
         .select({
           w: deskWhatifs,

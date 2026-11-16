@@ -12,6 +12,7 @@ import { z } from "zod";
 import { reconcileDay, snapshotBuilderBalances } from "./builder-revenue";
 import { purgeOldDeskAiChats, queueDueRecords, sweepStaleDeskJobs } from "./desk-record";
 import { FEE_TIER_REFRESH_MS, refreshFeeTiers } from "./fee-tiers";
+import { checkProdInvariants, redisInvariantStore } from "./invariants";
 import { leaderboardDue, noteMinHoldChanges, runLeaderboard } from "./leaderboard";
 import { computeDailyStats, utcDate } from "./market-stats";
 import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
@@ -47,6 +48,22 @@ const log = pino({ level: env.LOG_LEVEL, base: { service: "scheduler" } });
 const { db, pool } = createDb(env.DATABASE_URL);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const mcpAlertStore = redisAlertStore(redis);
+const invariantStore = redisInvariantStore(redis);
+
+/** Bất biến tiền thật (DEC-274): chỉ đọc DB, không gọi SoDEX; hai lượt không chạy chồng nhau. */
+let invariantRunning = false;
+async function invariantTick() {
+  if (invariantRunning) return;
+  invariantRunning = true;
+  try {
+    const r = await checkProdInvariants(db, invariantStore);
+    // Chỉ log info khi có tin hoặc chạy chậm (> 2 s); còn lại debug.
+    if (r.queued > 0 || r.ms > 2_000) log.info(r, "prod invariants checked");
+    else log.debug(r, "prod invariants checked");
+  } finally {
+    invariantRunning = false;
+  }
+}
 const rest = new SodexRestClient({
   config: loadSodexConfig(process.env),
   rateLimit: new RedisRateLimitStore(redis),
@@ -210,6 +227,9 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
         .catch((error: unknown) => {
           log.error({ err: error }, "mcp alerts failed");
         });
+      void invariantTick().catch((error: unknown) => {
+        log.error({ err: error }, "prod invariants failed");
+      });
       void riskTick()
         .then(revenueTick)
         .catch((error: unknown) => {

@@ -105,6 +105,21 @@ describe("morning brief greeting", () => {
       screen.getByText(`${word}. One thing needs you today: Futures Grid.`),
     ).toBeInTheDocument();
   });
+
+  it("names the goal limit, not a bot, when the first item is the account-level goal item (RS-01)", () => {
+    show({
+      kind: "template",
+      key: "brief",
+      params: { count: 2, bot: "", first: "goal" },
+      facts: [],
+    });
+    const word = { morning: "Good morning", afternoon: "Good afternoon", evening: "Good evening" }[
+      greetingAt(new Date())
+    ];
+    expect(
+      screen.getByText(`${word}. 2 things need you today, starting with your goal’s loss limit.`),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("thinking indicator", () => {

@@ -59,6 +59,12 @@ export interface GridBotState {
   lastPrice: string | null;
   outOfRange: boolean;
   initClOrdID: string | null;
+  /**
+   * Lệnh đã gửi huỷ lúc dừng (halt / pause vì max loss) mà sàn chưa báo kết thúc. Lệnh huỷ có thể đã khớp trước đó
+   * (hoặc là lệnh `unknown` mà SoDEX thật ra đã nhận, quy tắc 1.7): fill của nó vẫn vào sổ cái để lệnh đóng khi Stop
+   * tính đúng vị thế. Bỏ khỏi đây khi sàn báo lệnh kết thúc.
+   */
+  cancelled?: Record<string, { level: number; side: "buy" | "sell" }>;
   /** Đã resume nhưng chưa có giá mới: dựng lại lệnh ở tick đầu tiên (DEC-240). */
   resumeOnTick?: boolean;
 }
@@ -199,6 +205,11 @@ function resumeGrid(
   // Chưa từng khởi động (chưa có mức): chờ khởi động như mới. Đã đặt lệnh khởi tạo thì không đặt lại (clOrdID trùng sẽ bị
   // engine bỏ qua): dựng lệnh từ vị thế thật như bình thường.
   if (s.levels.length === 0) return { actions: [], state: { ...s, phase: "idle" } };
+  // Lệnh khởi tạo chưa báo kết thúc (ví dụ khớp trễ sau một lần dừng): khớp sau này vẫn vào sổ cái.
+  if (s.initClOrdID !== null) {
+    const side = c.direction === "short" ? ("sell" as const) : ("buy" as const);
+    s = { ...s, cancelled: { ...s.cancelled, [s.initClOrdID]: { level: -1, side } } };
+  }
   s = { ...s, initClOrdID: null };
   const price = s.lastPrice;
   if (price === null) return { actions: [], state: { ...s, phase: "running" } };
@@ -273,7 +284,9 @@ function halt(
     : [];
   return {
     actions: [...cancels, action],
-    state: { ...s, phase: "halted", open: cancelAll ? {} : s.open },
+    state: cancelAll
+      ? { ...s, phase: "halted", open: {}, cancelled: { ...s.cancelled, ...s.open } }
+      : { ...s, phase: "halted" },
   };
 }
 
@@ -295,7 +308,12 @@ function pauseKeepReducing(s: GridBotState, action: StrategyAction): StepResult<
   );
   return {
     actions: [...cancel.map(([id]) => ({ type: "cancel" as const, clOrdID: id })), action],
-    state: { ...s, phase: "halted", open },
+    state: {
+      ...s,
+      phase: "halted",
+      open,
+      cancelled: { ...s.cancelled, ...Object.fromEntries(cancel) },
+    },
   };
 }
 
@@ -325,6 +343,19 @@ export function stepGridBot(
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<GridBotState> {
+  // Lệnh đã huỷ lúc dừng: sàn báo kết thúc thì bỏ khỏi danh sách (không pause lần nữa); khớp trễ chỉ vào sổ cái, kể cả
+  // sau khi đã resume (không đặt lệnh đối ứng, vì mức đó đã được dựng lại).
+  const lateId =
+    e.type === "fill" || e.type === "orderDone" || e.type === "orderReject" ? e.clOrdID : null;
+  const gone = lateId === null || s.open[lateId] !== undefined ? undefined : s.cancelled?.[lateId];
+  if (lateId !== null && gone !== undefined) {
+    if (e.type !== "fill")
+      return { actions: [], state: { ...s, cancelled: without(s.cancelled ?? {}, lateId) } };
+    return {
+      actions: [],
+      state: { ...s, ledger: applyFill(s.ledger, gone.side, e.price, e.quantity, e.fee) },
+    };
+  }
   if (s.phase === "halted") {
     if (e.type === "resumed") {
       // Chưa có giá mới: chờ giá đầu tiên rồi mới dựng lệnh (không đặt theo giá lúc pause).
@@ -338,6 +369,21 @@ export function stepGridBot(
     // Lệnh bị từ chối / kết thúc trên sàn trong lúc dừng: bỏ khỏi danh sách để resume đặt lại mức đó.
     if ((e.type === "orderReject" || e.type === "orderDone") && s.open[e.clOrdID] !== undefined)
       return { actions: [], state: { ...s, open: without(s.open, e.clOrdID) } };
+    // Lệnh market mở vị thế ban đầu khớp sau khi đã dừng (ví dụ lệnh `unknown` mà SoDEX thật ra đã nhận): vào sổ cái để
+    // lệnh đóng khi Stop tính đúng vị thế; không đặt các mức còn lại. Giữ `initClOrdID` để các phần khớp sau cũng được tính.
+    if (e.type === "fill" && e.clOrdID === s.initClOrdID) {
+      const side = c.direction === "short" ? "sell" : "buy";
+      return {
+        actions: [],
+        state: {
+          ...s,
+          ledger: applyFill(s.ledger, side, e.price, e.quantity, e.fee),
+        },
+      };
+    }
+    // Lệnh khởi tạo kết thúc trên sàn trong lúc dừng: không còn khớp nữa.
+    if ((e.type === "orderDone" || e.type === "orderReject") && e.clOrdID === s.initClOrdID)
+      return { actions: [], state: { ...s, initClOrdID: null } };
     // Đã dừng: lệnh giảm vị thế còn giữ (pause vì max loss) vẫn có thể khớp; chỉ ghi sổ cái, không đặt lệnh mới.
     const o = e.type === "fill" ? s.open[e.clOrdID] : undefined;
     if (e.type !== "fill" || o === undefined) return { actions: [], state: s };

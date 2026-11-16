@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DeskLabs landing page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}html{scroll-behavior:smooth}</style>
+</helmet>
+<div style="background: {{bg}}">
+  <dc-import name="Main" theme="{{theme}}" start="mm" in-page="{{ true }}" on-toggle-theme="{{toggle}}" hint-size="100%,980px"></dc-import>
+  <dc-import name="Proof" theme="{{theme}}" hint-size="100%,1900px"></dc-import>
+  <dc-import name="Sections" theme="{{theme}}" hint-size="100%,4300px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark","system"],"default":"light"},"$preview":{"width":1440,"height":8060}}'>
+class Component extends DCLogic {
+  systemTheme() {
+    try {
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } catch (e) {
+      return 'light';
+    }
+  }
+  renderVals() {
+    const s = this.state || {};
+    const pref = this.props.theme || "light";
+    const theme = s.theme || (pref === 'system' ? this.systemTheme() : pref);
+    return {
+      theme: theme,
+      bg: theme === 'dark' ? '#0b1020' : '#f7f8fc',
+      toggle: () => this.setState({ theme: theme === 'dark' ? 'light' : 'dark' })
+    };
+  }
+}
+</script>
+</body>
+</html>
