@@ -191,6 +191,7 @@
         "balancePerps": "Needs {needed} USDC · usable as margin {usable} · isolated {isolated}"
       },
       "fee": "Fees: SoDEX trading fee per fill plus DeskLabs builder fee {rate} ({fee}), both shown inside each fill’s fee.",
+      "feeMmTiers": "The rate drops to {tier2} at {min2} and {tier3} at {min3} of Market Making volume in 30 days; running bots switch on their next orders.",
       "ack": "I understand this bot places real orders on my SoDEX mainnet account and DeskLabs charges its builder fee on them.",
       "saveDraft": "Save draft",
       "draftSaved": "Draft saved. Find it in Strategy Lab under My bots.",
@@ -2096,7 +2097,11 @@
       "feeSubOn": "max per fill · maxFeeRate 10 · builder #{builderId}",
       "feePoint1": "Charged only on orders DeskLabs sends. Perps: both sides, SoDEX cap 0.2%. Spot: sells only, SoDEX cap 2%.",
       "feePoint2": "Shown inside the fee of each fill. Your own trades on SoDEX are never charged.",
-      "feePoint3": "DeskLabs offers one rate: 0.01%. You can approve it or set it to 0.",
+      "feePoint3": "<b>You approve up to {max}. Each strategy charges its own rate, never more.</b>",
+      "feeMmYour": "Market Making · your rate",
+      "feeOther": "Every other strategy",
+      "feeCustom": "Set for your account",
+      "feeRevokeNote": "You can approve {max} or set it to 0. Setting it to 0 pauses all your bots.",
       "feeOffTitle": "All LIVE bots are paused.",
       "feeOffBody": "Open orders were kept. After you approve again, resume each bot from Trading Agent.",
       "busyRevoking": "Waiting for signature, then reading your approvals back from SoDEX…",
@@ -2822,6 +2827,14 @@
     },
     "catalog": {
       "feeRate": "Builder fee {rate}",
+      "tiersNote": "Checked every hour from your real-money Market Making bots. New orders use the new rate right away; no new signature.",
+      "yourFee": "Your builder fee",
+      "mmVolume": "{volume} Market Making volume, last 30 days",
+      "mmProgress": "{volume} of {target}",
+      "toNextTier": "<b>{amount} more</b> in 30 days and new orders pay {rate}.",
+      "topTier": "Lowest rate",
+      "keepTier": "{volume} Market Making volume in the last 30 days. Stay above {min} to keep this rate.",
+      "customFee": "Set for your account by DeskLabs. Volume tiers don’t apply while this rate is set.",
       "sopoints": "SoPoints are SoDEX’s rewards for trading volume. SoDEX decides how they’re earned.",
       "fits": "Fits",
       "risk": "Risk",
@@ -4651,6 +4664,17 @@
     },
     "extras": {
       "title": "Also in the app, on the same safety rules"
+    }
+  },
+  "fees": {
+    "tiers": {
+      "volumeHead": "Your Market Making volume, last 30 days",
+      "volumeHeadShort": "30-day volume",
+      "feeHead": "Fee",
+      "t1": "Under {min}",
+      "t2": "{min} to {max}",
+      "t3": "{min} and up",
+      "you": "You"
     }
   },
   "riskDisclosure": {

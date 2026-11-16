@@ -14,12 +14,13 @@ import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
+import { MmFeeLadder, mmFeeView, mmTierArgs } from "@/components/mm-fee-tiers";
 import { NotConnected, useSodexMissing } from "@/components/not-connected";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { api, ApiError } from "@/lib/api";
 import { feeLabels, formatMoney } from "@/lib/format";
 import { useMarketLast, useMarketNames, useMarkets } from "@/lib/markets";
-import { ME_KEY, useBuilderFeeRate, useMe, useTwoFactorNeeded } from "@/lib/queries";
+import { ME_KEY, useBuilderFeeRate, useFeatures, useMe, useTwoFactorNeeded } from "@/lib/queries";
 import { BELOW_LG, useMediaQuery } from "@/lib/use-media";
 
 import { labelKeyOf } from "../field-copy";
@@ -77,6 +78,7 @@ export function CreateBot({
   const me = useMe();
   // Builder fee riêng của user nếu team đặt (DEC-159).
   const builderRate = useBuilderFeeRate(strategy);
+  const features = useFeatures();
   const [values, setValues] = useState<FormValues>(() => ({
     ...emptyValues(strategy),
     ...preset,
@@ -543,9 +545,14 @@ export function CreateBot({
                   fee: s("fee"),
                   rate: feeLabels(builderRate).pct,
                 })}
+                {/* Bậc phí Market Making (docs/mockups/mm-fee-tiers 2d): số lấy từ FEE_TIERS. */}
+                {strategy === "volume_maker"
+                  ? ` ${t("beforeStart.feeMmTiers", mmTierArgs())}`
+                  : null}
               </p>
               {strategy === "volume_maker" ? (
                 <>
+                  <MmFeeLadder view={mmFeeView(features.data?.mmFee, builderRate)} showHead />
                   <p className="m-0 text-xs text-ink-2">{t("beforeStart.noSelfTrade")}</p>
                   <p className="m-0 text-xs font-bold">{t("beforeStart.sopoints")}</p>
                 </>

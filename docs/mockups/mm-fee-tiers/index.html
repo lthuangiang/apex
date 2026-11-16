@@ -1,0 +1,564 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Market Making Fee Tiers</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: design sheet. Page chrome follows the viewer's theme; each artboard is a fixed light DeskLabs frame (the product is light-only). */
+:root {
+  --page: #eceff8; --page-ink: #141a33; --page-ink-2: #4a5170; --page-muted: #7b819c; --page-line: #d9deef; --page-card: #ffffff;
+  --note: #fff6e5; --note-ink: #7a4a00; --api: #fdecee; --api-ink: #a32a35;
+  /* DeskLabs product tokens, copied from the AI Desk redesign canvas */
+  --dl-bg: #f5f7fd; --dl-surface: #ffffff; --dl-ink: #141a33; --dl-ink-2: #3b4262; --dl-muted: #5f6684; --dl-line: #e3e7f5; --dl-line-2: #eef1f8;
+  --dl-accent: #2e62e8; --dl-accent-ink: #1d47b8; --dl-tint: #eef3ff; --dl-tint-2: #e6ecfe; --dl-ok: #1f7a4d; --dl-ok-bg: #e5f5ec;
+  --font: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --page: #0f1324; --page-ink: #e8ebf7; --page-ink-2: #b4bad3; --page-muted: #8a91ad; --page-line: #2a3150; --page-card: #171c31;
+  --note: #3b2e14; --note-ink: #f3c977; --api: #45202a; --api-ink: #ff9aa3; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --page: #0f1324; --page-ink: #e8ebf7; --page-ink-2: #b4bad3; --page-muted: #8a91ad; --page-line: #2a3150; --page-card: #171c31;
+  --note: #3b2e14; --note-ink: #f3c977; --api: #45202a; --api-ink: #ff9aa3; color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { background: var(--page); color: var(--page-ink); font-family: var(--font); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 36px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 36px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(28px, 4.5vw, 38px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; }
+h2 { font-size: 21px; font-weight: 800; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: 0.85em; padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--page-line) 55%, transparent); overflow-wrap: anywhere; }
+.eyebrow { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #2e62e8; }
+.lede { color: var(--page-ink-2); max-width: 72ch; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--page-muted); }
+
+.rule { background: var(--page-card); border: 1px solid var(--page-line); border-radius: 16px; padding: 18px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 24px; }
+.rule div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rule b { font-size: 13px; color: var(--page-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.rule span { color: var(--page-ink-2); font-size: 14px; }
+
+.section { display: flex; flex-direction: column; gap: 16px; }
+.section-head { display: flex; flex-direction: column; gap: 4px; }
+.section-head p { color: var(--page-ink-2); max-width: 80ch; }
+.boards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 22px; align-items: start; }
+.board { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.board-label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--page-ink-2); }
+.tag { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; border-radius: 999px; padding: 2px 9px; }
+.tag.now { background: #e5f5ec; color: #1f7a4d; }
+.tag.api { background: var(--api); color: var(--api-ink); }
+.tag.opt { background: var(--note); color: var(--note-ink); }
+.notes { font-size: 13.5px; color: var(--page-ink-2); display: flex; flex-direction: column; gap: 4px; padding-left: 18px; margin: 0; }
+
+/* ---------- DeskLabs frame (always light) ---------- */
+.frame { color-scheme: light; background: var(--dl-bg); color: var(--dl-ink); border: 1px solid var(--page-line); border-radius: 18px; padding: 22px; overflow: hidden; font-variant-numeric: tabular-nums; }
+.frame.phone { max-width: 390px; padding: 16px; border-radius: 28px; }
+.dl-card { background: var(--dl-surface); border: 1px solid var(--dl-line); border-radius: 22px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
+.dl-eyebrow { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--dl-accent); }
+.dl-h2 { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+.dl-h3 { font-size: 20px; font-weight: 800; }
+.dl-body { font-size: 15px; line-height: 1.6; color: var(--dl-ink-2); }
+.dl-small { font-size: 12.5px; color: var(--dl-muted); line-height: 1.5; }
+.chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 14px; background: var(--dl-tint); color: var(--dl-ink-2); font-size: 13px; font-weight: 700; }
+.chip .new { color: var(--dl-accent-ink); font-weight: 800; }
+.icon { width: 46px; height: 46px; border-radius: 14px; background: var(--dl-tint); color: var(--dl-accent); display: flex; align-items: center; justify-content: center; font-weight: 800; }
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: var(--dl-ink-2); }
+.checks li::before { content: "✓"; color: var(--dl-ok); font-weight: 800; margin-right: 10px; }
+.link { color: var(--dl-accent-ink); font-weight: 800; font-size: 15px; }
+
+.fee-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.fee-list { display: flex; flex-direction: column; border: 1px solid var(--dl-line); border-radius: 18px; background: var(--dl-surface); }
+.fee-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding: 16px 18px; border-top: 1px solid var(--dl-line-2); }
+.fee-row:first-child { border-top: 0; }
+.fee-row dt { font-size: 14px; color: var(--dl-ink-2); }
+.fee-row dd { margin: 0; font-size: 22px; font-weight: 800; }
+.fee-mm { padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 10px; }
+.fee-mm-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.fee-mm-head span { font-size: 14px; color: var(--dl-ink-2); }
+.fee-mm-head strong { font-size: 22px; font-weight: 800; }
+.tiers { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tiers th { text-align: left; font-size: 11.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dl-muted); padding: 0 0 6px; }
+.tiers th:last-child, .tiers td:last-child { text-align: right; }
+.tiers td { padding: 8px 0; border-top: 1px solid var(--dl-line-2); color: var(--dl-ink-2); }
+.tiers td:last-child { font-weight: 800; color: var(--dl-ink); }
+.tiers tr.here td { color: var(--dl-accent-ink); }
+.tiers tr.here td:first-child::after { content: "You"; margin-left: 8px; font-size: 11px; font-weight: 800; background: var(--dl-accent); color: #fff; border-radius: 8px; padding: 1px 7px; }
+
+.cat-card { background: var(--dl-surface); border: 1px solid var(--dl-line); border-radius: 20px; padding: 18px; display: flex; flex-direction: column; gap: 10px; max-width: 360px; }
+.badges { display: flex; justify-content: space-between; }
+.badge { font-size: 11px; font-weight: 800; letter-spacing: 0.05em; border-radius: 8px; padding: 3px 8px; }
+.badge.dark { background: #141a33; color: #fff; }
+.badge.perps { background: #f1e9ff; color: #6a3fb8; }
+.cat-dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; line-height: 1.45; margin: 0; }
+.cat-dl dt { font-weight: 800; }
+.cat-dl dt.fits { color: var(--dl-ok); } .cat-dl dt.risk { color: #a85a00; }
+.cat-dl dd { margin: 0; color: var(--dl-ink-2); }
+.fee-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 13px; }
+.fee-line strong { font-weight: 800; }
+.disclose { border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 800; color: var(--dl-accent-ink); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.disclose:focus-visible { outline: 3px solid #8fb0ff; outline-offset: 2px; border-radius: 4px; }
+.tier-box { background: var(--dl-bg); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.cta { min-height: 44px; border-radius: 12px; background: var(--dl-tint); color: var(--dl-accent-ink); font-size: 14px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-top: 4px; }
+.progress { display: flex; flex-direction: column; gap: 6px; }
+.bar { height: 8px; border-radius: 4px; background: var(--dl-line); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--dl-accent); border-radius: 4px; }
+.progress-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--dl-muted); }
+.your-rate { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.your-rate strong { font-size: 20px; font-weight: 800; }
+.pill-ok { font-size: 11.5px; font-weight: 800; padding: 2px 8px; border-radius: 8px; background: var(--dl-ok-bg); color: var(--dl-ok); }
+.example { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; color: #a85a00; background: #fff1dc; padding: 2px 7px; border-radius: 6px; }
+
+.check-box { background: var(--dl-surface); border: 1px solid var(--dl-line); border-radius: 20px; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+.fee-note { background: var(--dl-bg); border-radius: 12px; padding: 12px 14px; font-size: 13.5px; color: var(--dl-ink-2); line-height: 1.55; }
+.fee-note mark { background: #fff1b8; color: inherit; padding: 0 2px; border-radius: 3px; }
+
+/* ---------- copy & questions tables ---------- */
+.table-wrap { overflow-x: auto; border: 1px solid var(--page-line); border-radius: 14px; background: var(--page-card); }
+table.copy { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 760px; }
+table.copy th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--page-muted); padding: 10px 14px; border-bottom: 1px solid var(--page-line); }
+table.copy td { padding: 10px 14px; border-top: 1px solid var(--page-line); vertical-align: top; color: var(--page-ink-2); }
+table.copy td.en { color: var(--page-ink); font-weight: 600; }
+table.copy td.key { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.qs { display: flex; flex-direction: column; gap: 10px; margin: 0; padding-left: 20px; color: var(--page-ink-2); }
+.qs b { color: var(--page-ink); }
+@media (max-width: 720px) { .fee-grid { grid-template-columns: 1fr; } .dl-h2 { font-size: 24px; } }
+</style>
+
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:12px">
+    <span class="eyebrow">Thiết kế · chờ duyệt</span>
+    <h1>Market Making Fee Tiers</h1>
+    <p class="lede">Thiết kế cách landing page và Strategy Lab hiển thị builder fee theo bậc volume của Market Making (DEC-258, PR #134). Mọi câu chữ UI mới đều tiếng Anh và đã được người dùng duyệt ngày 16/11 (bảng ở cuối trang). Phần có tag <span class="tag api">NEEDS API</span> cần backend trả thêm dữ liệu, chưa code được.</p>
+    <div class="meta"><span>16/11/2026</span><span>Theo yêu cầu của DevOps</span><span>Style lấy từ canvas AI Desk redesign</span></div>
+  </header>
+
+  <section class="rule" aria-label="Quy tắc phí">
+    <div><b>Market Making</b><span>Theo volume Market Making tiền thật 30 ngày: dưới $200K = 0.003%; $200K–$1M = 0.002%; từ $1M = 0.001%. Không bao giờ 0.</span></div>
+    <div><b>Cập nhật</b><span>Tính lại mỗi giờ. Lệnh mới dùng mức mới ngay, không phải ký lại.</span></div>
+    <div><b>Chiến lược khác</b><span>Volume Builder 0.005%, còn lại 0.01% (DEC-94). Mức team đặt riêng thắng bậc (DEC-159).</span></div>
+    <div><b>Dữ liệu web có sẵn</b><span><code>GET /api/v1/features</code> → <code>builderFees[strategy]</code>: mức hiệu lực của user, đã gồm bậc.</span></div>
+  </section>
+
+  <!-- ================= LANDING ================= -->
+  <section class="section">
+    <div class="section-head">
+      <span class="eyebrow">1 · Landing page</span>
+      <h2>Thẻ Market Making và mục Fees</h2>
+      <p>Landing không có user nên chỉ hiện bảng bậc chung, không hiện mức riêng. Hai chỗ đang ghi cố định 0.003%: chip trên thẻ chiến lược và dòng Market Making trong mục Fees.</p>
+    </div>
+    <div class="boards">
+      <div class="board">
+        <div class="board-label">1a · Thẻ Market Making (mục Strategies) <span class="tag now">CODE ĐƯỢC NGAY</span></div>
+        <div class="frame">
+          <div class="dl-card">
+            <span class="chip">Builder fee <span class="new">0.003%, lower at volume</span></span>
+            <div class="icon" aria-hidden="true">≋</div>
+            <div class="dl-h3">Market Making</div>
+            <p class="dl-body">Quotes a bid and an ask from the SoDEX order book, earns maker volume and keeps inventory small. Set where you sit in the book with one number that works on every market.</p>
+            <ul class="checks">
+              <li>Smart quoting steps back when the book turns lopsided</li>
+              <li>Live order book with your quotes marked</li>
+              <li>Cost cap: stops itself before it spends more than you set</li>
+              <li><b style="color:var(--dl-ink)">Builder fee drops to 0.002% and 0.001% as your volume grows</b></li>
+            </ul>
+            <span class="link">Start Market Making</span>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Chip đổi từ <code>Builder fee 0.003%</code> sang <code>Builder fee 0.003%, lower at volume</code>: vẫn nói mức người mới sẽ trả, không dùng "from 0.001%" để tránh hiểu nhầm.</li>
+          <li>Thêm một dòng vào danh sách check, cụ thể hai mức thấp hơn.</li>
+        </ul>
+      </div>
+
+      <div class="board">
+        <div class="board-label">1b · Mục Fees <span class="tag now">CODE ĐƯỢC NGAY</span></div>
+        <div class="frame">
+          <div class="fee-grid">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <span class="dl-eyebrow">FEES</span>
+              <div class="dl-h2">Low builder fees, shown before you sign</div>
+              <p class="dl-body">Charged by SoDEX through Builder Codes on fills of orders your bots send. SoDEX trading fees apply as usual. Revoke the builder fee in Settings anytime; your bots pause right away.</p>
+              <p class="dl-body"><b style="color:var(--dl-ink)">Market Making gets cheaper as you trade more.</b> We check your last 30 days every hour, and new orders use the new rate right away. No new signature.</p>
+            </div>
+            <dl class="fee-list" style="margin:0">
+              <div class="fee-mm">
+                <div class="fee-mm-head"><span>Market Making</span><strong>0.001–0.003%</strong></div>
+                <table class="tiers">
+                  <thead><tr><th>Your Market Making volume, last 30 days</th><th>Fee</th></tr></thead>
+                  <tbody>
+                    <tr><td>Under $200K</td><td>0.003%</td></tr>
+                    <tr><td>$200K to $1M</td><td>0.002%</td></tr>
+                    <tr><td>$1M and up</td><td>0.001%</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="fee-row"><dt>Volume Builder</dt><dd>0.005%</dd></div>
+              <div class="fee-row"><dt>Every other strategy</dt><dd>0.01%</dd></div>
+            </dl>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Giữ title và body cũ, thêm một đoạn ngắn về bậc. Dòng Market Making thành khoảng <code>0.001–0.003%</code> kèm bảng 3 bậc.</li>
+          <li>Ngưỡng $200K thuộc bậc 2 (rule ghi "&lt; $200K" cho bậc 1), $1M thuộc bậc 3.</li>
+        </ul>
+      </div>
+
+      <div class="board">
+        <div class="board-label">1c · Mục Fees trên mobile 390px <span class="tag now">CODE ĐƯỢC NGAY</span></div>
+        <div class="frame phone">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <span class="dl-eyebrow">FEES</span>
+            <div class="dl-h2" style="font-size:26px">Low builder fees, shown before you sign</div>
+            <p class="dl-body" style="font-size:14.5px"><b style="color:var(--dl-ink)">Market Making gets cheaper as you trade more.</b> We check your last 30 days every hour, and new orders use the new rate right away. No new signature.</p>
+            <dl class="fee-list" style="margin:0">
+              <div class="fee-mm">
+                <div class="fee-mm-head"><span>Market Making</span><strong style="font-size:19px">0.001–0.003%</strong></div>
+                <table class="tiers">
+                  <thead><tr><th>30-day volume</th><th>Fee</th></tr></thead>
+                  <tbody>
+                    <tr><td>Under $200K</td><td>0.003%</td></tr>
+                    <tr><td>$200K to $1M</td><td>0.002%</td></tr>
+                    <tr><td>$1M and up</td><td>0.001%</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="fee-row"><dt>Volume Builder</dt><dd style="font-size:19px">0.005%</dd></div>
+              <div class="fee-row"><dt>Every other strategy</dt><dd style="font-size:19px">0.01%</dd></div>
+            </dl>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Trên mobile, tiêu đề cột bảng rút gọn thành <code>30-day volume</code>; đoạn giải thích phía trên đã nói rõ là volume Market Making.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STRATEGY LAB ================= -->
+  <section class="section">
+    <div class="section-head">
+      <span class="eyebrow">2 · Strategy Lab · Strategy catalog</span>
+      <h2>Thẻ Market Making trong catalog</h2>
+      <p>Số phí trên thẻ đã đọc <code>builderFees.volume_maker</code> nên tự đúng sau khi #134 merge. Phần mới là giải thích bậc. Có hai phương án: 2a làm được ngay với API hiện tại; 2b cần API trả thêm volume 30 ngày và nguồn của mức phí.</p>
+    </div>
+    <div class="boards">
+      <div class="board">
+        <div class="board-label">2a · Không đổi API <span class="tag now">CODE ĐƯỢC NGAY</span></div>
+        <div class="frame">
+          <div class="cat-card">
+            <div class="badges"><span class="badge dark">LIQUIDITY OPTIMIZATION</span><span class="badge perps">Perps</span></div>
+            <div class="dl-h3">Market Making</div>
+            <p class="dl-body" style="font-size:14px">Quotes both sides with post-only orders to add liquidity and volume during SoDEX events, within a cost budget. Never trades with itself.</p>
+            <dl class="cat-dl">
+              <dt class="fits">Fits</dt><dd>Taking part in volume events at a known, capped cost.</dd>
+              <dt class="risk">Risk</dt><dd>Inventory moves against you; SoPoints are not guaranteed.</dd>
+            </dl>
+            <div class="fee-line"><strong>Builder fee 0.003%</strong><button class="disclose" type="button" aria-expanded="true" aria-controls="t2a">How the rate drops</button></div>
+            <div class="tier-box" id="t2a">
+              <table class="tiers">
+                <thead><tr><th>Market Making volume, last 30 days</th><th>Fee</th></tr></thead>
+                <tbody>
+                  <tr><td>Under $200K</td><td>0.003%</td></tr>
+                  <tr><td>$200K to $1M</td><td>0.002%</td></tr>
+                  <tr><td>$1M and up</td><td>0.001%</td></tr>
+                </tbody>
+              </table>
+              <span class="dl-small">Checked every hour from your real-money Market Making bots. New orders use the new rate right away; no new signature.</span>
+            </div>
+            <span class="dl-small">SoPoints are SoDEX’s rewards for trading volume. SoDEX decides how they’re earned.</span>
+            <div class="cta">Set up Market Making</div>
+          </div>
+        </div>
+        <ul class="notes">
+          <li><code>Builder fee 0.003%</code> là mức hiệu lực từ API, giữ như hiện tại.</li>
+          <li>Nút <code>How the rate drops</code> mở hoặc đóng bảng (mặc định đóng; ảnh đang vẽ trạng thái mở). Bảng không đánh dấu bậc của user, vì API chưa phân biệt được mức theo bậc với mức team đặt tay.</li>
+          <li>Các thẻ khác không đổi.</li>
+        </ul>
+      </div>
+
+      <div class="board">
+        <div class="board-label">2b · Có thêm API <span class="tag api">NEEDS API</span> <span class="example">EXAMPLE VALUES</span></div>
+        <div class="frame">
+          <div class="cat-card">
+            <div class="badges"><span class="badge dark">LIQUIDITY OPTIMIZATION</span><span class="badge perps">Perps</span></div>
+            <div class="dl-h3">Market Making</div>
+            <dl class="cat-dl">
+              <dt class="fits">Fits</dt><dd>Taking part in volume events at a known, capped cost.</dd>
+              <dt class="risk">Risk</dt><dd>Inventory moves against you; SoPoints are not guaranteed.</dd>
+            </dl>
+            <div class="tier-box">
+              <div class="your-rate"><span class="dl-small" style="font-weight:700">Your builder fee</span><strong>0.003%</strong></div>
+              <div class="progress">
+                <div class="bar" role="img" aria-label="$142,300 of $200,000"><i style="width:71%"></i></div>
+                <div class="progress-row"><span>$142,300 Market Making volume, last 30 days</span><span>$200K</span></div>
+              </div>
+              <span style="font-size:13px;color:var(--dl-ink-2)"><b style="color:var(--dl-ink)">$57,700 more</b> in 30 days and new orders pay 0.002%.</span>
+              <table class="tiers">
+                <tbody>
+                  <tr class="here"><td>Under $200K</td><td>0.003%</td></tr>
+                  <tr><td>$200K to $1M</td><td>0.002%</td></tr>
+                  <tr><td>$1M and up</td><td>0.001%</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="cta">Set up Market Making</div>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Cần API trả thêm (gợi ý, tên field do backend chốt): volume Market Making tiền thật 30 ngày của user; nguồn của mức phí: <code>tier</code> hay <code>custom</code> (team đặt tay, DEC-159).</li>
+          <li>Thiếu volume thì không hiện thanh tiến độ, quay về 2a; không bao giờ hiện <code>$0</code> thay cho dữ liệu thiếu (quy tắc 1.8).</li>
+          <li>"$57,700 more" là phép trừ ngưỡng − volume hiện tại, không phải dự báo.</li>
+        </ul>
+      </div>
+
+      <div class="board">
+        <div class="board-label">2c · Các trạng thái khác của 2b <span class="tag api">NEEDS API</span> <span class="example">EXAMPLE VALUES</span></div>
+        <div class="frame" style="display:flex;flex-direction:column;gap:14px">
+          <div class="tier-box" style="background:#fff;border:1px solid var(--dl-line)">
+            <span class="dl-small" style="font-weight:800;color:var(--dl-muted)">BẬC CAO NHẤT</span>
+            <div class="your-rate"><span class="dl-small" style="font-weight:700">Your builder fee</span><strong>0.001%</strong><span class="pill-ok">Lowest rate</span></div>
+            <span style="font-size:13px;color:var(--dl-ink-2)">$1,240,000 Market Making volume in the last 30 days. Stay above $1M to keep this rate.</span>
+          </div>
+          <div class="tier-box" style="background:#fff;border:1px solid var(--dl-line)">
+            <span class="dl-small" style="font-weight:800;color:var(--dl-muted)">MỨC TEAM ĐẶT RIÊNG (DEC-159)</span>
+            <div class="your-rate"><span class="dl-small" style="font-weight:700">Your builder fee</span><strong>0.002%</strong></div>
+            <span style="font-size:13px;color:var(--dl-ink-2)">Set for your account by DeskLabs. Volume tiers don’t apply while this rate is set.</span>
+          </div>
+          <div class="tier-box" style="background:#fff;border:1px solid var(--dl-line)">
+            <span class="dl-small" style="font-weight:800;color:var(--dl-muted)">VỪA XUỐNG BẬC</span>
+            <div class="your-rate"><span class="dl-small" style="font-weight:700">Your builder fee</span><strong>0.003%</strong></div>
+            <span style="font-size:13px;color:var(--dl-ink-2)">Your 30-day Market Making volume fell below $200K, so new orders pay 0.003% again.</span>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Vì volume là cửa sổ trượt 30 ngày, mức có thể tăng lại; cần câu báo rõ khi xuống bậc (có thể dùng chung cho Notifications).</li>
+        </ul>
+      </div>
+
+      <div class="board">
+        <div class="board-label">2d · Form tạo Market Making · Before it starts <span class="tag opt">TUỲ CHỌN</span></div>
+        <div class="frame">
+          <div class="check-box">
+            <div class="dl-h3" style="font-size:17px">Before it starts</div>
+            <div class="fee-note">Fees: SoDEX trading fee per fill plus DeskLabs builder fee 0.003% (your Market Making rate today), both shown inside each fill’s fee. <mark>The rate drops to 0.002% at $200K and 0.001% at $1M of Market Making volume in 30 days; running bots switch on their next orders.</mark></div>
+            <span class="dl-small">Not a profit forecast.</span>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Câu hiện tại: <code>Fees: SoDEX trading fee per fill plus DeskLabs builder fee {rate} ({fee}), both shown inside each fill’s fee.</code> Phần tô vàng là phần thêm, chỉ cho Market Making.</li>
+          <li>Ngoài phạm vi DevOps yêu cầu, đưa vào để form và catalog nói cùng một điều.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= COPY ================= -->
+  <section class="section">
+    <div class="section-head">
+      <span class="eyebrow">3 · Câu chữ · đã duyệt 16/11</span>
+      <h2>Câu chữ UI mới</h2>
+      <p>Key gợi ý theo cấu trúc hiện có trong <code>apps/web/messages/en.json</code>. Số phí lấy từ <code>packages/shared/src/fees.ts</code>, không viết cứng trong câu.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="copy">
+        <thead><tr><th>Chỗ</th><th>Key gợi ý</th><th>Câu (EN)</th><th>Ghi chú</th></tr></thead>
+        <tbody>
+          <tr><td>Landing · chip thẻ MM</td><td class="key">landing.strategies.feeRateMm</td><td class="en">Builder fee {rate}, lower at volume</td><td>{rate} = mức bậc 1</td></tr>
+          <tr><td>Landing · check thẻ MM</td><td class="key">landing.strategies.mm.tiers</td><td class="en">Builder fee drops to {tier2} and {tier3} as your volume grows</td><td></td></tr>
+          <tr><td>Landing · Fees</td><td class="key">landing.fees.tiersBody</td><td class="en">Market Making gets cheaper as you trade more. We check your last 30 days every hour, and new orders use the new rate right away. No new signature.</td><td>Câu đầu in đậm</td></tr>
+          <tr><td>Landing · Fees · dòng MM</td><td class="key">landing.fees.mmRange</td><td class="en">{low}–{high}</td><td>Thay giá trị cố định</td></tr>
+          <tr><td>Bảng bậc · tiêu đề cột</td><td class="key">fees.tiers.volumeHead</td><td class="en">Your Market Making volume, last 30 days</td><td>Mobile: 30-day volume</td></tr>
+          <tr><td>Bảng bậc · tiêu đề cột ngắn</td><td class="key">fees.tiers.volumeHeadShort</td><td class="en">30-day volume</td><td></td></tr>
+          <tr><td>Bảng bậc · cột phí</td><td class="key">fees.tiers.feeHead</td><td class="en">Fee</td><td></td></tr>
+          <tr><td>Bảng bậc · bậc 1</td><td class="key">fees.tiers.t1</td><td class="en">Under {min}</td><td>{min} = $200K</td></tr>
+          <tr><td>Bảng bậc · bậc 2</td><td class="key">fees.tiers.t2</td><td class="en">{min} to {max}</td><td>$200K to $1M</td></tr>
+          <tr><td>Bảng bậc · bậc 3</td><td class="key">fees.tiers.t3</td><td class="en">{min} and up</td><td>$1M and up</td></tr>
+          <tr><td>Catalog · nút mở bảng</td><td class="key">bots.catalog.tiersToggle</td><td class="en">How the rate drops</td><td>aria-expanded</td></tr>
+          <tr><td>Catalog · chú thích bảng</td><td class="key">bots.catalog.tiersNote</td><td class="en">Checked every hour from your real-money Market Making bots. New orders use the new rate right away; no new signature.</td><td></td></tr>
+          <tr><td>Catalog 2b · nhãn</td><td class="key">bots.catalog.yourFee</td><td class="en">Your builder fee</td><td>NEEDS API</td></tr>
+          <tr><td>Catalog 2b · volume</td><td class="key">bots.catalog.mmVolume</td><td class="en">{volume} Market Making volume, last 30 days</td><td>NEEDS API</td></tr>
+          <tr><td>Catalog 2b · tới bậc sau</td><td class="key">bots.catalog.toNextTier</td><td class="en">{amount} more in 30 days and new orders pay {rate}.</td><td>NEEDS API</td></tr>
+          <tr><td>Catalog 2b · bậc cao nhất</td><td class="key">bots.catalog.topTier</td><td class="en">Lowest rate</td><td>Pill</td></tr>
+          <tr><td>Catalog 2b · giữ bậc</td><td class="key">bots.catalog.keepTier</td><td class="en">{volume} Market Making volume in the last 30 days. Stay above {min} to keep this rate.</td><td>NEEDS API</td></tr>
+          <tr><td>Catalog 2b · mức đặt riêng</td><td class="key">bots.catalog.customFee</td><td class="en">Set for your account by DeskLabs. Volume tiers don’t apply while this rate is set.</td><td>NEEDS API</td></tr>
+          <tr><td>Catalog 2b · xuống bậc</td><td class="key">bots.catalog.tierDown</td><td class="en">Your 30-day Market Making volume fell below {min}, so new orders pay {rate} again.</td><td>NEEDS API</td></tr>
+          <tr><td>Form MM · Before it starts</td><td class="key">bots.create.feeMmTiers</td><td class="en">The rate drops to {tier2} at {min2} and {tier3} at {min3} of Market Making volume in 30 days; running bots switch on their next orders.</td><td>Tuỳ chọn</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= SETTINGS ================= -->
+  <section class="section">
+    <div class="section-head">
+      <span class="eyebrow">5 · Settings › SoDEX access · ST-02</span>
+      <h2>Thẻ DeskLabs builder fee</h2>
+      <p>Bỏ câu <code>DeskLabs offers one rate: 0.01%. You can approve it or set it to 0.</code> Thay bằng: mức người dùng approve (0.01%, không đổi) tách khỏi mức từng chiến lược thật sự trả. Câu chữ mới chờ DevOps duyệt thay người dùng, người dùng xác nhận sau.</p>
+    </div>
+    <div class="boards">
+      <div class="board">
+        <div class="board-label">5a · Mức theo bậc <span class="tag api">DÙNG mmFee</span> <span class="example">EXAMPLE VALUES</span></div>
+        <div class="frame">
+          <div class="dl-card" style="gap:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div class="dl-h3" style="font-size:17px">DeskLabs builder fee</div><span class="pill-ok">● Approved</span></div>
+            <div><strong style="font-size:30px;font-weight:800">0.01%</strong> <span class="dl-small">max per fill · maxFeeRate 10 · builder #1645</span></div>
+            <ul class="checks" style="font-size:13.5px">
+              <li>Charged only on orders DeskLabs sends. Perps: both sides, SoDEX cap 0.2%. Spot: sells only, SoDEX cap 2%.</li>
+              <li>Shown inside the fee of each fill. Your own trades on SoDEX are never charged.</li>
+              <li><b style="color:var(--dl-ink)">You approve up to 0.01%. Each strategy charges its own rate, never more.</b></li>
+            </ul>
+            <dl class="fee-list" style="margin:0">
+              <div class="fee-mm">
+                <div class="fee-mm-head"><span>Market Making · your rate</span><strong style="font-size:19px">0.003%</strong></div>
+                <span class="dl-small">$142,300 Market Making volume, last 30 days. $57,700 more in 30 days and new orders pay 0.002%.</span>
+                <table class="tiers">
+                  <tbody>
+                    <tr class="here"><td>Under $200K</td><td>0.003%</td></tr>
+                    <tr><td>$200K to $1M</td><td>0.002%</td></tr>
+                    <tr><td>$1M and up</td><td>0.001%</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="fee-row"><dt>Volume Builder</dt><dd style="font-size:19px">0.005%</dd></div>
+              <div class="fee-row"><dt>Every other strategy</dt><dd style="font-size:19px">0.01%</dd></div>
+            </dl>
+            <span class="dl-small">You can approve 0.01% or set it to 0. Setting it to 0 pauses all your bots.</span>
+            <div><span style="display:inline-flex;min-height:42px;align-items:center;padding:0 16px;border-radius:12px;background:#c62f3a;color:#fff;font-weight:800;font-size:14px">Revoke (set to 0)</span></div>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Dòng Volume Builder và Every other strategy đọc <code>builderFees[strategy]</code>; nếu team đặt riêng (DEC-159) thì thêm nhãn <code>Set for your account</code> cạnh số.</li>
+          <li>Câu cuối ghép ý của ST-02 (Revoke pause mọi bot) vào ngay cạnh nút.</li>
+        </ul>
+      </div>
+      <div class="board">
+        <div class="board-label">5b · Các trạng thái của dòng Market Making <span class="tag api">DÙNG mmFee</span></div>
+        <div class="frame" style="display:flex;flex-direction:column;gap:12px">
+          <div class="tier-box" style="background:#fff;border:1px solid var(--dl-line)">
+            <span class="dl-small" style="font-weight:800">volume30d = null</span>
+            <div class="fee-mm-head"><span style="font-size:14px;color:var(--dl-ink-2)">Market Making · your rate</span><strong style="font-size:19px">0.003%</strong></div>
+            <span class="dl-small">The rate drops to 0.002% at $200K and 0.001% at $1M of Market Making volume in 30 days.</span>
+          </div>
+          <div class="tier-box" style="background:#fff;border:1px solid var(--dl-line)">
+            <span class="dl-small" style="font-weight:800">source = custom</span>
+            <div class="fee-mm-head"><span style="font-size:14px;color:var(--dl-ink-2)">Market Making · your rate</span><strong style="font-size:19px">0.002%</strong></div>
+            <span class="dl-small">Set for your account by DeskLabs. Volume tiers don’t apply while this rate is set.</span>
+          </div>
+          <div class="tier-box" style="background:#fff;border:1px solid var(--dl-line)">
+            <span class="dl-small" style="font-weight:800">nextVolume = null (bậc cao nhất)</span>
+            <div class="fee-mm-head"><span style="font-size:14px;color:var(--dl-ink-2)">Market Making · your rate</span><strong style="font-size:19px">0.001% <span class="pill-ok">Lowest rate</span></strong></div>
+            <span class="dl-small">$1,240,000 Market Making volume in the last 30 days. Stay above $1M to keep this rate.</span>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Dùng lại câu đã duyệt ở mục 3 (<code>bots.catalog.customFee</code>, <code>keepTier</code>, <code>toNextTier</code>, <code>bots.create.feeMmTiers</code>), không viết câu mới cho các trạng thái này.</li>
+          <li><code>source = default</code> (chưa có bậc nào áp dụng) hiện như <code>volume30d = null</code>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= NOTIFICATIONS ================= -->
+  <section class="section">
+    <div class="section-head">
+      <span class="eyebrow">6 · Thông báo đổi bậc · nhóm keyFee</span>
+      <h2>Telegram và in-app</h2>
+      <p>Theo <code>docs/NOTIFICATIONS.md</code> mục 5 và 7: tiêu đề 1 dòng có emoji của nhóm (🔑), 1–2 câu, một nút mở đúng màn hình; số lấy từ cùng dữ liệu với app, thiếu thì bỏ câu có số. Không phải sự cố nên chỉ ở tab <code>All</code>, không vào <code>Needs you</code>, không có toast.</p>
+    </div>
+    <div class="boards">
+      <div class="board">
+        <div class="board-label">6a · Telegram <span class="example">EXAMPLE VALUES</span></div>
+        <div class="frame" style="display:flex;flex-direction:column;gap:12px;background:#dfe7ef">
+          <div style="background:#fff;border-radius:14px 14px 14px 4px;padding:12px 14px;max-width:360px;font-size:14px;line-height:1.5;box-shadow:0 1px 1px rgba(0,0,0,.08)">
+            🔑 <b>Market Making fee lowered to 0.002%</b><br>
+            Your Market Making volume in the last 30 days reached $212,400. New orders pay 0.002% instead of 0.003%.
+            <div style="margin-top:10px;border-top:1px solid #e3e7f5;padding-top:8px;text-align:center;color:#2481cc;font-weight:700">Open Settings</div>
+          </div>
+          <div style="background:#fff;border-radius:14px 14px 14px 4px;padding:12px 14px;max-width:360px;font-size:14px;line-height:1.5;box-shadow:0 1px 1px rgba(0,0,0,.08)">
+            🔑 <b>Market Making fee back to 0.003%</b><br>
+            Your Market Making volume in the last 30 days fell to $187,900, below $200K. New orders pay 0.003% instead of 0.002%.
+            <div style="margin-top:10px;border-top:1px solid #e3e7f5;padding-top:8px;text-align:center;color:#2481cc;font-weight:700">Open Settings</div>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Thiếu volume thì bỏ câu đầu, chỉ còn <code>New orders pay {rate} instead of {previous}.</code></li>
+          <li>Không gửi khi <code>source = custom</code> (bậc không áp dụng). Mức team đặt riêng vẫn theo luồng DEC-159.</li>
+          <li>Nút dùng key có sẵn <code>telegram.buttons.settings</code>.</li>
+        </ul>
+      </div>
+      <div class="board">
+        <div class="board-label">6b · In-app (chuông) và Decisions của bot đang chạy</div>
+        <div class="frame" style="display:flex;flex-direction:column;gap:12px">
+          <div style="background:#fff;border:1px solid var(--dl-line);border-radius:16px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start">
+            <span aria-hidden="true" style="flex:0 0 32px;height:32px;border-radius:10px;background:var(--dl-tint);display:flex;align-items:center;justify-content:center">🔑</span>
+            <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+              <strong style="font-size:14px">Market Making fee lowered to 0.002%</strong>
+              <span style="font-size:13px;color:var(--dl-ink-2)">Your Market Making volume in the last 30 days reached $212,400. New orders pay 0.002% instead of 0.003%.</span>
+              <span class="dl-small">Today · 14:00</span>
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid var(--dl-line);border-radius:16px;padding:12px 14px">
+            <div class="dl-small" style="font-weight:800;margin-bottom:6px">Trading Agent · Decisions & actions</div>
+            <div style="display:grid;grid-template-columns:auto auto 1fr;gap:6px 14px;font-size:13px;align-items:baseline">
+              <span class="dl-small">Nov 16, 14:00</span><strong>Builder fee changed</strong><span style="color:var(--dl-ink-2)">Your 30-day Market Making volume reached $212,400, so the rate is now 0.002% (was 0.003%). New orders use it.</span>
+            </div>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>Bấm dòng thông báo mở Settings › SoDEX access.</li>
+          <li>Dòng Decisions dùng lại event "Builder fee changed" của DEC-159, chỉ đổi câu Why khi lý do là đổi bậc.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="copy">
+        <thead><tr><th>Chỗ</th><th>Key gợi ý</th><th>Câu (EN)</th><th>Ghi chú</th></tr></thead>
+        <tbody>
+          <tr><td>Settings · ý 3</td><td class="key">settings.sodex.feePoint3</td><td class="en">You approve up to {max}. Each strategy charges its own rate, never more.</td><td>Thay câu "one rate"</td></tr>
+          <tr><td>Settings · nhãn MM</td><td class="key">settings.sodex.feeMmYour</td><td class="en">Market Making · your rate</td><td></td></tr>
+          <tr><td>Settings · nhãn đặt riêng</td><td class="key">settings.sodex.feeCustom</td><td class="en">Set for your account</td><td>Cạnh số, dòng VB / other</td></tr>
+          <tr><td>Settings · cạnh nút Revoke</td><td class="key">settings.sodex.feeRevokeNote</td><td class="en">You can approve {max} or set it to 0. Setting it to 0 pauses all your bots.</td><td>Thay câu "You can approve it or set it to 0"</td></tr>
+          <tr><td>Telegram · tiêu đề, xuống phí</td><td class="key">telegram.titles.mm_fee_lower</td><td class="en">🔑 &lt;b&gt;Market Making fee lowered to {rate}&lt;/b&gt;</td><td>apps/jobs</td></tr>
+          <tr><td>Telegram · tiêu đề, lên phí</td><td class="key">telegram.titles.mm_fee_higher</td><td class="en">🔑 &lt;b&gt;Market Making fee back to {rate}&lt;/b&gt;</td><td>apps/jobs</td></tr>
+          <tr><td>Thân · xuống phí</td><td class="key">telegram.bodies.mm_fee_lower</td><td class="en">Your Market Making volume in the last 30 days reached {volume}. New orders pay {rate} instead of {previous}.</td><td>Thiếu volume → chỉ câu sau</td></tr>
+          <tr><td>Thân · lên phí</td><td class="key">telegram.bodies.mm_fee_higher</td><td class="en">Your Market Making volume in the last 30 days fell to {volume}, below {min}. New orders pay {rate} instead of {previous}.</td><td>Thiếu volume → chỉ câu sau</td></tr>
+          <tr><td>Thân · thiếu volume</td><td class="key">telegram.bodies.mm_fee_rate</td><td class="en">New orders pay {rate} instead of {previous}.</td><td></td></tr>
+          <tr><td>In-app</td><td class="key">notifications.mm_fee_lower / higher</td><td class="en">Cùng tiêu đề và thân như Telegram, không emoji, không HTML</td><td>Tab All</td></tr>
+          <tr><td>Decisions · Why</td><td class="key">(api) builder-fees why</td><td class="en">Your 30-day Market Making volume reached {volume}, so the rate is now {rate} (was {previous}). New orders use it.</td><td>Lên phí: "fell to {volume}"</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="eyebrow">7 · Quyết định và câu hỏi</span>
+      <h2>Câu hỏi trước khi code</h2>
+    </div>
+    <ol class="qs">
+      <li><b>Đã chốt (16/11): Strategy Lab dùng 2b.</b> Backend cần trả volume Market Making tiền thật 30 ngày của user và nguồn của mức phí (tier hay custom). Khi thiếu dữ liệu volume thì thẻ hiện như 2a.</li>
+      <li><b>Đã chốt (16/11): "Market Making volume" = giá trị mọi fill của bot Market Making, cả chiều mua và bán, chỉ tính bot tiền thật (live); bot paper không tính.</b> Câu chữ "from your real-money Market Making bots" giữ nguyên.</li>
+      <li><b>Đã chốt (16/11): chip landing dùng "Builder fee 0.003%, lower at volume"</b>, theo bảng câu chữ đã duyệt.</li>
+      <li><b>DevOps chốt thay người dùng (chờ người dùng xác nhận): sửa Settings (ST-02) trong đợt này</b>, cùng PR với UI bậc phí. Thiết kế ở mục 5.</li>
+      <li><b>DevOps chốt thay người dùng (chờ người dùng xác nhận): có thông báo khi đổi bậc</b>, nhóm <code>keyFee</code>, cả lên và xuống bậc, tối đa 1 tin / user × chiến lược / 24 giờ. Câu chữ ở mục 6.</li>
+      <li><b>DevOps duyệt thay người dùng (16/11, chờ người dùng xác nhận): toàn bộ câu chữ mục 5 và 6 giữ nguyên như đề xuất; bấm thông báo mở Settings › SoDEX access.</b></li>
+      <li><b>Người dùng quyết định (16/11, DevOps ghi DEC):</b> Volume Builder giữ cố định 0.005% và không có bậc phí. Chỉ Market Making có bậc; volume dùng để xếp bậc chỉ là volume Market Making. Bảng phí trên landing hiện Volume Builder là một mức 0.005%, và 2b chỉ có trên form Market Making.</li>
+      <li><b>Đã chốt (DevOps, 16/11):</b> không so sánh CPM giữa Market Making và Volume Builder ở landing hay Strategy Lab, vì CPM thay đổi theo thị trường và quy tắc 1.8 cấm dự báo. App chỉ hiện CPM thật của từng bot.</li>
+      <li><b>API cho 2b (DevOps):</b> <code>GET /api/v1/features</code> → <code>mmFee: { rate, source: "tier" | "custom" | "default", volume30d: string | null, nextVolume: string | null, nextRate: number | null }</code>. <code>volume30d = null</code> thì thẻ quay về 2a.</li>
+    </ol>
+  </section>
+</div>
+
+<script>
+document.querySelectorAll(".disclose").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var box = document.getElementById(b.getAttribute("aria-controls"));
+    var open = b.getAttribute("aria-expanded") === "true";
+    b.setAttribute("aria-expanded", String(!open));
+    if (box) box.hidden = open;
+  });
+});
+</script>
+
+</body></html>

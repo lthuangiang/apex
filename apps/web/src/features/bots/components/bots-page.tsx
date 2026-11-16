@@ -19,6 +19,7 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { MmFeeCatalog, mmFeeView } from "@/components/mm-fee-tiers";
 import { PageHead } from "@/components/workspace";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { AskAboutThis } from "@/features/desk/components/ask-about-this";
@@ -250,12 +251,24 @@ export function BotsPage() {
               <dd className="m-0 text-ink-2">{t(`fits.${key}`)}</dd>
               <dt className="font-bold text-warn">{t("catalog.risk")}</dt>
               <dd className="m-0 text-ink-2">{t(`risks.${key}`)}</dd>
-              {/* Phí builder trên mọi thẻ, theo mức của tài khoản (DEC-94, DEC-159; báo cáo test E21). */}
-              <dd className="col-span-2 m-0 font-bold text-ink">
-                {t("catalog.feeRate", {
-                  rate: feeLabels(builderFeeRateFor(key, features.data?.builderFees)).pct,
-                })}
-              </dd>
+              {/* Phí builder trên mọi thẻ, theo mức của tài khoản (DEC-94, DEC-159; báo cáo test E21). Market
+                  Making hiện thêm bảng bậc volume (DEC-258, DEC-261; docs/mockups/mm-fee-tiers 2b, 2c). */}
+              {key === "volume_maker" ? (
+                <dd className="col-span-2 m-0">
+                  <MmFeeCatalog
+                    view={mmFeeView(
+                      features.data?.mmFee,
+                      builderFeeRateFor(key, features.data?.builderFees),
+                    )}
+                  />
+                </dd>
+              ) : (
+                <dd className="col-span-2 m-0 font-bold text-ink">
+                  {t("catalog.feeRate", {
+                    rate: feeLabels(builderFeeRateFor(key, features.data?.builderFees)).pct,
+                  })}
+                </dd>
+              )}
               {VOLUME_KEYS.includes(key) ? (
                 <dd className="col-span-2 m-0 text-xs text-muted">{t("catalog.sopoints")}</dd>
               ) : null}
