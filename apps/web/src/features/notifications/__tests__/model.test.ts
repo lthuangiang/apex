@@ -31,6 +31,7 @@ describe("needsYou", () => {
       n("b", "risk_alert", "2026-11-12T03:00:00Z"),
       n("c", "unknown_order", "2026-11-12T03:00:00Z", { readAt: "2026-11-12T04:00:00Z" }),
       n("d", "key_fee", "2026-11-12T03:00:00Z"),
+      n("g", "fee_tier_changed", "2026-11-12T03:00:00Z"),
       n("e", "daily_summary", "2026-11-12T03:00:00Z"),
       n("f", "bot_stopped", "2026-11-12T03:00:00Z"),
     ];
@@ -80,6 +81,8 @@ describe("isIncident / isQuiet (DEC-180)", () => {
       n("cycles", "bot_stopped", at, { data: { reasonCode: "MAX_CYCLES" } }),
       n("tp", "bot_stopped", at, { data: { reasonCode: "TAKE_PROFIT" } }),
       n("paper", "bot_paused", at, { data: { paper: true, reasonCode: "STOP_LOSS" } }),
+      // Bậc builder fee đổi không phải sự cố: chỉ ở All, không toast.
+      n("fee", "fee_tier_changed", at),
     ];
     expect(needsYou(items).map((x) => x.id)).toEqual(["real"]);
     const first = newAlerts(null, []);
@@ -113,6 +116,7 @@ describe("targetOf", () => {
     expect(targetOf(n("a", "unknown_order", at), false)).toBe("/agent");
     expect(targetOf(n("a", "risk_alert", at), false)).toBe("/risk");
     expect(targetOf(n("a", "key_fee", at), false)).toBe("/settings");
+    expect(targetOf(n("a", "fee_tier_changed", at), false)).toBe("/settings?tab=access");
     expect(targetOf(n("a", "daily_summary", at), true)).toBe("/desk");
     expect(targetOf(n("a", "daily_summary", at), false)).toBe("/");
     expect(targetOf(n("a", "leader_big_move", at), true)).toBe("/following");

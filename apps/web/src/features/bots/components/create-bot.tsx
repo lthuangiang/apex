@@ -16,6 +16,7 @@ import { useMarketLast, useMarkets } from "@/lib/markets";
 import { ME_KEY, useBuilderFeeRate, useMe, useTwoFactorNeeded } from "@/lib/queries";
 import { BELOW_LG, useMediaQuery } from "@/lib/use-media";
 
+import { labelKeyOf } from "../field-copy";
 import {
   accountLeverageDefault,
   emptyValues,
@@ -237,7 +238,7 @@ export function CreateBot({
   // Điều kiện còn thiếu để bật Start, hiện ngay trên nút (UI_REVIEW H2); mỗi mục là link tới chỗ cần sửa.
   const fieldLabel = (k: string) => {
     const f = FIELDS[strategy].find((x) => x.key === k);
-    return f === undefined ? k : t(`fields.${f.label ?? f.key}.label`);
+    return f === undefined ? k : t(labelKeyOf(strategy, f, (x) => t.has(x)));
   };
   // Form chưa hợp lệ: kể tên từng ô còn thiếu / sai; bấm vào là mở Advanced (nếu cần) và đưa con trỏ tới ô đó.
   const formMissing = dry.valid
@@ -644,7 +645,9 @@ export function CreateBot({
                         fields: Object.keys(fieldErrorsOf(save.error ?? start.error))
                           .map((k) => {
                             const f = FIELDS[strategy].find((x) => x.key === k);
-                            return f === undefined ? k : t(`fields.${f.label ?? f.key}.label`);
+                            return f === undefined
+                              ? k
+                              : t(labelKeyOf(strategy, f, (x) => t.has(x)));
                           })
                           .join(", "),
                       })

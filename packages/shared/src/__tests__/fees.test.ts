@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   builderFeeRateFor,
+  tierRateOf,
   builderFeeRateOf,
   builderRateOnFill,
   DRIFT_BUILDER_FEE_RATE,
   feeRateToFraction,
   feeRateToPercent,
+  formatVolumeUsd,
   isBuilderAccount,
+  nextFeeTierOf,
   isBuilderFeeApproved,
   oneWayFeeFraction,
   roundTripFeePct,
@@ -96,5 +99,38 @@ describe("builder fee per user (DEC-159)", () => {
   it("never goes above what the user approved on SoDEX", () => {
     expect(builderFeeRateFor("spot_grid", { spot_grid: 25 })).toBe(DRIFT_BUILDER_FEE_RATE);
     expect(builderFeeRateFor("spot_grid", { spot_grid: -1 })).toBe(0);
+  });
+});
+
+describe("builder fee tiers (DEC-258)", () => {
+  it("lowers the Market Making fee from 200K and 1M of 30-day volume, never to 0", () => {
+    expect(tierRateOf("volume_maker", "0")).toBe(3);
+    expect(tierRateOf("volume_maker", "199999.99")).toBe(3);
+    expect(tierRateOf("volume_maker", "200000")).toBe(2);
+    expect(tierRateOf("volume_maker", "999999.99")).toBe(2);
+    expect(tierRateOf("volume_maker", "1000000")).toBe(1);
+    expect(tierRateOf("volume_maker", "50000000")).toBe(1);
+  });
+
+  it("leaves strategies without tiers at their default", () => {
+    expect(tierRateOf("volume_farm", "5000000")).toBe(5);
+    expect(tierRateOf("spot_grid", "5000000")).toBe(10);
+  });
+});
+
+describe("next fee tier and volume text (DEC-258)", () => {
+  it("names the tier with the highest rate below the effective rate, and none at the top", () => {
+    expect(nextFeeTierOf("volume_maker", 3)).toEqual({ minVolume: 200_000, rate: 2 });
+    expect(nextFeeTierOf("volume_maker", 2)).toEqual({ minVolume: 1_000_000, rate: 1 });
+    expect(nextFeeTierOf("volume_maker", 1)).toBeNull();
+    // Mức team đặt tay cao hơn mặc định vẫn có bậc kế tiếp; API trả null khi custom.
+    expect(nextFeeTierOf("volume_maker", 10)).toEqual({ minVolume: 200_000, rate: 2 });
+    expect(nextFeeTierOf("spot_grid", 10)).toBeNull();
+  });
+
+  it("rounds volume down to the dollar so it never shows more than real", () => {
+    expect(formatVolumeUsd("199999.6")).toBe("199,999");
+    expect(formatVolumeUsd("1000000")).toBe("1,000,000");
+    expect(formatVolumeUsd("0")).toBe("0");
   });
 });

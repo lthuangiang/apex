@@ -131,6 +131,45 @@ describe("jobs.notify", () => {
     expect(sent).toEqual([]);
   });
 
+  it("sends one email for a repeated message with the same dedupe key (fee_tier_changed)", async () => {
+    const { userId } = await seed();
+    const sent: string[] = [];
+    const send = (to: string) => Promise.resolve(void sent.push(to));
+    const msg = {
+      userId,
+      type: "fee_tier_changed",
+      data: {
+        strategy: "volume_maker",
+        rate: 2,
+        previousRate: 3,
+        volume: "250000",
+        droppedBelow: null,
+      },
+      dedupeKey: "fee_tier_changed:volume_maker:2:2026-11-16",
+    };
+    await handleNotify({ db, sendEmail: send }, msg);
+    await handleNotify({ db, sendEmail: send }, msg);
+    expect(sent).toHaveLength(1);
+    const rows = await db.select().from(notifications).where(eq(notifications.userId, userId));
+    expect(rows.map((r) => r.channel).sort()).toEqual(["email", "in_app"]);
+  });
+
+  it("keeps no email row when sending fails, so a retry still sends", async () => {
+    const { userId } = await seed();
+    const msg = {
+      userId,
+      type: "fee_tier_changed",
+      data: { strategy: "volume_maker", rate: 2, previousRate: 3, volume: "1", droppedBelow: null },
+      dedupeKey: "fee_tier_changed:volume_maker:2:2026-11-17",
+    };
+    await expect(
+      handleNotify({ db, sendEmail: () => Promise.reject(new Error("smtp down")) }, msg),
+    ).rejects.toThrow("smtp down");
+    const sent: string[] = [];
+    await handleNotify({ db, sendEmail: (to) => Promise.resolve(void sent.push(to)) }, msg);
+    expect(sent).toHaveLength(1);
+  });
+
   it("says a stopped paper bot was a fake-money test (DEC-105)", () => {
     const m = emailText(
       "bot_stopped",
