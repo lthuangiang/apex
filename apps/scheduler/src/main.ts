@@ -50,16 +50,19 @@ const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const mcpAlertStore = redisAlertStore(redis);
 const invariantStore = redisInvariantStore(redis);
 
-/** Bất biến tiền thật (DEC-TBD-prod-invariants): step size theo market từ SoDEX; đọc lỗi thì P4 bỏ qua lượt này. */
+/** Bất biến tiền thật (DEC-TBD-prod-invariants): chỉ đọc DB, không gọi SoDEX; hai lượt không chạy chồng nhau. */
+let invariantRunning = false;
 async function invariantTick() {
-  let steps = new Map<string, string>();
+  if (invariantRunning) return;
+  invariantRunning = true;
   try {
-    steps = new Map((await rest.getPerpsSymbols()).map((s) => [s.name, s.stepSize]));
-  } catch {
-    // Không đoán step size: P4 không xét lượt này.
+    const r = await checkProdInvariants(db, invariantStore);
+    // Chỉ log info khi có tin hoặc chạy chậm (> 2 s); còn lại debug.
+    if (r.queued > 0 || r.ms > 2_000) log.info(r, "prod invariants checked");
+    else log.debug(r, "prod invariants checked");
+  } finally {
+    invariantRunning = false;
   }
-  const r = await checkProdInvariants(db, invariantStore, Date.now(), (m) => steps.get(m) ?? null);
-  log.info(r, "prod invariants checked");
 }
 const rest = new SodexRestClient({
   config: loadSodexConfig(process.env),

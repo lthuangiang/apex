@@ -231,7 +231,7 @@ export const teamOpsEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("team_mcp_introspect_failing"), failures: z.number().int() }),
   z.object({
     type: z.literal("team_invariant"),
-    invariant: z.enum(["P1", "P2", "P3", "P4", "P5"]),
+    invariant: z.enum(["P1", "P2", "P3", "P4", "P5", "P7"]),
     /** `failing`: sai ở 2 lần kiểm tra liền nhau; `resolved`: đúng trở lại. */
     status: z.enum(["failing", "resolved"]),
     botId: uuidSchema,

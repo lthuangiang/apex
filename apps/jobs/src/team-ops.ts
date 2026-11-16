@@ -53,7 +53,7 @@ async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
         strategy: b.strategy,
         market: b.market,
         mode: b.mode,
-        bot: `··${e.botId.slice(-4)}`,
+        bot: `··${e.botId.slice(-8)}`,
         detail: e.detail,
       },
     };
