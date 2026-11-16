@@ -134,7 +134,7 @@ export function shockDayCostPerMillion(
 }
 
 /**
- * "Est. CPM · calibrated" (DEC-TBD-market-hours-calibrated) = "incl. shock days" × C, với C = trung vị (CPM thật ÷ "incl.
+ * "Est. CPM · calibrated" (DEC-293) = "incl. shock days" × C, với C = trung vị (CPM thật ÷ "incl.
  * shock days") của bot thật trong 14 ngày (`calibrationOf`). Thiếu "incl. shock days" → null.
  */
 export function calibratedCostPerMillion(

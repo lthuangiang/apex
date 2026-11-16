@@ -47,15 +47,15 @@ export const MARKET_HOURS_HOT_RATIO = 2;
 export const MARKET_HOURS_MAX_MISSING_PRICE = 0.2;
 /**
  * Cần ít nhất chừng này lệnh "Position cut" thật (có fill, có giá tham chiếu) trong kỳ thì mới dùng trượt giá và cỡ lệnh
- * cắt đo được; ít hơn → chỉ phí taker và cỡ cắt = R × order size (DEC-289, DEC-TBD-market-hours-calibrated).
+ * cắt đo được; ít hơn → chỉ phí taker và cỡ cắt = R × order size (DEC-289, DEC-293).
  */
 export const MARKET_HOURS_MIN_CUTS = 5;
 /** Hệ số C (real ÷ "incl. shock days") của một phạm vi cần ít nhất chừng này ô (giờ × market) có ≥ 3 bot-hour. */
 export const MARKET_HOURS_CALIBRATION_MIN_HOURS = 3;
-/** Cửa sổ đo R, số fill một bot-hour và C (ngày), không theo kỳ 7 / 30 ngày của trang (DEC-TBD-market-hours-calibrated). */
+/** Cửa sổ đo R, số fill một bot-hour và C (ngày), không theo kỳ 7 / 30 ngày của trang (DEC-293). */
 export const MARKET_HOURS_CALIBRATION_DAYS = 14;
 /**
- * Mặc định khi chưa có bot Market Making nào có dữ liệu trong 14 ngày (DEC-TBD-market-hours-calibrated):
+ * Mặc định khi chưa có bot Market Making nào có dữ liệu trong 14 ngày (DEC-293):
  * - `positionRatio` R = vị thế lớn nhất ÷ order size ≈ 2 (khoảng 1.2–3.5×);
  * - `fillsPerBotHour` F = 80 order size một bot-hour (đo 2026-11-16 trên DB local: BTC 72, ETH 89), để phần cắt luôn có;
  * - `calibration` C = 1.0;
@@ -189,7 +189,7 @@ export const marketHoursViewSchema = z.object({
     cuts: z.number().int().nonnegative(),
     cutNotional: decimalStringSchema.nullable(),
     /**
-     * R dùng cho cỡ một lần cắt = R × order size (DEC-TBD-market-hours-calibrated): đủ `MARKET_HOURS_MIN_CUTS` lệnh cắt
+     * R dùng cho cỡ một lần cắt = R × order size (DEC-293): đủ `MARKET_HOURS_MIN_CUTS` lệnh cắt
      * thật → trung bình (notional lệnh cắt ÷ order size của bot) (`cuts`); không thì trung vị qua bot Market Making của
      * (vị thế lớn nhất ÷ order size) trong 14 ngày theo `cutScope`; không có bot nào →
      * `MARKET_HOURS_CALIBRATION_DEFAULTS.positionRatio`.
@@ -337,7 +337,7 @@ export interface CutFill {
  *   bán thấp hơn giá tham chiếu): Σ chiều × (giá khớp − ref) ÷ ref × notional ÷ Σ notional × 10 000;
  * - `notional` = notional trung bình của một lệnh cắt;
  * - `sizeRatio` = trung bình qua các lệnh cắt có order size của (notional lệnh cắt ÷ order size của bot)
- *   (DEC-TBD-market-hours-calibrated); null khi không lệnh nào có order size.
+ *   (DEC-293); null khi không lệnh nào có order size.
  * Dưới `MARKET_HOURS_MIN_CUTS` lệnh có giá tham chiếu → `slippageBps`, `notional`, `sizeRatio` là null (chỉ phí taker;
  * cỡ cắt theo R).
  */
@@ -388,7 +388,7 @@ export function cutStats(fills: readonly CutFill[]): {
 }
 
 /**
- * Một bot Market Making tiền thật trong 14 ngày (DEC-TBD-market-hours-calibrated): market, số bot-hour (giờ có ≥ 1 lệnh
+ * Một bot Market Making tiền thật trong 14 ngày (DEC-293): market, số bot-hour (giờ có ≥ 1 lệnh
  * tạo), Σ notional fill, vị thế lớn nhất (max |Σ size có dấu theo filled_at| × giá fill, USDC) và order size (USDC)
  * của cấu hình đang chạy. null khi không có fill / không đọc được cấu hình.
  */
@@ -401,7 +401,7 @@ export interface MmBotWindow {
 }
 
 /**
- * R và số fill một bot-hour của một nhóm bot (DEC-TBD-market-hours-calibrated). Chỉ bot có order size > 0:
+ * R và số fill một bot-hour của một nhóm bot (DEC-293). Chỉ bot có order size > 0:
  * - `ratio` = trung vị (vị thế lớn nhất ÷ order size) qua các bot có vị thế lớn nhất > 0;
  * - `fillsPerBotHour` = Σ (volume ÷ order size) ÷ Σ bot-hour qua các bot có bot-hour > 0 (volume một bot-hour theo đơn vị
  *   order size, nên dùng được cho mọi market và mọi order size); null khi không có volume;
@@ -435,7 +435,7 @@ export function positionStats(bots: readonly MmBotWindow[]): {
 }
 
 /**
- * Cỡ một lần cắt cho "incl. shock days" (DEC-TBD-market-hours-calibrated), một số cho mọi giờ của market:
+ * Cỡ một lần cắt cho "incl. shock days" (DEC-293), một số cho mọi giờ của market:
  * - R: đủ lệnh cắt thật (`cutRatio` khác null) → `cutRatio` (`cuts`); không thì R của bot market này (`market`), không
  *   có thì R của mọi market gộp lại (`pooled`), không có nữa thì `MARKET_HOURS_CALIBRATION_DEFAULTS.positionRatio`
  *   (`default`);
@@ -480,7 +480,7 @@ export function cutSizing(
 }
 
 /**
- * C (DEC-TBD-market-hours-calibrated): ô của market này đủ `MARKET_HOURS_CALIBRATION_MIN_HOURS` → trung vị của chúng
+ * C (DEC-293): ô của market này đủ `MARKET_HOURS_CALIBRATION_MIN_HOURS` → trung vị của chúng
  * (`market`); không thì gộp ô của mọi market (`pooled`, `pooled()` chỉ được gọi khi cần vì phải tải nến của từng
  * market); không đủ nữa → `MARKET_HOURS_CALIBRATION_DEFAULTS.calibration` (`default`). Không bao giờ null.
  * `own.botHours` = bot-hour của mọi bot Market Making trên market này (`marketBotHours` của scope).

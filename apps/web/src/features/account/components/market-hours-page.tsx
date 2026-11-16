@@ -92,7 +92,7 @@ export function pct(v: string): string {
 const dayLabel = (d: string): string => formatDate(Date.parse(`${d}T00:00:00Z`), "UTC");
 
 /**
- * Câu nguồn hiệu chỉnh (DEC-TBD-market-hours-calibrated, người dùng duyệt): bot của market này → mọi market gộp lại →
+ * Câu nguồn hiệu chỉnh (DEC-293, người dùng duyệt): bot của market này → mọi market gộp lại →
  * hằng số mặc định (kèm ngày đo).
  */
 function useSourceText(): (scope: MarketHoursCalibrationScope, market: string | null) => string {
@@ -398,7 +398,7 @@ function HowToRead({
 // Cột nhãn 272 px: nhãn dài nhất ("Price move against makers, 30 s later (bp)") + nút ⓘ nằm trên một dòng ở 1440.
 // Chú giải thụt vào 275 px (= nhãn + khe 3 px) để thẳng với cột giờ đầu tiên.
 /**
- * Phần "How these numbers are calculated" về lần cắt vị thế và hiệu chỉnh (DEC-289, DEC-TBD-market-hours-calibrated):
+ * Phần "How these numbers are calculated" về lần cắt vị thế và hiệu chỉnh (DEC-289, DEC-293):
  * chi phí cắt đo từ lệnh cắt thật hay chỉ phí taker, cỡ cắt = R × order size so với volume một bot-hour, và dòng
  * "calibrated" = "incl. shock days" × C, mỗi số kèm nguồn.
  */

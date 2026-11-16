@@ -133,7 +133,7 @@ export async function marketHours(
   const ctx: EstimateContext = { model, symbols, mmBots };
   // Hai dòng "Est. CPM" của mô hình (DEC-289) cho kỳ của trang; xem `estimateFor`.
   const e = estimateFor(market, vol, moves, cutFills, ctx);
-  // Dòng "calibrated" (DEC-TBD-market-hours-calibrated): C đo trên 14 ngày, theo thứ tự market này → mọi market gộp lại
+  // Dòng "calibrated" (DEC-293): C đo trên 14 ngày, theo thứ tự market này → mọi market gộp lại
   // → mặc định. Ô của market khác chỉ được tải khi market này không đủ ô.
   const calibrationCtx = { db: deps.db, from: calFrom, tz: q.tz, ctx };
   const ownPairs =
@@ -229,7 +229,7 @@ interface EstimateContext {
 }
 
 /**
- * Ước tính của mô hình cho một market (DEC-289, DEC-TBD-market-hours-calibrated), cùng mô hình với thẻ chi phí Market
+ * Ước tính của mô hình cho một market (DEC-289, DEC-293), cùng mô hình với thẻ chi phí Market
  * Making (mm-cost.ts, DEC-228). Bước giá = tick ÷ giá đóng của nến 1 phút mới nhất; phí = maker SoDEX của market +
  * builder fee Market Making mặc định. `shock[h]` = "incl. shock days" của giờ h (`shockDayCostPerMillion`), với cỡ một
  * lần cắt = R × order size so với volume một bot-hour (`cutSizing`, chỉ bot Market Making, không theo bộ lọc Strategy).
@@ -274,7 +274,7 @@ function estimateFor(
 }
 
 /**
- * Ô hiệu chỉnh của một market (DEC-TBD-market-hours-calibrated): mỗi giờ địa phương có ≥ 3 bot-hour của bot Market
+ * Ô hiệu chỉnh của một market (DEC-293): mỗi giờ địa phương có ≥ 3 bot-hour của bot Market
  * Making tiền thật trong 14 ngày và có CPM thật (cùng công thức khối 3) → { CPM thật, "incl. shock days" của 14 ngày đó }.
  * Market không có nến / tick size → không có ô.
  */
@@ -345,7 +345,7 @@ const orderSizeOf = (config: unknown): string | null => {
 };
 
 /**
- * Mỗi bot Market Making tiền thật (mọi market) có lệnh tạo trong 14 ngày (DEC-TBD-market-hours-calibrated):
+ * Mỗi bot Market Making tiền thật (mọi market) có lệnh tạo trong 14 ngày (DEC-293):
  * - bot-hour = giờ UTC có ít nhất một lệnh tạo trong cửa sổ (như khối 3);
  * - fill trong cửa sổ (lệnh tạo từ 1 ngày trước cửa sổ, như khối 3) đi theo orders_bot_idx (bot_id, created_at) +
  *   fills_order_idx; vị thế = tổng chạy của size có dấu (mua +, bán −) theo filled_at (window function, coi vị thế
@@ -645,7 +645,7 @@ const botFilter = (q: BotHoursQuery) => ({
 
 /**
  * 24 ô giờ địa phương của khối 3 (CPM thật, volume, phí, bot-hour); dùng cả cho ô hiệu chỉnh C
- * (DEC-TBD-market-hours-calibrated, chỉ Market Making, 14 ngày).
+ * (DEC-293, chỉ Market Making, 14 ngày).
  */
 async function botHourCells(db: Db, q: BotHoursQuery): Promise<MarketHoursHour["bots"][]> {
   const { own, strategies } = botFilter(q);

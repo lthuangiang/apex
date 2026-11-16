@@ -191,7 +191,7 @@ describe("calibrationRatio", () => {
   });
 });
 
-describe("cut size from position ÷ order size (DEC-TBD-market-hours-calibrated)", () => {
+describe("cut size from position ÷ order size (DEC-293)", () => {
   const bot = (
     market: string,
     botHours: number,
@@ -277,7 +277,7 @@ describe("cut size from position ÷ order size (DEC-TBD-market-hours-calibrated)
   });
 });
 
-describe("calibration factor C with fallbacks (DEC-TBD-market-hours-calibrated)", () => {
+describe("calibration factor C with fallbacks (DEC-293)", () => {
   const p = (real: string, est: string) => ({ real: dec(real), est: dec(est) });
   const three = [p("150", "100"), p("200", "100"), p("250", "100")];
 

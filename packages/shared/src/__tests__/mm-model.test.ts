@@ -210,7 +210,7 @@ describe("shock-day estimate (DEC-289)", () => {
   });
 });
 
-describe("calibrated cost per $1M (DEC-TBD-market-hours-calibrated)", () => {
+describe("calibrated cost per $1M (DEC-293)", () => {
   it("scales incl. shock days by the calibration factor, and stays null without an estimate", () => {
     expect(calibratedCostPerMillion(dec("215"), "1.4")?.toString()).toBe("301");
     expect(calibratedCostPerMillion(dec("215"), "1")?.toString()).toBe("215");

@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// "Est. CPM · calibrated" (DEC-TBD-market-hours-calibrated): R = vị thế lớn nhất ÷ order size, số fill một bot-hour
+// "Est. CPM · calibrated" (DEC-293): R = vị thế lớn nhất ÷ order size, số fill một bot-hour
 // theo đơn vị order size, C = trung vị (CPM thật ÷ "incl. shock days") trên 14 ngày; nguồn market → mọi market → mặc
 // định. Môi trường riêng: các phép gộp "mọi market" không được lẫn bot của file test khác.
 
