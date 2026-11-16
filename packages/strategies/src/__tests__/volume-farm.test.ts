@@ -164,6 +164,97 @@ describe("volume farm cycle", () => {
     expect(o).toMatchObject({ type: "market", timeInForce: "IOC" });
   });
 
+  it("enters and exits with market orders right away when taker is on and misses before taker is 0 (DEC-259)", () => {
+    const c = cfg({ takerAfter: 0 });
+    let r = run(c, [timer(T0)]);
+    const entry = first(places(r.all));
+    expect(entry).toMatchObject({ type: "market", timeInForce: "IOC", reduceOnly: false });
+    r = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0 + 1000,
+          clOrdID: entry.clOrdID,
+          price: "80000",
+          quantity: entry.quantity,
+          fee: "0.03",
+        },
+        { type: "tick", at: T0 + 2000, market: "BTC-USD", price: "80500" },
+      ],
+      r.s,
+    );
+    expect(last(places(r.all))).toMatchObject({
+      type: "market",
+      timeInForce: "IOC",
+      reduceOnly: true,
+    });
+  });
+
+  it("pauses after 3 market entries in a row are rejected instead of retrying forever (DEC-259)", () => {
+    const c = cfg({ takerAfter: 0, cooldownSecs: 0 });
+    let r = run(c, [timer(T0)]);
+    const pauses: StrategyAction[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const id = r.s.entry?.id ?? "";
+      expect(r.s.entry?.taker).toBe(true);
+      r = run(
+        c,
+        [
+          {
+            type: "orderReject",
+            at: T0 + i * 10_000 + 500,
+            clOrdID: id,
+            code: "INSUFFICIENT_MARGIN",
+          },
+        ],
+        r.s,
+      );
+      pauses.push(...r.all.filter((a) => a.type === "pause"));
+      if (i < 2) {
+        expect(pauses).toHaveLength(0);
+        r = run(c, [timer(T0 + (i + 1) * 10_000)], r.s);
+      }
+    }
+    expect(pauses).toEqual([{ type: "pause", reason: "ORDER_REJECTED" }]);
+  });
+
+  it("stays post-only with 0 misses when taker orders are off (DEC-259)", () => {
+    const r = run(cfg({ allowTaker: false, takerAfter: 0 }), [timer(T0)]);
+    expect(first(places(r.all))).toMatchObject({ type: "limit", timeInForce: "GTX" });
+  });
+
+  it("prices the take-profit floor with taker fees when every order is a taker (DEC-259)", () => {
+    // Lượt 0.002 BTC ở 80 000 = 160 USDC. Maker 0.017% / taker 0.045% mỗi chiều. TP đặt rất nhỏ để sàn phí quyết định.
+    const tx: StepContext = { ...ctx, feeRate: "0.00017", takerFeeRate: "0.00045" };
+    const reason = (c: VolumeFarmConfig, price: string) => {
+      let r = run(c, [timer(T0)], undefined, tx);
+      const entry = first(places(r.all));
+      r = run(
+        c,
+        [
+          {
+            type: "fill",
+            at: T0 + 1000,
+            clOrdID: entry.clOrdID,
+            price: "80000",
+            quantity: "0.002",
+            fee: "0",
+          },
+          { type: "tick", at: T0 + 2000, market: "BTC-USD", price },
+        ],
+        r.s,
+        tx,
+      );
+      return r.s.phase;
+    };
+    // Lãi 0.1 USDC (giá +50): đủ sàn maker 1.5 × 0.0544 = 0.08 nhưng chưa đủ sàn taker 1.5 × 0.144 = 0.216.
+    expect(reason(cfg({ tpUsd: "0.01", takerAfter: 3 }), "80050")).toBe("exiting");
+    expect(reason(cfg({ tpUsd: "0.01", takerAfter: 0 }), "80050")).not.toBe("exiting");
+    // Lãi 0.24 USDC (giá +120): vượt sàn taker → chốt.
+    expect(reason(cfg({ tpUsd: "0.01", takerAfter: 0 }), "80120")).toBe("exiting");
+  });
+
   it("opens on fill, takes profit, closes with a post-only reduce-only order and cools down", () => {
     let r = run(cfg(), [timer(T0)]);
     const entry = first(places(r.all));
@@ -569,7 +660,7 @@ describe("volume farm — stop loss on SoDEX (DEC-118, DEC-120, DEC-125)", () =>
   const mods = (a: StrategyAction[]) =>
     a.filter((x): x is Extract<StrategyAction, { type: "modifyStop" }> => x.type === "modifyStop");
 
-  it("reads old scalp configs with the apex exits and only allows 1–10 misses before taker", () => {
+  it("reads old scalp configs with the apex exits and allows 0–10 misses before taker", () => {
     const old = volumeFarmSchema.parse({
       market: "BTC-USD",
       leverage: 5,
@@ -594,7 +685,9 @@ describe("volume farm — stop loss on SoDEX (DEC-118, DEC-120, DEC-125)", () =>
     expect(old.earlyProfitUsd).toBeUndefined();
     expect(old.slPct).toBeUndefined();
     expect(old).not.toHaveProperty("tpAtr");
-    expect(volumeFarmSchema.safeParse({ ...old, takerAfter: 0 }).success).toBe(false);
+    expect(volumeFarmSchema.safeParse({ ...old, takerAfter: 0 }).success).toBe(true);
+    expect(volumeFarmSchema.safeParse({ ...old, takerAfter: -1 }).success).toBe(false);
+    expect(volumeFarmSchema.safeParse({ ...old, takerAfter: 11 }).success).toBe(false);
   });
 
   it("exits early only once the price gain covers 3× the round-trip fee, never below the fees (DEC-130)", () => {

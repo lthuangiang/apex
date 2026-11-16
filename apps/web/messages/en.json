@@ -813,19 +813,19 @@
       },
       "vfAllowTaker": {
         "label": "Use taker orders",
-        "hint": "Off: post-only orders only (lowest fees, slower). On: switches to market orders after the misses set below.",
+        "hint": "Off: post-only orders only (lowest fees, slower). On: the bot may use market orders, as set in Market orders after below.",
         "how": {
           "intro": "Entries and exits are post-only orders placed inside the spread (lowest fees). If they don’t fill they are cancelled and placed again.",
           "steps": [
             "Off: the bot keeps retrying post-only; slower, but always maker fees.",
-            "On: after the number of misses set below, it uses a market order instead (higher taker fee)."
+            "On: after the number of misses set below, it uses a market order instead (higher taker fee). Set it to 0 to use market orders for every entry and exit."
           ],
           "note": "Stop losses always close at market, whatever this setting."
         }
       },
       "vfTakerAfter": {
-        "label": "Misses before taker",
-        "hint": "Unfilled post-only orders in a row before the bot uses a market order"
+        "label": "Market orders after (misses)",
+        "hint": "0 = every entry and exit is a market order right away: the fastest volume, but you pay the taker fee and cross the spread on every trade. 1–10 = how many post-only orders in a row may go unfilled before the bot uses a market order instead. Needs Use taker orders on."
       },
       "vfLeverage": {
         "label": "Leverage",
