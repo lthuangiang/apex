@@ -572,33 +572,37 @@ describe("engine", () => {
       engine: "perps",
       config: vm(1),
     });
-    const e = makeEngine(gw, "w-lev-race");
-    await e.tick();
-    let release: () => void = () => undefined;
-    gw.holdLeverage = new Promise<void>((res) => {
-      release = res;
-    });
-    // Đang đặt 1× thì người dùng áp version mới 2×.
-    const first = e.onPrice("BTC-USD", "100000", clock);
-    await db.insert(botVersions).values({
-      botId,
-      version: 2,
-      paramSource: "manual",
-      status: "pending",
-      config: vm(2),
-    });
-    const applied = e.tick();
-    release();
-    await Promise.all([first, applied]);
-    clock += 1_000;
-    await e.onPrice("BTC-USD", "100001", clock);
-    // Lần đặt 1× của version cũ không được tính là xong cho version mới: 2× được đặt.
-    expect(gw.leverage.map((l) => l.leverage)).toContain(2);
-    expect(gw.settings.get("BTC-USD")?.leverage).toBe(2);
-    await e.stop();
-    // Bot nằm lại trong DB dùng chung: dừng hẳn để engine của test sau không chạy bot BTC-USD này (thêm lần đặt đòn bẩy).
     const { eq } = await import("drizzle-orm");
-    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+    const e = makeEngine(gw, "w-lev-race");
+    try {
+      await e.tick();
+      let release: () => void = () => undefined;
+      gw.holdLeverage = new Promise<void>((res) => {
+        release = res;
+      });
+      // Đang đặt 1× (SoDEX chưa trả lời) thì người dùng lưu version mới 2×.
+      const first = e.onPrice("BTC-USD", "100000", clock);
+      await db.insert(botVersions).values({
+        botId,
+        version: 2,
+        paramSource: "manual",
+        status: "pending",
+        config: vm(2),
+      });
+      release();
+      await first;
+      // Áp version ở nhịp sau (không chạy tick chồng lên lần ghi có fence đang dở).
+      await e.tick();
+      clock += 1_000;
+      await e.onPrice("BTC-USD", "100001", clock);
+      // 1× đã xác nhận của version cũ không được tính là xong cho version mới: 2× được đặt, SoDEX ở 2×.
+      expect(gw.leverage.map((l) => l.leverage)).toEqual([1, 2]);
+      expect(gw.settings.get("BTC-USD")?.leverage).toBe(2);
+    } finally {
+      await e.stop();
+      // Bot nằm lại trong DB dùng chung: dừng hẳn để engine của test sau không chạy bot BTC-USD này.
+      await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+    }
   });
 
   it("marks a timed-out order unknown, never resends it, and reconciles it", async () => {

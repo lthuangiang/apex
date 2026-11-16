@@ -1280,8 +1280,15 @@ export class Engine {
     at: number,
   ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
     // Sự kiện tới cùng lúc (giá, Binance, nhịp) chờ chung một lần đặt (CP-01: trước đây BTC-USD ghi 7 lần trong 2 s).
-    if (r.leverageRun?.versionId === r.versionId) return r.leverageRun.p;
-    const run = { versionId: r.versionId, p: this.#ensureLeverageAll(r, at) };
+    const prev = r.leverageRun;
+    if (prev?.versionId === r.versionId) return prev.p;
+    // Lượt của version cũ còn đang gửi: chờ nó xong (bỏ qua kết quả) rồi mới đặt cho version mới. Nếu chạy chồng, SoDEX có
+    // thể áp lệnh mới trước, lệnh cũ sau: account ở đòn bẩy cũ mà engine tưởng là mới. Không tốn thêm request.
+    const p =
+      prev === null
+        ? this.#ensureLeverageAll(r, at)
+        : prev.p.catch(() => undefined).then(() => this.#ensureLeverageAll(r, at));
+    const run = { versionId: r.versionId, p };
     r.leverageRun = run;
     try {
       return await run.p;
