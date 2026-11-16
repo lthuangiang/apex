@@ -2902,7 +2902,8 @@
     "stateSub": {
       "paused": "Confirmed {time} · open orders kept",
       "stopping": "Sent {time} · cancelling {n, plural, one {# order} other {# orders}}",
-      "stopped": "Confirmed {time} · {n} open orders"
+      "stopped": "Confirmed {time} · {n} open orders",
+      "archived": "Archived · last change {time}"
     },
     "lifecycle": {
       "label": "Lifecycle",
@@ -2996,6 +2997,11 @@
       "body": "Start it again with the same settings, archive it to move it out of My bots, or export its data to analyse the run.",
       "startAgain": "Start again",
       "archive": "Archive"
+    },
+    "archived": {
+      "title": "This bot is archived",
+      "body": "Read-only. Restore it to run it again or change its settings.",
+      "restore": "Restore"
     },
     "quotes": {
       "title": "Live quotes",
