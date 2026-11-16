@@ -112,7 +112,7 @@ export interface VolumeMakerState {
    */
   dustHold?: { side: "buy" | "sell"; position: string } | null;
   /**
-   * Lệnh market IOC reduce-only đóng vị thế lẻ đã gửi cho đợt này (DEC-TBD-dust-close): `position` = vị thế lúc gửi.
+   * Lệnh market IOC reduce-only đóng vị thế lẻ đã gửi cho đợt này (DEC-292): `position` = vị thế lúc gửi.
    * Mỗi đợt (cùng vị thế) chỉ gửi một lần; bị từ chối thì giữ `dustHold` như DEC-291, không gửi lại.
    */
   dustClose?: { id: string; position: string } | null;
@@ -1009,7 +1009,7 @@ function cutPosition(
 }
 
 /**
- * Đóng vị thế lẻ (DEC-TBD-dust-close): vị thế dưới mức tối thiểu của SoDEX mà lệnh mở phía đi qua 0 bị từ chối vì
+ * Đóng vị thế lẻ (DEC-292): vị thế dưới mức tối thiểu của SoDEX mà lệnh mở phía đi qua 0 bị từ chối vì
  * thiếu margin thì huỷ mọi lệnh đang sống và gửi **một** lệnh market IOC reduce-only đúng bằng vị thế (cùng kiểu lệnh
  * cắt vị thế, DEC-249; không cần thêm margin). SoDEX đã khớp lệnh như vậy dưới `minNotional` (prod 2026-11-15, 0.0031
  * ETH). Dùng `cutId` / `cutAt` để chặn như lệnh cắt (DEC-260): còn chờ kết quả thì không gửi lại, không đặt lệnh mở phía
@@ -1265,7 +1265,7 @@ function stepCore(
       };
       // Đã dừng: fill (lệnh đóng lúc dừng, khớp trễ) chỉ vào sổ cái, không chạy lại guard (không đặt thêm lệnh đóng).
       if (state.phase === "halted") return { actions: [], state };
-      // Lệnh đóng vị thế lẻ khớp hết (DEC-TBD-dust-close): bỏ giữ phía đi qua 0, lần báo giá kế tiếp báo hai phía.
+      // Lệnh đóng vị thế lẻ khớp hết (DEC-292): bỏ giữ phía đi qua 0, lần báo giá kế tiếp báo hai phía.
       if (isDone && s.dustClose?.id === e.clOrdID) {
         const closed: VolumeMakerState = { ...state, dustHold: null };
         const log: StrategyAction = {
@@ -1318,7 +1318,7 @@ function stepCore(
         isFlat(pos, mid, rules)
       ) {
         state = { ...state, dustHold: { side: o.side, position: s.ledger.position } };
-        // Đóng vị thế lẻ bằng một lệnh market IOC reduce-only (DEC-TBD-dust-close). Đã gửi cho đợt này (đang chờ hoặc
+        // Đóng vị thế lẻ bằng một lệnh market IOC reduce-only (DEC-292). Đã gửi cho đợt này (đang chờ hoặc
         // bị từ chối) thì chỉ giữ phía đó như DEC-291.
         const dust = closeDust(c, state, ctx, rules, e.at);
         if (dust !== null) return dust;
@@ -1445,7 +1445,7 @@ function stepCore(
       return { actions: [], state: s };
     case "resumed":
       // Người dùng Resume (thường sau khi nạp thêm tiền): báo giá lại phía đi qua 0 như bình thường.
-      // Đợt mới: lần từ chối vì thiếu margin kế tiếp được gửi lại một lệnh đóng vị thế lẻ (DEC-TBD-dust-close).
+      // Đợt mới: lần từ chối vì thiếu margin kế tiếp được gửi lại một lệnh đóng vị thế lẻ (DEC-292).
       return {
         actions: [],
         state:

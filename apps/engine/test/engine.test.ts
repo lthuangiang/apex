@@ -4251,9 +4251,9 @@ describe("insufficient margin rejects (margin guard)", () => {
     await stopAll();
   });
 
-  // DEC-TBD-dust-close: export prod 2026-11-15, ETH-USD giữ long 0.0031 (≈ 5.7 USD, dưới minNotional 10) và lệnh bán
+  // DEC-292: export prod 2026-11-15, ETH-USD giữ long 0.0031 (≈ 5.7 USD, dưới minNotional 10) và lệnh bán
   // không reduce-only bị từ chối vì thiếu margin. Bot đóng phần lẻ bằng đúng một lệnh market IOC reduce-only.
-  describe("dust close (DEC-TBD-dust-close)", () => {
+  describe("dust close (DEC-292)", () => {
     const ethRules = {
       tickSize: "0.1",
       stepSize: "0.0001",
