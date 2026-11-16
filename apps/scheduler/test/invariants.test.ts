@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   collapseMassStale,
+  commit,
   decide,
   findingsOf,
+  MASS_STALE_KEY,
   type BotSnapshot,
   type Finding,
   type InvariantStore,
   PROD_INVARIANTS,
+  stopTimeOf,
 } from "../src/invariants";
 
 // Bất biến tiền thật trên prod (DEC-TBD-prod-invariants): hàm thuần cho P1–P5, P7 và quyết định gửi (sai 2 lần liền,
@@ -33,6 +36,7 @@ const mm = (over: Partial<BotSnapshot> = {}): BotSnapshot => ({
   openingAfterStop: 0,
   stillOpen: 0,
   filledNet: "0.005",
+  resynced: false,
   stepSize: "0.0001",
   ...over,
 });
@@ -103,8 +107,12 @@ describe("prod invariants P1–P5, P7", () => {
     const p5 = (i: number): Finding => ({ invariant: "P5", botId: `b${String(i)}`, detail: "x" });
     const p1: Finding = { invariant: "P1", botId: "b9", detail: "y" };
     const out = collapseMassStale([p5(1), p5(2), p5(3), p1], 4);
-    expect(out.filter((f) => f.invariant === "P5")).toHaveLength(1);
-    expect(out.find((f) => f.invariant === "P5")?.detail).toBe(
+    const loud = out.filter((f) => f.invariant === "P5" && f.quiet !== true);
+    expect(loud).toHaveLength(1);
+    expect(loud[0]?.key).toBe(MASS_STALE_KEY);
+    // Từng bot vẫn giữ trạng thái "đang sai", không gửi tin riêng.
+    expect(out.filter((f) => f.quiet === true).map((f) => f.botId)).toEqual(["b1", "b2", "b3"]);
+    expect(loud[0]?.detail).toBe(
       "3 of 4 Market Making bots not quoting (possible SoDEX or engine issue)",
     );
     expect(out.some((f) => f.invariant === "P1")).toBe(true);
@@ -128,11 +136,6 @@ function memStore(clock: { now: number }): InvariantStore {
       until.delete(k);
       return Promise.resolve();
     },
-    claim: (k, ms) => {
-      if (live(k)) return Promise.resolve(false);
-      until.set(k, clock.now + ms);
-      return Promise.resolve(true);
-    },
     active: () => Promise.resolve([...set]),
     addActive: (m) => {
       set.add(m);
@@ -144,8 +147,12 @@ function memStore(clock: { now: number }): InvariantStore {
 
 describe("prod invariants: when to send", () => {
   const f: Finding = { invariant: "P5", botId: BOT, detail: "no quote for 40 s" };
-  const events = async (store: InvariantStore, botIds: string[], fs: Finding[]) =>
-    (await decide(store, botIds, fs)).map((d) => d.event);
+  // Như checkProdInvariants: ghi outbox (ở đây: trả tin) rồi mới commit vào Redis.
+  const events = async (store: InvariantStore, botIds: string[], fs: Finding[]) => {
+    const ds = await decide(store, botIds, fs);
+    for (const d of ds) await commit(store, d);
+    return ds.map((d) => d.event);
+  };
 
   it("alerts only after two failing checks in a row, then at most once per 30 minutes", async () => {
     const clock = { now: NOW };
@@ -208,5 +215,87 @@ describe("prod invariants: when to send", () => {
     const other = memStore({ now: NOW });
     await events(other, [BOT], [f]);
     expect(await events(other, [BOT], [])).toEqual([]);
+  });
+});
+
+describe("prod invariants: review fixes", () => {
+  const f: Finding = { invariant: "P5", botId: BOT, detail: "no quote for 40 s" };
+
+  it("changes nothing in Redis until the message is in the outbox, so a failed write is sent again", async () => {
+    const clock = { now: NOW };
+    const store = memStore(clock);
+    await decide(store, [BOT], [f]);
+    clock.now += 60_000;
+    // Lần ghi outbox lỗi: không commit.
+    expect(await decide(store, [BOT], [f])).toHaveLength(1);
+    clock.now += 60_000;
+    const again = await decide(store, [BOT], [f]);
+    expect(again.map((d) => d.event)).toEqual([
+      { type: "team_invariant", ...f, status: "failing" },
+    ]);
+    for (const d of again) await commit(store, d);
+    clock.now += 60_000;
+    expect(await decide(store, [BOT], [f])).toEqual([]);
+  });
+
+  it("keeps one grouped P5 alert when the first stale bot changes, and resolves it once", async () => {
+    const clock = { now: NOW };
+    const store = memStore(clock);
+    const bots = ["a", "b", "c", "d"].map((x) => `${BOT.slice(0, -1)}${x}`);
+    const stale = (list: string[]) =>
+      collapseMassStale(
+        list.map((botId) => ({ invariant: "P5" as const, botId, detail: "no quote for 40 s" })),
+        4,
+      );
+    const run = async (fs: Finding[]) => {
+      const ds = await decide(store, bots, fs);
+      for (const d of ds) await commit(store, d);
+      return ds.map((d) => d.event);
+    };
+    await run(stale(bots.slice(0, 3)));
+    clock.now += 60_000;
+    const first = await run(stale(bots.slice(0, 3)));
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ status: "failing", botId: bots[0] });
+    // Bot đầu tiên báo giá lại, ba bot khác vẫn đứng: cùng một tin gộp, không "resolved", không tin mới.
+    clock.now += 60_000;
+    expect(await run(stale(bots.slice(1, 4)))).toEqual([]);
+    // Hết đứng: một tin "resolved" cho tin gộp.
+    clock.now += 60_000;
+    expect(await run([])).toEqual([
+      { type: "team_invariant", invariant: "P5", botId: bots[0], status: "resolved", detail: "" },
+    ]);
+  });
+
+  it("P4: skips a bot whose position was re-synced from SoDEX in this version", () => {
+    expect(ids(mm({ filledNet: "0.004" }))).toEqual(["P4"]);
+    expect(ids(mm({ filledNet: "0.004", resynced: true }))).toEqual([]);
+  });
+
+  it("takes the stop time from the first stop after the latest Start", () => {
+    expect(stopTimeOf([])).toBeNull();
+    expect(stopTimeOf([{ state: "starting", at: 1 }])).toBeNull();
+    // Stop cũ trước lần Start lại: không còn là mốc.
+    expect(
+      stopTimeOf([
+        { state: "stopping", at: 5 },
+        { state: "stopped", at: 6 },
+        { state: "starting", at: 10 },
+      ]),
+    ).toBeNull();
+    expect(
+      stopTimeOf([
+        { state: "starting", at: 10 },
+        { state: "stopping", at: 20 },
+        { state: "stopped", at: 30 },
+      ]),
+    ).toBe(20);
+    // Dừng thẳng sang stopped (không qua stopping).
+    expect(
+      stopTimeOf([
+        { state: "starting", at: 10 },
+        { state: "stopped", at: 25 },
+      ]),
+    ).toBe(25);
   });
 });

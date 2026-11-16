@@ -144,7 +144,7 @@ function targetOf(row: RenderRow): { path: string; label: string } {
   }
 }
 
-/** Bất biến tiền thật (DEC-TBD-prod-invariants): không ví / key; bot ghi `··` + 4 ký tự cuối id. */
+/** Bất biến tiền thật (DEC-TBD-prod-invariants): không ví / key; bot ghi `··` + 8 ký tự cuối id. */
 function invariantTitle(row: RenderRow): string {
   const s = (k: string) => escapeTelegramHtml(str(row.data[k]) ?? "");
   const vars = {
@@ -155,8 +155,12 @@ function invariantTitle(row: RenderRow): string {
     paper: row.data.mode === "paper" ? " · paper" : "",
     detail: s("detail"),
   };
+  // "resolved" chỉ ghi lý do khi có (ví dụ "no longer checked"); rỗng thì không thêm dấu "·".
   return row.data.status === "resolved"
-    ? fill(M.titles.team_invariant_resolved, vars)
+    ? fill(M.titles.team_invariant_resolved, {
+        ...vars,
+        detail: vars.detail === "" ? "" : ` · ${vars.detail}`,
+      })
     : fill(M.titles.team_invariant, vars);
 }
 

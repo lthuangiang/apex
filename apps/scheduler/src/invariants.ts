@@ -1,6 +1,15 @@
-import { botRuntime, bots, botVersions, fills, orders, outbox, type Db } from "@drift/db";
+import {
+  botEvents,
+  botRuntime,
+  bots,
+  botVersions,
+  fills,
+  orders,
+  outbox,
+  type Db,
+} from "@drift/db";
 import { dec, Decimal, Strategy, type TeamOpsEvent } from "@drift/shared";
-import { and, eq, gte, inArray, not, or, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, not, or, sql } from "drizzle-orm";
 
 // Bất biến tiền thật trên prod (DEC-TBD-prod-invariants; DevOps chọn theo ủy quyền, chờ người dùng xác nhận). Mỗi
 // phút, chỉ đọc DB: không gọi SoDEX, không tự sửa, không đặt lệnh. Một bất biến sai ở 2 lần kiểm tra liền nhau
@@ -37,7 +46,14 @@ export interface Finding {
   invariant: InvariantId;
   botId: string;
   detail: string;
+  /** Khoá Redis thay cho botId (tin gộp P5 dùng khoá cố định, để đổi bot đầu tiên không làm báo / resolved lại). */
+  key?: string;
+  /** Vẫn tính là sai (giữ trạng thái từng bot) nhưng không gửi tin riêng: P5 từng bot khi đã gộp. */
+  quiet?: boolean;
 }
+
+/** Khoá cố định của tin gộp P5. */
+export const MASS_STALE_KEY = "mm-group";
 
 /** Dữ liệu của một bot cho các bất biến (đã đọc từ DB). */
 export interface BotSnapshot {
@@ -56,6 +72,8 @@ export interface BotSnapshot {
   stillOpen: number;
   /** P4: Σ fill (mua − bán) từ lúc version đang chạy bắt đầu; null khi không xét. */
   filledNet: string | null;
+  /** P4: SoDEX đã được lấy làm vị thế chuẩn ("Position re-synced") trong version này: sổ cái cố ý khác tổng fill. */
+  resynced: boolean;
   /**
    * P4: sai số cho phép = một đơn vị ở độ chính xác của khối lượng lệnh của bot (engine làm tròn khối lượng theo step
    * size, nên đây là step hoặc nhỏ hơn); null khi không có lệnh (không xét).
@@ -124,7 +142,7 @@ export function findingsOf(b: BotSnapshot, now: number): Finding[] {
   )
     push("P3", `${String(b.stillOpen)} order(s) still open after the bot stopped`);
   // P4: sổ cái của bot lệch tổng fill quá sai số.
-  if (mm && position !== null && b.filledNet !== null && b.stepSize !== null) {
+  if (mm && !b.resynced && position !== null && b.filledNet !== null && b.stepSize !== null) {
     const diff = dec(position).sub(b.filledNet).abs();
     if (diff.gt(b.stepSize))
       push("P4", `ledger position ${position} vs fills ${dec(b.filledNet).toString()}`);
@@ -149,8 +167,9 @@ export function findingsOf(b: BotSnapshot, now: number): Finding[] {
 }
 
 /**
- * Nhiều bot MM cùng không báo giá (SoDEX sập, engine backoff): gộp P5 thành một tin trên bot đầu tiên, không báo
- * hàng loạt.
+ * Nhiều bot MM cùng không báo giá (SoDEX sập, engine backoff): gộp P5 thành một tin (khoá cố định, tin ghi bot đầu
+ * tiên), không báo hàng loạt. P5 từng bot vẫn giữ, đánh dấu `quiet`: vẫn là "đang sai" (không gửi "resolved") nhưng
+ * không gửi tin riêng.
  */
 export function collapseMassStale(findings: Finding[], quotingBots: number): Finding[] {
   const stale = findings.filter((f) => f.invariant === "P5");
@@ -163,9 +182,11 @@ export function collapseMassStale(findings: Finding[], quotingBots: number): Fin
     return findings;
   return [
     ...findings.filter((f) => f.invariant !== "P5"),
+    ...stale.map((f) => ({ ...f, quiet: true })),
     {
       invariant: "P5",
       botId: first.botId,
+      key: MASS_STALE_KEY,
       detail: `${String(stale.length)} of ${String(quotingBots)} Market Making bots not quoting (possible SoDEX or engine issue)`,
     },
   ];
@@ -176,8 +197,6 @@ export interface InvariantStore {
   has(key: string): Promise<boolean>;
   mark(key: string, ms: number): Promise<void>;
   drop(key: string): Promise<void>;
-  /** Đặt khoá nếu chưa có, hết hạn sau `ms`; true = vừa đặt (được gửi). */
-  claim(key: string, ms: number): Promise<boolean>;
   /** Tập "bất biến:bot" đã báo mà chưa resolved (bền qua restart). */
   active(): Promise<string[]>;
   addActive(member: string): Promise<void>;
@@ -190,7 +209,6 @@ const ACTIVE_SET = "team:invariant:active";
 export function redisInvariantStore(redis: {
   exists(key: string): Promise<number>;
   set(key: string, value: string, px: "PX", ms: number): Promise<unknown>;
-  set(key: string, value: string, px: "PX", ms: number, nx: "NX"): Promise<string | null>;
   del(key: string): Promise<number>;
   smembers(key: string): Promise<string[]>;
   sadd(key: string, member: string): Promise<number>;
@@ -206,9 +224,6 @@ export function redisInvariantStore(redis: {
     async drop(key) {
       await redis.del(key);
     },
-    async claim(key, ms) {
-      return (await redis.set(key, "1", "PX", ms, "NX")) === "OK";
-    },
     active: () => redis.smembers(ACTIVE_SET),
     async addActive(member) {
       await redis.sadd(ACTIVE_SET, member);
@@ -219,20 +234,26 @@ export function redisInvariantStore(redis: {
   };
 }
 
-const keyOf = (kind: "seen" | "alert" | "ok", f: { invariant: string; botId: string }) =>
-  `team:invariant:${kind}:${f.invariant}:${f.botId}`;
+const keyOf = (kind: "seen" | "alert" | "ok", invariant: string, key: string) =>
+  `team:invariant:${kind}:${invariant}:${key}`;
+const keyFor = (f: Finding) => f.key ?? f.botId;
+/** Phần tử của tập đang báo: "bất biến:khoá:bot" (khoá = bot, trừ tin gộp). */
+const memberOf = (f: Finding) => `${f.invariant}:${keyFor(f)}:${f.botId}`;
 
-/** Tin cần gửi kèm khoá chặn lặp đã giữ (để nhả nếu ghi outbox lỗi). */
+/** Tin cần gửi; trạng thái Redis chỉ đổi (`commit`) sau khi đã ghi outbox. */
 export interface Decision {
   event: TeamOpsEvent;
-  claimKey: string;
-  /** Tin "resolved": khi ghi lỗi thì trả bất biến về tập đang báo. */
-  member: string | null;
+  /** Khoá chặn lặp 30 phút, đặt sau khi ghi outbox. */
+  throttleKey: string;
+  /** Phần tử tập đang báo: thêm khi `failing`, bỏ khi `resolved`. */
+  member: string;
 }
 
 /**
  * Lọc kết quả của một lượt thành tin cần gửi: sai 2 lần liền mới báo (1 / 30 phút); bất biến đang báo mà nay đúng,
- * hoặc bot không còn được xét, thì báo "resolved" (1 / 30 phút). `botIds`: mọi bot đã xét trong lượt này.
+ * hoặc bot không còn được xét, thì báo "resolved" (1 / 30 phút). `botIds`: mọi bot đã xét trong lượt này. Chỉ đổi dấu
+ * "sai ở lần trước"; khoá chặn lặp và tập đang báo đổi ở `commit`, sau khi tin đã vào outbox (ghi lỗi thì lượt sau gửi
+ * lại, không mất tin).
  */
 export async function decide(
   store: InvariantStore,
@@ -240,47 +261,72 @@ export async function decide(
   findings: readonly Finding[],
 ): Promise<Decision[]> {
   const out: Decision[] = [];
-  const failing = new Set(findings.map((f) => `${f.invariant}:${f.botId}`));
+  const failing = new Set(findings.map((f) => `${f.invariant}:${keyFor(f)}`));
   for (const f of findings) {
-    const seenBefore = await store.has(keyOf("seen", f));
-    await store.mark(keyOf("seen", f), PROD_INVARIANTS.seenMs);
-    if (!seenBefore) continue;
-    const claimKey = keyOf("alert", f);
-    if (!(await store.claim(claimKey, PROD_INVARIANTS.throttleMs))) continue;
-    await store.addActive(`${f.invariant}:${f.botId}`);
+    const seen = keyOf("seen", f.invariant, keyFor(f));
+    const seenBefore = await store.has(seen);
+    await store.mark(seen, PROD_INVARIANTS.seenMs);
+    if (!seenBefore || f.quiet === true) continue;
+    const throttleKey = keyOf("alert", f.invariant, keyFor(f));
+    if (await store.has(throttleKey)) continue;
     out.push({
-      event: { type: "team_invariant", ...f, status: "failing" },
-      claimKey,
-      member: null,
+      event: {
+        type: "team_invariant",
+        invariant: f.invariant,
+        botId: f.botId,
+        detail: f.detail,
+        status: "failing",
+      },
+      throttleKey,
+      member: memberOf(f),
     });
   }
   // Đúng ở lượt này: xoá dấu "sai ở lần trước", để một lần sai lẻ không cộng với lần sai sau.
   for (const botId of botIds)
     for (const invariant of INVARIANT_IDS)
-      if (!failing.has(`${invariant}:${botId}`))
-        await store.drop(keyOf("seen", { invariant, botId }));
+      if (!failing.has(`${invariant}:${botId}`)) await store.drop(keyOf("seen", invariant, botId));
+  if (!failing.has(`P5:${MASS_STALE_KEY}`)) await store.drop(keyOf("seen", "P5", MASS_STALE_KEY));
   const checked = new Set(botIds);
   for (const member of await store.active()) {
-    if (failing.has(member)) continue;
-    const [invariant = "", botId = ""] = member.split(":");
-    const f = { invariant, botId };
-    await store.drop(keyOf("seen", f));
-    const claimKey = keyOf("ok", f);
-    if (!(await store.claim(claimKey, PROD_INVARIANTS.throttleMs))) continue;
-    if (!(await store.removeActive(member))) continue;
+    const [invariant = "", key = "", botId = key] = member.split(":");
+    if (failing.has(`${invariant}:${key}`)) continue;
+    await store.drop(keyOf("seen", invariant, key));
+    const throttleKey = keyOf("ok", invariant, key);
+    if (await store.has(throttleKey)) continue;
     out.push({
       event: {
         type: "team_invariant",
         invariant: invariant as InvariantId,
         botId,
         status: "resolved",
-        detail: checked.has(botId) ? "" : "no longer checked",
+        detail: key === MASS_STALE_KEY || checked.has(botId) ? "" : "no longer checked",
       },
-      claimKey,
+      throttleKey,
       member,
     });
   }
   return out;
+}
+
+/** Sau khi tin đã vào outbox: đặt khoá chặn lặp và cập nhật tập đang báo. */
+export async function commit(store: InvariantStore, d: Decision): Promise<void> {
+  await store.mark(d.throttleKey, PROD_INVARIANTS.throttleMs);
+  if (d.event.type !== "team_invariant") return;
+  if (d.event.status === "failing") await store.addActive(d.member);
+  else await store.removeActive(d.member);
+}
+
+/**
+ * Mốc dừng từ các lần đổi trạng thái của một bot (`starting` / `stopping` / `stopped`): lần dừng đầu tiên sau lần
+ * `starting` gần nhất; null khi chưa dừng từ lần Start đó.
+ */
+export function stopTimeOf(rows: readonly { state: string; at: number }[]): number | null {
+  const started = Math.max(
+    -Infinity,
+    ...rows.filter((x) => x.state === "starting").map((x) => x.at),
+  );
+  const stops = rows.filter((x) => x.state !== "starting" && x.at >= started).map((x) => x.at);
+  return stops.length === 0 ? null : Math.min(...stops);
 }
 
 /** Đọc dữ liệu cần thiết từ DB (chỉ bot trong phạm vi; lệnh / fill chặn theo thời gian). */
@@ -290,6 +336,7 @@ export async function loadSnapshots(db: Db, now: number): Promise<BotSnapshot[]>
     .select({
       b: bots,
       runtime: botRuntime.state,
+      runtimeAt: botRuntime.updatedAt,
       config: botVersions.config,
       appliedAt: botVersions.appliedAt,
     })
@@ -306,27 +353,34 @@ export async function loadSnapshots(db: Db, now: number): Promise<BotSnapshot[]>
   const stoppingIds = rows
     .filter((r) => ["stopping", "stopped", "archived"].includes(r.b.state))
     .map((r) => r.b.id);
-  // Mốc vào `stopping`: dòng outbox `user.<account>.bot` mà API (Stop) hoặc engine (chiến lược dừng) ghi trong cùng
-  // transaction với lần đổi trạng thái. `bots.updated_at` không dùng được (đổi ở mọi lần ghi).
-  const stops =
+  // Mốc dừng: dòng outbox `user.<account>.bot` mà API (Stop) hoặc engine (chiến lược dừng) ghi trong cùng transaction
+  // với lần đổi trạng thái. `bots.updated_at` không dùng được (đổi ở mọi lần ghi). Lấy lần `stopping` / `stopped` đầu
+  // tiên sau lần `starting` gần nhất: bot đã Start lại thì lần Stop cũ không còn là mốc (dừng thẳng sang `stopped`, không
+  // qua `stopping`, cũng là mốc).
+  const transitions =
     stoppingIds.length === 0
       ? []
       : await db
-          .selectDistinctOn([sql`${outbox.payload}->>'botId'`], {
+          .select({
             botId: sql<string>`${outbox.payload}->>'botId'`,
+            state: sql<string>`${outbox.payload}->>'state'`,
             at: outbox.createdAt,
           })
           .from(outbox)
           .where(
             and(
               sql`${outbox.topic} like 'user.%.bot'`,
-              sql`${outbox.payload}->>'state' = 'stopping'`,
+              sql`${outbox.payload}->>'state' in ('starting', 'stopping', 'stopped')`,
               inArray(sql<string>`${outbox.payload}->>'botId'`, stoppingIds),
               gte(outbox.createdAt, new Date(now - PROD_INVARIANTS.openOrderAgeMs)),
             ),
-          )
-          .orderBy(sql`${outbox.payload}->>'botId'`, sql`${outbox.createdAt} desc`);
-  const stopAtOf = (id: string) => stops.find((s) => s.botId === id)?.at.getTime() ?? null;
+          );
+  const stopAtOf = (id: string) =>
+    stopTimeOf(
+      transitions
+        .filter((x) => x.botId === id)
+        .map((x) => ({ state: x.state, at: x.at.getTime() })),
+    );
   const recentOrders =
     stoppingIds.length === 0
       ? []
@@ -361,19 +415,39 @@ export async function loadSnapshots(db: Db, now: number): Promise<BotSnapshot[]>
       r.b.mode === "live" &&
       ["running", "paused"].includes(r.b.state),
   );
-  // P4: fill của version đang chạy (sổ cái của engine tính từ lúc version bắt đầu); chặn theo `orders.created_at`.
-  const nets: { botId: string; net: string; decimals: number }[] = [];
+  // P4: fill của version đang chạy (sổ cái của engine tính từ lúc version bắt đầu); chặn theo `orders.created_at`, và
+  // chỉ fill đã ghi trước lần engine lưu sổ cái (fill ghi sau đó chưa vào sổ cái, không phải lệch).
+  const nets: { botId: string; net: string; decimals: number; resynced: boolean }[] = [];
   for (const r of mm) {
     const from = r.appliedAt ?? new Date(now - PROD_INVARIANTS.openOrderAgeMs);
+    if (r.runtimeAt === null) continue;
+    // SoDEX đã được lấy làm vị thế chuẩn trong version này (volume-maker `positionSync`): sổ cái cố ý khác tổng fill.
+    const [resync] = await db
+      .select({ id: botEvents.id })
+      .from(botEvents)
+      .where(
+        and(
+          eq(botEvents.botId, r.b.id),
+          eq(botEvents.decision, "Position re-synced from SoDEX"),
+          gte(botEvents.occurredAt, from),
+        ),
+      )
+      .limit(1);
     const [x] = await db
       .select({
         net: sql<string>`coalesce(sum(case when ${orders.side} = 'buy' then ${fills.size} else -${fills.size} end), 0)::text`,
         decimals: sql<number>`coalesce(max(length(rtrim(split_part(${orders.size}::text, '.', 2), '0'))), -1)::int`,
       })
       .from(orders)
-      .leftJoin(fills, eq(fills.orderId, orders.id))
+      .leftJoin(fills, and(eq(fills.orderId, orders.id), lte(fills.createdAt, r.runtimeAt)))
       .where(and(eq(orders.botId, r.b.id), gte(orders.createdAt, from)));
-    if (x !== undefined) nets.push({ botId: r.b.id, net: x.net, decimals: x.decimals });
+    if (x !== undefined)
+      nets.push({
+        botId: r.b.id,
+        net: x.net,
+        decimals: x.decimals,
+        resynced: resync !== undefined,
+      });
   }
   const count = (list: { botId: string; n: number }[], id: string) =>
     list.find((x) => x.botId === id)?.n ?? 0;
@@ -395,6 +469,7 @@ export async function loadSnapshots(db: Db, now: number): Promise<BotSnapshot[]>
           : recentOrders.filter((o) => o.botId === r.b.id && o.createdAt.getTime() > stopAt).length,
       stillOpen: count(open, r.b.id),
       filledNet: n?.net ?? null,
+      resynced: n?.resynced ?? false,
       stepSize:
         n === undefined || n.decimals < 0 ? null : new Decimal(10).pow(-n.decimals).toString(),
     };
@@ -424,15 +499,11 @@ export async function checkProdInvariants(
   );
   let queued = 0;
   for (const d of decisions) {
-    try {
-      await db.insert(outbox).values({ topic: "jobs.team_ops", payload: d.event });
-      queued += 1;
-    } catch (error) {
-      // Ghi lỗi: nhả khoá chặn lặp (và trả bất biến về tập đang báo) để lượt sau gửi lại.
-      await store.drop(d.claimKey);
-      if (d.member !== null) await store.addActive(d.member);
-      throw error;
-    }
+    // Ghi outbox trước rồi mới đổi Redis: ghi lỗi thì Redis chưa đổi, lượt sau gửi lại. Redis lỗi sau khi đã ghi thì
+    // lượt sau có thể gửi trùng một tin (chấp nhận: thà trùng còn hơn mất).
+    await db.insert(outbox).values({ topic: "jobs.team_ops", payload: d.event });
+    queued += 1;
+    await commit(store, d);
   }
   return { bots: snaps.length, findings: findings.length, queued, ms: Date.now() - started };
 }
