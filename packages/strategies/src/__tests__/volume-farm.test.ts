@@ -482,7 +482,7 @@ describe("volume farm — inventory rebalance (netExposure hard block)", () => {
     const order = places(all)[0];
     expect(order?.side).toBe("sell");
     const log = all.find((a): a is Extract<StrategyAction, { type: "log" }> => a.type === "log");
-    expect(log?.why).toMatch(/inventory rebalance/);
+    expect(log?.why).toMatch(/to bring the position back toward zero/);
   });
 
   it("không flip khi netExposure ≤ orderSizeMaxUsd", () => {
@@ -508,7 +508,7 @@ describe("volume farm — inventory rebalance (netExposure hard block)", () => {
     // Inventory block phải thắng reverseSignal: long
     expect(order?.side).toBe("buy");
     const log = all.find((a): a is Extract<StrategyAction, { type: "log" }> => a.type === "log");
-    expect(log?.why).toMatch(/inventory rebalance/);
+    expect(log?.why).toMatch(/to bring the position back toward zero/);
   });
 
   it("netExposure accumulates correctly after each closed trade", () => {
@@ -740,7 +740,7 @@ describe("volume farm — stop loss on SoDEX (DEC-118, DEC-120, DEC-125)", () =>
   it("logs the entry price when it enters and the entry and exit prices when it closes", () => {
     const r = run(cfg(), [timer(T0)]);
     expect(logs(r.all).find((l) => l.decision === "Enter long")?.why).toMatch(
-      /^post-only at 80000;/,
+      /^Signal pointed long in .*. Post-only at 80000, /,
     );
   });
 
@@ -957,7 +957,9 @@ describe("volume farm — trend filters (DEC-158)", () => {
   it("never lets Reverse open against the trend", () => {
     const { all } = run(cfg({ reverseSignal: true }), [at(0.0001)]);
     expect(places(all)).toEqual([]);
-    expect(skips(all)).toEqual(["COUNTER_TREND_BLOCKED: TREND_UP blocked reversed short"]);
+    expect(skips(all)).toEqual([
+      '"Reverse the signal" would trade short against an uptrend, so the bot waits.',
+    ]);
   });
 
   it("still reverses when the market moves sideways", () => {
@@ -968,7 +970,9 @@ describe("volume farm — trend filters (DEC-158)", () => {
   it("skips entries outside a sideways market when Only trade sideways is on", () => {
     const trend = run(cfg({ sidewaysOnly: true }), [at(0.0001)]);
     expect(places(trend.all)).toEqual([]);
-    expect(skips(trend.all)).toEqual(["SIDEWAYS_ONLY: regime TREND_UP"]);
+    expect(skips(trend.all)).toEqual([
+      "The market is in an uptrend, and this bot only trades sideways markets.",
+    ]);
     // Không ghi lại cùng lý do ở nhịp sau.
     expect(skips(run(cfg({ sidewaysOnly: true }), [at(0.0001)], trend.s).all)).toEqual([]);
     expect(places(run(cfg({ sidewaysOnly: true }), [at(0.00003)]).all)[0]).toMatchObject({
