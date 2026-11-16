@@ -1,9 +1,13 @@
 "use client";
 
 import {
+  BOT_STRATEGIES,
+  builderFeeRateFor,
+  builderFeeRateOf,
   disconnectResponseSchema,
   DRIFT_BUILDER_FEE_RATE,
   signatureRequestSchema,
+  Strategy,
   type SodexConnection,
 } from "@drift/shared";
 import { Button, ConfirmDialog, EmptyState, ErrorState, Skeleton } from "@drift/ui";
@@ -12,9 +16,10 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 
+import { LowestPill, MmFeeLadder, MmFeeStatus, mmFeeView } from "@/components/mm-fee-tiers";
 import { api, ApiError } from "@/lib/api";
 import { feeLabels, formatDate, formatDateTime, shortAddress } from "@/lib/format";
-import { useSodexConnection, useTwoFactorNeeded } from "@/lib/queries";
+import { useFeatures, useSodexConnection, useTwoFactorNeeded } from "@/lib/queries";
 import { useSodexSignature } from "@/lib/use-sodex-signature";
 
 import { useMasterWallet } from "./master-wallet";
@@ -415,8 +420,40 @@ function Permission({ title, sub, ok }: { title: string; sub: string; ok: boolea
   );
 }
 
+/**
+ * Một dòng mức phí (Volume Builder, Every other strategy). Nhiều chiến lược khác mức thì hiện khoảng thấp–cao.
+ * Mức khác mặc định = team đặt riêng (DEC-159), hiện nhãn "Set for your account".
+ */
+function FeeRow({
+  label,
+  rates,
+  defaults,
+}: {
+  label: string;
+  rates: readonly number[];
+  defaults: readonly number[];
+}) {
+  const t = useTranslations("settings.sodexAccess");
+  if (rates.length === 0) return null;
+  const low = Math.min(...rates);
+  const high = Math.max(...rates);
+  const custom = rates.some((r, i) => r !== defaults[i]);
+  return (
+    <dl className="m-0 flex items-baseline justify-between gap-3 border-t border-border px-4 py-3.5">
+      <dt className="text-sm text-ink-2">{label}</dt>
+      <dd className="m-0 flex flex-wrap items-baseline justify-end gap-2 text-lg font-extrabold">
+        {custom ? (
+          <span className="text-xs font-bold text-accent-ink">{t("feeCustom")}</span>
+        ) : null}
+        {low === high ? feeLabels(low).pct : `${feeLabels(low).pct}–${feeLabels(high).pct}`}
+      </dd>
+    </dl>
+  );
+}
+
 function FeeCard({ connection }: { connection: Connected }) {
   const t = useTranslations("settings.sodexAccess");
+  const tStrategy = useTranslations("createBot.strategies");
   const tc = useTranslations("common.errors");
   const tDialog = useTranslations("common.dialog");
   const ts = useTranslations("settings.security");
@@ -435,6 +472,17 @@ function FeeCard({ connection }: { connection: Connected }) {
 
   const approved = connection.builderFee?.approved === true;
   const { pct } = feeLabels(DRIFT_BUILDER_FEE_RATE);
+  // Mức hiệu lực theo chiến lược của user (GET /features): Market Making theo bậc, Volume Builder, còn lại.
+  const features = useFeatures();
+  const fees = features.data?.builderFees;
+  const mmView = mmFeeView(features.data?.mmFee, builderFeeRateFor(Strategy.volumeMaker, fees));
+  const vbRate = builderFeeRateFor(Strategy.volumeFarm, fees);
+  const vbDefault = builderFeeRateOf(Strategy.volumeFarm);
+  const others = BOT_STRATEGIES.filter(
+    (s) => s !== Strategy.volumeMaker && s !== Strategy.volumeFarm,
+  );
+  const otherRates = others.map((s) => builderFeeRateFor(s, fees));
+  const otherDefaults = others.map((s) => builderFeeRateOf(s));
 
   async function run(kind: "revoking" | "approving", open: () => Promise<unknown>) {
     if (inFlight.current) return;
@@ -532,8 +580,25 @@ function FeeCard({ connection }: { connection: Connected }) {
       <ul className="m-0 flex list-disc flex-col gap-1 pl-5 text-[13px] leading-normal text-ink-2">
         <li>{t("feePoint1")}</li>
         <li>{t("feePoint2")}</li>
-        <li>{t("feePoint3")}</li>
+        <li>{t.rich("feePoint3", { max: pct, b: (c) => <b className="text-ink">{c}</b> })}</li>
       </ul>
+      {/* Mức từng chiến lược thật sự trả, tách khỏi mức approve (docs/mockups/mm-fee-tiers 5a, 5b; DEC-94, DEC-159,
+          DEC-258). */}
+      <div className="flex flex-col rounded-[18px] border border-border bg-surface tabular-nums">
+        <div className="flex flex-col gap-2.5 px-4 pb-3.5 pt-4">
+          <dl className="m-0 flex items-baseline justify-between gap-3">
+            <dt className="text-sm text-ink-2">{t("feeMmYour")}</dt>
+            <dd className="m-0 flex items-center gap-2 text-lg font-extrabold">
+              {feeLabels(mmView.rate).pct}
+              {mmView.kind === "top" ? <LowestPill /> : null}
+            </dd>
+          </dl>
+          <MmFeeStatus view={mmView} settings />
+          <MmFeeLadder view={mmView} />
+        </div>
+        <FeeRow label={tStrategy("volume_farm.name")} rates={[vbRate]} defaults={[vbDefault]} />
+        <FeeRow label={t("feeOther")} rates={otherRates} defaults={otherDefaults} />
+      </div>
       {error === null ? null : (
         <p
           role="alert"
@@ -551,15 +616,18 @@ function FeeCard({ connection }: { connection: Connected }) {
           {busy === "revoking" ? t("busyRevoking") : t("busyApproving")}
         </p>
       ) : approved ? (
-        <Button
-          variant="danger"
-          className="self-start"
-          onClick={gated(wallet.ensure, () => {
-            setDialogOpen(true);
-          })}
-        >
-          {t("revokeFee")}
-        </Button>
+        <>
+          <p className="m-0 text-[13px] text-muted">{t("feeRevokeNote", { max: pct })}</p>
+          <Button
+            variant="danger"
+            className="self-start"
+            onClick={gated(wallet.ensure, () => {
+              setDialogOpen(true);
+            })}
+          >
+            {t("revokeFee")}
+          </Button>
+        </>
       ) : (
         <>
           <div role="alert" className="rounded-control bg-warn-bg px-3.5 py-3 text-sm text-warn">

@@ -13,7 +13,15 @@ import { BotsPage } from "../components/bots-page";
 // khối lượng, khối rỗng có nút sang catalog.
 
 const tab = vi.hoisted(() => ({ value: "catalog" }));
-const flags = vi.hoisted(() => ({ adaptiveDca: false }));
+const flags = vi.hoisted<{
+  adaptiveDca: boolean;
+  builderFees: Record<string, number>;
+  mmFee: unknown;
+}>(() => ({
+  adaptiveDca: false,
+  builderFees: {},
+  mmFee: null,
+}));
 const list = vi.hoisted(() => ({ items: [] as unknown[] }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(`tab=${tab.value}`),
@@ -52,7 +60,8 @@ vi.mock("@/lib/api", () => ({
         volumeFarm: true,
         aiDesk: false,
         adaptiveDca: flags.adaptiveDca,
-        builderFees: {},
+        builderFees: flags.builderFees,
+        mmFee: flags.mmFee,
       });
     if (path.startsWith("/api/v1/bots")) return Promise.resolve({ items: list.items });
     return new Promise(() => undefined);
@@ -72,6 +81,8 @@ const show = () =>
 
 afterEach(() => {
   flags.adaptiveDca = false;
+  flags.builderFees = {};
+  flags.mmFee = null;
   list.items = [];
   cleanup();
 });
@@ -88,6 +99,31 @@ describe("Strategy Lab", () => {
       .map((h) => h.closest("li") as HTMLElement);
     expect(cards.length).toBe(10);
     for (const c of cards) expect(within(c).getByText(/^Builder fee /)).toBeInTheDocument();
+    // Market Making: mặc định 0.003% kèm bảng 3 bậc (docs/mockups/mm-fee-tiers 2a).
+    const [mmCard] = cards;
+    if (mmCard === undefined) throw new Error("no Market Making card");
+    expect(within(mmCard).getByText("Builder fee 0.003%")).toBeInTheDocument();
+    expect(within(mmCard).getAllByRole("row")).toHaveLength(4);
+  });
+
+  it("Market Making card shows a team-set rate (0.01%) as the user's own rate, with the ladder", async () => {
+    // Báo cáo "Builder fee 0.01%" trên thẻ Market Making: mức team đặt tay cho tài khoản (DEC-159), không phải lỗi.
+    flags.builderFees = { volume_maker: 10 };
+    flags.mmFee = { rate: 10, source: "custom", volume30d: null, nextVolume: null, nextRate: null };
+    tab.value = "catalog";
+    show();
+    expect(
+      await screen.findByText(
+        "Set for your account by DeskLabs. Volume tiers don’t apply while this rate is set.",
+      ),
+    ).toBeInTheDocument();
+    const mmCard = screen
+      .getByRole("heading", { level: 2, name: "Market Making" })
+      .closest("li") as HTMLElement;
+    expect(within(mmCard).getByText("Your builder fee")).toBeInTheDocument();
+    expect(within(mmCard).getByText("0.01%")).toBeInTheDocument();
+    expect(within(mmCard).getAllByRole("row")).toHaveLength(4);
+    expect(within(mmCard).queryByText("You")).not.toBeInTheDocument();
   });
 
   it("offers a way to the catalog when there are no bots yet", async () => {
