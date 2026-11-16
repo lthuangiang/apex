@@ -4250,4 +4250,164 @@ describe("insufficient margin rejects (margin guard)", () => {
     await e.stop();
     await stopAll();
   });
+
+  // DEC-TBD-dust-close: export prod 2026-11-15, ETH-USD giữ long 0.0031 (≈ 5.7 USD, dưới minNotional 10) và lệnh bán
+  // không reduce-only bị từ chối vì thiếu margin. Bot đóng phần lẻ bằng đúng một lệnh market IOC reduce-only.
+  describe("dust close (DEC-TBD-dust-close)", () => {
+    const ethRules = {
+      tickSize: "0.1",
+      stepSize: "0.0001",
+      minQuantity: "0.0001",
+      minNotional: "10",
+    };
+    const eth = {
+      strategy: "volume_maker",
+      market: "ETH-USD",
+      engine: "perps" as const,
+      config: {
+        market: "ETH-USD",
+        leverage: 20,
+        orderSize: "20",
+        distanceBp: "1",
+        maxOrders: 1,
+        refreshSeconds: 3,
+        runUntil: "target_or_budget",
+        costBudget: "4",
+        onStop: "close_inventory",
+      },
+    };
+    const ethEngine = (gw: Gateway, id: string) =>
+      new Engine({
+        db,
+        redis: newRedis(),
+        gateway: gw,
+        workerId: id,
+        log,
+        now,
+        leaseTtlMs: 30_000,
+        shards: SHARDS,
+        rules: () => Promise.resolve(ethRules),
+        feeCheckMs: 0,
+      });
+    let ep = 0;
+    async function ethStep(e: Engine, n = 1) {
+      for (let i = 0; i < n; i += 1) {
+        clock += 4_000;
+        ep += 1;
+        await e.tick();
+        await e.onPrice("ETH-USD", String(1840 + (ep % 2) * 0.1), clock);
+      }
+    }
+    /** Kịch bản chỉ cho lệnh bán (ask, lệnh đóng lẻ), theo thứ tự gửi; lệnh mua và lệnh bán ngoài kịch bản được nhận. */
+    class SellScriptGateway extends FakeGateway {
+      sells: ({ code: string; message: string | null } | null)[] = [];
+      override async submit(
+        a: AccountRef,
+        list: readonly OrderIntent[],
+        fence: Fence,
+        rate?: number,
+      ): Promise<SubmitResult[]> {
+        const out: SubmitResult[] = [];
+        for (const o of list) {
+          const step = o.side === "sell" ? this.sells.shift() : undefined;
+          if (step !== null && step !== undefined) {
+            this.received.push(o);
+            out.push({ clOrdID: o.clOrdID, outcome: "rejected", ...step });
+          } else out.push(...(await super.submit(a, [o], fence, rate)));
+        }
+        return out;
+      }
+    }
+    const dustCloses = (gw: FakeGateway) =>
+      gw.received.filter((o) => o.tag.endsWith(":dust:close"));
+    const closedLines = async (botId: string) => {
+      const { eq } = await import("drizzle-orm");
+      const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
+      return events.filter((x) => x.decision?.startsWith("Closed a small leftover") === true);
+    };
+
+    /** Bot đang giữ long 0.0031 ETH (bid đầu khớp một phần); trả lệnh bán kế tiếp đã gửi. */
+    async function dustLong(gw: SellScriptGateway, id: string) {
+      const { botId, accountId } = await seedBot("running", eth);
+      const e = ethEngine(gw, id);
+      await e.tick();
+      await e.onPrice("ETH-USD", "1840", clock);
+      const bid = gw.received.find((o) => o.side === "buy");
+      expect(bid?.quantity).toBe("0.0108");
+      clock += 100;
+      await e.onFill(accountId, bid?.clOrdID ?? "", "0.0031", "1839.8", "0", clock);
+      gw.perpsPositions.set("ETH-USD", { size: "0.0031", entryPrice: "1839.8" });
+      return { botId, accountId, e };
+    }
+
+    it("closes 0.0031 ETH with one reduce-only market IOC after a margin reject, then quotes both sides", async () => {
+      await stopAll();
+      const gw = new SellScriptGateway();
+      const { botId, accountId, e } = await dustLong(gw, "w-dust-1");
+      const before = gw.received.length;
+      // Lần làm mới kế tiếp: ask (0.0108, không reduce-only) bị từ chối vì thiếu margin; lệnh đóng lẻ được nhận.
+      gw.sells = [MARGIN];
+      await ethStep(e);
+      const sent = gw.received.slice(before);
+      const ask = sent.find((o) => o.side === "sell" && o.tag.endsWith(":ask"));
+      expect(ask).toMatchObject({ quantity: "0.0108", reduceOnly: false });
+      const closes = dustCloses(gw);
+      expect(closes).toHaveLength(1);
+      expect(closes[0]).toMatchObject({
+        side: "sell",
+        type: "market",
+        timeInForce: "IOC",
+        reduceOnly: true,
+        quantity: "0.0031",
+        market: "ETH-USD",
+      });
+      // Còn chờ kết quả: không gửi lệnh đóng thứ hai, không đặt lệnh bán nào.
+      const pending = gw.received.length;
+      await ethStep(e, 3);
+      expect(dustCloses(gw)).toHaveLength(1);
+      expect(gw.received.slice(pending).filter((o) => o.side === "sell")).toHaveLength(0);
+
+      // SoDEX khớp lệnh đóng: vị thế về 0, ghi Decisions, rồi báo giá hai phía như bình thường.
+      clock += 100;
+      await e.onFill(accountId, closes[0]?.clOrdID ?? "", "0.0031", "1839.5", "0", clock);
+      gw.perpsPositions.delete("ETH-USD");
+      const lines = await closedLines(botId);
+      expect(lines.map((x) => x.decision)).toEqual([
+        "Closed a small leftover position of 0.0031 ETH at market (below the SoDEX minimum), so quoting can continue.",
+      ]);
+      const filled = gw.received.length;
+      await ethStep(e, 2);
+      const next = gw.received.slice(filled);
+      expect(next.some((o) => o.side === "buy" && o.quantity === "0.0108")).toBe(true);
+      expect(next.some((o) => o.side === "sell" && o.quantity === "0.0108" && !o.reduceOnly)).toBe(
+        true,
+      );
+      expect(dustCloses(gw)).toHaveLength(1);
+      expect((await botState(botId))?.state).toBe("running");
+      await e.stop();
+      await stopAll();
+    });
+
+    it("holds the sell and does not loop when SoDEX rejects the dust close", async () => {
+      await stopAll();
+      const gw = new SellScriptGateway();
+      const { botId, e } = await dustLong(gw, "w-dust-2");
+      const before = gw.received.length;
+      // ask bị từ chối vì thiếu margin, lệnh đóng lẻ bị từ chối; các lệnh bán sau (nếu có) cũng bị từ chối.
+      gw.sells = [MARGIN, { code: "-1", message: "position not found" }, MARGIN, MARGIN, MARGIN];
+      await ethStep(e);
+      expect(dustCloses(gw)).toHaveLength(1);
+      await ethStep(e, 10);
+      const sells = gw.received.slice(before).filter((o) => o.side === "sell");
+      // Chỉ ask đầu và một lệnh đóng lẻ; sau đó không gửi lại gì ở phía bán, bid vẫn báo giá.
+      expect(sells).toHaveLength(2);
+      expect(dustCloses(gw)).toHaveLength(1);
+      expect(gw.received.slice(before).filter((o) => o.side === "buy").length).toBeGreaterThan(1);
+      expect(await closedLines(botId)).toHaveLength(0);
+      // Hai lần từ chối không đủ ngưỡng pause margin / reduce-only: bot vẫn chạy.
+      expect((await botState(botId))?.state).toBe("running");
+      await e.stop();
+      await stopAll();
+    });
+  });
 });

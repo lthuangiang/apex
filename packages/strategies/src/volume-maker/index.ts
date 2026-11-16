@@ -111,6 +111,11 @@ export interface VolumeMakerState {
    * vì thiếu margin: không báo giá phía đó tới khi vị thế đổi hoặc người dùng Resume (DEC-291).
    */
   dustHold?: { side: "buy" | "sell"; position: string } | null;
+  /**
+   * Lệnh market IOC reduce-only đóng vị thế lẻ đã gửi cho đợt này (DEC-TBD-dust-close): `position` = vị thế lúc gửi.
+   * Mỗi đợt (cùng vị thế) chỉ gửi một lần; bị từ chối thì giữ `dustHold` như DEC-291, không gửi lại.
+   */
+  dustClose?: { id: string; position: string } | null;
 }
 
 /** Điều chỉnh Smart quoting của một phía: lùi `ticks` tick, hoặc rút hẳn lệnh mở (`pull`). */
@@ -549,6 +554,9 @@ function quote(
       ? s.dustHold
       : null;
   if ((s.dustHold ?? null) !== dustHold) next = { ...next, dustHold };
+  // Vị thế đã đổi (lệnh đóng lẻ khớp, khớp một phần, hoặc lệnh khác khớp): đợt mới, cho phép đóng lại một lần.
+  if (s.dustClose != null && !dec(s.dustClose.position).eq(pos))
+    next = { ...next, dustClose: null };
   // Mốc giữ vị thế cho "Close only at your entry price or better".
   next = { ...next, positionSince: flat ? null : (s.positionSince ?? at) };
   if (flat) next = { ...next, entryCloseExpired: false };
@@ -1001,6 +1009,67 @@ function cutPosition(
 }
 
 /**
+ * Đóng vị thế lẻ (DEC-TBD-dust-close): vị thế dưới mức tối thiểu của SoDEX mà lệnh mở phía đi qua 0 bị từ chối vì
+ * thiếu margin thì huỷ mọi lệnh đang sống và gửi **một** lệnh market IOC reduce-only đúng bằng vị thế (cùng kiểu lệnh
+ * cắt vị thế, DEC-249; không cần thêm margin). SoDEX đã khớp lệnh như vậy dưới `minNotional` (prod 2026-11-15, 0.0031
+ * ETH). Dùng `cutId` / `cutAt` để chặn như lệnh cắt (DEC-260): còn chờ kết quả thì không gửi lại, không đặt lệnh mở phía
+ * làm tăng vị thế. Mỗi đợt (cùng vị thế) chỉ một lần; null khi đã gửi cho đợt này, lệnh trước còn chờ, hoặc vị thế làm
+ * tròn về 0.
+ */
+function closeDust(
+  c: VolumeMakerConfig,
+  s: VolumeMakerState,
+  ctx: StepContext,
+  rules: MarketRules,
+  at: number,
+): { actions: StrategyAction[]; state: VolumeMakerState } | null {
+  const pos = dec(s.ledger.position);
+  if (s.dustClose != null && dec(s.dustClose.position).eq(pos)) return null;
+  if (pendingCut(s, at) !== null) return null;
+  const qty = roundQty(pos.abs(), rules);
+  if (dec(qty).isZero()) return null;
+  const actions: StrategyAction[] = [];
+  const orders: Record<string, TrackedOrder> = {};
+  for (const [id, o] of Object.entries(s.orders)) {
+    if (o.status === "live") {
+      actions.push({ type: "cancel", clOrdID: id });
+      orders[id] = { ...o, status: "cancelling", since: at };
+    } else orders[id] = o;
+  }
+  const o = order(
+    c,
+    ctx,
+    pos.gt(0) ? "sell" : "buy",
+    "0",
+    qty,
+    `vm:${String(s.cycle)}:dust:close`,
+    true,
+    true,
+  );
+  actions.push({ type: "place", order: o });
+  orders[o.clOrdID] = {
+    side: o.side,
+    role: "close",
+    price: "0",
+    qty,
+    filled: "0",
+    status: "live",
+    since: at,
+  };
+  return {
+    actions,
+    state: {
+      ...s,
+      orders,
+      cutAt: at,
+      cutId: o.clOrdID,
+      dustClose: { id: o.clOrdID, position: s.ledger.position },
+      requoteDue: true,
+    },
+  };
+}
+
+/**
  * Giá tốt nhất SoDEX mới (DEC-248): lưu lại; cách lần báo giá trước ≥ `minRequoteMs` và giá đã chạy ra xa lệnh của mình
  * thì đặt lại riêng phía đó. Chỉ trả hành động khi có lệnh cần đặt / huỷ (không thì không tăng chu kỳ).
  */
@@ -1196,6 +1265,16 @@ function stepCore(
       };
       // Đã dừng: fill (lệnh đóng lúc dừng, khớp trễ) chỉ vào sổ cái, không chạy lại guard (không đặt thêm lệnh đóng).
       if (state.phase === "halted") return { actions: [], state };
+      // Lệnh đóng vị thế lẻ khớp hết (DEC-TBD-dust-close): bỏ giữ phía đi qua 0, lần báo giá kế tiếp báo hai phía.
+      if (isDone && s.dustClose?.id === e.clOrdID) {
+        const closed: VolumeMakerState = { ...state, dustHold: null };
+        const log: StrategyAction = {
+          type: "log",
+          decision: `Closed a small leftover position of ${o.qty} ${c.market.split("-")[0] ?? c.market} at market (below the SoDEX minimum), so quoting can continue.`,
+          why: `Market IOC reduce-only ${o.side} ${o.qty} ${c.market}.`,
+        };
+        return guards(c, closed, ctx, e.at) ?? { actions: [log], state: closed };
+      }
       return guards(c, state, ctx, e.at) ?? { actions: [], state };
     }
     case "orderAck": {
@@ -1237,8 +1316,17 @@ function stepCore(
         !pos.isZero() &&
         o.side === (pos.gt(0) ? "sell" : "buy") &&
         isFlat(pos, mid, rules)
-      )
+      ) {
         state = { ...state, dustHold: { side: o.side, position: s.ledger.position } };
+        // Đóng vị thế lẻ bằng một lệnh market IOC reduce-only (DEC-TBD-dust-close). Đã gửi cho đợt này (đang chờ hoặc
+        // bị từ chối) thì chỉ giữ phía đó như DEC-291.
+        const dust = closeDust(c, state, ctx, rules, e.at);
+        if (dust !== null) return dust;
+        return { actions: [], state };
+      }
+      // Lệnh đóng vị thế lẻ bị từ chối (mọi mã): giữ phía đi qua 0 (`dustHold` vẫn còn), không gửi lại, không tính vào
+      // ngưỡng chuyển lệnh đóng sang không reduce-only. Engine đã ghi Decisions lý do từ chối (DEC-291).
+      if (s.dustClose?.id === e.clOrdID) return { actions: [], state };
       // Lệnh đóng reduce-only bị từ chối: có thể SoDEX không chấp nhận GTX kèm reduceOnly. Post-only bị từ chối (mã SoDEX
       // `PostOnly`, mã giả lập `POST_ONLY_WOULD_TRADE`) chỉ là giá chạy, không tính.
       if (
@@ -1357,7 +1445,12 @@ function stepCore(
       return { actions: [], state: s };
     case "resumed":
       // Người dùng Resume (thường sau khi nạp thêm tiền): báo giá lại phía đi qua 0 như bình thường.
-      return { actions: [], state: s.dustHold == null ? s : { ...s, dustHold: null } };
+      // Đợt mới: lần từ chối vì thiếu margin kế tiếp được gửi lại một lệnh đóng vị thế lẻ (DEC-TBD-dust-close).
+      return {
+        actions: [],
+        state:
+          s.dustHold == null && s.dustClose == null ? s : { ...s, dustHold: null, dustClose: null },
+      };
   }
 }
 
