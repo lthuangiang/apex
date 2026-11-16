@@ -1,4 +1,4 @@
-import { backtestRuns, candles1m, fundingRates, userBuilderFees, type Db } from "@drift/db";
+import { backtestRuns, builderFeeOverridesOf, candles1m, fundingRates, type Db } from "@drift/db";
 import {
   AppError,
   BACKTEST_INTERVALS,
@@ -33,14 +33,9 @@ const PAGE = 1000;
 
 export class Unavailable extends Error {}
 
-/** Builder fee của user cho chiến lược: mức riêng team đặt (DEC-159) hoặc mặc định. */
+/** Builder fee của user cho chiến lược: mức team đặt (DEC-159), mức theo bậc (DEC-258) hoặc mặc định. */
 export async function userBuilderRate(db: Db, userId: string, strategy: string): Promise<number> {
-  const [own] = await db
-    .select({ rate: userBuilderFees.rate })
-    .from(userBuilderFees)
-    .where(and(eq(userBuilderFees.userId, userId), eq(userBuilderFees.strategy, strategy)))
-    .limit(1);
-  return builderFeeRateFor(strategy, own === undefined ? undefined : { [strategy]: own.rate });
+  return builderFeeRateFor(strategy, (await builderFeeOverridesOf(db, [userId])).get(userId));
 }
 
 async function waitOnLimit<T>(read: () => Promise<T>): Promise<T> {
