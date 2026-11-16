@@ -125,6 +125,7 @@ describe("prod invariants P1–P5, P7", () => {
 function memStore(clock: { now: number }): InvariantStore {
   const until = new Map<string, number>();
   const set = new Set<string>();
+  const values = new Map<string, string>();
   const live = (k: string) => (until.get(k) ?? 0) > clock.now;
   return {
     has: (k) => Promise.resolve(live(k)),
@@ -142,6 +143,12 @@ function memStore(clock: { now: number }): InvariantStore {
       return Promise.resolve();
     },
     removeActive: (m) => Promise.resolve(set.delete(m)),
+    get: (k) => Promise.resolve(live(k) ? (values.get(k) ?? null) : null),
+    put: (k, v, ms) => {
+      values.set(k, v);
+      until.set(k, clock.now + ms);
+      return Promise.resolve();
+    },
   };
 }
 

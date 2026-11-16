@@ -9,7 +9,7 @@ import {
   type Db,
 } from "@drift/db";
 import { dec, Decimal, Strategy, type TeamOpsEvent } from "@drift/shared";
-import { and, eq, gte, inArray, lte, not, or, sql } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lte, not, or, sql } from "drizzle-orm";
 
 // Bất biến tiền thật trên prod (DEC-TBD-prod-invariants; DevOps chọn theo ủy quyền, chờ người dùng xác nhận). Mỗi
 // phút, chỉ đọc DB: không gọi SoDEX, không tự sửa, không đặt lệnh. Một bất biến sai ở 2 lần kiểm tra liền nhau
@@ -34,6 +34,13 @@ export const PROD_INVARIANTS = {
   massStaleMin: 3,
   /** P7: bot ở `stopping` quá chừng này (đang chờ đối soát lệnh unknown, #154). */
   stoppingMaxMs: 5 * 60_000,
+  /**
+   * P4: lệnh của bot MM sống ngắn; lần đọc tiếp theo chỉ xét lệnh tạo trong chừng này trước mốc lần trước (fill mới của
+   * lệnh cũ hơn thì không thấy; chấp nhận vì lệnh MM được làm mới mỗi vài giây).
+   */
+  p4OrderLagMs: 86_400_000,
+  /** P4: mốc tổng fill của một version giữ trong Redis chừng này (làm mới mỗi lượt). */
+  p4WatermarkMs: 2 * 86_400_000,
   /** Đánh dấu "sai ở lần trước"; > 1 phút để lần kế tiếp còn thấy. */
   seenMs: 150_000,
   throttleMs: 30 * 60_000,
@@ -202,12 +209,16 @@ export interface InvariantStore {
   addActive(member: string): Promise<void>;
   /** true = vừa xoá (có trong tập). */
   removeActive(member: string): Promise<boolean>;
+  /** Giá trị có hạn (mốc P4). */
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string, ms: number): Promise<void>;
 }
 
 const ACTIVE_SET = "team:invariant:active";
 
 export function redisInvariantStore(redis: {
   exists(key: string): Promise<number>;
+  get(key: string): Promise<string | null>;
   set(key: string, value: string, px: "PX", ms: number): Promise<unknown>;
   del(key: string): Promise<number>;
   smembers(key: string): Promise<string[]>;
@@ -230,6 +241,10 @@ export function redisInvariantStore(redis: {
     },
     async removeActive(member) {
       return (await redis.srem(ACTIVE_SET, member)) > 0;
+    },
+    get: (key) => redis.get(key),
+    async put(key, value, ms) {
+      await redis.set(key, value, "PX", ms);
     },
   };
 }
@@ -330,7 +345,11 @@ export function stopTimeOf(rows: readonly { state: string; at: number }[]): numb
 }
 
 /** Đọc dữ liệu cần thiết từ DB (chỉ bot trong phạm vi; lệnh / fill chặn theo thời gian). */
-export async function loadSnapshots(db: Db, now: number): Promise<BotSnapshot[]> {
+export async function loadSnapshots(
+  db: Db,
+  now: number,
+  store: Pick<InvariantStore, "get" | "put">,
+): Promise<BotSnapshot[]> {
   const since = new Date(now - PROD_INVARIANTS.stoppedWindowMs);
   const rows = await db
     .select({
@@ -339,6 +358,7 @@ export async function loadSnapshots(db: Db, now: number): Promise<BotSnapshot[]>
       runtimeAt: botRuntime.updatedAt,
       config: botVersions.config,
       appliedAt: botVersions.appliedAt,
+      versionId: botVersions.id,
     })
     .from(bots)
     .leftJoin(botRuntime, eq(botRuntime.botId, bots.id))
@@ -415,8 +435,9 @@ export async function loadSnapshots(db: Db, now: number): Promise<BotSnapshot[]>
       r.b.mode === "live" &&
       ["running", "paused"].includes(r.b.state),
   );
-  // P4: fill của version đang chạy (sổ cái của engine tính từ lúc version bắt đầu); chặn theo `orders.created_at`, và
-  // chỉ fill đã ghi trước lần engine lưu sổ cái (fill ghi sau đó chưa vào sổ cái, không phải lệch).
+  // P4: tổng fill của version đang chạy (sổ cái của engine tính từ lúc version bắt đầu), chỉ fill đã ghi trước lần engine
+  // lưu sổ cái (fill ghi sau đó chưa vào sổ cái, không phải lệch). Không đọc lại cả version mỗi phút: mốc
+  // (tổng tới thời điểm nào) giữ trong Redis theo version, lượt sau chỉ cộng fill mới.
   const nets: { botId: string; net: string; decimals: number; resynced: boolean }[] = [];
   for (const r of mm) {
     const from = r.appliedAt ?? new Date(now - PROD_INVARIANTS.openOrderAgeMs);
@@ -433,21 +454,13 @@ export async function loadSnapshots(db: Db, now: number): Promise<BotSnapshot[]>
         ),
       )
       .limit(1);
-    const [x] = await db
-      .select({
-        net: sql<string>`coalesce(sum(case when ${orders.side} = 'buy' then ${fills.size} else -${fills.size} end), 0)::text`,
-        decimals: sql<number>`coalesce(max(length(rtrim(split_part(${orders.size}::text, '.', 2), '0'))), -1)::int`,
-      })
-      .from(orders)
-      .leftJoin(fills, and(eq(fills.orderId, orders.id), lte(fills.createdAt, r.runtimeAt)))
-      .where(and(eq(orders.botId, r.b.id), gte(orders.createdAt, from)));
-    if (x !== undefined)
-      nets.push({
-        botId: r.b.id,
-        net: x.net,
-        decimals: x.decimals,
-        resynced: resync !== undefined,
-      });
+    const x = await p4FilledNet(db, store, {
+      botId: r.b.id,
+      versionId: r.versionId,
+      from,
+      upTo: r.runtimeAt,
+    });
+    nets.push({ botId: r.b.id, ...x, resynced: resync !== undefined });
   }
   const count = (list: { botId: string; n: number }[], id: string) =>
     list.find((x) => x.botId === id)?.n ?? 0;
@@ -476,6 +489,70 @@ export async function loadSnapshots(db: Db, now: number): Promise<BotSnapshot[]>
   });
 }
 
+/** Mốc P4 trong Redis: tổng fill (mua − bán) tới `at`, và số chữ số thập phân lớn nhất của khối lượng lệnh. */
+interface P4Watermark {
+  at: number;
+  net: string;
+  decimals: number;
+}
+
+const p4Key = (botId: string, versionId: string | null) =>
+  `team:invariant:p4:${botId}:${versionId ?? "none"}`;
+
+/**
+ * Tổng fill của version tới `upTo`. Lần đầu (hoặc mất mốc) đọc cả version một lần; các lượt sau chỉ đọc fill ghi sau mốc,
+ * của lệnh tạo trong `p4OrderLagMs` trước mốc. Lượt chưa có sổ cái mới thì dùng lại mốc.
+ */
+export async function p4FilledNet(
+  db: Db,
+  store: Pick<InvariantStore, "get" | "put">,
+  q: { botId: string; versionId: string | null; from: Date; upTo: Date },
+): Promise<{ net: string; decimals: number }> {
+  const key = p4Key(q.botId, q.versionId);
+  const saved = await store.get(key);
+  let wm: P4Watermark | null = null;
+  if (saved !== null) {
+    try {
+      const v = JSON.parse(saved) as Partial<P4Watermark>;
+      if (typeof v.at === "number" && typeof v.net === "string" && typeof v.decimals === "number")
+        wm = { at: v.at, net: v.net, decimals: v.decimals };
+    } catch {
+      wm = null;
+    }
+  }
+  const upTo = q.upTo.getTime();
+  if (wm !== null && upTo <= wm.at) return { net: wm.net, decimals: wm.decimals };
+  const ordersFrom =
+    wm === null
+      ? q.from
+      : new Date(Math.max(q.from.getTime(), wm.at - PROD_INVARIANTS.p4OrderLagMs));
+  const fillCond =
+    wm === null
+      ? and(eq(fills.orderId, orders.id), lte(fills.createdAt, q.upTo))
+      : and(
+          eq(fills.orderId, orders.id),
+          gt(fills.createdAt, new Date(wm.at)),
+          lte(fills.createdAt, q.upTo),
+        );
+  const [x] = await db
+    .select({
+      net: sql<string>`coalesce(sum(case when ${orders.side} = 'buy' then ${fills.size} else -${fills.size} end), 0)::text`,
+      decimals: sql<number>`coalesce(max(length(rtrim(split_part(${orders.size}::text, '.', 2), '0'))), -1)::int`,
+    })
+    .from(orders)
+    .leftJoin(fills, fillCond)
+    .where(and(eq(orders.botId, q.botId), gte(orders.createdAt, ordersFrom)));
+  const next: P4Watermark = {
+    at: upTo,
+    net: dec(wm?.net ?? "0")
+      .add(x?.net ?? "0")
+      .toString(),
+    decimals: Math.max(wm?.decimals ?? -1, x?.decimals ?? -1),
+  };
+  await store.put(key, JSON.stringify(next), PROD_INVARIANTS.p4WatermarkMs);
+  return { net: next.net, decimals: next.decimals };
+}
+
 /** Một lượt kiểm tra; trả số tin đã ghi outbox và thời gian chạy (để log). */
 export async function checkProdInvariants(
   db: Db,
@@ -487,7 +564,7 @@ export async function checkProdInvariants(
     sql`select (extract(epoch from now()) * 1000)::bigint::text as ms`,
   );
   const now = Number(clock.rows[0]?.ms ?? Date.now());
-  const snaps = await loadSnapshots(db, now);
+  const snaps = await loadSnapshots(db, now, store);
   const findings = collapseMassStale(
     snaps.flatMap((s) => findingsOf(s, now)),
     snaps.filter(quoting).length,
