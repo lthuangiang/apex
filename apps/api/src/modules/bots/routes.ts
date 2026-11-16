@@ -278,10 +278,13 @@ export function registerBotRoutes(app: FastifyInstance, deps: BotDeps): void {
   });
 
   app.get("/api/v1/orders", async (request) => {
-    const { botId } = parseOrThrow(z.object({ botId: z.uuid().optional() }), request.query);
+    const { botId, order } = parseOrThrow(
+      z.object({ botId: z.uuid().optional(), order: z.string().min(1).max(128).optional() }),
+      request.query,
+    );
     const userId = requireAuth(request).userId;
     const [items, counts] = await Promise.all([
-      listOrders(deps, userId, botId),
+      listOrders(deps, userId, botId, order),
       orderCounts(deps, userId, botId),
     ]);
     return { items, counts };
