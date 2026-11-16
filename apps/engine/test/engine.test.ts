@@ -511,6 +511,39 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("sets leverage once and logs one line when events arrive together (CP-01)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedBot("running", {
+      strategy: "volume_maker",
+      market: "BTC-USD",
+      engine: "perps",
+      config: {
+        market: "BTC-USD",
+        leverage: 1,
+        orderSize: "500",
+        distanceBp: "1",
+        maxOrders: 1,
+        refreshSeconds: 3,
+        runUntil: "target_or_budget",
+        costBudget: "100000",
+        onStop: "close_inventory",
+      },
+    });
+    const e = makeEngine(gw, "w-lev");
+    await e.tick();
+    await Promise.all(
+      [0, 1, 2, 3, 4].map((i) => e.onPrice("BTC-USD", String(100_000 + i), clock + i)),
+    );
+    expect(gw.leverage.filter((l) => l.market === "BTC-USD")).toHaveLength(1);
+    const logged = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.decision === "Leverage set",
+    );
+    expect(logged).toHaveLength(1);
+    expect(logged[0]?.why).toMatch(/^SoDEX confirmed 1× (cross|isolated) on BTC-USD.$/);
+    await e.stop();
+  });
+
   it("marks a timed-out order unknown, never resends it, and reconciles it", async () => {
     const gw = new FakeGateway();
     gw.timeoutNext = "applied";

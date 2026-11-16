@@ -2,7 +2,7 @@ import { dec, Decimal, ReasonCode, RoundMode } from "@drift/shared";
 
 import { clOrdId } from "../core/ids";
 import { applyFill, applyFunding, emptyLedger, netPnl, type Ledger } from "../core/ledger";
-import { meetsMinimum, roundPrice, roundQty } from "../core/rounding";
+import { meetsMinimum, priceText, roundPrice, roundQty } from "../core/rounding";
 import type {
   MinuteCandle,
   OrderIntent,
@@ -714,7 +714,7 @@ function entryDone(
         {
           type: "log",
           decision: `Extra order ${String(s.nextSafety)} filled`,
-          why: `New average ${dec(filled.ledger.avgCost).toDecimalPlaces(8).toString()}.`,
+          why: `New average ${priceText(filled.ledger.avgCost, ctx.rules[c.market])}.`,
         },
       ];
   return { actions: [...tp.actions, ...so.actions, ...log], state: so.state };
