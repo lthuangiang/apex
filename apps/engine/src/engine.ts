@@ -2096,7 +2096,12 @@ export class Engine {
     }
     // Bot paper (PB-01): lệnh đóng market chỉ khớp ở lần giá kế tiếp khi bot còn runner; bot sắp bị bỏ khỏi runner nên
     // khớp ngay ở giá hiện tại, không để lệnh đóng nằm "open" mãi và vị thế giả không bao giờ được đóng.
-    if (r.paper) await this.#fillPaperNow(r);
+    if (r.paper && !(await this.#fillPaperNow(r))) {
+      // Chưa có giá cho market của lệnh đóng (vừa khởi động / đổi shard): Stop của người dùng giữ bot ở `stopping`,
+      // nhịp sau thử lại (lệnh đóng không gửi lại vì trùng clOrdID). Dừng do chiến lược thì không có lần thử lại: ghi warn.
+      this.#d.log.warn({ botId: r.botId }, "paper close not filled: no price for its market yet");
+      if (reason === null) return;
+    }
     await this.#fenced(r, async (tx) => {
       const [b] = await tx
         .select({ state: bots.state })
@@ -2145,17 +2150,33 @@ export class Engine {
     this.#runners.delete(r.botId);
   }
 
-  /** Khớp ngay các lệnh paper đang mở của bot ở giá gần nhất của từng market (lệnh limit chỉ khớp khi giá đã qua). */
-  async #fillPaperNow(r: Runner): Promise<void> {
+  /**
+   * Khớp ngay các lệnh paper đang mở của bot ở giá gần nhất của từng market (lệnh limit chỉ khớp khi giá đã qua).
+   * Trả false khi còn lệnh market (lệnh đóng) đang mở vì market của nó chưa có giá.
+   */
+  async #fillPaperNow(r: Runner): Promise<boolean> {
     const paper = this.#d.paper;
-    if (paper === undefined) return;
+    if (paper === undefined) return true;
     const at = this.#d.now();
+    const priced = new Set<string>();
     for (const market of new Set([r.market, ...Object.keys(r.ctx.rules)])) {
       const price = this.#lastPrice.get(market) ?? paper.priceOf(market);
       if (price === null) continue;
+      priced.add(market);
       for (const f of await paper.onPrice(market, price, at, [r.botId]))
         await this.onFill(f.accountId, f.clOrdID, f.totalFilled, f.avgPrice, f.fee, at);
     }
+    const waiting = await this.#d.db
+      .select({ market: orders.market })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          eq(orders.type, "market"),
+          inArray(orders.status, ["open", "partially_filled"]),
+        ),
+      );
+    return waiting.every((o) => priced.has(o.market));
   }
 
   /** Engine của lệnh đóng khi Stop: Futures Grid / DCA, Volume Maker / Farm và TWAP chạy Perps đều là Perps. */
