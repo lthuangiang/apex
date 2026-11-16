@@ -242,11 +242,6 @@ interface Runner {
   leverageSet: boolean;
   /** Lần `updateLeverage` trước không rõ kết quả: phải đọc lại SoDEX trước khi gửi lại (quy tắc 1.7). */
   leverageUnknown: boolean;
-  /**
-   * Chiến lược đã yêu cầu dừng (halt) nhưng bot còn lệnh `unknown`: thử lại mỗi nhịp tới khi #reconcile đối soát xong
-   * (quy tắc 1.7), giữ lý do dừng và tin báo. Chiến lược đã halted nên không đặt lệnh mới trong lúc chờ.
-   */
-  pendingStop: { reason: Reason; close: boolean } | null;
   /** Request chưa rời DRIFT (signer lỗi): chờ backoff tới `nextAt`; quá hạn thì pause (UI_REVIEW H1). */
   blocked: { since: number; attempts: number; nextAt: number; code: NotSentCode } | null;
   /** Số lệnh market reduce-only bị SoDEX từ chối liên tiếp (vị thế trong sổ bot có thể lệch SoDEX). */
@@ -962,9 +957,6 @@ export class Engine {
       }
       // Stop của người dùng: đóng vị thế của bot nếu họ chọn ở hộp thoại Stop (DEC-81).
       else if (bot.state === BotState.stopping) await this.#stopBot(r, null, bot.closeOnStop);
-      // Dừng do chiến lược đang chờ lệnh `unknown` được đối soát (quy tắc 1.7).
-      else if (r.pendingStop !== null)
-        await this.#stopBot(r, r.pendingStop.reason, r.pendingStop.close);
     }
   }
 
@@ -1068,7 +1060,6 @@ export class Engine {
       awaitingFirstAck: bot.state === BotState.starting,
       leverageSet: false,
       leverageUnknown: false,
-      pendingStop: null,
       blocked: null,
       reduceRejects: 0,
       makerReduceRejects: 0,
@@ -2049,8 +2040,9 @@ export class Engine {
         { botId: r.botId, unknown: unknown?.n, reason },
         "stop waits for unknown orders to be reconciled",
       );
-      // Stop của người dùng: bot vẫn `stopping`, nhịp sau gọi lại. Dừng do chiến lược: nhớ lại để nhịp sau gọi lại.
-      if (reason !== null) r.pendingStop = { reason, close };
+      // Stop của người dùng: bot vẫn `stopping`, nhịp sau gọi lại. Dừng do chiến lược: ghi xuống DB thành `stopping` kèm
+      // lý do (bền qua restart / đổi shard), để đường Stop của người dùng làm nốt và giữ lý do + tin báo.
+      if (reason !== null) await this.#haltToStopping(r, reason, close);
       return;
     }
     if (r.strategy === Strategy.copyTrade) {
@@ -2114,6 +2106,9 @@ export class Engine {
         this.#d.now(),
       );
     }
+    // Dừng do chiến lược đã qua `stopping` (lệnh unknown phải đối soát trước): lý do lấy từ event "Stopping" đã ghi, để
+    // tin `bot_stopped` vẫn được gửi. Stop của người dùng không có event này nên không gửi tin.
+    const haltReason = reason === null ? await this.#haltReasonOf(r.botId) : null;
     await this.#fenced(r, async (tx) => {
       const [b] = await tx
         .select({ state: bots.state })
@@ -2149,17 +2144,57 @@ export class Engine {
           },
         });
       }
-      if (reason !== null)
+      const notify = reason ?? haltReason;
+      if (notify !== null)
         await tx.insert(outbox).values({
           topic: "jobs.notify",
           payload: {
             sodexAccountId: r.account.id,
             type: next === "stopped" ? "bot_stopped" : "bot_paused",
-            data: { botId: r.botId, reasonCode: reason, ...(r.paper ? { paper: true } : {}) },
+            data: { botId: r.botId, reasonCode: notify, ...(r.paper ? { paper: true } : {}) },
           },
         });
     });
     this.#runners.delete(r.botId);
+  }
+
+  /**
+   * Chiến lược dừng (halt) khi bot còn lệnh `unknown` (quy tắc 1.7): chuyển bot sang `stopping` kèm lý do và lựa chọn
+   * đóng vị thế trong một transaction có fence, rồi ghi event "Stopping" với lý do. UI hiện "Stopping…" đúng sự thật
+   * (quy tắc 1.6); đường Stop của người dùng làm nốt khi đã đối soát xong.
+   */
+  async #haltToStopping(r: Runner, reason: Reason, close: boolean): Promise<void> {
+    const moved = await this.#fenced(r, async (tx) => {
+      const [b] = await tx
+        .select({ state: bots.state })
+        .from(bots)
+        .where(eq(bots.id, r.botId))
+        .for("update");
+      if (b === undefined || b.state === BotState.stopped || b.state === BotState.archived)
+        return false;
+      await tx
+        .update(bots)
+        .set({ state: BotState.stopping, reasonCode: reason, closeOnStop: close })
+        .where(eq(bots.id, r.botId));
+      await tx.insert(outbox).values({
+        topic: `user.${r.account.id}.bot`,
+        payload: { botId: r.botId, state: BotState.stopping, reasonCode: reason },
+      });
+      return true;
+    });
+    if (moved) await this.#event(r, "state", "Stopping", reason, this.#d.now());
+  }
+
+  /** Lý do của lần dừng do chiến lược đang chờ đối soát: event trạng thái gần nhất là "Stopping" kèm reason code. */
+  async #haltReasonOf(botId: string): Promise<Reason | null> {
+    const [e] = await this.#d.db
+      .select({ decision: botEvents.decision, why: botEvents.why })
+      .from(botEvents)
+      .where(and(eq(botEvents.botId, botId), eq(botEvents.type, "state")))
+      .orderBy(desc(botEvents.occurredAt))
+      .limit(1);
+    if (e?.decision !== "Stopping" || e.why === null) return null;
+    return (Object.values(ReasonCode) as string[]).includes(e.why) ? (e.why as Reason) : null;
   }
 
   /** Engine của lệnh đóng khi Stop: Futures Grid / DCA, Volume Maker / Farm và TWAP chạy Perps đều là Perps. */

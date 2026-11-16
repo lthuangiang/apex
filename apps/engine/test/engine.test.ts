@@ -590,7 +590,9 @@ describe("engine", () => {
     // Giá xuống dưới Stop price: chiến lược dừng, nhưng còn lệnh unknown (SoDEX thật ra đã nhận).
     clock += 1_000;
     await e.onPrice("vBTC_vUSDC", "80", clock);
-    expect((await botState(botId))?.state).not.toBe("stopped");
+    // Ghi xuống DB: bot ở `stopping` kèm lý do (bền qua restart / đổi shard, quy tắc 1.6).
+    expect((await botState(botId))?.state).toBe("stopping");
+    expect((await botState(botId))?.reasonCode).not.toBeNull();
     for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1) {
       clock += 6_000;
       await e.tick();
