@@ -828,7 +828,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(places(r.all)).toHaveLength(0);
   });
 
-  it("places no opening quote when SoDEX confirms the cancels of a cut right away (DEC-257)", () => {
+  it("keeps only the market close when SoDEX confirms the cut cancels of the closing side right away (DEC-257)", () => {
     const r = more(longAt(), [fairAt(8100, "99839.9")]);
     expect(places(r.all)).toEqual([
       expect.objectContaining({ type: "market", reduceOnly: true, quantity: "0.005" }),
@@ -1210,7 +1210,7 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(line?.why).toMatch(
       /^Last 61 s: \d+ requests to SoDEX \(new orders and cancels\)\. Longest gap between quotes: \d+\.\d s\.$/,
     );
-    // Xét báo giá lúc 0 s, 7 s, 61 s: khoảng dài nhất 54 s (DEC-268).
+    // Xét báo giá lúc 0 s, 7 s, 61 s: khoảng dài nhất 54 s (DEC-267).
     expect(line?.why).toContain("Longest gap between quotes: 54.0 s.");
   });
 
