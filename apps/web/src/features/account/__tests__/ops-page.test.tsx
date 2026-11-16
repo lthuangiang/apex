@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
+import axe from "axe-core";
 import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -74,6 +75,15 @@ const show = (client = new QueryClient({ defaultOptions: { queries: { retry: fal
     </QueryClientProvider>,
   );
 
+// jsdom không tính được màu thật: tắt color-contrast như các test axe khác (mm-cost.test.tsx).
+const AXE = {
+  runOnly: {
+    type: "tag" as const,
+    values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"],
+  },
+  rules: { "color-contrast": { enabled: false } },
+};
+
 afterEach(() => {
   mode.value = "ok";
   cleanup();
@@ -89,6 +99,13 @@ describe("team Ops page", () => {
     expect(screen.getByText("None")).toBeInTheDocument();
     expect(screen.queryByText(/catalog\./)).toBeNull();
   });
+
+  it("has no accessibility violations (WCAG 2.2 AA)", async () => {
+    show();
+    await screen.findByRole("link", { name: "BTC Market Making" });
+    const r = await axe.run(document.body, AXE);
+    expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  }, 15_000);
 
   it("says so when no bot ran in the last 24 hours", async () => {
     mode.value = "empty";
