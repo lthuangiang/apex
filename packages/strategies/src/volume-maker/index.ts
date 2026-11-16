@@ -71,6 +71,8 @@ export interface VolumeMakerState {
   reqWin?: { since: number; n: number };
   /** Lần cắt vị thế gần nhất (DEC-249). */
   cutAt?: number | null;
+  /** clOrdID lệnh cắt gần nhất; chưa có kết quả thì giữ phía làm tăng vị thế (DEC-TBD-mm-cut-hold). */
+  cutId?: string | null;
   /** Giá trong cửa sổ xu hướng gần nhất cho Smart quoting (DEC-144, DEC-152). */
   /** Giá gần đây cho momentum / trend; không còn ghi từ DEC-247, giữ để đọc state cũ. */
   recent?: { t: number; p: string }[];
@@ -442,6 +444,12 @@ function quote(
   const unsure = { buy: false, sell: false };
   for (const o of Object.values(s.orders))
     if (o.status === "cancelling" && o.role === "open") unsure[o.side] = true;
+  // Lệnh cắt vị thế (market reduce-only) chưa có kết quả (DEC-TBD-mm-cut-hold): không đặt lệnh mở ở phía làm tăng vị thế
+  // (long → mua, short → bán), kể cả khi SoDEX vừa xác nhận huỷ lệnh mở phía đó hay tới nhịp đồng hồ. Gỡ khi lệnh cắt
+  // xong (khớp hết, bị từ chối, `orderDone`), hoặc sau `VM_STALE_CANCEL_MS` như các chặn khác (đối soát vị thế bù phần lỡ).
+  const cut = s.cutId == null ? undefined : s.orders[s.cutId];
+  if (cut !== undefined && cut.status !== "done" && at - cut.since < VM_STALE_CANCEL_MS)
+    unsure[cut.side === "sell" ? "buy" : "sell"] = true;
   const pulled = {
     buy: paused || smart?.buy?.pull === true,
     sell: paused || smart?.sell?.pull === true,
@@ -930,6 +938,7 @@ function cutPosition(
       ...s,
       orders,
       cutAt: e.at,
+      cutId: o.clOrdID,
       fair: e.fair,
       fairAt: e.at,
       fairBinanceAt: e.binanceAt,

@@ -807,6 +807,76 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     ]);
   });
 
+  describe("holds the side that grows the position while a cut is in flight (DEC-TBD-mm-cut-hold)", () => {
+    /** Đang long, còn một bid mở đang nằm; Binance chạy 16 bp ngược: cắt (lệnh cắt chưa có kết quả). */
+    const cutWithBid = () => {
+      const long = longAt();
+      const s0: VolumeMakerState = {
+        ...long,
+        orders: {
+          ...long.orders,
+          "live-bid": {
+            side: "buy",
+            role: "open",
+            price: "99990",
+            qty: "0.005",
+            filled: "0",
+            status: "live",
+            since: 7100,
+          },
+        },
+      };
+      const r = more(s0, [fairAt(8100, "99839.9")], { confirm: false });
+      const cut = places(r.all).find((o) => o.type === "market");
+      expect(r.all).toContainEqual({ type: "cancel", clOrdID: "live-bid" });
+      return { s: r.s, cutId: cut?.clOrdID ?? "" };
+    };
+
+    it("places no bid when SoDEX confirms the bid cancel or the timer comes while the cut is in flight", () => {
+      const { s } = cutWithBid();
+      let r = more(s, [{ type: "orderDone", at: 8300, clOrdID: "live-bid" }], { confirm: false });
+      expect(opens(r.all, "buy")).toHaveLength(0);
+      r = more(r.s, [snap(12_000)]);
+      expect(opens(r.all, "buy")).toHaveLength(0);
+    });
+
+    it("quotes as usual once the cut has filled", () => {
+      const { s, cutId } = cutWithBid();
+      let r = more(
+        s,
+        [
+          { type: "orderDone", at: 8300, clOrdID: "live-bid" },
+          {
+            type: "fill",
+            at: 8400,
+            clOrdID: cutId,
+            price: "99839.9",
+            quantity: "0.005",
+            fee: "0",
+          },
+        ],
+        { confirm: false },
+      );
+      expect(r.s.ledger.position).toBe("0");
+      r = more(r.s, [snap(12_000)]);
+      expect(opens(r.all, "buy")).toHaveLength(1);
+    });
+
+    it("lets the side quote again when SoDEX rejects the cut", () => {
+      const { s, cutId } = cutWithBid();
+      let r = more(
+        s,
+        [
+          { type: "orderDone", at: 8300, clOrdID: "live-bid" },
+          { type: "orderReject", at: 8400, clOrdID: cutId, code: "REJECTED" },
+        ],
+        { confirm: false },
+      );
+      r = more(r.s, [snap(12_000)]);
+      expect(opens(r.all, "buy")).toHaveLength(1);
+    });
+  });
+
   it("leaves the close order to the normal cycle when the live price moves (DEC-248)", () => {
     // Đang long, lệnh đóng (bán) nằm ở 100000; ask tốt nhất xuống 99990 → không huỷ lệnh đóng.
     const r1 = more(longAt(), [snap(10100)]);
