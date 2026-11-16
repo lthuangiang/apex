@@ -50,6 +50,7 @@ import {
   PLANNED_STOP_REASONS,
   STOPPED_BY_USER,
 } from "@drift/shared";
+import { isInsufficientMarginReject } from "@drift/sodex";
 import {
   applyFill,
   botCapitalOf,
@@ -263,6 +264,10 @@ interface Runner {
   reduceRejects: number;
   /** Tương tự cho lệnh limit / post-only: bị từ chối thường chỉ vì giá chạy, nên có ngưỡng riêng cao hơn. */
   makerReduceRejects: number;
+  /** Số lệnh bị SoDEX từ chối vì thiếu margin liên tiếp; một lần SoDEX nhận lệnh (ack) thì về 0. */
+  marginRejects: number;
+  /** Thời điểm các lần bị từ chối vì thiếu margin trong `MARGIN_REJECT_WINDOW_MS` gần nhất (ack không xoá). */
+  marginRejectTimes: number[];
   /** Giới hạn tin `copy_bot_skipped` của bot copy (DEC-212), trong bộ nhớ. */
   skipGate: SkipGate;
 }
@@ -275,6 +280,20 @@ interface Runner {
 export const MAX_REDUCE_ONLY_REJECTS = 3;
 /** Ngưỡng cho bot không dùng market (tắt `allowTaker`): không có bước leo thang thì vẫn phải có điểm dừng. */
 export const MAX_MAKER_REDUCE_REJECTS = 30;
+
+/**
+ * Lệnh bị SoDEX từ chối vì thiếu margin (`code -1` + "insufficient margin", `isInsufficientMarginReject`): gửi lại chỉ
+ * bị từ chối tiếp và đốt hạn mức request của IP / ví dùng chung với bot khác. Pause `ORDER_REJECTED` khi bị từ chối
+ * `MAX_MARGIN_REJECTS` lần liên tiếp (một lần ack đặt lại), hoặc `MARGIN_REJECTS_IN_WINDOW` lần trong
+ * `MARGIN_REJECT_WINDOW_MS` dù xen giữa có lệnh được nhận (sự cố 2026-11-15: Market Making bị từ chối 21 438 lần
+ * trong 15 giờ mà không pause). Áp cho mọi chiến lược đặt lệnh qua engine; post-only bị từ chối không tính.
+ */
+export const MAX_MARGIN_REJECTS = 3;
+export const MARGIN_REJECTS_IN_WINDOW = 5;
+export const MARGIN_REJECT_WINDOW_MS = 60_000;
+/** Câu trong Decisions khi pause vì thiếu margin (câu chữ đã duyệt). */
+export const MARGIN_PAUSE_WHY =
+  "Paused: not enough margin on SoDEX. Add funds or lower the order size or leverage, then resume.";
 
 /** Backoff khi request chưa rời DRIFT: 2 s → 4 s → … tối đa 60 s; quá 5 lần hoặc 5 phút thì pause bot. */
 export const NOT_SENT_BACKOFF = {
@@ -1078,6 +1097,8 @@ export class Engine {
       blocked: null,
       reduceRejects: 0,
       makerReduceRejects: 0,
+      marginRejects: 0,
+      marginRejectTimes: [],
       skipGate: new SkipGate(),
     };
   }
@@ -1634,8 +1655,10 @@ export class Engine {
           o: OrderIntent;
           res: { code: string; message: string | null };
         } | null = null;
+        let marginRejected: { o: OrderIntent | undefined; message: string | null } | null = null;
         for (const res of results) {
           if (res.outcome === "ok") {
+            r.marginRejects = 0;
             const sentOk = toSend.find((o) => o.clOrdID === res.clOrdID);
             if (sentOk?.reduceOnly === true && sentOk.stop === undefined) {
               r.reduceRejects = 0;
@@ -1692,6 +1715,12 @@ export class Engine {
               { botId: r.botId, clOrdID: res.clOrdID, code: res.code, message: res.message },
               r.paper ? "paper order rejected (simulated)" : "order rejected by SoDEX",
             );
+            // Đếm trước khi báo chiến lược: bước chiến lược có thể gửi tiếp lệnh mới trong cùng lượt.
+            if (isInsufficientMarginReject(res.code, res.message)) {
+              r.marginRejects += 1;
+              r.marginRejectTimes.push(this.#d.now());
+              marginRejected = { o: sent, message: res.message };
+            }
             await this.#feed(r, { type: "orderReject", at, clOrdID: res.clOrdID, code: res.code });
             // Stop loss gốc bị từ chối (DEC-118) không phải lệnh đóng thật: chiến lược tự giữ SL, không pause.
             if (sent?.reduceOnly === true && sent.stop === undefined)
@@ -1709,6 +1738,7 @@ export class Engine {
             );
           // unknown: giữ nguyên, #reconcile sẽ đối soát; không gửi lại (quy tắc 1.7).
         }
+        if (marginRejected !== null && (await this.#marginRejected(r, marginRejected, at))) return;
         if (
           reduceRejected !== null &&
           (await this.#reduceOnlyRejected(r, reduceRejected.o, reduceRejected.res, at))
@@ -1836,6 +1866,46 @@ export class Engine {
       "error",
       `Paused: SoDEX rejected ${String(limit)} reduce-only orders in a row`,
       `Last: ${o.side} ${o.quantity} ${o.market} (${sodex}). Your ${o.market} position on SoDEX may already be closed or smaller than the bot expects. Check Positions on SoDEX before you resume.`,
+      at,
+    );
+    await this.#pauseBot(r, ReasonCode.orderRejected);
+    return true;
+  }
+
+  /**
+   * Lệnh bị SoDEX từ chối vì thiếu margin: đủ `MAX_MARGIN_REJECTS` lần liên tiếp hoặc `MARGIN_REJECTS_IN_WINDOW` lần
+   * trong `MARGIN_REJECT_WINDOW_MS` thì pause `ORDER_REJECTED` (thông báo + Needs you như mọi pause), không gửi lại mãi
+   * (quy tắc 1.7). Lệnh đang mở được giữ (DOMAIN.md 7.2); Resume chạy tiếp như các pause khác. Trả true khi đã pause.
+   */
+  async #marginRejected(
+    r: Runner,
+    last: { o: OrderIntent | undefined; message: string | null },
+    at: number,
+  ): Promise<boolean> {
+    const since = this.#d.now() - MARGIN_REJECT_WINDOW_MS;
+    r.marginRejectTimes = r.marginRejectTimes.filter((t) => t > since);
+    if (
+      r.marginRejects < MAX_MARGIN_REJECTS &&
+      r.marginRejectTimes.length < MARGIN_REJECTS_IN_WINDOW
+    )
+      return false;
+    const n = Math.max(r.marginRejects, r.marginRejectTimes.length);
+    r.marginRejects = 0;
+    r.marginRejectTimes = [];
+    // Bot đã pause / đang dừng (vd một bước lồng nhau đã pause): không ghi trùng, để phần còn lại của #execute chạy như cũ.
+    const st = await this.#currentState(r.botId);
+    if (st === undefined || applyReason(st, ReasonCode.orderRejected) === null) return false;
+    this.#d.log.warn(
+      { botId: r.botId, rejects: n, message: last.message },
+      "pausing bot: SoDEX rejected orders for insufficient margin",
+    );
+    const what =
+      last.o === undefined ? "" : ` Last: ${last.o.side} ${last.o.quantity} ${last.o.market}.`;
+    await this.#event(
+      r,
+      "error",
+      MARGIN_PAUSE_WHY,
+      `SoDEX rejected ${String(n)} orders for insufficient margin (SoDEX code -1: ${last.message ?? "insufficient margin"}).${what}`,
       at,
     );
     await this.#pauseBot(r, ReasonCode.orderRejected);
