@@ -31,6 +31,7 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
 3. **Trần chi phí.** chi phí = phí đã trả + lỗ đã chốt + lỗ chưa chốt trên tồn kho. Đạt 80% thì cảnh báo, 100% thì dừng. Hiện chi phí trên mỗi 1 triệu USD khối lượng theo thời gian thực.
 4. **Tồn kho (DEC-100, thay quy tắc 50% / 100% cũ).** `u` = giá trị vị thế / max open position (mặc định 2 × order size, người dùng sửa được).
    - **Flat** (vị thế dưới mức tối thiểu của SoDEX): bid và ask đối xứng ở mid·(1 ∓ d), mỗi bên một order size.
+     Vị thế khác 0 mà lệnh ở phía đi qua 0 (long → bán, short → mua) bị SoDEX từ chối vì thiếu margin thì không báo giá phía đó tới khi vị thế đổi hoặc người dùng Resume (DEC-291).
    - **Có vị thế** (ngay từ fill đầu, không chờ 50%): phía đóng là lệnh post-only **reduce-only** ở mid·(1 ± d·(1−u)), cách mid ít nhất 1 tick; phía tăng vị thế lùi ra mid·(1 ∓ d·(2+2u)), khối lượng ≤ phần còn trống tới max open position. Vẫn báo giá hai phía để kiếm spread, không thành bot chỉ đóng lệnh.
    - **Đạt max open position** (u ≥ 1): chỉ báo giá phía đóng.
    - Khối lượng lệnh đóng = vị thế − phần chưa khớp của các lệnh đóng khác còn sống hoặc đang huỷ, làm tròn xuống theo lot; dưới mức tối thiểu thì không đặt.
