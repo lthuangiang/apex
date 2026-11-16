@@ -1628,7 +1628,7 @@ export class Engine {
             const sent = toSend.find((o) => o.clOrdID === res.clOrdID);
             this.#d.log.warn(
               { botId: r.botId, clOrdID: res.clOrdID, code: res.code, message: res.message },
-              "order rejected by SoDEX",
+              r.paper ? "paper order rejected (simulated)" : "order rejected by SoDEX",
             );
             await this.#feed(r, { type: "orderReject", at, clOrdID: res.clOrdID, code: res.code });
             // Stop loss gốc bị từ chối (DEC-118) không phải lệnh đóng thật: chiến lược tự giữ SL, không pause.
@@ -2033,6 +2033,13 @@ export class Engine {
       r,
       open.map((o) => o.clOrdId),
     );
+    // Bot paper (PB-01): lệnh đóng market cần giá để mô phỏng; chưa có giá thì PaperGateway từ chối (NO_PRICE), lệnh
+    // đóng thành `rejected` và bot dừng với vị thế giả còn mở. Kiểm tra giá TRƯỚC khi đặt lệnh đóng: chưa có thì Stop
+    // của người dùng giữ `stopping` (nhịp sau thử lại, chưa gửi gì); dừng do chiến lược thì ghi warn.
+    if (r.paper && close && !this.#paperPriced(r)) {
+      this.#d.log.warn({ botId: r.botId }, "paper close waits: no price for its market yet");
+      if (reason === null) return;
+    }
     if (r.strategy === Strategy.copyTrade) {
       // Copy Trade nhiều market (DEC-163): đóng từng market bằng market reduce-only; clOrdID tất định theo thứ tự
       // market trong config, băm từ botId đầy đủ.
@@ -2148,6 +2155,13 @@ export class Engine {
         });
     });
     this.#runners.delete(r.botId);
+  }
+
+  /** Market của bot paper đã có giá mô phỏng (cùng nguồn `PaperGateway.priceOf` mà lệnh paper dùng). */
+  #paperPriced(r: Runner): boolean {
+    const paper = this.#d.paper;
+    if (paper === undefined) return true;
+    return paper.priceOf(r.market) !== null;
   }
 
   /**

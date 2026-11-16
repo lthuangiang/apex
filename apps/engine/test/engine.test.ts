@@ -2285,6 +2285,41 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("keeps a paper Stop in stopping until there is a price, so the fake position is closed (PB-01 review)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const p = await seedPaper();
+    const a = paperEngine(gw, "paper-noprice-a");
+    await a.tick();
+    await a.onPrice("vBTC_vUSDC", "100", clock);
+    clock += 1_000;
+    await a.onPrice("vBTC_vUSDC", "94", clock);
+    expect(
+      (await db.select().from(paperFills).where(eq(paperFills.botId, p.botId))).length,
+    ).toBeGreaterThan(0);
+    await a.stop();
+    // Engine mới (khởi động lại / đổi shard): chưa có giá nào. Người dùng bấm Stop kèm đóng vị thế.
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, p.botId));
+    const b = paperEngine(gw, "paper-noprice-b");
+    await b.tick();
+    await b.tick();
+    expect((await botState(p.botId))?.state).toBe("stopping");
+    // Không gửi lệnh đóng khi chưa có giá (không có lệnh close bị reject NO_PRICE).
+    const before = await db.select().from(orders).where(eq(orders.botId, p.botId));
+    expect(before.filter((o) => o.tag === "close")).toEqual([]);
+    clock += 1_000;
+    await b.onPrice("vBTC_vUSDC", "95", clock);
+    for (let i = 0; i < 3 && (await botState(p.botId))?.state !== "stopped"; i += 1) {
+      clock += 1_000;
+      await b.tick();
+    }
+    expect((await botState(p.botId))?.state).toBe("stopped");
+    const rows = await db.select().from(orders).where(eq(orders.botId, p.botId));
+    expect(rows.find((o) => o.tag === "close")?.status).toBe("filled");
+    expect(gw.received).toEqual([]);
+    await b.stop();
+  });
+
   it("never fills the open paper order of a bot the engine no longer runs (PB-01)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
