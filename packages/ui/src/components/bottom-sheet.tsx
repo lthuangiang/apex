@@ -62,7 +62,7 @@ export function BottomSheet({
               <Dialog.Title className="text-lg font-bold text-ink">{title}</Dialog.Title>
               <Dialog.Close
                 aria-label={closeLabel}
-                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-lg text-ink"
+                className="flex size-11 shrink-0 items-center justify-center rounded-full bg-surface-2 text-lg text-ink"
               >
                 <span aria-hidden="true">×</span>
               </Dialog.Close>

@@ -29,12 +29,20 @@ import { useMarketNames } from "@/lib/markets";
 import { ME_KEY, useMe, useTwoFactorNeeded } from "@/lib/queries";
 
 import { botCapital, botMarket } from "../bot-label";
+import { liveOrder, pickable } from "../bot-picker";
 import { stopEventIdOf, useReasonLabel } from "../stop-reason";
 
 import { BetaChip, isBeta } from "./beta-chip";
 import { useBotErrorText } from "./bot-errors";
 import { BotFills } from "./bot-fills";
 import { BotProfit } from "./bot-profit";
+import {
+  BotSelector,
+  BotSelectorError,
+  BotSelectorSkeleton,
+  BotSelectorStale,
+  NoneRunning,
+} from "./bot-selector";
 import { BOTS_KEY, useStateLabel, waitingTooLong } from "./bots-page";
 import { ConfigList, useConfigRows } from "./config-view";
 import { DecisionsList } from "./decisions-list";
@@ -75,15 +83,22 @@ export function AgentPage({ botId }: { botId?: string }) {
   const router = useRouter();
   const qc = useQueryClient();
   const me = useMe();
+  // Gồm cả bot đã archive: bộ chọn bot có bộ lọc Archived (DEC-263); cùng cache với Strategy Lab.
   const list = useQuery({
-    queryKey: BOTS_KEY,
-    queryFn: () => api("GET", "/api/v1/bots", botListSchema),
+    queryKey: [...BOTS_KEY, "withArchived"],
+    queryFn: () => api("GET", "/api/v1/bots?archived=true", botListSchema),
     refetchInterval: 5_000,
   });
-  const agents = (list.data?.items ?? []).filter(
-    (b) => b.state !== BotState.draft && b.state !== BotState.archived,
-  );
-  const id = botId ?? agents[0]?.id;
+  const all = pickable(list.data?.items ?? []);
+  // `/agent` không có id: dòng đầu của nhóm đầu (Needs attention → Running → Paused).
+  const live = liveOrder(all);
+  const id = botId ?? live[0]?.id;
+  // Không bot nào đang chạy, chỉ có bot đã dừng: thẻ "No bot is running" thay cho mở một bot dừng (artboard Empty).
+  const stoppedOnly =
+    botId === undefined &&
+    list.isSuccess &&
+    live.length === 0 &&
+    all.some((b) => b.state === BotState.stopped);
   const detail = useQuery({
     queryKey: ["bot", id],
     queryFn: () => api("GET", `/api/v1/bots/${id ?? ""}`, botDetailSchema),
@@ -167,8 +182,11 @@ export function AgentPage({ botId }: { botId?: string }) {
   const configRows = useConfigRows(bot?.strategy ?? "", bot?.market ?? "", active?.config ?? {});
   const redirecting = bot?.state === BotState.draft;
   const archived = bot?.state === BotState.archived;
-  const loading = list.isPending || (id !== undefined && (detail.isPending || redirecting));
-  const empty = !loading && id === undefined && list.isSuccess;
+  // Bot trong URL tải độc lập với danh sách: danh sách chậm hay lỗi thì chi tiết bot vẫn hiện (artboard States).
+  const loading = id === undefined ? list.isPending : detail.isPending || redirecting;
+  const empty = !loading && id === undefined && list.isSuccess && !stoppedOnly;
+  const current = list.data?.items.find((b) => b.id === id) ?? bot;
+  const onlyBot = all.length === 1 && all[0]?.id === id;
 
   const actions = (
     <>
@@ -408,8 +426,9 @@ export function AgentPage({ botId }: { botId?: string }) {
           subtitle={t("subtitle")}
           back={{ href: "/", label: t("back") }}
           // Chưa có bot: chỉ một nút "New bot" (trong khối rỗng), không lặp ở tiêu đề (báo cáo test E24).
+          // Một bot: nút New bot nằm cạnh thẻ bot (artboard OneBot); chỉ bot đã dừng: trong thẻ "No bot is running".
           action={
-            empty ? undefined : (
+            empty || onlyBot || stoppedOnly ? undefined : (
               <Link
                 href="/bots?tab=catalog"
                 className="flex min-h-tap items-center gap-2 rounded-[14px] bg-accent px-[18px] text-sm font-bold text-white no-underline shadow-accent"
@@ -423,47 +442,26 @@ export function AgentPage({ botId }: { botId?: string }) {
 
         {missing ? <NotConnected message={t("notConnected")} /> : null}
 
-        {/* Chọn agent: hàng thẻ ngang phía trên (artboard Agent), chi tiết chiếm hết chiều ngang (F1). */}
-        {agents.length > 1 || (agents.length === 1 && botId !== undefined) ? (
-          <nav aria-label={t("agentsLabel")} className="flex gap-2.5 overflow-x-auto pb-1">
-            {agents.map((a) => (
-              <Link
-                key={a.id}
-                href={`/agent/${a.id}`}
-                aria-current={a.id === id ? "page" : undefined}
-                title={
-                  a.reasonCode === null
-                    ? undefined
-                    : reasonLabel({
-                        reasonCode: a.reasonCode,
-                        strategy: a.strategy,
-                        mode: a.mode,
-                        stopDetail: a.stopDetail,
-                      })
-                }
-                className={`flex min-w-[220px] flex-none items-center gap-2.5 rounded-[16px] border px-3.5 py-2.5 no-underline ${a.id === id ? "border-accent bg-accent-tint" : "border-border bg-surface"}`}
-              >
-                <span
-                  aria-hidden="true"
-                  className="flex size-8 flex-none items-center justify-center rounded-full bg-accent-tint text-xs font-extrabold text-accent-ink"
-                >
-                  {a.name.slice(0, 1).toUpperCase()}
-                </span>
-                <span className="flex min-w-0 flex-col">
-                  <strong className="flex min-w-0 items-center gap-1.5 text-sm text-ink">
-                    <span className="truncate">{a.name}</span>
-                    {a.mode === "paper" ? <PaperChip short /> : null}
-                  </strong>
-                  <span className="truncate text-xs text-muted">{names.market(a.market)}</span>
-                </span>
-                <span className="ml-auto">
-                  {/* Thẻ chọn agent chỉ hiện trạng thái; lý do pause/stop nằm ở phần chi tiết bên dưới. */}
-                  <StatusPill {...stateLabel({ ...a, reasonCode: null })} />
-                </span>
-              </Link>
-            ))}
-          </nav>
-        ) : null}
+        {/* Bộ chọn bot, phương án A (docs/mockups/agent-selector, DEC-294): thay dải thẻ ngang. */}
+        {list.isPending ? (
+          id === undefined ? null : (
+            <BotSelectorSkeleton />
+          )
+        ) : list.data === undefined ? (
+          <BotSelectorError
+            bot={current}
+            onRetry={() => {
+              void list.refetch();
+            }}
+          />
+        ) : current === undefined ? null : (
+          <div className="flex flex-col gap-2.5">
+            {list.isRefetchError ? <BotSelectorStale updatedAt={list.dataUpdatedAt} /> : null}
+            <BotSelector bots={list.data.items} current={current} />
+          </div>
+        )}
+
+        {stoppedOnly ? <NoneRunning bots={all} /> : null}
 
         {loading ? (
           <div className="flex flex-col gap-5">
