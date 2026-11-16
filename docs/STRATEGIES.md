@@ -225,18 +225,20 @@ Hành vi và quy tắc bắt buộc ở `docs/VOLUME_MAKER.md` mục 17. Field:
 | 2 | Contract | — | Any SoDEX perp (DEC-157) | Required. |
 | Amount | Order size per side | 500 | ≥ SoDEX min size; post-only | Below SoDEX minimum order size. |
 | Amount | Leverage | 5× | 1–40× and ≤ min(account cap, SoDEX market max) (DEC-99) | Allowed 1–40×. |
-| 4 | Stop if I lose (`costBudget`) | 300 | > 0; fees + realized + unrealized loss; warns at 80%, stops at 100% | Must be above 0. |
-| 4 | Stop after trading (`volumeTarget`) | empty | Optional, > 0; bot stops when reached | Must be above 0. |
+| 4 | Stop when costs reach (`costBudget`) | 300 | > 0; fees + realized + unrealized loss; warns at 80%, stops at 100% | Must be above 0. |
+| 4 | Stop after this much volume (`volumeTarget`) | empty | Optional, > 0; bot stops when reached | Must be above 0. |
 | Adv | Max open position (`maxInventory`) | empty = 2 × order size (DEC-100) | > order size | Must be above the order size. |
 | Adv | Quote distance | 1.0 bp | ≥ 1 tick | Must be at least one tick. |
 | Adv | Refresh every | 3 s | 2–60 s | Allowed 2–60 s. |
-| Adv | Position loss limit | empty | Optional, < budget; closes reduce-only | Must be below the budget. |
+| 4 | Position loss limit (`inventoryLossStop`) | empty | Optional, < budget; closes reduce-only. Chỉ hiện khi tắt Smart quoting, trong khối "How your losses are capped"; giá trị đã lưu vẫn giữ và engine vẫn dùng (DEC-TBD-mm-form-copy) | Must be below the budget. |
 | 3 | Close only at your entry price or better (`closeAtEntry`) · BETA | Off | Hint "Fees are not included in your entry price." Close order stays post-only reduce-only at max(best, entry) for long / min(best, entry) for short; after 30 min falls back to the normal close (DEC-227) | — |
 | 3 | Pause on fast moves (`pauseOnFastMoves`) | Off | Price moves ≥ max(3 ticks, 2 bp) in 6 s → opening quotes pulled, reduce-only close kept, quote again after 15 s of calm (DEC-227) | — |
-| Adv | Run until | Target or budget reached | Target or budget / season end / date | — |
-| Adv | When the bot stops | Close inventory | Close (reduce-only) / Keep position | — |
+| 4 | Also stop at (`runUntil`) | No end time | No end time / End of the SoPoints season / A date I choose (kèm ô End date) | — |
+| Adv | When the bot stops (`onStop`) | Close the position | Close the position (reduce-only) / Keep the position | — |
 
-Form gọn (DEC-99): người dùng chỉ cần chọn market, order size, leverage và Stop if I lose; mọi field còn lại có mặc định trong schema. Preview: Balance needed (= max open position / leverage, cùng công thức `requirementOf`), Biggest position, Stops if you lose. Không ước tính chi phí theo khối lượng. Trading Agent hiện sổ lệnh trực tiếp, đánh dấu lệnh của bot là "YOU". Backtest: volume made, net cost (kèm chi phí trên mỗi 1 triệu USD), maker share, max inventory reached.
+Câu chữ form theo thiết kế "MM form explained" (DEC-TBD-mm-form-copy): nhãn / hint / đơn vị riêng của Market Making ở `createBot.fieldsByStrategy.volume_maker.<field>` trong en.json (thắng câu chữ chung `createBot.fields`); hint có số lấy theo order size, Stop when costs reach và max orders đang nhập, ô trống thì câu không có số. Section Risk tên "When to stop"; sau đó là khối "How your losses are capped" (Smart quoting bật: Stop when costs reach · Position cut · Max position; tắt: Position loss limit thay Position cut, kèm ô nhập). Max position đơn vị "orders", Where to quote (`quoteLevel`) đơn vị "steps back".
+
+Form gọn (DEC-99): người dùng chỉ cần chọn market, order size, leverage và Stop when costs reach (trước là Stop if I lose); mọi field còn lại có mặc định trong schema. Preview: Balance needed (= max open position / leverage, cùng công thức `requirementOf`), Biggest position, Stops if you lose. Không ước tính chi phí theo khối lượng. Trading Agent hiện sổ lệnh trực tiếp, đánh dấu lệnh của bot là "YOU". Backtest: volume made, net cost (kèm chi phí trên mỗi 1 triệu USD), maker share, max inventory reached.
 
 ## S10. Volume Farm (`volume_farm`) · Perps · builder fee: mọi lần khớp · **chỉ cho tài khoản được team bật (DEC-80)**
 

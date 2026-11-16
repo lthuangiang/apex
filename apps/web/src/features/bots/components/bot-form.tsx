@@ -6,13 +6,15 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useMarketNames, useMarkets } from "@/lib/markets";
 
+import { hintOf, howBaseOf, labelKeyOf, optionalKeyOf, optionKeyOf, rendered } from "../field-copy";
 import { FIELDS, visible, type AssetRow, type FieldSpec, type FormValues } from "../fields";
 import { advancedSummary, fallbackQuote, sectionOf, SECTIONS, type Section } from "../form-layout";
 import { unitsOf } from "../preview";
 
 import { AmountLines } from "./amount-lines";
 import { ArbAssetPicker, RebalanceAssets } from "./asset-pickers";
-import { HowItWorks, useHasHow } from "./how-it-works";
+import { HowItWorks } from "./how-it-works";
+import { LossCaps } from "./loss-caps";
 import { MarketPicker } from "./market-picker";
 
 // Form tham số bot theo bố cục UI_REVIEW G2/G3 (DEC-68): Market → Amount → Strategy → Risk → Advanced
@@ -74,7 +76,7 @@ export function BotForm({
   afterMarket?: ReactNode;
 }) {
   const t = useTranslations("createBot");
-  const hasHow = useHasHow();
+  const has = (key: string) => t.has(key);
   const names = useMarketNames();
   const markets = useMarkets();
   const root = useRef<HTMLDivElement>(null);
@@ -93,9 +95,14 @@ export function BotForm({
 
   const shown = FIELDS[strategy].filter(
     (f) =>
-      f.hidden !== true && visible(f, values) && (lockedReason === undefined || f.locked !== true),
+      f.hidden !== true &&
+      visible(f, values) &&
+      rendered(f, values) &&
+      (lockedReason === undefined || f.locked !== true),
   );
-  const advanced = shown.filter((f) => sectionOf(f) === "advanced");
+  // Field có `slot` vẽ trong khối riêng (Position loss limit trong "How your losses are capped").
+  const lossCapFields = shown.filter((f) => f.slot === "lossCaps");
+  const advanced = shown.filter((f) => f.slot === undefined && sectionOf(f) === "advanced");
   const advancedKeys = advanced.map((f) => f.key).join(",");
 
   // Lỗi từ server nằm trong Advanced → mở section; rồi focus field lỗi đầu tiên (UI_REVIEW G2).
@@ -122,22 +129,31 @@ export function BotForm({
   }, [focusKey, advancedKeys]);
 
   const noMarketQuote = fallbackQuote(strategy, values, markets.data?.items ?? []);
+  const marketUnits = () => {
+    const m = values.market ?? values.perpMarket;
+    return unitsOf(typeof m === "string" ? m : "");
+  };
   const unitOf = (f: FieldSpec): string | undefined => {
     if (f.type.kind !== "decimal" && f.type.kind !== "int") return undefined;
+    // Đơn vị riêng của chiến lược ("orders", "steps back" của Market Making).
+    const own = optionalKeyOf(strategy, f, "unit", has);
+    if (own !== null) return t(own);
     const u = f.type.unit;
     if (u === undefined) return undefined;
     if (u !== "quote" && u !== "base") return u;
-    const m = values.market ?? values.perpMarket;
-    const units = unitsOf(typeof m === "string" ? m : "");
+    const units = marketUnits();
     if (units === null) return u === "quote" ? noMarketQuote : undefined;
     return names.asset(u === "quote" ? units.quote : units.base);
   };
 
   const renderField = (f: FieldSpec): ReactNode => {
-    const labelKey = f.label ?? f.key;
+    const labelText = t(labelKeyOf(strategy, f, has));
     // Field hiện theo điều kiện `when` là bắt buộc khi đã hiện (UI_REVIEW G4).
-    const label = `${t(`fields.${labelKey}.label`)}${f.optional === true && f.when === undefined ? ` ${t("optional")}` : ""}`;
-    const hint = hints?.[f.key] ?? t(`fields.${labelKey}.hint`);
+    const label = `${labelText}${f.optional === true && f.when === undefined ? ` ${t("optional")}` : ""}`;
+    const base = marketUnits()?.base;
+    const h = hintOf(strategy, f, values, has, base === undefined ? null : names.asset(base));
+    const hint = hints?.[f.key] ?? t(h.key, h.params);
+    const ownPlaceholder = optionalKeyOf(strategy, f, "placeholder", has);
     const error = errors[f.key]?.[0];
     const unit = unitOf(f);
     const v = values[f.key];
@@ -168,7 +184,7 @@ export function BotForm({
             label={label}
             options={options.map((o) => ({
               value: o,
-              label: t(`options.${optionsKey}.${o}`),
+              label: t(optionKeyOf(strategy, f, optionsKey, o, has)),
             }))}
             value={typeof v === "string" ? v : (options[0] ?? "")}
             onValueChange={(next) => {
@@ -209,7 +225,7 @@ export function BotForm({
           rows={Array.isArray(v) ? v : []}
           quoteAsset={typeof quote === "string" ? quote : ""}
           disabled={disabled}
-          label={t(`fields.${labelKey}.label`)}
+          label={labelText}
           hint={hint}
           error={error}
           onChange={(rows) => {
@@ -256,7 +272,12 @@ export function BotForm({
       );
     }
     const kind = f.type.kind;
-    const placeholder = f.type.kind === "text" ? (f.type.placeholder ?? "") : "";
+    const placeholder =
+      ownPlaceholder !== null
+        ? t(ownPlaceholder)
+        : f.type.kind === "text"
+          ? (f.type.placeholder ?? "")
+          : "";
     return (
       <Field {...common}>
         {(p) => (
@@ -308,15 +329,18 @@ export function BotForm({
         </div>
       );
       // "How it works" dưới cả hàng (không chen giữa hai ô cùng hàng), DEC-146.
-      const hows = row
-        .filter((x) => hasHow(x.label ?? x.key))
-        .map((x) => (
-          <HowItWorks
-            key={`how-${x.key}`}
-            labelKey={x.label ?? x.key}
-            {...(row.length === 1 ? {} : { title: t(`fields.${x.label ?? x.key}.label`) })}
-          />
-        ));
+      const hows = row.flatMap((x) => {
+        const howKey = howBaseOf(strategy, x, has);
+        return howKey === null
+          ? []
+          : [
+              <HowItWorks
+                key={`how-${x.key}`}
+                howKey={howKey}
+                {...(row.length === 1 ? {} : { title: t(labelKeyOf(strategy, x, has)) })}
+              />,
+            ];
+      });
       out.push(
         row.length === 1 ? (
           cell(f)
@@ -331,8 +355,17 @@ export function BotForm({
     return out;
   };
 
-  const title = (s: Section) => (s === "market" ? t("groups.2") : t(`sections.${s}`));
-  const adv = advancedSummary(advanced, values, errors, (key, v) => t(`options.${key}.${v}`));
+  // Tên / dòng giới thiệu section riêng của chiến lược (Market Making: "When to stop").
+  const ownSection = (s: Section, leaf: "title" | "intro") => {
+    const k = `sectionsByStrategy.${strategy}.${s}.${leaf}`;
+    return has(k) ? t(k) : null;
+  };
+  const title = (s: Section) =>
+    ownSection(s, "title") ?? (s === "market" ? t("groups.2") : t(`sections.${s}`));
+  const adv = advancedSummary(advanced, values, errors, (key, v) => {
+    const f = advanced.find((x) => x.type.kind === "enum" && x.type.optionsKey === key);
+    return t(f === undefined ? `options.${key}.${v}` : optionKeyOf(strategy, f, key, v, has));
+  });
   const advSources = [
     ...new Set(advanced.map((f) => sources?.[f.key]).filter((x) => x !== undefined)),
   ];
@@ -347,14 +380,16 @@ export function BotForm({
   return (
     <div ref={root} className="flex flex-col gap-5">
       {SECTIONS.map((s) => {
-        const fields = shown.filter((f) => sectionOf(f) === s);
+        const fields = shown.filter((f) => f.slot === undefined && sectionOf(f) === s);
         if (fields.length === 0) return null;
+        const intro = ownSection(s, "intro");
         return (
           <Fragment key={s}>
             <fieldset className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
               <legend className="mb-3 w-full border-b border-border pb-2 text-[15px] font-extrabold">
                 {title(s)}
               </legend>
+              {intro === null ? null : <p className="m-0 text-xs text-ink-2">{intro}</p>}
               {s === "amount" && (strategy === "spot_dca" || strategy === "futures_dca") ? (
                 <p className="m-0 text-xs text-ink-2">{t("amount.dcaHint")}</p>
               ) : null}
@@ -362,6 +397,13 @@ export function BotForm({
               {s === "amount" ? <AmountLines strategy={strategy} values={values} /> : null}
             </fieldset>
             {s === "market" ? afterMarket : null}
+            {s === "risk" && strategy === "volume_maker" ? (
+              <LossCaps values={values}>
+                {lossCapFields.length === 0 ? null : (
+                  <div className="flex flex-col gap-3">{renderFields(lossCapFields)}</div>
+                )}
+              </LossCaps>
+            ) : null}
             {s === "amount" && previewAfterAmount ? preview.node : null}
           </Fragment>
         );

@@ -14,6 +14,7 @@ import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
 import { useMe } from "@/lib/queries";
 
+import { labelKeyOf } from "../field-copy";
 import { FIELDS, fromConfig, isLaunched, toConfig, visible, type FormValues } from "../fields";
 import { applyMmSuggestion, type MmSuggestion } from "../mm-cost";
 
@@ -139,7 +140,11 @@ export function BotEdit({
     (f) => JSON.stringify(before[f.key]) !== JSON.stringify(after[f.key]),
   );
   const label = (k: string) =>
-    tf(`fields.${FIELDS[strategy].find((f) => f.key === k)?.label ?? k}.label`);
+    tf(
+      labelKeyOf(strategy, FIELDS[strategy].find((f) => f.key === k) ?? { key: k }, (x) =>
+        tf.has(x),
+      ),
+    );
 
   return (
     <WorkspaceShell current="bots" isTeam={me.data?.role === UserRole.team}>

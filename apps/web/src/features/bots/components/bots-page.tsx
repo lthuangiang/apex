@@ -31,6 +31,7 @@ import { useMediaQuery } from "@/lib/use-media";
 import { botCapital, botMarket } from "../bot-label";
 import { catalogFor } from "../catalog";
 import { FIELDS, presetMarket } from "../fields";
+import { useReasonLabel, type StopReasonInput } from "../stop-reason";
 
 import { BetaChip, isBeta } from "./beta-chip";
 import { BotActions } from "./bot-actions";
@@ -118,15 +119,15 @@ export function useWaitingText() {
   };
 }
 
-const VOLUME_TARGET_STRATEGIES = new Set<string>(["volume_farm"]);
-
 export function useStateLabel() {
   const t = useTranslations("states");
-  const tr = useTranslations("reasons");
+  const reasonLabel = useReasonLabel();
   const waiting = useWaitingText();
   return (
     b: Pick<BotSummary, "state" | "reasonCode" | "needsAttention"> &
       Partial<Pick<BotSummary, "waiting" | "strategy">>,
+    /** Config / khối lượng của bot khi nơi gọi có, để nhãn lý do dừng cụ thể hơn (stop-reason.ts). */
+    extra?: Pick<StopReasonInput, "config" | "volume">,
   ) => ({
     state: b.state,
     label: t(b.state),
@@ -135,11 +136,8 @@ export function useStateLabel() {
       ? {}
       : {
           reason: b.reasonCode,
-          // Bot khối lượng dừng vì đủ volume target, không phải "max cycles" (cùng reason code MAX_CYCLES).
-          reasonLabel:
-            b.reasonCode === ReasonCode.maxCycles && VOLUME_TARGET_STRATEGIES.has(b.strategy ?? "")
-              ? tr("MAX_CYCLES_VOLUME")
-              : tr(b.reasonCode),
+          // Cùng reason code nhưng nhãn theo chiến lược (MAX_CYCLES của bot khối lượng là volume target…).
+          reasonLabel: reasonLabel({ reasonCode: b.reasonCode, strategy: b.strategy, ...extra }),
         }),
     ...(b.needsAttention ? { needsAttention: true, needsAttentionLabel: t("needsAttention") } : {}),
   });

@@ -39,6 +39,13 @@ export interface FieldSpec {
   clears?: readonly string[];
   /** Chỉ hiện khi field khác có giá trị này. */
   when?: { key: string; is: readonly string[] };
+  /**
+   * Chỉ vẽ ô khi công tắc `key` bật (`is: true`) hoặc tắt (`is: false`). Khác `when`: giá trị vẫn gửi lên trong
+   * config, nên config cũ giữ nguyên giá trị (Position loss limit khi bật Smart quoting, DEC-TBD-mm-form-copy).
+   */
+  renderIf?: { key: string; is: boolean };
+  /** Vẽ trong khối riêng thay cho section (Position loss limit trong "How your losses are capped"). */
+  slot?: "lossCaps";
   /** Hiện trong nhóm Amount, ngay sau Market (UI_REVIEW G2). */
   amount?: boolean | undefined;
   /** Nằm trong "Advanced settings" (đóng mặc định). */
@@ -568,26 +575,28 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
     { key: "closeAtEntry", group: 3, beta: true, hidden: true, type: { kind: "bool" } },
     { key: "pauseOnFastMoves", group: 3, hidden: true, type: { kind: "bool" } },
     { key: "refreshSeconds", group: 3, advanced: true, type: { kind: "int", unit: "s" } },
-    {
-      key: "inventoryLossStop",
-      group: 4,
-      advanced: true,
-      optional: true,
-      type: dec("quote"),
-    },
+    // "Also stop at" nằm trong "When to stop" (thiết kế "MM form explained", DEC-TBD-mm-form-copy).
     {
       key: "runUntil",
       group: 4,
-      advanced: true,
       type: enumOf("runUntil", ["target_or_budget", "season_end", "date"]),
     },
     {
       key: "untilAt",
       label: "untilAt",
       group: 4,
-      advanced: true,
       type: { kind: "date" },
       when: { key: "runUntil", is: ["season_end", "date"] },
+    },
+    // Position loss limit chỉ hiện khi tắt Smart quoting (bật thì Position cut thay thế), trong khối
+    // "How your losses are capped". Config cũ đặt giá trị khi bật Smart quoting vẫn giữ và engine vẫn dùng.
+    {
+      key: "inventoryLossStop",
+      group: 4,
+      optional: true,
+      renderIf: { key: "smartQuoting", is: false },
+      slot: "lossCaps",
+      type: dec("quote"),
     },
     {
       key: "onStop",
