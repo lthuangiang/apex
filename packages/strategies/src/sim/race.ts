@@ -2,7 +2,7 @@ import { dec } from "@drift/shared";
 
 import type { OrderIntent, StepContext, StrategyEvent, StrategyModule } from "../core/types";
 
-// Harness tranh chấp thuần (không DB, không mạng; DEC-TBD-race-harness): một SoDEX giả có độ trễ ngẫu nhiên theo seed,
+// Harness tranh chấp thuần (không DB, không mạng; DEC-270): một SoDEX giả có độ trễ ngẫu nhiên theo seed,
 // đảo thứ tự tin trả về, `OrderNotFound` khi lệnh huỷ tới trước khi lệnh vào sổ (lệnh vẫn vào sổ sau đó và khớp được),
 // cộng phần "engine" tối thiểu: thử huỷ lại lệnh chưa vào sổ như engine (DEC-254). Chạy một chiến lược qua nhiều phút
 // giả lập rồi kiểm các bất biến về tiền:

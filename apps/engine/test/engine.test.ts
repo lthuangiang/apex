@@ -3150,7 +3150,7 @@ describe("Rebalancing order books (IOC at ask / bid)", () => {
 });
 
 /**
- * SoDEX giả cho harness tranh chấp của engine (DEC-TBD-race-harness): độ trễ ngẫu nhiên thật (ms) ở chiều đi và chiều
+ * SoDEX giả cho harness tranh chấp của engine (DEC-270): độ trễ ngẫu nhiên thật (ms) ở chiều đi và chiều
  * về, lệnh vào sổ lúc tới SoDEX, lệnh huỷ tới trước lúc vào sổ trả OrderNotFound (lệnh vẫn vào sổ sau đó), khớp khi giá
  * chạy qua. Ghi vi phạm bất biến 2 ngay lúc nhận lệnh: lệnh mở tới khi bot đã stopping / stopped.
  */
@@ -3269,7 +3269,7 @@ class RaceGateway extends FakeGateway {
   }
 }
 
-describe("engine race harness (DEC-TBD-race-harness)", () => {
+describe("engine race harness (DEC-270)", () => {
   const SEEDS = Number(process.env.RACE_ENGINE_SEEDS ?? "2");
   const STEPS = Number(process.env.RACE_ENGINE_STEPS ?? "120");
   const mm = (smartQuoting: boolean) => ({

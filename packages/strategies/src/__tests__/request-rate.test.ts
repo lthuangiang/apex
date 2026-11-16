@@ -4,7 +4,7 @@ import type { StepContext, StrategyEvent } from "../core/types";
 import { volumeMaker } from "../volume-maker";
 import { volumeMakerSchema } from "../volume-maker/schema";
 
-// Số request gửi SoDEX mỗi phút của Market Making khi giá Binance đi một chiều (DEC-TBD-race-harness, bất biến 6; kịch bản
+// Số request gửi SoDEX mỗi phút của Market Making khi giá Binance đi một chiều (DEC-270, bất biến 6; kịch bản
 // của reviewer #133 / DEC-257). Thuần strategies, không engine: mỗi `cancel` được SoDEX xác nhận (`orderDone`) sau RTT,
 // `place` nhận ngay, không mô phỏng fill. Request = mỗi action place hoặc cancel. Bắt lỗi vòng rút → xác nhận → đặt → rút
 // của bản đầu #133 (122–372 request/phút, tăng theo RTT ngắn).
@@ -112,7 +112,7 @@ const env = (globalThis as { process?: { env: Record<string, string | undefined>
 const say = (line: string) =>
   (globalThis as { console?: { log: (s: string) => void } }).console?.log(line);
 
-describe("Market Making request rate on a Binance trend (DEC-TBD-race-harness, DEC-257)", () => {
+describe("Market Making request rate on a Binance trend (DEC-270, DEC-257)", () => {
   for (const sc of scenarios)
     it(`stays near the main baseline and does not grow with a shorter RTT: ${sc.name}`, () => {
       const slow = simulate(sc.dropBp, sc.everyMs, 400);

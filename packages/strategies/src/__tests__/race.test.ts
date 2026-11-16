@@ -5,7 +5,7 @@ import { runRace, type RaceProbe } from "../sim/race";
 import { volumeMaker, type VolumeMakerState } from "../volume-maker";
 import { vmMaxInventory, volumeMakerSchema } from "../volume-maker/schema";
 
-// Harness tranh chấp thuần (DEC-TBD-race-harness): Market Making chạy nhiều phút giả lập trên SoDEX giả có độ trễ ngẫu
+// Harness tranh chấp thuần (DEC-270): Market Making chạy nhiều phút giả lập trên SoDEX giả có độ trễ ngẫu
 // nhiên, đảo thứ tự, OrderNotFound khi huỷ lệnh chưa vào sổ. Seed cố định để tái hiện; RACE_SEEDS / RACE_MINUTES để chạy
 // nhiều hơn ở máy (CI chạy ít). Bắt được lỗi DEC-251 (bot đứng không báo giá) và DEC-253 (lệnh mồ côi làm vị thế gấp
 // đôi, cùng lỗi huỷ + đặt cùng lúc của DEC-257) khi revert bản sửa (kết quả ghi trong PR).
@@ -52,7 +52,7 @@ const config = (smartQuoting: boolean) =>
     smartQuoting,
   });
 
-describe("Market Making race harness (DEC-TBD-race-harness)", () => {
+describe("Market Making race harness (DEC-270)", () => {
   for (const smart of [false, true])
     for (let seed = 1; seed <= SEEDS; seed += 1)
       it(
