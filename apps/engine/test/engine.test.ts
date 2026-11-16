@@ -203,7 +203,10 @@ class FakeGateway implements Gateway {
       [...this.trades].flatMap(([clOrdID, list]) => list.map((t) => ({ ...t, clOrdID }))),
     );
   }
+  /** Giả SoDEX / mạng lỗi khi tra lệnh (HttpGateway.lookup ném lỗi). */
+  lookupError: Error | null = null;
   lookup(_a: AccountRef, o: { clOrdID: string }): Promise<LookupResult> {
+    if (this.lookupError !== null) return Promise.reject(this.lookupError);
     return Promise.resolve(this.book.get(o.clOrdID) ?? { status: "not_found" });
   }
   readonly trades = new Map<string, OrderTrade[]>();
@@ -567,6 +570,88 @@ describe("engine", () => {
     expect(after?.reconciledAt).not.toBeNull();
     expect(gw.received.filter((o) => o.tag === "grid:init")).toHaveLength(sends);
     await e.stop();
+  });
+
+  it("keeps the tick going when looking up one unknown order fails, and reconciles it later (#154 follow-up)", async () => {
+    const gw = new FakeGateway();
+    gw.timeoutNext = "applied";
+    const { botId } = await seedBot();
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    gw.lookupError = new Error("network down");
+    clock += 6_000;
+    // Tra lệnh lỗi: nhịp không ném lỗi, lệnh vẫn unknown.
+    await expect(e.tick()).resolves.toBeUndefined();
+    const still = (await db.select().from(orders)).find(
+      (o) => o.botId === botId && o.status === "unknown",
+    );
+    expect(still).toBeDefined();
+    gw.lookupError = null;
+    clock += 1_000;
+    await e.tick();
+    const after = (await db.select().from(orders)).find((o) => o.id === still?.id);
+    expect(after?.status).toBe("open");
+    await e.stop();
+  });
+
+  it("stops a bot whose unknown order was never placed: not_found → not_placed → stopped (#154 follow-up)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    gw.timeoutNext = "lost";
+    const { botId } = await seedBot();
+    const e = makeEngine(gw, "w1");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const lost = (await db.select().from(orders)).find(
+      (o) => o.botId === botId && o.status === "unknown",
+    );
+    expect(lost).toBeDefined();
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 31_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    expect((await db.select().from(orders)).find((o) => o.id === lost?.id)?.status).toBe(
+      "not_placed",
+    );
+    await e.stop();
+  });
+
+  it("waits for reconciling before closing the position on Stop, and survives a restart while stopping (#154 follow-up)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    gw.timeoutNext = "applied";
+    const { botId, accountId } = await seedBot();
+    const a = makeEngine(gw, "w-restart");
+    await a.tick();
+    await a.onPrice("vBTC_vUSDC", "100", clock);
+    const unknown = (await db.select().from(orders)).find(
+      (o) => o.botId === botId && o.status === "unknown",
+    );
+    expect(unknown).toBeDefined();
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    await a.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    // Chưa đối soát: chưa có lệnh đóng vị thế.
+    expect(
+      (await db.select().from(orders)).filter((o) => o.botId === botId && o.tag === "close"),
+    ).toEqual([]);
+    // Engine khởi động lại giữa lúc stopping (cùng workerId, sở hữu shard của bot).
+    await a.stop();
+    const b = makeEngine(gw, "w-restart");
+    await b.tick();
+    expect(b.ownedShards).toContain(shardOf(accountId, SHARDS));
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 6_000;
+      await b.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    expect(gw.cancelled).toContain(unknown?.clOrdId);
+    await b.stop();
   });
 
   it("keeps a stopping bot in stopping until its unknown order is reconciled, then cancels it (rule 1.7)", async () => {
