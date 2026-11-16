@@ -124,7 +124,7 @@ export function AgentPage({ botId }: { botId?: string }) {
         })
       : text;
   const hasPerps = bot !== undefined && bot.engine !== "spot";
-  // Draft → màn Edit (DEC-57). Bot archived xem được ở chế độ chỉ đọc (BD-01, DEC-TBD-archived-view): nhật ký,
+  // Draft → màn Edit (DEC-57). Bot archived xem được ở chế độ chỉ đọc (BD-01, DEC-263): nhật ký,
   // phân tích, cấu hình, export; thao tác duy nhất là Restore. Chỉ chuyển khi backend đã trả `state` (UI_REVIEW F1).
   useEffect(() => {
     if (bot === undefined) return;

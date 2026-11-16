@@ -78,7 +78,7 @@ export function BotEdit({
   useEffect(() => {
     if (values === null && start !== null) setValues(start);
   }, [values, start]);
-  // Bot archived chỉ đọc (BD-01, DEC-TBD-archived-view): link Edit cũ đưa về trang bot, không sửa được.
+  // Bot archived chỉ đọc (BD-01, DEC-263): link Edit cũ đưa về trang bot, không sửa được.
   const router = useRouter();
   const archived = bot?.state === BotState.archived;
   useEffect(() => {

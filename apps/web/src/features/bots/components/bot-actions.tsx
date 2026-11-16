@@ -64,7 +64,7 @@ export function BotActions({
     <span ref={ref} className={`relative flex gap-1.5 ${stretch ? "" : "justify-end"}`}>
       {bot.state === BotState.archived ? (
         <>
-          {/* Bot archived xem được ở chế độ chỉ đọc (BD-01, DEC-TBD-archived-view). */}
+          {/* Bot archived xem được ở chế độ chỉ đọc (BD-01, DEC-263). */}
           <Link
             href={primary.href}
             className={`${inlineClass} border border-border-input text-ink no-underline`}

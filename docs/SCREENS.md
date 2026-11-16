@@ -95,7 +95,7 @@ Sau đó là checkbox xác nhận và nút `Start on mainnet`. Khi bấm: disabl
 
 ### 8.3 Trading Agent (`/agent/:botId`)
 
-- Bot `draft` chỉ nằm ở Strategy Lab: `/agent/:botId` của bot `draft` chuyển (replace) sang `/bots/:botId/edit` (DEC-57). Bot `archived` mở được ở chế độ chỉ đọc (DEC-TBD-archived-view, thay phần archived của DEC-57): hàng archived ở Strategy Lab có View + Restore; trang bot ghi "This bot is archived", giữ nhật ký, phân tích, cấu hình, Export (bot thật); không có Edit, Start, Archive; thao tác duy nhất là Restore. Không hiện trong thẻ chọn bot.
+- Bot `draft` chỉ nằm ở Strategy Lab: `/agent/:botId` của bot `draft` chuyển (replace) sang `/bots/:botId/edit` (DEC-57). Bot `archived` mở được ở chế độ chỉ đọc (DEC-263, thay phần archived của DEC-57): hàng archived ở Strategy Lab có View + Restore; trang bot ghi "This bot is archived", giữ nhật ký, phân tích, cấu hình, Export (bot thật); không có Edit, Start, Archive; thao tác duy nhất là Restore. Không hiện trong thẻ chọn bot.
 - Header: tên bot, badge trạng thái kèm reason code, runtime, version cấu hình.
 - Thanh vòng đời (Stopped → Starting → Running → Paused → Stopping); bước hiện tại được tô, bước đang chờ backend thì dùng viền nét đứt.
 - Các nút theo trạng thái: Pause / Resume / Start…, "Stop agent…" đặt tách riêng ở cuối trang.

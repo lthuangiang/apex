@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import messages from "../../../../messages/en.json";
 import { BotActions } from "../components/bot-actions";
 
-// Bot archived xem được ở chế độ chỉ đọc (BD-01, DEC-TBD-archived-view): hàng archived có View và Restore.
+// Bot archived xem được ở chế độ chỉ đọc (BD-01, DEC-263): hàng archived có View và Restore.
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: () => undefined, push: () => undefined }),
