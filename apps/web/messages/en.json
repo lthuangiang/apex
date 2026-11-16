@@ -3027,7 +3027,7 @@
     "refusedRecently": "{n, plural, one {# order refused by SoDEX in the last 24 hours} other {# orders refused by SoDEX in the last 24 hours}}",
     "outcomes": {
       "filled": "Filled",
-      "partly_filled": "Partly filled",
+      "partly_filled": "Partially filled",
       "open": "Open",
       "cancelled": "Cancelled",
       "rejected": "Rejected",
@@ -3037,6 +3037,7 @@
     "rejects": {
       "postOnly": "{n} would have crossed the book (normal for post-only)",
       "selfTrade": "{n} blocked to avoid trading with yourself",
+      "riskLimit": "{n} blocked by your risk limits",
       "other": "{n} refused for other reasons"
     },
     "errorCode": "Code {code}",

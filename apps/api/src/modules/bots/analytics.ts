@@ -4,6 +4,7 @@ import {
   ErrorCode,
   HOLD_BUCKETS,
   NORMAL_REJECT_CODES,
+  RISK_LIMIT_REJECT_CODE,
   Strategy,
   type AnalyticsPeriod,
   type AnalyticsTrade,
@@ -214,7 +215,7 @@ export async function botAnalytics(
       ordersFilled: 0,
       fillRatePct: null,
       rejected: 0,
-      rejectedSplit: { postOnly: 0, selfTrade: 0 },
+      rejectedSplit: { postOnly: 0, selfTrade: 0, riskLimit: 0 },
     },
     exits: [],
     trades: [],
@@ -257,6 +258,7 @@ export async function botAnalytics(
       rejected: sql<number>`count(*) filter (where ${orders.status} = 'rejected')::int`,
       rejPostOnly: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${NORMAL_REJECT_CODES.postOnly})::int`,
       rejSelfTrade: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${NORMAL_REJECT_CODES.selfTrade})::int`,
+      rejRiskLimit: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${RISK_LIMIT_REJECT_CODE})::int`,
     })
     .from(orders)
     .where(
@@ -381,7 +383,11 @@ export async function botAnalytics(
       ordersFilled: ord?.filled ?? 0,
       fillRatePct: fillPct,
       rejected: ord?.rejected ?? 0,
-      rejectedSplit: { postOnly: ord?.rejPostOnly ?? 0, selfTrade: ord?.rejSelfTrade ?? 0 },
+      rejectedSplit: {
+        postOnly: ord?.rejPostOnly ?? 0,
+        selfTrade: ord?.rejSelfTrade ?? 0,
+        riskLimit: ord?.rejRiskLimit ?? 0,
+      },
     },
     exits,
     trades: [...ts].sort((x, y) => y.closedAt - x.closedAt),

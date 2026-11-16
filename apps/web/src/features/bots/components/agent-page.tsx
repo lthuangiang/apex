@@ -67,6 +67,7 @@ export function AgentPage({ botId }: { botId?: string }) {
   const names = useMarketNames();
   const t = useTranslations("agent");
   const tOutcome = useTranslations("agent.outcomes");
+  const tRejects = useTranslations("agent.rejects");
   const tm = useTranslations("common.missing");
   const tf = useTranslations("createBot");
   const tsh = useTranslations("common.shell");
@@ -705,8 +706,14 @@ export function AgentPage({ botId }: { botId?: string }) {
                   {t("refusedRecently", { n: d.refusedRecently })}
                 </p>
               ) : null}
+              {/* Giới hạn rủi ro của DeskLabs chặn (không tới SoDEX): dòng riêng, không gọi là SoDEX từ chối. */}
+              {d.blockedByRiskRecently > 0 ? (
+                <p className="m-0 text-sm text-neg-text">
+                  {tRejects("riskLimit", { n: d.blockedByRiskRecently })}
+                </p>
+              ) : null}
               {d.events.filter((e) => e.type === "error").length === 0 ? (
-                d.refusedRecently > 0 ? null : (
+                d.refusedRecently > 0 || d.blockedByRiskRecently > 0 ? null : (
                   <p className="m-0 text-sm text-ink-2">{t("noErrors")}</p>
                 )
               ) : (

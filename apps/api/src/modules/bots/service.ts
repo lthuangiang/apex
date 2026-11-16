@@ -25,6 +25,7 @@ import {
   dec,
   decisionOutcome,
   NORMAL_REJECT_CODES,
+  RISK_LIMIT_REJECT_CODE,
   Decimal,
   ErrorCode,
   isBuilderAccount,
@@ -888,7 +889,7 @@ async function vfStats(
 /** clOrdID của các lệnh một event quyết định đã đặt (`payload.orders`, BD-02); event cũ không có → []. */
 function eventOrders(payload: unknown): string[] {
   if (typeof payload !== "object" || payload === null || !("orders" in payload)) return [];
-  const list = (payload).orders;
+  const list = payload.orders;
   return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
 }
 
@@ -951,16 +952,19 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     .select({ n: sql<number>`count(*)::int` })
     .from(orders)
     .where(and(eq(orders.botId, botId), inArray(orders.status, ["filled", "partially_filled"])));
-  // BD-05: bị từ chối vì lý do khác post-only / chặn tự khớp trong 24 giờ qua (mã trống hoặc mã mới cũng tính).
+  // BD-05: lệnh bị từ chối trong 24 giờ qua. "Refused by SoDEX" = mọi mã trừ post-only / chặn tự khớp (bình thường) và
+  // giới hạn rủi ro của DeskLabs (đếm riêng, không tới SoDEX); mã trống hoặc mã mới cũng tính là bị SoDEX từ chối.
   const [refused] = await deps.db
-    .select({ n: sql<number>`count(*)::int` })
+    .select({
+      n: sql<number>`count(*) filter (where coalesce(${orders.rejectCode}, '') not in (${NORMAL_REJECT_CODES.postOnly}, ${NORMAL_REJECT_CODES.selfTrade}, ${RISK_LIMIT_REJECT_CODE}))::int`,
+      risk: sql<number>`count(*) filter (where ${orders.rejectCode} = ${RISK_LIMIT_REJECT_CODE})::int`,
+    })
     .from(orders)
     .where(
       and(
         eq(orders.botId, botId),
         eq(orders.status, "rejected"),
         gte(orders.createdAt, new Date(deps.now().getTime() - 86_400_000)),
-        sql`coalesce(${orders.rejectCode}, '') not in (${NORMAL_REJECT_CODES.postOnly}, ${NORMAL_REJECT_CODES.selfTrade})`,
       ),
     );
   const active = versions.find((v) => v.id === b.activeVersionId);
@@ -999,6 +1003,7 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     openOrders: open?.n ?? 0,
     serverTime: iso(deps.now()),
     refusedRecently: refused?.n ?? 0,
+    blockedByRiskRecently: refused?.risk ?? 0,
     runningSince: since === undefined ? null : iso(since.at),
     volumeMaker: await vmStats(
       deps,

@@ -174,11 +174,15 @@ export const NORMAL_REJECT_CODES = {
   postOnly: "PostOnly",
   selfTrade: "SELF_TRADE_BLOCKED",
 } as const;
+/** Lệnh bị giới hạn rủi ro per-trade của DeskLabs chặn (không tới SoDEX): đếm riêng, không gọi là "refused by SoDEX". */
+export const RISK_LIMIT_REJECT_CODE = "RISK_PER_TRADE";
 
 /** Số lệnh bị từ chối theo loại (BD-05): post-only sẽ khớp ngay, chặn tự khớp; phần còn lại là lý do khác. */
 export const rejectSplitSchema = z.object({
   postOnly: z.number().int(),
   selfTrade: z.number().int(),
+  /** Bị giới hạn rủi ro của DeskLabs chặn (RISK_PER_TRADE). */
+  riskLimit: z.number().int().default(0),
 });
 export type RejectSplit = z.infer<typeof rejectSplitSchema>;
 
@@ -271,8 +275,13 @@ export const botDetailSchema = z.object({
   openOrders: z.number().int().nonnegative(),
   /** Giờ server: Runtime tính theo mốc này, không phụ thuộc đồng hồ máy người dùng (DEC-88). */
   serverTime: isoDateTimeSchema,
-  /** Lệnh SoDEX từ chối trong 24 giờ qua vì lý do khác post-only / chặn tự khớp (BD-05, "Recent errors"). */
+  /**
+   * Lệnh SoDEX từ chối trong 24 giờ qua vì lý do khác post-only / chặn tự khớp (BD-05, "Recent errors"). Không tính lệnh
+   * do giới hạn rủi ro của DeskLabs chặn.
+   */
   refusedRecently: z.number().int().default(0),
+  /** Lệnh bị giới hạn rủi ro của DeskLabs chặn (RISK_PER_TRADE) trong 24 giờ qua; không tới SoDEX. */
+  blockedByRiskRecently: z.number().int().default(0),
   /** Mốc "Running" gần nhất khi bot đang chạy; null khi không chạy hoặc chưa có. Runtime tính từ đây. */
   runningSince: isoDateTimeSchema.nullable().default(null),
   /** Chỉ số theo dõi của Volume Maker (VOLUME_MAKER.md mục 17.6); null với chiến lược khác hoặc chưa chạy. */

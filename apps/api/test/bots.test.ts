@@ -871,6 +871,7 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     await order(`c-${tag}`, "cancelled", "0", null);
     await order(`p-${tag}`, "rejected", "0", "PostOnly");
     await order(`x-${tag}`, "rejected", "0", "-1");
+    await order(`r-${tag}`, "rejected", "0", "RISK_PER_TRADE");
     await decision("Bought at level 1", [`f-${tag}`], 4_000);
     await decision("Bought at level 2", [`c-${tag}`], 3_000);
     await decision("Bought at level 3", [`p-${tag}`], 2_000);
@@ -884,8 +885,9 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(outcome("Bought at level 3")).toBe("rejected");
     // Quyết định không đặt lệnh: không có kết quả (không đoán).
     expect(outcome("Price left the grid range")).toBeNull();
-    // Post-only cross là bình thường: chỉ lệnh bị từ chối vì lý do khác được tính.
+    // Post-only cross là bình thường; giới hạn rủi ro của DeskLabs đếm riêng, không gọi là SoDEX từ chối.
     expect(detail.refusedRecently).toBe(1);
+    expect(detail.blockedByRiskRecently).toBe(1);
   });
 });
 
