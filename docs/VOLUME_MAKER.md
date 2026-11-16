@@ -90,8 +90,8 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   "Position cut". Chỉ khi bật Smart quoting.
 - **Giữ phía tăng vị thế khi đang cắt** (DEC-TBD-mm-cut-hold): lệnh cắt chưa có kết quả thì không đặt lệnh mở ở phía làm
   tăng vị thế (long → mua, short → bán), kể cả khi SoDEX xác nhận huỷ lệnh mở phía đó hay tới nhịp đồng hồ. Gỡ khi lệnh
-  cắt xong (khớp hết, bị từ chối, `orderDone`) hoặc sau `VM_STALE_CANCEL_MS` (60 s, đối soát vị thế bù phần lỡ). Phía
-  đóng và lệnh đóng không đổi.
+  cắt xong (khớp hết, bị từ chối, `orderDone`) hoặc 60 s (`VM_STALE_CANCEL_MS`) sau lúc cắt (đối soát vị thế bù phần lỡ).
+  Lệnh cắt chưa có kết quả thì không cắt lại. Phía đóng và lệnh đóng không đổi.
 - **Lệnh đóng:** SoDEX xác nhận huỷ một lệnh đóng mà bot còn vị thế thì báo giá lại sớm (≥ `VM_MIN_REQUOTE_MS`), không
   chờ hết chu kỳ (DEC-248).
 - **Lệnh mở chờ xác nhận huỷ** (DEC-253): còn lệnh mở đã gửi huỷ ở bước trước mà SoDEX chưa xác nhận thì phía đó không

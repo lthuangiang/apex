@@ -447,9 +447,8 @@ function quote(
   // Lệnh cắt vị thế (market reduce-only) chưa có kết quả (DEC-TBD-mm-cut-hold): không đặt lệnh mở ở phía làm tăng vị thế
   // (long → mua, short → bán), kể cả khi SoDEX vừa xác nhận huỷ lệnh mở phía đó hay tới nhịp đồng hồ. Gỡ khi lệnh cắt
   // xong (khớp hết, bị từ chối, `orderDone`), hoặc sau `VM_STALE_CANCEL_MS` như các chặn khác (đối soát vị thế bù phần lỡ).
-  const cut = s.cutId == null ? undefined : s.orders[s.cutId];
-  if (cut !== undefined && cut.status !== "done" && at - cut.since < VM_STALE_CANCEL_MS)
-    unsure[cut.side === "sell" ? "buy" : "sell"] = true;
+  const cut = pendingCut(s, at);
+  if (cut !== null) unsure[cut.side === "sell" ? "buy" : "sell"] = true;
   const pulled = {
     buy: paused || smart?.buy?.pull === true,
     sell: paused || smart?.sell?.pull === true,
@@ -881,6 +880,14 @@ function onFair(
   return { actions, state };
 }
 
+/** Lệnh cắt gần nhất còn chưa có kết quả và chưa quá `VM_STALE_CANCEL_MS` (DEC-TBD-mm-cut-hold); null nếu không có. */
+function pendingCut(s: VolumeMakerState, at: number): TrackedOrder | null {
+  const cut = s.cutId == null ? undefined : s.orders[s.cutId];
+  // Tính từ lúc cắt, không từ `since` (đổi khi lệnh cắt chuyển sang cancelling), nên chặn tối đa ~60 s.
+  const from = s.cutAt ?? cut?.since ?? at;
+  return cut !== undefined && cut.status !== "done" && at - from < VM_STALE_CANCEL_MS ? cut : null;
+}
+
 /** Cắt vị thế khi giá Binance chạy ngược giá vào ≥ `VM_CUT.bp` (DEC-249); null khi không cần cắt. */
 function cutPosition(
   c: VolumeMakerConfig,
@@ -895,6 +902,9 @@ function cutPosition(
   if (rules === undefined || s.mid === null || !entry.gt(0) || isFlat(pos, s.mid, rules))
     return null;
   if (s.cutAt != null && e.at - s.cutAt < VM_CUT.coolMs) return null;
+  // Lệnh cắt trước chưa có kết quả (DEC-TBD-mm-cut-hold): không cắt lại. Tránh đóng hai lần bằng market, trùng clOrdID
+  // `vm:<cycle>:cut:close`, và lần cắt mới bị từ chối gỡ chặn trong khi lần đầu vẫn đang đi.
+  if (pendingCut(s, e.at) !== null) return null;
   const long = pos.gt(0);
   const against = (long ? entry.sub(fair) : fair.sub(entry)).div(entry).mul(10_000);
   if (against.lt(VM_CUT.bp)) return null;
