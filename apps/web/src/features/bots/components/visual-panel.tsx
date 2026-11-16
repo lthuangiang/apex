@@ -22,6 +22,7 @@ import { useBuilderFeeRate } from "@/lib/queries";
 
 import { FIELDS, toConfig, type FormValues } from "../fields";
 import { fmtPrice, previewModel, unitsOf } from "../preview";
+import { useReasonLabel } from "../stop-reason";
 
 import { fieldErrorsOf } from "./bot-errors";
 import { PreviewVisual } from "./preview-visual";
@@ -100,7 +101,7 @@ export function VisualPanel({
 }) {
   const t = useTranslations("createBot");
   const tb = useTranslations("createBot.backtest");
-  const tr = useTranslations("reasons");
+  const reasonLabel = useReasonLabel();
   const tp = useTranslations("createBot.preview");
   const ts = useTranslations(`createBot.strategies.${strategy}`);
   const names = useMarketNames();
@@ -228,7 +229,7 @@ export function VisualPanel({
             : [
                 {
                   label: tb("stats.halted"),
-                  value: tr(result.halted),
+                  value: reasonLabel({ reasonCode: result.halted, strategy, config }),
                   tone: "neg" as const,
                   wide: true,
                 },

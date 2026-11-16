@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { formatAmount, formatDate } from "@/lib/format";
 import { useMarketNames } from "@/lib/markets";
 
+import { howBaseOf, labelKeyOf, optionKeyOf } from "../field-copy";
 import { FIELDS, isLaunched, visible, type FieldSpec } from "../fields";
 import { unitsOf } from "../preview";
 
@@ -21,7 +22,7 @@ export interface ConfigRow {
   key: string;
   label: string;
   value: string;
-  /** Key câu chữ của field, để hiện "How it works" nếu có (DEC-146). */
+  /** Gốc câu chữ "How it works" của field (DEC-146), nếu có. */
   how?: string;
 }
 
@@ -29,6 +30,7 @@ export function useConfigRows(strategy: string, market: string, config: Record<s
   const t = useTranslations("createBot");
   const ta = useTranslations("agent");
   const names = useMarketNames();
+  const has = (key: string) => t.has(key);
   if (!isLaunched(strategy)) return [];
   const units = unitsOf(market);
   const quote = names.asset(units?.quote ?? "");
@@ -73,7 +75,7 @@ export function useConfigRows(strategy: string, market: string, config: Record<s
     const k = f.type;
     switch (k.kind) {
       case "enum":
-        return t(`options.${k.optionsKey}.${str(v)}`);
+        return t(optionKeyOf(strategy, f, k.optionsKey, str(v), has));
       case "bool":
         return v === true ? ta("yes") : ta("no");
       case "market":
@@ -102,7 +104,7 @@ export function useConfigRows(strategy: string, market: string, config: Record<s
     (f) => f.type.kind !== "assets" && visible(f, config as Record<string, never>),
   );
   const rows: ConfigRow[] = [];
-  const label = (f: FieldSpec) => t(`fields.${f.label ?? f.key}.label`);
+  const label = (f: FieldSpec) => t(labelKeyOf(strategy, f, has));
   for (const f of fields) {
     // Công tắc đã ẩn khỏi form (Close at entry / Pause on fast moves, DEC-241): chỉ hiện khi bot cũ đang bật.
     if (f.hidden === true && f.type.kind === "bool" && config[f.key] !== true) continue;
@@ -131,11 +133,12 @@ export function useConfigRows(strategy: string, market: string, config: Record<s
       });
       continue;
     }
+    const how = howBaseOf(strategy, f, has);
     rows.push({
       key: f.key,
       label: label(f),
       value: format(f, config[f.key]),
-      how: f.label ?? f.key,
+      ...(how === null ? {} : { how }),
     });
   }
   return rows;
@@ -148,7 +151,7 @@ export function ConfigList({ rows }: { rows: readonly ConfigRow[] }) {
         <div key={r.key} className="flex min-w-0 justify-between gap-4">
           <dt className="flex items-center gap-1 text-ink-2">
             {r.label}
-            {r.how === undefined ? null : <HowItWorksInfo labelKey={r.how} name={r.label} />}
+            {r.how === undefined ? null : <HowItWorksInfo howKey={r.how} name={r.label} />}
           </dt>
           <dd className="m-0 text-right font-bold break-words">{r.value}</dd>
         </div>
