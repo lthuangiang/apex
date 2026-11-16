@@ -435,8 +435,8 @@ function quote(
   // Lệnh mở đã gửi huỷ ở một bước trước mà SoDEX chưa xác nhận (DEC-253): lệnh huỷ tới trước khi lệnh vào sổ thì SoDEX
   // trả `OrderNotFound`, lệnh vào sổ sau đó và vẫn có thể khớp; đặt thêm lệnh mở cùng phía lúc đó làm vị thế vượt "Holds
   // up to" (2026-11-15: hai lệnh mua cùng khớp, vị thế gấp đôi). Phía đó không đặt lệnh mở mới tới khi có `orderDone`
-  // (hoặc hết `VM_STALE_CANCEL_MS`). Lệnh huỷ trong chính lần báo giá này chưa nằm trong `s.orders` nên chu kỳ thường
-  // (huỷ cũ, đặt mới) không bị chặn.
+  // (hoặc hết `VM_STALE_CANCEL_MS`). Lệnh mở bị huỷ ngay trong lần báo giá này cũng tính (DEC-TBD-mm-requote-limit, xem
+  // dưới).
   const unsure = { buy: false, sell: false };
   for (const o of Object.values(s.orders))
     if (o.status === "cancelling" && o.role === "open") unsure[o.side] = true;
@@ -632,12 +632,6 @@ function quote(
     orders[same[0]] = same[1];
     places.splice(i, 1);
   }
-  // Phía còn lệnh mở chưa xác nhận huỷ: chỉ bỏ lệnh mở mới (DEC-253). Lệnh mở đang nằm vẫn bị huỷ như thường (huỷ
-  // không bao giờ làm tăng vị thế); lệnh đóng không bị ảnh hưởng.
-  for (let i = places.length - 1; i >= 0; i -= 1) {
-    const p = places[i];
-    if (p !== undefined && unsure[p.side] && !closeIds.has(p.clOrdID)) places.splice(i, 1);
-  }
   // Đặt lại theo sổ lệnh (DEC-248): chỉ lệnh mở của các phía được nêu; lệnh đóng không bao giờ bị đụng ở đây (huỷ nó
   // thì lệnh đóng mới chỉ được đặt sau khi SoDEX xác nhận huỷ, vị thế nằm không có lệnh đóng).
   if (only !== undefined) {
@@ -650,6 +644,18 @@ function quote(
         kept.add(id);
         orders[id] = o;
       }
+  }
+  // Huỷ rồi mới đặt (DEC-TBD-mm-requote-limit): phía có lệnh mở đang nằm bị huỷ ngay trong lần báo giá này cũng chờ SoDEX
+  // xác nhận huỷ (`orderDone`) rồi mới đặt lệnh mở mới, như lệnh huỷ của bước trước (DEC-253). Huỷ và đặt cùng lúc thì
+  // lệnh cũ có thể khớp trong lúc lệnh huỷ đang đi, lệnh mới cũng khớp: vị thế vượt "Holds up to" (harness tranh chấp:
+  // tới 3× trong 3 giờ giả lập). `orderDone` tới thì `openGap` báo giá lại sớm. Lệnh đóng không bị ảnh hưởng.
+  for (const [id, o] of Object.entries(s.orders))
+    if (o.status === "live" && o.role === "open" && !kept.has(id)) unsure[o.side] = true;
+  // Phía còn lệnh mở chưa xác nhận huỷ: chỉ bỏ lệnh mở mới (DEC-253). Lệnh mở đang nằm vẫn bị huỷ như thường (huỷ
+  // không bao giờ làm tăng vị thế); lệnh đóng không bị ảnh hưởng.
+  for (let i = places.length - 1; i >= 0; i -= 1) {
+    const p = places[i];
+    if (p !== undefined && unsure[p.side] && !closeIds.has(p.clOrdID)) places.splice(i, 1);
   }
   let tracked = orders;
   for (const o of places) {
@@ -1181,14 +1187,30 @@ function stepCore(
             id !== e.clOrdID && x.role === "open" && x.side === o.side && x.status === "live",
         );
       const reclose = (o.role === "close" && !dec(s.ledger.position).isZero()) || openGap;
-      return {
-        actions: [],
-        state: {
-          ...s,
-          orders: { ...s.orders, [e.clOrdID]: { ...o, status: "done", since: e.at } },
-          ...(reclose ? { requoteDue: true } : {}),
-        },
+      const state: VolumeMakerState = {
+        ...s,
+        orders: { ...s.orders, [e.clOrdID]: { ...o, status: "done", since: e.at } },
+        ...(reclose ? { requoteDue: true } : {}),
       };
+      // Huỷ rồi mới đặt (DEC-TBD-mm-requote-limit): SoDEX vừa xác nhận lệnh mở bot đã xin huỷ (cancelling) là lệnh cuối của phía này, và phía đó
+      // không còn lệnh mở nào khác đang chờ huỷ: đặt ngay lệnh mở mới cho đúng phía đó, không chờ nhịp đồng hồ, nên phía
+      // đó chỉ trống một vòng SoDEX. Phía kia và lệnh đóng giữ nguyên.
+      const stillUnsure = Object.entries(state.orders).some(
+        ([, x]) => x.role === "open" && x.side === o.side && x.status === "cancelling",
+      );
+      if (
+        o.status === "cancelling" &&
+        openGap &&
+        !stillUnsure &&
+        state.phase === "running" &&
+        state.lastRefresh !== null
+      ) {
+        const q = quote(c, state, ctx, e.at, new Set([o.side]));
+        // Chỉ đặt lại một phía: giữ lần báo giá đầy đủ đang chờ từ trước (ví dụ sau một fill), không thêm lần mới.
+        const r = { ...q, state: { ...q.state, requoteDue: s.requoteDue } };
+        return guards(c, r.state, ctx, e.at) ?? r;
+      }
+      return { actions: [], state };
     }
     case "positionSync": {
       if (e.market !== c.market) return { actions: [], state: s };
