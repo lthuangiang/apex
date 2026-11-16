@@ -178,7 +178,12 @@ describe("Market hours page", () => {
   it("shows the model's estimated cost per $1M for every hour, with a tooltip, under block 1", async () => {
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
-    expect(screen.getByText("Estimated cost per $1M (model)")).toBeInTheDocument();
+    // Nhãn dòng + chú giải đều ghi rõ là mức sàn.
+    expect(screen.getAllByText("Estimated cost per $1M (model, floor)")).toHaveLength(2);
+    expect(screen.queryByText("Estimated cost per $1M (model)")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/It leaves out position cuts and taker fills, so it is a floor/),
+    ).toBeInTheDocument();
     const cell = screen.getByTitle(
       "21:00 · est. $214 per $1M · median 1-min swing 12.4 bp · fees 0.7 bp",
     );
@@ -251,6 +256,92 @@ describe("Market hours page", () => {
     expect(screen.getByText("Est. / $1M")).toBeInTheDocument();
   });
 
+  it("explains every row label with an info button that opens on click, hover or focus and closes on Escape", async () => {
+    const user = userEvent.setup({ delay: null });
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const median =
+      "Typical size of one minute's price swing in this hour: (high − low) of each 1-minute candle as a share of price, middle value across the period. 1 bp = 0.01%.";
+    const ratio =
+      "How this hour compares with the rest of its day. 2.0× means minutes in this hour swung twice as much as a normal minute that day.";
+    const hot =
+      "Share of days in the period where this hour's typical swing was more than 2× that day's normal.";
+    const markout =
+      "How far the price moved against the resting (maker) side 30 seconds after public trades on SoDEX. Higher means makers got picked off more.";
+    const cost =
+      "What DeskLabs bots really paid per $1M traded in this hour: fees plus the price move one minute after each fill. Counts only fills with a price one minute later.";
+    // [nhãn, câu giải thích, số nút (desktop + tiêu đề cột 390 px)]
+    const rows: [string, string, number][] = [
+      ["Median 1-min range (bp)", median, 1],
+      [
+        "p90 1-min range (bp)",
+        "A rough minute in this hour: 9 out of 10 minutes swung less than this.",
+        1,
+      ],
+      ["× day median", ratio, 2],
+      ["Hot days (> 2× day median)", hot, 1],
+      [
+        "Estimated cost per $1M (model, floor)",
+        "A floor estimate from market data: SoDEX maker fee plus the default Market Making builder fee, plus the price loss the model expects from this hour's 1-minute moves, per $1M of volume. It leaves out position cuts and taker fills, so real bots usually cost more.",
+        1,
+      ],
+      ["Price move against makers, 30 s later (bp)", markout, 1],
+      ["Spread (ticks)", "Typical gap between the best bid and best ask, in price steps.", 1],
+      ["Cost per $1M", cost, 1],
+      ["Volume", "Value of all fills by DeskLabs bots in this hour, both buy and sell.", 1],
+      ["Fees", "SoDEX trading fees plus builder fees paid on those fills.", 1],
+      [
+        "Bot-hours (bots × hours)",
+        "One bot active for one hour. An hour counts for a bot when it placed at least one order in it. Fewer than 3 is a thin sample.",
+        1,
+      ],
+      ["Hot days", hot, 1],
+      ["Move vs makers 30 s", markout, 1],
+      ["Cost / $1M", cost, 1],
+    ];
+    for (const [label, copy, n] of rows) {
+      const buttons = screen.getAllByRole("button", { name: `About ${label}` });
+      expect(buttons, label).toHaveLength(n);
+      for (const b of buttons) {
+        expect(b.tagName).toBe("BUTTON");
+        await user.click(b);
+        const tip = screen.getByRole("tooltip");
+        expect(tip.textContent).toBe(copy);
+        expect(b).toHaveAttribute("aria-describedby", tip.id);
+        expect(b).toHaveAttribute("aria-expanded", "true");
+        await user.keyboard("{Escape}");
+        expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+        expect(b).toHaveAttribute("aria-expanded", "false");
+      }
+    }
+    // Rê chuột: mở khi vào, đóng khi rời (chưa ghim).
+    const spread = screen.getByRole("button", { name: "About Spread (ticks)" });
+    await user.hover(spread);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "Typical gap between the best bid and best ask, in price steps.",
+    );
+    // Rê từ nút sang popup: vẫn mở (WCAG 1.4.13); rời popup thì đóng.
+    await user.unhover(spread);
+    await user.hover(screen.getByRole("tooltip"));
+    await new Promise((r) => setTimeout(r, 200));
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    await user.unhover(screen.getByRole("tooltip"));
+    await waitFor(() => {
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    });
+    // Focus bằng bàn phím: mở; tab sang nút kế (Bot-hours) thì popup Fees đóng, popup của nút kế mở.
+    const fees = screen.getByRole("button", { name: "About Fees" });
+    fees.focus();
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "SoDEX trading fees plus builder fees paid on those fills.",
+    );
+    await user.tab();
+    expect(fees).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/^One bot active for one hour\./);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  }, 30_000);
+
   it("has no accessibility violations", async () => {
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
@@ -259,6 +350,16 @@ describe("Market hours page", () => {
       rules: { "color-contrast": { enabled: false } },
     });
     expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+    // Có popup đang mở cũng không vi phạm.
+    await userEvent
+      .setup({ delay: null })
+      .click(screen.getByRole("button", { name: "About Median 1-min range (bp)" }));
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    const open = await axe.run(document.body, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(open.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
   }, 30_000);
 
   it("says when there is no data, when loading failed, and when the viewer is not on the team", async () => {

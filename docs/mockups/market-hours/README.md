@@ -21,3 +21,4 @@ Quy tắc chốt:
 7. Thời gian giữ: nến và fill hiện "Available since {date}" (ngày dữ liệu thật đầu tiên); markout hiện "Kept for 90 days."
 8. Trang chỉ đọc: "nothing on this page pauses or changes bots". Không dự báo.
 9. Thêm sau thiết kế (người dùng duyệt, DEC-286): khối 1 có thêm dòng "Estimated cost per $1M (model)" cho mỗi giờ (mô hình chung với thẻ chi phí Market Making, DEC-228), cùng 4 bậc màu cam với Cost per $1M của khối 3; 390 px hiện trong chi tiết giờ ("Est. / $1M"). Tiền dưới $10 ở khối 3 hiện cent ("$0.31").
+10. Thêm sau thiết kế (DEC-TBD-market-hours-help): mỗi nhãn dòng của ba khối và tiêu đề cột 390 px có nút ⓘ (aria-label "About {nhãn}", giải thích ở `marketHours.help.*`, DevOps duyệt câu chữ), hiện khi rê chuột, focus hoặc chạm, Esc để đóng. Dòng ước tính đổi tên thành "Estimated cost per $1M (model, floor)" vì nó không tính cắt vị thế và lệnh taker.

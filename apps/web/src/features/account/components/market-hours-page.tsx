@@ -8,8 +8,9 @@ import {
 } from "@drift/shared";
 import { SegmentedControl } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
+import { Info } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Card, PageHead, Workspace } from "@/components/workspace";
 import { api, ApiError } from "@/lib/api";
@@ -337,9 +338,12 @@ function Desktop({
   const selected = v.hours[sel];
   const usAtSel = markAt.get(sel)?.us === true ? markAt.get(sel) : undefined;
   const halfHour = !utcMode && offset % 60 !== 0;
-  const row = (labelText: string, cells: ReactNode[]) => (
+  const row = (labelText: string, help: HelpKey, cells: ReactNode[]) => (
     <div className={GRID}>
-      <span className="text-[12.5px] leading-tight font-bold">{labelText}</span>
+      <span className="flex items-center gap-1 text-[12.5px] leading-tight font-bold">
+        <span className="min-w-0">{labelText}</span>
+        <RowHelp label={labelText} help={help} />
+      </span>
       {cells}
     </div>
   );
@@ -417,14 +421,17 @@ function Desktop({
         </div>
         {row(
           t("vol.medianBp"),
+          "medianBp",
           H.map((h) => <Num key={h} v={num(hourOf(v, h).volatility.medianBp)} line={line(h)} />),
         )}
         {row(
           t("vol.p90Bp"),
+          "p90Bp",
           H.map((h) => <Num key={h} v={num(hourOf(v, h).volatility.p90Bp)} line={line(h)} />),
         )}
         {row(
           t("vol.ratio"),
+          "ratio",
           H.map((h) => {
             const r = hourOf(v, h).volatility.ratio;
             return (
@@ -439,6 +446,7 @@ function Desktop({
         )}
         {row(
           t("vol.hotDays"),
+          "hotDays",
           H.map((h) => {
             const p = hourOf(v, h).volatility.hotPct;
             return <Num key={h} v={p === null ? null : `${String(p)}%`} line={line(h)} />;
@@ -446,6 +454,7 @@ function Desktop({
         )}
         {row(
           t("vol.est"),
+          "est",
           H.map((h) => (
             <EstCell key={h} x={hourOf(v, h).volatility} est={v.estimate} hour={h} line={line(h)} />
           )),
@@ -489,10 +498,12 @@ function Desktop({
         />
         {row(
           t("cost.markout"),
+          "markout",
           H.map((h) => <Num key={h} v={num(hourOf(v, h).cost.markoutBp)} line={line(h)} />),
         )}
         {row(
           t("cost.spread"),
+          "spread",
           H.map((h) => {
             const s = hourOf(v, h).cost.spreadTicks;
             return <Num key={h} v={s === null ? null : s.toFixed(1)} line={line(h)} />;
@@ -502,24 +513,28 @@ function Desktop({
         <BlockHead title={t("botBlock.title")} sub={t("botBlock.sub", { strategies })} />
         {row(
           t("botBlock.cost"),
+          "cost",
           H.map((h) => (
             <BotCell key={h} b={hourOf(v, h).bots} hour={h} line={line(h)} kind="cost" />
           )),
         )}
         {row(
           t("botBlock.volume"),
+          "volume",
           H.map((h) => (
             <BotCell key={h} b={hourOf(v, h).bots} hour={h} line={line(h)} kind="volume" />
           )),
         )}
         {row(
           t("botBlock.fees"),
+          "fees",
           H.map((h) => (
             <BotCell key={h} b={hourOf(v, h).bots} hour={h} line={line(h)} kind="fees" />
           )),
         )}
         {row(
           t("botBlock.botHours"),
+          "botHours",
           H.map((h) => (
             <span key={h} className={`${CELL} bg-surface-2 ${line(h)}`}>
               {hourOf(v, h).bots.botHours}
@@ -561,7 +576,7 @@ const hourOf = (v: MarketHoursView, h: number): MarketHoursHour =>
   };
 
 /**
- * Ô "Estimated cost per $1M (model)": cùng 4 bậc màu với Cost per $1M của khối 3. Cả dòng n/a khi mô hình không tính
+ * Ô "Estimated cost per $1M (model, floor)":cùng 4 bậc màu với Cost per $1M của khối 3. Cả dòng n/a khi mô hình không tính
  * được cho market (lý do trong tooltip); một giờ không có nến → n/a.
  */
 function EstCell({
@@ -602,6 +617,136 @@ function EstCell({
       className={`${CELL} ${line} ${costBg(Number(x.estCostPerMillion))}`}
     >
       {cost}
+    </span>
+  );
+}
+
+type HelpKey =
+  | "medianBp"
+  | "p90Bp"
+  | "ratio"
+  | "hotDays"
+  | "est"
+  | "markout"
+  | "spread"
+  | "cost"
+  | "volume"
+  | "fees"
+  | "botHours";
+
+/**
+ * Nút ⓘ cạnh nhãn dòng (và tiêu đề cột 390 px): hiện giải thích `marketHours.help.<key>` khi rê chuột, focus hoặc
+ * chạm. Bấm / chạm thì ghim mở tới khi bấm lại, bấm ra ngoài hoặc Esc. Popup `fixed` theo nút để không bị cắt bởi
+ * khung cuộn ngang của lưới.
+ */
+function RowHelp({ label, help }: { label: string; help: HelpKey }) {
+  const t = useTranslations("marketHours.help");
+  const wrap = useRef<HTMLSpanElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [pinned, setPinned] = useState(false);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const show = () => {
+    const r = btn.current?.getBoundingClientRect();
+    if (r === undefined) return;
+    const width = Math.min(300, window.innerWidth - 32);
+    const left = Math.max(16, Math.min(r.left - 12, window.innerWidth - width - 16));
+    setPos({ top: r.bottom, left, width });
+  };
+  const hide = () => {
+    setPos(null);
+    setPinned(false);
+  };
+
+  useEffect(() => {
+    if (pos === null) return;
+    const close = () => {
+      setPos(null);
+      setPinned(false);
+    };
+    const outside = (e: Event) => {
+      const n = e.target as Node | null;
+      if (n !== null && wrap.current?.contains(n) === true) return;
+      close();
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", key);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", key);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [pos]);
+
+  // Rời nút / popup: chờ một nhịp rồi mới đóng, để rê chuột từ nút sang popup (và ngược lại) không làm nó đóng.
+  useEffect(
+    () => () => {
+      clearTimeout(leaveTimer.current);
+    },
+    [],
+  );
+  const enter = () => {
+    clearTimeout(leaveTimer.current);
+    if (pos === null) show();
+  };
+  const leave = () => {
+    if (pinned) return;
+    clearTimeout(leaveTimer.current);
+    leaveTimer.current = setTimeout(() => {
+      setPos(null);
+    }, 120);
+  };
+
+  const open = pos !== null;
+  return (
+    <span ref={wrap} className="inline-flex shrink-0">
+      <button
+        ref={btn}
+        type="button"
+        aria-label={t("about", { label })}
+        aria-expanded={open}
+        {...(open ? { "aria-describedby": id } : {})}
+        onMouseEnter={enter}
+        onMouseLeave={leave}
+        onFocus={show}
+        onBlur={hide}
+        onClick={() => {
+          if (pinned) {
+            hide();
+          } else {
+            show();
+            setPinned(true);
+          }
+        }}
+        className="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-muted transition-colors hover:text-accent focus-visible:text-accent md:size-6"
+      >
+        <Info size={14} strokeWidth={2.2} aria-hidden="true" />
+      </button>
+      {pos === null ? null : (
+        <span
+          role="presentation"
+          onMouseEnter={enter}
+          onMouseLeave={leave}
+          style={{ top: pos.top, left: pos.left, width: pos.width }}
+          className="fixed z-50 block pt-1.5"
+        >
+          <span
+            id={id}
+            role="tooltip"
+            className="block rounded-tile border border-border bg-surface px-3 py-2.5 text-left text-xs leading-normal font-normal text-ink-2 shadow-lg"
+          >
+            {t(help)}
+          </span>
+        </span>
+      )}
     </span>
   );
 }
@@ -746,15 +891,21 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
           {tm("collecting", { date: instantLabel(v.markoutSince, v.tz) })}
         </span>
       ) : null}
-      <div
-        aria-hidden="true"
-        className="grid grid-cols-[52px_repeat(4,minmax(0,1fr))] gap-1 text-center text-[10.5px] font-bold text-muted"
-      >
-        <span className="text-left">{t("hour")}</span>
-        <span>{tm("ratio")}</span>
-        <span>{tm("hot")}</span>
-        <span>{tm("markout")}</span>
-        <span>{tm("cost")}</span>
+      <div className="grid grid-cols-[52px_repeat(4,minmax(0,1fr))] items-end gap-1 text-center text-[10.5px] font-bold text-muted">
+        <span className="self-center text-left">{t("hour")}</span>
+        {(
+          [
+            ["ratio", "ratio"],
+            ["hot", "hotDays"],
+            ["markout", "markout"],
+            ["cost", "cost"],
+          ] as const
+        ).map(([k, help]) => (
+          <span key={k} className="flex flex-col items-center">
+            {tm(k)}
+            <RowHelp label={tm(k)} help={help} />
+          </span>
+        ))}
       </div>
       <ol className="m-0 flex list-none flex-col gap-[3px] p-0">
         {H.map((h) => {
