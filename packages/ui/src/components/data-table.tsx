@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 
 import { cx } from "../lib/cx";
 
@@ -21,6 +21,10 @@ export interface DataTableProps<Row> extends Omit<DataRegionProps, "children" | 
   getRowKey: (row: Row) => string;
   /** Giới hạn chiều cao (class Tailwind, ví dụ "max-h-[560px]"): quá thì cuộn dọc trong khung, header dính trên. */
   scroll?: string;
+  /** Thuộc tính thêm cho từng dòng (ví dụ làm nổi bật một dòng: class, tabIndex, aria-current, data-*). */
+  getRowProps?: (
+    row: Row,
+  ) => HTMLAttributes<HTMLTableRowElement> & Record<`data-${string}`, string>;
 }
 
 /**
@@ -33,6 +37,7 @@ export function DataTable<Row>({
   rows,
   getRowKey,
   scroll,
+  getRowProps,
   ...region
 }: DataTableProps<Row>) {
   return (
@@ -76,21 +81,28 @@ export function DataTable<Row>({
             ) : null}
             {region.status === "empty"
               ? null
-              : rows.map((row) => (
-                  <tr key={getRowKey(row)} className="border-t border-border">
-                    {columns.map((column) => (
-                      <td
-                        key={column.key}
-                        className={cx(
-                          "whitespace-nowrap px-4 py-3 text-ink",
-                          column.numeric && "text-right tabular-nums",
-                        )}
-                      >
-                        {column.cell(row)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+              : rows.map((row) => {
+                  const extra = getRowProps?.(row) ?? {};
+                  return (
+                    <tr
+                      key={getRowKey(row)}
+                      {...extra}
+                      className={cx("border-t border-border", extra.className)}
+                    >
+                      {columns.map((column) => (
+                        <td
+                          key={column.key}
+                          className={cx(
+                            "whitespace-nowrap px-4 py-3 text-ink",
+                            column.numeric && "text-right tabular-nums",
+                          )}
+                        >
+                          {column.cell(row)}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
           </tbody>
         </table>
       </div>

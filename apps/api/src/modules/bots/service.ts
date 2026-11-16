@@ -24,6 +24,7 @@ import {
   COPY_MAX_LEVERAGE,
   dec,
   decisionOutcome,
+  outcomeOrder,
   NORMAL_REJECT_CODES,
   RISK_LIMIT_REJECT_CODE,
   Decimal,
@@ -956,13 +957,12 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
   const outcomeOf = (payload: unknown) => {
     const ids = eventOrders(payload);
     // Lệnh không còn trong DB (bị chặn trước khi lưu, hoặc hoàn tác) không được tính như đã khớp đủ.
-    return decisionOutcome(
-      ids.flatMap((id) => {
-        const o = placedBy.get(id);
-        return o === undefined ? [] : [o];
-      }),
-      ids.length,
-    );
+    const found = ids.flatMap((id) => {
+      const o = placedBy.get(id);
+      return o === undefined ? [] : [o];
+    });
+    const outcome = decisionOutcome(found, ids.length);
+    return { outcome, order: outcomeOrder(found, outcome) };
   };
   const [until] =
     since !== undefined && b.state !== BotState.running
@@ -1034,7 +1034,7 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
       decision: e.decision,
       why: e.why,
       result: e.result,
-      outcome: outcomeOf(e.payload),
+      ...outcomeOf(e.payload),
       occurredAt: iso(e.occurredAt),
     })),
     openOrders: open?.n ?? 0,
@@ -1783,6 +1783,8 @@ export async function listOrders(
   deps: BotDeps,
   userId: string,
   botId?: string,
+  /** BD-02: chỉ lệnh có clOrdID này (link từ Decisions khi lệnh không có trên trang đang tải). */
+  clOrdId?: string,
 ): Promise<OrderView[]> {
   const rows = await deps.db
     .select({ o: orders })
@@ -1793,6 +1795,7 @@ export async function listOrders(
         eq(bots.userId, userId),
         // Execution & Orders chung chỉ có lệnh thật; lệnh mô phỏng chỉ hiện khi xem đúng bot paper (DEC-105).
         botId === undefined ? eq(bots.mode, "live") : eq(orders.botId, botId),
+        clOrdId === undefined ? undefined : eq(orders.clOrdId, clOrdId),
       ),
     )
     .orderBy(desc(orders.createdAt))

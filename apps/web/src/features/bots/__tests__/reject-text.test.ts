@@ -1,6 +1,8 @@
+import { DECISION_OUTCOMES } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
 import messages from "../../../../messages/en.json";
+import { outcomeStatusKey } from "../decision-groups";
 import { rejectBreakdown } from "../reject-text";
 
 // BD-05: số lệnh bị từ chối được giải thích theo loại; post-only cross là bình thường; giới hạn rủi ro của DeskLabs ghi
@@ -27,15 +29,15 @@ describe("reject breakdown (BD-05)", () => {
     );
   });
 
-  it("uses the app's order status wording for each decision outcome", () => {
-    expect(Object.values(messages.agent.outcomes)).toEqual([
+  it("uses the app's order status wording for each decision outcome (orders.status.*)", () => {
+    expect(DECISION_OUTCOMES.map((o) => messages.orders.status[outcomeStatusKey(o)])).toEqual([
       "Filled",
       "Partially filled",
       "Open",
+      "Unknown · reconciling",
       "Cancelled",
       "Rejected",
-      "Unknown",
-      "Not placed",
+      "Not placed · confirmed",
     ]);
   });
 });

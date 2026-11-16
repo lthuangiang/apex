@@ -75,6 +75,18 @@
     #3b528b 75%,
     #440154 100%
   );
+  /* Market hours (docs/mockups/market-hours): 5 bậc xanh cho "× day median", 4 bậc cam cho Cost per $1M. Ô nào cũng có
+     viền và số trong tooltip, không chỉ dựa vào màu. */
+  --mh-vol-0: #eef2ff;
+  --mh-vol-1: #c9d6fb;
+  --mh-vol-2: #93adf3;
+  --mh-vol-3: #4f78e6;
+  --mh-vol-4: #1f45b5;
+  --mh-cost-0: #fff4e8;
+  --mh-cost-1: #fde0bd;
+  --mh-cost-2: #f9c48c;
+  --mh-cost-3: #f2a25a;
+  --mh-hatch: #e3e7f5;
 
   --radius-control: 12px;
   --radius-tile: 18px;
