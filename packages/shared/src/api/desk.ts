@@ -108,15 +108,31 @@ export const deskFactSchema = z.object({
   name: z.string(),
   value: z.string(),
   unit: z.enum(["usdc", "pct", "x", "count", "per_million", "text", "ms"]),
-  source: z.enum(["config", "sodex_symbol", "bot_state", "fills", "review", "estimate"]),
+  source: z.enum([
+    "config",
+    "sodex_symbol",
+    "bot_state",
+    "fills",
+    "review",
+    "estimate",
+    "goal",
+    "risk",
+  ]),
 });
 export const needsYouItemSchema = z.object({
   id: uuidSchema,
-  botId: uuidSchema,
+  /** null: việc cấp account (`goal_loss_over`, DEC-272); khi đó botName / strategy / market rỗng. */
+  botId: uuidSchema.nullable(),
   botName: z.string(),
   strategy: z.string(),
   market: z.string(),
-  rule: z.enum(["liquidation_before_stop", "max_loss_hit", "taker_costly", "better_review"]),
+  rule: z.enum([
+    "goal_loss_over",
+    "liquidation_before_stop",
+    "max_loss_hit",
+    "taker_costly",
+    "better_review",
+  ]),
   severity: z.number().int(),
   facts: z.array(deskFactSchema),
 });
