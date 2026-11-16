@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { reconcileDay, snapshotBuilderBalances } from "./builder-revenue";
 import { purgeOldDeskAiChats, queueDueRecords, sweepStaleDeskJobs } from "./desk-record";
+import { FEE_TIER_REFRESH_MS, refreshFeeTiers } from "./fee-tiers";
 import { checkProdInvariants, redisInvariantStore } from "./invariants";
 import { leaderboardDue, noteMinHoldChanges, runLeaderboard } from "./leaderboard";
 import { computeDailyStats, utcDate } from "./market-stats";
@@ -176,6 +177,19 @@ async function mmModelTick() {
   if (r.status !== "skipped") log.info(r, "mm cost model fitted");
 }
 
+/** Builder fee theo bậc volume (DEC-258): mỗi giờ một lần. */
+let feeTiersAt = 0;
+async function feeTierTick() {
+  const now = Date.now();
+  if (now - feeTiersAt < FEE_TIER_REFRESH_MS) return;
+  const r = await refreshFeeTiers(db, now, (err, at) => {
+    log.error({ err, ...at }, "builder fee tier failed");
+  });
+  // Lượt lỗi toàn bộ (ném lỗi) thì thử lại ở vòng 10 phút sau, không chờ cả giờ.
+  feeTiersAt = now;
+  if (r.changed > 0 || r.failed > 0) log.info(r, "builder fee tiers changed");
+}
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let riskTimer: ReturnType<typeof setInterval> | null = null;
 async function tick() {
@@ -197,6 +211,9 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
     // Không đợi 10 phút đầu: tiến trình vừa nhận lease chạy (hoặc chạy tiếp) lượt leaderboard ngay nếu tới hạn.
     void leaderboardTick().catch((error: unknown) => {
       log.error({ err: error }, "leaderboard tick failed");
+    });
+    void feeTierTick().catch((error: unknown) => {
+      log.error({ err: error }, "builder fee tiers failed");
     });
     riskTimer = setInterval(() => {
       // Theo dõi MCP (DEC-225): mỗi phút, cửa sổ 5 phút.
@@ -250,6 +267,9 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
       });
       void mmModelTick().catch((error: unknown) => {
         log.error({ err: error }, "mm cost model fit failed");
+      });
+      void feeTierTick().catch((error: unknown) => {
+        log.error({ err: error }, "builder fee tiers failed");
       });
     }, 10 * 60_000);
   },

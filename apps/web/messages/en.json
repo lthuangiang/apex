@@ -3965,7 +3965,9 @@
         "paper_paused": "Fake-money test {bot} paused",
         "paper_stopped": "Fake-money test {bot} stopped",
         "unknown": "Order result unknown · {bot}",
-        "fill": "{bot} filled an order"
+        "fill": "{bot} filled an order",
+        "feeLowered": "Market Making fee lowered to {rate}",
+        "feeBack": "Market Making fee back to {rate}"
       },
       "body": {
         "pausedReason": "{reason}. Open orders were kept.",
@@ -3978,7 +3980,10 @@
         "telegramConnected": "Alerts also go to @{username}.",
         "telegramMoved": "Your Telegram chat was connected to another DeskLabs account. Connect again in Settings to get alerts there.",
         "telegramBlocked": "Telegram says you blocked DeskLabs Bot. You still get alerts here and by email.",
-        "followOnly": "Following only. Nothing was copied."
+        "followOnly": "Following only. Nothing was copied.",
+        "feeLowered": "Your Market Making volume in the last 30 days reached {volume}. New orders pay {rate} instead of {previous}.",
+        "feeRaised": "Your Market Making volume in the last 30 days fell to {volume}, below {min}. New orders pay {rate} instead of {previous}.",
+        "feeRates": "New orders pay {rate} instead of {previous}."
       },
       "aTrader": "A trader you follow",
       "long": "long",
@@ -4008,7 +4013,8 @@
         "min_hold": "This trader now trades too fast to copy.",
         "low_liquidity": "Not enough SoDEX liquidity near the price.",
         "other": "Open the bot to see why."
-      }
+      },
+      "usdc": "{amount} USDC"
     },
     "reasonText": {
       "BUILDER_FEE_REVOKED": "Builder fee approval is 0",
