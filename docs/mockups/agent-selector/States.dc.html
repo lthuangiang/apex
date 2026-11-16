@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bot selector · states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+</helmet>
+<div class="num" style="box-sizing: border-box; padding: 32px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 28px; min-height: 900px">
+
+  <section aria-labelledby="s1" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 id="s1" style="margin: 0; font-size: 13px; font-weight: 800; letter-spacing: .04em; color: #5f6684">LOADING · bot list not back yet</h2>
+    <div aria-busy="true" aria-label="Loading bots" style="max-width: 1000px; min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 18px; border: 1px solid #e3e7f5; background: #ffffff">
+      <span style="width: 44px; height: 44px; border-radius: 12px; background: #edeff5"></span>
+      <span style="flex: 1; display: flex; flex-direction: column; gap: 8px"><span style="width: 220px; height: 14px; border-radius: 6px; background: #edeff5"></span><span style="width: 360px; height: 12px; border-radius: 6px; background: #f5f7fd"></span></span>
+      <span style="width: 90px; height: 22px; border-radius: 999px; background: #edeff5"></span>
+    </div>
+  </section>
+
+  <section aria-labelledby="s2" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 id="s2" style="margin: 0; font-size: 13px; font-weight: 800; letter-spacing: .04em; color: #5f6684">ERROR · list failed, the bot in the URL still loads</h2>
+    <div style="max-width: 1000px; display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch">
+      <div style="flex: 1 1 520px; min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 18px; border: 1px solid #e3e7f5; background: #ffffff">
+        <span aria-hidden="true" style="flex: none; width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 800; background: #e6ecfe; color: #1d47b8">MM</span>
+        <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+          <span style="display: flex; align-items: baseline; gap: 8px"><strong style="font-size: 16px">BTC Market Making</strong><span style="font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: #5f6684">··3f0a9d21</span></span>
+          <span style="font-size: 13px; color: #3b4262">BTC-USD · Market Making · v4</span>
+        </span>
+      </div>
+      <div role="alert" style="flex: 1 1 360px; min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 18px; background: #fde4e1; color: #a72826; font-size: 14px; font-weight: 600">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"></path><path d="M12 10v4"></path><path d="M12 17.5h.01"></path></svg>
+        Couldn’t load your other bots.
+        <button type="button" style="margin-left: auto; min-height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #f6d3cd; background: #ffffff; color: #a72826; font: inherit; font-size: 14px; font-weight: 700">Try again</button>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s3" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 id="s3" style="margin: 0; font-size: 13px; font-weight: 800; letter-spacing: .04em; color: #5f6684">STALE · last refresh failed (list polls every 5 s)</h2>
+    <div style="max-width: 1000px; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; background: #fdebd3; color: #7a3e00; font-size: 13.5px; font-weight: 600; box-sizing: border-box">
+      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+      Bot states may be out of date. Updated 11:42:10.
+    </div>
+  </section>
+
+  <section aria-labelledby="s4" style="display: flex; flex-direction: column; gap: 10px">
+    <h2 id="s4" style="margin: 0; font-size: 13px; font-weight: 800; letter-spacing: .04em; color: #5f6684">NO MATCH · search “xrp”</h2>
+    <div role="dialog" aria-label="Switch bot" style="width: 760px; box-sizing: border-box; border-radius: 20px; background: #ffffff; border: 1px solid #d5dcf2; box-shadow: 0 18px 48px rgb(20 26 51 / .12)">
+      <div style="padding: 14px; border-bottom: 1px solid #e3e7f5">
+        <label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 12px; border: 2px solid #2e62e8">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#5f6684" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+          <span class="sr">Find a bot</span>
+          <input type="search" value="xrp" style="flex: 1; border: 0; outline: none; font: inherit; font-size: 15px; background: transparent">
+        </label>
+      </div>
+      <div role="status" style="padding: 28px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center">
+        <strong style="font-size: 15px">No bots match “xrp”.</strong>
+        <span style="font-size: 13.5px; color: #3b4262">Search looks at name, market, strategy and id, in every state.</span>
+        <button type="button" style="min-height: 40px; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; font: inherit; font-size: 14px; font-weight: 700">Clear search and filters</button>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

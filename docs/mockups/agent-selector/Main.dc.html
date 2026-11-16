@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trading Agent · bot selector A</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#eef1fa}
+a{color:#1d47b8}a:hover{color:#141a33}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.opt:hover{background:#f5f7fd}
+input::placeholder{color:#5f6684}
+</style>
+</helmet>
+<div class="num" style="box-sizing: border-box; padding: 20px; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; min-height: 1100px">
+
+  <nav aria-label="App" style="flex: 0 0 236px; box-sizing: border-box; padding: 16px 12px; border-radius: 24px; background: #ffffff; border: 1px solid #e3e7f5; display: flex; flex-direction: column; gap: 2px">
+    <a href="#" style="display: flex; align-items: center; gap: 10px; padding: 4px 8px 14px; color: #141a33; text-decoration: none; font-weight: 800; font-size: 18px">
+      <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#2E62E8"></rect><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#FFFFFF"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#FFFFFF" opacity="0.7"></rect></svg>
+      DeskLabs
+    </a>
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="9">
+      <a href="#" aria-current="{{n.current}}" style="{{n.style}}">{{n.label}}</a>
+    </sc-for>
+  </nav>
+
+  <main style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+    <header style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 16px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <h1 style="margin: 0; font-size: 30px; font-weight: 800">Trading Agent</h1>
+        <p style="margin: 0; font-size: 15px; color: #3b4262">What each bot is doing, why, and the controls to change it.</p>
+      </div>
+      <a href="#" style="margin-left: auto; min-height: 44px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border-radius: 12px; background: #2e62e8; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>New bot</a>
+    </header>
+
+    <span style="align-self: flex-start; padding: 4px 10px; border-radius: 8px; background: #f0e6ff; color: #5a2ca0; font-size: 12px; font-weight: 800; letter-spacing: .04em">SAMPLE DATA · names, ids and numbers are made up</span>
+
+    <div style="position: relative">
+      <div style="display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px">
+        <button type="button" aria-haspopup="dialog" aria-expanded="{{openStr}}" aria-controls="botpicker" onClick="{{toggle}}" style="flex: 1 1 520px; min-width: 0; min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 18px; border: 1px solid {{triggerBorder}}; background: #ffffff; font: inherit; color: #141a33; text-align: left; cursor: pointer">
+          <span aria-hidden="true" style="{{cur.badge}}">{{cur.abbr}}</span>
+          <span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+            <span style="display: flex; align-items: baseline; gap: 8px; min-width: 0"><strong style="font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{cur.name}}</strong><span style="font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: #5f6684">··{{cur.id}}</span></span>
+            <span style="font-size: 13px; color: #3b4262; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{cur.market}} · {{cur.strategy}} · v{{cur.v}} · {{cur.summary}}</span>
+          </span>
+          <span style="{{cur.pill}}"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="{{cur.icon}}"></path></svg>{{cur.stateLabel}}</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; padding-left: 10px; border-left: 1px solid #e3e7f5; font-size: 13px; font-weight: 700; color: #1d47b8">Switch bot<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="{{chev}}"></path></svg></span>
+        </button>
+        <div style="display: flex; gap: 6px">
+          <button type="button" aria-label="Previous live bot" style="width: 48px; min-height: 64px; border-radius: 16px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; cursor: pointer"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg></button>
+          <button type="button" aria-label="Next live bot" style="width: 48px; min-height: 64px; border-radius: 16px; border: 1px solid #d5dcf2; background: #ffffff; color: #141a33; cursor: pointer"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></button>
+        </div>
+        <button type="button" onClick="{{showAttn}}" style="min-height: 64px; padding: 0 16px; border-radius: 16px; border: 1px solid #f6d3cd; background: #fff4f2; color: #a72826; font: inherit; font-size: 13.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; cursor: pointer">
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"></path><path d="M12 10v4"></path><path d="M12 17.5h.01"></path></svg>2 need attention</button>
+      </div>
+
+      <sc-if value="{{open}}" hint-placeholder-val="{{ true }}">
+        <div id="botpicker" role="dialog" aria-label="Switch bot" style="position: absolute; z-index: 5; top: 74px; left: 0; width: min(880px, 100%); box-sizing: border-box; border-radius: 20px; background: #ffffff; border: 1px solid #d5dcf2; box-shadow: 0 18px 48px rgb(20 26 51 / .16); display: flex; flex-direction: column">
+          <div style="padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid #e3e7f5">
+            <label style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border-radius: 12px; border: 2px solid #2e62e8; background: #ffffff">
+              <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#5f6684" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+              <span class="sr">Find a bot</span>
+              <input type="search" value="{{query}}" onInput="{{onQuery}}" placeholder="Search name, market or id" style="flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 15px; color: #141a33; background: transparent">
+              <span style="font-size: 12px; color: #5f6684; border: 1px solid #d5dcf2; border-radius: 6px; padding: 1px 6px">Esc</span>
+            </label>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px">
+              <span style="font-size: 12.5px; font-weight: 700; color: #3b4262; margin-right: 2px">State</span>
+              <sc-for list="{{chips}}" as="c" hint-placeholder-count="5">
+                <button type="button" aria-pressed="{{c.on}}" onClick="{{c.pick}}" style="{{c.style}}">{{c.label}} <span style="font-weight: 600">{{c.count}}</span></button>
+              </sc-for>
+              <span style="flex-basis: 100%; height: 0"></span>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: #3b4262">Strategy
+                <select onChange="{{onStrategy}}" style="min-height: 36px; border-radius: 10px; border: 1px solid #d5dcf2; background: #ffffff; font: inherit; font-size: 13px; color: #141a33; padding: 0 8px">
+                  <sc-for list="{{strategies}}" as="s" hint-placeholder-count="6"><option value="{{s.v}}" selected="{{s.sel}}">{{s.label}}</option></sc-for>
+                </select></label>
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: #3b4262">Market
+                <select onChange="{{onMarket}}" style="min-height: 36px; border-radius: 10px; border: 1px solid #d5dcf2; background: #ffffff; font: inherit; font-size: 13px; color: #141a33; padding: 0 8px">
+                  <sc-for list="{{markets}}" as="m" hint-placeholder-count="4"><option value="{{m.v}}" selected="{{m.sel}}">{{m.label}}</option></sc-for>
+                </select></label>
+            </div>
+          </div>
+
+          <div style="max-height: 560px; overflow-y: auto; padding: 6px 8px 8px">
+            <sc-if value="{{noMatch}}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 28px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center">
+                <strong style="font-size: 15px">No bots match “{{query}}”.</strong>
+                <span style="font-size: 13.5px; color: #3b4262">Search looks at name, market, strategy and id, in every state.</span>
+                <button type="button" onClick="{{clearAll}}" style="min-height: 40px; padding: 0 14px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer">Clear search and filters</button>
+              </div>
+            </sc-if>
+            <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+              <div role="group" aria-label="{{g.aria}}" style="display: flex; flex-direction: column">
+                <div style="display: flex; align-items: center; gap: 8px; padding: 10px 8px 6px; font-size: 12px; font-weight: 800; letter-spacing: .04em; color: {{g.color}}">{{g.title}} <span style="font-weight: 700; color: #5f6684">{{g.count}}</span></div>
+                <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+                  <button type="button" class="opt" aria-current="{{r.current}}" onClick="{{r.pick}}" style="{{r.box}}">
+                    <span aria-hidden="true" style="{{r.badge}}">{{r.abbr}}</span>
+                    <span style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                      <span style="display: flex; align-items: baseline; gap: 8px; min-width: 0"><strong style="font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</strong><span style="font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: #5f6684; flex: none">··{{r.id}}</span><sc-if value="{{r.paper}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; font-weight: 800; letter-spacing: .04em; padding: 1px 6px; border-radius: 6px; background: #f0e6ff; color: #5a2ca0">PAPER</span></sc-if></span>
+                      <span style="font-size: 12.5px; color: #3b4262; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.market}} · {{r.strategy}} · v{{r.v}} · Created {{r.created}}</span>
+                      <span style="font-size: 12.5px; color: #5f6684; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.summary}}</span>
+                      <sc-if value="{{r.hasReason}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; font-weight: 700; color: {{r.reasonColor}}">{{r.reason}}</span></sc-if>
+                    </span>
+                    <span style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right">
+                      <span style="{{r.pnlStyle}}">{{r.pnl}}</span>
+                      <span style="font-size: 11.5px; color: #5f6684">{{r.pnlCap}}</span>
+                    </span>
+                    <span style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; width: 128px">
+                      <span style="{{r.pill}}"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="{{r.icon}}"></path></svg>{{r.stateLabel}}</span>
+                      <sc-if value="{{r.isCurrent}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; font-weight: 800; color: #1d47b8; display: inline-flex; align-items: center; gap: 4px"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>Viewing</span></sc-if>
+                    </span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-for>
+            <sc-if value="{{showStoppedBtn}}" hint-placeholder-val="{{ true }}">
+              <button type="button" onClick="{{expandStopped}}" aria-expanded="false" style="width: 100%; min-height: 44px; margin-top: 6px; border-radius: 12px; border: 1px dashed #d5dcf2; background: #f5f7fd; font: inherit; font-size: 13.5px; font-weight: 700; color: #3b4262; cursor: pointer">Show {{stoppedCount}} stopped bots</button>
+            </sc-if>
+          </div>
+
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 16px; border-top: 1px solid #e3e7f5; font-size: 12.5px; color: #5f6684">
+            <span>↑ ↓ to move · Enter to open · Esc to close</span>
+            <span style="flex: 1"></span>
+            <a href="#" style="font-weight: 700">Manage all bots in Strategy Lab</a>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <section aria-label="Bot detail (unchanged, shown for context)" style="padding: 22px; border-radius: 28px; background: linear-gradient(135deg, #e3e8fe, #cbd5fb); display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+        <h2 style="margin: 0; font-size: 24px; font-weight: 800">{{cur.name}}</h2>
+        <span style="font-family: ui-monospace, Menlo, monospace; font-size: 14px; color: #3b4262">··{{cur.id}}</span>
+        <span style="{{cur.pill}}"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="{{cur.icon}}"></path></svg>{{cur.stateLabel}}</span>
+        <span style="padding: 3px 8px; border-radius: 999px; background: #fde4e1; color: #a72826; font-size: 12px; font-weight: 800">LIVE · MAINNET</span>
+      </div>
+      <p style="margin: 0; font-size: 14px; color: #3b4262">Config v{{cur.v}} · running 3 d 4 h · {{cur.market}}</p>
+      <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px">
+        <sc-for list="{{life}}" as="l" hint-placeholder-count="5"><span style="{{l.style}}">{{l.label}}</span></sc-for>
+      </div>
+    </section>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+      <div style="height: 220px; border-radius: 24px; background: #ffffff; border: 1px solid #e3e7f5; padding: 18px; box-sizing: border-box; font-weight: 800; color: #5f6684">Decisions &amp; actions</div>
+      <div style="height: 220px; border-radius: 24px; background: #ffffff; border: 1px solid #e3e7f5; padding: 18px; box-sizing: border-box; font-weight: 800; color: #5f6684">Configuration</div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"startOpen":{"editor":"boolean","default":true},"startQuery":{"editor":null,"default":""},"$preview":{"width":1440,"height":1100}}'>
+const BOTS = [
+ ['a91c04e7','ETH Market Making','Market Making','ETH-USD','paused','Paused: max loss reached',3,'Oct 30','$100 · 2 bp · Smart quoting','-14.20',0,1],
+ ['5be2d810','SOL Futures Grid','Futures Grid','SOL-USD','running','SoDEX rejected 3 orders in a row',2,'Nov 9','$300 · 3× · 24 levels','+2.61',0,1],
+ ['3f0a9d21','BTC Market Making','Market Making','BTC-USD','running','',4,'Nov 2','$50 · 1 bp · Smart quoting','+18.42',0,0],
+ ['c7e19b02','BTC Market Making','Market Making','BTC-USD','running','',2,'Oct 28','$200 · 2 bp · Fixed spread','+4.10',0,0],
+ ['0d44fa6c','BTC Market Making','Market Making','BTC-USD','running','',1,'Nov 14','$50 · 3 bp · Smart quoting','nofills',0,0],
+ ['e2b7713a','ETH Market Making','Market Making','ETH-USD','running','',5,'Oct 21','$100 · 1 bp · Smart quoting','-2.35',0,0],
+ ['71aa3c90','BTC Spot Grid','Spot Grid','BTC/USDC','running','',2,'Oct 18','$500 · 20 levels · 92,000–104,000','+31.07',0,0],
+ ['9f03be11','ETH DCA','Spot DCA','ETH/USDC','running','',1,'Nov 11','$300 · 5 safety orders','waiting',0,0],
+ ['48c2e6d0','Rebalancing','Rebalancing','BTC · ETH · USDC','running','',3,'Sep 29','$1,000 · 50 / 30 / 20','+12.88',0,0],
+ ['b6d1f2a4','SOL Recurring Buy','Recurring Buy','SOL/USDC','running','',1,'Nov 5','$25 every day',null,0,0],
+ ['2c95e7f8','BTC Funding Arb','Funding Arb','BTC','running','',2,'Oct 12','$2,000 · split 50/50','+6.02',0,0],
+ ['dd0a6b31','ETH Futures DCA','Futures DCA','ETH-USD','running','',1,'Nov 15','$100 · 3× · 4 safety orders','+0.84',1,0],
+ ['17f4c2e9','SOL Market Making','Market Making','SOL-USD','paused','Paused by you',2,'Oct 25','$80 · 2 bp · Smart quoting','+1.95',0,0],
+ ['8a3e0c55','BTC Futures Grid','Futures Grid','BTC-USD','paused','Paused by you',3,'Oct 3','$400 · 2× · 30 levels','-6.70',0,0],
+ ['f40b9e12','ETH Spot Grid','Spot Grid','ETH/USDC','paused','Paused by you',1,'Nov 8','$250 · 16 levels','nofills',0,0],
+ ['6c81d7a0','BTC TWAP','TWAP','BTC/USDC','paused','Paused by you',1,'Nov 13','0.05 BTC over 4 h',null,0,0],
+ ['91be3e47','BTC Market Making','Market Making','BTC-USD','stopped','Stopped: volume target reached',6,'Sep 14','$50 · 1 bp · Smart quoting','+22.10',0,0],
+ ['3a0f66c2','ETH Market Making','Market Making','ETH-USD','stopped','Stopped by you',2,'Sep 20','$100 · 2 bp · Fixed spread','-3.48',0,0],
+ ['0f9e2b74','BTC Spot Grid','Spot Grid','BTC/USDC','stopped','Stopped by you',3,'Aug 30','$500 · 24 levels','+40.55',0,0],
+ ['b2c7a919','SOL DCA','Spot DCA','SOL/USDC','stopped','Stopped: take profit hit',1,'Sep 2','$200 · 4 safety orders','+5.12',0,0],
+ ['e8d5f031','ETH TWAP','TWAP','ETH/USDC','stopped','Stopped: finished',1,'Oct 1','1 ETH over 2 h',null,0,0],
+ ['44a1c7de','BTC Recurring Buy','Recurring Buy','BTC/USDC','stopped','Stopped by you',2,'Aug 12','$50 every week',null,0,0],
+ ['c03f8e6b','SOL Spot Grid','Spot Grid','SOL/USDC','stopped','Stopped by you',1,'Sep 8','$150 · 12 levels','-1.20',0,0],
+ ['7d92b4f0','BTC Market Making','Market Making','BTC-USD','stopped','Stopped: end time reached',1,'Aug 25','$100 · 2 bp · Smart quoting','-0.62',0,0],
+ ['a5e03c18','ETH Futures Grid','Futures Grid','ETH-USD','stopped','Stopped by you',2,'Sep 17','$300 · 3× · 20 levels','+9.30',0,0],
+ ['1f6b9d52','ETH DCA','Spot DCA','ETH/USDC','stopped','Stopped by you',1,'Jul 30','$150 · 3 safety orders','nofills',0,0],
+ ['9c4e1a07','BTC Spot Grid','Spot Grid','BTC/USDC','archived','',2,'Jun 18','$300 · 18 levels','+11.40',0,0],
+ ['52d8f3ab','ETH Market Making','Market Making','ETH-USD','archived','',1,'Jul 2','$50 · 2 bp · Fixed spread','-0.95',0,0],
+ ['e07b6c24','SOL TWAP','TWAP','SOL/USDC','archived','',1,'Jul 9','20 SOL over 1 h',null,0,0]
+];
+const ABBR = { 'Market Making': ['MM', '#e6ecfe', '#1d47b8'], 'Spot Grid': ['GRID', '#ffe3c7', '#5c2e00'], 'Futures Grid': ['GRID', '#ffe3c7', '#5c2e00'], 'Spot DCA': ['DCA', '#cdf1ec', '#003d37'], 'Futures DCA': ['DCA', '#cdf1ec', '#003d37'], 'Recurring Buy': ['BUY', '#cdf1ec', '#003d37'], 'Rebalancing': ['REB', '#edeff5', '#3b4262'], 'Funding Arb': ['ARB', '#edeff5', '#3b4262'], 'TWAP': ['TWAP', '#edeff5', '#3b4262'] };
+const ST = {
+  attn: ['Needs attention', '#fde4e1', '#a72826', 'M12 3l10 18H2z'],
+  running: ['Running', '#ddf4e7', '#0f7a43', 'M12 6a6 6 0 1 0 0.01 0z'],
+  paused: ['Paused', '#fdebd3', '#7a3e00', 'M7 5h3v14H7zM14 5h3v14h-3z'],
+  stopped: ['Stopped', '#edeff5', '#3b4262', 'M6 6h12v12H6z'],
+  archived: ['Archived', '#f5f7fd', '#3b4262', 'M4 5h16v4H4zM6 10h12v9H6z']
+};
+function pillStyle(k) { const s = ST[k]; return 'display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; background: ' + s[1] + '; color: ' + s[2] + (k === 'archived' ? '; border: 1px solid #d5dcf2' : ''); }
+function badgeStyle(strat, size) { const a = ABBR[strat]; return 'flex: none; width: ' + size + 'px; height: ' + size + 'px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-size: ' + (size > 40 ? 11.5 : 10.5) + 'px; font-weight: 800; letter-spacing: .02em; background: ' + a[1] + '; color: ' + a[2]; }
+function pnlOf(p) {
+  if (p === null) return { t: 'Not available', c: 'net PnL', s: 'font-size: 13px; font-weight: 600; color: #5f6684' };
+  if (p === 'nofills') return { t: 'No fills yet', c: '', s: 'font-size: 13px; font-weight: 600; color: #5f6684' };
+  if (p === 'waiting') return { t: 'Waiting for price', c: '', s: 'font-size: 13px; font-weight: 600; color: #5f6684' };
+  const up = p[0] === '+';
+  return { t: (up ? '▲ +$' : '▼ −$') + p.slice(1), c: 'net PnL', s: 'font-size: 14px; font-weight: 800; color: ' + (up ? '#0f7a43' : '#a72826') };
+}
+function toBot(b) { return { id: b[0], name: b[1], strategy: b[2], market: b[3], state: b[4], reason: b[5], v: b[6], created: b[7], summary: b[8], pnl: b[9], paper: !!b[10], attn: !!b[11] }; }
+const ALL = BOTS.map(toBot);
+const ORDER = { attn: 0, running: 1, paused: 2, stopped: 3, archived: 4 };
+function groupOf(b) { return b.attn ? 'attn' : b.state; }
+
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { open: undefined, query: undefined, st: 'live', strat: 'all', mkt: 'all', more: false, cur: '3f0a9d21' }; }
+  renderVals() {
+    const self = this, s = this.state;
+    const open = s.open === undefined ? (this.props.startOpen ?? true) : s.open;
+    const qRaw = s.query === undefined ? (this.props.startQuery || '') : s.query;
+    const q = qRaw.trim().toLowerCase();
+    const cur = ALL.find(function (b) { return b.id === s.cur; });
+    const curKey = groupOf(cur) === 'attn' ? 'attn' : cur.state;
+
+    const base = ALL.filter(function (b) {
+      if (s.strat !== 'all' && b.strategy.indexOf(s.strat) < 0) return false;
+      if (s.mkt !== 'all' && b.market.indexOf(s.mkt) < 0) return false;
+      if (q) { const hay = (b.name + ' ' + b.market + ' ' + b.strategy + ' ' + b.id).toLowerCase(); return q.split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; }); }
+      return true;
+    });
+    const cnt = function (f) { return ALL.filter(f).length; };
+    const counts = { live: cnt(function (b) { return b.state === 'running' || b.state === 'paused'; }), running: cnt(function (b) { return b.state === 'running'; }), paused: cnt(function (b) { return b.state === 'paused'; }), stopped: cnt(function (b) { return b.state === 'stopped'; }), archived: cnt(function (b) { return b.state === 'archived'; }) };
+    const inState = function (b) {
+      if (s.st === 'live') return b.state !== 'archived' && (q || s.more || b.state !== 'stopped');
+      return b.state === s.st;
+    };
+    const shown = base.filter(inState);
+    const keys = ['attn', 'running', 'paused', 'stopped', 'archived'];
+    const titles = { attn: 'NEEDS ATTENTION', running: 'RUNNING', paused: 'PAUSED', stopped: 'STOPPED', archived: 'ARCHIVED · READ ONLY' };
+    const groups = keys.map(function (k) {
+      const rows = shown.filter(function (b) { return groupOf(b) === k; }).map(function (b) {
+        const isCur = b.id === s.cur, p = pnlOf(b.pnl), pk = groupOf(b);
+        return {
+          id: b.id, name: b.name, market: b.market, strategy: b.strategy, v: b.v, created: b.created, summary: b.summary, paper: b.paper,
+          abbr: ABBR[b.strategy][0], badge: badgeStyle(b.strategy, 40),
+          hasReason: !!b.reason && b.state !== 'running' || b.attn, reason: (b.attn ? '▲ ' : '') + b.reason, reasonColor: b.attn ? '#a72826' : '#3b4262',
+          pnl: p.t, pnlCap: p.c, pnlStyle: p.s,
+          pill: pillStyle(b.state === 'running' && b.attn ? 'running' : b.state), icon: ST[b.state][3], stateLabel: ST[b.state][0],
+          isCurrent: isCur, current: isCur ? 'true' : 'false',
+          box: 'width: 100%; display: grid; grid-template-columns: 40px minmax(0, 1fr) 120px 128px; align-items: center; gap: 12px; padding: 10px; border-radius: 14px; font: inherit; color: #141a33; text-align: left; cursor: pointer; ' + (isCur ? 'background: #e6ecfe; border: 2px solid #2e62e8' : 'background: #ffffff; border: 2px solid transparent'),
+          pick: function () { self.setState({ cur: b.id, open: false }); }
+        };
+      });
+      return { key: k, title: titles[k], count: rows.length, aria: titles[k].toLowerCase() + ', ' + rows.length + ' bots', color: k === 'attn' ? '#a72826' : '#3b4262', rows: rows };
+    }).filter(function (g) { return g.rows.length > 0; });
+
+    const hiddenStopped = s.st === 'live' && !q && !s.more ? base.filter(function (b) { return b.state === 'stopped'; }).length : 0;
+    const chip = function (on) { return 'min-height: 36px; padding: 0 12px; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; border: 1px solid ' + (on ? '#2e62e8' : '#d5dcf2') + '; background: ' + (on ? '#2e62e8' : '#ffffff') + '; color: ' + (on ? '#ffffff' : '#141a33'); };
+    const chips = [['live', 'Live'], ['running', 'Running'], ['paused', 'Paused'], ['stopped', 'Stopped'], ['archived', 'Archived']].map(function (c) {
+      return { label: c[1], count: counts[c[0]], on: s.st === c[0] ? 'true' : 'false', style: chip(s.st === c[0]), pick: function () { self.setState({ st: c[0] }); } };
+    });
+    const strategies = [['all', 'All strategies'], ['Market Making', 'Market Making'], ['Grid', 'Grid'], ['DCA', 'DCA'], ['Recurring Buy', 'Recurring Buy'], ['Rebalancing', 'Rebalancing'], ['Funding Arb', 'Funding Arb'], ['TWAP', 'TWAP']].map(function (x) { return { v: x[0], label: x[1], sel: s.strat === x[0] }; });
+    const markets = [['all', 'All markets'], ['BTC', 'BTC'], ['ETH', 'ETH'], ['SOL', 'SOL']].map(function (x) { return { v: x[0], label: x[1], sel: s.mkt === x[0] }; });
+    const navItems = ['Overview', 'Portfolio', 'Trading Agent', 'AI Desk', 'Strategy Lab', 'Execution & Orders', 'Risk Center', 'Settings'];
+    const lifeIdx = { running: 2, paused: 3, stopped: 0 }[cur.state];
+    return {
+      nav: navItems.map(function (n) { const c = n === 'Trading Agent'; return { label: n, current: c ? 'page' : 'false', style: 'display: flex; align-items: center; min-height: 40px; padding: 0 12px; border-radius: 12px; text-decoration: none; font-size: 14px; font-weight: ' + (c ? 700 : 500) + '; background: ' + (c ? '#2e62e8' : 'transparent') + '; color: ' + (c ? '#ffffff' : '#141a33') + (c ? '; box-shadow: 0 6px 16px rgb(46 98 232 / .28)' : '') }; }),
+      open: open, openStr: open ? 'true' : 'false', chev: open ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6', triggerBorder: open ? '#2e62e8' : '#e3e7f5',
+      toggle: function () { self.setState({ open: !open }); },
+      showAttn: function () { self.setState({ open: true, st: 'live', query: '' }); },
+      cur: { id: cur.id, name: cur.name, market: cur.market, strategy: cur.strategy, v: cur.v, summary: cur.summary, abbr: ABBR[cur.strategy][0], badge: badgeStyle(cur.strategy, 44), pill: pillStyle(cur.state), icon: ST[cur.state][3], stateLabel: ST[cur.state][0] },
+      query: qRaw, onQuery: function (e) { self.setState({ query: e.target.value }); },
+      onStrategy: function (e) { self.setState({ strat: e.target.value }); },
+      onMarket: function (e) { self.setState({ mkt: e.target.value }); },
+      clearAll: function () { self.setState({ query: '', st: 'live', strat: 'all', mkt: 'all' }); },
+      chips: chips, strategies: strategies, markets: markets, groups: groups, noMatch: groups.length === 0,
+      showStoppedBtn: hiddenStopped > 0, stoppedCount: hiddenStopped, expandStopped: function () { self.setState({ more: true }); },
+      life: ['Stopped', 'Starting', 'Running', 'Paused', 'Stopping'].map(function (l, i) { const on = i === lifeIdx; return { label: l, style: 'padding: 8px; border-radius: 12px; text-align: center; font-size: 13px; font-weight: ' + (on ? 800 : 600) + '; background: ' + (on ? '#141a33' : 'rgb(255 255 255 / .6)') + '; color: ' + (on ? '#ffffff' : '#3b4262') }; })
+    };
+  }
+}
+</script>
+</body>
+</html>
