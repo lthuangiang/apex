@@ -47,6 +47,8 @@ import {
   sub,
   VOLUME_STRATEGIES,
   exceedsPerTrade,
+  PLANNED_STOP_REASONS,
+  STOPPED_BY_USER,
 } from "@drift/shared";
 import {
   applyFill,
@@ -1832,11 +1834,10 @@ export class Engine {
   async #ack(r: Runner, at: number): Promise<void> {
     if (!r.awaitingFirstAck) return;
     r.awaitingFirstAck = false;
-    await this.#transition(r, EngineEvent.confirmedRunning, null);
-    await this.#event(
+    await this.#transition(
       r,
-      "state",
-      "Running",
+      EngineEvent.confirmedRunning,
+      null,
       // Bot paper không gửi gì lên SoDEX: không được ghi là SoDEX đã xác nhận (DEC-105).
       r.paper
         ? "Simulated orders placed. Nothing was sent to SoDEX."
@@ -1997,7 +1998,14 @@ export class Engine {
     }
   }
 
-  async #transition(r: Runner, event: EngineEvent, reason: Reason | null): Promise<void> {
+  async #transition(
+    r: Runner,
+    event: EngineEvent,
+    reason: Reason | null,
+    /** `why` của event "Running" / "Paused"; null với Pause / Resume của người dùng. */
+    why: string | null = null,
+    at: number = this.#d.now(),
+  ): Promise<void> {
     await this.#fenced(r, async (tx) => {
       const [b] = await tx
         .select({ state: bots.state })
@@ -2015,6 +2023,16 @@ export class Engine {
         topic: `user.${r.account.id}.bot`,
         payload: { botId: r.botId, state: next, reasonCode: reason },
       });
+      // Mốc Runtime (BD-06): Start, Resume và Pause của người dùng đều ghi event "Running" / "Paused" cùng transaction với
+      // lần đổi trạng thái, để Runtime của lần chạy tính đúng (trước đây Pause / Resume của người dùng không ghi gì).
+      if (next === BotState.running || next === BotState.paused)
+        await tx.insert(botEvents).values({
+          botId: r.botId,
+          type: "state",
+          decision: next === BotState.running ? "Running" : "Paused",
+          why,
+          occurredAt: new Date(at),
+        });
       // Báo team (DEC-184): bot tiền thật vào running sau một lần Start (starting → running; resume không báo).
       // Vốn tính sẵn ở đây (cùng hàm với Strategy Lab); jobs chỉ hiển thị.
       if (!r.paper && b.state === BotState.starting && next === BotState.running) {
@@ -2192,7 +2210,7 @@ export class Engine {
     const haltReason = reason === null ? await this.#haltReasonOf(r.botId) : null;
     const deferred = await this.#fenced(r, async (tx) => {
       const [b] = await tx
-        .select({ state: bots.state, closeOnStop: bots.closeOnStop })
+        .select({ state: bots.state, reasonCode: bots.reasonCode, closeOnStop: bots.closeOnStop })
         .from(bots)
         .where(eq(bots.id, r.botId))
         .for("update");
@@ -2214,10 +2232,33 @@ export class Engine {
           ? applyEngineEvent(b.state, EngineEvent.confirmedStopped)
           : applyReason(b.state, reason);
       if (next === null) return false;
+      // Dừng đúng kế hoạch (MM-01): không còn việc gì cho người dùng, tắt cờ Needs attention (ví dụ cảnh báo 80% budget).
+      // Lý do lấy cả từ dòng bot: chiến lược dừng đúng kế hoạch mà đi qua `stopping` (còn lệnh unknown) thì lượt cuối
+      // không có reason, nhưng bots.reason_code đã là BUDGET_DONE / MAX_CYCLES.
+      const why = reason ?? b.reasonCode;
+      const planned =
+        next === BotState.stopped &&
+        why !== null &&
+        (PLANNED_STOP_REASONS as readonly string[]).includes(why);
       await tx
         .update(bots)
-        .set({ state: next, ...(reason === null ? {} : { reasonCode: reason }) })
+        .set({
+          state: next,
+          ...(reason === null ? {} : { reasonCode: reason }),
+          ...(planned ? { needsAttention: false } : {}),
+        })
         .where(eq(bots.id, r.botId));
+      // Sự kiện "Stopped" (BD-06) cùng transaction với lần đổi trạng thái: đúng một lần, không mất khi engine chết giữa
+      // chừng. why = reason code của lần dừng (chiến lược dừng đã qua `stopping` thì lấy từ bots.reason_code), hoặc
+      // STOPPED_BY_USER khi người dùng bấm Stop.
+      if (next === BotState.stopped)
+        await tx.insert(botEvents).values({
+          botId: r.botId,
+          type: "state",
+          decision: "Stopped",
+          why: reason ?? b.reasonCode ?? STOPPED_BY_USER,
+          occurredAt: new Date(this.#d.now()),
+        });
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
         payload: { botId: r.botId, state: next, reasonCode: reason ?? haltReason },

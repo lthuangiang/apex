@@ -4,6 +4,7 @@ import {
   BotState,
   botListSchema,
   featuresSchema,
+  PLANNED_STOP_REASONS,
   ReasonCode,
   UserRole,
   type BotSummary,
@@ -119,6 +120,14 @@ export function useWaitingText() {
   };
 }
 
+/** Bot dừng đúng kế hoạch (MM-01): hết budget, đủ volume target hoặc hết giờ chạy. */
+export function plannedStop(b: { state: string; reasonCode: string | null }): boolean {
+  return (
+    b.state === BotState.stopped &&
+    (PLANNED_STOP_REASONS as readonly string[]).includes(b.reasonCode ?? "")
+  );
+}
+
 export function useStateLabel() {
   const t = useTranslations("states");
   const reasonLabel = useReasonLabel();
@@ -145,7 +154,11 @@ export function useStateLabel() {
             ...extra,
           }),
         }),
-    ...(b.needsAttention ? { needsAttention: true, needsAttentionLabel: t("needsAttention") } : {}),
+    // MM-01: bot dừng đúng kế hoạch (hết budget, đủ volume target, hết giờ) không có việc gì để làm: không "Needs attention"
+    // dù cờ còn bật từ cảnh báo 80% budget.
+    ...(b.needsAttention && !plannedStop(b)
+      ? { needsAttention: true, needsAttentionLabel: t("needsAttention") }
+      : {}),
   });
 }
 

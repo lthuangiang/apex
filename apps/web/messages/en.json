@@ -3600,6 +3600,7 @@
     }
   },
   "reasons": {
+    "STOPPED_BY_USER": "Stopped by you",
     "BUILDER_FEE_REVOKED": "Paused: builder fee approval is 0",
     "API_KEY_EXPIRED": "Paused: DeskLabs API key expired",
     "API_KEY_DELETED": "Paused: DeskLabs API key deleted",
