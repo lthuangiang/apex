@@ -97,8 +97,6 @@ export interface VolumeMakerState {
   fairBinanceAt?: number | null;
   /** Số liệu định giá theo Binance từ lần ghi Decisions trước: số lệnh bị rút, số lệnh đặt lùi ra. */
   oracleWin?: { since: number; pulls: number; clamps: number };
-  /** Lần đặt lại riêng một phía gần nhất sau khi SoDEX xác nhận huỷ (DEC-257), để giới hạn tần suất. */
-  sideQuoteAt?: Partial<Record<"buy" | "sell", number>>;
 }
 
 /** Điều chỉnh Smart quoting của một phía: lùi `ticks` tick, hoặc rút hẳn lệnh mở (`pull`). */
@@ -437,7 +435,7 @@ function quote(
   // Lệnh mở đã gửi huỷ ở một bước trước mà SoDEX chưa xác nhận (DEC-253): lệnh huỷ tới trước khi lệnh vào sổ thì SoDEX
   // trả `OrderNotFound`, lệnh vào sổ sau đó và vẫn có thể khớp; đặt thêm lệnh mở cùng phía lúc đó làm vị thế vượt "Holds
   // up to" (2026-11-15: hai lệnh mua cùng khớp, vị thế gấp đôi). Phía đó không đặt lệnh mở mới tới khi có `orderDone`
-  // (hoặc hết `VM_STALE_CANCEL_MS`). Lệnh mở bị huỷ ngay trong lần báo giá này cũng tính (DEC-257, xem
+  // (hoặc hết `VM_STALE_CANCEL_MS`). Lệnh mở bị huỷ ngay trong lần báo giá này cũng tính (DEC-TBD-mm-requote-limit, xem
   // dưới).
   const unsure = { buy: false, sell: false };
   for (const o of Object.values(s.orders))
@@ -647,8 +645,10 @@ function quote(
         orders[id] = o;
       }
   }
-  // Huỷ rồi mới đặt (DEC-257): huỷ và đặt cùng lúc thì lệnh cũ có thể khớp trong lúc lệnh huỷ đang đi,
-  // lệnh mới cũng khớp (harness tranh chấp: tới 2× "Holds up to"). Lệnh đóng không bị ảnh hưởng.
+  // Huỷ rồi mới đặt (DEC-TBD-mm-requote-limit): phía có lệnh mở đang nằm bị huỷ ngay trong lần báo giá này cũng chờ SoDEX
+  // xác nhận huỷ (`orderDone`) rồi mới đặt lệnh mở mới, như lệnh huỷ của bước trước (DEC-253). Huỷ và đặt cùng lúc thì
+  // lệnh cũ có thể khớp trong lúc lệnh huỷ đang đi, lệnh mới cũng khớp: vị thế vượt "Holds up to" (harness tranh chấp:
+  // tới 3× trong 3 giờ giả lập). `orderDone` tới thì `openGap` báo giá lại sớm. Lệnh đóng không bị ảnh hưởng.
   for (const [id, o] of Object.entries(s.orders))
     if (o.status === "live" && o.role === "open" && !kept.has(id)) unsure[o.side] = true;
   // Phía còn lệnh mở chưa xác nhận huỷ: chỉ bỏ lệnh mở mới (DEC-253). Lệnh mở đang nằm vẫn bị huỷ như thường (huỷ
@@ -1192,37 +1192,23 @@ function stepCore(
         orders: { ...s.orders, [e.clOrdID]: { ...o, status: "done", since: e.at } },
         ...(reclose ? { requoteDue: true } : {}),
       };
-      // Huỷ rồi mới đặt (DEC-257): SoDEX xác nhận lệnh mở bot đã xin huỷ, phía đó không còn lệnh mở
-      // nào khác: đặt lại ngay đúng phía đó, nên phía đó chỉ trống một vòng SoDEX. Mỗi phía tối đa một lần mỗi
-      // VM_MIN_REQUOTE_MS (giá Binance chạy liên tục thì rút → xác nhận → đặt → rút… không thành vòng request); chưa tới
-      // hạn thì để `requoteDue` cho nhịp đồng hồ như trước.
+      // Huỷ rồi mới đặt (DEC-TBD-mm-requote-limit): SoDEX vừa xác nhận lệnh mở bot đã xin huỷ (cancelling) là lệnh cuối của phía này, và phía đó
+      // không còn lệnh mở nào khác đang chờ huỷ: đặt ngay lệnh mở mới cho đúng phía đó, không chờ nhịp đồng hồ, nên phía
+      // đó chỉ trống một vòng SoDEX. Phía kia và lệnh đóng giữ nguyên.
       const stillUnsure = Object.entries(state.orders).some(
         ([, x]) => x.role === "open" && x.side === o.side && x.status === "cancelling",
       );
-      const lastSide = s.sideQuoteAt?.[o.side] ?? null;
       if (
         o.status === "cancelling" &&
         openGap &&
         !stillUnsure &&
         state.phase === "running" &&
-        state.lastRefresh !== null &&
-        (lastSide === null || e.at - lastSide >= VM_MIN_REQUOTE_MS)
+        state.lastRefresh !== null
       ) {
         const q = quote(c, state, ctx, e.at, new Set([o.side]));
-        const sent = q.actions.filter((a) => a.type === "place" || a.type === "cancel");
-        // Không có gì để gửi (ví dụ phía đó đang bị rút): giữ nguyên state như `onBook`, không tính là một lần báo giá.
-        if (sent.length === 0) return { actions: [], state };
-        // Chỉ lấy lệnh và số chu kỳ (clOrdID không trùng); không đổi `lastRefresh`, lần báo giá đầy đủ đang chờ, ghi chú
-        // Smart quoting hay "Pause on fast moves".
-        const next: VolumeMakerState = {
-          ...state,
-          requoteDue: s.requoteDue,
-          orders: q.state.orders,
-          cycle: q.state.cycle,
-          ...(q.state.oracleWin === undefined ? {} : { oracleWin: q.state.oracleWin }),
-          sideQuoteAt: { ...s.sideQuoteAt, [o.side]: e.at },
-        };
-        return guards(c, next, ctx, e.at) ?? { actions: sent, state: next };
+        // Chỉ đặt lại một phía: giữ lần báo giá đầy đủ đang chờ từ trước (ví dụ sau một fill), không thêm lần mới.
+        const r = { ...q, state: { ...q.state, requoteDue: s.requoteDue } };
+        return guards(c, r.state, ctx, e.at) ?? r;
       }
       return { actions: [], state };
     }
