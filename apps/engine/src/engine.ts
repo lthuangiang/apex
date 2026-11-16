@@ -2127,7 +2127,7 @@ export class Engine {
         .where(eq(bots.id, r.botId));
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
-        payload: { botId: r.botId, state: next, reasonCode: reason },
+        payload: { botId: r.botId, state: next, reasonCode: reason ?? haltReason },
       });
       // Báo team (DEC-184): bot tiền thật vào running sau một lần Start (starting → running; resume không báo).
       // Vốn tính sẵn ở đây (cùng hàm với Strategy Lab); jobs chỉ hiển thị.
@@ -2164,25 +2164,31 @@ export class Engine {
    * (quy tắc 1.6); đường Stop của người dùng làm nốt khi đã đối soát xong.
    */
   async #haltToStopping(r: Runner, reason: Reason, close: boolean): Promise<void> {
-    const moved = await this.#fenced(r, async (tx) => {
+    await this.#fenced(r, async (tx) => {
       const [b] = await tx
-        .select({ state: bots.state })
+        .select({ state: bots.state, closeOnStop: bots.closeOnStop })
         .from(bots)
         .where(eq(bots.id, r.botId))
         .for("update");
-      if (b === undefined || b.state === BotState.stopped || b.state === BotState.archived)
-        return false;
+      if (b === undefined || b.state === BotState.stopped || b.state === BotState.archived) return;
+      // Người dùng đã chọn đóng vị thế khi Stop (bấm Stop trước đó) thì giữ lựa chọn đó.
       await tx
         .update(bots)
-        .set({ state: BotState.stopping, reasonCode: reason, closeOnStop: close })
+        .set({ state: BotState.stopping, reasonCode: reason, closeOnStop: close || b.closeOnStop })
         .where(eq(bots.id, r.botId));
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
         payload: { botId: r.botId, state: BotState.stopping, reasonCode: reason },
       });
-      return true;
+      // Cùng transaction: lý do của lần dừng không mất nếu engine chết giữa chừng (#haltReasonOf đọc lại event này).
+      await tx.insert(botEvents).values({
+        botId: r.botId,
+        type: "state",
+        decision: "Stopping",
+        why: reason,
+        occurredAt: new Date(this.#d.now()),
+      });
     });
-    if (moved) await this.#event(r, "state", "Stopping", reason, this.#d.now());
   }
 
   /** Lý do của lần dừng do chiến lược đang chờ đối soát: event trạng thái gần nhất là "Stopping" kèm reason code. */

@@ -601,6 +601,12 @@ describe("engine", () => {
     expect(b?.state).toBe("stopped");
     expect(b?.reasonCode).not.toBeNull();
     expect(gw.cancelled).toContain(unknown?.clOrdId);
+    // Tin trạng thái cuối cho UI mang lý do của lần dừng (không phải null).
+    const last = (await db.select().from(outbox))
+      .filter((x) => x.topic.endsWith(".bot"))
+      .map((x) => x.payload as { botId: string; state: string; reasonCode: string | null })
+      .filter((x) => x.botId === botId && x.state === "stopped");
+    expect(last.at(-1)?.reasonCode).toBe(b?.reasonCode);
     await e.stop();
   });
 
