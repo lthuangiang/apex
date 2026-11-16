@@ -2289,7 +2289,7 @@ describe("engine", () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     const p = await seedPaper();
-    const a = paperEngine(gw, "paper-noprice-a");
+    const a = paperEngine(gw, "paper-noprice");
     await a.tick();
     await a.onPrice("vBTC_vUSDC", "100", clock);
     clock += 1_000;
@@ -2300,9 +2300,11 @@ describe("engine", () => {
     await a.stop();
     // Engine mới (khởi động lại / đổi shard): chưa có giá nào. Người dùng bấm Stop kèm đóng vị thế.
     await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, p.botId));
-    const b = paperEngine(gw, "paper-noprice-b");
+    const b = paperEngine(gw, "paper-noprice");
     await b.tick();
     await b.tick();
+    // Engine mới (cùng workerId) phải sở hữu shard của bot, không thì "vẫn stopping" không chứng minh gì.
+    expect(b.ownedShards).toContain(shardOf(p.accountId, SHARDS));
     expect((await botState(p.botId))?.state).toBe("stopping");
     // Không gửi lệnh đóng khi chưa có giá (không có lệnh close bị reject NO_PRICE).
     const before = await db.select().from(orders).where(eq(orders.botId, p.botId));
