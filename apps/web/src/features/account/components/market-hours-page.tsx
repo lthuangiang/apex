@@ -83,6 +83,12 @@ export function MarketHoursPage() {
       return api("GET", `/api/v1/admin/market-hours?${p.toString()}`, marketHoursViewSchema);
     },
   });
+  // Trình duyệt trả tên múi giờ mà API không nhận (VALIDATION_FAILED): chuyển sang UTC và tải lại, không hiện lỗi.
+  const tzRejected =
+    tz !== "UTC" && q.error instanceof ApiError && q.error.code === "VALIDATION_FAILED";
+  useEffect(() => {
+    if (tzRejected) setTzLocal("UTC");
+  }, [tzRejected]);
   const forbidden = q.error instanceof ApiError && q.error.code === "FORBIDDEN";
   const now = useMemo(() => new Date(), []);
   const offset = utcMode ? 0 : offsetMinutes(tzLocal, now);
@@ -160,7 +166,7 @@ export function MarketHoursPage() {
               aria-label={t("grid")}
               className="flex flex-col gap-3.5 rounded-card border border-border bg-surface px-3 py-4 md:px-4"
             >
-              {q.isPending ? (
+              {q.isPending || tzRejected ? (
                 <div aria-busy="true" className="flex flex-col gap-2">
                   <span className="sr-only">{t("loading")}</span>
                   {[30, 180, 28, 28, 28, 90, 28, 28].map((h, i) => (
@@ -624,6 +630,7 @@ function Legend({
 }
 
 function FiveMin({ values }: { values: readonly (string | null)[] }) {
+  const tb = useTranslations("marketHours.botBlock");
   const max = Math.max(1, ...values.map((x) => (x === null ? 0 : Number(x))));
   return (
     <div className="grid h-24 grid-cols-12 items-end gap-1.5">
@@ -631,7 +638,7 @@ function FiveMin({ values }: { values: readonly (string | null)[] }) {
         const x = values[i] ?? null;
         return (
           <span key={i} className="flex flex-col items-center gap-[3px] text-[10.5px]">
-            <span>{x === null ? "n/a" : Number(x).toFixed(1)}</span>
+            <span>{x === null ? tb("na") : Number(x).toFixed(1)}</span>
             <span
               aria-hidden="true"
               className="w-[70%] rounded-t-[3px] bg-mh-vol-3"
@@ -656,11 +663,7 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
     <div className="flex flex-col gap-2 md:hidden">
       {v.markoutSince !== null && v.markoutDays < v.days ? (
         <span className="self-start rounded-[10px] bg-warn-bg px-2.5 py-[3px] text-[11.5px] font-bold text-warn">
-          {t("cost.collecting", {
-            date: instantLabel(v.markoutSince, v.tz),
-            n: v.markoutDays,
-            days: v.days,
-          })}
+          {tm("collecting", { date: instantLabel(v.markoutSince, v.tz) })}
         </span>
       ) : null}
       <div
@@ -692,7 +695,11 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                 <span className="flex flex-col text-left">
                   <strong className="text-[13px]">{pad(h)}</strong>
                   <span className="text-[9.5px] font-extrabold text-warn">
-                    {m === undefined ? "" : m.us ? t("usShort") : hhmm(m.local)}
+                    {m === undefined
+                      ? ""
+                      : m.us
+                        ? t("usShort")
+                        : tm("markerTag", { hour: pad(Math.floor(m.utc / 60)) })}
                   </span>
                 </span>
                 <span

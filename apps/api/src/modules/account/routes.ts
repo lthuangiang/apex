@@ -4,7 +4,6 @@ import {
   adminAiDeskBodySchema,
   adminBuilderFeeBodySchema,
   adminVolumeBotsBodySchema,
-  marketHoursQuerySchema,
   notificationSettingsBodySchema,
   platformStatsQuerySchema,
   riskLimitsBodySchema,
@@ -179,11 +178,10 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
     teamOps({ db: deps.db, now: deps.now, log: request.log }, requireAuth(request).userId),
   );
 
-  // Market hours cho team Ops (DEC-TBD-market-hours): tz là tên IANA, kiểm bằng zod; sai → lỗi C6.
-  app.get("/api/v1/admin/market-hours", async (request) => {
-    const q = parseOrThrow(marketHoursQuerySchema, request.query);
-    return marketHours(deps, requireAuth(request).userId, q);
-  });
+  // Market hours cho team Ops (DEC-TBD-market-hours): tz là tên IANA, kiểm bằng zod sau bước kiểm quyền; sai → lỗi C6.
+  app.get("/api/v1/admin/market-hours", async (request) =>
+    marketHours(deps, requireAuth(request).userId, request.query),
+  );
   app.get("/api/v1/admin/stats", async (request) => {
     const { period } = parseOrThrow(platformStatsQuerySchema, request.query);
     return platformStats(deps, requireAuth(request).userId, period);

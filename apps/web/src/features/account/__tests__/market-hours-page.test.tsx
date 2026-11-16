@@ -136,6 +136,19 @@ describe("Market hours page", () => {
     );
   });
 
+  it("falls back to UTC when the API rejects the browser's time zone, without an error", async () => {
+    setRespond((path) =>
+      path.includes("tz=Asia%2FKolkata")
+        ? Promise.reject(new FakeApiError("VALIDATION_FAILED"))
+        : Promise.resolve(view({ tz: "UTC" })),
+    );
+    show();
+    expect(await screen.findByText("1 · Market volatility on SoDEX")).toBeInTheDocument();
+    expect(calls.some((c) => c.includes("tz=Asia%2FKolkata"))).toBe(true);
+    expect(calls.at(-1)).toContain("tz=UTC");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("marks US stock open in the local column and says missing numbers are n/a, never 0", async () => {
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
@@ -144,8 +157,13 @@ describe("Market hours page", () => {
     expect(screen.getAllByText(/^US stock open \d\d:\d\d · 1\d:30 UTC$/).length).toBeGreaterThan(0);
     expect(screen.getAllByText("n/a").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Thin").length).toBeGreaterThan(0);
-    // Bản desktop và bản 390 px đều có chip (CSS chọn một).
-    expect(screen.getAllByText("Collecting since Nov 12, 2026 · 4 of 30 days")).toHaveLength(2);
+    // Bản desktop và bản 390 px đều có chip (CSS chọn một), câu chữ theo từng artboard.
+    expect(screen.getByText("Collecting since Nov 12, 2026 · 4 of 30 days")).toBeInTheDocument();
+    expect(
+      screen.getByText("Cost to make markets: collecting since Nov 12, 2026"),
+    ).toBeInTheDocument();
+    // Bản 390 px: thẻ mốc theo giờ UTC như thiết kế ("00 UTC" ở cột 05 Kolkata).
+    expect(screen.getByText("00 UTC")).toBeInTheDocument();
     // Múi giờ lệch nửa giờ: khối 2 ghi rõ là xấp xỉ.
     expect(
       screen.getByText("Approximate in half-hour time zones: this block is collected by UTC hour."),

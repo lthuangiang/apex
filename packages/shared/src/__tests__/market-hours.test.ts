@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   fillCostPerMillion,
   marketHoursQuerySchema,
+  marketHoursViewSchema,
   minuteRangeBp,
   quantile,
   timeZoneSchema,
@@ -66,5 +67,18 @@ describe("time zone", () => {
     expect(marketHoursQuerySchema.parse({})).toEqual({ days: 30, strategy: "both", tz: "UTC" });
     expect(marketHoursQuerySchema.safeParse({ days: "14" }).success).toBe(false);
     expect(marketHoursQuerySchema.parse({ days: "7", tz: "Asia/Kolkata" }).days).toBe(7);
+  });
+});
+
+describe("heatmap", () => {
+  it("has exactly 24 cells per day", () => {
+    const cell = { ratio: null, medianBp: null };
+    const day = (n: number) => [
+      { date: "2026-11-02", cells: Array.from({ length: n }, () => cell) },
+    ];
+    const heatmap = marketHoursViewSchema.shape.heatmap;
+    expect(heatmap.safeParse(day(24)).success).toBe(true);
+    expect(heatmap.safeParse(day(23)).success).toBe(false);
+    expect(heatmap.safeParse(day(25)).success).toBe(false);
   });
 });

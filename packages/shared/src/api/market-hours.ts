@@ -83,12 +83,14 @@ export const marketHoursViewSchema = z.object({
   heatmap: z.array(
     z.object({
       date: z.string(),
-      cells: z.array(
-        z.object({
-          ratio: decimalStringSchema.nullable(),
-          medianBp: decimalStringSchema.nullable(),
-        }),
-      ),
+      cells: z
+        .array(
+          z.object({
+            ratio: decimalStringSchema.nullable(),
+            medianBp: decimalStringSchema.nullable(),
+          }),
+        )
+        .length(24),
     }),
   ),
   candlesSince: isoDateTimeSchema.nullable(),

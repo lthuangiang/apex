@@ -5,6 +5,7 @@ import {
   fillCostPerMillion,
   MARKET_HOURS_HOT_RATIO,
   MARKET_HOURS_THIN_BOT_HOURS,
+  marketHoursQuerySchema,
   medianTicks,
   minuteRangeBp,
   quantile,
@@ -15,6 +16,8 @@ import {
   type MarketHoursView,
 } from "@drift/shared";
 import { sql } from "drizzle-orm";
+
+import { parseOrThrow } from "../../lib/http";
 
 import { requireTeam } from "./team";
 
@@ -42,9 +45,11 @@ const iso = (v: unknown): string | null =>
 export async function marketHours(
   deps: Deps,
   userId: string,
-  q: MarketHoursQuery,
+  query: unknown,
 ): Promise<MarketHoursView> {
+  // Kiểm quyền trước, parse sau: người không thuộc team nhận 403, không phải 400.
   await requireTeam(deps.db, userId, "Market hours is for the DeskLabs team only.");
+  const q = parseOrThrow(marketHoursQuerySchema, query);
   const now = deps.now().getTime();
   const from = new Date(now - q.days * DAY_MS);
   const strategies = strategiesOf(q.strategy);
@@ -105,6 +110,16 @@ function emptyHour(): Omit<MarketHoursHour, "hour"> {
 const emptyHours = (): MarketHoursHour[] =>
   Array.from({ length: 24 }, (_, hour) => ({ hour, ...emptyHour() }));
 
+/** Lấy mảng của khoá, chưa có thì tạo (push tại chỗ, không chép lại mảng mỗi dòng). */
+function listOf<K, V>(m: Map<K, V[]>, k: K): V[] {
+  let xs = m.get(k);
+  if (xs === undefined) {
+    xs = [];
+    m.set(k, xs);
+  }
+  return xs;
+}
+
 const str = (v: Decimal | null, dp = 2): string | null =>
   v === null ? null : v.toDecimalPlaces(dp).toString();
 
@@ -141,8 +156,8 @@ async function volatility(db: Db, market: string, from: Date, tz: string) {
     const v = minuteRangeBp(x.high, x.low);
     if (v === null) continue;
     const k = `${x.d}|${String(x.h)}`;
-    byDayHour.set(k, [...(byDayHour.get(k) ?? []), v]);
-    byDay.set(x.d, [...(byDay.get(x.d) ?? []), v]);
+    listOf(byDayHour, k).push(v);
+    listOf(byDay, x.d).push(v);
     byHour[x.h]?.push(v);
     byFive[x.h]?.[x.m5]?.push(v);
   }
@@ -223,6 +238,8 @@ export async function botHours(
     q.strategies.map((s) => sql`${s}`),
     sql`, `,
   );
+  // Chặn lệnh tạo trước kỳ quá 1 ngày để dùng orders_bot_idx: fill của lệnh nằm chờ hơn 1 ngày trước kỳ không được
+  // tính (ghi trong DEC-TBD-market-hours).
   const fills = await db.execute(sql`
     select extract(hour from f.filled_at at time zone ${q.tz})::int as h,
            o.side as side, f.price::text as price, f.size::text as size, f.fee::text as fee,
@@ -240,12 +257,29 @@ export async function botHours(
       join orders o on o.bot_id = b.id and o.created_at >= ${q.from}
       where b.market = ${q.market} and b.mode = 'live' and b.strategy in (${strategies}) and ${own}
       group by 1`);
-  const [first] = rowsOf<{ since: unknown }>(
-    await db.execute(sql`
-      select min(f.filled_at) as since
-        from bots b join orders o on o.bot_id = b.id join fills f on f.order_id = o.id
-        where b.market = ${q.market} and b.mode = 'live' and b.strategy in (${strategies}) and ${own}`),
-  );
+  // Fill sớm nhất, chính xác mà không quét hết lệnh: với mỗi bot, lấy lệnh tạo sớm nhất có fill (đi theo
+  // orders_bot_idx (bot_id, created_at), LIMIT 1) → t1 và fill đầu của nó f1. Fill sớm hơn f1 (nếu có) thuộc lệnh tạo
+  // trong [t1, f1], nên chỉ cần quét đoạn index đó. Planner ước lượng đoạn [t1, f1] quá rộng nên tổng cost vượt
+  // jit_above_cost và JIT tốn ~300 ms cho truy vấn chỉ vài ms: tắt JIT trong transaction riêng của truy vấn này.
+  const [first] = await db.transaction(async (tx) => {
+    await tx.execute(sql`set local jit = off`);
+    return rowsOf<{ since: unknown }>(
+      await tx.execute(sql`
+      with first as (
+        select b.id as bot_id, o1.created_at as t1,
+               (select min(f.filled_at) from fills f where f.order_id = o1.id) as f1
+          from bots b
+          cross join lateral (
+            select o.id, o.created_at from orders o
+              where o.bot_id = b.id and exists (select 1 from fills f where f.order_id = o.id)
+              order by o.created_at
+              limit 1) o1
+          where b.market = ${q.market} and b.mode = 'live' and b.strategy in (${strategies}) and ${own})
+      select min((select min(f.filled_at) from fills f where f.order_id = o.id)) as since
+        from first x
+        join orders o on o.bot_id = x.bot_id and o.created_at >= x.t1 and o.created_at <= x.f1`),
+    );
+  });
   const byHour = Array.from({ length: 24 }, () => [] as CostFill[]);
   for (const x of rowsOf<{
     h: number;

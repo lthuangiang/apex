@@ -64,6 +64,12 @@ describe("GET /api/v1/admin/market-hours", () => {
     await signIn(env, user, `mh-user-${randomUUID()}@drift.test`);
     const denied = await user.request("GET", "/api/v1/admin/market-hours");
     expect(denied.statusCode).toBe(403);
+    // Kiểm quyền trước khi parse: người không thuộc team gửi tz sai vẫn nhận 403, không phải 400.
+    const deniedBad = await user.request("GET", "/api/v1/admin/market-hours?tz=Mars%2FBase");
+    expect(deniedBad.statusCode).toBe(403);
+    expect(
+      (await anon.request("GET", "/api/v1/admin/market-hours?tz=Mars%2FBase")).statusCode,
+    ).toBe(401);
     const { client } = await teamUser();
     const bad = await client.request("GET", "/api/v1/admin/market-hours?tz=Mars%2FBase");
     expect(bad.statusCode).toBe(400);
@@ -122,11 +128,11 @@ describe("GET /api/v1/admin/market-hours", () => {
     const live = await bot("live");
     const paper = await bot("paper");
     let n = 0;
-    const fill = async (botId: string, side: string, price: string, at: string) => {
+    const fill = async (botId: string, side: string, price: string, at: string, createdAt = at) => {
       n += 1;
       const { rows } = await env.pool.query<{ id: string }>(
         "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, status, tag, epoch, created_at) values (gen_random_uuid(), $1, $2, $3, $4, 'perps', $5, 'limit', 'GTX', 1, 'filled', 'vm', 1, $6) returning id",
-        [botId, acc[0]?.id, `mh-${String(n)}-${randomUUID().slice(0, 8)}`, MARKET, side, at],
+        [botId, acc[0]?.id, `mh-${String(n)}-${randomUUID().slice(0, 8)}`, MARKET, side, createdAt],
       );
       await env.pool.query(
         "insert into fills (id, order_id, sodex_trade_id, price, size, fee, is_maker, filled_at) values (gen_random_uuid(), $1, $2, $3, 1, 0.01, true, $4)",
@@ -138,6 +144,8 @@ describe("GET /api/v1/admin/market-hours", () => {
     await fill(live, "sell", "99.99", "2026-11-02T10:00:40Z");
     // Bot paper không bao giờ được tính.
     await fill(paper, "buy", "50", "2026-11-02T10:00:20Z");
+    // Lệnh tạo sớm nhất có fill (09:00) nằm chờ tới 12:00 mới khớp: fillsSince vẫn phải là fill sớm nhất (10:00:10).
+    await fill(live, "buy", "100", "2026-11-02T12:00:00Z", "2026-11-02T09:00:00Z");
     const v = await view(client, "&tz=UTC&strategy=volume_maker");
     const h = v.hours[10]?.bots;
     expect(h?.volume).toBe("200.01");
