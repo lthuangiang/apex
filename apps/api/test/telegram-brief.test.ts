@@ -103,7 +103,12 @@ describe("Telegram morning brief", () => {
     const rows = await sent(userId);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.delivery_status).toBe("queued");
-    expect(rows[0]?.payload).toEqual({ localDate: "2026-11-13", count: 0, bot: "" });
+    expect(rows[0]?.payload).toEqual({
+      localDate: "2026-11-13",
+      count: 0,
+      bot: "",
+      first: "bot",
+    });
     expect(await queuedJobs(rows.map((r) => r.id))).toBe(1);
     expect(llm.calls).toBe(0);
     // Lượt sau cùng ngày, và gửi bù trong giờ: không thêm.
@@ -149,6 +154,31 @@ describe("Telegram morning brief", () => {
     ]);
     await queueTelegramBriefs(deps);
     for (const u of [noDesk, blocked, offUser, archived]) expect(await sent(u.userId)).toEqual([]);
+  });
+
+  it("leads with the account-level goal item when losses pass the goal limit (RS-01)", async () => {
+    const { client, userId } = await briefUser("brief-goal@example.com", { botName: "Goal Grid" });
+    await client.request("PUT", "/api/v1/goals", {
+      body: { goal: "steady", capital: "5000", maxDrop: "10", assets: ["BTC"] },
+    });
+    const { rows } = await env.pool.query<{ id: string }>(
+      "select id from sodex_accounts where user_id = $1",
+      [userId],
+    );
+    const now = env.clock.now.getTime();
+    // Đã lỗ 600 trên giới hạn 500: việc cấp account đứng đầu, không có tên bot.
+    for (const [ago, equity] of [
+      [3 * 3_600_000, "5200"],
+      [60_000, "4600"],
+    ] as const)
+      await env.pool.query(
+        "insert into equity_snapshots (sodex_account_id, at, equity) values ($1, $2, $3)",
+        [rows[0]?.id, new Date(now - ago), equity],
+      );
+    await queueTelegramBriefs(deps);
+    const payload = (await sent(userId))[0]?.payload;
+    expect(payload).toMatchObject({ localDate: "2026-11-13", bot: "", first: "goal" });
+    expect(Number(payload?.count)).toBeGreaterThanOrEqual(1);
   });
 
   it("reuses the brief Desk AI already wrote on the web, and calls the model only when told to", async () => {

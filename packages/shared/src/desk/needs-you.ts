@@ -48,6 +48,15 @@ export const NEEDS_YOU_RULES = [
   "better_review",
 ] as const;
 export type NeedsYouRule = (typeof NEEDS_YOU_RULES)[number];
+/**
+ * Việc không thuộc bot nào (DEC-272): tính lúc đọc, không lưu ở `desk_items`, không hoãn được, tự
+ * hết khi điều kiện hết đúng.
+ */
+export const ACCOUNT_RULES = ["goal_loss_over"] as const;
+export type AccountRule = (typeof ACCOUNT_RULES)[number];
+/** Mọi loại việc hiện ở Needs you: việc cấp account trước, rồi việc của bot. */
+export const DESK_ITEM_RULES = [...ACCOUNT_RULES, ...NEEDS_YOU_RULES] as const;
+export type DeskItemRule = (typeof DESK_ITEM_RULES)[number];
 
 /** Mức độ: số lớn hơn = gấp hơn. Thứ tự hiện: mức độ, rồi thứ tự quy tắc ở trên. */
 export const RULE_SEVERITY: Record<NeedsYouRule, number> = {
@@ -64,7 +73,8 @@ export interface DeskFact {
   name: string;
   value: string;
   unit: "usdc" | "pct" | "x" | "count" | "per_million" | "text" | "ms";
-  source: "config" | "sodex_symbol" | "bot_state" | "fills" | "review" | "estimate";
+  source:
+    "config" | "sodex_symbol" | "bot_state" | "fills" | "review" | "estimate" | "goal" | "risk";
 }
 
 /* --------------------------------------- Quy tắc 1: thanh lý trước stop loss --------------------------------------- */
