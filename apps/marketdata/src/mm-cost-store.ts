@@ -10,7 +10,7 @@ import type { HourBucket, MmCostCollector } from "./mm-cost";
 
 export const MM_TOP_MARKETS = 30;
 /**
- * `mm_market_hourly` giữ 90 ngày (DEC-TBD-mm-hourly-90d, thay phần "giữ 48 giờ" của DEC-227): team Ops cần đủ ngày để
+ * `mm_market_hourly` giữ 90 ngày (DEC-278, thay phần "giữ 48 giờ" của DEC-227): team Ops cần đủ ngày để
  * so chi phí làm market theo giờ trong ngày. Mỗi market một dòng / giờ nên 90 ngày × ~30 market ≈ 65K dòng.
  */
 export const MM_KEEP_MS = 90 * 24 * 3_600_000;
