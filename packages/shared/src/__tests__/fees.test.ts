@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   builderFeeRateFor,
+  tierRateOf,
   builderFeeRateOf,
   builderRateOnFill,
   DRIFT_BUILDER_FEE_RATE,
@@ -96,5 +97,21 @@ describe("builder fee per user (DEC-159)", () => {
   it("never goes above what the user approved on SoDEX", () => {
     expect(builderFeeRateFor("spot_grid", { spot_grid: 25 })).toBe(DRIFT_BUILDER_FEE_RATE);
     expect(builderFeeRateFor("spot_grid", { spot_grid: -1 })).toBe(0);
+  });
+});
+
+describe("builder fee tiers (DEC-258)", () => {
+  it("lowers the Market Making fee from 200K and 1M of 30-day volume, never to 0", () => {
+    expect(tierRateOf("volume_maker", "0")).toBe(3);
+    expect(tierRateOf("volume_maker", "199999.99")).toBe(3);
+    expect(tierRateOf("volume_maker", "200000")).toBe(2);
+    expect(tierRateOf("volume_maker", "999999.99")).toBe(2);
+    expect(tierRateOf("volume_maker", "1000000")).toBe(1);
+    expect(tierRateOf("volume_maker", "50000000")).toBe(1);
+  });
+
+  it("leaves strategies without tiers at their default", () => {
+    expect(tierRateOf("volume_farm", "5000000")).toBe(5);
+    expect(tierRateOf("spot_grid", "5000000")).toBe(10);
   });
 });

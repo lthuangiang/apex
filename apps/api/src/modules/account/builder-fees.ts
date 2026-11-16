@@ -1,4 +1,4 @@
-import { botEvents, bots, userBuilderFees, users, type Db } from "@drift/db";
+import { botEvents, bots, builderFeeOverridesOf, userBuilderFees, users, type Db } from "@drift/db";
 import {
   AppError,
   BOT_STRATEGIES,
@@ -20,13 +20,18 @@ import { requireTeam } from "./team";
 // Builder fee riêng theo user × chiến lược (DEC-159). Team đặt 0–0.01% ở Users; lệnh mới của user dùng ngay mức này
 // (engine đọc lại mỗi vòng). Không có dòng = mặc định `builderFeeRateOf`.
 
-/** Mức team đã đặt riêng cho user. */
-export async function builderFeeOverrides(db: Db, userId: string): Promise<BuilderFeeOverrides> {
+/** Mức team đã đặt tay cho user (chỉ `user_builder_fees`). */
+async function teamOverrides(db: Db, userId: string): Promise<BuilderFeeOverrides> {
   const rows = await db
     .select({ strategy: userBuilderFees.strategy, rate: userBuilderFees.rate })
     .from(userBuilderFees)
     .where(eq(userBuilderFees.userId, userId));
   return Object.fromEntries(rows.map((r) => [r.strategy, r.rate]));
+}
+
+/** Mức riêng hiệu lực của user: theo bậc volume, team đặt tay ghi đè (DEC-258). */
+export async function builderFeeOverrides(db: Db, userId: string): Promise<BuilderFeeOverrides> {
+  return (await builderFeeOverridesOf(db, [userId])).get(userId) ?? {};
 }
 
 /** Builder fee hiệu lực của user cho mọi chiến lược (GET /features). */
@@ -37,12 +42,15 @@ export async function builderFeesOf(db: Db, userId: string): Promise<Record<stri
 
 /** Bảng builder fee của user cho trang Users của team. */
 export async function builderFeeRows(db: Db, userId: string): Promise<BuilderFeeRow[]> {
-  const own = await builderFeeOverrides(db, userId);
+  const [own, team] = await Promise.all([
+    builderFeeOverrides(db, userId),
+    teamOverrides(db, userId),
+  ]);
   return BOT_STRATEGIES.map((strategy) => ({
     strategy,
     defaultRate: builderFeeRateOf(strategy),
     rate: builderFeeRateFor(strategy, own),
-    custom: own[strategy] !== undefined,
+    custom: team[strategy] !== undefined,
   }));
 }
 
@@ -82,7 +90,8 @@ export async function setBuilderFee(
           target: [userBuilderFees.userId, userBuilderFees.strategy],
           set: { rate, updatedBy: actorId, updatedAt: now },
         });
-    const after = rate ?? builderFeeRateOf(strategy);
+    // Xoá mức đặt tay thì quay về mức theo bậc (nếu có), không phải mặc định.
+    const after = builderFeeRateFor(strategy, await builderFeeOverrides(tx, targetId));
     let count = 0;
     if (after !== before) {
       const running = await tx

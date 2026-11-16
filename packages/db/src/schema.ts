@@ -703,6 +703,28 @@ export const userBuilderFees = pgTable(
   ],
 );
 
+/**
+ * Builder fee theo bậc volume (DEC-258): scheduler tính lại mỗi giờ từ volume 30 ngày. Chỉ có dòng khi mức
+ * khác mặc định. Mức team đặt ở `user_builder_fees` luôn thắng.
+ */
+export const userFeeTiers = pgTable(
+  "user_fee_tiers",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    strategy: text("strategy").notNull(),
+    rate: integer("rate").notNull(),
+    /** Volume tiền thật của chiến lược trong 30 ngày lúc tính (USD). */
+    volume: numeric("volume", { precision: 38, scale: 18 }).notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.strategy] }),
+    check("user_fee_tiers_rate_range", sql`${t.rate} >= 1 and ${t.rate} <= 10`),
+  ],
+);
+
 export const shardEpochs = pgTable("shard_epochs", {
   shard: integer("shard").primaryKey(),
   epoch: bigint("epoch", { mode: "number" }).notNull(),
