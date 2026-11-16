@@ -120,13 +120,21 @@ export function useWaitingText() {
 
 const VOLUME_TARGET_STRATEGIES = new Set<string>(["volume_farm"]);
 
+/**
+ * Khoá câu lý do theo chế độ bot: bot paper không gửi gì tới SoDEX (DEC-105), nên lệnh bị từ chối là lệnh giả
+ * (PB-01). Các mã khác dùng chung câu với bot thật.
+ */
+export function reasonKey(code: string, mode: string | undefined): string {
+  return mode === "paper" && code === ReasonCode.orderRejected ? "ORDER_REJECTED_PAPER" : code;
+}
+
 export function useStateLabel() {
   const t = useTranslations("states");
   const tr = useTranslations("reasons");
   const waiting = useWaitingText();
   return (
     b: Pick<BotSummary, "state" | "reasonCode" | "needsAttention"> &
-      Partial<Pick<BotSummary, "waiting" | "strategy">>,
+      Partial<Pick<BotSummary, "waiting" | "strategy" | "mode">>,
   ) => ({
     state: b.state,
     label: t(b.state),
@@ -139,7 +147,7 @@ export function useStateLabel() {
           reasonLabel:
             b.reasonCode === ReasonCode.maxCycles && VOLUME_TARGET_STRATEGIES.has(b.strategy ?? "")
               ? tr("MAX_CYCLES_VOLUME")
-              : tr(b.reasonCode),
+              : tr(reasonKey(b.reasonCode, b.mode)),
         }),
     ...(b.needsAttention ? { needsAttention: true, needsAttentionLabel: t("needsAttention") } : {}),
   });
@@ -446,7 +454,13 @@ export function BotsPage() {
                     {
                       key: "mode",
                       header: t("cols.mode"),
-                      cell: (b) => (b.state === BotState.draft ? t("modeDraft") : t("mode")),
+                      // Chế độ lấy từ `bots.mode` (SL-01): bot paper không bao giờ ghi "Mainnet".
+                      cell: (b) =>
+                        b.state === BotState.draft
+                          ? t("modeDraft")
+                          : b.mode === "paper"
+                            ? t("modePaper")
+                            : t("mode"),
                     },
                     {
                       key: "status",

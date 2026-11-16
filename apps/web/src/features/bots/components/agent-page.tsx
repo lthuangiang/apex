@@ -34,7 +34,7 @@ import { BetaChip, isBeta } from "./beta-chip";
 import { useBotErrorText } from "./bot-errors";
 import { BotFills } from "./bot-fills";
 import { BotProfit } from "./bot-profit";
-import { BOTS_KEY, useStateLabel, waitingTooLong } from "./bots-page";
+import { BOTS_KEY, reasonKey, useStateLabel, waitingTooLong } from "./bots-page";
 import { ConfigList, useConfigRows } from "./config-view";
 import { LiveQuotes } from "./live-quotes";
 import { MmAnalyticsCard } from "./mm-analytics";
@@ -69,8 +69,11 @@ export function AgentPage({ botId }: { botId?: string }) {
   const tsh = useTranslations("common.shell");
   const tr = useTranslations("reasons");
   // Sự kiện state lưu mã lý do (API_KEY_UNUSABLE…) ở `why`: hiện câu chữ thay cho mã.
-  const why = (text: string | null) =>
-    text !== null && /^[A-Z_]+$/.test(text) && tr.has(text) ? tr(text) : text;
+  const why = (text: string | null) => {
+    if (text === null || !/^[A-Z_]+$/.test(text)) return text;
+    const key = reasonKey(text, bot?.mode);
+    return tr.has(key) ? tr(key) : text;
+  };
   const router = useRouter();
   const qc = useQueryClient();
   const me = useMe();
@@ -380,6 +383,8 @@ export function AgentPage({ botId }: { botId?: string }) {
     <WorkspaceShell current="agent" isTeam={me.data?.role === UserRole.team}>
       <div className="flex flex-col gap-5">
         <PageHead
+          // Bot paper: bỏ chip Mainnet ở hàng tiêu đề (PB-01, DEC-105).
+          paper={bot?.mode === "paper"}
           title={t("title")}
           subtitle={t("subtitle")}
           back={{ href: "/", label: t("back") }}
@@ -407,7 +412,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                 key={a.id}
                 href={`/agent/${a.id}`}
                 aria-current={a.id === id ? "page" : undefined}
-                title={a.reasonCode === null ? undefined : tr(a.reasonCode)}
+                title={a.reasonCode === null ? undefined : tr(reasonKey(a.reasonCode, a.mode))}
                 className={`flex min-w-[220px] flex-none items-center gap-2.5 rounded-[16px] border px-3.5 py-2.5 no-underline ${a.id === id ? "border-accent bg-accent-tint" : "border-border bg-surface"}`}
               >
                 <span

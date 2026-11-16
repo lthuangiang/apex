@@ -2695,6 +2695,7 @@
       "actions": "Actions"
     },
     "mode": "Mainnet",
+    "modePaper": "Paper",
     "modeDraft": "Not started",
     "open": "Open",
     "edit": "Edit",
@@ -3488,6 +3489,7 @@
     "RISK_DRAWDOWN": "Paused: drawdown limit reached",
     "BOT_MAX_LOSS": "Paused: max loss for this bot reached",
     "ORDER_REJECTED": "Paused: SoDEX rejected an order",
+    "ORDER_REJECTED_PAPER": "Paused: a simulated order was rejected",
     "INSUFFICIENT_BALANCE": "Paused: balance too low",
     "STOP_LOSS": "Stopped: stop loss reached",
     "TAKE_PROFIT": "Stopped: take profit reached",
