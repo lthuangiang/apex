@@ -182,12 +182,63 @@ describe("Market hours page", () => {
     expect(screen.getByText(/Kept for 90 days\./)).toBeInTheDocument();
   });
 
+  it("hides leading days with no candles, says since when, and uses taller rows at 7 days", async () => {
+    const day = (date: string, empty: boolean) => ({
+      date,
+      cells: Array.from({ length: 24 }, (_, h) => ({
+        ratio: empty || h < 20 ? null : "1.2",
+        medianBp: empty || h < 20 ? null : "4.2",
+      })),
+    });
+    const heatmap = [
+      day("2026-11-08", true),
+      day("2026-11-09", true),
+      day("2026-11-10", false),
+      day("2026-11-11", false),
+    ];
+    setRespond((path) =>
+      Promise.resolve(view({ days: path.includes("days=7") ? 7 : 30, heatmap })),
+    );
+    const user = userEvent.setup({ delay: null });
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    // 30 ngày: dòng gọn, nhãn ngắn; hai ngày đầu không có nến bị ẩn; ngày đầu có nến (thiếu vài giờ) vẫn hiện.
+    expect(screen.getByText("Data since Nov 10, 2026")).toBeInTheDocument();
+    expect(screen.queryByText("Nov 8")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nov 9")).not.toBeInTheDocument();
+    expect(screen.getByText("Nov 10")).toBeInTheDocument();
+    expect(screen.getAllByTitle("Nov 10, 2026 · 05:00 · Not available")[0]).toHaveClass("h-3.5");
+    expect(screen.getByTitle(/^Nov 11, 2026 · 21:00 · median 1-min range 4\.2 bp/)).toHaveClass(
+      "h-3.5",
+    );
+    // 7 ngày: dòng cao, nhãn có thứ.
+    await user.click(screen.getByRole("radio", { name: "7 days" }));
+    expect(await screen.findByText("Tue, Nov 10")).toBeInTheDocument();
+    expect(screen.getByTitle(/^Nov 11, 2026 · 21:00 · median 1-min range 4\.2 bp/)).toHaveClass(
+      "h-7",
+    );
+    // Mốc ở tiêu đề giờ là chip nhỏ (US open), không còn khung cam quanh cột.
+    expect(screen.getAllByText("US open")[0]).toHaveClass("rounded-full");
+  });
+
+  it("puts the time zone switch inside the filter card", async () => {
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const filters = screen.getByRole("region", { name: "Filters" });
+    expect(within(filters).getByRole("button", { name: "Show in UTC" })).toBeInTheDocument();
+    expect(within(filters).getByText(/Times in your time zone/)).toBeInTheDocument();
+  });
+
   it("shows the model's estimated cost per $1M for every hour, with a tooltip, under block 1", async () => {
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
-    // Nhãn dòng + chú giải đều ghi rõ là mức sàn.
-    expect(screen.getAllByText("Estimated cost per $1M (model, floor)")).toHaveLength(2);
-    expect(screen.queryByText("Estimated cost per $1M (model)")).not.toBeInTheDocument();
+    // Nhãn dòng gọn (CPM) vẫn ghi rõ là mức sàn; chú giải chỉ "CPM"; CPM được giải nghĩa trong How to read this.
+    expect(screen.getByText("Est. CPM (model, floor)")).toBeInTheDocument();
+    expect(screen.queryByText(/Estimated cost per \$1M \(model/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("CPM").length).toBeGreaterThanOrEqual(3);
+    expect(
+      screen.getAllByText("CPM = cost per $1M of volume (fees plus price loss).").length,
+    ).toBeGreaterThanOrEqual(1);
     expect(
       screen.getByText(/It leaves out position cuts and taker fills, so it is a floor/),
     ).toBeInTheDocument();
@@ -296,7 +347,7 @@ describe("Market hours page", () => {
     expect(
       screen.getByText("$89 (model) · median 1-min swing 4.1 bp · fees 0.7 bp"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Est. / $1M")).toBeInTheDocument();
+    expect(screen.getByText("Est. CPM")).toBeInTheDocument();
   });
 
   it("explains every row label with an info button that opens on click, hover or focus and closes on Escape", async () => {
@@ -316,7 +367,7 @@ describe("Market hours page", () => {
     const maxMove15 =
       "The furthest the price ran within any 15 minutes starting in this hour during the period. Shocks like this cause most position cuts.";
     const cost =
-      "What DeskLabs bots really paid per $1M traded in this hour: fees plus the price move one minute after each fill. Counts only fills with a price one minute later.";
+      "CPM (cost per $1M of volume): what DeskLabs bots really paid per $1M traded in this hour, fees plus the price move one minute after each fill. Counts only fills with a price one minute later.";
     // [nhãn, câu giải thích, số nút (desktop + tiêu đề cột 390 px)]
     const rows: [string, string, number][] = [
       ["Median 1-min range (bp)", median, 1],
@@ -333,13 +384,14 @@ describe("Market hours page", () => {
       ["Largest 1-min range", maxRange, 1],
       ["Largest 15-min move", maxMove15, 1],
       [
-        "Estimated cost per $1M (model, floor)",
-        "A floor estimate from market data: SoDEX maker fee plus the default Market Making builder fee, plus the price loss the model expects from this hour's 1-minute moves, per $1M of volume. It leaves out position cuts and taker fills, so real bots usually cost more.",
+        "Est. CPM (model, floor)",
+        "CPM (cost per $1M of volume): a floor estimate from market data. SoDEX maker fee plus the default Market Making builder fee, plus the price loss the model expects from this hour's 1-minute moves, per $1M of volume. It leaves out position cuts and taker fills, so real bots usually cost more.",
         1,
       ],
       ["Price move against makers, 30 s later (bp)", markout, 1],
       ["Spread (ticks)", "Typical gap between the best bid and best ask, in price steps.", 1],
-      ["Cost per $1M", cost, 1],
+      // Block 3 và tiêu đề cột 390 px đều là "CPM".
+      ["CPM", cost, 2],
       ["Volume", "Value of all fills by DeskLabs bots in this hour, both buy and sell.", 1],
       ["Fees", "SoDEX trading fees plus builder fees paid on those fills.", 1],
       [
@@ -349,7 +401,6 @@ describe("Market hours page", () => {
       ],
       ["Hot days", hot, 1],
       ["Move vs makers 30 s", markout, 1],
-      ["Cost / $1M", cost, 1],
     ];
     for (const [label, copy, n] of rows) {
       const buttons = screen.getAllByRole("button", { name: `About ${label}` });

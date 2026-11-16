@@ -8,7 +8,7 @@ import {
 } from "@drift/shared";
 import { SegmentedControl } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
-import { Info } from "lucide-react";
+import { Activity, Bot, Info, Scale } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -130,24 +130,7 @@ export function MarketHoursPage() {
   return (
     <Workspace current="marketHours">
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-          <div className="min-w-0 flex-[1_1_420px]">
-            <PageHead title={t("title")} subtitle={t("subtitle")} />
-          </div>
-          <span className="inline-flex flex-wrap items-center gap-2 rounded-control border border-border bg-surface py-1 pr-1 pl-3 text-[13px] font-bold">
-            {utcMode ? t("tzUtc") : t("tzLocal", { tz: tzLocal, offset: offsetLabel(offset) })}
-            <button
-              type="button"
-              aria-pressed={utcMode}
-              onClick={() => {
-                setUtcMode((x) => !x);
-              }}
-              className="min-h-11 cursor-pointer rounded-[9px] border border-border-input bg-surface-2 px-3 text-[12.5px] font-bold text-ink"
-            >
-              {utcMode ? t("showLocal") : t("showUtc")}
-            </button>
-          </span>
-        </div>
+        <PageHead title={t("title")} subtitle={t("subtitle")} />
         {forbidden ? (
           <Card>
             <p className="m-0">{t("forbidden")}</p>
@@ -156,7 +139,7 @@ export function MarketHoursPage() {
           <>
             <section
               aria-label={t("filters")}
-              className="flex flex-col gap-3 rounded-tile border border-border bg-surface p-3 md:flex-row md:flex-wrap md:items-end md:gap-x-5 md:px-4"
+              className="flex flex-col gap-3 rounded-tile border border-border bg-surface p-3 md:flex-row md:flex-wrap md:items-start md:gap-x-4 md:px-4"
             >
               <label className="flex flex-col gap-1 text-[12.5px] font-bold text-ink-2">
                 {t("market")}
@@ -165,7 +148,7 @@ export function MarketHoursPage() {
                   onChange={(e) => {
                     setMarket(e.target.value);
                   }}
-                  className="min-h-11 min-w-40 rounded-control border border-border-input bg-surface px-3 text-sm font-semibold text-ink"
+                  className="min-h-11 min-w-36 rounded-control border border-border-input bg-surface px-3 text-sm font-semibold text-ink"
                 >
                   {(v?.markets ?? []).map((m) => (
                     <option key={m} value={m}>
@@ -191,6 +174,24 @@ export function MarketHoursPage() {
                   value={strategy}
                   onValueChange={setStrategy}
                 />
+              </div>
+              {/* Múi giờ nằm trong thẻ bộ lọc (không chen vào cụm trạng thái của thanh trên cùng). */}
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-control bg-surface-2 py-1 pr-1 pl-3 text-[12.5px] font-bold md:ml-auto md:self-end">
+                <span>
+                  {utcMode
+                    ? t("tzUtc")
+                    : t("tzLocal", { tz: tzLocal, offset: offsetLabel(offset) })}
+                </span>
+                <button
+                  type="button"
+                  aria-pressed={utcMode}
+                  onClick={() => {
+                    setUtcMode((x) => !x);
+                  }}
+                  className="min-h-11 cursor-pointer rounded-[9px] border border-border-input bg-surface px-3 text-[12.5px] font-bold text-ink"
+                >
+                  {utcMode ? t("showLocal") : t("showUtc")}
+                </button>
               </div>
             </section>
             <HowToRead v={v} markers={markers} utcMode={utcMode} offset={offset} />
@@ -267,6 +268,13 @@ function useMarkerLabel(utcMode: boolean, offset: number) {
   };
 }
 
+/** Ba mục "How to read this", mỗi mục một biểu tượng nhỏ theo khối 1 · 2 · 3. */
+const HOW = [
+  ["vol", Activity],
+  ["cost", Scale],
+  ["bots", Bot],
+] as const;
+
 function HowToRead({
   v,
   markers,
@@ -285,21 +293,40 @@ function HowToRead({
     iso === null || iso === undefined
       ? tm("notAvailable")
       : t("calc.since", { date: instantLabel(iso, v?.tz ?? "UTC") });
+  // Mở sẵn trên desktop; 390 px (artboard Mobile) đóng sẵn để bảng giờ lên gần đầu trang.
+  const [open, setOpen] = useState(true);
+  useEffect(() => {
+    if (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 767px)").matches)
+      setOpen(false);
+  }, []);
   return (
     <details
-      open
+      open={open}
+      onToggle={(e) => {
+        setOpen(e.currentTarget.open);
+      }}
       className="rounded-tile border border-border bg-surface px-4 py-3.5 text-sm leading-normal"
     >
       <summary className="min-h-7 cursor-pointer font-extrabold">{t("how.title")}</summary>
-      <ul className="my-2 pl-5 text-ink-2">
-        {(["vol", "cost", "bots"] as const).map((k) => (
-          <li key={k}>
-            <strong className="text-ink">{t(`how.${k}Title`)}</strong>
-            {t(`how.${k}Body`)}
+      <ul className="mt-2 mb-2.5 grid list-none gap-2 p-0 text-[13px] text-ink-2 md:grid-cols-3 md:gap-3">
+        {HOW.map(([k, Icon]) => (
+          <li key={k} className="flex gap-2.5 rounded-control bg-surface-2 p-2.5">
+            <span
+              aria-hidden="true"
+              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-tint text-accent-ink"
+            >
+              <Icon size={15} strokeWidth={2.2} />
+            </span>
+            <span className="min-w-0">
+              <strong className="block text-ink">{t(`how.${k}Title`)}</strong>
+              {t(`how.${k}Body`)}
+            </span>
           </li>
         ))}
       </ul>
-      <p className="m-0 mb-1.5 text-ink-2">{t("how.note")}</p>
+      <p className="m-0 mb-1.5 text-[13px] text-ink-2">
+        {t("how.note")} <strong className="text-ink">{t("how.cpm")}</strong>
+      </p>
       <p className="m-0 mb-1.5 text-ink-2 md:hidden">
         <strong className="text-ink">{t("markers")}: </strong>
         {markers.map(label).join(", ")}
@@ -308,6 +335,7 @@ function HowToRead({
         <summary className="min-h-7 cursor-pointer font-bold text-accent-ink">
           {t("calc.title")}
         </summary>
+        <p className="mt-2 mb-0 text-ink-2">{t("calc.cpm")}</p>
         <dl className="mt-2 mb-0 flex flex-col gap-2.5 text-ink-2">
           <div>
             <dt className="font-extrabold text-ink">{t("calc.volTitle")}</dt>
@@ -333,9 +361,47 @@ function HowToRead({
   );
 }
 
-const GRID = "grid grid-cols-[202px_repeat(24,minmax(0,1fr))] items-center gap-[3px]";
+// Cột nhãn 272 px: nhãn dài nhất ("Price move against makers, 30 s later (bp)") + nút ⓘ nằm trên một dòng ở 1440.
+// Chú giải thụt vào 275 px (= nhãn + khe 3 px) để thẳng với cột giờ đầu tiên.
+const COLS = "grid grid-cols-[272px_repeat(24,minmax(0,1fr))] gap-[3px]";
+const GRID = `${COLS} items-center`;
 const CELL =
   "flex min-h-[30px] flex-col items-center justify-center rounded-[4px] text-center text-[11px] font-semibold";
+
+/** Bỏ các ngày đầu kỳ chưa có nến nào (cả 24 ô đều thiếu); ngày thiếu ở giữa kỳ vẫn giữ. */
+export function trimLeadingEmptyDays(
+  heatmap: MarketHoursView["heatmap"],
+): MarketHoursView["heatmap"] {
+  const first = heatmap.findIndex((d) => d.cells.some((c) => c.ratio !== null));
+  return first === -1 ? [] : heatmap.slice(first);
+}
+
+/** Heatmap 7 ngày: dòng cao, nhãn có thứ; 30 ngày: dòng gọn (vẫn có tooltip trên từng ô). */
+const heatRowLabel = (d: string, roomy: boolean): string =>
+  new Intl.DateTimeFormat("en-US", {
+    ...(roomy ? { weekday: "short" as const } : {}),
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(Date.parse(`${d}T00:00:00Z`));
+
+/**
+ * Nhóm dòng có đường mốc: một đường dọc mảnh màu cam ở mép trái cột giờ có mốc, liền qua khe giữa các dòng, vẽ trên lớp
+ * phủ không nhận chuột (tooltip của ô vẫn chạy). Không phủ qua tiêu đề khối, chú giải hay biểu đồ 5 phút.
+ */
+function Marked({ marked, children }: { marked: ReadonlySet<number>; children: ReactNode }) {
+  return (
+    <div className="relative flex flex-col gap-[3px]">
+      {children}
+      <div aria-hidden="true" className={`${COLS} pointer-events-none absolute inset-0`}>
+        <span />
+        {H.map((h) => (
+          <span key={h} className={marked.has(h) ? "-ml-[2px] border-l border-warn-bar" : ""} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function Desktop({
   v,
@@ -354,14 +420,17 @@ function Desktop({
   const usHour = markers.find((m) => m.us)?.hour ?? 0;
   const [sel, setSel] = useState<number>(usHour);
   const markAt = new Map(markers.map((m) => [m.hour, m]));
-  const line = (h: number) => (markAt.has(h) ? "shadow-[inset_2px_0_0_var(--warn-bar)]" : "");
+  const marked = new Set(markAt.keys());
   const strategies = v.strategy === "both" ? t("botBlock.both") : t(`strategies.${v.strategy}`);
   const selected = v.hours[sel];
   const usAtSel = markAt.get(sel)?.us === true ? markAt.get(sel) : undefined;
   const halfHour = !utcMode && offset % 60 !== 0;
+  const heat = trimLeadingEmptyDays(v.heatmap);
+  const roomy = v.days <= 7;
+  const firstDay = heat[0]?.date;
   const row = (labelText: string, help: HelpKey, cells: ReactNode[]) => (
     <div className={GRID}>
-      <span className="flex items-center gap-1 text-[12.5px] leading-tight font-bold">
+      <span className="flex items-center gap-1 pr-2 text-xs leading-tight font-bold whitespace-nowrap">
         <span className="min-w-0">{labelText}</span>
         <RowHelp label={labelText} help={help} />
       </span>
@@ -370,9 +439,9 @@ function Desktop({
   );
   return (
     <div className="hidden overflow-x-auto md:block">
-      <div className="flex min-w-[980px] flex-col gap-0.5">
+      <div className="flex min-w-[1060px] flex-col gap-1">
         <div className={GRID}>
-          <span className="self-end text-xs font-bold text-muted">{t("hour")}</span>
+          <span className="self-end pb-1 text-xs font-bold text-muted">{t("hour")}</span>
           {H.map((h) => {
             const m = markAt.get(h);
             const tag =
@@ -389,42 +458,59 @@ function Desktop({
                 onClick={() => {
                   setSel(h);
                 }}
-                className={`flex min-h-11 cursor-pointer flex-col items-center justify-end gap-0.5 rounded-lg border-0 py-0.5 text-xs font-extrabold ${line(h)} ${sel === h ? "bg-accent-tint text-accent-ink" : "bg-transparent text-ink"}`}
+                className={`flex min-h-11 cursor-pointer flex-col items-center justify-end gap-1 rounded-lg border-0 py-1 text-xs font-extrabold ${sel === h ? "bg-accent-tint text-accent-ink" : "bg-transparent text-ink hover:bg-surface-2"}`}
               >
-                <span className="min-h-3 text-[9.5px] font-extrabold whitespace-nowrap text-warn">
-                  {tag}
-                </span>
+                {tag === "" ? null : (
+                  <span className="rounded-full bg-warn-bg px-1 text-[9px] leading-[14px] font-extrabold whitespace-nowrap text-warn">
+                    {tag}
+                  </span>
+                )}
                 {pad(h)}
               </button>
             );
           })}
         </div>
 
-        <BlockHead title={t("vol.title")} sub={t("vol.sub")} />
-        {v.heatmap.map((d) => (
-          <div key={d.date} className={GRID}>
-            <span className="text-[11px] leading-3 text-muted">{dayLabel(d.date)}</span>
-            {d.cells.map((c, h) => {
-              const r = c.ratio === null ? null : Number(c.ratio);
-              const title =
-                r === null || c.medianBp === null
-                  ? t("vol.cellNa", { date: dayLabel(d.date), hour: pad(h) })
-                  : t("vol.cellTip", {
-                      date: dayLabel(d.date),
-                      hour: pad(h),
-                      bp: Number(c.medianBp).toFixed(1),
-                      ratio: r.toFixed(1),
-                    }) + (r > 2 ? t("vol.hot") : "");
-              return (
-                <span
-                  key={h}
-                  title={title}
-                  className={`h-3 rounded-[2px] outline outline-1 -outline-offset-1 outline-ink/10 ${line(h)} ${r === null ? HATCH : volBg(r)}`}
-                />
-              );
-            })}
-          </div>
-        ))}
+        <BlockHead
+          title={t("vol.title")}
+          sub={t("vol.sub")}
+          chip={
+            firstDay !== undefined && heat.length < v.days
+              ? t("vol.dataSince", { date: dayLabel(firstDay) })
+              : null
+          }
+          chipTone="info"
+        />
+        <Marked marked={marked}>
+          {heat.map((d) => (
+            <div key={d.date} className={GRID}>
+              <span
+                className={`whitespace-nowrap ${roomy ? "text-[12.5px] font-semibold text-ink-2" : "text-[11px] leading-none text-muted"}`}
+              >
+                {heatRowLabel(d.date, roomy)}
+              </span>
+              {d.cells.map((c, h) => {
+                const r = c.ratio === null ? null : Number(c.ratio);
+                const title =
+                  r === null || c.medianBp === null
+                    ? t("vol.cellNa", { date: dayLabel(d.date), hour: pad(h) })
+                    : t("vol.cellTip", {
+                        date: dayLabel(d.date),
+                        hour: pad(h),
+                        bp: Number(c.medianBp).toFixed(1),
+                        ratio: r.toFixed(1),
+                      }) + (r > 2 ? t("vol.hot") : "");
+                return (
+                  <span
+                    key={h}
+                    title={title}
+                    className={`${roomy ? "h-7 rounded-[4px]" : "h-3.5 rounded-[2px]"} outline outline-1 -outline-offset-1 outline-ink/10 ${r === null ? HATCH : volBg(r)}`}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </Marked>
         <Legend
           label={t("vol.legend")}
           items={(["b0", "b1", "b2", "b3", "b4"] as const).map((k, i) => [
@@ -433,92 +519,93 @@ function Desktop({
           ])}
           extra={[[HATCH, tm("notAvailable")]]}
         />
-        <div className="flex flex-wrap gap-x-3.5 gap-y-1 pt-0.5 pb-1.5 pl-[202px] text-xs text-ink-2">
+        <div className="flex flex-wrap gap-x-3.5 gap-y-1 pb-2 pl-[275px] text-xs text-ink-2">
           <span className="font-bold">{t("markers")}</span>
           {markers.map((m) => (
             <span key={`${String(m.utc)}-${String(m.us)}`}>{label(m)}</span>
           ))}
           <span className="text-muted">{t("usNote")}</span>
         </div>
-        {row(
-          t("vol.medianBp"),
-          "medianBp",
-          H.map((h) => <Num key={h} v={num(hourOf(v, h).volatility.medianBp)} line={line(h)} />),
-        )}
-        {row(
-          t("vol.p90Bp"),
-          "p90Bp",
-          H.map((h) => <Num key={h} v={num(hourOf(v, h).volatility.p90Bp)} line={line(h)} />),
-        )}
-        {row(
-          t("vol.ratio"),
-          "ratio",
-          H.map((h) => {
-            const r = hourOf(v, h).volatility.ratio;
-            return (
-              <Num
-                key={h}
-                v={r === null ? null : `${Number(r).toFixed(1)}×`}
-                line={line(h)}
-                {...(r === null ? {} : { bg: volBgText(Number(r)) })}
-              />
-            );
-          }),
-        )}
-        {row(
-          t("vol.hotDays"),
-          "hotDays",
-          H.map((h) => {
-            const p = hourOf(v, h).volatility.hotPct;
-            return <Num key={h} v={p === null ? null : `${String(p)}%`} line={line(h)} />;
-          }),
-        )}
-        {row(
-          t("vol.maxRange"),
-          "maxRange",
-          H.map((h) => {
-            const x = hourOf(v, h).volatility;
-            return (
-              <ShockCell
-                key={h}
-                bp={x.maxRangeBp}
-                tip={
-                  x.maxRangeBp === null || x.maxRangeAt === null
-                    ? null
-                    : t("vol.maxRangeTip", {
-                        value: Number(x.maxRangeBp).toFixed(1),
-                        at: instantTimeLabel(x.maxRangeAt, v.tz),
-                      })
-                }
-                hour={h}
-                line={line(h)}
-              />
-            );
-          }),
-        )}
-        {row(
-          t("vol.maxMove15"),
-          "maxMove15",
-          H.map((h) => {
-            const x = hourOf(v, h).volatility;
-            return (
-              <ShockCell
-                key={h}
-                bp={x.maxMove15Bp}
-                tip={
-                  x.maxMove15Bp === null || x.maxMove15At === null
-                    ? null
-                    : t("vol.maxMove15Tip", {
-                        value: Number(x.maxMove15Bp).toFixed(1),
-                        at: instantTimeLabel(x.maxMove15At, v.tz),
-                      })
-                }
-                hour={h}
-                line={line(h)}
-              />
-            );
-          }),
-        )}
+        <Marked marked={marked}>
+          {row(
+            t("vol.medianBp"),
+            "medianBp",
+            H.map((h) => <Num key={h} v={num(hourOf(v, h).volatility.medianBp)} />),
+          )}
+          {row(
+            t("vol.p90Bp"),
+            "p90Bp",
+            H.map((h) => <Num key={h} v={num(hourOf(v, h).volatility.p90Bp)} />),
+          )}
+          {row(
+            t("vol.ratio"),
+            "ratio",
+            H.map((h) => {
+              const r = hourOf(v, h).volatility.ratio;
+              return (
+                <Num
+                  key={h}
+                  v={r === null ? null : `${Number(r).toFixed(1)}×`}
+                  {...(r === null ? {} : { bg: volBgText(Number(r)) })}
+                />
+              );
+            }),
+          )}
+          {row(
+            t("vol.hotDays"),
+            "hotDays",
+            H.map((h) => {
+              const p = hourOf(v, h).volatility.hotPct;
+              return <Num key={h} v={p === null ? null : `${String(p)}%`} />;
+            }),
+          )}
+        </Marked>
+        <Marked marked={marked}>
+          {row(
+            t("vol.maxRange"),
+            "maxRange",
+            H.map((h) => {
+              const x = hourOf(v, h).volatility;
+              return (
+                <ShockCell
+                  key={h}
+                  bp={x.maxRangeBp}
+                  tip={
+                    x.maxRangeBp === null || x.maxRangeAt === null
+                      ? null
+                      : t("vol.maxRangeTip", {
+                          value: Number(x.maxRangeBp).toFixed(1),
+                          at: instantTimeLabel(x.maxRangeAt, v.tz),
+                        })
+                  }
+                  hour={h}
+                />
+              );
+            }),
+          )}
+          {row(
+            t("vol.maxMove15"),
+            "maxMove15",
+            H.map((h) => {
+              const x = hourOf(v, h).volatility;
+              return (
+                <ShockCell
+                  key={h}
+                  bp={x.maxMove15Bp}
+                  tip={
+                    x.maxMove15Bp === null || x.maxMove15At === null
+                      ? null
+                      : t("vol.maxMove15Tip", {
+                          value: Number(x.maxMove15Bp).toFixed(1),
+                          at: instantTimeLabel(x.maxMove15At, v.tz),
+                        })
+                  }
+                  hour={h}
+                />
+              );
+            }),
+          )}
+        </Marked>
         <Legend
           label={t("vol.shockLegend")}
           items={(["s0", "s1", "s2", "s3"] as const).map((k, i) => [
@@ -527,13 +614,13 @@ function Desktop({
           ])}
           extra={[]}
         />
-        {row(
-          t("vol.est"),
-          "est",
-          H.map((h) => (
-            <EstCell key={h} x={hourOf(v, h).volatility} est={v.estimate} hour={h} line={line(h)} />
-          )),
-        )}
+        <Marked marked={marked}>
+          {row(
+            t("vol.est"),
+            "est",
+            H.map((h) => <EstCell key={h} x={hourOf(v, h).volatility} est={v.estimate} hour={h} />),
+          )}
+        </Marked>
         <Legend
           label={t("vol.estLegend")}
           items={(["c0", "c1", "c2", "c3"] as const).map((k, i) => [
@@ -544,7 +631,7 @@ function Desktop({
         >
           <span>{t("botBlock.naLegend")}</span>
         </Legend>
-        <div className="mt-1.5 mb-1 flex flex-col gap-2 rounded-tile bg-surface-2 p-3">
+        <div className="mt-1 mb-1 flex flex-col gap-2 rounded-tile bg-surface-2 p-3">
           <div className="flex flex-wrap items-baseline gap-2.5">
             <strong className="text-[13.5px]">
               {t("detailTitle", { from: `${pad(sel)}:00`, to: `${pad(sel)}:59` })}
@@ -571,51 +658,49 @@ function Desktop({
           }
           note={halfHour ? t("cost.halfHour") : null}
         />
-        {row(
-          t("cost.markout"),
-          "markout",
-          H.map((h) => <Num key={h} v={num(hourOf(v, h).cost.markoutBp)} line={line(h)} />),
-        )}
-        {row(
-          t("cost.spread"),
-          "spread",
-          H.map((h) => {
-            const s = hourOf(v, h).cost.spreadTicks;
-            return <Num key={h} v={s === null ? null : s.toFixed(1)} line={line(h)} />;
-          }),
-        )}
+        <Marked marked={marked}>
+          {row(
+            t("cost.markout"),
+            "markout",
+            H.map((h) => <Num key={h} v={num(hourOf(v, h).cost.markoutBp)} />),
+          )}
+          {row(
+            t("cost.spread"),
+            "spread",
+            H.map((h) => {
+              const s = hourOf(v, h).cost.spreadTicks;
+              return <Num key={h} v={s === null ? null : s.toFixed(1)} />;
+            }),
+          )}
+        </Marked>
 
         <BlockHead title={t("botBlock.title")} sub={t("botBlock.sub", { strategies })} />
-        {row(
-          t("botBlock.cost"),
-          "cost",
-          H.map((h) => (
-            <BotCell key={h} b={hourOf(v, h).bots} hour={h} line={line(h)} kind="cost" />
-          )),
-        )}
-        {row(
-          t("botBlock.volume"),
-          "volume",
-          H.map((h) => (
-            <BotCell key={h} b={hourOf(v, h).bots} hour={h} line={line(h)} kind="volume" />
-          )),
-        )}
-        {row(
-          t("botBlock.fees"),
-          "fees",
-          H.map((h) => (
-            <BotCell key={h} b={hourOf(v, h).bots} hour={h} line={line(h)} kind="fees" />
-          )),
-        )}
-        {row(
-          t("botBlock.botHours"),
-          "botHours",
-          H.map((h) => (
-            <span key={h} className={`${CELL} bg-surface-2 ${line(h)}`}>
-              {hourOf(v, h).bots.botHours}
-            </span>
-          )),
-        )}
+        <Marked marked={marked}>
+          {row(
+            t("botBlock.cost"),
+            "cost",
+            H.map((h) => <BotCell key={h} b={hourOf(v, h).bots} hour={h} kind="cost" />),
+          )}
+          {row(
+            t("botBlock.volume"),
+            "volume",
+            H.map((h) => <BotCell key={h} b={hourOf(v, h).bots} hour={h} kind="volume" />),
+          )}
+          {row(
+            t("botBlock.fees"),
+            "fees",
+            H.map((h) => <BotCell key={h} b={hourOf(v, h).bots} hour={h} kind="fees" />),
+          )}
+          {row(
+            t("botBlock.botHours"),
+            "botHours",
+            H.map((h) => (
+              <span key={h} className={`${CELL} bg-surface-2`}>
+                {hourOf(v, h).bots.botHours}
+              </span>
+            )),
+          )}
+        </Marked>
         <Legend
           label={t("botBlock.legend")}
           items={(["c0", "c1", "c2", "c3"] as const).map((k, i) => [
@@ -662,12 +747,10 @@ function EstCell({
   x,
   est,
   hour,
-  line,
 }: {
   x: MarketHoursHour["volatility"];
   est: MarketHoursView["estimate"];
   hour: number;
-  line: string;
 }) {
   const t = useTranslations("marketHours.vol");
   const tb = useTranslations("marketHours.botBlock");
@@ -680,7 +763,7 @@ function EstCell({
             ? tb("tipNa", { hour: pad(hour) })
             : t("estNa", { hour: pad(hour), reason: t(`estReason.${est.unavailable}`) })
         }
-        className={`${CELL} ${line} ${HATCH}`}
+        className={`${CELL} ${HATCH}`}
       >
         {tb("na")}
       </span>
@@ -693,7 +776,7 @@ function EstCell({
         swing: Number(x.swingBp).toFixed(1),
         fees: Number(est.feesBp).toFixed(1),
       })}
-      className={`${CELL} ${line} ${costBg(Number(x.estCostPerMillion))}`}
+      className={`${CELL} ${costBg(Number(x.estCostPerMillion))}`}
     >
       {cost}
     </span>
@@ -833,27 +916,17 @@ function RowHelp({ label, help }: { label: string; help: HelpKey }) {
 }
 
 /** Ô "Largest 1-min range" / "Largest 15-min move": số bp làm tròn, 4 bậc tím, ▲ từ SHOCK_HOT_BP; thiếu nến → n/a. */
-function ShockCell({
-  bp,
-  tip,
-  hour,
-  line,
-}: {
-  bp: string | null;
-  tip: string | null;
-  hour: number;
-  line: string;
-}) {
+function ShockCell({ bp, tip, hour }: { bp: string | null; tip: string | null; hour: number }) {
   const tb = useTranslations("marketHours.botBlock");
   if (bp === null || tip === null)
     return (
-      <span title={tb("tipNa", { hour: pad(hour) })} className={`${CELL} ${line} ${HATCH}`}>
+      <span title={tb("tipNa", { hour: pad(hour) })} className={`${CELL} ${HATCH}`}>
         {tb("na")}
       </span>
     );
   const n = Number(bp);
   return (
-    <span title={tip} className={`${CELL} ${line} ${SHOCK_BG[shockBucket(n)] ?? ""}`}>
+    <span title={tip} className={`${CELL} ${SHOCK_BG[shockBucket(n)] ?? ""}`}>
       {n.toFixed(0)}
       {n >= SHOCK_HOT_BP ? (
         <span aria-hidden="true" className="block text-[8.5px] leading-none">
@@ -868,11 +941,14 @@ function BlockHead({
   title,
   sub,
   chip = null,
+  chipTone = "warn",
   note = null,
 }: {
   title: string;
   sub: string;
   chip?: string | null;
+  /** "warn" = đang thu thập (cam); "info" = chỉ cho biết dữ liệu bắt đầu từ ngày nào. */
+  chipTone?: "warn" | "info";
   note?: string | null;
 }) {
   return (
@@ -880,7 +956,9 @@ function BlockHead({
       <h3 className="m-0 text-[15px] font-extrabold">{title}</h3>
       <span className="text-[12.5px] text-muted">{sub}</span>
       {chip === null ? null : (
-        <span className="rounded-[10px] bg-warn-bg px-2.5 py-[3px] text-xs font-bold text-warn">
+        <span
+          className={`rounded-[10px] px-2.5 py-[3px] text-xs font-bold ${chipTone === "warn" ? "bg-warn-bg text-warn" : "bg-surface-2 text-ink-2"}`}
+        >
           {chip}
         </span>
       )}
@@ -889,10 +967,10 @@ function BlockHead({
   );
 }
 
-function Num({ v, line, bg }: { v: string | null; line: string; bg?: string }) {
+function Num({ v, bg }: { v: string | null; bg?: string }) {
   const tb = useTranslations("marketHours.botBlock");
   return (
-    <span className={`${CELL} ${line} ${v === null ? HATCH : (bg ?? "bg-surface-2")}`}>
+    <span className={`${CELL} ${v === null ? HATCH : (bg ?? "bg-surface-2")}`}>
       {v ?? tb("na")}
     </span>
   );
@@ -901,12 +979,10 @@ function Num({ v, line, bg }: { v: string | null; line: string; bg?: string }) {
 function BotCell({
   b,
   hour,
-  line,
   kind,
 }: {
   b: MarketHoursHour["bots"];
   hour: number;
-  line: string;
   kind: "cost" | "volume" | "fees";
 }) {
   const t = useTranslations("marketHours.botBlock");
@@ -914,7 +990,7 @@ function BotCell({
     kind === "cost" ? usd(b.costPerMillion) : kind === "volume" ? usdShort(b.volume) : usd(b.fees);
   if (value === null)
     return (
-      <span title={t("tipNa", { hour: pad(hour) })} className={`${CELL} ${line} ${HATCH}`}>
+      <span title={t("tipNa", { hour: pad(hour) })} className={`${CELL} ${HATCH}`}>
         {t("na")}
       </span>
     );
@@ -931,7 +1007,7 @@ function BotCell({
       ? costBg(Number(b.costPerMillion))
       : "bg-surface-2";
   return (
-    <span title={title} className={`${CELL} ${line} ${bg}`}>
+    <span title={title} className={`${CELL} ${bg}`}>
       {value}
       {b.thin ? (
         <span className="block text-[8.5px] leading-none font-extrabold text-warn">
@@ -954,7 +1030,7 @@ function Legend({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 pt-2 pb-1 pl-[202px] text-xs text-ink-2">
+    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 pt-1.5 pb-1 pl-[275px] text-xs text-ink-2">
       <span className="font-bold">{label}</span>
       {[...items, ...extra].map(([bg, text]) => (
         <span key={text} className="inline-flex items-center gap-1.5">
