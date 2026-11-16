@@ -41,11 +41,13 @@ function AiLine({ items }: { items: Item[] }) {
       <p className="m-0 text-[15px] leading-relaxed text-ink">
         {first === undefined
           ? t("aiNone")
-          : t("aiItems", {
-              count: items.length,
-              bot: first.botName,
-              what: t(`what.${first.rule}`),
-            })}
+          : first.botId === null
+            ? t("aiGoalOver", { count: items.length })
+            : t("aiItems", {
+                count: items.length,
+                bot: first.botName,
+                what: t(`what.${first.rule}`),
+              })}
       </p>
     </div>
   );

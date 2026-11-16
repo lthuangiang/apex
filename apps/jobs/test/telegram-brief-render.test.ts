@@ -30,6 +30,13 @@ describe("renderTelegram: morning brief", () => {
     expect(brief({ localDate: "2026-11-13", count: 3, bot: "ETH Grid" }).text).toBe(
       "✦ <b>Good morning</b>\nGood morning. 3 things need you today, starting with ETH Grid.",
     );
+    // Việc đầu là việc cấp account (RS-01): gọi theo việc, không dùng tên bot.
+    expect(brief({ localDate: "2026-11-13", count: 1, bot: "", first: "goal" }).text).toBe(
+      "✦ <b>Good morning</b>\nGood morning. One thing needs you today: your goal’s loss limit.",
+    );
+    expect(brief({ localDate: "2026-11-13", count: 2, bot: "", first: "goal" }).text).toBe(
+      "✦ <b>Good morning</b>\nGood morning. 2 things need you today, starting with your goal’s loss limit.",
+    );
     // Payload cũ không có lời hay số việc.
     expect(brief({}).text).toBe("✦ <b>Good morning</b>\nYour morning brief is ready in DeskLabs.");
   });
