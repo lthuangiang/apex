@@ -55,7 +55,7 @@ const pct = (rate: number) => feeLabels(rate).pct;
 
 /**
  * Trạng thái thẻ phí Market Making từ `mmFee` của GET /features:
- * - `plain`: chưa đăng nhập / `mmFee` null / `source = default` / chưa có volume → chỉ mức + bảng bậc;
+ * - `plain`: chưa đăng nhập / `mmFee` null / chưa có volume (null hoặc 0) → chỉ mức + bảng bậc;
  * - `next`: theo bậc, còn bậc thấp hơn → thanh tiến độ và câu tới bậc sau;
  * - `top`: theo bậc, bậc cao nhất → pill "Lowest rate";
  * - `custom`: team đặt tay (DEC-159) → bậc không áp dụng.
@@ -79,7 +79,9 @@ export type MmFeeView =
 export function mmFeeView(mmFee: MmFee | null | undefined, fallbackRate: number): MmFeeView {
   if (mmFee === null || mmFee === undefined) return { kind: "plain", rate: fallbackRate };
   if (mmFee.source === "custom") return { kind: "custom", rate: mmFee.rate };
-  if (mmFee.source === "default" || mmFee.volume30d === null)
+  // Bậc mặc định (dưới ngưỡng đầu) có volume thật > 0 vẫn hiện thanh tiến độ tới bậc sau (2b); chưa có volume
+  // (null) hoặc chưa khớp gì ("0") thì chỉ mức + bảng bậc, không vẽ thanh từ $0.
+  if (mmFee.volume30d === null || new Decimal(mmFee.volume30d).lte(0))
     return { kind: "plain", rate: mmFee.rate };
   if (mmFee.nextVolume !== null && mmFee.nextRate !== null) {
     const volume = new Decimal(mmFee.volume30d);

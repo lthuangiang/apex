@@ -67,7 +67,16 @@ describe("Market Making fee tiers", () => {
     expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
   });
 
-  it("source default with volume: like 2a, no progress bar and never $0", async () => {
+  it("source default with real volume under $200K: progress to $200K and the You row (2b)", () => {
+    show(
+      mm({ source: "default", rate: 3, volume30d: "39268.3", nextVolume: "200000", nextRate: 2 }),
+    );
+    expect(screen.getByText("Your builder fee")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "$39,268 of $200,000" })).toBeInTheDocument();
+    expect(screen.getByText("You")).toBeInTheDocument();
+  });
+
+  it("source default with no fills yet (volume 0): like 2a, no progress bar and never $0", async () => {
     show(mm({ source: "default", volume30d: "0" }));
     expect(screen.getByText("Builder fee 0.003%")).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
