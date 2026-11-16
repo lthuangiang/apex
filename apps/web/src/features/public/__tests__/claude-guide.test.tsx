@@ -14,7 +14,7 @@ import { ClaudeGuidePage } from "../components/claude-guide-page";
 import { LandingPage } from "../components/landing-page";
 import { mcpServerUrl } from "../mcp-url";
 
-// Trang "Connect DeskLabs to Claude" (MCP M6, W7; mockup docs/mockups/mcp-guide).
+// Trang "Connect DeskLabs to Claude" (MCP M6, W7; UI mới docs/mockups/landing-mcp/McpPage).
 
 vi.mock("../components/landing/landing-stats", () => ({ LandingStatsStrip: () => null }));
 // next/font chỉ chạy khi build (SWC); trong vitest chỉ cần tên class.
@@ -84,6 +84,28 @@ describe("Connect DeskLabs to Claude", () => {
     await expectNoAxeViolations();
   }, 15_000);
 
+  it("uses the landing look: default light, theme toggle, Launch app only, no axe violations in dark", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { container } = wrap(<ClaudeGuidePage serverUrl={URL_} signedIn />);
+    const shell = container.querySelector(".landing");
+    expect(shell).toHaveAttribute("data-theme", "light");
+    const nav = screen.getByRole("navigation", { name: "Guide sections" });
+    expect(within(nav).queryByRole("link", { name: "Sign in" })).toBeNull();
+    expect(within(nav).getByRole("link", { name: "Launch app" })).toHaveAttribute("href", "/");
+    expect(within(nav).getByRole("link", { name: "FAQ" })).toHaveAttribute("href", "#faq");
+    await user.click(screen.getByRole("button", { name: "Switch to dark" }));
+    expect(shell).toHaveAttribute("data-theme", "dark");
+    expect(screen.getByRole("button", { name: "Switch to light" })).toBeInTheDocument();
+    await expectNoAxeViolations();
+  }, 15_000);
+
+  it("starts dark when the cookie says so", () => {
+    const { container } = wrap(
+      <ClaudeGuidePage serverUrl={URL_} signedIn={false} initialTheme="dark" />,
+    );
+    expect(container.querySelector(".landing")).toHaveAttribute("data-theme", "dark");
+  });
+
   it("switches tabs with the arrow keys and shows the Claude Code command", async () => {
     const user = userEvent.setup({ delay: null });
     wrap(<ClaudeGuidePage serverUrl={URL_} signedIn />);
@@ -99,6 +121,15 @@ describe("Connect DeskLabs to Claude", () => {
       screen.getByText(`claude mcp add --transport http --scope user desklabs ${URL_}`),
     ).toBeInTheDocument();
     expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", code.id);
+    // Terminal nằm dưới các bước (artboard McpPage), câu bước 1 nói "below".
+    const panel = screen.getByRole("tabpanel");
+    const steps = within(panel).getByRole("list");
+    const terminal = within(panel).getByText("Terminal").closest("figure");
+    if (terminal === null) throw new Error("terminal missing");
+    expect(steps.compareDocumentPosition(terminal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      within(panel).getByText(/^Run the command below in your terminal\./),
+    ).toBeInTheDocument();
     await user.keyboard("{ArrowLeft}");
     expect(web).toHaveFocus();
     expect(screen.getByText("Good to know")).toBeInTheDocument();

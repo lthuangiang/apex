@@ -32,7 +32,7 @@ test("public pages pass axe, only the landing is indexable, 404 has DRIFT chrome
   expect(problems).toEqual([]);
 
   await page.goto("/");
-  await expect(page).toHaveTitle("DeskLabs · Automated trading strategies on SoDEX");
+  await expect(page).toHaveTitle("DeskLabs · Volume on SoDEX, built mostly with maker orders");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /^index/);
   await expect(page.locator('meta[property="og:image"]')).toHaveCount(1);
   await page.goto("/risk-disclosure");

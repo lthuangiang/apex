@@ -4367,8 +4367,8 @@
     }
   },
   "landing": {
-    "metaTitle": "{brand} · Automated trading strategies on SoDEX",
-    "metaDescription": "Trading bots, an AI desk and copy trading on your own SoDEX account. Every decision logged, every fill analysed, and your funds never leave your account.",
+    "shareTitle": "{brand} · Volume on SoDEX, built mostly with maker orders",
+    "shareDescription": "Market Making and Volume Builder on your own SoDEX account. Every decision logged; it can never withdraw your funds.",
     "nav": {
       "label": "Main",
       "strategies": "Strategies",
@@ -5664,8 +5664,8 @@
     }
   },
   "claudeGuide": {
-    "metaTitle": "Connect DeskLabs to Claude",
-    "metaDescription": "Connect DeskLabs to Claude and ask about your bots, portfolio, risk and the traders you follow. Claude reads; you decide.",
+    "shareTitle": "Ask Claude about your DeskLabs bots",
+    "shareDescription": "Connect DeskLabs to Claude and ask about your bots, portfolio and risk. Claude reads; you decide.",
     "brand": "DeskLabs",
     "navLabel": "Guide sections",
     "nav": {
@@ -5676,6 +5676,7 @@
       "faq": "FAQ"
     },
     "launch": "Launch app",
+    "disconnectLimitsLabel": "Disconnect and limits",
     "hero": {
       "eyebrow": "DeskLabs for Claude",
       "title": "Ask Claude about your bots",
@@ -5748,7 +5749,7 @@
       "code": {
         "s1": {
           "title": "Add the server",
-          "body": "Run the command on the right in your terminal. Already added DeskLabs on claude.ai with the same account? Claude Code has it already: skip this step."
+          "body": "Run the command below in your terminal. Already added DeskLabs on claude.ai with the same account? Claude Code has it already: skip this step."
         },
         "s2": {
           "title": "Sign in",
