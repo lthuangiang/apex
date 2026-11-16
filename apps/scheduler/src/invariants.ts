@@ -532,14 +532,14 @@ export async function p4FilledNet(
   const lo = base === null ? null : Math.min(base, upTo);
   const ordersFrom =
     lo === null ? q.from : new Date(Math.max(q.from.getTime(), lo - PROD_INVARIANTS.p4OrderLagMs));
-  const signed = sql`case when ${orders.side} = buy then ${fills.size} else -${fills.size} end`;
+  const signed = sql`case when ${orders.side} = 'buy' then ${fills.size} else -${fills.size} end`;
   const [x] = await db
     .select({
       // Fill trong (mốc, upTo]: cộng vào; fill trong (upTo, mốc] (sổ cái cũ hơn mốc): trừ ra.
       tail: sql<string>`coalesce(sum(case when ${fills.createdAt} <= ${q.upTo} then ${signed} else -(${signed}) end), 0)::text`,
       // Phần tới mốc mới (để lưu).
       safe: sql<string>`coalesce(sum(case when ${fills.createdAt} <= ${new Date(safe)} and ${fills.createdAt} <= ${q.upTo} then ${signed} else 0 end), 0)::text`,
-      decimals: sql<number>`coalesce(max(length(rtrim(split_part(${orders.size}::text, ., 2), 0))), -1)::int`,
+      decimals: sql<number>`coalesce(max(length(rtrim(split_part(${orders.size}::text, '.', 2), '0'))), -1)::int`,
     })
     .from(orders)
     .leftJoin(
