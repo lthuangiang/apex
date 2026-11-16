@@ -1,6 +1,7 @@
 {
   "telegram": {
     "aBot": "A bot",
+    "goalLimit": "your goal’s loss limit",
     "positionSide": "position",
     "buttons": {
       "review": "Review in DeskLabs",

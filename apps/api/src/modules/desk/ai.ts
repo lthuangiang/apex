@@ -493,15 +493,12 @@ export async function deskAiBrief(deps: DeskAiDeps, userId: string): Promise<Des
     {
       kind: "template",
       key: "brief",
-      // Việc đầu là việc cấp account: không có tên bot, gọi theo việc (câu chữ chờ duyệt, DEC-TBD-goal-loss-needs-you).
+      // Việc đầu là việc cấp account (DEC-TBD-goal-loss-needs-you): không có tên bot; `first` báo cho web / Telegram tự
+      // lấy câu từ i18n, API không viết câu tiếng Anh.
       params: {
         count: items.length,
-        bot:
-          items[0] === undefined
-            ? ""
-            : items[0].botId === null
-              ? "your goal's loss limit"
-              : items[0].botName,
+        bot: items[0]?.botId == null ? "" : items[0].botName,
+        first: items[0]?.botId === null ? "goal" : "bot",
       },
       facts: [],
     },

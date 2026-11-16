@@ -33,7 +33,9 @@ export interface TelegramBriefDeps extends DeskAiDeps {
 
 /** Dữ liệu của tin: lời Desk AI (đã qua kiểm tra số) hoặc tham số câu mẫu. */
 export type BriefPayload =
-  { localDate: string; text: string } | { localDate: string; count: number; bot: string };
+  | { localDate: string; text: string }
+  /** `first`: việc đầu là việc cấp account (`goal`, không có tên bot) hay của bot (DEC-TBD-goal-loss-needs-you). */
+  | { localDate: string; count: number; bot: string; first: "goal" | "bot" };
 
 async function savedBrief(deps: TelegramBriefDeps, userId: string, date: string) {
   const [t] = await deps.db
@@ -67,9 +69,16 @@ async function payloadOf(
       localDate: date,
       count: Number(answer.params.count ?? 0),
       bot: String(answer.params.bot ?? ""),
+      first: answer.params.first === "goal" ? "goal" : "bot",
     };
   const items = (await needsYou(deps, userId)).items;
-  return { localDate: date, count: items.length, bot: items[0]?.botName ?? "" };
+  const first = items[0];
+  return {
+    localDate: date,
+    count: items.length,
+    bot: first?.botId == null ? "" : first.botName,
+    first: first?.botId === null ? "goal" : "bot",
+  };
 }
 
 /** Một lượt: số tin đã xếp hàng và số user lỗi (lỗi của một user không chặn user khác). */

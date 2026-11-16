@@ -29,7 +29,7 @@ import { and, desc, eq, gte, inArray } from "drizzle-orm";
 
 import { newVersion, type BotDeps } from "../bots/service";
 
-import { goalOf, needsYou, stopCheckOf, type NeedsYouDeps } from "./needs-you";
+import { accountItemId, goalOf, needsYou, stopCheckOf, type NeedsYouDeps } from "./needs-you";
 
 // AI Desk B+ M2 (DEC-166): so sánh 2–3 phương án cho một việc "Needs you" và Apply thành version mới "AI suggested".
 // API sinh phương án (patch config), worker `backtest` tính kết quả 7 ngày (replay lệnh thật / backtest nến). Apply đi
@@ -45,6 +45,9 @@ const STOP_FIELD: Partial<Record<string, RiskInput["stopField"]>> = {
 };
 
 async function ownItem(deps: BotDeps, userId: string, itemId: string) {
+  // Việc cấp account không có bot nên không có so sánh (DEC-TBD-goal-loss-needs-you): báo rõ, không 404 mơ hồ.
+  if (itemId === accountItemId(userId, "goal_loss_over"))
+    throw new AppError(ErrorCode.stateConflict, "This item has no comparison.");
   const [item] = await deps.db
     .select()
     .from(deskItems)

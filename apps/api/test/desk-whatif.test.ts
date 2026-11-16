@@ -464,6 +464,12 @@ describe("what-if and Apply", () => {
       `/api/v1/desk/needs-you/${h.items[0]?.id ?? ""}/later`,
     );
     expect(errorOf(later.json()).code).toBe("STATE_CONFLICT");
+    // Không có bot nên không có so sánh: lỗi rõ ràng, không 404 mơ hồ.
+    const compare = await client.request(
+      "POST",
+      `/api/v1/desk/needs-you/${h.items[0]?.id ?? ""}/whatif`,
+    );
+    expect(errorOf(compare.json()).code).toBe("STATE_CONFLICT");
     expect((await home()).items[0]?.rule).toBe("goal_loss_over");
   });
 
