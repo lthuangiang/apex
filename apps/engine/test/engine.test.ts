@@ -556,7 +556,9 @@ describe("engine", () => {
     const init = gw.received.find((o) => o.tag === "grid:init");
     expect(init).toBeDefined();
     await e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock);
-    const buy = gw.received.find((o) => o.side === "buy" && o.type === "limit");
+    // Lệnh mua mức 95 (grid:1): lệnh bán đối ứng ở 100 không đụng lệnh nào của chính bot. Mua ở 90 thì lệnh bán 95
+    // sẽ đụng lệnh mua 95 của bot (SELF_TRADE_BLOCKED) và không có lệnh nào được đặt.
+    const buy = gw.received.find((o) => o.tag === "grid:1:buy");
     expect(buy).toBeDefined();
     const before = gw.received.length;
     await e.onFill(

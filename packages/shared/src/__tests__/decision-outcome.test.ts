@@ -11,7 +11,7 @@ describe("decision outcome (BD-02)", () => {
     expect(decisionOutcome([])).toBeNull();
   });
 
-  it("says Filled only when every order filled, Partly filled otherwise", () => {
+  it("says Filled only when every order filled, Partially filled otherwise", () => {
     expect(decisionOutcome([o("filled", "1")])).toBe("filled");
     expect(decisionOutcome([o("filled", "1"), o("filled", "2")])).toBe("filled");
     expect(decisionOutcome([o("partially_filled", "0.5")])).toBe("partly_filled");
