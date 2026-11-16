@@ -75,6 +75,7 @@ describe("WorkspaceShell sidebar order", () => {
       "Builder Revenue",
       "Users",
       "Platform Stats",
+      "Ops",
       "Settings",
     ]);
   });
@@ -112,6 +113,7 @@ describe("WorkspaceShell sidebar order", () => {
       "Builder Revenue",
       "Users",
       "Platform Stats",
+      "Ops",
     ]);
   }, 15_000);
 

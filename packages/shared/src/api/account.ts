@@ -524,3 +524,40 @@ export const platformStatsQuerySchema = z.object({
   period: z.coerce.number().int().min(7).max(90).default(30),
 });
 export type PlatformStatsQuery = z.infer<typeof platformStatsQuerySchema>;
+
+/**
+ * Trang Ops của team (PR C, DEC-276): một hàng mỗi bot Market Making / Volume Farm thật đang chạy hoặc dừng
+ * trong 24 giờ. Mọi số không tính được là null (UI: "Not available"), không bao giờ 0 thay cho "không biết".
+ */
+export const teamOpsBotSchema = z.object({
+  botId: uuidSchema,
+  /** Chủ bot: link sang trang admin của user (route của bot chỉ chủ bot mở được). */
+  userId: uuidSchema,
+  name: z.string(),
+  strategy: z.string(),
+  market: z.string(),
+  state: z.string(),
+  /** Cùng công thức với trang bot (#129). */
+  costPerMillion: decimalStringSchema.nullable(),
+  /** Σ giá × khối lượng của fill trong 60 phút (USDC); null khi không có fill. */
+  volumeHour: decimalStringSchema.nullable(),
+  /** Từ dòng "Order requests" gần nhất (≤ 5 phút), quy về mỗi phút; null với bot không ghi dòng đó. */
+  requestsPerMinute: decimalStringSchema.nullable(),
+  /** Tỷ lệ notional khớp maker trong 60 phút, 0–100; null khi không có fill. */
+  makerSharePct: decimalStringSchema.nullable(),
+  /** Số lệnh "Cancelled untracked order" trong 24 giờ. */
+  untrackedCancels: z.number().int(),
+  /** Số lần "Position cut" trong 24 giờ. */
+  positionCuts: z.number().int(),
+  /** Khoảng dài nhất giữa hai lần xét báo giá trong 60 phút (giây), từ dòng "Order requests"; null khi không có. */
+  maxQuoteGapSec: decimalStringSchema.nullable(),
+  /** Lần vi phạm bất biến gần nhất (DEC-274); null = chưa có vi phạm nào. */
+  latestInvariant: z
+    .object({ invariant: z.string(), at: isoDateTimeSchema, detail: z.string() })
+    .nullable(),
+});
+export const teamOpsViewSchema = z.object({
+  checkedAt: isoDateTimeSchema,
+  bots: z.array(teamOpsBotSchema),
+});
+export type TeamOpsView = z.infer<typeof teamOpsViewSchema>;
