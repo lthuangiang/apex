@@ -596,6 +596,9 @@ describe("engine", () => {
     expect(gw.leverage.map((l) => l.leverage)).toContain(2);
     expect(gw.settings.get("BTC-USD")?.leverage).toBe(2);
     await e.stop();
+    // Bot nằm lại trong DB dùng chung: dừng hẳn để engine của test sau không chạy bot BTC-USD này (thêm lần đặt đòn bẩy).
+    const { eq } = await import("drizzle-orm");
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
   });
 
   it("marks a timed-out order unknown, never resends it, and reconciles it", async () => {
