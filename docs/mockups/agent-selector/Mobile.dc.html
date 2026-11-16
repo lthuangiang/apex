@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Switch bot · phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1d47b8}a:hover{color:#141a33}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+input::placeholder{color:#5f6684}
+</style>
+</helmet>
+<div class="num" style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; background: #eef1fa; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif">
+  <div aria-hidden="true" style="padding: 16px; display: flex; flex-direction: column; gap: 12px">
+    <strong style="font-size: 24px">Trading Agent</strong>
+    <div style="height: 64px; border-radius: 18px; background: #ffffff"></div>
+  </div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgb(20 26 51 / .45)"></div>
+
+  <div role="dialog" aria-modal="true" aria-labelledby="sheet-h" style="position: absolute; left: 0; right: 0; bottom: 0; height: 760px; box-sizing: border-box; border-radius: 24px 24px 0 0; background: #ffffff; display: flex; flex-direction: column">
+    <div aria-hidden="true" style="align-self: center; width: 40px; height: 5px; border-radius: 3px; background: #d5dcf2; margin-top: 8px"></div>
+    <div style="padding: 8px 16px 10px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid #e3e7f5">
+      <div style="display: flex; align-items: center; gap: 8px">
+        <h2 id="sheet-h" style="margin: 0; font-size: 18px; font-weight: 800">Switch bot</h2>
+        <span style="font-size: 13px; color: #5f6684">26 bots</span>
+        <span style="padding: 2px 6px; border-radius: 6px; background: #f0e6ff; color: #5a2ca0; font-size: 10.5px; font-weight: 800">SAMPLE</span>
+        <a href="MobileClosed.dc.html" aria-label="Close" style="margin-left: auto; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; color: #141a33"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg></a>
+      </div>
+      <label style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid #d5dcf2">
+        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#5f6684" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <span class="sr">Find a bot</span>
+        <input type="search" placeholder="Search name, market or id" style="flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 16px; background: transparent">
+      </label>
+      <div role="group" aria-label="State" style="display: flex; gap: 6px; overflow-x: auto; margin: 0 -16px; padding: 0 16px 2px">
+        <sc-for list="{{chips}}" as="c" hint-placeholder-count="5">
+          <button type="button" aria-pressed="{{c.on}}" style="{{c.style}}">{{c.label}}</button>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 8px">
+        <button type="button" style="flex: 1; min-height: 40px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; color: #141a33">Strategy: All</button>
+        <button type="button" style="flex: 1; min-height: 40px; border-radius: 12px; border: 1px solid #d5dcf2; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; color: #141a33">Market: All</button>
+      </div>
+    </div>
+    <div style="flex: 1; overflow-y: auto; padding: 4px 8px 16px">
+      <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+        <div style="padding: 10px 8px 4px; font-size: 11.5px; font-weight: 800; letter-spacing: .04em; color: {{g.color}}">{{g.title}} <span style="color: #5f6684">{{g.count}}</span></div>
+        <sc-for list="{{g.rows}}" as="r" hint-placeholder-count="3">
+          <a href="MobileClosed.dc.html" aria-current="{{r.current}}" style="{{r.box}}">
+            <span style="min-width: 0; display: flex; flex-direction: column; gap: 2px">
+              <span style="display: flex; align-items: baseline; gap: 6px; min-width: 0"><strong style="font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.name}}</strong><span style="font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: #5f6684; flex: none">··{{r.id}}</span></span>
+              <span style="font-size: 12px; color: #3b4262; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.market}} · v{{r.v}} · {{r.summary}}</span>
+              <sc-if value="{{r.hasReason}}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; font-weight: 700; color: #a72826">{{r.reason}}</span></sc-if>
+            </span>
+            <span style="display: flex; flex-direction: column; align-items: flex-end; gap: 3px">
+              <span style="{{r.pill}}">{{r.stateLabel}}</span>
+              <span style="{{r.pnlStyle}}">{{r.pnl}}</span>
+            </span>
+          </a>
+        </sc-for>
+      </sc-for>
+      <button type="button" style="width: 100%; min-height: 44px; margin-top: 6px; border-radius: 12px; border: 1px dashed #d5dcf2; background: #f5f7fd; font: inherit; font-size: 13.5px; font-weight: 700; color: #3b4262">Show 10 stopped bots</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+const BOTS = [
+ ['a91c04e7','ETH Market Making','ETH-USD','paused',3,'$100 · 2 bp','-14.20','▲ Paused: max loss reached'],
+ ['5be2d810','SOL Futures Grid','SOL-USD','running',2,'$300 · 3× · 24 levels','+2.61','▲ SoDEX rejected 3 orders'],
+ ['3f0a9d21','BTC Market Making','BTC-USD','running',4,'$50 · 1 bp · Smart quoting','+18.42',''],
+ ['c7e19b02','BTC Market Making','BTC-USD','running',2,'$200 · 2 bp · Fixed spread','+4.10',''],
+ ['0d44fa6c','BTC Market Making','BTC-USD','running',1,'$50 · 3 bp · Smart quoting','nofills',''],
+ ['e2b7713a','ETH Market Making','ETH-USD','running',5,'$100 · 1 bp · Smart quoting','-2.35',''],
+ ['71aa3c90','BTC Spot Grid','BTC/USDC','running',2,'$500 · 20 levels','+31.07',''],
+ ['b6d1f2a4','SOL Recurring Buy','SOL/USDC','running',1,'$25 every day',null,'']
+];
+const PILL = { running: ['Running', '#ddf4e7', '#0f7a43'], paused: ['Paused', '#fdebd3', '#7a3e00'] };
+class Component extends DCLogic {
+  renderVals() {
+    const row = function (b, attn) {
+      const cur = b[0] === '3f0a9d21', p = b[6];
+      let t = 'Not available', st = 'font-size: 12px; font-weight: 600; color: #5f6684';
+      if (p === 'nofills') t = 'No fills yet';
+      else if (p) { const up = p[0] === '+'; t = (up ? '▲ +$' : '▼ −$') + p.slice(1); st = 'font-size: 12.5px; font-weight: 800; color: ' + (up ? '#0f7a43' : '#a72826'); }
+      return { id: b[0], name: b[1], market: b[2], v: b[4], summary: b[5], reason: b[7], hasReason: attn, pnl: t, pnlStyle: st,
+        stateLabel: PILL[b[3]][0], pill: 'padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 800; white-space: nowrap; background: ' + PILL[b[3]][1] + '; color: ' + PILL[b[3]][2],
+        current: cur ? 'page' : 'false',
+        box: 'display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; min-height: 56px; padding: 8px 10px; border-radius: 14px; text-decoration: none; color: #141a33; ' + (cur ? 'background: #e6ecfe; border: 2px solid #2e62e8' : 'border: 2px solid transparent') };
+    };
+    const chip = function (on) { return 'flex: none; min-height: 36px; padding: 0 12px; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 800; border: 1px solid ' + (on ? '#2e62e8' : '#d5dcf2') + '; background: ' + (on ? '#2e62e8' : '#ffffff') + '; color: ' + (on ? '#ffffff' : '#141a33'); };
+    return {
+      chips: [['Live 16', 1], ['Running 11', 0], ['Paused 5', 0], ['Stopped 10', 0], ['Archived 3', 0]].map(function (c) { return { label: c[0], on: c[1] ? 'true' : 'false', style: chip(c[1]) }; }),
+      groups: [
+        { title: 'NEEDS ATTENTION', count: 2, color: '#a72826', rows: BOTS.slice(0, 2).map(function (b) { return row(b, true); }) },
+        { title: 'RUNNING', count: 10, color: '#3b4262', rows: BOTS.slice(2).map(function (b) { return row(b, false); }) }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

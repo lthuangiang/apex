@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bot selector · data and keyboard notes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#ffffff}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:#f5f7fd;padding:1px 5px;border-radius:5px}
+</style>
+</helmet>
+<div style="box-sizing: border-box; padding: 40px; background: #ffffff; color: #141a33; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; display: flex; flex-direction: column; gap: 28px; min-height: 1300px">
+  <h1 style="margin: 0; font-size: 28px; font-weight: 800">Notes for build · option A</h1>
+
+  <section style="display: flex; flex-direction: column; gap: 10px">
+    <h2 style="margin: 0; font-size: 18px; font-weight: 800">Each value on a row, and where it comes from</h2>
+    <div role="table" aria-label="Fields" style="display: flex; flex-direction: column; border: 1px solid #e3e7f5; border-radius: 16px; overflow: hidden; font-size: 14px">
+      <div role="row" style="display: grid; grid-template-columns: 220px 340px minmax(0, 1fr); background: #f5f7fd; font-weight: 800">
+        <span role="columnheader" style="padding: 10px 14px">Shown</span><span role="columnheader" style="padding: 10px 14px">GET /api/v1/bots (botSummarySchema)</span><span role="columnheader" style="padding: 10px 14px">Status</span>
+      </div>
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
+        <div role="row" style="display: grid; grid-template-columns: 220px 340px minmax(0, 1fr); border-top: 1px solid #e3e7f5">
+          <span role="cell" style="padding: 10px 14px; font-weight: 700">{{r.a}}</span>
+          <span role="cell" style="padding: 10px 14px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: #3b4262">{{r.b}}</span>
+          <span role="cell" style="padding: 10px 14px; display: flex; gap: 8px; align-items: baseline"><span style="{{r.chip}}">{{r.s}}</span><span style="color: #3b4262">{{r.c}}</span></span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 18px; font-weight: 800">Order and grouping</h2>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.5; color: #3b4262">
+        <li>Groups: Needs attention (<code>needsAttention</code>) → Running (incl. starting, resuming) → Paused (incl. pausing, stopping) → Stopped. Archived only under its own filter.</li>
+        <li>Inside a group: newest <code>updatedAt</code> first. Same name: newest <code>createdAt</code> first.</li>
+        <li>Stopped is collapsed behind “Show N stopped bots”. Typing a search opens every state except Archived.</li>
+        <li>PAPER bots keep the PAPER chip on the row.</li>
+        <li>/agent with no id opens the first row of the first group, as today.</li>
+      </ul>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <h2 style="margin: 0; font-size: 18px; font-weight: 800">Keyboard and screen reader</h2>
+      <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.5; color: #3b4262">
+        <li>Trigger is a <code>button</code> with <code>aria-haspopup</code> and <code>aria-expanded</code>. Enter or Space opens; focus goes to the search box.</li>
+        <li>Search is a <code>combobox</code> over a <code>listbox</code>; groups are <code>role="group"</code> with a label (“Running, 10 bots”). ↑ ↓ move <code>aria-activedescendant</code>, Home / End jump, Enter opens the bot, Esc closes and returns focus to the trigger.</li>
+        <li>Option name read as: “BTC Market Making, id ending 3f0a9d21, BTC-USD, version 4, Running, net PnL up 18.42 USDC”.</li>
+        <li>The bot you are viewing has <code>aria-selected="true"</code> plus the visible “Viewing” tick, so it is never shown by colour alone.</li>
+        <li>Result count is announced in a polite live region (“3 bots match”).</li>
+        <li>Phone: the same list in a BottomSheet dialog; focus is trapped, the close button is 44 px.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1300}}'>
+const OK = 'padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; background: #ddf4e7; color: #0f7a43';
+const PART = 'padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; background: #fdebd3; color: #7a3e00';
+const NO = 'padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap; background: #fde4e1; color: #a72826';
+class Component extends DCLogic {
+  renderVals() {
+    const R = [
+      ['Name', 'name', OK, 'Have', ''],
+      ['Short id ··3f0a9d21', 'id (uuid)', OK, 'Have', 'Client side: first 8 hex of the uuid (to confirm: first or last 8).'],
+      ['Market', 'market, marketLabel', OK, 'Have', 'Show via useMarketNames, as today.'],
+      ['Strategy + badge', 'strategy', OK, 'Have', ''],
+      ['State pill', 'state', OK, 'Have', 'Transitional states keep their own label (Starting…, Pausing…).'],
+      ['Needs attention + reason line', 'needsAttention, reasonCode, stopDetail', OK, 'Have', 'Reason text from useReasonLabel, as the page does now.'],
+      ['Version v4', 'activeVersion', OK, 'Have', 'null → hide “v”.'],
+      ['Created Nov 2', 'createdAt', OK, 'Have', ''],
+      ['Net PnL', 'netPnl, fills', OK, 'Have', 'null → “Not available”; fills = 0 → “No fills yet”. Lifetime, not 24 h.'],
+      ['Waiting for price', 'waiting', OK, 'Have', ''],
+      ['PAPER chip', 'mode', OK, 'Have', ''],
+      ['Capital part of the summary ($50)', 'capital, capitalUnit', OK, 'Have', ''],
+      ['Rest of the summary (1 bp · Smart quoting)', 'not in list', NO, 'Missing', 'Needs a server-built summary string (or config) on each list item.'],
+      ['24 h volume', 'not in list', NO, 'Missing', 'Not shown in this design. Add later only if the API returns it.'],
+      ['Archived rows', 'state = archived', PART, 'Have data', 'The page filters them out today, and DEC-263 keeps them out of the selector.']
+    ];
+    return { rows: R.map(function (r) { return { a: r[0], b: r[1], chip: r[2], s: r[3], c: r[4] }; }) };
+  }
+}
+</script>
+</body>
+</html>
