@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 
 import { feeLabels } from "@/lib/format";
 
-import { PublicFooter } from "./landing-page";
+import { PublicFooter } from "./public-footer";
 import { PublicHeader } from "./public-header";
 
 // Risk Disclosure công khai (artboard "Public · Risk Disclosure", UI_REVIEW mục L). Trang pháp lý duy nhất:

@@ -3,7 +3,8 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { getTranslations } from "next-intl/server";
 
-import { ClaudeGuidePage, mcpServerUrl } from "@/features/public";
+import { ClaudeGuidePage } from "@/features/public/components/claude-guide-page";
+import { mcpServerUrl } from "@/features/public/mcp-url";
 
 // Trang công khai "Connect DeskLabs to Claude" (MCP M6, W7). Địa chỉ server đọc từ env `MCP_PUBLIC_URL` lúc chạy (cùng
 // biến với api / mcp), nên đổi tên miền chỉ cần đặt env và khởi động lại web.

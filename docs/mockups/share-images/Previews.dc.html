@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Share previews</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0;background:#e9ecf3}button:focus-visible{outline:3px solid #8fb0ff;outline-offset:2px}</style>
+</helmet>
+<div style="box-sizing: border-box; padding: 32px; background: #e9ecf3; color: #10152b; font-family: Inter, system-ui, sans-serif; display: flex; flex-direction: column; gap: 24px">
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px">
+    <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">How the link looks when shared</h1>
+    <span style="font-size: 13px; color: #5a6283">Approximate layouts, not exact platform UI.</span>
+    <div style="margin-left: auto; display: flex; gap: 12px; flex-wrap: wrap">
+      <div role="group" aria-label="Page" style="display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: #ffffff">
+        <button type="button" aria-pressed="{{landingOn}}" onClick="{{pickLanding}}" style="{{landingBtn}}">Landing</button>
+        <button type="button" aria-pressed="{{claudeOn}}" onClick="{{pickClaude}}" style="{{claudeBtn}}">/claude</button>
+      </div>
+      <div role="group" aria-label="Image theme" style="display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: #ffffff">
+        <button type="button" aria-pressed="{{darkOn}}" onClick="{{pickDark}}" style="{{darkBtn}}">Dark image</button>
+        <button type="button" aria-pressed="{{lightOn}}" onClick="{{pickLight}}" style="{{lightBtn}}">Light image</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, 440px); gap: 24px; align-items: start">
+
+    <section aria-label="X" style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 15px; color: #5a6283">X (summary_large_image)</h2>
+      <div style="background: #ffffff; border-radius: 16px; padding: 16px; display: flex; gap: 12px">
+        <span aria-hidden="true" style="flex: 0 0 40px; height: 40px; border-radius: 50%; background: #2e62e8"></span>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 14px"><strong>[Account name]</strong> <span style="color: #5a6283">· 2h</span></span>
+          <span style="font-size: 14.5px; line-height: 1.45">{{postText}}</span>
+          <div style="position: relative; width: 100%; aspect-ratio: 1200 / 630; border-radius: 14px; overflow: hidden; border: 1px solid #dfe3f0">
+            <div style="width: 1200px; height: 630px; transform: scale({{scale}}); transform-origin: 0 0">
+              <sc-if value="{{isLanding}}" hint-placeholder-val="{{ true }}"><dc-import name="Main" theme="{{theme}}" hint-size="1200px,630px"></dc-import></sc-if>
+              <sc-if value="{{isClaude}}" hint-placeholder-val="{{ false }}"><dc-import name="OgClaude" theme="{{theme}}" hint-size="1200px,630px"></dc-import></sc-if>
+            </div>
+            <span style="position: absolute; left: 10px; bottom: 10px; padding: 2px 8px; border-radius: 4px; background: rgba(0,0,0,.65); color: #ffffff; font-size: 12px">desklabs.xyz</span>
+          </div>
+          <span style="font-size: 12.5px; color: #5a6283">From desklabs.xyz</span>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Facebook" style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 15px; color: #5a6283">Facebook</h2>
+      <div style="background: #ffffff; border-radius: 10px; overflow: hidden">
+        <div style="padding: 12px 14px; display: flex; gap: 10px; align-items: center">
+          <span aria-hidden="true" style="width: 36px; height: 36px; border-radius: 50%; background: #2e62e8"></span>
+          <span style="font-size: 14px"><strong>[Page name]</strong><span style="display: block; font-size: 12px; color: #5a6283">2h</span></span>
+        </div>
+        <p style="margin: 0; padding: 0 14px 10px; font-size: 14.5px; line-height: 1.45">{{postText}}</p>
+        <div style="width: 100%; aspect-ratio: 1200 / 630; overflow: hidden">
+          <div style="width: 1200px; height: 630px; transform: scale({{scaleFb}}); transform-origin: 0 0">
+            <sc-if value="{{isLanding}}" hint-placeholder-val="{{ true }}"><dc-import name="Main" theme="{{theme}}" hint-size="1200px,630px"></dc-import></sc-if>
+            <sc-if value="{{isClaude}}" hint-placeholder-val="{{ false }}"><dc-import name="OgClaude" theme="{{theme}}" hint-size="1200px,630px"></dc-import></sc-if>
+          </div>
+        </div>
+        <div style="padding: 10px 14px; background: #f0f2f5; display: flex; flex-direction: column; gap: 3px">
+          <span style="font-size: 12px; color: #5a6283; text-transform: uppercase">desklabs.xyz</span>
+          <strong style="font-size: 16px; line-height: 1.3">{{title}}</strong>
+          <span style="font-size: 13.5px; color: #3b4262; line-height: 1.4">{{desc}}</span>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Telegram" style="display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 15px; color: #5a6283">Telegram</h2>
+      <div style="padding: 16px; border-radius: 14px; background: #c9d8c4">
+        <div style="max-width: 440px; background: #ffffff; border-radius: 14px 14px 14px 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 14.5px; color: #1d63c4">{{link}}</span>
+          <div style="display: flex; gap: 8px">
+            <span aria-hidden="true" style="flex: 0 0 3px; border-radius: 2px; background: #2e7dd7"></span>
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+              <strong style="font-size: 14px; color: #2e7dd7">DeskLabs</strong>
+              <strong style="font-size: 14px">{{title}}</strong>
+              <span style="font-size: 13.5px; line-height: 1.4">{{desc}}</span>
+              <div style="margin-top: 4px; width: 100%; aspect-ratio: 1200 / 630; border-radius: 8px; overflow: hidden">
+                <div style="width: 1200px; height: 630px; transform: scale({{scaleTg}}); transform-origin: 0 0">
+                  <sc-if value="{{isLanding}}" hint-placeholder-val="{{ true }}"><dc-import name="Main" theme="{{theme}}" hint-size="1200px,630px"></dc-import></sc-if>
+                  <sc-if value="{{isClaude}}" hint-placeholder-val="{{ false }}"><dc-import name="OgClaude" theme="{{theme}}" hint-size="1200px,630px"></dc-import></sc-if>
+                </div>
+              </div>
+            </div>
+          </div>
+          <span style="align-self: flex-end; font-size: 11.5px; color: #5a6283">14:02</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section aria-label="Meta tags" style="background: #ffffff; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px">
+    <h2 style="margin: 0; font-size: 16px">Meta tags for this page</h2>
+    <pre style="margin: 0; padding: 14px; border-radius: 10px; background: #0b1020; color: #eef1fb; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word">{{meta}}</pre>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const self = this;
+    const s = this.state || {};
+    const page = s.page || 'landing';
+    const theme = s.theme || 'dark';
+    const seg = function (on) { return 'min-height: 40px; padding: 0 14px; border: 0; border-radius: 9px; font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; background: ' + (on ? '#10152b' : 'transparent') + '; color: ' + (on ? '#ffffff' : '#3b4262'); };
+    const L = {
+      landing: { title: 'DeskLabs · Volume on SoDEX, built mostly with maker orders', desc: 'Market Making and Volume Builder on your own SoDEX account. Every decision logged; it can never withdraw your funds.', link: 'https://desklabs.xyz', post: 'Market Making and Volume Builder bots on your own SoDEX account.', img: '/og/desklabs.jpg', alt: 'DeskLabs: Market Making and Volume Builder bots on SoDEX. Powered by SoDEX Builder Code.' },
+      claude: { title: 'Ask Claude about your DeskLabs bots', desc: 'Connect DeskLabs to Claude and ask about your bots, portfolio and risk. Claude reads; you decide.', link: 'https://desklabs.xyz/claude', post: 'You can now ask Claude about your DeskLabs bots.', img: '/og/claude.jpg', alt: 'DeskLabs for Claude: ask about your bots in plain words.' }
+    };
+    const d = L[page];
+    const meta = '<meta property="og:title" content="' + d.title + '">\n<meta property="og:description" content="' + d.desc + '">\n<meta property="og:image" content="https://desklabs.xyz' + d.img + '">\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">\n<meta property="og:image:alt" content="' + d.alt + '">\n<meta name="twitter:card" content="summary_large_image">\n<meta name="twitter:title" content="' + d.title + '">\n<meta name="twitter:description" content="' + d.desc + '">\n<meta name="twitter:image" content="https://desklabs.xyz' + d.img + '">';
+    return {
+      isLanding: page === 'landing', isClaude: page === 'claude', theme: theme,
+      title: d.title, desc: d.desc, link: d.link, postText: d.post, meta: meta,
+      scale: '0.2967', scaleFb: '0.3667', scaleTg: '0.311',
+      landingOn: page === 'landing' ? 'true' : 'false', claudeOn: page === 'claude' ? 'true' : 'false',
+      darkOn: theme === 'dark' ? 'true' : 'false', lightOn: theme === 'light' ? 'true' : 'false',
+      landingBtn: seg(page === 'landing'), claudeBtn: seg(page === 'claude'), darkBtn: seg(theme === 'dark'), lightBtn: seg(theme === 'light'),
+      pickLanding: function () { self.setState({ page: 'landing' }); }, pickClaude: function () { self.setState({ page: 'claude' }); },
+      pickDark: function () { self.setState({ theme: 'dark' }); }, pickLight: function () { self.setState({ theme: 'light' }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

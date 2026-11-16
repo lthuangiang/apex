@@ -19,6 +19,7 @@ import { requireAuth } from "../../plugins/session";
 
 import { setBuilderFee } from "./builder-fees";
 import { marketHours } from "./market-hours";
+import { teamOps } from "./ops";
 import {
   ackAlert,
   adminUserDetail,
@@ -171,6 +172,11 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
       requireAuth(request).userId,
       parseOrThrow(adminUsersQuerySchema, request.query),
     ),
+  );
+
+  // Trang Ops của team (PR C, DEC-276): chỉ role team.
+  app.get("/api/v1/admin/ops", async (request) =>
+    teamOps({ db: deps.db, now: deps.now, log: request.log }, requireAuth(request).userId),
   );
 
   // Market hours cho team Ops (DEC-TBD-market-hours): tz là tên IANA, kiểm bằng zod; sai → lỗi C6.

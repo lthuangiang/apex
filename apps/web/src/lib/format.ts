@@ -49,7 +49,8 @@ export function formatMoney(value: string | null, signed = false): string | null
     locale: LOCALE,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-    signDisplay: signed ? "exceptZero" : "auto",
+    // "negative" thay "auto": lỗ rất nhỏ làm tròn về 0 ra "0.00", không "−0.00" (review #150).
+    signDisplay: signed ? "exceptZero" : "negative",
   });
   return out?.replace("-", "−") ?? null;
 }

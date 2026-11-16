@@ -16,8 +16,9 @@ import { mcpServerUrl } from "../mcp-url";
 
 // Trang "Connect DeskLabs to Claude" (MCP M6, W7; mockup docs/mockups/mcp-guide).
 
-vi.mock("../components/live-book", () => ({ LiveBook: () => null }));
-vi.mock("../components/landing-stats", () => ({ LandingStats: () => null }));
+vi.mock("../components/landing/landing-stats", () => ({ LandingStatsStrip: () => null }));
+// next/font chỉ chạy khi build (SWC); trong vitest chỉ cần tên class.
+vi.mock("../landing-fonts", () => ({ LANDING_FONTS: "" }));
 
 const URL_ = "https://mcp.example.test/mcp";
 const wrap = (ui: ReactNode) =>
@@ -137,13 +138,26 @@ describe("Connect DeskLabs to Claude", () => {
 });
 
 describe("Ways in from the landing page (W7)", () => {
-  it("links the Ask from Claude card, the FAQ and the footer to /claude", () => {
-    wrap(<LandingPage />);
-    expect(screen.getByRole("heading", { level: 3, name: "Ask from Claude" })).toBeInTheDocument();
+  it("links the Claude section, the FAQ and the footer to /claude", async () => {
+    const user = userEvent.setup({ delay: null });
+    wrap(<LandingPage serverUrl={URL_} />);
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Ask Claude about your bots" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Connect in 2 minutes" })).toHaveAttribute(
+      "href",
+      "/claude#connect",
+    );
+    expect(screen.getByRole("link", { name: "See what it can do" })).toHaveAttribute(
+      "href",
+      "/claude#what",
+    );
+    expect(screen.getByLabelText("Server address")).toHaveValue(URL_);
+    // FAQ về Claude (mở câu hỏi đó) và footer dẫn tới /claude.
+    await user.click(screen.getByRole("button", { name: /Can I use DeskLabs with Claude\?/ }));
     const links = screen.getAllByRole("link").filter((a) => a.getAttribute("href") === "/claude");
     expect(links.map((a) => a.textContent.trim())).toEqual(
       expect.arrayContaining(["Connect Claude", "See how to connect"]),
     );
-    expect(links.length).toBeGreaterThanOrEqual(3);
   });
 });

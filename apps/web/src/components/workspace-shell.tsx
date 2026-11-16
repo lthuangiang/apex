@@ -4,6 +4,7 @@ import { BotState, botListSchema } from "@drift/shared";
 import { AppShell, LiveBadge, type MobileNav, type NavItem } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
   BarChart3,
   BrainCircuit,
   Bot,
@@ -69,7 +70,8 @@ const ITEMS = [
   ["revenue", "/admin/builder-revenue", Coins, "team"],
   ["users", "/admin/users", Users, "team"],
   ["stats", "/admin/stats", BarChart3, "team"],
-  // Market hours (DEC-TBD-market-hours): ngay sau Ops khi trang Ops (#158) vào main.
+  ["ops", "/admin/ops", Activity, "team"],
+  // Market hours (DEC-TBD-market-hours): ngay sau Ops.
   ["marketHours", "/admin/market-hours", Clock, "team"],
   ["settings", "/settings", Settings, "secondary"],
 ] as const satisfies readonly (readonly [
@@ -84,7 +86,13 @@ export type WorkspaceKey = (typeof ITEMS)[number][0];
 const COPY_ITEMS: ReadonlySet<WorkspaceKey> = new Set(["traders", "following"]);
 
 // Chỉ role `team`; api vẫn tự kiểm tra role (DEC-64).
-const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set(["revenue", "users", "stats", "marketHours"]);
+const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set([
+  "revenue",
+  "users",
+  "stats",
+  "ops",
+  "marketHours",
+]);
 
 export function WorkspaceShell({
   current,
@@ -147,6 +155,8 @@ export function WorkspaceShell({
         "revenue",
         "users",
         "stats",
+        "ops",
+        "marketHours",
       ]),
       footer: <MoreFooter />,
     },

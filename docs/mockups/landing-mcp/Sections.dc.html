@@ -38,6 +38,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #5b8cff;outline-offset:2p
           <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; border-top: 1px solid {{c.line2}}; font-size: 15px; line-height: 1.5"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">01</span><span>Smart quoting follows the live SoDEX book and the Binance price, and closes the position if price runs 15 bp against it <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{c.accent}}">BETA</span></span></li>
           <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; border-top: 1px solid {{c.line2}}; font-size: 15px; line-height: 1.5"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">02</span><span>Live order book with your quotes marked</span></li>
           <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; border-top: 1px solid {{c.line2}}; font-size: 15px; line-height: 1.5"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">03</span><span>Cost cap: stops itself before it spends more than you set</span></li>
+          <li style="display: grid; grid-template-columns: 40px minmax(0, 1fr); padding: 12px 0; border-top: 1px solid {{c.line2}}; font-size: 15px; line-height: 1.5"><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: {{c.muted}}">04</span><span>Builder fee drops to 0.002% and 0.001% as your volume grows</span></li>
         </ol>
         <a href="#" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 48px; padding: 0 20px; border-radius: 8px; background: #2e62e8; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 600">Start Market Making</a>
       </article>
@@ -167,19 +168,19 @@ button:focus-visible,a:focus-visible{outline:2px solid #5b8cff;outline-offset:2p
           <thead>
             <tr style="color: {{c.muted}}; font-size: 12.5px; text-align: left; border-bottom: 1px solid {{c.line}}">
               <th scope="col" style="padding: 0 0 12px; font-weight: 500">Strategy</th>
-              <th scope="col" style="padding: 0 0 12px; font-weight: 500">Market Making volume, 30 days</th>
-              <th scope="col" style="padding: 0 0 12px; font-weight: 500; text-align: right">Builder fee</th>
+              <th scope="col" style="padding: 0 0 12px; font-weight: 500">Your Market Making volume, last 30 days</th>
+              <th scope="col" style="padding: 0 0 12px; font-weight: 500; text-align: right">Fee</th>
             </tr>
           </thead>
           <tbody>
             <tr style="border-bottom: 1px solid {{c.line2}}"><th scope="row" rowspan="3" style="padding: 16px 16px 16px 0; text-align: left; vertical-align: top; font-weight: 600">Market Making</th><td style="padding: 16px 0; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: {{c.text2}}">Under $200K</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px">0.003%</td></tr>
             <tr style="border-bottom: 1px solid {{c.line2}}"><td style="padding: 16px 0; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: {{c.text2}}">$200K to $1M</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px">0.002%</td></tr>
-            <tr style="border-bottom: 1px solid {{c.line}}"><td style="padding: 16px 0; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: {{c.text2}}">$1M and above</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px; color: {{c.accent}}">0.001%</td></tr>
+            <tr style="border-bottom: 1px solid {{c.line}}"><td style="padding: 16px 0; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; color: {{c.text2}}">$1M and up</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px; color: {{c.accent}}">0.001%</td></tr>
             <tr style="border-bottom: 1px solid {{c.line}}"><th scope="row" style="padding: 16px 16px 16px 0; text-align: left; font-weight: 600">Volume Builder</th><td style="padding: 16px 0; font-size: 13.5px; color: {{c.muted}}">One rate</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px">0.005%</td></tr>
             <tr><th scope="row" style="padding: 16px 16px 16px 0; text-align: left; font-weight: 600">Every other strategy</th><td style="padding: 16px 0; font-size: 13.5px; color: {{c.muted}}">One rate</td><td style="padding: 16px 0; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 20px">0.01%</td></tr>
           </tbody>
         </table>
-        <p style="margin: 14px 0 0; font-size: 13px; color: {{c.muted}}">Market Making volume counts fills of your real-money Market Making bots. The rate updates every hour; no new signature needed.</p>
+        <p style="margin: 14px 0 0; font-size: 13px; color: {{c.muted}}">Market Making gets cheaper as you trade more. We check your last 30 days every hour, and new orders use the new rate right away. No new signature.</p>
       </div>
     </div>
   </section>

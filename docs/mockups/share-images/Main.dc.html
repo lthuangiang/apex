@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DeskLabs share image landing</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>body{margin:0}</style>
+</helmet>
+<div style="width: 1200px; height: 630px; box-sizing: border-box; padding: 56px 64px; background: {{c.bg}}; color: {{c.text}}; font-family: Inter, sans-serif; display: flex; gap: 48px; position: relative; overflow: hidden">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background-image: linear-gradient({{c.grid}} 1px, transparent 1px), linear-gradient(90deg, {{c.grid}} 1px, transparent 1px); background-size: 48px 48px"></div>
+
+  <div style="position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 26px">
+    <div style="display: flex; align-items: center; gap: 14px">
+      <svg width="52" height="52" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#2E62E8"></rect><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#FFFFFF"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#FFFFFF" opacity="0.7"></rect></svg>
+      <span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 34px">DeskLabs</span>
+    </div>
+    <p style="margin: 0; display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 20px; color: {{c.muted}}"><span style="width: 10px; height: 10px; border-radius: 50%; background: {{c.live}}"></span>On SoDEX mainnet</p>
+    <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 66px; line-height: 1.02; letter-spacing: -0.02em">Volume on SoDEX, built mostly with maker orders.</h1>
+    <div style="margin-top: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid {{c.line}}; border-bottom: 1px solid {{c.line}}">
+      <div style="padding: 14px 14px 14px 0; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid {{c.line}}"><span style="font-size: 17px; color: {{c.muted}}">Withdraw or transfer</span><strong style="font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 500; color: {{c.never}}">Never</strong></div>
+      <div style="padding: 14px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid {{c.line}}"><span style="font-size: 17px; color: {{c.muted}}">Seed phrase</span><strong style="font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 500">Never asked</strong></div>
+      <div style="padding: 14px; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 17px; color: {{c.muted}}">Connect</span><strong style="font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 500">Two signatures</strong></div>
+    </div>
+  </div>
+
+  <div style="position: relative; flex: 0 0 400px; display: flex; flex-direction: column; gap: 14px">
+    <div style="flex: 1; border: 1px solid {{c.line}}; border-radius: 14px; background: {{c.surface}}; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: baseline"><strong style="font-family: 'Space Grotesk', sans-serif; font-size: 21px">Market Making</strong><span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 15px; color: {{c.muted}}">example · both sides</span></div>
+      <sc-for list="{{book}}" as="r" hint-placeholder-count="4">
+        <div style="{{r.style}}"><span style="color: {{r.color}}">{{r.p}}</span><sc-if value="{{r.you}}" hint-placeholder-val="{{ false }}"><span style="padding: 1px 7px; border-radius: 4px; background: #2e62e8; color: #ffffff; font-size: 13px">YOU</span></sc-if><span style="margin-left: auto; color: {{c.text2}}">{{r.s}}</span></div>
+      </sc-for>
+    </div>
+    <div style="flex: 1; border: 1px solid {{c.line}}; border-radius: 14px; background: {{c.surface}}; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; align-items: baseline"><strong style="font-family: 'Space Grotesk', sans-serif; font-size: 21px">Volume Builder</strong><span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 15px; color: {{c.muted}}">example · signal → trade</span></div>
+      <svg viewBox="0 0 360 110" width="100%" aria-hidden="true">
+        <line x1="0" y1="22" x2="360" y2="22" stroke="#5b8cff" stroke-width="1.5" stroke-dasharray="5 5"></line>
+        <line x1="0" y1="96" x2="360" y2="96" stroke="{{c.never}}" stroke-width="1.5" stroke-dasharray="5 5"></line>
+        <text x="360" y="16" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="13" fill="{{c.muted}}">break-even</text>
+        <text x="360" y="90" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="13" fill="{{c.never}}">stop on SoDEX</text>
+        <polyline points="0,52 30,48 54,44 80,50 110,46 140,40 170,37 200,39 230,33 260,35 290,30 316,28" fill="none" stroke="{{c.text}}" stroke-width="2.4"></polyline>
+        <circle cx="54" cy="44" r="7" fill="{{c.bid}}"></circle>
+        <circle cx="316" cy="28" r="7" fill="none" stroke="{{c.bid}}" stroke-width="2.6"></circle>
+      </svg>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 17px">
+      <span style="color: {{c.muted}}">Powered by SoDEX Builder Code</span>
+      <strong style="font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 500; color: {{c.accent}}">desklabs.xyz</strong>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1200,"height":630}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const P = {
+      dark: { bg: '#0b1020', grid: 'rgba(157,184,255,0.06)', surface: '#11172c', line: '#232b4d', text: '#eef1fb', text2: '#b7bfdc', muted: '#9aa3c4', accent: '#9db8ff', never: '#ff9a8c', live: '#3ccf91', bid: '#5fd9a4', ask: '#ff9a8c', youBg: '#18214a' },
+      light: { bg: '#f7f8fc', grid: 'rgba(46,98,232,0.06)', surface: '#ffffff', line: '#dfe3f0', text: '#10152b', text2: '#3b4262', muted: '#5a6283', accent: '#1d47b8', never: '#b42318', live: '#0f7a4f', bid: '#0f7a4f', ask: '#b42318', youBg: '#e8eeff' }
+    };
+    const c = P[this.props.theme || 'dark'] || P.dark;
+    const rows = [['74,602', '56,996', 'ask', false], ['74,601', '57,070', 'ask', true], ['74,600', '39,687', 'bid', true], ['74,599', '30,287', 'bid', false]];
+    return {
+      c: c,
+      book: rows.map(function (r) {
+        return { p: r[0], s: r[1], you: r[3], color: r[2] === 'ask' ? c.ask : c.bid,
+          style: 'display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; font-family: JetBrains Mono, monospace; font-size: 18px; ' + (r[3] ? 'background: ' + c.youBg + '; outline: 1.5px solid #2e62e8' : '') };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
