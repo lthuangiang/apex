@@ -807,7 +807,9 @@
         "hint": "Skips an entry while the spread is wider",
         "how": {
           "intro": "Skips entries while the order book spread is wider than this (in bp, 1 bp = 0.01%).",
-          "steps": ["A wide spread means the market is thin or jumpy, so fills are worse."],
+          "steps": [
+            "A wide spread means the market is thin or jumpy, so fills are worse."
+          ],
           "note": "Raise it for less liquid markets where the spread is normally wider, otherwise the bot may rarely trade."
         }
       },
@@ -4331,7 +4333,6 @@
     "nav": {
       "label": "Main",
       "strategies": "Strategies",
-      "desk": "AI Desk & Copy",
       "lab": "Analytics",
       "how": "How it works",
       "safety": "Safety",
@@ -4341,19 +4342,15 @@
       "createAccount": "Launch app",
       "backToOverview": "Back to Overview",
       "menu": "Open menu",
-      "closeMenu": "Close menu"
+      "closeMenu": "Close menu",
+      "claude": "Claude",
+      "themeLight": "Switch to light",
+      "themeDark": "Switch to dark"
     },
     "hero": {
-      "eyebrow": "POWERED BY SODEX BUILDER CODE",
-      "title": "Trading strategies that run while you work.",
-      "body": "Market Making, Volume Builder and more run on your own SoDEX account while you do something else. Every decision is logged, every fill is analysed, and your funds never leave your account.",
-      "explore": "Explore strategies",
-      "promisesLabel": "What we promise",
-      "promises": {
-        "withdraw": "Never withdraws your funds",
-        "seed": "No seed phrase, ever",
-        "revoke": "Revoke access anytime"
-      },
+      "title": "Volume on SoDEX, built mostly with maker orders.",
+      "body": "Market Making and Volume Builder trade on your own SoDEX account. Each bot logs why it acted, shows what every $1M of volume cost you, and stops at the loss limit you set.",
+      "promisesLabel": "What DeskLabs can do on your account",
       "cardLabel": "Example Market Making bot",
       "cardTitle": "BTC Market Making",
       "cardSub": "BTC-USD · Smart quoting on",
@@ -4364,34 +4361,90 @@
       "spread": "Spread {bps} bps",
       "you": "YOU",
       "decisions": "Decisions",
-      "dec1": "Smart quoting adjusted",
-      "dec1Why": "ask back 8 ticks (bid depth 2.4× ask depth)",
+      "dec1": "Ask requoted",
+      "dec1Why": "best ask moved away, ask placed again at the new price",
       "dec2": "Filled",
       "dec2Why": "bid 0.0003 BTC, maker",
-      "cardNote": "Illustration. In the app you see your own bot and data.",
+      "cardNote": "Illustration. In the app you see your own bot, the live SoDEX book and your real numbers.",
       "live": "Live",
-      "liveNote": "Live BTC-USD order book from SoDEX. YOU marks where a Market Making bot quotes; decisions are an example."
+      "liveNote": "Live BTC-USD order book from SoDEX. YOU marks where a Market Making bot quotes; decisions are an example.",
+      "status": "On SoDEX mainnet · Powered by SoDEX Builder Code",
+      "watch": "Watch a bot work",
+      "withdrawLabel": "Withdraw or transfer",
+      "withdrawValue": "Never",
+      "seedLabel": "Seed phrase",
+      "seedValue": "Never asked",
+      "connectLabel": "Connect",
+      "connectValue": "Two signatures",
+      "panelLabel": "Example bot",
+      "tabsLabel": "Strategy",
+      "side": "Side",
+      "ask": "Ask",
+      "bid": "Bid",
+      "mm": {
+        "sub": "Sits in the book on both sides, no direction",
+        "bothTitle": "Both sides",
+        "bothBody": "A bid and an ask, post-only, near the mid",
+        "fillTitle": "After a fill",
+        "fillBody": "The closing quote moves closer, the other backs off",
+        "capTitle": "Cost cap",
+        "capBody": "Stops at your limit; Smart quoting closes the position if price runs 15 bp against it"
+      },
+      "vb": {
+        "sub": "Reads a signal, then takes one short trade",
+        "example": "Example",
+        "signalTitle": "1 · Signal before entry",
+        "signalSource": "1-min candles + order book",
+        "short": "Short",
+        "long": "Long",
+        "score": "Score {score}",
+        "scoreWhy": "above 0.5, so long",
+        "trend": "5-min trend: {regime}",
+        "notAgainst": "Not against the trend ✓",
+        "spreadOk": "Spread OK ✓",
+        "tradeTitle": "2 · One trade, protected on SoDEX",
+        "chartBe": "Break-even trigger {price}",
+        "chartSl": "Stop loss on SoDEX {price}",
+        "chartIn": "Enter {price}",
+        "chartOut": "Exit {price}",
+        "chartAria": "Example round: long entry at 1,817.6, stop loss on SoDEX at 1,808.5, break-even trigger at 1,820.3, closed at 1,819.8 after 19 seconds",
+        "seconds": "{s} s",
+        "s1": "Enter long",
+        "s1Why": "Post-only at 1,817.6, so it fills as maker",
+        "s2": "Stop loss set on SoDEX",
+        "s2Why": "SoDEX closes the position at 1,808.5, even if DeskLabs is offline",
+        "s3": "Break-even",
+        "s3Why": "The stop moves to break-even once price reaches 1,820.3",
+        "s4": "Closed long",
+        "s4Why": "Early profit: a gain bigger than a multiple of the fees you set",
+        "volTitle": "Volume",
+        "volBody": "Both sides of every fill",
+        "costTitle": "Net cost / $1M",
+        "costBody": "Net loss ÷ volume × 1,000,000",
+        "makerTitle": "Maker share",
+        "makerBody": "Of your volume",
+        "note": "Example round. In the app you see every round your bot makes, with its real volume and cost."
+      }
     },
     "stats": {
       "label": "Platform numbers",
-      "builtOn": "Live on",
-      "sodex": "SoDEX mainnet",
-      "volume": "Traded on SoDEX by our bots, all time",
+      "volume": "Traded on SoDEX by DeskLabs bots, all time",
       "bots": "Bots launched, all time",
-      "strategies": "Strategies to choose from"
+      "mmFee": "Market Making builder fee, lower at volume",
+      "vbFee": "Volume Builder builder fee"
     },
     "strategies": {
-      "eyebrow": "STRATEGIES",
       "title": "Two flagship strategies, {count} more ready to run",
       "body": "Defaults are tuned per market, every hard option explains how it works, and any setup can be backtested on SoDEX history before it touches mainnet.",
       "feeRate": "Builder fee {rate}",
       "beta": "BETA",
       "mm": {
         "body": "Quotes a bid and an ask from the SoDEX order book, earns maker volume and keeps inventory small. Set where you sit in the book with one number that works on every market.",
-        "p1": "Smart quoting steps back when the book turns lopsided, and pulls a quote during a trend",
+        "p1": "Smart quoting follows the live SoDEX book and the Binance price, and closes the position if price runs 15 bp against it",
         "p2": "Live order book with your quotes marked",
         "p3": "Cost cap: stops itself before it spends more than you set",
-        "cta": "Start Market Making"
+        "cta": "Start Market Making",
+        "p4": "Builder fee drops to {tier2} and {tier3} as your volume grows"
       },
       "vf": {
         "body": "Short, maker-first trades that build volume at a low cost per million, with a stop loss on SoDEX itself for every trade.",
@@ -4401,78 +4454,30 @@
         "cta": "Start Volume Builder"
       },
       "more": "More strategies",
-      "backtest": "Backtest any setup on SoDEX price history before you start. A backtest is a simulation, not a forecast."
+      "backtest": "Backtest any setup on SoDEX price history before you start. A backtest is a simulation, not a forecast.",
+      "feeRateLower": "Builder fee {rate}, lower at volume",
+      "colStrategy": "Strategy",
+      "colMarket": "Market",
+      "colWhat": "What it does"
     },
     "desk": {
-      "eyebrow": "MORE THAN BOTS",
-      "title": "An AI desk and copy trading, on the same safety rules",
-      "body": "Everything below runs on your own SoDEX account. It can place and cancel orders, and it can never withdraw or move your funds.",
-      "cta": "Launch app",
       "items": {
         "desk": {
           "title": "AI Desk",
-          "body": "Watches your bots and tells you what needs you, in plain words.",
-          "p1": "Compares fixes on your own last 7 days of trades before you change anything",
-          "p2": "Desk AI answers questions from your real numbers, never guesses or price predictions",
-          "p3": "Try a recommended first bot with fake money before real funds"
+          "body": "Watches your bots and tells you what needs you, in plain words."
         },
         "copy": {
           "title": "Copy Trading",
-          "body": "Copy a top Hyperliquid trader on your own SoDEX account, in three steps.",
-          "p1": "Traders re-checked from their real trades, with a Steady list for beginners",
-          "p2": "You set the budget, the size of each copy, a stop loss and a total loss limit",
-          "p3": "Only trades they open after you start are copied. Pause any time"
+          "body": "Copy a top Hyperliquid trader on your own SoDEX account, in three steps."
         },
         "alerts": {
           "title": "Alerts on Telegram",
-          "body": "Know when a bot needs you without keeping the app open.",
-          "p1": "Bot problems, risk limits and SoDEX access changes",
-          "p2": "Big moves from traders you follow, and a morning brief",
-          "p3": "Messages never include wallet addresses, keys or balances"
-        },
-        "claude": {
-          "title": "Ask from Claude",
-          "body": "Connect DeskLabs to Claude and ask about your bots in plain words. Claude reads; you decide.",
-          "p1": "Works in claude.ai, Claude Desktop and Claude Code",
-          "p2": "Claude can draft bot settings; you review and start them",
-          "p3": "It can’t place trades or move money. Revoke any time",
-          "cta": "Connect Claude"
+          "body": "Know when a bot needs you without keeping the app open."
         }
       },
       "note": "Copying and AI suggestions are not financial advice. Past results are not a forecast."
     },
-    "lab": {
-      "eyebrow": "THE LAB",
-      "title": "Every fill measured. No suggestion without proof.",
-      "body": "Bots aren’t black boxes. Each one comes with analytics built from its real fills, and a review that only suggests new settings when they beat yours on trades they never saw.",
-      "items": {
-        "analytics": {
-          "title": "Strategy Analytics",
-          "body": "Holding time, trade breakdown and execution quality by period."
-        },
-        "adverse": {
-          "title": "Adverse selection",
-          "body": "How price moves 1, 3 and 5 minutes after each Market Making fill."
-        },
-        "review": {
-          "title": "Review this run",
-          "body": "Replays your real entries with other settings and suggests a change only when it wins on trades it never saw."
-        },
-        "export": {
-          "title": "Export",
-          "body": "Download every order, fill and decision as a zip."
-        }
-      },
-      "chartLabel": "Example adverse selection chart",
-      "chartTitle": "Adverse selection",
-      "chartSub": "Smart quoting off vs on",
-      "after": "After {m} min",
-      "off": "Off",
-      "on": "On",
-      "illustration": "Illustration"
-    },
     "how": {
-      "eyebrow": "HOW IT WORKS",
       "title": "From wallet to running bot in about 5 minutes",
       "steps": {
         "connect": {
@@ -4494,7 +4499,6 @@
       }
     },
     "safety": {
-      "eyebrow": "SAFETY",
       "title": "We trade. We never move your money.",
       "body": "Once connected, the app can read your account and place or cancel orders for bots you start. Withdraw and transfer are not possible, and the product has no feature for them.",
       "read": "Read balances, positions, orders",
@@ -4509,18 +4513,25 @@
       "limitsTitle": "Limits the server enforces",
       "limitsBody": "Loss caps and cost budgets are enforced by the bot itself, not just shown in the app.",
       "haltTitle": "One-tap halt",
-      "haltBody": "Stop every bot and cancel its orders from any screen."
+      "haltBody": "Stop every bot and cancel its orders from any screen.",
+      "tableCaption": "What the app can do on your SoDEX account"
     },
     "fees": {
-      "eyebrow": "FEES",
       "title": "Low builder fees, shown before you sign",
       "body": "Charged by SoDEX through Builder Codes on fills of orders your bots send. SoDEX trading fees apply as usual. Revoke the builder fee in Settings anytime; your bots pause right away.",
       "mm": "Market Making",
       "vf": "Volume Builder",
-      "other": "Every other strategy"
+      "other": "Every other strategy",
+      "colStrategy": "Strategy",
+      "colVolume": "Your Market Making volume, last 30 days",
+      "colFee": "Fee",
+      "tier1": "Under {amount}",
+      "tier2": "{from} to {to}",
+      "tier3": "{amount} and up",
+      "oneRate": "One rate",
+      "tierNote": "Market Making gets cheaper as you trade more. We check your last 30 days every hour, and new orders use the new rate right away. No new signature."
     },
     "faq": {
-      "eyebrow": "FAQ",
       "title": "Questions before you connect",
       "items": {
         "independent": {
@@ -4568,6 +4579,59 @@
       "legalLabel": "Legal",
       "risk": "Risk Disclosure",
       "claude": "Connect Claude"
+    },
+    "sectionIndex": "{n} · {label}",
+    "analytics": {
+      "label": "In the app",
+      "title": "Each strategy gets the analytics it needs",
+      "body": "Market Making is judged by what happens after each quote fills. Volume Builder is judged trade by trade. Both are built from the bot’s real SoDEX fills.",
+      "example": "Example · ETH-USD",
+      "ofVolume": "Of volume",
+      "adverseSub": "Fills the price went against, 1 min after",
+      "coinFlip": "Line = 50%, a coin flip",
+      "inventoryAria": "Example inventory over 13 hours: mostly flat at zero, with short positions up to plus or minus 20 USDC",
+      "insightLabel": "Key insight · ",
+      "insight": "Bid fills are hit worse: 1.2 bp more adverse move than the other side after a minute.",
+      "vbTitle": "Volume Builder · Volume and analytics",
+      "holdTitle": "Trades by holding time",
+      "holdSub": "Number of closed trades",
+      "holdAria": "Example: 15 trades held 0 to 30 seconds, 14 held 30 to 60 seconds, 11 held 1 to 2 minutes, 17 held 2 to 5 minutes, 2 held 5 to 10 minutes, none longer.",
+      "splitTitle": "Volume breakdown",
+      "splitSub": "Share of volume",
+      "share": "{label} {pct}",
+      "reviewLabel": "Review this run · ",
+      "reviewBody": "replays the bot’s real entries with other exit settings, and suggests a change only when it wins on trades it was not tuned on.",
+      "note": "Examples from real DeskLabs bots. Your bot shows its own numbers. Not a forecast."
+    },
+    "claude": {
+      "tableCaption": "What Claude gets",
+      "neverRow": "Trade, change bots or move money"
+    },
+    "compare": {
+      "title": "How they differ",
+      "question": "Question",
+      "otherCol": "Other strategies",
+      "tradesQ": "How it trades",
+      "tradesMm": "Keeps a post-only bid and ask in the SoDEX book; requotes when the best price moves away",
+      "tradesVb": "One position at a time, post-only inside the spread; market orders only if you turn them on",
+      "tradesOther": "Grid levels, DCA steps, a schedule or target weights",
+      "directionQ": "Picks a direction",
+      "directionMm": "No. Stays near flat and leans to close after a fill",
+      "directionVb": "Yes. Scores 1-minute candles and the order book, and skips trades against the 5-minute trend",
+      "directionOther": "You choose it: long, short, neutral or buy only",
+      "lengthQ": "How long a trade lasts",
+      "lengthMm": "No single trade. Quotes refresh every few seconds",
+      "lengthVb": "Seconds to minutes, within the hold time you set",
+      "lengthOther": "Hours to weeks, until a target or schedule",
+      "protectQ": "What protects you",
+      "protectMm": "Stops at your cost cap; with Smart quoting, closes the position at market if price runs 15 bp against it",
+      "protectVb": "A stop loss on SoDEX itself, moved to break-even as price moves your way",
+      "protectOther": "Stop loss and limits per strategy",
+      "feeQ": "Builder fee",
+      "feeMm": "{rate}, lower at volume"
+    },
+    "extras": {
+      "title": "Also in the app, on the same safety rules"
     }
   },
   "riskDisclosure": {

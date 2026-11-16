@@ -1,3 +1,96 @@
 @import "@drift/ui/styles.css";
 
 @source "../";
+
+/*
+ * Landing và trang MCP (/claude), UI mới người dùng duyệt 2026-11-16 (docs/mockups/landing-mcp, DEC trong PR #166).
+ * Token riêng `l-*`, chỉ có nghĩa bên trong `.landing`; mặc định sáng, `data-theme="dark"` khi người dùng bấm nút đổi theme.
+ * App không dùng các token này và vẫn chỉ có theme sáng (DEC-109). Màu chép từ palette của artboard.
+ */
+@theme inline {
+  --color-l-bg: var(--l-bg);
+  --color-l-band: var(--l-band);
+  --color-l-surface: var(--l-surface);
+  --color-l-surface-2: var(--l-surface-2);
+  --color-l-track: var(--l-track);
+  --color-l-line: var(--l-line);
+  --color-l-line-2: var(--l-line-2);
+  --color-l-text: var(--l-text);
+  --color-l-text-2: var(--l-text-2);
+  --color-l-muted: var(--l-muted);
+  --color-l-accent: var(--l-accent);
+  --color-l-never: var(--l-never);
+  --color-l-never-bg: var(--l-never-bg);
+  --color-l-ask: var(--l-ask);
+  --color-l-bid: var(--l-bid);
+  --color-l-live: var(--l-live);
+  --color-l-you-bg: var(--l-you-bg);
+  --color-l-bar: var(--l-bar);
+  --color-l-bar-2: var(--l-bar-2);
+  --color-l-btn-border: var(--l-btn-border);
+  --color-l-primary: var(--l-primary);
+  --color-l-on-primary: var(--l-on-primary);
+  --color-l-focus: var(--l-focus);
+  --font-display: var(--font-space-grotesk, "Space Grotesk"), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-inter, "Inter"), ui-sans-serif, system-ui, sans-serif;
+  --font-num: var(--font-jetbrains-mono, "JetBrains Mono"), ui-monospace, monospace;
+}
+
+.landing {
+  --l-bg: #f7f8fc;
+  --l-band: #eef1f8;
+  --l-surface: #ffffff;
+  --l-surface-2: #eef2ff;
+  --l-track: #eceff7;
+  --l-line: #dfe3f0;
+  --l-line-2: #eceff7;
+  --l-text: #10152b;
+  --l-text-2: #3b4262;
+  --l-muted: #5a6283;
+  --l-accent: #1d47b8;
+  --l-never: #b42318;
+  --l-never-bg: #fdecea;
+  --l-ask: #b42318;
+  --l-bid: #0f7a4f;
+  --l-live: #0f7a4f;
+  --l-you-bg: #e8eeff;
+  --l-bar: #2e62e8;
+  --l-bar-2: #c9d0e6;
+  --l-btn-border: #c9d0e6;
+  --l-primary: #2e62e8;
+  --l-on-primary: #ffffff;
+  --l-focus: #5b8cff;
+  color-scheme: light;
+  background: var(--l-bg);
+  color: var(--l-text);
+  font-family: var(--font-body);
+}
+
+.landing[data-theme="dark"] {
+  --l-bg: #0b1020;
+  --l-band: #0e1428;
+  --l-surface: #11172c;
+  --l-surface-2: #161d38;
+  --l-track: #1b2240;
+  --l-line: #232b4d;
+  --l-line-2: #1b2240;
+  --l-text: #eef1fb;
+  --l-text-2: #b7bfdc;
+  --l-muted: #9aa3c4;
+  --l-accent: #9db8ff;
+  --l-never: #ff9a8c;
+  --l-never-bg: #2a1620;
+  --l-ask: #ff9a8c;
+  --l-bid: #5fd9a4;
+  --l-live: #3ccf91;
+  --l-you-bg: #18214a;
+  --l-bar: #5b8cff;
+  --l-bar-2: #2c3560;
+  --l-btn-border: #2c3560;
+  color-scheme: dark;
+}
+
+.landing :focus-visible {
+  outline: 2px solid var(--l-focus);
+  outline-offset: 2px;
+}
