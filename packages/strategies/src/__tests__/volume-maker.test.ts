@@ -7,7 +7,9 @@ import {
   costPerMillion,
   VM_KEEP_DONE_MS,
   VM_STALE_CANCEL_MS,
+  VOLUME_MAKER_STOPPED,
   volumeMaker,
+  volumeMakerStopCause,
   type VolumeMakerState,
 } from "../volume-maker";
 import { vmMaxInventory, volumeMakerSchema, type VolumeMakerConfig } from "../volume-maker/schema";
@@ -210,6 +212,32 @@ describe("volume maker quoting", () => {
       ctx,
     );
     expect(r2.actions.find((x) => x.type === "stop")).toMatchObject({ reason: "MAX_CYCLES" });
+    // Nhật ký lúc dừng cho biết lý do MAX_CYCLES (API đọc để hiện "volume target reached").
+    const log = r2.actions.find((x) => x.type === "log" && x.decision === VOLUME_MAKER_STOPPED);
+    expect(log?.type === "log" ? volumeMakerStopCause(log.why) : null).toBe("volume_target");
+  });
+
+  it("reads the MAX_CYCLES cause back from the stop log", () => {
+    expect(volumeMakerStopCause("Volume target 100000 reached.")).toBe("volume_target");
+    expect(volumeMakerStopCause("Volume target 2500.5 reached.")).toBe("volume_target");
+    expect(volumeMakerStopCause("Run time ended.")).toBe("end_time");
+    expect(volumeMakerStopCause("Cost 10 reached the budget of 10.")).toBeNull();
+    expect(volumeMakerStopCause("Inventory loss reached 0.5.")).toBeNull();
+    expect(volumeMakerStopCause(null)).toBeNull();
+  });
+
+  it("logs “Run time ended.” when the end time passes", () => {
+    const t = cfg({ runUntil: "date", untilAt: 5 });
+    const s2 = run(t, [...firstQuote()]).s;
+    const r = volumeMaker.step(
+      t,
+      s2,
+      { type: "tick", at: 10, market: "BTC-USD", price: "100000" },
+      ctx,
+    );
+    expect(r.actions.find((x) => x.type === "stop")).toMatchObject({ reason: "MAX_CYCLES" });
+    const log = r.actions.find((x) => x.type === "log" && x.decision === VOLUME_MAKER_STOPPED);
+    expect(log?.type === "log" ? volumeMakerStopCause(log.why) : null).toBe("end_time");
   });
 
   it("counts quotes the engine blocked as self-trades", () => {
@@ -805,6 +833,161 @@ describe("volume maker — smart quoting v2 (DEC-144, DEC-152)", () => {
     expect(places(r.all)).toEqual([
       expect.objectContaining({ type: "market", reduceOnly: true, quantity: "0.005" }),
     ]);
+  });
+
+  describe("holds the side that grows the position while a cut is in flight (DEC-260)", () => {
+    /** Đang long, còn một bid mở đang nằm; Binance chạy 16 bp ngược: cắt (lệnh cắt chưa có kết quả). */
+    const cutWithBid = () => {
+      const long = longAt();
+      const s0: VolumeMakerState = {
+        ...long,
+        orders: {
+          ...long.orders,
+          "live-bid": {
+            side: "buy",
+            role: "open",
+            price: "99990",
+            qty: "0.005",
+            filled: "0",
+            status: "live",
+            since: 7100,
+          },
+        },
+      };
+      const r = more(s0, [fairAt(8100, "99839.9")], { confirm: false });
+      const cut = places(r.all).find((o) => o.type === "market");
+      expect(r.all).toContainEqual({ type: "cancel", clOrdID: "live-bid" });
+      return { s: r.s, cutId: cut?.clOrdID ?? "" };
+    };
+
+    it("places no bid when SoDEX confirms the bid cancel or the timer comes while the cut is in flight", () => {
+      const { s } = cutWithBid();
+      let r = more(s, [{ type: "orderDone", at: 8300, clOrdID: "live-bid" }], { confirm: false });
+      expect(opens(r.all, "buy")).toHaveLength(0);
+      r = more(r.s, [snap(12_000)]);
+      expect(opens(r.all, "buy")).toHaveLength(0);
+    });
+
+    it("quotes as usual once the cut has filled", () => {
+      const { s, cutId } = cutWithBid();
+      let r = more(
+        s,
+        [
+          { type: "orderDone", at: 8300, clOrdID: "live-bid" },
+          {
+            type: "fill",
+            at: 8400,
+            clOrdID: cutId,
+            price: "99839.9",
+            quantity: "0.005",
+            fee: "0",
+          },
+        ],
+        { confirm: false },
+      );
+      expect(r.s.ledger.position).toBe("0");
+      r = more(r.s, [snap(12_000)]);
+      expect(opens(r.all, "buy")).toHaveLength(1);
+    });
+
+    it("lets the side quote again when SoDEX rejects the cut", () => {
+      const { s, cutId } = cutWithBid();
+      let r = more(
+        s,
+        [
+          { type: "orderDone", at: 8300, clOrdID: "live-bid" },
+          { type: "orderReject", at: 8400, clOrdID: cutId, code: "REJECTED" },
+        ],
+        { confirm: false },
+      );
+      r = more(r.s, [snap(12_000)]);
+      expect(opens(r.all, "buy")).toHaveLength(1);
+    });
+
+    it("keeps holding after a partial fill of the cut, until SoDEX reports it done", () => {
+      const { s, cutId } = cutWithBid();
+      let r = more(
+        s,
+        [
+          { type: "orderDone", at: 8300, clOrdID: "live-bid" },
+          {
+            type: "fill",
+            at: 8400,
+            clOrdID: cutId,
+            price: "99839.9",
+            quantity: "0.002",
+            fee: "0",
+          },
+        ],
+        { confirm: false },
+      );
+      r = more(r.s, [snap(12_000)], { confirm: false });
+      expect(opens(r.all, "buy")).toHaveLength(0);
+      r = more(r.s, [{ type: "orderDone", at: 12_500, clOrdID: cutId }, snap(15_000)]);
+      expect(opens(r.all, "buy")).toHaveLength(1);
+    });
+
+    it("holds the book requote path too", () => {
+      const { s } = cutWithBid();
+      let r = more(s, [{ type: "orderDone", at: 8300, clOrdID: "live-bid" }], { confirm: false });
+      r = more(r.s, [bookAt(10_000, "99840", "99840.1"), bookAt(11_600, "99845", "99845.1")]);
+      expect(opens(r.all, "buy")).toHaveLength(0);
+    });
+
+    it("does not cut again while the first cut has no result", () => {
+      const { s } = cutWithBid();
+      // 6 s sau (quá 5 s nghỉ), giá chạy ngược thêm: lệnh cắt đầu chưa có kết quả, không gửi lệnh market thứ hai.
+      const r = more(s, [fairAt(14_200, "99800")], { confirm: false });
+      expect(places(r.all).filter((o) => o.type === "market")).toHaveLength(0);
+    });
+
+    it("quotes the side again about 60 s later when the cut never gets a result", () => {
+      const { s } = cutWithBid();
+      let r = more(s, [{ type: "orderDone", at: 8300, clOrdID: "live-bid" }], { confirm: false });
+      r = more(r.s, [snap(8100 + VM_STALE_CANCEL_MS - 1000)], { confirm: false });
+      expect(opens(r.all, "buy")).toHaveLength(0);
+      r = more(r.s, [snap(8100 + VM_STALE_CANCEL_MS + 3000)]);
+      expect(opens(r.all, "buy")).toHaveLength(1);
+    });
+
+    it("holds the sell side while cutting a short", () => {
+      const r0 = quotedAt7s();
+      const ask = places(r0.all)
+        .filter((o) => o.side === "sell")
+        .at(-1);
+      const short = more(r0.s, [
+        {
+          type: "fill",
+          at: 7100,
+          clOrdID: ask?.clOrdID ?? "",
+          price: ask?.price ?? "0",
+          quantity: ask?.quantity ?? "0",
+          fee: "0",
+        },
+      ]).s;
+      expect(short.ledger.position).toBe("-0.005");
+      const s0: VolumeMakerState = {
+        ...short,
+        orders: {
+          ...short.orders,
+          "live-ask": {
+            side: "sell",
+            role: "open",
+            price: "100010",
+            qty: "0.005",
+            filled: "0",
+            status: "live",
+            since: 7100,
+          },
+        },
+      };
+      let r = more(s0, [fairAt(8100, "100160.1")], { confirm: false });
+      expect(places(r.all).find((o) => o.type === "market")?.side).toBe("buy");
+      r = more(r.s, [{ type: "orderDone", at: 8300, clOrdID: "live-ask" }, snap(12_000)], {
+        confirm: false,
+      });
+      expect(opens(r.all, "sell")).toHaveLength(0);
+    });
   });
 
   it("leaves the close order to the normal cycle when the live price moves (DEC-248)", () => {
