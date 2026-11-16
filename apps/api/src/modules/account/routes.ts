@@ -17,6 +17,7 @@ import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 
 import { setBuilderFee } from "./builder-fees";
+import { marketHours } from "./market-hours";
 import { teamOps } from "./ops";
 import {
   ackAlert,
@@ -177,6 +178,10 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
     teamOps({ db: deps.db, now: deps.now, log: request.log }, requireAuth(request).userId),
   );
 
+  // Market hours cho team Ops (DEC-283): tz là tên IANA, kiểm bằng zod sau bước kiểm quyền; sai → lỗi C6.
+  app.get("/api/v1/admin/market-hours", async (request) =>
+    marketHours(deps, requireAuth(request).userId, request.query),
+  );
   app.get("/api/v1/admin/stats", async (request) => {
     const { period } = parseOrThrow(platformStatsQuerySchema, request.query);
     return platformStats(deps, requireAuth(request).userId, period);
