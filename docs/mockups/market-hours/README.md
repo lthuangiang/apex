@@ -20,3 +20,4 @@ Quy tắc chốt:
 6. Nguồn: khối 1 = `candles_1m`; khối 2 = `mm_market_hourly` (giữ 90 ngày, DEC của #169); khối 3 = `fills` của bot Market Making / Volume Builder tiền thật (team: mọi user; public sau này: chỉ bot của người xem).
 7. Thời gian giữ: nến và fill hiện "Available since {date}" (ngày dữ liệu thật đầu tiên); markout hiện "Kept for 90 days."
 8. Trang chỉ đọc: "nothing on this page pauses or changes bots". Không dự báo.
+9. Thêm sau thiết kế (người dùng duyệt, DEC-286): khối 1 có thêm dòng "Estimated cost per $1M (model)" cho mỗi giờ (mô hình chung với thẻ chi phí Market Making, DEC-228), cùng 4 bậc màu cam với Cost per $1M của khối 3; 390 px hiện trong chi tiết giờ ("Est. / $1M"). Tiền dưới $10 ở khối 3 hiện cent ("$0.31").

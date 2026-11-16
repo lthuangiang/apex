@@ -1,19 +1,33 @@
 import { randomUUID } from "node:crypto";
 
-import { errorResponseSchema, marketHoursViewSchema, meSchema } from "@drift/shared";
+import {
+  Decimal,
+  errorResponseSchema,
+  marketHoursViewSchema,
+  meSchema,
+  modelCostPerMillion,
+  modelPnlBps,
+  swingBps,
+} from "@drift/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
 // Market hours (docs/mockups/market-hours, DEC-283): giờ / ngày theo múi giờ người xem (Postgres
-// AT TIME ZONE), kể cả múi giờ lệch 30 phút và ngày Mỹ đổi giờ; khối 3 từ fill thật; chỉ team.
+// AT TIME ZONE), kể cả múi giờ lệch 30 phút và ngày Mỹ đổi giờ; khối 3 từ fill thật; chỉ team. Dòng ước tính của mô
+// hình Market Making (DEC-228) theo giờ.
 
 let env: TestEnv;
 const MARKET = `MH${randomUUID().slice(0, 6).toUpperCase()}-USD`;
+const EST_MARKET = `ME${randomUUID().slice(0, 6).toUpperCase()}-USD`;
+const EMPTY_MARKET = `MN${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const errorOf = (body: string) => errorResponseSchema.parse(JSON.parse(body)).error;
 
 beforeAll(async () => {
   env = await startTestEnv();
+  // Tick size 0.01 (mock); MARKET cố ý không có trên SoDEX để kiểm "no_market_info".
+  env.sodex.addPerpSymbol(EST_MARKET, { maxLeverage: 10 });
+  env.sodex.addPerpSymbol(EMPTY_MARKET, { maxLeverage: 10 });
   // Sau ngày Mỹ đổi giờ (Chủ nhật 2026-11-01): EDT (UTC−4) trước, EST (UTC−5) sau.
   env.clock.now = new Date("2026-11-02T23:00:00Z");
 });
@@ -157,5 +171,74 @@ describe("GET /api/v1/admin/market-hours", () => {
     // Giờ không có fill: không có số (không bao giờ 0).
     expect(v.hours[11]?.bots).toMatchObject({ costPerMillion: null, volume: null, botHours: 0 });
     expect(v.fillsSince).toBe("2026-11-02T10:00:10.000Z");
+  });
+
+  it("estimates the cost per $1M for each hour from the candles with the latest model coefficients", async () => {
+    const { client } = await teamUser();
+    // Một giờ (05:00–05:59 UTC ngày 2/11) giá đóng xen kẽ 100.1 / 100, kết thúc ở 100 → bước = 0.01 ÷ 100 = 1 bp.
+    const closes = Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? "100.1" : "100"));
+    const values = closes.map(
+      (c, i) =>
+        `('${EST_MARKET}', '2026-11-02T05:${String(i).padStart(2, "0")}:00Z', 100, 100.1, 100, ${c}, 1)`,
+    );
+    await env.pool.query(
+      `insert into candles_1m (market, ts, open, high, low, close, volume) values ${values.join(",")}`,
+    );
+    await env.pool.query(
+      "insert into mm_market_hourly (market, hour, notional, markout_notional, trades, spread_ticks) values ($1, '2026-11-02T05:00:00Z', 100, 0, 1, '{}')",
+      [EST_MARKET],
+    );
+    const { rows } = await env.pool.query<{ version: number }>(
+      "insert into mm_model_coefs (a, k, points, day) values (0.2, 0.1, 5, '2026-11-01') returning version",
+    );
+    const r = await client.request(
+      "GET",
+      `/api/v1/admin/market-hours?market=${EST_MARKET}&days=7&tz=UTC`,
+    );
+    const v = marketHoursViewSchema.parse(r.json());
+    // Phí = maker SoDEX cơ bản 1.2 bp (mock không có makerFee) + builder fee Market Making 0.3 bp.
+    expect(v.estimate).toEqual({
+      feesBp: "1.5",
+      stepBp: "1",
+      modelVersion: rows[0]?.version,
+      unavailable: null,
+    });
+    const swing = swingBps(closes);
+    expect(swing).not.toBeNull();
+    if (swing === null) return;
+    // Chi phí = (1.5 + max(0, −(0.2 × 1 − 0.1 × dao động))) × 100, dao động ≈ 10.08 bp → ≈ $230.8.
+    const expected = modelCostPerMillion(
+      new Decimal("1.5"),
+      modelPnlBps(new Decimal(1), swing, "0.2", "0.1"),
+    );
+    const h5 = v.hours[5]?.volatility;
+    expect(h5?.swingBp).toBe(swing.toDecimalPlaces(2).toString());
+    expect(h5?.estCostPerMillion).toBe(expected.toDecimalPlaces(2).toString());
+    expect(Number(h5?.estCostPerMillion)).toBeCloseTo(230.8, 0);
+    // Giờ không có nến: null ("n/a"), không bao giờ 0.
+    expect(v.hours[6]?.volatility).toMatchObject({ swingBp: null, estCostPerMillion: null });
+  });
+
+  it("shows the estimate as unavailable, with the reason, when there are no candles or no market info", async () => {
+    const { client } = await teamUser();
+    await env.pool.query(
+      "insert into mm_market_hourly (market, hour, notional, markout_notional, trades, spread_ticks) values ($1, '2026-11-02T05:00:00Z', 100, 0, 1, '{}')",
+      [EMPTY_MARKET],
+    );
+    const empty = marketHoursViewSchema.parse(
+      (
+        await client.request(
+          "GET",
+          `/api/v1/admin/market-hours?market=${EMPTY_MARKET}&days=7&tz=UTC`,
+        )
+      ).json(),
+    );
+    expect(empty.estimate).toMatchObject({ stepBp: null, unavailable: "no_candles" });
+    expect(empty.hours.every((h) => h.volatility.estCostPerMillion === null)).toBe(true);
+    // MARKET có nến nhưng SoDEX không có market đó (không có tick size) → cả dòng n/a.
+    const noInfo = await view(client, "&tz=UTC");
+    expect(noInfo.estimate).toMatchObject({ stepBp: null, unavailable: "no_market_info" });
+    expect(noInfo.hours[12]?.volatility.swingBp).not.toBeNull();
+    expect(noInfo.hours.every((h) => h.volatility.estCostPerMillion === null)).toBe(true);
   });
 });

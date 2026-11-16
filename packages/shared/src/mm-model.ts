@@ -1,4 +1,6 @@
 import type { MmMarketCost } from "./api/mm-cost";
+import { Strategy } from "./enums";
+import { builderFeeRateOf, SODEX_BASE_FEE_PCT } from "./fees";
 import { roundTrips, type MarkoutFill } from "./mm-markout";
 import { dec, Decimal, type DecimalInput } from "./money";
 
@@ -43,6 +45,36 @@ export function modelPnlBps(
   k: DecimalInput,
 ): Decimal {
   return Decimal.min(0, dec(a).mul(stepBps).sub(dec(k).mul(swingBps)));
+}
+
+/** $1M × bps ÷ 10 000: đổi bps trên volume sang USD trên mỗi $1M volume. */
+export const PER_MILLION_FROM_BPS = 100;
+
+/** Bước giá của market (bps) = tick ÷ giá × 10 000; thiếu giá hoặc giá ≤ 0 → null. */
+export function stepBpsOf(tickSize: DecimalInput, price: DecimalInput | null): Decimal | null {
+  if (price === null) return null;
+  const p = dec(price);
+  return p.lte(0) ? null : dec(tickSize).div(p).mul(10_000);
+}
+
+/** Phí maker SoDEX của một perp (bps): `makerFee` (tỷ lệ) của symbol, không có thì `SODEX_BASE_FEE_PCT`. */
+export function perpsMakerFeeBps(makerFee: DecimalInput | undefined): Decimal {
+  return makerFee === undefined
+    ? dec(SODEX_BASE_FEE_PCT.perps.maker).mul(100)
+    : dec(makerFee).mul(10_000);
+}
+
+/** Builder fee Market Making (bps) từ mức phần mười bp; mặc định là mức của chiến lược (0,3 bp, DEC-94). */
+export function mmBuilderFeeBps(rate: number = builderFeeRateOf(Strategy.volumeMaker)): Decimal {
+  return new Decimal(rate).div(10);
+}
+
+/**
+ * Chi phí ước tính / $1M của mô hình (DEC-228) = (phí bps − PnL giá bps) × 100. PnL giá ≤ 0 nên chi phí ≥ phí. Dùng chung
+ * cho thẻ chi phí Market Making và dòng "Estimated cost per $1M (model)" của Market hours để hai nơi luôn khớp.
+ */
+export function modelCostPerMillion(feesBps: Decimal, pnlBps: Decimal): Decimal {
+  return feesBps.sub(pnlBps).mul(PER_MILLION_FROM_BPS);
 }
 
 /** Trộn số thật của bot người xem với mô hình theo số vòng đóng. */

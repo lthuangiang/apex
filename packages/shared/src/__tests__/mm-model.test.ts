@@ -1,18 +1,46 @@
 import { describe, expect, it } from "vitest";
 
+import { medianSwingBps } from "../api/market-hours";
+import { swingBps } from "../mm-markout";
 import {
   blendPnlBps,
   capacityPerDay,
   fitModel,
   isActiveMinute,
+  mmBuilderFeeBps,
   MM_MODEL_SEED,
+  modelCostPerMillion,
   modelPnlBps,
+  perpsMakerFeeBps,
   rankMmMarkets,
+  stepBpsOf,
   windowPnl,
 } from "../mm-model";
 import { dec } from "../money";
 
 // Mô hình chi phí Market Making v1 (DEC-228).
+
+describe("shared cost helpers (MM cost card and Market hours)", () => {
+  it("derives step, fees and the cost per $1M the same way for both pages", () => {
+    expect(stepBpsOf("0.01", "100")?.toString()).toBe("1");
+    expect(stepBpsOf("0.01", null)).toBeNull();
+    expect(stepBpsOf("0.01", "0")).toBeNull();
+    expect(perpsMakerFeeBps(undefined).toString()).toBe("1.2");
+    expect(perpsMakerFeeBps("0.00004").toString()).toBe("0.4");
+    expect(mmBuilderFeeBps().toString()).toBe("0.3");
+    expect(mmBuilderFeeBps(2).toString()).toBe("0.2");
+    // (0,7 − (−1,44)) × 100 = 214
+    expect(modelCostPerMillion(dec("0.7"), dec("-1.44")).toString()).toBe("214");
+  });
+
+  it("takes the median across days of each hour's 1-minute swing; no candles → null", () => {
+    const a = ["100", "100.1", "100", "100.1"];
+    const b = ["100", "100.2", "100", "100.2"];
+    const c = ["100", "100.3", "100", "100.3"];
+    expect(medianSwingBps([a, b, c])?.toString()).toBe(swingBps(b)?.toString());
+    expect(medianSwingBps([[], ["100"]])).toBeNull();
+  });
+});
 
 describe("model price PnL", () => {
   it("is a × step − k × swing, never above 0", () => {

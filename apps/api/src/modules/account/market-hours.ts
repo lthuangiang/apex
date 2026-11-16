@@ -6,18 +6,27 @@ import {
   MARKET_HOURS_HOT_RATIO,
   MARKET_HOURS_THIN_BOT_HOURS,
   marketHoursQuerySchema,
+  medianSwingBps,
   medianTicks,
   minuteRangeBp,
+  mmBuilderFeeBps,
+  modelCostPerMillion,
+  modelPnlBps,
+  perpsMakerFeeBps,
   quantile,
+  stepBpsOf,
   Strategy,
   type CostFill,
+  type MarketHoursEstimate,
   type MarketHoursHour,
   type MarketHoursQuery,
   type MarketHoursView,
 } from "@drift/shared";
+import type { SodexRestClient } from "@drift/sodex";
 import { sql } from "drizzle-orm";
 
 import { parseOrThrow } from "../../lib/http";
+import { latestMmModel } from "../bots/mm-cost";
 
 import { requireTeam } from "./team";
 
@@ -36,6 +45,7 @@ const strategiesOf = (s: MarketHoursQuery["strategy"]): string[] =>
 interface Deps {
   db: Db;
   now: () => Date;
+  rest: Pick<SodexRestClient, "getPerpsSymbols">;
 }
 
 const rowsOf = <T>(r: { rows: unknown[] }): T[] => r.rows as T[];
@@ -71,18 +81,46 @@ export async function marketHours(
       markoutSince: null,
       markoutDays: 0,
       fillsSince: null,
+      estimate: {
+        feesBp: str(estimateFeesBps(undefined)) ?? "0",
+        stepBp: null,
+        modelVersion: 0,
+        unavailable: "no_candles",
+      },
     };
-  const [vol, cost, bots] = await Promise.all([
+  const [vol, cost, bots, model, info] = await Promise.all([
     volatility(deps.db, market, from, q.tz),
     makerCost(deps.db, market, from, q.tz),
     botHours(deps.db, { market, from, tz: q.tz, strategies }),
+    latestMmModel(deps),
+    marketInfo(deps, market),
   ]);
-  const hours: MarketHoursHour[] = Array.from({ length: 24 }, (_, h) => ({
-    hour: h,
-    volatility: vol.hours[h] ?? emptyHour().volatility,
-    cost: cost.hours[h] ?? emptyHour().cost,
-    bots: bots.hours[h] ?? emptyHour().bots,
-  }));
+  // Dòng "Estimated cost per $1M (model)": cùng mô hình với thẻ chi phí Market Making (mm-cost.ts, DEC-228). Bước giá
+  // = tick ÷ giá đóng của nến 1 phút mới nhất; phí = maker SoDEX của market + builder fee Market Making mặc định.
+  const feesBps = estimateFeesBps(info?.makerFee);
+  const step = info === null ? null : stepBpsOf(info.tickSize, vol.lastClose);
+  const estimate: MarketHoursEstimate = {
+    feesBp: str(feesBps) ?? "0",
+    stepBp: str(step),
+    modelVersion: model.version,
+    unavailable: vol.lastClose === null ? "no_candles" : step === null ? "no_market_info" : null,
+  };
+  const estOf = (swing: Decimal | null): string | null =>
+    step === null || swing === null
+      ? null
+      : str(modelCostPerMillion(feesBps, modelPnlBps(step, swing, model.a, model.k)));
+  const hours: MarketHoursHour[] = Array.from({ length: 24 }, (_, h) => {
+    const vh = vol.hours[h];
+    return {
+      hour: h,
+      volatility:
+        vh === undefined
+          ? emptyHour().volatility
+          : { ...vh.out, swingBp: str(vh.swing), estCostPerMillion: estOf(vh.swing) },
+      cost: cost.hours[h] ?? emptyHour().cost,
+      bots: bots.hours[h] ?? emptyHour().bots,
+    };
+  });
   return {
     ...base,
     hours,
@@ -91,7 +129,22 @@ export async function marketHours(
     markoutSince: cost.since,
     markoutDays: cost.days,
     fillsSince: bots.since,
+    estimate,
   };
+}
+
+/** Phí của mô hình (bps): maker SoDEX của market (thiếu thì phí cơ bản) + builder fee Market Making mặc định. */
+const estimateFeesBps = (makerFee: string | undefined): Decimal =>
+  perpsMakerFeeBps(makerFee).add(mmBuilderFeeBps());
+
+/** Tick size và phí maker của perp từ SoDEX; không có market đó hoặc SoDEX lỗi → null (cả dòng ước tính là n/a). */
+async function marketInfo(
+  deps: Deps,
+  market: string,
+): Promise<{ tickSize: string; makerFee: string | undefined } | null> {
+  const symbols = await deps.rest.getPerpsSymbols().catch(() => null);
+  const s = symbols?.find((x) => x.name === market);
+  return s === undefined ? null : { tickSize: s.tickSize, makerFee: s.makerFee };
 }
 
 function emptyHour(): Omit<MarketHoursHour, "hour"> {
@@ -102,6 +155,8 @@ function emptyHour(): Omit<MarketHoursHour, "hour"> {
       ratio: null,
       hotPct: null,
       fiveMin: Array.from({ length: 12 }, () => null),
+      swingBp: null,
+      estCostPerMillion: null,
     },
     cost: { markoutBp: null, spreadTicks: null },
     bots: { costPerMillion: null, volume: null, fees: null, botHours: 0, thin: false },
@@ -134,15 +189,19 @@ async function marketList(db: Db, from: Date): Promise<string[]> {
   return rowsOf<{ market: string }>(r).map((x) => x.market);
 }
 
-/** Khối 1: range 1 phút theo ngày / giờ / bước 5 phút địa phương. */
+/**
+ * Khối 1: range 1 phút theo ngày / giờ / bước 5 phút địa phương. Kèm dao động 1 phút của mỗi giờ (trung vị qua các
+ * ngày của `swingBps` trên giá đóng theo thứ tự thời gian) và giá đóng mới nhất, cho dòng ước tính của mô hình.
+ */
 async function volatility(db: Db, market: string, from: Date, tz: string) {
   const r = await db.execute(sql`
     select to_char(ts at time zone ${tz}, 'YYYY-MM-DD') as d,
            extract(hour from ts at time zone ${tz})::int as h,
            (extract(minute from ts at time zone ${tz})::int / 5) as m5,
-           high::text as high, low::text as low
+           high::text as high, low::text as low, close::text as close
       from candles_1m
-      where market = ${market} and ts >= ${from}`);
+      where market = ${market} and ts >= ${from}
+      order by ts`);
   const [first] = rowsOf<{ since: unknown }>(
     await db.execute(sql`select min(ts) as since from candles_1m where market = ${market}`),
   );
@@ -152,7 +211,19 @@ async function volatility(db: Db, market: string, from: Date, tz: string) {
   const byFive = Array.from({ length: 24 }, () =>
     Array.from({ length: 12 }, () => [] as Decimal[]),
   );
-  for (const x of rowsOf<{ d: string; h: number; m5: number; high: string; low: string }>(r)) {
+  // Giá đóng theo (ngày, giờ), theo thứ tự thời gian (truy vấn đã order by ts).
+  const closes = new Map<string, string[]>();
+  let lastClose: string | null = null;
+  for (const x of rowsOf<{
+    d: string;
+    h: number;
+    m5: number;
+    high: string;
+    low: string;
+    close: string;
+  }>(r)) {
+    listOf(closes, `${x.d}|${String(x.h)}`).push(x.close);
+    lastClose = x.close;
     const v = minuteRangeBp(x.high, x.low);
     if (v === null) continue;
     const k = `${x.d}|${String(x.h)}`;
@@ -179,14 +250,17 @@ async function volatility(db: Db, market: string, from: Date, tz: string) {
     const ratios = dates.map((d) => ratioOf(d, h)).filter((x): x is Decimal => x !== null);
     const hot = ratios.filter((x) => x.gt(MARKET_HOURS_HOT_RATIO)).length;
     return {
-      medianBp: str(quantile(byHour[h] ?? [], 0.5)),
-      p90Bp: str(quantile(byHour[h] ?? [], 0.9)),
-      ratio: str(quantile(ratios, 0.5)),
-      hotPct: ratios.length === 0 ? null : Math.round((hot / ratios.length) * 100),
-      fiveMin: (byFive[h] ?? []).map((xs) => str(quantile(xs, 0.5))),
+      out: {
+        medianBp: str(quantile(byHour[h] ?? [], 0.5)),
+        p90Bp: str(quantile(byHour[h] ?? [], 0.9)),
+        ratio: str(quantile(ratios, 0.5)),
+        hotPct: ratios.length === 0 ? null : Math.round((hot / ratios.length) * 100),
+        fiveMin: (byFive[h] ?? []).map((xs) => str(quantile(xs, 0.5))),
+      },
+      swing: medianSwingBps(dates.map((d) => closes.get(`${d}|${String(h)}`) ?? [])),
     };
   });
-  return { hours, heatmap, since: iso(first?.since) };
+  return { hours, heatmap, since: iso(first?.since), lastClose };
 }
 
 /** Khối 2: markout 30 s phía maker và spread theo giờ địa phương (dòng giờ UTC của mm_market_hourly). */
