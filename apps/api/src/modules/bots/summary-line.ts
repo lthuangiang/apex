@@ -1,7 +1,7 @@
 import { Strategy, dec, formatDecimal } from "@drift/shared";
 import { botCapitalOf, volumeFarmSchema, volumeMakerSchema } from "@drift/strategies";
 
-// Tóm tắt cấu hình một dòng cho bộ chọn bot ở Trading Agent (DEC-TBD-agent-selector, quyết định 5): server tạo từ
+// Tóm tắt cấu hình một dòng cho bộ chọn bot ở Trading Agent (DEC-294, quyết định 5): server tạo từ
 // config đang chạy, tất định, câu chữ tiếng Anh ghép bằng " · ". Không tạo được (config thiếu / sai, không có vốn)
 // → null, UI chỉ hiện capital.
 // - Market Making: order size · khoảng cách (bp, hoặc số bước giá khi báo giá theo sổ lệnh) · "Smart quoting" khi bật.

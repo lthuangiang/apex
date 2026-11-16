@@ -131,7 +131,7 @@ export const botSummarySchema = z.object({
   stopDetail: z.enum(["volume_target", "end_time"]).nullable().default(null),
   /**
    * Tóm tắt cấu hình đang chạy, một dòng tiếng Anh do server tạo theo chiến lược ("$50 · 1 bp · Smart quoting"),
-   * dùng ở bộ chọn bot của Trading Agent (DEC-TBD-agent-selector). null thì UI chỉ hiện capital.
+   * dùng ở bộ chọn bot của Trading Agent (DEC-294). null thì UI chỉ hiện capital.
    */
   summary: z.string().nullable().default(null),
   createdAt: isoDateTimeSchema,

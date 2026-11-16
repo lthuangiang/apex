@@ -17,7 +17,7 @@ import {
   NoneRunning,
 } from "../components/bot-selector";
 
-// Bộ chọn bot của Trading Agent, phương án A (docs/mockups/agent-selector; DEC-TBD-agent-selector).
+// Bộ chọn bot của Trading Agent, phương án A (docs/mockups/agent-selector; DEC-294).
 
 const AXE = {
   runOnly: {

@@ -8,7 +8,7 @@ function plannedStop(b: { state: string; reasonCode: string | null }): boolean {
   );
 }
 
-// Bộ chọn bot của Trading Agent (docs/mockups/agent-selector, phương án A; DEC-TBD-agent-selector). Phần thuần:
+// Bộ chọn bot của Trading Agent (docs/mockups/agent-selector, phương án A; DEC-294). Phần thuần:
 // nhóm, thứ tự, lọc, tìm kiếm. Không I/O, không câu chữ.
 //
 // Nhóm: Needs attention → Running (gồm Starting / Resuming) → Paused (gồm Pausing / Stopping) → Stopped (thu gọn sau

@@ -11,7 +11,7 @@ import {
   type PickerFilters,
 } from "../bot-picker";
 
-// Bộ chọn bot của Trading Agent (docs/mockups/agent-selector, DEC-TBD-agent-selector): nhóm, thứ tự, lọc, tìm.
+// Bộ chọn bot của Trading Agent (docs/mockups/agent-selector, DEC-294): nhóm, thứ tự, lọc, tìm.
 
 let n = 0;
 function bot(over: Partial<BotSummary> = {}): BotSummary {

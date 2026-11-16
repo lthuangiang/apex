@@ -54,7 +54,7 @@ import { useReasonLabel } from "../stop-reason";
 import { BotProfit } from "./bot-profit";
 import { useWaitingText } from "./bots-page";
 
-// Bộ chọn bot của Trading Agent, phương án A (docs/mockups/agent-selector; DEC-TBD-agent-selector). Thay dải thẻ
+// Bộ chọn bot của Trading Agent, phương án A (docs/mockups/agent-selector; DEC-294). Thay dải thẻ
 // cuộn ngang: thanh tóm tắt bot đang xem + nút Switch bot mở panel combobox (tìm kiếm, lọc State / Strategy /
 // Market, nhóm). Điện thoại: thẻ đầu trang là nút mở, danh sách nằm trong BottomSheet. Chọn bot = điều hướng tới
 // /agent/:botId. Bot đang xem có aria-selected + dấu "Viewing" nhìn thấy được (không chỉ bằng màu).

@@ -442,7 +442,7 @@ export function AgentPage({ botId }: { botId?: string }) {
 
         {missing ? <NotConnected message={t("notConnected")} /> : null}
 
-        {/* Bộ chọn bot, phương án A (docs/mockups/agent-selector, DEC-TBD-agent-selector): thay dải thẻ ngang. */}
+        {/* Bộ chọn bot, phương án A (docs/mockups/agent-selector, DEC-294): thay dải thẻ ngang. */}
         {list.isPending ? (
           id === undefined ? null : (
             <BotSelectorSkeleton />

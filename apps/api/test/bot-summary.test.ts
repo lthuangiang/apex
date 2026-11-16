@@ -7,7 +7,7 @@ import { botSummaryLine } from "../src/modules/bots/summary-line";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// Tóm tắt cấu hình một dòng trên danh sách bot (bộ chọn bot của Trading Agent, DEC-TBD-agent-selector): server tạo
+// Tóm tắt cấu hình một dòng trên danh sách bot (bộ chọn bot của Trading Agent, DEC-294): server tạo
 // từ config đang chạy, theo chiến lược; không tạo được thì null (UI chỉ hiện capital).
 
 const mm = (over: Record<string, unknown> = {}) => ({
