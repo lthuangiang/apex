@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseOrderRequests, untrackedCount } from "./ops";
 
-// Trang Ops (DEC-TBD-ops-page): số đọc từ dòng Decisions có sẵn; dòng không đúng mẫu → null / 0, không đoán.
+// Trang Ops (DEC-276): số đọc từ dòng Decisions có sẵn; dòng không đúng mẫu → null / 0, không đoán.
 
 describe("team ops parsing", () => {
   it("reads requests per minute and the longest quoting gap from the Order requests line", () => {

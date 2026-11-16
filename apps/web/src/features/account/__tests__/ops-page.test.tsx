@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import messages from "../../../../messages/en.json";
 import { OpsPage } from "../components/ops-page";
 
-// Trang Ops (DEC-TBD-ops-page): đang tải, rỗng, lỗi, dữ liệu cũ khi làm mới lỗi, 403. Số thiếu → "Not available".
+// Trang Ops (DEC-276): đang tải, rỗng, lỗi, dữ liệu cũ khi làm mới lỗi, 403. Số thiếu → "Not available".
 
 const mode = vi.hoisted(() => ({ value: "ok" }));
 vi.mock("@/components/workspace", () => ({

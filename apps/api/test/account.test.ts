@@ -389,7 +389,7 @@ describe("watchlist", () => {
   });
 });
 
-describe("GET /api/v1/admin/ops (DEC-TBD-ops-page)", () => {
+describe("GET /api/v1/admin/ops (DEC-276)", () => {
   it("is for the team only: 401 signed out, 403 for users, 200 with bots for the team", async () => {
     const anon = new TestClient(env.app);
     expect((await anon.request("GET", "/api/v1/admin/ops")).statusCode).toBe(401);

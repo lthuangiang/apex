@@ -6,7 +6,7 @@ import { botCostPerMillion } from "../bots/service";
 
 import { requireTeam } from "./team";
 
-// Trang Ops của team (PR C, DEC-TBD-ops-page; DevOps chọn theo ủy quyền, chờ người dùng xác nhận). Chỉ role team.
+// Trang Ops của team (PR C, DEC-276; DevOps chọn theo ủy quyền, chờ người dùng xác nhận). Chỉ role team.
 // Một hàng mỗi bot Market Making / Volume Farm thật: running / paused / stopping, hoặc dừng trong 24 giờ. Chỉ đọc,
 // truy vấn lọc theo các bot đó (không quét cả bảng). Số không tính được → null ("Not available"), không bao giờ 0.
 

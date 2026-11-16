@@ -14,7 +14,7 @@ import { formatDateTime, formatMoney } from "@/lib/format";
 import { useMarketNames } from "@/lib/markets";
 import { BELOW_LG, useMediaQuery } from "@/lib/use-media";
 
-// Trang Ops của team (PR C, DEC-TBD-ops-page): một hàng mỗi bot Market Making / Volume Farm thật. Số không có →
+// Trang Ops của team (PR C, DEC-276): một hàng mỗi bot Market Making / Volume Farm thật. Số không có →
 // "Not available", không bao giờ 0. Làm mới tay hoặc tự động 30 s (không nhanh hơn); 403 thì ngừng làm mới; làm mới
 // lỗi thì giữ dữ liệu cũ và ghi rõ là cũ.
 

@@ -172,7 +172,7 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
     ),
   );
 
-  // Trang Ops của team (PR C, DEC-TBD-ops-page): chỉ role team.
+  // Trang Ops của team (PR C, DEC-276): chỉ role team.
   app.get("/api/v1/admin/ops", async (request) =>
     teamOps({ db: deps.db, now: deps.now, log: request.log }, requireAuth(request).userId),
   );

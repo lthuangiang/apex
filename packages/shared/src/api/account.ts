@@ -526,7 +526,7 @@ export const platformStatsQuerySchema = z.object({
 export type PlatformStatsQuery = z.infer<typeof platformStatsQuerySchema>;
 
 /**
- * Trang Ops của team (PR C, DEC-TBD-ops-page): một hàng mỗi bot Market Making / Volume Farm thật đang chạy hoặc dừng
+ * Trang Ops của team (PR C, DEC-276): một hàng mỗi bot Market Making / Volume Farm thật đang chạy hoặc dừng
  * trong 24 giờ. Mọi số không tính được là null (UI: "Not available"), không bao giờ 0 thay cho "không biết".
  */
 export const teamOpsBotSchema = z.object({

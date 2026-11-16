@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { sortOps } from "../components/ops-page";
 
-// Trang Ops (DEC-TBD-ops-page): bot có vi phạm bất biến gần nhất lên đầu, rồi theo volume / giờ.
+// Trang Ops (DEC-276): bot có vi phạm bất biến gần nhất lên đầu, rồi theo volume / giờ.
 
 const row = (id: string, volumeHour: string | null, at: string | null) => ({
   botId: id,
