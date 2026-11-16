@@ -8,7 +8,9 @@ import {
   DRIFT_BUILDER_FEE_RATE,
   feeRateToFraction,
   feeRateToPercent,
+  formatVolumeUsd,
   isBuilderAccount,
+  nextFeeTierOf,
   isBuilderFeeApproved,
   oneWayFeeFraction,
   roundTripFeePct,
@@ -113,5 +115,21 @@ describe("builder fee tiers (DEC-258)", () => {
   it("leaves strategies without tiers at their default", () => {
     expect(tierRateOf("volume_farm", "5000000")).toBe(5);
     expect(tierRateOf("spot_grid", "5000000")).toBe(10);
+  });
+});
+
+describe("next fee tier and volume text (DEC-258)", () => {
+  it("names the next lower-rate tier above the volume, and none at the top", () => {
+    expect(nextFeeTierOf("volume_maker", "0")).toEqual({ minVolume: 200_000, rate: 2 });
+    expect(nextFeeTierOf("volume_maker", "199999.99")).toEqual({ minVolume: 200_000, rate: 2 });
+    expect(nextFeeTierOf("volume_maker", "200000")).toEqual({ minVolume: 1_000_000, rate: 1 });
+    expect(nextFeeTierOf("volume_maker", "1000000")).toBeNull();
+    expect(nextFeeTierOf("spot_grid", "0")).toBeNull();
+  });
+
+  it("rounds volume down to the dollar so it never shows more than real", () => {
+    expect(formatVolumeUsd("199999.6")).toBe("199,999");
+    expect(formatVolumeUsd("1000000")).toBe("1,000,000");
+    expect(formatVolumeUsd("0")).toBe("0");
   });
 });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-import { isoDateTimeSchema, uuidSchema } from "../schemas";
+import { feeRateToPercent, formatVolumeUsd } from "../fees";
+import { decimalStringSchema, isoDateTimeSchema, uuidSchema } from "../schemas";
 
 // Thông báo (SCREENS.md mục 8.5 › Notifications, DEC-41). Nhóm "bot errors" luôn bật (không tắt được).
 
@@ -10,6 +11,8 @@ export const NOTIFICATION_TYPES = [
   "unknown_order",
   "risk_alert",
   "key_fee",
+  // Builder fee theo bậc volume đổi (DEC-258, DEC-TBD-mm-fee-card): scheduler phát, tối đa 1 tin / user × chiến lược / ngày.
+  "fee_tier_changed",
   "fill",
   "daily_summary",
   "leader_big_move",
@@ -36,7 +39,7 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 export const NOTIFICATION_GROUPS = {
   botErrors: ["bot_paused", "bot_stopped", "unknown_order"],
   risk: ["risk_alert"],
-  keyFee: ["key_fee"],
+  keyFee: ["key_fee", "fee_tier_changed"],
   fills: ["fill"],
   daily: ["daily_summary"],
   copyTrading: ["leader_big_move", "leader_position", "copy_bot_opened", "copy_bot_skipped"],
@@ -93,6 +96,46 @@ export function groupOf(type: NotificationType): NotificationGroup {
       (NOTIFICATION_GROUPS[g] as readonly string[]).includes(type),
     ) ?? "botErrors"
   );
+}
+
+/**
+ * `data` của `fee_tier_changed` (DEC-TBD-mm-fee-card). Mức là phần mười bp. `volume`: volume tiền thật 30 ngày (USD,
+ * chuỗi thập phân chưa làm tròn) lúc tính; null = không có số (tin chỉ ghi mức mới / cũ). `droppedBelow`: khi mức tăng
+ * lại, ngưỡng của bậc user vừa rơi khỏi (USD); null khi mức giảm hoặc không xác định được.
+ */
+export const feeTierChangedDataSchema = z.object({
+  strategy: z.string(),
+  rate: z.number().int().nonnegative(),
+  previousRate: z.number().int().nonnegative(),
+  volume: decimalStringSchema.nullable(),
+  droppedBelow: decimalStringSchema.nullable(),
+});
+export type FeeTierChangedData = z.infer<typeof feeTierChangedDataSchema>;
+
+/**
+ * Chọn câu cho `fee_tier_changed` (email, Telegram, in-app dùng chung; câu chữ nằm ở file i18n của từng app). Mức dạng
+ * phần trăm ("0.002%"); volume / ngưỡng là số đô làm tròn xuống ("199,999"), app tự ghép đơn vị. Thiếu volume, hoặc mức
+ * tăng mà không biết ngưỡng → chỉ câu mức mới / cũ (quy tắc 1.8). Payload sai dạng → null.
+ */
+export function feeTierChangeText(data: unknown): {
+  title: "lowered" | "back";
+  body: "lowered" | "raised" | "rates";
+  vars: { rate: string; previous: string; volume: string | null; min: string | null };
+} | null {
+  const p = feeTierChangedDataSchema.safeParse(data);
+  if (!p.success) return null;
+  const { rate, previousRate, volume, droppedBelow } = p.data;
+  const lowered = rate < previousRate;
+  const pct = (r: number) => `${feeRateToPercent(r).toString()}%`;
+  const vars = {
+    rate: pct(rate),
+    previous: pct(previousRate),
+    volume: volume === null ? null : formatVolumeUsd(volume),
+    min: droppedBelow === null ? null : formatVolumeUsd(droppedBelow),
+  };
+  const body =
+    vars.volume === null ? "rates" : lowered ? "lowered" : vars.min === null ? "rates" : "raised";
+  return { title: lowered ? "lowered" : "back", body, vars };
 }
 
 export const notificationViewSchema = z.object({

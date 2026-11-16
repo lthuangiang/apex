@@ -22,6 +22,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { subjectFor } from "./telegram";
+import { feeTierMessage } from "./telegram-render";
 
 // Consumer `jobs.notify` (DEC-41): ghi thông báo in-app và gửi email theo cài đặt của người dùng. Nhóm
 // "bot errors" luôn bật cho in-app và email. Email chỉ có tóm tắt; chi tiết xem trong app.
@@ -101,6 +102,18 @@ export function emailText(
         subject: "DeskLabs: SoDEX access changed",
         text: "Your DeskLabs API key or builder fee approval changed. Open Settings to review.",
       };
+    case "fee_tier_changed": {
+      // Cùng câu với Telegram, bỏ emoji và thẻ HTML (mọi giá trị là số / mức do DeskLabs tính, không có chuỗi của user).
+      const m = feeTierMessage(data);
+      const plain = (s: string) => s.replace(/<\/?b>/g, "").replace(/^🔑 /u, "");
+      return {
+        subject: `DeskLabs: ${plain(m.title)}`,
+        // Payload sai dạng (không xảy ra với scheduler hiện tại): câu chung của nhóm, không đoán số.
+        text:
+          m.body ??
+          "Your DeskLabs API key or builder fee approval changed. Open Settings to review.",
+      };
+    }
     case "fill":
       return {
         subject: `DeskLabs: ${bot} filled an order`,

@@ -39,6 +39,30 @@ export function tierRateOf(strategy: string, volume: DecimalInput): number {
   return FEE_TIERS[strategy]?.find((t) => v.gte(t.minVolume))?.rate ?? builderFeeRateOf(strategy);
 }
 
+/**
+ * Bậc kế tiếp (mức thấp hơn) phía trên volume `volume`: ngưỡng nhỏ nhất còn lớn hơn volume. null khi đã ở bậc cao nhất
+ * hoặc chiến lược không có bậc (thẻ phí MM ở GET /features).
+ */
+export function nextFeeTierOf(
+  strategy: string,
+  volume: DecimalInput,
+): { minVolume: number; rate: number } | null {
+  const v = new Decimal(volume);
+  const above = (FEE_TIERS[strategy] ?? []).filter((t) => v.lt(t.minVolume));
+  return above[above.length - 1] ?? null;
+}
+
+/**
+ * Volume USD làm tròn xuống tới đô, kiểu "200,000": không bao giờ ghi cao hơn thật (199 999,6 không thành
+ * "200,000"). Dùng chung cho dòng Decisions, email, Telegram và in-app khi bậc phí đổi.
+ */
+export function formatVolumeUsd(volume: DecimalInput): string {
+  return new Decimal(volume)
+    .toDecimalPlaces(0, Decimal.ROUND_DOWN)
+    .toNumber()
+    .toLocaleString("en-US");
+}
+
 /** Mức riêng theo chiến lược của một user: mức team đặt (DEC-159), không có thì mức theo bậc; thiếu key = mặc định. */
 export type BuilderFeeOverrides = Readonly<Record<string, number>>;
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { botListSchema } from "@drift/shared";
+import { botListSchema, feeTierChangeText } from "@drift/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
@@ -70,6 +70,34 @@ export function useNotificationText(): (n: NotificationItem) => NotificationText
         return { title: t("types.risk_alert"), body: t("panel.body.risk") };
       case "key_fee":
         return { title: t("types.key_fee"), body: t("panel.body.keyFee") };
+      case "fee_tier_changed": {
+        // Bậc builder fee MM đổi (DEC-TBD-mm-fee-card): cùng câu với Telegram, không emoji. Volume làm tròn xuống; thiếu
+        // số thì chỉ câu mức mới / cũ. Payload sai dạng → tiêu đề chung của nhóm, không đoán số.
+        const x = feeTierChangeText(n.data);
+        if (x === null) return { title: t("types.key_fee"), body: null };
+        const usdc = (amount: string | null) =>
+          amount === null ? "" : t("panel.usdc", { amount });
+        const vars = {
+          rate: x.vars.rate,
+          previous: x.vars.previous,
+          volume: usdc(x.vars.volume),
+          min: usdc(x.vars.min),
+        };
+        return {
+          title: t(
+            x.title === "lowered" ? "panel.titles.feeLowered" : "panel.titles.feeBack",
+            vars,
+          ),
+          body: t(
+            x.body === "lowered"
+              ? "panel.body.feeLowered"
+              : x.body === "raised"
+                ? "panel.body.feeRaised"
+                : "panel.body.feeRates",
+            vars,
+          ),
+        };
+      }
       case "fill":
         return {
           title: bot === null ? t("types.fill") : t("panel.titles.fill", { bot }),
