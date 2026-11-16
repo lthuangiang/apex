@@ -1449,6 +1449,9 @@ export class Engine {
   ): Promise<void> {
     let places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
     const cancels = actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : []));
+    // BD-02: quyết định ghi cùng bước với lệnh đặt mang clOrdID của các lệnh đó, để Decisions hiện kết quả (Filled /
+    // Cancelled / Rejected / Open) theo trạng thái lệnh thật.
+    const placed = places.length === 0 ? undefined : { orders: places.map((o) => o.clOrdID) };
     for (const a of actions) {
       if (a.type === "log") {
         // Bot copy tiền thật bỏ qua tín hiệu: thêm outbox trong CÙNG transaction ghi bot_events
@@ -1463,18 +1466,26 @@ export class Engine {
                   : [];
               })
             : [];
-        await this.#event(r, "decision", a.decision, a.why, at, async (tx) => {
-          for (const data of skipped)
-            await tx.insert(outbox).values({
-              topic: "jobs.notify",
-              payload: {
-                sodexAccountId: r.account.id,
-                type: "copy_bot_skipped",
-                data,
-                dedupeKey: `copy_bot_skipped:${data.botId}:${data.market ?? "*"}:${String(data.at)}`,
-              },
-            });
-        });
+        await this.#event(
+          r,
+          "decision",
+          a.decision,
+          a.why,
+          at,
+          async (tx) => {
+            for (const data of skipped)
+              await tx.insert(outbox).values({
+                topic: "jobs.notify",
+                payload: {
+                  sodexAccountId: r.account.id,
+                  type: "copy_bot_skipped",
+                  data,
+                  dedupeKey: `copy_bot_skipped:${data.botId}:${data.market ?? "*"}:${String(data.at)}`,
+                },
+              });
+          },
+          placed,
+        );
       }
       if (a.type === "flag")
         await this.#fenced(r, (tx) =>
@@ -2438,11 +2449,18 @@ export class Engine {
     at: number,
     /** Ghi thêm trong cùng transaction (outbox cảnh báo bot copy, DEC-212). */
     also?: (tx: Db) => Promise<void>,
+    /** Dữ liệu kèm event (ví dụ clOrdID của lệnh đặt cùng quyết định, BD-02). */
+    payload?: Record<string, unknown>,
   ): Promise<void> {
     await this.#fenced(r, async (tx) => {
-      await tx
-        .insert(botEvents)
-        .values({ botId: r.botId, type, decision, why, occurredAt: new Date(at) });
+      await tx.insert(botEvents).values({
+        botId: r.botId,
+        type,
+        decision,
+        why,
+        occurredAt: new Date(at),
+        ...(payload === undefined ? {} : { payload }),
+      });
       if (also !== undefined) await also(tx);
     });
   }

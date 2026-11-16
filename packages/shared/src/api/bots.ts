@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { BotState, ReasonCode, Strategy } from "../enums";
+import { dec } from "../money";
 import { decimalStringSchema, isoDateTimeSchema, uuidSchema } from "../schemas";
 
 // API bot (SCREENS.md mục 8.2–8.4, CODING_STANDARDS C7). `config` được api parse bằng zod schema của
@@ -134,12 +135,74 @@ export const botSummarySchema = z.object({
 export type BotSummary = z.infer<typeof botSummarySchema>;
 export const botListSchema = z.object({ items: z.array(botSummarySchema) });
 
+/** Kết quả của một quyết định theo trạng thái thật của các lệnh nó đặt (BD-02). */
+export const DECISION_OUTCOMES = [
+  "filled",
+  "partly_filled",
+  "open",
+  "unknown",
+  "cancelled",
+  "rejected",
+  "not_placed",
+] as const;
+export const decisionOutcomeSchema = z.enum(DECISION_OUTCOMES);
+export type DecisionOutcome = z.infer<typeof decisionOutcomeSchema>;
+
+/**
+ * Kết quả gộp của các lệnh một quyết định đặt, chỉ từ các lệnh tìm thấy trong DB (`list`) trên tổng số lệnh quyết định
+ * đã đặt (`expected`):
+ * - có lệnh `unknown` → Unknown, vì lệnh đó có thể đã khớp (quy tắc 1.7, 1.8: không đoán);
+ * - có khớp → Filled chỉ khi tìm thấy ĐỦ lệnh và mọi lệnh khớp đủ; còn lại Partially filled;
+ * - chưa khớp gì → Open → Cancelled → Rejected → Not placed.
+ * Không tìm thấy lệnh nào → null.
+ */
+export function decisionOutcome(
+  list: readonly { status: string; filledSize: string }[],
+  expected: number = list.length,
+): DecisionOutcome | null {
+  if (list.length === 0) return null;
+  const has = (s: string) => list.some((o) => o.status === s);
+  if (has("unknown")) return "unknown";
+  const filledAny = list.some((o) => dec(o.filledSize).gt(0));
+  if (filledAny)
+    return list.length >= expected && list.every((o) => o.status === "filled")
+      ? "filled"
+      : "partly_filled";
+  if (has("open") || has("partially_filled")) return "open";
+  if (has("cancelled")) return "cancelled";
+  if (has("rejected")) return "rejected";
+  return "not_placed";
+}
+
+/**
+ * Mã reject của SoDEX coi là bình thường (BD-05, DevOps chốt theo ủy quyền): lệnh post-only sẽ khớp ngay (`PostOnly`) và
+ * chặn tự khớp với lệnh của chính mình (`SELF_TRADE_BLOCKED`). Mọi mã khác (kể cả mã trống, mã mới) là bị từ chối vì lý do
+ * khác.
+ */
+export const NORMAL_REJECT_CODES = {
+  postOnly: "PostOnly",
+  selfTrade: "SELF_TRADE_BLOCKED",
+} as const;
+/** Lệnh bị giới hạn rủi ro per-trade của DeskLabs chặn (không tới SoDEX): đếm riêng, không gọi là "refused by SoDEX". */
+export const RISK_LIMIT_REJECT_CODE = "RISK_PER_TRADE";
+
+/** Số lệnh bị từ chối theo loại (BD-05): post-only sẽ khớp ngay, chặn tự khớp; phần còn lại là lý do khác. */
+export const rejectSplitSchema = z.object({
+  postOnly: z.number().int(),
+  selfTrade: z.number().int(),
+  /** Bị giới hạn rủi ro của DeskLabs chặn (RISK_PER_TRADE). */
+  riskLimit: z.number().int().default(0),
+});
+export type RejectSplit = z.infer<typeof rejectSplitSchema>;
+
 export const botEventSchema = z.object({
   id: uuidSchema,
   type: z.string(),
   decision: z.string().nullable(),
   why: z.string().nullable(),
   result: z.string().nullable(),
+  /** Kết quả theo lệnh thật (BD-02); null khi quyết định không đặt lệnh hoặc event cũ chưa gắn lệnh. */
+  outcome: decisionOutcomeSchema.nullable().default(null),
   occurredAt: isoDateTimeSchema,
 });
 
@@ -221,6 +284,13 @@ export const botDetailSchema = z.object({
   openOrders: z.number().int().nonnegative(),
   /** Giờ server: Runtime tính theo mốc này, không phụ thuộc đồng hồ máy người dùng (DEC-88). */
   serverTime: isoDateTimeSchema,
+  /**
+   * Lệnh SoDEX từ chối trong 24 giờ qua vì lý do khác post-only / chặn tự khớp (BD-05, "Recent errors"). Không tính lệnh
+   * do giới hạn rủi ro của DeskLabs chặn.
+   */
+  refusedRecently: z.number().int().default(0),
+  /** Lệnh bị giới hạn rủi ro của DeskLabs chặn (RISK_PER_TRADE) trong 24 giờ qua; không tới SoDEX. */
+  blockedByRiskRecently: z.number().int().default(0),
   /** Mốc "Running" gần nhất khi bot đang chạy; null khi không chạy hoặc chưa có. Runtime tính từ đây. */
   runningSince: isoDateTimeSchema.nullable().default(null),
   /** Lúc lần chạy gần nhất dừng (sự kiện "Stopped", BD-06); null khi đang chạy hoặc không biết. */
@@ -525,6 +595,7 @@ export const volumeAnalyticsSchema = z.object({
     ordersPlaced: z.number().int(),
     ordersFilled: z.number().int(),
     ordersRejected: z.number().int(),
+    rejectedSplit: rejectSplitSchema,
   }),
 });
 export type VolumeAnalytics = z.infer<typeof volumeAnalyticsSchema>;
@@ -688,6 +759,7 @@ export const botAnalyticsSchema = z.object({
     ordersFilled: z.number().int(),
     fillRatePct: z.number().nullable(),
     rejected: z.number().int(),
+    rejectedSplit: rejectSplitSchema,
   }),
   exits: z.array(
     z.object({ reason: z.enum(EXIT_REASONS), trades: z.number().int(), avgNet: z.number() }),
@@ -768,6 +840,7 @@ export const mmAnalyticsSchema = z.object({
   ordersFilled: z.number().int(),
   fillRatePct: z.number().nullable(),
   rejected: z.number().int(),
+  rejectedSplit: rejectSplitSchema,
   /** Thời gian lệnh đứng trên sổ tới khi khớp (giây, trung vị). */
   medianRestSecs: z.number().nullable(),
   /** Khớp bất lợi của lệnh báo giá (không tính lệnh đóng tồn kho), theo phút sau khi khớp. */

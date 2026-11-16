@@ -699,6 +699,39 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("links a decision to the orders it placed, for the Result column (BD-02)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    const e = makeEngine(gw, "w-result");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    // Lệnh market mở vị thế ban đầu khớp trước: grid chạy hẳn rồi mới đặt lệnh đối ứng sau mỗi fill.
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    expect(init).toBeDefined();
+    await e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock);
+    // Lệnh mua mức 95 (grid:1): lệnh bán đối ứng ở 100 không đụng lệnh nào của chính bot. Mua ở 90 thì lệnh bán 95
+    // sẽ đụng lệnh mua 95 của bot (SELF_TRADE_BLOCKED) và không có lệnh nào được đặt.
+    const buy = gw.received.find((o) => o.tag === "grid:1:buy");
+    expect(buy).toBeDefined();
+    const before = gw.received.length;
+    await e.onFill(
+      accountId,
+      buy?.clOrdID ?? "",
+      buy?.quantity ?? "0",
+      buy?.price ?? "0",
+      "0",
+      clock + 1,
+    );
+    const placed = gw.received.slice(before).map((o) => o.clOrdID);
+    expect(placed.length).toBeGreaterThan(0);
+    const bought = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).find(
+      (x) => x.type === "decision" && (x.decision ?? "").startsWith("Bought at level"),
+    );
+    expect(bought?.payload).toEqual({ orders: placed });
+    await e.stop();
+  });
+
   it("sets the new version's leverage when the version changes while leverage is being set (#159)", async () => {
     const gw = new FakeGateway();
     const vm = (leverage: number) => ({

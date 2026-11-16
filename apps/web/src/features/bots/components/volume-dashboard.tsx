@@ -24,6 +24,8 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import { formatAmount } from "@/lib/format";
 
+import { rejectBreakdown } from "../reject-text";
+
 import { VolumeShare } from "./volume-share";
 
 // Bảng Volume của Volume Builder (DEC-128): KPI · biểu đồ · cơ cấu volume · cơ cấu chi phí · chất lượng khớp lệnh.
@@ -167,6 +169,7 @@ function Body({
   period: VolumePeriod;
 }) {
   const t = useTranslations("agent.vd");
+  const tr = useTranslations("agent.rejects");
   const tot = a.totals;
   const volume = num(tot.volume);
   const net = num(tot.net);
@@ -285,7 +288,11 @@ function Body({
               }
               sub={t("fillRatioSub", { filled: tot.ordersFilled, placed: tot.ordersPlaced })}
             />
-            <Cell label={t("rejected")} value={String(tot.ordersRejected)} sub={t("rejectedSub")} />
+            <Cell
+              label={t("rejected")}
+              value={String(tot.ordersRejected)}
+              sub={rejectBreakdown(tr, tot.ordersRejected, tot.rejectedSplit) ?? t("rejectedSub")}
+            />
             <Cell
               label={t("tradesPerHour")}
               value={(tot.trades / hours).toFixed(1)}

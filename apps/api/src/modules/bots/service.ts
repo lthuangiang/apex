@@ -23,6 +23,9 @@ import {
   CheckKey,
   COPY_MAX_LEVERAGE,
   dec,
+  decisionOutcome,
+  NORMAL_REJECT_CODES,
+  RISK_LIMIT_REJECT_CODE,
   Decimal,
   ErrorCode,
   isBuilderAccount,
@@ -891,6 +894,13 @@ async function vfStats(
   };
 }
 
+/** clOrdID của các lệnh một event quyết định đã đặt (`payload.orders`, BD-02); event cũ không có → []. */
+function eventOrders(payload: unknown): string[] {
+  if (typeof payload !== "object" || payload === null || !("orders" in payload)) return [];
+  const list = payload.orders;
+  return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
+}
+
 export async function botDetail(deps: BotDeps, userId: string, botId: string): Promise<BotDetail> {
   const b = await ownBot(deps.db, userId, botId);
   const versions = await deps.db
@@ -926,6 +936,34 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
           .orderBy(desc(botEvents.occurredAt))
           .limit(1)
       : [];
+  // BD-02: kết quả của quyết định theo trạng thái thật của các lệnh nó đặt (clOrdID engine gắn vào event).
+  const placedIds = [...new Set(events.flatMap((e) => eventOrders(e.payload)))];
+  const placedRows =
+    placedIds.length === 0
+      ? []
+      : await deps.db
+          .select({ clOrdId: orders.clOrdId, status: orders.status, filledSize: orders.filledSize })
+          .from(orders)
+          // (account, clOrdID) đi qua index orders_account_cl_ord_key; trang này poll mỗi 5 s.
+          .where(
+            and(
+              eq(orders.sodexAccountId, b.sodexAccountId),
+              inArray(orders.clOrdId, placedIds),
+              eq(orders.botId, botId),
+            ),
+          );
+  const placedBy = new Map(placedRows.map((o) => [o.clOrdId, o]));
+  const outcomeOf = (payload: unknown) => {
+    const ids = eventOrders(payload);
+    // Lệnh không còn trong DB (bị chặn trước khi lưu, hoặc hoàn tác) không được tính như đã khớp đủ.
+    return decisionOutcome(
+      ids.flatMap((id) => {
+        const o = placedBy.get(id);
+        return o === undefined ? [] : [o];
+      }),
+      ids.length,
+    );
+  };
   const [until] =
     since !== undefined && b.state !== BotState.running
       ? await deps.db
@@ -951,6 +989,21 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     .select({ n: sql<number>`count(*)::int` })
     .from(orders)
     .where(and(eq(orders.botId, botId), inArray(orders.status, ["filled", "partially_filled"])));
+  // BD-05: lệnh bị từ chối trong 24 giờ qua. "Refused by SoDEX" = mọi mã trừ post-only / chặn tự khớp (bình thường) và
+  // giới hạn rủi ro của DeskLabs (đếm riêng, không tới SoDEX); mã trống hoặc mã mới cũng tính là bị SoDEX từ chối.
+  const [refused] = await deps.db
+    .select({
+      n: sql<number>`count(*) filter (where coalesce(${orders.rejectCode}, '') not in (${NORMAL_REJECT_CODES.postOnly}, ${NORMAL_REJECT_CODES.selfTrade}, ${RISK_LIMIT_REJECT_CODE}))::int`,
+      risk: sql<number>`count(*) filter (where ${orders.rejectCode} = ${RISK_LIMIT_REJECT_CODE})::int`,
+    })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.botId, botId),
+        eq(orders.status, "rejected"),
+        gte(orders.createdAt, new Date(deps.now().getTime() - 86_400_000)),
+      ),
+    );
   const active = versions.find((v) => v.id === b.activeVersionId);
   const marks: Record<string, string> = await deps
     .prices(priceMarketsOf(b.market, b.strategy, active?.config ?? null))
@@ -981,10 +1034,13 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
       decision: e.decision,
       why: e.why,
       result: e.result,
+      outcome: outcomeOf(e.payload),
       occurredAt: iso(e.occurredAt),
     })),
     openOrders: open?.n ?? 0,
     serverTime: iso(deps.now()),
+    refusedRecently: refused?.n ?? 0,
+    blockedByRiskRecently: refused?.risk ?? 0,
     // Bot đã dừng mà không có sự kiện "Stopped" (dừng trước khi engine ghi sự kiện này) thì không có Runtime.
     runningSince:
       since === undefined || (b.state !== BotState.running && until === undefined)
