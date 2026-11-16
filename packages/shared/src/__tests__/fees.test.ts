@@ -119,12 +119,13 @@ describe("builder fee tiers (DEC-258)", () => {
 });
 
 describe("next fee tier and volume text (DEC-258)", () => {
-  it("names the next lower-rate tier above the volume, and none at the top", () => {
-    expect(nextFeeTierOf("volume_maker", "0")).toEqual({ minVolume: 200_000, rate: 2 });
-    expect(nextFeeTierOf("volume_maker", "199999.99")).toEqual({ minVolume: 200_000, rate: 2 });
-    expect(nextFeeTierOf("volume_maker", "200000")).toEqual({ minVolume: 1_000_000, rate: 1 });
-    expect(nextFeeTierOf("volume_maker", "1000000")).toBeNull();
-    expect(nextFeeTierOf("spot_grid", "0")).toBeNull();
+  it("names the tier with the highest rate below the effective rate, and none at the top", () => {
+    expect(nextFeeTierOf("volume_maker", 3)).toEqual({ minVolume: 200_000, rate: 2 });
+    expect(nextFeeTierOf("volume_maker", 2)).toEqual({ minVolume: 1_000_000, rate: 1 });
+    expect(nextFeeTierOf("volume_maker", 1)).toBeNull();
+    // Mức team đặt tay cao hơn mặc định vẫn có bậc kế tiếp; API trả null khi custom.
+    expect(nextFeeTierOf("volume_maker", 10)).toEqual({ minVolume: 200_000, rate: 2 });
+    expect(nextFeeTierOf("spot_grid", 10)).toBeNull();
   });
 
   it("rounds volume down to the dollar so it never shows more than real", () => {

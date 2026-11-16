@@ -95,15 +95,34 @@ export async function mmFeeOf(db: Db, userId: string, now: Date): Promise<MmFee>
       : ((await feeTierVolumes(db, botIds, since)).find((v) => v.strategy === strategy)?.volume ??
         "0");
   const volume30d = sum === null ? null : new Decimal(sum).toFixed();
-  const next = source === "custom" ? null : nextFeeTierOf(strategy, volume30d ?? "0");
-  const better = next !== null && next.rate < rate ? next : null;
+  // Bậc kế tiếp theo mức hiệu lực (không theo volume trực tiếp): dòng bậc có thể chậm tới một giờ so với volume.
+  const next = source === "custom" ? null : nextFeeTierOf(strategy, rate);
   return {
     rate,
     source,
     volume30d,
-    nextVolume: better === null ? null : String(better.minVolume),
-    nextRate: better?.rate ?? null,
+    nextVolume: next === null ? null : String(next.minVolume),
+    nextRate: next?.rate ?? null,
   };
+}
+
+/** Giữ thẻ phí MM của mỗi user ngần này trong process (GET /features gọi ở nhiều màn hình). */
+export const MM_FEE_CACHE_MS = 2 * 60_000;
+const MM_FEE_CACHE_MAX = 10_000;
+const mmFeeCache = new Map<string, { at: number; value: MmFee }>();
+
+/** `mmFeeOf` có cache trong process ~2 phút theo user; team đổi mức tay thì xoá ngay (`setBuilderFee`). */
+export async function cachedMmFeeOf(db: Db, userId: string, now: Date): Promise<MmFee> {
+  const hit = mmFeeCache.get(userId);
+  if (hit !== undefined && now.getTime() - hit.at < MM_FEE_CACHE_MS && now.getTime() >= hit.at)
+    return hit.value;
+  const value = await mmFeeOf(db, userId, now);
+  if (mmFeeCache.size >= MM_FEE_CACHE_MAX)
+    for (const [k, v] of mmFeeCache)
+      if (now.getTime() - v.at >= MM_FEE_CACHE_MS) mmFeeCache.delete(k);
+  if (mmFeeCache.size >= MM_FEE_CACHE_MAX) mmFeeCache.clear();
+  mmFeeCache.set(userId, { at: now.getTime(), value });
+  return value;
 }
 
 /** Bảng builder fee của user cho trang Users của team. */
@@ -191,5 +210,6 @@ export async function setBuilderFee(
     });
     return count;
   });
+  mmFeeCache.delete(targetId);
   return { builderFees: await builderFeeRows(deps.db, targetId), notified };
 }

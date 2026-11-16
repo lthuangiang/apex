@@ -52,7 +52,9 @@ async function fill(botId: string, usd: number, daysAgo: number, side: "buy" | "
   );
 }
 
-async function mmFee(client: TestClient): Promise<MmFee | null> {
+/** Đọc thẻ phí; mặc định qua hết cache ~2 phút trước (đẩy đồng hồ của API thêm 3 phút). */
+async function mmFee(client: TestClient, fresh = true): Promise<MmFee | null> {
+  if (fresh) env.clock.now = new Date(env.clock.now.getTime() + 3 * 60_000);
   return featuresSchema.parse((await client.request("GET", "/api/v1/features")).json()).mmFee;
 }
 
@@ -140,5 +142,48 @@ describe("GET /api/v1/features · mmFee", () => {
       nextVolume: null,
       nextRate: null,
     });
+  });
+
+  it("next tier follows the effective rate when the tier row lags the live volume", async () => {
+    // Bậc 0.2 bp nhưng volume đã tụt còn 190K (job chưa chạy): bậc kế tiếp vẫn là 1M / 0.1 bp.
+    const lagDown = await user("mmfee-lag-down@example.com");
+    await fill(await mmBot(lagDown), 190_000, 3);
+    await env.pool.query(
+      "insert into user_fee_tiers (user_id, strategy, rate, volume, computed_at) values ($1, 'volume_maker', 2, 210000, now())",
+      [lagDown.userId],
+    );
+    expect(await mmFee(lagDown.client)).toEqual({
+      rate: 2,
+      source: "tier",
+      volume30d: "190000",
+      nextVolume: "1000000",
+      nextRate: 1,
+    });
+    // Chưa có dòng bậc (mức 3) nhưng volume đã 250K: bậc kế tiếp vẫn là 200K / 0.2 bp.
+    const lagUp = await user("mmfee-lag-up@example.com");
+    await fill(await mmBot(lagUp), 250_000, 1);
+    expect(await mmFee(lagUp.client)).toEqual({
+      rate: 3,
+      source: "default",
+      volume30d: "250000",
+      nextVolume: "200000",
+      nextRate: 2,
+    });
+  });
+
+  it("caches the card for about 2 minutes per user", async () => {
+    const u = await user("mmfee-cache@example.com");
+    const bot = await mmBot(u);
+    expect((await mmFee(u.client))?.volume30d).toBe("0");
+    await fill(bot, 10_000, 1);
+    expect((await mmFee(u.client, false))?.volume30d).toBe("0");
+    expect((await mmFee(u.client))?.volume30d).toBe("10000");
+  });
+
+  it("is null without queries when the team turned volume bots off for the user", async () => {
+    const u = await user("mmfee-off@example.com");
+    await fill(await mmBot(u), 10_000, 1);
+    await env.pool.query("update users set volume_bots = false where id = $1", [u.userId]);
+    expect(await mmFee(u.client)).toBeNull();
   });
 });

@@ -40,16 +40,18 @@ export function tierRateOf(strategy: string, volume: DecimalInput): number {
 }
 
 /**
- * Bậc kế tiếp (mức thấp hơn) phía trên volume `volume`: ngưỡng nhỏ nhất còn lớn hơn volume. null khi đã ở bậc cao nhất
- * hoặc chiến lược không có bậc (thẻ phí MM ở GET /features).
+ * Bậc kế tiếp của mức hiệu lực `rate`: bậc có mức cao nhất mà vẫn thấp hơn hẳn `rate` (MM: 3 → 200K / 2, 2 → 1M / 1,
+ * 1 → null). Tính theo mức engine đang dùng, không theo volume trực tiếp, để thẻ phí không lệch khi job theo giờ chưa chạy.
  */
 export function nextFeeTierOf(
   strategy: string,
-  volume: DecimalInput,
+  rate: number,
 ): { minVolume: number; rate: number } | null {
-  const v = new Decimal(volume);
-  const above = (FEE_TIERS[strategy] ?? []).filter((t) => v.lt(t.minVolume));
-  return above[above.length - 1] ?? null;
+  const lower = (FEE_TIERS[strategy] ?? []).filter((t) => t.rate < rate);
+  return lower.reduce<{ minVolume: number; rate: number } | null>(
+    (best, t) => (best === null || t.rate > best.rate ? t : best),
+    null,
+  );
 }
 
 /**

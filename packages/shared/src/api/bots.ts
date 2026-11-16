@@ -34,7 +34,8 @@ export const BOT_STRATEGIES = [
  * Thẻ builder fee Market Making (DEC-258, DEC-TBD-mm-fee-card). `rate` là mức hiệu lực (phần mười bp). `source`: team
  * đặt tay (`custom`, DEC-159) / theo bậc volume (`tier`) / mặc định. `volume30d`: volume MM tiền thật 30 ngày (USD), null
  * khi user chưa từng có bot MM tiền thật; có bot mà không khớp gì là "0". `nextVolume` / `nextRate`: ngưỡng và mức của
- * bậc kế tiếp có mức thấp hơn `rate` (chưa có volume thì tính như 0); null ở bậc cao nhất hoặc khi `custom`.
+ * bậc có mức cao nhất thấp hơn hẳn `rate` (theo mức hiệu lực, không theo volume trực tiếp); null ở bậc cao nhất hoặc khi
+ * `custom`. null cả object khi chưa đăng nhập hoặc user không được dùng bot khối lượng.
  */
 export const mmFeeSchema = z.object({
   rate: z.number().int(),

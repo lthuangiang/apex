@@ -3,6 +3,7 @@ import {
   bots,
   builderFeeOverridesOf,
   createDb,
+  feeTierVolumes,
   fills,
   orders,
   outbox,
@@ -69,7 +70,12 @@ async function seed(strategy = "volume_maker", mode: "live" | "paper" = "live") 
 }
 
 /** Một fill có notional `usd` (giá 100 000), `daysAgo` ngày trước NOW. */
-async function fill(s: { accountId: string; botId: string }, usd: number, daysAgo: number) {
+async function fill(
+  s: { accountId: string; botId: string },
+  usd: number,
+  daysAgo: number,
+  orderDaysAgo?: number,
+) {
   const [o] = await db
     .insert(orders)
     .values({
@@ -85,6 +91,7 @@ async function fill(s: { accountId: string; botId: string }, usd: number, daysAg
       status: "filled",
       tag: "vm",
       epoch: 1,
+      ...(orderDaysAgo === undefined ? {} : { createdAt: new Date(NOW - orderDaysAgo * DAY) }),
     })
     .returning();
   await db.insert(fills).values({
@@ -205,10 +212,12 @@ describe("builder fee tiers (DEC-258)", () => {
           volume: "250000.7",
           droppedBelow: null,
         },
-        dedupeKey: "fee_tier_changed:volume_maker:2026-11-16",
+        dedupeKey: "fee_tier_changed:volume_maker:2:2026-11-16",
       },
     ]);
-    expect(feeTierDedupeKey("volume_maker", NOW)).toBe("fee_tier_changed:volume_maker:2026-11-16");
+    expect(feeTierDedupeKey("volume_maker", 2, NOW)).toBe(
+      "fee_tier_changed:volume_maker:2:2026-11-16",
+    );
   });
 
   it("names the tier the user fell out of when the rate goes back up", async () => {
@@ -225,7 +234,7 @@ describe("builder fee tiers (DEC-258)", () => {
     );
     expect(raised).toMatchObject({
       data: { rate: 2, previousRate: 1, volume: "300000", droppedBelow: "1000000" },
-      dedupeKey: "fee_tier_changed:volume_maker:2026-11-26",
+      dedupeKey: "fee_tier_changed:volume_maker:2:2026-11-26",
     });
   });
 
@@ -236,5 +245,15 @@ describe("builder fee tiers (DEC-258)", () => {
     await refreshFeeTiers(db, NOW);
     expect(await events(s.botId)).toEqual([]);
     expect(await notices(s.userId)).toHaveLength(1);
+  });
+
+  it("reads orders back to 7 days before the window, not the whole order history", async () => {
+    const s = await seed();
+    // Lệnh tạo 35 ngày trước (trong biên 7 ngày), khớp hôm qua: được tính.
+    await fill(s, 150_000, 1, 35);
+    // Lệnh tạo 40 ngày trước (ngoài biên), khớp hôm qua: không đọc tới.
+    await fill(s, 900_000, 1, 40);
+    const [v] = await feeTierVolumes(db, [s.botId], new Date(NOW - 30 * DAY));
+    expect(Number(v?.volume)).toBe(150_000);
   });
 });

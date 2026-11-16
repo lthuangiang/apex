@@ -30,9 +30,19 @@ export async function feeTierBotIds(
 
 /**
  * Volume tính bậc (DEC-258): Σ giá × khối lượng của mọi fill (mua và bán) từ `since` của các bot `botIds`, gộp theo
- * user × chiến lược, dạng chuỗi thập phân (USD). Bắt đầu từ bot (orders_bot_idx rồi fills_order_idx), không quét cả bảng
- * fills theo giờ khớp. Cặp không có fill nào trong cửa sổ thì không có dòng. Job theo giờ và API dùng chung.
+ * user × chiến lược, dạng chuỗi thập phân (USD). Cặp không có fill nào trong cửa sổ thì không có dòng. Job theo giờ và API
+ * dùng chung.
+ *
+ * Bảng fills không có index theo giờ khớp, nên đi từ bot: orders_bot_idx (bot_id, created_at) giới hạn theo thời gian, rồi
+ * fills_order_idx. Lệnh tạo trước `since` quá `FEE_TIER_ORDER_MARGIN_MS` bị bỏ qua: fill trong cửa sổ của một lệnh nằm
+ * chờ lâu hơn thế sẽ không được tính (chỉ làm volume thấp hơn thật, không bao giờ cao hơn).
  */
+/**
+ * Biên an toàn cho lệnh còn nằm chờ khi cửa sổ 30 ngày bắt đầu. Lệnh Market Making là post-only, làm mới mỗi vài giây
+ * (`refreshSeconds`), nên 7 ngày dư rất nhiều; lệnh sống lâu hơn thì phần khớp của nó bị bỏ (volume thấp hơn thật).
+ */
+export const FEE_TIER_ORDER_MARGIN_MS = 7 * 86_400_000;
+
 export async function feeTierVolumes(
   db: Db,
   botIds: readonly string[],
@@ -48,7 +58,13 @@ export async function feeTierVolumes(
     .from(fills)
     .innerJoin(orders, eq(orders.id, fills.orderId))
     .innerJoin(bots, eq(bots.id, orders.botId))
-    .where(and(inArray(orders.botId, [...botIds]), gte(fills.filledAt, since)))
+    .where(
+      and(
+        inArray(orders.botId, [...botIds]),
+        gte(orders.createdAt, new Date(since.getTime() - FEE_TIER_ORDER_MARGIN_MS)),
+        gte(fills.filledAt, since),
+      ),
+    )
     .groupBy(bots.userId, bots.strategy);
 }
 

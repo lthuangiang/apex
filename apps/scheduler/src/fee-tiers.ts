@@ -34,11 +34,11 @@ const STRATEGY_NAMES: Readonly<Record<string, string>> = { volume_maker: "Market
 const pct = (rate: number) => `${feeRateToPercent(rate).toString()}%`;
 
 /**
- * Khoá chống trùng của thông báo `fee_tier_changed` (DEC-TBD-mm-fee-card): một tin / user × chiến lược / ngày UTC. Lên
- * rồi xuống trong cùng ngày thì chỉ tin đầu được gửi; dòng Decisions trên bot vẫn ghi mỗi lần đổi.
+ * Khoá chống trùng của thông báo `fee_tier_changed` (DEC-TBD-mm-fee-card): một tin / user × chiến lược × mức mới / ngày
+ * UTC. Xuống rồi lên lại trong cùng ngày thì cả hai tin đều đi (mức khác nhau); cùng một mức lặp lại trong ngày thì không.
  */
-export function feeTierDedupeKey(strategy: string, now: number): string {
-  return `fee_tier_changed:${strategy}:${new Date(now).toISOString().slice(0, 10)}`;
+export function feeTierDedupeKey(strategy: string, rate: number, now: number): string {
+  return `fee_tier_changed:${strategy}:${String(rate)}:${new Date(now).toISOString().slice(0, 10)}`;
 }
 
 export async function refreshFeeTiers(
@@ -134,7 +134,7 @@ export async function refreshFeeTiers(
             userId,
             type: "fee_tier_changed",
             data,
-            dedupeKey: feeTierDedupeKey(strategy, now),
+            dedupeKey: feeTierDedupeKey(strategy, rate, now),
           },
         });
         return true;
