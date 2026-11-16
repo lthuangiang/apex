@@ -127,7 +127,11 @@ function ExamplePanel() {
       aria-label={t("panelLabel")}
       className="min-w-0 flex-[1_1_460px] overflow-hidden rounded-xl border border-l-line bg-l-surface"
     >
-      <div role="tablist" aria-label={t("tabsLabel")} className="grid grid-cols-2 border-b border-l-line">
+      <div
+        role="tablist"
+        aria-label={t("tabsLabel")}
+        className="grid grid-cols-2 border-b border-l-line"
+      >
         {tabs.map((x) => {
           const on = tab === x.key;
           return (
@@ -149,7 +153,9 @@ function ExamplePanel() {
               className={`flex min-h-14 cursor-pointer flex-col gap-0.5 border-0 border-b-2 px-3.5 py-2.5 text-left text-[13.5px] font-semibold md:min-h-16 md:gap-[3px] md:px-5 md:py-3 md:text-[14.5px] ${on ? "border-l-primary bg-l-surface-2 text-l-text" : "border-transparent bg-transparent text-l-text-2"}`}
             >
               <span>{x.name}</span>
-              <span className="font-num text-[11px] font-normal text-l-muted md:text-xs">{x.fee}</span>
+              <span className="font-num text-[11px] font-normal text-l-muted md:text-xs">
+                {x.fee}
+              </span>
             </button>
           );
         })}
@@ -192,7 +198,10 @@ function MmExample() {
         </thead>
         <tbody>
           {BOOK.map(([price, size, side, you]) => (
-            <tr key={price} className={you ? "bg-l-you-bg outline outline-1 outline-l-primary" : ""}>
+            <tr
+              key={price}
+              className={you ? "bg-l-you-bg outline outline-1 outline-l-primary" : ""}
+            >
               <td className={`px-2 py-[7px] ${side === "ask" ? "text-l-ask" : "text-l-bid"}`}>
                 {price}
                 {you ? (
@@ -299,11 +308,27 @@ function VbExample() {
       <span className="text-[13px] font-semibold">{t("tradeTitle")}</span>
       <figure className="m-0">
         <svg viewBox="0 0 440 150" width="100%" role="img" aria-label={t("chartAria")}>
-          <line x1="16" y1="31.7" x2="424" y2="31.7" className="stroke-l-focus" strokeWidth="1.2" strokeDasharray="4 4" />
+          <line
+            x1="16"
+            y1="31.7"
+            x2="424"
+            y2="31.7"
+            className="stroke-l-focus"
+            strokeWidth="1.2"
+            strokeDasharray="4 4"
+          />
           <text x="424" y="25" textAnchor="end" className="fill-l-muted font-num" fontSize="10.5">
             {t("chartBe", { price: "1,820.3" })}
           </text>
-          <line x1="16" y1="112.8" x2="424" y2="112.8" className="stroke-l-ask" strokeWidth="1.2" strokeDasharray="4 4" />
+          <line
+            x1="16"
+            y1="112.8"
+            x2="424"
+            y2="112.8"
+            className="stroke-l-ask"
+            strokeWidth="1.2"
+            strokeDasharray="4 4"
+          />
           <text x="424" y="127" textAnchor="end" className="fill-l-ask font-num" fontSize="10.5">
             {t("chartSl", { price: "1,808.5" })}
           </text>
@@ -321,11 +346,23 @@ function VbExample() {
             strokeDasharray="2 3"
           />
           <circle cx="64" cy="50.3" r="5" className="fill-l-bid" />
-          <text x="64" y="72" textAnchor="middle" className="fill-l-text-2 font-num" fontSize="10.5">
+          <text
+            x="64"
+            y="72"
+            textAnchor="middle"
+            className="fill-l-text-2 font-num"
+            fontSize="10.5"
+          >
             {t("chartIn", { price: "1,817.6" })}
           </text>
           <circle cx="330" cy="35.1" r="5" fill="none" className="stroke-l-bid" strokeWidth="2" />
-          <text x="330" y="57" textAnchor="middle" className="fill-l-text-2 font-num" fontSize="10.5">
+          <text
+            x="330"
+            y="57"
+            textAnchor="middle"
+            className="fill-l-text-2 font-num"
+            fontSize="10.5"
+          >
             {t("chartOut", { price: "1,819.8" })}
           </text>
           <text x="16" y="146" className="fill-l-muted font-num" fontSize="10">

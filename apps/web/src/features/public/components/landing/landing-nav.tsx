@@ -9,7 +9,10 @@ import { ThemeToggle } from "../landing-theme";
 // Nav của landing và trang MCP (docs/mockups/landing-mcp Main / McpPage / Mobile): logo, link anchor, nút đổi theme,
 // Sign in, Launch app. Dưới 1024 px các link gom vào menu (artboard Mobile: Launch app + nút menu).
 
-export type NavLink = { href: string; label: string };
+export interface NavLink {
+  href: string;
+  label: string;
+}
 
 export function Logo() {
   return (
@@ -23,7 +26,15 @@ export function Logo() {
         strokeLinejoin="round"
       />
       <rect x="9.6" y="9" width="4.6" height="2" rx="1" className="fill-l-on-primary" />
-      <rect x="9.6" y="13" width="3.2" height="2" rx="1" className="fill-l-on-primary" opacity="0.7" />
+      <rect
+        x="9.6"
+        y="13"
+        width="3.2"
+        height="2"
+        rx="1"
+        className="fill-l-on-primary"
+        opacity="0.7"
+      />
     </svg>
   );
 }

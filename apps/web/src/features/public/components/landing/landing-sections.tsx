@@ -27,7 +27,9 @@ function usdShort(n: number): string {
 /** Các bậc phí Market Making theo volume tăng dần: [ngưỡng dưới, ngưỡng trên | null, mức phí]. */
 function mmTiers(): { from: number; to: number | null; rate: number }[] {
   const base = builderFeeRateOf(Strategy.volumeMaker);
-  const tiers = [...(FEE_TIERS[Strategy.volumeMaker] ?? [])].sort((a, b) => a.minVolume - b.minVolume);
+  const tiers = [...(FEE_TIERS[Strategy.volumeMaker] ?? [])].sort(
+    (a, b) => a.minVolume - b.minVolume,
+  );
   const out: { from: number; to: number | null; rate: number }[] = [];
   let from = 0;
   let rate = base;
@@ -133,7 +135,10 @@ function Strategies() {
               <tbody>
                 {compare.map(([q, mm, vb, other]) => (
                   <tr key={q} className="border-t border-l-line-2 align-top">
-                    <th scope="row" className="px-[18px] py-3.5 text-left text-[13px] font-medium text-l-muted">
+                    <th
+                      scope="row"
+                      className="px-[18px] py-3.5 text-left text-[13px] font-medium text-l-muted"
+                    >
                       {t(`compare.${q}Q`)}
                     </th>
                     <td className="px-[18px] py-3.5">{mm}</td>
@@ -170,7 +175,10 @@ function Strategies() {
               <tbody>
                 {LANDING_STRATEGIES.map(({ key }) => (
                   <tr key={key} className="border-t border-l-line-2">
-                    <th scope="row" className="px-[18px] py-[13px] text-left font-semibold whitespace-nowrap">
+                    <th
+                      scope="row"
+                      className="px-[18px] py-[13px] text-left font-semibold whitespace-nowrap"
+                    >
                       {ts(`${key}.name`)}
                     </th>
                     <td className="px-[18px] py-[13px] font-num text-[12.5px] whitespace-nowrap text-l-text-2">
@@ -217,7 +225,9 @@ function Flagship({
             key={i}
             className="grid grid-cols-[40px_minmax(0,1fr)] border-t border-l-line-2 py-3 text-[15px] leading-normal"
           >
-            <span className="font-num text-[13px] text-l-muted">{String(i + 1).padStart(2, "0")}</span>
+            <span className="font-num text-[13px] text-l-muted">
+              {String(i + 1).padStart(2, "0")}
+            </span>
             <span>{p}</span>
           </li>
         ))}
@@ -245,11 +255,15 @@ function How() {
               key={k}
               className={`flex flex-col gap-3 border-t-2 pt-6 pr-7 pb-2 ${i === 0 ? "border-l-primary" : "border-l-line"}`}
             >
-              <span className={`font-num text-[40px] leading-none ${i === 0 ? "text-l-accent" : "text-l-muted"}`}>
+              <span
+                className={`font-num text-[40px] leading-none ${i === 0 ? "text-l-accent" : "text-l-muted"}`}
+              >
                 {String(i + 1).padStart(2, "0")}
               </span>
               <h3 className="m-0 font-display text-[21px]">{t(`how.steps.${k}.title`)}</h3>
-              <p className="m-0 text-[15px] leading-relaxed text-l-text-2">{t(`how.steps.${k}.body`)}</p>
+              <p className="m-0 text-[15px] leading-relaxed text-l-text-2">
+                {t(`how.steps.${k}.body`)}
+              </p>
             </li>
           ))}
         </ol>
@@ -270,20 +284,29 @@ function Safety() {
     <section id="safety" aria-labelledby="h-safety" className="border-t border-l-line bg-l-band">
       <div className={`${WRAP} gap-12 py-16 md:flex-row md:flex-wrap md:gap-x-16 md:py-[88px]`}>
         <div className="flex min-w-0 flex-[1_1_440px] flex-col gap-5">
-          <span className="font-num text-[13px] text-l-muted">{Index({ n: 3, label: t("nav.safety") })}</span>
-          <h2 id="h-safety" className="m-0 font-display text-[32px] leading-[1.05] tracking-[-0.015em] md:text-[44px]">
+          <span className="font-num text-[13px] text-l-muted">
+            {Index({ n: 3, label: t("nav.safety") })}
+          </span>
+          <h2
+            id="h-safety"
+            className="m-0 font-display text-[32px] leading-[1.05] tracking-[-0.015em] md:text-[44px]"
+          >
             {t("safety.title")}
           </h2>
           <p className="m-0 text-base leading-relaxed text-l-text-2">{t("safety.body")}</p>
           <table className="w-full border-collapse border border-l-line text-[15px]">
-            <caption className="pb-2.5 text-left text-[13px] text-l-muted">{t("safety.tableCaption")}</caption>
+            <caption className="pb-2.5 text-left text-[13px] text-l-muted">
+              {t("safety.tableCaption")}
+            </caption>
             <tbody>
               {(["read", "trade"] as const).map((k) => (
                 <tr key={k} className="border-b border-l-line bg-l-surface">
                   <th scope="row" className="px-[18px] py-3.5 text-left font-medium">
                     {t(`safety.${k}`)}
                   </th>
-                  <td className="px-[18px] py-3.5 text-right font-num text-l-live">{t("safety.yes")}</td>
+                  <td className="px-[18px] py-3.5 text-right font-num text-l-live">
+                    {t("safety.yes")}
+                  </td>
                 </tr>
               ))}
               <tr className="bg-l-never-bg">
@@ -301,7 +324,9 @@ function Safety() {
           {facts.map(([title, body]) => (
             <div key={title} className="flex flex-col gap-2.5 bg-l-surface p-6">
               <dt className="font-display text-lg font-bold">{t(`safety.${title}`)}</dt>
-              <dd className="m-0 text-[14.5px] leading-normal text-l-text-2">{t(`safety.${body}`)}</dd>
+              <dd className="m-0 text-[14.5px] leading-normal text-l-text-2">
+                {t(`safety.${body}`)}
+              </dd>
             </div>
           ))}
         </dl>
@@ -326,8 +351,13 @@ function Fees() {
     <section id="fees" aria-labelledby="h-fees" className="border-t border-l-line">
       <div className={`${WRAP} gap-10 py-16 md:flex-row md:flex-wrap md:gap-x-16 md:py-[88px]`}>
         <div className="flex min-w-0 flex-[1_1_400px] flex-col gap-5">
-          <span className="font-num text-[13px] text-l-muted">{Index({ n: 4, label: t("nav.fees") })}</span>
-          <h2 id="h-fees" className="m-0 font-display text-[32px] leading-[1.05] tracking-[-0.015em] md:text-[44px]">
+          <span className="font-num text-[13px] text-l-muted">
+            {Index({ n: 4, label: t("nav.fees") })}
+          </span>
+          <h2
+            id="h-fees"
+            className="m-0 font-display text-[32px] leading-[1.05] tracking-[-0.015em] md:text-[44px]"
+          >
             {t("fees.title")}
           </h2>
           <p className="m-0 text-base leading-relaxed text-l-text-2">{t("fees.body")}</p>
@@ -349,9 +379,16 @@ function Fees() {
             </thead>
             <tbody>
               {tiers.map((x, i) => (
-                <tr key={x.from} className={i === last ? "border-b border-l-line" : "border-b border-l-line-2"}>
+                <tr
+                  key={x.from}
+                  className={i === last ? "border-b border-l-line" : "border-b border-l-line-2"}
+                >
                   {i === 0 ? (
-                    <th scope="row" rowSpan={tiers.length} className="py-4 pr-4 text-left align-top font-semibold">
+                    <th
+                      scope="row"
+                      rowSpan={tiers.length}
+                      className="py-4 pr-4 text-left align-top font-semibold"
+                    >
                       {ts("volume_maker.name")}
                     </th>
                   ) : null}
@@ -394,7 +431,9 @@ function Extras() {
           {(["desk", "copy", "alerts"] as const).map((k) => (
             <div key={k} className="flex flex-col gap-2 pt-5 pr-6 pb-2">
               <h3 className="m-0 text-base font-semibold">{t(`desk.items.${k}.title`)}</h3>
-              <p className="m-0 text-sm leading-normal text-l-text-2">{t(`desk.items.${k}.body`)}</p>
+              <p className="m-0 text-sm leading-normal text-l-text-2">
+                {t(`desk.items.${k}.body`)}
+              </p>
             </div>
           ))}
         </div>
@@ -405,7 +444,16 @@ function Extras() {
 }
 
 /** Thứ tự câu hỏi theo artboard Sections. */
-const FAQ = ["independent", "withdraw", "sign", "paper", "halt", "copy", "deskAi", "claude"] as const;
+const FAQ = [
+  "independent",
+  "withdraw",
+  "sign",
+  "paper",
+  "halt",
+  "copy",
+  "deskAi",
+  "claude",
+] as const;
 
 function Faq() {
   const t = useTranslations("landing");
@@ -418,8 +466,13 @@ function Faq() {
     <section id="faq" aria-labelledby="h-faq" className="border-t border-l-line">
       <div className={`${WRAP} gap-8 py-16 md:flex-row md:flex-wrap md:gap-x-16 md:py-[88px]`}>
         <div className="flex min-w-0 flex-[1_1_320px] flex-col gap-3.5">
-          <span className="font-num text-[13px] text-l-muted">{Index({ n: 5, label: t("nav.faq") })}</span>
-          <h2 id="h-faq" className="m-0 font-display text-[32px] leading-[1.05] tracking-[-0.015em] md:text-[44px]">
+          <span className="font-num text-[13px] text-l-muted">
+            {Index({ n: 5, label: t("nav.faq") })}
+          </span>
+          <h2
+            id="h-faq"
+            className="m-0 font-display text-[32px] leading-[1.05] tracking-[-0.015em] md:text-[44px]"
+          >
             {t("faq.title")}
           </h2>
         </div>

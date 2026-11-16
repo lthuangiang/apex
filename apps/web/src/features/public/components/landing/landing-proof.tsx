@@ -8,8 +8,7 @@ import { useState, type ReactNode } from "react";
 // Analytics theo chiến lược + Claude (docs/mockups/landing-mcp/Proof). Số trong hai thẻ analytics là VÍ DỤ tĩnh từ bot
 // thật trên prod ngày 15/11, ghi "Example"; không có phí / $1M, CPM, PnL hay win rate (điều kiện của DevOps).
 
-const H2 =
-  "m-0 font-display text-[32px] leading-[1.05] tracking-[-0.015em] md:text-[44px]";
+const H2 = "m-0 font-display text-[32px] leading-[1.05] tracking-[-0.015em] md:text-[44px]";
 const SECTION = "mx-auto box-border flex w-full max-w-[1240px] flex-col px-4 md:px-8";
 
 /** Inventory ví dụ: 48 bước, y = 55 là phẳng, 15 / 95 là ±20 USDC. */
@@ -96,7 +95,12 @@ function Analytics() {
                     strokeDasharray="3 3"
                   />
                   <line x1="0" y1="95" x2="240" y2="95" className="stroke-l-line" strokeWidth="1" />
-                  <polyline points={INV_POINTS} fill="none" className="stroke-l-bid" strokeWidth="1.6" />
+                  <polyline
+                    points={INV_POINTS}
+                    fill="none"
+                    className="stroke-l-bid"
+                    strokeWidth="1.6"
+                  />
                   <text x="0" y="11" className="fill-l-muted font-num" fontSize="9">
                     +20
                   </text>
@@ -120,7 +124,10 @@ function Analytics() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <figure className="m-0 flex flex-col gap-2">
                 <Caption title={t("holdTitle")} sub={t("holdSub")} />
-                <div aria-hidden="true" className="flex h-[92px] items-end gap-1.5 border-b border-l-line">
+                <div
+                  aria-hidden="true"
+                  className="flex h-[92px] items-end gap-1.5 border-b border-l-line"
+                >
                   {HOLD_BUCKETS.map((b, i) => {
                     const n = HOLD[i] ?? 0;
                     return (
@@ -325,7 +332,9 @@ export function Heading({
         </h2>
       </div>
       {body === undefined ? null : (
-        <p className="m-0 min-w-0 flex-[1_1_380px] text-base leading-relaxed text-l-text-2">{body}</p>
+        <p className="m-0 min-w-0 flex-[1_1_380px] text-base leading-relaxed text-l-text-2">
+          {body}
+        </p>
       )}
     </div>
   );
