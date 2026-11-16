@@ -50,7 +50,7 @@ const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const mcpAlertStore = redisAlertStore(redis);
 const invariantStore = redisInvariantStore(redis);
 
-/** Bất biến tiền thật (DEC-TBD-prod-invariants): chỉ đọc DB, không gọi SoDEX; hai lượt không chạy chồng nhau. */
+/** Bất biến tiền thật (DEC-273): chỉ đọc DB, không gọi SoDEX; hai lượt không chạy chồng nhau. */
 let invariantRunning = false;
 async function invariantTick() {
   if (invariantRunning) return;

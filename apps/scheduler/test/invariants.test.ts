@@ -13,7 +13,7 @@ import {
   stopTimeOf,
 } from "../src/invariants";
 
-// Bất biến tiền thật trên prod (DEC-TBD-prod-invariants): hàm thuần cho P1–P5, P7 và quyết định gửi (sai 2 lần liền,
+// Bất biến tiền thật trên prod (DEC-273): hàm thuần cho P1–P5, P7 và quyết định gửi (sai 2 lần liền,
 // 1 tin / 30 phút, "resolved" khi đúng trở lại hoặc bot không còn được xét). Không cần DB.
 
 const NOW = Date.parse("2026-11-16T10:00:00Z");

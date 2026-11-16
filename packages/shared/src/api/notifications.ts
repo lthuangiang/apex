@@ -33,7 +33,7 @@ export const NOTIFICATION_TYPES = [
   "team_mcp_tool_errors",
   "team_mcp_introspect_failing",
   "team_mcp_daily_limit",
-  // Bất biến tiền thật trên prod (DEC-TBD-prod-invariants): scheduler phát, chỉ role `team`, chỉ Telegram.
+  // Bất biến tiền thật trên prod (DEC-273): scheduler phát, chỉ role `team`, chỉ Telegram.
   "team_invariant",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

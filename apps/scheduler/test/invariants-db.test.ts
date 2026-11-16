@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { p4FilledNet, stopTimeOf } from "../src/invariants";
 
-// P4 (DEC-TBD-prod-invariants): tổng fill của version không đọc lại cả version mỗi phút; mốc trong Redis (ở đây: Map).
+// P4 (DEC-273): tổng fill của version không đọc lại cả version mỗi phút; mốc trong Redis (ở đây: Map).
 
 let container: StartedPostgreSqlContainer;
 let db: Db;
