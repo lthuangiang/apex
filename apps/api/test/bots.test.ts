@@ -838,6 +838,55 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(detail.events.some((e) => e.decision === "Running")).toBe(false);
     expect(Date.parse(detail.runningSince ?? "")).toBe(started.getTime());
   });
+
+  it("gives each decision the result of its real orders and counts real refusals (BD-02, BD-05)", async () => {
+    const { client } = await connectedUser(`result-${randomUUID()}@drift.test`);
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "Results", paramSource: "manual", config: grid },
+    });
+    const id = made.json<{ id: string }>().id;
+    const { rows } = await env.pool.query<{ acc: string }>(
+      "select sodex_account_id as acc from bots where id = $1",
+      [id],
+    );
+    const acc = rows[0]?.acc ?? "";
+    const at = env.clock.now;
+    const order = (clOrdId: string, status: string, filled: string, rejectCode: string | null) =>
+      env.pool.query(
+        "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, status, reject_code, tag, epoch, created_at) values (gen_random_uuid(), $1, $2, $3, 'vBTC_vUSDC', 'spot', 'buy', 'limit', 'GTX', 1, $4, $5, $6, 'grid', 1, $7)",
+        [id, acc, clOrdId, filled, status, rejectCode, at],
+      );
+    const decision = (name: string, ids: string[] | null, ago: number) =>
+      env.pool.query(
+        "insert into bot_events (id, bot_id, type, decision, payload, occurred_at) values (gen_random_uuid(), $1, 'decision', $2, $3, $4)",
+        [
+          id,
+          name,
+          JSON.stringify(ids === null ? {} : { orders: ids }),
+          new Date(at.getTime() - ago),
+        ],
+      );
+    const tag = randomUUID().slice(0, 8);
+    await order(`f-${tag}`, "filled", "1", null);
+    await order(`c-${tag}`, "cancelled", "0", null);
+    await order(`p-${tag}`, "rejected", "0", "PostOnly");
+    await order(`x-${tag}`, "rejected", "0", "-1");
+    await decision("Bought at level 1", [`f-${tag}`], 4_000);
+    await decision("Bought at level 2", [`c-${tag}`], 3_000);
+    await decision("Bought at level 3", [`p-${tag}`], 2_000);
+    await decision("Price left the grid range", null, 1_000);
+    const detail = botDetailSchema.parse(
+      (await client.request("GET", `/api/v1/bots/${id}`)).json(),
+    );
+    const outcome = (d: string) => detail.events.find((e) => e.decision === d)?.outcome;
+    expect(outcome("Bought at level 1")).toBe("filled");
+    expect(outcome("Bought at level 2")).toBe("cancelled");
+    expect(outcome("Bought at level 3")).toBe("rejected");
+    // Quyết định không đặt lệnh: không có kết quả (không đoán).
+    expect(outcome("Price left the grid range")).toBeNull();
+    // Post-only cross là bình thường: chỉ lệnh bị từ chối vì lý do khác được tính.
+    expect(detail.refusedRecently).toBe(1);
+  });
 });
 
 describe("Waiting for price (IMP-01, DEC-91)", () => {
