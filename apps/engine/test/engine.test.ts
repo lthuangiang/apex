@@ -2650,6 +2650,8 @@ describe("engine", () => {
       reduceOnly: false,
     });
     await e.stop();
+    // Bot còn running sẽ được đọc vị thế SoDEX ở test sau (DEC-TBD-vf-version-apply).
+    await stopFarmBots();
   });
 
   it("stores SoDEX's reject message on the order row (rejected TWAP slice)", async () => {
@@ -2793,6 +2795,95 @@ describe("engine", () => {
     expect(exits).toHaveLength(30);
     expect(exits.every((o) => o.type === "limit")).toBe(true);
     expect((await botState(botId))?.state).toBe("paused");
+  });
+
+  // ---------- Volume Farm: version mới và vị thế SoDEX (DEC-TBD-vf-version-apply) ----------
+
+  it("waits to apply a Volume Farm version until the open trade closes, never cancelling its stop on SoDEX", async () => {
+    // Prod 2026-11-17: lệnh vào khớp, stop gốc đặt; người dùng sửa bot → "Applied v2 — Cancelled 1 orders" huỷ stop
+    // và v2 quên vị thế. Nay v2 chờ tới khi lượt đóng.
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    await seedCandles("ETH-USD");
+    const { botId, accountId } = await seedFarm("ETH-USD");
+    const e = farmEngine(gw, "vf-version");
+    const vf = () => gw.received.filter((o) => o.market === "ETH-USD" && o.tag.startsWith("vf:"));
+    await tickUntil(e, () => vf().length > 0);
+    const entry = vf()[0];
+    if (entry === undefined) throw new Error("expected an entry");
+    await e.onFill(accountId, entry.clOrdID, entry.quantity, "100", "0.01", clock);
+    const sign = entry.side === "buy" ? "" : "-";
+    gw.perpsPositions.set("ETH-USD", { size: `${sign}${entry.quantity}`, entryPrice: "100" });
+    const stop = vf().find((o) => o.stop !== undefined);
+    expect(stop).toMatchObject({ reduceOnly: true, side: entry.side === "buy" ? "sell" : "buy" });
+    await db.insert(botVersions).values({
+      botId,
+      version: 2,
+      paramSource: "manual",
+      status: "pending",
+      config: { ...farmConfig("ETH-USD"), allowTaker: true },
+    });
+    const statuses = async () =>
+      (await db.select().from(botVersions).where(eq(botVersions.botId, botId)))
+        .map((v) => `${String(v.version)}:${v.status}`)
+        .sort();
+    const events = async () =>
+      (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).map((x) => x.decision);
+    const runtime = async () =>
+      (await db.select().from(botRuntime).where(eq(botRuntime.botId, botId)))[0]?.state as {
+        phase: string;
+        ledger: { position: string };
+      };
+    clock += 1_000;
+    await e.tick();
+    await e.tick();
+    // Còn vị thế: v2 chờ, không huỷ lệnh nào (stop trên SoDEX còn nguyên), sổ cái giữ vị thế.
+    expect(await statuses()).toEqual(["1:active", "2:pending"]);
+    expect(gw.cancelled).not.toContain(stop?.clOrdID);
+    expect((await events()).filter((d) => d === "Applying v2")).toHaveLength(1);
+    expect(Number((await runtime()).ledger.position)).not.toBe(0);
+    // Hết thời gian giữ: v1 thoát bằng lệnh reduce-only.
+    clock += 200_000;
+    await tickUntil(e, () => vf().some((o) => o.reduceOnly && o.stop === undefined));
+    const exit = vf().find((o) => o.reduceOnly && o.stop === undefined);
+    if (exit === undefined) throw new Error("expected an exit");
+    expect(await statuses()).toEqual(["1:active", "2:pending"]);
+    await e.onFill(accountId, exit.clOrdID, exit.quantity, "100", "0.01", clock);
+    gw.perpsPositions.delete("ETH-USD");
+    expect((await runtime()).phase).toBe("idle");
+    clock += 1_000;
+    await e.tick();
+    // Phẳng: v2 được áp.
+    expect(await statuses()).toEqual(["1:superseded", "2:active"]);
+    expect(await events()).toContain("Applied v2");
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("adopts a SoDEX position the Volume Farm ledger does not know, and only reduces it", async () => {
+    const gw = new FakeGateway();
+    await seedCandles("BNB-USD");
+    const { botId } = await seedFarm("BNB-USD");
+    // SoDEX còn short mà sổ cái phẳng (prod 2026-11-17 sau "Applied v2").
+    gw.perpsPositions.set("BNB-USD", { size: "-0.5", entryPrice: "100" });
+    const e = farmEngine(gw, "vf-adopt");
+    const vf = () => gw.received.filter((o) => o.market === "BNB-USD" && o.tag.startsWith("vf:"));
+    for (let i = 0; i < 20 && !vf().some((o) => o.stop === undefined); i += 1) {
+      clock += 3_000;
+      await e.tick();
+    }
+    const sent = vf();
+    expect(sent.length).toBeGreaterThan(0);
+    // Không bao giờ mở long để "làm phẳng": mọi lệnh là mua reduce-only, stop theo cỡ vị thế thật.
+    expect(sent.every((o) => o.side === "buy" && o.reduceOnly)).toBe(true);
+    expect(sent.find((o) => o.stop !== undefined)?.quantity).toBe("0.5");
+    const { eq } = await import("drizzle-orm");
+    const decisions = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).map(
+      (x) => x.decision,
+    );
+    expect(decisions).toContain("Position re-synced from SoDEX");
+    await e.stop();
+    await stopFarmBots();
   });
 
   // ---------- Market Making: đối soát fill + vị thế (DEC-100) ----------

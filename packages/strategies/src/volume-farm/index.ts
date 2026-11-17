@@ -145,6 +145,12 @@ export interface VolumeFarmState {
    * gửi huỷ, engine bỏ qua nếu đối soát đã thấy SoDEX huỷ rồi.
    */
   staleXstop?: string | null;
+  /**
+   * Vị thế SoDEX lệch sổ cái (`positionSync`, DEC-TBD-vf-version-apply): `size` = vị thế SoDEX, `ledger` = vị thế sổ cái
+   * lúc đọc, `since` = lần đầu thấy lệch. Còn lệch thì không mở lượt mới; lệch y hệt sau `VF_DRIFT_ADOPT_MS` thì
+   * lấy vị thế SoDEX làm chuẩn.
+   */
+  drift?: { size: string; ledger: string; since: number } | null;
 }
 
 /**
@@ -206,6 +212,12 @@ const initial = (): VolumeFarmState => ({
   lastSkip: null,
   lastSignal: null,
 });
+
+/**
+ * Vị thế SoDEX lệch sổ cái y hệt qua hai lần đọc cách nhau ít nhất ngần này (ms) thì bot lấy vị thế SoDEX làm chuẩn
+ * (DEC-TBD-vf-version-apply). Hai lần đọc giống nhau loại trường hợp tin khớp đang trên đường về.
+ */
+export const VF_DRIFT_ADOPT_MS = 20_000;
 
 /** Số lệnh vào market bị từ chối liên tiếp thì pause bot (DEC-117, bật lại ở DEC-259). */
 export const VF_MARKET_REJECTS = 3;
@@ -900,6 +912,10 @@ function onTimer(
           holdUntil: s.holdUntil ?? at,
         });
       }
+      // Version mới đang chờ áp (DEC-TBD-vf-version-apply): không mở lượt mới, để engine áp khi bot phẳng.
+      if (ctx.versionPending !== undefined) return none(s);
+      // SoDEX báo vị thế khác sổ cái: chưa biết vị thế thật, không mở lượt mới cho tới khi đối soát xong.
+      if (s.drift?.ledger === s.ledger.position) return none(s);
       return snap === undefined ? none(s) : tryEnter(c, s, ctx, at, snap.candles);
     }
     case "halted":
@@ -1004,6 +1020,109 @@ function onFill(
   const done: StepResult<VolumeFarmState> = { actions, state: { ...state, exitReason: null } };
   const g = guards(c, done.state, ctx);
   return g === null ? done : { actions: [...done.actions, ...g.actions], state: g.state };
+}
+
+/**
+ * Vị thế thật trên SoDEX (DEC-TBD-vf-version-apply). Sổ cái có thể lệch vị thế thật (fill bị mất, version mới quên
+ * vị thế): bot mở lượt "mới" trên một vị thế nó không biết, đặt stop sai chiều, và lệnh "vào" thật ra là giảm vị thế cũ
+ * (prod 2026-11-17). Lệch y hệt (cùng vị thế SoDEX, cùng sổ cái) qua `VF_DRIFT_ADOPT_MS` mà không có lệnh vào / thoát
+ * đang chạy: lấy vị thế SoDEX làm chuẩn, huỷ stop cũ, rồi quản lý như một lượt đang mở: đặt stop trên SoDEX đúng chiều
+ * và cỡ, thoát ngay bằng lệnh reduce-only. Không bao giờ mở chiều ngược lại để "làm phẳng".
+ */
+function onPositionSync(
+  c: VolumeFarmConfig,
+  s: VolumeFarmState,
+  ctx: StepContext,
+  e: Extract<StrategyEvent, { type: "positionSync" }>,
+): StepResult<VolumeFarmState> {
+  const rules = ctx.rules[c.market];
+  if (e.market !== c.market || rules === undefined) return none(s);
+  const real = dec(e.size);
+  if (real.sub(s.ledger.position).abs().lt(rules.stepSize))
+    return s.drift == null ? none(s) : none({ ...s, drift: null });
+  const drift = s.drift ?? null;
+  if (drift?.size !== e.size || drift.ledger !== s.ledger.position)
+    return none({ ...s, drift: { size: e.size, ledger: s.ledger.position, since: e.at } });
+  // Đang vào / thoát: fill có thể đang về, chờ lần đọc sau.
+  if (s.phase !== "idle" && s.phase !== "open") return none(s);
+  if (e.at - drift.since < VF_DRIFT_ADOPT_MS) return none(s);
+  // Huỷ phần lệnh vào còn treo (lượt đang mở) và stop cũ (cỡ / chiều theo sổ cái sai).
+  const cancels: StrategyAction[] = [s.entry?.id, s.xstop?.id, s.staleXstop ?? undefined].flatMap(
+    (id) => (id === undefined ? [] : [{ type: "cancel" as const, clOrdID: id }]),
+  );
+  const log: StrategyAction = {
+    type: "log",
+    decision: "Position re-synced from SoDEX",
+    why: `SoDEX position ${e.size} differed from the bot's ${s.ledger.position} for ${String(Math.round((e.at - drift.since) / 1000))} s. The bot now manages the SoDEX position and closes it with reduce-only orders.`,
+  };
+  const ledger = {
+    ...s.ledger,
+    position: real.toString(),
+    avgCost: real.isZero() ? "0" : e.entryPrice,
+  };
+  const base: VolumeFarmState = {
+    ...s,
+    ledger,
+    drift: null,
+    entry: null,
+    exit: null,
+    exitReason: null,
+    exitForce: false,
+    exitUnfilled: 0,
+    xstop: null,
+    xstopOff: false,
+    staleXstop: null,
+    breakEven: false,
+    stopLevel: 0,
+    peak: null,
+    stopLogged: 0,
+    entryTaker: false,
+  };
+  if (dust(base, ctx, c.market))
+    return {
+      actions: [...cancels, log],
+      state: { ...base, phase: "idle", openedAt: null, holdUntil: null, holdSecs: null },
+    };
+  // Vị thế không do lượt nào của bot mở: giữ bằng stop trên SoDEX và thoát ngay (hết thời gian giữ).
+  const opened: VolumeFarmState = {
+    ...base,
+    // Lượt mới: stop / lệnh thoát có clOrdID mới, không trùng stop vừa huỷ của lượt cũ.
+    cycle: s.cycle + 1,
+    phase: "open",
+    openedAt: e.at,
+    holdUntil: e.at,
+    openRealized: ledger.realized,
+    openFees: ledger.fees,
+  };
+  const r = watchOpen(c, opened, ctx, e.at);
+  return { actions: [...cancels, log, ...r.actions], state: r.state };
+}
+
+/**
+ * Áp version mới (DEC-TBD-vf-version-apply). Chỉ khi bot phẳng và không có lệnh vào / thoát đang chạy; không thì null:
+ * engine không huỷ gì (stop trên SoDEX của lượt đang mở còn nguyên) và version cũ quản lý lượt đó tới khi đóng.
+ * Lúc áp: state mới như DEC-38 (sổ cái phiên mới), nhưng giữ danh sách lệnh gần nhất để fill đến muộn của version cũ
+ * vẫn vào sổ cái, giữ phần vị thế lẻ (dưới min size) để sổ cái khớp SoDEX, giữ sổ lệnh và thời gian nghỉ.
+ */
+export function applyVolumeFarmVersion(
+  c: VolumeFarmConfig,
+  s: VolumeFarmState,
+  ctx: StepContext,
+): VolumeFarmState | null {
+  if (s.phase !== "idle" || s.entry !== null || s.exit !== null || !dust(s, ctx, c.market))
+    return null;
+  const fresh = initial();
+  return {
+    ...fresh,
+    ledger: { ...fresh.ledger, position: s.ledger.position, avgCost: s.ledger.avgCost },
+    orders: s.orders,
+    staleXstop: s.staleXstop ?? s.xstop?.id ?? null,
+    lastPrice: s.lastPrice,
+    book: s.book,
+    bookAt: s.bookAt,
+    bookStreamAt: s.bookStreamAt ?? null,
+    cooldownUntil: s.cooldownUntil,
+  };
 }
 
 export function stepVolumeFarm(
@@ -1123,9 +1242,10 @@ export function stepVolumeFarm(
       return none(s);
     case "book":
       return onLiveBook(c, s, e);
+    case "positionSync":
+      return onPositionSync(c, s, ctx, e);
     case "fundingRate":
     case "marginRatio":
-    case "positionSync":
     case "fair":
     case "leaderFill":
     case "leaderPosition":
@@ -1137,4 +1257,5 @@ export function stepVolumeFarm(
 export const volumeFarm: StrategyModule<VolumeFarmConfig, VolumeFarmState> = {
   initialState: initial,
   step: stepVolumeFarm,
+  applyVersion: applyVolumeFarmVersion,
 };

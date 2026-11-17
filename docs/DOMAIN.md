@@ -61,7 +61,7 @@ Các trạng thái: `draft → starting → running ⇄ (pausing → paused → 
 Trạng thái: `open, partially_filled, filled, cancelled, rejected, unknown, not_placed`. `unknown` → đối soát với SoDEX → `filled` / `open` / `not_placed`. Khi còn `unknown`, nút Retry bị disable kèm dòng "available after check".
 
 ### 7.4 Version cấu hình
-Mỗi lần áp dụng chỉnh sửa tạo version `v(n+1)`. Version cũ vẫn chạy cho tới khi backend xác nhận version mới. Mỗi version lưu `paramSource: "ai" | "ai_edited" | "manual"` và id của suggestion AI.
+Mỗi lần áp dụng chỉnh sửa tạo version `v(n+1)`. Version cũ vẫn chạy cho tới khi backend xác nhận version mới. Engine áp version mới bằng cách huỷ lệnh đang mở và khởi tạo lại state (DEC-38), **trừ** chiến lược có `applyVersion` hoãn được: Volume Farm chỉ áp khi phẳng, không có lệnh vào / thoát; trong lúc chờ không huỷ lệnh nào (stop trên SoDEX còn nguyên), version cũ quản lý lượt đang mở, Decisions "Applying v{n}", UI giữ "Applying v{n}…" (DEC-TBD-vf-version-apply). Version `pending` cũ hơn version được áp chuyển `superseded`. Mỗi version lưu `paramSource: "ai" | "ai_edited" | "manual"` và id của suggestion AI.
 
 ### 7.5 Schema dữ liệu (PostgreSQL)
 

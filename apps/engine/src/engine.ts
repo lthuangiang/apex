@@ -109,6 +109,11 @@ const MAKER_BACKFILL_WINDOW_MS = 600_000;
 /** Market Making: đọc vị thế thật trên SoDEX mỗi chừng này ms để phát hiện lệch sổ (DEC-100). */
 export const MAKER_POSITION_MS = 30_000;
 /**
+ * Volume Farm: đọc vị thế SoDEX mỗi ngần này (ms) cho mỗi bot đang chạy, để chiến lược phát hiện sổ cái lệch vị thế
+ * thật (DEC-TBD-vf-version-apply). Một request mỗi bot mỗi 30 s, như Market Making.
+ */
+export const FARM_POSITION_MS = 30_000;
+/**
  * Huỷ chưa xong (request không rời DRIFT vì signer lỗi, hoặc SoDEX không trả kết quả rõ): thử lại sau mỗi chừng này
  * ms cho tới khi SoDEX xác nhận. Không thử lại thì lệnh còn sống trên sổ và còn "open" trong DRIFT, chặn mọi lệnh
  * ngược chiều bằng kiểm tra self-trade (sự cố 2026-11-04, DEC-111).
@@ -1493,6 +1498,9 @@ export class Engine {
   /**
    * Version mới (`pending`, do api tạo khi sửa bot): huỷ lệnh đang mở, khởi tạo lại chiến lược với cấu hình
    * mới, đánh dấu version cũ superseded (DOMAIN.md mục 7.4, DEC-38). Lệnh mới đặt ở tick kế tiếp.
+   * Chiến lược có `applyVersion` (Volume Farm) có thể hoãn: còn vị thế / lệnh vào / thoát đang chạy thì không huỷ
+   * lệnh nào (stop trên SoDEX còn nguyên), version cũ chạy tiếp, ghi "Applying vN" một lần và thử lại mỗi vòng
+   * (DEC-TBD-vf-version-apply).
    */
   async #applyPendingVersion(r: Runner, pending: VersionRow | undefined): Promise<void> {
     if (pending === undefined || pending.version <= r.version) return;
@@ -1504,6 +1512,25 @@ export class Engine {
       >
     )[r.strategy];
     if (entry === undefined) return;
+    const config = entry.schema.parse(pending.config);
+    // Đọc lại mỗi lần: fill có thể tới trong lúc chờ DB / SoDEX bên dưới.
+    const apply = (): unknown =>
+      entry.module.applyVersion === undefined
+        ? entry.module.initialState(config)
+        : entry.module.applyVersion(config, r.state, r.ctx);
+    if (apply() === null) {
+      if (r.ctx.versionPending !== pending.version) {
+        r.ctx = { ...r.ctx, versionPending: pending.version };
+        await this.#event(
+          r,
+          "version",
+          `Applying v${String(pending.version)}`,
+          `Waits until the open trade closes; v${String(r.version)} keeps managing it. No orders were cancelled.`,
+          this.#d.now(),
+        );
+      }
+      return;
+    }
     const open = await this.#d.db
       .select({ clOrdId: orders.clOrdId })
       .from(orders)
@@ -1512,12 +1539,24 @@ export class Engine {
       r,
       open.map((o) => o.clOrdId),
     );
-    const config = entry.schema.parse(pending.config);
+    // Fill tới trong lúc huỷ mở lại vị thế: chưa áp, vòng sau thử lại (lệnh vừa huỷ là lệnh của lúc bot còn phẳng).
+    if (apply() === null) return;
     await this.#fenced(r, async (tx) => {
       await tx
         .update(botVersions)
         .set({ status: "superseded" })
         .where(and(eq(botVersions.botId, r.botId), eq(botVersions.status, "active")));
+      // Version chờ cũ hơn (sửa lần nữa trong lúc chờ): không bao giờ được áp.
+      await tx
+        .update(botVersions)
+        .set({ status: "superseded" })
+        .where(
+          and(
+            eq(botVersions.botId, r.botId),
+            eq(botVersions.status, "pending"),
+            lt(botVersions.version, pending.version),
+          ),
+        );
       await tx
         .update(botVersions)
         .set({ status: "active", appliedAt: new Date(this.#d.now()) })
@@ -1531,8 +1570,10 @@ export class Engine {
     r.versionId = pending.id;
     r.version = pending.version;
     r.config = config;
-    r.state = entry.module.initialState(config);
+    // Version đã ghi: fill tới ngay lúc ghi thì giữ state hiện tại (còn vị thế), không bao giờ quên vị thế.
+    r.state = apply() ?? r.state;
     r.ctx = { ...r.ctx, version: pending.version };
+    delete r.ctx.versionPending;
     r.leverageSet = false;
     r.leverageDone = new Set();
     r.leverageKnown = new Set();
@@ -3427,6 +3468,29 @@ export class Engine {
       if (now - (this.#makerPosition.get(key) ?? 0) >= MAKER_POSITION_MS) {
         this.#makerPosition.set(key, now);
         await this.#syncMakerPosition(r, now);
+      }
+    }
+    await this.#syncFarmPositions(shard, now);
+  }
+
+  /**
+   * Volume Farm tiền thật đang chạy: vị thế SoDEX → `positionSync` (DEC-TBD-vf-version-apply), chỉ khi là bot duy nhất
+   * của account trên market đó (như Market Making). Bot đang pause thì không đọc: chiến lược có thể đặt lệnh thoát.
+   */
+  async #syncFarmPositions(shard: number, now: number): Promise<void> {
+    const farms = [...this.#runners.values()].filter(
+      (r) => r.shard === shard && r.strategy === Strategy.volumeFarm && !r.paper,
+    );
+    for (const r of farms) {
+      const key = `${r.account.id}:${r.market}`;
+      if (now - (this.#makerPosition.get(key) ?? 0) < FARM_POSITION_MS) continue;
+      this.#makerPosition.set(key, now);
+      if ((await this.#currentState(r.botId)) !== BotState.running) continue;
+      try {
+        await this.#syncMakerPosition(r, now);
+      } catch (error) {
+        if (error instanceof FencedError) throw error;
+        this.#d.log.warn({ err: error, botId: r.botId }, "farm position sync failed");
       }
     }
   }
