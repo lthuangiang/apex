@@ -99,7 +99,7 @@ const OPEN_CHECK_BATCH = 10;
 /** Sau khi user stream đứt, đối soát lệnh Volume Farm trong khoảng này (đủ cho lệnh đang chờ khớp lúc đứt). */
 export const STREAM_GAP_MS = 120_000;
 /**
- * Lưới an toàn fill (DEC-TBD-engine-lost-fill): lệnh kết thúc mà user stream chưa xác nhận (`unknown`, hoặc bot đã huỷ
+ * Lưới an toàn fill (DEC-303): lệnh kết thúc mà user stream chưa xác nhận (`unknown`, hoặc bot đã huỷ
  * mà chưa có tin CANCELED) và gửi trong khoảng này được so với lịch sử khớp của SoDEX, mỗi account + market tối đa
  * một lần mỗi `MAKER_BACKFILL_MS`.
  */
@@ -129,7 +129,7 @@ export function isNativeStop(o: { type: string; tag: string; reduceOnly: boolean
 const UNKNOWN_DECISION = "Order result unknown";
 
 /**
- * Lệnh làm tăng |vị thế| của bot (người dùng chốt, DEC-TBD-engine-lost-fill): chỉ loại này phải chờ user stream.
+ * Lệnh làm tăng |vị thế| của bot (người dùng chốt, DEC-303): chỉ loại này phải chờ user stream.
  * - Perps reduce-only và Spot bán (Spot không mở được vị thế bán) không bao giờ là mở.
  * - Lệnh ngược chiều vị thế hiện tại là giảm, nếu cộng với các lệnh giảm đang chờ (`reducing`, lệnh đang mở trên sổ và
  *   lệnh trước nó trong cùng bước) vẫn không vượt |vị thế| (ví dụ lệnh bán của grid long, dù không reduce-only).
@@ -269,7 +269,7 @@ interface TickSnapshot {
   open: Map<number, OrderRow[]>;
   /** Lệnh Volume Farm đã huỷ chưa đối soát, theo shard của account. */
   unconfirmed: Map<number, OrderRow[]>;
-  /** Ứng viên của lưới an toàn fill (#backfillFills), theo shard của account (DEC-TBD-engine-lost-fill). */
+  /** Ứng viên của lưới an toàn fill (#backfillFills), theo shard của account (DEC-303). */
   backfill: Map<number, OrderRow[]>;
 }
 
@@ -714,7 +714,7 @@ export class Engine {
       snapshot: this.#clockMono() - managed,
     };
     const steps: Record<ShardPhase, (shard: number) => Promise<void>> = {
-      // Mở user stream ngay sau khi nạp bot, trong cùng bước (DEC-TBD-engine-lost-fill).
+      // Mở user stream ngay sau khi nạp bot, trong cùng bước (DEC-303).
       syncBots: async (n) => {
         await this.#syncBots(n, snap);
         this.#openStreams(n);
@@ -1466,7 +1466,7 @@ export class Engine {
 
   /**
    * Bước chiến lược có lệnh làm tăng |vị thế| (`opensPosition`, theo sổ cái trong state trước bước và lệnh giảm đang chờ)
-   * trên engine mà user stream chưa sẵn sàng (người dùng chốt, DEC-TBD-engine-lost-fill). Không bao giờ giữ: `resumed`
+   * trên engine mà user stream chưa sẵn sàng (người dùng chốt, DEC-303). Không bao giờ giữ: `resumed`
    * (chỉ gửi một lần sau khi trạng thái đã commit, DEC-240) và bước có pause / stop.
    */
   #opensBeforeStream(
@@ -1775,7 +1775,7 @@ export class Engine {
       let r = this.#runners.get(bot.id);
       if (r === undefined) {
         // Cùng khoá với fill tới khi chưa có runner: fill đó không ghi sổ cái đã lưu trong lúc #load đang đọc nó, mà chờ
-        // runner rồi đi qua chiến lược (DEC-TBD-engine-lost-fill).
+        // runner rồi đi qua chiến lược (DEC-303).
         r = await this.#withBotLock(bot.id, async () => {
           const loaded = await this.#load(bot, version, account, shard, held.epoch);
           if (loaded !== undefined) this.#runners.set(bot.id, loaded);
@@ -2112,7 +2112,7 @@ export class Engine {
     // Nhịp đồng hồ chưa tới hạn: chiến lược trả lại đúng state cũ, không có gì để ghi.
     if (event.type === "timer" && result.state === prev && result.actions.length === 0) return;
     // Sự kiện thị trường muốn mở / tăng vị thế khi user stream của engine đó chưa subscribe xong: bỏ cả bước (state không
-    // đổi), nhịp sau chiến lược quyết lại. Bước chỉ giảm vị thế / đóng / stop vẫn đi (DEC-TBD-engine-lost-fill).
+    // đổi), nhịp sau chiến lược quyết lại. Bước chỉ giảm vị thế / đóng / stop vẫn đi (DEC-303).
     if (reducing !== null && this.#opensBeforeStream(r, event, result.actions, reducing)) return;
     r.state = result.state;
     // Bot copy tiền thật: lệnh mở vừa khớp → thêm outbox trong CÙNG transaction (DEC-212).
@@ -4196,7 +4196,7 @@ export class Engine {
   }
 
   /**
-   * Lưới an toàn fill cho mọi bot thật trừ Market Making (đã có #backfillMaker), DEC-TBD-engine-lost-fill. Lệnh có thể đã
+   * Lưới an toàn fill cho mọi bot thật trừ Market Making (đã có #backfillMaker), DEC-303. Lệnh có thể đã
    * khớp mà DRIFT chưa ghi:
    * (a) gửi trong FILL_BACKFILL_WINDOW_MS, chưa khớp đủ và kết thúc không có xác nhận của user stream (`unknown`, hoặc bot
    *     huỷ mà chưa có tin CANCELED): đọc lịch sử khớp tối đa một lần mỗi MAKER_BACKFILL_MS cho account + market;
@@ -4260,7 +4260,7 @@ export class Engine {
   }
 
   /**
-   * Lưới an toàn fill cho mọi bot thật trừ Market Making (đã có #backfillMaker), DEC-TBD-engine-lost-fill. Ứng viên đọc
+   * Lưới an toàn fill cho mọi bot thật trừ Market Making (đã có #backfillMaker), DEC-303. Ứng viên đọc
    * một lần mỗi vòng (#backfillCandidates). (a) Lệnh nghi ngờ: đọc lịch sử khớp tối đa một lần mỗi MAKER_BACKFILL_MS cho
    * account + market; (b) khoảng trống stream của account + engine: đọc MỘT lần mỗi khoảng trống, sau
    * BACKFILL_TRADE_GRACE_MS (M4). Lịch sử khớp dùng chung với đối soát trong vòng. Chỉ trade cũ hơn

@@ -79,7 +79,7 @@ const gateway = new HttpGateway(
 );
 // User stream cho từng account + engine mà bot thật trong shard của worker này giao dịch (account chỉ chạy Perps không mở
 // stream Spot). Engine mở stream ngay khi nạp bot (trong vòng tick) và lệnh mở vị thế chỉ đi khi stream của engine đó
-// đã được SoDEX nhận subscribe (DEC-TBD-engine-lost-fill).
+// đã được SoDEX nhận subscribe (DEC-303).
 type StreamKind = "spot" | "perps";
 const streams = new Map<string, Partial<Record<StreamKind, WsUserStream>>>();
 /** Lần cuối ghi log error "subscribe rejected" theo `account:engine` (tối đa một lần mỗi 10 phút). */

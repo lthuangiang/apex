@@ -5447,7 +5447,7 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
   });
 });
 
-describe("lost fills (DEC-TBD-engine-lost-fill)", () => {
+describe("lost fills (DEC-303)", () => {
   /** User stream giả: ghi account được mở, sẵn sàng khi test cho phép. */
   class FakeStreams {
     readonly opened: string[] = [];

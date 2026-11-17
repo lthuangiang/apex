@@ -614,7 +614,7 @@ export const orders = pgTable(
     doneFedAt: tstz("done_fed_at"),
     /**
      * Lần đầu một lần tra SoDEX THÀNH CÔNG xác nhận lệnh SoDEX đã nhận không còn ở đâu (không lệnh mở, không lịch sử,
-     * không trade) và lệnh thành `unknown` (DEC-TBD-engine-lost-fill). Bỏ cuộc và Stop thôi chờ tính từ đây.
+     * không trade) và lệnh thành `unknown` (DEC-303). Bỏ cuộc và Stop thôi chờ tính từ đây.
      */
     missingConfirmedAt: tstz("missing_confirmed_at"),
     /** Lúc engine bỏ cuộc đối soát lệnh `unknown` (Needs attention + Decisions một lần); lệnh rời truy vấn mỗi vòng. */
