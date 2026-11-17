@@ -910,6 +910,9 @@ async function vfStats(
   };
 }
 
+/** Lệnh vào của Volume Farm: `vf:<lượt>:in:<số lần chưa khớp liên tiếp trước nó>` (DEC-300). */
+const ENTRY_TAG = /^vf:\d+:in:(\d+)$/;
+
 /** clOrdID của các lệnh một event quyết định đã đặt (`payload.orders`, BD-02); event cũ không có → []. */
 function eventOrders(payload: unknown): string[] {
   if (typeof payload !== "object" || payload === null || !("orders" in payload)) return [];
@@ -958,7 +961,14 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     placedIds.length === 0
       ? []
       : await deps.db
-          .select({ clOrdId: orders.clOrdId, status: orders.status, filledSize: orders.filledSize })
+          .select({
+            clOrdId: orders.clOrdId,
+            status: orders.status,
+            filledSize: orders.filledSize,
+            tag: orders.tag,
+            rejectCode: orders.rejectCode,
+            avgPrice: orders.avgPrice,
+          })
           .from(orders)
           // (account, clOrdID) đi qua index orders_account_cl_ord_key; trang này poll mỗi 5 s.
           .where(
@@ -977,7 +987,18 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
       return o === undefined ? [] : [o];
     });
     const outcome = decisionOutcome(found, ids.length);
-    return { outcome, order: outcomeOrder(found, outcome) };
+    const order = outcomeOrder(found, outcome);
+    const rep = order === null ? undefined : placedBy.get(order);
+    // Lần thử vào lệnh Volume Farm (DEC-307): quyết định đặt đúng một lệnh vào `vf:<n>:in:<k>`.
+    const only = ids.length === 1 && found.length === 1 ? found[0] : undefined;
+    const k = only === undefined ? undefined : ENTRY_TAG.exec(only.tag)?.[1];
+    return {
+      outcome,
+      order,
+      entryTry: k === undefined ? null : Number(k),
+      rejectCode: rep?.status === "rejected" ? rep.rejectCode : null,
+      fillPrice: rep?.avgPrice != null && dec(rep.filledSize).gt(0) ? rep.avgPrice : null,
+    };
   };
   const [until] =
     since !== undefined && b.state !== BotState.running
