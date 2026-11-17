@@ -54,8 +54,21 @@ export interface FieldSpec {
   beta?: boolean | undefined;
   /** Không hiện "How it works" chung của field (thiết kế của chiến lược không có, DEC-262). */
   noHow?: boolean | undefined;
-  /** Field cùng `row` nằm chung một hàng (xuống cột dưới 480 px). */
+  /** Field cùng `row` nằm chung một hàng (xuống cột dưới 480 px, hoặc dưới md khi có `rowBreak`). */
   row?: string | undefined;
+  /**
+   * Hàng xuống cột dưới md (768 px) thay vì 480 px, và các ô trong hàng thẳng nhãn / ô nhập / gợi ý với nhau (yêu
+   * cầu bố cục form 2026-11-17). Đặt trên mọi field của hàng.
+   */
+  rowBreak?: "md" | undefined;
+  /**
+   * Field cùng `cluster` (liền nhau, đầu hàng) vẽ thành một nhóm có tiêu đề chung `createBot.clusters.<cluster>` và
+   * nằm cạnh nhau cả trên điện thoại. Nhãn hiện là `fields.<label>.short` ("Min"); tên cho trình đọc màn hình vẫn
+   * là `label` đầy đủ ("Order size, min"). Chỉ dùng trong hàng có `rowBreak`.
+   */
+  cluster?: string | undefined;
+  /** Vẽ khối riêng ngay trước field này trong Advanced settings ("How your losses are capped"). */
+  blockBefore?: "lossCaps" | undefined;
   /** Độ rộng trong hàng: wide = 2/3, narrow = 1/3; mặc định chia đều. */
   width?: "wide" | "narrow" | undefined;
 }
@@ -565,10 +578,48 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       type: { kind: "int", unit: "×" },
     },
     // Thiết kế "MM form explained" không có "How it works" ở Stop when costs reach / Max position / Where to quote.
-    { key: "costBudget", group: 4, noHow: true, type: dec("quote") },
-    { key: "volumeTarget", group: 4, optional: true, type: dec("quote") },
-    // Vị thế tối đa theo số lệnh (DEC-133), dễ hiểu hơn số USDC.
-    { key: "maxOrders", group: 3, advanced: true, noHow: true, type: { kind: "int" } },
+    // Hai ô dừng chung một hàng, xuống cột dưới md (DEC-TBD-create-form-layout).
+    {
+      key: "costBudget",
+      group: 4,
+      noHow: true,
+      row: "stop",
+      rowBreak: "md",
+      type: dec("quote"),
+    },
+    {
+      key: "volumeTarget",
+      group: 4,
+      optional: true,
+      row: "stop",
+      rowBreak: "md",
+      type: dec("quote"),
+    },
+    // "Also stop at" và khối "How your losses are capped" nằm trong Advanced settings (DEC-TBD-create-form-layout).
+    {
+      key: "runUntil",
+      group: 4,
+      advanced: true,
+      type: enumOf("runUntil", ["target_or_budget", "season_end", "date"]),
+    },
+    {
+      key: "untilAt",
+      label: "untilAt",
+      group: 4,
+      advanced: true,
+      type: { kind: "date" },
+      when: { key: "runUntil", is: ["season_end", "date"] },
+    },
+    // Vị thế tối đa theo số lệnh (DEC-133), dễ hiểu hơn số USDC. Khối "How your losses are capped" ngay trên ô này
+    // (câu "set below" trong khối nói tới ô này).
+    {
+      key: "maxOrders",
+      group: 3,
+      advanced: true,
+      noHow: true,
+      blockBefore: "lossCaps",
+      type: { kind: "int" },
+    },
     // Vị trí báo giá theo mức sổ lệnh (DEC-135), thay khoảng cách bp: tự đúng với mọi market.
     { key: "quoteLevel", group: 3, advanced: true, noHow: true, type: { kind: "int" } },
     // Smart quoting (DEC-144), mặc định tắt: tắt là đúng logic cũ.
@@ -578,19 +629,6 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
     { key: "closeAtEntry", group: 3, beta: true, hidden: true, type: { kind: "bool" } },
     { key: "pauseOnFastMoves", group: 3, hidden: true, type: { kind: "bool" } },
     { key: "refreshSeconds", group: 3, advanced: true, type: { kind: "int", unit: "s" } },
-    // "Also stop at" nằm trong "When to stop" (thiết kế "MM form explained", DEC-262).
-    {
-      key: "runUntil",
-      group: 4,
-      type: enumOf("runUntil", ["target_or_budget", "season_end", "date"]),
-    },
-    {
-      key: "untilAt",
-      label: "untilAt",
-      group: 4,
-      type: { kind: "date" },
-      when: { key: "runUntil", is: ["season_end", "date"] },
-    },
     // Position loss limit chỉ hiện khi tắt Smart quoting (bật thì Position cut thay thế), trong khối
     // "How your losses are capped". Config cũ đặt giá trị khi bật Smart quoting vẫn giữ và engine vẫn dùng.
     {
@@ -612,12 +650,15 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
   // S10 Volume Farm (DEC-80): chỉ hiện khi admin bật bot khối lượng cho tài khoản.
   volume_farm: [
     contract,
+    // Order size (Min · Max) và Leverage chung một hàng; dưới md Leverage xuống dưới (DEC-TBD-create-form-layout).
     {
       key: "orderSizeMinUsd",
       label: "vfSizeMin",
       group: 3,
       amount: true,
       row: "size",
+      rowBreak: "md",
+      cluster: "orderSize",
       type: dec("quote"),
     },
     {
@@ -626,13 +667,39 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       group: 3,
       amount: true,
       row: "size",
+      rowBreak: "md",
+      cluster: "orderSize",
       type: dec("quote"),
     },
-    { ...leverage, label: "vfLeverage", row: "lev" },
+    { ...leverage, label: "vfLeverage", row: "size", rowBreak: "md" },
+    // TP USDC / SL % như Volume Farm gốc (DEC-120); early exit dùng mặc định apex của schema, không hiện trên form.
+    { key: "tpUsd", label: "vfTp", group: 4, row: "exit", type: dec("quote") },
+    // % margin như TP/SL của SoDEX (DEC-126); config cũ theo % giá được quy đổi lúc mở form.
+    { key: "slMarginPct", label: "vfSl", group: 4, row: "exit", type: dec("%") },
+    {
+      key: "maxLoss",
+      label: "vfMaxLoss",
+      group: 4,
+      row: "stop",
+      rowBreak: "md",
+      type: dec("quote"),
+    },
+    {
+      key: "volumeTarget",
+      label: "vfVolumeTarget",
+      group: 4,
+      optional: true,
+      row: "stop",
+      rowBreak: "md",
+      type: dec("quote"),
+    },
+    // Từ Hold at least tới Stop loss on SoDEX (trước là section Strategy) nằm trong Advanced settings, trên cùng
+    // (DEC-TBD-create-form-layout; trước đó Stop loss on SoDEX để ngoài vì là lớp bảo vệ, DEC-118).
     {
       key: "minHoldSecs",
       label: "vfHoldMin",
       group: 3,
+      advanced: true,
       row: "hold",
       type: { kind: "int", unit: "s" },
     },
@@ -640,18 +707,21 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       key: "maxHoldSecs",
       label: "vfHoldMax",
       group: 3,
+      advanced: true,
       row: "hold",
       type: { kind: "int", unit: "s" },
     },
-    { key: "reverseSignal", label: "vfReverse", group: 3, type: { kind: "bool" } },
+    { key: "reverseSignal", label: "vfReverse", group: 3, advanced: true, type: { kind: "bool" } },
     // DEC-158: chỉ vào lệnh khi thị trường đi ngang (regime 5 phút SIDEWAY).
-    { key: "sidewaysOnly", label: "vfSideways", group: 3, type: { kind: "bool" } },
-    // TP USDC / SL % như Volume Farm gốc (DEC-120); early exit dùng mặc định apex của schema, không hiện trên form.
-    { key: "tpUsd", label: "vfTp", group: 4, row: "exit", type: dec("quote") },
-    // % margin như TP/SL của SoDEX (DEC-126); config cũ theo % giá được quy đổi lúc mở form.
-    { key: "slMarginPct", label: "vfSl", group: 4, row: "exit", type: dec("%") },
-    { key: "maxLoss", label: "vfMaxLoss", group: 4, type: dec("quote") },
-    { key: "volumeTarget", label: "vfVolumeTarget", group: 4, optional: true, type: dec("quote") },
+    { key: "sidewaysOnly", label: "vfSideways", group: 3, advanced: true, type: { kind: "bool" } },
+    // Stop loss gốc trên SoDEX (DEC-118): bật mặc định.
+    {
+      key: "exchangeStop",
+      label: "vfExchangeStop",
+      group: 3,
+      advanced: true,
+      type: { kind: "bool" },
+    },
     marginMode,
     {
       key: "cooldownSecs",
@@ -660,8 +730,6 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       advanced: true,
       type: { kind: "int", unit: "s" },
     },
-    // Stop loss gốc trên SoDEX (DEC-118): bật mặc định, để ngoài Advanced vì là lớp bảo vệ.
-    { key: "exchangeStop", label: "vfExchangeStop", group: 3, type: { kind: "bool" } },
     // Khi nào dời stop trên SoDEX về hoà vốn (DEC-143), bội số của phí hoà vốn.
     { key: "stopMoveFees", label: "vfStopMove", group: 3, advanced: true, type: dec("×") },
     { key: "maxSpreadBps", label: "vfMaxSpread", group: 3, advanced: true, type: dec("bp") },
@@ -792,6 +860,9 @@ export function emptyValues(strategy: keyof typeof FIELDS): FormValues {
       maxHoldSecs: "300",
       tpUsd: "0.5",
       slMarginPct: "10",
+      // Max loss 10 USDC như Stop when costs reach của Market Making (DEC-TBD-create-form-layout). Chỉ là giá trị
+      // khởi đầu của bot mới: bot và draft đã có giá trị giữ nguyên.
+      maxLoss: "10",
       cooldownSecs: "30",
       maxSpreadBps: "10",
       allowTaker: false,

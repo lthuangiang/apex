@@ -753,11 +753,13 @@
         "hint": "Closes the position · must be before liquidation"
       },
       "vfSizeMin": {
-        "label": "Order size from",
+        "label": "Order size, min",
+        "short": "Min",
         "hint": "Position value per trade, leverage included"
       },
       "vfSizeMax": {
-        "label": "Order size to",
+        "label": "Order size, max",
+        "short": "Max",
         "hint": "Each trade picks a random size in this range"
       },
       "vfHoldMin": {
@@ -1564,6 +1566,9 @@
           "intro": "The bot stops at whichever comes first."
         }
       }
+    },
+    "clusters": {
+      "orderSize": "Order size"
     },
     "advanced": {
       "title": "Advanced settings",

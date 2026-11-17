@@ -233,8 +233,10 @@ Hành vi và quy tắc bắt buộc ở `docs/VOLUME_MAKER.md` mục 17. Field:
 | 4 | Position loss limit (`inventoryLossStop`) | empty | Optional, < budget; closes reduce-only. Chỉ hiện khi tắt Smart quoting (hoặc khi ô có giá trị / lỗi), trong khối "How your losses are capped"; giá trị đã lưu vẫn giữ và engine vẫn dùng (DEC-262) | Must be below the budget. |
 | 3 | Close only at your entry price or better (`closeAtEntry`) · BETA | Off | Hint "Fees are not included in your entry price." Close order stays post-only reduce-only at max(best, entry) for long / min(best, entry) for short; after 30 min falls back to the normal close (DEC-227) | — |
 | 3 | Pause on fast moves (`pauseOnFastMoves`) | Off | Price moves ≥ max(3 ticks, 2 bp) in 6 s → opening quotes pulled, reduce-only close kept, quote again after 15 s of calm (DEC-227) | — |
-| 4 | Also stop at (`runUntil`) | No end time | No end time / End of the SoPoints season / A date I choose (kèm ô End date) | — |
+| Adv | Also stop at (`runUntil`) | No end time | No end time / End of the SoPoints season / A date I choose (kèm ô End date) | — |
 | Adv | When the bot stops (`onStop`) | Close the position | Close the position (reduce-only) / Keep the position | — |
+
+Bố cục form Create / Edit (DEC-TBD-create-form-layout, 2026-11-17, không có canvas): "Stop when costs reach" và "Stop after this much volume (optional)" chung một hàng (hai cột từ md, xếp chồng dưới md). **Advanced settings** (nút thật có `aria-expanded` / `aria-controls`, đóng mặc định) gồm theo thứ tự: Also stop at (kèm End date) → khối "How your losses are capped" (kèm Position loss limit) → Max position → Where to quote → Refresh every → When the bot stops → Bot name (màn Create). Lỗi ở field trong Advanced thì section tự mở và đưa con trỏ tới field đó. Màn Create: bảng 3 bậc builder fee (`MmFeeCatalog`) nằm ngay dưới chart (cột trái; mobile ngay dưới chart trong form), luôn hiện cả khi mức do team đặt tay: custom = "Your builder fee {rate}" + câu `customFee`, không đánh dấu "You"; theo bậc = "You" ở dòng hiện tại; mặc định / chưa có volume = mức + bảng bậc. "Before it starts" chỉ giữ câu phí ngắn (bỏ bảng bậc); custom thì bỏ luôn câu bậc `feeMmTiers`.
 
 Câu chữ form theo thiết kế "MM form explained" (DEC-262): nhãn / hint / đơn vị riêng của Market Making ở `createBot.fieldsByStrategy.volume_maker.<field>` trong en.json (thắng câu chữ chung `createBot.fields`); hint có số lấy theo order size, Stop when costs reach và max orders đang nhập, ô trống thì câu không có số. Section Risk tên "When to stop"; sau đó là khối "How your losses are capped" (Smart quoting bật: Stop when costs reach · Position cut · Max position; tắt: Position loss limit thay Position cut, kèm ô nhập). Max position đơn vị "orders", Where to quote (`quoteLevel`) đơn vị "steps back".
 
@@ -248,18 +250,20 @@ Quy tắc của Market Making (VOLUME_MAKER.md mục 17.3) không áp dụng cho
 |---|---|---|---|---|
 | 2 | Markets (`markets`) | Mọi market của trader mà SoDEX có | 1–20 market Perps, không trùng; người dùng bỏ tick được (DEC-226); khoá sau khi tạo; `maxExposure` và `maxLoss` tính trên tổng. Trader giao dịch ở market không có trong bot → không bao giờ mở lệnh, ghi "Skipped" (`market_off`, không gửi tin) | Pick at least one market. / Up to 20 markets. / Each market once. |
 | 2 | Leverage | Mức SoDEX đang đặt cho market của account, tối đa 25×; không biết thì 25× (DEC-133, DEC-265) | 1× to the SoDEX market max | Above the SoDEX maximum of N× for this market. |
-| 3 | Order size from / to | 100 / 200 (DEC-133) | Position value per trade, random in range; min ≥ SoDEX min size | Below SoDEX minimum order size. / Must be at least the minimum size. |
-| 3 | Hold at least / at most | 180 s / 300 s | 10–3600 s, random in range; at most = hard time stop | Allowed 10–3600 s. / Must be at least the minimum hold. |
-| 3 | Reverse the signal | Off | Không bao giờ vào ngược xu hướng 5 phút, kể cả sau khi đảo (DEC-158) | — |
-| 3 | Only trade sideways | Off | Chỉ vào lượt mới khi regime 5 phút là SIDEWAY; lượt đang mở vẫn thoát như thường (DEC-158) | — |
-| 3 | Stop loss on SoDEX | On | Stop gốc trên sàn; dời về hoà vốn khi lãi đủ | — |
+| 3 | Order size (Min / Max; `orderSizeMinUsd` / `orderSizeMaxUsd`) | 100 / 200 (DEC-133) | Position value per trade, random in range; min ≥ SoDEX min size. Một nhóm "Order size" hai ô "Min" · "Max" (tên cho trình đọc màn hình "Order size, min" / "Order size, max") | Below SoDEX minimum order size. / Must be at least the minimum size. |
+| Adv | Hold at least / at most | 180 s / 300 s | 10–3600 s, random in range; at most = hard time stop | Allowed 10–3600 s. / Must be at least the minimum hold. |
+| Adv | Reverse the signal | Off | Không bao giờ vào ngược xu hướng 5 phút, kể cả sau khi đảo (DEC-158) | — |
+| Adv | Only trade sideways | Off | Chỉ vào lượt mới khi regime 5 phút là SIDEWAY; lượt đang mở vẫn thoát như thường (DEC-158) | — |
+| Adv | Stop loss on SoDEX | On | Stop gốc trên sàn; dời về hoà vốn khi lãi đủ | — |
 | 4 | Take profit (`tpUsd`) | 0.5 USDC | Lãi trước phí; không dưới 1.5 × phí khứ hồi | Must be above 0. |
 | 4 | Stop loss (`slMarginPct`) | 25% of margin | 1–90% margin như SoDEX TP/SL (% giá = % margin ÷ đòn bẩy); market; hint ≈ % giá và USDC | Allowed 1–90%. |
-| 4 | Max loss for this bot | — | Net loss (realized + fees + funding); stops and closes | Must be above 0. |
+| 4 | Max loss for this bot | 10 USDC cho bot mới, như Stop when costs reach của Market Making (DEC-TBD-create-form-layout; giá trị khởi đầu của form, schema vẫn bắt buộc; bot / draft đã có giá trị giữ nguyên) | Net loss (realized + fees + funding); stops and closes | Must be above 0. |
 | 4 | Stop at volume | empty | Optional | Must be above 0. |
 | Adv | Wait between trades | 30 s | 0–3600 s | — |
 | Adv | Max spread | 10 bp | Skips entries above | Allowed 0.1–500 bp. |
 | Adv | Use taker orders / Market orders after (misses) | Off / 3 | 0–10 (0 = mọi lệnh vào / thoát là market ngay khi bật taker, DEC-259) | Allowed 0–10. |
+
+Bố cục form Create / Edit (DEC-TBD-create-form-layout, 2026-11-17, không có canvas): Order size (Min · Max) và Leverage chung một hàng từ md; dưới md Min · Max vẫn cạnh nhau, Leverage xuống dưới. "Max loss for this bot" và "Stop at volume (optional)" chung một hàng (xếp chồng dưới md). **Advanced settings** (cùng component với Market Making, đóng mặc định) gồm theo thứ tự: Hold at least / at most → Reverse the signal → Only trade sideways → Stop loss on SoDEX (toàn bộ section Strategy cũ) → Margin mode → Wait between trades → Move stop to break-even at → Max spread → Early profit / after → Use taker orders → Market orders after → Bot name (màn Create). Lỗi ở field trong Advanced (kể cả khi Save / Start) thì section tự mở, cuộn tới và focus field đó.
 
 Preview: không có. Backtest: 5D / 30D trên nến 1 phút (BACKTEST.md mục 11.2). Agent: Decisions "Enter long/short", "Skipped entry" (chỉ khi lý do đổi), "Stop loss set on SoDEX", "Stop loss on SoDEX moved to break-even", "Closed long/short" kèm lãi ròng sau phí.
 

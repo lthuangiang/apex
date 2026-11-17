@@ -23,9 +23,19 @@ vi.mock("../components/market-picker", () => ({
 }));
 vi.mock("../components/amount-lines", () => ({ AmountLines: () => null }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // Trạng thái mở Advanced settings được nhớ trong trình duyệt: mỗi test bắt đầu với section đóng.
+  window.localStorage.clear();
+});
+// jsdom không có scrollIntoView (form cuộn tới field lỗi).
+Element.prototype.scrollIntoView = () => undefined;
 // Gõ phím + axe trên cả form: chậm khi máy bận (cùng mức timeout với mm-cost.test.tsx).
 vi.setConfig({ testTimeout: 20_000 });
+
+// "Also stop at" và "How your losses are capped" nằm trong Advanced settings (DEC-TBD-create-form-layout).
+const openAdvanced = () =>
+  userEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
 
 function Harness({
   strategy,
@@ -60,6 +70,7 @@ describe("Market Making form copy", () => {
     );
     expect(screen.getByText("When to stop")).toBeInTheDocument();
     expect(screen.getByText("The bot stops at whichever comes first.")).toBeInTheDocument();
+    await openAdvanced();
     expect(screen.getByRole("radio", { name: "No end time" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "End of the SoPoints season" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "A date I choose" })).toBeInTheDocument();
@@ -104,6 +115,7 @@ describe("Market Making form copy", () => {
   it("“Also stop at” keeps the date picker for a season or a date", async () => {
     render(<Harness strategy="volume_maker" init={mmInit()} />);
     expect(screen.queryByLabelText("End date")).toBeNull();
+    await openAdvanced();
     await userEvent.click(screen.getByRole("radio", { name: "A date I choose" }));
     expect(screen.getByLabelText("End date")).toBeInTheDocument();
   });
@@ -112,6 +124,7 @@ describe("Market Making form copy", () => {
 describe("How your losses are capped", () => {
   it("switches live with Smart quoting and shows Position loss limit only when off", async () => {
     render(<Harness strategy="volume_maker" init={mmInit({ maxOrders: "3" })} />);
+    await openAdvanced();
     const block = () => screen.getByTestId("loss-caps");
     expect(block()).toHaveAttribute("data-smart", "on");
     expect(within(block()).getByRole("heading", { name: "Position cut" })).toBeInTheDocument();
