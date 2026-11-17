@@ -16,6 +16,7 @@ import {
   Coins,
   FlaskConical,
   LayoutDashboard,
+  Network,
   ListOrdered,
   OctagonX,
   Settings,
@@ -74,6 +75,8 @@ const ITEMS = [
   ["ops", "/admin/bot-monitor", Activity, "team"],
   // Market hours (DEC-283): ngay sau Bot Monitor.
   ["marketHours", "/admin/market-hours", Clock, "team"],
+  // System Architecture Diagram: ngay dưới Market hours.
+  ["architecture", "/admin/architecture", Network, "team"],
   ["settings", "/settings", Settings, "secondary"],
 ] as const satisfies readonly (readonly [
   string,
@@ -93,6 +96,7 @@ const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set([
   "stats",
   "ops",
   "marketHours",
+  "architecture",
 ]);
 
 export function WorkspaceShell({
@@ -158,6 +162,7 @@ export function WorkspaceShell({
         "stats",
         "ops",
         "marketHours",
+        "architecture",
       ]),
       footer: <MoreFooter />,
     },

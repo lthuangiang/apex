@@ -99,4 +99,19 @@ describe("design tokens", () => {
   ])("keeps ink text on %s at 4.5:1 or more", (bg) => {
     expect(contrast(token("ink"), token(bg))).toBeGreaterThanOrEqual(4.5);
   });
+
+  // System Architecture Diagram: tên mạng viết bằng màu viền trên nền của chính mạng đó; số bước trắng trên ô xanh.
+  it.each([
+    ["arch-edge", "arch-edge-bg"],
+    ["arch-core", "arch-core-bg"],
+    ["arch-secure", "arch-secure-bg"],
+    ["arch-ext", "arch-ext-bg"],
+    ["arch-host", "surface"],
+  ])("keeps %s labels on %s at 4.5:1 or more", (fg, bg) => {
+    expect(contrast(token(fg), token(bg))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("keeps white step numbers on arch-badge at 4.5:1 or more", () => {
+    expect(contrast(WHITE, token("arch-badge"))).toBeGreaterThanOrEqual(4.5);
+  });
 });

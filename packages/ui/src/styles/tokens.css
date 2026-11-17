@@ -92,6 +92,25 @@
   --mh-shock-2: #d2b6ef;
   --mh-shock-3: #bb92e4;
   --mh-hatch: #e3e7f5;
+  /* System Architecture Diagram (team): màu nhóm icon theo kiểu AWS (định tuyến, service, đề xuất, dữ liệu, message bus,
+     bảo mật, bên ngoài), viền + nền của từng mạng Docker, đường đi của luồng và ô số bước. */
+  --arch-net: #8c4fff;
+  --arch-app: #c45c00;
+  --arch-ml: #017a67;
+  --arch-db: #a51eab;
+  --arch-int: #c41166;
+  --arch-sec: #c7243a;
+  --arch-ext: #545b64;
+  --arch-host: #5d6773;
+  --arch-edge: #4b6e00;
+  --arch-edge-bg: #f4f8ec;
+  --arch-core: #006e70;
+  --arch-core-bg: #ebf6f6;
+  --arch-secure: #b01e33;
+  --arch-secure-bg: #fcedef;
+  --arch-ext-bg: #f3f4f6;
+  --arch-flow: #d97300;
+  --arch-badge: #0b63a8;
 
   --radius-control: 12px;
   --radius-tile: 18px;

@@ -5,6 +5,7 @@ export { RevenuePage } from "./components/revenue-page";
 export { StatsPage } from "./components/stats-page";
 export { OpsPage } from "./components/ops-page";
 export { MarketHoursPage } from "./components/market-hours-page";
+export { ArchitecturePage } from "./components/architecture-page";
 export { UserDetailPage } from "./components/user-detail-page";
 export { UsersPage } from "./components/users-page";
 export { RiskPage } from "./components/risk-page";
