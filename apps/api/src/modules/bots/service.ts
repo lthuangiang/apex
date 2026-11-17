@@ -989,7 +989,7 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
     const outcome = decisionOutcome(found, ids.length);
     const order = outcomeOrder(found, outcome);
     const rep = order === null ? undefined : placedBy.get(order);
-    // Lần thử vào lệnh Volume Farm (DEC-TBD-vb-decisions-grouping): quyết định đặt đúng một lệnh vào `vf:<n>:in:<k>`.
+    // Lần thử vào lệnh Volume Farm (DEC-307): quyết định đặt đúng một lệnh vào `vf:<n>:in:<k>`.
     const only = ids.length === 1 && found.length === 1 ? found[0] : undefined;
     const k = only === undefined ? undefined : ENTRY_TAG.exec(only.tag)?.[1];
     return {

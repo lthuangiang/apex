@@ -21,7 +21,7 @@ import {
 
 // Trading Agent › Decisions & actions (BD-02, docs/mockups/bd02-decisions Main + Mobile): quyết định lặp lại được gộp
 // thành một dòng mở ra được; mọi pill kết quả link tới lệnh theo clOrdID trong Execution & Orders. Các lần thử vào lệnh
-// của một lượt Volume Farm gộp thành "Enter long · 8 tries in 2 min · Filled at …" (DEC-TBD-vb-decisions-grouping).
+// của một lượt Volume Farm gộp thành "Enter long · 8 tries in 2 min · Filled at …" (DEC-307).
 
 type GroupRow = Exclude<DecisionRow, { kind: "single" }>;
 

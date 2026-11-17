@@ -5,7 +5,7 @@ import { NORMAL_REJECT_CODES, type BotDetail, type DecisionOutcome } from "@drif
 //   cái trước ≤ 60 s.
 // - Không bao giờ gộp mọi tên khác (Order filled, Position cut, Stopped, Paused / Resumed, Smart quoting…, Order requests,
 //   cảnh báo chi phí, lỗi) và mọi quyết định có kết quả Unknown hoặc Rejected.
-// Volume Farm (DEC-TBD-vb-decisions-grouping): các lần thử vào lệnh liên tiếp của CÙNG một lượt ("Enter long" / "Enter
+// Volume Farm (DEC-307): các lần thử vào lệnh liên tiếp của CÙNG một lượt ("Enter long" / "Enter
 // short", lệnh `vf:<n>:in:<k>`, DEC-300) gộp thành một dòng; xem `entryTryOf`.
 
 export type BotEvent = BotDetail["events"][number];

@@ -156,7 +156,7 @@ describe("Decisions & actions (BD-02)", () => {
   });
 });
 
-describe("Volume Farm entry rounds in Decisions (DEC-TBD-vb-decisions-grouping)", () => {
+describe("Volume Farm entry rounds in Decisions (DEC-307)", () => {
   /** Một lượt 8 lần thử trong 2 phút: 5 post-only miss, 1 huỷ vì chưa khớp, 1 không gửi được, lần cuối khớp. */
   const round = (): BotEvent[] => {
     const outcomes: BotEvent["outcome"][] = [

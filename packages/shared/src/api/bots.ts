@@ -231,7 +231,7 @@ export const botEventSchema = z.object({
   /**
    * Lần thử vào lệnh của Volume Farm (lệnh `vf:<n>:in:<k>`, DEC-300): k = số lần vào chưa khớp liên tiếp trước lần này
    * (0 = lần đầu của lượt). null với mọi quyết định khác. Chỉ để gộp các lần thử của một lượt ở Decisions
-   * (DEC-TBD-vb-decisions-grouping).
+   * (DEC-307).
    */
   entryTry: z.number().int().nonnegative().nullable().default(null),
   /** Mã từ chối của lệnh đại diện (ví dụ `PostOnly`); null khi lệnh không bị từ chối. */

@@ -988,7 +988,7 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(detail.blockedByRiskRecently).toBe(1);
   });
 
-  it("tells Decisions which entry try of a round each Enter decision is, its reject code and fill price (DEC-TBD-vb-decisions-grouping)", async () => {
+  it("tells Decisions which entry try of a round each Enter decision is, its reject code and fill price (DEC-307)", async () => {
     const { client } = await connectedUser(`vb-tries-${randomUUID()}@drift.test`);
     const made = await client.request("POST", "/api/v1/bots", {
       body: { strategy: "spot_grid", name: "Tries", paramSource: "manual", config: grid },

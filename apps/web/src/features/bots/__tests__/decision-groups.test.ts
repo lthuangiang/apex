@@ -154,7 +154,7 @@ describe("groupDecisions", () => {
   });
 });
 
-describe("Volume Farm entry rounds (DEC-TBD-vb-decisions-grouping)", () => {
+describe("Volume Farm entry rounds (DEC-307)", () => {
   it("collapses the tries of one round, newest first, up to the round's first try", () => {
     const rows = groupDecisions([
       tryEv(0, 0, "open"), // lượt mới
