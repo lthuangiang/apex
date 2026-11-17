@@ -74,7 +74,7 @@ import {
   type StrategyModule,
   type OrderIntent,
 } from "@drift/strategies";
-import { and, desc, eq, gt, inArray, isNull, like, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import { openedAlerts, SkipGate, skipMarket, skippedAlert, skipReason } from "./copy-alerts";
@@ -125,18 +125,8 @@ const STREAM_WAIT_WARN_MS = 120_000;
 export function isNativeStop(o: { type: string; tag: string; reduceOnly: boolean }): boolean {
   return o.type === "market" && o.reduceOnly && o.tag.endsWith(":sl");
 }
-/** Decisions của lệnh `unknown` (tiền tố `why` theo clOrdID): bản ghi bền thay cho bộ đếm trong bộ nhớ. */
+/** Tiêu đề Decisions của lệnh `unknown` (chỉ để hiển thị; trạng thái bền nằm ở cột của `orders`). */
 const UNKNOWN_DECISION = "Order result unknown";
-const MISSING_WHY = ": not found on SoDEX and no trades yet.";
-const GAVE_UP_WHY = ": SoDEX accepted it, but";
-/**
- * Lệnh có Decisions "Order result unknown" với tiền tố `why` cho trước (đã ghi trước `before` nếu có). Dòng "not found"
- * chỉ được ghi sau một lần tra SoDEX thành công mà không thấy lệnh và không có trade: đó là lần xác nhận không thấy đầu
- * tiên, lưu bền qua khởi động lại (`occurred_at`).
- */
-function hasUnknownDecision(why: string, before?: Date) {
-  return sql`exists (select 1 from bot_events e where e.bot_id = ${orders.botId} and e.decision = ${UNKNOWN_DECISION} and e.why like ${orders.clOrdId} || ${`${why}%`}${before === undefined ? sql`` : sql` and e.occurred_at <= ${before}`})`;
-}
 
 /**
  * Lệnh làm tăng |vị thế| của bot (người dùng chốt, DEC-TBD-engine-lost-fill): chỉ loại này phải chờ user stream.
@@ -619,8 +609,6 @@ export class Engine {
   readonly #makerPosition = new Map<string, number>();
   /** Lần cuối so lịch sử khớp cho lưới an toàn fill, theo `account:engine:market`. */
   readonly #fillBackfill = new Map<string, number>();
-  /** Lệnh `unknown` quá hạn đối soát đã được ghi Needs attention (dedupe thêm theo Decisions khi khởi động lại). */
-  readonly #unknownFlagged = new Set<string>();
   /** Lệnh `unknown` SoDEX đã nhận: số lần tra, lần tra gần nhất, số lần tra thành công mà vẫn không thấy. */
   readonly #unknownChecks = new Map<string, { n: number; at: number }>();
   /** Lần đầu đối soát thấy lệnh `open` không còn trên SoDEX (thời gian chờ tính từ đây, không từ lúc gửi). */
@@ -634,6 +622,8 @@ export class Engine {
   #readSeq = 0;
   /** Khoảng trống user stream đã được so lịch sử khớp (một lần mỗi khoảng trống), theo `account:engine:market`. */
   readonly #gapBackfilled = new Map<string, number>();
+  /** Khoảng trống (theo `account:engine`, giá trị = lúc bắt đầu) đã được đọc ứng viên lưới an toàn. */
+  readonly #gapCandidatesRead = new Map<string, number>();
   /** Lần cuối đọc ứng viên của lưới an toàn fill (#backfillCandidates). */
   #backfillReadAt = Number.NEGATIVE_INFINITY;
   /** Lần cuối ghi log "chờ user stream" và lúc bắt đầu chờ, theo `account:engine`. */
@@ -1479,20 +1469,33 @@ export class Engine {
    * trên engine mà user stream chưa sẵn sàng (người dùng chốt, DEC-TBD-engine-lost-fill). Không bao giờ giữ: `resumed`
    * (chỉ gửi một lần sau khi trạng thái đã commit, DEC-240) và bước có pause / stop.
    */
-  async #opensBeforeStream(
+  #opensBeforeStream(
     r: Runner,
     event: StrategyEvent,
     actions: readonly StrategyAction[],
-  ): Promise<boolean> {
+    pending: ReadonlyMap<string, Decimal>,
+  ): boolean {
     if (event.type === "resumed") return false;
     if (actions.some((a) => a.type === "pause" || a.type === "stop")) return false;
-    const places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
-    const gated = places.filter((o) => !this.#streamReady(r, o.engine));
-    if (gated.length === 0) return false;
-    // Lệnh giảm đang chờ trên sổ (phần chưa khớp), theo market + chiều.
-    const reducing = new Map<string, Decimal>();
-    const add = (market: string, side: string, qty: Decimal) =>
-      reducing.set(`${market}:${side}`, (reducing.get(`${market}:${side}`) ?? dec("0")).add(qty));
+    const reducing = new Map(pending);
+    for (const a of actions) {
+      if (a.type !== "place") continue;
+      const o = a.order;
+      const key = `${o.market}:${o.side}`;
+      const before = (reducing.get(key) ?? dec("0")).toString();
+      if (
+        !this.#streamReady(r, o.engine) &&
+        opensPosition(o, positionOf(r.state, o.market, o.engine), before)
+      )
+        return true;
+      reducing.set(key, dec(before).add(o.quantity));
+    }
+    return false;
+  }
+
+  /** Khối lượng còn chờ (chưa khớp) của lệnh bot đang mở trên sổ, theo `market:chiều`. */
+  async #pendingReducing(r: Runner): Promise<Map<string, Decimal>> {
+    const out = new Map<string, Decimal>();
     const open = await this.#d.db
       .select()
       .from(orders)
@@ -1502,15 +1505,11 @@ export class Engine {
           inArray(orders.status, ["open", "partially_filled", "unknown"]),
         ),
       );
-    for (const o of open) add(o.market, o.side, dec(o.size).sub(o.filledSize));
-    for (const o of places) {
-      const position = positionOf(r.state, o.market, o.engine);
+    for (const o of open) {
       const key = `${o.market}:${o.side}`;
-      const pending = (reducing.get(key) ?? dec("0")).toString();
-      if (!this.#streamReady(r, o.engine) && opensPosition(o, position, pending)) return true;
-      add(o.market, o.side, dec(o.quantity));
+      out.set(key, (out.get(key) ?? dec("0")).add(dec(o.size).sub(o.filledSize)));
     }
-    return false;
+    return out;
   }
 
   /** Dừng có trật tự: trả lease (C10). */
@@ -1681,7 +1680,7 @@ export class Engine {
           and(
             eq(orders.status, "unknown"),
             lt(orders.submittedAt, new Date(now - RECONCILE_AFTER_MS)),
-            or(isNull(orders.sodexOrderId), sql`not ${hasUnknownDecision(GAVE_UP_WHY)}`),
+            or(isNull(orders.sodexOrderId), isNull(orders.unknownGaveUpAt)),
           ),
         )
     ).filter((o) => owned.has(shardOf(o.sodexAccountId, shards)));
@@ -1722,11 +1721,16 @@ export class Engine {
     }
     // Đọc ứng viên lưới an toàn tối đa mỗi MAKER_BACKFILL_MS (nhịp đọc lịch sử khớp của lệnh nghi ngờ), trừ khi có khoảng
     // trống stream đã qua thời gian chờ (đọc một lần mỗi khoảng trống).
-    const gapDue = [...this.#streamGaps.values()].some(
-      (at) => now - at >= BACKFILL_TRADE_GRACE_MS && now - at < STREAM_GAP_MS,
+    // Khoảng trống đã đọc ứng viên một lần thì thôi (không đọc lại mỗi vòng trong suốt khoảng trống).
+    const gapsDue = [...this.#streamGaps].filter(
+      ([key, at]) =>
+        now - at >= BACKFILL_TRADE_GRACE_MS &&
+        now - at < STREAM_GAP_MS &&
+        this.#gapCandidatesRead.get(key) !== at,
     );
-    if (gapDue || now - this.#backfillReadAt >= MAKER_BACKFILL_MS) {
+    if (gapsDue.length > 0 || now - this.#backfillReadAt >= MAKER_BACKFILL_MS) {
       this.#backfillReadAt = now;
+      for (const [key, at] of gapsDue) this.#gapCandidatesRead.set(key, at);
       for (const order of await this.#backfillCandidates(now))
         pushTo(snap.backfill, shardOf(order.sodexAccountId, shards), order);
     }
@@ -2083,6 +2087,12 @@ export class Engine {
       if (lev === "rejected") await this.#pauseBot(r, ReasonCode.orderRejected);
       if (lev !== "ok") return;
     }
+    // User stream của một engine bot giao dịch chưa sẵn sàng: đọc lệnh giảm đang chờ TRƯỚC bước chiến lược, để giữa bước
+    // và lúc gán `r.state` không có await nào (fill tới cùng lúc không bị ghi đè, review #208 R1).
+    const reducing =
+      !accounting && event.type !== "resumed" && r.engines.some((e) => !this.#streamReady(r, e))
+        ? await this.#pendingReducing(r)
+        : null;
     // Volume Farm: giá tốt nhất SoDEX mới nhất (bộ nhớ) vào state trước bước này, giữ đúng giờ nhận để tuổi sổ là tuổi
     // thật. Chỉ đổi state trong bộ nhớ; được ghi DB cùng bước này nếu bước có gì để ghi (DEC-298).
     if (r.strategy === Strategy.volumeFarm && !accounting) {
@@ -2103,7 +2113,7 @@ export class Engine {
     if (event.type === "timer" && result.state === prev && result.actions.length === 0) return;
     // Sự kiện thị trường muốn mở / tăng vị thế khi user stream của engine đó chưa subscribe xong: bỏ cả bước (state không
     // đổi), nhịp sau chiến lược quyết lại. Bước chỉ giảm vị thế / đóng / stop vẫn đi (DEC-TBD-engine-lost-fill).
-    if (!accounting && (await this.#opensBeforeStream(r, event, result.actions))) return;
+    if (reducing !== null && this.#opensBeforeStream(r, event, result.actions, reducing)) return;
     r.state = result.state;
     // Bot copy tiền thật: lệnh mở vừa khớp → thêm outbox trong CÙNG transaction (DEC-212).
     const opened = this.#copyAlerts(r, () =>
@@ -3155,8 +3165,22 @@ export class Engine {
     // runner, nên không ai đối soát / huỷ: lệnh mồ côi nằm lại (harness tranh chấp). Stop của người dùng giữ bot ở
     // `stopping` tới khi #reconcile đối soát xong (≤ NOT_FOUND_AFTER_MS); lệnh hoá ra đang mở thì lượt sau huỷ ở trên.
     // Lệnh đóng vị thế cũng chờ, vì lệnh unknown còn có thể khớp và đổi vị thế.
-    // Lệnh SoDEX đã nhận rồi không thấy nữa: chỉ thôi chờ khi lần xác nhận không thấy ĐẦU TIÊN (Decisions bền, ghi sau một
-    // lần tra thành công) đã quá UNKNOWN_CHECK_WINDOW_MS. Chưa có lần xác nhận nào thì vẫn chờ.
+    // Lệnh SoDEX đã nhận, xác nhận không thấy quá UNKNOWN_CHECK_WINDOW_MS mà chưa được ghi cho người dùng: ghi ngay (runner
+    // sắp bị bỏ nên #reconcile sẽ không còn làm được).
+    const overdue = await this.#d.db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          eq(orders.status, "unknown"),
+          lte(orders.missingConfirmedAt, new Date(this.#d.now() - UNKNOWN_CHECK_WINDOW_MS)),
+          isNull(orders.unknownGaveUpAt),
+        ),
+      );
+    for (const o of overdue) await this.#unknownGaveUp(r, o, this.#d.now());
+    // Lệnh SoDEX đã nhận rồi không thấy nữa: chỉ thôi chờ khi lần tra thành công đầu tiên xác nhận không thấy
+    // (`missing_confirmed_at`) đã quá UNKNOWN_CHECK_WINDOW_MS. Chưa có lần xác nhận nào thì vẫn chờ.
     const [unknown] = await this.#d.db
       .select({ n: sql<number>`count(*)::int` })
       .from(orders)
@@ -3166,7 +3190,8 @@ export class Engine {
           eq(orders.status, "unknown"),
           or(
             isNull(orders.sodexOrderId),
-            sql`not ${hasUnknownDecision(MISSING_WHY, new Date(this.#d.now() - UNKNOWN_CHECK_WINDOW_MS))}`,
+            isNull(orders.missingConfirmedAt),
+            gt(orders.missingConfirmedAt, new Date(this.#d.now() - UNKNOWN_CHECK_WINDOW_MS)),
           ),
         ),
       );
@@ -3651,13 +3676,13 @@ export class Engine {
     for (const o of pending) {
       const r = this.#runners.get(o.botId);
       if (r?.shard !== shard) continue;
-      // SoDEX đã nhận lệnh mà sau đó không tìm thấy (#reconcileOpen ghi `unknown` + Decisions "not found" sau một lần tra
-      // thành công): tra lại giãn dần 15 → 30 → 60 s, không phải mỗi vòng. Quá UNKNOWN_CHECK_WINDOW_MS tính từ lần xác
-      // nhận không thấy đầu tiên (bản ghi bền, nhớ qua khởi động lại) thì ghi cho người dùng một lần (quy tắc 1.7).
+      // SoDEX đã nhận lệnh mà sau đó không tìm thấy: tra lại giãn dần 15 → 30 → 60 s, không phải mỗi vòng. Quá
+      // UNKNOWN_CHECK_WINDOW_MS tính từ lần tra THÀNH CÔNG đầu tiên xác nhận không thấy (`missing_confirmed_at`, bền qua
+      // khởi động lại) thì ghi cho người dùng một lần (quy tắc 1.7). Chưa có lần xác nhận nào thì không bỏ cuộc.
       if (o.sodexOrderId !== null) {
-        const since = (o.reconciledAt ?? o.submittedAt)?.getTime() ?? now;
         const c = this.#unknownChecks.get(o.id) ?? { n: 0, at: 0 };
-        if (now - since >= UNKNOWN_CHECK_WINDOW_MS && (await this.#confirmedMissing(o, now))) {
+        const confirmed = o.missingConfirmedAt?.getTime();
+        if (confirmed !== undefined && now - confirmed >= UNKNOWN_CHECK_WINDOW_MS) {
           await this.#unknownGaveUp(r, o, now);
           continue;
         }
@@ -3684,50 +3709,27 @@ export class Engine {
    * và ghi Decisions một lần để người dùng kiểm tra vị thế trên SoDEX. Lưới an toàn fill vẫn ghi trade nếu nó xuất hiện.
    */
   async #unknownGaveUp(r: Runner, o: typeof orders.$inferSelect, now: number): Promise<void> {
-    if (this.#unknownFlagged.has(o.id)) return;
-    this.#unknownFlagged.add(o.id);
-    // Đã ghi trước khi engine khởi động lại: không ghi lại (Decisions là nơi lưu bền).
-    const [seen] = await this.#d.db
-      .select({ id: botEvents.id })
-      .from(botEvents)
-      .where(
-        and(
-          eq(botEvents.botId, r.botId),
-          eq(botEvents.decision, UNKNOWN_DECISION),
-          like(botEvents.why, `${o.clOrdId}${GAVE_UP_WHY}%`),
-        ),
-      )
-      .limit(1);
-    if (seen !== undefined) return;
     this.#d.log.error(
       { botId: r.botId, clOrdID: o.clOrdId },
       "order result still unknown after reconciling; needs attention",
     );
     await this.#fenced(r, async (tx) => {
+      // Ghi một lần: chỉ dòng chưa bỏ cuộc mới được đánh dấu (vòng / engine khác đã ghi thì thôi).
+      const marked = await tx
+        .update(orders)
+        .set({ unknownGaveUpAt: new Date(now) })
+        .where(and(eq(orders.id, o.id), isNull(orders.unknownGaveUpAt)))
+        .returning({ id: orders.id });
+      if (marked.length === 0) return;
       await tx.update(bots).set({ needsAttention: true }).where(eq(bots.id, r.botId));
       await tx.insert(botEvents).values({
         botId: r.botId,
         type: "reconcile",
         decision: UNKNOWN_DECISION,
-        why: `${o.clOrdId}${GAVE_UP_WHY} it is not in the order history and has no trades. Check this bot's position on SoDEX.`,
+        why: `${o.clOrdId}: SoDEX accepted it, but it is not in the order history and has no trades. Check this bot's position on SoDEX.`,
         occurredAt: new Date(now),
       });
     });
-  }
-
-  /** Đã có lần xác nhận không thấy (Decisions "not found", bền) từ UNKNOWN_CHECK_WINDOW_MS trước trở lên. */
-  async #confirmedMissing(o: OrderRow, now: number): Promise<boolean> {
-    const [row] = await this.#d.db
-      .select({ id: orders.id })
-      .from(orders)
-      .where(
-        and(
-          eq(orders.id, o.id),
-          hasUnknownDecision(MISSING_WHY, new Date(now - UNKNOWN_CHECK_WINDOW_MS)),
-        ),
-      )
-      .limit(1);
-    return row !== undefined;
   }
 
   /** Đối soát một lệnh `unknown` với SoDEX. */
@@ -3760,8 +3762,18 @@ export class Engine {
           return;
         }
       }
-      // SoDEX đã nhận lệnh (có orderID): không phải "chưa đặt". Giữ `unknown`, đối soát lại sau (quy tắc 1.7).
-      if (o.sodexOrderId !== null) return;
+      // SoDEX đã nhận lệnh (có orderID): không phải "chưa đặt". Giữ `unknown`, đối soát lại sau (quy tắc 1.7). Lần tra
+      // thành công đầu tiên mà vẫn không thấy được ghi lại (kể cả dòng `unknown` cũ chưa có dấu này).
+      if (o.sodexOrderId !== null) {
+        if (o.missingConfirmedAt === null)
+          await this.#fenced(r, (tx) =>
+            tx
+              .update(orders)
+              .set({ missingConfirmedAt: new Date(now) })
+              .where(and(eq(orders.id, o.id), isNull(orders.missingConfirmedAt))),
+          );
+        return;
+      }
       await this.#fenced(r, (tx) =>
         tx
           .update(orders)
@@ -4025,14 +4037,19 @@ export class Engine {
         await this.#fenced({ shard, epoch: held.epoch }, async (tx) => {
           await tx
             .update(orders)
-            .set({ status: toUnknown ? "unknown" : "cancelled", reconciledAt: new Date(now) })
+            .set({
+              status: toUnknown ? "unknown" : "cancelled",
+              reconciledAt: new Date(now),
+              // Lần tra thành công xác nhận lệnh không còn ở đâu: mốc bền cho bỏ cuộc và Stop thôi chờ.
+              ...(toUnknown ? { missingConfirmedAt: new Date(now) } : {}),
+            })
             .where(eq(orders.id, o.id));
           if (toUnknown)
             await tx.insert(botEvents).values({
               botId: o.botId,
               type: "reconcile",
               decision: UNKNOWN_DECISION,
-              why: `${o.clOrdId}${MISSING_WHY} Checking again before anything else is sent for it.`,
+              why: `${o.clOrdId}: not found on SoDEX and no trades yet. Checking again before anything else is sent for it.`,
               occurredAt: new Date(now),
             });
         });

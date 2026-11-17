@@ -5479,9 +5479,10 @@ describe("lost fills (DEC-TBD-engine-lost-fill)", () => {
     workerId: string,
     streams?: FakeStreams,
     ruleOf: () => Promise<typeof rules> = () => Promise.resolve(rules),
+    dbOf: Db = db,
   ) =>
     new Engine({
-      db,
+      db: dbOf,
       redis: newRedis(),
       gateway: gw,
       workerId,
@@ -6078,6 +6079,9 @@ describe("lost fills (DEC-TBD-engine-lost-fill)", () => {
     expect((await botState(botId))?.state).toBe("stopping");
     const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
     expect(events.some((x) => (x.why ?? "").includes("SoDEX accepted it"))).toBe(false);
+    expect(
+      (await db.select().from(orders).where(eq(orders.clOrdId, id)))[0]?.missingConfirmedAt,
+    ).toBeNull();
     await e.stop();
     await stopBot(botId);
   });
@@ -6228,5 +6232,132 @@ describe("lost fills (DEC-TBD-engine-lost-fill)", () => {
     expect(readsOf()).toBe(1);
     await e.stop();
     await stopBot(botId);
+  });
+
+  it("does not lose a fill that arrives while the stream gate reads pending orders (#208 R1)", async () => {
+    const { eq } = await import("drizzle-orm");
+    // Giữ truy vấn `orders` kế tiếp (lần đọc lệnh giảm đang chờ của cổng stream) tới khi test thả.
+    let armed = false;
+    let captured: () => void = () => undefined;
+    const caught = new Promise<void>((res) => {
+      captured = res;
+    });
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((res) => {
+      release = res;
+    });
+    const delay = <T extends object>(q: T): T =>
+      new Proxy(q, {
+        get(t, prop) {
+          const v: unknown = Reflect.get(t, prop);
+          if (typeof v !== "function") return v;
+          if (prop === "then")
+            return (ok: (x: unknown) => unknown, bad: (e: unknown) => unknown) =>
+              held.then(() => (v as (a: unknown, b: unknown) => unknown).call(t, ok, bad));
+          return (...args: unknown[]) => {
+            const out: unknown = (v as (...a: unknown[]) => unknown).apply(t, args);
+            return typeof out === "object" && out !== null ? delay(out) : out;
+          };
+        },
+      });
+    const hooked = new Proxy(db, {
+      get(target, prop) {
+        const v: unknown = Reflect.get(target, prop);
+        if (prop === "select" && typeof v === "function")
+          return (...args: unknown[]) => {
+            const b = (v as (...a: unknown[]) => { from: (t: unknown) => object }).apply(
+              target,
+              args,
+            );
+            return new Proxy(b, {
+              get(bt, bp) {
+                const bv: unknown = Reflect.get(bt, bp);
+                if (bp === "from" && typeof bv === "function")
+                  return (tbl: unknown) => {
+                    const q = (bv as (t: unknown) => object).call(bt, tbl);
+                    if (!armed || tbl !== orders) return q;
+                    armed = false;
+                    captured();
+                    return delay(q);
+                  };
+                return typeof bv === "function"
+                  ? (bv as (...a: unknown[]) => unknown).bind(bt)
+                  : bv;
+              },
+            });
+          };
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      },
+    });
+    const gw = new FakeGateway();
+    const streams = new FakeStreams();
+    const { botId, accountId } = await seedBot();
+    streams.allow(accountId, "spot");
+    const e = streamEngine(gw, "lost-r1", streams, undefined, hooked);
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    await e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock);
+    const level = gw.received.find((o) => o.tag === "grid:0:buy");
+    expect(level).toBeDefined();
+    const position = async () => {
+      const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      return Number((rt?.state as { ledger: { position: string } }).ledger.position);
+    };
+    const before = await position();
+    // Stream đứt; một nhịp giá chạy tới cổng stream và đang đọc lệnh chờ thì fill của lệnh mức 0 tới.
+    streams.ready.clear();
+    armed = true;
+    const ticking = e.onPrice("vBTC_vUSDC", "101", clock);
+    await caught;
+    await e.onFill(accountId, level?.clOrdID ?? "", level?.quantity ?? "0", "90", "0", clock);
+    release();
+    await ticking;
+    expect(await position()).toBeCloseTo(before + Number(level?.quantity), 10);
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("marks the first confirmed miss on an old unknown order, then gives up and lets Stop finish (#208 R2)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    const id = `legacy-${String(Math.random())}`;
+    // Dòng `unknown` cũ chưa có dấu xác nhận (ví dụ từ bản trước).
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: id,
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      side: "buy",
+      type: "market",
+      timeInForce: "IOC",
+      size: "1",
+      status: "unknown",
+      reduceOnly: false,
+      tag: "x",
+      epoch: 1,
+      submittedAt: new Date(clock - 60 * 60_000),
+      reconciledAt: new Date(clock - 50 * 60_000),
+      sodexOrderId: 84n,
+    });
+    const e = streamEngine(gw, "lost-r2");
+    await e.tick();
+    const row = async () => (await db.select().from(orders).where(eq(orders.clOrdId, id)))[0];
+    expect((await row())?.missingConfirmedAt).not.toBeNull();
+    expect((await row())?.unknownGaveUpAt).toBeNull();
+    // Stop chờ trong 10 phút sau lần xác nhận.
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    clock += 1;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    clock += 11 * 60_000;
+    await e.tick();
+    await e.tick();
+    expect((await row())?.unknownGaveUpAt).not.toBeNull();
+    expect((await botState(botId))?.needsAttention).toBe(true);
+    expect((await botState(botId))?.state).toBe("stopped");
+    await e.stop();
   });
 });
