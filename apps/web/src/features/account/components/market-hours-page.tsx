@@ -198,10 +198,14 @@ const instantTimeLabel = (iso: string, tz: string): string =>
 
 export function MarketHoursPage() {
   const t = useTranslations("marketHours");
-  const [tzLocal, setTzLocal] = useState("UTC");
+  // null cho tới khi đọc được múi giờ trình duyệt (sau mount, để khớp SSR). Chưa gửi request nào lúc đó:
+  // trước đây trang gửi một request tz=UTC thừa, và khi múi giờ trình duyệt bị từ chối thì trang hiện
+  // ngay dữ liệu UTC cũ trong cache trước khi request UTC mới được gửi.
+  const [browserTz, setBrowserTz] = useState<string | null>(null);
   useEffect(() => {
-    setTzLocal(browserTimeZone());
+    setBrowserTz(browserTimeZone());
   }, []);
+  const tzLocal = browserTz ?? "UTC";
   const [utcMode, setUtcMode] = useState(false);
   const [market, setMarket] = useState<string | null>(null);
   const [days, setDays] = useState<(typeof PERIODS)[number]>("30");
@@ -214,12 +218,13 @@ export function MarketHoursPage() {
       if (market !== null) p.set("market", market);
       return api("GET", `/api/v1/admin/market-hours?${p.toString()}`, marketHoursViewSchema);
     },
+    enabled: utcMode || browserTz !== null,
   });
   // Trình duyệt trả tên múi giờ mà API không nhận (VALIDATION_FAILED): chuyển sang UTC và tải lại, không hiện lỗi.
   const tzRejected =
     tz !== "UTC" && q.error instanceof ApiError && q.error.code === "VALIDATION_FAILED";
   useEffect(() => {
-    if (tzRejected) setTzLocal("UTC");
+    if (tzRejected) setBrowserTz("UTC");
   }, [tzRejected]);
   const forbidden = q.error instanceof ApiError && q.error.code === "FORBIDDEN";
   const now = useMemo(() => new Date(), []);
