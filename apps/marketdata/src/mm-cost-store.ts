@@ -32,6 +32,23 @@ export async function mmBotMarkets(db: Db): Promise<string[]> {
   return rows.map((r) => r.market);
 }
 
+/**
+ * Market cần giá tốt nhất SoDEX thời gian thực (`md.<market>.book`): bot Market Making (DEC-248) và Volume Farm
+ * (DEC-TBD-vb-live-book) đang chạy hoặc đang pause.
+ */
+export async function liveBookMarkets(db: Db): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ market: bots.market })
+    .from(bots)
+    .where(
+      and(
+        inArray(bots.strategy, [Strategy.volumeMaker, Strategy.volumeFarm]),
+        inArray(bots.state, ["starting", "running", "resuming", "pausing", "paused"]),
+      ),
+    );
+  return rows.map((r) => r.market);
+}
+
 /** Top market Perps theo volume quote 24h từ candles_1m (chỉ trong `perps`). */
 export async function topVolumeMarkets(
   db: Db,

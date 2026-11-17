@@ -50,6 +50,8 @@ export type StrategyEvent =
       code: string;
       /** SoDEX từ chối vì thiếu margin (`isInsufficientMarginReject` của engine); thiếu = không phải / không rõ. */
       insufficientMargin?: boolean;
+      /** Câu lỗi SoDEX trả kèm mã (nếu có), để Decisions ghi lý do bằng lời. */
+      message?: string;
     }
   /**
    * Nhịp đồng hồ. Volume Farm nhận kèm dữ liệu thị trường (engine đọc `candles_1m` và orderbook REST, tối đa
@@ -82,7 +84,10 @@ export type StrategyEvent =
    * lệch nền (trung vị 60 s), dùng làm giá hợp lý. `binanceAt`: giờ Binance của lần cập nhật.
    */
   | { type: "fair"; at: number; market: string; fair: string; binanceAt: number }
-  /** Giá mua / bán tốt nhất SoDEX theo thời gian thực (WS `bookTicker`, DEC-248); chỉ gửi khi giá đổi. */
+  /**
+   * Giá mua / bán tốt nhất SoDEX theo thời gian thực (WS `bookTicker`, DEC-248). Market Making chỉ nhận khi giá đổi;
+   * Volume Farm nhận thêm tin gửi lại khi giá không đổi (tối đa mỗi giây, DEC-TBD-vb-live-book).
+   */
   | { type: "book"; at: number; market: string; bid: string; ask: string }
   /**
    * Fill của ví leader (Copy Trade, DEC-161). `at` = lúc engine nhận, `leaderAt` = lúc leader khớp; `quantity` luôn
@@ -131,6 +136,8 @@ export interface MarketSnapshot {
   market: string;
   candles: readonly MinuteCandle[];
   book: BookTop | null;
+  /** Lúc engine đọc `book` qua REST (bản đọc dùng chung giữa các bot nên có thể cũ hơn `timer.at`). */
+  bookAt?: number;
 }
 
 export type StrategyAction =

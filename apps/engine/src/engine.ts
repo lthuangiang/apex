@@ -516,6 +516,7 @@ export class Engine {
         v: k.volume,
       })),
       book,
+      bookAt: at,
     };
     this.#snapshots.set(market, { at, snap });
     return snap;
@@ -544,13 +545,18 @@ export class Engine {
       });
   }
 
-  /** Giá tốt nhất SoDEX (WS, DEC-248) cho bot Market Making bật Smart quoting. */
+  /**
+   * Giá tốt nhất SoDEX (WS, DEC-248) cho bot Market Making bật Smart quoting (chỉ tin giá đổi) và mọi bot Volume Farm
+   * cùng market (cả tin `refresh` gửi lại khi giá không đổi, DEC-TBD-vb-live-book).
+   */
   async onMmBook(msg: MmBookMessage, recvAt: number): Promise<void> {
     for (const r of [...this.#runners.values()].filter(
       (x) =>
-        x.strategy === Strategy.volumeMaker &&
         x.market === msg.s &&
-        (x.config as { smartQuoting?: boolean }).smartQuoting === true,
+        ((x.strategy === Strategy.volumeMaker &&
+          msg.refresh !== true &&
+          (x.config as { smartQuoting?: boolean }).smartQuoting === true) ||
+          x.strategy === Strategy.volumeFarm),
     ))
       await this.#feed(r, { type: "book", at: recvAt, market: msg.s, bid: msg.b, ask: msg.a });
   }
@@ -1746,6 +1752,9 @@ export class Engine {
               clOrdID: res.clOrdID,
               code: res.code,
               ...(margin ? { insufficientMargin: true } : {}),
+              ...(res.message == null || res.message.trim() === ""
+                ? {}
+                : { message: res.message.trim() }),
             });
             // Stop loss gốc bị từ chối (DEC-118) không phải lệnh đóng thật: chiến lược tự giữ SL, không pause.
             if (sent?.reduceOnly === true && sent.stop === undefined)

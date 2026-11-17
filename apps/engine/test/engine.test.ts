@@ -2419,6 +2419,36 @@ describe("engine", () => {
     await stopFarmBots();
   });
 
+  it("feeds the live SoDEX best bid / ask to Volume Farm, refresh messages included (DEC-TBD-vb-live-book)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    await seedCandles("AVAX-USD");
+    const { botId } = await seedFarm("AVAX-USD");
+    const e = farmEngine(gw, "live-book");
+    await tickUntil(e, () => gw.received.some((o) => o.tag.startsWith("vf:")));
+    const state = async () =>
+      (await db.select().from(botRuntime).where(eq(botRuntime.botId, botId)))[0]?.state as {
+        book: { bid: string; ask: string; bidNotional: string } | null;
+        bookAt: number | null;
+        bookStreamAt?: number | null;
+      };
+    await e.onMmBook({ s: "AVAX-USD", b: "101", a: "103", E: clock, at: clock }, clock + 5);
+    let st = await state();
+    // Giá từ WS, độ dày giữ của bản REST.
+    expect(st.book).toMatchObject({ bid: "101", ask: "103", bidNotional: "50000" });
+    expect(st.bookAt).toBe(clock + 5);
+    expect(st.bookStreamAt).toBe(clock + 5);
+    // Tin gửi lại khi giá không đổi (Market Making bỏ qua) vẫn làm mới sổ của Volume Farm.
+    await e.onMmBook(
+      { s: "AVAX-USD", b: "101", a: "103", E: clock + 900, at: clock + 900, refresh: true },
+      clock + 905,
+    );
+    st = await state();
+    expect(st.bookStreamAt).toBe(clock + 905);
+    await e.stop();
+    await stopFarmBots();
+  });
+
   it("feeds Volume Farm candles and the order book, and enters post-only at the best bid", async () => {
     const gw = new FakeGateway();
     const { botId } = await seedBot("running", {

@@ -41,6 +41,7 @@ import { LeaderWatcher } from "./leaders";
 import { LiquidationScanner } from "./liquidations";
 import { MmCostCollector } from "./mm-cost";
 import {
+  liveBookMarkets,
   mmBotMarkets,
   purgeMmCost,
   saveFlush,
@@ -315,7 +316,7 @@ async function start() {
   const fair = new BinanceFair((msg) => {
     nc.publish(marketSubject(msg.s, "fair"), JSON.stringify(msg));
   });
-  // Giá tốt nhất SoDEX thời gian thực cho bot Market Making (DEC-248).
+  // Giá tốt nhất SoDEX thời gian thực cho bot Market Making (DEC-248) và Volume Farm (DEC-TBD-vb-live-book).
   const bookRelay = new SodexBookRelay((msg) => {
     nc.publish(marketSubject(msg.s, "book"), JSON.stringify(msg));
   });
@@ -426,20 +427,25 @@ async function start() {
     log.warn({ err: error }, "mm cost seed failed");
   });
   const mmWatch = async () => {
-    const [top, mm] = await Promise.all([
+    const [top, mm, live] = await Promise.all([
       topVolumeMarkets(db, perpsSymbols, Date.now()),
       mmBotMarkets(db),
+      liveBookMarkets(db),
     ]);
-    const watched = [...new Set([...top, ...mm])].filter((m) => perpsSymbols.includes(m));
+    // Market có bot Volume Farm cũng phải ở lại kết nối bookTicker (DEC-TBD-vb-live-book).
+    const watched = [...new Set([...top, ...mm, ...live])].filter((m) => perpsSymbols.includes(m));
     perpsStream.watchMicro(watched);
     mmCost.setMidMarkets(mm);
   };
   // Giá Binance cho các market có bot Market Making: đọc lại mỗi 30 s để bot mới có giá sớm.
   const fairWatch = async () => {
-    const mm = (await mmBotMarkets(db)).filter((m) => perpsSymbols.includes(m));
-    bookRelay.setMarkets(mm);
+    const [mmAll, liveAll] = await Promise.all([mmBotMarkets(db), liveBookMarkets(db)]);
+    const mm = mmAll.filter((m) => perpsSymbols.includes(m));
+    // Giá tốt nhất SoDEX cho bot Market Making và Volume Farm (DEC-248, DEC-TBD-vb-live-book).
+    const live = liveAll.filter((m) => perpsSymbols.includes(m));
+    bookRelay.setMarkets(live);
     // Market có bot mới phải có trên kết nối bookTicker ngay, không chờ vòng 5 phút của mmWatch.
-    const missing = mm.filter((m) => !perpsStream.microSymbols.has(m));
+    const missing = live.filter((m) => !perpsStream.microSymbols.has(m));
     if (missing.length > 0) perpsStream.watchMicro([...perpsStream.microSymbols, ...missing]);
     const pairs = mm.flatMap((m) => {
       const b = binanceSymbolOf(m, binanceSymbols);

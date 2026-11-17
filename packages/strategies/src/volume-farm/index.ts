@@ -1,4 +1,4 @@
-import { dec, Decimal, ReasonCode, RoundMode } from "@drift/shared";
+import { dec, Decimal, NORMAL_REJECT_CODES, ReasonCode, RoundMode } from "@drift/shared";
 
 import { clOrdId, fnv1a64 } from "../core/ids";
 import { applyFill, emptyLedger, type Ledger } from "../core/ledger";
@@ -43,9 +43,32 @@ const REGIME_TEXT: Record<FarmRegime, string> = {
 export const FARM_TIMING = {
   entryFillMs: 10_000,
   exitFillMs: 15_000,
-  /** Sổ lệnh cũ hơn mức này thì không dùng để tính giá. */
+  /** Không có sổ lệnh thời gian thực (DEC-82): sổ REST cũ hơn mức này thì lùi 1 tick khỏi giá gần nhất. */
   bookMaxAgeMs: 10_000,
 } as const;
+
+/**
+ * Sổ lệnh thời gian thực (DEC-TBD-vb-live-book): engine đưa giá tốt nhất SoDEX (WS `bookTicker`, cùng nguồn với Market
+ * Making, DEC-248) vào `book` mỗi khi giá đổi, và gửi lại tối đa mỗi giây khi giá không đổi mà WS vẫn có tin.
+ * - `freshMs`: sổ (WS hoặc bản đọc REST) cũ hơn mức này thì không đặt / đặt lại lệnh post-only từ nó, chờ bản mới.
+ *   1,5 s: tin WS tới ít nhất mỗi giây khi stream còn sống, cộng 0,5 s cho trễ engine; bằng `freshMs` của Market Making.
+ * - `feedMs`: có tin WS trong khoảng này = đang có nguồn thời gian thực, nên không bao giờ dùng giá gần nhất ± 1 tick
+ *   cho lệnh post-only. Quá khoảng này (marketdata ngừng, market chưa được nghe) thì quay về cách của DEC-82.
+ */
+export const FARM_LIVE_BOOK = { freshMs: 1_500, feedMs: 60_000 } as const;
+
+/**
+ * Lệnh vào bị SoDEX từ chối vì lý do khác post-only / chặn tự khớp / thiếu margin (DEC-TBD-vb-reject-backoff): chờ
+ * 5 s, rồi 15 s, rồi 60 s (giữ 60 s) trước lần vào kế tiếp. SoDEX nhận lệnh vào hoặc lệnh vào khớp thì về 0.
+ */
+export const VF_REJECT_BACKOFF_SECS = [5, 15, 60] as const;
+
+/** Mã từ chối "bình thường": giá đã chạy (post-only) hoặc chặn tự khớp. Không chờ, lượt sau đặt lại như cũ. */
+const NO_BACKOFF_CODES: readonly string[] = [
+  ...Object.values(NORMAL_REJECT_CODES),
+  // Mã giả lập của bot paper / backtest.
+  "POST_ONLY_WOULD_TRADE",
+];
 
 type Kind = "entry" | "exit" | "stop";
 
@@ -55,7 +78,15 @@ export interface VolumeFarmState {
   ledger: Ledger;
   lastPrice: string | null;
   book: BookTop | null;
+  /** Lúc giá của `book` được xác nhận: tin WS, hoặc lúc engine đọc REST. */
   bookAt: number | null;
+  /** Lần cuối nhận tin sổ lệnh WS (DEC-TBD-vb-live-book); thiếu ở state cũ. */
+  bookStreamAt?: number | null;
+  /**
+   * Chờ sau khi lệnh vào bị từ chối vì lý do khác (DEC-TBD-vb-reject-backoff): `step` 1–3 theo
+   * `VF_REJECT_BACKOFF_SECS`, `until` = lúc được vào lại.
+   */
+  rejectBackoff?: { step: number; until: number } | null;
   /** Lệnh của bot còn có thể khớp (kể cả đã gửi huỷ): fill đến muộn vẫn vào đúng sổ cái. */
   orders: Record<string, { kind: Kind; side: "buy" | "sell" }>;
   entry: { id: string; placedAt: number; taker: boolean } | null;
@@ -260,11 +291,17 @@ function intent(
   };
 }
 
-/** Giá post-only: mua ở bid tốt nhất, bán ở ask tốt nhất; chưa có sổ lệnh thì lùi một tick khỏi giá gần nhất. */
+/** Đang có sổ lệnh thời gian thực (tin WS trong `FARM_LIVE_BOOK.feedMs`). */
+function liveFeed(s: VolumeFarmState, at: number): boolean {
+  return s.bookStreamAt != null && at - s.bookStreamAt <= FARM_LIVE_BOOK.feedMs;
+}
+
 /**
- * Giá post-only nằm trong spread theo `tickSize` của từng market: mua = ask tốt nhất − 1 tick, bán = bid tốt nhất
- * + 1 tick, để đứng đầu sổ và khớp nhanh. Spread chỉ 1 tick thì đứng cùng giá tốt nhất phía mình, không chéo sổ.
- * Sổ lệnh cũ, rỗng hoặc chéo thì lùi 1 tick khỏi giá gần nhất.
+ * Giá post-only nằm trong spread theo `tickSize` của từng market (DEC-82): mua = ask tốt nhất − 1 tick, bán = bid tốt
+ * nhất + 1 tick, để đứng đầu sổ và khớp nhanh. Spread chỉ 1 tick thì đứng cùng giá tốt nhất phía mình, không chéo sổ.
+ * Sổ phải mới trong `FARM_LIVE_BOOK.freshMs` (DEC-TBD-vb-live-book). Sổ cũ hơn mà đang có nguồn WS thì null (chờ sổ mới,
+ * không đặt từ sổ cũ hay giá gần nhất). Không có nguồn WS thì như DEC-82: sổ REST ≤ 10 s, không thì lùi 1 tick khỏi giá
+ * gần nhất.
  */
 function makerPrice(
   c: VolumeFarmConfig,
@@ -277,14 +314,18 @@ function makerPrice(
   if (rules === undefined) return null;
   const tick = dec(rules.tickSize);
   const book = s.book;
-  const fresh = book !== null && s.bookAt !== null && at - s.bookAt <= FARM_TIMING.bookMaxAgeMs;
-  if (fresh && dec(book.bid).gt(0) && dec(book.ask).gt(book.bid)) {
-    const bid = dec(book.bid);
-    const ask = dec(book.ask);
+  const age = s.bookAt === null ? Infinity : at - s.bookAt;
+  const usable = book !== null && dec(book.bid).gt(0) && dec(book.ask).gt(book.bid);
+  const fromBook = (b: BookTop) => {
+    const bid = dec(b.bid);
+    const ask = dec(b.ask);
     return side === "buy"
       ? roundPrice(Decimal.max(bid, ask.sub(tick)), rules, RoundMode.down)
       : roundPrice(Decimal.min(ask, bid.add(tick)), rules, RoundMode.up);
-  }
+  };
+  if (usable && age <= FARM_LIVE_BOOK.freshMs) return fromBook(book);
+  if (liveFeed(s, at)) return null;
+  if (usable && age <= FARM_TIMING.bookMaxAgeMs) return fromBook(book);
   const m = mark(s);
   if (m === null) return null;
   return side === "buy"
@@ -333,6 +374,8 @@ function tryEnter(
   const rules = ctx.rules[c.market];
   if (rules === undefined) return none(s);
   if (at < s.cooldownUntil) return none(s);
+  // Lệnh vào trước bị SoDEX từ chối vì lý do khác (DEC-TBD-vb-reject-backoff): chờ hết thời gian.
+  if (s.rejectBackoff != null && at < s.rejectBackoff.until) return none(s);
   if (c.blockedHoursUtc.includes(new Date(at).getUTCHours())) {
     const why = `Hour ${String(new Date(at).getUTCHours())}:00 UTC is blocked.`;
     return s.lastSkip === why
@@ -422,7 +465,23 @@ function tryEnter(
           state: { ...s, lastSkip: why },
         };
   }
-  if (!taker && price === null) return none(s);
+  if (!taker && price === null) {
+    // Sổ lệnh cũ mà đang có nguồn WS (DEC-TBD-vb-live-book): chờ sổ mới, ghi một dòng cho mỗi đợt chờ.
+    if (!liveFeed(s, at)) return none(s);
+    const code = "STALE_BOOK";
+    return s.lastSkip === code
+      ? none(s)
+      : {
+          actions: [
+            {
+              type: "log",
+              decision: "Waiting",
+              why: `No order book price from SoDEX in the last ${String(FARM_LIVE_BOOK.freshMs / 1000)} s, so the bot waits for a fresh one before placing a post-only order.`,
+            },
+          ],
+          state: { ...s, lastSkip: code },
+        };
+  }
   const o = intent(c, ctx, side, qty, `vf:${String(cycle)}:in:${String(s.unfilled)}`, price, false);
   // BD-03: câu đầu bằng lời thường (tín hiệu, điều chỉnh, lệnh), chi tiết kỹ thuật sau "Details:".
   const at_ = price === null ? `Market order, last price ${ref}` : `Post-only at ${price}`;
@@ -721,6 +780,79 @@ function startExit(
   return { actions: [...cancels, ...r.actions], state: r.state };
 }
 
+/**
+ * Bản đọc REST (mỗi 3 s) vào sổ của bot. Tin WS còn mới (`freshMs`) hoặc mới hơn bản đọc REST thì giữ giá WS, chỉ lấy
+ * độ dày (notional) từ REST, như Market Making (DEC-248). Không thì dùng bản REST, tính tuổi theo lúc engine đọc.
+ */
+function mergeRestBook(
+  s: VolumeFarmState,
+  snap: NonNullable<Extract<StrategyEvent, { type: "timer" }>["market"]>,
+  at: number,
+): VolumeFarmState {
+  const readAt = snap.bookAt ?? at;
+  const rest = snap.book;
+  const wsFresh =
+    s.book !== null &&
+    s.bookStreamAt != null &&
+    (at - s.bookStreamAt <= FARM_LIVE_BOOK.freshMs || (s.bookAt !== null && s.bookAt > readAt));
+  if (wsFresh && s.book !== null) {
+    return rest === null
+      ? s
+      : {
+          ...s,
+          book: { ...s.book, bidNotional: rest.bidNotional, askNotional: rest.askNotional },
+        };
+  }
+  return { ...s, book: rest, bookAt: rest === null ? s.bookAt : readAt };
+}
+
+/** Giá tốt nhất SoDEX qua WS (DEC-TBD-vb-live-book): lưu giá, giữ độ dày của bản REST gần nhất. */
+function onLiveBook(
+  c: VolumeFarmConfig,
+  s: VolumeFarmState,
+  e: Extract<StrategyEvent, { type: "book" }>,
+): StepResult<VolumeFarmState> {
+  if (e.market !== c.market || !dec(e.bid).gt(0) || !dec(e.ask).gt(e.bid)) return none(s);
+  const book: BookTop = {
+    bid: e.bid,
+    ask: e.ask,
+    bidNotional: s.book?.bidNotional ?? "0",
+    askNotional: s.book?.askNotional ?? "0",
+  };
+  return none({ ...s, book, bookAt: e.at, bookStreamAt: e.at });
+}
+
+/**
+ * Lệnh vào bị từ chối vì lý do khác (DEC-TBD-vb-reject-backoff): lên một nấc chờ (5 → 15 → 60 s, giữ 60 s). Mỗi nấc mới
+ * ghi một dòng Decisions; ở nấc cuối không ghi lại (engine đã ghi "Order refused by SoDEX" tối đa mỗi phút, DEC-291).
+ */
+function backoff(
+  s: VolumeFarmState,
+  e: Extract<StrategyEvent, { type: "orderReject" }>,
+): { state: Pick<VolumeFarmState, "rejectBackoff">; actions: StrategyAction[] } {
+  const prev = s.rejectBackoff?.step ?? 0;
+  const step = Math.min(prev + 1, VF_REJECT_BACKOFF_SECS.length);
+  const secs = VF_REJECT_BACKOFF_SECS[step - 1] ?? 60;
+  const reason = e.message ?? e.code;
+  return {
+    state: { rejectBackoff: { step, until: e.at + secs * 1000 } },
+    actions:
+      step === prev
+        ? []
+        : [
+            {
+              type: "log",
+              decision: "Waiting",
+              why: `Order refused by SoDEX: ${reason}. Retrying in ${String(secs)}s.`,
+            },
+          ],
+  };
+}
+
+/** Từ chối cần chờ: không phải post-only / chặn tự khớp, và không phải thiếu margin (engine pause, DEC-290). */
+const needsBackoff = (e: Extract<StrategyEvent, { type: "orderReject" }>): boolean =>
+  e.insufficientMargin !== true && !NO_BACKOFF_CODES.includes(e.code);
+
 function onTimer(
   c: VolumeFarmConfig,
   s0: VolumeFarmState,
@@ -729,10 +861,7 @@ function onTimer(
 ): StepResult<VolumeFarmState> {
   const at = e.at;
   const snap = e.market?.market === c.market ? e.market : undefined;
-  const s =
-    snap === undefined
-      ? s0
-      : { ...s0, book: snap.book, bookAt: snap.book === null ? s0.bookAt : at };
+  const s = snap === undefined ? s0 : mergeRestBook(s0, snap, at);
   switch (s.phase) {
     case "entering": {
       if (s.entry === null || at - s.entry.placedAt < FARM_TIMING.entryFillMs) return none(s);
@@ -798,6 +927,7 @@ function onFill(
       holdUntil: first ? e.at + (state.holdSecs ?? c.minHoldSecs) * 1000 : state.holdUntil,
       unfilled: 0,
       marketRejects: 0,
+      rejectBackoff: null,
       ...(first
         ? {
             openRealized: before.realized,
@@ -900,6 +1030,7 @@ export function stepVolumeFarm(
         // (DEC-117 bật lại cho chế độ taker, DEC-259).
         if (s.entry.taker && !open) {
           const n = (s.marketRejects ?? 0) + 1;
+          // Pause sau VF_MARKET_REJECTS lần (DEC-259) đi trước việc chờ.
           if (n >= VF_MARKET_REJECTS)
             return {
               actions: [
@@ -916,23 +1047,35 @@ export function stepVolumeFarm(
                 entry: null,
                 unfilled: s.unfilled + 1,
                 marketRejects: 0,
+                rejectBackoff: null,
               },
             };
-          return none({
-            ...s,
-            phase: "idle",
-            entry: null,
-            unfilled: s.unfilled + 1,
-            marketRejects: n,
-          });
+          const wait = needsBackoff(e) ? backoff(s, e) : { state: {}, actions: [] };
+          return {
+            actions: wait.actions,
+            state: {
+              ...s,
+              ...wait.state,
+              phase: "idle",
+              entry: null,
+              unfilled: s.unfilled + 1,
+              marketRejects: n,
+            },
+          };
         }
-        // Post-only bị từ chối vì sẽ khớp ngay (giá đã chạy): coi như một lần không khớp.
-        return none({
-          ...s,
-          phase: open ? "open" : "idle",
-          entry: null,
-          unfilled: open ? 0 : s.unfilled + 1,
-        });
+        // Post-only bị từ chối vì sẽ khớp ngay (giá đã chạy): coi như một lần không khớp, lượt sau đặt lại ngay.
+        // Lý do khác (không phải thiếu margin): chờ theo nấc trước lần vào kế tiếp (DEC-TBD-vb-reject-backoff).
+        const wait = !open && needsBackoff(e) ? backoff(s, e) : { state: {}, actions: [] };
+        return {
+          actions: wait.actions,
+          state: {
+            ...s,
+            ...wait.state,
+            phase: open ? "open" : "idle",
+            entry: null,
+            unfilled: open ? 0 : s.unfilled + 1,
+          },
+        };
       }
       if (s.exit?.id === e.clOrdID)
         return none({ ...s, exit: null, exitUnfilled: s.exitUnfilled + 1 });
@@ -973,11 +1116,16 @@ export function stepVolumeFarm(
         return none({ ...s, xstop: null, xstopOff: true });
       return none(s);
     case "orderAck":
+      // SoDEX nhận lệnh vào: hết chờ (DEC-TBD-vb-reject-backoff).
+      if (s.entry?.id === e.clOrdID && s.rejectBackoff != null)
+        return none({ ...s, rejectBackoff: null });
+      return none(s);
+    case "book":
+      return onLiveBook(c, s, e);
     case "fundingRate":
     case "marginRatio":
     case "positionSync":
     case "fair":
-    case "book":
     case "leaderFill":
     case "leaderPosition":
     case "resumed":
