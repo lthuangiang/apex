@@ -905,7 +905,12 @@ function AdaptiveDcaCard({ a }: { a: NonNullable<BotDetail["adaptiveDca"]> }) {
     [t("atr"), a.atr ?? tm("notAvailable")],
     [t("rsi"), a.rsi ?? tm("notAvailable")],
     [t("extraBuys"), t("ofMax", { n: a.extraBuys, max: a.maxExtraBuys })],
-    [t("exposure"), t("ofCap", { value: a.exposure, cap: a.maxExposure })],
+    [
+      t("exposure"),
+      a.exposure === null
+        ? tm("notAvailable")
+        : t("ofCap", { value: a.exposure, cap: a.maxExposure }),
+    ],
     [t("cycles"), String(a.cycles)],
     [t("exits"), String(a.exits)],
   ];

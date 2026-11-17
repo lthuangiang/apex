@@ -25,6 +25,8 @@ import {
 } from "@drift/shared";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, sql, type SQL } from "drizzle-orm";
 
+import { needsAttentionOf } from "../bots/position-mismatch";
+
 // Dữ liệu cho tool MCP nội bộ của team (docs/MCP.md mục 5A, DEC-219). Chỉ đọc. Người gọi đã qua
 // `requireMcpCaller(…, "team")`. Không bao giờ trả key, secret, chữ ký hay message EIP-712; thiếu dữ liệu → null kèm
 // lý do, không bao giờ 0. Tên bot là chữ người dùng nhập → bọc `userText`.
@@ -341,7 +343,7 @@ export async function teamUserBots(deps: TeamDeps, userId: string): Promise<Team
         mode: b.mode,
         state: b.state,
         reasonCode: b.reasonCode,
-        needsAttention: b.needsAttention,
+        needsAttention: needsAttentionOf(b),
         archived: b.archivedAt !== null,
         version: version ?? null,
         lastError:

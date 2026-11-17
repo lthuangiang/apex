@@ -539,7 +539,10 @@ export const bots = pgTable(
      */
     positionMismatch:
       jsonb("position_mismatch").$type<
-        Record<string, { real: string; ledger: string; since: string }>
+        Record<
+          string,
+          { real: string; ledger: string; since: string; cause?: "trades" | "version" }
+        >
       >(),
     activeVersionId: uuid("active_version_id"),
     archivedAt: tstz("archived_at"),

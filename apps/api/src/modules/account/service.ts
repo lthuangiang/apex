@@ -71,6 +71,7 @@ import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, sql } from "dri
 import { getAddress } from "viem";
 
 import { AuditAction, audit } from "../../lib/audit";
+import { hasPositionMismatch, needsAttentionOf } from "../bots/position-mismatch";
 import { costPerMillionByBot, listBots, type BotDeps } from "../bots/service";
 import { iso } from "../security/service";
 import type { TwoFactorDeps } from "../security/two-factor";
@@ -564,10 +565,11 @@ export async function analystBots(db: Db, userId: string): Promise<AnalystBot[]>
       id: b.id,
       name: b.name,
       state: b.state,
-      needsAttention: b.needsAttention,
-      attentionSince: b.needsAttention ? b.updatedAt.getTime() : null,
+      needsAttention: needsAttentionOf(b),
+      attentionSince: needsAttentionOf(b) ? b.updatedAt.getTime() : null,
+      // Vị thế thật lệch sổ cái (DEC-TBD-engine-position-check): lãi / lỗ từ sổ cái không đúng (quy tắc 1.8).
       netPnl:
-        ledger === undefined
+        ledger === undefined || hasPositionMismatch(b)
           ? null
           : dec(ledger.realized).sub(ledger.fees).sub(ledger.funding).toString(),
       fees: ledger?.fees ?? null,

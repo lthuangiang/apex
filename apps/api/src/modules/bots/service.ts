@@ -82,6 +82,7 @@ import { AuditAction, audit } from "../../lib/audit";
 import { iso } from "../security/service";
 import { verifyTwoFactor, type TwoFactorDeps } from "../security/two-factor";
 
+import { hasPositionMismatch, needsAttentionOf } from "./position-mismatch";
 import { botSummaryLine } from "./summary-line";
 
 // Bot CRUD và hành động trạng thái (SCREENS.md mục 8.2–8.4, DOMAIN.md mục 7). API chỉ đưa bot vào
@@ -637,14 +638,11 @@ export function summary(
     engine: b.engine,
     state: b.state,
     reasonCode: (b.reasonCode as BotSummary["reasonCode"]) ?? null,
-    needsAttention: b.needsAttention,
+    needsAttention: needsAttentionOf(b),
     activeVersion: version,
     // Vị thế thật trên SoDEX lệch sổ cái của bot (DEC-TBD-engine-position-check): lãi / lỗ tính từ sổ cái không đúng,
     // hiện "Not available" (quy tắc 1.8) cho tới khi engine thấy khớp lại.
-    netPnl:
-      b.positionMismatch != null && Object.keys(b.positionMismatch).length > 0
-        ? null
-        : netOf(state, marks, b.market, b.state),
+    netPnl: hasPositionMismatch(b) ? null : netOf(state, marks, b.market, b.state),
     ...botCapitalOf(b.strategy, config),
     marketLabel: marketLabelOf(b.strategy, config),
     fills,
@@ -845,6 +843,8 @@ async function vfStats(
   state: unknown,
   /** Lúc version đang chạy bắt đầu: phiên (state engine) tính từ đây, builder fee cũng cộng từ đây. */
   sessionFrom: Date,
+  /** Vị thế thật lệch sổ cái: không hiện số lấy từ sổ cái (quy tắc 1.8). */
+  mismatch = false,
 ): Promise<BotDetail["volumeFarm"]> {
   if (config === null) return null;
   const now = deps.now();
@@ -889,9 +889,9 @@ async function vfStats(
       builderFees: dec(v?.builder ?? "0")
         .toDecimalPlaces(4)
         .toString(),
-      pricePnl: dec(st.ledger.realized).toDecimalPlaces(4).toString(),
+      pricePnl: mismatch ? null : dec(st.ledger.realized).toDecimalPlaces(4).toString(),
       funding: dec(st.ledger.funding).toDecimalPlaces(4).toString(),
-      net: net.toDecimalPlaces(4).toString(),
+      net: mismatch ? null : net.toDecimalPlaces(4).toString(),
       costPerMillion: farmCostPerMillion(st),
     },
     volume1h: money(v?.h1),
@@ -906,7 +906,7 @@ async function vfStats(
           .toDecimalPlaces(1)
           .toString(),
     volumeTarget: (config as { volumeTarget?: string }).volumeTarget ?? null,
-    position: st.ledger.position,
+    position: mismatch ? null : st.ledger.position,
   };
 }
 
@@ -1078,9 +1078,15 @@ export async function botDetail(deps: BotDeps, userId: string, botId: string): P
             active?.config ?? null,
             runtime?.state ?? null,
             active?.appliedAt ?? active?.createdAt ?? b.createdAt,
+            hasPositionMismatch(b),
           )
         : null,
-    adaptiveDca: adcaStats(b.strategy, active?.config ?? null, runtime?.state ?? null),
+    adaptiveDca: adcaStats(
+      b.strategy,
+      active?.config ?? null,
+      runtime?.state ?? null,
+      hasPositionMismatch(b),
+    ),
     initialBuy: initialBuyOf(b.strategy, active?.config ?? null, runtime?.state ?? null),
   };
 }
@@ -1100,7 +1106,12 @@ function initialBuyOf(strategy: string, config: unknown, state: unknown): BotDet
 }
 
 /** Chỉ số AI Adaptive DCA từ state của engine (DEC-107); chưa chạy thì null. */
-function adcaStats(strategy: string, config: unknown, state: unknown): BotDetail["adaptiveDca"] {
+function adcaStats(
+  strategy: string,
+  config: unknown,
+  state: unknown,
+  mismatch = false,
+): BotDetail["adaptiveDca"] {
   if (strategy !== Strategy.adaptiveDca || state === null || config === null) return null;
   const c = config as { maxSafetyOrders?: number; maxExposure?: string };
   const st = state as Partial<AdaptiveDcaState>;
@@ -1113,7 +1124,9 @@ function adcaStats(strategy: string, config: unknown, state: unknown): BotDetail
     phase: st.phase ?? "idle",
     extraBuys: st.safetiesFilled ?? 0,
     maxExtraBuys: c.maxSafetyOrders ?? 0,
-    exposure: dec(st.ledger.position).abs().mul(st.ledger.avgCost).toDecimalPlaces(2).toString(),
+    exposure: mismatch
+      ? null
+      : dec(st.ledger.position).abs().mul(st.ledger.avgCost).toDecimalPlaces(2).toString(),
     maxExposure: c.maxExposure ?? "0",
     cycles: st.completedCycles ?? 0,
     exits: st.exits ?? 0,
@@ -1554,7 +1567,11 @@ export async function archiveBot(
   userId: string,
   botId: string,
 ): Promise<BotSummary> {
-  const b = await command(deps, userId, botId, BotCommand.archive, { archivedAt: deps.now() });
+  // Bot đã dừng không còn quản lý vị thế: không giữ cảnh báo lệch vị thế (DEC-TBD-engine-position-check).
+  const b = await command(deps, userId, botId, BotCommand.archive, {
+    archivedAt: deps.now(),
+    positionMismatch: null,
+  });
   return summary(b, null, null);
 }
 

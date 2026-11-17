@@ -361,12 +361,12 @@ export const botDetailSchema = z.object({
         sodexFees: decimalStringSchema.default("0"),
         /** Phần builder fee của DRIFT (cột `builder_fee` của fill, DEC-127). */
         builderFees: decimalStringSchema.default("0"),
-        /** Lời / lỗ giá đã chốt của các lượt đã đóng, trước phí (DEC-127). */
-        pricePnl: decimalStringSchema.default("0"),
+        /** Lời / lỗ giá đã chốt của các lượt đã đóng, trước phí (DEC-127); null khi vị thế thật lệch sổ cái. */
+        pricePnl: decimalStringSchema.nullable().default("0"),
         /** Funding đã trả (dương) hoặc nhận (âm) (DEC-127). */
         funding: decimalStringSchema.default("0"),
-        /** Lãi / lỗ ròng đã chốt = pricePnl − fees − funding; chưa tính vị thế đang mở. */
-        net: decimalStringSchema,
+        /** Lãi / lỗ ròng đã chốt = pricePnl − fees − funding; chưa tính vị thế đang mở. Null khi vị thế thật lệch sổ cái. */
+        net: decimalStringSchema.nullable(),
         /** Lỗ ròng trên mỗi 1 triệu USD khối lượng; 0 khi đang lãi; null khi chưa có khối lượng. */
         costPerMillion: decimalStringSchema.nullable(),
       }),
@@ -376,7 +376,8 @@ export const botDetailSchema = z.object({
       volumeTotal: decimalStringSchema,
       makerSharePct: decimalStringSchema.nullable(),
       volumeTarget: decimalStringSchema.nullable(),
-      position: decimalStringSchema,
+      /** Vị thế theo sổ cái của bot; null khi vị thế thật lệch sổ cái (DEC-TBD-engine-position-check). */
+      position: decimalStringSchema.nullable(),
     })
     .nullable()
     .default(null),
@@ -391,8 +392,8 @@ export const botDetailSchema = z.object({
       phase: z.string(),
       extraBuys: z.number().int(),
       maxExtraBuys: z.number().int(),
-      /** Giá trị vị thế hiện tại / trần (quote). */
-      exposure: decimalStringSchema,
+      /** Giá trị vị thế hiện tại / trần (quote); null khi vị thế thật lệch sổ cái. */
+      exposure: decimalStringSchema.nullable(),
       maxExposure: decimalStringSchema,
       cycles: z.number().int(),
       exits: z.number().int(),
