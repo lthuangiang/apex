@@ -7,7 +7,7 @@ import { botCostPerMillion, netCostPerMillion } from "../src/modules/bots/servic
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// Platform Stats › By strategy › Net cost / $1M và builder fee theo mức đã thu (DEC-TBD-stats-net-cost).
+// Platform Stats › By strategy › Net cost / $1M và builder fee theo mức đã thu (DEC-296).
 
 type Side = "buy" | "sell";
 interface F {

@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import messages from "../../../../messages/en.json";
 import { Strategies } from "../components/stats-overview";
 
-// Platform Stats › By strategy: cột Net cost / $1M (DEC-TBD-stats-net-cost). Thiếu số → "Not available", không bao
+// Platform Stats › By strategy: cột Net cost / $1M (DEC-296). Thiếu số → "Not available", không bao
 // giờ 0; lãi → $0.00 như trang bot.
 
 const wrap = (node: ReactNode) =>
