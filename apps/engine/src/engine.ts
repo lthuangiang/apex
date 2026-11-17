@@ -17,7 +17,7 @@ import {
   users,
   type Db,
 } from "@drift/db";
-import { Lease, type LeaseRedis } from "@drift/runtime";
+import { Lease, LeaseSet, type LeaseLoss, type LeaseRedis } from "@drift/runtime";
 import {
   applyEngineEvent,
   applyReason,
@@ -136,6 +136,30 @@ export class FencedError extends Error {
   }
 }
 
+/**
+ * Lease của shard đã quá `validUntil` và gia hạn ngay không được (DEC-TBD-engine-lease-renew): không gửi gì tới SoDEX.
+ * Là một `FencedError` để mọi chỗ đang cho FencedError đi qua cũng cho lỗi này đi qua; vòng `tick` bỏ qua shard ở lượt
+ * này chứ không bỏ shard (shard mất thật thì `LeaseSet` đã báo `onLost`).
+ */
+export class LeaseExpiredError extends FencedError {
+  constructor(shard: number) {
+    super(shard);
+    this.message = `Shard ${String(shard)} lease is not confirmed`;
+  }
+}
+
+/** Các bước của một shard trong một vòng `tick`, theo thứ tự (tên dùng trong log `tick slow`). */
+const SHARD_PHASES = [
+  "syncBots",
+  "reconcile",
+  "reconcileOpen",
+  "retryCancels",
+  "reconcileMaker",
+  "checkFees",
+  "clock",
+] as const;
+type ShardPhase = (typeof SHARD_PHASES)[number];
+
 export interface EngineRedis extends LeaseRedis {
   set(key: string, value: string, px: "PX", ttl: number, nx?: "NX"): Promise<string | null>;
   keys(pattern: string): Promise<string[]>;
@@ -167,6 +191,10 @@ export interface EngineDeps {
   orderbook?: (market: string, engine?: "spot" | "perps") => Promise<BookTop | null>;
   /** Cổng mô phỏng cho bot paper (DEC-105). Không truyền thì engine không nạp bot paper nào. */
   paper?: PaperGateway;
+  /** Đồng hồ đơn điệu cho hạn lease (mặc định `performance.now`); khác `now` (giờ nghiệp vụ, test cố định). */
+  monotonic?: () => number;
+  /** Độ trễ event loop hiện tại (perf_hooks), ghi kèm log `tick slow`. */
+  loopDelay?: () => { p99Ms: number; maxMs: number };
 }
 
 /** Lý do "Leverage set". Bot paper không gửi gì tới SoDEX (PaperGateway, DEC-105) nên không ghi "SoDEX confirmed". */
@@ -366,12 +394,18 @@ export function shardOf(accountId: string, shards = ENGINE_SHARDS): number {
 }
 
 export class Engine {
-  readonly #d: Required<Omit<EngineDeps, "feeRate" | "paper" | "builderId">> & {
+  readonly #d: Required<
+    Omit<EngineDeps, "feeRate" | "paper" | "builderId" | "monotonic" | "loopDelay">
+  > & {
     feeRate: string | undefined;
     builderId: bigint | undefined;
     paper: PaperGateway | undefined;
+    loopDelay: EngineDeps["loopDelay"];
   };
   readonly #leases = new Map<number, { lease: Lease; epoch: number }>();
+  /** Gia hạn lease shard + heartbeat worker bằng timer riêng, không theo vòng `tick` (DEC-TBD-engine-lease-renew). */
+  readonly #leaseSet: LeaseSet<number>;
+  readonly #clockMono: () => number;
   readonly #runners = new Map<string, Runner>();
   readonly #lastFeeCheck = new Map<string, number>();
   readonly #snapshots = new Map<string, { at: number; snap: MarketSnapshot }>();
@@ -407,7 +441,28 @@ export class Engine {
       feeRate: deps.feeRate,
       builderId: deps.builderId,
       paper: deps.paper,
+      loopDelay: deps.loopDelay,
     };
+    this.#clockMono = deps.monotonic ?? (() => performance.now());
+    this.#leaseSet = new LeaseSet<number>({
+      redis: this.#d.redis,
+      ttlMs: this.#d.leaseTtlMs,
+      clock: this.#clockMono,
+      heartbeat: { key: `engine:worker:${this.#d.workerId}`, value: () => String(this.#d.now()) },
+      verify: (shard) => this.#stillOurs(shard),
+      onLost: (shard, reason) => {
+        this.#shardLost(shard, reason);
+      },
+      onReacquired: (shard) => {
+        this.#d.log.warn(
+          { shard, epoch: this.#leases.get(shard)?.epoch, worker: this.#d.workerId },
+          "shard lease re-acquired; epoch and bots kept",
+        );
+      },
+      onError: (error) => {
+        this.#d.log.warn({ err: error }, "shard lease renew failed");
+      },
+    });
   }
 
   get ownedShards(): number[] {
@@ -418,24 +473,128 @@ export class Engine {
     return this.#leases.get(shard)?.epoch;
   }
 
-  /** Một vòng: heartbeat, giữ / nhận shard, xử lý lệnh bot, đối soát, kiểm tra phí. */
+  /**
+   * Một vòng: nhận / trả shard, xử lý lệnh bot, đối soát, kiểm tra phí. Lease được gia hạn bằng timer riêng
+   * (`LeaseSet`), nên một vòng chậm không làm mất shard; trước mỗi bước của shard kiểm tra lease còn hiệu lực.
+   */
   async tick(): Promise<void> {
     if (this.#stopped) return;
+    const started = this.#clockMono();
     await this.#manageShards();
+    const phases: Record<string, number> = { manageShards: this.#clockMono() - started };
+    const steps: Record<ShardPhase, (shard: number) => Promise<void>> = {
+      syncBots: (n) => this.#syncBots(n),
+      reconcile: (n) => this.#reconcile(n),
+      reconcileOpen: (n) => this.#reconcileOpen(n),
+      retryCancels: (n) => this.#retryCancels(n),
+      reconcileMaker: (n) => this.#reconcileMaker(n),
+      checkFees: (n) => this.#checkFees(n),
+      clock: (n) => this.#clock(n),
+    };
+    let skipped = 0;
     for (const shard of this.ownedShards) {
       try {
-        await this.#syncBots(shard);
-        await this.#reconcile(shard);
-        await this.#reconcileOpen(shard);
-        await this.#retryCancels(shard);
-        await this.#reconcileMaker(shard);
-        await this.#checkFees(shard);
-        await this.#clock(shard);
+        for (const phase of SHARD_PHASES) {
+          if (!(await this.#leaseConfirmed(shard))) {
+            skipped += 1;
+            break;
+          }
+          const at = this.#clockMono();
+          await steps[phase](shard);
+          phases[phase] = (phases[phase] ?? 0) + this.#clockMono() - at;
+        }
       } catch (error) {
-        if (error instanceof FencedError) this.#dropShard(shard);
-        else this.#d.log.error({ err: error, shard }, "shard loop failed");
+        if (error instanceof LeaseExpiredError)
+          this.#d.log.warn({ shard }, "shard skipped this tick: lease not confirmed");
+        else if (error instanceof FencedError) {
+          this.#d.log.warn({ shard, reason: "fenced", worker: this.#d.workerId }, "shard lost");
+          this.#dropShard(shard);
+        } else this.#d.log.error({ err: error, shard }, "shard loop failed");
       }
     }
+    const ms = this.#clockMono() - started;
+    if (ms > this.#d.leaseTtlMs / 2)
+      this.#d.log.warn(
+        {
+          ms: Math.round(ms),
+          shards: this.#leases.size,
+          skipped,
+          phases: Object.fromEntries(Object.entries(phases).map(([k, v]) => [k, Math.round(v)])),
+          loopDelay: this.#d.loopDelay?.(),
+        },
+        "tick slow",
+      );
+  }
+
+  /** Lease của shard còn hiệu lực; hết thì gia hạn ngay một lần rồi xem lại. */
+  async #leaseConfirmed(shard: number): Promise<boolean> {
+    if (this.#leaseSet.valid(shard)) return true;
+    if (!this.#leaseSet.has(shard) || this.#stopped) return false;
+    await this.#leaseSet.renew();
+    return this.#leaseSet.valid(shard);
+  }
+
+  /**
+   * Ngay trước mỗi lần ghi lệnh / gửi lệnh / huỷ / đổi đòn bẩy: lease của shard phải còn hiệu lực (gia hạn ngay nếu cần).
+   * Không thì không làm gì và ném `LeaseExpiredError`. Fencing epoch ở DB và signer vẫn là lớp bảo vệ chính.
+   */
+  async #ensureLease(r: Pick<Runner, "shard" | "epoch">): Promise<void> {
+    if (await this.#leaseConfirmed(r.shard)) return;
+    throw new LeaseExpiredError(r.shard);
+  }
+
+  /** Hoàn tác một bước chiến lược chưa gửi gì: state cũ (bộ nhớ + DB) và xoá các dòng lệnh tạm `unknown`. */
+  async #undoStep(r: Runner, rollback: unknown, list: readonly OrderIntent[]): Promise<void> {
+    const ids = list.map((o) => o.clOrdID);
+    r.state = rollback;
+    for (const id of ids) {
+      this.#pendingCancels.get(r.botId)?.delete(id);
+      this.#inflightCancels.delete(id);
+    }
+    await this.#fenced(r, async (tx) => {
+      await tx
+        .delete(orders)
+        .where(
+          and(
+            eq(orders.sodexAccountId, r.account.id),
+            inArray(orders.clOrdId, ids),
+            eq(orders.status, "unknown"),
+          ),
+        );
+      await tx
+        .update(botRuntime)
+        .set({ state: r.state, updatedAt: new Date() })
+        .where(eq(botRuntime.botId, r.botId));
+    });
+  }
+
+  /**
+   * Gia hạn lease thất bại nhưng `SET NX` lại được: chỉ giữ epoch và runner khi DB cho thấy shard vẫn của mình với đúng
+   * epoch đang giữ (không ai nhận shard trong lúc lease hết hạn).
+   */
+  async #stillOurs(shard: number): Promise<boolean> {
+    const held = this.#leases.get(shard);
+    if (held === undefined) return false;
+    const rows = await this.#d.db
+      .update(shardEpochs)
+      .set({ acquiredAt: new Date(this.#d.now()) })
+      .where(
+        and(
+          eq(shardEpochs.shard, shard),
+          eq(shardEpochs.owner, this.#d.workerId),
+          eq(shardEpochs.epoch, held.epoch),
+        ),
+      )
+      .returning({ epoch: shardEpochs.epoch });
+    return rows.length === 1;
+  }
+
+  #shardLost(shard: number, reason: LeaseLoss): void {
+    this.#d.log.warn(
+      { shard, reason, epoch: this.#leases.get(shard)?.epoch, worker: this.#d.workerId },
+      "shard lost",
+    );
+    this.#dropShard(shard);
   }
 
   /**
@@ -875,6 +1034,7 @@ export class Engine {
   /** Dừng có trật tự: trả lease (C10). */
   async stop(): Promise<void> {
     this.#stopped = true;
+    this.#leaseSet.stop();
     for (const [shard, l] of this.#leases) {
       await l.lease.release();
       this.#dropShard(shard);
@@ -887,6 +1047,7 @@ export class Engine {
   /** Test: mô phỏng worker chết (không trả lease, không làm gì nữa). */
   kill(): void {
     this.#stopped = true;
+    this.#leaseSet.stop();
   }
 
   // ---------- shards ----------
@@ -894,11 +1055,10 @@ export class Engine {
   async #manageShards(): Promise<void> {
     const { redis, workerId, leaseTtlMs, shards } = this.#d;
     await redis.set(`engine:worker:${workerId}`, String(this.#d.now()), "PX", leaseTtlMs);
+    // Gia hạn lease đã giữ do timer của `LeaseSet` lo (mỗi ttl / 3, một round trip), không làm ở đây.
+    this.#leaseSet.start();
     const workers = Math.max(1, (await redis.keys("engine:worker:*")).length);
     const target = Math.ceil(shards / workers);
-    for (const [shard, l] of [...this.#leases]) {
-      if (!(await l.lease.tick())) this.#dropShard(shard);
-    }
     // Giữ quá phần của mình (sau khi có worker mới) thì trả bớt.
     while (this.#leases.size > target) {
       const shard = this.ownedShards.at(-1);
@@ -909,6 +1069,7 @@ export class Engine {
     for (let shard = 0; shard < shards && this.#leases.size < target; shard += 1) {
       if (this.#leases.has(shard)) continue;
       const lease = new Lease(redis, `lease:shard:${String(shard)}`, leaseTtlMs);
+      const sentAt = this.#clockMono();
       if (!(await lease.tick())) continue;
       const [row] = await this.#d.db
         .insert(shardEpochs)
@@ -923,12 +1084,14 @@ export class Engine {
         })
         .returning({ epoch: shardEpochs.epoch });
       this.#leases.set(shard, { lease, epoch: row?.epoch ?? 0 });
+      this.#leaseSet.add(shard, lease, sentAt);
       this.#d.log.info({ shard, epoch: row?.epoch, worker: workerId }, "shard acquired");
     }
   }
 
   #dropShard(shard: number): void {
     this.#leases.delete(shard);
+    this.#leaseSet.delete(shard);
     for (const [id, r] of this.#runners) if (r.shard === shard) this.#runners.delete(id);
   }
 
@@ -1102,6 +1265,11 @@ export class Engine {
       const rr = await this.#d.rules(m);
       if (rr !== undefined) rules[m] = rr;
     }
+    // Đòn bẩy đã được SoDEX xác nhận cho đúng version này trước lần nạp lại: không đặt / ghi lại.
+    const leverageDone =
+      saved?.leverageDone?.versionId === version.id
+        ? new Set(saved.leverageDone.keys)
+        : new Set<string>();
     return {
       botId: bot.id,
       account: route.account,
@@ -1129,7 +1297,7 @@ export class Engine {
       awaitingFirstAck: bot.state === BotState.starting,
       leverageSet: false,
       leverageUnknown: false,
-      leverageDone: new Set(),
+      leverageDone,
       leverageRun: null,
       blocked: null,
       reduceRejects: 0,
@@ -1274,6 +1442,16 @@ export class Engine {
       event.type === "orderReject" ||
       event.type === "orderDone" ||
       event.type === "positionSync";
+    // Lease của shard chưa xác nhận lại được (DEC-TBD-engine-lease-renew): chưa phản ứng với thị trường, sự kiện sau thử
+    // lại. Fill / ack vẫn ghi (fencing epoch ở DB chặn nếu shard đã sang worker khác). Shard không còn trong tập lease
+    // (zombie) thì đi tiếp như cũ để fencing từ chối.
+    if (
+      !accounting &&
+      !this.#stopped &&
+      this.#leaseSet.has(r.shard) &&
+      !(await this.#leaseConfirmed(r.shard))
+    )
+      return;
     // Đang backoff vì request trước chưa rời DRIFT: chưa phản ứng với thị trường (fill / ack vẫn ghi).
     if (!accounting && r.blocked !== null && event.at < r.blocked.nextAt) return;
     if (live && !accounting && !r.leverageSet) {
@@ -1389,6 +1567,9 @@ export class Engine {
       if (first === undefined) return;
       const what = `${String(first.leverage)}× ${first.marginMode} on ${confirmed.map((x) => x.market).join(", ")}`;
       await this.#event(r, "decision", "Leverage set", leverageWhy(r.paper, what), at);
+      // Lưu lại để lần nạp lại runner (chuyển shard, khởi động lại) cùng version không đặt / ghi lại. Chỉ khi version
+      // chưa đổi giữa chừng (version mới bắt đầu lại từ tập rỗng).
+      if (r.versionId === versionId) await this.#saveLeverageDone(r, versionId, done);
     };
     for (const spec of specs) {
       const key = `${spec.market}:${String(spec.leverage)}:${spec.marginMode}`;
@@ -1410,6 +1591,17 @@ export class Engine {
     if (r.versionId !== versionId) return "not_sent";
     r.leverageSet = true;
     return "ok";
+  }
+
+  /** Ghi tập đòn bẩy đã xác nhận của version vào `bot_runtime` (tạo dòng với state hiện tại nếu chưa có). */
+  async #saveLeverageDone(r: Runner, versionId: string, done: ReadonlySet<string>): Promise<void> {
+    const leverageDone = { versionId, keys: [...done] };
+    await this.#fenced(r, (tx) =>
+      tx
+        .insert(botRuntime)
+        .values({ botId: r.botId, versionId, state: r.state, epoch: r.epoch, leverageDone })
+        .onConflictDoUpdate({ target: botRuntime.botId, set: { leverageDone } }),
+    );
   }
 
   async #ensureLeverageOne(
@@ -1449,6 +1641,7 @@ export class Engine {
       this.#d.log.warn({ botId: r.botId }, "leverage result unknown and SoDEX unreadable; waiting");
       return "unknown";
     }
+    await this.#ensureLease(r);
     const res = await r.gateway.setLeverage(r.account, spec, {
       shard: r.shard,
       epoch: r.epoch,
@@ -1662,6 +1855,13 @@ export class Engine {
       }
       const toSend = places.filter((o) => fresh.has(o.clOrdID) && !blocked.includes(o));
       if (toSend.length > 0) {
+        if (!(await this.#leaseConfirmed(r.shard))) {
+          // Lease không xác nhận được ngay trước khi gửi: không gửi. Sự kiện thị trường thì hoàn tác bước chiến lược và xoá
+          // dòng lệnh tạm như khi lệnh chưa rời DRIFT (clOrdID tất định, lần sau sinh lại đúng lệnh này); fill / ack thì
+          // dòng `unknown` ở lại cho #reconcile (không thấy trên SoDEX → not_placed → chiến lược nhận orderReject).
+          if (rollback !== null) await this.#undoStep(r, rollback, toSend);
+          throw new LeaseExpiredError(r.shard);
+        }
         const results = await r.gateway.submit(
           r.account,
           toSend,
@@ -2040,6 +2240,7 @@ export class Engine {
       .where(and(eq(orders.sodexAccountId, r.account.id), eq(orders.clOrdId, a.clOrdID)))
       .limit(1);
     if (row?.status !== "open") return;
+    await this.#ensureLease(r);
     const res = await r.gateway.modifyStop(
       r.account,
       { clOrdID: a.clOrdID, market: row.market, stopPrice: a.stopPrice },
@@ -2099,6 +2300,7 @@ export class Engine {
     }
     let results: Awaited<ReturnType<Gateway["cancel"]>>;
     try {
+      await this.#ensureLease(r);
       results = await r.gateway.cancel(
         r.account,
         open.map((o) => ({ clOrdID: o.clOrdId, market: o.market, engine: o.engine })),

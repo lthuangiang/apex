@@ -267,6 +267,13 @@
       "when": 1794884302080,
       "tag": "0037_fills_filled_at_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794896897893,
+      "tag": "0038_bot_runtime_leverage_done",
+      "breakpoints": true
     }
   ]
 }

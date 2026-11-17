@@ -52,7 +52,11 @@ Mục tiêu: chạy được cả hệ thống bằng `docker compose` (dev, sta
 ### 3.3 Mô hình scale và tính đúng đắn
 
 1. **Mỗi account SoDEX chỉ có một writer.** Account chia vào `ENGINE_SHARDS = 64` shard ảo theo `shard = hash(accountId) % 64`.
-   - Mỗi engine worker xin lease Redis `lease:shard:{n}` (`SET NX PX 15000`, gia hạn mỗi 5 s) cho khoảng `ceil(64 / số worker)` shard.
+   - Mỗi engine worker xin lease Redis `lease:shard:{n}` (`SET NX PX 15000`) cho khoảng `ceil(64 / số worker)` shard.
+   - Gia hạn bằng **timer riêng** mỗi TTL/3 (5 s), không nằm trong vòng `tick`: mọi lease shard + heartbeat `engine:worker:<id>` gia hạn trong **một** lần gọi Redis (script Lua so token rồi `PEXPIRE`). Một vòng `tick` chậm (nhiều shard, DB chậm) không còn làm mất shard (DEC-TBD-engine-lease-renew).
+   - Mỗi shard có `validUntil` = lúc gửi lần gia hạn thành công gần nhất + TTL − TTL/5. Trước mỗi bước của shard trong `tick`, trước khi bước chiến lược phản ứng với thị trường, và ngay trước mỗi lần gửi / huỷ lệnh, đổi stop hay đổi đòn bẩy, engine kiểm tra `validUntil`; hết hạn thì gia hạn ngay một lần, vẫn không được thì **không làm gì** (bỏ lượt). Fencing epoch (mục 2) vẫn là lớp bảo vệ chính.
+   - Gia hạn thất bại vì key đã hết hạn: worker thử `SET NX` lại với chính token của mình rồi xác nhận trong DB (`UPDATE shard_epochs SET acquired_at = now() WHERE shard = $1 AND owner = $self AND epoch = $held RETURNING`). Được thì **giữ nguyên epoch và runner** (không nạp lại bot). Key đang của worker khác → bỏ shard (log `shard lost`, `reason: taken`); `SET NX` được nhưng epoch trong DB đã đổi → trả lease, bỏ shard (`reason: epoch_moved`); vòng sau nhận lại với epoch + 1 và nạp lại bot như trước.
+   - Log: `shard lost` (kèm `reason`), `tick slow` khi một vòng > TTL/2 (kèm thời gian từng bước), `event loop delay` mỗi phút (`perf_hooks.monitorEventLoopDelay`).
    - Khi worker chết, lease hết hạn và worker khác nhận shard.
    - Vì chỉ có một writer cho mỗi account nên nonce SoDEX tăng đều và không có lệnh trùng.
 2. **Fencing token.** Mỗi lần nhận shard, `epoch` của shard trong Postgres tăng lên 1. Mọi yêu cầu ký và mọi lệnh đều mang theo `epoch`. Signer và DB từ chối `epoch` cũ, nên một worker "zombie" cũng không gửi lệnh được.
