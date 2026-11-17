@@ -460,7 +460,15 @@ export class Engine {
   async tick(): Promise<void> {
     if (this.#stopped) return;
     await this.#manageShards();
-    const snap = await this.#tickSnapshot();
+    let snap: TickSnapshot;
+    try {
+      snap = await this.#tickSnapshot();
+    } catch (error) {
+      // Đọc DB đầu vòng lỗi: bỏ phần việc của shard ở vòng này nhưng vẫn trả về bình thường, để vòng ngoài (main.ts)
+      // vẫn đồng bộ user stream; vòng sau đọc lại.
+      this.#d.log.error({ err: error }, "tick snapshot failed; skipping shard work this tick");
+      return;
+    }
     for (const shard of this.ownedShards) {
       // Shard không có account nào và không có runner nào: không có việc gì (không truy vấn, không gọi SoDEX).
       const accounts = snap.accounts.get(shard) ?? [];

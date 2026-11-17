@@ -4561,4 +4561,61 @@ describe("one read per tick, not per shard (DEC-TBD-engine-tick-batch)", () => {
     expect(gw.feeChecks).toContain(live.accountId);
     expect(gw.feeChecks).not.toContain(paper.accountId);
   });
+
+  it("logs a failed snapshot read and returns normally, skipping shard work for that tick", async () => {
+    await seedBot("running", undefined, clean);
+    await newRedis().flushall();
+    let failing = false;
+    // Db giả: mọi `select` ném lỗi khi `failing` (DB mất kết nối giữa chừng).
+    const flaky = new Proxy(clean, {
+      get(target, prop) {
+        if (prop === "select" && failing)
+          return () => {
+            throw new Error("db down");
+          };
+        const v: unknown = Reflect.get(target, prop);
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      },
+    });
+    const errors: string[] = [];
+    const gw = new (class extends FakeGateway {
+      feeChecks = 0;
+      override builderApproved(): Promise<boolean> {
+        this.feeChecks += 1;
+        return super.builderApproved();
+      }
+    })();
+    const e = new Engine({
+      db: flaky,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: "snapshot-fails",
+      log: {
+        info: () => undefined,
+        warn: () => undefined,
+        error: (_obj: unknown, msg?: string) => {
+          errors.push(msg ?? "");
+        },
+      },
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+    });
+    await e.tick();
+    const checks = gw.feeChecks;
+    expect(checks).toBeGreaterThan(0);
+    failing = true;
+    clock += 1;
+    await expect(e.tick()).resolves.toBeUndefined();
+    expect(errors).toContain("tick snapshot failed; skipping shard work this tick");
+    expect(gw.feeChecks).toBe(checks);
+    // DB trở lại: vòng sau chạy bình thường.
+    failing = false;
+    clock += 1;
+    await e.tick();
+    expect(gw.feeChecks).toBeGreaterThan(checks);
+    await e.stop();
+  });
 });
