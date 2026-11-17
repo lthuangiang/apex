@@ -4,10 +4,12 @@ import { describe, expect, it } from "vitest";
 import messages from "../../../../messages/en.json";
 import {
   buildReport,
+  formatCappedCount,
   formatRate,
   localTime,
   maskAddress,
   maskAddressesIn,
+  prettyJson,
   reportSubject,
   utcOffsetLabel,
   utcTime,
@@ -84,5 +86,23 @@ describe("SoDEX Debugger format helpers", () => {
     expect(text).not.toContain("Builder:");
     expect(text).not.toContain("Related call");
     expect(text).toContain("Response headers\ncontent-type: application/json");
+  });
+});
+
+describe("SoDEX Debugger body and count formatting (review PR #217)", () => {
+  it("indents JSON without parsing it, keeping uint64 digits and truncated bodies", () => {
+    expect(
+      prettyJson('{"code":0,"data":[{"orderID":18446744073709551615,"s":"a,{b"}],"e":[]}'),
+    ).toBe(
+      '{\n  "code": 0,\n  "data": [\n    {\n      "orderID": 18446744073709551615,\n      "s": "a,{b"\n    }\n  ],\n  "e": []\n}',
+    );
+    expect(prettyJson('{"a":[1,2')).toBe('{\n  "a": [\n    1,\n    2');
+    expect(prettyJson("<html>")).toBe("<html>");
+  });
+
+  it("shows 1,000+ for capped outcome counts", () => {
+    expect(formatCappedCount(1001)).toBe("1,000+");
+    expect(formatCappedCount(1000)).toBe("1,000");
+    expect(formatCappedCount(7)).toBe("7");
   });
 });

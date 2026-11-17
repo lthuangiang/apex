@@ -3,31 +3,15 @@ import { describe, expect, it } from "vitest";
 import type { SodexRestCapture, SodexWsCapture } from "../debug/capture";
 import { endpointTemplate, toSodexCallRow, uuidV7At, uuidV7Time } from "../debug/classify";
 
+import { restCapture } from "./debug-fixtures";
+
 // Phân loại outcome của SoDEX Debugger (DEC-TBD-sodex-debugger).
 
 const BASE = "https://mainnet-gw.sodex.dev/api/v1";
 const ADDR = "0x4E1e8c0B7a2d5F3e91A6b4C0d8E2f7a1B3c529Db";
 
 function rest(over: Partial<SodexRestCapture>): SodexRestCapture {
-  return {
-    kind: "rest",
-    startedAt: Date.UTC(2026, 10, 17, 15, 5, 12, 481),
-    latencyMs: 214,
-    method: "DELETE",
-    url: `${BASE}/perps/trade/orders`,
-    requestHeaders: { "Content-Type": "application/json" },
-    requestBody: '{"accountID":20417,"cancels":[{"symbolID":2,"clOrdID":"drift-b31-v4-cx-88213"}]}',
-    signed: true,
-    actionType: "cancelOrder",
-    failure: null,
-    errorDetail: null,
-    httpStatus: 200,
-    responseHeaders: new Headers({ "content-type": "application/json" }),
-    responseText: '{"code":0,"timestamp":1,"data":[]}',
-    orderResults: true,
-    context: undefined,
-    ...over,
-  };
+  return restCapture(over);
 }
 
 describe("toSodexCallRow", () => {
@@ -111,7 +95,7 @@ describe("toSodexCallRow", () => {
         rest({
           method: "GET",
           signed: false,
-          orderResults: false,
+          orderEndpoint: false,
           schemaOk: false,
           url: `${BASE}/perps/accounts/${ADDR}/orders?symbol=BTC-USD`,
         }),
@@ -160,7 +144,7 @@ describe("toSodexCallRow", () => {
       rest({
         method: "GET",
         signed: false,
-        orderResults: false,
+        orderEndpoint: false,
         url: `${BASE}/perps/accounts/${ADDR}/orders?symbol=BTC-USD`,
         responseText: '{"code":0,"timestamp":1,"data":{"orders":[]}}',
         schemaOk: true,
@@ -211,6 +195,7 @@ describe("toSodexCallRow", () => {
         detail: null,
         request: null,
         response: '{"channel":"accountOrderUpdate","data":[{"c":"drift-b1-a","i":99,"X":"NEW"}]}',
+        items: [{ c: "drift-b1-a", i: 99, X: "NEW" }],
       },
       "engine",
     );

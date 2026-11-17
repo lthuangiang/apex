@@ -4,6 +4,9 @@ import { z } from "zod";
 
 import type { SodexConfig } from "../config";
 import {
+  capBody,
+  envelopeOf,
+  headerRecord,
   SIGNATURE_REDACTED,
   safeRecord,
   type SodexCallRecorderLike,
@@ -113,10 +116,20 @@ export class SignedWriteClient {
     const startedAt = Date.now();
     const t0 = performance.now();
     const context = currentSodexCallContext();
+    const orderEndpoint = isOrderEndpoint(request.path);
     const record = (
       fields: Pick<
         SodexRestCapture,
-        "failure" | "errorDetail" | "httpStatus" | "responseHeaders" | "responseText"
+        | "failure"
+        | "errorDetail"
+        | "httpStatus"
+        | "responseHeaders"
+        | "responseText"
+        | "responseLength"
+        | "json"
+        | "envelopeCode"
+        | "envelopeError"
+        | "orderResults"
       >,
     ) => {
       const latencyMs = performance.now() - t0;
@@ -128,10 +141,10 @@ export class SignedWriteClient {
         url,
         // Chữ ký không bao giờ vào hàng đợi của debugger.
         requestHeaders: { ...headers, "X-API-Sign": SIGNATURE_REDACTED },
-        requestBody: request.body,
+        requestBody: capBody(request.body),
         signed: true,
         actionType: request.actionType ?? null,
-        orderResults: isOrderEndpoint(request.path),
+        orderEndpoint,
         context,
         ...fields,
       }));
@@ -153,23 +166,44 @@ export class SignedWriteClient {
         failure: timedOut ? "timeout" : "network",
         errorDetail: timedOut ? "SoDEX request timed out" : String(error).slice(0, 300),
         httpStatus: response?.status ?? null,
-        responseHeaders: response?.headers ?? null,
+        responseHeaders:
+          response === undefined || this.#recorder === undefined
+            ? null
+            : headerRecord(response.headers),
         responseText: null,
+        responseLength: null,
+        json: false,
+        envelopeCode: null,
+        envelopeError: null,
+        orderResults: null,
       });
       return { outcome: "unknown", detail: `network: ${String(error).slice(0, 200)}` };
     }
-    record({
-      failure: null,
-      errorDetail: null,
-      httpStatus: response.status,
-      responseHeaders: response.headers,
-      responseText: text,
-    });
 
     let body: unknown;
+    let json = true;
     try {
       body = parseSodexJson(text);
     } catch {
+      json = false;
+    }
+    if (this.#recorder !== undefined) {
+      // Dùng body vừa parse (không parse lại ở debugger).
+      const env = envelopeOf(body);
+      record({
+        failure: null,
+        errorDetail: null,
+        httpStatus: response.status,
+        responseHeaders: headerRecord(response.headers),
+        responseText: capBody(text),
+        responseLength: text.length,
+        json,
+        envelopeCode: env.code,
+        envelopeError: env.error,
+        orderResults: orderEndpoint && Array.isArray(env.data) ? (env.data as unknown[]) : null,
+      });
+    }
+    if (!json) {
       return {
         outcome: "unknown",
         detail: `HTTP ${String(response.status)}: ${text.slice(0, 300)}`,

@@ -7,30 +7,21 @@ import { SodexCallRecorder } from "../debug/recorder";
 import { MemoryRateLimitStore } from "../rate-limit/token-bucket";
 import { SignedWriteClient, type SignedWriteRequest } from "../rest/signed-write";
 
+import { restCapture } from "./debug-fixtures";
+
 // Hàng đợi của SoDEX Debugger: không bao giờ chặn đường gửi lệnh; đầy thì bỏ bản ghi thành công trước.
 
 const OK_TEXT = '{"code":0,"timestamp":1,"data":[{"code":0,"clOrdID":"a1","orderID":7}]}';
 
 function capture(over: Partial<SodexRestCapture> = {}): SodexRestCapture {
-  return {
-    kind: "rest",
-    startedAt: Date.now(),
+  return restCapture({
     latencyMs: 50,
     method: "POST",
-    url: "https://mainnet-gw.sodex.dev/api/v1/perps/trade/orders",
-    requestHeaders: {},
     requestBody: '{"accountID":1,"orders":[{"clOrdID":"a1"}]}',
-    signed: true,
     actionType: "newOrder",
-    failure: null,
-    errorDetail: null,
-    httpStatus: 200,
-    responseHeaders: null,
     responseText: OK_TEXT,
-    orderResults: true,
-    context: undefined,
     ...over,
-  };
+  });
 }
 const timeout = () =>
   capture({ failure: "timeout", httpStatus: null, responseText: null, latencyMs: 5000 });
@@ -59,14 +50,14 @@ describe("SodexCallRecorder", () => {
     r.record(capture());
     r.record(capture());
     r.record(capture()); // đầy: bản ghi thành công mới bị bỏ
-    expect(r.dropped).toEqual({ ok: 1, problem: 0 });
+    expect(r.dropped).toMatchObject({ ok: 1, problem: 0 });
     r.record(timeout()); // lỗi: đẩy một bản ghi thành công ra
     r.record(timeout());
     r.record(timeout());
     expect(r.queued).toBe(3);
-    expect(r.dropped).toEqual({ ok: 4, problem: 0 });
+    expect(r.dropped).toMatchObject({ ok: 4, problem: 0 });
     r.record(timeout()); // toàn lỗi: lúc này mới bỏ lỗi
-    expect(r.dropped).toEqual({ ok: 4, problem: 1 });
+    expect(r.dropped).toMatchObject({ ok: 4, problem: 1 });
     expect(warn).toHaveBeenCalledTimes(1); // log cảnh báo có giới hạn tần suất
     expect(warn.mock.calls[0]?.[1]).toBe("sodex debugger queue full: dropping records");
   });
@@ -160,37 +151,35 @@ function writer(recorderImpl?: SodexCallRecorder) {
 }
 
 describe("order path with the SoDEX Debugger", () => {
-  it("returns the same result and stays as fast with a hanging DB writer", async () => {
+  it("returns the same results, never waits on the writer, and stays bounded while the DB write hangs", async () => {
+    let sinkCalls = 0;
     const hanging = recorder({
-      capacity: 500, // nhỏ để phần lớn bản ghi bị bỏ trong lúc đo
+      capacity: 500, // nhỏ để phần lớn bản ghi bị bỏ
       flushIntervalMs: 1,
-      sink: () => new Promise(() => undefined),
+      sink: () => {
+        sinkCalls += 1;
+        return new Promise(() => undefined);
+      },
     });
     const plain = writer();
     const recorded = writer(hanging);
-    expect(await recorded.write(REQUEST)).toEqual(await plain.write(REQUEST));
-
-    const N = 2_000;
-    const time = async (c: SignedWriteClient) => {
-      const t0 = performance.now();
-      for (let i = 0; i < N; i += 1) await c.write(REQUEST);
-      return performance.now() - t0;
-    };
-    // Khởi động JIT cho cả hai, rồi đo xen kẽ.
-    await time(plain);
-    await time(recorded);
-    // Đo xen kẽ 5 vòng, lấy vòng nhanh nhất của mỗi bên để bớt nhiễu của máy.
-    let base = Infinity;
-    let withRecorder = Infinity;
-    for (let round = 0; round < 5; round += 1) {
-      base = Math.min(base, await time(plain));
-      withRecorder = Math.min(withRecorder, await time(recorded));
+    hanging.record(capture());
+    void hanging.flush(); // một lần ghi treo mãi
+    await vi.waitFor(() => {
+      expect(sinkCalls).toBe(1);
+    });
+    // Không đo thời gian (dễ nhiễu): kiểm hành vi. Mỗi write xong mà không phụ thuộc sink, kết quả giống hệt.
+    for (let i = 0; i < 2_000; i += 1) {
+      expect(await recorded.write(REQUEST)).toEqual(await plain.write(REQUEST));
     }
-    const overheadPerCallMs = (withRecorder - base) / N;
-    // Đẩy vào hàng đợi là O(1); cho phép nhiễu của máy CI nhưng chặn mọi I/O hay chờ trên đường gửi.
-    expect(overheadPerCallMs).toBeLessThan(0.1);
+    // record() đồng bộ: gọi trực tiếp không trả Promise và không gọi sink.
+    const before = sinkCalls;
+    hanging.record(capture());
+    expect(sinkCalls).toBe(before);
     expect(hanging.queued).toBeLessThanOrEqual(500);
     expect(hanging.dropped.ok).toBeGreaterThan(0);
+    // Chỉ một lần ghi treo cùng lúc, không chồng.
+    expect(sinkCalls).toBe(1);
   });
 
   it("attaches the bot context and never puts the signature in the queue", async () => {

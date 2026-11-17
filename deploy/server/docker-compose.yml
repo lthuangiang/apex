@@ -19,6 +19,8 @@ x-env: &env
   SODEX_REST_URL: ${SODEX_REST_URL:-https://mainnet-gw.sodex.dev}
   SODEX_WS_URL: ${SODEX_WS_URL:-wss://mainnet-gw.sodex.dev/ws}
   SODEX_CHAIN: mainnet
+  # SoDEX Debugger (DEC-TBD-sodex-debugger): "off" tắt ghi lời gọi SoDEX ở mọi app service (cần recreate container).
+  SODEX_DEBUGGER: ${SODEX_DEBUGGER:-on}
   DRIFT_BUILDER_ID: ${DRIFT_BUILDER_ID:?set DRIFT_BUILDER_ID}
   DRIFT_BUILDER_ADDRESS: ${DRIFT_BUILDER_ADDRESS:-}
   DRIFT_BUILDER_FEE: "10"

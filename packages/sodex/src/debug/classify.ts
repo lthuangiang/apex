@@ -7,13 +7,13 @@ import {
   type SodexHeader,
 } from "@drift/shared";
 
-import { parseSodexJson } from "../rest/json";
-
 import type { SodexCallCapture, SodexRestCapture, SodexWsCapture } from "./capture";
-import { redactBody, redactHeaders, responseHeaderList } from "./redact";
+import { redactBody, redactHeaders, responseHeaderList, sanitizeText, scrubText } from "./redact";
 
 // Bản ghi thô → dòng lưu được (chạy ở bước flush, ngoài đường gửi lệnh). Phân loại outcome theo DEC-TBD-sodex-debugger:
 // ok / rejected (code ≠ 0 ở envelope hoặc ở một lệnh) / timeout / network / unreadable (envelope ok nhưng không đọc được).
+// Không parse JSON ở đây (review PR #217, B2): code envelope và kết quả lệnh đến từ object client đã parse; clOrdID và
+// accountID trong body request lấy bằng regex; body chỉ được che bằng regex trên chuỗi đã cắt.
 
 /** Giới hạn body response lưu lại: lời gọi thành công giữ ít hơn lời gọi có vấn đề. */
 export const RESPONSE_BODY_LIMIT = { ok: 16 * 1024, problem: 64 * 1024 } as const;
@@ -98,10 +98,6 @@ function pathOf(url: string): string {
   }
 }
 
-function bytes(text: string | null): number | null {
-  return text === null ? null : Buffer.byteLength(text, "utf8");
-}
-
 function asRecord(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
@@ -112,23 +108,16 @@ function idString(v: unknown): string | null {
   return typeof v === "string" || typeof v === "number" || typeof v === "bigint" ? String(v) : null;
 }
 
-/** clOrdID trong body request (lệnh, huỷ, modify). */
-function clOrdIdsOfRequest(body: unknown): string[] {
-  const r = asRecord(body);
-  if (r === null) return [];
+const CL_ORD_ID = /"(?:orig)?[cC]lOrdID"\s*:\s*"([^"\\]{1,64})"/g;
+const ACCOUNT_ID = /"accountID"\s*:\s*(\d{1,20})/;
+
+/** clOrdID trong body request (lệnh, huỷ, modify), không parse. */
+function clOrdIdsOfRequest(body: string | null): string[] {
+  if (body === null) return [];
   const out: string[] = [];
-  const push = (x: unknown) => {
-    const o = asRecord(x);
-    if (o === null) return;
-    for (const k of ["clOrdID", "origClOrdID"]) {
-      const v = o[k];
-      if (typeof v === "string" && !out.includes(v)) out.push(v);
-    }
-  };
-  push(r);
-  for (const key of ["orders", "cancels"]) {
-    const list = r[key];
-    if (Array.isArray(list)) for (const x of list) push(x);
+  for (const m of body.matchAll(CL_ORD_ID)) {
+    const v = m[1];
+    if (v !== undefined && !out.includes(v)) out.push(v);
   }
   return out;
 }
@@ -144,73 +133,48 @@ interface Verdict {
   orderIds: string[];
 }
 
-function classifyRest(c: SodexRestCapture, parsedBody: unknown): Verdict {
+function classifyRest(c: SodexRestCapture): Verdict {
   const v: Verdict = {
     outcome: SodexCallOutcome.ok,
     sodexCode: null,
     sodexError: null,
-    envelopeCode: null,
+    envelopeCode: c.envelopeCode,
     orderCodes: [],
     unreadableReason: null,
-    clOrdIds: clOrdIdsOfRequest(parsedBody),
+    // clOrdID của request thêm ở restRow (regex trên body); ở đây chỉ việc rẻ để dùng được lúc record.
+    clOrdIds: [],
     orderIds: [],
   };
   if (c.failure !== null) return { ...v, outcome: c.failure };
   const status = c.httpStatus ?? 0;
   const ok2xx = status >= 200 && status < 300;
-  let body: unknown;
-  try {
-    body = parseSodexJson(c.responseText ?? "");
-  } catch {
-    return {
-      ...v,
-      outcome: SodexCallOutcome.unreadable,
-      unreadableReason: ok2xx ? SodexUnreadableReason.invalidJson : SodexUnreadableReason.httpError,
-    };
+  const unreadable = (reason: SodexUnreadableReason): Verdict => ({
+    ...v,
+    outcome: SodexCallOutcome.unreadable,
+    unreadableReason: reason,
+  });
+  if (!c.json) {
+    return unreadable(ok2xx ? SodexUnreadableReason.invalidJson : SodexUnreadableReason.httpError);
   }
-  const env = asRecord(body);
-  const code = env?.code;
-  if (typeof code === "number") v.envelopeCode = code;
-  if (typeof code === "number" && code !== 0) {
+  const code = c.envelopeCode;
+  if (code !== null && code !== 0) {
     return {
       ...v,
       outcome: SodexCallOutcome.rejected,
       sodexCode: code,
-      sodexError: typeof env?.error === "string" ? env.error : null,
+      sodexError: c.envelopeError,
     };
   }
-  if (code !== 0) {
-    return {
-      ...v,
-      outcome: SodexCallOutcome.unreadable,
-      unreadableReason: SodexUnreadableReason.schemaMismatch,
-    };
-  }
-  if (!ok2xx) {
-    return {
-      ...v,
-      outcome: SodexCallOutcome.unreadable,
-      unreadableReason: SodexUnreadableReason.httpError,
-    };
-  }
-  if (c.schemaOk === false) {
-    return {
-      ...v,
-      outcome: SodexCallOutcome.unreadable,
-      unreadableReason: SodexUnreadableReason.schemaMismatch,
-    };
-  }
-  if (c.orderResults === true && Array.isArray(env?.data)) {
+  if (code === null) return unreadable(SodexUnreadableReason.schemaMismatch);
+  if (!ok2xx) return unreadable(SodexUnreadableReason.httpError);
+  if (c.schemaOk === false) return unreadable(SodexUnreadableReason.schemaMismatch);
+  if (c.orderEndpoint === true && c.orderResults != null) {
     let firstBad: { code: number; error: string | null } | null = null;
-    for (const item of env.data) {
+    for (const item of c.orderResults) {
       const o = asRecord(item);
       const itemCode = o?.code;
       if (o === null || typeof itemCode !== "number") {
-        return {
-          ...v,
-          outcome: SodexCallOutcome.unreadable,
-          unreadableReason: SodexUnreadableReason.schemaMismatch,
-        };
+        return unreadable(SodexUnreadableReason.schemaMismatch);
       }
       v.orderCodes.push(itemCode);
       const orderId = idString(o.orderID);
@@ -218,9 +182,7 @@ function classifyRest(c: SodexRestCapture, parsedBody: unknown): Verdict {
       const error = typeof o.error === "string" ? o.error : null;
       if (typeof o.clOrdID !== "string") {
         return {
-          ...v,
-          outcome: SodexCallOutcome.unreadable,
-          unreadableReason: SodexUnreadableReason.orderResultWithoutClOrdId,
+          ...unreadable(SodexUnreadableReason.orderResultWithoutClOrdId),
           sodexCode: itemCode,
           sodexError: error,
         };
@@ -240,34 +202,30 @@ function classifyRest(c: SodexRestCapture, parsedBody: unknown): Verdict {
   return v;
 }
 
-function accountFromBody(body: unknown): string | null {
-  const id = asRecord(body)?.accountID;
-  return idString(id);
+/** Kết quả chính xác cho việc chọn bảng / bỏ gì khi đầy: dùng lại lúc record (rẻ: không parse). */
+export function captureOutcome(c: SodexCallCapture): SodexCallOutcome {
+  return c.kind === "rest" ? classifyRest(c).outcome : c.outcome;
 }
 
-function truncate(text: string | null, limit: number): { text: string | null; truncated: boolean } {
+function cap(text: string | null, limit: number): { text: string | null; truncated: boolean } {
   if (text === null || text.length <= limit) return { text, truncated: false };
   return { text: text.slice(0, limit), truncated: true };
 }
 
 function restRow(c: SodexRestCapture, service: string): SodexCallRow {
-  let parsedRequest: unknown = null;
-  if (c.requestBody !== null) {
-    try {
-      parsedRequest = parseSodexJson(c.requestBody);
-    } catch {
-      parsedRequest = null;
-    }
-  }
-  const verdict = classifyRest(c, parsedRequest);
+  const verdict = classifyRest(c);
   const path = pathOf(c.url);
   const address = ADDRESS.exec(path)?.[0] ?? null;
   const latencyMs = Math.max(0, Math.round(c.latencyMs));
   const problem = isProblemCall(verdict.outcome, latencyMs);
-  const limit = problem ? RESPONSE_BODY_LIMIT.problem : RESPONSE_BODY_LIMIT.ok;
-  const response = truncate(c.responseText, limit);
-  const request = truncate(c.requestBody, REQUEST_BODY_LIMIT);
+  const response = cap(
+    c.responseText,
+    problem ? RESPONSE_BODY_LIMIT.problem : RESPONSE_BODY_LIMIT.ok,
+  );
+  const request = cap(c.requestBody, REQUEST_BODY_LIMIT);
   const engine = path.startsWith("/spot/") ? "spot" : path.startsWith("/perps/") ? "perps" : null;
+  // Tên key và public key ở endpoint api-keys chỉ giữ 4 ký tự cuối (quy tắc 1.9).
+  const maskName = path.includes("/api-keys");
   return {
     id: uuidV7At(c.startedAt),
     at: new Date(c.startedAt),
@@ -275,32 +233,35 @@ function restRow(c: SodexRestCapture, service: string): SodexCallRow {
     kind: "rest",
     method: c.method,
     endpoint: endpointTemplate(path),
-    url: c.url,
+    url: scrubText(c.url),
     engine,
     actionType: c.actionType,
     outcome: verdict.outcome,
     httpStatus: c.httpStatus,
     sodexCode: verdict.sodexCode,
-    sodexError: verdict.sodexError,
+    sodexError: scrubText(verdict.sodexError),
     envelopeCode: verdict.envelopeCode,
     orderCodes: verdict.orderCodes,
     unreadableReason: verdict.unreadableReason,
-    errorDetail: c.errorDetail,
+    errorDetail: scrubText(c.errorDetail),
     latencyMs,
     requestHeaders: redactHeaders(c.requestHeaders),
-    requestBody: redactBody(request.text),
-    requestBodyBytes: bytes(c.requestBody),
+    requestBody: redactBody(request.text, { maskName }),
+    requestBodyBytes: c.requestBody === null ? null : c.requestBody.length,
     signed: c.signed,
     responseHeaders: responseHeaderList(c.responseHeaders),
-    // Body bị cắt không còn là JSON: redactBody xử lý như văn bản (che hết nếu có chuỗi giống key).
-    responseBody: redactBody(response.text),
-    responseBodyBytes: bytes(c.responseText),
-    responseTruncated: response.truncated,
+    // Body bị cắt không còn là JSON: redactBody chỉ dùng regex nên vẫn che được.
+    responseBody: redactBody(response.text, { maskName }),
+    responseBodyBytes: c.responseLength,
+    responseTruncated:
+      response.truncated || (c.responseLength ?? 0) > (c.responseText?.length ?? 0),
     botId: c.context?.botId ?? null,
     accountId: c.context?.accountId ?? null,
     accountAddress: address === null ? null : address.toLowerCase(),
-    sodexAccountId: accountFromBody(parsedRequest),
-    clOrdIds: verdict.clOrdIds,
+    sodexAccountId: c.requestBody === null ? null : (ACCOUNT_ID.exec(c.requestBody)?.[1] ?? null),
+    clOrdIds: [...new Set([...clOrdIdsOfRequest(c.requestBody), ...verdict.clOrdIds])].map(
+      sanitizeText,
+    ),
     orderIds: verdict.orderIds,
     traceId: c.context?.traceId ?? null,
     connId: null,
@@ -308,22 +269,17 @@ function restRow(c: SodexRestCapture, service: string): SodexCallRow {
   };
 }
 
-/** clOrdID / order ID trong tin push của user stream (`c`, `i`). */
-function idsOfPush(text: string | null): { clOrdIds: string[]; orderIds: string[] } {
+/** clOrdID / order ID trong phần tử tin push (`c`, `i`) đã parse. */
+function idsOfPush(items: readonly unknown[] | null | undefined): {
+  clOrdIds: string[];
+  orderIds: string[];
+} {
   const out = { clOrdIds: [] as string[], orderIds: [] as string[] };
-  if (text === null) return out;
-  let body: unknown;
-  try {
-    body = parseSodexJson(text);
-  } catch {
-    return out;
-  }
-  const data = asRecord(body)?.data;
-  const items = Array.isArray(data) ? data : [data];
-  for (const item of items) {
+  for (const item of items ?? []) {
     const o = asRecord(item);
     if (o === null) continue;
-    if (typeof o.c === "string" && !out.clOrdIds.includes(o.c)) out.clOrdIds.push(o.c);
+    if (typeof o.c === "string" && !out.clOrdIds.includes(o.c))
+      out.clOrdIds.push(sanitizeText(o.c));
     const oid = idString(o.i);
     if (oid !== null && !out.orderIds.includes(oid)) out.orderIds.push(oid);
   }
@@ -334,11 +290,9 @@ function wsRow(c: SodexWsCapture, service: string): SodexCallRow {
   const latencyMs = Math.max(0, Math.round(c.latencyMs));
   const outcome = c.outcome;
   const problem = isProblemCall(outcome, latencyMs);
-  const response = truncate(
-    c.response,
-    problem ? RESPONSE_BODY_LIMIT.problem : RESPONSE_BODY_LIMIT.ok,
-  );
-  const ids = c.event === "MSG" ? idsOfPush(c.response) : { clOrdIds: [], orderIds: [] };
+  const response = cap(c.response, problem ? RESPONSE_BODY_LIMIT.problem : RESPONSE_BODY_LIMIT.ok);
+  const ids = c.event === "MSG" ? idsOfPush(c.items) : { clOrdIds: [], orderIds: [] };
+  const detail = scrubText(c.detail);
   return {
     id: uuidV7At(c.startedAt),
     at: new Date(c.startedAt),
@@ -352,20 +306,20 @@ function wsRow(c: SodexWsCapture, service: string): SodexCallRow {
     outcome,
     httpStatus: null,
     sodexCode: null,
-    sodexError: outcome === SodexCallOutcome.rejected ? c.detail : null,
+    sodexError: outcome === SodexCallOutcome.rejected ? detail : null,
     envelopeCode: null,
     orderCodes: [],
     unreadableReason:
       outcome === SodexCallOutcome.unreadable ? SodexUnreadableReason.invalidJson : null,
-    errorDetail: outcome === SodexCallOutcome.rejected ? null : c.detail,
+    errorDetail: outcome === SodexCallOutcome.rejected ? null : detail,
     latencyMs,
     requestHeaders: [],
     requestBody: redactBody(c.request),
-    requestBodyBytes: bytes(c.request),
+    requestBodyBytes: c.request === null ? null : c.request.length,
     signed: false,
     responseHeaders: [],
     responseBody: redactBody(response.text),
-    responseBodyBytes: bytes(c.response),
+    responseBodyBytes: c.response === null ? null : c.response.length,
     responseTruncated: response.truncated,
     botId: c.context?.botId ?? null,
     accountId: c.context?.accountId ?? null,

@@ -105,6 +105,12 @@ export const sodexCallItemSchema = z.object({
 });
 export type SodexCallItem = z.infer<typeof sodexCallItemSchema>;
 
+/**
+ * Số đếm cạnh nút Outcome bị chặn ở mức này (đếm tối đa `CAP + 1` dòng): UI hiện "1,000+" khi vượt, để đếm không
+ * quét cả 14 ngày (review PR #217 M4).
+ */
+export const SODEX_CALL_COUNT_CAP = 1000;
+
 export const sodexCallCountsSchema = z.object({
   all: z.number().int().nonnegative(),
   errors: z.number().int().nonnegative(),
@@ -113,8 +119,11 @@ export const sodexCallCountsSchema = z.object({
 });
 
 export const sodexCallsPageSchema = pageSchema(sodexCallItemSchema).extend({
-  /** Số lời gọi theo bộ lọc hiện tại (trừ nút Outcome), để hiện cạnh từng nút. */
-  counts: sodexCallCountsSchema,
+  /**
+   * Số lời gọi theo bộ lọc hiện tại (trừ nút Outcome), để hiện cạnh từng nút; tối đa `SODEX_CALL_COUNT_CAP + 1`.
+   * Chỉ có ở trang đầu (không có cursor); trang sau là null.
+   */
+  counts: sodexCallCountsSchema.nullable(),
   /** Thời điểm server đọc (ISO UTC), cho dòng "Updated … UTC". */
   readAt: isoDateTimeSchema,
 });

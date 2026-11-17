@@ -32,7 +32,7 @@ import {
   type Filters,
 } from "../api";
 import {
-  formatCount,
+  formatCappedCount,
   formatMs,
   localTime,
   maskAddress,
@@ -210,7 +210,7 @@ export function SodexDebuggerPage() {
             filters={filters}
             set={set}
             facets={facets.data}
-            counts={first?.counts}
+            counts={first?.counts ?? undefined}
             searchRef={searchRef}
             moreFilters={moreFilters}
             setMoreFilters={setMoreFilters}
@@ -526,7 +526,7 @@ function FilterCard({
               {t(`filters.${SHOW_KEY[s]}`)}
               {counts === undefined ? null : (
                 <span className="ml-1 font-semibold text-muted max-md:hidden">
-                  {formatCount(counts[s])}
+                  {formatCappedCount(counts[s])}
                 </span>
               )}
             </button>
@@ -931,7 +931,10 @@ function CallsCard({
           {t("calls.heading")}{" "}
           {first === undefined ? null : (
             <span className="text-[13px] font-semibold text-muted">
-              {t("calls.meta", { count: formatCount(first.counts.all), range: rangeNoun })}
+              {t("calls.meta", {
+                count: first.counts === null ? "" : formatCappedCount(first.counts.all),
+                range: rangeNoun,
+              })}
             </span>
           )}
         </h2>

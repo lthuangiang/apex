@@ -25,6 +25,7 @@ import {
   blocksWithdrawAndTransfer,
   DRIFT_API_KEY_NAME,
   DRIFT_API_KEY_TTL_MS,
+  newTraceId,
   readDriftApproval,
   REVOKE_API_KEY_ACTION,
   revokeApiKeyRequest,
@@ -33,6 +34,7 @@ import {
   verifyUniversalSignature,
   wireRevokeTypedData,
   wireTypedData,
+  withSodexCallContext,
   type SignedWriteClient,
   type SodexRestClient,
   type RevokeKeyRequest,
@@ -415,25 +417,30 @@ export async function submitSignature(
   }
 
   // Universal cần X-API-Chain; xoá key là action engine (domain spot/futures), gửi DELETE.
-  const result = await deps.writer.write(
-    "engine" in request
-      ? {
-          path: request.path,
-          method: "DELETE",
-          body: request.body,
-          signature: header,
-          nonce: request.nonce,
-          actionType: REVOKE_API_KEY_ACTION,
-        }
-      : {
-          path: request.path,
-          method: "POST",
-          body: request.body,
-          signature: header,
-          nonce: request.nonce,
-          chainId: request.chainId,
-          actionType: request.primaryType,
-        },
+  // SoDEX Debugger: gắn account cho lời gọi (DELETE xoá key không có địa chỉ trong đường dẫn).
+  const result = await withSodexCallContext(
+    { accountId: row.sodexAccountId, traceId: newTraceId() },
+    () =>
+      deps.writer.write(
+        "engine" in request
+          ? {
+              path: request.path,
+              method: "DELETE",
+              body: request.body,
+              signature: header,
+              nonce: request.nonce,
+              actionType: REVOKE_API_KEY_ACTION,
+            }
+          : {
+              path: request.path,
+              method: "POST",
+              body: request.body,
+              signature: header,
+              nonce: request.nonce,
+              chainId: request.chainId,
+              actionType: request.primaryType,
+            },
+      ),
   );
   await audit(deps.db, {
     userId,

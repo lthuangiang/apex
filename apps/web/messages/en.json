@@ -6637,8 +6637,8 @@
       "kindWs": "WS",
       "why": "Why it’s unreadable",
       "unreadable": {
-        "cancelNoClOrdId": "SoDEX answered code 0, but the order result has no clOrdID, so DeskLabs can’t tell which order it is about. The engine treated the cancel as unknown and checked SoDEX before sending anything else.",
-        "orderNoClOrdId": "SoDEX answered code 0, but the order result has no clOrdID, so DeskLabs can’t tell which order it is about. The engine treated the order as unknown and checked SoDEX before sending anything else.",
+        "noClOrdId": "SoDEX answered code 0, but the order result has no clOrdID, so DeskLabs can’t tell which order it is about.",
+        "noClOrdIdEngine": "SoDEX answered code 0, but the order result has no clOrdID, so DeskLabs can’t tell which order it is about. DeskLabs checks the order on SoDEX before sending anything else for it.",
         "invalidJson": "SoDEX answered with something that isn’t JSON, so DeskLabs can’t read the result.",
         "schemaMismatch": "SoDEX answered code 0, but the data doesn’t have the fields DeskLabs expects.",
         "httpError": "SoDEX answered HTTP {status} without a SoDEX error body."

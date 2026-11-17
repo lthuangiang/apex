@@ -1,4 +1,4 @@
-import type { SodexCallDetail, SodexCallItem } from "@drift/shared";
+import { SODEX_CALL_COUNT_CAP, type SodexCallDetail, type SodexCallItem } from "@drift/shared";
 
 // Định dạng của SoDEX Debugger (docs/mockups/sodex-debugger). Hàm thuần, có unit test.
 
@@ -68,6 +68,60 @@ export function formatMs(ms: number): string {
 
 export function formatCount(n: number): string {
   return new Intl.NumberFormat("en-US").format(n);
+}
+
+/** Số đếm của nút Outcome: server đếm tối đa CAP + 1, vượt thì hiện "1,000+". */
+export function formatCappedCount(n: number): string {
+  return n > SODEX_CALL_COUNT_CAP ? `${formatCount(SODEX_CALL_COUNT_CAP)}+` : formatCount(n);
+}
+
+/**
+ * Định dạng JSON (thụt lề 2) mà KHÔNG parse: giữ nguyên từng số (order ID uint64 vượt Number) và vẫn chạy với body bị
+ * cắt. Server lưu body dạng gọn.
+ */
+export function prettyJson(text: string): string {
+  const t = text.trim();
+  if (!(t.startsWith("{") || t.startsWith("["))) return text;
+  let out = "";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  const nl = () => `\n${"  ".repeat(Math.max(depth, 0))}`;
+  for (let i = 0; i < t.length; i += 1) {
+    const ch = t.charAt(i);
+    if (inString) {
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+    } else if (ch === "{" || ch === "[") {
+      const close = ch === "{" ? "}" : "]";
+      let k = i + 1;
+      while (k < t.length && /\s/.test(t.charAt(k))) k += 1;
+      if (t.charAt(k) === close) {
+        out += ch + close;
+        i = k;
+      } else {
+        depth += 1;
+        out += ch + nl();
+      }
+    } else if (ch === "}" || ch === "]") {
+      depth -= 1;
+      out += nl() + ch;
+    } else if (ch === ",") {
+      out += `,${nl()}`;
+    } else if (ch === ":") {
+      out += ": ";
+    } else if (!/\s/.test(ch)) {
+      out += ch;
+    }
+  }
+  return out;
 }
 
 /** Tỷ lệ lỗi từ số đếm thật: "0.34%". `null` khi không có lời gọi. */
@@ -146,7 +200,7 @@ export function buildReport(d: SodexCallDetail, opts: ReportOptions, t: Translat
     lines.push(
       t("headers", { value: headers.map((h) => `${h.name}: ${h.value ?? ""}`).join("; ") }),
     );
-  if (d.requestBody !== null) lines.push(d.requestBody);
+  if (d.requestBody !== null) lines.push(prettyJson(d.requestBody));
 
   lines.push("");
   if (d.httpStatus === null) {
@@ -155,7 +209,7 @@ export function buildReport(d: SodexCallDetail, opts: ReportOptions, t: Translat
   } else {
     lines.push(t("response", { status: d.httpStatus }));
   }
-  if (d.responseBody !== null) lines.push(d.responseBody);
+  if (d.responseBody !== null) lines.push(prettyJson(d.responseBody));
   if (opts.responseHeaders && d.responseHeaders.length > 0) {
     lines.push("");
     lines.push(t("responseHeaders"));

@@ -3,7 +3,14 @@ import type { Address } from "viem";
 import { z } from "zod";
 
 import type { SodexConfig } from "../config";
-import { safeRecord, type SodexCallRecorderLike, type SodexRestCapture } from "../debug/capture";
+import {
+  capBody,
+  envelopeOf,
+  headerRecord,
+  safeRecord,
+  type SodexCallRecorderLike,
+  type SodexRestCapture,
+} from "../debug/capture";
 import { currentSodexCallContext } from "../debug/context";
 import type { RateLimitStore } from "../rate-limit/token-bucket";
 import { IP_REST_BUCKET, ipBucket, klineWeight, RestWeight } from "../rate-limit/weights";
@@ -294,12 +301,19 @@ export class SodexRestClient {
     const startedAt = Date.now();
     const t0 = performance.now();
     const context = currentSodexCallContext();
-    const record = (
-      fields: Pick<
-        SodexRestCapture,
-        "failure" | "errorDetail" | "httpStatus" | "responseHeaders" | "responseText"
-      > & { schemaOk?: boolean },
-    ) => {
+    type Seen = Pick<
+      SodexRestCapture,
+      | "failure"
+      | "errorDetail"
+      | "httpStatus"
+      | "responseHeaders"
+      | "responseText"
+      | "responseLength"
+      | "json"
+      | "envelopeCode"
+      | "envelopeError"
+    > & { schemaOk?: boolean };
+    const record = (fields: Seen) => {
       const latencyMs = performance.now() - t0;
       safeRecord(this.#recorder, () => ({
         kind: "rest",
@@ -315,6 +329,13 @@ export class SodexRestClient {
         ...fields,
       }));
     };
+    const noResponse = {
+      responseText: null,
+      responseLength: null,
+      json: false,
+      envelopeCode: null,
+      envelopeError: null,
+    } as const;
 
     let response: Response;
     try {
@@ -330,7 +351,7 @@ export class SodexRestClient {
         errorDetail: timedOut ? "SoDEX request timed out" : String(error).slice(0, 300),
         httpStatus: null,
         responseHeaders: null,
-        responseText: null,
+        ...noResponse,
       });
       if (timedOut) {
         throw new AppError(ErrorCode.sodexTimeout, "SoDEX request timed out", { path });
@@ -347,23 +368,31 @@ export class SodexRestClient {
         failure: timedOut ? "timeout" : "network",
         errorDetail: String(error).slice(0, 300),
         httpStatus: response.status,
-        responseHeaders: response.headers,
-        responseText: null,
+        responseHeaders: this.#recorder === undefined ? null : headerRecord(response.headers),
+        ...noResponse,
       });
       throw error;
     }
-    const seen = {
-      failure: null,
-      errorDetail: null,
-      httpStatus: response.status,
-      responseHeaders: response.headers,
-      responseText: text,
-    } as const;
+    // Chỉ dựng khi có recorder: cắt body (sao chép nếu dài) và đọc header.
+    const seen = (body: unknown, json: boolean): Seen => {
+      const env = envelopeOf(body);
+      return {
+        failure: null,
+        errorDetail: null,
+        httpStatus: response.status,
+        responseHeaders: this.#recorder === undefined ? null : headerRecord(response.headers),
+        responseText: this.#recorder === undefined ? null : capBody(text),
+        responseLength: text.length,
+        json,
+        envelopeCode: env.code,
+        envelopeError: env.error,
+      };
+    };
     let body: unknown;
     try {
       body = parseSodexJson(text);
     } catch {
-      record(seen);
+      if (this.#recorder !== undefined) record(seen(undefined, false));
       throw new AppError(ErrorCode.sodexUnavailable, "SoDEX returned invalid JSON", {
         path,
         status: response.status,
@@ -372,7 +401,7 @@ export class SodexRestClient {
 
     const failure = errorEnvelopeSchema.safeParse(body);
     if (failure.success) {
-      record(seen);
+      if (this.#recorder !== undefined) record(seen(body, true));
       throw new AppError(ErrorCode.sodexUnavailable, "SoDEX returned an error", {
         path,
         status: response.status,
@@ -381,7 +410,7 @@ export class SodexRestClient {
       });
     }
     if (!response.ok) {
-      record(seen);
+      if (this.#recorder !== undefined) record(seen(body, true));
       throw new AppError(ErrorCode.sodexUnavailable, "SoDEX returned an HTTP error", {
         path,
         status: response.status,
@@ -390,11 +419,11 @@ export class SodexRestClient {
 
     const envelope = successEnvelope(z.unknown()).safeParse(body);
     if (!envelope.success) {
-      record({ ...seen, schemaOk: false });
+      if (this.#recorder !== undefined) record({ ...seen(body, true), schemaOk: false });
       throw schemaMismatch(path, envelope.error);
     }
     const parsed = schema.safeParse(envelope.data.data);
-    record({ ...seen, schemaOk: parsed.success });
+    if (this.#recorder !== undefined) record({ ...seen(body, true), schemaOk: parsed.success });
     if (!parsed.success) {
       throw schemaMismatch(path, parsed.error);
     }

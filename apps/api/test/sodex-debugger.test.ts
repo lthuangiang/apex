@@ -8,10 +8,14 @@ import {
   sodexCallFacetsSchema,
   sodexCallsPageSchema,
   sodexCallSummarySchema,
+  SODEX_CALL_COUNT_CAP,
 } from "@drift/shared";
 import {
+  envelopeOf,
+  parseSodexJson,
   SIGNATURE_REDACTED,
   toSodexCallRow,
+  uuidV7At,
   type SodexRestCapture,
   type SodexWsCapture,
 } from "@drift/sodex";
@@ -56,7 +60,27 @@ beforeAll(async () => {
   );
 
   const now = env.clock.now.getTime();
-  const rest = (over: Partial<SodexRestCapture>): SodexRestCapture => ({
+  // Như client: body response đã parse sẵn → code envelope / kết quả lệnh (debugger không parse lại).
+  const rest = (over: Partial<SodexRestCapture>): SodexRestCapture => {
+    const c = restRaw(over);
+    let body: unknown;
+    let json = c.responseText !== null && c.failure === null;
+    try {
+      body = c.responseText === null ? undefined : parseSodexJson(c.responseText);
+    } catch {
+      json = false;
+    }
+    const env = envelopeOf(body);
+    return {
+      ...c,
+      json,
+      responseLength: c.responseText?.length ?? null,
+      envelopeCode: env.code,
+      envelopeError: env.error,
+      orderResults: c.orderEndpoint === true && Array.isArray(env.data) ? env.data : null,
+    };
+  };
+  const restRaw = (over: Partial<SodexRestCapture>): SodexRestCapture => ({
     kind: "rest",
     startedAt: now - MIN,
     latencyMs: 100,
@@ -74,10 +98,15 @@ beforeAll(async () => {
     failure: null,
     errorDetail: null,
     httpStatus: 200,
-    responseHeaders: new Headers({ "content-type": "application/json" }),
+    responseHeaders: { "content-type": "application/json" },
     responseText:
       '{"code":0,"timestamp":1,"data":[{"code":0,"clOrdID":"drift-b31-l2-a0","orderID":777}]}',
-    orderResults: true,
+    responseLength: null,
+    json: true,
+    envelopeCode: null,
+    envelopeError: null,
+    orderEndpoint: true,
+    orderResults: null,
     context: { botId, accountId, traceId: "trace-place" },
     ...over,
   });
@@ -107,6 +136,7 @@ beforeAll(async () => {
       channel: "accountOrderUpdate",
       response:
         '{"channel":"accountOrderUpdate","data":[{"c":"drift-b31-l2-a0","i":777,"X":"NEW"}]}',
+      items: [{ c: "drift-b31-l2-a0", i: 777, X: "NEW" }],
     },
     rest({}),
     // Huỷ trả kết quả không có clOrdID → unreadable, cùng clOrdID gốc qua origClOrdID.
@@ -142,7 +172,7 @@ beforeAll(async () => {
       responseHeaders: null,
       responseText: null,
       latencyMs: 5000,
-      orderResults: false,
+      orderEndpoint: false,
       context: undefined,
     }),
     rest({
@@ -156,7 +186,7 @@ beforeAll(async () => {
       responseText: '{"code":0,"timestamp":1,"data":[]}',
       schemaOk: true,
       latencyMs: 1500,
-      orderResults: false,
+      orderEndpoint: false,
       context: undefined,
     }),
   ];
@@ -324,17 +354,13 @@ describe("SoDEX Debugger API", () => {
       `select hypertable_name, proc_name, config from timescaledb_information.jobs
        where hypertable_name like 'sodex_calls_%' order by hypertable_name, proc_name`,
     );
+    // Bảng ok (3 ngày) không nén để mọi index dùng được; bảng problem nén sau 2 ngày (review PR #217 M4).
     expect(rows.map((r) => [r.hypertable_name, r.proc_name, r.config])).toEqual([
-      [
-        "sodex_calls_ok",
-        "policy_compression",
-        expect.objectContaining({ compress_after: "1 day" }),
-      ],
       ["sodex_calls_ok", "policy_retention", expect.objectContaining({ drop_after: "3 days" })],
       [
         "sodex_calls_problem",
         "policy_compression",
-        expect.objectContaining({ compress_after: "1 day" }),
+        expect.objectContaining({ compress_after: "2 days" }),
       ],
       [
         "sodex_calls_problem",
@@ -348,4 +374,77 @@ describe("SoDEX Debugger API", () => {
     // Lỗi + chậm (1500 ms, 5000 ms timeout) → bảng 14 ngày.
     expect(split.rows[0]).toEqual({ ok: "4", problem: "4" });
   });
+
+  it("drops only the row Postgres refuses and keeps every other row of the batch", async () => {
+    const now = env.clock.now.getTime();
+    const base = toSodexCallRow(
+      restRawForSink({ startedAt: now - 30 * MIN, failure: "timeout" }),
+      "sink-test",
+    );
+    const ok = toSodexCallRow(restRawForSink({ startedAt: now - 30 * MIN }), "sink-test");
+    const rows = [
+      { ...base, id: uuidV7At(now - 30 * MIN), sodexError: "bad\u0000x" }, // NUL: Postgres từ chối
+      { ...base, id: uuidV7At(now - 30 * MIN + 1), botId: "not-a-uuid" }, // uuid hỏng
+      { ...base, id: uuidV7At(now - 30 * MIN + 2) },
+      { ...ok, id: uuidV7At(now - 30 * MIN + 3) },
+      { ...ok, id: uuidV7At(now - 30 * MIN + 4) },
+    ];
+    const sink = createSodexCallSink(env.container.getConnectionUri());
+    expect(await sink.write(rows)).toEqual({ dropped: 2 });
+    await sink.close();
+    const stored = await list("?service=sink-test");
+    expect(stored.items.map((i) => i.outcome).sort()).toEqual(["ok", "ok", "timeout"]);
+  });
+
+  it("caps the outcome counts at 1,000+ and only counts on the first page", async () => {
+    const now = env.clock.now.getTime();
+    const one = toSodexCallRow(
+      restRawForSink({ startedAt: now - 40 * MIN, failure: "timeout" }),
+      "bulk",
+    );
+    const rows = Array.from({ length: SODEX_CALL_COUNT_CAP + 5 }, (_, i) => ({
+      ...one,
+      id: uuidV7At(now - 40 * MIN + i),
+      at: new Date(now - 40 * MIN + i),
+    }));
+    const sink = createSodexCallSink(env.container.getConnectionUri());
+    await sink.write(rows);
+    await sink.close();
+    const first = await list("?service=bulk&show=timeouts&limit=2");
+    expect(first.counts).toEqual({
+      all: SODEX_CALL_COUNT_CAP + 1,
+      errors: SODEX_CALL_COUNT_CAP + 1,
+      timeouts: SODEX_CALL_COUNT_CAP + 1,
+      slow: SODEX_CALL_COUNT_CAP + 1,
+    });
+    const next = await list(`?service=bulk&show=timeouts&limit=2&cursor=${first.nextCursor ?? ""}`);
+    expect(next.counts).toBeNull();
+    expect(next.items).toHaveLength(2);
+  });
 });
+
+function restRawForSink(over: Partial<SodexRestCapture>): SodexRestCapture {
+  return {
+    kind: "rest",
+    startedAt: Date.now(),
+    latencyMs: over.failure === "timeout" ? 5000 : 100,
+    method: "GET",
+    url: `${BASE}/perps/markets/mark-prices`,
+    requestHeaders: { Accept: "application/json" },
+    requestBody: null,
+    signed: false,
+    actionType: null,
+    failure: null,
+    errorDetail: null,
+    httpStatus: over.failure === "timeout" ? null : 200,
+    responseHeaders: null,
+    responseText: over.failure === "timeout" ? null : '{"code":0,"timestamp":1,"data":[]}',
+    responseLength: null,
+    json: over.failure !== "timeout",
+    envelopeCode: over.failure === "timeout" ? null : 0,
+    envelopeError: null,
+    schemaOk: true,
+    context: undefined,
+    ...over,
+  };
+}

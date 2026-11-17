@@ -101,10 +101,10 @@ CREATE INDEX "sodex_calls_problem_order_ids_idx" ON "sodex_calls_problem" USING 
 -- SoDEX Debugger (DEC-TBD-sodex-debugger): hai hypertable theo thời hạn giữ, nén sau 1 ngày, xoá theo chunk.
 SELECT create_hypertable('sodex_calls_ok', 'at', chunk_time_interval => INTERVAL '6 hours', create_default_indexes => FALSE, if_not_exists => TRUE);--> statement-breakpoint
 SELECT create_hypertable('sodex_calls_problem', 'at', chunk_time_interval => INTERVAL '1 day', create_default_indexes => FALSE, if_not_exists => TRUE);--> statement-breakpoint
-ALTER TABLE "sodex_calls_ok" SET (timescaledb.compress, timescaledb.compress_segmentby = 'endpoint', timescaledb.compress_orderby = 'at DESC, id');--> statement-breakpoint
+-- Bảng ok sống 3 ngày: không nén, để mọi index (bot, account, trace, clOrdID…) dùng được trên cả 3 ngày.
+-- Bảng problem nén sau 2 ngày (review PR #217 M4): 2 ngày gần nhất tìm bằng index; cũ hơn lọc theo segmentby endpoint.
 ALTER TABLE "sodex_calls_problem" SET (timescaledb.compress, timescaledb.compress_segmentby = 'endpoint', timescaledb.compress_orderby = 'at DESC, id');--> statement-breakpoint
-SELECT add_compression_policy('sodex_calls_ok', INTERVAL '1 day', if_not_exists => TRUE);--> statement-breakpoint
-SELECT add_compression_policy('sodex_calls_problem', INTERVAL '1 day', if_not_exists => TRUE);--> statement-breakpoint
+SELECT add_compression_policy('sodex_calls_problem', INTERVAL '2 days', if_not_exists => TRUE);--> statement-breakpoint
 SELECT add_retention_policy('sodex_calls_ok', INTERVAL '3 days', if_not_exists => TRUE);--> statement-breakpoint
 SELECT add_retention_policy('sodex_calls_problem', INTERVAL '14 days', if_not_exists => TRUE);--> statement-breakpoint
 CREATE VIEW "sodex_calls" AS SELECT * FROM "sodex_calls_ok" UNION ALL SELECT * FROM "sodex_calls_problem";

@@ -69,7 +69,7 @@ export function page(items: SodexCallItem[], nextCursor: string | null = null): 
   return {
     items,
     nextCursor,
-    counts: { all: 1284, errors: 612, timeouts: 41, slow: 88 },
+    counts: { all: 1001, errors: 612, timeouts: 41, slow: 88 },
     readAt: "2026-11-17T15:42:10Z",
   };
 }

@@ -96,7 +96,7 @@ describe("SoDEX Debugger page", { timeout: 30_000 }, () => {
     expect(within(table).getByText("order rejected: OrderNotFound")).toBeInTheDocument();
     expect(within(table).getByText("Slow")).toBeInTheDocument();
     expect(within(table).getByText("▲ 1,840 ms")).toBeInTheDocument();
-    expect(screen.getByText(/1,284 stored in the last 24 hours/)).toBeInTheDocument();
+    expect(screen.getByText(/1,000\+ stored in the last 24 hours/)).toBeInTheDocument();
     expect((await screen.findAllByText("182,406")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("0.34%").length).toBeGreaterThan(0);
     expect(screen.getByText("▲ 41")).toBeInTheDocument();

@@ -327,7 +327,15 @@ describe("SoDEX Debugger redaction", () => {
       // Params vẫn được lưu (đúng như đã ký, chỉ định dạng lại).
       expect(row.signed).toBe(true);
       expect(row.actionType).toBe(req.actionType);
-      expect(JSON.parse(row.requestBody ?? "null")).toEqual(JSON.parse(req.body));
+      // Tên key / public key ở endpoint api-keys chỉ giữ 4 ký tự cuối (quy tắc 1.9).
+      const expected = JSON.parse(req.body) as Record<string, unknown>;
+      if (req.path.includes("/api-keys")) {
+        for (const k of ["name", "publicKey"]) {
+          const v = expected[k];
+          if (typeof v === "string") expected[k] = `••${v.slice(-4)}`;
+        }
+      }
+      expect(JSON.parse(row.requestBody ?? "null")).toEqual(expected);
 
       // Không khoá nào trong body là chữ ký / secret.
       const keys = keysOf(JSON.parse(row.requestBody ?? "null")).map((k) => k.toLowerCase());
@@ -387,6 +395,6 @@ describe("SoDEX Debugger redaction", () => {
 
   it("keeps non-JSON bodies only when nothing looks like a key", () => {
     expect(redactBody("<html>bad gateway</html>")).toBe("<html>bad gateway</html>");
-    expect(redactBody(`oops ${"ab".repeat(32)}`)).toBe(REDACTED);
+    expect(redactBody(`oops ${"ab".repeat(32)}`)).toBe(`oops ${REDACTED}`);
   });
 });

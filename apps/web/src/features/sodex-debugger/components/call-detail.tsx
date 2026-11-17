@@ -15,6 +15,7 @@ import {
   localTime,
   maskAddress,
   maskAddressesIn,
+  prettyJson,
   methodLabel,
   utcDateTime,
   utcTime,
@@ -258,9 +259,8 @@ type T = ReturnType<typeof useTranslations<"sodexDebugger.detail">>;
 function unreadableText(d: SodexCallDetail, t: T): string {
   switch (d.unreadableReason) {
     case "order_result_without_cl_ord_id":
-      return d.method === "DELETE"
-        ? t("unreadable.cancelNoClOrdId")
-        : t("unreadable.orderNoClOrdId");
+      // Câu về cách xử lý tiếp chỉ đúng với lệnh của engine (PM chốt, review PR #217 M5).
+      return d.service === "engine" ? t("unreadable.noClOrdIdEngine") : t("unreadable.noClOrdId");
     case "invalid_json":
       return t("unreadable.invalidJson");
     case "schema_mismatch":
@@ -399,7 +399,7 @@ function RequestTab({ d, onCopied }: { d: SodexCallDetail; onCopied: () => void 
         {d.requestBody === null ? (
           <p className="m-0 text-[13px] text-muted">{t("noBody")}</p>
         ) : (
-          <JsonView text={maskAddressesIn(d.requestBody)} label={t("requestBody")} />
+          <JsonView text={prettyJson(maskAddressesIn(d.requestBody))} label={t("requestBody")} />
         )}
       </Fold>
     </>
@@ -438,7 +438,7 @@ function ResponseTab({ d }: { d: SodexCallDetail }) {
         ) : (
           <>
             <JsonView
-              text={maskAddressesIn(d.responseBody)}
+              text={prettyJson(maskAddressesIn(d.responseBody))}
               label={t("responseBody")}
               errMatch={d.sodexSays}
             />

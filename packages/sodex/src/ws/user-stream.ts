@@ -2,7 +2,12 @@ import { randomBytes } from "node:crypto";
 
 import type { Address } from "viem";
 
-import { safeRecord, type SodexCallRecorderLike, type SodexWsEvent } from "../debug/capture";
+import {
+  capBody,
+  safeRecord,
+  type SodexCallRecorderLike,
+  type SodexWsEvent,
+} from "../debug/capture";
 import type { SodexCallContext } from "../debug/context";
 import { parseSodexJson } from "../rest/json";
 
@@ -131,6 +136,7 @@ export class WsUserStream {
       outcome?: "ok" | "rejected" | "timeout" | "network" | "unreadable";
       request?: string | null;
       response?: string | null;
+      items?: readonly unknown[] | null;
       detail?: string | null;
       startedAt?: number;
       latencyMs?: number;
@@ -150,7 +156,8 @@ export class WsUserStream {
       accountAddress: this.#params.user,
       sodexAccountId: this.#params.accountID === undefined ? null : String(this.#params.accountID),
       request: fields.request ?? null,
-      response: fields.response ?? null,
+      response: capBody(fields.response ?? null),
+      items: fields.items ?? null,
       outcome: fields.outcome ?? "ok",
       detail: fields.detail ?? null,
       context: this.#recordContext,
@@ -282,9 +289,11 @@ export class WsUserStream {
     };
     const recordPush = () => {
       if (channel !== wsChannels.accountOrderUpdate && channel !== wsChannels.accountTrade) return;
+      const data: unknown = push.data.data;
       this.#record("MSG", {
         channel,
         response: raw,
+        items: Array.isArray(data) ? data : [data],
         outcome: bad === null ? "ok" : "unreadable",
         detail: bad,
       });
