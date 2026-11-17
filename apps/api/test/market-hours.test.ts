@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  architectureMapSchema,
   Decimal,
   errorResponseSchema,
   marketHoursViewSchema,
@@ -93,6 +94,23 @@ describe("GET /api/v1/admin/market-hours", () => {
     const bad = await client.request("GET", "/api/v1/admin/market-hours?tz=Mars%2FBase");
     expect(bad.statusCode).toBe(400);
     expect(errorOf(bad.body).code).toBe("VALIDATION_FAILED");
+  });
+
+  it("serves the System Architecture Diagram to the team only (401 / 403 for everyone else)", async () => {
+    const anon = new TestClient(env.app);
+    expect((await anon.request("GET", "/api/v1/admin/architecture")).statusCode).toBe(401);
+    const user = new TestClient(env.app);
+    await signIn(env, user, `arch-user-${randomUUID()}@drift.test`);
+    const denied = await user.request("GET", "/api/v1/admin/architecture");
+    expect(denied.statusCode).toBe(403);
+    expect(errorOf(denied.body).code).toBe("FORBIDDEN");
+    // Không lộ chút nội dung nào cho người không thuộc team.
+    expect(denied.body).not.toMatch(/pgbouncer|signer|natsdata/);
+    const { client } = await teamUser();
+    const ok = await client.request("GET", "/api/v1/admin/architecture");
+    expect(ok.statusCode).toBe(200);
+    const map = architectureMapSchema.parse(ok.json());
+    expect(map.nodes.map((n) => n.id)).toContain("signer");
   });
 
   it("groups the hot window by the viewer's local hour, in UTC and in a half-hour zone", async () => {
