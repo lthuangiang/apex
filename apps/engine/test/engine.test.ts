@@ -6463,7 +6463,7 @@ describe("lost fills (DEC-303)", () => {
   });
 });
 
-describe("position check: real SoDEX position vs the bot ledger (DEC-TBD-engine-position-check)", () => {
+describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () => {
   const grid = {
     strategy: "futures_grid",
     market: "BTC-USD",

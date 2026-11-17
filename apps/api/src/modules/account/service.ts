@@ -567,7 +567,7 @@ export async function analystBots(db: Db, userId: string): Promise<AnalystBot[]>
       state: b.state,
       needsAttention: needsAttentionOf(b),
       attentionSince: needsAttentionOf(b) ? b.updatedAt.getTime() : null,
-      // Vị thế thật lệch sổ cái (DEC-TBD-engine-position-check): lãi / lỗ từ sổ cái không đúng (quy tắc 1.8).
+      // Vị thế thật lệch sổ cái (DEC-306): lãi / lỗ từ sổ cái không đúng (quy tắc 1.8).
       netPnl:
         ledger === undefined || hasPositionMismatch(b)
           ? null

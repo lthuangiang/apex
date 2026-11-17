@@ -216,7 +216,7 @@ export const MAKER_BACKFILL_MS = 10_000;
 /** Chỉ đối soát lệnh gửi trong khoảng này (khớp `VM_KEEP_DONE_MS` của chiến lược). */
 const MAKER_BACKFILL_WINDOW_MS = 600_000;
 /**
- * Kiểm tra vị thế thật với sổ cái (DEC-TBD-engine-position-check): mỗi account có bot thật trên Perps đọc account state
+ * Kiểm tra vị thế thật với sổ cái (DEC-306): mỗi account có bot thật trên Perps đọc account state
  * SoDEX MỘT lần mỗi chừng này ms (dùng chung cho Market Making, DEC-100: vị thế thật đưa vào chiến lược bằng
  * `positionSync`).
  */
@@ -529,7 +529,7 @@ interface Runner {
   closeRetry: { since: number; attempts: number; nextAt: number; reasons: Set<string> } | null;
   /**
    * Market Perps mà vị thế thật lệch sổ cái sau khi đã đối soát trade (`bots.position_mismatch`,
-   * DEC-TBD-engine-position-check): `real` cập nhật mỗi lần kiểm tra. Chỉ được gửi lệnh không làm tăng |real|.
+   * DEC-306): `real` cập nhật mỗi lần kiểm tra. Chỉ được gửi lệnh không làm tăng |real|.
    */
   positionMismatch: Map<string, MismatchEntry>;
   /** Đã log "giữ bước vì lệch vị thế" trong đợt lệch này (một lần mỗi đợt). */
@@ -2286,7 +2286,7 @@ export class Engine {
       !accounting && event.type !== "resumed" && r.engines.some((e) => !this.#streamReady(r, e))
         ? await this.#pendingReducing(r)
         : null;
-    // `resumed` bị giữ vì lệch vị thế (DEC-TBD-engine-position-check): sự kiện thị trường kế tiếp chạy lại `resumed` (giá
+    // `resumed` bị giữ vì lệch vị thế (DEC-306): sự kiện thị trường kế tiếp chạy lại `resumed` (giá
     // mới nhất) thay cho chính nó, để chiến lược tự pause dựng lại lệnh khi bước không còn bị giữ.
     if (r.resumeOwed && live && !accounting && event.type !== "resumed") {
       const prices = Object.fromEntries(
@@ -2297,7 +2297,7 @@ export class Engine {
       );
       event = { type: "resumed", at: event.at, prices };
     }
-    // Vị thế thật lệch sổ cái (DEC-TBD-engine-position-check): lệnh giảm đang chờ đọc TRƯỚC bước (như cổng stream).
+    // Vị thế thật lệch sổ cái (DEC-306): lệnh giảm đang chờ đọc TRƯỚC bước (như cổng stream).
     const mismatchReducing =
       !accounting && r.positionMismatch.size > 0
         ? (reducing ?? (await this.#pendingReducing(r)))
@@ -2323,7 +2323,7 @@ export class Engine {
     // Sự kiện thị trường muốn mở / tăng vị thế khi user stream của engine đó chưa subscribe xong: bỏ cả bước (state không
     // đổi), nhịp sau chiến lược quyết lại. Bước chỉ giảm vị thế / đóng / stop vẫn đi (DEC-303).
     if (reducing !== null && this.#opensBeforeStream(r, event, result.actions, reducing)) return;
-    // Lệch vị thế (DEC-TBD-engine-position-check): bước theo thị trường (hoặc `resumed`) có lệnh làm tăng |vị thế thật| bị
+    // Lệch vị thế (DEC-306): bước theo thị trường (hoặc `resumed`) có lệnh làm tăng |vị thế thật| bị
     // bỏ CẢ bước, state không đổi (không bao giờ gửi một phần bước, ví dụ một chân của Funding Arb), nhịp sau chiến lược
     // quyết lại. Không báo gì cho chiến lược (không `orderReject` → không pause, không `orderDone` → không lặp vòng / không
     // lệnh "ma"). Fill / ack và bước chỉ giảm / đóng / stop luôn đi.
@@ -3554,7 +3554,7 @@ export class Engine {
           state: next,
           ...(reason === null ? {} : { reasonCode: reason }),
           ...(planned ? { needsAttention: false } : {}),
-          // Bot đã dừng không còn quản lý vị thế: bỏ cảnh báo lệch vị thế (DEC-TBD-engine-position-check).
+          // Bot đã dừng không còn quản lý vị thế: bỏ cảnh báo lệch vị thế (DEC-306).
           ...(next === BotState.stopped ? { positionMismatch: null } : {}),
         })
         .where(eq(bots.id, r.botId));
@@ -4630,7 +4630,7 @@ export class Engine {
     });
   }
 
-  // ---------- kiểm tra vị thế thật (DEC-TBD-engine-position-check) ----------
+  // ---------- kiểm tra vị thế thật (DEC-306) ----------
 
   /** Market Perps bot giữ vị thế (Funding Arb: chân Perps; Copy Trade: mọi market của bot). Bot chỉ Spot: không có. */
   #perpMarketsOf(strategy: string, market: string, engine: string, config: unknown): string[] {

@@ -533,7 +533,7 @@ export const bots = pgTable(
     /** Người dùng chọn đóng vị thế khi Stop (DEC-81); engine đọc lúc xử lý `stopping`. */
     closeOnStop: boolean("close_on_stop").notNull().default(false),
     /**
-     * Vị thế thật trên SoDEX khác sổ cái của bot sau khi đã đối soát trade (kiểm tra vị thế, DEC-TBD-engine-position-check), theo market Perps:
+     * Vị thế thật trên SoDEX khác sổ cái của bot sau khi đã đối soát trade (kiểm tra vị thế, DEC-306), theo market Perps:
      * `real` / `ledger` lúc phát hiện, `since` (ISO). Có dòng thì bot chỉ được gửi lệnh không làm tăng |vị thế thật| và
      * lãi / lỗ hiện "Not available". null = khớp.
      */

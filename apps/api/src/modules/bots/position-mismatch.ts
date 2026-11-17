@@ -2,7 +2,7 @@ import type { bots } from "@drift/db";
 import { BotState } from "@drift/shared";
 import { sql, type SQL } from "drizzle-orm";
 
-// Vị thế thật trên SoDEX lệch sổ cái của bot (engine ghi `bots.position_mismatch`, DEC-TBD-engine-position-check). Là cờ
+// Vị thế thật trên SoDEX lệch sổ cái của bot (engine ghi `bots.position_mismatch`, DEC-306). Là cờ
 // riêng, không ghi đè `needs_attention`: Needs attention hiện khi một trong hai cờ bật, nên lý do khác (grid ra khỏi range,
 // fill tìm thấy muộn…) không bị tắt nhầm khi vị thế khớp lại, và "Price back in range" không tắt cảnh báo lệch vị thế.
 // Bot đã dừng / archive không còn quản lý vị thế: không tính.

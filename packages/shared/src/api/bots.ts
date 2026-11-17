@@ -376,7 +376,7 @@ export const botDetailSchema = z.object({
       volumeTotal: decimalStringSchema,
       makerSharePct: decimalStringSchema.nullable(),
       volumeTarget: decimalStringSchema.nullable(),
-      /** Vị thế theo sổ cái của bot; null khi vị thế thật lệch sổ cái (DEC-TBD-engine-position-check). */
+      /** Vị thế theo sổ cái của bot; null khi vị thế thật lệch sổ cái (DEC-306). */
       position: decimalStringSchema.nullable(),
     })
     .nullable()

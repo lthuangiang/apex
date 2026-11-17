@@ -640,7 +640,7 @@ export function summary(
     reasonCode: (b.reasonCode as BotSummary["reasonCode"]) ?? null,
     needsAttention: needsAttentionOf(b),
     activeVersion: version,
-    // Vị thế thật trên SoDEX lệch sổ cái của bot (DEC-TBD-engine-position-check): lãi / lỗ tính từ sổ cái không đúng,
+    // Vị thế thật trên SoDEX lệch sổ cái của bot (DEC-306): lãi / lỗ tính từ sổ cái không đúng,
     // hiện "Not available" (quy tắc 1.8) cho tới khi engine thấy khớp lại.
     netPnl: hasPositionMismatch(b) ? null : netOf(state, marks, b.market, b.state),
     ...botCapitalOf(b.strategy, config),
@@ -1567,7 +1567,7 @@ export async function archiveBot(
   userId: string,
   botId: string,
 ): Promise<BotSummary> {
-  // Bot đã dừng không còn quản lý vị thế: không giữ cảnh báo lệch vị thế (DEC-TBD-engine-position-check).
+  // Bot đã dừng không còn quản lý vị thế: không giữ cảnh báo lệch vị thế (DEC-306).
   const b = await command(deps, userId, botId, BotCommand.archive, {
     archivedAt: deps.now(),
     positionMismatch: null,
