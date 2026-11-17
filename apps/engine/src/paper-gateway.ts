@@ -221,9 +221,9 @@ export class PaperGateway implements Gateway {
   }
 
   /** Market Making không chạy paper; vị thế giả đọc từ `paper_accounts` ở API khi cần. */
-  readPosition(account: AccountRef): Promise<{ size: string; entryPrice: string } | null> {
+  readPositions(account: AccountRef): Promise<Map<string, { size: string; entryPrice: string }>> {
     assertPaper(account);
-    return Promise.resolve(null);
+    return Promise.resolve(new Map<string, { size: string; entryPrice: string }>());
   }
 
   setLeverage(account: AccountRef): Promise<LeverageResult> {

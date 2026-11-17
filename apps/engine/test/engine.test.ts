@@ -205,15 +205,16 @@ class FakeGateway implements Gateway {
     const outcome = this.cancelOutcome;
     return Promise.resolve(list.map((o) => ({ clOrdID: o.clOrdID, outcome })));
   }
-  /** Vị thế Perps trên "SoDEX" theo market (readPosition); đếm số lần đọc. */
+  /** Vị thế Perps trên "SoDEX" theo market (readPositions). */
   readonly perpsPositions = new Map<string, { size: string; entryPrice: string }>();
-  positionReads = 0;
-  readPosition(
-    _a: AccountRef,
-    market: string,
-  ): Promise<{ size: string; entryPrice: string } | null> {
-    this.positionReads += 1;
-    return Promise.resolve(this.perpsPositions.get(market) ?? null);
+  /** Account (id trong DB) của mỗi lần đọc account state. */
+  readonly readsBy: string[] = [];
+  /** Giả SoDEX lỗi khi đọc account state (ví dụ hết rate limit). */
+  positionError: Error | null = null;
+  readPositions(a: AccountRef): Promise<Map<string, { size: string; entryPrice: string }>> {
+    this.readsBy.push(a.id);
+    if (this.positionError !== null) return Promise.reject(this.positionError);
+    return Promise.resolve(new Map(this.perpsPositions));
   }
   recentTradesCalls = 0;
   /** Account (id trong DB) của mỗi lần đọc lịch sử khớp. */
@@ -2907,7 +2908,7 @@ describe("engine", () => {
     expect(gw.cancelled).toContain(id);
     expect((await makerState(botId)).orders[id]?.status).toBe("cancelling");
     // Bot duy nhất trên BTC-USD của account: vị thế SoDEX lệch thì ghi nhận lần đầu.
-    expect(gw.positionReads).toBeGreaterThan(0);
+    expect(gw.readsBy).toContain(accountId);
     gw.perpsPositions.set("BTC-USD", { size: "-0.003", entryPrice: "100010" });
     clock += 30_000;
     await e.tick();
@@ -2922,10 +2923,11 @@ describe("engine", () => {
       name: "Grid",
       state: "paused",
     });
-    const reads = gw.positionReads;
+    // Đếm theo account của bot này: bot Perps của test khác (account khác) cũng được kiểm tra vị thế.
+    const reads = gw.readsBy.filter((a) => a === accountId).length;
     clock += 30_000;
     await e.tick();
-    expect(gw.positionReads).toBe(reads);
+    expect(gw.readsBy.filter((a) => a === accountId).length).toBe(reads);
     expect((await makerState(botId)).ledger.position).toBe("0");
     await e.stop();
     await stopMakerBots();
@@ -6359,5 +6361,255 @@ describe("lost fills (DEC-303)", () => {
     expect((await botState(botId))?.needsAttention).toBe(true);
     expect((await botState(botId))?.state).toBe("stopped");
     await e.stop();
+  });
+});
+
+describe("position check: real SoDEX position vs the bot ledger (DEC-TBD-engine-position-check)", () => {
+  const grid = {
+    strategy: "futures_grid",
+    market: "BTC-USD",
+    engine: "perps" as const,
+    config: {
+      market: "BTC-USD",
+      direction: "long",
+      leverage: 2,
+      marginMode: "cross",
+      lowerPrice: "90",
+      upperPrice: "110",
+      gridLevels: 5,
+      spacing: "arithmetic",
+      margin: "250",
+      maxLoss: "100",
+      stopBelow: "80",
+      onStop: "keep_position",
+    },
+  };
+  /** Gateway giả (đếm số lần đọc account state / lịch sử khớp theo account: bot của test khác có thể còn chạy). */
+  class PosGateway extends FakeGateway {}
+  const posEngine = (gw: Gateway, workerId: string, paper?: PaperGateway) =>
+    new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId,
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      ...(paper === undefined ? {} : { paper }),
+    });
+  const eventsOf = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.decision === "Position doesn't match" || x.decision === "Position matches again",
+    );
+  };
+  const ledgerOf = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+    return (rt?.state as { ledger: { position: string } } | undefined)?.ledger.position ?? null;
+  };
+  const step = async (e: RealEngine, ms = 30_000) => {
+    clock += ms;
+    await e.tick();
+  };
+  const finish = async (e: RealEngine, botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    await e.stop();
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+  };
+
+  /** Bot grid Perps đang chạy, lệnh vào 2 BTC đã khớp: sổ cái 2, SoDEX 2. */
+  async function running(gw: PosGateway, id: string) {
+    const { botId, accountId } = await seedBot("running", grid);
+    const e = posEngine(gw, id);
+    await e.tick();
+    await e.onPrice("BTC-USD", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init")?.clOrdID ?? "";
+    clock += 100;
+    await e.onFill(accountId, init, "2", "100", "0", clock);
+    gw.perpsPositions.set("BTC-USD", { size: "2", entryPrice: "100" });
+    expect(await ledgerOf(botId)).toBe("2");
+    const tag = (t: string) => gw.received.find((o) => o.tag === t)?.clOrdID ?? "";
+    return { botId, accountId, e, tag };
+  }
+
+  it("tier 0: a mismatch seen once does nothing", async () => {
+    const gw = new PosGateway();
+    const { botId, accountId, e } = await running(gw, "pos-t0");
+    await step(e);
+    gw.perpsPositions.set("BTC-USD", { size: "2.5", entryPrice: "100" });
+    await step(e);
+    gw.perpsPositions.set("BTC-USD", { size: "2", entryPrice: "100" });
+    for (let i = 0; i < 4; i += 1) await step(e);
+    expect(gw.readsBy.filter((a) => a === accountId).length).toBeGreaterThanOrEqual(5);
+    expect(gw.recentTradesBy).not.toContain(accountId);
+    expect(await eventsOf(botId)).toEqual([]);
+    expect((await botState(botId))?.needsAttention).toBe(false);
+    expect((await botState(botId))?.positionMismatch).toBeNull();
+    await finish(e, botId);
+  });
+
+  it("tier 1: a persistent mismatch reads SoDEX trades once; a lost fill found there fixes it without an alert", async () => {
+    const gw = new PosGateway();
+    const { botId, accountId, e, tag } = await running(gw, "pos-t1");
+    // Lệnh mua ở 95 đã khớp trên SoDEX nhưng tin khớp không tới: SoDEX 3, sổ cái 2.
+    const buy = tag("grid:1:buy");
+    gw.trades.set(buy, [
+      {
+        tradeId: 70_000n + BigInt(Math.floor(Math.random() * 1e9)),
+        price: "95",
+        quantity: "1",
+        fee: "0.02",
+        builderFee: null,
+        isMaker: true,
+        at: clock,
+      },
+    ]);
+    gw.perpsPositions.set("BTC-USD", { size: "3", entryPrice: "98" });
+    await step(e);
+    await step(e);
+    expect(gw.recentTradesBy).not.toContain(accountId);
+    await step(e);
+    expect(gw.recentTradesBy.filter((a) => a === accountId)).toHaveLength(1);
+    expect(await ledgerOf(botId)).toBe("3");
+    await step(e);
+    await step(e);
+    expect(gw.recentTradesBy.filter((a) => a === accountId)).toHaveLength(1);
+    expect(await eventsOf(botId)).toEqual([]);
+    expect((await botState(botId))?.positionMismatch).toBeNull();
+    await finish(e, botId);
+  });
+
+  it("tier 2: alerts once, survives a restart, blocks only orders that add to the real position, and clears after two matching checks", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new PosGateway();
+    const { botId, accountId, e, tag } = await running(gw, "pos-t2");
+    gw.perpsPositions.set("BTC-USD", { size: "5", entryPrice: "100" });
+    await step(e); // bậc 0
+    await step(e); // mới 30 s
+    await step(e); // bậc 1: đọc trade, không có gì
+    expect(gw.recentTradesBy.filter((a) => a === accountId)).toHaveLength(1);
+    expect(await eventsOf(botId)).toEqual([]);
+    await step(e); // bậc 2
+    const alerts = await eventsOf(botId);
+    expect(alerts.map((x) => [x.decision, x.why])).toEqual([
+      [
+        "Position doesn't match",
+        "Your BTC-USD position on SoDEX is 5; the bot tracked 2. The bot only reduces the position until this is fixed. Check Positions on SoDEX.",
+      ],
+    ]);
+    const flagged = await botState(botId);
+    expect(flagged?.needsAttention).toBe(true);
+    expect(flagged?.state).toBe("running");
+    expect(flagged?.positionMismatch?.["BTC-USD"]).toMatchObject({ real: "5", ledger: "2" });
+    await step(e);
+    // Khởi động lại engine: không ghi lại cảnh báo, vẫn chặn.
+    await e.stop();
+    const e2 = posEngine(gw, "pos-t2b");
+    await e2.tick();
+    await step(e2);
+    expect(await eventsOf(botId)).toHaveLength(1);
+
+    // Lệnh bán ở 105 khớp: grid đặt lệnh mua ở 100, làm tăng vị thế long 5 trên SoDEX → không gửi.
+    const sell = tag("grid:3:sell");
+    expect(sell).not.toBe("");
+    const before = gw.received.length;
+    clock += 100;
+    await e2.onFill(accountId, sell, "1", "105", "0", clock);
+    const afterSell = gw.received.slice(before);
+    expect(afterSell.filter((o) => o.side === "buy")).toEqual([]);
+    // Lệnh mua ở 95 khớp: lệnh bán ở 100 chỉ giảm vị thế → được gửi.
+    const buy = tag("grid:1:buy");
+    const mid = gw.received.length;
+    clock += 100;
+    await e2.onFill(accountId, buy, "1", "95", "0", clock);
+    expect(gw.received.slice(mid).some((o) => o.side === "sell" && !o.reduceOnly)).toBe(true);
+    // Không pause (kiểm tra vị thế không bao giờ pause); không có dòng lệnh nào cho lệnh bị chặn.
+    expect((await botState(botId))?.state).toBe("running");
+    const rows = await db.select().from(orders).where(eq(orders.botId, botId));
+    expect(rows.filter((o) => o.side === "buy" && o.price === "100")).toEqual([]);
+
+    // SoDEX khớp lại với sổ cái (2): một lần khớp chưa đủ, hai lần thì bỏ cảnh báo.
+    expect(await ledgerOf(botId)).toBe("2");
+    gw.perpsPositions.set("BTC-USD", { size: "2", entryPrice: "100" });
+    await step(e2);
+    expect(await eventsOf(botId)).toHaveLength(1);
+    await step(e2);
+    const done = await eventsOf(botId);
+    expect(done.map((x) => [x.decision, x.why])).toEqual([
+      alerts.map((x) => [x.decision, x.why])[0],
+      [
+        "Position matches again",
+        "Your BTC-USD position on SoDEX (2) matches the bot again. The bot trades normally.",
+      ],
+    ]);
+    const cleared = await botState(botId);
+    expect(cleared?.positionMismatch).toBeNull();
+    expect(cleared?.needsAttention).toBe(false);
+    // Lại gửi được lệnh làm tăng vị thế: lệnh bán ở 100 khớp, grid đặt lại lệnh mua ở 95.
+    const sell2 = tag("grid:2:sell");
+    const late = gw.received.length;
+    clock += 100;
+    await e2.onFill(accountId, sell2, "1", "100", "0", clock);
+    expect(gw.received.slice(late).some((o) => o.side === "buy")).toBe(true);
+    await finish(e2, botId);
+  });
+
+  it("skips a market with two live bots of the same account, a paper bot, and a failed read", async () => {
+    const { eq } = await import("drizzle-orm");
+    // Hai bot thật cùng account × market (một bot paused): không đọc, không so.
+    const gw = new PosGateway();
+    const { botId, accountId, e } = await running(gw, "pos-two");
+    const [b] = await db.select().from(bots).where(eq(bots.id, botId));
+    await db.insert(bots).values({
+      userId: b?.userId ?? "",
+      sodexAccountId: accountId,
+      strategy: "futures_grid",
+      market: "BTC-USD",
+      engine: "perps",
+      name: "Other",
+      state: "paused",
+    });
+    gw.perpsPositions.set("BTC-USD", { size: "9", entryPrice: "100" });
+    const reads = gw.readsBy.filter((a) => a === accountId).length;
+    for (let i = 0; i < 5; i += 1) await step(e);
+    expect(gw.readsBy.filter((a) => a === accountId).length).toBe(reads);
+    expect(await eventsOf(botId)).toEqual([]);
+    await finish(e, botId);
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.sodexAccountId, accountId));
+
+    // Bot paper: không bao giờ đọc SoDEX.
+    const pgw = new PosGateway();
+    const paper = await seedBot("running", grid);
+    await db.update(bots).set({ mode: "paper" }).where(eq(bots.id, paper.botId));
+    await db.insert(paperAccounts).values({
+      botId: paper.botId,
+      capital: "1000",
+      cash: "1000",
+      positions: {},
+      peakEquity: "1000",
+      startedAt: new Date(clock),
+    });
+    const pe = posEngine(pgw, "pos-paper", new PaperGateway({ db, now }));
+    await pe.tick();
+    await pe.onPrice("BTC-USD", "100", clock);
+    for (let i = 0; i < 5; i += 1) await step(pe);
+    expect(pgw.readsBy).not.toContain(paper.accountId);
+    await finish(pe, paper.botId);
+
+    // Đọc lỗi (hết rate limit): bỏ lượt, không đọc trade, không cảnh báo.
+    const rgw = new PosGateway();
+    const limited = await running(rgw, "pos-rate");
+    rgw.positionError = new Error("SoDEX rate limit reached");
+    rgw.perpsPositions.set("BTC-USD", { size: "7", entryPrice: "100" });
+    for (let i = 0; i < 6; i += 1) await step(limited.e);
+    expect(rgw.readsBy.filter((a) => a === limited.accountId).length).toBeGreaterThanOrEqual(6);
+    expect(rgw.recentTradesBy).not.toContain(limited.accountId);
+    expect(await eventsOf(limited.botId)).toEqual([]);
+    expect((await botState(limited.botId))?.needsAttention).toBe(false);
+    await finish(limited.e, limited.botId);
   });
 });

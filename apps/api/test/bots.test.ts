@@ -806,6 +806,20 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     env.prices.set("vBTC_vUSDC", { price: "110", at: env.clock.now.getTime() });
     // 5 đã chốt + 2 × 10 chưa chốt − 1 phí.
     expect(await net()).toBe("24");
+    // Vị thế thật trên SoDEX lệch sổ cái (engine đã cảnh báo): không hiện lãi / lỗ (quy tắc 1.8); khớp lại thì hiện lại.
+    await env.pool.query("update bots set position_mismatch = $2 where id = $1", [
+      id,
+      JSON.stringify({
+        vBTC_vUSDC: { real: "3", ledger: "2", since: env.clock.now.toISOString() },
+      }),
+    ]);
+    expect(await net()).toBeNull();
+    const listed = botListSchema.parse((await client.request("GET", "/api/v1/bots")).json());
+    const row = listed.items.find((b) => b.id === id);
+    expect(row).toBeDefined();
+    expect(row?.netPnl).toBeNull();
+    await env.pool.query("update bots set position_mismatch = null where id = $1", [id]);
+    expect(await net()).toBe("24");
     const detail = botDetailSchema.parse(
       (await client.request("GET", `/api/v1/bots/${id}`)).json(),
     );

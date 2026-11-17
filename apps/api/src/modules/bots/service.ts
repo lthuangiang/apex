@@ -639,7 +639,12 @@ export function summary(
     reasonCode: (b.reasonCode as BotSummary["reasonCode"]) ?? null,
     needsAttention: b.needsAttention,
     activeVersion: version,
-    netPnl: netOf(state, marks, b.market, b.state),
+    // Vị thế thật trên SoDEX lệch sổ cái của bot (DEC-TBD-engine-position-check): lãi / lỗ tính từ sổ cái không đúng,
+    // hiện "Not available" (quy tắc 1.8) cho tới khi engine thấy khớp lại.
+    netPnl:
+      b.positionMismatch != null && Object.keys(b.positionMismatch).length > 0
+        ? null
+        : netOf(state, marks, b.market, b.state),
     ...botCapitalOf(b.strategy, config),
     marketLabel: marketLabelOf(b.strategy, config),
     fills,
