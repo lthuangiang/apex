@@ -52,6 +52,11 @@ export const MARKET_HOURS_MAX_MISSING_PRICE = 0.2;
 export const MARKET_HOURS_MIN_CUTS = 5;
 /** Hệ số C (real ÷ "incl. shock days") của một phạm vi cần ít nhất chừng này ô (giờ × market) có ≥ 3 bot-hour. */
 export const MARKET_HOURS_CALIBRATION_MIN_HOURS = 3;
+/**
+ * Dòng "Est. CPM (estimate)" gắn "Thin" khi C dựa trên ít hơn chừng này ô (giờ × market), hoặc khi dùng C mặc định
+ * (DEC-297).
+ */
+export const MARKET_HOURS_CALIBRATION_THIN_HOURS = 10;
 /** Cửa sổ đo R, số fill một bot-hour và C (ngày), không theo kỳ 7 / 30 ngày của trang (DEC-293). */
 export const MARKET_HOURS_CALIBRATION_DAYS = 14;
 /**

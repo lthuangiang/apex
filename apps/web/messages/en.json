@@ -6300,7 +6300,7 @@
       "botsTitle": "DeskLabs bots",
       "botsBody": "What real-money bots paid for every $1M they traded in that hour. If only a few bots ran in an hour, its number is marked Thin sample and is less reliable.",
       "note": "Hours are shown in your time zone. These are past numbers, not a forecast.",
-      "cpm": "CPM = cost per $1M of volume (fees plus price loss)."
+      "cpm": "CPM = cost per $1M of volume. Est. CPM is an estimate from market data; Markout cost is measured from bot fills one minute later."
     },
     "calc": {
       "title": "How these numbers are calculated",
@@ -6309,18 +6309,18 @@
       "costTitle": "2 · Cost to make markets",
       "costBody": "Data: public trades on SoDEX. After each trade we look at the price 30 seconds later: if it moved against the side whose order was resting in the book (the maker), that is the cost in bp. Spread is the gap between the best buy and sell price, counted in the smallest price steps (ticks). Both are medians per hour.",
       "botsTitle": "3 · DeskLabs bots",
-      "botsBody": "Data: the real fills of live Market Making and Volume Builder bots; practice bots are left out. Cost per $1M = fees paid minus the price move on each fill one minute later, per $1M of volume, counting only fills that have a price one minute later. It is a markout estimate, not realised profit or loss. A bot-hour is one bot running for one hour, so 3 bots running for an hour is 3 bot-hours. An hour counts for a bot when it placed at least one order in that hour. Fewer than 3 bot-hours is a Thin sample.",
+      "botsBody": "Data: the real fills of live Market Making and Volume Builder bots; practice bots are left out. Markout cost / $1M = fees paid minus the price move on each fill one minute later, per $1M of volume, counting only fills that have a price one minute later. It is a markout estimate, not realised profit or loss. A bot-hour is one bot running for one hour, so 3 bots running for an hour is 3 bot-hours. An hour counts for a bot when it placed at least one order in that hour. Fewer than 3 bot-hours is a Thin sample.",
       "estBody": "Est. CPM uses the same model as the Market Making cost card: fees (SoDEX maker fee plus the default Market Making builder fee) plus the price loss the model expects from 1-minute swings, per $1M of volume. Typical day uses the hour's median swing across days. Incl. shock days works out that cost for every day from that day's own swing and takes the average (mean, not median). On days when the hour's largest 15-minute move was {bp} bp or more (when Market Making cuts a position), it adds one position cut: cut cost in bp × 100 × (one cut's size ÷ one Market Making bot's average volume per hour). These are estimates from market data, not a forecast.",
       "cutMeasured": "Cut cost: taker fee {taker} bp plus {slip} bp average slippage, measured from {n} real position cuts (fill price against the last 1-minute close before the cut).",
       "cutTakerOnly": "Cut cost: taker fee {taker} bp only. There are {n} real position cuts in this period, fewer than the {min} needed to measure slippage.",
       "cutSizeCuts": "One cut's size is {ratio}× the bot's order size, the average of those real cuts ({notional} each). A bot-hour fills {fills}× the order size, so one cut is {pct}% of one bot-hour's volume. Source: {source}.",
       "cutSizeRatio": "One cut's size is {ratio}× the bot's order size: the median, over live Market Making bots in the last 14 days, of the largest position each bot held (from its fills) divided by its order size. A bot-hour fills {fills}× the order size, so one cut is {pct}% of one bot-hour's volume. Source: {source}.",
       "cutNone": "Position cuts not included: no live Market Making bot has volume in the last 14 days to size a cut against. Source: {source}.",
-      "calibrated": "Est. CPM · calibrated = incl. shock days × {factor}: the median, over {hours} hours with 3 or more bot-hours of live Market Making bots in the last 14 days, of real CPM divided by the incl. shock days estimate for that hour. Source: {source}.",
-      "calibratedDefault": "Est. CPM · calibrated = incl. shock days × {factor}. Source: {source}.",
+      "calibrated": "Est. CPM (estimate) = incl. shock days × {factor}: the median, over {hours} hours with 3 or more bot-hours of live Market Making bots in the last 14 days, of the bots' Markout cost / $1M divided by the incl. shock days estimate for that hour. Source: {source}.",
+      "calibratedDefault": "Est. CPM (estimate) = incl. shock days × {factor}. Source: {source}.",
       "since": "Available since {date}.",
       "kept": "Kept for 90 days.",
-      "cpm": "CPM = cost per $1M of volume (fees plus price loss)."
+      "cpm": "CPM = cost per $1M of volume. Est. CPM is an estimate from market data; Markout cost is measured from bot fills one minute later."
     },
     "help": {
       "about": "About {label}",
@@ -6332,10 +6332,10 @@
       "maxMove15": "The furthest the price ran within any 15 minutes starting in this hour during the period. Shocks like this cause most position cuts.",
       "estTypical": "CPM (cost per $1M of volume): model cost on a normal day for this hour, fees plus the price loss expected from the typical 1-minute swing.",
       "estShock": "CPM (cost per $1M of volume): model cost averaged over every day, including days with sharp moves. On days when the price ran 15 bp or more within 15 minutes, it adds the cost of a position cut (taker fee plus slippage), scaled by one cut's size against one bot's volume per hour.",
-      "estCalibrated": "CPM (cost per $1M of volume): the shock-day model scaled by how much real DeskLabs bots actually paid compared with it over the last 14 days. Source: {source}.",
+      "estCalibrated": "Est. CPM (estimate): what an hour like this is expected to cost per $1M of volume, from market data scaled by what real DeskLabs bots paid. Open Model details to see how it is built.",
       "markout": "How far the price moved against the resting (maker) side 30 seconds after public trades on SoDEX. Higher means makers got picked off more.",
       "spread": "Typical gap between the best bid and best ask, in price steps.",
-      "cost": "CPM (cost per $1M of volume): what DeskLabs bots really paid per $1M traded in this hour, fees plus the price move one minute after each fill. Counts only fills with a price one minute later.",
+      "cost": "Markout cost per $1M of volume traded by DeskLabs bots in this hour: fees plus the price move one minute after each fill. It is a 1-minute markout estimate, not realised profit or loss; the Net cost on a bot's page is realised. Counts only fills with a price one minute later.",
       "volume": "Value of all fills by DeskLabs bots in this hour, both buy and sell.",
       "fees": "SoDEX trading fees plus builder fees paid on those fills.",
       "botHours": "One bot active for one hour. An hour counts for a bot when it placed at least one order in it. Fewer than 3 is a thin sample."
@@ -6353,7 +6353,10 @@
     "vol": {
       "title": "1 · Market volatility on SoDEX",
       "sub": "1-minute candles · each cell = that hour on that day, compared with the day’s median",
-      "dataSince": "Data since {date}",
+      "dataSince": "Data since {date} · {n} of {days} days",
+      "summary": "Hottest hours: {ranges} (hot on {min}–{max}% of days)",
+      "summaryOne": "Hottest hours: {ranges} (hot on {pct}% of days)",
+      "hourRange": "{from}–{to}",
       "medianBp": "Median 1-min range (bp)",
       "p90Bp": "p90 1-min range (bp)",
       "ratio": "× day median",
@@ -6378,8 +6381,11 @@
       "s3": "100 or more ▲",
       "estTypical": "Est. CPM · typical day (model)",
       "estShock": "Est. CPM · incl. shock days (model)",
-      "estCalibrated": "Est. CPM · calibrated",
-      "estLegend": "CPM",
+      "estCalibrated": "Est. CPM (estimate)",
+      "estLegend": "Est. CPM",
+      "estThinLegend": "Est. CPM calibrated on fewer than 10 hours with 3+ bot-hours ({n} here), or on the default calibration",
+      "estThinLegendDefault": "Est. CPM calibrated on fewer than 10 hours with 3+ bot-hours, or on the default calibration",
+      "modelDetails": "Model details",
       "estTip": "{hour}:00 · est. {cost} per $1M · median 1-min swing {swing} bp · fees {fees} bp",
       "estShockTip": "{hour}:00 · avg {cost} per $1M · {shock} of {days} days had a 15-min move of {bp} bp or more · cut cost {cut} bp",
       "estCalibratedTip": "{hour}:00 · {cost} per $1M · incl. shock days {shock} × {factor} · {source}",
@@ -6394,7 +6400,7 @@
       }
     },
     "source": {
-      "market": "Calibrated on {market} bots (14 days, {n} hours)",
+      "market": "Calibrated on {market} bots (14 days, {n} bot-hours)",
       "pooled": "No bots on this market: calibrated on all markets ({markets}; 14 days)",
       "pooledThin": "Not enough bot data on this market: calibrated on all markets ({markets}; 14 days)",
       "default": "No bot data yet: default calibration from {date}"
@@ -6417,14 +6423,14 @@
       "spread": "Spread (ticks)"
     },
     "botBlock": {
-      "title": "3 · DeskLabs bots (real money), all users",
+      "title": "3 · DeskLabs bots",
       "sub": "{strategies} · live bots only, practice bots left out",
       "both": "Market Making + Volume Builder",
-      "cost": "CPM",
+      "cost": "Markout cost / $1M",
       "volume": "Volume",
       "fees": "Fees",
       "botHours": "Bot-hours (bots × hours)",
-      "legend": "CPM",
+      "legend": "Markout cost / $1M",
       "c0": "under $120",
       "c1": "$120–170",
       "c2": "$170–230",
@@ -6435,19 +6441,22 @@
       "naLegend": "n/a = Not available",
       "tip": "{hour}:00 · {cost} · {botHours} bot-hours · volume {volume}",
       "tipThin": " · Thin sample",
-      "tipNa": "{hour}:00 · Not available"
+      "tipNa": "{hour}:00 · Not available",
+      "noFills": "No fills",
+      "noFillsShort": "no fills",
+      "tipNoFills": "{hour}:00 · no fills · {botHours} bot-hours"
     },
     "mobile": {
       "ratio": "× day median",
       "hot": "Hot days",
       "markout": "Move vs makers 30 s",
-      "cost": "CPM",
+      "cost": "Markout / $1M",
       "detail": "{from}–{to} · median 1-min range, 5-minute steps",
       "line": "Median {med} bp · p90 {p90} bp · spread {spread} ticks · volume {volume} · {botHours} bot-hours",
       "est": "Est. CPM · typical day",
       "estShock": "Est. CPM · incl. shock days",
       "estShockLine": "{cost} (model) · {shock} of {days} days had a 15-min move of {bp} bp or more",
-      "estCalibrated": "Est. CPM · calibrated",
+      "estCalibrated": "Est. CPM (estimate)",
       "estCalibratedLine": "{cost} · incl. shock days {shock} × {factor} · {source}",
       "maxRange": "Largest 1-min range",
       "maxMove15": "Largest 15-min move",
