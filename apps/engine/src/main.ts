@@ -1,6 +1,6 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
 
-import { apiKeys, createDb } from "@drift/db";
+import { apiKeys, createDb, createSodexCallSink } from "@drift/db";
 import { loadClientTls } from "@drift/runtime";
 import {
   dec,
@@ -11,6 +11,7 @@ import {
   type MmBookMessage,
 } from "@drift/shared";
 import {
+  createSodexCallRecorder,
   loadSodexConfig,
   RedisRateLimitStore,
   SignedWriteClient,
@@ -62,10 +63,19 @@ const sodex = loadSodexConfig(process.env);
 // sau thay vì treo (DEC-308).
 const { db, pool } = createDb(env.DATABASE_URL, { connectionTimeoutMillis: 10_000 });
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
+// SoDEX Debugger (DEC-309): mọi lời gọi SoDEX vào hàng đợi trong bộ nhớ, ghi batch mỗi giây bằng pool
+// DB riêng; không bao giờ chặn đường gửi lệnh.
+const sodexCalls = createSodexCallRecorder({
+  service: "engine",
+  env: process.env,
+  log,
+  sink: () => createSodexCallSink(env.DATABASE_URL),
+});
 const options = {
   config: sodex,
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
+  ...(sodexCalls === undefined ? {} : { recorder: sodexCalls }),
 };
 const rest = new SodexRestClient(options);
 const gateway = new HttpGateway(
@@ -105,6 +115,9 @@ function openStream(account: AccountRef, kind: StreamKind): void {
       engine: kind,
       user: account.address,
       accountID: account.sodexAccountId,
+      ...(sodexCalls === undefined
+        ? {}
+        : { recorder: sodexCalls, recordContext: { accountId: account.id } }),
       callbacks: {
         onOrderUpdate: (updates) => {
           for (const u of updates) {
@@ -342,6 +355,8 @@ async function shutdown() {
   // Dừng engine trước (chặn mọi lệnh mới, chờ các shard đang chạy dở), rồi mới đóng user stream: fill của lệnh vừa gửi
   // vẫn tới qua stream; DB đóng sau cùng (review #216 M2).
   await engine.stop();
+  // SoDEX Debugger: ghi nốt hàng đợi ngay sau khi engine dừng (DEC-309).
+  await sodexCalls?.close();
   for (const pair of streams.values()) {
     pair.spot?.close();
     pair.perps?.close();

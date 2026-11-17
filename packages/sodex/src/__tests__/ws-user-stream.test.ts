@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SodexCallCapture, SodexWsCapture } from "../debug/capture";
 import { parseOrderUpdates, parseTrades } from "../ws/schemas";
 import { WsUserStream, type WebSocketLike, type WsUserStreamCallbacks } from "../ws/user-stream";
 
@@ -39,7 +40,13 @@ class FakeSocket implements WebSocketLike {
   }
 }
 
-function setup(options: { accountID?: bigint; symbols?: string[] } = {}) {
+function setup(
+  options: {
+    accountID?: bigint;
+    symbols?: string[];
+    recorder?: { record(c: SodexCallCapture): void };
+  } = {},
+) {
   const sockets: FakeSocket[] = [];
   const callbacks = {
     onOrderUpdate: vi.fn<WsUserStreamCallbacks["onOrderUpdate"]>(),
@@ -249,5 +256,78 @@ describe("WsUserStream", () => {
     sockets[0]?.emit("close");
     vi.advanceTimersByTime(60_000);
     expect(sockets).toHaveLength(1);
+  });
+});
+
+describe("WsUserStream · SoDEX Debugger", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("records open, subscribe acks, account pushes and closes, but not pong", () => {
+    const captures: SodexWsCapture[] = [];
+    const { stream, sockets } = setup({
+      accountID: 20417n,
+      recorder: {
+        record: (c) => {
+          if (c.kind === "ws") captures.push(c);
+        },
+      },
+    });
+    stream.connect();
+    const ws = sockets[0];
+    if (ws === undefined) throw new Error("no socket");
+    ws.emit("open");
+    vi.advanceTimersByTime(40);
+    ws.emit("message", '{"op":"subscribe","id":1,"success":true}');
+    ws.emit("message", '{"op":"subscribe","id":2,"success":false,"error":"user not found"}');
+    ws.emit("message", '{"op":"pong"}');
+    ws.emit("message", ORDER_UPDATE_EXAMPLE);
+    stream.close();
+
+    expect(captures.map((c) => [c.event, c.channel, c.outcome])).toEqual([
+      ["OPEN", null, "ok"],
+      ["SUB", "accountOrderUpdate", "ok"],
+      ["SUB", "accountTrade", "rejected"],
+      ["CLOSE", null, "ok"],
+      // Kết nối mới sau subscribe bị từ chối chưa mở; tin push của kết nối cũ không còn được xử lý.
+    ]);
+    const sub = captures[1];
+    expect(sub?.latencyMs).toBeGreaterThanOrEqual(40);
+    expect(sub?.request).toContain('"channel":"accountOrderUpdate"');
+    expect(captures[2]?.detail).toBe("user not found");
+    expect(new Set(captures.map((c) => c.connId)).size).toBe(1);
+    expect(captures[0]?.connId).toMatch(/^ws-perps-[0-9a-f]{8}$/);
+    expect(captures[0]?.sodexAccountId).toBe("20417");
+  });
+
+  it("records pushes and marks unreadable messages", () => {
+    const captures: SodexWsCapture[] = [];
+    const { stream, sockets } = setup({
+      recorder: {
+        record: (c) => {
+          if (c.kind === "ws") captures.push(c);
+        },
+      },
+    });
+    stream.connect();
+    const ws = sockets[0];
+    if (ws === undefined) throw new Error("no socket");
+    ws.emit("open");
+    ws.emit("message", ORDER_UPDATE_EXAMPLE);
+    ws.emit("message", TRADE_EXAMPLE);
+    ws.emit("message", "not json");
+    vi.advanceTimersByTime(2001); // không có pong → đóng vì idle
+    expect(captures.map((c) => [c.event, c.channel, c.outcome])).toEqual([
+      ["OPEN", null, "ok"],
+      ["MSG", "accountOrderUpdate", "ok"],
+      ["MSG", "accountTrade", "ok"],
+      ["MSG", null, "unreadable"],
+      ["CLOSE", null, "timeout"],
+    ]);
+    stream.close();
   });
 });

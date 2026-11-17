@@ -1,5 +1,14 @@
+import { randomBytes } from "node:crypto";
+
 import type { Address } from "viem";
 
+import {
+  capBody,
+  safeRecord,
+  type SodexCallRecorderLike,
+  type SodexWsEvent,
+} from "../debug/capture";
+import type { SodexCallContext } from "../debug/context";
 import { parseSodexJson } from "../rest/json";
 
 import { WS_PING_INTERVAL_MS, reconnectDelay } from "./constants";
@@ -57,7 +66,17 @@ export interface WsUserStreamOptions {
   callbacks: WsUserStreamCallbacks;
   createSocket?: WebSocketFactory;
   pingIntervalMs?: number;
+  /**
+   * SoDEX Debugger: vòng đời kết nối, subscribe ack và tin accountOrderUpdate / accountTrade (không ghi ping / pong).
+   * Không chặn, không ném.
+   */
+  recorder?: SodexCallRecorderLike;
+  /** Ngữ cảnh gắn vào mọi sự kiện của stream (account trong DB, bot nếu stream chỉ của một bot). */
+  recordContext?: SodexCallContext;
 }
+
+/** Vì sao kết nối bị đóng (để ghi CLOSE đúng outcome). */
+type DropReason = "server" | "idle" | "rejected" | "error";
 
 const OPEN = 1;
 /** accountOrderUpdate + accountTrade. */
@@ -69,8 +88,16 @@ export class WsUserStream {
   readonly #cb: WsUserStreamCallbacks;
   readonly #createSocket: WebSocketFactory;
   readonly #pingIntervalMs: number;
+  readonly #engine: "spot" | "perps";
+  readonly #recorder: SodexCallRecorderLike | undefined;
+  readonly #recordContext: SodexCallContext | undefined;
 
   #ws: WebSocketLike | null = null;
+  /** Id kết nối hiện tại cho debugger (`ws-perps-3f8a1c2d`). */
+  #connId = "";
+  #openedAt = 0;
+  /** Lúc gửi subscribe theo `id` (để đo thời gian tới ack). */
+  readonly #subSentAt = new Map<number, { at: number; t: number; text: string; channel: string }>();
   #closed = false;
   #started = false;
   #hasConnected = false;
@@ -97,6 +124,44 @@ export class WsUserStream {
     this.#cb = options.callbacks;
     this.#createSocket = options.createSocket ?? ((url) => new WebSocket(url));
     this.#pingIntervalMs = options.pingIntervalMs ?? WS_PING_INTERVAL_MS;
+    this.#engine = options.engine;
+    this.#recorder = options.recorder;
+    this.#recordContext = options.recordContext;
+  }
+
+  #record(
+    event: SodexWsEvent,
+    fields: {
+      channel?: string | null;
+      outcome?: "ok" | "rejected" | "timeout" | "network" | "unreadable";
+      request?: string | null;
+      response?: string | null;
+      items?: readonly unknown[] | null;
+      detail?: string | null;
+      startedAt?: number;
+      latencyMs?: number;
+    },
+  ): void {
+    if (this.#recorder === undefined) return;
+    const connId = this.#connId;
+    safeRecord(this.#recorder, () => ({
+      kind: "ws",
+      startedAt: fields.startedAt ?? Date.now(),
+      latencyMs: fields.latencyMs ?? 0,
+      event,
+      url: this.#url,
+      engine: this.#engine,
+      channel: fields.channel ?? null,
+      connId,
+      accountAddress: this.#params.user,
+      sodexAccountId: this.#params.accountID === undefined ? null : String(this.#params.accountID),
+      request: fields.request ?? null,
+      response: capBody(fields.response ?? null),
+      items: fields.items ?? null,
+      outcome: fields.outcome ?? "ok",
+      detail: fields.detail ?? null,
+      context: this.#recordContext,
+    }));
   }
 
   connect(): void {
@@ -115,6 +180,7 @@ export class WsUserStream {
     this.#clearTimer();
     const ws = this.#ws;
     this.#ws = null;
+    if (ws !== null) this.#record("CLOSE", { detail: "closed by DeskLabs" });
     ws?.close();
   }
 
@@ -122,9 +188,13 @@ export class WsUserStream {
     if (this.#closed) return;
     const ws = this.#createSocket(this.#url);
     this.#ws = ws;
+    this.#connId = `ws-${this.#engine}-${randomBytes(4).toString("hex")}`;
+    this.#openedAt = Date.now();
+    const t0 = performance.now();
 
     ws.addEventListener("open", () => {
       if (this.#ws !== ws) return;
+      this.#record("OPEN", { startedAt: this.#openedAt, latencyMs: performance.now() - t0 });
       const reconnected = this.#hasConnected;
       this.#hasConnected = true;
       this.#acked = 0;
@@ -138,28 +208,43 @@ export class WsUserStream {
       if (typeof event.data === "string") this.#handleMessage(event.data);
     });
     ws.addEventListener("close", () => {
-      this.#drop(ws);
+      this.#drop(ws, "server");
     });
     ws.addEventListener("error", () => {
-      this.#drop(ws);
+      if (this.#ws === ws) this.#record("ERROR", { outcome: "network", detail: "WebSocket error" });
+      this.#drop(ws, "error");
     });
   }
 
   #subscribe(ws: WebSocketLike): void {
-    ws.send(
-      JSON.stringify({
-        op: "subscribe",
-        id: 1,
-        params: { channel: wsChannels.accountOrderUpdate, ...this.#params },
-      }),
-    );
-    ws.send(
-      JSON.stringify({
-        op: "subscribe",
-        id: 2,
-        params: { channel: wsChannels.accountTrade, ...this.#params },
-      }),
-    );
+    this.#subSentAt.clear();
+    const send = (id: number, channel: string) => {
+      const text = JSON.stringify({ op: "subscribe", id, params: { channel, ...this.#params } });
+      if (this.#recorder !== undefined) {
+        this.#subSentAt.set(id, { at: Date.now(), t: performance.now(), text, channel });
+      }
+      ws.send(text);
+    };
+    send(1, wsChannels.accountOrderUpdate);
+    send(2, wsChannels.accountTrade);
+  }
+
+  /** Ghi ack subscribe với thời gian từ lúc gửi. */
+  #recordAck(
+    raw: string,
+    id: number | null | undefined,
+    success: boolean,
+    error: string | null,
+  ): void {
+    const sent = id === null || id === undefined ? undefined : this.#subSentAt.get(id);
+    this.#record("SUB", {
+      channel: sent?.channel ?? null,
+      outcome: success ? "ok" : "rejected",
+      request: sent?.text ?? null,
+      response: raw,
+      detail: success ? null : error,
+      ...(sent === undefined ? {} : { startedAt: sent.at, latencyMs: performance.now() - sent.t }),
+    });
   }
 
   #handleMessage(raw: string): void {
@@ -167,17 +252,21 @@ export class WsUserStream {
     try {
       body = parseSodexJson(raw);
     } catch {
+      this.#record("MSG", { outcome: "unreadable", response: raw, detail: "invalid JSON" });
       this.#cb.onError(new Error("SoDEX WS sent invalid JSON"));
       return;
     }
 
     const ack = wsAckSchema.safeParse(body);
     if (ack.success) {
+      if (ack.data.op === "subscribe") {
+        this.#recordAck(raw, ack.data.id, ack.data.success, ack.data.error ?? null);
+      }
       if (!ack.data.success) {
         this.#cb.onError(new Error(`SoDEX WS ${ack.data.op} rejected: ${ack.data.error ?? ""}`));
         // Subscribe bị từ chối: không ở lại nửa vời (kết nối sống nhờ ping nhưng thiếu kênh). Đóng và kết nối lại theo
         // backoff; backoff chỉ về 0 khi subscribe đủ, nên từ chối lặp lại không thành vòng lặp nhanh.
-        if (ack.data.op === "subscribe" && this.#ws !== null) this.#drop(this.#ws);
+        if (ack.data.op === "subscribe" && this.#ws !== null) this.#drop(this.#ws, "rejected");
       } else if (ack.data.op === "subscribe" && this.#acked < SUBSCRIPTIONS) {
         this.#acked += 1;
         if (this.#acked === SUBSCRIPTIONS) {
@@ -193,8 +282,21 @@ export class WsUserStream {
 
     // Tin hỏng chỉ bỏ riêng tin đó; các tin còn lại trong lô vẫn được xử lý (DEC-118).
     const channel = push.data.channel;
+    let bad: string | null = null;
     const invalid = (e: Error) => {
+      bad ??= e.message;
       this.#cb.onError(new Error(`SoDEX WS ${channel} ${e.message}`));
+    };
+    const recordPush = () => {
+      if (channel !== wsChannels.accountOrderUpdate && channel !== wsChannels.accountTrade) return;
+      const data: unknown = push.data.data;
+      this.#record("MSG", {
+        channel,
+        response: raw,
+        items: Array.isArray(data) ? data : [data],
+        outcome: bad === null ? "ok" : "unreadable",
+        detail: bad,
+      });
     };
     try {
       if (channel === wsChannels.accountOrderUpdate) {
@@ -205,8 +307,10 @@ export class WsUserStream {
         if (items.length > 0) this.#cb.onTrade(items);
       }
     } catch {
+      bad ??= "did not match schema";
       this.#cb.onError(new Error(`SoDEX WS ${channel} did not match schema`));
     }
+    recordPush();
   }
 
   /** Không có message trong N ms → ping; thêm N ms không có gì → reconnect. */
@@ -216,13 +320,20 @@ export class WsUserStream {
       if (this.#ws !== ws) return;
       if (ws.readyState === OPEN) ws.send(JSON.stringify({ op: "ping" }));
       this.#timer = setTimeout(() => {
-        this.#drop(ws);
+        this.#drop(ws, "idle");
       }, this.#pingIntervalMs);
     }, this.#pingIntervalMs);
   }
 
-  #drop(ws: WebSocketLike): void {
+  #drop(ws: WebSocketLike, reason: DropReason): void {
     if (this.#ws !== ws) return;
+    if (reason === "idle") {
+      this.#record("CLOSE", { outcome: "timeout", detail: "no pong from SoDEX: reconnecting" });
+    } else if (reason === "server") {
+      this.#record("CLOSE", { outcome: "network", detail: "closed by SoDEX" });
+    } else if (reason === "rejected") {
+      this.#record("CLOSE", { detail: "closed after a rejected subscribe: reconnecting" });
+    }
     this.#ws = null;
     this.#acked = 0;
     this.#clearTimer();

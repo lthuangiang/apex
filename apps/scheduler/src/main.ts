@@ -1,8 +1,19 @@
-import { builderBalanceSnapshots, createDb, leaderboardRuns, marketStatsDaily } from "@drift/db";
+import {
+  builderBalanceSnapshots,
+  createDb,
+  createSodexCallSink,
+  leaderboardRuns,
+  marketStatsDaily,
+} from "@drift/db";
 import { HyperliquidClient } from "@drift/hyperliquid";
 import { Lease, runAsLeader } from "@drift/runtime";
 import { AppError, ErrorCode } from "@drift/shared";
-import { loadSodexConfig, RedisRateLimitStore, SodexRestClient } from "@drift/sodex";
+import {
+  createSodexCallRecorder,
+  loadSodexConfig,
+  RedisRateLimitStore,
+  SodexRestClient,
+} from "@drift/sodex";
 import { count, eq } from "drizzle-orm";
 import { Redis } from "ioredis";
 import pino from "pino";
@@ -45,6 +56,14 @@ const env = z
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "scheduler" } });
+// SoDEX Debugger (DEC-309): ghi mọi lời gọi SoDEX (hàng đợi trong bộ nhớ, pool DB riêng, không chặn).
+const sodexCalls = createSodexCallRecorder({
+  service: "scheduler",
+  env: process.env,
+  log,
+  sink: () => createSodexCallSink(env.DATABASE_URL),
+});
+const recorder = sodexCalls === undefined ? {} : { recorder: sodexCalls };
 const { db, pool } = createDb(env.DATABASE_URL);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const mcpAlertStore = redisAlertStore(redis);
@@ -65,6 +84,7 @@ async function invariantTick() {
   }
 }
 const rest = new SodexRestClient({
+  ...recorder,
   config: loadSodexConfig(process.env),
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
@@ -72,6 +92,7 @@ const rest = new SodexRestClient({
 });
 // Risk engine và đối soát: mức tương tác (an toàn tiền của người dùng), không bị job thống kê chặn.
 const riskRest = new SodexRestClient({
+  ...recorder,
   config: loadSodexConfig(process.env),
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
@@ -286,6 +307,7 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
 
 async function shutdown() {
   await stopLeader();
+  await sodexCalls?.close();
   await pool.end();
   redis.disconnect();
 }
