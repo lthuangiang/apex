@@ -18,6 +18,7 @@ import { useMe } from "@/lib/queries";
 import { labelKeyOf } from "../field-copy";
 import { FIELDS, fromConfig, isLaunched, toConfig, visible, type FormValues } from "../fields";
 import { applyMmSuggestion, type MmSuggestion } from "../mm-cost";
+import { pendingNoteOf, pendingVersionOf } from "../pending-version";
 
 import { AiPanel, useAiParameters } from "./ai-params";
 import { BetaChip, isBeta } from "./beta-chip";
@@ -50,7 +51,13 @@ export function BotEdit({
   const detail = useQuery({
     queryKey: ["bot", botId],
     queryFn: () => api("GET", `/api/v1/bots/${botId}`, botDetailSchema),
-    refetchInterval: waitingFor === null ? false : 1_000,
+    // Vừa Apply: hỏi mỗi giây. Version còn chờ từ server (Volume Farm chờ lượt đang mở đóng): mỗi 5 s.
+    refetchInterval: (q) =>
+      waitingFor !== null
+        ? 1_000
+        : q.state.data !== undefined && pendingVersionOf(q.state.data.versions) !== undefined
+          ? 5_000
+          : false,
   });
   const errorText = useBotErrorText();
   const [values, setValues] = useState<FormValues | null>(null);
@@ -60,9 +67,14 @@ export function BotEdit({
 
   const bot = detail.data?.bot;
   const active = detail.data?.versions.find((v) => v.status === "active");
+  // Version còn chờ áp (DEC-304): form dựng trên nó, không trên version active, để lần sửa sau không
+  // làm mất thay đổi đang chờ; "Applying v{n}…" lấy từ server nên còn sau khi tải lại trang (quy tắc 1.6).
+  const pendingV = detail.data === undefined ? undefined : pendingVersionOf(detail.data.versions);
+  const basis = pendingV ?? active;
+  const waiting = waitingFor ?? pendingV?.version ?? null;
   const strategy = bot !== undefined && isLaunched(bot.strategy) ? bot.strategy : undefined;
   const base =
-    strategy !== undefined && active !== undefined ? fromConfig(strategy, active.config) : null;
+    strategy !== undefined && basis !== undefined ? fromConfig(strategy, basis.config) : null;
   // Bản nháp từ Claude (`?draft=`, DEC-223): chỉ điền sẵn form; Apply vẫn qua hộp xác nhận như thường.
   const claude = useClaudeDraft(draftId);
   const from =
@@ -85,7 +97,8 @@ export function BotEdit({
     if (archived) router.replace(`/agent/${botId}`);
   }, [archived, botId, router]);
 
-  const live = waitingFor !== null && active !== undefined && active.version >= waitingFor;
+  const live = waiting !== null && active !== undefined && active.version >= waiting;
+  const note = bot === undefined ? null : pendingNoteOf(bot.strategy, bot.state);
   const apply = useMutation({
     mutationFn: () => {
       if (strategy === undefined || values === null) throw new Error("not ready");
@@ -139,7 +152,7 @@ export function BotEdit({
   const next = Math.max(...(detail.data?.versions.map((v) => v.version) ?? [active.version])) + 1;
   // So với config đang lưu thật (DEC-135), không so với form đã điền mặc định: config cũ thiếu field mới (ví dụ
   // `quoteLevel`) thì hiện "— → 0" và lưu được, thay vì bị coi là không có thay đổi.
-  const stored = active.config;
+  const stored = (basis ?? active).config;
   const before = Object.fromEntries(
     FIELDS[strategy].filter((f) => visible(f, values)).map((f) => [f.key, stored[f.key]]),
   );
@@ -179,7 +192,7 @@ export function BotEdit({
               values={values}
               errors={fieldErrorsOf(apply.error, tf("errors.fieldRequired"))}
               lockedReason={t("lockedHint")}
-              disabled={waitingFor !== null && !live}
+              disabled={waiting !== null && !live}
               onChange={setValues}
               sources={aiInfo.sources}
             />
@@ -226,14 +239,21 @@ export function BotEdit({
               </ul>
             )}
             <h3 className="m-0 text-sm font-bold">{t("whatHappens")}</h3>
-            <p className="m-0 text-sm text-ink-2">{t("applyEffect")}</p>
+            <p className="m-0 text-sm text-ink-2">
+              {/* Volume Farm chờ lượt đang mở đóng rồi mới áp (DEC-304). */}
+              {strategy === "volume_farm" ? t("applyEffectFarm") : t("applyEffect")}
+            </p>
             <div role="status" aria-live="polite">
-              {waitingFor === null ? null : live ? (
-                <strong>{t("live", { next: waitingFor })}</strong>
+              {waiting === null ? null : live ? (
+                <strong>{t("live", { next: waiting })}</strong>
               ) : (
-                <span>{t("applying", { next: waitingFor })}</span>
+                <span>{t("applying", { next: waiting })}</span>
               )}
             </div>
+            {/* Vì sao version còn chờ: Volume Farm chờ lượt đang mở đóng; bot pause thì chờ Resume (DEC-304). */}
+            {waiting === null || live || note === null ? null : (
+              <p className="m-0 text-sm text-ink-2">{t(note, { next: waiting })}</p>
+            )}
             {apply.error === null ? null : (
               <p role="alert" className="m-0 text-sm text-neg-ink">
                 {errorText(apply.error)}
@@ -250,7 +270,7 @@ export function BotEdit({
                 {t("discard")}
               </Button>
               <Button
-                disabled={changes.length === 0 || (waitingFor !== null && !live)}
+                disabled={changes.length === 0 || (waiting !== null && !live)}
                 onClick={() => {
                   if (live) setWaitingFor(null);
                   setConfirm(true);
@@ -279,7 +299,7 @@ export function BotEdit({
               (f) =>
                 `${label(f.key)}: ${JSON.stringify(before[f.key] ?? "")} → ${JSON.stringify(after[f.key] ?? "")}`,
             ),
-            t("applyEffect"),
+            strategy === "volume_farm" ? t("applyEffectFarm") : t("applyEffect"),
           ]}
           confirmLabel={t("dialog.apply", { next })}
           cancelLabel={t("dialog.keep", { version: active.version })}

@@ -2807,6 +2807,104 @@ describe("engine", () => {
     expect((await botState(botId))?.state).toBe("paused");
   });
 
+  // ---------- Volume Farm: version mới khi đang có lượt mở (DEC-304) ----------
+
+  it("waits to apply a Volume Farm version until the open trade closes, never cancelling its stop on SoDEX", async () => {
+    // Prod 2026-11-17: lệnh vào khớp, stop gốc đặt; người dùng sửa bot → "Applied v2 — Cancelled 1 orders" huỷ stop
+    // và v2 quên vị thế. Nay v2 chờ tới khi lượt đóng.
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    await seedCandles("ETH-USD");
+    const { botId, accountId } = await seedFarm("ETH-USD");
+    let e = farmEngine(gw, "vf-version");
+    const vf = () => gw.received.filter((o) => o.market === "ETH-USD" && o.tag.startsWith("vf:"));
+    await tickUntil(e, () => vf().length > 0);
+    const entry = vf()[0];
+    if (entry === undefined) throw new Error("expected an entry");
+    await e.onFill(accountId, entry.clOrdID, entry.quantity, "100", "0.01", clock);
+    const stop = vf().find((o) => o.stop !== undefined);
+    expect(stop).toMatchObject({ reduceOnly: true, side: entry.side === "buy" ? "sell" : "buy" });
+    await db.insert(botVersions).values({
+      botId,
+      version: 2,
+      paramSource: "manual",
+      status: "pending",
+      config: { ...farmConfig("ETH-USD"), allowTaker: true },
+    });
+    const statuses = async () =>
+      (await db.select().from(botVersions).where(eq(botVersions.botId, botId)))
+        .map((v) => `${String(v.version)}:${v.status}`)
+        .sort();
+    const events = async () =>
+      (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).map((x) => x.decision);
+    const runtime = async () =>
+      (await db.select().from(botRuntime).where(eq(botRuntime.botId, botId)))[0]?.state as {
+        phase: string;
+        ledger: { position: string };
+      };
+    clock += 1_000;
+    await e.tick();
+    await e.tick();
+    // Còn vị thế: v2 chờ, không huỷ lệnh nào (stop trên SoDEX còn nguyên), sổ cái giữ vị thế.
+    expect(await statuses()).toEqual(["1:active", "2:pending"]);
+    expect(gw.cancelled).not.toContain(stop?.clOrdID);
+    expect((await events()).filter((d) => d === "Applying v2")).toHaveLength(1);
+    expect(Number((await runtime()).ledger.position)).not.toBe(0);
+    // Engine nạp lại bot (khởi động lại / đổi shard): không ghi lại "Applying v2".
+    await e.stop();
+    e = farmEngine(gw, "vf-version");
+    await e.tick();
+    expect((await events()).filter((d) => d === "Applying v2")).toHaveLength(1);
+    // Hết thời gian giữ: v1 thoát bằng lệnh reduce-only.
+    clock += 200_000;
+    await tickUntil(e, () => vf().some((o) => o.reduceOnly && o.stop === undefined));
+    const exit = vf().find((o) => o.reduceOnly && o.stop === undefined);
+    if (exit === undefined) throw new Error("expected an exit");
+    expect(await statuses()).toEqual(["1:active", "2:pending"]);
+    await e.onFill(accountId, exit.clOrdID, exit.quantity, "100", "0.01", clock);
+    expect((await runtime()).phase).toBe("idle");
+    clock += 1_000;
+    await e.tick();
+    // Phẳng: v2 được áp.
+    expect(await statuses()).toEqual(["1:superseded", "2:active"]);
+    expect(await events()).toContain("Applied v2");
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("marks a Volume Farm version still waiting as superseded when the bot stops (DEC-304)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    await seedCandles("DOT-USD");
+    const { botId, accountId } = await seedFarm("DOT-USD");
+    const e = farmEngine(gw, "vf-version-stop");
+    const vf = () => gw.received.filter((o) => o.market === "DOT-USD" && o.tag.startsWith("vf:"));
+    await tickUntil(e, () => vf().length > 0);
+    const entry = vf()[0];
+    if (entry === undefined) throw new Error("expected an entry");
+    await e.onFill(accountId, entry.clOrdID, entry.quantity, "100", "0.01", clock);
+    await db.insert(botVersions).values({
+      botId,
+      version: 2,
+      paramSource: "manual",
+      status: "pending",
+      config: { ...farmConfig("DOT-USD"), allowTaker: true },
+    });
+    clock += 1_000;
+    await e.tick();
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    for (let i = 0; i < 10 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 3_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    const statuses = (await db.select().from(botVersions).where(eq(botVersions.botId, botId)))
+      .map((v) => `${String(v.version)}:${v.status}`)
+      .sort();
+    expect(statuses).toEqual(["1:active", "2:superseded"]);
+    await e.stop();
+  });
+
   // ---------- Market Making: đối soát fill + vị thế (DEC-100) ----------
 
   const makerConfig = {

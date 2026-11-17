@@ -1576,6 +1576,24 @@ export async function archiveBot(
 }
 
 /**
+ * Config của version `pending` mới nhất (đang chờ engine áp; Volume Farm chờ tới khi lượt đang mở đóng,
+ * DEC-304). Version kế tiếp (Edit, Review this run, AI Desk) dựng từ đây để không làm mất thay đổi
+ * đang chờ; không có thì dùng version active.
+ */
+export async function newestPendingConfig(
+  db: BotDeps["db"],
+  botId: string,
+): Promise<Record<string, unknown> | undefined> {
+  const [row] = await db
+    .select({ config: botVersions.config })
+    .from(botVersions)
+    .where(and(eq(botVersions.botId, botId), eq(botVersions.status, "pending")))
+    .orderBy(desc(botVersions.version))
+    .limit(1);
+  return row?.config as Record<string, unknown> | undefined;
+}
+
+/**
  * Chạy lại bot đã dừng (DEC-86): tạo version mới cùng cấu hình trong chính bot đó. Version mới cho clOrdID mới
  * (clOrdID theo version, không trùng lệnh của lần chạy trước) và state mới; fill và Decisions cũ vẫn giữ.
  */
@@ -1588,10 +1606,11 @@ async function newRunVersion(deps: BotDeps, botId: string): Promise<void> {
       .orderBy(desc(botVersions.version))
       .limit(1);
     if (last === undefined) throw new AppError(ErrorCode.botNotFound, "Bot not found.");
+    // Cả version còn `pending` lúc bot dừng (DEC-304): lần chạy mới dùng config mới nhất (`last`).
     await tx
       .update(botVersions)
       .set({ status: "superseded" })
-      .where(and(eq(botVersions.botId, botId), eq(botVersions.status, "active")));
+      .where(and(eq(botVersions.botId, botId), inArray(botVersions.status, ["active", "pending"])));
     const [next] = await tx
       .insert(botVersions)
       .values({
