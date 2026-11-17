@@ -5,6 +5,22 @@ import { SODEX_BASE_FEE_PCT } from "../fees";
 
 export const RECO_INPUTS_VERSION = "reco-2";
 
+/** Recurring Buy mặc định của engine đề xuất. Tách riêng vì web cần `buys` (đổi vốn ↔ số tiền mỗi lần mua). */
+export const RECO_RECURRING = { buys: 20, dayOfWeek: 1, time: "09:00" } as const;
+
+/**
+ * Goal check của AI Desk (AI_DESK_RECOMMENDED.md mục 3.1, DEC-105, chờ duyệt): % năm ≤ reasonableMaxPct là mục tiêu
+ * vừa phải, ≤ ambitiousMaxPct là rất tham vọng, trên nữa là không thực tế. `examplePcts`: mức % năm để quy ra vốn cần,
+ * luôn ghi "Examples, not forecasts". Không bao giờ truyền vào `recommend()`. Tách riêng vì web gọi `goalCheck`.
+ */
+export const RECO_GOAL_CHECK = {
+  reasonableMaxPct: "20",
+  ambitiousMaxPct: "100",
+  examplePcts: ["10", "20"],
+} as const;
+
+// `RECO_CONFIG` chỉ dùng ở server (engine đề xuất); web không import nó (eslint `no-restricted-imports`), để
+// ngưỡng của engine không nằm trong bundle trình duyệt. Web chỉ dùng `RECO_RECURRING` và `RECO_GOAL_CHECK`.
 export const RECO_CONFIG = {
   /** < số vị thế đã đóng này thì coi là người mới, bỏ qua mọi quy tắc dựa trên lịch sử. */
   newTraderMaxClosed: 30,
@@ -54,7 +70,7 @@ export const RECO_CONFIG = {
     tpFeeMultiple: 7,
     stopBufferPct: "2",
   },
-  recurring: { buys: 20, dayOfWeek: 1, time: "09:00" },
+  recurring: RECO_RECURRING,
   rebalancing: {
     stableMinPct: 20,
     thresholdLowPct: "5",
@@ -70,10 +86,5 @@ export const RECO_CONFIG = {
    */
   baseMakerFeePct: { spot: SODEX_BASE_FEE_PCT.spot.maker, perps: SODEX_BASE_FEE_PCT.perps.maker },
   stablecoins: ["USDC", "USDT", "vUSDC", "vUSDT"],
-  /**
-   * Goal check của AI Desk (AI_DESK_RECOMMENDED.md mục 3.1, DEC-105, chờ duyệt): % năm ≤ reasonableMaxPct là mục tiêu
-   * vừa phải, ≤ ambitiousMaxPct là rất tham vọng, trên nữa là không thực tế. `examplePcts`: mức % năm để quy ra vốn cần,
-   * luôn ghi "Examples, not forecasts". Không bao giờ truyền vào `recommend()`.
-   */
-  goalCheck: { reasonableMaxPct: "20", ambitiousMaxPct: "100", examplePcts: ["10", "20"] },
+  goalCheck: RECO_GOAL_CHECK,
 } as const;

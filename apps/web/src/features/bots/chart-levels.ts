@@ -1,5 +1,5 @@
 import { dec, Decimal, type Strategy } from "@drift/shared";
-import { safetyOffsetPct } from "@drift/strategies";
+import { safetyOffsetPct } from "@drift/strategies/client";
 
 import type { FormValues } from "./fields";
 import { num } from "./preview";

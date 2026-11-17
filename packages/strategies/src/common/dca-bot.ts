@@ -12,6 +12,7 @@ import type {
   StrategyModule,
 } from "../core/types";
 
+import { safetyOffsetPct } from "./dca-math";
 import {
   entryReady,
   waitingCondition,
@@ -23,6 +24,8 @@ import {
 // Lõi DCA dùng chung cho S3 Spot DCA và S4 Futures DCA (STRATEGIES.md).
 // Mỗi chu kỳ: base order (market) → các safety order limit theo khoảng cách d₁·(1+m+…+m^(k−1)) và
 // khối lượng safety·v^(k−1) → lệnh take profit tại giá TB·(1 ± TP%), đặt lại sau mỗi safety khớp.
+
+export { safetyOffsetPct };
 
 export interface DcaBotConfig {
   market: string;
@@ -169,16 +172,6 @@ function gateOpen(
 /** Thông tin "Waiting for price" cho UI; chỉ khi bot đang chờ vào Cycle. */
 export function dcaWaiting(c: DcaBotConfig, s: DcaBotState): WaitingInfo | null {
   return s.phase === "idle" || s.phase === "waiting_entry" ? dcaGate(c, s) : null;
-}
-
-/** % khoảng cách luỹ kế tới safety thứ k (1-based). */
-export function safetyOffsetPct(
-  c: Pick<DcaBotConfig, "firstStepPct" | "stepMultiplier">,
-  k: number,
-): Decimal {
-  let total = new Decimal(0);
-  for (let i = 0; i < k; i += 1) total = total.add(dec(c.stepMultiplier).pow(i));
-  return dec(c.firstStepPct).mul(total);
 }
 
 const entrySide = (c: DcaBotConfig) => (c.direction === "long" ? "buy" : "sell");

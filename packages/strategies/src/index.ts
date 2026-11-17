@@ -21,7 +21,7 @@ import { twapSchema } from "./twap/schema";
 export * from "./core";
 export * from "./sim";
 export * from "./paper";
-export { safetyOffsetPct } from "./common/dca-bot";
+export { safetyOffsetPct } from "./common/dca-math";
 export { entryReady, type EntryCondition, type NextCycle, type WaitingInfo } from "./common/entry";
 export { gridPrices, stepCoversFees } from "./common/grid";
 export { gridStopLimits, leverageCapIssue, perpsStopMaxPct } from "./common/perps";
@@ -39,6 +39,7 @@ export {
   twapSchema,
 };
 
+export { STRATEGY_SCHEMAS } from "./schemas";
 export { STRATEGIES, waitingOf, type LaunchedStrategy, type StrategyEntry } from "./registry";
 export * from "./backtest";
 export { fundingArb, futuresDca, futuresGrid, rebalancing, recurringBuy, spotDca, spotGrid, twap };

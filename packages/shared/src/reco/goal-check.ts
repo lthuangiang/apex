@@ -1,6 +1,6 @@
 import { Decimal, dec, type DecimalInput } from "../money";
 
-import { RECO_CONFIG } from "./config";
+import { RECO_GOAL_CHECK } from "./config";
 
 // Goal check của AI Desk (AI_DESK_RECOMMENDED.md mục 3.1): quy mục tiêu "mỗi ngày X USDC" ra % năm để khách tự thấy
 // nó cao hay thấp. Chỉ là phép chia, không dự báo, không lãi kép, không ảnh hưởng `recommend()`.
@@ -11,7 +11,7 @@ export interface GoalCheck {
   /** % mỗi năm = mỗi ngày × 365 ÷ vốn × 100. */
   annualPct: string;
   band: GoalBand;
-  /** Vốn cần để đạt mục tiêu ở từng mức % năm ví dụ (`RECO_CONFIG.goalCheck.examplePcts`). */
+  /** Vốn cần để đạt mục tiêu ở từng mức % năm ví dụ (`RECO_GOAL_CHECK.examplePcts`). */
   examples: { annualPct: string; capital: string }[];
 }
 
@@ -26,7 +26,7 @@ export function goalCheck(daily: DecimalInput, capital: DecimalInput): GoalCheck
     return null;
   }
   if (!d.gt(0) || !c.gt(0)) return null;
-  const C = RECO_CONFIG.goalCheck;
+  const C = RECO_GOAL_CHECK;
   const yearly = d.mul(365);
   const pct = yearly.div(c).mul(100);
   const band: GoalBand = pct.lte(C.reasonableMaxPct)

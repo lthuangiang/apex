@@ -1,4 +1,4 @@
-import { twapSchema } from "@drift/strategies";
+import { twapSchema } from "@drift/strategies/client";
 import { describe, expect, it } from "vitest";
 
 import { emptyValues, fromConfig, toConfig } from "../fields";

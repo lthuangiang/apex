@@ -1,7 +1,7 @@
 "use client";
 
 import { startChecksSchema, type StartChecks } from "@drift/shared";
-import { STRATEGIES } from "@drift/strategies";
+import { STRATEGY_SCHEMAS } from "@drift/strategies/client";
 import { ChecklistRow } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
@@ -35,7 +35,7 @@ function useDebounced<T>(value: T, ms: number): T {
 
 export function useDryRunChecks(strategy: Strategy, values: FormValues) {
   const config = toConfig(strategy, values);
-  const parsed = STRATEGIES[strategy].schema.safeParse(config);
+  const parsed = STRATEGY_SCHEMAS[strategy].safeParse(config);
   const valid = parsed.success;
   // Field còn thiếu / sai (key đầu của path), để form nói rõ cần điền ô nào thay vì "complete the settings".
   const invalidKeys = parsed.success
