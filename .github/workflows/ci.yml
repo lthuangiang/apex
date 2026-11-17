@@ -92,6 +92,8 @@ jobs:
           key: turbo-build-${{ github.sha }}
           restore-keys: turbo-build-
       - run: pnpm build
+      # Chunk tĩnh của web ai cũng tải được: fail nếu logic bước của chiến lược / ngưỡng engine đề xuất lọt vào.
+      - run: pnpm --filter @drift/web check:bundle
 
   compose:
     runs-on: ubuntu-latest

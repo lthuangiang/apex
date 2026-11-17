@@ -1,6 +1,6 @@
 import { dec, Decimal, mul, Strategy, sum } from "@drift/shared";
 
-import { safetyOffsetPct } from "./common/dca-bot";
+import { safetyOffsetPct } from "./common/dca-math";
 import { gridPrices } from "./common/grid";
 import { meetsMinimum, roundQty } from "./core/rounding";
 import type { MarketRules } from "./core/types";

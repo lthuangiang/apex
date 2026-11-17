@@ -13,13 +13,14 @@ import type {
 } from "../core/types";
 import { nextRun } from "../recurring-buy/schedule";
 
+import { REBALANCE_CHECK_MS } from "./constants";
 import type { RebalancingConfig } from "./schema";
 
 // S6 Rebalancing (STRATEGIES.md, DEC-36): lúc start mua từng tài sản tới tỷ trọng mục tiêu; `timer`
 // mỗi 5 phút tính lại tỷ trọng theo giá quote. Lệnh limit IOC tại ask (mua) / bid (bán) ± 0,3%; tổng các lệnh của một
 // lần rebalance không quá maxTradePct giá trị danh mục. Khi dừng, tài sản giữ nguyên.
 
-export const REBALANCE_CHECK_MS = 5 * 60_000;
+export { REBALANCE_CHECK_MS };
 /** Lô lệnh chờ quá lâu mà không có `orderDone` (tin mất) thì coi như xong với phần đã khớp (P0.1). */
 export const REBAL_PENDING_TIMEOUT_MS = 60_000;
 /**
