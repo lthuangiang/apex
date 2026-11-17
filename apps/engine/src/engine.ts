@@ -345,7 +345,7 @@ const pushTo = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
 };
 
 /**
- * Số shard chạy cùng lúc (DEC-TBD-engine-sodex-latency). Mỗi shard vẫn chạy các bước của mình tuần tự; một shard chờ
+ * Số shard chạy cùng lúc (DEC-308). Mỗi shard vẫn chạy các bước của mình tuần tự; một shard chờ
  * SoDEX chậm không làm các shard khác chờ theo. Giới hạn để không dồn quá nhiều kết nối DB / lời gọi SoDEX một lúc.
  */
 export const SHARD_CONCURRENCY = 4;
@@ -356,7 +356,7 @@ export const SHARD_CONCURRENCY = 4;
 export const ACCOUNT_CONCURRENCY = 4;
 /**
  * User stream của account còn mở chừng này sau khi runner cuối của account bị bỏ (Stop xong), để tin khớp của lệnh đóng
- * (market IOC) gửi ngay trước đó vẫn tới qua stream (DEC-TBD-engine-sodex-latency). Sau đó stream còn mở khi account còn
+ * (market IOC) gửi ngay trước đó vẫn tới qua stream (DEC-308). Sau đó stream còn mở khi account còn
  * lệnh bot thật đang mở / `unknown` (snapshot của vòng).
  */
 export const STREAM_HOLD_MS = 60_000;
@@ -492,7 +492,7 @@ export interface EngineDeps {
   /** Độ trễ event loop hiện tại (perf_hooks), ghi kèm log `tick slow`. */
   loopDelay?: () => { p99Ms: number; maxMs: number };
   /**
-   * `tick()` chờ các shard tối đa chừng này (DEC-TBD-engine-sodex-latency). Shard chậm hơn (SoDEX chậm) chạy tiếp ngoài
+   * `tick()` chờ các shard tối đa chừng này (DEC-308). Shard chậm hơn (SoDEX chậm) chạy tiếp ngoài
    * vòng; vòng sau bỏ qua shard đó tới khi nó xong, các shard khác vẫn chạy đủ bước. Mặc định: chờ hết (như trước).
    */
   tickWaitMs?: number;
@@ -826,7 +826,7 @@ export class Engine {
   readonly #pendingCancels = new Map<string, Set<string>>();
   readonly #cancelRetryAt = new Map<string, number>();
   /**
-   * Lệnh SoDEX trả `OrderNotFound` khi huỷ mà không còn mới (DEC-TBD-engine-sodex-latency), theo bot: vẫn trong
+   * Lệnh SoDEX trả `OrderNotFound` khi huỷ mà không còn mới (DEC-308), theo bot: vẫn trong
    * `#pendingCancels` (để #reconcileOpen đối soát như lệnh đã gửi huỷ) nhưng không gửi huỷ lại.
    */
   readonly #cancelGone = new Map<string, Set<string>>();
@@ -943,7 +943,7 @@ export class Engine {
     };
     // Mỗi shard một làn: các shard chạy song song (tối đa SHARD_CONCURRENCY), trong một shard các bước vẫn tuần tự. Vòng
     // chờ tối đa `tickWaitMs`; shard còn chạy (SoDEX chậm) chạy tiếp ngoài vòng và vòng sau bỏ qua nó tới khi xong, nên một
-    // account chờ SoDEX không làm chậm bước / đồng hồ của account ở shard khác (DEC-TBD-engine-sodex-latency).
+    // account chờ SoDEX không làm chậm bước / đồng hồ của account ở shard khác (DEC-308).
     const counts = { skipped: 0, busy: 0 };
     const lanes: Promise<void>[] = [];
     let waiting = true;
@@ -1060,7 +1060,7 @@ export class Engine {
     if (this.#leaseSet.valid(shard)) return true;
     if (!this.#leaseSet.has(shard)) return false;
     // Không chờ khi đã có lần gia hạn đang chạy hoặc vừa lỗi (Redis đang sự cố): mỗi bước của shard không treo tới hạn chờ.
-    // Các shard chạy song song (DEC-TBD-engine-sodex-latency): mọi làn đang cần gia hạn chờ chung MỘT lần gọi, không phải
+    // Các shard chạy song song (DEC-308): mọi làn đang cần gia hạn chờ chung MỘT lần gọi, không phải
     // làn thứ hai thấy "đang gia hạn" rồi bỏ lượt.
     this.#renewing ??= this.#leaseSet.renewIfIdle().finally(() => {
       this.#renewing = null;
@@ -1697,7 +1697,7 @@ export class Engine {
   /**
    * Account + các engine cần user stream (main.ts chỉ mở stream cho đúng các engine này, đóng phần còn lại): engine mà bot
    * thật của account giao dịch khi bot còn runner (starting / running / pausing / resuming / stopping, kể cả paused), cộng
-   * account vừa Stop xong (STREAM_HOLD_MS) và account còn lệnh bot thật đang mở / `unknown` (DEC-TBD-engine-sodex-latency).
+   * account vừa Stop xong (STREAM_HOLD_MS) và account còn lệnh bot thật đang mở / `unknown` (DEC-308).
    */
   activeStreams(): Promise<{ account: AccountRef; engines: Set<"spot" | "perps"> }[]> {
     const seen = new Map<string, { account: AccountRef; engines: Set<"spot" | "perps"> }>();
@@ -3474,7 +3474,7 @@ export class Engine {
     // OrderNotFound: lệnh vừa được nhận (< CANCEL_NOT_BOOKED.windowMs) có thể chưa vào sổ (DEC-250): huỷ lại sớm, trước
     // khi nó kịp vào sổ và nằm đó. Lệnh cũ hơn không còn trên sổ (đã khớp / đã huỷ): lần huỷ xong, không huỷ lại; lệnh
     // giữ trong danh sách chờ huỷ (không gửi lại) để #reconcileOpen đọc trạng thái cuối ở lượt tới: fill thật nếu có, không
-    // thì cancelled; không bao giờ thành `unknown` (DEC-TBD-engine-sodex-latency).
+    // thì cancelled; không bao giờ thành `unknown` (DEC-308).
     const now = this.#d.now();
     const isNotFound = (x: CancelResult) =>
       x.outcome === "not_found" ||
@@ -4198,7 +4198,7 @@ export class Engine {
   // ---------- đối soát & phí ----------
 
   /**
-   * Việc đọc SoDEX theo account trong một bước của shard (DEC-TBD-engine-sodex-latency): các account chạy song song (tối
+   * Việc đọc SoDEX theo account trong một bước của shard (DEC-308): các account chạy song song (tối
    * đa ACCOUNT_CONCURRENCY), việc của một account vẫn tuần tự theo thứ tự cũ. Lỗi của một account (SoDEX chậm / lỗi, mạng)
    * chỉ bỏ phần còn lại của account đó ở lượt này (ghi warn, lượt sau thử lại), không bỏ account khác hay các bước sau của
    * shard. Lỗi fencing ném lại.
@@ -4508,7 +4508,7 @@ export class Engine {
     // không thôi thì ≥ OPEN_CHECK_BATCH lệnh vẫn treo trên SoDEX (bot đang pause giữ lệnh) chiếm hết suất mỗi vòng, và
     // lệnh mới hơn (ví dụ lệnh đóng vị thế của bot vừa Stop) không bao giờ được đối soát: fill thật không được ghi.
     const lastCheck = (o: { id: string }) => this.#openChecks.get(o.id) ?? 0;
-    // Lệnh nghi ngờ trước (DEC-TBD-engine-sodex-latency): đã gửi huỷ mà chưa có kết quả, lệnh market, lệnh Volume Farm DRIFT
+    // Lệnh nghi ngờ trước (DEC-308): đã gửi huỷ mà chưa có kết quả, lệnh market, lệnh Volume Farm DRIFT
     // tự huỷ trong khoảng trống stream. Chúng là chỗ fill có thể bị mất; lệnh đang nằm sổ bình thường (bot pause / dừng giữ
     // lệnh) kiểm sau.
     const suspect = (o: OrderRow) =>
@@ -4715,7 +4715,7 @@ export class Engine {
     for (const r of [...this.#runners.values()].filter((x) => x.shard === shard)) {
       const pending = this.#pendingCancels.get(r.botId);
       if (pending === undefined || pending.size === 0) continue;
-      // Lệnh SoDEX đã báo không còn trên sổ: chờ #reconcileOpen (DEC-TBD-engine-sodex-latency), nhưng vẫn huỷ lại chậm
+      // Lệnh SoDEX đã báo không còn trên sổ: chờ #reconcileOpen (DEC-308), nhưng vẫn huỷ lại chậm
       // (mỗi OPEN_CHECK_MS) phòng khi lệnh vào sổ muộn (quy tắc 1.7, review #216 M3).
       const gone = this.#cancelGone.get(r.botId);
       if (gone !== undefined)

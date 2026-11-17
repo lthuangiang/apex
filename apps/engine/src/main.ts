@@ -46,7 +46,7 @@ const env = z
     /** Chu kỳ đọc lại approval builder fee của mỗi account (mặc định 60 s). */
     ENGINE_FEE_CHECK_MS: z.coerce.number().int().positive().default(60_000),
     /**
-     * Vòng tick chờ các shard tối đa chừng này; shard còn chờ SoDEX chạy tiếp ngoài vòng (DEC-TBD-engine-sodex-latency).
+     * Vòng tick chờ các shard tối đa chừng này; shard còn chờ SoDEX chạy tiếp ngoài vòng (DEC-308).
      */
     ENGINE_TICK_WAIT_MS: z.coerce.number().int().positive().default(2_000),
     /** Timeout mỗi lời gọi REST chỉ đọc của đối soát (tra lệnh, lịch sử khớp, vị thế). Lệnh ghi giữ timeout cũ. */
@@ -59,7 +59,7 @@ const log = pino({
 });
 const sodex = loadSodexConfig(process.env);
 // Các shard / account chạy song song dùng chung pool 10 kết nối: chờ kết nối có giới hạn, lỗi thì bước đó thử lại ở lượt
-// sau thay vì treo (DEC-TBD-engine-sodex-latency).
+// sau thay vì treo (DEC-308).
 const { db, pool } = createDb(env.DATABASE_URL, { connectionTimeoutMillis: 10_000 });
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const options = {

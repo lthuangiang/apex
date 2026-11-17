@@ -3113,7 +3113,7 @@ describe("engine", () => {
     return { ...seeded, e, id, row };
   }
 
-  it("treats OrderNotFound on a cancel as off the book: no cancel retries, no unknown, the fill SoDEX has (DEC-TBD-engine-sodex-latency)", async () => {
+  it("treats OrderNotFound on a cancel as off the book: no cancel retries, no unknown, the fill SoDEX has (DEC-308)", async () => {
     const gw = new FakeGateway();
     gw.cancelOutcome = "not_found";
     const { e, id, row } = await makerCancelled(gw, "vm-gone-filled");
@@ -3134,7 +3134,7 @@ describe("engine", () => {
     await stopMakerBots();
   });
 
-  it("records a cancel that met OrderNotFound as cancelled when SoDEX has no trades, never unknown (DEC-TBD-engine-sodex-latency)", async () => {
+  it("records a cancel that met OrderNotFound as cancelled when SoDEX has no trades, never unknown (DEC-308)", async () => {
     const gw = new FakeGateway();
     gw.cancelOutcome = "not_found";
     const { e, id, row } = await makerCancelled(gw, "vm-gone-none");
@@ -3253,7 +3253,7 @@ describe("engine", () => {
     await stopMakerBots();
   });
 
-  it("cancels again when an order SoDEX called not found is on the book after all (DEC-250, DEC-TBD-engine-sodex-latency)", async () => {
+  it("cancels again when an order SoDEX called not found is on the book after all (DEC-250, DEC-308)", async () => {
     const gw = new FakeGateway();
     gw.cancelOutcome = "not_found";
     const { e, id, row } = await makerCancelled(gw, "vm-gone-booked");
@@ -5905,7 +5905,7 @@ describe("lost fills (DEC-303)", () => {
     await stopBot(botId);
   });
 
-  it("keeps the account's user stream open until the Stop's close order is done (DEC-TBD-engine-sodex-latency)", async () => {
+  it("keeps the account's user stream open until the Stop's close order is done (DEC-308)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     const streams = new FakeStreams();
@@ -7214,7 +7214,7 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
   });
 });
 
-describe("slow SoDEX reads stay with their own account (DEC-TBD-engine-sodex-latency)", () => {
+describe("slow SoDEX reads stay with their own account (DEC-308)", () => {
   /** SoDEX chậm cho một số account: mọi lần đọc (tra lệnh, lịch sử khớp, vị thế) của chúng chờ tới khi test thả ra. */
   class SlowGateway extends FakeGateway {
     readonly slow = new Set<string>();

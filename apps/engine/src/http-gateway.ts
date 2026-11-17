@@ -155,7 +155,7 @@ export class HttpGateway implements Gateway {
     /** Account builder được miễn builder fee (DEC-47); false = gắn builder fee như mọi account (DEC-124). */
     private readonly builderExempt = true,
     /**
-     * Client chỉ đọc cho đối soát (tra lệnh, lịch sử khớp, vị thế) với timeout ngắn hơn (DEC-TBD-engine-sodex-latency);
+     * Client chỉ đọc cho đối soát (tra lệnh, lịch sử khớp, vị thế) với timeout ngắn hơn (DEC-308);
      * thiếu thì dùng `rest`. Cùng bucket rate limit IP. Lệnh ghi không đi qua đây.
      */
     private readonly reads: SodexRestClient = rest,

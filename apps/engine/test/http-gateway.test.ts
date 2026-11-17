@@ -159,7 +159,7 @@ describe("paper bots (DEC-105)", () => {
   });
 });
 
-describe("cancel results (DEC-TBD-engine-sodex-latency)", () => {
+describe("cancel results (DEC-308)", () => {
   it("reads SoDEX's OrderNotFound without a clOrdID as not found, not unknown", async () => {
     const { gw } = gateway({
       outcome: "ok",
@@ -193,7 +193,7 @@ describe("cancel results (DEC-TBD-engine-sodex-latency)", () => {
   });
 });
 
-describe("market info on the order path (DEC-TBD-engine-sodex-latency)", () => {
+describe("market info on the order path (DEC-308)", () => {
   it("sends with the last known symbol id while a refresh of the symbol list hangs", async () => {
     let calls = 0;
     const rest = {
