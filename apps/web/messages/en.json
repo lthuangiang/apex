@@ -3071,19 +3071,20 @@
       },
       "entry": {
         "tries": "{n} tries in {duration}",
+        "triesRange": "Tries {from}–{to} in {duration}",
         "seconds": "{n} s",
         "minutes": "{n} min",
-        "hours": "{h} h {m} min",
+        "hours": "{m, plural, =0 {{h} h} other {{h} h {m} min}}",
         "filledAt": "Filled at {price}",
         "filled": "Filled",
-        "partlyFilledAt": "Partly filled at {price}",
-        "partlyFilled": "Partly filled",
-        "onBook": "On the book",
+        "partlyFilledAt": "Partially filled at {price}",
+        "partlyFilled": "Partially filled",
+        "onBook": "Open, waiting to fill",
         "notFilled": "Not filled",
         "try": "Try {n}",
         "postOnlyMiss": "Post-only miss",
-        "cancelled": "Not filled, cancelled",
-        "notPlaced": "Not sent to SoDEX"
+        "cancelled": "Cancelled, not filled",
+        "notPlaced": "Not placed"
       }
     },
     "rejects": {

@@ -116,10 +116,11 @@ function Summary({ events, small = false }: { events: readonly BotEvent[]; small
 }
 
 /** Câu chữ của dòng lượt vào lệnh: "8 tries in 2 min", kết quả của lần thử mới nhất, nhãn từng lần thử. */
-function useEntryCopy() {
+function useEntryCopy(priceDigits: number | null) {
   const t = useTranslations("agent.decisionsList.entry");
+  // Giá khớp trung bình làm tròn theo tick của market, như trang Orders.
   const price = (e: BotEvent) =>
-    e.fillPrice === null ? null : (formatAmount(e.fillPrice)?.text ?? e.fillPrice);
+    e.fillPrice === null ? null : (formatAmount(e.fillPrice, priceDigits)?.text ?? e.fillPrice);
   /** Kết quả theo lệnh thật của một lần thử; giá chỉ khi API có giá khớp (không đoán, quy tắc 1.8). */
   const result = (e: BotEvent): string => {
     const p = price(e);
@@ -135,7 +136,15 @@ function useEntryCopy() {
     tries: (r: GroupRow) => {
       const d = entryDuration(r.events);
       const duration = d.unit === "hours" ? t("hours", { h: d.h, m: d.m }) : t(d.unit, { n: d.n });
-      return t("tries", { n: r.events.length, duration });
+      // Nhóm không bắt đầu ở lần thử đầu của lượt (bị cắt bởi giới hạn 50 event hoặc bị tách): chỉ nói khoảng lần thử đang
+      // thấy, không nói tổng số lần thử của lượt (review #215 B2).
+      const oldest = r.events.at(-1);
+      const newest = r.events[0];
+      const from = oldest === undefined ? null : entryTryOf(oldest);
+      const to = newest === undefined ? null : entryTryOf(newest);
+      return from === null || to === null || from === 0
+        ? t("tries", { n: r.events.length, duration })
+        : t("triesRange", { from: from + 1, to: to + 1, duration });
     },
     /** Dòng tổng của lượt: lần thử mới nhất đã khớp / đang nằm sổ, hoặc chưa khớp. */
     head: (r: GroupRow): string => {
@@ -183,6 +192,7 @@ export function DecisionsList({
   why,
   ask,
   legacy,
+  priceDigits = null,
 }: {
   botId: string;
   /** Mới nhất trước, như API trả. */
@@ -192,12 +202,14 @@ export function DecisionsList({
   ask?: (e: BotEvent, time: string) => ReactNode;
   /** Pill cho cột `result` dạng chữ cũ (event chưa gắn lệnh). */
   legacy: (text: string) => ReactNode;
+  /** Chữ số thập phân của giá theo tick của market của bot (giá khớp của lượt vào lệnh); null = chưa biết. */
+  priceDigits?: number | null;
 }) {
   const t = useTranslations("agent");
   const tl = useTranslations("agent.decisionsList");
   const rows = groupDecisions(events);
   const open = useOpen();
-  const entry = useEntryCopy();
+  const entry = useEntryCopy(priceDigits);
   if (rows.length === 0)
     return (
       <div className="flex flex-col items-center gap-1.5 px-3 py-10 text-center">

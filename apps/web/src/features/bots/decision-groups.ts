@@ -22,8 +22,8 @@ export type DecisionRow =
   /** `events` mới nhất trước, như danh sách gốc; có ít nhất 2 phần tử. */
   | { kind: "group"; key: string; name: string; events: readonly BotEvent[] }
   /**
-   * Các lần thử vào lệnh của một lượt Volume Farm, mới nhất trước (ít nhất 2). `name` = quyết định của lần thử mới nhất
-   * (lần khớp kết thúc lượt; tín hiệu có thể đổi hướng giữa các lần thử).
+   * Các lần thử vào lệnh liên tiếp của một lượt Volume Farm, cùng một phía, mới nhất trước (ít nhất 2). `name` = quyết
+   * định chung ("Enter long" / "Enter short"); tín hiệu đổi phía giữa các lần thử thì bắt đầu dòng mới (review #215 B1).
    */
   | { kind: "entry"; key: string; name: string; events: readonly BotEvent[] };
 
@@ -52,8 +52,9 @@ function groupable(e: BotEvent): boolean {
 
 /**
  * `events` theo thứ tự mới nhất trước (như API trả). Giữ nguyên thứ tự. Lượt vào lệnh: event cũ hơn nối vào nhóm khi nó là
- * lần thử NGAY TRƯỚC (số thứ tự nhỏ hơn đúng 1); lần thử 0 là lần đầu của lượt nên nhóm dừng ở đó. Không có giới hạn 60 s
- * (một lượt có thể thử nhiều phút); event khác xen giữa thì tách nhóm như BD-02.
+ * lần thử NGAY TRƯỚC (số thứ tự nhỏ hơn đúng 1) và CÙNG phía (cùng tên quyết định); lần thử 0 là lần đầu của lượt nên nhóm
+ * dừng ở đó. Không có giới hạn 60 s (một lượt có thể thử nhiều phút); event khác xen giữa thì tách nhóm như BD-02.
+ * Trạng thái mở / đóng theo event cũ nhất: nhóm ở cuối danh sách tự đóng khi lần thử cũ nhất rơi ra ngoài 50 event gần nhất.
  */
 export function groupDecisions(events: readonly BotEvent[]): DecisionRow[] {
   const rows: DecisionRow[] = [];
@@ -81,7 +82,10 @@ export function groupDecisions(events: readonly BotEvent[]): DecisionRow[] {
     const joins =
       prev !== undefined &&
       (entry
-        ? step !== null && prevStep !== null && step === prevStep - 1
+        ? step !== null &&
+          prevStep !== null &&
+          step === prevStep - 1 &&
+          e.decision === prev.decision
         : groupable(e) &&
           e.decision === prev.decision &&
           Date.parse(prev.occurredAt) - Date.parse(e.occurredAt) <= GROUP_GAP_MS);

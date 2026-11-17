@@ -172,14 +172,20 @@ describe("Volume Farm entry rounds (DEC-TBD-vb-decisions-grouping)", () => {
     );
   });
 
-  it("has no 60 s limit inside a round, and keeps a round across a change of direction", () => {
-    const rows = groupDecisions([
-      tryEv(2, 0, "filled", "short"),
-      tryEv(1, 400, "cancelled", "long"),
-      tryEv(0, 900),
+  it("has no 60 s limit inside a round", () => {
+    expect(shape(groupDecisions([tryEv(2, 0, "filled"), tryEv(1, 400), tryEv(0, 900)]))).toEqual([
+      "entry:Enter long×3",
     ]);
-    // Tên = lần thử mới nhất (lần vào thật của lượt).
-    expect(shape(rows)).toEqual(["entry:Enter short×3"]);
+  });
+
+  it("starts a new row when the signal changes side within a round (review #215 B1)", () => {
+    const rows = groupDecisions([
+      tryEv(3, 0, "filled", "short"),
+      tryEv(2, 20, "rejected", "short"),
+      tryEv(1, 40, "cancelled", "long"),
+      tryEv(0, 60, "rejected", "long"),
+    ]);
+    expect(shape(rows)).toEqual(["entry:Enter short×2", "entry:Enter long×2"]);
   });
 
   it("never groups Unknown, other rejects, or tries without a round number", () => {

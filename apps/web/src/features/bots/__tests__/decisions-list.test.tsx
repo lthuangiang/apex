@@ -184,12 +184,24 @@ describe("Volume Farm entry rounds in Decisions (DEC-TBD-vb-decisions-grouping)"
       ...round(),
       ev("Closed short", 200, "filled"),
     ];
-    wrap(<DecisionsList botId={BOT} events={list} why={(e) => e.why} legacy={(x) => x} />);
+    // Giá khớp trung bình nhiều trade (numeric 38,18) làm tròn theo tick của market, như trang Orders.
+    const priced = list.map((e) =>
+      e.fillPrice === null ? e : { ...e, fillPrice: "1800.733333333" },
+    );
+    wrap(
+      <DecisionsList
+        botId={BOT}
+        events={priced}
+        why={(e) => e.why}
+        legacy={(x) => x}
+        priceDigits={2}
+      />,
+    );
     const rows = within(desktop());
     const group = rows.getByRole("button", { name: /Enter long/ });
     expect(group).toHaveAttribute("aria-expanded", "false");
     expect(within(group).getByText("8 tries in 2 min")).toBeInTheDocument();
-    expect(within(group).getByText("Filled at 1,800.7")).toBeInTheDocument();
+    expect(within(group).getByText("Filled at 1,800.73")).toBeInTheDocument();
     expect(
       within(group)
         .getAllByText(/^\d+ (filled|rejected|cancelled|not placed)$/)
@@ -203,10 +215,10 @@ describe("Volume Farm entry rounds in Decisions (DEC-TBD-vb-decisions-grouping)"
       if (el === undefined) throw new Error(`no try row ${String(i)}`);
       return within(el);
     };
-    expect(item(0).getByText("Try 8 · Filled at 1,800.7")).toBeInTheDocument();
+    expect(item(0).getByText("Try 8 · Filled at 1,800.73")).toBeInTheDocument();
     expect(item(1).getByText("Try 7 · Post-only miss")).toBeInTheDocument();
-    expect(item(2).getByText("Try 6 · Not filled, cancelled")).toBeInTheDocument();
-    expect(item(4).getByText("Try 4 · Not sent to SoDEX")).toBeInTheDocument();
+    expect(item(2).getByText("Try 6 · Cancelled, not filled")).toBeInTheDocument();
+    expect(item(4).getByText("Try 4 · Not placed")).toBeInTheDocument();
     // Pill của mỗi lần thử vẫn link tới đúng lệnh.
     expect(item(1).getByRole("link")).toHaveAccessibleName(/^Rejected\. Show order …/);
     await user.click(within(panel).getByRole("button", { name: "Show all 8" }));
@@ -242,5 +254,25 @@ describe("Volume Farm entry rounds in Decisions (DEC-TBD-vb-decisions-grouping)"
     const group = within(desktop()).getByRole("button", { name: /Enter long/ });
     expect(within(group).getByText("Filled")).toBeInTheDocument();
     expect(within(group).queryByText(/Filled at/)).toBeNull();
+  });
+
+  it("names the tries it shows, not a round total, when the round's first try is out of view (review #215 B2)", () => {
+    // Lượt bị cắt bởi giới hạn 50 event: thấy lần thử 6–8 (k = 5…7), không thấy lần thử đầu.
+    const cut = round().slice(0, 3);
+    wrap(<DecisionsList botId={BOT} events={cut} why={(e) => e.why} legacy={(x) => x} />);
+    const group = within(desktop()).getByRole("button", { name: /Enter long/ });
+    expect(within(group).getByText(/^Tries 6–8 in \d+ s$/)).toBeInTheDocument();
+    expect(within(group).queryByText(/^3 tries/)).toBeNull();
+  });
+
+  it("says whole hours without a 0 min part", () => {
+    const at = (min: number) => new Date(T0 - min * 60_000).toISOString();
+    const tries = [
+      { ...round()[1], entryTry: 1, occurredAt: at(0) },
+      { ...round()[2], entryTry: 0, occurredAt: at(60) },
+    ] as BotEvent[];
+    wrap(<DecisionsList botId={BOT} events={tries} why={(e) => e.why} legacy={(x) => x} />);
+    const group = within(desktop()).getByRole("button", { name: /Enter long/ });
+    expect(within(group).getByText("2 tries in 1 h")).toBeInTheDocument();
   });
 });
