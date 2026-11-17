@@ -153,7 +153,10 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("Market hours page", () => {
+// Mỗi test render cả trang (bản desktop và 390 px cùng có trong DOM, ~1.300 phần tử) rồi truy vấn trên toàn
+// DOM: 0,2–1 s mỗi test khi máy rảnh, nhưng khi CI/turbo chạy nhiều gói song song thì jsdom chậm đi nhiều lần
+// và test nào cũng có thể vượt mặc định 5 s. Không có timer cố định nào phải chờ: đây chỉ là thời gian CPU.
+describe("Market hours page", { timeout: 30_000 }, () => {
   it("shows hours in the viewer's time zone and switches to UTC on demand", async () => {
     const user = userEvent.setup({ delay: null });
     show();
@@ -163,12 +166,15 @@ describe("Market hours page", () => {
     await waitFor(() => {
       expect(calls.some((c) => c.includes("tz=Asia%2FKolkata"))).toBe(true);
     });
-    await user.click(screen.getByRole("button", { name: "Show in UTC" }));
-    expect(screen.getByText(/^Times in UTC/)).toBeInTheDocument();
+    // getByRole trên cả trang (~1.300 phần tử, hàng trăm nút) mất vài trăm ms mỗi lần trong jsdom:
+    // chỉ tìm trong thẻ bộ lọc.
+    const filters = screen.getByRole("region", { name: "Filters" });
+    await user.click(within(filters).getByRole("button", { name: "Show in UTC" }));
+    expect(within(filters).getByText(/^Times in UTC/)).toBeInTheDocument();
     await waitFor(() => {
       expect(calls.at(-1)).toContain("tz=UTC");
     });
-    expect(screen.getByRole("button", { name: "Show my time zone" })).toHaveAttribute(
+    expect(within(filters).getByRole("button", { name: "Show my time zone" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -182,8 +188,11 @@ describe("Market hours page", () => {
     );
     show();
     expect(await screen.findByText("1 · Market volatility on SoDEX")).toBeInTheDocument();
-    expect(calls.some((c) => c.includes("tz=Asia%2FKolkata"))).toBe(true);
-    expect(calls.at(-1)).toContain("tz=UTC");
+    // Không có request UTC thừa trước khi biết múi giờ trình duyệt, và dữ liệu chỉ hiện sau request UTC.
+    expect(calls).toEqual([
+      "/api/v1/admin/market-hours?days=30&strategy=both&tz=Asia%2FKolkata",
+      "/api/v1/admin/market-hours?days=30&strategy=both&tz=UTC",
+    ]);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -269,7 +278,8 @@ describe("Market hours page", () => {
     expect(screen.queryByText(/floor/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Estimated cost per \$1M \(model/)).not.toBeInTheDocument();
     // "Model details" đóng sẵn: hai dòng mô hình và câu hiệu chỉnh có trong DOM nhưng bị ẩn.
-    const [details] = screen.getAllByRole("button", { name: "Model details" });
+    // ByText thay vì ByRole: ByRole tính tên của mọi nút trên trang, chậm trong jsdom.
+    const [details] = screen.getAllByText("Model details", { selector: "button" });
     if (details === undefined) throw new Error("no Model details button");
     expect(details).toHaveAttribute("aria-expanded", "false");
     const panel = document.getElementById(details.getAttribute("aria-controls") ?? "");
@@ -754,8 +764,12 @@ describe("Market hours page", () => {
       ["Hot days", hot, 1],
       ["Move vs makers 30 s", markout, 1],
     ];
+    // ByLabelText (aria-label của nút ⓘ) thay vì ByRole: ByRole tính tên của mọi nút trên trang sau mỗi
+    // lần popup mở / đóng, vài trăm ms mỗi lần trong jsdom.
+    const about = (label: string) =>
+      screen.getAllByLabelText(`About ${label}`, { selector: "button" });
     for (const [label, copy, n] of rows) {
-      const buttons = screen.getAllByRole("button", { name: `About ${label}` });
+      const buttons = about(label);
       expect(buttons, label).toHaveLength(n);
       for (const b of buttons) {
         expect(b.tagName).toBe("BUTTON");
@@ -770,7 +784,8 @@ describe("Market hours page", () => {
       }
     }
     // Rê chuột: mở khi vào, đóng khi rời (chưa ghim).
-    const spread = screen.getByRole("button", { name: "About Spread (ticks)" });
+    const [spread] = about("Spread (ticks)");
+    if (spread === undefined) throw new Error("no Spread info button");
     await user.hover(spread);
     expect(screen.getByRole("tooltip")).toHaveTextContent(
       "Typical gap between the best bid and best ask, in price steps.",
@@ -785,7 +800,8 @@ describe("Market hours page", () => {
       expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
     });
     // Focus bằng bàn phím: mở; tab sang nút kế (Bot-hours) thì popup Fees đóng, popup của nút kế mở.
-    const fees = screen.getByRole("button", { name: "About Fees" });
+    const [fees] = about("Fees");
+    if (fees === undefined) throw new Error("no Fees info button");
     fees.focus();
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       "SoDEX trading fees plus builder fees paid on those fills.",
@@ -795,7 +811,7 @@ describe("Market hours page", () => {
     expect(screen.getByRole("tooltip")).toHaveTextContent(/^One bot active for one hour\./);
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
-  }, 30_000);
+  });
 
   it("renames block 3's cost row to Markout cost / $1M and says it is a 1-minute markout, not realised P&L", async () => {
     show();
@@ -1016,7 +1032,7 @@ describe("Market hours page", () => {
       rules: { "color-contrast": { enabled: false } },
     });
     expect(open.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
-  }, 30_000);
+  });
 
   it("says when there is no data, when loading failed, and when the viewer is not on the team", async () => {
     const user = userEvent.setup({ delay: null });
