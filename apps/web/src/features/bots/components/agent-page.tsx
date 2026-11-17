@@ -30,6 +30,7 @@ import { ME_KEY, useMe, useTwoFactorNeeded } from "@/lib/queries";
 
 import { botCapital, botMarket } from "../bot-label";
 import { liveOrder, pickable } from "../bot-picker";
+import { pendingVersionOf } from "../pending-version";
 import { stopEventIdOf, useReasonLabel } from "../stop-reason";
 
 import { BetaChip, isBeta } from "./beta-chip";
@@ -78,6 +79,7 @@ export function AgentPage({ botId }: { botId?: string }) {
   const tm = useTranslations("common.missing");
   const tf = useTranslations("createBot");
   const tsh = useTranslations("common.shell");
+  const te = useTranslations("botEdit");
   const tr = useTranslations("reasons");
   const reasonLabel = useReasonLabel();
   const router = useRouter();
@@ -327,6 +329,19 @@ export function AgentPage({ botId }: { botId?: string }) {
                 />
                 <span className="text-xs text-ink-2 tabular-nums">{sub}</span>
               </div>
+              {/* Volume Farm: version mới chờ lượt đang mở đóng (DEC-TBD-vf-version-apply), quy tắc 1.6. */}
+              {(() => {
+                const p = b.strategy === "volume_farm" ? pendingVersionOf(dd.versions) : undefined;
+                if (p === undefined) return null;
+                return (
+                  <span className="text-xs font-semibold text-warn">
+                    {te("applying", { next: p.version })}{" "}
+                    {b.state === BotState.paused
+                      ? te("waitingFarmPaused", { next: p.version })
+                      : te("waitingFarm", { next: p.version })}
+                  </span>
+                );
+              })()}
               {waitingTooLong(b) ? (
                 <span className="text-xs font-semibold text-warn">
                   {tsh("waitingLong", { time: clock(b.updatedAt) })}

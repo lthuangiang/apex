@@ -2814,7 +2814,7 @@ describe("engine", () => {
     const gw = new FakeGateway();
     await seedCandles("ETH-USD");
     const { botId, accountId } = await seedFarm("ETH-USD");
-    const e = farmEngine(gw, "vf-version");
+    let e = farmEngine(gw, "vf-version");
     const vf = () => gw.received.filter((o) => o.market === "ETH-USD" && o.tag.startsWith("vf:"));
     await tickUntil(e, () => vf().length > 0);
     const entry = vf()[0];
@@ -2848,6 +2848,11 @@ describe("engine", () => {
     expect(gw.cancelled).not.toContain(stop?.clOrdID);
     expect((await events()).filter((d) => d === "Applying v2")).toHaveLength(1);
     expect(Number((await runtime()).ledger.position)).not.toBe(0);
+    // Engine nạp lại bot (khởi động lại / đổi shard): không ghi lại "Applying v2".
+    await e.stop();
+    e = farmEngine(gw, "vf-version");
+    await e.tick();
+    expect((await events()).filter((d) => d === "Applying v2")).toHaveLength(1);
     // Hết thời gian giữ: v1 thoát bằng lệnh reduce-only.
     clock += 200_000;
     await tickUntil(e, () => vf().some((o) => o.reduceOnly && o.stop === undefined));
@@ -2863,6 +2868,39 @@ describe("engine", () => {
     expect(await events()).toContain("Applied v2");
     await e.stop();
     await stopFarmBots();
+  });
+
+  it("marks a Volume Farm version still waiting as superseded when the bot stops (DEC-TBD-vf-version-apply)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    await seedCandles("DOT-USD");
+    const { botId, accountId } = await seedFarm("DOT-USD");
+    const e = farmEngine(gw, "vf-version-stop");
+    const vf = () => gw.received.filter((o) => o.market === "DOT-USD" && o.tag.startsWith("vf:"));
+    await tickUntil(e, () => vf().length > 0);
+    const entry = vf()[0];
+    if (entry === undefined) throw new Error("expected an entry");
+    await e.onFill(accountId, entry.clOrdID, entry.quantity, "100", "0.01", clock);
+    await db.insert(botVersions).values({
+      botId,
+      version: 2,
+      paramSource: "manual",
+      status: "pending",
+      config: { ...farmConfig("DOT-USD"), allowTaker: true },
+    });
+    clock += 1_000;
+    await e.tick();
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    for (let i = 0; i < 10 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 3_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("stopped");
+    const statuses = (await db.select().from(botVersions).where(eq(botVersions.botId, botId)))
+      .map((v) => `${String(v.version)}:${v.status}`)
+      .sort();
+    expect(statuses).toEqual(["1:active", "2:superseded"]);
+    await e.stop();
   });
 
   // ---------- Market Making: đối soát fill + vị thế (DEC-100) ----------

@@ -27,7 +27,7 @@ import {
 } from "@drift/shared";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 
-import { newVersion, type BotDeps } from "../bots/service";
+import { newestPendingConfig, newVersion, type BotDeps } from "../bots/service";
 
 import { accountItemId, goalOf, needsYou, stopCheckOf, type NeedsYouDeps } from "./needs-you";
 
@@ -355,7 +355,9 @@ export async function applyWhatif(
         reason: "version_changed",
       },
     );
-  const baseline = bot.config as Record<string, unknown>;
+  // Version đang chờ áp (DEC-TBD-vf-version-apply): dựng trên nó để không làm mất thay đổi đang chờ.
+  const baseline =
+    (await newestPendingConfig(deps.db, row.w.botId)) ?? (bot.config as Record<string, unknown>);
   // Giữ chỗ trước khi tạo version: hai lần bấm Apply cùng lúc chỉ một lần qua được unique index `desk_applies_whatif`.
   const [held] = await deps.db
     .insert(deskApplies)

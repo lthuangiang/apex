@@ -1798,7 +1798,7 @@ export class Engine {
       }
       // Key `active` mới nhất của account (Renew key, DEC-59): runner dùng key mới ngay, không cần nạp lại bot.
       r.account = r.paper ? { ...account, paper: true } : account;
-      await this.#applyPendingVersion(r, snap.pending.get(r.botId));
+      await this.#applyPendingVersion(r, snap.pending.get(r.botId), bot.state);
       if (bot.state === BotState.pausing)
         await this.#transition(r, EngineEvent.confirmedPaused, null);
       else if (bot.state === BotState.resuming && r.engines.every((x) => this.#streamReady(r, x))) {
@@ -1949,8 +1949,16 @@ export class Engine {
    * lệnh nào (stop trên SoDEX còn nguyên), version cũ chạy tiếp, ghi "Applying vN" một lần và thử lại mỗi vòng
    * (DEC-TBD-vf-version-apply).
    */
-  async #applyPendingVersion(r: Runner, pending: VersionRow | undefined): Promise<void> {
-    if (pending === undefined || pending.version <= r.version) return;
+  async #applyPendingVersion(
+    r: Runner,
+    pending: VersionRow | undefined,
+    botState: BotState,
+  ): Promise<void> {
+    // Không còn version chờ (đã áp / bị thay): bỏ cờ chặn lượt mới.
+    if (pending === undefined || pending.version <= r.version) {
+      if (r.ctx.versionPending !== undefined) delete r.ctx.versionPending;
+      return;
+    }
     const entry = (
       STRATEGIES as Record<
         string,
@@ -1968,13 +1976,23 @@ export class Engine {
     if (apply() === null) {
       if (r.ctx.versionPending !== pending.version) {
         r.ctx = { ...r.ctx, versionPending: pending.version };
-        await this.#event(
-          r,
-          "version",
-          `Applying v${String(pending.version)}`,
-          `Waits until the open trade closes; v${String(r.version)} keeps managing it. No orders were cancelled.`,
-          this.#d.now(),
-        );
+        const decision = `Applying v${String(pending.version)}`;
+        // Một dòng cho mỗi version chờ, kể cả khi runner được nạp lại (khởi động lại, đổi shard); bot đang dừng thì
+        // không ghi (nó không chờ lượt nào đóng nữa).
+        const [last] = await this.#d.db
+          .select({ decision: botEvents.decision })
+          .from(botEvents)
+          .where(and(eq(botEvents.botId, r.botId), eq(botEvents.type, "version")))
+          .orderBy(desc(botEvents.occurredAt))
+          .limit(1);
+        if (botState !== BotState.stopping && last?.decision !== decision)
+          await this.#event(
+            r,
+            "version",
+            decision,
+            `Waits until the open trade closes; v${String(r.version)} keeps managing it. No orders were cancelled.`,
+            this.#d.now(),
+          );
       }
       return;
     }
@@ -1987,8 +2005,18 @@ export class Engine {
       open.map((o) => o.clOrdId),
     );
     // Fill tới trong lúc huỷ mở lại vị thế: chưa áp, vòng sau thử lại (lệnh vừa huỷ là lệnh của lúc bot còn phẳng).
-    if (apply() === null) return;
+    const fresh = apply();
+    if (fresh === null) return;
     await this.#fenced(r, async (tx) => {
+      // State mới ghi cùng lần đổi version: engine nạp lại ngay sau đó vẫn có danh sách lệnh v1 (fill đến muộn vẫn vào
+      // sổ cái), không rơi về `initialState`.
+      await tx
+        .insert(botRuntime)
+        .values({ botId: r.botId, versionId: pending.id, state: fresh, epoch: r.epoch })
+        .onConflictDoUpdate({
+          target: botRuntime.botId,
+          set: { state: fresh, versionId: pending.id, epoch: r.epoch, updatedAt: new Date() },
+        });
       await tx
         .update(botVersions)
         .set({ status: "superseded" })
@@ -3374,6 +3402,13 @@ export class Engine {
           why: reason ?? b.reasonCode ?? STOPPED_BY_USER,
           occurredAt: new Date(this.#d.now()),
         });
+      // Version còn chờ áp (Volume Farm dừng khi lượt chưa đóng, DEC-TBD-vf-version-apply): không bao giờ được áp nữa,
+      // không để "pending" mãi. Start lại (DEC-86) vẫn chạy với config mới nhất.
+      if (next === BotState.stopped)
+        await tx
+          .update(botVersions)
+          .set({ status: "superseded" })
+          .where(and(eq(botVersions.botId, r.botId), eq(botVersions.status, "pending")));
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
         payload: { botId: r.botId, state: next, reasonCode: reason ?? haltReason },

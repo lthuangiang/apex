@@ -215,6 +215,37 @@ describe("what-if and Apply", () => {
     expect(errorOf(twice.json()).details).toMatchObject({ reason: "applied" });
   });
 
+  it("builds the applied version on a pending version, so an edit still waiting is not lost (DEC-TBD-vf-version-apply)", async () => {
+    const { client } = await deskUser("whatif-pending@example.com");
+    const botId = await bot(client, "volume_farm", farm, "ETH Farm");
+    await env.pool.query("update bots set state = 'running' where id = $1", [botId]);
+    await env.pool.query(
+      "insert into bot_reviews (id, bot_id, user_id, status, result, finished_at) select gen_random_uuid(), $1, user_id, 'done', $2, now() from bots where id = $1",
+      [botId, JSON.stringify(review)],
+    );
+    const [item] = await items(client);
+    const started = whatIfViewSchema.parse(
+      (await client.request("POST", `/api/v1/desk/needs-you/${item?.id ?? ""}/whatif`)).json(),
+    );
+    await finishWhatif(started.id, { keep: "-4.95", review_settings: "-3.10" });
+    // Người dùng đã sửa TP (v2), version còn chờ vì lượt đang mở.
+    await env.pool.query(
+      `insert into bot_versions (id, bot_id, version, config, param_source, status)
+       select gen_random_uuid(), bot_id, 2, config || '{"tpUsd":"0.9"}'::jsonb, 'manual', 'pending' from bot_versions
+       where bot_id = $1 and version = 1`,
+      [botId],
+    );
+    const applied = await client.request("POST", `/api/v1/desk/whatifs/${started.id}/apply`, {
+      body: { option: "review_settings" },
+    });
+    expect(applied.statusCode).toBe(201);
+    const { rows } = await env.pool.query<{ config: Record<string, unknown> }>(
+      "select config from bot_versions where bot_id = $1 and version = 3",
+      [botId],
+    );
+    expect(rows[0]?.config).toMatchObject({ tpUsd: "0.9", slMarginPct: "50" });
+  });
+
   it("does not queue a job when there is no concrete fix, and refuses options without a result", async () => {
     const { client } = await deskUser("whatif-nofix@example.com");
     // Bot tạo qua API phải có stop trước giá thanh lý (isolated): 5× thay vì 10×.

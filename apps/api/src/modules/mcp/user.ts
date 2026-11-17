@@ -87,7 +87,13 @@ export async function mcpGetBot(
   await ownBotOr404(deps.account.db, userId, botId);
   const d = await botDetail(deps.account.bots, userId, botId);
   const active = d.versions.find((v) => v.status === "active");
-  const pending = d.versions.find((v) => v.status === "pending");
+  // Version chờ mới nhất (có thể có hai khi người dùng sửa lần nữa trong lúc chờ, DEC-TBD-vf-version-apply).
+  const pending = d.versions
+    .filter((v) => v.status === "pending")
+    .reduce<(typeof d.versions)[number] | undefined>(
+      (a, v) => (a === undefined || v.version > a.version ? v : a),
+      undefined,
+    );
   return {
     ...meta(deps, "Trading Agent (/api/v1/bots/:id)"),
     bot: mcpBot(d.bot),

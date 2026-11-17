@@ -478,42 +478,45 @@ describe("volume farm signal — regime + counter-trend (120 candles, như engin
   });
 });
 
-describe("volume farm — netExposure no longer forces an opposite entry (DEC-TBD-vf-version-apply)", () => {
-  const logs = (a: StrategyAction[]) =>
-    a.filter((x): x is Extract<StrategyAction, { type: "log" }> => x.type === "log");
-
-  it("follows the signal even when closed longs pile up (no forced short)", () => {
+describe("volume farm — inventory rebalance (netExposure hard block)", () => {
+  it("buộc short khi netExposure > orderSizeMaxUsd (nhiều long đã đóng)", () => {
+    // netExposure = 300 USDC > orderSizeMaxUsd 200 USDC, lastSide = long → phải flip sang short
     const start: VolumeFarmState = {
       ...volumeFarm.initialState(cfg()),
       netExposure: "300",
       lastSide: "long",
     };
     const { all } = run(cfg(), [timer(T0)], start);
-    // Uptrend → long; trước đây bị buộc short "to bring the position back toward zero".
-    expect(places(all)[0]?.side).toBe("buy");
-    expect(logs(all).some((l) => l.why.includes("back toward zero"))).toBe(false);
+    const order = places(all)[0];
+    expect(order?.side).toBe("sell");
+    const log = all.find((a): a is Extract<StrategyAction, { type: "log" }> => a.type === "log");
+    expect(log?.why).toMatch(/to balance long and short volume/);
   });
 
-  it("never opens a long to 'flatten' after many closed shorts (prod 2026-11-17 09:02:50)", () => {
-    const down: StrategyEvent = {
-      type: "timer",
-      at: T0,
-      market: {
-        market: "BTC-USD",
-        candles: candles(-0.0001),
-        book: { ...book, bidNotional: "400000", askNotional: "500000" },
-      },
+  it("không flip khi netExposure ≤ orderSizeMaxUsd", () => {
+    const start: VolumeFarmState = {
+      ...volumeFarm.initialState(cfg()),
+      netExposure: "150", // < 200 → không cần flip
+      lastSide: "long",
     };
+    const { all } = run(cfg(), [timer(T0)], start);
+    // Uptrend signal → vẫn long bình thường
+    expect(places(all)[0]?.side).toBe("buy");
+  });
+
+  it("netExposure âm lớn (nhiều short đã đóng) buộc long", () => {
+    // netExposure = -300 và lastSide = short → buộc long
     const start: VolumeFarmState = {
       ...volumeFarm.initialState(cfg()),
       netExposure: "-300",
       lastSide: "short",
     };
-    const { all } = run(cfg(), [down], start);
-    // Tín hiệu short trong downtrend → short, không phải "Enter long … bring the position back toward zero".
-    expect(places(all)[0]?.side).toBe("sell");
-    expect(logs(all).map((l) => l.decision)).not.toContain("Enter long");
-    expect(logs(all).some((l) => l.why.includes("back toward zero"))).toBe(false);
+    const { all } = run(cfg(), [timer(T0)], start);
+    const order = places(all)[0];
+    // Inventory block phải thắng reverseSignal: long
+    expect(order?.side).toBe("buy");
+    const log = all.find((a): a is Extract<StrategyAction, { type: "log" }> => a.type === "log");
+    expect(log?.why).toMatch(/to balance long and short volume/);
   });
 
   it("netExposure accumulates correctly after each closed trade", () => {

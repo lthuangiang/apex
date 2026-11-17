@@ -19,8 +19,8 @@ import { farmSignal, type FarmRegime } from "./signal";
 // S10 Volume Farm (DEC-80): vòng lặp FARM của bot "standard" trong apex (src/modules/Watcher.ts), viết lại dạng
 // hàm thuần cho engine của DRIFT.
 //   idle ──tín hiệu──▶ entering (post-only) ──fill──▶ open ──điều kiện thoát──▶ exiting ──đóng hết──▶ idle (cooldown)
-// - Vào: hướng theo `farmSignal`; `reverseSignal` đảo hướng. Không còn buộc đi ngược lượt trước theo tồn kho ròng
-//   của các lượt đã đóng (DEC-TBD-vf-version-apply). Cỡ lệnh và thời gian giữ ngẫu nhiên
+// - Vào: hướng theo `farmSignal`; tồn kho ròng (Σ long − Σ short đã đóng) vượt `orderSizeMaxUsd` thì buộc đi ngược
+//   lệnh trước (apex MM inventory hard block); `reverseSignal` đảo hướng. Cỡ lệnh và thời gian giữ ngẫu nhiên
 //   (người dùng chọn giữ như apex, DEC-80), dùng PRNG tất định theo (botId, cycle) để backtest lặp lại được.
 // - Lệnh vào post-only trong spread (mua = ask − 1 tick, bán = bid + 1 tick); 10 s chưa khớp thì huỷ, lượt sau đặt lại. Sau `takerAfter` lần
 //   không khớp liên tiếp và `allowTaker` thì vào bằng lệnh market (IOC).
@@ -422,9 +422,13 @@ function tryEnter(
     );
   let direction: "long" | "short" = sig.direction;
   const notes: string[] = [];
-  // Không còn buộc đi ngược lượt trước theo `netExposure` (apex MM inventory hard block, DEC-TBD-vf-version-apply):
-  // khối lượng ròng của các lượt ĐÃ ĐÓNG không phải vị thế; trên prod 2026-11-17 lệnh "bring the position back toward
-  // zero" mở lượt ngược chiều trên một vị thế sổ cái không biết. Mỗi lượt đi theo tín hiệu; `netExposure` chỉ để thống kê.
+  // Khối lượng long / short của các lượt đã đóng lệch quá một lệnh lớn nhất: buộc đi ngược lượt trước (apex MM
+  // inventory hard block, DEC-80). Bot đang phẳng nên đây là một lượt mới như mọi lượt; câu Decisions nói đúng là cân
+  // khối lượng, không phải đưa vị thế về 0 (DEC-TBD-vf-version-apply).
+  if (dec(s.netExposure).abs().gt(c.orderSizeMaxUsd) && s.lastSide !== null) {
+    direction = s.lastSide === "long" ? "short" : "long";
+    notes.push(`Went ${direction} to balance long and short volume.`);
+  }
   if (c.reverseSignal) {
     direction = direction === "long" ? "short" : "long";
     notes.push(`Reversed to ${direction} because "Reverse the signal" is on.`);
