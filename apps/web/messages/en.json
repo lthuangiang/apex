@@ -3721,6 +3721,7 @@
     "noChanges": "No changes yet.",
     "whatHappens": "What happens when you apply",
     "applyEffect": "Open orders are cancelled and placed again from the new settings.",
+    "applyEffectFarm": "If a trade is open, it finishes on the current settings first. The new settings start once the bot is flat.",
     "discard": "Discard",
     "review": "Review and apply v{next}",
     "history": "Version history",

@@ -226,7 +226,10 @@ export function BotEdit({
               </ul>
             )}
             <h3 className="m-0 text-sm font-bold">{t("whatHappens")}</h3>
-            <p className="m-0 text-sm text-ink-2">{t("applyEffect")}</p>
+            <p className="m-0 text-sm text-ink-2">
+              {/* Volume Farm chờ lượt đang mở đóng rồi mới áp (DEC-TBD-vf-version-apply). */}
+              {strategy === "volume_farm" ? t("applyEffectFarm") : t("applyEffect")}
+            </p>
             <div role="status" aria-live="polite">
               {waitingFor === null ? null : live ? (
                 <strong>{t("live", { next: waitingFor })}</strong>

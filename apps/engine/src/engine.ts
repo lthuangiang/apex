@@ -218,11 +218,6 @@ const MAKER_BACKFILL_WINDOW_MS = 600_000;
 /** Market Making: đọc vị thế thật trên SoDEX mỗi chừng này ms để phát hiện lệch sổ (DEC-100). */
 export const MAKER_POSITION_MS = 30_000;
 /**
- * Volume Farm: đọc vị thế SoDEX mỗi ngần này (ms) cho mỗi bot đang chạy, để chiến lược phát hiện sổ cái lệch vị thế
- * thật (DEC-TBD-vf-version-apply). Một request mỗi bot mỗi 30 s, như Market Making.
- */
-export const FARM_POSITION_MS = 30_000;
-/**
  * Huỷ chưa xong (request không rời DRIFT vì signer lỗi, hoặc SoDEX không trả kết quả rõ): thử lại sau mỗi chừng này
  * ms cho tới khi SoDEX xác nhận. Không thử lại thì lệnh còn sống trên sổ và còn "open" trong DRIFT, chặn mọi lệnh
  * ngược chiều bằng kiểm tra self-trade (sự cố 2026-11-04, DEC-111).
@@ -4180,29 +4175,6 @@ export class Engine {
       if (now - (this.#makerPosition.get(key) ?? 0) >= MAKER_POSITION_MS) {
         this.#makerPosition.set(key, now);
         await this.#syncMakerPosition(r, now);
-      }
-    }
-    await this.#syncFarmPositions(shard, now);
-  }
-
-  /**
-   * Volume Farm tiền thật đang chạy: vị thế SoDEX → `positionSync` (DEC-TBD-vf-version-apply), chỉ khi là bot duy nhất
-   * của account trên market đó (như Market Making). Bot đang pause thì không đọc: chiến lược có thể đặt lệnh thoát.
-   */
-  async #syncFarmPositions(shard: number, now: number): Promise<void> {
-    const farms = [...this.#runners.values()].filter(
-      (r) => r.shard === shard && r.strategy === Strategy.volumeFarm && !r.paper,
-    );
-    for (const r of farms) {
-      const key = `${r.account.id}:${r.market}`;
-      if (now - (this.#makerPosition.get(key) ?? 0) < FARM_POSITION_MS) continue;
-      this.#makerPosition.set(key, now);
-      if ((await this.#currentState(r.botId)) !== BotState.running) continue;
-      try {
-        await this.#syncMakerPosition(r, now);
-      } catch (error) {
-        if (error instanceof FencedError) throw error;
-        this.#d.log.warn({ err: error, botId: r.botId }, "farm position sync failed");
       }
     }
   }

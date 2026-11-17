@@ -478,45 +478,42 @@ describe("volume farm signal — regime + counter-trend (120 candles, như engin
   });
 });
 
-describe("volume farm — inventory rebalance (netExposure hard block)", () => {
-  it("buộc short khi netExposure > orderSizeMaxUsd (nhiều long đã đóng)", () => {
-    // netExposure = 300 USDC > orderSizeMaxUsd 200 USDC, lastSide = long → phải flip sang short
+describe("volume farm — netExposure no longer forces an opposite entry (DEC-TBD-vf-version-apply)", () => {
+  const logs = (a: StrategyAction[]) =>
+    a.filter((x): x is Extract<StrategyAction, { type: "log" }> => x.type === "log");
+
+  it("follows the signal even when closed longs pile up (no forced short)", () => {
     const start: VolumeFarmState = {
       ...volumeFarm.initialState(cfg()),
       netExposure: "300",
       lastSide: "long",
     };
     const { all } = run(cfg(), [timer(T0)], start);
-    const order = places(all)[0];
-    expect(order?.side).toBe("sell");
-    const log = all.find((a): a is Extract<StrategyAction, { type: "log" }> => a.type === "log");
-    expect(log?.why).toMatch(/to bring the position back toward zero/);
-  });
-
-  it("không flip khi netExposure ≤ orderSizeMaxUsd", () => {
-    const start: VolumeFarmState = {
-      ...volumeFarm.initialState(cfg()),
-      netExposure: "150", // < 200 → không cần flip
-      lastSide: "long",
-    };
-    const { all } = run(cfg(), [timer(T0)], start);
-    // Uptrend signal → vẫn long bình thường
+    // Uptrend → long; trước đây bị buộc short "to bring the position back toward zero".
     expect(places(all)[0]?.side).toBe("buy");
+    expect(logs(all).some((l) => l.why.includes("back toward zero"))).toBe(false);
   });
 
-  it("netExposure âm lớn (nhiều short đã đóng) buộc long", () => {
-    // netExposure = -300 và lastSide = short → buộc long
+  it("never opens a long to 'flatten' after many closed shorts (prod 2026-11-17 09:02:50)", () => {
+    const down: StrategyEvent = {
+      type: "timer",
+      at: T0,
+      market: {
+        market: "BTC-USD",
+        candles: candles(-0.0001),
+        book: { ...book, bidNotional: "400000", askNotional: "500000" },
+      },
+    };
     const start: VolumeFarmState = {
       ...volumeFarm.initialState(cfg()),
       netExposure: "-300",
       lastSide: "short",
     };
-    const { all } = run(cfg(), [timer(T0)], start);
-    const order = places(all)[0];
-    // Inventory block phải thắng reverseSignal: long
-    expect(order?.side).toBe("buy");
-    const log = all.find((a): a is Extract<StrategyAction, { type: "log" }> => a.type === "log");
-    expect(log?.why).toMatch(/to bring the position back toward zero/);
+    const { all } = run(cfg(), [down], start);
+    // Tín hiệu short trong downtrend → short, không phải "Enter long … bring the position back toward zero".
+    expect(places(all)[0]?.side).toBe("sell");
+    expect(logs(all).map((l) => l.decision)).not.toContain("Enter long");
+    expect(logs(all).some((l) => l.why.includes("back toward zero"))).toBe(false);
   });
 
   it("netExposure accumulates correctly after each closed trade", () => {
@@ -1253,17 +1250,10 @@ describe("volume farm — backoff after refused entries (DEC-299)", () => {
   });
 });
 
-describe("volume farm — new version and SoDEX position (DEC-TBD-vf-version-apply)", () => {
+describe("volume farm — new version while running (DEC-TBD-vf-version-apply)", () => {
   const apply = volumeFarm.applyVersion;
   if (apply === undefined) throw new Error("volume farm must define applyVersion");
   const v2 = cfg({ allowTaker: true, takerAfter: 0 });
-  const sync = (at: number, size: string, entryPrice = "80000"): StrategyEvent => ({
-    type: "positionSync",
-    at,
-    market: "BTC-USD",
-    size,
-    entryPrice,
-  });
   /** Vào lệnh short và khớp ở 80000 (prod 2026-11-17: `vf:5:in:1` sell khớp, stop mua reduce-only đặt ngay). */
   function shortOpen() {
     const down = (at: number): StrategyEvent => ({
@@ -1383,69 +1373,5 @@ describe("volume farm — new version and SoDEX position (DEC-TBD-vf-version-app
     expect(late.s.ledger.position).toBe(entry.quantity);
     expect(late.s.phase).toBe("open");
     expect(places(late.all).filter((o) => o.stop !== undefined)).toHaveLength(1);
-  });
-
-  it("waits for a second matching SoDEX read before trusting it, and opens nothing meanwhile", () => {
-    const flat: VolumeFarmState = { ...volumeFarm.initialState(cfg()), book, bookAt: T0 };
-    // Lần đọc đầu lệch (có thể là tin khớp đang về): chỉ ghi nhận, không mở lượt mới.
-    let r = run(cfg(), [sync(T0, "-0.0198", "80000")], flat);
-    expect(r.s.drift).toMatchObject({ size: "-0.0198", ledger: "0" });
-    expect(r.all).toHaveLength(0);
-    expect(places(run(cfg(), [timer(T0 + 1000)], r.s).all)).toHaveLength(0);
-    // Lần đọc sau khớp sổ cái: xoá, bot vào lượt như thường.
-    r = run(cfg(), [sync(T0 + 30_000, "0")], r.s);
-    expect(r.s.drift).toBeNull();
-    expect(places(run(cfg(), [timer(T0 + 31_000)], r.s).all)).toHaveLength(1);
-  });
-
-  it("adopts an unknown SoDEX short and closes it with reduce-only buys, never opening a long", () => {
-    // Prod 2026-11-17: v2 quên short của v1; SoDEX còn short mà bot tưởng phẳng.
-    const flat: VolumeFarmState = {
-      ...volumeFarm.initialState(cfg()),
-      book,
-      bookAt: T0,
-      lastPrice: "80000",
-    };
-    const r = run(cfg(), [sync(T0, "-0.0198"), sync(T0 + 30_000, "-0.0198")], flat);
-    expect(r.s.ledger).toMatchObject({ position: "-0.0198", avgCost: "80000" });
-    expect(r.all.find((a) => a.type === "log")).toMatchObject({
-      decision: "Position re-synced from SoDEX",
-    });
-    const sent = places(r.all);
-    expect(sent.length).toBeGreaterThan(0);
-    // Mọi lệnh là mua reduce-only: stop đúng chiều, cỡ vị thế thật, và lệnh thoát.
-    expect(sent.every((o) => o.side === "buy" && o.reduceOnly)).toBe(true);
-    expect(sent.find((o) => o.stop !== undefined)).toMatchObject({ quantity: "0.0198" });
-    expect(r.s.phase).toBe("exiting");
-  });
-
-  it("replaces a wrong-side stop when the ledger booked a long that was really a short being reduced", () => {
-    // Prod 2026-11-17 09:02:50: mua 0.0721 "Enter long" khi SoDEX còn short 0.0919 → còn short 0.0198. Sổ cái ghi long
-    // 0.0721 và đặt stop bán (SoDEX từ chối "order side should be opposite to position side").
-    const { s: short } = shortOpen();
-    const wrong: VolumeFarmState = {
-      ...short,
-      ledger: { ...short.ledger, position: "0.0721", avgCost: "80000" },
-      xstop: { id: "old-stop", price: "75920", at: T0 },
-      lastPrice: "80000",
-      openedAt: T0 + 1000,
-      holdUntil: T0 + 600_000,
-    };
-    const r = run(cfg(), [sync(T0 + 5_000, "-0.0198"), sync(T0 + 35_000, "-0.0198")], wrong);
-    expect(r.all).toContainEqual({ type: "cancel", clOrdID: "old-stop" });
-    expect(r.s.ledger.position).toBe("-0.0198");
-    const sent = places(r.all);
-    expect(sent.every((o) => o.side === "buy" && o.reduceOnly)).toBe(true);
-    expect(new Set(sent.map((o) => o.clOrdID)).has("old-stop")).toBe(false);
-    // clOrdID mới, không trùng stop của lượt cũ.
-    const oldIds = new Set(Object.keys(short.orders));
-    expect(sent.some((o) => oldIds.has(o.clOrdID))).toBe(false);
-  });
-
-  it("does not adopt while an entry or exit is in flight", () => {
-    const entering = run(cfg(), [timer(T0)]).s;
-    const r = run(cfg(), [sync(T0 + 1000, "0.0012"), sync(T0 + 40_000, "0.0012")], entering);
-    expect(r.all).toHaveLength(0);
-    expect(r.s.ledger.position).toBe("0");
   });
 });
