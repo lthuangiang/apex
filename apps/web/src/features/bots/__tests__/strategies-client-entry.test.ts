@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import * as client from "@drift/strategies/client";
 import { describe, expect, it } from "vitest";
 
-
 // `@drift/strategies/client` (packages/strategies/src/client.ts) đi vào bundle trình duyệt (chunk tĩnh ai cũng tải được). Test này đi theo mọi import
 // (kể cả gián tiếp) từ `client.ts` và chỉ cho phép schema, hằng số và hàm hiển thị thuần: không module logic bước nào.
 
