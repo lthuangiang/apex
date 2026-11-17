@@ -31,6 +31,7 @@ export const ARCH_ICONS = [
   "swap",
   "eye",
   "send",
+  "mail",
 ] as const;
 export const archIconSchema = z.enum(ARCH_ICONS);
 export type ArchIcon = z.infer<typeof archIconSchema>;

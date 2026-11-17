@@ -170,12 +170,38 @@ describe("System Architecture Diagram page", () => {
     expect(screen.getByRole("heading", { level: 3, name: "Beta" })).toBeInTheDocument();
     expect(screen.getByText("Does beta things.")).toBeInTheDocument();
 
+    // color-contrast tắt vì jsdom không tính được màu; cặp màu của trang được kiểm ở packages/ui tokens.test.ts.
     const r = await axe.run(document.body, {
       runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
       rules: { "color-contrast": { enabled: false } },
     });
     expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
   }, 20_000);
+
+  it("selects an icon and pins a step with the keyboard", async () => {
+    const user = userEvent.setup({ delay: null });
+    wrap();
+    const beta = await screen.findByRole("button", { name: "Beta" });
+    beta.focus();
+    await user.keyboard("{Enter}");
+    expect(beta).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { level: 3, name: "Beta" })).toBeInTheDocument();
+
+    const gamma = screen.getByRole("button", { name: "Gamma" });
+    gamma.focus();
+    await user.keyboard(" ");
+    expect(gamma).toHaveAttribute("aria-pressed", "true");
+    expect(beta).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("heading", { level: 3, name: "Gamma" })).toBeInTheDocument();
+
+    const step = screen.getByRole("button", { name: /Step A/ });
+    expect(step).toHaveAttribute("aria-pressed", "false");
+    step.focus();
+    await user.keyboard("{Enter}");
+    expect(step).toHaveAttribute("aria-pressed", "true");
+    await user.keyboard(" ");
+    expect(step).toHaveAttribute("aria-pressed", "false");
+  });
 
   it("opens the flow named in the link", async () => {
     window.history.replaceState(null, "", "/admin/architecture#two");
@@ -191,9 +217,7 @@ describe("System Architecture Diagram page", () => {
   it("shows only a message when the API says the user is not on the team", async () => {
     state.forbidden = true;
     wrap();
-    expect(
-      await screen.findByText("System Architecture Diagram is for the DeskLabs team only."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("This page is for the DeskLabs team only.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "DeskLabs system diagram" })).toBeNull();
   });
 });

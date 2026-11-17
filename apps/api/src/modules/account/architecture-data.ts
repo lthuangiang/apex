@@ -1,83 +1,43 @@
 import type { ArchitectureMap } from "@drift/shared";
 
 // Nội dung System Architecture Diagram (team): vị trí icon, đường nối, các luồng và câu chữ. Chỉ api trả về, sau
-// requireTeam; không bao giờ vào bundle web (DevOps, PR #211). Lấy từ docker-compose.yml (mạng, cổng, replica, volume)
-// và code (outbox relay ở apps/jobs, subscribe ở apps/realtime, vòng tick của apps/engine, leader tracker của
-// apps/marketdata). Không có hostname, IP hay secret của production. Đổi docker-compose thì cập nhật ở đây.
-// Toạ độ theo khung 1140 × 780; icon 48 × 48 có tâm ở (x, y − 10), tên dưới y + 30.
+// requireTeam; không bao giờ vào bundle web (DevOps, PR #211). Lấy từ compose của VPS (docker-compose.yml +
+// docker-compose.prod.yml, DEC-70: mỗi service 1 bản, Vault profile `prod`; số của bản compose tham chiếu ghi riêng
+// trong fact "Replicas") và từ code: outbox relay + consumer ở apps/jobs, timer ở apps/scheduler, subscribe ở
+// apps/realtime, vòng tick của apps/engine, leader tracker + Binance ở apps/marketdata, retry ở packages/runtime/queue.ts.
+// Không có hostname, IP hay secret của production. Đổi compose hoặc các file trên thì cập nhật ở đây.
+// Toạ độ theo khung 1140 × 780; icon 48 × 48 có tâm ở (x, y − 10), tên dưới y + 30. Web chỉ vẽ đường nối của luồng đang
+// chọn, nên mỗi đường nối phải có trong ít nhất một luồng (test kiểm tra).
+
+const VPS_ONE = "1 on the VPS";
 
 export const ARCHITECTURE_MAP: ArchitectureMap = {
   width: 1140,
   height: 780,
   groups: [
-    {
-      zone: "internet",
-      label: "Internet",
-      x: 20,
-      y: 30,
-      w: 140,
-      h: 730,
-    },
+    { zone: "internet", label: "Internet", x: 20, y: 30, w: 140, h: 730 },
     {
       zone: "host",
-      label: "Docker host · VPS (docker compose)",
+      label: "One VPS running Docker Compose (1 replica of each service)",
       x: 170,
       y: 30,
       w: 765,
       h: 730,
     },
-    {
-      zone: "edge",
-      label: "edge network · public",
-      x: 190,
-      y: 60,
-      w: 725,
-      h: 168,
-    },
-    {
-      zone: "core",
-      label: "core network · private",
-      x: 190,
-      y: 250,
-      w: 725,
-      h: 350,
-    },
-    {
-      zone: "secure",
-      label: "secure network · internal: true",
-      x: 190,
-      y: 620,
-      w: 725,
-      h: 130,
-    },
-    {
-      zone: "outside",
-      label: "Outside DeskLabs",
-      x: 950,
-      y: 30,
-      w: 175,
-      h: 730,
-    },
+    { zone: "edge", label: "Edge network (public)", x: 190, y: 60, w: 725, h: 168 },
+    { zone: "core", label: "Core network (private)", x: 190, y: 250, w: 725, h: 350 },
+    { zone: "secure", label: "Secure network (no internet)", x: 190, y: 620, w: 725, h: 130 },
+    { zone: "outside", label: "Outside DeskLabs", x: 950, y: 30, w: 175, h: 730 },
   ],
   notes: [
     {
       x: 750,
       y: 572,
-      text: "profile observability: otel · prometheus · loki · grafana",
+      text: "Optional monitoring (observability profile): OpenTelemetry, Prometheus, Loki, Grafana",
       boxed: true,
     },
-    {
-      x: 620,
-      y: 694,
-      text: "No internet access. Only api and engine",
-      boxed: false,
-    },
-    {
-      x: 620,
-      y: 710,
-      text: "can reach signer (mTLS, certs in infra/certs).",
-      boxed: false,
-    },
+    { x: 620, y: 694, text: "No internet access. Only api and engine", boxed: false },
+    { x: 620, y: 710, text: "can call signer, over mutual TLS (mTLS).", boxed: false },
   ],
   nodes: [
     {
@@ -87,16 +47,14 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "user",
       tone: "ext",
       label: "Users",
-      sub: "browser, app",
+      sub: "web, Android app",
       facts: [
         {
           label: "Role",
-          value: "Traders and the team, on the web or the Android app (TWA).",
+          value:
+            "Traders and the team, on the web or in the Android app (a wrapper around the web app).",
         },
-        {
-          label: "Comes in through",
-          value: "https://APP_HOST through traefik",
-        },
+        { label: "Comes in through", value: "https://APP_HOST through traefik" },
       ],
     },
     {
@@ -105,17 +63,14 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       y: 410,
       icon: "spark",
       tone: "ext",
-      label: "Claude app / Code",
+      label: "Claude (app or Claude Code)",
       sub: "MCP client",
       facts: [
         {
           label: "Role",
-          value: "The user's Claude calls DeskLabs MCP after they press Allow (OAuth 2.1).",
+          value: "The user's Claude calls DeskLabs MCP after the user approves access (OAuth 2.1).",
         },
-        {
-          label: "Comes in through",
-          value: "https://MCP_HOST through traefik",
-        },
+        { label: "Comes in through", value: "https://MCP_HOST through traefik" },
       ],
     },
     {
@@ -127,22 +82,17 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       label: "traefik",
       sub: ":80 :443",
       facts: [
-        {
-          label: "Image",
-          value: "traefik:v3.6",
-        },
+        { label: "Image", value: "traefik:v3.6" },
         {
           label: "Ports",
-          value: "80, 443 (the only ports open to the internet)",
+          value: "80 (redirects to https) and 443. The only ports open to the internet.",
         },
-        {
-          label: "Networks",
-          value: "edge",
-        },
+        { label: "Networks", value: "edge" },
+        { label: "Volumes", value: "letsencrypt (Let's Encrypt certificates, renewed by traefik)" },
         {
           label: "Role",
           value:
-            "Ends TLS and reads each container's labels to route: Host(APP_HOST) → web, /api → api, /ws → realtime (sticky cookie), Host(MCP_HOST) → mcp. Blocks /api/v1/mcp/* and oauth/introspect from outside (loopback only).",
+            "Ends TLS and reads each container's labels to route: Host(APP_HOST) → web; /api and /.well-known/oauth-authorization-server (MCP OAuth metadata) → api; /ws → realtime; Host(MCP_HOST) → mcp. Blocks /api/v1/mcp/* and /api/v1/oauth/introspect from outside (loopback only). Old domains get a 301 to APP_HOST.",
         },
       ],
     },
@@ -153,24 +103,15 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "window",
       tone: "app",
       label: "web",
-      sub: ":3000 ×2",
+      sub: ":3000",
       facts: [
-        {
-          label: "App",
-          value: "apps/web (Next.js)",
-        },
-        {
-          label: "Replicas",
-          value: "2",
-        },
-        {
-          label: "Networks",
-          value: "edge",
-        },
+        { label: "App", value: "apps/web (Next.js)" },
+        { label: "Replicas", value: `${VPS_ONE} (2 in the reference docker-compose.yml)` },
+        { label: "Networks", value: "edge" },
         {
           label: "Role",
           value:
-            "Renders pages with server components and sends the JS to the browser. next.config rewrites /api to API_INTERNAL_URL when that is set.",
+            "Renders pages with server components and sends the JavaScript to the browser. next.config rewrites /api to API_INTERNAL_URL when that is set.",
         },
       ],
     },
@@ -181,24 +122,15 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "api",
       tone: "app",
       label: "api",
-      sub: ":8080 ×2",
+      sub: ":8080",
       facts: [
-        {
-          label: "App",
-          value: "apps/api (Fastify)",
-        },
-        {
-          label: "Replicas",
-          value: "2",
-        },
-        {
-          label: "Networks",
-          value: "edge, core, secure",
-        },
+        { label: "App", value: "apps/api (Fastify)" },
+        { label: "Replicas", value: `${VPS_ONE} (2 in the reference docker-compose.yml)` },
+        { label: "Networks", value: "edge, core, secure" },
         {
           label: "Role",
           value:
-            "REST for the web: auth, bots, settings. Parses input with zod and writes the outbox in the same transaction. Calls signer (mTLS) when connecting SoDEX, reco (:8095), and the Claude API for Desk AI.",
+            "REST for the web: auth, bots, settings. Parses input with zod and writes the outbox in the same transaction. Calls signer (mTLS) and SoDEX when connecting an account, reco (:8095) for plans and AI parameters, email (SMTP) for sign-in codes, and the Claude API for AI Desk. Handles the Telegram webhook and links Telegram chats.",
         },
       ],
     },
@@ -209,24 +141,18 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "bolt",
       tone: "app",
       label: "realtime",
-      sub: ":8081 ×2",
+      sub: ":8081",
       facts: [
-        {
-          label: "App",
-          value: "apps/realtime",
-        },
+        { label: "App", value: "apps/realtime" },
         {
           label: "Replicas",
-          value: "2 (sticky cookie)",
+          value: `${VPS_ONE} (2 with a sticky cookie in the reference docker-compose.yml)`,
         },
-        {
-          label: "Networks",
-          value: "edge, core",
-        },
+        { label: "Networks", value: "edge, core" },
         {
           label: "Role",
           value:
-            "Holds the browser's WebSocket and subscribes to NATS user.<accountId>.> for the signed-in user's accounts, then pushes events down.",
+            "Checks the session cookie, holds the browser's WebSocket and subscribes to NATS user.<accountId>.> for the user's accounts, then pushes events down.",
         },
       ],
     },
@@ -239,18 +165,13 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       label: "mcp",
       sub: ":8097",
       facts: [
-        {
-          label: "App",
-          value: "apps/mcp",
-        },
-        {
-          label: "Networks",
-          value: "edge, core",
-        },
+        { label: "App", value: "apps/mcp" },
+        { label: "Replicas", value: VPS_ONE },
+        { label: "Networks", value: "edge, core" },
         {
           label: "Role",
           value:
-            "DeskLabs MCP: read tools and drafts only. Calls api on the internal network (http://api:8080) and never touches signer, engine or SoDEX.",
+            "DeskLabs MCP: read-only tools, plus drafts the user reviews and confirms in DeskLabs. Calls api on the internal network (http://api:8080) and never touches signer, engine or SoDEX.",
         },
       ],
     },
@@ -261,24 +182,19 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "cpu",
       tone: "app",
       label: "engine",
-      sub: "×3",
+      sub: "64 shards",
       facts: [
-        {
-          label: "App",
-          value: "apps/engine",
-        },
+        { label: "App", value: "apps/engine" },
         {
           label: "Replicas",
-          value: "3, accounts split by shard lease in Redis",
+          value:
+            "1 on the VPS, holding all 64 shard leases (3 in the reference docker-compose.yml, splitting the shards through leases in Redis)",
         },
-        {
-          label: "Networks",
-          value: "core, secure",
-        },
+        { label: "Networks", value: "core, secure" },
         {
           label: "Role",
           value:
-            "Each tick reads its shard's bots, runs the strategy code (packages/strategies), asks signer to sign, sends orders to SoDEX and keeps SoDEX's user stream open for fills.",
+            "About once a second, a tick loads its shards' bots and runs the strategy code (packages/strategies), including the timer strategies such as Recurring Buy. Real bots: asks signer to sign, sends orders to SoDEX, keeps SoDEX's user stream open for fills and reconciles unknown orders (DEC-303). Paper bots from AI Desk go through PaperGateway and never reach signer or SoDEX (DEC-105).",
         },
       ],
     },
@@ -289,28 +205,19 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "chart",
       tone: "app",
       label: "marketdata",
-      sub: "×2, 1 leader",
+      sub: "1 leader",
       facts: [
-        {
-          label: "App",
-          value: "apps/marketdata",
-        },
+        { label: "App", value: "apps/marketdata" },
         {
           label: "Replicas",
-          value: "2, 1 active (leader lease)",
+          value: `${VPS_ONE} (2 in the reference docker-compose.yml, 1 active through a leader lease)`,
         },
-        {
-          label: "Networks",
-          value: "core",
-        },
-        {
-          label: "Volumes",
-          value: "mmraw",
-        },
+        { label: "Networks", value: "core" },
+        { label: "Volumes", value: "mmraw" },
         {
           label: "Role",
           value:
-            "Holds SoDEX's market WebSocket, publishes md.<market>.price / book / funding to NATS, stores candles_1m, and tracks leader wallets for Copy Trading.",
+            "Holds SoDEX's market WebSocket and publishes md.<market>.price / book / fair / funding to NATS; stores candles_1m. Reads Binance USDT-M futures prices to work out md.<market>.fair for Market Making. Tracks leader wallets for Copy Trading and followed wallets.",
         },
       ],
     },
@@ -321,24 +228,15 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "queue",
       tone: "app",
       label: "jobs",
-      sub: "×2",
+      sub: "outbox relay",
       facts: [
-        {
-          label: "App",
-          value: "apps/jobs",
-        },
-        {
-          label: "Replicas",
-          value: "2",
-        },
-        {
-          label: "Networks",
-          value: "core",
-        },
+        { label: "App", value: "apps/jobs" },
+        { label: "Replicas", value: `${VPS_ONE} (2 in the reference docker-compose.yml)` },
+        { label: "Networks", value: "core" },
         {
           label: "Role",
           value:
-            "Outbox relay (reads the outbox table, publishes to NATS) and the consumers: jobs.import, jobs.notify, reconciling unknown orders, builder revenue, Telegram, team ops.",
+            "Outbox relay (reads the outbox table, publishes to NATS) and the JetStream consumers: history import, notifications (in-app, email, Telegram) and team alerts.",
         },
       ],
     },
@@ -349,20 +247,14 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "rewind",
       tone: "app",
       label: "backtest",
-      sub: "×2",
+      sub: "worker",
       facts: [
-        {
-          label: "App",
-          value: "apps/backtest",
-        },
+        { label: "App", value: "apps/backtest" },
         {
           label: "Replicas",
-          value: "2",
+          value: `${VPS_ONE}, limited to 1 CPU and 1 GB (2 in the reference docker-compose.yml)`,
         },
-        {
-          label: "Networks",
-          value: "core",
-        },
+        { label: "Networks", value: "core" },
         {
           label: "Role",
           value:
@@ -377,24 +269,15 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "spark",
       tone: "ml",
       label: "reco",
-      sub: ":8095 ×2",
+      sub: ":8095",
       facts: [
-        {
-          label: "App",
-          value: "apps/reco",
-        },
-        {
-          label: "Replicas",
-          value: "2",
-        },
-        {
-          label: "Networks",
-          value: "core",
-        },
+        { label: "App", value: "apps/reco" },
+        { label: "Replicas", value: `${VPS_ONE} (2 in the reference docker-compose.yml)` },
+        { label: "Networks", value: "core" },
         {
           label: "Role",
           value:
-            "Recommendations and AI parameters (deterministic rules). api calls it through RECO_URL.",
+            "Recommendations and AI parameters (deterministic rules). api calls it through RECO_URL; it reads market stats through pgbouncer.",
         },
       ],
     },
@@ -405,19 +288,14 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "pool",
       tone: "db",
       label: "pgbouncer",
-      sub: "pool",
+      sub: ":6432",
       facts: [
-        {
-          label: "Image",
-          value: "edoburu/pgbouncer",
-        },
-        {
-          label: "Networks",
-          value: "core, secure",
-        },
+        { label: "Image", value: "edoburu/pgbouncer" },
+        { label: "Networks", value: "core, secure" },
         {
           label: "Role",
-          value: "Transaction-mode connection pool. Every service reaches Postgres through it.",
+          value:
+            "Transaction-mode pool for the drift user. Every service except signer reaches Postgres through it; signer connects directly with its own role.",
         },
       ],
     },
@@ -430,22 +308,17 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       label: "postgres",
       sub: "Timescale pg16",
       facts: [
+        { label: "Image", value: "timescale/timescaledb:2.16.1-pg16" },
+        { label: "Networks", value: "core, secure" },
+        { label: "Volumes", value: "pgdata" },
         {
-          label: "Image",
-          value: "timescale/timescaledb:2.16.1-pg16",
-        },
-        {
-          label: "Networks",
-          value: "core, secure",
-        },
-        {
-          label: "Volumes",
-          value: "pgdata",
+          label: "Migrations",
+          value: "The one-shot migrate container (api image) runs them before every deploy.",
         },
         {
           label: "Role",
           value:
-            "Main data: users, bots, orders, fills, audit, outbox. Candles are a Timescale hypertable. Has its own role for signer.",
+            "Main data: users, bots, orders, fills, outbox. Candles are a Timescale hypertable. Has its own role (drift_signer) for signer.",
         },
       ],
     },
@@ -458,21 +331,13 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       label: "redis",
       sub: "leases",
       facts: [
-        {
-          label: "Image",
-          value: "redis:7.4-alpine",
-        },
-        {
-          label: "Networks",
-          value: "core",
-        },
-        {
-          label: "Volumes",
-          value: "redisdata",
-        },
+        { label: "Image", value: "redis:7.4-alpine" },
+        { label: "Networks", value: "core" },
+        { label: "Volumes", value: "redisdata" },
         {
           label: "Role",
-          value: "engine shard leases, marketdata / scheduler leader leases, rate limits, cache.",
+          value:
+            "Engine shard leases, marketdata and scheduler leader leases, rate limits, latest prices, cache.",
         },
       ],
     },
@@ -485,22 +350,18 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       label: "nats",
       sub: "JetStream",
       facts: [
-        {
-          label: "Image",
-          value: "nats:2.10-alpine",
-        },
-        {
-          label: "Networks",
-          value: "core",
-        },
-        {
-          label: "Volumes",
-          value: "natsdata",
-        },
+        { label: "Image", value: "nats:2.10-alpine" },
+        { label: "Networks", value: "core" },
+        { label: "Volumes", value: "natsdata" },
         {
           label: "Role",
           value:
-            "Plain event bus (md.*, user.*, leader.*) and the JetStream work queue: streams JOBS (jobs.*), BACKTEST (backtest.run) and JOBS_DLQ. 5 retries (1 s up to 10 minutes), then the DLQ.",
+            "Plain event bus (md.*, user.*, leader.*) and the JetStream work queue: streams JOBS (jobs.*), BACKTEST (backtest.run) and JOBS_DLQ.",
+        },
+        {
+          label: "Retries",
+          value:
+            "Up to 5 tries (retries after 1 s, 5 s, 30 s, 2 min), then JOBS_DLQ. The Telegram consumers allow 30 deliveries because waiting for rate limits also counts.",
         },
       ],
     },
@@ -511,23 +372,18 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "clock",
       tone: "app",
       label: "scheduler",
-      sub: "×2, 1 leader",
+      sub: "1 leader",
       facts: [
-        {
-          label: "App",
-          value: "apps/scheduler",
-        },
+        { label: "App", value: "apps/scheduler" },
         {
           label: "Replicas",
-          value: "2, 1 active (leader lease)",
+          value: `${VPS_ONE} (2 in the reference docker-compose.yml, 1 active through a leader lease)`,
         },
-        {
-          label: "Networks",
-          value: "core",
-        },
+        { label: "Networks", value: "core" },
         {
           label: "Role",
-          value: "Cron: recurring buys, daily loss reset, key expiry reminders, market stats.",
+          value:
+            "Leader-only timers: market stats, builder revenue check, risk and invariant checks, fee tiers, Copy Trading leaderboard, Market Making cost model, MCP alerts, AI Desk records. Reads SoDEX and Hyperliquid; no orders. A risk limit breach pauses the account's bots (engine confirms).",
         },
       ],
     },
@@ -538,24 +394,24 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "key",
       tone: "sec",
       label: "signer",
-      sub: ":8090 ×2",
+      sub: ":8090",
       facts: [
+        { label: "App", value: "apps/signer" },
+        { label: "Replicas", value: `${VPS_ONE} (2 in the reference docker-compose.yml)` },
+        { label: "Networks", value: "secure (no internet)" },
         {
-          label: "App",
-          value: "apps/signer",
+          label: "Database",
+          value: "Connects straight to postgres:5432 as drift_signer, not through pgbouncer.",
         },
         {
-          label: "Replicas",
-          value: "2",
-        },
-        {
-          label: "Networks",
-          value: "secure (internal: true)",
+          label: "Certificates",
+          value:
+            "From SIGNER_CERTS_DIR: on the VPS /opt/drift/certs, made once with gen-dev-certs.sh (deploy/server/docker-compose.yml makes them with a one-shot certs container instead).",
         },
         {
           label: "Role",
           value:
-            "The only place that decrypts DeskLabs' API key (Vault transit / KMS). Signs payloads and never sends orders. Accepts mTLS from api and engine only.",
+            "The only place that decrypts DeskLabs' API keys (Vault transit). Creates keys, signs payloads and never sends orders. Accepts mTLS from api and engine only.",
         },
       ],
     },
@@ -566,47 +422,54 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       icon: "lock",
       tone: "sec",
       label: "vault",
-      sub: "dev profile",
+      sub: "prod + dev profiles",
       facts: [
-        {
-          label: "Image",
-          value: "hashicorp/vault:1.17",
-        },
-        {
-          label: "Networks",
-          value: "secure",
-        },
-        {
-          label: "Volumes",
-          value: "vaultdata, vaultinit",
-        },
+        { label: "Image", value: "hashicorp/vault:1.17" },
+        { label: "Networks", value: "secure" },
+        { label: "Volumes", value: "vaultdata, vaultinit" },
         {
           label: "Role",
           value:
-            "Dev profile only (vault-init unseals it). Production uses a cloud KMS or a separate Vault cluster.",
+            "Holds the transit key that encrypts DeskLabs' API keys. On the VPS it runs in server mode with file storage; vault-init unseals it after every restart (DEC-70). Losing the vaultdata and vaultinit volumes means every account must reconnect SoDEX.",
         },
       ],
     },
     {
       id: "claudeApi",
       x: 1037,
-      y: 150,
+      y: 110,
       icon: "spark",
       tone: "ext",
       label: "Claude API",
-      sub: "Desk AI",
+      sub: "AI Desk",
       facts: [
         {
           label: "Role",
           value:
-            "api calls it to write the words around numbers that code worked out. Key DESK_AI_API_KEY; empty means Desk AI uses template sentences.",
+            "api sends it numbers that code already worked out, and it writes the sentences around them. Key DESK_AI_API_KEY; if it's empty, AI Desk uses template sentences.",
+        },
+      ],
+    },
+    {
+      id: "email",
+      x: 1037,
+      y: 225,
+      icon: "mail",
+      tone: "ext",
+      label: "Email",
+      sub: "SMTP",
+      facts: [
+        {
+          label: "Role",
+          value:
+            "api sends sign-in codes and jobs sends notification emails through SMTP_URL. In dev this is Mailpit; SMTP_URL=log prints sign-in codes to the log and turns off notification emails.",
         },
       ],
     },
     {
       id: "sodex",
       x: 1037,
-      y: 400,
+      y: 345,
       icon: "swap",
       tone: "ext",
       label: "SoDEX mainnet",
@@ -615,14 +478,30 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
         {
           label: "Role",
           value:
-            "The exchange: REST to place and cancel orders, the market WebSocket (marketdata) and the user stream (engine). jobs reads history and reconciles.",
+            "The exchange: REST to place and cancel orders (engine), the market WebSocket (marketdata) and the user stream (engine). api reads accounts and sends the actions the user signed; jobs imports history; scheduler reads balances and markets.",
+        },
+      ],
+    },
+    {
+      id: "binance",
+      x: 1037,
+      y: 465,
+      icon: "chart",
+      tone: "ext",
+      label: "Binance",
+      sub: "USDT-M futures",
+      facts: [
+        {
+          label: "Role",
+          value:
+            "Public bookTicker stream, read only, for markets with a Market Making bot. marketdata turns it into md.<market>.fair for Smart quoting; if Binance can't be read, Market Making runs without it.",
         },
       ],
     },
     {
       id: "hyperliquid",
       x: 1037,
-      y: 590,
+      y: 585,
       icon: "eye",
       tone: "ext",
       label: "Hyperliquid",
@@ -631,7 +510,7 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
         {
           label: "Role",
           value:
-            "Leader wallets to copy or watch, read only: WebSocket userFills for wallets with a running copy bot, userFillsByTime every 2 minutes for followed wallets.",
+            "Leader wallets to copy or follow, read only: WebSocket userFills for wallets with a running copy bot, userFillsByTime every 2 minutes for followed wallets. scheduler reads trader stats for the Copy Trading leaderboard.",
         },
       ],
     },
@@ -647,7 +526,7 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
         {
           label: "Role",
           value:
-            "jobs sends messages to users who connected Telegram. Never includes a wallet address, key or balance.",
+            "api handles the Telegram webhook and links accounts; jobs sends the messages. Messages never include a wallet address, key or balance.",
         },
       ],
     },
@@ -745,12 +624,95 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       ],
     },
     {
+      id: "apiSigner",
+      from: "api",
+      to: "signer",
+      points: [
+        [540, 217],
+        [540, 244],
+        [215, 244],
+        [215, 700],
+        [302, 700],
+      ],
+    },
+    {
+      id: "apiSodex",
+      from: "api",
+      to: "sodex",
+      points: [
+        [580, 129],
+        [580, 84],
+        [990, 84],
+        [990, 330],
+        [1009, 330],
+      ],
+    },
+    {
+      id: "apiReco",
+      from: "api",
+      to: "reco",
+      points: [
+        [588, 170],
+        [620, 170],
+        [620, 244],
+        [834, 244],
+        [834, 304],
+      ],
+    },
+    {
+      id: "apiEmail",
+      from: "api",
+      to: "email",
+      points: [
+        [586, 129],
+        [586, 100],
+        [995, 100],
+        [995, 210],
+        [1009, 210],
+      ],
+    },
+    {
+      id: "apiClaude",
+      from: "api",
+      to: "claudeApi",
+      points: [
+        [548, 129],
+        [548, 92],
+        [1009, 92],
+      ],
+    },
+    {
+      id: "telegramApi",
+      from: "telegram",
+      to: "api",
+      points: [
+        [1009, 705],
+        [932, 705],
+        [932, 76],
+        [574, 76],
+        [574, 129],
+      ],
+    },
+    {
       id: "pgPostgres",
       from: "pgbouncer",
       to: "postgres",
       points: [
         [298, 476],
         [392, 476],
+      ],
+    },
+    {
+      id: "rtPg",
+      from: "realtime",
+      to: "pgbouncer",
+      points: [
+        [682, 217],
+        [682, 242],
+        [310, 242],
+        [310, 420],
+        [290, 420],
+        [290, 444],
       ],
     },
     {
@@ -826,11 +788,23 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       from: "sodex",
       to: "marketdata",
       points: [
-        [1009, 376],
-        [965, 376],
+        [1009, 325],
+        [965, 325],
         [965, 266],
         [420, 266],
         [420, 306],
+      ],
+    },
+    {
+      id: "binanceMd",
+      from: "binance",
+      to: "marketdata",
+      points: [
+        [1009, 450],
+        [945, 450],
+        [945, 258],
+        [410, 258],
+        [410, 306],
       ],
     },
     {
@@ -877,6 +851,17 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       ],
     },
     {
+      id: "signerPg",
+      from: "signer",
+      to: "postgres",
+      points: [
+        [345, 664],
+        [345, 560],
+        [414, 560],
+        [414, 532],
+      ],
+    },
+    {
       id: "engSodex",
       from: "engine",
       to: "sodex",
@@ -884,8 +869,8 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
         [270, 306],
         [270, 296],
         [985, 296],
-        [985, 390],
-        [1009, 390],
+        [985, 340],
+        [1009, 340],
       ],
     },
     {
@@ -915,10 +900,22 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       to: "sodex",
       points: [
         [560, 306],
-        [560, 298],
-        [985, 298],
-        [985, 390],
-        [1009, 390],
+        [560, 288],
+        [975, 288],
+        [975, 330],
+        [1009, 330],
+      ],
+    },
+    {
+      id: "jobsEmail",
+      from: "jobs",
+      to: "email",
+      points: [
+        [540, 306],
+        [540, 246],
+        [945, 246],
+        [945, 220],
+        [1009, 220],
       ],
     },
     {
@@ -946,15 +943,15 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       ],
     },
     {
-      id: "apiClaude",
-      from: "api",
-      to: "claudeApi",
+      id: "recoPg",
+      from: "reco",
+      to: "pgbouncer",
       points: [
-        [548, 129],
-        [548, 96],
-        [980, 96],
-        [980, 140],
-        [1009, 140],
+        [834, 392],
+        [834, 440],
+        [310, 440],
+        [310, 452],
+        [298, 452],
       ],
     },
     {
@@ -962,20 +959,22 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       from: "hyperliquid",
       to: "marketdata",
       points: [
-        [1009, 580],
-        [955, 580],
+        [1009, 575],
+        [955, 575],
         [955, 270],
         [426, 270],
         [426, 306],
       ],
     },
     {
-      id: "mdPostgres",
+      id: "mdPg",
       from: "marketdata",
-      to: "postgres",
+      to: "pgbouncer",
       points: [
-        [420, 392],
-        [420, 444],
+        [404, 392],
+        [404, 412],
+        [290, 412],
+        [290, 444],
       ],
     },
     {
@@ -990,57 +989,80 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
         [1009, 690],
       ],
     },
+    {
+      id: "schedRedis",
+      from: "scheduler",
+      to: "redis",
+      points: [
+        [834, 532],
+        [834, 544],
+        [566, 544],
+        [566, 532],
+      ],
+    },
+    {
+      id: "schedPg",
+      from: "scheduler",
+      to: "pgbouncer",
+      points: [
+        [846, 532],
+        [846, 590],
+        [276, 590],
+        [276, 532],
+      ],
+    },
+    {
+      id: "schedSodex",
+      from: "scheduler",
+      to: "sodex",
+      points: [
+        [868, 465],
+        [925, 465],
+        [925, 320],
+        [1009, 320],
+      ],
+    },
+    {
+      id: "schedHl",
+      from: "scheduler",
+      to: "hyperliquid",
+      points: [
+        [868, 478],
+        [930, 478],
+        [930, 570],
+        [1009, 570],
+      ],
+    },
   ],
   legend: [
-    {
-      tone: "net",
-      label: "Routing",
-    },
-    {
-      tone: "app",
-      label: "DeskLabs service",
-    },
-    {
-      tone: "ml",
-      label: "Recommendations",
-    },
-    {
-      tone: "db",
-      label: "Data",
-    },
-    {
-      tone: "int",
-      label: "Message bus",
-    },
-    {
-      tone: "sec",
-      label: "Security",
-    },
-    {
-      tone: "ext",
-      label: "Outside DeskLabs",
-    },
+    { tone: "net", label: "Routing" },
+    { tone: "app", label: "DeskLabs service" },
+    { tone: "ml", label: "Recommendations" },
+    { tone: "db", label: "Data" },
+    { tone: "int", label: "Message bus" },
+    { tone: "sec", label: "Security" },
+    { tone: "ext", label: "Outside DeskLabs" },
   ],
   flows: [
     {
       id: "page",
       kind: "HTTP",
       title: "Open a page",
-      lead: "The first load: HTML rendered by Next.js on the server, then the JS runs in the browser.",
+      lead: "First load: Next.js renders the HTML on the server, then the browser runs the JavaScript.",
       steps: [
         {
           edge: "usersTraefik",
           back: false,
           node: null,
           title: "HTTPS to traefik",
-          body: "The request reaches https://APP_HOST:443. traefik ends TLS.",
+          body: "The request reaches https://APP_HOST:443. <code>traefik</code> ends TLS.",
         },
         {
           edge: "traefikWeb",
           back: false,
           node: null,
           title: "traefik → web",
-          body: "The <code>Host(APP_HOST)</code> router load-balances to one of the 2 <code>web:3000</code> replicas.",
+          body: "The <code>Host(APP_HOST)</code> router sends it to <code>web:3000</code>.",
         },
         {
           edge: null,
@@ -1053,8 +1075,8 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           edge: null,
           back: false,
           node: "users",
-          title: "Hydrate",
-          body: "The browser runs the JS. From here, data comes through the API call and Live update flows.",
+          title: "Page becomes interactive",
+          body: "The browser runs the JavaScript. After that, data arrives through the API call and Live update flows.",
         },
       ],
     },
@@ -1076,14 +1098,14 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "traefik → api",
-          body: "The <code>PathPrefix(/api)</code> router sends it to <code>api:8080</code> (2 replicas).",
+          body: "The <code>PathPrefix(/api)</code> router sends it to <code>api:8080</code>.",
         },
         {
           edge: "apiRedis",
           back: false,
           node: null,
           title: "Rate limit",
-          body: "api checks the rate limit in Redis.",
+          body: "<code>api</code> checks the rate limit in Redis.",
         },
         {
           edge: "apiPg",
@@ -1100,11 +1122,18 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           body: "Reads and writes the real tables.",
         },
         {
+          edge: "apiEmail",
+          back: false,
+          node: null,
+          title: "Email, if needed",
+          body: "Signing in, for example: <code>api</code> emails the one-time code over SMTP.",
+        },
+        {
           edge: null,
           back: false,
           node: "api",
           title: "JSON back",
-          body: "Data parsed with zod; errors use the shared format (C6).",
+          body: "<code>api</code> returns JSON checked with zod; errors use the shared error format (C6).",
         },
       ],
     },
@@ -1126,35 +1155,42 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "traefik → realtime",
-          body: "The <code>/ws</code> router uses a sticky cookie, so the connection stays on one realtime replica.",
+          body: "The <code>/ws</code> router sends it to <code>realtime:8081</code>. With several realtime replicas (reference compose), a sticky cookie keeps the connection on one.",
+        },
+        {
+          edge: "rtPg",
+          back: false,
+          node: null,
+          title: "Check the session",
+          body: "<code>realtime</code> checks the session cookie and looks up the user's accounts.",
         },
         {
           edge: "rtNats",
           back: false,
           node: null,
           title: "Subscribe",
-          body: "realtime subscribes to <code>user.<accountId>.></code> for the user's accounts.",
+          body: "<code>realtime</code> subscribes to <code>user.<accountId>.></code> for those accounts.",
         },
         {
           edge: "engPg",
           back: false,
           node: null,
           title: "Something changes",
-          body: "engine (or api) writes the change and an <code>outbox</code> row in one transaction, so no event is lost or sent before it happened.",
+          body: "<code>engine</code> (or <code>api</code>) writes the change and an <code>outbox</code> row in one transaction, so no event is lost or sent before it happened.",
         },
         {
           edge: "jobsPg",
           back: false,
           node: null,
           title: "Outbox relay",
-          body: "jobs reads the new outbox rows.",
+          body: "<code>jobs</code> reads the new outbox rows.",
         },
         {
           edge: "jobsNats",
           back: false,
           node: null,
           title: "Publish",
-          body: "jobs publishes <code>user.<id>.bot</code> to NATS (a plain subject, not JetStream).",
+          body: "<code>jobs</code> publishes <code>user.<accountId>.bot</code> to NATS (a plain subject, not JetStream).",
         },
         {
           edge: "natsRt",
@@ -1168,7 +1204,7 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: "users",
           title: "Pushed to the browser",
-          body: "The screen follows the backend state (rule 1.6).",
+          body: "The screen shows the state the backend confirmed (rule 1.6).",
         },
       ],
     },
@@ -1183,21 +1219,21 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "Start",
-          body: "Sends the <code>start</code> action with an Idempotency-Key (and 2FA if it is on).",
+          body: "The user presses Start. The web sends the <code>start</code> action with an Idempotency-Key (and a 2FA code if 2FA is on).",
         },
         {
           edge: "traefikApi",
           back: false,
           node: null,
           title: "traefik → api",
-          body: "api parses it with zod and checks the start conditions.",
+          body: "<code>api</code> parses it with zod and checks the start conditions.",
         },
         {
           edge: "apiPg",
           back: false,
           node: null,
           title: "draft → starting",
-          body: '<code>applyCommand</code> changes the state and writes the outbox <code>user.<acc>.bot</code>. The screen shows "Starting…".',
+          body: '<code>applyCommand</code> changes the state and writes the outbox <code>user.<accountId>.bot</code>. The screen shows "Starting…".',
         },
         {
           edge: "engRedis",
@@ -1211,14 +1247,14 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "Tick loads the bot",
-          body: "The loop runs every second: <code>#syncBots</code> sees the starting bot, loads its config version and creates a runner.",
+          body: "The loop runs about once a second: <code>#syncBots</code> sees the starting bot, loads its config version and creates a runner.",
         },
         {
           edge: null,
           back: false,
           node: "engine",
           title: "First order",
-          body: "The strategy places its first order (see Bot trades by itself). SoDEX acks → <code>confirmedRunning</code> → running. All rejected → <code>startFailed</code>.",
+          body: "The strategy places its first order (see Bot trading loop). When SoDEX accepts the first order, <code>engine</code> records <code>confirmedRunning</code> and the bot becomes running. If every order is rejected, it records <code>startFailed</code>.",
         },
         {
           edge: null,
@@ -1240,28 +1276,28 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "Pause",
-          body: "Sends the <code>pause</code> action.",
+          body: "The web sends the <code>pause</code> action with an Idempotency-Key.",
         },
         {
           edge: "traefikApi",
           back: false,
           node: null,
           title: "traefik → api",
-          body: "",
+          body: "Same as Start bot, step 2.",
         },
         {
           edge: "apiPg",
           back: false,
           node: null,
           title: "running → pausing",
-          body: "api writes <code>pausing</code> and the outbox. Only allowed from running.",
+          body: "<code>api</code> writes <code>pausing</code> and the outbox. Only allowed from running.",
         },
         {
           edge: "engPg",
           back: false,
           node: null,
           title: "engine confirms",
-          body: 'The next tick (within 1 s) sees <code>pausing</code> → <code>confirmedPaused</code>: writes <code>paused</code>, the "Paused" event and the outbox in one transaction.',
+          body: 'On its next tick, <code>engine</code> sees <code>pausing</code> → <code>confirmedPaused</code>: writes <code>paused</code>, the "Paused" event and the outbox in one transaction.',
         },
         {
           edge: null,
@@ -1275,21 +1311,21 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "Outbox relay",
-          body: "",
+          body: "Same as Live update, step 6.",
         },
         {
           edge: "jobsNats",
           back: false,
           node: null,
           title: "Publish",
-          body: "",
+          body: "Same as Live update, step 7.",
         },
         {
           edge: "natsRt",
           back: false,
           node: null,
           title: "realtime",
-          body: "",
+          body: "Same as Live update, step 8.",
         },
         {
           edge: null,
@@ -1303,29 +1339,29 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: "engine",
           title: "Resume",
-          body: "<code>resuming</code> → engine confirms running and sends a <code>resumed</code> event with fresh prices; the strategy rebuilds its orders from the ledger and the real position.",
+          body: "<code>resuming</code> → <code>engine</code> confirms running and sends a <code>resumed</code> event with fresh prices; the strategy rebuilds its orders from the ledger and the real position.",
         },
         {
           edge: null,
           back: false,
           node: "engine",
           title: "Stop",
-          body: "<code>stopping</code> → engine cancels orders and closes the position if the user chose to. Unknown orders are reconciled first, then <code>stopped</code>.",
+          body: "<code>stopping</code> → <code>engine</code> cancels orders and closes the position if the user chose to. Unknown orders are reconciled first, then <code>stopped</code>.",
         },
       ],
     },
     {
       id: "auto",
       kind: "BOT",
-      title: "Bot trades by itself",
-      lead: "No job places orders. engine is a loop that never stops, and every event (price, timer, fill) goes to the strategy, which decides.",
+      title: "Bot trading loop",
+      lead: "Orders never come from a job. engine runs a loop that sends every event (price, timer, fill) to the strategy, and the strategy decides.",
       steps: [
         {
           edge: "engRedis",
           back: false,
           node: null,
           title: "Keep the shard",
-          body: "Every few seconds engine renews the leases of its shards (3 engine replicas share the accounts). Lose a lease → drop the shard, another replica takes it.",
+          body: "Every 5 seconds (a third of the 15 s lease), <code>engine</code> renews the leases of its shards. With several engine replicas they share the 64 shards; a replica that loses a lease drops the shard and another takes it.",
         },
         {
           edge: "engPg",
@@ -1339,49 +1375,63 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "Prices from SoDEX",
-          body: "marketdata (the leader replica) holds SoDEX's market WebSocket.",
+          body: "<code>marketdata</code> (the leader replica) holds SoDEX's market WebSocket.",
+        },
+        {
+          edge: "binanceMd",
+          back: false,
+          node: null,
+          title: "Binance price",
+          body: "For markets with a Market Making bot, <code>marketdata</code> also reads Binance's futures prices and works out a fair price.",
         },
         {
           edge: "mdNats",
           back: false,
           node: null,
-          title: "md.*.price / book / fair / funding",
-          body: "marketdata publishes them to NATS (plain subjects).",
+          title: "md.<market>.price / book / fair / funding",
+          body: "<code>marketdata</code> publishes them to NATS (plain subjects).",
         },
         {
           edge: "natsEng",
           back: false,
           node: null,
           title: "To the strategy",
-          body: "engine gets the price and calls <code>#feed</code>: the strategy in <code>packages/strategies</code> is pure code that takes (config, event, state) and returns actions.",
+          body: "<code>engine</code> gets the price and calls <code>#feed</code>: the strategy in <code>packages/strategies</code> is pure code that takes (config, event, state) and returns actions.",
         },
         {
           edge: null,
           back: false,
           node: "engine",
           title: "Timer",
-          body: "Every loop also sends <code>timer</code> to time-based strategies: Recurring Buy, TWAP, Rebalancing, Volume Maker refresh.",
+          body: "Every loop also sends <code>timer</code> to each bot. Recurring Buy, TWAP, Rebalancing, AI Adaptive DCA, Funding Arbitrage, Market Making, Volume Builder and Copy Trading use it.",
         },
         {
           edge: "engSigner",
           back: false,
           node: null,
           title: "Sign",
-          body: "Place or cancel actions pass the risk limits, get a deterministic clOrdID, then go to signer over mTLS.",
+          body: "Place or cancel actions pass the risk limits, get a deterministic clOrdID, then go to <code>signer</code> over mTLS. Paper bots stop here: <code>PaperGateway</code> simulates the order and nothing reaches signer or SoDEX.",
+        },
+        {
+          edge: "signerPg",
+          back: false,
+          node: null,
+          title: "Load the key",
+          body: "<code>signer</code> checks the shard epoch and reads the encrypted key straight from Postgres.",
         },
         {
           edge: "signerVault",
           back: false,
           node: null,
           title: "Decrypt the key",
-          body: "signer decrypts DeskLabs' key with Vault / KMS, signs, writes an audit row.",
+          body: "<code>signer</code> decrypts DeskLabs' key with Vault transit and signs the payload.",
         },
         {
           edge: "engSodex",
           back: false,
           node: null,
           title: "Send the order",
-          body: "REST to SoDEX, with the builder fee.",
+          body: "<code>engine</code> sends the signed order to SoDEX over REST, with the builder fee for this bot.",
         },
         {
           edge: "engSodex",
@@ -1402,7 +1452,7 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: "engine",
           title: "Every loop",
-          body: "Reconcile unknown orders and open orders, retry cancels, check the builder fee approval (revoked → pause every bot).",
+          body: "Reconcile unknown orders and open orders, retry cancels, check the builder fee approval (if it's revoked, every bot on that account pauses with BUILDER_FEE_REVOKED).",
         },
       ],
     },
@@ -1424,7 +1474,7 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "traefik → api",
-          body: "",
+          body: "Same as Start bot, step 2.",
         },
         {
           edge: "apiPg",
@@ -1445,14 +1495,14 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "Leader fills",
-          body: "The leader's fills reach marketdata. Positions are re-read regularly to fix any drift.",
+          body: "The leader's fills reach <code>marketdata</code>. Positions are re-read regularly to fix any drift.",
         },
         {
           edge: null,
           back: false,
           node: "marketdata",
           title: "Allowance",
-          body: "Maps the coin to a SoDEX symbol (none → skipped). Works out each bot's allowance: trader holds under 15 minutes → 0; total notional at most 50% of SoDEX book depth.",
+          body: "Maps the coin to a SoDEX market (no match → skipped). Works out each bot's allowance: trader holds under 15 minutes → 0; total notional at most 50% of SoDEX book depth.",
         },
         {
           edge: "mdNats",
@@ -1466,21 +1516,21 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "Copy bot reacts",
-          body: "engine sends <code>leaderFill</code> to every copy bot of that wallet; the copy-trade strategy sizes the order within the allowance. A paused bot ignores it; on resume the next leader position fixes the gap.",
+          body: "<code>engine</code> sends <code>leaderFill</code> to every copy bot of that wallet; the copy-trade strategy sizes the order within the allowance. A paused bot ignores it; on resume the next leader position fixes the gap.",
         },
         {
           edge: "engSigner",
           back: false,
           node: null,
           title: "Sign",
-          body: "",
+          body: "Same as Bot trading loop: <code>signer</code> loads the key from Postgres and signs.",
         },
         {
           edge: "signerVault",
           back: false,
           node: null,
           title: "Decrypt the key",
-          body: "",
+          body: "Same as Bot trading loop: Vault transit decrypts the key inside <code>signer</code>.",
         },
         {
           edge: "engSodex",
@@ -1501,7 +1551,7 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
     {
       id: "watch",
       kind: "WATCH",
-      title: "Watch wallet",
+      title: "Follow a wallet",
       lead: "Following a wallet without copying it: no bot, no orders, only messages.",
       steps: [
         {
@@ -1516,7 +1566,7 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "traefik → api",
-          body: "",
+          body: "Same as API call, step 2.",
         },
         {
           edge: "apiPg",
@@ -1530,7 +1580,7 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: true,
           node: null,
           title: "Poll the wallet",
-          body: "marketdata (the leader replica) polls <code>userFillsByTime</code> from a cursor every 2 minutes, up to 40 wallets. Wallets with a copy bot are already on a WebSocket.",
+          body: "<code>marketdata</code> (the leader replica) polls <code>userFillsByTime</code> from a cursor every 2 minutes, up to 40 wallets. Wallets with a copy bot are already on a WebSocket.",
         },
         {
           edge: null,
@@ -1540,18 +1590,18 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           body: "Fills within 60 s become position events (open, close, flip, liquidation); the pure <code>follow-alerts</code> code decides what to send.",
         },
         {
-          edge: "mdPostgres",
+          edge: "mdPg",
           back: false,
           node: null,
           title: "Events + outbox",
-          body: "Writes the events (Trader profile, Following) and the outbox <code>jobs.notify</code>. At most 1 message per wallet, coin and 10 minutes.",
+          body: "Writes the events (Trader profile, Following) and the outbox <code>jobs.notify</code>. Each alert type sends at most 1 message per wallet and coin every 10 minutes.",
         },
         {
           edge: "jobsPg",
           back: false,
           node: null,
           title: "Outbox relay",
-          body: "",
+          body: "<code>jobs</code> reads the new outbox row.",
         },
         {
           edge: "jobsNats",
@@ -1572,7 +1622,85 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "Send",
-          body: "In-app notification, and Telegram if the user connected it. Never includes a wallet address or balance.",
+          body: "In-app notification, and Telegram if the user linked it. Never includes a wallet address or balance.",
+        },
+        {
+          edge: "telegramApi",
+          back: false,
+          node: null,
+          title: "Telegram calls back",
+          body: "When the user links a chat or sends the bot a command, Telegram calls <code>api</code>'s webhook through <code>traefik</code>; <code>api</code> answers in the same response.",
+        },
+      ],
+    },
+    {
+      id: "connect",
+      kind: "KEY",
+      title: "Connect SoDEX",
+      lead: "Two wallet signatures connect an account (DEC-25). DeskLabs' key is created and encrypted inside signer; only its public key leaves.",
+      steps: [
+        {
+          edge: "usersTraefik",
+          back: false,
+          node: null,
+          title: "Connect",
+          body: "The user connects their wallet on the Connect SoDEX screen.",
+        },
+        {
+          edge: "traefikApi",
+          back: false,
+          node: null,
+          title: "traefik → api",
+          body: "Same as API call, step 2.",
+        },
+        {
+          edge: "apiSodex",
+          back: false,
+          node: null,
+          title: "Find the account",
+          body: "<code>api</code> reads the wallet's SoDEX account.",
+        },
+        {
+          edge: "apiSigner",
+          back: false,
+          node: null,
+          title: "Create DeskLabs' key",
+          body: "<code>api</code> asks <code>signer</code> over mTLS for a new API key for this account.",
+        },
+        {
+          edge: "signerVault",
+          back: false,
+          node: null,
+          title: "Encrypt the key",
+          body: "<code>signer</code> encrypts the new private key with Vault's transit key.",
+        },
+        {
+          edge: "signerPg",
+          back: false,
+          node: null,
+          title: "Store the key",
+          body: "<code>signer</code> saves the encrypted key with its own database role and returns only the public key.",
+        },
+        {
+          edge: null,
+          back: false,
+          node: "users",
+          title: "Two signatures",
+          body: "The master wallet signs the API key (withdraw and transfer off) and the builder fee approval.",
+        },
+        {
+          edge: "apiSodex",
+          back: false,
+          node: null,
+          title: "Send to SoDEX",
+          body: "<code>api</code> sends both signed actions to SoDEX and reads back the result.",
+        },
+        {
+          edge: "apiPg",
+          back: false,
+          node: null,
+          title: "Connected",
+          body: "<code>api</code> records the account as connected. Importing the trade history is a Background job.",
         },
       ],
     },
@@ -1580,35 +1708,35 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       id: "job",
       kind: "JOB",
       title: "Background job",
-      lead: "Long work (history import, reconciling, messages) goes through the outbox and the JetStream work queue, so it never blocks a request.",
+      lead: "Long work (history import, messages) goes through the outbox and the JetStream work queue, so it never blocks a request.",
       steps: [
         {
           edge: "usersTraefik",
           back: false,
           node: null,
           title: "Trigger",
-          body: "For example, once SoDEX is connected the history needs importing. Jobs can also come from engine, marketdata or scheduler.",
+          body: "For example, importing the trade history after SoDEX is connected. Jobs can also come from <code>engine</code>, <code>marketdata</code> or <code>scheduler</code>.",
         },
         {
           edge: "traefikApi",
           back: false,
           node: null,
           title: "traefik → api",
-          body: "",
+          body: "Same as API call, step 2.",
         },
         {
           edge: "apiPg",
           back: false,
           node: null,
           title: "Job + outbox",
-          body: "api writes the outbox row <code>jobs.import</code> in the same transaction as the change.",
+          body: "<code>api</code> writes the import row and the outbox row <code>jobs.import</code> in one transaction.",
         },
         {
           edge: "jobsPg",
           back: false,
           node: null,
           title: "Outbox relay",
-          body: "jobs reads the new outbox row.",
+          body: "<code>jobs</code> reads the new outbox row.",
         },
         {
           edge: "jobsNats",
@@ -1622,35 +1750,106 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: true,
           node: null,
           title: "Consumer takes it",
-          body: "The durable <code>jobs-import</code> consumer pulls the job and acks when done. On error it retries after 1 s, 5 s, 30 s, 2 minutes and 10 minutes, then moves to <code>JOBS_DLQ</code>.",
+          body: "The durable <code>jobs-import</code> consumer pulls the job and acks when done. On error it retries after 1 s, 5 s, 30 s and 2 minutes; the fifth failure moves it to <code>JOBS_DLQ</code>.",
         },
         {
           edge: "jobsSodex",
           back: false,
           node: null,
           title: "Read SoDEX",
-          body: "Import reads the trade history; reconciling an unknown order reads open orders and fills.",
+          body: "Import reads the user's trade history from SoDEX.",
         },
         {
           edge: "jobsPg",
           back: true,
           node: null,
           title: "Write the result",
-          body: "History, account analysis, builder revenue…",
+          body: "Trade history, positions, funding payments and the account analysis.",
+        },
+        {
+          edge: "jobsEmail",
+          back: false,
+          node: null,
+          title: "jobs.notify",
+          body: "If the user needs telling, <code>jobs-notify</code> writes the in-app message and sends an email when the user's settings allow it.",
         },
         {
           edge: "jobsTelegram",
           back: false,
           node: null,
-          title: "jobs.notify",
-          body: "If the user needs telling: in-app and Telegram.",
+          title: "Telegram",
+          body: "If the user linked Telegram, the message also goes there through the <code>jobs-telegram</code> consumer.",
         },
         {
           edge: null,
           back: false,
           node: "realtime",
           title: "Progress",
-          body: "Progress reaches the screen through the outbox → Live update.",
+          body: "Progress reaches the screen through the outbox, as in Live update.",
+        },
+      ],
+    },
+    {
+      id: "sched",
+      kind: "CRON",
+      title: "Scheduled checks",
+      lead: "scheduler runs the timed checks and daily jobs. It reads SoDEX and Hyperliquid but never places orders.",
+      steps: [
+        {
+          edge: "schedRedis",
+          back: false,
+          node: null,
+          title: "Leader lease",
+          body: "Only the <code>scheduler</code> replica holding <code>lease:scheduler</code> runs the timers.",
+        },
+        {
+          edge: null,
+          back: false,
+          node: "scheduler",
+          title: "Timers",
+          body: "Every minute: risk check, builder revenue check, production invariants (DEC-274), MCP alerts. Every 10 minutes it starts what is due: market stats, fee tiers, Copy Trading leaderboard, Market Making cost model, AI Desk records and clean-up of old rows.",
+        },
+        {
+          edge: "schedSodex",
+          back: false,
+          node: null,
+          title: "Read SoDEX",
+          body: "Balances for the risk and builder revenue checks, markets for stats. Read only.",
+        },
+        {
+          edge: "schedHl",
+          back: false,
+          node: null,
+          title: "Read Hyperliquid",
+          body: "Trader stats for the Copy Trading leaderboard, when it is on.",
+        },
+        {
+          edge: "schedPg",
+          back: false,
+          node: null,
+          title: "Write results",
+          body: "Stats and check results go to Postgres. A risk limit breach moves the account's running bots to <code>pausing</code> (<code>engine</code> confirms). Messages go to the outbox: <code>jobs.notify</code> for users, <code>jobs.team_ops</code> for the team.",
+        },
+        {
+          edge: "jobsPg",
+          back: false,
+          node: null,
+          title: "Outbox relay",
+          body: "Same as Background job, step 4.",
+        },
+        {
+          edge: "jobsNats",
+          back: false,
+          node: null,
+          title: "Into the JOBS stream",
+          body: "Same as Background job, step 5.",
+        },
+        {
+          edge: "jobsTelegram",
+          back: false,
+          node: null,
+          title: "Send",
+          body: "Team alerts go to each team member's Telegram; user messages go out as in Background job.",
         },
       ],
     },
@@ -1665,42 +1864,42 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "Run backtest",
-          body: "",
+          body: "The user runs a backtest from the Backtest tab.",
         },
         {
           edge: "traefikApi",
           back: false,
           node: null,
           title: "traefik → api",
-          body: "",
+          body: "Same as API call, step 2.",
         },
         {
           edge: "apiPg",
           back: false,
           node: null,
           title: "Job + outbox",
-          body: "Writes the job and the outbox <code>backtest.run</code>.",
+          body: "<code>api</code> writes the job and the outbox <code>backtest.run</code>.",
         },
         {
           edge: "jobsPg",
           back: false,
           node: null,
           title: "Outbox relay",
-          body: "",
+          body: "<code>jobs</code> reads the new outbox row.",
         },
         {
           edge: "jobsNats",
           back: false,
           node: null,
           title: "Into the BACKTEST stream",
-          body: "",
+          body: "<code>jobs</code> publishes <code>backtest.run</code> to the BACKTEST stream.",
         },
         {
           edge: "natsBt",
           back: false,
           node: null,
           title: "Worker takes it",
-          body: "backtest pulls the job and simulates with the real strategy code.",
+          body: "<code>backtest</code> pulls the job and simulates with the real strategy code.",
         },
         {
           edge: "btPg",
@@ -1714,7 +1913,7 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: "realtime",
           title: "Progress",
-          body: "Through Live update.",
+          body: "Same as Live update.",
         },
       ],
     },
@@ -1729,7 +1928,7 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "HTTPS to MCP_HOST",
-          body: "Claude sends the OAuth 2.1 bearer token the user allowed.",
+          body: "Claude sends the OAuth 2.1 bearer token the user approved.",
         },
         {
           edge: "traefikMcp",
@@ -1743,14 +1942,14 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: null,
           title: "Rate limit",
-          body: "mcp counts the limits (60 per minute, 5,000 per day) in Redis.",
+          body: "<code>mcp</code> counts the limits (60 per minute, 5,000 per day) in Redis.",
         },
         {
           edge: "mcpApi",
           back: false,
           node: null,
           title: "Call api internally",
-          body: "<code>http://api:8080</code>: token introspection and <code>/api/v1/mcp/*</code>. traefik blocks these paths from outside.",
+          body: "<code>http://api:8080</code>: token introspection and <code>/api/v1/mcp/*</code>. <code>traefik</code> blocks these paths from outside.",
         },
         {
           edge: "apiPg",
@@ -1764,50 +1963,64 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
           back: false,
           node: "mcp",
           title: "Back to Claude",
-          body: "Read and drafts only; never signer, engine or SoDEX.",
+          body: "Read-only tools and drafts the user confirms in DeskLabs; never signer, engine or SoDEX.",
         },
       ],
     },
     {
       id: "deskAi",
       kind: "AI",
-      title: "Desk AI",
-      lead: "Desk AI: code works out the numbers, the Claude API only writes the words.",
+      title: "AI Desk",
+      lead: "AI Desk: code works out the numbers; the Claude API only writes the sentences.",
       steps: [
         {
           edge: "usersTraefik",
           back: false,
           node: null,
           title: "Open AI Desk",
-          body: "",
+          body: "The user asks AI Desk a question or opens a plan.",
         },
         {
           edge: "traefikApi",
           back: false,
           node: null,
           title: "traefik → api",
-          body: "",
+          body: "Same as API call, step 2.",
         },
         {
           edge: "apiPg",
           back: false,
           node: null,
           title: "Work out the facts",
-          body: "api reads the data and computes the numbers in code.",
+          body: "<code>api</code> reads the data and computes the numbers in code.",
+        },
+        {
+          edge: "apiReco",
+          back: false,
+          node: null,
+          title: "Plan and parameters",
+          body: "For a plan, <code>api</code> asks <code>reco</code> (deterministic rules) for strategies and AI parameters.",
+        },
+        {
+          edge: "recoPg",
+          back: false,
+          node: null,
+          title: "reco reads its data",
+          body: "<code>reco</code> reads the latest market stats through pgbouncer.",
         },
         {
           edge: "apiClaude",
           back: false,
           node: null,
-          title: "Write the words",
-          body: "api sends the facts to the Claude API. No tools that act; with no key it uses template sentences.",
+          title: "Write the sentences",
+          body: "<code>api</code> sends the facts to the Claude API. No tools that act; with no key it uses template sentences.",
         },
         {
           edge: null,
           back: false,
           node: "users",
           title: "Show the answer",
-          body: "",
+          body: "The answer shows the numbers from code, with the sentences around them.",
         },
       ],
     },

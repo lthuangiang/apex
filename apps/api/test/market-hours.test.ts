@@ -109,6 +109,7 @@ describe("GET /api/v1/admin/market-hours", () => {
     const { client } = await teamUser();
     const ok = await client.request("GET", "/api/v1/admin/architecture");
     expect(ok.statusCode).toBe(200);
+    expect(ok.headers["cache-control"]).toBe("no-store");
     const map = architectureMapSchema.parse(ok.json());
     expect(map.nodes.map((n) => n.id)).toContain("signer");
   });

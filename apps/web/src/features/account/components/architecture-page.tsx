@@ -134,6 +134,13 @@ function Icon({ name }: { name: ArchIcon }) {
       );
     case "send":
       return <path d="M22 3L2 11l7 3 3 7 10-18zM9 14L22 3" />;
+    case "mail":
+      return (
+        <>
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="M3 7l9 6 9-6" />
+        </>
+      );
   }
 }
 
@@ -205,7 +212,10 @@ function Diagram({ map }: { map: ArchitectureMap }) {
   const isFlow = (v: string) => map.flows.some((f) => f.id === v);
   const [flowId, setFlowId] = useState(map.defaultFlow);
   const [node, setNode] = useState<string | null>(null);
-  const [hot, setHot] = useState<number | null>(null);
+  // Bước đang sáng: rê chuột / focus (tạm thời) thắng bước đã ghim bằng click / Enter / Space (aria-pressed).
+  const [hover, setHover] = useState<number | null>(null);
+  const [pinned, setPinned] = useState<number | null>(null);
+  const hot = hover ?? pinned;
   const uid = useId();
   const arrow = `${uid}-arrow`;
 
@@ -224,7 +234,8 @@ function Diagram({ map }: { map: ArchitectureMap }) {
   const pick = (f: string) => {
     if (!isFlow(f)) return;
     setFlowId(f);
-    setHot(null);
+    setHover(null);
+    setPinned(null);
     window.history.replaceState(null, "", `#${f}`);
   };
 
@@ -374,6 +385,9 @@ function Diagram({ map }: { map: ArchitectureMap }) {
 
               {map.nodes.map((n) => {
                 const isSel = node === n.id;
+                // Icon không thuộc luồng: viền + nét màu nhóm trên nền trắng (≥ 3:1), tên màu muted (≥ 4.5:1), không
+                // dùng opacity để làm mờ.
+                const on = used.has(n.id);
                 return (
                   <g
                     key={n.id}
@@ -387,15 +401,31 @@ function Diagram({ map }: { map: ArchitectureMap }) {
                     onKeyDown={(e) => {
                       onNodeKey(e, n.id);
                     }}
-                    className={`cursor-pointer transition-opacity ${used.has(n.id) ? "" : "opacity-30"}`}
+                    // Safari không vẽ outline cho <g>: vòng focus là một rect riêng hiện khi :focus-visible.
+                    className="group cursor-pointer outline-none"
                   >
+                    <rect
+                      x={n.x - 31}
+                      y={n.y - 41}
+                      width={62}
+                      height={62}
+                      rx={10}
+                      fill="none"
+                      className="stroke-focus opacity-0 group-focus-visible:opacity-100"
+                      strokeWidth={3}
+                    />
                     <rect
                       x={n.x - 24}
                       y={n.y - 34}
                       width={48}
                       height={48}
                       rx={6}
-                      style={{ fill: TONE[n.tone] }}
+                      style={
+                        on
+                          ? { fill: TONE[n.tone] }
+                          : { fill: "var(--surface)", stroke: TONE[n.tone] }
+                      }
+                      strokeWidth={on ? undefined : 1.5}
                     />
                     {isSel ? (
                       <rect
@@ -412,7 +442,8 @@ function Diagram({ map }: { map: ArchitectureMap }) {
                     <g
                       transform={`translate(${String(n.x - 13)} ${String(n.y - 23)}) scale(1.08)`}
                       fill="none"
-                      className="stroke-surface"
+                      className={on ? "stroke-surface" : undefined}
+                      style={on ? undefined : { stroke: TONE[n.tone] }}
                       strokeWidth={1.8}
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -423,7 +454,7 @@ function Diagram({ map }: { map: ArchitectureMap }) {
                       x={n.x}
                       y={n.y + 30}
                       textAnchor="middle"
-                      className="fill-ink text-[13px] font-semibold"
+                      className={`text-[13px] font-semibold ${on ? "fill-ink" : "fill-muted"}`}
                     >
                       {n.label}
                     </text>
@@ -487,23 +518,27 @@ function Diagram({ map }: { map: ArchitectureMap }) {
           <ol aria-label={t("stepsLabel")} className="m-0 flex list-none flex-col gap-0.5 p-0">
             {flow.steps.map((s, i) => (
               <li key={`${flow.id}-${String(i)}`}>
-                {/* Rê chuột hoặc focus vào một bước thì đường của bước đó đậm lên trong sơ đồ. */}
+                {/* Rê chuột hoặc focus vào một bước thì đường của bước đó đậm lên trong sơ đồ; click / Enter / Space ghim
+                    bước đó (bấm lại để bỏ ghim). */}
                 <button
                   type="button"
-                  aria-pressed={hot === i + 1}
+                  aria-pressed={pinned === i + 1}
+                  onClick={() => {
+                    setPinned((p) => (p === i + 1 ? null : i + 1));
+                  }}
                   onMouseEnter={() => {
-                    setHot(i + 1);
+                    setHover(i + 1);
                   }}
                   onMouseLeave={() => {
-                    setHot(null);
+                    setHover(null);
                   }}
                   onFocus={() => {
-                    setHot(i + 1);
+                    setHover(i + 1);
                   }}
                   onBlur={() => {
-                    setHot(null);
+                    setHover(null);
                   }}
-                  className={`grid w-full cursor-default grid-cols-[28px_minmax(0,1fr)] gap-2.5 rounded-control border-0 p-2 text-left text-ink ${hot === i + 1 ? "bg-surface-2" : "bg-transparent"}`}
+                  className={`grid w-full cursor-pointer grid-cols-[28px_minmax(0,1fr)] gap-2.5 rounded-control border p-2 text-left text-ink ${pinned === i + 1 ? "border-ink" : "border-transparent"} ${hot === i + 1 ? "bg-surface-2" : "bg-transparent"}`}
                 >
                   <span
                     aria-hidden="true"
@@ -538,7 +573,7 @@ function Diagram({ map }: { map: ArchitectureMap }) {
                       {f.label}
                     </dt>,
                     <dd key={`${f.label}-d`} className="m-0 break-words">
-                      {f.value}
+                      <Rich text={f.value} />
                     </dd>,
                   ])}
                 </dl>

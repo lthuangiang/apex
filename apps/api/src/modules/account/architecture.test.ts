@@ -26,6 +26,19 @@ describe("architecture map content", () => {
     expect(map.flows.map((f) => f.id)).toContain(map.defaultFlow);
   });
 
+  // Web chỉ vẽ đường nối của luồng đang chọn: đường nối không thuộc luồng nào sẽ không bao giờ hiện ra.
+  it("uses every edge in at least one flow, with unique ids", () => {
+    expect(edges.size).toBe(map.edges.length);
+    expect(new Set(map.nodes.map((n) => n.id)).size).toBe(map.nodes.length);
+    const used = new Set(map.flows.flatMap((f) => f.steps.map((s) => s.edge)));
+    expect(map.edges.map((e) => e.id).filter((id) => !used.has(id))).toEqual([]);
+  });
+
+  it("keeps every step body filled in", () => {
+    for (const f of map.flows)
+      for (const s of f.steps) expect(s.body.trim(), `${f.id}: ${s.title}`).not.toBe("");
+  });
+
   it("keeps every point inside the drawing", () => {
     for (const e of map.edges)
       for (const [x, y] of e.points) {

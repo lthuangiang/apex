@@ -201,12 +201,12 @@ services:
     volumes: [mmraw:/home/node/mm-raw]
     deploy: { replicas: 2 }
 
-  scheduler:         # cron: recurring buy, reset daily loss, nhắc hết hạn key, tính lại market stats
+  scheduler:         # timer, chỉ bản leader: market stats, builder revenue, risk + invariant, fee tier, leaderboard, mô hình MM, cảnh báo MCP (Recurring Buy chạy ở engine, DEC-61)
     <<: *app
     build: { context: ., dockerfile: apps/scheduler/Dockerfile }
     deploy: { replicas: 2 }
 
-  jobs:              # import lịch sử, account analysis, reconcile lệnh unknown, builder revenue, notifications
+  jobs:              # outbox relay + consumer: import lịch sử + account analysis, notifications (in-app, email, Telegram), báo team (lệnh unknown đối soát ở engine, DEC-303)
     <<: *app
     build: { context: ., dockerfile: apps/jobs/Dockerfile }
     environment:
@@ -319,7 +319,7 @@ services:
     healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"], interval: 5s, retries: 10 }
     restart: unless-stopped
 
-  vault:             # DEV ONLY. Server mode + file storage trên volume (DEC-55). Production dùng cloud KMS / Vault cluster.
+  vault:             # Profile dev: server mode + file storage trên volume (DEC-55). Production 1 host chạy Vault profile `prod` (docker-compose.prod.yml, DEC-70).
     image: hashicorp/vault:1.17
     cap_add: [IPC_LOCK]
     command: ["server", "-config=/vault/dev/dev.hcl"]
@@ -337,7 +337,7 @@ services:
     networks: [core]
     profiles: [dev]
 
-  vault-init:        # DEV ONLY: init lần đầu, unseal mỗi lần khởi động, token cố định cho signer, transit + khoá (idempotent)
+  vault-init:        # Profile dev (production: docker-compose.prod.yml chạy prod-init.sh, profile `prod`): init lần đầu, unseal mỗi lần khởi động, token cố định cho signer, transit + khoá (idempotent)
     image: hashicorp/vault:1.17
     environment: { DEV_TOKEN: "${VAULT_DEV_TOKEN:-dev-only}" }
     entrypoint: ["/bin/sh", "/vault/dev-init.sh"]

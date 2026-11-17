@@ -188,9 +188,11 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
     marketHours(deps, requireAuth(request).userId, request.query),
   );
   // System Architecture Diagram: chỉ team (403 cho người khác), nội dung không nằm trong bundle web.
-  app.get("/api/v1/admin/architecture", async (request) =>
-    architectureMap(deps.db, requireAuth(request).userId),
-  );
+  // no-store: không để proxy / cache dùng chung giữ bản đồ hạ tầng (review PR #211).
+  app.get("/api/v1/admin/architecture", async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    return architectureMap(deps.db, requireAuth(request).userId);
+  });
   app.get("/api/v1/admin/stats", async (request) => {
     const { period } = parseOrThrow(platformStatsQuerySchema, request.query);
     return platformStats(deps, requireAuth(request).userId, period);
