@@ -233,9 +233,9 @@ export const POSITION_MISMATCH_DECISION = "Position doesn't match";
 export const POSITION_UNTRACKED_DECISION = "Position not tracked";
 export const POSITION_MATCH_DECISION = "Position matches again";
 export const positionMismatchWhy = (market: string, real: string, ledger: string): string =>
-  `Your ${market} position on SoDEX is ${dec(real).toString()}; the bot tracked ${dec(ledger).toString()}. The bot only reduces the position until this is fixed. Check Positions on SoDEX.`;
+  `Your ${market} position on SoDEX is ${dec(real).toString()}; the bot tracked ${dec(ledger).toString()}. The bot won't start new trades that add to it until this is fixed. Check Positions on SoDEX.`;
 export const positionUntrackedWhy = (market: string, real: string): string =>
-  `Settings changed while your ${market} position (${dec(real).toString()}) was open, so the bot no longer tracks it. The bot won't add to it; close or manage the position on SoDEX.`;
+  `Settings changed while your ${market} position (${dec(real).toString()}) was open, so the bot no longer tracks it. The bot won't start new trades that add to it, and a grid may wait to start until it's closed. Close or manage the position on SoDEX.`;
 export const positionMatchWhy = (market: string, real: string): string =>
   `Your ${market} position on SoDEX (${dec(real).toString()}) matches the bot again. The bot trades normally.`;
 
@@ -538,6 +538,11 @@ interface Runner {
   resumeOwed: boolean;
   /** Lúc version đang chạy được áp (null = không rõ). */
   appliedAt: number | null;
+  /**
+   * Lần áp version gần nhất (bằng `initialState`) bỏ một sổ cái còn vị thế ở market Perps nào đó: chỉ khi đó lệch vị thế
+   * mới được coi là do đổi version (N2). Chỉ nhớ trong bộ nhớ; nạp lại thì đi theo các bậc thường.
+   */
+  resetDroppedPosition: boolean;
 }
 
 /**
@@ -2030,8 +2035,16 @@ export class Engine {
       // Cảnh báo đã ghi trước lần nạp lại (khởi động lại, chuyển shard): giữ chặn, không ghi lại Decisions.
       positionMismatch: new Map(Object.entries(bot.positionMismatch ?? {})),
       mismatchWaitLogged: false,
-      resumeOwed: false,
+      // `resumed` bị giữ vì lệch vị thế chỉ nhớ trong bộ nhớ: nạp lại một bot đang chạy, đang lệch mà chiến lược còn tự
+      // dừng (halted) thì coi như còn nợ `resumed` (N1). Không áp cho bot không lệch: chiến lược vừa halted mà bot chưa
+      // kịp sang pausing không được chạy lại.
+      resumeOwed:
+        bot.state === BotState.running &&
+        Object.keys(bot.positionMismatch ?? {}).length > 0 &&
+        saved?.versionId === version.id &&
+        (saved.state as { phase?: unknown } | null)?.phase === "halted",
       appliedAt: version.appliedAt?.getTime() ?? null,
+      resetDroppedPosition: false,
     };
   }
 
@@ -2135,6 +2148,18 @@ export class Engine {
         payload: { botId: r.botId, version: pending.version },
       });
     });
+    // Sổ cái cũ còn vị thế Perps mà version mới bắt đầu lại từ `initialState` (N2).
+    r.resetDroppedPosition =
+      entry.module.applyVersion === undefined &&
+      this.#perpMarketsOf(
+        r.strategy,
+        r.market,
+        r.engines.includes("perps") ? "perps" : "spot",
+        r.config,
+      ).some((m) => {
+        const p = positionOf(r.state, m, "perps");
+        return p !== null && !dec(p).isZero();
+      });
     r.versionId = pending.id;
     r.version = pending.version;
     r.appliedAt = this.#d.now();
@@ -4702,10 +4727,10 @@ export class Engine {
             });
           else
             await this.#comparePosition(r, m, p?.size ?? "0", stateOf.get(r.botId), now, {
-              // Sổ cái chỉ bắt đầu lại khi chiến lược không có `applyVersion` (DEC-38). Volume Farm chỉ áp version khi
-              // bot phẳng (DEC-304), version đang chờ chưa đổi sổ cái: lệch lúc đó là lệch thật, đi theo bậc 1 / 2.
+              // Chỉ khi lần áp version gần đây bỏ một sổ cái còn vị thế (`initialState`, DEC-38; N2). Volume Farm chỉ áp
+              // khi phẳng (DEC-304), version đang chờ chưa đổi sổ cái: lệch lúc đó đi theo bậc 1 / 2 (có đọc trade).
               versionChange:
-                r.module.applyVersion === undefined &&
+                r.resetDroppedPosition &&
                 r.appliedAt !== null &&
                 now - r.appliedAt < POSITION_VERSION_WINDOW_MS,
             });

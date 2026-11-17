@@ -6614,7 +6614,7 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-TBD-engine-
     expect(alerts.map((x) => [x.decision, x.why])).toEqual([
       [
         "Position doesn't match",
-        "Your BTC-USD position on SoDEX is 5; the bot tracked 2. The bot only reduces the position until this is fixed. Check Positions on SoDEX.",
+        "Your BTC-USD position on SoDEX is 5; the bot tracked 2. The bot won't start new trades that add to it until this is fixed. Check Positions on SoDEX.",
       ],
     ]);
     const flagged = await botState(botId);
@@ -6794,7 +6794,7 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-TBD-engine-
     const untracked = (await allEvents(botId)).filter((x) => x.decision === "Position not tracked");
     expect(lines).toEqual([]);
     expect(untracked.map((x) => x.why)).toEqual([
-      "Settings changed while your BTC-USD position (2) was open, so the bot no longer tracks it. The bot won't add to it; close or manage the position on SoDEX.",
+      "Settings changed while your BTC-USD position (2) was open, so the bot no longer tracks it. The bot won't start new trades that add to it, and a grid may wait to start until it's closed. Close or manage the position on SoDEX.",
     ]);
     expect((await botState(botId))?.positionMismatch?.["BTC-USD"]?.cause).toBe("version");
     // Grid v2 muốn mua vị thế ban đầu (tăng |vị thế|): bỏ cả bước, không gửi gì, không ghi thêm.
@@ -6811,6 +6811,58 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-TBD-engine-
     expect(await lines2()).toBe(count);
     expect((await botState(botId))?.state).toBe("running");
     await finish(e, botId);
+  });
+
+  it("uses the normal tiers (with a trades read) when the replaced ledger was flat (N2)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new PosGateway();
+    const { botId, accountId } = await seedBot("running", grid);
+    const e = posEngine(gw, "pos-ver-flat");
+    await e.tick();
+    await e.onPrice("BTC-USD", "100", clock);
+    expect(await ledgerOf(botId)).toBe("0");
+    const [v1] = await db.select().from(botVersions).where(eq(botVersions.botId, botId));
+    await db.insert(botVersions).values({
+      botId,
+      version: 2,
+      paramSource: "manual",
+      status: "pending",
+      config: v1?.config ?? {},
+    });
+    gw.perpsPositions.set("BTC-USD", { size: "2", entryPrice: "100" });
+    for (let i = 0; i < 4; i += 1) await step(e);
+    expect(gw.recentTradesBy).toContain(accountId);
+    expect((await allEvents(botId)).some((x) => x.decision === "Position not tracked")).toBe(false);
+    expect((await botState(botId))?.positionMismatch?.["BTC-USD"]?.cause).toBe("trades");
+    await finish(e, botId);
+  });
+
+  it("replays resumed after a restart for a running, flagged bot whose strategy is still halted (N1)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new PosGateway();
+    const { botId, e } = await running(gw, "pos-n1");
+    await e.stop();
+    // Engine chết sau khi `resumed` bị giữ: bot đang chạy, chiến lược còn halted, cảnh báo còn đó.
+    const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+    await db
+      .update(botRuntime)
+      .set({ state: { ...(rt?.state as Record<string, unknown>), phase: "halted" } })
+      .where(eq(botRuntime.botId, botId));
+    await flag(botId, "BTC-USD", "5", "2");
+    gw.perpsPositions.set("BTC-USD", { size: "5", entryPrice: "100" });
+    const e2 = posEngine(gw, "pos-n1b");
+    await e2.tick();
+    clock += 1_000;
+    await e2.onPrice("BTC-USD", "100", clock);
+    const phase = async () => {
+      const [x] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      return (x?.state as { phase?: string }).phase;
+    };
+    // Mọi mức grid còn lệnh trên sổ: bước `resumed` không thêm gì vào vị thế nên đi ngay (không có N1 thì grid halted bỏ
+    // qua giá mãi).
+    expect(await phase()).not.toBe("halted");
+    expect((await botState(botId))?.state).toBe("running");
+    await finish(e2, botId);
   });
 
   it("uses the real position at read plus ledger moves since then (M2)", () => {
