@@ -755,12 +755,12 @@
       "vfSizeMin": {
         "label": "Order size, min",
         "short": "Min",
-        "hint": "Position value per trade, leverage included"
+        "hint": ""
       },
       "vfSizeMax": {
         "label": "Order size, max",
         "short": "Max",
-        "hint": "Each trade picks a random size in this range"
+        "hint": ""
       },
       "vfHoldMin": {
         "label": "Hold at least",
@@ -838,7 +838,7 @@
       },
       "vfLeverage": {
         "label": "Leverage",
-        "hint": "Up to the SoDEX maximum for this market (and your account cap if set)"
+        "hint": "Up to the SoDEX maximum for this market"
       },
       "vfMaxLoss": {
         "label": "Max loss for this bot",
@@ -1569,6 +1569,9 @@
     },
     "clusters": {
       "orderSize": "Order size"
+    },
+    "clusterHints": {
+      "orderSize": "Each trade picks a random size in this range"
     },
     "advanced": {
       "title": "Advanced settings",
@@ -5281,6 +5284,8 @@
       "colBots": "Bots",
       "colVolume": "Volume (USDC)",
       "colFeeM": "Fees / $1M",
+      "colNetCostM": "Net cost / $1M",
+      "netCostHelp": "Net trading loss per $1M of volume in this period, fees included. A gain shows $0.00. Fees / $1M is only the fee part.",
       "colFill": "Filled",
       "colReject": "Rejected",
       "runningOf": "{r} of {n} running",

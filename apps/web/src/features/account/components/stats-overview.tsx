@@ -3,7 +3,7 @@
 import type { PlatformOverview, StatsInsight } from "@drift/shared";
 import { AlertTriangle, CheckCircle2, Info, OctagonAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import { useReasonLabel } from "@/features/bots/stop-reason";
 import { formatDateTime, formatInteger, formatMoney } from "@/lib/format";
@@ -215,11 +215,13 @@ export function Health({ o }: { o: PlatformOverview }) {
 export function Strategies({ o, period }: { o: PlatformOverview; period: number }) {
   const t = useTranslations("platformStats.ov");
   const ts = useTranslations("createBot.strategies");
+  const tm = useTranslations("common.missing");
+  const helpId = useId();
   const pct = (v: number | null) => (v === null ? "—" : `${v.toFixed(0)}%`);
   return (
     <Panel title={t("strategiesTitle")} sub={t("strategiesHint", { period })}>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-sm tabular-nums">
+        <table className="w-full min-w-[760px] border-collapse text-sm tabular-nums">
           <thead>
             <tr className="text-left text-xs text-muted">
               <th scope="col" className="py-2 pr-3 font-bold">
@@ -233,6 +235,14 @@ export function Strategies({ o, period }: { o: PlatformOverview; period: number 
               </th>
               <th scope="col" className="py-2 pr-3 text-right font-bold">
                 {t("colFeeM")}
+              </th>
+              <th
+                scope="col"
+                aria-describedby={helpId}
+                title={t("netCostHelp")}
+                className="py-2 pr-3 text-right font-bold"
+              >
+                {t("colNetCostM")}
               </th>
               <th scope="col" className="py-2 pr-3 text-right font-bold">
                 {t("colFill")}
@@ -257,6 +267,11 @@ export function Strategies({ o, period }: { o: PlatformOverview; period: number 
                 <td className="py-2 pr-3 text-right">
                   {s.feePerMillion === null ? "—" : `$${s.feePerMillion}`}
                 </td>
+                <td className="py-2 pr-3 text-right">
+                  {s.netCostPerMillion === null
+                    ? tm("notAvailable")
+                    : `$${formatMoney(s.netCostPerMillion) ?? s.netCostPerMillion}`}
+                </td>
                 <td
                   className={`py-2 pr-3 text-right ${s.fillRatePct !== null && s.fillRatePct < 25 ? "font-bold text-neg-ink" : ""}`}
                 >
@@ -272,6 +287,9 @@ export function Strategies({ o, period }: { o: PlatformOverview; period: number 
           </tbody>
         </table>
       </div>
+      <p id={helpId} className="m-0 text-xs text-muted">
+        <strong className="font-bold text-ink-2">{t("colNetCostM")}</strong> · {t("netCostHelp")}
+      </p>
     </Panel>
   );
 }

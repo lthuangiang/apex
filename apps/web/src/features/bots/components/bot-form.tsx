@@ -26,29 +26,12 @@ import { LossCaps } from "./loss-caps";
 import { MarketPicker } from "./market-picker";
 
 // Form tham số bot theo bố cục UI_REVIEW G2/G3 (DEC-68): Market → Amount → Strategy → Risk → Advanced
-// settings (đóng mặc định, nhớ trạng thái trong trình duyệt). Lỗi field lấy nguyên văn từ server (zod
+// settings (luôn đóng khi vào form, tự mở khi có lỗi bên trong). Lỗi field lấy nguyên văn từ server (zod
 // schema của chiến lược). Màn Edit truyền `lockedReason` để ẩn field bị khoá.
-
-const ADVANCED_OPEN_KEY = "drift.bots.advancedOpen";
 
 // Class tĩnh cho hàng lưới `rowBreak` (Tailwind không đọc được class ghép động): số cột từ md, độ rộng tiêu đề nhóm.
 const GRID_COLS: Record<number, string> = { 2: "md:grid-cols-2", 3: "md:grid-cols-3" };
 const SPAN_COLS: Record<number, string> = { 2: "md:col-span-2", 3: "md:col-span-3" };
-
-function readOpen(): boolean {
-  try {
-    return window.localStorage.getItem(ADVANCED_OPEN_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-function writeOpen(open: boolean) {
-  try {
-    window.localStorage.setItem(ADVANCED_OPEN_KEY, open ? "1" : "0");
-  } catch {
-    // Trình duyệt chặn storage: chỉ mất phần nhớ trạng thái.
-  }
-}
 
 export function BotForm({
   strategy,
@@ -92,10 +75,8 @@ export function BotForm({
   const names = useMarketNames();
   const markets = useMarkets();
   const root = useRef<HTMLDivElement>(null);
+  // Luôn đóng mỗi lần vào form (người dùng yêu cầu 2026-11-17); chỉ tự mở khi có lỗi bên trong.
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    setOpen(readOpen());
-  }, []);
 
   const set = (key: string, v: string | boolean | AssetRow[]) => {
     const spec = FIELDS[strategy].find((f) => f.key === key);
@@ -385,7 +366,16 @@ export function BotForm({
             {t(`clusters.${cluster}`)}
           </p>
         )}
-        {row.map(cell)}
+        {row.slice(0, members.length).map(cell)}
+        {cluster !== undefined && has(`clusterHints.${cluster}`) ? (
+          // Một dòng giải thích chung cho cả nhóm, nằm dưới các ô của nhóm (không lặp hint từng ô).
+          <p
+            className={`m-0 col-span-full text-xs text-muted md:col-start-1 md:row-start-6 ${SPAN_COLS[members.length] ?? ""}`}
+          >
+            {t(`clusterHints.${cluster}`)}
+          </p>
+        ) : null}
+        {row.slice(members.length).map(cell)}
       </div>
     );
   };
@@ -489,7 +479,6 @@ export function BotForm({
               className="flex min-h-tap w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left"
               onClick={() => {
                 setOpen(!open);
-                writeOpen(!open);
               }}
             >
               <span className="flex min-w-0 flex-col gap-0.5">
