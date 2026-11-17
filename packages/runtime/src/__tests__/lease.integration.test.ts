@@ -38,4 +38,23 @@ describe.skipIf(url === undefined)("Lease (integration)", () => {
     expect(await b.tick()).toBe(true);
     await b.release();
   });
+
+  it("renews many leases and the heartbeat in one script, only where the token matches", async () => {
+    const a = new Lease(redis, `${key}:m1`, 1000);
+    const b = new Lease(redis, `${key}:m2`, 1000);
+    await a.tick();
+    await b.tick();
+    await redis.set(`${key}:m2`, "someone-else", "PX", 1000);
+    const ok = await Lease.renewMany(redis, [a, b], {
+      key: `${key}:hb`,
+      value: "alive",
+      ttlMs: 1000,
+    });
+    expect(ok).toEqual([true, false]);
+    expect(a.held).toBe(true);
+    expect(b.held).toBe(false);
+    expect(await redis.get(`${key}:hb`)).toBe("alive");
+    expect(await redis.pttl(`${key}:m1`)).toBeGreaterThan(900);
+    await redis.del(`${key}:m1`, `${key}:m2`, `${key}:hb`);
+  });
 });
