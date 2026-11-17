@@ -1,0 +1,19 @@
+name: setup
+description: Node theo .nvmrc, pnpm qua corepack, cache pnpm store, rồi pnpm install --frozen-lockfile.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+    - shell: bash
+      run: |
+        npm i -g corepack@latest && corepack enable
+        echo "PNPM_STORE=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+    - uses: actions/cache@v4
+      with:
+        path: ${{ env.PNPM_STORE }}
+        key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pnpm-store-${{ runner.os }}-
+    - shell: bash
+      run: pnpm install --frozen-lockfile
