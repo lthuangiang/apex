@@ -77,13 +77,19 @@ const gateway = new HttpGateway(
   sodex.builderId,
   sodex.builderExempt,
 );
-// User stream cho từng account đang có bot thật trong shard của worker này. Engine mở stream ngay khi nạp bot (trong
-// vòng tick) và bot chỉ đặt lệnh khi mọi stream của account đã được SoDEX nhận subscribe (DEC-TBD-engine-lost-fill).
-const streams = new Map<string, { spot: WsUserStream; perps: WsUserStream }>();
-function openStreams(account: AccountRef): void {
+// User stream cho từng account + engine mà bot thật trong shard của worker này giao dịch (account chỉ chạy Perps không mở
+// stream Spot). Engine mở stream ngay khi nạp bot (trong vòng tick) và lệnh mở vị thế chỉ đi khi stream của engine đó
+// đã được SoDEX nhận subscribe (DEC-TBD-engine-lost-fill).
+type StreamKind = "spot" | "perps";
+const streams = new Map<string, Partial<Record<StreamKind, WsUserStream>>>();
+/** Lần cuối ghi log error "subscribe rejected" theo `account:engine` (tối đa một lần mỗi 10 phút). */
+const rejectLoggedAt = new Map<string, number>();
+const REJECT_LOG_EVERY_MS = 600_000;
+function openStream(account: AccountRef, kind: StreamKind): void {
   const id = account.id;
-  if (streams.has(id)) return;
-  const make = (kind: "spot" | "perps") =>
+  const pair = streams.get(id) ?? {};
+  if (pair[kind] !== undefined) return;
+  const make = () =>
     new WsUserStream({
       baseUrl: sodex.wsUrl,
       engine: kind,
@@ -133,48 +139,54 @@ function openStreams(account: AccountRef): void {
           }
         },
         onReconnect: () => {
-          engine.onStreamGap(id);
-          log.info(
-            { accountId: id, kind },
-            "user stream reconnected; unknown orders are reconciled by the loop",
-          );
+          log.info({ accountId: id, kind }, "user stream reconnected");
         },
-        // Mỗi lần subscribe xong, kể cả lần đầu: tin trước đó (bot có thể đã giao dịch) không bao giờ tới, đối soát như
-        // khi stream đứt.
+        // Khoảng trống chỉ khi subscribe XONG (lần đầu: bot có thể đã có lệnh từ worker trước / lệnh đóng gửi trước khi
+        // stream sẵn sàng; các lần sau: stream đã subscribe bị đứt). Subscribe bị từ chối không phải khoảng trống.
         onSubscribed: () => {
-          engine.onStreamGap(id);
+          engine.onStreamGap(id, kind);
           log.info({ accountId: id, kind }, "user stream subscribed");
         },
         onError: (error) => {
-          // Subscribe bị từ chối thì bot của engine đó không đặt lệnh mở vị thế tới khi subscribe lại được: lỗi thật.
-          if (error.message.includes("rejected"))
-            log.error(
-              { err: error.message, accountId: id, kind },
-              "user stream subscribe rejected",
-            );
-          else log.warn({ err: error.message, accountId: id }, "user stream error");
+          if (error.message.includes("rejected")) {
+            // Lệnh mở vị thế trên engine này chờ tới khi subscribe lại được: lỗi thật, nhưng chỉ ghi mỗi 10 phút.
+            const key = `${id}:${kind}`;
+            const at = Date.now();
+            if (at - (rejectLoggedAt.get(key) ?? 0) >= REJECT_LOG_EVERY_MS) {
+              rejectLoggedAt.set(key, at);
+              log.error(
+                { err: error.message, accountId: id, kind },
+                "user stream subscribe rejected",
+              );
+            }
+          } else log.warn({ err: error.message, accountId: id }, "user stream error");
           // Một tin không đọc được có thể là fill: đối soát lệnh của account như khi stream đứt (DEC-118).
-          if (error.message.includes("did not match schema")) engine.onStreamGap(id);
+          if (error.message.includes("did not match schema")) engine.onStreamGap(id, kind);
         },
       },
     });
-  const pair = { spot: make("spot"), perps: make("perps") };
-  pair.spot.connect();
-  pair.perps.connect();
-  streams.set(id, pair);
-  log.info({ accountId: id }, "user stream connecting");
+  const stream = make();
+  stream.connect();
+  streams.set(id, { ...pair, [kind]: stream });
+  log.info({ accountId: id, kind }, "user stream connecting");
 }
-/** Đóng stream của account không còn bot; mở cho account còn thiếu (đường dự phòng, engine đã mở trong tick). */
+/** Đóng stream (account + engine) không còn bot cần; mở cái còn thiếu (đường dự phòng, engine đã mở trong tick). */
 async function syncStreams() {
-  const wanted = new Map((await engine.activeAccounts()).map((a) => [a.id, a]));
+  const wanted = new Map((await engine.activeStreams()).map((a) => [a.account.id, a]));
   for (const [id, pair] of streams) {
-    if (!wanted.has(id)) {
-      pair.spot.close();
-      pair.perps.close();
-      streams.delete(id);
+    const want = wanted.get(id);
+    const kept: Partial<Record<StreamKind, WsUserStream>> = {};
+    for (const kind of ["spot", "perps"] as const) {
+      const stream = pair[kind];
+      if (stream === undefined) continue;
+      if (want?.engines.has(kind) === true) kept[kind] = stream;
+      else stream.close();
     }
+    if (kept.spot === undefined && kept.perps === undefined) streams.delete(id);
+    else streams.set(id, kept);
   }
-  for (const account of wanted.values()) openStreams(account);
+  for (const { account, engines } of wanted.values())
+    for (const kind of engines) openStream(account, kind);
 }
 
 // Độ trễ event loop (DEC-302): ghi kèm log `tick slow` và mỗi phút một dòng `event loop delay`.
@@ -204,8 +216,8 @@ const engine = new Engine({
   builderId: sodex.builderId,
   builderExempt: sodex.builderExempt,
   userStreams: {
-    open: openStreams,
-    ready: (accountId, kind) => streams.get(accountId)?.[kind].subscribed === true,
+    open: openStream,
+    ready: (accountId, kind) => streams.get(accountId)?.[kind]?.subscribed === true,
   },
   // Volume Farm (DEC-80): 10 mức mỗi phía, như apex `get_orderbook_depth(symbol, 10)`.
   // Rebalancing (Spot) cũng đọc đỉnh sổ lệnh để đặt IOC theo ask / bid.
@@ -317,8 +329,8 @@ async function shutdown() {
   state.running = false;
   await loop;
   for (const pair of streams.values()) {
-    pair.spot.close();
-    pair.perps.close();
+    pair.spot?.close();
+    pair.perps?.close();
   }
   await engine.stop();
   await nc.drain();
