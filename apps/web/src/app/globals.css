@@ -103,3 +103,21 @@
   outline: 2px solid var(--l-focus);
   outline-offset: 2px;
 }
+
+/* System Architecture Diagram: đường của luồng đang chọn chạy nét đứt theo chiều mũi tên. Người bật "reduce motion"
+   thấy nét đứt đứng yên (base layer của packages/ui cũng tắt animation khi đó). */
+.arch-flow {
+  stroke-dasharray: 7 5;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .arch-flow {
+    animation: arch-dash 1.2s linear infinite;
+  }
+}
+
+@keyframes arch-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}

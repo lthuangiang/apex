@@ -119,7 +119,7 @@ Mục tiêu: chạy được cả hệ thống bằng `docker compose` (dev, sta
 |---|---|
 | dev | `docker compose --profile dev up` (Vault server mode lưu file trên volume, `vault-init` tự unseal, DEC-55), dùng SoDEX **mainnet** (DEC-23); test tự động chỉ đọc, luồng ký/gửi lệnh dùng mock server. Vault dev **không** dùng cho production |
 | staging | compose, SoDEX mainnet (DEC-23), dữ liệu ẩn danh |
-| production 1 host | compose, cloud KMS hoặc Vault cluster riêng (không bao giờ Vault dev / dev-init), backup Postgres (WAL + snapshot hằng ngày), NATS có volume |
+| production 1 host | Đang chạy (DEC-70, `docs/DEPLOY.md`): `docker-compose.yml` + `docker-compose.prod.yml`, mỗi service 1 bản. Vault chạy profile `prod` trên cùng VPS: server mode lưu file trên volume `vaultdata`, `vault-init` (`infra/vault/prod-init.sh`) tự unseal sau mỗi lần restart, token của signer chỉ có quyền transit; không bao giờ dùng `dev.hcl` / `dev-init.sh`. `infra/deploy/backup.sh` sao lưu Postgres và volume `vaultdata` + `vaultinit` (mất cả hai = mọi account phải kết nối lại SoDEX). Cloud KMS hoặc Vault cluster riêng là hướng cho production lớn |
 | production lớn | cùng image trên Kubernetes; Postgres managed; NATS cluster 3 node; Redis Sentinel |
 
 - Lệnh migrate: `docker compose run --rm migrate`. Chạy trước mỗi lần deploy; migration phải tương thích ngược (expand → migrate → contract).
@@ -144,7 +144,7 @@ Mục tiêu: chạy được cả hệ thống bằng `docker compose` (dev, sta
 | Số học tiền | `decimal.js` hoặc integer units | Không dùng float cho tiền |
 | Queue / event | NATS JetStream | Nhẹ, có work-queue và replay |
 | Dữ liệu | PostgreSQL + TimescaleDB, Redis | Bot, lệnh, audit, candles |
-| Secret | Vault transit (dev) / cloud KMS (prod) | Mã hoá key của DRIFT |
+| Secret | Vault transit (dev và production 1 host, DEC-70); cloud KMS hoặc Vault cluster khi lên production lớn | Mã hoá key của DRIFT |
 | Test | Vitest + Testing Library, Playwright, MSW (chỉ trong test) | |
 | LLM (Desk AI, DEC-165) | `@anthropic-ai/sdk`, Claude API trực tiếp, model `claude-sonnet-5-5` | Chỉ viết lời quanh fact do code tính; không có công cụ thực thi; API key riêng ở Vault, không phải gói Claude cá nhân |
 | MCP (DEC-167) | `@modelcontextprotocol/sdk`, service `apps/mcp` ở `mcp.desklabs.xyz` | SDK chính thức, Streamable HTTP + OAuth 2.1; chỉ tool đọc và bản nháp |

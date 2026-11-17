@@ -99,4 +99,37 @@ describe("design tokens", () => {
   ])("keeps ink text on %s at 4.5:1 or more", (bg) => {
     expect(contrast(token("ink"), token(bg))).toBeGreaterThanOrEqual(4.5);
   });
+
+  // System Architecture Diagram: tên mạng viết bằng màu viền trên nền của chính mạng đó; số bước trắng trên ô xanh.
+  it.each([
+    ["arch-edge", "arch-edge-bg"],
+    ["arch-core", "arch-core-bg"],
+    ["arch-secure", "arch-secure-bg"],
+    ["arch-ext", "arch-ext-bg"],
+    ["arch-host", "surface"],
+  ])("keeps %s labels on %s at 4.5:1 or more", (fg, bg) => {
+    expect(contrast(token(fg), token(bg))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // Icon không thuộc luồng đang chọn: tên màu muted trên nền mạng (chữ, 4.5:1); icon viền màu nhóm trên nền trắng và
+  // nền mạng (đồ hoạ, 3:1). Không làm mờ bằng opacity.
+  it.each(["arch-edge-bg", "arch-core-bg", "arch-secure-bg", "arch-ext-bg"])(
+    "keeps muted labels on %s at 4.5:1 or more",
+    (bg) => {
+      expect(contrast(token("muted"), token(bg))).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  it.each(["arch-net", "arch-app", "arch-ml", "arch-db", "arch-int", "arch-sec", "arch-ext"])(
+    "keeps %s icons at 3:1 or more on white and on every network background",
+    (tone) => {
+      for (const bg of ["surface", "arch-edge-bg", "arch-core-bg", "arch-secure-bg", "arch-ext-bg"])
+        expect(contrast(token(tone), token(bg)), bg).toBeGreaterThanOrEqual(3);
+      expect(contrast(WHITE, token(tone))).toBeGreaterThanOrEqual(3);
+    },
+  );
+
+  it("keeps white step numbers on arch-badge at 4.5:1 or more", () => {
+    expect(contrast(WHITE, token("arch-badge"))).toBeGreaterThanOrEqual(4.5);
+  });
 });

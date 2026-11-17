@@ -54,7 +54,8 @@
       "sections": {
         "copy": "Copy Trading"
       },
-      "marketHours": "Market hours"
+      "marketHours": "Market hours",
+      "architecture": "System Architecture Diagram"
     },
     "dialog": {
       "consequences": "What happens"
@@ -6476,5 +6477,18 @@
       "collecting": "Cost to make markets: collecting since {date}"
     },
     "footer": "Past numbers, not a forecast; nothing on this page pauses or changes bots."
+  },
+  "architecture": {
+    "title": "System Architecture Diagram",
+    "subtitle": "How DeskLabs is built, and the path each request, live update and background job takes through it.",
+    "forbidden": "This page is for the DeskLabs team only.",
+    "loading": "Loading the diagram…",
+    "errorTitle": "Couldn't load the diagram.",
+    "retry": "Try again",
+    "flowsLabel": "Flows",
+    "diagramLabel": "DeskLabs system diagram",
+    "stepsLabel": "Steps",
+    "detailHint": "Select a service to see its details.",
+    "legendLabel": "Color key"
   }
 }

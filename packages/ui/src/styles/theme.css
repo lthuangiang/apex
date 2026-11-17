@@ -63,6 +63,23 @@
   --color-mh-shock-2: var(--mh-shock-2);
   --color-mh-shock-3: var(--mh-shock-3);
   --color-mh-hatch: var(--mh-hatch);
+  --color-arch-net: var(--arch-net);
+  --color-arch-app: var(--arch-app);
+  --color-arch-ml: var(--arch-ml);
+  --color-arch-db: var(--arch-db);
+  --color-arch-int: var(--arch-int);
+  --color-arch-sec: var(--arch-sec);
+  --color-arch-ext: var(--arch-ext);
+  --color-arch-host: var(--arch-host);
+  --color-arch-edge: var(--arch-edge);
+  --color-arch-edge-bg: var(--arch-edge-bg);
+  --color-arch-core: var(--arch-core);
+  --color-arch-core-bg: var(--arch-core-bg);
+  --color-arch-secure: var(--arch-secure);
+  --color-arch-secure-bg: var(--arch-secure-bg);
+  --color-arch-ext-bg: var(--arch-ext-bg);
+  --color-arch-flow: var(--arch-flow);
+  --color-arch-badge: var(--arch-badge);
 
   --radius-control: var(--radius-control);
   --radius-tile: var(--radius-tile);
