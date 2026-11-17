@@ -23,6 +23,7 @@ import { z } from "zod";
 
 import { BookCoalescer } from "./book-coalescer";
 import { Engine } from "./engine";
+import type { AccountRef } from "./gateway";
 import { HttpGateway, httpSigner, marketInfo } from "./http-gateway";
 import { withLastUsed } from "./last-used";
 import { PaperGateway } from "./paper-gateway";
@@ -74,6 +75,106 @@ const gateway = new HttpGateway(
   sodex.builderId,
   sodex.builderExempt,
 );
+// User stream cho từng account đang có bot thật trong shard của worker này. Engine mở stream ngay khi nạp bot (trong
+// vòng tick) và bot chỉ đặt lệnh khi mọi stream của account đã được SoDEX nhận subscribe (DEC-TBD-engine-lost-fill).
+const streams = new Map<string, { spot: WsUserStream; perps: WsUserStream }>();
+function openStreams(account: AccountRef): void {
+  const id = account.id;
+  if (streams.has(id)) return;
+  const make = (kind: "spot" | "perps") =>
+    new WsUserStream({
+      baseUrl: sodex.wsUrl,
+      engine: kind,
+      user: account.address,
+      accountID: account.sodexAccountId,
+      callbacks: {
+        onOrderUpdate: (updates) => {
+          for (const u of updates) {
+            // Lệnh kết thúc (FILLED / CANCELED / EXPIRED / REJECTED): ghi phần mới khớp trước, rồi báo chiến lược lệnh
+            // đã xong đúng một lần, kể cả khi đã khớp một phần (P0.1). Chưa khớp gì thì cập nhật luôn, không để lệnh
+            // kẹt "open" (DEC-122).
+            const closed =
+              u.X === "REJECTED"
+                ? "rejected"
+                : u.X === "CANCELED" || u.X === "EXPIRED"
+                  ? "cancelled"
+                  : u.X === "FILLED"
+                    ? "filled"
+                    : null;
+            const filled = dec(u.z).gt(0);
+            if (closed === null && !filled) continue;
+            void (async () => {
+              if (filled)
+                await engine.onFill(id, u.c, u.z, dec(u.v).div(u.z).toString(), u.n ?? "0", u.E);
+              if (closed !== null) await engine.onOrderClosed(id, u.c, closed, u.E, u.r ?? null);
+            })().catch((error: unknown) => {
+              log.warn({ err: error }, "order update handling failed");
+            });
+          }
+        },
+        onTrade: (trades) => {
+          for (const tr of trades) {
+            void engine
+              .onTrade(id, {
+                tradeId: tr.t,
+                clOrdID: tr.c,
+                price: tr.p,
+                quantity: tr.q,
+                fee: tr.f,
+                builderFee: tr.bf ?? null,
+                isMaker: tr.m,
+                at: tr.T,
+              })
+              .catch((error: unknown) => {
+                log.warn({ err: error }, "trade handling failed");
+              });
+          }
+        },
+        onReconnect: () => {
+          engine.onStreamGap(id);
+          log.info(
+            { accountId: id, kind },
+            "user stream reconnected; unknown orders are reconciled by the loop",
+          );
+        },
+        // Mỗi lần subscribe xong, kể cả lần đầu: tin trước đó (bot có thể đã giao dịch) không bao giờ tới, đối soát như
+        // khi stream đứt.
+        onSubscribed: () => {
+          engine.onStreamGap(id);
+          log.info({ accountId: id, kind }, "user stream subscribed");
+        },
+        onError: (error) => {
+          // Subscribe bị từ chối thì bot của engine đó không đặt lệnh mở vị thế tới khi subscribe lại được: lỗi thật.
+          if (error.message.includes("rejected"))
+            log.error(
+              { err: error.message, accountId: id, kind },
+              "user stream subscribe rejected",
+            );
+          else log.warn({ err: error.message, accountId: id }, "user stream error");
+          // Một tin không đọc được có thể là fill: đối soát lệnh của account như khi stream đứt (DEC-118).
+          if (error.message.includes("did not match schema")) engine.onStreamGap(id);
+        },
+      },
+    });
+  const pair = { spot: make("spot"), perps: make("perps") };
+  pair.spot.connect();
+  pair.perps.connect();
+  streams.set(id, pair);
+  log.info({ accountId: id }, "user stream connecting");
+}
+/** Đóng stream của account không còn bot; mở cho account còn thiếu (đường dự phòng, engine đã mở trong tick). */
+async function syncStreams() {
+  const wanted = new Map((await engine.activeAccounts()).map((a) => [a.id, a]));
+  for (const [id, pair] of streams) {
+    if (!wanted.has(id)) {
+      pair.spot.close();
+      pair.perps.close();
+      streams.delete(id);
+    }
+  }
+  for (const account of wanted.values()) openStreams(account);
+}
+
 // Bot paper (DEC-105): cổng mô phỏng riêng, không có client SoDEX hay signer.
 const paper = new PaperGateway({ db, now: () => Date.now() });
 const engine = new Engine({
@@ -88,6 +189,10 @@ const engine = new Engine({
   rules: (market) => marketInfo(rest, market),
   builderId: sodex.builderId,
   builderExempt: sodex.builderExempt,
+  userStreams: {
+    open: openStreams,
+    ready: (accountId, kind) => streams.get(accountId)?.[kind].subscribed === true,
+  },
   // Volume Farm (DEC-80): 10 mức mỗi phía, như apex `get_orderbook_depth(symbol, 10)`.
   // Rebalancing (Spot) cũng đọc đỉnh sổ lệnh để đặt IOC theo ask / bid.
   orderbook: async (market, engine = "perps") => {
@@ -181,87 +286,6 @@ void (async () => {
   }
 })();
 
-// User stream cho từng account đang có bot trong shard của worker này.
-const streams = new Map<string, WsUserStream[]>();
-async function syncStreams() {
-  const wanted = new Map((await engine.activeAccounts()).map((a) => [a.id, a]));
-  for (const [id, list] of streams) {
-    if (!wanted.has(id)) {
-      for (const s of list) s.close();
-      streams.delete(id);
-    }
-  }
-  for (const [id, account] of wanted) {
-    if (streams.has(id)) continue;
-    const make = (kind: "spot" | "perps") =>
-      new WsUserStream({
-        baseUrl: sodex.wsUrl,
-        engine: kind,
-        user: account.address,
-        accountID: account.sodexAccountId,
-        callbacks: {
-          onOrderUpdate: (updates) => {
-            for (const u of updates) {
-              // Lệnh kết thúc (FILLED / CANCELED / EXPIRED / REJECTED): ghi phần mới khớp trước, rồi báo chiến lược lệnh
-              // đã xong đúng một lần, kể cả khi đã khớp một phần (P0.1). Chưa khớp gì thì cập nhật luôn, không để lệnh
-              // kẹt "open" (DEC-122).
-              const closed =
-                u.X === "REJECTED"
-                  ? "rejected"
-                  : u.X === "CANCELED" || u.X === "EXPIRED"
-                    ? "cancelled"
-                    : u.X === "FILLED"
-                      ? "filled"
-                      : null;
-              const filled = dec(u.z).gt(0);
-              if (closed === null && !filled) continue;
-              void (async () => {
-                if (filled)
-                  await engine.onFill(id, u.c, u.z, dec(u.v).div(u.z).toString(), u.n ?? "0", u.E);
-                if (closed !== null) await engine.onOrderClosed(id, u.c, closed, u.E, u.r ?? null);
-              })().catch((error: unknown) => {
-                log.warn({ err: error }, "order update handling failed");
-              });
-            }
-          },
-          onTrade: (trades) => {
-            for (const tr of trades) {
-              void engine
-                .onTrade(id, {
-                  tradeId: tr.t,
-                  clOrdID: tr.c,
-                  price: tr.p,
-                  quantity: tr.q,
-                  fee: tr.f,
-                  builderFee: tr.bf ?? null,
-                  isMaker: tr.m,
-                  at: tr.T,
-                })
-                .catch((error: unknown) => {
-                  log.warn({ err: error }, "trade handling failed");
-                });
-            }
-          },
-          onReconnect: () => {
-            engine.onStreamGap(id);
-            log.info(
-              { accountId: id, kind },
-              "user stream reconnected; unknown orders are reconciled by the loop",
-            );
-          },
-          onError: (error) => {
-            log.warn({ err: error.message, accountId: id }, "user stream error");
-            // Một tin không đọc được có thể là fill: đối soát lệnh của account như khi stream đứt (DEC-118).
-            if (error.message.includes("did not match schema")) engine.onStreamGap(id);
-          },
-        },
-      });
-    const list = [make("spot"), make("perps")];
-    for (const s of list) s.connect();
-    streams.set(id, list);
-  }
-}
-
 const state = { running: true };
 const loop = (async () => {
   while (state.running) {
@@ -278,7 +302,10 @@ const loop = (async () => {
 async function shutdown() {
   state.running = false;
   await loop;
-  for (const list of streams.values()) for (const s of list) s.close();
+  for (const pair of streams.values()) {
+    pair.spot.close();
+    pair.perps.close();
+  }
   await engine.stop();
   await nc.drain();
   await pool.end();

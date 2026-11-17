@@ -93,12 +93,13 @@ Mục tiêu: chạy được cả hệ thống bằng `docker compose` (dev, sta
   3. Khi SoDEX ack lệnh đầu tiên thì bot chuyển `running` và publish `user.<id>.bot`.
   4. `realtime` đẩy cập nhật tới UI.
 - **Fill:**
-  1. WS user stream trả về fill. Engine cập nhật lệnh và bot.
+  1. WS user stream trả về fill. Engine cập nhật lệnh và bot. Engine mở user stream của account ngay khi nạp bot thật. Lệnh mở / tăng vị thế (Perps không reduce-only, Spot mua) chỉ được gửi khi stream của đúng engine đó (Spot / Perps) đã được SoDEX nhận cả hai subscribe (`accountOrderUpdate`, `accountTrade`); lệnh giảm vị thế, stop loss, lệnh đóng và Stop của người dùng luôn đi. Subscribe bị từ chối thì đóng kết nối và kết nối lại theo backoff. Mỗi lần subscribe xong (kể cả lần đầu) được coi là khoảng trống của stream và đối soát (DEC-TBD-engine-lost-fill).
   2. Ghi `builderFee`.
   3. Publish sự kiện để UI cập nhật.
+  4. Lưới an toàn: lệnh kết thúc mà stream chưa xác nhận được so với lịch sử khớp SoDEX (`trades`, theo `sodex_trade_id`) tối đa mỗi 10 s; account vừa có khoảng trống stream được so một lần mỗi khoảng trống. Chỉ trade cũ hơn 15 s được coi là bị mất. Lịch sử khớp đọc tối đa một lần mỗi account × market mỗi vòng engine, dùng chung với đối soát. Fill của bot không có runner được ghi vào lệnh và sổ cái đã lưu; fill tới lúc bot đang được nạp thì chờ runner rồi đi qua chiến lược.
 - **Lệnh `unknown`:**
   1. Engine đánh dấu lệnh `unknown`.
-  2. `jobs` đối soát với SoDEX (open orders + fills) và chuyển sang `filled` / `open` / `not_placed`.
+  2. Engine đối soát với SoDEX (open orders, order history, rồi trades của lệnh) và chuyển sang `filled` / `open` / `cancelled`; `not_placed` chỉ khi SoDEX chưa từng nhận lệnh (không có `sodex_order_id`) và không có trade. Lệnh SoDEX đã nhận mà không tìm thấy, không có trade thì giữ `unknown` (DEC-TBD-engine-lost-fill).
   3. Chỉ sau bước này bot mới được đặt lại.
 - **Revoke fee:**
   1. `api` ghi nhận chữ ký, `jobs` đọc lại approval từ SoDEX.

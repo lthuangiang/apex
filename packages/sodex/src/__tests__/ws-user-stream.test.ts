@@ -46,6 +46,7 @@ function setup(options: { accountID?: bigint; symbols?: string[] } = {}) {
     onTrade: vi.fn<WsUserStreamCallbacks["onTrade"]>(),
     onReconnect: vi.fn<WsUserStreamCallbacks["onReconnect"]>(),
     onError: vi.fn<WsUserStreamCallbacks["onError"]>(),
+    onSubscribed: vi.fn<NonNullable<WsUserStreamCallbacks["onSubscribed"]>>(),
   };
   const stream = new WsUserStream({
     baseUrl: "wss://mainnet-gw.sodex.dev/ws/",
@@ -163,12 +164,14 @@ describe("WsUserStream", () => {
     const { stream, sockets, callbacks } = setup();
     stream.connect();
     sockets[0]?.emit("open");
+    sockets[0]?.emit("message", '{"channel":"accountTrade","type":"update","data":[{"S":"BUY"}]}');
     sockets[0]?.emit(
       "message",
       '{"op":"subscribe","id":1,"success":false,"error":"bad user","connID":"x"}',
     );
-    sockets[0]?.emit("message", '{"channel":"accountTrade","type":"update","data":[{"S":"BUY"}]}');
     expect(callbacks.onError).toHaveBeenCalledTimes(2);
+    // Subscribe bị từ chối thì socket bị đóng để kết nối lại (tin sau đó trên socket cũ bị bỏ).
+    expect(sockets[0]?.closed).toBe(true);
   });
 
   it("pings after idle and reconnects when no pong arrives", () => {
@@ -199,6 +202,43 @@ describe("WsUserStream", () => {
     vi.advanceTimersByTime(1500);
     expect(sockets[0]?.closed).toBe(false);
     expect(sockets).toHaveLength(1);
+  });
+
+  it("is subscribed only after SoDEX acks both channels, on the first connect too, and not after a drop", () => {
+    const { stream, sockets, callbacks } = setup();
+    stream.connect();
+    const first = sockets[0];
+    first?.emit("open");
+    expect(stream.subscribed).toBe(false);
+    first?.emit("message", '{"op":"subscribe","id":1,"success":true}');
+    expect(stream.subscribed).toBe(false);
+    expect(callbacks.onSubscribed).not.toHaveBeenCalled();
+    first?.emit("message", '{"op":"subscribe","id":2,"success":true}');
+    expect(stream.subscribed).toBe(true);
+    expect(callbacks.onSubscribed).toHaveBeenCalledTimes(1);
+    expect(callbacks.onReconnect).not.toHaveBeenCalled();
+
+    first?.emit("close");
+    expect(stream.subscribed).toBe(false);
+    vi.advanceTimersByTime(2000);
+    const second = sockets[1];
+    second?.emit("open");
+    second?.emit("message", '{"op":"subscribe","id":1,"success":false,"error":"user not found"}');
+    // Subscribe bị từ chối: không ở lại nửa vời, đóng và kết nối lại theo backoff (B1).
+    expect(second?.closed).toBe(true);
+    expect(callbacks.onError).toHaveBeenCalled();
+    expect(stream.subscribed).toBe(false);
+    expect(callbacks.onSubscribed).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    expect(sockets).toHaveLength(2); // backoff tăng dần (không về 0 khi chỉ mới mở socket)
+    vi.advanceTimersByTime(2000);
+    const third = sockets[2];
+    expect(third).toBeDefined();
+    third?.emit("open");
+    third?.emit("message", '{"op":"subscribe","id":1,"success":true}');
+    third?.emit("message", '{"op":"subscribe","id":2,"success":true}');
+    expect(stream.subscribed).toBe(true);
+    expect(callbacks.onSubscribed).toHaveBeenCalledTimes(2);
   });
 
   it("does not reconnect after close()", () => {
