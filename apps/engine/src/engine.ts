@@ -568,6 +568,21 @@ const FLAG_GATED_STATES: ReadonlySet<string> = new Set<string>([
 /** Giờ UTC tới mili giây (HH:MM:SS.mmm) cho Decisions khi rút lệnh theo giá Binance. */
 export const clockTime = (ms: number): string => new Date(ms).toISOString().slice(11, 23);
 
+/**
+ * State sau khi ghi version mới (DEC-304). `after` = `applyVersion` đọc lại trên state hiện tại,
+ * `written` = state đã ghi cùng transaction. Fill tới trong lúc ghi: `after` null (bot lại có vị thế) → giữ state hiện
+ * tại; hoặc `after` khác bản đã ghi. Cả hai trường hợp phải ghi lại ngay với version mới, để engine nạp lại không rơi về
+ * `initialState` và quên vị thế.
+ */
+export function settleAppliedState(
+  after: unknown,
+  current: unknown,
+  written: unknown,
+): { state: unknown; save: boolean } {
+  if (after === null) return { state: current, save: true };
+  return { state: after, save: JSON.stringify(after) !== JSON.stringify(written) };
+}
+
 export function shardOf(accountId: string, shards = ENGINE_SHARDS): number {
   return Number(fnv1a64(accountId) % BigInt(shards));
 }
@@ -1798,7 +1813,7 @@ export class Engine {
       }
       // Key `active` mới nhất của account (Renew key, DEC-59): runner dùng key mới ngay, không cần nạp lại bot.
       r.account = r.paper ? { ...account, paper: true } : account;
-      await this.#applyPendingVersion(r, snap.pending.get(r.botId));
+      await this.#applyPendingVersion(r, snap.pending.get(r.botId), bot.state);
       if (bot.state === BotState.pausing)
         await this.#transition(r, EngineEvent.confirmedPaused, null);
       else if (bot.state === BotState.resuming && r.engines.every((x) => this.#streamReady(r, x))) {
@@ -1945,9 +1960,20 @@ export class Engine {
   /**
    * Version mới (`pending`, do api tạo khi sửa bot): huỷ lệnh đang mở, khởi tạo lại chiến lược với cấu hình
    * mới, đánh dấu version cũ superseded (DOMAIN.md mục 7.4, DEC-38). Lệnh mới đặt ở tick kế tiếp.
+   * Chiến lược có `applyVersion` (Volume Farm) có thể hoãn: còn vị thế / lệnh vào / thoát đang chạy thì không huỷ
+   * lệnh nào (stop trên SoDEX còn nguyên), version cũ chạy tiếp, ghi "Applying vN" một lần và thử lại mỗi vòng
+   * (DEC-304).
    */
-  async #applyPendingVersion(r: Runner, pending: VersionRow | undefined): Promise<void> {
-    if (pending === undefined || pending.version <= r.version) return;
+  async #applyPendingVersion(
+    r: Runner,
+    pending: VersionRow | undefined,
+    botState: BotState,
+  ): Promise<void> {
+    // Không còn version chờ (đã áp / bị thay): bỏ cờ chặn lượt mới.
+    if (pending === undefined || pending.version <= r.version) {
+      if (r.ctx.versionPending !== undefined) delete r.ctx.versionPending;
+      return;
+    }
     const entry = (
       STRATEGIES as Record<
         string,
@@ -1956,6 +1982,35 @@ export class Engine {
       >
     )[r.strategy];
     if (entry === undefined) return;
+    const config = entry.schema.parse(pending.config);
+    // Đọc lại mỗi lần: fill có thể tới trong lúc chờ DB / SoDEX bên dưới.
+    const apply = (): unknown =>
+      entry.module.applyVersion === undefined
+        ? entry.module.initialState(config)
+        : entry.module.applyVersion(config, r.state, r.ctx);
+    if (apply() === null) {
+      if (r.ctx.versionPending !== pending.version) {
+        r.ctx = { ...r.ctx, versionPending: pending.version };
+        const decision = `Applying v${String(pending.version)}`;
+        // Một dòng cho mỗi version chờ, kể cả khi runner được nạp lại (khởi động lại, đổi shard); bot đang dừng thì
+        // không ghi (nó không chờ lượt nào đóng nữa).
+        const [last] = await this.#d.db
+          .select({ decision: botEvents.decision })
+          .from(botEvents)
+          .where(and(eq(botEvents.botId, r.botId), eq(botEvents.type, "version")))
+          .orderBy(desc(botEvents.occurredAt))
+          .limit(1);
+        if (botState !== BotState.stopping && last?.decision !== decision)
+          await this.#event(
+            r,
+            "version",
+            decision,
+            `Waits until the open trade closes; v${String(r.version)} keeps managing it. No orders were cancelled.`,
+            this.#d.now(),
+          );
+      }
+      return;
+    }
     const open = await this.#d.db
       .select({ clOrdId: orders.clOrdId })
       .from(orders)
@@ -1964,12 +2019,34 @@ export class Engine {
       r,
       open.map((o) => o.clOrdId),
     );
-    const config = entry.schema.parse(pending.config);
+    // Fill tới trong lúc huỷ mở lại vị thế: chưa áp, vòng sau thử lại (lệnh vừa huỷ là lệnh của lúc bot còn phẳng).
+    const fresh = apply();
+    if (fresh === null) return;
     await this.#fenced(r, async (tx) => {
+      // State mới ghi cùng lần đổi version: engine nạp lại ngay sau đó vẫn có danh sách lệnh v1 (fill đến muộn vẫn vào
+      // sổ cái), không rơi về `initialState`.
+      await tx
+        .insert(botRuntime)
+        .values({ botId: r.botId, versionId: pending.id, state: fresh, epoch: r.epoch })
+        .onConflictDoUpdate({
+          target: botRuntime.botId,
+          set: { state: fresh, versionId: pending.id, epoch: r.epoch, updatedAt: new Date() },
+        });
       await tx
         .update(botVersions)
         .set({ status: "superseded" })
         .where(and(eq(botVersions.botId, r.botId), eq(botVersions.status, "active")));
+      // Version chờ cũ hơn (sửa lần nữa trong lúc chờ): không bao giờ được áp.
+      await tx
+        .update(botVersions)
+        .set({ status: "superseded" })
+        .where(
+          and(
+            eq(botVersions.botId, r.botId),
+            eq(botVersions.status, "pending"),
+            lt(botVersions.version, pending.version),
+          ),
+        );
       await tx
         .update(botVersions)
         .set({ status: "active", appliedAt: new Date(this.#d.now()) })
@@ -1983,8 +2060,19 @@ export class Engine {
     r.versionId = pending.id;
     r.version = pending.version;
     r.config = config;
-    r.state = entry.module.initialState(config);
+    // Version đã ghi: fill tới ngay lúc ghi thì giữ state hiện tại (còn vị thế) và ghi lại ngay với version mới, không
+    // bao giờ quên vị thế kể cả khi engine nạp lại.
+    const settled = settleAppliedState(apply(), r.state, fresh);
+    r.state = settled.state;
+    if (settled.save)
+      await this.#fenced(r, async (tx) => {
+        await tx
+          .update(botRuntime)
+          .set({ state: r.state, versionId: pending.id, epoch: r.epoch, updatedAt: new Date() })
+          .where(eq(botRuntime.botId, r.botId));
+      });
     r.ctx = { ...r.ctx, version: pending.version };
+    delete r.ctx.versionPending;
     r.leverageSet = false;
     r.leverageDone = new Set();
     r.leverageKnown = new Set();
@@ -3338,6 +3426,13 @@ export class Engine {
           why: reason ?? b.reasonCode ?? STOPPED_BY_USER,
           occurredAt: new Date(this.#d.now()),
         });
+      // Version còn chờ áp (Volume Farm dừng khi lượt chưa đóng, DEC-304): không bao giờ được áp nữa,
+      // không để "pending" mãi. Start lại (DEC-86) vẫn chạy với config mới nhất.
+      if (next === BotState.stopped)
+        await tx
+          .update(botVersions)
+          .set({ status: "superseded" })
+          .where(and(eq(botVersions.botId, r.botId), eq(botVersions.status, "pending")));
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
         payload: { botId: r.botId, state: next, reasonCode: reason ?? haltReason },
