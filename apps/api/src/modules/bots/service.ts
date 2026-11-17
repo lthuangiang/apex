@@ -742,12 +742,19 @@ export function botCostPerMillion(strategy: string, state: unknown): string | nu
   return null;
 }
 
-/** Chi phí / $1M của phiên Volume Farm: max(0, −net) ÷ volume × 1M; chưa có khối lượng thì null (trang bot dùng chung). */
-function farmCostPerMillion(st: VolumeFarmState): string | null {
-  const volume = dec(st.volume);
+/**
+ * Net cost / $1M của trang bot: max(0, −net) ÷ volume × 1M, 2 chữ số; lãi (net ≥ 0) → "0"; chưa có khối lượng → null.
+ * Trang bot Volume Farm và Platform Stats (theo strategy) dùng chung.
+ */
+export function netCostPerMillion(net: Decimal, volume: Decimal): string | null {
   return volume.isZero()
     ? null
-    : Decimal.max(0, farmNet(st).neg()).div(volume).mul(1_000_000).toDecimalPlaces(2).toString();
+    : Decimal.max(0, net.neg()).div(volume).mul(1_000_000).toDecimalPlaces(2).toString();
+}
+
+/** Chi phí / $1M của phiên Volume Farm: `netCostPerMillion(farmNet, volume)` (trang bot dùng chung). */
+function farmCostPerMillion(st: VolumeFarmState): string | null {
+  return netCostPerMillion(farmNet(st), dec(st.volume));
 }
 
 /**
