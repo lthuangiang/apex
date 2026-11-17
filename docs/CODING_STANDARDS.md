@@ -105,6 +105,7 @@ UI không hiển thị `message` thô của server cho người dùng; UI map `c
 ## C11. Log, metric, trace
 - Logger `pino`, JSON. Trường bắt buộc: `level, time, service, traceId, spanId`, khi có thì `accountId, botId, orderId, clOrdID`.
 - Danh sách redact cố định: `privateKey, secret, signature, apiKey, authorization, cookie, seed, mnemonic`. Có test đảm bảo redact.
+- **Ngoại lệ duy nhất cho payload đã ký: SoDEX Debugger (DEC-TBD-sodex-debugger).** Bảng `sodex_calls_*` lưu params của action đã ký (đúng như đã ký) để team gửi báo cáo cho SoDEX. Chữ ký (`X-API-Sign`, `signature`, `apiSign`), private key, API secret, seed / mnemonic và header xác thực (`Authorization`, `Cookie`, `Set-Cookie`) **không bao giờ** được lưu; tên API key chỉ giữ 4 ký tự cuối. Che ở `packages/sodex/src/debug/redact.ts`, có test cho mọi loại action đã ký. Ngoài bảng này, log và lỗi vẫn không chứa payload đã ký.
 - Metric Prometheus đặt tên `drift_<service>_<thing>_<unit>`, ví dụ `drift_engine_order_submit_seconds`, `drift_engine_orders_unknown_total`.
 - OpenTelemetry trace xuyên `web → api → engine → signer → SoDEX`.
 
