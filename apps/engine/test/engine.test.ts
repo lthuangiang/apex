@@ -240,7 +240,7 @@ class FakeGateway implements Gateway {
   }
 }
 
-// Lease được gia hạn bằng timer riêng (DEC-TBD-engine-lease-renew): engine của test trước mà quên `stop()` sẽ tiếp tục
+// Lease được gia hạn bằng timer riêng (DEC-302): engine của test trước mà quên `stop()` sẽ tiếp tục
 // giữ shard qua test sau. Cuối mỗi test dừng timer của mọi engine (như worker chết).
 const engines: RealEngine[] = [];
 class Engine extends RealEngine {
@@ -508,7 +508,7 @@ describe("engine", () => {
       .from(shardEpochs)
       .where((await import("drizzle-orm")).eq(shardEpochs.shard, shard));
     expect(row?.owner).toBe("B");
-    // Zombie không phản ứng với thị trường nữa (shard không còn xác nhận được, DEC-TBD-engine-lease-renew)…
+    // Zombie không phản ứng với thị trường nữa (shard không còn xác nhận được, DEC-302)…
     const before = gw.received.length;
     await a.onPrice("vBTC_vUSDC", "95", clock);
     expect(gw.received).toHaveLength(before);
@@ -4707,7 +4707,7 @@ describe("one read per tick, not per shard (DEC-301)", () => {
   });
 });
 
-describe("shard leases renew on their own timer (DEC-TBD-engine-lease-renew)", () => {
+describe("shard leases renew on their own timer (DEC-302)", () => {
   /** Gateway giả có `builderApproved` chậm (giả một vòng tick chậm hơn TTL của lease). */
   class SlowFeeGateway extends FakeGateway {
     slowOnceMs = 0;
@@ -4892,7 +4892,7 @@ describe("shard leases renew on their own timer (DEC-TBD-engine-lease-renew)", (
   });
 });
 
-describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease-renew review)", () => {
+describe("lease checks keep saved state and orders in step (DEC-302 review)", () => {
   /** Lease "mất xác nhận": đồng hồ đơn điệu vượt hạn và script gia hạn của Redis lỗi. */
   interface LeaseCtl {
     lose: () => void;

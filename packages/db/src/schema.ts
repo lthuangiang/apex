@@ -570,7 +570,7 @@ export const botRuntime = pgTable("bot_runtime", {
   epoch: bigint("epoch", { mode: "number" }).notNull(),
   /**
    * Đòn bẩy + margin mode SoDEX đã xác nhận cho version `versionId` (khoá `market:leverage:mode`). Runner nạp lại (chuyển
-   * shard, khởi động lại) cùng version thì không đặt / ghi "Leverage set" lại (DEC-TBD-engine-lease-renew).
+   * shard, khởi động lại) cùng version thì không đặt / ghi "Leverage set" lại (DEC-302).
    */
   leverageDone: jsonb("leverage_done").$type<{ versionId: string; keys: string[] }>(),
   ...timestamps,

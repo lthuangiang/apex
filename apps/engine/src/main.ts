@@ -76,7 +76,7 @@ const gateway = new HttpGateway(
   sodex.builderId,
   sodex.builderExempt,
 );
-// Độ trễ event loop (DEC-TBD-engine-lease-renew): ghi kèm log `tick slow` và mỗi phút một dòng `event loop delay`.
+// Độ trễ event loop (DEC-302): ghi kèm log `tick slow` và mỗi phút một dòng `event loop delay`.
 const loopDelay = monitorEventLoopDelay({ resolution: 20 });
 loopDelay.enable();
 const loopDelayMs = () => ({

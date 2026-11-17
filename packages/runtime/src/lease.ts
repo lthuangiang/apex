@@ -13,7 +13,7 @@ export interface LeaseRedis {
 const RENEW = `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('PEXPIRE', KEYS[1], ARGV[2]) else return 0 end`;
 const RELEASE = `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end`;
 /**
- * Gia hạn nhiều lease trong MỘT lần gọi Redis (DEC-TBD-engine-lease-renew). KEYS[1] = key heartbeat (ARGV[1] rỗng thì
+ * Gia hạn nhiều lease trong MỘT lần gọi Redis (DEC-302). KEYS[1] = key heartbeat (ARGV[1] rỗng thì
  * bỏ qua, không thì `SET KEYS[1] ARGV[1] PX ARGV[2]`); KEYS[i] (i ≥ 2) = lease, token ARGV[2i − 1], ttl ARGV[2i]. Trả về
  * mảng 0 / 1 theo thứ tự lease.
  */
@@ -146,7 +146,7 @@ interface LeaseEntry {
 }
 
 /**
- * Tập lease gia hạn bằng timer riêng (DEC-TBD-engine-lease-renew), không phụ thuộc vòng làm việc của caller: mọi lease
+ * Tập lease gia hạn bằng timer riêng (DEC-302), không phụ thuộc vòng làm việc của caller: mọi lease
  * + heartbeat gia hạn trong một round trip mỗi `renewEveryMs`. Mỗi lease có `validUntil` = lúc gửi lần gia hạn thành
  * công gần nhất + ttl − margin; caller kiểm tra `valid(id)` trước khi hành động. Gia hạn thất bại (key đã hết hạn): thử
  * `SET NX` cùng token, rồi `verify`; được thì giữ nguyên, không thì báo `onLost`.

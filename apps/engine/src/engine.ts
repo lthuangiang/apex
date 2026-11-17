@@ -169,7 +169,7 @@ const pushTo = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
 };
 
 /**
- * Lease của shard đã quá `validUntil` và gia hạn ngay không được (DEC-TBD-engine-lease-renew): không gửi gì tới SoDEX.
+ * Lease của shard đã quá `validUntil` và gia hạn ngay không được (DEC-302): không gửi gì tới SoDEX.
  * Là một `FencedError` để mọi chỗ đang cho FencedError đi qua cũng cho lỗi này đi qua; vòng `tick` bỏ qua shard ở lượt
  * này chứ không bỏ shard (shard mất thật thì `LeaseSet` đã báo `onLost`).
  */
@@ -378,7 +378,7 @@ export const rejectLogText = (reason: string, n: number): string =>
 
 /**
  * Lệnh đóng của Stop chưa rời DeskLabs: thử lại sau 5 s → 15 s → 60 s (rồi giữ 60 s); vẫn chưa gửi được sau 10 phút thì
- * kết thúc Stop với vị thế còn mở và báo người dùng (DEC-TBD-engine-lease-renew).
+ * kết thúc Stop với vị thế còn mở và báo người dùng (DEC-302).
  */
 export const CLOSE_RETRY = { backoffMs: [5_000, 15_000, 60_000], giveUpMs: 600_000 } as const;
 
@@ -454,7 +454,7 @@ export class Engine {
     loopDelay: EngineDeps["loopDelay"];
   };
   readonly #leases = new Map<number, { lease: Lease; epoch: number }>();
-  /** Gia hạn lease shard + heartbeat worker bằng timer riêng, không theo vòng `tick` (DEC-TBD-engine-lease-renew). */
+  /** Gia hạn lease shard + heartbeat worker bằng timer riêng, không theo vòng `tick` (DEC-302). */
   readonly #leaseSet: LeaseSet<number>;
   readonly #clockMono: () => number;
   readonly #runners = new Map<string, Runner>();
@@ -1624,7 +1624,7 @@ export class Engine {
       event.type === "orderDone" ||
       event.type === "positionSync";
     // Lease của shard chưa xác nhận lại được, hoặc shard không còn là của mình (runner zombie, engine đã dừng)
-    // (DEC-TBD-engine-lease-renew): chưa phản ứng với thị trường, sự kiện sau thử lại. Fill / ack vẫn ghi (fencing epoch
+    // (DEC-302): chưa phản ứng với thị trường, sự kiện sau thử lại. Fill / ack vẫn ghi (fencing epoch
     // ở DB chặn nếu shard đã sang worker khác). `resumed` đi sau một chuyển trạng thái đã commit nên không bỏ ở đây
     // (#syncBots kiểm tra lease trước khi chuyển).
     if (!accounting && event.type !== "resumed" && !(await this.#leaseConfirmed(r.shard))) return;
@@ -1901,7 +1901,7 @@ export class Engine {
     source: { event: StrategyEvent; prev: unknown; produced: unknown } | null = null,
   ): Promise<void> {
     let places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
-    // Một lần kiểm tra lease, TRƯỚC mọi tác dụng phụ (DEC-TBD-engine-lease-renew). Bước chiến lược theo thị trường (có
+    // Một lần kiểm tra lease, TRƯỚC mọi tác dụng phụ (DEC-302). Bước chiến lược theo thị trường (có
     // `rollback`) mà lease không xác nhận được: hoàn tác bước (state cũ trong bộ nhớ và DB), không ghi / gửi / huỷ gì; sự
     // kiện sau sinh lại đúng các lệnh này (clOrdID tất định). Fill / ack (rollback null) và lệnh engine tự dựng (Stop,
     // #stopBot tự kiểm tra trước) không chặn ở đây: fencing epoch ở DB và signer bảo vệ.
