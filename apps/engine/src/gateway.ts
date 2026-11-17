@@ -34,7 +34,7 @@ export type NotSentCode =
   | "signer_unavailable"
   /**
    * Không đọc được thông tin market (id symbol) của SoDEX trước khi ký (timeout, RATE_LIMITED, lỗi mạng): chưa gửi gì
-   * (DEC-TBD-engine-rest-budget).
+   * (DEC-310).
    */
   | "market_info_unavailable";
 

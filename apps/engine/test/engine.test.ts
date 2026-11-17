@@ -3212,7 +3212,7 @@ describe("engine", () => {
     // SoDEX chưa xử lý lệnh huỷ nào: lệnh có thể còn sống, chưa ghi là đã huỷ.
     expect((await row())?.status).toBe("open");
     limited = false;
-    // Huỷ bị từ chối cả request lặp lại thì chờ tới 60 s mới huỷ lại (DEC-TBD-engine-rest-budget).
+    // Huỷ bị từ chối cả request lặp lại thì chờ tới 60 s mới huỷ lại (DEC-310).
     for (let i = 0; i < 14 && (await row())?.status !== "cancelled"; i += 1) {
       clock += 8_000;
       await e.tick();
@@ -3260,7 +3260,7 @@ describe("engine", () => {
     await stopMakerBots();
   });
 
-  it("backs off cancels SoDEX refuses as a whole request: 5 s, 15 s, then 60 s, one warning per step (DEC-TBD-engine-rest-budget)", async () => {
+  it("backs off cancels SoDEX refuses as a whole request: 5 s, 15 s, then 60 s, one warning per step (DEC-310)", async () => {
     const gw = new FakeGateway();
     const warnings: string[] = [];
     const calls: number[] = [];
@@ -5550,7 +5550,7 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
     await e.stop();
   });
 
-  it("after a restart with no symbol list and the IP bucket under the read reserve, the Stop close is not left unknown and goes out once symbols can be read (DEC-TBD-engine-rest-budget)", async () => {
+  it("after a restart with no symbol list and the IP bucket under the read reserve, the Stop close is not left unknown and goes out once symbols can be read (DEC-310)", async () => {
     const fake = new FakeGateway();
     const market = "STOPC-USD";
     // Cổng thật cho `submit` (đọc id symbol rồi ký và gửi), cổng giả cho mọi thứ khác.
@@ -7674,7 +7674,7 @@ describe("slow SoDEX reads stay with their own account (DEC-308)", () => {
   });
 });
 
-describe("worker-wide REST budget for order lookups (DEC-TBD-engine-rest-budget)", () => {
+describe("worker-wide REST budget for order lookups (DEC-310)", () => {
   it("looks up at most ~50% of the IP bucket per minute, suspect orders first, one account at a time", async () => {
     const { eq, inArray } = await import("drizzle-orm");
     // Lệnh mở còn sót của các test trước không được tính vào ngân sách của test này.

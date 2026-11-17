@@ -7,7 +7,7 @@ import {
   type SodexConfig,
 } from "@drift/sodex";
 
-// Client SoDEX của engine (DEC-TBD-engine-rest-budget). Lời gọi chỉ đọc không nằm trên đường gửi lệnh (sổ lệnh, quy tắc
+// Client SoDEX của engine (DEC-310). Lời gọi chỉ đọc không nằm trên đường gửi lệnh (sổ lệnh, quy tắc
 // market cho chiến lược, approval, tra lệnh, lịch sử khớp, vị thế) lấy token của bucket IP với mức dự trữ
 // `BACKGROUND_RESERVE` (30%): khi bucket xuống dưới mức đó thì lời gọi bị bỏ (lỗi RATE_LIMITED, bước đó thử lại ở lượt sau),
 // không rút cạn phần của lệnh ghi. Lệnh ghi (đặt / huỷ / đóng / dời stop / đòn bẩy) và lời gọi đọc NGAY TRƯỚC khi gửi

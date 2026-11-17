@@ -78,7 +78,7 @@ const options = {
   egressKey: env.SODEX_EGRESS_KEY,
   ...(sodexCalls === undefined ? {} : { recorder: sodexCalls }),
 };
-// Đọc của engine chừa 30% bucket IP cho lệnh ghi (DEC-TBD-engine-rest-budget).
+// Đọc của engine chừa 30% bucket IP cho lệnh ghi (DEC-310).
 const { orderPath, rest, reads, writer, takeSkipped } = engineSodexClients({
   ...options,
   readTimeoutMs: env.ENGINE_SODEX_READ_TIMEOUT_MS,
@@ -228,7 +228,7 @@ const loopDelayMs = () => ({
 setInterval(() => {
   log.info({ ...loopDelayMs(), meanMs: Math.round(loopDelay.mean / 1e6) }, "event loop delay");
   loopDelay.reset();
-  // Đọc nền bị phần dự trữ cho lệnh ghi chặn trong phút vừa qua (DEC-TBD-engine-rest-budget).
+  // Đọc nền bị phần dự trữ cho lệnh ghi chặn trong phút vừa qua (DEC-310).
   const skipped = takeSkipped();
   if (skipped > 0) log.warn({ skipped }, "engine reads skipped: reserve");
 }, 60_000).unref();

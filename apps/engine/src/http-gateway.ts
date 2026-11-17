@@ -253,7 +253,7 @@ export class HttpGateway implements Gateway {
         found = await Promise.all(all.map((o) => this.#info(o.market)));
       } catch {
         // Đọc danh sách symbol lỗi (timeout, RATE_LIMITED, mạng) trước khi ký: lệnh chưa rời DeskLabs → `not_sent`, để
-        // engine hoàn tác / thử lại thay vì để dòng lệnh `unknown` (DEC-TBD-engine-rest-budget).
+        // engine hoàn tác / thử lại thay vì để dòng lệnh `unknown` (DEC-310).
         out.push(
           ...all.map((o): SubmitResult => ({
             clOrdID: o.clOrdID,

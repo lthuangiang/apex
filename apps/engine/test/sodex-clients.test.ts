@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { engineSodexClients } from "../src/sodex-clients";
 
-// Đọc của engine không bao giờ rút cạn bucket IP của lệnh ghi (DEC-TBD-engine-rest-budget).
+// Đọc của engine không bao giờ rút cạn bucket IP của lệnh ghi (DEC-310).
 
 const ADDRESS = "0x4E1e4796c10C637EDAB56461450BD8D02EFb29Db";
 

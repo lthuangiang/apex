@@ -339,7 +339,7 @@ interface TickSnapshot {
   backfill: Map<number, OrderRow[]>;
   /**
    * Lệnh được tra ở vòng này (id), chọn cho cả worker trong ngân sách LOOKUP_BUDGET: lệnh nghi ngờ trước, luân phiên giữa
-   * các account (DEC-TBD-engine-rest-budget). Lệnh không có ở đây chờ vòng sau. null = không giới hạn (tra mọi lệnh tới hạn).
+   * các account (DEC-310). Lệnh không có ở đây chờ vòng sau. null = không giới hạn (tra mọi lệnh tới hạn).
    */
   lookups: Set<string> | null;
 }
@@ -367,7 +367,7 @@ export const ACCOUNT_CONCURRENCY = 4;
  */
 export const STREAM_HOLD_MS = 60_000;
 /**
- * Ngân sách tra lệnh của cả worker (DEC-TBD-engine-rest-budget): tối đa chừng này weight REST mỗi 60 s cho bước tra lệnh
+ * Ngân sách tra lệnh của cả worker (DEC-310): tối đa chừng này weight REST mỗi 60 s cho bước tra lệnh
  * (`#reconcile` + `#reconcileOpen`), = 50% bucket IP 1200 weight / phút của SoDEX. Một lần tra tính `LOOKUP_WEIGHT`
  * (lệnh đang mở 5 + lịch sử lệnh 20; lịch sử khớp dùng chung trong vòng nên không tính riêng).
  */
@@ -380,7 +380,7 @@ export const LOOKUP_WEIGHT = 25;
 export const TRADES_WEIGHT = 20;
 /**
  * Huỷ bị SoDEX từ chối cả request lặp lại (key bị thu hồi, 400 nonce / chữ ký, 429): huỷ lại của account đó chờ 5 s →
- * 15 s → 60 s (giữ 60 s), warn một lần mỗi nấc (DEC-TBD-engine-rest-budget). Có kết quả theo từng lệnh thì về 0.
+ * 15 s → 60 s (giữ 60 s), warn một lần mỗi nấc (DEC-310). Có kết quả theo từng lệnh thì về 0.
  */
 export const CANCEL_REQUEST_BACKOFF_MS = [5_000, 15_000, 60_000] as const;
 /** `stop()` chờ shard đang chạy dở tối đa chừng này trước khi trả lease (stop_grace_period 30 s). */
@@ -520,7 +520,7 @@ export interface EngineDeps {
    */
   tickWaitMs?: number;
   /**
-   * Weight REST tối đa của bước tra lệnh cho cả worker trong LOOKUP_BUDGET.windowMs (DEC-TBD-engine-rest-budget).
+   * Weight REST tối đa của bước tra lệnh cho cả worker trong LOOKUP_BUDGET.windowMs (DEC-310).
    * `main.ts` đặt 600 (50% bucket IP); mặc định không giới hạn, chỉ còn thứ tự tra (nghi ngờ trước, luân phiên account).
    */
   lookupBudget?: number;
@@ -2154,7 +2154,7 @@ export class Engine {
         }
       }
       // Key `active` mới nhất của account (Renew key, DEC-59): runner dùng key mới ngay, không cần nạp lại bot. Key mới thì
-      // bỏ nấc chờ huỷ của key cũ (DEC-TBD-engine-rest-budget).
+      // bỏ nấc chờ huỷ của key cũ (DEC-310).
       if (r.account.apiKeyId !== account.apiKeyId) {
         this.#cancelBackoff.delete(account.id);
         this.#cancelRetryAt.delete(r.botId);
@@ -3440,7 +3440,7 @@ export class Engine {
   }
 
   /**
-   * Ghi kết quả huỷ của account (DEC-TBD-engine-rest-budget): mọi kết quả là "SoDEX từ chối cả request" (envelope lỗi) →
+   * Ghi kết quả huỷ của account (DEC-310): mọi kết quả là "SoDEX từ chối cả request" (envelope lỗi) →
    * tăng nấc chờ 5 s → 15 s → 60 s, warn một lần mỗi nấc; có kết quả theo từng lệnh → về 0.
    */
   #noteCancelResults(accountId: string, results: readonly CancelResult[]): void {
@@ -4511,7 +4511,7 @@ export class Engine {
     const key = `${account.id}:${engine}:${market}`;
     const cached = this.#tradesCache.get(key);
     if (cached !== undefined && cached.seq >= notBefore) return cached.p;
-    // Đọc thật: ghi vào cửa sổ ngân sách đọc của worker (DEC-TBD-engine-rest-budget), kể cả lưới an toàn fill.
+    // Đọc thật: ghi vào cửa sổ ngân sách đọc của worker (DEC-310), kể cả lưới an toàn fill.
     if (account.paper !== true) this.#lookupLog.push({ at: this.#d.now(), weight: TRADES_WEIGHT });
     const entry = {
       seq: ++this.#readSeq,
@@ -4646,7 +4646,7 @@ export class Engine {
   }
 
   /**
-   * Chọn lệnh được tra ở vòng này cho cả worker (DEC-TBD-engine-rest-budget): lệnh nghi ngờ (`unknown`, đã gửi huỷ, market,
+   * Chọn lệnh được tra ở vòng này cho cả worker (DEC-310): lệnh nghi ngờ (`unknown`, đã gửi huỷ, market,
    * Volume Farm tự huỷ trong khoảng trống stream) trước, rồi lệnh đang nằm sổ; trong mỗi nhóm luân phiên giữa các account
    * (mỗi account một lệnh mỗi lượt, giữ thứ tự của account). Số lệnh ≤ phần còn lại của LOOKUP_BUDGET trong 60 s.
    */
@@ -4716,7 +4716,7 @@ export class Engine {
     const accounts = new Map((snap.accounts.get(shard) ?? []).map((a) => [a.id, a]));
     const cancelling = (o: { botId: string; clOrdId: string }) =>
       this.#pendingCancels.get(o.botId)?.has(o.clOrdId) === true;
-    // Chỉ lệnh có trong kế hoạch tra của vòng (ngân sách REST của cả worker, DEC-TBD-engine-rest-budget).
+    // Chỉ lệnh có trong kế hoạch tra của vòng (ngân sách REST của cả worker, DEC-310).
     const picked = due.filter((o) => snap.lookups?.has(o.id) !== false);
     const batch = await this.#fresh(picked);
     await this.#perAccount(
