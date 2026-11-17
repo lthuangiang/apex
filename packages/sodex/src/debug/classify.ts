@@ -7,8 +7,20 @@ import {
   type SodexHeader,
 } from "@drift/shared";
 
-import type { SodexCallCapture, SodexRestCapture, SodexWsCapture } from "./capture";
-import { redactBody, redactHeaders, responseHeaderList, sanitizeText, scrubText } from "./redact";
+import {
+  RECORD_BODY_LIMIT,
+  type SodexCallCapture,
+  type SodexRestCapture,
+  type SodexWsCapture,
+} from "./capture";
+import {
+  redactBody,
+  redactHeaders,
+  type RedactOptions,
+  responseHeaderList,
+  sanitizeText,
+  scrubText,
+} from "./redact";
 
 // Bản ghi thô → dòng lưu được (chạy ở bước flush, ngoài đường gửi lệnh). Phân loại outcome theo DEC-TBD-sodex-debugger:
 // ok / rejected (code ≠ 0 ở envelope hoặc ở một lệnh) / timeout / network / unreadable (envelope ok nhưng không đọc được).
@@ -207,9 +219,22 @@ export function captureOutcome(c: SodexCallCapture): SodexCallOutcome {
   return c.kind === "rest" ? classifyRest(c).outcome : c.outcome;
 }
 
-function cap(text: string | null, limit: number): { text: string | null; truncated: boolean } {
-  if (text === null || text.length <= limit) return { text, truncated: false };
-  return { text: text.slice(0, limit), truncated: true };
+/**
+ * Che TRƯỚC rồi mới cắt về giới hạn lưu (review PR #217): cắt sau khi che không bao giờ để lại một đoạn hex dài.
+ * Body đã bị cắt lúc record (`capBody`) có thể kết thúc giữa một chuỗi hex (một phần chữ ký / key, ngắn hơn ngưỡng
+ * 64): bỏ hẳn đoạn hex dở ở cuối trước khi che.
+ */
+function redactThenCap(
+  text: string | null,
+  limit: number,
+  options: RedactOptions = {},
+): { text: string | null; truncated: boolean } {
+  if (text === null) return { text, truncated: false };
+  const cutAtRecord = text.length >= RECORD_BODY_LIMIT;
+  const whole = cutAtRecord ? text.replace(/(?:0x)?[0-9a-fA-F]+$/, "") : text;
+  const red = redactBody(whole, options) ?? "";
+  if (red.length <= limit) return { text: red, truncated: cutAtRecord };
+  return { text: red.slice(0, limit), truncated: true };
 }
 
 function restRow(c: SodexRestCapture, service: string): SodexCallRow {
@@ -218,14 +243,15 @@ function restRow(c: SodexRestCapture, service: string): SodexCallRow {
   const address = ADDRESS.exec(path)?.[0] ?? null;
   const latencyMs = Math.max(0, Math.round(c.latencyMs));
   const problem = isProblemCall(verdict.outcome, latencyMs);
-  const response = cap(
-    c.responseText,
-    problem ? RESPONSE_BODY_LIMIT.problem : RESPONSE_BODY_LIMIT.ok,
-  );
-  const request = cap(c.requestBody, REQUEST_BODY_LIMIT);
   const engine = path.startsWith("/spot/") ? "spot" : path.startsWith("/perps/") ? "perps" : null;
   // Tên key và public key ở endpoint api-keys chỉ giữ 4 ký tự cuối (quy tắc 1.9).
   const maskName = path.includes("/api-keys");
+  const response = redactThenCap(
+    c.responseText,
+    problem ? RESPONSE_BODY_LIMIT.problem : RESPONSE_BODY_LIMIT.ok,
+    { maskName },
+  );
+  const request = redactThenCap(c.requestBody, REQUEST_BODY_LIMIT, { maskName });
   return {
     id: uuidV7At(c.startedAt),
     at: new Date(c.startedAt),
@@ -246,12 +272,11 @@ function restRow(c: SodexRestCapture, service: string): SodexCallRow {
     errorDetail: scrubText(c.errorDetail),
     latencyMs,
     requestHeaders: redactHeaders(c.requestHeaders),
-    requestBody: redactBody(request.text, { maskName }),
+    requestBody: request.text,
     requestBodyBytes: c.requestBody === null ? null : c.requestBody.length,
     signed: c.signed,
     responseHeaders: responseHeaderList(c.responseHeaders),
-    // Body bị cắt không còn là JSON: redactBody chỉ dùng regex nên vẫn che được.
-    responseBody: redactBody(response.text, { maskName }),
+    responseBody: response.text,
     responseBodyBytes: c.responseLength,
     responseTruncated:
       response.truncated || (c.responseLength ?? 0) > (c.responseText?.length ?? 0),
@@ -290,7 +315,10 @@ function wsRow(c: SodexWsCapture, service: string): SodexCallRow {
   const latencyMs = Math.max(0, Math.round(c.latencyMs));
   const outcome = c.outcome;
   const problem = isProblemCall(outcome, latencyMs);
-  const response = cap(c.response, problem ? RESPONSE_BODY_LIMIT.problem : RESPONSE_BODY_LIMIT.ok);
+  const response = redactThenCap(
+    c.response,
+    problem ? RESPONSE_BODY_LIMIT.problem : RESPONSE_BODY_LIMIT.ok,
+  );
   const ids = c.event === "MSG" ? idsOfPush(c.items) : { clOrdIds: [], orderIds: [] };
   const detail = scrubText(c.detail);
   return {
@@ -314,11 +342,11 @@ function wsRow(c: SodexWsCapture, service: string): SodexCallRow {
     errorDetail: outcome === SodexCallOutcome.rejected ? null : detail,
     latencyMs,
     requestHeaders: [],
-    requestBody: redactBody(c.request),
+    requestBody: redactThenCap(c.request, REQUEST_BODY_LIMIT).text,
     requestBodyBytes: c.request === null ? null : c.request.length,
     signed: false,
     responseHeaders: [],
-    responseBody: redactBody(response.text),
+    responseBody: response.text,
     responseBodyBytes: c.response === null ? null : c.response.length,
     responseTruncated: response.truncated,
     botId: c.context?.botId ?? null,

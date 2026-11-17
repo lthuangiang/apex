@@ -1587,7 +1587,7 @@ export const mmModelCoefs = pgTable("mm_model_coefs", {
 
 /**
  * SoDEX Debugger (DEC-TBD-sodex-debugger): mọi lời gọi REST tới SoDEX và sự kiện WS user stream, do recorder của từng
- * service ghi theo batch. Hai hypertable cùng cột theo thời hạn giữ (Timescale retention policy, nén sau 1 ngày):
+ * service ghi theo batch. Hai hypertable cùng cột theo thời hạn giữ (Timescale retention policy; chỉ bảng problem được nén, sau 2 ngày):
  * `sodex_calls_ok` 3 ngày (thành công, ≤ 1000 ms), `sodex_calls_problem` 14 ngày (lỗi, timeout, network, unreadable,
  * rejected, chậm). Đọc qua view `sodex_calls` (UNION ALL). Bảng log: không khoá ngoại, `id` là UUID v7 theo `at`.
  * Không bao giờ chứa chữ ký, secret hay header xác thực (packages/sodex/src/debug/redact.ts).

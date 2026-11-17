@@ -390,10 +390,14 @@ function RequestTab({ d, onCopied }: { d: SodexCallDetail; onCopied: () => void 
       >
         {d.signed && d.actionType !== null ? (
           <p className="m-0 mb-1.5 text-[13px] leading-[1.45] text-muted">
-            {t.rich("actionParams", {
-              action: d.actionType,
-              code: (c) => <span className="font-mono">{c}</span>,
-            })}
+            {/* Chỉ nói "key names masked" khi body thật sự có giá trị bị che (••last4). */}
+            {t.rich(
+              d.requestBody?.includes("••") === true ? "actionParamsMasked" : "actionParams",
+              {
+                action: d.actionType,
+                code: (c) => <span className="font-mono">{c}</span>,
+              },
+            )}
           </p>
         ) : null}
         {d.requestBody === null ? (

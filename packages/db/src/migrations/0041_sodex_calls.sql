@@ -98,7 +98,7 @@ CREATE INDEX "sodex_calls_problem_trace_idx" ON "sodex_calls_problem" USING btre
 CREATE INDEX "sodex_calls_problem_conn_idx" ON "sodex_calls_problem" USING btree ("conn_id","at");--> statement-breakpoint
 CREATE INDEX "sodex_calls_problem_cl_ord_idx" ON "sodex_calls_problem" USING gin ("cl_ord_ids");--> statement-breakpoint
 CREATE INDEX "sodex_calls_problem_order_ids_idx" ON "sodex_calls_problem" USING gin ("order_ids");--> statement-breakpoint
--- SoDEX Debugger (DEC-TBD-sodex-debugger): hai hypertable theo thời hạn giữ, nén sau 1 ngày, xoá theo chunk.
+-- SoDEX Debugger (DEC-TBD-sodex-debugger): hai hypertable theo thời hạn giữ, xoá theo chunk; chỉ bảng problem được nén (sau 2 ngày).
 SELECT create_hypertable('sodex_calls_ok', 'at', chunk_time_interval => INTERVAL '6 hours', create_default_indexes => FALSE, if_not_exists => TRUE);--> statement-breakpoint
 SELECT create_hypertable('sodex_calls_problem', 'at', chunk_time_interval => INTERVAL '1 day', create_default_indexes => FALSE, if_not_exists => TRUE);--> statement-breakpoint
 -- Bảng ok sống 3 ngày: không nén, để mọi index (bot, account, trace, clOrdID…) dùng được trên cả 3 ngày.

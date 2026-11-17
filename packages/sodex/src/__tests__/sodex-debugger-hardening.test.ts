@@ -121,6 +121,41 @@ describe("M1: long hex is removed everywhere, not only whole values", () => {
   });
 });
 
+describe("redact before cutting (re-review #217)", () => {
+  const hexTail = /[0-9a-fA-F]{16,}$/;
+
+  it("redacts a signature that straddles the 16 KB storage cut of an Ok call", () => {
+    const pad = "p".repeat(16 * 1024 - 60);
+    const row = toSodexCallRow(
+      restCapture({
+        method: "GET",
+        signed: false,
+        orderEndpoint: false,
+        responseText: `{"code":0,"timestamp":1,"data":"${pad} ${SIG65} tail"}`,
+        schemaOk: true,
+      }),
+      "api",
+    );
+    expect(row.problem).toBe(false);
+    // Chữ ký nằm vắt qua mốc 16 KB của bản thô: che trước rồi cắt nên không còn đoạn hex nào.
+    expect(row.responseBody).toContain(REDACTED);
+    expect(row.responseBody).not.toMatch(/abab/);
+  });
+
+  it("drops a partial hex run left at the record-time cut", () => {
+    // Body dài hơn giới hạn record: chữ ký bị capBody cắt đôi, phần còn lại ngắn hơn ngưỡng 64.
+    const pad = "q".repeat(RECORD_BODY_LIMIT - 30);
+    const raw = `{"code":-1,"error":"${pad} ${SIG65}"}`;
+    const row = toSodexCallRow(
+      restCapture({ httpStatus: 400, responseText: capBody(raw), responseLength: raw.length }),
+      "engine",
+    );
+    expect(row.responseTruncated).toBe(true);
+    expect(row.responseBody).not.toMatch(hexTail);
+    expect(row.responseBody).not.toMatch(/abab/);
+  });
+});
+
 describe("M2: bad data never blocks the recorder", () => {
   it("strips NUL and lone surrogates before insert", () => {
     const row = toSodexCallRow(
