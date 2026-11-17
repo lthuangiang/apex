@@ -30,12 +30,9 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
     { zone: "outside", label: "Outside DeskLabs", x: 950, y: 30, w: 175, h: 730 },
   ],
   notes: [
-    {
-      x: 750,
-      y: 572,
-      text: "Optional monitoring (observability profile): OpenTelemetry, Prometheus, Loki, Grafana",
-      boxed: true,
-    },
+    // Hai dòng trong khung core, giữa schedRedis (y 544) và schedPg (y 590, x 846): không đường nối nào cắt qua.
+    { x: 570, y: 567, text: "Monitoring (optional profile):", boxed: false },
+    { x: 570, y: 582, text: "OpenTelemetry, Prometheus, Loki, Grafana", boxed: false },
     { x: 620, y: 694, text: "No internet access. Only api and engine", boxed: false },
     { x: 620, y: 710, text: "can call signer, over mutual TLS (mTLS).", boxed: false },
   ],
@@ -63,12 +60,13 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       y: 410,
       icon: "spark",
       tone: "ext",
-      label: "Claude (app or Claude Code)",
+      label: "Claude",
       sub: "MCP client",
       facts: [
         {
           label: "Role",
-          value: "The user's Claude calls DeskLabs MCP after the user approves access (OAuth 2.1).",
+          value:
+            "The user's Claude (the Claude app or Claude Code) calls DeskLabs MCP after the user approves access (OAuth 2.1).",
         },
         { label: "Comes in through", value: "https://MCP_HOST through traefik" },
       ],
@@ -630,8 +628,8 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       points: [
         [540, 217],
         [540, 244],
-        [215, 244],
-        [215, 700],
+        [180, 244],
+        [180, 700],
         [302, 700],
       ],
     },
@@ -642,8 +640,8 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       points: [
         [580, 129],
         [580, 84],
-        [990, 84],
-        [990, 330],
+        [980, 84],
+        [980, 330],
         [1009, 330],
       ],
     },
@@ -687,8 +685,8 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       to: "api",
       points: [
         [1009, 705],
-        [932, 705],
-        [932, 76],
+        [926, 705],
+        [926, 76],
         [574, 76],
         [574, 129],
       ],
@@ -836,8 +834,8 @@ export const ARCHITECTURE_MAP: ArchitectureMap = {
       to: "signer",
       points: [
         [242, 330],
-        [205, 330],
-        [205, 690],
+        [180, 330],
+        [180, 690],
         [302, 690],
       ],
     },
