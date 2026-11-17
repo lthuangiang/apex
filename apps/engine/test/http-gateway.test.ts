@@ -223,4 +223,39 @@ describe("market info on the order path (DEC-TBD-engine-sodex-latency)", () => {
     expect(bodies[1]).toContain('"symbolID":1');
     expect(calls).toBe(2);
   });
+
+  it("drops a market a refresh no longer lists, and refuses to send to an unknown market", async () => {
+    let listed = true;
+    const rest = {
+      getSpotSymbols: () => Promise.resolve(listed ? [symbol] : []),
+      getPerpsSymbols: () => Promise.resolve([]),
+    } as unknown as SodexRestClient;
+    const bodies: string[] = [];
+    const writer = {
+      write: (req: { body: string }) => {
+        bodies.push(req.body);
+        return Promise.resolve({ outcome: "ok", data: [{ code: 0, clOrdID: "c1", orderID: 1 }] });
+      },
+    } as unknown as SignedWriteClient;
+    const signer = { sign: () => Promise.resolve(`0x01${"ab".repeat(65)}` as `0x${string}`) };
+    const gw = new HttpGateway(rest, writer, signer, BUILDER);
+    await gw.submit(account(7n), [order], { shard: 0, epoch: 1 });
+    // Bỏ niêm yết: lần gửi sau còn dùng id đã biết và làm mới ở nền; lần làm mới không thấy market thì bỏ id cũ.
+    listed = false;
+    await gw.submit(account(7n), [{ ...order, clOrdID: "c2" }], { shard: 0, epoch: 1 });
+    await new Promise((r) => setTimeout(r, 0));
+    const third = await gw.submit(account(7n), [{ ...order, clOrdID: "c3" }], {
+      shard: 0,
+      epoch: 1,
+    });
+    expect(third).toEqual([
+      {
+        clOrdID: "c3",
+        outcome: "rejected",
+        code: "MARKET_NOT_FOUND",
+        message: "Market is not listed on SoDEX.",
+      },
+    ]);
+    expect(bodies).toHaveLength(2);
+  });
 });

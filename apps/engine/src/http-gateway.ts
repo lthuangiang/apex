@@ -175,7 +175,9 @@ export class HttpGateway implements Gateway {
       this.#refreshing.add(market);
       void marketInfo(this.rest, market)
         .then((info) => {
-          if (info !== undefined) this.#markets.set(market, info);
+          // Danh sách mới không còn market này (bỏ niêm yết / đổi tên): bỏ id cũ, lệnh sau bị từ chối thay vì gửi bằng id cũ.
+          if (info === undefined) this.#markets.delete(market);
+          else this.#markets.set(market, info);
         })
         .catch(() => undefined)
         .finally(() => {
@@ -243,8 +245,20 @@ export class HttpGateway implements Gateway {
       const key = o.engine === "spot" ? "spot" : `perps:${o.market}`;
       groups.set(key, [...(groups.get(key) ?? []), o]);
     }
-    for (const [key, group] of groups) {
-      const infos = await Promise.all(group.map((o) => this.#info(o.market)));
+    for (const [key, all] of groups) {
+      const found = await Promise.all(all.map((o) => this.#info(o.market)));
+      // Market không có trong danh sách symbol của SoDEX: không gửi (không bao giờ dùng id 0), từ chối ngay tại DeskLabs.
+      for (const [i, o] of all.entries())
+        if (found[i] === undefined)
+          out.push({
+            clOrdID: o.clOrdID,
+            outcome: "rejected",
+            code: "MARKET_NOT_FOUND",
+            message: "Market is not listed on SoDEX.",
+          });
+      const group = all.filter((_, i) => found[i] !== undefined);
+      const infos = found.filter((x): x is MarketInfo => x !== undefined);
+      if (group.length === 0) continue;
       let payload: ActionPayload;
       if (key === "spot") {
         payload = spotNewOrders({

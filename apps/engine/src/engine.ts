@@ -829,6 +829,8 @@ export class Engine {
    * `#pendingCancels` (để #reconcileOpen đối soát như lệnh đã gửi huỷ) nhưng không gửi huỷ lại.
    */
   readonly #cancelGone = new Map<string, Set<string>>();
+  /** Lần huỷ gần nhất của lệnh trong `#cancelGone` (huỷ lại chậm mỗi OPEN_CHECK_MS tới khi có kết quả, review #216 M3). */
+  readonly #goneCancelAt = new Map<string, number>();
   /** Lệnh huỷ đang chờ lệnh đặt được nhận (DEC-254): clOrdID → lúc bắt đầu chờ. */
   readonly #inflightCancels = new Map<string, number>();
   /** Lần cuối ghi số dư giả của bot paper. */
@@ -901,6 +903,8 @@ export class Engine {
     if (this.#stopped) return;
     // Lịch sử khớp đọc trong vòng trước đã cũ.
     this.#tradesCache.clear();
+    for (const [id, h] of this.#streamHolds)
+      if (h.until <= this.#d.now()) this.#streamHolds.delete(id);
     const started = this.#clockMono();
     await this.#manageShards();
     const managed = this.#clockMono();
@@ -986,8 +990,14 @@ export class Engine {
     const phases: Record<string, number> = {};
     const started = this.#clockMono();
     let skipped = 0;
+    // Epoch lúc làn bắt đầu: lease mất rồi nhận lại (epoch mới) trong lúc làn chạy dở thì làn cũ dừng, không chạy tiếp bằng
+    // lease mới trên snapshot cũ (review #216 M1).
+    const laneEpoch = this.#leases.get(shard)?.epoch;
+    const current = () => laneEpoch !== undefined && this.#leases.get(shard)?.epoch === laneEpoch;
     try {
       for (const phase of SHARD_PHASES) {
+        // Engine đang dừng (review #216 M2) hoặc lease đã đổi: không bước nào nữa, kể cả làn đang xếp hàng.
+        if (this.#stopped || !current()) break;
         if (!(await this.#leaseConfirmed(shard))) {
           skipped += 1;
           break;
@@ -1000,8 +1010,13 @@ export class Engine {
       if (error instanceof LeaseExpiredError)
         this.#d.log.warn({ shard }, "shard skipped this tick: lease not confirmed");
       else if (error instanceof FencedError) {
-        this.#d.log.warn({ shard, reason: "fenced", worker: this.#d.workerId }, "shard lost");
-        this.#dropShard(shard);
+        // Chỉ bỏ shard khi lease đang giữ vẫn là lease của làn này: lease mới (epoch khác) nhận trong lúc làn chạy không bị
+        // bỏ vì lỗi fencing của lease cũ.
+        if (current()) {
+          this.#d.log.warn({ shard, reason: "fenced", worker: this.#d.workerId }, "shard lost");
+          this.#dropShard(shard);
+        } else
+          this.#d.log.warn({ shard, epoch: laneEpoch }, "old shard lane fenced; lease changed");
       } else this.#d.log.error({ err: error, shard }, "shard loop failed");
     }
     const ms = this.#clockMono() - started;
@@ -1039,8 +1054,10 @@ export class Engine {
 
   /** Lease của shard còn hiệu lực; hết thì gia hạn ngay một lần rồi xem lại. */
   async #leaseConfirmed(shard: number): Promise<boolean> {
+    // Engine đang dừng: không bước nào gửi gì nữa (review #216 M2).
+    if (this.#stopped) return false;
     if (this.#leaseSet.valid(shard)) return true;
-    if (!this.#leaseSet.has(shard) || this.#stopped) return false;
+    if (!this.#leaseSet.has(shard)) return false;
     // Không chờ khi đã có lần gia hạn đang chạy hoặc vừa lỗi (Redis đang sự cố): mỗi bước của shard không treo tới hạn chờ.
     // Các shard chạy song song (DEC-TBD-engine-sodex-latency): mọi làn đang cần gia hạn chờ chung MỘT lần gọi, không phải
     // làn thứ hai thấy "đang gia hạn" rồi bỏ lượt.
@@ -1834,7 +1851,8 @@ export class Engine {
       this.#dropShard(shard);
     }
     for (let shard = 0; shard < shards && this.#leases.size < target; shard += 1) {
-      if (this.#leases.has(shard)) continue;
+      // Làn cũ của shard còn chạy (lease vừa mất): nhận lại khi làn đó xong (review #216 M1).
+      if (this.#leases.has(shard) || this.#lanes.has(shard)) continue;
       const lease = new Lease(redis, `lease:shard:${String(shard)}`, leaseTtlMs);
       const sentAt = this.#clockMono();
       if (!(await lease.tick())) continue;
@@ -2075,6 +2093,8 @@ export class Engine {
         // runner rồi đi qua chiến lược (DEC-303).
         r = await this.#withBotLock(bot.id, async () => {
           const loaded = await this.#load(bot, version, account, shard, held.epoch);
+          // Lease mất / đổi epoch trong lúc nạp: không thêm runner mang epoch cũ (review #216 M1).
+          if (this.#leases.get(shard)?.epoch !== held.epoch) return undefined;
           if (loaded !== undefined) this.#runners.set(bot.id, loaded);
           return loaded;
         });
@@ -3469,6 +3489,8 @@ export class Engine {
         gone = new Set<string>();
         this.#cancelGone.set(r.botId, gone);
       }
+      this.#goneCancelAt.set(x.clOrdID, now);
+      if (gone.has(x.clOrdID)) continue;
       gone.add(x.clOrdID);
       const row = open.find((y) => y.clOrdId === x.clOrdID);
       // Đối soát ở lượt #reconcileOpen kế tiếp, không chờ nhịp OPEN_CHECK_MS.
@@ -3848,6 +3870,9 @@ export class Engine {
       return false;
     });
     if (deferred) return;
+    // Bot dừng hẳn: lệnh huỷ không còn ai huỷ lại; #reconcileOpen vẫn đối soát lệnh còn mở (gửi huỷ cuối trước khi ghi).
+    for (const id of this.#cancelGone.get(r.botId) ?? []) this.#goneCancelAt.delete(id);
+    this.#cancelGone.delete(r.botId);
     // Lệnh đóng vừa gửi (IOC) khớp qua user stream: không để stream đóng ngay khi runner cuối của account bị bỏ.
     if (!r.paper) {
       const held = this.#streamHolds.get(r.account.id);
@@ -4569,6 +4594,34 @@ export class Engine {
           this.#missingSince.delete(o.id);
           const wasCancelling = cancelling(o);
           const toUnknown = !(o.status === "cancelled" || wasCancelling);
+          // Lệnh đã gửi huỷ sắp được ghi `cancelled` chỉ vì REST không thấy: gửi một lệnh huỷ thật ngay trước đó để sàn có
+          // tiếng nói cuối (lệnh vào sổ muộn vẫn còn sống, quy tắc 1.7, review #216 M3). Huỷ không rõ / không gửi được thì
+          // chưa ghi gì, lượt sau thử lại.
+          if (wasCancelling && o.status !== "cancelled") {
+            let last: CancelResult | undefined;
+            try {
+              [last] = await this.#d.gateway.cancel(account, [ref], {
+                shard,
+                epoch: held.epoch,
+              });
+            } catch (error) {
+              if (error instanceof FencedError) throw error;
+              last = undefined;
+            }
+            if (last === undefined || last.outcome === "unknown") {
+              this.#missingSince.set(o.id, since);
+              this.#d.log.warn(
+                { botId: o.botId, clOrdID: o.clOrdId },
+                "final cancel before recording cancelled was not confirmed; checking again",
+              );
+              return;
+            }
+            if (last.outcome === "ok")
+              this.#d.log.warn(
+                { botId: o.botId, clOrdID: o.clOrdId },
+                "order SoDEX could not find was still live; cancelled it now",
+              );
+          }
           await this.#fenced({ shard, epoch: held.epoch }, async (tx) => {
             await tx
               .update(orders)
@@ -4617,13 +4670,25 @@ export class Engine {
     for (const r of [...this.#runners.values()].filter((x) => x.shard === shard)) {
       const pending = this.#pendingCancels.get(r.botId);
       if (pending === undefined || pending.size === 0) continue;
-      // Lệnh SoDEX đã báo không còn trên sổ: không huỷ lại, chờ #reconcileOpen (DEC-TBD-engine-sodex-latency).
+      // Lệnh SoDEX đã báo không còn trên sổ: chờ #reconcileOpen (DEC-TBD-engine-sodex-latency), nhưng vẫn huỷ lại chậm
+      // (mỗi OPEN_CHECK_MS) phòng khi lệnh vào sổ muộn (quy tắc 1.7, review #216 M3).
       const gone = this.#cancelGone.get(r.botId);
-      if (gone !== undefined) for (const id of gone) if (!pending.has(id)) gone.delete(id);
-      const resend = [...pending].filter((id) => gone?.has(id) !== true);
+      if (gone !== undefined)
+        for (const id of gone)
+          if (!pending.has(id)) {
+            gone.delete(id);
+            this.#goneCancelAt.delete(id);
+          }
+      const normal = [...pending].filter((id) => gone?.has(id) !== true);
+      const normalDue =
+        normal.length > 0 && now - (this.#cancelRetryAt.get(r.botId) ?? 0) >= CANCEL_RETRY_MS;
+      const slow = [...(gone ?? [])].filter(
+        (id) => now - (this.#goneCancelAt.get(id) ?? 0) >= OPEN_CHECK_MS,
+      );
+      const resend = [...(normalDue ? normal : []), ...slow];
       if (resend.length === 0) continue;
-      if (now - (this.#cancelRetryAt.get(r.botId) ?? 0) < CANCEL_RETRY_MS) continue;
-      this.#cancelRetryAt.set(r.botId, now);
+      if (normalDue) this.#cancelRetryAt.set(r.botId, now);
+      for (const id of slow) this.#goneCancelAt.set(id, now);
       try {
         await this.#cancel(r, resend);
       } catch (error) {

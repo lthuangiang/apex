@@ -3084,7 +3084,36 @@ describe("engine", () => {
     }
     expect(seen.has("unknown")).toBe(false);
     expect((await row())?.status).toBe("cancelled");
-    expect(gw.cancelled.filter((x) => x === id)).toHaveLength(1);
+    // Không huỷ lại mỗi 5 s: chỉ huỷ lại chậm (mỗi 15 s) và một lần huỷ thật ngay trước khi ghi `cancelled`.
+    const sent = gw.cancelled.filter((x) => x === id).length;
+    expect(sent).toBeGreaterThanOrEqual(2);
+    expect(sent).toBeLessThanOrEqual(5);
+    await e.stop();
+    await stopMakerBots();
+  });
+
+  it("sends a real cancel before recording cancelled, and waits while that cancel is not confirmed (rule 1.7, review #216 M3)", async () => {
+    const gw = new FakeGateway();
+    gw.cancelOutcome = "not_found";
+    const { e, id, row } = await makerCancelled(gw, "vm-gone-late");
+    // REST không bao giờ thấy lệnh (lịch sử trễ), còn lệnh thật thì vào sổ muộn: lệnh huỷ sau đó chưa rõ kết quả.
+    gw.book.delete(id);
+    gw.cancelOutcome = "unknown";
+    for (let i = 0; i < 6; i += 1) {
+      clock += 8_000;
+      await e.tick();
+    }
+    // Quá NOT_FOUND_AFTER_MS mà lần huỷ cuối chưa được xác nhận: chưa ghi là đã huỷ.
+    expect((await row())?.status).toBe("open");
+    const before = gw.cancelled.filter((x) => x === id).length;
+    // Sàn xác nhận lệnh huỷ (lệnh còn sống và vừa được gỡ khỏi sổ): giờ mới ghi `cancelled`.
+    gw.cancelOutcome = "ok";
+    for (let i = 0; i < 4 && (await row())?.status !== "cancelled"; i += 1) {
+      clock += 8_000;
+      await e.tick();
+    }
+    expect(gw.cancelled.filter((x) => x === id).length).toBeGreaterThan(before);
+    expect((await row())?.status).toBe("cancelled");
     await e.stop();
     await stopMakerBots();
   });
@@ -7075,6 +7104,12 @@ describe("slow SoDEX reads stay with their own account (DEC-TBD-engine-sodex-lat
     override recentTrades(a: AccountRef): Promise<(OrderTrade & { clOrdID: string })[]> {
       return this.#wait(a).then(() => super.recentTrades(a));
     }
+    /** Account của mỗi lần đọc approval builder fee (bước `checkFees`, sau các bước đọc). */
+    readonly approvedBy: string[] = [];
+    override builderApproved(a?: AccountRef): Promise<boolean> {
+      if (a !== undefined) this.approvedBy.push(a.id);
+      return super.builderApproved();
+    }
   }
   const twap = {
     strategy: "twap",
@@ -7166,7 +7201,7 @@ describe("slow SoDEX reads stay with their own account (DEC-TBD-engine-sodex-lat
     // Đồng hồ TWAP của account kia chạy (đặt lát) trong lúc account chậm vẫn chờ SoDEX.
     expect(slices().length).toBeGreaterThan(0);
     // Mỗi vòng chỉ chờ tối đa tickWaitMs; shard của account chậm không bị chạy chồng (không tra lại khi còn treo).
-    expect(Math.max(...tickTimes)).toBeLessThan(5_000);
+    expect(Math.max(...tickTimes)).toBeLessThan(1_000);
     expect(gw.lookupsBy.filter((a) => a === slow.accountId)).toHaveLength(1);
     // SoDEX trả lời: shard của account chậm chạy lại từ vòng sau.
     gw.release();
@@ -7203,5 +7238,126 @@ describe("slow SoDEX reads stay with their own account (DEC-TBD-engine-sodex-lat
     gw.release();
     await e.stop();
     await cleanup([slow.botId, same.botId, ...others.map((x) => x.botId)], ids);
+  });
+
+  it("stop() ends a slow lane at its next step: nothing more runs after (review #216 M2)", async () => {
+    const gw = new SlowGateway();
+    const slow = await seedBot("running");
+    gw.slow.add(slow.accountId);
+    const stuck = await unknownOrder(slow.botId, slow.accountId);
+    const e = slowEngine(gw, "slow-stop");
+    await e.tick();
+    // Làn đang treo ở `reconcile`, chưa tới `checkFees`.
+    expect(gw.lookupsBy).toContain(slow.accountId);
+    expect(gw.approvedBy).not.toContain(slow.accountId);
+    const stopping = e.stop();
+    gw.release();
+    const at = performance.now();
+    await stopping;
+    expect(performance.now() - at).toBeLessThan(5_000);
+    // Sau khi dừng, làn không chạy thêm bước nào (checkFees, clock…).
+    expect(gw.approvedBy).not.toContain(slow.accountId);
+    await cleanup([slow.botId], [stuck]);
+  });
+
+  it("an old lane stops when its shard's lease is lost and taken again: no stale runner, the new lease is kept (review #216 M1)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const market = "vM1_vUSDC";
+    let open: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("starting", {
+      strategy: "spot_grid",
+      market,
+      engine: "spot",
+      config: {
+        market,
+        lowerPrice: "90",
+        upperPrice: "110",
+        gridLevels: 5,
+        spacing: "arithmetic",
+        investment: "500",
+        maxLoss: "100",
+        onStop: "keep_base",
+      },
+    });
+    const shard = shardOf(accountId, SHARDS);
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: "lane-epoch",
+      log,
+      now,
+      leaseTtlMs: 600,
+      shards: SHARDS,
+      // Nạp bot của market này treo: làn của shard dừng giữa `syncBots`.
+      rules: (m) => (m === market ? gate.then(() => rules) : Promise.resolve(rules)),
+      feeCheckMs: 0,
+      tickWaitMs: 100,
+    });
+    await e.tick();
+    const first = e.epochOf(shard) ?? 0;
+    expect(first).toBeGreaterThan(0);
+    // Worker khác nhận shard: key lease mất, epoch trong DB đổi. Timer gia hạn phát hiện và bỏ shard.
+    await newRedis().del(`lease:shard:${String(shard)}`);
+    await db
+      .update(shardEpochs)
+      .set({ epoch: first + 1, owner: "someone-else" })
+      .where(eq(shardEpochs.shard, shard));
+    for (let i = 0; i < 60 && e.ownedShards.includes(shard); i += 1)
+      await new Promise((r) => setTimeout(r, 50));
+    expect(e.ownedShards).not.toContain(shard);
+    // Làn cũ còn chạy: không nhận lại shard ở vòng này.
+    await e.tick();
+    expect(e.ownedShards).not.toContain(shard);
+    // Làn cũ nạp xong bot: không được thêm runner mang epoch cũ; vòng sau nhận lại shard với epoch mới.
+    open();
+    for (let i = 0; i < 40 && !e.ownedShards.includes(shard); i += 1) {
+      await new Promise((r) => setTimeout(r, 50));
+      await e.tick();
+    }
+    expect(e.ownedShards).toContain(shard);
+    expect(e.epochOf(shard)).toBeGreaterThan(first + 1);
+    for (let i = 0; i < 20 && (await botState(botId))?.state !== "starting"; i += 1) await e.tick();
+    // Runner nạp lại dưới epoch mới: lệnh đi và ghi được (không bị fencing), bot chạy; lease mới vẫn giữ.
+    await e.tick();
+    await e.onPrice(market, "100", clock);
+    expect(gw.received.some((o) => o.market === market)).toBe(true);
+    expect((await botState(botId))?.state).toBe("running");
+    expect(e.ownedShards).toContain(shard);
+    await e.stop();
+    await cleanup([botId], []);
+  });
+
+  it("runs the normal start flow when every lane outlives the tick", async () => {
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot();
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: "lane-outlives",
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      tickWaitMs: 1,
+    });
+    const loaded = async () => (await e.activeStreams()).some((x) => x.account.id === accountId);
+    for (let i = 0; i < 40 && !(await loaded()); i += 1) {
+      await e.tick();
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(await loaded()).toBe(true);
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    expect(gw.received.some((o) => o.tag === "grid:init")).toBe(true);
+    expect((await botState(botId))?.state).toBe("running");
+    await e.stop();
+    await cleanup([botId], []);
   });
 });

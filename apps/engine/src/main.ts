@@ -58,7 +58,9 @@ const log = pino({
   base: { service: "engine", worker: env.ENGINE_WORKER_ID },
 });
 const sodex = loadSodexConfig(process.env);
-const { db, pool } = createDb(env.DATABASE_URL);
+// Các shard / account chạy song song dùng chung pool 10 kết nối: chờ kết nối có giới hạn, lỗi thì bước đó thử lại ở lượt
+// sau thay vì treo (DEC-TBD-engine-sodex-latency).
+const { db, pool } = createDb(env.DATABASE_URL, { connectionTimeoutMillis: 10_000 });
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const options = {
   config: sodex,
@@ -337,11 +339,13 @@ const loop = (async () => {
 async function shutdown() {
   state.running = false;
   await loop;
+  // Dừng engine trước (chặn mọi lệnh mới, chờ các shard đang chạy dở), rồi mới đóng user stream: fill của lệnh vừa gửi
+  // vẫn tới qua stream; DB đóng sau cùng (review #216 M2).
+  await engine.stop();
   for (const pair of streams.values()) {
     pair.spot?.close();
     pair.perps?.close();
   }
-  await engine.stop();
   await nc.drain();
   await pool.end();
   redis.disconnect();
