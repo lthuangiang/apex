@@ -366,7 +366,16 @@ export function BotForm({
             {t(`clusters.${cluster}`)}
           </p>
         )}
-        {row.map(cell)}
+        {row.slice(0, members.length).map(cell)}
+        {cluster !== undefined && has(`clusterHints.${cluster}`) ? (
+          // Một dòng giải thích chung cho cả nhóm, nằm dưới các ô của nhóm (không lặp hint từng ô).
+          <p
+            className={`m-0 col-span-full text-xs text-muted md:col-start-1 md:row-start-6 ${SPAN_COLS[members.length] ?? ""}`}
+          >
+            {t(`clusterHints.${cluster}`)}
+          </p>
+        ) : null}
+        {row.slice(members.length).map(cell)}
       </div>
     );
   };
