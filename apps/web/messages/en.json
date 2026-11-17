@@ -6378,7 +6378,8 @@
       "estShock": "Est. CPM · incl. shock days (model)",
       "estCalibrated": "Est. CPM (estimate)",
       "estLegend": "Est. CPM",
-      "estThinLegend": "Est. CPM calibrated on fewer than 10 hours of bot data, or on the default calibration",
+      "estThinLegend": "Est. CPM calibrated on fewer than 10 hours with 3+ bot-hours ({n} here), or on the default calibration",
+      "estThinLegendDefault": "Est. CPM calibrated on fewer than 10 hours with 3+ bot-hours, or on the default calibration",
       "modelDetails": "Model details",
       "estTip": "{hour}:00 · est. {cost} per $1M · median 1-min swing {swing} bp · fees {fees} bp",
       "estShockTip": "{hour}:00 · avg {cost} per $1M · {shock} of {days} days had a 15-min move of {bp} bp or more · cut cost {cut} bp",
@@ -6394,7 +6395,7 @@
       }
     },
     "source": {
-      "market": "Calibrated on {market} bots (14 days, {n} hours)",
+      "market": "Calibrated on {market} bots (14 days, {n} bot-hours)",
       "pooled": "No bots on this market: calibrated on all markets ({markets}; 14 days)",
       "pooledThin": "Not enough bot data on this market: calibrated on all markets ({markets}; 14 days)",
       "default": "No bot data yet: default calibration from {date}"
@@ -6417,7 +6418,7 @@
       "spread": "Spread (ticks)"
     },
     "botBlock": {
-      "title": "3 · DeskLabs bots (real money), all users",
+      "title": "3 · DeskLabs bots",
       "sub": "{strategies} · live bots only, practice bots left out",
       "both": "Market Making + Volume Builder",
       "cost": "Markout cost / $1M",

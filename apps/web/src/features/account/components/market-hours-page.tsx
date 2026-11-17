@@ -873,7 +873,10 @@ function Desktop({
           extra={[]}
         >
           <span>
-            <strong className="text-warn">{t("botBlock.thin")}</strong> = {t("vol.estThinLegend")}
+            <strong className="text-warn">{t("botBlock.thin")}</strong> ={" "}
+            {v.estimate.calibrationScope.source === "default"
+              ? t("vol.estThinLegendDefault")
+              : t("vol.estThinLegend", { n: v.estimate.calibrationHours })}
           </span>
           <span>{t("botBlock.naLegend")}</span>
         </Legend>

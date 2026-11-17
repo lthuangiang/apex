@@ -295,7 +295,13 @@ describe("Market hours page", () => {
       ),
     ).toHaveLength(2);
     // 18 ô hiệu chỉnh từ bot của market này: không "Thin" ở dòng ước tính.
-    expect(screen.queryByText(/Est\. CPM calibrated on fewer than 10 hours/)).toBeInTheDocument();
+    // Chú giải ghi số giờ đủ 3+ bot-hour thật sự dùng cho C (khác tổng bot-hour trong câu nguồn).
+    expect(
+      // "Thin" nằm trong <strong> riêng; khớp phần chữ của chính <span>.
+      screen.getByText(
+        /^= Est\. CPM calibrated on fewer than 10 hours with 3\+ bot-hours \(18 here\), or on the default calibration$/,
+      ),
+    ).toBeInTheDocument();
     const estLabel = screen.getByText("Est. CPM (estimate)", { selector: "span" });
     expect(within(estLabel.parentElement ?? document.body).queryByText("Thin")).toBeNull();
     const cell = screen.getByTitle(
@@ -308,7 +314,7 @@ describe("Market hours page", () => {
     expect(screen.getAllByTitle("03:00 · Not available").length).toBeGreaterThan(0);
     // "incl. shock days": số ngày sốc, chi phí cắt và giả định trong tooltip (chưa đủ lệnh cắt thật → chỉ phí taker).
     const shock = screen.getByTitle(
-      "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · assumes taker fee only · cut size 2.0× order size (5.7% of a bot-hour's volume) · Calibrated on BTC-USD bots (14 days, 37 hours)",
+      "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 4.0 bp · assumes taker fee only · cut size 2.0× order size (5.7% of a bot-hour's volume) · Calibrated on BTC-USD bots (14 days, 37 bot-hours)",
     );
     expect(shock).toHaveTextContent("$336");
     expect(shock).toHaveClass("bg-mh-cost-3");
@@ -329,12 +335,12 @@ describe("Market hours page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /One cut's size is 2\.0× the bot's order size: the median, over live Market Making bots in the last 14 days, of the largest position each bot held \(from its fills\) divided by its order size\. A bot-hour fills 34\.9× the order size, so one cut is 5\.7% of one bot-hour's volume\. Source: Calibrated on BTC-USD bots \(14 days, 37 hours\)\./,
+        /One cut's size is 2\.0× the bot's order size: the median, over live Market Making bots in the last 14 days, of the largest position each bot held \(from its fills\) divided by its order size\. A bot-hour fills 34\.9× the order size, so one cut is 5\.7% of one bot-hour's volume\. Source: Calibrated on BTC-USD bots \(14 days, 37 bot-hours\)\./,
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Est. CPM (estimate) = incl. shock days × 1.42: the median, over 18 hours with 3 or more bot-hours of live Market Making bots in the last 14 days, of the bots' Markout cost / $1M divided by the incl. shock days estimate for that hour. Source: Calibrated on BTC-USD bots (14 days, 37 hours).",
+        "Est. CPM (estimate) = incl. shock days × 1.42: the median, over 18 hours with 3 or more bot-hours of live Market Making bots in the last 14 days, of the bots' Markout cost / $1M divided by the incl. shock days estimate for that hour. Source: Calibrated on BTC-USD bots (14 days, 37 bot-hours).",
       ),
     ).toBeInTheDocument();
   });
@@ -351,7 +357,7 @@ describe("Market hours page", () => {
       label.compareDocumentPosition(shockLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     const cell = screen.getByTitle(
-      "21:00 · $477 per $1M · incl. shock days $336 × 1.42 · Calibrated on BTC-USD bots (14 days, 37 hours)",
+      "21:00 · $477 per $1M · incl. shock days $336 × 1.42 · Calibrated on BTC-USD bots (14 days, 37 bot-hours)",
     );
     expect(cell).toHaveTextContent("$477");
     expect(cell).toHaveClass("bg-mh-cost-3");
@@ -431,7 +437,9 @@ describe("Market hours page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByTitle(
-        new RegExp(`^21:00 · avg \\$336 .*· Calibrated on SOL-USD bots \\(14 days, 5 hours\\)$`),
+        new RegExp(
+          `^21:00 · avg \\$336 .*· Calibrated on SOL-USD bots \\(14 days, 5 bot-hours\\)$`,
+        ),
       ),
     ).toBeInTheDocument();
     expect(screen.getAllByText(new RegExp(`Source: ${esc(thin)}\\.`))).toHaveLength(1);
@@ -468,6 +476,13 @@ describe("Market hours page", () => {
     // C mặc định: dòng ước tính gắn "Thin" cạnh nhãn.
     const estLabel = screen.getByText("Est. CPM (estimate)", { selector: "span" });
     expect(within(estLabel.parentElement ?? document.body).getByText("Thin")).toBeInTheDocument();
+    // C mặc định: chú giải không ghi "({n} here)".
+    expect(
+      screen.getByText(
+        /^= Est\. CPM calibrated on fewer than 10 hours with 3\+ bot-hours, or on the default calibration$/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\(\d+ here\)/)).not.toBeInTheDocument();
     // Không có bot nào: phần cắt vẫn có (R = 2, F = 80), tooltip ghi nguồn mặc định.
     expect(
       screen.getByTitle(
@@ -506,7 +521,7 @@ describe("Market hours page", () => {
     // Đủ lệnh cắt: không ghi "taker fee only", cỡ cắt đo từ lệnh cắt thật.
     expect(
       screen.getByTitle(
-        "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 6.5 bp · cut size 1.6× order size, from real cuts (5% of a bot-hour's volume) · Calibrated on BTC-USD bots (14 days, 37 hours)",
+        "21:00 · avg $336 per $1M · 9 of 30 days had a 15-min move of 15 bp or more · cut cost 6.5 bp · cut size 1.6× order size, from real cuts (5% of a bot-hour's volume) · Calibrated on BTC-USD bots (14 days, 37 bot-hours)",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByTitle(/assumes taker fee only/)).not.toBeInTheDocument();
@@ -651,13 +666,13 @@ describe("Market hours page", () => {
     // Giờ 07: 1 / 30 ngày sốc; chưa đủ lệnh cắt thật → chỉ phí taker, cỡ cắt = R × order size.
     expect(
       screen.getByText(
-        "$95 (model) · 1 of 30 days had a 15-min move of 15 bp or more · assumes taker fee only · cut size 2.0× order size (5.7% of a bot-hour's volume) · Calibrated on BTC-USD bots (14 days, 37 hours)",
+        "$95 (model) · 1 of 30 days had a 15-min move of 15 bp or more · assumes taker fee only · cut size 2.0× order size (5.7% of a bot-hour's volume) · Calibrated on BTC-USD bots (14 days, 37 bot-hours)",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Est. CPM (estimate)", { selector: "strong" })).toBeInTheDocument();
     expect(
       screen.getByText(
-        "$135 · incl. shock days $95 × 1.42 · Calibrated on BTC-USD bots (14 days, 37 hours)",
+        "$135 · incl. shock days $95 × 1.42 · Calibrated on BTC-USD bots (14 days, 37 bot-hours)",
       ),
     ).toBeVisible();
     // 390 px: hai dòng mô hình nằm trong "Model details" (đóng sẵn) của chi tiết giờ.
@@ -790,6 +805,14 @@ describe("Market hours page", () => {
     expect(screen.queryByText("CPM")).not.toBeInTheDocument();
     expect(
       screen.getByText(/^Data: the real fills .* Markout cost \/ \$1M = fees paid/),
+    ).toBeInTheDocument();
+    // Tiêu đề khối 3 rút gọn; dòng phụ giữ nguyên.
+    expect(
+      screen.getByRole("heading", { level: 3, name: "3 · DeskLabs bots" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/real money\), all users/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Market Making + Volume Builder · live bots only, practice bots left out"),
     ).toBeInTheDocument();
   });
 
