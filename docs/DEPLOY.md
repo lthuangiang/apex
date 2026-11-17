@@ -228,6 +228,13 @@ Làm theo thứ tự, một lần. Mọi bước nằm ở 2.9 / 2.10; mục nà
 - Tắt MCP nhanh, không cần đổi image: để `MCP_INTROSPECT_SECRET=` trống trong `.env`, rồi `up -d api mcp`. `/mcp` trả 503, introspect của api tắt; mọi phần khác chạy như cũ. Token đã cấp không dùng được cho tới khi bật lại.
 - Quay cả bản: `infra/deploy/build-push.sh --deploy-only <tag trước>`. Migration không quay lại; bảng MCP mới không ảnh hưởng bản cũ. `0030` đã bật Adaptive DCA cho mọi tài khoản: bản cũ đọc cùng cờ nên hành vi giống nhau; muốn tắt thì team tắt từng tài khoản ở Users.
 
+### 2.12 SoDEX Debugger (DEC-TBD-sodex-debugger)
+
+- Mọi app service gọi SoDEX ghi lời gọi vào `sodex_calls_ok` (3 ngày) / `sodex_calls_problem` (14 ngày), migration 0041. Mặc định bật.
+- **Tắt khẩn cấp:** đặt `SODEX_DEBUGGER=off` trong `.env` trên VPS rồi `docker compose up -d` (recreate app service; biến nằm trong `x-app-env` của `deploy/server/docker-compose.yml`). Bật lại: bỏ dòng đó hoặc `SODEX_DEBUGGER=on`. Kiểm: `docker compose exec engine printenv SODEX_DEBUGGER`.
+- Kết nối DB: mỗi process một kết nối client qua PgBouncer, mỗi batch là một transaction ngắn có `SET LOCAL statement_timeout = 3000` (PgBouncer transaction mode không nhận `statement_timeout` ở tham số khởi động). Trường hợp xấu nhất ~1 kết nối server × ≤ 3 s mỗi process khi DB chậm, sau đó recorder nghỉ dần tới 60 s.
+- Dung lượng ước tính: xem PR #217 (phụ thuộc số lời gọi mỗi ngày).
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push 11 image → PM trả tag (`docs/RELEASE.md`).
