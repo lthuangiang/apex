@@ -1,0 +1,1 @@
+ALTER TABLE "bot_runtime" ADD COLUMN "leverage_done" jsonb;

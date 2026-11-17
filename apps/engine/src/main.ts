@@ -1,3 +1,5 @@
+import { monitorEventLoopDelay } from "node:perf_hooks";
+
 import { apiKeys, createDb } from "@drift/db";
 import { loadClientTls } from "@drift/runtime";
 import {
@@ -74,6 +76,17 @@ const gateway = new HttpGateway(
   sodex.builderId,
   sodex.builderExempt,
 );
+// Độ trễ event loop (DEC-TBD-engine-lease-renew): ghi kèm log `tick slow` và mỗi phút một dòng `event loop delay`.
+const loopDelay = monitorEventLoopDelay({ resolution: 20 });
+loopDelay.enable();
+const loopDelayMs = () => ({
+  p99Ms: Math.round(loopDelay.percentile(99) / 1e6),
+  maxMs: Math.round(loopDelay.max / 1e6),
+});
+setInterval(() => {
+  log.info({ ...loopDelayMs(), meanMs: Math.round(loopDelay.mean / 1e6) }, "event loop delay");
+  loopDelay.reset();
+}, 60_000).unref();
 // Bot paper (DEC-105): cổng mô phỏng riêng, không có client SoDEX hay signer.
 const paper = new PaperGateway({ db, now: () => Date.now() });
 const engine = new Engine({
@@ -85,6 +98,7 @@ const engine = new Engine({
   log,
   leaseTtlMs: env.ENGINE_SHARD_LEASE_TTL_MS,
   feeCheckMs: env.ENGINE_FEE_CHECK_MS,
+  loopDelay: loopDelayMs,
   rules: (market) => marketInfo(rest, market),
   builderId: sodex.builderId,
   builderExempt: sodex.builderExempt,

@@ -38,7 +38,13 @@ import { Redis } from "ioredis";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { Engine, FencedError, shardOf } from "../src/engine";
+import {
+  Engine as RealEngine,
+  FencedError,
+  LeaseExpiredError,
+  shardOf,
+  type EngineDeps,
+} from "../src/engine";
 import type {
   AccountRef,
   CancelResult,
@@ -232,6 +238,19 @@ class FakeGateway implements Gateway {
       : Promise.reject(this.approvedError);
   }
 }
+
+// Lease được gia hạn bằng timer riêng (DEC-TBD-engine-lease-renew): engine của test trước mà quên `stop()` sẽ tiếp tục
+// giữ shard qua test sau. Cuối mỗi test dừng timer của mọi engine (như worker chết).
+const engines: RealEngine[] = [];
+class Engine extends RealEngine {
+  constructor(deps: EngineDeps) {
+    super(deps);
+    engines.push(this);
+  }
+}
+afterEach(() => {
+  for (const e of engines.splice(0)) e.kill();
+});
 
 let pg: StartedPostgreSqlContainer;
 let redisC: StartedTestContainer;
@@ -488,7 +507,15 @@ describe("engine", () => {
       .from(shardEpochs)
       .where((await import("drizzle-orm")).eq(shardEpochs.shard, shard));
     expect(row?.owner).toBe("B");
-    await expect(a.onPrice("vBTC_vUSDC", "95", clock)).rejects.toBeInstanceOf(FencedError);
+    // Zombie không phản ứng với thị trường nữa (shard không còn xác nhận được, DEC-TBD-engine-lease-renew)…
+    const before = gw.received.length;
+    await a.onPrice("vBTC_vUSDC", "95", clock);
+    expect(gw.received).toHaveLength(before);
+    // …và ghi sổ (fill) của nó bị fencing ở DB từ chối.
+    const first = gw.received[0];
+    await expect(
+      a.onFill(accountId, first?.clOrdID ?? "", "0.0001", "100", "0", clock),
+    ).rejects.toBeInstanceOf(FencedError);
     await b.stop();
   });
 
@@ -1487,6 +1514,65 @@ describe("engine", () => {
     await e.onPrice("BTC-USD", "101", clock);
     expect(mine()).toHaveLength(1);
     await e.stop();
+  });
+
+  it("reads leverage back on reload and only re-sets / re-logs it when SoDEX differs or the version changes", async () => {
+    const { eq, and } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    // Market riêng: bot của test khác cùng DB không đổi thiết lập đòn bẩy giả của market này.
+    const { botId, accountId } = await seedBot("starting", {
+      ...futuresGrid,
+      market: "LEV-USD",
+      config: { ...futuresGrid.config, market: "LEV-USD", leverage: 17 },
+    });
+    const mine = () => gw.leverage.filter((l) => l.leverage === 17 || l.leverage === 13);
+    const logged = async () =>
+      (
+        await db
+          .select()
+          .from(botEvents)
+          .where(and(eq(botEvents.botId, botId), eq(botEvents.decision, "Leverage set")))
+      ).length;
+    const a = makeEngine(gw, "lev-a");
+    await a.tick();
+    await a.onPrice("LEV-USD", "100", clock);
+    expect(mine()).toHaveLength(1);
+    expect(await logged()).toBe(1);
+    await a.stop();
+    // Runner được nạp lại (chuyển shard / khởi động lại); SoDEX vẫn 17×: đọc lại, không gửi, không ghi thêm dòng.
+    const b = makeEngine(gw, "lev-b");
+    await b.tick();
+    expect(b.ownedShards).toContain(shardOf(accountId, SHARDS));
+    await b.onPrice("LEV-USD", "101", clock);
+    expect(mine()).toHaveLength(1);
+    expect(await logged()).toBe(1);
+    // Version mới (đòn bẩy khác) vẫn đặt lại như trước.
+    const [v2] = await db
+      .insert(botVersions)
+      .values({
+        botId,
+        version: 2,
+        paramSource: "manual",
+        status: "pending",
+        config: { ...futuresGrid.config, market: "LEV-USD", leverage: 13 },
+      })
+      .returning();
+    expect(v2).toBeDefined();
+    clock += 1;
+    await b.tick();
+    await b.onPrice("LEV-USD", "100", clock);
+    expect(mine().map((l) => l.leverage)).toEqual([17, 13]);
+    expect(await logged()).toBe(2);
+    await b.stop();
+    // Ai đó đổi đòn bẩy trên SoDEX trong lúc chuyển shard: nạp lại phải đọc thấy và đặt lại (không tin bản đã lưu).
+    gw.settings.set("LEV-USD", { leverage: 5, marginMode: "cross" });
+    const c = makeEngine(gw, "lev-c");
+    await c.tick();
+    clock += 1;
+    await c.onPrice("LEV-USD", "100", clock);
+    expect(mine().map((l) => l.leverage)).toEqual([17, 13, 13]);
+    expect(await logged()).toBe(3);
+    await c.stop();
   });
 
   it("sends no order and pauses the bot when SoDEX rejects the leverage update", async () => {
@@ -4617,5 +4703,455 @@ describe("one read per tick, not per shard (DEC-301)", () => {
     await e.tick();
     expect(gw.feeChecks).toBeGreaterThan(checks);
     await e.stop();
+  });
+});
+
+describe("shard leases renew on their own timer (DEC-TBD-engine-lease-renew)", () => {
+  /** Gateway giả có `builderApproved` chậm (giả một vòng tick chậm hơn TTL của lease). */
+  class SlowFeeGateway extends FakeGateway {
+    slowOnceMs = 0;
+    override builderApproved(): Promise<boolean> {
+      const ms = this.slowOnceMs;
+      this.slowOnceMs = 0;
+      return new Promise((r) => {
+        setTimeout(() => {
+          r(this.approved);
+        }, ms);
+      });
+    }
+  }
+  const lines: { msg: string; obj: Record<string, unknown> }[] = [];
+  const capture = {
+    info: (obj: unknown, msg?: string) => lines.push({ msg: msg ?? "", obj: obj as never }),
+    warn: (obj: unknown, msg?: string) => lines.push({ msg: msg ?? "", obj: obj as never }),
+    error: (obj: unknown, msg?: string) => lines.push({ msg: msg ?? "", obj: obj as never }),
+  };
+  const setup = (gw: Gateway, workerId: string) => {
+    let loads = 0;
+    const redis = newRedis();
+    const e = new Engine({
+      db,
+      redis,
+      gateway: gw,
+      workerId,
+      log: capture as never,
+      now,
+      leaseTtlMs: 300,
+      shards: SHARDS,
+      // `rules` chỉ được gọi khi nạp runner: đếm số lần nạp lại bot.
+      rules: () => {
+        loads += 1;
+        return Promise.resolve(rules);
+      },
+      feeCheckMs: 0,
+    });
+    return { e, redis, loads: () => loads };
+  };
+  const epochInDb = async (shard: number) => {
+    const { eq } = await import("drizzle-orm");
+    const [row] = await db.select().from(shardEpochs).where(eq(shardEpochs.shard, shard));
+    return row?.epoch;
+  };
+  const until = async (done: () => boolean, ms = 3_000) => {
+    for (let t = 0; t < ms && !done(); t += 20) await new Promise((r) => setTimeout(r, 20));
+    expect(done()).toBe(true);
+  };
+  beforeEach(() => {
+    lines.length = 0;
+  });
+
+  it("keeps every shard, its epoch and its bots through a tick slower than the lease TTL", async () => {
+    const gw = new SlowFeeGateway();
+    const { accountId } = await seedBot("running");
+    const shard = shardOf(accountId, SHARDS);
+    const { e, loads } = setup(gw, "slow-tick");
+    await e.tick();
+    const owned = e.ownedShards;
+    const epoch = e.epochOf(shard);
+    const loaded = loads();
+    expect(loaded).toBeGreaterThan(0);
+    // Một vòng mất 0.8 s, gần 3 lần TTL 300 ms: trước đây lease hết hạn giữa vòng, vòng sau bỏ mọi shard, nhận lại với
+    // epoch + 1 và nạp lại mọi bot.
+    gw.slowOnceMs = 800;
+    clock += 1;
+    await e.tick();
+    clock += 1;
+    await e.tick();
+    expect(e.ownedShards).toEqual(owned);
+    expect(e.epochOf(shard)).toBe(epoch);
+    expect(await epochInDb(shard)).toBe(epoch);
+    expect(loads()).toBe(loaded);
+    expect(lines.filter((l) => l.msg === "shard lost")).toEqual([]);
+    const slow = lines.find((l) => l.msg === "tick slow");
+    expect(typeof (slow?.obj.phases as Record<string, unknown> | undefined)?.checkFees).toBe(
+      "number",
+    );
+    await e.stop();
+  });
+
+  it("takes back its own expired lease without a new epoch or reloading bots when no one else took the shard", async () => {
+    const gw = new FakeGateway();
+    const { accountId } = await seedBot("running");
+    const shard = shardOf(accountId, SHARDS);
+    const { e, redis, loads } = setup(gw, "self-reacquire");
+    await e.tick();
+    const epoch = e.epochOf(shard);
+    const loaded = loads();
+    // Key lease biến mất trên Redis (hết hạn khi timer bị trễ, Redis khởi động lại…).
+    await redis.del(`lease:shard:${String(shard)}`);
+    await until(() => lines.some((l) => l.msg === "shard lease re-acquired; epoch and bots kept"));
+    expect(await redis.get(`lease:shard:${String(shard)}`)).not.toBeNull();
+    clock += 1;
+    await e.tick();
+    expect(e.ownedShards).toContain(shard);
+    expect(e.epochOf(shard)).toBe(epoch);
+    expect(await epochInDb(shard)).toBe(epoch);
+    expect(loads()).toBe(loaded);
+    expect(lines.filter((l) => l.msg === "shard lost")).toEqual([]);
+    await e.stop();
+  });
+
+  it("drops the shard and reloads its bots with a new epoch when another worker had it in between", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { accountId } = await seedBot("running");
+    const shard = shardOf(accountId, SHARDS);
+    const { e, redis, loads } = setup(gw, "epoch-moved");
+    await e.tick();
+    const epoch = e.epochOf(shard) ?? 0;
+    const loaded = loads();
+    // Worker khác đã nhận shard (epoch + 1) rồi trả, trong lúc lease của mình hết hạn.
+    await db
+      .update(shardEpochs)
+      .set({ epoch: epoch + 1, owner: "other" })
+      .where(eq(shardEpochs.shard, shard));
+    await redis.del(`lease:shard:${String(shard)}`);
+    await until(() => lines.some((l) => l.msg === "shard lost"));
+    expect(lines.find((l) => l.msg === "shard lost")?.obj).toMatchObject({
+      shard,
+      reason: "epoch_moved",
+    });
+    expect(e.ownedShards).not.toContain(shard);
+    // Như trước: vòng sau nhận lại shard với epoch mới và nạp lại bot.
+    clock += 1;
+    await e.tick();
+    expect(e.epochOf(shard)).toBe(epoch + 2);
+    expect(loads()).toBeGreaterThan(loaded);
+    await e.stop();
+  });
+
+  it("drops the shard when another worker holds the lease, and sends nothing for it", async () => {
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    const shard = shardOf(accountId, SHARDS);
+    const { e, redis } = setup(gw, "taken");
+    await e.tick();
+    await redis.set(`lease:shard:${String(shard)}`, "another-worker", "PX", 30_000);
+    await until(() => lines.some((l) => l.msg === "shard lost"));
+    expect(lines.find((l) => l.msg === "shard lost")?.obj).toMatchObject({
+      shard,
+      reason: "taken",
+    });
+    expect(e.ownedShards).not.toContain(shard);
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const { eq } = await import("drizzle-orm");
+    expect(await db.select().from(orders).where(eq(orders.botId, botId))).toHaveLength(0);
+    await e.stop();
+  });
+
+  it("sends no order while the shard's lease can't be confirmed", async () => {
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    const shard = shardOf(accountId, SHARDS);
+    let mono = 0;
+    const redis = newRedis();
+    const e = new Engine({
+      db,
+      redis,
+      gateway: gw,
+      workerId: "expired",
+      log: capture as never,
+      now,
+      leaseTtlMs: 60_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      monotonic: () => mono,
+    });
+    await e.tick();
+    // Đồng hồ đơn điệu vượt hạn lease, Redis không trả lời: không được ghi / gửi lệnh nào.
+    mono = 120_000;
+    redis.disconnect();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    expect(gw.received).toHaveLength(0);
+    const { eq } = await import("drizzle-orm");
+    expect(await db.select().from(orders).where(eq(orders.botId, botId))).toHaveLength(0);
+    expect(e.ownedShards).toContain(shard);
+    e.kill();
+  });
+});
+
+describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease-renew review)", () => {
+  /** Lease "mất xác nhận": đồng hồ đơn điệu vượt hạn và script gia hạn của Redis lỗi. */
+  interface LeaseCtl {
+    lose: () => void;
+    restore: () => void;
+  }
+  const flaky = (
+    gw: Gateway,
+    workerId: string,
+    opts: { db?: Db; logs?: string[] } = {},
+  ): { e: RealEngine; ctl: LeaseCtl } => {
+    let mono = 0;
+    let down = false;
+    const real = newRedis();
+    const redis = new Proxy(real, {
+      get(target, prop) {
+        if (prop === "eval" && down) return () => Promise.reject(new Error("redis down"));
+        const v: unknown = Reflect.get(target, prop);
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      },
+    });
+    const logs = opts.logs;
+    const e = new Engine({
+      db: opts.db ?? db,
+      redis,
+      gateway: gw,
+      workerId,
+      log: {
+        info: () => undefined,
+        warn: (_o: unknown, msg?: string) => logs?.push(msg ?? ""),
+        error: () => undefined,
+      },
+      now,
+      leaseTtlMs: 60_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      monotonic: () => mono,
+    });
+    return {
+      e,
+      ctl: {
+        lose: () => {
+          mono += 1e9;
+          down = true;
+        },
+        restore: () => {
+          down = false;
+        },
+      },
+    };
+  };
+  const ordersOf = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return db.select().from(orders).where(eq(orders.botId, botId));
+  };
+  const runtimeOf = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+    return rt;
+  };
+  const longGrid = (market: string) => ({
+    strategy: "futures_grid",
+    market,
+    engine: "perps" as const,
+    config: {
+      market,
+      direction: "long",
+      leverage: 2,
+      marginMode: "cross",
+      lowerPrice: "90",
+      upperPrice: "110",
+      gridLevels: 5,
+      spacing: "arithmetic",
+      margin: "250",
+      maxLoss: "100",
+      stopBelow: "80",
+      onStop: "keep_position",
+    },
+  });
+  const spotGridOn = (market: string) => ({
+    strategy: "spot_grid",
+    market,
+    engine: "spot" as const,
+    config: {
+      market,
+      lowerPrice: "90",
+      upperPrice: "110",
+      gridLevels: 5,
+      spacing: "arithmetic",
+      investment: "500",
+      maxLoss: "100",
+      onStop: "keep_base",
+    },
+  });
+  // Bot của các test trước không chạy trong các test này (đếm lệnh / giao dịch chỉ của bot đang xét).
+  beforeEach(async () => {
+    const { inArray } = await import("drizzle-orm");
+    await db
+      .update(bots)
+      .set({ state: "paused" })
+      .where(inArray(bots.state, ["starting", "running", "pausing", "resuming", "stopping"]));
+  });
+
+  it("rolls a market step back when the lease is lost after the step, and re-places the same orders later", async () => {
+    let ctl: LeaseCtl | null = null;
+    const gw = new (class extends FakeGateway {
+      // Lease mất đúng lúc chiến lược đang tính (sau kiểm tra đầu `#feed`, trước `#execute`).
+      override readLeverage(a: AccountRef, market: string) {
+        ctl?.lose();
+        ctl = null;
+        return super.readLeverage(a, market);
+      }
+    })();
+    const { botId } = await seedBot("running", longGrid("RB-USD"));
+    const f = flaky(gw, "rollback");
+    await f.e.tick();
+    ctl = f.ctl;
+    await expect(f.e.onPrice("RB-USD", "100", clock)).rejects.toBeInstanceOf(LeaseExpiredError);
+    expect(gw.received).toHaveLength(0);
+    expect(await ordersOf(botId)).toHaveLength(0);
+    // Lease xác nhận lại: bước chạy lại từ state cũ và gửi đúng các lệnh đó, kể cả lệnh mở vị thế đầu tiên.
+    f.ctl.restore();
+    await f.e.onPrice("RB-USD", "100", clock);
+    expect(gw.received.map((o) => o.tag)).toContain("grid:init");
+    expect(await ordersOf(botId)).toHaveLength(gw.received.length);
+    await f.e.stop();
+  });
+
+  it("still writes and sends the orders a fill produces while the lease can't be confirmed, so the saved state never claims orders that don't exist", async () => {
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running", spotGridOn("vFILL_vUSDC"));
+    const f = flaky(gw, "fill");
+    await f.e.tick();
+    await f.e.onPrice("vFILL_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    expect(init).toBeDefined();
+    f.ctl.lose();
+    // Fill (sự kiện sổ cái) không bị chặn: fencing epoch ở DB bảo vệ.
+    await f.e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock);
+    const rows = await ordersOf(botId);
+    const ids = new Set(rows.map((o) => o.clOrdId));
+    const st = (await runtimeOf(botId))?.state as { open?: Record<string, unknown> };
+    const claimed = Object.keys(st.open ?? {});
+    expect(claimed.length).toBeGreaterThan(0);
+    for (const id of claimed) expect(ids.has(id)).toBe(true);
+    expect(gw.received.some((o) => o.side === "sell")).toBe(true);
+    f.ctl.restore();
+    await f.e.stop();
+  });
+
+  /** Bot Perps đang chạy có vị thế long 2 trong sổ cái, người dùng bấm Stop kèm Close position. */
+  async function stoppingWithPosition(gw: FakeGateway, market: string, workerId: string) {
+    const { eq } = await import("drizzle-orm");
+    const { botId } = await seedBot("running", longGrid(market));
+    const f = flaky(gw, workerId);
+    await f.e.tick();
+    await f.e.onPrice(market, "100", clock);
+    const st = (await runtimeOf(botId))?.state as { ledger: Record<string, string> };
+    await db
+      .update(botRuntime)
+      .set({ state: { ...st, ledger: { ...st.ledger, position: "2", avgCost: "100" } } })
+      .where(eq(botRuntime.botId, botId));
+    // Nạp lại runner với sổ cái mới: engine mới cùng worker sau khi engine cũ dừng.
+    await f.e.stop();
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    const g = flaky(gw, `${workerId}-2`);
+    return { botId, ...g };
+  }
+
+  it("keeps the bot stopping and sends the close later when the lease is lost during Stop", async () => {
+    let lose: (() => void) | null = null;
+    const gw = new (class extends FakeGateway {
+      // Lease mất trong lúc Stop đang huỷ lệnh mở (trước khi gửi lệnh đóng).
+      override cancel(a: AccountRef, list: readonly { clOrdID: string }[]) {
+        lose?.();
+        lose = null;
+        return super.cancel(a, list);
+      }
+    })();
+    const { botId, e, ctl } = await stoppingWithPosition(gw, "STOPL-USD", "stop-lease");
+    gw.received.length = 0;
+    lose = ctl.lose;
+    clock += 1;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    // Không ghi dòng lệnh đóng nào: lần sau gửi mới, không bị unique chặn.
+    expect((await ordersOf(botId)).filter((o) => o.tag === "close")).toHaveLength(0);
+    ctl.restore();
+    clock += 1;
+    await e.tick();
+    expect(gw.received.filter((o) => o.tag === "close")).toEqual([
+      expect.objectContaining({ side: "sell", quantity: "2", reduceOnly: true }),
+    ]);
+    expect((await botState(botId))?.state).toBe("stopped");
+    await e.stop();
+  });
+
+  it("retries a close the signer could not send instead of stopping with the position open", async () => {
+    const gw = new FakeGateway();
+    const { botId, e } = await stoppingWithPosition(gw, "STOPS-USD", "stop-signer");
+    gw.received.length = 0;
+    gw.notSent = "signer_unavailable";
+    clock += 1;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    gw.notSent = null;
+    clock += 1;
+    await e.tick();
+    expect(gw.received.filter((o) => o.tag === "close")).toEqual([
+      expect.objectContaining({ side: "sell", quantity: "2", reduceOnly: true }),
+    ]);
+    expect((await botState(botId))?.state).toBe("stopped");
+    await e.stop();
+  });
+
+  it("feeds Resume to the strategy even when the lease is lost right after the bot moved to running", async () => {
+    const { eq } = await import("drizzle-orm");
+    // Bot ở shard 0 (shard xử lý đầu tiên mỗi vòng): transaction đầu tiên của vòng là lần chuyển sang running.
+    let seeded = await seedBot("running");
+    while (shardOf(seeded.accountId, SHARDS) !== 0) {
+      await db.update(bots).set({ state: "paused" }).where(eq(bots.id, seeded.botId));
+      seeded = await seedBot("running");
+    }
+    const { botId } = seeded;
+    let armed: (() => void) | null = null;
+    const hooked = new Proxy(db, {
+      get(target, prop) {
+        const v: unknown = Reflect.get(target, prop);
+        if (prop === "transaction" && typeof v === "function")
+          return async (...args: unknown[]) => {
+            const out: unknown = await (v as (...a: unknown[]) => Promise<unknown>).apply(
+              target,
+              args,
+            );
+            armed?.();
+            armed = null;
+            return out;
+          };
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      },
+    });
+    const gw = new FakeGateway();
+    gw.reject = { code: "-1", message: "insufficient balance" };
+    const f = flaky(gw, "resume", { db: hooked });
+    await f.e.tick();
+    await f.e.onPrice("vBTC_vUSDC", "100", clock);
+    clock += 1;
+    await f.e.tick();
+    expect((await botState(botId))?.state).toBe("paused");
+    gw.reject = null;
+    const before = gw.received.length;
+    await f.e.onPrice("vBTC_vUSDC", "102", clock);
+    await db.update(bots).set({ state: "resuming", reasonCode: null }).where(eq(bots.id, botId));
+    armed = f.ctl.lose;
+    clock += 1;
+    await f.e.tick();
+    expect((await botState(botId))?.state).toBe("running");
+    // `resumed` không bị bỏ sau khi trạng thái đã commit: lưới được dựng lại.
+    expect(gw.received.length).toBeGreaterThan(before);
+    f.ctl.restore();
+    await f.e.stop();
   });
 });
