@@ -41,6 +41,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import {
   Engine as RealEngine,
   CLOSE_RETRY,
+  STREAM_HOLD_MS,
   FencedError,
   LeaseExpiredError,
   effectiveReal,
@@ -175,7 +176,7 @@ class FakeGateway implements Gateway {
   }
   /** Mọi lệnh đã nhận lệnh huỷ; `cancelOutcome` là kết quả SoDEX trả cho mỗi lần huỷ. */
   readonly cancelled: string[] = [];
-  cancelOutcome: "ok" | "unknown" = "ok";
+  cancelOutcome: "ok" | "unknown" | "not_found" = "ok";
   /** Số lần huỷ kế tiếp sẽ không rời DRIFT (signer lỗi), như sự cố 2026-11-04 (DEC-111). */
   cancelNotSent = 0;
   /** Mọi lần dời stop loss gốc (DEC-118). */
@@ -3033,6 +3034,77 @@ describe("engine", () => {
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.sodexAccountId, accountId));
   });
 
+  /** Market Making: báo giá đầu tiên, rồi một nhịp refresh huỷ nó (SoDEX trả `cancelOutcome`). */
+  async function makerCancelled(gw: FakeGateway, worker: string) {
+    const { eq } = await import("drizzle-orm");
+    const seeded = await seedMaker();
+    const e = farmEngine(gw, worker);
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    const id = gw.received.find((o) => o.tag.endsWith(":bid"))?.clOrdID ?? "";
+    const row = async () => (await db.select().from(orders).where(eq(orders.clOrdId, id)))[0];
+    // Quá CANCEL_NOT_BOOKED.windowMs sau khi SoDEX nhận: OrderNotFound nghĩa là lệnh không còn trên sổ.
+    clock += 6_000;
+    await e.tick();
+    expect(gw.cancelled.filter((x) => x === id)).toHaveLength(1);
+    return { ...seeded, e, id, row };
+  }
+
+  it("treats OrderNotFound on a cancel as off the book: no cancel retries, no unknown, the fill SoDEX has (DEC-TBD-engine-sodex-latency)", async () => {
+    const gw = new FakeGateway();
+    gw.cancelOutcome = "not_found";
+    const { e, id, row } = await makerCancelled(gw, "vm-gone-filled");
+    // Lệnh đã khớp hết trên SoDEX trước khi lệnh huỷ tới.
+    const size = (await row())?.size ?? "0";
+    gw.book.set(id, { status: "filled", filledQty: size, avgPrice: "100000", orderId: 77n });
+    expect((await row())?.status).toBe("open");
+    for (let i = 0; i < 3; i += 1) {
+      clock += 6_000;
+      await e.tick();
+    }
+    // Không huỷ lại; đối soát ghi đúng trạng thái cuối của SoDEX, không qua `unknown`.
+    expect(gw.cancelled.filter((x) => x === id)).toHaveLength(1);
+    const after = await row();
+    expect(after?.status).toBe("filled");
+    expect(Number(after?.filledSize)).toBe(Number(size));
+    await e.stop();
+    await stopMakerBots();
+  });
+
+  it("records a cancel that met OrderNotFound as cancelled when SoDEX has no trades, never unknown (DEC-TBD-engine-sodex-latency)", async () => {
+    const gw = new FakeGateway();
+    gw.cancelOutcome = "not_found";
+    const { e, id, row } = await makerCancelled(gw, "vm-gone-none");
+    gw.book.delete(id);
+    const seen = new Set<string>();
+    for (let i = 0; i < 6; i += 1) {
+      clock += 8_000;
+      await e.tick();
+      seen.add((await row())?.status ?? "");
+    }
+    expect(seen.has("unknown")).toBe(false);
+    expect((await row())?.status).toBe("cancelled");
+    expect(gw.cancelled.filter((x) => x === id)).toHaveLength(1);
+    await e.stop();
+    await stopMakerBots();
+  });
+
+  it("cancels again when an order SoDEX called not found is on the book after all (DEC-250, DEC-TBD-engine-sodex-latency)", async () => {
+    const gw = new FakeGateway();
+    gw.cancelOutcome = "not_found";
+    const { e, id, row } = await makerCancelled(gw, "vm-gone-booked");
+    // SoDEX vẫn có lệnh trên sổ (vào sổ muộn): đối soát thấy `open` thì huỷ lại.
+    gw.cancelOutcome = "ok";
+    for (let i = 0; i < 3 && gw.cancelled.filter((x) => x === id).length < 2; i += 1) {
+      clock += 6_000;
+      await e.tick();
+    }
+    expect(gw.cancelled.filter((x) => x === id)).toHaveLength(2);
+    expect((await row())?.status).toBe("cancelled");
+    await e.stop();
+    await stopMakerBots();
+  });
+
   // ---------- Paper mode (DEC-105) ----------
 
   /** Ghi lại mọi lời gọi tới cổng thật (để chứng minh bot paper không bao giờ đi qua đây). */
@@ -4031,8 +4103,8 @@ class RaceGateway extends FakeGateway {
           this.book.set(x.clOrdID, { ...b, status: "cancelled" });
         return { clOrdID: x.clOrdID, outcome: "ok" };
       }
-      if (this.arriving.has(x.clOrdID))
-        return { clOrdID: x.clOrdID, outcome: "unknown", detail: "OrderNotFound" };
+      // Như HttpGateway: SoDEX trả OrderNotFound khi lệnh chưa vào sổ.
+      if (this.arriving.has(x.clOrdID)) return { clOrdID: x.clOrdID, outcome: "not_found" };
       return { clOrdID: x.clOrdID, outcome: "rejected", code: "ORDER_NOT_OPEN" };
     });
     await this.#wait();
@@ -5669,6 +5741,42 @@ describe("lost fills (DEC-303)", () => {
     await stopBot(botId);
   });
 
+  it("keeps the account's user stream open until the Stop's close order is done (DEC-TBD-engine-sodex-latency)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const streams = new FakeStreams();
+    const { botId, accountId } = await seedBot();
+    streams.allow(accountId, "spot");
+    const e = streamEngine(gw, "stream-hold", streams);
+    const streamed = async () =>
+      (await e.activeStreams()).some((x) => x.account.id === accountId && x.engines.has("spot"));
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    await e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock + 1);
+    expect(await streamed()).toBe(true);
+    // Người dùng Stop kèm Close position: lệnh đóng IOC được gửi rồi bot dừng ngay trong vòng này.
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    clock += 1_000;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopped");
+    const close = gw.received.find((o) => o.tag === "close");
+    expect(close).toBeDefined();
+    // Bot không còn runner, nhưng tin khớp của lệnh đóng vẫn phải tới qua stream.
+    expect(await streamed()).toBe(true);
+    // Hết thời gian giữ mà lệnh đóng vẫn mở trên SoDEX: stream vẫn mở.
+    clock += STREAM_HOLD_MS + 1_000;
+    await e.tick();
+    expect(await streamed()).toBe(true);
+    // Lệnh đóng khớp (tin stream): không còn lệnh mở, stream được đóng ở vòng sau.
+    await e.onFill(accountId, close?.clOrdID ?? "", close?.quantity ?? "0", "100", "0", clock);
+    await e.onOrderClosed(accountId, close?.clOrdID ?? "", "filled", clock);
+    clock += 6_000;
+    await e.tick();
+    expect(await streamed()).toBe(false);
+    await e.stop();
+  });
+
   it("keeps a market order SoDEX cannot find and has no trades for as unknown, not cancelled, then records it when trades appear", async () => {
     const gw = new FakeGateway();
     const { botId } = await seedBot();
@@ -6939,5 +7047,161 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
     expect(await eventsOf(limited.botId)).toEqual([]);
     expect((await botState(limited.botId))?.needsAttention).toBe(false);
     await finish(limited.e, limited.botId);
+  });
+});
+
+describe("slow SoDEX reads stay with their own account (DEC-TBD-engine-sodex-latency)", () => {
+  /** SoDEX chậm cho một số account: mọi lần đọc (tra lệnh, lịch sử khớp, vị thế) của chúng chờ tới khi test thả ra. */
+  class SlowGateway extends FakeGateway {
+    readonly slow = new Set<string>();
+    /** Account (id trong DB) của mỗi lần tra lệnh. */
+    readonly lookupsBy: string[] = [];
+    release: () => void = () => undefined;
+    readonly #gate = new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+    #wait(a: AccountRef): Promise<void> {
+      return this.slow.has(a.id) ? this.#gate : Promise.resolve();
+    }
+    override lookup(a: AccountRef, o: { clOrdID: string }): Promise<LookupResult> {
+      this.lookupsBy.push(a.id);
+      return this.#wait(a).then(() => super.lookup(a, o));
+    }
+    override readPositions(
+      a: AccountRef,
+    ): Promise<Map<string, { size: string; entryPrice: string }>> {
+      return this.#wait(a).then(() => super.readPositions(a));
+    }
+    override recentTrades(a: AccountRef): Promise<(OrderTrade & { clOrdID: string })[]> {
+      return this.#wait(a).then(() => super.recentTrades(a));
+    }
+  }
+  const twap = {
+    strategy: "twap",
+    market: "BTC-USD",
+    engine: "perps" as const,
+    config: {
+      market: "BTC-USD",
+      engine: "perps",
+      side: "buy",
+      totalSize: "1",
+      durationMinutes: 10,
+      slices: 10,
+      reduceOnly: false,
+      maxSlippagePct: "1",
+      onSkip: "leave_unfilled",
+    },
+  };
+  const slowEngine = (gw: Gateway, workerId: string) =>
+    new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId,
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      tickWaitMs: 200,
+    });
+  /** Lệnh `unknown` đủ cũ để `#reconcile` tra SoDEX ở vòng tới. */
+  async function unknownOrder(botId: string, accountId: string) {
+    const clOrdID = `slow-${String(Math.random())}`;
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: clOrdID,
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      side: "buy",
+      type: "limit",
+      price: "90",
+      timeInForce: "GTC",
+      size: "1",
+      status: "unknown",
+      reduceOnly: false,
+      epoch: 1,
+      tag: "grid:0:buy",
+      submittedAt: new Date(clock - 10_000),
+    });
+    return clOrdID;
+  }
+  async function cleanup(botIds: string[], clOrdIDs: string[]) {
+    const { inArray } = await import("drizzle-orm");
+    await db.update(bots).set({ state: "stopped" }).where(inArray(bots.id, botIds));
+    await db.update(orders).set({ status: "cancelled" }).where(inArray(orders.clOrdId, clOrdIDs));
+  }
+
+  it("keeps ticking, and runs the clock of an account in another shard, while one account waits on SoDEX", async () => {
+    const gw = new SlowGateway();
+    const slow = await seedBot("running");
+    let fast = await seedBot("running", twap);
+    const extra: string[] = [];
+    while (shardOf(fast.accountId, SHARDS) === shardOf(slow.accountId, SHARDS)) {
+      extra.push(fast.botId);
+      await cleanup([fast.botId], []);
+      fast = await seedBot("running", twap);
+    }
+    gw.slow.add(slow.accountId);
+    const stuck = await unknownOrder(slow.botId, slow.accountId);
+    const e = slowEngine(gw, "slow-sodex");
+    const slices = () => gw.received.filter((o) => o.market === "BTC-USD");
+    const tickTimes: number[] = [];
+    const timedTick = async () => {
+      const at = performance.now();
+      await e.tick();
+      tickTimes.push(performance.now() - at);
+    };
+    await timedTick();
+    // Tra lệnh của account chậm đang treo; account kia vẫn nạp bot và nhận giá.
+    expect(gw.lookupsBy.filter((a) => a === slow.accountId)).toHaveLength(1);
+    await e.onPrice("BTC-USD", "100", clock);
+    for (let i = 0; i < 6 && slices().length === 0; i += 1) {
+      clock += 61_000;
+      await timedTick();
+      await e.onPrice("BTC-USD", "100", clock);
+    }
+    // Đồng hồ TWAP của account kia chạy (đặt lát) trong lúc account chậm vẫn chờ SoDEX.
+    expect(slices().length).toBeGreaterThan(0);
+    // Mỗi vòng chỉ chờ tối đa tickWaitMs; shard của account chậm không bị chạy chồng (không tra lại khi còn treo).
+    expect(Math.max(...tickTimes)).toBeLessThan(5_000);
+    expect(gw.lookupsBy.filter((a) => a === slow.accountId)).toHaveLength(1);
+    // SoDEX trả lời: shard của account chậm chạy lại từ vòng sau.
+    gw.release();
+    for (let i = 0; i < 20 && gw.lookupsBy.filter((a) => a === slow.accountId).length < 2; i += 1) {
+      clock += 16_000;
+      await timedTick();
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(gw.lookupsBy.filter((a) => a === slow.accountId).length).toBeGreaterThanOrEqual(2);
+    await e.stop();
+    await cleanup([slow.botId, fast.botId, ...extra], [stuck]);
+  });
+
+  it("reads SoDEX for other accounts of the same shard while one account's read hangs", async () => {
+    const gw = new SlowGateway();
+    const slow = await seedBot("running");
+    const others: { botId: string; accountId: string }[] = [];
+    let same: { botId: string; accountId: string } | undefined;
+    while (same === undefined) {
+      const b = await seedBot("running");
+      if (shardOf(b.accountId, SHARDS) === shardOf(slow.accountId, SHARDS)) same = b;
+      else others.push(b);
+    }
+    gw.slow.add(slow.accountId);
+    const ids = [
+      await unknownOrder(slow.botId, slow.accountId),
+      await unknownOrder(same.botId, same.accountId),
+    ];
+    const e = slowEngine(gw, "slow-shard");
+    await e.tick();
+    // Hai account cùng shard: lần tra của account kia không xếp hàng sau lần tra đang treo.
+    expect(gw.lookupsBy).toContain(slow.accountId);
+    expect(gw.lookupsBy).toContain(same.accountId);
+    gw.release();
+    await e.stop();
+    await cleanup([slow.botId, same.botId, ...others.map((x) => x.botId)], ids);
   });
 });

@@ -45,6 +45,12 @@ const env = z
     ENGINE_SHARD_LEASE_TTL_MS: z.coerce.number().int().positive().default(15_000),
     /** Chu kỳ đọc lại approval builder fee của mỗi account (mặc định 60 s). */
     ENGINE_FEE_CHECK_MS: z.coerce.number().int().positive().default(60_000),
+    /**
+     * Vòng tick chờ các shard tối đa chừng này; shard còn chờ SoDEX chạy tiếp ngoài vòng (DEC-TBD-engine-sodex-latency).
+     */
+    ENGINE_TICK_WAIT_MS: z.coerce.number().int().positive().default(2_000),
+    /** Timeout mỗi lời gọi REST chỉ đọc của đối soát (tra lệnh, lịch sử khớp, vị thế). Lệnh ghi giữ timeout cũ. */
+    ENGINE_SODEX_READ_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
   })
   .parse(process.env);
 const log = pino({
@@ -76,6 +82,8 @@ const gateway = new HttpGateway(
   ),
   sodex.builderId,
   sodex.builderExempt,
+  // Cùng bucket rate limit IP (cùng store + egressKey), timeout ngắn hơn cho đọc của đối soát.
+  new SodexRestClient({ ...options, timeoutMs: env.ENGINE_SODEX_READ_TIMEOUT_MS }),
 );
 // User stream cho từng account + engine mà bot thật trong shard của worker này giao dịch (account chỉ chạy Perps không mở
 // stream Spot). Engine mở stream ngay khi nạp bot (trong vòng tick) và lệnh mở vị thế chỉ đi khi stream của engine đó
@@ -211,6 +219,7 @@ const engine = new Engine({
   log,
   leaseTtlMs: env.ENGINE_SHARD_LEASE_TTL_MS,
   feeCheckMs: env.ENGINE_FEE_CHECK_MS,
+  tickWaitMs: env.ENGINE_TICK_WAIT_MS,
   loopDelay: loopDelayMs,
   rules: (market) => marketInfo(rest, market),
   builderId: sodex.builderId,

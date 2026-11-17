@@ -3,7 +3,12 @@ import type { OrderIntent } from "@drift/strategies";
 import { describe, expect, it } from "vitest";
 
 import type { AccountRef } from "../src/gateway";
-import { HttpGateway, PaperRefusedError, rejectMessage } from "../src/http-gateway";
+import {
+  cancelItemResult,
+  HttpGateway,
+  PaperRefusedError,
+  rejectMessage,
+} from "../src/http-gateway";
 
 // Builder fee trên lệnh (DEC-46 / DEC-47): người dùng trả 10 (0.01%); account của chính builder không gắn builder.
 
@@ -151,5 +156,71 @@ describe("paper bots (DEC-105)", () => {
     for (const call of calls) await expect(call()).rejects.toBeInstanceOf(PaperRefusedError);
     expect(signed).toBe(0);
     expect(reads).toBe(0);
+  });
+});
+
+describe("cancel results (DEC-TBD-engine-sodex-latency)", () => {
+  it("reads SoDEX's OrderNotFound without a clOrdID as not found, not unknown", async () => {
+    const { gw } = gateway({
+      outcome: "ok",
+      data: [{ code: -1, error: "order rejected: OrderNotFound" }],
+    });
+    const ref = { clOrdID: "c1", market: "vBTC_vUSDC", engine: "spot" as const };
+    expect(await gw.cancel(account(7n), [ref], { shard: 0, epoch: 1 })).toEqual([
+      { clOrdID: "c1", outcome: "not_found" },
+    ]);
+  });
+
+  it("keeps ok, rejected and unreadable results as before", () => {
+    expect(cancelItemResult("c1", [{ code: 0, clOrdID: "c1" }])).toEqual({
+      clOrdID: "c1",
+      outcome: "ok",
+    });
+    expect(
+      cancelItemResult("c1", [{ code: -1, clOrdID: "c1", error: "order rejected: OrderNotFound" }]),
+    ).toEqual({ clOrdID: "c1", outcome: "not_found" });
+    expect(cancelItemResult("c1", [{ code: -2, clOrdID: "c1", error: "nope" }])).toEqual({
+      clOrdID: "c1",
+      outcome: "rejected",
+      code: "-2",
+    });
+    // Mã lỗi khác mà không có clOrdID: không biết lệnh nào, vẫn chưa rõ (quy tắc 1.7).
+    expect(cancelItemResult("c1", [{ code: -1, error: "busy" }])).toMatchObject({
+      clOrdID: "c1",
+      outcome: "unknown",
+    });
+    expect(cancelItemResult("c1", { weird: true })).toMatchObject({ outcome: "unknown" });
+  });
+});
+
+describe("market info on the order path (DEC-TBD-engine-sodex-latency)", () => {
+  it("sends with the last known symbol id while a refresh of the symbol list hangs", async () => {
+    let calls = 0;
+    const rest = {
+      getSpotSymbols: () => {
+        calls += 1;
+        return calls === 1 ? Promise.resolve([symbol]) : new Promise<never>(() => undefined);
+      },
+      getPerpsSymbols: () => Promise.resolve([]),
+    } as unknown as SodexRestClient;
+    const bodies: string[] = [];
+    const writer = {
+      write: (req: { body: string }) => {
+        bodies.push(req.body);
+        return Promise.resolve({ outcome: "ok", data: [{ code: 0, clOrdID: "c1", orderID: 1 }] });
+      },
+    } as unknown as SignedWriteClient;
+    const signer = { sign: () => Promise.resolve(`0x01${"ab".repeat(65)}` as `0x${string}`) };
+    const gw = new HttpGateway(rest, writer, signer, BUILDER);
+    await gw.submit(account(7n), [order], { shard: 0, epoch: 1 });
+    // Danh sách symbol hết cache và lần đọc lại treo: lệnh vẫn đi ngay với id đã biết.
+    const second = await gw.submit(account(7n), [{ ...order, clOrdID: "c2" }], {
+      shard: 0,
+      epoch: 1,
+    });
+    expect(second[0]?.outcome).not.toBe("unknown");
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toContain('"symbolID":1');
+    expect(calls).toBe(2);
   });
 });

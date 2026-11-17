@@ -51,11 +51,14 @@ export type LeverageResult =
 
 /**
  * Kết quả huỷ từng lệnh. `ok`: SoDEX xác nhận đã gỡ khỏi sổ, lệnh không khớp thêm được nữa. `rejected`: SoDEX
- * từ chối (thường vì lệnh đã khớp hết / đã huỷ). `unknown`: không rõ, chờ fill hoặc đối soát.
+ * từ chối (thường vì lệnh đã khớp hết / đã huỷ). `not_found`: SoDEX trả `OrderNotFound`, lệnh không có trên sổ (đã
+ * khớp / đã huỷ, hoặc vừa được nhận mà chưa vào sổ, DEC-250); engine đối soát trạng thái cuối, không huỷ lại mãi.
+ * `unknown`: không rõ, chờ fill hoặc đối soát.
  */
 export type CancelResult =
   | { clOrdID: string; outcome: "ok" }
   | { clOrdID: string; outcome: "rejected"; code: string }
+  | { clOrdID: string; outcome: "not_found" }
   | { clOrdID: string; outcome: "unknown"; detail?: string };
 
 export interface LeverageSetting {
