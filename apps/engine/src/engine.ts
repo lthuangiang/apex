@@ -336,6 +336,11 @@ interface TickSnapshot {
   unconfirmed: Map<number, OrderRow[]>;
   /** Ứng viên của lưới an toàn fill (#backfillFills), theo shard của account (DEC-303). */
   backfill: Map<number, OrderRow[]>;
+  /**
+   * Lệnh được tra ở vòng này (id), chọn cho cả worker trong ngân sách LOOKUP_BUDGET: lệnh nghi ngờ trước, luân phiên giữa
+   * các account (DEC-TBD-engine-rest-budget). Lệnh không có ở đây chờ vòng sau. null = không giới hạn (tra mọi lệnh tới hạn).
+   */
+  lookups: Set<string> | null;
 }
 
 const pushTo = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
@@ -360,6 +365,18 @@ export const ACCOUNT_CONCURRENCY = 4;
  * lệnh bot thật đang mở / `unknown` (snapshot của vòng).
  */
 export const STREAM_HOLD_MS = 60_000;
+/**
+ * Ngân sách tra lệnh của cả worker (DEC-TBD-engine-rest-budget): tối đa chừng này weight REST mỗi 60 s cho bước tra lệnh
+ * (`#reconcile` + `#reconcileOpen`), = 50% bucket IP 1200 weight / phút của SoDEX. Một lần tra tính `LOOKUP_WEIGHT`
+ * (lệnh đang mở 5 + lịch sử lệnh 20; lịch sử khớp dùng chung trong vòng nên không tính riêng).
+ */
+export const LOOKUP_BUDGET = { weight: 600, windowMs: 60_000 } as const;
+export const LOOKUP_WEIGHT = 25;
+/**
+ * Huỷ bị SoDEX từ chối cả request lặp lại (key bị thu hồi, 400 nonce / chữ ký, 429): huỷ lại của account đó chờ 5 s →
+ * 15 s → 60 s (giữ 60 s), warn một lần mỗi nấc (DEC-TBD-engine-rest-budget). Có kết quả theo từng lệnh thì về 0.
+ */
+export const CANCEL_REQUEST_BACKOFF_MS = [5_000, 15_000, 60_000] as const;
 /** `stop()` chờ shard đang chạy dở tối đa chừng này trước khi trả lease (stop_grace_period 30 s). */
 const STOP_WAIT_MS = 20_000;
 
@@ -496,6 +513,11 @@ export interface EngineDeps {
    * vòng; vòng sau bỏ qua shard đó tới khi nó xong, các shard khác vẫn chạy đủ bước. Mặc định: chờ hết (như trước).
    */
   tickWaitMs?: number;
+  /**
+   * Weight REST tối đa của bước tra lệnh cho cả worker trong LOOKUP_BUDGET.windowMs (DEC-TBD-engine-rest-budget).
+   * `main.ts` đặt 600 (50% bucket IP); mặc định không giới hạn, chỉ còn thứ tự tra (nghi ngờ trước, luân phiên account).
+   */
+  lookupBudget?: number;
   /**
    * User stream SoDEX của các account (main.ts). Engine mở stream cho account ngay khi nạp bot thật. Lệnh mở / tăng vị
    * thế chỉ được gửi khi stream của engine (Spot / Perps) của lệnh đã được SoDEX nhận subscribe: SoDEX không gửi lại tin
@@ -844,6 +866,10 @@ export class Engine {
   >();
   /** Account có lệnh bot thật còn mở / `unknown` theo snapshot gần nhất: giữ user stream (fill vẫn có thể tới). */
   #orderStreams = new Map<string, { account: AccountRef; engines: Set<"spot" | "perps"> }>();
+  /** Các lần tra lệnh trong LOOKUP_BUDGET.windowMs gần nhất (lúc tra, weight), của cả worker. */
+  #lookupLog: { at: number; weight: number }[] = [];
+  /** Huỷ bị từ chối cả request liên tiếp, theo account: số lần, huỷ lại sớm nhất lúc, nấc đã warn. */
+  readonly #cancelBackoff = new Map<string, { n: number; until: number; warned: number }>();
   /** Shard đang chạy các bước của một vòng (có thể kéo dài qua vòng sau khi SoDEX chậm). */
   readonly #lanes = new Map<number, Promise<void>>();
   readonly #shardLimit = new Limiter(SHARD_CONCURRENCY);
@@ -858,6 +884,7 @@ export class Engine {
       feeCheckMs: 60_000,
       orderbook: () => Promise.resolve(null),
       tickWaitMs: Number.POSITIVE_INFINITY,
+      lookupBudget: Number.POSITIVE_INFINITY,
       ...deps,
       builderExempt: deps.builderExempt ?? true,
       feeRate: deps.feeRate,
@@ -947,6 +974,11 @@ export class Engine {
     const counts = { skipped: 0, busy: 0 };
     const lanes: Promise<void>[] = [];
     let waiting = true;
+    snap.lookups = this.#planLookups(
+      snap,
+      this.ownedShards.filter((x) => !this.#lanes.has(x)),
+      this.#d.now(),
+    );
     for (const shard of this.ownedShards) {
       // Shard không có account nào và không có runner nào: không có việc gì (không truy vấn, không gọi SoDEX).
       const accounts = snap.accounts.get(shard) ?? [];
@@ -1918,6 +1950,7 @@ export class Engine {
       open: new Map(),
       unconfirmed: new Map(),
       backfill: new Map(),
+      lookups: null,
     };
     if (owned.size === 0) return snap;
     const accountRows = await db
@@ -3386,6 +3419,43 @@ export class Engine {
     }
   }
 
+  /** Lúc sớm nhất được huỷ lại của account đang trong nấc chờ (huỷ bị từ chối cả request); null = huỷ được ngay. */
+  #cancelBlockedUntil(accountId: string, now: number): number | null {
+    const b = this.#cancelBackoff.get(accountId);
+    return b !== undefined && now < b.until ? b.until : null;
+  }
+
+  /**
+   * Ghi kết quả huỷ của account (DEC-TBD-engine-rest-budget): mọi kết quả là "SoDEX từ chối cả request" (envelope lỗi) →
+   * tăng nấc chờ 5 s → 15 s → 60 s, warn một lần mỗi nấc; có kết quả theo từng lệnh → về 0.
+   */
+  #noteCancelResults(accountId: string, results: readonly CancelResult[]): void {
+    if (results.length === 0) return;
+    const refused = results.filter(
+      (x): x is Extract<CancelResult, { outcome: "rejected" }> =>
+        x.outcome === "rejected" && x.scope === "request",
+    );
+    if (refused.length < results.length) {
+      if (results.some((x) => x.outcome !== "unknown")) this.#cancelBackoff.delete(accountId);
+      return;
+    }
+    const prev = this.#cancelBackoff.get(accountId) ?? { n: 0, until: 0, warned: 0 };
+    const n = prev.n + 1;
+    const step = Math.min(n, CANCEL_REQUEST_BACKOFF_MS.length);
+    const delay = CANCEL_REQUEST_BACKOFF_MS[step - 1] ?? 60_000;
+    const now = this.#d.now();
+    this.#cancelBackoff.set(accountId, {
+      n,
+      until: now + delay,
+      warned: Math.max(prev.warned, step),
+    });
+    if (step > prev.warned)
+      this.#d.log.warn(
+        { accountId, code: refused[0]?.code, refusals: n, retryInMs: delay },
+        "SoDEX refused the cancel request; cancelling again after a backoff",
+      );
+  }
+
   async #cancel(
     r: Runner,
     clOrdIDs: readonly string[],
@@ -3429,6 +3499,14 @@ export class Engine {
     if (open.length === 0) {
       return;
     }
+    // Huỷ của account đang bị SoDEX từ chối cả request (key thu hồi, nonce, 429…): chờ hết nấc chờ, giữ chờ huỷ (DEC-TBD-
+    // engine-rest-budget). Không gửi gì nên lệnh vẫn `open`, đối soát vẫn chạy.
+    const waitUntil = this.#cancelBlockedUntil(r.account.id, startedAt);
+    if (waitUntil !== null) {
+      for (const o of open) pending.add(o.clOrdId);
+      this.#cancelRetryAt.set(r.botId, waitUntil - CANCEL_RETRY_MS);
+      return;
+    }
     let results: Awaited<ReturnType<Gateway["cancel"]>>;
     try {
       results = await r.gateway.cancel(
@@ -3443,8 +3521,13 @@ export class Engine {
     }
     // Huỷ không thành (SoDEX từ chối hoặc không rõ): ghi log để lần ra vì sao lệnh còn sống trên sàn. `not_found` có
     // đường riêng ở dưới.
+    this.#noteCancelResults(r.account.id, results);
     for (const x of results)
-      if (x.outcome !== "ok" && x.outcome !== "not_found")
+      if (
+        x.outcome !== "ok" &&
+        x.outcome !== "not_found" &&
+        !(x.outcome === "rejected" && x.scope === "request")
+      )
         this.#d.log.warn(
           {
             botId: r.botId,
@@ -4237,6 +4320,13 @@ export class Engine {
       async (o) => {
         const r = this.#runners.get(o.botId);
         if (r?.shard !== shard) return;
+        const confirmedAt = o.missingConfirmedAt?.getTime();
+        const givingUp =
+          o.sodexOrderId !== null &&
+          confirmedAt !== undefined &&
+          now - confirmedAt >= UNKNOWN_CHECK_WINDOW_MS;
+        // Không có trong kế hoạch tra của vòng (ngân sách REST của worker): chờ vòng sau, không đổi nhịp tra lại.
+        if (!givingUp && !this.#lookupAllowed(snap, o.id, now)) return;
         // SoDEX đã nhận lệnh mà sau đó không tìm thấy: tra lại giãn dần 15 → 30 → 60 s, không phải mỗi vòng. Quá
         // UNKNOWN_CHECK_WINDOW_MS tính từ lần tra THÀNH CÔNG đầu tiên xác nhận không thấy (`missing_confirmed_at`, bền qua
         // khởi động lại) thì ghi cho người dùng một lần (quy tắc 1.7). Chưa có lần xác nhận nào thì không bỏ cuộc.
@@ -4477,20 +4567,16 @@ export class Engine {
   }
 
   /**
-   * Lệnh còn `open` trong DRIFT mà không ai cập nhật được (DEC-85): bot đã dừng (không còn runner, user stream có
-   * thể đã đóng ngay sau lệnh đóng vị thế của Stop), hoặc lệnh market (IOC không thể nằm trên sổ, SoDEX không báo
-   * khi hết hạn mà chưa khớp). Đọc trạng thái thật từ SoDEX, ghi fill, cập nhật sổ cái và PnL của bot.
+   * Lệnh đang mở của shard cần tra SoDEX ở vòng này (#reconcileOpen), theo thứ tự tra: lệnh nghi ngờ trước (đã gửi huỷ
+   * chưa có kết quả, lệnh market, lệnh Volume Farm DRIFT tự huỷ trong khoảng trống stream, DEC-308), rồi lệnh kiểm lâu
+   * nhất (chưa kiểm = 0), rồi lệnh cũ nhất (DEC-185); tối đa OPEN_CHECK_BATCH lệnh mỗi account. Không có tác dụng phụ.
    */
-  async #reconcileOpen(shard: number, snap: TickSnapshot): Promise<void> {
-    const held = this.#leases.get(shard);
-    if (held === undefined) return;
-    const now = this.#d.now();
+  #openDue(shard: number, snap: TickSnapshot, now: number): (OrderRow & { suspect: boolean })[] {
     // Lệnh bot thật của shard (snapshot của vòng, DEC-105: không bao giờ lệnh paper).
     const rows = snap.open.get(shard) ?? [];
     const gap = (o: { sodexAccountId: string; engine: "spot" | "perps" }) =>
       this.#inGap(o.sodexAccountId, o.engine, now);
-    // Lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận (kết quả "unknown"): đọc trạng thái thật thay vì huỷ lại mãi.
-    // Không thì lệnh kẹt "open" trong DRIFT và chặn lệnh ngược chiều như self-trade (DEC-121).
+    // Lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận: đọc trạng thái thật thay vì huỷ lại mãi (DEC-121).
     const cancelling = (o: { botId: string; clOrdId: string }) =>
       this.#pendingCancels.get(o.botId)?.has(o.clOrdId) === true;
     const open = rows.filter((o) => {
@@ -4504,36 +4590,110 @@ export class Engine {
     });
     // Lệnh Volume Farm DRIFT tự huỷ nhưng chưa xác nhận: có thể đã khớp ngay trước lúc huỷ.
     const unconfirmed = (snap.unconfirmed.get(shard) ?? []).filter((o) => gap(o));
-    // Lệnh kiểm lâu nhất trước (chưa kiểm = 0), rồi lệnh cũ nhất (DEC-185). Xếp theo `submittedAt`
-    // không thôi thì ≥ OPEN_CHECK_BATCH lệnh vẫn treo trên SoDEX (bot đang pause giữ lệnh) chiếm hết suất mỗi vòng, và
-    // lệnh mới hơn (ví dụ lệnh đóng vị thế của bot vừa Stop) không bao giờ được đối soát: fill thật không được ghi.
     const lastCheck = (o: { id: string }) => this.#openChecks.get(o.id) ?? 0;
-    // Lệnh nghi ngờ trước (DEC-308): đã gửi huỷ mà chưa có kết quả, lệnh market, lệnh Volume Farm DRIFT
-    // tự huỷ trong khoảng trống stream. Chúng là chỗ fill có thể bị mất; lệnh đang nằm sổ bình thường (bot pause / dừng giữ
-    // lệnh) kiểm sau.
     const suspect = (o: OrderRow) =>
       o.type === "market" || cancelling(o) || unconfirmed.includes(o) ? 0 : 1;
-    const due = [...open, ...unconfirmed]
+    const accounts = new Set((snap.accounts.get(shard) ?? []).map((a) => a.id));
+    const perAccount = new Map<string, number>();
+    return [...open, ...unconfirmed]
       .filter((o) => now - lastCheck(o) >= OPEN_CHECK_MS)
       .sort(
         (a, b) =>
           suspect(a) - suspect(b) ||
           lastCheck(a) - lastCheck(b) ||
           (a.submittedAt?.getTime() ?? 0) - (b.submittedAt?.getTime() ?? 0),
-      );
+      )
+      .filter((o) => {
+        // Account còn kết nối; tối đa OPEN_CHECK_BATCH lệnh mỗi account mỗi vòng (DEC-308).
+        if (!accounts.has(o.sodexAccountId)) return false;
+        const n = perAccount.get(o.sodexAccountId) ?? 0;
+        if (n >= OPEN_CHECK_BATCH) return false;
+        perAccount.set(o.sodexAccountId, n + 1);
+        return true;
+      })
+      .map((o) => ({ ...o, suspect: suspect(o) === 0 }));
+  }
+
+  /**
+   * Lệnh `unknown` của shard có thể được tra SoDEX ở vòng này (#reconcile): tới nhịp tra lại. Lập kế hoạch trước khi nạp
+   * bot của vòng, nên không đòi runner (#reconcile tự bỏ lệnh không có runner). Không có tác dụng phụ.
+   */
+  #unknownDue(shard: number, snap: TickSnapshot, now: number): OrderRow[] {
+    return snap.unknown.filter((o) => {
+      if (shardOf(o.sodexAccountId, this.#d.shards) !== shard) return false;
+      if (o.sodexOrderId === null) return true;
+      const c = this.#unknownChecks.get(o.id) ?? { n: 0, at: 0 };
+      const confirmed = o.missingConfirmedAt?.getTime();
+      if (confirmed !== undefined && now - confirmed >= UNKNOWN_CHECK_WINDOW_MS) return false;
+      return now - c.at >= Math.min(UNKNOWN_RECHECK_MAX_MS, OPEN_CHECK_MS * 2 ** c.n);
+    });
+  }
+
+  /**
+   * Chọn lệnh được tra ở vòng này cho cả worker (DEC-TBD-engine-rest-budget): lệnh nghi ngờ (`unknown`, đã gửi huỷ, market,
+   * Volume Farm tự huỷ trong khoảng trống stream) trước, rồi lệnh đang nằm sổ; trong mỗi nhóm luân phiên giữa các account
+   * (mỗi account một lệnh mỗi lượt, giữ thứ tự của account). Số lệnh ≤ phần còn lại của LOOKUP_BUDGET trong 60 s.
+   */
+  #planLookups(snap: TickSnapshot, shards: readonly number[], now: number): Set<string> | null {
+    if (!Number.isFinite(this.#d.lookupBudget)) return null;
+    const suspects = new Map<string, OrderRow[]>();
+    const others = new Map<string, OrderRow[]>();
+    for (const shard of shards) {
+      for (const o of this.#unknownDue(shard, snap, now)) pushTo(suspects, o.sodexAccountId, o);
+      for (const o of this.#openDue(shard, snap, now))
+        pushTo(o.suspect ? suspects : others, o.sodexAccountId, o);
+    }
+    const room = Math.max(
+      0,
+      Math.floor((this.#d.lookupBudget - this.#lookupUsed(now)) / LOOKUP_WEIGHT),
+    );
+    const plan = new Set<string>();
+    for (const tier of [suspects, others]) {
+      const queues = [...tier.values()];
+      for (let round = 0; plan.size < room && queues.some((q) => q.length > round); round += 1)
+        for (const q of queues) {
+          const o = q[round];
+          if (o !== undefined && plan.size < room) plan.add(o.id);
+        }
+    }
+    return plan;
+  }
+
+  /** Weight tra lệnh đã dùng trong LOOKUP_BUDGET.windowMs gần nhất (bỏ phần cũ hơn). */
+  #lookupUsed(now: number): number {
+    this.#lookupLog = this.#lookupLog.filter((x) => now - x.at < LOOKUP_BUDGET.windowMs);
+    return this.#lookupLog.reduce((a, x) => a + x.weight, 0);
+  }
+
+  /** Lệnh được tra ở vòng này: có trong kế hoạch (hoặc không giới hạn) và còn ngân sách; ghi lần tra vào ngân sách. */
+  #lookupAllowed(snap: TickSnapshot, id: string, now: number): boolean {
+    if (snap.lookups === null) return true;
+    return snap.lookups.has(id) && this.#takeLookup(now);
+  }
+
+  /** Ghi một lần tra vào ngân sách; hết ngân sách (lane của vòng trước còn chạy) thì false, không tra. */
+  #takeLookup(now: number): boolean {
+    if (this.#lookupUsed(now) + LOOKUP_WEIGHT > this.#d.lookupBudget) return false;
+    this.#lookupLog.push({ at: now, weight: LOOKUP_WEIGHT });
+    return true;
+  }
+
+  /**
+   * Lệnh còn `open` trong DRIFT mà không ai cập nhật được (DEC-85): bot đã dừng (không còn runner, user stream có
+   * thể đã đóng ngay sau lệnh đóng vị thế của Stop), hoặc lệnh market (IOC không thể nằm trên sổ, SoDEX không báo
+   * khi hết hạn mà chưa khớp). Đọc trạng thái thật từ SoDEX, ghi fill, cập nhật sổ cái và PnL của bot.
+   */
+  async #reconcileOpen(shard: number, snap: TickSnapshot): Promise<void> {
+    const held = this.#leases.get(shard);
+    if (held === undefined) return;
+    const now = this.#d.now();
+    const due = this.#openDue(shard, snap, now);
     if (due.length === 0) return;
     const accounts = new Map((snap.accounts.get(shard) ?? []).map((a) => [a.id, a]));
-    // Tối đa OPEN_CHECK_BATCH lệnh MỖI ACCOUNT mỗi vòng (account còn kết nối), đọc lại ngay trước khi xử lý. Trước đây suất là
-    // 10 lệnh cho cả shard: lệnh còn mở của một account khác (bot pause / dừng) chiếm hết suất và lệnh nghi ngờ của account
-    // này không được tra đúng lúc (log CI #216: fill sau khoảng trống stream không được ghi bằng đường tra lệnh).
-    const perAccount = new Map<string, number>();
-    const picked = due.filter((o) => {
-      if (!accounts.has(o.sodexAccountId)) return false;
-      const n = perAccount.get(o.sodexAccountId) ?? 0;
-      if (n >= OPEN_CHECK_BATCH) return false;
-      perAccount.set(o.sodexAccountId, n + 1);
-      return true;
-    });
+    const cancelling = (o: { botId: string; clOrdId: string }) =>
+      this.#pendingCancels.get(o.botId)?.has(o.clOrdId) === true;
+    // Chỉ lệnh có trong kế hoạch tra của vòng (ngân sách REST của cả worker, DEC-TBD-engine-rest-budget).
+    const picked = due.filter((o) => snap.lookups?.has(o.id) !== false);
     const batch = await this.#fresh(picked);
     await this.#perAccount(
       "reconcileOpen",
@@ -4542,6 +4702,7 @@ export class Engine {
       async (o) => {
         const account = accounts.get(o.sodexAccountId);
         if (account === undefined) return;
+        if (!this.#lookupAllowed(snap, o.id, now)) return;
         this.#openChecks.set(o.id, now);
         const ref = { clOrdID: o.clOrdId, market: o.market, engine: o.engine };
         const lookedAt = ++this.#readSeq;
@@ -4628,15 +4789,19 @@ export class Engine {
           // chưa ghi gì, lượt sau thử lại.
           if (wasCancelling && o.status !== "cancelled") {
             let last: CancelResult | undefined;
-            try {
-              [last] = await this.#d.gateway.cancel(account, [ref], {
-                shard,
-                epoch: held.epoch,
-              });
-            } catch (error) {
-              if (error instanceof FencedError) throw error;
-              last = undefined;
-            }
+            // Account đang trong nấc chờ vì huỷ bị từ chối cả request: chưa gửi, như chưa rõ (thử lại lượt sau).
+            if (this.#cancelBlockedUntil(account.id, now) === null)
+              try {
+                const res = await this.#d.gateway.cancel(account, [ref], {
+                  shard,
+                  epoch: held.epoch,
+                });
+                this.#noteCancelResults(account.id, res);
+                [last] = res;
+              } catch (error) {
+                if (error instanceof FencedError) throw error;
+                last = undefined;
+              }
             // Request bị từ chối cả gói (429, key, nonce…) như chưa rõ: lệnh huỷ chưa được xử lý (review #216 F1).
             if (
               last === undefined ||

@@ -10,13 +10,7 @@ import {
   mmFairMessageSchema,
   type MmBookMessage,
 } from "@drift/shared";
-import {
-  loadSodexConfig,
-  RedisRateLimitStore,
-  SignedWriteClient,
-  SodexRestClient,
-  WsUserStream,
-} from "@drift/sodex";
+import { loadSodexConfig, RedisRateLimitStore, WsUserStream } from "@drift/sodex";
 import { connect } from "@nats-io/transport-node";
 import { eq } from "drizzle-orm";
 import { Redis } from "ioredis";
@@ -24,11 +18,12 @@ import pino from "pino";
 import { z } from "zod";
 
 import { BookCoalescer } from "./book-coalescer";
-import { Engine } from "./engine";
+import { Engine, LOOKUP_BUDGET } from "./engine";
 import type { AccountRef } from "./gateway";
 import { HttpGateway, httpSigner, marketInfo } from "./http-gateway";
 import { withLastUsed } from "./last-used";
 import { PaperGateway } from "./paper-gateway";
+import { engineSodexClients } from "./sodex-clients";
 
 // engine: chạy bot cho các shard mình giữ (ARCHITECTURE.md mục 3.3). Giá từ NATS (marketdata), fill từ
 // user stream SoDEX của account thuộc shard. SIGTERM: trả lease, chờ việc dở (stop_grace_period 30 s).
@@ -51,6 +46,8 @@ const env = z
     ENGINE_TICK_WAIT_MS: z.coerce.number().int().positive().default(2_000),
     /** Timeout mỗi lời gọi REST chỉ đọc của đối soát (tra lệnh, lịch sử khớp, vị thế). Lệnh ghi giữ timeout cũ. */
     ENGINE_SODEX_READ_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
+    /** Weight REST tối đa mỗi phút cho bước tra lệnh của worker (mặc định 600 = 50% bucket IP 1200). */
+    ENGINE_LOOKUP_BUDGET: z.coerce.number().int().positive().default(LOOKUP_BUDGET.weight),
   })
   .parse(process.env);
 const log = pino({
@@ -67,10 +64,14 @@ const options = {
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
 };
-const rest = new SodexRestClient(options);
+// Đọc của engine chừa 30% bucket IP cho lệnh ghi (DEC-TBD-engine-rest-budget).
+const { rest, reads, writer } = engineSodexClients({
+  ...options,
+  readTimeoutMs: env.ENGINE_SODEX_READ_TIMEOUT_MS,
+});
 const gateway = new HttpGateway(
   rest,
-  new SignedWriteClient(options),
+  writer,
   withLastUsed(
     httpSigner(env.SIGNER_URL, loadClientTls(process.env, "SIGNER_CLIENT")),
     async (id, at) => {
@@ -85,7 +86,7 @@ const gateway = new HttpGateway(
   sodex.builderId,
   sodex.builderExempt,
   // Cùng bucket rate limit IP (cùng store + egressKey), timeout ngắn hơn cho đọc của đối soát.
-  new SodexRestClient({ ...options, timeoutMs: env.ENGINE_SODEX_READ_TIMEOUT_MS }),
+  reads,
 );
 // User stream cho từng account + engine mà bot thật trong shard của worker này giao dịch (account chỉ chạy Perps không mở
 // stream Spot). Engine mở stream ngay khi nạp bot (trong vòng tick) và lệnh mở vị thế chỉ đi khi stream của engine đó
@@ -222,6 +223,7 @@ const engine = new Engine({
   leaseTtlMs: env.ENGINE_SHARD_LEASE_TTL_MS,
   feeCheckMs: env.ENGINE_FEE_CHECK_MS,
   tickWaitMs: env.ENGINE_TICK_WAIT_MS,
+  lookupBudget: env.ENGINE_LOOKUP_BUDGET,
   loopDelay: loopDelayMs,
   rules: (market) => marketInfo(rest, market),
   builderId: sodex.builderId,
