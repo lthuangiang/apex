@@ -4897,6 +4897,8 @@ describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease
   interface LeaseCtl {
     lose: () => void;
     restore: () => void;
+    /** Lần gọi Redis gia hạn kế tiếp treo tới khi `release()` (rồi lỗi); `started` xong khi nó bắt đầu. */
+    hold: () => { started: Promise<void>; release: () => void };
   }
   const flaky = (
     gw: Gateway,
@@ -4905,9 +4907,18 @@ describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease
   ): { e: RealEngine; ctl: LeaseCtl } => {
     let mono = 0;
     let down = false;
+    let held: { start: () => void; gate: Promise<void> } | null = null;
     const real = newRedis();
     const redis = new Proxy(real, {
       get(target, prop) {
+        if (prop === "eval" && held !== null) {
+          const h = held;
+          held = null;
+          return () => {
+            h.start();
+            return h.gate.then(() => Promise.reject(new Error("redis down")));
+          };
+        }
         if (prop === "eval" && down) return () => Promise.reject(new Error("redis down"));
         const v: unknown = Reflect.get(target, prop);
         return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
@@ -4937,6 +4948,18 @@ describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease
         lose: () => {
           mono += 1e9;
           down = true;
+        },
+        hold: () => {
+          let start: () => void = () => undefined;
+          let release: () => void = () => undefined;
+          const started = new Promise<void>((r) => {
+            start = r;
+          });
+          const gate = new Promise<void>((r) => {
+            release = r;
+          });
+          held = { start, gate };
+          return { started, release };
         },
         // Redis trở lại và thời gian trôi qua (quá chu kỳ gia hạn, nên lần gia hạn kế tiếp được thử ngay).
         restore: () => {
@@ -5176,10 +5199,14 @@ describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease
     await e.tick();
     expect((await botState(botId))?.state).toBe("stopping");
     expect((await ordersOf(botId)).find((o) => o.tag === "close")?.status).toBe("unknown");
-    // Không thấy trên SoDEX sau thời gian chờ: đối soát ghi not_placed (không có mã), Stop gửi lại cùng clOrdID.
+    // Không thấy trên SoDEX sau thời gian chờ: đối soát ghi not_placed (không có mã), Stop gửi lại cùng clOrdID sau nấc
+    // chờ đầu tiên.
     clock += 31_000;
     await e.tick();
     clock += 1;
+    await e.tick();
+    expect(gw.received.filter((o) => o.tag === "close")).toHaveLength(0);
+    clock += CLOSE_RETRY.backoffMs[0];
     await e.tick();
     expect(gw.received.filter((o) => o.tag === "close")).toEqual([
       expect.objectContaining({ side: "sell", quantity: "2", reduceOnly: true }),
@@ -5238,6 +5265,8 @@ describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease
     clock += 31_000;
     await b.e.tick();
     clock += 1;
+    await b.e.tick();
+    clock += CLOSE_RETRY.backoffMs[0];
     await b.e.tick();
     expect(gw.received.filter((o) => o.tag === "close")).toEqual([
       expect.objectContaining({ side: "sell", quantity: "2", reduceOnly: true }),
@@ -5300,5 +5329,110 @@ describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease
     expect(await eventsOf(botId, "Couldn't close your position")).toHaveLength(1);
     gw.notSent = null;
     await e.stop();
+  });
+
+  it("backs off and gives up on a close whose sends keep timing out without reaching SoDEX", async () => {
+    let submits = 0;
+    const gw = new (class extends FakeGateway {
+      override submit(
+        a: AccountRef,
+        list: readonly OrderIntent[],
+        fence: Fence,
+        rate?: number,
+      ): Promise<SubmitResult[]> {
+        if (list.some((o) => o.tag === "close")) {
+          submits += 1;
+          this.timeoutNext = "lost";
+        }
+        return super.submit(a, list, fence, rate);
+      }
+    })();
+    const { botId, e } = await stoppingWithPosition(gw, "STOPW-USD", "stop-timeouts");
+    // 4 phút nhịp 1 s. Mỗi lần: gửi, ~30 s sau đối soát không thấy, chờ 5 s → 15 s → 60 s rồi gửi lại.
+    for (let i = 0; i < 240; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    expect(submits).toBe(4);
+    expect((await botState(botId))?.state).toBe("stopping");
+    expect((await eventsOf(botId, "Close order not sent")).map((l) => l.why)).toEqual([
+      "SoDEX didn't receive the close order (NOT_PLACED). DeskLabs will try again.",
+    ]);
+    clock += CLOSE_RETRY.giveUpMs;
+    for (let i = 0; i < 40 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    const bot = await botState(botId);
+    expect(bot?.state).toBe("stopped");
+    expect(bot?.needsAttention).toBe(true);
+    expect((await eventsOf(botId, "Couldn't close your position")).map((l) => l.why)).toEqual([
+      "SoDEX didn't receive the close order (NOT_PLACED). Your STOPW-USD position is still open — close it on SoDEX.",
+    ]);
+    await e.stop();
+  });
+
+  it("does not undo a step over a fill that landed while the lease was being confirmed", async () => {
+    const { eq } = await import("drizzle-orm");
+    let armed: (() => void) | null = null;
+    const hooked = new Proxy(db, {
+      get(target, prop) {
+        const v: unknown = Reflect.get(target, prop);
+        if (prop === "transaction" && typeof v === "function")
+          return async (...args: unknown[]) => {
+            const out: unknown = await (v as (...a: unknown[]) => Promise<unknown>).apply(
+              target,
+              args,
+            );
+            armed?.();
+            armed = null;
+            return out;
+          };
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      },
+    });
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running", longGrid("GAP-USD"));
+    const f = flaky(gw, "gap", { db: hooked });
+    await f.e.tick();
+    await f.e.onPrice("GAP-USD", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    await f.e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock);
+    const buy = gw.received.find((o) => o.side === "buy" && o.tag !== "grid:init");
+    expect(buy).toBeDefined();
+    const position = async () => {
+      const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      return (rt?.state as { ledger: { position: string } }).ledger.position;
+    };
+    const before = await position();
+    // Giá thủng mức stop: bước chiến lược lưu state (transaction đầu tiên), rồi lease mất và lần gia hạn ở đầu `#execute`
+    // treo. Trong lúc đó một fill tới và được ghi.
+    const holder: { h: { started: Promise<void>; release: () => void } | null } = { h: null };
+    armed = () => {
+      f.ctl.lose();
+      holder.h = f.ctl.hold();
+    };
+    const step = f.e.onPrice("GAP-USD", "79", clock).catch(() => undefined);
+    for (let i = 0; i < 100 && holder.h === null; i += 1)
+      await new Promise((r) => setTimeout(r, 10));
+    const h = holder.h;
+    expect(h).not.toBeNull();
+    await h?.started;
+    await f.e.onFill(
+      accountId,
+      buy?.clOrdID ?? "",
+      buy?.quantity ?? "0",
+      buy?.price ?? "0",
+      "0",
+      clock,
+    );
+    const afterFill = await position();
+    expect(afterFill).not.toBe(before);
+    h?.release();
+    await step;
+    // Fill vẫn còn trong sổ cái: bước không bị hoàn tác đè lên nó.
+    expect(await position()).toBe(afterFill);
+    f.ctl.restore();
+    await f.e.stop();
   });
 });

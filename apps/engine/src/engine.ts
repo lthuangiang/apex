@@ -1696,7 +1696,11 @@ export class Engine {
       await this.#ack(r, event.at);
     }
     // Sự kiện thị trường: nếu lệnh chưa rời DRIFT thì hoàn tác bước này (state cũ, xoá dòng lệnh tạm) để thử lại.
-    await this.#execute(r, result.actions, event.at, accounting ? null : prev, { event, prev });
+    await this.#execute(r, result.actions, event.at, accounting ? null : prev, {
+      event,
+      prev,
+      produced: result.state,
+    });
   }
 
   /**
@@ -1890,22 +1894,33 @@ export class Engine {
     at: number,
     /** State trước bước chiến lược, để hoàn tác khi lệnh chưa rời DRIFT (sự kiện thị trường); null = không hoàn tác. */
     rollback: unknown = null,
-    /** Sự kiện và state trước bước chiến lược (để biết market của tin `copy_bot_skipped`). */
-    source: { event: StrategyEvent; prev: unknown } | null = null,
+    /**
+     * Sự kiện và state trước bước chiến lược (để biết market của tin `copy_bot_skipped`), và state bước này sinh ra
+     * (`produced`): chỉ hoàn tác khi `r.state` vẫn đúng là state đó.
+     */
+    source: { event: StrategyEvent; prev: unknown; produced: unknown } | null = null,
   ): Promise<void> {
     let places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
     // Một lần kiểm tra lease, TRƯỚC mọi tác dụng phụ (DEC-TBD-engine-lease-renew). Bước chiến lược theo thị trường (có
     // `rollback`) mà lease không xác nhận được: hoàn tác bước (state cũ trong bộ nhớ và DB), không ghi / gửi / huỷ gì; sự
     // kiện sau sinh lại đúng các lệnh này (clOrdID tất định). Fill / ack (rollback null) và lệnh engine tự dựng (Stop,
     // #stopBot tự kiểm tra trước) không chặn ở đây: fencing epoch ở DB và signer bảo vệ.
+    // Trong lúc chờ gia hạn (tối đa vài giây), fill / ack có thể đã được xử lý và đổi state: khi đó không hoàn tác (sẽ ghi
+    // đè sổ cái), đi tiếp và dựa vào fencing epoch như với fill / ack.
     if (
       rollback !== null &&
       actions.length > 0 &&
       source?.event.type !== "resumed" &&
       !(await this.#leaseConfirmed(r.shard))
     ) {
-      await this.#restoreState(r, rollback);
-      throw new LeaseExpiredError(r.shard);
+      if (r.state === source?.produced) {
+        await this.#restoreState(r, rollback);
+        throw new LeaseExpiredError(r.shard);
+      }
+      this.#d.log.warn(
+        { botId: r.botId, shard: r.shard },
+        "lease not confirmed but state moved on; sending under epoch fencing",
+      );
     }
     const cancels = actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : []));
     // BD-02: quyết định ghi cùng bước với lệnh đặt mang clOrdID của các lệnh đó, để Decisions hiện kết quả (Filled /
@@ -2058,7 +2073,13 @@ export class Engine {
           (x): x is Extract<typeof x, { outcome: "not_sent" }> => x.outcome === "not_sent",
         );
         const firstNotSent = notSent[0];
-        if (firstNotSent !== undefined && rollback !== null && notSent.length === results.length) {
+        if (
+          firstNotSent !== undefined &&
+          rollback !== null &&
+          notSent.length === results.length &&
+          // Fill / ack đã đổi state trong lúc gửi: không hoàn tác (sẽ ghi đè sổ cái); xử lý như từng lệnh not_sent.
+          r.state === source?.produced
+        ) {
           // Không lệnh nào rời DRIFT (signer lỗi): hoàn tác bước chiến lược và xoá dòng lệnh tạm. clOrdID tất
           // định nên lần thử sau (sau backoff) sinh lại đúng các lệnh này.
           const ids = toSend.map((o) => o.clOrdID);
@@ -2871,46 +2892,71 @@ export class Engine {
    * - lease của shard không xác nhận được (không ghi dòng lệnh nào);
    * - đang chờ theo nấc thử lại `CLOSE_RETRY` sau lần trước chưa gửi được;
    * - lệnh đóng còn `unknown` (chờ #reconcile; quy tắc 1.7);
-   * - lệnh đóng chưa rời DeskLabs: `not_placed` do signer / key lỗi, hoặc do đối soát không thấy trên SoDEX. Dòng
-   *   `not_placed` được xoá trước lần gửi lại cùng clOrdID (unique theo account + clOrdID từng chặn lần gửi lại).
-   * Mỗi lý do ghi Decisions một lần. Key không dùng được, hoặc vẫn chưa gửi được sau `CLOSE_RETRY.giveUpMs`: kết thúc Stop
-   * với vị thế còn mở, bật Needs attention, ghi một dòng "Couldn't close your position".
+   * - lệnh đóng chưa tới SoDEX: `not_placed` do signer / key lỗi (ngay sau khi gửi), hoặc do đối soát không thấy trên
+   *   SoDEX (timeout, chuyển shard lúc ký; thấy ở lượt sau). Cả hai đi chung một đường (#closeFailed): tính một lần thử,
+   *   xoá dòng `not_placed` (unique theo account + clOrdID từng chặn lần gửi lại), chờ theo nấc, ghi Decisions một lần mỗi
+   *   lý do. Key không dùng được, hoặc vẫn chưa tới SoDEX sau `CLOSE_RETRY.giveUpMs`: kết thúc Stop với vị thế còn mở,
+   *   bật Needs attention, ghi một dòng "Couldn't close your position".
    */
   async #sendCloses(r: Runner, closes: StrategyAction[]): Promise<boolean> {
     const list = closes.flatMap((a) => (a.type === "place" ? [a.order] : []));
     const ids = list.map((o) => o.clOrdID);
     if (ids.length === 0) return true;
     const now = this.#d.now();
-    const retry = r.closeRetry;
-    if (retry !== null && now < retry.nextAt) return false;
+    if (r.closeRetry !== null && now < r.closeRetry.nextAt) return false;
     if (!(await this.#leaseConfirmed(r.shard))) {
       this.#d.log.warn({ botId: r.botId }, "close not sent: shard lease not confirmed");
       return false;
     }
     const mine = and(eq(orders.sodexAccountId, r.account.id), inArray(orders.clOrdId, ids));
-    // `not_placed` = chưa rời DeskLabs, hoặc đối soát đã không thấy trên SoDEX sau NOT_FOUND_AFTER_MS: gửi lại được.
-    await this.#fenced(r, (tx) =>
-      tx.delete(orders).where(and(mine, eq(orders.status, "not_placed"))),
-    );
+    const read = () =>
+      this.#d.db
+        .select({ clOrdId: orders.clOrdId, status: orders.status, rejectCode: orders.rejectCode })
+        .from(orders)
+        .where(mine);
+    // Lần gửi trước đối soát ra `not_placed` (SoDEX không có lệnh): tính là một lần thử không thành.
+    const before = await read();
+    if (before.some((o) => o.status === "not_placed"))
+      return this.#closeFailed(r, list, before, now);
+    if (before.some((o) => o.status === "unknown")) return false;
     await this.#execute(r, closes, now);
-    const rows = await this.#d.db
-      .select({ clOrdId: orders.clOrdId, status: orders.status, rejectCode: orders.rejectCode })
-      .from(orders)
-      .where(mine);
+    const rows = await read();
     if (rows.some((o) => o.status === "unknown")) return false;
+    if (rows.some((o) => o.status === "not_placed")) return this.#closeFailed(r, list, rows, now);
+    r.closeRetry = null;
+    return true;
+  }
+
+  /**
+   * Lệnh đóng chưa tới SoDEX: xoá dòng `not_placed` để lần sau gửi lại cùng clOrdID, rồi chờ theo nấc (trả `false`), hoặc
+   * bỏ hẳn (trả `true`: kết thúc Stop với vị thế còn mở).
+   */
+  async #closeFailed(
+    r: Runner,
+    list: readonly OrderIntent[],
+    rows: readonly { clOrdId: string; status: string; rejectCode: string | null }[],
+    now: number,
+  ): Promise<boolean> {
     const failed = rows.filter((o) => o.status === "not_placed");
-    const first = failed[0];
-    if (first === undefined) {
-      r.closeRetry = null;
-      return true;
-    }
-    const code = first.rejectCode ?? "NOT_PLACED";
+    const code = failed[0]?.rejectCode ?? "NOT_PLACED";
     const markets = [
       ...new Set(
         list.filter((o) => failed.some((f) => f.clOrdId === o.clOrdID)).map((o) => o.market),
       ),
     ].join(", ");
-    const b = retry ?? { since: now, attempts: 0, nextAt: now, reasons: new Set<string>() };
+    await this.#fenced(r, (tx) =>
+      tx.delete(orders).where(
+        and(
+          eq(orders.sodexAccountId, r.account.id),
+          inArray(
+            orders.clOrdId,
+            failed.map((f) => f.clOrdId),
+          ),
+          eq(orders.status, "not_placed"),
+        ),
+      ),
+    );
+    const b = r.closeRetry ?? { since: now, attempts: 0, nextAt: now, reasons: new Set<string>() };
     const keyBroken = code === "key_unusable" || code === "key_not_active";
     if (keyBroken || now - b.since >= CLOSE_RETRY.giveUpMs) {
       r.closeRetry = null;
