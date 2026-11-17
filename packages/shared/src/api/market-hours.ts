@@ -54,7 +54,7 @@ export const MARKET_HOURS_MIN_CUTS = 5;
 export const MARKET_HOURS_CALIBRATION_MIN_HOURS = 3;
 /**
  * Dòng "Est. CPM (estimate)" gắn "Thin" khi C dựa trên ít hơn chừng này ô (giờ × market), hoặc khi dùng C mặc định
- * (DEC-TBD-market-hours-cleanup).
+ * (DEC-297).
  */
 export const MARKET_HOURS_CALIBRATION_THIN_HOURS = 10;
 /** Cửa sổ đo R, số fill một bot-hour và C (ngày), không theo kỳ 7 / 30 ngày của trang (DEC-293). */

@@ -122,7 +122,7 @@ const factor = (v: string): string => fx(v, 2);
 
 /**
  * "Est. CPM (estimate)" gắn "Thin" khi C dựa trên ít hơn `MARKET_HOURS_CALIBRATION_THIN_HOURS` ô, hoặc là C mặc định
- * (DEC-TBD-market-hours-cleanup).
+ * (DEC-297).
  */
 export const calibrationThin = (est: MarketHoursView["estimate"]): boolean =>
   est.calibrationScope.source === "default" ||
@@ -150,7 +150,7 @@ function runsOf(picked: ReadonlySet<number>): [number, number][] {
 }
 
 /**
- * Dòng tóm tắt đầu kết quả (DEC-TBD-market-hours-cleanup), số quá khứ của khối 1, không dự báo: lấy giờ theo "Hot days"
+ * Dòng tóm tắt đầu kết quả (DEC-297), số quá khứ của khối 1, không dự báo: lấy giờ theo "Hot days"
  * từ cao xuống (bằng nhau thì ưu tiên giờ nối dài một đoạn đã chọn, rồi giờ sớm hơn), gộp giờ liền nhau thành đoạn, dừng
  * trước khi phải mở đoạn thứ 4 hoặc khi tới giờ 0%. Đoạn xếp theo % cao nhất của đoạn (bằng nhau thì giờ sớm hơn).
  * Null khi chưa đủ `SUMMARY_MIN_DAYS` ngày có nến, không giờ nào nóng, hoặc mọi giờ nóng như nhau.
