@@ -637,6 +637,8 @@ export const fills = pgTable(
   (t) => [
     uniqueIndex("fills_trade_key").on(t.sodexTradeId),
     index("fills_order_idx").on(t.orderId),
+    /** Tổng theo kỳ của Platform Stats (volume, builder fee, Net cost / $1M) lọc theo giờ khớp. */
+    index("fills_filled_at_idx").on(t.filledAt),
   ],
 );
 

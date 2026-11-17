@@ -5284,6 +5284,8 @@
       "colBots": "Bots",
       "colVolume": "Volume (USDC)",
       "colFeeM": "Fees / $1M",
+      "colNetCostM": "Net cost / $1M",
+      "netCostHelp": "Net trading loss per $1M of volume in this period, fees included. A gain shows $0.00. Fees / $1M is only the fee part.",
       "colFill": "Filled",
       "colReject": "Rejected",
       "runningOf": "{r} of {n} running",

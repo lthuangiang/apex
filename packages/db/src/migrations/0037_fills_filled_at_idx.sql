@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS "fills_filled_at_idx" ON "fills" USING btree ("filled_at");
