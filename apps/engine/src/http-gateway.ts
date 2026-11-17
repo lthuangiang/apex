@@ -465,14 +465,25 @@ export class HttpGateway implements Gateway {
     }));
   }
 
-  async readPosition(
+  async readPositions(
     account: AccountRef,
-    market: string,
-  ): Promise<{ size: string; entryPrice: string } | null> {
+  ): Promise<Map<string, { size: string; entryPrice: string }>> {
     refusePaper(account);
     const state = await this.rest.getPerpsAccountState(account.address);
-    const p = state.P.find((x) => x.s === market && !dec(x.sz).isZero());
-    return p === undefined ? null : { size: p.sz, entryPrice: p.ep };
+    const out = new Map<string, { size: string; entryPrice: string }>();
+    for (const p of state.P) {
+      if (dec(p.sz).isZero()) continue;
+      // Một market có thể có nhiều dòng (cross / isolated): cộng khối lượng có dấu, giữ giá vào của dòng đầu.
+      const prev = out.get(p.s);
+      out.set(
+        p.s,
+        prev === undefined
+          ? { size: p.sz, entryPrice: p.ep }
+          : { size: dec(prev.size).add(p.sz).toString(), entryPrice: prev.entryPrice },
+      );
+    }
+    for (const [m, p] of out) if (dec(p.size).isZero()) out.delete(m);
+    return out;
   }
 
   async tradesOf(

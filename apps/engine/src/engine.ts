@@ -215,8 +215,65 @@ const UNCONFIRMED_CANCEL_MS = 600_000;
 export const MAKER_BACKFILL_MS = 10_000;
 /** Chỉ đối soát lệnh gửi trong khoảng này (khớp `VM_KEEP_DONE_MS` của chiến lược). */
 const MAKER_BACKFILL_WINDOW_MS = 600_000;
-/** Market Making: đọc vị thế thật trên SoDEX mỗi chừng này ms để phát hiện lệch sổ (DEC-100). */
-export const MAKER_POSITION_MS = 30_000;
+/**
+ * Kiểm tra vị thế thật với sổ cái (DEC-306): mỗi account có bot thật trên Perps đọc account state
+ * SoDEX MỘT lần mỗi chừng này ms (dùng chung cho Market Making, DEC-100: vị thế thật đưa vào chiến lược bằng
+ * `positionSync`).
+ */
+export const POSITION_CHECK_MS = 30_000;
+/** Bậc 1: cùng một độ lệch (vị thế thật và sổ cái không đổi) qua các lần kiểm tra liên tiếp kéo dài chừng này ms. */
+export const POSITION_CONFIRM_MS = 60_000;
+/** Bỏ cảnh báo lệch vị thế sau chừng này lần kiểm tra khớp liên tiếp. */
+export const POSITION_CLEAR_CHECKS = 2;
+/** Bậc 1 đọc lịch sử khớp cho tối đa chừng này lệnh gần nhất của bot trên market (chưa khớp đủ). */
+const POSITION_BACKFILL_ORDERS = 200;
+/** Áp version mới trong chừng này ms gần đây (sổ cái bắt đầu lại): lệch vị thế được ghi với nguyên nhân "version". */
+export const POSITION_VERSION_WINDOW_MS = 600_000;
+export const POSITION_MISMATCH_DECISION = "Position doesn't match";
+export const POSITION_UNTRACKED_DECISION = "Position not tracked";
+export const POSITION_MATCH_DECISION = "Position matches again";
+export const positionMismatchWhy = (market: string, real: string, ledger: string): string =>
+  `Your ${market} position on SoDEX is ${dec(real).toString()}; the bot tracked ${dec(ledger).toString()}. The bot won't start new trades that add to it until this is fixed. Check Positions on SoDEX.`;
+export const positionUntrackedWhy = (market: string, real: string): string =>
+  `Settings changed while your ${market} position (${dec(real).toString()}) was open, so the bot no longer tracks it. The bot won't start new trades that add to it, and a grid may wait to start until it's closed. Close or manage the position on SoDEX.`;
+export const positionMatchWhy = (market: string, real: string): string =>
+  `Your ${market} position on SoDEX (${dec(real).toString()}) matches the bot again. The bot trades normally.`;
+
+/**
+ * Vị thế thật hiệu dụng cho phần chặn (M2): vị thế thật lúc đọc + phần sổ cái đã đổi từ lúc đọc (fill ghi sau lần đọc).
+ * Không có sổ cái thì dùng số đọc được.
+ */
+export function effectiveReal(
+  realAtRead: string,
+  ledgerAtRead: string,
+  ledgerNow: string | null,
+): string {
+  return ledgerNow === null
+    ? dec(realAtRead).toString()
+    : dec(realAtRead).add(dec(ledgerNow).sub(ledgerAtRead)).toString();
+}
+
+/** Nguyên nhân lệch: trade bị mất (sau khi đã đọc lịch sử khớp) hoặc sổ cái bắt đầu lại khi áp version mới. */
+type MismatchCause = "trades" | "version";
+interface MismatchEntry {
+  /** Vị thế thật và sổ cái ở lần đọc gần nhất (bền: lúc cảnh báo). */
+  real: string;
+  ledger: string;
+  since: string;
+  cause?: MismatchCause;
+}
+
+/** Một độ lệch vị thế đang theo dõi (trong bộ nhớ), theo `bot:market`. */
+interface PositionWatch {
+  /** Hiệu số thật − sổ cái (M5). */
+  delta: string;
+  /** Lần đầu thấy hiệu số này. */
+  firstSeen: number;
+  /** Đã đọc lịch sử khớp cho hiệu số này (bậc 1). */
+  backfilledAt: number | null;
+  /** Số lần khớp liên tiếp khi đã cảnh báo (bậc 2). */
+  matches: number;
+}
 /**
  * Huỷ chưa xong (request không rời DRIFT vì signer lỗi, hoặc SoDEX không trả kết quả rõ): thử lại sau mỗi chừng này
  * ms cho tới khi SoDEX xác nhận. Không thử lại thì lệnh còn sống trên sổ và còn "open" trong DRIFT, chặn mọi lệnh
@@ -299,6 +356,7 @@ const SHARD_PHASES = [
   "retryCancels",
   "reconcileMaker",
   "backfillFills",
+  "checkPositions",
   "checkFees",
   "clock",
 ] as const;
@@ -469,6 +527,22 @@ interface Runner {
   engines: readonly ("spot" | "perps")[];
   /** Lệnh đóng của Stop chưa gửi được: nấc thử lại và các lý do đã ghi Decisions (#sendCloses). */
   closeRetry: { since: number; attempts: number; nextAt: number; reasons: Set<string> } | null;
+  /**
+   * Market Perps mà vị thế thật lệch sổ cái sau khi đã đối soát trade (`bots.position_mismatch`,
+   * DEC-306): `real` cập nhật mỗi lần kiểm tra. Chỉ được gửi lệnh không làm tăng |real|.
+   */
+  positionMismatch: Map<string, MismatchEntry>;
+  /** Đã log "giữ bước vì lệch vị thế" trong đợt lệch này (một lần mỗi đợt). */
+  mismatchWaitLogged: boolean;
+  /** Sự kiện `resumed` bị giữ vì lệch vị thế: gửi lại ở sự kiện thị trường kế tiếp không còn bị giữ. */
+  resumeOwed: boolean;
+  /** Lúc version đang chạy được áp (null = không rõ). */
+  appliedAt: number | null;
+  /**
+   * Lần áp version gần nhất (bằng `initialState`) bỏ một sổ cái còn vị thế ở market Perps nào đó: chỉ khi đó lệch vị thế
+   * mới được coi là do đổi version (N2). Chỉ nhớ trong bộ nhớ; nạp lại thì đi theo các bậc thường.
+   */
+  resetDroppedPosition: boolean;
 }
 
 /**
@@ -621,7 +695,10 @@ export class Engine {
   readonly #fillQueues = new Map<string, Promise<void>>();
   /** Lần cuối đọc trade / vị thế cho Market Making, theo `account:market` (DEC-100). */
   readonly #makerBackfill = new Map<string, number>();
-  readonly #makerPosition = new Map<string, number>();
+  /** Lần cuối kiểm tra vị thế thật của account (POSITION_CHECK_MS). */
+  readonly #positionCheckAt = new Map<string, number>();
+  /** Độ lệch vị thế đang theo dõi, theo `bot:market`. */
+  readonly #positionWatch = new Map<string, PositionWatch>();
   /** Lần cuối so lịch sử khớp cho lưới an toàn fill, theo `account:engine:market`. */
   readonly #fillBackfill = new Map<string, number>();
   /** Lệnh `unknown` SoDEX đã nhận: số lần tra, lần tra gần nhất, số lần tra thành công mà vẫn không thấy. */
@@ -739,6 +816,7 @@ export class Engine {
       retryCancels: (n) => this.#retryCancels(n),
       reconcileMaker: (n) => this.#reconcileMaker(n),
       backfillFills: (n) => this.#backfillFills(n, snap),
+      checkPositions: (n) => this.#checkPositions(n),
       checkFees: (n) => this.#checkFees(n, snap.accounts.get(n) ?? []),
       clock: (n) => this.#clock(n),
     };
@@ -1954,6 +2032,19 @@ export class Engine {
       skipGate: new SkipGate(),
       engines: bot.engine === "spot+perps" ? ["spot", "perps"] : [bot.engine],
       closeRetry: null,
+      // Cảnh báo đã ghi trước lần nạp lại (khởi động lại, chuyển shard): giữ chặn, không ghi lại Decisions.
+      positionMismatch: new Map(Object.entries(bot.positionMismatch ?? {})),
+      mismatchWaitLogged: false,
+      // `resumed` bị giữ vì lệch vị thế chỉ nhớ trong bộ nhớ: nạp lại một bot đang chạy, đang lệch mà chiến lược còn tự
+      // dừng (halted) thì coi như còn nợ `resumed` (N1). Không áp cho bot không lệch: chiến lược vừa halted mà bot chưa
+      // kịp sang pausing không được chạy lại.
+      resumeOwed:
+        bot.state === BotState.running &&
+        Object.keys(bot.positionMismatch ?? {}).length > 0 &&
+        saved?.versionId === version.id &&
+        (saved.state as { phase?: unknown } | null)?.phase === "halted",
+      appliedAt: version.appliedAt?.getTime() ?? null,
+      resetDroppedPosition: false,
     };
   }
 
@@ -2057,8 +2148,21 @@ export class Engine {
         payload: { botId: r.botId, version: pending.version },
       });
     });
+    // Sổ cái cũ còn vị thế Perps mà version mới bắt đầu lại từ `initialState` (N2).
+    r.resetDroppedPosition =
+      entry.module.applyVersion === undefined &&
+      this.#perpMarketsOf(
+        r.strategy,
+        r.market,
+        r.engines.includes("perps") ? "perps" : "spot",
+        r.config,
+      ).some((m) => {
+        const p = positionOf(r.state, m, "perps");
+        return p !== null && !dec(p).isZero();
+      });
     r.versionId = pending.id;
     r.version = pending.version;
+    r.appliedAt = this.#d.now();
     r.config = config;
     // Version đã ghi: fill tới ngay lúc ghi thì giữ state hiện tại (còn vị thế) và ghi lại ngay với version mới, không
     // bao giờ quên vị thế kể cả khi engine nạp lại.
@@ -2138,7 +2242,8 @@ export class Engine {
   }
 
   /** Đưa event cho chiến lược (chỉ khi bot đang chạy), lưu state, thực hiện hành động. */
-  async #feed(r: Runner, event: StrategyEvent): Promise<void> {
+  async #feed(r: Runner, incoming: StrategyEvent): Promise<void> {
+    let event = incoming;
     const state = await this.#currentState(r.botId);
     const live =
       state === BotState.starting || state === BotState.running || state === BotState.resuming;
@@ -2181,6 +2286,22 @@ export class Engine {
       !accounting && event.type !== "resumed" && r.engines.some((e) => !this.#streamReady(r, e))
         ? await this.#pendingReducing(r)
         : null;
+    // `resumed` bị giữ vì lệch vị thế (DEC-306): sự kiện thị trường kế tiếp chạy lại `resumed` (giá
+    // mới nhất) thay cho chính nó, để chiến lược tự pause dựng lại lệnh khi bước không còn bị giữ.
+    if (r.resumeOwed && live && !accounting && event.type !== "resumed") {
+      const prices = Object.fromEntries(
+        this.#marketsOf(r.market, r.config).flatMap((m) => {
+          const p = this.#lastPrice.get(m);
+          return p === undefined ? [] : [[m, p] as const];
+        }),
+      );
+      event = { type: "resumed", at: event.at, prices };
+    }
+    // Vị thế thật lệch sổ cái (DEC-306): lệnh giảm đang chờ đọc TRƯỚC bước (như cổng stream).
+    const mismatchReducing =
+      !accounting && r.positionMismatch.size > 0
+        ? (reducing ?? (await this.#pendingReducing(r)))
+        : null;
     // Volume Farm: giá tốt nhất SoDEX mới nhất (bộ nhớ) vào state trước bước này, giữ đúng giờ nhận để tuổi sổ là tuổi
     // thật. Chỉ đổi state trong bộ nhớ; được ghi DB cùng bước này nếu bước có gì để ghi (DEC-298).
     if (r.strategy === Strategy.volumeFarm && !accounting) {
@@ -2202,6 +2323,22 @@ export class Engine {
     // Sự kiện thị trường muốn mở / tăng vị thế khi user stream của engine đó chưa subscribe xong: bỏ cả bước (state không
     // đổi), nhịp sau chiến lược quyết lại. Bước chỉ giảm vị thế / đóng / stop vẫn đi (DEC-303).
     if (reducing !== null && this.#opensBeforeStream(r, event, result.actions, reducing)) return;
+    // Lệch vị thế (DEC-306): bước theo thị trường (hoặc `resumed`) có lệnh làm tăng |vị thế thật| bị
+    // bỏ CẢ bước, state không đổi (không bao giờ gửi một phần bước, ví dụ một chân của Funding Arb), nhịp sau chiến lược
+    // quyết lại. Không báo gì cho chiến lược (không `orderReject` → không pause, không `orderDone` → không lặp vòng / không
+    // lệnh "ma"). Fill / ack và bước chỉ giảm / đóng / stop luôn đi.
+    if (mismatchReducing !== null && this.#opensBeyondReal(r, result.actions, mismatchReducing)) {
+      if (event.type === "resumed") r.resumeOwed = true;
+      if (!r.mismatchWaitLogged) {
+        r.mismatchWaitLogged = true;
+        this.#d.log.info(
+          { botId: r.botId, markets: [...r.positionMismatch.keys()], event: event.type },
+          "strategy step held: it would add to a position that does not match the ledger; waiting",
+        );
+      }
+      return;
+    }
+    if (event.type === "resumed") r.resumeOwed = false;
     r.state = result.state;
     // Bot copy tiền thật: lệnh mở vừa khớp → thêm outbox trong CÙNG transaction (DEC-212).
     const opened = this.#copyAlerts(r, () =>
@@ -3155,7 +3292,11 @@ export class Engine {
       if (next === null) return;
       await tx
         .update(bots)
-        .set({ state: next, ...(reason === null ? {} : { reasonCode: reason }) })
+        .set({
+          state: next,
+          ...(reason === null ? {} : { reasonCode: reason }),
+          ...(next === BotState.stopped ? { positionMismatch: null } : {}),
+        })
         .where(eq(bots.id, r.botId));
       await tx.insert(outbox).values({
         topic: `user.${r.account.id}.bot`,
@@ -3413,6 +3554,8 @@ export class Engine {
           state: next,
           ...(reason === null ? {} : { reasonCode: reason }),
           ...(planned ? { needsAttention: false } : {}),
+          // Bot đã dừng không còn quản lý vị thế: bỏ cảnh báo lệch vị thế (DEC-306).
+          ...(next === BotState.stopped ? { positionMismatch: null } : {}),
         })
         .where(eq(bots.id, r.botId));
       // Sự kiện "Stopped" (BD-06) cùng transaction với lần đổi trạng thái: đúng một lần, không mất khi engine chết giữa
@@ -4231,10 +4374,6 @@ export class Engine {
           this.#d.log.warn({ err: error, botId: r.botId }, "orphan sweep failed");
         });
       }
-      if (now - (this.#makerPosition.get(key) ?? 0) >= MAKER_POSITION_MS) {
-        this.#makerPosition.set(key, now);
-        await this.#syncMakerPosition(r, now);
-      }
     }
   }
 
@@ -4491,34 +4630,371 @@ export class Engine {
     });
   }
 
-  async #syncMakerPosition(r: Runner, now: number): Promise<void> {
-    const others = await this.#d.db
-      .select({ id: bots.id })
+  // ---------- kiểm tra vị thế thật (DEC-306) ----------
+
+  /** Market Perps bot giữ vị thế (Funding Arb: chân Perps; Copy Trade: mọi market của bot). Bot chỉ Spot: không có. */
+  #perpMarketsOf(strategy: string, market: string, engine: string, config: unknown): string[] {
+    if (engine === "spot") return [];
+    const c = (config ?? {}) as Record<string, unknown>;
+    if (typeof c.perpMarket === "string") return [c.perpMarket];
+    if (strategy === Strategy.copyTrade) return [...new Set([market, ...copyMarkets(c)])];
+    return [market];
+  }
+
+  /**
+   * Mỗi POSITION_CHECK_MS, mỗi account có runner thật trên Perps: đọc account state SoDEX MỘT lần (mọi vị thế), rồi so
+   * với sổ cái của runner ở từng market chỉ có đúng MỘT bot thật của account (kể cả bot paused: vị thế không chia được
+   * giữa nhiều bot). Market Making nhận vị thế thật bằng `positionSync` (DEC-100), chiến lược tự xử lý. Không market nào
+   * so được thì không đọc. Đọc lỗi (rate limit, mạng) thì bỏ lượt, không làm gì. Market có thêm bot thứ hai: bỏ cảnh báo
+   * đã ghi của market đó (không còn biết vị thế nào là của bot nào).
+   */
+  async #checkPositions(shard: number): Promise<void> {
+    const now = this.#d.now();
+    const runners = [...this.#runners.values()].filter(
+      (r) => r.shard === shard && !r.paper && r.engines.includes("perps"),
+    );
+    const due = [...new Set(runners.map((r) => r.account.id))].filter(
+      (id) =>
+        now - (this.#positionCheckAt.get(id) ?? Number.NEGATIVE_INFINITY) >= POSITION_CHECK_MS,
+    );
+    if (due.length === 0) return;
+    for (const id of due) this.#positionCheckAt.set(id, now);
+    const rows = await this.#d.db
+      .select({
+        id: bots.id,
+        accountId: bots.sodexAccountId,
+        strategy: bots.strategy,
+        market: bots.market,
+        engine: bots.engine,
+        state: bots.state,
+        mismatch: bots.positionMismatch,
+        config: botVersions.config,
+      })
       .from(bots)
+      .leftJoin(botVersions, eq(botVersions.id, bots.activeVersionId))
       .where(
         and(
-          eq(bots.sodexAccountId, r.account.id),
-          eq(bots.market, r.market),
+          inArray(bots.sodexAccountId, due),
           eq(bots.mode, "live"),
-          inArray(bots.state, [
-            BotState.starting,
-            BotState.running,
-            BotState.pausing,
-            BotState.paused,
-            BotState.resuming,
-            BotState.stopping,
-          ]),
+          inArray(bots.state, [...ENGINE_ACTIVE_STATES, BotState.paused]),
         ),
       );
-    if (others.some((b) => b.id !== r.botId)) return;
-    const pos = await r.gateway.readPosition(r.account, r.market);
-    await this.#feed(r, {
-      type: "positionSync",
-      at: now,
-      market: r.market,
-      size: pos?.size ?? "0",
-      entryPrice: pos?.entryPrice ?? "0",
+    const holders = new Map<string, number>();
+    for (const b of rows)
+      for (const m of this.#perpMarketsOf(b.strategy, b.market, b.engine, b.config)) {
+        const key = `${b.accountId}:${m}`;
+        holders.set(key, (holders.get(key) ?? 0) + 1);
+      }
+    for (const b of rows) {
+      const shared = Object.keys(b.mismatch ?? {}).filter(
+        (m) => (holders.get(`${b.accountId}:${m}`) ?? 0) > 1,
+      );
+      if (shared.length > 0) await this.#dropMismatch(b.id, shared);
+    }
+    const stateOf = new Map(rows.map((b) => [b.id, b.state]));
+    for (const accountId of due) {
+      const pairs = runners
+        .filter((r) => r.account.id === accountId)
+        .flatMap((r) =>
+          this.#perpMarketsOf(r.strategy, r.market, "perps", r.config).flatMap((m) => {
+            if (holders.get(`${accountId}:${m}`) === 1 && stateOf.has(r.botId)) return [{ r, m }];
+            this.#positionWatch.delete(`${r.botId}:${m}`);
+            return [];
+          }),
+        );
+      const first = pairs[0];
+      if (first === undefined) continue;
+      let positions: Map<string, { size: string; entryPrice: string }>;
+      try {
+        positions = await first.r.gateway.readPositions(first.r.account);
+      } catch (error) {
+        this.#d.log.info(
+          { err: error, accountId },
+          "position check skipped: could not read the SoDEX account state",
+        );
+        continue;
+      }
+      for (const { r, m } of pairs) {
+        const p = positions.get(m);
+        try {
+          if (r.strategy === Strategy.volumeMaker)
+            await this.#feed(r, {
+              type: "positionSync",
+              at: now,
+              market: m,
+              size: p?.size ?? "0",
+              entryPrice: p?.entryPrice ?? "0",
+            });
+          else
+            await this.#comparePosition(r, m, p?.size ?? "0", stateOf.get(r.botId), now, {
+              // Chỉ khi lần áp version gần đây bỏ một sổ cái còn vị thế (`initialState`, DEC-38; N2). Volume Farm chỉ áp
+              // khi phẳng (DEC-304), version đang chờ chưa đổi sổ cái: lệch lúc đó đi theo bậc 1 / 2 (có đọc trade).
+              versionChange:
+                r.resetDroppedPosition &&
+                r.appliedAt !== null &&
+                now - r.appliedAt < POSITION_VERSION_WINDOW_MS,
+            });
+        } catch (error) {
+          if (error instanceof FencedError) throw error;
+          this.#d.log.warn({ err: error, botId: r.botId, market: m }, "position check failed");
+        }
+      }
+    }
+  }
+
+  /** Bỏ cảnh báo của các market này (không ghi Decisions): bot không còn là bot duy nhất trên market, hoặc đã dừng. */
+  async #dropMismatch(botId: string, markets: readonly string[]): Promise<void> {
+    const r = this.#runners.get(botId);
+    const write = async (tx: Db) => {
+      const [b] = await tx
+        .select({ mismatch: bots.positionMismatch })
+        .from(bots)
+        .where(eq(bots.id, botId))
+        .for("update");
+      const left = Object.fromEntries(
+        Object.entries(b?.mismatch ?? {}).filter(([m]) => !markets.includes(m)),
+      );
+      await tx
+        .update(bots)
+        .set({ positionMismatch: Object.keys(left).length === 0 ? null : left })
+        .where(eq(bots.id, botId));
+    };
+    if (r === undefined) await this.#d.db.transaction(write);
+    else {
+      await this.#fenced(r, write);
+      const next = new Map(r.positionMismatch);
+      for (const m of markets) next.delete(m);
+      r.positionMismatch = next;
+      if (next.size === 0) r.mismatchWaitLogged = false;
+    }
+    for (const m of markets) this.#positionWatch.delete(`${botId}:${m}`);
+    this.#d.log.info(
+      { botId, markets },
+      "position mismatch dropped: another bot of the account trades this market",
+    );
+  }
+
+  /**
+   * So vị thế thật với sổ cái của bot trên một market, theo ba bậc (người dùng duyệt 2026-11-17; không pause, không bao
+   * giờ tự đóng vị thế). "Cùng độ lệch" = hiệu số thật − sổ cái không đổi (fill đã ghi đổi cả hai số như nhau; fill
+   * đang bay làm hiệu số đổi).
+   * - bậc 0: lần đầu thấy lệch → chỉ ghi nhớ;
+   * - bậc 1: cùng hiệu số qua các lần kiểm tra liên tiếp kéo dài POSITION_CONFIRM_MS, không có lệnh nào của bot đang bay
+   *   → đọc lịch sử khớp của account × market một lần (lưới an toàn fill, DEC-303). Bot vừa áp version mới bằng
+   *   `initialState` (sổ cái bắt đầu lại trong khi vị thế cũ còn trên SoDEX): không đọc trade, ghi ngay cảnh báo nguyên
+   *   nhân "version" (một dòng Decisions riêng);
+   * - bậc 2: lần kiểm tra sau đó vẫn cùng hiệu số → `bots.position_mismatch` + một dòng Decisions; bước chiến lược theo thị
+   *   trường làm tăng |vị thế thật| bị bỏ cả bước (#feed), lãi / lỗ hiện "Not available" (api).
+   * Đã cảnh báo thì khớp POSITION_CLEAR_CHECKS lần liên tiếp mới bỏ (một dòng Decisions).
+   */
+  async #comparePosition(
+    r: Runner,
+    market: string,
+    real: string,
+    botState: BotState | undefined,
+    now: number,
+    opts: { versionChange: boolean },
+  ): Promise<void> {
+    // Chỉ bot đang chạy ổn định: lúc starting / pausing / resuming / stopping sổ cái đang đổi.
+    if (botState !== BotState.running) return;
+    const ledger = positionOf(r.state, market, "perps");
+    const step = r.ctx.rules[market]?.stepSize;
+    if (ledger === null || step === undefined) return;
+    const key = `${r.botId}:${market}`;
+    const w = this.#positionWatch.get(key);
+    const alerted = r.positionMismatch.get(market);
+    const delta = dec(real).sub(ledger);
+    const half = dec(step).div(2);
+    const fields = { botId: r.botId, market, real, ledger };
+    if (delta.abs().lte(half)) {
+      if (alerted === undefined) {
+        if (w?.backfilledAt != null)
+          this.#d.log.info(fields, "position matches the ledger after reading SoDEX trades");
+        this.#positionWatch.delete(key);
+        return;
+      }
+      const matches = (w?.matches ?? 0) + 1;
+      if (matches < POSITION_CLEAR_CHECKS) {
+        this.#positionWatch.set(key, {
+          delta: delta.toString(),
+          firstSeen: w?.firstSeen ?? now,
+          backfilledAt: w?.backfilledAt ?? null,
+          matches,
+        });
+        return;
+      }
+      this.#positionWatch.delete(key);
+      await this.#clearMismatch(r, market, real, now);
+      return;
+    }
+    if (alerted !== undefined) {
+      // Vẫn lệch: chặn theo lần đọc mới nhất (vị thế thật và sổ cái lúc đọc, M2); không ghi thêm Decisions.
+      r.positionMismatch.set(market, { ...alerted, real, ledger });
+      this.#positionWatch.set(key, {
+        delta: delta.toString(),
+        firstSeen: w?.firstSeen ?? now,
+        backfilledAt: w?.backfilledAt ?? null,
+        matches: 0,
+      });
+      return;
+    }
+    if (w === undefined || dec(w.delta).sub(delta).abs().gt(half)) {
+      this.#positionWatch.set(key, {
+        delta: delta.toString(),
+        firstSeen: now,
+        backfilledAt: null,
+        matches: 0,
+      });
+      this.#d.log.info(fields, "position differs from the bot's ledger; checking again");
+      return;
+    }
+    if (w.backfilledAt === null && now - w.firstSeen < POSITION_CONFIRM_MS) return;
+    // Lệnh còn bay (kết quả chưa rõ, hoặc vừa gửi: tin khớp có thể đang tới): chờ lần kiểm tra sau.
+    if (await this.#positionInFlight(r, market, now)) {
+      this.#d.log.info(fields, "position check waits: an order of this bot is in flight");
+      return;
+    }
+    // Sổ cái bắt đầu lại sau khi áp version mới trong lúc vị thế còn mở: đọc trade không giúp được gì.
+    if (opts.versionChange && !dec(real).isZero()) {
+      await this.#raiseMismatch(r, market, real, ledger, now, "version");
+      return;
+    }
+    if (w.backfilledAt === null) {
+      w.backfilledAt = now;
+      this.#d.log.warn(fields, "position still differs from the ledger; reading SoDEX trades");
+      await this.#positionBackfill(r, market, now);
+      return;
+    }
+    await this.#raiseMismatch(r, market, real, ledger, now, "trades");
+  }
+
+  /** Lệnh của bot trên market còn `unknown`, hoặc gửi chưa quá BACKFILL_TRADE_GRACE_MS. */
+  async #positionInFlight(r: Runner, market: string, now: number): Promise<boolean> {
+    const [row] = await this.#d.db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          eq(orders.market, market),
+          or(
+            eq(orders.status, "unknown"),
+            gt(orders.submittedAt, new Date(now - BACKFILL_TRADE_GRACE_MS)),
+          ),
+        ),
+      )
+      .limit(1);
+    return row !== undefined;
+  }
+
+  /** Bậc 1: đọc lịch sử khớp của account × market một lần cho các lệnh gần nhất chưa khớp đủ của bot (DEC-303). */
+  async #positionBackfill(r: Runner, market: string, now: number): Promise<void> {
+    const list = await this.#d.db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          eq(orders.market, market),
+          ne(orders.status, "rejected"),
+          ne(orders.status, "not_placed"),
+          sql`${orders.filledSize} < ${orders.size}`,
+        ),
+      )
+      .orderBy(desc(orders.submittedAt))
+      .limit(POSITION_BACKFILL_ORDERS);
+    if (list.length === 0) return;
+    await this.#backfillGroup(r.account, market, "perps", list, new Map([[r.botId, r]]), now);
+  }
+
+  /**
+   * Ghi cảnh báo một lần (bền qua khởi động lại). Không đụng `needs_attention`: lệch vị thế là cờ riêng
+   * (`position_mismatch`), api gộp hai cờ khi hiện Needs attention, nên các lý do khác không bị tắt nhầm.
+   */
+  async #raiseMismatch(
+    r: Runner,
+    market: string,
+    real: string,
+    ledger: string,
+    now: number,
+    cause: MismatchCause,
+  ): Promise<void> {
+    const next = new Map(r.positionMismatch).set(market, {
+      real,
+      ledger,
+      since: new Date(now).toISOString(),
+      cause,
     });
+    await this.#fenced(r, async (tx) => {
+      await tx
+        .update(bots)
+        .set({ positionMismatch: Object.fromEntries(next) })
+        .where(eq(bots.id, r.botId));
+      await tx.insert(botEvents).values({
+        botId: r.botId,
+        type: "reconcile",
+        decision: cause === "version" ? POSITION_UNTRACKED_DECISION : POSITION_MISMATCH_DECISION,
+        why:
+          cause === "version"
+            ? positionUntrackedWhy(market, real)
+            : positionMismatchWhy(market, real, ledger),
+        occurredAt: new Date(now),
+      });
+    });
+    r.positionMismatch = next;
+    this.#d.log.warn(
+      { botId: r.botId, market, real, ledger, cause },
+      "position on SoDEX does not match the bot's ledger; steps that add to it are held",
+    );
+  }
+
+  /** Vị thế khớp lại: bỏ cảnh báo của market (một dòng Decisions). */
+  async #clearMismatch(r: Runner, market: string, real: string, now: number): Promise<void> {
+    const next = new Map(r.positionMismatch);
+    next.delete(market);
+    await this.#fenced(r, async (tx) => {
+      await tx
+        .update(bots)
+        .set({ positionMismatch: next.size === 0 ? null : Object.fromEntries(next) })
+        .where(eq(bots.id, r.botId));
+      await tx.insert(botEvents).values({
+        botId: r.botId,
+        type: "reconcile",
+        decision: POSITION_MATCH_DECISION,
+        why: positionMatchWhy(market, real),
+        occurredAt: new Date(now),
+      });
+    });
+    r.positionMismatch = next;
+    if (next.size === 0) r.mismatchWaitLogged = false;
+    this.#d.log.info({ botId: r.botId, market, real }, "position matches the ledger again");
+  }
+
+  /**
+   * Bước chiến lược có lệnh làm tăng |vị thế thật| ở market đang lệch (`opensPosition` với vị thế thật hiệu dụng, cộng
+   * lệnh giảm đang chờ trên sổ và lệnh trước nó trong bước). Bước có pause / stop không bao giờ bị giữ.
+   */
+  #opensBeyondReal(
+    r: Runner,
+    actions: readonly StrategyAction[],
+    pending: ReadonlyMap<string, Decimal>,
+  ): boolean {
+    if (actions.some((a) => a.type === "pause" || a.type === "stop")) return false;
+    const reducing = new Map(pending);
+    for (const a of actions) {
+      if (a.type !== "place") continue;
+      const o = a.order;
+      const key = `${o.market}:${o.side}`;
+      const before = (reducing.get(key) ?? dec("0")).toString();
+      const mm = o.engine === "perps" ? r.positionMismatch.get(o.market) : undefined;
+      if (mm !== undefined) {
+        const ledgerNow = positionOf(r.state, o.market, "perps");
+        const real = effectiveReal(mm.real, mm.ledger, ledgerNow);
+        if (opensPosition(o, real, before)) return true;
+      }
+      reducing.set(key, dec(before).add(o.quantity));
+    }
+    return false;
   }
 
   async #settleOrder(

@@ -118,11 +118,11 @@ export interface Gateway {
     account: AccountRef,
     q: { market: string; engine: "spot" | "perps" },
   ): Promise<(OrderTrade & { clOrdID: string })[]>;
-  /** Vị thế Perps đang mở trên SoDEX: `size` có dấu (âm = short); null khi không có. Chỉ đọc. */
-  readPosition(
-    account: AccountRef,
-    market: string,
-  ): Promise<{ size: string; entryPrice: string } | null>;
+  /**
+   * Mọi vị thế Perps đang mở của account trên SoDEX, theo market: `size` có dấu (âm = short), market không có trong map
+   * = không có vị thế. MỘT lần đọc account state (`/perps/accounts/{addr}/state`). Chỉ đọc.
+   */
+  readPositions(account: AccountRef): Promise<Map<string, { size: string; entryPrice: string }>>;
   /**
    * Đặt đòn bẩy + margin mode của account cho một market Perps trên SoDEX. Phải gọi trước lệnh đầu tiên:
    * SoDEX áp thiết lập này cho mọi lệnh trên symbol, không gửi thì lệnh dùng thiết lập sẵn có của account.

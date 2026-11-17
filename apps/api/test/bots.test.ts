@@ -19,6 +19,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { generateTotp } from "../src/lib/totp";
+import { analystBots } from "../src/modules/account/service";
 
 import { signIn, startTestEnv, TEST_BUILDER_ID, TestClient, type TestEnv } from "./helpers";
 
@@ -838,6 +839,52 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     env.prices.set("vBTC_vUSDC", { price: "110", at: env.clock.now.getTime() });
     // 5 đã chốt + 2 × 10 chưa chốt − 1 phí.
     expect(await net()).toBe("24");
+    await env.pool.query("update bots set state = 'running' where id = $1", [id]);
+    // Vị thế thật trên SoDEX lệch sổ cái (engine đã cảnh báo): không hiện lãi / lỗ (quy tắc 1.8); khớp lại thì hiện lại.
+    await env.pool.query("update bots set position_mismatch = $2 where id = $1", [
+      id,
+      JSON.stringify({
+        vBTC_vUSDC: { real: "3", ledger: "2", since: env.clock.now.toISOString() },
+      }),
+    ]);
+    expect(await net()).toBeNull();
+    const listed = botListSchema.parse((await client.request("GET", "/api/v1/bots")).json());
+    const row = listed.items.find((b) => b.id === id);
+    expect(row).toBeDefined();
+    expect(row?.netPnl).toBeNull();
+    // Cờ riêng: Needs attention hiện khi needs_attention HOẶC lệch vị thế (grid "back in range" tắt needs_attention không
+    // tắt cảnh báo lệch vị thế).
+    expect(row?.needsAttention).toBe(true);
+    // AI Desk / AI Analyst cũng không hiện lãi / lỗ (M4).
+    const { rows: owner } = await env.pool.query<{ user_id: string }>(
+      "select user_id from bots where id = $1",
+      [id],
+    );
+    const analyst = (await analystBots(env.db, owner[0]?.user_id ?? "")).find((b) => b.id === id);
+    expect(analyst?.netPnl).toBeNull();
+    expect(analyst?.needsAttention).toBe(true);
+    await env.pool.query("update bots set position_mismatch = null where id = $1", [id]);
+    expect(await net()).toBe("24");
+    expect(
+      botListSchema
+        .parse((await client.request("GET", "/api/v1/bots")).json())
+        .items.find((b) => b.id === id)?.needsAttention,
+    ).toBe(false);
+    expect(
+      (await analystBots(env.db, owner[0]?.user_id ?? "")).find((b) => b.id === id)?.netPnl,
+    ).not.toBeNull();
+    // Bot đã dừng không còn quản lý vị thế: cờ không còn tác dụng (M6).
+    await env.pool.query(
+      "update bots set position_mismatch = $2, state = 'stopped' where id = $1",
+      [
+        id,
+        JSON.stringify({
+          vBTC_vUSDC: { real: "3", ledger: "2", since: env.clock.now.toISOString() },
+        }),
+      ],
+    );
+    expect(await net()).toBe("4");
+    await env.pool.query("update bots set position_mismatch = null where id = $1", [id]);
     const detail = botDetailSchema.parse(
       (await client.request("GET", `/api/v1/bots/${id}`)).json(),
     );

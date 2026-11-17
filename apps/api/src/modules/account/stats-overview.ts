@@ -11,6 +11,7 @@ import {
 } from "@drift/shared";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
+import { needsAttentionSql } from "../bots/position-mismatch";
 import { netCostPerMillion } from "../bots/service";
 import { iso } from "../security/service";
 
@@ -242,7 +243,7 @@ export async function statsOverview(
     last?.at == null ? null : Math.max(0, Math.round((now.getTime() - last.at) / 1000));
   const [h] = await db
     .select({
-      needsAttention: sql<number>`(select count(*) from ${bots} where ${bots.needsAttention} and ${bots.archivedAt} is null and ${bots.mode} = 'live')::int`,
+      needsAttention: sql<number>`(select count(*) from ${bots} where ${needsAttentionSql(bots)} and ${bots.archivedAt} is null and ${bots.mode} = 'live')::int`,
       rejected24h: sql<number>`(select count(*) from ${orders} where ${orders.status} = 'rejected' and ${orders.createdAt} >= ${new Date(now.getTime() - DAY)})::int`,
       lastFillAt: sql<Date | null>`(select max(${fills.filledAt}) from ${fills})`,
     })
