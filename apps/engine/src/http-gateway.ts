@@ -248,7 +248,21 @@ export class HttpGateway implements Gateway {
       groups.set(key, [...(groups.get(key) ?? []), o]);
     }
     for (const [key, all] of groups) {
-      const found = await Promise.all(all.map((o) => this.#info(o.market)));
+      let found: (MarketInfo | undefined)[];
+      try {
+        found = await Promise.all(all.map((o) => this.#info(o.market)));
+      } catch {
+        // Đọc danh sách symbol lỗi (timeout, RATE_LIMITED, mạng) trước khi ký: lệnh chưa rời DeskLabs → `not_sent`, để
+        // engine hoàn tác / thử lại thay vì để dòng lệnh `unknown` (DEC-310).
+        out.push(
+          ...all.map((o): SubmitResult => ({
+            clOrdID: o.clOrdID,
+            outcome: "not_sent",
+            code: "market_info_unavailable",
+          })),
+        );
+        continue;
+      }
       // Market không có trong danh sách symbol của SoDEX: không gửi (không bao giờ dùng id 0), từ chối ngay tại DeskLabs.
       for (const [i, o] of all.entries())
         if (found[i] === undefined)
@@ -590,7 +604,8 @@ export class HttpGateway implements Gateway {
   async builderApproved(account: AccountRef): Promise<boolean> {
     refusePaper(account);
     if (isBuilderAccount(account.sodexAccountId, this.builderId, this.builderExempt)) return true;
-    return readDriftApproval(await this.rest.getBuilderApprovals(account.address), this.builderId)
+    // Đọc nền (chừa phần dự trữ cho lệnh ghi): đọc lỗi thì không pause (DEC-113).
+    return readDriftApproval(await this.reads.getBuilderApprovals(account.address), this.builderId)
       .approved;
   }
 }

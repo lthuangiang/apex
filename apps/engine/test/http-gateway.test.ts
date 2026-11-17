@@ -271,4 +271,26 @@ describe("market info on the order path (DEC-308)", () => {
       { clOrdID: "c1", outcome: "rejected", code: "-1", scope: "request" },
     ]);
   });
+
+  it("returns not_sent when the symbol list cannot be read before signing (nothing left DeskLabs)", async () => {
+    let signed = 0;
+    const rest = {
+      getSpotSymbols: () => Promise.reject(new Error("SoDEX rate limit reached")),
+      getPerpsSymbols: () => Promise.resolve([]),
+    } as unknown as SodexRestClient;
+    const writer = {
+      write: () => Promise.reject(new Error("must not write")),
+    } as unknown as SignedWriteClient;
+    const signer = {
+      sign: () => {
+        signed += 1;
+        return Promise.resolve(`0x01${"ab".repeat(65)}` as `0x${string}`);
+      },
+    };
+    const gw = new HttpGateway(rest, writer, signer, BUILDER);
+    expect(await gw.submit(account(7n), [order], { shard: 0, epoch: 1 })).toEqual([
+      { clOrdID: "c1", outcome: "not_sent", code: "market_info_unavailable" },
+    ]);
+    expect(signed).toBe(0);
+  });
 });

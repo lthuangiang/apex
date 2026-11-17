@@ -23,7 +23,8 @@ import {
   users,
   type Db,
 } from "@drift/db";
-import { ReasonCode } from "@drift/shared";
+import { AppError, ErrorCode, ReasonCode } from "@drift/shared";
+import type { SignedWriteClient, SodexRestClient } from "@drift/sodex";
 import {
   clOrdId,
   runBacktest,
@@ -40,8 +41,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import {
   Engine as RealEngine,
+  CANCEL_REQUEST_BACKOFF_MS,
   CLOSE_RETRY,
+  LOOKUP_BUDGET,
+  LOOKUP_WEIGHT,
   STREAM_HOLD_MS,
+  TRADES_WEIGHT,
   FencedError,
   LeaseExpiredError,
   effectiveReal,
@@ -62,6 +67,7 @@ import type {
   OrderTrade,
   SubmitResult,
 } from "../src/gateway";
+import { HttpGateway } from "../src/http-gateway";
 import { PaperGateway } from "../src/paper-gateway";
 
 // Tiêu chí P6 (ROADMAP.md): kill một worker → shard chuyển chủ không trùng lệnh; revoke phí → mọi bot
@@ -3206,7 +3212,8 @@ describe("engine", () => {
     // SoDEX chưa xử lý lệnh huỷ nào: lệnh có thể còn sống, chưa ghi là đã huỷ.
     expect((await row())?.status).toBe("open");
     limited = false;
-    for (let i = 0; i < 6 && (await row())?.status !== "cancelled"; i += 1) {
+    // Huỷ bị từ chối cả request lặp lại thì chờ tới 60 s mới huỷ lại (DEC-310).
+    for (let i = 0; i < 14 && (await row())?.status !== "cancelled"; i += 1) {
       clock += 8_000;
       await e.tick();
     }
@@ -3249,6 +3256,87 @@ describe("engine", () => {
     const after = await row();
     expect(after?.status).toBe("cancelled");
     expect(Number(after?.filledSize)).toBe(Number(part));
+    await e.stop();
+    await stopMakerBots();
+  });
+
+  it("backs off cancels SoDEX refuses as a whole request: 5 s, 15 s, then 60 s, one warning per step (DEC-310)", async () => {
+    const gw = new FakeGateway();
+    const warnings: string[] = [];
+    const calls: number[] = [];
+    gw.cancel = (_a, list) => {
+      calls.push(clock);
+      return Promise.resolve(
+        list.map((x): CancelResult => ({
+          clOrdID: x.clOrdID,
+          outcome: "rejected",
+          code: "-1",
+          scope: "request",
+        })),
+      );
+    };
+    const { accountId } = await seedMaker();
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: "vm-cancel-backoff",
+      log: {
+        ...log,
+        warn: (_o: unknown, msg?: string) => {
+          warnings.push(msg ?? "");
+        },
+      },
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      orderbook: () =>
+        Promise.resolve({ bid: "100", ask: "100.05", bidNotional: "50000", askNotional: "40000" }),
+    });
+    await e.tick();
+    await e.onPrice("BTC-USD", "100000", clock);
+    for (let i = 0; i < 120; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    // Nhịp gửi huỷ của account: nấc chờ 5 s, 15 s, rồi 60 s (giữ 60 s); không có lần huỷ nào trong lúc chờ.
+    const times = [...new Set(calls)];
+    const gaps = times.slice(1).map((t, i) => t - (times[i] ?? t));
+    expect(gaps.length).toBeGreaterThanOrEqual(3);
+    expect(gaps[0]).toBeGreaterThanOrEqual(CANCEL_REQUEST_BACKOFF_MS[0]);
+    expect(gaps[1]).toBeGreaterThanOrEqual(CANCEL_REQUEST_BACKOFF_MS[1]);
+    for (const g of gaps.slice(2)) expect(g).toBeGreaterThanOrEqual(CANCEL_REQUEST_BACKOFF_MS[2]);
+    // Một dòng warn mỗi nấc, không mỗi lần bị từ chối; không có warn "cancel not confirmed" cho từng lệnh.
+    expect(
+      warnings.filter(
+        (w) => w === "SoDEX refused the cancel request; cancelling again after a backoff",
+      ),
+    ).toHaveLength(3);
+    expect(warnings.filter((w) => w === "cancel not confirmed")).toHaveLength(0);
+    // Người dùng cấp key mới (Renew key): nấc chờ của key cũ bỏ ngay, vòng kế tiếp huỷ lại luôn.
+    const { eq } = await import("drizzle-orm");
+    const before = calls.length;
+    const [k] = await db.select().from(apiKeys).where(eq(apiKeys.sodexAccountId, accountId));
+    await db
+      .update(apiKeys)
+      .set({ status: "deleted" })
+      .where(eq(apiKeys.sodexAccountId, accountId));
+    await db.insert(apiKeys).values({
+      sodexAccountId: accountId,
+      name: "DRIFT2",
+      publicKey: k?.publicKey ?? "0x1563915e194D8CfBA1943570603F7606A3115508",
+      ciphertext: "vault:v1:test2",
+      kmsKeyRef: "test",
+      last4: "5509",
+      permissionsMask: 14,
+      expiresAt: new Date(clock + 1e10),
+      status: "active",
+    });
+    clock += 1_000;
+    await e.tick();
+    expect(calls.length).toBeGreaterThan(before);
     await e.stop();
     await stopMakerBots();
   });
@@ -5462,6 +5550,74 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
     await e.stop();
   });
 
+  it("after a restart with no symbol list and the IP bucket under the read reserve, the Stop close is not left unknown and goes out once symbols can be read (DEC-310)", async () => {
+    const fake = new FakeGateway();
+    const market = "STOPC-USD";
+    // Cổng thật cho `submit` (đọc id symbol rồi ký và gửi), cổng giả cho mọi thứ khác.
+    let cold = false;
+    const writes: string[] = [];
+    const rest = {
+      getSpotSymbols: () => Promise.resolve([]),
+      getPerpsSymbols: () =>
+        cold
+          ? Promise.reject(new AppError(ErrorCode.rateLimited, "SoDEX rate limit reached"))
+          : Promise.resolve([
+              {
+                id: 7n,
+                name: market,
+                tickSize: "1",
+                stepSize: "0.0001",
+                minQuantity: "0.0001",
+                minNotional: "5",
+                status: "TRADING",
+              },
+            ]),
+    } as unknown as SodexRestClient;
+    const writer = {
+      write: (req: { body: string }) => {
+        const ids = [...req.body.matchAll(/"clOrdID":"([^"]+)"/g)].map((m) => m[1] ?? "");
+        writes.push(...ids);
+        return Promise.resolve({
+          outcome: "ok",
+          data: ids.map((clOrdID, i) => ({ code: 0, clOrdID, orderID: 900 + i })),
+        });
+      },
+    } as unknown as SignedWriteClient;
+    const signer = { sign: () => Promise.resolve(`0x01${"ab".repeat(65)}` as `0x${string}`) };
+    let http = new HttpGateway(rest, writer, signer, 1645n);
+    const gw: Gateway = new Proxy(fake, {
+      get(target, prop) {
+        if (prop === "submit") return http.submit.bind(http);
+        const v: unknown = Reflect.get(target, prop);
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      },
+    });
+    const { botId, e } = await stoppingWithPosition(gw as FakeGateway, market, "stop-cold");
+    // Khởi động lại: cổng mới (chưa biết market nào), bucket IP dưới mức dự trữ nên đọc danh sách symbol bị bỏ.
+    http = new HttpGateway(rest, writer, signer, 1645n);
+    cold = true;
+    writes.length = 0;
+    clock += 1;
+    await e.tick();
+    // Lệnh đóng chưa rời DeskLabs: không có dòng `unknown`, bot vẫn `stopping` và chờ thử lại.
+    expect(
+      (await ordersOf(botId)).filter((o) => o.tag === "close" && o.status === "unknown"),
+    ).toHaveLength(0);
+    expect((await botState(botId))?.state).toBe("stopping");
+    expect(writes).toHaveLength(0);
+    cold = false;
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += CLOSE_RETRY.backoffMs[0];
+      await e.tick();
+    }
+    const close = (await ordersOf(botId)).filter((o) => o.tag === "close");
+    expect(close).toHaveLength(1);
+    expect(close[0]?.status).not.toBe("unknown");
+    expect(writes).toContain(close[0]?.clOrdId);
+    expect((await botState(botId))?.state).toBe("stopped");
+    await e.stop();
+  });
+
   it("retries a close the signer could not send instead of stopping with the position open", async () => {
     const gw = new FakeGateway();
     const { botId, e } = await stoppingWithPosition(gw, "STOPS-USD", "stop-signer");
@@ -7515,5 +7671,97 @@ describe("slow SoDEX reads stay with their own account (DEC-308)", () => {
     );
     await e.stop();
     await cleanup([botId], []);
+  });
+});
+
+describe("worker-wide REST budget for order lookups (DEC-310)", () => {
+  it("looks up at most ~50% of the IP bucket per minute, suspect orders first, one account at a time", async () => {
+    const { eq, inArray } = await import("drizzle-orm");
+    // Lệnh mở còn sót của các test trước không được tính vào ngân sách của test này.
+    await db
+      .update(orders)
+      .set({ status: "cancelled" })
+      .where(inArray(orders.status, ["open", "partially_filled", "unknown"]));
+    const gw = new FakeGateway();
+    const looked: string[] = [];
+    const lookup = gw.lookup.bind(gw);
+    gw.lookup = (a, o) => {
+      looked.push(o.clOrdID);
+      return lookup(a, o);
+    };
+    // 30 account có bot đã dừng còn 2 lệnh limit nằm sổ (tra định kỳ), 1 account có 2 lệnh market (nghi ngờ).
+    const row = (botId: string, accountId: string, type: "limit" | "market", i: number) => ({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: `${type}-${String(i)}-${String(Math.random())}`,
+      market: "BUD-USD",
+      engine: "perps" as const,
+      side: "buy" as const,
+      type,
+      price: type === "limit" ? "90" : null,
+      timeInForce: type === "limit" ? "GTC" : "IOC",
+      size: "1",
+      status: "open" as const,
+      reduceOnly: false,
+      epoch: 1,
+      tag: "bud",
+      submittedAt: new Date(clock - 60_000 - i),
+    });
+    const owners = new Map<string, string>();
+    const botIds: string[] = [];
+    for (let a = 0; a < 30; a += 1) {
+      const b = await seedBot();
+      botIds.push(b.botId);
+      const list = [
+        row(b.botId, b.accountId, "limit", a * 2),
+        row(b.botId, b.accountId, "limit", a * 2 + 1),
+      ];
+      for (const x of list) owners.set(x.clOrdId, b.accountId);
+      await db.insert(orders).values(list);
+    }
+    const s = await seedBot();
+    botIds.push(s.botId);
+    const suspects = [
+      row(s.botId, s.accountId, "market", 1000),
+      row(s.botId, s.accountId, "market", 1001),
+    ];
+    await db.insert(orders).values(suspects);
+    await db.update(bots).set({ state: "stopped" }).where(inArray(bots.id, botIds));
+    const e = new Engine({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: "budget",
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      lookupBudget: LOOKUP_BUDGET.weight,
+    });
+    await e.tick();
+    // Mỗi lần tra tính tối đa tra lệnh + đọc lịch sử khớp (lệnh không thấy thì đọc trade).
+    const max = Math.floor(LOOKUP_BUDGET.weight / (LOOKUP_WEIGHT + TRADES_WEIGHT));
+    expect(looked.length).toBe(max);
+    // Lệnh nghi ngờ trước; rồi luân phiên: không account nào được tra 2 lệnh khi account khác chưa được tra lệnh nào.
+    for (const x of suspects) expect(looked).toContain(x.clOrdId);
+    const perAccount = new Map<string, number>();
+    for (const id of looked) {
+      const acc = owners.get(id);
+      if (acc !== undefined) perAccount.set(acc, (perAccount.get(acc) ?? 0) + 1);
+    }
+    expect(Math.max(...perAccount.values())).toBe(1);
+    expect(perAccount.size).toBe(max - suspects.length);
+    // Hết ngân sách trong 60 s: vòng sau không tra thêm; qua cửa sổ 60 s thì tra tiếp.
+    clock += 1_000;
+    await e.tick();
+    expect(looked.length).toBe(max);
+    clock += LOOKUP_BUDGET.windowMs;
+    await e.tick();
+    expect(looked.length).toBeGreaterThan(max);
+    expect(looked.length).toBeLessThanOrEqual(2 * max);
+    await e.stop();
+    await db.update(orders).set({ status: "cancelled" }).where(eq(orders.market, "BUD-USD"));
   });
 });
