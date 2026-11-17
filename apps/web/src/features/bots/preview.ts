@@ -13,7 +13,7 @@ import {
   REBALANCE_CHECK_MS,
   safetyOffsetPct,
   VM_DEFAULTS,
-} from "@drift/strategies";
+} from "@drift/strategies/client";
 
 import type { FormValues } from "./fields";
 

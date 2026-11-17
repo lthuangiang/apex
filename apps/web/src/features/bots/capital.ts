@@ -1,4 +1,4 @@
-import { Decimal, RECO_CONFIG } from "@drift/shared";
+import { Decimal, RECO_RECURRING } from "@drift/shared";
 
 import type { FormValues } from "./fields";
 
@@ -36,13 +36,13 @@ export function capitalOf(strategy: string, values: FormValues): string | undefi
       break;
     }
     case "recurring_buy": {
-      // Engine chia vốn cho RECO_CONFIG.recurring.buys lần mua; ở đây đổi ngược theo cách kết thúc đang chọn.
+      // Engine chia vốn cho RECO_RECURRING.buys lần mua; ở đây đổi ngược theo cách kết thúc đang chọn.
       const amount = positive(values.amountPerBuy);
       const count = positive(values.buyCount);
       const budget = positive(values.totalBudget);
       if (values.ends === "after_budget" && budget !== undefined) total = budget;
       else if (amount !== undefined && count !== undefined) total = amount.mul(count);
-      else if (amount !== undefined) total = amount.mul(RECO_CONFIG.recurring.buys);
+      else if (amount !== undefined) total = amount.mul(RECO_RECURRING.buys);
       else total = budget;
       break;
     }

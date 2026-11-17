@@ -63,6 +63,50 @@ export default config(
     },
   },
   {
+    // Code trình duyệt: chunk tĩnh ai cũng tải được, nên không được kéo logic chiến lược, engine đề xuất hay package
+    // chỉ chạy ở server vào bundle. Chỉ dùng `@drift/strategies/client` (schema, mặc định, hàm hiển thị thuần).
+    files: ["apps/web/**/*.{ts,tsx}", "packages/ui/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@drift/strategies",
+              message:
+                "Browser code must import @drift/strategies/client: the root entry ships strategy step logic.",
+            },
+            {
+              name: "@drift/shared",
+              importNames: ["RECO_CONFIG", "recommend", "aiParameters", "paramsFor"],
+              message:
+                "Recommendation engine rules and thresholds stay on the server; use a dedicated constant (e.g. RECO_RECURRING).",
+            },
+          ],
+          patterns: [
+            {
+              group: [
+                "@drift/db",
+                "@drift/db/*",
+                "@drift/sodex",
+                "@drift/sodex/*",
+                "@drift/runtime",
+                "@drift/runtime/*",
+                "@drift/hyperliquid",
+                "@drift/hyperliquid/*",
+              ],
+              message: "Server-only package; not allowed in browser code.",
+            },
+            {
+              group: ["@drift/strategies/*", "!@drift/strategies/client"],
+              message: "Browser code may only import @drift/strategies/client.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.tsx", "**/*.jsx"],
     ...jsxA11y.flatConfigs.strict,
   },

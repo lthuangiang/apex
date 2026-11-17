@@ -1,7 +1,7 @@
 import { dec } from "@drift/shared";
 import { z } from "zod";
 
-import { safetyOffsetPct } from "../common/dca-bot";
+import { safetyOffsetPct } from "../common/dca-math";
 import { entryFields, nextCycleFields, refineEntry, refineNextCycle } from "../common/entry";
 import { marketSchema, optionalPositive, percent, positiveDecimal } from "../common/schema";
 
