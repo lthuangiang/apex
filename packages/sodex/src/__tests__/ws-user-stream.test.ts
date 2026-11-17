@@ -46,6 +46,7 @@ function setup(options: { accountID?: bigint; symbols?: string[] } = {}) {
     onTrade: vi.fn<WsUserStreamCallbacks["onTrade"]>(),
     onReconnect: vi.fn<WsUserStreamCallbacks["onReconnect"]>(),
     onError: vi.fn<WsUserStreamCallbacks["onError"]>(),
+    onSubscribed: vi.fn<NonNullable<WsUserStreamCallbacks["onSubscribed"]>>(),
   };
   const stream = new WsUserStream({
     baseUrl: "wss://mainnet-gw.sodex.dev/ws/",
@@ -199,6 +200,31 @@ describe("WsUserStream", () => {
     vi.advanceTimersByTime(1500);
     expect(sockets[0]?.closed).toBe(false);
     expect(sockets).toHaveLength(1);
+  });
+
+  it("is subscribed only after SoDEX acks both channels, on the first connect too, and not after a drop", () => {
+    const { stream, sockets, callbacks } = setup();
+    stream.connect();
+    const first = sockets[0];
+    first?.emit("open");
+    expect(stream.subscribed).toBe(false);
+    first?.emit("message", '{"op":"subscribe","id":1,"success":true}');
+    expect(stream.subscribed).toBe(false);
+    expect(callbacks.onSubscribed).not.toHaveBeenCalled();
+    first?.emit("message", '{"op":"subscribe","id":2,"success":true}');
+    expect(stream.subscribed).toBe(true);
+    expect(callbacks.onSubscribed).toHaveBeenCalledTimes(1);
+    expect(callbacks.onReconnect).not.toHaveBeenCalled();
+
+    first?.emit("close");
+    expect(stream.subscribed).toBe(false);
+    vi.advanceTimersByTime(2000);
+    const second = sockets[1];
+    second?.emit("open");
+    second?.emit("message", '{"op":"subscribe","id":1,"success":false,"error":"user not found"}');
+    second?.emit("message", '{"op":"subscribe","id":2,"success":true}');
+    expect(stream.subscribed).toBe(false);
+    expect(callbacks.onSubscribed).toHaveBeenCalledTimes(1);
   });
 
   it("does not reconnect after close()", () => {

@@ -35,6 +35,11 @@ export interface WsUserStreamCallbacks {
   onTrade(trades: WsTrade[]): void;
   /** Gọi sau mỗi lần kết nối lại thành công. Consumer đối soát qua REST (ARCHITECTURE.md 3.4). */
   onReconnect(): void;
+  /**
+   * SoDEX đã nhận cả hai subscribe (ack `success: true`) trên kết nối hiện tại; gọi một lần mỗi kết nối, kể cả lần đầu.
+   * Tin trước lúc này (kể cả fill) không bao giờ tới: consumer đối soát qua REST.
+   */
+  onSubscribed?(): void;
   /** Lỗi parse, subscribe bị từ chối… Không chứa payload (có thể là dữ liệu account). */
   onError(error: Error): void;
 }
@@ -55,6 +60,8 @@ export interface WsUserStreamOptions {
 }
 
 const OPEN = 1;
+/** accountOrderUpdate + accountTrade. */
+const SUBSCRIPTIONS = 2;
 
 export class WsUserStream {
   readonly #url: string;
@@ -67,6 +74,8 @@ export class WsUserStream {
   #closed = false;
   #started = false;
   #hasConnected = false;
+  /** Số subscribe SoDEX đã nhận trên kết nối hiện tại (0 khi chưa kết nối / vừa đứt). */
+  #acked = 0;
   #attempt = 0;
   #timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -96,6 +105,11 @@ export class WsUserStream {
     this.#open();
   }
 
+  /** Cả `accountOrderUpdate` và `accountTrade` đã được SoDEX nhận trên kết nối đang mở. */
+  get subscribed(): boolean {
+    return this.#ws !== null && this.#acked >= SUBSCRIPTIONS;
+  }
+
   close(): void {
     this.#closed = true;
     this.#clearTimer();
@@ -114,6 +128,7 @@ export class WsUserStream {
       const reconnected = this.#hasConnected;
       this.#hasConnected = true;
       this.#attempt = 0;
+      this.#acked = 0;
       this.#subscribe(ws);
       this.#armIdleTimer(ws);
       if (reconnected) this.#cb.onReconnect();
@@ -161,6 +176,9 @@ export class WsUserStream {
     if (ack.success) {
       if (!ack.data.success) {
         this.#cb.onError(new Error(`SoDEX WS ${ack.data.op} rejected: ${ack.data.error ?? ""}`));
+      } else if (ack.data.op === "subscribe" && this.#acked < SUBSCRIPTIONS) {
+        this.#acked += 1;
+        if (this.#acked === SUBSCRIPTIONS) this.#cb.onSubscribed?.();
       }
       return;
     }
@@ -201,6 +219,7 @@ export class WsUserStream {
   #drop(ws: WebSocketLike): void {
     if (this.#ws !== ws) return;
     this.#ws = null;
+    this.#acked = 0;
     this.#clearTimer();
     ws.close();
     if (this.#closed) return;

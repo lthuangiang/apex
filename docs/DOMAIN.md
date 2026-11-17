@@ -60,6 +60,8 @@ Các trạng thái: `draft → starting → running ⇄ (pausing → paused → 
 ### 7.3 Lệnh
 Trạng thái: `open, partially_filled, filled, cancelled, rejected, unknown, not_placed`. `unknown` → đối soát với SoDEX → `filled` / `open` / `not_placed`. Khi còn `unknown`, nút Retry bị disable kèm dòng "available after check".
 
+Đối soát lệnh không tìm thấy trên SoDEX (DEC-TBD-engine-lost-fill): lịch sử lệnh REST của SoDEX trễ vài giây sau khi khớp, nên "không tìm thấy" không có nghĩa là đã huỷ. Engine hỏi trade của lệnh (`trades`, lọc theo `clOrdID`) trước: có trade → ghi `fills` (theo `sodex_trade_id`), `filled_size` / `avg_price`, kết thúc lệnh (`filled`, hoặc `cancelled` khi khớp một phần) và báo chiến lược. Không có trade → chờ 30 s rồi chuyển `unknown` (không phải `cancelled`). Chỉ stop loss gốc trên SoDEX (DEC-118, tag `:sl`) không tìm thấy mới được ghi `cancelled` ngay. Lệnh `unknown` mà SoDEX đã nhận (`sodex_order_id`) không bao giờ thành `not_placed`; quá 10 phút vẫn không rõ thì bot được gắn Needs attention, Decisions ghi "Order result unknown", và Stop không chờ lệnh đó nữa. IOC mà SoDEX báo CANCELED chưa khớp gì cũng được kiểm trade trước khi tin.
+
 ### 7.4 Version cấu hình
 Mỗi lần áp dụng chỉnh sửa tạo version `v(n+1)`. Version cũ vẫn chạy cho tới khi backend xác nhận version mới. Mỗi version lưu `paramSource: "ai" | "ai_edited" | "manual"` và id của suggestion AI.
 
