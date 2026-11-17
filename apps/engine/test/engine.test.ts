@@ -23,7 +23,8 @@ import {
   users,
   type Db,
 } from "@drift/db";
-import { ReasonCode } from "@drift/shared";
+import { AppError, ErrorCode, ReasonCode } from "@drift/shared";
+import type { SignedWriteClient, SodexRestClient } from "@drift/sodex";
 import {
   clOrdId,
   runBacktest,
@@ -45,6 +46,7 @@ import {
   LOOKUP_BUDGET,
   LOOKUP_WEIGHT,
   STREAM_HOLD_MS,
+  TRADES_WEIGHT,
   FencedError,
   LeaseExpiredError,
   effectiveReal,
@@ -65,6 +67,7 @@ import type {
   OrderTrade,
   SubmitResult,
 } from "../src/gateway";
+import { HttpGateway } from "../src/http-gateway";
 import { PaperGateway } from "../src/paper-gateway";
 
 // Tiêu chí P6 (ROADMAP.md): kill một worker → shard chuyển chủ không trùng lệnh; revoke phí → mọi bot
@@ -3272,7 +3275,7 @@ describe("engine", () => {
         })),
       );
     };
-    await seedMaker();
+    const { accountId } = await seedMaker();
     const e = new Engine({
       db,
       redis: newRedis(),
@@ -3312,6 +3315,28 @@ describe("engine", () => {
       ),
     ).toHaveLength(3);
     expect(warnings.filter((w) => w === "cancel not confirmed")).toHaveLength(0);
+    // Người dùng cấp key mới (Renew key): nấc chờ của key cũ bỏ ngay, vòng kế tiếp huỷ lại luôn.
+    const { eq } = await import("drizzle-orm");
+    const before = calls.length;
+    const [k] = await db.select().from(apiKeys).where(eq(apiKeys.sodexAccountId, accountId));
+    await db
+      .update(apiKeys)
+      .set({ status: "deleted" })
+      .where(eq(apiKeys.sodexAccountId, accountId));
+    await db.insert(apiKeys).values({
+      sodexAccountId: accountId,
+      name: "DRIFT2",
+      publicKey: k?.publicKey ?? "0x1563915e194D8CfBA1943570603F7606A3115508",
+      ciphertext: "vault:v1:test2",
+      kmsKeyRef: "test",
+      last4: "5509",
+      permissionsMask: 14,
+      expiresAt: new Date(clock + 1e10),
+      status: "active",
+    });
+    clock += 1_000;
+    await e.tick();
+    expect(calls.length).toBeGreaterThan(before);
     await e.stop();
     await stopMakerBots();
   });
@@ -5525,6 +5550,74 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
     await e.stop();
   });
 
+  it("after a restart with no symbol list and the IP bucket under the read reserve, the Stop close is not left unknown and goes out once symbols can be read (DEC-TBD-engine-rest-budget)", async () => {
+    const fake = new FakeGateway();
+    const market = "STOPC-USD";
+    // Cổng thật cho `submit` (đọc id symbol rồi ký và gửi), cổng giả cho mọi thứ khác.
+    let cold = false;
+    const writes: string[] = [];
+    const rest = {
+      getSpotSymbols: () => Promise.resolve([]),
+      getPerpsSymbols: () =>
+        cold
+          ? Promise.reject(new AppError(ErrorCode.rateLimited, "SoDEX rate limit reached"))
+          : Promise.resolve([
+              {
+                id: 7n,
+                name: market,
+                tickSize: "1",
+                stepSize: "0.0001",
+                minQuantity: "0.0001",
+                minNotional: "5",
+                status: "TRADING",
+              },
+            ]),
+    } as unknown as SodexRestClient;
+    const writer = {
+      write: (req: { body: string }) => {
+        const ids = [...req.body.matchAll(/"clOrdID":"([^"]+)"/g)].map((m) => m[1] ?? "");
+        writes.push(...ids);
+        return Promise.resolve({
+          outcome: "ok",
+          data: ids.map((clOrdID, i) => ({ code: 0, clOrdID, orderID: 900 + i })),
+        });
+      },
+    } as unknown as SignedWriteClient;
+    const signer = { sign: () => Promise.resolve(`0x01${"ab".repeat(65)}` as `0x${string}`) };
+    let http = new HttpGateway(rest, writer, signer, 1645n);
+    const gw: Gateway = new Proxy(fake, {
+      get(target, prop) {
+        if (prop === "submit") return http.submit.bind(http);
+        const v: unknown = Reflect.get(target, prop);
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      },
+    });
+    const { botId, e } = await stoppingWithPosition(gw as FakeGateway, market, "stop-cold");
+    // Khởi động lại: cổng mới (chưa biết market nào), bucket IP dưới mức dự trữ nên đọc danh sách symbol bị bỏ.
+    http = new HttpGateway(rest, writer, signer, 1645n);
+    cold = true;
+    writes.length = 0;
+    clock += 1;
+    await e.tick();
+    // Lệnh đóng chưa rời DeskLabs: không có dòng `unknown`, bot vẫn `stopping` và chờ thử lại.
+    expect(
+      (await ordersOf(botId)).filter((o) => o.tag === "close" && o.status === "unknown"),
+    ).toHaveLength(0);
+    expect((await botState(botId))?.state).toBe("stopping");
+    expect(writes).toHaveLength(0);
+    cold = false;
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1) {
+      clock += CLOSE_RETRY.backoffMs[0];
+      await e.tick();
+    }
+    const close = (await ordersOf(botId)).filter((o) => o.tag === "close");
+    expect(close).toHaveLength(1);
+    expect(close[0]?.status).not.toBe("unknown");
+    expect(writes).toContain(close[0]?.clOrdId);
+    expect((await botState(botId))?.state).toBe("stopped");
+    await e.stop();
+  });
+
   it("retries a close the signer could not send instead of stopping with the position open", async () => {
     const gw = new FakeGateway();
     const { botId, e } = await stoppingWithPosition(gw, "STOPS-USD", "stop-signer");
@@ -7648,7 +7741,8 @@ describe("worker-wide REST budget for order lookups (DEC-TBD-engine-rest-budget)
       lookupBudget: LOOKUP_BUDGET.weight,
     });
     await e.tick();
-    const max = Math.floor(LOOKUP_BUDGET.weight / LOOKUP_WEIGHT);
+    // Mỗi lần tra tính tối đa tra lệnh + đọc lịch sử khớp (lệnh không thấy thì đọc trade).
+    const max = Math.floor(LOOKUP_BUDGET.weight / (LOOKUP_WEIGHT + TRADES_WEIGHT));
     expect(looked.length).toBe(max);
     // Lệnh nghi ngờ trước; rồi luân phiên: không account nào được tra 2 lệnh khi account khác chưa được tra lệnh nào.
     for (const x of suspects) expect(looked).toContain(x.clOrdId);

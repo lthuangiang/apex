@@ -373,6 +373,11 @@ export const STREAM_HOLD_MS = 60_000;
 export const LOOKUP_BUDGET = { weight: 600, windowMs: 60_000 } as const;
 export const LOOKUP_WEIGHT = 25;
 /**
+ * Một lần đọc lịch sử khớp (`getTrades`, weight 20). Mọi lần đọc thật (không trúng cache của vòng) đều được ghi vào cùng
+ * cửa sổ ngân sách; kế hoạch tra tính mỗi lần tra tối đa LOOKUP_WEIGHT + TRADES_WEIGHT (lệnh không thấy thì đọc trade).
+ */
+export const TRADES_WEIGHT = 20;
+/**
  * Huỷ bị SoDEX từ chối cả request lặp lại (key bị thu hồi, 400 nonce / chữ ký, 429): huỷ lại của account đó chờ 5 s →
  * 15 s → 60 s (giữ 60 s), warn một lần mỗi nấc (DEC-TBD-engine-rest-budget). Có kết quả theo từng lệnh thì về 0.
  */
@@ -2147,7 +2152,12 @@ export class Engine {
           };
         }
       }
-      // Key `active` mới nhất của account (Renew key, DEC-59): runner dùng key mới ngay, không cần nạp lại bot.
+      // Key `active` mới nhất của account (Renew key, DEC-59): runner dùng key mới ngay, không cần nạp lại bot. Key mới thì
+      // bỏ nấc chờ huỷ của key cũ (DEC-TBD-engine-rest-budget).
+      if (r.account.apiKeyId !== account.apiKeyId) {
+        this.#cancelBackoff.delete(account.id);
+        this.#cancelRetryAt.delete(r.botId);
+      }
       r.account = r.paper ? { ...account, paper: true } : account;
       await this.#applyPendingVersion(r, snap.pending.get(r.botId), bot.state);
       if (bot.state === BotState.pausing)
@@ -2817,7 +2827,9 @@ export class Engine {
       await this.#event(
         r,
         "error",
-        "Paused: could not reach the signer",
+        code === "market_info_unavailable"
+          ? "Paused: could not read SoDEX market info"
+          : "Paused: could not reach the signer",
         `Nothing was sent to SoDEX after ${String(attempts)} attempts (${code}).`,
         at,
       );
@@ -4497,6 +4509,8 @@ export class Engine {
     const key = `${account.id}:${engine}:${market}`;
     const cached = this.#tradesCache.get(key);
     if (cached !== undefined && cached.seq >= notBefore) return cached.p;
+    // Đọc thật: ghi vào cửa sổ ngân sách đọc của worker (DEC-TBD-engine-rest-budget), kể cả lưới an toàn fill.
+    if (account.paper !== true) this.#lookupLog.push({ at: this.#d.now(), weight: TRADES_WEIGHT });
     const entry = {
       seq: ++this.#readSeq,
       p: this.#d.gateway.recentTrades(account, { market, engine }),
@@ -4638,17 +4652,25 @@ export class Engine {
     if (!Number.isFinite(this.#d.lookupBudget)) return null;
     const suspects = new Map<string, OrderRow[]>();
     const others = new Map<string, OrderRow[]>();
+    // Lệnh của bot sẽ được nạp ở vòng này (vừa khởi động lại / nhận shard): kế hoạch lập trước khi nạp nên lệnh trông như
+    // không có runner; xếp cuối, sau khi nạp phần lớn không còn tới hạn (chỉ market / đã gửi huỷ / khoảng trống stream).
+    const later = new Map<string, OrderRow[]>();
     for (const shard of shards) {
+      const loading = new Set(
+        (snap.bots.get(shard) ?? [])
+          .filter((x) => !this.#runners.has(x.bot.id))
+          .map((x) => x.bot.id),
+      );
       for (const o of this.#unknownDue(shard, snap, now)) pushTo(suspects, o.sodexAccountId, o);
       for (const o of this.#openDue(shard, snap, now))
-        pushTo(o.suspect ? suspects : others, o.sodexAccountId, o);
+        pushTo(o.suspect ? suspects : loading.has(o.botId) ? later : others, o.sodexAccountId, o);
     }
     const room = Math.max(
       0,
-      Math.floor((this.#d.lookupBudget - this.#lookupUsed(now)) / LOOKUP_WEIGHT),
+      Math.floor((this.#d.lookupBudget - this.#lookupUsed(now)) / (LOOKUP_WEIGHT + TRADES_WEIGHT)),
     );
     const plan = new Set<string>();
-    for (const tier of [suspects, others]) {
+    for (const tier of [suspects, others, later]) {
       const queues = [...tier.values()];
       for (let round = 0; plan.size < room && queues.some((q) => q.length > round); round += 1)
         for (const q of queues) {
@@ -4673,7 +4695,7 @@ export class Engine {
 
   /** Ghi một lần tra vào ngân sách; hết ngân sách (lane của vòng trước còn chạy) thì false, không tra. */
   #takeLookup(now: number): boolean {
-    if (this.#lookupUsed(now) + LOOKUP_WEIGHT > this.#d.lookupBudget) return false;
+    if (this.#lookupUsed(now) + LOOKUP_WEIGHT + TRADES_WEIGHT > this.#d.lookupBudget) return false;
     this.#lookupLog.push({ at: now, weight: LOOKUP_WEIGHT });
     return true;
   }

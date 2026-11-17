@@ -19,7 +19,7 @@ describe("engine SoDEX clients", () => {
       return Promise.resolve(new Response(body, { status: 200 }));
     };
     // Bucket 100 weight / phút: mức dự trữ cho lệnh ghi = 30. Mỗi lần đọc lịch sử khớp = 20.
-    const { rest, reads, writer } = engineSodexClients({
+    const { orderPath, rest, reads, writer, takeSkipped } = engineSodexClients({
       config: { restUrl: "https://sodex.test", restWeightPerMinute: 100 },
       rateLimit: new MemoryRateLimitStore(() => 1_000),
       egressKey: "engine-test",
@@ -42,6 +42,12 @@ describe("engine SoDEX clients", () => {
     expect(readsDone).toBe(3);
     expect(refused).toBe(7);
     expect(sent).toBe(3);
+    // Số lời gọi đọc bị phần dự trữ chặn (log mỗi phút), rồi về 0.
+    expect(takeSkipped()).toBe(7);
+    expect(takeSkipped()).toBe(0);
+    // Đọc id symbol ngay trước khi gửi lệnh không bị phần dự trữ chặn.
+    await orderPath.getPerpsSymbols();
+    expect(sent).toBe(4);
     // Lệnh huỷ / đặt vẫn đi: phần dự trữ chỉ dành cho lệnh ghi.
     for (let i = 0; i < 5; i += 1) {
       const res = await writer.write({
@@ -55,6 +61,6 @@ describe("engine SoDEX clients", () => {
       });
       expect(res.outcome).toBe("ok");
     }
-    expect(sent).toBe(8);
+    expect(sent).toBe(9);
   });
 });

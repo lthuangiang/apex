@@ -27,7 +27,16 @@ export interface Fence {
  * Lỗi trước khi request rời DRIFT (signer không ký được, mạng tới signer…): SoDEX chưa nhận gì, khác `unknown`
  * (đã gửi mà không có kết quả). `key_unusable` = key DRIFT không giải mã được, cần người dùng ký lại.
  */
-export type NotSentCode = "key_unusable" | "key_not_active" | "stale_epoch" | "signer_unavailable";
+export type NotSentCode =
+  | "key_unusable"
+  | "key_not_active"
+  | "stale_epoch"
+  | "signer_unavailable"
+  /**
+   * Không đọc được thông tin market (id symbol) của SoDEX trước khi ký (timeout, RATE_LIMITED, lỗi mạng): chưa gửi gì
+   * (DEC-TBD-engine-rest-budget).
+   */
+  | "market_info_unavailable";
 
 export type SubmitResult =
   | { clOrdID: string; outcome: "ok"; orderId: bigint }
