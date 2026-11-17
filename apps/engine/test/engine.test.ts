@@ -2805,7 +2805,7 @@ describe("engine", () => {
     expect((await botState(botId))?.state).toBe("paused");
   });
 
-  // ---------- Volume Farm: version mới khi đang có lượt mở (DEC-TBD-vf-version-apply) ----------
+  // ---------- Volume Farm: version mới khi đang có lượt mở (DEC-304) ----------
 
   it("waits to apply a Volume Farm version until the open trade closes, never cancelling its stop on SoDEX", async () => {
     // Prod 2026-11-17: lệnh vào khớp, stop gốc đặt; người dùng sửa bot → "Applied v2 — Cancelled 1 orders" huỷ stop
@@ -2870,7 +2870,7 @@ describe("engine", () => {
     await stopFarmBots();
   });
 
-  it("marks a Volume Farm version still waiting as superseded when the bot stops (DEC-TBD-vf-version-apply)", async () => {
+  it("marks a Volume Farm version still waiting as superseded when the bot stops (DEC-304)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     await seedCandles("DOT-USD");

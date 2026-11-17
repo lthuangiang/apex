@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { settleAppliedState } from "../src/engine";
 
-// DEC-TBD-vf-version-apply: state sau khi ghi version mới, khi fill có thể tới đúng lúc ghi.
+// DEC-304: state sau khi ghi version mới, khi fill có thể tới đúng lúc ghi.
 describe("settleAppliedState", () => {
   const written = { phase: "idle", ledger: { position: "0" } };
 

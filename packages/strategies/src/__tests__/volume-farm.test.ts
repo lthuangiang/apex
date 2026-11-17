@@ -1253,7 +1253,7 @@ describe("volume farm — backoff after refused entries (DEC-299)", () => {
   });
 });
 
-describe("volume farm — new version while running (DEC-TBD-vf-version-apply)", () => {
+describe("volume farm — new version while running (DEC-304)", () => {
   const apply = volumeFarm.applyVersion;
   if (apply === undefined) throw new Error("volume farm must define applyVersion");
   const v2 = cfg({ allowTaker: true, takerAfter: 0 });

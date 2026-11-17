@@ -329,7 +329,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                 />
                 <span className="text-xs text-ink-2 tabular-nums">{sub}</span>
               </div>
-              {/* Version mới còn chờ: Volume Farm chờ lượt đang mở đóng, bot pause chờ Resume (DEC-TBD-vf-version-apply), quy tắc 1.6. */}
+              {/* Version mới còn chờ: Volume Farm chờ lượt đang mở đóng, bot pause chờ Resume (DEC-304), quy tắc 1.6. */}
               {(() => {
                 const note = pendingNoteOf(b.strategy, b.state);
                 const p = note === null ? undefined : pendingVersionOf(dd.versions);

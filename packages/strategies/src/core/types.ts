@@ -166,7 +166,7 @@ export interface StepContext {
    */
   takerFeeRate?: string;
   /**
-   * Số của version mới đang chờ áp cho bot này (engine hoãn vì `applyVersion` trả null, DEC-TBD-vf-version-apply).
+   * Số của version mới đang chờ áp cho bot này (engine hoãn vì `applyVersion` trả null, DEC-304).
    * Chiến lược không mở lượt mới để bot về trạng thái áp được; thiếu là không có version chờ.
    */
   versionPending?: number;
@@ -190,7 +190,7 @@ export interface StrategyModule<C, S> {
   /** Bot đang chờ điều kiện vào ("Waiting for price", DEC-91); null là không chờ. Hàm thuần, chỉ để hiển thị. */
   waiting?: (config: C, state: S) => WaitingInfo | null;
   /**
-   * Áp version mới (`config` mới) cho bot đang chạy (DOMAIN 7.4, DEC-TBD-vf-version-apply). Trả state mới, hoặc null
+   * Áp version mới (`config` mới) cho bot đang chạy (DOMAIN 7.4, DEC-304). Trả state mới, hoặc null
    * = chưa áp được (còn vị thế, lệnh vào / thoát đang chạy): engine không huỷ lệnh nào, version cũ chạy tiếp và vòng
    * sau thử lại. Thiếu hàm thì engine áp ngay bằng `initialState(config)` như DEC-38.
    */

@@ -569,7 +569,7 @@ const FLAG_GATED_STATES: ReadonlySet<string> = new Set<string>([
 export const clockTime = (ms: number): string => new Date(ms).toISOString().slice(11, 23);
 
 /**
- * State sau khi ghi version mới (DEC-TBD-vf-version-apply). `after` = `applyVersion` đọc lại trên state hiện tại,
+ * State sau khi ghi version mới (DEC-304). `after` = `applyVersion` đọc lại trên state hiện tại,
  * `written` = state đã ghi cùng transaction. Fill tới trong lúc ghi: `after` null (bot lại có vị thế) → giữ state hiện
  * tại; hoặc `after` khác bản đã ghi. Cả hai trường hợp phải ghi lại ngay với version mới, để engine nạp lại không rơi về
  * `initialState` và quên vị thế.
@@ -1962,7 +1962,7 @@ export class Engine {
    * mới, đánh dấu version cũ superseded (DOMAIN.md mục 7.4, DEC-38). Lệnh mới đặt ở tick kế tiếp.
    * Chiến lược có `applyVersion` (Volume Farm) có thể hoãn: còn vị thế / lệnh vào / thoát đang chạy thì không huỷ
    * lệnh nào (stop trên SoDEX còn nguyên), version cũ chạy tiếp, ghi "Applying vN" một lần và thử lại mỗi vòng
-   * (DEC-TBD-vf-version-apply).
+   * (DEC-304).
    */
   async #applyPendingVersion(
     r: Runner,
@@ -3426,7 +3426,7 @@ export class Engine {
           why: reason ?? b.reasonCode ?? STOPPED_BY_USER,
           occurredAt: new Date(this.#d.now()),
         });
-      // Version còn chờ áp (Volume Farm dừng khi lượt chưa đóng, DEC-TBD-vf-version-apply): không bao giờ được áp nữa,
+      // Version còn chờ áp (Volume Farm dừng khi lượt chưa đóng, DEC-304): không bao giờ được áp nữa,
       // không để "pending" mãi. Start lại (DEC-86) vẫn chạy với config mới nhất.
       if (next === BotState.stopped)
         await tx

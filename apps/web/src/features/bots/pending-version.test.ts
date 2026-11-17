@@ -14,7 +14,7 @@ const v = (version: number, status: BotDetail["versions"][number]["status"]) =>
     appliedAt: null,
   }) as const;
 
-describe("pendingVersionOf (DEC-TBD-vf-version-apply)", () => {
+describe("pendingVersionOf (DEC-304)", () => {
   it("returns the newest pending version above the active one", () => {
     expect(
       pendingVersionOf([v(1, "superseded"), v(2, "active"), v(3, "pending"), v(4, "pending")])
@@ -28,7 +28,7 @@ describe("pendingVersionOf (DEC-TBD-vf-version-apply)", () => {
   });
 });
 
-describe("pendingNoteOf (DEC-TBD-vf-version-apply)", () => {
+describe("pendingNoteOf (DEC-304)", () => {
   it("explains a waiting Volume Farm version, running or paused", () => {
     expect(pendingNoteOf("volume_farm", "running")).toBe("waitingFarm");
     expect(pendingNoteOf("volume_farm", "paused")).toBe("waitingFarmPaused");

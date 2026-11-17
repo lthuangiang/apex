@@ -87,7 +87,7 @@ export async function mcpGetBot(
   await ownBotOr404(deps.account.db, userId, botId);
   const d = await botDetail(deps.account.bots, userId, botId);
   const active = d.versions.find((v) => v.status === "active");
-  // Version chờ mới nhất (có thể có hai khi người dùng sửa lần nữa trong lúc chờ, DEC-TBD-vf-version-apply).
+  // Version chờ mới nhất (có thể có hai khi người dùng sửa lần nữa trong lúc chờ, DEC-304).
   const pending = d.versions
     .filter((v) => v.status === "pending")
     .reduce<(typeof d.versions)[number] | undefined>(

@@ -1555,7 +1555,7 @@ export async function archiveBot(
 
 /**
  * Config của version `pending` mới nhất (đang chờ engine áp; Volume Farm chờ tới khi lượt đang mở đóng,
- * DEC-TBD-vf-version-apply). Version kế tiếp (Edit, Review this run, AI Desk) dựng từ đây để không làm mất thay đổi
+ * DEC-304). Version kế tiếp (Edit, Review this run, AI Desk) dựng từ đây để không làm mất thay đổi
  * đang chờ; không có thì dùng version active.
  */
 export async function newestPendingConfig(
@@ -1584,7 +1584,7 @@ async function newRunVersion(deps: BotDeps, botId: string): Promise<void> {
       .orderBy(desc(botVersions.version))
       .limit(1);
     if (last === undefined) throw new AppError(ErrorCode.botNotFound, "Bot not found.");
-    // Cả version còn `pending` lúc bot dừng (DEC-TBD-vf-version-apply): lần chạy mới dùng config mới nhất (`last`).
+    // Cả version còn `pending` lúc bot dừng (DEC-304): lần chạy mới dùng config mới nhất (`last`).
     await tx
       .update(botVersions)
       .set({ status: "superseded" })

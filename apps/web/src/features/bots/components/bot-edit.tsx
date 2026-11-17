@@ -67,7 +67,7 @@ export function BotEdit({
 
   const bot = detail.data?.bot;
   const active = detail.data?.versions.find((v) => v.status === "active");
-  // Version còn chờ áp (DEC-TBD-vf-version-apply): form dựng trên nó, không trên version active, để lần sửa sau không
+  // Version còn chờ áp (DEC-304): form dựng trên nó, không trên version active, để lần sửa sau không
   // làm mất thay đổi đang chờ; "Applying v{n}…" lấy từ server nên còn sau khi tải lại trang (quy tắc 1.6).
   const pendingV = detail.data === undefined ? undefined : pendingVersionOf(detail.data.versions);
   const basis = pendingV ?? active;
@@ -240,7 +240,7 @@ export function BotEdit({
             )}
             <h3 className="m-0 text-sm font-bold">{t("whatHappens")}</h3>
             <p className="m-0 text-sm text-ink-2">
-              {/* Volume Farm chờ lượt đang mở đóng rồi mới áp (DEC-TBD-vf-version-apply). */}
+              {/* Volume Farm chờ lượt đang mở đóng rồi mới áp (DEC-304). */}
               {strategy === "volume_farm" ? t("applyEffectFarm") : t("applyEffect")}
             </p>
             <div role="status" aria-live="polite">
@@ -250,7 +250,7 @@ export function BotEdit({
                 <span>{t("applying", { next: waiting })}</span>
               )}
             </div>
-            {/* Vì sao version còn chờ: Volume Farm chờ lượt đang mở đóng; bot pause thì chờ Resume (DEC-TBD-vf-version-apply). */}
+            {/* Vì sao version còn chờ: Volume Farm chờ lượt đang mở đóng; bot pause thì chờ Resume (DEC-304). */}
             {waiting === null || live || note === null ? null : (
               <p className="m-0 text-sm text-ink-2">{t(note, { next: waiting })}</p>
             )}

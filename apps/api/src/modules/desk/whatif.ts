@@ -355,7 +355,7 @@ export async function applyWhatif(
         reason: "version_changed",
       },
     );
-  // Version đang chờ áp (DEC-TBD-vf-version-apply): dựng trên nó để không làm mất thay đổi đang chờ.
+  // Version đang chờ áp (DEC-304): dựng trên nó để không làm mất thay đổi đang chờ.
   const baseline =
     (await newestPendingConfig(deps.db, row.w.botId)) ?? (bot.config as Record<string, unknown>);
   // Giữ chỗ trước khi tạo version: hai lần bấm Apply cùng lúc chỉ một lần qua được unique index `desk_applies_whatif`.

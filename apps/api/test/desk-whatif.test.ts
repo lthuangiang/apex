@@ -215,7 +215,7 @@ describe("what-if and Apply", () => {
     expect(errorOf(twice.json()).details).toMatchObject({ reason: "applied" });
   });
 
-  it("builds the applied version on a pending version, so an edit still waiting is not lost (DEC-TBD-vf-version-apply)", async () => {
+  it("builds the applied version on a pending version, so an edit still waiting is not lost (DEC-304)", async () => {
     const { client } = await deskUser("whatif-pending@example.com");
     const botId = await bot(client, "volume_farm", farm, "ETH Farm");
     await env.pool.query("update bots set state = 'running' where id = $1", [botId]);

@@ -424,7 +424,7 @@ function tryEnter(
   const notes: string[] = [];
   // Khối lượng long / short của các lượt đã đóng lệch quá một lệnh lớn nhất: buộc đi ngược lượt trước (apex MM
   // inventory hard block, DEC-80). Bot đang phẳng nên đây là một lượt mới như mọi lượt; câu Decisions nói đúng là cân
-  // khối lượng, không phải đưa vị thế về 0 (DEC-TBD-vf-version-apply).
+  // khối lượng, không phải đưa vị thế về 0 (DEC-304).
   if (dec(s.netExposure).abs().gt(c.orderSizeMaxUsd) && s.lastSide !== null) {
     direction = s.lastSide === "long" ? "short" : "long";
     notes.push(`Went ${direction} to balance long and short volume.`);
@@ -902,7 +902,7 @@ function onTimer(
           holdUntil: s.holdUntil ?? at,
         });
       }
-      // Version mới đang chờ áp (DEC-TBD-vf-version-apply): không mở lượt mới, để engine áp khi bot phẳng.
+      // Version mới đang chờ áp (DEC-304): không mở lượt mới, để engine áp khi bot phẳng.
       if (ctx.versionPending !== undefined) return none(s);
       return snap === undefined ? none(s) : tryEnter(c, s, ctx, at, snap.candles);
     }
@@ -1011,7 +1011,7 @@ function onFill(
 }
 
 /**
- * Áp version mới (DEC-TBD-vf-version-apply). Chỉ khi bot phẳng và không có lệnh vào / thoát đang chạy; không thì null:
+ * Áp version mới (DEC-304). Chỉ khi bot phẳng và không có lệnh vào / thoát đang chạy; không thì null:
  * engine không huỷ gì (stop trên SoDEX của lượt đang mở còn nguyên) và version cũ quản lý lượt đó tới khi đóng.
  * Lúc áp: state mới như DEC-38 (sổ cái phiên mới), nhưng giữ danh sách lệnh gần nhất để fill đến muộn của version cũ
  * vẫn vào sổ cái, giữ phần vị thế lẻ (dưới min size) để sổ cái khớp SoDEX, giữ sổ lệnh và thời gian nghỉ.

@@ -111,7 +111,7 @@ export async function applyReview(
     .from(botVersions)
     .where(eq(botVersions.id, b.activeVersionId ?? ""))
     .limit(1);
-  // Version đang chờ áp (DEC-TBD-vf-version-apply): dựng trên nó để không làm mất thay đổi đang chờ.
+  // Version đang chờ áp (DEC-304): dựng trên nó để không làm mất thay đổi đang chờ.
   const pending = await newestPendingConfig(deps.db, botId);
   const base = { ...(pending ?? (active?.config as Record<string, unknown> | undefined) ?? {}) };
   // Tham số theo dạng mới: bỏ SL % giá (DEC-126) và early profit USDC cố định (DEC-130) của config cũ.

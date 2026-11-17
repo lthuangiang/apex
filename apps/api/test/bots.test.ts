@@ -772,7 +772,7 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(await ids("/api/v1/bots")).toContain(id);
   });
 
-  it("supersedes a version still pending when the bot stopped, and runs again with it (DEC-TBD-vf-version-apply)", async () => {
+  it("supersedes a version still pending when the bot stopped, and runs again with it (DEC-304)", async () => {
     const { client, secret } = await connectedUser("again-pending@example.com");
     const made = await client.request("POST", "/api/v1/bots", {
       body: { strategy: "spot_grid", name: "Pending", paramSource: "manual", config: grid },
