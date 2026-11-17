@@ -51,12 +51,22 @@ export type LeverageResult =
 
 /**
  * Kết quả huỷ từng lệnh. `ok`: SoDEX xác nhận đã gỡ khỏi sổ, lệnh không khớp thêm được nữa. `rejected`: SoDEX
- * từ chối (thường vì lệnh đã khớp hết / đã huỷ). `unknown`: không rõ, chờ fill hoặc đối soát.
+ * từ chối (thường vì lệnh đã khớp hết / đã huỷ). `not_found`: SoDEX trả `OrderNotFound`, lệnh không có trên sổ (đã
+ * khớp / đã huỷ, hoặc vừa được nhận mà chưa vào sổ, DEC-250); engine đối soát trạng thái cuối, không huỷ lại mãi.
+ * `unknown`: không rõ, chờ fill hoặc đối soát.
  */
 export type CancelResult =
   | { clOrdID: string; outcome: "ok" }
-  | { clOrdID: string; outcome: "rejected"; code: string }
+  /**
+   * `scope: "request"`: SoDEX từ chối cả request (envelope lỗi: 429, key 401 / 403, nonce / chữ ký 400…), lệnh huỷ không
+   * được xử lý nên không nói gì về lệnh. Không có `scope` = kết quả của chính lệnh (đã khớp / đã huỷ…).
+   */
+  | { clOrdID: string; outcome: "rejected"; code: string; scope?: "request" }
+  | { clOrdID: string; outcome: "not_found" }
   | { clOrdID: string; outcome: "unknown"; detail?: string };
+
+/** Mã DeskLabs tự từ chối lệnh cho market không có trong danh sách symbol của SoDEX (không gửi gì). */
+export const MARKET_NOT_FOUND = "MARKET_NOT_FOUND";
 
 export interface LeverageSetting {
   leverage: number;

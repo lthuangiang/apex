@@ -46,6 +46,12 @@ const env = z
     ENGINE_SHARD_LEASE_TTL_MS: z.coerce.number().int().positive().default(15_000),
     /** Chu kỳ đọc lại approval builder fee của mỗi account (mặc định 60 s). */
     ENGINE_FEE_CHECK_MS: z.coerce.number().int().positive().default(60_000),
+    /**
+     * Vòng tick chờ các shard tối đa chừng này; shard còn chờ SoDEX chạy tiếp ngoài vòng (DEC-308).
+     */
+    ENGINE_TICK_WAIT_MS: z.coerce.number().int().positive().default(2_000),
+    /** Timeout mỗi lời gọi REST chỉ đọc của đối soát (tra lệnh, lịch sử khớp, vị thế). Lệnh ghi giữ timeout cũ. */
+    ENGINE_SODEX_READ_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
   })
   .parse(process.env);
 const log = pino({
@@ -53,7 +59,9 @@ const log = pino({
   base: { service: "engine", worker: env.ENGINE_WORKER_ID },
 });
 const sodex = loadSodexConfig(process.env);
-const { db, pool } = createDb(env.DATABASE_URL);
+// Các shard / account chạy song song dùng chung pool 10 kết nối: chờ kết nối có giới hạn, lỗi thì bước đó thử lại ở lượt
+// sau thay vì treo (DEC-308).
+const { db, pool } = createDb(env.DATABASE_URL, { connectionTimeoutMillis: 10_000 });
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 // SoDEX Debugger (DEC-TBD-sodex-debugger): mọi lời gọi SoDEX vào hàng đợi trong bộ nhớ, ghi batch mỗi giây bằng pool
 // DB riêng; không bao giờ chặn đường gửi lệnh.
@@ -86,6 +94,8 @@ const gateway = new HttpGateway(
   ),
   sodex.builderId,
   sodex.builderExempt,
+  // Cùng bucket rate limit IP (cùng store + egressKey), timeout ngắn hơn cho đọc của đối soát.
+  new SodexRestClient({ ...options, timeoutMs: env.ENGINE_SODEX_READ_TIMEOUT_MS }),
 );
 // User stream cho từng account + engine mà bot thật trong shard của worker này giao dịch (account chỉ chạy Perps không mở
 // stream Spot). Engine mở stream ngay khi nạp bot (trong vòng tick) và lệnh mở vị thế chỉ đi khi stream của engine đó
@@ -224,6 +234,7 @@ const engine = new Engine({
   log,
   leaseTtlMs: env.ENGINE_SHARD_LEASE_TTL_MS,
   feeCheckMs: env.ENGINE_FEE_CHECK_MS,
+  tickWaitMs: env.ENGINE_TICK_WAIT_MS,
   loopDelay: loopDelayMs,
   rules: (market) => marketInfo(rest, market),
   builderId: sodex.builderId,
@@ -341,12 +352,15 @@ const loop = (async () => {
 async function shutdown() {
   state.running = false;
   await loop;
+  // Dừng engine trước (chặn mọi lệnh mới, chờ các shard đang chạy dở), rồi mới đóng user stream: fill của lệnh vừa gửi
+  // vẫn tới qua stream; DB đóng sau cùng (review #216 M2).
+  await engine.stop();
+  // SoDEX Debugger: ghi nốt hàng đợi ngay sau khi engine dừng (DEC-TBD-sodex-debugger).
+  await sodexCalls?.close();
   for (const pair of streams.values()) {
     pair.spot?.close();
     pair.perps?.close();
   }
-  await engine.stop();
-  await sodexCalls?.close();
   await nc.drain();
   await pool.end();
   redis.disconnect();

@@ -26,18 +26,19 @@ import type { MarketRules, OrderIntent } from "@drift/strategies";
 import type { Hex } from "viem";
 import { z } from "zod";
 
-import type {
-  AccountRef,
-  CancelResult,
-  Fence,
-  Gateway,
-  LeverageResult,
-  LeverageSetting,
-  LookupResult,
-  ModifyStopResult,
-  NotSentCode,
-  SubmitResult,
-  OrderTrade,
+import {
+  MARKET_NOT_FOUND,
+  type AccountRef,
+  type CancelResult,
+  type Fence,
+  type Gateway,
+  type LeverageResult,
+  type LeverageSetting,
+  type LookupResult,
+  type ModifyStopResult,
+  type NotSentCode,
+  type SubmitResult,
+  type OrderTrade,
 } from "./gateway";
 
 // Gateway thật: dựng payload lệnh (có `builder` của DRIFT, SODEX.md mục 5.3), xin signer ký kèm epoch,
@@ -142,6 +143,9 @@ const tif = (t: OrderIntent["timeInForce"]) =>
 
 export class HttpGateway implements Gateway {
   readonly #nonces = new MonotonicNonceSource();
+  /** Market đã đọc được ít nhất một lần: id symbol không đổi, nên lệnh không phải chờ lần làm mới danh sách symbol. */
+  readonly #markets = new Map<string, MarketInfo>();
+  readonly #refreshing = new Set<string>();
 
   constructor(
     private readonly rest: SodexRestClient,
@@ -150,7 +154,39 @@ export class HttpGateway implements Gateway {
     private readonly builderId: bigint,
     /** Account builder được miễn builder fee (DEC-47); false = gắn builder fee như mọi account (DEC-124). */
     private readonly builderExempt = true,
+    /**
+     * Client chỉ đọc cho đối soát (tra lệnh, lịch sử khớp, vị thế) với timeout ngắn hơn (DEC-308);
+     * thiếu thì dùng `rest`. Cùng bucket rate limit IP. Lệnh ghi không đi qua đây.
+     */
+    private readonly reads: SodexRestClient = rest,
   ) {}
+
+  /**
+   * Thông tin market cho payload lệnh / huỷ. Đã biết market thì trả ngay và làm mới ở nền (lỗi làm mới bỏ qua, lần sau
+   * thử lại): danh sách symbol hết cache 60 s không còn chặn lệnh trên đường gửi (log 2026-11-17: timeout ở đây).
+   */
+  async #info(market: string): Promise<MarketInfo | undefined> {
+    const known = this.#markets.get(market);
+    if (known === undefined) {
+      const info = await marketInfo(this.rest, market);
+      if (info !== undefined) this.#markets.set(market, info);
+      return info;
+    }
+    if (!this.#refreshing.has(market)) {
+      this.#refreshing.add(market);
+      void marketInfo(this.rest, market)
+        .then((info) => {
+          // Danh sách mới không còn market này (bỏ niêm yết / đổi tên): bỏ id cũ, lệnh sau bị từ chối thay vì gửi bằng id cũ.
+          if (info === undefined) this.#markets.delete(market);
+          else this.#markets.set(market, info);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          this.#refreshing.delete(market);
+        });
+    }
+    return known;
+  }
 
   async #send(
     account: AccountRef,
@@ -211,8 +247,20 @@ export class HttpGateway implements Gateway {
       const key = o.engine === "spot" ? "spot" : `perps:${o.market}`;
       groups.set(key, [...(groups.get(key) ?? []), o]);
     }
-    for (const [key, group] of groups) {
-      const infos = await Promise.all(group.map((o) => marketInfo(this.rest, o.market)));
+    for (const [key, all] of groups) {
+      const found = await Promise.all(all.map((o) => this.#info(o.market)));
+      // Market không có trong danh sách symbol của SoDEX: không gửi (không bao giờ dùng id 0), từ chối ngay tại DeskLabs.
+      for (const [i, o] of all.entries())
+        if (found[i] === undefined)
+          out.push({
+            clOrdID: o.clOrdID,
+            outcome: "rejected",
+            code: MARKET_NOT_FOUND,
+            message: "Market is not listed on SoDEX.",
+          });
+      const group = all.filter((_, i) => found[i] !== undefined);
+      const infos = found.filter((x): x is MarketInfo => x !== undefined);
+      if (group.length === 0) continue;
       let payload: ActionPayload;
       if (key === "spot") {
         payload = spotNewOrders({
@@ -314,7 +362,7 @@ export class HttpGateway implements Gateway {
     fence: Fence,
   ): Promise<LeverageResult> {
     refusePaper(account);
-    const info = await marketInfo(this.rest, input.market);
+    const info = await this.#info(input.market);
     if (info?.engine !== "perps") return { outcome: "rejected", code: "MARKET_NOT_FOUND" };
     const payload = perpsUpdateLeverage({
       accountID: account.sodexAccountId,
@@ -362,7 +410,7 @@ export class HttpGateway implements Gateway {
     refusePaper(account);
     const out: CancelResult[] = [];
     for (const o of list) {
-      const info = await marketInfo(this.rest, o.market);
+      const info = await this.#info(o.market);
       if (info === undefined) {
         out.push({ clOrdID: o.clOrdID, outcome: "unknown" });
         continue;
@@ -386,7 +434,13 @@ export class HttpGateway implements Gateway {
       // Chưa rời DRIFT (signer lỗi) thì vẫn ném NotSentError như trước: caller không đặt lệnh mới.
       const res = await this.#send(account, payload, "DELETE", fence, 1);
       if (res.outcome === "rejected") {
-        out.push({ clOrdID: o.clOrdID, outcome: "rejected", code: String(res.sodexCode) });
+        // Envelope lỗi: cả request bị từ chối, lệnh huỷ chưa được xử lý (review #216 F1).
+        out.push({
+          clOrdID: o.clOrdID,
+          outcome: "rejected",
+          code: String(res.sodexCode),
+          scope: "request",
+        });
       } else if (res.outcome === "unknown") {
         out.push({
           clOrdID: o.clOrdID,
@@ -394,20 +448,7 @@ export class HttpGateway implements Gateway {
           ...(res.detail === undefined ? {} : { detail: res.detail }),
         });
       } else {
-        // Envelope ok nhưng từng lệnh vẫn có `code` riêng; đọc không được thì coi như chưa rõ.
-        const parsed = z.array(orderResultSchema).safeParse(res.data);
-        const item = parsed.success ? parsed.data[0] : undefined;
-        out.push(
-          item === undefined
-            ? {
-                clOrdID: o.clOrdID,
-                outcome: "unknown",
-                detail: `ok envelope, unreadable result: ${JSON.stringify(res.data).slice(0, 300)}`,
-              }
-            : item.code === 0
-              ? { clOrdID: o.clOrdID, outcome: "ok" }
-              : { clOrdID: o.clOrdID, outcome: "rejected", code: String(item.code) },
-        );
+        out.push(cancelItemResult(o.clOrdID, res.data));
       }
     }
     return out;
@@ -419,7 +460,7 @@ export class HttpGateway implements Gateway {
     fence: Fence,
   ): Promise<ModifyStopResult> {
     refusePaper(account);
-    const info = await marketInfo(this.rest, o.market);
+    const info = await this.#info(o.market);
     if (info === undefined) return { outcome: "unknown" };
     const payload = perpsModifyOrder({
       accountID: account.sodexAccountId,
@@ -449,7 +490,7 @@ export class HttpGateway implements Gateway {
     q: { market: string; engine: "spot" | "perps" },
   ): Promise<(OrderTrade & { clOrdID: string })[]> {
     refusePaper(account);
-    const rows = await this.rest.getTrades(q.engine, account.address, {
+    const rows = await this.reads.getTrades(q.engine, account.address, {
       accountID: account.sodexAccountId,
       symbol: q.market,
       limit: 500,
@@ -470,7 +511,7 @@ export class HttpGateway implements Gateway {
     account: AccountRef,
   ): Promise<Map<string, { size: string; entryPrice: string }>> {
     refusePaper(account);
-    const state = await this.rest.getPerpsAccountState(account.address);
+    const state = await this.reads.getPerpsAccountState(account.address);
     const out = new Map<string, { size: string; entryPrice: string }>();
     for (const p of state.P) {
       if (dec(p.sz).isZero()) continue;
@@ -492,7 +533,7 @@ export class HttpGateway implements Gateway {
     o: { clOrdID: string; market: string; engine: "spot" | "perps" },
   ): Promise<OrderTrade[]> {
     refusePaper(account);
-    const rows = await this.rest.getTrades(o.engine, account.address, {
+    const rows = await this.reads.getTrades(o.engine, account.address, {
       accountID: account.sodexAccountId,
       symbol: o.market,
       limit: 500,
@@ -516,12 +557,12 @@ export class HttpGateway implements Gateway {
   ): Promise<LookupResult> {
     refusePaper(account);
     const q = { accountID: account.sodexAccountId, symbol: o.market };
-    const open = (await this.rest.getOpenOrders(o.engine, account.address, q)).find(
+    const open = (await this.reads.getOpenOrders(o.engine, account.address, q)).find(
       (x) => x.clOrdID === o.clOrdID,
     );
     const found =
       open ??
-      (await this.rest.getOrderHistory(o.engine, account.address, { ...q, limit: 500 })).find(
+      (await this.reads.getOrderHistory(o.engine, account.address, { ...q, limit: 500 })).find(
         (x) => x.clOrdID === o.clOrdID,
       );
     if (found === undefined) return { status: "not_found" };
@@ -559,3 +600,33 @@ export function rejectMessage(text: string | undefined): string | null {
   const t = (text ?? "").replace(/\s+/g, " ").trim();
   return t === "" ? null : t.slice(0, 300);
 }
+
+/**
+ * Kết quả từng lệnh trong response huỷ (envelope ok). SoDEX trả `OrderNotFound` không kèm clOrdID
+ * (`[{"code":-1,"error":"order rejected: OrderNotFound"}]`, local 2026-11-17): lệnh không còn (hoặc chưa vào) sổ →
+ * `not_found`, engine quyết định tiếp; không còn là `unknown`. Dạng khác không đọc được thì vẫn `unknown` (quy tắc 1.7).
+ */
+export function cancelItemResult(clOrdID: string, data: unknown): CancelResult {
+  const parsed = z.array(orderResultSchema).safeParse(data);
+  const item = parsed.success ? parsed.data[0] : undefined;
+  if (item !== undefined)
+    return item.code === 0
+      ? { clOrdID, outcome: "ok" }
+      : isOrderNotFound(item.error)
+        ? { clOrdID, outcome: "not_found" }
+        : { clOrdID, outcome: "rejected", code: String(item.code) };
+  const loose = z
+    .array(z.object({ code: z.number().int(), error: z.string().optional() }))
+    .safeParse(data);
+  const only = loose.success && loose.data.length === 1 ? loose.data[0] : undefined;
+  if (only !== undefined && only.code !== 0 && isOrderNotFound(only.error))
+    return { clOrdID, outcome: "not_found" };
+  return {
+    clOrdID,
+    outcome: "unknown",
+    detail: `ok envelope, unreadable result: ${JSON.stringify(data).slice(0, 300)}`,
+  };
+}
+
+const isOrderNotFound = (error: string | undefined): boolean =>
+  error?.includes("OrderNotFound") === true;

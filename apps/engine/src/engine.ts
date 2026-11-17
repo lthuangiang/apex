@@ -79,7 +79,15 @@ import type { Logger } from "pino";
 
 import { withBotCallContext } from "./call-context";
 import { openedAlerts, SkipGate, skipMarket, skippedAlert, skipReason } from "./copy-alerts";
-import type { AccountRef, Gateway, LookupResult, NotSentCode, OrderTrade } from "./gateway";
+import {
+  MARKET_NOT_FOUND,
+  type AccountRef,
+  type CancelResult,
+  type Gateway,
+  type LookupResult,
+  type NotSentCode,
+  type OrderTrade,
+} from "./gateway";
 import type { PaperGateway } from "./paper-gateway";
 
 // Engine (ARCHITECTURE.md mục 3.3–3.4, DEC-37). Mỗi account thuộc một shard ảo (64); mỗi shard có đúng
@@ -338,6 +346,92 @@ const pushTo = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
 };
 
 /**
+ * Số shard chạy cùng lúc (DEC-308). Mỗi shard vẫn chạy các bước của mình tuần tự; một shard chờ
+ * SoDEX chậm không làm các shard khác chờ theo. Giới hạn để không dồn quá nhiều kết nối DB / lời gọi SoDEX một lúc.
+ */
+export const SHARD_CONCURRENCY = 4;
+/**
+ * Số account cùng lúc trong một bước đọc SoDEX của một shard (đối soát, lịch sử khớp, vị thế). Trong một account các
+ * lời gọi vẫn tuần tự, nên số lời gọi mỗi phút (bucket IP 1200 weight / phút) không đổi, chỉ không còn cộng dồn độ trễ.
+ */
+export const ACCOUNT_CONCURRENCY = 4;
+/**
+ * User stream của account còn mở chừng này sau khi runner cuối của account bị bỏ (Stop xong), để tin khớp của lệnh đóng
+ * (market IOC) gửi ngay trước đó vẫn tới qua stream (DEC-308). Sau đó stream còn mở khi account còn
+ * lệnh bot thật đang mở / `unknown` (snapshot của vòng).
+ */
+export const STREAM_HOLD_MS = 60_000;
+/** `stop()` chờ shard đang chạy dở tối đa chừng này trước khi trả lease (stop_grace_period 30 s). */
+const STOP_WAIT_MS = 20_000;
+
+/** Chạy `work` cho từng phần tử, tối đa `limit` cùng lúc. Lỗi đầu tiên được ném lại sau khi mọi phần tử đang chạy xong. */
+async function eachLimited<T>(
+  items: readonly T[],
+  limit: number,
+  work: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const errors: unknown[] = [];
+  const worker = async (): Promise<void> => {
+    // Lỗi fencing: shard không còn của mình, mọi lần ghi sau đều bị từ chối, không lấy thêm việc.
+    while (next < items.length && !errors.some((e) => e instanceof FencedError)) {
+      const item = items[next] as T;
+      next += 1;
+      try {
+        await work(item);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  const fenced = errors.find((e) => e instanceof FencedError);
+  if (fenced !== undefined) throw fenced;
+  if (errors.length > 0) throw errors[0];
+}
+
+/** Giới hạn số việc chạy cùng lúc (hàng đợi FIFO). */
+class Limiter {
+  #free: number;
+  readonly #queue: (() => void)[] = [];
+  constructor(size: number) {
+    this.#free = size;
+  }
+  async run<T>(work: () => Promise<T>): Promise<T> {
+    if (this.#free > 0) this.#free -= 1;
+    else
+      await new Promise<void>((resolve) => {
+        this.#queue.push(resolve);
+      });
+    try {
+      return await work();
+    } finally {
+      const waiting = this.#queue.shift();
+      if (waiting === undefined) this.#free += 1;
+      else waiting();
+    }
+  }
+}
+
+/** Chờ mọi promise, tối đa `ms` (không hữu hạn = chờ hết). */
+async function settleWithin(list: readonly Promise<unknown>[], ms: number): Promise<void> {
+  if (list.length === 0) return;
+  const all = Promise.allSettled(list);
+  if (!Number.isFinite(ms)) {
+    await all;
+    return;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    all,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ms);
+    }),
+  ]);
+  clearTimeout(timer);
+}
+
+/**
  * Lease của shard đã quá `validUntil` và gia hạn ngay không được (DEC-302): không gửi gì tới SoDEX.
  * Là một `FencedError` để mọi chỗ đang cho FencedError đi qua cũng cho lỗi này đi qua; vòng `tick` bỏ qua shard ở lượt
  * này chứ không bỏ shard (shard mất thật thì `LeaseSet` đã báo `onLost`).
@@ -398,6 +492,11 @@ export interface EngineDeps {
   monotonic?: () => number;
   /** Độ trễ event loop hiện tại (perf_hooks), ghi kèm log `tick slow`. */
   loopDelay?: () => { p99Ms: number; maxMs: number };
+  /**
+   * `tick()` chờ các shard tối đa chừng này (DEC-308). Shard chậm hơn (SoDEX chậm) chạy tiếp ngoài
+   * vòng; vòng sau bỏ qua shard đó tới khi nó xong, các shard khác vẫn chạy đủ bước. Mặc định: chờ hết (như trước).
+   */
+  tickWaitMs?: number;
   /**
    * User stream SoDEX của các account (main.ts). Engine mở stream cho account ngay khi nạp bot thật. Lệnh mở / tăng vị
    * thế chỉ được gửi khi stream của engine (Spot / Perps) của lệnh đã được SoDEX nhận subscribe: SoDEX không gửi lại tin
@@ -727,11 +826,30 @@ export class Engine {
   /** Lệnh đang chờ huỷ lại theo bot (huỷ trước đó chưa được SoDEX xác nhận), và lần thử gần nhất. */
   readonly #pendingCancels = new Map<string, Set<string>>();
   readonly #cancelRetryAt = new Map<string, number>();
+  /**
+   * Lệnh SoDEX trả `OrderNotFound` khi huỷ mà không còn mới (DEC-308), theo bot: vẫn trong
+   * `#pendingCancels` (để #reconcileOpen đối soát như lệnh đã gửi huỷ) nhưng không gửi huỷ lại.
+   */
+  readonly #cancelGone = new Map<string, Set<string>>();
+  /** Lần huỷ gần nhất của lệnh trong `#cancelGone` (huỷ lại chậm mỗi OPEN_CHECK_MS tới khi có kết quả, review #216 M3). */
+  readonly #goneCancelAt = new Map<string, number>();
   /** Lệnh huỷ đang chờ lệnh đặt được nhận (DEC-254): clOrdID → lúc bắt đầu chờ. */
   readonly #inflightCancels = new Map<string, number>();
   /** Lần cuối ghi số dư giả của bot paper. */
   readonly #paperSnapAt = new Map<string, number>();
   #stopped = false;
+  /** Account vừa bỏ runner cuối (Stop): giữ user stream tới `until` (STREAM_HOLD_MS). */
+  readonly #streamHolds = new Map<
+    string,
+    { account: AccountRef; engines: Set<"spot" | "perps">; until: number }
+  >();
+  /** Account có lệnh bot thật còn mở / `unknown` theo snapshot gần nhất: giữ user stream (fill vẫn có thể tới). */
+  #orderStreams = new Map<string, { account: AccountRef; engines: Set<"spot" | "perps"> }>();
+  /** Shard đang chạy các bước của một vòng (có thể kéo dài qua vòng sau khi SoDEX chậm). */
+  readonly #lanes = new Map<number, Promise<void>>();
+  readonly #shardLimit = new Limiter(SHARD_CONCURRENCY);
+  /** Lần gia hạn lease do một làn shard gọi, dùng chung cho các làn khác cần cùng lúc. */
+  #renewing: Promise<void> | null = null;
 
   constructor(deps: EngineDeps) {
     this.#d = {
@@ -740,6 +858,7 @@ export class Engine {
       shards: ENGINE_SHARDS,
       feeCheckMs: 60_000,
       orderbook: () => Promise.resolve(null),
+      tickWaitMs: Number.POSITIVE_INFINITY,
       ...deps,
       builderExempt: deps.builderExempt ?? true,
       feeRate: deps.feeRate,
@@ -786,6 +905,8 @@ export class Engine {
     if (this.#stopped) return;
     // Lịch sử khớp đọc trong vòng trước đã cũ.
     this.#tradesCache.clear();
+    for (const [id, h] of this.#streamHolds)
+      if (h.until <= this.#d.now()) this.#streamHolds.delete(id);
     const started = this.#clockMono();
     await this.#manageShards();
     const managed = this.#clockMono();
@@ -821,35 +942,103 @@ export class Engine {
       checkFees: (n) => this.#checkFees(n, snap.accounts.get(n) ?? []),
       clock: (n) => this.#clock(n),
     };
-    let skipped = 0;
+    // Mỗi shard một làn: các shard chạy song song (tối đa SHARD_CONCURRENCY), trong một shard các bước vẫn tuần tự. Vòng
+    // chờ tối đa `tickWaitMs`; shard còn chạy (SoDEX chậm) chạy tiếp ngoài vòng và vòng sau bỏ qua nó tới khi xong, nên một
+    // account chờ SoDEX không làm chậm bước / đồng hồ của account ở shard khác (DEC-308).
+    const counts = { skipped: 0, busy: 0 };
+    const lanes: Promise<void>[] = [];
+    let waiting = true;
     for (const shard of this.ownedShards) {
       // Shard không có account nào và không có runner nào: không có việc gì (không truy vấn, không gọi SoDEX).
       const accounts = snap.accounts.get(shard) ?? [];
       if (accounts.length === 0 && !this.#hasRunners(shard)) continue;
-      try {
-        for (const phase of SHARD_PHASES) {
-          if (!(await this.#leaseConfirmed(shard))) {
-            skipped += 1;
-            break;
-          }
-          const at = this.#clockMono();
-          await steps[phase](shard);
-          phases[phase] = (phases[phase] ?? 0) + this.#clockMono() - at;
-        }
-      } catch (error) {
-        if (error instanceof LeaseExpiredError)
-          this.#d.log.warn({ shard }, "shard skipped this tick: lease not confirmed");
-        else if (error instanceof FencedError) {
-          this.#d.log.warn({ shard, reason: "fenced", worker: this.#d.workerId }, "shard lost");
-          this.#dropShard(shard);
-        } else this.#d.log.error({ err: error, shard }, "shard loop failed");
+      if (this.#lanes.has(shard)) {
+        counts.busy += 1;
+        continue;
       }
+      const lane = this.#shardLimit
+        .run(() => this.#runShard(shard, steps))
+        .then((done) => {
+          if (waiting) {
+            counts.skipped += done.skipped;
+            for (const [k, v] of Object.entries(done.phases)) phases[k] = (phases[k] ?? 0) + v;
+          }
+        })
+        .catch((error: unknown) => {
+          this.#d.log.error({ err: error, shard }, "shard loop failed");
+        })
+        .finally(() => {
+          this.#lanes.delete(shard);
+        });
+      this.#lanes.set(shard, lane);
+      lanes.push(lane);
     }
-    this.#logSlowTick(started, phases, skipped);
+    await settleWithin(lanes, this.#d.tickWaitMs);
+    waiting = false;
+    const running = lanes.length === 0 ? [] : this.ownedShards.filter((x) => this.#lanes.has(x));
+    if (running.length > 0)
+      this.#d.log.warn(
+        { shards: running, waitMs: this.#d.tickWaitMs },
+        "shards still waiting on SoDEX after the tick; other shards go on",
+      );
+    this.#logSlowTick(started, phases, counts.skipped, counts.busy);
   }
 
-  /** Log `tick slow` khi một vòng lâu hơn TTL/2, kèm thời gian từng bước. */
-  #logSlowTick(started: number, phases: Record<string, number>, skipped = 0): void {
+  /** Các bước của một shard trong một vòng, tuần tự. Shard chậm (> TTL/2) ghi `shard slow` kèm thời gian từng bước. */
+  async #runShard(
+    shard: number,
+    steps: Record<ShardPhase, (shard: number) => Promise<void>>,
+  ): Promise<{ skipped: number; phases: Record<string, number> }> {
+    const phases: Record<string, number> = {};
+    const started = this.#clockMono();
+    let skipped = 0;
+    // Epoch lúc làn bắt đầu: lease mất rồi nhận lại (epoch mới) trong lúc làn chạy dở thì làn cũ dừng, không chạy tiếp bằng
+    // lease mới trên snapshot cũ (review #216 M1).
+    const laneEpoch = this.#leases.get(shard)?.epoch;
+    const current = () => laneEpoch !== undefined && this.#leases.get(shard)?.epoch === laneEpoch;
+    try {
+      for (const phase of SHARD_PHASES) {
+        // Engine đang dừng (review #216 M2) hoặc lease đã đổi: không bước nào nữa, kể cả làn đang xếp hàng.
+        if (this.#stopped || !current()) break;
+        if (!(await this.#leaseConfirmed(shard))) {
+          skipped += 1;
+          break;
+        }
+        const at = this.#clockMono();
+        await steps[phase](shard);
+        phases[phase] = (phases[phase] ?? 0) + this.#clockMono() - at;
+      }
+    } catch (error) {
+      if (error instanceof LeaseExpiredError)
+        this.#d.log.warn({ shard }, "shard skipped this tick: lease not confirmed");
+      else if (error instanceof FencedError) {
+        // Chỉ bỏ shard khi lease đang giữ vẫn là lease của làn này: lease mới (epoch khác) nhận trong lúc làn chạy không bị
+        // bỏ vì lỗi fencing của lease cũ.
+        if (current()) {
+          this.#d.log.warn({ shard, reason: "fenced", worker: this.#d.workerId }, "shard lost");
+          this.#dropShard(shard);
+        } else
+          this.#d.log.warn({ shard, epoch: laneEpoch }, "old shard lane fenced; lease changed");
+      } else this.#d.log.error({ err: error, shard }, "shard loop failed");
+    }
+    const ms = this.#clockMono() - started;
+    if (ms > this.#d.leaseTtlMs / 2)
+      this.#d.log.warn(
+        {
+          shard,
+          ms: Math.round(ms),
+          phases: Object.fromEntries(Object.entries(phases).map(([k, v]) => [k, Math.round(v)])),
+        },
+        "shard slow",
+      );
+    return { skipped, phases };
+  }
+
+  /**
+   * Log `tick slow` khi một vòng lâu hơn TTL/2, kèm thời gian từng bước (tổng các shard xong trong vòng). `busy` = shard
+   * bỏ qua vì lượt trước của nó còn chạy.
+   */
+  #logSlowTick(started: number, phases: Record<string, number>, skipped = 0, busy = 0): void {
     const ms = this.#clockMono() - started;
     if (ms > this.#d.leaseTtlMs / 2)
       this.#d.log.warn(
@@ -857,6 +1046,7 @@ export class Engine {
           ms: Math.round(ms),
           shards: this.#leases.size,
           skipped,
+          busy,
           phases: Object.fromEntries(Object.entries(phases).map(([k, v]) => [k, Math.round(v)])),
           loopDelay: this.#d.loopDelay?.(),
         },
@@ -866,10 +1056,17 @@ export class Engine {
 
   /** Lease của shard còn hiệu lực; hết thì gia hạn ngay một lần rồi xem lại. */
   async #leaseConfirmed(shard: number): Promise<boolean> {
+    // Engine đang dừng: không bước nào gửi gì nữa (review #216 M2).
+    if (this.#stopped) return false;
     if (this.#leaseSet.valid(shard)) return true;
-    if (!this.#leaseSet.has(shard) || this.#stopped) return false;
+    if (!this.#leaseSet.has(shard)) return false;
     // Không chờ khi đã có lần gia hạn đang chạy hoặc vừa lỗi (Redis đang sự cố): mỗi bước của shard không treo tới hạn chờ.
-    await this.#leaseSet.renewIfIdle();
+    // Các shard chạy song song (DEC-308): mọi làn đang cần gia hạn chờ chung MỘT lần gọi, không phải
+    // làn thứ hai thấy "đang gia hạn" rồi bỏ lượt.
+    this.#renewing ??= this.#leaseSet.renewIfIdle().finally(() => {
+      this.#renewing = null;
+    });
+    await this.#renewing;
     return this.#leaseSet.valid(shard);
   }
 
@@ -1498,16 +1695,27 @@ export class Engine {
       .where(eq(botRuntime.botId, o.botId));
   }
 
-  /** Account có bot đang chạy trong các shard của worker này (để mở user stream). */
-  /** Account + các engine mà bot thật của account giao dịch (main.ts chỉ mở user stream cho đúng các engine này). */
+  /**
+   * Account + các engine cần user stream (main.ts chỉ mở stream cho đúng các engine này, đóng phần còn lại): engine mà bot
+   * thật của account giao dịch khi bot còn runner (starting / running / pausing / resuming / stopping, kể cả paused), cộng
+   * account vừa Stop xong (STREAM_HOLD_MS) và account còn lệnh bot thật đang mở / `unknown` (DEC-308).
+   */
   activeStreams(): Promise<{ account: AccountRef; engines: Set<"spot" | "perps"> }[]> {
     const seen = new Map<string, { account: AccountRef; engines: Set<"spot" | "perps"> }>();
-    for (const r of this.#runners.values()) {
-      if (r.paper) continue;
-      const cur = seen.get(r.account.id) ?? { account: r.account, engines: new Set() };
-      for (const e of r.engines) cur.engines.add(e);
-      seen.set(r.account.id, { ...cur, account: r.account });
-    }
+    const add = (account: AccountRef, engines: Iterable<"spot" | "perps">) => {
+      const cur = seen.get(account.id);
+      seen.set(account.id, {
+        // Runner giữ key mới nhất của account (Renew key, DEC-59): ưu tiên bản của runner.
+        account: cur?.account ?? account,
+        engines: new Set([...(cur?.engines ?? []), ...engines]),
+      });
+    };
+    for (const r of this.#runners.values()) if (!r.paper) add(r.account, r.engines);
+    const now = this.#d.now();
+    for (const [id, h] of this.#streamHolds)
+      if (h.until <= now) this.#streamHolds.delete(id);
+      else add(h.account, h.engines);
+    for (const o of this.#orderStreams.values()) add(o.account, o.engines);
     return Promise.resolve([...seen.values()]);
   }
 
@@ -1609,6 +1817,8 @@ export class Engine {
   /** Dừng có trật tự: trả lease (C10). */
   async stop(): Promise<void> {
     this.#stopped = true;
+    // Shard đang chạy dở: chờ xong (bước sau trong shard tự dừng vì `#stopped`), có giới hạn, rồi mới trả lease.
+    await settleWithin([...this.#lanes.values()], STOP_WAIT_MS);
     this.#leaseSet.stop();
     for (const [shard, l] of this.#leases) {
       await l.lease.release();
@@ -1636,13 +1846,15 @@ export class Engine {
     const target = Math.ceil(shards / workers);
     // Giữ quá phần của mình (sau khi có worker mới) thì trả bớt.
     while (this.#leases.size > target) {
-      const shard = this.ownedShards.at(-1);
+      // Shard đang chạy dở (chờ SoDEX) không trả ở vòng này: trả khi nó xong.
+      const shard = this.ownedShards.filter((x) => !this.#lanes.has(x)).at(-1);
       if (shard === undefined) break;
       await this.#leases.get(shard)?.lease.release();
       this.#dropShard(shard);
     }
     for (let shard = 0; shard < shards && this.#leases.size < target; shard += 1) {
-      if (this.#leases.has(shard)) continue;
+      // Làn cũ của shard còn chạy (lease vừa mất): nhận lại khi làn đó xong (review #216 M1).
+      if (this.#leases.has(shard) || this.#lanes.has(shard)) continue;
       const lease = new Lease(redis, `lease:shard:${String(shard)}`, leaseTtlMs);
       const sentAt = this.#clockMono();
       if (!(await lease.tick())) continue;
@@ -1828,6 +2040,17 @@ export class Engine {
       for (const order of await this.#backfillCandidates(now))
         pushTo(snap.backfill, shardOf(order.sodexAccountId, shards), order);
     }
+    // Account còn lệnh bot thật mở / `unknown`: user stream giữ mở dù bot không còn runner (đã Stop).
+    const refs = new Map([...snap.accounts.values()].flat().map((a) => [a.id, a]));
+    const streams = new Map<string, { account: AccountRef; engines: Set<"spot" | "perps"> }>();
+    for (const o of [...[...snap.open.values()].flat(), ...snap.unknown]) {
+      const account = refs.get(o.sodexAccountId);
+      if (account === undefined) continue;
+      const cur = streams.get(account.id) ?? { account, engines: new Set() };
+      cur.engines.add(o.engine);
+      streams.set(account.id, cur);
+    }
+    this.#orderStreams = streams;
     return snap;
   }
 
@@ -1872,6 +2095,8 @@ export class Engine {
         // runner rồi đi qua chiến lược (DEC-303).
         r = await this.#withBotLock(bot.id, async () => {
           const loaded = await this.#load(bot, version, account, shard, held.epoch);
+          // Lease mất / đổi epoch trong lúc nạp: không thêm runner mang epoch cũ (review #216 M1).
+          if (this.#leases.get(shard)?.epoch !== held.epoch) return undefined;
           if (loaded !== undefined) this.#runners.set(bot.id, loaded);
           return loaded;
         });
@@ -3099,6 +3324,17 @@ export class Engine {
     entry.loggedAt = now;
     const qty = o?.quantity ?? o?.size;
     const last = o === undefined || qty === undefined ? "" : ` Last: ${o.side} ${qty} ${o.market}.`;
+    // DeskLabs tự từ chối (market không có trên SoDEX): không nói là SoDEX từ chối, không có mã SoDEX.
+    if (code === MARKET_NOT_FOUND) {
+      await this.#event(
+        r,
+        "error",
+        `DeskLabs didn't send the order: ${o?.market ?? r.market} is not listed on SoDEX.`,
+        last.trim(),
+        at,
+      );
+      return;
+    }
     await this.#event(
       r,
       "error",
@@ -3207,9 +3443,10 @@ export class Engine {
       for (const o of open) pending.add(o.clOrdId);
       throw error;
     }
-    // Huỷ không thành (SoDEX từ chối hoặc không rõ): ghi log để lần ra vì sao lệnh còn sống trên sàn.
+    // Huỷ không thành (SoDEX từ chối hoặc không rõ): ghi log để lần ra vì sao lệnh còn sống trên sàn. `not_found` có
+    // đường riêng ở dưới.
     for (const x of results)
-      if (x.outcome !== "ok")
+      if (x.outcome !== "ok" && x.outcome !== "not_found")
         this.#d.log.warn(
           {
             botId: r.botId,
@@ -3236,17 +3473,60 @@ export class Engine {
         );
       }
     }
-    // Lệnh vừa được nhận mà SoDEX chưa thấy (OrderNotFound): huỷ lại sớm, trước khi nó kịp vào sổ và nằm đó.
+    // OrderNotFound: lệnh vừa được nhận (< CANCEL_NOT_BOOKED.windowMs) có thể chưa vào sổ (DEC-250): huỷ lại sớm, trước
+    // khi nó kịp vào sổ và nằm đó. Lệnh cũ hơn không còn trên sổ (đã khớp / đã huỷ): lần huỷ xong, không huỷ lại; lệnh
+    // giữ trong danh sách chờ huỷ (không gửi lại) để #reconcileOpen đọc trạng thái cuối ở lượt tới: fill thật nếu có, không
+    // thì cancelled; không bao giờ thành `unknown` (DEC-308).
     const now = this.#d.now();
-    const notBooked = results.some((x) => {
-      if (x.outcome !== "unknown" || x.detail?.includes("OrderNotFound") !== true) return false;
-      const ackedAt = open.find((y) => y.clOrdId === x.clOrdID)?.ackedAt?.getTime();
-      return ackedAt !== undefined && now - ackedAt < CANCEL_NOT_BOOKED.windowMs;
-    });
+    const isNotFound = (x: CancelResult) =>
+      x.outcome === "not_found" ||
+      (x.outcome === "unknown" && x.detail?.includes("OrderNotFound") === true);
+    const unbooked = (x: CancelResult) => {
+      const row = open.find((y) => y.clOrdId === x.clOrdID);
+      const since = (row?.ackedAt ?? row?.submittedAt)?.getTime();
+      return since !== undefined && now - since < CANCEL_NOT_BOOKED.windowMs;
+    };
+    const notBooked = results.some((x) => isNotFound(x) && unbooked(x));
     if (notBooked)
       this.#cancelRetryAt.set(r.botId, now - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
-    // Chỉ coi là đã huỷ khi SoDEX trả lời rõ: ok, hoặc từ chối (lệnh đã khớp / đã huỷ). Không rõ thì thử lại.
-    const settled = new Set(results.filter((x) => x.outcome !== "unknown").map((x) => x.clOrdID));
+    let gone = this.#cancelGone.get(r.botId);
+    for (const x of results) {
+      if (x.outcome !== "not_found") continue;
+      if (unbooked(x)) {
+        this.#d.log.info(
+          { botId: r.botId, clOrdID: x.clOrdID },
+          "cancel: order not on the SoDEX book yet; cancelling again shortly",
+        );
+        continue;
+      }
+      if (gone === undefined) {
+        gone = new Set<string>();
+        this.#cancelGone.set(r.botId, gone);
+      }
+      this.#goneCancelAt.set(x.clOrdID, now);
+      if (gone.has(x.clOrdID)) continue;
+      gone.add(x.clOrdID);
+      const row = open.find((y) => y.clOrdId === x.clOrdID);
+      // Đối soát ở lượt #reconcileOpen kế tiếp, không chờ nhịp OPEN_CHECK_MS.
+      if (row !== undefined) this.#openChecks.delete(row.id);
+      this.#d.log.info(
+        { botId: r.botId, clOrdID: x.clOrdID },
+        "cancel: order no longer on the SoDEX book; reconciling its final status",
+      );
+    }
+    // Chỉ coi là đã huỷ khi SoDEX trả lời rõ: ok, hoặc từ chối (lệnh đã khớp / đã huỷ). Không rõ thì thử lại; không thấy
+    // trên sổ thì chờ đối soát (ở trên).
+    // Request bị từ chối cả gói (429, key, nonce…) không nói gì về lệnh: như chưa rõ, huỷ lại sau (review #216 F1).
+    const settled = new Set(
+      results
+        .filter(
+          (x) =>
+            x.outcome !== "unknown" &&
+            x.outcome !== "not_found" &&
+            !(x.outcome === "rejected" && x.scope === "request"),
+        )
+        .map((x) => x.clOrdID),
+    );
     const done = open.filter((o) => settled.has(o.clOrdId));
     for (const o of open) {
       if (settled.has(o.clOrdId)) pending.delete(o.clOrdId);
@@ -3610,6 +3890,18 @@ export class Engine {
       return false;
     });
     if (deferred) return;
+    // Bot dừng hẳn: lệnh huỷ không còn ai huỷ lại; #reconcileOpen vẫn đối soát lệnh còn mở (gửi huỷ cuối trước khi ghi).
+    for (const id of this.#cancelGone.get(r.botId) ?? []) this.#goneCancelAt.delete(id);
+    this.#cancelGone.delete(r.botId);
+    // Lệnh đóng vừa gửi (IOC) khớp qua user stream: không để stream đóng ngay khi runner cuối của account bị bỏ.
+    if (!r.paper) {
+      const held = this.#streamHolds.get(r.account.id);
+      this.#streamHolds.set(r.account.id, {
+        account: r.account,
+        engines: new Set([...(held?.engines ?? []), ...r.engines]),
+        until: this.#d.now() + STREAM_HOLD_MS,
+      });
+    }
     this.#runners.delete(r.botId);
   }
 
@@ -3907,40 +4199,72 @@ export class Engine {
 
   // ---------- đối soát & phí ----------
 
+  /**
+   * Việc đọc SoDEX theo account trong một bước của shard (DEC-308): các account chạy song song (tối
+   * đa ACCOUNT_CONCURRENCY), việc của một account vẫn tuần tự theo thứ tự cũ. Lỗi của một account (SoDEX chậm / lỗi, mạng)
+   * chỉ bỏ phần còn lại của account đó ở lượt này (ghi warn, lượt sau thử lại), không bỏ account khác hay các bước sau của
+   * shard. Lỗi fencing ném lại.
+   */
+  async #perAccount<T>(
+    phase: ShardPhase,
+    items: readonly T[],
+    accountOf: (item: T) => string,
+    work: (item: T) => Promise<void>,
+  ): Promise<void> {
+    const groups = new Map<string, T[]>();
+    for (const x of items) pushTo(groups, accountOf(x), x);
+    await eachLimited([...groups], ACCOUNT_CONCURRENCY, async ([accountId, list]) => {
+      try {
+        for (const x of list) await work(x);
+      } catch (error) {
+        if (error instanceof FencedError) throw error;
+        this.#d.log.warn(
+          { err: error, accountId, phase },
+          "SoDEX step failed for one account; retrying next tick",
+        );
+      }
+    });
+  }
+
   /** Lệnh `unknown`: hỏi SoDEX theo clOrdID rồi mới quyết định; không gửi lại (quy tắc 1.7). */
   async #reconcile(shard: number, snap: TickSnapshot): Promise<void> {
     const now = this.#d.now();
     const pending = await this.#fresh(
       snap.unknown.filter((o) => this.#runners.get(o.botId)?.shard === shard),
     );
-    for (const o of pending) {
-      const r = this.#runners.get(o.botId);
-      if (r?.shard !== shard) continue;
-      // SoDEX đã nhận lệnh mà sau đó không tìm thấy: tra lại giãn dần 15 → 30 → 60 s, không phải mỗi vòng. Quá
-      // UNKNOWN_CHECK_WINDOW_MS tính từ lần tra THÀNH CÔNG đầu tiên xác nhận không thấy (`missing_confirmed_at`, bền qua
-      // khởi động lại) thì ghi cho người dùng một lần (quy tắc 1.7). Chưa có lần xác nhận nào thì không bỏ cuộc.
-      if (o.sodexOrderId !== null) {
-        const c = this.#unknownChecks.get(o.id) ?? { n: 0, at: 0 };
-        const confirmed = o.missingConfirmedAt?.getTime();
-        if (confirmed !== undefined && now - confirmed >= UNKNOWN_CHECK_WINDOW_MS) {
-          await this.#unknownGaveUp(r, o, now);
-          continue;
+    await this.#perAccount(
+      "reconcile",
+      pending,
+      (o) => o.sodexAccountId,
+      async (o) => {
+        const r = this.#runners.get(o.botId);
+        if (r?.shard !== shard) return;
+        // SoDEX đã nhận lệnh mà sau đó không tìm thấy: tra lại giãn dần 15 → 30 → 60 s, không phải mỗi vòng. Quá
+        // UNKNOWN_CHECK_WINDOW_MS tính từ lần tra THÀNH CÔNG đầu tiên xác nhận không thấy (`missing_confirmed_at`, bền qua
+        // khởi động lại) thì ghi cho người dùng một lần (quy tắc 1.7). Chưa có lần xác nhận nào thì không bỏ cuộc.
+        if (o.sodexOrderId !== null) {
+          const c = this.#unknownChecks.get(o.id) ?? { n: 0, at: 0 };
+          const confirmed = o.missingConfirmedAt?.getTime();
+          if (confirmed !== undefined && now - confirmed >= UNKNOWN_CHECK_WINDOW_MS) {
+            await this.#unknownGaveUp(r, o, now);
+            return;
+          }
+          if (now - c.at < Math.min(UNKNOWN_RECHECK_MAX_MS, OPEN_CHECK_MS * 2 ** c.n)) return;
+          this.#unknownChecks.set(o.id, { ...c, n: c.n + 1, at: now });
         }
-        if (now - c.at < Math.min(UNKNOWN_RECHECK_MAX_MS, OPEN_CHECK_MS * 2 ** c.n)) continue;
-        this.#unknownChecks.set(o.id, { ...c, n: c.n + 1, at: now });
-      }
-      // Một lệnh tra lỗi (SoDEX / mạng) không được làm hỏng cả vòng của shard: #reconcileOpen, huỷ lại, phí, đồng hồ
-      // của mọi bot vẫn chạy; lệnh này thử lại ở nhịp sau (follow-up #154).
-      try {
-        await this.#reconcileOne(r, o, now);
-      } catch (error) {
-        if (error instanceof FencedError) throw error;
-        this.#d.log.warn(
-          { err: error, botId: r.botId, clOrdID: o.clOrdId },
-          "reconcile failed for one order; retrying next tick",
-        );
-      }
-    }
+        // Một lệnh tra lỗi (SoDEX / mạng) không được làm hỏng cả vòng của shard: #reconcileOpen, huỷ lại, phí, đồng hồ
+        // của mọi bot vẫn chạy; lệnh này thử lại ở nhịp sau (follow-up #154).
+        try {
+          await this.#reconcileOne(r, o, now);
+        } catch (error) {
+          if (error instanceof FencedError) throw error;
+          this.#d.log.warn(
+            { err: error, botId: r.botId, clOrdID: o.clOrdId },
+            "reconcile failed for one order; retrying next tick",
+          );
+        }
+      },
+    );
   }
 
   /**
@@ -4186,127 +4510,199 @@ export class Engine {
     // không thôi thì ≥ OPEN_CHECK_BATCH lệnh vẫn treo trên SoDEX (bot đang pause giữ lệnh) chiếm hết suất mỗi vòng, và
     // lệnh mới hơn (ví dụ lệnh đóng vị thế của bot vừa Stop) không bao giờ được đối soát: fill thật không được ghi.
     const lastCheck = (o: { id: string }) => this.#openChecks.get(o.id) ?? 0;
+    // Lệnh nghi ngờ trước (DEC-308): đã gửi huỷ mà chưa có kết quả, lệnh market, lệnh Volume Farm DRIFT
+    // tự huỷ trong khoảng trống stream. Chúng là chỗ fill có thể bị mất; lệnh đang nằm sổ bình thường (bot pause / dừng giữ
+    // lệnh) kiểm sau.
+    const suspect = (o: OrderRow) =>
+      o.type === "market" || cancelling(o) || unconfirmed.includes(o) ? 0 : 1;
     const due = [...open, ...unconfirmed]
       .filter((o) => now - lastCheck(o) >= OPEN_CHECK_MS)
       .sort(
         (a, b) =>
+          suspect(a) - suspect(b) ||
           lastCheck(a) - lastCheck(b) ||
           (a.submittedAt?.getTime() ?? 0) - (b.submittedAt?.getTime() ?? 0),
       );
     if (due.length === 0) return;
     const accounts = new Map((snap.accounts.get(shard) ?? []).map((a) => [a.id, a]));
-    // Chỉ lệnh sẽ được kiểm ở vòng này (tối đa OPEN_CHECK_BATCH, account còn kết nối), đọc lại ngay trước khi xử lý.
-    const batch = await this.#fresh(
-      due.filter((o) => accounts.has(o.sodexAccountId)).slice(0, OPEN_CHECK_BATCH),
-    );
-    let checked = 0;
-    for (const o of batch) {
-      const account = accounts.get(o.sodexAccountId);
-      if (account === undefined) continue;
-      if (checked >= OPEN_CHECK_BATCH) break;
-      checked += 1;
-      this.#openChecks.set(o.id, now);
-      const ref = { clOrdID: o.clOrdId, market: o.market, engine: o.engine };
-      const lookedAt = ++this.#readSeq;
-      const found = await this.#d.gateway.lookup(account, ref);
-      if (found.status === "open") {
-        this.#missingSince.delete(o.id);
-        continue;
-      }
-      if (found.status === "not_found") {
-        // Lịch sử lệnh REST trễ vài giây sau khi khớp: không tìm thấy chưa có nghĩa là đã huỷ. Hỏi trade của lệnh trước,
-        // kể cả stop loss gốc (stop đã kích hoạt và khớp cũng có thể chưa vào lịch sử).
-        const trades = await this.#orderTrades(account, o);
-        const t = foundFromTrades(o, trades, o.sodexOrderId ?? 0n);
-        if (t?.done === true) {
-          this.#d.log.info(
-            { botId: o.botId, clOrdID: o.clOrdId, filled: t.found.filledQty },
-            "order not found on SoDEX, but its trades are; recording the fill",
-          );
-          await this.#settleOrder(
-            shard,
-            held.epoch,
-            account,
-            o,
-            t.found,
-            now,
-            cancelling(o),
-            trades,
-          );
-          this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
-          this.#openChecks.delete(o.id);
+    // Tối đa OPEN_CHECK_BATCH lệnh MỖI ACCOUNT mỗi vòng (account còn kết nối), đọc lại ngay trước khi xử lý. Trước đây suất là
+    // 10 lệnh cho cả shard: lệnh còn mở của một account khác (bot pause / dừng) chiếm hết suất và lệnh nghi ngờ của account
+    // này không được tra đúng lúc (log CI #216: fill sau khoảng trống stream không được ghi bằng đường tra lệnh).
+    const perAccount = new Map<string, number>();
+    const picked = due.filter((o) => {
+      if (!accounts.has(o.sodexAccountId)) return false;
+      const n = perAccount.get(o.sodexAccountId) ?? 0;
+      if (n >= OPEN_CHECK_BATCH) return false;
+      perAccount.set(o.sodexAccountId, n + 1);
+      return true;
+    });
+    const batch = await this.#fresh(picked);
+    await this.#perAccount(
+      "reconcileOpen",
+      batch,
+      (o) => o.sodexAccountId,
+      async (o) => {
+        const account = accounts.get(o.sodexAccountId);
+        if (account === undefined) return;
+        this.#openChecks.set(o.id, now);
+        const ref = { clOrdID: o.clOrdId, market: o.market, engine: o.engine };
+        const lookedAt = ++this.#readSeq;
+        const found = await this.#d.gateway.lookup(account, ref);
+        if (found.status === "open") {
           this.#missingSince.delete(o.id);
-          continue;
+          // Lần huỷ trước nhận OrderNotFound mà lệnh vẫn nằm sổ (vào sổ muộn): huỷ lại ở #retryCancels.
+          if (this.#cancelGone.get(o.botId)?.delete(o.clOrdId) === true)
+            this.#cancelRetryAt.delete(o.botId);
+          return;
         }
-        // Lệnh limit khớp một phần có thể vẫn nằm trên sổ: ghi fill, chưa kết thúc (M1).
-        if (t !== null) await this.#recordTrades(account, o, trades, now);
-        // Stop loss gốc đã được SoDEX nhận (DEC-118) mà không còn, không có trade: SoDEX huỷ nó khi vị thế đóng. Lịch sử
-        // khớp dùng chung có thể đã đọc TRƯỚC lần tra này (stop vừa kích hoạt và khớp ở giữa): đọc lại trước khi ghi huỷ.
-        if (t === null && isNativeStop(o) && o.status === "open" && o.sodexOrderId !== null) {
-          const again = await this.#orderTrades(account, o, lookedAt);
-          const fired = foundFromTrades(o, again, o.sodexOrderId);
-          if (fired?.done === true) {
-            await this.#settleOrder(shard, held.epoch, account, o, fired.found, now, false, again);
+        if (found.status === "not_found") {
+          // Lịch sử lệnh REST trễ vài giây sau khi khớp: không tìm thấy chưa có nghĩa là đã huỷ. Hỏi trade của lệnh trước,
+          // kể cả stop loss gốc (stop đã kích hoạt và khớp cũng có thể chưa vào lịch sử).
+          const trades = await this.#orderTrades(account, o);
+          const t = foundFromTrades(o, trades, o.sodexOrderId ?? 0n);
+          if (t?.done === true) {
+            this.#d.log.info(
+              { botId: o.botId, clOrdID: o.clOrdId, filled: t.found.filledQty },
+              "order not found on SoDEX, but its trades are; recording the fill",
+            );
+            await this.#settleOrder(
+              shard,
+              held.epoch,
+              account,
+              o,
+              t.found,
+              now,
+              cancelling(o),
+              trades,
+            );
+            this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
             this.#openChecks.delete(o.id);
             this.#missingSince.delete(o.id);
-            continue;
+            return;
           }
-          await this.#fenced({ shard, epoch: held.epoch }, (tx) =>
-            tx
+          // Lệnh limit khớp một phần có thể vẫn nằm trên sổ: ghi fill, chưa kết thúc (M1).
+          if (t !== null) await this.#recordTrades(account, o, trades, now);
+          // Stop loss gốc đã được SoDEX nhận (DEC-118) mà không còn, không có trade: SoDEX huỷ nó khi vị thế đóng. Lịch sử
+          // khớp dùng chung có thể đã đọc TRƯỚC lần tra này (stop vừa kích hoạt và khớp ở giữa): đọc lại trước khi ghi huỷ.
+          if (t === null && isNativeStop(o) && o.status === "open" && o.sodexOrderId !== null) {
+            const again = await this.#orderTrades(account, o, lookedAt);
+            const fired = foundFromTrades(o, again, o.sodexOrderId);
+            if (fired?.done === true) {
+              await this.#settleOrder(
+                shard,
+                held.epoch,
+                account,
+                o,
+                fired.found,
+                now,
+                false,
+                again,
+              );
+              this.#openChecks.delete(o.id);
+              this.#missingSince.delete(o.id);
+              return;
+            }
+            await this.#fenced({ shard, epoch: held.epoch }, (tx) =>
+              tx
+                .update(orders)
+                .set({ status: "cancelled", reconciledAt: new Date(now) })
+                .where(eq(orders.id, o.id)),
+            );
+            this.#openChecks.delete(o.id);
+            this.#d.log.info(
+              { botId: o.botId, clOrdID: o.clOrdId },
+              "native stop no longer on SoDEX and no trades; recorded as cancelled",
+            );
+            await this.onOrderClosed(o.sodexAccountId, o.clOrdId, "cancelled", now);
+            return;
+          }
+          // Chờ NOT_FOUND_AFTER_MS tính từ lần đầu không thấy (không từ lúc gửi: lệnh nằm sổ lâu cũng được chờ đủ). Vẫn
+          // không thấy thì `unknown` (quy tắc 1.7), không suy là đã huỷ; #reconcile đối soát tiếp. Lệnh bot đã gửi huỷ:
+          // không còn trong lệnh mở của SoDEX nên không thể khớp nữa, ghi là đã huỷ.
+          const since = this.#missingSince.get(o.id) ?? now;
+          this.#missingSince.set(o.id, since);
+          if (now - since < NOT_FOUND_AFTER_MS) return;
+          this.#missingSince.delete(o.id);
+          const wasCancelling = cancelling(o);
+          const toUnknown = !(o.status === "cancelled" || wasCancelling);
+          // Lệnh đã gửi huỷ sắp được ghi `cancelled` chỉ vì REST không thấy: gửi một lệnh huỷ thật ngay trước đó để sàn có
+          // tiếng nói cuối (lệnh vào sổ muộn vẫn còn sống, quy tắc 1.7, review #216 M3). Huỷ không rõ / không gửi được thì
+          // chưa ghi gì, lượt sau thử lại.
+          if (wasCancelling && o.status !== "cancelled") {
+            let last: CancelResult | undefined;
+            try {
+              [last] = await this.#d.gateway.cancel(account, [ref], {
+                shard,
+                epoch: held.epoch,
+              });
+            } catch (error) {
+              if (error instanceof FencedError) throw error;
+              last = undefined;
+            }
+            // Request bị từ chối cả gói (429, key, nonce…) như chưa rõ: lệnh huỷ chưa được xử lý (review #216 F1).
+            if (
+              last === undefined ||
+              last.outcome === "unknown" ||
+              (last.outcome === "rejected" && last.scope === "request")
+            ) {
+              this.#missingSince.set(o.id, since);
+              this.#d.log.warn(
+                {
+                  botId: o.botId,
+                  clOrdID: o.clOrdId,
+                  outcome: last?.outcome,
+                  code: last?.outcome === "rejected" ? last.code : undefined,
+                },
+                "final cancel before recording cancelled was not confirmed; checking again",
+              );
+              return;
+            }
+            // Lệnh còn sống và vừa được gỡ khỏi sổ: có thể đã khớp một phần sau lần đọc trade ở trên. Không ghi ngay; lần tra
+            // sau ghi trạng thái cuối theo SoDEX (số đã khớp thật), không thấy nữa thì chờ lại NOT_FOUND_AFTER_MS.
+            if (last.outcome === "ok") {
+              this.#missingSince.set(o.id, now);
+              this.#openChecks.delete(o.id);
+              this.#d.log.warn(
+                { botId: o.botId, clOrdID: o.clOrdId },
+                "order SoDEX could not find was still live; cancelled it, recording its final status next check",
+              );
+              return;
+            }
+          }
+          await this.#fenced({ shard, epoch: held.epoch }, async (tx) => {
+            await tx
               .update(orders)
-              .set({ status: "cancelled", reconciledAt: new Date(now) })
-              .where(eq(orders.id, o.id)),
-          );
-          this.#openChecks.delete(o.id);
-          this.#d.log.info(
-            { botId: o.botId, clOrdID: o.clOrdId },
-            "native stop no longer on SoDEX and no trades; recorded as cancelled",
-          );
-          await this.onOrderClosed(o.sodexAccountId, o.clOrdId, "cancelled", now);
-          continue;
-        }
-        // Chờ NOT_FOUND_AFTER_MS tính từ lần đầu không thấy (không từ lúc gửi: lệnh nằm sổ lâu cũng được chờ đủ). Vẫn
-        // không thấy thì `unknown` (quy tắc 1.7), không suy là đã huỷ; #reconcile đối soát tiếp. Lệnh bot đã gửi huỷ:
-        // không còn trong lệnh mở của SoDEX nên không thể khớp nữa, ghi là đã huỷ.
-        const since = this.#missingSince.get(o.id) ?? now;
-        this.#missingSince.set(o.id, since);
-        if (now - since < NOT_FOUND_AFTER_MS) continue;
-        this.#missingSince.delete(o.id);
-        const wasCancelling = cancelling(o);
-        const toUnknown = !(o.status === "cancelled" || wasCancelling);
-        await this.#fenced({ shard, epoch: held.epoch }, async (tx) => {
-          await tx
-            .update(orders)
-            .set({
-              status: toUnknown ? "unknown" : "cancelled",
-              reconciledAt: new Date(now),
-              // Lần tra thành công xác nhận lệnh không còn ở đâu: mốc bền cho bỏ cuộc và Stop thôi chờ.
-              ...(toUnknown ? { missingConfirmedAt: new Date(now) } : {}),
-            })
-            .where(eq(orders.id, o.id));
+              .set({
+                status: toUnknown ? "unknown" : "cancelled",
+                reconciledAt: new Date(now),
+                // Lần tra thành công xác nhận lệnh không còn ở đâu: mốc bền cho bỏ cuộc và Stop thôi chờ.
+                ...(toUnknown ? { missingConfirmedAt: new Date(now) } : {}),
+              })
+              .where(eq(orders.id, o.id));
+            if (toUnknown)
+              await tx.insert(botEvents).values({
+                botId: o.botId,
+                type: "reconcile",
+                decision: UNKNOWN_DECISION,
+                why: `${o.clOrdId}: not found on SoDEX and no trades yet. Checking again before anything else is sent for it.`,
+                occurredAt: new Date(now),
+              });
+          });
           if (toUnknown)
-            await tx.insert(botEvents).values({
-              botId: o.botId,
-              type: "reconcile",
-              decision: UNKNOWN_DECISION,
-              why: `${o.clOrdId}: not found on SoDEX and no trades yet. Checking again before anything else is sent for it.`,
-              occurredAt: new Date(now),
-            });
-        });
-        if (toUnknown)
-          this.#d.log.warn(
-            { botId: o.botId, clOrdID: o.clOrdId },
-            "order not found on SoDEX and no trades; marked unknown",
-          );
-        if (wasCancelling) this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
-        continue;
-      }
-      this.#missingSince.delete(o.id);
-      const expected = cancelling(o);
-      await this.#settleOrder(shard, held.epoch, account, o, found, now, expected);
-      this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
-      this.#openChecks.delete(o.id);
-    }
+            this.#d.log.warn(
+              { botId: o.botId, clOrdID: o.clOrdId },
+              "order not found on SoDEX and no trades; marked unknown",
+            );
+          if (wasCancelling) this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
+          return;
+        }
+        this.#missingSince.delete(o.id);
+        const expected = cancelling(o);
+        await this.#settleOrder(shard, held.epoch, account, o, found, now, expected);
+        this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
+        this.#openChecks.delete(o.id);
+      },
+    );
   }
 
   /**
@@ -4321,10 +4717,27 @@ export class Engine {
     for (const r of [...this.#runners.values()].filter((x) => x.shard === shard)) {
       const pending = this.#pendingCancels.get(r.botId);
       if (pending === undefined || pending.size === 0) continue;
-      if (now - (this.#cancelRetryAt.get(r.botId) ?? 0) < CANCEL_RETRY_MS) continue;
-      this.#cancelRetryAt.set(r.botId, now);
+      // Lệnh SoDEX đã báo không còn trên sổ: chờ #reconcileOpen (DEC-308), nhưng vẫn huỷ lại chậm
+      // (mỗi OPEN_CHECK_MS) phòng khi lệnh vào sổ muộn (quy tắc 1.7, review #216 M3).
+      const gone = this.#cancelGone.get(r.botId);
+      if (gone !== undefined)
+        for (const id of gone)
+          if (!pending.has(id)) {
+            gone.delete(id);
+            this.#goneCancelAt.delete(id);
+          }
+      const normal = [...pending].filter((id) => gone?.has(id) !== true);
+      const normalDue =
+        normal.length > 0 && now - (this.#cancelRetryAt.get(r.botId) ?? 0) >= CANCEL_RETRY_MS;
+      const slow = [...(gone ?? [])].filter(
+        (id) => now - (this.#goneCancelAt.get(id) ?? 0) >= OPEN_CHECK_MS,
+      );
+      const resend = [...(normalDue ? normal : []), ...slow];
+      if (resend.length === 0) continue;
+      if (normalDue) this.#cancelRetryAt.set(r.botId, now);
+      for (const id of slow) this.#goneCancelAt.set(id, now);
       try {
-        await this.#cancel(r, [...pending]);
+        await this.#cancel(r, resend);
       } catch (error) {
         if (error instanceof FencedError) throw error;
         this.#d.log.warn({ err: error, botId: r.botId }, "cancel retry failed");
@@ -4349,7 +4762,11 @@ export class Engine {
           lt(orders.submittedAt, new Date(now - MAKER_ORPHAN_MS)),
         ),
       );
-    const orphans = open.map((o) => o.clOrdId).filter((id) => tracked[id]?.status !== "live");
+    // Lệnh SoDEX đã báo không còn trên sổ khi huỷ: đang chờ #reconcileOpen ghi trạng thái cuối, không huỷ lại.
+    const gone = this.#cancelGone.get(r.botId);
+    const orphans = open
+      .map((o) => o.clOrdId)
+      .filter((id) => tracked[id]?.status !== "live" && gone?.has(id) !== true);
     if (orphans.length === 0) return;
     await this.#event(
       r,
@@ -4366,17 +4783,22 @@ export class Engine {
     const makers = [...this.#runners.values()].filter(
       (r) => r.shard === shard && r.strategy === Strategy.volumeMaker && !r.paper,
     );
-    for (const r of makers) {
-      const key = `${r.account.id}:${r.market}`;
-      if (now - (this.#makerBackfill.get(key) ?? 0) >= MAKER_BACKFILL_MS) {
-        this.#makerBackfill.set(key, now);
-        await this.#backfillMaker(r, now);
-        await this.#sweepMakerOrphans(r, now).catch((error: unknown) => {
-          if (error instanceof FencedError) throw error;
-          this.#d.log.warn({ err: error, botId: r.botId }, "orphan sweep failed");
-        });
-      }
-    }
+    await this.#perAccount(
+      "reconcileMaker",
+      makers,
+      (r) => r.account.id,
+      async (r) => {
+        const key = `${r.account.id}:${r.market}`;
+        if (now - (this.#makerBackfill.get(key) ?? 0) >= MAKER_BACKFILL_MS) {
+          this.#makerBackfill.set(key, now);
+          await this.#backfillMaker(r, now);
+          await this.#sweepMakerOrphans(r, now).catch((error: unknown) => {
+            if (error instanceof FencedError) throw error;
+            this.#d.log.warn({ err: error, botId: r.botId }, "orphan sweep failed");
+          });
+        }
+      },
+    );
   }
 
   async #backfillMaker(r: Runner, now: number): Promise<void> {
@@ -4517,31 +4939,36 @@ export class Engine {
       const key = `${o.sodexAccountId}:${o.engine}:${o.market}`;
       groups.set(key, [...(groups.get(key) ?? []), o]);
     }
-    for (const [key, list] of groups) {
-      const first = list[0];
-      const r = first === undefined ? undefined : runners.get(first.botId);
-      if (first === undefined || r === undefined) continue;
-      const suspect = list.some(
-        (o) =>
-          (o.submittedAt?.getTime() ?? 0) > now - FILL_BACKFILL_WINDOW_MS &&
-          (o.status === "unknown" || (o.status === "cancelled" && o.doneFedAt === null)),
-      );
-      const gap = this.#streamGaps.get(`${first.sodexAccountId}:${first.engine}`) ?? -Infinity;
-      const gapDue =
-        now - gap < STREAM_GAP_MS &&
-        now - gap >= BACKFILL_TRADE_GRACE_MS &&
-        this.#gapBackfilled.get(key) !== gap;
-      const suspectDue = suspect && now - (this.#fillBackfill.get(key) ?? 0) >= MAKER_BACKFILL_MS;
-      if (!gapDue && !suspectDue) continue;
-      if (gapDue) this.#gapBackfilled.set(key, gap);
-      this.#fillBackfill.set(key, now);
-      try {
-        await this.#backfillGroup(r.account, first.market, first.engine, list, runners, now);
-      } catch (error) {
-        if (error instanceof FencedError) throw error;
-        this.#d.log.warn({ err: error, accountId: r.account.id }, "fill backfill failed");
-      }
-    }
+    await this.#perAccount(
+      "backfillFills",
+      [...groups],
+      ([, list]) => list[0]?.sodexAccountId ?? "",
+      async ([key, list]) => {
+        const first = list[0];
+        const r = first === undefined ? undefined : runners.get(first.botId);
+        if (first === undefined || r === undefined) return;
+        const suspect = list.some(
+          (o) =>
+            (o.submittedAt?.getTime() ?? 0) > now - FILL_BACKFILL_WINDOW_MS &&
+            (o.status === "unknown" || (o.status === "cancelled" && o.doneFedAt === null)),
+        );
+        const gap = this.#streamGaps.get(`${first.sodexAccountId}:${first.engine}`) ?? -Infinity;
+        const gapDue =
+          now - gap < STREAM_GAP_MS &&
+          now - gap >= BACKFILL_TRADE_GRACE_MS &&
+          this.#gapBackfilled.get(key) !== gap;
+        const suspectDue = suspect && now - (this.#fillBackfill.get(key) ?? 0) >= MAKER_BACKFILL_MS;
+        if (!gapDue && !suspectDue) return;
+        if (gapDue) this.#gapBackfilled.set(key, gap);
+        this.#fillBackfill.set(key, now);
+        try {
+          await this.#backfillGroup(r.account, first.market, first.engine, list, runners, now);
+        } catch (error) {
+          if (error instanceof FencedError) throw error;
+          this.#d.log.warn({ err: error, accountId: r.account.id }, "fill backfill failed");
+        }
+      },
+    );
   }
 
   async #backfillGroup(
@@ -4694,54 +5121,59 @@ export class Engine {
       if (shared.length > 0) await this.#dropMismatch(b.id, shared);
     }
     const stateOf = new Map(rows.map((b) => [b.id, b.state]));
-    for (const accountId of due) {
-      const pairs = runners
-        .filter((r) => r.account.id === accountId)
-        .flatMap((r) =>
-          this.#perpMarketsOf(r.strategy, r.market, "perps", r.config).flatMap((m) => {
-            if (holders.get(`${accountId}:${m}`) === 1 && stateOf.has(r.botId)) return [{ r, m }];
-            this.#positionWatch.delete(`${r.botId}:${m}`);
-            return [];
-          }),
-        );
-      const first = pairs[0];
-      if (first === undefined) continue;
-      let positions: Map<string, { size: string; entryPrice: string }>;
-      try {
-        positions = await first.r.gateway.readPositions(first.r.account);
-      } catch (error) {
-        this.#d.log.info(
-          { err: error, accountId },
-          "position check skipped: could not read the SoDEX account state",
-        );
-        continue;
-      }
-      for (const { r, m } of pairs) {
-        const p = positions.get(m);
+    await this.#perAccount(
+      "checkPositions",
+      due,
+      (id) => id,
+      async (accountId) => {
+        const pairs = runners
+          .filter((r) => r.account.id === accountId)
+          .flatMap((r) =>
+            this.#perpMarketsOf(r.strategy, r.market, "perps", r.config).flatMap((m) => {
+              if (holders.get(`${accountId}:${m}`) === 1 && stateOf.has(r.botId)) return [{ r, m }];
+              this.#positionWatch.delete(`${r.botId}:${m}`);
+              return [];
+            }),
+          );
+        const first = pairs[0];
+        if (first === undefined) return;
+        let positions: Map<string, { size: string; entryPrice: string }>;
         try {
-          if (r.strategy === Strategy.volumeMaker)
-            await this.#feed(r, {
-              type: "positionSync",
-              at: now,
-              market: m,
-              size: p?.size ?? "0",
-              entryPrice: p?.entryPrice ?? "0",
-            });
-          else
-            await this.#comparePosition(r, m, p?.size ?? "0", stateOf.get(r.botId), now, {
-              // Chỉ khi lần áp version gần đây bỏ một sổ cái còn vị thế (`initialState`, DEC-38; N2). Volume Farm chỉ áp
-              // khi phẳng (DEC-304), version đang chờ chưa đổi sổ cái: lệch lúc đó đi theo bậc 1 / 2 (có đọc trade).
-              versionChange:
-                r.resetDroppedPosition &&
-                r.appliedAt !== null &&
-                now - r.appliedAt < POSITION_VERSION_WINDOW_MS,
-            });
+          positions = await first.r.gateway.readPositions(first.r.account);
         } catch (error) {
-          if (error instanceof FencedError) throw error;
-          this.#d.log.warn({ err: error, botId: r.botId, market: m }, "position check failed");
+          this.#d.log.info(
+            { err: error, accountId },
+            "position check skipped: could not read the SoDEX account state",
+          );
+          return;
         }
-      }
-    }
+        for (const { r, m } of pairs) {
+          const p = positions.get(m);
+          try {
+            if (r.strategy === Strategy.volumeMaker)
+              await this.#feed(r, {
+                type: "positionSync",
+                at: now,
+                market: m,
+                size: p?.size ?? "0",
+                entryPrice: p?.entryPrice ?? "0",
+              });
+            else
+              await this.#comparePosition(r, m, p?.size ?? "0", stateOf.get(r.botId), now, {
+                // Chỉ khi lần áp version gần đây bỏ một sổ cái còn vị thế (`initialState`, DEC-38; N2). Volume Farm chỉ áp
+                // khi phẳng (DEC-304), version đang chờ chưa đổi sổ cái: lệch lúc đó đi theo bậc 1 / 2 (có đọc trade).
+                versionChange:
+                  r.resetDroppedPosition &&
+                  r.appliedAt !== null &&
+                  now - r.appliedAt < POSITION_VERSION_WINDOW_MS,
+              });
+          } catch (error) {
+            if (error instanceof FencedError) throw error;
+            this.#d.log.warn({ err: error, botId: r.botId, market: m }, "position check failed");
+          }
+        }
+      },
+    );
   }
 
   /** Bỏ cảnh báo của các market này (không ghi Decisions): bot không còn là bot duy nhất trên market, hoặc đã dừng. */

@@ -594,6 +594,7 @@ export function AgentPage({ botId }: { botId?: string }) {
                 events={d.events}
                 why={(e) => why(e.why, e.id) ?? null}
                 legacy={(text) => <ResultPill text={text} />}
+                priceDigits={names.priceDigits(bot.market)}
                 {...(bot.mode === "paper"
                   ? {}
                   : {
