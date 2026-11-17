@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoDEX Debugger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Token values copied from packages/ui/src/styles/tokens.css (origin/main). Mockup only: no new tokens. */
+:root{
+  --bg:#eef1fa;--surface:#ffffff;--surface-2:#f5f7fd;--border:#e3e7f5;--border-input:#d5dcf2;
+  --ink:#141a33;--ink-2:#3b4262;--muted:#5f6684;--accent:#2e62e8;--accent-ink:#1d47b8;--accent-tint:#e6ecfe;
+  --pos:#0f7a43;--pos-bg:#ddf4e7;--pos-dot:#16a05a;
+  --neg:#c2312f;--neg-ink:#a72826;--neg-bg:#fde4e1;
+  --warn:#7a3e00;--warn-bg:#fdebd3;--warn-border:#f0c27e;--warn-bar:#e08a2e;
+  --unknown:#5a2ca0;--unknown-bg:#f0e6ff;
+  --focus-ring:#8fb0ff;
+  --radius-control:12px;--radius-tile:18px;--radius-card:24px;
+  --tap-min:44px;
+  --shadow-accent:0 6px 16px rgb(46 98 232 / .28);
+  --shadow-card:0 8px 24px rgb(20 26 51 / .07);
+  --shadow-float:0 -8px 24px rgb(20 26 51 / .06);
+  --font-sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);font-variant-numeric:tabular-nums}
+body{overflow-x:hidden}
+a{color:var(--accent-ink)}a:hover{color:var(--ink)}
+:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+button{font:inherit;color:inherit}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.mono{font-family:var(--font-mono);font-size:.92em}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* Shell */
+.shell{display:flex;gap:20px;padding:20px;align-items:flex-start;min-height:100vh}
+.side{flex:0 0 236px;padding:16px 12px;border-radius:var(--radius-card);background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:2px;position:sticky;top:20px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px;color:var(--ink);text-decoration:none;font-weight:800;font-size:18px}
+.side .sec{padding:14px 12px 6px;font-size:11.5px;font-weight:800;letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+.side a.nav{display:flex;align-items:center;gap:10px;min-height:40px;padding:0 12px;border-radius:12px;color:var(--ink-2);text-decoration:none;font-size:14px;font-weight:600}
+.side a.nav[aria-current="page"]{background:var(--accent);color:#fff;box-shadow:var(--shadow-accent)}
+.side a.nav svg{flex:0 0 18px}
+main{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:16px}
+.topbar{display:none}
+
+/* Header */
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px}
+.head h1{margin:0;font-size:30px;font-weight:800}
+.head p{margin:0}
+.lede{font-size:15px;line-height:1.5;color:var(--ink-2);max-width:720px}
+.note{font-size:13px;color:var(--muted);line-height:1.45}
+.head .right{margin-left:auto;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.btn{min-height:var(--tap-min);padding:0 16px;border-radius:var(--radius-control);border:1px solid var(--border-input);background:var(--surface);color:var(--ink);font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:var(--shadow-accent)}
+.btn.icon{width:var(--tap-min);padding:0;justify-content:center}
+.btn.sm{min-height:36px;padding:0 12px;font-size:13px}
+.sample{align-self:flex-start;padding:4px 10px;border-radius:8px;background:var(--unknown-bg);color:var(--unknown);font-size:12px;font-weight:800;letter-spacing:.04em}
+.switch{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink-2);min-height:var(--tap-min);cursor:pointer;background:none;border:0;padding:0}
+.switch .track{width:36px;height:22px;border-radius:11px;background:var(--border-input);position:relative;flex:0 0 36px}
+.switch .track::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff}
+.switch[aria-checked="true"] .track{background:var(--accent)}
+.switch[aria-checked="true"] .track::after{left:17px}
+
+/* Card */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:16px 18px}
+.card h2{margin:0;font-size:15px;font-weight:800}
+.card .hrow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+
+/* Filters */
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld label,.fld .lbl{font-size:12px;font-weight:700;color:var(--ink-2)}
+.select,.input{min-height:var(--tap-min);border:1px solid var(--border-input);border-radius:var(--radius-control);background:var(--surface);padding:0 34px 0 12px;font-size:14px;font-weight:600;color:var(--ink);display:flex;align-items:center;white-space:nowrap;position:relative;cursor:pointer}
+.select::after{content:"";position:absolute;right:13px;top:50%;width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-70%) rotate(45deg)}
+.input{padding:0 12px 0 36px;cursor:text;color:var(--muted);font-weight:500}
+.input svg{position:absolute;left:12px}
+.seg{display:inline-flex;border:1px solid var(--border-input);border-radius:var(--radius-control);padding:3px;background:var(--surface-2);gap:2px}
+.seg button{min-height:36px;padding:0 12px;border:0;border-radius:9px;background:transparent;font-size:13.5px;font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.seg button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgb(20 26 51 / .12)}
+.seg .cnt{font-weight:600;color:var(--muted);margin-left:4px}
+.slowin{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink-2)}
+.slowin .box{min-height:36px;width:84px;border:1px solid var(--border-input);border-radius:10px;display:flex;align-items:center;padding:0 10px;background:var(--surface)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;font-size:13px;color:var(--ink-2)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:0 6px 0 10px;min-height:30px;border-radius:999px;background:var(--accent-tint);color:var(--accent-ink);font-weight:700;font-size:12.5px}
+.chip button{width:22px;height:22px;border-radius:50%;border:0;background:transparent;color:var(--accent-ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.linkbtn{background:none;border:0;color:var(--accent-ink);font-weight:700;font-size:13px;text-decoration:underline;cursor:pointer;padding:6px 2px}
+
+/* Summary */
+.summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:16px}
+.spark{display:flex;align-items:flex-end;gap:3px;height:92px;padding-top:18px;position:relative}
+.spark .bar{flex:1 1 0;min-width:4px;background:var(--warn-bar);border-radius:4px 4px 0 0;position:relative;border:0;padding:0;cursor:pointer}
+.spark .bar.zero{background:var(--border);height:2px!important;border-radius:2px}
+.spark .bar.peak{background:var(--neg)}
+.spark .peaklbl{position:absolute;top:0;font-size:12px;font-weight:800;color:var(--ink);white-space:nowrap;transform:translateX(-50%)}
+.axis{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:6px;border-top:1px solid var(--border);padding-top:4px}
+.sumfoot{font-size:12.5px;color:var(--ink-2);margin-top:8px;line-height:1.45}
+table{border-collapse:collapse;width:100%}
+.ep th{font-size:11.5px;font-weight:800;color:var(--muted);text-align:right;padding:6px 8px;letter-spacing:.02em;white-space:nowrap}
+.ep th:first-child,.ep td:first-child{text-align:left;padding-left:0}
+.ep td{font-size:13px;padding:7px 8px;border-top:1px solid var(--border);text-align:right;white-space:nowrap}
+.ep td:first-child{white-space:normal}
+.ep tr.all td{font-weight:800;border-top:2px solid var(--border)}
+.rate{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end}
+.rate .meter{width:56px;height:6px;border-radius:3px;background:var(--surface-2);overflow:hidden;display:inline-block}
+.rate .meter i{display:block;height:100%;background:var(--neg);border-radius:3px}
+.hi{color:var(--neg-ink);font-weight:800}
+.wa{color:var(--warn);font-weight:800}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.kpis>div{background:var(--surface-2);border-radius:14px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.kpis span{font-size:12px;font-weight:700;color:var(--ink-2)}
+.kpis b{font-size:18px;font-weight:800}
+.minih{margin:0;font-size:13px;font-weight:800;color:var(--ink)}
+/* Calls */
+.work{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+.work.split{grid-template-columns:minmax(0,1fr)}
+body.d-open main{margin-right:580px}
+body.d-open .summary{grid-template-columns:minmax(0,1fr)}
+.calls{padding:0;overflow:hidden}
+.calls .hrow{padding:14px 18px 12px;margin:0}
+.tblwrap{overflow-x:auto}
+.ct th{position:sticky;top:0;background:var(--surface-2);font-size:11.5px;font-weight:800;color:var(--muted);text-align:left;padding:9px 8px;white-space:nowrap;letter-spacing:.02em}
+.ct td{font-size:13px;padding:5px 8px;height:44px;border-top:1px solid var(--border);white-space:nowrap;vertical-align:middle}
+.ct th:first-child,.ct td:first-child{padding-left:18px}
+.ct tr.row{cursor:pointer}
+.ct tr.row:hover td{background:var(--surface-2)}
+.ct tr.row.sel td{background:var(--accent-tint)}
+.ct tr.row.sel td:first-child{box-shadow:inset 4px 0 0 var(--accent)}
+.ct .r{text-align:right}
+.ct .t2{color:var(--muted);font-size:12px}
+.ep-btn{border:0;background:none;padding:0;cursor:pointer;text-align:left;font-family:var(--font-mono);font-size:12.5px;color:var(--ink);display:inline-flex;gap:6px;align-items:center;min-height:28px}
+.m{display:inline-block;min-width:46px;font-weight:800;font-size:11px;letter-spacing:.03em;color:var(--ink-2)}
+.m.ws{color:var(--unknown)}
+.svc{font-size:11.5px;font-weight:700;color:var(--ink-2);background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:2px 6px}
+.idc{font-family:var(--font-mono);font-size:12px;color:var(--ink-2)}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 7px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}
+.tag svg{flex:0 0 12px}
+.tag.ok{background:var(--pos-bg);color:var(--pos)}
+.tag.rej{background:var(--neg-bg);color:var(--neg-ink)}
+.tag.to{background:var(--warn-bg);color:var(--warn)}
+.tag.net{background:var(--warn-bg);color:var(--warn)}
+.tag.unr{background:var(--unknown-bg);color:var(--unknown)}
+.lat{font-weight:600}
+.lat.slow{color:var(--warn);font-weight:800}
+.why{display:inline-block;vertical-align:middle;white-space:nowrap;color:var(--ink-2);font-size:12.5px;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.tfoot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 16px;align-items:center;padding:12px 18px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted)}
+.kbd{font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--border-input);border-bottom-width:2px;border-radius:5px;padding:0 5px;background:var(--surface);color:var(--ink-2)}
+.retain{margin:0;display:flex;gap:6px;align-items:flex-start;font-size:12px;color:var(--muted);line-height:1.45;max-width:560px}.retain svg{flex:0 0 14px;margin-top:1px}
+
+.ct tr.split .ep-btn{font-size:12px}
+.ct tr.split .m{min-width:40px}
+/* Detail */
+.detail{padding:0;position:fixed;top:20px;right:20px;bottom:20px;width:560px;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-card);z-index:5}
+.detail .tabpanel{flex:1 1 auto;min-height:0}
+.dhead{padding:16px 18px 12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:10px}
+.dtop{display:flex;align-items:flex-start;gap:10px}
+.dtop h2{margin:0;font-size:16px;font-weight:800;font-family:var(--font-mono);word-break:break-all;flex:1}
+.dmeta{font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.dact{display:flex;gap:8px;flex-wrap:wrap}
+.expl{border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5}
+.expl.unr{background:var(--unknown-bg);color:var(--unknown)}
+.expl b{display:block;margin-bottom:2px}
+.expl.unr span{color:var(--ink)}
+.tabs{display:flex;gap:4px;padding:0 18px;border-bottom:1px solid var(--border)}
+.tabs button{min-height:var(--tap-min);border:0;background:none;padding:0 12px;font-size:14px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tabpanel{padding:14px 18px 18px;overflow:auto;display:flex;flex-direction:column;gap:14px}
+.sect h3{margin:0 0 6px;font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.03em;text-transform:uppercase;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.kv{display:grid;grid-template-columns:132px minmax(0,1fr);gap:0;font-size:13px;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.kv>div{padding:8px 10px;border-top:1px solid var(--border);min-width:0;word-break:break-all}
+.kv>div:nth-child(-n+2){border-top:0}
+.kv .k{background:var(--surface-2);color:var(--ink-2);font-weight:700;word-break:normal}
+.kv .v{font-family:var(--font-mono);font-size:12.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.redact{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;background:var(--surface-2);border:1px dashed var(--border-input);color:var(--ink-2);font-family:var(--font-sans);font-size:11.5px;font-weight:700;text-transform:none;letter-spacing:0}
+pre.json{margin:0;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;font-family:var(--font-mono);font-size:12.5px;line-height:1.55;white-space:pre-wrap;word-break:break-all;color:var(--ink)}
+.jk{color:var(--accent-ink)}.js{color:var(--pos)}.jn{color:var(--unknown)}.jerr{background:var(--neg-bg);color:var(--neg-ink);border-radius:3px;padding:0 2px}
+details>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;min-height:36px;font-size:12px;font-weight:800;color:var(--muted);letter-spacing:.03em;text-transform:uppercase}
+details>summary::-webkit-details-marker{display:none}
+details>summary .chev{width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg);transition:transform .15s}
+details[open]>summary .chev{transform:rotate(45deg)}
+.dsub{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:600}
+.rel{display:flex;flex-direction:column;gap:6px}
+.rel a{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--ink);font-size:12.5px;min-height:44px}
+.stickybar{display:none}
+
+/* Dialog */
+.scrim{position:fixed;inset:0;background:rgb(20 26 51 / .42);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
+.dialog{background:var(--surface);border-radius:var(--radius-card);width:min(760px,100%);max-height:calc(100vh - 48px);display:flex;flex-direction:column;box-shadow:0 24px 64px rgb(20 26 51 / .25)}
+.dialog header{padding:18px 20px 10px;display:flex;gap:12px;align-items:flex-start}
+.dialog h2{margin:0;font-size:19px;font-weight:800}
+.dialog .body{padding:0 20px 12px;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.opts{display:flex;flex-wrap:wrap;gap:6px 18px}
+.chk{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;color:var(--ink-2);min-height:36px}
+.chk .b{width:20px;height:20px;border-radius:6px;border:2px solid var(--border-input);display:inline-flex;align-items:center;justify-content:center}
+.chk .b.on{background:var(--accent);border-color:var(--accent)}
+pre.report{margin:0;padding:14px 16px;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;font-family:var(--font-mono);font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word;color:var(--ink);max-height:470px;overflow:auto}
+.dialog footer{padding:12px 20px 18px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--border);align-items:center}
+.dialog footer .note{margin-right:auto}
+
+/* States */
+.states{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--surface-2),var(--border),var(--surface-2));background-size:200% 100%;animation:sh 1.4s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:28px 16px}
+.empty h3{margin:0;font-size:16px;font-weight:800}
+.empty p{margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.5;max-width:340px}
+.stale{display:flex;gap:10px;align-items:center;padding:12px 16px;border-radius:14px;background:var(--warn-bg);color:var(--warn);font-size:14px;font-weight:600}
+.errbox{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:28px 16px}
+
+/* Mobile cards (hidden on desktop) */
+.mcards{display:none}
+
+/* ---------- < 1024: no sidebar; < 768: phone ---------- */
+@media (max-width:1023px){
+  .side{display:none}
+  .shell{padding:0;display:block}
+  main{padding:12px 16px 24px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0}
+  body.d-open main{margin-right:0}
+}
+@media (max-width:767px){
+  .head h1{font-size:26px}
+  .lede{font-size:14px}
+  .head .right{margin-left:0;width:100%;justify-content:space-between}
+  .summary{grid-template-columns:minmax(0,1fr)}
+  .filters .desk-only{display:none}
+  .filters{gap:8px}
+  .filters .fld.search{flex:1 1 100%}
+  .seg{width:100%}
+  .seg button{flex:1 1 0;padding:0 4px;font-size:13px}
+  .seg .cnt{display:none}
+  .card{padding:14px}
+  .ep .hide-m{display:none}
+  .ep .rate .meter{display:none}
+  .ep td,.ep th{padding:6px 4px;font-size:12px}
+  .ep td:first-child .mono{font-size:11.5px}
+  .kbdhint{display:none}
+  .epcard .collapse-m{display:none}
+  .epcard .showm{display:inline-flex!important}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .calls .hrow{flex-direction:column}
+  .tblwrap{display:none}
+  .mcards{display:flex;flex-direction:column}
+  .mcard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:12px 14px;border-top:1px solid var(--border);text-decoration:none;color:var(--ink);min-height:44px;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left;width:100%;cursor:pointer}
+  .mcard .l1{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .mcard .l2{font-family:var(--font-mono);font-size:12.5px;word-break:break-all}
+  .mcard .l3{font-size:12px;color:var(--ink-2)}
+  .mcard .chev{grid-row:1/4;grid-column:2;align-self:center;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg)}
+  .calls .hrow{padding:12px 14px 6px}
+  .tfoot{padding:12px 14px}
+  /* Detail becomes a full screen view */
+  body.m-detail .listview{display:none!important}
+  .dtop h2{font-size:14px;word-break:normal;overflow-wrap:anywhere}
+  .detail{position:static;width:auto;box-shadow:none;max-height:none;border-radius:0;border:0;margin:-12px -16px 0;background:var(--surface)}
+  .dhead{padding:12px 16px}
+  .tabs{padding:0 8px}
+  .tabs button{flex:1 1 0}
+  .tabpanel{padding:14px 16px 96px}
+  .kv{grid-template-columns:104px minmax(0,1fr)}
+  .stickybar{display:flex;position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--surface);box-shadow:var(--shadow-float);z-index:10}
+  .stickybar .btn{flex:1;justify-content:center}
+  .dact .primary{display:none}
+  .scrim{align-items:flex-end;padding:0}
+  .dialog{border-radius:24px 24px 0 0;max-height:92vh}
+  .states{grid-template-columns:minmax(0,1fr)}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ---------------------------------------------------------------------------------------------------------------
+// SAMPLE DATA. Every value below is made up for the mockup. Real values come from the API (DESIGN.md D3).
+// Times: viewer is in Asia/Ho_Chi_Minh (UTC+7). The 22:05 local timeout burst is 15:05 UTC.
+// ---------------------------------------------------------------------------------------------------------------
+const P = new URLSearchParams(location.search);
+const VIEW = P.get('view') || 'list';          // list | detail | report | states
+const TAB = P.get('tab') || 'request';         // request | response | context
+const SEL = 'c9';
+
+const ACC = '0x4E1e8c0B7a2d5F3e91A6b4C0d8E2f7a1B3c529Db';
+const ACCm = '0x4E1e…29Db';
+const ACC2m = '0x91aC…07fE';
+const BASE = 'https://mainnet-gw.sodex.dev/api/v1';
+
+const rows = [
+ {id:'c1',t:'15:41:58.204',l:'22:41:58',svc:'engine',kind:'REST',m:'POST',ep:'/perps/trade/orders',st:'200',code:'PostOnly',o:'rej',why:'PostOnly',lat:96,bot:'ETH vb',acc:ACCm,cl:'drift-b44-v2-e-90412'},
+ {id:'c2',t:'15:41:57.870',l:'22:41:57',svc:'engine',kind:'REST',m:'POST',ep:'/perps/trade/orders',st:'200',code:'0',o:'ok',why:'Sampled 1%',lat:88,bot:'SOL quotes',acc:ACCm,cl:'drift-b31-v4-l3-a1'},
+ {id:'c3',t:'15:38:12.002',l:'22:38:12',svc:'marketdata',kind:'WS',m:'SUB',ep:'accountOrderUpdate',st:'—',code:'—',o:'rej',why:'user not found',lat:41,bot:'—',acc:ACC2m,cl:'—',conn:'ws-perps-3f8a'},
+ {id:'c4',t:'15:38:11.950',l:'22:38:11',svc:'marketdata',kind:'WS',m:'SUB',ep:'accountOrderUpdate',st:'—',code:'—',o:'ok',why:'Sampled 1%',lat:38,bot:'—',acc:ACCm,cl:'—',conn:'ws-perps-3f8a'},
+ {id:'c5',t:'15:22:40.118',l:'22:22:40',svc:'api',kind:'REST',m:'GET',ep:'/perps/accounts/{addr}/balances',st:'200',code:'0',o:'ok',why:'Slow',lat:1840,bot:'—',acc:ACCm,cl:'—'},
+ {id:'c6',t:'15:09:03.551',l:'22:09:03',svc:'engine',kind:'REST',m:'GET',ep:'/perps/accounts/{addr}/orders',st:'—',code:'—',o:'to',why:'SoDEX request timed out',lat:10000,bot:'BTC mm 2',acc:ACCm,cl:'—'},
+ {id:'c7',t:'15:07:44.310',l:'22:07:44',svc:'jobs',kind:'REST',m:'GET',ep:'/perps/accounts/{addr}/orders',st:'—',code:'—',o:'to',why:'SoDEX request timed out',lat:10000,bot:'—',acc:ACCm,cl:'—'},
+ {id:'c8',t:'15:06:30.902',l:'22:06:30',svc:'engine',kind:'REST',m:'POST',ep:'/perps/trade/orders',st:'—',code:'—',o:'to',why:'SoDEX request timed out',lat:10000,bot:'SOL quotes',acc:ACCm,cl:'drift-b31-v4-l2-a3'},
+ {id:'c9',t:'15:05:12.481',l:'22:05:12',svc:'engine',kind:'REST',m:'DELETE',ep:'/perps/trade/orders',st:'200',code:'-1',o:'unr',why:'order rejected: OrderNotFound',lat:214,bot:'SOL quotes',acc:ACCm,cl:'drift-b31-v4-cx-88213'},
+ {id:'c10',t:'15:05:11.902',l:'22:05:11',svc:'engine',kind:'REST',m:'POST',ep:'/perps/trade/orders',st:'200',code:'0',o:'ok',why:'Same clOrdID as a problem',lat:131,bot:'SOL quotes',acc:ACCm,cl:'drift-b31-v4-l2-a0'},
+ {id:'c11',t:'15:05:09.017',l:'22:05:09',svc:'engine',kind:'REST',m:'GET',ep:'/perps/accounts/{addr}/orders',st:'—',code:'—',o:'to',why:'SoDEX request timed out',lat:10000,bot:'SOL quotes',acc:ACCm,cl:'—'},
+ {id:'c12',t:'15:04:58.660',l:'22:04:58',svc:'engine',kind:'REST',m:'GET',ep:'/perps/accounts/{addr}/orders',st:'—',code:'—',o:'net',why:'socket hang up',lat:3120,bot:'BTC mm 2',acc:ACCm,cl:'—'},
+ {id:'c13',t:'14:58:03.122',l:'21:58:03',svc:'scheduler',kind:'REST',m:'GET',ep:'/perps/markets/mark-prices',st:'200',code:'0',o:'ok',why:'Sampled 1%',lat:120,bot:'—',acc:'—',cl:'—'},
+ {id:'c14',t:'14:51:40.775',l:'21:51:40',svc:'engine',kind:'REST',m:'POST',ep:'/perps/trade/orders',st:'200',code:'PostOnly',o:'rej',why:'PostOnly',lat:102,bot:'ETH vb',acc:ACCm,cl:'drift-b44-v2-e-90377'},
+];
+
+const OUT = {
+  ok:  {cls:'ok', label:'Ok', icon:'<path d="M5 12.5l4.5 4.5L19 7.5"/>'},
+  rej: {cls:'rej',label:'Rejected', icon:'<path d="M6 6l12 12M18 6L6 18"/>'},
+  to:  {cls:'to', label:'Timeout', icon:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'},
+  net: {cls:'net',label:'Network error', icon:'<path d="M4 9a12 12 0 0 1 16 0M7.5 12.5a7 7 0 0 1 9 0M3 3l18 18"/>'},
+  unr: {cls:'unr',label:'Unreadable', icon:'<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.4M12 16.8h.01"/>'},
+};
+const ico = (d,s=12,w=2.4)=>`<svg width="${s}" height="${s}" style="flex:0 0 ${s}px" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const tag = o => `<span class="tag ${OUT[o].cls}">${ico(OUT[o].icon)}${OUT[o].label}</span>`;
+const fmtLat = ms => ms>=10000 ? '10,000 ms' : ms.toLocaleString('en-US')+' ms';
+const SLOW = 1000;
+
+// --- Sidebar (labels from apps/web/messages/en.json; new item last in TEAM) ---
+const navMain = ['Overview','Portfolio','Trading Agent','AI Desk','Strategy Lab','Execution & Orders','Risk Center'];
+const navTeam = ['Builder Revenue','Users','Platform Stats','Bot Monitor','Market hours','System Architecture Diagram','SoDEX Debugger'];
+const sidebar = `
+<nav class="side" aria-label="Main">
+  <a class="brand" href="#"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#2E62E8"></rect><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#FFFFFF"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#FFFFFF" opacity="0.7"></rect></svg>DeskLabs</a>
+  ${navMain.map(n=>`<a class="nav" href="#">${n}</a>`).join('')}
+  <span class="sec">Team</span>
+  ${navTeam.map(n=>`<a class="nav" href="#" ${n==='SoDEX Debugger'?'aria-current="page"':''}>${n==='SoDEX Debugger'?ico('<path d="M8 6V4h8v2M6 9h12v6a6 6 0 0 1-12 0zM3 12h3M18 12h3M3 18h3.5M17.5 18H21M12 11v8"/>',18,1.9):''}${n}</a>`).join('')}
+  <span class="sec"></span>
+  <a class="nav" href="#">Settings</a>
+</nav>`;
+
+const header = `
+<div class="topbar"><button class="btn icon" aria-label="Open menu">${ico('<path d="M4 7h16M4 12h16M4 17h16"/>',20,2)}</button><span class="sample">SAMPLE DATA</span></div>
+<header class="head">
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <h1>SoDEX Debugger</h1>
+    <p class="lede">Every SoDEX request and WebSocket event DeskLabs sent or received, in full. Find what went wrong and send SoDEX a clean report.</p>
+    <p class="note">Read only. Signatures and API keys are never stored or shown.</p>
+  </div>
+  <div class="right">
+    <button class="switch" role="switch" aria-checked="true"><span class="track"></span>Also show my time (UTC+7)</button>
+    <span class="note">Updated 15:42:10 UTC</span>
+    <button class="btn">${ico('<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',16,2.2)}Refresh</button>
+  </div>
+</header>`;
+
+const filters = `
+<section class="card" aria-labelledby="h-f">
+  <h2 id="h-f" class="sr">Filters</h2>
+  <div class="filters">
+    <div class="fld"><span class="lbl" id="l-time">Time</span><span class="select" role="button" tabindex="0" aria-labelledby="l-time" aria-haspopup="listbox">Last 24 hours</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-svc">Service</span><span class="select" role="button" tabindex="0" aria-labelledby="l-svc" aria-haspopup="listbox">All services</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-ep">Endpoint</span><span class="select" role="button" tabindex="0" aria-labelledby="l-ep" aria-haspopup="listbox">All endpoints</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-bot">Bot</span><span class="select" role="button" tabindex="0" aria-labelledby="l-bot" aria-haspopup="listbox">All bots</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-acc">Account</span><span class="select" role="button" tabindex="0" aria-labelledby="l-acc" aria-haspopup="listbox">All accounts</span></div>
+    <div class="fld search" style="flex:1 1 260px"><label for="q">Search</label><span class="input" id="q" role="searchbox" tabindex="0" aria-label="Search by clOrdID, SoDEX order ID, traceId or connID">${ico('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/>',16,2.2)}clOrdID, order ID, traceId or connID</span></div>
+    <button class="btn" style="display:none" id="mfilters">More filters</button>
+  </div>
+  <div class="filters" style="margin-top:12px;align-items:center">
+    <div class="seg" role="radiogroup" aria-label="Outcome">
+      <button role="radio" aria-checked="true">All<span class="cnt">1,284</span></button>
+      <button role="radio" aria-checked="false">Errors<span class="cnt">612</span></button>
+      <button role="radio" aria-checked="false">Timeouts<span class="cnt">41</span></button>
+      <button role="radio" aria-checked="false">Slow<span class="cnt">88</span></button>
+    </div>
+    <span class="slowin desk-only">Slow means over <span class="box mono" role="textbox" aria-label="Slow threshold in milliseconds" tabindex="0">1,000</span> ms</span>
+  </div>
+</section>`;
+
+// Timeouts per hour, last 24 h, UTC hours 16:00 (yesterday) .. 15:00 (now)
+const tph = [0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,2,37];
+const startH = 16;
+const peakIdx = 23;
+const bars = tph.map((v,i)=>{
+  const h = (startH+i)%24, hh = String(h).padStart(2,'0');
+  const lab = `${hh}:00–${String((h+1)%24).padStart(2,'0')}:00 UTC: ${v} timeout${v===1?'':'s'}`;
+  const ht = v===0?2:Math.max(6,Math.round(v/37*74));
+  return `<button class="bar ${v===0?'zero':''} ${i===peakIdx?'peak':''}" style="height:${ht}px" aria-label="${lab}. Show these calls" title="${lab}"></button>`;
+}).join('');
+
+const summary = `
+<section class="summary" aria-label="Summary for the last 24 hours">
+  <div class="card">
+    <div class="hrow"><h2>Last 24 hours</h2><span class="note">UTC</span></div>
+    <div class="kpis">
+      <div><span>Calls</span><b>182,406</b></div>
+      <div><span>Error rate</span><b>0.34%</b></div>
+      <div><span>Timeouts</span><b class="hi">▲ 41</b></div>
+      <div><span>p95 latency</span><b>212 ms</b></div>
+    </div>
+    <h3 class="minih">Timeouts per hour</h3>
+    <div class="spark" role="group" aria-label="Timeouts per hour, last 24 hours">
+      ${bars}
+      <span class="peaklbl" style="left:calc(100% - 14px);transform:translateX(-100%)">37 at 15:00 UTC (22:00 your time)</span>
+    </div>
+    <div class="axis"><span>16:00</span><span>22:00</span><span>04:00</span><span>10:00</span><span>15:00</span></div>
+    <p class="sumfoot"><b>41 timeouts in 24 h</b>, 37 of them 15:05–15:09 UTC on <span class="mono">GET /perps/accounts/{addr}/orders</span> and <span class="mono">POST /perps/trade/orders</span>. Select a bar to see its calls.</p>
+  </div>
+  <div class="card epcard">
+    <div class="hrow" style="margin-bottom:0"><h2>By endpoint</h2><span class="note collapse-m">Last 24 h · counts every call, not only stored ones</span><button class="btn sm showm" style="display:none" aria-expanded="false">Show</button></div>
+    <div class="collapse-m" style="margin-top:10px">
+    <table class="ep">
+      <caption class="sr">Calls, error rate, timeouts and p95 latency per endpoint</caption>
+      <thead><tr><th scope="col">Endpoint</th><th scope="col" class="hide-m">Calls</th><th scope="col">Error rate</th><th scope="col">Timeouts</th><th scope="col">p95</th></tr></thead>
+      <tbody>
+        <tr><td><span class="mono">POST /<wbr>perps/<wbr>trade/<wbr>orders</span></td><td class="hide-m">64,210</td><td><span class="rate"><span class="meter" aria-hidden="true"><i style="width:48%"></i></span><span class="hi">▲ 0.84%</span></span></td><td class="wa">▲ 9</td><td>184 ms</td></tr>
+        <tr><td><span class="mono">DELETE /<wbr>perps/<wbr>trade/<wbr>orders</span></td><td class="hide-m">58,902</td><td><span class="rate"><span class="meter" aria-hidden="true"><i style="width:12%"></i></span>0.21%</span></td><td>0</td><td>201 ms</td></tr>
+        <tr><td><span class="mono">GET /<wbr>perps/<wbr>accounts/<wbr>{addr}/<wbr>orders</span></td><td class="hide-m">41,377</td><td><span class="rate"><span class="meter" aria-hidden="true"><i style="width:4%"></i></span>0.07%</span></td><td class="wa">▲ 31</td><td class="wa">▲ 1,120 ms</td></tr>
+        <tr><td><span class="mono">WS subscribe</span></td><td class="hide-m">1,804</td><td><span class="rate"><span class="meter" aria-hidden="true"><i style="width:6%"></i></span>0.11%</span></td><td>0</td><td>44 ms</td></tr>
+        <tr><td><span class="mono">GET /<wbr>perps/<wbr>markets/<wbr>mark-prices</span></td><td class="hide-m">16,113</td><td><span class="rate"><span class="meter" aria-hidden="true"><i style="width:0"></i></span>0%</span></td><td>1</td><td>131 ms</td></tr>
+        <tr class="all"><td>All endpoints</td><td class="hide-m">182,406</td><td>0.34%</td><td>41</td><td>212 ms</td></tr>
+      </tbody>
+    </table>
+    <p class="sumfoot">Error rate counts Rejected, Unreadable, Timeout and Network error. ▲ marks a value over its usual level. PostOnly is 81% of the rejects on new orders.</p>
+  </div></div>
+</section>`;
+
+function tableHTML(split){
+  const cols = split
+    ? ['Time (UTC)','Endpoint','Outcome · latency']
+    : ['Time (UTC)','Endpoint · service','Status','Outcome','SoDEX says','Latency','Bot · clOrdID'];
+  const head = cols.map(c=>`<th scope="col" ${c==='Latency'?'class="r"':''}>${c}</th>`).join('');
+  const body = rows.map(r=>{
+    const sel = split && r.id===SEL;
+    const time = split ? `<td><span class="mono">${r.t.slice(0,8)}</span><br><span class="t2">${r.l} yours</span></td>` : `<td><span class="mono">${r.t}</span><br><span class="t2">${r.l} your time</span></td>`;
+    const ep = `<td><button class="ep-btn" aria-controls="detail" ${sel?'aria-expanded="true"':''} aria-label="${r.m} ${r.ep}, ${OUT[r.o].label}, ${r.t} UTC. Open details"><span class="m ${r.kind==='WS'?'ws':''}">${r.kind==='WS'?'WS SUB':r.m}</span>${r.ep}</button></td>`;
+    const out = `<td>${tag(r.o)}</td>`;
+    const lat = `<td class="r"><span class="lat ${r.lat>SLOW?'slow':''}">${r.lat>SLOW?'▲ ':''}${fmtLat(r.lat)}</span></td>`;
+    if(split) return `<tr class="row split ${sel?'sel':''}">${time}${ep}<td>${tag(r.o)}<br><span class="lat ${r.lat>SLOW?'slow':''}" style="font-size:12px;margin-left:4px">${r.lat>SLOW?'▲ ':''}${fmtLat(r.lat)}</span></td></tr>`;
+    const ep2 = ep.replace('</button></td>',`</button><br><span class="svc" style="margin-left:52px">${r.svc}</span></td>`);
+    return `<tr class="row">${time}${ep2}<td class="mono">${r.st}</td>${out}<td><span class="why" title="${r.why}">${r.why==='Sampled 1%'||r.why==='Slow'||r.why==='Same clOrdID as a problem'?`<span style="color:var(--muted)">${r.why}</span>`:`<span class="mono">${r.why}</span>`}</span></td>${lat}<td>${r.bot==='—'?'<span style="color:var(--muted)">—</span>':`<a href="#">${r.bot}</a>`}${r.cl!=='—'?`<br><span class="idc">${r.cl}</span>`:''}</td></tr>`;
+  }).join('');
+  return `<div class="tblwrap"><table class="ct"><caption class="sr">SoDEX calls, newest first</caption><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+function cardsHTML(){
+  return `<div class="mcards" role="list">${rows.slice(0,9).map(r=>`
+    <button class="mcard" role="listitem" aria-label="${r.m} ${r.ep}, ${OUT[r.o].label}, ${r.t} UTC. Open details">
+      <span class="l1">${tag(r.o)}<span class="mono" style="font-size:12px">${r.t.slice(0,8)} UTC</span><span class="t2" style="color:var(--muted);font-size:12px">${r.l.slice(0,5)} yours</span></span>
+      <span class="l2"><b class="m ${r.kind==='WS'?'ws':''}" style="min-width:0;margin-right:6px">${r.kind==='WS'?'WS SUB':r.m}</b>${r.ep}</span>
+      <span class="l3">${r.svc} · <span class="lat ${r.lat>SLOW?'slow':''}">${r.lat>SLOW?'▲ ':''}${fmtLat(r.lat)}</span>${r.bot!=='—'?' · '+r.bot:''}${r.why!=='Sampled 1%'&&r.why!=='Slow'&&r.why!=='Same clOrdID as a problem'?` · <span class="mono">${r.why}</span>`:''}</span>
+      <span class="chev" aria-hidden="true"></span>
+    </button>`).join('')}</div>`;
+}
+const retention = `<p class="retain">${ico('<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.6h.01"/>',14,2)}<span>Kept for 14 days: every error, timeout and call over 1,000 ms, plus 1% of successful calls. An Ok call may not be here.</span></p>`;
+
+function callsCard(split){
+  return `
+<section class="card calls" aria-labelledby="h-calls">
+  <div class="hrow"><h2 id="h-calls">Calls <span class="note" style="font-weight:600">· 1,284 stored in the last 24 h · newest first</span></h2>${retention}</div>
+  ${tableHTML(split)}
+  ${cardsHTML()}
+  <div class="tfoot">
+    <span class="kbdhint"><span class="kbd">j</span> <span class="kbd">k</span> move · <span class="kbd">Enter</span> open · <span class="kbd">Esc</span> close · <span class="kbd">/</span> search · <span class="kbd">c</span> copy report</span>
+    <button class="btn sm">Load 50 more</button>
+  </div>
+</section>`;
+}
+
+// ---- JSON pretty print with highlight ----
+function hl(json, errMatch){
+  const esc = s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  return esc(json).replace(/("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+(?:\.\d+)?)|\b(true|false|null)\b/g,(m,s,colon,n,b)=>{
+    if(s && colon) return `<span class="jk">${s}</span>${colon}`;
+    if(s){ return errMatch && s.includes(errMatch) ? `<span class="jerr">${s}</span>` : `<span class="js">${s}</span>`; }
+    if(n) return `<span class="jn">${n}</span>`;
+    return `<span class="jn">${b}</span>`;
+  });
+}
+const reqBody = `{
+  "accountID": 20417,
+  "cancels": [
+    {
+      "symbolID": 2,
+      "clOrdID": "drift-b31-v4-cx-88213",
+      "origClOrdID": "drift-b31-v4-l2-a0"
+    }
+  ]
+}`;
+const resBody = `{
+  "code": 0,
+  "data": [
+    {
+      "code": -1,
+      "error": "order rejected: OrderNotFound"
+    }
+  ]
+}`;
+const redactChip = `<span class="redact">${ico('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',12,2.2)}Signature redacted</span>`;
+const maskChip = `<span class="redact">Key masked</span>`;
+
+const tabReq = `
+  <div class="sect"><h3>URL</h3>
+    <div class="kv">
+      <div class="k">Method</div><div class="v">DELETE</div>
+      <div class="k">URL</div><div class="v" style="flex-wrap:nowrap;align-items:flex-start"><span style="flex:1;min-width:0">${BASE}/perps/trade/orders</span><button class="btn icon sm" style="min-height:32px;width:32px;flex:0 0 32px" aria-label="Copy URL">${ico('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',14,2)}</button></div>
+      <div class="k">Query params</div><div class="v" style="font-family:var(--font-sans);color:var(--muted)">None</div>
+    </div>
+  </div>
+  <div class="sect"><h3>Headers</h3>
+    <div class="kv">
+      <div class="k">Content-Type</div><div class="v">application/json</div>
+      <div class="k">X-API-Key</div><div class="v">••29c1 ${maskChip}</div>
+      <div class="k">X-API-Nonce</div><div class="v">1763391912468</div>
+      <div class="k">X-API-Sign</div><div class="v">${redactChip}</div>
+    </div>
+  </div>
+  <details class="sect" open><summary><span class="chev" aria-hidden="true"></span>Body ${redactChip}<span class="dsub note">162 bytes</span></summary>
+    <p class="note" style="margin:0 0 6px">Action params of <span class="mono">perpsCancelOrders</span>, exactly as signed. The signature itself is never stored.</p>
+    <pre class="json" tabindex="0" aria-label="Request body">${hl(reqBody)}</pre>
+  </details>`;
+
+const tabRes = `
+  <div class="sect"><h3>Status</h3>
+    <div class="kv">
+      <div class="k">HTTP</div><div class="v">200 OK</div>
+      <div class="k">SoDEX code</div><div class="v">0 (envelope) · -1 (order)</div>
+      <div class="k">SoDEX error</div><div class="v" style="color:var(--neg-ink)">order rejected: OrderNotFound</div>
+      <div class="k">Latency</div><div class="v">214 ms</div>
+    </div>
+  </div>
+  <details class="sect" open><summary><span class="chev" aria-hidden="true"></span>Body<span class="dsub note">78 bytes</span></summary>
+    <pre class="json" tabindex="0" aria-label="Response body">${hl(resBody,'OrderNotFound')}</pre>
+  </details>
+  <details class="sect"><summary><span class="chev" aria-hidden="true"></span>Response headers<span class="dsub note">6</span></summary></details>`;
+
+const tabCtx = `
+  <div class="sect"><h3>Where it came from</h3>
+    <div class="kv">
+      <div class="k">Service</div><div class="v">engine</div>
+      <div class="k">traceId</div><div class="v">7f3c9a1e5b2d4c08</div>
+      <div class="k">Bot</div><div class="v" style="font-family:var(--font-sans)"><a href="#">SOL quotes</a> · Market Making · SOL-USD</div>
+      <div class="k">Account</div><div class="v"><a href="#">${ACCm}</a> · accountID 20417</div>
+      <div class="k">clOrdID</div><div class="v">drift-b31-v4-cx-88213</div>
+      <div class="k">SoDEX order ID</div><div class="v" style="font-family:var(--font-sans);color:var(--muted)">Not available</div>
+      <div class="k">WS connID</div><div class="v">ws-perps-3f8a <span class="note" style="font-family:var(--font-sans)">accountOrderUpdate, open at this time</span></div>
+    </div>
+  </div>
+  <div class="sect"><h3>Related calls</h3>
+    <div class="rel">
+      <a href="#"><span class="mono">15:05:11.902</span><span class="mono">POST /perps/trade/orders · drift-b31-v4-l2-a0</span>${tag('ok')}</a>
+      <a href="#"><span class="mono">15:05:13.540</span><span class="mono">WS accountOrderUpdate · NEW</span>${tag('ok')}</a>
+    </div>
+    <p class="note" style="margin:6px 0 0">Same traceId or clOrdID. The order was placed 0.58 s before this cancel.</p>
+  </div>`;
+
+function detailHTML(){
+  const tabs = [['request','Request'],['response','Response'],['context','Context']];
+  return `
+<section class="card detail" id="detail" aria-labelledby="h-d">
+  <div class="dhead">
+    <button class="linkbtn mobile-back" style="display:none;align-self:flex-start;text-decoration:none;min-height:44px">‹ Back to calls</button>
+    <div class="dtop">
+      <h2 id="h-d">DELETE /<wbr>perps/<wbr>trade/<wbr>orders</h2>
+      <button class="btn icon sm" style="min-height:36px;width:36px" aria-label="Previous call">${ico('<path d="M6 15l6-6 6 6"/>',16,2.2)}</button>
+      <button class="btn icon sm" style="min-height:36px;width:36px" aria-label="Next call">${ico('<path d="M6 9l6 6 6-6"/>',16,2.2)}</button>
+      <button class="btn icon sm close-d" style="min-height:36px;width:36px" aria-label="Close details">${ico('<path d="M6 6l12 12M18 6L6 18"/>',16,2.2)}</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${tag('unr')}<span class="dmeta"><span class="mono">2026-11-17 15:05:12.481 UTC</span> · 22:05:12 your time · 214 ms · engine · REST</span></div>
+    <div class="expl unr"><b>Why it’s unreadable</b><span>SoDEX answered code 0, but the order result has no clOrdID, so DeskLabs can’t tell which order it is about. The engine treated the cancel as unknown and checked SoDEX before sending anything else.</span></div>
+    <div class="dact">
+      <button class="btn primary">${ico('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',16,2)}Copy report for SoDEX</button>
+      <button class="btn">Copy JSON</button>
+      <button class="btn">Copy link</button>
+    </div>
+  </div>
+  <div class="tabs" role="tablist" aria-label="Call details">
+    ${tabs.map(([k,v])=>`<button role="tab" id="t-${k}" aria-controls="p-${k}" aria-selected="${k===TAB}" tabindex="${k===TAB?0:-1}">${v}</button>`).join('')}
+  </div>
+  <div class="tabpanel" role="tabpanel" id="p-${TAB}" aria-labelledby="t-${TAB}">
+    ${TAB==='request'?tabReq:TAB==='response'?tabRes:tabCtx}
+  </div>
+  <div class="stickybar"><button class="btn primary">${ico('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',16,2)}Copy report for SoDEX</button></div>
+</section>`;
+}
+
+const reportText = `SoDEX API issue: cancel answered with an unreadable result
+
+Time (UTC):   2026-11-17 15:05:12.481
+Endpoint:     DELETE ${BASE}/perps/trade/orders
+Latency:      214 ms
+Account:      ${ACC} (accountID 20417)
+Builder:      DeskLabs (builder ID 1645)
+traceId:      7f3c9a1e5b2d4c08
+WS connID:    ws-perps-3f8a (accountOrderUpdate)
+
+Request (signature and API key removed)
+Headers: Content-Type: application/json; X-API-Nonce: 1763391912468
+${reqBody}
+
+Response (HTTP 200)
+${resBody}
+
+What we expected
+One result per cancel with its clOrdID, e.g.
+{"code": 0, "clOrdID": "drift-b31-v4-cx-88213"} or a reject with clOrdID.
+
+Related call
+15:05:11.902 UTC  POST ${BASE}/perps/trade/orders
+clOrdID drift-b31-v4-l2-a0 · HTTP 200 · code 0 (placed 0.58 s before the cancel)
+
+Sent from DeskLabs SoDEX Debugger`;
+
+function reportDialog(){
+  return `
+<div class="scrim">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="h-r" aria-describedby="r-d">
+    <header>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+        <h2 id="h-r">Report for SoDEX</h2>
+        <p id="r-d" class="note" style="margin:0">Plain text, ready to paste into a SoDEX ticket or chat. Read it once before you send it.</p>
+      </div>
+      <button class="btn icon sm" style="min-height:36px;width:36px" aria-label="Close">${ico('<path d="M6 6l12 12M18 6L6 18"/>',16,2.2)}</button>
+    </header>
+    <div class="body">
+      <div class="opts" role="group" aria-label="What to include">
+        <span class="chk" role="checkbox" aria-checked="true" tabindex="0"><span class="b on">${ico('<path d="M5 12.5l4.5 4.5L19 7.5"/>',14,3).replace('currentColor','#fff')}</span>Related calls</span>
+        <span class="chk" role="checkbox" aria-checked="true" tabindex="0"><span class="b on">${ico('<path d="M5 12.5l4.5 4.5L19 7.5"/>',14,3).replace('currentColor','#fff')}</span>Full account address</span>
+        <span class="chk" role="checkbox" aria-checked="false" tabindex="0"><span class="b"></span>Response headers</span>
+      </div>
+      <pre class="report" tabindex="0" aria-label="Report text">${reportText.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</pre>
+    </div>
+    <footer>
+      <span class="note">${ico('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',13,2.2)} Signatures and API keys are never in the report.</span>
+      <button class="btn">Close</button>
+      <button class="btn primary">${ico('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',16,2)}Copy text</button>
+    </footer>
+    <div role="status" class="sr">Copied. Paste it into your SoDEX ticket.</div>
+  </div>
+</div>`;
+}
+
+function statesHTML(){
+  const skRows = Array.from({length:6}).map(()=>`<div style="display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--border)"><div class="skel" style="width:22%"></div><div class="skel" style="width:46%"></div><div class="skel" style="width:16%"></div></div>`).join('');
+  return `
+<section aria-labelledby="h-st" style="display:flex;flex-direction:column;gap:12px">
+  <h2 id="h-st" style="margin:0;font-size:18px;font-weight:800">States of the Calls card</h2>
+  <div class="stale" role="status">${ico('<path d="M12 3l10 18H2z"/><path d="M12 10v5"/><path d="M12 18h.01"/>',18,2.2)}Couldn’t refresh at 15:42:40 UTC. Showing calls from 15:42:10 UTC. Trying again in 30 s.</div>
+  <div class="states">
+    <div class="card" aria-busy="true"><h3 style="margin:0 0 8px;font-size:14px;font-weight:800">Loading</h3><span class="sr">Loading calls…</span>${skRows}</div>
+    <div class="card"><div class="empty">
+      ${ico('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/>',28,2)}
+      <h3>No calls match these filters</h3>
+      <p>Nothing in the last 24 hours. Only 1% of successful calls are kept, so an Ok call may be missing.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center"><button class="btn">Clear filters</button><button class="btn">Last 14 days</button></div>
+    </div></div>
+    <div class="card"><div class="errbox" role="alert">
+      <span style="color:var(--neg-ink)">${ico('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/>',28,2.2)}</span>
+      <h3 style="margin:0;font-size:16px;font-weight:800">Couldn’t load calls</h3>
+      <p style="margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.5;max-width:320px">The DeskLabs API didn’t answer. This is not a SoDEX problem.</p>
+      <button class="btn">Try again</button>
+    </div></div>
+  </div>
+  <div class="card"><div class="empty" style="padding:16px">
+    <h3>Nothing stored yet</h3>
+    <p>Calls show up here after the next SoDEX error, timeout or slow call, or the next 1% sample.</p>
+  </div></div>
+</section>`;
+}
+
+// ---- Compose ----
+const isPhone = matchMedia('(max-width:767px)').matches;
+const detailOpen = VIEW==='detail' || VIEW==='report';
+if(isPhone && detailOpen) document.body.classList.add('m-detail');
+if(!isPhone && detailOpen) document.body.classList.add('d-open');
+
+const listView = `
+<div class="listview" style="display:flex;flex-direction:column;gap:16px">
+  ${header}
+  <span class="sample desk-only-s">SAMPLE DATA · every value on this page is made up</span>
+  ${filters}
+  ${VIEW==='states'?'':summary}
+</div>`;
+
+const work = VIEW==='states' ? statesHTML() : `
+<div class="work ${detailOpen?'split':''}">
+  <div class="listview" style="display:flex;flex-direction:column;gap:12px;min-width:0">${callsCard(detailOpen && !isPhone)}</div>
+  ${detailOpen?detailHTML():''}
+</div>`;
+
+document.getElementById('app').innerHTML = `
+<a href="#main" class="sr">Skip to content</a>
+<div class="shell">${sidebar}<main id="main">${listView}${work}</main></div>
+${VIEW==='report'?reportDialog():''}`;
+
+if(isPhone){
+  document.querySelectorAll('.desk-only-s').forEach(e=>e.style.display='none');
+  const mf=document.getElementById('mfilters'); if(mf) mf.style.display='inline-flex';
+  document.querySelectorAll('.mobile-back').forEach(e=>e.style.display='inline-flex');
+  document.querySelectorAll('.close-d').forEach(e=>e.style.display='none');
+}
+if(!isPhone && detailOpen){ const r=document.querySelector('tr.sel'); if(r) r.scrollIntoView({block:'center'}); }
+</script>
+</body>
+</html>
