@@ -16,6 +16,7 @@ import { parseOrThrow } from "../../lib/http";
 import { idempotent } from "../../lib/idempotency";
 import { requireAuth } from "../../plugins/session";
 
+import { architectureMap } from "./architecture";
 import { setBuilderFee } from "./builder-fees";
 import { marketHours } from "./market-hours";
 import { teamOps } from "./ops";
@@ -186,6 +187,12 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountDeps): 
   app.get("/api/v1/admin/market-hours", async (request) =>
     marketHours(deps, requireAuth(request).userId, request.query),
   );
+  // System Architecture Diagram: chỉ team (403 cho người khác), nội dung không nằm trong bundle web.
+  // no-store: không để proxy / cache dùng chung giữ bản đồ hạ tầng (review PR #211).
+  app.get("/api/v1/admin/architecture", async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    return architectureMap(deps.db, requireAuth(request).userId);
+  });
   app.get("/api/v1/admin/stats", async (request) => {
     const { period } = parseOrThrow(platformStatsQuerySchema, request.query);
     return platformStats(deps, requireAuth(request).userId, period);
