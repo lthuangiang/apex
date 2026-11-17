@@ -78,13 +78,14 @@ import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzl
 import type { Logger } from "pino";
 
 import { openedAlerts, SkipGate, skipMarket, skippedAlert, skipReason } from "./copy-alerts";
-import type {
-  AccountRef,
-  CancelResult,
-  Gateway,
-  LookupResult,
-  NotSentCode,
-  OrderTrade,
+import {
+  MARKET_NOT_FOUND,
+  type AccountRef,
+  type CancelResult,
+  type Gateway,
+  type LookupResult,
+  type NotSentCode,
+  type OrderTrade,
 } from "./gateway";
 import type { PaperGateway } from "./paper-gateway";
 
@@ -3321,6 +3322,17 @@ export class Engine {
     entry.loggedAt = now;
     const qty = o?.quantity ?? o?.size;
     const last = o === undefined || qty === undefined ? "" : ` Last: ${o.side} ${qty} ${o.market}.`;
+    // DeskLabs tự từ chối (market không có trên SoDEX): không nói là SoDEX từ chối, không có mã SoDEX.
+    if (code === MARKET_NOT_FOUND) {
+      await this.#event(
+        r,
+        "error",
+        `DeskLabs didn't send the order: ${o?.market ?? r.market} is not listed on SoDEX.`,
+        last.trim(),
+        at,
+      );
+      return;
+    }
     await this.#event(
       r,
       "error",
@@ -3502,9 +3514,15 @@ export class Engine {
     }
     // Chỉ coi là đã huỷ khi SoDEX trả lời rõ: ok, hoặc từ chối (lệnh đã khớp / đã huỷ). Không rõ thì thử lại; không thấy
     // trên sổ thì chờ đối soát (ở trên).
+    // Request bị từ chối cả gói (429, key, nonce…) không nói gì về lệnh: như chưa rõ, huỷ lại sau (review #216 F1).
     const settled = new Set(
       results
-        .filter((x) => x.outcome !== "unknown" && x.outcome !== "not_found")
+        .filter(
+          (x) =>
+            x.outcome !== "unknown" &&
+            x.outcome !== "not_found" &&
+            !(x.outcome === "rejected" && x.scope === "request"),
+        )
         .map((x) => x.clOrdID),
     );
     const done = open.filter((o) => settled.has(o.clOrdId));
@@ -4608,19 +4626,35 @@ export class Engine {
               if (error instanceof FencedError) throw error;
               last = undefined;
             }
-            if (last === undefined || last.outcome === "unknown") {
+            // Request bị từ chối cả gói (429, key, nonce…) như chưa rõ: lệnh huỷ chưa được xử lý (review #216 F1).
+            if (
+              last === undefined ||
+              last.outcome === "unknown" ||
+              (last.outcome === "rejected" && last.scope === "request")
+            ) {
               this.#missingSince.set(o.id, since);
               this.#d.log.warn(
-                { botId: o.botId, clOrdID: o.clOrdId },
+                {
+                  botId: o.botId,
+                  clOrdID: o.clOrdId,
+                  outcome: last?.outcome,
+                  code: last?.outcome === "rejected" ? last.code : undefined,
+                },
                 "final cancel before recording cancelled was not confirmed; checking again",
               );
               return;
             }
-            if (last.outcome === "ok")
+            // Lệnh còn sống và vừa được gỡ khỏi sổ: có thể đã khớp một phần sau lần đọc trade ở trên. Không ghi ngay; lần tra
+            // sau ghi trạng thái cuối theo SoDEX (số đã khớp thật), không thấy nữa thì chờ lại NOT_FOUND_AFTER_MS.
+            if (last.outcome === "ok") {
+              this.#missingSince.set(o.id, now);
+              this.#openChecks.delete(o.id);
               this.#d.log.warn(
                 { botId: o.botId, clOrdID: o.clOrdId },
-                "order SoDEX could not find was still live; cancelled it now",
+                "order SoDEX could not find was still live; cancelled it, recording its final status next check",
               );
+              return;
+            }
           }
           await this.#fenced({ shard, epoch: held.epoch }, async (tx) => {
             await tx

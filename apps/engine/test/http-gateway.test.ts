@@ -258,4 +258,17 @@ describe("market info on the order path (DEC-TBD-engine-sodex-latency)", () => {
     ]);
     expect(bodies).toHaveLength(2);
   });
+
+  it("marks a cancel refused as a whole request (SoDEX error envelope) as request scope", async () => {
+    const { gw } = gateway({
+      outcome: "rejected",
+      status: 429,
+      sodexCode: -1,
+      sodexError: "too many",
+    });
+    const ref = { clOrdID: "c1", market: "vBTC_vUSDC", engine: "spot" as const };
+    expect(await gw.cancel(account(7n), [ref], { shard: 0, epoch: 1 })).toEqual([
+      { clOrdID: "c1", outcome: "rejected", code: "-1", scope: "request" },
+    ]);
+  });
 });

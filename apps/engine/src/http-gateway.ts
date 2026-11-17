@@ -26,18 +26,19 @@ import type { MarketRules, OrderIntent } from "@drift/strategies";
 import type { Hex } from "viem";
 import { z } from "zod";
 
-import type {
-  AccountRef,
-  CancelResult,
-  Fence,
-  Gateway,
-  LeverageResult,
-  LeverageSetting,
-  LookupResult,
-  ModifyStopResult,
-  NotSentCode,
-  SubmitResult,
-  OrderTrade,
+import {
+  MARKET_NOT_FOUND,
+  type AccountRef,
+  type CancelResult,
+  type Fence,
+  type Gateway,
+  type LeverageResult,
+  type LeverageSetting,
+  type LookupResult,
+  type ModifyStopResult,
+  type NotSentCode,
+  type SubmitResult,
+  type OrderTrade,
 } from "./gateway";
 
 // Gateway thật: dựng payload lệnh (có `builder` của DRIFT, SODEX.md mục 5.3), xin signer ký kèm epoch,
@@ -253,7 +254,7 @@ export class HttpGateway implements Gateway {
           out.push({
             clOrdID: o.clOrdID,
             outcome: "rejected",
-            code: "MARKET_NOT_FOUND",
+            code: MARKET_NOT_FOUND,
             message: "Market is not listed on SoDEX.",
           });
       const group = all.filter((_, i) => found[i] !== undefined);
@@ -432,7 +433,13 @@ export class HttpGateway implements Gateway {
       // Chưa rời DRIFT (signer lỗi) thì vẫn ném NotSentError như trước: caller không đặt lệnh mới.
       const res = await this.#send(account, payload, "DELETE", fence, 1);
       if (res.outcome === "rejected") {
-        out.push({ clOrdID: o.clOrdID, outcome: "rejected", code: String(res.sodexCode) });
+        // Envelope lỗi: cả request bị từ chối, lệnh huỷ chưa được xử lý (review #216 F1).
+        out.push({
+          clOrdID: o.clOrdID,
+          outcome: "rejected",
+          code: String(res.sodexCode),
+          scope: "request",
+        });
       } else if (res.outcome === "unknown") {
         out.push({
           clOrdID: o.clOrdID,

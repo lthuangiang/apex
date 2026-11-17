@@ -3118,6 +3118,78 @@ describe("engine", () => {
     await stopMakerBots();
   });
 
+  it("does not record cancelled when the final cancel is refused as a whole request (429) (review #216 F1)", async () => {
+    const gw = new FakeGateway();
+    gw.cancelOutcome = "not_found";
+    const { e, id, row } = await makerCancelled(gw, "vm-gone-429");
+    gw.book.delete(id);
+    const base = gw.cancel.bind(gw);
+    let limited = true;
+    gw.cancel = (a, list) =>
+      limited
+        ? Promise.resolve(
+            list.map((x): CancelResult => ({
+              clOrdID: x.clOrdID,
+              outcome: "rejected",
+              code: "-429",
+              scope: "request",
+            })),
+          )
+        : base(a, list);
+    for (let i = 0; i < 6; i += 1) {
+      clock += 8_000;
+      await e.tick();
+    }
+    // SoDEX chưa xử lý lệnh huỷ nào: lệnh có thể còn sống, chưa ghi là đã huỷ.
+    expect((await row())?.status).toBe("open");
+    limited = false;
+    for (let i = 0; i < 6 && (await row())?.status !== "cancelled"; i += 1) {
+      clock += 8_000;
+      await e.tick();
+    }
+    expect((await row())?.status).toBe("cancelled");
+    await e.stop();
+    await stopMakerBots();
+  });
+
+  it("lets the next lookup record the final status when the final cancel finds the order still live (review #216 F1)", async () => {
+    const gw = new FakeGateway();
+    gw.cancelOutcome = "not_found";
+    const { e, id, row } = await makerCancelled(gw, "vm-gone-live");
+    gw.book.delete(id);
+    const start = clock;
+    const base = gw.cancel.bind(gw);
+    const sodex = { live: false };
+    // Lần huỷ đầu tiên sau ~38 s là lần huỷ cuối của đối soát: SoDEX gỡ lệnh còn sống khỏi sổ.
+    gw.cancel = (a, list) => {
+      if (!sodex.live && clock - start >= 38_000) {
+        sodex.live = true;
+        gw.cancelled.push(...list.map((x) => x.clOrdID));
+        return Promise.resolve(
+          list.map((x): CancelResult => ({ clOrdID: x.clOrdID, outcome: "ok" })),
+        );
+      }
+      return base(a, list);
+    };
+    for (let i = 0; i < 8 && !sodex.live; i += 1) {
+      clock += 8_000;
+      await e.tick();
+    }
+    expect(sodex.live).toBe(true);
+    // Không ghi `cancelled` ngay: lệnh có thể đã khớp một phần ngay trước lúc bị gỡ.
+    expect((await row())?.status).toBe("open");
+    const size = (await row())?.size ?? "0";
+    const part = (Number(size) / 2).toString();
+    gw.book.set(id, { status: "cancelled", filledQty: part, avgPrice: "100000", orderId: 78n });
+    clock += 8_000;
+    await e.tick();
+    const after = await row();
+    expect(after?.status).toBe("cancelled");
+    expect(Number(after?.filledSize)).toBe(Number(part));
+    await e.stop();
+    await stopMakerBots();
+  });
+
   it("cancels again when an order SoDEX called not found is on the book after all (DEC-250, DEC-TBD-engine-sodex-latency)", async () => {
     const gw = new FakeGateway();
     gw.cancelOutcome = "not_found";
@@ -7357,6 +7429,27 @@ describe("slow SoDEX reads stay with their own account (DEC-TBD-engine-sodex-lat
     await e.onPrice("vBTC_vUSDC", "100", clock);
     expect(gw.received.some((o) => o.tag === "grid:init")).toBe(true);
     expect((await botState(botId))?.state).toBe("running");
+    await e.stop();
+    await cleanup([botId], []);
+  });
+
+  it("says DeskLabs did not send an order for a market SoDEX does not list, without a SoDEX code", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    gw.reject = { code: "MARKET_NOT_FOUND", message: "Market is not listed on SoDEX." };
+    const { botId } = await seedBot();
+    const e = slowEngine(gw, "local-refusal");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
+    const line = events.find((x) => x.decision?.startsWith("DeskLabs didn't send") === true);
+    expect(line?.decision).toBe(
+      "DeskLabs didn't send the order: vBTC_vUSDC is not listed on SoDEX.",
+    );
+    expect(line?.why ?? "").not.toContain("SoDEX code");
+    expect(events.some((x) => x.decision?.startsWith("Order refused by SoDEX") === true)).toBe(
+      false,
+    );
     await e.stop();
     await cleanup([botId], []);
   });
