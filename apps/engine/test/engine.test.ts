@@ -16,6 +16,7 @@ import {
   paperSnapshots,
   riskLimits,
   runMigrations,
+  schema,
   shardEpochs,
   sodexAccounts,
   userBuilderFees,
@@ -32,9 +33,10 @@ import {
   type OrderIntent,
 } from "@drift/strategies";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Redis } from "ioredis";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { Engine, FencedError, shardOf } from "../src/engine";
 import type {
@@ -282,12 +284,14 @@ async function seedBot(
       onStop: "keep_base",
     },
   },
+  /** Database (mặc định DB chung của file test). */
+  into: Db = db,
 ) {
-  const [user] = await db
+  const [user] = await into
     .insert(users)
     .values({ email: `${String(Math.random())}@x.test` })
     .returning();
-  const [account] = await db
+  const [account] = await into
     .insert(sodexAccounts)
     .values({
       userId: user?.id ?? "",
@@ -297,7 +301,7 @@ async function seedBot(
       status: "connected",
     })
     .returning();
-  await db.insert(apiKeys).values({
+  await into.insert(apiKeys).values({
     sodexAccountId: account?.id ?? "",
     name: "DRIFT",
     publicKey: "0x1563915e194D8CfBA1943570603F7606A3115508",
@@ -308,7 +312,7 @@ async function seedBot(
     expiresAt: new Date(clock + 1e10),
     status: "active",
   });
-  const [bot] = await db
+  const [bot] = await into
     .insert(bots)
     .values({
       userId: user?.id ?? "",
@@ -320,7 +324,7 @@ async function seedBot(
       state,
     })
     .returning();
-  const [version] = await db
+  const [version] = await into
     .insert(botVersions)
     .values({
       botId: bot?.id ?? "",
@@ -330,7 +334,7 @@ async function seedBot(
       config: spec.config,
     })
     .returning();
-  await db
+  await into
     .update(bots)
     .set({ activeVersionId: version?.id ?? "" })
     .where((await import("drizzle-orm")).eq(bots.id, bot?.id ?? ""));
@@ -4471,5 +4475,90 @@ describe("insufficient margin rejects (margin guard)", () => {
       await e.stop();
       await stopAll();
     });
+  });
+});
+
+describe("one read per tick, not per shard (DEC-TBD-engine-tick-batch)", () => {
+  // Database riêng, sạch: số truy vấn chỉ phụ thuộc dữ liệu của test này.
+  let clean: Db;
+  let counted = 0;
+  let cleanPool: ReturnType<typeof createDb>["pool"];
+  beforeAll(async () => {
+    const admin = createDb(pg.getConnectionUri());
+    await admin.pool.query("CREATE DATABASE tick_batch");
+    await admin.pool.end();
+    const url = pg.getConnectionUri().replace(/\/[^/?]+(\?|$)/, "/tick_batch$1");
+    await runMigrations(url);
+    ({ pool: cleanPool } = createDb(url));
+    clean = drizzle(cleanPool, {
+      schema,
+      logger: {
+        logQuery: () => {
+          counted += 1;
+        },
+      },
+    });
+  });
+  afterAll(async () => {
+    await cleanPool.end();
+  });
+  afterEach(() => {
+    counted = 0;
+  });
+
+  /** Số truy vấn của một vòng `tick` ổn định (vòng thứ 3: bot đã nạp, shard đã nhận) với `shards` shard. */
+  async function queriesPerTick(shards: number, gw: Gateway): Promise<number> {
+    await newRedis().flushall();
+    const e = new Engine({
+      db: clean,
+      redis: newRedis(),
+      gateway: gw,
+      paper: new PaperGateway({ db: clean, now }),
+      workerId: `count-${String(shards)}`,
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+    });
+    await e.tick();
+    await e.tick();
+    counted = 0;
+    await e.tick();
+    const n = counted;
+    await e.stop();
+    return n;
+  }
+
+  it("runs the same number of queries per tick with 4 or 64 shards, and never reads the builder fee of a paper-only account", async () => {
+    const { eq } = await import("drizzle-orm");
+    const live = await seedBot("running", undefined, clean);
+    await seedBot("running", undefined, clean);
+    await seedBot("running", undefined, clean);
+    const paper = await seedBot("running", undefined, clean);
+    await clean.update(bots).set({ mode: "paper" }).where(eq(bots.id, paper.botId));
+    await clean.insert(paperAccounts).values({
+      botId: paper.botId,
+      capital: "1000",
+      cash: "1000",
+      positions: {},
+      peakEquity: "1000",
+      startedAt: new Date(clock),
+    });
+    const gw = new (class extends FakeGateway {
+      readonly feeChecks: string[] = [];
+      override builderApproved(account?: AccountRef): Promise<boolean> {
+        this.feeChecks.push(account?.id ?? "");
+        return super.builderApproved();
+      }
+    })();
+    const few = await queriesPerTick(4, gw);
+    const many = await queriesPerTick(64, gw);
+    expect(few).toBeGreaterThan(0);
+    // Trước đây mỗi shard tự đọc account (2 lần), lệnh `unknown`, lệnh đang mở: 64 shard ≈ 16 lần 4 shard.
+    expect(many).toBe(few);
+    expect(gw.feeChecks).toContain(live.accountId);
+    expect(gw.feeChecks).not.toContain(paper.accountId);
   });
 });
