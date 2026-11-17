@@ -25,6 +25,7 @@ import { z } from "zod";
 
 import { BookCoalescer } from "./book-coalescer";
 import { Engine } from "./engine";
+import type { AccountRef } from "./gateway";
 import { HttpGateway, httpSigner, marketInfo } from "./http-gateway";
 import { withLastUsed } from "./last-used";
 import { PaperGateway } from "./paper-gateway";
@@ -76,6 +77,118 @@ const gateway = new HttpGateway(
   sodex.builderId,
   sodex.builderExempt,
 );
+// User stream cho từng account + engine mà bot thật trong shard của worker này giao dịch (account chỉ chạy Perps không mở
+// stream Spot). Engine mở stream ngay khi nạp bot (trong vòng tick) và lệnh mở vị thế chỉ đi khi stream của engine đó
+// đã được SoDEX nhận subscribe (DEC-303).
+type StreamKind = "spot" | "perps";
+const streams = new Map<string, Partial<Record<StreamKind, WsUserStream>>>();
+/** Lần cuối ghi log error "subscribe rejected" theo `account:engine` (tối đa một lần mỗi 10 phút). */
+const rejectLoggedAt = new Map<string, number>();
+const REJECT_LOG_EVERY_MS = 600_000;
+function openStream(account: AccountRef, kind: StreamKind): void {
+  const id = account.id;
+  const pair = streams.get(id) ?? {};
+  if (pair[kind] !== undefined) return;
+  const make = () =>
+    new WsUserStream({
+      baseUrl: sodex.wsUrl,
+      engine: kind,
+      user: account.address,
+      accountID: account.sodexAccountId,
+      callbacks: {
+        onOrderUpdate: (updates) => {
+          for (const u of updates) {
+            // Lệnh kết thúc (FILLED / CANCELED / EXPIRED / REJECTED): ghi phần mới khớp trước, rồi báo chiến lược lệnh
+            // đã xong đúng một lần, kể cả khi đã khớp một phần (P0.1). Chưa khớp gì thì cập nhật luôn, không để lệnh
+            // kẹt "open" (DEC-122).
+            const closed =
+              u.X === "REJECTED"
+                ? "rejected"
+                : u.X === "CANCELED" || u.X === "EXPIRED"
+                  ? "cancelled"
+                  : u.X === "FILLED"
+                    ? "filled"
+                    : null;
+            const filled = dec(u.z).gt(0);
+            if (closed === null && !filled) continue;
+            void (async () => {
+              if (filled)
+                await engine.onFill(id, u.c, u.z, dec(u.v).div(u.z).toString(), u.n ?? "0", u.E);
+              if (closed !== null) await engine.onOrderClosed(id, u.c, closed, u.E, u.r ?? null);
+            })().catch((error: unknown) => {
+              log.warn({ err: error }, "order update handling failed");
+            });
+          }
+        },
+        onTrade: (trades) => {
+          for (const tr of trades) {
+            void engine
+              .onTrade(id, {
+                tradeId: tr.t,
+                clOrdID: tr.c,
+                price: tr.p,
+                quantity: tr.q,
+                fee: tr.f,
+                builderFee: tr.bf ?? null,
+                isMaker: tr.m,
+                at: tr.T,
+              })
+              .catch((error: unknown) => {
+                log.warn({ err: error }, "trade handling failed");
+              });
+          }
+        },
+        onReconnect: () => {
+          log.info({ accountId: id, kind }, "user stream reconnected");
+        },
+        // Khoảng trống chỉ khi subscribe XONG (lần đầu: bot có thể đã có lệnh từ worker trước / lệnh đóng gửi trước khi
+        // stream sẵn sàng; các lần sau: stream đã subscribe bị đứt). Subscribe bị từ chối không phải khoảng trống.
+        onSubscribed: () => {
+          engine.onStreamGap(id, kind);
+          log.info({ accountId: id, kind }, "user stream subscribed");
+        },
+        onError: (error) => {
+          if (error.message.includes("rejected")) {
+            // Lệnh mở vị thế trên engine này chờ tới khi subscribe lại được: lỗi thật, nhưng chỉ ghi mỗi 10 phút.
+            const key = `${id}:${kind}`;
+            const at = Date.now();
+            if (at - (rejectLoggedAt.get(key) ?? 0) >= REJECT_LOG_EVERY_MS) {
+              rejectLoggedAt.set(key, at);
+              log.error(
+                { err: error.message, accountId: id, kind },
+                "user stream subscribe rejected",
+              );
+            }
+          } else log.warn({ err: error.message, accountId: id }, "user stream error");
+          // Một tin không đọc được có thể là fill: đối soát lệnh của account như khi stream đứt (DEC-118).
+          if (error.message.includes("did not match schema")) engine.onStreamGap(id, kind);
+        },
+      },
+    });
+  const stream = make();
+  stream.connect();
+  streams.set(id, { ...pair, [kind]: stream });
+  log.info({ accountId: id, kind }, "user stream connecting");
+}
+/** Đóng stream (account + engine) không còn bot cần; mở cái còn thiếu (đường dự phòng, engine đã mở trong tick). */
+async function syncStreams() {
+  const wanted = new Map((await engine.activeStreams()).map((a) => [a.account.id, a]));
+  for (const [id, pair] of streams) {
+    const want = wanted.get(id);
+    const kept: Partial<Record<StreamKind, WsUserStream>> = {};
+    for (const kind of ["spot", "perps"] as const) {
+      const stream = pair[kind];
+      if (stream === undefined) continue;
+      if (want?.engines.has(kind) === true) kept[kind] = stream;
+      else stream.close();
+    }
+    if (kept.spot === undefined && kept.perps === undefined) streams.delete(id);
+    else streams.set(id, kept);
+  }
+  for (const { account, engines } of wanted.values())
+    for (const kind of engines) openStream(account, kind);
+}
+
 // Độ trễ event loop (DEC-302): ghi kèm log `tick slow` và mỗi phút một dòng `event loop delay`.
 const loopDelay = monitorEventLoopDelay({ resolution: 20 });
 loopDelay.enable();
@@ -102,6 +215,10 @@ const engine = new Engine({
   rules: (market) => marketInfo(rest, market),
   builderId: sodex.builderId,
   builderExempt: sodex.builderExempt,
+  userStreams: {
+    open: openStream,
+    ready: (accountId, kind) => streams.get(accountId)?.[kind]?.subscribed === true,
+  },
   // Volume Farm (DEC-80): 10 mức mỗi phía, như apex `get_orderbook_depth(symbol, 10)`.
   // Rebalancing (Spot) cũng đọc đỉnh sổ lệnh để đặt IOC theo ask / bid.
   orderbook: async (market, engine = "perps") => {
@@ -195,87 +312,6 @@ void (async () => {
   }
 })();
 
-// User stream cho từng account đang có bot trong shard của worker này.
-const streams = new Map<string, WsUserStream[]>();
-async function syncStreams() {
-  const wanted = new Map((await engine.activeAccounts()).map((a) => [a.id, a]));
-  for (const [id, list] of streams) {
-    if (!wanted.has(id)) {
-      for (const s of list) s.close();
-      streams.delete(id);
-    }
-  }
-  for (const [id, account] of wanted) {
-    if (streams.has(id)) continue;
-    const make = (kind: "spot" | "perps") =>
-      new WsUserStream({
-        baseUrl: sodex.wsUrl,
-        engine: kind,
-        user: account.address,
-        accountID: account.sodexAccountId,
-        callbacks: {
-          onOrderUpdate: (updates) => {
-            for (const u of updates) {
-              // Lệnh kết thúc (FILLED / CANCELED / EXPIRED / REJECTED): ghi phần mới khớp trước, rồi báo chiến lược lệnh
-              // đã xong đúng một lần, kể cả khi đã khớp một phần (P0.1). Chưa khớp gì thì cập nhật luôn, không để lệnh
-              // kẹt "open" (DEC-122).
-              const closed =
-                u.X === "REJECTED"
-                  ? "rejected"
-                  : u.X === "CANCELED" || u.X === "EXPIRED"
-                    ? "cancelled"
-                    : u.X === "FILLED"
-                      ? "filled"
-                      : null;
-              const filled = dec(u.z).gt(0);
-              if (closed === null && !filled) continue;
-              void (async () => {
-                if (filled)
-                  await engine.onFill(id, u.c, u.z, dec(u.v).div(u.z).toString(), u.n ?? "0", u.E);
-                if (closed !== null) await engine.onOrderClosed(id, u.c, closed, u.E, u.r ?? null);
-              })().catch((error: unknown) => {
-                log.warn({ err: error }, "order update handling failed");
-              });
-            }
-          },
-          onTrade: (trades) => {
-            for (const tr of trades) {
-              void engine
-                .onTrade(id, {
-                  tradeId: tr.t,
-                  clOrdID: tr.c,
-                  price: tr.p,
-                  quantity: tr.q,
-                  fee: tr.f,
-                  builderFee: tr.bf ?? null,
-                  isMaker: tr.m,
-                  at: tr.T,
-                })
-                .catch((error: unknown) => {
-                  log.warn({ err: error }, "trade handling failed");
-                });
-            }
-          },
-          onReconnect: () => {
-            engine.onStreamGap(id);
-            log.info(
-              { accountId: id, kind },
-              "user stream reconnected; unknown orders are reconciled by the loop",
-            );
-          },
-          onError: (error) => {
-            log.warn({ err: error.message, accountId: id }, "user stream error");
-            // Một tin không đọc được có thể là fill: đối soát lệnh của account như khi stream đứt (DEC-118).
-            if (error.message.includes("did not match schema")) engine.onStreamGap(id);
-          },
-        },
-      });
-    const list = [make("spot"), make("perps")];
-    for (const s of list) s.connect();
-    streams.set(id, list);
-  }
-}
-
 const state = { running: true };
 const loop = (async () => {
   while (state.running) {
@@ -292,7 +328,10 @@ const loop = (async () => {
 async function shutdown() {
   state.running = false;
   await loop;
-  for (const list of streams.values()) for (const s of list) s.close();
+  for (const pair of streams.values()) {
+    pair.spot?.close();
+    pair.perps?.close();
+  }
   await engine.stop();
   await nc.drain();
   await pool.end();

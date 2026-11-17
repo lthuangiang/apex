@@ -43,6 +43,7 @@ import {
   CLOSE_RETRY,
   FencedError,
   LeaseExpiredError,
+  opensPosition,
   shardOf,
   type EngineDeps,
 } from "../src/engine";
@@ -215,20 +216,29 @@ class FakeGateway implements Gateway {
     return Promise.resolve(this.perpsPositions.get(market) ?? null);
   }
   recentTradesCalls = 0;
-  recentTrades(): Promise<(OrderTrade & { clOrdID: string })[]> {
+  /** Account (id trong DB) của mỗi lần đọc lịch sử khớp. */
+  readonly recentTradesBy: string[] = [];
+  recentTrades(a: AccountRef): Promise<(OrderTrade & { clOrdID: string })[]> {
     this.recentTradesCalls += 1;
+    this.recentTradesBy.push(a.id);
     return Promise.resolve(
       [...this.trades].flatMap(([clOrdID, list]) => list.map((t) => ({ ...t, clOrdID }))),
     );
   }
   /** Giả SoDEX / mạng lỗi khi tra lệnh (HttpGateway.lookup ném lỗi). */
   lookupError: Error | null = null;
+  /** Gọi mỗi lần tra một lệnh (mô phỏng việc xảy ra trên SoDEX đúng lúc tra). */
+  onLookup: ((clOrdID: string) => void) | null = null;
   lookup(_a: AccountRef, o: { clOrdID: string }): Promise<LookupResult> {
+    this.onLookup?.(o.clOrdID);
     if (this.lookupError !== null) return Promise.reject(this.lookupError);
     return Promise.resolve(this.book.get(o.clOrdID) ?? { status: "not_found" });
   }
   readonly trades = new Map<string, OrderTrade[]>();
+  /** clOrdID của mọi lần đọc trade theo lệnh. */
+  readonly tradesOfCalls: string[] = [];
   tradesOf(_a: AccountRef, o: { clOrdID: string }): Promise<OrderTrade[]> {
+    this.tradesOfCalls.push(o.clOrdID);
     return Promise.resolve(this.trades.get(o.clOrdID) ?? []);
   }
   /** Giả SoDEX lỗi khi đọc approval (ví dụ "user not found"). */
@@ -5434,5 +5444,920 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
     expect(await position()).toBe(afterFill);
     f.ctl.restore();
     await f.e.stop();
+  });
+});
+
+describe("lost fills (DEC-303)", () => {
+  /** User stream giả: ghi account được mở, sẵn sàng khi test cho phép. */
+  class FakeStreams {
+    readonly opened: string[] = [];
+    /** `account:engine` đã mở. */
+    readonly openedKinds: string[] = [];
+    /** `account:engine` đã subscribe xong. */
+    readonly ready = new Set<string>();
+    /** Không null: chỉ trả "sẵn sàng" cho chừng này lần hỏi nữa (stream đứt ngay sau đó). */
+    budget: number | null = null;
+    open(a: AccountRef, engine: "spot" | "perps"): void {
+      if (!this.opened.includes(a.id)) this.opened.push(a.id);
+      if (!this.openedKinds.includes(`${a.id}:${engine}`))
+        this.openedKinds.push(`${a.id}:${engine}`);
+    }
+    isReady(id: string, engine: "spot" | "perps"): boolean {
+      if (this.budget !== null) {
+        if (this.budget <= 0) return false;
+        this.budget -= 1;
+        return true;
+      }
+      return this.ready.has(`${id}:${engine}`);
+    }
+    allow(id: string, ...engines: ("spot" | "perps")[]): void {
+      for (const x of engines) this.ready.add(`${id}:${x}`);
+    }
+  }
+  const streamEngine = (
+    gw: Gateway,
+    workerId: string,
+    streams?: FakeStreams,
+    ruleOf: () => Promise<typeof rules> = () => Promise.resolve(rules),
+    dbOf: Db = db,
+  ) =>
+    new Engine({
+      db: dbOf,
+      redis: newRedis(),
+      gateway: gw,
+      workerId,
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: ruleOf,
+      feeCheckMs: 0,
+      ...(streams === undefined
+        ? {}
+        : {
+            userStreams: {
+              open: (a: AccountRef, engine: "spot" | "perps") => {
+                streams.open(a, engine);
+              },
+              ready: (id: string, engine: "spot" | "perps") => streams.isReady(id, engine),
+            },
+          }),
+    });
+  const orderOf = async (clOrdID: string) => {
+    const { eq } = await import("drizzle-orm");
+    return (await db.select().from(orders).where(eq(orders.clOrdId, clOrdID)))[0];
+  };
+  const fillsOf = async (orderId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return db.select().from(fills).where(eq(fills.orderId, orderId));
+  };
+  const stopBot = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+  };
+  const trade = (quantity: string, price = "100"): OrderTrade => ({
+    tradeId: 50_000n + BigInt(Math.floor(Math.random() * 1e12)),
+    price,
+    quantity,
+    fee: "0.02",
+    builderFee: "0.001",
+    isMaker: false,
+    at: clock,
+  });
+
+  it("waits for the account's user stream, then records an entry IOC that filled while SoDEX history lagged", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const streams = new FakeStreams();
+    const { botId, accountId } = await seedBot();
+    const e = streamEngine(gw, "lost-first", streams);
+    await e.tick();
+    // Stream mở ngay trong vòng nạp bot, nhưng chưa subscribe xong: bot chưa đặt gì.
+    expect(streams.opened).toContain(accountId);
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    expect(gw.received.filter((o) => o.tag.startsWith("grid:"))).toHaveLength(0);
+    expect((await botState(botId))?.state).toBe("starting");
+
+    streams.allow(accountId, "spot");
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    expect(init?.type).toBe("market");
+    expect(init?.timeInForce).toBe("IOC");
+    const id = init?.clOrdID ?? "";
+    // Lệnh khớp ngay trên SoDEX, tin khớp không tới; REST lịch sử lệnh chưa có lệnh (trễ), lịch sử khớp thì có.
+    gw.book.delete(id);
+    const t = trade(init?.quantity ?? "0");
+    gw.trades.set(id, [t]);
+    clock += 6_000;
+    await e.tick();
+
+    const row = await orderOf(id);
+    expect(row?.status).toBe("filled");
+    expect(Number(row?.filledSize)).toBe(Number(init?.quantity));
+    expect(row?.doneFedAt).not.toBeNull();
+    const rows = await fillsOf(row?.id ?? "");
+    expect(rows.map((f) => f.sodexTradeId)).toEqual([t.tradeId]);
+    // Chiến lược nhận fill: đặt các mức bán chờ vị thế ban đầu.
+    expect(gw.received.map((o) => o.tag)).toEqual(
+      expect.arrayContaining(["grid:3:sell", "grid:4:sell"]),
+    );
+    const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+    const st = rt?.state as { ledger: { position: string } };
+    expect(Number(st.ledger.position)).toBe(Number(init?.quantity));
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("keeps a market order SoDEX cannot find and has no trades for as unknown, not cancelled, then records it when trades appear", async () => {
+    const gw = new FakeGateway();
+    const { botId } = await seedBot();
+    const e = streamEngine(gw, "lost-unknown");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    const id = init?.clOrdID ?? "";
+    gw.book.delete(id);
+    clock += 6_000;
+    await e.tick();
+    // Trong thời gian chờ: vẫn open, đã hỏi trade.
+    expect((await orderOf(id))?.status).toBe("open");
+    expect(gw.recentTradesCalls).toBeGreaterThan(0);
+    clock += 31_000;
+    await e.tick();
+    const row = await orderOf(id);
+    expect(row?.status).toBe("unknown");
+    expect(row?.doneFedAt).toBeNull();
+    // SoDEX đã nhận lệnh: không thành not_placed dù vẫn không thấy.
+    clock += 16_000;
+    await e.tick();
+    expect((await orderOf(id))?.status).toBe("unknown");
+    const { eq } = await import("drizzle-orm");
+    const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
+    expect(events.map((x) => x.decision)).toContain("Order result unknown");
+    // Trade xuất hiện: lần tra sau ghi fill thật và kết thúc lệnh.
+    gw.trades.set(id, [trade(init?.quantity ?? "0")]);
+    clock += 16_000;
+    await e.tick();
+    const after = await orderOf(id);
+    expect(after?.status).toBe("filled");
+    expect(after?.doneFedAt).not.toBeNull();
+    expect(gw.received.map((o) => o.tag)).toEqual(expect.arrayContaining(["grid:3:sell"]));
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("records a native stop SoDEX no longer has as cancelled only when it has no trades (DEC-118, M3)", async () => {
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    const e = streamEngine(gw, "lost-stop");
+    await e.tick();
+    const base = {
+      botId,
+      sodexAccountId: accountId,
+      market: "BTC-USD",
+      engine: "perps" as const,
+      side: "sell" as const,
+      type: "market" as const,
+      timeInForce: "IOC",
+      size: "1",
+      status: "open" as const,
+      reduceOnly: true,
+      epoch: 1,
+      submittedAt: new Date(clock - 10_000),
+    };
+    const stopId = `stop-${String(Math.random())}`;
+    const firedId = `fired-${String(Math.random())}`;
+    const exitId = `exit-${String(Math.random())}`;
+    await db.insert(orders).values([
+      { ...base, clOrdId: stopId, tag: "vf:1:sl", sodexOrderId: 901n },
+      { ...base, clOrdId: firedId, tag: "vf:2:sl", sodexOrderId: 903n },
+      { ...base, clOrdId: exitId, tag: "vf:1:out:0", sodexOrderId: 902n },
+    ]);
+    // Stop đã kích hoạt và khớp, lịch sử lệnh chưa có: phải ghi khớp, không phải huỷ.
+    gw.trades.set(firedId, [trade("1")]);
+    await e.tick();
+    expect((await orderOf(stopId))?.status).toBe("cancelled");
+    expect((await orderOf(firedId))?.status).toBe("filled");
+    // Lệnh market khác không bị coi là stop: còn open trong thời gian chờ.
+    expect((await orderOf(exitId))?.status).toBe("open");
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("checks the trades before trusting a CANCELED IOC with no fill", async () => {
+    const gw = new FakeGateway();
+    const { botId } = await seedBot();
+    const e = streamEngine(gw, "lost-canceled");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    const id = init?.clOrdID ?? "";
+    gw.book.set(id, { status: "cancelled", filledQty: "0", avgPrice: null, orderId: 31n });
+    gw.trades.set(id, [trade(init?.quantity ?? "0")]);
+    clock += 6_000;
+    await e.tick();
+    const row = await orderOf(id);
+    expect(row?.status).toBe("filled");
+    expect(Number(row?.filledSize)).toBe(Number(init?.quantity));
+    expect(gw.received.map((o) => o.tag)).toEqual(expect.arrayContaining(["grid:3:sell"]));
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("backfills a trade the stream missed, and flags an order the strategy was already told ended", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot();
+    const e = streamEngine(gw, "lost-backfill");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    const id = init?.clOrdID ?? "";
+    // Lệnh đã kết thúc, chiến lược đã nhận orderDone với 0 khớp, nhưng thật ra đã khớp.
+    const lateId = `late-${String(Math.random())}`;
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: lateId,
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      side: "buy",
+      type: "market",
+      timeInForce: "IOC",
+      size: "0.5",
+      status: "cancelled",
+      reduceOnly: false,
+      tag: "late",
+      epoch: 1,
+      submittedAt: new Date(clock - 20_000),
+      doneFedAt: new Date(clock - 19_000),
+    });
+    const t = trade(init?.quantity ?? "0");
+    const late = trade("0.5");
+    gw.trades.set(id, [t]);
+    gw.trades.set(lateId, [late]);
+    // Stream vừa subscribe: có thể đã mất tin. Lưới an toàn đọc một lần, sau thời gian chờ tin stream (M4, M5).
+    e.onStreamGap(accountId);
+    const readsOf = () => gw.recentTradesBy.filter((x) => x === accountId).length;
+    await e.tick();
+    expect(readsOf()).toBe(0);
+    clock += 16_000;
+    await e.tick();
+    const reads = readsOf();
+    expect(reads).toBeGreaterThan(0);
+    clock += 11_000;
+    await e.tick();
+    expect(readsOf()).toBe(reads);
+    const row = await orderOf(id);
+    expect(row?.status).toBe("filled");
+    expect((await fillsOf(row?.id ?? "")).map((f) => f.sodexTradeId)).toEqual([t.tradeId]);
+    expect(gw.received.map((o) => o.tag)).toEqual(expect.arrayContaining(["grid:3:sell"]));
+    // Lệnh đã báo kết thúc: ghi số thật và fill, gắn Needs attention, không báo lại chiến lược.
+    const lateRow = await orderOf(lateId);
+    expect(Number(lateRow?.filledSize)).toBe(0.5);
+    expect((await fillsOf(lateRow?.id ?? "")).map((f) => f.sodexTradeId)).toEqual([late.tradeId]);
+    expect((await botState(botId))?.needsAttention).toBe(true);
+    const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
+    expect(events.map((x) => x.decision)).toContain("Fill found after the order ended");
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("records a fill of a bot with no runner in the order and its saved ledger, once (no double count on reconcile)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    const config = spotGridSchema.parse(
+      (await db.select().from(botVersions).where(eq(botVersions.botId, botId)))[0]?.config,
+    );
+    const [version] = await db.select().from(botVersions).where(eq(botVersions.botId, botId));
+    await db.update(bots).set({ state: "paused" }).where(eq(bots.id, botId));
+    await db.insert(botRuntime).values({
+      botId,
+      versionId: version?.id ?? "",
+      state: spotGrid.initialState(config),
+      epoch: 1,
+    });
+    const id = `norunner-${String(Math.random())}`;
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: id,
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      side: "buy",
+      type: "limit",
+      timeInForce: "GTC",
+      price: "100",
+      size: "1",
+      status: "open",
+      reduceOnly: false,
+      tag: "grid:0:buy",
+      epoch: 1,
+      submittedAt: new Date(clock - 10_000),
+      sodexOrderId: 77n,
+    });
+    const e = streamEngine(gw, "lost-norunner");
+    await e.tick();
+    await e.onFill(accountId, id, "0.5", "100", "0.01", clock);
+    expect(Number((await orderOf(id))?.filledSize)).toBe(0.5);
+    const ledger = async () => {
+      const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      return (rt?.state as { ledger: { position: string } }).ledger.position;
+    };
+    expect(Number(await ledger())).toBe(0.5);
+    // Đối soát sau đó thấy cùng số: không cộng lại vào sổ cái.
+    gw.book.set(id, {
+      status: "partially_filled",
+      filledQty: "0.5",
+      avgPrice: "100",
+      orderId: 77n,
+    });
+    gw.trades.set(id, [trade("0.5")]);
+    clock += 16_000;
+    await e.tick();
+    expect(Number(await ledger())).toBe(0.5);
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  const futuresGrid = {
+    strategy: "futures_grid",
+    market: "BTC-USD",
+    engine: "perps" as const,
+    config: {
+      market: "BTC-USD",
+      direction: "long",
+      leverage: 2,
+      marginMode: "cross",
+      lowerPrice: "90",
+      upperPrice: "110",
+      gridLevels: 5,
+      spacing: "arithmetic",
+      margin: "250",
+      maxLoss: "100",
+      stopBelow: "80",
+      onStop: "keep_position",
+    },
+  };
+
+  it("waits only for the stream of the engine the bot trades (B1)", async () => {
+    const gw = new FakeGateway();
+    const streams = new FakeStreams();
+    const { botId, accountId } = await seedBot("starting", futuresGrid);
+    const e = streamEngine(gw, "lost-b1", streams);
+    await e.tick();
+    // Spot của account bị từ chối ("user not found"), Perps đã subscribe: bot Perps vẫn giao dịch.
+    streams.allow(accountId, "perps");
+    const sent = () => gw.received.length;
+    for (let i = 0; i < 5 && sent() === 0; i += 1) {
+      await e.onPrice("BTC-USD", "100", clock);
+      if (sent() === 0) await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(gw.received.some((o) => o.market === "BTC-USD" && !o.reduceOnly)).toBe(true);
+    // Account chỉ chạy Perps: không mở stream Spot (N2).
+    expect(streams.openedKinds).toEqual([`${accountId}:perps`]);
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("lets closing orders and the user's Stop through while the stream is not ready, never opening ones (M6)", async () => {
+    const o = (engine: "spot" | "perps", side: "buy" | "sell", reduceOnly = false) => ({
+      engine,
+      side,
+      reduceOnly,
+      quantity: "1",
+    });
+    expect(opensPosition(o("perps", "buy"), "0")).toBe(true);
+    expect(opensPosition(o("perps", "sell", true), null)).toBe(false);
+    expect(opensPosition(o("spot", "buy"), "3")).toBe(true);
+    expect(opensPosition(o("spot", "sell"), null)).toBe(false);
+    // Lệnh bán của grid long (không reduce-only) chỉ giảm vị thế: không bị giữ.
+    expect(opensPosition(o("perps", "sell"), "2")).toBe(false);
+    expect(opensPosition(o("perps", "sell"), "2", "1")).toBe(false);
+    // Cộng với lệnh giảm đang chờ thì vượt |vị thế|: thành mở vị thế ngược lại.
+    expect(opensPosition(o("perps", "sell"), "2", "1.5")).toBe(true);
+    expect(opensPosition(o("perps", "buy"), "-2")).toBe(false);
+    expect(opensPosition(o("perps", "sell"), null)).toBe(true);
+
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const streams = new FakeStreams();
+    const { botId, accountId } = await seedBot("running", futuresGrid);
+    const e = streamEngine(gw, "lost-m6", streams);
+    await e.tick();
+    await e.onPrice("BTC-USD", "100", clock);
+    // Stream chưa sẵn sàng: không lệnh mở vị thế nào.
+    expect(gw.received.filter((o) => !o.reduceOnly)).toHaveLength(0);
+    await db
+      .insert(botRuntime)
+      .values({
+        botId,
+        versionId:
+          (await db.select().from(botVersions).where(eq(botVersions.botId, botId)))[0]?.id ?? "",
+        state: {
+          phase: "running",
+          ledger: { position: "2", avgCost: "100", realized: "0", fees: "0", funding: "0" },
+        },
+        epoch: 1,
+      })
+      .onConflictDoNothing();
+    const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+    const st = rt?.state as { ledger: Record<string, string> };
+    await db
+      .update(botRuntime)
+      .set({ state: { ...st, ledger: { ...st.ledger, position: "2", avgCost: "100" } } })
+      .where(eq(botRuntime.botId, botId));
+    await e.stop();
+    // Người dùng Stop + đóng vị thế khi stream vẫn chưa sẵn sàng: lệnh đóng vẫn đi.
+    await db.update(bots).set({ state: "stopping", closeOnStop: true }).where(eq(bots.id, botId));
+    const e2 = streamEngine(gw, "lost-m6b", streams);
+    for (let i = 0; i < 10 && !gw.received.some((o) => o.tag === "close"); i += 1) {
+      await e2.tick();
+      if (!gw.received.some((o) => o.tag === "close")) await new Promise((r) => setTimeout(r, 50));
+    }
+    const close = gw.received.find((o) => o.tag === "close");
+    expect(close?.reduceOnly).toBe(true);
+    expect(gw.received.filter((o) => !o.reduceOnly)).toHaveLength(0);
+    expect(streams.opened).toContain(accountId);
+    await e2.stop();
+    await stopBot(botId);
+  });
+
+  it("does not lose a fill that arrives while the bot is being loaded (B2)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot();
+    const e = streamEngine(gw, "lost-b2a");
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    const id = init?.clOrdID ?? "";
+    await e.stop();
+    // Engine mới nạp bot; trong lúc #load còn chờ (đọc rules), tin khớp của lệnh vào tới.
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((res) => {
+      release = res;
+    });
+    let calls = 0;
+    let entered: () => void = () => undefined;
+    const loading = new Promise<void>((res) => {
+      entered = res;
+    });
+    const e2 = streamEngine(gw, "lost-b2b", undefined, async () => {
+      calls += 1;
+      if (calls === 1) {
+        entered();
+        await held;
+      }
+      return rules;
+    });
+    const ticking = e2.tick();
+    await loading;
+    const filling = e2.onFill(accountId, id, init?.quantity ?? "0", "100", "0.01", clock);
+    await new Promise((r) => setTimeout(r, 50));
+    release();
+    await ticking;
+    await filling;
+    const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+    const st = rt?.state as { ledger: { position: string } };
+    expect(Number(st.ledger.position)).toBe(Number(init?.quantity));
+    expect(Number((await orderOf(id))?.filledSize)).toBe(Number(init?.quantity));
+    // Chiến lược đã nhận fill: các mức bán được đặt.
+    expect(gw.received.map((o) => o.tag)).toEqual(expect.arrayContaining(["grid:3:sell"]));
+    await e2.stop();
+    await stopBot(botId);
+  });
+
+  it("records partial trades of a resting limit order SoDEX cannot find, but keeps it open (M1)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    await db.update(bots).set({ state: "paused" }).where(eq(bots.id, botId));
+    const id = `partial-${String(Math.random())}`;
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: id,
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      side: "buy",
+      type: "limit",
+      timeInForce: "GTC",
+      price: "100",
+      size: "1",
+      status: "open",
+      reduceOnly: false,
+      tag: "grid:0:buy",
+      epoch: 1,
+      submittedAt: new Date(clock - 10_000),
+      sodexOrderId: 78n,
+    });
+    gw.trades.set(id, [trade("0.4")]);
+    const e = streamEngine(gw, "lost-m1");
+    await e.tick();
+    const row = await orderOf(id);
+    expect(row?.status).toBe("partially_filled");
+    expect(Number(row?.filledSize)).toBe(0.4);
+    expect(row?.doneFedAt).toBeNull();
+    expect((await fillsOf(row?.id ?? "")).length).toBe(1);
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("waits from when an old order went missing, and remembers the confirmed miss across restarts (M2, N3)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    await db.update(bots).set({ state: "paused" }).where(eq(bots.id, botId));
+    const id = `old-${String(Math.random())}`;
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: id,
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      side: "buy",
+      type: "limit",
+      timeInForce: "GTC",
+      price: "100",
+      size: "1",
+      status: "open",
+      reduceOnly: false,
+      tag: "grid:0:buy",
+      epoch: 1,
+      submittedAt: new Date(clock - 20 * 60_000),
+      sodexOrderId: 79n,
+    });
+    const e = streamEngine(gw, "lost-m2");
+    await e.tick();
+    // Lệnh nằm sổ 20 phút, lần đầu không thấy: chưa thành unknown.
+    expect((await orderOf(id))?.status).toBe("open");
+    clock += 16_000;
+    await e.tick();
+    expect((await orderOf(id))?.status).toBe("open");
+    clock += 16_000;
+    await e.tick();
+    expect((await orderOf(id))?.status).toBe("unknown");
+    await e.stop();
+    await stopBot(botId);
+
+    // Bot đang chạy: lệnh thành unknown sau một lần tra thành công (Decisions "not found" bền). Sau đó mọi lần tra đều lỗi
+    // và engine khởi động lại: lần xác nhận đó vẫn được nhớ, quá 10 phút thì ghi cho người dùng đúng một lần (N3).
+    const gw2 = new FakeGateway();
+    const run = await seedBot();
+    const e2 = streamEngine(gw2, "lost-m2b");
+    await e2.tick();
+    await e2.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw2.received.find((o) => o.tag === "grid:init")?.clOrdID ?? "";
+    gw2.book.delete(init);
+    clock += 6_000;
+    await e2.tick();
+    clock += 31_000;
+    await e2.tick();
+    expect((await orderOf(init))?.status).toBe("unknown");
+    gw2.lookupError = new Error("network down");
+    await e2.stop();
+    const flagged = async () =>
+      (await db.select().from(botEvents).where(eq(botEvents.botId, run.botId))).filter((x) =>
+        (x.why ?? "").includes("SoDEX accepted it"),
+      ).length;
+    // Stop chưa thôi chờ trong 10 phút đầu.
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, run.botId));
+    const e3 = streamEngine(gw2, "lost-m2c");
+    await e3.tick();
+    expect((await botState(run.botId))?.state).toBe("stopping");
+    await e3.stop();
+    await db.update(bots).set({ state: "running" }).where(eq(bots.id, run.botId));
+    clock += 25 * 60_000;
+    const e4 = streamEngine(gw2, "lost-m2d");
+    await e4.tick();
+    clock += 61_000;
+    await e4.tick();
+    expect(await flagged()).toBe(1);
+    expect((await botState(run.botId))?.needsAttention).toBe(true);
+    await e4.stop();
+    // Khởi động lại lần nữa: không ghi lần nữa.
+    const e5 = streamEngine(gw2, "lost-m2e");
+    await e5.tick();
+    clock += 61_000;
+    await e5.tick();
+    expect(await flagged()).toBe(1);
+    await e5.stop();
+    await stopBot(run.botId);
+  });
+
+  it("keeps Stop waiting for an accepted unknown order that SoDEX never confirmed missing (N3)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    gw.lookupError = new Error("network down");
+    const { botId, accountId } = await seedBot("running");
+    const id = `unconfirmed-${String(Math.random())}`;
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: id,
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      side: "buy",
+      type: "market",
+      timeInForce: "IOC",
+      size: "1",
+      status: "unknown",
+      reduceOnly: false,
+      tag: "x",
+      epoch: 1,
+      submittedAt: new Date(clock - 60 * 60_000),
+      reconciledAt: new Date(clock - 50 * 60_000),
+      sodexOrderId: 81n,
+    });
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    const e = streamEngine(gw, "lost-n3");
+    await e.tick();
+    clock += 61_000;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
+    expect(events.some((x) => (x.why ?? "").includes("SoDEX accepted it"))).toBe(false);
+    expect(
+      (await db.select().from(orders).where(eq(orders.clOrdId, id)))[0]?.missingConfirmedAt,
+    ).toBeNull();
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("re-reads trades for a native stop when the shared trade history was read before its lookup", async () => {
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    const e = streamEngine(gw, "lost-stop-cache");
+    await e.tick();
+    const base = {
+      botId,
+      sodexAccountId: accountId,
+      market: "BTC-USD",
+      engine: "perps" as const,
+      side: "sell" as const,
+      type: "market" as const,
+      timeInForce: "IOC",
+      size: "1",
+      status: "open" as const,
+      reduceOnly: true,
+      epoch: 1,
+    };
+    const exitId = `exit-${String(Math.random())}`;
+    const stopId = `stop-${String(Math.random())}`;
+    await db.insert(orders).values([
+      // Tra trước: đọc lịch sử khớp dùng chung của account × market.
+      {
+        ...base,
+        clOrdId: exitId,
+        tag: "vf:3:out:0",
+        sodexOrderId: 911n,
+        submittedAt: new Date(clock - 20_000),
+      },
+      {
+        ...base,
+        clOrdId: stopId,
+        tag: "vf:3:sl",
+        sodexOrderId: 912n,
+        submittedAt: new Date(clock - 10_000),
+      },
+    ]);
+    // Stop kích hoạt và khớp đúng lúc engine tra nó, sau khi lịch sử khớp đã được đọc cho lệnh trước.
+    gw.onLookup = (id) => {
+      if (id === stopId) gw.trades.set(stopId, [trade("1")]);
+    };
+    await e.tick();
+    expect((await orderOf(stopId))?.status).toBe("filled");
+    gw.onLookup = null;
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("charges the ledger only the fee of the part the stream had not recorded", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    const [version] = await db.select().from(botVersions).where(eq(botVersions.botId, botId));
+    await db.update(bots).set({ state: "paused" }).where(eq(bots.id, botId));
+    await db.insert(botRuntime).values({
+      botId,
+      versionId: version?.id ?? "",
+      state: spotGrid.initialState(spotGridSchema.parse(version?.config)),
+      epoch: 1,
+    });
+    const id = `fee-${String(Math.random())}`;
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: id,
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      side: "buy",
+      type: "limit",
+      timeInForce: "GTC",
+      price: "100",
+      size: "3",
+      status: "open",
+      reduceOnly: false,
+      tag: "grid:0:buy",
+      epoch: 1,
+      submittedAt: new Date(clock - 10_000),
+      sodexOrderId: 83n,
+    });
+    const e = streamEngine(gw, "lost-fee");
+    await e.tick();
+    // Stream ghi phần đầu (phí 0.02).
+    await e.onFill(accountId, id, "1", "100", "0.02", clock);
+    const fees = async () => {
+      const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      return Number((rt?.state as { ledger: { fees: string } }).ledger.fees);
+    };
+    expect(await fees()).toBeCloseTo(0.02, 10);
+    // Lệnh không còn trong lịch sử REST; trade: phần đã ghi (0.02) + phần mới (0.03), còn nằm trên sổ một phần.
+    const t1 = { ...trade("1"), fee: "0.02" };
+    const t2 = { ...trade("1"), fee: "0.03", tradeId: t1.tradeId + 1n };
+    gw.trades.set(id, [t1, t2]);
+    clock += 16_000;
+    await e.tick();
+    expect(Number((await orderOf(id))?.filledSize)).toBe(2);
+    expect(await fees()).toBeCloseTo(0.05, 10);
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("feeds resumed even if the stream drops right after Resume was allowed (DEC-240)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const streams = new FakeStreams();
+    const { botId, accountId } = await seedBot("running");
+    streams.allow(accountId, "spot");
+    const e = streamEngine(gw, "lost-resume", streams);
+    gw.reject = { code: "-1", message: "insufficient balance" };
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    clock += 1;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("paused");
+    gw.reject = null;
+    await e.onPrice("vBTC_vUSDC", "102", clock);
+    const before = gw.received.length;
+    await db.update(bots).set({ state: "resuming", reasonCode: null }).where(eq(bots.id, botId));
+    // Kiểm tra Resume thấy stream sẵn sàng, rồi stream đứt ngay sau đó.
+    streams.budget = 1;
+    clock += 1;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("running");
+    expect(gw.received.length).toBeGreaterThan(before);
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("keys stream gaps by engine: a Spot gap does not read Perps trades", async () => {
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running", futuresGrid);
+    const e = streamEngine(gw, "lost-gap-engine");
+    for (let i = 0; i < 5 && gw.received.length === 0; i += 1) {
+      await e.tick();
+      await e.onPrice("BTC-USD", "100", clock);
+    }
+    const readsOf = () => gw.recentTradesBy.filter((x) => x === accountId).length;
+    e.onStreamGap(accountId, "spot");
+    clock += 16_000;
+    await e.tick();
+    expect(readsOf()).toBe(0);
+    e.onStreamGap(accountId, "perps");
+    clock += 16_000;
+    await e.tick();
+    expect(readsOf()).toBe(1);
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("does not lose a fill that arrives while the stream gate reads pending orders (#208 R1)", async () => {
+    const { eq } = await import("drizzle-orm");
+    // Giữ truy vấn `orders` kế tiếp (lần đọc lệnh giảm đang chờ của cổng stream) tới khi test thả.
+    let armed = false;
+    let captured: () => void = () => undefined;
+    const caught = new Promise<void>((res) => {
+      captured = res;
+    });
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((res) => {
+      release = res;
+    });
+    const delay = <T extends object>(q: T): T =>
+      new Proxy(q, {
+        get(t, prop) {
+          const v: unknown = Reflect.get(t, prop);
+          if (typeof v !== "function") return v;
+          if (prop === "then")
+            return (ok: (x: unknown) => unknown, bad: (e: unknown) => unknown) =>
+              held.then(() => (v as (a: unknown, b: unknown) => unknown).call(t, ok, bad));
+          return (...args: unknown[]) => {
+            const out: unknown = (v as (...a: unknown[]) => unknown).apply(t, args);
+            return typeof out === "object" && out !== null ? delay(out) : out;
+          };
+        },
+      });
+    const hooked = new Proxy(db, {
+      get(target, prop) {
+        const v: unknown = Reflect.get(target, prop);
+        if (prop === "select" && typeof v === "function")
+          return (...args: unknown[]) => {
+            const b = (v as (...a: unknown[]) => { from: (t: unknown) => object }).apply(
+              target,
+              args,
+            );
+            return new Proxy(b, {
+              get(bt, bp) {
+                const bv: unknown = Reflect.get(bt, bp);
+                if (bp === "from" && typeof bv === "function")
+                  return (tbl: unknown) => {
+                    const q = (bv as (t: unknown) => object).call(bt, tbl);
+                    if (!armed || tbl !== orders) return q;
+                    armed = false;
+                    captured();
+                    return delay(q);
+                  };
+                return typeof bv === "function"
+                  ? (bv as (...a: unknown[]) => unknown).bind(bt)
+                  : bv;
+              },
+            });
+          };
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      },
+    });
+    const gw = new FakeGateway();
+    const streams = new FakeStreams();
+    const { botId, accountId } = await seedBot();
+    streams.allow(accountId, "spot");
+    const e = streamEngine(gw, "lost-r1", streams, undefined, hooked);
+    await e.tick();
+    await e.onPrice("vBTC_vUSDC", "100", clock);
+    const init = gw.received.find((o) => o.tag === "grid:init");
+    await e.onFill(accountId, init?.clOrdID ?? "", init?.quantity ?? "0", "100", "0", clock);
+    const level = gw.received.find((o) => o.tag === "grid:0:buy");
+    expect(level).toBeDefined();
+    const position = async () => {
+      const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
+      return Number((rt?.state as { ledger: { position: string } }).ledger.position);
+    };
+    const before = await position();
+    // Stream đứt; một nhịp giá chạy tới cổng stream và đang đọc lệnh chờ thì fill của lệnh mức 0 tới.
+    streams.ready.clear();
+    armed = true;
+    const ticking = e.onPrice("vBTC_vUSDC", "101", clock);
+    await caught;
+    await e.onFill(accountId, level?.clOrdID ?? "", level?.quantity ?? "0", "90", "0", clock);
+    release();
+    await ticking;
+    expect(await position()).toBeCloseTo(before + Number(level?.quantity), 10);
+    await e.stop();
+    await stopBot(botId);
+  });
+
+  it("marks the first confirmed miss on an old unknown order, then gives up and lets Stop finish (#208 R2)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedBot("running");
+    const id = `legacy-${String(Math.random())}`;
+    // Dòng `unknown` cũ chưa có dấu xác nhận (ví dụ từ bản trước).
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: id,
+      market: "vBTC_vUSDC",
+      engine: "spot",
+      side: "buy",
+      type: "market",
+      timeInForce: "IOC",
+      size: "1",
+      status: "unknown",
+      reduceOnly: false,
+      tag: "x",
+      epoch: 1,
+      submittedAt: new Date(clock - 60 * 60_000),
+      reconciledAt: new Date(clock - 50 * 60_000),
+      sodexOrderId: 84n,
+    });
+    const e = streamEngine(gw, "lost-r2");
+    await e.tick();
+    const row = async () => (await db.select().from(orders).where(eq(orders.clOrdId, id)))[0];
+    expect((await row())?.missingConfirmedAt).not.toBeNull();
+    expect((await row())?.unknownGaveUpAt).toBeNull();
+    // Stop chờ trong 10 phút sau lần xác nhận.
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    clock += 1;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    clock += 11 * 60_000;
+    await e.tick();
+    await e.tick();
+    expect((await row())?.unknownGaveUpAt).not.toBeNull();
+    expect((await botState(botId))?.needsAttention).toBe(true);
+    expect((await botState(botId))?.state).toBe("stopped");
+    await e.stop();
   });
 });

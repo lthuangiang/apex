@@ -30,6 +30,7 @@ import {
   oneWayFeeFraction,
   oneWayTakerFeeFraction,
   dec,
+  type Decimal,
   ENGINE_ACTIVE_STATES,
   EngineEvent,
   EXPERIMENTAL_STRATEGIES,
@@ -73,11 +74,11 @@ import {
   type StrategyModule,
   type OrderIntent,
 } from "@drift/strategies";
-import { and, desc, eq, gt, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import { openedAlerts, SkipGate, skipMarket, skippedAlert, skipReason } from "./copy-alerts";
-import type { AccountRef, Gateway, LookupResult, NotSentCode } from "./gateway";
+import type { AccountRef, Gateway, LookupResult, NotSentCode, OrderTrade } from "./gateway";
 import type { PaperGateway } from "./paper-gateway";
 
 // Engine (ARCHITECTURE.md mục 3.3–3.4, DEC-37). Mỗi account thuộc một shard ảo (64); mỗi shard có đúng
@@ -97,6 +98,114 @@ export const OPEN_CHECK_MS = 15_000;
 const OPEN_CHECK_BATCH = 10;
 /** Sau khi user stream đứt, đối soát lệnh Volume Farm trong khoảng này (đủ cho lệnh đang chờ khớp lúc đứt). */
 export const STREAM_GAP_MS = 120_000;
+/**
+ * Lưới an toàn fill (DEC-303): lệnh kết thúc mà user stream chưa xác nhận (`unknown`, hoặc bot đã huỷ
+ * mà chưa có tin CANCELED) và gửi trong khoảng này được so với lịch sử khớp của SoDEX, mỗi account + market tối đa
+ * một lần mỗi `MAKER_BACKFILL_MS`.
+ */
+export const FILL_BACKFILL_WINDOW_MS = 120_000;
+/**
+ * Lệnh SoDEX đã nhận (có `sodexOrderId`) mà không tìm thấy, cũng không có trade: giữ `unknown` (quy tắc 1.7) và đối soát
+ * lại mỗi `OPEN_CHECK_MS` trong khoảng này; quá thì ghi Needs attention + Decisions một lần và Stop không chờ nó nữa.
+ */
+export const UNKNOWN_CHECK_WINDOW_MS = 600_000;
+/** Lệnh `unknown` SoDEX đã nhận: khoảng tra lại giãn dần từ OPEN_CHECK_MS, tối đa mức này. */
+const UNKNOWN_RECHECK_MAX_MS = 60_000;
+/**
+ * Lưới an toàn fill chỉ coi trade là bị mất khi nó cũ hơn mức này: tin user stream của trade mới hơn có thể vẫn đang tới,
+ * không được giành phần của stream (M5).
+ */
+export const BACKFILL_TRADE_GRACE_MS = 15_000;
+/** Bot chờ user stream lâu hơn mức này thì log warn thay vì info. */
+const STREAM_WAIT_WARN_MS = 120_000;
+/**
+ * Stop loss gốc trên SoDEX (DEC-118). Bảng `orders` không có cột riêng cho stop; chỉ Volume Farm đặt loại lệnh này và
+ * luôn gắn tag `vf:<lượt>:sl` (market, IOC, reduce-only).
+ */
+export function isNativeStop(o: { type: string; tag: string; reduceOnly: boolean }): boolean {
+  return o.type === "market" && o.reduceOnly && o.tag.endsWith(":sl");
+}
+/** Tiêu đề Decisions của lệnh `unknown` (chỉ để hiển thị; trạng thái bền nằm ở cột của `orders`). */
+const UNKNOWN_DECISION = "Order result unknown";
+
+/**
+ * Lệnh làm tăng |vị thế| của bot (người dùng chốt, DEC-303): chỉ loại này phải chờ user stream.
+ * - Perps reduce-only và Spot bán (Spot không mở được vị thế bán) không bao giờ là mở.
+ * - Lệnh ngược chiều vị thế hiện tại là giảm, nếu cộng với các lệnh giảm đang chờ (`reducing`, lệnh đang mở trên sổ và
+ *   lệnh trước nó trong cùng bước) vẫn không vượt |vị thế| (ví dụ lệnh bán của grid long, dù không reduce-only).
+ * - Không biết vị thế (`null`): coi lệnh không reduce-only là mở.
+ */
+export function opensPosition(
+  o: Pick<OrderIntent, "engine" | "side" | "reduceOnly" | "quantity">,
+  position: string | null,
+  reducing = "0",
+): boolean {
+  if (o.engine === "perps" && o.reduceOnly) return false;
+  if (o.engine === "spot" && o.side === "sell") return false;
+  if (position === null) return true;
+  const pos = dec(position);
+  const opposite = (o.side === "sell" && pos.gt(0)) || (o.side === "buy" && pos.lt(0));
+  if (!opposite) return true;
+  return dec(reducing).add(o.quantity).gt(pos.abs());
+}
+
+/** Vị thế (có dấu) của bot trên market / engine theo sổ cái trong state; null khi state không có sổ cái nhận ra được. */
+function positionOf(state: unknown, market: string, engine: "spot" | "perps"): string | null {
+  if (typeof state !== "object" || state === null) return null;
+  if (isMultiMarketCopyState(state)) return state.markets[market]?.ledger.position ?? null;
+  const s = state as { ledger?: Ledger; perp?: Ledger; spot?: Ledger };
+  return (s.ledger ?? (engine === "perps" ? s.perp : s.spot))?.position ?? null;
+}
+/**
+ * Chiến lược vẫn theo dõi lệnh sau khi lệnh kết thúc và nhận fill tới muộn (Volume Farm, DEC-87). Fill tìm thấy sau
+ * khi đã báo `orderDone` chỉ được đưa cho các chiến lược này; chiến lược khác bị gắn Needs attention.
+ */
+const LATE_FILL_STRATEGIES: ReadonlySet<string> = new Set([Strategy.volumeFarm]);
+
+/**
+ * Kết quả của một lệnh suy từ các trade SoDEX của nó (lệnh không còn trong lệnh mở / lịch sử). `done`: được kết luận lệnh
+ * đã xong chỉ khi khớp đủ, hoặc lệnh là market / IOC (không bao giờ nằm trên sổ). Lệnh limit khớp một phần có thể vẫn
+ * nằm trên sổ: chỉ ghi fill, không kết thúc (quy tắc 1.7). Không có trade → null.
+ */
+function foundFromTrades(
+  o: { size: string; type: string; timeInForce: string },
+  trades: readonly OrderTrade[],
+  orderId: bigint,
+): { found: Extract<LookupResult, { filledQty: string }>; done: boolean } | null {
+  const total = trades.reduce((a, t) => a.add(t.quantity), dec("0"));
+  if (!total.gt(0)) return null;
+  const value = trades.reduce((a, t) => a.add(dec(t.price).mul(t.quantity)), dec("0"));
+  const full = total.gte(o.size);
+  return {
+    found: {
+      status: full ? "filled" : "cancelled",
+      filledQty: total.toString(),
+      avgPrice: value.div(total).toString(),
+      orderId,
+    },
+    done: full || o.type === "market" || o.timeInForce === "IOC",
+  };
+}
+
+/**
+ * Phí của phần khớp chưa được tính (`counted` đầu tiên theo thứ tự trade id đã tính rồi): cộng phí các trade sau phần đó,
+ * trade nằm giữa tính theo tỷ lệ khối lượng. Không cộng lại phí của phần đã ghi.
+ */
+function feeBeyond(trades: readonly OrderTrade[], counted: string): Decimal {
+  let left = dec(counted);
+  let fee = dec("0");
+  for (const t of [...trades].sort((a, b) => (a.tradeId < b.tradeId ? -1 : 1))) {
+    const q = dec(t.quantity);
+    if (left.gte(q)) {
+      left = left.sub(q);
+      continue;
+    }
+    fee = fee.add(left.gt(0) ? dec(t.fee).mul(q.sub(left)).div(q) : dec(t.fee));
+    left = dec("0");
+  }
+  return fee;
+}
+
 /** Lệnh đã huỷ trong khoảng này mới cần xác nhận: lệnh Volume Farm chỉ sống vài chục giây. */
 const UNCONFIRMED_CANCEL_MS = 600_000;
 /**
@@ -160,6 +269,8 @@ interface TickSnapshot {
   open: Map<number, OrderRow[]>;
   /** Lệnh Volume Farm đã huỷ chưa đối soát, theo shard của account. */
   unconfirmed: Map<number, OrderRow[]>;
+  /** Ứng viên của lưới an toàn fill (#backfillFills), theo shard của account (DEC-303). */
+  backfill: Map<number, OrderRow[]>;
 }
 
 const pushTo = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
@@ -187,6 +298,7 @@ const SHARD_PHASES = [
   "reconcileOpen",
   "retryCancels",
   "reconcileMaker",
+  "backfillFills",
   "checkFees",
   "clock",
 ] as const;
@@ -227,6 +339,20 @@ export interface EngineDeps {
   monotonic?: () => number;
   /** Độ trễ event loop hiện tại (perf_hooks), ghi kèm log `tick slow`. */
   loopDelay?: () => { p99Ms: number; maxMs: number };
+  /**
+   * User stream SoDEX của các account (main.ts). Engine mở stream cho account ngay khi nạp bot thật. Lệnh mở / tăng vị
+   * thế chỉ được gửi khi stream của engine (Spot / Perps) của lệnh đã được SoDEX nhận subscribe: SoDEX không gửi lại tin
+   * khớp đã qua. Lệnh giảm vị thế, stop loss, lệnh đóng và Stop của người dùng luôn đi. Không truyền (test) thì coi như
+   * luôn sẵn sàng.
+   */
+  userStreams?: UserStreams;
+}
+
+export interface UserStreams {
+  /** Mở user stream của account trên engine này nếu chưa mở; không chờ. */
+  open(account: AccountRef, engine: "spot" | "perps"): void;
+  /** Stream của account trên engine này đã được SoDEX nhận subscribe (cả hai kênh) trên kết nối hiện tại. */
+  ready(accountId: string, engine: "spot" | "perps"): boolean;
 }
 
 /** Lý do "Leverage set". Bot paper không gửi gì tới SoDEX (PaperGateway, DEC-105) nên không ghi "SoDEX confirmed". */
@@ -339,6 +465,8 @@ interface Runner {
   rejectLog: Map<string, { times: number[]; loggedAt: number | null }>;
   /** Giới hạn tin `copy_bot_skipped` của bot copy (DEC-212), trong bộ nhớ. */
   skipGate: SkipGate;
+  /** Engine SoDEX bot giao dịch (`bots.engine`): Resume chờ user stream của đúng các engine này. */
+  engines: readonly ("spot" | "perps")[];
   /** Lệnh đóng của Stop chưa gửi được: nấc thử lại và các lý do đã ghi Decisions (#sendCloses). */
   closeRetry: { since: number; attempts: number; nextAt: number; reasons: Set<string> } | null;
 }
@@ -446,12 +574,13 @@ export function shardOf(accountId: string, shards = ENGINE_SHARDS): number {
 
 export class Engine {
   readonly #d: Required<
-    Omit<EngineDeps, "feeRate" | "paper" | "builderId" | "monotonic" | "loopDelay">
+    Omit<EngineDeps, "feeRate" | "paper" | "builderId" | "monotonic" | "loopDelay" | "userStreams">
   > & {
     feeRate: string | undefined;
     builderId: bigint | undefined;
     paper: PaperGateway | undefined;
     loopDelay: EngineDeps["loopDelay"];
+    userStreams: UserStreams | undefined;
   };
   readonly #leases = new Map<number, { lease: Lease; epoch: number }>();
   /** Gia hạn lease shard + heartbeat worker bằng timer riêng, không theo vòng `tick` (DEC-302). */
@@ -467,10 +596,41 @@ export class Engine {
   readonly #openChecks = new Map<string, number>();
   /** Lần cuối user stream của account có thể đã mất tin (đứt kết nối, engine vừa nạp bot). */
   readonly #streamGaps = new Map<string, number>();
+  /** Account + engine vừa có khoảng trống user stream (STREAM_GAP_MS). */
+  #inGap(accountId: string, engine: "spot" | "perps", now: number): boolean {
+    return (
+      now - (this.#streamGaps.get(`${accountId}:${engine}`) ?? Number.NEGATIVE_INFINITY) <
+      STREAM_GAP_MS
+    );
+  }
   readonly #fillQueues = new Map<string, Promise<void>>();
   /** Lần cuối đọc trade / vị thế cho Market Making, theo `account:market` (DEC-100). */
   readonly #makerBackfill = new Map<string, number>();
   readonly #makerPosition = new Map<string, number>();
+  /** Lần cuối so lịch sử khớp cho lưới an toàn fill, theo `account:engine:market`. */
+  readonly #fillBackfill = new Map<string, number>();
+  /** Lệnh `unknown` SoDEX đã nhận: số lần tra, lần tra gần nhất, số lần tra thành công mà vẫn không thấy. */
+  readonly #unknownChecks = new Map<string, { n: number; at: number }>();
+  /** Lần đầu đối soát thấy lệnh `open` không còn trên SoDEX (thời gian chờ tính từ đây, không từ lúc gửi). */
+  readonly #missingSince = new Map<string, number>();
+  /** Lịch sử khớp của account trên market, đọc tối đa một lần mỗi vòng tick (`account:engine:market`). */
+  #tradesCache = new Map<
+    string,
+    { seq: number; p: Promise<(OrderTrade & { clOrdID: string })[]> }
+  >();
+  /** Thứ tự đọc (lịch sử khớp, tra lệnh) trong tiến trình: biết bản lịch sử khớp đang giữ cũ hơn một lần tra hay không. */
+  #readSeq = 0;
+  /** Khoảng trống user stream đã được so lịch sử khớp (một lần mỗi khoảng trống), theo `account:engine:market`. */
+  readonly #gapBackfilled = new Map<string, number>();
+  /** Khoảng trống (theo `account:engine`, giá trị = lúc bắt đầu) đã được đọc ứng viên lưới an toàn. */
+  readonly #gapCandidatesRead = new Map<string, number>();
+  /** Lần cuối đọc ứng viên của lưới an toàn fill (#backfillCandidates). */
+  #backfillReadAt = Number.NEGATIVE_INFINITY;
+  /** Lần cuối ghi log "chờ user stream" và lúc bắt đầu chờ, theo `account:engine`. */
+  readonly #streamWaitLog = new Map<string, number>();
+  readonly #streamWaitSince = new Map<string, number>();
+  /** Khoá theo bot: nạp runner và ghi fill khi chưa có runner không chạy chồng (sổ cái đã lưu không bị đọc cũ). */
+  readonly #botLocks = new Map<string, Promise<void>>();
   /** Lệnh đang chờ huỷ lại theo bot (huỷ trước đó chưa được SoDEX xác nhận), và lần thử gần nhất. */
   readonly #pendingCancels = new Map<string, Set<string>>();
   readonly #cancelRetryAt = new Map<string, number>();
@@ -493,6 +653,7 @@ export class Engine {
       builderId: deps.builderId,
       paper: deps.paper,
       loopDelay: deps.loopDelay,
+      userStreams: deps.userStreams,
     };
     this.#clockMono = deps.monotonic ?? (() => performance.now());
     this.#leaseSet = new LeaseSet<number>({
@@ -530,6 +691,8 @@ export class Engine {
    */
   async tick(): Promise<void> {
     if (this.#stopped) return;
+    // Lịch sử khớp đọc trong vòng trước đã cũ.
+    this.#tradesCache.clear();
     const started = this.#clockMono();
     await this.#manageShards();
     const managed = this.#clockMono();
@@ -551,11 +714,16 @@ export class Engine {
       snapshot: this.#clockMono() - managed,
     };
     const steps: Record<ShardPhase, (shard: number) => Promise<void>> = {
-      syncBots: (n) => this.#syncBots(n, snap),
+      // Mở user stream ngay sau khi nạp bot, trong cùng bước (DEC-303).
+      syncBots: async (n) => {
+        await this.#syncBots(n, snap);
+        this.#openStreams(n);
+      },
       reconcile: (n) => this.#reconcile(n, snap),
       reconcileOpen: (n) => this.#reconcileOpen(n, snap),
       retryCancels: (n) => this.#retryCancels(n),
       reconcileMaker: (n) => this.#reconcileMaker(n),
+      backfillFills: (n) => this.#backfillFills(n, snap),
       checkFees: (n) => this.#checkFees(n, snap.accounts.get(n) ?? []),
       clock: (n) => this.#clock(n),
     };
@@ -1021,6 +1189,27 @@ export class Engine {
     return rows.length > 0;
   }
 
+  /**
+   * Việc của cùng một bot cần loại trừ nhau (nạp runner / ghi fill khi chưa có runner) chạy lần lượt. KHÔNG re-entrant:
+   * việc đang giữ khoá của một bot không được gọi lại vào khoá của chính bot đó (kể cả gián tiếp qua `onFill` khi bot chưa
+   * có runner), nếu không sẽ tự chờ mình mãi. Thứ tự khoá: hàng đợi lệnh (#inOrderQueue) rồi mới tới khoá bot, không bao
+   * giờ ngược lại.
+   */
+  async #withBotLock<T>(botId: string, run: () => Promise<T>): Promise<T> {
+    const prev = this.#botLocks.get(botId) ?? Promise.resolve();
+    const next = prev.catch(() => undefined).then(run);
+    const tail = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.#botLocks.set(botId, tail);
+    try {
+      return await next;
+    } finally {
+      if (this.#botLocks.get(botId) === tail) this.#botLocks.delete(botId);
+    }
+  }
+
   /** Các việc của cùng một lệnh (fill, kết thúc) chạy lần lượt theo thứ tự tới. */
   async #inOrderQueue(accountId: string, clOrdID: string, run: () => Promise<void>): Promise<void> {
     const key = `${accountId}:${clOrdID}`;
@@ -1034,8 +1223,10 @@ export class Engine {
   }
 
   /** User stream có thể đã mất tin: đối soát lệnh Volume Farm của account trong ít phút tới (DEC-87). */
-  onStreamGap(accountId: string): void {
-    this.#streamGaps.set(accountId, this.#d.now());
+  onStreamGap(accountId: string, engine?: "spot" | "perps"): void {
+    const at = this.#d.now();
+    for (const e of engine === undefined ? (["spot", "perps"] as const) : [engine])
+      this.#streamGaps.set(`${accountId}:${e}`, at);
   }
 
   async #applyOrderFill(
@@ -1053,7 +1244,30 @@ export class Engine {
       .limit(1);
     if (o === undefined) return;
     const r = this.#runners.get(o.botId);
-    if (r === undefined) return;
+    if (r === undefined) {
+      // Chờ nếu bot đang được nạp: có runner rồi thì fill đi qua chiến lược như thường, không thì ghi sổ cái đã lưu.
+      await this.#withBotLock(o.botId, async () => {
+        const loaded = this.#runners.get(o.botId);
+        const [cur] = await this.#d.db.select().from(orders).where(eq(orders.id, o.id)).limit(1);
+        if (cur === undefined) return;
+        if (loaded === undefined)
+          await this.#fillWithoutRunner(cur, totalFilled, avgPrice, fee, at);
+        else await this.#feedOrderFill(loaded, cur, totalFilled, avgPrice, fee, at);
+      });
+      return;
+    }
+    await this.#feedOrderFill(r, o, totalFilled, avgPrice, fee, at);
+  }
+
+  async #feedOrderFill(
+    r: Runner,
+    o: typeof orders.$inferSelect,
+    totalFilled: string,
+    avgPrice: string,
+    fee: string,
+    at: number,
+  ): Promise<void> {
+    const clOrdID = o.clOrdId;
     const delta = sub(totalFilled, o.filledSize);
     if (!delta.gt(0)) return;
     // Lệnh đã huỷ mà khớp một phần trước lúc huỷ vẫn là `cancelled`, không quay về trạng thái đang mở.
@@ -1081,12 +1295,221 @@ export class Engine {
     });
   }
 
+  /**
+   * Fill của lệnh mà bot không có runner (đang pause / đã dừng / chưa nạp): ghi vào lệnh và sổ cái đã lưu của bot, như
+   * đối soát làm (DEC-85), thay vì bỏ. Runner nạp sau đọc sổ cái này; đối soát sau thấy `filledSize` đã đủ nên không
+   * cộng lại. Chỉ shard mình giữ, chỉ bot thật.
+   */
+  async #fillWithoutRunner(
+    o: typeof orders.$inferSelect,
+    totalFilled: string,
+    avgPrice: string,
+    fee: string,
+    at: number,
+  ): Promise<void> {
+    const held = this.#leases.get(shardOf(o.sodexAccountId, this.#d.shards));
+    if (held === undefined) return;
+    const [b] = await this.#d.db
+      .select({ mode: bots.mode })
+      .from(bots)
+      .where(eq(bots.id, o.botId))
+      .limit(1);
+    if (b?.mode !== "live") return;
+    const shard = shardOf(o.sodexAccountId, this.#d.shards);
+    const recorded = await this.#fenced({ shard, epoch: held.epoch }, async (tx) => {
+      const [cur] = await tx.select().from(orders).where(eq(orders.id, o.id)).for("update");
+      if (cur === undefined) return null;
+      const delta = sub(totalFilled, cur.filledSize);
+      if (!delta.gt(0)) return null;
+      const status = dec(totalFilled).gte(cur.size)
+        ? "filled"
+        : ["open", "partially_filled", "unknown"].includes(cur.status)
+          ? "partially_filled"
+          : cur.status;
+      await tx
+        .update(orders)
+        .set({ filledSize: totalFilled, avgPrice, status })
+        .where(eq(orders.id, o.id));
+      const before = dec(cur.avgPrice ?? "0").mul(cur.filledSize);
+      const price = dec(avgPrice).mul(totalFilled).sub(before).div(delta);
+      await this.#applyToSavedLedger(
+        tx,
+        cur,
+        price.gt(0) ? price.toString() : avgPrice,
+        delta,
+        dec(fee),
+        at,
+      );
+      return delta;
+    });
+    if (recorded !== null)
+      this.#d.log.info(
+        { botId: o.botId, clOrdID: o.clOrdId, quantity: recorded.toString() },
+        "fill recorded for a bot without a runner",
+      );
+  }
+
+  /** Bot không có runner: cộng fill thẳng vào sổ cái đã lưu (`bot_runtime`) để PnL đúng (DEC-85). */
+  async #applyToSavedLedger(
+    tx: Db,
+    o: typeof orders.$inferSelect,
+    price: string,
+    delta: Decimal,
+    fee: Decimal,
+    now: number,
+  ): Promise<void> {
+    const [rt] = await tx
+      .select({ state: botRuntime.state })
+      .from(botRuntime)
+      .where(eq(botRuntime.botId, o.botId))
+      .limit(1);
+    const state = rt?.state as
+      (Record<string, unknown> & { ledger?: Ledger; perp?: Ledger; spot?: Ledger }) | undefined;
+    if (state === undefined) return;
+    if (isMultiMarketCopyState(state)) {
+      // Copy Trade nhiều market (DEC-163): sổ cái nằm trong `markets[market]`.
+      const slot = state.markets[o.market];
+      if (slot === undefined) return;
+      await tx
+        .update(botRuntime)
+        .set({
+          state: {
+            ...state,
+            markets: {
+              ...state.markets,
+              [o.market]: { ...slot, ledger: applyFill(slot.ledger, o.side, price, delta, fee) },
+            },
+          },
+          updatedAt: new Date(now),
+        })
+        .where(eq(botRuntime.botId, o.botId));
+      return;
+    }
+    const key = state.ledger !== undefined ? "ledger" : o.engine === "perps" ? "perp" : "spot";
+    const ledger = state[key];
+    if (ledger === undefined) return;
+    await tx
+      .update(botRuntime)
+      .set({
+        state: {
+          ...state,
+          [key]: applyFill(ledger, o.side, price, delta, fee),
+          // Khối lượng tính cả lệnh mở và lệnh đóng: lệnh đóng khi Stop cũng vào volume của phiên.
+          ...(typeof state.volume === "string"
+            ? { volume: dec(state.volume).add(delta.mul(price)).toString() }
+            : {}),
+        },
+        updatedAt: new Date(now),
+      })
+      .where(eq(botRuntime.botId, o.botId));
+  }
+
   /** Account có bot đang chạy trong các shard của worker này (để mở user stream). */
+  /** Account + các engine mà bot thật của account giao dịch (main.ts chỉ mở user stream cho đúng các engine này). */
+  activeStreams(): Promise<{ account: AccountRef; engines: Set<"spot" | "perps"> }[]> {
+    const seen = new Map<string, { account: AccountRef; engines: Set<"spot" | "perps"> }>();
+    for (const r of this.#runners.values()) {
+      if (r.paper) continue;
+      const cur = seen.get(r.account.id) ?? { account: r.account, engines: new Set() };
+      for (const e of r.engines) cur.engines.add(e);
+      seen.set(r.account.id, { ...cur, account: r.account });
+    }
+    return Promise.resolve([...seen.values()]);
+  }
+
   activeAccounts(): Promise<AccountRef[]> {
     const seen = new Map<string, AccountRef>();
     // Bot paper không cần user stream của SoDEX.
     for (const r of this.#runners.values()) if (!r.paper) seen.set(r.account.id, r.account);
     return Promise.resolve([...seen.values()]);
+  }
+
+  /** Mở user stream cho account của mọi bot thật trong shard, ngay trong vòng nạp bot (không đợi hết vòng). */
+  #openStreams(shard: number): void {
+    const streams = this.#d.userStreams;
+    if (streams === undefined) return;
+    for (const r of this.#runners.values())
+      if (r.shard === shard && !r.paper) for (const e of r.engines) streams.open(r.account, e);
+  }
+
+  /**
+   * User stream của account trên `engine` đã subscribe xong (bot paper / không có userStreams: luôn sẵn sàng). Fill của lệnh
+   * gửi trước lúc đó không bao giờ tới (SoDEX không gửi lại), và lệnh IOC khớp ngay.
+   */
+  #streamReady(r: Runner, engine: "spot" | "perps"): boolean {
+    const streams = this.#d.userStreams;
+    if (r.paper || streams === undefined || streams.ready(r.account.id, engine)) {
+      this.#streamWaitSince.delete(`${r.account.id}:${engine}`);
+      return true;
+    }
+    const key = `${r.account.id}:${engine}`;
+    const now = this.#d.now();
+    const since = this.#streamWaitSince.get(key) ?? now;
+    this.#streamWaitSince.set(key, since);
+    if (now - (this.#streamWaitLog.get(key) ?? Number.NEGATIVE_INFINITY) >= 30_000) {
+      this.#streamWaitLog.set(key, now);
+      const fields = { accountId: r.account.id, botId: r.botId, engine, waitedMs: now - since };
+      // Chờ lâu (subscribe bị từ chối lặp lại, SoDEX WS lỗi): cảnh báo thật, không chỉ info.
+      if (now - since >= STREAM_WAIT_WARN_MS)
+        this.#d.log.warn(
+          fields,
+          "bot still waits for its account's user stream before opening positions",
+        );
+      else
+        this.#d.log.info(
+          fields,
+          "bot waits for its account's user stream before opening positions",
+        );
+    }
+    return false;
+  }
+
+  /**
+   * Bước chiến lược có lệnh làm tăng |vị thế| (`opensPosition`, theo sổ cái trong state trước bước và lệnh giảm đang chờ)
+   * trên engine mà user stream chưa sẵn sàng (người dùng chốt, DEC-303). Không bao giờ giữ: `resumed`
+   * (chỉ gửi một lần sau khi trạng thái đã commit, DEC-240) và bước có pause / stop.
+   */
+  #opensBeforeStream(
+    r: Runner,
+    event: StrategyEvent,
+    actions: readonly StrategyAction[],
+    pending: ReadonlyMap<string, Decimal>,
+  ): boolean {
+    if (event.type === "resumed") return false;
+    if (actions.some((a) => a.type === "pause" || a.type === "stop")) return false;
+    const reducing = new Map(pending);
+    for (const a of actions) {
+      if (a.type !== "place") continue;
+      const o = a.order;
+      const key = `${o.market}:${o.side}`;
+      const before = (reducing.get(key) ?? dec("0")).toString();
+      if (
+        !this.#streamReady(r, o.engine) &&
+        opensPosition(o, positionOf(r.state, o.market, o.engine), before)
+      )
+        return true;
+      reducing.set(key, dec(before).add(o.quantity));
+    }
+    return false;
+  }
+
+  /** Khối lượng còn chờ (chưa khớp) của lệnh bot đang mở trên sổ, theo `market:chiều`. */
+  async #pendingReducing(r: Runner): Promise<Map<string, Decimal>> {
+    const out = new Map<string, Decimal>();
+    const open = await this.#d.db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          inArray(orders.status, ["open", "partially_filled", "unknown"]),
+        ),
+      );
+    for (const o of open) {
+      const key = `${o.market}:${o.side}`;
+      out.set(key, (out.get(key) ?? dec("0")).add(dec(o.size).sub(o.filledSize)));
+    }
+    return out;
   }
 
   /** Dừng có trật tự: trả lease (C10). */
@@ -1189,6 +1612,7 @@ export class Engine {
       unknown: [],
       open: new Map(),
       unconfirmed: new Map(),
+      backfill: new Map(),
     };
     if (owned.size === 0) return snap;
     const accountRows = await db
@@ -1246,15 +1670,20 @@ export class Engine {
         for (const v of pending) if (!snap.pending.has(v.botId)) snap.pending.set(v.botId, v);
       }
     }
-    snap.unknown = await db
-      .select()
-      .from(orders)
-      .where(
-        and(
-          eq(orders.status, "unknown"),
-          lt(orders.submittedAt, new Date(now - RECONCILE_AFTER_MS)),
-        ),
-      );
+    // Lệnh SoDEX đã nhận mà đã được ghi cho người dùng (#unknownGaveUp, Decisions bền) thì không đọc lại mỗi vòng (danh
+    // sách không lớn dần mãi). Không bỏ theo tuổi: lệnh chưa được ghi thì vẫn được tra tiếp, kể cả sau khởi động lại.
+    snap.unknown = (
+      await db
+        .select()
+        .from(orders)
+        .where(
+          and(
+            eq(orders.status, "unknown"),
+            lt(orders.submittedAt, new Date(now - RECONCILE_AFTER_MS)),
+            or(isNull(orders.sodexOrderId), isNull(orders.unknownGaveUpAt)),
+          ),
+        )
+    ).filter((o) => owned.has(shardOf(o.sodexAccountId, shards)));
     // Chỉ lệnh của bot thật: lệnh paper không bao giờ được đối soát với SoDEX (DEC-105).
     const open = await db
       .select({ order: orders })
@@ -1289,6 +1718,21 @@ export class Engine {
     for (const { order } of unconfirmed) {
       const shard = shardOf(order.sodexAccountId, shards);
       if (owned.has(shard)) pushTo(snap.unconfirmed, shard, order);
+    }
+    // Đọc ứng viên lưới an toàn tối đa mỗi MAKER_BACKFILL_MS (nhịp đọc lịch sử khớp của lệnh nghi ngờ), trừ khi có khoảng
+    // trống stream đã qua thời gian chờ (đọc một lần mỗi khoảng trống).
+    // Khoảng trống đã đọc ứng viên một lần thì thôi (không đọc lại mỗi vòng trong suốt khoảng trống).
+    const gapsDue = [...this.#streamGaps].filter(
+      ([key, at]) =>
+        now - at >= BACKFILL_TRADE_GRACE_MS &&
+        now - at < STREAM_GAP_MS &&
+        this.#gapCandidatesRead.get(key) !== at,
+    );
+    if (gapsDue.length > 0 || now - this.#backfillReadAt >= MAKER_BACKFILL_MS) {
+      this.#backfillReadAt = now;
+      for (const [key, at] of gapsDue) this.#gapCandidatesRead.set(key, at);
+      for (const order of await this.#backfillCandidates(now))
+        pushTo(snap.backfill, shardOf(order.sodexAccountId, shards), order);
     }
     return snap;
   }
@@ -1330,9 +1774,14 @@ export class Engine {
       if (account === undefined) continue;
       let r = this.#runners.get(bot.id);
       if (r === undefined) {
-        r = await this.#load(bot, version, account, shard, held.epoch);
+        // Cùng khoá với fill tới khi chưa có runner: fill đó không ghi sổ cái đã lưu trong lúc #load đang đọc nó, mà chờ
+        // runner rồi đi qua chiến lược (DEC-303).
+        r = await this.#withBotLock(bot.id, async () => {
+          const loaded = await this.#load(bot, version, account, shard, held.epoch);
+          if (loaded !== undefined) this.#runners.set(bot.id, loaded);
+          return loaded;
+        });
         if (r === undefined) continue;
-        this.#runners.set(bot.id, r);
       }
       // Team đổi builder fee của user (DEC-159): lệnh mới dùng mức mới ngay, chiến lược tính phí theo mức mới.
       const rate = builderFeeRateFor(bot.strategy, fees.get(bot.userId));
@@ -1352,7 +1801,9 @@ export class Engine {
       await this.#applyPendingVersion(r, snap.pending.get(r.botId));
       if (bot.state === BotState.pausing)
         await this.#transition(r, EngineEvent.confirmedPaused, null);
-      else if (bot.state === BotState.resuming) {
+      else if (bot.state === BotState.resuming && r.engines.every((x) => this.#streamReady(r, x))) {
+        // Resume chờ user stream của các engine bot giao dịch (bot có thể là bot duy nhất của account, stream vừa mở): bot
+        // dựng lại lệnh ngay khi chạy lại.
         // Lease chưa xác nhận: chưa xác nhận Running (bot giữ `resuming`, vòng sau thử lại), để `resumed` không bị bỏ sau
         // khi trạng thái đã commit.
         if (!(await this.#leaseConfirmed(shard))) continue;
@@ -1431,7 +1882,7 @@ export class Engine {
     }
     const config = entry.schema.parse(version.config);
     // Engine vừa nạp bot (khởi động lại, chuyển shard): tin khớp lúc không có stream đã mất.
-    if (bot.strategy === Strategy.volumeFarm) this.onStreamGap(account.id);
+    if (bot.strategy === Strategy.volumeFarm) this.onStreamGap(account.id, "perps");
     const [saved] = await this.#d.db
       .select()
       .from(botRuntime)
@@ -1486,6 +1937,7 @@ export class Engine {
       marginRejectTimes: [],
       rejectLog: new Map(),
       skipGate: new SkipGate(),
+      engines: bot.engine === "spot+perps" ? ["spot", "perps"] : [bot.engine],
       closeRetry: null,
     };
   }
@@ -1635,6 +2087,12 @@ export class Engine {
       if (lev === "rejected") await this.#pauseBot(r, ReasonCode.orderRejected);
       if (lev !== "ok") return;
     }
+    // User stream của một engine bot giao dịch chưa sẵn sàng: đọc lệnh giảm đang chờ TRƯỚC bước chiến lược, để giữa bước
+    // và lúc gán `r.state` không có await nào (fill tới cùng lúc không bị ghi đè, review #208 R1).
+    const reducing =
+      !accounting && event.type !== "resumed" && r.engines.some((e) => !this.#streamReady(r, e))
+        ? await this.#pendingReducing(r)
+        : null;
     // Volume Farm: giá tốt nhất SoDEX mới nhất (bộ nhớ) vào state trước bước này, giữ đúng giờ nhận để tuổi sổ là tuổi
     // thật. Chỉ đổi state trong bộ nhớ; được ghi DB cùng bước này nếu bước có gì để ghi (DEC-298).
     if (r.strategy === Strategy.volumeFarm && !accounting) {
@@ -1653,6 +2111,9 @@ export class Engine {
     const result = r.module.step(r.config, r.state, event, r.ctx);
     // Nhịp đồng hồ chưa tới hạn: chiến lược trả lại đúng state cũ, không có gì để ghi.
     if (event.type === "timer" && result.state === prev && result.actions.length === 0) return;
+    // Sự kiện thị trường muốn mở / tăng vị thế khi user stream của engine đó chưa subscribe xong: bỏ cả bước (state không
+    // đổi), nhịp sau chiến lược quyết lại. Bước chỉ giảm vị thế / đóng / stop vẫn đi (DEC-303).
+    if (reducing !== null && this.#opensBeforeStream(r, event, result.actions, reducing)) return;
     r.state = result.state;
     // Bot copy tiền thật: lệnh mở vừa khớp → thêm outbox trong CÙNG transaction (DEC-212).
     const opened = this.#copyAlerts(r, () =>
@@ -2704,10 +3165,36 @@ export class Engine {
     // runner, nên không ai đối soát / huỷ: lệnh mồ côi nằm lại (harness tranh chấp). Stop của người dùng giữ bot ở
     // `stopping` tới khi #reconcile đối soát xong (≤ NOT_FOUND_AFTER_MS); lệnh hoá ra đang mở thì lượt sau huỷ ở trên.
     // Lệnh đóng vị thế cũng chờ, vì lệnh unknown còn có thể khớp và đổi vị thế.
+    // Lệnh SoDEX đã nhận, xác nhận không thấy quá UNKNOWN_CHECK_WINDOW_MS mà chưa được ghi cho người dùng: ghi ngay (runner
+    // sắp bị bỏ nên #reconcile sẽ không còn làm được).
+    const overdue = await this.#d.db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          eq(orders.status, "unknown"),
+          lte(orders.missingConfirmedAt, new Date(this.#d.now() - UNKNOWN_CHECK_WINDOW_MS)),
+          isNull(orders.unknownGaveUpAt),
+        ),
+      );
+    for (const o of overdue) await this.#unknownGaveUp(r, o, this.#d.now());
+    // Lệnh SoDEX đã nhận rồi không thấy nữa: chỉ thôi chờ khi lần tra thành công đầu tiên xác nhận không thấy
+    // (`missing_confirmed_at`) đã quá UNKNOWN_CHECK_WINDOW_MS. Chưa có lần xác nhận nào thì vẫn chờ.
     const [unknown] = await this.#d.db
       .select({ n: sql<number>`count(*)::int` })
       .from(orders)
-      .where(and(eq(orders.botId, r.botId), eq(orders.status, "unknown")));
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          eq(orders.status, "unknown"),
+          or(
+            isNull(orders.sodexOrderId),
+            isNull(orders.missingConfirmedAt),
+            gt(orders.missingConfirmedAt, new Date(this.#d.now() - UNKNOWN_CHECK_WINDOW_MS)),
+          ),
+        ),
+      );
     if ((unknown?.n ?? 0) > 0) {
       this.#d.log.warn(
         { botId: r.botId, unknown: unknown?.n, reason },
@@ -3189,6 +3676,19 @@ export class Engine {
     for (const o of pending) {
       const r = this.#runners.get(o.botId);
       if (r?.shard !== shard) continue;
+      // SoDEX đã nhận lệnh mà sau đó không tìm thấy: tra lại giãn dần 15 → 30 → 60 s, không phải mỗi vòng. Quá
+      // UNKNOWN_CHECK_WINDOW_MS tính từ lần tra THÀNH CÔNG đầu tiên xác nhận không thấy (`missing_confirmed_at`, bền qua
+      // khởi động lại) thì ghi cho người dùng một lần (quy tắc 1.7). Chưa có lần xác nhận nào thì không bỏ cuộc.
+      if (o.sodexOrderId !== null) {
+        const c = this.#unknownChecks.get(o.id) ?? { n: 0, at: 0 };
+        const confirmed = o.missingConfirmedAt?.getTime();
+        if (confirmed !== undefined && now - confirmed >= UNKNOWN_CHECK_WINDOW_MS) {
+          await this.#unknownGaveUp(r, o, now);
+          continue;
+        }
+        if (now - c.at < Math.min(UNKNOWN_RECHECK_MAX_MS, OPEN_CHECK_MS * 2 ** c.n)) continue;
+        this.#unknownChecks.set(o.id, { ...c, n: c.n + 1, at: now });
+      }
       // Một lệnh tra lỗi (SoDEX / mạng) không được làm hỏng cả vòng của shard: #reconcileOpen, huỷ lại, phí, đồng hồ
       // của mọi bot vẫn chạy; lệnh này thử lại ở nhịp sau (follow-up #154).
       try {
@@ -3203,6 +3703,35 @@ export class Engine {
     }
   }
 
+  /**
+   * Lệnh SoDEX đã nhận, `unknown` quá UNKNOWN_CHECK_WINDOW_MS: không còn trong lệnh mở của SoDEX (đã kiểm nhiều lần) nên
+   * không khớp thêm được, nhưng không biết đã khớp bao nhiêu. Không đoán (quy tắc 1.7): giữ `unknown`, gắn Needs attention
+   * và ghi Decisions một lần để người dùng kiểm tra vị thế trên SoDEX. Lưới an toàn fill vẫn ghi trade nếu nó xuất hiện.
+   */
+  async #unknownGaveUp(r: Runner, o: typeof orders.$inferSelect, now: number): Promise<void> {
+    this.#d.log.error(
+      { botId: r.botId, clOrdID: o.clOrdId },
+      "order result still unknown after reconciling; needs attention",
+    );
+    await this.#fenced(r, async (tx) => {
+      // Ghi một lần: chỉ dòng chưa bỏ cuộc mới được đánh dấu (vòng / engine khác đã ghi thì thôi).
+      const marked = await tx
+        .update(orders)
+        .set({ unknownGaveUpAt: new Date(now) })
+        .where(and(eq(orders.id, o.id), isNull(orders.unknownGaveUpAt)))
+        .returning({ id: orders.id });
+      if (marked.length === 0) return;
+      await tx.update(bots).set({ needsAttention: true }).where(eq(bots.id, r.botId));
+      await tx.insert(botEvents).values({
+        botId: r.botId,
+        type: "reconcile",
+        decision: UNKNOWN_DECISION,
+        why: `${o.clOrdId}: SoDEX accepted it, but it is not in the order history and has no trades. Check this bot's position on SoDEX.`,
+        occurredAt: new Date(now),
+      });
+    });
+  }
+
   /** Đối soát một lệnh `unknown` với SoDEX. */
   async #reconcileOne(r: Runner, o: typeof orders.$inferSelect, now: number): Promise<void> {
     const found = await r.gateway.lookup(r.account, {
@@ -3212,6 +3741,39 @@ export class Engine {
     });
     if (found.status === "not_found") {
       if (now - (o.submittedAt?.getTime() ?? now) < NOT_FOUND_AFTER_MS) return;
+      // Lịch sử lệnh REST của SoDEX trễ hơn lịch sử khớp: hỏi trade của lệnh trước khi kết luận.
+      if (!r.paper) {
+        const trades = await this.#orderTrades(r.account, o);
+        const t = foundFromTrades(o, trades, o.sodexOrderId ?? 0n);
+        if (t !== null) {
+          this.#d.log.info(
+            { botId: r.botId, clOrdID: o.clOrdId, filled: t.found.filledQty, done: t.done },
+            "unknown order not found on SoDEX, but its trades are; recording the fill",
+          );
+          this.#unknownChecks.delete(o.id);
+          if (o.ackedAt === null) {
+            await this.#ack(r, now);
+            await this.#feed(r, { type: "orderAck", at: now, clOrdID: o.clOrdId });
+          }
+          // Lệnh limit khớp một phần có thể vẫn nằm trên sổ: chỉ ghi fill, không kết thúc (M1).
+          if (t.done)
+            await this.#settleOrder(r.shard, r.epoch, r.account, o, t.found, now, false, trades);
+          else await this.#recordTrades(r.account, o, trades, now);
+          return;
+        }
+      }
+      // SoDEX đã nhận lệnh (có orderID): không phải "chưa đặt". Giữ `unknown`, đối soát lại sau (quy tắc 1.7). Lần tra
+      // thành công đầu tiên mà vẫn không thấy được ghi lại (kể cả dòng `unknown` cũ chưa có dấu này).
+      if (o.sodexOrderId !== null) {
+        if (o.missingConfirmedAt === null)
+          await this.#fenced(r, (tx) =>
+            tx
+              .update(orders)
+              .set({ missingConfirmedAt: new Date(now) })
+              .where(and(eq(orders.id, o.id), isNull(orders.missingConfirmedAt))),
+          );
+        return;
+      }
       await this.#fenced(r, (tx) =>
         tx
           .update(orders)
@@ -3233,12 +3795,16 @@ export class Engine {
       });
       return;
     }
+    this.#unknownChecks.delete(o.id);
     await this.#fenced(r, (tx) =>
       tx
         .update(orders)
         .set({
+          // Lệnh market (IOC) SoDEX báo đã huỷ: để #reconcileOpen kết thúc nó (hỏi trade trước, báo chiến lược một lần).
           status:
-            found.status === "partially_filled" || found.status === "filled"
+            found.status === "partially_filled" ||
+            found.status === "filled" ||
+            (found.status === "cancelled" && o.type === "market")
               ? "open"
               : found.status,
           sodexOrderId: found.orderId,
@@ -3266,6 +3832,89 @@ export class Engine {
   }
 
   /**
+   * Lịch sử khớp gần đây (500 dòng, như `recentTrades`) của account trên market, đọc tối đa một lần mỗi vòng tick và
+   * dùng chung cho đối soát từng lệnh và lưới an toàn fill (giữ hạn mức REST, M4).
+   */
+  #accountTrades(
+    account: AccountRef,
+    market: string,
+    engine: "spot" | "perps",
+    /** Bản đang giữ đọc trước mốc này (`#readSeq`) thì đọc lại. */
+    notBefore = 0,
+  ): Promise<(OrderTrade & { clOrdID: string })[]> {
+    const key = `${account.id}:${engine}:${market}`;
+    const cached = this.#tradesCache.get(key);
+    if (cached !== undefined && cached.seq >= notBefore) return cached.p;
+    const entry = {
+      seq: ++this.#readSeq,
+      p: this.#d.gateway.recentTrades(account, { market, engine }),
+    };
+    this.#tradesCache.set(key, entry);
+    entry.p.catch(() => {
+      if (this.#tradesCache.get(key) === entry) this.#tradesCache.delete(key);
+    });
+    return entry.p;
+  }
+
+  /** Trade SoDEX của một lệnh (theo clOrdID), từ lịch sử khớp dùng chung của vòng. */
+  async #orderTrades(
+    account: AccountRef,
+    o: { clOrdId: string; market: string; engine: "spot" | "perps" },
+    notBefore = 0,
+  ): Promise<OrderTrade[]> {
+    return (await this.#accountTrades(account, o.market, o.engine, notBefore)).filter(
+      (t) => t.clOrdID === o.clOrdId,
+    );
+  }
+
+  /**
+   * Ghi các trade của lệnh (fill theo `sodex_trade_id`) và phần khớp mới qua `onFill`, không kết thúc lệnh: dùng khi
+   * không được kết luận lệnh đã xong (lệnh limit khớp một phần có thể vẫn nằm trên sổ).
+   */
+  async #recordTrades(
+    account: AccountRef,
+    o: typeof orders.$inferSelect,
+    trades: readonly OrderTrade[],
+    now: number,
+  ): Promise<void> {
+    for (const t of trades) await this.onTrade(account.id, { ...t, clOrdID: o.clOrdId });
+    const t = foundFromTrades(o, trades, o.sodexOrderId ?? 0n);
+    if (t?.found.avgPrice == null) return;
+    await this.#fillFromTrades(
+      account.id,
+      o.clOrdId,
+      trades,
+      t.found.filledQty,
+      t.found.avgPrice,
+      now,
+    );
+  }
+
+  /**
+   * Phần khớp mới theo trade SoDEX, trong hàng đợi của lệnh: phí tính trên dòng lệnh đọc lại ở đó (phần stream đã ghi
+   * trong lúc đọc REST không bị tính phí lần hai), rồi đi qua đường fill thường.
+   */
+  async #fillFromTrades(
+    accountId: string,
+    clOrdID: string,
+    trades: readonly OrderTrade[],
+    total: string,
+    avg: string,
+    now: number,
+  ): Promise<void> {
+    await this.#inOrderQueue(accountId, clOrdID, async () => {
+      const [cur] = await this.#d.db
+        .select({ filledSize: orders.filledSize })
+        .from(orders)
+        .where(and(eq(orders.sodexAccountId, accountId), eq(orders.clOrdId, clOrdID)))
+        .limit(1);
+      if (cur === undefined || !dec(total).gt(cur.filledSize)) return;
+      const fee = feeBeyond(trades, cur.filledSize).toString();
+      await this.#applyOrderFill(accountId, clOrdID, total, avg, fee, now);
+    });
+  }
+
+  /**
    * Lệnh còn `open` trong DRIFT mà không ai cập nhật được (DEC-85): bot đã dừng (không còn runner, user stream có
    * thể đã đóng ngay sau lệnh đóng vị thế của Stop), hoặc lệnh market (IOC không thể nằm trên sổ, SoDEX không báo
    * khi hết hạn mà chưa khớp). Đọc trạng thái thật từ SoDEX, ghi fill, cập nhật sổ cái và PnL của bot.
@@ -3276,8 +3925,8 @@ export class Engine {
     const now = this.#d.now();
     // Lệnh bot thật của shard (snapshot của vòng, DEC-105: không bao giờ lệnh paper).
     const rows = snap.open.get(shard) ?? [];
-    const gap = (accountId: string) =>
-      now - (this.#streamGaps.get(accountId) ?? Number.NEGATIVE_INFINITY) < STREAM_GAP_MS;
+    const gap = (o: { sodexAccountId: string; engine: "spot" | "perps" }) =>
+      this.#inGap(o.sodexAccountId, o.engine, now);
     // Lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận (kết quả "unknown"): đọc trạng thái thật thay vì huỷ lại mãi.
     // Không thì lệnh kẹt "open" trong DRIFT và chặn lệnh ngược chiều như self-trade (DEC-121).
     const cancelling = (o: { botId: string; clOrdId: string }) =>
@@ -3288,11 +3937,11 @@ export class Engine {
         o.type === "market" ||
         r === undefined ||
         cancelling(o) ||
-        (r.strategy === Strategy.volumeFarm && gap(o.sodexAccountId))
+        (r.strategy === Strategy.volumeFarm && gap(o))
       );
     });
     // Lệnh Volume Farm DRIFT tự huỷ nhưng chưa xác nhận: có thể đã khớp ngay trước lúc huỷ.
-    const unconfirmed = (snap.unconfirmed.get(shard) ?? []).filter((o) => gap(o.sodexAccountId));
+    const unconfirmed = (snap.unconfirmed.get(shard) ?? []).filter((o) => gap(o));
     // Lệnh kiểm lâu nhất trước (chưa kiểm = 0), rồi lệnh cũ nhất (DEC-185). Xếp theo `submittedAt`
     // không thôi thì ≥ OPEN_CHECK_BATCH lệnh vẫn treo trên SoDEX (bot đang pause giữ lệnh) chiếm hết suất mỗi vòng, và
     // lệnh mới hơn (ví dụ lệnh đóng vị thế của bot vừa Stop) không bao giờ được đối soát: fill thật không được ghi.
@@ -3318,12 +3967,50 @@ export class Engine {
       checked += 1;
       this.#openChecks.set(o.id, now);
       const ref = { clOrdID: o.clOrdId, market: o.market, engine: o.engine };
+      const lookedAt = ++this.#readSeq;
       const found = await this.#d.gateway.lookup(account, ref);
-      if (found.status === "open") continue;
+      if (found.status === "open") {
+        this.#missingSince.delete(o.id);
+        continue;
+      }
       if (found.status === "not_found") {
-        // Stop loss gốc đã được SoDEX nhận (DEC-118) mà không còn: SoDEX huỷ nó khi vị thế đóng. Lệnh market
-        // khác không bao giờ treo "open", nên lệnh market còn open trong sổ chỉ có thể là stop.
-        if (o.type === "market" && o.status === "open" && o.sodexOrderId !== null) {
+        // Lịch sử lệnh REST trễ vài giây sau khi khớp: không tìm thấy chưa có nghĩa là đã huỷ. Hỏi trade của lệnh trước,
+        // kể cả stop loss gốc (stop đã kích hoạt và khớp cũng có thể chưa vào lịch sử).
+        const trades = await this.#orderTrades(account, o);
+        const t = foundFromTrades(o, trades, o.sodexOrderId ?? 0n);
+        if (t?.done === true) {
+          this.#d.log.info(
+            { botId: o.botId, clOrdID: o.clOrdId, filled: t.found.filledQty },
+            "order not found on SoDEX, but its trades are; recording the fill",
+          );
+          await this.#settleOrder(
+            shard,
+            held.epoch,
+            account,
+            o,
+            t.found,
+            now,
+            cancelling(o),
+            trades,
+          );
+          this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
+          this.#openChecks.delete(o.id);
+          this.#missingSince.delete(o.id);
+          continue;
+        }
+        // Lệnh limit khớp một phần có thể vẫn nằm trên sổ: ghi fill, chưa kết thúc (M1).
+        if (t !== null) await this.#recordTrades(account, o, trades, now);
+        // Stop loss gốc đã được SoDEX nhận (DEC-118) mà không còn, không có trade: SoDEX huỷ nó khi vị thế đóng. Lịch sử
+        // khớp dùng chung có thể đã đọc TRƯỚC lần tra này (stop vừa kích hoạt và khớp ở giữa): đọc lại trước khi ghi huỷ.
+        if (t === null && isNativeStop(o) && o.status === "open" && o.sodexOrderId !== null) {
+          const again = await this.#orderTrades(account, o, lookedAt);
+          const fired = foundFromTrades(o, again, o.sodexOrderId);
+          if (fired?.done === true) {
+            await this.#settleOrder(shard, held.epoch, account, o, fired.found, now, false, again);
+            this.#openChecks.delete(o.id);
+            this.#missingSince.delete(o.id);
+            continue;
+          }
           await this.#fenced({ shard, epoch: held.epoch }, (tx) =>
             tx
               .update(orders)
@@ -3331,25 +4018,50 @@ export class Engine {
               .where(eq(orders.id, o.id)),
           );
           this.#openChecks.delete(o.id);
+          this.#d.log.info(
+            { botId: o.botId, clOrdID: o.clOrdId },
+            "native stop no longer on SoDEX and no trades; recorded as cancelled",
+          );
           await this.onOrderClosed(o.sodexAccountId, o.clOrdId, "cancelled", now);
           continue;
         }
-        // Ngoài 500 lệnh lịch sử gần nhất: không suy đoán kết quả, chuyển sang Failed & unknown để người dùng thấy.
-        // Lệnh bot đã gửi huỷ: không còn trong lệnh mở của SoDEX nên không thể khớp nữa, ghi là đã huỷ.
-        if (now - (o.submittedAt?.getTime() ?? now) < NOT_FOUND_AFTER_MS) continue;
+        // Chờ NOT_FOUND_AFTER_MS tính từ lần đầu không thấy (không từ lúc gửi: lệnh nằm sổ lâu cũng được chờ đủ). Vẫn
+        // không thấy thì `unknown` (quy tắc 1.7), không suy là đã huỷ; #reconcile đối soát tiếp. Lệnh bot đã gửi huỷ:
+        // không còn trong lệnh mở của SoDEX nên không thể khớp nữa, ghi là đã huỷ.
+        const since = this.#missingSince.get(o.id) ?? now;
+        this.#missingSince.set(o.id, since);
+        if (now - since < NOT_FOUND_AFTER_MS) continue;
+        this.#missingSince.delete(o.id);
         const wasCancelling = cancelling(o);
-        await this.#fenced({ shard, epoch: held.epoch }, (tx) =>
-          tx
+        const toUnknown = !(o.status === "cancelled" || wasCancelling);
+        await this.#fenced({ shard, epoch: held.epoch }, async (tx) => {
+          await tx
             .update(orders)
             .set({
-              status: o.status === "cancelled" || wasCancelling ? "cancelled" : "unknown",
+              status: toUnknown ? "unknown" : "cancelled",
               reconciledAt: new Date(now),
+              // Lần tra thành công xác nhận lệnh không còn ở đâu: mốc bền cho bỏ cuộc và Stop thôi chờ.
+              ...(toUnknown ? { missingConfirmedAt: new Date(now) } : {}),
             })
-            .where(eq(orders.id, o.id)),
-        );
+            .where(eq(orders.id, o.id));
+          if (toUnknown)
+            await tx.insert(botEvents).values({
+              botId: o.botId,
+              type: "reconcile",
+              decision: UNKNOWN_DECISION,
+              why: `${o.clOrdId}: not found on SoDEX and no trades yet. Checking again before anything else is sent for it.`,
+              occurredAt: new Date(now),
+            });
+        });
+        if (toUnknown)
+          this.#d.log.warn(
+            { botId: o.botId, clOrdID: o.clOrdId },
+            "order not found on SoDEX and no trades; marked unknown",
+          );
         if (wasCancelling) this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
         continue;
       }
+      this.#missingSince.delete(o.id);
       const expected = cancelling(o);
       await this.#settleOrder(shard, held.epoch, account, o, found, now, expected);
       this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
@@ -3483,6 +4195,207 @@ export class Engine {
     }
   }
 
+  /**
+   * Lưới an toàn fill cho mọi bot thật trừ Market Making (đã có #backfillMaker), DEC-303. Lệnh có thể đã
+   * khớp mà DRIFT chưa ghi:
+   * (a) gửi trong FILL_BACKFILL_WINDOW_MS, chưa khớp đủ và kết thúc không có xác nhận của user stream (`unknown`, hoặc bot
+   *     huỷ mà chưa có tin CANCELED): đọc lịch sử khớp tối đa một lần mỗi MAKER_BACKFILL_MS cho account + market;
+   * (b) account vừa có khoảng trống user stream: lệnh còn mở hoặc gửi trong MAKER_BACKFILL_WINDOW_MS, đọc MỘT lần cho mỗi
+   *     khoảng trống, sau BACKFILL_TRADE_GRACE_MS (M4).
+   * Lịch sử khớp dùng chung với đối soát trong vòng. Chỉ trade cũ hơn BACKFILL_TRADE_GRACE_MS được coi là bị mất (tin
+   * stream của trade mới hơn có thể đang tới, M5); quyết định chạy trong hàng đợi của lệnh, trên dòng lệnh đọc lại.
+   */
+  /**
+   * Ứng viên của lưới an toàn fill cho cả vòng, MỘT truy vấn (DEC-301): lệnh của runner thật (trừ Market Making) chưa
+   * khớp đủ, (a) gửi trong FILL_BACKFILL_WINDOW_MS và `unknown` / bot huỷ mà chưa có tin CANCELED, hoặc (b) của
+   * account + engine đang trong khoảng trống stream: còn mở hoặc gửi trong MAKER_BACKFILL_WINDOW_MS.
+   */
+  async #backfillCandidates(now: number): Promise<OrderRow[]> {
+    const runners = [...this.#runners.values()].filter(
+      (r) => !r.paper && r.strategy !== Strategy.volumeMaker,
+    );
+    if (runners.length === 0) return [];
+    const gapAccounts = [...new Set(runners.map((r) => r.account.id))].filter(
+      (id) => this.#inGap(id, "spot", now) || this.#inGap(id, "perps", now),
+    );
+    return (
+      await this.#d.db
+        .select()
+        .from(orders)
+        .where(
+          and(
+            inArray(
+              orders.botId,
+              runners.map((r) => r.botId),
+            ),
+            or(
+              and(
+                gt(orders.submittedAt, new Date(now - FILL_BACKFILL_WINDOW_MS)),
+                or(
+                  eq(orders.status, "unknown"),
+                  and(eq(orders.status, "cancelled"), isNull(orders.doneFedAt)),
+                ),
+              ),
+              gapAccounts.length === 0
+                ? undefined
+                : and(
+                    inArray(orders.sodexAccountId, gapAccounts),
+                    ne(orders.status, "rejected"),
+                    ne(orders.status, "not_placed"),
+                    or(
+                      inArray(orders.status, ["open", "partially_filled"]),
+                      gt(orders.submittedAt, new Date(now - MAKER_BACKFILL_WINDOW_MS)),
+                    ),
+                  ),
+            ),
+          ),
+        )
+    ).filter(
+      (o) =>
+        dec(o.filledSize).lt(o.size) &&
+        (o.status === "unknown" ||
+          (o.status === "cancelled" && o.doneFedAt === null) ||
+          this.#inGap(o.sodexAccountId, o.engine, now)),
+    );
+  }
+
+  /**
+   * Lưới an toàn fill cho mọi bot thật trừ Market Making (đã có #backfillMaker), DEC-303. Ứng viên đọc
+   * một lần mỗi vòng (#backfillCandidates). (a) Lệnh nghi ngờ: đọc lịch sử khớp tối đa một lần mỗi MAKER_BACKFILL_MS cho
+   * account + market; (b) khoảng trống stream của account + engine: đọc MỘT lần mỗi khoảng trống, sau
+   * BACKFILL_TRADE_GRACE_MS (M4). Lịch sử khớp dùng chung với đối soát trong vòng. Chỉ trade cũ hơn
+   * BACKFILL_TRADE_GRACE_MS được coi là bị mất (tin stream của trade mới hơn có thể đang tới, M5); quyết định chạy trong
+   * hàng đợi của lệnh, trên dòng lệnh đọc lại.
+   */
+  async #backfillFills(shard: number, snap: TickSnapshot): Promise<void> {
+    const now = this.#d.now();
+    const runners = new Map(
+      [...this.#runners.values()]
+        .filter((r) => r.shard === shard && !r.paper && r.strategy !== Strategy.volumeMaker)
+        .map((r) => [r.botId, r]),
+    );
+    if (runners.size === 0) return;
+    const rows = (snap.backfill.get(shard) ?? []).filter((o) => runners.has(o.botId));
+    const groups = new Map<string, typeof rows>();
+    for (const o of rows) {
+      const key = `${o.sodexAccountId}:${o.engine}:${o.market}`;
+      groups.set(key, [...(groups.get(key) ?? []), o]);
+    }
+    for (const [key, list] of groups) {
+      const first = list[0];
+      const r = first === undefined ? undefined : runners.get(first.botId);
+      if (first === undefined || r === undefined) continue;
+      const suspect = list.some(
+        (o) =>
+          (o.submittedAt?.getTime() ?? 0) > now - FILL_BACKFILL_WINDOW_MS &&
+          (o.status === "unknown" || (o.status === "cancelled" && o.doneFedAt === null)),
+      );
+      const gap = this.#streamGaps.get(`${first.sodexAccountId}:${first.engine}`) ?? -Infinity;
+      const gapDue =
+        now - gap < STREAM_GAP_MS &&
+        now - gap >= BACKFILL_TRADE_GRACE_MS &&
+        this.#gapBackfilled.get(key) !== gap;
+      const suspectDue = suspect && now - (this.#fillBackfill.get(key) ?? 0) >= MAKER_BACKFILL_MS;
+      if (!gapDue && !suspectDue) continue;
+      if (gapDue) this.#gapBackfilled.set(key, gap);
+      this.#fillBackfill.set(key, now);
+      try {
+        await this.#backfillGroup(r.account, first.market, first.engine, list, runners, now);
+      } catch (error) {
+        if (error instanceof FencedError) throw error;
+        this.#d.log.warn({ err: error, accountId: r.account.id }, "fill backfill failed");
+      }
+    }
+  }
+
+  async #backfillGroup(
+    account: AccountRef,
+    market: string,
+    engine: "spot" | "perps",
+    list: readonly (typeof orders.$inferSelect)[],
+    runners: ReadonlyMap<string, Runner>,
+    now: number,
+  ): Promise<void> {
+    const byId = new Map(list.map((o) => [o.clOrdId, o]));
+    // Trade quá mới chưa tính: tin user stream của nó có thể vẫn đang tới (M5).
+    const trades = (await this.#accountTrades(account, market, engine)).filter(
+      (t) => byId.has(t.clOrdID) && t.at <= now - BACKFILL_TRADE_GRACE_MS,
+    );
+    if (trades.length === 0) return;
+    const byOrder = new Map<string, typeof trades>();
+    for (const t of trades) byOrder.set(t.clOrdID, [...(byOrder.get(t.clOrdID) ?? []), t]);
+    for (const [clOrdID, own] of byOrder) {
+      const listed = byId.get(clOrdID);
+      const r = listed === undefined ? undefined : runners.get(listed.botId);
+      if (listed === undefined || r === undefined) continue;
+      for (const t of own) await this.onTrade(account.id, t);
+      // Quyết định trên dòng lệnh đọc lại trong hàng đợi của lệnh: fill của stream tới trong lúc đọc REST đã được tính.
+      await this.#inOrderQueue(account.id, clOrdID, async () => {
+        const [o] = await this.#d.db.select().from(orders).where(eq(orders.id, listed.id)).limit(1);
+        if (o === undefined) return;
+        const t = foundFromTrades(o, own, o.sodexOrderId ?? 0n);
+        if (t === null || !dec(t.found.filledQty).gt(o.filledSize)) return;
+        const avg = t.found.avgPrice ?? "0";
+        if (o.doneFedAt !== null && !LATE_FILL_STRATEGIES.has(r.strategy)) {
+          await this.#lateFill(r, o, t.found.filledQty, avg, now);
+          return;
+        }
+        this.#d.log.info(
+          { botId: o.botId, clOrdID, filled: t.found.filledQty, recorded: o.filledSize },
+          "fill found in SoDEX trade history; recording it",
+        );
+        const fee = feeBeyond(own, o.filledSize).toString();
+        await this.#applyOrderFill(account.id, clOrdID, t.found.filledQty, avg, fee, now);
+        // IOC không nằm trên sổ: đã có trade nghĩa là lệnh đã xong. Báo chiến lược một lần (sau fill, cùng hàng đợi).
+        if (o.doneFedAt === null && o.timeInForce === "IOC" && !isNativeStop(o))
+          await this.#finishOrder(
+            account.id,
+            clOrdID,
+            t.found.status === "filled" ? "filled" : "cancelled",
+            now,
+            null,
+          );
+      });
+    }
+  }
+
+  /**
+   * Fill tìm thấy sau khi chiến lược đã nhận `orderDone` với ít hơn. Không báo lại (chiến lược có thể đã hành động theo
+   * số cũ): ghi số thật vào lệnh, gắn Needs attention và ghi Decisions. Không có reason code nào trong DOMAIN.md 7.2 cho
+   * trường hợp này nên không pause. `o` là dòng vừa đọc lại trong hàng đợi của lệnh.
+   */
+  async #lateFill(
+    r: Runner,
+    o: typeof orders.$inferSelect,
+    filled: string,
+    avg: string,
+    now: number,
+  ): Promise<void> {
+    this.#d.log.error(
+      { botId: r.botId, clOrdID: o.clOrdId, filled, recorded: o.filledSize },
+      "fill found after the strategy was told the order ended; needs attention",
+    );
+    await this.#fenced(r, async (tx) => {
+      await tx
+        .update(orders)
+        .set({
+          filledSize: filled,
+          avgPrice: avg,
+          reconciledAt: new Date(now),
+          ...(dec(filled).gte(o.size) ? { status: "filled" as const } : {}),
+        })
+        .where(eq(orders.id, o.id));
+      await tx.update(bots).set({ needsAttention: true }).where(eq(bots.id, r.botId));
+      await tx.insert(botEvents).values({
+        botId: r.botId,
+        type: "reconcile",
+        decision: "Fill found after the order ended",
+        why: `${o.clOrdId}: SoDEX shows ${dec(filled).toString()} filled, the bot had counted ${dec(o.filledSize).toString()}. Check this bot's position on SoDEX.`,
+        occurredAt: new Date(now),
+      });
+    });
+  }
+
   async #syncMakerPosition(r: Runner, now: number): Promise<void> {
     const others = await this.#d.db
       .select({ id: bots.id })
@@ -3518,35 +4431,63 @@ export class Engine {
     epoch: number,
     account: AccountRef,
     o: typeof orders.$inferSelect,
-    found: Extract<LookupResult, { filledQty: string }>,
+    reported: Extract<LookupResult, { filledQty: string }>,
     now: number,
     /** Bot đã gửi huỷ lệnh này: SoDEX huỷ đúng như vậy thì không ghi Decisions. */
     cancelRequested = false,
+    /** Trade của lệnh đã đọc từ SoDEX (không đọc lại). */
+    known: OrderTrade[] | null = null,
   ): Promise<void> {
+    let found = reported;
+    let trades = known;
+    const readTrades = () => this.#orderTrades(account, o);
+    // IOC SoDEX báo CANCELED mà chưa khớp gì: hỏi trade trước khi tin, lịch sử lệnh REST có thể trễ hơn lịch sử khớp.
+    if (
+      found.status === "cancelled" &&
+      !dec(found.filledQty).gt(0) &&
+      o.timeInForce === "IOC" &&
+      !isNativeStop(o)
+    ) {
+      trades ??= await readTrades();
+      const confirmed = foundFromTrades(o, trades, found.orderId);
+      if (confirmed !== null) {
+        this.#d.log.info(
+          { botId: o.botId, clOrdID: o.clOrdId, filled: confirmed.found.filledQty },
+          "SoDEX reported the IOC cancelled with no fill, but its trades exist; recording the fill",
+        );
+        found = confirmed.found;
+      }
+    }
     const delta = sub(found.filledQty, o.filledSize);
     let fee = dec("0");
     if (delta.gt(0)) {
-      const trades = await this.#d.gateway.tradesOf(account, {
-        clOrdID: o.clOrdId,
-        market: o.market,
-        engine: o.engine,
-      });
-      for (const t of trades) {
-        await this.onTrade(account.id, { ...t, clOrdID: o.clOrdId });
-        fee = fee.add(t.fee);
-      }
+      trades ??= await readTrades();
+      for (const t of trades) await this.onTrade(account.id, { ...t, clOrdID: o.clOrdId });
+      // Chỉ phí của phần chưa ghi: phần stream đã ghi đã mang phí của nó.
+      fee = feeBeyond(trades, o.filledSize);
     }
     const avg = found.avgPrice ?? o.avgPrice;
     const r = this.#runners.get(o.botId);
     if (r !== undefined && delta.gt(0) && avg !== null) {
-      await this.onFill(account.id, o.clOrdId, found.filledQty, avg, fee.toString(), now);
+      await (trades === null
+        ? this.onFill(account.id, o.clOrdId, found.filledQty, avg, fee.toString(), now)
+        : this.#fillFromTrades(account.id, o.clOrdId, trades, found.filledQty, avg, now));
     }
     await this.#fenced({ shard, epoch }, async (tx) => {
+      // Đọc lại trong transaction (khoá dòng): fill có thể vừa được ghi bởi user stream / lưới an toàn, sổ cái đã lưu chỉ
+      // cộng phần chưa ghi, và `filledSize` không bao giờ lùi về số cũ hơn của REST.
+      const [cur] = await tx
+        .select({ filledSize: orders.filledSize })
+        .from(orders)
+        .where(eq(orders.id, o.id))
+        .for("update");
+      const curFilled = cur?.filledSize ?? o.filledSize;
+      const ledgerDelta = sub(found.filledQty, curFilled);
       await tx
         .update(orders)
         .set({
           status: found.status,
-          filledSize: found.filledQty,
+          filledSize: ledgerDelta.lt(0) ? (cur?.filledSize ?? found.filledQty) : found.filledQty,
           avgPrice: avg,
           reconciledAt: new Date(now),
         })
@@ -3564,52 +4505,16 @@ export class Engine {
           occurredAt: new Date(now),
         });
       }
-      if (r !== undefined || !delta.gt(0) || avg === null) return;
+      if (r !== undefined || !ledgerDelta.gt(0) || avg === null) return;
       // Bot đã dừng: không còn chiến lược để nhận fill, ghi thẳng vào sổ cái để PnL đúng.
-      const [rt] = await tx
-        .select({ state: botRuntime.state })
-        .from(botRuntime)
-        .where(eq(botRuntime.botId, o.botId))
-        .limit(1);
-      const state = rt?.state as
-        (Record<string, unknown> & { ledger?: Ledger; perp?: Ledger; spot?: Ledger }) | undefined;
-      if (state === undefined) return;
-      if (isMultiMarketCopyState(state)) {
-        // Copy Trade nhiều market (DEC-163): sổ cái nằm trong `markets[market]`.
-        const slot = state.markets[o.market];
-        if (slot === undefined) return;
-        await tx
-          .update(botRuntime)
-          .set({
-            state: {
-              ...state,
-              markets: {
-                ...state.markets,
-                [o.market]: { ...slot, ledger: applyFill(slot.ledger, o.side, avg, delta, fee) },
-              },
-            },
-            updatedAt: new Date(now),
-          })
-          .where(eq(botRuntime.botId, o.botId));
-        return;
-      }
-      const key = state.ledger !== undefined ? "ledger" : o.engine === "perps" ? "perp" : "spot";
-      const ledger = state[key];
-      if (ledger === undefined) return;
-      await tx
-        .update(botRuntime)
-        .set({
-          state: {
-            ...state,
-            [key]: applyFill(ledger, o.side, avg, delta, fee),
-            // Khối lượng tính cả lệnh mở và lệnh đóng: lệnh đóng khi Stop cũng vào volume của phiên.
-            ...(typeof state.volume === "string"
-              ? { volume: dec(state.volume).add(delta.mul(avg)).toString() }
-              : {}),
-          },
-          updatedAt: new Date(now),
-        })
-        .where(eq(botRuntime.botId, o.botId));
+      await this.#applyToSavedLedger(
+        tx,
+        o,
+        avg,
+        ledgerDelta,
+        trades === null ? fee : feeBeyond(trades, curFilled),
+        now,
+      );
     });
     // Lệnh đã kết thúc trên SoDEX: báo chiến lược một lần (sau fill ở trên, cùng hàng đợi của lệnh).
     if (
