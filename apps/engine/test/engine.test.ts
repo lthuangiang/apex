@@ -2529,19 +2529,23 @@ describe("engine", () => {
     const { botId, accountId } = await seedFarm("LTC-USD");
     const e = farmEngine(gw, "gap");
     await tickUntil(e, () => gw.received.some((o) => o.tag.startsWith("vf:")));
-    const id = gw.received.find((o) => o.tag.startsWith("vf:"))?.clOrdID ?? "";
+    const entry = gw.received.find((o) => o.tag.startsWith("vf:"));
+    const id = entry?.clOrdID ?? "";
+    // Khối lượng lệnh vào ngẫu nhiên theo bot (order size 100–200 USDC): fill giả phải đúng khối lượng đó. Trước đây cố định
+    // 1.5, nên khi lệnh lớn hơn 1.5 thì đó là khớp một phần và `cancelled` mới là kết quả đúng.
+    const qty = entry?.quantity ?? "0";
     // Hết 10 s chưa nhận tin khớp: bot huỷ và tưởng chưa có vị thế.
     clock += 11_000;
     await e.tick();
     const row = async () => (await db.select().from(orders).where(eq(orders.clOrdId, id)))[0];
     expect((await row())?.status).toBe("cancelled");
     // Thật ra lệnh đã khớp trước lúc huỷ, tin khớp mất vì kết nối đứt.
-    gw.book.set(id, { status: "filled", filledQty: "1.5", avgPrice: "100", orderId: 5n });
+    gw.book.set(id, { status: "filled", filledQty: qty, avgPrice: "100", orderId: 5n });
     gw.trades.set(id, [
       {
         tradeId: 7_000n + BigInt(Math.floor(Math.random() * 1e9)),
         price: "100",
-        quantity: "1.5",
+        quantity: qty,
         fee: "0.03",
         builderFee: null,
         isMaker: true,
@@ -2557,10 +2561,69 @@ describe("engine", () => {
     expect((await row())?.status).toBe("filled");
     const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
     const st = rt?.state as { phase: string; ledger: { position: string } };
-    expect(Number(st.ledger.position)).toBe(1.5);
+    expect(Number(st.ledger.position)).toBe(Number(qty));
     expect(st.phase).toBe("open");
     await e.stop();
     await stopFarmBots();
+  });
+
+  it("looks up a gap-suspect cancelled entry on time even when another account in the shard has many open orders (DEC-87, CI #216)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    await seedCandles("LTD-USD");
+    const { accountId } = await seedFarm("LTD-USD");
+    // Account khác cùng shard có nhiều lệnh còn mở chưa kiểm lần nào (bot đã dừng giữ lệnh), cũ hơn lệnh vào của bot này.
+    const shard = shardOf(accountId, SHARDS);
+    let other = await seedBot();
+    while (shardOf(other.accountId, SHARDS) !== shard) {
+      await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, other.botId));
+      other = await seedBot();
+    }
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, other.botId));
+    await db.insert(orders).values(
+      Array.from({ length: 60 }, (_, i) => ({
+        botId: other.botId,
+        sodexAccountId: other.accountId,
+        clOrdId: `pad-${String(i)}-${String(Math.random())}`,
+        market: "PAD-USD",
+        engine: "perps" as const,
+        side: "buy" as const,
+        type: "limit" as const,
+        price: "90",
+        timeInForce: "GTC",
+        size: "1",
+        status: "open" as const,
+        reduceOnly: false,
+        epoch: 1,
+        tag: "pad",
+        submittedAt: new Date(clock - 60_000 - i),
+      })),
+    );
+    const e = farmEngine(gw, "gap-busy");
+    const mine = () => gw.received.find((o) => o.market === "LTD-USD" && o.tag.startsWith("vf:"));
+    await tickUntil(e, () => mine() !== undefined);
+    const entry = mine();
+    const id = entry?.clOrdID ?? "";
+    clock += 11_000;
+    await e.tick();
+    const row = async () => (await db.select().from(orders).where(eq(orders.clOrdId, id)))[0];
+    expect((await row())?.status).toBe("cancelled");
+    // Lịch sử lệnh của SoDEX có lệnh đã khớp; lịch sử khớp chưa có (trễ): chỉ đường tra lệnh tìm thấy được.
+    gw.book.set(id, {
+      status: "filled",
+      filledQty: entry?.quantity ?? "0",
+      avgPrice: "100",
+      orderId: 5n,
+    });
+    e.onStreamGap(accountId);
+    clock += 20_000;
+    await e.tick();
+    const after = await row();
+    expect(after?.status).toBe("filled");
+    expect(Number(after?.filledSize)).toBe(Number(entry?.quantity));
+    await e.stop();
+    await stopFarmBots();
+    await db.update(orders).set({ status: "cancelled" }).where(eq(orders.botId, other.botId));
   });
 
   it("enters Volume Farm at the live SoDEX price, but never treats an old message as fresh (DEC-298)", async () => {

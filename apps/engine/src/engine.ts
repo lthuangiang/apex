@@ -4508,20 +4508,33 @@ export class Engine {
     // không thôi thì ≥ OPEN_CHECK_BATCH lệnh vẫn treo trên SoDEX (bot đang pause giữ lệnh) chiếm hết suất mỗi vòng, và
     // lệnh mới hơn (ví dụ lệnh đóng vị thế của bot vừa Stop) không bao giờ được đối soát: fill thật không được ghi.
     const lastCheck = (o: { id: string }) => this.#openChecks.get(o.id) ?? 0;
+    // Lệnh nghi ngờ trước (DEC-TBD-engine-sodex-latency): đã gửi huỷ mà chưa có kết quả, lệnh market, lệnh Volume Farm DRIFT
+    // tự huỷ trong khoảng trống stream. Chúng là chỗ fill có thể bị mất; lệnh đang nằm sổ bình thường (bot pause / dừng giữ
+    // lệnh) kiểm sau.
+    const suspect = (o: OrderRow) =>
+      o.type === "market" || cancelling(o) || unconfirmed.includes(o) ? 0 : 1;
     const due = [...open, ...unconfirmed]
       .filter((o) => now - lastCheck(o) >= OPEN_CHECK_MS)
       .sort(
         (a, b) =>
+          suspect(a) - suspect(b) ||
           lastCheck(a) - lastCheck(b) ||
           (a.submittedAt?.getTime() ?? 0) - (b.submittedAt?.getTime() ?? 0),
       );
     if (due.length === 0) return;
     const accounts = new Map((snap.accounts.get(shard) ?? []).map((a) => [a.id, a]));
-    // Chỉ lệnh sẽ được kiểm ở vòng này (tối đa OPEN_CHECK_BATCH, account còn kết nối), đọc lại ngay trước khi xử lý.
-    const batch = await this.#fresh(
-      due.filter((o) => accounts.has(o.sodexAccountId)).slice(0, OPEN_CHECK_BATCH),
-    );
-    let checked = 0;
+    // Tối đa OPEN_CHECK_BATCH lệnh MỖI ACCOUNT mỗi vòng (account còn kết nối), đọc lại ngay trước khi xử lý. Trước đây suất là
+    // 10 lệnh cho cả shard: lệnh còn mở của một account khác (bot pause / dừng) chiếm hết suất và lệnh nghi ngờ của account
+    // này không được tra đúng lúc (log CI #216: fill sau khoảng trống stream không được ghi bằng đường tra lệnh).
+    const perAccount = new Map<string, number>();
+    const picked = due.filter((o) => {
+      if (!accounts.has(o.sodexAccountId)) return false;
+      const n = perAccount.get(o.sodexAccountId) ?? 0;
+      if (n >= OPEN_CHECK_BATCH) return false;
+      perAccount.set(o.sodexAccountId, n + 1);
+      return true;
+    });
+    const batch = await this.#fresh(picked);
     await this.#perAccount(
       "reconcileOpen",
       batch,
@@ -4529,8 +4542,6 @@ export class Engine {
       async (o) => {
         const account = accounts.get(o.sodexAccountId);
         if (account === undefined) return;
-        if (checked >= OPEN_CHECK_BATCH) return;
-        checked += 1;
         this.#openChecks.set(o.id, now);
         const ref = { clOrdID: o.clOrdId, market: o.market, engine: o.engine };
         const lookedAt = ++this.#readSeq;
