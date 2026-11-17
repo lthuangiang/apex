@@ -365,7 +365,7 @@ export function CreateBot({
 
   const isMobile = useMediaQuery(BELOW_LG);
   const hasPreview = previewModel(strategy, values, lastPrice?.price ?? null, Date.now()) !== null;
-  // Bậc builder fee Market Making ngay dưới chart (DEC-TBD-create-form-layout): luôn đủ 3 bậc; "You" chỉ khi mức đến
+  // Bậc builder fee Market Making ngay dưới chart (DEC-295): luôn đủ 3 bậc; "You" chỉ khi mức đến
   // từ bậc volume, mức team đặt tay (custom) thì không đánh dấu dòng nào.
   const mmView = strategy === "volume_maker" ? mmFeeView(features.data?.mmFee, builderRate) : null;
   const mmFee =
@@ -562,7 +562,7 @@ export function CreateBot({
                   rate: feeLabels(builderRate).pct,
                 })}
                 {/* Bậc phí Market Making (docs/mockups/mm-fee-tiers 2d): số lấy từ FEE_TIERS. Bảng bậc nằm dưới chart;
-                    mức team đặt tay (custom) thì bậc không áp dụng nên bỏ câu bậc (DEC-TBD-create-form-layout). */}
+                    mức team đặt tay (custom) thì bậc không áp dụng nên bỏ câu bậc (DEC-295). */}
                 {mmView !== null && mmView.kind !== "custom"
                   ? ` ${t("beforeStart.feeMmTiers", mmTierArgs())}`
                   : null}

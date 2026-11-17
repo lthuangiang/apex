@@ -33,7 +33,7 @@ Element.prototype.scrollIntoView = () => undefined;
 // Gõ phím + axe trên cả form: chậm khi máy bận (cùng mức timeout với mm-cost.test.tsx).
 vi.setConfig({ testTimeout: 20_000 });
 
-// "Also stop at" và "How your losses are capped" nằm trong Advanced settings (DEC-TBD-create-form-layout).
+// "Also stop at" và "How your losses are capped" nằm trong Advanced settings (DEC-295).
 const openAdvanced = () =>
   userEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
 

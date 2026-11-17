@@ -115,7 +115,7 @@ export function BotForm({
   // Field có `slot` vẽ trong khối riêng (Position loss limit trong "How your losses are capped").
   const lossCapFields = shown.filter((f) => f.slot === "lossCaps");
   const advanced = shown.filter((f) => f.slot === undefined && sectionOf(f) === "advanced");
-  // Khối "How your losses are capped" nằm trong Advanced, ngay trước field có `blockBefore` (DEC-TBD-create-form-layout).
+  // Khối "How your losses are capped" nằm trong Advanced, ngay trước field có `blockBefore` (DEC-295).
   const capsAt = advanced.findIndex((f) => f.blockBefore === "lossCaps");
   const advancedKeys = [...advanced, ...(capsAt === -1 ? [] : lossCapFields)]
     .map((f) => f.key)
@@ -346,7 +346,7 @@ export function BotForm({
           ];
     });
 
-  // Hàng `rowBreak: "md"` (DEC-TBD-create-form-layout): lưới; từ md mỗi field một cột và nhãn / ô nhập / gợi ý / lỗi
+  // Hàng `rowBreak: "md"` (DEC-295): lưới; từ md mỗi field một cột và nhãn / ô nhập / gợi ý / lỗi
   // của các ô thẳng hàng nhau (subgrid 4 dòng). Dưới md xuống một cột, trừ nhóm `cluster` (Min · Max) vẫn nằm cạnh
   // nhau; field ngoài nhóm xuống dưới cả nhóm.
   const gridRow = (row: FieldSpec[]): ReactNode => {

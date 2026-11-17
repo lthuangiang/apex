@@ -578,7 +578,7 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       type: { kind: "int", unit: "×" },
     },
     // Thiết kế "MM form explained" không có "How it works" ở Stop when costs reach / Max position / Where to quote.
-    // Hai ô dừng chung một hàng, xuống cột dưới md (DEC-TBD-create-form-layout).
+    // Hai ô dừng chung một hàng, xuống cột dưới md (DEC-295).
     {
       key: "costBudget",
       group: 4,
@@ -595,7 +595,7 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       rowBreak: "md",
       type: dec("quote"),
     },
-    // "Also stop at" và khối "How your losses are capped" nằm trong Advanced settings (DEC-TBD-create-form-layout).
+    // "Also stop at" và khối "How your losses are capped" nằm trong Advanced settings (DEC-295).
     {
       key: "runUntil",
       group: 4,
@@ -650,7 +650,7 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
   // S10 Volume Farm (DEC-80): chỉ hiện khi admin bật bot khối lượng cho tài khoản.
   volume_farm: [
     contract,
-    // Order size (Min · Max) và Leverage chung một hàng; dưới md Leverage xuống dưới (DEC-TBD-create-form-layout).
+    // Order size (Min · Max) và Leverage chung một hàng; dưới md Leverage xuống dưới (DEC-295).
     {
       key: "orderSizeMinUsd",
       label: "vfSizeMin",
@@ -694,7 +694,7 @@ export const FIELDS: Record<Strategy, readonly FieldSpec[]> = {
       type: dec("quote"),
     },
     // Từ Hold at least tới Stop loss on SoDEX (trước là section Strategy) nằm trong Advanced settings, trên cùng
-    // (DEC-TBD-create-form-layout; trước đó Stop loss on SoDEX để ngoài vì là lớp bảo vệ, DEC-118).
+    // (DEC-295; trước đó Stop loss on SoDEX để ngoài vì là lớp bảo vệ, DEC-118).
     {
       key: "minHoldSecs",
       label: "vfHoldMin",
@@ -860,7 +860,7 @@ export function emptyValues(strategy: keyof typeof FIELDS): FormValues {
       maxHoldSecs: "300",
       tpUsd: "0.5",
       slMarginPct: "10",
-      // Max loss 10 USDC như Stop when costs reach của Market Making (DEC-TBD-create-form-layout). Chỉ là giá trị
+      // Max loss 10 USDC như Stop when costs reach của Market Making (DEC-295). Chỉ là giá trị
       // khởi đầu của bot mới: bot và draft đã có giá trị giữ nguyên.
       maxLoss: "10",
       cooldownSecs: "30",

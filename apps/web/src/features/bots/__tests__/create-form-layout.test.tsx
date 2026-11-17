@@ -14,7 +14,7 @@ import { BotForm } from "../components/bot-form";
 import { CreateBot } from "../components/create-bot";
 import { emptyValues, FIELDS, type FormValues } from "../fields";
 
-// Bố cục form Create theo yêu cầu người dùng 2026-11-17 (DEC-TBD-create-form-layout, không có canvas):
+// Bố cục form Create theo yêu cầu người dùng 2026-11-17 (DEC-295, không có canvas):
 // Advanced settings đóng mặc định ở Market Making và Volume Builder, các hàng hai / ba ô, nhóm Order size (Min · Max),
 // lỗi trong Advanced tự mở section, bảng bậc builder fee Market Making ngay dưới chart, Max loss Volume Builder 10.
 
