@@ -54,7 +54,7 @@ Mục tiêu: chạy được cả hệ thống bằng `docker compose` (dev, sta
 1. **Mỗi account SoDEX chỉ có một writer.** Account chia vào `ENGINE_SHARDS = 64` shard ảo theo `shard = hash(accountId) % 64`.
    - Mỗi engine worker xin lease Redis `lease:shard:{n}` (`SET NX PX 15000`, gia hạn mỗi 5 s) cho khoảng `ceil(64 / số worker)` shard.
    - Khi worker chết, lease hết hạn và worker khác nhận shard.
-   - Mỗi vòng `tick` đọc DB **một lần** (account, bot, version chờ, lệnh cần đối soát) rồi chia theo shard trong bộ nhớ; shard không có account hay bot thì bỏ qua. Số truy vấn mỗi vòng không tăng theo số shard (DEC-TBD-engine-tick-batch).
+   - Mỗi vòng `tick` đọc DB **một lần** (account, bot, version chờ, lệnh cần đối soát) rồi chia theo shard trong bộ nhớ; shard không có account hay bot thì bỏ qua. Số truy vấn mỗi vòng không tăng theo số shard (DEC-301).
    - Vì chỉ có một writer cho mỗi account nên nonce SoDEX tăng đều và không có lệnh trùng.
 2. **Fencing token.** Mỗi lần nhận shard, `epoch` của shard trong Postgres tăng lên 1. Mọi yêu cầu ký và mọi lệnh đều mang theo `epoch`. Signer và DB từ chối `epoch` cũ, nên một worker "zombie" cũng không gửi lệnh được.
 3. **Idempotency.**

@@ -4478,7 +4478,7 @@ describe("insufficient margin rejects (margin guard)", () => {
   });
 });
 
-describe("one read per tick, not per shard (DEC-TBD-engine-tick-batch)", () => {
+describe("one read per tick, not per shard (DEC-301)", () => {
   // Database riêng, sạch: số truy vấn chỉ phụ thuộc dữ liệu của test này.
   let clean: Db;
   let counted = 0;

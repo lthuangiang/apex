@@ -141,7 +141,7 @@ type BotRow = typeof bots.$inferSelect;
 type VersionRow = typeof botVersions.$inferSelect;
 
 /**
- * Dữ liệu đọc MỘT lần mỗi vòng `tick` rồi chia theo shard trong bộ nhớ (DEC-TBD-engine-tick-batch). Trước đây mỗi shard
+ * Dữ liệu đọc MỘT lần mỗi vòng `tick` rồi chia theo shard trong bộ nhớ (DEC-301). Trước đây mỗi shard
  * tự đọc lại (account 2 lần, lệnh `unknown`, lệnh đang mở, version chờ theo từng bot), nên số truy vấn mỗi vòng tăng theo
  * số shard (64) và vòng chậm tới mức mất lease.
  */
@@ -1003,7 +1003,7 @@ export class Engine {
   }
 
   /**
-   * Đọc một lần cho cả vòng (DEC-TBD-engine-tick-batch): account, bot + version, version chờ, builder fee, lệnh `unknown`,
+   * Đọc một lần cho cả vòng (DEC-301): account, bot + version, version chờ, builder fee, lệnh `unknown`,
    * lệnh đang mở và lệnh Volume Farm huỷ chưa xác nhận; rồi chia theo shard. Số truy vấn không phụ thuộc số shard.
    */
   async #tickSnapshot(): Promise<TickSnapshot> {
