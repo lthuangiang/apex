@@ -32,21 +32,43 @@ export async function mmBotMarkets(db: Db): Promise<string[]> {
   return rows.map((r) => r.market);
 }
 
-/**
- * Market cần giá tốt nhất SoDEX thời gian thực (`md.<market>.book`): bot Market Making (DEC-248) và Volume Farm
- * (DEC-TBD-vb-live-book) đang chạy hoặc đang pause.
- */
-export async function liveBookMarkets(db: Db): Promise<string[]> {
+/** Market có bot Volume Farm đang chạy hoặc đang pause (cần `md.<market>.book`, DEC-TBD-vb-live-book). */
+export async function farmBotMarkets(db: Db): Promise<string[]> {
   const rows = await db
     .selectDistinct({ market: bots.market })
     .from(bots)
     .where(
       and(
-        inArray(bots.strategy, [Strategy.volumeMaker, Strategy.volumeFarm]),
+        sql`${bots.strategy} = ${Strategy.volumeFarm}`,
         inArray(bots.state, ["starting", "running", "resuming", "pausing", "paused"]),
       ),
     );
   return rows.map((r) => r.market);
+}
+
+/**
+ * Số market Volume Farm tối đa được thêm vào kết nối WS ngoài top `MM_TOP_MARKETS` ∪ market có bot MM (giới hạn của
+ * DEC-227, DEC-TBD-vb-live-book). Market Volume Farm vượt mức này không có giá WS: bot dùng sổ REST như DEC-82.
+ */
+export const VF_EXTRA_LIVE_MARKETS = 5;
+
+/**
+ * Danh sách market nghe WS (`watched`) và market gửi `md.<market>.book` (`relay`): top ∪ MM trước, rồi market Volume
+ * Farm chưa có trong đó tới tối đa `cap` market thêm (thứ tự tên để ổn định). `dropped`: market Volume Farm bị bỏ.
+ */
+export function liveBookPlan(
+  top: readonly string[],
+  mm: readonly string[],
+  farm: readonly string[],
+  cap = VF_EXTRA_LIVE_MARKETS,
+): { watched: string[]; relay: string[]; dropped: string[] } {
+  const base = new Set([...top, ...mm]);
+  const extra = [...new Set(farm)].filter((m) => !base.has(m)).sort();
+  const added = extra.slice(0, cap);
+  const watched = [...base, ...added];
+  const live = new Set(watched);
+  const relay = [...new Set([...mm, ...farm])].filter((m) => live.has(m));
+  return { watched, relay, dropped: extra.slice(cap) };
 }
 
 /** Top market Perps theo volume quote 24h từ candles_1m (chỉ trong `perps`). */

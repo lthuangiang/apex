@@ -1047,7 +1047,7 @@ describe("volume farm — live order book (DEC-TBD-vb-live-book)", () => {
       {
         type: "log",
         decision: "Waiting",
-        why: "No order book price from SoDEX in the last 1.5 s, so the bot waits for a fresh one before placing a post-only order.",
+        why: "Waiting for a fresh SoDEX price before placing a post-only order.",
       },
     ]);
     // Sổ mới tới: vào lệnh, lần chờ sau lại được ghi.
@@ -1069,14 +1069,13 @@ describe("volume farm — live order book (DEC-TBD-vb-live-book)", () => {
     expect(r.s.bookAt).toBe(T0 - 100);
   });
 
-  it("never falls back to the last price for a post-only exit while the live feed is on", () => {
-    const open: VolumeFarmState = {
+  it("never blocks a post-only exit on a stale book: uses the DEC-82 fallback even while the live feed is on", () => {
+    const base: VolumeFarmState = {
       ...volumeFarm.initialState(wide),
       phase: "exiting",
       lastPrice: "80100",
       book,
-      bookAt: T0 - FARM_TIMING.bookMaxAgeMs - 1,
-      bookStreamAt: T0 - FARM_TIMING.bookMaxAgeMs - 1,
+      bookStreamAt: T0 - 5_000,
       ledger: {
         position: "0.002",
         avgCost: "80000",
@@ -1088,16 +1087,21 @@ describe("volume farm — live order book (DEC-TBD-vb-live-book)", () => {
       openedAt: T0 - 200_000,
       exit: null,
     };
-    const r = volumeFarm.step(wide, open, timer(T0, false), ctx);
-    expect(places(r.actions)).toEqual([]);
-    // Sổ WS mới: đặt lệnh thoát trong spread ngay.
-    const r2 = volumeFarm.step(wide, r.state, live(T0 + 100, "80200", "80202"), ctx);
-    const r3 = volumeFarm.step(wide, r2.state, timer(T0 + 200, false), ctx);
-    expect(first(places(r3.actions))).toMatchObject({
+    // Sổ 5 s tuổi (≤ 10 s): giá trong spread từ sổ đó.
+    const fromBook = volumeFarm.step(wide, { ...base, bookAt: T0 - 5_000 }, timer(T0, false), ctx);
+    expect(first(places(fromBook.actions))).toMatchObject({ side: "sell", price: "80001" });
+    // Sổ quá 10 s: lùi 1 tick khỏi giá gần nhất.
+    const stale = { ...base, bookAt: T0 - FARM_TIMING.bookMaxAgeMs - 1 };
+    const fromLast = volumeFarm.step(wide, stale, timer(T0, false), ctx);
+    expect(first(places(fromLast.actions))).toMatchObject({
       side: "sell",
-      price: "80201",
+      price: "80101",
       reduceOnly: true,
     });
+    // Sổ WS mới: đặt lệnh thoát trong spread theo sổ đó.
+    const r2 = volumeFarm.step(wide, stale, live(T0 + 100, "80200", "80202"), ctx);
+    const r3 = volumeFarm.step(wide, r2.state, timer(T0 + 200, false), ctx);
+    expect(first(places(r3.actions))).toMatchObject({ side: "sell", price: "80201" });
   });
 
   it("keeps the DEC-82 fallback when no live feed has been seen", () => {

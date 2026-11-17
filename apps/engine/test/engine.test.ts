@@ -1303,6 +1303,41 @@ describe("engine", () => {
     await e.stop();
   });
 
+  it("sends Market Making no refresh messages, and a bot without Smart quoting no live price (DEC-TBD-vb-live-book)", async () => {
+    const { eq } = await import("drizzle-orm");
+    // Bot MM của test trước không được phản ứng thay bot của test này.
+    await db.update(bots).set({ state: "stopped" }).where(eq(bots.strategy, "volume_maker"));
+    for (const smart of [true, false]) {
+      const gw = new FakeGateway();
+      const base = mmSmart(smart);
+      const { botId } = await seedBot("running", {
+        ...base,
+        config: { ...base.config, quoteLevel: 0 },
+      });
+      const e = makeEngine(gw, `w-refresh-${String(smart)}`);
+      await e.tick();
+      await e.onPrice("BTC-USD", "100000", clock);
+      const bid = gw.received.filter((o) => o.side === "buy").at(-1);
+      expect(bid).toBeDefined();
+      const placed = gw.received.length;
+      const cancelled = gw.cancelled.length;
+      const up = String(Number(bid?.price) + 3);
+      const msg = {
+        s: "BTC-USD",
+        b: up,
+        a: String(Number(up) + 0.1),
+        E: clock + 2000,
+        at: clock + 2000,
+      };
+      // Smart quoting: tin `refresh` bị bỏ qua (không đặt lại); không Smart quoting: không tin nào tới.
+      await e.onMmBook(smart ? { ...msg, refresh: true } : msg, clock + 2000);
+      expect(gw.received.length).toBe(placed);
+      expect(gw.cancelled.length).toBe(cancelled);
+      await db.update(bots).set({ state: "stopped" }).where(eq(bots.id, botId));
+      await e.stop();
+    }
+  });
+
   it("keeps the open orders of a paused Market Making bot when the Binance price moves (DOMAIN 7.2)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
@@ -2419,32 +2454,24 @@ describe("engine", () => {
     await stopFarmBots();
   });
 
-  it("feeds the live SoDEX best bid / ask to Volume Farm, refresh messages included (DEC-TBD-vb-live-book)", async () => {
-    const { eq } = await import("drizzle-orm");
+  it("enters Volume Farm at the live SoDEX price, but never treats an old message as fresh (DEC-TBD-vb-live-book)", async () => {
+    // REST: 100 / 100.05 → mua 100, bán 101. WS: 99 / 99.02 → mua 99, bán 100 (tick 1).
     const gw = new FakeGateway();
-    await seedCandles("AVAX-USD");
-    const { botId } = await seedFarm("AVAX-USD");
+    for (const m of ["AVAX-USD", "ADA-USD"]) {
+      await seedCandles(m);
+      await seedFarm(m);
+    }
     const e = farmEngine(gw, "live-book");
-    await tickUntil(e, () => gw.received.some((o) => o.tag.startsWith("vf:")));
-    const state = async () =>
-      (await db.select().from(botRuntime).where(eq(botRuntime.botId, botId)))[0]?.state as {
-        book: { bid: string; ask: string; bidNotional: string } | null;
-        bookAt: number | null;
-        bookStreamAt?: number | null;
-      };
-    await e.onMmBook({ s: "AVAX-USD", b: "101", a: "103", E: clock, at: clock }, clock + 5);
-    let st = await state();
-    // Giá từ WS, độ dày giữ của bản REST.
-    expect(st.book).toMatchObject({ bid: "101", ask: "103", bidNotional: "50000" });
-    expect(st.bookAt).toBe(clock + 5);
-    expect(st.bookStreamAt).toBe(clock + 5);
-    // Tin gửi lại khi giá không đổi (Market Making bỏ qua) vẫn làm mới sổ của Volume Farm.
-    await e.onMmBook(
-      { s: "AVAX-USD", b: "101", a: "103", E: clock + 900, at: clock + 900, refresh: true },
-      clock + 905,
-    );
-    st = await state();
-    expect(st.bookStreamAt).toBe(clock + 905);
+    e.onFarmBook({ s: "AVAX-USD", b: "99", a: "99.02", E: clock, at: clock }, clock);
+    // Tin nhận 3 s trước (vd. phải chờ trong hàng đợi): không coi là mới, bot dùng bản REST vừa đọc.
+    e.onFarmBook({ s: "ADA-USD", b: "99", a: "99.02", E: clock, at: clock }, clock - 3_000);
+    const entryOf = (m: string) =>
+      gw.received.find((o) => o.tag.startsWith("vf:") && o.market === m);
+    await tickUntil(e, () => entryOf("AVAX-USD") !== undefined && entryOf("ADA-USD") !== undefined);
+    const fresh = entryOf("AVAX-USD");
+    expect(fresh).toMatchObject({ type: "limit", price: fresh?.side === "buy" ? "99" : "100" });
+    const old = entryOf("ADA-USD");
+    expect(old).toMatchObject({ type: "limit", price: old?.side === "buy" ? "100" : "101" });
     await e.stop();
     await stopFarmBots();
   });

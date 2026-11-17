@@ -299,9 +299,9 @@ function liveFeed(s: VolumeFarmState, at: number): boolean {
 /**
  * Giá post-only nằm trong spread theo `tickSize` của từng market (DEC-82): mua = ask tốt nhất − 1 tick, bán = bid tốt
  * nhất + 1 tick, để đứng đầu sổ và khớp nhanh. Spread chỉ 1 tick thì đứng cùng giá tốt nhất phía mình, không chéo sổ.
- * Sổ phải mới trong `FARM_LIVE_BOOK.freshMs` (DEC-TBD-vb-live-book). Sổ cũ hơn mà đang có nguồn WS thì null (chờ sổ mới,
- * không đặt từ sổ cũ hay giá gần nhất). Không có nguồn WS thì như DEC-82: sổ REST ≤ 10 s, không thì lùi 1 tick khỏi giá
- * gần nhất.
+ * Sổ phải mới trong `FARM_LIVE_BOOK.freshMs` (DEC-TBD-vb-live-book). Lệnh vào: sổ cũ hơn mà đang có nguồn WS thì null
+ * (chờ sổ mới, không đặt từ sổ cũ hay giá gần nhất). Lệnh thoát không bao giờ bị chặn (vị thế phải đóng được), và lệnh vào
+ * khi không có nguồn WS: như DEC-82, sổ ≤ 10 s, không thì lùi 1 tick khỏi giá gần nhất.
  */
 function makerPrice(
   c: VolumeFarmConfig,
@@ -309,6 +309,7 @@ function makerPrice(
   ctx: StepContext,
   side: "buy" | "sell",
   at: number,
+  exit = false,
 ) {
   const rules = ctx.rules[c.market];
   if (rules === undefined) return null;
@@ -324,7 +325,7 @@ function makerPrice(
       : roundPrice(Decimal.min(ask, bid.add(tick)), rules, RoundMode.up);
   };
   if (usable && age <= FARM_LIVE_BOOK.freshMs) return fromBook(book);
-  if (liveFeed(s, at)) return null;
+  if (!exit && liveFeed(s, at)) return null;
   if (usable && age <= FARM_TIMING.bookMaxAgeMs) return fromBook(book);
   const m = mark(s);
   if (m === null) return null;
@@ -476,7 +477,7 @@ function tryEnter(
             {
               type: "log",
               decision: "Waiting",
-              why: `No order book price from SoDEX in the last ${String(FARM_LIVE_BOOK.freshMs / 1000)} s, so the bot waits for a fresh one before placing a post-only order.`,
+              why: "Waiting for a fresh SoDEX price before placing a post-only order.",
             },
           ],
           state: { ...s, lastSkip: code },
@@ -737,7 +738,7 @@ function placeExit(
   const pos = dec(s.ledger.position);
   const side = pos.gt(0) ? "sell" : "buy";
   const taker = forceTaker || s.exitForce || (c.allowTaker && s.exitUnfilled >= c.takerAfter);
-  const price = taker ? null : makerPrice(c, s, ctx, side, at);
+  const price = taker ? null : makerPrice(c, s, ctx, side, at, true);
   if (!taker && price === null) return none(s);
   const qty = roundQty(pos.abs(), rules);
   const o = intent(

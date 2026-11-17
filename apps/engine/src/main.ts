@@ -6,6 +6,7 @@ import {
   leaderPositionMessageSchema,
   mmBookMessageSchema,
   mmFairMessageSchema,
+  type MmBookMessage,
 } from "@drift/shared";
 import {
   loadSodexConfig,
@@ -20,6 +21,7 @@ import { Redis } from "ioredis";
 import pino from "pino";
 import { z } from "zod";
 
+import { BookCoalescer } from "./book-coalescer";
 import { Engine } from "./engine";
 import { HttpGateway, httpSigner, marketInfo } from "./http-gateway";
 import { withLastUsed } from "./last-used";
@@ -117,17 +119,31 @@ void (async () => {
     }
   }
 })();
-// Giá tốt nhất SoDEX thời gian thực cho Market Making (DEC-248, marketdata publish).
-const bookSub = nc.subscribe("md.*.book");
-void (async () => {
-  for await (const m of bookSub) {
-    try {
-      await engine.onMmBook(mmBookMessageSchema.parse(m.json()), Date.now());
-    } catch (error) {
-      log.warn({ err: error }, "mm sodex book handling failed");
+// Giá tốt nhất SoDEX thời gian thực (DEC-248, marketdata publish). Đóng dấu giờ nhận ngay lúc NATS giao tin.
+// Volume Farm: chỉ lưu giá mới nhất trong bộ nhớ, đọc lúc bước chiến lược (DEC-TBD-vb-live-book). Market Making: mỗi
+// market xử lý tin mới nhất, tin cũ hơn đang chờ bị bỏ, các market chạy song song.
+const mmBooks = new BookCoalescer<MmBookMessage>(
+  (msg, recvAt) => engine.onMmBook(msg, recvAt),
+  (error) => {
+    log.warn({ err: error }, "mm sodex book handling failed");
+  },
+);
+nc.subscribe("md.*.book", {
+  callback: (err, m) => {
+    const recvAt = Date.now();
+    if (err !== null) {
+      log.warn({ err }, "sodex book subscription failed");
+      return;
     }
-  }
-})();
+    try {
+      const msg = mmBookMessageSchema.parse(m.json());
+      engine.onFarmBook(msg, recvAt);
+      if (msg.refresh !== true) mmBooks.push(msg.s, msg, recvAt);
+    } catch (error) {
+      log.warn({ err: error }, "sodex book message invalid");
+    }
+  },
+});
 // Copy Trade (DEC-161): fill và vị thế của ví leader, `marketdata` publish.
 const leaderSub = nc.subscribe("leader.*.*.*");
 void (async () => {

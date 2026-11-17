@@ -522,6 +522,21 @@ export class Engine {
     return snap;
   }
 
+  /**
+   * Giá tốt nhất SoDEX mới nhất của mỗi market cho Volume Farm (DEC-TBD-vb-live-book), chỉ trong bộ nhớ: `at` = lúc NATS
+   * giao tin. Không bước chiến lược hay ghi DB cho từng tin; `#feed` đưa giá này vào bot ngay trước mỗi bước.
+   */
+  readonly #farmBooks = new Map<string, { bid: string; ask: string; at: number }>();
+  /** `at` của giá sổ lệnh đã đưa vào state của từng runner (runner nạp lại từ DB thì nhận lại giá mới nhất). */
+  readonly #farmBookFed = new WeakMap<Runner, number>();
+
+  /** Giá tốt nhất SoDEX (WS) cho Volume Farm, cả tin `refresh`: chỉ lưu bản mới nhất của market (đồng bộ, không I/O). */
+  onFarmBook(msg: MmBookMessage, recvAt: number): void {
+    const prev = this.#farmBooks.get(msg.s);
+    if (prev !== undefined && prev.at > recvAt) return;
+    this.#farmBooks.set(msg.s, { bid: msg.b, ask: msg.a, at: recvAt });
+  }
+
   /** Giá mới từ marketdata (NATS `md.<market>.price`). */
   readonly #lastPrice = new Map<string, string>();
 
@@ -545,18 +560,14 @@ export class Engine {
       });
   }
 
-  /**
-   * Giá tốt nhất SoDEX (WS, DEC-248) cho bot Market Making bật Smart quoting (chỉ tin giá đổi) và mọi bot Volume Farm
-   * cùng market (cả tin `refresh` gửi lại khi giá không đổi, DEC-TBD-vb-live-book).
-   */
+  /** Giá tốt nhất SoDEX (WS, DEC-248) cho bot Market Making bật Smart quoting; tin `refresh` không tới bot MM. */
   async onMmBook(msg: MmBookMessage, recvAt: number): Promise<void> {
+    if (msg.refresh === true) return;
     for (const r of [...this.#runners.values()].filter(
       (x) =>
+        x.strategy === Strategy.volumeMaker &&
         x.market === msg.s &&
-        ((x.strategy === Strategy.volumeMaker &&
-          msg.refresh !== true &&
-          (x.config as { smartQuoting?: boolean }).smartQuoting === true) ||
-          x.strategy === Strategy.volumeFarm),
+        (x.config as { smartQuoting?: boolean }).smartQuoting === true,
     ))
       await this.#feed(r, { type: "book", at: recvAt, market: msg.s, bid: msg.b, ask: msg.a });
   }
@@ -1265,6 +1276,20 @@ export class Engine {
       const lev = await this.#ensureLeverage(r, event.at);
       if (lev === "rejected") await this.#pauseBot(r, ReasonCode.orderRejected);
       if (lev !== "ok") return;
+    }
+    // Volume Farm: giá tốt nhất SoDEX mới nhất (bộ nhớ) vào state trước bước này, giữ đúng giờ nhận để tuổi sổ là tuổi
+    // thật. Chỉ đổi state trong bộ nhớ; được ghi DB cùng bước này nếu bước có gì để ghi (DEC-TBD-vb-live-book).
+    if (r.strategy === Strategy.volumeFarm && !accounting) {
+      const live = this.#farmBooks.get(r.market);
+      if (live !== undefined && live.at > (this.#farmBookFed.get(r) ?? -Infinity)) {
+        this.#farmBookFed.set(r, live.at);
+        r.state = r.module.step(
+          r.config,
+          r.state,
+          { type: "book", at: live.at, market: r.market, bid: live.bid, ask: live.ask },
+          r.ctx,
+        ).state;
+      }
     }
     const prev = r.state;
     const result = r.module.step(r.config, r.state, event, r.ctx);
