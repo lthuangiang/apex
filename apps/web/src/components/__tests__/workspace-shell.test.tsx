@@ -77,6 +77,7 @@ describe("WorkspaceShell sidebar order", () => {
       "Platform Stats",
       "Bot Monitor",
       "Market hours",
+      "System Architecture Diagram",
       "Settings",
     ]);
   });
@@ -116,6 +117,7 @@ describe("WorkspaceShell sidebar order", () => {
       "Platform Stats",
       "Bot Monitor",
       "Market hours",
+      "System Architecture Diagram",
     ]);
   }, 15_000);
 

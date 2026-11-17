@@ -422,10 +422,12 @@ function tryEnter(
     );
   let direction: "long" | "short" = sig.direction;
   const notes: string[] = [];
-  // Tồn kho ròng vượt một lệnh lớn nhất: buộc đi ngược lượt trước (apex MM inventory hard block).
+  // Khối lượng long / short của các lượt đã đóng lệch quá một lệnh lớn nhất: buộc đi ngược lượt trước (apex MM
+  // inventory hard block, DEC-80). Bot đang phẳng nên đây là một lượt mới như mọi lượt; câu Decisions nói đúng là cân
+  // khối lượng, không phải đưa vị thế về 0 (DEC-304).
   if (dec(s.netExposure).abs().gt(c.orderSizeMaxUsd) && s.lastSide !== null) {
     direction = s.lastSide === "long" ? "short" : "long";
-    notes.push(`Went ${direction} to bring the position back toward zero.`);
+    notes.push(`Went ${direction} to balance long and short volume.`);
   }
   if (c.reverseSignal) {
     direction = direction === "long" ? "short" : "long";
@@ -900,6 +902,8 @@ function onTimer(
           holdUntil: s.holdUntil ?? at,
         });
       }
+      // Version mới đang chờ áp (DEC-304): không mở lượt mới, để engine áp khi bot phẳng.
+      if (ctx.versionPending !== undefined) return none(s);
       return snap === undefined ? none(s) : tryEnter(c, s, ctx, at, snap.candles);
     }
     case "halted":
@@ -1004,6 +1008,33 @@ function onFill(
   const done: StepResult<VolumeFarmState> = { actions, state: { ...state, exitReason: null } };
   const g = guards(c, done.state, ctx);
   return g === null ? done : { actions: [...done.actions, ...g.actions], state: g.state };
+}
+
+/**
+ * Áp version mới (DEC-304). Chỉ khi bot phẳng và không có lệnh vào / thoát đang chạy; không thì null:
+ * engine không huỷ gì (stop trên SoDEX của lượt đang mở còn nguyên) và version cũ quản lý lượt đó tới khi đóng.
+ * Lúc áp: state mới như DEC-38 (sổ cái phiên mới), nhưng giữ danh sách lệnh gần nhất để fill đến muộn của version cũ
+ * vẫn vào sổ cái, giữ phần vị thế lẻ (dưới min size) để sổ cái khớp SoDEX, giữ sổ lệnh và thời gian nghỉ.
+ */
+export function applyVolumeFarmVersion(
+  c: VolumeFarmConfig,
+  s: VolumeFarmState,
+  ctx: StepContext,
+): VolumeFarmState | null {
+  if (s.phase !== "idle" || s.entry !== null || s.exit !== null || !dust(s, ctx, c.market))
+    return null;
+  const fresh = initial();
+  return {
+    ...fresh,
+    ledger: { ...fresh.ledger, position: s.ledger.position, avgCost: s.ledger.avgCost },
+    orders: s.orders,
+    staleXstop: s.staleXstop ?? s.xstop?.id ?? null,
+    lastPrice: s.lastPrice,
+    book: s.book,
+    bookAt: s.bookAt,
+    bookStreamAt: s.bookStreamAt ?? null,
+    cooldownUntil: s.cooldownUntil,
+  };
 }
 
 export function stepVolumeFarm(
@@ -1137,4 +1168,5 @@ export function stepVolumeFarm(
 export const volumeFarm: StrategyModule<VolumeFarmConfig, VolumeFarmState> = {
   initialState: initial,
   step: stepVolumeFarm,
+  applyVersion: applyVolumeFarmVersion,
 };

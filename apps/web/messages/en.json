@@ -54,7 +54,8 @@
       "sections": {
         "copy": "Copy Trading"
       },
-      "marketHours": "Market hours"
+      "marketHours": "Market hours",
+      "architecture": "System Architecture Diagram"
     },
     "dialog": {
       "consequences": "What happens"
@@ -3721,6 +3722,7 @@
     "noChanges": "No changes yet.",
     "whatHappens": "What happens when you apply",
     "applyEffect": "Open orders are cancelled and placed again from the new settings.",
+    "applyEffectFarm": "If a trade is open, it finishes on the current settings first. The new settings start once the bot is flat.",
     "discard": "Discard",
     "review": "Review and apply v{next}",
     "history": "Version history",
@@ -3731,6 +3733,9 @@
     },
     "applying": "Applying v{next}…",
     "live": "v{next} is live.",
+    "waitingFarm": "v{next} starts after the open trade closes. Until then the current settings manage it.",
+    "waitingFarmPaused": "The bot is paused, so v{next} waits. It starts after the bot is running and the open trade closes.",
+    "waitingPaused": "The bot is paused, so v{next} starts when you resume it.",
     "retune": {
       "title": "Retune with AI",
       "body": "Fills the editable fields with AI parameters for current market conditions. Changed fields are marked, and you review the diff before applying.",
@@ -6472,5 +6477,18 @@
       "collecting": "Cost to make markets: collecting since {date}"
     },
     "footer": "Past numbers, not a forecast; nothing on this page pauses or changes bots."
+  },
+  "architecture": {
+    "title": "System Architecture Diagram",
+    "subtitle": "How DeskLabs is built, and the path each request, live update and background job takes through it.",
+    "forbidden": "This page is for the DeskLabs team only.",
+    "loading": "Loading the diagram…",
+    "errorTitle": "Couldn't load the diagram.",
+    "retry": "Try again",
+    "flowsLabel": "Flows",
+    "diagramLabel": "DeskLabs system diagram",
+    "stepsLabel": "Steps",
+    "detailHint": "Select a service to see its details.",
+    "legendLabel": "Color key"
   }
 }
