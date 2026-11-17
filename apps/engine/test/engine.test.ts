@@ -40,6 +40,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import {
   Engine as RealEngine,
+  CLOSE_RETRY,
   FencedError,
   LeaseExpiredError,
   shardOf,
@@ -4937,8 +4938,10 @@ describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease
           mono += 1e9;
           down = true;
         },
+        // Redis trở lại và thời gian trôi qua (quá chu kỳ gia hạn, nên lần gia hạn kế tiếp được thử ngay).
         restore: () => {
           down = false;
+          mono += 60_000;
         },
       },
     };
@@ -5098,7 +5101,8 @@ describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease
     await e.tick();
     expect((await botState(botId))?.state).toBe("stopping");
     gw.notSent = null;
-    clock += 1;
+    // Lần thử lại theo nấc: 5 s sau lần đầu.
+    clock += CLOSE_RETRY.backoffMs[0];
     await e.tick();
     expect(gw.received.filter((o) => o.tag === "close")).toEqual([
       expect.objectContaining({ side: "sell", quantity: "2", reduceOnly: true }),
@@ -5153,5 +5157,148 @@ describe("lease checks keep saved state and orders in step (DEC-TBD-engine-lease
     expect(gw.received.length).toBeGreaterThan(before);
     f.ctl.restore();
     await f.e.stop();
+  });
+
+  const eventsOf = async (botId: string, decision: string) => {
+    const { and, eq } = await import("drizzle-orm");
+    return db
+      .select()
+      .from(botEvents)
+      .where(and(eq(botEvents.botId, botId), eq(botEvents.decision, decision)));
+  };
+
+  it("sends the close again when its first send timed out and SoDEX never got it (reconciled not_placed)", async () => {
+    const gw = new FakeGateway();
+    const { botId, e } = await stoppingWithPosition(gw, "STOPT-USD", "stop-timeout");
+    gw.received.length = 0;
+    gw.timeoutNext = "lost";
+    clock += 1;
+    await e.tick();
+    expect((await botState(botId))?.state).toBe("stopping");
+    expect((await ordersOf(botId)).find((o) => o.tag === "close")?.status).toBe("unknown");
+    // Không thấy trên SoDEX sau thời gian chờ: đối soát ghi not_placed (không có mã), Stop gửi lại cùng clOrdID.
+    clock += 31_000;
+    await e.tick();
+    clock += 1;
+    await e.tick();
+    expect(gw.received.filter((o) => o.tag === "close")).toEqual([
+      expect.objectContaining({ side: "sell", quantity: "2", reduceOnly: true }),
+    ]);
+    expect((await botState(botId))?.state).toBe("stopped");
+    await e.stop();
+  });
+
+  it("sends the close again after a shard handover left it unknown (stale_epoch at the signer)", async () => {
+    const { eq } = await import("drizzle-orm");
+    let handover: (() => Promise<void>) | null = null;
+    const gw = new (class extends FakeGateway {
+      // Worker khác nhận shard đúng lúc lệnh đóng đang ký: signer từ chối epoch cũ (stale_epoch).
+      override async submit(
+        a: AccountRef,
+        list: readonly OrderIntent[],
+        fence: Fence,
+        rate?: number,
+      ): Promise<SubmitResult[]> {
+        const h = handover;
+        if (h !== null && list.some((o) => o.tag === "close")) {
+          handover = null;
+          await h();
+          return list.map((o) => ({
+            clOrdID: o.clOrdID,
+            outcome: "not_sent" as const,
+            code: "stale_epoch" as const,
+          }));
+        }
+        return super.submit(a, list, fence, rate);
+      }
+    })();
+    const { botId, accountId, e } = await (async () => {
+      const x = await stoppingWithPosition(gw, "STOPE-USD", "stop-handover");
+      const [b] = await db.select().from(bots).where(eq(bots.id, x.botId));
+      return { ...x, accountId: b?.sodexAccountId ?? "" };
+    })();
+    const shard = shardOf(accountId, SHARDS);
+    handover = async () => {
+      await db
+        .update(shardEpochs)
+        .set({ epoch: (e.epochOf(shard) ?? 0) + 1, owner: "other" })
+        .where(eq(shardEpochs.shard, shard));
+    };
+    gw.received.length = 0;
+    clock += 1;
+    await e.tick();
+    // Worker cũ không ghi được not_placed (fencing): dòng lệnh đóng ở lại `unknown` cho chủ mới.
+    expect((await ordersOf(botId)).find((o) => o.tag === "close")?.status).toBe("unknown");
+    e.kill();
+    await newRedis().del(`lease:shard:${String(shard)}`);
+    const b = flaky(gw, "stop-handover-new");
+    await b.e.tick();
+    expect(b.e.ownedShards).toContain(shard);
+    expect((await botState(botId))?.state).toBe("stopping");
+    clock += 31_000;
+    await b.e.tick();
+    clock += 1;
+    await b.e.tick();
+    expect(gw.received.filter((o) => o.tag === "close")).toEqual([
+      expect.objectContaining({ side: "sell", quantity: "2", reduceOnly: true }),
+    ]);
+    expect((await botState(botId))?.state).toBe("stopped");
+    await b.e.stop();
+  });
+
+  it("finishes the Stop with the position open and one clear line when the API key can't sign the close", async () => {
+    const gw = new FakeGateway();
+    const { botId, e } = await stoppingWithPosition(gw, "STOPK-USD", "stop-key");
+    gw.received.length = 0;
+    gw.notSent = "key_unusable";
+    clock += 1;
+    await e.tick();
+    clock += 1;
+    await e.tick();
+    const bot = await botState(botId);
+    expect(bot?.state).toBe("stopped");
+    expect(bot?.needsAttention).toBe(true);
+    const lines = await eventsOf(botId, "Couldn't close your position");
+    expect(lines.map((l) => l.why)).toEqual([
+      "SoDEX didn't receive the close order (key_unusable). Your STOPK-USD position is still open — close it on SoDEX.",
+    ]);
+    expect(await eventsOf(botId, "Can't sign with your API key")).toHaveLength(0);
+    gw.notSent = null;
+    await e.stop();
+  });
+
+  it("retries a close the signer keeps refusing on 5 s → 15 s → 60 s steps, logs it once, and gives up after 10 minutes", async () => {
+    let submits = 0;
+    const gw = new (class extends FakeGateway {
+      override submit(
+        a: AccountRef,
+        list: readonly OrderIntent[],
+        fence: Fence,
+        rate?: number,
+      ): Promise<SubmitResult[]> {
+        if (list.some((o) => o.tag === "close")) submits += 1;
+        return super.submit(a, list, fence, rate);
+      }
+    })();
+    const { botId, e } = await stoppingWithPosition(gw, "STOPR-USD", "stop-retry");
+    gw.notSent = "signer_unavailable";
+    // 90 nhịp 1 s: thử ở 0 s, 5 s, 20 s, 80 s.
+    for (let i = 0; i < 90; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    expect(submits).toBe(4);
+    expect((await botState(botId))?.state).toBe("stopping");
+    expect(await eventsOf(botId, "Close order not sent")).toHaveLength(1);
+    expect(await eventsOf(botId, "Paused: could not reach the signer")).toHaveLength(0);
+    // Quá 10 phút vẫn chưa gửi được: kết thúc Stop, vị thế còn mở, báo một lần.
+    clock += CLOSE_RETRY.giveUpMs;
+    await e.tick();
+    const bot = await botState(botId);
+    expect(bot?.state).toBe("stopped");
+    expect(bot?.needsAttention).toBe(true);
+    expect(await eventsOf(botId, "Couldn't close your position")).toHaveLength(1);
+    gw.notSent = null;
+    await e.stop();
   });
 });

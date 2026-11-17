@@ -216,4 +216,53 @@ describe("LeaseSet", () => {
     expect(slow.store.has("lease:shard:1")).toBe(false);
     expect(lost).toEqual([]);
   });
+
+  it("does not wait on a renew when one is in flight or the last one just failed (Redis outage)", async () => {
+    await acquire(1);
+    redis.fail = new Error("redis down");
+    await set.renew(); // lỗi
+    const evals = redis.evals;
+    await set.renewIfIdle(); // vừa lỗi: không thử lại ngay
+    expect(redis.evals).toBe(evals);
+    await vi.advanceTimersByTimeAsync(100); // qua chu kỳ gia hạn: thử lại
+    redis.fail = null;
+    await set.renewIfIdle();
+    expect(redis.evals).toBeGreaterThan(evals);
+    expect(set.valid(1)).toBe(true);
+  });
+
+  it("treats a verify that hangs as unverified: gives the key back and reports the lease lost", async () => {
+    const hung = new LeaseSet<number>({
+      redis,
+      ttlMs: TTL,
+      clock: () => Date.now(),
+      verify: () => new Promise(() => undefined),
+      onLost: (id, reason) => {
+        lost.push([id, reason]);
+      },
+    });
+    const lease = new Lease(redis, "lease:shard:1", TTL);
+    expect(await lease.tick()).toBe(true);
+    hung.add(1, lease, Date.now());
+    redis.store.delete("lease:shard:1");
+    const done = hung.renew();
+    await vi.advanceTimersByTimeAsync(100);
+    await done;
+    expect(lost).toEqual([[1, "unverified"]]);
+    expect(hung.has(1)).toBe(false);
+    expect(redis.store.has("lease:shard:1")).toBe(false);
+  });
+
+  it("drops the lease when taking it back hangs, so a late SET NX is never renewed without verify", async () => {
+    await acquire(1);
+    redis.store.delete("lease:shard:1");
+    const hangSet = redis.set.bind(redis);
+    redis.set = () => new Promise(() => undefined);
+    const done = set.renew();
+    await vi.advanceTimersByTimeAsync(100);
+    await done;
+    redis.set = hangSet;
+    expect(lost).toEqual([[1, "unverified"]]);
+    expect(set.has(1)).toBe(false);
+  });
 });

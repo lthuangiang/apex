@@ -73,7 +73,7 @@ import {
   type StrategyModule,
   type OrderIntent,
 } from "@drift/strategies";
-import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import { openedAlerts, SkipGate, skipMarket, skippedAlert, skipReason } from "./copy-alerts";
@@ -339,6 +339,8 @@ interface Runner {
   rejectLog: Map<string, { times: number[]; loggedAt: number | null }>;
   /** Giới hạn tin `copy_bot_skipped` của bot copy (DEC-212), trong bộ nhớ. */
   skipGate: SkipGate;
+  /** Lệnh đóng của Stop chưa gửi được: nấc thử lại và các lý do đã ghi Decisions (#sendCloses). */
+  closeRetry: { since: number; attempts: number; nextAt: number; reasons: Set<string> } | null;
 }
 
 /**
@@ -373,6 +375,12 @@ export const REJECT_LOG_WINDOW_MS = 60_000;
 /** Câu Decisions cho lệnh bị SoDEX từ chối (câu chữ đã duyệt). */
 export const rejectLogText = (reason: string, n: number): string =>
   `Order refused by SoDEX: ${reason} (${String(n)} in the last minute).`;
+
+/**
+ * Lệnh đóng của Stop chưa rời DeskLabs: thử lại sau 5 s → 15 s → 60 s (rồi giữ 60 s); vẫn chưa gửi được sau 10 phút thì
+ * kết thúc Stop với vị thế còn mở và báo người dùng (DEC-TBD-engine-lease-renew).
+ */
+export const CLOSE_RETRY = { backoffMs: [5_000, 15_000, 60_000], giveUpMs: 600_000 } as const;
 
 /** Backoff khi request chưa rời DRIFT: 2 s → 4 s → … tối đa 60 s; quá 5 lần hoặc 5 phút thì pause bot. */
 export const NOT_SENT_BACKOFF = {
@@ -532,6 +540,10 @@ export class Engine {
       // Đọc DB đầu vòng lỗi: bỏ phần việc của shard ở vòng này nhưng vẫn trả về bình thường, để vòng ngoài (main.ts)
       // vẫn đồng bộ user stream; vòng sau đọc lại.
       this.#d.log.error({ err: error }, "tick snapshot failed; skipping shard work this tick");
+      this.#logSlowTick(started, {
+        manageShards: managed - started,
+        snapshot: this.#clockMono() - managed,
+      });
       return;
     }
     const phases: Record<string, number> = {
@@ -571,6 +583,11 @@ export class Engine {
         } else this.#d.log.error({ err: error, shard }, "shard loop failed");
       }
     }
+    this.#logSlowTick(started, phases, skipped);
+  }
+
+  /** Log `tick slow` khi một vòng lâu hơn TTL/2, kèm thời gian từng bước. */
+  #logSlowTick(started: number, phases: Record<string, number>, skipped = 0): void {
     const ms = this.#clockMono() - started;
     if (ms > this.#d.leaseTtlMs / 2)
       this.#d.log.warn(
@@ -589,33 +606,24 @@ export class Engine {
   async #leaseConfirmed(shard: number): Promise<boolean> {
     if (this.#leaseSet.valid(shard)) return true;
     if (!this.#leaseSet.has(shard) || this.#stopped) return false;
-    await this.#leaseSet.renew();
+    // Không chờ khi đã có lần gia hạn đang chạy hoặc vừa lỗi (Redis đang sự cố): mỗi bước của shard không treo tới hạn chờ.
+    await this.#leaseSet.renewIfIdle();
     return this.#leaseSet.valid(shard);
   }
 
-  /** Hoàn tác một bước chiến lược chưa gửi gì: state cũ (bộ nhớ + DB) và xoá các dòng lệnh tạm `unknown`. */
-  async #undoStep(r: Runner, rollback: unknown, list: readonly OrderIntent[]): Promise<void> {
-    const ids = list.map((o) => o.clOrdID);
+  /**
+   * Hoàn tác một bước chiến lược chưa có tác dụng phụ nào (đầu `#execute`): chỉ đưa state về như trước (bộ nhớ + DB).
+   * Không đụng dòng lệnh hay danh sách chờ huỷ: dòng `unknown` cùng clOrdID (nếu có) thuộc một lần gửi trước, có thể
+   * đang sống trên SoDEX (quy tắc 1.7).
+   */
+  async #restoreState(r: Runner, rollback: unknown): Promise<void> {
     r.state = rollback;
-    for (const id of ids) {
-      this.#pendingCancels.get(r.botId)?.delete(id);
-      this.#inflightCancels.delete(id);
-    }
-    await this.#fenced(r, async (tx) => {
-      await tx
-        .delete(orders)
-        .where(
-          and(
-            eq(orders.sodexAccountId, r.account.id),
-            inArray(orders.clOrdId, ids),
-            eq(orders.status, "unknown"),
-          ),
-        );
-      await tx
+    await this.#fenced(r, (tx) =>
+      tx
         .update(botRuntime)
         .set({ state: r.state, updatedAt: new Date() })
-        .where(eq(botRuntime.botId, r.botId));
-    });
+        .where(eq(botRuntime.botId, r.botId)),
+    );
   }
 
   /**
@@ -1478,6 +1486,7 @@ export class Engine {
       marginRejectTimes: [],
       rejectLog: new Map(),
       skipGate: new SkipGate(),
+      closeRetry: null,
     };
   }
 
@@ -1895,7 +1904,7 @@ export class Engine {
       source?.event.type !== "resumed" &&
       !(await this.#leaseConfirmed(r.shard))
     ) {
-      await this.#undoStep(r, rollback, places);
+      await this.#restoreState(r, rollback);
       throw new LeaseExpiredError(r.shard);
     }
     const cancels = actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : []));
@@ -2079,7 +2088,9 @@ export class Engine {
         }
         if (notSent.length < results.length) r.blocked = null;
         // Báo lý do trước (vd `API_KEY_UNUSABLE` cho cả account), rồi mới đưa orderReject cho chiến lược.
-        if (firstNotSent !== undefined) await this.#notSent(r, firstNotSent.code, at);
+        // Lệnh đóng của Stop (`source` null) có đường thử lại riêng (#sendCloses): không backoff / pause / ghi lỗi ở đây.
+        if (firstNotSent !== undefined && source !== null)
+          await this.#notSent(r, firstNotSent.code, at);
         let reduceRejected: {
           o: OrderIntent;
           res: { code: string; message: string | null };
@@ -2855,35 +2866,87 @@ export class Engine {
   }
 
   /**
-   * Chiến lược dừng (halt) khi bot còn lệnh `unknown` (quy tắc 1.7): chuyển bot sang `stopping` kèm lý do và lựa chọn
-   * đóng vị thế trong một transaction có fence, rồi ghi event "Stopping" với lý do. UI hiện "Stopping…" đúng sự thật
-   * (quy tắc 1.6); đường Stop của người dùng làm nốt khi đã đối soát xong.
-   */
-  /**
-   * Gửi lệnh đóng vị thế của Stop. Trả `false` khi có lệnh đóng chưa rời DRIFT, để Stop KHÔNG kết thúc với vị thế còn mở:
-   * lease của shard không xác nhận được (không ghi dòng lệnh nào), hoặc signer / key lỗi (`not_sent`). Dòng `not_placed`
-   * kèm mã not-sent của lần trước được xoá trước khi gửi lại cùng clOrdID (unique theo account + clOrdID từng chặn lần
-   * gửi lại, bot dừng mà vị thế còn mở). Dòng đã rời DRIFT (`unknown`, `open`…) giữ nguyên, không gửi lại (quy tắc 1.7).
+   * Gửi lệnh đóng vị thế của Stop. Trả `true` khi Stop được kết thúc: lệnh đóng đã rời DeskLabs (SoDEX nhận / từ chối),
+   * hoặc bỏ hẳn (xem dưới). Trả `false` khi Stop phải chờ (bot giữ `stopping`, vòng sau gọi lại):
+   * - lease của shard không xác nhận được (không ghi dòng lệnh nào);
+   * - đang chờ theo nấc thử lại `CLOSE_RETRY` sau lần trước chưa gửi được;
+   * - lệnh đóng còn `unknown` (chờ #reconcile; quy tắc 1.7);
+   * - lệnh đóng chưa rời DeskLabs: `not_placed` do signer / key lỗi, hoặc do đối soát không thấy trên SoDEX. Dòng
+   *   `not_placed` được xoá trước lần gửi lại cùng clOrdID (unique theo account + clOrdID từng chặn lần gửi lại).
+   * Mỗi lý do ghi Decisions một lần. Key không dùng được, hoặc vẫn chưa gửi được sau `CLOSE_RETRY.giveUpMs`: kết thúc Stop
+   * với vị thế còn mở, bật Needs attention, ghi một dòng "Couldn't close your position".
    */
   async #sendCloses(r: Runner, closes: StrategyAction[]): Promise<boolean> {
-    const ids = closes.flatMap((a) => (a.type === "place" ? [a.order.clOrdID] : []));
+    const list = closes.flatMap((a) => (a.type === "place" ? [a.order] : []));
+    const ids = list.map((o) => o.clOrdID);
     if (ids.length === 0) return true;
+    const now = this.#d.now();
+    const retry = r.closeRetry;
+    if (retry !== null && now < retry.nextAt) return false;
     if (!(await this.#leaseConfirmed(r.shard))) {
       this.#d.log.warn({ botId: r.botId }, "close not sent: shard lease not confirmed");
       return false;
     }
     const mine = and(eq(orders.sodexAccountId, r.account.id), inArray(orders.clOrdId, ids));
+    // `not_placed` = chưa rời DeskLabs, hoặc đối soát đã không thấy trên SoDEX sau NOT_FOUND_AFTER_MS: gửi lại được.
     await this.#fenced(r, (tx) =>
-      tx
-        .delete(orders)
-        .where(and(mine, eq(orders.status, "not_placed"), isNotNull(orders.rejectCode))),
+      tx.delete(orders).where(and(mine, eq(orders.status, "not_placed"))),
     );
-    await this.#execute(r, closes, this.#d.now());
+    await this.#execute(r, closes, now);
     const rows = await this.#d.db
-      .select({ status: orders.status, rejectCode: orders.rejectCode })
+      .select({ clOrdId: orders.clOrdId, status: orders.status, rejectCode: orders.rejectCode })
       .from(orders)
       .where(mine);
-    return !rows.some((o) => o.status === "not_placed" && o.rejectCode !== null);
+    if (rows.some((o) => o.status === "unknown")) return false;
+    const failed = rows.filter((o) => o.status === "not_placed");
+    const first = failed[0];
+    if (first === undefined) {
+      r.closeRetry = null;
+      return true;
+    }
+    const code = first.rejectCode ?? "NOT_PLACED";
+    const markets = [
+      ...new Set(
+        list.filter((o) => failed.some((f) => f.clOrdId === o.clOrdID)).map((o) => o.market),
+      ),
+    ].join(", ");
+    const b = retry ?? { since: now, attempts: 0, nextAt: now, reasons: new Set<string>() };
+    const keyBroken = code === "key_unusable" || code === "key_not_active";
+    if (keyBroken || now - b.since >= CLOSE_RETRY.giveUpMs) {
+      r.closeRetry = null;
+      await this.#fenced(r, async (tx) => {
+        await tx.update(bots).set({ needsAttention: true }).where(eq(bots.id, r.botId));
+        await tx.insert(botEvents).values({
+          botId: r.botId,
+          type: "error",
+          decision: "Couldn't close your position",
+          why: `SoDEX didn't receive the close order (${code}). Your ${markets} position is still open — close it on SoDEX.`,
+          occurredAt: new Date(now),
+        });
+      });
+      this.#d.log.warn(
+        { botId: r.botId, code, attempts: b.attempts + 1 },
+        "stop gave up on its close order",
+      );
+      // Key hỏng thì mọi bot tiền thật khác của account cũng không ký được (như #notSent).
+      if (keyBroken) await this.pauseAccount(r.account.id, ReasonCode.apiKeyUnusable);
+      return true;
+    }
+    b.attempts += 1;
+    b.nextAt =
+      now + (CLOSE_RETRY.backoffMs[Math.min(b.attempts, CLOSE_RETRY.backoffMs.length) - 1] ?? 0);
+    if (!b.reasons.has(code)) {
+      b.reasons.add(code);
+      await this.#event(
+        r,
+        "error",
+        "Close order not sent",
+        `SoDEX didn't receive the close order (${code}). DeskLabs will try again.`,
+        now,
+      );
+    }
+    r.closeRetry = b;
+    return false;
   }
 
   /** Lệnh đóng chưa gửi được: Stop của người dùng giữ `stopping` (nhịp sau thử lại); dừng do chiến lược thì ghi `stopping`. */
@@ -2892,6 +2955,11 @@ export class Engine {
     if (reason !== null) await this.#haltToStopping(r, reason, true);
   }
 
+  /**
+   * Chiến lược dừng (halt) khi bot còn lệnh `unknown` (quy tắc 1.7): chuyển bot sang `stopping` kèm lý do và lựa chọn
+   * đóng vị thế trong một transaction có fence, rồi ghi event "Stopping" với lý do. UI hiện "Stopping…" đúng sự thật
+   * (quy tắc 1.6); đường Stop của người dùng làm nốt khi đã đối soát xong.
+   */
   async #haltToStopping(r: Runner, reason: Reason, close: boolean): Promise<void> {
     await this.#fenced(r, async (tx) => {
       const [b] = await tx

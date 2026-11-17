@@ -159,6 +159,8 @@ export class LeaseSet<K> {
   #timer: ReturnType<typeof setTimeout> | null = null;
   #running = false;
   #inflight: Promise<void> | null = null;
+  /** Lúc (đồng hồ `clock`) lần gia hạn gần nhất lỗi vì Redis (lỗi / quá hạn chờ). */
+  #failedAt: number | null = null;
 
   constructor(options: LeaseSetOptions<K>) {
     const renewEveryMs = options.renewEveryMs ?? Math.max(1, Math.floor(options.ttlMs / 3));
@@ -239,6 +241,16 @@ export class LeaseSet<K> {
     return this.#inflight;
   }
 
+  /**
+   * Gia hạn ngay chỉ khi không có lần nào đang chạy và lần trước không vừa lỗi (trong `renewEveryMs`): người gọi kiểm tra
+   * `valid()` ngay sau đó, không phải chờ tới hạn chờ ở mỗi lần gọi khi Redis đang sự cố.
+   */
+  async renewIfIdle(): Promise<void> {
+    if (this.#inflight !== null) return;
+    if (this.#failedAt !== null && this.#o.clock() - this.#failedAt < this.#o.renewEveryMs) return;
+    await this.renew();
+  }
+
   #schedule(): void {
     if (!this.#running) return;
     this.#timer = setTimeout(() => {
@@ -264,9 +276,11 @@ export class LeaseSet<K> {
       );
     } catch (error) {
       // Redis lỗi: không gia hạn được, `validUntil` tự hết; lần sau thử lại.
+      this.#failedAt = this.#o.clock();
       this.#o.onError?.(error);
       return;
     }
+    this.#failedAt = null;
     for (const [i, [id, entry]] of entries.entries()) {
       if (this.#entries.get(id) !== entry) continue;
       if (ok[i] === true) entry.validUntil = sentAt + this.#o.ttlMs - this.#o.marginMs;
@@ -281,6 +295,13 @@ export class LeaseSet<K> {
       got = await this.#bounded(entry.lease.tick());
     } catch (error) {
       this.#o.onError?.(error);
+      // `SET NX` không rõ kết quả (có thể thành công muộn): không giữ gì gắn với lease này, vì lần gia hạn sau có thể
+      // "gia hạn được" key đó mà chưa qua `verify`.
+      if (this.#entries.get(id) === entry) {
+        this.#entries.delete(id);
+        await this.#releaseQuietly(entry.lease);
+        this.#o.onLost(id, "unverified");
+      }
       return;
     }
     // Lease đã bị bỏ khỏi set trong lúc chờ (stop, trả bớt shard): không giữ key vừa giành lại.
@@ -295,7 +316,7 @@ export class LeaseSet<K> {
     }
     let same: boolean | null;
     try {
-      same = await this.#o.verify(id);
+      same = await this.#bounded(this.#o.verify(id));
     } catch (error) {
       this.#o.onError?.(error);
       same = null;
@@ -316,7 +337,7 @@ export class LeaseSet<K> {
   }
 
   async #releaseQuietly(lease: Lease): Promise<void> {
-    await lease.release().catch((error: unknown) => {
+    await this.#bounded(lease.release()).catch((error: unknown) => {
       this.#o.onError?.(error);
     });
   }
