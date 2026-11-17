@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
 import { codeParts, edgesOf, nodesOf, pointAt } from "../architecture-map";
@@ -84,6 +84,20 @@ const MAP: ArchitectureMap = {
         { edge: "bc", back: true, node: null, title: "Step D", body: "" },
       ],
     },
+    {
+      id: "long",
+      kind: "BOT",
+      title: "Flow three",
+      lead: "Lead three",
+      // 12 bước: danh sách dài hơn sơ đồ (desktop cuộn riêng).
+      steps: Array.from({ length: 12 }, (_, i) => ({
+        edge: i < 6 ? "ab" : null,
+        back: false,
+        node: i < 6 ? null : "b",
+        title: `Long step ${String(i + 1)}`,
+        body: "Body",
+      })),
+    },
   ],
   defaultFlow: "one",
 };
@@ -113,6 +127,17 @@ function wrap() {
     </QueryClientProvider>,
   );
 }
+
+// jsdom không có scrollIntoView và matchMedia.
+const scrollIntoView = vi.fn();
+const motion = { reduce: false };
+beforeEach(() => {
+  scrollIntoView.mockClear();
+  motion.reduce = false;
+  Element.prototype.scrollIntoView = scrollIntoView;
+  window.matchMedia = (query: string) =>
+    ({ matches: query.includes("reduce") && motion.reduce, media: query }) as MediaQueryList;
+});
 
 afterEach(() => {
   cleanup();
@@ -201,6 +226,36 @@ describe("System Architecture Diagram page", () => {
     expect(step).toHaveAttribute("aria-pressed", "true");
     await user.keyboard(" ");
     expect(step).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("scrolls the step list on its own and brings a step picked on the diagram into view", async () => {
+    const user = userEvent.setup({ delay: null });
+    const { container } = wrap();
+    await user.click(await screen.findByRole("button", { name: /Flow three/ }));
+
+    // Khung cuộn riêng (desktop): vùng có tên, focus được bằng bàn phím, chứa danh sách bước.
+    const panel = screen.getByRole("region", { name: "Flow steps" });
+    expect(panel).toHaveAttribute("tabindex", "0");
+    expect(panel.className).toMatch(/min-\[1600px\]:overflow-y-auto/);
+    expect(within(panel).getByRole("list", { name: "Steps" })).toBeInTheDocument();
+    expect(within(panel).getAllByRole("listitem")).toHaveLength(12);
+
+    // Bấm số 12 trên sơ đồ: bước 12 được ghim và cuộn vào khung.
+    const badge = [...container.querySelectorAll("svg text")].find((n) => n.textContent === "12");
+    if (badge === undefined) throw new Error("badge 12");
+    await user.click(badge);
+    const step12 = screen.getByRole("button", { name: /Long step 12/ });
+    expect(step12).toHaveAttribute("aria-pressed", "true");
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView.mock.contexts[0]).toBe(step12.closest("li"));
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
+
+    // Người bật "reduce motion": cuộn ngay, không chạy hiệu ứng.
+    motion.reduce = true;
+    const eleven = [...container.querySelectorAll("svg text")].find((n) => n.textContent === "11");
+    if (eleven === undefined) throw new Error("badge 11");
+    await user.click(eleven);
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", behavior: "auto" });
   });
 
   it("opens the flow named in the link", async () => {

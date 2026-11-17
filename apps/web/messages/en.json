@@ -6488,6 +6488,7 @@
     "flowsLabel": "Flows",
     "diagramLabel": "DeskLabs system diagram",
     "stepsLabel": "Steps",
+    "stepsRegionLabel": "Flow steps",
     "detailHint": "Select a service to see its details.",
     "legendLabel": "Color key"
   }

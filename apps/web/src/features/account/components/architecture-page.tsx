@@ -9,7 +9,7 @@ import {
 import { Button, Skeleton } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useEffect, useId, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 
 import { Card, PageHead, Workspace } from "@/components/workspace";
 import { api, ApiError } from "@/lib/api";
@@ -217,6 +217,16 @@ function Diagram({ map }: { map: ArchitectureMap }) {
   const [pinned, setPinned] = useState<number | null>(null);
   const hot = hover ?? pinned;
   const uid = useId();
+  // Bước được ghim (từ danh sách hoặc số bước trên sơ đồ) cuộn vào khung danh sách bước (desktop cuộn riêng).
+  const stepRefs = useRef(new Map<number, HTMLElement>());
+  useEffect(() => {
+    if (pinned === null) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    stepRefs.current.get(pinned)?.scrollIntoView({
+      block: "nearest",
+      behavior: reduce ? "auto" : "smooth",
+    });
+  }, [pinned, flowId]);
   const arrow = `${uid}-arrow`;
 
   // Luồng nằm trong hash (#auto, #copy…) để gửi link cho nhau.
@@ -279,7 +289,9 @@ function Diagram({ map }: { map: ArchitectureMap }) {
       </nav>
 
       <div className="grid grid-cols-1 items-start gap-4 min-[1600px]:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-2">
+        {/* Hai cột (≥ 1600 px): sơ đồ và khung bước cùng dính ở đầu màn hình; khung bước cao tối đa bằng màn hình và
+            danh sách bước có thanh cuộn riêng, nên đọc bước cuối không đẩy sơ đồ ra khỏi màn hình. Một cột: như cũ. */}
+        <div className="flex min-w-0 flex-col gap-2 rounded-card border border-border bg-surface p-2 min-[1600px]:sticky min-[1600px]:top-4">
           <div
             role="region"
             aria-label={t("diagramLabel")}
@@ -476,7 +488,15 @@ function Diagram({ map }: { map: ArchitectureMap }) {
                 return badgeSpots(x.steps.length).map((spot, k) => {
                   const [bx, by] = pointAt(e.points, spot);
                   const num = x.steps[k] ?? 0;
-                  return <Badge key={`${x.edge}-${String(num)}`} x={bx} y={by} n={num} />;
+                  return (
+                    <Badge
+                      key={`${x.edge}-${String(num)}`}
+                      x={bx}
+                      y={by}
+                      n={num}
+                      onPick={setPinned}
+                    />
+                  );
                 });
               })}
               {flow.steps.map((s, i) => {
@@ -485,7 +505,13 @@ function Diagram({ map }: { map: ArchitectureMap }) {
                 // Nhiều bước cùng gắn một icon (Pause: engine 3 lần) xếp hàng ngang trên góc phải.
                 const before = flow.steps.slice(0, i).filter((x) => x.node === s.node).length;
                 return (
-                  <Badge key={`n-${String(i)}`} x={n.x + 30 + before * 24} y={n.y - 36} n={i + 1} />
+                  <Badge
+                    key={`n-${String(i)}`}
+                    x={n.x + 30 + before * 24}
+                    y={n.y - 36}
+                    n={i + 1}
+                    onPick={setPinned}
+                  />
                 );
               })}
             </svg>
@@ -509,59 +535,78 @@ function Diagram({ map }: { map: ArchitectureMap }) {
 
         <aside
           aria-labelledby={`${uid}-flow`}
-          className="flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-4"
+          className="flex min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-4 min-[1600px]:sticky min-[1600px]:top-4 min-[1600px]:max-h-[calc(100dvh-2rem)]"
         >
           <h2 id={`${uid}-flow`} className="m-0 text-lg font-extrabold">
             {flow.title}
           </h2>
           <p className="m-0 text-sm text-ink-2">{flow.lead}</p>
-          <ol aria-label={t("stepsLabel")} className="m-0 flex list-none flex-col gap-0.5 p-0">
-            {flow.steps.map((s, i) => (
-              <li key={`${flow.id}-${String(i)}`}>
-                {/* Rê chuột hoặc focus vào một bước thì đường của bước đó đậm lên trong sơ đồ; click / Enter / Space ghim
-                    bước đó (bấm lại để bỏ ghim). */}
-                <button
-                  type="button"
-                  aria-pressed={pinned === i + 1}
-                  onClick={() => {
-                    setPinned((p) => (p === i + 1 ? null : i + 1));
+          <div
+            role="region"
+            aria-label={t("stepsRegionLabel")}
+            // Cuộn được bằng bàn phím (mũi tên / Page Down) khi danh sách dài hơn khung.
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+            tabIndex={0}
+            data-testid="arch-steps-scroll"
+            className="min-[1600px]:-mx-1 min-[1600px]:min-h-0 min-[1600px]:flex-1 min-[1600px]:scroll-py-2 min-[1600px]:overflow-y-auto min-[1600px]:px-1 min-[1600px]:[scrollbar-color:var(--muted)_transparent] min-[1600px]:[scrollbar-gutter:stable]"
+          >
+            <ol aria-label={t("stepsLabel")} className="m-0 flex list-none flex-col gap-0.5 p-0">
+              {flow.steps.map((s, i) => (
+                <li
+                  key={`${flow.id}-${String(i)}`}
+                  ref={(el) => {
+                    if (el === null) stepRefs.current.delete(i + 1);
+                    else stepRefs.current.set(i + 1, el);
                   }}
-                  onMouseEnter={() => {
-                    setHover(i + 1);
-                  }}
-                  onMouseLeave={() => {
-                    setHover(null);
-                  }}
-                  onFocus={() => {
-                    setHover(i + 1);
-                  }}
-                  onBlur={() => {
-                    setHover(null);
-                  }}
-                  className={`grid w-full cursor-pointer grid-cols-[28px_minmax(0,1fr)] gap-2.5 rounded-control border p-2 text-left text-ink ${pinned === i + 1 ? "border-ink" : "border-transparent"} ${hot === i + 1 ? "bg-surface-2" : "bg-transparent"}`}
                 >
-                  <span
-                    aria-hidden="true"
-                    className="flex size-6 items-center justify-center rounded-[5px] bg-arch-badge font-mono text-[13px] font-bold text-white"
+                  {/* Rê chuột hoặc focus vào một bước thì đường của bước đó đậm lên trong sơ đồ; click / Enter / Space ghim
+                    bước đó (bấm lại để bỏ ghim). */}
+                  <button
+                    type="button"
+                    aria-pressed={pinned === i + 1}
+                    onClick={() => {
+                      setPinned((p) => (p === i + 1 ? null : i + 1));
+                    }}
+                    onMouseEnter={() => {
+                      setHover(i + 1);
+                    }}
+                    onMouseLeave={() => {
+                      setHover(null);
+                    }}
+                    onFocus={() => {
+                      setHover(i + 1);
+                    }}
+                    onBlur={() => {
+                      setHover(null);
+                    }}
+                    className={`grid w-full cursor-pointer grid-cols-[28px_minmax(0,1fr)] gap-2.5 rounded-control border p-2 text-left text-ink ${pinned === i + 1 ? "border-ink" : "border-transparent"} ${hot === i + 1 ? "bg-surface-2" : "bg-transparent"}`}
                   >
-                    {i + 1}
-                  </span>
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <strong className="text-sm">
-                      <span className="sr-only">{`${String(i + 1)}. `}</span>
-                      <Rich text={s.title} />
-                    </strong>
-                    {s.body === "" ? null : (
-                      <span className="text-[13.5px] break-words text-ink-2">
-                        <Rich text={s.body} />
-                      </span>
-                    )}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ol>
-          <div aria-live="polite" className="flex flex-col gap-1.5 border-t border-border pt-3">
+                    <span
+                      aria-hidden="true"
+                      className="flex size-6 items-center justify-center rounded-[5px] bg-arch-badge font-mono text-[13px] font-bold text-white"
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <strong className="text-sm">
+                        <span className="sr-only">{`${String(i + 1)}. `}</span>
+                        <Rich text={s.title} />
+                      </strong>
+                      {s.body === "" ? null : (
+                        <span className="text-[13.5px] break-words text-ink-2">
+                          <Rich text={s.body} />
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <div
+            aria-live="polite"
+            className="flex shrink-0 flex-col gap-1.5 border-t border-border pt-3"
+          >
             {selected === undefined ? (
               <p className="m-0 text-sm text-muted">{t("detailHint")}</p>
             ) : (
@@ -586,9 +631,26 @@ function Diagram({ map }: { map: ArchitectureMap }) {
   );
 }
 
-function Badge({ x, y, n }: { x: number; y: number; n: number }) {
+/** Số bước trên sơ đồ. Bấm (chuột) thì ghim bước đó trong danh sách; bàn phím dùng danh sách bước. */
+function Badge({
+  x,
+  y,
+  n,
+  onPick,
+}: {
+  x: number;
+  y: number;
+  n: number;
+  onPick: (n: number) => void;
+}) {
   return (
-    <g aria-hidden="true">
+    <g
+      aria-hidden="true"
+      className="cursor-pointer"
+      onClick={() => {
+        onPick(n);
+      }}
+    >
       <rect
         x={x - 11}
         y={y - 11}
