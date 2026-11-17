@@ -1303,7 +1303,7 @@ describe("engine", () => {
     await e.stop();
   });
 
-  it("sends Market Making no refresh messages, and a bot without Smart quoting no live price (DEC-TBD-vb-live-book)", async () => {
+  it("sends Market Making no refresh messages, and a bot without Smart quoting no live price (DEC-298)", async () => {
     const { eq } = await import("drizzle-orm");
     // Bot MM của test trước không được phản ứng thay bot của test này.
     await db.update(bots).set({ state: "stopped" }).where(eq(bots.strategy, "volume_maker"));
@@ -2459,7 +2459,7 @@ describe("engine", () => {
     await stopFarmBots();
   });
 
-  it("enters Volume Farm at the live SoDEX price, but never treats an old message as fresh (DEC-TBD-vb-live-book)", async () => {
+  it("enters Volume Farm at the live SoDEX price, but never treats an old message as fresh (DEC-298)", async () => {
     // REST: 100 / 100.05 → mua 100, bán 101. WS: 99 / 99.02 → mua 99, bán 100 (tick 1).
     const gw = new FakeGateway();
     for (const m of ["AVAX-USD", "ADA-USD"]) {

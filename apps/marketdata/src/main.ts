@@ -317,7 +317,7 @@ async function start() {
   const fair = new BinanceFair((msg) => {
     nc.publish(marketSubject(msg.s, "fair"), JSON.stringify(msg));
   });
-  // Giá tốt nhất SoDEX thời gian thực cho bot Market Making (DEC-248) và Volume Farm (DEC-TBD-vb-live-book).
+  // Giá tốt nhất SoDEX thời gian thực cho bot Market Making (DEC-248) và Volume Farm (DEC-298).
   const bookRelay = new SodexBookRelay((msg) => {
     nc.publish(marketSubject(msg.s, "book"), JSON.stringify(msg));
   });
@@ -432,7 +432,7 @@ async function start() {
   let loggedDropped = "";
   /**
    * Market nghe WS và market gửi giá tốt nhất: top ∪ MM (DEC-227) trước, rồi tối đa `VF_EXTRA_LIVE_MARKETS` market
-   * Volume Farm (DEC-TBD-vb-live-book). Market Volume Farm bị bỏ thì ghi log một lần mỗi khi danh sách đổi.
+   * Volume Farm (DEC-298). Market Volume Farm bị bỏ thì ghi log một lần mỗi khi danh sách đổi.
    */
   const livePlan = async () => {
     const [mmAll, farmAll] = await Promise.all([mmBotMarkets(db), farmBotMarkets(db)]);
@@ -459,7 +459,7 @@ async function start() {
   };
   // Giá Binance cho các market có bot Market Making: đọc lại mỗi 30 s để bot mới có giá sớm.
   const fairWatch = async () => {
-    // Giá tốt nhất SoDEX cho bot Market Making và Volume Farm (DEC-248, DEC-TBD-vb-live-book).
+    // Giá tốt nhất SoDEX cho bot Market Making và Volume Farm (DEC-248, DEC-298).
     const { mm, plan } = await livePlan();
     bookRelay.setMarkets(plan.relay);
     // Market có bot mới phải có trên kết nối bookTicker ngay, không chờ vòng 5 phút của mmWatch.

@@ -120,7 +120,7 @@ void (async () => {
   }
 })();
 // Giá tốt nhất SoDEX thời gian thực (DEC-248, marketdata publish). Đóng dấu giờ nhận ngay lúc NATS giao tin.
-// Volume Farm: chỉ lưu giá mới nhất trong bộ nhớ, đọc lúc bước chiến lược (DEC-TBD-vb-live-book). Market Making: mỗi
+// Volume Farm: chỉ lưu giá mới nhất trong bộ nhớ, đọc lúc bước chiến lược (DEC-298). Market Making: mỗi
 // market xử lý tin mới nhất, tin cũ hơn đang chờ bị bỏ, các market chạy song song.
 const mmBooks = new BookCoalescer<MmBookMessage>(
   (msg, recvAt) => engine.onMmBook(msg, recvAt),

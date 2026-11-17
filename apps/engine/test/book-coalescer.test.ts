@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { BookCoalescer } from "../src/book-coalescer";
 
-// DEC-TBD-vb-live-book: hàng chờ giá tốt nhất SoDEX không dồn tin cũ.
+// DEC-298: hàng chờ giá tốt nhất SoDEX không dồn tin cũ.
 describe("BookCoalescer", () => {
   it("handles only the newest waiting message per market, with its own receive time", async () => {
     const seen: string[] = [];

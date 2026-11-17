@@ -81,7 +81,7 @@ Nguồn: [SoPoints Layer 1 Season](https://sodex.com/documentation/sopoints/laye
   và xu hướng đã bỏ (DEC-247). Câu "How it works" trên form theo đúng các bước này.
 - **Sổ lệnh SoDEX thời gian thực** (DEC-248): `marketdata` gửi `md.<market>.book` (giá mua / bán tốt nhất từ WS
   `bookTicker`, chỉ market có bot MM hoặc Volume Farm; market có bot mới được thêm vào kết nối WS ngay ở vòng 30 s). Bot MM
-  chỉ nhận tin khi giá đổi; tin `refresh` (giá không đổi, gửi lại tối đa mỗi giây cho Volume Farm, DEC-TBD-vb-live-book)
+  chỉ nhận tin khi giá đổi; tin `refresh` (giá không đổi, gửi lại tối đa mỗi giây cho Volume Farm, DEC-298)
   không tới bot MM. Engine đóng dấu giờ nhận lúc NATS giao tin và mỗi market chỉ xử lý tin mới nhất (tin cũ đang chờ bị
   bỏ), các market chạy song song. Bot
   bật Smart quoting: lệnh **mở** đang sống bị giá tốt nhất bỏ lại phía sau (bid tốt nhất cao hơn bid của mình, ask tốt nhất

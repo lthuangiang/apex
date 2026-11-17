@@ -32,7 +32,7 @@ export async function mmBotMarkets(db: Db): Promise<string[]> {
   return rows.map((r) => r.market);
 }
 
-/** Market có bot Volume Farm đang chạy hoặc đang pause (cần `md.<market>.book`, DEC-TBD-vb-live-book). */
+/** Market có bot Volume Farm đang chạy hoặc đang pause (cần `md.<market>.book`, DEC-298). */
 export async function farmBotMarkets(db: Db): Promise<string[]> {
   const rows = await db
     .selectDistinct({ market: bots.market })
@@ -48,7 +48,7 @@ export async function farmBotMarkets(db: Db): Promise<string[]> {
 
 /**
  * Số market Volume Farm tối đa được thêm vào kết nối WS ngoài top `MM_TOP_MARKETS` ∪ market có bot MM (giới hạn của
- * DEC-227, DEC-TBD-vb-live-book). Market Volume Farm vượt mức này không có giá WS: bot dùng sổ REST như DEC-82.
+ * DEC-227, DEC-298). Market Volume Farm vượt mức này không có giá WS: bot dùng sổ REST như DEC-82.
  */
 export const VF_EXTRA_LIVE_MARKETS = 5;
 

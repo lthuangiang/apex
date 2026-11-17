@@ -31,7 +31,7 @@ describe("SodexBookRelay (DEC-248)", () => {
     expect(sent).toHaveLength(2);
   });
 
-  it("re-sends an unchanged price at most once a second, marked refresh (DEC-TBD-vb-live-book)", () => {
+  it("re-sends an unchanged price at most once a second, marked refresh (DEC-298)", () => {
     const sent: MmBookMessage[] = [];
     const relay = new SodexBookRelay((m) => sent.push(m));
     relay.setMarkets(["ETH-USD"]);

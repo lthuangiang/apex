@@ -1,5 +1,5 @@
 /**
- * Hàng chờ giá tốt nhất SoDEX theo market (DEC-248, DEC-TBD-vb-live-book). Mỗi market tối đa một lần xử lý đang chạy;
+ * Hàng chờ giá tốt nhất SoDEX theo market (DEC-248, DEC-298). Mỗi market tối đa một lần xử lý đang chạy;
  * tin tới trong lúc đó chỉ giữ tin mới nhất (tin cũ hơn bị bỏ), các market chạy song song. Giờ nhận được đóng dấu lúc
  * NATS giao tin, nên tin phải chờ không bị coi là mới hơn tuổi thật của nó.
  */

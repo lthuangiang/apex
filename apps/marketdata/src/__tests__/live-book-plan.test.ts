@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { liveBookPlan, VF_EXTRA_LIVE_MARKETS } from "../mm-cost-store";
 
-// DEC-TBD-vb-live-book: market Volume Farm thêm vào kết nối WS có giới hạn, top ∪ MM (DEC-227) luôn đi trước.
+// DEC-298: market Volume Farm thêm vào kết nối WS có giới hạn, top ∪ MM (DEC-227) luôn đi trước.
 describe("liveBookPlan", () => {
   it("keeps top and Market Making markets, then adds Volume Farm markets up to the cap", () => {
     const farm = ["ETH-USD", "Z1-USD", "Z2-USD", "Z3-USD"];

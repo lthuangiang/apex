@@ -622,7 +622,7 @@ export const volumeAnalyticsSchema = z.object({
     ordersRejected: z.number().int(),
     rejectedSplit: rejectSplitSchema,
     /**
-     * Volume Farm (DEC-TBD-vb-stats-postonly): số lượt vào bắt đầu bằng lệnh post-only (`vf:<n>:in:0`) và số lượt có lệnh
+     * Volume Farm (DEC-300): số lượt vào bắt đầu bằng lệnh post-only (`vf:<n>:in:0`) và số lượt có lệnh
      * vào post-only khớp. null = không phải Volume Farm (không có dữ liệu này).
      */
     rounds: z.number().int().nullable().default(null),

@@ -909,7 +909,7 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(detail.blockedByRiskRecently).toBe(1);
   });
 
-  it("splits post-only misses from other rejects and counts rounds that filled (DEC-TBD-vb-stats-postonly)", async () => {
+  it("splits post-only misses from other rejects and counts rounds that filled (DEC-300)", async () => {
     const { client } = await connectedUser(`vb-rounds-${randomUUID()}@drift.test`);
     const made = await client.request("POST", "/api/v1/bots", {
       body: { strategy: "spot_grid", name: "Rounds", paramSource: "manual", config: grid },

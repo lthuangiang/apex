@@ -220,7 +220,7 @@ describe("volume farm cycle", () => {
       pauses.push(...r.all.filter((a) => a.type === "pause"));
       if (i < 2) {
         expect(pauses).toHaveLength(0);
-        // Lần vào kế tiếp sau thời gian chờ 5 s / 15 s (DEC-TBD-vb-reject-backoff).
+        // Lần vào kế tiếp sau thời gian chờ 5 s / 15 s (DEC-299).
         r = run(c, [timer(T0 + (i + 1) * 20_000)], r.s);
       }
     }
@@ -994,7 +994,7 @@ describe("volume farm — trend filters (DEC-158)", () => {
   });
 });
 
-describe("volume farm — live order book (DEC-TBD-vb-live-book)", () => {
+describe("volume farm — live order book (DEC-298)", () => {
   const wide = cfg({ maxSpreadBps: "500", allowTaker: false });
   const live = (at: number, bid: string, ask: string, market = "BTC-USD"): StrategyEvent => ({
     type: "book",
@@ -1131,7 +1131,7 @@ describe("volume farm — live order book (DEC-TBD-vb-live-book)", () => {
   });
 });
 
-describe("volume farm — backoff after refused entries (DEC-TBD-vb-reject-backoff)", () => {
+describe("volume farm — backoff after refused entries (DEC-299)", () => {
   const c = cfg({ allowTaker: false, cooldownSecs: 0 });
   // Nến dời theo thời gian để không bị "STALE_CANDLES" sau vài phút chờ.
   const enter = (at: number, s?: VolumeFarmState) =>

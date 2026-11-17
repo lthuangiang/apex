@@ -107,7 +107,7 @@ export async function volumeAnalytics(
       rejPostOnly: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${NORMAL_REJECT_CODES.postOnly})::int`,
       rejSelfTrade: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${NORMAL_REJECT_CODES.selfTrade})::int`,
       rejRiskLimit: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${RISK_LIMIT_REJECT_CODE})::int`,
-      // Volume Farm (DEC-TBD-vb-stats-postonly): một lượt vào bắt đầu ở lệnh `vf:<n>:in:0` (đếm lệnh không khớp liên tiếp
+      // Volume Farm (DEC-300): một lượt vào bắt đầu ở lệnh `vf:<n>:in:0` (đếm lệnh không khớp liên tiếp
       // về 0) và kết thúc ở lệnh vào đầu tiên khớp; lệnh vào post-only là `limit`.
       rounds: sql<number>`count(*) filter (where ${orders.tag} ~ ${ROUND_START_RE} and ${orders.type} = 'limit')::int`,
       roundsFilled: sql<number>`count(*) filter (where ${orders.tag} ~ ${ENTRY_TAG_RE} and ${orders.type} = 'limit' and ${orders.filledSize} > 0)::int`,
@@ -189,7 +189,7 @@ export async function volumeAnalytics(
 }
 
 /**
- * Tỷ lệ khớp theo lượt của Volume Farm (DEC-TBD-vb-stats-postonly). Chiến lược khác: null ("Not available"). Lượt bắt đầu
+ * Tỷ lệ khớp theo lượt của Volume Farm (DEC-300). Chiến lược khác: null ("Not available"). Lượt bắt đầu
  * trước kỳ mà khớp trong kỳ được đếm là khớp, nên số lượt khớp không vượt số lượt.
  */
 export function roundStats(

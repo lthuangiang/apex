@@ -48,7 +48,7 @@ export const FARM_TIMING = {
 } as const;
 
 /**
- * Sổ lệnh thời gian thực (DEC-TBD-vb-live-book): engine đưa giá tốt nhất SoDEX (WS `bookTicker`, cùng nguồn với Market
+ * Sổ lệnh thời gian thực (DEC-298): engine đưa giá tốt nhất SoDEX (WS `bookTicker`, cùng nguồn với Market
  * Making, DEC-248) vào `book` mỗi khi giá đổi, và gửi lại tối đa mỗi giây khi giá không đổi mà WS vẫn có tin.
  * - `freshMs`: sổ (WS hoặc bản đọc REST) cũ hơn mức này thì không đặt / đặt lại lệnh post-only từ nó, chờ bản mới.
  *   1,5 s: tin WS tới ít nhất mỗi giây khi stream còn sống, cộng 0,5 s cho trễ engine; bằng `freshMs` của Market Making.
@@ -58,7 +58,7 @@ export const FARM_TIMING = {
 export const FARM_LIVE_BOOK = { freshMs: 1_500, feedMs: 60_000 } as const;
 
 /**
- * Lệnh vào bị SoDEX từ chối vì lý do khác post-only / chặn tự khớp / thiếu margin (DEC-TBD-vb-reject-backoff): chờ
+ * Lệnh vào bị SoDEX từ chối vì lý do khác post-only / chặn tự khớp / thiếu margin (DEC-299): chờ
  * 5 s, rồi 15 s, rồi 60 s (giữ 60 s) trước lần vào kế tiếp. SoDEX nhận lệnh vào hoặc lệnh vào khớp thì về 0.
  */
 export const VF_REJECT_BACKOFF_SECS = [5, 15, 60] as const;
@@ -80,10 +80,10 @@ export interface VolumeFarmState {
   book: BookTop | null;
   /** Lúc giá của `book` được xác nhận: tin WS, hoặc lúc engine đọc REST. */
   bookAt: number | null;
-  /** Lần cuối nhận tin sổ lệnh WS (DEC-TBD-vb-live-book); thiếu ở state cũ. */
+  /** Lần cuối nhận tin sổ lệnh WS (DEC-298); thiếu ở state cũ. */
   bookStreamAt?: number | null;
   /**
-   * Chờ sau khi lệnh vào bị từ chối vì lý do khác (DEC-TBD-vb-reject-backoff): `step` 1–3 theo
+   * Chờ sau khi lệnh vào bị từ chối vì lý do khác (DEC-299): `step` 1–3 theo
    * `VF_REJECT_BACKOFF_SECS`, `until` = lúc được vào lại.
    */
   rejectBackoff?: { step: number; until: number } | null;
@@ -299,7 +299,7 @@ function liveFeed(s: VolumeFarmState, at: number): boolean {
 /**
  * Giá post-only nằm trong spread theo `tickSize` của từng market (DEC-82): mua = ask tốt nhất − 1 tick, bán = bid tốt
  * nhất + 1 tick, để đứng đầu sổ và khớp nhanh. Spread chỉ 1 tick thì đứng cùng giá tốt nhất phía mình, không chéo sổ.
- * Sổ phải mới trong `FARM_LIVE_BOOK.freshMs` (DEC-TBD-vb-live-book). Lệnh vào: sổ cũ hơn mà đang có nguồn WS thì null
+ * Sổ phải mới trong `FARM_LIVE_BOOK.freshMs` (DEC-298). Lệnh vào: sổ cũ hơn mà đang có nguồn WS thì null
  * (chờ sổ mới, không đặt từ sổ cũ hay giá gần nhất). Lệnh thoát không bao giờ bị chặn (vị thế phải đóng được), và lệnh vào
  * khi không có nguồn WS: như DEC-82, sổ ≤ 10 s, không thì lùi 1 tick khỏi giá gần nhất.
  */
@@ -375,7 +375,7 @@ function tryEnter(
   const rules = ctx.rules[c.market];
   if (rules === undefined) return none(s);
   if (at < s.cooldownUntil) return none(s);
-  // Lệnh vào trước bị SoDEX từ chối vì lý do khác (DEC-TBD-vb-reject-backoff): chờ hết thời gian.
+  // Lệnh vào trước bị SoDEX từ chối vì lý do khác (DEC-299): chờ hết thời gian.
   if (s.rejectBackoff != null && at < s.rejectBackoff.until) return none(s);
   if (c.blockedHoursUtc.includes(new Date(at).getUTCHours())) {
     const why = `Hour ${String(new Date(at).getUTCHours())}:00 UTC is blocked.`;
@@ -467,7 +467,7 @@ function tryEnter(
         };
   }
   if (!taker && price === null) {
-    // Sổ lệnh cũ mà đang có nguồn WS (DEC-TBD-vb-live-book): chờ sổ mới, ghi một dòng cho mỗi đợt chờ.
+    // Sổ lệnh cũ mà đang có nguồn WS (DEC-298): chờ sổ mới, ghi một dòng cho mỗi đợt chờ.
     if (!liveFeed(s, at)) return none(s);
     const code = "STALE_BOOK";
     return s.lastSkip === code
@@ -807,7 +807,7 @@ function mergeRestBook(
   return { ...s, book: rest, bookAt: rest === null ? s.bookAt : readAt };
 }
 
-/** Giá tốt nhất SoDEX qua WS (DEC-TBD-vb-live-book): lưu giá, giữ độ dày của bản REST gần nhất. */
+/** Giá tốt nhất SoDEX qua WS (DEC-298): lưu giá, giữ độ dày của bản REST gần nhất. */
 function onLiveBook(
   c: VolumeFarmConfig,
   s: VolumeFarmState,
@@ -824,7 +824,7 @@ function onLiveBook(
 }
 
 /**
- * Lệnh vào bị từ chối vì lý do khác (DEC-TBD-vb-reject-backoff): lên một nấc chờ (5 → 15 → 60 s, giữ 60 s). Mỗi nấc mới
+ * Lệnh vào bị từ chối vì lý do khác (DEC-299): lên một nấc chờ (5 → 15 → 60 s, giữ 60 s). Mỗi nấc mới
  * ghi một dòng Decisions; ở nấc cuối không ghi lại (engine đã ghi "Order refused by SoDEX" tối đa mỗi phút, DEC-291).
  */
 function backoff(
@@ -1065,7 +1065,7 @@ export function stepVolumeFarm(
           };
         }
         // Post-only bị từ chối vì sẽ khớp ngay (giá đã chạy): coi như một lần không khớp, lượt sau đặt lại ngay.
-        // Lý do khác (không phải thiếu margin): chờ theo nấc trước lần vào kế tiếp (DEC-TBD-vb-reject-backoff).
+        // Lý do khác (không phải thiếu margin): chờ theo nấc trước lần vào kế tiếp (DEC-299).
         const wait = !open && needsBackoff(e) ? backoff(s, e) : { state: {}, actions: [] };
         return {
           actions: wait.actions,
@@ -1117,7 +1117,7 @@ export function stepVolumeFarm(
         return none({ ...s, xstop: null, xstopOff: true });
       return none(s);
     case "orderAck":
-      // SoDEX nhận lệnh vào: hết chờ (DEC-TBD-vb-reject-backoff).
+      // SoDEX nhận lệnh vào: hết chờ (DEC-299).
       if (s.entry?.id === e.clOrdID && s.rejectBackoff != null)
         return none({ ...s, rejectBackoff: null });
       return none(s);

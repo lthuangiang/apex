@@ -524,7 +524,7 @@ export class Engine {
   }
 
   /**
-   * Giá tốt nhất SoDEX mới nhất của mỗi market cho Volume Farm (DEC-TBD-vb-live-book), chỉ trong bộ nhớ: `at` = lúc NATS
+   * Giá tốt nhất SoDEX mới nhất của mỗi market cho Volume Farm (DEC-298), chỉ trong bộ nhớ: `at` = lúc NATS
    * giao tin. Không bước chiến lược hay ghi DB cho từng tin; `#feed` đưa giá này vào bot ngay trước mỗi bước.
    */
   readonly #farmBooks = new Map<string, { bid: string; ask: string; at: number }>();
@@ -1282,7 +1282,7 @@ export class Engine {
       if (lev !== "ok") return;
     }
     // Volume Farm: giá tốt nhất SoDEX mới nhất (bộ nhớ) vào state trước bước này, giữ đúng giờ nhận để tuổi sổ là tuổi
-    // thật. Chỉ đổi state trong bộ nhớ; được ghi DB cùng bước này nếu bước có gì để ghi (DEC-TBD-vb-live-book).
+    // thật. Chỉ đổi state trong bộ nhớ; được ghi DB cùng bước này nếu bước có gì để ghi (DEC-298).
     if (r.strategy === Strategy.volumeFarm && !accounting) {
       const live = this.#farmBooks.get(r.market);
       if (live !== undefined && live.at > (this.#farmBookFed.get(r) ?? -Infinity)) {

@@ -2,13 +2,13 @@ import type { MmBookMessage } from "@drift/shared";
 
 /**
  * WS vẫn có tin mà giá tốt nhất không đổi: gửi lại giá đó tối đa mỗi ngần này ms (`refresh: true`), để Volume Farm biết
- * sổ lệnh còn mới (DEC-TBD-vb-live-book). Chỉ gửi khi có tin WS thật, nên stream chết thì không có tin nào.
+ * sổ lệnh còn mới (DEC-298). Chỉ gửi khi có tin WS thật, nên stream chết thì không có tin nào.
  */
 export const BOOK_REFRESH_MS = 1_000;
 
 /**
  * Chuyển giá mua / bán tốt nhất SoDEX (WS `bookTicker`) sang engine cho bot Market Making (DEC-248) và Volume Farm
- * (DEC-TBD-vb-live-book): chỉ market có bot. Giá đổi thì gửi ngay; giá không đổi (chỉ đổi khối lượng) thì gửi lại tối
+ * (DEC-298): chỉ market có bot. Giá đổi thì gửi ngay; giá không đổi (chỉ đổi khối lượng) thì gửi lại tối
  * đa mỗi `BOOK_REFRESH_MS` với `refresh: true` (Market Making bỏ qua tin này).
  */
 export class SodexBookRelay {

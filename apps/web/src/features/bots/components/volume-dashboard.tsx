@@ -184,7 +184,7 @@ function Body({
   const targetPct = target !== null && target > 0 ? (volume / target) * 100 : null;
   const hours = Math.max(1 / 60, (Date.parse(a.to) - Date.parse(a.from)) / 3_600_000);
   const otherRejects = Math.max(0, tot.ordersRejected - tot.rejectedSplit.postOnly);
-  // Lượt có lệnh vào post-only khớp ÷ số lượt (DEC-TBD-vb-stats-postonly); chưa có lượt nào thì "Not available".
+  // Lượt có lệnh vào post-only khớp ÷ số lượt (DEC-300); chưa có lượt nào thì "Not available".
   const roundFill =
     tot.rounds === null || tot.roundsFilled === null || tot.rounds === 0
       ? null
@@ -294,7 +294,7 @@ function Body({
               }
               sub={t("fillRatioSub", { filled: tot.ordersFilled, placed: tot.ordersPlaced })}
             />
-            {/* Post-only bị từ chối (giá đã chạy) tách khỏi các lý do khác (DEC-TBD-vb-stats-postonly). */}
+            {/* Post-only bị từ chối (giá đã chạy) tách khỏi các lý do khác (DEC-300). */}
             <Cell
               label={t("postOnlyMisses")}
               value={String(tot.rejectedSplit.postOnly)}

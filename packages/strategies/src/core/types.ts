@@ -86,7 +86,7 @@ export type StrategyEvent =
   | { type: "fair"; at: number; market: string; fair: string; binanceAt: number }
   /**
    * Giá mua / bán tốt nhất SoDEX theo thời gian thực (WS `bookTicker`, DEC-248). Market Making chỉ nhận khi giá đổi;
-   * Volume Farm nhận thêm tin gửi lại khi giá không đổi (tối đa mỗi giây, DEC-TBD-vb-live-book).
+   * Volume Farm nhận thêm tin gửi lại khi giá không đổi (tối đa mỗi giây, DEC-298).
    */
   | { type: "book"; at: number; market: string; bid: string; ask: string }
   /**
