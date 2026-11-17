@@ -1,5 +1,14 @@
 # Thứ tự theo CODING_STANDARDS C15: install → lint → typecheck → unit → integration → build → e2e.
-# Integration và e2e được thêm khi có app (P3 trở đi).
+# Mọi bước vẫn chạy trên mọi PR, nhưng tách thành các job song song (repo public: phút Actions miễn phí)
+# thay vì nối tiếp trên một runner 2 vCPU (~15.5 phút):
+#   lint    ESLint có kiểm tra kiểu, có cache ESLint (PR dùng cache; push lên main lint lại toàn bộ).
+#   static  format:check + typecheck.
+#   test    unit + integration (Testcontainers), chia 3 shard theo package cho cân thời gian.
+#   ui      Playwright a11y trên Storybook + build.
+#   compose dựng hạ tầng docker compose.
+#   check   gom kết quả: fail nếu job nào fail / bị huỷ. Dùng làm tên duy nhất khi bật "Require status checks".
+# Typecheck và test dùng cache Turbo (.turbo/cache) lưu theo sha, khôi phục từ lần chạy gần nhất của nhánh
+# (rồi của main): package không đổi thì cache hit. Shard test chạy `--only` vì typecheck đã có ở job static.
 name: ci
 
 on:
@@ -7,26 +16,81 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  check:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup
+      # Cache ESLint theo nội dung file. Lint có kiểm tra kiểu: file không đổi nhưng kiểu nó import đổi thì
+      # cache không biết, nên push lên main bỏ cache và lint lại toàn bộ (rồi lưu cache mới cho các PR sau).
+      - uses: actions/cache@v4
         with:
-          node-version-file: .nvmrc
-      - run: npm i -g corepack@latest && corepack enable
-      - run: pnpm install --frozen-lockfile
+          path: node_modules/.cache/eslint
+          key: eslint-${{ hashFiles('pnpm-lock.yaml', 'eslint.config.mjs', 'tsconfig.base.json') }}-${{ github.sha }}
+          restore-keys: eslint-${{ hashFiles('pnpm-lock.yaml', 'eslint.config.mjs', 'tsconfig.base.json') }}-
+      - if: github.event_name == 'push'
+        run: rm -rf node_modules/.cache/eslint
       # ESLint có kiểm tra kiểu trên cả repo: mặc định ~4 GB heap không còn đủ (#98 hết bộ nhớ).
-      - run: pnpm lint
+      - run: pnpm lint --cache --cache-strategy content --cache-location node_modules/.cache/eslint/
         env:
           NODE_OPTIONS: --max-old-space-size=6144
+
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
       - run: pnpm format:check
+      - uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: turbo-typecheck-${{ github.sha }}
+          restore-keys: turbo-typecheck-
       - run: pnpm typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Chia theo thời gian test đo ở run 44018826746: api ~210s; engine+scheduler+backtest ~205s; còn lại ~210s.
+        # Thêm package mới thì nó tự vào shard "rest".
+        include:
+          - shard: api
+            filter: --filter=@drift/api
+          - shard: engine
+            filter: --filter=@drift/engine --filter=@drift/scheduler --filter=@drift/backtest
+          - shard: rest
+            filter: --filter=!@drift/api --filter=!@drift/engine --filter=!@drift/scheduler --filter=!@drift/backtest
+    name: test (${{ matrix.shard }})
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: turbo-test-${{ matrix.shard }}-${{ github.sha }}
+          restore-keys: turbo-test-${{ matrix.shard }}-
       # Runner 2 vCPU: tối đa 2 package test cùng lúc để test UI không hết giờ vì bị chia CPU (#21, #24, #25).
-      - run: pnpm test --concurrency=2
+      - run: pnpm exec turbo run test --only --concurrency=2 ${{ matrix.filter }}
+
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
       - run: pnpm --filter @drift/ui exec playwright install --with-deps chromium
       - run: pnpm --filter @drift/ui test:a11y
+      - uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: turbo-build-${{ github.sha }}
+          restore-keys: turbo-build-
       - run: pnpm build
 
   compose:
@@ -49,3 +113,14 @@ jobs:
           test "$code" = "0"
       - if: always()
         run: docker compose --profile dev down -v
+
+  check:
+    if: always()
+    needs: [lint, static, test, ui, compose]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do test "$r" = "success" || exit 1; done

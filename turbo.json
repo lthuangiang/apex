@@ -1,9 +1,22 @@
 {
   "$schema": "https://turborepo.com/schema.json",
+  "globalDependencies": ["tsconfig.base.json", ".nvmrc"],
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
     "typecheck": { "dependsOn": ["^typecheck"] },
-    "test": { "dependsOn": ["^typecheck"] },
+    "test": {
+      "dependsOn": ["^typecheck"],
+      "env": [
+        "REDIS_URL",
+        "SODEX_SMOKE",
+        "SODEX_SMOKE_ADDRESS",
+        "SODEX_REST_URL",
+        "SODEX_WS_URL",
+        "DRIFT_BUILDER_ID",
+        "RACE_ENGINE_STEPS",
+        "RACE_ENGINE_SEEDS"
+      ]
+    },
     "e2e": { "cache": false },
     "dev": { "cache": false, "persistent": true }
   }
