@@ -4,7 +4,7 @@ import pg from "pg";
 
 import { sodexCallsOk, sodexCallsProblem } from "./schema";
 
-// Ghi batch cho SoDEX Debugger (DEC-TBD-sodex-debugger, sửa theo review PR #217 B1 / M2).
+// Ghi batch cho SoDEX Debugger (DEC-309, sửa theo review PR #217 B1 / M2).
 //
 // PgBouncer (transaction mode) từ chối tham số khởi động `statement_timeout`, nên timeout đặt bằng
 // `SET LOCAL statement_timeout` trong MỖI transaction (BEGIN … COMMIT), cách duy nhất hợp lệ ở transaction mode.

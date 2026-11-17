@@ -24,7 +24,7 @@ import { z } from "zod";
 import { parseOrThrow } from "../../lib/http";
 import { requireTeam } from "../account/team";
 
-// SoDEX Debugger (team, docs/mockups/sodex-debugger, DEC-TBD-sodex-debugger). Đọc view `sodex_calls` (hai hypertable
+// SoDEX Debugger (team, docs/mockups/sodex-debugger, DEC-309). Đọc view `sodex_calls` (hai hypertable
 // theo thời hạn giữ). Mọi endpoint kiểm role team TRƯỚC khi parse tham số (401 chưa đăng nhập, 403 người ngoài team).
 
 export interface SodexDebuggerDeps {
@@ -52,7 +52,7 @@ function readOnly<T>(db: Db, fn: (q: Exec) => Promise<T>): Promise<T> {
 }
 const HOUR = 3_600_000;
 const RELATED_WINDOW_MS = 10 * 60_000;
-/** Ngưỡng "cao hơn mức thường": ≥ 3 lần và > 2 × mức của 48 giờ trước đó (DEC-TBD-sodex-debugger). */
+/** Ngưỡng "cao hơn mức thường": ≥ 3 lần và > 2 × mức của 48 giờ trước đó (DEC-309). */
 const ABOVE_USUAL_MIN = 3;
 const ABOVE_USUAL_FACTOR = 2;
 /** Endpoint đặt lệnh mới (cho câu "X is N% of the rejects on new orders"). */

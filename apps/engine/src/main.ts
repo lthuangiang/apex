@@ -63,7 +63,7 @@ const sodex = loadSodexConfig(process.env);
 // sau thay vì treo (DEC-308).
 const { db, pool } = createDb(env.DATABASE_URL, { connectionTimeoutMillis: 10_000 });
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
-// SoDEX Debugger (DEC-TBD-sodex-debugger): mọi lời gọi SoDEX vào hàng đợi trong bộ nhớ, ghi batch mỗi giây bằng pool
+// SoDEX Debugger (DEC-309): mọi lời gọi SoDEX vào hàng đợi trong bộ nhớ, ghi batch mỗi giây bằng pool
 // DB riêng; không bao giờ chặn đường gửi lệnh.
 const sodexCalls = createSodexCallRecorder({
   service: "engine",
@@ -355,7 +355,7 @@ async function shutdown() {
   // Dừng engine trước (chặn mọi lệnh mới, chờ các shard đang chạy dở), rồi mới đóng user stream: fill của lệnh vừa gửi
   // vẫn tới qua stream; DB đóng sau cùng (review #216 M2).
   await engine.stop();
-  // SoDEX Debugger: ghi nốt hàng đợi ngay sau khi engine dừng (DEC-TBD-sodex-debugger).
+  // SoDEX Debugger: ghi nốt hàng đợi ngay sau khi engine dừng (DEC-309).
   await sodexCalls?.close();
   for (const pair of streams.values()) {
     pair.spot?.close();

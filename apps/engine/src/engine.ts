@@ -2223,7 +2223,7 @@ export class Engine {
       botId: bot.id,
       account: route.account,
       paper: route.paper,
-      // Bot thật: lời gọi SoDEX mang botId / accountId / traceId cho SoDEX Debugger (DEC-TBD-sodex-debugger).
+      // Bot thật: lời gọi SoDEX mang botId / accountId / traceId cho SoDEX Debugger (DEC-309).
       gateway: route.paper ? route.gateway : withBotCallContext(route.gateway, bot.id, account.id),
       shard,
       epoch,

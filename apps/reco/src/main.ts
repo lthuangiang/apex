@@ -22,7 +22,7 @@ const env = z
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "reco" } });
-// SoDEX Debugger (DEC-TBD-sodex-debugger): ghi mọi lời gọi SoDEX (hàng đợi trong bộ nhớ, pool DB riêng, không chặn).
+// SoDEX Debugger (DEC-309): ghi mọi lời gọi SoDEX (hàng đợi trong bộ nhớ, pool DB riêng, không chặn).
 const sodexCalls = createSodexCallRecorder({
   service: "reco",
   env: process.env,

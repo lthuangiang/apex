@@ -22,7 +22,7 @@ import {
   scrubText,
 } from "./redact";
 
-// Bản ghi thô → dòng lưu được (chạy ở bước flush, ngoài đường gửi lệnh). Phân loại outcome theo DEC-TBD-sodex-debugger:
+// Bản ghi thô → dòng lưu được (chạy ở bước flush, ngoài đường gửi lệnh). Phân loại outcome theo DEC-309:
 // ok / rejected (code ≠ 0 ở envelope hoặc ở một lệnh) / timeout / network / unreadable (envelope ok nhưng không đọc được).
 // Không parse JSON ở đây (review PR #217, B2): code envelope và kết quả lệnh đến từ object client đã parse; clOrdID và
 // accountID trong body request lấy bằng regex; body chỉ được che bằng regex trên chuỗi đã cắt.

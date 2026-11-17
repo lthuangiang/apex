@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { isoDateTimeSchema, pageSchema } from "../schemas";
 
-// SoDEX Debugger (team, docs/mockups/sodex-debugger, DEC-TBD-sodex-debugger): mọi lời gọi REST tới SoDEX và sự kiện
+// SoDEX Debugger (team, docs/mockups/sodex-debugger, DEC-309): mọi lời gọi REST tới SoDEX và sự kiện
 // WS user stream mà DeskLabs gửi / nhận. Bảng `sodex_calls` (view trên hai hypertable theo thời hạn giữ).
 
 /** Kết quả một lời gọi, phân loại khi ghi (packages/sodex/src/debug/classify.ts). */
@@ -34,7 +34,7 @@ export const SodexUnreadableReason = {
 export type SodexUnreadableReason =
   (typeof SodexUnreadableReason)[keyof typeof SodexUnreadableReason];
 
-/** Lời gọi chậm hơn ngưỡng này được giữ 14 ngày như lời gọi lỗi (DEC-TBD-sodex-debugger). */
+/** Lời gọi chậm hơn ngưỡng này được giữ 14 ngày như lời gọi lỗi (DEC-309). */
 export const SODEX_CALL_SLOW_MS = 1000;
 /** Thời hạn giữ: lỗi / chậm 14 ngày, thành công 3 ngày. */
 export const SODEX_CALL_RETENTION_DAYS = { problem: 14, ok: 3 } as const;
@@ -189,7 +189,7 @@ export const sodexEndpointStatSchema = z.object({
   errors: z.number().int().nonnegative(),
   timeouts: z.number().int().nonnegative(),
   p95Ms: z.number().int().nullable(),
-  /** Tỷ lệ lỗi / số timeout cao hơn mức thường (công thức ở DEC-TBD-sodex-debugger). */
+  /** Tỷ lệ lỗi / số timeout cao hơn mức thường (công thức ở DEC-309). */
   errorsAboveUsual: z.boolean(),
   timeoutsAboveUsual: z.boolean(),
 });

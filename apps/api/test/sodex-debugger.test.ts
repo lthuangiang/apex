@@ -23,7 +23,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
-// SoDEX Debugger (docs/mockups/sodex-debugger, DEC-TBD-sodex-debugger): quyền team, lọc, phân trang, chi tiết đã che,
+// SoDEX Debugger (docs/mockups/sodex-debugger, DEC-309): quyền team, lọc, phân trang, chi tiết đã che,
 // tóm tắt 24 giờ. Dữ liệu đi qua đúng đường ghi thật: capture → toSodexCallRow → sink batch vào hai hypertable.
 
 let env: TestEnv;

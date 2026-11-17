@@ -28,7 +28,7 @@ import { exchangeDomain, exchangeTypes, ExchangeDomain } from "../signing/exchan
 import { toSodexSignature } from "../signing/signature";
 import { signUniversal } from "../signing/universal";
 
-// SoDEX Debugger (DEC-TBD-sodex-debugger): params của action đã ký được lưu, chữ ký / secret / header xác thực thì
+// SoDEX Debugger (DEC-309): params của action đã ký được lưu, chữ ký / secret / header xác thực thì
 // không bao giờ. Mỗi loại action đã ký đi qua SignedWriteClient thật với chữ ký thật, rồi kiểm bản ghi sẽ lưu.
 
 const KEY = privateKeyToAccount(

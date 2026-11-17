@@ -22,7 +22,7 @@ const config = loadApiConfig(process.env);
 const { db, pool } = createDb(config.DATABASE_URL);
 const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 2 });
 const rateLimit = new RedisRateLimitStore(redis);
-// SoDEX Debugger (DEC-TBD-sodex-debugger): ghi mọi lời gọi SoDEX của api (hàng đợi trong bộ nhớ, pool DB riêng).
+// SoDEX Debugger (DEC-309): ghi mọi lời gọi SoDEX của api (hàng đợi trong bộ nhớ, pool DB riêng).
 // Logger của fastify chỉ có sau buildApp, nên cảnh báo đi qua biến `appLog`.
 const appLog: { current?: { warn(obj: Record<string, unknown>, msg: string): void } } = {};
 const sodexCalls = createSodexCallRecorder({

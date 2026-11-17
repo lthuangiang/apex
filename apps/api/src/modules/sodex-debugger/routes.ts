@@ -11,7 +11,7 @@ import {
 } from "./service";
 
 // SoDEX Debugger (team): chỉ role team (403 cho người khác, 401 khi chưa đăng nhập). no-store: request / response của
-// SoDEX không được nằm trong cache dùng chung (DEC-TBD-sodex-debugger).
+// SoDEX không được nằm trong cache dùng chung (DEC-309).
 export function registerSodexDebuggerRoutes(app: FastifyInstance, deps: SodexDebuggerDeps): void {
   app.get("/api/v1/admin/sodex-calls", async (request, reply) => {
     void reply.header("cache-control", "no-store");

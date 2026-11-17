@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 
-// Ngữ cảnh gắn vào mỗi lời gọi SoDEX cho SoDEX Debugger (DEC-TBD-sodex-debugger): bot, account (id trong DB) và
+// Ngữ cảnh gắn vào mỗi lời gọi SoDEX cho SoDEX Debugger (DEC-309): bot, account (id trong DB) và
 // traceId. Đặt ở chỗ gọi (engine theo từng thao tác của bot, api theo request) bằng `withSodexCallContext`; client đọc
 // lúc ghi. Không có ngữ cảnh thì các field là null.
 

@@ -3,7 +3,7 @@ import { isProblemCall } from "@drift/shared";
 import type { SodexCallCapture, SodexCallRecorderLike } from "./capture";
 import { captureOutcome, toSodexCallRow, type SodexCallRow } from "./classify";
 
-// Recorder của SoDEX Debugger (DEC-TBD-sodex-debugger). Yêu cầu: không bao giờ chặn hay làm chậm việc gửi lệnh.
+// Recorder của SoDEX Debugger (DEC-309). Yêu cầu: không bao giờ chặn hay làm chậm việc gửi lệnh.
 // - `record` chỉ đẩy object vào hàng đợi trong bộ nhớ, không parse, không I/O, không ném. Hàng đợi giới hạn theo SỐ
 //   bản ghi (50 000) VÀ theo dung lượng ước tính (64 MB, body đã cắt ở client).
 // - Mỗi giây một lần flush: phân loại + che dữ liệu bằng regex (không parse JSON), nhường event loop mỗi khi một lát

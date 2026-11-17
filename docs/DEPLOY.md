@@ -229,7 +229,7 @@ Làm theo thứ tự, một lần. Mọi bước nằm ở 2.9 / 2.10; mục nà
 - Tắt MCP nhanh, không cần đổi image: để `MCP_INTROSPECT_SECRET=` trống trong `.env`, rồi `up -d api mcp`. `/mcp` trả 503, introspect của api tắt; mọi phần khác chạy như cũ. Token đã cấp không dùng được cho tới khi bật lại.
 - Quay cả bản: `infra/deploy/build-push.sh --deploy-only <tag trước>`. Migration không quay lại; bảng MCP mới không ảnh hưởng bản cũ. `0030` đã bật Adaptive DCA cho mọi tài khoản: bản cũ đọc cùng cờ nên hành vi giống nhau; muốn tắt thì team tắt từng tài khoản ở Users.
 
-### 2.12 SoDEX Debugger (DEC-TBD-sodex-debugger): bước làm tay khi release
+### 2.12 SoDEX Debugger (DEC-309): bước làm tay khi release
 
 Mọi app service gọi SoDEX ghi lời gọi vào `sodex_calls_ok` (3 ngày) / `sodex_calls_problem` (14 ngày), migration 0041 (`build-push.sh` tự chạy migrate). Mặc định **bật**. Công tắc tắt `SODEX_DEBUGGER` chỉ tới được container khi có trong file compose của VPS, mà file đó giữ tay, nên lần release đầu có tính năng này phải làm:
 

@@ -12,7 +12,7 @@ import { withBotCallContext } from "../src/call-context";
 import type { AccountRef } from "../src/gateway";
 import { HttpGateway } from "../src/http-gateway";
 
-// SoDEX Debugger trên đường gửi lệnh của engine (DEC-TBD-sodex-debugger): kết quả submit giống hệt khi có recorder,
+// SoDEX Debugger trên đường gửi lệnh của engine (DEC-309): kết quả submit giống hệt khi có recorder,
 // kể cả khi DB ghi treo; lời gọi mang botId / accountId / traceId của bot.
 
 const symbol = {

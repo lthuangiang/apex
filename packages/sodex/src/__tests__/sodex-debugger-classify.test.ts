@@ -5,7 +5,7 @@ import { endpointTemplate, toSodexCallRow, uuidV7At, uuidV7Time } from "../debug
 
 import { restCapture } from "./debug-fixtures";
 
-// Phân loại outcome của SoDEX Debugger (DEC-TBD-sodex-debugger).
+// Phân loại outcome của SoDEX Debugger (DEC-309).
 
 const BASE = "https://mainnet-gw.sodex.dev/api/v1";
 const ADDR = "0x4E1e8c0B7a2d5F3e91A6b4C0d8E2f7a1B3c529Db";

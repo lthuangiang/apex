@@ -2,7 +2,7 @@ import type { SodexHeader } from "@drift/shared";
 
 import { SIGNATURE_REDACTED } from "./capture";
 
-// Che dữ liệu nhạy cảm trước khi lưu (DEC-TBD-sodex-debugger, CODING_STANDARDS C11, CLAUDE.md quy tắc 1.9): params
+// Che dữ liệu nhạy cảm trước khi lưu (DEC-309, CODING_STANDARDS C11, CLAUDE.md quy tắc 1.9): params
 // của action đã ký được lưu, nhưng chữ ký, private key, secret và header xác thực thì không bao giờ. Tên API key và
 // public key chỉ giữ 4 ký tự cuối.
 //
