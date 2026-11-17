@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import messages from "../../../../messages/en.json";
-import { MarketHoursPage, usd } from "../components/market-hours-page";
+import { fx, hottestHours, MarketHoursPage, usd } from "../components/market-hours-page";
 
 // Market hours (docs/mockups/market-hours): múi giờ của trình duyệt (ở đây Asia/Kolkata +5:30) + nút đổi sang UTC;
 // thiếu số → "n/a", không bao giờ 0; ô mẫu mỏng gắn "Thin"; trạng thái rỗng / lỗi / không phải team; axe.
@@ -231,7 +231,8 @@ describe("Market hours page", () => {
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
     // 30 ngày: dòng gọn, nhãn ngắn; hai ngày đầu không có nến bị ẩn; ngày đầu có nến (thiếu vài giờ) vẫn hiện.
-    expect(screen.getByText("Data since Nov 10, 2026")).toBeInTheDocument();
+    // Nến chỉ phủ 2 trong 30 ngày của kỳ: chip ghi ngày bắt đầu và số ngày có dữ liệu (như chip khối 2).
+    expect(screen.getByText("Data since Nov 10, 2026 · 2 of 30 days")).toBeInTheDocument();
     expect(screen.queryByText("Nov 8")).not.toBeInTheDocument();
     expect(screen.queryByText("Nov 9")).not.toBeInTheDocument();
     expect(screen.getByText("Nov 10")).toBeInTheDocument();
@@ -242,6 +243,7 @@ describe("Market hours page", () => {
     // 7 ngày: dòng cao, nhãn có thứ.
     await user.click(screen.getByRole("radio", { name: "7 days" }));
     expect(await screen.findByText("Tue, Nov 10")).toBeInTheDocument();
+    expect(screen.getByText("Data since Nov 10, 2026 · 2 of 7 days")).toBeInTheDocument();
     expect(screen.getByTitle(/^Nov 11, 2026 · 21:00 · median 1-min range 4\.2 bp/)).toHaveClass(
       "h-7",
     );
@@ -257,18 +259,45 @@ describe("Market hours page", () => {
     expect(within(filters).getByText(/Times in your time zone/)).toBeInTheDocument();
   });
 
-  it("shows the model's estimated cost per $1M for every hour, with a tooltip, under block 1", async () => {
+  it("shows one Est. CPM (estimate) row, with the two model rows and the calibration in a closed Model details disclosure", async () => {
+    const user = userEvent.setup({ delay: null });
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
-    // Hai dòng thay cho dòng "(model, floor)" cũ; chú giải chỉ "CPM"; CPM được giải nghĩa trong How to read this.
-    expect(screen.getByText("Est. CPM · typical day (model)")).toBeInTheDocument();
-    expect(screen.getByText("Est. CPM · incl. shock days (model)")).toBeInTheDocument();
+    // Một dòng ước tính (số đã hiệu chỉnh); không còn nhãn "Est. CPM · calibrated".
+    expect(screen.getByText("Est. CPM (estimate)", { selector: "span" })).toBeVisible();
+    expect(screen.queryByText("Est. CPM · calibrated")).not.toBeInTheDocument();
     expect(screen.queryByText(/floor/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Estimated cost per \$1M \(model/)).not.toBeInTheDocument();
-    expect(screen.getAllByText("CPM").length).toBeGreaterThanOrEqual(3);
+    // "Model details" đóng sẵn: hai dòng mô hình và câu hiệu chỉnh có trong DOM nhưng bị ẩn.
+    const [details] = screen.getAllByRole("button", { name: "Model details" });
+    if (details === undefined) throw new Error("no Model details button");
+    expect(details).toHaveAttribute("aria-expanded", "false");
+    const panel = document.getElementById(details.getAttribute("aria-controls") ?? "");
+    expect(panel).not.toBeNull();
+    expect(panel).not.toBeVisible();
+    const typical = screen.getByText("Est. CPM · typical day (model)");
+    expect(typical).not.toBeVisible();
+    expect(screen.getByText("Est. CPM · incl. shock days (model)")).not.toBeVisible();
+    expect(screen.getByText(/^Cut cost: taker fee 4\.0 bp only/)).not.toBeVisible();
+    await user.click(details);
+    expect(details).toHaveAttribute("aria-expanded", "true");
+    expect(panel).toBeVisible();
+    expect(typical).toBeVisible();
+    expect(screen.getByText("Est. CPM · incl. shock days (model)")).toBeVisible();
+    expect(screen.getByText(/^Cut cost: taker fee 4\.0 bp only/)).toBeVisible();
+    await user.click(details);
+    expect(panel).not.toBeVisible();
+    // Chú giải "Est. CPM"; dòng CPM trong How to read this và cách tính theo câu đã duyệt.
+    expect(screen.getByText("Est. CPM")).toBeInTheDocument();
     expect(
-      screen.getAllByText("CPM = cost per $1M of volume (fees plus price loss).").length,
-    ).toBeGreaterThanOrEqual(1);
+      screen.getAllByText(
+        "CPM = cost per $1M of volume. Est. CPM is an estimate from market data; Markout cost is measured from bot fills one minute later.",
+      ),
+    ).toHaveLength(2);
+    // 18 ô hiệu chỉnh từ bot của market này: không "Thin" ở dòng ước tính.
+    expect(screen.queryByText(/Est\. CPM calibrated on fewer than 10 hours/)).toBeInTheDocument();
+    const estLabel = screen.getByText("Est. CPM (estimate)", { selector: "span" });
+    expect(within(estLabel.parentElement ?? document.body).queryByText("Thin")).toBeNull();
     const cell = screen.getByTitle(
       "21:00 · est. $214 per $1M · median 1-min swing 12.4 bp · fees 0.7 bp",
     );
@@ -305,21 +334,21 @@ describe("Market hours page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Est. CPM · calibrated = incl. shock days × 1.42: the median, over 18 hours with 3 or more bot-hours of live Market Making bots in the last 14 days, of real CPM divided by the incl. shock days estimate for that hour. Source: Calibrated on BTC-USD bots (14 days, 37 hours).",
+        "Est. CPM (estimate) = incl. shock days × 1.42: the median, over 18 hours with 3 or more bot-hours of live Market Making bots in the last 14 days, of the bots' Markout cost / $1M divided by the incl. shock days estimate for that hour. Source: Calibrated on BTC-USD bots (14 days, 37 hours).",
       ),
     ).toBeInTheDocument();
   });
 
-  it("shows the calibrated row after the two model rows, with the factor and its source in each tooltip", async () => {
+  it("shows the estimate row before the model rows, with the factor and its source in each tooltip", async () => {
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
     const typical = screen.getByText("Est. CPM · typical day (model)");
     const shockLabel = screen.getByText("Est. CPM · incl. shock days (model)");
     // Nhãn dòng desktop (chi tiết giờ 390 px cũng có nhãn này, trong <strong>).
-    const label = screen.getByText("Est. CPM · calibrated", { selector: "span" });
-    expect(typical.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const label = screen.getByText("Est. CPM (estimate)", { selector: "span" });
+    expect(label.compareDocumentPosition(typical) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(
-      shockLabel.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING,
+      label.compareDocumentPosition(shockLabel) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     const cell = screen.getByTitle(
       "21:00 · $477 per $1M · incl. shock days $336 × 1.42 · Calibrated on BTC-USD bots (14 days, 37 hours)",
@@ -434,8 +463,11 @@ describe("Market hours page", () => {
       screen.getByTitle(new RegExp(`^21:00 · \\$477 per \\$1M · .* × 1\\.00 · ${esc(fallback)}$`)),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(`Est. CPM · calibrated = incl. shock days × 1.00. Source: ${fallback}.`),
+      screen.getByText(`Est. CPM (estimate) = incl. shock days × 1.00. Source: ${fallback}.`),
     ).toBeInTheDocument();
+    // C mặc định: dòng ước tính gắn "Thin" cạnh nhãn.
+    const estLabel = screen.getByText("Est. CPM (estimate)", { selector: "span" });
+    expect(within(estLabel.parentElement ?? document.body).getByText("Thin")).toBeInTheDocument();
     // Không có bot nào: phần cắt vẫn có (R = 2, F = 80), tooltip ghi nguồn mặc định.
     expect(
       screen.getByTitle(
@@ -622,12 +654,22 @@ describe("Market hours page", () => {
         "$95 (model) · 1 of 30 days had a 15-min move of 15 bp or more · assumes taker fee only · cut size 2.0× order size (5.7% of a bot-hour's volume) · Calibrated on BTC-USD bots (14 days, 37 hours)",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("Est. CPM · calibrated", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText("Est. CPM (estimate)", { selector: "strong" })).toBeInTheDocument();
     expect(
       screen.getByText(
         "$135 · incl. shock days $95 × 1.42 · Calibrated on BTC-USD bots (14 days, 37 hours)",
       ),
-    ).toBeInTheDocument();
+    ).toBeVisible();
+    // 390 px: hai dòng mô hình nằm trong "Model details" (đóng sẵn) của chi tiết giờ.
+    const typical = screen.getByText("$89 (model) · median 1-min swing 4.1 bp · fees 0.7 bp");
+    expect(typical).not.toBeVisible();
+    const mobileDetails = screen.getAllByRole("button", { name: "Model details" }).at(-1);
+    if (mobileDetails === undefined) throw new Error("no Model details button");
+    await user.click(mobileDetails);
+    expect(mobileDetails).toHaveAttribute("aria-expanded", "true");
+    expect(typical).toBeVisible();
+    // Bảng 390 px: tiêu đề cột Markout cost.
+    expect(screen.getByText("Markout / $1M")).toBeInTheDocument();
   });
 
   it("explains every row label with an info button that opens on click, hover or focus and closes on Escape", async () => {
@@ -647,7 +689,11 @@ describe("Market hours page", () => {
     const maxMove15 =
       "The furthest the price ran within any 15 minutes starting in this hour during the period. Shocks like this cause most position cuts.";
     const cost =
-      "CPM (cost per $1M of volume): what DeskLabs bots really paid per $1M traded in this hour, fees plus the price move one minute after each fill. Counts only fills with a price one minute later.";
+      "Markout cost per $1M of volume traded by DeskLabs bots in this hour: fees plus the price move one minute after each fill. It is a 1-minute markout estimate, not realised profit or loss; the Net cost on a bot's page is realised. Counts only fills with a price one minute later.";
+    // Nút ⓘ của hai dòng mô hình nằm trong "Model details": mở ra trước.
+    const [details] = screen.getAllByRole("button", { name: "Model details" });
+    if (details === undefined) throw new Error("no Model details button");
+    await user.click(details);
     // [nhãn, câu giải thích, số nút (desktop + tiêu đề cột 390 px)]
     const rows: [string, string, number][] = [
       ["Median 1-min range (bp)", median, 1],
@@ -674,14 +720,15 @@ describe("Market hours page", () => {
         1,
       ],
       [
-        "Est. CPM · calibrated",
-        "CPM (cost per $1M of volume): the shock-day model scaled by how much real DeskLabs bots actually paid compared with it over the last 14 days. Source: Calibrated on BTC-USD bots (14 days, 37 hours).",
+        "Est. CPM (estimate)",
+        "Est. CPM (estimate): what an hour like this is expected to cost per $1M of volume, from market data scaled by what real DeskLabs bots paid. Open Model details to see how it is built.",
         1,
       ],
       ["Price move against makers, 30 s later (bp)", markout, 1],
       ["Spread (ticks)", "Typical gap between the best bid and best ask, in price steps.", 1],
-      // Block 3 và tiêu đề cột 390 px đều là "CPM".
-      ["CPM", cost, 2],
+      // Block 3 "Markout cost / $1M", tiêu đề cột 390 px "Markout / $1M" (không so với Net cost đã chốt của trang bot).
+      ["Markout cost / $1M", cost, 1],
+      ["Markout / $1M", cost, 1],
       ["Volume", "Value of all fills by DeskLabs bots in this hour, both buy and sell.", 1],
       ["Fees", "SoDEX trading fees plus builder fees paid on those fills.", 1],
       [
@@ -735,6 +782,191 @@ describe("Market hours page", () => {
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   }, 30_000);
 
+  it("renames block 3's cost row to Markout cost / $1M and says it is a 1-minute markout, not realised P&L", async () => {
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    // Nhãn dòng + chú giải; không còn nhãn "CPM" trơn nào.
+    expect(screen.getAllByText("Markout cost / $1M")).toHaveLength(2);
+    expect(screen.queryByText("CPM")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/^Data: the real fills .* Markout cost \/ \$1M = fees paid/),
+    ).toBeInTheDocument();
+  });
+
+  it("marks bot cells Thin whenever bot-hours are under 3, and says No fills instead of a bare n/a", async () => {
+    const base = view();
+    const bots = (h: number): MarketHoursView["hours"][number]["bots"] => {
+      // 05–07h như prod: 2, 2, 1 bot-hour, không có fill nào (trước đây hiện "n/a" trơn, không có Thin).
+      if (h === 5 || h === 6)
+        return { costPerMillion: null, volume: null, fees: null, botHours: 2, thin: true };
+      if (h === 7)
+        return { costPerMillion: null, volume: null, fees: null, botHours: 1, thin: true };
+      // Đủ bot-hour nhưng không có fill: "No fills", không Thin.
+      if (h === 9)
+        return { costPerMillion: null, volume: null, fees: null, botHours: 4, thin: false };
+      // Có fill, 2 bot-hour, API không gắn cờ: vẫn Thin như chú giải hứa.
+      if (h === 10)
+        return { costPerMillion: "150", volume: "73000", fees: "10.2", botHours: 2, thin: false };
+      // Có fill nhưng thiếu giá tham chiếu (CPM null), 1 bot-hour: n/a kèm Thin.
+      if (h === 11)
+        return { costPerMillion: null, volume: "5000", fees: "1.2", botHours: 1, thin: true };
+      return (
+        base.hours[h]?.bots ?? {
+          costPerMillion: null,
+          volume: null,
+          fees: null,
+          botHours: 0,
+          thin: false,
+        }
+      );
+    };
+    setRespond(() =>
+      Promise.resolve(view({ hours: base.hours.map((x) => ({ ...x, bots: bots(x.hour) })) })),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    for (const [h, n] of [
+      ["05", 2],
+      ["06", 2],
+      ["07", 1],
+    ] as const) {
+      // Markout cost, Volume, Fees ở desktop: "Thin · no fills".
+      const cells = screen.getAllByTitle(
+        `${h}:00 · no fills · ${String(n)} bot-hours · Thin sample`,
+      );
+      expect(cells).toHaveLength(3);
+      for (const c of cells) expect(c).toHaveTextContent(/^Thin · no fills$/);
+    }
+    const enough = screen.getAllByTitle("09:00 · no fills · 4 bot-hours");
+    expect(enough).toHaveLength(3);
+    for (const c of enough) expect(c).toHaveTextContent(/^No fills$/);
+    // Markout cost, Volume, Fees cùng tooltip; cả ba có "Thin".
+    const fewHours = screen.getAllByTitle(
+      /^10:00 · \$150 · 2 bot-hours · volume \$73K · Thin sample$/,
+    );
+    expect(fewHours.map((c) => c.textContent)).toEqual(["$150Thin", "$73KThin", "$10Thin"]);
+    expect(screen.getByTitle("11:00 · Not available · Thin sample")).toHaveTextContent("n/aThin");
+    // Không có bot nào chạy: n/a trơn, không Thin.
+    for (const c of screen.getAllByTitle("03:00 · Not available"))
+      expect(c).not.toHaveTextContent("Thin");
+    // 390 px: cột Markout / $1M cũng có "Thin · no fills" / "No fills".
+    const row = (hh: string) =>
+      screen
+        .getAllByRole("button", { expanded: false })
+        .find((b) => within(b).queryByText(hh) !== null);
+    expect(row("06")).toHaveTextContent(/Thin · no fills$/);
+    expect(row("09")).toHaveTextContent(/No fills$/);
+    expect(row("10")).toHaveTextContent(/\$150Thin$/);
+  });
+
+  it("never shows -0.0: values that round to zero have no sign", async () => {
+    expect(fx("-0.04")).toBe("0.0");
+    expect(fx("-0.05")).toBe("-0.1");
+    expect(fx("0.04")).toBe("0.0");
+    expect(fx(-0.0001, 2)).toBe("0.00");
+    expect(fx("-1.25")).toBe("-1.3");
+    expect(usd("-0.001")).toBe("$0.00");
+    const base = view();
+    setRespond(() =>
+      Promise.resolve(
+        view({
+          hours: base.hours.map((x) =>
+            x.hour === 2 ? { ...x, cost: { markoutBp: "-0.04", spreadTicks: 1.5 } } : x,
+          ),
+        }),
+      ),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    expect(screen.queryByText(/^-0\.0+$/)).not.toBeInTheDocument();
+    // Desktop (khối 2) và cột 390 px.
+    expect(screen.getAllByText("0.0").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("picks the hottest hours as up to 3 contiguous ranges from Hot days, past facts only", () => {
+    const pcts = (m: Record<number, number>) => Array.from({ length: 24 }, (_, h) => m[h] ?? 0);
+    // 21–23 nối thành một đoạn; 15–16 một đoạn; 09 một đoạn; 07 (33%) là đoạn thứ 4 → dừng.
+    expect(
+      hottestHours(pcts({ 21: 53, 22: 60, 23: 40, 15: 35, 16: 38, 9: 35, 7: 33 }), 21),
+    ).toEqual({
+      ranges: [
+        [21, 3],
+        [15, 2],
+        [9, 1],
+      ],
+      min: 35,
+      max: 60,
+    });
+    // Vòng qua nửa đêm: 23 và 00 là một đoạn.
+    expect(hottestHours(pcts({ 23: 50, 0: 40, 12: 30 }), 10)).toEqual({
+      ranges: [
+        [23, 2],
+        [12, 1],
+      ],
+      min: 30,
+      max: 50,
+    });
+    // Bằng nhau: ưu tiên giờ nối dài đoạn đã chọn.
+    expect(hottestHours(pcts({ 5: 50, 2: 40, 6: 40, 10: 40, 14: 40 }), 10)?.ranges).toEqual([
+      [5, 2],
+      [2, 1],
+      [10, 1],
+    ]);
+    // Không đủ dữ liệu: chưa đủ 3 ngày có nến, không giờ nào nóng, hoặc mọi giờ nóng như nhau.
+    expect(hottestHours(pcts({ 20: 60 }), 2)).toBeNull();
+    expect(hottestHours(pcts({}), 30)).toBeNull();
+    expect(
+      hottestHours(
+        Array.from({ length: 24 }, () => 10),
+        30,
+      ),
+    ).toBeNull();
+    expect(
+      hottestHours(
+        Array.from({ length: 24 }, () => null),
+        30,
+      ),
+    ).toBeNull();
+  });
+
+  it("shows the Hottest hours line at the top of the results only when there is enough data", async () => {
+    // Mặc định chỉ 1 ngày có nến: không có dòng tóm tắt.
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    expect(screen.queryByText(/^Hottest hours:/)).not.toBeInTheDocument();
+    cleanup();
+
+    const base = view();
+    const days = ["2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"].map((date) => ({
+      date,
+      cells: Array.from({ length: 24 }, () => ({ ratio: "1", medianBp: "4.2" })),
+    }));
+    const hot: Record<number, number> = { 20: 60, 21: 50, 8: 25 };
+    setRespond(() =>
+      Promise.resolve(
+        view({
+          heatmap: days,
+          hours: base.hours.map((x) => ({
+            ...x,
+            volatility: { ...x.volatility, hotPct: x.hour === 3 ? null : (hot[x.hour] ?? 0) },
+          })),
+        }),
+      ),
+    );
+    show();
+    await screen.findByText("1 · Market volatility on SoDEX");
+    const line = screen.getByText(
+      "Hottest hours: 20:00–22:00, 08:00–09:00 (hot on 25–60% of days)",
+    );
+    // Đầu kết quả: trước tiêu đề khối 1.
+    expect(
+      line.compareDocumentPosition(screen.getByText("1 · Market volatility on SoDEX")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 4 / 30 ngày có nến: chip phủ dữ liệu.
+    expect(screen.getByText("Data since Nov 12, 2026 · 4 of 30 days")).toBeInTheDocument();
+  });
+
   it("has no accessibility violations", async () => {
     show();
     await screen.findByText("1 · Market volatility on SoDEX");
@@ -743,6 +975,14 @@ describe("Market hours page", () => {
       rules: { "color-contrast": { enabled: false } },
     });
     expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+    // "Model details" mở (desktop và 390 px) cũng không vi phạm.
+    for (const b of screen.getAllByRole("button", { name: "Model details" }))
+      await userEvent.setup({ delay: null }).click(b);
+    const details = await axe.run(document.body, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(details.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
     // Có popup đang mở cũng không vi phạm.
     await userEvent
       .setup({ delay: null })

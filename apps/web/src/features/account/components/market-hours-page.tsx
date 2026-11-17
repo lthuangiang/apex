@@ -2,8 +2,11 @@
 
 import {
   dec,
+  Decimal,
   MARKET_HOURS_CALIBRATION_DEFAULTS,
+  MARKET_HOURS_CALIBRATION_THIN_HOURS,
   MARKET_HOURS_MIN_CUTS,
+  MARKET_HOURS_THIN_BOT_HOURS,
   marketHoursViewSchema,
   type MarketHoursCalibrationScope,
   type MarketHoursHour,
@@ -11,7 +14,7 @@ import {
 } from "@drift/shared";
 import { SegmentedControl } from "@drift/ui";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Bot, Info, Scale } from "lucide-react";
+import { Activity, Bot, ChevronRight, Info, Scale } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -68,20 +71,27 @@ const volBg = (ratio: number): string => VOL_BG[volBucket(ratio)] ?? "";
 const volBgText = (ratio: number): string => VOL_BG[Math.min(volBucket(ratio), 2)] ?? "";
 const costBg = (cost: number): string => COST_BG[costBucket(cost)] ?? "";
 
-const num = (v: string | null, dp = 1): string | null =>
-  v === null ? null : Number(v).toFixed(dp);
+/**
+ * Số → chuỗi `dp` chữ số thập phân (tính bằng Decimal). Giá trị làm tròn về 0 hiện "0.0" không dấu, không bao giờ
+ * "-0.0" (vd markout -0.04 bp).
+ */
+export function fx(v: string | number | Decimal, dp = 1): string {
+  const d = new Decimal(v).toDecimalPlaces(dp);
+  return (d.isZero() ? d.abs() : d).toFixed(dp);
+}
+const num = (v: string | null, dp = 1): string | null => (v === null ? null : fx(v, dp));
 function usdShort(v: string | null): string | null {
   if (v === null) return null;
-  const n = Number(v);
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
+  const d = dec(v);
+  if (d.gte(1e6)) return `$${fx(d.div(1e6), 1)}M`;
+  if (d.gte(1e3)) return `$${fx(d.div(1e3), 0)}K`;
+  return `$${fx(d, 0)}`;
 }
 /** Tiền theo đô; dưới $10 (trị tuyệt đối) thì có cent để phí nhỏ không thành "$0" (vd "$0.31"). Tính bằng Decimal. */
 export function usd(v: string | null): string | null {
   if (v === null) return null;
   const d = dec(v);
-  return `$${d.abs().lt(10) ? d.toFixed(2) : d.toFixed(0)}`;
+  return `$${d.abs().lt(10) ? fx(d, 2) : fx(d, 0)}`;
 }
 /** Tỷ lệ → phần trăm, 2 chữ số có nghĩa dưới 10% (vd "2.9", "0.69"), số nguyên từ 10% (vd "60"). */
 export function pct(v: string): string {
@@ -108,7 +118,70 @@ function useSourceText(): (scope: MarketHoursCalibrationScope, market: string | 
         : t("default", { date: dayLabel(MARKET_HOURS_CALIBRATION_DEFAULTS.date) });
 }
 /** Hệ số C hiển thị: 2 chữ số thập phân (vd "1.42"). */
-const factor = (v: string): string => Number(v).toFixed(2);
+const factor = (v: string): string => fx(v, 2);
+
+/**
+ * "Est. CPM (estimate)" gắn "Thin" khi C dựa trên ít hơn `MARKET_HOURS_CALIBRATION_THIN_HOURS` ô, hoặc là C mặc định
+ * (DEC-TBD-market-hours-cleanup).
+ */
+export const calibrationThin = (est: MarketHoursView["estimate"]): boolean =>
+  est.calibrationScope.source === "default" ||
+  est.calibrationHours < MARKET_HOURS_CALIBRATION_THIN_HOURS;
+
+/** Số ngày trong kỳ có nến (ít nhất một ô của heatmap có số). */
+export const daysWithCandles = (heatmap: MarketHoursView["heatmap"]): number =>
+  heatmap.filter((d) => d.cells.some((c) => c.ratio !== null)).length;
+
+/** Dòng tóm tắt "Hottest hours" cần ít nhất chừng này ngày có nến. */
+export const SUMMARY_MIN_DAYS = 3;
+const SUMMARY_MAX_RANGES = 3;
+
+/** Các đoạn giờ liền nhau (vòng qua nửa đêm: 23 → 00) của một tập giờ, dạng [giờ bắt đầu, số giờ]. */
+function runsOf(picked: ReadonlySet<number>): [number, number][] {
+  if (picked.size >= 24) return [[0, 24]];
+  const runs: [number, number][] = [];
+  for (const h of H) {
+    if (!picked.has(h) || picked.has((h + 23) % 24)) continue;
+    let len = 1;
+    while (picked.has((h + len) % 24)) len += 1;
+    runs.push([h, len]);
+  }
+  return runs;
+}
+
+/**
+ * Dòng tóm tắt đầu kết quả (DEC-TBD-market-hours-cleanup), số quá khứ của khối 1, không dự báo: lấy giờ theo "Hot days"
+ * từ cao xuống (bằng nhau thì ưu tiên giờ nối dài một đoạn đã chọn, rồi giờ sớm hơn), gộp giờ liền nhau thành đoạn, dừng
+ * trước khi phải mở đoạn thứ 4 hoặc khi tới giờ 0%. Đoạn xếp theo % cao nhất của đoạn (bằng nhau thì giờ sớm hơn).
+ * Null khi chưa đủ `SUMMARY_MIN_DAYS` ngày có nến, không giờ nào nóng, hoặc mọi giờ nóng như nhau.
+ */
+export function hottestHours(
+  hotPct: readonly (number | null)[],
+  daysWithData: number,
+): { ranges: [number, number][]; min: number; max: number } | null {
+  if (daysWithData < SUMMARY_MIN_DAYS) return null;
+  const pctOf = (h: number): number => hotPct[h] ?? 0;
+  const left = H.filter((h) => pctOf(h) > 0);
+  const picked = new Set<number>();
+  while (left.length > 0) {
+    const top = Math.max(...left.map(pctOf));
+    const tied = left.filter((h) => pctOf(h) === top);
+    const next = tied.find((h) => picked.has((h + 23) % 24) || picked.has((h + 1) % 24)) ?? tied[0];
+    if (next === undefined) break;
+    picked.add(next);
+    if (runsOf(picked).length > SUMMARY_MAX_RANGES) {
+      picked.delete(next);
+      break;
+    }
+    left.splice(left.indexOf(next), 1);
+  }
+  if (picked.size === 0 || picked.size >= 24) return null;
+  const peak = ([s, len]: [number, number]): number =>
+    Math.max(...Array.from({ length: len }, (_, i) => pctOf((s + i) % 24)));
+  const ranges = runsOf(picked).sort((a, b) => peak(b) - peak(a) || a[0] - b[0]);
+  const pcts = [...picked].map(pctOf);
+  return { ranges, min: Math.min(...pcts), max: Math.max(...pcts) };
+}
 /** Mốc thời gian ISO → ngày theo múi giờ `tz`. */
 const instantLabel = (iso: string, tz: string): string => formatDate(Date.parse(iso), tz);
 /** Mốc thời gian ISO → ngày giờ theo múi giờ `tz`, vd "Nov 15, 2026, 08:57". */
@@ -156,7 +229,7 @@ export function MarketHoursPage() {
 
   return (
     <Workspace current="marketHours">
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         <PageHead title={t("title")} subtitle={t("subtitle")} />
         {forbidden ? (
           <Card>
@@ -224,7 +297,7 @@ export function MarketHoursPage() {
             <HowToRead v={v} markers={markers} utcMode={utcMode} offset={offset} />
             <section
               aria-label={t("grid")}
-              className="flex flex-col gap-3.5 rounded-card border border-border bg-surface px-3 py-4 md:px-4"
+              className="flex flex-col gap-2.5 rounded-card border border-border bg-surface px-3 py-3 md:px-4"
             >
               {q.isPending || tzRejected ? (
                 <div aria-busy="true" className="flex flex-col gap-2">
@@ -262,6 +335,7 @@ export function MarketHoursPage() {
                 </div>
               ) : (
                 <>
+                  <Summary v={v} />
                   <Desktop v={v} markers={markers} utcMode={utcMode} offset={offset} />
                   <Mobile v={v} markers={markers} />
                 </>
@@ -272,6 +346,28 @@ export function MarketHoursPage() {
         )}
       </div>
     </Workspace>
+  );
+}
+
+/** "Hottest hours: …" đầu kết quả (cả desktop và 390 px); không đủ dữ liệu thì không có dòng này. */
+function Summary({ v }: { v: MarketHoursView }) {
+  const t = useTranslations("marketHours.vol");
+  const s = hottestHours(
+    v.hours.map((h) => h.volatility.hotPct),
+    daysWithCandles(v.heatmap),
+  );
+  if (s === null) return null;
+  const ranges = s.ranges
+    .map(([from, len]) =>
+      t("hourRange", { from: `${pad(from)}:00`, to: `${pad((from + len) % 24)}:00` }),
+    )
+    .join(", ");
+  return (
+    <p className="m-0 text-[13.5px] font-bold">
+      {s.min === s.max
+        ? t("summaryOne", { ranges, pct: s.max })
+        : t("summary", { ranges, min: s.min, max: s.max })}
+    </p>
   );
 }
 
@@ -332,10 +428,10 @@ function HowToRead({
       onToggle={(e) => {
         setOpen(e.currentTarget.open);
       }}
-      className="rounded-tile border border-border bg-surface px-4 py-3.5 text-sm leading-normal"
+      className="rounded-tile border border-border bg-surface px-4 py-2.5 text-sm leading-normal"
     >
       <summary className="min-h-7 cursor-pointer font-extrabold">{t("how.title")}</summary>
-      <ul className="mt-2 mb-2.5 grid list-none gap-2 p-0 text-[13px] text-ink-2 md:grid-cols-3 md:gap-3">
+      <ul className="mt-1.5 mb-2 grid list-none gap-2 p-0 text-[13px] text-ink-2 md:grid-cols-3 md:gap-2.5">
         {HOW.map(([k, Icon]) => (
           <li key={k} className="flex gap-2.5 rounded-control bg-surface-2 p-2.5">
             <span
@@ -358,7 +454,7 @@ function HowToRead({
         <strong className="text-ink">{t("markers")}: </strong>
         {markers.map(label).join(", ")}
       </p>
-      <details className="mt-1.5 rounded-control bg-surface-2 px-3 py-2.5">
+      <details className="mt-1 rounded-control bg-surface-2 px-3 py-2">
         <summary className="min-h-7 cursor-pointer font-bold text-accent-ink">
           {t("calc.title")}
         </summary>
@@ -369,10 +465,8 @@ function HowToRead({
             <dd className="m-0 mt-0.5">
               {t("calc.volBody")}{" "}
               {v === undefined ? null : (
-                <>
-                  {t("calc.estBody", { bp: v.estimate.shockBp })}{" "}
-                  <CutCalc est={v.estimate} market={v.market} />{" "}
-                </>
+                // Cách tính chi phí cắt và hệ số C của thị trường đang xem nằm trong "Model details" dưới dòng Est. CPM.
+                <>{t("calc.estBody", { bp: v.estimate.shockBp })} </>
               )}
               {since(v?.candlesSince)}
             </dd>
@@ -411,21 +505,21 @@ function CutCalc({ est, market }: { est: MarketHoursView["estimate"]; market: st
     <>
       {est.cutSlippageBp === null
         ? t("cutTakerOnly", {
-            taker: Number(est.cutTakerBp).toFixed(1),
+            taker: fx(est.cutTakerBp),
             n: est.cuts,
             min: MARKET_HOURS_MIN_CUTS,
           })
         : t("cutMeasured", {
-            taker: Number(est.cutTakerBp).toFixed(1),
-            slip: Number(est.cutSlippageBp).toFixed(1),
+            taker: fx(est.cutTakerBp),
+            slip: fx(est.cutSlippageBp),
             n: est.cuts,
           })}{" "}
       {est.cutShare === null || est.fillsPerBotHour === null
         ? t("cutNone", { source: cutSource })
         : t(est.positionRatioSource === "cuts" ? "cutSizeCuts" : "cutSizeRatio", {
-            ratio: Number(est.positionRatio).toFixed(1),
+            ratio: fx(est.positionRatio),
             notional: usd(est.cutNotional) ?? "",
-            fills: Number(est.fillsPerBotHour).toFixed(1),
+            fills: fx(est.fillsPerBotHour),
             pct: pct(est.cutShare),
             source: cutSource,
           })}{" "}
@@ -445,7 +539,7 @@ function CutCalc({ est, market }: { est: MarketHoursView["estimate"]; market: st
 const COLS = "grid grid-cols-[272px_repeat(24,minmax(0,1fr))] gap-[3px]";
 const GRID = `${COLS} items-center`;
 const CELL =
-  "flex min-h-[30px] flex-col items-center justify-center rounded-[4px] text-center text-[11px] font-semibold";
+  "flex min-h-[26px] flex-col items-center justify-center rounded-[4px] text-center text-[11px] leading-tight font-semibold";
 
 /** Bỏ các ngày đầu kỳ chưa có nến nào (cả 24 ô đều thiếu); ngày thiếu ở giữa kỳ vẫn giữ. */
 export function trimLeadingEmptyDays(
@@ -507,24 +601,23 @@ function Desktop({
   const heat = trimLeadingEmptyDays(v.heatmap);
   const roomy = v.days <= 7;
   const firstDay = heat[0]?.date;
-  const sourceOf = useSourceText();
-  const row = (
-    labelText: string,
-    help: HelpKey,
-    cells: ReactNode[],
-    helpValues?: Record<string, string>,
-  ) => (
+  const covered = daysWithCandles(heat);
+  const [modelOpen, setModelOpen] = useState(false);
+  const modelId = useId();
+  const estThin = calibrationThin(v.estimate);
+  const row = (labelText: string, help: HelpKey, cells: ReactNode[], mark?: ReactNode) => (
     <div className={GRID}>
       <span className="flex items-center gap-1 pr-2 text-xs leading-tight font-bold whitespace-nowrap">
         <span className="min-w-0">{labelText}</span>
-        <RowHelp label={labelText} help={help} values={helpValues} />
+        <RowHelp label={labelText} help={help} />
+        {mark}
       </span>
       {cells}
     </div>
   );
   return (
     <div className="hidden overflow-x-auto md:block">
-      <div className="flex min-w-[1060px] flex-col gap-1">
+      <div className="flex min-w-[1060px] flex-col gap-0.5">
         <div className={GRID}>
           <span className="self-end pb-1 text-xs font-bold text-muted">{t("hour")}</span>
           {H.map((h) => {
@@ -560,8 +653,8 @@ function Desktop({
           title={t("vol.title")}
           sub={t("vol.sub")}
           chip={
-            firstDay !== undefined && heat.length < v.days
-              ? t("vol.dataSince", { date: dayLabel(firstDay) })
+            firstDay !== undefined && covered < v.days
+              ? t("vol.dataSince", { date: dayLabel(firstDay), n: covered, days: v.days })
               : null
           }
           chipTone="info"
@@ -582,8 +675,8 @@ function Desktop({
                     : t("vol.cellTip", {
                         date: dayLabel(d.date),
                         hour: pad(h),
-                        bp: Number(c.medianBp).toFixed(1),
-                        ratio: r.toFixed(1),
+                        bp: fx(c.medianBp),
+                        ratio: fx(r),
                       }) + (r > 2 ? t("vol.hot") : "");
                 return (
                   <span
@@ -604,7 +697,7 @@ function Desktop({
           ])}
           extra={[[HATCH, tm("notAvailable")]]}
         />
-        <div className="flex flex-wrap gap-x-3.5 gap-y-1 pb-2 pl-[275px] text-xs text-ink-2">
+        <div className="flex flex-wrap gap-x-3.5 gap-y-1 pb-1 pl-[275px] text-xs text-ink-2">
           <span className="font-bold">{t("markers")}</span>
           {markers.map((m) => (
             <span key={`${String(m.utc)}-${String(m.us)}`}>{label(m)}</span>
@@ -630,7 +723,7 @@ function Desktop({
               return (
                 <Num
                   key={h}
-                  v={r === null ? null : `${Number(r).toFixed(1)}×`}
+                  v={r === null ? null : `${fx(r)}×`}
                   {...(r === null ? {} : { bg: volBgText(Number(r)) })}
                 />
               );
@@ -659,7 +752,7 @@ function Desktop({
                     x.maxRangeBp === null || x.maxRangeAt === null
                       ? null
                       : t("vol.maxRangeTip", {
-                          value: Number(x.maxRangeBp).toFixed(1),
+                          value: fx(x.maxRangeBp),
                           at: instantTimeLabel(x.maxRangeAt, v.tz),
                         })
                   }
@@ -681,7 +774,7 @@ function Desktop({
                     x.maxMove15Bp === null || x.maxMove15At === null
                       ? null
                       : t("vol.maxMove15Tip", {
-                          value: Number(x.maxMove15Bp).toFixed(1),
+                          value: fx(x.maxMove15Bp),
                           at: instantTimeLabel(x.maxMove15At, v.tz),
                         })
                   }
@@ -699,35 +792,8 @@ function Desktop({
           ])}
           extra={[]}
         />
+        {/* Một dòng "Est. CPM (estimate)" (số đã hiệu chỉnh); hai dòng mô hình và cách tính nằm trong "Model details". */}
         <Marked marked={marked}>
-          {row(
-            t("vol.estTypical"),
-            "estTypical",
-            H.map((h) => (
-              <EstCell
-                key={h}
-                x={hourOf(v, h).volatility}
-                est={v.estimate}
-                market={v.market}
-                hour={h}
-                kind="typical"
-              />
-            )),
-          )}
-          {row(
-            t("vol.estShock"),
-            "estShock",
-            H.map((h) => (
-              <EstCell
-                key={h}
-                x={hourOf(v, h).volatility}
-                est={v.estimate}
-                market={v.market}
-                hour={h}
-                kind="shock"
-              />
-            )),
-          )}
           {row(
             t("vol.estCalibrated"),
             "estCalibrated",
@@ -741,9 +807,63 @@ function Desktop({
                 kind="calibrated"
               />
             )),
-            { source: sourceOf(v.estimate.calibrationScope, v.market) },
+            estThin ? <ThinMark /> : null,
           )}
         </Marked>
+        <div>
+          <button
+            type="button"
+            aria-expanded={modelOpen}
+            aria-controls={modelId}
+            onClick={() => {
+              setModelOpen((x) => !x);
+            }}
+            className="inline-flex min-h-6 cursor-pointer items-center gap-1 rounded-control border-0 bg-transparent p-0 text-xs font-bold text-accent-ink"
+          >
+            <ChevronRight
+              size={14}
+              strokeWidth={2.4}
+              aria-hidden="true"
+              className={`transition-transform ${modelOpen ? "rotate-90" : ""}`}
+            />
+            {t("vol.modelDetails")}
+          </button>
+        </div>
+        <div id={modelId} hidden={!modelOpen} className="flex flex-col gap-1.5">
+          <Marked marked={marked}>
+            {row(
+              t("vol.estTypical"),
+              "estTypical",
+              H.map((h) => (
+                <EstCell
+                  key={h}
+                  x={hourOf(v, h).volatility}
+                  est={v.estimate}
+                  market={v.market}
+                  hour={h}
+                  kind="typical"
+                />
+              )),
+            )}
+            {row(
+              t("vol.estShock"),
+              "estShock",
+              H.map((h) => (
+                <EstCell
+                  key={h}
+                  x={hourOf(v, h).volatility}
+                  est={v.estimate}
+                  market={v.market}
+                  hour={h}
+                  kind="shock"
+                />
+              )),
+            )}
+          </Marked>
+          <p className="m-0 pl-[275px] text-xs leading-normal text-ink-2">
+            <CutCalc est={v.estimate} market={v.market} />
+          </p>
+        </div>
         <Legend
           label={t("vol.estLegend")}
           items={(["c0", "c1", "c2", "c3"] as const).map((k, i) => [
@@ -752,9 +872,12 @@ function Desktop({
           ])}
           extra={[]}
         >
+          <span>
+            <strong className="text-warn">{t("botBlock.thin")}</strong> = {t("vol.estThinLegend")}
+          </span>
           <span>{t("botBlock.naLegend")}</span>
         </Legend>
-        <div className="mt-1 mb-1 flex flex-col gap-2 rounded-tile bg-surface-2 p-3">
+        <div className="mt-0.5 mb-0.5 flex flex-col gap-1.5 rounded-tile bg-surface-2 px-3 py-2.5">
           <div className="flex flex-wrap items-baseline gap-2.5">
             <strong className="text-[13.5px]">
               {t("detailTitle", { from: `${pad(sel)}:00`, to: `${pad(sel)}:59` })}
@@ -792,7 +915,7 @@ function Desktop({
             "spread",
             H.map((h) => {
               const s = hourOf(v, h).cost.spreadTicks;
-              return <Num key={h} v={s === null ? null : s.toFixed(1)} />;
+              return <Num key={h} v={s === null ? null : fx(s)} />;
             }),
           )}
         </Marked>
@@ -883,7 +1006,7 @@ function shockTip(
       shock: x.shockDays,
       days: x.estDays,
       bp: est.shockBp,
-      cut: Number(est.cutCostBp).toFixed(1),
+      cut: fx(est.cutCostBp),
     }) + cutSuffix(t, est, cutSource)
   );
 }
@@ -901,14 +1024,14 @@ function cutSuffix(
   return (
     (est.cutSlippageBp === null ? t("takerOnly") : "") +
     t(est.positionRatioSource === "cuts" ? "cutSizeCuts" : "cutSize", {
-      ratio: Number(est.positionRatio).toFixed(1),
+      ratio: fx(est.positionRatio),
       pct: pct(est.cutShare),
       source: cutSource,
     })
   );
 }
 
-/** Tooltip / dòng 390 px của "Est. CPM · calibrated": giá trị, "incl. shock days" × C và nguồn của C. */
+/** Tooltip / dòng 390 px của "Est. CPM (estimate)": giá trị, "incl. shock days" × C và nguồn của C. */
 function calibratedTip(
   t: ReturnType<typeof useTranslations<"marketHours.vol">>,
   x: MarketHoursHour["volatility"],
@@ -929,8 +1052,8 @@ function calibratedTip(
 }
 
 /**
- * Ô "Est. CPM · typical day (model)", "Est. CPM · incl. shock days (model)" và "Est. CPM · calibrated": cùng 4 bậc
- * màu với CPM của khối 3. Cả dòng n/a khi mô hình không tính được cho market (lý do trong tooltip); một giờ không có
+ * Ô "Est. CPM · typical day (model)", "Est. CPM · incl. shock days (model)" (trong "Model details") và "Est. CPM
+ * (estimate)" (= calibrated): cùng 4 bậc màu với Markout cost / $1M của khối 3. Cả dòng n/a khi mô hình không tính được cho market (lý do trong tooltip); một giờ không có
  * nến → n/a.
  */
 function EstCell({
@@ -966,8 +1089,8 @@ function EstCell({
           : t("estTip", {
               hour: pad(hour),
               cost,
-              swing: Number(x.swingBp).toFixed(1),
-              fees: Number(est.feesBp).toFixed(1),
+              swing: fx(x.swingBp),
+              fees: fx(est.feesBp),
             });
   if (cost === null || value === null || tip === null)
     return (
@@ -1145,7 +1268,7 @@ function ShockCell({ bp, tip, hour }: { bp: string | null; tip: string | null; h
   const n = Number(bp);
   return (
     <span title={tip} className={`${CELL} ${SHOCK_BG[shockBucket(n)] ?? ""}`}>
-      {n.toFixed(0)}
+      {fx(bp, 0)}
       {n >= SHOCK_HOT_BP ? (
         <span aria-hidden="true" className="block text-[8.5px] leading-none">
           ▲
@@ -1170,7 +1293,7 @@ function BlockHead({
   note?: string | null;
 }) {
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5 border-t border-surface-2 pt-3.5 pb-1.5">
+    <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-t border-surface-2 pt-2.5 pb-1">
       <h3 className="m-0 text-[15px] font-extrabold">{title}</h3>
       <span className="text-[12.5px] text-muted">{sub}</span>
       {chip === null ? null : (
@@ -1194,6 +1317,40 @@ function Num({ v, bg }: { v: string | null; bg?: string }) {
   );
 }
 
+/** Dấu "Thin" nhỏ cạnh nhãn dòng (dòng "Est. CPM (estimate)" khi C mỏng); chú giải giải thích. */
+function ThinMark() {
+  const t = useTranslations("marketHours.botBlock");
+  return (
+    <span className="rounded-full bg-warn-bg px-1.5 text-[10px] leading-4 font-extrabold text-warn">
+      {t("thin")}
+    </span>
+  );
+}
+
+/**
+ * Ô khối 3 (cả desktop và cột 390 px) có "Thin" khi có bot chạy hoặc có fill mà dưới 3 bot-hour, đúng như chú giải
+ * hứa; ô không có bot nào chạy và không có fill thì không. API đã gắn `thin`; điều kiện bot-hour giữ để không phụ
+ * thuộc cách API làm tròn.
+ */
+export const botThin = (b: MarketHoursHour["bots"]): boolean =>
+  b.thin || ((b.volume !== null || b.botHours > 0) && b.botHours < MARKET_HOURS_THIN_BOT_HOURS);
+
+/** Ô có bot chạy (bot-hour > 0) mà không có fill nào: "Thin · no fills" (dưới 3 bot-hour) hoặc "No fills". */
+const noFills = (b: MarketHoursHour["bots"]): boolean => b.volume === null && b.botHours > 0;
+
+function NoFillsText({ thin }: { thin: boolean }) {
+  const t = useTranslations("marketHours.botBlock");
+  return thin ? (
+    <>
+      <span className="block text-[8.5px] leading-none font-extrabold text-warn">{t("thin")}</span>
+      <span className="sr-only"> · </span>
+      <span className="block text-[9px] leading-tight">{t("noFillsShort")}</span>
+    </>
+  ) : (
+    <span className="block text-[9px] leading-tight">{t("noFills")}</span>
+  );
+}
+
 function BotCell({
   b,
   hour,
@@ -1204,30 +1361,40 @@ function BotCell({
   kind: "cost" | "volume" | "fees";
 }) {
   const t = useTranslations("marketHours.botBlock");
-  const value =
-    kind === "cost" ? usd(b.costPerMillion) : kind === "volume" ? usdShort(b.volume) : usd(b.fees);
-  if (value === null)
+  const thin = botThin(b);
+  if (noFills(b))
     return (
-      <span title={t("tipNa", { hour: pad(hour) })} className={`${CELL} ${HATCH}`}>
-        {t("na")}
+      <span
+        title={
+          t("tipNoFills", { hour: pad(hour), botHours: b.botHours }) + (thin ? t("tipThin") : "")
+        }
+        className={`${CELL} ${thin ? THIN_HATCH : HATCH}`}
+      >
+        <NoFillsText thin={thin} />
       </span>
     );
+  const value =
+    kind === "cost" ? usd(b.costPerMillion) : kind === "volume" ? usdShort(b.volume) : usd(b.fees);
   const title =
-    t("tip", {
-      hour: pad(hour),
-      cost: usd(b.costPerMillion) ?? t("na"),
-      botHours: b.botHours,
-      volume: usdShort(b.volume) ?? t("na"),
-    }) + (b.thin ? t("tipThin") : "");
-  const bg = b.thin
+    (value === null
+      ? t("tipNa", { hour: pad(hour) })
+      : t("tip", {
+          hour: pad(hour),
+          cost: usd(b.costPerMillion) ?? t("na"),
+          botHours: b.botHours,
+          volume: usdShort(b.volume) ?? t("na"),
+        })) + (thin ? t("tipThin") : "");
+  const bg = thin
     ? THIN_HATCH
-    : kind === "cost"
-      ? costBg(Number(b.costPerMillion))
-      : "bg-surface-2";
+    : value === null
+      ? HATCH
+      : kind === "cost"
+        ? costBg(Number(b.costPerMillion))
+        : "bg-surface-2";
   return (
     <span title={title} className={`${CELL} ${bg}`}>
-      {value}
-      {b.thin ? (
+      {value ?? t("na")}
+      {thin ? (
         <span className="block text-[8.5px] leading-none font-extrabold text-warn">
           {t("thin")}
         </span>
@@ -1248,7 +1415,7 @@ function Legend({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 pt-1.5 pb-1 pl-[275px] text-xs text-ink-2">
+    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 pt-1 pb-0.5 pl-[275px] text-xs text-ink-2">
       <span className="font-bold">{label}</span>
       {[...items, ...extra].map(([bg, text]) => (
         <span key={text} className="inline-flex items-center gap-1.5">
@@ -1265,16 +1432,16 @@ function FiveMin({ values }: { values: readonly (string | null)[] }) {
   const tb = useTranslations("marketHours.botBlock");
   const max = Math.max(1, ...values.map((x) => (x === null ? 0 : Number(x))));
   return (
-    <div className="grid h-24 grid-cols-12 items-end gap-1.5">
+    <div className="grid h-20 grid-cols-12 items-end gap-1.5">
       {Array.from({ length: 12 }, (_, i) => {
         const x = values[i] ?? null;
         return (
           <span key={i} className="flex flex-col items-center gap-[3px] text-[10.5px]">
-            <span>{x === null ? tb("na") : Number(x).toFixed(1)}</span>
+            <span>{x === null ? tb("na") : fx(x)}</span>
             <span
               aria-hidden="true"
               className="w-[70%] rounded-t-[3px] bg-mh-vol-3"
-              style={{ height: x === null ? 0 : Math.max(2, Math.round((Number(x) / max) * 60)) }}
+              style={{ height: x === null ? 0 : Math.max(2, Math.round((Number(x) / max) * 46)) }}
             />
             <span className="text-muted">:{pad(i * 5)}</span>
           </span>
@@ -1293,6 +1460,9 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
   const sourceOf = useSourceText();
   const markAt = new Map(markers.map((m) => [m.hour, m]));
   const [open, setOpen] = useState<number>(markers.find((m) => m.us)?.hour ?? -1);
+  const [modelOpen, setModelOpen] = useState(false);
+  const modelId = useId();
+  const estThin = calibrationThin(v.estimate);
   return (
     <div className="flex flex-col gap-2 md:hidden">
       {v.markoutSince !== null && v.markoutDays < v.days ? (
@@ -1345,25 +1515,31 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                 <span
                   className={`${CELL} rounded-[6px] ${ratio === null ? HATCH : volBgText(ratio)}`}
                 >
-                  {ratio === null ? tb("na") : `${ratio.toFixed(1)}×`}
+                  {ratio === null ? tb("na") : `${fx(ratio)}×`}
                 </span>
                 <span>
                   {x.volatility.hotPct === null ? tb("na") : `${String(x.volatility.hotPct)}%`}
                 </span>
                 <span>{num(x.cost.markoutBp) ?? tb("na")}</span>
                 <span
-                  className={`${CELL} rounded-[6px] ${x.bots.costPerMillion === null || x.bots.thin ? THIN_HATCH : costBg(Number(x.bots.costPerMillion))}`}
+                  className={`${CELL} rounded-[6px] ${x.bots.costPerMillion === null || botThin(x.bots) ? THIN_HATCH : costBg(Number(x.bots.costPerMillion))}`}
                 >
-                  {usd(x.bots.costPerMillion) ?? tb("na")}
-                  {x.bots.thin ? (
-                    <span className="block text-[8.5px] font-extrabold text-warn">
-                      {tb("thin")}
-                    </span>
-                  ) : null}
+                  {noFills(x.bots) ? (
+                    <NoFillsText thin={botThin(x.bots)} />
+                  ) : (
+                    <>
+                      {usd(x.bots.costPerMillion) ?? tb("na")}
+                      {botThin(x.bots) ? (
+                        <span className="block text-[8.5px] font-extrabold text-warn">
+                          {tb("thin")}
+                        </span>
+                      ) : null}
+                    </>
+                  )}
                 </span>
               </button>
               {isOpen ? (
-                <div className="mt-1 mb-1.5 flex flex-col gap-1.5 rounded-tile bg-surface-2 p-2.5">
+                <div className="mt-1 mb-1 flex flex-col gap-1.5 rounded-tile bg-surface-2 p-2.5">
                   <span className="text-xs font-bold">
                     {tm("detail", { from: `${pad(h)}:00`, to: `${pad(h)}:59` })}
                   </span>
@@ -1372,8 +1548,7 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                     {tm("line", {
                       med: num(x.volatility.medianBp) ?? tb("na"),
                       p90: num(x.volatility.p90Bp) ?? tb("na"),
-                      spread:
-                        x.cost.spreadTicks === null ? tb("na") : x.cost.spreadTicks.toFixed(1),
+                      spread: x.cost.spreadTicks === null ? tb("na") : fx(x.cost.spreadTicks),
                       volume: usdShort(x.bots.volume) ?? tb("na"),
                       botHours: x.bots.botHours,
                     })}
@@ -1390,42 +1565,21 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                         {bp === null || at === null
                           ? tb("na")
                           : `${t(`vol.${k}Tip`, {
-                              value: Number(bp).toFixed(1),
+                              value: fx(bp),
                               at: instantTimeLabel(at, v.tz),
                             })}${Number(bp) >= SHOCK_HOT_BP ? " ▲" : ""}`}
                       </span>
                       <RowHelp label={tm(k)} help={k} />
                     </span>
                   ))}
-                  <span className="text-[11.5px] text-ink-2">
-                    <strong className="text-ink">{tm("est")}</strong>{" "}
-                    {x.volatility.estCostPerMillion === null || x.volatility.swingBp === null
-                      ? v.estimate.unavailable === null
-                        ? tb("na")
-                        : `${tb("na")} · ${t(`vol.estReason.${v.estimate.unavailable}`)}`
-                      : tm("estLine", {
-                          cost: usd(x.volatility.estCostPerMillion) ?? tb("na"),
-                          swing: Number(x.volatility.swingBp).toFixed(1),
-                          fees: Number(v.estimate.feesBp).toFixed(1),
-                        })}
-                  </span>
-                  <span className="text-[11.5px] text-ink-2">
-                    <strong className="text-ink">{tm("estShock")}</strong>{" "}
-                    {x.volatility.estShockCostPerMillion === null ||
-                    x.volatility.estDays === null ||
-                    x.volatility.shockDays === null
-                      ? v.estimate.unavailable === null
-                        ? tb("na")
-                        : `${tb("na")} · ${t(`vol.estReason.${v.estimate.unavailable}`)}`
-                      : tm("estShockLine", {
-                          cost: usd(x.volatility.estShockCostPerMillion) ?? tb("na"),
-                          shock: x.volatility.shockDays,
-                          days: x.volatility.estDays,
-                          bp: v.estimate.shockBp,
-                        }) + cutSuffix(tv, v.estimate, sourceOf(v.estimate.cutScope, v.market))}
-                  </span>
+                  {/* Một dòng "Est. CPM (estimate)"; hai dòng mô hình nằm trong "Model details" (như desktop). */}
                   <span className="text-[11.5px] text-ink-2">
                     <strong className="text-ink">{tm("estCalibrated")}</strong>{" "}
+                    {estThin ? (
+                      <>
+                        <ThinMark />{" "}
+                      </>
+                    ) : null}
                     {x.volatility.estCalibratedCostPerMillion === null ||
                     x.volatility.estShockCostPerMillion === null
                       ? v.estimate.unavailable === null
@@ -1438,6 +1592,52 @@ function Mobile({ v, markers }: { v: MarketHoursView; markers: readonly Marker[]
                           source: sourceOf(v.estimate.calibrationScope, v.market),
                         })}
                   </span>
+                  <button
+                    type="button"
+                    aria-expanded={modelOpen}
+                    aria-controls={modelId}
+                    onClick={() => {
+                      setModelOpen((o) => !o);
+                    }}
+                    className="inline-flex min-h-11 cursor-pointer items-center gap-1 self-start border-0 bg-transparent p-0 text-xs font-bold text-accent-ink"
+                  >
+                    <ChevronRight
+                      size={14}
+                      strokeWidth={2.4}
+                      aria-hidden="true"
+                      className={`transition-transform ${modelOpen ? "rotate-90" : ""}`}
+                    />
+                    {tv("modelDetails")}
+                  </button>
+                  <div id={modelId} hidden={!modelOpen} className="flex flex-col gap-1.5">
+                    <span className="block text-[11.5px] text-ink-2">
+                      <strong className="text-ink">{tm("est")}</strong>{" "}
+                      {x.volatility.estCostPerMillion === null || x.volatility.swingBp === null
+                        ? v.estimate.unavailable === null
+                          ? tb("na")
+                          : `${tb("na")} · ${t(`vol.estReason.${v.estimate.unavailable}`)}`
+                        : tm("estLine", {
+                            cost: usd(x.volatility.estCostPerMillion) ?? tb("na"),
+                            swing: fx(x.volatility.swingBp),
+                            fees: fx(v.estimate.feesBp),
+                          })}
+                    </span>
+                    <span className="block text-[11.5px] text-ink-2">
+                      <strong className="text-ink">{tm("estShock")}</strong>{" "}
+                      {x.volatility.estShockCostPerMillion === null ||
+                      x.volatility.estDays === null ||
+                      x.volatility.shockDays === null
+                        ? v.estimate.unavailable === null
+                          ? tb("na")
+                          : `${tb("na")} · ${t(`vol.estReason.${v.estimate.unavailable}`)}`
+                        : tm("estShockLine", {
+                            cost: usd(x.volatility.estShockCostPerMillion) ?? tb("na"),
+                            shock: x.volatility.shockDays,
+                            days: x.volatility.estDays,
+                            bp: v.estimate.shockBp,
+                          }) + cutSuffix(tv, v.estimate, sourceOf(v.estimate.cutScope, v.market))}
+                    </span>
+                  </div>
                 </div>
               ) : null}
             </li>
