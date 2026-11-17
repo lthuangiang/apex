@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { formatDateTime } from "@/lib/format";
+import { formatAmount, formatDateTime } from "@/lib/format";
 
 import {
+  entryDuration,
+  entryTryOf,
   groupDecisions,
   groupSummary,
   orderHref,
@@ -18,7 +20,10 @@ import {
 } from "../decision-groups";
 
 // Trading Agent › Decisions & actions (BD-02, docs/mockups/bd02-decisions Main + Mobile): quyết định lặp lại được gộp
-// thành một dòng mở ra được; mọi pill kết quả link tới lệnh theo clOrdID trong Execution & Orders.
+// thành một dòng mở ra được; mọi pill kết quả link tới lệnh theo clOrdID trong Execution & Orders. Các lần thử vào lệnh
+// của một lượt Volume Farm gộp thành "Enter long · 8 tries in 2 min · Filled at …" (DEC-TBD-vb-decisions-grouping).
+
+type GroupRow = Exclude<DecisionRow, { kind: "single" }>;
 
 const GRID = "grid grid-cols-[150px_240px_minmax(0,1fr)_230px] gap-3";
 /** Số dòng con hiện trước khi bấm "Show all". */
@@ -110,6 +115,42 @@ function Summary({ events, small = false }: { events: readonly BotEvent[]; small
   );
 }
 
+/** Câu chữ của dòng lượt vào lệnh: "8 tries in 2 min", kết quả của lần thử mới nhất, nhãn từng lần thử. */
+function useEntryCopy() {
+  const t = useTranslations("agent.decisionsList.entry");
+  const price = (e: BotEvent) =>
+    e.fillPrice === null ? null : (formatAmount(e.fillPrice)?.text ?? e.fillPrice);
+  /** Kết quả theo lệnh thật của một lần thử; giá chỉ khi API có giá khớp (không đoán, quy tắc 1.8). */
+  const result = (e: BotEvent): string => {
+    const p = price(e);
+    if (e.outcome === "filled") return p === null ? t("filled") : t("filledAt", { price: p });
+    if (e.outcome === "partly_filled")
+      return p === null ? t("partlyFilled") : t("partlyFilledAt", { price: p });
+    if (e.outcome === "open") return t("onBook");
+    if (e.outcome === "rejected") return t("postOnlyMiss");
+    if (e.outcome === "not_placed") return t("notPlaced");
+    return t("cancelled");
+  };
+  return {
+    tries: (r: GroupRow) => {
+      const d = entryDuration(r.events);
+      const duration = d.unit === "hours" ? t("hours", { h: d.h, m: d.m }) : t(d.unit, { n: d.n });
+      return t("tries", { n: r.events.length, duration });
+    },
+    /** Dòng tổng của lượt: lần thử mới nhất đã khớp / đang nằm sổ, hoặc chưa khớp. */
+    head: (r: GroupRow): string => {
+      const last = r.events[0];
+      if (last === undefined) return "";
+      return last.outcome === "filled" ||
+        last.outcome === "partly_filled" ||
+        last.outcome === "open"
+        ? result(last)
+        : t("notFilled");
+    },
+    child: (e: BotEvent): string => `${t("try", { n: (entryTryOf(e) ?? 0) + 1 })} · ${result(e)}`,
+  };
+}
+
 function useOpen() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [all, setAll] = useState<Record<string, boolean>>({});
@@ -156,6 +197,7 @@ export function DecisionsList({
   const tl = useTranslations("agent.decisionsList");
   const rows = groupDecisions(events);
   const open = useOpen();
+  const entry = useEntryCopy();
   if (rows.length === 0)
     return (
       <div className="flex flex-col items-center gap-1.5 px-3 py-10 text-center">
@@ -163,9 +205,12 @@ export function DecisionsList({
         <span className="text-[13.5px] text-muted">{tl("emptyBody")}</span>
       </div>
     );
-  const children = (r: Extract<DecisionRow, { kind: "group" }>) =>
+  const children = (r: GroupRow) =>
     open.showsAll(r.key) ? r.events : r.events.slice(0, FIRST_CHILDREN);
-  const range = (r: Extract<DecisionRow, { kind: "group" }>) => {
+  /** Nhãn cạnh tên nhóm: "×7" (BD-02) hoặc "8 tries in 2 min" (lượt vào lệnh). */
+  const badge = (r: GroupRow) =>
+    r.kind === "entry" ? entry.tries(r) : tl("count", { n: r.events.length });
+  const range = (r: GroupRow) => {
     const newest = r.events[0]?.occurredAt ?? "";
     const oldest = r.events.at(-1)?.occurredAt ?? "";
     return tl("range", { from: clock(oldest), to: clock(newest) });
@@ -218,11 +263,15 @@ export function DecisionsList({
                     <Chevron open={open.isOpen(r.key)} />
                     <strong>{r.name}</strong>
                     <span className="rounded-[10px] bg-accent-tint px-[7px] py-px text-xs font-extrabold text-accent-ink">
-                      {tl("count", { n: r.events.length })}
+                      {badge(r)}
                     </span>
                   </span>
                   <span className="leading-[1.45] text-ink-2">
-                    {r.events[0] === undefined ? "" : (why(r.events[0]) ?? "")}
+                    {r.kind === "entry"
+                      ? entry.head(r)
+                      : r.events[0] === undefined
+                        ? ""
+                        : (why(r.events[0]) ?? "")}
                   </span>
                   <Summary events={r.events} />
                 </button>
@@ -239,7 +288,9 @@ export function DecisionsList({
                         className={`${GRID} items-center border-b border-border px-3 py-[9px] text-[13.5px]`}
                       >
                         <span className="pl-[22px] text-ink-2">{clock(c.occurredAt)}</span>
-                        <span className="pl-[22px] text-ink-2">{r.name}</span>
+                        <span className="pl-[22px] text-ink-2">
+                          {r.kind === "entry" ? entry.child(c) : r.name}
+                        </span>
                         <span className="text-ink-2">{why(c) ?? ""}</span>
                         <span>
                           <Result botId={botId} e={c} legacy={legacy} />
@@ -306,10 +357,13 @@ export function DecisionsList({
                   <span className="flex items-center gap-1.5">
                     <strong className="text-sm">{r.name}</strong>
                     <span className="rounded-[10px] bg-accent-tint px-[7px] py-px text-xs font-extrabold text-accent-ink">
-                      {tl("count", { n: r.events.length })}
+                      {badge(r)}
                     </span>
                   </span>
                   <span className="text-xs text-muted">{range(r)}</span>
+                  {r.kind === "entry" ? (
+                    <span className="text-[12.5px] text-ink-2">{entry.head(r)}</span>
+                  ) : null}
                   <Summary events={r.events} small />
                 </span>
                 <span className="mt-0.5">
@@ -332,7 +386,7 @@ export function DecisionsList({
                         {clock(c.occurredAt)}
                       </span>
                       <span className="min-w-0 flex-1 text-[12.5px] text-ink-2">
-                        {why(c) ?? ""}
+                        {r.kind === "entry" ? entry.child(c) : (why(c) ?? "")}
                       </span>
                       <Result botId={botId} e={c} size="lg" legacy={legacy} />
                     </li>

@@ -38,6 +38,9 @@ const ev = (
     result: null,
     outcome,
     order: outcome === null ? null : `cl-abc-${String(n).padStart(3, "0")}`,
+    entryTry: null,
+    rejectCode: null,
+    fillPrice: null,
     occurredAt: new Date(T0 - secAgo * 1000).toISOString(),
   };
 };
@@ -150,5 +153,94 @@ describe("Decisions & actions (BD-02)", () => {
     expect(
       screen.getByText("Each decision appears here with its order, once the bot starts."),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Volume Farm entry rounds in Decisions (DEC-TBD-vb-decisions-grouping)", () => {
+  /** Một lượt 8 lần thử trong 2 phút: 5 post-only miss, 1 huỷ vì chưa khớp, 1 không gửi được, lần cuối khớp. */
+  const round = (): BotEvent[] => {
+    const outcomes: BotEvent["outcome"][] = [
+      "filled",
+      "rejected",
+      "cancelled",
+      "rejected",
+      "not_placed",
+      "rejected",
+      "rejected",
+      "rejected",
+    ];
+    return outcomes.map((outcome, i) => ({
+      ...ev("Enter long", 30 + Math.round((i * 120) / 7), outcome, "Signal pointed long."),
+      entryTry: 7 - i,
+      rejectCode: outcome === "rejected" ? "PostOnly" : null,
+      fillPrice: outcome === "filled" ? "1800.7" : null,
+    }));
+  };
+
+  it("shows one row per round with its tries and fill, and each try with its result", async () => {
+    const user = userEvent.setup({ delay: null });
+    const list = [
+      ev("Stop loss set on SoDEX", 0, null),
+      ...round(),
+      ev("Closed short", 200, "filled"),
+    ];
+    wrap(<DecisionsList botId={BOT} events={list} why={(e) => e.why} legacy={(x) => x} />);
+    const rows = within(desktop());
+    const group = rows.getByRole("button", { name: /Enter long/ });
+    expect(group).toHaveAttribute("aria-expanded", "false");
+    expect(within(group).getByText("8 tries in 2 min")).toBeInTheDocument();
+    expect(within(group).getByText("Filled at 1,800.7")).toBeInTheDocument();
+    expect(
+      within(group)
+        .getAllByText(/^\d+ (filled|rejected|cancelled|not placed)$/)
+        .map((x) => x.textContent),
+    ).toEqual(["5 rejected", "1 filled", "1 cancelled", "1 not placed"]);
+    await user.click(group);
+    const panel = within(desktop()).getByRole("list", { name: "8 Enter long decisions" });
+    const items = within(panel).getAllByRole("listitem");
+    const item = (i: number) => {
+      const el = items[i];
+      if (el === undefined) throw new Error(`no try row ${String(i)}`);
+      return within(el);
+    };
+    expect(item(0).getByText("Try 8 · Filled at 1,800.7")).toBeInTheDocument();
+    expect(item(1).getByText("Try 7 · Post-only miss")).toBeInTheDocument();
+    expect(item(2).getByText("Try 6 · Not filled, cancelled")).toBeInTheDocument();
+    expect(item(4).getByText("Try 4 · Not sent to SoDEX")).toBeInTheDocument();
+    // Pill của mỗi lần thử vẫn link tới đúng lệnh.
+    expect(item(1).getByRole("link")).toHaveAccessibleName(/^Rejected\. Show order …/);
+    await user.click(within(panel).getByRole("button", { name: "Show all 8" }));
+    expect(within(panel).getByText("Try 1 · Post-only miss")).toBeInTheDocument();
+
+    const r = await axe.run(document.body, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  }, 20_000);
+
+  it("390 px: the round row says how it ended and opens to each try", async () => {
+    const user = userEvent.setup({ delay: null });
+    const tries = round().slice(1); // lần thử mới nhất chưa khớp
+    wrap(<DecisionsList botId={BOT} events={tries} why={(e) => e.why} legacy={(x) => x} />);
+    const mobile = screen.getByRole("list", { name: "Recent decisions" });
+    const group = within(mobile).getByRole("button", { name: /Enter long/ });
+    expect(within(group).getByText("Not filled")).toBeInTheDocument();
+    await user.click(group);
+    const panel = within(mobile).getByRole("list", { name: "7 Enter long decisions" });
+    expect(within(panel).getByText("Try 7 · Post-only miss")).toBeInTheDocument();
+    const r = await axe.run(document.body, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(r.violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  }, 20_000);
+
+  it("never shows a fill price the API did not give", () => {
+    const tries = round().map((e) => ({ ...e, fillPrice: null }));
+    wrap(<DecisionsList botId={BOT} events={tries} why={(e) => e.why} legacy={(x) => x} />);
+    const group = within(desktop()).getByRole("button", { name: /Enter long/ });
+    expect(within(group).getByText("Filled")).toBeInTheDocument();
+    expect(within(group).queryByText(/Filled at/)).toBeNull();
   });
 });

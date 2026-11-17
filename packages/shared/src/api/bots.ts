@@ -228,6 +228,16 @@ export const botEventSchema = z.object({
   outcome: decisionOutcomeSchema.nullable().default(null),
   /** clOrdID của lệnh đại diện cho `outcome` (`outcomeOrder`), để pill Result link tới lệnh; null khi không có lệnh. */
   order: z.string().nullable().default(null),
+  /**
+   * Lần thử vào lệnh của Volume Farm (lệnh `vf:<n>:in:<k>`, DEC-300): k = số lần vào chưa khớp liên tiếp trước lần này
+   * (0 = lần đầu của lượt). null với mọi quyết định khác. Chỉ để gộp các lần thử của một lượt ở Decisions
+   * (DEC-TBD-vb-decisions-grouping).
+   */
+  entryTry: z.number().int().nonnegative().nullable().default(null),
+  /** Mã từ chối của lệnh đại diện (ví dụ `PostOnly`); null khi lệnh không bị từ chối. */
+  rejectCode: z.string().nullable().default(null),
+  /** Giá khớp trung bình của lệnh đại diện khi đã khớp (một phần hoặc đủ); null khi chưa khớp. */
+  fillPrice: decimalStringSchema.nullable().default(null),
   occurredAt: isoDateTimeSchema,
 });
 

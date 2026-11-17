@@ -3068,6 +3068,22 @@
         "filled": "{n} filled",
         "cancelled": "{n} cancelled",
         "not_placed": "{n} not placed"
+      },
+      "entry": {
+        "tries": "{n} tries in {duration}",
+        "seconds": "{n} s",
+        "minutes": "{n} min",
+        "hours": "{h} h {m} min",
+        "filledAt": "Filled at {price}",
+        "filled": "Filled",
+        "partlyFilledAt": "Partly filled at {price}",
+        "partlyFilled": "Partly filled",
+        "onBook": "On the book",
+        "notFilled": "Not filled",
+        "try": "Try {n}",
+        "postOnlyMiss": "Post-only miss",
+        "cancelled": "Not filled, cancelled",
+        "notPlaced": "Not sent to SoDEX"
       }
     },
     "rejects": {

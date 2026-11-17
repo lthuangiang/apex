@@ -2,6 +2,7 @@ import type { DecisionOutcome } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
 import {
+  entryDuration,
   groupDecisions,
   groupSummary,
   isKnownDecision,
@@ -25,12 +26,29 @@ const ev = (decision: string, secAgo: number, outcome: DecisionOutcome | null = 
     result: null,
     outcome,
     order: outcome === null ? null : `cl-${String(n)}`,
+    entryTry: null,
+    rejectCode: null,
+    fillPrice: null,
     occurredAt: new Date(T0 - secAgo * 1000).toISOString(),
   } satisfies BotEvent;
 };
+/** Lần thử vào lệnh Volume Farm (`vf:<n>:in:<k>`). */
+const tryEv = (
+  k: number,
+  secAgo: number,
+  outcome: DecisionOutcome = "rejected",
+  side: "long" | "short" = "long",
+): BotEvent => ({
+  ...ev(`Enter ${side}`, secAgo, outcome),
+  entryTry: k,
+  rejectCode: outcome === "rejected" ? "PostOnly" : null,
+  fillPrice: outcome === "filled" ? "1800.7" : null,
+});
 const shape = (rows: ReturnType<typeof groupDecisions>) =>
   rows.map((r) =>
-    r.kind === "single" ? r.event.decision : `${r.name}×${String(r.events.length)}`,
+    r.kind === "single"
+      ? r.event.decision
+      : `${r.kind === "entry" ? "entry:" : ""}${r.name}×${String(r.events.length)}`,
   );
 
 describe("groupDecisions", () => {
@@ -133,5 +151,61 @@ describe("groupDecisions", () => {
     expect(validIsoTime("2026-11-16T07:42:51.123+07:00")).not.toBeNull();
     for (const v of ["yesterday", "2026-11-16", "2026-13-40T99:99:99Z", ""])
       expect(validIsoTime(v)).toBeNull();
+  });
+});
+
+describe("Volume Farm entry rounds (DEC-TBD-vb-decisions-grouping)", () => {
+  it("collapses the tries of one round, newest first, up to the round's first try", () => {
+    const rows = groupDecisions([
+      tryEv(0, 0, "open"), // lượt mới
+      ev("Closed long", 30, "filled"),
+      tryEv(3, 200, "filled"),
+      tryEv(2, 220, "cancelled"),
+      tryEv(1, 240),
+      tryEv(0, 260, "not_placed"),
+      tryEv(4, 300, "cancelled"), // lượt trước, không nối (số thứ tự không liền)
+    ]);
+    expect(shape(rows)).toEqual(["Enter long", "Closed long", "entry:Enter long×4", "Enter long"]);
+    const round = rows[2];
+    expect(round?.kind === "entry" ? round.key : null).toBe(
+      round?.kind === "entry" ? round.events.at(-1)?.id : "",
+    );
+  });
+
+  it("has no 60 s limit inside a round, and keeps a round across a change of direction", () => {
+    const rows = groupDecisions([
+      tryEv(2, 0, "filled", "short"),
+      tryEv(1, 400, "cancelled", "long"),
+      tryEv(0, 900),
+    ]);
+    // Tên = lần thử mới nhất (lần vào thật của lượt).
+    expect(shape(rows)).toEqual(["entry:Enter short×3"]);
+  });
+
+  it("never groups Unknown, other rejects, or tries without a round number", () => {
+    const other = { ...tryEv(1, 10), rejectCode: "-1" };
+    const unknown = { ...tryEv(1, 10), outcome: "unknown" as const };
+    const old = ev("Enter long", 10, "cancelled");
+    for (const middle of [other, unknown, old])
+      expect(shape(groupDecisions([tryEv(2, 0), middle, tryEv(0, 20)]))).toEqual([
+        "Enter long",
+        "Enter long",
+        "Enter long",
+      ]);
+  });
+
+  it("splits a round on any other decision in between", () => {
+    expect(
+      shape(
+        groupDecisions([tryEv(2, 0), ev("Skipped entry", 5, null), tryEv(1, 10), tryEv(0, 20)]),
+      ),
+    ).toEqual(["Enter long", "Skipped entry", "entry:Enter long×2"]);
+  });
+
+  it("measures the round from its first try to its newest", () => {
+    expect(entryDuration([tryEv(1, 0), tryEv(0, 0)])).toEqual({ unit: "seconds", n: 1 });
+    expect(entryDuration([tryEv(1, 0), tryEv(0, 45)])).toEqual({ unit: "seconds", n: 45 });
+    expect(entryDuration([tryEv(7, 0), tryEv(0, 125)])).toEqual({ unit: "minutes", n: 2 });
+    expect(entryDuration([tryEv(9, 0), tryEv(0, 3_900)])).toEqual({ unit: "hours", h: 1, m: 5 });
   });
 });

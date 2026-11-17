@@ -1,10 +1,12 @@
-import type { BotDetail, DecisionOutcome } from "@drift/shared";
+import { NORMAL_REJECT_CODES, type BotDetail, type DecisionOutcome } from "@drift/shared";
 
 // BD-02 (docs/mockups/bd02-decisions, quy tắc chốt khi review): gộp các quyết định lặp lại liên tiếp của Trading Agent.
 // - Chỉ gộp "Bid pulled", "Ask pulled" (mỗi phía riêng) và "Quote skipped": cùng tên event thật, liên tiếp, mỗi cái cách
 //   cái trước ≤ 60 s.
 // - Không bao giờ gộp mọi tên khác (Order filled, Position cut, Stopped, Paused / Resumed, Smart quoting…, Order requests,
 //   cảnh báo chi phí, lỗi) và mọi quyết định có kết quả Unknown hoặc Rejected.
+// Volume Farm (DEC-TBD-vb-decisions-grouping): các lần thử vào lệnh liên tiếp của CÙNG một lượt ("Enter long" / "Enter
+// short", lệnh `vf:<n>:in:<k>`, DEC-300) gộp thành một dòng; xem `entryTryOf`.
 
 export type BotEvent = BotDetail["events"][number];
 
@@ -18,7 +20,26 @@ export const GROUP_GAP_MS = 60_000;
 export type DecisionRow =
   | { kind: "single"; event: BotEvent }
   /** `events` mới nhất trước, như danh sách gốc; có ít nhất 2 phần tử. */
-  | { kind: "group"; key: string; name: string; events: readonly BotEvent[] };
+  | { kind: "group"; key: string; name: string; events: readonly BotEvent[] }
+  /**
+   * Các lần thử vào lệnh của một lượt Volume Farm, mới nhất trước (ít nhất 2). `name` = quyết định của lần thử mới nhất
+   * (lần khớp kết thúc lượt; tín hiệu có thể đổi hướng giữa các lần thử).
+   */
+  | { kind: "entry"; key: string; name: string; events: readonly BotEvent[] };
+
+const ENTRY_DECISION = /^Enter (long|short)$/;
+
+/**
+ * Số thứ tự lần thử (0 = lần đầu của lượt) khi event gộp được vào một lượt vào lệnh; null thì là dòng riêng. Chỉ lần thử có
+ * kết quả thật: không gộp Unknown (quy tắc 1.7 / 1.8) và không gộp lệnh bị từ chối vì lý do khác post-only (lỗi cần thấy).
+ * Event cũ chưa có `entryTry` không gộp (không đoán lượt).
+ */
+export function entryTryOf(e: BotEvent): number | null {
+  if (e.decision === null || !ENTRY_DECISION.test(e.decision) || e.entryTry === null) return null;
+  if (e.outcome === null || e.outcome === "unknown") return null;
+  if (e.outcome === "rejected" && e.rejectCode !== NORMAL_REJECT_CODES.postOnly) return null;
+  return e.entryTry;
+}
 
 function groupable(e: BotEvent): boolean {
   return (
@@ -29,32 +50,68 @@ function groupable(e: BotEvent): boolean {
   );
 }
 
-/** `events` theo thứ tự mới nhất trước (như API trả). Giữ nguyên thứ tự. */
+/**
+ * `events` theo thứ tự mới nhất trước (như API trả). Giữ nguyên thứ tự. Lượt vào lệnh: event cũ hơn nối vào nhóm khi nó là
+ * lần thử NGAY TRƯỚC (số thứ tự nhỏ hơn đúng 1); lần thử 0 là lần đầu của lượt nên nhóm dừng ở đó. Không có giới hạn 60 s
+ * (một lượt có thể thử nhiều phút); event khác xen giữa thì tách nhóm như BD-02.
+ */
 export function groupDecisions(events: readonly BotEvent[]): DecisionRow[] {
   const rows: DecisionRow[] = [];
   let run: BotEvent[] = [];
+  let entry = false;
   const flush = () => {
     const [first] = run;
     const oldest = run.at(-1);
     if (first === undefined || oldest === undefined) return;
     // Khoá theo event CŨ NHẤT của nhóm: event mới vào đầu nhóm sau mỗi lần poll không đổi khoá, nên nhóm đang mở vẫn mở.
     if (run.length === 1) rows.push({ kind: "single", event: first });
-    else rows.push({ kind: "group", key: oldest.id, name: first.decision ?? "", events: run });
+    else
+      rows.push({
+        kind: entry ? "entry" : "group",
+        key: oldest.id,
+        name: first.decision ?? "",
+        events: run,
+      });
     run = [];
   };
   for (const e of events) {
     const prev = run.at(-1);
+    const step = entryTryOf(e);
+    const prevStep = prev === undefined ? null : entryTryOf(prev);
     const joins =
       prev !== undefined &&
-      groupable(e) &&
-      e.decision === prev.decision &&
-      Date.parse(prev.occurredAt) - Date.parse(e.occurredAt) <= GROUP_GAP_MS;
+      (entry
+        ? step !== null && prevStep !== null && step === prevStep - 1
+        : groupable(e) &&
+          e.decision === prev.decision &&
+          Date.parse(prev.occurredAt) - Date.parse(e.occurredAt) <= GROUP_GAP_MS);
     if (!joins) flush();
-    if (groupable(e)) run.push(e);
+    if (run.length === 0) entry = step !== null;
+    if (step !== null || groupable(e)) run.push(e);
     else rows.push({ kind: "single", event: e });
   }
   flush();
   return rows;
+}
+
+/** Thời gian của một lượt vào lệnh (lần thử đầu → lần thử mới nhất) để hiện "{n} tries in {duration}". */
+export function entryDuration(
+  events: readonly BotEvent[],
+):
+  | { unit: "seconds"; n: number }
+  | { unit: "minutes"; n: number }
+  | { unit: "hours"; h: number; m: number } {
+  const newest = events[0]?.occurredAt;
+  const oldest = events.at(-1)?.occurredAt;
+  const ms =
+    newest === undefined || oldest === undefined
+      ? 0
+      : Math.max(0, Date.parse(newest) - Date.parse(oldest));
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return { unit: "seconds", n: Math.max(1, seconds) };
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 60) return { unit: "minutes", n: minutes };
+  return { unit: "hours", h: Math.floor(minutes / 60), m: minutes % 60 };
 }
 
 /** Thứ tự đếm trong pill tổng hợp của nhóm: xấu nhất trước. */

@@ -988,6 +988,59 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(detail.blockedByRiskRecently).toBe(1);
   });
 
+  it("tells Decisions which entry try of a round each Enter decision is, its reject code and fill price (DEC-TBD-vb-decisions-grouping)", async () => {
+    const { client } = await connectedUser(`vb-tries-${randomUUID()}@drift.test`);
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "Tries", paramSource: "manual", config: grid },
+    });
+    const id = made.json<{ id: string }>().id;
+    const { rows } = await env.pool.query<{ acc: string }>(
+      "select sodex_account_id as acc from bots where id = $1",
+      [id],
+    );
+    const acc = rows[0]?.acc ?? "";
+    const at = env.clock.now;
+    const tag = randomUUID().slice(0, 8);
+    const order = (
+      clOrdId: string,
+      orderTag: string,
+      status: string,
+      filled: string,
+      avg: string | null,
+      rejectCode: string | null,
+    ) =>
+      env.pool.query(
+        "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, avg_price, status, reject_code, tag, epoch, created_at) values (gen_random_uuid(), $1, $2, $3, 'ETH-USD', 'perps', 'buy', 'limit', 'GTX', 1, $4, $5, $6, $7, $8, 1, $9)",
+        [id, acc, clOrdId, filled, avg, status, rejectCode, orderTag, at],
+      );
+    const decision = (name: string, ids: string[], ago: number) =>
+      env.pool.query(
+        "insert into bot_events (id, bot_id, type, decision, payload, occurred_at) values (gen_random_uuid(), $1, 'decision', $2, $3, $4)",
+        [id, name, JSON.stringify({ orders: ids }), new Date(at.getTime() - ago)],
+      );
+    await order(`a-${tag}`, "vf:7:in:0", "rejected", "0", null, "PostOnly");
+    await order(`b-${tag}`, "vf:8:in:1", "cancelled", "0", null, null);
+    await order(`c-${tag}`, "vf:9:in:2", "filled", "1", "1800.7", null);
+    await order(`d-${tag}`, "vf:9:out:0", "filled", "1", "1801.2", null);
+    await decision("Enter long", [`a-${tag}`], 3_000);
+    await decision("Enter short", [`b-${tag}`], 2_000);
+    await decision("Enter long", [`c-${tag}`], 1_000);
+    await decision("Closed long", [`d-${tag}`], 500);
+    const detail = botDetailSchema.parse(
+      (await client.request("GET", `/api/v1/bots/${id}`)).json(),
+    );
+    const pick = (o: string) => {
+      const e = detail.events.find((x) => x.order === o);
+      return e === undefined ? null : [e.entryTry, e.rejectCode, e.fillPrice];
+    };
+    expect(pick(`a-${tag}`)).toEqual([0, "PostOnly", null]);
+    expect(pick(`b-${tag}`)).toEqual([1, null, null]);
+    expect(pick(`c-${tag}`)?.slice(0, 2)).toEqual([2, null]);
+    expect(Number(pick(`c-${tag}`)?.[2])).toBe(1800.7);
+    // Lệnh không phải lệnh vào: không có số lần thử (giá khớp vẫn có).
+    expect(pick(`d-${tag}`)?.[0]).toBeNull();
+  });
+
   it("splits post-only misses from other rejects and counts rounds that filled (DEC-300)", async () => {
     const { client } = await connectedUser(`vb-rounds-${randomUUID()}@drift.test`);
     const made = await client.request("POST", "/api/v1/bots", {
