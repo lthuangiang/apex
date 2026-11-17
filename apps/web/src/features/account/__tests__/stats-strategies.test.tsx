@@ -65,7 +65,7 @@ describe("Stats › By strategy", () => {
     );
     const header = screen.getByRole("columnheader", { name: "Net cost / $1M" });
     expect(header).toHaveAccessibleDescription(
-      "Net cost / $1M · What bots really lost per $1M traded after fees and price moves, the same number as on each bot’s page. Fees / $1M is only the fee part.",
+      "Net cost / $1M · Net trading loss per $1M of volume in this period, fees included. A gain shows $0.00. Fees / $1M is only the fee part.",
     );
     const cells = (name: string) =>
       within(screen.getByRole("row", { name: new RegExp(name) }))

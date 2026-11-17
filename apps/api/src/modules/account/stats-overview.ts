@@ -376,6 +376,15 @@ async function netPnlByStrategy(
   const qty = sql`case when ${orders.side} = 'buy' then ${fills.size} else -${fills.size} end`;
   const cash = sql`case when ${orders.side} = 'sell' then ${notional} else -(${notional}) end`;
   const inCur = sql`${fills.filledAt} >= ${from}`;
+  // Bước 1: bot thật có fill trong kỳ (index fills_filled_at_idx). Bước 2 mới cộng cả lịch sử, chỉ cho các bot đó
+  // (orders_bot_idx → fills_order_idx), để không quét mọi fill của mọi bot.
+  const active = await db
+    .selectDistinct({ botId: orders.botId })
+    .from(fills)
+    .innerJoin(orders, eq(orders.id, fills.orderId))
+    .innerJoin(bots, eq(bots.id, orders.botId))
+    .where(and(eq(bots.mode, "live"), gte(fills.filledAt, from)));
+  if (active.length === 0) return new Map();
   const rows = await db
     .select({
       strategy: bots.strategy,
@@ -388,7 +397,12 @@ async function netPnlByStrategy(
     .from(fills)
     .innerJoin(orders, eq(orders.id, fills.orderId))
     .innerJoin(bots, eq(bots.id, orders.botId))
-    .where(eq(bots.mode, "live"))
+    .where(
+      inArray(
+        orders.botId,
+        active.map((a) => a.botId),
+      ),
+    )
     .groupBy(bots.id, bots.strategy, orders.market)
     .having(sql`count(*) filter (where ${inCur}) > 0`);
   if (rows.length === 0) return new Map();
