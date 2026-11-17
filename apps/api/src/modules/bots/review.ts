@@ -10,7 +10,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { iso } from "../security/service";
 
-import { newVersion, ownBot, type BotDeps } from "./service";
+import { newestPendingConfig, newVersion, ownBot, type BotDeps } from "./service";
 
 // Review sau khi chạy của Volume Builder (DEC-131): api xếp job vào `backtest.run` (payload `reviewId`), worker
 // backtest tính, trang bot đọc kết quả. "Use these settings" tạo version mới nguồn `ai` từ đề xuất.
@@ -111,7 +111,9 @@ export async function applyReview(
     .from(botVersions)
     .where(eq(botVersions.id, b.activeVersionId ?? ""))
     .limit(1);
-  const base = { ...((active?.config ?? {}) as Record<string, unknown>) };
+  // Version đang chờ áp (DEC-304): dựng trên nó để không làm mất thay đổi đang chờ.
+  const pending = await newestPendingConfig(deps.db, botId);
+  const base = { ...(pending ?? (active?.config as Record<string, unknown> | undefined) ?? {}) };
   // Tham số theo dạng mới: bỏ SL % giá (DEC-126) và early profit USDC cố định (DEC-130) của config cũ.
   delete base.slPct;
   delete base.earlyProfitUsd;

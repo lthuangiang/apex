@@ -772,6 +772,38 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(await ids("/api/v1/bots")).toContain(id);
   });
 
+  it("supersedes a version still pending when the bot stopped, and runs again with it (DEC-304)", async () => {
+    const { client, secret } = await connectedUser("again-pending@example.com");
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "Pending", paramSource: "manual", config: grid },
+    });
+    const id = made.json<{ id: string }>().id;
+    await env.pool.query("update bots set state = 'stopped' where id = $1", [id]);
+    await env.pool.query(
+      `insert into bot_versions (id, bot_id, version, config, param_source, status)
+       select gen_random_uuid(), bot_id, 2, config || '{"gridLevels":4}'::jsonb, 'manual', 'pending' from bot_versions
+       where bot_id = $1 and version = 1`,
+      [id],
+    );
+    env.sodex.setBuilder(ADDRESS, Number(TEST_BUILDER_ID), 50);
+    const code = nextTotp(secret);
+    env.prices.set("vBTC_vUSDC", { price: "100", at: env.clock.now.getTime() });
+    const start = await client.request("POST", `/api/v1/bots/${id}/actions/start`, {
+      body: { acknowledged: true, twoFactorCode: code },
+    });
+    expect(start.statusCode, start.body).toBe(202);
+    const rows = await env.pool.query<{ version: number; status: string; levels: number }>(
+      "select version, status, (config->>'gridLevels')::int as levels from bot_versions where bot_id = $1 order by version",
+      [id],
+    );
+    expect(rows.rows.map((r) => `${String(r.version)}:${r.status}`)).toEqual([
+      "1:superseded",
+      "2:superseded",
+      "3:active",
+    ]);
+    expect(rows.rows[2]?.levels).toBe(4);
+  });
+
   it("counts open profit at the current price, and shows nothing without a price", async () => {
     const { client } = await connectedUser("live-pnl@example.com");
     const made = await client.request("POST", "/api/v1/bots", {

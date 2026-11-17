@@ -3722,6 +3722,7 @@
     "noChanges": "No changes yet.",
     "whatHappens": "What happens when you apply",
     "applyEffect": "Open orders are cancelled and placed again from the new settings.",
+    "applyEffectFarm": "If a trade is open, it finishes on the current settings first. The new settings start once the bot is flat.",
     "discard": "Discard",
     "review": "Review and apply v{next}",
     "history": "Version history",
@@ -3732,6 +3733,9 @@
     },
     "applying": "Applying v{next}…",
     "live": "v{next} is live.",
+    "waitingFarm": "v{next} starts after the open trade closes. Until then the current settings manage it.",
+    "waitingFarmPaused": "The bot is paused, so v{next} waits. It starts after the bot is running and the open trade closes.",
+    "waitingPaused": "The bot is paused, so v{next} starts when you resume it.",
     "retune": {
       "title": "Retune with AI",
       "body": "Fills the editable fields with AI parameters for current market conditions. Changed fields are marked, and you review the diff before applying.",

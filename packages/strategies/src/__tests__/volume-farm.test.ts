@@ -490,7 +490,7 @@ describe("volume farm — inventory rebalance (netExposure hard block)", () => {
     const order = places(all)[0];
     expect(order?.side).toBe("sell");
     const log = all.find((a): a is Extract<StrategyAction, { type: "log" }> => a.type === "log");
-    expect(log?.why).toMatch(/to bring the position back toward zero/);
+    expect(log?.why).toMatch(/to balance long and short volume/);
   });
 
   it("không flip khi netExposure ≤ orderSizeMaxUsd", () => {
@@ -516,7 +516,7 @@ describe("volume farm — inventory rebalance (netExposure hard block)", () => {
     // Inventory block phải thắng reverseSignal: long
     expect(order?.side).toBe("buy");
     const log = all.find((a): a is Extract<StrategyAction, { type: "log" }> => a.type === "log");
-    expect(log?.why).toMatch(/to bring the position back toward zero/);
+    expect(log?.why).toMatch(/to balance long and short volume/);
   });
 
   it("netExposure accumulates correctly after each closed trade", () => {
@@ -1250,5 +1250,131 @@ describe("volume farm — backoff after refused entries (DEC-299)", () => {
       if (i < 2) r = run(m, [timer(t)], r.s);
     }
     expect(pauses).toEqual([{ type: "pause", reason: "ORDER_REJECTED" }]);
+  });
+});
+
+describe("volume farm — new version while running (DEC-304)", () => {
+  const apply = volumeFarm.applyVersion;
+  if (apply === undefined) throw new Error("volume farm must define applyVersion");
+  const v2 = cfg({ allowTaker: true, takerAfter: 0 });
+  /** Vào lệnh short và khớp ở 80000 (prod 2026-11-17: `vf:5:in:1` sell khớp, stop mua reduce-only đặt ngay). */
+  function shortOpen() {
+    const down = (at: number): StrategyEvent => ({
+      type: "timer",
+      at,
+      market: {
+        market: "BTC-USD",
+        candles: candles(-0.0001),
+        book: { ...book, bidNotional: "400000", askNotional: "500000" },
+      },
+    });
+    const r = run(cfg(), [down(T0)]);
+    const entry = first(places(r.all));
+    expect(entry.side).toBe("sell");
+    return {
+      entry,
+      ...run(
+        cfg(),
+        [
+          {
+            type: "fill",
+            at: T0 + 1000,
+            clOrdID: entry.clOrdID,
+            price: "80000",
+            quantity: entry.quantity,
+            fee: "0.01",
+          },
+        ],
+        r.s,
+      ),
+    };
+  }
+
+  it("does not apply a new version while a trade is open or an entry / exit is in flight", () => {
+    const { s, all } = shortOpen();
+    const stop = first(places(all).filter((o) => o.stop !== undefined));
+    expect(stop).toMatchObject({ side: "buy", reduceOnly: true });
+    expect(s.phase).toBe("open");
+    // Lượt đang mở: không áp (engine không huỷ stop trên SoDEX), v1 quản lý lượt tới khi đóng.
+    expect(apply(v2, s, ctx)).toBeNull();
+    // Lệnh vào đang chờ khớp: cũng không áp.
+    const entering = run(cfg(), [timer(T0)]).s;
+    expect(entering.phase).toBe("entering");
+    expect(apply(v2, entering, ctx)).toBeNull();
+    // Đang thoát: không áp.
+    const exiting = run(
+      cfg(),
+      [{ type: "tick", at: T0 + 2000, market: "BTC-USD", price: "70000" }],
+      s,
+    ).s;
+    expect(exiting.phase).toBe("exiting");
+    expect(apply(v2, exiting, ctx)).toBeNull();
+  });
+
+  it("keeps managing the open trade while v2 waits, opens no new trade, then applies once flat", () => {
+    const { s: open } = shortOpen();
+    const waiting: StepContext = { ...ctx, versionPending: 2 };
+    // Giá xuống: chốt lời bằng lệnh mua reduce-only của v1.
+    let r = run(
+      cfg(),
+      [{ type: "tick", at: T0 + 2000, market: "BTC-USD", price: "79000" }],
+      open,
+      waiting,
+    );
+    const exit = last(places(r.all));
+    expect(exit).toMatchObject({ side: "buy", reduceOnly: true });
+    r = run(
+      cfg(),
+      [
+        {
+          type: "fill",
+          at: T0 + 3000,
+          clOrdID: exit.clOrdID,
+          price: "79000",
+          quantity: exit.quantity,
+          fee: "0.01",
+        },
+      ],
+      r.s,
+      waiting,
+    );
+    expect(r.s.phase).toBe("idle");
+    // Hết cooldown mà version mới còn chờ: không mở lượt mới.
+    expect(places(run(cfg(), [timer(T0 + 60_000)], r.s, waiting).all)).toHaveLength(0);
+    // Phẳng, không còn lệnh vào / thoát: áp được, phiên mới nhưng nhớ lệnh cũ.
+    const next = apply(v2, r.s, ctx);
+    expect(next).not.toBeNull();
+    expect(next?.phase).toBe("idle");
+    expect(next?.ledger.position).toBe("0");
+    expect(Object.keys(next?.orders ?? {})).toEqual(Object.keys(r.s.orders));
+  });
+
+  it("still books a late fill of a v1 order after v2 is applied", () => {
+    // Lệnh vào bị huỷ sau 10 s (bot tưởng chưa khớp), rồi version mới được áp.
+    let r = run(cfg(), [timer(T0)]);
+    const entry = first(places(r.all));
+    r = run(cfg(), [timer(T0 + FARM_TIMING.entryFillMs + 1)], r.s);
+    expect(r.s.phase).toBe("idle");
+    const next = apply(v2, r.s, ctx);
+    if (next === null) throw new Error("expected v2 to apply");
+    // Fill thật của lệnh v1 tới muộn: vào sổ cái, bot theo dõi vị thế và đặt stop.
+    const late = run(
+      v2,
+      [
+        {
+          type: "fill",
+          at: T0 + 12_000,
+          clOrdID: entry.clOrdID,
+          price: "80000",
+          quantity: entry.quantity,
+          fee: "0.01",
+        },
+      ],
+      next,
+      { ...ctx, version: 2 },
+    );
+    expect(late.s.ledger.position).toBe(entry.quantity);
+    expect(late.s.phase).toBe("open");
+    expect(places(late.all).filter((o) => o.stop !== undefined)).toHaveLength(1);
   });
 });
