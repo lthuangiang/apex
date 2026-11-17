@@ -1315,8 +1315,13 @@ describe("engine", () => {
         config: { ...base.config, quoteLevel: 0 },
       });
       const e = makeEngine(gw, `w-refresh-${String(smart)}`);
-      await e.tick();
-      await e.onPrice("BTC-USD", "100000", clock);
+      // Worker của test khác chết (`kill`) vẫn còn key tới hết `leaseTtlMs`: chờ tới khi engine này giữ shard của bot.
+      const quoted = () => gw.received.some((o) => o.side === "buy");
+      for (let i = 0; i < 40 && !quoted(); i += 1) {
+        await e.tick();
+        await e.onPrice("BTC-USD", "100000", clock);
+        if (!quoted()) await new Promise((r) => setTimeout(r, 50));
+      }
       const bid = gw.received.filter((o) => o.side === "buy").at(-1);
       expect(bid).toBeDefined();
       const placed = gw.received.length;

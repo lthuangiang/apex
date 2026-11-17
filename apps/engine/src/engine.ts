@@ -139,6 +139,7 @@ export class FencedError extends Error {
 export interface EngineRedis extends LeaseRedis {
   set(key: string, value: string, px: "PX", ttl: number, nx?: "NX"): Promise<string | null>;
   keys(pattern: string): Promise<string[]>;
+  del(key: string): Promise<number>;
 }
 
 export interface EngineDeps {
@@ -878,6 +879,9 @@ export class Engine {
       await l.lease.release();
       this.#dropShard(shard);
     }
+    // Dừng êm: xoá key worker để worker kế tiếp nhận đủ phần shard ngay, không chia đôi với worker đã dừng tới khi key
+    // hết hạn (`leaseTtlMs`).
+    await this.#d.redis.del(`engine:worker:${this.#d.workerId}`);
   }
 
   /** Test: mô phỏng worker chết (không trả lease, không làm gì nữa). */
