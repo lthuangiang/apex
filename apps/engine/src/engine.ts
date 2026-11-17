@@ -136,6 +136,38 @@ export class FencedError extends Error {
   }
 }
 
+type OrderRow = typeof orders.$inferSelect;
+type BotRow = typeof bots.$inferSelect;
+type VersionRow = typeof botVersions.$inferSelect;
+
+/**
+ * Dữ liệu đọc MỘT lần mỗi vòng `tick` rồi chia theo shard trong bộ nhớ (DEC-301). Trước đây mỗi shard
+ * tự đọc lại (account 2 lần, lệnh `unknown`, lệnh đang mở, version chờ theo từng bot), nên số truy vấn mỗi vòng tăng theo
+ * số shard (64) và vòng chậm tới mức mất lease.
+ */
+interface TickSnapshot {
+  /** Account đã kết nối + key active, theo shard (chỉ shard mình giữ). */
+  accounts: Map<number, AccountRef[]>;
+  /** Bot đang ở trạng thái engine chạy + version active, theo shard. */
+  bots: Map<number, { bot: BotRow; version: VersionRow }[]>;
+  /** Version `pending` mới nhất của mỗi bot trong `bots`. */
+  pending: Map<string, VersionRow>;
+  /** Builder fee riêng theo user của các bot trong `bots`. */
+  fees: Map<string, BuilderFeeOverrides>;
+  /** Lệnh `unknown` đủ tuổi để đối soát (mọi account). */
+  unknown: OrderRow[];
+  /** Lệnh bot thật `open` / `partially_filled` đủ tuổi, theo shard của account, theo `submittedAt`. */
+  open: Map<number, OrderRow[]>;
+  /** Lệnh Volume Farm đã huỷ chưa đối soát, theo shard của account. */
+  unconfirmed: Map<number, OrderRow[]>;
+}
+
+const pushTo = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
+  const list = map.get(key);
+  if (list === undefined) map.set(key, [value]);
+  else list.push(value);
+};
+
 export interface EngineRedis extends LeaseRedis {
   set(key: string, value: string, px: "PX", ttl: number, nx?: "NX"): Promise<string | null>;
   keys(pattern: string): Promise<string[]>;
@@ -351,6 +383,12 @@ const BOOKS_EVERY_MS: Readonly<Record<string, number>> = {
 const BOOK_CACHE_MS = 3_000;
 
 const VOLUME: ReadonlySet<string> = new Set(VOLUME_STRATEGIES);
+/** Trạng thái chuyển tiếp mà engine phải xác nhận: đọc lại dòng bot ngay trước khi xử lý (snapshot của vòng có thể cũ). */
+const TRANSITIONAL: ReadonlySet<string> = new Set<string>([
+  BotState.pausing,
+  BotState.resuming,
+  BotState.stopping,
+]);
 /** Trạng thái mà cờ theo tài khoản (volume bots, Adaptive DCA, AI Desk) chặn nạp: bot đang muốn chạy. */
 const FLAG_GATED_STATES: ReadonlySet<string> = new Set<string>([
   BotState.starting,
@@ -422,14 +460,26 @@ export class Engine {
   async tick(): Promise<void> {
     if (this.#stopped) return;
     await this.#manageShards();
+    let snap: TickSnapshot;
+    try {
+      snap = await this.#tickSnapshot();
+    } catch (error) {
+      // Đọc DB đầu vòng lỗi: bỏ phần việc của shard ở vòng này nhưng vẫn trả về bình thường, để vòng ngoài (main.ts)
+      // vẫn đồng bộ user stream; vòng sau đọc lại.
+      this.#d.log.error({ err: error }, "tick snapshot failed; skipping shard work this tick");
+      return;
+    }
     for (const shard of this.ownedShards) {
+      // Shard không có account nào và không có runner nào: không có việc gì (không truy vấn, không gọi SoDEX).
+      const accounts = snap.accounts.get(shard) ?? [];
+      if (accounts.length === 0 && !this.#hasRunners(shard)) continue;
       try {
-        await this.#syncBots(shard);
-        await this.#reconcile(shard);
-        await this.#reconcileOpen(shard);
+        await this.#syncBots(shard, snap);
+        await this.#reconcile(shard, snap);
+        await this.#reconcileOpen(shard, snap);
         await this.#retryCancels(shard);
         await this.#reconcileMaker(shard);
-        await this.#checkFees(shard);
+        await this.#checkFees(shard, accounts);
         await this.#clock(shard);
       } catch (error) {
         if (error instanceof FencedError) this.#dropShard(shard);
@@ -947,8 +997,30 @@ export class Engine {
 
   // ---------- bots ----------
 
-  async #accountsInShard(shard: number) {
-    const rows = await this.#d.db
+  #hasRunners(shard: number): boolean {
+    for (const r of this.#runners.values()) if (r.shard === shard) return true;
+    return false;
+  }
+
+  /**
+   * Đọc một lần cho cả vòng (DEC-301): account, bot + version, version chờ, builder fee, lệnh `unknown`,
+   * lệnh đang mở và lệnh Volume Farm huỷ chưa xác nhận; rồi chia theo shard. Số truy vấn không phụ thuộc số shard.
+   */
+  async #tickSnapshot(): Promise<TickSnapshot> {
+    const { db, shards } = this.#d;
+    const now = this.#d.now();
+    const owned = new Set(this.#leases.keys());
+    const snap: TickSnapshot = {
+      accounts: new Map(),
+      bots: new Map(),
+      pending: new Map(),
+      fees: new Map(),
+      unknown: [],
+      open: new Map(),
+      unconfirmed: new Map(),
+    };
+    if (owned.size === 0) return snap;
+    const accountRows = await db
       .select({ account: sodexAccounts, key: apiKeys })
       .from(sodexAccounts)
       .innerJoin(
@@ -956,37 +1028,133 @@ export class Engine {
         and(eq(apiKeys.sodexAccountId, sodexAccounts.id), eq(apiKeys.status, "active")),
       )
       .where(eq(sodexAccounts.status, "connected"));
-    return rows
-      .filter((r) => shardOf(r.account.id, this.#d.shards) === shard)
-      .map((r): AccountRef => ({
+    const shardOfAccount = new Map<string, number>();
+    for (const r of accountRows) {
+      const shard = shardOf(r.account.id, shards);
+      if (!owned.has(shard)) continue;
+      shardOfAccount.set(r.account.id, shard);
+      pushTo(snap.accounts, shard, {
         id: r.account.id,
         address: r.account.address as `0x${string}`,
         sodexAccountId: r.account.sodexAccountId,
         apiKeyId: r.key.id,
         apiKeyName: r.key.name,
-      }));
-  }
-
-  async #syncBots(shard: number): Promise<void> {
-    const held = this.#leases.get(shard);
-    if (held === undefined) return;
-    const accounts = await this.#accountsInShard(shard);
-    if (accounts.length === 0) return;
-    const list = await this.#d.db
-      .select({ bot: bots, version: botVersions })
-      .from(bots)
-      .innerJoin(botVersions, eq(botVersions.id, bots.activeVersionId))
+      });
+    }
+    if (shardOfAccount.size > 0) {
+      const list = await db
+        .select({ bot: bots, version: botVersions })
+        .from(bots)
+        .innerJoin(botVersions, eq(botVersions.id, bots.activeVersionId))
+        .where(
+          and(
+            inArray(bots.sodexAccountId, [...shardOfAccount.keys()]),
+            inArray(bots.state, [...ENGINE_ACTIVE_STATES]),
+          ),
+        );
+      for (const x of list) {
+        const shard = shardOfAccount.get(x.bot.sodexAccountId);
+        if (shard !== undefined) pushTo(snap.bots, shard, x);
+      }
+      if (list.length > 0) {
+        snap.fees = await this.#builderFeesOf(list.map((x) => x.bot.userId));
+        // Version `pending` mới nhất của mỗi bot (DOMAIN.md mục 7.4): một truy vấn cho mọi bot, thay vì một truy vấn mỗi bot.
+        const pending = await db
+          .select()
+          .from(botVersions)
+          .where(
+            and(
+              inArray(
+                botVersions.botId,
+                list.map((x) => x.bot.id),
+              ),
+              eq(botVersions.status, "pending"),
+            ),
+          )
+          .orderBy(desc(botVersions.version));
+        for (const v of pending) if (!snap.pending.has(v.botId)) snap.pending.set(v.botId, v);
+      }
+    }
+    snap.unknown = await db
+      .select()
+      .from(orders)
       .where(
         and(
-          inArray(
-            bots.sodexAccountId,
-            accounts.map((a) => a.id),
-          ),
-          inArray(bots.state, [...ENGINE_ACTIVE_STATES]),
+          eq(orders.status, "unknown"),
+          lt(orders.submittedAt, new Date(now - RECONCILE_AFTER_MS)),
         ),
       );
-    const fees = await this.#builderFeesOf(list.map((x) => x.bot.userId));
-    for (const { bot, version } of list) {
+    // Chỉ lệnh của bot thật: lệnh paper không bao giờ được đối soát với SoDEX (DEC-105).
+    const open = await db
+      .select({ order: orders })
+      .from(orders)
+      .innerJoin(bots, eq(bots.id, orders.botId))
+      .where(
+        and(
+          eq(bots.mode, "live"),
+          inArray(orders.status, ["open", "partially_filled"]),
+          lt(orders.submittedAt, new Date(now - RECONCILE_AFTER_MS)),
+        ),
+      )
+      .orderBy(orders.submittedAt);
+    for (const { order } of open) {
+      const shard = shardOf(order.sodexAccountId, shards);
+      if (owned.has(shard)) pushTo(snap.open, shard, order);
+    }
+    // Lệnh Volume Farm DRIFT tự huỷ nhưng chưa xác nhận: có thể đã khớp ngay trước lúc huỷ.
+    const unconfirmed = await db
+      .select({ order: orders })
+      .from(orders)
+      .innerJoin(bots, eq(bots.id, orders.botId))
+      .where(
+        and(
+          eq(orders.status, "cancelled"),
+          eq(bots.mode, "live"),
+          eq(bots.strategy, Strategy.volumeFarm),
+          isNull(orders.reconciledAt),
+          gt(orders.submittedAt, new Date(now - UNCONFIRMED_CANCEL_MS)),
+        ),
+      );
+    for (const { order } of unconfirmed) {
+      const shard = shardOf(order.sodexAccountId, shards);
+      if (owned.has(shard)) pushTo(snap.unconfirmed, shard, order);
+    }
+    return snap;
+  }
+
+  /**
+   * Đọc lại các dòng lệnh của snapshot ngay trước khi xử lý (một truy vấn): giữ dòng mới nhất, bỏ dòng đã đổi trạng thái
+   * từ lúc chụp (user stream / bước khác đã cập nhật) để không xử lý theo số cũ.
+   */
+  async #fresh(list: readonly OrderRow[]): Promise<OrderRow[]> {
+    if (list.length === 0) return [];
+    const rows = await this.#d.db
+      .select()
+      .from(orders)
+      .where(
+        inArray(
+          orders.id,
+          list.map((o) => o.id),
+        ),
+      );
+    const byId = new Map(rows.map((o) => [o.id, o]));
+    return list.flatMap((o) => {
+      const f = byId.get(o.id);
+      return f?.status === o.status ? [f] : [];
+    });
+  }
+
+  async #syncBots(shard: number, snap: TickSnapshot): Promise<void> {
+    const held = this.#leases.get(shard);
+    if (held === undefined) return;
+    const accounts = snap.accounts.get(shard) ?? [];
+    if (accounts.length === 0) return;
+    const list = snap.bots.get(shard) ?? [];
+    const fees = snap.fees;
+    for (const { bot: snapped, version } of list) {
+      // Trạng thái chuyển tiếp (pausing / resuming / stopping) có thể đã đổi từ lúc chụp: đọc lại dòng bot đó.
+      const bot = TRANSITIONAL.has(snapped.state) ? await this.#botRow(snapped.id) : snapped;
+      if (bot === undefined || !ENGINE_ACTIVE_STATES.includes(bot.state)) continue;
       const account = accounts.find((a) => a.id === bot.sodexAccountId);
       if (account === undefined) continue;
       let r = this.#runners.get(bot.id);
@@ -1010,7 +1178,7 @@ export class Engine {
       }
       // Key `active` mới nhất của account (Renew key, DEC-59): runner dùng key mới ngay, không cần nạp lại bot.
       r.account = r.paper ? { ...account, paper: true } : account;
-      await this.#applyPendingVersion(r);
+      await this.#applyPendingVersion(r, snap.pending.get(r.botId));
       if (bot.state === BotState.pausing)
         await this.#transition(r, EngineEvent.confirmedPaused, null);
       else if (bot.state === BotState.resuming) {
@@ -1145,13 +1313,7 @@ export class Engine {
    * Version mới (`pending`, do api tạo khi sửa bot): huỷ lệnh đang mở, khởi tạo lại chiến lược với cấu hình
    * mới, đánh dấu version cũ superseded (DOMAIN.md mục 7.4, DEC-38). Lệnh mới đặt ở tick kế tiếp.
    */
-  async #applyPendingVersion(r: Runner): Promise<void> {
-    const [pending] = await this.#d.db
-      .select()
-      .from(botVersions)
-      .where(and(eq(botVersions.botId, r.botId), eq(botVersions.status, "pending")))
-      .orderBy(desc(botVersions.version))
-      .limit(1);
+  async #applyPendingVersion(r: Runner, pending: VersionRow | undefined): Promise<void> {
     if (pending === undefined || pending.version <= r.version) return;
     const entry = (
       STRATEGIES as Record<
@@ -1237,6 +1399,11 @@ export class Engine {
       .where(eq(users.id, userId))
       .limit(1);
     return u?.on === true;
+  }
+
+  async #botRow(botId: string): Promise<BotRow | undefined> {
+    const [b] = await this.#d.db.select().from(bots).where(eq(bots.id, botId)).limit(1);
+    return b;
   }
 
   async #currentState(botId: string): Promise<BotState | undefined> {
@@ -2653,17 +2820,11 @@ export class Engine {
   // ---------- đối soát & phí ----------
 
   /** Lệnh `unknown`: hỏi SoDEX theo clOrdID rồi mới quyết định; không gửi lại (quy tắc 1.7). */
-  async #reconcile(shard: number): Promise<void> {
+  async #reconcile(shard: number, snap: TickSnapshot): Promise<void> {
     const now = this.#d.now();
-    const pending = await this.#d.db
-      .select()
-      .from(orders)
-      .where(
-        and(
-          eq(orders.status, "unknown"),
-          lt(orders.submittedAt, new Date(now - RECONCILE_AFTER_MS)),
-        ),
-      );
+    const pending = await this.#fresh(
+      snap.unknown.filter((o) => this.#runners.get(o.botId)?.shard === shard),
+    );
     for (const o of pending) {
       const r = this.#runners.get(o.botId);
       if (r?.shard !== shard) continue;
@@ -2748,25 +2909,12 @@ export class Engine {
    * thể đã đóng ngay sau lệnh đóng vị thế của Stop), hoặc lệnh market (IOC không thể nằm trên sổ, SoDEX không báo
    * khi hết hạn mà chưa khớp). Đọc trạng thái thật từ SoDEX, ghi fill, cập nhật sổ cái và PnL của bot.
    */
-  async #reconcileOpen(shard: number): Promise<void> {
+  async #reconcileOpen(shard: number, snap: TickSnapshot): Promise<void> {
     const held = this.#leases.get(shard);
     if (held === undefined) return;
     const now = this.#d.now();
-    // Chỉ lệnh của bot thật: lệnh paper không bao giờ được đối soát với SoDEX (DEC-105).
-    const rows = (
-      await this.#d.db
-        .select({ order: orders })
-        .from(orders)
-        .innerJoin(bots, eq(bots.id, orders.botId))
-        .where(
-          and(
-            eq(bots.mode, "live"),
-            inArray(orders.status, ["open", "partially_filled"]),
-            lt(orders.submittedAt, new Date(now - RECONCILE_AFTER_MS)),
-          ),
-        )
-        .orderBy(orders.submittedAt)
-    ).map((x) => x.order);
+    // Lệnh bot thật của shard (snapshot của vòng, DEC-105: không bao giờ lệnh paper).
+    const rows = snap.open.get(shard) ?? [];
     const gap = (accountId: string) =>
       now - (this.#streamGaps.get(accountId) ?? Number.NEGATIVE_INFINITY) < STREAM_GAP_MS;
     // Lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận (kết quả "unknown"): đọc trạng thái thật thay vì huỷ lại mãi.
@@ -2783,23 +2931,7 @@ export class Engine {
       );
     });
     // Lệnh Volume Farm DRIFT tự huỷ nhưng chưa xác nhận: có thể đã khớp ngay trước lúc huỷ.
-    const unconfirmed = (
-      await this.#d.db
-        .select({ order: orders })
-        .from(orders)
-        .innerJoin(bots, eq(bots.id, orders.botId))
-        .where(
-          and(
-            eq(orders.status, "cancelled"),
-            eq(bots.mode, "live"),
-            eq(bots.strategy, Strategy.volumeFarm),
-            isNull(orders.reconciledAt),
-            gt(orders.submittedAt, new Date(now - UNCONFIRMED_CANCEL_MS)),
-          ),
-        )
-    )
-      .map((x) => x.order)
-      .filter((o) => gap(o.sodexAccountId));
+    const unconfirmed = (snap.unconfirmed.get(shard) ?? []).filter((o) => gap(o.sodexAccountId));
     // Lệnh kiểm lâu nhất trước (chưa kiểm = 0), rồi lệnh cũ nhất (DEC-185). Xếp theo `submittedAt`
     // không thôi thì ≥ OPEN_CHECK_BATCH lệnh vẫn treo trên SoDEX (bot đang pause giữ lệnh) chiếm hết suất mỗi vòng, và
     // lệnh mới hơn (ví dụ lệnh đóng vị thế của bot vừa Stop) không bao giờ được đối soát: fill thật không được ghi.
@@ -2812,9 +2944,13 @@ export class Engine {
           (a.submittedAt?.getTime() ?? 0) - (b.submittedAt?.getTime() ?? 0),
       );
     if (due.length === 0) return;
-    const accounts = new Map((await this.#accountsInShard(shard)).map((a) => [a.id, a]));
+    const accounts = new Map((snap.accounts.get(shard) ?? []).map((a) => [a.id, a]));
+    // Chỉ lệnh sẽ được kiểm ở vòng này (tối đa OPEN_CHECK_BATCH, account còn kết nối), đọc lại ngay trước khi xử lý.
+    const batch = await this.#fresh(
+      due.filter((o) => accounts.has(o.sodexAccountId)).slice(0, OPEN_CHECK_BATCH),
+    );
     let checked = 0;
-    for (const o of due) {
+    for (const o of batch) {
       const account = accounts.get(o.sodexAccountId);
       if (account === undefined) continue;
       if (checked >= OPEN_CHECK_BATCH) break;
@@ -3123,10 +3259,15 @@ export class Engine {
   }
 
   /** Approval phí khác 50 → pause mọi bot của account (quy tắc 1.5), xử lý ở engine. */
-  async #checkFees(shard: number): Promise<void> {
+  async #checkFees(shard: number, accounts: readonly AccountRef[]): Promise<void> {
     const now = this.#d.now();
-    const accounts = await this.#accountsInShard(shard);
+    // Chỉ account có bot tiền thật đang chạy trên worker này: bot paper không bao giờ chạm SoDEX (DEC-105) và revoke phí
+    // không pause bot paper (`pauseAccount`), nên đọc approval cho account chỉ có bot paper là thừa.
+    const live = new Set<string>();
+    for (const r of this.#runners.values())
+      if (r.shard === shard && !r.paper) live.add(r.account.id);
     for (const account of accounts) {
+      if (!live.has(account.id)) continue;
       if (now - (this.#lastFeeCheck.get(account.id) ?? 0) < this.#d.feeCheckMs) continue;
       this.#lastFeeCheck.set(account.id, now);
       // Một account đọc lỗi (SoDEX lỗi, account không còn) không được làm hỏng cả vòng của shard: các bot khác cùng
