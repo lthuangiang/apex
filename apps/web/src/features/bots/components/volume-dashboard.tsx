@@ -183,6 +183,12 @@ function Body({
   const target = period === "session" && vf.volumeTarget !== null ? num(vf.volumeTarget) : null;
   const targetPct = target !== null && target > 0 ? (volume / target) * 100 : null;
   const hours = Math.max(1 / 60, (Date.parse(a.to) - Date.parse(a.from)) / 3_600_000);
+  const otherRejects = Math.max(0, tot.ordersRejected - tot.rejectedSplit.postOnly);
+  // Lượt có lệnh vào post-only khớp ÷ số lượt (DEC-TBD-vb-stats-postonly); chưa có lượt nào thì "Not available".
+  const roundFill =
+    tot.rounds === null || tot.roundsFilled === null || tot.rounds === 0
+      ? null
+      : (tot.roundsFilled / tot.rounds) * 100;
 
   const vol = a.series.map((x) => num(x.volume));
   const cumVol = cumulative(vol);
@@ -273,7 +279,7 @@ function Body({
           </div>
         </Panel>
         <Panel icon={<ShieldCheck size={18} strokeWidth={2.4} />} title={t("execTitle")}>
-          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-tile bg-border sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-tile bg-border sm:grid-cols-3">
             <Cell
               label={t("winRate")}
               value={tot.trades === 0 ? "—" : `${((tot.wins / tot.trades) * 100).toFixed(1)}%`}
@@ -288,10 +294,28 @@ function Body({
               }
               sub={t("fillRatioSub", { filled: tot.ordersFilled, placed: tot.ordersPlaced })}
             />
+            {/* Post-only bị từ chối (giá đã chạy) tách khỏi các lý do khác (DEC-TBD-vb-stats-postonly). */}
             <Cell
-              label={t("rejected")}
-              value={String(tot.ordersRejected)}
-              sub={rejectBreakdown(tr, tot.ordersRejected, tot.rejectedSplit) ?? t("rejectedSub")}
+              label={t("postOnlyMisses")}
+              value={String(tot.rejectedSplit.postOnly)}
+              sub={t("postOnlyMissesSub")}
+            />
+            <Cell
+              label={t("otherRejects")}
+              value={String(otherRejects)}
+              sub={
+                rejectBreakdown(tr, otherRejects, { ...tot.rejectedSplit, postOnly: 0 }) ??
+                t("rejectedSub")
+              }
+            />
+            <Cell
+              label={t("roundFill")}
+              value={roundFill === null ? t("notAvailable") : `${roundFill.toFixed(0)}%`}
+              sub={
+                tot.rounds === null || tot.roundsFilled === null || tot.rounds === 0
+                  ? t("notAvailable")
+                  : t("roundFillSub", { filled: tot.roundsFilled, rounds: tot.rounds })
+              }
             />
             <Cell
               label={t("tradesPerHour")}

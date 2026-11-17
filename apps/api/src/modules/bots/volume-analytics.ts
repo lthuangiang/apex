@@ -27,6 +27,9 @@ const NET_RE = "net (-?[0-9.]+) USDC";
 const PRICE_RE = "price PnL (-?[0-9.]+)";
 const ENTRY_RE = "entry ([0-9.]+) →";
 const EXIT_RE = "→ exit ([0-9.]+)";
+/** Tag lệnh vào của Volume Farm (`vf:<lượt>:in:<số lần chưa khớp liên tiếp>`), và lệnh mở đầu một lượt vào. */
+const ENTRY_TAG_RE = "^vf:[0-9]+:in:[0-9]+$";
+const ROUND_START_RE = "^vf:[0-9]+:in:0$";
 
 export async function volumeAnalytics(
   deps: BotDeps,
@@ -104,6 +107,10 @@ export async function volumeAnalytics(
       rejPostOnly: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${NORMAL_REJECT_CODES.postOnly})::int`,
       rejSelfTrade: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${NORMAL_REJECT_CODES.selfTrade})::int`,
       rejRiskLimit: sql<number>`count(*) filter (where ${orders.status} = 'rejected' and ${orders.rejectCode} = ${RISK_LIMIT_REJECT_CODE})::int`,
+      // Volume Farm (DEC-TBD-vb-stats-postonly): một lượt vào bắt đầu ở lệnh `vf:<n>:in:0` (đếm lệnh không khớp liên tiếp
+      // về 0) và kết thúc ở lệnh vào đầu tiên khớp; lệnh vào post-only là `limit`.
+      rounds: sql<number>`count(*) filter (where ${orders.tag} ~ ${ROUND_START_RE} and ${orders.type} = 'limit')::int`,
+      roundsFilled: sql<number>`count(*) filter (where ${orders.tag} ~ ${ENTRY_TAG_RE} and ${orders.type} = 'limit' and ${orders.filledSize} > 0)::int`,
     })
     .from(orders)
     .where(
@@ -176,8 +183,22 @@ export async function volumeAnalytics(
         selfTrade: ord?.rejSelfTrade ?? 0,
         riskLimit: ord?.rejRiskLimit ?? 0,
       },
+      ...roundStats(b.strategy, ord?.rounds ?? 0, ord?.roundsFilled ?? 0),
     },
   };
+}
+
+/**
+ * Tỷ lệ khớp theo lượt của Volume Farm (DEC-TBD-vb-stats-postonly). Chiến lược khác: null ("Not available"). Lượt bắt đầu
+ * trước kỳ mà khớp trong kỳ được đếm là khớp, nên số lượt khớp không vượt số lượt.
+ */
+export function roundStats(
+  strategy: string,
+  rounds: number,
+  filled: number,
+): { rounds: number | null; roundsFilled: number | null } {
+  if (strategy !== Strategy.volumeFarm) return { rounds: null, roundsFilled: null };
+  return { rounds, roundsFilled: Math.min(filled, rounds) };
 }
 
 export const VOLUME_ANALYTICS_STRATEGIES = new Set<string>([
