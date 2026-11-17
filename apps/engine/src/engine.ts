@@ -17,7 +17,7 @@ import {
   users,
   type Db,
 } from "@drift/db";
-import { Lease, type LeaseRedis } from "@drift/runtime";
+import { Lease, LeaseSet, type LeaseLoss, type LeaseRedis } from "@drift/runtime";
 import {
   applyEngineEvent,
   applyReason,
@@ -168,6 +168,30 @@ const pushTo = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
   else list.push(value);
 };
 
+/**
+ * Lease của shard đã quá `validUntil` và gia hạn ngay không được (DEC-302): không gửi gì tới SoDEX.
+ * Là một `FencedError` để mọi chỗ đang cho FencedError đi qua cũng cho lỗi này đi qua; vòng `tick` bỏ qua shard ở lượt
+ * này chứ không bỏ shard (shard mất thật thì `LeaseSet` đã báo `onLost`).
+ */
+export class LeaseExpiredError extends FencedError {
+  constructor(shard: number) {
+    super(shard);
+    this.message = `Shard ${String(shard)} lease is not confirmed`;
+  }
+}
+
+/** Các bước của một shard trong một vòng `tick`, theo thứ tự (tên dùng trong log `tick slow`). */
+const SHARD_PHASES = [
+  "syncBots",
+  "reconcile",
+  "reconcileOpen",
+  "retryCancels",
+  "reconcileMaker",
+  "checkFees",
+  "clock",
+] as const;
+type ShardPhase = (typeof SHARD_PHASES)[number];
+
 export interface EngineRedis extends LeaseRedis {
   set(key: string, value: string, px: "PX", ttl: number, nx?: "NX"): Promise<string | null>;
   keys(pattern: string): Promise<string[]>;
@@ -199,6 +223,10 @@ export interface EngineDeps {
   orderbook?: (market: string, engine?: "spot" | "perps") => Promise<BookTop | null>;
   /** Cổng mô phỏng cho bot paper (DEC-105). Không truyền thì engine không nạp bot paper nào. */
   paper?: PaperGateway;
+  /** Đồng hồ đơn điệu cho hạn lease (mặc định `performance.now`); khác `now` (giờ nghiệp vụ, test cố định). */
+  monotonic?: () => number;
+  /** Độ trễ event loop hiện tại (perf_hooks), ghi kèm log `tick slow`. */
+  loopDelay?: () => { p99Ms: number; maxMs: number };
 }
 
 /** Lý do "Leverage set". Bot paper không gửi gì tới SoDEX (PaperGateway, DEC-105) nên không ghi "SoDEX confirmed". */
@@ -286,6 +314,11 @@ interface Runner {
   leverageUnknown: boolean;
   /** Market đã được SoDEX xác nhận đòn bẩy cho version này (CP-01): lần thử sau không đặt / ghi lại. */
   leverageDone: Set<string>;
+  /**
+   * Khoá đòn bẩy đã xác nhận cho version này TRƯỚC lần nạp lại runner (`bot_runtime.leverage_done`). Vẫn đọc lại SoDEX;
+   * khớp thì không ghi lại "Leverage set". Khác (đổi từ bên ngoài, DEC-58) thì xử lý như thường.
+   */
+  leverageKnown: ReadonlySet<string>;
   /** Lần đặt đòn bẩy đang chạy: sự kiện tới cùng lúc chờ chung, không đặt song song (CP-01). */
   /** Lần đặt đòn bẩy đang chạy, gắn với version lúc bắt đầu (đổi version giữa chừng thì không dùng chung kết quả). */
   leverageRun: {
@@ -306,6 +339,8 @@ interface Runner {
   rejectLog: Map<string, { times: number[]; loggedAt: number | null }>;
   /** Giới hạn tin `copy_bot_skipped` của bot copy (DEC-212), trong bộ nhớ. */
   skipGate: SkipGate;
+  /** Lệnh đóng của Stop chưa gửi được: nấc thử lại và các lý do đã ghi Decisions (#sendCloses). */
+  closeRetry: { since: number; attempts: number; nextAt: number; reasons: Set<string> } | null;
 }
 
 /**
@@ -340,6 +375,12 @@ export const REJECT_LOG_WINDOW_MS = 60_000;
 /** Câu Decisions cho lệnh bị SoDEX từ chối (câu chữ đã duyệt). */
 export const rejectLogText = (reason: string, n: number): string =>
   `Order refused by SoDEX: ${reason} (${String(n)} in the last minute).`;
+
+/**
+ * Lệnh đóng của Stop chưa rời DeskLabs: thử lại sau 5 s → 15 s → 60 s (rồi giữ 60 s); vẫn chưa gửi được sau 10 phút thì
+ * kết thúc Stop với vị thế còn mở và báo người dùng (DEC-302).
+ */
+export const CLOSE_RETRY = { backoffMs: [5_000, 15_000, 60_000], giveUpMs: 600_000 } as const;
 
 /** Backoff khi request chưa rời DRIFT: 2 s → 4 s → … tối đa 60 s; quá 5 lần hoặc 5 phút thì pause bot. */
 export const NOT_SENT_BACKOFF = {
@@ -404,12 +445,18 @@ export function shardOf(accountId: string, shards = ENGINE_SHARDS): number {
 }
 
 export class Engine {
-  readonly #d: Required<Omit<EngineDeps, "feeRate" | "paper" | "builderId">> & {
+  readonly #d: Required<
+    Omit<EngineDeps, "feeRate" | "paper" | "builderId" | "monotonic" | "loopDelay">
+  > & {
     feeRate: string | undefined;
     builderId: bigint | undefined;
     paper: PaperGateway | undefined;
+    loopDelay: EngineDeps["loopDelay"];
   };
   readonly #leases = new Map<number, { lease: Lease; epoch: number }>();
+  /** Gia hạn lease shard + heartbeat worker bằng timer riêng, không theo vòng `tick` (DEC-302). */
+  readonly #leaseSet: LeaseSet<number>;
+  readonly #clockMono: () => number;
   readonly #runners = new Map<string, Runner>();
   readonly #lastFeeCheck = new Map<string, number>();
   readonly #snapshots = new Map<string, { at: number; snap: MarketSnapshot }>();
@@ -445,7 +492,28 @@ export class Engine {
       feeRate: deps.feeRate,
       builderId: deps.builderId,
       paper: deps.paper,
+      loopDelay: deps.loopDelay,
     };
+    this.#clockMono = deps.monotonic ?? (() => performance.now());
+    this.#leaseSet = new LeaseSet<number>({
+      redis: this.#d.redis,
+      ttlMs: this.#d.leaseTtlMs,
+      clock: this.#clockMono,
+      heartbeat: { key: `engine:worker:${this.#d.workerId}`, value: () => String(this.#d.now()) },
+      verify: (shard) => this.#stillOurs(shard),
+      onLost: (shard, reason) => {
+        this.#shardLost(shard, reason);
+      },
+      onReacquired: (shard) => {
+        this.#d.log.warn(
+          { shard, epoch: this.#leases.get(shard)?.epoch, worker: this.#d.workerId },
+          "shard lease re-acquired; epoch and bots kept",
+        );
+      },
+      onError: (error) => {
+        this.#d.log.warn({ err: error }, "shard lease renew failed");
+      },
+    });
   }
 
   get ownedShards(): number[] {
@@ -456,10 +524,15 @@ export class Engine {
     return this.#leases.get(shard)?.epoch;
   }
 
-  /** Một vòng: heartbeat, giữ / nhận shard, xử lý lệnh bot, đối soát, kiểm tra phí. */
+  /**
+   * Một vòng: nhận / trả shard, xử lý lệnh bot, đối soát, kiểm tra phí. Lease được gia hạn bằng timer riêng
+   * (`LeaseSet`), nên một vòng chậm không làm mất shard; trước mỗi bước của shard kiểm tra lease còn hiệu lực.
+   */
   async tick(): Promise<void> {
     if (this.#stopped) return;
+    const started = this.#clockMono();
     await this.#manageShards();
+    const managed = this.#clockMono();
     let snap: TickSnapshot;
     try {
       snap = await this.#tickSnapshot();
@@ -467,25 +540,119 @@ export class Engine {
       // Đọc DB đầu vòng lỗi: bỏ phần việc của shard ở vòng này nhưng vẫn trả về bình thường, để vòng ngoài (main.ts)
       // vẫn đồng bộ user stream; vòng sau đọc lại.
       this.#d.log.error({ err: error }, "tick snapshot failed; skipping shard work this tick");
+      this.#logSlowTick(started, {
+        manageShards: managed - started,
+        snapshot: this.#clockMono() - managed,
+      });
       return;
     }
+    const phases: Record<string, number> = {
+      manageShards: managed - started,
+      snapshot: this.#clockMono() - managed,
+    };
+    const steps: Record<ShardPhase, (shard: number) => Promise<void>> = {
+      syncBots: (n) => this.#syncBots(n, snap),
+      reconcile: (n) => this.#reconcile(n, snap),
+      reconcileOpen: (n) => this.#reconcileOpen(n, snap),
+      retryCancels: (n) => this.#retryCancels(n),
+      reconcileMaker: (n) => this.#reconcileMaker(n),
+      checkFees: (n) => this.#checkFees(n, snap.accounts.get(n) ?? []),
+      clock: (n) => this.#clock(n),
+    };
+    let skipped = 0;
     for (const shard of this.ownedShards) {
       // Shard không có account nào và không có runner nào: không có việc gì (không truy vấn, không gọi SoDEX).
       const accounts = snap.accounts.get(shard) ?? [];
       if (accounts.length === 0 && !this.#hasRunners(shard)) continue;
       try {
-        await this.#syncBots(shard, snap);
-        await this.#reconcile(shard, snap);
-        await this.#reconcileOpen(shard, snap);
-        await this.#retryCancels(shard);
-        await this.#reconcileMaker(shard);
-        await this.#checkFees(shard, accounts);
-        await this.#clock(shard);
+        for (const phase of SHARD_PHASES) {
+          if (!(await this.#leaseConfirmed(shard))) {
+            skipped += 1;
+            break;
+          }
+          const at = this.#clockMono();
+          await steps[phase](shard);
+          phases[phase] = (phases[phase] ?? 0) + this.#clockMono() - at;
+        }
       } catch (error) {
-        if (error instanceof FencedError) this.#dropShard(shard);
-        else this.#d.log.error({ err: error, shard }, "shard loop failed");
+        if (error instanceof LeaseExpiredError)
+          this.#d.log.warn({ shard }, "shard skipped this tick: lease not confirmed");
+        else if (error instanceof FencedError) {
+          this.#d.log.warn({ shard, reason: "fenced", worker: this.#d.workerId }, "shard lost");
+          this.#dropShard(shard);
+        } else this.#d.log.error({ err: error, shard }, "shard loop failed");
       }
     }
+    this.#logSlowTick(started, phases, skipped);
+  }
+
+  /** Log `tick slow` khi một vòng lâu hơn TTL/2, kèm thời gian từng bước. */
+  #logSlowTick(started: number, phases: Record<string, number>, skipped = 0): void {
+    const ms = this.#clockMono() - started;
+    if (ms > this.#d.leaseTtlMs / 2)
+      this.#d.log.warn(
+        {
+          ms: Math.round(ms),
+          shards: this.#leases.size,
+          skipped,
+          phases: Object.fromEntries(Object.entries(phases).map(([k, v]) => [k, Math.round(v)])),
+          loopDelay: this.#d.loopDelay?.(),
+        },
+        "tick slow",
+      );
+  }
+
+  /** Lease của shard còn hiệu lực; hết thì gia hạn ngay một lần rồi xem lại. */
+  async #leaseConfirmed(shard: number): Promise<boolean> {
+    if (this.#leaseSet.valid(shard)) return true;
+    if (!this.#leaseSet.has(shard) || this.#stopped) return false;
+    // Không chờ khi đã có lần gia hạn đang chạy hoặc vừa lỗi (Redis đang sự cố): mỗi bước của shard không treo tới hạn chờ.
+    await this.#leaseSet.renewIfIdle();
+    return this.#leaseSet.valid(shard);
+  }
+
+  /**
+   * Hoàn tác một bước chiến lược chưa có tác dụng phụ nào (đầu `#execute`): chỉ đưa state về như trước (bộ nhớ + DB).
+   * Không đụng dòng lệnh hay danh sách chờ huỷ: dòng `unknown` cùng clOrdID (nếu có) thuộc một lần gửi trước, có thể
+   * đang sống trên SoDEX (quy tắc 1.7).
+   */
+  async #restoreState(r: Runner, rollback: unknown): Promise<void> {
+    r.state = rollback;
+    await this.#fenced(r, (tx) =>
+      tx
+        .update(botRuntime)
+        .set({ state: r.state, updatedAt: new Date() })
+        .where(eq(botRuntime.botId, r.botId)),
+    );
+  }
+
+  /**
+   * Gia hạn lease thất bại nhưng `SET NX` lại được: chỉ giữ epoch và runner khi DB cho thấy shard vẫn của mình với đúng
+   * epoch đang giữ (không ai nhận shard trong lúc lease hết hạn).
+   */
+  async #stillOurs(shard: number): Promise<boolean> {
+    const held = this.#leases.get(shard);
+    if (held === undefined) return false;
+    const rows = await this.#d.db
+      .update(shardEpochs)
+      .set({ acquiredAt: new Date(this.#d.now()) })
+      .where(
+        and(
+          eq(shardEpochs.shard, shard),
+          eq(shardEpochs.owner, this.#d.workerId),
+          eq(shardEpochs.epoch, held.epoch),
+        ),
+      )
+      .returning({ epoch: shardEpochs.epoch });
+    return rows.length === 1;
+  }
+
+  #shardLost(shard: number, reason: LeaseLoss): void {
+    this.#d.log.warn(
+      { shard, reason, epoch: this.#leases.get(shard)?.epoch, worker: this.#d.workerId },
+      "shard lost",
+    );
+    this.#dropShard(shard);
   }
 
   /**
@@ -925,6 +1092,7 @@ export class Engine {
   /** Dừng có trật tự: trả lease (C10). */
   async stop(): Promise<void> {
     this.#stopped = true;
+    this.#leaseSet.stop();
     for (const [shard, l] of this.#leases) {
       await l.lease.release();
       this.#dropShard(shard);
@@ -937,6 +1105,7 @@ export class Engine {
   /** Test: mô phỏng worker chết (không trả lease, không làm gì nữa). */
   kill(): void {
     this.#stopped = true;
+    this.#leaseSet.stop();
   }
 
   // ---------- shards ----------
@@ -944,11 +1113,10 @@ export class Engine {
   async #manageShards(): Promise<void> {
     const { redis, workerId, leaseTtlMs, shards } = this.#d;
     await redis.set(`engine:worker:${workerId}`, String(this.#d.now()), "PX", leaseTtlMs);
+    // Gia hạn lease đã giữ do timer của `LeaseSet` lo (mỗi ttl / 3, một round trip), không làm ở đây.
+    this.#leaseSet.start();
     const workers = Math.max(1, (await redis.keys("engine:worker:*")).length);
     const target = Math.ceil(shards / workers);
-    for (const [shard, l] of [...this.#leases]) {
-      if (!(await l.lease.tick())) this.#dropShard(shard);
-    }
     // Giữ quá phần của mình (sau khi có worker mới) thì trả bớt.
     while (this.#leases.size > target) {
       const shard = this.ownedShards.at(-1);
@@ -959,6 +1127,7 @@ export class Engine {
     for (let shard = 0; shard < shards && this.#leases.size < target; shard += 1) {
       if (this.#leases.has(shard)) continue;
       const lease = new Lease(redis, `lease:shard:${String(shard)}`, leaseTtlMs);
+      const sentAt = this.#clockMono();
       if (!(await lease.tick())) continue;
       const [row] = await this.#d.db
         .insert(shardEpochs)
@@ -973,12 +1142,14 @@ export class Engine {
         })
         .returning({ epoch: shardEpochs.epoch });
       this.#leases.set(shard, { lease, epoch: row?.epoch ?? 0 });
+      this.#leaseSet.add(shard, lease, sentAt);
       this.#d.log.info({ shard, epoch: row?.epoch, worker: workerId }, "shard acquired");
     }
   }
 
   #dropShard(shard: number): void {
     this.#leases.delete(shard);
+    this.#leaseSet.delete(shard);
     for (const [id, r] of this.#runners) if (r.shard === shard) this.#runners.delete(id);
   }
 
@@ -1182,6 +1353,9 @@ export class Engine {
       if (bot.state === BotState.pausing)
         await this.#transition(r, EngineEvent.confirmedPaused, null);
       else if (bot.state === BotState.resuming) {
+        // Lease chưa xác nhận: chưa xác nhận Running (bot giữ `resuming`, vòng sau thử lại), để `resumed` không bị bỏ sau
+        // khi trạng thái đã commit.
+        if (!(await this.#leaseConfirmed(shard))) continue;
         await this.#transition(r, EngineEvent.confirmedRunning, null);
         // Chiến lược tự pause (halted) chạy tiếp từ sổ cái và vị thế thật, dựng lại lệnh (DEC-240).
         const prices = Object.fromEntries(
@@ -1270,6 +1444,11 @@ export class Engine {
       const rr = await this.#d.rules(m);
       if (rr !== undefined) rules[m] = rr;
     }
+    // Đòn bẩy đã được SoDEX xác nhận cho đúng version này trước lần nạp lại: đọc lại SoDEX, khớp thì không ghi lại.
+    const leverageKnown =
+      saved?.leverageDone?.versionId === version.id
+        ? new Set(saved.leverageDone.keys)
+        : new Set<string>();
     return {
       botId: bot.id,
       account: route.account,
@@ -1298,6 +1477,7 @@ export class Engine {
       leverageSet: false,
       leverageUnknown: false,
       leverageDone: new Set(),
+      leverageKnown,
       leverageRun: null,
       blocked: null,
       reduceRejects: 0,
@@ -1306,6 +1486,7 @@ export class Engine {
       marginRejectTimes: [],
       rejectLog: new Map(),
       skipGate: new SkipGate(),
+      closeRetry: null,
     };
   }
 
@@ -1354,6 +1535,7 @@ export class Engine {
     r.ctx = { ...r.ctx, version: pending.version };
     r.leverageSet = false;
     r.leverageDone = new Set();
+    r.leverageKnown = new Set();
     await this.#event(
       r,
       "version",
@@ -1441,6 +1623,11 @@ export class Engine {
       event.type === "orderReject" ||
       event.type === "orderDone" ||
       event.type === "positionSync";
+    // Lease của shard chưa xác nhận lại được, hoặc shard không còn là của mình (runner zombie, engine đã dừng)
+    // (DEC-302): chưa phản ứng với thị trường, sự kiện sau thử lại. Fill / ack vẫn ghi (fencing epoch
+    // ở DB chặn nếu shard đã sang worker khác). `resumed` đi sau một chuyển trạng thái đã commit nên không bỏ ở đây
+    // (#syncBots kiểm tra lease trước khi chuyển).
+    if (!accounting && event.type !== "resumed" && !(await this.#leaseConfirmed(r.shard))) return;
     // Đang backoff vì request trước chưa rời DRIFT: chưa phản ứng với thị trường (fill / ack vẫn ghi).
     if (!accounting && r.blocked !== null && event.at < r.blocked.nextAt) return;
     if (live && !accounting && !r.leverageSet) {
@@ -1509,7 +1696,11 @@ export class Engine {
       await this.#ack(r, event.at);
     }
     // Sự kiện thị trường: nếu lệnh chưa rời DRIFT thì hoàn tác bước này (state cũ, xoá dòng lệnh tạm) để thử lại.
-    await this.#execute(r, result.actions, event.at, accounting ? null : prev, { event, prev });
+    await this.#execute(r, result.actions, event.at, accounting ? null : prev, {
+      event,
+      prev,
+      produced: result.state,
+    });
   }
 
   /**
@@ -1556,11 +1747,15 @@ export class Engine {
       if (first === undefined) return;
       const what = `${String(first.leverage)}× ${first.marginMode} on ${confirmed.map((x) => x.market).join(", ")}`;
       await this.#event(r, "decision", "Leverage set", leverageWhy(r.paper, what), at);
+      // Lưu lại để lần nạp lại runner (chuyển shard, khởi động lại) cùng version không đặt / ghi lại. Chỉ khi version
+      // chưa đổi giữa chừng (version mới bắt đầu lại từ tập rỗng).
+      if (r.versionId === versionId) await this.#saveLeverageDone(r, versionId, done);
     };
     for (const spec of specs) {
       const key = `${spec.market}:${String(spec.leverage)}:${spec.marginMode}`;
       if (done.has(key)) continue;
-      const res = await this.#ensureLeverageOne(r, spec, at);
+      const read = { matched: false };
+      const res = await this.#ensureLeverageOne(r, spec, at, read);
       if (r.versionId !== versionId) {
         await log();
         return "not_sent";
@@ -1571,7 +1766,8 @@ export class Engine {
         return res;
       }
       done.add(key);
-      confirmed.push(spec);
+      // Đã xác nhận trước lần nạp lại và SoDEX vẫn đúng như vậy: không ghi thêm dòng "Leverage set".
+      if (!(read.matched && r.leverageKnown.has(key))) confirmed.push(spec);
     }
     await log();
     if (r.versionId !== versionId) return "not_sent";
@@ -1579,10 +1775,23 @@ export class Engine {
     return "ok";
   }
 
+  /** Ghi tập đòn bẩy đã xác nhận của version vào `bot_runtime` (tạo dòng với state hiện tại nếu chưa có). */
+  async #saveLeverageDone(r: Runner, versionId: string, done: ReadonlySet<string>): Promise<void> {
+    const leverageDone = { versionId, keys: [...done] };
+    await this.#fenced(r, (tx) =>
+      tx
+        .insert(botRuntime)
+        .values({ botId: r.botId, versionId, state: r.state, epoch: r.epoch, leverageDone })
+        .onConflictDoUpdate({ target: botRuntime.botId, set: { leverageDone } }),
+    );
+  }
+
   async #ensureLeverageOne(
     r: Runner,
     spec: LeverageSpec,
     at: number,
+    /** `matched` = SoDEX đã đúng thiết lập này, không gửi gì. */
+    read: { matched: boolean } = { matched: false },
   ): Promise<"ok" | "rejected" | "unknown" | "not_sent"> {
     const what = `${String(spec.leverage)}× ${spec.marginMode} on ${spec.market}`;
     let current: { leverage: number; marginMode: string } | null | undefined;
@@ -1596,6 +1805,7 @@ export class Engine {
     }
     if (current?.leverage === spec.leverage && current.marginMode === spec.marginMode) {
       r.leverageUnknown = false;
+      read.matched = true;
       return "ok";
     }
     // Vị thế đang mở trên symbol với thiết lập khác: không đổi đòn bẩy của cả account (DEC-58), không retry.
@@ -1684,10 +1894,34 @@ export class Engine {
     at: number,
     /** State trước bước chiến lược, để hoàn tác khi lệnh chưa rời DRIFT (sự kiện thị trường); null = không hoàn tác. */
     rollback: unknown = null,
-    /** Sự kiện và state trước bước chiến lược (để biết market của tin `copy_bot_skipped`). */
-    source: { event: StrategyEvent; prev: unknown } | null = null,
+    /**
+     * Sự kiện và state trước bước chiến lược (để biết market của tin `copy_bot_skipped`), và state bước này sinh ra
+     * (`produced`): chỉ hoàn tác khi `r.state` vẫn đúng là state đó.
+     */
+    source: { event: StrategyEvent; prev: unknown; produced: unknown } | null = null,
   ): Promise<void> {
     let places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
+    // Một lần kiểm tra lease, TRƯỚC mọi tác dụng phụ (DEC-302). Bước chiến lược theo thị trường (có
+    // `rollback`) mà lease không xác nhận được: hoàn tác bước (state cũ trong bộ nhớ và DB), không ghi / gửi / huỷ gì; sự
+    // kiện sau sinh lại đúng các lệnh này (clOrdID tất định). Fill / ack (rollback null) và lệnh engine tự dựng (Stop,
+    // #stopBot tự kiểm tra trước) không chặn ở đây: fencing epoch ở DB và signer bảo vệ.
+    // Trong lúc chờ gia hạn (tối đa vài giây), fill / ack có thể đã được xử lý và đổi state: khi đó không hoàn tác (sẽ ghi
+    // đè sổ cái), đi tiếp và dựa vào fencing epoch như với fill / ack.
+    if (
+      rollback !== null &&
+      actions.length > 0 &&
+      source?.event.type !== "resumed" &&
+      !(await this.#leaseConfirmed(r.shard))
+    ) {
+      if (r.state === source?.produced) {
+        await this.#restoreState(r, rollback);
+        throw new LeaseExpiredError(r.shard);
+      }
+      this.#d.log.warn(
+        { botId: r.botId, shard: r.shard },
+        "lease not confirmed but state moved on; sending under epoch fencing",
+      );
+    }
     const cancels = actions.flatMap((a) => (a.type === "cancel" ? [a.clOrdID] : []));
     // BD-02: quyết định ghi cùng bước với lệnh đặt mang clOrdID của các lệnh đó, để Decisions hiện kết quả (Filled /
     // Cancelled / Rejected / Open) theo trạng thái lệnh thật.
@@ -1839,7 +2073,13 @@ export class Engine {
           (x): x is Extract<typeof x, { outcome: "not_sent" }> => x.outcome === "not_sent",
         );
         const firstNotSent = notSent[0];
-        if (firstNotSent !== undefined && rollback !== null && notSent.length === results.length) {
+        if (
+          firstNotSent !== undefined &&
+          rollback !== null &&
+          notSent.length === results.length &&
+          // Fill / ack đã đổi state trong lúc gửi: không hoàn tác (sẽ ghi đè sổ cái); xử lý như từng lệnh not_sent.
+          r.state === source?.produced
+        ) {
           // Không lệnh nào rời DRIFT (signer lỗi): hoàn tác bước chiến lược và xoá dòng lệnh tạm. clOrdID tất
           // định nên lần thử sau (sau backoff) sinh lại đúng các lệnh này.
           const ids = toSend.map((o) => o.clOrdID);
@@ -1869,7 +2109,9 @@ export class Engine {
         }
         if (notSent.length < results.length) r.blocked = null;
         // Báo lý do trước (vd `API_KEY_UNUSABLE` cho cả account), rồi mới đưa orderReject cho chiến lược.
-        if (firstNotSent !== undefined) await this.#notSent(r, firstNotSent.code, at);
+        // Lệnh đóng của Stop (`source` null) có đường thử lại riêng (#sendCloses): không backoff / pause / ghi lỗi ở đây.
+        if (firstNotSent !== undefined && source !== null)
+          await this.#notSent(r, firstNotSent.code, at);
         let reduceRejected: {
           o: OrderIntent;
           res: { code: string; message: string | null };
@@ -1906,7 +2148,8 @@ export class Engine {
                 await this.#cancel(r, [res.clOrdID]);
               } catch (error) {
                 // Lệnh vẫn trong danh sách chờ huỷ, vòng sau thử lại; các kết quả còn lại của lô vẫn phải được ghi.
-                if (error instanceof FencedError) throw error;
+                if (error instanceof FencedError && !(error instanceof LeaseExpiredError))
+                  throw error;
                 this.#d.log.warn({ err: error, botId: r.botId }, "cancel after ack failed");
               }
           } else if (res.outcome === "not_sent") {
@@ -2508,7 +2751,10 @@ export class Engine {
             },
           ];
         });
-        if (closes.length > 0) await this.#execute(r, closes, this.#d.now());
+        if (!(await this.#sendCloses(r, closes))) {
+          await this.#closeNotSent(r, reason);
+          return;
+        }
       }
       close = false;
     }
@@ -2522,26 +2768,26 @@ export class Engine {
       // Băm botId đầy đủ (DEC-186): 8 ký tự đầu của uuidv7 là thời gian, nên bot tạo trong cùng ~65 s
       // từng có chung mã "<8 ký tự>-close-1" và lệnh đóng của bot thứ hai bị bỏ qua (unique theo account + clOrdID).
       const id = clOrdId(r.botId, r.version, "close");
-      await this.#execute(
-        r,
-        [
-          {
-            type: "place",
-            order: {
-              clOrdID: id,
-              market: r.market,
-              engine,
-              side: dec(ledger.position).isPositive() ? "sell" : "buy",
-              type: "market",
-              quantity: qty,
-              timeInForce: "IOC",
-              reduceOnly: engine === "perps",
-              tag: "close",
-            },
+      const sent = await this.#sendCloses(r, [
+        {
+          type: "place",
+          order: {
+            clOrdID: id,
+            market: r.market,
+            engine,
+            side: dec(ledger.position).isPositive() ? "sell" : "buy",
+            type: "market",
+            quantity: qty,
+            timeInForce: "IOC",
+            reduceOnly: engine === "perps",
+            tag: "close",
           },
-        ],
-        this.#d.now(),
-      );
+        },
+      ]);
+      if (!sent) {
+        await this.#closeNotSent(r, reason);
+        return;
+      }
     }
     // Bot paper (PB-01): lệnh đóng market chỉ khớp ở lần giá kế tiếp khi bot còn runner; bot sắp bị bỏ khỏi runner nên
     // khớp ngay ở giá hiện tại, không để lệnh đóng nằm "open" mãi và vị thế giả không bao giờ được đóng.
@@ -2638,6 +2884,121 @@ export class Engine {
     });
     if (deferred) return;
     this.#runners.delete(r.botId);
+  }
+
+  /**
+   * Gửi lệnh đóng vị thế của Stop. Trả `true` khi Stop được kết thúc: lệnh đóng đã rời DeskLabs (SoDEX nhận / từ chối),
+   * hoặc bỏ hẳn (xem dưới). Trả `false` khi Stop phải chờ (bot giữ `stopping`, vòng sau gọi lại):
+   * - lease của shard không xác nhận được (không ghi dòng lệnh nào);
+   * - đang chờ theo nấc thử lại `CLOSE_RETRY` sau lần trước chưa gửi được;
+   * - lệnh đóng còn `unknown` (chờ #reconcile; quy tắc 1.7);
+   * - lệnh đóng chưa tới SoDEX: `not_placed` do signer / key lỗi (ngay sau khi gửi), hoặc do đối soát không thấy trên
+   *   SoDEX (timeout, chuyển shard lúc ký; thấy ở lượt sau). Cả hai đi chung một đường (#closeFailed): tính một lần thử,
+   *   xoá dòng `not_placed` (unique theo account + clOrdID từng chặn lần gửi lại), chờ theo nấc, ghi Decisions một lần mỗi
+   *   lý do. Key không dùng được, hoặc vẫn chưa tới SoDEX sau `CLOSE_RETRY.giveUpMs`: kết thúc Stop với vị thế còn mở,
+   *   bật Needs attention, ghi một dòng "Couldn't close your position".
+   */
+  async #sendCloses(r: Runner, closes: StrategyAction[]): Promise<boolean> {
+    const list = closes.flatMap((a) => (a.type === "place" ? [a.order] : []));
+    const ids = list.map((o) => o.clOrdID);
+    if (ids.length === 0) return true;
+    const now = this.#d.now();
+    if (r.closeRetry !== null && now < r.closeRetry.nextAt) return false;
+    if (!(await this.#leaseConfirmed(r.shard))) {
+      this.#d.log.warn({ botId: r.botId }, "close not sent: shard lease not confirmed");
+      return false;
+    }
+    const mine = and(eq(orders.sodexAccountId, r.account.id), inArray(orders.clOrdId, ids));
+    const read = () =>
+      this.#d.db
+        .select({ clOrdId: orders.clOrdId, status: orders.status, rejectCode: orders.rejectCode })
+        .from(orders)
+        .where(mine);
+    // Lần gửi trước đối soát ra `not_placed` (SoDEX không có lệnh): tính là một lần thử không thành.
+    const before = await read();
+    if (before.some((o) => o.status === "not_placed"))
+      return this.#closeFailed(r, list, before, now);
+    if (before.some((o) => o.status === "unknown")) return false;
+    await this.#execute(r, closes, now);
+    const rows = await read();
+    if (rows.some((o) => o.status === "unknown")) return false;
+    if (rows.some((o) => o.status === "not_placed")) return this.#closeFailed(r, list, rows, now);
+    r.closeRetry = null;
+    return true;
+  }
+
+  /**
+   * Lệnh đóng chưa tới SoDEX: xoá dòng `not_placed` để lần sau gửi lại cùng clOrdID, rồi chờ theo nấc (trả `false`), hoặc
+   * bỏ hẳn (trả `true`: kết thúc Stop với vị thế còn mở).
+   */
+  async #closeFailed(
+    r: Runner,
+    list: readonly OrderIntent[],
+    rows: readonly { clOrdId: string; status: string; rejectCode: string | null }[],
+    now: number,
+  ): Promise<boolean> {
+    const failed = rows.filter((o) => o.status === "not_placed");
+    const code = failed[0]?.rejectCode ?? "NOT_PLACED";
+    const markets = [
+      ...new Set(
+        list.filter((o) => failed.some((f) => f.clOrdId === o.clOrdID)).map((o) => o.market),
+      ),
+    ].join(", ");
+    await this.#fenced(r, (tx) =>
+      tx.delete(orders).where(
+        and(
+          eq(orders.sodexAccountId, r.account.id),
+          inArray(
+            orders.clOrdId,
+            failed.map((f) => f.clOrdId),
+          ),
+          eq(orders.status, "not_placed"),
+        ),
+      ),
+    );
+    const b = r.closeRetry ?? { since: now, attempts: 0, nextAt: now, reasons: new Set<string>() };
+    const keyBroken = code === "key_unusable" || code === "key_not_active";
+    if (keyBroken || now - b.since >= CLOSE_RETRY.giveUpMs) {
+      r.closeRetry = null;
+      await this.#fenced(r, async (tx) => {
+        await tx.update(bots).set({ needsAttention: true }).where(eq(bots.id, r.botId));
+        await tx.insert(botEvents).values({
+          botId: r.botId,
+          type: "error",
+          decision: "Couldn't close your position",
+          why: `SoDEX didn't receive the close order (${code}). Your ${markets} position is still open — close it on SoDEX.`,
+          occurredAt: new Date(now),
+        });
+      });
+      this.#d.log.warn(
+        { botId: r.botId, code, attempts: b.attempts + 1 },
+        "stop gave up on its close order",
+      );
+      // Key hỏng thì mọi bot tiền thật khác của account cũng không ký được (như #notSent).
+      if (keyBroken) await this.pauseAccount(r.account.id, ReasonCode.apiKeyUnusable);
+      return true;
+    }
+    b.attempts += 1;
+    b.nextAt =
+      now + (CLOSE_RETRY.backoffMs[Math.min(b.attempts, CLOSE_RETRY.backoffMs.length) - 1] ?? 0);
+    if (!b.reasons.has(code)) {
+      b.reasons.add(code);
+      await this.#event(
+        r,
+        "error",
+        "Close order not sent",
+        `SoDEX didn't receive the close order (${code}). DeskLabs will try again.`,
+        now,
+      );
+    }
+    r.closeRetry = b;
+    return false;
+  }
+
+  /** Lệnh đóng chưa gửi được: Stop của người dùng giữ `stopping` (nhịp sau thử lại); dừng do chiến lược thì ghi `stopping`. */
+  async #closeNotSent(r: Runner, reason: Reason | null): Promise<void> {
+    this.#d.log.warn({ botId: r.botId, reason }, "stop waits: close order not sent yet");
+    if (reason !== null) await this.#haltToStopping(r, reason, true);
   }
 
   /**
