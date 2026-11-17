@@ -14,6 +14,7 @@ import {
   sodexConnectionSchema,
   startChecksSchema,
   twoFactorSetupSchema,
+  volumeAnalyticsSchema,
 } from "@drift/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -906,6 +907,61 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     // Post-only cross là bình thường; giới hạn rủi ro của DeskLabs đếm riêng, không gọi là SoDEX từ chối.
     expect(detail.refusedRecently).toBe(1);
     expect(detail.blockedByRiskRecently).toBe(1);
+  });
+
+  it("splits post-only misses from other rejects and counts rounds that filled (DEC-300)", async () => {
+    const { client } = await connectedUser(`vb-rounds-${randomUUID()}@drift.test`);
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "Rounds", paramSource: "manual", config: grid },
+    });
+    const id = made.json<{ id: string }>().id;
+    const { rows } = await env.pool.query<{ acc: string; created: Date }>(
+      "select sodex_account_id as acc, created_at as created from bots where id = $1",
+      [id],
+    );
+    const acc = rows[0]?.acc ?? "";
+    // Trong kỳ "all" (từ lúc tạo bot tới giờ của API).
+    const at = new Date(
+      Math.min(env.clock.now.getTime(), (rows[0]?.created ?? env.clock.now).getTime() + 1_000),
+    );
+    await env.pool.query("update bots set created_at = $2 where id = $1", [
+      id,
+      new Date(at.getTime() - 60_000),
+    ]);
+    const order = (
+      tag: string,
+      type: "limit" | "market",
+      status: string,
+      filled: string,
+      rejectCode: string | null,
+    ) =>
+      env.pool.query(
+        "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, status, reject_code, tag, epoch, created_at, submitted_at) values (gen_random_uuid(), $1, $2, $3, 'BTC-USD', 'perps', 'buy', $4, 'GTX', 1, $5, $6, $7, $8, 1, $9, $9)",
+        [id, acc, `${tag}-${randomUUID().slice(0, 8)}`, type, filled, status, rejectCode, tag, at],
+      );
+    // Lượt 1: post-only bị từ chối hai lần rồi khớp. Lượt 2: hết giờ, huỷ. Lượt 3: bị từ chối vì lý do khác, chưa khớp.
+    await order("vf:1:in:0", "limit", "rejected", "0", "PostOnly");
+    await order("vf:2:in:1", "limit", "rejected", "0", "PostOnly");
+    await order("vf:3:in:2", "limit", "filled", "1", null);
+    await order("vf:4:in:0", "limit", "cancelled", "0", null);
+    await order("vf:5:in:1", "limit", "rejected", "0", "-1");
+    // Lệnh thoát và stop loss trên sàn không phải lượt vào.
+    await order("vf:3:out:0", "limit", "filled", "1", null);
+    await order("vf:3:sl", "market", "cancelled", "0", null);
+    const read = async () =>
+      volumeAnalyticsSchema.parse(
+        (await client.request("GET", `/api/v1/bots/${id}/volume-analytics?period=all`)).json(),
+      ).totals;
+    // Không phải Volume Farm: không có số lượt ("Not available").
+    let tot = await read();
+    expect(tot.rounds).toBeNull();
+    expect(tot.roundsFilled).toBeNull();
+    await env.pool.query("update bots set strategy = 'volume_farm' where id = $1", [id]);
+    tot = await read();
+    expect(tot.ordersRejected).toBe(3);
+    expect(tot.rejectedSplit.postOnly).toBe(2);
+    expect(tot.rounds).toBe(2);
+    expect(tot.roundsFilled).toBe(1);
   });
 
   it("ends the last run of a stopped bot at its first pause or stop after Running (BD-06)", async () => {

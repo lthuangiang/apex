@@ -15,7 +15,9 @@ export type MmFairMessage = z.infer<typeof mmFairMessageSchema>;
 
 /**
  * Giá mua / bán tốt nhất trên SoDEX của một market (`md.<market>.book`, marketdata publish từ WS `bookTicker`, DEC-248),
- * chỉ khi giá đổi và chỉ cho market có bot Market Making. `E`: giờ SoDEX; `at`: giờ marketdata nhận.
+ * chỉ cho market có bot Market Making hoặc Volume Farm. `E`: giờ SoDEX; `at`: giờ marketdata nhận.
+ * Gửi khi giá đổi; WS vẫn có tin mà giá không đổi thì gửi lại tối đa mỗi giây với `refresh: true` (DEC-298),
+ * để Volume Farm biết sổ còn mới. Market Making bỏ qua tin `refresh` (hành vi DEC-248 không đổi).
  */
 export const mmBookMessageSchema = z.object({
   s: z.string(),
@@ -23,5 +25,6 @@ export const mmBookMessageSchema = z.object({
   a: z.string(),
   E: z.number().int(),
   at: z.number().int(),
+  refresh: z.boolean().optional(),
 });
 export type MmBookMessage = z.infer<typeof mmBookMessageSchema>;

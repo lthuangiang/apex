@@ -139,6 +139,7 @@ export class FencedError extends Error {
 export interface EngineRedis extends LeaseRedis {
   set(key: string, value: string, px: "PX", ttl: number, nx?: "NX"): Promise<string | null>;
   keys(pattern: string): Promise<string[]>;
+  del(key: string): Promise<number>;
 }
 
 export interface EngineDeps {
@@ -516,9 +517,25 @@ export class Engine {
         v: k.volume,
       })),
       book,
+      bookAt: at,
     };
     this.#snapshots.set(market, { at, snap });
     return snap;
+  }
+
+  /**
+   * Giá tốt nhất SoDEX mới nhất của mỗi market cho Volume Farm (DEC-298), chỉ trong bộ nhớ: `at` = lúc NATS
+   * giao tin. Không bước chiến lược hay ghi DB cho từng tin; `#feed` đưa giá này vào bot ngay trước mỗi bước.
+   */
+  readonly #farmBooks = new Map<string, { bid: string; ask: string; at: number }>();
+  /** `at` của giá sổ lệnh đã đưa vào state của từng runner (runner nạp lại từ DB thì nhận lại giá mới nhất). */
+  readonly #farmBookFed = new WeakMap<Runner, number>();
+
+  /** Giá tốt nhất SoDEX (WS) cho Volume Farm, cả tin `refresh`: chỉ lưu bản mới nhất của market (đồng bộ, không I/O). */
+  onFarmBook(msg: MmBookMessage, recvAt: number): void {
+    const prev = this.#farmBooks.get(msg.s);
+    if (prev !== undefined && prev.at > recvAt) return;
+    this.#farmBooks.set(msg.s, { bid: msg.b, ask: msg.a, at: recvAt });
   }
 
   /** Giá mới từ marketdata (NATS `md.<market>.price`). */
@@ -544,8 +561,9 @@ export class Engine {
       });
   }
 
-  /** Giá tốt nhất SoDEX (WS, DEC-248) cho bot Market Making bật Smart quoting. */
+  /** Giá tốt nhất SoDEX (WS, DEC-248) cho bot Market Making bật Smart quoting; tin `refresh` không tới bot MM. */
   async onMmBook(msg: MmBookMessage, recvAt: number): Promise<void> {
+    if (msg.refresh === true) return;
     for (const r of [...this.#runners.values()].filter(
       (x) =>
         x.strategy === Strategy.volumeMaker &&
@@ -861,6 +879,9 @@ export class Engine {
       await l.lease.release();
       this.#dropShard(shard);
     }
+    // Dừng êm: xoá key worker để worker kế tiếp nhận đủ phần shard ngay, không chia đôi với worker đã dừng tới khi key
+    // hết hạn (`leaseTtlMs`).
+    await this.#d.redis.del(`engine:worker:${this.#d.workerId}`);
   }
 
   /** Test: mô phỏng worker chết (không trả lease, không làm gì nữa). */
@@ -1259,6 +1280,20 @@ export class Engine {
       const lev = await this.#ensureLeverage(r, event.at);
       if (lev === "rejected") await this.#pauseBot(r, ReasonCode.orderRejected);
       if (lev !== "ok") return;
+    }
+    // Volume Farm: giá tốt nhất SoDEX mới nhất (bộ nhớ) vào state trước bước này, giữ đúng giờ nhận để tuổi sổ là tuổi
+    // thật. Chỉ đổi state trong bộ nhớ; được ghi DB cùng bước này nếu bước có gì để ghi (DEC-298).
+    if (r.strategy === Strategy.volumeFarm && !accounting) {
+      const live = this.#farmBooks.get(r.market);
+      if (live !== undefined && live.at > (this.#farmBookFed.get(r) ?? -Infinity)) {
+        this.#farmBookFed.set(r, live.at);
+        r.state = r.module.step(
+          r.config,
+          r.state,
+          { type: "book", at: live.at, market: r.market, bid: live.bid, ask: live.ask },
+          r.ctx,
+        ).state;
+      }
     }
     const prev = r.state;
     const result = r.module.step(r.config, r.state, event, r.ctx);
@@ -1746,6 +1781,9 @@ export class Engine {
               clOrdID: res.clOrdID,
               code: res.code,
               ...(margin ? { insufficientMargin: true } : {}),
+              ...(res.message == null || res.message.trim() === ""
+                ? {}
+                : { message: res.message.trim() }),
             });
             // Stop loss gốc bị từ chối (DEC-118) không phải lệnh đóng thật: chiến lược tự giữ SL, không pause.
             if (sent?.reduceOnly === true && sent.stop === undefined)

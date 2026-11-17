@@ -9,7 +9,14 @@ import type {
   StrategyAction,
   StrategyEvent,
 } from "../core/types";
-import { FARM_TIMING, farmRandom, volumeFarm, type VolumeFarmState } from "../volume-farm";
+import {
+  FARM_LIVE_BOOK,
+  FARM_TIMING,
+  farmRandom,
+  VF_REJECT_BACKOFF_SECS,
+  volumeFarm,
+  type VolumeFarmState,
+} from "../volume-farm";
 import { volumeFarmSchema, type VolumeFarmConfig } from "../volume-farm/schema";
 import { farmSignal, toFiveMinute } from "../volume-farm/signal";
 
@@ -203,7 +210,7 @@ describe("volume farm cycle", () => {
         [
           {
             type: "orderReject",
-            at: T0 + i * 10_000 + 500,
+            at: T0 + i * 20_000 + 500,
             clOrdID: id,
             code: "INSUFFICIENT_MARGIN",
           },
@@ -213,7 +220,8 @@ describe("volume farm cycle", () => {
       pauses.push(...r.all.filter((a) => a.type === "pause"));
       if (i < 2) {
         expect(pauses).toHaveLength(0);
-        r = run(c, [timer(T0 + (i + 1) * 10_000)], r.s);
+        // Lần vào kế tiếp sau thời gian chờ 5 s / 15 s (DEC-299).
+        r = run(c, [timer(T0 + (i + 1) * 20_000)], r.s);
       }
     }
     expect(pauses).toEqual([{ type: "pause", reason: "ORDER_REJECTED" }]);
@@ -983,5 +991,264 @@ describe("volume farm — trend filters (DEC-158)", () => {
   it("keeps trading in a trend when the option is off (default)", () => {
     expect(cfg().sidewaysOnly).toBe(false);
     expect(places(run(cfg(), [at(0.0001)]).all)[0]).toMatchObject({ side: "buy" });
+  });
+});
+
+describe("volume farm — live order book (DEC-298)", () => {
+  const wide = cfg({ maxSpreadBps: "500", allowTaker: false });
+  const live = (at: number, bid: string, ask: string, market = "BTC-USD"): StrategyEvent => ({
+    type: "book",
+    at,
+    market,
+    bid,
+    ask,
+  });
+  const waits = (a: StrategyAction[]) =>
+    a.filter((x) => x.type === "log" && x.decision === "Waiting");
+
+  it("prices the entry from the live best bid / ask, keeping the REST depth", () => {
+    // REST (3 s) đọc lúc T0 − 2 s: 80000 / 80010; WS lúc T0 − 0,2 s: 80050 / 80060.
+    const r = run(wide, [
+      live(T0 - 200, "80050", "80060"),
+      {
+        type: "timer",
+        at: T0,
+        market: {
+          market: "BTC-USD",
+          candles: candles(0.0001),
+          book: { ...book, bid: "80000", ask: "80010" },
+          bookAt: T0 - 2_000,
+        },
+      },
+    ]);
+    expect(first(places(r.all))).toMatchObject({ side: "buy", price: "80059", type: "limit" });
+    expect(r.s.book).toMatchObject({ bid: "80050", ask: "80060", bidNotional: "500000" });
+    expect(r.s.bookAt).toBe(T0 - 200);
+  });
+
+  it("ignores a live price for another market or a crossed book", () => {
+    const s0 = volumeFarm.initialState(wide);
+    expect(volumeFarm.step(wide, s0, live(T0, "1", "2", "ETH-USD"), ctx).state).toBe(s0);
+    expect(volumeFarm.step(wide, s0, live(T0, "80010", "80000"), ctx).state).toBe(s0);
+  });
+
+  it("waits instead of quoting from a book older than 1.5 s while the live feed is on, logging once", () => {
+    const at = T0;
+    const stale = at - FARM_LIVE_BOOK.freshMs - 1;
+    // Tin WS cuối 1,5 s trước; bản REST dùng chung cũng cũ (đọc 2,9 s trước).
+    const snap = (t: number): StrategyEvent => ({
+      type: "timer",
+      at: t,
+      market: { market: "BTC-USD", candles: candles(0.0001), book, bookAt: t - 2_900 },
+    });
+    const r = run(wide, [live(stale, "80000", "80001"), snap(at), snap(at + 3_000)]);
+    expect(places(r.all)).toEqual([]);
+    expect(waits(r.all)).toEqual([
+      {
+        type: "log",
+        decision: "Waiting",
+        why: "Waiting for a fresh SoDEX price before placing a post-only order.",
+      },
+    ]);
+    // Sổ mới tới: vào lệnh, lần chờ sau lại được ghi.
+    const next = run(wide, [live(at + 3_500, "80000", "80001"), snap(at + 3_600)], r.s);
+    expect(first(places(next.all))).toMatchObject({ side: "buy", price: "80000" });
+    expect(next.s.lastSkip).toBeNull();
+  });
+
+  it("uses a fresh REST read when the live feed has gone quiet", () => {
+    const r = run(wide, [
+      live(T0 - 10_000, "79000", "79001"),
+      {
+        type: "timer",
+        at: T0,
+        market: { market: "BTC-USD", candles: candles(0.0001), book, bookAt: T0 - 100 },
+      },
+    ]);
+    expect(first(places(r.all))).toMatchObject({ side: "buy", price: "80000" });
+    expect(r.s.bookAt).toBe(T0 - 100);
+  });
+
+  it("never blocks a post-only exit on a stale book: uses the DEC-82 fallback even while the live feed is on", () => {
+    const base: VolumeFarmState = {
+      ...volumeFarm.initialState(wide),
+      phase: "exiting",
+      lastPrice: "80100",
+      book,
+      bookStreamAt: T0 - 5_000,
+      ledger: {
+        position: "0.002",
+        avgCost: "80000",
+        realized: "0",
+        fees: "0",
+        funding: "0",
+        invested: "0",
+      },
+      openedAt: T0 - 200_000,
+      exit: null,
+    };
+    // Sổ 5 s tuổi (≤ 10 s): giá trong spread từ sổ đó.
+    const fromBook = volumeFarm.step(wide, { ...base, bookAt: T0 - 5_000 }, timer(T0, false), ctx);
+    expect(first(places(fromBook.actions))).toMatchObject({ side: "sell", price: "80001" });
+    // Sổ quá 10 s: lùi 1 tick khỏi giá gần nhất.
+    const stale = { ...base, bookAt: T0 - FARM_TIMING.bookMaxAgeMs - 1 };
+    const fromLast = volumeFarm.step(wide, stale, timer(T0, false), ctx);
+    expect(first(places(fromLast.actions))).toMatchObject({
+      side: "sell",
+      price: "80101",
+      reduceOnly: true,
+    });
+    // Sổ WS mới: đặt lệnh thoát trong spread theo sổ đó.
+    const r2 = volumeFarm.step(wide, stale, live(T0 + 100, "80200", "80202"), ctx);
+    const r3 = volumeFarm.step(wide, r2.state, timer(T0 + 200, false), ctx);
+    expect(first(places(r3.actions))).toMatchObject({ side: "sell", price: "80201" });
+  });
+
+  it("keeps the DEC-82 fallback when no live feed has been seen", () => {
+    expect(FARM_LIVE_BOOK.feedMs).toBeGreaterThan(FARM_LIVE_BOOK.freshMs);
+    const s0: VolumeFarmState = {
+      ...volumeFarm.initialState(wide),
+      phase: "exiting",
+      lastPrice: "80100",
+      book,
+      bookAt: T0 - 5_000,
+      bookStreamAt: T0 - FARM_LIVE_BOOK.feedMs - 1,
+      ledger: {
+        position: "0.002",
+        avgCost: "80000",
+        realized: "0",
+        fees: "0",
+        funding: "0",
+        invested: "0",
+      },
+      openedAt: T0 - 200_000,
+      exit: null,
+    };
+    // Sổ REST 5 s tuổi (≤ 10 s): giá trong spread như DEC-82.
+    expect(first(places(volumeFarm.step(wide, s0, timer(T0, false), ctx).actions)).price).toBe(
+      "80001",
+    );
+  });
+});
+
+describe("volume farm — backoff after refused entries (DEC-299)", () => {
+  const c = cfg({ allowTaker: false, cooldownSecs: 0 });
+  // Nến dời theo thời gian để không bị "STALE_CANDLES" sau vài phút chờ.
+  const enter = (at: number, s?: VolumeFarmState) =>
+    run(
+      c,
+      [
+        {
+          type: "timer",
+          at,
+          market: {
+            market: "BTC-USD",
+            candles: candles(0.0001).map((k) => ({ ...k, t: k.t + (at - T0) })),
+            book,
+          },
+        },
+      ],
+      s,
+    );
+  const reject = (
+    s: VolumeFarmState,
+    at: number,
+    code: string,
+    extra: { insufficientMargin?: boolean; message?: string } = {},
+  ) => run(c, [{ type: "orderReject", at, clOrdID: s.entry?.id ?? "", code, ...extra }], s);
+  const logs = (a: StrategyAction[]) =>
+    a.flatMap((x) => (x.type === "log" && x.decision === "Waiting" ? [x.why] : []));
+
+  it("waits 5 s, 15 s, then 60 s (staying at 60 s), one Decisions line per step", () => {
+    expect(VF_REJECT_BACKOFF_SECS).toEqual([5, 15, 60]);
+    let r = enter(T0);
+    let t = T0 + 100;
+    const lines: string[] = [];
+    const waitsSeen: number[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      r = reject(r.s, t, "-1", { message: "reduce only order rejected" });
+      lines.push(...logs(r.all));
+      const until = r.s.rejectBackoff?.until ?? 0;
+      waitsSeen.push((until - t) / 1000);
+      // Trước khi hết chờ: không vào; hết chờ: vào lại.
+      expect(places(enter(until - 1, r.s).all)).toEqual([]);
+      r = enter(until, r.s);
+      expect(places(r.all)).toHaveLength(1);
+      t = until + 100;
+    }
+    expect(waitsSeen).toEqual([5, 15, 60, 60]);
+    expect(lines).toEqual([
+      "Order refused by SoDEX: reduce only order rejected. Retrying in 5s.",
+      "Order refused by SoDEX: reduce only order rejected. Retrying in 15s.",
+      "Order refused by SoDEX: reduce only order rejected. Retrying in 60s.",
+    ]);
+  });
+
+  it("uses the code when SoDEX gives no message", () => {
+    const r = reject(enter(T0).s, T0 + 100, "RISK_PER_TRADE");
+    expect(logs(r.all)).toEqual(["Order refused by SoDEX: RISK_PER_TRADE. Retrying in 5s."]);
+  });
+
+  it("retries right away after a post-only or self-trade reject, without a log", () => {
+    for (const code of ["PostOnly", "SELF_TRADE_BLOCKED", "POST_ONLY_WOULD_TRADE"]) {
+      const r = reject(enter(T0).s, T0 + 100, code);
+      expect(r.all).toEqual([]);
+      expect(r.s.rejectBackoff ?? null).toBeNull();
+      expect(places(enter(T0 + 200, r.s).all)).toHaveLength(1);
+    }
+  });
+
+  it("leaves margin rejects to the engine pause (DEC-290): no wait, no log", () => {
+    const r = reject(enter(T0).s, T0 + 100, "-1", {
+      insufficientMargin: true,
+      message: "insufficient margin",
+    });
+    expect(r.all).toEqual([]);
+    expect(r.s.rejectBackoff ?? null).toBeNull();
+    expect(places(enter(T0 + 200, r.s).all)).toHaveLength(1);
+  });
+
+  it("resets when SoDEX accepts or fills the next entry", () => {
+    let r = reject(enter(T0).s, T0 + 100, "-1");
+    r = enter(T0 + 5_100, r.s);
+    const acked = run(c, [{ type: "orderAck", at: T0 + 5_200, clOrdID: r.s.entry?.id ?? "" }], r.s);
+    expect(acked.s.rejectBackoff).toBeNull();
+    const o = first(places(r.all));
+    const filled = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0 + 5_300,
+          clOrdID: o.clOrdID,
+          price: o.price ?? "80000",
+          quantity: o.quantity,
+          fee: "0.01",
+        },
+      ],
+      r.s,
+    );
+    expect(filled.s.rejectBackoff).toBeNull();
+    // Sau khi reset, lần từ chối kế tiếp bắt đầu lại ở 5 s.
+    const again = reject(enter(T0 + 6_000, acked.s).s, T0 + 6_100, "-1");
+    expect(again.s.rejectBackoff?.step).toBe(1);
+  });
+
+  it("still pauses after 3 refused market entries before any wait (DEC-259)", () => {
+    const m = cfg({ takerAfter: 0, cooldownSecs: 0 });
+    let r = run(m, [timer(T0)]);
+    const pauses: StrategyAction[] = [];
+    let t = T0;
+    for (let i = 0; i < 3; i += 1) {
+      r = run(
+        m,
+        [{ type: "orderReject", at: t + 100, clOrdID: r.s.entry?.id ?? "", code: "-1" }],
+        r.s,
+      );
+      pauses.push(...r.all.filter((a) => a.type === "pause"));
+      t = r.s.rejectBackoff?.until ?? t;
+      if (i < 2) r = run(m, [timer(t)], r.s);
+    }
+    expect(pauses).toEqual([{ type: "pause", reason: "ORDER_REJECTED" }]);
   });
 });

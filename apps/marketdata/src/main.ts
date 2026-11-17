@@ -41,6 +41,8 @@ import { LeaderWatcher } from "./leaders";
 import { LiquidationScanner } from "./liquidations";
 import { MmCostCollector } from "./mm-cost";
 import {
+  farmBotMarkets,
+  liveBookPlan,
   mmBotMarkets,
   purgeMmCost,
   saveFlush,
@@ -315,7 +317,7 @@ async function start() {
   const fair = new BinanceFair((msg) => {
     nc.publish(marketSubject(msg.s, "fair"), JSON.stringify(msg));
   });
-  // Giá tốt nhất SoDEX thời gian thực cho bot Market Making (DEC-248).
+  // Giá tốt nhất SoDEX thời gian thực cho bot Market Making (DEC-248) và Volume Farm (DEC-298).
   const bookRelay = new SodexBookRelay((msg) => {
     nc.publish(marketSubject(msg.s, "book"), JSON.stringify(msg));
   });
@@ -425,21 +427,43 @@ async function start() {
   await seedCurrentHour(db, mmCost, Date.now()).catch((error: unknown) => {
     log.warn({ err: error }, "mm cost seed failed");
   });
+  // Top market theo volume của vòng mmWatch gần nhất (vòng 30 s dùng lại, không đọc candles_1m mỗi 30 s).
+  let lastTop: string[] = [];
+  let loggedDropped = "";
+  /**
+   * Market nghe WS và market gửi giá tốt nhất: top ∪ MM (DEC-227) trước, rồi tối đa `VF_EXTRA_LIVE_MARKETS` market
+   * Volume Farm (DEC-298). Market Volume Farm bị bỏ thì ghi log một lần mỗi khi danh sách đổi.
+   */
+  const livePlan = async () => {
+    const [mmAll, farmAll] = await Promise.all([mmBotMarkets(db), farmBotMarkets(db)]);
+    const perps = (xs: readonly string[]) => xs.filter((m) => perpsSymbols.includes(m));
+    const mm = perps(mmAll);
+    const plan = liveBookPlan(perps(lastTop), mm, perps(farmAll));
+    const key = plan.dropped.join(",");
+    if (key !== loggedDropped) {
+      loggedDropped = key;
+      if (plan.dropped.length > 0)
+        log.warn(
+          { dropped: plan.dropped },
+          "volume farm markets over the live book cap use the REST book",
+        );
+    }
+    return { mm, plan };
+  };
   const mmWatch = async () => {
-    const [top, mm] = await Promise.all([
-      topVolumeMarkets(db, perpsSymbols, Date.now()),
-      mmBotMarkets(db),
-    ]);
-    const watched = [...new Set([...top, ...mm])].filter((m) => perpsSymbols.includes(m));
-    perpsStream.watchMicro(watched);
+    lastTop = await topVolumeMarkets(db, perpsSymbols, Date.now());
+    const { mm, plan } = await livePlan();
+    perpsStream.watchMicro(plan.watched);
+    bookRelay.setMarkets(plan.relay);
     mmCost.setMidMarkets(mm);
   };
   // Giá Binance cho các market có bot Market Making: đọc lại mỗi 30 s để bot mới có giá sớm.
   const fairWatch = async () => {
-    const mm = (await mmBotMarkets(db)).filter((m) => perpsSymbols.includes(m));
-    bookRelay.setMarkets(mm);
+    // Giá tốt nhất SoDEX cho bot Market Making và Volume Farm (DEC-248, DEC-298).
+    const { mm, plan } = await livePlan();
+    bookRelay.setMarkets(plan.relay);
     // Market có bot mới phải có trên kết nối bookTicker ngay, không chờ vòng 5 phút của mmWatch.
-    const missing = mm.filter((m) => !perpsStream.microSymbols.has(m));
+    const missing = plan.relay.filter((m) => !perpsStream.microSymbols.has(m));
     if (missing.length > 0) perpsStream.watchMicro([...perpsStream.microSymbols, ...missing]);
     const pairs = mm.flatMap((m) => {
       const b = binanceSymbolOf(m, binanceSymbols);

@@ -621,6 +621,12 @@ export const volumeAnalyticsSchema = z.object({
     ordersFilled: z.number().int(),
     ordersRejected: z.number().int(),
     rejectedSplit: rejectSplitSchema,
+    /**
+     * Volume Farm (DEC-300): số lượt vào bắt đầu bằng lệnh post-only (`vf:<n>:in:0`) và số lượt có lệnh
+     * vào post-only khớp. null = không phải Volume Farm (không có dữ liệu này).
+     */
+    rounds: z.number().int().nullable().default(null),
+    roundsFilled: z.number().int().nullable().default(null),
   }),
 });
 export type VolumeAnalytics = z.infer<typeof volumeAnalyticsSchema>;
