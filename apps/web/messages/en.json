@@ -3734,6 +3734,7 @@
     "live": "v{next} is live.",
     "waitingFarm": "v{next} starts after the open trade closes. Until then the current settings manage it.",
     "waitingFarmPaused": "The bot is paused, so v{next} waits. It starts after the bot is running and the open trade closes.",
+    "waitingPaused": "The bot is paused, so v{next} starts when you resume it.",
     "retune": {
       "title": "Retune with AI",
       "body": "Fills the editable fields with AI parameters for current market conditions. Changed fields are marked, and you review the diff before applying.",

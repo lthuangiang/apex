@@ -15,3 +15,16 @@ export function pendingVersionOf(versions: readonly Version[]): Version | undefi
       undefined,
     );
 }
+
+/** Khoá i18n (`botEdit.*`) của dòng giải thích version đang chờ; null = không cần dòng nào. */
+export type PendingNote = "waitingFarm" | "waitingFarmPaused" | "waitingPaused";
+
+/**
+ * Dòng giải thích version đang chờ (quy tắc 1.6, DEC-TBD-vf-version-apply). Volume Farm chờ lượt đang mở đóng (khác khi
+ * bot pause). Chiến lược khác áp trong một nhịp khi bot chạy, nên chỉ cần dòng khi bot pause: áp lúc Resume.
+ */
+export function pendingNoteOf(strategy: string, state: string): PendingNote | null {
+  const paused = state === "paused";
+  if (strategy === "volume_farm") return paused ? "waitingFarmPaused" : "waitingFarm";
+  return paused ? "waitingPaused" : null;
+}

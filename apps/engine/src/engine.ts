@@ -568,6 +568,21 @@ const FLAG_GATED_STATES: ReadonlySet<string> = new Set<string>([
 /** Giờ UTC tới mili giây (HH:MM:SS.mmm) cho Decisions khi rút lệnh theo giá Binance. */
 export const clockTime = (ms: number): string => new Date(ms).toISOString().slice(11, 23);
 
+/**
+ * State sau khi ghi version mới (DEC-TBD-vf-version-apply). `after` = `applyVersion` đọc lại trên state hiện tại,
+ * `written` = state đã ghi cùng transaction. Fill tới trong lúc ghi: `after` null (bot lại có vị thế) → giữ state hiện
+ * tại; hoặc `after` khác bản đã ghi. Cả hai trường hợp phải ghi lại ngay với version mới, để engine nạp lại không rơi về
+ * `initialState` và quên vị thế.
+ */
+export function settleAppliedState(
+  after: unknown,
+  current: unknown,
+  written: unknown,
+): { state: unknown; save: boolean } {
+  if (after === null) return { state: current, save: true };
+  return { state: after, save: JSON.stringify(after) !== JSON.stringify(written) };
+}
+
 export function shardOf(accountId: string, shards = ENGINE_SHARDS): number {
   return Number(fnv1a64(accountId) % BigInt(shards));
 }
@@ -2045,8 +2060,17 @@ export class Engine {
     r.versionId = pending.id;
     r.version = pending.version;
     r.config = config;
-    // Version đã ghi: fill tới ngay lúc ghi thì giữ state hiện tại (còn vị thế), không bao giờ quên vị thế.
-    r.state = apply() ?? r.state;
+    // Version đã ghi: fill tới ngay lúc ghi thì giữ state hiện tại (còn vị thế) và ghi lại ngay với version mới, không
+    // bao giờ quên vị thế kể cả khi engine nạp lại.
+    const settled = settleAppliedState(apply(), r.state, fresh);
+    r.state = settled.state;
+    if (settled.save)
+      await this.#fenced(r, async (tx) => {
+        await tx
+          .update(botRuntime)
+          .set({ state: r.state, versionId: pending.id, epoch: r.epoch, updatedAt: new Date() })
+          .where(eq(botRuntime.botId, r.botId));
+      });
     r.ctx = { ...r.ctx, version: pending.version };
     delete r.ctx.versionPending;
     r.leverageSet = false;

@@ -18,7 +18,7 @@ import { useMe } from "@/lib/queries";
 import { labelKeyOf } from "../field-copy";
 import { FIELDS, fromConfig, isLaunched, toConfig, visible, type FormValues } from "../fields";
 import { applyMmSuggestion, type MmSuggestion } from "../mm-cost";
-import { pendingVersionOf } from "../pending-version";
+import { pendingNoteOf, pendingVersionOf } from "../pending-version";
 
 import { AiPanel, useAiParameters } from "./ai-params";
 import { BetaChip, isBeta } from "./beta-chip";
@@ -98,6 +98,7 @@ export function BotEdit({
   }, [archived, botId, router]);
 
   const live = waiting !== null && active !== undefined && active.version >= waiting;
+  const note = bot === undefined ? null : pendingNoteOf(bot.strategy, bot.state);
   const apply = useMutation({
     mutationFn: () => {
       if (strategy === undefined || values === null) throw new Error("not ready");
@@ -249,14 +250,10 @@ export function BotEdit({
                 <span>{t("applying", { next: waiting })}</span>
               )}
             </div>
-            {/* Volume Farm: version chỉ áp khi lượt đang mở đóng và bot đang chạy (DEC-TBD-vf-version-apply). */}
-            {waiting !== null && !live && strategy === "volume_farm" ? (
-              <p className="m-0 text-sm text-ink-2">
-                {bot.state === BotState.paused
-                  ? t("waitingFarmPaused", { next: waiting })
-                  : t("waitingFarm", { next: waiting })}
-              </p>
-            ) : null}
+            {/* Vì sao version còn chờ: Volume Farm chờ lượt đang mở đóng; bot pause thì chờ Resume (DEC-TBD-vf-version-apply). */}
+            {waiting === null || live || note === null ? null : (
+              <p className="m-0 text-sm text-ink-2">{t(note, { next: waiting })}</p>
+            )}
             {apply.error === null ? null : (
               <p role="alert" className="m-0 text-sm text-neg-ink">
                 {errorText(apply.error)}

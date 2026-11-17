@@ -30,7 +30,7 @@ import { ME_KEY, useMe, useTwoFactorNeeded } from "@/lib/queries";
 
 import { botCapital, botMarket } from "../bot-label";
 import { liveOrder, pickable } from "../bot-picker";
-import { pendingVersionOf } from "../pending-version";
+import { pendingNoteOf, pendingVersionOf } from "../pending-version";
 import { stopEventIdOf, useReasonLabel } from "../stop-reason";
 
 import { BetaChip, isBeta } from "./beta-chip";
@@ -329,16 +329,14 @@ export function AgentPage({ botId }: { botId?: string }) {
                 />
                 <span className="text-xs text-ink-2 tabular-nums">{sub}</span>
               </div>
-              {/* Volume Farm: version mới chờ lượt đang mở đóng (DEC-TBD-vf-version-apply), quy tắc 1.6. */}
+              {/* Version mới còn chờ: Volume Farm chờ lượt đang mở đóng, bot pause chờ Resume (DEC-TBD-vf-version-apply), quy tắc 1.6. */}
               {(() => {
-                const p = b.strategy === "volume_farm" ? pendingVersionOf(dd.versions) : undefined;
-                if (p === undefined) return null;
+                const note = pendingNoteOf(b.strategy, b.state);
+                const p = note === null ? undefined : pendingVersionOf(dd.versions);
+                if (p === undefined || note === null) return null;
                 return (
                   <span className="text-xs font-semibold text-warn">
-                    {te("applying", { next: p.version })}{" "}
-                    {b.state === BotState.paused
-                      ? te("waitingFarmPaused", { next: p.version })
-                      : te("waitingFarm", { next: p.version })}
+                    {te("applying", { next: p.version })} {te(note, { next: p.version })}
                   </span>
                 );
               })()}

@@ -1,7 +1,7 @@
 import type { BotDetail } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
-import { pendingVersionOf } from "./pending-version";
+import { pendingNoteOf, pendingVersionOf } from "./pending-version";
 
 const v = (version: number, status: BotDetail["versions"][number]["status"]) =>
   ({
@@ -25,5 +25,17 @@ describe("pendingVersionOf (DEC-TBD-vf-version-apply)", () => {
   it("ignores stale pending rows at or below the active version, and no pending at all", () => {
     expect(pendingVersionOf([v(2, "pending"), v(3, "active")])).toBeUndefined();
     expect(pendingVersionOf([v(1, "active")])).toBeUndefined();
+  });
+});
+
+describe("pendingNoteOf (DEC-TBD-vf-version-apply)", () => {
+  it("explains a waiting Volume Farm version, running or paused", () => {
+    expect(pendingNoteOf("volume_farm", "running")).toBe("waitingFarm");
+    expect(pendingNoteOf("volume_farm", "paused")).toBe("waitingFarmPaused");
+  });
+
+  it("explains a waiting version of any other strategy only while paused (applies on resume)", () => {
+    expect(pendingNoteOf("spot_grid", "paused")).toBe("waitingPaused");
+    expect(pendingNoteOf("futures_dca", "running")).toBeNull();
   });
 });
