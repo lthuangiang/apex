@@ -448,12 +448,33 @@ export const platformOverviewSchema = z.object({
       running: z.number().int(),
       volume: z.string(),
       feePerMillion: z.string().nullable(),
+      /**
+       * Net cost / $1M trong kỳ (DEC-TBD-stats-net-cost): max(0, −net PnL) ÷ volume × 1e6, cùng helper với trang bot
+       * (`netCostPerMillion`). Net PnL = thay đổi lãi ròng (giá đã chốt + chưa chốt − phí, gồm builder fee) của bot thật
+       * trong kỳ. Lãi → "0". null khi chưa có volume hoặc thiếu giá để định giá vị thế.
+       */
+      netCostPerMillion: z.string().nullable(),
       ordersPlaced: z.number().int(),
       fillRatePct: z.number().nullable(),
       rejectRatePct: z.number().nullable(),
     }),
   ),
   stops: z.array(z.object({ reason: z.string().nullable(), bots: z.number().int() })),
+  /**
+   * Builder fee thật (`fills.builder_fee`) trong kỳ theo strategy × mức đã thu (DEC-TBD-stats-net-cost), chỉ cho team, không
+   * có user. `rate` = builder fee ÷ notional theo phần mười bp (làm tròn); `source`: `default` = đúng mức mặc định của
+   * strategy, `tier` = một bậc volume (DEC-258), `custom` = mức khác (team đặt tay, DEC-159), `none` = fill không thu
+   * builder fee (account builder được miễn, hoặc SoDEX không trả). Suy từ mức đã thu, không từ bảng mức hiện tại.
+   */
+  builderFeeSources: z.array(
+    z.object({
+      strategy: z.string(),
+      source: z.enum(["default", "tier", "custom", "none"]),
+      rate: z.number().int().nullable(),
+      volume: z.string(),
+      builderFees: z.string(),
+    }),
+  ),
   health: z.object({
     /** Giây kể từ giá BTC-USD gần nhất của marketdata; null khi không có. */
     priceAgeSec: z.number().nullable(),

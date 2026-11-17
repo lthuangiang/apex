@@ -1,13 +1,17 @@
-import { bots, builderApprovals, fills, orders, sodexAccounts, users } from "@drift/db";
+import { bots, builderApprovals, candles1m, fills, orders, sodexAccounts, users } from "@drift/db";
 import {
   BotState,
+  builderFeeRateOf,
   dec,
+  Decimal,
+  FEE_TIERS,
   type PlatformOverview,
   type PlatformStats,
   type StatsInsight,
 } from "@drift/shared";
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
+import { netCostPerMillion } from "../bots/service";
 import { iso } from "../security/service";
 
 import type { AccountDeps } from "./service";
@@ -31,6 +35,47 @@ const CONNECT_PATH = [
 const SEVERITY = { critical: 0, warning: 1, info: 2, good: 3 } as const;
 
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
+/** Nến 1 phút dùng làm giá đầu / cuối kỳ khi không có giá live phải mới hơn chừng này. */
+const MARK_MAX_AGE_MS = 3_600_000;
+
+/** Các tổng từ fill thật của một bot trên một market, để tính net PnL trong kỳ (`periodNetPnl`). */
+export interface NetLeg {
+  /** Vị thế (base) lúc đầu kỳ = Σ chiều × size của fill trước kỳ (mua +, bán −). */
+  posBefore: Decimal;
+  /** Σ chiều × size của fill trong kỳ. */
+  posIn: Decimal;
+  /** Σ tiền của fill trong kỳ: bán + giá × size, mua − giá × size. */
+  cashIn: Decimal;
+  /** Σ phí của fill trong kỳ (đã gồm builder fee, SODEX.md 5.3). */
+  feesIn: Decimal;
+  /** Giá đầu kỳ; chỉ cần khi `posBefore` ≠ 0. */
+  markStart: Decimal | null;
+  /** Giá hiện tại; chỉ cần khi vị thế cuối kỳ ≠ 0. */
+  markEnd: Decimal | null;
+}
+
+/**
+ * Net PnL trong kỳ của một bot × market = thay đổi của `netPnl` (sổ cái giá vốn bình quân, @drift/strategies) từ đầu tới
+ * cuối kỳ, không gồm funding: giá đã chốt + chưa chốt − phí. Với sổ cái giá vốn bình quân, đã chốt + chưa chốt = Σ tiền
+ * + vị thế × giá, nên Δ = tiền trong kỳ + vị thế cuối × giá cuối − vị thế đầu × giá đầu − phí trong kỳ. Thiếu giá cần
+ * dùng → null.
+ */
+export function periodNetPnl(l: NetLeg): Decimal | null {
+  const posEnd = l.posBefore.add(l.posIn);
+  if (!l.posBefore.isZero() && l.markStart === null) return null;
+  if (!posEnd.isZero() && l.markEnd === null) return null;
+  const end = posEnd.isZero() || l.markEnd === null ? new Decimal(0) : posEnd.mul(l.markEnd);
+  const start =
+    l.posBefore.isZero() || l.markStart === null ? new Decimal(0) : l.posBefore.mul(l.markStart);
+  return l.cashIn.add(end).sub(start).sub(l.feesIn);
+}
+
+/** Nguồn của một mức builder fee đã thu (phần mười bp) cho strategy: mặc định, bậc volume, hay mức khác (team đặt). */
+export function builderFeeSourceOf(strategy: string, rate: number): "default" | "tier" | "custom" {
+  if (rate === builderFeeRateOf(strategy)) return "default";
+  if ((FEE_TIERS[strategy] ?? []).some((t) => t.rate === rate)) return "tier";
+  return "custom";
+}
 
 export async function statsOverview(
   deps: AccountDeps,
@@ -118,6 +163,7 @@ export async function statsOverview(
     .innerJoin(bots, eq(bots.id, orders.botId))
     .where(and(live, gte(fills.filledAt, from)))
     .groupBy(bots.strategy);
+  const netByStrategy = await netPnlByStrategy(deps, from, now);
   const strategies = botRows
     .map((b) => {
       const o = orderRows.find((x) => x.strategy === b.strategy);
@@ -135,6 +181,7 @@ export async function statsOverview(
               .mul(1e6)
               .toDecimalPlaces(0)
               .toString(),
+        netCostPerMillion: netCostOf(netByStrategy.get(b.strategy), vol),
         ordersPlaced: o?.placed ?? 0,
         fillRatePct: pct(o?.filled ?? 0, o?.placed ?? 0),
         rejectRatePct: pct(o?.rejected ?? 0, o?.placed ?? 0),
@@ -142,6 +189,37 @@ export async function statsOverview(
     })
     .filter((s) => s.bots > 0 || s.ordersPlaced > 0)
     .sort((x, y) => dec(y.volume).comparedTo(x.volume));
+
+  // ── Builder fee theo mức đã thu (kỳ này) ─────────────────────────────────
+  // Mức suy từ builder fee thật ÷ notional của từng fill (phần mười bp), không từ bảng mức hiện tại: mức team đặt có
+  // thể đã đổi hoặc bị xoá trong kỳ.
+  const charged = sql`coalesce(${fills.builderFee}, 0) > 0 and ${notional} > 0`;
+  const rateExpr = sql<
+    number | null
+  >`case when ${charged} then round(${fills.builderFee} / (${notional}) * 100000)::int end`;
+  const feeRows = await db
+    .select({
+      strategy: bots.strategy,
+      rate: rateExpr,
+      volume: sql<string>`coalesce(sum(${notional}), 0)::text`,
+      builderFees: sql<string>`coalesce(sum(${fills.builderFee}), 0)::text`,
+    })
+    .from(fills)
+    .innerJoin(orders, eq(orders.id, fills.orderId))
+    .innerJoin(bots, eq(bots.id, orders.botId))
+    .where(and(live, gte(fills.filledAt, from)))
+    .groupBy(bots.strategy, rateExpr);
+  const builderFeeSources = feeRows
+    .map((r) => ({
+      strategy: r.strategy,
+      source: r.rate === null ? ("none" as const) : builderFeeSourceOf(r.strategy, r.rate),
+      rate: r.rate,
+      volume: dec(r.volume).toDecimalPlaces(2).toString(),
+      builderFees: dec(r.builderFees).toDecimalPlaces(4).toString(),
+    }))
+    .sort(
+      (x, y) => dec(y.builderFees).comparedTo(x.builderFees) || dec(y.volume).comparedTo(x.volume),
+    );
 
   // ── Lý do dừng / pause (bot đổi trạng thái trong kỳ) ────────────────────
   const stopRows = await db
@@ -267,6 +345,7 @@ export async function statsOverview(
     activation,
     strategies,
     stops,
+    builderFeeSources,
     health: {
       priceAgeSec,
       needsAttention: h?.needsAttention ?? 0,
@@ -275,4 +354,88 @@ export async function statsOverview(
     },
     insights,
   };
+}
+
+/** Net cost / $1M của một strategy: thiếu net (thiếu giá) hoặc chưa có volume → null ("Not available"). */
+function netCostOf(net: Decimal | null | undefined, volume: Decimal): string | null {
+  return net === null || net === undefined ? null : netCostPerMillion(net, volume);
+}
+
+/**
+ * Net PnL trong kỳ theo strategy, cộng `periodNetPnl` của mọi bot thật × market có fill trong kỳ. Một leg thiếu giá →
+ * cả strategy null (không đoán). Giá cuối = giá live (`deps.prices`), không có thì close nến 1 phút trong 1 giờ qua; giá
+ * đầu = close nến 1 phút gần nhất tại hoặc trước đầu kỳ, trong 1 giờ.
+ */
+async function netPnlByStrategy(
+  deps: AccountDeps,
+  from: Date,
+  now: Date,
+): Promise<Map<string, Decimal | null>> {
+  const db = deps.db;
+  const notional = sql`${fills.price} * ${fills.size}`;
+  const qty = sql`case when ${orders.side} = 'buy' then ${fills.size} else -${fills.size} end`;
+  const cash = sql`case when ${orders.side} = 'sell' then ${notional} else -(${notional}) end`;
+  const inCur = sql`${fills.filledAt} >= ${from}`;
+  const rows = await db
+    .select({
+      strategy: bots.strategy,
+      market: orders.market,
+      posBefore: sql<string>`coalesce(sum(${qty}) filter (where ${fills.filledAt} < ${from}), 0)::text`,
+      posIn: sql<string>`coalesce(sum(${qty}) filter (where ${inCur}), 0)::text`,
+      cashIn: sql<string>`coalesce(sum(${cash}) filter (where ${inCur}), 0)::text`,
+      feesIn: sql<string>`coalesce(sum(${fills.fee}) filter (where ${inCur}), 0)::text`,
+    })
+    .from(fills)
+    .innerJoin(orders, eq(orders.id, fills.orderId))
+    .innerJoin(bots, eq(bots.id, orders.botId))
+    .where(eq(bots.mode, "live"))
+    .groupBy(bots.id, bots.strategy, orders.market)
+    .having(sql`count(*) filter (where ${inCur}) > 0`);
+  if (rows.length === 0) return new Map();
+
+  const legs = rows.map((r) => {
+    const posBefore = dec(r.posBefore);
+    return { ...r, posBefore, posEnd: posBefore.add(dec(r.posIn)) };
+  });
+  const startMarkets = [...new Set(legs.filter((l) => !l.posBefore.isZero()).map((l) => l.market))];
+  const endMarkets = [...new Set(legs.filter((l) => !l.posEnd.isZero()).map((l) => l.market))];
+  const live = endMarkets.length === 0 ? {} : await deps.prices(endMarkets).catch(() => ({}));
+  const liveMarks: Record<string, string> = live;
+  const lastClose = async (markets: readonly string[], at: Date) => {
+    if (markets.length === 0) return new Map<string, string>();
+    const r = await db
+      .selectDistinctOn([candles1m.market], { market: candles1m.market, close: candles1m.close })
+      .from(candles1m)
+      .where(
+        and(
+          inArray(candles1m.market, [...markets]),
+          sql`${candles1m.ts} <= ${at}`,
+          sql`${candles1m.ts} > ${new Date(at.getTime() - MARK_MAX_AGE_MS)}`,
+        ),
+      )
+      .orderBy(candles1m.market, sql`${candles1m.ts} desc`);
+    return new Map(r.map((x) => [x.market, x.close]));
+  };
+  const startMarks = await lastClose(startMarkets, from);
+  const endFallback = await lastClose(
+    endMarkets.filter((m) => liveMarks[m] === undefined),
+    now,
+  );
+
+  const out = new Map<string, Decimal | null>();
+  for (const l of legs) {
+    const ms = startMarks.get(l.market);
+    const me = liveMarks[l.market] ?? endFallback.get(l.market);
+    const net = periodNetPnl({
+      posBefore: l.posBefore,
+      posIn: dec(l.posIn),
+      cashIn: dec(l.cashIn),
+      feesIn: dec(l.feesIn),
+      markStart: ms === undefined ? null : dec(ms),
+      markEnd: me === undefined ? null : dec(me),
+    });
+    const prev = out.get(l.strategy);
+    out.set(l.strategy, net === null || prev === null ? null : (prev ?? new Decimal(0)).add(net));
+  }
+  return out;
 }
