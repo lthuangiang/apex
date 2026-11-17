@@ -4,3 +4,4 @@ export * as schema from "./schema";
 export * from "./schema";
 export * from "./leaders";
 export * from "./fees";
+export * from "./sodex-calls";

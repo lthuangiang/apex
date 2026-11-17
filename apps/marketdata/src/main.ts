@@ -2,6 +2,7 @@ import {
   candles1m,
   copiedLeaders,
   createDb,
+  createSodexCallSink,
   followedLeaders,
   fundingRates,
   latestTypicalHold,
@@ -18,11 +19,12 @@ import {
   type LeaderPositionMessage,
 } from "@drift/shared";
 import {
+  createSodexCallRecorder,
+  type Engine,
   loadSodexConfig,
   MarketStream,
   RedisRateLimitStore,
   SodexRestClient,
-  type Engine,
   type WsCandle,
   WsUserStream,
 } from "@drift/sodex";
@@ -84,10 +86,19 @@ const env = z
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "marketdata" } });
+// SoDEX Debugger (DEC-TBD-sodex-debugger): ghi mọi lời gọi SoDEX (hàng đợi trong bộ nhớ, pool DB riêng, không chặn).
+const sodexCalls = createSodexCallRecorder({
+  service: "marketdata",
+  env: process.env,
+  log,
+  sink: () => createSodexCallSink(env.DATABASE_URL),
+});
+const recorder = sodexCalls === undefined ? {} : { recorder: sodexCalls };
 const sodex = loadSodexConfig(process.env);
 const { db, pool } = createDb(env.DATABASE_URL);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const rest = new SodexRestClient({
+  ...recorder,
   config: sodex,
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
@@ -100,6 +111,7 @@ let leaderTimer: ReturnType<typeof setInterval> | null = null;
 // Copy Trading (DEC-163 mục 5, 9): hạn mức cho tín hiệu mở / tăng (minHold, ≤ 50% độ sâu sổ SoDEX). Sổ lệnh đọc ở mức
 // tương tác (không phải job nền) vì nằm trên đường đi của tín hiệu.
 const bookRest = new SodexRestClient({
+  ...recorder,
   config: sodex,
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
@@ -146,6 +158,7 @@ const leaders = new LeaderWatcher({
       baseUrl: sodex.wsUrl,
       engine: "perps",
       user: address as `0x${string}`,
+      ...recorder,
       callbacks: {
         onOrderUpdate: () => undefined,
         onTrade: (trades) => {
@@ -612,6 +625,7 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:marketdata"), {
 async function shutdown() {
   await stopLeader();
   await nc.drain();
+  await sodexCalls?.close();
   await pool.end();
   redis.disconnect();
 }

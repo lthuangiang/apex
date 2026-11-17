@@ -26,6 +26,7 @@ import {
   DRIFT_API_KEY_NAME,
   DRIFT_API_KEY_TTL_MS,
   readDriftApproval,
+  REVOKE_API_KEY_ACTION,
   revokeApiKeyRequest,
   RevokeEngine,
   verifyRevokeSignature,
@@ -422,6 +423,7 @@ export async function submitSignature(
           body: request.body,
           signature: header,
           nonce: request.nonce,
+          actionType: REVOKE_API_KEY_ACTION,
         }
       : {
           path: request.path,
@@ -430,6 +432,7 @@ export async function submitSignature(
           signature: header,
           nonce: request.nonce,
           chainId: request.chainId,
+          actionType: request.primaryType,
         },
   );
   await audit(deps.db, {

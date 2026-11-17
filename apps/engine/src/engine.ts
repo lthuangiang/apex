@@ -77,6 +77,7 @@ import {
 import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
+import { withBotCallContext } from "./call-context";
 import { openedAlerts, SkipGate, skipMarket, skippedAlert, skipReason } from "./copy-alerts";
 import type { AccountRef, Gateway, LookupResult, NotSentCode, OrderTrade } from "./gateway";
 import type { PaperGateway } from "./paper-gateway";
@@ -1997,7 +1998,8 @@ export class Engine {
       botId: bot.id,
       account: route.account,
       paper: route.paper,
-      gateway: route.gateway,
+      // Bot thật: lời gọi SoDEX mang botId / accountId / traceId cho SoDEX Debugger (DEC-TBD-sodex-debugger).
+      gateway: route.paper ? route.gateway : withBotCallContext(route.gateway, bot.id, account.id),
       shard,
       epoch,
       versionId: version.id,

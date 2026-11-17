@@ -1,6 +1,11 @@
-import { createDb } from "@drift/db";
+import { createDb, createSodexCallSink } from "@drift/db";
 import { consume, ensureConsumer, ensureStreams } from "@drift/runtime";
-import { loadSodexConfig, RedisRateLimitStore, SodexRestClient } from "@drift/sodex";
+import {
+  createSodexCallRecorder,
+  loadSodexConfig,
+  RedisRateLimitStore,
+  SodexRestClient,
+} from "@drift/sodex";
 import { connect } from "@nats-io/transport-node";
 import { Redis } from "ioredis";
 import pino from "pino";
@@ -23,9 +28,18 @@ const env = z
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "backtest" } });
+// SoDEX Debugger (DEC-TBD-sodex-debugger): ghi mọi lời gọi SoDEX (hàng đợi trong bộ nhớ, pool DB riêng, không chặn).
+const sodexCalls = createSodexCallRecorder({
+  service: "backtest",
+  env: process.env,
+  log,
+  sink: () => createSodexCallSink(env.DATABASE_URL),
+});
+const recorder = sodexCalls === undefined ? {} : { recorder: sodexCalls };
 const { db, pool } = createDb(env.DATABASE_URL);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const rest = new SodexRestClient({
+  ...recorder,
   config: loadSodexConfig(process.env),
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
@@ -73,6 +87,7 @@ log.info("backtest worker ready");
 async function shutdown() {
   await stop();
   await nc.drain();
+  await sodexCalls?.close();
   await pool.end();
   redis.disconnect();
 }

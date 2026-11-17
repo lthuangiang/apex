@@ -1,6 +1,6 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
 
-import { apiKeys, createDb } from "@drift/db";
+import { apiKeys, createDb, createSodexCallSink } from "@drift/db";
 import { loadClientTls } from "@drift/runtime";
 import {
   dec,
@@ -11,6 +11,7 @@ import {
   type MmBookMessage,
 } from "@drift/shared";
 import {
+  createSodexCallRecorder,
   loadSodexConfig,
   RedisRateLimitStore,
   SignedWriteClient,
@@ -54,10 +55,19 @@ const log = pino({
 const sodex = loadSodexConfig(process.env);
 const { db, pool } = createDb(env.DATABASE_URL);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
+// SoDEX Debugger (DEC-TBD-sodex-debugger): mọi lời gọi SoDEX vào hàng đợi trong bộ nhớ, ghi batch mỗi giây bằng pool
+// DB riêng; không bao giờ chặn đường gửi lệnh.
+const sodexCalls = createSodexCallRecorder({
+  service: "engine",
+  env: process.env,
+  log,
+  sink: () => createSodexCallSink(env.DATABASE_URL),
+});
 const options = {
   config: sodex,
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
+  ...(sodexCalls === undefined ? {} : { recorder: sodexCalls }),
 };
 const rest = new SodexRestClient(options);
 const gateway = new HttpGateway(
@@ -95,6 +105,9 @@ function openStream(account: AccountRef, kind: StreamKind): void {
       engine: kind,
       user: account.address,
       accountID: account.sodexAccountId,
+      ...(sodexCalls === undefined
+        ? {}
+        : { recorder: sodexCalls, recordContext: { accountId: account.id } }),
       callbacks: {
         onOrderUpdate: (updates) => {
           for (const u of updates) {
@@ -333,6 +346,7 @@ async function shutdown() {
     pair.perps?.close();
   }
   await engine.stop();
+  await sodexCalls?.close();
   await nc.drain();
   await pool.end();
   redis.disconnect();

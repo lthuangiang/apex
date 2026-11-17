@@ -1,5 +1,10 @@
-import { createDb } from "@drift/db";
-import { loadSodexConfig, RedisRateLimitStore, SodexRestClient } from "@drift/sodex";
+import { createDb, createSodexCallSink } from "@drift/db";
+import {
+  createSodexCallRecorder,
+  loadSodexConfig,
+  RedisRateLimitStore,
+  SodexRestClient,
+} from "@drift/sodex";
 import { Redis } from "ioredis";
 import pino from "pino";
 import { z } from "zod";
@@ -17,9 +22,18 @@ const env = z
   })
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "reco" } });
+// SoDEX Debugger (DEC-TBD-sodex-debugger): ghi mọi lời gọi SoDEX (hàng đợi trong bộ nhớ, pool DB riêng, không chặn).
+const sodexCalls = createSodexCallRecorder({
+  service: "reco",
+  env: process.env,
+  log,
+  sink: () => createSodexCallSink(env.DATABASE_URL),
+});
+const recorder = sodexCalls === undefined ? {} : { recorder: sodexCalls };
 const { db, pool } = createDb(env.DATABASE_URL);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const rest = new SodexRestClient({
+  ...recorder,
   config: loadSodexConfig(process.env),
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
@@ -46,6 +60,7 @@ await app.listen({ host: "0.0.0.0", port: env.RECO_PORT });
 
 async function shutdown() {
   await app.close();
+  await sodexCalls?.close();
   await pool.end();
   redis.disconnect();
 }

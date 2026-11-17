@@ -1,4 +1,4 @@
-import { createDb } from "@drift/db";
+import { createDb, createSodexCallSink } from "@drift/db";
 import {
   consume,
   createBotApi,
@@ -6,7 +6,12 @@ import {
   ensureStreams,
   isQueueSubject,
 } from "@drift/runtime";
-import { loadSodexConfig, RedisRateLimitStore, SodexRestClient } from "@drift/sodex";
+import {
+  createSodexCallRecorder,
+  loadSodexConfig,
+  RedisRateLimitStore,
+  SodexRestClient,
+} from "@drift/sodex";
 import { connect } from "@nats-io/transport-node";
 import { Redis } from "ioredis";
 import nodemailer from "nodemailer";
@@ -58,10 +63,19 @@ const env = z
   )
   .parse(process.env);
 const log = pino({ level: env.LOG_LEVEL, base: { service: "jobs" } });
+// SoDEX Debugger (DEC-TBD-sodex-debugger): ghi mọi lời gọi SoDEX (hàng đợi trong bộ nhớ, pool DB riêng, không chặn).
+const sodexCalls = createSodexCallRecorder({
+  service: "jobs",
+  env: process.env,
+  log,
+  sink: () => createSodexCallSink(env.DATABASE_URL),
+});
+const recorder = sodexCalls === undefined ? {} : { recorder: sodexCalls };
 const sodex = loadSodexConfig(process.env);
 const { db, pool } = createDb(env.DATABASE_URL);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const rest = new SodexRestClient({
+  ...recorder,
   config: sodex,
   rateLimit: new RedisRateLimitStore(redis),
   egressKey: env.SODEX_EGRESS_KEY,
@@ -188,6 +202,7 @@ async function shutdown() {
   for (const stop of telegramStops) await stop();
   await relay;
   await nc.drain();
+  await sodexCalls?.close();
   await pool.end();
   redis.disconnect();
 }

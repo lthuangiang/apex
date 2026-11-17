@@ -3,6 +3,8 @@ import type { Address } from "viem";
 import { z } from "zod";
 
 import type { SodexConfig } from "../config";
+import { safeRecord, type SodexCallRecorderLike, type SodexRestCapture } from "../debug/capture";
+import { currentSodexCallContext } from "../debug/context";
 import type { RateLimitStore } from "../rate-limit/token-bucket";
 import { IP_REST_BUCKET, ipBucket, klineWeight, RestWeight } from "../rate-limit/weights";
 import { TtlCache } from "../ttl-cache";
@@ -91,6 +93,8 @@ export interface SodexRestOptions {
   priority?: "interactive" | "background";
   fetch?: FetchLike;
   timeoutMs?: number;
+  /** SoDEX Debugger: nhận mọi lời gọi (không chặn, không ném). */
+  recorder?: SodexCallRecorderLike;
 }
 
 /**
@@ -104,6 +108,7 @@ export class SodexRestClient {
   readonly #bucket: typeof IP_REST_BUCKET;
   readonly #fetch: FetchLike;
   readonly #timeoutMs: number;
+  readonly #recorder: SodexCallRecorderLike | undefined;
   readonly #spotSymbols = new TtlCache<SpotSymbol[]>(MARKET_INFO_TTL_MS);
   readonly #perpsSymbols = new TtlCache<PerpsSymbol[]>(MARKET_INFO_TTL_MS);
 
@@ -118,6 +123,7 @@ export class SodexRestClient {
         : bucket;
     this.#fetch = options.fetch ?? ((input, init) => fetch(input, init));
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.#recorder = options.recorder;
   }
 
   getSubaccounts(address: Address): Promise<Subaccounts> {
@@ -283,25 +289,81 @@ export class SodexRestClient {
       });
     }
 
+    const url = `${this.#base}${path}`;
+    const headers = { Accept: "application/json" };
+    const startedAt = Date.now();
+    const t0 = performance.now();
+    const context = currentSodexCallContext();
+    const record = (
+      fields: Pick<
+        SodexRestCapture,
+        "failure" | "errorDetail" | "httpStatus" | "responseHeaders" | "responseText"
+      > & { schemaOk?: boolean },
+    ) => {
+      const latencyMs = performance.now() - t0;
+      safeRecord(this.#recorder, () => ({
+        kind: "rest",
+        startedAt,
+        latencyMs,
+        method: "GET",
+        url,
+        requestHeaders: headers,
+        requestBody: null,
+        signed: false,
+        actionType: null,
+        context,
+        ...fields,
+      }));
+    };
+
     let response: Response;
     try {
-      response = await this.#fetch(`${this.#base}${path}`, {
+      response = await this.#fetch(url, {
         method: "GET",
-        headers: { Accept: "application/json" },
+        headers,
         signal: AbortSignal.timeout(this.#timeoutMs),
       });
     } catch (error) {
-      if (error instanceof DOMException && error.name === "TimeoutError") {
+      const timedOut = error instanceof DOMException && error.name === "TimeoutError";
+      record({
+        failure: timedOut ? "timeout" : "network",
+        errorDetail: timedOut ? "SoDEX request timed out" : String(error).slice(0, 300),
+        httpStatus: null,
+        responseHeaders: null,
+        responseText: null,
+      });
+      if (timedOut) {
         throw new AppError(ErrorCode.sodexTimeout, "SoDEX request timed out", { path });
       }
       throw new AppError(ErrorCode.sodexUnavailable, "SoDEX request failed", { path });
     }
 
-    const text = await response.text();
+    let text: string;
+    try {
+      text = await response.text();
+    } catch (error) {
+      const timedOut = error instanceof DOMException && error.name === "TimeoutError";
+      record({
+        failure: timedOut ? "timeout" : "network",
+        errorDetail: String(error).slice(0, 300),
+        httpStatus: response.status,
+        responseHeaders: response.headers,
+        responseText: null,
+      });
+      throw error;
+    }
+    const seen = {
+      failure: null,
+      errorDetail: null,
+      httpStatus: response.status,
+      responseHeaders: response.headers,
+      responseText: text,
+    } as const;
     let body: unknown;
     try {
       body = parseSodexJson(text);
     } catch {
+      record(seen);
       throw new AppError(ErrorCode.sodexUnavailable, "SoDEX returned invalid JSON", {
         path,
         status: response.status,
@@ -310,6 +372,7 @@ export class SodexRestClient {
 
     const failure = errorEnvelopeSchema.safeParse(body);
     if (failure.success) {
+      record(seen);
       throw new AppError(ErrorCode.sodexUnavailable, "SoDEX returned an error", {
         path,
         status: response.status,
@@ -318,6 +381,7 @@ export class SodexRestClient {
       });
     }
     if (!response.ok) {
+      record(seen);
       throw new AppError(ErrorCode.sodexUnavailable, "SoDEX returned an HTTP error", {
         path,
         status: response.status,
@@ -326,9 +390,11 @@ export class SodexRestClient {
 
     const envelope = successEnvelope(z.unknown()).safeParse(body);
     if (!envelope.success) {
+      record({ ...seen, schemaOk: false });
       throw schemaMismatch(path, envelope.error);
     }
     const parsed = schema.safeParse(envelope.data.data);
+    record({ ...seen, schemaOk: parsed.success });
     if (!parsed.success) {
       throw schemaMismatch(path, parsed.error);
     }

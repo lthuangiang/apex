@@ -13,6 +13,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  pgView,
   smallint,
   text,
   timestamp,
@@ -1583,3 +1584,82 @@ export const mmModelCoefs = pgTable("mm_model_coefs", {
   day: date("day").notNull(),
   createdAt: tstz("created_at").notNull().defaultNow(),
 });
+
+/**
+ * SoDEX Debugger (DEC-TBD-sodex-debugger): mọi lời gọi REST tới SoDEX và sự kiện WS user stream, do recorder của từng
+ * service ghi theo batch. Hai hypertable cùng cột theo thời hạn giữ (Timescale retention policy, nén sau 1 ngày):
+ * `sodex_calls_ok` 3 ngày (thành công, ≤ 1000 ms), `sodex_calls_problem` 14 ngày (lỗi, timeout, network, unreadable,
+ * rejected, chậm). Đọc qua view `sodex_calls` (UNION ALL). Bảng log: không khoá ngoại, `id` là UUID v7 theo `at`.
+ * Không bao giờ chứa chữ ký, secret hay header xác thực (packages/sodex/src/debug/redact.ts).
+ */
+const sodexCallColumns = () => ({
+  id: uuid("id").notNull(),
+  at: tstz("at").notNull(),
+  service: text("service").notNull(),
+  kind: text("kind", { enum: ["rest", "ws"] }).notNull(),
+  method: text("method").notNull(),
+  endpoint: text("endpoint").notNull(),
+  url: text("url"),
+  engine: text("engine", { enum: ["spot", "perps"] }),
+  actionType: text("action_type"),
+  outcome: text("outcome", {
+    enum: ["ok", "rejected", "timeout", "network", "unreadable"],
+  }).notNull(),
+  httpStatus: smallint("http_status"),
+  sodexCode: integer("sodex_code"),
+  sodexError: text("sodex_error"),
+  envelopeCode: integer("envelope_code"),
+  orderCodes: integer("order_codes")
+    .array()
+    .notNull()
+    .default(sql`'{}'`),
+  unreadableReason: text("unreadable_reason"),
+  errorDetail: text("error_detail"),
+  latencyMs: integer("latency_ms").notNull(),
+  requestHeaders: jsonb("request_headers").notNull().default([]),
+  requestBody: text("request_body"),
+  requestBodyBytes: integer("request_body_bytes"),
+  signed: boolean("signed").notNull().default(false),
+  responseHeaders: jsonb("response_headers").notNull().default([]),
+  responseBody: text("response_body"),
+  responseBodyBytes: integer("response_body_bytes"),
+  responseTruncated: boolean("response_truncated").notNull().default(false),
+  botId: uuid("bot_id"),
+  /** `sodex_accounts.id`. */
+  accountId: uuid("account_id"),
+  /** Địa chỉ ví (chữ thường). */
+  accountAddress: text("account_address"),
+  sodexAccountId: text("sodex_account_id"),
+  clOrdIds: text("cl_ord_ids")
+    .array()
+    .notNull()
+    .default(sql`'{}'`),
+  orderIds: text("order_ids")
+    .array()
+    .notNull()
+    .default(sql`'{}'`),
+  traceId: text("trace_id"),
+  connId: text("conn_id"),
+  ...timestamps,
+});
+
+function sodexCallTable<N extends string>(name: N) {
+  return pgTable(name, sodexCallColumns(), (t) => [
+    primaryKey({ columns: [t.id, t.at] }),
+    index(`${name}_at_idx`).on(t.at),
+    index(`${name}_endpoint_idx`).on(t.endpoint, t.at),
+    index(`${name}_outcome_idx`).on(t.outcome, t.at),
+    index(`${name}_service_idx`).on(t.service, t.at),
+    index(`${name}_bot_idx`).on(t.botId, t.at),
+    index(`${name}_account_idx`).on(t.accountAddress, t.at),
+    index(`${name}_trace_idx`).on(t.traceId, t.at),
+    index(`${name}_conn_idx`).on(t.connId, t.at),
+    index(`${name}_cl_ord_idx`).using("gin", t.clOrdIds),
+    index(`${name}_order_ids_idx`).using("gin", t.orderIds),
+  ]);
+}
+
+export const sodexCallsOk = sodexCallTable("sodex_calls_ok");
+export const sodexCallsProblem = sodexCallTable("sodex_calls_problem");
+/** View đọc chung (tạo bằng SQL trong migration 0041). */
+export const sodexCalls = pgView("sodex_calls", sodexCallColumns()).existing();
