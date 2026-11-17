@@ -288,6 +288,13 @@
       "when": 1794908762190,
       "tag": "0040_bots_position_mismatch",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794931417340,
+      "tag": "0041_sodex_calls",
+      "breakpoints": true
     }
   ]
 }

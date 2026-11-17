@@ -1,6 +1,11 @@
-import { createDb } from "@drift/db";
+import { createDb, createSodexCallSink } from "@drift/db";
 import { loadClientTls, createBotApi } from "@drift/runtime";
-import { RedisRateLimitStore, SignedWriteClient, SodexRestClient } from "@drift/sodex";
+import {
+  createSodexCallRecorder,
+  RedisRateLimitStore,
+  SignedWriteClient,
+  SodexRestClient,
+} from "@drift/sodex";
 import { Redis } from "ioredis";
 import { z } from "zod";
 
@@ -17,7 +22,21 @@ const config = loadApiConfig(process.env);
 const { db, pool } = createDb(config.DATABASE_URL);
 const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: 2 });
 const rateLimit = new RedisRateLimitStore(redis);
-const sodexOptions = { config: config.sodex, rateLimit, egressKey: config.SODEX_EGRESS_KEY };
+// SoDEX Debugger (DEC-309): ghi mọi lời gọi SoDEX của api (hàng đợi trong bộ nhớ, pool DB riêng).
+// Logger của fastify chỉ có sau buildApp, nên cảnh báo đi qua biến `appLog`.
+const appLog: { current?: { warn(obj: Record<string, unknown>, msg: string): void } } = {};
+const sodexCalls = createSodexCallRecorder({
+  service: "api",
+  env: process.env,
+  log: { warn: (obj, msg) => appLog.current?.warn(obj, msg) },
+  sink: () => createSodexCallSink(config.DATABASE_URL),
+});
+const sodexOptions = {
+  config: config.sodex,
+  rateLimit,
+  egressKey: config.SODEX_EGRESS_KEY,
+  ...(sodexCalls === undefined ? {} : { recorder: sodexCalls }),
+};
 
 const lastPrice = async (market: string) => {
   const raw = await redis.get(`md:last:${market}`);
@@ -93,8 +112,11 @@ const app = await buildApp({
   },
 });
 
+appLog.current = app.log;
+
 const shutdown = async () => {
   await app.close();
+  await sodexCalls?.close();
   await pool.end();
   redis.disconnect();
 };

@@ -1,4 +1,4 @@
-import { MemoryRateLimitStore, type FetchLike } from "@drift/sodex";
+import { MemoryRateLimitStore, type FetchLike, type SodexCallCapture } from "@drift/sodex";
 import { describe, expect, it } from "vitest";
 
 import { engineSodexClients } from "../src/sodex-clients";
@@ -62,5 +62,40 @@ describe("engine SoDEX clients", () => {
       expect(res.outcome).toBe("ok");
     }
     expect(sent).toBe(9);
+  });
+
+  it("records every call of all four clients in the SoDEX Debugger (DEC-309)", async () => {
+    const fetch: FetchLike = (_url, init) =>
+      Promise.resolve(
+        new Response(
+          init.method === "GET"
+            ? '{"code":0,"timestamp":1,"data":[]}'
+            : '{"code":0,"timestamp":1,"data":[{"code":0,"clOrdID":"a1","orderID":7}]}',
+          { status: 200 },
+        ),
+      );
+    const seen: SodexCallCapture[] = [];
+    const { orderPath, rest, reads, writer } = engineSodexClients({
+      config: { restUrl: "https://sodex.test", restWeightPerMinute: 1_200 },
+      rateLimit: new MemoryRateLimitStore(() => 1_000),
+      egressKey: "engine-test",
+      fetch,
+      readTimeoutMs: 3_000,
+      recorder: { record: (c) => seen.push(c) },
+    });
+    const q = { accountID: 1n, symbol: "BTC-USD", limit: 500 };
+    await orderPath.getPerpsSymbols();
+    await rest.getTrades("perps", ADDRESS, q);
+    await reads.getTrades("perps", ADDRESS, q);
+    await writer.write({
+      path: "/perps/trade/orders",
+      method: "DELETE",
+      body: "{}",
+      signature: "0x01aa",
+      nonce: 1_760_000_000_000n,
+      apiKeyName: "DRIFT",
+      orderCount: 1,
+    });
+    expect(seen).toHaveLength(4);
   });
 });

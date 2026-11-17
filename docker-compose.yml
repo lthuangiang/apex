@@ -13,6 +13,8 @@ x-app-env: &app-env
   SODEX_REST_URL: ${SODEX_REST_URL}
   SODEX_WS_URL: ${SODEX_WS_URL}
   SODEX_CHAIN: ${SODEX_CHAIN:-mainnet}
+  # SoDEX Debugger (DEC-TBD-sodex-debugger): "off" tắt ghi lời gọi SoDEX ở mọi app service (cần recreate container).
+  SODEX_DEBUGGER: ${SODEX_DEBUGGER:-on}
   DRIFT_BUILDER_ID: ${DRIFT_BUILDER_ID}
   DRIFT_BUILDER_ADDRESS: ${DRIFT_BUILDER_ADDRESS:-}
   # false: account builder cũng bị thu builder fee và phải approve (DEC-124). Mặc định miễn (DEC-47).

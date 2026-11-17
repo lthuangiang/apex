@@ -3,6 +3,7 @@ import {
   SodexRestClient,
   type FetchLike,
   type RateLimitStore,
+  type SodexCallRecorderLike,
   type SodexConfig,
 } from "@drift/sodex";
 
@@ -17,6 +18,8 @@ export interface EngineSodexOptions {
   rateLimit: RateLimitStore;
   egressKey: string;
   fetch?: FetchLike;
+  /** SoDEX Debugger (DEC-309): ghi mọi lời gọi của cả bốn client. */
+  recorder?: SodexCallRecorderLike;
   /** Timeout mỗi lời gọi đọc của đối soát (tra lệnh, lịch sử khớp, vị thế). */
   readTimeoutMs: number;
 }
@@ -49,6 +52,7 @@ export function engineSodexClients(o: EngineSodexOptions): {
     rateLimit: o.rateLimit,
     egressKey: o.egressKey,
     ...(o.fetch === undefined ? {} : { fetch: o.fetch }),
+    ...(o.recorder === undefined ? {} : { recorder: o.recorder }),
   };
   const background = { ...base, rateLimit: counting, priority: "background" as const };
   return {

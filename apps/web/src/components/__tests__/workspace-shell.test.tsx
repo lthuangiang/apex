@@ -78,6 +78,7 @@ describe("WorkspaceShell sidebar order", () => {
       "Bot Monitor",
       "Market hours",
       "System Architecture Diagram",
+      "SoDEX Debugger",
       "Settings",
     ]);
   });
@@ -118,6 +119,7 @@ describe("WorkspaceShell sidebar order", () => {
       "Bot Monitor",
       "Market hours",
       "System Architecture Diagram",
+      "SoDEX Debugger",
     ]);
   }, 15_000);
 

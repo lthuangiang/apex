@@ -5,21 +5,22 @@
 
 ## 1. Thành phần
 
+Production chạy **một file compose giữ tay** ở `/opt/drift/docker-compose.yml` trên VPS, cùng `/opt/drift/.env` (có `DRIFT_IMAGE`, `DRIFT_TAG`). Repo không chép compose nào lên VPS; thay đổi biến môi trường hay service trên prod là bước làm tay ghi trong ghi chú release (ví dụ mục 2.12). `deploy/server/docker-compose.yml` trong repo là mẫu một file theo cùng cách (khối `x-env`) để dựng máy mới.
+
 | File | Việc |
 |---|---|
-| `docker-compose.prod.yml` | Chồng lên `docker-compose.yml`: image từ 1 repo private Docker Hub, tag `<app>-<git sha>`, mỗi service 1 bản, backtest 1 CPU / 1 GB, HTTPS Let's Encrypt, Vault profile `prod` |
-| `.github/workflows/release.yml` | Chạy khi push tag `vX.Y.Z` trên `main` (`docs/RELEASE.md`): kiểm tra CI của commit đã xanh → build các app đổi so với tag trước trong một job, cache chung (biến `PLATFORM` để đổi kiến trúc) → push Docker Hub `<app>-<tag>` + `<app>-latest`; app không đổi trỏ vào image của tag trước → tạo GitHub Release. **Không deploy.** Thay `deploy.yml` cũ (2026-11-12) |
-| `infra/deploy/build-push.sh` | Deploy lên VPS: `--deploy-only <tag>` cho tag do `release.yml` build; vẫn build + push từ máy mình được khi GitHub không dùng được |
+| `infra/deploy/build-push.sh` | Cách deploy đang dùng. Chạy trên máy mình: `docker buildx build --push` từng app (`apps/<app>/Dockerfile`, `PLATFORM` mặc định `linux/amd64`) lên repo private Docker Hub (`DRIFT_IMAGE`, mặc định `docker.io/lthuangiang/drift`) với tag `<app>-<yyyyMMddHHmmss>` và `<app>-latest`. Chỉ build vài app thì app còn lại được gắn tag mới trỏ vào image đang chạy (`imagetools create`), vì mọi app dùng chung một `DRIFT_TAG`. `--deploy [user@host] [app…]`: SSH (một kết nối dùng chung, `DEPLOY_TARGET` / `DEPLOY_SSH_PASS` trong `infra/deploy/.deploy.local`) tới VPS, `cd /opt/drift`, đổi `DRIFT_TAG` trong `.env` → `docker compose pull` → `docker compose run --rm migrate` → `docker compose up -d` → xoá image DRIFT cũ (giữ tag hiện tại và tag liền trước) + layer treo. `--deploy-only <tag>`: không build, deploy (hoặc rollback về) một tag đã push. Script in lệnh rollback sau mỗi lần deploy |
+| `.github/workflows/release.yml` | Chạy khi push tag `vX.Y.Z` trên `main` (`docs/RELEASE.md`): build + push các app đổi so với tag trước; **không deploy**. Deploy tag đó bằng `build-push.sh --deploy-only <tag>` |
 | `infra/deploy/bootstrap-vps.sh` | Chạy 1 lần bằng root trên VPS mới: Docker, user `deploy`, swap 4 GB, ufw, SSH chỉ bằng key, vá tự động, cron backup |
-| `infra/deploy/deploy.sh` | Trên VPS: pull → hạ tầng → migrate → mọi service healthy; không healthy trong 5 phút thì quay về tag trước |
 | `infra/deploy/backup.sh` | 03:15 mỗi ngày: `pg_dump` + tar volume Vault / NATS / Let's Encrypt, giữ 14 ngày, tuỳ chọn mã hoá `age` + `rclone` ra ngoài |
 | `infra/vault/prod.hcl`, `infra/vault/prod-init.sh` | Vault server mode lưu file; init, tự unseal (cả sau reboot), policy `signer` chỉ encrypt/decrypt `drift-api-keys` |
 | `.env.production.example` | Mẫu `.env` trên VPS |
+| `infra/deploy/deploy.sh`, `docker-compose.prod.yml` | Cách cũ (hai file compose chồng nhau + `deploy.sh` trên VPS). **Không dùng** cho prod hiện tại: `build-push.sh` cố ý không chép compose của repo và không gọi `deploy.sh` |
 
-Lệnh compose trên VPS (thư mục `/opt/drift`):
+Lệnh compose trên VPS:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile app --profile prod ps
+cd /opt/drift && docker compose ps
 ```
 
 ## 2. Trước lần deploy đầu
@@ -227,6 +228,22 @@ Làm theo thứ tự, một lần. Mọi bước nằm ở 2.9 / 2.10; mục nà
 **Rollback:**
 - Tắt MCP nhanh, không cần đổi image: để `MCP_INTROSPECT_SECRET=` trống trong `.env`, rồi `up -d api mcp`. `/mcp` trả 503, introspect của api tắt; mọi phần khác chạy như cũ. Token đã cấp không dùng được cho tới khi bật lại.
 - Quay cả bản: `infra/deploy/build-push.sh --deploy-only <tag trước>`. Migration không quay lại; bảng MCP mới không ảnh hưởng bản cũ. `0030` đã bật Adaptive DCA cho mọi tài khoản: bản cũ đọc cùng cờ nên hành vi giống nhau; muốn tắt thì team tắt từng tài khoản ở Users.
+
+### 2.12 SoDEX Debugger (DEC-309): bước làm tay khi release
+
+Mọi app service gọi SoDEX ghi lời gọi vào `sodex_calls_ok` (3 ngày) / `sodex_calls_problem` (14 ngày), migration 0041 (`build-push.sh` tự chạy migrate). Mặc định **bật**. Công tắc tắt `SODEX_DEBUGGER` chỉ tới được container khi có trong file compose của VPS, mà file đó giữ tay, nên lần release đầu có tính năng này phải làm:
+
+1. Trên VPS, sửa `/opt/drift/docker-compose.yml`: thêm vào khối biến môi trường dùng chung của app (`x-env: &env`, cạnh `SODEX_CHAIN`):
+   ```yaml
+     SODEX_DEBUGGER: ${SODEX_DEBUGGER:-on}
+   ```
+   Không thêm dòng này thì debugger vẫn chạy (mặc định bật) nhưng không tắt được.
+2. Deploy như thường (`infra/deploy/build-push.sh --deploy` hoặc `--deploy-only <tag>`); bước `docker compose up -d` của script tạo lại container với biến mới.
+3. Kiểm tra: `cd /opt/drift && docker compose exec engine printenv SODEX_DEBUGGER` phải in `on`.
+
+**Tắt khẩn cấp** (không cần image mới): thêm `SODEX_DEBUGGER=off` vào `/opt/drift/.env`, rồi `cd /opt/drift && docker compose up -d` (chỉ tạo lại service có env đổi). Kiểm tra: `docker compose exec engine printenv SODEX_DEBUGGER` in `off`. Bật lại: xoá dòng đó (hoặc đặt `on`) rồi `docker compose up -d`.
+
+Kết nối DB: mỗi process một kết nối client qua PgBouncer; mỗi batch là một transaction ngắn có `SET LOCAL statement_timeout = 3000` (PgBouncer transaction mode không nhận `statement_timeout` ở tham số khởi động). Trường hợp xấu nhất ~1 kết nối server × ≤ 3 s mỗi process khi DB chậm, sau đó recorder nghỉ dần tới 60 s. Dung lượng ước tính: xem PR #217.
 
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.

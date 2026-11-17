@@ -225,6 +225,7 @@ export class HttpGateway implements Gateway {
       nonce,
       apiKeyName: account.apiKeyName,
       orderCount: count,
+      actionType: payload.type,
     });
   }
 

@@ -8,6 +8,7 @@ import {
   BarChart3,
   BrainCircuit,
   Bot,
+  Bug,
   ChevronDown,
   Ellipsis,
   Eye,
@@ -77,6 +78,8 @@ const ITEMS = [
   ["marketHours", "/admin/market-hours", Clock, "team"],
   // System Architecture Diagram: ngay dưới Market hours.
   ["architecture", "/admin/architecture", Network, "team"],
+  // SoDEX Debugger (docs/mockups/sodex-debugger): mục cuối của TEAM.
+  ["sodexDebugger", "/admin/sodex-debugger", Bug, "team"],
   ["settings", "/settings", Settings, "secondary"],
 ] as const satisfies readonly (readonly [
   string,
@@ -97,6 +100,7 @@ const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set([
   "ops",
   "marketHours",
   "architecture",
+  "sodexDebugger",
 ]);
 
 export function WorkspaceShell({
@@ -163,6 +167,7 @@ export function WorkspaceShell({
         "ops",
         "marketHours",
         "architecture",
+        "sodexDebugger",
       ]),
       footer: <MoreFooter />,
     },
