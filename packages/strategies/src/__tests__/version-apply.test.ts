@@ -36,7 +36,7 @@ import { spotGridSchema } from "../spot-grid/schema";
 import { twap, type TwapState } from "../twap";
 import { twapSchema } from "../twap/schema";
 
-// #223 (DEC-TBD-version-apply-position): áp version mới giữ sổ cái (cả đã chốt / phí, PM chốt B2), chờ mọi lệnh version
+// #223 (DEC-319): áp version mới giữ sổ cái (cả đã chốt / phí, PM chốt B2), chờ mọi lệnh version
 // cũ kết thúc trước khi dựng lệnh mới (B1), ghi fill muộn theo chiều của chính lệnh (M4), không đặt lệnh market mở lại vị
 // thế ban đầu, không tự đóng, và không bao giờ giữ lệnh vượt giới hạn sau một fill.
 

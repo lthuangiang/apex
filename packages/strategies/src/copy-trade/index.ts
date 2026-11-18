@@ -892,7 +892,7 @@ export function copyNet(s: CopyTradeState): Decimal {
 }
 
 /**
- * Áp version mới (#223, DEC-TBD-version-apply-position): trước đây version mới quên phần copy đang giữ, nên lệnh đóng
+ * Áp version mới (#223, DEC-319): trước đây version mới quên phần copy đang giữ, nên lệnh đóng
  * của leader không đóng nó và lệnh mở kế tiếp mở thêm. Nay mỗi market giữ vị thế + giá vốn trong sổ cái phiên mới (max
  * loss tính lại từ đầu), vị thế leader đã biết và việc đang theo vị thế đó; mục tiêu = vị thế đang giữ (không đuổi theo
  * tín hiệu cũ, không tự đóng); tín hiệu kế tiếp của leader đưa vị thế về mục tiêu theo cấu hình mới như thường. Danh

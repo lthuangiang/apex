@@ -71,7 +71,7 @@ export function netPnl(l: Ledger, mark: DecimalInput): Decimal {
 }
 
 /**
- * Sổ cái của version mới (#223, DEC-TBD-version-apply-position, PM chốt B2): phiên tiếp tục vì vị thế tiếp tục, nên giữ
+ * Sổ cái của version mới (#223, DEC-319, PM chốt B2): phiên tiếp tục vì vị thế tiếp tục, nên giữ
  * nguyên mọi thứ (vị thế, giá vốn, đã chốt, phí, funding). Max loss giữ mốc qua lần sửa: một lần sửa không thể gây ra
  * hay thoát khỏi pause vì max loss.
  */
