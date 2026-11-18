@@ -16,7 +16,7 @@ export interface RetiringOrder {
   /** Khối lượng đặt; thiếu (state cũ) thì không giới hạn phần khớp. */
   qty?: string;
   filled: string;
-  /** Lần cuối gửi huỷ (ms); null = engine vừa huỷ lúc áp version, chưa tính mốc. */
+  /** Lần cuối chiến lược gửi huỷ (ms); null = chưa gửi lần nào (engine vừa huỷ lúc áp version). */
   cancelAt: number | null;
 }
 
@@ -26,7 +26,10 @@ export const retiringOf = (r: Retiring | undefined): Retiring => r ?? {};
 export const isRetiring = (r: Retiring | undefined): boolean =>
   r !== undefined && Object.keys(r).length > 0;
 
-/** Nhịp thời gian (tick / timer): gửi huỷ lại cho lệnh đã chờ quá `RETIRE_RETRY_MS`. */
+/**
+ * Nhịp thời gian (tick / timer): gửi huỷ ngay ở nhịp đầu sau khi áp (lệnh cũ mà dòng lệnh tới sau lần quét của engine vẫn
+ * được huỷ sớm; huỷ hai lần vô hại), rồi gửi lại mỗi `RETIRE_RETRY_MS`.
+ */
 export function retireTick(
   r: Retiring | undefined,
   at: number,
@@ -36,10 +39,7 @@ export function retireTick(
   let changed = false;
   const next: Retiring = {};
   for (const [id, o] of Object.entries(r)) {
-    if (o.cancelAt === null) {
-      next[id] = { ...o, cancelAt: at };
-      changed = true;
-    } else if (at - o.cancelAt >= RETIRE_RETRY_MS) {
+    if (o.cancelAt === null || at - o.cancelAt >= RETIRE_RETRY_MS) {
       actions.push({ type: "cancel", clOrdID: id });
       next[id] = { ...o, cancelAt: at };
       changed = true;

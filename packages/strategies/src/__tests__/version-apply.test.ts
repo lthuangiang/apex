@@ -125,7 +125,7 @@ describe("futures grid: version apply keeps the position", () => {
   const idOf = (s: GridBotState, side: "buy" | "sell", level: number) =>
     Object.entries(s.open).find(([, o]) => o.side === side && o.level === level)?.[0] ?? "";
 
-  it("keeps the whole ledger, waits for every v1 order to end (cancelling again every 10 s), then builds around the position", () => {
+  it("keeps the whole ledger, waits for every v1 order to end (cancelling on the first tick, then every 10 s), then builds around the position", () => {
     const r = running();
     expect(r.state.ledger.position).toBe("2");
     const old = Object.keys(r.state.open).sort();
@@ -133,9 +133,13 @@ describe("futures grid: version apply keeps the position", () => {
     const applied = must(apply(futuresGrid, c2, r.state, v2));
     expect(applied.ledger).toEqual(r.state.ledger);
     expect(Object.keys(applied.retiring ?? {}).sort()).toEqual(old);
-    // v1 chưa kết thúc: không dựng gì; quá 10 s thì gửi huỷ lại.
+    // v1 chưa kết thúc: không dựng gì; nhịp đầu gửi huỷ ngay (lệnh cũ mà dòng lệnh tới sau lần quét của engine), rồi
+    // không gửi lại trước 10 s.
     const first = futuresGrid.step(c2, applied, tick("BTC-USD", "100", 100_000), v2);
-    expect(first.actions).toEqual([]);
+    expect(places(first.actions)).toEqual([]);
+    expect(cancels(first.actions).sort()).toEqual(old);
+    const quiet = futuresGrid.step(c2, first.state, tick("BTC-USD", "100", 105_000), v2);
+    expect(quiet.actions).toEqual([]);
     const again = futuresGrid.step(
       c2,
       first.state,
@@ -264,6 +268,30 @@ describe("futures grid: version apply keeps the position", () => {
     expect(placed.filter((o) => o.side === "buy")).toEqual([]);
     expect(placed.map((o) => `${o.side}@${o.price ?? ""}`)).toEqual(["sell@105", "sell@110"]);
     expect(out.state.ledger.position).toBe("2");
+  });
+
+  it("N1: a flat apply whose carried loss already reaches max loss pauses with no orders (realized −120, max loss 100)", () => {
+    const neutral = { ...long, direction: "neutral" as const };
+    const flat: GridBotState = {
+      ...futuresGrid.initialState(neutral),
+      lastPrice: "100",
+      ledger: { ...emptyLedger(), realized: "-120" },
+    };
+    const applied = must(apply(futuresGrid, long, flat, v2));
+    const out = futuresGrid.step(long, applied, tick("BTC-USD", "100"), v2);
+    expect(places(out.actions)).toEqual([]);
+    expect(out.actions).toEqual([{ type: "pause", reason: ReasonCode.botMaxLoss }]);
+    expect(out.state.phase).toBe("halted");
+    // Resume vẫn chạm max loss: lại pause, không lệnh nào.
+    const resumed = futuresGrid.step(
+      long,
+      out.state,
+      { type: "resumed", at: 1, prices: { "BTC-USD": "100" } },
+      v2,
+    );
+    const again = futuresGrid.step(long, resumed.state, tick("BTC-USD", "100", 101_000), v2);
+    expect(places(again.actions)).toEqual([]);
+    expect(again.actions).toContainEqual({ type: "pause", reason: ReasonCode.botMaxLoss });
   });
 
   it("starts like a new bot when the old grid was flat", () => {
@@ -539,6 +567,49 @@ describe("DCA: version apply keeps the cycle's position", () => {
     expect(places(blocked.actions)).toEqual([]);
   });
 
+  it("N1: a flat apply with realized −60 and max loss 50 places no base order and pauses", () => {
+    const c = { ...dca, maxLoss: "50" };
+    const idle = {
+      ...spotDca.initialState(c),
+      lastPrice: "100",
+      ledger: { ...emptyLedger(), realized: "-60" },
+    };
+    const applied = must(apply(spotDca, c, idle, v2));
+    const out = spotDca.step(c, applied, tick("vETH_vUSDC", "100"), v2);
+    expect(places(out.actions)).toEqual([]);
+    expect(out.actions).toEqual([{ type: "pause", reason: ReasonCode.botMaxLoss }]);
+    expect(out.state.phase).toBe("halted");
+  });
+
+  it("N2: stop loss and max loss still guard the kept position while v1 orders end", () => {
+    const r = running();
+    // Long 1 @ 100. Stop loss 10%: giá 89 chạm trong lúc chờ lệnh cũ.
+    const sl = { ...dca, stopLossPct: "10" };
+    const waiting = must(apply(spotDca, sl, r.state, v2));
+    expect(waiting.retiring).toBeDefined();
+    const hit = spotDca.step(sl, waiting, tick("vETH_vUSDC", "89"), v2);
+    expect(places(hit.actions)).toEqual([]);
+    expect(hit.actions).toContainEqual({ type: "stop", reason: ReasonCode.stopLoss, close: true });
+    const ml = { ...dca, maxLoss: "5" };
+    const paused = spotDca.step(
+      ml,
+      must(apply(spotDca, ml, r.state, v2)),
+      tick("vETH_vUSDC", "94"),
+      v2,
+    );
+    expect(places(paused.actions)).toEqual([]);
+    expect(paused.actions).toContainEqual({ type: "pause", reason: ReasonCode.botMaxLoss });
+    // Không chạm: chỉ gửi huỷ lại lệnh cũ, chưa dựng gì.
+    const calm = spotDca.step(
+      dca,
+      must(apply(spotDca, dca, r.state, v2)),
+      tick("vETH_vUSDC", "99"),
+      v2,
+    );
+    expect(places(calm.actions)).toEqual([]);
+    expect(calm.actions.every((a) => a.type === "cancel")).toBe(true);
+  });
+
   it("starts like a new bot when no cycle holds a position, keeping the session ledger", () => {
     const idle = {
       ...spotDca.initialState(dca),
@@ -716,6 +787,48 @@ describe("AI DCA: version apply", () => {
     expect(sent.state.ledger.position).toBe("0.001");
   });
 
+  it("N2: max loss and the hard stop still guard the kept position while v1 orders end", () => {
+    const waiting = must(apply(adaptiveDca, c, inCycle(), ctx));
+    // Hard stop (mặc định của schema) chạm: lệnh đóng market reduce-only, không dựng lệnh mới.
+    const drop = String(80000 * (1 - Number(c.hardStopLossPct) / 100) - 100);
+    const hard = adaptiveDca.step(c, waiting, tick("BTC-USD", drop), ctx);
+    const placed = places(hard.actions);
+    expect(placed).toEqual([
+      expect.objectContaining({ type: "market", side: "sell", reduceOnly: true }),
+    ]);
+    const small = { ...c, maxLoss: "1" };
+    const stopped = adaptiveDca.step(
+      small,
+      must(apply(adaptiveDca, small, inCycle(), ctx)),
+      tick("BTC-USD", "79000"),
+      ctx,
+    );
+    expect(places(stopped.actions)).toEqual([]);
+    expect(stopped.actions).toContainEqual({
+      type: "stop",
+      reason: ReasonCode.botMaxLoss,
+      close: true,
+    });
+  });
+
+  it("N1: a flat apply past max loss never starts a cycle", () => {
+    const small = { ...c, maxLoss: "1" };
+    const flat: AdaptiveDcaState = {
+      ...adaptiveDca.initialState(small),
+      lastPrice: "80000",
+      atr: "400",
+      rsi: 10,
+      regime: "SIDEWAY",
+      ledger: { ...emptyLedger(), realized: "-2" },
+    };
+    const applied = must(apply(adaptiveDca, small, flat, ctx));
+    const out = adaptiveDca.step(small, applied, { type: "timer", at: 1 }, ctx);
+    expect(places(out.actions)).toEqual([]);
+    expect(out.actions).toContainEqual(
+      expect.objectContaining({ type: "stop", reason: ReasonCode.botMaxLoss }),
+    );
+  });
+
   it("waits while an entry or exit order is in flight, or the direction flips", () => {
     expect(apply(adaptiveDca, c, { ...inCycle(), phase: "entering", baseId: "b" }, ctx)).toBeNull();
     expect(apply(adaptiveDca, c, { ...inCycle(), phase: "exiting", exitId: "x" }, ctx)).toBeNull();
@@ -874,6 +987,18 @@ describe("funding arb: version apply keeps both legs", () => {
     ).toEqual(["vBTC_vUSDC sell 0.02 false", "BTC-USD buy 0.01 true"]);
   });
 
+  it("N1: a flat apply past max loss never enters, and pauses", () => {
+    const flat = {
+      ...fundingArb.initialState(c),
+      prices: held().prices,
+      spot: { ...emptyLedger(), realized: "-150" },
+    };
+    const applied = must(apply(fundingArb, c, flat, ctx));
+    const out = fundingArb.step(c, applied, funding("0.05"), ctx);
+    expect(places(out.actions)).toEqual([]);
+    expect(out.actions).toEqual([{ type: "pause", reason: ReasonCode.botMaxLoss }]);
+  });
+
   it("waits while orders are in flight, and does not enter while a version waits", () => {
     expect(
       apply(fundingArb, c, { ...held(), phase: "opening", pending: { a: "spot" } }, ctx),
@@ -974,6 +1099,25 @@ describe("copy trade: version apply keeps the copied position", () => {
     expect(places(cut.actions)).toEqual([
       expect.objectContaining({ side: "sell", quantity: "0.01", reduceOnly: true }),
     ]);
+  });
+
+  it("N1: a carried loss past max loss never opens a copy, and pauses", () => {
+    const flat = {
+      ...copying(),
+      markets: {
+        "BTC-USD": {
+          ...btc,
+          ledger: { ...emptyLedger(), realized: "-150" },
+          leaderPos: "0",
+          tracking: false,
+          target: "0",
+        },
+      },
+    };
+    const applied = must(apply(copyTrade, c, flat, ctx));
+    const out = copyTrade.step(c, applied, leader("buy", "1", "1"), ctx);
+    expect(places(out.actions)).toEqual([]);
+    expect(out.actions).toContainEqual({ type: "pause", reason: ReasonCode.botMaxLoss });
   });
 
   it("waits while a copy order is in flight", () => {

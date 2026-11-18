@@ -483,10 +483,17 @@ function stepDca(
       ? { actions: [], state: { ...s, resumeOnTick: true } }
       : resumeDca(c, { ...s, lastPrice: p }, ctx);
   }
-  if (e.type === "tick" && e.market === c.market && s.phase === "halted" && s.resumeOnTick === true)
-    return isRetiring(s.retiring)
-      ? { actions: [], state: { ...s, lastPrice: e.price } }
-      : resumeDca(c, { ...s, lastPrice: e.price }, ctx);
+  if (
+    e.type === "tick" &&
+    e.market === c.market &&
+    s.phase === "halted" &&
+    s.resumeOnTick === true
+  ) {
+    const state = { ...s, lastPrice: e.price };
+    // Lệnh version cũ chưa kết thúc (#223): chưa dựng lệnh, nhưng stop loss / max loss vẫn canh vị thế (N2).
+    if (isRetiring(s.retiring)) return guards(c, state, e.price) ?? { actions: [], state };
+    return resumeDca(c, state, ctx);
+  }
   // Đã dừng: chỉ nhận fill (khớp trễ vào sổ cái), orderDone và orderReject.
   if (
     s.phase === "halted" &&
@@ -530,6 +537,12 @@ function stepDca(
       if (gate !== null && !gateOpen(c, gate, prev, e.price, e.at)) {
         return { actions: [], state: { ...state, phase: "waiting_entry" } };
       }
+      // Sổ cái giữ qua lần sửa (B2): max loss đã chạm thì không mở Cycle, pause lại, không đặt lệnh (DEC-240 (a), #223 N1).
+      if (c.maxLoss !== undefined && netPnl(state.ledger, e.price).lte(dec(c.maxLoss).neg()))
+        return {
+          actions: [{ type: "pause", reason: ReasonCode.botMaxLoss }],
+          state: { ...state, phase: "halted" },
+        };
       return startCycle(c, state, e.price, ctx);
     }
     return guards(c, state, e.price) ?? { actions: [], state };
@@ -861,6 +874,7 @@ function adoptCarried(c: DcaBotConfig, s: DcaBotState, ctx: StepContext): StepRe
   return {
     actions: [
       { type: "flag", needsAttention: true },
+      // Câu chữ PM duyệt 2026-11-18 (#223).
       {
         type: "log",
         decision: "Waiting",

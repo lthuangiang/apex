@@ -662,6 +662,12 @@ function stepGrid(
       if (!entryReady(entry, c.direction, prev, e.price)) {
         return { actions: [], state: { ...state, phase: "waiting_trigger" } };
       }
+      // Sổ cái giữ qua lần sửa (B2): max loss đã chạm thì không khởi động, pause lại, không đặt lệnh (DEC-240 (a), #223 N1).
+      if (netPnl(state.ledger, e.price).lte(dec(c.maxLoss).neg()))
+        return {
+          actions: [{ type: "pause", reason: ReasonCode.botMaxLoss }],
+          state: { ...state, phase: "halted" },
+        };
       return start(c, state, e.price, ctx);
     }
     const g = guards(c, state, e.price);

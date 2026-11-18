@@ -965,10 +965,17 @@ function stepAdca(
   }
   // Version mới vừa áp khi còn vị thế (#223): giá đầu tiên dựng lại take profit và lệnh DCA kế tiếp như Resume, sau khi
   // lệnh version cũ đã kết thúc.
-  if (e.type === "tick" && e.market === c.market && s.phase === "halted" && s.resumeOnTick === true)
-    return isRetiring(s.retiring)
-      ? none({ ...s, lastPrice: e.price })
-      : resumeAdca(c, { ...s, lastPrice: e.price }, ctx);
+  if (
+    e.type === "tick" &&
+    e.market === c.market &&
+    s.phase === "halted" &&
+    s.resumeOnTick === true
+  ) {
+    const state = { ...s, lastPrice: e.price };
+    if (!isRetiring(s.retiring)) return resumeAdca(c, state, ctx);
+    // Lệnh version cũ chưa kết thúc: chưa dựng lệnh, nhưng max loss / hard stop vẫn canh vị thế (#223 N2).
+    return guards(c, { ...state, phase: "in_cycle" }, ctx) ?? none(state);
+  }
   if (s.phase === "halted" && e.type !== "fill" && e.type !== "orderDone") return none(s);
   switch (e.type) {
     case "tick": {
@@ -1119,6 +1126,7 @@ function adoptCarried(
   return {
     actions: [
       { type: "flag", needsAttention: true },
+      // Câu chữ PM duyệt 2026-11-18 (#223).
       {
         type: "log",
         decision: "Waiting",

@@ -146,6 +146,12 @@ function open(
   ctx: StepContext,
   at: number,
 ): StepResult<FundingArbState> {
+  // Sổ cái giữ qua lần sửa (B2): max loss đã chạm thì không vào, pause lại, không đặt lệnh (DEC-240 (a), #223 N1).
+  if (totalPnl(c, s)?.lte(dec(c.maxLoss).neg()) === true)
+    return {
+      actions: [{ type: "pause", reason: ReasonCode.botMaxLoss }],
+      state: { ...s, phase: "halted" },
+    };
   const price = s.prices[c.perpMarket];
   const spotPrice = s.prices[c.spotMarket];
   const spotRules = ctx.rules[c.spotMarket];

@@ -209,7 +209,7 @@ function place(
   };
 }
 
-/** Câu nhật ký khi bỏ qua lệnh mở / tăng trong lúc version mới chờ áp (#223 M5; câu chữ mới, chờ duyệt). */
+/** Câu nhật ký khi bỏ qua lệnh mở / tăng trong lúc version mới chờ áp (#223 M5; câu chữ PM duyệt 2026-11-18). */
 export const VERSION_PENDING_SKIP = "Not copied: new settings are being applied.";
 
 /** Bỏ lệnh mở đang chờ: giữ vị thế hiện tại làm mục tiêu, không đuổi theo. */
@@ -245,7 +245,14 @@ function reconcile(
       actions: [log("Skipped", VERSION_PENDING_SKIP)],
       state: { ...settleOpen(s), skipped: s.skipped + 1 },
     };
-  // Mở hoặc tăng.
+  // Mở hoặc tăng. Sổ cái giữ qua lần sửa (B2): max loss (tổng mọi market) đã chạm thì không mở, pause lại, không đặt lệnh
+  // (DEC-240 (a), #223 N1).
+  const mark = s.lastPrice ?? s.refPrice;
+  if (mark !== null && netPnl(s.ledger, mark).lte(dec(c.maxLoss).neg()))
+    return {
+      actions: [{ type: "pause", reason: ReasonCode.botMaxLoss }],
+      state: { ...settleOpen(s), phase: "halted" },
+    };
   const ref = c.leaderSource === "sodex" ? s.refPrice : s.lastPrice;
   if (ref === null) return none(settleOpen(s));
   if (now - s.refAt > COPY.maxSignalAgeMs)
