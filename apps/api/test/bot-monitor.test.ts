@@ -225,6 +225,20 @@ describe("GET /api/v1/admin/ops · Bot Monitor", () => {
     );
     const archived = await bot("BM archived", "archived");
     await outbox(`user.${accountId}.bot`, { botId: archived, state: "stopped" }, 2 * DAY);
+    // Lệch vị thế thật / sổ cái (#241): team_incident position_mismatch → cảnh báo "Position" đang mở; khớp lại → resolved.
+    // Sự cố một lần khác không thành cảnh báo.
+    const incident = (botId: string, kind: string, ago: number, detail: string) =>
+      outbox(
+        "jobs.team_ops",
+        { type: "team_incident", kind, botId, market: "BTC-USD", detail },
+        ago,
+      );
+    const mismatched = await bot("BM mismatch", "running");
+    await incident(mismatched, "position_mismatch", HOUR, "real 5 vs ledger 2 · cause trades");
+    await incident(mismatched, "late_fill", 30 * 60_000, "x · SoDEX filled 1, bot counted 0");
+    const matched = await bot("BM matched", "running");
+    await incident(matched, "position_mismatch", 3 * HOUR, "real 5 vs ledger 2 · cause trades");
+    await incident(matched, "position_matched", 2 * HOUR, "real 2 matches the ledger");
 
     const v = await view(client);
     const mine = v.bots.filter((b) => b.userId === userId);
@@ -263,6 +277,18 @@ describe("GET /api/v1/admin/ops · Bot Monitor", () => {
       health: "healthy",
       reasons: [],
       alert: { status: "resolved" },
+    });
+    expect(of(mismatched)).toMatchObject({
+      health: "problem",
+      alert: {
+        invariant: "Position",
+        status: "active",
+        at: at(HOUR).toISOString(),
+        detail: "BTC-USD: real 5 vs ledger 2 · cause trades",
+      },
+    });
+    expect(of(matched)).toMatchObject({
+      alert: { invariant: "Position", status: "resolved", at: at(2 * HOUR).toISOString() },
     });
     expect(of(stopped)).toMatchObject({ health: "not_running", reasons: [] });
     expect(of(stoppedAlert).health).toBe("problem");

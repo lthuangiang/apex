@@ -206,3 +206,34 @@ Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegr
 | `team_mcp_daily_limit` | Có user (không phải team) chạm 5.000 lượt / ngày trong 30 phút qua | "MCP daily limit reached by {n user / n users}: {emails}." (tối đa 3 email đã che) |
 
 Tin không bao giờ chứa token id hay client id.
+
+### 13.2 Sự cố tiền thật và sức khoẻ engine (#241, DEC-TBD-team-incident-alerts)
+
+Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegram của thành viên team bật nhóm `teamOps`). Hai type: `team_incident` (có `kind` và mức độ) và `team_incident_digest`.
+
+| Mức | `kind` | Khi nào | Nguồn |
+|---|---|---|---|
+| critical | `position_mismatch` | Lệch vị thế bậc 2 (DEC-306), cả `cause` trades / version | engine, cùng transaction với dòng Decisions |
+| critical | `close_failed` | "Couldn't close your position" (DEC-302) | engine |
+| critical | `unknown_gave_up` | Lệnh `unknown` bị bỏ cuộc sau 10 phút (DEC-303) | engine |
+| critical | `late_fill` | "Fill found after the order ended" | engine |
+| critical | `paused_errors` | Pause `ORDER_REJECTED` (margin DEC-290, `market_info_unavailable`, signer, reduce-only) hoặc `API_KEY_UNUSABLE` | engine |
+| info | `position_matched` | Vị thế khớp lại sổ cái | engine |
+| warning | `shard_lost` | ≥ 1 lần mất shard trong 5 phút | bộ đếm Redis theo phút (engine) → scheduler |
+| warning | `tick_slow` | `tick slow` ≥ 3 lần trong 10 phút | bộ đếm Redis → scheduler |
+| warning | `reads_skipped` | Đọc nền bị phần dự trữ chặn ≥ 100 lời gọi trong một phút (xét 5 phút) | bộ đếm Redis → scheduler |
+| warning | `ws_closes` | WS user stream đóng > 10 lần / giờ ở một account | `sodex_calls` → scheduler |
+| warning | `sodex_errors` | ≥ 100 lời gọi REST trong 10 phút và ≥ 10% timeout / network / unreadable / HTTP 5xx | `sodex_calls` → scheduler |
+
+- Chỉ bot tiền thật. Engine không chờ thêm I/O nào: dòng outbox nằm trong transaction đang có; bộ đếm Redis tăng không chờ, lỗi thì bỏ qua.
+- **Chặn lặp** (jobs, Redis `SET NX PX`): critical / info 1 tin / (loại, bot, market) / 10 phút; warning 1 tin / loại / 30 phút. Redis lỗi thì vẫn gửi.
+- **Tin tổng hợp:** mỗi ngày từ 01:00 UTC (08:00 giờ Việt Nam), số lần 24 giờ qua theo loại (kể cả lần bị chặn lặp), nặng nhất trước; không có gì thì "No incidents in the last 24 h.".
+- **Nội dung:** mức độ + loại, chiến lược · market · `bot ··1a2b3c4d`, số liệu, link Bot page / SoDEX Debugger (lọc theo bot) / Bot Monitor. Nút: Bot Monitor; `sodex_errors` / `ws_closes` mở SoDEX Debugger lọc lỗi. Không bao giờ email, ví đầy đủ, key, tên bot; account chỉ ở dạng che.
+- Ví dụ:
+  ```
+  🚨 CRITICAL · Position doesn't match
+  Volume Builder · BTC-USD · bot ··34cd56ef
+  real 5 vs ledger 2 · cause trades
+  Bot page · SoDEX Debugger · Bot Monitor
+  ```
+- Bot Monitor: lệch vị thế hiện ở cột Latest alert như cảnh báo "Position".

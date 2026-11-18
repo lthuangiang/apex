@@ -21,7 +21,7 @@ import { z } from "zod";
 import { runImport } from "./import";
 import { handleNotify } from "./notify";
 import { relayOnce } from "./outbox";
-import { handleTeamOps, TEAM_OPS_SUBJECT } from "./team-ops";
+import { handleTeamOps, redisIncidentStore, TEAM_OPS_SUBJECT } from "./team-ops";
 import {
   handleTelegram,
   markFailed,
@@ -109,12 +109,24 @@ const stopNotify = await consume(
 
 // Báo team qua Telegram (mục 13, DEC-184): fan-out sự kiện cho từng thành viên team.
 await ensureConsumer(nc, "jobs-team-ops", TEAM_OPS_SUBJECT);
+const incidentStore = redisIncidentStore(redis);
 const stopTeamOps = await consume(
   js,
   "jobs-team-ops",
   TEAM_OPS_SUBJECT,
   async (payload) => {
-    await handleTeamOps({ db, telegramEnabled: env.TELEGRAM_ENABLED }, payload);
+    await handleTeamOps(
+      {
+        db,
+        telegramEnabled: env.TELEGRAM_ENABLED,
+        // Sự cố tiền thật (#241): chặn lặp + đếm cho tin tổng hợp.
+        incidents: incidentStore,
+        warn: (msg, data) => {
+          log.warn(data, msg);
+        },
+      },
+      payload,
+    );
   },
   (msg, extra) => {
     log.warn(extra, msg);

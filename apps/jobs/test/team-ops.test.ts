@@ -236,3 +236,134 @@ describe("team ops fan-out", () => {
     expect(after?.deliveryStatus).toBe("failed");
   });
 });
+
+describe("team incidents (#241)", () => {
+  /** Redis giả: khoá chặn lặp có hạn, bộ đếm. */
+  const memoryStore = (now: () => number) => {
+    const keys = new Map<string, number>();
+    const counts = new Map<string, number>();
+    return {
+      keys,
+      counts,
+      store: {
+        claim: (key: string, ms: number) => {
+          const until = keys.get(key);
+          if (until !== undefined && until > now()) return Promise.resolve(false);
+          keys.set(key, now() + ms);
+          return Promise.resolve(true);
+        },
+        release: (key: string) => {
+          keys.delete(key);
+          return Promise.resolve();
+        },
+        incr: (key: string) => {
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+          return Promise.resolve();
+        },
+      },
+    };
+  };
+
+  it("sends a critical incident once per bot per 10 minutes, counts every one, and never adds PII", async () => {
+    const lead = await user({ role: "team", telegram: "active" });
+    const customer = await user({ email: "secret.person@example.com" });
+    const live = await bot(customer, "live");
+    let clock = Date.parse("2026-11-18T03:00:00Z");
+    const mem = memoryStore(() => clock);
+    const deps = { db, telegramEnabled: true, incidents: mem.store, now: () => clock };
+    const e = {
+      type: "team_incident" as const,
+      kind: "position_mismatch" as const,
+      botId: live,
+      market: "BTC-USD",
+      detail: "real 5 vs ledger 2 · cause trades",
+    };
+    expect(await handleTeamOps(deps, e)).toBeGreaterThan(0);
+    // Lặp trong 10 phút: không gửi, vẫn đếm.
+    clock += 5 * 60_000;
+    expect(await handleTeamOps(deps, e)).toBe(0);
+    // Bot khác / market khác: không bị chặn chung.
+    const other = await bot(customer, "live");
+    expect(await handleTeamOps(deps, { ...e, botId: other })).toBeGreaterThan(0);
+    clock += 6 * 60_000;
+    expect(await handleTeamOps(deps, e)).toBeGreaterThan(0);
+    const hour = Math.floor(Date.parse("2026-11-18T03:00:00Z") / 3_600_000);
+    expect(mem.counts.get(`team:incident_count:${String(hour)}:position_mismatch`)).toBe(4);
+
+    const rows = (await queuedFor([lead])).filter((r) => r.type === "team_incident");
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.payload).toEqual({
+      kind: "position_mismatch",
+      severity: "critical",
+      botId: live,
+      strategy: "futures_grid",
+      market: "BTC-USD",
+      detail: "real 5 vs ledger 2 · cause trades",
+    });
+    const text = JSON.stringify(rows.map((r) => r.payload));
+    expect(text).not.toContain("secret.person");
+    expect(text.toLowerCase()).not.toContain(WALLET.toLowerCase());
+    expect(text).not.toContain("BTC <Grid>");
+  });
+
+  it("throttles warnings per type for 30 minutes and releases the claim when the fan-out fails", async () => {
+    await user({ role: "team", telegram: "active" });
+    let clock = Date.parse("2026-11-18T05:00:00Z");
+    const mem = memoryStore(() => clock);
+    const deps = { db, telegramEnabled: true, incidents: mem.store, now: () => clock };
+    const slow = { type: "team_incident" as const, kind: "tick_slow" as const, detail: "3 slow" };
+    expect(await handleTeamOps(deps, slow)).toBeGreaterThan(0);
+    clock += 29 * 60_000;
+    expect(await handleTeamOps(deps, slow)).toBe(0);
+    // Loại khác không bị chặn chung.
+    expect(
+      await handleTeamOps(deps, { ...slow, kind: "shard_lost", detail: "1 shard lost" }),
+    ).toBeGreaterThan(0);
+    clock += 2 * 60_000;
+    // Fan-out lỗi: khoá được nhả để lần giao lại vẫn gửi.
+    const broken = {
+      ...deps,
+      db: {
+        select: () => {
+          throw new Error("db down");
+        },
+      } as unknown as Db,
+    };
+    await expect(handleTeamOps(broken, slow)).rejects.toThrow("db down");
+    expect(mem.keys.has("team:incident:tick_slow")).toBe(false);
+    expect(await handleTeamOps(deps, slow)).toBeGreaterThan(0);
+  });
+
+  it("still sends when Redis fails, and counts but sends nothing when Telegram is off", async () => {
+    const lead = await user({ role: "team", telegram: "active" });
+    const failing = {
+      claim: () => Promise.reject(new Error("redis down")),
+      release: () => Promise.resolve(),
+      incr: () => Promise.reject(new Error("redis down")),
+    };
+    const warned: string[] = [];
+    const e = { type: "team_incident" as const, kind: "ws_closes" as const, detail: "12 closes" };
+    expect(
+      await handleTeamOps(
+        { db, telegramEnabled: true, incidents: failing, warn: (m) => warned.push(m) },
+        e,
+      ),
+    ).toBeGreaterThan(0);
+    expect(warned).toEqual(["team incident count failed", "team incident throttle failed"]);
+    const mem = memoryStore(() => 0);
+    const before = (await queuedFor([lead])).length;
+    expect(await handleTeamOps({ db, telegramEnabled: false, incidents: mem.store }, e)).toBe(0);
+    expect(mem.counts.size).toBe(1);
+    expect(await queuedFor([lead])).toHaveLength(before);
+  });
+
+  it("sends the digest counts as they are", async () => {
+    const lead = await user({ role: "team", telegram: "active" });
+    await handleTeamOps(
+      { db, telegramEnabled: true },
+      { type: "team_incident_digest", counts: { tick_slow: 3, late_fill: 1 } },
+    );
+    const [d] = (await queuedFor([lead])).filter((r) => r.type === "team_incident_digest");
+    expect(d?.payload).toEqual({ tick_slow: 3, late_fill: 1 });
+  });
+});

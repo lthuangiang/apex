@@ -29,6 +29,7 @@ import { HttpGateway, httpSigner, marketInfo } from "./http-gateway";
 import { withLastUsed } from "./last-used";
 import { PaperGateway } from "./paper-gateway";
 import { engineSodexClients } from "./sodex-clients";
+import { redisEngineHealth } from "./team-incidents";
 
 // engine: chạy bot cho các shard mình giữ (ARCHITECTURE.md mục 3.3). Giá từ NATS (marketdata), fill từ
 // user stream SoDEX của account thuộc shard. SIGTERM: trả lease, chờ việc dở (stop_grace_period 30 s).
@@ -218,6 +219,8 @@ async function syncStreams() {
     for (const kind of engines) openStream(account, kind);
 }
 
+// Bộ đếm sức khoẻ engine cho báo team (#241): Redis theo phút, không chờ, lỗi thì bỏ qua.
+const health = redisEngineHealth(redis);
 // Độ trễ event loop (DEC-302): ghi kèm log `tick slow` và mỗi phút một dòng `event loop delay`.
 const loopDelay = monitorEventLoopDelay({ resolution: 20 });
 loopDelay.enable();
@@ -230,7 +233,10 @@ setInterval(() => {
   loopDelay.reset();
   // Đọc nền bị phần dự trữ cho lệnh ghi chặn trong phút vừa qua (DEC-310).
   const skipped = takeSkipped();
-  if (skipped > 0) log.warn({ skipped }, "engine reads skipped: reserve");
+  if (skipped > 0) {
+    log.warn({ skipped }, "engine reads skipped: reserve");
+    health("reads_skipped", skipped);
+  }
 }, 60_000).unref();
 // Bot paper (DEC-105): cổng mô phỏng riêng, không có client SoDEX hay signer.
 const paper = new PaperGateway({ db, now: () => Date.now() });
@@ -246,6 +252,7 @@ const engine = new Engine({
   tickWaitMs: env.ENGINE_TICK_WAIT_MS,
   lookupBudget: env.ENGINE_LOOKUP_BUDGET,
   loopDelay: loopDelayMs,
+  health,
   rules: (market) => marketInfo(rest, market),
   builderId: sodex.builderId,
   builderExempt: sodex.builderExempt,

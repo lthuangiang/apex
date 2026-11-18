@@ -9,9 +9,13 @@ import {
   type Db,
 } from "@drift/db";
 import {
+  teamIncidentCountKey,
+  teamIncidentThrottle,
   teamMaskAddress,
   teamMaskEmail,
   NOTIFICATION_DEFAULTS,
+  TEAM_INCIDENT_RULES,
+  TEAM_INCIDENT_SEVERITY,
   teamOpsEventSchema,
   UserRole,
   type TeamOpsEvent,
@@ -31,6 +35,43 @@ interface Subject {
   data: Record<string, string | number | null>;
 }
 
+/**
+ * Redis cho sự cố tiền thật (#241): chặn lặp bằng SET NX PX (như DEC-225) và bộ đếm theo giờ cho tin tổng hợp.
+ */
+export interface IncidentStore {
+  /** Đặt khoá nếu chưa có, hết hạn sau `ms`; true = vừa đặt (được gửi). */
+  claim(key: string, ms: number): Promise<boolean>;
+  /** Nhả khoá chặn lặp (ghi fan-out lỗi: lần giao lại vẫn gửi được). */
+  release(key: string): Promise<void>;
+  /** Tăng bộ đếm, đặt hạn nếu mới. */
+  incr(key: string, ttlMs: number): Promise<void>;
+}
+
+export function redisIncidentStore(redis: {
+  set(key: string, value: string, px: "PX", ms: number, nx: "NX"): Promise<string | null>;
+  del(key: string): Promise<number>;
+  multi(): {
+    incr(key: string): unknown;
+    pexpire(key: string, ms: number, nx: "NX"): unknown;
+    exec(): Promise<unknown>;
+  };
+}): IncidentStore {
+  return {
+    async claim(key, ms) {
+      return (await redis.set(key, "1", "PX", ms, "NX")) === "OK";
+    },
+    async release(key) {
+      await redis.del(key);
+    },
+    async incr(key, ttlMs) {
+      const m = redis.multi();
+      m.incr(key);
+      m.pexpire(key, ttlMs, "NX");
+      await m.exec();
+    },
+  };
+}
+
 /** Dữ liệu (đã che) của sự kiện; null = không báo (tài khoản team, bot paper, không tìm thấy). */
 async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
   // Theo dõi MCP (DEC-225): chỉ số đếm; daily limit thì email đã che, tối đa 3. Không bao giờ token id /
@@ -38,6 +79,30 @@ async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
   if (e.type === "team_mcp_tool_errors")
     return { data: { calls: e.calls, errors: e.errors, pct: e.pct, tool: e.tool } };
   if (e.type === "team_mcp_introspect_failing") return { data: { failures: e.failures } };
+  // Sự cố tiền thật (#241): bot id (cho link), chiến lược, market, số liệu ngắn. Không email / ví đầy đủ / key / tên bot.
+  if (e.type === "team_incident") {
+    const b =
+      e.botId === undefined
+        ? undefined
+        : (
+            await db
+              .select({ strategy: bots.strategy, market: bots.market })
+              .from(bots)
+              .where(eq(bots.id, e.botId))
+              .limit(1)
+          )[0];
+    return {
+      data: {
+        kind: e.kind,
+        severity: TEAM_INCIDENT_SEVERITY[e.kind],
+        botId: e.botId ?? null,
+        strategy: b?.strategy ?? null,
+        market: e.market ?? b?.market ?? null,
+        detail: e.detail,
+      },
+    };
+  }
+  if (e.type === "team_incident_digest") return { data: e.counts };
   // Bất biến tiền thật (DEC-274): báo cả bot paper (ghi rõ mode); không ví / key / email.
   if (e.type === "team_invariant") {
     const [b] = await db
@@ -125,12 +190,48 @@ async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
   };
 }
 
-export async function handleTeamOps(
-  deps: { db: Db; telegramEnabled: boolean },
-  raw: unknown,
-): Promise<number> {
-  if (!deps.telegramEnabled) return 0;
+export interface TeamOpsDeps {
+  db: Db;
+  telegramEnabled: boolean;
+  /** Chặn lặp + bộ đếm của sự cố (#241). Không truyền thì không chặn lặp, không đếm. */
+  incidents?: IncidentStore;
+  now?: () => number;
+  warn?: (msg: string, data: Record<string, unknown>) => void;
+}
+
+export async function handleTeamOps(deps: TeamOpsDeps, raw: unknown): Promise<number> {
   const e = teamOpsEventSchema.parse(raw);
+  if (e.type !== "team_incident" || deps.incidents === undefined) {
+    if (!deps.telegramEnabled) return 0;
+    return fanOut(deps, e);
+  }
+  // Sự cố (#241): đếm mọi lần (kể cả bị chặn lặp) cho tin tổng hợp, rồi chặn lặp theo loại / bot. Redis lỗi thì vẫn gửi
+  // (báo thừa hơn báo thiếu), không bao giờ ném vì Redis.
+  const store = deps.incidents;
+  const hour = Math.floor((deps.now?.() ?? Date.now()) / 3_600_000);
+  try {
+    await store.incr(teamIncidentCountKey(hour, e.kind), TEAM_INCIDENT_RULES.countTtlMs);
+  } catch (error) {
+    deps.warn?.("team incident count failed", { err: String(error), kind: e.kind });
+  }
+  if (!deps.telegramEnabled) return 0;
+  const t = teamIncidentThrottle(e);
+  let claimed = false;
+  try {
+    if (!(await store.claim(t.key, t.ms))) return 0;
+    claimed = true;
+  } catch (error) {
+    deps.warn?.("team incident throttle failed", { err: String(error), kind: e.kind });
+  }
+  try {
+    return await fanOut(deps, e);
+  } catch (error) {
+    if (claimed) await store.release(t.key).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function fanOut(deps: TeamOpsDeps, e: TeamOpsEvent): Promise<number> {
   const subject = await subjectOf(deps.db, e);
   if (subject === null) return 0;
   // Thành viên team có Telegram đang hoạt động.
