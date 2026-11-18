@@ -293,6 +293,7 @@ export function StateBox({
   onRetry,
   onClear,
   emptyTitle,
+  emptyBody,
   onShow7d,
 }: {
   kind: "loading" | "error" | "empty" | "timeout";
@@ -302,6 +303,8 @@ export function StateBox({
   /** Trạng thái timeout: chuyển sang 7 ngày, giữ các bộ lọc khác. */
   onShow7d?: () => void;
   emptyTitle?: string;
+  /** Câu dưới tiêu đề trạng thái rỗng (mặc định: câu của các tab bot thật). */
+  emptyBody?: string;
 }) {
   const t = useTranslations("signalAnalysis.states");
   if (kind === "loading")
@@ -370,7 +373,7 @@ export function StateBox({
   return (
     <div className="flex flex-col items-center gap-2 rounded-card border border-border bg-surface px-4 py-12 text-center">
       <strong className="text-base">{emptyTitle}</strong>
-      <span className="max-w-md text-sm text-muted">{t("emptyBody")}</span>
+      <span className="max-w-md text-sm text-muted">{emptyBody ?? t("emptyBody")}</span>
       {onClear === undefined ? null : (
         <button
           type="button"
