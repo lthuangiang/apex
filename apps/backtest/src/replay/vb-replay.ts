@@ -1,7 +1,7 @@
 import { Decimal } from "@drift/shared";
 import { FARM_SIGNAL, FARM_WEIGHTS } from "@drift/strategies";
 
-// Replay các luật tín hiệu Volume Builder ứng viên trên lượt vào thật (#235, một phần #220; DEC-TBD-vb-replay).
+// Replay các luật tín hiệu Volume Builder ứng viên trên lượt vào thật (#235, một phần #220; DEC-316).
 // Hàm thuần, không I/O: nhận lượt vào thật đã ghép với kết quả lượt (fill thật) và snapshot tín hiệu (DEC-311), trả về
 // thống kê cho từng luật và PASS / FAIL theo cổng của #235. Đây là phân tích quá khứ, không phải dự báo.
 
