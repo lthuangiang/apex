@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Snapshot báo giá của Market Making (`volume_maker`, #230, DEC-TBD-mm-quote-snapshot): engine ghi vào
+// Snapshot báo giá của Market Making (`volume_maker`, #230, DEC-312): engine ghi vào
 // `bot_events.payload.quote` của các event quyết định về báo giá ("Order requests", "Smart quoting adjusted" / "Smart
 // quoting back to normal", "Quotes paused on a fast move", "Quoting again after a fast move", "Closing at the best
 // price", "Ask pulled" / "Bid pulled", "Position cut") để trang team "Signal Analysis › MM" (#220) phân tích sau.
