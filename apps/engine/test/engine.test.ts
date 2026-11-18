@@ -277,6 +277,19 @@ let redisC: StartedTestContainer;
 let db: Db;
 let pool: ReturnType<typeof createDb>["pool"];
 const redises: Redis[] = [];
+/** Sự cố báo team của một bot (outbox `jobs.team_ops`, type team_incident, #241), cũ nhất trước. */
+const teamIncidents = async (botId: string) => {
+  const { sql, asc } = await import("drizzle-orm");
+  return (
+    await db
+      .select({ payload: outbox.payload })
+      .from(outbox)
+      .where(
+        sql`${outbox.topic} = 'jobs.team_ops' and ${outbox.payload}->>'type' = 'team_incident' and ${outbox.payload}->>'botId' = ${botId}`,
+      )
+      .orderBy(asc(outbox.createdAt), asc(outbox.id))
+  ).map((r) => r.payload as { kind: string; market?: string; detail: string });
+};
 const newRedis = () => {
   const r = new Redis(`redis://${redisC.getHost()}:${String(redisC.getMappedPort(6379))}`);
   redises.push(r);
@@ -1717,6 +1730,16 @@ describe("engine", () => {
     const b = await botState(botId);
     expect(b?.state).toBe("paused");
     expect(b?.reasonCode).toBe(ReasonCode.apiKeyUnusable);
+    // Báo team một lần qua pauseAccount (#241).
+    expect(await teamIncidents(botId)).toEqual([
+      {
+        type: "team_incident",
+        kind: "paused_errors",
+        botId,
+        market: "vBTC_vUSDC",
+        detail: "API_KEY_UNUSABLE",
+      },
+    ]);
     // Lệnh chưa rời DRIFT: không để lại dòng `unknown` cần đối soát.
     const { eq } = await import("drizzle-orm");
     const left = await db.select().from(orders).where(eq(orders.botId, botId));
@@ -3697,6 +3720,12 @@ describe("engine", () => {
       rows.some((o) => o.status === "rejected" && o.rejectCode === "INSUFFICIENT_BALANCE"),
     ).toBe(true);
     expect(real.received).toHaveLength(0);
+    // Bot paper không bao giờ báo team (#241), kể cả khi lệnh bị từ chối làm bot pause.
+    expect(await botState(botId)).toMatchObject({
+      state: "paused",
+      reasonCode: ReasonCode.orderRejected,
+    });
+    expect(await teamIncidents(botId)).toEqual([]);
     await e.stop();
     await stopPaperBots();
   });
@@ -4809,6 +4838,11 @@ describe("insufficient margin rejects (margin guard)", () => {
           "Paused: not enough margin on SoDEX. Add funds or lower the order size or leverage, then resume.",
       ),
     ).toHaveLength(1);
+    // Báo team một lần (#241): bot id, market, lý do; không email / ví / key.
+    const incidents = await teamIncidents(botId);
+    expect(incidents).toHaveLength(1);
+    expect(incidents[0]).toMatchObject({ kind: "paused_errors", market: "BTC-USD" });
+    expect(incidents[0]?.detail).toMatch(/^ORDER_REJECTED · insufficient margin \(\d rejects\)$/);
     // Đang pause: không gửi thêm lệnh nào dù giá và đồng hồ chạy.
     await step(e, 10);
     expect(gw.received).toHaveLength(sent);
@@ -5892,6 +5926,14 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
     expect(lines.map((l) => l.why)).toEqual([
       "SoDEX didn't receive the close order (key_unusable). Your STOPK-USD position is still open — close it on SoDEX.",
     ]);
+    expect(await teamIncidents(botId)).toEqual([
+      {
+        type: "team_incident",
+        kind: "close_failed",
+        botId,
+        detail: "STOPK-USD position still open · close order not sent (key_unusable)",
+      },
+    ]);
     expect(await eventsOf(botId, "Can't sign with your API key")).toHaveLength(0);
     gw.notSent = null;
     await e.stop();
@@ -6346,6 +6388,9 @@ describe("lost fills (DEC-303)", () => {
     expect((await botState(botId))?.needsAttention).toBe(true);
     const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
     expect(events.map((x) => x.decision)).toContain("Fill found after the order ended");
+    const late1 = (await teamIncidents(botId)).filter((x) => x.kind === "late_fill");
+    expect(late1).toHaveLength(1);
+    expect(late1[0]?.detail).toBe(`${lateId} · SoDEX filled 0.5, bot counted 0`);
     await e.stop();
     await stopBot(botId);
   });
@@ -6985,6 +7030,16 @@ describe("lost fills (DEC-303)", () => {
     expect((await row())?.unknownGaveUpAt).not.toBeNull();
     expect((await botState(botId))?.needsAttention).toBe(true);
     expect((await botState(botId))?.state).toBe("stopped");
+    // Báo team một lần (#241).
+    expect(await teamIncidents(botId)).toEqual([
+      {
+        type: "team_incident",
+        kind: "unknown_gave_up",
+        botId,
+        market: "vBTC_vUSDC",
+        detail: `buy 1 · ${id} · not on SoDEX after 10 min, fills unknown`,
+      },
+    ]);
     await e.stop();
   });
 });
@@ -7152,6 +7207,15 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
       ledger: "2",
       cause: "trades",
     });
+    expect(await teamIncidents(botId)).toEqual([
+      {
+        type: "team_incident",
+        kind: "position_mismatch",
+        botId,
+        market: "BTC-USD",
+        detail: "real 5 vs ledger 2 · cause trades",
+      },
+    ]);
     await step(e);
     // Khởi động lại engine: không ghi lại cảnh báo.
     await e.stop();
@@ -7182,6 +7246,10 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
       ],
     ]);
     expect((await botState(botId))?.positionMismatch).toBeNull();
+    expect((await teamIncidents(botId)).map((x) => [x.kind, x.detail])).toEqual([
+      ["position_mismatch", "real 5 vs ledger 2 · cause trades"],
+      ["position_matched", "real 1 matches the ledger"],
+    ]);
     // Không có lệnh "ma": mọi lệnh grid coi là đang mở đều có dòng lệnh đang mở thật.
     const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
     const open = Object.keys((rt?.state as { open: Record<string, unknown> }).open);

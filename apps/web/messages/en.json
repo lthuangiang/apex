@@ -4224,7 +4224,9 @@
       "team_mcp_tool_errors": "MCP tools failing",
       "team_mcp_introspect_failing": "MCP can’t check tokens",
       "team_mcp_daily_limit": "MCP daily limit reached",
-      "team_invariant": "Money invariant check"
+      "team_invariant": "Money invariant check",
+      "team_incident": "Real-money incident",
+      "team_incident_digest": "Daily incidents"
     },
     "paperTypes": {
       "bot_paused": "A fake-money test was paused",

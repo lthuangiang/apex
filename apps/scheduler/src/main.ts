@@ -30,6 +30,7 @@ import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
 import { fitMmModelDaily } from "./mm-model";
 import { snapshotAndCheck } from "./risk";
+import { redisIncidentReadStore, teamIncidentRunner } from "./team-incidents";
 
 // scheduler: một bản active (leader lease). Hiện có job market stats hằng ngày; các job lịch khác
 // (recurring buy, reset daily loss, nhắc key hết hạn) thêm ở phase của chúng.
@@ -68,6 +69,9 @@ const { db, pool } = createDb(env.DATABASE_URL);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
 const mcpAlertStore = redisAlertStore(redis);
 const invariantStore = redisInvariantStore(redis);
+const teamIncidents = teamIncidentRunner(db, redisIncidentReadStore(redis), (msg, data) => {
+  log.warn(data, msg);
+});
 
 /** Bất biến tiền thật (DEC-274): chỉ đọc DB, không gọi SoDEX; hai lượt không chạy chồng nhau. */
 let invariantRunning = false;
@@ -247,6 +251,15 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
         })
         .catch((error: unknown) => {
           log.error({ err: error }, "mcp alerts failed");
+        });
+      // Sức khoẻ engine / SoDEX và tin tổng hợp ngày cho team (#241).
+      void teamIncidents(Date.now())
+        .then((sent) => {
+          if (sent === null) log.warn("team incidents skipped: previous run still going");
+          else if (sent.length > 0) log.info({ sent }, "team incidents queued");
+        })
+        .catch((error: unknown) => {
+          log.error({ err: error }, "team incidents failed");
         });
       void invariantTick().catch((error: unknown) => {
         log.error({ err: error }, "prod invariants failed");
