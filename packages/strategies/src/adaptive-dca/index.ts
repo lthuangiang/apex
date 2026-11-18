@@ -1030,7 +1030,7 @@ function stepAdca(
 }
 
 /**
- * Áp version mới (#223, DEC-319). Engine huỷ mọi lệnh đang mở (take profit, lệnh DCA). State mới
+ * Áp version mới (#223, DEC-320). Engine huỷ mọi lệnh đang mở (take profit, lệnh DCA). State mới
  * giữ sổ cái (PM chốt B2: phiên tiếp tục, max loss và giá hoà vốn của chu kỳ giữ mốc), nhớ mọi lệnh cũ chưa kết thúc
  * (`retiring`, huỷ lại mỗi 10 s; fill muộn vào sổ cái theo chiều của chính lệnh) và chỉ dựng lệnh khi chúng đã kết thúc.
  * Còn vị thế thì chu kỳ chạy tiếp với cấu hình mới như Resume (DEC-240): take profit theo vị thế và lệnh DCA kế tiếp (trần

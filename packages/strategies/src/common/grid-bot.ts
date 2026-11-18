@@ -320,7 +320,7 @@ function placeAround(
 
 /**
  * Grid của version mới khởi động khi sổ cái còn vị thế (vị thế của version cũ, hoặc fill trễ của lệnh version cũ;
- * #223, DEC-319): không chờ First entry, không đặt lệnh market, giữ vị thế và đặt lệnh quanh giá
+ * #223, DEC-320): không chờ First entry, không đặt lệnh market, giữ vị thế và đặt lệnh quanh giá
  * như Resume (DEC-240). Lệnh làm tăng vị thế bị giới hạn để vị thế xấu nhất (vị thế + mọi lệnh cùng chiều khớp) không
  * vượt grid mới khởi động từ phẳng: long / short tối đa khối lượng mỗi mức × số mức theo hướng của grid, không bao giờ
  * mở phía ngược hướng (long: bán chỉ trong phần vị thế đang giữ, như Resume). Max loss / stop / take profit vẫn chạm
@@ -353,7 +353,7 @@ function adoptGrid(
 }
 
 /**
- * Áp version mới (#223, DEC-319). Engine huỷ mọi lệnh đang mở; state mới giữ sổ cái (PM chốt B2:
+ * Áp version mới (#223, DEC-320). Engine huỷ mọi lệnh đang mở; state mới giữ sổ cái (PM chốt B2:
  * phiên tiếp tục) và chờ mọi lệnh version cũ (lệnh đang mở, lệnh đã huỷ lúc dừng chưa kết thúc) được SoDEX báo kết thúc
  * (`retiring`, huỷ lại mỗi 10 s) rồi mới dựng grid mới: còn vị thế thì quanh vị thế (`adoptGrid`), phẳng thì như bot mới
  * (DEC-38). Lệnh market mở vị thế ban đầu chưa kết thúc thì chưa áp (null, như DEC-304): khối lượng của nó chưa biết.
