@@ -327,6 +327,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   for (const r of redises) r.disconnect();
+  await Promise.all(cleanPools.map((p) => p.end()));
   await pool.end();
   await Promise.all([pg.stop(), redisC.stop()]);
 });
@@ -336,6 +337,37 @@ beforeEach(async () => {
 
 let clock = 1_790_000_000_000;
 const now = () => clock;
+
+const cleanPools: ReturnType<typeof createDb>["pool"][] = [];
+/**
+ * Database riêng, sạch, cùng container (#225). DB chung của file giữ bot / lệnh của mọi test trước: engine của một test nạp
+ * lại mọi bot còn `running` của shard nó giữ và cho chúng ăn từng giá, nên test nặng chậm dần theo vị trí trong file.
+ */
+async function cleanDb(name: string): Promise<Db> {
+  const admin = createDb(pg.getConnectionUri());
+  await admin.pool.query(`CREATE DATABASE ${name}`);
+  await admin.pool.end();
+  const url = pg.getConnectionUri().replace(/\/[^/?]+(\?|$)/, `/${name}$1`);
+  await runMigrations(url);
+  const clean = createDb(url);
+  cleanPools.push(clean.pool);
+  return clean.db;
+}
+/**
+ * Cho cả describe chạy trên một DB sạch riêng (#225): mọi helper (`seedBot`, `makeEngine`, `botState`…) đọc `db` lúc được
+ * gọi nên dùng DB này; hết describe thì trả lại DB chung. Test trong file chạy tuần tự nên đổi `db` là an toàn. Migration
+ * chạy trong hook, không tính vào thời gian của test.
+ */
+function useCleanDb(name: string): void {
+  let shared: Db;
+  beforeAll(async () => {
+    shared = db;
+    db = await cleanDb(name);
+  });
+  afterAll(() => {
+    db = shared;
+  });
+}
 
 async function seedBot(
   state: "starting" | "running" = "starting",
@@ -416,7 +448,9 @@ async function seedBot(
   return { botId: bot?.id ?? "", accountId: account?.id ?? "" };
 }
 
-const makeEngine = (gateway: Gateway, workerId: string) =>
+// Lease dài (#225): trước đây 300 ms, nên khi máy bận (event loop / Redis trễ quá ~240 ms) lease không xác nhận lại kịp và
+// engine bỏ lượt ("Shard N lease is not confirmed", không gửi lệnh). Test cần lease hết hạn thì điều khiển `monotonic`.
+const makeEngine = (gateway: Gateway, workerId: string, monotonic?: () => number) =>
   new Engine({
     db,
     redis: newRedis(),
@@ -424,10 +458,11 @@ const makeEngine = (gateway: Gateway, workerId: string) =>
     workerId,
     log,
     now,
-    leaseTtlMs: 300,
+    leaseTtlMs: 30_000,
     shards: SHARDS,
     rules: () => Promise.resolve(rules),
     feeCheckMs: 0,
+    ...(monotonic === undefined ? {} : { monotonic }),
   });
 
 const botState = async (botId: string) => {
@@ -530,7 +565,8 @@ describe("engine", () => {
     const gw = new FakeGateway();
     const { botId, accountId } = await seedBot();
     const shard = shardOf(accountId, SHARDS);
-    const a = makeEngine(gw, "A");
+    let monoA = 0;
+    const a = makeEngine(gw, "A", () => monoA);
     await a.tick();
     await a.onPrice("vBTC_vUSDC", "100", clock);
     const epochA = a.epochOf(shard);
@@ -540,7 +576,9 @@ describe("engine", () => {
     a.kill();
     // Mô phỏng A chết trước khi kịp lưu state: B phải chạy lại chiến lược từ đầu.
     await db.delete(botRuntime);
-    await new Promise((r) => setTimeout(r, 400)); // lease 300 ms hết hạn
+    // Lease của A hết hạn (không chờ timer thật, #225): key trên Redis mất, và đồng hồ đơn điệu của A đã qua hạn xác nhận.
+    await newRedis().flushall();
+    monoA += 1e9;
     const b = makeEngine(gw, "B");
     await b.tick();
     expect(b.ownedShards).toContain(shard);
@@ -1872,70 +1910,79 @@ describe("engine", () => {
     await e.stop();
   });
 
-  it("produces the same order sequence as the backtest on the same candles (BACKTEST.md 11.2)", async () => {
-    const MIN = 60_000;
-    const candles = Array.from({ length: 160 }, (_, i) => {
-      const p = 100 + 9 * Math.sin(i / 9);
-      return {
-        t: clock + i * MIN,
-        o: p.toFixed(2),
-        h: (p + 0.8).toFixed(2),
-        l: (p - 0.8).toFixed(2),
-        c: (p + 0.2).toFixed(2),
-      };
-    });
-    const config = {
-      market: "vBTC_vUSDC",
-      lowerPrice: "90",
-      upperPrice: "110",
-      gridLevels: 5,
-      spacing: "arithmetic",
-      investment: "500",
-      maxLoss: "100",
-      onStop: "keep_base",
-    };
-    const bt = runBacktest({
-      module: spotGrid,
-      config: spotGridSchema.parse(config),
-      markets: { vBTC_vUSDC: { engine: "spot", candles, rules } },
-      funding: {},
-      fees: { spot: { maker: "0", taker: "0" }, perps: { maker: "0", taker: "0" }, builder: "0" },
-      slippage: "0",
-      intervalMs: MIN,
-      capital: "500",
-      recordEvents: true,
-    });
-    const btOrders = bt.actions.flatMap((a) =>
-      a.type === "place"
-        ? [`${a.order.tag} ${a.order.side} ${a.order.price ?? "mkt"} ${a.order.quantity}`]
-        : [],
-    );
-    expect(bt.fills.length).toBeGreaterThan(4);
+  describe("backtest parity", () => {
+    // DB sạch (#225): ở DB chung, mọi bot spot grid còn `running` của test trước cũng nhận từng giá của test này (cả file
+    // quá 30 s, chạy riêng ~7–10 s).
+    useCleanDb("backtest_parity");
 
-    // Engine chạy cùng chuỗi event: tick → onPrice, fill → onFill (theo tag của lệnh engine đã gửi).
-    const gw = new FakeGateway();
-    const { accountId } = await seedBot("running");
-    const e = makeEngine(gw, "w1");
-    await e.tick();
-    const tagOf = new Map(
-      bt.actions.flatMap((a) =>
-        a.type === "place" ? [[a.order.clOrdID, a.order.tag] as const] : [],
-      ),
-    );
-    for (const ev of bt.events) {
-      if (ev.type === "tick") await e.onPrice(ev.market, ev.price, ev.at);
-      if (ev.type === "fill") {
-        const tag = tagOf.get(ev.clOrdID);
-        const mine = [...gw.received].reverse().find((o) => o.tag === tag);
-        if (mine !== undefined)
-          await e.onFill(accountId, mine.clOrdID, ev.quantity, ev.price, ev.fee, ev.at);
+    it("produces the same order sequence as the backtest on the same candles (BACKTEST.md 11.2)", async () => {
+      const MIN = 60_000;
+      // 56 nến, sóng chu kỳ ~19 nến: đúng 16 lệnh như bản cũ 160 nến chu kỳ ~57 nến (mỗi mức giữa khớp hai chiều nhiều
+      // vòng), nhưng ~230 event thay vì ~650 (#225). Mỗi nến giá đi tối đa ~3 < khoảng lưới 5, nên vẫn qua từng mức một.
+      const candles = Array.from({ length: 56 }, (_, i) => {
+        const p = 100 + 9 * Math.sin(i / 3);
+        return {
+          t: clock + i * MIN,
+          o: p.toFixed(2),
+          h: (p + 0.8).toFixed(2),
+          l: (p - 0.8).toFixed(2),
+          c: (p + 0.2).toFixed(2),
+        };
+      });
+      const config = {
+        market: "vBTC_vUSDC",
+        lowerPrice: "90",
+        upperPrice: "110",
+        gridLevels: 5,
+        spacing: "arithmetic",
+        investment: "500",
+        maxLoss: "100",
+        onStop: "keep_base",
+      };
+      const bt = runBacktest({
+        module: spotGrid,
+        config: spotGridSchema.parse(config),
+        markets: { vBTC_vUSDC: { engine: "spot", candles, rules } },
+        funding: {},
+        fees: { spot: { maker: "0", taker: "0" }, perps: { maker: "0", taker: "0" }, builder: "0" },
+        slippage: "0",
+        intervalMs: MIN,
+        capital: "500",
+        recordEvents: true,
+      });
+      const btOrders = bt.actions.flatMap((a) =>
+        a.type === "place"
+          ? [`${a.order.tag} ${a.order.side} ${a.order.price ?? "mkt"} ${a.order.quantity}`]
+          : [],
+      );
+      expect(bt.fills.length).toBeGreaterThan(4);
+      expect(btOrders).toHaveLength(16);
+
+      // Engine chạy cùng chuỗi event: tick → onPrice, fill → onFill (theo tag của lệnh engine đã gửi).
+      const gw = new FakeGateway();
+      const { accountId } = await seedBot("running");
+      const e = makeEngine(gw, "w1");
+      await e.tick();
+      const tagOf = new Map(
+        bt.actions.flatMap((a) =>
+          a.type === "place" ? [[a.order.clOrdID, a.order.tag] as const] : [],
+        ),
+      );
+      for (const ev of bt.events) {
+        if (ev.type === "tick") await e.onPrice(ev.market, ev.price, ev.at);
+        if (ev.type === "fill") {
+          const tag = tagOf.get(ev.clOrdID);
+          const mine = [...gw.received].reverse().find((o) => o.tag === tag);
+          if (mine !== undefined)
+            await e.onFill(accountId, mine.clOrdID, ev.quantity, ev.price, ev.fee, ev.at);
+        }
       }
-    }
-    const engineOrders = gw.received.map(
-      (o) => `${o.tag} ${o.side} ${o.price ?? "mkt"} ${o.quantity}`,
-    );
-    expect(engineOrders).toEqual(btOrders);
-    await e.stop();
+      const engineOrders = gw.received.map(
+        (o) => `${o.tag} ${o.side} ${o.price ?? "mkt"} ${o.quantity}`,
+      );
+      expect(engineOrders).toEqual(btOrders);
+      await e.stop();
+    });
   });
 
   it("blocks orders above the per-trade risk limit before they reach SoDEX", async () => {
@@ -3265,6 +3312,249 @@ describe("engine", () => {
     await stopFarmBots();
   });
 
+  // ---------- #250: bot paper không bao giờ báo team các sự cố tiền thật mới (DEC-105, DEC-313, review #248 minor 2) ----------
+
+  const NEW_TEAM_KINDS = [
+    "late_fill_adopted",
+    "closing_fill_beyond",
+    "cancel_unconfirmed",
+    "ledger_repaired",
+    "orphan_cancelled",
+  ];
+  /** Mọi dòng `jobs.team_ops` của bot thuộc các loại mới (bất kể `type`). */
+  const newTeamOps = async (botId: string) => {
+    const { sql } = await import("drizzle-orm");
+    return (
+      await db
+        .select({ payload: outbox.payload })
+        .from(outbox)
+        .where(sql`${outbox.topic} = 'jobs.team_ops' and ${outbox.payload}->>'botId' = ${botId}`)
+    )
+      .map((r) => (r.payload as { kind?: string }).kind ?? "")
+      .filter((k) => NEW_TEAM_KINDS.includes(k));
+  };
+  /**
+   * Cổng paper cho test: vẫn là PaperGateway (account `paper`, không bao giờ tới SoDEX), nhưng nhận / huỷ lệnh và đọc vị thế
+   * theo cổng giả để dựng lại đúng các tình huống của bot thật (huỷ không gửi được, fill muộn, vị thế lệch sổ cái) và không
+   * tự khớp lệnh theo giá.
+   */
+  class ScriptedPaper extends PaperGateway {
+    constructor(readonly fake: FakeGateway) {
+      super({ db, now });
+    }
+    override submit(
+      ...args: Parameters<PaperGateway["submit"]>
+    ): ReturnType<PaperGateway["submit"]> {
+      return this.fake.submit(...args);
+    }
+    override cancel(
+      ...args: Parameters<PaperGateway["cancel"]>
+    ): ReturnType<PaperGateway["cancel"]> {
+      return this.fake.cancel(...args);
+    }
+    override readPositions(
+      ...args: Parameters<PaperGateway["readPositions"]>
+    ): ReturnType<PaperGateway["readPositions"]> {
+      return this.fake.readPositions(...args);
+    }
+    override onPrice(): ReturnType<PaperGateway["onPrice"]> {
+      return Promise.resolve([]);
+    }
+  }
+  async function seedPaperFarm(market: string) {
+    const { eq } = await import("drizzle-orm");
+    const seeded = await seedFarm(market);
+    await db.update(bots).set({ mode: "paper" }).where(eq(bots.id, seeded.botId));
+    await db.insert(paperAccounts).values({
+      botId: seeded.botId,
+      capital: "1000",
+      cash: "1000",
+      positions: {},
+      peakEquity: "1000",
+      startedAt: new Date(clock),
+    });
+    return seeded;
+  }
+  /** Engine có cổng thật giả (`live`, phải không nhận gì) và cổng paper theo kịch bản. */
+  const paperFarmEngine = (live: FakeGateway, paper: FakeGateway, id: string) =>
+    new Engine({
+      db,
+      redis: newRedis(),
+      gateway: live,
+      paper: new ScriptedPaper(paper),
+      workerId: id,
+      log,
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      orderbook: () =>
+        Promise.resolve({ bid: "100", ask: "100.05", bidNotional: "50000", askNotional: "40000" }),
+    });
+  const decisionsOf = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).map(
+      (x) => x.decision,
+    );
+  };
+
+  describe("a paper Volume Farm bot never raises a team alert (#250)", () => {
+    it("cancel_unconfirmed: a cancel that never leaves DeskLabs for 10 minutes", async () => {
+      const live = new FakeGateway();
+      const paper = new FakeGateway();
+      await seedCandles("KAS-USD");
+      const { botId } = await seedPaperFarm("KAS-USD");
+      const e = paperFarmEngine(live, paper, "paper-team-a");
+      await tickUntil(e, () => entriesOf(paper, "KAS-USD").length > 0);
+      expect(entriesOf(paper, "KAS-USD")).toHaveLength(1);
+      paper.cancelNotSent = 1_000_000;
+      clock += 11_000;
+      await e.tick();
+      for (let i = 0; i < 25; i += 1) {
+        clock += 30_000;
+        await e.tick();
+      }
+      // Chiến lược đã đi tới đúng chỗ báo team (Decisions + Needs attention), nhưng không có dòng cho team.
+      expect(await decisionsOf(botId)).toContain("Waiting for SoDEX to confirm a cancel");
+      expect((await botState(botId))?.needsAttention).toBe(true);
+      expect(await newTeamOps(botId)).toEqual([]);
+      expect(live.received).toEqual([]);
+      paper.cancelNotSent = 0;
+      await e.stop();
+      await stopFarmBots();
+    });
+
+    it("late_fill_adopted: a fill of an entry the bot no longer remembers", async () => {
+      const live = new FakeGateway();
+      const paper = new FakeGateway();
+      const { botId, accountId } = await seedPaperFarm("WLD-USD");
+      // Lệnh vào cũ của chính bot mà state đã quên (như sau khi khởi động lại, #239), còn mở trong DeskLabs.
+      const id = `forgotten-${String(Math.random())}`;
+      await db.insert(orders).values({
+        botId,
+        sodexAccountId: accountId,
+        clOrdId: id,
+        market: "WLD-USD",
+        engine: "perps",
+        side: "buy",
+        type: "limit",
+        price: "100",
+        timeInForce: "GTX",
+        size: "1",
+        status: "open",
+        reduceOnly: false,
+        epoch: 1,
+        tag: "vf:77:in:0",
+        submittedAt: new Date(clock - 30_000),
+        ackedAt: new Date(clock - 30_000),
+      });
+      const e = paperFarmEngine(live, paper, "paper-team-b");
+      await e.tick();
+      clock += 1_000;
+      await e.onFill(accountId, id, "1", "100", "0.01", clock);
+      expect(Number((await farmState(botId))?.ledger.position)).toBe(1);
+      expect(await decisionsOf(botId)).toContain("Late fill added to the position");
+      expect(await newTeamOps(botId)).toEqual([]);
+      expect(live.received).toEqual([]);
+      await e.stop();
+      await stopFarmBots();
+    });
+
+    it("closing_fill_beyond: an exit fill larger than the position", async () => {
+      const live = new FakeGateway();
+      const paper = new FakeGateway();
+      await seedCandles("PYTH-USD");
+      const { botId, accountId } = await seedPaperFarm("PYTH-USD");
+      const e = paperFarmEngine(live, paper, "paper-team-c");
+      await tickUntil(e, () => entriesOf(paper, "PYTH-USD").length > 0);
+      const entry = entriesOf(paper, "PYTH-USD")[0];
+      const qty = entry?.quantity ?? "0";
+      clock += 500;
+      await e.onFill(accountId, entry?.clOrdID ?? "", qty, "100", "0.01", clock);
+      const exitOf = () =>
+        paper.received.find((o) => o.market === "PYTH-USD" && o.tag.includes(":out:"));
+      for (let i = 0; i < 4 && exitOf() === undefined; i += 1) {
+        clock += 100_000;
+        await e.tick();
+      }
+      const exit = exitOf();
+      expect(exit).toBeDefined();
+      // Lệnh đóng khớp gấp đôi vị thế bot theo dõi (như stop của lượt cũ đóng vị thế mồ côi, #239 05:31).
+      clock += 500;
+      await e.onFill(
+        accountId,
+        exit?.clOrdID ?? "",
+        dec(qty).mul(2).toString(),
+        "100",
+        "0.01",
+        clock,
+      );
+      expect(await decisionsOf(botId)).toContain("Closing fill beyond the bot's position");
+      expect(await newTeamOps(botId)).toEqual([]);
+      expect(live.received).toEqual([]);
+      await e.stop();
+      await stopFarmBots();
+    });
+
+    it("ledger_repaired / late_fill_adopted: a flagged ledger with a dropped fill of its own entry", async () => {
+      const live = new FakeGateway();
+      const paper = new FakeGateway();
+      const { botId, accountId } = await seedPaperFarm("ICP-USD");
+      await droppedFill(botId, accountId, "ICP-USD", "0.957");
+      paper.perpsPositions.set("ICP-USD", { size: "-0.957", entryPrice: "100" });
+      await flagFarm(botId, "ICP-USD", "-0.957");
+      const e = paperFarmEngine(live, paper, "paper-team-d");
+      for (let i = 0; i < 3; i += 1) {
+        await e.tick();
+        clock += 30_000;
+      }
+      // Sửa sổ cái chỉ dành cho bot thật (nạp lại, kiểm tra vị thế và `#adoptOwnFills` đều bỏ qua bot paper): bot paper
+      // không nhận fill đó và không báo team.
+      expect(Number((await farmState(botId))?.ledger.position ?? "0")).toBe(0);
+      expect(await decisionsOf(botId)).not.toContain("Late fill added to the position");
+      expect(await newTeamOps(botId)).toEqual([]);
+      expect(live.received).toEqual([]);
+      await e.stop();
+      await stopFarmBots();
+    });
+
+    it("orphan_cancelled: an untracked open order", async () => {
+      const live = new FakeGateway();
+      const paper = new FakeGateway();
+      const { botId, accountId } = await seedPaperFarm("HBAR-USD");
+      await db.insert(orders).values({
+        botId,
+        sodexAccountId: accountId,
+        clOrdId: `lost-${String(Math.random())}`,
+        market: "HBAR-USD",
+        engine: "perps",
+        side: "sell",
+        type: "limit",
+        price: "101",
+        timeInForce: "GTX",
+        size: "1",
+        status: "open",
+        reduceOnly: true,
+        epoch: 1,
+        tag: "vf:9:out:0",
+        submittedAt: new Date(clock - 60_000),
+        ackedAt: new Date(clock - 60_000),
+      });
+      const e = paperFarmEngine(live, paper, "paper-team-e");
+      for (let i = 0; i < 3; i += 1) {
+        await e.tick();
+        clock += 16_000;
+      }
+      // Quét lệnh mồ côi chỉ chạy cho bot thật.
+      expect(await decisionsOf(botId)).not.toContain("Cancelled 1 untracked order");
+      expect(await newTeamOps(botId)).toEqual([]);
+      expect(live.received).toEqual([]);
+      await e.stop();
+      await stopFarmBots();
+    });
+  });
+
   it("never places an order for a paused Volume Farm bot while repairing; the repair happens on Resume (review #248 minor 2)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
@@ -3998,6 +4288,111 @@ describe("engine", () => {
         (x) => (x.payload as { type?: string; data?: { clOrdID?: string } }).data?.clOrdID === id,
       ),
     ).toBe(true);
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("books the trades of a given-up unknown entry before moving on (#250, review #248 minor 1)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const warned: string[] = [];
+    await seedCandles("STX-USD");
+    const { botId } = await seedFarm("STX-USD");
+    // Mỗi trade được ghi: chiến lược đã nhận `orderDone` của lệnh đó chưa (state đã lưu ngay trước lúc ghi trade).
+    const doneBeforeTrade: boolean[] = [];
+    class TradeOrder extends Engine {
+      override async onTrade(
+        ...args: Parameters<Engine["onTrade"]>
+      ): ReturnType<Engine["onTrade"]> {
+        const st = await farmState(botId);
+        doneBeforeTrade.push(st?.orders[args[1].clOrdID]?.done === true);
+        return super.onTrade(...args);
+      }
+    }
+    const e = new TradeOrder({
+      db,
+      redis: newRedis(),
+      gateway: gw,
+      workerId: "orphan-j2",
+      log: {
+        ...log,
+        warn: (...args: unknown[]) => {
+          if (typeof args[1] === "string") warned.push(args[1]);
+        },
+      },
+      now,
+      leaseTtlMs: 30_000,
+      shards: SHARDS,
+      rules: () => Promise.resolve(rules),
+      feeCheckMs: 0,
+      orderbook: () =>
+        Promise.resolve({ bid: "100", ask: "100.05", bidNotional: "50000", askNotional: "40000" }),
+    });
+    // Lệnh vào gửi đi không rõ kết quả (đã tới SoDEX), rồi không còn trên sổ.
+    gw.timeoutNext = "lost";
+    await tickUntil(e, () =>
+      db
+        .select()
+        .from(orders)
+        .where(eq(orders.botId, botId))
+        .then((x) => x.length > 0),
+    );
+    const [row] = await db.select().from(orders).where(eq(orders.botId, botId));
+    const id = row?.clOrdId ?? "";
+    const qty = row?.size ?? "0";
+    expect(row?.status).toBe("unknown");
+    // Hết thời gian chờ khớp: chiến lược huỷ lệnh vào và chờ SoDEX xác nhận. Chưa có trade nào ở đâu.
+    clock += 11_000;
+    await e.tick();
+    expect((await farmState(botId))?.orders[id]?.cancelAt).toBeDefined();
+    expect((await farmState(botId))?.orders[id]?.done).not.toBe(true);
+    // Như đã được SoDEX nhận (có orderID) và lần tra đầu đã xác nhận không thấy từ lâu. Trade của lệnh chỉ xuất hiện trong
+    // lịch sử khớp ngay trước vòng bỏ cuộc: bước `reconcile` chạy trước lưới an toàn fill trong vòng, nên chỉ đường bỏ
+    // cuộc của Volume Farm (`#farmGaveUp`) ghi được trade này.
+    await db
+      .update(orders)
+      .set({ sodexOrderId: 78n, missingConfirmedAt: new Date(clock - 11 * 60_000) })
+      .where(eq(orders.clOrdId, id));
+    const t = {
+      tradeId: 60_000n + BigInt(Math.floor(Math.random() * 1e12)),
+      price: "100",
+      quantity: qty,
+      fee: "0.02",
+      builderFee: null,
+      isMaker: true,
+      at: clock,
+    };
+    gw.trades.set(id, [t]);
+    clock += 1_000;
+    await e.tick();
+    const after = (await db.select().from(orders).where(eq(orders.clOrdId, id)))[0];
+    expect(after?.unknownGaveUpAt).not.toBeNull();
+    // Trade được ghi đúng một lần (fill thật, đủ khối lượng của lệnh).
+    const booked = await db
+      .select()
+      .from(fills)
+      .where(eq(fills.orderId, after?.id ?? ""));
+    expect(booked.map((f) => [f.sodexTradeId, Number(f.size)])).toEqual([[t.tradeId, Number(qty)]]);
+    expect(Number(after?.filledSize)).toBe(Number(qty));
+    expect(warned).toContain(
+      "given-up order is confirmed missing on SoDEX; its trades are booked and the bot moves on",
+    );
+    // Trade được ghi TRƯỚC `orderDone`; lệnh vào kết thúc với đủ khối lượng, bot có vị thế và đặt stop trên SoDEX.
+    expect(doneBeforeTrade).toEqual([false]);
+    const st = (await farmState(botId)) as
+      | {
+          phase: string;
+          ledger: { position: string };
+          orders: Record<string, { done?: boolean; filled?: string }>;
+        }
+      | undefined;
+    expect(st?.orders[id]?.done).toBe(true);
+    expect(Number(st?.orders[id]?.filled)).toBe(Number(qty));
+    expect(st?.phase).toBe("open");
+    expect(Math.abs(Number(st?.ledger.position))).toBe(Number(qty));
+    expect(gw.received.some((o) => o.market === "STX-USD" && o.stop !== undefined)).toBe(true);
+    const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
+    expect(events.map((x) => x.decision)).not.toContain("Late fill added to the position");
     await e.stop();
     await stopFarmBots();
   });
@@ -6713,6 +7108,9 @@ describe("shard leases renew on their own timer (DEC-302)", () => {
 });
 
 describe("lease checks keep saved state and orders in step (DEC-302 review)", () => {
+  // DB sạch (#225): các test Stop ở đây chạy hàng trăm vòng `tick`; ở DB chung mỗi vòng còn đối soát lệnh mở và nạp bot
+  // còn chạy của mọi test trước, nên "backs off and gives up on a close…" quá 30 s khi máy bận (chạy riêng ~9 s).
+  useCleanDb("lease_checks");
   /** Lease "mất xác nhận": đồng hồ đơn điệu vượt hạn và script gia hạn của Redis lỗi. */
   interface LeaseCtl {
     lose: () => void;
@@ -7227,6 +7625,8 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
     await e.stop();
   });
 
+  // Trần 90 s (#225): mô phỏng ~15 phút bằng ~160 vòng `tick` thật trên Postgres + Redis, ~10 s khi máy rảnh nhưng 23–45 s
+  // khi máy dev chạy song song nhiều worktree (tải 1 phút 100–270 trên 16 luồng).
   it("backs off and gives up on a close whose sends keep timing out without reaching SoDEX", async () => {
     let submits = 0;
     const gw = new (class extends FakeGateway {
@@ -7244,9 +7644,10 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
       }
     })();
     const { botId, e } = await stoppingWithPosition(gw, "STOPW-USD", "stop-timeouts");
-    // 4 phút nhịp 1 s. Mỗi lần: gửi, ~30 s sau đối soát không thấy, chờ 5 s → 15 s → 60 s rồi gửi lại.
-    for (let i = 0; i < 240; i += 1) {
-      clock += 1_000;
+    // 4 phút nhịp 2 s (nấc nhỏ nhất của lịch là 5 s; nhịp 1 s gấp đôi số vòng mà không kiểm thêm gì, quá 30 s khi máy
+    // bận, #225). Mỗi lần: gửi, ~30 s sau đối soát không thấy, chờ 5 s → 15 s → 60 s rồi gửi lại.
+    for (let i = 0; i < 120; i += 1) {
+      clock += 2_000;
       await e.tick();
     }
     expect(submits).toBe(4);
@@ -7266,7 +7667,7 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
       "SoDEX didn't receive the close order (NOT_PLACED). Your STOPW-USD position is still open — close it on SoDEX.",
     ]);
     await e.stop();
-  });
+  }, 90_000);
 
   it("does not undo a step over a fill that landed while the lease was being confirmed", async () => {
     const { eq } = await import("drizzle-orm");
@@ -7334,6 +7735,8 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
 });
 
 describe("lost fills (DEC-303)", () => {
+  // DB sạch (#225): các test ở đây kiểm việc tra lệnh trong MỘT vòng; lệnh còn mở của test trước không được chen vào.
+  useCleanDb("lost_fills");
   /** User stream giả: ghi account được mở, sẵn sàng khi test cho phép. */
   class FakeStreams {
     readonly opened: string[] = [];

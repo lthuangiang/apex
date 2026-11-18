@@ -240,13 +240,13 @@ describe("M3: queue is bounded by bytes", () => {
 });
 
 describe("B2: flush never holds the event loop", () => {
-  it("keeps every classification slice under 10 ms with 250 KB bodies", async () => {
+  it("keeps every classification slice short with 250 KB bodies", async () => {
     const item = `{"code":0,"clOrdID":"drift-b1-v1-l1-a1","orderID":18446744073709551615,"error":"PostOnly ${"z".repeat(200)}"}`;
     const big = `{"code":0,"timestamp":1,"data":[${Array.from({ length: 1_000 }, () => item).join(",")}]}`;
     expect(big.length).toBeGreaterThan(250_000);
     // Đồng hồ thật bị nhiễu khi máy chạy nhiều worker test (bị OS tạm dừng thread, GC lớn): đo 4 vòng độc lập và lấy
-    // vòng tốt nhất. Một lát vượt 10 ms ở MỌI vòng mới là lỗi thật của code.
-    const rounds: { slice: number; lag: number; rows: SodexCallRow[] }[] = [];
+    // vòng tốt nhất. Một lát dài ở MỌI vòng mới là lỗi thật của code.
+    const rounds: { median: number; maxCpu: number; cpuShare: number; rows: SodexCallRow[] }[] = [];
     for (let round = 0; round < 4; round += 1) {
       const rows: SodexCallRow[] = [];
       const r = recorder({
@@ -269,25 +269,52 @@ describe("B2: flush never holds the event loop", () => {
           }),
         );
       }
-      // Độ trễ event loop thật trong lúc flush: một timer 1 ms.
-      let lag = 0;
-      let last = performance.now();
-      const probe = setInterval(() => {
-        const now = performance.now();
-        lag = Math.max(lag, now - last - 1);
-        last = now;
-      }, 1);
+      // Mỗi lượt event loop thật trong lúc flush: chuỗi setImmediate chen giữa các lát của recorder, nên khoảng cách giữa
+      // hai lượt liên tiếp là một lát. Đo cả đồng hồ thật lẫn thời gian CPU của process: lúc OS tạm dừng thread (máy bận)
+      // đồng hồ thật vẫn chạy nhưng CPU thì không, nên thời gian CPU của một lát là phần việc thật của code.
+      const cpuMs = () => {
+        const u = process.cpuUsage();
+        return (u.user + u.system) / 1_000;
+      };
+      const turns: { wall: number; cpu: number }[] = [];
+      let probing = true;
+      const turn = () => {
+        turns.push({ wall: performance.now(), cpu: cpuMs() });
+        if (probing) setImmediate(turn);
+      };
+      setImmediate(turn);
+      const cpuStart = cpuMs();
+      // Mốc đầu ngay trước flush (đồng bộ), để lát đầu tiên cũng được đo.
+      turns.push({ wall: performance.now(), cpu: cpuStart });
       await r.flush();
-      clearInterval(probe);
-      rounds.push({ slice: r.maxSliceMs, lag, rows });
+      const cpuTotal = cpuMs() - cpuStart;
+      probing = false;
+      const gaps = turns.slice(1).map((t, i) => ({
+        wall: t.wall - (turns[i]?.wall ?? t.wall),
+        cpu: t.cpu - (turns[i]?.cpu ?? t.cpu),
+      }));
+      const walls = gaps.map((g) => g.wall).sort((a, b) => a - b);
+      const median = walls[Math.floor(walls.length / 2)] ?? Number.POSITIVE_INFINITY;
+      // Không có lượt nào chen vào trong lúc flush: cả flush là một lát.
+      const maxCpu = gaps.length === 0 ? cpuTotal : Math.max(...gaps.map((g) => g.cpu));
+      rounds.push({ median, maxCpu, cpuShare: maxCpu / cpuTotal, rows });
     }
     for (const round of rounds) {
       expect(round.rows).toHaveLength(150);
       expect(round.rows.every((x) => x.responseTruncated)).toBe(true);
     }
-    expect(Math.min(...rounds.map((x) => x.slice))).toBeLessThan(10);
-    expect(Math.min(...rounds.map((x) => x.lag))).toBeLessThan(15); // gồm cả độ trễ của chính timer
-  });
+    // Ngưỡng an toàn cho CI (#225). Mục tiêu thiết kế là lát ~2 ms (`sliceBudgetMs`) cộng một bản ghi; máy rảnh đo lát dài
+    // nhất (đồng hồ thật) < 10 ms, nhưng đó là max của ~150 lát nên chỉ cần OS tạm dừng thread một lần là vượt: runner
+    // 2 vCPU của GitHub đo 11,1 ms (PR #256), máy dev chạy cả monorepo đo 58–178 ms ở vòng tốt nhất. Thay bằng:
+    // (1) trung vị đồng hồ thật của lát < 10 ms: lát thông thường vẫn ngắn, không nhạy với vài lần bị tạm dừng;
+    // (2) thời gian CPU của lát dài nhất < 100 ms: một lần chặn 100 ms+ (ví dụ một bản ghi phân loại chậm đi 10 lần) vẫn
+    //     hỏng, còn thời gian bị OS tạm dừng không tính;
+    // (3) lát dài nhất < 1/10 thời gian CPU của cả lần flush: mất bước nhường event loop (cả flush là một lát) thì hỏng dù
+    //     máy nhanh hay chậm.
+    expect(Math.min(...rounds.map((x) => x.median))).toBeLessThan(10);
+    expect(Math.min(...rounds.map((x) => x.maxCpu))).toBeLessThan(100);
+    expect(Math.min(...rounds.map((x) => x.cpuShare))).toBeLessThan(0.1);
+  }, 60_000);
 });
 
 describe("M6: write failures are logged at most once a minute", () => {
