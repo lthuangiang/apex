@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Paper rules · Whales</title>
+
+</head>
+<body>
+
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1d47b8}a:hover{color:#2e62e8}
+label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700;color:#3b4262}
+input,select{height:44px;border:1px solid #d5dcf2;border-radius:12px;padding:0 14px;font:inherit;font-size:15px;font-weight:500;color:#141a33;background:#fff;box-sizing:border-box;width:100%}
+.hint{font-size:12px;font-weight:500;color:#5f6684}
+</style>
+
+<div style="width:560px;height:1180px;box-sizing:border-box;background:#fff;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#141a33;padding:28px;display:flex;flex-direction:column;gap:20px;border-left:1px solid #e3e7f5">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <span style="font-size:13px;font-weight:700;color:#5a2ca0">Paper rules · Lane A</span>
+      <h2 style="margin:0;font-size:24px;font-weight:800">Whales</h2>
+      <span style="font-size:14px;color:#5f6684">Rule v3 · active since Nov 15 · 89 paper trades</span>
+    </div>
+    <a href="Main.dc.html" aria-label="Close" style="display:inline-flex;width:44px;height:44px;border-radius:12px;border:1px solid #e3e7f5;align-items:center;justify-content:center;color:#3b4262;text-decoration:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></a>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;background:#f5f7fd;border-radius:18px;padding:14px 16px;gap:12px">
+    <div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:700">Trade this lane on paper</span><span class="hint">Off: events are still recorded and scored, no paper trades.</span></div>
+    <button type="button" aria-pressed="true" style="height:44px;min-width:72px;border:1px solid #16a05a;background:#ddf4e7;color:#0f7a43;border-radius:12px;font:inherit;font-weight:700">On</button>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <span style="font-size:15px;font-weight:800">When to enter</span>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+      <label>Min score<input value="0.65"><span class="hint">0 to 1, from the lane’s scoring</span></label>
+      <label>Min move size<input value="$1,000,000"><span class="hint">Whale position change</span></label>
+      <label>Direction<select><option>Same as the whale</option><option>Opposite</option></select></label>
+      <label>Markets<select><option>BTC, ETH, SOL</option></select></label>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <span style="font-size:15px;font-weight:800">Size and limits</span>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+      <label>Size per trade<input value="500 USDC"></label>
+      <label>Max open in this lane<input value="3"></label>
+      <label>Cooldown per market<input value="30 min"></label>
+      <label>Daily paper loss limit<input value="50 USDC"><span class="hint">Lane pauses until tomorrow</span></label>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <span style="font-size:15px;font-weight:800">Take profit and stop loss</span>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+      <label>Take profit<input value="1.0%"></label>
+      <label>Stop loss<input value="0.5%"></label>
+      <label>Max hold<input value="4 h"></label>
+    </div>
+    <span class="hint">Checked against the SoDEX price every second. Whichever comes first closes the trade.</span>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:8px;background:#f7f9ff;border:1px solid #e3e7f5;border-radius:18px;padding:16px">
+    <span style="font-size:15px;font-weight:800">How a paper fill is priced</span>
+    <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;font-size:14px;color:#3b4262;line-height:1.5">
+      <li>Entry at the SoDEX price after the lane’s real delay (now 34 s median), as a taker order.</li>
+      <li>Exits at take profit, stop loss or max hold, also as taker.</li>
+      <li>Costs on both legs: the market’s SoDEX taker fee, the builder fee, and the spread measured on SoDEX at that hour.</li>
+      <li>Paper results never mix with real-money numbers.</li>
+    </ul>
+  </div>
+
+  <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:auto;flex-wrap:wrap">
+    <span class="hint" style="flex:1 1 200px">Saving creates rule v4. Results stay split by rule version; the gate counts only one version.</span>
+    <a href="Main.dc.html" style="display:inline-flex;height:44px;align-items:center;padding:0 18px;border-radius:12px;border:1px solid #d5dcf2;color:#141a33;font-weight:700;text-decoration:none">Cancel</a>
+    <button type="button" style="height:44px;padding:0 18px;border-radius:12px;border:0;background:#2e62e8;color:#fff;font:inherit;font-weight:700;box-shadow:0 6px 16px rgb(46 98 232 / .28)">Save as v4</button>
+  </div>
+</div>
+
+
+</body>
+</html>
