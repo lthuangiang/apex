@@ -21,6 +21,7 @@ import type {
 
 import { entryReady, waitingCondition, type EntryCondition, type WaitingInfo } from "./entry";
 import { gridPrices } from "./grid";
+import { isRetiring, retireEnd, retireFill, retireTick, type Retiring } from "./retire";
 
 /** Cấu hình chung của bot grid (Spot và Futures). */
 export interface GridBotConfig {
@@ -71,9 +72,17 @@ export interface GridBotState {
    * (hoặc là lệnh `unknown` mà SoDEX thật ra đã nhận, quy tắc 1.7): fill của nó vẫn vào sổ cái để lệnh đóng khi Stop
    * tính đúng vị thế. Bỏ khỏi đây khi sàn báo lệnh kết thúc.
    */
-  cancelled?: Record<string, { level: number; side: "buy" | "sell" }>;
+  cancelled?: Record<string, { level: number; side: "buy" | "sell"; ended?: boolean }>;
   /** Đã resume nhưng chưa có giá mới: dựng lại lệnh ở tick đầu tiên (DEC-240). */
   resumeOnTick?: boolean;
+  /**
+   * Lệnh version cũ engine đã huỷ lúc áp version mới, còn chờ SoDEX báo kết thúc (#223). Còn lệnh ở đây thì grid mới chưa
+   * dựng (fill muộn của chúng làm đổi vị thế mà bố cục mới dựa vào).
+   */
+  retiring?: Retiring | undefined;
+  /** Khối lượng đặt và đã khớp của lệnh market mở vị thế ban đầu: mọi lần khớp một phần đều vào sổ cái (#255). */
+  initQty?: string;
+  initFilled?: string;
 }
 
 export const initialGridBotState = (): GridBotState => ({
@@ -188,7 +197,12 @@ function start(
         tag: "grid:init",
       },
     });
-    state = { ...state, initClOrdID: id };
+    state = {
+      ...state,
+      initClOrdID: id,
+      initQty: mul(qty, String(initCount)).toString(),
+      initFilled: "0",
+    };
   }
   // Phía không cần vị thế ban đầu đặt ngay; phía còn lại đặt sau khi lệnh market khớp.
   const now =
@@ -323,15 +337,11 @@ function adoptGrid(
   const base: GridBotState = { ...laid.state, phase: "running", lastPrice: price };
   const g = guards(c, base, price);
   if (g !== null) return g;
-  const pos = dec(s.ledger.position);
-  const full = dec(base.qty).mul(base.levels.length);
-  const placed = placeAround(c, ctx, base, price, {
-    buy: (c.direction === "short" ? dec("0") : full).sub(pos),
-    sell: (c.direction === "long" ? dec("0") : full).add(pos),
-  });
+  const placed = placeAround(c, ctx, base, price, capOf(c, base));
   return {
     actions: [
       ...placed.actions,
+      // Câu chữ PM duyệt 2026-11-18 (#223).
       {
         type: "log",
         decision: "Grid started",
@@ -343,40 +353,133 @@ function adoptGrid(
 }
 
 /**
- * Áp version mới (#223, DEC-TBD-version-apply-position). Engine huỷ mọi lệnh đang mở; state mới nhớ các lệnh đó (fill
- * trễ vẫn vào sổ cái) và giữ vị thế + giá vốn trong sổ cái phiên mới. Còn vị thế thì tick đầu tiên dựng grid mới quanh
- * vị thế (`adoptGrid`); phẳng thì khởi động như bot mới (DEC-38). Lệnh market mở vị thế ban đầu chưa xong thì chưa áp
- * (null, như DEC-304): khối lượng của nó chưa biết.
+ * Áp version mới (#223, DEC-TBD-version-apply-position). Engine huỷ mọi lệnh đang mở; state mới giữ sổ cái (PM chốt B2:
+ * phiên tiếp tục) và chờ mọi lệnh version cũ (lệnh đang mở, lệnh đã huỷ lúc dừng chưa kết thúc) được SoDEX báo kết thúc
+ * (`retiring`, huỷ lại mỗi 10 s) rồi mới dựng grid mới: còn vị thế thì quanh vị thế (`adoptGrid`), phẳng thì như bot mới
+ * (DEC-38). Lệnh market mở vị thế ban đầu chưa kết thúc thì chưa áp (null, như DEC-304): khối lượng của nó chưa biết.
  */
 export function applyGridVersion(s: GridBotState): GridBotState | null {
   if (s.initClOrdID !== null) return null;
-  const cancelled = { ...(s.cancelled ?? {}), ...s.open };
+  const retiring: Retiring = { ...s.retiring };
+  for (const [id, o] of Object.entries(s.open))
+    retiring[id] = { side: o.side, qty: s.qty, filled: "0", cancelAt: null };
+  const ended: NonNullable<GridBotState["cancelled"]> = {};
+  for (const [id, o] of Object.entries(s.cancelled ?? {})) {
+    if (o.ended === true) ended[id] = o;
+    else
+      retiring[id] = {
+        side: o.side,
+        ...(o.level >= 0 ? { qty: s.qty } : {}),
+        filled: "0",
+        cancelAt: null,
+      };
+  }
   return {
     ...initialGridBotState(),
     ledger: carryLedger(s.ledger),
     lastPrice: s.lastPrice,
-    ...(Object.keys(cancelled).length > 0 ? { cancelled } : {}),
+    ...(Object.keys(ended).length > 0 ? { cancelled: ended } : {}),
+    ...(Object.keys(retiring).length > 0 ? { retiring } : {}),
   };
 }
 
-/** Sau khi lệnh market mở vị thế khớp: đặt phía còn lại (long → bán phía trên, short → mua phía dưới). */
+/**
+ * Sau khi lệnh market mở vị thế kết thúc (khớp đủ, hoặc SoDEX báo kết thúc sau khi khớp một phần): đặt phía còn lại
+ * (long → bán phía trên, short → mua phía dưới), chỉ trong phần vị thế đã khớp (#255): mức gần giá trước, không bao giờ
+ * bán / mua lại nhiều hơn vị thế đang giữ.
+ */
 function placeDeferred(
   c: GridBotConfig,
   s: GridBotState,
   price: string,
   ctx: StepContext,
 ): StepResult<GridBotState> {
-  let state = s;
+  let state: GridBotState = { ...s, initClOrdID: null };
+  delete state.initQty;
+  delete state.initFilled;
   const actions: StrategyAction[] = [];
   const side = c.direction === "short" ? "buy" : "sell";
-  s.levels.forEach((p, i) => {
-    if (side === "sell" ? gt(p, price) : dec(p).lt(price)) {
-      const r = order(c, ctx, state, i, side);
-      actions.push({ type: "place", order: r.intent });
-      state = r.state;
-    }
-  });
+  const busy = new Set(Object.values(s.open).map((o) => o.level));
+  const want = s.levels
+    .map((p, i) => ({ p, i }))
+    .filter((x) => !busy.has(x.i) && (side === "sell" ? gt(x.p, price) : dec(x.p).lt(price)));
+  // Mức gần giá được ưu tiên khi vị thế không đủ cho mọi mức; thứ tự gửi giữ như trước (theo chỉ số mức).
+  const nearest = [...want].sort((a, b) =>
+    side === "sell" ? dec(a.p).cmp(b.p) : dec(b.p).cmp(a.p),
+  );
+  let room = capOf(c, state)[side].sub(
+    dec(s.qty).mul(Object.values(s.open).filter((o) => o.side === side).length),
+  );
+  const keep = new Set<number>();
+  for (const x of nearest) {
+    if (room.lt(s.qty)) break;
+    room = room.sub(s.qty);
+    keep.add(x.i);
+  }
+  for (const x of want) {
+    if (!keep.has(x.i)) continue;
+    const r = order(c, ctx, state, x.i, side);
+    actions.push({ type: "place", order: r.intent });
+    state = r.state;
+  }
   return { actions, state: { ...state, phase: "running" } };
+}
+
+/**
+ * Tổng khối lượng tối đa của lệnh mỗi chiều (gồm cả lệnh đang mở) theo vị thế hiện tại (#223 B1): lệnh giảm vị thế không
+ * bao giờ lớn hơn vị thế (long: bán ≤ vị thế; short: mua ≤ |vị thế|; Spot và Perps), và vị thế xấu nhất khi mọi lệnh
+ * tăng vị thế khớp không vượt grid mới khởi động từ phẳng (khối lượng mỗi mức × số mức).
+ */
+function capOf(c: GridBotConfig, s: GridBotState): { buy: Decimal; sell: Decimal } {
+  const pos = dec(s.ledger.position);
+  const full = dec(s.qty).mul(s.levels.length);
+  const zero = dec("0");
+  const buy = c.direction === "short" ? pos.neg() : full.sub(pos);
+  const sell = c.direction === "long" ? pos : full.add(pos);
+  return { buy: buy.lt(0) ? zero : buy, sell: sell.lt(0) ? zero : sell };
+}
+
+/**
+ * Sau mỗi fill (#223 B1): lệnh đang mở vượt `capOf` thì huỷ phần vượt, mức xa giá trước. Lệnh huỷ vào `cancelled` (fill
+ * muộn vẫn vào sổ cái); mức đó trống tới khi grid đặt lại.
+ */
+function enforceCap(c: GridBotConfig, s: GridBotState): StepResult<GridBotState> {
+  if (s.phase !== "running" || s.levels.length === 0 || !dec(s.qty).gt(0))
+    return { actions: [], state: s };
+  const cap = capOf(c, s);
+  const price = dec(s.lastPrice ?? s.levels[Math.floor(s.levels.length / 2)] ?? "0");
+  const away = (level: number) =>
+    dec(s.levels[level] ?? "0")
+      .sub(price)
+      .abs();
+  const drop: string[] = [];
+  for (const side of ["buy", "sell"] as const) {
+    const mine = Object.entries(s.open)
+      .filter(([, o]) => o.side === side)
+      .sort(([, a], [, b]) => away(b.level).cmp(away(a.level)));
+    let total = dec(s.qty).mul(mine.length);
+    for (const [id] of mine) {
+      if (total.lte(cap[side])) break;
+      drop.push(id);
+      total = total.sub(s.qty);
+    }
+  }
+  if (drop.length === 0) return { actions: [], state: s };
+  const gone = Object.fromEntries(Object.entries(s.open).filter(([id]) => drop.includes(id)));
+  return {
+    actions: drop.map((id) => ({ type: "cancel" as const, clOrdID: id })),
+    state: {
+      ...s,
+      open: Object.fromEntries(Object.entries(s.open).filter(([id]) => !drop.includes(id))),
+      cancelled: { ...s.cancelled, ...gone },
+    },
+  };
+}
+
+/** Kết quả của một bước có fill, rồi giới hạn lại lệnh đang mở (#223 B1). */
+function capped(c: GridBotConfig, r: StepResult<GridBotState>): StepResult<GridBotState> {
+  const x = enforceCap(c, r.state);
+  return x.actions.length === 0 ? r : { actions: [...r.actions, ...x.actions], state: x.state };
 }
 
 function halt(
@@ -442,7 +545,42 @@ function guards(c: GridBotConfig, s: GridBotState, price: string): StepResult<Gr
   return null;
 }
 
+/**
+ * Bước grid. Lệnh version cũ đang chờ kết thúc (#223) đi trước mọi thứ: fill vào sổ cái theo chiều của chính lệnh (rồi
+ * giới hạn lại lệnh đang mở), kết thúc thì thôi chờ (không pause), nhịp giá gửi huỷ lại khi quá hạn.
+ */
 export function stepGridBot(
+  c: GridBotConfig,
+  s: GridBotState,
+  e: StrategyEvent,
+  ctx: StepContext,
+): StepResult<GridBotState> {
+  if (e.type === "fill") {
+    const r = retireFill(s.retiring, e);
+    if (r !== null) {
+      const state: GridBotState = {
+        ...s,
+        retiring: r.retiring,
+        ledger: r.quantity.gt(0)
+          ? applyFill(s.ledger, r.side, e.price, r.quantity, r.fee)
+          : s.ledger,
+      };
+      return capped(c, { actions: [], state });
+    }
+  }
+  if ((e.type === "orderDone" || e.type === "orderReject") && s.retiring?.[e.clOrdID] !== undefined)
+    return { actions: [], state: { ...s, retiring: retireEnd(s.retiring, e.clOrdID) } };
+  if (e.type === "tick" || e.type === "timer") {
+    const t = retireTick(s.retiring, e.at);
+    if (t.retiring !== s.retiring) {
+      const r = stepGrid(c, { ...s, retiring: t.retiring }, e, ctx);
+      return { actions: [...t.actions, ...r.actions], state: r.state };
+    }
+  }
+  return stepGrid(c, s, e, ctx);
+}
+
+function stepGrid(
   c: GridBotConfig,
   s: GridBotState,
   e: StrategyEvent,
@@ -454,12 +592,19 @@ export function stepGridBot(
     e.type === "fill" || e.type === "orderDone" || e.type === "orderReject" ? e.clOrdID : null;
   const gone = lateId === null || s.open[lateId] !== undefined ? undefined : s.cancelled?.[lateId];
   if (lateId !== null && gone !== undefined) {
+    // Lệnh mở vị thế ban đầu đã kết thúc (`ended`) vẫn giữ để nhận fill tới muộn (#255).
     if (e.type !== "fill")
-      return { actions: [], state: { ...s, cancelled: without(s.cancelled ?? {}, lateId) } };
-    return {
-      actions: [],
-      state: { ...s, ledger: applyFill(s.ledger, gone.side, e.price, e.quantity, e.fee) },
+      return gone.ended === true
+        ? { actions: [], state: s }
+        : { actions: [], state: { ...s, cancelled: without(s.cancelled ?? {}, lateId) } };
+    const booked: GridBotState = {
+      ...s,
+      ledger: applyFill(s.ledger, e.side ?? gone.side, e.price, e.quantity, e.fee),
     };
+    // Lệnh mở vị thế ban đầu khớp sau `orderDone` khi grid đang chạy: đặt thêm phía còn lại cho phần vừa khớp (#255).
+    if (gone.level === -1 && s.phase === "running" && s.levels.length > 0)
+      return capped(c, placeDeferred(c, booked, s.lastPrice ?? e.price, ctx));
+    return capped(c, { actions: [], state: booked });
   }
   if (s.phase === "halted") {
     if (e.type === "resumed") {
@@ -506,6 +651,11 @@ export function stepGridBot(
     const prev = s.lastPrice;
     const state = { ...s, lastPrice: e.price };
     if (state.phase === "idle" || state.phase === "waiting_trigger") {
+      // Lệnh version cũ chưa kết thúc (#223 B1): chưa dựng grid mới; còn vị thế thì stop / take profit / max loss vẫn canh.
+      if (isRetiring(state.retiring))
+        return dec(state.ledger.position).isZero()
+          ? { actions: [], state }
+          : (guards(c, state, e.price) ?? { actions: [], state });
       // Sổ cái còn vị thế (version cũ để lại, #223): grid mới quản lý tiếp vị thế đó ngay, không chờ First entry.
       if (!dec(state.ledger.position).isZero()) return adoptGrid(c, state, e.price, ctx);
       const entry = c.entry ?? { type: "now" };
@@ -535,11 +685,17 @@ export function stepGridBot(
 
   // Lệnh market mở vị thế ban đầu đã kết thúc trên sàn (IOC hết hạn): không còn khớp nữa. Không có dòng này thì version
   // mới chờ lệnh khởi tạo mãi (#223, `applyGridVersion`); fill trước đó đã đặt phía còn lại.
-  if (e.type === "orderDone" && e.clOrdID === s.initClOrdID)
-    return {
-      actions: [],
-      state: { ...s, initClOrdID: null, phase: s.phase === "starting" ? "running" : s.phase },
+  if (e.type === "orderDone" && e.clOrdID === s.initClOrdID) {
+    // Vẫn nhận fill tới sau `orderDone` (đối soát / trade đến trễ, DEC-303) vào sổ cái (#255).
+    const side = c.direction === "short" ? ("sell" as const) : ("buy" as const);
+    const state: GridBotState = {
+      ...s,
+      cancelled: { ...s.cancelled, [e.clOrdID]: { level: -1, side, ended: true } },
     };
+    return s.phase === "starting"
+      ? placeDeferred(c, state, s.lastPrice ?? "0", ctx)
+      : { actions: [], state: { ...state, initClOrdID: null } };
+  }
 
   if (e.type === "orderReject") {
     // Lệnh bị từ chối không có trên sàn: bỏ khỏi danh sách để resume đặt lại mức đó.
@@ -550,11 +706,14 @@ export function stepGridBot(
   if (e.type === "fill") {
     if (e.clOrdID === s.initClOrdID) {
       const side = c.direction === "short" ? "sell" : "buy";
-      const state = {
+      const filled = dec(s.initFilled ?? "0").add(e.quantity);
+      const state: GridBotState = {
         ...s,
         ledger: applyFill(s.ledger, side, e.price, e.quantity, e.fee),
-        initClOrdID: null,
+        initFilled: filled.toString(),
       };
+      // Khớp một phần: chờ phần còn lại hoặc `orderDone` (#255). State cũ không có `initQty`: coi như khớp đủ.
+      if (s.initQty !== undefined && filled.lt(s.initQty)) return { actions: [], state };
       return placeDeferred(c, state, s.lastPrice ?? e.price, ctx);
     }
     const o = s.open[e.clOrdID];
@@ -568,10 +727,10 @@ export function stepGridBot(
     const g = guards(c, state, e.price);
     if (g !== null) return g;
     const next = o.side === "buy" ? o.level + 1 : o.level - 1;
-    if (next < 0 || next >= state.levels.length) return { actions: [], state };
+    if (next < 0 || next >= state.levels.length) return capped(c, { actions: [], state });
     const r = order(c, ctx, state, next, o.side === "buy" ? "sell" : "buy");
     state = r.state;
-    return {
+    return capped(c, {
       actions: [
         { type: "place", order: r.intent },
         {
@@ -581,7 +740,7 @@ export function stepGridBot(
         },
       ],
       state,
-    };
+    });
   }
 
   if (e.type === "fundingPaid" && e.market === c.market) {
@@ -609,5 +768,6 @@ export function gridBotFor<C>(toGrid: (c: C) => GridBotConfig): StrategyModule<C
     step: (c, s, e, ctx) => stepGridBot(toGrid(c), s, e, ctx),
     waiting: (c, s) => gridWaiting(toGrid(c), s),
     applyVersion: (_c, s) => applyGridVersion(s),
+    awaitsEnd: (s, id) => s.retiring?.[id] !== undefined,
   };
 }

@@ -209,6 +209,9 @@ function place(
   };
 }
 
+/** Câu nhật ký khi bỏ qua lệnh mở / tăng trong lúc version mới chờ áp (#223 M5; câu chữ mới, chờ duyệt). */
+export const VERSION_PENDING_SKIP = "Not copied: new settings are being applied.";
+
 /** Bỏ lệnh mở đang chờ: giữ vị thế hiện tại làm mục tiêu, không đuổi theo. */
 function settleOpen(s: CopyMarketView): CopyMarketView {
   const p = pos(s);
@@ -235,6 +238,13 @@ function reconcile(
       return none({ ...s, target: t.isZero() || flips ? s.target : p.toString() });
     return place(c, s, ctx, now, "reduce", p.isPositive() ? "sell" : "buy", qty);
   }
+  // Version mới đang chờ áp (DEC-304, #223 M5): không mở / tăng, để không còn lệnh nào đang chờ và version mới áp được.
+  // Lệnh giảm / đóng ở trên vẫn đi.
+  if (ctx.versionPending !== undefined)
+    return {
+      actions: [log("Skipped", VERSION_PENDING_SKIP)],
+      state: { ...settleOpen(s), skipped: s.skipped + 1 },
+    };
   // Mở hoặc tăng.
   const ref = c.leaderSource === "sodex" ? s.refPrice : s.lastPrice;
   if (ref === null) return none(settleOpen(s));

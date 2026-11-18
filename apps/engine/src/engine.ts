@@ -706,6 +706,14 @@ interface Runner {
    * mới được coi là do đổi version (N2). Chỉ nhớ trong bộ nhớ; nạp lại thì đi theo các bậc thường.
    */
   resetDroppedPosition: boolean;
+  /**
+   * Đang áp version mới (#223 M1): bước chiến lược theo thị trường của version cũ không được chạy xen vào lúc engine đang
+   * huỷ lệnh và ghi version (lệnh nó đặt sẽ không bị huỷ). Nhịp giá / đồng hồ / sổ lệnh tới lúc này bị bỏ (nhịp sau chạy
+   * lại); sự kiện khác chờ áp xong rồi chạy với version mới. Fill / ack / kết thúc lệnh không chờ (chúng chạy trong hàng
+   * đợi của lệnh mà lần huỷ cũng dùng): lệnh chúng sinh ra được huỷ ở lần quét sau khi ghi và lệnh cũ chiến lược còn nhớ
+   * được huỷ lại tới khi SoDEX xác nhận.
+   */
+  applying?: Promise<void> | null;
 }
 
 /**
@@ -822,7 +830,8 @@ export function settleAppliedState(
 
 /**
  * Decisions "Applying v{n}" khi engine hoãn áp version (`applyVersion` trả null). Volume Farm giữ câu đã duyệt của
- * DEC-304; chiến lược khác hoãn khi còn lệnh đang chạy hoặc vị thế ngược hướng version mới (#223).
+ * DEC-304; chiến lược khác hoãn khi còn lệnh đang chạy hoặc vị thế ngược hướng version mới (#223; câu chữ PM duyệt
+ * 2026-11-18).
  */
 export function versionWaitWhy(strategy: string, current: number): string {
   const v = String(current);
@@ -831,11 +840,20 @@ export function versionWaitWhy(strategy: string, current: number): string {
     : `Waits for an order in flight to finish or the open position to close; v${v} keeps managing the bot until then. No orders were cancelled.`;
 }
 
-/** Decisions "Applied v{n}": `kept` khi version mới giữ vị thế của version cũ trong sổ cái (#223). */
+/**
+ * Decisions "Applied v{n}": `kept` khi version mới giữ vị thế của version cũ trong sổ cái (#223; câu chữ PM duyệt
+ * 2026-11-18).
+ */
 export function versionAppliedWhy(cancelled: number, kept: boolean): string {
   return kept
     ? `Cancelled ${String(cancelled)} orders and kept the open position; new orders for it follow on the next price.`
     : `Cancelled ${String(cancelled)} orders; new orders follow on the next price.`;
+}
+
+/** Version trong clOrdID tất định (`d{bot}-{version}-{hash}-{attempt}`, `clOrdId`); không đọc được → vô cực. */
+export function versionOfClOrdId(id: string): number {
+  const v = Number(id.split("-")[1]);
+  return Number.isInteger(v) ? v : Number.POSITIVE_INFINITY;
 }
 
 export function shardOf(accountId: string, shards = ENGINE_SHARDS): number {
@@ -2414,6 +2432,28 @@ export class Engine {
     pending: VersionRow | undefined,
     botState: BotState,
   ): Promise<void> {
+    if (pending === undefined || pending.version <= r.version) {
+      await this.#applyVersionNow(r, pending, botState);
+      return;
+    }
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    r.applying = gate;
+    try {
+      await this.#applyVersionNow(r, pending, botState);
+    } finally {
+      if (r.applying === gate) r.applying = null;
+      release();
+    }
+  }
+
+  async #applyVersionNow(
+    r: Runner,
+    pending: VersionRow | undefined,
+    botState: BotState,
+  ): Promise<void> {
     // Không còn version chờ (đã áp / bị thay): bỏ cờ chặn lượt mới.
     if (pending === undefined || pending.version <= r.version) {
       if (r.ctx.versionPending !== undefined) delete r.ctx.versionPending;
@@ -2463,6 +2503,8 @@ export class Engine {
     await this.#cancel(
       r,
       open.map((o) => o.clOrdId),
+      undefined,
+      true,
     );
     // Fill tới trong lúc huỷ mở lại vị thế: chưa áp, vòng sau thử lại (lệnh vừa huỷ là lệnh của lúc bot còn phẳng).
     const fresh = apply();
@@ -2534,6 +2576,36 @@ export class Engine {
     r.leverageSet = false;
     r.leverageDone = new Set();
     r.leverageKnown = new Set();
+    // Lệnh version cũ mà fill tới trong lúc áp sinh ra (bước của version cũ chạy giữa lần đọc lệnh mở và lúc ghi, #223 M1):
+    // huỷ ngay. Chiến lược đã nhớ chúng là lệnh cũ chờ kết thúc và huỷ lại tới khi SoDEX xác nhận.
+    if (entry.module.applyVersion !== undefined && r.strategy !== Strategy.volumeFarm) {
+      const cancelled = new Set(open.map((o) => o.clOrdId));
+      const late = (
+        await this.#d.db
+          .select({ clOrdId: orders.clOrdId })
+          .from(orders)
+          .where(
+            and(
+              eq(orders.botId, r.botId),
+              inArray(orders.status, ["open", "partially_filled", "unknown"]),
+            ),
+          )
+      )
+        .map((o) => o.clOrdId)
+        .filter((id) => !cancelled.has(id) && versionOfClOrdId(id) < pending.version);
+      if (late.length > 0) await this.#cancel(r, late, undefined, true);
+      // Lệnh vừa huỷ mà SoDEX đã xác nhận kết thúc (hoặc tin kết thúc đã tới version cũ trong lúc áp): báo ngay cho
+      // version mới, để nó không phải chờ lần huỷ lại 10 s sau.
+      const awaits = entry.module.awaitsEnd;
+      const ids = [...cancelled, ...late].filter((id) => awaits?.(r.state, id) === true);
+      if (ids.length > 0) {
+        const rows = await this.#d.db
+          .select()
+          .from(orders)
+          .where(and(eq(orders.sodexAccountId, r.account.id), inArray(orders.clOrdId, ids)));
+        await this.#reportFarmEnded(r, ids, rows, [], this.#d.now());
+      }
+    }
     await this.#event(
       r,
       "version",
@@ -2608,6 +2680,25 @@ export class Engine {
   /** Đưa event cho chiến lược (chỉ khi bot đang chạy), lưu state, thực hiện hành động. */
   async #feed(r: Runner, incoming: StrategyEvent): Promise<void> {
     let event = incoming;
+    // Đang áp version mới (#223 M1): xem `Runner.applying`.
+    const applying = r.applying ?? null;
+    if (
+      applying !== null &&
+      event.type !== "fill" &&
+      event.type !== "orderAck" &&
+      event.type !== "orderReject" &&
+      event.type !== "orderDone" &&
+      event.type !== "positionSync"
+    ) {
+      if (
+        event.type === "tick" ||
+        event.type === "timer" ||
+        event.type === "fair" ||
+        event.type === "book"
+      )
+        return;
+      await applying.catch(() => undefined);
+    }
     const state = await this.#currentState(r.botId);
     const live =
       state === BotState.starting || state === BotState.running || state === BotState.resuming;
@@ -3620,8 +3711,10 @@ export class Engine {
       if (row.doneFedAt === null) await this.#markDone(r, row.id);
       // Báo lại trực tiếp chỉ khi chiến lược còn chờ đúng lệnh này (review m4): không bao giờ gửi tin trùng cho lệnh nó đã
       // coi là xong hay không theo dõi.
-      const waiting = (r.state as { orders?: Record<string, { done?: boolean }> }).orders?.[id];
-      if (waiting === undefined || waiting.done === true) continue;
+      if (r.strategy === Strategy.volumeFarm) {
+        const waiting = (r.state as { orders?: Record<string, { done?: boolean }> }).orders?.[id];
+        if (waiting === undefined || waiting.done === true) continue;
+      } else if (r.module.awaitsEnd?.(r.state, id) !== true) continue;
       await this.#feed(
         r,
         rejected
@@ -3636,6 +3729,11 @@ export class Engine {
     clOrdIDs: readonly string[],
     /** Giờ Binance của lần cập nhật giá gây ra lần huỷ này (ghi Decisions khi SoDEX xác nhận); thiếu = không ghi. */
     binanceAt?: number,
+    /**
+     * Lần huỷ lúc áp version (#223): không báo lại lệnh đã kết thúc cho chiến lược (version đang được ghi; chiến lược mới
+     * tự huỷ lại các lệnh cũ và nhận báo kết thúc ở lần đó).
+     */
+    applying = false,
   ): Promise<void> {
     const rows = await this.#d.db
       .select()
@@ -3673,8 +3771,15 @@ export class Engine {
       this.#cancelRetryAt.set(r.botId, startedAt - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
     // Volume Farm chờ SoDEX xác nhận lệnh đã kết thúc trước khi vào lượt mới và huỷ lại theo nhịp
     // (DEC-317): lệnh bot huỷ mà dòng lệnh đã kết thúc thì báo lại cho chiến lược.
-    if (r.strategy === Strategy.volumeFarm)
+    // Chiến lược khác chờ lệnh version cũ kết thúc sau khi áp version mới (#223): báo lại như Volume Farm, chỉ cho lệnh
+    // chiến lược còn chờ.
+    const awaits = r.module.awaitsEnd;
+    if (!applying && r.strategy === Strategy.volumeFarm)
       await this.#reportFarmEnded(r, clOrdIDs, rows, inflight, startedAt);
+    else if (!applying && awaits !== undefined) {
+      const waited = clOrdIDs.filter((id) => awaits(r.state, id));
+      if (waited.length > 0) await this.#reportFarmEnded(r, waited, rows, inflight, startedAt);
+    }
     if (open.length === 0) {
       return;
     }
@@ -4689,10 +4794,13 @@ export class Engine {
    * Không đọc được → vẫn chặn; chiến lược tự báo sau 10 phút.
    */
   async #farmGaveUp(r: Runner, o: typeof orders.$inferSelect, now: number): Promise<void> {
-    if (r.strategy !== Strategy.volumeFarm || o.missingConfirmedAt === null) return;
-    const waiting = (r.state as { orders?: Record<string, { cancelAt?: number; done?: boolean }> })
-      .orders?.[o.clOrdId];
-    if (waiting?.cancelAt === undefined || waiting.done === true) return;
+    if (o.missingConfirmedAt === null) return;
+    if (r.strategy === Strategy.volumeFarm) {
+      const waiting = (
+        r.state as { orders?: Record<string, { cancelAt?: number; done?: boolean }> }
+      ).orders?.[o.clOrdId];
+      if (waiting?.cancelAt === undefined || waiting.done === true) return;
+    }
     let trades: OrderTrade[];
     try {
       trades = r.paper ? [] : await this.#orderTrades(r.account, o);
@@ -4710,7 +4818,14 @@ export class Engine {
       { botId: r.botId, clOrdID: o.clOrdId },
       "given-up order is confirmed missing on SoDEX; its trades are booked and the bot moves on",
     );
-    await this.#feed(r, { type: "orderDone", at: now, clOrdID: o.clOrdId });
+    if (r.strategy === Strategy.volumeFarm) {
+      await this.#feed(r, { type: "orderDone", at: now, clOrdID: o.clOrdId });
+      return;
+    }
+    // Chiến lược khác (#223 M3): báo kết thúc đúng một lần (`done_fed_at`), để không có gì chờ lệnh này mãi (lệnh khởi
+    // tạo của grid, base order của DCA, lệnh version cũ khi áp version mới…).
+    if (await this.#markDone(r, o.id))
+      await this.#feed(r, { type: "orderDone", at: now, clOrdID: o.clOrdId });
   }
 
   /** Đối soát một lệnh `unknown` với SoDEX. */

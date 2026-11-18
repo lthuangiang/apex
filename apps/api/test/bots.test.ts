@@ -436,6 +436,38 @@ describe("bots API", () => {
     });
     expect(errorOf(locked.body).code).toBe("VALIDATION_FAILED");
   });
+
+  it("keeps a Funding Arb bot's spot leg and asset locked on edit (#223)", async () => {
+    const { client } = await connectedUser("bots-arb-lock@example.com");
+    const arb = {
+      asset: "BTC",
+      spotMarket: "vBTC_vUSDC",
+      perpMarket: "BTC-USD",
+      leverage: 1,
+      investment: "1000",
+      enterFundingPct: "0.01",
+      exitFundingPct: "0",
+      maxGapPct: "0.5",
+      minMarginRatioPct: "30",
+      maxLoss: "100",
+    };
+    const created = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "funding_arb", name: "Arb", paramSource: "manual", config: arb },
+    });
+    expect(created.statusCode).toBe(201);
+    const id =
+      botListSchema.parse((await client.request("GET", "/api/v1/bots")).json()).items[0]?.id ?? "";
+    const ok = await client.request("POST", `/api/v1/bots/${id}/versions`, {
+      body: { paramSource: "manual", config: { ...arb, maxLoss: "150" } },
+    });
+    expect(ok.statusCode).toBe(202);
+    for (const change of [{ spotMarket: "vETH_vUSDC" }, { asset: "ETH" }]) {
+      const res = await client.request("POST", `/api/v1/bots/${id}/versions`, {
+        body: { paramSource: "manual", config: { ...arb, maxLoss: "150", ...change } },
+      });
+      expect(errorOf(res.body).code).toBe("VALIDATION_FAILED");
+    }
+  });
 });
 
 describe("Volume bots per user (DEC-80)", () => {

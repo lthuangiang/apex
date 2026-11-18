@@ -71,13 +71,8 @@ export function netPnl(l: Ledger, mark: DecimalInput): Decimal {
 }
 
 /**
- * Sổ cái của version mới khi bot còn vị thế (#223, DEC-TBD-version-apply-position): phiên mới như DEC-38 / DEC-304 (đã
- * chốt, phí, funding tính lại từ 0, nên max loss đo từ lúc áp) nhưng giữ vị thế và giá vốn, để version mới tiếp tục
- * quản lý đúng vị thế thật thay vì coi bot đang phẳng.
+ * Sổ cái của version mới (#223, DEC-TBD-version-apply-position, PM chốt B2): phiên tiếp tục vì vị thế tiếp tục, nên giữ
+ * nguyên mọi thứ (vị thế, giá vốn, đã chốt, phí, funding). Max loss giữ mốc qua lần sửa: một lần sửa không thể gây ra
+ * hay thoát khỏi pause vì max loss.
  */
-export const carryLedger = (l: Ledger): Ledger => ({
-  ...emptyLedger(),
-  position: l.position,
-  avgCost: l.avgCost,
-  invested: dec(l.position).abs().mul(l.avgCost).toString(),
-});
+export const carryLedger = (l: Ledger): Ledger => ({ ...l });

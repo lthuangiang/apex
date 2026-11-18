@@ -248,4 +248,9 @@ export interface StrategyModule<C, S> {
    * sau thử lại. Thiếu hàm thì engine áp ngay bằng `initialState(config)` như DEC-38.
    */
   applyVersion?: (config: C, state: S, ctx: StepContext) => S | null;
+  /**
+   * Chiến lược còn chờ SoDEX báo lệnh này kết thúc (lệnh version cũ đã huỷ lúc áp version mới, #223). Engine dùng để báo
+   * lại `orderDone` / `orderReject` khi lần huỷ lại gặp dòng lệnh đã kết thúc, như Volume Farm (DEC-317).
+   */
+  awaitsEnd?: (state: S, clOrdID: string) => boolean;
 }
