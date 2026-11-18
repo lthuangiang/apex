@@ -56,11 +56,11 @@ body{margin:0}
       <div class="grid">
         <div><div class="k">In</div><div class="v">One article</div></div>
         <div><div class="k">Out</div><div class="v">A story with <b>candidate tokens</b>: the coins SoSoValue tagged, plus stock tickers, kept only if SoDEX lists them</div></div>
-        <div><div class="k">Dropped</div><div class="v">No candidate token on SoDEX</div></div>
+        <div><div class="k">Dropped</div><div class="v">No candidate token on SoDEX · same text already collected (exact duplicate)</div></div>
       </div>
-      <div class="ex">Candidates: SOL · story is new</div>
+      <div class="ex">Candidates: SOL</div>
     </div>
-    <div class="side" style="background:#fff;border:1px solid #e3e7f5;color:#3b4262"><b style="color:#141a33">Same story again</b>An article on the same token and the same news type within 7 days of the first one joins that story. It never opens a trade, even after the first trade has closed; it only adds a source. A new turn (ETF delayed → ETF approved) is a new story.</div>
+    <div class="side" style="background:#fdebd3;color:#5c2f00"><b>Risk filter (separate branch)</b>Scheduled macro events (FOMC, CPI…) and market-wide news don’t become trades. They open a pause window in which Volume Builder and Market Making bots stop opening new positions. News about one token (a hack, a delisting) stays on the signal path, and may pause bots on that one market only.</div>
   </div>
   <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#8fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
 
@@ -70,12 +70,12 @@ body{margin:0}
       <div class="head"><span class="num" style="background:#2e62e8">3</span><span class="title">Understand</span><span class="who">Claude + rules table</span></div>
       <div class="grid">
         <div><div class="k">In</div><div class="v">The story and its candidate tokens</div></div>
-        <div><div class="k">Out</div><div class="v">Claude names the news type, the token hit directly, and the event date. The rules table gives the direction and max hold. The source count gives the level.</div></div>
+        <div><div class="k">Out</div><div class="v">Claude answers from fixed choices only: a news type from the list, a token from the candidates, the event date. Anything else is rejected. The rules table gives the direction and max hold; the source count gives the level.</div></div>
         <div><div class="k">Dropped</div><div class="v">Not a type on the list · token only mentioned in passing · promotional · event older than 24 h</div></div>
       </div>
       <div class="ex" style="font-weight:700">SOL · Short · ETF delayed · Medium (1 top-tier source) · max hold 2 d</div>
     </div>
-    <div class="side" style="background:#fdebd3;color:#5c2f00"><b>Risk filter (separate branch)</b>Macro news and very hot news don’t become trades. They open a pause window: Volume Builder and Market Making bots stop opening new positions for that window. Measured on real bot trades.</div>
+    <div class="side" style="background:#fff;border:1px solid #e3e7f5;color:#3b4262"><b style="color:#141a33">Claude doesn’t answer</b>One retry. If it still fails, or answers outside the fixed choices, the story is marked “Not understood”: no trade, and it counts against Claude’s health on the page.</div>
   </div>
   <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#8fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
 
@@ -85,12 +85,12 @@ body{margin:0}
       <div class="head"><span class="num" style="background:#4a7bf0">4</span><span class="title">Filter</span><span class="who">Code</span></div>
       <div class="grid">
         <div><div class="k">In</div><div class="v">A signal: token, direction, level, max hold</div></div>
-        <div><div class="k">Checks</div><div class="v">TP is at least 2× the round-trip cost (taker fee ×2 + builder fee ×2 + the spread measured now) · SoDEX has a price · no News trade open on this token · source was on time</div></div>
+        <div><div class="k">Checks</div><div class="v">First, is this story already known (same token + news type within 7 days)? Then: TP is at least 2× the round-trip cost (taker fee ×2 + builder fee ×2 + the spread measured now) · SoDEX has a price · no News trade open on this token · source was on time</div></div>
         <div><div class="k">Dropped</div><div class="v">Each failed check, with its reason. A thin market fails the cost check and shows “Too thin to trade”.</div></div>
       </div>
-      <div class="ex">TP 2.0% vs cost 0.10% · SOL spread 0.03% · nothing open on SOL → passes</div>
+      <div class="ex">New story · TP 2.0% vs cost 0.10% · SOL spread 0.03% · nothing open on SOL → passes</div>
     </div>
-    <div class="side" style="background:#fff;border:1px solid #e3e7f5;color:#3b4262"><b style="color:#141a33">Opposite news while a trade is open</b>No new trade. The open trade keeps its own TP, SL and max hold. The opposite story is recorded for analysis.</div>
+    <div class="side" style="background:#fff;border:1px solid #e3e7f5;color:#3b4262"><b style="color:#141a33">Same story again</b>An article on the same token and news type within 7 days of the first joins that story. It never opens a trade, even after the first trade has closed; it only adds a source. A new turn (ETF delayed → ETF approved) is a new story.<br><br><b style="color:#141a33">Opposite news while a trade is open</b>No new trade. The open trade keeps its own TP, SL and max hold.</div>
   </div>
   <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#8fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
 
@@ -114,11 +114,11 @@ body{margin:0}
     <div class="step">
       <div class="head"><span class="num" style="background:#0f7a43">6</span><span class="title">Watch and close</span><span class="who">Code</span></div>
       <div class="grid">
-        <div><div class="k">How</div><div class="v">The SoDEX price is checked every second</div></div>
+        <div><div class="k">How</div><div class="v">SoDEX bid and ask checked every second: a short closes on the ask, a long on the bid</div></div>
         <div><div class="k">Closes at</div><div class="v">Take profit, stop loss or max hold, whichever comes first</div></div>
         <div><div class="k">Result</div><div class="v">After fees and spread, both legs</div></div>
       </div>
-      <div class="ex">Take profit hit Nov 20, 09:12 · +$8.94 after fees</div>
+      <div class="ex">Take profit hit Nov 20, 09:12 · +$9.50 after fees</div>
     </div>
     <div class="side" style="background:#fff;border:1px solid #e3e7f5;color:#3b4262"><b style="color:#141a33">SoDEX price missing</b>Open trades wait; TP / SL are checked again as soon as the price is back.</div>
   </div>
@@ -145,7 +145,7 @@ body{margin:0}
       <div class="head"><span class="num" style="background:#5a2ca0">8</span><span class="title">The gate · when can we trust it?</span><span class="who">Rule</span></div>
       <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px;line-height:1.5">
         <li><b>At least 100 closed trades per level</b> is the floor. Once there is an average, the page shows how many trades that average really needs: a small edge needs more (≈ (1.96 × spread ÷ difference vs random)²).</li>
-        <li><b>Beats random entries</b> at the same moments, by at least 2× the cost of a trade, with the likely range above 0.</li>
+        <li><b>Average after fees at least 2× the cost of a trade</b>, with the likely range above 0.</li><li><b>Beats random entries</b> at the same moments: the difference’s likely range stays above 0.</li>
         <li><b>Same sign in both halves</b> of the period, so one lucky week can’t carry it.</li>
         <li>At ~30 closed news trades a week, 3 levels × 100 ≈ <b>10 weeks</b> to a first answer.</li>
       </ul>
@@ -170,7 +170,7 @@ body{margin:0}
       <div style="background:#f5f7fd;border-radius:14px;padding:12px"><div class="k">Collected</div><div style="font-weight:800">22:35:02</div><div class="v" style="font-size:12px;color:#5f6684">next 5-min check</div></div>
       <div style="background:#f5f7fd;border-radius:14px;padding:12px"><div class="k">Understood</div><div style="font-weight:800">22:35:05</div><div class="v" style="font-size:12px;color:#5f6684">Claude, 3 s</div></div>
       <div style="background:#f5f7fd;border-radius:14px;padding:12px"><div class="k">Paper entry</div><div style="font-weight:800">22:35:06</div><div class="v" style="font-size:12px;color:#5f6684">price already −0.6%</div></div>
-      <div style="background:#ddf4e7;border-radius:14px;padding:12px"><div class="k">Closed</div><div style="font-weight:800">Nov 20, 09:12</div><div class="v" style="font-size:12px;color:#0f7a43">take profit · +$8.94</div></div>
+      <div style="background:#ddf4e7;border-radius:14px;padding:12px"><div class="k">Closed</div><div style="font-weight:800">Nov 20, 09:12</div><div class="v" style="font-size:12px;color:#0f7a43">take profit · +$9.50</div></div>
     </div>
   </div>
 </div>
