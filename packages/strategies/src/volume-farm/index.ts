@@ -24,7 +24,7 @@ import { safeEntrySnapshot } from "./snapshot";
 //   lệnh trước (apex MM inventory hard block); `reverseSignal` đảo hướng. Cỡ lệnh và thời gian giữ ngẫu nhiên
 //   (người dùng chọn giữ như apex, DEC-80), dùng PRNG tất định theo (botId, cycle) để backtest lặp lại được.
 // - Lệnh vào post-only trong spread (mua = ask − 1 tick, bán = bid + 1 tick); 10 s chưa khớp thì huỷ, lượt sau đặt lại
-//   khi SoDEX đã xác nhận lệnh cũ kết thúc (DEC-TBD-vf-orphan-entry). Sau `takerAfter` lần
+//   khi SoDEX đã xác nhận lệnh cũ kết thúc (DEC-317). Sau `takerAfter` lần
 //   không khớp liên tiếp và `allowTaker` thì vào bằng lệnh market (IOC).
 // - Thoát (thứ tự như apex): SL theo % giá → taker ngay; lãi ≥ max(tpUsd, 1.5 × phí khứ hồi); giữ ≥ maxHold;
 //   sau earlyExitSecs lãi ≥ earlyProfitFees × phí khứ hồi (DEC-130); hết thời gian giữ ngẫu nhiên. Lệnh thoát post-only reduce-only cũng
@@ -47,10 +47,10 @@ export const FARM_TIMING = {
   exitFillMs: 15_000,
   /**
    * Lệnh vào đã gửi huỷ mà SoDEX chưa xác nhận kết thúc (`orderDone` / `orderReject`): gửi huỷ lại sau mỗi chừng này
-   * ms và không vào lượt mới (DEC-TBD-vf-orphan-entry). Bền qua khởi động lại vì nằm trong state.
+   * ms và không vào lượt mới (DEC-317). Bền qua khởi động lại vì nằm trong state.
    */
   cancelRetryMs: 10_000,
-  /** Chờ xác nhận huỷ lâu hơn mức này: ghi Decisions + Needs attention một lần (DEC-TBD-vf-orphan-entry). */
+  /** Chờ xác nhận huỷ lâu hơn mức này: ghi Decisions + Needs attention một lần (DEC-317). */
   cancelStuckMs: 10 * 60_000,
   /** Không có sổ lệnh thời gian thực (DEC-82): sổ REST cũ hơn mức này thì lùi 1 tick khỏi giá gần nhất. */
   bookMaxAgeMs: 10_000,
@@ -111,7 +111,7 @@ export interface VolumeFarmState {
   /**
    * Lệnh của bot còn có thể khớp (kể cả đã gửi huỷ): fill đến muộn vẫn vào đúng sổ cái. `cancelAt`: lần gần nhất bot
    * gửi huỷ lệnh này; `done`: engine đã báo lệnh kết thúc trên SoDEX (`orderDone` / `orderReject`). Lệnh vào có
-   * `cancelAt` mà chưa `done` chặn lượt mới (DEC-TBD-vf-orphan-entry). Lệnh chưa `done` không bao giờ bị quên.
+   * `cancelAt` mà chưa `done` chặn lượt mới (DEC-317). Lệnh chưa `done` không bao giờ bị quên.
    */
   orders: Record<string, FarmOrder>;
   /** Đã báo (Decisions + Needs attention) đợt chờ xác nhận huỷ hiện tại. */
@@ -329,7 +329,7 @@ function cancellingEntries(s: VolumeFarmState): [string, FarmOrder][] {
 }
 
 /**
- * Huỷ lại các lệnh chưa được xác nhận kết thúc, mỗi `FARM_TIMING.cancelRetryMs` (DEC-TBD-vf-orphan-entry). Engine giữ
+ * Huỷ lại các lệnh chưa được xác nhận kết thúc, mỗi `FARM_TIMING.cancelRetryMs` (DEC-317). Engine giữ
  * danh sách chờ huỷ trong bộ nhớ (mất khi khởi động lại / đổi shard); lần huỷ lại này nằm trong state nên bền. Engine
  * trả lời bằng `orderDone` / `orderReject` khi dòng lệnh đã kết thúc. Chờ quá `FARM_TIMING.cancelStuckMs` thì ghi một
  * dòng Decisions và bật Needs attention (một lần mỗi đợt chờ): bot không bao giờ đứng im mà không nói.
@@ -1025,7 +1025,7 @@ function onTimer(
   const snap = e.market?.market === c.market ? e.market : undefined;
   const merged = snap === undefined ? s0 : mergeRestBook(s0, snap, at);
   if (merged.phase === "halted") return none(merged);
-  // Lệnh vào đã gửi huỷ mà chưa có xác nhận: huỷ lại theo nhịp, ở mọi pha (DEC-TBD-vf-orphan-entry).
+  // Lệnh vào đã gửi huỷ mà chưa có xác nhận: huỷ lại theo nhịp, ở mọi pha (DEC-317).
   const chase = chaseCancels(merged, at);
   const r = phaseTimer(c, chase.state, ctx, at, snap);
   return chase.actions.length === 0
@@ -1045,7 +1045,7 @@ function phaseTimer(
       if (s.entry === null || at - s.entry.placedAt < FARM_TIMING.entryFillMs) return none(s);
       const open = !dust(s, ctx, c.market);
       // Chưa khớp sau 10 s: gửi huỷ, nhưng lệnh vẫn được coi là có thể còn sống cho tới khi SoDEX xác nhận kết thúc
-      // (`orderDone` / `orderReject`); trong lúc đó không vào lượt mới (DEC-TBD-vf-orphan-entry, #239).
+      // (`orderDone` / `orderReject`); trong lúc đó không vào lượt mới (DEC-317, #239).
       return {
         actions: [{ type: "cancel", clOrdID: s.entry.id }],
         state: {
@@ -1255,7 +1255,7 @@ function bookFill(
   if (!dust(state, ctx, c.market)) return { actions: excessLog, state };
   // Đã đóng hết: huỷ lệnh còn lại của lượt. Stop trên SoDEX đóng CẢ vị thế thật của account trên market, nên không để
   // SoDEX tự huỷ (DEC-119 cũ): khi còn vị thế bot không theo dõi, stop còn sống và kích hoạt sau (#239: 05:31). Gửi huỷ
-  // ngay và theo dõi tới khi SoDEX xác nhận (chặn lượt mới như lệnh vào chờ huỷ, DEC-TBD-vf-orphan-entry).
+  // ngay và theo dõi tới khi SoDEX xác nhận (chặn lượt mới như lệnh vào chờ huỷ, DEC-317).
   const stopId = o.kind === "stop" ? null : (s.xstop?.id ?? null);
   const leftovers: StrategyAction[] = [
     ...(o.kind === "stop" && s.exit !== null
@@ -1331,7 +1331,7 @@ export function applyVolumeFarmVersion(
     s.entry !== null ||
     s.exit !== null ||
     !dust(s, ctx, c.market) ||
-    // Lệnh vào cũ chưa được xác nhận đã huỷ có thể còn khớp: chờ (DEC-TBD-vf-orphan-entry).
+    // Lệnh vào cũ chưa được xác nhận đã huỷ có thể còn khớp: chờ (DEC-317).
     cancellingEntries(s).length > 0
   )
     return null;
@@ -1368,7 +1368,7 @@ export function stepVolumeFarm(
     case "fill":
       return onFill(c, s, ctx, e);
     case "orderReject": {
-      // Lệnh đã kết thúc trên SoDEX mà chưa khớp gì: thôi chờ xác nhận huỷ của nó (DEC-TBD-vf-orphan-entry).
+      // Lệnh đã kết thúc trên SoDEX mà chưa khớp gì: thôi chờ xác nhận huỷ của nó (DEC-317).
       const ended = markDone(s.orders, e.clOrdID);
       if (ended !== s.orders) s = { ...s, orders: ended };
       if (s.entry?.id === e.clOrdID) {
@@ -1460,7 +1460,7 @@ export function stepVolumeFarm(
     case "orderDone": {
       // Tin trùng (engine báo lại khi bot huỷ lại một lệnh đã kết thúc): không làm gì, nhất là với stop đang sống.
       if (s.orders[e.clOrdID]?.done === true) return none(s);
-      // Lệnh đã kết thúc trên SoDEX: lệnh vào đã gửi huỷ thôi chặn lượt mới (DEC-TBD-vf-orphan-entry).
+      // Lệnh đã kết thúc trên SoDEX: lệnh vào đã gửi huỷ thôi chặn lượt mới (DEC-317).
       const ended = markDone(s.orders, e.clOrdID);
       const next = ended === s.orders ? s : { ...s, orders: ended };
       // Stop trên sàn hết hiệu lực khi vị thế còn mở (SoDEX tự huỷ…): không đặt lại mãi, bot tự giữ SL.

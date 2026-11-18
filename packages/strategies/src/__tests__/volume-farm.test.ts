@@ -166,7 +166,7 @@ describe("volume farm cycle", () => {
       const id = r.s.entry?.id ?? "";
       const at = T0 + (i + 1) * 20_000;
       const timeout = at - 20_000 + FARM_TIMING.entryFillMs;
-      // SoDEX xác nhận lệnh vào đã huỷ, rồi mới vào lượt sau (DEC-TBD-vf-orphan-entry).
+      // SoDEX xác nhận lệnh vào đã huỷ, rồi mới vào lượt sau (DEC-317).
       r = run(
         cfg(),
         [timer(timeout, false), { type: "orderDone", at: timeout + 100, clOrdID: id }, timer(at)],
@@ -309,7 +309,7 @@ describe("volume farm cycle", () => {
     expect(r.s).toMatchObject({ phase: "idle", trades: 1, wins: 1, lastSide: "long" });
     expect(r.s.cooldownUntil).toBe(T0 + 3000 + 30_000);
     expect(r.all.find((a) => a.type === "log")).toMatchObject({ decision: "Closed long" });
-    // Stop trên SoDEX của lượt được huỷ ngay khi đóng (DEC-TBD-vf-orphan-entry); SoDEX xác nhận.
+    // Stop trên SoDEX của lượt được huỷ ngay khi đóng (DEC-317); SoDEX xác nhận.
     const stopId = r.all.find((a) => a.type === "cancel");
     expect(stopId).toBeDefined();
     if (stopId?.type === "cancel")
@@ -1360,7 +1360,7 @@ describe("volume farm — new version while running (DEC-304)", () => {
     expect(r.s.phase).toBe("idle");
     // Hết cooldown mà version mới còn chờ: không mở lượt mới.
     expect(places(run(cfg(), [timer(T0 + 60_000)], r.s, waiting).all)).toHaveLength(0);
-    // Stop trên SoDEX của lượt v1 đã gửi huỷ: chưa áp tới khi SoDEX xác nhận (DEC-TBD-vf-orphan-entry).
+    // Stop trên SoDEX của lượt v1 đã gửi huỷ: chưa áp tới khi SoDEX xác nhận (DEC-317).
     const stop = open.xstop?.id ?? "";
     expect(apply(v2, r.s, ctx)).toBeNull();
     r = run(cfg(), [{ type: "orderDone", at: T0 + 3500, clOrdID: stop }], r.s, waiting);
@@ -1378,7 +1378,7 @@ describe("volume farm — new version while running (DEC-304)", () => {
     const entry = first(places(r.all));
     r = run(cfg(), [timer(T0 + FARM_TIMING.entryFillMs + 1)], r.s);
     expect(r.s.phase).toBe("idle");
-    // Huỷ chưa được SoDEX xác nhận: lệnh v1 còn có thể khớp, chưa áp (DEC-TBD-vf-orphan-entry).
+    // Huỷ chưa được SoDEX xác nhận: lệnh v1 còn có thể khớp, chưa áp (DEC-317).
     expect(apply(v2, r.s, ctx)).toBeNull();
     r = run(
       cfg(),
@@ -1511,7 +1511,7 @@ describe("volume farm — signal snapshot on entries (#221)", () => {
       const id = r.s.entry?.id ?? "";
       r = run(
         cfg(),
-        // SoDEX xác nhận lệnh vào đã huỷ trước lượt sau (DEC-TBD-vf-orphan-entry).
+        // SoDEX xác nhận lệnh vào đã huỷ trước lượt sau (DEC-317).
         [timer(timeout, false), { type: "orderDone", at: timeout + 100, clOrdID: id }, timer(at)],
         r.s,
         snapCtx,
@@ -1610,7 +1610,7 @@ describe("volume farm — signal snapshot on entries (#221)", () => {
   });
 });
 
-describe("volume farm — entry stays tracked until SoDEX confirms it ended (#239, DEC-TBD-vf-orphan-entry)", () => {
+describe("volume farm — entry stays tracked until SoDEX confirms it ended (#239, DEC-317)", () => {
   const c = cfg({ allowTaker: false, cooldownSecs: 0 });
   /** Nhịp đồng hồ có nến dời theo thời gian (không "STALE_CANDLES" sau vài phút). */
   const tick = (at: number): StrategyEvent => ({

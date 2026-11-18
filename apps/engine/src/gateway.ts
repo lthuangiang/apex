@@ -104,7 +104,7 @@ export type LookupResult =
 /**
  * Tuỳ chọn của lời gọi đọc đối soát. `urgent`: tra lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận (lệnh có thể còn sống trên
  * sổ trong khi chiến lược đã thôi theo dõi): dùng mức thường như lời gọi trên đường gửi lệnh, không bị phần dự trữ 30%
- * cho lệnh ghi chặn (DEC-310 → DEC-TBD-vf-orphan-entry). Engine giới hạn số lần bằng ngân sách riêng.
+ * cho lệnh ghi chặn (DEC-310 → DEC-317). Engine giới hạn số lần bằng ngân sách riêng.
  */
 export interface ReadOptions {
   urgent?: boolean;

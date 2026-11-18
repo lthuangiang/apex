@@ -294,7 +294,7 @@ describe("market info on the order path (DEC-308)", () => {
     expect(signed).toBe(0);
   });
 
-  it("reads a cancel-pending order with the write-priority client, other reads with the background one (DEC-TBD-vf-orphan-entry)", async () => {
+  it("reads a cancel-pending order with the write-priority client, other reads with the background one (DEC-317)", async () => {
     const used: string[] = [];
     const client = (name: string) =>
       ({

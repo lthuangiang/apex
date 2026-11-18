@@ -162,7 +162,7 @@ export class HttpGateway implements Gateway {
     private readonly reads: SodexRestClient = rest,
     /**
      * Client đọc mức thường (không bị phần dự trữ cho lệnh ghi chặn), timeout ngắn như `reads`: chỉ cho tra lệnh đã gửi
-     * huỷ chưa được xác nhận (`ReadOptions.urgent`, DEC-TBD-vf-orphan-entry). Thiếu thì dùng `reads`.
+     * huỷ chưa được xác nhận (`ReadOptions.urgent`, DEC-317). Thiếu thì dùng `reads`.
      */
     private readonly urgentReads: SodexRestClient = reads,
   ) {}

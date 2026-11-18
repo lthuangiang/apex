@@ -52,7 +52,7 @@ export type StrategyEvent =
       fee: string;
       /**
        * Chiều của lệnh (engine lấy từ dòng `orders` của chính bot). Chiến lược đã thôi theo dõi lệnh vẫn ghi được fill
-       * đến muộn (Volume Farm nhận vào vị thế, DEC-TBD-vf-orphan-entry); thiếu ở sim / backtest.
+       * đến muộn (Volume Farm nhận vào vị thế, DEC-317); thiếu ở sim / backtest.
        */
       side?: "buy" | "sell";
       /** Lệnh chỉ giảm vị thế (stop, lệnh thoát, lệnh đóng của engine): fill không bao giờ mở / tăng vị thế. */
@@ -185,7 +185,7 @@ export type StrategyAction =
       teamAlert?: StrategyTeamAlert;
     };
 
-/** Sự cố tiền thật chiến lược tự phát hiện, báo team qua đường DEC-313 (DEC-TBD-vf-orphan-entry). */
+/** Sự cố tiền thật chiến lược tự phát hiện, báo team qua đường DEC-313 (DEC-317). */
 export type StrategyTeamAlert = "late_fill_adopted" | "closing_fill_beyond" | "cancel_unconfirmed";
 
 /**

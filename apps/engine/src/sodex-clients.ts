@@ -43,7 +43,7 @@ export function engineSodexClients(o: EngineSodexOptions): {
   /** Đọc của đối soát và approval, chừa phần dự trữ, timeout ngắn hơn. */
   reads: SodexRestClient;
   /**
-   * Tra lệnh đã gửi huỷ chưa được SoDEX xác nhận (DEC-TBD-vf-orphan-entry): mức thường như lệnh ghi (không bị phần dự trữ
+   * Tra lệnh đã gửi huỷ chưa được SoDEX xác nhận (DEC-317): mức thường như lệnh ghi (không bị phần dự trữ
    * chặn), timeout ngắn như `reads`. Engine giới hạn số lần bằng ngân sách riêng (`URGENT_LOOKUP_BUDGET`).
    */
   urgentReads: SodexRestClient;

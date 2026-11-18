@@ -103,7 +103,7 @@ const gateway = new HttpGateway(
   sodex.builderExempt,
   // Cùng bucket rate limit IP (cùng store + egressKey), timeout ngắn hơn cho đọc của đối soát.
   reads,
-  // Tra lệnh đã gửi huỷ chưa được xác nhận: không bị phần dự trữ chặn (DEC-TBD-vf-orphan-entry).
+  // Tra lệnh đã gửi huỷ chưa được xác nhận: không bị phần dự trữ chặn (DEC-317).
   urgentReads,
 );
 // User stream cho từng account + engine mà bot thật trong shard của worker này giao dịch (account chỉ chạy Perps không mở

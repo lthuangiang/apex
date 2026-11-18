@@ -320,7 +320,7 @@ export class FencedError extends Error {
 }
 
 type OrderRow = typeof orders.$inferSelect;
-/** Phần state Volume Farm engine đọc (lệnh bot theo dõi, stop của lượt đang mở), DEC-TBD-vf-orphan-entry. */
+/** Phần state Volume Farm engine đọc (lệnh bot theo dõi, stop của lượt đang mở), DEC-317. */
 interface FarmStateView {
   orders?: Record<string, { kind?: string; cancelAt?: number; done?: boolean }>;
   xstop?: { id: string } | null;
@@ -357,7 +357,7 @@ interface TickSnapshot {
   lookups: Set<string> | null;
   /**
    * Phần của `lookups` là lệnh đã gửi huỷ chưa được xác nhận, tra bằng URGENT_LOOKUP_BUDGET và client đọc mức thường
-   * (DEC-TBD-vf-orphan-entry).
+   * (DEC-317).
    */
   urgent: Set<string>;
 }
@@ -397,14 +397,14 @@ export const LOOKUP_WEIGHT = 25;
  */
 export const TRADES_WEIGHT = 20;
 /**
- * Ngân sách riêng cho tra lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận (DEC-TBD-vf-orphan-entry): lệnh như vậy có thể còn
+ * Ngân sách riêng cho tra lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận (DEC-317): lệnh như vậy có thể còn
  * sống trên sổ trong khi chiến lược đã thôi theo dõi (#239), nên không chờ phần còn lại của LOOKUP_BUDGET và đọc ở mức
  * thường (không bị phần dự trữ 30% của DEC-310 bỏ). 180 weight / 60 s = 4 lần tra kèm đọc trade mỗi phút, 15% bucket IP.
  */
 export const URGENT_LOOKUP_BUDGET = { weight: 180, windowMs: 60_000 } as const;
 /**
  * Khi vị thế thật lệch sổ cái của Volume Farm, tìm fill của chính lệnh bot (đã ghi trong `fills`) mà chiến lược không còn
- * nhớ trong chừng này gần nhất (DEC-TBD-vf-orphan-entry).
+ * nhớ trong chừng này gần nhất (DEC-317).
  */
 export const ADOPT_LOOKBACK_MS = 24 * 60 * 60_000;
 /**
@@ -896,9 +896,9 @@ export class Engine {
   readonly #cancelGone = new Map<string, Set<string>>();
   /** Lần huỷ gần nhất của lệnh trong `#cancelGone` (huỷ lại chậm mỗi OPEN_CHECK_MS tới khi có kết quả, review #216 M3). */
   readonly #goneCancelAt = new Map<string, number>();
-  /** Lần quét lệnh Volume Farm mồ côi gần nhất, theo bot (DEC-TBD-vf-orphan-entry). */
+  /** Lần quét lệnh Volume Farm mồ côi gần nhất, theo bot (DEC-317). */
   readonly #farmSweepAt = new Map<string, number>();
-  /** Độ lệch vị thế đã thử nhận fill của chính bot để sửa sổ cái, theo `bot:market` (DEC-TBD-vf-orphan-entry). */
+  /** Độ lệch vị thế đã thử nhận fill của chính bot để sửa sổ cái, theo `bot:market` (DEC-317). */
   readonly #adoptTried = new Map<string, string>();
   /** Lệnh huỷ đang chờ lệnh đặt được nhận (DEC-254): clOrdID → lúc bắt đầu chờ. */
   readonly #inflightCancels = new Map<string, number>();
@@ -1667,7 +1667,7 @@ export class Engine {
       quantity: delta.toString(),
       fee,
       // Theo dòng lệnh của chính bot: chiến lược đã thôi theo dõi lệnh vẫn ghi đúng fill (chiều, chỉ giảm, khối lượng
-      // đặt, lệnh đóng của Stop) (DEC-TBD-vf-orphan-entry).
+      // đặt, lệnh đóng của Stop) (DEC-317).
       side: o.side,
       reduceOnly: o.reduceOnly,
       size: o.size,
@@ -2981,7 +2981,7 @@ export class Engine {
                   dedupeKey: `copy_bot_skipped:${data.botId}:${data.market ?? "*"}:${String(data.at)}`,
                 },
               });
-            // Sự cố tiền thật chiến lược tự phát hiện (DEC-313, DEC-TBD-vf-orphan-entry): báo team cùng transaction.
+            // Sự cố tiền thật chiến lược tự phát hiện (DEC-313, DEC-317): báo team cùng transaction.
             if (a.teamAlert !== undefined && !r.paper)
               await tx.insert(outbox).values(
                 teamIncidentRow({
@@ -3550,7 +3550,7 @@ export class Engine {
   }
 
   /**
-   * Volume Farm (DEC-TBD-vf-orphan-entry): chiến lược coi lệnh vào đã gửi huỷ là còn sống tới khi engine báo kết thúc
+   * Volume Farm (DEC-317): chiến lược coi lệnh vào đã gửi huỷ là còn sống tới khi engine báo kết thúc
    * (`orderDone` / `orderReject`) và gửi huỷ lại mỗi 10 s. Lần huỷ gặp dòng lệnh đã kết thúc thì báo lại: dòng chưa báo
    * (`done_fed_at` null) đi qua `onOrderClosed` như user stream (đúng một lần, sau fill); dòng đã báo mà chiến lược còn chờ
    * (khởi động lại giữa lúc đánh dấu và bước chiến lược) thì báo lại trực tiếp, Volume Farm bỏ qua tin trùng. Không có dòng
@@ -3644,7 +3644,7 @@ export class Engine {
     if (inflight.length > 0)
       this.#cancelRetryAt.set(r.botId, startedAt - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
     // Volume Farm chờ SoDEX xác nhận lệnh đã kết thúc trước khi vào lượt mới và huỷ lại theo nhịp
-    // (DEC-TBD-vf-orphan-entry): lệnh bot huỷ mà dòng lệnh đã kết thúc thì báo lại cho chiến lược.
+    // (DEC-317): lệnh bot huỷ mà dòng lệnh đã kết thúc thì báo lại cho chiến lược.
     if (r.strategy === Strategy.volumeFarm)
       await this.#reportFarmEnded(r, clOrdIDs, rows, inflight, startedAt);
     if (open.length === 0) {
@@ -3722,12 +3722,12 @@ export class Engine {
     if (notBooked)
       this.#cancelRetryAt.set(r.botId, now - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
     // SoDEX từ chối riêng lệnh huỷ này (envelope ok, mã lỗi của lệnh): không nói lệnh đã hết trên sổ. Như OrderNotFound,
-    // đọc trạng thái cuối ở #reconcileOpen thay vì tự ghi `cancelled` (DEC-TBD-vf-orphan-entry, quy tắc 1.7).
+    // đọc trạng thái cuối ở #reconcileOpen thay vì tự ghi `cancelled` (DEC-317, quy tắc 1.7).
     const isGone = (x: CancelResult) =>
       x.outcome === "not_found" || (x.outcome === "rejected" && x.scope !== "request");
     // Volume Farm: stop trên SoDEX của lượt đã đóng mà huỷ gặp OrderNotFound = SoDEX đã tự huỷ khi vị thế về 0 (DEC-119),
     // hoặc stop đã kích hoạt. Coi là đã kết thúc ngay, không tra lại (không tốn ngân sách khẩn mỗi lượt, PM chốt #248).
-    // Fill muộn của nó (nếu có) vẫn an toàn: fill của lệnh chỉ giảm không bao giờ mở vị thế (DEC-TBD-vf-orphan-entry).
+    // Fill muộn của nó (nếu có) vẫn an toàn: fill của lệnh chỉ giảm không bao giờ mở vị thế (DEC-317).
     const farm = r.strategy === Strategy.volumeFarm ? (r.state as FarmStateView) : null;
     const stopEnded = new Set(
       results
@@ -3796,7 +3796,7 @@ export class Engine {
     // Stop của lượt đã đóng đã hết trên SoDEX: báo chiến lược một lần (như user stream), lượt sau không phải chờ.
     for (const id of stopEnded) await this.onOrderClosed(r.account.id, id, "cancelled", now);
     // Market Making tính khối lượng còn treo của lệnh đóng cho tới khi SoDEX xác nhận đã gỡ (DEC-100). Volume Farm paper
-    // không có user stream báo CANCELED: báo kết thúc ngay để lượt sau không phải chờ (DEC-TBD-vf-orphan-entry).
+    // không có user stream báo CANCELED: báo kết thúc ngay để lượt sau không phải chờ (DEC-317).
     if (r.strategy !== Strategy.volumeMaker && !(r.paper && r.strategy === Strategy.volumeFarm))
       return;
     const at = this.#d.now();
@@ -4654,7 +4654,7 @@ export class Engine {
   }
 
   /**
-   * Volume Farm chờ SoDEX xác nhận lệnh này đã kết thúc trước khi vào lượt mới (DEC-TBD-vf-orphan-entry); dòng `unknown`
+   * Volume Farm chờ SoDEX xác nhận lệnh này đã kết thúc trước khi vào lượt mới (DEC-317); dòng `unknown`
    * bỏ cuộc sẽ không bao giờ có `orderDone` (review #239 M2). Quyết định rõ ràng: lần tra thành công đã xác nhận lệnh không
    * còn trên SoDEX (`missing_confirmed_at`, quá UNKNOWN_CHECK_WINDOW_MS) nên không khớp thêm được: đọc trade NGAY LÚC NÀY,
    * có trade thì ghi fill thật trước, rồi báo `orderDone` để bot đi tiếp (kiểm tra vị thế DEC-306 vẫn là lưới an toàn).
@@ -4794,7 +4794,7 @@ export class Engine {
     engine: "spot" | "perps",
     /** Bản đang giữ đọc trước mốc này (`#readSeq`) thì đọc lại. */
     notBefore = 0,
-    /** Đọc cho lệnh đã gửi huỷ chưa được xác nhận: ngân sách riêng, mức thường (DEC-TBD-vf-orphan-entry). */
+    /** Đọc cho lệnh đã gửi huỷ chưa được xác nhận: ngân sách riêng, mức thường (DEC-317). */
     urgent = false,
   ): Promise<(OrderTrade & { clOrdID: string })[]> {
     const key = `${account.id}:${engine}:${market}`;
@@ -4951,7 +4951,7 @@ export class Engine {
   #planLookups(snap: TickSnapshot, shards: readonly number[], now: number): Set<string> | null {
     if (!Number.isFinite(this.#d.lookupBudget)) return null;
     // Lệnh đã gửi huỷ chưa được xác nhận: ngân sách riêng URGENT_LOOKUP_BUDGET, trước mọi nhóm, không chờ phần còn lại
-    // của LOOKUP_BUDGET (DEC-TBD-vf-orphan-entry). Hết ngân sách riêng thì xếp vào nhóm nghi ngờ như trước.
+    // của LOOKUP_BUDGET (DEC-317). Hết ngân sách riêng thì xếp vào nhóm nghi ngờ như trước.
     let urgentRoom = Math.floor(
       (URGENT_LOOKUP_BUDGET.weight - this.#urgentUsed(now)) / (LOOKUP_WEIGHT + TRADES_WEIGHT),
     );
@@ -5056,7 +5056,7 @@ export class Engine {
         this.#openChecks.set(o.id, now);
         const ref = { clOrdID: o.clOrdId, market: o.market, engine: o.engine };
         const lookedAt = ++this.#readSeq;
-        // Lệnh đã gửi huỷ chưa được xác nhận: đọc mức thường, không bị phần dự trữ cho lệnh ghi bỏ (DEC-TBD-vf-orphan-entry).
+        // Lệnh đã gửi huỷ chưa được xác nhận: đọc mức thường, không bị phần dự trữ cho lệnh ghi bỏ (DEC-317).
         // Chỉ lệnh nằm trong phần ngân sách riêng của kế hoạch: hết phần đó thì tra như lệnh nghi ngờ thường, có phần dự
         // trữ cho lệnh ghi (review #239 M1).
         const urgent = snap.urgent.has(o.id);
@@ -5211,7 +5211,7 @@ export class Engine {
               "order not found on SoDEX and no trades; marked unknown",
             );
           if (wasCancelling) this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
-          // Volume Farm chờ xác nhận này trước khi vào lượt mới (DEC-TBD-vf-orphan-entry): báo một lần như user stream.
+          // Volume Farm chờ xác nhận này trước khi vào lượt mới (DEC-317): báo một lần như user stream.
           if (!toUnknown && this.#runners.get(o.botId)?.strategy === Strategy.volumeFarm)
             await this.onOrderClosed(o.sodexAccountId, o.clOrdId, "cancelled", now);
           return;
@@ -5306,7 +5306,7 @@ export class Engine {
   }
 
   /**
-   * Volume Farm (DEC-TBD-vf-orphan-entry): lệnh còn "open" trong DeskLabs quá `MAKER_ORPHAN_MS` mà chiến lược không còn
+   * Volume Farm (DEC-317): lệnh còn "open" trong DeskLabs quá `MAKER_ORPHAN_MS` mà chiến lược không còn
    * coi là lệnh đang chạy (lệnh vào / thoát / stop trên SoDEX của lượt hiện tại), không trong danh sách chờ huỷ và không
    * phải lệnh vào chiến lược đang tự huỷ lại: chiến lược đã muốn huỷ nó, nhưng lần huỷ bị mất (danh sách chờ huỷ chỉ nằm
    * trong bộ nhớ, mất khi khởi động lại / đổi shard). Huỷ lại; từ đó lệnh vào danh sách chờ huỷ và được tra bằng ngân
@@ -5872,7 +5872,7 @@ export class Engine {
       // Vẫn lệch: chặn theo lần đọc mới nhất (vị thế thật và sổ cái lúc đọc, M2); không ghi thêm Decisions.
       r.positionMismatch.set(market, { ...alerted, real, ledger });
       // Độ lệch do fill của chính lệnh bot mà chiến lược đã bỏ qua (kể cả cờ còn từ trước khi nạp lại): nhận vào sổ cái;
-      // lần kiểm tra sau khớp và cờ được bỏ như thường (DEC-TBD-vf-orphan-entry).
+      // lần kiểm tra sau khớp và cờ được bỏ như thường (DEC-317).
       const since = Date.parse(alerted.since);
       if (
         !pausedRepair &&
@@ -5921,7 +5921,7 @@ export class Engine {
   }
 
   /**
-   * Volume Farm (người dùng duyệt 2026-11-18, DEC-TBD-vf-orphan-entry): độ lệch thật − sổ cái được giải thích ĐỦ bởi fill
+   * Volume Farm (người dùng duyệt 2026-11-18, DEC-317): độ lệch thật − sổ cái được giải thích ĐỦ bởi fill
    * đã ghi trong `fills` của MỘT lệnh mang clOrdID của chính bot mà state chiến lược không còn nhớ (khớp sau khi chiến lược
    * thôi theo dõi; trước bản sửa chiến lược bỏ qua fill đó) → đưa lại fill đó cho chiến lược (kèm chiều lệnh), chiến lược
    * nhận vào vị thế và quản lý thoát. Chỉ khi đúng một lệnh vào đã kết thúc khớp độ lệch trong nửa bước khối lượng và có
@@ -6055,7 +6055,7 @@ export class Engine {
   }
 
   /**
-   * Nạp lại runner Volume Farm đang bị cảnh báo lệch (DEC-TBD-vf-orphan-entry): đọc vị thế thật một lần và thử nhận fill
+   * Nạp lại runner Volume Farm đang bị cảnh báo lệch (DEC-317): đọc vị thế thật một lần và thử nhận fill
    * bị bỏ qua của chính bot cho từng market đang cảnh báo (cùng điều kiện với #adoptOwnFills). Đọc lỗi thì bỏ qua: kiểm
    * tra 30 s sau làm lại, và bước làm tăng vị thế vẫn bị giữ trong lúc lệch.
    */
@@ -6245,7 +6245,7 @@ export class Engine {
     cancelRequested = false,
     /** Trade của lệnh đã đọc từ SoDEX (không đọc lại). */
     known: OrderTrade[] | null = null,
-    /** Lần tra nằm trong ngân sách khẩn: đọc trade cùng client / ngân sách (DEC-TBD-vf-orphan-entry). */
+    /** Lần tra nằm trong ngân sách khẩn: đọc trade cùng client / ngân sách (DEC-317). */
     urgent = false,
   ): Promise<void> {
     let found = reported;

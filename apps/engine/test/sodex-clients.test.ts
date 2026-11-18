@@ -48,7 +48,7 @@ describe("engine SoDEX clients", () => {
     // Đọc id symbol ngay trước khi gửi lệnh không bị phần dự trữ chặn.
     await orderPath.getPerpsSymbols();
     expect(sent).toBe(4);
-    // Tra lệnh đã gửi huỷ chưa được xác nhận cũng không bị chặn (DEC-TBD-vf-orphan-entry).
+    // Tra lệnh đã gửi huỷ chưa được xác nhận cũng không bị chặn (DEC-317).
     await urgentReads.getTrades("perps", ADDRESS, q);
     expect(sent).toBe(5);
     expect(takeSkipped()).toBe(0);

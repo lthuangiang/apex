@@ -217,7 +217,7 @@ export const TEAM_INCIDENT_SEVERITY = {
   unknown_gave_up: "critical",
   late_fill: "critical",
   paused_errors: "critical",
-  /** Volume Farm nhận fill muộn của lệnh nó đã thôi theo dõi vào vị thế (#239, DEC-TBD-vf-orphan-entry). */
+  /** Volume Farm nhận fill muộn của lệnh nó đã thôi theo dõi vào vị thế (#239, DEC-317). */
   late_fill_adopted: "critical",
   /** Lệnh chỉ giảm (stop / thoát / đóng) khớp quá vị thế bot theo dõi: đã đóng một vị thế bot không theo dõi (#239 05:31). */
   closing_fill_beyond: "critical",

@@ -2763,7 +2763,7 @@ describe("engine", () => {
     await db.update(orders).set({ status: "cancelled" }).where(eq(orders.botId, other.botId));
   });
 
-  // ---------- #239: lệnh vào Volume Farm bị quên khi còn nằm trên sổ (DEC-TBD-vf-orphan-entry) ----------
+  // ---------- #239: lệnh vào Volume Farm bị quên khi còn nằm trên sổ (DEC-317) ----------
 
   const farmState = async (botId: string) => {
     const { eq } = await import("drizzle-orm");
@@ -2854,7 +2854,7 @@ describe("engine", () => {
     await stopFarmBots();
   });
 
-  it("looks up a cancel-pending order at write priority even when the lookup budget is used up (DEC-310 → DEC-TBD-vf-orphan-entry)", async () => {
+  it("looks up a cancel-pending order at write priority even when the lookup budget is used up (DEC-310 → DEC-317)", async () => {
     const gw = new FakeGateway();
     await seedCandles("UNI-USD");
     await seedFarm("UNI-USD");
@@ -2896,7 +2896,7 @@ describe("engine", () => {
     }
   });
 
-  it("does not record a cancel SoDEX refused for that one order as cancelled; reads the order's real status (DEC-TBD-vf-orphan-entry)", async () => {
+  it("does not record a cancel SoDEX refused for that one order as cancelled; reads the order's real status (DEC-317)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
     await seedCandles("SUI-USD");
