@@ -284,7 +284,7 @@ select c.relname, i.indisvalid from pg_index i join pg_class c on c.oid = i.inde
  where c.relname in ('bot_events_signal_idx', 'orders_context_created_idx');
 ```
 
-### 2.15 Signal research, lane tin tức (#271, DEC-TBD-news-paper-trading): bật trên prod
+### 2.15 Signal research, lane tin tức (#271, DEC-322): bật trên prod
 
 Migration `0044_signal_research` (đã sửa tại chỗ trong PR #278 trước khi deploy: máy local đã chạy bản 0044 cũ phải `drop table signal_articles, signal_events, signal_paper_trades, signal_research_usage, signal_source_health, signal_stories;` và xoá dòng 0044 trong `drizzle.__drizzle_migrations` rồi migrate lại) chỉ tạo bảng mới (`build-push.sh` tự chạy migrate), không khoá bảng đang dùng. Lane chạy trong `scheduler` (leader), mặc định **tắt**, không bao giờ gửi gì tới SoDEX. Biến môi trường chỉ tới container khi có trong compose giữ tay của VPS, nên lần release đầu phải làm:
 
@@ -307,7 +307,7 @@ Migration `0044_signal_research` (đã sửa tại chỗ trong PR #278 trước 
          SIGNAL_NEWS_MAX_CATCHUP_MIN: ${SIGNAL_NEWS_MAX_CATCHUP_MIN:-30}
    ```
    `NATS_URL` đã có trong `x-env`: scheduler dùng nó để nghe `md.*.book` (chỉ đọc). Thiếu NATS thì lane chỉ dùng giá Redis + spread theo giờ.
-3. Deploy như thường (flag vẫn `false`). **Lần bật đầu tiên**, trước khi bật flag: đo kích thước prefix được cache bằng `cd /opt/drift && docker compose exec scheduler pnpm --filter @drift/scheduler signals:once -- --cycles 1` (`countTokens` miễn phí; chạy một chu kỳ thật: chỉ ghi bảng `signal_*`, lệnh nếu có là lệnh giấy, không gửi gì tới SoDEX). Log `claude cached prefix tokens (countTokens)` có `prefixPlusMinimalUser` (phải ≥ 4 096 thì Haiku 4.5 mới cache); ghi số này vào DEC-TBD-news-paper-trading (chỗ "chưa đo"). Rồi bật: đặt `SIGNAL_RESEARCH_ENABLED=true` trong `/opt/drift/.env`, `cd /opt/drift && docker compose up -d scheduler`.
+3. Deploy như thường (flag vẫn `false`). **Lần bật đầu tiên**, trước khi bật flag: đo kích thước prefix được cache bằng `cd /opt/drift && docker compose exec scheduler pnpm --filter @drift/scheduler signals:once -- --cycles 1` (`countTokens` miễn phí; chạy một chu kỳ thật: chỉ ghi bảng `signal_*`, lệnh nếu có là lệnh giấy, không gửi gì tới SoDEX). Log `claude cached prefix tokens (countTokens)` có `prefixPlusMinimalUser` (phải ≥ 4 096 thì Haiku 4.5 mới cache); ghi số này vào DEC-322 (chỗ "chưa đo"). Rồi bật: đặt `SIGNAL_RESEARCH_ENABLED=true` trong `/opt/drift/.env`, `cd /opt/drift && docker compose up -d scheduler`.
 4. Kiểm tra: log scheduler có `signal research enabled`, rồi mỗi 5 phút một dòng `signal research news cycle` (bài lấy về / lưu / phân loại / bỏ theo lý do, token Claude hôm nay). `signal research not started` kèm `reason` = thiếu key. Lần chạy đầu chỉ nhận tin trong 15 phút gần nhất; phần còn lại của trang lưu thô với lý do `BACKLOG_NOT_CLASSIFIED`.
    - Lúc nhận lease scheduler đọc danh sách market SoDEX một lần; chưa đọc được thì log `SoDEX market list not known yet, collect only` và chu kỳ chỉ thu bài (bài được xử lý ở chu kỳ sau).
    - **Prompt cache:** lần gọi Claude đầu mỗi ngày log `signal research claude cache check` (`cachedPrefixTokens` phải ≥ 4 096). Có `signal research claude prompt cache is not being read` thì cache không hoạt động: báo team. Kiểm thêm sau khoảng một giờ: `select day, claude_calls, claude_cache_read_tokens from signal_research_usage order by day desc limit 2;` phải có `claude_cache_read_tokens > 0`.

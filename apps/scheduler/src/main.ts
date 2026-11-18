@@ -264,7 +264,7 @@ async function snapshotRetentionTick() {
   }
 }
 
-// Signal research, lane tin tức (#271, DEC-TBD-news-paper-trading): paper trading của team, mặc định tắt. Không gửi gì tới
+// Signal research, lane tin tức (#271, DEC-322): paper trading của team, mặc định tắt. Không gửi gì tới
 // SoDEX; giá chỉ từ marketdata (Redis md:last, NATS md.*.book, mm_market_hourly).
 // Env của lane parse riêng: giá trị `SIGNAL_*` sai không bao giờ làm scheduler dừng.
 const signalEnv = parseSignalEnv(process.env);

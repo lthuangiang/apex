@@ -1683,7 +1683,7 @@ export const sodexCallsProblem = sodexCallTable("sodex_calls_problem");
 /** View đọc chung (tạo bằng SQL trong migration 0041). */
 export const sodexCalls = pgView("sodex_calls", sodexCallColumns()).existing();
 
-// ── Signal research, lane tin tức (#271, DEC-TBD-news-paper-trading) ─────────────────────────────────────────────
+// ── Signal research, lane tin tức (#271, DEC-322) ─────────────────────────────────────────────
 // Paper trading của team, không bao giờ chạm SoDEX. Quy tắc: `NEWS_RULES` (packages/shared/src/signal-research).
 
 /** Mọi bài SoSoValue đã thu (kể cả bài bị loại), kèm giờ đăng và giờ DeskLabs nhận. */
@@ -1745,7 +1745,7 @@ export const signalStories = pgTable(
     /**
      * Story khoá key 7 ngày CHỈ khi đã mở lệnh (`entered`, `locked = true`). Bị bỏ ở Filter (`skipped`, `locked = false`)
      * thì bài sau cùng key được thử lại, nhưng chỉ trong `retryWindowMinutes` kể từ bài đầu tiên được tính
-     * (DEC-TBD-news-paper-trading). Bài bị loại ở Understand không tạo story.
+     * (DEC-322). Bài bị loại ở Understand không tạo story.
      */
     outcome: text("outcome").notNull(),
     locked: boolean("locked").notNull(),
