@@ -1,3 +1,4 @@
+import { MM_QUOTE_SNAPSHOT_MAX_BYTES, mmQuoteSnapshotSchema } from "@drift/shared/mm-quote";
 import { describe, expect, it } from "vitest";
 
 import { clOrdId } from "../core/ids";
@@ -13,6 +14,7 @@ import {
   type VolumeMakerState,
 } from "../volume-maker";
 import { vmMaxInventory, volumeMakerSchema, type VolumeMakerConfig } from "../volume-maker/schema";
+import { quoteSnapshot, withQuoteSnapshots } from "../volume-maker/snapshot";
 
 const ctx: StepContext = {
   botId: "vm-bot",
@@ -1980,5 +1982,331 @@ describe("volume maker — dust position and margin rejects (DEC-291)", () => {
       ethCtx,
     ).state;
     expect(s.dustHold ?? null).toBeNull();
+  });
+});
+
+describe("volume maker — quote snapshot on quoting decisions (#230)", () => {
+  const snapCtx: StepContext = { ...ctx, decisionPayload: true };
+  const on = cfg({ quoteLevel: 0, smartQuoting: true });
+  type Log = Extract<StrategyAction, { type: "log" }>;
+  const logsOf = (a: StrategyAction[]) => a.flatMap((x) => (x.type === "log" ? [x] : []));
+  const quoteOf = (a: StrategyAction[], decision: string) => {
+    const l = logsOf(a).find((x) => x.decision === decision);
+    expect(l).toBeDefined();
+    const q = mmQuoteSnapshotSchema.parse(l?.payload?.quote);
+    expect(JSON.stringify(q).length).toBeLessThan(MM_QUOTE_SNAPSHOT_MAX_BYTES);
+    return q;
+  };
+  /** Như `run` (SoDEX xác nhận ngay mọi lệnh huỷ), với ngữ cảnh và state đầu chọn được. */
+  const runWith = (
+    c: VolumeMakerConfig,
+    events: readonly StrategyEvent[],
+    context: StepContext = snapCtx,
+    start?: VolumeMakerState,
+    confirm = true,
+  ) => {
+    let s: VolumeMakerState = start ?? volumeMaker.initialState(c);
+    const all: StrategyAction[] = [];
+    const feed = (e: StrategyEvent) => {
+      const r = volumeMaker.step(c, s, e, context);
+      s = r.state;
+      all.push(...r.actions);
+      if (!confirm) return;
+      for (const a of r.actions)
+        if (a.type === "cancel" && s.orders[a.clOrdID]?.status === "cancelling")
+          feed({ type: "orderDone", at: e.at, clOrdID: a.clOrdID });
+    };
+    for (const e of events) feed(e);
+    return { s, all };
+  };
+  const tickAt = (at: number, price: string) =>
+    ({ type: "tick", at, market: "BTC-USD", price }) as const;
+  const snap = (at: number, bid = "99999.9", ask = "100000", bidN = "100000", askN = "100000") =>
+    ({
+      type: "timer",
+      at,
+      market: {
+        market: "BTC-USD",
+        candles: [],
+        book: { bid, ask, bidNotional: bidN, askNotional: askN },
+      },
+    }) as const;
+  const bookAt = (at: number, bid: string, ask: string) =>
+    ({ type: "book", at, market: "BTC-USD", bid, ask }) as const;
+  const fairAt = (at: number, fair: string, age = 50) =>
+    ({ type: "fair", at, market: "BTC-USD", fair, binanceAt: at - age }) as const;
+  const quoted7s = (c = on) => runWith(c, [...firstQuote(), tickAt(7000, "100000"), snap(7000)]);
+  /** Bỏ `payload` khỏi các dòng Decisions: phần còn lại phải y hệt khi không dựng snapshot. */
+  const strip = (a: StrategyAction[]) =>
+    a.map((x) => (x.type === "log" ? { type: x.type, decision: x.decision, why: x.why } : x));
+
+  it("records the pulled ask, the Binance price and how far past it the ask was", () => {
+    const r = runWith(on, [fairAt(7500, "100003")], snapCtx, quoted7s().s, false);
+    const ask = Object.entries(quoted7s().s.orders).find(
+      ([, o]) => o.status === "live" && o.side === "sell",
+    );
+    const q = quoteOf(r.all, "Ask pulled");
+    expect(q).toMatchObject({
+      v: 1,
+      reason: "pulled",
+      sides: ["sell"],
+      fair: { price: "100003", ageMs: 50, used: true, clampBp: 0.5 },
+      book: { bid: "99999.9", ask: "100000", mid: "99999.95", ageMs: 500, last: "100000" },
+      quote: { level: 0, distanceBp: null },
+      inv: { position: "0", entry: null, notional: "0.00", maxUsd: "2000", maxOrders: null },
+      smart: { on: true, fastPause: false },
+      orders: [
+        { id: ask?.[0], side: "sell", role: "open", st: "pulled", price: "100000", size: "0.005" },
+      ],
+    });
+    // Ask 100000 dưới giá Binance 100003 khoảng 0.3 bp; trên mid SoDEX 0.005 bp.
+    expect(q.orders[0]?.fairBp).toBe(-0.3);
+    expect(q.orders[0]?.bp).toBe(0.01);
+  });
+
+  it("records the new quotes and the Smart quoting state when Smart quoting adjusts", () => {
+    const r = runWith(on, [...firstQuote(), snap(3000)]);
+    const q = quoteOf(r.all, "Smart quoting adjusted");
+    expect(q).toMatchObject({
+      reason: "refresh",
+      sides: ["buy", "sell"],
+      fair: { price: null, ageMs: null, used: false, clampBp: null, clamps: 0 },
+      smart: { on: true, sig: expect.stringMatching(/^buy:\d+\|sell:\d+$/) as string },
+    });
+    // Huỷ rồi mới đặt (DEC-257): bước này huỷ hai lệnh cũ; lệnh mới được đặt khi SoDEX xác nhận huỷ.
+    expect(q.orders.map((o) => [o.side, o.st, o.price])).toEqual([
+      ["buy", "cancel", "99999.9"],
+      ["sell", "cancel", "100000.1"],
+    ]);
+    expect(
+      places(r.all)
+        .slice(-2)
+        .map((o) => o.price),
+    ).toEqual(["99979.9", "100020"]);
+  });
+
+  it("counts quotes clamped to the Binance price", () => {
+    const s0 = runWith(on, [fairAt(6500, "100010")], snapCtx, runWith(on, [...firstQuote()]).s).s;
+    // Sổ lệch để chữ ký Smart quoting đổi (có dòng Decisions trong cùng bước báo giá).
+    const r = runWith(on, [snap(7000, "99999.9", "100000", "300000", "100000")], snapCtx, s0);
+    const q = quoteOf(r.all, "Smart quoting adjusted");
+    expect(q.fair).toMatchObject({ price: "100010", used: true, clampBp: 0.5 });
+    expect(q.fair.clamps).toBeGreaterThan(0);
+    const ask = q.orders.find((o) => o.side === "sell");
+    expect(ask?.price).toBe("100015.1");
+    expect(ask?.fairBp).toBe(0.51);
+  });
+
+  it("records the market close and the inventory on a position cut", () => {
+    const r0 = quoted7s();
+    const bid = places(r0.all)
+      .filter((o) => o.side === "buy")
+      .at(-1);
+    const long = runWith(
+      on,
+      [
+        {
+          type: "fill",
+          at: 7100,
+          clOrdID: bid?.clOrdID ?? "",
+          price: bid?.price ?? "0",
+          quantity: bid?.quantity ?? "0",
+          fee: "0",
+        },
+      ],
+      snapCtx,
+      r0.s,
+    ).s;
+    const r = runWith(on, [fairAt(8100, "99839.9", 0)], snapCtx, long, false);
+    const q = quoteOf(r.all, "Position cut");
+    expect(q).toMatchObject({
+      reason: "cut",
+      sides: ["sell"],
+      inv: { position: "0.005", entry: "99999.9", notional: "500.00", maxUsd: "2000" },
+    });
+    // Lệnh market đóng vị thế trước, rồi các lệnh bị huỷ cùng lúc.
+    expect(q.orders[0]).toMatchObject({
+      side: "sell",
+      role: "close",
+      st: "new",
+      price: null,
+      bp: null,
+    });
+    expect(q.orders[0]?.id).toBe(places(r.all)[0]?.clOrdID);
+    expect(q.orders.slice(1).every((o) => o.st === "cancel")).toBe(true);
+  });
+
+  it("samples the resting quotes on the minute line when the step did not quote", () => {
+    // Giá Binance giữa bid và ask: không rút gì; tới phút thì ghi "Order requests".
+    const r = runWith(on, [fairAt(61_000, "99999.95")], snapCtx, quoted7s().s);
+    expect(places(r.all)).toEqual([]);
+    const q = quoteOf(r.all, "Order requests");
+    expect(q).toMatchObject({ reason: "sample", sides: [] });
+    expect(q.orders.map((o) => [o.side, o.st])).toEqual([
+      ["buy", "live"],
+      ["sell", "live"],
+    ]);
+  });
+
+  it("names a requote after the best price left a quote behind (DEC-248)", () => {
+    const r = runWith(on, [bookAt(61_000, "100000.9", "100001")], snapCtx, quoted7s().s);
+    const q = quoteOf(r.all, "Order requests");
+    expect(q.reason).toBe("book_moved");
+    expect(q.sides).toEqual(["buy"]);
+    expect(q.orders.map((o) => [o.side, o.st])).toEqual([
+      ["buy", "cancel"],
+      ["sell", "live"],
+    ]);
+  });
+
+  it("names a pause on a fast move, and records it without Smart quoting", () => {
+    const c = cfg({ pauseOnFastMoves: true });
+    const { s } = runWith(c, [...firstQuote()]);
+    const hit = volumeMaker.step(c, s, tickAt(1000, "100021"), snapCtx);
+    const q = quoteOf(hit.actions, "Quotes paused on a fast move");
+    expect(q).toMatchObject({
+      reason: "fast_pause",
+      sides: ["buy", "sell"],
+      quote: { level: null, distanceBp: "1" },
+      smart: { on: false, sig: null, fastPause: true },
+      inv: { maxOrders: null },
+    });
+    expect(q.orders.map((o) => [o.side, o.st])).toEqual([
+      ["buy", "cancel"],
+      ["sell", "cancel"],
+    ]);
+  });
+
+  it("does not change orders, Decisions text or state (same result with and without snapshot)", () => {
+    const configs = [
+      cfg(),
+      cfg({ quoteLevel: 0 }),
+      on,
+      cfg({ quoteLevel: 1, smartQuoting: true, pauseOnFastMoves: true, closeAtEntry: true }),
+      cfg({ quoteLevel: 0, smartQuoting: true, maxInventory: undefined, maxOrders: 1 }),
+    ];
+    const events: StrategyEvent[] = [
+      ...firstQuote(),
+      snap(3000),
+      tickAt(7000, "100000"),
+      snap(7000, "99999.9", "100000", "300000", "100000"),
+      fairAt(7500, "100003"),
+      {
+        type: "fill",
+        at: 7600,
+        clOrdID: id("vm:3:bid"),
+        price: "99999.9",
+        quantity: "0.005",
+        fee: "0",
+      },
+      bookAt(9200, "100000.9", "100001"),
+      snap(10_000),
+      tickAt(11_000, "100030"),
+      fairAt(12_000, "99800", 0),
+      snap(14_000),
+      fairAt(61_000, "100000"),
+      snap(62_000),
+      bookAt(64_000, "100003", "100003.1"),
+      snap(121_000),
+    ];
+    let quoteLogs = 0;
+    for (const c of configs) {
+      const plain = runWith(c, events, ctx);
+      const withSnap = runWith(c, events, snapCtx);
+      expect(places(withSnap.all).length).toBeGreaterThan(0);
+      expect(strip(withSnap.all)).toEqual(plain.all);
+      expect(withSnap.s).toEqual(plain.s);
+      expect(plain.all.some((a) => a.type === "log" && a.payload !== undefined)).toBe(false);
+      for (const l of logsOf(withSnap.all))
+        if (l.payload?.quote !== undefined) {
+          quoteLogs += 1;
+          expect(mmQuoteSnapshotSchema.safeParse(l.payload.quote).success).toBe(true);
+          expect(JSON.stringify(l.payload.quote).length).toBeLessThan(MM_QUOTE_SNAPSHOT_MAX_BYTES);
+        }
+    }
+    // Có dòng được gắn snapshot thật (không so sánh rỗng).
+    expect(quoteLogs).toBeGreaterThan(5);
+  });
+
+  it("attaches nothing to decisions that are not about quoting", () => {
+    const c = cfg({ costBudget: "10", inventoryLossStop: "5" });
+    let { s } = runWith(c, [...firstQuote()]);
+    s = volumeMaker.step(
+      c,
+      s,
+      { type: "fill", at: 1, clOrdID: id("vm:1:bid"), price: "99990", quantity: "0.005", fee: "0" },
+      snapCtx,
+    ).state;
+    const r = volumeMaker.step(c, s, tickAt(2000, "98000"), snapCtx);
+    const stop = logsOf(r.actions).find((l) => l.decision === VOLUME_MAKER_STOPPED);
+    expect(stop).toBeDefined();
+    expect(stop?.payload).toBeUndefined();
+  });
+
+  it("stays under 1 KB with the most orders and the longest values", () => {
+    const base = quoted7s().s;
+    const long = "1234567.123456789";
+    const orders = Object.fromEntries(
+      ["a", "b", "c", "d", "e", "f"].map((k, i) => [
+        `dzzzzzz-10-${k.repeat(13)}-0`,
+        {
+          side: i % 2 === 0 ? ("buy" as const) : ("sell" as const),
+          role: i < 2 ? ("close" as const) : ("open" as const),
+          price: long,
+          qty: "123.456789",
+          filled: "0",
+          status: "live" as const,
+          since: 0,
+        },
+      ]),
+    );
+    const after: VolumeMakerState = {
+      ...base,
+      orders,
+      book: { bid: long, ask: "1234567.223456789", bidNotional: "1", askNotional: "1" },
+      fair: long,
+      fairBinanceAt: 7000,
+      smartSig: "buy:pull|sell:pull",
+      ledger: { ...base.ledger, position: "-123.456789", avgCost: long },
+    };
+    const e = { type: "timer", at: 7000 } as const;
+    const args = {
+      c: on,
+      before: base,
+      after,
+      e,
+      actions: [],
+      oracle: { marginBp: 0.5, maxAgeMs: 1500 },
+    };
+    const raw = quoteSnapshot({ ...args, reason: "sample" });
+    expect(raw.orders).toHaveLength(4);
+    const step = withQuoteSnapshots(
+      on,
+      base,
+      { actions: [{ type: "log", decision: "Order requests", why: "x" }], state: after },
+      e,
+      args.oracle,
+    );
+    const q = mmQuoteSnapshotSchema.parse((step.actions[0] as Log).payload?.quote);
+    expect(JSON.stringify(q).length).toBeLessThan(MM_QUOTE_SNAPSHOT_MAX_BYTES);
+    expect(q.orders.length).toBeGreaterThan(0);
+  });
+
+  it("returns the step unchanged instead of throwing on malformed state", () => {
+    const base = quoted7s().s;
+    const book = base.book ?? { bid: "1", ask: "2", bidNotional: "0", askNotional: "0" };
+    const bad: VolumeMakerState = { ...base, book: { ...book, bid: "not-a-number" } };
+    const r = {
+      actions: [{ type: "log", decision: "Order requests", why: "x" }] as StrategyAction[],
+      state: bad,
+    };
+    const out = withQuoteSnapshots(
+      on,
+      base,
+      r,
+      { type: "timer", at: 7000 },
+      { marginBp: 0.5, maxAgeMs: 1500 },
+    );
+    expect(out).toBe(r);
   });
 });

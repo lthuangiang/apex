@@ -1,4 +1,5 @@
 import type { ReasonCode } from "@drift/shared";
+import type { MmQuoteSnapshot } from "@drift/shared/mm-quote";
 import type { VbSignalSnapshot } from "@drift/shared/vb-signal";
 
 import type { WaitingInfo } from "../common/entry";
@@ -159,6 +160,8 @@ export type StrategyAction =
 export interface DecisionPayload {
   /** Snapshot tín hiệu của lượt vào Volume Farm (#221). */
   signal?: VbSignalSnapshot;
+  /** Snapshot báo giá của Market Making (#230). */
+  quote?: MmQuoteSnapshot;
 }
 
 export interface StepContext {

@@ -15,6 +15,7 @@ import type {
 } from "../core/types";
 
 import { vmMaxInventory, type VolumeMakerConfig } from "./schema";
+import { withQuoteSnapshots } from "./snapshot";
 
 // S9 Volume Maker / Market Making (VOLUME_MAKER.md mục 17.2–17.3, DEC-100): báo giá hai phía bằng lệnh post-only
 // (GTX) quanh giá hiện tại và chủ động quản lý tồn kho.
@@ -1108,6 +1109,18 @@ function onBook(
 }
 
 export function stepVolumeMaker(
+  c: VolumeMakerConfig,
+  raw: VolumeMakerState,
+  e: StrategyEvent,
+  ctx: StepContext,
+): StepResult<VolumeMakerState> {
+  const r = stepCounted(c, raw, e, ctx);
+  // #230: snapshot báo giá trên các dòng Decisions về báo giá, chỉ khi engine ghi event. Chỉ gắn `payload` vào action
+  // `log`, không đổi lệnh hay state.
+  return ctx.decisionPayload === true ? withQuoteSnapshots(c, normalize(raw), r, e, VM_ORACLE) : r;
+}
+
+function stepCounted(
   c: VolumeMakerConfig,
   raw: VolumeMakerState,
   e: StrategyEvent,

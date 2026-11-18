@@ -52,6 +52,7 @@ import {
   PLANNED_STOP_REASONS,
   STOPPED_BY_USER,
 } from "@drift/shared";
+import { mmQuoteSnapshotSchema, type MmQuoteSnapshot } from "@drift/shared/mm-quote";
 import { vbSignalSnapshotSchema, type VbSignalSnapshot } from "@drift/shared/vb-signal";
 import { isInsufficientMarginReject } from "@drift/sodex";
 import {
@@ -4280,26 +4281,42 @@ export class Engine {
   }
 
   /**
-   * Payload của event quyết định: `orders` của bước (BD-02) + dữ liệu chiến lược gắn kèm (`signal`, #221). Snapshot
-   * không đúng schema thì bỏ riêng nó (log warn, không kèm nội dung), không bao giờ chặn việc ghi quyết định hay lệnh.
+   * Payload của event quyết định: `orders` của bước (BD-02) + dữ liệu chiến lược gắn kèm (`signal` của Volume Farm,
+   * #221; `quote` của Market Making, #230). Snapshot không đúng schema thì bỏ riêng nó (log warn, chỉ tên field, không
+   * kèm nội dung), không bao giờ chặn việc ghi quyết định hay lệnh.
    */
   #decisionPayload(
     r: Runner,
     placed: { orders: string[] } | undefined,
     extra: DecisionPayload | undefined,
   ): Record<string, unknown> | undefined {
+    const dropped = (
+      kind: "signal" | "quote",
+      issues: readonly { path: readonly PropertyKey[] }[],
+    ) => {
+      this.#d.log.warn(
+        { botId: r.botId, fields: issues.map((i) => i.path.map(String).join(".")).slice(0, 5) },
+        `decision ${kind} snapshot dropped: schema mismatch`,
+      );
+    };
     let signal: VbSignalSnapshot | undefined;
     if (extra?.signal !== undefined) {
       const parsed = vbSignalSnapshotSchema.safeParse(extra.signal);
       if (parsed.success) signal = parsed.data;
-      else
-        this.#d.log.warn(
-          { botId: r.botId, fields: parsed.error.issues.map((i) => i.path.join(".")).slice(0, 5) },
-          "decision signal snapshot dropped: schema mismatch",
-        );
+      else dropped("signal", parsed.error.issues);
     }
-    if (placed === undefined && signal === undefined) return undefined;
-    return { ...placed, ...(signal === undefined ? {} : { signal }) };
+    let quote: MmQuoteSnapshot | undefined;
+    if (extra?.quote !== undefined) {
+      const parsed = mmQuoteSnapshotSchema.safeParse(extra.quote);
+      if (parsed.success) quote = parsed.data;
+      else dropped("quote", parsed.error.issues);
+    }
+    if (placed === undefined && signal === undefined && quote === undefined) return undefined;
+    return {
+      ...placed,
+      ...(signal === undefined ? {} : { signal }),
+      ...(quote === undefined ? {} : { quote }),
+    };
   }
 
   /**
