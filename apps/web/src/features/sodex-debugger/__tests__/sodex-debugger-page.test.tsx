@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
+import type { SodexCallItem } from "@drift/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { NextIntlClientProvider } from "next-intl";
@@ -17,7 +18,14 @@ import { ADDRESS, CANCEL, DETAIL, FACETS, page, PLACE, SLOW, SUMMARY } from "./f
 // SoDEX Debugger (team): dữ liệu chỉ đến từ api; ở đây api giả trả fixture đã qua đúng zod schema của web.
 
 type Mode = "ok" | "forbidden" | "error" | "empty" | "pending";
-const state = vi.hoisted((): { mode: Mode; paths: string[] } => ({ mode: "ok", paths: [] }));
+const state = vi.hoisted(
+  (): { mode: Mode; paths: string[]; newer: SodexCallItem[]; nextCursor: string | null } => ({
+    mode: "ok",
+    paths: [],
+    newer: [],
+    nextCursor: null,
+  }),
+);
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/api")>();
@@ -32,8 +40,9 @@ vi.mock("@/lib/api", async (importOriginal) => {
       if (url.pathname.endsWith("/facets")) return Promise.resolve(schema.parse(FACETS));
       if (url.pathname === "/api/v1/admin/sodex-calls") {
         if (state.mode === "error") return Promise.reject(new real.ApiError("INTERNAL_ERROR", 500));
-        const items = state.mode === "empty" ? [] : [CANCEL, PLACE, SLOW];
-        return Promise.resolve(schema.parse(page(items)));
+        if (url.searchParams.has("cursor")) return Promise.resolve(schema.parse(page([OLDER])));
+        const items = state.mode === "empty" ? [] : [...state.newer, CANCEL, PLACE, SLOW];
+        return Promise.resolve(schema.parse(page(items, state.nextCursor)));
       }
       return Promise.resolve(schema.parse(DETAIL));
     },
@@ -69,8 +78,11 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   state.mode = "ok";
   state.paths = [];
+  state.newer = [];
+  state.nextCursor = null;
   window.history.replaceState(null, "", "/");
 });
 
@@ -81,6 +93,34 @@ async function noViolations() {
     rules: { "color-contrast": { enabled: false } },
   });
   expect(r.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.html).join(" | ")}`)).toEqual([]);
+}
+
+const NEWER: SodexCallItem = {
+  ...PLACE,
+  id: "0195f3a0-0000-7000-8000-0000000000d0",
+  at: "2026-11-17T15:06:00.000Z",
+  endpoint: "/perps/trade/leverage",
+};
+const OLDER: SodexCallItem = {
+  ...PLACE,
+  id: "0195f3a0-0000-7000-8000-0000000000a0",
+  at: "2026-11-17T14:00:00.000Z",
+  endpoint: "/perps/markets",
+};
+const firstPageCalls = () =>
+  state.paths.filter((p) => p.startsWith("/api/v1/admin/sodex-calls?") && !p.includes("cursor="))
+    .length;
+const summaryCalls = () => state.paths.filter((p) => p.endsWith("/summary")).length;
+const tick = (ms: number) =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+function setHidden(hidden: boolean) {
+  Object.defineProperty(document, "visibilityState", {
+    value: hidden ? "hidden" : "visible",
+    configurable: true,
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
 }
 
 const openButton = (name: RegExp) => screen.getAllByRole("button", { name })[0];
@@ -237,5 +277,87 @@ describe("SoDEX Debugger page", { timeout: 30_000 }, () => {
     expect(
       screen.getByText("The DeskLabs API didn’t answer. This is not a SoDEX problem."),
     ).toBeInTheDocument();
+  });
+
+  describe("Live", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+
+    it("refreshes the first page and the summary every 5 s, not when hidden or switched off", async () => {
+      const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+      wrap();
+      await screen.findByRole("table", { name: "SoDEX calls, newest first" });
+      expect(screen.getByRole("switch", { name: "Live" })).toHaveAttribute("aria-checked", "true");
+      await screen.findAllByText("0.34%");
+      const list0 = firstPageCalls();
+      const sum0 = summaryCalls();
+      await tick(5_000);
+      expect(firstPageCalls()).toBe(list0 + 1);
+      expect(summaryCalls()).toBe(sum0 + 1);
+
+      // Tab ẩn: interval dừng.
+      setHidden(true);
+      const hidden0 = firstPageCalls();
+      await tick(15_000);
+      expect(firstPageCalls()).toBe(hidden0);
+      setHidden(false);
+      await tick(5_000);
+
+      await user.click(screen.getByRole("switch", { name: "Live" }));
+      expect(screen.getByRole("switch", { name: "Live" })).toHaveAttribute("aria-checked", "false");
+      const off0 = firstPageCalls();
+      const offSum0 = summaryCalls();
+      await tick(15_000);
+      expect(firstPageCalls()).toBe(off0);
+      expect(summaryCalls()).toBe(offSum0);
+    });
+
+    it("pauses while a call is open", async () => {
+      const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+      wrap();
+      await screen.findByRole("table", { name: "SoDEX calls, newest first" });
+      await user.click(openButton(/DELETE \/perps\/trade\/orders/) ?? document.body);
+      await screen.findByText("Why it’s unreadable");
+      expect(screen.getByText(/Live paused · Updated/)).toBeInTheDocument();
+      const list0 = firstPageCalls();
+      const sum0 = summaryCalls();
+      await tick(15_000);
+      expect(firstPageCalls()).toBe(list0);
+      expect(summaryCalls()).toBe(sum0);
+      await user.keyboard("{Escape}");
+      await tick(5_000);
+      expect(firstPageCalls()).toBe(list0 + 1);
+    });
+
+    it("after Load more, counts new calls without changing the list; Show jumps back and highlights them", async () => {
+      state.nextCursor = "c1";
+      const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+      wrap();
+      const table = await screen.findByRole("table", { name: "SoDEX calls, newest first" });
+      await user.click(screen.getByRole("button", { name: "Load 50 more" }));
+      await within(table).findByText("/perps/markets");
+      expect(await screen.findByText("Live paused")).toBeInTheDocument();
+
+      state.newer = [NEWER];
+      await tick(5_000);
+      expect(await screen.findByText("1 new call")).toBeInTheDocument();
+      // Danh sách đang xem không đổi; trang cũ không bị tải lại.
+      expect(within(table).queryByText("/perps/trade/leverage")).not.toBeInTheDocument();
+      expect(state.paths.filter((p) => p.includes("cursor=")).length).toBe(1);
+      await noViolations();
+
+      await user.click(
+        screen.getByRole("button", { name: "Show", description: /Live paused.*1 new call$/ }),
+      );
+      const row = (await within(table).findByText("/perps/trade/leverage")).closest("tr");
+      expect(row).toHaveAttribute("data-new", "true");
+      expect(within(table).queryByText("/perps/markets")).not.toBeInTheDocument();
+      expect(screen.queryByText("Live paused")).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(/^1 new call$/);
+      await tick(3_000);
+      expect(row).not.toHaveAttribute("data-new");
+      await noViolations();
+    });
   });
 });

@@ -6517,6 +6517,13 @@
     "myTime": "Also show my time ({offset})",
     "updated": "Updated {time} UTC",
     "refresh": "Refresh",
+    "live": {
+      "label": "Live",
+      "paused": "Live paused",
+      "newCalls": "{n, plural, one {# new call} other {# new calls}}",
+      "newCallsMore": "{n}+ new calls",
+      "show": "Show"
+    },
     "forbidden": "This page is for the DeskLabs team only.",
     "openMenu": "Open menu",
     "filters": {

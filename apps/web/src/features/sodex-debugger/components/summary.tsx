@@ -21,15 +21,18 @@ export function Summary({
   myTime,
   onPickHour,
   narrow,
+  live = false,
 }: {
   slowMs: number;
   myTime: boolean;
   onPickHour: (hourIso: string) => void;
   /** Panel chi tiết đang mở trên desktop: hai thẻ xếp dọc (mockup body.d-open). */
   narrow: boolean;
+  /** Live đang chạy: tải lại cùng danh sách. */
+  live?: boolean;
 }) {
   const t = useTranslations("sodexDebugger.summary");
-  const q = useSodexSummary();
+  const q = useSodexSummary(live);
   return (
     <section
       aria-label={t("label")}
