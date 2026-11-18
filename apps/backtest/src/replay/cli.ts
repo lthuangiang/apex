@@ -59,13 +59,15 @@ function fail(message: string): never {
   process.exit(2);
 }
 
+/** Giờ bắt đầu chạy: mốc kiểm thời hạn giữ snapshot (#229) cho cả kiểm tham số lẫn lúc nạp. */
+const startedAt = Date.now();
 let from: Date;
 let to: Date;
 let grids: typeof DEFAULT_GRIDS;
 try {
   from = date(arg("from"), "from");
   to = date(arg("to"), "to");
-  checkRange(from, to);
+  checkRange(from, to, startedAt);
   grids = {
     ...DEFAULT_GRIDS,
     chaseBps: list("chase", arg("chase"), DEFAULT_GRIDS.chaseBps, z.number().int().positive()),
@@ -130,7 +132,7 @@ try {
       idleTimeoutMs: IDLE_TIMEOUT_MS,
       deadlineMs: DEADLINE_MS,
     },
-    (q, checkDeadline) => loadEntries(q, { from, to, ticks, checkDeadline }),
+    (q, checkDeadline) => loadEntries(q, { from, to, now: startedAt, ticks, checkDeadline }),
   ).catch((error: unknown) => {
     if (error instanceof ReplayLimitError || error instanceof DeadlineExceededError)
       fail(error.message);

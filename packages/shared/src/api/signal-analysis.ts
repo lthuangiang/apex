@@ -18,6 +18,12 @@ export const SIGNAL_RANGE_MS: Record<SignalRange, number> = {
   "14d": 14 * 86_400_000,
   "30d": 30 * 86_400_000,
 };
+/**
+ * Snapshot tín hiệu (`bot_events.payload.signal`, DEC-311) và bối cảnh lệnh Market Making (`orders.context`, DEC-312) được
+ * giữ chừng này ngày rồi scheduler bỏ đi, giữ nguyên dòng Decisions / lệnh (#229). Phải dài hơn kỳ dài nhất của
+ * trang (30 ngày) để trang không bao giờ thiếu dữ liệu trong kỳ; test kiểm tra.
+ */
+export const SIGNAL_SNAPSHOT_RETENTION_DAYS = 45;
 /** Nhóm dưới chừng này mẫu là "Thin sample"; gợi ý / cost driver chỉ hiện khi nhóm đạt mức này. */
 export const SIGNAL_MIN_GROUP = 30;
 /** Số dòng mỗi trang của danh sách Entries / Fills. */

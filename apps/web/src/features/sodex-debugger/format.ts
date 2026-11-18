@@ -156,7 +156,77 @@ export function reportSubject(call: Pick<SodexCallItem, "kind" | "method" | "end
   return { key: "other" };
 }
 
+/** Khoảng thời gian (ms) giữa hai mốc ISO; `null` khi thiếu một mốc. */
+export function msBetween(fromIso: string, toIso: string | null | undefined): number | null {
+  if (toIso === null || toIso === undefined) return null;
+  return Math.max(0, new Date(toIso).getTime() - new Date(fromIso).getTime());
+}
+
 export type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+/**
+ * Dòng báo cáo của một WS CLOSE (#240): ai đóng, close code / reason, thời gian kết nối lại và kết nối kế tiếp
+ * (OPEN + SUB ack) của cùng account. Chỉ dùng số đã lưu; thiếu thì "Not available".
+ */
+export function wsCloseLines(d: SodexCallDetail, t: Translate): string[] {
+  const r = d.wsReconnect;
+  if (r === null) return [];
+  const na = t("wsClose.notAvailable");
+  const c = r.close;
+  const lines = ["", t("wsClose.title")];
+  if (c !== null) {
+    lines.push(t("wsClose.closedBy", { value: t(`wsClose.by.${c.closedBy}`) }));
+    lines.push(t("wsClose.code", { value: c.code === null ? na : String(c.code) }));
+    // Không có close frame (code null) thì reason là chưa biết, không phải rỗng (review #256).
+    lines.push(
+      t("wsClose.reason", {
+        value: c.code === null ? na : (c.reason ?? t("wsClose.noReason")),
+      }),
+    );
+    lines.push(t("wsClose.openFor", { value: c.openForMs === null ? na : formatMs(c.openForMs) }));
+    lines.push(
+      c.lastMessageAgoMs === null
+        ? t("wsClose.lastMessageNone")
+        : t("wsClose.lastMessage", { value: formatMs(c.lastMessageAgoMs) }),
+    );
+    lines.push(
+      c.reconnectInMs === null
+        ? t("wsClose.noReconnect")
+        : c.reconnectAttempt === null
+          ? t("wsClose.reconnectNoAttempt", { value: formatMs(c.reconnectInMs) })
+          : t("wsClose.reconnect", {
+              value: formatMs(c.reconnectInMs),
+              attempt: c.reconnectAttempt,
+            }),
+    );
+  }
+  if (!r.nextOpenAvailable) {
+    // Cửa sổ 10 phút đã cũ hơn thời hạn giữ dòng ok: OPEN kế tiếp có thể đã bị xoá (review #256).
+    lines.push(t("wsClose.nextOpenExpired"));
+  } else if (r.nextOpen === null) {
+    lines.push(t("wsClose.nextOpenNone"));
+  } else {
+    lines.push(
+      t("wsClose.nextOpen", {
+        time: utcTime(r.nextOpen.at),
+        connId: r.nextOpen.connId ?? na,
+        gap: formatMs(msBetween(d.at, r.nextOpen.at) ?? 0),
+      }),
+    );
+    if (r.nextSubscribes.length === 0) lines.push(t("wsClose.nextSubscribeNone"));
+    for (const s of r.nextSubscribes) {
+      lines.push(
+        t("wsClose.nextSubscribe", {
+          time: utcTime(s.at),
+          channel: s.endpoint,
+          outcome: s.outcome,
+          latency: formatMs(s.latencyMs),
+        }) + (s.sodexSays === null ? "" : ` · ${s.sodexSays}`),
+      );
+    }
+  }
+  return lines;
+}
 
 export interface ReportOptions {
   related: boolean;
@@ -209,7 +279,10 @@ export function buildReport(d: SodexCallDetail, opts: ReportOptions, t: Translat
   } else {
     lines.push(t("response", { status: d.httpStatus }));
   }
-  if (d.responseBody !== null) lines.push(prettyJson(d.responseBody));
+  const close = d.wsReconnect?.close ?? null;
+  // WS CLOSE (#240): body là chi tiết đóng dạng JSON, chép thành các dòng có nhãn bên dưới thay vì JSON thô.
+  if (d.responseBody !== null && close === null) lines.push(prettyJson(d.responseBody));
+  if (d.wsReconnect !== null) lines.push(...wsCloseLines(d, t));
   if (opts.responseHeaders && d.responseHeaders.length > 0) {
     lines.push("");
     lines.push(t("responseHeaders"));
