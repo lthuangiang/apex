@@ -96,7 +96,7 @@ label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;
   <!-- Funnel -->
   <section aria-labelledby="fn" style="background:#fff;border-radius:24px;box-shadow:0 8px 24px rgb(20 26 51 / .07);padding:24px;display:flex;flex-direction:column;gap:18px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-      <h2 id="fn" style="margin:0;font-size:22px;font-weight:800">From signal to paper trade · News · last 7 days</h2>
+      <h2 id="fn" style="margin:0;font-size:22px;font-weight:800">How news becomes a paper trade · last 7 days</h2>
       <div role="group" aria-label="Signal type" style="display:flex;gap:4px;background:#f5f7fd;border-radius:12px;padding:4px;flex-wrap:wrap">
         <button type="button" aria-pressed="true" style="height:40px;border:0;background:#fff;border-radius:9px;padding:0 12px;font:inherit;font-size:14px;font-weight:700;box-shadow:0 1px 3px rgb(20 26 51 / .1)">News</button>
         <button type="button" aria-pressed="false" style="height:40px;border:0;background:transparent;border-radius:9px;padding:0 12px;font:inherit;font-size:14px;color:#3b4262">Whales</button>
@@ -106,24 +106,46 @@ label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;
     </div>
     <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
       <div style="flex:1 1 230px;display:flex;flex-direction:column;gap:12px">
-        <div style="background:#f5f7fd;border-radius:16px;padding:14px"><div class="sub" style="font-weight:700">Delay, news out → seen</div><div style="font-size:24px;font-weight:800">3 min 10 s</div><div class="sub">median · SoSoValue checked every 5 min</div></div>
-        <div style="background:#f5f7fd;border-radius:16px;padding:14px"><div class="sub" style="font-weight:700">Claude cost</div><div style="font-size:24px;font-weight:800">$0.42 / day</div><div class="sub">1,240 items classified · SoSoValue 2,016 of 10,000 calls this month</div></div>
+        <div style="background:#f5f7fd;border-radius:16px;padding:14px"><div class="sub" style="font-weight:700">Delay, news out → collected</div><div style="font-size:24px;font-weight:800">3 min 10 s</div><div class="sub">median · SoSoValue checked every 5 min</div></div>
+        <div style="background:#f5f7fd;border-radius:16px;padding:14px"><div class="sub" style="font-weight:700">Claude cost</div><div style="font-size:24px;font-weight:800">$0.42 / day</div><div class="sub">1,240 articles read · SoSoValue 2,016 of 10,000 calls this month</div></div>
       </div>
-      <div role="img" aria-label="Funnel: 1,240 news items received, 236 understood as market-moving, 148 matched to a SoDEX market, 41 passed the checks, 41 paper trades, 30 closed" style="flex:2 1 520px;display:flex;flex-direction:column;align-items:center;gap:6px">
-        <div style="width:100%;height:62px;background:#1d47b8;clip-path:polygon(0 0,100% 0,95% 100%,5% 100%);display:flex;align-items:center;justify-content:center;gap:12px;color:#fff"><span style="font-weight:800;font-size:17px">Received</span><span style="font-weight:800;font-size:20px">1,240</span></div>
-        <div style="width:90%;height:62px;background:#2457d6;clip-path:polygon(0 0,100% 0,94.4% 100%,5.6% 100%);display:flex;align-items:center;justify-content:center;gap:12px;color:#fff"><span style="font-weight:800;font-size:17px">Understood</span><span style="font-weight:800;font-size:20px">236</span></div>
-        <div style="width:80%;height:62px;background:#2e62e8;clip-path:polygon(0 0,100% 0,93.7% 100%,6.3% 100%);display:flex;align-items:center;justify-content:center;gap:12px;color:#fff"><span style="font-weight:800;font-size:17px">On a SoDEX market</span><span style="font-weight:800;font-size:20px">148</span></div>
-        <div style="width:70%;height:62px;background:#4a7bf0;clip-path:polygon(0 0,100% 0,92.8% 100%,7.2% 100%);display:flex;align-items:center;justify-content:center;gap:12px;color:#fff"><span style="font-weight:800;font-size:17px">Passed checks</span><span style="font-weight:800;font-size:20px">41</span></div>
-        <div style="width:60%;height:62px;background:#0f7a43;clip-path:polygon(0 0,100% 0,91.7% 100%,8.3% 100%);display:flex;align-items:center;justify-content:center;gap:12px;color:#fff"><span style="font-weight:800;font-size:17px">Paper trades</span><span style="font-weight:800;font-size:20px">41</span></div>
-        <div style="display:flex;gap:10px;align-items:center;margin-top:6px;border:1px solid #e3e7f5;border-radius:16px;padding:10px 16px"><span style="font-weight:800">30 closed</span><span class="sub">·</span><span style="color:#0f7a43;font-weight:700">12 take profit</span><span style="color:#c2312f;font-weight:700">11 stop loss</span><span style="color:#3b4262;font-weight:700">7 max hold</span><span class="sub">· 11 open</span></div>
+      <div role="img" aria-label="Funnel: 1,240 articles collected, normalized into 96 stories about SoDEX assets, 96 scored (21 high, 38 medium, 37 low confidence), 41 passed filters, 41 paper trades" style="flex:2 1 520px;display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div style="width:100%;height:66px;background:#1d47b8;clip-path:polygon(0 0,100% 0,95% 100%,5% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">1 · Collect &#160;1,240 articles</span><span style="font-size:12px;opacity:.9">every SoSoValue article, nothing skipped</span></div>
+        <div style="width:90%;height:66px;background:#2457d6;clip-path:polygon(0 0,100% 0,94.4% 100%,5.6% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">2 · Normalize &#160;96 stories</span><span style="font-size:12px;opacity:.9">articles about one event grouped into one story, mapped to a SoDEX asset</span></div>
+        <div style="width:80%;height:66px;background:#2e62e8;clip-path:polygon(0 0,100% 0,93.7% 100%,6.3% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">3 · Score &#160;96 signals</span><span style="font-size:12px;opacity:.9">High 21 · Medium 38 · Low 37</span></div>
+        <div style="width:70%;height:66px;background:#4a7bf0;clip-path:polygon(0 0,100% 0,92.8% 100%,7.2% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">4 · Filter &#160;41 left</span><span style="font-size:12px;opacity:.9">worth the fees, no open trade, source on time</span></div>
+        <div style="width:60%;height:66px;background:#0f7a43;clip-path:polygon(0 0,100% 0,91.7% 100%,8.3% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">5 · Decide &#160;41 paper trades</span><span style="font-size:12px;opacity:.9">entry, take profit, stop loss, max hold</span></div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:6px;border:1px solid #e3e7f5;border-radius:16px;padding:10px 16px;flex-wrap:wrap;justify-content:center"><span style="font-weight:800">30 closed</span><span style="color:#0f7a43;font-weight:700">12 take profit</span><span style="color:#c2312f;font-weight:700">11 stop loss</span><span style="color:#3b4262;font-weight:700">7 max hold</span><span class="sub">· 11 open</span></div>
       </div>
       <div style="flex:1 1 230px;display:flex;flex-direction:column;gap:8px">
-        <span style="font-weight:800;font-size:15px">Why signals dropped out</span>
-        <div style="background:#f5f7fd;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5"><b>Received → Understood · −1,004</b><br>Not market-moving 812 · Repeat of a story 141 · Promotional 51</div>
-        <div style="background:#f5f7fd;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5"><b>Understood → On SoDEX · −88</b><br>Asset not listed on SoDEX 74 · Too thin to trade 14</div>
-        <div style="background:#f5f7fd;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5"><b>On SoDEX → Passed checks · −107</b><br>Take profit under 2× cost 61 · Trade already open 30 · Source late 16</div>
-        <span class="sub">Click a step to see the signals it dropped.</span>
+        <span style="font-weight:800;font-size:15px">Why they dropped out</span>
+        <div style="background:#f5f7fd;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5"><b>Collect → Normalize · −1,144 articles</b><br>Not about a price move 812 · More articles on a story already counted 208 · Asset not on SoDEX 74 · Promotional 50</div>
+        <div style="background:#f5f7fd;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5"><b>Score → Filter · −55 signals</b><br>Take profit under 2× cost 27 · Trade already open on that asset 19 · Source late 9</div>
+        <span class="sub">Score never drops a signal: every confidence level is traded on paper so we learn which levels are worth it.</span>
       </div>
+    </div>
+  </section>
+
+  <!-- What makes a signal -->
+  <section aria-labelledby="ws" style="background:#fff;border-radius:24px;box-shadow:0 8px 24px rgb(20 26 51 / .07);padding:24px;display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <h2 id="ws" style="margin:0;font-size:22px;font-weight:800">What counts as a news signal</h2>
+      <span style="font-size:14px;color:#5f6684">Rules v2 · a starting guess that the results below prove or drop</span>
+    </div>
+    <p style="margin:0;font-size:15px;color:#3b4262;line-height:1.55">A signal is <b>one story</b> about one SoDEX asset with one direction. More articles about the same story don’t open more trades; they raise its confidence. Confidence comes from how many independent sources report it and how trusted they are.</p>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Confidence</th><th>When</th><th>Signals</th><th>Paper trades</th><th>Average after fees</th><th>Verdict so far</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill" style="background:#ddf4e7;color:#0f7a43">High</span></td><td style="white-space:normal;min-width:320px">2 or more independent sources within 30 min, at least one top-tier, all the same direction, nothing contradicting</td><td>21</td><td>14</td><td style="color:#5f6684">Not enough trades</td><td style="white-space:normal;min-width:200px">Needs 86 more trades</td></tr>
+        <tr><td><span class="pill" style="background:#e6ecfe;color:#1d47b8">Medium</span></td><td style="white-space:normal;min-width:320px">One top-tier source, or 2 or more mid-tier sources</td><td>38</td><td>17</td><td style="color:#5f6684">Not enough trades</td><td style="white-space:normal;min-width:200px">Needs 83 more trades</td></tr>
+        <tr><td><span class="pill" style="background:#eef1fa;color:#3b4262">Low</span></td><td style="white-space:normal;min-width:320px">A single mid- or low-tier source</td><td>37</td><td>10</td><td style="color:#5f6684">Not enough trades</td><td style="white-space:normal;min-width:200px">Needs 90 more trades</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <div style="flex:1 1 360px;background:#f5f7fd;border-radius:16px;padding:14px;font-size:14px;line-height:1.5;color:#3b4262"><b style="color:#141a33">How many trades until we trust a level?</b> 100 closed trades per level. Below that the result shows “Not enough trades”, because a few lucky trades can look like an edge.</div>
+      <div style="flex:1 1 360px;background:#f5f7fd;border-radius:16px;padding:14px;font-size:14px;line-height:1.5;color:#3b4262"><b style="color:#141a33">If a level fails,</b> it stops being traded in the next rules version, and its trades stay in history under the old version.</div>
     </div>
   </section>
 
