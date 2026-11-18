@@ -42,6 +42,11 @@ export function engineSodexClients(o: EngineSodexOptions): {
   rest: SodexRestClient;
   /** Đọc của đối soát và approval, chừa phần dự trữ, timeout ngắn hơn. */
   reads: SodexRestClient;
+  /**
+   * Tra lệnh đã gửi huỷ chưa được SoDEX xác nhận (DEC-TBD-vf-orphan-entry): mức thường như lệnh ghi (không bị phần dự trữ
+   * chặn), timeout ngắn như `reads`. Engine giới hạn số lần bằng ngân sách riêng (`URGENT_LOOKUP_BUDGET`).
+   */
+  urgentReads: SodexRestClient;
   writer: SignedWriteClient;
   /** Số lời gọi đọc nền bị bỏ vì phần dự trữ kể từ lần gọi trước (rồi về 0). */
   takeSkipped: () => number;
@@ -59,6 +64,7 @@ export function engineSodexClients(o: EngineSodexOptions): {
     orderPath: new SodexRestClient(base),
     rest: new SodexRestClient(background),
     reads: new SodexRestClient({ ...background, timeoutMs: o.readTimeoutMs }),
+    urgentReads: new SodexRestClient({ ...base, timeoutMs: o.readTimeoutMs }),
     writer: new SignedWriteClient(base),
     takeSkipped: () => {
       const n = counting.skipped;

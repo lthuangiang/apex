@@ -37,6 +37,7 @@ import {
   type LookupResult,
   type ModifyStopResult,
   type NotSentCode,
+  type ReadOptions,
   type SubmitResult,
   type OrderTrade,
 } from "./gateway";
@@ -159,7 +160,16 @@ export class HttpGateway implements Gateway {
      * thiếu thì dùng `rest`. Cùng bucket rate limit IP. Lệnh ghi không đi qua đây.
      */
     private readonly reads: SodexRestClient = rest,
+    /**
+     * Client đọc mức thường (không bị phần dự trữ cho lệnh ghi chặn), timeout ngắn như `reads`: chỉ cho tra lệnh đã gửi
+     * huỷ chưa được xác nhận (`ReadOptions.urgent`, DEC-TBD-vf-orphan-entry). Thiếu thì dùng `reads`.
+     */
+    private readonly urgentReads: SodexRestClient = reads,
   ) {}
+
+  #readsFor(opts: ReadOptions | undefined): SodexRestClient {
+    return opts?.urgent === true ? this.urgentReads : this.reads;
+  }
 
   /**
    * Thông tin market cho payload lệnh / huỷ. Đã biết market thì trả ngay và làm mới ở nền (lỗi làm mới bỏ qua, lần sau
@@ -502,9 +512,10 @@ export class HttpGateway implements Gateway {
   async recentTrades(
     account: AccountRef,
     q: { market: string; engine: "spot" | "perps" },
+    opts?: ReadOptions,
   ): Promise<(OrderTrade & { clOrdID: string })[]> {
     refusePaper(account);
-    const rows = await this.reads.getTrades(q.engine, account.address, {
+    const rows = await this.#readsFor(opts).getTrades(q.engine, account.address, {
       accountID: account.sodexAccountId,
       symbol: q.market,
       limit: 500,
@@ -545,9 +556,10 @@ export class HttpGateway implements Gateway {
   async tradesOf(
     account: AccountRef,
     o: { clOrdID: string; market: string; engine: "spot" | "perps" },
+    opts?: ReadOptions,
   ): Promise<OrderTrade[]> {
     refusePaper(account);
-    const rows = await this.reads.getTrades(o.engine, account.address, {
+    const rows = await this.#readsFor(opts).getTrades(o.engine, account.address, {
       accountID: account.sodexAccountId,
       symbol: o.market,
       limit: 500,
@@ -568,15 +580,17 @@ export class HttpGateway implements Gateway {
   async lookup(
     account: AccountRef,
     o: { clOrdID: string; market: string; engine: "spot" | "perps" },
+    opts?: ReadOptions,
   ): Promise<LookupResult> {
     refusePaper(account);
+    const reads = this.#readsFor(opts);
     const q = { accountID: account.sodexAccountId, symbol: o.market };
-    const open = (await this.reads.getOpenOrders(o.engine, account.address, q)).find(
+    const open = (await reads.getOpenOrders(o.engine, account.address, q)).find(
       (x) => x.clOrdID === o.clOrdID,
     );
     const found =
       open ??
-      (await this.reads.getOrderHistory(o.engine, account.address, { ...q, limit: 500 })).find(
+      (await reads.getOrderHistory(o.engine, account.address, { ...q, limit: 500 })).find(
         (x) => x.clOrdID === o.clOrdID,
       );
     if (found === undefined) return { status: "not_found" };

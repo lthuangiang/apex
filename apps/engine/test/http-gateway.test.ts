@@ -293,4 +293,44 @@ describe("market info on the order path (DEC-308)", () => {
     ]);
     expect(signed).toBe(0);
   });
+
+  it("reads a cancel-pending order with the write-priority client, other reads with the background one (DEC-TBD-vf-orphan-entry)", async () => {
+    const used: string[] = [];
+    const client = (name: string) =>
+      ({
+        getOpenOrders: () => {
+          used.push(`${name}:open`);
+          return Promise.resolve([]);
+        },
+        getOrderHistory: () => {
+          used.push(`${name}:history`);
+          return Promise.resolve([]);
+        },
+        getTrades: () => {
+          used.push(`${name}:trades`);
+          return Promise.resolve([]);
+        },
+      }) as unknown as SodexRestClient;
+    const writer = {} as unknown as SignedWriteClient;
+    const signer = { sign: () => Promise.resolve(`0x01${"ab".repeat(65)}` as `0x${string}`) };
+    const gw = new HttpGateway(
+      client("rest"),
+      writer,
+      signer,
+      BUILDER,
+      true,
+      client("background"),
+      client("urgent"),
+    );
+    const ref = { clOrdID: "c1", market: "vBTC_vUSDC", engine: "spot" as const };
+    const q = { market: "vBTC_vUSDC", engine: "spot" as const };
+    await gw.lookup(account(7n), ref);
+    await gw.recentTrades(account(7n), q);
+    expect(used).toEqual(["background:open", "background:history", "background:trades"]);
+    used.length = 0;
+    await gw.lookup(account(7n), ref, { urgent: true });
+    await gw.recentTrades(account(7n), q, { urgent: true });
+    await gw.tradesOf(account(7n), ref, { urgent: true });
+    expect(used).toEqual(["urgent:open", "urgent:history", "urgent:trades", "urgent:trades"]);
+  });
 });

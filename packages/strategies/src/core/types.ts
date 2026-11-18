@@ -43,7 +43,25 @@ export interface OrderIntent {
 
 export type StrategyEvent =
   | { type: "tick"; at: number; market: string; price: string }
-  | { type: "fill"; at: number; clOrdID: string; price: string; quantity: string; fee: string }
+  | {
+      type: "fill";
+      at: number;
+      clOrdID: string;
+      price: string;
+      quantity: string;
+      fee: string;
+      /**
+       * Chiều của lệnh (engine lấy từ dòng `orders` của chính bot). Chiến lược đã thôi theo dõi lệnh vẫn ghi được fill
+       * đến muộn (Volume Farm nhận vào vị thế, DEC-TBD-vf-orphan-entry); thiếu ở sim / backtest.
+       */
+      side?: "buy" | "sell";
+      /** Lệnh chỉ giảm vị thế (stop, lệnh thoát, lệnh đóng của engine): fill không bao giờ mở / tăng vị thế. */
+      reduceOnly?: boolean;
+      /** Khối lượng đặt của lệnh (để biết lệnh đã khớp đủ, tức đã kết thúc). */
+      size?: string;
+      /** Nhãn của lệnh (`close` = lệnh đóng engine tự dựng khi Stop). */
+      tag?: string;
+    }
   | { type: "orderAck"; at: number; clOrdID: string }
   | {
       type: "orderReject";

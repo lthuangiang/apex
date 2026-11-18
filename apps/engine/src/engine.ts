@@ -349,6 +349,11 @@ interface TickSnapshot {
    * các account (DEC-310). Lệnh không có ở đây chờ vòng sau. null = không giới hạn (tra mọi lệnh tới hạn).
    */
   lookups: Set<string> | null;
+  /**
+   * Phần của `lookups` là lệnh đã gửi huỷ chưa được xác nhận, tra bằng URGENT_LOOKUP_BUDGET và client đọc mức thường
+   * (DEC-TBD-vf-orphan-entry).
+   */
+  urgent: Set<string>;
 }
 
 const pushTo = <K, V>(map: Map<K, V[]>, key: K, value: V): void => {
@@ -385,6 +390,22 @@ export const LOOKUP_WEIGHT = 25;
  * cửa sổ ngân sách; kế hoạch tra tính mỗi lần tra tối đa LOOKUP_WEIGHT + TRADES_WEIGHT (lệnh không thấy thì đọc trade).
  */
 export const TRADES_WEIGHT = 20;
+/**
+ * Ngân sách riêng cho tra lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận (DEC-TBD-vf-orphan-entry): lệnh như vậy có thể còn
+ * sống trên sổ trong khi chiến lược đã thôi theo dõi (#239), nên không chờ phần còn lại của LOOKUP_BUDGET và đọc ở mức
+ * thường (không bị phần dự trữ 30% của DEC-310 bỏ). 180 weight / 60 s = 4 lần tra kèm đọc trade mỗi phút, 15% bucket IP.
+ */
+export const URGENT_LOOKUP_BUDGET = { weight: 180, windowMs: 60_000 } as const;
+/**
+ * Khi vị thế thật lệch sổ cái của Volume Farm, tìm fill của chính lệnh bot (đã ghi trong `fills`) mà chiến lược không còn
+ * nhớ trong chừng này gần nhất (DEC-TBD-vf-orphan-entry).
+ */
+export const ADOPT_LOOKBACK_MS = 24 * 60 * 60_000;
+/**
+ * Fill được nhận để sửa sổ cái phải nằm trong chừng này ngay trước lúc độ lệch xuất hiện (`since` của cảnh báo / lần
+ * đầu thấy lệch). Bậc 0 → 2 của DEC-306 mất khoảng 1,5–2 phút; 10 phút để dư (review #239 B1).
+ */
+export const ADOPT_WINDOW_MS = 10 * 60_000;
 /**
  * Huỷ bị SoDEX từ chối cả request lặp lại (key bị thu hồi, 400 nonce / chữ ký, 429): huỷ lại của account đó chờ 5 s →
  * 15 s → 60 s (giữ 60 s), warn một lần mỗi nấc (DEC-310). Có kết quả theo từng lệnh thì về 0.
@@ -867,6 +888,10 @@ export class Engine {
   readonly #cancelGone = new Map<string, Set<string>>();
   /** Lần huỷ gần nhất của lệnh trong `#cancelGone` (huỷ lại chậm mỗi OPEN_CHECK_MS tới khi có kết quả, review #216 M3). */
   readonly #goneCancelAt = new Map<string, number>();
+  /** Lần quét lệnh Volume Farm mồ côi gần nhất, theo bot (DEC-TBD-vf-orphan-entry). */
+  readonly #farmSweepAt = new Map<string, number>();
+  /** Độ lệch vị thế đã thử nhận fill của chính bot để sửa sổ cái, theo `bot:market` (DEC-TBD-vf-orphan-entry). */
+  readonly #adoptTried = new Map<string, string>();
   /** Lệnh huỷ đang chờ lệnh đặt được nhận (DEC-254): clOrdID → lúc bắt đầu chờ. */
   readonly #inflightCancels = new Map<string, number>();
   /** Lần cuối ghi số dư giả của bot paper. */
@@ -881,6 +906,8 @@ export class Engine {
   #orderStreams = new Map<string, { account: AccountRef; engines: Set<"spot" | "perps"> }>();
   /** Các lần tra lệnh trong LOOKUP_BUDGET.windowMs gần nhất (lúc tra, weight), của cả worker. */
   #lookupLog: { at: number; weight: number }[] = [];
+  /** Các lần tra khẩn (lệnh đã gửi huỷ chưa được xác nhận) trong URGENT_LOOKUP_BUDGET.windowMs gần nhất. */
+  #urgentLog: { at: number; weight: number }[] = [];
   /** Huỷ bị từ chối cả request liên tiếp, theo account: số lần, huỷ lại sớm nhất lúc, nấc đã warn. */
   readonly #cancelBackoff = new Map<string, { n: number; until: number; warned: number }>();
   /** Shard đang chạy các bước của một vòng (có thể kéo dài qua vòng sau khi SoDEX chậm). */
@@ -1627,6 +1654,12 @@ export class Engine {
       price: (price.gt(0) ? price : dec(avgPrice)).toString(),
       quantity: delta.toString(),
       fee,
+      // Theo dòng lệnh của chính bot: chiến lược đã thôi theo dõi lệnh vẫn ghi đúng fill (chiều, chỉ giảm, khối lượng
+      // đặt, lệnh đóng của Stop) (DEC-TBD-vf-orphan-entry).
+      side: o.side,
+      reduceOnly: o.reduceOnly,
+      size: o.size,
+      tag: o.tag,
     });
   }
 
@@ -1964,6 +1997,7 @@ export class Engine {
       unconfirmed: new Map(),
       backfill: new Map(),
       lookups: null,
+      urgent: new Set(),
     };
     if (owned.size === 0) return snap;
     const accountRows = await db
@@ -2146,6 +2180,10 @@ export class Engine {
           return loaded;
         });
         if (r === undefined) continue;
+        // Volume Farm nạp lại (khởi động lại, Resume sau pause) mà còn cảnh báo lệch: sửa sổ cái từ fill của chính lệnh bot
+        // TRƯỚC bước chiến lược đầu tiên, để Resume không gửi lệnh theo sổ cái sai (#239: 30 lệnh bán reduce-only).
+        if (r.strategy === Strategy.volumeFarm && !r.paper && r.positionMismatch.size > 0)
+          await this.#repairOnLoad(r);
       }
       // Team đổi builder fee của user (DEC-159): lệnh mới dùng mức mới ngay, chiến lược tính phí theo mức mới.
       const rate = builderFeeRateFor(bot.strategy, fees.get(bot.userId));
@@ -3482,6 +3520,60 @@ export class Engine {
       );
   }
 
+  /**
+   * Volume Farm (DEC-TBD-vf-orphan-entry): chiến lược coi lệnh vào đã gửi huỷ là còn sống tới khi engine báo kết thúc
+   * (`orderDone` / `orderReject`) và gửi huỷ lại mỗi 10 s. Lần huỷ gặp dòng lệnh đã kết thúc thì báo lại: dòng chưa báo
+   * (`done_fed_at` null) đi qua `onOrderClosed` như user stream (đúng một lần, sau fill); dòng đã báo mà chiến lược còn chờ
+   * (khởi động lại giữa lúc đánh dấu và bước chiến lược) thì báo lại trực tiếp, Volume Farm bỏ qua tin trùng. Không có dòng
+   * lệnh và không còn đang gửi: lệnh chưa bao giờ rời DeskLabs (ghi trước rồi mới gửi). Dòng còn mở / `unknown` thì
+   * không báo gì: huỷ / đối soát quyết định theo SoDEX.
+   */
+  async #reportFarmEnded(
+    r: Runner,
+    ids: readonly string[],
+    rows: readonly OrderRow[],
+    inflight: readonly string[],
+    now: number,
+  ): Promise<void> {
+    for (const id of ids) {
+      if (inflight.includes(id)) continue;
+      const row = rows.find((o) => o.clOrdId === id);
+      if (row === undefined) {
+        await this.#feed(r, { type: "orderReject", at: now, clOrdID: id, code: "NOT_PLACED" });
+        continue;
+      }
+      // Dòng `unknown` đã bỏ cuộc (trước hoặc sau lần huỷ của chiến lược): quyết định như #farmGaveUp (review #239 M2).
+      if (row.status === "unknown" && row.unknownGaveUpAt !== null) {
+        await this.#farmGaveUp(r, row, now);
+        continue;
+      }
+      if (!["cancelled", "filled", "rejected", "not_placed"].includes(row.status)) continue;
+      const nothing = !dec(row.filledSize).gt(0);
+      const rejected = (row.status === "rejected" || row.status === "not_placed") && nothing;
+      if (!r.paper && row.doneFedAt === null && row.status !== "not_placed") {
+        await this.onOrderClosed(
+          r.account.id,
+          id,
+          rejected ? "rejected" : row.status === "filled" ? "filled" : "cancelled",
+          now,
+          row.rejectCode,
+        );
+        continue;
+      }
+      if (row.doneFedAt === null) await this.#markDone(r, row.id);
+      // Báo lại trực tiếp chỉ khi chiến lược còn chờ đúng lệnh này (review m4): không bao giờ gửi tin trùng cho lệnh nó đã
+      // coi là xong hay không theo dõi.
+      const waiting = (r.state as { orders?: Record<string, { done?: boolean }> }).orders?.[id];
+      if (waiting === undefined || waiting.done === true) continue;
+      await this.#feed(
+        r,
+        rejected
+          ? { type: "orderReject", at: now, clOrdID: id, code: row.rejectCode ?? "REJECTED" }
+          : { type: "orderDone", at: now, clOrdID: id },
+      );
+    }
+  }
+
   async #cancel(
     r: Runner,
     clOrdIDs: readonly string[],
@@ -3522,6 +3614,10 @@ export class Engine {
     for (const id of inflight) pending.add(id);
     if (inflight.length > 0)
       this.#cancelRetryAt.set(r.botId, startedAt - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
+    // Volume Farm chờ SoDEX xác nhận lệnh đã kết thúc trước khi vào lượt mới và huỷ lại theo nhịp
+    // (DEC-TBD-vf-orphan-entry): lệnh bot huỷ mà dòng lệnh đã kết thúc thì báo lại cho chiến lược.
+    if (r.strategy === Strategy.volumeFarm)
+      await this.#reportFarmEnded(r, clOrdIDs, rows, inflight, startedAt);
     if (open.length === 0) {
       return;
     }
@@ -3596,9 +3692,13 @@ export class Engine {
     const notBooked = results.some((x) => isNotFound(x) && unbooked(x));
     if (notBooked)
       this.#cancelRetryAt.set(r.botId, now - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
+    // SoDEX từ chối riêng lệnh huỷ này (envelope ok, mã lỗi của lệnh): không nói lệnh đã hết trên sổ. Như OrderNotFound,
+    // đọc trạng thái cuối ở #reconcileOpen thay vì tự ghi `cancelled` (DEC-TBD-vf-orphan-entry, quy tắc 1.7).
+    const isGone = (x: CancelResult) =>
+      x.outcome === "not_found" || (x.outcome === "rejected" && x.scope !== "request");
     let gone = this.#cancelGone.get(r.botId);
     for (const x of results) {
-      if (x.outcome !== "not_found") continue;
+      if (!isGone(x)) continue;
       if (unbooked(x)) {
         this.#d.log.info(
           { botId: r.botId, clOrdID: x.clOrdID },
@@ -3621,19 +3721,10 @@ export class Engine {
         "cancel: order no longer on the SoDEX book; reconciling its final status",
       );
     }
-    // Chỉ coi là đã huỷ khi SoDEX trả lời rõ: ok, hoặc từ chối (lệnh đã khớp / đã huỷ). Không rõ thì thử lại; không thấy
-    // trên sổ thì chờ đối soát (ở trên).
-    // Request bị từ chối cả gói (429, key, nonce…) không nói gì về lệnh: như chưa rõ, huỷ lại sau (review #216 F1).
-    const settled = new Set(
-      results
-        .filter(
-          (x) =>
-            x.outcome !== "unknown" &&
-            x.outcome !== "not_found" &&
-            !(x.outcome === "rejected" && x.scope === "request"),
-        )
-        .map((x) => x.clOrdID),
-    );
+    // Chỉ coi là đã huỷ khi SoDEX xác nhận đã gỡ (`ok`). Không rõ thì thử lại; không thấy trên sổ hoặc SoDEX từ chối
+    // riêng lệnh huỷ thì chờ đối soát (ở trên). Request bị từ chối cả gói (429, key, nonce…) không nói gì về lệnh: như
+    // chưa rõ, huỷ lại sau (review #216 F1).
+    const settled = new Set(results.filter((x) => x.outcome === "ok").map((x) => x.clOrdID));
     const done = open.filter((o) => settled.has(o.clOrdId));
     for (const o of open) {
       if (settled.has(o.clOrdId)) pending.delete(o.clOrdId);
@@ -3651,8 +3742,10 @@ export class Engine {
             ),
           ),
       );
-    // Market Making tính khối lượng còn treo của lệnh đóng cho tới khi SoDEX xác nhận đã gỡ (DEC-100).
-    if (r.strategy !== Strategy.volumeMaker) return;
+    // Market Making tính khối lượng còn treo của lệnh đóng cho tới khi SoDEX xác nhận đã gỡ (DEC-100). Volume Farm paper
+    // không có user stream báo CANCELED: báo kết thúc ngay để lượt sau không phải chờ (DEC-TBD-vf-orphan-entry).
+    if (r.strategy !== Strategy.volumeMaker && !(r.paper && r.strategy === Strategy.volumeFarm))
+      return;
     const at = this.#d.now();
     for (const res of results) {
       const o = open.find((x) => x.clOrdId === res.clOrdID);
@@ -4459,14 +4552,14 @@ export class Engine {
       { botId: r.botId, clOrdID: o.clOrdId },
       "order result still unknown after reconciling; needs attention",
     );
-    await this.#fenced(r, async (tx) => {
+    const marked = await this.#fenced(r, async (tx) => {
       // Ghi một lần: chỉ dòng chưa bỏ cuộc mới được đánh dấu (vòng / engine khác đã ghi thì thôi).
-      const marked = await tx
+      const rows = await tx
         .update(orders)
         .set({ unknownGaveUpAt: new Date(now) })
         .where(and(eq(orders.id, o.id), isNull(orders.unknownGaveUpAt)))
         .returning({ id: orders.id });
-      if (marked.length === 0) return;
+      if (rows.length === 0) return false;
       await tx.update(bots).set({ needsAttention: true }).where(eq(bots.id, r.botId));
       await tx.insert(botEvents).values({
         botId: r.botId,
@@ -4475,7 +4568,52 @@ export class Engine {
         why: `${o.clOrdId}: SoDEX accepted it, but it is not in the order history and has no trades. Check this bot's position on SoDEX.`,
         occurredAt: new Date(now),
       });
+      // Báo team như lệnh gửi không rõ kết quả (đường cảnh báo có sẵn).
+      if (!r.paper)
+        await tx.insert(outbox).values({
+          topic: "jobs.notify",
+          payload: {
+            sodexAccountId: r.account.id,
+            type: "unknown_order",
+            data: { botId: r.botId, clOrdID: o.clOrdId },
+          },
+        });
+      return true;
     });
+    if (marked) await this.#farmGaveUp(r, o, now);
+  }
+
+  /**
+   * Volume Farm chờ SoDEX xác nhận lệnh này đã kết thúc trước khi vào lượt mới (DEC-TBD-vf-orphan-entry); dòng `unknown`
+   * bỏ cuộc sẽ không bao giờ có `orderDone` (review #239 M2). Quyết định rõ ràng: lần tra thành công đã xác nhận lệnh không
+   * còn trên SoDEX (`missing_confirmed_at`, quá UNKNOWN_CHECK_WINDOW_MS) và lần đọc trade NGAY LÚC NÀY không có trade nào →
+   * lệnh không khớp gì và không thể khớp nữa: báo `orderDone` để bot đi tiếp (kiểm tra vị thế DEC-306 vẫn là lưới an
+   * toàn). Có trade → ghi fill thật và để chiến lược tiếp tục chờ. Không đọc được → vẫn chặn; chiến lược tự báo sau 10 phút.
+   */
+  async #farmGaveUp(r: Runner, o: typeof orders.$inferSelect, now: number): Promise<void> {
+    if (r.strategy !== Strategy.volumeFarm || o.missingConfirmedAt === null) return;
+    const waiting = (r.state as { orders?: Record<string, { cancelAt?: number; done?: boolean }> })
+      .orders?.[o.clOrdId];
+    if (waiting?.cancelAt === undefined || waiting.done === true) return;
+    let trades: OrderTrade[];
+    try {
+      trades = r.paper ? [] : await this.#orderTrades(r.account, o);
+    } catch (error) {
+      this.#d.log.warn(
+        { err: error, botId: r.botId, clOrdID: o.clOrdId },
+        "could not read trades for a given-up order; the bot keeps waiting",
+      );
+      return;
+    }
+    if (trades.length > 0) {
+      await this.#recordTrades(r.account, o, trades, now);
+      return;
+    }
+    this.#d.log.warn(
+      { botId: r.botId, clOrdID: o.clOrdId },
+      "given-up order is confirmed missing on SoDEX with no trades; the bot moves on",
+    );
+    await this.#feed(r, { type: "orderDone", at: now, clOrdID: o.clOrdId });
   }
 
   /** Đối soát một lệnh `unknown` với SoDEX. */
@@ -4587,15 +4725,21 @@ export class Engine {
     engine: "spot" | "perps",
     /** Bản đang giữ đọc trước mốc này (`#readSeq`) thì đọc lại. */
     notBefore = 0,
+    /** Đọc cho lệnh đã gửi huỷ chưa được xác nhận: ngân sách riêng, mức thường (DEC-TBD-vf-orphan-entry). */
+    urgent = false,
   ): Promise<(OrderTrade & { clOrdID: string })[]> {
     const key = `${account.id}:${engine}:${market}`;
     const cached = this.#tradesCache.get(key);
     if (cached !== undefined && cached.seq >= notBefore) return cached.p;
     // Đọc thật: ghi vào cửa sổ ngân sách đọc của worker (DEC-310), kể cả lưới an toàn fill.
-    if (account.paper !== true) this.#lookupLog.push({ at: this.#d.now(), weight: TRADES_WEIGHT });
+    if (account.paper !== true)
+      (urgent ? this.#urgentLog : this.#lookupLog).push({
+        at: this.#d.now(),
+        weight: TRADES_WEIGHT,
+      });
     const entry = {
       seq: ++this.#readSeq,
-      p: this.#d.gateway.recentTrades(account, { market, engine }),
+      p: this.#d.gateway.recentTrades(account, { market, engine }, urgent ? { urgent } : undefined),
     };
     this.#tradesCache.set(key, entry);
     entry.p.catch(() => {
@@ -4609,8 +4753,9 @@ export class Engine {
     account: AccountRef,
     o: { clOrdId: string; market: string; engine: "spot" | "perps" },
     notBefore = 0,
+    urgent = false,
   ): Promise<OrderTrade[]> {
-    return (await this.#accountTrades(account, o.market, o.engine, notBefore)).filter(
+    return (await this.#accountTrades(account, o.market, o.engine, notBefore, urgent)).filter(
       (t) => t.clOrdID === o.clOrdId,
     );
   }
@@ -4667,7 +4812,11 @@ export class Engine {
    * chưa có kết quả, lệnh market, lệnh Volume Farm DRIFT tự huỷ trong khoảng trống stream, DEC-308), rồi lệnh kiểm lâu
    * nhất (chưa kiểm = 0), rồi lệnh cũ nhất (DEC-185); tối đa OPEN_CHECK_BATCH lệnh mỗi account. Không có tác dụng phụ.
    */
-  #openDue(shard: number, snap: TickSnapshot, now: number): (OrderRow & { suspect: boolean })[] {
+  #openDue(
+    shard: number,
+    snap: TickSnapshot,
+    now: number,
+  ): (OrderRow & { suspect: boolean; cancelling: boolean })[] {
     // Lệnh bot thật của shard (snapshot của vòng, DEC-105: không bao giờ lệnh paper).
     const rows = snap.open.get(shard) ?? [];
     const gap = (o: { sodexAccountId: string; engine: "spot" | "perps" }) =>
@@ -4707,7 +4856,7 @@ export class Engine {
         perAccount.set(o.sodexAccountId, n + 1);
         return true;
       })
-      .map((o) => ({ ...o, suspect: suspect(o) === 0 }));
+      .map((o) => ({ ...o, suspect: suspect(o) === 0, cancelling: cancelling(o) }));
   }
 
   /**
@@ -4732,6 +4881,12 @@ export class Engine {
    */
   #planLookups(snap: TickSnapshot, shards: readonly number[], now: number): Set<string> | null {
     if (!Number.isFinite(this.#d.lookupBudget)) return null;
+    // Lệnh đã gửi huỷ chưa được xác nhận: ngân sách riêng URGENT_LOOKUP_BUDGET, trước mọi nhóm, không chờ phần còn lại
+    // của LOOKUP_BUDGET (DEC-TBD-vf-orphan-entry). Hết ngân sách riêng thì xếp vào nhóm nghi ngờ như trước.
+    let urgentRoom = Math.floor(
+      (URGENT_LOOKUP_BUDGET.weight - this.#urgentUsed(now)) / (LOOKUP_WEIGHT + TRADES_WEIGHT),
+    );
+    snap.urgent = new Set();
     const suspects = new Map<string, OrderRow[]>();
     const others = new Map<string, OrderRow[]>();
     // Lệnh của bot sẽ được nạp ở vòng này (vừa khởi động lại / nhận shard): kế hoạch lập trước khi nạp nên lệnh trông như
@@ -4744,14 +4899,24 @@ export class Engine {
           .map((x) => x.bot.id),
       );
       for (const o of this.#unknownDue(shard, snap, now)) pushTo(suspects, o.sodexAccountId, o);
-      for (const o of this.#openDue(shard, snap, now))
+      for (const o of this.#openDue(shard, snap, now)) {
+        if (o.cancelling && urgentRoom > 0) {
+          urgentRoom -= 1;
+          snap.urgent.add(o.id);
+          continue;
+        }
         pushTo(o.suspect ? suspects : loading.has(o.botId) ? later : others, o.sodexAccountId, o);
+      }
     }
-    const room = Math.max(
-      0,
-      Math.floor((this.#d.lookupBudget - this.#lookupUsed(now)) / (LOOKUP_WEIGHT + TRADES_WEIGHT)),
-    );
-    const plan = new Set<string>();
+    const room =
+      snap.urgent.size +
+      Math.max(
+        0,
+        Math.floor(
+          (this.#d.lookupBudget - this.#lookupUsed(now)) / (LOOKUP_WEIGHT + TRADES_WEIGHT),
+        ),
+      );
+    const plan = new Set<string>(snap.urgent);
     for (const tier of [suspects, others, later]) {
       const queues = [...tier.values()];
       for (let round = 0; plan.size < room && queues.some((q) => q.length > round); round += 1)
@@ -4769,9 +4934,21 @@ export class Engine {
     return this.#lookupLog.reduce((a, x) => a + x.weight, 0);
   }
 
+  /** Weight của các lần tra khẩn (URGENT_LOOKUP_BUDGET) trong cửa sổ gần nhất. */
+  #urgentUsed(now: number): number {
+    this.#urgentLog = this.#urgentLog.filter((x) => now - x.at < URGENT_LOOKUP_BUDGET.windowMs);
+    return this.#urgentLog.reduce((a, x) => a + x.weight, 0);
+  }
+
   /** Lệnh được tra ở vòng này: có trong kế hoạch (hoặc không giới hạn) và còn ngân sách; ghi lần tra vào ngân sách. */
   #lookupAllowed(snap: TickSnapshot, id: string, now: number): boolean {
     if (snap.lookups === null) return true;
+    if (snap.urgent.has(id)) {
+      if (this.#urgentUsed(now) + LOOKUP_WEIGHT + TRADES_WEIGHT > URGENT_LOOKUP_BUDGET.weight)
+        return false;
+      this.#urgentLog.push({ at: now, weight: LOOKUP_WEIGHT });
+      return true;
+    }
     return snap.lookups.has(id) && this.#takeLookup(now);
   }
 
@@ -4810,7 +4987,11 @@ export class Engine {
         this.#openChecks.set(o.id, now);
         const ref = { clOrdID: o.clOrdId, market: o.market, engine: o.engine };
         const lookedAt = ++this.#readSeq;
-        const found = await this.#d.gateway.lookup(account, ref);
+        // Lệnh đã gửi huỷ chưa được xác nhận: đọc mức thường, không bị phần dự trữ cho lệnh ghi bỏ (DEC-TBD-vf-orphan-entry).
+        // Chỉ lệnh nằm trong phần ngân sách riêng của kế hoạch: hết phần đó thì tra như lệnh nghi ngờ thường, có phần dự
+        // trữ cho lệnh ghi (review #239 M1).
+        const urgent = snap.urgent.has(o.id);
+        const found = await this.#d.gateway.lookup(account, ref, urgent ? { urgent } : undefined);
         if (found.status === "open") {
           this.#missingSince.delete(o.id);
           // Lần huỷ trước nhận OrderNotFound mà lệnh vẫn nằm sổ (vào sổ muộn): huỷ lại ở #retryCancels.
@@ -4821,7 +5002,7 @@ export class Engine {
         if (found.status === "not_found") {
           // Lịch sử lệnh REST trễ vài giây sau khi khớp: không tìm thấy chưa có nghĩa là đã huỷ. Hỏi trade của lệnh trước,
           // kể cả stop loss gốc (stop đã kích hoạt và khớp cũng có thể chưa vào lịch sử).
-          const trades = await this.#orderTrades(account, o);
+          const trades = await this.#orderTrades(account, o, 0, urgent);
           const t = foundFromTrades(o, trades, o.sodexOrderId ?? 0n);
           if (t?.done === true) {
             this.#d.log.info(
@@ -4848,7 +5029,7 @@ export class Engine {
           // Stop loss gốc đã được SoDEX nhận (DEC-118) mà không còn, không có trade: SoDEX huỷ nó khi vị thế đóng. Lịch sử
           // khớp dùng chung có thể đã đọc TRƯỚC lần tra này (stop vừa kích hoạt và khớp ở giữa): đọc lại trước khi ghi huỷ.
           if (t === null && isNativeStop(o) && o.status === "open" && o.sodexOrderId !== null) {
-            const again = await this.#orderTrades(account, o, lookedAt);
+            const again = await this.#orderTrades(account, o, lookedAt, urgent);
             const fired = foundFromTrades(o, again, o.sodexOrderId);
             if (fired?.done === true) {
               await this.#settleOrder(
@@ -4961,11 +5142,14 @@ export class Engine {
               "order not found on SoDEX and no trades; marked unknown",
             );
           if (wasCancelling) this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
+          // Volume Farm chờ xác nhận này trước khi vào lượt mới (DEC-TBD-vf-orphan-entry): báo một lần như user stream.
+          if (!toUnknown && this.#runners.get(o.botId)?.strategy === Strategy.volumeFarm)
+            await this.onOrderClosed(o.sodexAccountId, o.clOrdId, "cancelled", now);
           return;
         }
         this.#missingSince.delete(o.id);
         const expected = cancelling(o);
-        await this.#settleOrder(shard, held.epoch, account, o, found, now, expected);
+        await this.#settleOrder(shard, held.epoch, account, o, found, now, expected, null, urgent);
         this.#pendingCancels.get(o.botId)?.delete(o.clOrdId);
         this.#openChecks.delete(o.id);
       },
@@ -4982,6 +5166,13 @@ export class Engine {
   async #retryCancels(shard: number): Promise<void> {
     const now = this.#d.now();
     for (const r of [...this.#runners.values()].filter((x) => x.shard === shard)) {
+      if (r.strategy === Strategy.volumeFarm && !r.paper)
+        try {
+          await this.#sweepFarmOrphans(r, now);
+        } catch (error) {
+          if (error instanceof FencedError) throw error;
+          this.#d.log.warn({ err: error, botId: r.botId }, "orphan sweep failed");
+        }
       const pending = this.#pendingCancels.get(r.botId);
       if (pending === undefined || pending.size === 0) continue;
       // Lệnh SoDEX đã báo không còn trên sổ: chờ #reconcileOpen (DEC-308), nhưng vẫn huỷ lại chậm
@@ -5035,6 +5226,60 @@ export class Engine {
       .map((o) => o.clOrdId)
       .filter((id) => tracked[id]?.status !== "live" && gone?.has(id) !== true);
     if (orphans.length === 0) return;
+    await this.#event(
+      r,
+      "reconcile",
+      `Cancelled ${String(orphans.length)} untracked order${orphans.length === 1 ? "" : "s"}`,
+      "An earlier cancel did not go through; the order was still open, so the bot cancelled it.",
+      now,
+    );
+    await this.#cancel(r, orphans);
+  }
+
+  /**
+   * Volume Farm (DEC-TBD-vf-orphan-entry): lệnh còn "open" trong DeskLabs quá `MAKER_ORPHAN_MS` mà chiến lược không còn
+   * coi là lệnh đang chạy (lệnh vào / thoát / stop trên SoDEX của lượt hiện tại), không trong danh sách chờ huỷ và không
+   * phải lệnh vào chiến lược đang tự huỷ lại: chiến lược đã muốn huỷ nó, nhưng lần huỷ bị mất (danh sách chờ huỷ chỉ nằm
+   * trong bộ nhớ, mất khi khởi động lại / đổi shard). Huỷ lại; từ đó lệnh vào danh sách chờ huỷ và được tra bằng ngân
+   * sách riêng. Trước đây không ai huỷ lệnh như vậy: #239 nằm trên sổ 10,5 phút rồi khớp. Mỗi bot tối đa một lần
+   * mỗi OPEN_CHECK_MS. Câu Decisions dùng lại câu đã duyệt của Market Making (DEC-111).
+   */
+  async #sweepFarmOrphans(r: Runner, now: number): Promise<void> {
+    if (now - (this.#farmSweepAt.get(r.botId) ?? Number.NEGATIVE_INFINITY) < OPEN_CHECK_MS) return;
+    this.#farmSweepAt.set(r.botId, now);
+    const s = r.state as {
+      entry?: { id: string } | null;
+      exit?: { id: string } | null;
+      xstop?: { id: string } | null;
+      orders?: Record<string, { cancelAt?: number; done?: boolean }>;
+    };
+    const live = new Set([s.entry?.id, s.exit?.id, s.xstop?.id].filter((x) => x !== undefined));
+    const chased = (id: string) => {
+      const o = s.orders?.[id];
+      return o?.cancelAt !== undefined && o.done !== true;
+    };
+    const open = await this.#d.db
+      .select({ clOrdId: orders.clOrdId })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          inArray(orders.status, ["open", "partially_filled"]),
+          lt(orders.submittedAt, new Date(now - MAKER_ORPHAN_MS)),
+        ),
+      );
+    const pending = this.#pendingCancels.get(r.botId);
+    const gone = this.#cancelGone.get(r.botId);
+    const orphans = open
+      .map((o) => o.clOrdId)
+      .filter(
+        (id) => !live.has(id) && !chased(id) && pending?.has(id) !== true && gone?.has(id) !== true,
+      );
+    if (orphans.length === 0) return;
+    this.#d.log.warn(
+      { botId: r.botId, clOrdIDs: orphans },
+      "volume farm order still open but no longer tracked; cancelling it",
+    );
     await this.#event(
       r,
       "reconcile",
@@ -5496,17 +5741,22 @@ export class Engine {
     now: number,
     opts: { versionChange: boolean },
   ): Promise<void> {
+    const alerted = r.positionMismatch.get(market);
+    // Volume Farm đang pause mà còn cảnh báo lệch (#239: pause ORDER_REJECTED sau 30 lệnh bán reduce-only): vẫn sửa sổ
+    // cái từ fill của chính lệnh bot và bỏ cảnh báo khi khớp, để Resume an toàn; không leo bậc mới khi pause.
+    const pausedRepair =
+      botState === BotState.paused && r.strategy === Strategy.volumeFarm && alerted !== undefined;
     // Chỉ bot đang chạy ổn định: lúc starting / pausing / resuming / stopping sổ cái đang đổi.
-    if (botState !== BotState.running) return;
+    if (botState !== BotState.running && !pausedRepair) return;
     const ledger = positionOf(r.state, market, "perps");
     const step = r.ctx.rules[market]?.stepSize;
     if (ledger === null || step === undefined) return;
     const key = `${r.botId}:${market}`;
     const w = this.#positionWatch.get(key);
-    const alerted = r.positionMismatch.get(market);
     const delta = dec(real).sub(ledger);
     const half = dec(step).div(2);
     const fields = { botId: r.botId, market, real, ledger };
+    if (delta.abs().lte(half)) this.#adoptTried.delete(key);
     if (delta.abs().lte(half)) {
       if (alerted === undefined) {
         if (w?.backfilledAt != null)
@@ -5531,6 +5781,11 @@ export class Engine {
     if (alerted !== undefined) {
       // Vẫn lệch: chặn theo lần đọc mới nhất (vị thế thật và sổ cái lúc đọc, M2); không ghi thêm Decisions.
       r.positionMismatch.set(market, { ...alerted, real, ledger });
+      // Độ lệch do fill của chính lệnh bot mà chiến lược đã bỏ qua (kể cả cờ còn từ trước khi nạp lại): nhận vào sổ cái;
+      // lần kiểm tra sau khớp và cờ được bỏ như thường (DEC-TBD-vf-orphan-entry).
+      const since = Date.parse(alerted.since);
+      if (await this.#adoptOwnFills(r, market, delta, half, now, Number.isNaN(since) ? now : since))
+        return;
       this.#positionWatch.set(key, {
         delta: delta.toString(),
         firstSeen: w?.firstSeen ?? now,
@@ -5566,7 +5821,166 @@ export class Engine {
       await this.#positionBackfill(r, market, now);
       return;
     }
+    // Lưới an toàn fill không thấy gì thiếu trong DB (fill đã ghi, chiến lược bỏ qua vì đã quên lệnh, #239): nhận fill
+    // của chính lệnh bot vào sổ cái thay vì cảnh báo.
+    if (await this.#adoptOwnFills(r, market, delta, half, now, w.firstSeen)) return;
     await this.#raiseMismatch(r, market, real, ledger, now, "trades");
+  }
+
+  /**
+   * Volume Farm (người dùng duyệt 2026-11-18, DEC-TBD-vf-orphan-entry): độ lệch thật − sổ cái được giải thích ĐỦ bởi fill
+   * đã ghi trong `fills` của MỘT lệnh mang clOrdID của chính bot mà state chiến lược không còn nhớ (khớp sau khi chiến lược
+   * thôi theo dõi; trước bản sửa chiến lược bỏ qua fill đó) → đưa lại fill đó cho chiến lược (kèm chiều lệnh), chiến lược
+   * nhận vào vị thế và quản lý thoát. Chỉ khi đúng một lệnh vào đã kết thúc khớp độ lệch trong nửa bước khối lượng và có
+   * dấu hiệu bị bỏ qua (fill cuối tới sau một lệnh vào mới hơn của bot, trong ADOPT_WINDOW_MS trước lúc lệch); không đoán khi
+   * có nhiều cách giải thích. Lệnh không mang clOrdID của bot (giao dịch tay) không bao giờ được nhận, vẫn chỉ cảnh báo như
+   * DEC-306. Mỗi độ lệch chỉ thử một lần (sau khi không còn lệnh bay). `true` khi đã đưa fill.
+   */
+  async #adoptOwnFills(
+    r: Runner,
+    market: string,
+    delta: Decimal,
+    half: Decimal,
+    now: number,
+    /** Lúc độ lệch xuất hiện (`since` của cảnh báo, hoặc lần đầu thấy): fill phải nằm ngay trước mốc này. */
+    anchor: number,
+  ): Promise<boolean> {
+    if (r.strategy !== Strategy.volumeFarm || r.paper) return false;
+    const key = `${r.botId}:${market}`;
+    if (this.#adoptTried.get(key) === delta.toString()) return false;
+    // Lệnh còn bay (kết quả chưa rõ / vừa gửi): fill của chính lệnh đó có thể đang tới, không nhận lúc này (review m1).
+    if (await this.#positionInFlight(r, market, now)) return false;
+    this.#adoptTried.set(key, delta.toString());
+    const tracked = (r.state as { orders?: Record<string, unknown> }).orders ?? {};
+    // Chỉ lệnh vào đã kết thúc (review B1, m1): lệnh thoát / stop luôn được theo dõi tới khi kết thúc nên không bao giờ
+    // bị bỏ qua; lệnh vào bị bỏ qua của #239 là lệnh hết 10 s.
+    const rows = await this.#d.db
+      .select({
+        id: orders.id,
+        clOrdId: orders.clOrdId,
+        side: orders.side,
+        size: orders.size,
+        filledSize: orders.filledSize,
+        avgPrice: orders.avgPrice,
+        submittedAt: orders.submittedAt,
+      })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.botId, r.botId),
+          eq(orders.market, market),
+          inArray(orders.status, ["filled", "cancelled"]),
+          sql`${orders.tag} ~ '^vf:[0-9]+:in:[0-9]+$'`,
+          gt(orders.submittedAt, new Date(anchor - ADOPT_LOOKBACK_MS)),
+          sql`${orders.filledSize} > 0`,
+        ),
+      );
+    const sized = rows.filter((o) => {
+      if (o.clOrdId in tracked || o.avgPrice === null) return false;
+      const signed = o.side === "buy" ? dec(o.filledSize) : dec(o.filledSize).neg();
+      return signed.sub(delta).abs().lte(half);
+    });
+    // Dấu hiệu "chiến lược đã bỏ qua" (#239): fill cuối của lệnh tới SAU khi bot đã gửi một lệnh vào mới hơn (bot đã đi
+    // tiếp, coi lệnh đó đã xong), và nằm trong ADOPT_WINDOW_MS ngay trước lúc độ lệch xuất hiện. Lệnh vào được ghi bình
+    // thường khớp trước lệnh vào kế tiếp; giao dịch tay trùng khối lượng một lệnh cũ không có dấu hiệu này (review B1).
+    const matches: (typeof sized)[number][] = [];
+    for (const o of sized) {
+      const [last] = await this.#d.db
+        .select({ at: sql<Date | null>`max(${fills.filledAt})` })
+        .from(fills)
+        .where(eq(fills.orderId, o.id));
+      const lastAt = last?.at == null ? null : new Date(last.at).getTime();
+      if (lastAt === null || lastAt > anchor || lastAt < anchor - ADOPT_WINDOW_MS) continue;
+      const [later] = await this.#d.db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.botId, r.botId),
+            sql`${orders.tag} ~ '^vf:[0-9]+:in:[0-9]+$'`,
+            gt(orders.submittedAt, o.submittedAt ?? new Date(0)),
+            lt(orders.submittedAt, new Date(lastAt)),
+          ),
+        )
+        .limit(1);
+      if (later !== undefined) matches.push(o);
+    }
+    const [o] = matches;
+    if (o === undefined || matches.length > 1 || o.avgPrice === null) {
+      if (matches.length > 1)
+        this.#d.log.warn(
+          { botId: r.botId, market, delta: delta.toString(), candidates: matches.length },
+          "position mismatch matches several own orders; not adopting",
+        );
+      return false;
+    }
+    const avgPrice = o.avgPrice;
+    const before = positionOf(r.state, market, "perps");
+    // Trong hàng đợi của lệnh, trên dòng đọc lại: fill khác của chính lệnh này không chạy chồng (review m1).
+    await this.#inOrderQueue(r.account.id, o.clOrdId, async () => {
+      const [cur] = await this.#d.db.select().from(orders).where(eq(orders.id, o.id)).limit(1);
+      if (cur === undefined || !["filled", "cancelled"].includes(cur.status)) return;
+      if (cur.filledSize !== o.filledSize) return;
+      const [fee] = await this.#d.db
+        .select({ total: sql<string>`coalesce(sum(${fills.fee}), 0)::text` })
+        .from(fills)
+        .where(eq(fills.orderId, o.id));
+      this.#d.log.warn(
+        { botId: r.botId, market, clOrdID: o.clOrdId, quantity: o.filledSize },
+        "position mismatch is a fill of the bot's own order the strategy had dropped; adopting it",
+      );
+      await this.#feed(r, {
+        type: "fill",
+        at: now,
+        clOrdID: o.clOrdId,
+        price: avgPrice,
+        quantity: o.filledSize,
+        fee: fee?.total ?? "0",
+        side: o.side,
+        reduceOnly: false,
+        size: o.size,
+        tag: cur.tag,
+      });
+    });
+    const after = positionOf(r.state, market, "perps");
+    // Chặn theo vị thế thật hiệu dụng cho tới lần kiểm tra sau: sổ cái lúc đọc đổi đúng phần vừa nhận.
+    const mm = r.positionMismatch.get(market);
+    if (mm !== undefined && after !== null && after !== before)
+      r.positionMismatch.set(market, { ...mm, ledger: after });
+    return after !== before;
+  }
+
+  /**
+   * Nạp lại runner Volume Farm đang bị cảnh báo lệch (DEC-TBD-vf-orphan-entry): đọc vị thế thật một lần và thử nhận fill
+   * bị bỏ qua của chính bot cho từng market đang cảnh báo (cùng điều kiện với #adoptOwnFills). Đọc lỗi thì bỏ qua: kiểm
+   * tra 30 s sau làm lại, và bước làm tăng vị thế vẫn bị giữ trong lúc lệch.
+   */
+  async #repairOnLoad(r: Runner): Promise<void> {
+    let positions: Map<string, { size: string; entryPrice: string }>;
+    try {
+      positions = await r.gateway.readPositions(r.account);
+    } catch (error) {
+      this.#d.log.info({ err: error, botId: r.botId }, "repair on load skipped: position not read");
+      return;
+    }
+    const now = this.#d.now();
+    for (const [market, mm] of r.positionMismatch) {
+      const ledger = positionOf(r.state, market, "perps");
+      const step = r.ctx.rules[market]?.stepSize;
+      if (ledger === null || step === undefined) continue;
+      const real = positions.get(market)?.size ?? "0";
+      const delta = dec(real).sub(ledger);
+      const half = dec(step).div(2);
+      if (delta.abs().lte(half)) continue;
+      r.positionMismatch.set(market, { ...mm, real, ledger });
+      const since = Date.parse(mm.since);
+      try {
+        await this.#adoptOwnFills(r, market, delta, half, now, Number.isNaN(since) ? now : since);
+      } catch (error) {
+        if (error instanceof FencedError) throw error;
+        this.#d.log.warn({ err: error, botId: r.botId, market }, "repair on load failed");
+      }
+    }
   }
 
   /** Lệnh của bot trên market còn `unknown`, hoặc gửi chưa quá BACKFILL_TRADE_GRACE_MS. */
@@ -5709,10 +6123,12 @@ export class Engine {
     cancelRequested = false,
     /** Trade của lệnh đã đọc từ SoDEX (không đọc lại). */
     known: OrderTrade[] | null = null,
+    /** Lần tra nằm trong ngân sách khẩn: đọc trade cùng client / ngân sách (DEC-TBD-vf-orphan-entry). */
+    urgent = false,
   ): Promise<void> {
     let found = reported;
     let trades = known;
-    const readTrades = () => this.#orderTrades(account, o);
+    const readTrades = () => this.#orderTrades(account, o, 0, urgent);
     // IOC SoDEX báo CANCELED mà chưa khớp gì: hỏi trade trước khi tin, lịch sử lệnh REST có thể trễ hơn lịch sử khớp.
     if (
       found.status === "cancelled" &&

@@ -165,7 +165,13 @@ describe("volume farm cycle", () => {
     for (let i = 0; i < 3; i += 1) {
       const id = r.s.entry?.id ?? "";
       const at = T0 + (i + 1) * 20_000;
-      r = run(cfg(), [timer(at - 20_000 + FARM_TIMING.entryFillMs, false), timer(at)], r.s);
+      const timeout = at - 20_000 + FARM_TIMING.entryFillMs;
+      // SoDEX xác nhận lệnh vào đã huỷ, rồi mới vào lượt sau (DEC-TBD-vf-orphan-entry).
+      r = run(
+        cfg(),
+        [timer(timeout, false), { type: "orderDone", at: timeout + 100, clOrdID: id }, timer(at)],
+        r.s,
+      );
       expect(r.all.some((a) => a.type === "cancel" && a.clOrdID === id)).toBe(true);
     }
     expect(r.s.unfilled).toBe(3);
@@ -303,6 +309,11 @@ describe("volume farm cycle", () => {
     expect(r.s).toMatchObject({ phase: "idle", trades: 1, wins: 1, lastSide: "long" });
     expect(r.s.cooldownUntil).toBe(T0 + 3000 + 30_000);
     expect(r.all.find((a) => a.type === "log")).toMatchObject({ decision: "Closed long" });
+    // Stop trên SoDEX của lượt được huỷ ngay khi đóng (DEC-TBD-vf-orphan-entry); SoDEX xác nhận.
+    const stopId = r.all.find((a) => a.type === "cancel");
+    expect(stopId).toBeDefined();
+    if (stopId?.type === "cancel")
+      r = run(cfg(), [{ type: "orderDone", at: T0 + 3500, clOrdID: stopId.clOrdID }], r.s);
     // Trong cooldown không vào lệnh mới.
     expect(places(run(cfg(), [timer(T0 + 10_000)], r.s).all)).toHaveLength(0);
     expect(places(run(cfg(), [timer(T0 + 40_000)], r.s).all)).toHaveLength(1);
@@ -831,7 +842,7 @@ describe("volume farm — stop loss on SoDEX (DEC-118, DEC-120, DEC-125)", () =>
     expect(mods(q.all)[0]?.stopPrice).toBe("80058");
   });
 
-  it("leaves the stop to SoDEX when the bot closes the trade, and cancels it on the next entry only if needed (DEC-119)", () => {
+  it("cancels the stop on SoDEX as soon as the bot closes the trade and waits for SoDEX to confirm (#239, replaces DEC-119)", () => {
     const o = opened(cfg());
     const id = o.s.xstop?.id ?? "";
     const end = o.s.holdUntil ?? 0;
@@ -851,15 +862,21 @@ describe("volume farm — stop loss on SoDEX (DEC-118, DEC-120, DEC-125)", () =>
       ],
       r.s,
     );
-    expect(r.all.some((a) => a.type === "cancel")).toBe(false);
-    expect(r.s).toMatchObject({ phase: "idle", xstop: null, staleXstop: id, stopLevel: 0 });
+    // Stop cả vị thế còn sống sẽ đóng cả vị thế bot không theo dõi (#239 05:31): huỷ ngay, không để SoDEX tự huỷ.
+    expect(r.all.filter((a) => a.type === "cancel")).toEqual([{ type: "cancel", clOrdID: id }]);
+    expect(r.s).toMatchObject({ phase: "idle", xstop: null, staleXstop: null, stopLevel: 0 });
+    expect(r.s.orders[id]?.cancelAt).toBe(end + 1000);
     expect(logs(r.all).find((l) => l.decision === "Closed long")?.why).toContain(
       "entry 80000 → exit 80001",
     );
-    // Nến của test kết thúc ở T0: chạy nhịp vào lệnh ở T0 với cooldown đã qua.
-    const next = run(cfg(), [timer(T0 + 2000)], { ...r.s, cooldownUntil: 0 });
-    expect(next.all[0]).toEqual({ type: "cancel", clOrdID: id });
-    expect(next.s.staleXstop).toBeNull();
+    // Nến của test kết thúc ở T0: chạy nhịp vào lệnh ở T0 với cooldown đã qua. SoDEX chưa xác nhận: không vào lượt mới.
+    const waiting = { ...r.s, cooldownUntil: 0 };
+    expect(places(run(cfg(), [timer(T0 + 2000)], waiting).all)).toHaveLength(0);
+    // SoDEX xác nhận stop đã huỷ: vào lượt mới, không gửi huỷ stop lần nữa.
+    const done = run(cfg(), [{ type: "orderDone", at: end + 1500, clOrdID: id }], waiting).s;
+    const next = run(cfg(), [timer(T0 + 2000)], done);
+    expect(next.all.some((a) => a.type === "cancel")).toBe(false);
+    expect(places(next.all)).toHaveLength(1);
   });
 
   it("books the trade when the stop on SoDEX fills, and cancels the bot's own exit", () => {
@@ -1343,6 +1360,10 @@ describe("volume farm — new version while running (DEC-304)", () => {
     expect(r.s.phase).toBe("idle");
     // Hết cooldown mà version mới còn chờ: không mở lượt mới.
     expect(places(run(cfg(), [timer(T0 + 60_000)], r.s, waiting).all)).toHaveLength(0);
+    // Stop trên SoDEX của lượt v1 đã gửi huỷ: chưa áp tới khi SoDEX xác nhận (DEC-TBD-vf-orphan-entry).
+    const stop = open.xstop?.id ?? "";
+    expect(apply(v2, r.s, ctx)).toBeNull();
+    r = run(cfg(), [{ type: "orderDone", at: T0 + 3500, clOrdID: stop }], r.s, waiting);
     // Phẳng, không còn lệnh vào / thoát: áp được, phiên mới nhưng nhớ lệnh cũ.
     const next = apply(v2, r.s, ctx);
     expect(next).not.toBeNull();
@@ -1357,6 +1378,13 @@ describe("volume farm — new version while running (DEC-304)", () => {
     const entry = first(places(r.all));
     r = run(cfg(), [timer(T0 + FARM_TIMING.entryFillMs + 1)], r.s);
     expect(r.s.phase).toBe("idle");
+    // Huỷ chưa được SoDEX xác nhận: lệnh v1 còn có thể khớp, chưa áp (DEC-TBD-vf-orphan-entry).
+    expect(apply(v2, r.s, ctx)).toBeNull();
+    r = run(
+      cfg(),
+      [{ type: "orderDone", at: T0 + FARM_TIMING.entryFillMs + 50, clOrdID: entry.clOrdID }],
+      r.s,
+    );
     const next = apply(v2, r.s, ctx);
     if (next === null) throw new Error("expected v2 to apply");
     // Fill thật của lệnh v1 tới muộn: vào sổ cái, bot theo dõi vị thế và đặt stop.
@@ -1479,9 +1507,12 @@ describe("volume farm — signal snapshot on entries (#221)", () => {
     const tries = [snapOf(r.all).order.entryTry];
     for (let i = 0; i < 3; i += 1) {
       const at = T0 + (i + 1) * 20_000;
+      const timeout = at - 20_000 + FARM_TIMING.entryFillMs;
+      const id = r.s.entry?.id ?? "";
       r = run(
         cfg(),
-        [timer(at - 20_000 + FARM_TIMING.entryFillMs, false), timer(at)],
+        // SoDEX xác nhận lệnh vào đã huỷ trước lượt sau (DEC-TBD-vf-orphan-entry).
+        [timer(timeout, false), { type: "orderDone", at: timeout + 100, clOrdID: id }, timer(at)],
         r.s,
         snapCtx,
       );
@@ -1576,5 +1607,432 @@ describe("volume farm — signal snapshot on entries (#221)", () => {
       snapCtx,
     );
     expect(all.filter((a) => a.type === "log").every((a) => a.payload === undefined)).toBe(true);
+  });
+});
+
+describe("volume farm — entry stays tracked until SoDEX confirms it ended (#239, DEC-TBD-vf-orphan-entry)", () => {
+  const c = cfg({ allowTaker: false, cooldownSecs: 0 });
+  /** Nhịp đồng hồ có nến dời theo thời gian (không "STALE_CANDLES" sau vài phút). */
+  const tick = (at: number): StrategyEvent => ({
+    type: "timer",
+    at,
+    market: {
+      market: "BTC-USD",
+      candles: candles(0.0001).map((k) => ({ ...k, t: k.t + (at - T0) })),
+      book,
+    },
+  });
+  const cancels = (a: StrategyAction[]) =>
+    a.flatMap((x) => (x.type === "cancel" ? [x.clOrdID] : []));
+
+  it("never enters again while a timed-out entry is unconfirmed, re-cancels it, and books its late fill", () => {
+    // Prod 2026-11-18: vf:103:in:0 hết 10 s, bot gửi huỷ, lệnh vẫn nằm trên sổ 10,5 phút rồi khớp.
+    let r = run(c, [tick(T0)]);
+    const entry = first(places(r.all));
+    r = run(c, [tick(T0 + FARM_TIMING.entryFillMs)], r.s);
+    expect(cancels(r.all)).toEqual([entry.clOrdID]);
+    expect(r.s.phase).toBe("idle");
+    const placed: OrderIntent[] = [];
+    const recancel: string[] = [];
+    for (let at = T0 + 15_000; at <= T0 + 10 * 60_000; at += 5_000) {
+      r = run(c, [tick(at)], r.s);
+      placed.push(...places(r.all));
+      recancel.push(...cancels(r.all));
+    }
+    // Không lượt mới nào trong 10 phút; huỷ lại mỗi 10 s (bền qua khởi động lại engine).
+    expect(placed).toHaveLength(0);
+    expect(recancel.length).toBeGreaterThanOrEqual(55);
+    expect(new Set(recancel)).toEqual(new Set([entry.clOrdID]));
+    // Lệnh khớp muộn: vào sổ cái, bot có vị thế, đặt stop trên SoDEX và thoát như lượt thường.
+    r = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0 + 630_000,
+          clOrdID: entry.clOrdID,
+          price: "80000",
+          quantity: entry.quantity,
+          fee: "0.01",
+          side: entry.side,
+        },
+      ],
+      r.s,
+    );
+    expect(dec(r.s.ledger.position).abs().toString()).toBe(dec(entry.quantity).toString());
+    expect(r.s.phase).toBe("open");
+    expect(places(r.all).filter((o) => o.stop !== undefined)).toHaveLength(1);
+    // Khớp đủ = đã kết thúc: không còn chặn, không huỷ lại.
+    expect(r.s.orders[entry.clOrdID]?.done).toBe(true);
+    const later = run(c, [tick(T0 + 640_000)], r.s);
+    expect(cancels(later.all)).not.toContain(entry.clOrdID);
+    expect(places(later.all).filter((o) => !o.reduceOnly)).toHaveLength(0);
+  });
+
+  it("enters again once the engine reports the entry ended (orderDone or orderReject)", () => {
+    for (const ended of ["orderDone", "orderReject"] as const) {
+      let r = run(c, [tick(T0)]);
+      const entry = first(places(r.all));
+      r = run(c, [tick(T0 + FARM_TIMING.entryFillMs)], r.s);
+      expect(places(run(c, [tick(T0 + 12_000)], r.s).all)).toHaveLength(0);
+      const done: StrategyEvent =
+        ended === "orderDone"
+          ? { type: "orderDone", at: T0 + 11_000, clOrdID: entry.clOrdID }
+          : { type: "orderReject", at: T0 + 11_000, clOrdID: entry.clOrdID, code: "NOT_PLACED" };
+      r = run(c, [done, tick(T0 + 12_000)], r.s);
+      const next = places(r.all);
+      expect(next).toHaveLength(1);
+      expect(first(next).clOrdID).not.toBe(entry.clOrdID);
+      // Kết thúc của lệnh đã huỷ không tính là một lần bị từ chối: không chờ, không ghi Decisions.
+      expect(r.s.rejectBackoff ?? null).toBeNull();
+      expect(r.all.some((a) => a.type === "log" && a.decision === "Waiting")).toBe(false);
+    }
+  });
+
+  it("keeps a cancel-pending entry in memory however many orders come after it", () => {
+    let r = run(c, [tick(T0)]);
+    const entry = first(places(r.all));
+    r = run(c, [tick(T0 + FARM_TIMING.entryFillMs)], r.s);
+    // 40 lệnh khác đã kết thúc của các lượt sau: trước đây chỉ giữ 12 lệnh gần nhất.
+    const orders = { ...r.s.orders };
+    for (let i = 0; i < 40; i += 1)
+      orders[`other-${String(i)}`] = { kind: "exit", side: "sell", done: true };
+    const after = run(c, [{ type: "orderDone", at: T0 + 20_000, clOrdID: "other-39" }], {
+      ...r.s,
+      orders: { ...orders, "other-39": { kind: "exit", side: "sell" } },
+    });
+    expect(after.s.orders[entry.clOrdID]).toMatchObject({ kind: "entry" });
+    expect(after.s.orders[entry.clOrdID]?.done).toBeUndefined();
+    expect(Object.keys(after.s.orders).length).toBeLessThanOrEqual(13);
+  });
+
+  it("adopts a late fill of its own order it no longer remembers and manages the exit (user approved 2026-11-18)", () => {
+    // State từ trước bản sửa: lệnh vào cũ đã bị quên (không có trong `orders`).
+    const s: VolumeFarmState = { ...volumeFarm.initialState(c), lastPrice: "80000" };
+    const fill: StrategyEvent = {
+      type: "fill",
+      at: T0 + 1_000,
+      clOrdID: "forgotten-entry",
+      price: "80000",
+      quantity: "0.002",
+      fee: "0.02",
+      side: "sell",
+    };
+    let r = run(c, [fill], s);
+    expect(r.s.ledger.position).toBe("-0.002");
+    expect(r.s.phase).toBe("open");
+    expect(r.s.volume).toBe("160");
+    expect(r.all.find((a) => a.type === "log")).toMatchObject({
+      decision: "Late fill added to the position",
+    });
+    // Stop trên SoDEX theo vị thế nhận vào: lệnh mua reduce-only cho đúng 0.002.
+    const stop = first(places(r.all).filter((o) => o.stop !== undefined));
+    expect(stop).toMatchObject({ side: "buy", reduceOnly: true, quantity: "0.002" });
+    // Hết thời gian giữ: thoát bằng lệnh mua reduce-only cho cả vị thế.
+    r = run(c, [{ type: "tick", at: T0 + 201_000, market: "BTC-USD", price: "80000" }], r.s);
+    const exit = last(places(r.all));
+    expect(exit).toMatchObject({ side: "buy", reduceOnly: true, quantity: "0.002" });
+    r = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0 + 202_000,
+          clOrdID: exit.clOrdID,
+          price: "80000",
+          quantity: exit.quantity,
+          fee: "0.02",
+        },
+      ],
+      r.s,
+    );
+    expect(r.s).toMatchObject({ phase: "idle", trades: 1 });
+    expect(dec(r.s.ledger.position).isZero()).toBe(true);
+  });
+
+  it("adds a late fill to the round already open (the #239 sequence: vf:103 fills while vf:107 is short)", () => {
+    // vf:107 short đang mở; vf:103 (bán, đã bị quên) khớp → sổ cái bằng tổng như SoDEX (−0.2009 trên prod).
+    const down: StrategyEvent = {
+      type: "timer",
+      at: T0,
+      market: {
+        market: "BTC-USD",
+        candles: candles(-0.0001),
+        book: { ...book, bidNotional: "400000", askNotional: "500000" },
+      },
+    };
+    let r = run(c, [down]);
+    const entry = first(places(r.all));
+    expect(entry.side).toBe("sell");
+    r = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0 + 500,
+          clOrdID: entry.clOrdID,
+          price: "80000",
+          quantity: entry.quantity,
+          fee: "0.01",
+          side: "sell",
+        },
+        {
+          type: "fill",
+          at: T0 + 1_000,
+          clOrdID: "vf-103-in-0",
+          price: "80010",
+          quantity: "0.0013",
+          fee: "0.01",
+          side: "sell",
+        },
+      ],
+      r.s,
+    );
+    const total = dec(entry.quantity).add("0.0013");
+    expect(dec(r.s.ledger.position).neg().toString()).toBe(total.toString());
+    expect(r.s.phase).toBe("open");
+    // Thoát (stop loss) đóng cả phần nhận vào.
+    r = run(c, [{ type: "tick", at: T0 + 2_000, market: "BTC-USD", price: "90000" }], r.s);
+    expect(last(places(r.all))).toMatchObject({
+      side: "buy",
+      reduceOnly: true,
+      quantity: total.toString(),
+    });
+  });
+
+  it("ignores a fill it cannot place (no side, e.g. sim / old engine) as before", () => {
+    const s = volumeFarm.initialState(c);
+    const r = run(
+      c,
+      [{ type: "fill", at: T0, clOrdID: "unknown", price: "80000", quantity: "0.002", fee: "0" }],
+      s,
+    );
+    expect(r.s).toBe(s);
+    expect(r.all).toHaveLength(0);
+  });
+
+  it("#239 05:31: an old stop on SoDEX that fills while the bot is flat never opens a position", () => {
+    // Prod: stop cả vị thế của vf:107 (BUY) còn sống sau khi lượt đóng, kích hoạt 05:31:08 và đóng short mồ côi 0.0957.
+    // Bản cũ ghi thành long 0.0957 mới, gửi 30 lệnh bán reduce-only ("position not found") rồi pause.
+    const flat: VolumeFarmState = {
+      ...volumeFarm.initialState(c),
+      lastPrice: "80000",
+      orders: { "vf-107-sl": { kind: "stop", side: "buy", cancelAt: T0 - 60_000 } },
+    };
+    for (const s of [
+      flat,
+      // State từ trước bản sửa: stop không còn trong bộ nhớ; engine gửi kèm reduceOnly.
+      { ...flat, orders: {} },
+    ]) {
+      const r = run(
+        c,
+        [
+          {
+            type: "fill",
+            at: T0,
+            clOrdID: "vf-107-sl",
+            price: "80000",
+            quantity: "0.002",
+            fee: "0.05",
+            side: "buy",
+            reduceOnly: true,
+          },
+        ],
+        s,
+      );
+      expect(dec(r.s.ledger.position).isZero()).toBe(true);
+      expect(r.s.ledger.fees).toBe("0.05");
+      expect(r.s.phase).toBe("idle");
+      expect(places(r.all)).toHaveLength(0);
+      expect(r.all.find((a) => a.type === "log")).toMatchObject({
+        decision: "Closing fill beyond the bot's position",
+      });
+      // Nhịp sau: không lệnh thoát reduce-only nào.
+      const later = run(c, [tick(T0 + 5_000), tick(T0 + 20_000)], r.s);
+      expect(places(later.all).filter((o) => o.reduceOnly)).toHaveLength(0);
+    }
+  });
+
+  it("books only the part of a closing fill that reduces the position", () => {
+    const r0 = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0,
+          clOrdID: "e",
+          price: "80000",
+          quantity: "0.002",
+          fee: "0",
+          side: "buy",
+        },
+      ],
+      { ...volumeFarm.initialState(c), lastPrice: "80000" },
+    );
+    expect(r0.s.ledger.position).toBe("0.002");
+    const r = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0 + 1_000,
+          clOrdID: "stop",
+          price: "79000",
+          quantity: "0.005",
+          fee: "0",
+          side: "sell",
+          reduceOnly: true,
+        },
+      ],
+      r0.s,
+    );
+    expect(dec(r.s.ledger.position).isZero()).toBe(true);
+    expect(r.s.phase).toBe("idle");
+    expect(r.all.some((a) => a.type === "log" && a.decision === "Closed long")).toBe(true);
+    expect(
+      r.all.some(
+        (a) => a.type === "log" && a.decision === "Closing fill beyond the bot's position",
+      ),
+    ).toBe(true);
+  });
+
+  it("books the engine's Stop close order as a close, without a late-fill line", () => {
+    const { s } = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0,
+          clOrdID: "e",
+          price: "80000",
+          quantity: "0.002",
+          fee: "0",
+          side: "buy",
+        },
+      ],
+      { ...volumeFarm.initialState(c), lastPrice: "80000" },
+    );
+    const r = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0 + 1_000,
+          clOrdID: "close-id",
+          price: "80100",
+          quantity: "0.002",
+          fee: "0",
+          side: "sell",
+          reduceOnly: true,
+          size: "0.002",
+          tag: "close",
+        },
+      ],
+      s,
+    );
+    expect(dec(r.s.ledger.position).isZero()).toBe(true);
+    expect(r.all.some((a) => a.type === "log" && a.decision === "Closed long")).toBe(true);
+    expect(
+      r.all.some((a) => a.type === "log" && a.decision === "Late fill added to the position"),
+    ).toBe(false);
+    expect(r.s.orders["close-id"]?.done).toBe(true);
+  });
+
+  it("adopting an opposite fill larger than the position closes the round and opens the rest with a stop on the right side", () => {
+    const { s } = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0,
+          clOrdID: "e",
+          price: "80000",
+          quantity: "0.002",
+          fee: "0",
+          side: "buy",
+        },
+      ],
+      { ...volumeFarm.initialState(c), lastPrice: "80000" },
+    );
+    const r = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0 + 1_000,
+          clOrdID: "late-sell",
+          price: "80000",
+          quantity: "0.005",
+          fee: "0",
+          side: "sell",
+          size: "0.005",
+        },
+      ],
+      s,
+    );
+    expect(r.s.ledger.position).toBe("-0.003");
+    expect(r.s.phase).toBe("open");
+    const stop = places(r.all)
+      .filter((o) => o.stop !== undefined)
+      .at(-1);
+    expect(stop).toMatchObject({ side: "buy", reduceOnly: true, quantity: "0.003" });
+    expect(r.s.orders["late-sell"]?.done).toBe(true);
+  });
+
+  it("repairs a wrongly booked long by adopting the dropped sell fill (#239 repair: ledger +0.0957, SoDEX 0)", () => {
+    const { s } = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0,
+          clOrdID: "vf-107-sl",
+          price: "80000",
+          quantity: "0.002",
+          fee: "0",
+          side: "buy",
+        },
+      ],
+      { ...volumeFarm.initialState(c), lastPrice: "80000" },
+    );
+    expect(s.ledger.position).toBe("0.002");
+    const r = run(
+      c,
+      [
+        {
+          type: "fill",
+          at: T0 + 1_000,
+          clOrdID: "vf-103-in-0",
+          price: "80500",
+          quantity: "0.002",
+          fee: "0.01",
+          side: "sell",
+          size: "0.002",
+        },
+      ],
+      s,
+    );
+    expect(dec(r.s.ledger.position).isZero()).toBe(true);
+    expect(r.s.phase).toBe("idle");
+    expect(places(r.all).filter((o) => o.reduceOnly && o.stop === undefined)).toHaveLength(0);
+  });
+
+  it("says once, with Needs attention, when a cancel stays unconfirmed for 10 minutes", () => {
+    let r = run(c, [tick(T0)]);
+    r = run(c, [tick(T0 + FARM_TIMING.entryFillMs)], r.s);
+    const flags: StrategyAction[] = [];
+    const lines: StrategyAction[] = [];
+    for (let at = T0 + 15_000; at <= T0 + 25 * 60_000; at += 30_000) {
+      const x = run(c, [{ type: "timer", at }], r.s);
+      r = x;
+      flags.push(...x.all.filter((a) => a.type === "flag"));
+      lines.push(
+        ...x.all.filter(
+          (a) => a.type === "log" && a.decision === "Waiting for SoDEX to confirm a cancel",
+        ),
+      );
+    }
+    expect(flags).toEqual([{ type: "flag", needsAttention: true }]);
+    expect(lines).toHaveLength(1);
   });
 });
