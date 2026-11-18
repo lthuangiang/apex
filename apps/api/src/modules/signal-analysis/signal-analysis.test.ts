@@ -3,6 +3,7 @@ import type { MmOrderContext } from "@drift/shared/mm-quote";
 import type { VbSignalSnapshot } from "@drift/shared/vb-signal";
 import { describe, expect, it } from "vitest";
 
+import { botFacets } from "./all";
 import {
   costBasisOf,
   ledgerStep,
@@ -135,6 +136,7 @@ describe("signal analysis helpers", () => {
       market: "BTC-USD",
       strategy: "volume_maker",
       userId: "u",
+      createdAt: 0,
       config: { orderSize: "100" },
     };
     const f = (
@@ -357,5 +359,38 @@ describe("signal analysis helpers", () => {
   it("interpolates quantiles and ignores missing values", () => {
     expect(quantileOf([1, null, 3, 2], 0.5)).toBe(2);
     expect(quantileOf([null], 0.5)).toBeNull();
+  });
+
+  it("bot picker options carry the created time and the account tail, never the email", () => {
+    const mk = (id: string, userId: string, createdAt: number): BotInfo => ({
+      id,
+      name: "ETH Volume Builder",
+      market: "ETH-USD",
+      strategy: "volume_farm",
+      userId,
+      createdAt,
+      config: null,
+    });
+    const ua = "00000000-0000-4000-8000-0000bbbbbbbb";
+    const ub = "00000000-0000-4000-8000-0000aaaaaaaa";
+    const bots = new Map(
+      [
+        mk("b1", ua, Date.UTC(2026, 10, 1)),
+        mk("b2", ub, Date.UTC(2026, 10, 2)),
+        mk("b3", ub, Date.UTC(2026, 10, 12)),
+      ].map((b) => [b.id, b]),
+    );
+    const out = botFacets(["b1", "b2", "b3", "b1", "missing"], bots);
+    // Theo đuôi account, rồi bot mới nhất trước.
+    expect(out.map((b) => b.id)).toEqual(["b3", "b2", "b1"]);
+    expect(out[0]).toEqual({
+      id: "b3",
+      name: "ETH Volume Builder",
+      market: "ETH-USD",
+      strategy: "volume_farm",
+      createdAt: "2026-11-12T00:00:00.000Z",
+      tail: "aaaaaaaa",
+    });
+    expect(out[2]?.tail).toBe("bbbbbbbb");
   });
 });

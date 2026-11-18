@@ -30,6 +30,7 @@ import {
 } from "../format";
 
 import {
+  BotSelect,
   ColHead,
   DivBar,
   FilterSelect,
@@ -103,18 +104,14 @@ export function VbTab({ ctx }: { ctx: PageCtx }) {
               set({ market: m === "" ? null : m });
             }}
           />
-          <FilterSelect
+          <BotSelect
             label={t("filters.bot")}
-            value={f.botId ?? ""}
-            options={[
-              { value: "", label: t("filters.allVbBots") },
-              ...keepSel(
-                (v?.botList ?? []).map((b) => ({ value: b.id, label: b.name })),
-                f.botId,
-              ),
-            ]}
+            allLabel={t("filters.allVbBots")}
+            bots={v?.botList ?? []}
+            value={f.botId}
+            tz={ctx.tz}
             onChange={(b) => {
-              set({ botId: b === "" ? null : b });
+              set({ botId: b });
             }}
           />
           <FilterSelect

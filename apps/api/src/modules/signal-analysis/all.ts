@@ -270,15 +270,33 @@ export async function signalAll(
   };
 }
 
+/**
+ * Lựa chọn của bộ chọn bot: tên, ngày tạo và đuôi account (DEC-288: chỉ account, không bao giờ email) để phân biệt
+ * nhiều bot cùng tên. Thứ tự: theo đuôi account, rồi bot mới nhất trước.
+ */
 export function botFacets(ids: Iterable<string>, bots: Map<string, BotInfo>) {
   return [...new Set(ids)]
     .flatMap((id) => {
       const b = bots.get(id);
       return b === undefined
         ? []
-        : [{ id: b.id, name: b.name, market: b.market, strategy: b.strategy }];
+        : [
+            {
+              id: b.id,
+              name: b.name,
+              market: b.market,
+              strategy: b.strategy,
+              createdAt: new Date(b.createdAt).toISOString(),
+              tail: tailOf(b.userId),
+            },
+          ];
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort(
+      (a, b) =>
+        a.tail.localeCompare(b.tail) ||
+        b.createdAt.localeCompare(a.createdAt) ||
+        a.id.localeCompare(b.id),
+    );
 }
 
 interface G {
