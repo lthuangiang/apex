@@ -83,7 +83,7 @@ import {
   type StrategyModule,
   type OrderIntent,
 } from "@drift/strategies";
-import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 
 import { withBotCallContext } from "./call-context";
@@ -346,6 +346,11 @@ interface TickSnapshot {
   fees: Map<string, BuilderFeeOverrides>;
   /** Lệnh `unknown` đủ tuổi để đối soát (mọi account). */
   unknown: OrderRow[];
+  /**
+   * Lệnh `unknown` đã bỏ cuộc mà chiến lược (không phải Volume Farm) chưa được báo kết thúc: lần đọc trade lúc bỏ cuộc lỗi
+   * (#223 re-review minor 2). Thử ghi trade + báo `orderDone` lại mỗi `GAVE_UP_RETRY_MS`, để không gì chờ lệnh này mãi.
+   */
+  gaveUp: OrderRow[];
   /** Lệnh bot thật `open` / `partially_filled` đủ tuổi, theo shard của account, theo `submittedAt`. */
   open: Map<number, OrderRow[]>;
   /** Lệnh Volume Farm đã huỷ chưa đối soát, theo shard của account. */
@@ -709,6 +714,14 @@ interface Runner {
    */
   resetDroppedPosition: boolean;
   /**
+   * Đang áp version mới (#223 M1): bước chiến lược theo thị trường của version cũ không được chạy xen vào lúc engine đang
+   * huỷ lệnh và ghi version (lệnh nó đặt sẽ không bị huỷ). Nhịp giá / đồng hồ / sổ lệnh tới lúc này bị bỏ (nhịp sau chạy
+   * lại); sự kiện khác chờ áp xong rồi chạy với version mới. Fill / ack / kết thúc lệnh không chờ (chúng chạy trong hàng
+   * đợi của lệnh mà lần huỷ cũng dùng): lệnh chúng sinh ra được huỷ ở lần quét sau khi ghi và lệnh cũ chiến lược còn nhớ
+   * được huỷ lại tới khi SoDEX xác nhận.
+   */
+  applying?: Promise<void> | null;
+  /**
    * Volume Farm nạp lại khi còn cảnh báo lệch (DEC-317, sửa đổi v2.12.1): lần kiểm tra sửa sổ cái (#repairOnLoad) chưa
    * đọc được vị thế thật. Trong lúc này bot không sang Running (Resume chờ) và không có bước chiến lược theo thị trường;
    * fill / ack và bước chỉ huỷ vẫn đi. `since` = lúc bắt đầu chờ, `logged` = đã ghi Decisions + Needs attention sau
@@ -867,6 +880,37 @@ export function settleAppliedState(
   return { state: after, save: JSON.stringify(after) !== JSON.stringify(written) };
 }
 
+/**
+ * Decisions "Applying v{n}" khi engine hoãn áp version (`applyVersion` trả null). Volume Farm giữ câu đã duyệt của
+ * DEC-304; chiến lược khác hoãn khi còn lệnh đang chạy hoặc vị thế ngược hướng version mới (#223; câu chữ PM duyệt
+ * 2026-11-18).
+ */
+export function versionWaitWhy(strategy: string, current: number): string {
+  const v = String(current);
+  return strategy === Strategy.volumeFarm
+    ? `Waits until the open trade closes; v${v} keeps managing it. No orders were cancelled.`
+    : `Waits for an order in flight to finish or the open position to close; v${v} keeps managing the bot until then. No orders were cancelled.`;
+}
+
+/**
+ * Decisions "Applied v{n}": `kept` khi version mới giữ vị thế của version cũ trong sổ cái (#223; câu chữ PM duyệt
+ * 2026-11-18).
+ */
+export function versionAppliedWhy(cancelled: number, kept: boolean): string {
+  return kept
+    ? `Cancelled ${String(cancelled)} orders and kept the open position; new orders for it follow on the next price.`
+    : `Cancelled ${String(cancelled)} orders; new orders follow on the next price.`;
+}
+
+/** Version trong clOrdID tất định (`d{bot}-{version}-{hash}-{attempt}`, `clOrdId`); không đọc được → vô cực. */
+export function versionOfClOrdId(id: string): number {
+  const v = Number(id.split("-")[1]);
+  return Number.isInteger(v) ? v : Number.POSITIVE_INFINITY;
+}
+
+/** Nhịp thử lại ghi trade + báo kết thúc cho lệnh đã bỏ cuộc (`TickSnapshot.gaveUp`). */
+export const GAVE_UP_RETRY_MS = 60_000;
+
 export function shardOf(accountId: string, shards = ENGINE_SHARDS): number {
   return Number(fnv1a64(accountId) % BigInt(shards));
 }
@@ -893,6 +937,8 @@ export class Engine {
   readonly #booksFed = new Map<string, number>();
   readonly #books = new Map<string, { at: number; book: BookTop | null }>();
   readonly #openChecks = new Map<string, number>();
+  /** Lần thử lại gần nhất cho lệnh đã bỏ cuộc mà chiến lược chưa được báo kết thúc (`TickSnapshot.gaveUp`). */
+  readonly #gaveUpRetryAt = new Map<string, number>();
   /** Lần cuối user stream của account có thể đã mất tin (đứt kết nối, engine vừa nạp bot). */
   readonly #streamGaps = new Map<string, number>();
   /** Account + engine vừa có khoảng trống user stream (STREAM_GAP_MS). */
@@ -2052,6 +2098,7 @@ export class Engine {
       pending: new Map(),
       fees: new Map(),
       unknown: [],
+      gaveUp: [],
       open: new Map(),
       unconfirmed: new Map(),
       backfill: new Map(),
@@ -2128,6 +2175,22 @@ export class Engine {
           ),
         )
     ).filter((o) => owned.has(shardOf(o.sodexAccountId, shards)));
+    snap.gaveUp = (
+      await db
+        .select({ order: orders })
+        .from(orders)
+        .innerJoin(bots, eq(bots.id, orders.botId))
+        .where(
+          and(
+            eq(orders.status, "unknown"),
+            isNotNull(orders.unknownGaveUpAt),
+            isNull(orders.doneFedAt),
+            ne(bots.strategy, Strategy.volumeFarm),
+          ),
+        )
+    )
+      .map((x) => x.order)
+      .filter((o) => owned.has(shardOf(o.sodexAccountId, shards)));
     // Chỉ lệnh của bot thật: lệnh paper không bao giờ được đối soát với SoDEX (DEC-105).
     const open = await db
       .select({ order: orders })
@@ -2471,6 +2534,28 @@ export class Engine {
     pending: VersionRow | undefined,
     botState: BotState,
   ): Promise<void> {
+    if (pending === undefined || pending.version <= r.version) {
+      await this.#applyVersionNow(r, pending, botState);
+      return;
+    }
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    r.applying = gate;
+    try {
+      await this.#applyVersionNow(r, pending, botState);
+    } finally {
+      if (r.applying === gate) r.applying = null;
+      release();
+    }
+  }
+
+  async #applyVersionNow(
+    r: Runner,
+    pending: VersionRow | undefined,
+    botState: BotState,
+  ): Promise<void> {
     // Không còn version chờ (đã áp / bị thay): bỏ cờ chặn lượt mới.
     if (pending === undefined || pending.version <= r.version) {
       if (r.ctx.versionPending !== undefined) delete r.ctx.versionPending;
@@ -2507,7 +2592,7 @@ export class Engine {
             r,
             "version",
             decision,
-            `Waits until the open trade closes; v${String(r.version)} keeps managing it. No orders were cancelled.`,
+            versionWaitWhy(r.strategy, r.version),
             this.#d.now(),
           );
       }
@@ -2520,6 +2605,8 @@ export class Engine {
     await this.#cancel(
       r,
       open.map((o) => o.clOrdId),
+      undefined,
+      true,
     );
     // Fill tới trong lúc huỷ mở lại vị thế: chưa áp, vòng sau thử lại (lệnh vừa huỷ là lệnh của lúc bot còn phẳng).
     const fresh = apply();
@@ -2591,11 +2678,51 @@ export class Engine {
     r.leverageSet = false;
     r.leverageDone = new Set();
     r.leverageKnown = new Set();
+    // Lệnh version cũ mà fill tới trong lúc áp sinh ra (bước của version cũ chạy giữa lần đọc lệnh mở và lúc ghi, #223 M1):
+    // huỷ ngay. Chiến lược đã nhớ chúng là lệnh cũ chờ kết thúc và huỷ lại tới khi SoDEX xác nhận.
+    if (entry.module.applyVersion !== undefined && r.strategy !== Strategy.volumeFarm) {
+      const cancelled = new Set(open.map((o) => o.clOrdId));
+      const late = (
+        await this.#d.db
+          .select({ clOrdId: orders.clOrdId })
+          .from(orders)
+          .where(
+            and(
+              eq(orders.botId, r.botId),
+              inArray(orders.status, ["open", "partially_filled", "unknown"]),
+            ),
+          )
+      )
+        .map((o) => o.clOrdId)
+        .filter((id) => !cancelled.has(id) && versionOfClOrdId(id) < pending.version);
+      if (late.length > 0) await this.#cancel(r, late, undefined, true);
+      // Lệnh vừa huỷ mà SoDEX đã xác nhận kết thúc (hoặc tin kết thúc đã tới version cũ trong lúc áp): báo ngay cho
+      // version mới, để nó không phải chờ lần huỷ lại 10 s sau.
+      const awaits = entry.module.awaitsEnd;
+      const ids = [...cancelled, ...late].filter((id) => awaits?.(r.state, id) === true);
+      if (ids.length > 0) {
+        const rows = await this.#d.db
+          .select()
+          .from(orders)
+          .where(and(eq(orders.sodexAccountId, r.account.id), inArray(orders.clOrdId, ids)));
+        await this.#reportFarmEnded(r, ids, rows, [], this.#d.now());
+      }
+    }
     await this.#event(
       r,
       "version",
       `Applied v${String(pending.version)}`,
-      `Cancelled ${String(open.length)} orders; new orders follow on the next price.`,
+      versionAppliedWhy(
+        open.length,
+        r.strategy !== Strategy.volumeFarm &&
+          entry.module.applyVersion !== undefined &&
+          this.#marketsOf(r.market, r.config).some((m) =>
+            (["spot", "perps"] as const).some((e) => {
+              const p = positionOf(r.state, m, e);
+              return p !== null && !dec(p).isZero();
+            }),
+          ),
+      ),
       this.#d.now(),
     );
   }
@@ -2655,6 +2782,25 @@ export class Engine {
   /** Đưa event cho chiến lược (chỉ khi bot đang chạy), lưu state, thực hiện hành động. */
   async #feed(r: Runner, incoming: StrategyEvent): Promise<void> {
     let event = incoming;
+    // Đang áp version mới (#223 M1): xem `Runner.applying`.
+    const applying = r.applying ?? null;
+    if (
+      applying !== null &&
+      event.type !== "fill" &&
+      event.type !== "orderAck" &&
+      event.type !== "orderReject" &&
+      event.type !== "orderDone" &&
+      event.type !== "positionSync"
+    ) {
+      if (
+        event.type === "tick" ||
+        event.type === "timer" ||
+        event.type === "fair" ||
+        event.type === "book"
+      )
+        return;
+      await applying.catch(() => undefined);
+    }
     const state = await this.#currentState(r.botId);
     const live =
       state === BotState.starting || state === BotState.running || state === BotState.resuming;
@@ -3692,8 +3838,10 @@ export class Engine {
       if (row.doneFedAt === null) await this.#markDone(r, row.id);
       // Báo lại trực tiếp chỉ khi chiến lược còn chờ đúng lệnh này (review m4): không bao giờ gửi tin trùng cho lệnh nó đã
       // coi là xong hay không theo dõi.
-      const waiting = (r.state as { orders?: Record<string, { done?: boolean }> }).orders?.[id];
-      if (waiting === undefined || waiting.done === true) continue;
+      if (r.strategy === Strategy.volumeFarm) {
+        const waiting = (r.state as { orders?: Record<string, { done?: boolean }> }).orders?.[id];
+        if (waiting === undefined || waiting.done === true) continue;
+      } else if (r.module.awaitsEnd?.(r.state, id) !== true) continue;
       await this.#feed(
         r,
         rejected
@@ -3708,6 +3856,11 @@ export class Engine {
     clOrdIDs: readonly string[],
     /** Giờ Binance của lần cập nhật giá gây ra lần huỷ này (ghi Decisions khi SoDEX xác nhận); thiếu = không ghi. */
     binanceAt?: number,
+    /**
+     * Lần huỷ lúc áp version (#223): không báo lại lệnh đã kết thúc cho chiến lược (version đang được ghi; chiến lược mới
+     * tự huỷ lại các lệnh cũ và nhận báo kết thúc ở lần đó).
+     */
+    applying = false,
   ): Promise<void> {
     const rows = await this.#d.db
       .select()
@@ -3745,8 +3898,15 @@ export class Engine {
       this.#cancelRetryAt.set(r.botId, startedAt - CANCEL_RETRY_MS + CANCEL_NOT_BOOKED.retryMs);
     // Volume Farm chờ SoDEX xác nhận lệnh đã kết thúc trước khi vào lượt mới và huỷ lại theo nhịp
     // (DEC-317): lệnh bot huỷ mà dòng lệnh đã kết thúc thì báo lại cho chiến lược.
-    if (r.strategy === Strategy.volumeFarm)
+    // Chiến lược khác chờ lệnh version cũ kết thúc sau khi áp version mới (#223): báo lại như Volume Farm, chỉ cho lệnh
+    // chiến lược còn chờ.
+    const awaits = r.module.awaitsEnd;
+    if (!applying && r.strategy === Strategy.volumeFarm)
       await this.#reportFarmEnded(r, clOrdIDs, rows, inflight, startedAt);
+    else if (!applying && awaits !== undefined) {
+      const waited = clOrdIDs.filter((id) => awaits(r.state, id));
+      if (waited.length > 0) await this.#reportFarmEnded(r, waited, rows, inflight, startedAt);
+    }
     if (open.length === 0) {
       return;
     }
@@ -4668,6 +4828,23 @@ export class Engine {
   /** Lệnh `unknown`: hỏi SoDEX theo clOrdID rồi mới quyết định; không gửi lại (quy tắc 1.7). */
   async #reconcile(shard: number, snap: TickSnapshot): Promise<void> {
     const now = this.#d.now();
+    // Lệnh đã bỏ cuộc mà chiến lược chưa được báo kết thúc (đọc trade lỗi lúc bỏ cuộc): thử lại, có nhịp chờ.
+    for (const o of snap.gaveUp) {
+      const r = this.#runners.get(o.botId);
+      if (r?.shard !== shard) continue;
+      if (now - (this.#gaveUpRetryAt.get(o.id) ?? Number.NEGATIVE_INFINITY) < GAVE_UP_RETRY_MS)
+        continue;
+      this.#gaveUpRetryAt.set(o.id, now);
+      try {
+        await this.#farmGaveUp(r, o, now);
+      } catch (error) {
+        if (error instanceof FencedError) throw error;
+        this.#d.log.warn(
+          { err: error, botId: r.botId, clOrdID: o.clOrdId },
+          "retrying a given-up order failed; trying again later",
+        );
+      }
+    }
     const pending = await this.#fresh(
       snap.unknown.filter((o) => this.#runners.get(o.botId)?.shard === shard),
     );
@@ -4758,13 +4935,16 @@ export class Engine {
    * bỏ cuộc sẽ không bao giờ có `orderDone` (review #239 M2). Quyết định rõ ràng: lần tra thành công đã xác nhận lệnh không
    * còn trên SoDEX (`missing_confirmed_at`, quá UNKNOWN_CHECK_WINDOW_MS) nên không khớp thêm được: đọc trade NGAY LÚC NÀY,
    * có trade thì ghi fill thật trước, rồi báo `orderDone` để bot đi tiếp (kiểm tra vị thế DEC-306 vẫn là lưới an toàn).
-   * Không đọc được → vẫn chặn; chiến lược tự báo sau 10 phút.
+   * Không đọc được → vẫn chặn; Volume Farm tự báo sau 10 phút, chiến lược khác được thử lại mỗi GAVE_UP_RETRY_MS (#223).
    */
   async #farmGaveUp(r: Runner, o: typeof orders.$inferSelect, now: number): Promise<void> {
-    if (r.strategy !== Strategy.volumeFarm || o.missingConfirmedAt === null) return;
-    const waiting = (r.state as { orders?: Record<string, { cancelAt?: number; done?: boolean }> })
-      .orders?.[o.clOrdId];
-    if (waiting?.cancelAt === undefined || waiting.done === true) return;
+    if (o.missingConfirmedAt === null) return;
+    if (r.strategy === Strategy.volumeFarm) {
+      const waiting = (
+        r.state as { orders?: Record<string, { cancelAt?: number; done?: boolean }> }
+      ).orders?.[o.clOrdId];
+      if (waiting?.cancelAt === undefined || waiting.done === true) return;
+    }
     let trades: OrderTrade[];
     try {
       trades = r.paper ? [] : await this.#orderTrades(r.account, o);
@@ -4782,7 +4962,14 @@ export class Engine {
       { botId: r.botId, clOrdID: o.clOrdId },
       "given-up order is confirmed missing on SoDEX; its trades are booked and the bot moves on",
     );
-    await this.#feed(r, { type: "orderDone", at: now, clOrdID: o.clOrdId });
+    if (r.strategy === Strategy.volumeFarm) {
+      await this.#feed(r, { type: "orderDone", at: now, clOrdID: o.clOrdId });
+      return;
+    }
+    // Chiến lược khác (#223 M3): báo kết thúc đúng một lần (`done_fed_at`), để không có gì chờ lệnh này mãi (lệnh khởi
+    // tạo của grid, base order của DCA, lệnh version cũ khi áp version mới…).
+    if (await this.#markDone(r, o.id))
+      await this.#feed(r, { type: "orderDone", at: now, clOrdID: o.clOrdId });
   }
 
   /** Đối soát một lệnh `unknown` với SoDEX. */

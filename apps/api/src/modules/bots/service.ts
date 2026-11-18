@@ -1713,6 +1713,22 @@ export async function checkVersionConfig(
       fieldErrors: { market: ["locked"] },
     });
   }
+  // Funding Arb: chân Spot và tài sản cũng khoá (#223): version mới giữ sổ cái hai chân, nên chân Spot không được đổi
+  // sang market khác.
+  if (b.strategy === Strategy.fundingArb) {
+    const [cur] = await deps.db
+      .select({ config: botVersions.config })
+      .from(botVersions)
+      .where(eq(botVersions.botId, b.id))
+      .orderBy(desc(botVersions.version))
+      .limit(1);
+    const before = (cur?.config ?? {}) as Record<string, unknown>;
+    for (const field of ["spotMarket", "asset"] as const)
+      if (before[field] !== undefined && before[field] !== config[field])
+        throw new AppError(ErrorCode.validationFailed, "Market can't change.", {
+          fieldErrors: { [field]: ["locked"] },
+        });
+  }
   await assertLeverageCap(deps, b.sodexAccountId, b.strategy, config);
   return config;
 }

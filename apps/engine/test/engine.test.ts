@@ -1548,10 +1548,13 @@ describe("engine", () => {
   it("applies an edited version: cancels old orders, activates v2 and re-places from the new config", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
-    const { botId } = await seedBot("running");
+    const { botId, accountId } = await seedBot("running");
     const e = makeEngine(gw, "w1");
     await e.tick();
     await e.onPrice("vBTC_vUSDC", "100", clock);
+    // Lệnh market khởi tạo hết hạn không khớp: v1 phẳng. Còn đang chạy thì version mới chờ nó (#223).
+    const init = gw.received.find((o) => o.tag === "grid:init")?.clOrdID ?? "";
+    await e.onOrderClosed(accountId, init, "cancelled", clock + 1);
     const before = gw.received.length;
     await db.insert(botVersions).values({
       botId,
@@ -1698,6 +1701,9 @@ describe("engine", () => {
     await b.onPrice("LEV-USD", "101", clock);
     expect(mine()).toHaveLength(1);
     expect(await logged()).toBe(1);
+    // Lệnh market khởi tạo hết hạn không khớp, để version mới không phải chờ nó (#223).
+    const init = gw.received.find((o) => o.tag === "grid:init" && o.market === "LEV-USD");
+    await b.onOrderClosed(accountId, init?.clOrdID ?? "", "cancelled", clock);
     // Version mới (đòn bẩy khác) vẫn đặt lại như trước.
     const [v2] = await db
       .insert(botVersions)
@@ -8610,7 +8616,7 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
     await finish(e, botId);
   });
 
-  it("flags a position the bot stopped tracking after a settings change (its own line), and the grid waits instead of adding (B2)", async () => {
+  it("keeps the grid position across a settings change: no second starting buy, no alert (#223, replaces B2)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new PosGateway();
     const { botId, e } = await running(gw, "pos-ver");
@@ -8620,38 +8626,233 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
       version: 2,
       paramSource: "manual",
       status: "pending",
-      config: v1?.config ?? {},
+      config: { ...(v1?.config as Record<string, unknown>), maxLoss: "150" },
     });
-    await step(e); // áp v2: sổ cái bắt đầu lại (0) trong khi SoDEX còn long 2
+    await step(e); // áp v2: sổ cái giữ long 2, khớp SoDEX
     expect(
       (await db.select().from(botVersions).where(eq(botVersions.botId, botId))).find(
         (v) => v.status === "active",
       )?.version,
     ).toBe(2);
-    await step(e);
-    await step(e);
-    await step(e);
-    const lines = await eventsOf(botId);
-    const untracked = (await allEvents(botId)).filter((x) => x.decision === "Position not tracked");
-    expect(lines).toEqual([]);
-    expect(untracked.map((x) => x.why)).toEqual([
-      "Settings changed while your BTC-USD position (2) was open, so the bot no longer tracks it. The bot won't start new trades that add to it, and a grid may wait to start until it's closed. Close or manage the position on SoDEX.",
-    ]);
-    expect((await botState(botId))?.positionMismatch?.["BTC-USD"]?.cause).toBe("version");
-    // Grid v2 muốn mua vị thế ban đầu (tăng |vị thế|): bỏ cả bước, không gửi gì, không ghi thêm.
-    // (Đòn bẩy của v2 vẫn được đặt một lần trước bước chiến lược: không mở vị thế.)
+    expect(await ledgerOf(botId)).toBe("2");
+    const applied = (await allEvents(botId)).find((x) => x.decision === "Applied v2");
+    expect(applied?.why).toMatch(
+      /^Cancelled \d+ orders and kept the open position; new orders for it follow on the next price\.$/,
+    );
+    // Giá đầu tiên: grid v2 dựng lệnh quanh vị thế, không mua lại vị thế ban đầu, chỉ bán phần đang giữ.
     const sent = gw.received.length;
-    const lines2 = async () =>
-      (await allEvents(botId)).filter((x) => x.decision !== "Leverage set").length;
-    const count = await lines2();
-    for (let i = 0; i < 3; i += 1) {
-      clock += 1_000;
-      await e.onPrice("BTC-USD", "100", clock);
-    }
-    expect(gw.received.length).toBe(sent);
-    expect(await lines2()).toBe(count);
-    expect((await botState(botId))?.state).toBe("running");
+    clock += 1_000;
+    await e.onPrice("BTC-USD", "100", clock);
+    const placed = gw.received.slice(sent);
+    expect(placed.some((o) => o.type === "market" || o.tag === "grid:init")).toBe(false);
+    expect(placed.map((o) => `${o.side}@${o.price ?? ""}`).sort()).toEqual(
+      ["buy@90", "buy@95", "sell@105", "sell@110"].sort(),
+    );
+    expect(placed.every((o) => o.clOrdID.split("-")[1] === "2")).toBe(true);
+    for (let i = 0; i < 4; i += 1) await step(e);
+    const lines = await allEvents(botId);
+    expect(lines.some((x) => x.decision === "Position not tracked")).toBe(false);
+    expect(await eventsOf(botId)).toEqual([]);
+    expect((await botState(botId))?.positionMismatch).toBeNull();
+    expect(await ledgerOf(botId)).toBe("2");
     await finish(e, botId);
+  });
+
+  const pendingV2 = async (botId: string, patch: Record<string, unknown>) => {
+    const { eq } = await import("drizzle-orm");
+    const [v1] = await db.select().from(botVersions).where(eq(botVersions.botId, botId));
+    await db.insert(botVersions).values({
+      botId,
+      version: 2,
+      paramSource: "manual",
+      status: "pending",
+      config: { ...(v1?.config as Record<string, unknown>), ...patch },
+    });
+  };
+  const activeVersion = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return (await db.select().from(botVersions).where(eq(botVersions.botId, botId))).find(
+      (v) => v.status === "active",
+    )?.version;
+  };
+
+  it("cancels a v1 order that a fill placed while the apply was cancelling, and builds v2 only around the real position (#223 M1)", async () => {
+    const gw = new PosGateway();
+    const { botId, accountId, e, tag } = await running(gw, "pos-m1");
+    await pendingV2(botId, { maxLoss: "150" });
+    let release: () => void = () => undefined;
+    gw.holdCancel = new Promise<void>((r) => {
+      release = r;
+    });
+    const applying = step(e);
+    for (let i = 0; i < 200 && !gw.cancelHeld; i += 1) await new Promise((r) => setTimeout(r, 10));
+    expect(gw.cancelHeld).toBe(true);
+    // Mua 95 của v1 khớp đúng lúc engine đang huỷ: bước của v1 đặt lệnh bán đối ứng.
+    const before = gw.received.length;
+    await e.onFill(accountId, tag("grid:1:buy"), "1", "95", "0", clock);
+    gw.perpsPositions.set("BTC-USD", { size: "3", entryPrice: "98" });
+    const counter = gw.received.slice(before).find((o) => o.side === "sell");
+    expect(counter?.clOrdID.split("-")[1]).toBe("1");
+    release();
+    await applying;
+    expect(await activeVersion(botId)).toBe(2);
+    expect(gw.cancelled).toContain(counter?.clOrdID);
+    expect(await ledgerOf(botId)).toBe("3");
+    const sent = gw.received.length;
+    clock += 1_000;
+    await e.onPrice("BTC-USD", "100", clock);
+    const placed = gw.received.slice(sent);
+    const qty = (side: string) =>
+      placed.filter((o) => o.side === side).reduce((a, o) => a.add(o.quantity), dec("0"));
+    expect(placed.length).toBeGreaterThan(0);
+    expect(placed.every((o) => o.clOrdID.split("-")[1] === "2" && o.type !== "market")).toBe(true);
+    expect(qty("sell").lte(3)).toBe(true);
+    expect(qty("buy").add(3).lte(5)).toBe(true);
+    await finish(e, botId);
+  });
+
+  it("applies a waiting version once the engine gives up an unknown starting order and reports it done (#223 M3)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new PosGateway();
+    const { botId } = await seedBot("running", grid);
+    const e = posEngine(gw, "pos-m3");
+    await e.tick();
+    gw.timeoutNext = "lost";
+    await e.onPrice("BTC-USD", "100", clock);
+    const [row] = (await db.select().from(orders).where(eq(orders.botId, botId))).filter(
+      (o) => o.tag === "grid:init",
+    );
+    const init = row?.clOrdId ?? "";
+    expect(row?.status).toBe("unknown");
+    await pendingV2(botId, { maxLoss: "150" });
+    await step(e, 1_000);
+    expect(await activeVersion(botId)).toBe(1);
+    expect((await allEvents(botId)).find((x) => x.decision === "Applying v2")?.why).toBe(
+      "Waits for an order in flight to finish or the open position to close; v1 keeps managing the bot until then. No orders were cancelled.",
+    );
+    await db
+      .update(orders)
+      .set({ sodexOrderId: 78n, missingConfirmedAt: new Date(clock - 11 * 60_000) })
+      .where(eq(orders.clOrdId, init));
+    for (let i = 0; i < 8 && (await activeVersion(botId)) !== 2; i += 1) await step(e, 60_000);
+    expect(
+      (await db.select().from(orders).where(eq(orders.clOrdId, init)))[0]?.unknownGaveUpAt,
+    ).not.toBeNull();
+    expect(await activeVersion(botId)).toBe(2);
+    await finish(e, botId);
+  });
+
+  it("retries the given-up booking when the trades read failed, so a waiting version still applies (#223 re-review minor 2)", async () => {
+    const { eq } = await import("drizzle-orm");
+    let failTrades = true;
+    const gw = new (class extends PosGateway {
+      override recentTrades(a: AccountRef): Promise<(OrderTrade & { clOrdID: string })[]> {
+        return failTrades ? Promise.reject(new Error("SoDEX down")) : super.recentTrades(a);
+      }
+    })();
+    const { botId } = await seedBot("running", grid);
+    const e = posEngine(gw, "pos-m3-retry");
+    await e.tick();
+    gw.timeoutNext = "lost";
+    await e.onPrice("BTC-USD", "100", clock);
+    const [row] = (await db.select().from(orders).where(eq(orders.botId, botId))).filter(
+      (o) => o.tag === "grid:init",
+    );
+    const init = row?.clOrdId ?? "";
+    await pendingV2(botId, { maxLoss: "150" });
+    await db
+      .update(orders)
+      .set({ sodexOrderId: 79n, missingConfirmedAt: new Date(clock - 11 * 60_000) })
+      .where(eq(orders.clOrdId, init));
+    for (let i = 0; i < 4; i += 1) await step(e, 60_000);
+    const gaveUp = (await db.select().from(orders).where(eq(orders.clOrdId, init)))[0];
+    expect(gaveUp?.unknownGaveUpAt).not.toBeNull();
+    expect(gaveUp?.doneFedAt).toBeNull();
+    expect(await activeVersion(botId)).toBe(1);
+    failTrades = false;
+    for (let i = 0; i < 4 && (await activeVersion(botId)) !== 2; i += 1) await step(e, 60_000);
+    expect(
+      (await db.select().from(orders).where(eq(orders.clOrdId, init)))[0]?.doneFedAt,
+    ).not.toBeNull();
+    expect(await activeVersion(botId)).toBe(2);
+    await finish(e, botId);
+  });
+
+  const dca = {
+    strategy: "futures_dca",
+    market: "BTC-USD",
+    engine: "perps" as const,
+    config: {
+      market: "BTC-USD",
+      leverage: 2,
+      marginMode: "cross",
+      direction: "long",
+      baseOrder: "100",
+      safetyOrder: "100",
+      maxSafetyOrders: 2,
+      firstStepPct: "2",
+      stepMultiplier: "1",
+      sizeMultiplier: "1",
+      takeProfitPct: "1",
+      stopLossPct: "10",
+    },
+  };
+  /** Bot Futures DCA đang chạy: base 2 BTC đã khớp ở 100, safety + take profit trên sổ. */
+  async function dcaRunning(gw: PosGateway, id: string) {
+    const { botId, accountId } = await seedBot("running", dca);
+    const e = posEngine(gw, id);
+    await e.tick();
+    await e.onPrice("BTC-USD", "100", clock);
+    const base = gw.received.find((o) => o.tag === "dca:1:base")?.clOrdID ?? "";
+    clock += 100;
+    await e.onFill(accountId, base, "2", "100", "0", clock);
+    await e.onOrderClosed(accountId, base, "filled", clock);
+    gw.perpsPositions.set("BTC-USD", { size: "2", entryPrice: "100" });
+    expect(await ledgerOf(botId)).toBe("2");
+    return { botId, accountId, e };
+  }
+
+  it("Futures DCA end to end: the new version keeps the position, waits for v1 orders, then rebuilds a reduce-only take profit (#223)", async () => {
+    const gw = new PosGateway();
+    const { botId, e } = await dcaRunning(gw, "pos-dca");
+    expect(gw.received.some((o) => o.tag.startsWith("dca:1:tp"))).toBe(true);
+    await pendingV2(botId, { takeProfitPct: "2" });
+    await step(e, 1_000);
+    expect(await activeVersion(botId)).toBe(2);
+    expect(await ledgerOf(botId)).toBe("2");
+    expect((await allEvents(botId)).find((x) => x.decision === "Applied v2")?.why).toMatch(
+      /kept the open position/,
+    );
+    const sent = gw.received.length;
+    clock += 1_000;
+    await e.onPrice("BTC-USD", "100", clock);
+    const placed = gw.received.slice(sent);
+    expect(placed.some((o) => o.type === "market")).toBe(false);
+    expect(placed.find((o) => o.side === "sell")).toMatchObject({
+      price: "102",
+      quantity: "2",
+      reduceOnly: true,
+    });
+    expect(placed.every((o) => o.clOrdID.split("-")[1] === "2")).toBe(true);
+    await finish(e, botId);
+  });
+
+  it("Stop while a DCA direction flip waits: the bot stops on v1 and v2 never runs (#223)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new PosGateway();
+    const { botId, e } = await dcaRunning(gw, "pos-dca-stop");
+    await pendingV2(botId, { direction: "short" });
+    await step(e, 1_000);
+    expect(await activeVersion(botId)).toBe(1);
+    expect((await allEvents(botId)).some((x) => x.decision === "Applying v2")).toBe(true);
+    const sent = gw.received.length;
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1)
+      await step(e, 1_000);
+    expect((await botState(botId))?.state).toBe("stopped");
+    expect(gw.received.slice(sent).filter((o) => o.clOrdID.split("-")[1] === "2")).toEqual([]);
+    expect(await activeVersion(botId)).toBe(1);
+    await e.stop();
   });
 
   it("uses the normal tiers (with a trades read) when the replaced ledger was flat (N2)", async () => {

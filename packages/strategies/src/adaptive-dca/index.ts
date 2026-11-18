@@ -1,10 +1,19 @@
 import { dec, Decimal, ReasonCode, RoundMode } from "@drift/shared";
 
+import { isRetiring, retireEnd, retireFill, retireTick, type Retiring } from "../common/retire";
 import { clOrdId } from "../core/ids";
-import { applyFill, applyFunding, emptyLedger, netPnl, type Ledger } from "../core/ledger";
+import {
+  applyFill,
+  applyFunding,
+  carryLedger,
+  emptyLedger,
+  netPnl,
+  type Ledger,
+} from "../core/ledger";
 import { meetsMinimum, priceText, roundPrice, roundQty } from "../core/rounding";
 import type {
   MinuteCandle,
+  Side,
   OrderIntent,
   StepContext,
   StepResult,
@@ -95,10 +104,20 @@ export interface AdaptiveDcaState {
   orders?: Record<string, AdcaOrder>;
   /** Số lần resume: hậu tố tag của lệnh DCA đặt lại, để không dùng lại clOrdID cũ. */
   resumes?: number;
+  /** Version mới vừa áp khi còn vị thế (#223): dựng lại lệnh như Resume ở giá đầu tiên. */
+  resumeOnTick?: boolean;
+  /** Lệnh version cũ đã huỷ lúc áp version mới, chờ SoDEX báo kết thúc rồi mới dựng lệnh (#223). */
+  retiring?: Retiring | undefined;
+  /** Vừa áp version mới (#223): vị thế do fill muộn của lệnh cũ được quản lý tiếp. Bỏ khi chu kỳ được dựng lại. */
+  carried?: boolean;
+  /** Đã ghi "vị thế ngược hướng" một lần (#223). */
+  oppositeLogged?: boolean;
 }
 
 export interface AdcaOrder {
   kind: "entry" | "exit";
+  /** Chiều của lệnh lúc đặt (#223 M4); thiếu ở state cũ thì suy theo loại lệnh và hướng hiện tại. */
+  side?: Side;
   qty: string;
   filled: string;
   cost: string;
@@ -112,7 +131,7 @@ function track(s: AdaptiveDcaState, o: OrderIntent, kind: "entry" | "exit"): Ada
     orders: Object.fromEntries(
       [
         ...Object.entries(s.orders ?? {}),
-        [o.clOrdID, { kind, qty: o.quantity, filled: "0", cost: "0" }] as const,
+        [o.clOrdID, { kind, side: o.side, qty: o.quantity, filled: "0", cost: "0" }] as const,
       ].slice(-KEEP_ORDERS),
     ),
   };
@@ -318,7 +337,7 @@ function tryEnter(
       },
     ],
     state: {
-      ...track(s, o, "entry"),
+      ...withoutCarried(track(s, o, "entry")),
       phase: "entering",
       cycle,
       baseId: o.clOrdID,
@@ -550,7 +569,14 @@ function onTimer(
     m === null ? s0 : { ...s0, regime: m.regime, atr: m.atr ?? s0.atr, rsi: m.rsi };
   const g = guards(c, s, ctx);
   if (g !== null) return g;
-  if (s.phase === "idle") return m === null ? none(s) : tryEnter(c, s, ctx, e.at);
+  // Version mới đang chờ áp (DEC-304, #223): không mở chu kỳ mới để bot về trạng thái áp được.
+  if (s.phase === "idle") {
+    // Version mới đang chờ áp (DEC-304) hoặc lệnh version cũ chưa kết thúc (#223): không mở chu kỳ mới.
+    if (m === null || ctx.versionPending !== undefined || isRetiring(s.retiring)) return none(s);
+    // Vừa áp version mới mà sổ cái có vị thế (fill muộn của lệnh cũ): quản lý tiếp, không mở chu kỳ chồng lên.
+    if (s.carried === true && !isFlat(s, ctx, c)) return adoptCarried(c, s, ctx);
+    return tryEnter(c, s, ctx, e.at);
+  }
   if (s.phase !== "in_cycle" || m === null) return none(s);
   const againstRegime = c.direction === "long" ? "TREND_DOWN" : "TREND_UP";
   const againstSince = s.regime === againstRegime ? (s.againstSince ?? e.at) : null;
@@ -661,7 +687,14 @@ function onFill(
         };
   const state: AdaptiveDcaState = {
     ...s,
-    ledger: applyFill(s.ledger, kind === "entry" ? entrySide(c) : exitSide(c), e.price, q, fee),
+    // Chiều của chính lệnh (engine gửi kèm, rồi chiều đã nhớ), không theo cấu hình hiện tại (#223 M4).
+    ledger: applyFill(
+      s.ledger,
+      e.side ?? rec?.side ?? (kind === "entry" ? entrySide(c) : exitSide(c)),
+      e.price,
+      q,
+      fee,
+    ),
     ...(next === undefined ? {} : { orders: { ...s.orders, [id]: next } }),
   };
   // Bot đã dừng (max loss) hoặc lệnh đã huỷ / đã xong nhưng khớp trễ: chỉ ghi sổ cái, không đặt lệnh mới từ trạng
@@ -820,6 +853,8 @@ function resumeAdca(
     cancelled: cx.cancelled,
     resumes: (s.resumes ?? 0) + 1,
   };
+  delete base.resumeOnTick;
+  delete base.carried;
   if (flat)
     return { actions: cx.actions, state: { ...base, phase: "idle", tpId: null, reduced: false } };
   const tp = placeTp(c, { ...base, phase: "in_cycle" }, ctx);
@@ -867,16 +902,80 @@ function retryExit(
   };
 }
 
+/**
+ * Bước AI DCA. Lệnh version cũ đang chờ kết thúc (#223) đi trước: fill vào sổ cái theo chiều của chính lệnh, kết thúc thì
+ * thôi chờ (không pause), nhịp giá / đồng hồ gửi huỷ lại khi quá hạn.
+ */
 export function stepAdaptiveDca(
   c: AdaptiveDcaConfig,
   s: AdaptiveDcaState,
   e: StrategyEvent,
   ctx: StepContext,
 ): StepResult<AdaptiveDcaState> {
-  if (e.type === "resumed")
-    return s.phase === "halted"
-      ? resumeAdca(c, { ...s, lastPrice: e.prices[c.market] ?? s.lastPrice }, ctx)
-      : none(s);
+  if (e.type === "fill") {
+    const r = retireFill(s.retiring, e);
+    if (r !== null) {
+      const rec = s.orders?.[e.clOrdID];
+      return none({
+        ...s,
+        retiring: r.retiring,
+        ledger: r.quantity.gt(0)
+          ? applyFill(s.ledger, r.side, e.price, r.quantity, r.fee)
+          : s.ledger,
+        // Giữ sổ lệnh khớp với phần đã ghi, để fill tới sau `orderDone` không bị ghi hai lần.
+        ...(rec === undefined
+          ? {}
+          : {
+              orders: {
+                ...s.orders,
+                [e.clOrdID]: {
+                  ...rec,
+                  filled: dec(rec.filled).add(r.quantity).toString(),
+                  cost: dec(rec.cost).add(dec(e.price).mul(r.quantity)).toString(),
+                },
+              },
+            }),
+      });
+    }
+  }
+  if ((e.type === "orderDone" || e.type === "orderReject") && s.retiring?.[e.clOrdID] !== undefined)
+    return none({ ...s, retiring: retireEnd(s.retiring, e.clOrdID) });
+  if (e.type === "tick" || e.type === "timer") {
+    const t = retireTick(s.retiring, e.at);
+    if (t.retiring !== s.retiring) {
+      const r = stepAdca(c, { ...s, retiring: t.retiring }, e, ctx);
+      return { actions: [...t.actions, ...r.actions], state: r.state };
+    }
+  }
+  return stepAdca(c, s, e, ctx);
+}
+
+function stepAdca(
+  c: AdaptiveDcaConfig,
+  s: AdaptiveDcaState,
+  e: StrategyEvent,
+  ctx: StepContext,
+): StepResult<AdaptiveDcaState> {
+  if (e.type === "resumed") {
+    if (s.phase !== "halted") return none(s);
+    const lastPrice = e.prices[c.market] ?? s.lastPrice;
+    // Lệnh version cũ chưa kết thúc (#223): dựng lại ở giá đầu tiên sau khi chúng kết thúc.
+    if (isRetiring(s.retiring)) return none({ ...s, lastPrice, resumeOnTick: true });
+    return resumeAdca(c, { ...s, lastPrice }, ctx);
+  }
+  // Version mới vừa áp khi còn vị thế (#223): giá đầu tiên dựng lại take profit và lệnh DCA kế tiếp như Resume, sau khi
+  // lệnh version cũ đã kết thúc.
+  if (
+    e.type === "tick" &&
+    e.market === c.market &&
+    s.phase === "halted" &&
+    s.resumeOnTick === true
+  ) {
+    const state = { ...s, lastPrice: e.price };
+    if (!isRetiring(s.retiring)) return resumeAdca(c, state, ctx);
+    // Lệnh version cũ chưa kết thúc: chưa dựng lệnh, nhưng max loss / hard stop vẫn canh vị thế (#223 N2).
+    return guards(c, { ...state, phase: "in_cycle" }, ctx) ?? none(state);
+  }
   if (s.phase === "halted" && e.type !== "fill" && e.type !== "orderDone") return none(s);
   switch (e.type) {
     case "tick": {
@@ -930,7 +1029,117 @@ export function stepAdaptiveDca(
   }
 }
 
+/**
+ * Áp version mới (#223, DEC-319). Engine huỷ mọi lệnh đang mở (take profit, lệnh DCA). State mới
+ * giữ sổ cái (PM chốt B2: phiên tiếp tục, max loss và giá hoà vốn của chu kỳ giữ mốc), nhớ mọi lệnh cũ chưa kết thúc
+ * (`retiring`, huỷ lại mỗi 10 s; fill muộn vào sổ cái theo chiều của chính lệnh) và chỉ dựng lệnh khi chúng đã kết thúc.
+ * Còn vị thế thì chu kỳ chạy tiếp với cấu hình mới như Resume (DEC-240): take profit theo vị thế và lệnh DCA kế tiếp (trần
+ * `maxExposure` của version mới vẫn áp); không đặt lệnh vào, không tự đóng vị thế. Chưa áp (null, như DEC-304) khi lệnh
+ * vào hoặc lệnh đóng còn chạy, hoặc vị thế ngược hướng của version mới (đổi Long ↔ Short): chờ chu kỳ đóng.
+ */
+export function applyAdcaVersion(
+  c: AdaptiveDcaConfig,
+  s: AdaptiveDcaState,
+): AdaptiveDcaState | null {
+  if (s.phase === "entering" || s.phase === "exiting" || s.baseId !== null || s.exitId !== null)
+    return null;
+  const pos = dec(s.ledger.position);
+  if (!pos.isZero() && pos.isPositive() !== (c.direction === "long")) return null;
+  const oldLong = pos.isZero() ? c.direction === "long" : pos.isPositive();
+  const sideOf = (kind: "entry" | "exit"): Side => ((kind === "exit") === oldLong ? "sell" : "buy");
+  const retiring: Retiring = { ...s.retiring };
+  const retire = (id: string | null, kind: "entry" | "exit") => {
+    if (id === null) return;
+    const rec = s.orders?.[id];
+    retiring[id] = {
+      side: rec?.side ?? sideOf(kind),
+      ...(rec === undefined ? {} : { qty: rec.qty }),
+      filled: rec?.filled ?? "0",
+      cancelAt: null,
+    };
+  };
+  for (const [id, kind] of Object.entries(s.cancelled ?? {})) retire(id, kind);
+  retire(s.safetyId, "entry");
+  retire(s.tpId, "exit");
+  const orders = Object.fromEntries(
+    Object.entries(s.orders ?? {}).map(([id, o]) => [id, { ...o, side: o.side ?? sideOf(o.kind) }]),
+  );
+  const fresh: AdaptiveDcaState = {
+    ...initial(),
+    cycle: s.cycle,
+    completedCycles: s.completedCycles,
+    exits: s.exits,
+    ledger: carryLedger(s.ledger),
+    lastPrice: s.lastPrice,
+    atr: s.atr,
+    rsi: s.rsi,
+    regime: s.regime,
+    cooldownUntil: s.cooldownUntil,
+    cycleFeesStart: s.cycleFeesStart ?? s.ledger.fees,
+    cycleFundingStart: s.cycleFundingStart ?? s.ledger.funding,
+    peakExposure: s.peakExposure ?? "0",
+    orders,
+    carried: true,
+    ...(Object.keys(retiring).length > 0 ? { retiring } : {}),
+  };
+  if (pos.isZero()) return fresh;
+  return {
+    ...fresh,
+    phase: "halted",
+    resumeOnTick: true,
+    nextSafety: s.nextSafety,
+    safetiesFilled: s.safetiesFilled,
+    lastFillPrice: s.lastFillPrice,
+    againstSince: s.againstSince ?? null,
+    resumes: s.resumes ?? 0,
+  };
+}
+
+const withoutCarried = (s: AdaptiveDcaState): AdaptiveDcaState => {
+  const next = { ...s };
+  delete next.carried;
+  return next;
+};
+
+/**
+ * Vị thế xuất hiện sau khi áp version mới khi bot đang phẳng (fill muộn của lệnh cũ, #223): cùng hướng thì quản lý như
+ * chu kỳ đang dở; ngược hướng thì không đặt lệnh nào, không tự đóng: ghi một lần và bật Needs attention.
+ */
+function adoptCarried(
+  c: AdaptiveDcaConfig,
+  s: AdaptiveDcaState,
+  ctx: StepContext,
+): StepResult<AdaptiveDcaState> {
+  const pos = dec(s.ledger.position);
+  if (pos.isPositive() === (c.direction === "long"))
+    return resumeAdca(
+      c,
+      {
+        ...s,
+        phase: "halted",
+        cycle: Math.max(s.cycle, 1),
+        lastFillPrice: s.lastFillPrice ?? s.ledger.avgCost,
+      },
+      ctx,
+    );
+  if (s.oppositeLogged === true) return none(s);
+  return {
+    actions: [
+      { type: "flag", needsAttention: true },
+      // Câu chữ PM duyệt 2026-11-18 (#223).
+      {
+        type: "log",
+        decision: "Waiting",
+        why: `The bot holds a ${pos.isPositive() ? "long" : "short"} position of ${pos.abs().toString()} from the previous settings, the other way from this bot. It places no orders for it. Close it on SoDEX; new cycles start once the bot is flat.`,
+      },
+    ],
+    state: { ...s, oppositeLogged: true },
+  };
+}
+
 export const adaptiveDca: StrategyModule<AdaptiveDcaConfig, AdaptiveDcaState> = {
   initialState: initial,
   step: stepAdaptiveDca,
+  applyVersion: applyAdcaVersion,
+  awaitsEnd: (s, id) => s.retiring?.[id] !== undefined,
 };
