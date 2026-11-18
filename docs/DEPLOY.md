@@ -47,24 +47,36 @@ ssh-keygen -t ed25519 -N "" -C github-deploy -f drift_deploy
 - `ssh-keyscan -t ed25519 <IP>` → nội dung dùng cho secret `VPS_KNOWN_HOSTS`.
 - Xoá file `drift_deploy` khỏi máy sau khi đã lưu vào GitHub secret.
 
-### 2.4 `.env` và cert mTLS trên VPS (user `deploy`)
+### 2.4 Compose, `.env` và cert mTLS trên VPS
+Prod chạy một file `/opt/drift/docker-compose.yml` (mục 1). Máy mới thì chép mẫu một file của repo cùng mẫu `.env`, rồi điền:
 ```bash
+scp deploy/server/docker-compose.yml .env.production.example deploy@<IP>:/opt/drift/
 ssh deploy@<IP>
 cd /opt/drift
-# dán nội dung .env.production.example rồi điền
+mv .env.production.example .env
 nano .env && chmod 600 .env
-CERT_DAYS=1095 sh /root/gen-dev-certs.sh /opt/drift/certs   # chạy bằng root, rồi chown -R deploy:deploy /opt/drift/certs
 ```
 Giá trị phải tự sinh (mỗi cái một lần, không đổi về sau):
 - `POSTGRES_PASSWORD`, `SIGNER_DB_PASSWORD`: `openssl rand -hex 24`
 - `API_TOTP_ENC_KEY`: `openssl rand -base64 32`
 - `VAULT_TOKEN` (token của signer): `openssl rand -hex 24`
 - `DRIFT_IMAGE`: `docker.io/<user-docker-hub>/drift`. `APP_HOST`: tên miền. `ACME_EMAIL`: email nhận cảnh báo chứng chỉ.
+- `DRIFT_TAG`: để trống. `build-push.sh` ghi tag mỗi lần deploy (mục 3) và đọc nó để biết tag đang chạy.
 - `SMTP_URL`, `MAIL_FROM`: nhà cung cấp email thật (OTP đăng nhập đi qua email).
 - `DRIFT_BUILDER_ID`, `DRIFT_BUILDER_ADDRESS`: như máy dev.
-- `DESK_AI_API_KEY` (tuỳ chọn, DEC-165): key Claude API tạo ở Claude Console (tài khoản trả theo token của DeskLabs, không phải gói Claude cá nhân). Chỉ service `api` đọc. Để trống thì Desk AI chạy bằng câu mẫu. Đổi key: sửa `.env` rồi `docker compose … up -d api`. Không dán key vào log, ticket hay PR.
+- `DESK_AI_API_KEY` (tuỳ chọn, DEC-165): key Claude API tạo ở Claude Console (tài khoản trả theo token của DeskLabs, không phải gói Claude cá nhân). Chỉ service `api` đọc. Để trống thì Desk AI chạy bằng câu mẫu. Đổi key: sửa `.env` rồi `cd /opt/drift && docker compose up -d api`. Không dán key vào log, ticket hay PR. Biến này chỉ tới container khi service `api` trong compose của VPS có dòng `DESK_AI_API_KEY: ${DESK_AI_API_KEY:-}`.
 
-Cert mTLS hết hạn sau `CERT_DAYS` ngày. Đặt lịch nhắc tạo lại trước ngày hết hạn (signer từ chối mọi kết nối khi cert hết hạn → bot pause `API_KEY_UNUSABLE`).
+Mẫu compose đặt `name: drift`, nên network Traefik là `drift_edge`. `build-push.sh` chỉ đổi `DRIFT_TAG` trong `.env`; biến hay service mới phải tự thêm vào `/opt/drift/docker-compose.yml` theo ghi chú release (ví dụ 2.10, 2.12).
+
+Cert mTLS (api / engine ↔ signer) do service `certs` của compose tự tạo ở lần `up` đầu, lưu trong volume `certs`, hạn 1095 ngày (3 năm); lần sau thấy đủ file thì bỏ qua. Không cần chạy `gen-dev-certs.sh` (dòng `CERT_DAYS=… gen-dev-certs.sh /opt/drift/certs` và `SIGNER_CERTS_DIR` trong `.env.production.example` là của cách cũ). Đặt lịch nhắc tạo lại trước ngày hết hạn (signer từ chối mọi kết nối khi cert hết hạn → bot pause `API_KEY_UNUSABLE`). Tạo lại:
+```bash
+cd /opt/drift
+docker compose run --rm --entrypoint sh certs -c 'rm -f /certs/*'
+docker compose run --rm certs
+docker compose up -d --force-recreate signer api engine
+```
+
+Lần deploy đầu (cần `/opt/drift/.env`, script kiểm tra): `infra/deploy/build-push.sh --deploy-only vX.Y.Z` với tag release đã có, hoặc `infra/deploy/build-push.sh --deploy` để build cả 11 app (VPS chưa có `DRIFT_TAG` thì script không cho build vài app). Bước `docker compose up -d` của script tự chạy `certs`, init Vault và migration.
 
 ### 2.5 Docker Hub
 1. Tạo tài khoản, tạo **một** repository tên `drift`, chọn **Private**. Image chứa toàn bộ source code: không để public.
@@ -147,13 +159,13 @@ Phần A2: `apps/mcp` (MCP Streamable HTTP, cổng 8097) ở `https://mcp.deskla
 2. `/opt/drift/.env`:
    - `MCP_HOST=mcp.desklabs.xyz`: host Traefik của service `mcp`, phải khớp host của `MCP_PUBLIC_URL`.
    - `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET`: dùng chung với `api` (2.9). Secret trống thì service vẫn chạy, healthy, nhưng mọi lần gọi `/mcp` trả 503.
-3. `docker-compose.yml` trên VPS, thêm service (như repo):
+3. `/opt/drift/docker-compose.yml` (một file, mục 1; image và entrypoint `websecure` nằm ngay trong service, không còn `docker-compose.prod.yml`), thêm service:
    ```yaml
    mcp:
      <<: *app
-     build: { context: ., dockerfile: apps/mcp/Dockerfile }
+     image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:mcp-${DRIFT_TAG:-latest}
      environment:
-       NODE_ENV: ${NODE_ENV:-production}
+       NODE_ENV: production
        REDIS_URL: redis://redis:6379
        LOG_LEVEL: ${LOG_LEVEL:-info}
        MCP_PORT: "8097"
@@ -166,31 +178,24 @@ Phần A2: `apps/mcp` (MCP Streamable HTTP, cổng 8097) ở `https://mcp.deskla
        api: { condition: service_healthy }
      labels:
        - traefik.enable=true
-       - traefik.http.routers.mcp.rule=Host(`${MCP_HOST:-mcp.localhost}`)
+       - traefik.http.routers.mcp.rule=Host(`${MCP_HOST:-mcp.desklabs.xyz}`)
+       - traefik.http.routers.mcp.entrypoints=websecure
        - traefik.http.services.mcp.loadbalancer.server.port=8097
-       - traefik.docker.network=${COMPOSE_PROJECT_NAME:-drift-handoff}_edge
+       - traefik.docker.network=drift_edge
      networks: [edge, core]
      healthcheck: { test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8097/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"], interval: 10s, retries: 5 }
    ```
-   và trong `docker-compose.prod.yml`:
-   ```yaml
-   mcp:
-     image: ${DRIFT_IMAGE}:mcp-${DRIFT_TAG}
-     deploy: { replicas: 1 }
-     labels:
-       - traefik.http.routers.mcp.entrypoints=websecure
-   ```
-   Service không đọc biến nào khác của `x-app-env` (không có `DATABASE_URL`, key SoDEX hay key Claude).
+   Service không đọc biến nào khác của `x-env` (không có `DATABASE_URL`, key SoDEX hay key Claude).
    Trong service `api`, thêm router chặn route nội bộ từ ngoài (A3, DEC-219). apps/mcp gọi thẳng `http://api:8080`, không qua Traefik:
    ```yaml
    - traefik.http.routers.api-internal.rule=Host(`${APP_HOST}`) && (Path(`/api/v1/oauth/introspect`) || PathPrefix(`/api/v1/mcp/`))
    - traefik.http.routers.api-internal.priority=1000
+   - traefik.http.routers.api-internal.entrypoints=websecure
    - traefik.http.routers.api-internal.service=api
    - traefik.http.routers.api-internal.middlewares=deny-external
    - traefik.http.middlewares.deny-external.ipallowlist.sourcerange=127.0.0.1/32
    ```
-   và trong `docker-compose.prod.yml`, service `api`: `- traefik.http.routers.api-internal.entrypoints=websecure`.
-4. Deploy bằng tag có image `mcp-<tag>` (từ release đầu tiên có A2), rồi kiểm tra:
+4. Deploy bằng tag có image `mcp-<tag>` (từ release đầu tiên có A2): `infra/deploy/build-push.sh --deploy-only <tag>`. Bước `docker compose up -d` của script tạo service `mcp` và tạo lại `api` với label mới. Rồi kiểm tra:
    - `curl -s https://mcp.desklabs.xyz/.well-known/oauth-protected-resource/mcp` trả JSON có `resource: "https://mcp.desklabs.xyz/mcp"` và `authorization_servers: ["https://desklabs.xyz"]`;
    - `curl -si -X POST https://mcp.desklabs.xyz/mcp` trả `401` kèm header `WWW-Authenticate: Bearer scope="read", resource_metadata="…"`.
    - `curl -s -o /dev/null -w '%{http_code}' -X POST https://desklabs.xyz/api/v1/oauth/introspect` và `…/api/v1/mcp/calls` đều trả `403` (Traefik chặn).
@@ -206,12 +211,12 @@ Làm theo thứ tự, một lần. Mọi bước nằm ở 2.9 / 2.10; mục nà
   - [ ] `MCP_INTROSPECT_SECRET`: sinh một lần bằng `openssl rand -hex 32`. **Cùng một giá trị** cho `api` và `mcp` (cả hai đọc chung biến này từ `.env`). Không dán vào log, ticket hay PR.
   - [ ] `MCP_PUBLIC_URL=https://mcp.desklabs.xyz`
   - [ ] `MCP_HOST=mcp.desklabs.xyz` (phải khớp host của `MCP_PUBLIC_URL`)
-- [ ] `docker-compose.yml` trên VPS:
+- [ ] `/opt/drift/docker-compose.yml` (file duy nhất trên VPS):
   - [ ] service `api`: thêm `MCP_PUBLIC_URL`, `MCP_INTROSPECT_SECRET`; đổi rule router `api` có thêm `Path(`/.well-known/oauth-authorization-server`)` (2.9);
-  - [ ] service `api`: thêm 5 label router `api-internal` + middleware `deny-external` (2.10 bước 3);
-  - [ ] thêm service `mcp` (2.10 bước 3).
+  - [ ] service `api`: thêm 6 label của router `api-internal` (có `entrypoints=websecure`) và middleware `deny-external` (2.10 bước 3);
+  - [ ] thêm service `mcp` (image `mcp-${DRIFT_TAG}`, entrypoint `websecure`; 2.10 bước 3).
   - [ ] service `web`: thêm `MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-https://mcp.desklabs.xyz}` (trang `/claude` hiện địa chỉ `<MCP_PUBLIC_URL>/mcp`, #90). Thiếu thì trang dùng mặc định `https://mcp.desklabs.xyz/mcp`.
-- [ ] `docker-compose.prod.yml` trên VPS: service `mcp` (image `mcp-${DRIFT_TAG}`, entrypoint `websecure`); service `api` thêm `traefik.http.routers.api-internal.entrypoints=websecure`.
+- [ ] Kiểm tra file trước khi deploy: `cd /opt/drift && docker compose config --quiet` (không in gì là hợp lệ).
 
 **Deploy:**
 - [ ] `infra/deploy/build-push.sh --deploy-only <tag>`. Script chạy migrate trước khi bật service: `0029_mcp_oauth`, `0030_adaptive_dca_for_all`, `0031_mcp_bot_drafts`. Lần này kéo cả 11 image (phần đầu Dockerfile đổi), lâu hơn bình thường.
@@ -221,13 +226,13 @@ Làm theo thứ tự, một lần. Mọi bước nằm ở 2.9 / 2.10; mục nà
 - [ ] `curl -s https://mcp.desklabs.xyz/.well-known/oauth-protected-resource/mcp` → `resource` = `https://mcp.desklabs.xyz/mcp`, `authorization_servers` = `["https://desklabs.xyz"]`. Lần gọi đầu có thể chậm vì Traefik xin cert.
 - [ ] `curl -si -X POST https://mcp.desklabs.xyz/mcp` → `401` kèm `WWW-Authenticate: Bearer scope="read", resource_metadata="https://mcp.desklabs.xyz/.well-known/oauth-protected-resource/mcp"`.
 - [ ] `curl -s -o /dev/null -w '%{http_code}\n' -X POST https://desklabs.xyz/api/v1/oauth/introspect` và `…/api/v1/mcp/calls`, `…/api/v1/mcp/me/bots` → `403` (Traefik chặn từ ngoài).
-- [ ] `docker compose … ps mcp` → `healthy`.
+- [ ] `cd /opt/drift && docker compose ps mcp` → `healthy`.
 - [ ] Mở `https://desklabs.xyz/claude`: địa chỉ server hiện đúng `https://mcp.desklabs.xyz/mcp`, nút Copy chép đúng chuỗi đó.
 - [ ] Thử thật: thêm connector trong Claude (Customize › Connectors › + Add › Add custom connector, URL `https://mcp.desklabs.xyz/mcp`), Allow, hỏi "list my bots"; rồi Settings › Connected apps › Revoke và thấy Claude mất quyền ngay.
 
 **Rollback:**
-- Tắt MCP nhanh, không cần đổi image: để `MCP_INTROSPECT_SECRET=` trống trong `.env`, rồi `up -d api mcp`. `/mcp` trả 503, introspect của api tắt; mọi phần khác chạy như cũ. Token đã cấp không dùng được cho tới khi bật lại.
-- Quay cả bản: `infra/deploy/build-push.sh --deploy-only <tag trước>`. Migration không quay lại; bảng MCP mới không ảnh hưởng bản cũ. `0030` đã bật Adaptive DCA cho mọi tài khoản: bản cũ đọc cùng cờ nên hành vi giống nhau; muốn tắt thì team tắt từng tài khoản ở Users.
+- Tắt MCP nhanh, không cần đổi image: để `MCP_INTROSPECT_SECRET=` trống trong `/opt/drift/.env`, rồi `cd /opt/drift && docker compose up -d api mcp`. `/mcp` trả 503, introspect của api tắt; mọi phần khác chạy như cũ. Token đã cấp không dùng được cho tới khi bật lại.
+- Quay cả bản: `infra/deploy/build-push.sh --deploy-only <tag trước>` (mục 3). Migration không quay lại; bảng MCP mới không ảnh hưởng bản cũ. `0030` đã bật Adaptive DCA cho mọi tài khoản: bản cũ đọc cùng cờ nên hành vi giống nhau; muốn tắt thì team tắt từng tài khoản ở Users. Tag cũ không có image `mcp-<tag>` (trước A2) thì `docker compose pull` lỗi và script dừng: container đang chạy giữ nguyên nhưng `DRIFT_TAG` trong `.env` đã đổi; bỏ (hoặc comment) service `mcp` trong `/opt/drift/docker-compose.yml` rồi chạy lại lệnh.
 
 ### 2.12 SoDEX Debugger (DEC-309): bước làm tay khi release
 
@@ -270,37 +275,42 @@ Ra `true` thì deploy như thường (migration 0043 không làm gì).
 
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
-2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push 11 image → PM trả tag (`docs/RELEASE.md`).
-3. Người dùng deploy: `infra/deploy/build-push.sh --deploy-only vX.Y.Z` (rollback: cùng lệnh với tag cũ).
+2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push image các app đổi (app không đổi được gắn tag mới vào image của tag trước) → PM trả tag (`docs/RELEASE.md`).
+3. Người dùng deploy: `infra/deploy/build-push.sh --deploy-only vX.Y.Z` (rollback: cuối mục này).
 
 Build từ máy mình, không qua GitHub (máy đã `docker login` bằng token `drift-push`):
 ```bash
-DRIFT_IMAGE=docker.io/<user>/drift infra/deploy/build-push.sh deploy@<IP>
+infra/deploy/build-push.sh              # build + push cả 11 app, không deploy
+infra/deploy/build-push.sh web api      # chỉ build vài app
 ```
-Script tự về gốc repo, đọc `WALLETCONNECT_PROJECT_ID` từ `.env`, gắn 2 tag `<app>-<sha>` và `<app>-latest`. Chỉ build vài app: `infra/deploy/build-push.sh web api`. VPS ARM thì thêm `PLATFORM=linux/arm64` (máy x86 phải giả lập QEMU, chậm).
+Script tự về gốc repo, đọc `WALLETCONNECT_PROJECT_ID` từ `.env` (khi chưa đặt biến), đẩy lên `DRIFT_IMAGE` (mặc định `docker.io/lthuangiang/drift`) với 2 tag `<app>-<TAG>` và `<app>-latest`; `TAG` mặc định là ngày giờ lúc build (`yyyyMMddHHmmss`, giờ máy), đổi bằng `TAG=...`. VPS ARM thì thêm `PLATFORM=linux/arm64` (máy x86 phải giả lập QEMU, chậm).
 
 Deploy từ máy mình (thay cho làm tay `ssh` → sửa `DRIFT_TAG` → `migrate` → `pull` / `up -d`):
 
 ```bash
-infra/deploy/build-push.sh --deploy engine web     # build 2 app, 8 app còn lại giữ image đang chạy
+infra/deploy/build-push.sh --deploy engine web     # build 2 app, 9 app còn lại giữ image đang chạy
 infra/deploy/build-push.sh --deploy                # build cả 11 app rồi deploy
 infra/deploy/build-push.sh --deploy-only <tag>     # không build: deploy (hoặc rollback về) một tag đã push
 ```
 
-- Máy đích mặc định `root@149.28.148.63` (đổi bằng `DEPLOY_TARGET` hoặc `--deploy user@host`). SSH hỏi mật khẩu một lần, trước khi build; rsync và deploy dùng lại kết nối. Muốn khỏi gõ: `ssh-copy-id root@149.28.148.63`, hoặc để `DEPLOY_SSH_PASS=...` trong `infra/deploy/.deploy.local` (đã gitignore, cần `brew install sshpass`).
-- Chỉ build vài app: script đọc `DRIFT_TAG` đang chạy trên VPS và gắn tag mới cho các app không build, trỏ vào đúng image đang chạy (chép trên registry, không build lại), vì compose dùng một `DRIFT_TAG` chung.
+- Máy đích mặc định `root@149.28.148.63` (đổi bằng `DEPLOY_TARGET` hoặc `--deploy user@host`). SSH hỏi mật khẩu một lần, trước khi build; mọi lệnh sau tới VPS dùng lại kết nối đó. Muốn khỏi gõ: `ssh-copy-id root@149.28.148.63`, hoặc để `DEPLOY_SSH_PASS=...` trong `infra/deploy/.deploy.local` (đã gitignore, cần `brew install sshpass`). VPS thiếu `/opt/drift/.env` thì script dừng trước khi build.
+- Chỉ build vài app: script đọc `DRIFT_TAG` đang chạy trên VPS và gắn tag mới cho các app không build, trỏ vào đúng image đang chạy (chép trên registry, không build lại), vì compose dùng một `DRIFT_TAG` chung. VPS chưa có `DRIFT_TAG` (lần đầu) thì phải build cả 11 app.
 - Trên VPS (`/opt/drift`, chỉ một `docker-compose.yml`), script chạy đúng các bước làm tay: đổi `DRIFT_TAG` trong `.env` → `docker compose pull` → `docker compose run --rm migrate` → `docker compose up -d` → xoá image `DRIFT_IMAGE` **không** thuộc tag hiện tại hay tag liền trước, rồi `docker image prune -f` (layer treo). Không đụng image hạ tầng, không `docker system prune -af` nữa: rollback một bản không phải tải lại, và layer chung của bản mới không bị xoá (DEC-214). Không chép compose của repo lên VPS. Dọn image sau cùng, để pull / migrate lỗi thì bản đang chạy vẫn còn.
 
 Quy tắc:
-- **Migration tương thích ngược**: chỉ thêm bảng/cột; xoá hoặc đổi tên ở một lần deploy sau. `deploy.sh` rollback image chứ không rollback migration.
+- **Migration tương thích ngược**: chỉ thêm bảng/cột; xoá hoặc đổi tên ở một lần deploy sau. Rollback chỉ đổi image, không quay migration.
 - Engine chạy 1 bản: khi deploy, bot ngừng đặt lệnh vài giây. Engine trả lease khi SIGTERM; lệnh chưa rõ kết quả được đối soát (`unknown`), không gửi lại mù.
 - Tránh deploy khi bot đang ở bước nhạy cảm (TWAP sắp xong, vừa đổi đòn bẩy).
 
-Rollback tay về một SHA cũ (image còn giữ 72 giờ):
+Rollback về tag trước:
 ```bash
-ssh deploy@<IP> 'bash /opt/drift/infra/deploy/deploy.sh <sha-cũ>'
+infra/deploy/build-push.sh --deploy-only <tag trước>
 ```
-(Image cũ vẫn nằm trên Docker Hub, VPS kéo lại được bằng token read-only.)
+- Tag trước: script in đúng lệnh này sau mỗi lần deploy (`deployed <tag> (rollback: infra/deploy/build-push.sh --deploy-only <tag trước>)`) và in `running tag:` lúc kết nối; trên VPS là `DRIFT_TAG` trong `/opt/drift/.env`. Là tag release `vX.Y.Z` trước, hoặc tag ngày giờ của lần build tay trước.
+- Chạy đúng các bước của một lần deploy (đổi `DRIFT_TAG` → pull → migrate → `up -d` → dọn image). VPS giữ image của tag hiện tại và tag liền trước, nên rollback một bản không phải tải lại; tag cũ hơn được kéo lại từ Docker Hub bằng token read-only. Sau rollback, tag vừa bỏ thành "tag liền trước" nên deploy lại nó cũng không phải tải.
+- Migration không quay lại: migrate của image cũ không làm gì (mọi migration của nó đã chạy); bảng / cột mới vẫn còn và bản cũ bỏ qua chúng.
+- Rollback không hoàn lại thay đổi tay trong `/opt/drift/docker-compose.yml` hay `.env` (ví dụ 2.10, 2.12): bản cũ cần khác thì sửa tay.
+- `deploy.sh` trên VPS (cách cũ) không còn dùng để rollback.
 
 ## 4. Tài nguyên (2 vCPU, 4 GB)
 - Đo trên máy dev: cả stack 2–3 bản mỗi service ≈ 2.9 GB RAM. Prod 1 bản mỗi service ước ≈ 1.6–1.8 GB, còn chỗ cho Postgres cache và backtest; swap 4 GB đỡ lúc cao điểm.
