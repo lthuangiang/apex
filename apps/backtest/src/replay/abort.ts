@@ -12,6 +12,12 @@ export const IDLE_KILL_MESSAGE = "Aborted: idle-in-transaction timeout";
 const codeOf = (e: unknown): unknown =>
   typeof e === "object" && e !== null && "code" in e ? e.code : undefined;
 
+/** Thời gian chờ 25P03 đi kèm sau một lỗi "Connection terminated" trên cùng client. */
+const TERMINATED_GRACE_MS = 250;
+
+const isConnectionTerminated = (e: unknown): boolean =>
+  e instanceof Error && codeOf(e) === undefined && /Connection terminated/i.test(e.message);
+
 /** Lỗi là phiên bị cắt vì ngồi im trong transaction. */
 export function isIdleKill(e: unknown): boolean {
   return codeOf(e) === IDLE_KILL_CODE;
@@ -26,12 +32,33 @@ export function guardIdleKill(
   onKill: () => void,
   onOther: (e: unknown) => void = () => undefined,
 ): () => void {
-  const onClientError = (e: unknown) => {
-    if (isIdleKill(e)) onKill();
-    else onOther(e);
-  };
   const onConnect = (client: { on: (event: "error", f: (e: Error) => void) => unknown }) => {
-    client.on("error", onClientError);
+    // Sau FATAL 25P03, node-pg còn phát thêm "Connection terminated unexpectedly" (không có code) trên cùng client,
+    // trước hoặc sau lỗi 25P03 tuỳ thời điểm socket đóng. Lỗi đó là một phần của lần cắt, không phải lỗi khác: chờ
+    // một nhịp ngắn để xem 25P03 có tới không rồi mới chuyển cho `onOther`.
+    let killed = false;
+    let pending: { e: unknown; timer: ReturnType<typeof setTimeout> } | undefined;
+    client.on("error", (e: unknown) => {
+      if (isIdleKill(e)) {
+        killed = true;
+        if (pending !== undefined) clearTimeout(pending.timer);
+        pending = undefined;
+        onKill();
+        return;
+      }
+      if (isConnectionTerminated(e)) {
+        if (killed || pending !== undefined) return;
+        pending = {
+          e,
+          timer: setTimeout(() => {
+            pending = undefined;
+            if (!killed) onOther(e);
+          }, TERMINATED_GRACE_MS),
+        };
+        return;
+      }
+      onOther(e);
+    });
   };
   // Có listener thì Node không tự in lỗi và thoát nữa: lỗi khác in stack ra stderr rồi thoát mã 1 như mặc định.
   const onUncaught = (e: unknown) => {
