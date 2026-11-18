@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VB Signal Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Token values copied from packages/ui/src/styles/tokens.css (origin/main). Mockup only: no new tokens.
+   Chart colours: actual = --accent, opposite side (what-if) = --warn-bar (validated pair, CVD dE 33), builder fee = --mh-vol-2. */
+:root{
+  --bg:#eef1fa;--surface:#ffffff;--surface-2:#f5f7fd;--border:#e3e7f5;--border-input:#d5dcf2;
+  --ink:#141a33;--ink-2:#3b4262;--muted:#5f6684;--accent:#2e62e8;--accent-ink:#1d47b8;--accent-tint:#e6ecfe;
+  --pos:#0f7a43;--pos-bg:#ddf4e7;--pos-dot:#16a05a;
+  --neg:#c2312f;--neg-ink:#a72826;--neg-bg:#fde4e1;
+  --warn:#7a3e00;--warn-bg:#fdebd3;--warn-border:#f0c27e;--warn-bar:#e08a2e;
+  --unknown:#5a2ca0;--unknown-bg:#f0e6ff;
+  --chart-bg:#f7f9ff;--mh-vol-1:#c9d6fb;--mh-vol-2:#93adf3;--mh-hatch:#e3e7f5;
+  --focus-ring:#8fb0ff;
+  --radius-control:12px;--radius-tile:18px;--radius-card:24px;
+  --tap-min:44px;
+  --shadow-accent:0 6px 16px rgb(46 98 232 / .28);
+  --shadow-card:0 8px 24px rgb(20 26 51 / .07);
+  --shadow-float:0 -8px 24px rgb(20 26 51 / .06);
+  --font-sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);font-variant-numeric:tabular-nums}
+body{overflow-x:hidden}
+a{color:var(--accent-ink)}a:hover{color:var(--ink)}
+:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+button{font:inherit;color:inherit}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.mono{font-family:var(--font-mono);font-size:.92em}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.neg{color:var(--neg-ink)}.pos{color:var(--pos)}.mut{color:var(--muted)}
+
+/* Shell (same as SoDEX Debugger / Market hours) */
+.shell{display:flex;gap:20px;padding:20px;align-items:flex-start;min-height:100vh}
+.side{flex:0 0 236px;padding:16px 12px;border-radius:var(--radius-card);background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:2px;position:sticky;top:20px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px;color:var(--ink);text-decoration:none;font-weight:800;font-size:18px}
+.side .sec{padding:14px 12px 6px;font-size:11.5px;font-weight:800;letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+.side a.nav{display:flex;align-items:center;gap:10px;min-height:40px;padding:0 12px;border-radius:12px;color:var(--ink-2);text-decoration:none;font-size:14px;font-weight:600}
+.side a.nav[aria-current="page"]{background:var(--accent);color:#fff;box-shadow:var(--shadow-accent)}
+main{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:16px}
+.topbar{display:none}
+
+/* Header */
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px}
+.head h1{margin:0;font-size:30px;font-weight:800}
+.head p{margin:0}
+.lede{font-size:15px;line-height:1.5;color:var(--ink-2);max-width:760px}
+.note{font-size:13px;color:var(--muted);line-height:1.45}
+.head .right{margin-left:auto;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.ro{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ink-2)}
+.btn{min-height:var(--tap-min);padding:0 16px;border-radius:var(--radius-control);border:1px solid var(--border-input);background:var(--surface);color:var(--ink);font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:var(--shadow-accent)}
+.btn.icon{width:var(--tap-min);padding:0;justify-content:center}
+.btn.sm{min-height:36px;padding:0 12px;font-size:13px}
+.sample{align-self:flex-start;padding:4px 10px;border-radius:8px;background:var(--unknown-bg);color:var(--unknown);font-size:12px;font-weight:800;letter-spacing:.04em}
+.past{display:flex;gap:10px;align-items:flex-start;padding:12px 16px;border-radius:var(--radius-tile);background:var(--accent-tint);color:var(--accent-ink);font-size:13.5px;line-height:1.5;font-weight:600}
+.past svg{flex:0 0 18px;margin-top:1px}
+.past b{color:var(--ink)}
+
+/* Card */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:16px 18px}
+.card h2{margin:0;font-size:15px;font-weight:800}
+.card .hrow{display:flex;align-items:baseline;justify-content:space-between;gap:6px 12px;flex-wrap:wrap;margin-bottom:10px}
+.card .sub{font-size:12.5px;color:var(--muted);line-height:1.45;margin:2px 0 0}
+.minih{margin:0 0 8px;font-size:13px;font-weight:800;color:var(--ink)}
+
+/* Filters */
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld .lbl{font-size:12px;font-weight:700;color:var(--ink-2)}
+.select{min-height:var(--tap-min);border:1px solid var(--border-input);border-radius:var(--radius-control);background:var(--surface);padding:0 34px 0 12px;font-size:14px;font-weight:600;color:var(--ink);display:flex;align-items:center;white-space:nowrap;position:relative;cursor:pointer}
+.select::after{content:"";position:absolute;right:13px;top:50%;width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-70%) rotate(45deg)}
+.seg{display:inline-flex;border:1px solid var(--border-input);border-radius:var(--radius-control);padding:3px;background:var(--surface-2);gap:2px}
+.seg button{min-height:36px;padding:0 12px;border:0;border-radius:9px;background:transparent;font-size:13.5px;font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.seg button[aria-checked="true"],.seg button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgb(20 26 51 / .12)}
+.seg .cnt{font-weight:600;color:var(--muted);margin-left:4px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;font-size:13px;color:var(--ink-2)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:0 6px 0 10px;min-height:30px;border-radius:999px;background:var(--accent-tint);color:var(--accent-ink);font-weight:700;font-size:12.5px}
+.chip button{width:22px;height:22px;border-radius:50%;border:0;background:transparent;color:var(--accent-ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.linkbtn{background:none;border:0;color:var(--accent-ink);font-weight:700;font-size:13px;text-decoration:underline;cursor:pointer;padding:6px 2px}
+.mfilters{display:none}
+
+/* Summary */
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.kpi{background:var(--surface-2);border-radius:var(--radius-tile);padding:12px 14px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.kpi .k{font-size:12.5px;font-weight:700;color:var(--ink-2)}
+.kpi .v{font-size:24px;font-weight:800;letter-spacing:-.01em}
+.kpi .v small{font-size:13px;font-weight:700;color:var(--ink-2);margin-left:4px}
+.kpi .s{font-size:12px;color:var(--muted);line-height:1.4}
+.kpi.net{background:var(--neg-bg)}
+.kpi.net .k{color:var(--neg-ink)}
+.costs{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px 28px;margin-top:16px;align-items:start}
+.cbar{display:grid;grid-template-columns:150px minmax(0,1fr) 92px;gap:10px;align-items:center;margin-bottom:10px}
+.cbar .lab{font-size:13px;font-weight:700;color:var(--ink-2);line-height:1.3}
+.cbar .lab span{display:block;font-weight:600;font-size:11.5px;color:var(--muted)}
+.cbar .track{display:flex;gap:2px;height:30px}
+.cbar .seg1{height:100%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden}
+.cbar .seg1:first-child{border-radius:6px 0 0 6px}.cbar .seg1:last-child{border-radius:0 6px 6px 0}
+.c-tim{background:var(--warn-bar)}.c-sx{background:var(--accent);color:#fff!important}.c-bf{background:var(--mh-vol-2)}
+.c-tim.light{background:var(--warn-border)}
+.cbar .tot{font-size:14px;font-weight:800;text-align:right;color:var(--neg-ink)}
+.cbar .tot span{display:block;font-size:11.5px;font-weight:600;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--ink-2);font-weight:600}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.legend i.line{height:3px;border-radius:2px;vertical-align:3px;width:18px}
+.legend i.dash{height:0;border-top:3px dashed var(--warn-bar);border-radius:0;vertical-align:3px;width:18px;background:none}
+.legend i.band{background:var(--mh-vol-1)}
+.takeaway{background:var(--surface-2);border-radius:var(--radius-tile);padding:12px 14px;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.takeaway b{color:var(--ink)}
+
+/* Suggestions */
+.sugs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.sug{border:1px solid var(--border);border-radius:var(--radius-tile);padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.sug .top{display:flex;gap:10px;align-items:flex-start}
+.sug .num{flex:0 0 26px;height:26px;border-radius:8px;background:var(--accent-tint);color:var(--accent-ink);font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.sug h3{margin:2px 0 0;font-size:14.5px;font-weight:800;line-height:1.35}
+.sug p{margin:0;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.sug p b{color:var(--ink)}
+.sug .meta{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:12px;color:var(--muted);margin-top:auto;padding-top:2px}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:800;white-space:nowrap}
+.pill.thin{background:var(--warn-bg);color:var(--warn)}
+.pill.appr{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border)}
+.pill.what{background:var(--warn-bg);color:var(--warn)}
+.pill.sig{background:var(--accent-tint);color:var(--accent-ink)}
+.pill.bal{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border)}
+.sugfoot{margin:12px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5;display:flex;gap:6px;align-items:flex-start}
+.sugfoot svg{flex:0 0 14px;margin-top:2px}
+
+/* Charts */
+.charts{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}
+.chartbox{position:relative;min-width:0}
+.chartbox svg{display:block}
+.chartbox text{font-family:var(--font-sans);font-variant-numeric:tabular-nums}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;font-size:12px;line-height:1.45;padding:8px 10px;border-radius:10px;white-space:nowrap;box-shadow:var(--shadow-card);z-index:3}
+.tip b{font-weight:800}
+.mtable{width:100%;border-collapse:collapse;margin-top:10px}
+.mtable th,.mtable td{font-size:12.5px;padding:6px 6px;text-align:right;white-space:nowrap}
+.mtable th{font-size:11.5px;font-weight:800;color:var(--muted)}
+.mtable td{border-top:1px solid var(--border)}
+.mtable th:first-child,.mtable td:first-child{text-align:left;padding-left:0}
+.mtable td:first-child{font-weight:700;color:var(--ink-2)}
+.cfoot{font-size:12.5px;color:var(--ink-2);margin:10px 0 0;line-height:1.5}
+
+/* Tables */
+table{border-collapse:collapse;width:100%}
+.tblwrap{overflow-x:auto}
+.bt th{position:sticky;top:0;background:var(--surface-2);font-size:11.5px;font-weight:800;color:var(--muted);text-align:right;padding:9px 10px;white-space:nowrap;letter-spacing:.02em;vertical-align:bottom}
+.bt th span{display:block;font-weight:600;font-size:11px;letter-spacing:0}
+.bt td{font-size:13px;padding:6px 10px;height:46px;border-top:1px solid var(--border);white-space:nowrap;text-align:right;vertical-align:middle}
+.bt th:first-child,.bt td:first-child{text-align:left;padding-left:18px}
+.bt th:last-child,.bt td:last-child{padding-right:18px}
+.bt tr.all td{font-weight:800;border-top:2px solid var(--border);background:var(--surface-2)}
+.bt tr.thinrow td{color:var(--muted)}
+.bt tr.thinrow td:first-child{color:var(--ink-2)}
+.grp{font-weight:700;color:var(--ink);display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.div{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end}
+.div .m{position:relative;width:84px;height:8px;background:var(--surface-2);border-radius:4px;display:inline-block}
+.div .m::before{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--border-input)}
+.div .m i{position:absolute;top:0;bottom:0;border-radius:3px}
+.div .m i.n{right:50%;background:var(--neg)}
+.div .m i.p{left:50%;background:var(--pos-dot)}
+.div b{min-width:42px;text-align:right}
+.btabs{display:flex;gap:2px;flex-wrap:wrap;padding:0 18px;border-bottom:1px solid var(--border)}
+.btabs button{min-height:var(--tap-min);border:0;background:none;padding:0 12px;font-size:13.5px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.btabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.flush{padding:0;overflow:hidden}
+.flush .hrow{padding:14px 18px 12px;margin:0}
+.tfoot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 16px;align-items:center;padding:12px 18px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted)}
+.tt td{font-size:13px;height:46px}
+.tt tr.row{cursor:pointer}
+.tt tr.row:hover td{background:var(--surface-2)}
+.tt tr.row.sel td{background:var(--accent-tint)}
+.tt tr.row.sel td:first-child{box-shadow:inset 4px 0 0 var(--accent)}
+.side-l{font-weight:800}
+.side-l.long{color:var(--pos)}.side-l.short{color:var(--neg-ink)}
+.openbtn{border:0;background:none;padding:0;font:inherit;color:var(--accent-ink);font-weight:700;text-decoration:underline;cursor:pointer;min-height:28px}
+.mcards{display:none}
+
+/* Drill-down dialog (BottomSheet wide: md:max-w-5xl) */
+.scrim{position:fixed;inset:0;background:rgb(20 26 51 / .40);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
+.dialog{background:var(--surface);border-radius:var(--radius-card);width:min(1024px,100%);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgb(20 26 51 / .25);overflow:hidden}
+.dialog header{padding:20px 20px 4px;display:flex;gap:12px;align-items:flex-start}
+.dialog header .t{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.dialog h2{margin:0;font-size:18px;font-weight:700}
+.dialog .desc{margin:0;font-size:14px;color:var(--ink-2)}
+.xbtn{flex:0 0 44px;height:44px;border-radius:50%;border:0;background:var(--surface-2);font-size:20px;cursor:pointer;color:var(--ink)}
+.dialog .body{padding:12px 20px 20px;overflow:auto;display:flex;flex-direction:column;gap:16px}
+.dgrid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:20px;align-items:start}
+.dcol{display:flex;flex-direction:column;gap:14px;min-width:0}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat span{font-size:12px;color:var(--muted)}
+.stat strong{font-size:18px;font-weight:800}
+.stat em{font-style:normal;font-size:11px;color:var(--muted)}
+.panel{border-radius:12px;background:var(--surface-2);padding:10px 12px;font-size:13px}
+.panel h3{margin:0 0 8px;font-size:12px;font-weight:800;color:var(--muted)}
+.panel h3 .pill{margin-left:6px;vertical-align:1px}
+.comp{display:grid;grid-template-columns:132px minmax(0,1fr) 46px;gap:8px;align-items:center;font-size:12.5px;padding:3px 0}
+.comp .n{color:var(--ink-2);font-weight:600;line-height:1.25}
+.comp .n span{display:block;color:var(--muted);font-weight:500;font-size:11px}
+.comp .b{height:8px;background:var(--surface);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.comp .b i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.comp .b i.neu{background:var(--mh-hatch)}
+.comp .v{text-align:right;font-weight:800}
+.mk5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.mk5>div{background:var(--surface);border-radius:10px;padding:6px 8px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.mk5 span{font-size:11px;color:var(--muted);font-weight:700}
+.mk5 b{font-size:14px;font-weight:800}
+.mk5 em{font-style:normal;font-size:10.5px;color:var(--muted)}
+.mv3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.mv3>div{background:var(--surface);border-radius:10px;padding:6px 8px;display:flex;flex-direction:column;gap:1px}
+.mv3 span{font-size:11px;color:var(--muted);font-weight:700}
+.mv3 b{font-size:14px;font-weight:800}
+.mv3 em{font-style:normal;font-size:10.5px;color:var(--muted)}
+.wi{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:13px}
+.wi .r{text-align:right;font-weight:800}
+.wi .h{font-size:11.5px;font-weight:800;color:var(--muted)}
+.timeline{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.timeline li{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px}
+.timeline .t{color:var(--muted)}
+.timeline .x{color:var(--ink-2)}
+.timeline .x.fill{color:var(--pos)}
+.vers{border:1px solid var(--border);border-radius:12px;padding:8px 12px;font-size:14px;font-weight:700}
+.vers summary{cursor:pointer}
+
+/* States */
+.states{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--surface-2),var(--border),var(--surface-2));background-size:200% 100%;animation:sh 1.4s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:28px 16px}
+.empty h3{margin:0;font-size:16px;font-weight:800}
+.empty p{margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.5;max-width:380px}
+.thinbanner{display:flex;gap:10px;align-items:flex-start;padding:12px 16px;border-radius:14px;background:var(--warn-bg);color:var(--warn);font-size:13.5px;font-weight:600;line-height:1.5}
+.thinbanner svg{flex:0 0 18px;margin-top:2px}
+.stlabel{font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:0 0 8px}
+
+/* ---------- < 1024: no sidebar; < 768: phone ---------- */
+@media (max-width:1023px){
+  .side{display:none}
+  .shell{padding:0;display:block}
+  main{padding:12px 16px 24px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0}
+  .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .charts{grid-template-columns:minmax(0,1fr)}
+  .costs{grid-template-columns:minmax(0,1fr)}
+  .desk-sample{display:none}
+}
+@media (max-width:767px){
+  .head h1{font-size:26px}
+  .lede{font-size:14px}
+  .head .right{margin-left:0;width:100%;justify-content:space-between}
+  .head .right .upd{display:none}
+  .card{padding:14px}
+  .past{padding:10px 12px;font-size:13px}
+  .filters .desk-only{display:none}
+  .filters{gap:8px}
+  .filters .fld.time{flex:1 1 0}
+  .mfilters{display:inline-flex}
+  .chips .clear{display:none}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .kpi{padding:10px 12px}
+  .kpi .v{font-size:20px}
+  .kpi:first-child{grid-column:1 / -1}
+  .card.flush{padding:0}
+  #trades .seg{width:100%}
+  #trades .seg button{flex:1 1 auto;padding:0 6px;font-size:13px}
+  .cbar{grid-template-columns:minmax(0,1fr) 78px;gap:4px 10px}
+  .cbar .lab{grid-column:1 / -1}
+  .cbar .track{grid-column:1;height:26px}
+  .sugs{grid-template-columns:minmax(0,1fr)}
+  .sug{padding:12px 14px}
+  .btabs{padding:0 6px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .btabs button{padding:0 10px}
+  .bt .hide-m{display:none}
+  .bt td,.bt th{padding-left:6px;padding-right:6px;font-size:12.5px}
+  .bt th:first-child,.bt td:first-child{padding-left:14px}
+  .bt th:last-child,.bt td:last-child{padding-right:14px}
+  .bt td:first-child{white-space:normal}
+  .div .m{display:none}
+  .flush .hrow{padding:12px 14px 8px}
+  .tfoot{padding:12px 14px}
+  .ttwrap{display:none}
+  .mcards{display:flex;flex-direction:column}
+  .mcard{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:3px 10px;padding:12px 14px;border:0;border-top:1px solid var(--border);background:none;text-align:left;width:100%;cursor:pointer;color:var(--ink);font:inherit}
+  .mcard .l1{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13.5px}
+  .mcard .l2,.mcard .l3{font-size:12px;color:var(--ink-2)}
+  .mcard .r{text-align:right;font-weight:800;font-size:14px}
+  .mcard .r span{display:block;font-size:11px;font-weight:600;color:var(--muted)}
+  .mcard .chev{grid-row:1/4;grid-column:3;align-self:center;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg)}
+  .mcard.sel{background:var(--accent-tint)}
+  /* Drill-down: full-screen sheet */
+  .scrim{padding:0;align-items:stretch}
+  .dialog{border-radius:0;max-height:none;height:100vh;width:100%}
+  .dialog header{padding:14px 16px 4px}
+  .dialog h2{font-size:17px}
+  .dialog .desc{font-size:13px}
+  .dialog .body{padding:10px 16px 24px}
+  .dgrid{display:flex;flex-direction:column;gap:14px;align-items:stretch}
+  .dcol{display:contents}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .comp{grid-template-columns:116px minmax(0,1fr) 40px}
+  .mk5{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+  .mk5>div{padding:6px 5px}
+  .mk5 b{font-size:13px}
+  .timeline li{grid-template-columns:90px minmax(0,1fr);gap:6px}
+  .timeline .t{font-size:12px}
+  .states{grid-template-columns:minmax(0,1fr)}
+  .mtable th,.mtable td{white-space:normal;padding:6px 3px;font-size:11.5px}
+  .mtable td:first-child{width:76px}
+  .mtable .to{display:block;font-size:10.5px;line-height:1.1}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ---------------------------------------------------------------------------------------------------------------
+// SAMPLE DATA. Every value below is made up for the mockup, shaped to match the 2026-11-17 analysis in issue #220
+// (VB chases short moves, SoDEX mean-reverts 1–2 bp, post-only entries fill on the way back, the opposite side is
+// ~1.4 bp better before fees, both lose after 4.4–10 bp of fees). Real values come from the API (DESIGN.md D3).
+// bp = basis points of the entry notional per round trip. $/1M = per 1M USDC of volume (entry + exit) = bp × 50.
+// ---------------------------------------------------------------------------------------------------------------
+const P = new URLSearchParams(location.search);
+const VIEW = P.get('view') || 'overview';   // overview | trade | states
+let BY = P.get('by') || 'regime';            // breakdown tab
+let WIN = P.get('win') || '3';               // move-before window: 1 | 3 | 5
+
+const ico = (d,s=16,w=2)=>`<svg width="${s}" height="${s}" style="flex:0 0 ${s}px" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  refresh:'<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  warn:'<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
+  filter:'<path d="M4 6h16M7 12h10M10 18h4"/>',
+  menu:'<path d="M4 7h16M4 12h16M4 17h16"/>',
+  chart:'<path d="M4 19h16M7 16V9M12 16V5M17 16v-4"/>',
+};
+const f1 = v => (v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1);
+const bp = v => `${f1(v)} bp`;
+const usdM = v => `${v<0?'−':''}$${Math.round(Math.abs(v)*50)}`;   // bp → $ per 1M volume
+const cls = v => v<0?'neg':v>0?'pos':'';
+const pct = (a,b)=> Math.round(a/b*100)+'%';
+const THIN = 30;
+
+// Overall (filters: last 7 days, all markets, all VB bots)
+const ALL = {n:1284, vol:'1.01M', notional:507000, pre:-2.0, sx:3.5, bf:1.8, fees:5.3, opp:-0.6, mk:[-0.4,-0.9,-1.3,-1.7,-2.0], move:3.4};
+
+// Breakdowns: n, move before (3 min, bp in the entry's direction), markout 1 min, before fees, fees, opposite side before fees
+const B = {
+  regime:{label:'Regime', note:'Regime from 5-minute candles at entry.', rows:[
+    ['Uptrend',402,4.1,-1.6,-2.6,5.3,-0.2],
+    ['Downtrend',371,3.8,-1.5,-2.4,5.3,-0.4],
+    ['Sideways',484,2.2,-0.9,-1.1,5.3,-1.0],
+    ['Very volatile',18,7.4,-2.9,-4.8,5.6,0.9],
+    ['No clear trend',9,1.9,-0.4,-0.7,5.2,-1.3]]},
+  score:{label:'Score', note:'Signal entries only (1,008). Balance entries have no score.', total:[1008,4.0,-1.5,-2.3,5.3,-0.4], rows:[
+    ['40–50',236,2.4,-0.9,-1.3,5.3,-0.9],
+    ['50–60',318,3.3,-1.3,-2.0,5.3,-0.6],
+    ['60–70',262,4.2,-1.7,-2.7,5.3,-0.2],
+    ['70–80',154,5.4,-2.0,-3.1,5.3,0.0],
+    ['80 and up',38,6.8,-2.5,-3.7,5.4,0.3]]},
+  part:{label:'Signal part', note:'The part of the score that added the most at entry. Weights: candle momentum 30%, wick rejection 25%, volume acceleration 20%, trade pressure 15% (always neutral, no trade feed), order book 10%. Signal entries only.', total:[1008,4.0,-1.5,-2.3,5.3,-0.4], rows:[
+    ['Candle momentum',421,5.6,-1.9,-3.0,5.3,-0.1],
+    ['Wick rejection',236,3.1,-1.4,-2.4,5.3,-0.5],
+    ['Volume acceleration',287,3.4,-1.1,-1.5,5.3,-0.7],
+    ['Order book',64,1.8,-0.6,-0.9,5.2,-1.0]]},
+  exit:{label:'Exit reason', note:'Fees differ by exit: stops close with a taker order.', rows:[
+    ['Hold time ended',612,2.9,-1.0,-1.6,4.9,-0.9],
+    ['Take profit',148,2.1,1.8,6.8,4.6,-5.6],
+    ['Early profit',121,2.4,0.9,3.2,4.6,-3.4],
+    ['Max hold',205,3.6,-2.0,-3.9,5.4,1.2],
+    ['Stop loss',171,4.8,-4.1,-10.5,7.4,3.6],
+    ['Stop on SoDEX',27,5.5,-6.0,-14.2,8.8,6.0]]},
+  type:{label:'Entry type', note:'Balance entries go the other way to keep long and short volume even (DEC-80).', rows:[
+    ['Signal',1008,4.0,-1.5,-2.3,5.3,-0.4],
+    ['Balance',276,1.2,-0.6,-0.9,5.3,-1.0]]},
+  hour:{label:'Hour (UTC)', note:'4-hour blocks, by fill time.', rows:[
+    ['00:00–04:00',168,2.6,-0.9,-1.5,5.3,-0.8],
+    ['04:00–08:00',241,3.8,-1.5,-2.4,5.3,-0.4],
+    ['08:00–12:00',236,3.4,-1.2,-2.0,5.3,-0.6],
+    ['12:00–16:00',262,4.1,-1.6,-2.6,5.3,-0.3],
+    ['16:00–20:00',219,3.1,-1.1,-1.8,5.3,-0.6],
+    ['20:00–24:00',158,2.4,-0.8,-1.2,5.3,-0.9]]},
+  market:{label:'Market', note:'', rows:[
+    ['BTC-USD',702,3.1,-1.1,-1.7,5.1,-0.7],
+    ['ETH-USD',488,3.9,-1.5,-2.3,5.4,-0.4],
+    ['SOL-USD',94,4.6,-1.8,-2.8,6.0,-0.2]]},
+  size:{label:'Order size', note:'Entry notional in USDC.', rows:[
+    ['Under 250',214,3.2,-1.1,-1.8,5.3,-0.6],
+    ['250–400',611,3.4,-1.2,-1.9,5.3,-0.5],
+    ['400–550',398,3.5,-1.3,-2.2,5.3,-0.6],
+    ['550 and up',61,3.7,-1.5,-2.6,5.3,-0.7]]},
+};
+const BY_ORDER = ['regime','score','part','exit','type','hour','market','size'];
+
+// Move before entry, buckets in the entry's direction: n, before fees, opposite side before fees
+const MOVE = {
+  '1':[['Against',301,-0.4,-1.3],['0–2 bp',452,-1.6,-0.9],['2–4 bp',308,-2.6,-0.4],['4–6 bp',146,-3.6,0.0],['6 bp or more',77,-5.4,0.3]],
+  '3':[['Against',212,0.3,-1.5],['0–2 bp',318,-0.9,-1.0],['2–4 bp',316,-2.0,-0.6],['4–6 bp',248,-3.1,-0.1],['6 bp or more',190,-5.2,0.4]],
+  '5':[['Against',254,0.1,-1.4],['0–2 bp',262,-1.0,-0.9],['2–4 bp',270,-1.9,-0.6],['4–6 bp',252,-2.9,-0.2],['6 bp or more',246,-4.4,0.2]],
+};
+
+// Markout after fill: mean, p25, p75 (actual); mean (opposite side, what-if)
+const HZ = ['10 s','30 s','1 min','2 min','5 min'];
+const HZs = [10,30,60,120,300];
+const MK = {mean:[-0.4,-0.9,-1.3,-1.7,-2.0], p25:[-2.1,-3.6,-4.8,-6.2,-9.4], p75:[1.3,1.6,2.0,2.6,4.8], opp:[-0.2,-0.1,0.1,0.2,0.1], behind:[54,58,61,62,60]};
+
+// Trades (newest first). Times UTC.
+const TR = [
+ {id:'t1',t:'2026-11-18 07:31:52',m:'ETH-USD',bot:'ETH vb 3',side:'Short',type:'Signal',score:58,mv:2.9,mk:-0.8,exit:'Hold time ended',pre:-1.4,net:-6.7,opp:-5.6},
+ {id:'t2',t:'2026-11-18 07:24:10',m:'BTC-USD',bot:'BTC vb',side:'Long',type:'Balance',score:null,mv:-0.6,mk:0.4,exit:'Early profit',pre:3.1,net:-1.5,opp:-8.0},
+ {id:'t3',t:'2026-11-18 07:17:45',m:'ETH-USD',bot:'ETH vb 3',side:'Long',type:'Signal',score:66,mv:6.8,mk:-2.6,exit:'Max hold',pre:-4.4,net:-9.8,opp:-1.4},
+ {id:'t4',t:'2026-11-18 07:09:14',m:'ETH-USD',bot:'ETH vb 3',side:'Long',type:'Signal',score:69,mv:12.6,mk:-6.0,exit:'Hold time ended',pre:-8.8,net:-14.0,opp:3.4},
+ {id:'t5',t:'2026-11-18 07:02:33',m:'BTC-USD',bot:'BTC vb',side:'Short',type:'Signal',score:47,mv:1.2,mk:-0.3,exit:'Hold time ended',pre:-0.6,net:-5.7,opp:-5.9},
+ {id:'t6',t:'2026-11-18 06:55:08',m:'SOL-USD',bot:'SOL vb',side:'Long',type:'Signal',score:74,mv:8.1,mk:-3.9,exit:'Stop loss',pre:-11.6,net:-19.2,opp:3.9},
+ {id:'t7',t:'2026-11-18 06:48:41',m:'BTC-USD',bot:'BTC vb rev',side:'Short',type:'Signal',score:61,mv:-3.4,mk:0.9,exit:'Take profit',pre:6.2,net:1.6,opp:-9.7},
+ {id:'t8',t:'2026-11-18 06:41:19',m:'ETH-USD',bot:'ETH vb 3',side:'Short',type:'Balance',score:null,mv:0.8,mk:-0.2,exit:'Hold time ended',pre:-0.9,net:-6.2,opp:-5.7},
+ {id:'t9',t:'2026-11-18 06:33:02',m:'BTC-USD',bot:'BTC vb',side:'Long',type:'Signal',score:55,mv:4.4,mk:-1.7,exit:'Hold time ended',pre:-2.7,net:-7.8,opp:-2.4},
+ {id:'t10',t:'2026-11-18 06:26:37',m:'BTC-USD',bot:'BTC vb rev',side:'Long',type:'Signal',score:52,mv:-2.1,mk:0.3,exit:'Hold time ended',pre:-0.2,net:-5.3,opp:-4.9},
+];
+
+// ---------------------------------------------------------------- sidebar + header
+const navMain = ['Overview','Portfolio','Trading Agent','AI Desk','Strategy Lab','Execution & Orders','Risk Center'];
+const navTeam = ['Builder Revenue','Users','Platform Stats','Bot Monitor','Market hours','System Architecture Diagram','SoDEX Debugger','VB Signal Analysis'];
+const sidebar = `
+<nav class="side" aria-label="Main">
+  <a class="brand" href="#"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#2E62E8"></rect><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#FFFFFF"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#FFFFFF" opacity="0.7"></rect></svg>DeskLabs</a>
+  ${navMain.map(n=>`<a class="nav" href="#">${n}</a>`).join('')}
+  <span class="sec">Team</span>
+  ${navTeam.map(n=>`<a class="nav" href="#" ${n==='VB Signal Analysis'?'aria-current="page"':''}>${n==='VB Signal Analysis'?ico(I.chart,18,1.9):''}${n}</a>`).join('')}
+  <span class="sec"></span>
+  <a class="nav" href="#">Settings</a>
+</nav>`;
+
+const header = `
+<div class="topbar"><button class="btn icon" aria-label="Open menu">${ico(I.menu,20,2)}</button><span class="sample">SAMPLE DATA</span></div>
+<header class="head">
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <h1>VB Signal Analysis</h1>
+    <p class="lede">Where Volume Builder entries lose money: entry timing against fees, where the price goes after the fill, and what the opposite side would have made.</p>
+  </div>
+  <div class="right">
+    <span class="ro">${ico(I.lock,15,2)}Read only</span>
+    <span class="note upd">Updated 07:42 UTC</span>
+    <button class="btn">${ico(I.refresh,16,2.2)}Refresh</button>
+  </div>
+</header>
+<span class="sample desk-sample">SAMPLE DATA · every value on this page is made up</span>
+<div class="past" role="note">${ico(I.info,18,2)}<div><b>Analysis of past trades, not a forecast.</b> It shows what happened on these entries. This page never changes a bot; any change to VB logic is made and approved separately.</div></div>`;
+
+const filters = `
+<section class="card" aria-labelledby="h-f">
+  <h2 id="h-f" class="sr">Filters</h2>
+  <div class="filters">
+    <div class="fld time"><span class="lbl" id="l-time">Time</span><span class="select" role="button" tabindex="0" aria-labelledby="l-time" aria-haspopup="listbox">Last 7 days</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-mk">Market</span><span class="select" role="button" tabindex="0" aria-labelledby="l-mk" aria-haspopup="listbox">All markets</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-bot">Bot</span><span class="select" role="button" tabindex="0" aria-labelledby="l-bot" aria-haspopup="listbox">All VB bots</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-rg">Regime</span><span class="select" role="button" tabindex="0" aria-labelledby="l-rg" aria-haspopup="listbox">All regimes</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-et">Entry type</span>
+      <div class="seg" role="radiogroup" aria-labelledby="l-et"><button role="radio" aria-checked="true">All</button><button role="radio" aria-checked="false">Signal</button><button role="radio" aria-checked="false">Balance</button></div></div>
+    <div class="fld desk-only"><span class="lbl" id="l-rv">Reverse the signal</span>
+      <div class="seg" role="radiogroup" aria-labelledby="l-rv"><button role="radio" aria-checked="true">All</button><button role="radio" aria-checked="false">On</button><button role="radio" aria-checked="false">Off</button></div></div>
+    <div class="fld mfilters"><span class="lbl">&nbsp;</span><button class="btn">${ico(I.filter,16,2.2)}Filters</button></div>
+  </div>
+  <div class="chips"><span>Live bots only, paper excluded · 9 VB bots · 4 accounts</span></div>
+</section>`;
+
+// ---------------------------------------------------------------- summary
+function costBar(label, sub, segs, total, totSub){
+  const W = 7.6; // scale: bp for full width
+  return `<div class="cbar">
+    <div class="lab">${label}<span>${sub}</span></div>
+    <div class="track" role="img" aria-label="${label}: ${segs.map(s=>s[1]+' '+s[0].toFixed(1)+' bp').join(', ')}, total ${total.toFixed(1)} bp">
+      ${segs.map(s=>`<div class="seg1 ${s[2]}" style="flex:0 0 calc(${(s[0]/W*100).toFixed(2)}% - 2px)" title="${s[1]}: −${s[0].toFixed(1)} bp">${s[0]>=1?'−'+s[0].toFixed(1):''}</div>`).join('')}
+    </div>
+    <div class="tot">−${total.toFixed(1)} bp<span>${totSub}</span></div>
+  </div>`;
+}
+const net = ALL.pre-ALL.fees, oppNet = ALL.opp-ALL.fees;
+const summary = `
+<section class="card" aria-labelledby="h-sum">
+  <div class="hrow"><div><h2 id="h-sum">Last 7 days · ${ALL.n.toLocaleString('en-US')} entries</h2><p class="sub">Per round trip, in bp of the entry notional. $/1M is per 1M USDC of volume.</p></div></div>
+  <div class="kpis">
+    <div class="kpi"><span class="k">Entries</span><span class="v">1,284</span><span class="s">${ALL.vol} USDC volume · 1,008 signal, 276 balance</span></div>
+    <div class="kpi"><span class="k">Entry timing</span><span class="v neg">${bp(ALL.pre)}</span><span class="s">Before fees · ${usdM(ALL.pre)} / 1M</span></div>
+    <div class="kpi"><span class="k">Fees</span><span class="v neg">${bp(-ALL.fees)}</span><span class="s">${usdM(-ALL.fees)} / 1M · SoDEX −3.5, builder −1.8</span></div>
+    <div class="kpi net"><span class="k">Net</span><span class="v neg">${bp(net)}</span><span class="s">${usdM(net)} / 1M · −370 USDC</span></div>
+    <div class="kpi"><span class="k">Opposite side (what-if)</span><span class="v neg">${bp(oppNet)}</span><span class="s">1.4 bp better, still a loss · ${usdM(oppNet)} / 1M</span></div>
+  </div>
+  <div class="costs">
+    <div>
+      <h3 class="minih">Loss per trade: timing vs fees</h3>
+      ${costBar('Actual entries','as traded',[[2.0,'Entry timing','c-tim'],[3.5,'SoDEX fee','c-sx'],[1.8,'Builder fee','c-bf']],7.3,usdM(net)+' / 1M')}
+      ${costBar('Opposite side','what-if, same moments',[[0.6,'Entry timing','c-tim'],[3.5,'SoDEX fee','c-sx'],[1.8,'Builder fee','c-bf']],5.9,usdM(oppNet)+' / 1M')}
+      <div class="legend"><span><i class="c-tim"></i>Entry timing (before fees)</span><span><i class="c-sx"></i>SoDEX fee</span><span><i class="c-bf"></i>Builder fee</span></div>
+    </div>
+    <div class="takeaway"><b>Fees are 73% of the loss.</b> Entry timing adds 2.0 bp per trade on top. Taking the other side at the same moments loses 0.6 bp before fees instead of 2.0, which is still far below the 5.3 bp of fees.<br><span class="mut" style="font-size:12px">Opposite side: same entry time and hold, post-only on the other side of the book. Assumes it filled; it might not have.</span></div>
+  </div>
+</section>`;
+
+// ---------------------------------------------------------------- suggestions
+const SUGS = [
+  {h:'Don’t enter after a fast move in the signal’s direction',
+   p:'Entries after a move of <b>4 bp or more in 3 min</b> lost <b>4.0 bp</b> before fees, <b>3.0 bp more</b> than the rest. They were <b>34% of entries</b> (438 of 1,284) and <b>67% of the timing loss</b>.',
+   n:'438 entries', link:'Move before entry'},
+  {h:'Wait for the pullback before placing the entry',
+   p:'After the fill, the price kept moving against the entry: <b>−0.9 bp at 30 s</b>, <b>−2.0 bp at 5 min</b>. <b>61%</b> of entries were behind after 1 min. The post-only order fills as the move turns.',
+   n:'1,284 entries', link:'Price after the fill'},
+  {h:'Weigh candle momentum less',
+   p:'When candle momentum added the most to the score, entries lost <b>3.0 bp</b> before fees (421 entries), vs <b>1.8 bp</b> for other signal entries. Higher scores lost more: <b>−1.3 bp</b> at 40–50, <b>−3.7 bp</b> at 80 and up.',
+   n:'1,008 signal entries', link:'Signal part'},
+  {h:'The signal does worse than balance entries',
+   p:'Balance entries, which ignore the signal, lost <b>0.9 bp</b> before fees. Signal entries lost <b>2.3 bp</b>. Reversing helps by about <b>1.4 bp</b>, but both sides lose after <b>5.3 bp</b> of fees, so reversing alone doesn’t fix VB.',
+   n:'1,284 entries', link:'Entry type'},
+];
+const suggestions = `
+<section class="card" aria-labelledby="h-sug">
+  <div class="hrow"><div><h2 id="h-sug">Suggestions</h2><p class="sub">Drawn from the trades above. Each one is a lead to test, not a forecast of savings.</p></div></div>
+  <ol class="sugs" style="list-style:none;margin:0;padding:0">
+    ${SUGS.map((s,i)=>`<li class="sug"><div class="top"><span class="num" aria-hidden="true">${i+1}</span><h3>${s.h}</h3></div><p>${s.p}</p><div class="meta"><span>Based on ${s.n}</span><a href="#" class="see">See: ${s.link}</a><span class="pill appr">Needs approval (DEC-80)</span></div></li>`).join('')}
+  </ol>
+  <p class="sugfoot">${ico(I.info,14,2.2)}Numbers are averages over past entries in the filters above. Results can differ on future trades. This page never changes a bot.</p>
+</section>`;
+
+// ---------------------------------------------------------------- charts
+const chartsShell = `
+<section class="charts">
+  <div class="card" aria-labelledby="h-mk">
+    <div class="hrow"><div><h2 id="h-mk">Price after the fill</h2><p class="sub">Markout in the entry’s favour, from the fill price to the mid price. Below 0 = the price moved against the entry.</p></div></div>
+    <div class="legend" style="margin-bottom:6px"><span><i class="line" style="background:var(--accent)"></i>Actual, mean</span><span><i class="band"></i>Actual, middle half (p25–p75)</span><span><i class="dash"></i>Opposite side, mean (what-if)</span></div>
+    <div class="chartbox" id="mkchart"></div>
+    <table class="mtable"><caption class="sr">Markout after the fill, in bp</caption>
+      <thead><tr><th scope="col">After the fill</th>${HZ.map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead>
+      <tbody>
+        <tr><td>Actual, mean</td>${MK.mean.map(v=>`<td class="${cls(v)}">${f1(v)}</td>`).join('')}</tr>
+        <tr><td>p25 to p75</td>${MK.p25.map((v,i)=>`<td class="mut">${f1(v)} <span class="to">to</span> ${f1(MK.p75[i])}</td>`).join('')}</tr>
+        <tr><td>Behind the fill</td>${MK.behind.map(v=>`<td>${v}%</td>`).join('')}</tr>
+        <tr><td>Opposite side, mean</td>${MK.opp.map(v=>`<td class="${cls(v)}">${f1(v)}</td>`).join('')}</tr>
+      </tbody></table>
+  </div>
+  <div class="card" aria-labelledby="h-mv">
+    <div class="hrow"><div><h2 id="h-mv">Move before entry vs result</h2><p class="sub">How far the price had already moved in the entry’s direction when the order was placed, and the result before fees.</p></div>
+      <div class="seg" role="radiogroup" aria-label="Window before entry" id="winseg">${['1','3','5'].map(w=>`<button role="radio" data-w="${w}" aria-checked="${w===WIN}">${w} min</button>`).join('')}</div></div>
+    <div class="legend" style="margin-bottom:6px"><span><i style="background:var(--neg)"></i>Actual, before fees</span><span><i style="background:var(--warn-bar);border-radius:50%"></i>Opposite side, before fees (what-if)</span></div>
+    <div class="chartbox" id="mvchart"></div>
+    <p class="cfoot" id="mvfoot"></p>
+  </div>
+</section>`;
+
+function drawMarkout(){
+  const box = document.getElementById('mkchart'); if(!box) return;
+  const w = box.clientWidth, H = w<440?220:250;
+  const P = {l:40,r:w<440?52:96,t:14,b:28};
+  const lo=-10, hi=5;
+  const xs = i => P.l + i/(HZ.length-1)*(w-P.l-P.r);
+  const y = v => P.t + (hi-v)/(hi-lo)*(H-P.t-P.b);
+  const ticks=[-10,-8,-6,-4,-2,0,2,4];
+  const band = MK.p75.map((v,i)=>`${xs(i)},${y(v)}`).join(' ')+' '+MK.p25.map((v,i)=>`${xs(i)},${y(v)}`).reverse().join(' ');
+  const line = (arr)=>arr.map((v,i)=>`${i?'L':'M'}${xs(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  box.innerHTML = `<svg width="${w}" height="${H}" role="img" aria-label="Markout after the fill. Actual mean ${MK.mean.map((v,i)=>HZ[i]+' '+f1(v)+' bp').join(', ')}. Opposite side mean ${MK.opp.map((v,i)=>HZ[i]+' '+f1(v)+' bp').join(', ')}.">
+    <rect x="${P.l}" y="${P.t}" width="${w-P.l-P.r}" height="${H-P.t-P.b}" fill="var(--chart-bg)" rx="8"/>
+    ${ticks.map(t=>`<line x1="${P.l}" x2="${w-P.r}" y1="${y(t)}" y2="${y(t)}" stroke="${t===0?'var(--muted)':'var(--border)'}" stroke-width="${t===0?1.2:1}"/><text x="${P.l-8}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)">${t>0?'+':''}${t===0?'0':String(t).replace('-','−')}</text>`).join('')}
+    <text x="${P.l-8}" y="${P.t-2}" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--muted)">bp</text>
+    ${HZ.map((h,i)=>`<text x="${xs(i)}" y="${H-8}" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-weight="600">${h}</text>`).join('')}
+    <polygon points="${band}" fill="var(--mh-vol-1)" opacity=".75"/>
+    <path d="${line(MK.opp)}" fill="none" stroke="var(--warn-bar)" stroke-width="2" stroke-dasharray="6 4"/>
+    <path d="${line(MK.mean)}" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+    ${MK.mean.map((v,i)=>`<circle cx="${xs(i)}" cy="${y(v)}" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`).join('')}
+    ${MK.opp.map((v,i)=>`<circle cx="${xs(i)}" cy="${y(v)}" r="4" fill="var(--warn-bar)" stroke="var(--surface)" stroke-width="2"/>`).join('')}
+    <text x="${xs(4)+10}" y="${y(MK.mean[4])+4}" font-size="12" font-weight="800" fill="var(--ink)">${f1(MK.mean[4])}${w<440?'':' actual'}</text>
+    <text x="${xs(4)+10}" y="${y(MK.opp[4])-6}" font-size="12" font-weight="800" fill="var(--ink-2)">${f1(MK.opp[4])}${w<440?'':' opposite'}</text>
+    ${HZ.map((h,i)=>`<rect class="hit" data-i="${i}" x="${xs(i)-(w-P.l-P.r)/8}" y="${P.t}" width="${(w-P.l-P.r)/4}" height="${H-P.t-P.b}" fill="transparent"/>`).join('')}
+    <line id="mkx" x1="0" x2="0" y1="${P.t}" y2="${H-P.b}" stroke="var(--ink-2)" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>
+  </svg><div class="tip" id="mktip" hidden></div>`;
+  const tip = box.querySelector('#mktip'), cx = box.querySelector('#mkx');
+  box.querySelectorAll('.hit').forEach(r=>{
+    r.addEventListener('mouseenter',()=>{const i=+r.dataset.i; cx.setAttribute('x1',xs(i)); cx.setAttribute('x2',xs(i)); cx.setAttribute('opacity',1);
+      tip.hidden=false; tip.innerHTML=`<b>${HZ[i]} after the fill</b><br>Actual ${f1(MK.mean[i])} bp (middle half ${f1(MK.p25[i])} to ${f1(MK.p75[i])})<br>Behind the fill: ${MK.behind[i]}%<br>Opposite side ${f1(MK.opp[i])} bp`;
+      tip.style.left=Math.min(xs(i)+10,w-230)+'px'; tip.style.top='10px';});
+    r.addEventListener('mouseleave',()=>{tip.hidden=true;cx.setAttribute('opacity',0);});
+  });
+}
+
+function drawMove(){
+  const box = document.getElementById('mvchart'); if(!box) return;
+  const rows = MOVE[WIN]; const N = rows.reduce((a,r)=>a+r[1],0);
+  const w = box.clientWidth, H = w<440?230:262;
+  const P = {l:40,r:8,t:22,b:46};
+  const lo=-6, hi=1;
+  const bw = (w-P.l-P.r)/rows.length;
+  const y = v => P.t + (hi-v)/(hi-lo)*(H-P.t-P.b);
+  const ticks=[-6,-4,-2,0];
+  box.innerHTML = `<svg width="${w}" height="${H}" role="img" aria-label="Result before fees by move before entry over ${WIN} min. ${rows.map(r=>r[0]+': '+r[1]+' entries, '+f1(r[2])+' bp, opposite side '+f1(r[3])+' bp').join('; ')}.">
+    <rect x="${P.l}" y="${P.t}" width="${w-P.l-P.r}" height="${H-P.t-P.b}" fill="var(--chart-bg)" rx="8"/>
+    ${ticks.map(t=>`<line x1="${P.l}" x2="${w-P.r}" y1="${y(t)}" y2="${y(t)}" stroke="${t===0?'var(--muted)':'var(--border)'}" stroke-width="${t===0?1.2:1}"/><text x="${P.l-8}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)">${t===0?'0':String(t).replace('-','−')}</text>`).join('')}
+    <text x="${P.l-8}" y="${P.t-8}" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--muted)">bp</text>
+    ${rows.map((r,i)=>{const cx=P.l+bw*i+bw/2, bwi=Math.min(46,bw*0.5); const v=r[2]; const y0=y(0), y1=y(v);
+      const top=Math.min(y0,y1), h=Math.max(2,Math.abs(y1-y0)); const fill=v<0?'var(--neg)':'var(--pos-dot)';
+      const thin=r[1]<THIN;
+      const rx = v<0?`M${cx-bwi/2},${top} h${bwi} v${h-4} a4,4 0 0 1 -4,4 h${-(bwi-8)} a4,4 0 0 1 -4,-4z`:`M${cx-bwi/2},${top+4} a4,4 0 0 1 4,-4 h${bwi-8} a4,4 0 0 1 4,4 v${h-4} h${-bwi}z`;
+      return `<g><title>${r[0]}: ${r[1]} entries (${pct(r[1],N)}). Before fees ${f1(v)} bp. Opposite side ${f1(r[3])} bp.</title>
+        <path d="${rx}" fill="${fill}" ${thin?'opacity=".45"':''}/>
+        <text x="${cx}" y="${v<0?y1+15:y1-6}" text-anchor="middle" font-size="11.5" font-weight="800" fill="var(--ink)">${f1(v)}</text>
+        <circle cx="${cx+bwi/2+9}" cy="${y(r[3])}" r="5" fill="var(--warn-bar)" stroke="var(--surface)" stroke-width="2"/>
+        <text x="${cx}" y="${H-28}" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink-2)">${w<440?r[0].replace(' or more','+').replace(' bp',''):r[0]}</text>
+        <text x="${cx}" y="${H-13}" text-anchor="middle" font-size="11" fill="var(--muted)">${r[1]} · ${pct(r[1],N)}</text></g>`;}).join('')}
+  </svg>`;
+  const big = rows.slice(3), rest = rows.slice(0,3);
+  const nb = big.reduce((a,r)=>a+r[1],0), nr = N-nb;
+  const ab = big.reduce((a,r)=>a+r[1]*r[2],0)/nb, ar = rest.reduce((a,r)=>a+r[1]*r[2],0)/nr;
+  document.getElementById('mvfoot').innerHTML = `<b>4 bp or more in ${WIN} min:</b> ${nb} entries (${pct(nb,N)}), ${f1(ab)} bp before fees vs ${f1(ar)} bp for the rest. ${w<440?'Labels in bp.':'“Against” = the price had moved the other way.'}`;
+}
+
+// ---------------------------------------------------------------- breakdown
+function divCell(v, max){ const wv = Math.min(50, Math.abs(v)/max*50); return `<span class="div"><span class="m" aria-hidden="true"><i class="${v<0?'n':'p'}" style="width:${wv}%"></i></span><b class="${cls(v)}">${f1(v)}</b></span>`; }
+function breakdownRows(){
+  const d = B[BY]; const tot = d.total || [ALL.n,ALL.move,ALL.mk[2],ALL.pre,ALL.fees,ALL.opp];
+  const max = Math.max(...d.rows.map(r=>Math.abs(r[4])), 4);
+  const row = (r, all) => { const [g,n,mv,mk,pre,fee,opp]=r; const thin = !all && n<THIN; const nt=pre-fee, on=opp-fee;
+    return `<tr class="${all?'all':''} ${thin?'thinrow':''}"><td><span class="grp">${g}${thin?'<span class="pill thin">Thin sample</span>':''}</span></td>
+      <td>${n.toLocaleString('en-US')}</td><td class="hide-m">${all?'100%':pct(n,tot[0])}</td>
+      <td class="hide-m">${f1(mv)}</td><td class="hide-m ${cls(mk)}">${f1(mk)}</td>
+      <td>${divCell(pre,max)}</td><td class="hide-m neg">${f1(-fee)}</td>
+      <td class="neg" style="font-weight:800">${f1(nt)}</td><td class="hide-m">${usdM(nt)}</td>
+      <td class="hide-m ${cls(on)}">${f1(on)}</td></tr>`; };
+  return d.rows.map(r=>row(r,false)).join('') + row([d.total?'All signal entries':'All entries',...tot],true);
+}
+const breakdown = () => `
+<section class="card flush" aria-labelledby="h-bd" id="breakdown">
+  <div class="hrow"><div><h2 id="h-bd">Breakdown</h2><p class="sub" id="bdnote">${B[BY].note||'&nbsp;'}</p></div><span class="note">bp per round trip · groups under ${THIN} entries are marked Thin sample</span></div>
+  <div class="btabs" role="tablist" aria-label="Group by">${BY_ORDER.map(k=>`<button role="tab" data-by="${k}" aria-selected="${k===BY}">${B[k].label}</button>`).join('')}</div>
+  <div class="tblwrap" role="tabpanel">
+  <table class="bt"><caption class="sr">Results by ${B[BY].label}</caption>
+    <thead><tr><th scope="col">${B[BY].label}</th><th scope="col">Entries</th><th scope="col" class="hide-m">Share</th><th scope="col" class="hide-m">Move before<span>3 min, bp</span></th><th scope="col" class="hide-m">Markout<span>1 min, bp</span></th><th scope="col">Before fees<span>bp</span></th><th scope="col" class="hide-m">Fees<span>bp</span></th><th scope="col">Net<span>bp</span></th><th scope="col" class="hide-m">Net<span>$ / 1M</span></th><th scope="col" class="hide-m">Opposite side net<span>what-if, bp</span></th></tr></thead>
+    <tbody id="bdbody">${breakdownRows()}</tbody>
+  </table></div>
+</section>`;
+
+// ---------------------------------------------------------------- trades
+const tradesHTML = `
+<section class="card flush" aria-labelledby="h-tr" id="trades">
+  <div class="hrow"><div><h2 id="h-tr">Entries</h2><p class="sub">1,284 in the filters above · open one to see its prices, orders and signal</p></div>
+    <div class="seg" role="radiogroup" aria-label="Sort"><button role="radio" aria-checked="true">Newest</button><button role="radio" aria-checked="false">Worst net</button><button role="radio" aria-checked="false">Biggest move before</button></div></div>
+  <div class="tblwrap ttwrap">
+  <table class="bt tt"><caption class="sr">VB entries</caption>
+    <thead><tr><th scope="col">Filled (UTC)</th><th scope="col" style="text-align:left">Market · bot</th><th scope="col" style="text-align:left">Side</th><th scope="col" style="text-align:left">Entry type</th><th scope="col">Score</th><th scope="col">Move before<span>3 min, bp</span></th><th scope="col">Markout<span>1 min, bp</span></th><th scope="col" style="text-align:left">Exit reason</th><th scope="col">Before fees<span>bp</span></th><th scope="col">Net<span>bp</span></th><th scope="col">Opposite side net<span>what-if, bp</span></th></tr></thead>
+    <tbody>${TR.map(t=>`<tr class="row ${VIEW==='trade'&&t.id==='t4'?'sel':''}" tabindex="0"><td><button class="openbtn" aria-haspopup="dialog">${t.t.slice(11)}</button><div class="mut" style="font-size:11.5px">${t.t.slice(0,10)}</div></td>
+      <td style="text-align:left">${t.m}<div class="mut" style="font-size:11.5px">${t.bot}</div></td><td style="text-align:left"><span class="side-l ${t.side.toLowerCase()}">${t.side}</span></td>
+      <td style="text-align:left"><span class="pill ${t.type==='Signal'?'sig':'bal'}">${t.type}</span></td><td>${t.score??'—'}</td>
+      <td style="${t.mv>=4?'font-weight:800':''}">${t.mv>=4?'▲ ':''}${f1(t.mv)}</td><td class="${cls(t.mk)}">${f1(t.mk)}</td><td style="text-align:left">${t.exit}</td>
+      <td class="${cls(t.pre)}">${f1(t.pre)}</td><td class="${cls(t.net)}" style="font-weight:800">${f1(t.net)}</td><td class="${cls(t.opp)}">${f1(t.opp)}</td></tr>`).join('')}</tbody>
+  </table></div>
+  <div class="mcards">${TR.map(t=>`<button class="mcard ${VIEW==='trade'&&t.id==='t4'?'sel':''}" aria-haspopup="dialog">
+      <span class="l1"><span class="side-l ${t.side.toLowerCase()}">${t.side}</span> ${t.m}<span class="pill ${t.type==='Signal'?'sig':'bal'}">${t.type}</span></span>
+      <span class="r ${cls(t.net)}" style="grid-row:1/3;grid-column:2;align-self:center">${f1(t.net)} bp<span>net</span></span><span class="chev" aria-hidden="true"></span>
+      <span class="l2">${t.t.slice(11,16)} UTC · ${t.bot} · ${t.exit}</span>
+      <span class="l3">Move before ${t.mv>=4?'▲ ':''}${f1(t.mv)} · 1 min ${f1(t.mk)} · opposite ${f1(t.opp)}</span></button>`).join('')}</div>
+  <div class="tfoot"><span>▲ moved 4 bp or more in the entry’s direction in the 3 min before the order.</span><button class="btn sm">Load 50 more</button></div>
+</section>`;
+
+// ---------------------------------------------------------------- drill-down (reuses the Trade detail sheet, DEC-141)
+const CANDLES = [ // 1-minute ETH-USD, 07:03..07:15 UTC [minute, h, l, c]
+ [3,1821.2,1820.5,1820.9],[4,1821.4,1820.6,1821.0],[5,1821.9,1820.9,1821.6],[6,1822.6,1821.5,1822.3],[7,1823.9,1822.2,1823.5],
+ [8,1825.6,1823.4,1824.8],[9,1825.3,1823.4,1823.6],[10,1823.9,1820.5,1821.6],[11,1822.0,1820.8,1821.4],[12,1822.0,1821.0,1821.7],
+ [13,1821.8,1820.7,1821.0],[14,1821.7,1820.9,1821.3],[15,1822.0,1821.1,1821.6]];
+function drawTradeChart(){
+  const box = document.getElementById('tchart'); if(!box) return;
+  const w = box.clientWidth, H = 220, P = {l:64,r:10,t:22,b:22};
+  const lo=1820.0, hi=1826.0;
+  const m0=3, m1=15.6; // minutes
+  const x = m => P.l + (m-m0)/(m1-m0)*(w-P.l-P.r);
+  const y = v => P.t + (hi-v)/(hi-lo)*(H-P.t-P.b);
+  const entryM = 9+14/60, orderM = 9+3/60, exitM = 10+28/60;
+  const path = CANDLES.map((k,i)=>`${i?'L':'M'}${x(k[0]+.5).toFixed(1)},${y(k[3]).toFixed(1)}`).join(' ');
+  const mks = [[10,'10 s'],[30,'30 s'],[60,'1 min'],[120,'2 min'],[300,'5 min']];
+  box.innerHTML = `<svg width="${w}" height="${H}" role="img" aria-label="ETH-USD price around the trade, 1-minute candles. Price rose 12.6 bp in the 3 min before the order, filled at 1,824.1 at 07:09:14, exited at 1,822.5 at 07:10:28.">
+    <rect x="${x(orderM-3)}" y="${P.t}" width="${x(orderM)-x(orderM-3)}" height="${H-P.t-P.b}" fill="var(--warn-bg)"/>
+    <text x="${(x(orderM-3)+x(orderM))/2}" y="${P.t-7}" text-anchor="middle" font-size="11" font-weight="800" fill="var(--warn)">3 min before: +12.6 bp</text>
+    <rect x="${x(entryM)}" y="${P.t}" width="${x(exitM)-x(entryM)}" height="${H-P.t-P.b}" fill="var(--accent-tint)"/>
+    ${CANDLES.map(k=>`<line x1="${x(k[0]+.5)}" x2="${x(k[0]+.5)}" y1="${y(k[1])}" y2="${y(k[2])}" stroke="#c9d3f2" stroke-width="3"/>`).join('')}
+    <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="1.8"/>
+    <line x1="${P.l}" x2="${w-P.r}" y1="${y(1824.1)}" y2="${y(1824.1)}" stroke="var(--ink)" stroke-dasharray="5 4"/>
+    <text x="${P.l-6}" y="${y(1824.1)+4}" text-anchor="end" font-size="11" font-weight="700" fill="var(--ink)">1,824.1</text>
+    <line x1="${P.l}" x2="${w-P.r}" y1="${y(1822.5)}" y2="${y(1822.5)}" stroke="var(--neg)" stroke-dasharray="5 4"/>
+    <text x="${P.l-6}" y="${y(1822.5)+4}" text-anchor="end" font-size="11" font-weight="700" fill="var(--neg)">1,822.5</text>
+    ${[1821,1823,1825].map(v=>`<text x="${P.l-6}" y="${y(v)+4}" text-anchor="end" font-size="10.5" fill="var(--muted)">${v.toLocaleString('en-US')}</text>`).join('')}
+        ${[4,6,8,10,12,14].map(m=>`<text x="${x(m)}" y="${H-5}" text-anchor="middle" font-size="10.5" fill="var(--muted)">07:${String(m).padStart(2,'0')}</text>`).join('')}
+    <circle cx="${x(entryM)}" cy="${y(1824.1)}" r="5" fill="var(--ink)"/>
+    <circle cx="${x(exitM)}" cy="${y(1822.5)}" r="5" fill="var(--neg)"/>
+  </svg>`;
+}
+const tradeDialog = `
+<div class="scrim">
+<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dt" aria-describedby="dd">
+  <header><div class="t"><h2 id="dt">Long trade · 2026-11-18 07:09:14 UTC</h2><p class="desc" id="dd">Prices, orders and fills of one trade, from SoDEX fills and the bot’s decisions.</p></div><button class="xbtn" aria-label="Close">×</button></header>
+  <div class="body">
+    <div class="dgrid">
+      <div class="dcol">
+        <div style="order:1" class="stats">
+          <div class="stat"><span>Entry</span><strong>1,824.1</strong><em>07:09:14 UTC</em></div>
+          <div class="stat"><span>Exit</span><strong>1,822.5</strong><em>07:10:28 UTC</em></div>
+          <div class="stat"><span>Held</span><strong>1 min 14 s</strong><em>Hold time ended</em></div>
+          <div class="stat"><span>Net PnL</span><strong class="neg">−0.42 USDC</strong><em>On 300.07 USDC</em></div>
+        </div>
+        <div style="order:2"><h3 class="minih">Price around the trade <span class="note" style="font-weight:600">· ETH-USD · ETH vb 3</span></h3><div class="chartbox" id="tchart"></div>
+          <div class="legend" style="margin-top:6px"><span><i style="background:var(--warn-bg);border:1px solid var(--warn-border)"></i>3 min before the order</span><span><i style="background:var(--accent-tint);border:1px solid var(--mh-vol-1)"></i>Held</span><span><i class="line" style="background:var(--accent)"></i>1-minute close</span></div></div>
+        <div style="order:7" class="stats">
+          <div class="stat"><span>Price PnL</span><strong class="neg">−0.26 USDC</strong><em>−8.8 bp</em></div>
+          <div class="stat"><span>Fees</span><strong class="neg">−0.16 USDC</strong><em>−5.2 bp</em></div>
+          <div class="stat"><span>MFE</span><strong>0.066%</strong><em>Best move in its favour</em></div>
+          <div class="stat"><span>MAE</span><strong>0.197%</strong><em>Worst move against it</em></div>
+        </div>
+        <div style="order:8" class="panel"><h3>Order timeline</h3>
+          <ol class="timeline">
+            <li><span class="t">07:09:02.410</span><span class="x">Enter long: score 69 in an uptrend; candle momentum led.</span></li>
+            <li><span class="t">07:09:03.118</span><span class="x">Order e1: buy limit post-only at 1,824.1, sent</span></li>
+            <li><span class="t">07:09:14.552</span><span class="x fill">Filled buy 0.1645 at 1,824.1, fee 0.0786 (maker)</span></li>
+            <li><span class="t">07:10:16.004</span><span class="x">Exit: Hold time 62 s ended (PnL −0.20)</span></li>
+            <li><span class="t">07:10:16.611</span><span class="x">Order x1: sell limit post-only at 1,822.6, sent</span></li>
+            <li><span class="t">07:10:28.093</span><span class="x fill">Filled sell 0.1645 at 1,822.5, fee 0.0786 (maker)</span></li>
+          </ol></div>
+      </div>
+      <div class="dcol">
+        <div style="order:3" class="panel"><h3>Signal at entry <span class="pill sig">Signal</span></h3>
+          <div class="wi" style="margin-bottom:8px"><span>Score</span><span class="r">69 <span class="mut" style="font-weight:600">· 60–70</span></span><span>Regime (5-minute candles)</span><span class="r">Uptrend</span><span>Spread at entry</span><span class="r">0.5 bp</span></div>
+          ${[['Candle momentum','30%',84],['Wick rejection','25%',52],['Volume acceleration','20%',88],['Trade pressure','15% · no trade feed',50,true],['Order book','10%',61]].map(c=>`<div class="comp"><span class="n">${c[0]}<span>${c[1]}</span></span><span class="b" role="img" aria-label="${c[0]} ${c[2]} of 100${c[3]?', neutral':''}"><i class="${c[3]?'neu':''}" style="width:${c[2]}%"></i></span><span class="v">${c[3]?'—':c[2]}</span></div>`).join('')}
+          <p class="note" style="margin:6px 0 0;font-size:12px">Each part from 0 to 100; 50 = neutral. Trade pressure is always neutral.</p></div>
+        <div style="order:4" class="panel"><h3>Move before the order</h3>
+          <div class="mv3"><div><span>1 min</span><b>+1.8 bp</b><em>all: +1.5</em></div><div><span>3 min</span><b>▲ +12.6 bp</b><em>all: +3.4</em></div><div><span>5 min</span><b>▲ +17.5 bp</b><em>all: +4.3</em></div></div></div>
+        <div style="order:5" class="panel"><h3>Price after the fill</h3>
+          <div class="mk5">${[['10 s',-1.1,-0.4],['30 s',-2.7,-0.9],['1 min',-6.0,-1.3],['2 min',-13.2,-1.7],['5 min',-15.4,-2.0]].map(m=>`<div><span>${m[0]}</span><b class="${cls(m[1])}">${f1(m[1])}</b><em>all: ${f1(m[2])}</em></div>`).join('')}</div>
+          <p class="note" style="margin:6px 0 0;font-size:12px">bp in the entry’s favour, fill price to mid. Measured past the exit too.</p></div>
+        <div style="order:6" class="panel"><h3>Opposite side <span class="pill what">What-if</span></h3>
+          <div class="wi"><span class="h">&nbsp;</span><span class="h r">USDC</span>
+            <span>Short at 1,824.2, closed at 1,822.6</span><span class="r pos">+0.26</span>
+            <span>Fees</span><span class="r neg">−0.16</span>
+            <span><b>Net</b></span><span class="r pos">+0.10 <span class="mut" style="font-weight:600">· +3.4 bp</span></span></div>
+          <p class="note" style="margin:6px 0 0;font-size:12px">Same entry time and hold, post-only at the best ask. Assumes it filled; it might not have.</p></div>
+        <details style="order:9" class="vers"><summary>Settings version 4</summary><pre class="mono" style="margin:8px 0 0;font-size:12px;color:var(--ink-2);white-space:pre-wrap">{ "reverseSignal": false, "orderSizeMinUsd": 200,
+  "orderSizeMaxUsd": 500, "minHoldSecs": 45, "maxHoldSecs": 180 }</pre></details>
+      </div>
+    </div>
+  </div>
+</div></div>`;
+
+// ---------------------------------------------------------------- states
+const statesHTML = `
+<section class="states" aria-label="Page states">
+  <div class="card"><p class="stlabel">Loading</p>
+    <div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">${[1,2,3].map(()=>`<div class="kpi"><div class="skel" style="width:60%"></div><div class="skel" style="height:22px;width:80%;margin-top:6px"></div></div>`).join('')}</div>
+    <div class="skel" style="height:160px;margin-top:14px;border-radius:12px"></div>
+    <p class="note" style="margin:10px 0 0" role="status">Loading VB entries…</p></div>
+  <div class="card"><p class="stlabel">Empty</p>
+    <div class="empty"><h3>No VB entries in this range</h3><p>No live Volume Builder bot filled an entry with these filters. Try a longer time range or clear the filters.</p><button class="btn">Clear filters</button></div></div>
+  <div class="card"><p class="stlabel">Error</p>
+    <div class="empty"><h3>Couldn’t load the analysis</h3><p>The request failed. Nothing on your bots changed.</p><button class="btn primary">${ico(I.refresh,16,2.2)}Try again</button></div></div>
+  <div class="card"><p class="stlabel">Thin sample</p>
+    <div class="thinbanner">${ico(I.warn,18,2)}<div><b>Thin sample: 22 entries.</b> Averages over fewer than 30 entries move a lot from one trade to the next. Widen the time range or clear filters before reading much into them.</div></div>
+    <p class="note" style="margin:10px 0 0">Suggestions are hidden until a group has 30 entries or more. In tables, groups under 30 are greyed and marked <span class="pill thin">Thin sample</span>.</p>
+    <p class="stlabel" style="margin-top:14px">Stale</p>
+    <div class="thinbanner" style="background:var(--surface-2);color:var(--ink-2)">${ico(I.info,18,2)}<div>Showing data from 06:10 UTC. Entries since then are still being measured; 5-minute markouts need 5 minutes after each fill.</div></div></div>
+</section>`;
+
+// ---------------------------------------------------------------- render
+function render(){
+  const body = VIEW==='states'
+    ? header + filters + statesHTML
+    : header + filters + summary + suggestions + chartsShell + breakdown() + tradesHTML;
+  document.getElementById('app').innerHTML = `<div class="shell">${sidebar}<main>${body}</main></div>${VIEW==='trade'?tradeDialog:''}`;
+  drawMarkout(); drawMove(); drawTradeChart();
+  document.querySelectorAll('#winseg button').forEach(b=>b.addEventListener('click',()=>{WIN=b.dataset.w;document.querySelectorAll('#winseg button').forEach(x=>x.setAttribute('aria-checked',x===b));drawMove();}));
+  document.querySelectorAll('.btabs button').forEach(b=>b.addEventListener('click',()=>{BY=b.dataset.by;const s=document.getElementById('breakdown');s.outerHTML=breakdown();render();document.getElementById('breakdown').scrollIntoView();}));
+  document.querySelectorAll('.openbtn,.mcard').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();location.search='?view=trade';}));
+  document.querySelectorAll('tr.row').forEach(r=>r.addEventListener('click',()=>{location.search='?view=trade';}));
+  const x=document.querySelector('.xbtn'); if(x) x.addEventListener('click',()=>{location.search='';});
+}
+render();
+let rt; addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{drawMarkout();drawMove();drawTradeChart();},120);});
+</script>
+</body>
+</html>

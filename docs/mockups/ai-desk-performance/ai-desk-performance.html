@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Desk performance card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Token values copied from packages/ui/src/styles/tokens.css (origin/main). Mockup only, no new tokens.
+   Cost split colours: fees --accent, price moved against fills --warn-bar (same as the team page). */
+:root{
+  --bg:#eef1fa;--surface:#ffffff;--surface-2:#f5f7fd;--border:#e3e7f5;--border-input:#d5dcf2;
+  --ink:#141a33;--ink-2:#3b4262;--muted:#5f6684;--accent:#2e62e8;--accent-ink:#1d47b8;--accent-tint:#e6ecfe;
+  --hero:linear-gradient(135deg,#e3e8fe,#cbd5fb);--ai-mark:linear-gradient(135deg,#2e62e8,#7a4cc8);
+  --pos:#0f7a43;--pos-bg:#ddf4e7;--pos-dot:#16a05a;--neg:#c2312f;--neg-ink:#a72826;--neg-bg:#fde4e1;
+  --warn:#7a3e00;--warn-bg:#fdebd3;--warn-border:#f0c27e;--warn-bar:#e08a2e;
+  --unknown:#5a2ca0;--unknown-bg:#f0e6ff;--chart-bg:#f7f9ff;--mh-vol-1:#c9d6fb;--fits:#0b6a39;
+  --focus-ring:#8fb0ff;--radius-control:12px;--radius-tile:18px;--radius-card:24px;--radius-hero:28px;--tap-min:44px;
+  --shadow-accent:0 6px 16px rgb(46 98 232 / .28);--shadow-card:0 8px 24px rgb(20 26 51 / .07);--shadow-float:0 -8px 24px rgb(20 26 51 / .06);
+  --font-sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{position:relative}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);font-variant-numeric:tabular-nums}
+body{overflow-x:hidden}
+a{color:var(--accent-ink)}a:hover{color:var(--ink)}
+:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+button{font:inherit;color:inherit}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.neg{color:var(--neg-ink)}.pos{color:var(--pos)}.mut{color:var(--muted)}
+
+.shell{display:flex;gap:20px;padding:20px;align-items:flex-start;min-height:100vh}
+.side{flex:0 0 236px;padding:16px 12px;border-radius:var(--radius-card);background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:2px;position:sticky;top:20px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px;color:var(--ink);text-decoration:none;font-weight:800;font-size:18px}
+.side a.nav{display:flex;align-items:center;gap:10px;min-height:40px;padding:0 12px;border-radius:12px;color:var(--ink-2);text-decoration:none;font-size:14px;font-weight:600}
+.side a.nav[aria-current="page"]{background:var(--accent);color:#fff;box-shadow:var(--shadow-accent)}
+.side .sec{padding:14px 12px 6px}
+.layout{flex:1 1 0;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,400px);gap:20px;align-items:start}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.head h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em}
+.watch{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--pos-dot);display:inline-block}
+.btn{min-height:var(--tap-min);padding:0 18px;border-radius:14px;border:1px solid var(--border-input);background:var(--surface);color:var(--ink);font-size:14px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:8px;text-decoration:none;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.sm{min-height:36px;padding:0 12px;font-size:13px;border-radius:12px}
+.sample{display:inline-block;padding:4px 10px;border-radius:8px;background:var(--unknown-bg);color:var(--unknown);font-size:12px;font-weight:800;letter-spacing:.04em}
+.mtop{display:none}
+.mnav{display:none}
+
+/* existing AI Desk blocks (BP-Home), shortened */
+.goal{display:flex;flex-direction:column;gap:12px;padding:20px 24px;border-radius:26px;background:var(--hero)}
+.goal .k{margin:0;font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-ink)}
+.goal strong{font-size:21px;letter-spacing:-.01em}
+.bar{height:14px;border-radius:7px;background:rgb(255 255 255 / .7);overflow:hidden}.bar i{display:block;height:100%;border-radius:7px;background:var(--accent)}
+.needs h2{margin:0 0 10px;font-size:19px;font-weight:800}
+.nitem{display:flex;flex-direction:column;gap:6px;padding:16px 20px;border-radius:22px;background:var(--surface);border:1px solid var(--warn-border)}
+.nitem .tag{font-size:12.5px;font-weight:800;color:var(--warn)}
+.nitem strong{font-size:16px}
+.bots{display:flex;flex-direction:column;gap:10px;padding:18px 20px;border-radius:22px;background:var(--surface);border:1px solid var(--border)}
+.bots h2{margin:0;font-size:16px;font-weight:800}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border-radius:14px;font-size:14px;font-weight:800;text-decoration:none}
+.chip.ok{background:var(--pos-bg);color:var(--fits)}.chip.ok .dot{background:var(--pos-dot)}
+.chip.w{background:var(--warn-bg);color:var(--warn)}.chip.w .dot{background:var(--warn-bar)}
+.ai{display:flex;flex-direction:column;border-radius:24px;background:var(--surface);border:1px solid var(--border);overflow:hidden;position:sticky;top:20px}
+.ai header{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--border)}
+.mark{width:34px;height:34px;border-radius:11px;background:var(--ai-mark);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 34px}
+.ai .msgs{display:flex;flex-direction:column;gap:12px;padding:16px 18px}
+.ai p{margin:0;font-size:14.5px;line-height:1.55}
+.me{align-self:flex-end;max-width:85%;padding:9px 13px;border-radius:16px 16px 4px 16px;background:var(--accent);color:#fff;font-size:14px}
+.ai .foot{display:flex;flex-direction:column;gap:8px;padding:12px 18px 16px;border-top:1px solid var(--border);background:var(--surface-2)}
+.sugbtn{min-height:34px;padding:0 12px;border-radius:17px;border:1px solid var(--border-input);background:var(--surface);color:var(--accent-ink);font-size:12.5px;font-weight:700;cursor:pointer}
+.askrow{display:flex;gap:8px}
+.askrow input{flex:1;min-width:0;min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--border-input);font:inherit;font-size:14.5px}
+.send{width:44px;height:44px;border-radius:22px;border:0;background:var(--accent);color:#fff;font-weight:800;cursor:pointer}
+
+/* ===================== new card: How your bots performed ===================== */
+.perf{display:flex;flex-direction:column;gap:16px;padding:20px 22px;border-radius:var(--radius-card);background:var(--surface);border:1px solid var(--border)}
+.perf .top{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-start;justify-content:space-between}
+.perf h2{margin:0;font-size:19px;font-weight:800}
+.perf .sub{margin:3px 0 0;font-size:13px;color:var(--ink-2)}
+.seg{display:inline-flex;border:1px solid var(--border-input);border-radius:var(--radius-control);padding:3px;background:var(--surface-2);gap:2px}
+.seg button{min-height:38px;padding:0 12px;border:0;border-radius:9px;background:transparent;font-size:13.5px;font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.seg button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgb(20 26 51 / .12)}
+.headline{display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.4fr);gap:16px;align-items:stretch}
+.big{background:var(--surface-2);border-radius:var(--radius-tile);padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.big .k{font-size:13px;font-weight:700;color:var(--ink-2)}
+.big .v{font-size:34px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.big .v small{font-size:14px;font-weight:700;color:var(--ink-2);margin-left:4px;letter-spacing:0}
+.chg{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:3px 10px;border-radius:999px;font-size:12.5px;font-weight:800}
+.chg.good{background:var(--pos-bg);color:var(--pos)}
+.chg.bad{background:var(--neg-bg);color:var(--neg-ink)}
+.big .s{font-size:12.5px;color:var(--muted);line-height:1.45}
+.split{display:flex;flex-direction:column;gap:10px;justify-content:center}
+.sbar{display:flex;gap:2px;height:30px}
+.sbar i{display:flex;align-items:center;justify-content:center;font-style:normal;font-size:12.5px;font-weight:800;white-space:nowrap;overflow:hidden}
+.sbar i:first-child{border-radius:6px 0 0 6px}.sbar i:last-child{border-radius:0 6px 6px 0}
+.sbar .f{background:var(--accent);color:#fff}.sbar .p{background:var(--warn-bar);color:var(--ink)}
+.parts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.part{display:flex;gap:10px;align-items:flex-start}
+.part .sw{flex:0 0 12px;height:12px;border-radius:3px;margin-top:4px}
+.part b{display:block;font-size:14px;font-weight:800}
+.part span{display:block;font-size:12.5px;color:var(--ink-2);line-height:1.45}
+.part em{font-style:normal;font-size:12px;font-weight:700}
+.what{font-size:12.5px;color:var(--muted);line-height:1.5;margin:0}
+.what summary{cursor:pointer;color:var(--accent-ink);font-weight:700;display:inline-flex;min-height:28px;align-items:center}
+.sect{border-top:1px solid var(--border);padding-top:14px;display:flex;flex-direction:column;gap:10px}
+.sect h3{margin:0;font-size:15px;font-weight:800}
+.sect .sh{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 12px}
+.sect .note{font-size:12.5px;color:var(--muted)}
+.hours{display:grid;grid-template-columns:minmax(0,1fr) 230px;gap:16px;align-items:start}
+.htiles{display:flex;flex-direction:column;gap:8px}
+.htile{border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+.htile.cheap{background:var(--pos-bg)}.htile.dear{background:var(--neg-bg)}
+.htile .k{font-size:12px;font-weight:800}
+.htile.cheap .k{color:var(--pos)}.htile.dear .k{color:var(--neg-ink)}
+.htile b{font-size:17px;font-weight:800}
+.htile span{font-size:12.5px;color:var(--ink-2)}
+.chartbox{position:relative;min-width:0}
+.chartbox svg{display:block}
+.chartbox text{font-family:var(--font-sans);font-variant-numeric:tabular-nums}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;font-size:12px;line-height:1.45;padding:8px 10px;border-radius:10px;white-space:nowrap;box-shadow:var(--shadow-card);z-index:3}
+.exits{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ex{display:grid;grid-template-columns:150px minmax(0,1fr) 46px 150px;gap:10px;align-items:center;font-size:13px}
+.ex .n{font-weight:700;color:var(--ink-2)}
+.ex .t{height:10px;border-radius:5px;background:var(--surface-2)}
+.ex .t i{display:block;height:100%;border-radius:5px;background:var(--accent)}
+.ex .p{text-align:right;font-weight:800}
+.ex .a{text-align:right;color:var(--ink-2)}
+.ex.hl .n{color:var(--ink)}.ex.hl .t i{background:var(--neg)}
+.callout{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--surface-2);font-size:13px;color:var(--ink-2);line-height:1.5}
+.callout b{color:var(--ink)}
+table{border-collapse:collapse;width:100%}
+.bt th{font-size:11.5px;font-weight:800;color:var(--muted);text-align:right;padding:8px 10px;white-space:nowrap;background:var(--surface-2)}
+.bt th:first-child{text-align:left;border-radius:10px 0 0 10px}.bt th:last-child{border-radius:0 10px 10px 0}
+.bt td{font-size:13.5px;padding:10px;border-top:1px solid var(--border);text-align:right;white-space:nowrap}
+.bt td:first-child{text-align:left}
+.bt .bn{font-weight:800;color:var(--ink);text-decoration:none}
+.bt .bs{display:block;font-size:12px;color:var(--muted);font-weight:600}
+.bt tr.thin td{color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:800;white-space:nowrap}
+.pill.thin{background:var(--warn-bg);color:var(--warn)}
+.pill.f{background:var(--accent-tint);color:var(--accent-ink)}
+.pill.pp{background:var(--warn-bg);color:var(--warn)}
+.mrows{display:none}
+.ideas{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.idea{border:1px solid var(--border);border-radius:var(--radius-tile);padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.idea .who{font-size:12.5px;font-weight:800;color:var(--accent-ink)}
+.idea h4{margin:0;font-size:15px;font-weight:800;line-height:1.35}
+.idea p{margin:0;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.idea p b{color:var(--ink)}
+.idea .act{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-top:auto}
+.idea .act span{font-size:12px;color:var(--muted)}
+.foot{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--muted);line-height:1.5;margin:0}
+.foot svg{flex:0 0 14px;margin-top:2px}
+
+/* states */
+.states{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.stlabel{font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:0 0 -6px}
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:18px 12px}
+.empty h3{margin:0;font-size:16px;font-weight:800}
+.empty p{margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.5;max-width:420px}
+.prog{width:220px;height:10px;border-radius:5px;background:var(--surface-2);overflow:hidden;border:1px solid var(--border)}
+.prog i{display:block;height:100%;background:var(--accent)}
+.skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--surface-2),var(--border),var(--surface-2));background-size:200% 100%;animation:sh 1.4s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.na{color:var(--muted);font-weight:700}
+
+@media (max-width:1279px){ .layout{grid-template-columns:minmax(0,1fr)} .ai{position:static} }
+@media (max-width:1023px){ .side{display:none} .shell{padding:16px} }
+@media (max-width:767px){
+  .shell{padding:0;display:block}
+  .layout{padding:12px 16px 96px;gap:14px}
+  .col{gap:14px}
+  .ai{display:none}
+  .mtop{display:flex;justify-content:space-between;align-items:center}
+  .head h1{font-size:26px}
+  .head .btn{display:none}
+  .head .askm{display:inline-flex}
+  .desk-s{display:none}
+  .stlabel:empty{display:none}
+  .goal{padding:16px 18px;border-radius:22px}
+  .goal strong{font-size:17px}
+  .perf{padding:16px;gap:14px;border-radius:22px}
+  .perf h2{font-size:17px}
+  .perf .top .seg{width:100%}.perf .top .seg button{flex:1 1 0}
+  .headline{grid-template-columns:minmax(0,1fr)}
+  .big .v{font-size:30px}
+  .parts{grid-template-columns:minmax(0,1fr)}
+  .hours{grid-template-columns:minmax(0,1fr)}
+  .htiles{flex-direction:row}.htile{flex:1 1 0}
+  .ex{grid-template-columns:minmax(0,1fr) 44px;gap:3px 10px}
+  .ex .n{grid-column:1}.ex .p{grid-column:2;grid-row:1}
+  .ex .t{grid-column:1 / -1}
+  .ex .a{grid-column:1 / -1;text-align:left;font-size:12px}
+  .bt{display:none}
+  .mrows{display:flex;flex-direction:column}
+  .mrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:11px 0;border-top:1px solid var(--border);text-decoration:none;color:var(--ink)}
+  .mrow b{font-size:14px}.mrow .s{font-size:12px;color:var(--muted)}
+  .mrow .r{text-align:right;font-weight:800;font-size:14px}
+  .ideas{grid-template-columns:minmax(0,1fr)}
+  .states{grid-template-columns:minmax(0,1fr)}
+  .mnav{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--surface);box-shadow:var(--shadow-float);padding:6px 4px calc(6px + env(safe-area-inset-bottom));justify-content:space-around;z-index:5}
+  .mnav a{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:64px;min-height:48px;justify-content:center;font-size:11.5px;font-weight:700;color:var(--muted);text-decoration:none}
+  .mnav a[aria-current="page"]{color:var(--accent-ink)}
+}
+.askm{display:none;width:44px;height:44px;border-radius:14px;border:0;background:var(--ai-mark);color:#fff;align-items:center;justify-content:center;font-size:17px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// SAMPLE DATA. One user's own live bots, last 7 days vs the 7 days before. Cost per $1M = (fees + price loss) ÷ volume × 1,000,000.
+// "Price moved against your fills" = everything that isn't fees (fill price to close, plus any open position at the mid).
+const VIEW = new URLSearchParams(location.search).get('view') || 'card';
+const ico = (d,s=16,w=2)=>`<svg width="${s}" height="${s}" style="flex:0 0 ${s}px" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>', refresh:'<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>', plus:'<path d="M12 5v14M5 12h14"/>'};
+const $M = v => (v<0?'−':'')+'$'+Math.round(Math.abs(v)).toLocaleString('en-US');
+
+const ME = {vol:1.21, cost:214, fee:151, sx:106, dl:45, price:63, prev:{cost:252, fee:149, price:103}};
+const HRS = Array.from({length:24},(_,h)=>{ // your time, UTC+7
+  const fee=[148,147,146,146,147,149,150,150,151,151,152,152,153,153,154,154,153,152,151,151,150,150,149,148][h];
+  const pr=[18,12,4,2,6,10,22,30,34,38,44,52,66,78,96,84,70,60,52,48,40,34,26,22][h];
+  const n=[38,29,41,44,40,52,61,66,70,72,75,79,84,88,91,86,80,77,74,72,66,60,52,45][h];
+  return {fee,pr,n};
+});
+const EXITS = [ // label (en.json botAnalytics.exit.*), share %, avg net per trade USDC, plain sub
+  ['Hold time ended',48,-0.12,'Closed when the hold time ran out'],['Max hold',16,-0.24,'Closed at your longest hold'],
+  ['Stop loss',13,-0.41,'Closed by the bot’s stop loss'],['Take profit',12,0.19,'Closed at your profit target'],
+  ['Early profit',9,0.07,'Closed early with a gain bigger than the fees'],['Stop on SoDEX',2,-0.58,'Closed by the stop loss on SoDEX']];
+const BOTS = [
+  {n:'ETH Volume Builder', s:'Volume Builder · ETH-USD', vol:0.52, cost:291, prev:338, big:'Fees'},
+  {n:'BTC Volume Builder', s:'Volume Builder · BTC-USD', vol:0.38, cost:236, prev:262, big:'Fees'},
+  {n:'BTC Market Making', s:'Market Making · BTC-USD', vol:0.31, cost:108, prev:149, big:'Fees'},
+  {n:'SOL Grid', s:'Futures Grid · SOL-USD', vol:0.004, cost:null, prev:null, thin:12},
+];
+
+const sidebar = `<nav class="side" aria-label="Main">
+  <a class="brand" href="#"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#2E62E8"></rect><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#FFFFFF"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#FFFFFF" opacity="0.7"></rect></svg>DeskLabs</a>
+  ${['Overview','Portfolio','Trading Agent','AI Desk','Strategy Lab','Execution & Orders','Risk Center'].map(n=>`<a class="nav" href="#" ${n==='AI Desk'?'aria-current="page"':''}>${n}</a>`).join('')}
+  <span class="sec"></span><a class="nav" href="#">Settings</a></nav>`;
+
+const head = `
+<div class="mtop"><span class="sample">SAMPLE DATA</span></div>
+<header class="head">
+  <div style="display:flex;flex-direction:column;gap:4px"><h1>AI Desk</h1><span class="watch">${VIEW==='states'?'Card states · each one replaces the card in the page':'<span class="dot"></span>Watching 4 bots · checked 2 min ago'}</span></div>
+  <div style="display:flex;gap:10px;align-items:center"><span class="sample desk-s">SAMPLE DATA</span><a class="btn" href="#">${ico(I.plus,16,2.2)}New bot</a><button class="askm" aria-label="Ask Desk AI">✦</button></div>
+</header>`;
+const goal = `<section class="goal" aria-labelledby="g-h"><h2 id="g-h" class="k">Your goal</h2><strong>Build volume · lose no more than 300 USDC</strong>
+  <div style="display:flex;justify-content:space-between;font-size:13.5px;font-weight:700"><span>Loss limit used</span><span>118 of 300 USDC</span></div>
+  <div class="bar" role="img" aria-label="39 percent of the loss limit used"><i style="width:39%"></i></div></section>`;
+const needs = `<section class="needs" aria-labelledby="n-h"><h2 id="n-h">Needs you · 1</h2>
+  <article class="nitem"><span class="tag">Watch · SOL Grid</span><strong>Price is near the bottom of your grid</strong><span style="font-size:14px;color:var(--ink-2)">SOL is 1.2% above your lowest level. Below it, the grid stops buying.</span></article></section>`;
+const yourBots = `<section class="bots" aria-labelledby="b-h"><h2 id="b-h">Your bots</h2><div class="chips">
+  <a class="chip ok" href="#"><span class="dot"></span>ETH Volume Builder · Healthy</a><a class="chip ok" href="#"><span class="dot"></span>BTC Volume Builder · Healthy</a>
+  <a class="chip ok" href="#"><span class="dot"></span>BTC Market Making · Healthy</a><a class="chip w" href="#"><span class="dot"></span>SOL Grid · Watch</a></div></section>`;
+const aiPanel = `<aside class="ai" aria-label="Desk AI"><header><span class="mark" aria-hidden="true">✦</span><strong style="font-size:16px">Desk AI</strong><a href="#" style="margin-left:auto;font-size:13px;font-weight:700;text-decoration:none">History</a></header>
+  <div class="msgs"><p>Good afternoon. Your volume bots cost less per $1M this week than last week. Ask me what changed.</p><div class="me">Why did ETH cost more than BTC?</div>
+  <p>ETH Volume Builder opened more trades while ETH was trending, and those cost more. The card on the left shows the numbers.</p></div>
+  <div class="foot"><div style="display:flex;flex-wrap:wrap;gap:6px"><button class="sugbtn">Why did I lose money?</button><button class="sugbtn">Start a bot for me</button></div>
+  <div class="askrow"><label style="flex:1;display:flex"><span class="sr">Ask Desk AI</span><input type="text" placeholder="Ask Desk AI…"></label><button class="send" aria-label="Send">↑</button></div></div></aside>`;
+
+function card(){
+  const fp = ME.fee/ME.cost*100;
+  const d = ME.cost-ME.prev.cost, dP = ME.price-ME.prev.price, dF = ME.fee-ME.prev.fee;
+  const cheap = HRS.slice(2,5), dear = HRS.slice(13,16);
+  const cpm = a => a.reduce((s,h)=>s+h.fee+h.pr,0)/a.length;
+  return `
+<section class="perf" aria-labelledby="p-h">
+  <div class="top">
+    <div><h2 id="p-h">How your bots performed</h2><p class="sub">Your live bots · last 7 days vs the 7 days before</p></div>
+    <div class="seg" role="radiogroup" aria-label="Period"><button role="radio" aria-checked="true">7 days</button><button role="radio" aria-checked="false">30 days</button></div>
+  </div>
+  <div class="headline">
+    <div class="big"><span class="k">Cost per $1M traded</span><span class="v">${$M(ME.cost)}</span>
+      <span class="chg good">▼ ${$M(-d)} less than the week before</span>
+      <span class="s">Your bots traded ${ME.vol.toFixed(2)}M USDC. Fees and price moves cost ${Math.round(ME.cost*ME.vol)} USDC in total. Practice bots aren’t counted.</span></div>
+    <div class="split">
+      <div class="sbar" role="img" aria-label="Of ${$M(ME.cost)} per 1M: fees ${$M(ME.fee)}, price moved against your fills ${$M(ME.price)}"><i class="f" style="flex:0 0 calc(${fp}% - 1px)">Fees ${$M(ME.fee)}</i><i class="p" style="flex:1 1 0">${$M(ME.price)}</i></div>
+      <div class="parts">
+        <div class="part"><span class="sw" style="background:var(--accent)"></span><div><b>Fees · ${$M(ME.fee)}</b><span>What SoDEX (${$M(ME.sx)}) and DeskLabs (${$M(ME.dl)}) charge on each fill.</span><em class="mut">About the same as the week before (▲ ${$M(dF)})</em></div></div>
+        <div class="part"><span class="sw" style="background:var(--warn-bar)"></span><div><b>Price moved against your fills · ${$M(ME.price)}</b><span>The price went the wrong way after your orders filled, before the trade closed.</span><em class="pos">▼ ${$M(-dP)} less than the week before</em></div></div>
+      </div>
+    </div>
+  </div>
+  <details class="what"><summary>What does cost per $1M mean?</summary> For every 1,000,000 USDC your bots trade (buys and sells added up), this is what you paid in fees plus what you lost on price. Lower is better. It describes past trades; it doesn’t predict the next ones.</details>
+
+  <div class="sect">
+    <div class="sh"><h3>Cheapest and most expensive hours</h3><span class="note">Your time zone (UTC+7) · all 7 days together</span></div>
+    <div class="hours">
+      <div><div class="chartbox" id="p-hours"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--ink-2);font-weight:600;margin-top:4px"><span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--accent);vertical-align:-1px;margin-right:6px"></i>Fees</span><span><i style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--warn-bar);vertical-align:-1px;margin-right:6px"></i>Price moved against your fills</span><span class="mut">Faded = fewer than 30 fills</span></div></div>
+      <div class="htiles">
+        <div class="htile cheap"><span class="k">Cheapest</span><b>02:00–05:00</b><span>${$M(cpm(cheap))} per $1M · ${cheap.reduce((s,h)=>s+h.n,0)} fills</span></div>
+        <div class="htile dear"><span class="k">Most expensive</span><b>13:00–16:00</b><span>${$M(cpm(dear))} per $1M · ${dear.reduce((s,h)=>s+h.n,0)} fills</span></div>
+      </div>
+    </div>
+    <p class="foot">${ico(I.info,14,2.2)}Fees cost about the same at every hour. The difference is how much the price moved against your fills.</p>
+  </div>
+
+  <div class="sect">
+    <div class="sh"><h3>How your Volume Builder trades ended</h3><span class="note">2 bots · 1,184 trades</span></div>
+    <ul class="exits">${EXITS.map(e=>`<li class="ex ${e[0]==='Stop loss'?'hl':''}"><span class="n">${e[0]}</span><span class="t" role="img" aria-label="${e[0]}: ${e[1]} percent of trades"><i style="width:${e[1]/50*100}%"></i></span><span class="p">${e[1]}%</span><span class="a">${e[2]>0?'+':'−'}${Math.abs(e[2]).toFixed(2)} USDC a trade</span></li>`).join('')}</ul>
+    <div class="callout">${ico(I.info,16,2.2)}<span><b>Stop loss closes cost the most:</b> 13% of trades, −0.41 USDC each on average, because they close with a market order. Take profit and Early profit closes made money after fees.</span></div>
+  </div>
+
+  <div class="sect">
+    <div class="sh"><h3>Each bot</h3><span class="note">Lower cost per $1M is better</span></div>
+    <table class="bt"><caption class="sr">Cost per $1M by bot</caption>
+      <thead><tr><th scope="col">Bot</th><th scope="col">Traded</th><th scope="col">Cost per $1M</th><th scope="col">vs the week before</th><th scope="col">Biggest part</th></tr></thead>
+      <tbody>${BOTS.map(b=>b.thin?`<tr class="thin"><td><a class="bn" href="#">${b.n}</a><span class="bs">${b.s}</span></td><td>${(b.vol*1000).toFixed(0)}K USDC</td><td colspan="3" style="text-align:right">Not enough trades yet (${b.thin} of 30 fills) <span class="pill thin" style="margin-left:6px">Thin sample</span></td></tr>`
+        :`<tr><td><a class="bn" href="#">${b.n}</a><span class="bs">${b.s}</span></td><td>${b.vol.toFixed(2)}M USDC</td><td style="font-weight:800">${$M(b.cost)}</td><td class="${b.cost<b.prev?'pos':'neg'}">${b.cost<b.prev?'▼':'▲'} ${$M(Math.abs(b.cost-b.prev))}</td><td><span class="pill ${b.big==='Fees'?'f':'pp'}">${b.big}</span></td></tr>`).join('')}</tbody></table>
+    <div class="mrows">${BOTS.map(b=>`<a class="mrow" href="#"><b>${b.n}</b><span class="r">${b.thin?'<span class="na" style="font-size:12.5px">Not enough trades</span>':$M(b.cost)}</span><span class="s">${b.s}</span><span class="s" style="text-align:right">${b.thin?`${b.thin} of 30 fills`:`<span class="${b.cost<b.prev?'pos':'neg'}">${b.cost<b.prev?'▼':'▲'} ${$M(Math.abs(b.cost-b.prev))}</span> vs last week`}</span></a>`).join('')}</div>
+  </div>
+
+  <div class="sect">
+    <div class="sh"><h3>Ideas within your settings</h3><span class="note">From your own trades · nothing changes until you save</span></div>
+    <ol class="ideas">
+      <li class="idea"><span class="who">ETH Volume Builder</span><h4>Turn on Only trade sideways</h4>
+        <p>Trades this bot opened while the 5-minute trend was up or down cost <b>$412 per $1M</b>. Trades opened in a sideways market cost <b>$198</b>. <b>48%</b> of its trades were opened in a trend.</p>
+        <div class="act"><a class="btn sm" href="#">Open settings</a><span>Based on 612 trades</span></div></li>
+      <li class="idea"><span class="who">BTC Volume Builder</span><h4>Lower Max spread from 10 to 6 bp</h4>
+        <p>Trades entered while the spread was wider than 6 bp cost <b>$520 per $1M</b>, against <b>$214</b> for the rest. They were <b>9%</b> of this bot’s trades.</p>
+        <div class="act"><a class="btn sm" href="#">Open settings</a><span>Based on 52 trades</span></div></li>
+    </ol>
+    <p class="foot">${ico(I.info,14,2.2)}Based on your past trades, not a forecast. Results on future trades can differ. Ideas appear only when they’re based on 30 trades or more.</p>
+  </div>
+</section>`;
+}
+
+function drawHours(){
+  const box=document.getElementById('p-hours'); if(!box) return;
+  const w=box.clientWidth, H=w<440?170:190, P={l:40,r:6,t:10,b:22};
+  const hi=300; const y=v=>P.t+(hi-v)/hi*(H-P.t-P.b); const cw=(w-P.l-P.r)/24, bw=Math.max(5,cw*0.66);
+  let s=`<svg width="${w}" height="${H}" role="img" aria-label="Cost per 1M by hour, your time. Cheapest 02:00 to 05:00, most expensive 13:00 to 16:00.">
+    <rect x="${P.l}" y="${P.t}" width="${w-P.l-P.r}" height="${H-P.t-P.b}" fill="var(--chart-bg)" rx="8"/>
+    <rect x="${P.l+cw*2}" y="${P.t}" width="${cw*3}" height="${H-P.t-P.b}" fill="var(--pos-bg)"/>
+    <rect x="${P.l+cw*13}" y="${P.t}" width="${cw*3}" height="${H-P.t-P.b}" fill="var(--neg-bg)"/>
+    ${[0,100,200,300].map(t=>`<line x1="${P.l}" x2="${w-P.r}" y1="${y(t)}" y2="${y(t)}" stroke="${t?'var(--border)':'var(--muted)'}"/><text x="${P.l-6}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)">$${t}</text>`).join('')}`;
+  HRS.forEach((h,i)=>{ const cx=P.l+cw*i+cw/2; const thin=h.n<30; const op=thin?'opacity=".4"':'';
+    s+=`<rect x="${cx-bw/2}" y="${y(h.fee)+1}" width="${bw}" height="${y(0)-y(h.fee)-1}" fill="var(--accent)" ${op}/>`;
+    if(h.pr>0) s+=`<rect x="${cx-bw/2}" y="${y(h.fee+h.pr)}" width="${bw}" height="${Math.max(1,y(h.fee)-y(h.fee+h.pr)-1)}" fill="var(--warn-bar)" rx="2" ${op}/>`;
+    if(i%3===0) s+=`<text x="${cx}" y="${H-6}" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-weight="600">${String(i).padStart(2,'0')}</text>`;
+    s+=`<rect class="hit" data-i="${i}" x="${P.l+cw*i}" y="${P.t}" width="${cw}" height="${H-P.t-P.b}" fill="transparent"/>`; });
+  box.innerHTML=s+'</svg><div class="tip" hidden></div>';
+  const tip=box.querySelector('.tip');
+  box.querySelectorAll('.hit').forEach(r=>{ r.addEventListener('mouseenter',()=>{const i=+r.dataset.i,h=HRS[i]; tip.hidden=false;
+    tip.innerHTML=`<b>${String(i).padStart(2,'0')}:00–${String(i+1).padStart(2,'0')}:00</b><br>${$M(h.fee+h.pr)} per $1M · ${h.n} fills<br>Fees ${$M(h.fee)} · price ${$M(h.pr)}${h.n<30?'<br>Fewer than 30 fills':''}`;
+    tip.style.left=Math.min(P.l+cw*i+12,w-200)+'px'; tip.style.top='4px';}); r.addEventListener('mouseleave',()=>tip.hidden=true); });
+}
+
+const states = `
+<div class="states">
+  <p class="stlabel">No live bots</p><p class="stlabel hide-m2"></p>
+  <section class="perf" aria-labelledby="s1"><div class="top"><div><h2 id="s1">How your bots performed</h2><p class="sub">Your live bots, last 7 days.</p></div></div>
+    <div class="empty"><h3>No live bots yet</h3><p>Once a bot trades with real money, you’ll see here what every $1M it trades costs you and where the cost comes from. Practice bots aren’t counted.</p><a class="btn primary" href="#">Start a bot</a></div></section>
+  <section class="perf" aria-labelledby="s2"><div class="top"><div><h2 id="s2">How your bots performed</h2><p class="sub">Your live bots, last 7 days.</p></div></div>
+    <div class="empty"><h3>Not enough trades yet</h3><p>Your bots made 12 fills in the last 7 days. Costs show from 30 fills, so one trade doesn’t swing the numbers.</p><div class="prog" role="img" aria-label="12 of 30 fills"><i style="width:40%"></i></div><span style="font-size:12.5px;color:var(--muted)">12 of 30 fills</span></div></section>
+  <p class="stlabel">First week: nothing to compare with</p><p class="stlabel">Loading · Error</p>
+  <section class="perf" aria-labelledby="s3"><div class="top"><div><h2 id="s3">How your bots performed</h2><p class="sub">Your live bots, last 7 days, compared with the 7 days before.</p></div></div>
+    <div class="big"><span class="k">Cost per $1M traded</span><span class="v">$268</span><span class="s"><span class="na">vs the week before: Not available</span> · your bots didn’t trade that week.</span></div>
+    <div class="callout">${ico(I.info,16,2.2)}<span><b>Cheapest and most expensive hours: Not available.</b> Hours show once at least 3 hours have 30 fills or more.</span></div></section>
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <section class="perf" aria-label="Loading"><div class="skel" style="width:45%;height:16px"></div><div style="display:grid;grid-template-columns:1fr 1.4fr;gap:16px"><div class="skel" style="height:96px;border-radius:18px"></div><div class="skel" style="height:96px;border-radius:18px"></div></div><p class="sub" role="status" style="margin:0">Loading how your bots performed…</p></section>
+    <section class="perf" aria-labelledby="s5"><div class="empty" style="padding:6px"><h3 id="s5">Couldn’t load how your bots performed.</h3><p>Your bots keep running; nothing changed. Try again.</p><button class="btn primary">${ico(I.refresh,16,2.2)}Try again</button></div></section>
+  </div>
+</div>`;
+
+const mnav = `<nav class="mnav" aria-label="Main">${[['Home','<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'],['Portfolio','<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>'],['Agent','<path d="M12 8V4H8M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zM9 13v2M15 13v2"/>'],['Strategy','<path d="M10 2v7.5L4.7 20.5a1 1 0 0 0 .9 1.5h12.8a1 1 0 0 0 .9-1.5L14 9.5V2M8.5 2h7M7 16h10"/>'],['More','<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>']].map(([l,d])=>`<a href="#" ${l==='More'?'aria-current="page"':''}>${ico(d,22,1.9)}${l}</a>`).join('')}</nav>`;
+
+function render(){
+  const left = VIEW==='states' ? head + states : head + goal + needs + yourBots + card();
+  document.getElementById('app').innerHTML = `<div class="shell">${sidebar}<div class="layout" style="${VIEW==='states'?'grid-template-columns:minmax(0,1fr)':''}"><main class="col">${left}</main>${VIEW==='states'?'':aiPanel}</div></div>${mnav}`;
+  drawHours();
+}
+render();
+let rt; addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(drawHours,120);});
+</script>
+</body>
+</html>
