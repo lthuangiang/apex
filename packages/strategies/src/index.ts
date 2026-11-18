@@ -57,6 +57,7 @@ export {
   costPerMillion,
   costUsed,
   VM_CUT,
+  VM_ORACLE,
   VOLUME_MAKER_STOPPED,
   volumeMaker,
   volumeMakerStopCause,

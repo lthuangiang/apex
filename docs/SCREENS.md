@@ -30,6 +30,7 @@ Desktop và mobile dùng **cùng một route**, layout responsive. Artboard mobi
 | `/settings` | Desktop · Settings | Mobile · Settings |
 | `/admin/builder-revenue` | Desktop · Builder Revenue (chỉ đội DRIFT) | Mobile · Builder Revenue |
 | `/admin/users` | Chưa có artboard (DEC-64, chỉ role `team`, chỉ đọc) | Chưa có artboard |
+| `/admin/signal-analysis` | Signal Analysis (`docs/mockups/signal-analysis`, tab All / Volume Builder / Market Making; chỉ role `team`, chỉ đọc, DEC-TBD-signal-analysis) | bảng cuộn ngang, nút cao 44 px |
 
 **Điều hướng:**
 - Sidebar desktop: Overview, Portfolio, Trading Agent, Strategy Lab, Execution & Orders, Risk Center, AI Analyst | Builder Revenue (chỉ đội DRIFT), Settings.

@@ -79,6 +79,7 @@ describe("WorkspaceShell sidebar order", () => {
       "Market hours",
       "System Architecture Diagram",
       "SoDEX Debugger",
+      "Signal Analysis",
       "Settings",
     ]);
   });
@@ -120,6 +121,7 @@ describe("WorkspaceShell sidebar order", () => {
       "Market hours",
       "System Architecture Diagram",
       "SoDEX Debugger",
+      "Signal Analysis",
     ]);
   }, 15_000);
 
