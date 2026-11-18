@@ -52,6 +52,7 @@ import {
   PLANNED_STOP_REASONS,
   STOPPED_BY_USER,
 } from "@drift/shared";
+import { vbSignalSnapshotSchema, type VbSignalSnapshot } from "@drift/shared/vb-signal";
 import { isInsufficientMarginReject } from "@drift/sodex";
 import {
   applyFill,
@@ -64,6 +65,7 @@ import {
   normalizeCopyState,
   STRATEGIES,
   type CopyTradeConfig,
+  type DecisionPayload,
   type Ledger,
   type BookTop,
   type MarketRules,
@@ -2283,6 +2285,8 @@ export class Engine {
         version: version.version,
         rules,
         feeRate: this.#d.feeRate ?? this.#feeRateOf(bot, config, rules, route, builderRate),
+        // Engine ghi quyết định vào bot_events: chiến lược gắn dữ liệu kèm (snapshot tín hiệu Volume Farm, #221).
+        decisionPayload: true,
         ...(this.#d.feeRate === undefined
           ? { takerFeeRate: this.#feeRateOf(bot, config, rules, route, builderRate, true) }
           : {}),
@@ -2916,7 +2920,7 @@ export class Engine {
                 },
               });
           },
-          placed,
+          this.#decisionPayload(r, placed, a.payload),
         );
       }
       if (a.type === "flag")
@@ -4273,6 +4277,29 @@ export class Engine {
       });
       if (also !== undefined) await also(tx);
     });
+  }
+
+  /**
+   * Payload của event quyết định: `orders` của bước (BD-02) + dữ liệu chiến lược gắn kèm (`signal`, #221). Snapshot
+   * không đúng schema thì bỏ riêng nó (log warn, không kèm nội dung), không bao giờ chặn việc ghi quyết định hay lệnh.
+   */
+  #decisionPayload(
+    r: Runner,
+    placed: { orders: string[] } | undefined,
+    extra: DecisionPayload | undefined,
+  ): Record<string, unknown> | undefined {
+    let signal: VbSignalSnapshot | undefined;
+    if (extra?.signal !== undefined) {
+      const parsed = vbSignalSnapshotSchema.safeParse(extra.signal);
+      if (parsed.success) signal = parsed.data;
+      else
+        this.#d.log.warn(
+          { botId: r.botId, fields: parsed.error.issues.map((i) => i.path.join(".")).slice(0, 5) },
+          "decision signal snapshot dropped: schema mismatch",
+        );
+    }
+    if (placed === undefined && signal === undefined) return undefined;
+    return { ...placed, ...(signal === undefined ? {} : { signal }) };
   }
 
   /**

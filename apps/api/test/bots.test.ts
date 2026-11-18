@@ -1041,6 +1041,76 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(pick(`d-${tag}`)?.[0]).toBeNull();
   });
 
+  it("never sends the Volume Farm signal snapshot of a decision to the browser (#221)", async () => {
+    const { client } = await connectedUser(`vb-snap-${randomUUID()}@drift.test`);
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "Snapshot", paramSource: "manual", config: grid },
+    });
+    const id = made.json<{ id: string }>().id;
+    const { rows } = await env.pool.query<{ acc: string }>(
+      "select sodex_account_id as acc from bots where id = $1",
+      [id],
+    );
+    const tag = randomUUID().slice(0, 8);
+    await env.pool.query(
+      "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, avg_price, status, tag, epoch, created_at) values (gen_random_uuid(), $1, $2, $3, 'ETH-USD', 'perps', 'buy', 'limit', 'GTX', 1, 1, 1800.5, 'filled', 'vf:3:in:0', 1, $4)",
+      [id, rows[0]?.acc ?? "", `s-${tag}`, env.clock.now],
+    );
+    const signal = {
+      v: 1,
+      direction: "long",
+      side: "long",
+      score: 0.61,
+      confidence: 0.55,
+      regime: "SIDEWAY",
+      components: {
+        candleMomentum: 0.7,
+        wickRejection: 0.52,
+        volumeAcceleration: 0.6,
+        tradePressure: 0.5,
+        orderbookImbalance: 0.54,
+      },
+      spreadBps: 0.6,
+      reason: "LONG: score 0.610, regime SIDEWAY",
+      reversed: false,
+      balanced: false,
+      price: {
+        bid: "1800.4",
+        ask: "1800.6",
+        mid: "1800.5",
+        last: null,
+        mark: null,
+        bookAgeMs: 0,
+        chg1mBps: 3.1,
+        chg3mBps: 5.2,
+        chg5mBps: 8,
+      },
+      order: {
+        clOrdID: `s-${tag}`,
+        price: "1800.5",
+        size: "1",
+        usd: "1800.50",
+        holdSecs: 140,
+        entryTry: 0,
+        taker: false,
+      },
+    };
+    await env.pool.query(
+      "insert into bot_events (id, bot_id, type, decision, payload, occurred_at) values (gen_random_uuid(), $1, 'decision', 'Enter long', $2, $3)",
+      [id, JSON.stringify({ orders: [`s-${tag}`], signal }), env.clock.now],
+    );
+    const res = await client.request("GET", `/api/v1/bots/${id}`);
+    expect(res.statusCode).toBe(200);
+    // Kết quả từ `payload.orders` vẫn có (BD-02), snapshot thì không (tên thành phần tín hiệu là logic chiến lược).
+    const detail = botDetailSchema.parse(res.json());
+    const ev = detail.events.find((e) => e.decision === "Enter long");
+    expect(ev).toMatchObject({ order: `s-${tag}`, outcome: "filled", entryTry: 0 });
+    expect(ev).not.toHaveProperty("payload");
+    expect(ev).not.toHaveProperty("signal");
+    for (const marker of ["candleMomentum", "wickRejection", "volumeAcceleration", "chg1mBps"])
+      expect(res.body).not.toContain(marker);
+  });
+
   it("splits post-only misses from other rejects and counts rounds that filled (DEC-300)", async () => {
     const { client } = await connectedUser(`vb-rounds-${randomUUID()}@drift.test`);
     const made = await client.request("POST", "/api/v1/bots", {

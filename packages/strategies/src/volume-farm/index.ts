@@ -15,6 +15,7 @@ import type {
 
 import type { VolumeFarmConfig } from "./schema";
 import { farmSignal, type FarmRegime } from "./signal";
+import { entrySnapshot } from "./snapshot";
 
 // S10 Volume Farm (DEC-80): vòng lặp FARM của bot "standard" trong apex (src/modules/Watcher.ts), viết lại dạng
 // hàm thuần cho engine của DRIFT.
@@ -425,7 +426,8 @@ function tryEnter(
   // Khối lượng long / short của các lượt đã đóng lệch quá một lệnh lớn nhất: buộc đi ngược lượt trước (apex MM
   // inventory hard block, DEC-80). Bot đang phẳng nên đây là một lượt mới như mọi lượt; câu Decisions nói đúng là cân
   // khối lượng, không phải đưa vị thế về 0 (DEC-304).
-  if (dec(s.netExposure).abs().gt(c.orderSizeMaxUsd) && s.lastSide !== null) {
+  const balanced = dec(s.netExposure).abs().gt(c.orderSizeMaxUsd) && s.lastSide !== null;
+  if (balanced) {
     direction = s.lastSide === "long" ? "short" : "long";
     notes.push(`Went ${direction} to balance long and short volume.`);
   }
@@ -499,7 +501,34 @@ function tryEnter(
       // Stop của lượt trước chưa chắc đã được SoDEX huỷ: gửi huỷ; engine bỏ qua nếu đã xác nhận huỷ (DEC-119).
       ...(s.staleXstop == null ? [] : [{ type: "cancel" as const, clOrdID: s.staleXstop }]),
       { type: "place", order: o },
-      { type: "log", decision: `Enter ${direction}`, why },
+      {
+        type: "log",
+        decision: `Enter ${direction}`,
+        why,
+        // #221: snapshot tín hiệu cho trang team "VB Signal Analysis"; chỉ dựng khi engine ghi event.
+        ...(ctx.decisionPayload === true
+          ? {
+              payload: {
+                signal: entrySnapshot({
+                  sig: { ...sig, direction: sig.direction },
+                  side: direction,
+                  reversed: c.reverseSignal,
+                  balanced,
+                  at,
+                  candles,
+                  book: s.book,
+                  bookAt: s.bookAt,
+                  last: s.lastPrice,
+                  order: o,
+                  usd: usd.toDecimalPlaces(2).toFixed(2),
+                  holdSecs,
+                  entryTry: s.unfilled,
+                  taker,
+                }),
+              },
+            }
+          : {}),
+      },
     ],
     state: {
       ...s,
