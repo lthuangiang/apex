@@ -19,11 +19,13 @@ import {
 } from "@drift/db";
 import { Lease, LeaseSet, type LeaseLoss, type LeaseRedis } from "@drift/runtime";
 import {
+  AppError,
   applyEngineEvent,
   applyReason,
   assetOf,
   BotState,
   builderFeeRateFor,
+  ErrorCode,
   builderFeeRateOf,
   type BuilderFeeOverrides,
   isBuilderAccount,
@@ -706,6 +708,37 @@ interface Runner {
    * mới được coi là do đổi version (N2). Chỉ nhớ trong bộ nhớ; nạp lại thì đi theo các bậc thường.
    */
   resetDroppedPosition: boolean;
+  /**
+   * Volume Farm nạp lại khi còn cảnh báo lệch (DEC-317, sửa đổi v2.12.1): lần kiểm tra sửa sổ cái (#repairOnLoad) chưa
+   * đọc được vị thế thật. Trong lúc này bot không sang Running (Resume chờ) và không có bước chiến lược theo thị trường;
+   * fill / ack vẫn được ghi. `since` = lúc bắt đầu chờ, `logged` = đã ghi Decisions + Needs attention sau
+   * REPAIR_WAIT_MS. null = đã kiểm tra xong (hoặc không cần).
+   */
+  repairPending: { since: number; logged: boolean } | null;
+  /** Đã log "bỏ bước có lệnh chỉ giảm khi vị thế thật bằng 0" trong đợt lệch này. */
+  zeroRealSkipLogged: boolean;
+}
+
+/**
+ * Volume Farm chưa đọc được vị thế để sửa sổ cái lúc nạp lại quá chừng này: ghi Decisions + Needs attention một lần
+ * (DEC-317, sửa đổi v2.12.1). Bot vẫn không giao dịch và tiếp tục thử ở mỗi vòng đồng bộ bot.
+ */
+export const REPAIR_WAIT_MS = 5 * 60_000;
+/** Chờ tối đa chừng này theo `retryAfterMs` của SoDEX trước lần đọc lại duy nhất trong một lần sửa sổ cái. */
+export const REPAIR_RETRY_MAX_MS = 1_000;
+/**
+ * Câu Decisions khi bot chờ đọc vị thế quá REPAIR_WAIT_MS (câu chữ chờ duyệt, theo mẫu "Waiting for SoDEX to confirm a
+ * cancel").
+ */
+export const REPAIR_WAIT_DECISION = "Waiting to check the position on SoDEX";
+export const REPAIR_WAIT_WHY =
+  "DeskLabs could not read this bot's position on SoDEX to check its ledger, so the bot is not trading yet. It keeps trying and starts again once the check is done.";
+
+/** `retryAfterMs` của lỗi rate limit (AppError RATE_LIMITED của @drift/sodex); null nếu không có. */
+function retryAfterOf(error: unknown): number | null {
+  if (!(error instanceof AppError) || error.code !== ErrorCode.rateLimited) return null;
+  const ms = (error.details as { retryAfterMs?: unknown }).retryAfterMs;
+  return typeof ms === "number" && Number.isFinite(ms) && ms >= 0 ? ms : null;
 }
 
 /**
@@ -2192,18 +2225,23 @@ export class Engine {
           return loaded;
         });
         if (r === undefined) continue;
-        // Volume Farm nạp lại (khởi động lại, Resume sau pause) mà còn cảnh báo lệch: sửa sổ cái từ fill của chính lệnh bot
-        // TRƯỚC bước chiến lược đầu tiên, để Resume không gửi lệnh theo sổ cái sai (#239: 30 lệnh bán reduce-only).
-        // Chỉ khi bot sẽ chạy (đang chạy / đang Resume): nhận fill có thể đặt stop trên SoDEX, không bao giờ làm việc đó
-        // khi bot đang pause / dừng (review #248 minor 2).
-        if (
-          r.strategy === Strategy.volumeFarm &&
-          !r.paper &&
-          r.positionMismatch.size > 0 &&
-          (bot.state === BotState.running || bot.state === BotState.resuming)
-        )
-          await this.#repairOnLoad(r);
       }
+      // Volume Farm nạp lại (khởi động lại, Resume sau pause) mà còn cảnh báo lệch: sửa sổ cái từ fill của chính lệnh bot
+      // TRƯỚC bước chiến lược đầu tiên, để Resume không gửi lệnh theo sổ cái sai (#239: 30 lệnh bán reduce-only). Chưa đọc
+      // được vị thế thì thử lại ở mỗi vòng (`repairPending`, v2.12.1: prod 01a1ebcb đọc lỗi RATE_LIMITED rồi vẫn chạy).
+      // Chỉ khi bot sẽ chạy (đang chạy / đang Resume): nhận fill có thể đặt stop trên SoDEX, không bao giờ làm việc đó
+      // khi bot đang pause / dừng (review #248 minor 2).
+      // Resume một runner còn giữ khi pause cũng kiểm tra lại trước khi chạy (một lần đọc mỗi lần thử Resume).
+      const resumeCheck =
+        bot.state === BotState.resuming &&
+        r.strategy === Strategy.volumeFarm &&
+        !r.paper &&
+        r.positionMismatch.size > 0;
+      if (
+        (r.repairPending !== null || resumeCheck) &&
+        (bot.state === BotState.running || bot.state === BotState.resuming)
+      )
+        await this.#repairOnLoad(r);
       // Team đổi builder fee của user (DEC-159): lệnh mới dùng mức mới ngay, chiến lược tính phí theo mức mới.
       const rate = builderFeeRateFor(bot.strategy, fees.get(bot.userId));
       if (rate !== r.builderRate) {
@@ -2233,6 +2271,8 @@ export class Engine {
         // Lease chưa xác nhận: chưa xác nhận Running (bot giữ `resuming`, vòng sau thử lại), để `resumed` không bị bỏ sau
         // khi trạng thái đã commit.
         if (!(await this.#leaseConfirmed(shard))) continue;
+        // Chưa kiểm tra xong sổ cái (đọc vị thế lỗi): giữ `resuming`, vòng sau thử lại; không Running, không `resumed`.
+        if (r.repairPending !== null) continue;
         await this.#transition(r, EngineEvent.confirmedRunning, null);
         // Chiến lược tự pause (halted) chạy tiếp từ sổ cái và vị thế thật, dựng lại lệnh (DEC-240).
         const prices = Object.fromEntries(
@@ -2381,6 +2421,14 @@ export class Engine {
         (saved.state as { phase?: unknown } | null)?.phase === "halted",
       appliedAt: version.appliedAt?.getTime() ?? null,
       resetDroppedPosition: false,
+      // Volume Farm thật còn cảnh báo lệch: chưa giao dịch tới khi lần kiểm tra sửa sổ cái đọc được vị thế (v2.12.1).
+      repairPending:
+        bot.strategy === Strategy.volumeFarm &&
+        !route.paper &&
+        Object.keys(bot.positionMismatch ?? {}).length > 0
+          ? { since: this.#d.now(), logged: false }
+          : null,
+      zeroRealSkipLogged: false,
     };
   }
 
@@ -2611,6 +2659,9 @@ export class Engine {
     if (!accounting && event.type !== "resumed" && !(await this.#leaseConfirmed(r.shard))) return;
     // Đang backoff vì request trước chưa rời DRIFT: chưa phản ứng với thị trường (fill / ack vẫn ghi).
     if (!accounting && r.blocked !== null && event.at < r.blocked.nextAt) return;
+    // Volume Farm nạp lại khi còn cảnh báo lệch mà chưa kiểm tra xong sổ cái (đọc vị thế lỗi, v2.12.1): chưa có bước nào
+    // theo thị trường (kể cả `resumed`), để không gửi lệnh theo sổ cái sai. Fill / ack vẫn ghi.
+    if (!accounting && r.repairPending !== null) return;
     if (live && !accounting && !r.leverageSet) {
       const lev = await this.#ensureLeverage(r, event.at);
       if (lev === "rejected") await this.#pauseBot(r, ReasonCode.orderRejected);
@@ -2670,6 +2721,23 @@ export class Engine {
         this.#d.log.info(
           { botId: r.botId, markets: [...r.positionMismatch.keys()], event: event.type },
           "strategy step held: it would add to a position that does not match the ledger; waiting",
+        );
+      }
+      return;
+    }
+    // Phòng thủ thêm (v2.12.1): Volume Farm đang lệch ở market mà lần đọc vị thế thật gần nhất là 0 thì không có gì để giảm;
+    // bước theo thị trường có lệnh reduce-only ở market đó bị bỏ cả bước (state không đổi), như cổng lệch vị thế. Trước
+    // đây sổ cái sai (+0.0957) làm bot gửi 30 lệnh bán reduce-only bị từ chối rồi pause (#239). Fill / ack đi trọn.
+    if (
+      r.strategy === Strategy.volumeFarm &&
+      !accounting &&
+      this.#reduceOnZeroReal(r, result.actions)
+    ) {
+      if (!r.zeroRealSkipLogged) {
+        r.zeroRealSkipLogged = true;
+        this.#d.log.info(
+          { botId: r.botId, event: event.type },
+          "strategy step held: reduce-only order while the real position is 0 and the ledger differs",
         );
       }
       return;
@@ -6061,12 +6129,24 @@ export class Engine {
    */
   async #repairOnLoad(r: Runner): Promise<void> {
     let positions: Map<string, { size: string; entryPrice: string }>;
+    // Đọc mức thường (ngân sách khẩn, không bị phần dự trữ 30% của DEC-310 bỏ); SoDEX / bucket báo chờ ngắn thì chờ
+    // đúng chừng đó và đọc lại một lần (v2.12.1).
+    const read = () => r.gateway.readPositions(r.account, { urgent: true });
     try {
-      positions = await r.gateway.readPositions(r.account);
+      try {
+        positions = await read();
+      } catch (error) {
+        const wait = retryAfterOf(error);
+        if (wait === null || wait > REPAIR_RETRY_MAX_MS) throw error;
+        await new Promise((resolve) => setTimeout(resolve, wait));
+        positions = await read();
+      }
     } catch (error) {
-      this.#d.log.info({ err: error, botId: r.botId }, "repair on load skipped: position not read");
+      if (error instanceof FencedError) throw error;
+      await this.#repairWaiting(r, error);
       return;
     }
+    r.repairPending = null;
     const now = this.#d.now();
     for (const [market, mm] of r.positionMismatch) {
       const ledger = positionOf(r.state, market, "perps");
@@ -6085,6 +6165,34 @@ export class Engine {
         this.#d.log.warn({ err: error, botId: r.botId, market }, "repair on load failed");
       }
     }
+  }
+
+  /** Bước có lệnh reduce-only ở market đang lệch mà vị thế thật đọc gần nhất bằng 0 (không có gì để giảm). */
+  #reduceOnZeroReal(r: Runner, actions: readonly StrategyAction[]): boolean {
+    return actions.some((a) => {
+      if (a.type !== "place" || !a.order.reduceOnly || a.order.engine !== "perps") return false;
+      const mm = r.positionMismatch.get(a.order.market);
+      return mm !== undefined && dec(mm.real).isZero();
+    });
+  }
+
+  /**
+   * Lần kiểm tra sửa sổ cái chưa đọc được vị thế (v2.12.1): bot tiếp tục chờ (không Running, không bước theo thị trường) và
+   * thử lại ở vòng đồng bộ sau. Quá REPAIR_WAIT_MS thì ghi một dòng Decisions + Needs attention, không im lặng.
+   */
+  async #repairWaiting(r: Runner, error: unknown): Promise<void> {
+    const now = this.#d.now();
+    const p = r.repairPending ?? { since: now, logged: false };
+    r.repairPending = p;
+    this.#d.log.info(
+      { err: error, botId: r.botId, waitingMs: now - p.since },
+      "repair on load waits: position not read; the bot does not trade until it is",
+    );
+    if (p.logged || now - p.since < REPAIR_WAIT_MS) return;
+    p.logged = true;
+    await this.#event(r, "reconcile", REPAIR_WAIT_DECISION, REPAIR_WAIT_WHY, now, async (tx) => {
+      await tx.update(bots).set({ needsAttention: true }).where(eq(bots.id, r.botId));
+    });
   }
 
   /** Lệnh của bot trên market còn `unknown`, hoặc gửi chưa quá BACKFILL_TRADE_GRACE_MS. */
@@ -6203,7 +6311,10 @@ export class Engine {
         );
     });
     r.positionMismatch = next;
-    if (next.size === 0) r.mismatchWaitLogged = false;
+    if (next.size === 0) {
+      r.mismatchWaitLogged = false;
+      r.zeroRealSkipLogged = false;
+    }
     this.#d.log.info({ botId: r.botId, market, real }, "position matches the ledger again");
   }
 
