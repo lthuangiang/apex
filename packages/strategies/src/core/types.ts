@@ -1,4 +1,5 @@
 import type { ReasonCode } from "@drift/shared";
+import type { MmOrderContext, MmQuoteSnapshot } from "@drift/shared/mm-quote";
 import type { VbSignalSnapshot } from "@drift/shared/vb-signal";
 
 import type { WaitingInfo } from "../common/entry";
@@ -142,7 +143,11 @@ export interface MarketSnapshot {
 }
 
 export type StrategyAction =
-  | { type: "place"; order: OrderIntent }
+  /**
+   * `context`: bối cảnh lúc đặt (Market Making, #233), engine ghi vào `orders.context`; không bao giờ gửi SoDEX, chỉ có
+   * khi `StepContext.decisionPayload`.
+   */
+  | { type: "place"; order: OrderIntent; context?: MmOrderContext }
   | { type: "cancel"; clOrdID: string }
   /** Dời giá kích hoạt của stop loss gốc trên SoDEX (DEC-118); SoDEX từ chối thì engine báo `orderReject` cho lệnh đó. */
   | { type: "modifyStop"; clOrdID: string; stopPrice: string }
@@ -159,6 +164,8 @@ export type StrategyAction =
 export interface DecisionPayload {
   /** Snapshot tín hiệu của lượt vào Volume Farm (#221). */
   signal?: VbSignalSnapshot;
+  /** Snapshot báo giá của Market Making (#230). */
+  quote?: MmQuoteSnapshot;
 }
 
 export interface StepContext {

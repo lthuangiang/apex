@@ -18,7 +18,7 @@ const MARKERS = {
     "Signal pointed",
     "INSUFFICIENT_CANDLES",
   ],
-  "volume maker": ["warming up price data", "smartHold"],
+  "volume maker": ["warming up price data", "smartHold", "fairBp", "clampBp"],
   "grid bots": ["waiting_trigger", "Order size per level is below SoDEX minimum"],
   "dca bots": ["waiting_base", "Base order is below SoDEX minimum"],
   "adaptive dca": ["NOT_ENOUGH_DATA: waiting for 5-minute candles"],
