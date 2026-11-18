@@ -2506,6 +2506,40 @@ describe("engine", () => {
     await stopFarmBots();
   });
 
+  it("stores a signal snapshot next to the orders of a Volume Farm entry (#221)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const { vbSignalSnapshotSchema } = await import("@drift/shared/vb-signal");
+    const gw = new FakeGateway();
+    await seedCandles("ADA-USD");
+    const { botId } = await seedFarm("ADA-USD");
+    const e = farmEngine(gw, "snapshot");
+    await tickUntil(e, () => gw.received.some((o) => o.tag.startsWith("vf:")));
+    const entry = gw.received.find((o) => o.tag.startsWith("vf:"));
+    expect(entry).toBeDefined();
+    const ev = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).find(
+      (x) => x.type === "decision" && /^Enter (long|short)$/.test(x.decision ?? ""),
+    );
+    const payload = ev?.payload as { orders: string[]; signal: unknown };
+    expect(payload.orders).toEqual([entry?.clOrdID]);
+    const snap = vbSignalSnapshotSchema.parse(payload.signal);
+    expect(snap).toMatchObject({
+      v: 1,
+      side: ev?.decision === "Enter long" ? "long" : "short",
+      reversed: false,
+      balanced: false,
+      price: { bid: "100", ask: "100.05", mid: "100.025", mark: null },
+      order: {
+        clOrdID: entry?.clOrdID,
+        price: entry?.price ?? null,
+        size: entry?.quantity,
+        entryTry: 0,
+      },
+    });
+    expect(JSON.stringify(payload.signal).length).toBeLessThan(1024);
+    await e.stop();
+    await stopFarmBots();
+  });
+
   it("counts a partly filled order once when its updates arrive together (DEC-87)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
