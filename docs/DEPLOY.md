@@ -273,6 +273,17 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "orders_bot_filled_idx" ON "orders" USIN
 
 Ra `true` thì deploy như thường (migration 0043 không làm gì).
 
+### 2.14 Retention snapshot (#229): index trên `bot_events` và `orders` do scheduler tự tạo
+
+Không cần bước tay khi deploy. Job retention của scheduler (leader, vòng 10 phút; lượt đầu 10 phút sau khi scheduler giành lease) cần hai index một phần: `bot_events_signal_idx (occurred_at) WHERE payload ? 'signal'` và `orders_context_created_idx (created_at) WHERE context IS NOT NULL`. Không có migration nào tạo chúng (migrator chạy trong transaction nên chỉ tạo được bằng CREATE INDEX thường, chặn ghi của engine suốt lúc build). Job tự tạo bằng `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, ngoài transaction, một lần: không chặn ghi hay đọc, chỉ mất thời gian quét bảng. Trước mỗi lượt job kiểm `pg_index.indisvalid`; index INVALID (build bị huỷ, ví dụ scheduler restart giữa chừng) thì job `DROP INDEX CONCURRENTLY` và lượt sau tạo lại. Job chỉ dọn dòng khi cả hai index hợp lệ.
+
+Log của scheduler: `signal snapshot index created` khi tạo xong, `invalid signal snapshot index dropped, rebuilt next run` khi bỏ index INVALID, `old signal snapshots stripped` khi có dòng được dọn, `signal snapshot retention failed` khi một lượt lỗi (lượt sau tự thử lại). Kiểm tay nếu cần:
+
+```sql
+select c.relname, i.indisvalid from pg_index i join pg_class c on c.oid = i.indexrelid
+ where c.relname in ('bot_events_signal_idx', 'orders_context_created_idx');
+```
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push image các app đổi (app không đổi được gắn tag mới vào image của tag trước) → PM trả tag (`docs/RELEASE.md`).

@@ -15,6 +15,8 @@ import type {
 
 const BOT_MM = "0195f3a0-0000-7000-8000-000000000001";
 const BOT_VB = "0195f3a0-0000-7000-8000-000000000002";
+const BOT_VB_OLD = "0195f3a0-0000-7000-8000-0000000001eb";
+const BOT_VB_NEW = "0195f3a0-0000-7000-8000-00000001a1eb";
 const USER = "0195f3a0-0000-7000-8000-00007c21e0b4";
 export const FILL_ID = "0195f3a0-0000-7000-8000-0000000000f1";
 export const ENTRY_ID = "0195f3a0-0000-7000-8000-0000000000e1";
@@ -28,9 +30,41 @@ const head = {
   bots: 2,
   accounts: 1,
   markets: ["BTC-USD", "ETH-USD"],
+  // Hai bot cùng tên ở hai account: bộ chọn phân biệt bằng nhóm account, ngày tạo và đuôi id.
   botList: [
-    { id: BOT_MM, name: "BTC maker 01", market: "BTC-USD", strategy: "volume_maker" as const },
-    { id: BOT_VB, name: "ETH vb 3", market: "ETH-USD", strategy: "volume_farm" as const },
+    {
+      id: BOT_VB,
+      name: "ETH vb 3",
+      market: "ETH-USD",
+      strategy: "volume_farm" as const,
+      createdAt: "2026-11-02T08:00:00.000Z",
+      tail: "a1b2c3d4",
+    },
+    {
+      id: BOT_MM,
+      name: "BTC maker 01",
+      market: "BTC-USD",
+      strategy: "volume_maker" as const,
+      createdAt: "2026-11-01T08:00:00.000Z",
+      tail: "7c21e0b4",
+    },
+    {
+      id: BOT_VB_OLD,
+      name: "ETH vb 3",
+      market: "ETH-USD",
+      strategy: "volume_farm" as const,
+      createdAt: "2026-11-05T08:00:00.000Z",
+      tail: "7c21e0b4",
+    },
+    {
+      id: BOT_VB_NEW,
+      name: "ETH vb 3",
+      market: "ETH-USD",
+      strategy: "volume_farm" as const,
+      // 23:30 UTC ngày 12 = ngày 13 ở UTC+7: đổi Show in UTC thì ngày đổi.
+      createdAt: "2026-11-12T23:30:00.000Z",
+      tail: "7c21e0b4",
+    },
   ],
 };
 

@@ -1,3 +1,4 @@
+import { sodexWsCloseInfoSchema } from "@drift/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SodexCallCapture, SodexWsCapture } from "../debug/capture";
@@ -14,11 +15,18 @@ const ORDER_UPDATE_EXAMPLE = `{"channel":"accountOrderUpdate","type":"update","d
 const TRADE_EXAMPLE = `{"channel":"accountTrade","type":"update","data":[
 {"E":1766848149693,"T":1766847863273,"t":6275,"s":"vETH_vUSDC","i":51101,"c":"MAKER-ADJUST-1-51126829939055","S":"BUY","p":"3511.6","q":"0.0268","f":"0","m":true}]}`;
 
+interface FakeEvent {
+  data: unknown;
+  code?: unknown;
+  reason?: unknown;
+  wasClean?: unknown;
+}
+
 class FakeSocket implements WebSocketLike {
   readyState = 0;
   readonly sent: string[] = [];
   closed = false;
-  readonly #listeners = new Map<string, ((event: { data: unknown }) => void)[]>();
+  readonly #listeners = new Map<string, ((event: FakeEvent) => void)[]>();
 
   constructor(readonly url: string) {}
 
@@ -29,7 +37,7 @@ class FakeSocket implements WebSocketLike {
     this.closed = true;
     this.readyState = 3;
   }
-  addEventListener(type: string, listener: (event: { data: unknown }) => void): void {
+  addEventListener(type: string, listener: (event: FakeEvent) => void): void {
     const list = this.#listeners.get(type) ?? [];
     list.push(listener);
     this.#listeners.set(type, list);
@@ -37,6 +45,17 @@ class FakeSocket implements WebSocketLike {
   emit(type: string, data?: unknown): void {
     if (type === "open") this.readyState = 1;
     for (const listener of this.#listeners.get(type) ?? []) listener({ data });
+  }
+  /** Close event như WebSocket thật (code / reason / wasClean). */
+  emitClose(code: number, reason: string, wasClean: boolean): void {
+    this.readyState = 3;
+    for (const listener of this.#listeners.get("close") ?? [])
+      listener({ data: undefined, code, reason, wasClean });
+  }
+  /** Close event tuỳ ý (kể cả event có getter ném lỗi). */
+  emitCloseEvent(event: FakeEvent): void {
+    this.readyState = 3;
+    for (const listener of this.#listeners.get("close") ?? []) listener(event);
   }
 }
 
@@ -265,6 +284,7 @@ describe("WsUserStream · SoDEX Debugger", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("records open, subscribe acks, account pushes and closes, but not pong", () => {
@@ -328,6 +348,170 @@ describe("WsUserStream · SoDEX Debugger", () => {
       ["MSG", null, "unreadable"],
       ["CLOSE", null, "timeout"],
     ]);
+    stream.close();
+  });
+
+  it("records the close code, reason, who closed and the reconnect delay (#240)", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const captures: SodexWsCapture[] = [];
+    const { stream, sockets } = setup({
+      accountID: 47125n,
+      recorder: {
+        record: (c) => {
+          if (c.kind === "ws") captures.push(c);
+        },
+      },
+    });
+    stream.connect();
+    const first = sockets[0];
+    if (first === undefined) throw new Error("no socket");
+    first.emit("open");
+    vi.advanceTimersByTime(300);
+    first.emit("message", '{"op":"subscribe","id":1,"success":true}');
+    vi.advanceTimersByTime(200);
+    first.emitClose(1001, "going away", true);
+
+    const close = captures.at(-1);
+    expect(close?.event).toBe("CLOSE");
+    expect(close?.outcome).toBe("network");
+    expect(close?.detail).toBe(
+      'closed by SoDEX (code 1001, reason "going away"): reconnecting in 1000 ms (attempt 1)',
+    );
+    expect(sodexWsCloseInfoSchema.parse(JSON.parse(close?.response ?? "null"))).toEqual({
+      closedBy: "server",
+      code: 1001,
+      reason: "going away",
+      wasClean: true,
+      openForMs: 500,
+      lastMessageAgoMs: 200,
+      reconnectInMs: 1000,
+      reconnectAttempt: 1,
+    });
+
+    // Kết nối kế tiếp mở đúng sau khoảng chờ đã ghi; đứt không có close frame (1006) → "network".
+    vi.advanceTimersByTime(999);
+    expect(sockets).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    const second = sockets[1];
+    if (second === undefined) throw new Error("no second socket");
+    second.emit("open");
+    second.emitClose(1006, "", false);
+    const dropped = sodexWsCloseInfoSchema.parse(JSON.parse(captures.at(-1)?.response ?? "null"));
+    expect(dropped).toMatchObject({
+      closedBy: "network",
+      code: 1006,
+      reason: null,
+      wasClean: false,
+      lastMessageAgoMs: null,
+      reconnectInMs: 2000,
+      reconnectAttempt: 2,
+    });
+    expect(captures.at(-1)?.detail).toBe(
+      "connection dropped without a close frame (code 1006): reconnecting in 2000 ms (attempt 2)",
+    );
+    expect(captures.at(-1)?.connId).toBe(
+      captures.find((c) => c.event === "OPEN" && c.connId !== close?.connId)?.connId,
+    );
+    stream.close();
+  });
+
+  it("records a pong timeout, an error and DeskLabs' own close with who closed (#240)", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const captures: SodexWsCapture[] = [];
+    const { stream, sockets } = setup({
+      recorder: {
+        record: (c) => {
+          if (c.kind === "ws") captures.push(c);
+        },
+      },
+    });
+    const closeInfo = (c: SodexWsCapture | undefined) =>
+      sodexWsCloseInfoSchema.parse(JSON.parse(c?.response ?? "null"));
+    stream.connect();
+    sockets[0]?.emit("open");
+    vi.advanceTimersByTime(2001); // ping không có pong
+    expect(captures.at(-1)?.outcome).toBe("timeout");
+    expect(closeInfo(captures.at(-1))).toMatchObject({
+      closedBy: "timeout",
+      code: null,
+      reconnectInMs: 1000,
+      reconnectAttempt: 1,
+    });
+    expect(captures.at(-1)?.detail).toBe("no pong from SoDEX: reconnecting in 1000 ms (attempt 1)");
+
+    vi.advanceTimersByTime(1000);
+    sockets[1]?.emit("open");
+    sockets[1]?.emit("error");
+    expect(captures.slice(-2).map((c) => [c.event, c.outcome])).toEqual([
+      ["ERROR", "network"],
+      ["CLOSE", "network"],
+    ]);
+    expect(closeInfo(captures.at(-1))).toMatchObject({ closedBy: "network", reconnectAttempt: 2 });
+
+    vi.advanceTimersByTime(2000);
+    sockets[2]?.emit("open");
+    stream.close();
+    expect(captures.at(-1)?.event).toBe("CLOSE");
+    expect(captures.at(-1)?.detail).toBe("closed by DeskLabs");
+    expect(closeInfo(captures.at(-1))).toMatchObject({
+      closedBy: "client",
+      code: null,
+      reconnectInMs: null,
+      reconnectAttempt: null,
+    });
+  });
+
+  it("keeps a long close reason short and never fails the stream when it is odd (#240)", () => {
+    const captures: SodexWsCapture[] = [];
+    const { stream, sockets } = setup({
+      recorder: {
+        record: (c) => {
+          if (c.kind === "ws") captures.push(c);
+        },
+      },
+    });
+    stream.connect();
+    sockets[0]?.emit("open");
+    sockets[0]?.emitClose(4000, "x".repeat(1000), true);
+    expect(closeInfo(captures.at(-1)).reason).toHaveLength(256);
+    // Socket không đưa code (kiểu lạ): vẫn ghi, code null.
+    vi.advanceTimersByTime(2000);
+    sockets[1]?.emit("open");
+    sockets[1]?.emit("close");
+    expect(closeInfo(captures.at(-1))).toMatchObject({ closedBy: "server", code: null });
+    expect(sockets).toHaveLength(2);
+    stream.close();
+
+    function closeInfo(c: SodexWsCapture | undefined) {
+      return sodexWsCloseInfoSchema.parse(JSON.parse(c?.response ?? "null"));
+    }
+  });
+
+  it("still reconnects when building the close details throws (review #256)", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const captures: SodexWsCapture[] = [];
+    const { stream, sockets } = setup({
+      recorder: {
+        record: (c) => {
+          if (c.kind === "ws") captures.push(c);
+        },
+      },
+    });
+    stream.connect();
+    sockets[0]?.emit("open");
+    const event = { data: undefined } as FakeEvent;
+    Object.defineProperty(event, "code", {
+      get() {
+        throw new Error("odd close event");
+      },
+    });
+    expect(() => {
+      sockets[0]?.emitCloseEvent(event);
+    }).not.toThrow();
+    // Không ghi được CLOSE, nhưng kết nối lại vẫn được hẹn đúng giờ.
+    expect(captures.some((c) => c.event === "CLOSE")).toBe(false);
+    vi.advanceTimersByTime(1000);
+    expect(sockets).toHaveLength(2);
     stream.close();
   });
 });

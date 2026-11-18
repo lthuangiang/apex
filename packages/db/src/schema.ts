@@ -650,6 +650,9 @@ export const orders = pgTable(
       .on(t.botId, t.createdAt)
       .where(sql`${t.filledSize} > 0`),
     index("orders_status_idx").on(t.status),
+    // `orders_context_created_idx` (created_at) WHERE context IS NOT NULL: KHÔNG khai báo ở đây. Job retention của
+    // scheduler (#229) tự tạo bằng CREATE INDEX CONCURRENTLY để không chặn ghi (apps/scheduler/src/snapshot-retention.ts);
+    // khai báo ở đây thì drizzle-kit sẽ sinh CREATE INDEX thường trong migration kế tiếp.
   ],
 );
 
@@ -694,7 +697,11 @@ export const botEvents = pgTable(
     occurredAt: tstz("occurred_at").notNull(),
     ...timestamps,
   },
-  (t) => [index("bot_events_bot_idx").on(t.botId, t.occurredAt)],
+  (t) => [
+    index("bot_events_bot_idx").on(t.botId, t.occurredAt),
+    // `bot_events_signal_idx` (occurred_at) WHERE payload ? 'signal': KHÔNG khai báo ở đây, job retention của scheduler
+    // (#229) tự tạo bằng CREATE INDEX CONCURRENTLY (xem `orders_context_created_idx`).
+  ],
 );
 
 /**

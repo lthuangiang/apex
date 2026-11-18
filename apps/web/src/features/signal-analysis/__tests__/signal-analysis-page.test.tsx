@@ -17,7 +17,17 @@ import { ALL, MM, MM_DETAIL, MM_FILLS, VB, VB_DETAIL, VB_ENTRIES } from "./fixtu
 // Signal Analysis (team): mọi số đến từ API; ở đây API giả trả fixture đã qua đúng zod schema của web.
 
 type Mode = "ok" | "forbidden" | "error" | "empty" | "pending" | "thin" | "timeout" | "slow30";
-const state = vi.hoisted((): { mode: Mode; paths: string[] } => ({ mode: "ok", paths: [] }));
+const state = vi.hoisted((): { mode: Mode; paths: string[]; tz: string | null } => ({
+  mode: "ok",
+  paths: [],
+  tz: null,
+}));
+
+// Múi giờ trình duyệt cố định khi test cần (mặc định: múi giờ thật của máy).
+vi.mock("@/features/account/market-hours-time", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/features/account/market-hours-time")>();
+  return { ...real, browserTimeZone: () => state.tz ?? real.browserTimeZone() };
+});
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/api")>();
@@ -34,7 +44,14 @@ vi.mock("@/lib/api", async (importOriginal) => {
       if (state.mode === "slow30" && url.searchParams.get("range") === "30d")
         return new Promise(() => undefined);
       if (url.pathname.endsWith("/mm") && url.searchParams.get("range") === "14d")
-        return Promise.resolve(schema.parse({ ...MM, range: "14d", markets: ["BTC-USD"] }));
+        return Promise.resolve(
+          schema.parse({
+            ...MM,
+            range: "14d",
+            markets: ["BTC-USD"],
+            botList: MM.botList.filter((b) => b.tail !== "a1b2c3d4"),
+          }),
+        );
       if (url.pathname.endsWith("/mm/quantiles"))
         return Promise.resolve(
           schema.parse({
@@ -107,6 +124,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   state.mode = "ok";
   state.paths = [];
+  state.tz = null;
   intlErrors.length = 0;
   window.history.replaceState(null, "", "/admin/signal-analysis");
 });
@@ -294,5 +312,67 @@ describe("Signal Analysis page", { timeout: 30_000 }, () => {
       within(market).getByRole("option", { name: "ETH-USD (no fills in this range)" }),
     ).toBeInTheDocument();
     expect(market).toHaveValue("ETH-USD");
+  });
+
+  it("bot picker: one group per account, newest first, name · created date · short id", async () => {
+    state.tz = "Asia/Ho_Chi_Minh";
+    window.history.replaceState(null, "", "/admin/signal-analysis?tab=vb");
+    wrap();
+    await screen.findByText("Last 7 days · 1,284 entries");
+    const bot = screen.getByRole("combobox", { name: "Bot" });
+    const groups = within(bot).getAllByRole("group");
+    expect(groups.map((g) => g.getAttribute("label"))).toEqual([
+      "Account ··7c21e0b4",
+      "Account ··a1b2c3d4",
+    ]);
+    // Không email.
+    expect(bot.textContent).not.toMatch(/@/);
+    const [mine, other] = groups;
+    if (mine === undefined || other === undefined) throw new Error("groups");
+    // Mới nhất trước; 23:30 UTC ngày 12 là ngày 13 ở UTC+7.
+    expect(
+      within(mine)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual([
+      "ETH vb 3 · Nov 13 · ··0001a1eb",
+      "ETH vb 3 · Nov 5 · ··000001eb",
+      "BTC maker 01 · Nov 1 · ··00000001",
+    ]);
+    expect(
+      within(other)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["ETH vb 3 · Nov 2 · ··00000002"]);
+    await noViolations();
+    // Show in UTC: cùng bot, ngày theo UTC.
+    await userEvent.click(screen.getByRole("button", { name: "Show in UTC" }));
+    expect(
+      await within(bot).findByRole("option", { name: "ETH vb 3 · Nov 12 · ··0001a1eb" }),
+    ).toBeInTheDocument();
+    expect(within(bot).queryByRole("option", { name: /Nov 13/ })).not.toBeInTheDocument();
+    // Chọn một bot: bộ lọc đi theo id.
+    await userEvent.selectOptions(bot, "ETH vb 3 · Nov 12 · ··0001a1eb");
+    await waitFor(() => {
+      expect(
+        state.paths.some((p) => p.includes("botId=0195f3a0-0000-7000-8000-00000001a1eb")),
+      ).toBe(true);
+    });
+    expect(intlErrors).toEqual([]);
+  });
+
+  it("keeps the selected bot in its account group when the new range has no fills for it", async () => {
+    window.history.replaceState(null, "", "/admin/signal-analysis?tab=mm");
+    wrap();
+    await screen.findByText("Last 7 days · 18,420 quote fills");
+    const bot = screen.getByRole("combobox", { name: "Bot" });
+    await userEvent.selectOptions(bot, "0195f3a0-0000-7000-8000-000000000002");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Time" }), "14d");
+    await screen.findByText("Last 14 days · 18,420 quote fills");
+    const kept = within(bot).getByRole("option", {
+      name: /^ETH vb 3 · Nov \d+ · ··00000002 \(no fills in this range\)$/,
+    });
+    expect(kept.parentElement?.getAttribute("label")).toBe("Account ··a1b2c3d4");
+    expect(bot).toHaveValue("0195f3a0-0000-7000-8000-000000000002");
   });
 });
