@@ -30,6 +30,7 @@ import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
 import { fitMmModelDaily } from "./mm-model";
 import { snapshotAndCheck } from "./risk";
+import { runSnapshotRetention } from "./snapshot-retention";
 import { redisIncidentReadStore, teamIncidentRunner } from "./team-incidents";
 
 // scheduler: một bản active (leader lease). Hiện có job market stats hằng ngày; các job lịch khác
@@ -218,6 +219,27 @@ async function feeTierTick() {
   if (r.changed > 0 || r.failed > 0) log.info(r, "builder fee tiers changed");
 }
 
+/** Retention snapshot (#229): một lượt mỗi lần, lượt trước chưa xong thì bỏ qua. */
+let snapshotRetentionRunning = false;
+async function snapshotRetentionTick() {
+  if (snapshotRetentionRunning) return;
+  snapshotRetentionRunning = true;
+  try {
+    // Index của job tạo bằng CONCURRENTLY ở đây, không trong migration (review PR #257).
+    const { indexes, ...r } = await runSnapshotRetention(db, Date.now());
+    if (indexes.created.length > 0)
+      log.info({ created: indexes.created }, "signal snapshot index created");
+    if (indexes.dropped.length > 0)
+      log.warn(
+        { dropped: indexes.dropped },
+        "invalid signal snapshot index dropped, rebuilt next run",
+      );
+    if (r.signals + r.contexts > 0) log.info(r, "old signal snapshots stripped");
+  } finally {
+    snapshotRetentionRunning = false;
+  }
+}
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let riskTimer: ReturnType<typeof setInterval> | null = null;
 async function tick() {
@@ -304,6 +326,9 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
       });
       void mmModelTick().catch((error: unknown) => {
         log.error({ err: error }, "mm cost model fit failed");
+      });
+      void snapshotRetentionTick().catch((error: unknown) => {
+        log.error({ err: error }, "signal snapshot retention failed");
       });
       void feeTierTick().catch((error: unknown) => {
         log.error({ err: error }, "builder fee tiers failed");

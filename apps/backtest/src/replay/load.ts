@@ -1,5 +1,5 @@
 import { type DbTx } from "@drift/db";
-import { dec, Decimal } from "@drift/shared";
+import { dec, Decimal, SIGNAL_SNAPSHOT_RETENTION_DAYS } from "@drift/shared";
 import { vbSignalSnapshotSchema } from "@drift/shared/vb-signal";
 import { sql } from "drizzle-orm";
 
@@ -103,11 +103,20 @@ export class ReplayLimitError extends Error {
   }
 }
 
-export function checkRange(from: Date, to: Date): void {
+/**
+ * Kiểm khoảng chạy. `now` là giờ hiện tại (ms): scheduler bỏ snapshot tín hiệu cũ hơn `SIGNAL_SNAPSHOT_RETENTION_DAYS`
+ * ngày (#229), nên khoảng bắt đầu trước mốc đó sẽ mất lượt vào mà không ai biết (quy tắc 1.8): từ chối thay vì chạy.
+ */
+export function checkRange(from: Date, to: Date, now: number): void {
   if (to <= from) throw new ReplayLimitError("--to must be after --from");
   if (to.getTime() - from.getTime() > MAX_RANGE_DAYS * DAY_MS)
     throw new ReplayLimitError(
       `range is longer than ${String(MAX_RANGE_DAYS)} days; run several shorter ranges instead`,
+    );
+  const kept = new Date(now - SIGNAL_SNAPSHOT_RETENTION_DAYS * DAY_MS);
+  if (from < kept)
+    throw new ReplayLimitError(
+      `--from is more than ${String(SIGNAL_SNAPSHOT_RETENTION_DAYS)} days ago; signal snapshots older than ${String(SIGNAL_SNAPSHOT_RETENTION_DAYS)} days are removed, so entries before ${kept.toISOString()} cannot be replayed`,
     );
 }
 
@@ -128,12 +137,14 @@ export async function loadEntries(
   opts: {
     from: Date;
     to: Date;
+    /** Giờ hiện tại (ms), để kiểm `from` còn trong thời hạn giữ snapshot. */
+    now: number;
     ticks: ReadonlyMap<string, Decimal>;
     /** Gọi giữa các câu để dừng khi quá trần thời gian tổng (`readOnlyTx`). */
     checkDeadline?: () => void;
   },
 ): Promise<LoadResult> {
-  checkRange(opts.from, opts.to);
+  checkRange(opts.from, opts.to, opts.now);
   const check = opts.checkDeadline ?? (() => undefined);
   const events = rows<{ bot_id: string; market: string; at: Date; signal: unknown }>(
     await q.execute(sql`
