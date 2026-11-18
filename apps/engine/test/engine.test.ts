@@ -3590,22 +3590,32 @@ describe("engine", () => {
     const e = farmEngine(gw, "prod-239-rl");
     await e.tick();
     const before = gw.received.length;
-    // Prod 2026-11-18: readPositions ném RATE_LIMITED (retryAfterMs 174) ở #repairOnLoad. Lần đọc lại ngay sau chờ cũng lỗi.
+    // Prod 2026-11-18: readPositions ném RATE_LIMITED (retryAfterMs 174) ở #repairOnLoad.
     gw.positionError = rateLimited();
-    gw.positionErrorTimes = 2;
+    gw.positionErrorTimes = null;
     await db.update(bots).set({ state: "resuming", reasonCode: null }).where(eq(bots.id, botId));
-    for (let i = 0; i < 3; i += 1) {
-      if (i === 1) gw.positionErrorTimes = 2;
-      await e.tick();
-      clock += 1_000;
-      if (i < 2) {
-        // Còn `resuming`, sổ cái chưa sửa, không lệnh nào (trước đây: Running + 30 lệnh bán reduce-only).
-        expect((await botState(botId))?.state).toBe("resuming");
-        expect((await farmState(botId))?.ledger.position).toBe("0.0957");
-        expect(gw.received.slice(before)).toEqual([]);
-      }
-    }
-    // Vòng sau đọc được: nhận vf:103, sổ cái 0, Running, không gửi gì.
+    const urgentReads = () => gw.positionReadsUrgent.filter((x) => x).length;
+    const stillWaiting = async () => {
+      // Còn `resuming`, sổ cái chưa sửa, không lệnh nào (trước đây: Running + 30 lệnh bán reduce-only).
+      expect((await botState(botId))?.state).toBe("resuming");
+      expect((await farmState(botId))?.ledger.position).toBe("0.0957");
+      expect(gw.received.slice(before)).toEqual([]);
+    };
+    await e.tick();
+    await stillWaiting();
+    expect(urgentReads()).toBe(1);
+    // Không ngủ, không đọc lại ngay: lần sau sau 10 s (nấc đầu, dài hơn retryAfterMs 174 ms).
+    clock += 5_000;
+    await e.tick();
+    await stillWaiting();
+    expect(urgentReads()).toBe(1);
+    clock += 6_000;
+    await e.tick();
+    await stillWaiting();
+    expect(urgentReads()).toBe(2);
+    // Nấc thứ hai 20 s; lần đó đọc được: nhận vf:103, sổ cái 0, Running, không gửi gì.
+    gw.positionError = null;
+    clock += 21_000;
     for (let i = 0; i < 3 && (await botState(botId))?.state !== "running"; i += 1) {
       await e.tick();
       clock += 1_000;
@@ -3613,8 +3623,6 @@ describe("engine", () => {
     expect((await botState(botId))?.state).toBe("running");
     expect(dec((await farmState(botId))?.ledger.position ?? "1").isZero()).toBe(true);
     expect((await farmState(botId))?.orders[orphan]).toMatchObject({ kind: "exit", side: "sell" });
-    // Lần đọc của việc sửa sổ cái đều là đọc khẩn: 2 vòng × (đọc + một lần đọc lại sau retryAfterMs) + lần đọc được.
-    expect(gw.positionReadsUrgent.filter((x) => x).length).toBeGreaterThanOrEqual(5);
     for (let i = 0; i < 4; i += 1) {
       clock += 30_000;
       await e.tick();
@@ -3648,7 +3656,11 @@ describe("engine", () => {
     );
     expect(waits).toHaveLength(1);
     expect((await botState(botId))?.needsAttention).toBe(true);
-    // Đọc được: sửa sổ cái, vẫn không gửi gì.
+    // Báo team (warning, DEC-313) một lần.
+    expect((await teamIncidents(botId)).filter((x) => x.kind === "repair_waiting")).toHaveLength(1);
+    // Đọc theo nhịp 10 / 20 / 30 s, không mỗi vòng: tối đa ~6 lần / phút (6 phút → ≤ 14 lần đọc khẩn).
+    expect(gw.positionReadsUrgent.filter((x) => x).length).toBeLessThanOrEqual(14);
+    // Đọc được: sửa sổ cái, vẫn không gửi gì; ghi "Position checked on SoDEX" và bỏ Needs attention của lần chờ.
     gw.positionError = null;
     for (let i = 0; i < 4; i += 1) {
       await e.tick();
@@ -3656,6 +3668,11 @@ describe("engine", () => {
     }
     expect(dec((await farmState(botId))?.ledger.position ?? "1").isZero()).toBe(true);
     expect(gw.received.slice(before).filter((o) => o.market === "ETH-USD")).toEqual([]);
+    const checked = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.decision === "Position checked on SoDEX",
+    );
+    expect(checked).toHaveLength(1);
+    expect((await botState(botId))?.needsAttention).toBe(false);
     await e.stop();
     await stopFarmBots();
   });
@@ -3693,6 +3710,184 @@ describe("engine", () => {
     expect(gw.received.slice(before).filter((o) => o.market === "ETH-USD" && o.reduceOnly)).toEqual(
       [],
     );
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  /** Bot Volume Farm đang chạy, sổ cái +0.5 BTC-like, cờ lệch đã lưu (`real` cho trước): như sau khi engine khởi động lại. */
+  async function seedWaitingFarm(
+    market: string,
+    storedReal: string,
+    extra: Record<string, unknown> = {},
+  ) {
+    const { eq } = await import("drizzle-orm");
+    const { botId, accountId } = await seedFarm(market);
+    const [b] = await db.select().from(bots).where(eq(bots.id, botId));
+    await db.insert(botRuntime).values({
+      botId,
+      versionId: b?.activeVersionId ?? "",
+      epoch: 1,
+      state: {
+        phase: "open",
+        cycle: 3,
+        ledger: {
+          position: "0.5",
+          avgCost: "100",
+          realized: "0",
+          fees: "0",
+          funding: "0",
+          invested: "50",
+        },
+        lastPrice: "100",
+        book: null,
+        bookAt: null,
+        orders: {},
+        entry: null,
+        exit: null,
+        exitReason: null,
+        exitForce: false,
+        openedAt: clock - 600_000,
+        holdUntil: clock - 300_000,
+        holdSecs: 120,
+        cooldownUntil: 0,
+        unfilled: 0,
+        exitUnfilled: 0,
+        lastSide: null,
+        netExposure: "0",
+        openRealized: "0",
+        openFees: "0",
+        volume: "0",
+        trades: 0,
+        wins: 0,
+        lastSkip: null,
+        lastSignal: null,
+        xstop: null,
+        xstopOff: true,
+        ...extra,
+      },
+    });
+    await db
+      .update(bots)
+      .set({
+        positionMismatch: {
+          [market]: {
+            real: storedReal,
+            ledger: "0.5",
+            since: new Date(clock - 3_600_000).toISOString(),
+            cause: "trades",
+          },
+        },
+      })
+      .where(eq(bots.id, botId));
+    return { botId, accountId };
+  }
+
+  it("v2.12.1 (review #253): waiting bots never sleep in the sync, read at most about 6 times a minute each, and stay inside the urgent budget", async () => {
+    const gw = new FakeGateway();
+    const ids: string[] = [];
+    for (const m of ["W1-USD", "W2-USD", "W3-USD", "W4-USD", "W5-USD"])
+      ids.push((await seedWaitingFarm(m, "0.5")).accountId);
+    gw.positionError = rateLimited();
+    gw.positionErrorTimes = null;
+    const e = farmEngine(gw, "repair-pace");
+    let slowest = 0;
+    for (let i = 0; i < 60; i += 1) {
+      const t0 = Date.now();
+      await e.tick();
+      slowest = Math.max(slowest, Date.now() - t0);
+      clock += 1_000;
+    }
+    // Không có `setTimeout` trong vòng: 5 bot chờ không cộng thêm 5 s vào một vòng.
+    expect(slowest).toBeLessThan(3_000);
+    // Mỗi bot: lần đầu + 10 s + 20 s + 30 s … → ≤ 6 lần đọc khẩn / phút.
+    for (const a of ids) {
+      const urgent = gw.readsBy.filter((x, i) => x === a && gw.positionReadsUrgent[i] === true);
+      expect(urgent.length).toBeGreaterThanOrEqual(2);
+      expect(urgent.length).toBeLessThanOrEqual(6);
+    }
+    gw.positionError = null;
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("v2.12.1 (review #253): an entry awaiting cancel confirmation is cancelled again while the bot waits for the repair read", async () => {
+    const gw = new FakeGateway();
+    const id = `chased-${String(Math.random())}`;
+    const { botId, accountId } = await seedWaitingFarm("CHS-USD", "0.5", {
+      orders: { [id]: { kind: "entry", side: "buy", qty: "1", cancelAt: clock - 30_000 } },
+    });
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: id,
+      market: "CHS-USD",
+      engine: "perps",
+      side: "buy",
+      type: "limit",
+      price: "99",
+      timeInForce: "GTX",
+      size: "1",
+      status: "open",
+      reduceOnly: false,
+      epoch: 1,
+      tag: "vf:4:in:0",
+      submittedAt: new Date(clock - 60_000),
+      ackedAt: new Date(clock - 60_000),
+    });
+    gw.positionError = rateLimited();
+    gw.positionErrorTimes = null;
+    gw.cancelOutcome = "unknown";
+    const e = farmEngine(gw, "repair-chase");
+    try {
+      for (let i = 0; i < 16 && !gw.cancelled.includes(id); i += 1) {
+        await e.tick();
+        clock += 1_000;
+      }
+      expect(gw.cancelled).toContain(id);
+    } finally {
+      gw.positionError = null;
+      gw.cancelOutcome = "ok";
+      await e.stop();
+      await stopFarmBots();
+    }
+  });
+
+  it("v2.12.1 (review #253): a stale stored real of 0 never blocks an exit once the repair read shows the position", async () => {
+    const gw = new FakeGateway();
+    await seedCandles("STL-USD");
+    await seedWaitingFarm("STL-USD", "0");
+    // SoDEX có đúng vị thế bot theo dõi: lần kiểm tra sửa sổ cái cập nhật `real` dù đã khớp.
+    gw.perpsPositions.set("STL-USD", { size: "0.5", entryPrice: "100" });
+    const e = farmEngine(gw, "repair-stale");
+    for (
+      let i = 0;
+      i < 6 && !gw.received.some((o) => o.market === "STL-USD" && o.reduceOnly && !o.stop);
+      i += 1
+    ) {
+      await e.tick();
+      clock += 3_000;
+    }
+    // Hết thời gian giữ: lệnh thoát reduce-only được gửi (trước đây `real` 0 cũ bỏ nó).
+    expect(
+      gw.received.some(
+        (o) => o.market === "STL-USD" && o.reduceOnly && o.stop === undefined && o.side === "sell",
+      ),
+    ).toBe(true);
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("v2.12.1 (review #253): a bot loaded as starting never waits for a repair read", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedWaitingFarm("STA-USD", "0.5");
+    await db.update(bots).set({ state: "starting" }).where(eq(bots.id, botId));
+    const e = farmEngine(gw, "repair-starting");
+    for (let i = 0; i < 3; i += 1) {
+      await e.tick();
+      clock += 1_000;
+    }
+    expect(gw.positionReadsUrgent).not.toContain(true);
     await e.stop();
     await stopFarmBots();
   });
