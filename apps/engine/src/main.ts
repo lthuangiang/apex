@@ -80,7 +80,7 @@ const options = {
   ...(sodexCalls === undefined ? {} : { recorder: sodexCalls }),
 };
 // Đọc của engine chừa 30% bucket IP cho lệnh ghi (DEC-310).
-const { orderPath, rest, reads, writer, takeSkipped } = engineSodexClients({
+const { orderPath, rest, reads, urgentReads, writer, takeSkipped } = engineSodexClients({
   ...options,
   readTimeoutMs: env.ENGINE_SODEX_READ_TIMEOUT_MS,
 });
@@ -103,6 +103,8 @@ const gateway = new HttpGateway(
   sodex.builderExempt,
   // Cùng bucket rate limit IP (cùng store + egressKey), timeout ngắn hơn cho đọc của đối soát.
   reads,
+  // Tra lệnh đã gửi huỷ chưa được xác nhận: không bị phần dự trữ chặn (DEC-317).
+  urgentReads,
 );
 // User stream cho từng account + engine mà bot thật trong shard của worker này giao dịch (account chỉ chạy Perps không mở
 // stream Spot). Engine mở stream ngay khi nạp bot (trong vòng tick) và lệnh mở vị thế chỉ đi khi stream của engine đó

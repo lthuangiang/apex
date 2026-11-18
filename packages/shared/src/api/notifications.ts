@@ -217,7 +217,17 @@ export const TEAM_INCIDENT_SEVERITY = {
   unknown_gave_up: "critical",
   late_fill: "critical",
   paused_errors: "critical",
+  /** Volume Farm nhận fill muộn của lệnh nó đã thôi theo dõi vào vị thế (#239, DEC-317). */
+  late_fill_adopted: "critical",
+  /** Lệnh chỉ giảm (stop / thoát / đóng) khớp quá vị thế bot theo dõi: đã đóng một vị thế bot không theo dõi (#239 05:31). */
+  closing_fill_beyond: "critical",
+  /** Bot chờ SoDEX xác nhận huỷ quá 10 phút: lệnh có thể còn nằm trên sổ. */
+  cancel_unconfirmed: "critical",
   position_matched: "info",
+  /** Engine sửa sổ cái Volume Farm từ fill bị bỏ qua của chính lệnh bot (chi tiết: clOrdID, khối lượng). */
+  ledger_repaired: "info",
+  /** Quét lệnh mồ côi của Volume Farm đã huỷ một lệnh bot không còn theo dõi (lần huỷ trước bị mất). */
+  orphan_cancelled: "warning",
   shard_lost: "warning",
   tick_slow: "warning",
   reads_skipped: "warning",

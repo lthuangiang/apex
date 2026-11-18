@@ -321,4 +321,52 @@ describe("guardIdleKill", () => {
     }
     expect(pool.listenerCount("connect")).toBe(0);
   });
+
+  it("treats the 'Connection terminated' error that comes with a 25P03 kill as part of the kill, in either order", () => {
+    vi.useFakeTimers();
+    try {
+      for (const order of ["kill-first", "terminated-first"] as const) {
+        const pool = new EventEmitter();
+        const client = new EventEmitter();
+        const onKill = vi.fn();
+        const onOther = vi.fn();
+        const remove = guardIdleKill(
+          pool as unknown as Parameters<typeof guardIdleKill>[0],
+          onKill,
+          onOther,
+        );
+        pool.emit("connect", client);
+        const kill = Object.assign(new Error("terminating connection"), { code: "25P03" });
+        const terminated = new Error("Connection terminated unexpectedly");
+        if (order === "kill-first") {
+          client.emit("error", kill);
+          client.emit("error", terminated);
+        } else {
+          client.emit("error", terminated);
+          client.emit("error", kill);
+        }
+        vi.advanceTimersByTime(1_000);
+        expect(onKill).toHaveBeenCalledTimes(1);
+        expect(onOther).not.toHaveBeenCalled();
+        remove();
+      }
+      // Một "Connection terminated" không đi kèm 25P03 vẫn tới onOther sau thời gian chờ.
+      const pool = new EventEmitter();
+      const client = new EventEmitter();
+      const onOther = vi.fn();
+      const remove = guardIdleKill(
+        pool as unknown as Parameters<typeof guardIdleKill>[0],
+        () => undefined,
+        onOther,
+      );
+      pool.emit("connect", client);
+      client.emit("error", new Error("Connection terminated unexpectedly"));
+      expect(onOther).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1_000);
+      expect(onOther).toHaveBeenCalledTimes(1);
+      remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

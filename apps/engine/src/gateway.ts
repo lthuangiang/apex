@@ -101,6 +101,15 @@ export type LookupResult =
     }
   | { status: "not_found" };
 
+/**
+ * Tuỳ chọn của lời gọi đọc đối soát. `urgent`: tra lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận (lệnh có thể còn sống trên
+ * sổ trong khi chiến lược đã thôi theo dõi): dùng mức thường như lời gọi trên đường gửi lệnh, không bị phần dự trữ 30%
+ * cho lệnh ghi chặn (DEC-310 → DEC-317). Engine giới hạn số lần bằng ngân sách riêng.
+ */
+export interface ReadOptions {
+  urgent?: boolean;
+}
+
 export interface Gateway {
   submit(
     account: AccountRef,
@@ -123,11 +132,13 @@ export interface Gateway {
   lookup(
     account: AccountRef,
     order: { clOrdID: string; market: string; engine: "spot" | "perps" },
+    opts?: ReadOptions,
   ): Promise<LookupResult>;
   /** Các lần khớp của một lệnh theo SoDEX: dùng khi user stream không còn mở lúc lệnh khớp (DEC-85). */
   tradesOf(
     account: AccountRef,
     order: { clOrdID: string; market: string; engine: "spot" | "perps" },
+    opts?: ReadOptions,
   ): Promise<OrderTrade[]>;
   /**
    * Các lần khớp gần đây của account trên một market (mọi lệnh, kèm clOrdID): Market Making đối soát lệnh đã
@@ -136,6 +147,7 @@ export interface Gateway {
   recentTrades(
     account: AccountRef,
     q: { market: string; engine: "spot" | "perps" },
+    opts?: ReadOptions,
   ): Promise<(OrderTrade & { clOrdID: string })[]>;
   /**
    * Mọi vị thế Perps đang mở của account trên SoDEX, theo market: `size` có dấu (âm = short), market không có trong map
