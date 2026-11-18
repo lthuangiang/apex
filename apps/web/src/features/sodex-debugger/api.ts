@@ -68,10 +68,19 @@ export function callsQueryString(f: Filters, cursor?: string): string {
 
 export const SODEX_CALLS_KEY = ["admin", "sodex-calls"] as const;
 const STALE_RETRY_MS = 30_000;
+/** Chế độ Live: chỉ trang đầu + summary, mỗi 5 s. Interval của react-query tự dừng khi tab ẩn. */
+export const LIVE_INTERVAL_MS = 5_000;
 
-export function useSodexCalls(f: Filters) {
+export const callsListKey = (f: Filters) => [...SODEX_CALLS_KEY, "list", f] as const;
+export const callsHeadKey = (f: Filters) => [...SODEX_CALLS_KEY, "head", f] as const;
+
+/**
+ * `live`: tải lại mỗi 5 s, nhưng chỉ khi danh sách mới có trang đầu (refetch của infinite query tải lại mọi trang
+ * đã tải, nên đã tải thêm trang cũ thì không tải lại).
+ */
+export function useSodexCalls(f: Filters, live = false) {
   return useInfiniteQuery({
-    queryKey: [...SODEX_CALLS_KEY, "list", f],
+    queryKey: callsListKey(f),
     queryFn: ({ pageParam }) =>
       api(
         "GET",
@@ -81,15 +90,34 @@ export function useSodexCalls(f: Filters) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     // Lỗi khi đã có dữ liệu: giữ dữ liệu cũ (badge stale) và thử lại sau 30 s.
-    refetchInterval: (q) =>
-      q.state.status === "error" && q.state.data !== undefined ? STALE_RETRY_MS : false,
+    refetchInterval: (q) => {
+      if (q.state.status === "error" && q.state.data !== undefined) return STALE_RETRY_MS;
+      return live && q.state.data?.pages.length === 1 ? LIVE_INTERVAL_MS : false;
+    },
   });
 }
 
-export function useSodexSummary() {
+/**
+ * Trang đầu mới nhất khi Live đang dừng vì người dùng đã cuộn xuống / tải thêm: chỉ để đếm "{n} new calls", không
+ * ghi vào danh sách đang xem (nút "Show" mới ghi).
+ */
+export function useSodexHead(f: Filters, enabled: boolean) {
+  return useQuery({
+    queryKey: callsHeadKey(f),
+    queryFn: () =>
+      api("GET", `/api/v1/admin/sodex-calls?${callsQueryString(f)}`, sodexCallsPageSchema),
+    enabled,
+    staleTime: 0,
+    refetchInterval: enabled ? LIVE_INTERVAL_MS : false,
+  });
+}
+
+/** Server cache summary 30 s, nên poll 5 s vẫn rẻ. */
+export function useSodexSummary(live = false) {
   return useQuery({
     queryKey: [...SODEX_CALLS_KEY, "summary"],
     queryFn: () => api("GET", "/api/v1/admin/sodex-calls/summary", sodexCallSummarySchema),
+    refetchInterval: live ? LIVE_INTERVAL_MS : false,
   });
 }
 

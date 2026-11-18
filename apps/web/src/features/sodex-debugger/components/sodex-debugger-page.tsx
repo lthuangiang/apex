@@ -5,9 +5,10 @@ import {
   SODEX_CALL_SHOW,
   type SodexCallItem,
   type SodexCallShow,
+  type SodexCallsPage,
 } from "@drift/shared";
 import { Button, Skeleton } from "@drift/ui";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { AlertCircle, AlertTriangle, Info, RefreshCw, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -23,12 +24,15 @@ import { Card, PageHead, Workspace } from "@/components/workspace";
 import { ApiError } from "@/lib/api";
 
 import {
+  callsHeadKey,
+  callsListKey,
   DEFAULT_FILTERS,
   hasNarrowingFilters,
   SODEX_CALLS_KEY,
   useSodexCall,
   useSodexCalls,
   useSodexFacets,
+  useSodexHead,
   type Filters,
 } from "../api";
 import {
@@ -41,6 +45,7 @@ import {
   utcOffsetLabel,
   utcTime,
 } from "../format";
+import { countNew, prefersReducedMotion, useFreshRows } from "../live";
 
 import { OutcomeTag } from "./bits";
 import { CallDetail } from "./call-detail";
@@ -52,6 +57,8 @@ import { Summary } from "./summary";
 // / tìm kiếm, c mở báo cáo.
 
 const HOUR_MS = 3_600_000;
+/** Tô dòng mới nhạt dần; tắt chuyển động khi người dùng chọn giảm chuyển động. */
+const FADE = "transition-colors duration-700 motion-reduce:transition-none";
 const SHOW_KEY = { all: "all", errors: "errors", timeouts: "timeouts", slow: "slow" } as const;
 
 const selectCls =
@@ -73,15 +80,76 @@ export function SodexDebuggerPage() {
   const [reportOpen, setReportOpen] = useState(false);
   const [moreFilters, setMoreFilters] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [live, setLive] = useState(true);
+  const [scrolledAway, setScrolledAway] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
+  const listTopRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
-  const list = useSodexCalls(filters);
+  // Live: chỉ tải lại khi không có panel chi tiết / hộp thoại báo cáo; tab ẩn thì interval của react-query tự dừng.
+  // Đã cuộn khỏi đầu danh sách hoặc đã tải thêm trang thì danh sách đứng yên, chỉ trang đầu được hỏi để đếm dòng mới.
+  const polling = live && openId === null && !reportOpen;
+  const list = useSodexCalls(filters, polling && !scrolledAway);
+  const away = scrolledAway || (list.data?.pages.length ?? 0) > 1;
+  const head = useSodexHead(filters, polling && away && list.data !== undefined);
   const facets = useSodexFacets(filters.range);
   const detail = useSodexCall(openId);
   const items: SodexCallItem[] = list.data?.pages.flatMap((p) => p.items) ?? [];
   const first = list.data?.pages[0];
   const forbidden = list.error instanceof ApiError && list.error.code === "FORBIDDEN";
+  const newCalls = away ? countNew(head.data, items) : null;
+  const fresh = useFreshRows(
+    first?.items.map((x) => x.id),
+    JSON.stringify(filters),
+    (n) => {
+      setAnnouncement(t("live.newCalls", { n: String(n) }));
+    },
+  );
+
+  // Hàng đầu của danh sách đã cuộn lên khỏi màn hình (cuộn ở window hay ở container nào cũng bắt được).
+  useEffect(() => {
+    const check = () => {
+      const el = listTopRef.current;
+      setScrolledAway(el !== null && el.getBoundingClientRect().top < 0);
+    };
+    window.addEventListener("scroll", check, { capture: true, passive: true });
+    window.addEventListener("resize", check);
+    check();
+    return () => {
+      window.removeEventListener("scroll", check, { capture: true });
+      window.removeEventListener("resize", check);
+    };
+  }, []);
+
+  // "Show": bỏ các trang cũ, hiện trang đầu mới nhất, cuộn về đầu danh sách; Live chạy lại.
+  const showNew = () => {
+    // Chỉ dùng trang đầu đã hỏi sau lần tải danh sách; cũ hơn thì tải lại.
+    const headState = qc.getQueryState<SodexCallsPage>(callsHeadKey(filters));
+    const latest =
+      headState?.data !== undefined && headState.dataUpdatedAt > list.dataUpdatedAt
+        ? headState.data
+        : undefined;
+    let refetch = latest === undefined;
+    qc.setQueryData<InfiniteData<SodexCallsPage, string | undefined>>(
+      callsListKey(filters),
+      (old) => {
+        const page = latest ?? old?.pages[0];
+        if (page === undefined) {
+          refetch = true;
+          return old;
+        }
+        return { pages: [page], pageParams: [undefined] };
+      },
+    );
+    if (refetch) void list.refetch();
+    setActive(0);
+    setScrolledAway(false);
+    listTopRef.current?.scrollIntoView({
+      block: "start",
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+    });
+  };
 
   // Lệch giờ của trình duyệt (không có khi render ở server) và ?call=<id> của "Copy link".
   useEffect(() => {
@@ -187,13 +255,15 @@ export function SodexDebuggerPage() {
             subtitle={t("lede")}
             action={
               <div className="flex flex-wrap items-center gap-2.5">
-                <MyTimeSwitch
+                <Switch
                   label={t("myTime", { offset: offsetLabel })}
                   checked={myTime}
                   onChange={setMyTime}
                 />
+                <Switch label={t("live.label")} checked={live} onChange={setLive} />
                 {first === undefined ? null : (
                   <span className="text-[13px] text-muted">
+                    {live && (!polling || away) ? `${t("live.paused")} · ` : ""}
                     {t("updated", { time: utcTime(first.readAt, false) })}
                   </span>
                 )}
@@ -219,6 +289,7 @@ export function SodexDebuggerPage() {
             slowMs={filters.slowMs}
             myTime={myTime}
             narrow={detailOpen}
+            live={polling && !away}
             onPickHour={(hour) => {
               set({
                 range: "24h",
@@ -240,6 +311,8 @@ export function SodexDebuggerPage() {
             myTime={myTime}
             onOpen={open}
             rowRefs={rowRefs.current}
+            listTopRef={listTopRef}
+            fresh={fresh}
           />
         </div>
         {openId === null ? null : (
@@ -262,12 +335,37 @@ export function SodexDebuggerPage() {
           />
         )}
       </div>
+      {polling && away && list.data !== undefined ? (
+        <div className="fixed bottom-4 left-1/2 z-20 flex max-w-[calc(100vw-32px)] -translate-x-1/2 flex-wrap items-center gap-x-2 gap-y-1 rounded-card border border-border bg-surface py-1.5 pr-1.5 pl-4 text-[13px] font-semibold text-ink-2 shadow-lg">
+          <span id="sodex-live-paused" className="inline-flex flex-wrap gap-x-2">
+            <span>{t("live.paused")}</span>
+            {newCalls === null ? null : (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="text-ink">{t("live.newCalls", { n: newCalls })}</span>
+              </>
+            )}
+          </span>
+          <span aria-hidden="true">·</span>
+          <Button
+            variant="secondary"
+            aria-describedby="sodex-live-paused"
+            className="min-h-9 px-3 text-[13px]"
+            onClick={showNew}
+          >
+            {t("live.show")}
+          </Button>
+        </div>
+      ) : null}
+      <p role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
       <ReportDialog detail={detail.data} open={reportOpen} onOpenChange={setReportOpen} />
     </Workspace>
   );
 }
 
-function MyTimeSwitch({
+function Switch({
   label,
   checked,
   onChange,
@@ -600,6 +698,8 @@ function CallsCard({
   myTime,
   onOpen,
   rowRefs,
+  listTopRef,
+  fresh,
 }: {
   list: ReturnType<typeof useSodexCalls>;
   items: SodexCallItem[];
@@ -611,6 +711,9 @@ function CallsCard({
   myTime: boolean;
   onOpen: (id: string) => void;
   rowRefs: Map<string, HTMLButtonElement>;
+  listTopRef: React.RefObject<HTMLDivElement | null>;
+  /** Dòng mới từ Live, tô nhẹ ~3 s. */
+  fresh: ReadonlySet<string>;
 }) {
   const t = useTranslations("sodexDebugger");
   const first = list.data?.pages[0];
@@ -757,7 +860,8 @@ function CallsCard({
             <tbody>
               {items.map((r, i) => {
                 const sel = r.id === openId || (openId === null && i === active);
-                const rowBg = sel ? "bg-accent-tint" : "group-hover:bg-surface-2";
+                const isNew = fresh.has(r.id);
+                const rowBg = `${FADE} ${sel ? "bg-accent-tint" : isNew ? "bg-pos-bg" : "group-hover:bg-surface-2"}`;
                 const firstCell = r.id === openId ? "shadow-[inset_4px_0_0_var(--accent)]" : "";
                 const ep = (
                   <button
@@ -799,6 +903,7 @@ function CallsCard({
                 return (
                   <tr
                     key={r.id}
+                    data-new={isNew ? "true" : undefined}
                     className="group cursor-pointer"
                     onClick={(e) => {
                       if (e.target instanceof HTMLElement && e.target.closest("a, button") !== null)
@@ -863,14 +968,14 @@ function CallsCard({
         </div>
         <ul className="m-0 flex list-none flex-col p-0 md:hidden">
           {items.map((r, i) => (
-            <li key={r.id}>
+            <li key={r.id} data-new={fresh.has(r.id) ? "true" : undefined}>
               <button
                 type="button"
                 aria-label={label(r)}
                 onClick={() => {
                   onOpen(r.id);
                 }}
-                className={`grid min-h-tap w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-1 border-0 border-t border-border px-3.5 py-3 text-left text-ink ${openId === null && i === active ? "bg-accent-tint" : "bg-transparent"}`}
+                className={`grid min-h-tap w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-1 border-0 border-t border-border px-3.5 py-3 text-left text-ink ${FADE} ${openId === null && i === active ? "bg-accent-tint" : fresh.has(r.id) ? "bg-pos-bg" : "bg-transparent"}`}
               >
                 <span className="flex flex-wrap items-center gap-2">
                   <OutcomeTag outcome={r.outcome} />
@@ -943,6 +1048,7 @@ function CallsCard({
           <span>{t("calls.retention")}</span>
         </p>
       </div>
+      <div ref={listTopRef} aria-hidden="true" className="scroll-mt-4" />
       {body}
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border px-[18px] py-3 text-[12.5px] text-muted max-md:px-3.5">
         <span className="max-md:hidden">
