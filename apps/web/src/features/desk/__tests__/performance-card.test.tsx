@@ -199,6 +199,38 @@ describe("How your bots performed", () => {
     });
   });
 
+  it("says Not available instead of $0 and never draws an hour without a price", async () => {
+    state.view = {
+      ...READY,
+      current: cost({
+        cost: null,
+        priceMove: null,
+        perMillion: { cost: null, sodexFee: "106", builderFee: "45", priceMove: null },
+      }),
+      // Kỳ trước có giao dịch nhưng thiếu giá: không nói "didn't trade then".
+      previous: cost({
+        cost: null,
+        priceMove: null,
+        perMillion: { cost: null, sodexFee: "104", builderFee: "45", priceMove: null },
+      }),
+      hours: hours.map((h) =>
+        h.hour === 5
+          ? { ...h, fills: 40, feesPerMillion: null, pricePerMillion: null, costPerMillion: null }
+          : h,
+      ),
+    };
+    wrap();
+    const bar = await screen.findByRole("img", { name: /^Of Not available per \$1M/ });
+    expect(bar.getAttribute("aria-label")).not.toMatch(/\$0/);
+    expect(screen.getByText("Cost per $1M: Not available")).toBeInTheDocument();
+    expect(screen.queryByText(/didn't trade then/)).toBeNull();
+    const naHour = screen.getByTitle("05:00: Not available, 40 trades");
+    expect(naHour.querySelector(".bg-accent, .border-accent")).toBeNull();
+    // Cột "vs" của bot luôn có chữ.
+    const table = screen.getByRole("table", { name: "Cost per $1M by bot" });
+    expect(within(table).getByText("$47 less")).toBeInTheDocument();
+  });
+
   it("shows the price helping as its own line, never a negative bar", async () => {
     state.view = {
       ...READY,

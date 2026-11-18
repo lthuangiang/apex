@@ -106,14 +106,17 @@ describe("costWindows", () => {
 });
 
 describe("compareGroups", () => {
-  const g = (trades: number, cpm: number) => ({ trades, volume: 1_000_000, net: -cpm });
+  const g = (trades: number, cpm: number) => ({
+    trades,
+    volume: d(1_000_000),
+    net: d(-cpm),
+  });
 
   it("shows an idea only with 30 trades a side, 1.5× the cost and 20% of trades", () => {
-    expect(compareGroups(g(40, 400), g(60, 200), 100)).toEqual({
-      worseCost: 400,
-      betterCost: 200,
-      worseShare: 0.4,
-    });
+    const c = compareGroups(g(40, 400), g(60, 200), 100);
+    expect(c?.worseCost.toString()).toBe("400");
+    expect(c?.betterCost.toString()).toBe("200");
+    expect(c?.worseShare).toBe(0.4);
     expect(compareGroups(g(29, 400), g(60, 200), 100)).toBeNull();
     expect(compareGroups(g(40, 290), g(60, 200), 100)).toBeNull();
     expect(compareGroups(g(30, 400), g(170, 200), 200)).toBeNull();

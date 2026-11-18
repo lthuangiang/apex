@@ -6037,6 +6037,7 @@
       "more": "{amount} more than {before}",
       "same": "The same as {before}",
       "prevNa": "vs {before}: Not available · your bots didn't trade then.",
+      "prevNaPrice": "vs {before}: Not available",
       "notPnl": "This is what trading cost, not your profit or loss. Your net result is on each bot's page. Practice bots aren't counted.",
       "barLabel": "Of {cost} per $1M: SoDEX fee {sodex}, DeskLabs builder fee {builder}, price moved against your trades {price}.",
       "barLabelFavour": "Per $1M: SoDEX fee {sodex}, DeskLabs builder fee {builder}. The price moved in your favour by {price}.",
@@ -6110,7 +6111,10 @@
         "strategy": {
           "volume_maker": "Market Making",
           "volume_farm": "Volume Builder"
-        }
+        },
+        "vsLess": "{amount} less",
+        "vsMore": "{amount} more",
+        "vsSame": "Same"
       },
       "ideas": {
         "title": "Ideas within your settings",
@@ -6138,6 +6142,7 @@
         "progress": "{n} of 30 trades"
       },
       "loading": "Loading how your bots performed…",
+      "updating": "Updating…",
       "errorTitle": "Couldn't load how your bots performed.",
       "errorBody": "Your bots keep running; nothing changed.",
       "retry": "Try again"

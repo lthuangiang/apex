@@ -233,8 +233,15 @@ export function costWindows(
 }
 
 /** Chi phí / $1M của một nhóm lượt VB (net sau phí, volume): max(0, −Σnet) ÷ Σvolume × 1M. */
-export function groupCostPerMillion(net: number, volume: number): number | null {
-  return volume > 0 ? (Math.max(0, -net) / volume) * 1_000_000 : null;
+export function groupCostPerMillion(net: Decimal, volume: Decimal): Decimal | null {
+  return volume.gt(0) ? Decimal.max(0, net.neg()).div(volume).mul(1_000_000) : null;
+}
+
+/** Tổng của một nhóm lượt VB. */
+export interface TradeGroup {
+  trades: number;
+  net: Decimal;
+  volume: Decimal;
 }
 
 /**
@@ -242,10 +249,10 @@ export function groupCostPerMillion(net: number, volume: number): number | null 
  * nhóm kia và ≥ `IDEA_MIN_SHARE` tổng lượt của bot. Trả về số để hiện, hoặc null.
  */
 export function compareGroups(
-  worse: { trades: number; net: number; volume: number },
-  better: { trades: number; net: number; volume: number },
+  worse: TradeGroup,
+  better: TradeGroup,
   botTrades: number,
-): { worseCost: number; betterCost: number; worseShare: number } | null {
+): { worseCost: Decimal; betterCost: Decimal; worseShare: number } | null {
   if (worse.trades < IDEA_MIN_TRADES || better.trades < IDEA_MIN_TRADES || botTrades === 0)
     return null;
   const w = groupCostPerMillion(worse.net, worse.volume);
@@ -253,6 +260,10 @@ export function compareGroups(
   if (w === null || b === null) return null;
   const share = worse.trades / botTrades;
   if (share < IDEA_MIN_SHARE) return null;
-  if (b === 0 ? w <= 0 : w < b * IDEA_COST_RATIO) return null;
+  if (b.isZero() ? w.lte(0) : w.lt(b.mul(IDEA_COST_RATIO))) return null;
   return { worseCost: w, betterCost: b, worseShare: share };
 }
+
+/** Nhận xét dưới lý do thoát: chỉ xét lý do có ≥ 30 lượt và ≥ 5% số lượt (DEC-TBD-ai-desk-performance). */
+export const EXIT_NOTE_MIN_TRADES = 30;
+export const EXIT_NOTE_MIN_SHARE = 0.05;

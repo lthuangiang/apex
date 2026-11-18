@@ -63,6 +63,7 @@ async function bot(
 }
 
 let seq = 0;
+const TRADE_ID_BASE = Date.now() * 1000 + Math.floor(Math.random() * 1000);
 /** Một lệnh + một fill. */
 async function fill(
   botId: string,
@@ -84,7 +85,8 @@ async function fill(
     "insert into fills (id, order_id, sodex_trade_id, price, size, fee, builder_fee, is_maker, filled_at) values (gen_random_uuid(), $1, $2, $3, 1, $4, $5, true, $6)",
     [
       o.rows[0]?.id,
-      `t-${String(seq)}-${randomUUID()}`,
+      // sodex_trade_id là bigint: số duy nhất trong lần chạy test.
+      String(TRADE_ID_BASE + seq),
       price,
       opts.fee ?? 0.05,
       opts.builder ?? 0.01,

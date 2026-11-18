@@ -1,23 +1,22 @@
 import { botEvents, bots, botVersions, candles1m, fills, orders, type Db } from "@drift/db";
 import {
   compareGroups,
+  costPerMillionOfSums,
   costWindows,
   dec,
   Decimal,
-  fillCostPerMillion,
   IDEA_SPREAD_FLOOR_BPS,
   IDEA_SPREAD_STEP_BPS,
   PERFORMANCE_MIN_FILLS,
   performanceCost,
   Strategy,
-  type CostFill,
   type CostTotals,
   type DeskPerformance,
   type DeskPerformanceQuery,
   type PerformanceIdea,
+  type TradeGroup,
 } from "@drift/shared";
 import { vbSignalSnapshotSchema } from "@drift/shared/vb-signal";
-import { buildTrades, type ReviewFill } from "@drift/strategies";
 import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm";
 
 import { periodNetPnl } from "../account/stats-overview";
@@ -26,15 +25,20 @@ import type { BotDeps } from "../bots/service";
 
 // AI Desk › "How your bots performed" (#234, DEC-TBD-ai-desk-performance). Chỉ bot tiền thật Market Making / Volume
 // Builder của chính người gọi (lọc bots.user_id ở mọi truy vấn). Chỉ trả số đã tổng hợp: snapshot tín hiệu VB
-// (payload.signal, DEC-311) chỉ được đọc ở server để chia nhóm lượt cho gợi ý, không bao giờ trả về.
+// (payload.signal, DEC-311) chỉ được đọc ở server để chia nhóm lượt cho gợi ý, không bao giờ trả về. Mọi truy vấn chạy
+// trong một transaction chỉ đọc có statement timeout.
 
 const DAY_MS = 86_400_000;
 const PERIOD_DAYS = { "7d": 7, "30d": 30 } as const;
 const STRATEGIES = [Strategy.volumeMaker, Strategy.volumeFarm] as const;
 /** Giá đầu / cuối kỳ: close nến 1 phút gần nhất, không cũ hơn 1 giờ (như Platform Stats). */
 const MARK_MAX_AGE_MS = 3_600_000;
-/** Lượt VB tối đa đọc cho mỗi bot (như Strategy Analytics). */
-const MAX_TRADES = 5_000;
+/** Giới hạn thời gian của mỗi truy vấn (ms). */
+const QUERY_TIMEOUT_MS = 10_000;
+/** Lượt VB đóng trong kỳ có thể vào trước đầu kỳ: đọc fill từ (đầu kỳ − 1 ngày). */
+const VB_ENTRY_LOOKBACK_MS = DAY_MS;
+
+type Q = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 interface OwnBot {
   id: string;
@@ -73,13 +77,15 @@ function add(a: CostTotals, b: CostTotals): CostTotals {
   };
 }
 
+const rows = <T>(r: unknown): T[] => (r as { rows: T[] }).rows;
+
 /** Tổng theo bot × market cho kỳ [from, to): vị thế trước kỳ, tiền, phí, builder fee, volume, số fill trong kỳ. */
-async function legsOf(db: Db, botIds: readonly string[], from: Date, to: Date): Promise<Leg[]> {
+async function legsOf(q: Q, botIds: readonly string[], from: Date, to: Date): Promise<Leg[]> {
   const notional = sql`${fills.price} * ${fills.size}`;
   const qty = sql`case when ${orders.side} = 'buy' then ${fills.size} else -${fills.size} end`;
   const cash = sql`case when ${orders.side} = 'sell' then ${notional} else -(${notional}) end`;
   const inCur = sql`${fills.filledAt} >= ${from} and ${fills.filledAt} < ${to}`;
-  const rows = await db
+  const r = await q
     .select({
       botId: orders.botId,
       market: orders.market,
@@ -96,27 +102,23 @@ async function legsOf(db: Db, botIds: readonly string[], from: Date, to: Date): 
     .where(and(inArray(orders.botId, [...botIds]), sql`${fills.filledAt} < ${to}`))
     .groupBy(orders.botId, orders.market)
     .having(sql`count(*) filter (where ${inCur}) > 0`);
-  return rows.map((r) => ({
-    botId: r.botId,
-    market: r.market,
-    posBefore: dec(r.posBefore),
-    posIn: dec(r.posIn),
-    cashIn: dec(r.cashIn),
-    feesIn: dec(r.feesIn),
-    builderIn: dec(r.builderIn),
-    volIn: dec(r.volIn),
-    fillsIn: r.fillsIn,
+  return r.map((x) => ({
+    botId: x.botId,
+    market: x.market,
+    posBefore: dec(x.posBefore),
+    posIn: dec(x.posIn),
+    cashIn: dec(x.cashIn),
+    feesIn: dec(x.feesIn),
+    builderIn: dec(x.builderIn),
+    volIn: dec(x.volIn),
+    fillsIn: x.fillsIn,
   }));
 }
 
 /** Close nến 1 phút gần nhất tại hoặc trước `at`, trong `MARK_MAX_AGE_MS`. */
-async function closesAt(
-  db: Db,
-  markets: readonly string[],
-  at: Date,
-): Promise<Map<string, string>> {
+async function closesAt(q: Q, markets: readonly string[], at: Date): Promise<Map<string, string>> {
   if (markets.length === 0) return new Map();
-  const r = await db
+  const r = await q
     .selectDistinctOn([candles1m.market], { market: candles1m.market, close: candles1m.close })
     .from(candles1m)
     .where(
@@ -132,22 +134,23 @@ async function closesAt(
 
 /** Tổng theo bot của kỳ [from, to). Giá cuối kỳ hiện tại = giá live, không có thì close nến. */
 async function totalsByBot(
-  deps: BotDeps,
+  q: Q,
+  prices: BotDeps["prices"],
   botIds: readonly string[],
   from: Date,
   to: Date,
   live: boolean,
 ): Promise<Map<string, CostTotals>> {
-  const legs = await legsOf(deps.db, botIds, from, to);
+  const legs = await legsOf(q, botIds, from, to);
   const startMarkets = [...new Set(legs.filter((l) => !l.posBefore.isZero()).map((l) => l.market))];
   const endMarkets = [
     ...new Set(legs.filter((l) => !l.posBefore.add(l.posIn).isZero()).map((l) => l.market)),
   ];
   const liveMarks: Record<string, string> =
-    live && endMarkets.length > 0 ? await deps.prices(endMarkets).catch(() => ({})) : {};
-  const startMarks = await closesAt(deps.db, startMarkets, from);
+    live && endMarkets.length > 0 ? await prices(endMarkets).catch(() => ({})) : {};
+  const startMarks = await closesAt(q, startMarkets, from);
   const endCloses = await closesAt(
-    deps.db,
+    q,
     endMarkets.filter((m) => liveMarks[m] === undefined),
     to,
   );
@@ -163,24 +166,43 @@ async function totalsByBot(
       markStart: ms === undefined ? null : dec(ms),
       markEnd: me === undefined ? null : dec(me),
     });
-    const t: CostTotals = {
-      volume: l.volIn,
-      fills: l.fillsIn,
-      fees: l.feesIn,
-      builderFee: l.builderIn,
-      net,
-    };
-    out.set(l.botId, add(out.get(l.botId) ?? ZERO(), t));
+    out.set(
+      l.botId,
+      add(out.get(l.botId) ?? ZERO(), {
+        volume: l.volIn,
+        fills: l.fillsIn,
+        fees: l.feesIn,
+        builderFee: l.builderIn,
+        net,
+      }),
+    );
   }
   return out;
 }
 
-/** 24 giờ địa phương: phí + markout 1 phút (close nến chứa thời điểm fill + 60 s), như khối 3 của Market hours. */
-async function hourCells(db: Db, botIds: readonly string[], from: Date, tz: string) {
-  const rows = await db.execute(sql`
+/**
+ * 24 giờ địa phương, cùng một cơ sở cho cả ba số: chỉ fill có giá tham chiếu (close nến chứa thời điểm fill + 60 s),
+ * như khối 3 của Market hours. Phí / $1M = Σphí ÷ Σvolume có giá; giá / $1M = −Σmarkout ÷ Σvolume có giá; chi phí =
+ * phí + giá. Thiếu giá > 20% volume của giờ → cả ba null.
+ */
+async function hourCells(q: Q, botIds: readonly string[], from: Date, tz: string) {
+  const r = rows<{
+    h: number;
+    fills: number;
+    volume: string;
+    priced: string;
+    priced_fees: string;
+    pnl: string;
+  }>(
+    await q.execute(sql`
     select extract(hour from f.filled_at at time zone ${tz})::int as h,
-           o.side as side, f.price::text as price, f.size::text as size, f.fee::text as fee,
-           c.close::text as ref
+           count(*)::int as fills,
+           sum(f.price * f.size)::text as volume,
+           coalesce(sum(f.price * f.size) filter (where c.close is not null), 0)::text as priced,
+           coalesce(sum(f.fee) filter (where c.close is not null), 0)::text as priced_fees,
+           coalesce(sum(case when o.side = 'buy' then (c.close - f.price) * f.size
+                             else (f.price - c.close) * f.size end)
+                    filter (where c.close is not null), 0)::text as pnl
       from orders o
       join fills f on f.order_id = o.id and f.filled_at >= ${from}
       left join candles_1m c
@@ -188,104 +210,151 @@ async function hourCells(db: Db, botIds: readonly string[], from: Date, tz: stri
       where o.bot_id in (${sql.join(
         botIds.map((id) => sql`${id}::uuid`),
         sql`, `,
-      )}) and o.created_at >= ${new Date(from.getTime() - DAY_MS)}`);
-  const byHour = Array.from({ length: 24 }, () => [] as CostFill[]);
-  const list = (rows as unknown as { rows: unknown[] }).rows as {
-    h: number;
-    side: "buy" | "sell";
-    price: string;
-    size: string;
-    fee: string;
-    ref: string | null;
-  }[];
-  for (const x of list)
-    byHour[x.h]?.push({ side: x.side, price: x.price, size: x.size, fee: x.fee, ref: x.ref });
-  const sums = byHour.map((fs) => {
-    if (fs.length === 0) return null;
-    const priced = fs.filter((f) => f.ref !== null);
-    const c = fillCostPerMillion(fs);
-    const pv = priced.reduce((s, f) => s.add(dec(f.price).mul(dec(f.size))), new Decimal(0));
-    return {
-      fills: fs.length,
-      volume: c.volume,
-      fees: c.fees,
-      costPerMillion: c.costPerMillion,
-      priced: pv,
-      costUsd: c.costPerMillion === null ? new Decimal(0) : c.costPerMillion.mul(pv).div(1_000_000),
+      )}) and o.created_at >= ${new Date(from.getTime() - DAY_MS)}
+      group by 1`),
+  );
+  const byHour = new Map(r.map((x) => [x.h, x]));
+  const per = (v: Decimal, base: Decimal) =>
+    v.div(base).mul(1_000_000).toDecimalPlaces(2).toString();
+  const sums = Array.from({ length: 24 }, (_, h) => {
+    const x = byHour.get(h);
+    if (x === undefined) return null;
+    const s = {
+      volume: dec(x.volume),
+      priced: dec(x.priced),
+      pricedFees: dec(x.priced_fees),
+      pnl: dec(x.pnl),
     };
+    return { fills: x.fills, ...s, cost: costPerMillionOfSums(s) };
   });
-  const hours = sums.map((s, hour) => {
-    if (s === null)
-      return {
-        hour,
-        fills: 0,
-        feesPerMillion: null,
-        pricePerMillion: null,
-        costPerMillion: null,
-        thin: true,
-      };
-    const feesPm = s.volume.isZero() ? null : s.fees.div(s.volume).mul(1_000_000);
-    return {
-      hour,
-      fills: s.fills,
-      feesPerMillion: feesPm === null ? null : feesPm.toDecimalPlaces(2).toString(),
-      pricePerMillion:
-        s.costPerMillion === null || feesPm === null
-          ? null
-          : s.costPerMillion.sub(feesPm).toDecimalPlaces(2).toString(),
-      costPerMillion:
-        s.costPerMillion === null ? null : s.costPerMillion.toDecimalPlaces(2).toString(),
-      thin: s.fills < PERFORMANCE_MIN_FILLS,
-    };
-  });
+  const hours = sums.map((s, hour) => ({
+    hour,
+    fills: s?.fills ?? 0,
+    feesPerMillion: s?.cost == null ? null : per(s.pricedFees, s.priced),
+    pricePerMillion: s?.cost == null ? null : per(s.pnl.neg(), s.priced),
+    costPerMillion: s?.cost == null ? null : s.cost.toDecimalPlaces(2).toString(),
+    thin: (s?.fills ?? 0) < PERFORMANCE_MIN_FILLS,
+  }));
   const windows = costWindows(
     sums.map((s) =>
-      s?.costPerMillion == null ? null : { fills: s.fills, costUsd: s.costUsd, priced: s.priced },
+      s?.cost == null
+        ? null
+        : { fills: s.fills, costUsd: s.pricedFees.sub(s.pnl), priced: s.priced },
     ),
   );
   return { hours, ...windows };
 }
 
 interface VbTrade {
-  closedAt: number;
-  net: number;
-  volume: number;
+  t0: number;
+  t1: number;
+  net: Decimal;
+  volume: Decimal;
+  exitByStop: boolean;
+}
+
+const TAG = /^vf:(\d+):(in|out|sl)/;
+
+/**
+ * Ghép fill Volume Builder thành lượt (cùng cách ghép của Review this run / Strategy Analytics, `buildTrades`), nhưng
+ * tính tiền bằng Decimal: net = (bán − mua) − phí; volume = Σ giá × size của mọi fill trong lượt.
+ */
+function groupTrades(
+  fs: readonly {
+    tag: string;
+    side: "buy" | "sell";
+    price: Decimal;
+    size: Decimal;
+    fee: Decimal;
+    at: number;
+  }[],
+): VbTrade[] {
+  const out: VbTrade[] = [];
+  type F = (typeof fs)[number];
+  // `as`: TypeScript không theo dõi lần gán trong `close`, nên khai báo kiểu rộng (như `buildTrades`).
+  let cur = null as { cycle: number; ins: F[]; outs: F[] } | null;
+  const close = () => {
+    if (cur === null || cur.ins.length === 0 || cur.outs.length === 0) return;
+    const qIn = cur.ins.reduce((s, f) => s.add(f.size), new Decimal(0));
+    const qOut = cur.outs.reduce((s, f) => s.add(f.size), new Decimal(0));
+    if (qOut.lt(qIn.mul(0.999))) return;
+    const first = cur.ins[0];
+    const last = cur.outs.at(-1);
+    if (first === undefined || last === undefined) return;
+    const all = [...cur.ins, ...cur.outs];
+    // Lượt đóng đủ: phần lệch nhỏ (≤ 0,1%) giữa vào và ra tính theo giá ra trung bình, như `buildTrades`.
+    const entry = cur.ins.reduce((s, f) => s.add(f.price.mul(f.size)), new Decimal(0)).div(qIn);
+    const exit = cur.outs.reduce((s, f) => s.add(f.price.mul(f.size)), new Decimal(0)).div(qOut);
+    const long = first.side === "buy";
+    const gross = (long ? exit.sub(entry) : entry.sub(exit)).mul(qIn);
+    out.push({
+      t0: first.at,
+      t1: last.at,
+      net: gross.sub(all.reduce((s, f) => s.add(f.fee), new Decimal(0))),
+      volume: all.reduce((s, f) => s.add(f.price.mul(f.size)), new Decimal(0)),
+      exitByStop: cur.outs.some((f) => f.tag.endsWith(":sl")),
+    });
+  };
+  for (const f of [...fs].sort((a, b) => a.at - b.at)) {
+    const m = TAG.exec(f.tag);
+    if (m === null) continue;
+    const cycle = Number(m[1]);
+    const kind = m[2];
+    if (kind === "in" && (cur?.cycle !== cycle || cur.outs.length > 0)) {
+      close();
+      cur = { cycle, ins: [], outs: [] };
+    }
+    if (cur === null) continue;
+    if (kind === "in") cur.ins.push(f);
+    else cur.outs.push(f);
+  }
+  close();
+  return out;
+}
+
+interface VbClosed {
+  net: Decimal;
+  volume: Decimal;
   reason: ReturnType<typeof exitReasonOf>;
   regime: string | null;
   spreadBps: number | null;
 }
 
 /** Lượt Volume Builder đóng trong [from, to) của một bot, kèm regime / spread lúc vào (chỉ dùng ở server). */
-async function vbTrades(db: Db, botId: string, from: number, to: number): Promise<VbTrade[]> {
-  const rows = await db
+async function vbTrades(q: Q, botId: string, from: number, to: number): Promise<VbClosed[]> {
+  const since = new Date(from - VB_ENTRY_LOOKBACK_MS);
+  const r = await q
     .select({
       tag: orders.tag,
       side: orders.side,
       price: fills.price,
       size: fills.size,
       fee: fills.fee,
-      builderFee: fills.builderFee,
-      isMaker: fills.isMaker,
       at: fills.filledAt,
     })
     .from(fills)
     .innerJoin(orders, eq(orders.id, fills.orderId))
-    .where(and(eq(orders.botId, botId), like(orders.tag, "vf:%")));
-  const fs: ReviewFill[] = rows.map((r) => ({
-    tag: r.tag,
-    side: r.side,
-    price: Number(r.price),
-    size: Number(r.size),
-    fee: Number(r.fee),
-    builderFee: Number(r.builderFee ?? "0"),
-    isMaker: r.isMaker === true,
-    at: r.at.getTime(),
-  }));
-  const trades = buildTrades(fs)
-    .slice(-MAX_TRADES)
-    .filter((t) => t.t1 >= from && t.t1 < to);
+    .where(
+      and(
+        eq(orders.botId, botId),
+        like(orders.tag, "vf:%"),
+        sql`${orders.createdAt} >= ${new Date(since.getTime() - DAY_MS)}`,
+        sql`${fills.filledAt} >= ${since}`,
+        sql`${fills.filledAt} < ${new Date(to)}`,
+      ),
+    );
+  const trades = groupTrades(
+    r.map((x) => ({
+      tag: x.tag,
+      side: x.side,
+      price: dec(x.price),
+      size: dec(x.size),
+      fee: dec(x.fee),
+      at: x.at.getTime(),
+    })),
+  ).filter((t) => t.t1 >= from && t.t1 < to);
   if (trades.length === 0) return [];
-  const events = await db
+  const events = await q
     .select({
       at: botEvents.occurredAt,
       decision: botEvents.decision,
@@ -297,7 +366,8 @@ async function vbTrades(db: Db, botId: string, from: number, to: number): Promis
       and(
         eq(botEvents.botId, botId),
         sql`(${botEvents.decision} like 'Closed%' or ${botEvents.decision} like 'Enter%')`,
-        sql`${botEvents.occurredAt} >= ${new Date(from - DAY_MS)}`,
+        sql`${botEvents.occurredAt} >= ${new Date(since.getTime() - DAY_MS)}`,
+        sql`${botEvents.occurredAt} < ${new Date(to + DAY_MS)}`,
       ),
     )
     .orderBy(asc(botEvents.occurredAt));
@@ -318,7 +388,7 @@ async function vbTrades(db: Db, botId: string, from: number, to: number): Promis
   }
   const firstFill = new Map<number, { regime: string; spreadBps: number | null }>();
   if (signals.size > 0) {
-    const r = await db
+    const ff = await q
       .select({
         clOrdId: orders.clOrdId,
         at: sql<number>`(extract(epoch from min(${fills.filledAt})) * 1000)::float8`,
@@ -327,62 +397,62 @@ async function vbTrades(db: Db, botId: string, from: number, to: number): Promis
       .innerJoin(fills, eq(fills.orderId, orders.id))
       .where(and(eq(orders.botId, botId), inArray(orders.clOrdId, [...signals.keys()])))
       .groupBy(orders.clOrdId);
-    for (const x of r) {
+    for (const x of ff) {
       const s = signals.get(x.clOrdId);
       if (s !== undefined) firstFill.set(Math.round(x.at), s);
     }
   }
   return trades.map((t) => {
-    const close = closes.find((c) => c.at >= t.t1 - 5_000 && c.at <= t.t1 + 120_000) ?? null;
+    const c = closes.find((x) => x.at >= t.t1 - 5_000 && x.at <= t.t1 + 120_000) ?? null;
     const sig = firstFill.get(t.t0) ?? null;
     return {
-      closedAt: t.t1,
-      net: t.gross - t.fees,
+      net: t.net,
       volume: t.volume,
-      reason: exitReasonOf(close?.why ?? null, t.exitByStop),
+      reason: exitReasonOf(c?.why ?? null, t.exitByStop),
       regime: sig?.regime ?? null,
       spreadBps: sig?.spreadBps ?? null,
     };
   });
 }
 
-const sum = (ts: readonly VbTrade[]) => ({
+const group = (ts: readonly VbClosed[]): TradeGroup => ({
   trades: ts.length,
-  net: ts.reduce((s, t) => s + t.net, 0),
-  volume: ts.reduce((s, t) => s + t.volume, 0),
+  net: ts.reduce((s, t) => s.add(t.net), new Decimal(0)),
+  volume: ts.reduce((s, t) => s.add(t.volume), new Decimal(0)),
 });
 
 /** Gợi ý chỉ trong cài đặt có thật của bot ("Only trade sideways", "Max spread"); chỉ trả số đã tính. */
 function ideasOf(
   bot: OwnBot,
-  ts: readonly VbTrade[],
-  config: { sidewaysOnly?: unknown; maxSpreadBps?: unknown } | null,
+  ts: readonly VbClosed[],
+  config: Record<string, unknown> | null,
 ): PerformanceIdea[] {
   const out: PerformanceIdea[] = [];
   const known = ts.filter((t) => t.regime !== null && t.regime !== "UNKNOWN");
   if (config?.sidewaysOnly !== true) {
     const side = known.filter((t) => t.regime === "SIDEWAY");
     const trend = known.filter((t) => t.regime !== "SIDEWAY");
-    const c = compareGroups(sum(trend), sum(side), ts.length);
+    const c = compareGroups(group(trend), group(side), ts.length);
     if (c !== null)
       out.push({
         kind: "sidewaysOnly",
         botId: bot.id,
         botName: bot.name,
         trades: known.length,
-        worseCostPerMillion: c.worseCost.toFixed(2),
-        betterCostPerMillion: c.betterCost.toFixed(2),
+        worseCostPerMillion: c.worseCost.toDecimalPlaces(2).toString(),
+        betterCostPerMillion: c.betterCost.toDecimalPlaces(2).toString(),
         worseShare: c.worseShare,
       });
   }
-  const current = Number(config?.maxSpreadBps ?? NaN);
+  const raw = config?.maxSpreadBps;
+  const current = typeof raw === "string" || typeof raw === "number" ? Number(raw) : NaN;
   if (Number.isFinite(current)) {
     const to = Math.max(IDEA_SPREAD_FLOOR_BPS, current - IDEA_SPREAD_STEP_BPS);
     if (to < current) {
       const priced = ts.filter((t) => t.spreadBps !== null);
       const wide = priced.filter((t) => (t.spreadBps ?? 0) > to);
       const narrow = priced.filter((t) => (t.spreadBps ?? 0) <= to);
-      const c = compareGroups(sum(wide), sum(narrow), ts.length);
+      const c = compareGroups(group(wide), group(narrow), ts.length);
       if (c !== null)
         out.push({
           kind: "maxSpread",
@@ -391,8 +461,8 @@ function ideasOf(
           trades: priced.length,
           fromBps: String(current),
           toBps: String(to),
-          worseCostPerMillion: c.worseCost.toFixed(2),
-          betterCostPerMillion: c.betterCost.toFixed(2),
+          worseCostPerMillion: c.worseCost.toDecimalPlaces(2).toString(),
+          betterCostPerMillion: c.betterCost.toDecimalPlaces(2).toString(),
           worseShare: c.worseShare,
         });
     }
@@ -403,15 +473,27 @@ function ideasOf(
 export async function deskPerformance(
   deps: BotDeps,
   userId: string,
-  q: DeskPerformanceQuery,
+  query: DeskPerformanceQuery,
 ): Promise<DeskPerformance> {
-  const db = deps.db;
-  const now = deps.now();
-  const span = PERIOD_DAYS[q.period] * DAY_MS;
+  return deps.db.transaction(async (q) => {
+    await q.execute(sql`SET TRANSACTION READ ONLY`);
+    await q.execute(sql.raw(`SET LOCAL statement_timeout = ${String(QUERY_TIMEOUT_MS)}`));
+    return compute(q, deps.prices, deps.now(), userId, query);
+  });
+}
+
+async function compute(
+  q: Q,
+  prices: BotDeps["prices"],
+  now: Date,
+  userId: string,
+  query: DeskPerformanceQuery,
+): Promise<DeskPerformance> {
+  const span = PERIOD_DAYS[query.period] * DAY_MS;
   const from = new Date(now.getTime() - span);
   const prevFrom = new Date(from.getTime() - span);
   const own: OwnBot[] = (
-    await db
+    await q
       .select({ id: bots.id, name: bots.name, strategy: bots.strategy, market: bots.market })
       .from(bots)
       .where(
@@ -426,10 +508,9 @@ export async function deskPerformance(
       ? [{ ...b, strategy: b.strategy }]
       : [],
   );
-  const empty = performanceCost(ZERO());
   const base = {
-    period: q.period,
-    tz: q.tz,
+    period: query.period,
+    tz: query.tz,
     previous: null,
     hours: [],
     cheapest: null,
@@ -438,25 +519,24 @@ export async function deskPerformance(
     bots: [],
     ideas: [],
   };
-  if (own.length === 0) return { ...base, state: "noBots", current: empty };
+  if (own.length === 0) return { ...base, state: "noBots", current: performanceCost(ZERO()) };
   const ids = own.map((b) => b.id);
-  const [cur, prev] = await Promise.all([
-    totalsByBot(deps, ids, from, now, true),
-    totalsByBot(deps, ids, prevFrom, from, false),
-  ]);
+  // Một kết nối (transaction): chạy lần lượt.
+  const cur = await totalsByBot(q, prices, ids, from, now, true);
+  const prev = await totalsByBot(q, prices, ids, prevFrom, from, false);
   const total = (m: Map<string, CostTotals>) => [...m.values()].reduce(add, ZERO());
   const current = total(cur);
   if (current.fills < PERFORMANCE_MIN_FILLS)
     return { ...base, state: "notEnough", current: performanceCost(current) };
   const previous = total(prev);
 
-  const hours = await hourCells(db, ids, from, q.tz);
+  const hours = await hourCells(q, ids, from, query.tz);
 
   // Volume Builder: lý do thoát và gợi ý.
   const vb = own.filter((b) => b.strategy === Strategy.volumeFarm && cur.has(b.id));
   const configs = new Map<string, Record<string, unknown>>();
   if (vb.length > 0) {
-    const vs = await db
+    const vs = await q
       .select({ botId: bots.id, config: botVersions.config })
       .from(bots)
       .innerJoin(botVersions, eq(botVersions.id, bots.activeVersionId))
@@ -470,12 +550,9 @@ export async function deskPerformance(
       if (typeof v.config === "object" && v.config !== null)
         configs.set(v.botId, v.config as Record<string, unknown>);
   }
-  const vbByBot = await Promise.all(
-    vb.map(async (b) => ({
-      bot: b,
-      trades: await vbTrades(db, b.id, from.getTime(), now.getTime()),
-    })),
-  );
+  const vbByBot: { bot: OwnBot; trades: VbClosed[] }[] = [];
+  for (const b of vb)
+    vbByBot.push({ bot: b, trades: await vbTrades(q, b.id, from.getTime(), now.getTime()) });
   const allVb = vbByBot.flatMap((x) => x.trades);
   const exits =
     allVb.length === 0
@@ -485,12 +562,12 @@ export async function deskPerformance(
           trades: allVb.length,
           items: [...new Set(allVb.map((t) => t.reason))]
             .map((reason) => {
-              const g = allVb.filter((t) => t.reason === reason);
+              const g = group(allVb.filter((t) => t.reason === reason));
               return {
                 reason,
-                trades: g.length,
-                share: g.length / allVb.length,
-                avgNet: (g.reduce((s, t) => s + t.net, 0) / g.length).toFixed(4),
+                trades: g.trades,
+                share: g.trades / allVb.length,
+                avgNet: g.net.div(g.trades).toDecimalPlaces(4).toString(),
               };
             })
             .sort((a, b) => b.trades - a.trades),
@@ -518,7 +595,7 @@ export async function deskPerformance(
           previous: p === undefined ? null : performanceCost(p),
         };
       })
-      .sort((a, b) => Number(b.current.volume) - Number(a.current.volume)),
+      .sort((a, b) => dec(b.current.volume).cmp(a.current.volume)),
     ideas,
   };
 }

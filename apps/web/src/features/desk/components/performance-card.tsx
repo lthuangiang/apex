@@ -3,6 +3,8 @@
 import {
   dec,
   deskPerformanceSchema,
+  EXIT_NOTE_MIN_SHARE,
+  EXIT_NOTE_MIN_TRADES,
   PERFORMANCE_MIN_FILLS,
   PERFORMANCE_WINDOW_HOURS,
   type DeskPerformance,
@@ -46,17 +48,24 @@ const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
 function Compare({
   now,
   before,
+  traded,
   period,
 }: {
   now: string | null;
   before: string | null;
+  /** Kỳ trước có giao dịch không: không có → "didn't trade then"; có mà thiếu số → chỉ "Not available". */
+  traded: boolean;
   period: Period;
 }) {
   const t = useTranslations("desk.performance");
   const label = t(`before.${period}`);
   if (now === null) return null;
   if (before === null)
-    return <span className="text-[13px] text-muted">{t("prevNa", { before: label })}</span>;
+    return (
+      <span className="text-[13px] text-muted">
+        {t(traded ? "prevNaPrice" : "prevNa", { before: label })}
+      </span>
+    );
   const d = dec(now).sub(before);
   // Chênh lệch theo đô tròn ("$2 more…"); dưới 0,5 đô là "the same".
   const amount = `$${formatInteger(Math.round(d.abs().toNumber()))}`;
@@ -95,7 +104,11 @@ export function PerformanceCard() {
       ),
     enabled: utc || localTz !== null,
     placeholderData: (prev) => prev,
+    // Số tổng hợp theo kỳ: không cần tải lại liên tục.
+    staleTime: 3 * 60_000,
   });
+  // Đổi 7 / 30 ngày hoặc UTC: giữ số cũ (mờ) và báo "Updating…" tới khi có số mới.
+  const updating = q.isFetching && q.isPlaceholderData;
   const titleId = useId();
   const head = (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -181,14 +194,23 @@ export function PerformanceCard() {
           </span>
         </div>
       ) : (
-        <Ready
-          v={v}
-          tz={tz}
-          utc={utc}
-          onUtc={() => {
-            setUtc((x) => !x);
-          }}
-        />
+        <div aria-busy={updating} className="flex flex-col gap-4">
+          {updating ? (
+            <p role="status" className="m-0 text-[13px] font-bold text-muted">
+              {t("updating")}
+            </p>
+          ) : null}
+          <div className={`flex flex-col gap-4 ${updating ? "opacity-50" : ""}`}>
+            <Ready
+              v={v}
+              tz={tz}
+              utc={utc}
+              onUtc={() => {
+                setUtc((x) => !x);
+              }}
+            />
+          </div>
+        </div>
       )}
     </section>
   );
@@ -277,7 +299,7 @@ function Headline({
             ),
           })
         : t("barLabel", {
-            cost: usd(pm.cost ?? "0"),
+            cost: pm.cost === null ? t("bots.na") : usd(pm.cost),
             sodex: usd(pm.sodexFee),
             builder: usd(pm.builderFee),
             price: pm.priceMove === null ? t("bots.na") : usd(pm.priceMove),
@@ -297,7 +319,7 @@ function Headline({
         <span className="text-[13px] text-ink-2">
           {t(key === "sodex" ? "sodexFeeBody" : "builderFeeBody")}
         </span>
-        <Compare now={value} before={before} period={period} />
+        <Compare now={value} before={before} traded={prev !== null} period={period} />
       </div>
     </div>
   );
@@ -312,7 +334,12 @@ function Headline({
         <p className="m-0 text-[22px] font-extrabold tabular-nums">
           {pm.cost === null ? t("perMillionNa") : t.rich("perMillion", { b, cost: usd(pm.cost) })}
         </p>
-        <Compare now={pm.cost} before={prev?.perMillion.cost ?? null} period={period} />
+        <Compare
+          now={pm.cost}
+          before={prev?.perMillion.cost ?? null}
+          traded={prev !== null}
+          period={period}
+        />
         <p className="m-0 text-[12.5px] text-muted">{t("notPnl")}</p>
       </div>
       <div className="flex min-w-0 flex-col gap-3">
@@ -356,6 +383,7 @@ function Headline({
                 <Compare
                   now={pm.priceMove}
                   before={prev?.perMillion.priceMove ?? null}
+                  traded={prev !== null}
                   period={period}
                 />
               )}
@@ -384,10 +412,7 @@ function Hours({
     t("window", { from: hh(from), to: hh(from + PERFORMANCE_WINDOW_HOURS) });
   const inWin = (h: number, from: number | undefined) =>
     from !== undefined && (h - from + 24) % 24 < PERFORMANCE_WINDOW_HOURS;
-  const max = Math.max(
-    1,
-    ...v.hours.map((h) => Number(h.costPerMillion ?? h.feesPerMillion ?? "0")),
-  );
+  const max = Math.max(1, ...v.hours.map((h) => Number(h.costPerMillion ?? "0")));
   const step = max > 400 ? 200 : max > 200 ? 100 : max > 80 ? 50 : 20;
   const top = Math.ceil(max / step) * step;
   const ticks = Array.from({ length: Math.floor(top / step) + 1 }, (_, i) => i * step);
@@ -419,19 +444,33 @@ function Hours({
         <div className="flex min-w-0 flex-col gap-1.5">
           {/* Nhãn chữ trên dải rẻ / đắt nhất (UX #9): không chỉ dựa vào màu xanh / đỏ. */}
           <div aria-hidden="true" className="flex h-4 pl-9 text-[10.5px] font-extrabold">
-            {v.hours.map((h) => (
-              <span key={h.hour} className="relative min-w-0 flex-1">
-                {h.hour === v.cheapest?.from ? (
-                  <span className="absolute left-0 whitespace-nowrap text-pos">
-                    {t("cheapest")}
-                  </span>
-                ) : h.hour === v.dearest?.from ? (
-                  <span className="absolute left-0 whitespace-nowrap text-neg-ink">
-                    {t("dearest")}
-                  </span>
-                ) : null}
-              </span>
-            ))}
+            {v.hours.map((h) => {
+              // Khung ở nửa sau ngày: canh nhãn theo mép phải của giờ cuối khung, để không tràn ra ngoài (390 px).
+              const at = (w: { from: number } | null) =>
+                w === null
+                  ? null
+                  : w.from < 12
+                    ? w.from === h.hour
+                      ? "left"
+                      : null
+                    : (w.from + PERFORMANCE_WINDOW_HOURS - 1) % 24 === h.hour
+                      ? "right"
+                      : null;
+              const cheap = at(v.cheapest);
+              const dear = at(v.dearest);
+              const side = cheap ?? dear;
+              return (
+                <span key={h.hour} className="relative min-w-0 flex-1">
+                  {side === null ? null : (
+                    <span
+                      className={`absolute whitespace-nowrap ${side === "left" ? "left-0" : "right-0"} ${cheap !== null ? "text-pos" : "text-neg-ink"}`}
+                    >
+                      {t(cheap !== null ? "cheapest" : "dearest")}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
           </div>
           <div role="img" aria-label={label} className="relative h-[180px] pl-9">
             {ticks.map((k) => (
@@ -448,9 +487,11 @@ function Hours({
             ))}
             <div className="absolute inset-y-0 right-0 left-9 flex items-end gap-[2px]">
               {v.hours.map((h) => {
+                // Phí và giá cùng một cơ sở (fill có giá tham chiếu); giờ thiếu giá: không vẽ thanh, chỉ dấu "–"
+                // (không để giờ n/a trông như giờ rẻ).
                 const cost = h.costPerMillion === null ? null : Number(h.costPerMillion);
                 const fees = h.feesPerMillion === null ? 0 : Number(h.feesPerMillion);
-                const feePart = cost === null ? fees : Math.min(fees, cost);
+                const feePart = cost === null ? 0 : Math.min(fees, cost);
                 const pricePart = cost === null ? 0 : Math.max(0, cost - fees);
                 const cheap = inWin(h.hour, v.cheapest?.from);
                 const dear = inWin(h.hour, v.dearest?.from);
@@ -464,14 +505,25 @@ function Hours({
                     }
                     className={`relative flex h-full min-w-0 flex-1 flex-col justify-end ${cheap ? "bg-pos-bg" : dear ? "bg-neg-bg" : ""}`}
                   >
-                    <div
-                      className={`w-full ${h.thin ? "border-[1.5px] border-warn-bar" : "bg-warn-bar"}`}
-                      style={{ height: `${String((pricePart / top) * 100)}%` }}
-                    />
-                    <div
-                      className={`w-full ${h.thin ? "border-[1.5px] border-accent" : "bg-accent"}`}
-                      style={{ height: `${String((feePart / top) * 100)}%` }}
-                    />
+                    {cost === null ? (
+                      h.fills === 0 ? null : (
+                        <span aria-hidden="true" className="text-center text-[11px] text-muted">
+                          –
+                        </span>
+                      )
+                    ) : (
+                      <>
+                        {/* Giờ < 30 fill: chỉ viền, màu đậm để đạt 3:1 trên nền biểu đồ. */}
+                        <div
+                          className={`w-full ${h.thin ? "border-[1.5px] border-warn" : "bg-warn-bar"}`}
+                          style={{ height: `${String((pricePart / top) * 100)}%` }}
+                        />
+                        <div
+                          className={`w-full ${h.thin ? "border-[1.5px] border-dashed border-accent" : "bg-accent"}`}
+                          style={{ height: `${String((feePart / top) * 100)}%` }}
+                        />
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -538,9 +590,9 @@ function Hours({
 function Exits({ exits }: { exits: NonNullable<DeskPerformance["exits"]> }) {
   const t = useTranslations("desk.performance.exits");
   const maxShare = Math.max(...exits.items.map((x) => x.share), 0.01);
-  // Lý do tốn nhất mỗi lượt, bỏ các lý do quá hiếm (< 5% số lượt) để câu nhận xét có ý nghĩa.
+  // Lý do tốn nhất mỗi lượt, chỉ trong các lý do có ≥ 30 lượt và ≥ 5% số lượt, để câu nhận xét có ý nghĩa.
   const worst = exits.items
-    .filter((x) => x.share >= 0.05)
+    .filter((x) => x.trades >= EXIT_NOTE_MIN_TRADES && x.share >= EXIT_NOTE_MIN_SHARE)
     .sort((a, b2) => Number(a.avgNet) - Number(b2.avgNet))[0];
   const signed = (v: string) => {
     const n = Number(v);
@@ -617,10 +669,19 @@ function Bots({ v }: { v: DeskPerformance }) {
   const vs = (now: string | null, prev: string | null) => {
     if (now === null || prev === null) return <span className="text-muted">{t("na")}</span>;
     const d = dec(now).sub(prev);
+    const amount = `$${formatInteger(Math.round(d.abs().toNumber()))}`;
+    // Luôn có chữ, không chỉ mũi tên; không đổi (< 0,5 đô) thì trung tính.
+    if (d.abs().lt(0.5)) return <span className="text-ink-2">{t("vsSame")}</span>;
     return d.isNegative() ? (
-      <span className="font-bold text-pos">▼ {usd(d.abs().toString())}</span>
+      <span className="font-bold text-pos">
+        <span aria-hidden="true">▼ </span>
+        {t("vsLess", { amount })}
+      </span>
     ) : (
-      <span className="font-bold text-neg-ink">▲ {usd(d.toString())}</span>
+      <span className="font-bold text-neg-ink">
+        <span aria-hidden="true">▲ </span>
+        {t("vsMore", { amount })}
+      </span>
     );
   };
   return (
@@ -714,10 +775,12 @@ function Bots({ v }: { v: DeskPerformance }) {
                 {thin ? (
                   t("thin", { n: x.current.fills })
                 ) : (
-                  <>
-                    {vs(x.current.perMillion.cost, x.previous?.perMillion.cost ?? null)}{" "}
-                    {t("vs", { before })}
-                  </>
+                  <Compare
+                    now={x.current.perMillion.cost}
+                    before={x.previous?.perMillion.cost ?? null}
+                    traded={x.previous !== null}
+                    period={v.period}
+                  />
                 )}
               </span>
             </Link>
