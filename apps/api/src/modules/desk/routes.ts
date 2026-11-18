@@ -1,6 +1,7 @@
 import {
   AppError,
   deskAiAskBodySchema,
+  deskPerformanceQuerySchema,
   ErrorCode,
   startPaperBodySchema,
   whatIfApplyBodySchema,
@@ -15,6 +16,7 @@ import { requireAuth } from "../../plugins/session";
 import { askDeskAi, deleteDeskAiHistory, deskAiBrief, deskAiHistory } from "./ai";
 import { deskMarketCard } from "./market";
 import { needsYou, snoozeItem } from "./needs-you";
+import { deskPerformance } from "./performance";
 import { recordView, switchBack } from "./record";
 import { deskBots, goLive, paperView, requireDesk, startPaper, type DeskDeps } from "./service";
 import { applyWhatif, deskHome, startWhatif, whatifView } from "./whatif";
@@ -57,6 +59,17 @@ export function registerDeskRoutes(app: FastifyInstance, deps: DeskDeps): void {
     const userId = requireAuth(request).userId;
     await requireDesk(deps, userId);
     return needsYou({ db: deps.bots.db, rest: deps.bots.rest, now: deps.bots.now }, userId);
+  });
+
+  // "How your bots performed" (#234): chỉ bot tiền thật MM / VB của chính người gọi, chỉ số đã tổng hợp.
+  app.get("/api/v1/desk/performance", async (request) => {
+    const userId = requireAuth(request).userId;
+    await requireDesk(deps, userId);
+    return deskPerformance(
+      deps.bots,
+      userId,
+      parseOrThrow(deskPerformanceQuerySchema, request.query),
+    );
   });
 
   // AI Desk B+ M3: trang chủ = việc "Needs you" kèm so sánh mới nhất + sức khoẻ bot.
