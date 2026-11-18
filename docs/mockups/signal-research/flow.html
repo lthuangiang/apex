@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>News signal flow</title>
+
+</head>
+<body>
+
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+.row{display:flex;gap:24px;align-items:stretch}
+.step{flex:0 0 760px;box-sizing:border-box;background:#fff;border:1px solid #e3e7f5;border-radius:20px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+.side{flex:1 1 auto;box-sizing:border-box;border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;font-size:13px;line-height:1.5}
+.head{display:flex;align-items:center;gap:12px}
+.num{flex:none;width:36px;height:36px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff}
+.title{font-size:19px;font-weight:800}
+.who{margin-left:auto;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:#eef1fa;color:#3b4262}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.k{font-size:11.5px;font-weight:700;color:#5f6684;text-transform:uppercase;letter-spacing:.04em}
+.v{font-size:14px;color:#141a33;line-height:1.45}
+.ex{background:#f0e6ff;border-radius:12px;padding:8px 12px;font-size:13.5px;color:#3f1f78}
+.drop{font-size:13px;color:#7a3e00;background:#fdebd3;border-radius:12px;padding:8px 12px;line-height:1.5}
+.arrow{width:760px;display:flex;justify-content:center;height:30px}
+</style>
+
+<div style="width:1240px;height:2500px;box-sizing:border-box;background:#eef1fa;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#141a33;padding:36px 40px;display:flex;flex-direction:column;gap:0">
+
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:22px">
+    <h1 style="margin:0;font-size:34px;font-weight:800;letter-spacing:-0.02em">How a news signal works, end to end</h1>
+    <p style="margin:0;font-size:16px;color:#3b4262;max-width:1000px;line-height:1.5">From an article to a closed paper trade, then into the stats that decide whether the signal is ever allowed near real money. One real-looking example runs through every step.</p>
+    <div class="ex" style="align-self:flex-start;font-size:15px"><b>Example:</b> “SEC delays decision on spot SOL ETF”, published 22:31:58</div>
+  </div>
+
+  <!-- 1 Collect -->
+  <div class="row">
+    <div class="step">
+      <div class="head"><span class="num" style="background:#1d47b8">1</span><span class="title">Collect</span><span class="who">Code</span></div>
+      <div class="grid">
+        <div><div class="k">In</div><div class="v">SoSoValue news, checked every 5 min</div></div>
+        <div><div class="k">Out</div><div class="v">Every article, with its publish time and the time we got it</div></div>
+        <div><div class="k">Dropped</div><div class="v">Nothing</div></div>
+      </div>
+      <div class="ex">Published 22:31:58 · collected 22:35:02 · 3 min late</div>
+    </div>
+    <div class="side" style="background:#fde4e1;color:#7a1f1d"><b>Source down</b>If SoSoValue stops answering or falls behind, no new news trades open. The gap is marked and left out of the stats. Open trades keep their TP / SL.</div>
+  </div>
+  <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#8fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+  <!-- 2 Normalize -->
+  <div class="row">
+    <div class="step">
+      <div class="head"><span class="num" style="background:#2457d6">2</span><span class="title">Normalize</span><span class="who">Code</span></div>
+      <div class="grid">
+        <div><div class="k">In</div><div class="v">One article</div></div>
+        <div><div class="k">Out</div><div class="v">A story with <b>candidate tokens</b>: the coins SoSoValue tagged, plus stock tickers, kept only if SoDEX lists them</div></div>
+        <div><div class="k">Dropped</div><div class="v">No candidate token on SoDEX</div></div>
+      </div>
+      <div class="ex">Candidates: SOL · story is new</div>
+    </div>
+    <div class="side" style="background:#fff;border:1px solid #e3e7f5;color:#3b4262"><b style="color:#141a33">Same story again</b>An article on the same token and the same news type within 7 days of the first one joins that story. It never opens a trade, even after the first trade has closed; it only adds a source. A new turn (ETF delayed → ETF approved) is a new story.</div>
+  </div>
+  <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#8fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+  <!-- 3 Understand -->
+  <div class="row">
+    <div class="step">
+      <div class="head"><span class="num" style="background:#2e62e8">3</span><span class="title">Understand</span><span class="who">Claude + rules table</span></div>
+      <div class="grid">
+        <div><div class="k">In</div><div class="v">The story and its candidate tokens</div></div>
+        <div><div class="k">Out</div><div class="v">Claude names the news type, the token hit directly, and the event date. The rules table gives the direction and max hold. The source count gives the level.</div></div>
+        <div><div class="k">Dropped</div><div class="v">Not a type on the list · token only mentioned in passing · promotional · event older than 24 h</div></div>
+      </div>
+      <div class="ex" style="font-weight:700">SOL · Short · ETF delayed · Medium (1 top-tier source) · max hold 2 d</div>
+    </div>
+    <div class="side" style="background:#fdebd3;color:#5c2f00"><b>Risk filter (separate branch)</b>Macro news and very hot news don’t become trades. They open a pause window: Volume Builder and Market Making bots stop opening new positions for that window. Measured on real bot trades.</div>
+  </div>
+  <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#8fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+  <!-- 4 Filter -->
+  <div class="row">
+    <div class="step">
+      <div class="head"><span class="num" style="background:#4a7bf0">4</span><span class="title">Filter</span><span class="who">Code</span></div>
+      <div class="grid">
+        <div><div class="k">In</div><div class="v">A signal: token, direction, level, max hold</div></div>
+        <div><div class="k">Checks</div><div class="v">TP is at least 2× the round-trip cost (taker fee ×2 + builder fee ×2 + the spread measured now) · SoDEX has a price · no News trade open on this token · source was on time</div></div>
+        <div><div class="k">Dropped</div><div class="v">Each failed check, with its reason. A thin market fails the cost check and shows “Too thin to trade”.</div></div>
+      </div>
+      <div class="ex">TP 2.0% vs cost 0.10% · SOL spread 0.03% · nothing open on SOL → passes</div>
+    </div>
+    <div class="side" style="background:#fff;border:1px solid #e3e7f5;color:#3b4262"><b style="color:#141a33">Opposite news while a trade is open</b>No new trade. The open trade keeps its own TP, SL and max hold. The opposite story is recorded for analysis.</div>
+  </div>
+  <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#8fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+  <!-- 5 Decide -->
+  <div class="row">
+    <div class="step">
+      <div class="head"><span class="num" style="background:#0f7a43">5</span><span class="title">Decide · open the paper trade</span><span class="who">Code · fake money</span></div>
+      <div class="grid">
+        <div><div class="k">Entry</div><div class="v">SoDEX mid price now, plus half the spread and the fee, like a market order</div></div>
+        <div><div class="k">Exits</div><div class="v">TP = 1.5× and SL = 0.75× the token’s typical move over the max hold</div></div>
+        <div><div class="k">Recorded</div><div class="v">How far the price already moved between the news and our entry</div></div>
+      </div>
+      <div class="ex">Short 500 USDC at 142.18 · TP 139.34 · SL 143.60 · closes by Nov 20, 22:35 · price already −0.6% since the news</div>
+    </div>
+    <div class="side" style="background:#e6ecfe;color:#1d47b8"><b style="color:#141a33">Never real money here</b>The trade goes through the paper engine only. Nothing is sent to SoDEX.<br><br><b style="color:#141a33">Stock markets</b>Earnings often land outside stock-market hours. Those trades are tagged “outside market hours” and analysed apart. Max hold counts real hours, weekends included.</div>
+  </div>
+  <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#8fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+  <!-- 6 Close -->
+  <div class="row">
+    <div class="step">
+      <div class="head"><span class="num" style="background:#0f7a43">6</span><span class="title">Watch and close</span><span class="who">Code</span></div>
+      <div class="grid">
+        <div><div class="k">How</div><div class="v">The SoDEX price is checked every second</div></div>
+        <div><div class="k">Closes at</div><div class="v">Take profit, stop loss or max hold, whichever comes first</div></div>
+        <div><div class="k">Result</div><div class="v">After fees and spread, both legs</div></div>
+      </div>
+      <div class="ex">Take profit hit Nov 20, 09:12 · +$8.94 after fees</div>
+    </div>
+    <div class="side" style="background:#fff;border:1px solid #e3e7f5;color:#3b4262"><b style="color:#141a33">SoDEX price missing</b>Open trades wait; TP / SL are checked again as soon as the price is back.</div>
+  </div>
+  <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#8fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+  <!-- 7 Stats -->
+  <div class="row">
+    <div class="step">
+      <div class="head"><span class="num" style="background:#5a2ca0">7</span><span class="title">Count it</span><span class="who">Code</span></div>
+      <div class="grid">
+        <div><div class="k">Grouped by</div><div class="v">Level at entry · news type · long or short</div></div>
+        <div><div class="k">Compared with</div><div class="v">Random entries at the same moments, same long / short mix, same TP, SL and hold</div></div>
+        <div><div class="k">Shown as</div><div class="v">Average after fees, the difference vs random, and a likely range</div></div>
+      </div>
+      <div class="ex">This trade counts once, in Medium · ETF delayed · Short, tagged “later High”</div>
+    </div>
+    <div class="side" style="background:transparent"></div>
+  </div>
+  <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#8fb0ff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+  <!-- 8 Gate -->
+  <div class="row">
+    <div class="step" style="border:2px solid #5a2ca0">
+      <div class="head"><span class="num" style="background:#5a2ca0">8</span><span class="title">The gate · when can we trust it?</span><span class="who">Rule</span></div>
+      <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px;line-height:1.5">
+        <li><b>At least 100 closed trades per level</b> is the floor. Once there is an average, the page shows how many trades that average really needs: a small edge needs more (≈ (1.96 × spread ÷ difference vs random)²).</li>
+        <li><b>Beats random entries</b> at the same moments, by at least 2× the cost of a trade, with the likely range above 0.</li>
+        <li><b>Same sign in both halves</b> of the period, so one lucky week can’t carry it.</li>
+        <li>At ~30 closed news trades a week, 3 levels × 100 ≈ <b>10 weeks</b> to a first answer.</li>
+      </ul>
+    </div>
+    <div class="side" style="background:transparent"></div>
+  </div>
+  <div class="arrow"><svg width="24" height="30" viewBox="0 0 24 30" aria-hidden="true"><path d="M12 2v22M5 18l7 7 7-7" fill="none" stroke="#c9d6fb" stroke-width="3" stroke-dasharray="4 4" stroke-linecap="round"/></svg></div>
+
+  <div class="row">
+    <div class="step" style="background:#f5f7fd;border:1px dashed #d5dcf2">
+      <div class="head"><span class="num" style="background:#9aa3bf">9</span><span class="title" style="color:#3b4262">Later · real money</span><span class="who">Needs its own approval</span></div>
+      <div class="v" style="color:#3b4262">Only a level that passes the gate gets a design for users. Real money is a separate decision, never automatic.</div>
+    </div>
+    <div class="side" style="background:transparent"></div>
+  </div>
+
+  <!-- Timeline -->
+  <div style="margin-top:32px;background:#fff;border-radius:22px;padding:22px;display:flex;flex-direction:column;gap:14px">
+    <span style="font-size:19px;font-weight:800">Timeline of the example</span>
+    <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px">
+      <div style="background:#f5f7fd;border-radius:14px;padding:12px"><div class="k">News out</div><div style="font-weight:800">22:31:58</div></div>
+      <div style="background:#f5f7fd;border-radius:14px;padding:12px"><div class="k">Collected</div><div style="font-weight:800">22:35:02</div><div class="v" style="font-size:12px;color:#5f6684">next 5-min check</div></div>
+      <div style="background:#f5f7fd;border-radius:14px;padding:12px"><div class="k">Understood</div><div style="font-weight:800">22:35:05</div><div class="v" style="font-size:12px;color:#5f6684">Claude, 3 s</div></div>
+      <div style="background:#f5f7fd;border-radius:14px;padding:12px"><div class="k">Paper entry</div><div style="font-weight:800">22:35:06</div><div class="v" style="font-size:12px;color:#5f6684">price already −0.6%</div></div>
+      <div style="background:#ddf4e7;border-radius:14px;padding:12px"><div class="k">Closed</div><div style="font-weight:800">Nov 20, 09:12</div><div class="v" style="font-size:12px;color:#0f7a43">take profit · +$8.94</div></div>
+    </div>
+  </div>
+</div>
+
+
+</body>
+</html>
