@@ -17,6 +17,7 @@ import {
   type TradeGroup,
 } from "@drift/shared";
 import { vbSignalSnapshotSchema } from "@drift/shared/vb-signal";
+import { buildTradesExact } from "@drift/strategies";
 import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm";
 
 import { periodNetPnl } from "../account/stats-overview";
@@ -47,9 +48,8 @@ interface OwnBot {
   market: string;
 }
 
-interface Leg {
-  botId: string;
-  market: string;
+interface PeriodSums {
+  /** Vị thế (base) lúc đầu kỳ. */
   posBefore: Decimal;
   posIn: Decimal;
   cashIn: Decimal;
@@ -57,6 +57,13 @@ interface Leg {
   builderIn: Decimal;
   volIn: Decimal;
   fillsIn: number;
+}
+
+interface Leg {
+  botId: string;
+  market: string;
+  prev: PeriodSums;
+  cur: PeriodSums;
 }
 
 const ZERO = (): CostTotals => ({
@@ -79,40 +86,83 @@ function add(a: CostTotals, b: CostTotals): CostTotals {
 
 const rows = <T>(r: unknown): T[] => (r as { rows: T[] }).rows;
 
-/** Tổng theo bot × market cho kỳ [from, to): vị thế trước kỳ, tiền, phí, builder fee, volume, số fill trong kỳ. */
-async function legsOf(q: Q, botIds: readonly string[], from: Date, to: Date): Promise<Leg[]> {
+/**
+ * Tổng theo bot × market cho cả hai kỳ trong MỘT lần quét lịch sử fill: kỳ trước [prevFrom, from) và kỳ này [from, to).
+ * Vị thế đầu kỳ trước = Σ fill trước `prevFrom`; vị thế đầu kỳ này = vị thế đầu kỳ trước + Σ fill kỳ trước.
+ */
+async function legsOf(
+  q: Q,
+  botIds: readonly string[],
+  prevFrom: Date,
+  from: Date,
+  to: Date,
+): Promise<Leg[]> {
   const notional = sql`${fills.price} * ${fills.size}`;
   const qty = sql`case when ${orders.side} = 'buy' then ${fills.size} else -${fills.size} end`;
   const cash = sql`case when ${orders.side} = 'sell' then ${notional} else -(${notional}) end`;
+  const inPrev = sql`${fills.filledAt} >= ${prevFrom} and ${fills.filledAt} < ${from}`;
   const inCur = sql`${fills.filledAt} >= ${from} and ${fills.filledAt} < ${to}`;
+  const sums = (inP: typeof inCur) => ({
+    pos: sql<string>`coalesce(sum(${qty}) filter (where ${inP}), 0)::text`,
+    cash: sql<string>`coalesce(sum(${cash}) filter (where ${inP}), 0)::text`,
+    fees: sql<string>`coalesce(sum(${fills.fee}) filter (where ${inP}), 0)::text`,
+    builder: sql<string>`coalesce(sum(coalesce(${fills.builderFee}, 0)) filter (where ${inP}), 0)::text`,
+    vol: sql<string>`coalesce(sum(${notional}) filter (where ${inP}), 0)::text`,
+    n: sql<number>`(count(*) filter (where ${inP}))::int`,
+  });
+  const p = sums(inPrev);
+  const c = sums(inCur);
   const r = await q
     .select({
       botId: orders.botId,
       market: orders.market,
-      posBefore: sql<string>`coalesce(sum(${qty}) filter (where ${fills.filledAt} < ${from}), 0)::text`,
-      posIn: sql<string>`coalesce(sum(${qty}) filter (where ${inCur}), 0)::text`,
-      cashIn: sql<string>`coalesce(sum(${cash}) filter (where ${inCur}), 0)::text`,
-      feesIn: sql<string>`coalesce(sum(${fills.fee}) filter (where ${inCur}), 0)::text`,
-      builderIn: sql<string>`coalesce(sum(coalesce(${fills.builderFee}, 0)) filter (where ${inCur}), 0)::text`,
-      volIn: sql<string>`coalesce(sum(${notional}) filter (where ${inCur}), 0)::text`,
-      fillsIn: sql<number>`(count(*) filter (where ${inCur}))::int`,
+      posBefore: sql<string>`coalesce(sum(${qty}) filter (where ${fills.filledAt} < ${prevFrom}), 0)::text`,
+      pPos: p.pos,
+      pCash: p.cash,
+      pFees: p.fees,
+      pBuilder: p.builder,
+      pVol: p.vol,
+      pN: p.n,
+      cPos: c.pos,
+      cCash: c.cash,
+      cFees: c.fees,
+      cBuilder: c.builder,
+      cVol: c.vol,
+      cN: c.n,
     })
     .from(fills)
     .innerJoin(orders, eq(orders.id, fills.orderId))
     .where(and(inArray(orders.botId, [...botIds]), sql`${fills.filledAt} < ${to}`))
     .groupBy(orders.botId, orders.market)
-    .having(sql`count(*) filter (where ${inCur}) > 0`);
-  return r.map((x) => ({
-    botId: x.botId,
-    market: x.market,
-    posBefore: dec(x.posBefore),
-    posIn: dec(x.posIn),
-    cashIn: dec(x.cashIn),
-    feesIn: dec(x.feesIn),
-    builderIn: dec(x.builderIn),
-    volIn: dec(x.volIn),
-    fillsIn: x.fillsIn,
-  }));
+    .having(
+      sql`count(*) filter (where ${fills.filledAt} >= ${prevFrom} and ${fills.filledAt} < ${to}) > 0`,
+    );
+  return r.map((x) => {
+    const posBefore = dec(x.posBefore);
+    const prevPos = dec(x.pPos);
+    return {
+      botId: x.botId,
+      market: x.market,
+      prev: {
+        posBefore,
+        posIn: prevPos,
+        cashIn: dec(x.pCash),
+        feesIn: dec(x.pFees),
+        builderIn: dec(x.pBuilder),
+        volIn: dec(x.pVol),
+        fillsIn: x.pN,
+      },
+      cur: {
+        posBefore: posBefore.add(prevPos),
+        posIn: dec(x.cPos),
+        cashIn: dec(x.cCash),
+        feesIn: dec(x.cFees),
+        builderIn: dec(x.cBuilder),
+        volIn: dec(x.cVol),
+        fillsIn: x.cN,
+      },
+    };
+  });
 }
 
 /** Close nến 1 phút gần nhất tại hoặc trước `at`, trong `MARK_MAX_AGE_MS`. */
@@ -132,52 +182,88 @@ async function closesAt(q: Q, markets: readonly string[], at: Date): Promise<Map
   return new Map(r.map((x) => [x.market, x.close]));
 }
 
-/** Tổng theo bot của kỳ [from, to). Giá cuối kỳ hiện tại = giá live, không có thì close nến. */
-async function totalsByBot(
-  q: Q,
-  prices: BotDeps["prices"],
-  botIds: readonly string[],
-  from: Date,
-  to: Date,
-  live: boolean,
-): Promise<Map<string, CostTotals>> {
-  const legs = await legsOf(q, botIds, from, to);
-  const startMarkets = [...new Set(legs.filter((l) => !l.posBefore.isZero()).map((l) => l.market))];
-  const endMarkets = [
-    ...new Set(legs.filter((l) => !l.posBefore.add(l.posIn).isZero()).map((l) => l.market)),
-  ];
-  const liveMarks: Record<string, string> =
-    live && endMarkets.length > 0 ? await prices(endMarkets).catch(() => ({})) : {};
-  const startMarks = await closesAt(q, startMarkets, from);
-  const endCloses = await closesAt(
-    q,
-    endMarkets.filter((m) => liveMarks[m] === undefined),
-    to,
-  );
+/** Tổng theo bot của một kỳ từ các leg: chỉ leg có fill trong kỳ; `mark(start / end)` là giá đầu / cuối kỳ. */
+function periodTotals(
+  legs: readonly Leg[],
+  pick: (l: Leg) => PeriodSums,
+  markStart: (market: string) => string | undefined,
+  markEnd: (market: string) => string | undefined,
+): Map<string, CostTotals> {
   const out = new Map<string, CostTotals>();
   for (const l of legs) {
-    const ms = startMarks.get(l.market);
-    const me = liveMarks[l.market] ?? endCloses.get(l.market);
+    const s = pick(l);
+    if (s.fillsIn === 0) continue;
+    const ms = markStart(l.market);
+    const me = markEnd(l.market);
     const net = periodNetPnl({
-      posBefore: l.posBefore,
-      posIn: l.posIn,
-      cashIn: l.cashIn,
-      feesIn: l.feesIn,
+      posBefore: s.posBefore,
+      posIn: s.posIn,
+      cashIn: s.cashIn,
+      feesIn: s.feesIn,
       markStart: ms === undefined ? null : dec(ms),
       markEnd: me === undefined ? null : dec(me),
     });
     out.set(
       l.botId,
       add(out.get(l.botId) ?? ZERO(), {
-        volume: l.volIn,
-        fills: l.fillsIn,
-        fees: l.feesIn,
-        builderFee: l.builderIn,
+        volume: s.volIn,
+        fills: s.fillsIn,
+        fees: s.feesIn,
+        builderFee: s.builderIn,
         net,
       }),
     );
   }
   return out;
+}
+
+/**
+ * Tổng theo bot của kỳ trước và kỳ này. Giá cuối kỳ này = giá live (`liveMarks`, đọc TRƯỚC khi mở transaction), không có
+ * thì close nến; các mốc khác = close nến 1 phút.
+ */
+async function totalsByBot(
+  q: Q,
+  liveMarks: Readonly<Record<string, string>>,
+  botIds: readonly string[],
+  prevFrom: Date,
+  from: Date,
+  to: Date,
+): Promise<{ cur: Map<string, CostTotals>; prev: Map<string, CostTotals> }> {
+  const legs = await legsOf(q, botIds, prevFrom, from, to);
+  const open = (s: PeriodSums) => !s.posBefore.isZero();
+  const prevStart = await closesAt(
+    q,
+    [...new Set(legs.filter((l) => open(l.prev)).map((l) => l.market))],
+    prevFrom,
+  );
+  // Cuối kỳ trước = đầu kỳ này: cùng một giá.
+  const mid = await closesAt(
+    q,
+    [...new Set(legs.filter((l) => open(l.cur)).map((l) => l.market))],
+    from,
+  );
+  const endMarkets = [
+    ...new Set(legs.filter((l) => !l.cur.posBefore.add(l.cur.posIn).isZero()).map((l) => l.market)),
+  ];
+  const endCloses = await closesAt(
+    q,
+    endMarkets.filter((m) => liveMarks[m] === undefined),
+    to,
+  );
+  return {
+    prev: periodTotals(
+      legs,
+      (l) => l.prev,
+      (m) => prevStart.get(m),
+      (m) => mid.get(m),
+    ),
+    cur: periodTotals(
+      legs,
+      (l) => l.cur,
+      (m) => mid.get(m),
+      (m) => liveMarks[m] ?? endCloses.get(m),
+    ),
+  };
 }
 
 /**
@@ -245,73 +331,6 @@ async function hourCells(q: Q, botIds: readonly string[], from: Date, tz: string
   return { hours, ...windows };
 }
 
-interface VbTrade {
-  t0: number;
-  t1: number;
-  net: Decimal;
-  volume: Decimal;
-  exitByStop: boolean;
-}
-
-const TAG = /^vf:(\d+):(in|out|sl)/;
-
-/**
- * Ghép fill Volume Builder thành lượt (cùng cách ghép của Review this run / Strategy Analytics, `buildTrades`), nhưng
- * tính tiền bằng Decimal: net = (bán − mua) − phí; volume = Σ giá × size của mọi fill trong lượt.
- */
-function groupTrades(
-  fs: readonly {
-    tag: string;
-    side: "buy" | "sell";
-    price: Decimal;
-    size: Decimal;
-    fee: Decimal;
-    at: number;
-  }[],
-): VbTrade[] {
-  const out: VbTrade[] = [];
-  type F = (typeof fs)[number];
-  // `as`: TypeScript không theo dõi lần gán trong `close`, nên khai báo kiểu rộng (như `buildTrades`).
-  let cur = null as { cycle: number; ins: F[]; outs: F[] } | null;
-  const close = () => {
-    if (cur === null || cur.ins.length === 0 || cur.outs.length === 0) return;
-    const qIn = cur.ins.reduce((s, f) => s.add(f.size), new Decimal(0));
-    const qOut = cur.outs.reduce((s, f) => s.add(f.size), new Decimal(0));
-    if (qOut.lt(qIn.mul(0.999))) return;
-    const first = cur.ins[0];
-    const last = cur.outs.at(-1);
-    if (first === undefined || last === undefined) return;
-    const all = [...cur.ins, ...cur.outs];
-    // Lượt đóng đủ: phần lệch nhỏ (≤ 0,1%) giữa vào và ra tính theo giá ra trung bình, như `buildTrades`.
-    const entry = cur.ins.reduce((s, f) => s.add(f.price.mul(f.size)), new Decimal(0)).div(qIn);
-    const exit = cur.outs.reduce((s, f) => s.add(f.price.mul(f.size)), new Decimal(0)).div(qOut);
-    const long = first.side === "buy";
-    const gross = (long ? exit.sub(entry) : entry.sub(exit)).mul(qIn);
-    out.push({
-      t0: first.at,
-      t1: last.at,
-      net: gross.sub(all.reduce((s, f) => s.add(f.fee), new Decimal(0))),
-      volume: all.reduce((s, f) => s.add(f.price.mul(f.size)), new Decimal(0)),
-      exitByStop: cur.outs.some((f) => f.tag.endsWith(":sl")),
-    });
-  };
-  for (const f of [...fs].sort((a, b) => a.at - b.at)) {
-    const m = TAG.exec(f.tag);
-    if (m === null) continue;
-    const cycle = Number(m[1]);
-    const kind = m[2];
-    if (kind === "in" && (cur?.cycle !== cycle || cur.outs.length > 0)) {
-      close();
-      cur = { cycle, ins: [], outs: [] };
-    }
-    if (cur === null) continue;
-    if (kind === "in") cur.ins.push(f);
-    else cur.outs.push(f);
-  }
-  close();
-  return out;
-}
-
 interface VbClosed {
   net: Decimal;
   volume: Decimal;
@@ -330,6 +349,8 @@ async function vbTrades(q: Q, botId: string, from: number, to: number): Promise<
       price: fills.price,
       size: fills.size,
       fee: fills.fee,
+      builderFee: fills.builderFee,
+      isMaker: fills.isMaker,
       at: fills.filledAt,
     })
     .from(fills)
@@ -343,13 +364,16 @@ async function vbTrades(q: Q, botId: string, from: number, to: number): Promise<
         sql`${fills.filledAt} < ${new Date(to)}`,
       ),
     );
-  const trades = groupTrades(
+  // Cùng cách ghép lượt với Review this run / Strategy Analytics (`groupFills`), tiền bằng Decimal.
+  const trades = buildTradesExact(
     r.map((x) => ({
       tag: x.tag,
       side: x.side,
       price: dec(x.price),
       size: dec(x.size),
       fee: dec(x.fee),
+      builderFee: dec(x.builderFee ?? "0"),
+      isMaker: x.isMaker === true,
       at: x.at.getTime(),
     })),
   ).filter((t) => t.t1 >= from && t.t1 < to);
@@ -406,7 +430,7 @@ async function vbTrades(q: Q, botId: string, from: number, to: number): Promise<
     const c = closes.find((x) => x.at >= t.t1 - 5_000 && x.at <= t.t1 + 120_000) ?? null;
     const sig = firstFill.get(t.t0) ?? null;
     return {
-      net: t.net,
+      net: t.gross.sub(t.fees),
       volume: t.volume,
       reason: exitReasonOf(c?.why ?? null, t.exitByStop),
       regime: sig?.regime ?? null,
@@ -475,25 +499,24 @@ export async function deskPerformance(
   userId: string,
   query: DeskPerformanceQuery,
 ): Promise<DeskPerformance> {
+  const now = deps.now();
+  const own = await ownBots(deps.db, userId);
+  // Danh sách bot và giá live (Redis MGET) đọc TRƯỚC khi mở transaction chỉ đọc, để transaction không giữ kết nối DB
+  // chờ Redis (sửa DEC-314 (6): câu lấy bot không còn nằm trong transaction đó).
+  const markets = [...new Set(own.map((b) => b.market))];
+  const liveMarks: Record<string, string> =
+    markets.length === 0 ? {} : await deps.prices(markets).catch(() => ({}));
   return deps.db.transaction(async (q) => {
     await q.execute(sql`SET TRANSACTION READ ONLY`);
     await q.execute(sql.raw(`SET LOCAL statement_timeout = ${String(QUERY_TIMEOUT_MS)}`));
-    return compute(q, deps.prices, deps.now(), userId, query);
+    return compute(q, own, liveMarks, now, query);
   });
 }
 
-async function compute(
-  q: Q,
-  prices: BotDeps["prices"],
-  now: Date,
-  userId: string,
-  query: DeskPerformanceQuery,
-): Promise<DeskPerformance> {
-  const span = PERIOD_DAYS[query.period] * DAY_MS;
-  const from = new Date(now.getTime() - span);
-  const prevFrom = new Date(from.getTime() - span);
-  const own: OwnBot[] = (
-    await q
+/** Bot tiền thật Market Making / Volume Builder của chính người gọi. */
+async function ownBots(db: Db, userId: string): Promise<OwnBot[]> {
+  return (
+    await db
       .select({ id: bots.id, name: bots.name, strategy: bots.strategy, market: bots.market })
       .from(bots)
       .where(
@@ -508,6 +531,18 @@ async function compute(
       ? [{ ...b, strategy: b.strategy }]
       : [],
   );
+}
+
+async function compute(
+  q: Q,
+  own: readonly OwnBot[],
+  liveMarks: Readonly<Record<string, string>>,
+  now: Date,
+  query: DeskPerformanceQuery,
+): Promise<DeskPerformance> {
+  const span = PERIOD_DAYS[query.period] * DAY_MS;
+  const from = new Date(now.getTime() - span);
+  const prevFrom = new Date(from.getTime() - span);
   const base = {
     period: query.period,
     tz: query.tz,
@@ -521,9 +556,8 @@ async function compute(
   };
   if (own.length === 0) return { ...base, state: "noBots", current: performanceCost(ZERO()) };
   const ids = own.map((b) => b.id);
-  // Một kết nối (transaction): chạy lần lượt.
-  const cur = await totalsByBot(q, prices, ids, from, now, true);
-  const prev = await totalsByBot(q, prices, ids, prevFrom, from, false);
+  // Một lần quét lịch sử fill cho cả hai kỳ (#245).
+  const { cur, prev } = await totalsByBot(q, liveMarks, ids, prevFrom, from, now);
   const total = (m: Map<string, CostTotals>) => [...m.values()].reduce(add, ZERO());
   const current = total(cur);
   if (current.fills < PERFORMANCE_MIN_FILLS)

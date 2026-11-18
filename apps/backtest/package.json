@@ -7,7 +7,9 @@
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "replay:vb": "tsx src/replay/cli.ts",
+    "replay:vb:sample": "tsx src/replay/sample.ts"
   },
   "dependencies": {
     "@drift/db": "workspace:*",
