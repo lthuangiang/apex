@@ -1724,6 +1724,7 @@ describe("volume farm — entry stays tracked until SoDEX confirms it ended (#23
     expect(r.s.volume).toBe("160");
     expect(r.all.find((a) => a.type === "log")).toMatchObject({
       decision: "Late fill added to the position",
+      teamAlert: "late_fill_adopted",
     });
     // Stop trên SoDEX theo vị thế nhận vào: lệnh mua reduce-only cho đúng 0.002.
     const stop = first(places(r.all).filter((o) => o.stop !== undefined));
@@ -1851,6 +1852,45 @@ describe("volume farm — entry stays tracked until SoDEX confirms it ended (#23
       const later = run(c, [tick(T0 + 5_000), tick(T0 + 20_000)], r.s);
       expect(places(later.all).filter((o) => o.reduceOnly)).toHaveLength(0);
     }
+  });
+
+  it("a reduce-only stop that fills more than its order size (prod vf:107:sl: size 0.0104, filled 0.0957) books only the reducing part", () => {
+    const stopFill = (at: number): StrategyEvent => ({
+      type: "fill",
+      at,
+      clOrdID: "vf-107-sl",
+      price: "80000",
+      quantity: "0.0957",
+      fee: "0.05",
+      side: "buy",
+      reduceOnly: true,
+      size: "0.0104",
+    });
+    const base: VolumeFarmState = {
+      ...volumeFarm.initialState(c),
+      lastPrice: "80000",
+      orders: { "vf-107-sl": { kind: "stop", side: "buy" } },
+    };
+    // Bot phẳng: không ghi gì vào vị thế.
+    const flat = run(c, [stopFill(T0)], base);
+    expect(dec(flat.s.ledger.position).isZero()).toBe(true);
+    expect(places(flat.all)).toHaveLength(0);
+    // Bot short 0.05: chỉ 0.05 được ghi (đóng lượt), 0.0457 là phần vượt.
+    const short: VolumeFarmState = {
+      ...base,
+      phase: "open",
+      openedAt: T0 - 60_000,
+      holdUntil: T0 + 60_000,
+      ledger: { ...base.ledger, position: "-0.05", avgCost: "80100" },
+    };
+    const r = run(c, [stopFill(T0)], short);
+    expect(dec(r.s.ledger.position).isZero()).toBe(true);
+    expect(r.s.phase).toBe("idle");
+    const beyond = r.all.find(
+      (a) => a.type === "log" && a.decision === "Closing fill beyond the bot's position",
+    );
+    expect(beyond).toMatchObject({ teamAlert: "closing_fill_beyond" });
+    expect(beyond?.type === "log" ? beyond.why : "").toContain("0.0457");
   });
 
   it("books only the part of a closing fill that reduces the position", () => {
@@ -2034,5 +2074,6 @@ describe("volume farm — entry stays tracked until SoDEX confirms it ended (#23
     }
     expect(flags).toEqual([{ type: "flag", needsAttention: true }]);
     expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ teamAlert: "cancel_unconfirmed" });
   });
 });

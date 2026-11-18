@@ -348,10 +348,12 @@ function chaseCancels(s: VolumeFarmState, at: number): StepResult<VolumeFarmStat
   const actions: StrategyAction[] = due.map(([id]) => ({ type: "cancel" as const, clOrdID: id }));
   if (stuck)
     actions.push(
+      // Câu chữ PM duyệt 2026-11-18 (#248).
       {
         type: "log",
         decision: "Waiting for SoDEX to confirm a cancel",
         why: `SoDEX has not confirmed that ${pending.map(([id]) => id).join(", ")} ended. The bot keeps cancelling it and starts no new trade until SoDEX confirms. Check open orders on SoDEX.`,
+        teamAlert: "cancel_unconfirmed",
       },
       { type: "flag", needsAttention: true },
     );
@@ -1100,6 +1102,7 @@ function adoptLog(e: Extract<StrategyEvent, { type: "fill" }>, kind: Kind): Stra
       kind === "entry"
         ? `${head} The bot now manages it with its normal exit rules.`
         : `${head} It reduced the open position.`,
+    teamAlert: "late_fill_adopted",
   };
 }
 
@@ -1203,8 +1206,10 @@ function bookFill(
   };
   const excessLog: StrategyAction[] = excess.gt(0)
     ? [
+        // Câu chữ PM duyệt 2026-11-18 (#248).
         {
           type: "log",
+          teamAlert: "closing_fill_beyond",
           decision: "Closing fill beyond the bot's position",
           why: `${e.clOrdID} is a closing order and filled ${e.quantity} at ${e.price}; ${excess.toString()} of it was more than the position the bot tracked, so it closed a position the bot was not tracking. It was not booked as a new position.`,
         },

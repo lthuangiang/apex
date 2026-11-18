@@ -14,7 +14,9 @@
       "bot": "Open bot",
       "app": "Open DeskLabs",
       "users": "Open Users",
-      "stats": "Open Stats"
+      "stats": "Open Stats",
+      "botMonitor": "Open Bot Monitor",
+      "debugger": "Open SoDEX Debugger"
     },
     "titles": {
       "bot_paused": "🔴 <b>{bot} paused</b>",
@@ -82,6 +84,42 @@
       "team_signup": "🆕 <b>{n} new signups</b>",
       "team_sodex_connected": "🔗 <b>{n} SoDEX connections</b>",
       "team_bot_started": "▶️ <b>{n} bots started</b>"
+    },
+    "incident": {
+      "severity": {
+        "critical": "🚨 CRITICAL",
+        "warning": "⚠️ WARNING",
+        "info": "✅ INFO"
+      },
+      "title": "{severity} · <b>{title}</b>",
+      "kinds": {
+        "position_mismatch": "Position doesn't match",
+        "position_matched": "Position matches again",
+        "close_failed": "Couldn't close a position",
+        "unknown_gave_up": "Order result unknown, gave up",
+        "late_fill": "Fill found after the order ended",
+        "paused_errors": "Bot paused by errors",
+        "late_fill_adopted": "Late fill added to a bot's position",
+        "closing_fill_beyond": "Closing fill beyond a bot's position",
+        "cancel_unconfirmed": "Cancel not confirmed for 10 min",
+        "ledger_repaired": "Bot ledger repaired from its own fill",
+        "orphan_cancelled": "Untracked order cancelled",
+        "shard_lost": "Engine lost a shard",
+        "tick_slow": "Engine ticks slow",
+        "reads_skipped": "Engine reads skipped by the reserve",
+        "ws_closes": "User stream keeps closing",
+        "sodex_errors": "SoDEX errors spiking"
+      },
+      "bot": "bot {bot}",
+      "links": {
+        "user": "User page",
+        "debugger": "SoDEX Debugger",
+        "monitor": "Bot Monitor"
+      },
+      "merged": "🚨 <b>{n} incidents</b>",
+      "digestTitle": "📋 <b>Daily incidents · last 24 h</b>",
+      "digestLine": "• {n} × {title} ({severity})",
+      "digestNone": "No incidents in the last 24 h."
     }
   },
   "copySkip": {

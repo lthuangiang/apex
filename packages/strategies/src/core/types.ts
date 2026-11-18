@@ -173,7 +173,20 @@ export type StrategyAction =
   | { type: "stop"; reason: ReasonCode; close: boolean }
   | { type: "flag"; needsAttention: boolean }
   /** Một dòng "Decisions & actions" (bot_events). */
-  | { type: "log"; decision: string; why: string; payload?: DecisionPayload };
+  | {
+      type: "log";
+      decision: string;
+      why: string;
+      payload?: DecisionPayload;
+      /**
+       * Báo team (DEC-313) cùng transaction ghi dòng Decisions này (bot tiền thật). Engine dùng `why` làm chi tiết. Không
+       * dựa vào câu chữ Decisions để nhận ra sự cố.
+       */
+      teamAlert?: StrategyTeamAlert;
+    };
+
+/** Sự cố tiền thật chiến lược tự phát hiện, báo team qua đường DEC-313 (DEC-TBD-vf-orphan-entry). */
+export type StrategyTeamAlert = "late_fill_adopted" | "closing_fill_beyond" | "cancel_unconfirmed";
 
 /**
  * Dữ liệu có cấu trúc kèm một quyết định, engine ghi vào `bot_events.payload` (cạnh `orders` của BD-02). Chỉ chiến

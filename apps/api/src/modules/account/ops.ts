@@ -715,7 +715,14 @@ async function rejectsOf(db: Db, ids: readonly string[], now: number) {
   return rowsOf<{ bot_id: string; n: number; at: Date | string }>(r);
 }
 
-/** Dòng cảnh báo bất biến 7 ngày của các bot (outbox `jobs.team_ops`, type team_invariant), mới nhất trước. */
+/** Tên "bất biến" của cảnh báo lệch vị thế (#241) trong cột Latest alert / phần chi tiết. */
+export const POSITION_ALERT = "Position";
+
+/**
+ * Dòng cảnh báo 7 ngày của các bot (outbox `jobs.team_ops`), mới nhất trước: bất biến (team_invariant, DEC-274) và lệch
+ * vị thế thật / sổ cái (team_incident position_mismatch → failing, position_matched → resolved; #241). Sự cố một lần khác
+ * (lệnh đóng không gửi được, fill trễ…) đã có trong Decisions của bot nên không thành cảnh báo đang mở.
+ */
 async function alertsOf(db: Db, ids: readonly string[], now: number): Promise<AlertRow[]> {
   const rows = await db
     .select({ payload: outbox.payload, at: outbox.createdAt })
@@ -724,7 +731,10 @@ async function alertsOf(db: Db, ids: readonly string[], now: number): Promise<Al
       and(
         eq(outbox.topic, "jobs.team_ops"),
         gte(outbox.createdAt, new Date(now - LOOKBACK_MS)),
-        sql`${outbox.payload}->>'type' = 'team_invariant'`,
+        or(
+          sql`${outbox.payload}->>'type' = 'team_invariant'`,
+          sql`${outbox.payload}->>'type' = 'team_incident' and ${outbox.payload}->>'kind' in ('position_mismatch', 'position_matched')`,
+        ),
         inArray(sql<string>`${outbox.payload}->>'botId'`, [...ids]),
       ),
     )
@@ -732,22 +742,31 @@ async function alertsOf(db: Db, ids: readonly string[], now: number): Promise<Al
     .limit(ALERT_ROWS_LIMIT);
   return rows.flatMap((r) => {
     const p = r.payload as {
+      type?: unknown;
       botId?: unknown;
       invariant?: unknown;
       status?: unknown;
+      kind?: unknown;
+      market?: unknown;
       detail?: unknown;
     };
-    if (typeof p.botId !== "string" || typeof p.invariant !== "string") return [];
+    if (typeof p.botId !== "string") return [];
+    const detail = typeof p.detail === "string" ? p.detail : "";
+    if (p.type === "team_incident") {
+      const market = typeof p.market === "string" ? `${p.market}: ` : "";
+      return [
+        {
+          botId: p.botId,
+          invariant: POSITION_ALERT,
+          status: p.kind === "position_mismatch" ? ("failing" as const) : ("resolved" as const),
+          detail: `${market}${detail}`,
+          at: r.at,
+        },
+      ];
+    }
+    if (typeof p.invariant !== "string") return [];
     if (p.status !== "failing" && p.status !== "resolved") return [];
-    return [
-      {
-        botId: p.botId,
-        invariant: p.invariant,
-        status: p.status,
-        detail: typeof p.detail === "string" ? p.detail : "",
-        at: r.at,
-      },
-    ];
+    return [{ botId: p.botId, invariant: p.invariant, status: p.status, detail, at: r.at }];
   });
 }
 

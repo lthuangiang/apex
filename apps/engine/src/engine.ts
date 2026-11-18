@@ -96,6 +96,7 @@ import {
   type OrderTrade,
 } from "./gateway";
 import type { PaperGateway } from "./paper-gateway";
+import { TEAM_PAUSE_REASONS, teamIncidentRow } from "./team-incidents";
 
 // Engine (ARCHITECTURE.md mục 3.3–3.4, DEC-37). Mỗi account thuộc một shard ảo (64); mỗi shard có đúng
 // một worker giữ lease Redis. Khi nhận shard, `epoch` của shard trong Postgres tăng 1; mọi lần ghi lệnh /
@@ -319,6 +320,11 @@ export class FencedError extends Error {
 }
 
 type OrderRow = typeof orders.$inferSelect;
+/** Phần state Volume Farm engine đọc (lệnh bot theo dõi, stop của lượt đang mở), DEC-TBD-vf-orphan-entry. */
+interface FarmStateView {
+  orders?: Record<string, { kind?: string; cancelAt?: number; done?: boolean }>;
+  xstop?: { id: string } | null;
+}
 type BotRow = typeof bots.$inferSelect;
 type VersionRow = typeof botVersions.$inferSelect;
 
@@ -559,6 +565,8 @@ export interface EngineDeps {
    * luôn sẵn sàng.
    */
   userStreams?: UserStreams;
+  /** Bộ đếm sức khoẻ engine cho báo team (#241): không chờ, không ném. Không truyền (test) thì không đếm. */
+  health?: (signal: "shard_lost" | "tick_slow") => void;
 }
 
 export interface UserStreams {
@@ -925,6 +933,7 @@ export class Engine {
       orderbook: () => Promise.resolve(null),
       tickWaitMs: Number.POSITIVE_INFINITY,
       lookupBudget: Number.POSITIVE_INFINITY,
+      health: () => undefined,
       ...deps,
       builderExempt: deps.builderExempt ?? true,
       feeRate: deps.feeRate,
@@ -1087,6 +1096,7 @@ export class Engine {
         // bỏ vì lỗi fencing của lease cũ.
         if (current()) {
           this.#d.log.warn({ shard, reason: "fenced", worker: this.#d.workerId }, "shard lost");
+          this.#d.health("shard_lost");
           this.#dropShard(shard);
         } else
           this.#d.log.warn({ shard, epoch: laneEpoch }, "old shard lane fenced; lease changed");
@@ -1123,6 +1133,7 @@ export class Engine {
         },
         "tick slow",
       );
+    if (ms > this.#d.leaseTtlMs / 2) this.#d.health("tick_slow");
   }
 
   /** Lease của shard còn hiệu lực; hết thì gia hạn ngay một lần rồi xem lại. */
@@ -1182,6 +1193,7 @@ export class Engine {
       { shard, reason, epoch: this.#leases.get(shard)?.epoch, worker: this.#d.workerId },
       "shard lost",
     );
+    this.#d.health("shard_lost");
     this.#dropShard(shard);
   }
 
@@ -2182,7 +2194,14 @@ export class Engine {
         if (r === undefined) continue;
         // Volume Farm nạp lại (khởi động lại, Resume sau pause) mà còn cảnh báo lệch: sửa sổ cái từ fill của chính lệnh bot
         // TRƯỚC bước chiến lược đầu tiên, để Resume không gửi lệnh theo sổ cái sai (#239: 30 lệnh bán reduce-only).
-        if (r.strategy === Strategy.volumeFarm && !r.paper && r.positionMismatch.size > 0)
+        // Chỉ khi bot sẽ chạy (đang chạy / đang Resume): nhận fill có thể đặt stop trên SoDEX, không bao giờ làm việc đó
+        // khi bot đang pause / dừng (review #248 minor 2).
+        if (
+          r.strategy === Strategy.volumeFarm &&
+          !r.paper &&
+          r.positionMismatch.size > 0 &&
+          (bot.state === BotState.running || bot.state === BotState.resuming)
+        )
           await this.#repairOnLoad(r);
       }
       // Team đổi builder fee của user (DEC-159): lệnh mới dùng mức mới ngay, chiến lược tính phí theo mức mới.
@@ -2882,7 +2901,7 @@ export class Engine {
         `Nothing was sent to SoDEX after ${String(attempts)} attempts (${code}).`,
         at,
       );
-      await this.#pauseBot(r, ReasonCode.orderRejected);
+      await this.#pauseBot(r, ReasonCode.orderRejected, `not sent (${code})`);
       return;
     }
     const wait = Math.min(NOT_SENT_BACKOFF.firstMs * 2 ** (attempts - 1), NOT_SENT_BACKOFF.maxMs);
@@ -2962,6 +2981,16 @@ export class Engine {
                   dedupeKey: `copy_bot_skipped:${data.botId}:${data.market ?? "*"}:${String(data.at)}`,
                 },
               });
+            // Sự cố tiền thật chiến lược tự phát hiện (DEC-313, DEC-TBD-vf-orphan-entry): báo team cùng transaction.
+            if (a.teamAlert !== undefined && !r.paper)
+              await tx.insert(outbox).values(
+                teamIncidentRow({
+                  kind: a.teamAlert,
+                  botId: r.botId,
+                  market: r.market,
+                  detail: a.why,
+                }),
+              );
           },
           this.#decisionPayload(r, placed, a.payload),
         );
@@ -3349,7 +3378,7 @@ export class Engine {
       `Last: ${o.side} ${o.quantity} ${o.market} (${sodex}). Your ${o.market} position on SoDEX may already be closed or smaller than the bot expects. Check Positions on SoDEX before you resume.`,
       at,
     );
-    await this.#pauseBot(r, ReasonCode.orderRejected);
+    await this.#pauseBot(r, ReasonCode.orderRejected, `${String(limit)} reduce-only rejects`);
     return true;
   }
 
@@ -3389,7 +3418,7 @@ export class Engine {
       `SoDEX rejected ${String(n)} orders for insufficient margin (SoDEX code -1: ${last.message ?? "insufficient margin"}).${what}`,
       at,
     );
-    await this.#pauseBot(r, ReasonCode.orderRejected);
+    await this.#pauseBot(r, ReasonCode.orderRejected, `insufficient margin (${String(n)} rejects)`);
     return true;
   }
 
@@ -3696,9 +3725,29 @@ export class Engine {
     // đọc trạng thái cuối ở #reconcileOpen thay vì tự ghi `cancelled` (DEC-TBD-vf-orphan-entry, quy tắc 1.7).
     const isGone = (x: CancelResult) =>
       x.outcome === "not_found" || (x.outcome === "rejected" && x.scope !== "request");
+    // Volume Farm: stop trên SoDEX của lượt đã đóng mà huỷ gặp OrderNotFound = SoDEX đã tự huỷ khi vị thế về 0 (DEC-119),
+    // hoặc stop đã kích hoạt. Coi là đã kết thúc ngay, không tra lại (không tốn ngân sách khẩn mỗi lượt, PM chốt #248).
+    // Fill muộn của nó (nếu có) vẫn an toàn: fill của lệnh chỉ giảm không bao giờ mở vị thế (DEC-TBD-vf-orphan-entry).
+    const farm = r.strategy === Strategy.volumeFarm ? (r.state as FarmStateView) : null;
+    const stopEnded = new Set(
+      results
+        .filter((x) => {
+          if (x.outcome !== "not_found" || farm === null) return false;
+          const row = open.find((y) => y.clOrdId === x.clOrdID);
+          const tracked = farm.orders?.[x.clOrdID];
+          return (
+            row !== undefined &&
+            isNativeStop(row) &&
+            tracked?.kind === "stop" &&
+            tracked.cancelAt !== undefined &&
+            farm.xstop?.id !== x.clOrdID
+          );
+        })
+        .map((x) => x.clOrdID),
+    );
     let gone = this.#cancelGone.get(r.botId);
     for (const x of results) {
-      if (!isGone(x)) continue;
+      if (!isGone(x) || stopEnded.has(x.clOrdID)) continue;
       if (unbooked(x)) {
         this.#d.log.info(
           { botId: r.botId, clOrdID: x.clOrdID },
@@ -3724,7 +3773,9 @@ export class Engine {
     // Chỉ coi là đã huỷ khi SoDEX xác nhận đã gỡ (`ok`). Không rõ thì thử lại; không thấy trên sổ hoặc SoDEX từ chối
     // riêng lệnh huỷ thì chờ đối soát (ở trên). Request bị từ chối cả gói (429, key, nonce…) không nói gì về lệnh: như
     // chưa rõ, huỷ lại sau (review #216 F1).
-    const settled = new Set(results.filter((x) => x.outcome === "ok").map((x) => x.clOrdID));
+    const settled = new Set(
+      results.filter((x) => x.outcome === "ok" || stopEnded.has(x.clOrdID)).map((x) => x.clOrdID),
+    );
     const done = open.filter((o) => settled.has(o.clOrdId));
     for (const o of open) {
       if (settled.has(o.clOrdId)) pending.delete(o.clOrdId);
@@ -3742,6 +3793,8 @@ export class Engine {
             ),
           ),
       );
+    // Stop của lượt đã đóng đã hết trên SoDEX: báo chiến lược một lần (như user stream), lượt sau không phải chờ.
+    for (const id of stopEnded) await this.onOrderClosed(r.account.id, id, "cancelled", now);
     // Market Making tính khối lượng còn treo của lệnh đóng cho tới khi SoDEX xác nhận đã gỡ (DEC-100). Volume Farm paper
     // không có user stream báo CANCELED: báo kết thúc ngay để lượt sau không phải chờ (DEC-TBD-vf-orphan-entry).
     if (r.strategy !== Strategy.volumeMaker && !(r.paper && r.strategy === Strategy.volumeFarm))
@@ -3822,7 +3875,7 @@ export class Engine {
   }
 
   /** pause giữ lệnh đang mở (DOMAIN.md mục 7.2). */
-  async #pauseBot(r: Runner, reason: Reason): Promise<void> {
+  async #pauseBot(r: Runner, reason: Reason, cause?: string): Promise<void> {
     const changed = await this.#fenced(r, async (tx) => {
       const [b] = await tx
         .select({ state: bots.state })
@@ -3844,6 +3897,16 @@ export class Engine {
           data: { botId: r.botId, reasonCode: reason, ...(r.paper ? { paper: true } : {}) },
         },
       });
+      // Báo team (#241): pause vì lỗi khi gửi lệnh của bot tiền thật.
+      if (!r.paper && TEAM_PAUSE_REASONS.includes(reason))
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "paused_errors",
+            botId: r.botId,
+            market: r.market,
+            detail: cause === undefined ? reason : `${reason} · ${cause}`,
+          }),
+        );
       return true;
     });
     // Chỉ ghi "Paused" khi state thật sự đổi: bot đang stopping / stopped / paused nhận thêm lệnh pause (ví dụ lệnh
@@ -4188,6 +4251,14 @@ export class Engine {
           why: `SoDEX didn't receive the close order (${code}). Your ${markets} position is still open — close it on SoDEX.`,
           occurredAt: new Date(now),
         });
+        if (!r.paper)
+          await tx.insert(outbox).values(
+            teamIncidentRow({
+              kind: "close_failed",
+              botId: r.botId,
+              detail: `${markets} position still open · close order not sent (${code})`,
+            }),
+          );
       });
       this.#d.log.warn(
         { botId: r.botId, code, attempts: b.attempts + 1 },
@@ -4568,16 +4639,15 @@ export class Engine {
         why: `${o.clOrdId}: SoDEX accepted it, but it is not in the order history and has no trades. Check this bot's position on SoDEX.`,
         occurredAt: new Date(now),
       });
-      // Báo team như lệnh gửi không rõ kết quả (đường cảnh báo có sẵn).
       if (!r.paper)
-        await tx.insert(outbox).values({
-          topic: "jobs.notify",
-          payload: {
-            sodexAccountId: r.account.id,
-            type: "unknown_order",
-            data: { botId: r.botId, clOrdID: o.clOrdId },
-          },
-        });
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "unknown_gave_up",
+            botId: r.botId,
+            market: o.market,
+            detail: `${o.side} ${dec(o.size).toString()} · ${o.clOrdId} · not on SoDEX after 10 min, fills unknown`,
+          }),
+        );
       return true;
     });
     if (marked) await this.#farmGaveUp(r, o, now);
@@ -4586,9 +4656,9 @@ export class Engine {
   /**
    * Volume Farm chờ SoDEX xác nhận lệnh này đã kết thúc trước khi vào lượt mới (DEC-TBD-vf-orphan-entry); dòng `unknown`
    * bỏ cuộc sẽ không bao giờ có `orderDone` (review #239 M2). Quyết định rõ ràng: lần tra thành công đã xác nhận lệnh không
-   * còn trên SoDEX (`missing_confirmed_at`, quá UNKNOWN_CHECK_WINDOW_MS) và lần đọc trade NGAY LÚC NÀY không có trade nào →
-   * lệnh không khớp gì và không thể khớp nữa: báo `orderDone` để bot đi tiếp (kiểm tra vị thế DEC-306 vẫn là lưới an
-   * toàn). Có trade → ghi fill thật và để chiến lược tiếp tục chờ. Không đọc được → vẫn chặn; chiến lược tự báo sau 10 phút.
+   * còn trên SoDEX (`missing_confirmed_at`, quá UNKNOWN_CHECK_WINDOW_MS) nên không khớp thêm được: đọc trade NGAY LÚC NÀY,
+   * có trade thì ghi fill thật trước, rồi báo `orderDone` để bot đi tiếp (kiểm tra vị thế DEC-306 vẫn là lưới an toàn).
+   * Không đọc được → vẫn chặn; chiến lược tự báo sau 10 phút.
    */
   async #farmGaveUp(r: Runner, o: typeof orders.$inferSelect, now: number): Promise<void> {
     if (r.strategy !== Strategy.volumeFarm || o.missingConfirmedAt === null) return;
@@ -4605,13 +4675,12 @@ export class Engine {
       );
       return;
     }
-    if (trades.length > 0) {
-      await this.#recordTrades(r.account, o, trades, now);
-      return;
-    }
+    // Có trade: ghi fill thật trước (cùng hàng đợi của lệnh), rồi báo kết thúc như khi không có trade: lệnh đã được xác
+    // nhận không còn trên sổ nên không khớp thêm được, và không đọc lại trade mỗi 10 s (review #248 minor 1).
+    if (trades.length > 0) await this.#recordTrades(r.account, o, trades, now);
     this.#d.log.warn(
       { botId: r.botId, clOrdID: o.clOrdId },
-      "given-up order is confirmed missing on SoDEX with no trades; the bot moves on",
+      "given-up order is confirmed missing on SoDEX; its trades are booked and the bot moves on",
     );
     await this.#feed(r, { type: "orderDone", at: now, clOrdID: o.clOrdId });
   }
@@ -5286,6 +5355,17 @@ export class Engine {
       `Cancelled ${String(orphans.length)} untracked order${orphans.length === 1 ? "" : "s"}`,
       "An earlier cancel did not go through; the order was still open, so the bot cancelled it.",
       now,
+      // Lần huỷ trước bị mất: đường #239 lặp lại, báo team (warning, DEC-313).
+      async (tx) => {
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "orphan_cancelled",
+            botId: r.botId,
+            market: r.market,
+            detail: `${String(orphans.length)} untracked open order(s) cancelled · ${orphans.join(", ")}`,
+          }),
+        );
+      },
     );
     await this.#cancel(r, orphans);
   }
@@ -5568,6 +5648,15 @@ export class Engine {
         why: `${o.clOrdId}: SoDEX shows ${dec(filled).toString()} filled, the bot had counted ${dec(o.filledSize).toString()}. Check this bot's position on SoDEX.`,
         occurredAt: new Date(now),
       });
+      if (!r.paper)
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "late_fill",
+            botId: r.botId,
+            market: o.market,
+            detail: `${o.clOrdId} · SoDEX filled ${dec(filled).toString()}, bot counted ${dec(o.filledSize).toString()}`,
+          }),
+        );
     });
   }
 
@@ -5742,8 +5831,9 @@ export class Engine {
     opts: { versionChange: boolean },
   ): Promise<void> {
     const alerted = r.positionMismatch.get(market);
-    // Volume Farm đang pause mà còn cảnh báo lệch (#239: pause ORDER_REJECTED sau 30 lệnh bán reduce-only): vẫn sửa sổ
-    // cái từ fill của chính lệnh bot và bỏ cảnh báo khi khớp, để Resume an toàn; không leo bậc mới khi pause.
+    // Volume Farm đang pause (runner còn) mà còn cảnh báo lệch: chỉ theo dõi và bỏ cảnh báo khi khớp lại, không leo bậc
+    // mới. KHÔNG nhận fill khi pause: nhận fill đặt stop trên SoDEX, mà bot pause không bao giờ đặt lệnh (review #248
+    // minor 2); việc sửa diễn ra lúc Resume (#repairOnLoad, trước bước chiến lược đầu tiên) hoặc khi bot chạy.
     const pausedRepair =
       botState === BotState.paused && r.strategy === Strategy.volumeFarm && alerted !== undefined;
     // Chỉ bot đang chạy ổn định: lúc starting / pausing / resuming / stopping sổ cái đang đổi.
@@ -5784,7 +5874,10 @@ export class Engine {
       // Độ lệch do fill của chính lệnh bot mà chiến lược đã bỏ qua (kể cả cờ còn từ trước khi nạp lại): nhận vào sổ cái;
       // lần kiểm tra sau khớp và cờ được bỏ như thường (DEC-TBD-vf-orphan-entry).
       const since = Date.parse(alerted.since);
-      if (await this.#adoptOwnFills(r, market, delta, half, now, Number.isNaN(since) ? now : since))
+      if (
+        !pausedRepair &&
+        (await this.#adoptOwnFills(r, market, delta, half, now, Number.isNaN(since) ? now : since))
+      )
         return;
       this.#positionWatch.set(key, {
         delta: delta.toString(),
@@ -5941,6 +6034,17 @@ export class Engine {
         size: o.size,
         tag: cur.tag,
       });
+      // Báo team (info, DEC-313) để kiểm lại fill nào đã được ghi vào sổ cái.
+      await this.#fenced(r, (tx) =>
+        tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "ledger_repaired",
+            botId: r.botId,
+            market,
+            detail: `${o.clOrdId} · ${o.side} ${dec(o.filledSize).toString()} @ ${avgPrice} booked from its own dropped fill`,
+          }),
+        ),
+      );
     });
     const after = positionOf(r.state, market, "perps");
     // Chặn theo vị thế thật hiệu dụng cho tới lần kiểm tra sau: sổ cái lúc đọc đổi đúng phần vừa nhận.
@@ -6055,6 +6159,15 @@ export class Engine {
             : positionMismatchWhy(market, real, ledger),
         occurredAt: new Date(now),
       });
+      if (!r.paper)
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "position_mismatch",
+            botId: r.botId,
+            market,
+            detail: `real ${real} vs ledger ${ledger} · cause ${cause}`,
+          }),
+        );
     });
     r.positionMismatch = next;
     this.#d.log.warn(
@@ -6079,6 +6192,15 @@ export class Engine {
         why: positionMatchWhy(market, real),
         occurredAt: new Date(now),
       });
+      if (!r.paper)
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "position_matched",
+            botId: r.botId,
+            market,
+            detail: `real ${real} matches the ledger`,
+          }),
+        );
     });
     r.positionMismatch = next;
     if (next.size === 0) r.mismatchWaitLogged = false;

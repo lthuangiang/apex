@@ -26,6 +26,7 @@ export * from "./portfolio";
 export * from "./api/notifications";
 export * from "./api/account";
 export * from "./api/market-hours";
+export * from "./api/desk-performance";
 export * from "./api/architecture";
 export * from "./api/sodex-debugger";
 export * from "./api/desk";

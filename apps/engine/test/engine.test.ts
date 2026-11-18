@@ -23,7 +23,7 @@ import {
   users,
   type Db,
 } from "@drift/db";
-import { AppError, ErrorCode, ReasonCode } from "@drift/shared";
+import { AppError, dec, ErrorCode, ReasonCode } from "@drift/shared";
 import type { SignedWriteClient, SodexRestClient } from "@drift/sodex";
 import {
   clOrdId,
@@ -287,6 +287,19 @@ let redisC: StartedTestContainer;
 let db: Db;
 let pool: ReturnType<typeof createDb>["pool"];
 const redises: Redis[] = [];
+/** Sự cố báo team của một bot (outbox `jobs.team_ops`, type team_incident, #241), cũ nhất trước. */
+const teamIncidents = async (botId: string) => {
+  const { sql, asc } = await import("drizzle-orm");
+  return (
+    await db
+      .select({ payload: outbox.payload })
+      .from(outbox)
+      .where(
+        sql`${outbox.topic} = 'jobs.team_ops' and ${outbox.payload}->>'type' = 'team_incident' and ${outbox.payload}->>'botId' = ${botId}`,
+      )
+      .orderBy(asc(outbox.createdAt), asc(outbox.id))
+  ).map((r) => r.payload as { kind: string; market?: string; detail: string });
+};
 const newRedis = () => {
   const r = new Redis(`redis://${redisC.getHost()}:${String(redisC.getMappedPort(6379))}`);
   redises.push(r);
@@ -1727,6 +1740,16 @@ describe("engine", () => {
     const b = await botState(botId);
     expect(b?.state).toBe("paused");
     expect(b?.reasonCode).toBe(ReasonCode.apiKeyUnusable);
+    // Báo team một lần qua pauseAccount (#241).
+    expect(await teamIncidents(botId)).toEqual([
+      {
+        type: "team_incident",
+        kind: "paused_errors",
+        botId,
+        market: "vBTC_vUSDC",
+        detail: "API_KEY_UNUSABLE",
+      },
+    ]);
     // Lệnh chưa rời DRIFT: không để lại dòng `unknown` cần đối soát.
     const { eq } = await import("drizzle-orm");
     const left = await db.select().from(orders).where(eq(orders.botId, botId));
@@ -2780,6 +2803,17 @@ describe("engine", () => {
     // Không vào lượt mới trong lúc lệnh cũ chưa được xác nhận kết thúc; chiến lược vẫn huỷ lại nó.
     expect(entriesOf(gw, "ETC-USD").map((o) => o.clOrdID)).toEqual([id]);
     expect(1_000_000 - gw.cancelNotSent).toBeGreaterThanOrEqual(5);
+    expect((await teamIncidents(botId)).map((x) => x.kind)).not.toContain("cancel_unconfirmed");
+    // Quá 10 phút chưa xác nhận: báo team (critical) một lần, cùng Decisions + Needs attention.
+    for (let i = 0; i < 20; i += 1) {
+      clock += 30_000;
+      await e2.tick();
+    }
+    const stuck = (await teamIncidents(botId)).filter((x) => x.kind === "cancel_unconfirmed");
+    expect(stuck).toHaveLength(1);
+    expect(stuck[0]?.detail).toContain(id);
+    expect((await botState(botId))?.needsAttention).toBe(true);
+    expect(entriesOf(gw, "ETC-USD")).toHaveLength(1);
     // Lệnh khớp muộn (prod: 10,5 phút sau): vào sổ cái, bot có vị thế và đặt stop trên SoDEX.
     gw.cancelNotSent = 0;
     await e2.onFill(accountId, id, entry?.quantity ?? "0", "100", "0.01", clock);
@@ -3000,6 +3034,10 @@ describe("engine", () => {
     const { eq } = await import("drizzle-orm");
     const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
     expect(events.some((x) => x.decision === "Late fill added to the position")).toBe(true);
+    // Báo team: nhận fill vào vị thế (critical) và sửa sổ cái (info, có clOrdID + khối lượng).
+    const team = await teamIncidents(botId);
+    expect(team.find((x) => x.kind === "late_fill_adopted")).toMatchObject({ market: "APT-USD" });
+    expect(team.find((x) => x.kind === "ledger_repaired")?.detail).toContain(`${id} · sell 0.957`);
     // Hai lần kiểm tra khớp: cờ được bỏ như thường.
     for (let i = 0; i < 3; i += 1) {
       clock += 30_000;
@@ -3093,7 +3131,120 @@ describe("engine", () => {
     expect((await botState(botId))?.state).toBe("running");
     const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
     expect(events.some((x) => x.decision === "Closing fill beyond the bot's position")).toBe(true);
+    // Báo team: stop / lệnh thoát đóng một vị thế bot không theo dõi (critical).
+    expect((await teamIncidents(botId)).map((x) => x.kind)).toContain("closing_fill_beyond");
     gw.cancelNotSent = 0;
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("treats OrderNotFound on the cancel of a closed round's SoDEX stop as ended, without any lookup (PM #248)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    await seedCandles("LDO-USD");
+    const { botId, accountId } = await seedFarm("LDO-USD");
+    const e = farmEngine(gw, "orphan-k");
+    await tickUntil(e, () => entriesOf(gw, "LDO-USD").length > 0);
+    const entry = entriesOf(gw, "LDO-USD")[0];
+    clock += 500;
+    await e.onFill(accountId, entry?.clOrdID ?? "", entry?.quantity ?? "0", "100", "0.01", clock);
+    const stop = gw.received.find((o) => o.market === "LDO-USD" && o.stop !== undefined);
+    const stopId = stop?.clOrdID ?? "";
+    for (let i = 0; i < 4 && !gw.received.some((o) => o.tag.includes(":out:")); i += 1) {
+      clock += 100_000;
+      await e.tick();
+    }
+    const exit = gw.received.find((o) => o.market === "LDO-USD" && o.tag.includes(":out:"));
+    // SoDEX đã tự huỷ stop khi vị thế về 0: lệnh huỷ của bot gặp OrderNotFound.
+    gw.cancelOutcome = "not_found";
+    // Lần tra trước đó (đối soát khoảng trống stream lúc nạp bot, DEC-87) không tính.
+    const lookedBefore = gw.lookups.filter((l) => l.clOrdID === stopId).length;
+    try {
+      clock += 500;
+      await e.onFill(accountId, exit?.clOrdID ?? "", exit?.quantity ?? "0", "100", "0.01", clock);
+      const row = (await db.select().from(orders).where(eq(orders.clOrdId, stopId)))[0];
+      expect(row?.status).toBe("cancelled");
+      expect(row?.doneFedAt).not.toBeNull();
+      expect((await farmState(botId))?.orders[stopId]?.done).toBe(true);
+      for (let i = 0; i < 3; i += 1) {
+        clock += 16_000;
+        await e.tick();
+      }
+      // Không tra lại stop (không tốn ngân sách khẩn), không huỷ lại.
+      expect(gw.lookups.filter((l) => l.clOrdID === stopId)).toHaveLength(lookedBefore);
+      expect(gw.cancelled.filter((id) => id === stopId)).toHaveLength(1);
+    } finally {
+      gw.cancelOutcome = "ok";
+      await e.stop();
+      await stopFarmBots();
+    }
+  });
+
+  it("cancels an untracked open Volume Farm order and warns the team (DEC-313, warning)", async () => {
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedFarm("RUNE-USD");
+    const id = `lost-${String(Math.random())}`;
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: id,
+      market: "RUNE-USD",
+      engine: "perps",
+      side: "sell",
+      type: "limit",
+      price: "101",
+      timeInForce: "GTX",
+      size: "1",
+      status: "open",
+      reduceOnly: true,
+      epoch: 1,
+      tag: "vf:9:out:0",
+      submittedAt: new Date(clock - 60_000),
+      ackedAt: new Date(clock - 60_000),
+    });
+    const e = farmEngine(gw, "orphan-l");
+    for (let i = 0; i < 3 && !gw.cancelled.includes(id); i += 1) {
+      await e.tick();
+      clock += 16_000;
+    }
+    expect(gw.cancelled).toContain(id);
+    const warn = (await teamIncidents(botId)).find((x) => x.kind === "orphan_cancelled");
+    expect(warn?.detail).toContain(id);
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("never places an order for a paused Volume Farm bot while repairing; the repair happens on Resume (review #248 minor 2)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedFarm("JUP-USD");
+    const e = farmEngine(gw, "orphan-m");
+    await e.tick();
+    // Bot đang chạy được pause (runner còn): rồi phát hiện fill bị bỏ qua.
+    await db.update(bots).set({ state: "pausing" }).where(eq(bots.id, botId));
+    for (let i = 0; i < 3 && (await botState(botId))?.state !== "paused"; i += 1) {
+      clock += 1_000;
+      await e.tick();
+    }
+    expect((await botState(botId))?.state).toBe("paused");
+    await droppedFill(botId, accountId, "JUP-USD", "0.957");
+    gw.perpsPositions.set("JUP-USD", { size: "-0.957", entryPrice: "100" });
+    await flagFarm(botId, "JUP-USD", "-0.957");
+    const before = gw.received.length;
+    for (let i = 0; i < 4; i += 1) {
+      clock += 30_000;
+      await e.tick();
+    }
+    expect(gw.received.slice(before)).toEqual([]);
+    expect(Number((await farmState(botId))?.ledger.position ?? "0")).toBe(0);
+    // Resume: sổ cái được sửa khi bot chạy lại (lúc nạp lại runner, hoặc lần kiểm tra vị thế kế tiếp).
+    await db.update(bots).set({ state: "resuming" }).where(eq(bots.id, botId));
+    for (let i = 0; i < 6 && (await farmState(botId))?.ledger.position !== "-0.957"; i += 1) {
+      await e.tick();
+      clock += 30_000;
+    }
+    expect((await botState(botId))?.state).toBe("running");
+    expect((await farmState(botId))?.ledger.position).toBe("-0.957");
     await e.stop();
     await stopFarmBots();
   });
@@ -3181,6 +3332,225 @@ describe("engine", () => {
       await e.tick();
     }
     expect(gw.received.filter((o) => o.market === "TIA-USD" && o.reduceOnly)).toHaveLength(0);
+    expect((await botState(botId))?.positionMismatch).toBeNull();
+    expect((await botState(botId))?.state).toBe("running");
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("#239 prod replay (bot 01a1ebcb, ETH-USD): resuming repairs ledger +0.0957 vs SoDEX 0 from vf:103 using the stored since, places nothing, clears the flag", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    // Resume lúc 06:00Z, sau sự cố (05:31) và sau khi cờ được ghi (04:14:57).
+    clock = Math.max(clock, Date.parse("2026-11-18T06:00:00.000Z"));
+    const t = (iso: string) => new Date(`2026-11-18T${iso}Z`);
+    const { botId, accountId } = await seedFarm("ETH-USD");
+    const row = async (v: {
+      clOrdId: string;
+      tag: string;
+      side: "buy" | "sell";
+      type?: "limit" | "market";
+      size: string;
+      filled: string;
+      status: "filled" | "cancelled" | "rejected";
+      reduceOnly?: boolean;
+      at: string;
+      fillAt?: string;
+    }) => {
+      const [o] = await db
+        .insert(orders)
+        .values({
+          botId,
+          sodexAccountId: accountId,
+          clOrdId: v.clOrdId,
+          market: "ETH-USD",
+          engine: "perps",
+          side: v.side,
+          type: v.type ?? "limit",
+          ...(v.type === "market" ? {} : { price: "1830" }),
+          timeInForce: v.type === "market" ? "IOC" : "GTX",
+          size: v.size,
+          filledSize: v.filled,
+          ...(dec(v.filled).gt(0) ? { avgPrice: v.tag.endsWith(":sl") ? "1816.1" : "1830" } : {}),
+          status: v.status,
+          reduceOnly: v.reduceOnly ?? false,
+          epoch: 1,
+          tag: v.tag,
+          submittedAt: t(v.at),
+          ackedAt: t(v.at),
+          doneFedAt: t(v.fillAt ?? v.at),
+        })
+        .returning();
+      if (v.fillAt !== undefined && o !== undefined)
+        await db.insert(fills).values({
+          orderId: o.id,
+          sodexTradeId: 95_000_000n + BigInt(Math.floor(Math.random() * 1e9)),
+          price: o.avgPrice ?? "1830",
+          size: v.filled,
+          fee: "0.0175",
+          isMaker: !v.tag.endsWith(":sl"),
+          filledAt: t(v.fillAt),
+        });
+    };
+    const orphan = "d212zms-1-2opslj5e78t6a-0";
+    const stopId = "d212zms-1-2vdmfgtmcnl54-0";
+    // vf:103 (lệnh mồ côi): gửi 04:02:34, khớp muộn 04:13:00.324 sau khi vf:104–106 đã gửi.
+    await row({
+      clOrdId: orphan,
+      tag: "vf:103:in:0",
+      side: "sell",
+      size: "0.0957",
+      filled: "0.0957",
+      status: "filled",
+      at: "04:02:34.562",
+      fillAt: "04:13:00.324",
+    });
+    for (const [n, at, side, size] of [
+      [104, "04:04:17.000", "buy", "0.1101"],
+      [105, "04:07:02.000", "sell", "0.1189"],
+      [106, "04:09:40.000", "buy", "0.1023"],
+    ] as const) {
+      await row({
+        clOrdId: `vf-${String(n)}-in-${String(Math.random())}`,
+        tag: `vf:${String(n)}:in:${n === 104 ? "1" : "0"}`,
+        side,
+        size,
+        filled: size,
+        status: "filled",
+        at,
+        fillAt: at.replace(/\.000$/, ".900"),
+      });
+    }
+    await row({
+      clOrdId: `vf-107-in-${String(Math.random())}`,
+      tag: "vf:107:in:0",
+      side: "sell",
+      size: "0.1052",
+      filled: "0.1052",
+      status: "filled",
+      at: "04:13:00.840",
+      fillAt: "04:13:05.000",
+    });
+    // Stop của vf:107: đặt khi lệnh vào mới khớp một phần (0.0104), SoDEX khớp 0.0957 lúc 05:31:08 (filled > size).
+    await row({
+      clOrdId: stopId,
+      tag: "vf:107:sl",
+      side: "buy",
+      type: "market",
+      size: "0.0104",
+      filled: "0.0957",
+      status: "filled",
+      reduceOnly: true,
+      at: "04:13:03.860",
+      fillAt: "05:31:08.000",
+    });
+    await row({
+      clOrdId: `vf-107-out-${String(Math.random())}`,
+      tag: "vf:107:out:0",
+      side: "buy",
+      size: "0.1052",
+      filled: "0.1052",
+      status: "filled",
+      reduceOnly: true,
+      at: "04:17:50.000",
+      fillAt: "04:18:06.000",
+    });
+    for (let i = 1; i <= 30; i += 1)
+      await row({
+        clOrdId: `vf-107-out-${String(i)}-${String(Math.random())}`,
+        tag: `vf:107:out:${String(i)}`,
+        side: "sell",
+        size: "0.0957",
+        filled: "0",
+        status: "rejected",
+        reduceOnly: true,
+        at: `05:31:${String(10 + i).padStart(2, "0")}.000`,
+      });
+    // State của bản cũ: stop 05:31 bị ghi thành long 0.0957; bot đang thoát rồi bị pause ORDER_REJECTED.
+    const [b] = await db.select().from(bots).where(eq(bots.id, botId));
+    await db.insert(botRuntime).values({
+      botId,
+      versionId: b?.activeVersionId ?? "",
+      epoch: 1,
+      state: {
+        phase: "exiting",
+        cycle: 107,
+        ledger: {
+          position: "0.0957",
+          avgCost: "1816.1",
+          realized: "0",
+          fees: "0",
+          funding: "0",
+          invested: "173.80077",
+        },
+        lastPrice: "1816",
+        book: null,
+        bookAt: null,
+        orders: { [stopId]: { kind: "stop", side: "buy" } },
+        entry: null,
+        exit: null,
+        exitReason: null,
+        exitForce: false,
+        openedAt: Date.parse("2026-11-18T05:31:08.000Z"),
+        holdUntil: Date.parse("2026-11-18T05:31:08.000Z"),
+        holdSecs: null,
+        cooldownUntil: 0,
+        unfilled: 0,
+        exitUnfilled: 30,
+        lastSide: "short",
+        netExposure: "0",
+        openRealized: "0",
+        openFees: "0",
+        volume: "0",
+        trades: 6,
+        wins: 3,
+        lastSkip: null,
+        lastSignal: null,
+        xstop: null,
+        staleXstop: null,
+      },
+    });
+    // Cờ đã lưu, không cập nhật sau 04:14.
+    await db
+      .update(bots)
+      .set({
+        state: "paused",
+        reasonCode: "ORDER_REJECTED",
+        positionMismatch: {
+          "ETH-USD": {
+            real: "-0.2009",
+            cause: "trades",
+            since: "2026-11-18T04:14:57.736Z",
+            ledger: "-0.1052",
+          },
+        },
+      })
+      .where(eq(bots.id, botId));
+    // SoDEX bây giờ: phẳng.
+    const e = farmEngine(gw, "prod-239");
+    await e.tick();
+    const before = gw.received.length;
+    await db.update(bots).set({ state: "resuming", reasonCode: null }).where(eq(bots.id, botId));
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "running"; i += 1) {
+      await e.tick();
+      clock += 1_000;
+    }
+    const st = await farmState(botId);
+    expect((await botState(botId))?.state).toBe("running");
+    // Nhận vf:103 (bán 0.0957) theo `since` đã lưu (04:14:57), không theo giờ Resume (06:00): sổ cái về 0.
+    expect(dec(st?.ledger.position ?? "1").isZero()).toBe(true);
+    expect(st?.orders[orphan]).toMatchObject({ kind: "exit", side: "sell" });
+    expect(st?.phase).toBe("idle");
+    const team = await teamIncidents(botId);
+    expect(team.find((x) => x.kind === "ledger_repaired")?.detail).toContain(
+      `${orphan} · sell 0.0957`,
+    );
+    for (let i = 0; i < 4; i += 1) {
+      clock += 30_000;
+      await e.tick();
+    }
+    // Không đặt lệnh nào (không còn 30 lệnh bán reduce-only), cờ được bỏ.
+    expect(gw.received.slice(before).filter((o) => o.market === "ETH-USD")).toEqual([]);
     expect((await botState(botId))?.positionMismatch).toBeNull();
     expect((await botState(botId))?.state).toBe("running");
     await e.stop();
@@ -4201,6 +4571,12 @@ describe("engine", () => {
       rows.some((o) => o.status === "rejected" && o.rejectCode === "INSUFFICIENT_BALANCE"),
     ).toBe(true);
     expect(real.received).toHaveLength(0);
+    // Bot paper không bao giờ báo team (#241), kể cả khi lệnh bị từ chối làm bot pause.
+    expect(await botState(botId)).toMatchObject({
+      state: "paused",
+      reasonCode: ReasonCode.orderRejected,
+    });
+    expect(await teamIncidents(botId)).toEqual([]);
     await e.stop();
     await stopPaperBots();
   });
@@ -5313,6 +5689,11 @@ describe("insufficient margin rejects (margin guard)", () => {
           "Paused: not enough margin on SoDEX. Add funds or lower the order size or leverage, then resume.",
       ),
     ).toHaveLength(1);
+    // Báo team một lần (#241): bot id, market, lý do; không email / ví / key.
+    const incidents = await teamIncidents(botId);
+    expect(incidents).toHaveLength(1);
+    expect(incidents[0]).toMatchObject({ kind: "paused_errors", market: "BTC-USD" });
+    expect(incidents[0]?.detail).toMatch(/^ORDER_REJECTED · insufficient margin \(\d rejects\)$/);
     // Đang pause: không gửi thêm lệnh nào dù giá và đồng hồ chạy.
     await step(e, 10);
     expect(gw.received).toHaveLength(sent);
@@ -6396,6 +6777,14 @@ describe("lease checks keep saved state and orders in step (DEC-302 review)", ()
     expect(lines.map((l) => l.why)).toEqual([
       "SoDEX didn't receive the close order (key_unusable). Your STOPK-USD position is still open — close it on SoDEX.",
     ]);
+    expect(await teamIncidents(botId)).toEqual([
+      {
+        type: "team_incident",
+        kind: "close_failed",
+        botId,
+        detail: "STOPK-USD position still open · close order not sent (key_unusable)",
+      },
+    ]);
     expect(await eventsOf(botId, "Can't sign with your API key")).toHaveLength(0);
     gw.notSent = null;
     await e.stop();
@@ -6850,6 +7239,9 @@ describe("lost fills (DEC-303)", () => {
     expect((await botState(botId))?.needsAttention).toBe(true);
     const events = await db.select().from(botEvents).where(eq(botEvents.botId, botId));
     expect(events.map((x) => x.decision)).toContain("Fill found after the order ended");
+    const late1 = (await teamIncidents(botId)).filter((x) => x.kind === "late_fill");
+    expect(late1).toHaveLength(1);
+    expect(late1[0]?.detail).toBe(`${lateId} · SoDEX filled 0.5, bot counted 0`);
     await e.stop();
     await stopBot(botId);
   });
@@ -7489,6 +7881,16 @@ describe("lost fills (DEC-303)", () => {
     expect((await row())?.unknownGaveUpAt).not.toBeNull();
     expect((await botState(botId))?.needsAttention).toBe(true);
     expect((await botState(botId))?.state).toBe("stopped");
+    // Báo team một lần (#241).
+    expect(await teamIncidents(botId)).toEqual([
+      {
+        type: "team_incident",
+        kind: "unknown_gave_up",
+        botId,
+        market: "vBTC_vUSDC",
+        detail: `buy 1 · ${id} · not on SoDEX after 10 min, fills unknown`,
+      },
+    ]);
     await e.stop();
   });
 });
@@ -7656,6 +8058,15 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
       ledger: "2",
       cause: "trades",
     });
+    expect(await teamIncidents(botId)).toEqual([
+      {
+        type: "team_incident",
+        kind: "position_mismatch",
+        botId,
+        market: "BTC-USD",
+        detail: "real 5 vs ledger 2 · cause trades",
+      },
+    ]);
     await step(e);
     // Khởi động lại engine: không ghi lại cảnh báo.
     await e.stop();
@@ -7686,6 +8097,10 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
       ],
     ]);
     expect((await botState(botId))?.positionMismatch).toBeNull();
+    expect((await teamIncidents(botId)).map((x) => [x.kind, x.detail])).toEqual([
+      ["position_mismatch", "real 5 vs ledger 2 · cause trades"],
+      ["position_matched", "real 1 matches the ledger"],
+    ]);
     // Không có lệnh "ma": mọi lệnh grid coi là đang mở đều có dòng lệnh đang mở thật.
     const [rt] = await db.select().from(botRuntime).where(eq(botRuntime.botId, botId));
     const open = Object.keys((rt?.state as { open: Record<string, unknown> }).open);
