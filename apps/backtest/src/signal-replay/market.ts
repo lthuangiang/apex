@@ -40,11 +40,22 @@ export const TRADE_RULES_V1 = {
   maxGapMs: 30 * MIN,
 } as const;
 
+/** Market có nến ở ít hơn chừng này phần số phút được coi là ít giao dịch (khoảng trống là do không có trade). */
+export const ILLIQUID_COVERAGE = 0.9;
+
 export class Series {
+  /** Phần số phút có nến trong khoảng đã nạp (0–1). */
+  readonly minuteCoverage: number;
+
   constructor(
     readonly market: string,
     readonly candles: readonly Candle[],
-  ) {}
+  ) {
+    const first = candles[0]?.ts;
+    const last = candles.at(-1)?.ts;
+    this.minuteCoverage =
+      first === undefined || last === undefined ? 0 : candles.length / ((last - first) / MIN + 1);
+  }
 
   /** Chỉ số nến đầu tiên có ts ≥ t; không có → length. */
   firstAtOrAfter(t: number): number {
@@ -130,10 +141,35 @@ export function directedBp(direction: Direction, entry: Decimal, exit: Decimal):
 }
 
 /**
+ * Dữ liệu giá có phủ trọn thời gian giữ không, xét TRƯỚC khi biết kết quả (không phụ thuộc lệnh chạm TP / SL hay chưa):
+ * `"gap"` khi có khoảng trống nến dài hơn `maxGapMs` ở bất kỳ đâu trong [entryAt, entryAt + hold) (kể cả từ lúc vào tới nến
+ * đầu và từ nến cuối tới hết giờ), `"no_data"` khi dữ liệu dừng trước khi hết giờ.
+ */
+export function holdCoverage(
+  series: Series,
+  entryAt: number,
+  holdMs: number,
+  rules = TRADE_RULES_V1,
+): "ok" | "gap" | "no_data" {
+  const end = entryAt + holdMs;
+  const lastTs = series.candles.at(-1)?.ts ?? -Infinity;
+  if (lastTs + MIN < end) return "no_data";
+  let prev = entryAt;
+  for (let i = series.firstAtOrAfter(entryAt); i < series.candles.length; i++) {
+    const c = series.candles[i];
+    if (c === undefined || c.ts >= end) break;
+    if (c.ts - prev > rules.maxGapMs) return "gap";
+    prev = c.ts + MIN;
+  }
+  return end - prev > rules.maxGapMs ? "gap" : "ok";
+}
+
+/**
  * Đi theo nến 1 phút từ `startIdx` (nến vào lệnh, giá vào = open của nó) tới `entryAt + holdMs`. Long: chạm SL khi low ≤ SL,
- * chạm TP khi high ≥ TP; Short ngược lại. Cùng một nến chạm cả hai → tính SL (thận trọng). Giá mở đã vượt SL / TP (nhảy
- * giá) → thoát ở giá mở. Hết giờ → close của nến cuối kết thúc trước / đúng mốc. Trả `"gap"` khi có khoảng trống nến dài
- * hơn `maxGapMs`, `"no_data"` khi dữ liệu dừng trước khi hết giờ.
+ * chạm TP khi high ≥ TP; Short ngược lại. Cùng một nến chạm cả hai → tính SL (thận trọng). Giá mở đã vượt SL (nhảy giá) →
+ * thoát ở giá mở (tệ hơn SL); giá mở đã vượt TP → thoát đúng ở TP (không lấy phần nhảy có lợi). `partial` = nến chứa lúc vào
+ * khi vào giữa phút bằng `mid_1s`: chỉ kiểm SL trên nó (thận trọng, high / low gồm cả phần trước lúc vào). Hết giờ → close
+ * của nến cuối kết thúc trước / đúng mốc. Khoảng trống dữ liệu xét riêng ở `holdCoverage` (trước khi biết kết quả).
  */
 export function walkPath(
   series: Series,
@@ -144,13 +180,12 @@ export function walkPath(
   sl: Decimal,
   entryAt: number,
   holdMs: number,
-  rules = TRADE_RULES_V1,
-): PathResult | "gap" | "no_data" {
+  partial: Candle | null = null,
+): PathResult | "no_data" {
   const end = entryAt + holdMs;
   const long = direction === "long";
   let mfe = new Decimal(0);
   let mae = new Decimal(0);
-  let prevTs = entryAt;
   let last: Candle | null = null;
   const out = (exitAt: number, exit: Decimal, reason: ExitReason): PathResult => ({
     exitAt,
@@ -159,11 +194,14 @@ export function walkPath(
     mfeBp: mfe,
     maeBp: mae,
   });
+  if (partial !== null) {
+    const adv = directedBp(direction, entry, long ? partial.low : partial.high);
+    if (adv.lt(mae)) mae = adv;
+    if (long ? partial.low.lte(sl) : partial.high.gte(sl)) return out(entryAt, sl, "stop_loss");
+  }
   for (let i = startIdx; i < series.candles.length; i++) {
     const c = series.candles[i];
     if (c === undefined || c.ts >= end) break;
-    if (c.ts - prevTs > rules.maxGapMs) return "gap";
-    prevTs = c.ts;
     last = c;
     const fav = directedBp(direction, entry, long ? c.high : c.low);
     const adv = directedBp(direction, entry, long ? c.low : c.high);
@@ -175,14 +213,9 @@ export function walkPath(
       const gapped = long ? c.open.lt(sl) : c.open.gt(sl);
       return out(c.ts, gapped ? c.open : sl, "stop_loss");
     }
-    if (tpHit) {
-      const gapped = long ? c.open.gt(tp) : c.open.lt(tp);
-      return out(c.ts, gapped ? c.open : tp, "take_profit");
-    }
+    if (tpHit) return out(c.ts, tp, "take_profit");
   }
-  const lastTs = series.candles.at(-1)?.ts ?? -Infinity;
-  if (last === null || lastTs + MIN < end) return "no_data";
-  if (end - (last.ts + MIN) > rules.maxGapMs) return "gap";
+  if (last === null) return "no_data";
   return out(end, last.close, "max_hold");
 }
 
@@ -205,6 +238,11 @@ export interface MarketContext {
   tick: Decimal | null;
   /** Giá ngay sau lúc thấy tín hiệu từ `mid_1s` (nếu có), theo seenAt. */
   midAfter?: ReadonlyMap<number, Decimal>;
+  /**
+   * Market tham chiếu luôn có giao dịch (BTC-USD): khi market này có khoảng trống mà tham chiếu thì không, khoảng trống là
+   * do market ít giao dịch; cả hai cùng trống là do máy thu dừng. Không có → xét theo phần số phút có nến.
+   */
+  reference?: Series;
 }
 
 /**
@@ -255,26 +293,42 @@ export function enterAndWalk(
     t.skipReason = `Too thin to trade: take profit ${tpBp.toDecimalPlaces(1).toString()} bp under 2× cost (${cost.mul(rules.minTpCostMultiple).toDecimalPlaces(1).toString()} bp)`;
     return t;
   }
-  // Nến vào: nến bắt đầu tại / sau entryAt. Vào bằng mid_1s giữa phút: bắt đầu từ nến phút kế tiếp.
-  const start = series.firstAtOrAfter(entryAt);
-  const sims: Record<Direction, PathResult | "gap" | "no_data"> = {
-    long: "no_data",
-    short: "no_data",
-  };
-  for (const d of ["long", "short"] as const) {
-    const l = levels(d, entry, tpDist, slDist);
-    sims[d] = walkPath(series, start, d, entry, l.tp, l.sl, entryAt, t.maxHoldMs, rules);
-  }
-  const mine = sims[t.direction];
-  if (mine === "gap") {
-    t.skipReason = "Price data gap during the hold";
+  // Khoảng trống dữ liệu xét trên cả thời gian giữ, trước khi biết kết quả. Market ít giao dịch (market tham chiếu có giao
+  // dịch suốt thời gian đó) đếm riêng với lý do "Illiquid market".
+  const cover = holdCoverage(series, entryAt, t.maxHoldMs, rules);
+  if (cover === "gap") {
+    const ref = ctx.reference;
+    const illiquid =
+      ref !== undefined && ref !== series
+        ? holdCoverage(ref, entryAt, t.maxHoldMs, rules) === "ok"
+        : series.minuteCoverage < ILLIQUID_COVERAGE;
+    t.skipReason = illiquid
+      ? "Illiquid market: no trades for over 30 min during the hold"
+      : "Price data gap during the hold (collector down)";
+    t.detail.marketMinuteCoverage = Math.round(series.minuteCoverage * 1000) / 1000;
     return t;
   }
+  if (cover === "no_data") {
+    t.skipReason = "Not closed: price data ends before max hold";
+    return t;
+  }
+  // Nến vào: nến bắt đầu tại / sau entryAt. Vào bằng mid_1s giữa phút: phần còn lại của phút đó chỉ kiểm SL, rồi từ nến
+  // phút kế tiếp.
+  const start = series.firstAtOrAfter(entryAt);
+  const partial =
+    mid === undefined ? null : (series.candles[series.firstAtOrAfter(entryAt - MIN + 1)] ?? null);
+  const partialCandle = partial !== null && partial.ts < entryAt ? partial : null;
+  const sims: Record<Direction, PathResult | "no_data"> = { long: "no_data", short: "no_data" };
+  for (const d of ["long", "short"] as const) {
+    const l = levels(d, entry, tpDist, slDist);
+    sims[d] = walkPath(series, start, d, entry, l.tp, l.sl, entryAt, t.maxHoldMs, partialCandle);
+  }
+  const mine = sims[t.direction];
   if (mine === "no_data") {
     t.skipReason = "Not closed: price data ends before max hold";
     return t;
   }
-  const net = (r: PathResult | "gap" | "no_data", d: Direction) =>
+  const net = (r: PathResult | "no_data", d: Direction) =>
     typeof r === "string" ? null : directedBp(d, entry, r.exit).sub(cost);
   t.status = "entered";
   t.exitAt = mine.exitAt;

@@ -30,6 +30,8 @@ export interface StructureFunnel {
   breakouts: number;
   lowVolume: number;
   notSqueezed: number;
+  /** Không đủ 80 mẫu độ rộng trong 24 giờ trước: chưa xét được squeeze (khác với "không hẹp"). */
+  squeezeHistoryShort: number;
   signals: Record<StructureVariant, number>;
 }
 
@@ -38,6 +40,7 @@ export const emptyStructureFunnel = (): StructureFunnel => ({
   breakouts: 0,
   lowVolume: 0,
   notSqueezed: 0,
+  squeezeHistoryShort: 0,
   signals: { range_breakout: 0, squeeze_breakout: 0 },
 });
 
@@ -161,7 +164,8 @@ export function evaluateStructure(
     else funnel.lowVolume += 1;
     const squeezed = isSqueezed(c.ts, width, widthAtTs);
     if (squeezed === true) variants.push("squeeze_breakout");
-    else funnel.notSqueezed += 1;
+    else if (squeezed === false) funnel.notSqueezed += 1;
+    else funnel.squeezeHistoryShort += 1;
     for (const variant of variants) {
       funnel.signals[variant] += 1;
       const t = blankTrade({

@@ -319,8 +319,18 @@ export async function loadFunding(
   }));
 }
 
-/** D1 · Lượt Volume Builder tiền thật có fill vào đầu tiên trong [from, to) (ghép fill như Signal Analysis). */
-export async function loadVbRoundTrips(q: Q, from: Date, to: Date): Promise<VbRoundTrip[]> {
+export interface VbLoad {
+  trades: VbRoundTrip[];
+  /** Lượt có fill vào đầu tiên trong khoảng nhưng không bao giờ đóng đủ (đóng tay, thanh lý, hoặc còn mở lúc hết dữ liệu). */
+  unclosed: number;
+}
+
+/**
+ * D1 · Lượt Volume Builder tiền thật có fill vào đầu tiên trong [from, to) (ghép fill như Signal Analysis), kèm giờ ĐẶT
+ * lệnh vào đầu tiên (`orders.created_at`): tạm ngừng thật chặn lúc đặt lệnh, không phải lúc khớp. Lượt không đóng đủ được
+ * đếm ra, không bỏ im lặng.
+ */
+export async function loadVbRoundTrips(q: Q, from: Date, to: Date): Promise<VbLoad> {
   const r = rows<{
     bot_id: string;
     market: string;
@@ -330,10 +340,11 @@ export async function loadVbRoundTrips(q: Q, from: Date, to: Date): Promise<VbRo
     size: string;
     fee: string;
     at: Date;
+    placed_at: Date;
   }>(
     await q.execute(sql`
       select o.bot_id, b.market, o.tag, o.side, f.price::text as price, f.size::text as size,
-             f.fee::text as fee, f.filled_at as at
+             f.fee::text as fee, f.filled_at as at, o.created_at as placed_at
         from fills f
         join orders o on o.id = f.order_id
         join bots b on b.id = o.bot_id
@@ -344,27 +355,51 @@ export async function loadVbRoundTrips(q: Q, from: Date, to: Date): Promise<VbRo
   );
   const byBot = new Map<
     string,
-    { market: string; fills: Parameters<typeof groupTrades>[0][number][] }
+    {
+      market: string;
+      fills: Parameters<typeof groupTrades>[0][number][];
+      /** Giờ khớp của fill vào → giờ đặt lệnh sớm nhất. */
+      placed: Map<number, number>;
+      /** Chu kỳ `vf:<n>` → giờ fill vào đầu tiên. */
+      cycles: Map<string, number>;
+    }
   >();
+  const from0 = from.getTime();
+  const to0 = to.getTime();
   for (const f of capped(r, LIMITS.ledgerFills, "Volume Builder fills")) {
+    const at = new Date(f.at).getTime();
     const fill = {
       tag: f.tag,
       side: f.side,
       price: dec(f.price),
       size: dec(f.size),
       fee: dec(f.fee),
-      at: new Date(f.at).getTime(),
+      at,
     };
-    const b = byBot.get(f.bot_id);
-    if (b === undefined) byBot.set(f.bot_id, { market: f.market, fills: [fill] });
-    else b.fills.push(fill);
+    let b = byBot.get(f.bot_id);
+    if (b === undefined) {
+      b = { market: f.market, fills: [], placed: new Map(), cycles: new Map() };
+      byBot.set(f.bot_id, b);
+    }
+    b.fills.push(fill);
+    const m = /^vf:(\d+):in/.exec(f.tag);
+    if (m !== null) {
+      const placedAt = new Date(f.placed_at).getTime();
+      b.placed.set(at, Math.min(b.placed.get(at) ?? placedAt, placedAt));
+      const cycle = m[1] ?? "";
+      b.cycles.set(cycle, Math.min(b.cycles.get(cycle) ?? at, at));
+    }
   }
-  const out: VbRoundTrip[] = [];
-  for (const [botId, b] of byBot)
-    for (const t of groupTrades(b.fills))
-      if (t.t0 >= from.getTime() && t.t0 < to.getTime())
-        out.push({ botId, market: b.market, ...t });
-  return out;
+  const trades: VbRoundTrip[] = [];
+  let unclosed = 0;
+  for (const [botId, b] of byBot) {
+    const closed = groupTrades(b.fills).filter((t) => t.t0 >= from0 && t.t0 < to0);
+    for (const t of closed)
+      trades.push({ botId, market: b.market, placedAt: b.placed.get(t.t0) ?? t.t0, ...t });
+    const opened = [...b.cycles.values()].filter((at) => at >= from0 && at < to0).length;
+    unclosed += Math.max(0, opened - closed.length);
+  }
+  return { trades, unclosed };
 }
 
 /** D1 · Fill Market Making tiền thật trong [from, to), có giá markout 5 phút và cờ mở vị thế. */

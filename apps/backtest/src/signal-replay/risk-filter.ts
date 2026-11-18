@@ -7,7 +7,8 @@ import { inWindow, type PauseWindow } from "./macro-calendar";
 // Cost per $1M theo quy ước của Signal Analysis (DEC-318 mục 4): net cost = −net ÷ volume × 1e6, dương = tốn, âm = có lời
 // (không chặn ở 0). Phí đã gồm builder fee (`fills.fee`).
 // - Volume Builder: mỗi lượt = fill vào `vf:<n>:in` tới khi hết vị thế (`groupTrades`, như DEC-318 mục 5); net = kết quả
-//   giá theo chiều × size − phí của lượt. Bỏ lượt có fill vào đầu tiên nằm trong khung (cả lệnh ra của lượt đó).
+//   giá theo chiều × size − phí của lượt. Bỏ lượt có lệnh vào đầu tiên ĐẶT trong khung (cả lệnh ra của lượt đó); lượt
+//   không đóng đủ được đếm riêng (`unclosedRoundTrips`).
 // - Market Making: không có lượt rõ ràng, nên mỗi fill tính theo markout 5 phút (cách của DEC-318 mục 3: close nến 1 phút
 //   chứa fill + 300 s): net = q × (giá markout − giá khớp) − phí, q = +size mua / −size bán. "Vào lệnh mới" = fill làm tăng
 //   |vị thế| của bot; chỉ bỏ các fill đó trong khung, fill giảm vị thế giữ nguyên. Đây là xấp xỉ: không mô phỏng lại đường
@@ -17,6 +18,8 @@ export interface VbRoundTrip {
   botId: string;
   market: string;
   t0: number;
+  /** Giờ đặt lệnh vào đầu tiên (`orders.created_at`). */
+  placedAt: number;
   side: "long" | "short";
   entryPrice: Decimal;
   exitPrice: Decimal;
@@ -126,7 +129,7 @@ function compare(
   };
 }
 
-/** D1 cho Volume Builder: bỏ lượt có fill vào đầu tiên trong khung. */
+/** D1 cho Volume Builder: bỏ lượt có lệnh vào đầu tiên được ĐẶT trong khung (tạm ngừng chặn lúc đặt, không lúc khớp). */
 export function filterVb(
   trades: readonly VbRoundTrip[],
   windows: readonly PauseWindow[],
@@ -135,8 +138,8 @@ export function filterVb(
     trades.map((t) => ({
       net: vbNet(t),
       volume: t.volume,
-      at: t.t0,
-      skip: inWindow(windows, t.t0) !== null,
+      at: t.placedAt,
+      skip: inWindow(windows, t.placedAt) !== null,
     })),
     windows,
     0,

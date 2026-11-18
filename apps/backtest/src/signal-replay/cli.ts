@@ -82,7 +82,7 @@ function summaryLines(r: SignalReplayReport): string[] {
     const a = g.report.all;
     const oos = g.report.outOfSample;
     lines.push(
-      `${g.type}/${g.variant} ${g.ruleVersion}: entered ${String(g.report.entered)}, skipped ${String(g.report.skipped)}; mean after fees ${f(a.afterFees.mean)} bp [${f(a.afterFees.ciLow)}, ${f(a.afterFees.ciHigh)}], vs random ${f(a.difference.mean)} bp; out-of-sample n ${String(oos.n)}; gate ${g.report.gate.status}`,
+      `${g.type}/${g.variant} ${g.ruleVersion}: entered ${String(g.report.entered)}, skipped ${String(g.report.skipped)}; mean after fees ${f(a.afterFees.mean)} bp [${f(a.afterFees.ciLow)}, ${f(a.afterFees.ciHigh)}] over ${String(a.afterFees.clusters)} days, vs random ${f(a.difference.mean)} bp [${f(a.difference.ciLow)}, ${f(a.difference.ciHigh)}]; max drawdown ${f(a.maxDrawdown.bp)} bp; out-of-sample n ${String(oos.n)} mean ${f(oos.afterFees.mean)} bp; gate ${g.report.gate.status} (${g.report.gate.tradesNeededNote})`,
     );
   }
   if (r.riskFilter !== null) {

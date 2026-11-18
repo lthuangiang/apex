@@ -13,6 +13,7 @@ import { evaluateFunding, emptyFundingFunnel, quantileSorted } from "../src/sign
 import { inWindow, pauseWindows } from "../src/signal-replay/macro-calendar";
 import {
   enterAndWalk,
+  holdCoverage,
   Series,
   typicalMove,
   walkPath,
@@ -112,6 +113,16 @@ describe("costs", () => {
       spreadAt("ETH-USD", T0, d("1000"), [{ hour: T0 + HOUR, spreadTicks: { "1": 9 } }], d("0.5"))
         .source,
     ).toBe("default");
+    // Bucket của giờ đang chạy (gồm cả các giây sau lúc vào) không được dùng.
+    expect(
+      spreadAt(
+        "ETH-USD",
+        T0 + 30 * MIN,
+        d("1000"),
+        [{ hour: T0, spreadTicks: { "1": 9 } }],
+        d("0.5"),
+      ).source,
+    ).toBe("default");
     expect(spreadAt("ETH-USD", T0, d("1000"), hours, null).spreadBp.toString()).toBe("3");
     expect(spreadAt("XYZ-USD", T0, d("1000"), [], null).spreadBp.toString()).toBe("10");
   });
@@ -149,22 +160,98 @@ describe("price path", () => {
     expect(hold).toMatchObject({ reason: "max_hold", exit: d("100"), exitAt: T0 + 80 * MIN });
   });
 
-  it("refuses a hold with a long candle gap or data that ends early", () => {
-    const candles = [...flat(T0, 10, "100"), ...flat(T0 + 50 * MIN, 30, "100")];
+  it("exits a take profit that gaps open at TP, but a gapped stop loss at the worse open", () => {
+    const candles = flat(T0, 120, "100", (i, c) =>
+      i === 3 ? { ...c, open: d("103"), high: d("103"), low: d("103"), close: d("103") } : c,
+    );
     const s = new Series("X", candles);
-    expect(walkPath(s, 0, "long", d("100"), d("101"), d("99"), T0, HOUR)).toBe("gap");
-    expect(
-      walkPath(
-        new Series("X", flat(T0, 30, "100")),
-        0,
-        "long",
-        d("100"),
-        d("101"),
-        d("99"),
-        T0,
-        HOUR,
-      ),
-    ).toBe("no_data");
+    expect(walkPath(s, 1, "long", d("100"), d("101"), d("99"), T0, HOUR)).toMatchObject({
+      reason: "take_profit",
+      exit: d("101"),
+    });
+    expect(walkPath(s, 1, "short", d("100"), d("99"), d("101"), T0, HOUR)).toMatchObject({
+      reason: "stop_loss",
+      exit: d("103"),
+    });
+  });
+
+  it("checks the rest of a mid-minute entry candle for the stop loss only", () => {
+    const candles = flat(T0, 120, "100", (i, c) =>
+      i === 0 ? { ...c, low: d("98.5"), high: d("102") } : c,
+    );
+    const s = new Series("X", candles);
+    const r = walkPath(
+      s,
+      1,
+      "long",
+      d("100"),
+      d("101"),
+      d("99"),
+      T0 + 20_000,
+      HOUR,
+      candles[0] ?? null,
+    );
+    expect(r).toMatchObject({ reason: "stop_loss", exit: d("99"), exitAt: T0 + 20_000 });
+    // Không có SL trong nến đó: TP của nến vào giữa phút không được tính (chỉ SL).
+    const ok = walkPath(
+      s,
+      1,
+      "long",
+      d("100"),
+      d("101"),
+      d("98"),
+      T0 + 20_000,
+      HOUR,
+      candles[0] ?? null,
+    );
+    expect(ok).toMatchObject({ reason: "max_hold" });
+  });
+
+  it("decides on candle gaps over the whole hold before knowing the outcome", () => {
+    const s = new Series("X", [...flat(T0, 10, "100"), ...flat(T0 + 50 * MIN, 30, "100")]);
+    expect(holdCoverage(s, T0, HOUR)).toBe("gap");
+    expect(holdCoverage(new Series("X", flat(T0, 30, "100")), T0, HOUR)).toBe("no_data");
+    expect(holdCoverage(new Series("X", flat(T0, 70, "100")), T0, HOUR)).toBe("ok");
+    // Lệnh chạm TP ở phút 3, TRƯỚC khoảng trống: vẫn bị bỏ (không chọn lọc theo kết quả).
+    const end = T0 + 10 * DAY;
+    const candles = [
+      ...flat(end, 10, "100", (i, c) => (i === 3 ? { ...c, high: d("105") } : c)),
+      ...flat(end + 50 * MIN, 30, "100"),
+    ];
+    const t = blankTrade({
+      type: "funding",
+      variant: "v",
+      ruleVersion: "B-v1",
+      asset: "ETH-USD",
+      direction: "long",
+      eventAt: end,
+      seenAt: end,
+      maxHoldMs: HOUR,
+      what: "",
+    });
+    enterAndWalk(t, ctxOf(candles, hourlyZigzag(end, 10 * 24, "2")));
+    expect(t.status).toBe("skipped");
+    // Chuỗi chỉ có nến ở 40 / 80 phút: market ít giao dịch, đếm riêng.
+    expect(t.skipReason).toMatch(/^Illiquid market/);
+    // Có market tham chiếu: tham chiếu cũng trống cùng lúc → máy thu dừng; tham chiếu có nến suốt → market ít giao dịch.
+    const again = (ref: Candle[]) => {
+      const u = blankTrade({
+        type: "funding",
+        variant: "v",
+        ruleVersion: "B-v1",
+        asset: "ETH-USD",
+        direction: "long",
+        eventAt: end,
+        seenAt: end,
+        maxHoldMs: HOUR,
+        what: "",
+      });
+      const c = ctxOf(candles, hourlyZigzag(end, 10 * 24, "2"));
+      enterAndWalk(u, { ...c, reference: new Series("BTC-USD", ref) });
+      return u.skipReason;
+    };
+    expect(again(candles)).toBe("Price data gap during the hold (collector down)");
+    expect(again(flat(end, 120, "100"))).toMatch(/^Illiquid market/);
   });
 
   it("enters after the signal, sets TP / SL from the typical move and simulates both directions", () => {
@@ -325,6 +412,30 @@ describe("B · funding", () => {
     expect(quantileSorted([d("1"), d("2"), d("3")], 0.5)?.toString()).toBe("2");
   });
 
+  it("never lets a later extreme value change an earlier threshold", () => {
+    const end = T0 + 10 * DAY;
+    const base = Array.from({ length: 150 }, (_, i) => ({
+      at: end - (150 - i) * HOUR,
+      rate: d(String((i % 10) / 1e6)),
+    }));
+    const run = (later: { at: number; rate: Decimal }[]) =>
+      evaluateFunding(
+        "ETH-USD",
+        [...base, { at: end, rate: d("0.0001") }, ...later],
+        { from: end, to: end + HOUR },
+        ctxOf(flat(end, 900, "100"), hourlyWave(end, 10 * 24, "2")),
+        emptyFundingFunnel(),
+      )[0];
+    const without = run([]);
+    const withLater = run([
+      { at: end + 20 * HOUR, rate: d("0.5") },
+      { at: end + 21 * HOUR, rate: d("-0.5") },
+    ]);
+    expect(without?.detail.p99).toBe("0.000009");
+    expect(withLater?.detail).toEqual(without?.detail);
+    expect(withLater?.direction).toBe("short");
+  });
+
   it("needs 100 prior periods", () => {
     const points = Array.from({ length: 50 }, (_, i) => ({ at: T0 + i * HOUR, rate: d("0.001") }));
     const funnel = emptyFundingFunnel();
@@ -353,11 +464,16 @@ describe("C · price structure", () => {
     expect(breakout).toHaveLength(1);
     expect(breakout[0]).toMatchObject({ direction: "long", eventAt: end + HOUR + MIN });
     expect(funnel.lowVolume).toBeGreaterThan(0);
+    // 2 giờ lịch sử: chưa xét được squeeze, đếm riêng, không phải "không hẹp".
+    expect(funnel.squeezeHistoryShort).toBeGreaterThan(0);
+    expect(funnel.notSqueezed).toBe(0);
   });
 });
 
 describe("random baseline and gate", () => {
-  const trade = (dir: "long" | "short", long: string, short: string, at: number): SignalTrade => {
+  /** Lệnh đã vào lúc T0 + `slot` × 2 giờ (12 lệnh mỗi ngày). */
+  const trade = (dir: "long" | "short", long: string, short: string, slot: number): SignalTrade => {
+    const at = T0 + slot * 2 * HOUR;
     const t = blankTrade({
       type: "whale",
       variant: "v",
@@ -371,14 +487,26 @@ describe("random baseline and gate", () => {
     });
     t.status = "entered";
     t.entryAt = at;
+    t.exitAt = at + HOUR;
     t.costBp = d("10");
     t.longAfterFeesBp = d(long);
     t.shortAfterFeesBp = d(short);
     t.resultAfterFeesBp = dir === "long" ? d(long) : d(short);
     return t;
   };
+  const many = (n: number, long: string, short: string, from: number) =>
+    Array.from({ length: n }, (_, i) =>
+      trade(
+        i % 2 === 0 ? "long" : "short",
+        i % 2 === 0 ? long : short,
+        i % 2 === 0 ? short : long,
+        from + i,
+      ),
+    );
+  const obs = (vals: string[], at: (i: number) => number) =>
+    vals.map((v, i) => ({ v: d(v), at: at(i) }));
 
-  it("uses the same moments with the group's own Long / Short mix", () => {
+  it("uses the same moments with the given Long / Short mix", () => {
     const ts = [
       trade("long", "30", "-50", 1),
       trade("long", "10", "-30", 2),
@@ -394,26 +522,78 @@ describe("random baseline and gate", () => {
     expect(p.difference.n).toBe(4);
   });
 
-  it("computes a 95% range and the trades needed", () => {
-    const s = summarize([d("1"), d("3")]);
+  it("takes the Long share from the in-sample 2/3 only, and flags an all-long group", () => {
+    // 6 lệnh trong mẫu toàn Long, 3 lệnh ngoài mẫu toàn Short: p = 1 từ phần trong mẫu.
+    const ts = [
+      ...Array.from({ length: 6 }, (_, i) => trade("long", "10", "-10", i)),
+      ...Array.from({ length: 3 }, (_, i) => trade("short", "10", "-10", 6 + i)),
+    ];
+    const r = groupReport(ts);
+    expect(r.longShare).toBe(1);
+    expect(ts[8]?.randomAfterFeesBp?.toString()).toBe("10");
+    expect(r.gate.randomNote).toBe("all long: cannot beat random by construction");
+  });
+
+  it("widens the likely range when trades cluster by day", () => {
+    // Cùng 100 giá trị: (a) 10 ngày × 10 lệnh giống nhau trong ngày, (b) mỗi lệnh một ngày.
+    const vals = Array.from({ length: 100 }, (_, i) => String(Math.floor(i / 10) * 4 - 15));
+    const clustered = summarize(obs(vals, (i) => T0 + Math.floor(i / 10) * DAY + (i % 10) * MIN));
+    const independent = summarize(obs(vals, (i) => T0 + i * DAY));
+    expect(clustered.clusters).toBe(10);
+    expect(independent.clusters).toBe(100);
+    const width = (x: typeof clustered) => (x.ciHigh ?? d("0")).sub(x.ciLow ?? d("0"));
+    expect(width(clustered).gt(width(independent).mul(2))).toBe(true);
+    // Khoảng chuẩn (coi độc lập) giống nhau ở hai cách: giữ làm field phụ.
+    expect(clustered.normalCiLow?.toString()).toBe(independent.normalCiLow?.toString());
+    // Số lệnh cần dùng sai số chuẩn theo cụm: lớn hơn.
+    const pos = (x: string[]) => x.map((v) => String(Number(v) + 20));
+    const cn = tradesNeeded(summarize(obs(pos(vals), (i) => T0 + Math.floor(i / 10) * DAY)));
+    const inn = tradesNeeded(summarize(obs(pos(vals), (i) => T0 + i * DAY)));
+    expect(cn).not.toBeNull();
+    expect((cn ?? 0) > (inn ?? 0)).toBe(true);
+  });
+
+  it("has no likely range from a single day", () => {
+    const s = summarize(obs(["1", "3"], () => T0));
     expect(s.mean?.toString()).toBe("2");
     expect(s.sd?.toDecimalPlaces(6).toString()).toBe("1.414214");
-    expect(s.ciLow?.toDecimalPlaces(4).toString()).toBe("0.04");
-    // ((1.96 + 0.8416) × 1.414 ÷ 2)² ≈ 3.92 → 4.
-    expect(tradesNeeded(s)).toBe(4);
-    expect(tradesNeeded(summarize([d("-1"), d("-3")]))).toBeNull();
+    expect(s.normalCiLow?.toDecimalPlaces(4).toString()).toBe("0.04");
+    expect(s.ciLow).toBeNull();
+    expect(tradesNeeded(s)).toBeNull();
+  });
+
+  it("reports max drawdown of the cumulative after-fees result, in bp and USD on 500 USDC", () => {
+    const ts = ["10", "-30", "5", "-20", "40"].map((v, i) => {
+      const t = trade("long", v, "0", i);
+      return t;
+    });
+    // Cộng dồn 10, −20, −15, −35, 5: đỉnh 10, đáy −35 → 45 bp = 2.25 USD trên 500.
+    const r = groupReport(ts);
+    expect(r.all.maxDrawdown.bp.toString()).toBe("45");
+    expect(r.all.maxDrawdown.usd.toString()).toBe("2.25");
+    expect(r.gate.maxDrawdown.group.bp.toString()).toBe("45");
+    expect(r.gate.maxDrawdown.threshold).toBeNull();
+  });
+
+  it("explains why there is no trades-needed estimate", () => {
+    const one = groupReport(many(2, "30", "-20", 0));
+    expect(one.outOfSample.n).toBe(1);
+    expect(one.gate.tradesNeededNote).toBe("no data yet");
+    expect(one.gate.stillNeeds).toContain("no data yet");
+    // Trung bình > 0 nhưng < 2 × chi phí (10 bp): không phải "about N trades".
+    const small = groupReport(
+      many(300, "12", "-20", 0).map((t, i) => {
+        t.resultAfterFeesBp = d(i % 2 === 0 ? "14" : "10");
+        return t;
+      }),
+    );
+    expect(small.outOfSample.afterFees.mean?.toString()).toBe("12");
+    expect(small.gate.outOfSampleTradesNeeded).toBeNull();
+    expect(small.gate.tradesNeededNote).toBe("cannot reach 2× cost at this average");
+    expect(small.gate.stillNeeds.some((x) => x.startsWith("about"))).toBe(false);
   });
 
   it("passes only with ≥ 100 out-of-sample trades, a mean ≥ 2× cost above 0, a positive difference and the same sign", () => {
-    const many = (n: number, long: string, short: string, from: number) =>
-      Array.from({ length: n }, (_, i) =>
-        trade(
-          i % 2 === 0 ? "long" : "short",
-          i % 2 === 0 ? long : short,
-          i % 2 === 0 ? short : long,
-          from + i,
-        ),
-      );
     // Lệnh thật luôn +30 / +32, chiều ngược −20: trung bình > 2 × 10, hơn random.
     const good = groupReport(
       many(330, "30", "-20", 0).map((t, i) => {
@@ -422,13 +602,16 @@ describe("random baseline and gate", () => {
       }),
     );
     expect(good.outOfSample.n).toBe(110);
+    expect(good.outOfSample.afterFees.clusters).toBeGreaterThan(5);
     expect(good.gate.status).toBe("passing");
+    expect(good.gate.tradesNeededNote).toBe("estimate");
     const few = groupReport(many(90, "30", "-20", 0));
     expect(few.gate.status).toBe("collecting");
     expect(few.gate.stillNeeds[0]).toBe("70 more out-of-sample trades");
     const inS = periodStats(many(10, "30", "-20", 0));
     const outS = periodStats(many(120, "-30", "20", 100));
     expect(gateOf(inS, outS).checks.sameSignBothPeriods.ok).toBe(false);
+    expect(gateOf(inS, outS).tradesNeededNote).toBe("cannot pass at this average");
   });
 });
 
@@ -451,11 +634,13 @@ describe("D1 · risk filter", () => {
     expect(inWindow(windows, cpi + HOUR)).toBeNull();
   });
 
-  it("drops Volume Builder round trips that start in a window and reports cost per $1M", () => {
-    const rt = (t0: number, exit: string) => ({
+  it("drops Volume Builder round trips whose entry order was placed in a window and reports cost per $1M", () => {
+    // Lệnh vào đặt lúc `placedAt`, khớp 5 phút sau.
+    const rt = (placedAt: number, exit: string) => ({
       botId: "b",
       market: "ETH-USD",
-      t0,
+      placedAt,
+      t0: placedAt + 5 * MIN,
       side: "long" as const,
       entryPrice: d("100"),
       exitPrice: d(exit),
@@ -463,7 +648,8 @@ describe("D1 · risk filter", () => {
       fees: d("0.2"),
       volume: d("2000"),
     });
-    const r = filterVb([rt(cpi, "99"), rt(cpi + 2 * HOUR, "100")], windows);
+    // Lượt 2 đặt TRƯỚC khung (cpi − 20 phút) nhưng khớp TRONG khung: bot thật vẫn vào, giữ nguyên.
+    const r = filterVb([rt(cpi, "99"), rt(cpi - 20 * MIN, "100")], windows);
     // Gốc: net −10.2 − 0.2 = −10.4 trên 4 000 → 2 600 / $1M. Sau lọc: −0.2 trên 2 000 → 100.
     expect(r.baseline.costPerMillion?.toString()).toBe("2600");
     expect(r.filtered.costPerMillion?.toString()).toBe("100");

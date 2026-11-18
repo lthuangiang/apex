@@ -56,6 +56,10 @@ const DAY = 86_400_000;
 const HOUR = 3_600_000;
 /** Lệnh bị bỏ giữ lại trong danh sách (mỗi nhóm); lý do vẫn được đếm đủ. */
 const MAX_SKIPPED_LISTED = 2_000;
+const REFERENCE_MARKET = "BTC-USD";
+
+const WHALE_POPULATION =
+  "Live leader_events (seen within minutes) only exist for wallets that DeskLabs users copy or follow, and those wallets are added to each daily leaderboard run as extras. The population is user-picked wallets, not the top of the leaderboard, so passing the anti-survivorship rule is nearly automatic one day after someone follows a wallet.";
 
 export type ReplayPart = SignalType | "risk_filter";
 export const ALL_PARTS: readonly ReplayPart[] = [
@@ -106,7 +110,7 @@ export interface SignalReplayReport {
     calendarVerified: boolean;
     windows: PauseWindow[];
     marketWideNews: string;
-    volumeBuilder: FilterResult;
+    volumeBuilder: FilterResult & { unclosedRoundTrips: number };
     marketMaking: FilterResult;
   } | null;
   limitations: string[];
@@ -193,6 +197,13 @@ export async function runSignalReplay(q: Q, o: RunOptions): Promise<SignalReplay
   let withCandles = 0;
   const maxHold = Math.max(WHALE_RULES_V1.maxHoldMs, FUNDING_RULES_V1.maxHoldMs);
   const needCandles = want("whale") || want("funding") || want("price_structure");
+  const candleFrom = new Date(from - TRADE_RULES_V1.volLookbackMs - 2 * HOUR);
+  const candleTo = new Date(to + maxHold + 2 * HOUR);
+  // Market tham chiếu để phân biệt market ít giao dịch với lúc máy thu dừng.
+  const reference =
+    needCandles && markets.includes(REFERENCE_MARKET)
+      ? new Series(REFERENCE_MARKET, await loadCandles(q, REFERENCE_MARKET, candleFrom, candleTo))
+      : undefined;
   for (const market of markets) {
     o.checkDeadline();
     const fundingPoints = want("funding")
@@ -201,16 +212,21 @@ export async function runSignalReplay(q: Q, o: RunOptions): Promise<SignalReplay
     if (want("funding") && fundingPoints.length > 0)
       fundingCov.push(fundingCoverage(market, fundingPoints));
     if (!needCandles) continue;
-    const candles = await loadCandles(
-      q,
-      market,
-      new Date(from - TRADE_RULES_V1.volLookbackMs - 2 * HOUR),
-      new Date(to + maxHold + 2 * HOUR),
-    );
+    const candles =
+      reference !== undefined && market === REFERENCE_MARKET
+        ? [...reference.candles]
+        : await loadCandles(q, market, candleFrom, candleTo);
     if (candles.length === 0) continue;
     withCandles += 1;
-    const series = new Series(market, candles);
-    const tick = inferTick(candles.slice(-5_000).flatMap((c) => [c.open, c.high, c.low, c.close]));
+    const series =
+      market === REFERENCE_MARKET && reference !== undefined
+        ? reference
+        : new Series(market, candles);
+    // Tick suy ra từ 5 000 nến ĐẦU của chuỗi (nạp từ 30 ngày trước `from`, nên nằm trước phần lớn lệnh); tick size gần như
+    // cố định nên đây chỉ là để không dùng dữ liệu sau lệnh.
+    const tick = inferTick(
+      candles.slice(0, 5_000).flatMap((c) => [c.open, c.high, c.low, c.close]),
+    );
     const ctx: MarketContext = {
       series,
       hourly: series.hourlyCloses(),
@@ -221,6 +237,7 @@ export async function runSignalReplay(q: Q, o: RunOptions): Promise<SignalReplay
         new Date(to + maxHold),
       ),
       tick,
+      ...(reference === undefined ? {} : { reference }),
     };
     const events = whaleEvents.get(market);
     if (want("whale") && events !== undefined) {
@@ -278,7 +295,7 @@ export async function runSignalReplay(q: Q, o: RunOptions): Promise<SignalReplay
       windows: inRange,
       marketWideNews:
         "Not available: no market-wide news table yet (the #271 collector will add it); only scheduled macro windows are used.",
-      volumeBuilder: filterVb(vb, inRange),
+      volumeBuilder: { ...filterVb(vb.trades, inRange), unclosedRoundTrips: vb.unclosed },
       marketMaking: filterMm(mm, inRange),
     };
   }
@@ -287,12 +304,14 @@ export async function runSignalReplay(q: Q, o: RunOptions): Promise<SignalReplay
   const limitations: string[] = [
     "Prices are SoDEX 1-minute candles (close / high / low), not bid / ask; a candle that touches both TP and SL counts as SL.",
     `Costs: SoDEX base taker fee ${COSTS_V1.takerBpPerLeg.toString()} bp per leg (no per-market fee, no REST call), builder fee ${COSTS_V1.builderBpPerLeg.toString()} bp per leg, plus one spread; spread from mm_market_hourly with a tick size inferred from the candle price grid (conservative: an inferred tick can only be a multiple of the real one), otherwise a default (3 bp BTC / ETH, 10 bp others) flagged spread_default.`,
-    "Random baseline = expected result of a random direction at the same moment with the same Long / Short mix, TP, SL and max hold. It tests direction, not timing.",
-    "Gate uses the out-of-sample third; 'both periods' are the in-sample 2/3 and the out-of-sample 1/3 by entry time.",
+    "Random baseline = expected result of a random direction at the same moment with the in-sample Long / Short mix, TP, SL and max hold. It tests direction, not timing (a random-time baseline is follow-up work). A group that is all long or all short cannot beat it by construction (flagged).",
+    "Likely ranges are a day-block bootstrap (trades clustered by entry day, UTC); the independent normal range is kept as normalCiLow / normalCiHigh. 'Trades needed' uses the clustered standard error.",
+    "Gate uses the out-of-sample third; 'both periods' are the in-sample 2/3 and the out-of-sample 1/3 by entry time. Max drawdown is reported but not gated: the acceptable drawdown threshold is pending a decision.",
+    "A hold with a candle gap over 30 min anywhere in it is skipped whatever the outcome; a gap where BTC-USD kept trading is counted separately as an illiquid market, a gap BTC-USD shares is collector downtime. Tick size is inferred from the first 5,000 loaded candles (before most trades).",
   ];
   if (whaleCov !== null)
     limitations.push(
-      "Whales: leader_events only exist for wallets DeskLabs tracks, and only since tracking began; events seen more than 5 min after the whale's fill (backfill when tracking starts, or collector downtime) are not tradeable and are only counted. Wallet quality and 'usual size' come from the last leaderboard run that finished before the event.",
+      `Whales: ${WHALE_POPULATION} Data exists only since tracking began; events seen more than 5 min after the whale's fill (backfill when tracking starts, or collector downtime) are not tradeable and are only counted. Wallet quality and 'usual size' come from the last leaderboard run that finished before the event.`,
     );
   if (want("funding"))
     limitations.push(
@@ -300,7 +319,7 @@ export async function runSignalReplay(q: Q, o: RunOptions): Promise<SignalReplay
     );
   if (riskFilter !== null)
     limitations.push(
-      `Risk filter: the macro calendar is hand-written (${MACRO_CALENDAR_VERSION}) and NOT verified against the Fed / BLS sources. Market Making is replayed per fill with a 5-minute markout and only removes position-increasing fills; it does not re-simulate the bot after a skipped fill. Volume Builder removes whole round trips whose first entry fill falls in a window.`,
+      `Risk filter: the macro calendar is hand-written (${MACRO_CALENDAR_VERSION}) and NOT verified against the Fed / BLS sources. Market Making is replayed per fill with a 5-minute markout and only removes position-increasing fills; it does not re-simulate the bot after a skipped fill. Market Making's starting position is the sum of all earlier fills, so liquidations or reconciliation adjustments outside fills can mislabel opening fills. Volume Builder removes whole round trips whose first entry ORDER was placed in a window; round trips that never fully closed are counted, not replayed. Do not use D1 results before the calendar dates are checked.`,
     );
 
   return {
@@ -327,8 +346,8 @@ export async function runSignalReplay(q: Q, o: RunOptions): Promise<SignalReplay
               ...whaleCov,
               limit:
                 whaleCov.firstRankingFinishedAt === null
-                  ? "No finished leaderboard run: no whale event can pass the anti-survivorship rule."
-                  : `Whale events start ${new Date(whaleCov.firstEventSeenAt ?? 0).toISOString()}; the first leaderboard run finished ${new Date(whaleCov.firstRankingFinishedAt).toISOString()}. Nothing before tracking began is available.`,
+                  ? `No finished leaderboard run: no whale event can pass the anti-survivorship rule. ${WHALE_POPULATION}`
+                  : `Whale events start ${new Date(whaleCov.firstEventSeenAt ?? 0).toISOString()}; the first leaderboard run finished ${new Date(whaleCov.firstRankingFinishedAt).toISOString()}. Nothing before tracking began is available. ${WHALE_POPULATION}`,
             },
       funding: want("funding")
         ? {

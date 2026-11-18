@@ -13,6 +13,7 @@ import {
 // giây) khi có; không thì mặc định thận trọng theo market và gắn cờ `spread_default`.
 
 const BP_PER_PCT = 100;
+const HOUR = 3_600_000;
 
 export const COSTS_V1 = {
   version: "costs-v1",
@@ -100,7 +101,8 @@ export interface SpreadQuote {
 }
 
 /**
- * Spread lúc vào lệnh: trung vị số tick của các giờ trong `spreadLookbackMs` trước `at` (giờ đã bắt đầu trước `at`),
+ * Spread lúc vào lệnh: trung vị số tick của các giờ ĐÃ TRỌN trong `spreadLookbackMs` trước `at` (bucket giờ kết thúc tại /
+ * trước `at`; bucket của giờ đang chạy gồm cả các giây sau `at` nên không dùng),
  * nhân tick suy ra, chia giá vào. Không có giờ nào hoặc không suy ra được tick → mặc định.
  */
 export function spreadAt(
@@ -112,7 +114,7 @@ export function spreadAt(
   costs = COSTS_V1,
 ): SpreadQuote {
   if (tick !== null) {
-    const recent = hours.filter((h) => h.hour <= at && h.hour > at - costs.spreadLookbackMs);
+    const recent = hours.filter((h) => h.hour + HOUR <= at && h.hour > at - costs.spreadLookbackMs);
     const ticks = medianTicks(mergeHist(recent.map((h) => h.spreadTicks)));
     if (ticks !== null)
       return { spreadBp: spreadBpFromTicks(ticks, tick, price), source: "mm_market_hourly" };

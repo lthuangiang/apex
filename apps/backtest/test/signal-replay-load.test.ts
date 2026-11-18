@@ -172,6 +172,8 @@ describe("signal replay loader", () => {
     const vb = await bot("volume_farm", "live");
     await vb.fill("vf:1:in:0", "buy", "100", "1", EVENT);
     await vb.fill("vf:1:out:0", "sell", "101", "1", EVENT + MIN);
+    // Lượt 2 không bao giờ đóng: đếm ra, không bỏ im lặng.
+    await vb.fill("vf:2:in:0", "buy", "100", "1", EVENT + 10 * MIN);
     const paper = await bot("volume_farm", "paper");
     await paper.fill("vf:1:in:0", "buy", "100", "1", EVENT);
     await paper.fill("vf:1:out:0", "sell", "101", "1", EVENT + MIN);
@@ -183,9 +185,11 @@ describe("signal replay loader", () => {
       vb: await loadVbRoundTrips(q, new Date(START + 8 * DAY), new Date(START + 9 * DAY)),
       mm: await loadMmFills(q, new Date(START + 8 * DAY), new Date(START + 9 * DAY)),
     }));
-    expect(r.vb).toHaveLength(1);
-    expect(r.vb[0]).toMatchObject({ botId: vb.id, side: "long" });
-    expect(r.vb[0]?.fees.toString()).toBe("0.02");
+    expect(r.vb.trades).toHaveLength(1);
+    expect(r.vb.unclosed).toBe(1);
+    // Giờ đặt lệnh vào (orders.created_at), không phải giờ khớp.
+    expect(r.vb.trades[0]).toMatchObject({ botId: vb.id, side: "long", placedAt: EVENT - 1000 });
+    expect(r.vb.trades[0]?.fees.toString()).toBe("0.02");
     // Vị thế đầu kỳ +2: bán 1 giảm (không mở), bán 3 thành −2 (mở).
     expect(r.mm.map((f) => f.opening)).toEqual([false, true]);
     expect(r.mm[0]?.markout).not.toBeNull();
@@ -215,5 +219,7 @@ describe("signal replay loader", () => {
     expect(report.funnels.funding?.signals).toBe(1);
     expect(report.coverage.funding?.perMarket[0]).toMatchObject({ market: M, points: 216 });
     expect(report.riskFilter?.volumeBuilder.baseline.n).toBe(1);
+    expect(report.riskFilter?.volumeBuilder.unclosedRoundTrips).toBe(1);
+    expect(report.coverage.whales?.limit).toMatch(/copy or follow/);
   });
 });
