@@ -95,57 +95,73 @@ label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;
 
   <!-- Funnel -->
   <section aria-labelledby="fn" style="background:#fff;border-radius:24px;box-shadow:0 8px 24px rgb(20 26 51 / .07);padding:24px;display:flex;flex-direction:column;gap:18px">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-      <h2 id="fn" style="margin:0;font-size:22px;font-weight:800">How news becomes a paper trade · last 7 days</h2>
-      <div role="group" aria-label="Signal type" style="display:flex;gap:4px;background:#f5f7fd;border-radius:12px;padding:4px;flex-wrap:wrap">
-        <button type="button" aria-pressed="true" style="height:40px;border:0;background:#fff;border-radius:9px;padding:0 12px;font:inherit;font-size:14px;font-weight:700;box-shadow:0 1px 3px rgb(20 26 51 / .1)">News</button>
-        <button type="button" aria-pressed="false" style="height:40px;border:0;background:transparent;border-radius:9px;padding:0 12px;font:inherit;font-size:14px;color:#3b4262">Whales</button>
-        <button type="button" aria-pressed="false" style="height:40px;border:0;background:transparent;border-radius:9px;padding:0 12px;font:inherit;font-size:14px;color:#3b4262">Funding</button>
-        <button type="button" aria-pressed="false" style="height:40px;border:0;background:transparent;border-radius:9px;padding:0 12px;font:inherit;font-size:14px;color:#3b4262">Price patterns</button>
-      </div>
-    </div>
+    <h2 id="fn" style="margin:0;font-size:22px;font-weight:800">How news becomes a paper trade · last 7 days</h2>
     <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
       <div style="flex:1 1 230px;display:flex;flex-direction:column;gap:12px">
         <div style="background:#f5f7fd;border-radius:16px;padding:14px"><div class="sub" style="font-weight:700">Delay, news out → collected</div><div style="font-size:24px;font-weight:800">3 min 10 s</div><div class="sub">median · SoSoValue checked every 5 min</div></div>
         <div style="background:#f5f7fd;border-radius:16px;padding:14px"><div class="sub" style="font-weight:700">Claude cost</div><div style="font-size:24px;font-weight:800">$0.42 / day</div><div class="sub">1,240 articles read · SoSoValue 2,016 of 10,000 calls this month</div></div>
       </div>
-      <div role="img" aria-label="Funnel: 1,240 articles collected, normalized into 96 stories about SoDEX assets, 96 scored (21 high, 38 medium, 37 low confidence), 41 passed filters, 41 paper trades" style="flex:2 1 520px;display:flex;flex-direction:column;align-items:center;gap:6px">
+      <div role="img" aria-label="Funnel: 1,240 articles collected, grouped into 380 stories, 96 scored as signals, 41 passed filters, 41 paper trades: 29 long and 12 short" style="flex:2 1 520px;display:flex;flex-direction:column;align-items:center;gap:6px">
         <div style="width:100%;height:66px;background:#1d47b8;clip-path:polygon(0 0,100% 0,95% 100%,5% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">1 · Collect &#160;1,240 articles</span><span style="font-size:12px;opacity:.9">every SoSoValue article, nothing skipped</span></div>
-        <div style="width:90%;height:66px;background:#2457d6;clip-path:polygon(0 0,100% 0,94.4% 100%,5.6% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">2 · Normalize &#160;96 stories</span><span style="font-size:12px;opacity:.9">articles about one event grouped into one story, mapped to a SoDEX asset</span></div>
-        <div style="width:80%;height:66px;background:#2e62e8;clip-path:polygon(0 0,100% 0,93.7% 100%,6.3% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">3 · Score &#160;96 signals</span><span style="font-size:12px;opacity:.9">High 21 · Medium 38 · Low 37</span></div>
-        <div style="width:70%;height:66px;background:#4a7bf0;clip-path:polygon(0 0,100% 0,92.8% 100%,7.2% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">4 · Filter &#160;41 left</span><span style="font-size:12px;opacity:.9">worth the fees, no open trade, source on time</span></div>
-        <div style="width:60%;height:66px;background:#0f7a43;clip-path:polygon(0 0,100% 0,91.7% 100%,8.3% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">5 · Decide &#160;41 paper trades</span><span style="font-size:12px;opacity:.9">entry, take profit, stop loss, max hold</span></div>
+        <div style="width:90%;height:66px;background:#2457d6;clip-path:polygon(0 0,100% 0,94.4% 100%,5.6% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">2 · Normalize &#160;380 stories</span><span style="font-size:12px;opacity:.9">860 articles merged into a story already seen, none dropped</span></div>
+        <div style="width:80%;height:66px;background:#2e62e8;clip-path:polygon(0 0,100% 0,93.7% 100%,6.3% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">3 · Score &#160;96 signals</span><span style="font-size:12px;opacity:.9">level at entry: High 21 · Medium 38 · Low 37</span></div>
+        <div style="width:70%;height:66px;background:#4a7bf0;clip-path:polygon(0 0,100% 0,92.8% 100%,7.2% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">4 · Filter &#160;41 left</span><span style="font-weight:500;font-size:12px;opacity:.9">worth the fees, no open trade, source on time</span></div>
+        <div style="width:60%;height:66px;background:#0f7a43;clip-path:polygon(0 0,100% 0,91.7% 100%,8.3% 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff"><span style="font-weight:800;font-size:17px">5 · Decide &#160;Long 29 · Short 12</span><span style="font-size:12px;opacity:.9">500 USDC each · TP / SL from the asset’s volatility</span></div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:6px;border:1px solid #e3e7f5;border-radius:16px;padding:10px 16px;flex-wrap:wrap;justify-content:center"><span style="font-weight:800">30 closed</span><span style="color:#0f7a43;font-weight:700">12 take profit</span><span style="color:#c2312f;font-weight:700">11 stop loss</span><span style="color:#3b4262;font-weight:700">7 max hold</span><span class="sub">· 11 open</span></div>
       </div>
       <div style="flex:1 1 230px;display:flex;flex-direction:column;gap:8px">
         <span style="font-weight:800;font-size:15px">Why they dropped out</span>
-        <div style="background:#f5f7fd;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5"><b>Collect → Normalize · −1,144 articles</b><br>Not about a price move 812 · More articles on a story already counted 208 · Asset not on SoDEX 74 · Promotional 50</div>
-        <div style="background:#f5f7fd;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5"><b>Score → Filter · −55 signals</b><br>Take profit under 2× cost 27 · Trade already open on that asset 19 · Source late 9</div>
-        <span class="sub">Score never drops a signal: every confidence level is traded on paper so we learn which levels are worth it.</span>
+        <div style="background:#f5f7fd;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5"><b>Score · −284 stories</b><br>Not a catalyst on the list 210 · Asset not on SoDEX 52 · Promotional 22</div>
+        <div style="background:#f5f7fd;border-radius:14px;padding:10px 12px;font-size:13px;line-height:1.5"><b>Filter · −55 signals</b><br>Take profit under 2× cost 27 · Trade already open on that asset 19 · Source late 9</div>
+        <span class="sub">Merging articles into stories is not a drop: they raise a story’s source count.</span>
       </div>
     </div>
   </section>
 
   <!-- What makes a signal -->
-  <section aria-labelledby="ws" style="background:#fff;border-radius:24px;box-shadow:0 8px 24px rgb(20 26 51 / .07);padding:24px;display:flex;flex-direction:column;gap:14px">
+  <section aria-labelledby="ws" style="background:#fff;border-radius:24px;box-shadow:0 8px 24px rgb(20 26 51 / .07);padding:24px;display:flex;flex-direction:column;gap:16px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
       <h2 id="ws" style="margin:0;font-size:22px;font-weight:800">What counts as a news signal</h2>
-      <span style="font-size:14px;color:#5f6684">Rules v2 · a starting guess that the results below prove or drop</span>
+      <span style="font-size:14px;color:#5f6684">Rules v2 · a starting guess that the results prove or drop</span>
     </div>
-    <p style="margin:0;font-size:15px;color:#3b4262;line-height:1.55">A signal is <b>one story</b> about one SoDEX asset with one direction. More articles about the same story don’t open more trades; they raise its confidence. Confidence comes from how many independent sources report it and how trusted they are.</p>
+    <p style="margin:0;font-size:15px;color:#3b4262;line-height:1.55">A signal is <b>one story</b> about one SoDEX asset, of a type on the list below. The <b>type sets the direction</b>; Claude only names the type and the asset. The bot decides on the <b>first article</b> and locks the confidence level at that moment. Articles that arrive later don’t open more trades; if they would have raised the level, the trade is tagged “later High” for analysis.</p>
+
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      <div style="flex:3 1 560px;min-width:0;overflow-x:auto">
+      <table>
+        <thead><tr><th>News type</th><th>Direction</th><th>Max hold</th></tr></thead>
+        <tbody>
+          <tr><td>Hack or exploit</td><td style="color:#a72826;font-weight:700">Short the affected token</td><td>1 d</td></tr>
+          <tr><td>Listing on a major exchange</td><td style="color:#0f7a43;font-weight:700">Long</td><td>1 d</td></tr>
+          <tr><td>Delisting from a major exchange</td><td style="color:#a72826;font-weight:700">Short</td><td>2 d</td></tr>
+          <tr><td>ETF approved / ETF delayed or denied</td><td><span style="color:#0f7a43;font-weight:700">Long</span> / <span style="color:#a72826;font-weight:700">Short</span></td><td>3 d / 2 d</td></tr>
+          <tr><td style="white-space:normal">Regulator acts against a project / rules in its favour</td><td><span style="color:#a72826;font-weight:700">Short</span> / <span style="color:#0f7a43;font-weight:700">Long</span></td><td>3 d</td></tr>
+          <tr><td>Company buys the token for its treasury / sells it</td><td><span style="color:#0f7a43;font-weight:700">Long</span> / <span style="color:#a72826;font-weight:700">Short</span></td><td>2 d</td></tr>
+          <tr><td style="white-space:normal">Earnings beat or raised guidance / miss or cut (stock markets)</td><td><span style="color:#0f7a43;font-weight:700">Long</span> / <span style="color:#a72826;font-weight:700">Short</span></td><td>3 d</td></tr>
+          <tr><td>Token unlock over 2% of supply within 7 days</td><td style="color:#a72826;font-weight:700">Short</td><td>2 d</td></tr>
+          <tr><td style="color:#5f6684;white-space:normal">Not signals: partnerships, price analysis and opinion, macro data (macro goes to the risk filter)</td><td style="color:#5f6684">—</td><td style="color:#5f6684">—</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div style="flex:2 1 360px;display:flex;flex-direction:column;gap:12px">
+        <div style="background:#f5f7fd;border-radius:16px;padding:14px;font-size:14px;line-height:1.5;color:#3b4262"><b style="color:#141a33">Source tiers</b><br><b>Top:</b> the primary source itself (exchange, company, regulator, ETF issuer), Bloomberg, Reuters.<br><b>Mid:</b> established crypto media and verified founders or executives.<br><b>Low:</b> aggregators, anonymous and influencer accounts.<br><span class="sub">The full list of SoSoValue source names is kept in the rules and versioned with them.</span></div>
+        <div style="background:#f5f7fd;border-radius:16px;padding:14px;font-size:14px;line-height:1.5;color:#3b4262"><b style="color:#141a33">Take profit and stop loss</b><br>TP = 1.5 × and SL = 0.75 × the asset’s typical move over the max hold (from its last 30 days). If TP is under 2× the cost of a trade, the signal is skipped.</div>
+      </div>
+    </div>
+
     <div style="overflow-x:auto">
     <table>
-      <thead><tr><th>Confidence</th><th>When</th><th>Signals</th><th>Paper trades</th><th>Average after fees</th><th>Verdict so far</th></tr></thead>
+      <thead><tr><th>Level at entry</th><th>When</th><th>Signals</th><th>Trades · closed</th><th>Long / Short</th><th>Average after fees</th><th>vs random entry</th><th>Verdict so far</th></tr></thead>
       <tbody>
-        <tr><td><span class="pill" style="background:#ddf4e7;color:#0f7a43">High</span></td><td style="white-space:normal;min-width:320px">2 or more independent sources within 30 min, at least one top-tier, all the same direction, nothing contradicting</td><td>21</td><td>14</td><td style="color:#5f6684">Not enough trades</td><td style="white-space:normal;min-width:200px">Needs 86 more trades</td></tr>
-        <tr><td><span class="pill" style="background:#e6ecfe;color:#1d47b8">Medium</span></td><td style="white-space:normal;min-width:320px">One top-tier source, or 2 or more mid-tier sources</td><td>38</td><td>17</td><td style="color:#5f6684">Not enough trades</td><td style="white-space:normal;min-width:200px">Needs 83 more trades</td></tr>
-        <tr><td><span class="pill" style="background:#eef1fa;color:#3b4262">Low</span></td><td style="white-space:normal;min-width:320px">A single mid- or low-tier source</td><td>37</td><td>10</td><td style="color:#5f6684">Not enough trades</td><td style="white-space:normal;min-width:200px">Needs 90 more trades</td></tr>
+        <tr><td><span class="pill" style="background:#ddf4e7;color:#0f7a43">High</span></td><td style="white-space:normal;min-width:260px">2 or more independent sources already at the first decision, at least one top-tier, nothing contradicting</td><td>21</td><td>14 · 10</td><td>10 / 4</td><td style="color:#5f6684">Not enough trades</td><td style="color:#5f6684">—</td><td style="white-space:normal;min-width:160px">Needs 90 more closed</td></tr>
+        <tr><td><span class="pill" style="background:#e6ecfe;color:#1d47b8">Medium</span></td><td style="white-space:normal;min-width:260px">One top-tier source, or 2 or more mid-tier sources · 8 later reached High</td><td>38</td><td>17 · 13</td><td>12 / 5</td><td style="color:#5f6684">Not enough trades</td><td style="color:#5f6684">—</td><td style="white-space:normal;min-width:160px">Needs 87 more closed</td></tr>
+        <tr><td><span class="pill" style="background:#eef1fa;color:#3b4262">Low</span></td><td style="white-space:normal;min-width:260px">A single mid- or low-tier source · 3 later reached High</td><td>37</td><td>10 · 7</td><td>7 / 3</td><td style="color:#5f6684">Not enough trades</td><td style="color:#5f6684">—</td><td style="white-space:normal;min-width:160px">Needs 93 more closed</td></tr>
       </tbody>
     </table>
     </div>
     <div style="display:flex;gap:12px;flex-wrap:wrap">
-      <div style="flex:1 1 360px;background:#f5f7fd;border-radius:16px;padding:14px;font-size:14px;line-height:1.5;color:#3b4262"><b style="color:#141a33">How many trades until we trust a level?</b> 100 closed trades per level. Below that the result shows “Not enough trades”, because a few lucky trades can look like an edge.</div>
-      <div style="flex:1 1 360px;background:#f5f7fd;border-radius:16px;padding:14px;font-size:14px;line-height:1.5;color:#3b4262"><b style="color:#141a33">If a level fails,</b> it stops being traded in the next rules version, and its trades stay in history under the old version.</div>
+      <div style="flex:1 1 360px;background:#f5f7fd;border-radius:16px;padding:14px;font-size:14px;line-height:1.5;color:#3b4262"><b style="color:#141a33">When do we get a first answer?</b> Each level needs at least 100 closed trades: about 300 in all. At the current ~30 closed a week, the first verdict comes in about 10 weeks (late January). Once a level has an average, the page shows how many trades that average really needs; a small edge needs more than 100.</div>
+      <div style="flex:1 1 360px;background:#f5f7fd;border-radius:16px;padding:14px;font-size:14px;line-height:1.5;color:#3b4262"><b style="color:#141a33">A level passes only if</b> it also beats random entries at the same moments, with the same long / short mix, TP, SL and max hold. A rising market makes long news look good; the random comparison takes that out.</div>
     </div>
   </section>
 
@@ -153,16 +169,16 @@ label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;
   <section aria-labelledby="sum" style="background:#fff;border-radius:24px;box-shadow:0 8px 24px rgb(20 26 51 / .07);padding:24px;display:flex;flex-direction:column;gap:14px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
       <h2 id="sum" style="margin:0;font-size:22px;font-weight:800">Where each signal type stands</h2>
-      <span style="font-size:14px;color:#5f6684">Out-of-sample trades only · cost of a trade ≈ 0.10% (SoDEX taker fee and builder fee, in and out, plus spread)</span>
+      <span style="font-size:14px;color:#5f6684">Closed trades opened after the rules were fixed · cost of a trade ≈ 0.10% (SoDEX taker fee and builder fee, in and out, plus spread)</span>
     </div>
     <div style="overflow-x:auto">
     <table>
-      <thead><tr><th>Signal type</th><th>How it’s tested</th><th>Trades</th><th>Average after fees</th><th>Likely range</th><th>Status</th><th>What it still needs</th></tr></thead>
+      <thead><tr><th>Signal type</th><th>How it’s tested</th><th>Closed trades</th><th>Average after fees</th><th>vs random entry</th><th>Likely range</th><th>Status</th><th>What it still needs</th></tr></thead>
       <tbody>
-        <tr><td><div style="font-weight:700">News</div><div class="sub">Rules v2</div></td><td><span class="pill" style="background:#f0e6ff;color:#5a2ca0">Live paper</span></td><td>11</td><td style="color:#5f6684">Not enough trades</td><td style="color:#5f6684">—</td><td><span class="pill" style="background:#fdebd3;color:#7a3e00">Collecting</span></td><td style="white-space:normal;min-width:220px">89 more trades, about 6 weeks at the current pace</td></tr>
-        <tr><td><div style="font-weight:700">Whales</div><div class="sub">Rules v1</div></td><td><span class="pill" style="background:#eef1fa;color:#3b4262">Replay</span></td><td>312</td><td style="color:#0f7a43;font-weight:700">+0.21%</td><td>−0.05% to +0.47%</td><td><span class="pill" style="background:#fde4e1;color:#a72826">Failing</span></td><td style="white-space:normal;min-width:220px">Likely range dips below 0. More trades, or a tighter rule tested as v2.</td></tr>
-        <tr><td><div style="font-weight:700">Funding</div><div class="sub">Rules v1</div></td><td><span class="pill" style="background:#eef1fa;color:#3b4262">Replay</span></td><td>64</td><td style="color:#5f6684">Not enough trades</td><td style="color:#5f6684">—</td><td><span class="pill" style="background:#fdebd3;color:#7a3e00">Collecting</span></td><td style="white-space:normal;min-width:220px">36 more trades. SoDEX funding covers 41 days.</td></tr>
-        <tr><td><div style="font-weight:700">Price patterns</div><div class="sub">Rules v1</div></td><td><span class="pill" style="background:#eef1fa;color:#3b4262">Replay</span></td><td>418</td><td style="color:#c2312f;font-weight:700">−0.09%</td><td>−0.18% to 0.00%</td><td><span class="pill" style="background:#fde4e1;color:#a72826">Failing</span></td><td style="white-space:normal;min-width:220px">Loses after fees. Not worth more work in this form.</td></tr>
+        <tr><td><div style="font-weight:700">News</div><div class="sub">Rules v2</div></td><td><span class="pill" style="background:#f0e6ff;color:#5a2ca0">Live paper</span></td><td>30<div class="sub">41 opened</div></td><td style="color:#5f6684">Not enough trades</td><td style="color:#5f6684">—</td><td style="color:#5f6684">—</td><td><span class="pill" style="background:#fdebd3;color:#7a3e00">Collecting</span></td><td style="white-space:normal;min-width:220px">About 270 more closed across 3 levels · first verdict in ~10 weeks</td></tr>
+        <tr><td><div style="font-weight:700">Whales</div><div class="sub">Rules v1</div></td><td><span class="pill" style="background:#eef1fa;color:#3b4262">Replay</span></td><td>312</td><td style="color:#0f7a43;font-weight:700">+0.21%</td><td>+0.02% · <b>+0.19%</b> better</td><td>−0.05% to +0.47%</td><td><span class="pill" style="background:#fde4e1;color:#a72826">Failing</span></td><td style="white-space:normal;min-width:220px">Range dips below 0. At this average it needs about 350 trades, not 100.</td></tr>
+        <tr><td><div style="font-weight:700">Funding</div><div class="sub">Rules v1</div></td><td><span class="pill" style="background:#eef1fa;color:#3b4262">Replay</span></td><td>64</td><td style="color:#5f6684">Not enough trades</td><td style="color:#5f6684">—</td><td style="color:#5f6684">—</td><td><span class="pill" style="background:#fdebd3;color:#7a3e00">Collecting</span></td><td style="white-space:normal;min-width:220px">36 more trades. SoDEX funding covers 41 days.</td></tr>
+        <tr><td><div style="font-weight:700">Price patterns</div><div class="sub">Rules v1</div></td><td><span class="pill" style="background:#eef1fa;color:#3b4262">Replay</span></td><td>418</td><td style="color:#c2312f;font-weight:700">−0.09%</td><td>−0.08% · <b>−0.01%</b></td><td>−0.18% to 0.00%</td><td><span class="pill" style="background:#fde4e1;color:#a72826">Failing</span></td><td style="white-space:normal;min-width:220px">Loses after fees. Not worth more work in this form.</td></tr>
       </tbody>
     </table>
     </div>
@@ -199,14 +215,14 @@ label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;
         <tr>
           <td><div style="display:flex;gap:6px;align-items:center"><span style="font-weight:700">SOL</span><span class="pill" style="background:#fde4e1;color:#a72826">Short</span></div><div class="sub">News · <span style="color:#5a2ca0;font-weight:700">Live paper</span></div></td>
           <td>22:35:02<div class="sub">3 min after release</div></td>
-          <td style="white-space:normal;min-width:260px"><a href="Trade.dc.html" style="font-weight:700">SEC delays decision on SOL ETF</a><div class="sub">Regulatory · score 0.83 · entered</div></td>
+          <td style="white-space:normal;min-width:260px"><a href="Trade.dc.html" style="font-weight:700">SEC delays decision on SOL ETF</a><div class="sub">ETF delayed → Short · entered at <b>Medium</b> (1 top-tier source) · later High (3 sources)</div></td>
           <td>142.18</td><td>139.34<div class="sub">−2.0%</div></td><td>143.60<div class="sub">+1.0%</div></td><td>2 d</td>
           <td><span style="color:#0f7a43;font-weight:800">+$8.94</span><div class="sub">Hit take profit</div></td>
         </tr>
         <tr>
           <td><div style="display:flex;gap:6px;align-items:center"><span style="font-weight:700">ETH</span><span class="pill" style="background:#ddf4e7;color:#0f7a43">Long</span></div><div class="sub">Whales · Replay</div></td>
           <td>21:12:44<div class="sub">31 s after the whale’s fill</div></td>
-          <td style="white-space:normal;min-width:260px"><a href="Trade.dc.html" style="font-weight:700">Wallet ··9c3fa1e2 opened long, $1.2M</a><div class="sub">Wallet in leaderboard since Oct 2 · score 0.78 · entered</div></td>
+          <td style="white-space:normal;min-width:260px"><a href="Trade.dc.html" style="font-weight:700">Wallet ··9c3fa1e2 opened long, $1.2M</a><div class="sub">Wallet in leaderboard since Oct 2 · size 3.4× usual · entered</div></td>
           <td>3,412.5<div class="sub">price 31 s after the fill</div></td><td>3,446.6<div class="sub">+1.0%</div></td><td>3,395.4<div class="sub">−0.5%</div></td><td>4 h</td>
           <td><span style="color:#c2312f;font-weight:800">−$3.01</span><div class="sub">Hit stop loss</div></td>
         </tr>
@@ -219,7 +235,7 @@ label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;
         <tr>
           <td><div style="display:flex;gap:6px;align-items:center"><span style="font-weight:700">NVDA</span><span class="pill" style="background:#ddf4e7;color:#0f7a43">Long</span></div><div class="sub">News · <span style="color:#5a2ca0;font-weight:700">Live paper</span></div></td>
           <td>19:02:10<div class="sub">6 min after release</div></td>
-          <td style="white-space:normal;min-width:260px">Nvidia raises its revenue growth forecast<div class="sub">Earnings · score 0.78 · entered · still open</div></td>
+          <td style="white-space:normal;min-width:260px">Nvidia raises its revenue growth forecast<div class="sub">Raised guidance → Long · entered at <b>High</b> (2 sources, 1 top-tier) · still open</div></td>
           <td>182.40</td><td>186.05<div class="sub">+2.0%</div></td><td>180.58<div class="sub">−1.0%</div></td><td>3 d</td>
           <td><span style="color:#0f7a43;font-weight:800">+$2.17</span><div class="sub">Open · 2 d 4 h left</div></td>
         </tr>
