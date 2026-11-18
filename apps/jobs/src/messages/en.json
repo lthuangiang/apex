@@ -107,7 +107,7 @@
       },
       "bot": "bot {bot}",
       "links": {
-        "bot": "Bot page",
+        "user": "User page",
         "debugger": "SoDEX Debugger",
         "monitor": "Bot Monitor"
       },

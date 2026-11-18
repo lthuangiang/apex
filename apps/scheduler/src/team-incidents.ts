@@ -99,18 +99,33 @@ export async function engineHealthIncidents(
 
 const rowsOf = <T>(r: { rows: unknown[] }): T[] => r.rows as T[];
 
+/** Trần thời gian mỗi truy vấn `sodex_calls` (như SoDEX Debugger, DEC-309): truy vấn chậm bị huỷ, không giữ kết nối. */
+export const SODEX_QUERY_TIMEOUT_MS = 5_000;
+/** WS close quét 1 giờ dữ liệu: chỉ chạy mỗi 5 phút. */
+export const WS_CLOSES_EVERY_MS = 5 * 60_000;
+
+/** Một truy vấn đọc trong transaction chỉ đọc có `SET LOCAL statement_timeout` (hợp lệ qua PgBouncer). */
+function readOnly<T>(db: Db, q: ReturnType<typeof sql>): Promise<T[]> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    await tx.execute(sql.raw(`SET LOCAL statement_timeout = ${String(SODEX_QUERY_TIMEOUT_MS)}`));
+    return rowsOf<T>(await tx.execute(q));
+  });
+}
+
 /** Tỷ lệ lời gọi REST tới SoDEX bị timeout / network / unreadable / HTTP 5xx (từ `sodex_calls`). */
 export async function sodexErrorIncident(db: Db, now: number): Promise<Incident | null> {
   const R = TEAM_INCIDENT_RULES;
   const since = new Date(now - R.sodexWindowMs);
-  const r = rowsOf<{ endpoint: string; calls: number; problems: number }>(
-    await db.execute(sql`
+  const r = await readOnly<{ endpoint: string; calls: number; problems: number }>(
+    db,
+    sql`
       select endpoint, count(*)::int as calls,
              count(*) filter (where outcome in ('timeout', 'network', 'unreadable')
                               or coalesce(http_status, 0) >= 500)::int as problems
         from sodex_calls
         where at >= ${since} and kind = 'rest'
-        group by endpoint`),
+        group by endpoint`,
   );
   const calls = r.reduce((n, x) => n + x.calls, 0);
   const problems = r.reduce((n, x) => n + x.problems, 0);
@@ -131,8 +146,9 @@ export async function sodexErrorIncident(db: Db, now: number): Promise<Incident 
 /** WS user stream đóng quá nhiều lần / giờ ở một account (từ `sodex_calls`, sự kiện CLOSE). Account chỉ ở dạng che. */
 export async function wsClosesIncident(db: Db, now: number): Promise<Incident | null> {
   const R = TEAM_INCIDENT_RULES;
-  const r = rowsOf<{ address: string; closes: number }>(
-    await db.execute(sql`
+  const r = await readOnly<{ address: string; closes: number }>(
+    db,
+    sql`
       select account_address as address, count(*)::int as closes
         from sodex_calls
         where at >= ${new Date(now - R.wsClosesWindowMs)} and kind = 'ws' and method = 'CLOSE'
@@ -140,7 +156,7 @@ export async function wsClosesIncident(db: Db, now: number): Promise<Incident | 
         group by account_address
         having count(*) > ${R.wsClosesPerHour}
         order by count(*) desc
-        limit 3`),
+        limit 3`,
   );
   if (r.length === 0) return null;
   return {
@@ -191,6 +207,7 @@ export async function checkTeamIncidents(
   store: IncidentReadStore,
   now: number,
   warn: (msg: string, data: Record<string, unknown>) => void = () => undefined,
+  opts: { ws?: boolean } = {},
 ): Promise<string[]> {
   const safe = async <T>(name: string, f: () => Promise<T>, empty: T): Promise<T> => {
     try {
@@ -203,7 +220,7 @@ export async function checkTeamIncidents(
   const [health, sodex, ws] = await Promise.all([
     safe("engine_health", () => engineHealthIncidents(store, now), [] as Incident[]),
     safe("sodex_errors", () => sodexErrorIncident(db, now), null),
-    safe("ws_closes", () => wsClosesIncident(db, now), null),
+    opts.ws === false ? null : safe("ws_closes", () => wsClosesIncident(db, now), null),
   ]);
   const found = [...health, ...(sodex === null ? [] : [sodex]), ...(ws === null ? [] : [ws])];
   const sent: string[] = [];
@@ -231,4 +248,28 @@ export async function checkTeamIncidents(
     }
   }
   return sent;
+}
+
+/**
+ * Vòng chạy của scheduler: không bao giờ chạy chồng (lượt trước chưa xong thì bỏ lượt này, trả null); kiểm tra WS close
+ * mỗi WS_CLOSES_EVERY_MS.
+ */
+export function teamIncidentRunner(
+  db: Db,
+  store: IncidentReadStore,
+  warn: (msg: string, data: Record<string, unknown>) => void = () => undefined,
+): (now: number) => Promise<string[] | null> {
+  let running = false;
+  let lastWs = Number.NEGATIVE_INFINITY;
+  return async (now) => {
+    if (running) return null;
+    running = true;
+    try {
+      const ws = now - lastWs >= WS_CLOSES_EVERY_MS;
+      if (ws) lastWs = now;
+      return await checkTeamIncidents(db, store, now, warn, { ws });
+    } finally {
+      running = false;
+    }
+  };
 }

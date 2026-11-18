@@ -6,6 +6,7 @@ import { renderTelegram, type RenderRow } from "../src/telegram-render";
 // Bot Monitor. Không bao giờ email, ví đầy đủ, key, tên bot.
 
 const BOT = "0b5c1f9e-4a7d-4f00-9c3e-12ab34cd56ef";
+const OWNER = "7d1e2f3a-0b4c-4d5e-8f60-718293a4b5c6";
 const BASE = "https://desklabs.test/";
 
 const incident = (data: Record<string, unknown>): RenderRow => ({
@@ -22,6 +23,7 @@ describe("team incident message", () => {
           kind: "position_mismatch",
           severity: "critical",
           botId: BOT,
+          userId: OWNER,
           strategy: "volume_farm",
           market: "BTC-USD",
           detail: "real 5 vs ledger 2 · cause trades",
@@ -34,7 +36,7 @@ describe("team incident message", () => {
         "🚨 CRITICAL · <b>Position doesn't match</b>",
         "Volume Builder · BTC-USD · bot ··34cd56ef",
         "real 5 vs ledger 2 · cause trades",
-        `<a href="https://desklabs.test/agent/${BOT}">Bot page</a> · <a href="https://desklabs.test/admin/sodex-debugger?botId=${BOT}">SoDEX Debugger</a> · <a href="https://desklabs.test/admin/bot-monitor">Bot Monitor</a>`,
+        `<a href="https://desklabs.test/admin/users/${OWNER}">User page</a> · <a href="https://desklabs.test/admin/sodex-debugger?botId=${BOT}">SoDEX Debugger</a> · <a href="https://desklabs.test/admin/bot-monitor">Bot Monitor</a>`,
       ].join("\n"),
     );
     expect(r.button).toEqual({
@@ -67,6 +69,16 @@ describe("team incident message", () => {
     expect(r.button.url).toBe("https://desklabs.test/admin/sodex-debugger?show=errors");
   });
 
+  it("never links the user's bot page, which the team can't open", () => {
+    const r = renderTelegram(
+      [incident({ kind: "close_failed", botId: BOT, userId: "not-a-uuid", detail: "x" })],
+      BASE,
+    );
+    expect(r.text).not.toContain("/agent/");
+    expect(r.text).not.toContain("/admin/users/");
+    expect(r.text).toContain(`/admin/sodex-debugger?botId=${BOT}`);
+  });
+
   it("writes the cleared position as info", () => {
     const r = renderTelegram(
       [
@@ -97,6 +109,7 @@ describe("team incident message", () => {
     expect(r.text).toContain("&lt;b&gt;X&lt;/b&gt;");
     expect(r.text).toContain("a &lt; b &amp; c");
     expect(r.text).not.toContain("onclick");
+    expect(r.text).not.toContain("botId=");
     expect(r.text).not.toContain("/agent/");
   });
 
@@ -114,7 +127,7 @@ describe("team incident message", () => {
     expect(r.text).toBe(
       [
         "🚨 <b>2 incidents</b>",
-        `• 🚨 CRITICAL · Bot paused by errors · BTC-USD · bot ··${BOT.slice(-8)} · API_KEY_UNUSABLE · <a href="https://desklabs.test/agent/${BOT}">Bot page</a>`,
+        `• 🚨 CRITICAL · Bot paused by errors · BTC-USD · bot ··${BOT.slice(-8)} · API_KEY_UNUSABLE · <a href="https://desklabs.test/admin/sodex-debugger?botId=${BOT}">SoDEX Debugger</a>`,
         "• ⚠️ WARNING · Engine ticks slow · 4 slow ticks in 10 min",
       ].join("\n"),
     );

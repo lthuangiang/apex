@@ -3,7 +3,11 @@ import { engineHealthKey, teamIncidentCountKey } from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { checkTeamIncidents, type IncidentReadStore } from "../src/team-incidents";
+import {
+  checkTeamIncidents,
+  teamIncidentRunner,
+  type IncidentReadStore,
+} from "../src/team-incidents";
 
 // Sức khoẻ engine / SoDEX cho team (#241): bộ đếm Redis theo phút do engine ghi, `sodex_calls` (DEC-309), tin tổng hợp
 // ngày. Mỗi loại tối đa một dòng outbox / 31 phút. Account chỉ ở dạng che.
@@ -200,5 +204,32 @@ describe("team incident checks", () => {
       await checkTeamIncidents(db, broken, NOW, (_m, d) => warned.push(String(d.check))),
     ).toEqual(["ws_closes"]);
     expect(warned).toEqual(["engine_health"]);
+  });
+
+  it("never overlaps runs, and checks user-stream closes only every 5 minutes", async () => {
+    for (let i = 0; i < 11; i++) await call({ kind: "ws", method: "CLOSE", address: WALLET });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const base = memStore();
+    // Bộ đếm Redis chậm: lượt đầu còn chạy khi lượt sau tới.
+    const slow: IncidentReadStore = {
+      ...base,
+      values: async (keys) => {
+        await gate;
+        return base.values(keys);
+      },
+    };
+    const run = teamIncidentRunner(db, slow);
+    const first = run(NOW);
+    expect(await run(NOW + MIN)).toBeNull();
+    release();
+    expect(await first).toEqual(["ws_closes"]);
+    // Khoá raise đã nhả để thấy lượt sau có quét WS hay không.
+    base.claimed.length = 0;
+    await pool.query("delete from outbox where topic = 'jobs.team_ops'");
+    expect(await run(NOW + 2 * MIN)).toEqual([]);
+    expect(await run(NOW + 5 * MIN)).toEqual(["ws_closes"]);
   });
 });

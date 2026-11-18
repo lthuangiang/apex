@@ -46,15 +46,18 @@ describe("team incidents (#241)", () => {
     expect(groupOf("team_incident_digest")).toBe("teamOps");
   });
 
-  it("throttles money incidents per bot and market for 10 minutes and warnings per type for 30", () => {
+  it("throttles money incidents per bot and market for 10 minutes and warnings per type for 30, never the position pair", () => {
     const bot = "0b5c1f9e-4a7d-4f00-9c3e-12ab34cd56ef";
-    expect(
-      teamIncidentThrottle({ kind: "position_mismatch", botId: bot, market: "BTC-USD" }),
-    ).toEqual({ key: `team:incident:position_mismatch:${bot}:BTC-USD`, ms: 600_000 });
+    expect(teamIncidentThrottle({ kind: "close_failed", botId: bot, market: "BTC-USD" })).toEqual({
+      key: `team:incident:close_failed:${bot}:BTC-USD`,
+      ms: 600_000,
+    });
     expect(teamIncidentThrottle({ kind: "tick_slow", botId: bot })).toEqual({
       key: "team:incident:tick_slow",
       ms: 1_800_000,
     });
+    expect(teamIncidentThrottle({ kind: "position_mismatch", botId: bot })).toBeNull();
+    expect(teamIncidentThrottle({ kind: "position_matched", botId: bot })).toBeNull();
     expect(TEAM_INCIDENT_SEVERITY.position_matched).toBe("info");
   });
 

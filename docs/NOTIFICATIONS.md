@@ -226,14 +226,15 @@ Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegr
 | warning | `sodex_errors` | ≥ 100 lời gọi REST trong 10 phút và ≥ 10% timeout / network / unreadable / HTTP 5xx | `sodex_calls` → scheduler |
 
 - Chỉ bot tiền thật. Engine không chờ thêm I/O nào: dòng outbox nằm trong transaction đang có; bộ đếm Redis tăng không chờ, lỗi thì bỏ qua.
-- **Chặn lặp** (jobs, Redis `SET NX PX`): critical / info 1 tin / (loại, bot, market) / 10 phút; warning 1 tin / loại / 30 phút. Redis lỗi thì vẫn gửi.
+- **Chặn lặp** (jobs, Redis `SET NX PX`): critical 1 tin / (loại, bot, market) / 10 phút; warning 1 tin / loại / 30 phút. `position_mismatch` / `position_matched` không bao giờ bị chặn lặp (engine phát mỗi lần chuyển một lần). Redis lỗi thì vẫn gửi.
+- Scheduler: truy vấn `sodex_calls` có `SET LOCAL statement_timeout` 5 s; các lượt không chạy chồng; WS close chỉ kiểm tra mỗi 5 phút.
 - **Tin tổng hợp:** mỗi ngày từ 01:00 UTC (08:00 giờ Việt Nam), số lần 24 giờ qua theo loại (kể cả lần bị chặn lặp), nặng nhất trước; không có gì thì "No incidents in the last 24 h.".
-- **Nội dung:** mức độ + loại, chiến lược · market · `bot ··1a2b3c4d`, số liệu, link Bot page / SoDEX Debugger (lọc theo bot) / Bot Monitor. Nút: Bot Monitor; `sodex_errors` / `ws_closes` mở SoDEX Debugger lọc lỗi. Không bao giờ email, ví đầy đủ, key, tên bot; account chỉ ở dạng che.
+- **Nội dung:** mức độ + loại, chiến lược · market · `bot ··1a2b3c4d`, số liệu, link User page (`/admin/users/:userId`, chủ bot; team không mở được trang bot của user) / SoDEX Debugger (lọc theo bot) / Bot Monitor. Câu chữ PM duyệt (PR #243). Nút: Bot Monitor; `sodex_errors` / `ws_closes` mở SoDEX Debugger lọc lỗi. Không bao giờ email, ví đầy đủ, key, tên bot; account chỉ ở dạng che.
 - Ví dụ:
   ```
   🚨 CRITICAL · Position doesn't match
   Volume Builder · BTC-USD · bot ··34cd56ef
   real 5 vs ledger 2 · cause trades
-  Bot page · SoDEX Debugger · Bot Monitor
+  User page · SoDEX Debugger · Bot Monitor
   ```
 - Bot Monitor: lệch vị thế hiện ở cột Latest alert như cảnh báo "Position".

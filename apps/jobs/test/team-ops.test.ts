@@ -273,10 +273,10 @@ describe("team incidents (#241)", () => {
     const deps = { db, telegramEnabled: true, incidents: mem.store, now: () => clock };
     const e = {
       type: "team_incident" as const,
-      kind: "position_mismatch" as const,
+      kind: "close_failed" as const,
       botId: live,
       market: "BTC-USD",
-      detail: "real 5 vs ledger 2 · cause trades",
+      detail: "BTC-USD position still open · close order not sent (timeout)",
     };
     expect(await handleTeamOps(deps, e)).toBeGreaterThan(0);
     // Lặp trong 10 phút: không gửi, vẫn đếm.
@@ -288,22 +288,49 @@ describe("team incidents (#241)", () => {
     clock += 6 * 60_000;
     expect(await handleTeamOps(deps, e)).toBeGreaterThan(0);
     const hour = Math.floor(Date.parse("2026-11-18T03:00:00Z") / 3_600_000);
-    expect(mem.counts.get(`team:incident_count:${String(hour)}:position_mismatch`)).toBe(4);
+    expect(mem.counts.get(`team:incident_count:${String(hour)}:close_failed`)).toBe(4);
 
     const rows = (await queuedFor([lead])).filter((r) => r.type === "team_incident");
     expect(rows).toHaveLength(3);
-    expect(rows[0]?.payload).toEqual({
-      kind: "position_mismatch",
+    expect(rows.find((r) => (r.payload as { botId: string }).botId === live)?.payload).toEqual({
+      kind: "close_failed",
       severity: "critical",
       botId: live,
+      userId: customer,
       strategy: "futures_grid",
       market: "BTC-USD",
-      detail: "real 5 vs ledger 2 · cause trades",
+      detail: "BTC-USD position still open · close order not sent (timeout)",
     });
     const text = JSON.stringify(rows.map((r) => r.payload));
     expect(text).not.toContain("secret.person");
     expect(text.toLowerCase()).not.toContain(WALLET.toLowerCase());
     expect(text).not.toContain("BTC <Grid>");
+  });
+
+  it("never throttles position mismatch / matched: mismatch → matched → mismatch within 10 minutes all go out", async () => {
+    const lead = await user({ role: "team", telegram: "active" });
+    const customer = await user({});
+    const live = await bot(customer, "live");
+    let clock = Date.parse("2026-11-18T04:00:00Z");
+    const mem = memoryStore(() => clock);
+    const deps = { db, telegramEnabled: true, incidents: mem.store, now: () => clock };
+    const base = { type: "team_incident" as const, botId: live, market: "BTC-USD" };
+    const seq = [
+      { ...base, kind: "position_mismatch" as const, detail: "real 5 vs ledger 2 · cause trades" },
+      { ...base, kind: "position_matched" as const, detail: "real 2 matches the ledger" },
+      { ...base, kind: "position_mismatch" as const, detail: "real 3 vs ledger 2 · cause trades" },
+    ];
+    for (const e of seq) {
+      expect(await handleTeamOps(deps, e)).toBeGreaterThan(0);
+      clock += 2 * 60_000;
+    }
+    expect(mem.keys.size).toBe(0);
+    const rows = (await queuedFor([lead]))
+      .filter((r) => (r.payload as { botId?: string }).botId === live)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    expect(rows.map((r) => (r.payload as { detail: string }).detail)).toEqual(
+      seq.map((e) => e.detail),
+    );
   });
 
   it("throttles warnings per type for 30 minutes and releases the claim when the fan-out fails", async () => {

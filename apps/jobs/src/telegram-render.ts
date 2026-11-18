@@ -165,10 +165,11 @@ const incidentKind = (data: Record<string, unknown>): TeamIncidentKind | null =>
 };
 /** Bot id hợp lệ (UUID) thì mới dựng link; không bao giờ ghép chuỗi lạ vào URL. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const incidentBot = (data: Record<string, unknown>): string | null => {
-  const id = str(data.botId);
+const uuidOf = (v: unknown): string | null => {
+  const id = str(v);
   return id !== null && UUID_RE.test(id) ? id : null;
 };
+const incidentBot = (data: Record<string, unknown>): string | null => uuidOf(data.botId);
 
 /** Nút của tin sự cố: lỗi SoDEX / WS → SoDEX Debugger lọc lỗi; còn lại → Bot Monitor. */
 function incidentTarget(data: Record<string, unknown>): { path: string; label: string } {
@@ -201,20 +202,23 @@ function incidentWhere(data: Record<string, unknown>): string | null {
   return parts.length === 0 ? null : parts.join(" · ");
 }
 
-/** Link trong tin: trang bot, SoDEX Debugger lọc theo bot, Bot Monitor. Không token đăng nhập. */
+const link = (base: string, path: string, label: string) =>
+  `<a href="${escapeTelegramHtml(`${base}${path}`)}">${label}</a>`;
+
+/**
+ * Link trong tin: trang Users › chi tiết của chủ bot (có danh sách bot; team không mở được trang bot của user), SoDEX
+ * Debugger lọc theo bot, Bot Monitor. Không token đăng nhập.
+ */
 function incidentLinks(data: Record<string, unknown>, base: string): string {
   const bot = incidentBot(data);
-  const a = (path: string, label: string) =>
-    `<a href="${escapeTelegramHtml(`${base}${path}`)}">${label}</a>`;
-  const links =
-    bot === null
-      ? [a("/admin/bot-monitor", INC.links.monitor)]
-      : [
-          a(`/agent/${bot}`, INC.links.bot),
-          a(`/admin/sodex-debugger?botId=${bot}`, INC.links.debugger),
-          a("/admin/bot-monitor", INC.links.monitor),
-        ];
-  return links.join(" · ");
+  const user = uuidOf(data.userId);
+  return [
+    user === null ? null : link(base, `/admin/users/${user}`, INC.links.user),
+    bot === null ? null : link(base, `/admin/sodex-debugger?botId=${bot}`, INC.links.debugger),
+    link(base, "/admin/bot-monitor", INC.links.monitor),
+  ]
+    .filter((x): x is string => x !== null)
+    .join(" · ");
 }
 
 function incidentText(data: Record<string, unknown>, base: string): string {
@@ -515,7 +519,7 @@ export function renderTelegram(rows: readonly RenderRow[], appUrl: string): Rend
   }
   // Báo team: worker chỉ gộp CÙNG loại sự kiện ("3 new signups"), mở trang Users.
   // Theo dõi MCP: mỗi loại tối đa 1 tin / 30 phút nên hiếm khi gộp; gộp thì liệt kê từng dòng, không thêm tiêu đề.
-  // Sự cố (#241): mỗi dòng giữ mức độ, nơi xảy ra, số liệu và link trang bot.
+  // Sự cố (#241): mỗi dòng giữ mức độ, nơi xảy ra, số liệu và link SoDEX Debugger của bot.
   if (first.type === "team_incident") {
     const lines = rows.slice(0, MERGED_LINES).map((r) => {
       const where = incidentWhere(r.data);
@@ -525,9 +529,7 @@ export function renderTelegram(rows: readonly RenderRow[], appUrl: string): Rend
         `• ${plain(incidentTitle(r.data))}`,
         where,
         detail === null ? null : escapeTelegramHtml(detail),
-        bot === null
-          ? null
-          : `<a href="${escapeTelegramHtml(`${base}/agent/${bot}`)}">${INC.links.bot}</a>`,
+        bot === null ? null : link(base, `/admin/sodex-debugger?botId=${bot}`, INC.links.debugger),
       ]
         .filter((x): x is string => x !== null)
         .join(" · ");

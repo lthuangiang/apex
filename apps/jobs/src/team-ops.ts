@@ -86,7 +86,7 @@ async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
         ? undefined
         : (
             await db
-              .select({ strategy: bots.strategy, market: bots.market })
+              .select({ strategy: bots.strategy, market: bots.market, userId: bots.userId })
               .from(bots)
               .where(eq(bots.id, e.botId))
               .limit(1)
@@ -96,6 +96,8 @@ async function subjectOf(db: Db, e: TeamOpsEvent): Promise<Subject | null> {
         kind: e.kind,
         severity: TEAM_INCIDENT_SEVERITY[e.kind],
         botId: e.botId ?? null,
+        // Chủ bot (id, không email): link trang Users › chi tiết (team không mở được trang bot của user).
+        userId: b?.userId ?? null,
         strategy: b?.strategy ?? null,
         market: e.market ?? b?.market ?? null,
         detail: e.detail,
@@ -215,7 +217,9 @@ export async function handleTeamOps(deps: TeamOpsDeps, raw: unknown): Promise<nu
     deps.warn?.("team incident count failed", { err: String(error), kind: e.kind });
   }
   if (!deps.telegramEnabled) return 0;
+  // Lệch vị thế / khớp lại không bao giờ bị chặn lặp (engine phát mỗi lần chuyển một lần).
   const t = teamIncidentThrottle(e);
+  if (t === null) return fanOut(deps, e);
   let claimed = false;
   try {
     if (!(await store.claim(t.key, t.ms))) return 0;

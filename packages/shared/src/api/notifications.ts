@@ -234,7 +234,7 @@ export const TEAM_INCIDENT_DETAIL_MAX = 200;
 
 /** Ngưỡng và chặn lặp (#241). Thời gian tính bằng ms. */
 export const TEAM_INCIDENT_RULES = {
-  /** critical / info: tối đa 1 tin / (loại, bot, market) / 10 phút. */
+  /** critical: tối đa 1 tin / (loại, bot, market) / 10 phút (trừ lệch vị thế / khớp lại: không chặn lặp). */
   botThrottleMs: 10 * 60_000,
   /** warning: tối đa 1 tin / loại / 30 phút (như DEC-225). */
   typeThrottleMs: 30 * 60_000,
@@ -260,12 +260,22 @@ export const TEAM_INCIDENT_RULES = {
   digestClaimMs: 36 * 60 * 60_000,
 } as const;
 
-/** Khoá chặn lặp (SET NX PX) của một sự cố. */
+/**
+ * Loại không bao giờ bị chặn lặp: lệch vị thế / khớp lại. Engine chỉ phát mỗi lần chuyển trạng thái một lần, và một lần
+ * "matched" bị ẩn sau "mismatch" (hay ngược lại) sẽ làm team hiểu sai trạng thái hiện tại.
+ */
+export const TEAM_INCIDENT_UNTHROTTLED: readonly TeamIncidentKind[] = [
+  "position_mismatch",
+  "position_matched",
+];
+
+/** Khoá chặn lặp (SET NX PX) của một sự cố; null = không chặn lặp. */
 export function teamIncidentThrottle(e: {
   kind: TeamIncidentKind;
   botId?: string | undefined;
   market?: string | undefined;
-}): { key: string; ms: number } {
+}): { key: string; ms: number } | null {
+  if (TEAM_INCIDENT_UNTHROTTLED.includes(e.kind)) return null;
   return TEAM_INCIDENT_SEVERITY[e.kind] === "warning"
     ? { key: `team:incident:${e.kind}`, ms: TEAM_INCIDENT_RULES.typeThrottleMs }
     : {

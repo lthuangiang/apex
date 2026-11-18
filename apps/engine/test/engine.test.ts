@@ -1730,6 +1730,16 @@ describe("engine", () => {
     const b = await botState(botId);
     expect(b?.state).toBe("paused");
     expect(b?.reasonCode).toBe(ReasonCode.apiKeyUnusable);
+    // Báo team một lần qua pauseAccount (#241).
+    expect(await teamIncidents(botId)).toEqual([
+      {
+        type: "team_incident",
+        kind: "paused_errors",
+        botId,
+        market: "vBTC_vUSDC",
+        detail: "API_KEY_UNUSABLE",
+      },
+    ]);
     // Lệnh chưa rời DRIFT: không để lại dòng `unknown` cần đối soát.
     const { eq } = await import("drizzle-orm");
     const left = await db.select().from(orders).where(eq(orders.botId, botId));
@@ -3710,6 +3720,12 @@ describe("engine", () => {
       rows.some((o) => o.status === "rejected" && o.rejectCode === "INSUFFICIENT_BALANCE"),
     ).toBe(true);
     expect(real.received).toHaveLength(0);
+    // Bot paper không bao giờ báo team (#241), kể cả khi lệnh bị từ chối làm bot pause.
+    expect(await botState(botId)).toMatchObject({
+      state: "paused",
+      reasonCode: ReasonCode.orderRejected,
+    });
+    expect(await teamIncidents(botId)).toEqual([]);
     await e.stop();
     await stopPaperBots();
   });
