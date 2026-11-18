@@ -397,4 +397,41 @@ describe("SoDEX Debugger redaction", () => {
     expect(redactBody("<html>bad gateway</html>")).toBe("<html>bad gateway</html>");
     expect(redactBody(`oops ${"ab".repeat(32)}`)).toBe(`oops ${REDACTED}`);
   });
+
+  it("never stores a key-like string from a WS close reason (#240)", () => {
+    const secret = "cd".repeat(32);
+    const info = {
+      closedBy: "server",
+      code: 4001,
+      reason: `bad key ${secret}`,
+      wasClean: true,
+      openForMs: 10,
+      lastMessageAgoMs: null,
+      reconnectInMs: 1000,
+      reconnectAttempt: 1,
+    };
+    const row = toSodexCallRow(
+      {
+        kind: "ws",
+        startedAt: Date.now(),
+        latencyMs: 0,
+        event: "CLOSE",
+        url: "wss://mainnet-gw.sodex.dev/ws/perps",
+        engine: "perps",
+        channel: null,
+        connId: "ws-perps-00000001",
+        accountAddress: "0xed3e79ef16a7890e6eaef2aa6373b6bec5d59d5c",
+        sodexAccountId: null,
+        request: null,
+        response: JSON.stringify(info),
+        outcome: "network",
+        detail: `closed by SoDEX (code 4001, reason "bad key ${secret}")`,
+        context: undefined,
+      },
+      "engine",
+    );
+    expect(JSON.stringify(row)).not.toContain(secret);
+    expect(row.responseBody).toContain('"code":4001');
+    expect(row.errorDetail).toContain("code 4001");
+  });
 });

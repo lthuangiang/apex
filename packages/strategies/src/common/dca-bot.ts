@@ -1,10 +1,18 @@
 import { dec, Decimal, ReasonCode } from "@drift/shared";
 
 import { clOrdId, without } from "../core/ids";
-import { applyFill, applyFunding, emptyLedger, netPnl, type Ledger } from "../core/ledger";
+import {
+  applyFill,
+  applyFunding,
+  carryLedger,
+  emptyLedger,
+  netPnl,
+  type Ledger,
+} from "../core/ledger";
 import { meetsMinimum, priceText, roundPrice, roundQty } from "../core/rounding";
 import type {
   OrderIntent,
+  Side,
   StepContext,
   StepResult,
   StrategyAction,
@@ -20,6 +28,7 @@ import {
   type NextCycle,
   type WaitingInfo,
 } from "./entry";
+import { isRetiring, retireEnd, retireFill, retireTick, type Retiring } from "./retire";
 
 // Lõi DCA dùng chung cho S3 Spot DCA và S4 Futures DCA (STRATEGIES.md).
 // Mỗi chu kỳ: base order (market) → các safety order limit theo khoảng cách d₁·(1+m+…+m^(k−1)) và
@@ -76,9 +85,20 @@ export interface DcaBotState {
   resumes?: number;
   /** Đã resume nhưng chưa có giá mới: dựng lại lệnh ở tick đầu tiên (DEC-240). */
   resumeOnTick?: boolean;
+  /** Lệnh version cũ đã huỷ lúc áp version mới, chờ SoDEX báo kết thúc rồi mới dựng lệnh (#223). */
+  retiring?: Retiring | undefined;
+  /**
+   * Vừa áp version mới (#223): vị thế đang giữ được quản lý tiếp (kể cả vị thế do fill muộn của lệnh cũ) và tổng không
+   * vượt một Cycle đầy đủ của version mới. Bỏ khi Cycle được dựng lại.
+   */
+  carried?: boolean;
+  /** Đã ghi "vị thế ngược hướng" một lần (#223). */
+  oppositeLogged?: boolean;
 }
 
 export interface DcaOrder {
+  /** Chiều của lệnh lúc đặt (#223 M4); thiếu ở state cũ thì suy theo vai trò và hướng hiện tại. */
+  side?: Side;
   role: "base" | "safety" | "tp";
   /** Chỉ số safety (1-based). */
   k?: number;
@@ -223,6 +243,9 @@ function startCycle(
     };
   }
   const base = intent(c, ctx, `dca:${String(cycle)}:base`, entrySide(c), qty);
+  // Cycle mới từ phẳng: không còn vị thế mang sang từ version cũ (#223).
+  const fresh: DcaBotState = { ...s };
+  delete fresh.carried;
   return {
     actions: [
       { type: "place", order: base },
@@ -234,7 +257,7 @@ function startCycle(
     ],
     state: track(
       {
-        ...s,
+        ...fresh,
         phase: "waiting_base",
         cycle,
         baseClOrdID: base.clOrdID,
@@ -243,7 +266,7 @@ function startCycle(
         tpClOrdID: null,
         tpAttempt: 0,
       },
-      [{ id: base.clOrdID, o: { role: "base", cycle, qty, filled: "0" } }],
+      [{ id: base.clOrdID, o: { role: "base", side: entrySide(c), cycle, qty, filled: "0" } }],
     ),
   };
 }
@@ -253,10 +276,11 @@ function placeSafeties(
   s: DcaBotState,
   basePrice: string,
   ctx: StepContext,
-  resume?: { from: number; suffix: string; price: string | null },
+  resume?: { from: number; suffix: string; price: string | null; budget?: Decimal },
 ): StepResult<DcaBotState> {
   const rules = ctx.rules[c.market];
   const actions: StrategyAction[] = [];
+  let budget = resume?.budget;
   // Resume: giữ các safety còn mở, chỉ đặt lại các mức chưa có lệnh.
   const kept = resume === undefined ? {} : s.safeties;
   const open = new Set(Object.values(kept));
@@ -271,13 +295,14 @@ function placeSafeties(
         : dec(basePrice).mul(dec("1").add(off));
     if (raw.lte(0)) break;
     const price = roundPrice(raw, rules);
-    const qty = roundQty(
-      dec(c.safetyNotional)
-        .mul(dec(c.sizeMultiplier).pow(k - 1))
-        .div(price),
-      rules,
-    );
+    const notional = dec(c.safetyNotional).mul(dec(c.sizeMultiplier).pow(k - 1));
+    const qty = roundQty(notional.div(price), rules);
     if (!meetsMinimum(price, qty, rules)) continue;
+    // Vị thế mang sang + safety không vượt một Cycle đầy đủ của version mới (#223): mức xa hơn cũng lớn hơn, nên dừng.
+    if (budget !== undefined) {
+      if (notional.gt(budget)) break;
+      budget = budget.sub(notional);
+    }
     // Resume: bỏ mức giá đã vượt qua (lệnh limit sẽ khớp ngay như lệnh market).
     if (resume?.price != null) {
       const crossed =
@@ -302,7 +327,10 @@ function placeSafeties(
       Object.entries(safeties).map(([id, k]) => {
         const a = actions.find((x) => x.type === "place" && x.order.clOrdID === id);
         const qty = a?.type === "place" ? a.order.quantity : "0";
-        return { id, o: { role: "safety" as const, k, cycle: s.cycle, qty, filled: "0" } };
+        return {
+          id,
+          o: { role: "safety" as const, side: entrySide(c), k, cycle: s.cycle, qty, filled: "0" },
+        };
       }),
     ),
   };
@@ -338,7 +366,7 @@ function placeTakeProfit(
   return {
     actions,
     state: track({ ...s, tpClOrdID: o.clOrdID, tpAttempt: s.tpAttempt + 1 }, [
-      { id: o.clOrdID, o: { role: "tp", cycle: s.cycle, qty, filled: "0" } },
+      { id: o.clOrdID, o: { role: "tp", side: exitSide(c), cycle: s.cycle, qty, filled: "0" } },
     ]),
   };
 }
@@ -376,7 +404,66 @@ function guards(c: DcaBotConfig, s: DcaBotState, price: string): StepResult<DcaB
   return null;
 }
 
+/**
+ * Bước DCA. Lệnh version cũ đang chờ kết thúc (#223) đi trước: fill vào sổ cái theo chiều của chính lệnh, kết thúc thì
+ * thôi chờ (không pause), nhịp giá gửi huỷ lại khi quá hạn.
+ */
 export function stepDcaBot(
+  c: DcaBotConfig,
+  s: DcaBotState,
+  e: StrategyEvent,
+  ctx: StepContext,
+): StepResult<DcaBotState> {
+  if (e.type === "fill") {
+    const r = retireFill(s.retiring, e);
+    if (r !== null) {
+      const o = s.orders?.[e.clOrdID];
+      return {
+        actions: [],
+        state: {
+          ...s,
+          retiring: r.retiring,
+          ledger: r.quantity.gt(0)
+            ? applyFill(s.ledger, r.side, e.price, r.quantity, r.fee)
+            : s.ledger,
+          // Giữ sổ lệnh khớp với phần đã ghi, để fill tới sau `orderDone` không bị ghi hai lần.
+          ...(o === undefined
+            ? {}
+            : {
+                orders: {
+                  ...s.orders,
+                  [e.clOrdID]: { ...o, filled: dec(o.filled).add(r.quantity).toString() },
+                },
+              }),
+        },
+      };
+    }
+  }
+  if (
+    (e.type === "orderDone" || e.type === "orderReject") &&
+    s.retiring?.[e.clOrdID] !== undefined
+  ) {
+    const o = s.orders?.[e.clOrdID];
+    return {
+      actions: [],
+      state: {
+        ...s,
+        retiring: retireEnd(s.retiring, e.clOrdID),
+        ...(o === undefined ? {} : { orders: { ...s.orders, [e.clOrdID]: { ...o, done: true } } }),
+      },
+    };
+  }
+  if (e.type === "tick" || e.type === "timer") {
+    const t = retireTick(s.retiring, e.at);
+    if (t.retiring !== s.retiring) {
+      const r = stepDca(c, { ...s, retiring: t.retiring }, e, ctx);
+      return { actions: [...t.actions, ...r.actions], state: r.state };
+    }
+  }
+  return stepDca(c, s, e, ctx);
+}
+
+function stepDca(
   c: DcaBotConfig,
   s: DcaBotState,
   e: StrategyEvent,
@@ -384,14 +471,29 @@ export function stepDcaBot(
 ): StepResult<DcaBotState> {
   if (e.type === "resumed") {
     if (s.phase !== "halted") return { actions: [], state: s };
+    // Lệnh version cũ chưa kết thúc (#223): dựng lại ở giá đầu tiên sau khi chúng kết thúc.
+    if (isRetiring(s.retiring))
+      return {
+        actions: [],
+        state: { ...s, resumeOnTick: true, lastPrice: e.prices[c.market] ?? s.lastPrice },
+      };
     // Chưa có giá mới: chờ giá đầu tiên rồi mới dựng lệnh (không đặt theo giá lúc pause).
     const p = e.prices[c.market];
     return p === undefined
       ? { actions: [], state: { ...s, resumeOnTick: true } }
       : resumeDca(c, { ...s, lastPrice: p }, ctx);
   }
-  if (e.type === "tick" && e.market === c.market && s.phase === "halted" && s.resumeOnTick === true)
-    return resumeDca(c, { ...s, lastPrice: e.price }, ctx);
+  if (
+    e.type === "tick" &&
+    e.market === c.market &&
+    s.phase === "halted" &&
+    s.resumeOnTick === true
+  ) {
+    const state = { ...s, lastPrice: e.price };
+    // Lệnh version cũ chưa kết thúc (#223): chưa dựng lệnh, nhưng stop loss / max loss vẫn canh vị thế (N2).
+    if (isRetiring(s.retiring)) return guards(c, state, e.price) ?? { actions: [], state };
+    return resumeDca(c, state, ctx);
+  }
   // Đã dừng: chỉ nhận fill (khớp trễ vào sổ cái), orderDone và orderReject.
   if (
     s.phase === "halted" &&
@@ -425,11 +527,22 @@ export function stepDcaBot(
     const prev = s.lastPrice;
     const state = { ...s, lastPrice: e.price };
     if (state.phase === "idle" || state.phase === "waiting_entry") {
+      // Version mới đang chờ áp (DEC-304, #223) hoặc lệnh version cũ chưa kết thúc: không mở Cycle mới.
+      if (ctx.versionPending !== undefined || isRetiring(state.retiring))
+        return { actions: [], state };
+      // Vừa áp version mới mà sổ cái có vị thế (fill muộn của lệnh cũ, #223): quản lý tiếp, không mở Cycle chồng lên.
+      if (state.carried === true && !dust(c, state, ctx)) return adoptCarried(c, state, ctx);
       // Chờ thì không đặt lệnh, không khoá margin (IMP-01 bước 3).
       const gate = dcaGate(c, state);
       if (gate !== null && !gateOpen(c, gate, prev, e.price, e.at)) {
         return { actions: [], state: { ...state, phase: "waiting_entry" } };
       }
+      // Sổ cái giữ qua lần sửa (B2): max loss đã chạm thì không mở Cycle, pause lại, không đặt lệnh (DEC-240 (a), #223 N1).
+      if (c.maxLoss !== undefined && netPnl(state.ledger, e.price).lte(dec(c.maxLoss).neg()))
+        return {
+          actions: [{ type: "pause", reason: ReasonCode.botMaxLoss }],
+          state: { ...state, phase: "halted" },
+        };
       return startCycle(c, state, e.price, ctx);
     }
     return guards(c, state, e.price) ?? { actions: [], state };
@@ -459,7 +572,8 @@ function onFill(
   const q = Decimal.min(dec(o.qty).sub(o.filled), e.quantity);
   if (!q.gt(0)) return { actions: [], state: s };
   const fee = q.lt(e.quantity) ? dec(e.fee).mul(q).div(e.quantity).toString() : e.fee;
-  const side = o.role === "tp" ? exitSide(c) : entrySide(c);
+  // Chiều của chính lệnh (engine gửi kèm, rồi chiều đã nhớ), không theo cấu hình hiện tại (#223 M4).
+  const side = e.side ?? o.side ?? (o.role === "tp" ? exitSide(c) : entrySide(c));
   const filled = dec(o.filled).add(q);
   const full = filled.gte(o.qty);
   const rec: DcaOrder = { ...o, filled: filled.toString(), ...(full ? { done: true } : {}) };
@@ -586,6 +700,16 @@ function cycleDone(
   return { actions: [...cancels, log], state };
 }
 
+/** Giá trị danh nghĩa của một Cycle đầy đủ: base + mọi safety. */
+function fullCycle(c: DcaBotConfig): Decimal {
+  let total = dec(c.baseNotional);
+  for (let k = 1; k <= c.maxSafetyOrders; k += 1)
+    total = total.add(dec(c.safetyNotional).mul(dec(c.sizeMultiplier).pow(k - 1)));
+  return total;
+}
+
+const exposure = (s: DcaBotState): Decimal => dec(s.ledger.position).abs().mul(s.ledger.avgCost);
+
 /**
  * Resume sau khi bot tự pause (DEC-240): giữ sổ cái và vị thế thật. Không có vị thế thì chờ Cycle mới như bình
  * thường. Có vị thế thì chạy tiếp Cycle đang dở: đặt lại take profit theo vị thế, và các safety chưa khớp (nếu không còn
@@ -615,11 +739,13 @@ function resumeDca(c: DcaBotConfig, s0: DcaBotState, ctx: StepContext): StepResu
   const g = state.lastPrice === null ? null : guards(c, state, state.lastPrice);
   if (g !== null) return g;
   const actions: StrategyAction[] = [];
+  delete state.carried;
   if (state.safetiesFilled < c.maxSafetyOrders) {
     const r = placeSafeties(c, state, state.basePrice ?? state.ledger.avgCost, ctx, {
       from: state.safetiesFilled + 1,
       suffix: `:r${String(resumes)}`,
       price: state.lastPrice,
+      ...(s.carried === true ? { budget: fullCycle(c).sub(exposure(s)) } : {}),
     });
     actions.push(...r.actions);
     state = r.state;
@@ -665,10 +791,106 @@ function onOrderDone(
   return { actions: [], state: s };
 }
 
+/**
+ * Áp version mới (#223, DEC-320). Engine huỷ mọi lệnh đang mở (safety, take profit). State mới giữ
+ * sổ cái (PM chốt B2: phiên tiếp tục, max loss giữ mốc) và số Cycle, nhớ mọi lệnh cũ chưa kết thúc (`retiring`, huỷ lại
+ * mỗi 10 s; fill muộn vào sổ cái theo chiều của chính lệnh) và chỉ dựng lệnh khi chúng đã kết thúc. Còn vị thế thì Cycle
+ * đang dở chạy tiếp với cấu hình mới như Resume (DEC-240): take profit theo vị thế và các safety chưa khớp ở mức chưa bị
+ * vượt qua, tổng không vượt một Cycle đầy đủ của version mới; không đặt base order, không tự đóng vị thế. Chưa áp (null,
+ * engine không huỷ gì, version cũ chạy tiếp như DEC-304) khi base order chưa xong, hoặc vị thế ngược hướng của version
+ * mới (đổi Long ↔ Short): chờ Cycle hiện tại đóng.
+ */
+export function applyDcaVersion(c: DcaBotConfig, s: DcaBotState): DcaBotState | null {
+  const base = s.baseClOrdID === null ? undefined : s.orders?.[s.baseClOrdID];
+  if (s.phase === "waiting_base" || (base !== undefined && base.done !== true)) return null;
+  const pos = dec(s.ledger.position);
+  if (!pos.isZero() && pos.isPositive() !== (c.direction === "long")) return null;
+  // Hướng của version cũ: theo vị thế nếu còn, không thì hướng mới (fill thật mang chiều của lệnh, engine gửi kèm).
+  const oldLong = pos.isZero() ? c.direction === "long" : pos.isPositive();
+  const sideOf = (o: DcaOrder): Side => o.side ?? ((o.role === "tp") === oldLong ? "sell" : "buy");
+  const orders: Record<string, DcaOrder> = {};
+  const retiring: Retiring = { ...s.retiring };
+  for (const [id, o] of Object.entries(s.orders ?? {})) {
+    orders[id] = { ...o, side: sideOf(o) };
+    if (o.done !== true)
+      retiring[id] = { side: sideOf(o), qty: o.qty, filled: o.filled, cancelAt: null };
+  }
+  // State cũ (trước P0.1) không có `orders`: safety / take profit đang mở vẫn phải chờ kết thúc.
+  for (const id of [...Object.keys(s.safeties), ...(s.tpClOrdID === null ? [] : [s.tpClOrdID])])
+    if (s.orders?.[id] === undefined)
+      retiring[id] = {
+        side: (id === s.tpClOrdID) === oldLong ? "sell" : "buy",
+        filled: "0",
+        cancelAt: null,
+      };
+  const fresh: DcaBotState = {
+    ...initialDcaState(),
+    cycle: s.cycle,
+    completedCycles: s.completedCycles,
+    ledger: carryLedger(s.ledger),
+    lastPrice: s.lastPrice,
+    orders,
+    carried: true,
+    ...(Object.keys(retiring).length > 0 ? { retiring } : {}),
+  };
+  if (pos.isZero()) return fresh;
+  return {
+    ...fresh,
+    // Dựng lại lệnh ở giá đầu tiên như Resume (DEC-240), sau khi lệnh cũ kết thúc.
+    phase: "halted",
+    resumeOnTick: true,
+    safetiesFilled: s.safetiesFilled,
+    basePrice: s.basePrice ?? s.ledger.avgCost,
+    resumes: s.resumes ?? 0,
+  };
+}
+
+const dust = (c: DcaBotConfig, s: DcaBotState, ctx: StepContext): boolean => {
+  const rules = ctx.rules[c.market];
+  const pos = dec(s.ledger.position).abs();
+  return rules === undefined ? pos.isZero() : !dec(roundQty(pos, rules)).gt(0);
+};
+
+/**
+ * Vị thế xuất hiện sau khi áp version mới khi bot đang phẳng (fill muộn của lệnh cũ, #223): cùng hướng thì quản lý như
+ * Cycle đang dở (take profit + safety trong giới hạn một Cycle đầy đủ); ngược hướng thì không đặt lệnh nào, không tự
+ * đóng: ghi một lần và bật Needs attention để người dùng tự xử lý trên SoDEX.
+ */
+function adoptCarried(c: DcaBotConfig, s: DcaBotState, ctx: StepContext): StepResult<DcaBotState> {
+  const pos = dec(s.ledger.position);
+  if (pos.isPositive() === (c.direction === "long"))
+    return resumeDca(
+      c,
+      {
+        ...s,
+        phase: "halted",
+        cycle: Math.max(s.cycle, 1),
+        safetiesFilled: 0,
+        basePrice: s.ledger.avgCost,
+      },
+      ctx,
+    );
+  if (s.oppositeLogged === true) return { actions: [], state: s };
+  return {
+    actions: [
+      { type: "flag", needsAttention: true },
+      // Câu chữ PM duyệt 2026-11-18 (#223).
+      {
+        type: "log",
+        decision: "Waiting",
+        why: `The bot holds a ${pos.isPositive() ? "long" : "short"} position of ${pos.abs().toString()} from the previous settings, the other way from this bot. It places no orders for it. Close it on SoDEX; new cycles start once the bot is flat.`,
+      },
+    ],
+    state: { ...s, oppositeLogged: true },
+  };
+}
+
 export function dcaBotFor<C>(toDca: (c: C) => DcaBotConfig): StrategyModule<C, DcaBotState> {
   return {
     initialState: initialDcaState,
     step: (c, s, e, ctx) => stepDcaBot(toDca(c), s, e, ctx),
     waiting: (c, s) => dcaWaiting(toDca(c), s),
+    applyVersion: (c, s) => applyDcaVersion(toDca(c), s),
+    awaitsEnd: (s, id) => s.retiring?.[id] !== undefined,
   };
 }

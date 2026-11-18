@@ -15,6 +15,7 @@ import {
   localTime,
   maskAddress,
   maskAddressesIn,
+  msBetween,
   prettyJson,
   methodLabel,
   utcDateTime,
@@ -433,6 +434,7 @@ function ResponseTab({ d }: { d: SodexCallDetail }) {
       <Sect title={t("status")}>
         <Kv rows={rows} />
       </Sect>
+      <WsCloseSect d={d} />
       <Fold
         title={t("body")}
         {...(d.responseBodyBytes === null ? {} : { sub: t("bytes", { n: d.responseBodyBytes }) })}
@@ -462,6 +464,82 @@ function ResponseTab({ d }: { d: SodexCallDetail }) {
         )}
       </Fold>
     </>
+  );
+}
+
+/** WS CLOSE (#240): ai đóng, close code / reason, kết nối lại sau bao lâu, OPEN và SUB ack kế tiếp. */
+function WsCloseSect({ d }: { d: SodexCallDetail }) {
+  const t = useTranslations("sodexDebugger.detail.wsClose");
+  const tb = useTranslations("sodexDebugger.reportText.wsClose.by");
+  const to = useTranslations("sodexDebugger.outcome");
+  const r = d.wsReconnect;
+  if (r === null) return null;
+  const na = <span className="font-sans text-muted">{t("notAvailable")}</span>;
+  const c = r.close;
+  const rows: { k: string; v: ReactNode; mono?: boolean }[] = [];
+  if (c !== null) {
+    rows.push({ k: t("closedBy"), v: tb(c.closedBy) });
+    rows.push({ k: t("code"), v: c.code === null ? na : String(c.code) });
+    // Không có close frame (code null) thì reason là chưa biết, không phải rỗng (review #256).
+    rows.push({ k: t("reason"), v: c.code === null ? na : (c.reason ?? t("noReason")) });
+    rows.push({ k: t("openFor"), v: c.openForMs === null ? na : formatMs(c.openForMs) });
+    rows.push({
+      k: t("lastMessage"),
+      v:
+        c.lastMessageAgoMs === null
+          ? t("lastMessageNone")
+          : t("lastMessageValue", { value: formatMs(c.lastMessageAgoMs) }),
+    });
+    rows.push({
+      k: t("reconnect"),
+      v:
+        c.reconnectInMs === null
+          ? t("noReconnect")
+          : c.reconnectAttempt === null
+            ? t("reconnectValueNoAttempt", { value: formatMs(c.reconnectInMs) })
+            : t("reconnectValue", {
+                value: formatMs(c.reconnectInMs),
+                attempt: c.reconnectAttempt,
+              }),
+    });
+  }
+  rows.push({
+    k: t("nextOpen"),
+    v: !r.nextOpenAvailable ? (
+      // Cửa sổ 10 phút đã cũ hơn thời hạn giữ dòng ok: OPEN kế tiếp có thể đã bị xoá (review #256).
+      <span className="font-sans text-muted">{t("nextOpenExpired")}</span>
+    ) : r.nextOpen === null ? (
+      t("nextOpenNone")
+    ) : (
+      t("nextOpenValue", {
+        time: utcTime(r.nextOpen.at),
+        gap: formatMs(msBetween(d.at, r.nextOpen.at) ?? 0),
+        connId: r.nextOpen.connId ?? t("notAvailable"),
+      })
+    ),
+  });
+  if (r.nextOpen !== null) {
+    rows.push({
+      k: t("nextSubscribe"),
+      v:
+        r.nextSubscribes.length === 0
+          ? t("nextSubscribeNone")
+          : r.nextSubscribes.map((s) => (
+              <span key={s.id} className="basis-full">
+                {t("nextSubscribeValue", {
+                  time: utcTime(s.at),
+                  channel: s.endpoint,
+                  outcome: to(s.outcome),
+                  latency: formatMs(s.latencyMs),
+                }) + (s.sodexSays === null ? "" : ` · ${s.sodexSays}`)}
+              </span>
+            )),
+    });
+  }
+  return (
+    <Sect title={t("title")}>
+      <Kv rows={rows} />
+    </Sect>
   );
 }
 

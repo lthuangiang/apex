@@ -24,6 +24,7 @@ import {
   type Db,
 } from "@drift/db";
 import { AppError, dec, ErrorCode, ReasonCode } from "@drift/shared";
+import type { MmOrderContext } from "@drift/shared/mm-quote";
 import type { SignedWriteClient, SodexRestClient } from "@drift/sodex";
 import {
   clOrdId,
@@ -31,13 +32,14 @@ import {
   seededRandom,
   spotGrid,
   spotGridSchema,
+  STRATEGIES,
   type OrderIntent,
 } from "@drift/strategies";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Redis } from "ioredis";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   Engine as RealEngine,
@@ -226,9 +228,20 @@ class FakeGateway implements Gateway {
   readonly readsBy: string[] = [];
   /** Giả SoDEX lỗi khi đọc account state (ví dụ hết rate limit). */
   positionError: Error | null = null;
-  readPositions(a: AccountRef): Promise<Map<string, { size: string; entryPrice: string }>> {
+  /** Mỗi lần đọc account state: có phải lần đọc khẩn (mức thường, không bị phần dự trữ chặn) hay không. */
+  readonly positionReadsUrgent: boolean[] = [];
+  /** Số lần đọc account state kế tiếp sẽ lỗi `positionError` (null = mọi lần, khi `positionError` có). */
+  positionErrorTimes: number | null = null;
+  readPositions(
+    a: AccountRef,
+    opts?: ReadOptions,
+  ): Promise<Map<string, { size: string; entryPrice: string }>> {
     this.readsBy.push(a.id);
-    if (this.positionError !== null) return Promise.reject(this.positionError);
+    this.positionReadsUrgent.push(opts?.urgent === true);
+    if (this.positionError !== null && this.positionErrorTimes !== 0) {
+      if (this.positionErrorTimes !== null) this.positionErrorTimes -= 1;
+      return Promise.reject(this.positionError);
+    }
     return Promise.resolve(new Map(this.perpsPositions));
   }
   recentTradesCalls = 0;
@@ -1373,12 +1386,44 @@ describe("engine", () => {
       expect(rows.length).toBeGreaterThanOrEqual(2);
       for (const row of rows) {
         const ctx = mmOrderContextSchema.parse(row.context);
-        expect(ctx).toMatchObject({ v: 1, reason: "first", smart: smartQuoting, pos: "0" });
+        expect(ctx).toMatchObject({ v: 2, reason: "first", smart: smartQuoting, pos: "0" });
         expect(ctx.bp).not.toBeNull();
         expect(JSON.stringify(row.context).length).toBeLessThan(320);
       }
       await e.stop();
     });
+
+  it("stores a null context when the strategy's context is malformed, and still sends the order (#229)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const mod = STRATEGIES.volume_maker.module;
+    const real = mod.step.bind(mod);
+    // Chiến lược trả bối cảnh sai schema (v lạ, thiếu field) trên mọi lệnh đặt. Cố ý ép kiểu: mô phỏng chiến lược lỗi.
+    const malformed = { v: 99, reason: "nope", pos: 1 } as unknown as MmOrderContext;
+    const spy = vi.spyOn(mod, "step").mockImplementation((config, state, event, ctx) => {
+      const r = real(config, state, event, ctx);
+      return {
+        ...r,
+        actions: r.actions.map((a) => (a.type === "place" ? { ...a, context: malformed } : a)),
+      };
+    });
+    try {
+      const gw = new FakeGateway();
+      const { botId } = await seedBot("running", mmSmart(true));
+      const e = makeEngine(gw, "w-mm-ctx-bad");
+      await e.tick();
+      await e.onPrice("BTC-USD", "100000", clock);
+      expect(spy).toHaveBeenCalled();
+      const sent = gw.received.filter((o) => o.market === "BTC-USD");
+      expect(sent.length).toBeGreaterThanOrEqual(2);
+      for (const o of sent) expect(o).not.toHaveProperty("context");
+      const rows = await db.select().from(orders).where(eq(orders.botId, botId));
+      expect(rows.length).toBe(sent.length);
+      for (const row of rows) expect(row.context).toBeNull();
+      await e.stop();
+    } finally {
+      spy.mockRestore();
+    }
+  });
 
   it("logs Paused only when the pause changes the bot's state (DEC-256)", async () => {
     const { eq } = await import("drizzle-orm");
@@ -1541,10 +1586,13 @@ describe("engine", () => {
   it("applies an edited version: cancels old orders, activates v2 and re-places from the new config", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new FakeGateway();
-    const { botId } = await seedBot("running");
+    const { botId, accountId } = await seedBot("running");
     const e = makeEngine(gw, "w1");
     await e.tick();
     await e.onPrice("vBTC_vUSDC", "100", clock);
+    // Lệnh market khởi tạo hết hạn không khớp: v1 phẳng. Còn đang chạy thì version mới chờ nó (#223).
+    const init = gw.received.find((o) => o.tag === "grid:init")?.clOrdID ?? "";
+    await e.onOrderClosed(accountId, init, "cancelled", clock + 1);
     const before = gw.received.length;
     await db.insert(botVersions).values({
       botId,
@@ -1691,6 +1739,9 @@ describe("engine", () => {
     await b.onPrice("LEV-USD", "101", clock);
     expect(mine()).toHaveLength(1);
     expect(await logged()).toBe(1);
+    // Lệnh market khởi tạo hết hạn không khớp, để version mới không phải chờ nó (#223).
+    const init = gw.received.find((o) => o.tag === "grid:init" && o.market === "LEV-USD");
+    await b.onOrderClosed(accountId, init?.clOrdID ?? "", "cancelled", clock);
     // Version mới (đòn bẩy khác) vẫn đặt lại như trước.
     const [v2] = await db
       .insert(botVersions)
@@ -3628,9 +3679,12 @@ describe("engine", () => {
     await stopFarmBots();
   });
 
-  it("#239 prod replay (bot 01a1ebcb, ETH-USD): resuming repairs ledger +0.0957 vs SoDEX 0 from vf:103 using the stored since, places nothing, clears the flag", async () => {
+  /**
+   * Dữ liệu prod #239 của bot 01a1ebcb (ETH-USD): lệnh, fill, state của bản cũ (sổ cái +0.0957), cờ lệch đã lưu
+   * (`since` 04:14:57.736Z), bot pause ORDER_REJECTED. SoDEX bây giờ phẳng.
+   */
+  async function seedProd239() {
     const { eq } = await import("drizzle-orm");
-    const gw = new FakeGateway();
     // Resume lúc 06:00Z, sau sự cố (05:31) và sau khi cờ được ghi (04:14:57).
     clock = Math.max(clock, Date.parse("2026-11-18T06:00:00.000Z"));
     const t = (iso: string) => new Date(`2026-11-18T${iso}Z`);
@@ -3816,6 +3870,13 @@ describe("engine", () => {
         },
       })
       .where(eq(bots.id, botId));
+    return { botId, accountId, orphan };
+  }
+
+  it("#239 prod replay (bot 01a1ebcb, ETH-USD): resuming repairs ledger +0.0957 vs SoDEX 0 from vf:103 using the stored since, places nothing, clears the flag", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, orphan } = await seedProd239();
     // SoDEX bây giờ: phẳng.
     const e = farmEngine(gw, "prod-239");
     await e.tick();
@@ -3825,6 +3886,8 @@ describe("engine", () => {
       await e.tick();
       clock += 1_000;
     }
+    // Lần đọc vị thế để sửa sổ cái đi đường khẩn (không bị phần dự trữ chặn, v2.12.1).
+    expect(gw.positionReadsUrgent).toContain(true);
     const st = await farmState(botId);
     expect((await botState(botId))?.state).toBe("running");
     // Nhận vf:103 (bán 0.0957) theo `since` đã lưu (04:14:57), không theo giờ Resume (06:00): sổ cái về 0.
@@ -3843,6 +3906,345 @@ describe("engine", () => {
     expect(gw.received.slice(before).filter((o) => o.market === "ETH-USD")).toEqual([]);
     expect((await botState(botId))?.positionMismatch).toBeNull();
     expect((await botState(botId))?.state).toBe("running");
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  const rateLimited = () =>
+    new AppError(ErrorCode.rateLimited, "SoDEX rate limit reached", { retryAfterMs: 174 });
+
+  it("#239 v2.12.1 prod replay: the repair read is RATE_LIMITED on Resume, so the bot stays resuming and sends nothing; the next sync repairs it", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, orphan } = await seedProd239();
+    const e = farmEngine(gw, "prod-239-rl");
+    await e.tick();
+    const before = gw.received.length;
+    // Prod 2026-11-18: readPositions ném RATE_LIMITED (retryAfterMs 174) ở #repairOnLoad.
+    gw.positionError = rateLimited();
+    gw.positionErrorTimes = null;
+    await db.update(bots).set({ state: "resuming", reasonCode: null }).where(eq(bots.id, botId));
+    const urgentReads = () => gw.positionReadsUrgent.filter((x) => x).length;
+    const stillWaiting = async () => {
+      // Còn `resuming`, sổ cái chưa sửa, không lệnh nào (trước đây: Running + 30 lệnh bán reduce-only).
+      expect((await botState(botId))?.state).toBe("resuming");
+      expect((await farmState(botId))?.ledger.position).toBe("0.0957");
+      expect(gw.received.slice(before)).toEqual([]);
+    };
+    await e.tick();
+    await stillWaiting();
+    expect(urgentReads()).toBe(1);
+    // Không ngủ, không đọc lại ngay: lần sau sau 10 s (nấc đầu, dài hơn retryAfterMs 174 ms).
+    clock += 5_000;
+    await e.tick();
+    await stillWaiting();
+    expect(urgentReads()).toBe(1);
+    clock += 6_000;
+    await e.tick();
+    await stillWaiting();
+    expect(urgentReads()).toBe(2);
+    // Nấc thứ hai 20 s; lần đó đọc được: nhận vf:103, sổ cái 0, Running, không gửi gì.
+    gw.positionError = null;
+    clock += 21_000;
+    for (let i = 0; i < 3 && (await botState(botId))?.state !== "running"; i += 1) {
+      await e.tick();
+      clock += 1_000;
+    }
+    expect((await botState(botId))?.state).toBe("running");
+    expect(dec((await farmState(botId))?.ledger.position ?? "1").isZero()).toBe(true);
+    expect((await farmState(botId))?.orders[orphan]).toMatchObject({ kind: "exit", side: "sell" });
+    for (let i = 0; i < 4; i += 1) {
+      clock += 30_000;
+      await e.tick();
+    }
+    expect(gw.received.slice(before).filter((o) => o.market === "ETH-USD")).toEqual([]);
+    expect((await botState(botId))?.positionMismatch).toBeNull();
+    gw.positionError = null;
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("v2.12.1: after an engine restart a running Volume Farm bot with a mismatch takes no market step until the repair read succeeds, and says so after 5 minutes", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedProd239();
+    // Bot đang chạy khi engine khởi động lại (state cũ: đang thoát, sổ cái +0.0957, SoDEX phẳng).
+    await db.update(bots).set({ state: "running", reasonCode: null }).where(eq(bots.id, botId));
+    gw.positionError = rateLimited();
+    gw.positionErrorTimes = null;
+    const e = farmEngine(gw, "prod-239-restart");
+    const before = gw.received.length;
+    for (let i = 0; i < 12; i += 1) {
+      await e.tick();
+      clock += 30_000;
+    }
+    // Đọc lỗi suốt 6 phút: không bước nào theo thị trường, không lệnh nào; một dòng Decisions + Needs attention.
+    expect(gw.received.slice(before)).toEqual([]);
+    expect((await farmState(botId))?.ledger.position).toBe("0.0957");
+    const waits = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.decision === "Waiting to check the position on SoDEX",
+    );
+    expect(waits).toHaveLength(1);
+    expect((await botState(botId))?.needsAttention).toBe(true);
+    // Báo team (warning, DEC-313) một lần.
+    expect((await teamIncidents(botId)).filter((x) => x.kind === "repair_waiting")).toHaveLength(1);
+    // Đọc theo nhịp 10 / 20 / 30 s, không mỗi vòng: tối đa ~6 lần / phút (6 phút → ≤ 14 lần đọc khẩn).
+    expect(gw.positionReadsUrgent.filter((x) => x).length).toBeLessThanOrEqual(14);
+    // Đọc được: sửa sổ cái, vẫn không gửi gì; ghi "Position checked on SoDEX" và bỏ Needs attention của lần chờ.
+    gw.positionError = null;
+    for (let i = 0; i < 4; i += 1) {
+      await e.tick();
+      clock += 30_000;
+    }
+    expect(dec((await farmState(botId))?.ledger.position ?? "1").isZero()).toBe(true);
+    expect(gw.received.slice(before).filter((o) => o.market === "ETH-USD")).toEqual([]);
+    const checked = (await db.select().from(botEvents).where(eq(botEvents.botId, botId))).filter(
+      (x) => x.decision === "Position checked on SoDEX",
+    );
+    expect(checked).toHaveLength(1);
+    expect(checked[0]?.why).toBe(
+      "DeskLabs read this bot's position on SoDEX and checked its ledger.",
+    );
+    // Needs attention giữ nguyên (người dùng tự bỏ, PM chốt #253).
+    expect((await botState(botId))?.needsAttention).toBe(true);
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("v2.12.1: never sends a reduce-only order on a mismatched Volume Farm market whose real position is 0", async () => {
+    const { eq, and } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId, accountId } = await seedProd239();
+    // Không có lệnh nào giải thích được độ lệch: bỏ lệnh vf:103 khỏi DB như một sổ cái sai không sửa được.
+    await db.delete(fills).where(
+      eq(
+        fills.orderId,
+        (
+          await db
+            .select({ id: orders.id })
+            .from(orders)
+            .where(and(eq(orders.sodexAccountId, accountId), eq(orders.tag, "vf:103:in:0")))
+        )[0]?.id ?? "",
+      ),
+    );
+    await db
+      .delete(orders)
+      .where(and(eq(orders.sodexAccountId, accountId), eq(orders.tag, "vf:103:in:0")));
+    const e = farmEngine(gw, "prod-239-zero");
+    await e.tick();
+    const before = gw.received.length;
+    await db.update(bots).set({ state: "resuming", reasonCode: null }).where(eq(bots.id, botId));
+    for (let i = 0; i < 8; i += 1) {
+      await e.tick();
+      clock += 20_000;
+    }
+    // Sổ cái vẫn +0.0957 (không sửa được) nhưng SoDEX = 0: không gửi lệnh bán reduce-only nào, không pause.
+    expect((await botState(botId))?.state).toBe("running");
+    expect((await farmState(botId))?.ledger.position).toBe("0.0957");
+    expect(gw.received.slice(before).filter((o) => o.market === "ETH-USD" && o.reduceOnly)).toEqual(
+      [],
+    );
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  /** Bot Volume Farm đang chạy, sổ cái +0.5 BTC-like, cờ lệch đã lưu (`real` cho trước): như sau khi engine khởi động lại. */
+  async function seedWaitingFarm(
+    market: string,
+    storedReal: string,
+    extra: Record<string, unknown> = {},
+  ) {
+    const { eq } = await import("drizzle-orm");
+    const { botId, accountId } = await seedFarm(market);
+    const [b] = await db.select().from(bots).where(eq(bots.id, botId));
+    await db.insert(botRuntime).values({
+      botId,
+      versionId: b?.activeVersionId ?? "",
+      epoch: 1,
+      state: {
+        phase: "open",
+        cycle: 3,
+        ledger: {
+          position: "0.5",
+          avgCost: "100",
+          realized: "0",
+          fees: "0",
+          funding: "0",
+          invested: "50",
+        },
+        lastPrice: "100",
+        book: null,
+        bookAt: null,
+        orders: {},
+        entry: null,
+        exit: null,
+        exitReason: null,
+        exitForce: false,
+        openedAt: clock - 600_000,
+        holdUntil: clock - 300_000,
+        holdSecs: 120,
+        cooldownUntil: 0,
+        unfilled: 0,
+        exitUnfilled: 0,
+        lastSide: null,
+        netExposure: "0",
+        openRealized: "0",
+        openFees: "0",
+        volume: "0",
+        trades: 0,
+        wins: 0,
+        lastSkip: null,
+        lastSignal: null,
+        xstop: null,
+        xstopOff: true,
+        ...extra,
+      },
+    });
+    await db
+      .update(bots)
+      .set({
+        positionMismatch: {
+          [market]: {
+            real: storedReal,
+            ledger: "0.5",
+            since: new Date(clock - 3_600_000).toISOString(),
+            cause: "trades",
+          },
+        },
+      })
+      .where(eq(bots.id, botId));
+    return { botId, accountId };
+  }
+
+  it("v2.12.1 (review #253): waiting bots never sleep in the sync, read at most about 6 times a minute each, and stay inside the urgent budget", async () => {
+    const gw = new FakeGateway();
+    const ids: string[] = [];
+    for (const m of ["W1-USD", "W2-USD", "W3-USD", "W4-USD", "W5-USD"])
+      ids.push((await seedWaitingFarm(m, "0.5")).accountId);
+    gw.positionError = rateLimited();
+    gw.positionErrorTimes = null;
+    const e = farmEngine(gw, "repair-pace");
+    let slowest = 0;
+    for (let i = 0; i < 60; i += 1) {
+      const t0 = Date.now();
+      await e.tick();
+      slowest = Math.max(slowest, Date.now() - t0);
+      clock += 1_000;
+    }
+    // Không có `setTimeout` trong vòng: 5 bot chờ không cộng thêm 5 s vào một vòng.
+    expect(slowest).toBeLessThan(3_000);
+    // Mỗi bot: lần đầu + 10 s + 20 s + 30 s … → ≤ 6 lần đọc khẩn / phút.
+    for (const a of ids) {
+      const urgent = gw.readsBy.filter((x, i) => x === a && gw.positionReadsUrgent[i] === true);
+      expect(urgent.length).toBeGreaterThanOrEqual(2);
+      expect(urgent.length).toBeLessThanOrEqual(6);
+    }
+    gw.positionError = null;
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("v2.12.1 (review #253): an entry awaiting cancel confirmation is cancelled again while the bot waits for the repair read", async () => {
+    const gw = new FakeGateway();
+    const id = `chased-${String(Math.random())}`;
+    const { botId, accountId } = await seedWaitingFarm("CHS-USD", "0.5", {
+      orders: { [id]: { kind: "entry", side: "buy", qty: "1", cancelAt: clock - 30_000 } },
+    });
+    await db.insert(orders).values({
+      botId,
+      sodexAccountId: accountId,
+      clOrdId: id,
+      market: "CHS-USD",
+      engine: "perps",
+      side: "buy",
+      type: "limit",
+      price: "99",
+      timeInForce: "GTX",
+      size: "1",
+      status: "open",
+      reduceOnly: false,
+      epoch: 1,
+      tag: "vf:4:in:0",
+      submittedAt: new Date(clock - 60_000),
+      ackedAt: new Date(clock - 60_000),
+    });
+    gw.positionError = rateLimited();
+    gw.positionErrorTimes = null;
+    gw.cancelOutcome = "unknown";
+    const e = farmEngine(gw, "repair-chase");
+    try {
+      for (let i = 0; i < 16 && !gw.cancelled.includes(id); i += 1) {
+        await e.tick();
+        clock += 1_000;
+      }
+      expect(gw.cancelled).toContain(id);
+    } finally {
+      gw.positionError = null;
+      gw.cancelOutcome = "ok";
+      await e.stop();
+      await stopFarmBots();
+    }
+  });
+
+  it("v2.12.1 (review #253): a stale stored real of 0 never blocks an exit once the repair read shows the position", async () => {
+    const gw = new FakeGateway();
+    await seedCandles("STL-USD");
+    await seedWaitingFarm("STL-USD", "0");
+    // SoDEX có đúng vị thế bot theo dõi: lần kiểm tra sửa sổ cái cập nhật `real` dù đã khớp.
+    gw.perpsPositions.set("STL-USD", { size: "0.5", entryPrice: "100" });
+    const e = farmEngine(gw, "repair-stale");
+    for (
+      let i = 0;
+      i < 6 && !gw.received.some((o) => o.market === "STL-USD" && o.reduceOnly && !o.stop);
+      i += 1
+    ) {
+      await e.tick();
+      clock += 3_000;
+    }
+    // Hết thời gian giữ: lệnh thoát reduce-only được gửi (trước đây `real` 0 cũ bỏ nó).
+    expect(
+      gw.received.some(
+        (o) => o.market === "STL-USD" && o.reduceOnly && o.stop === undefined && o.side === "sell",
+      ),
+    ).toBe(true);
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("v2.12.1 (review #253): a reduce-only stop stripped because the real position is 0 is reported to the strategy as not placed", async () => {
+    const gw = new FakeGateway();
+    // Cờ lệch với `real` 0 đã lưu, SoDEX vẫn 0, sổ cái long 0.5 không sửa được; lượt đang mở chưa có stop trên SoDEX.
+    const { botId } = await seedWaitingFarm("PHT-USD", "0", {
+      xstopOff: false,
+      holdUntil: clock + 3_600_000,
+    });
+    const e = farmEngine(gw, "repair-phantom");
+    for (let i = 0; i < 6; i += 1) {
+      await e.tick();
+      clock += 3_000;
+    }
+    // Không lệnh reduce-only nào tới SoDEX; chiến lược biết stop không được đặt (không có lệnh "ma").
+    expect(gw.received.filter((o) => o.market === "PHT-USD" && o.reduceOnly)).toEqual([]);
+    const st = (await farmState(botId)) as
+      { xstop?: { id: string } | null; xstopOff?: boolean; exit: unknown } | undefined;
+    expect(st?.xstop ?? null).toBeNull();
+    expect(st?.xstopOff).toBe(true);
+    expect(st?.exit ?? null).toBeNull();
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("v2.12.1 (review #253): a bot loaded as starting never waits for a repair read", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new FakeGateway();
+    const { botId } = await seedWaitingFarm("STA-USD", "0.5");
+    await db.update(bots).set({ state: "starting" }).where(eq(bots.id, botId));
+    const e = farmEngine(gw, "repair-starting");
+    for (let i = 0; i < 3; i += 1) {
+      await e.tick();
+      clock += 1_000;
+    }
+    expect(gw.positionReadsUrgent).not.toContain(true);
     await e.stop();
     await stopFarmBots();
   });
@@ -8617,7 +9019,7 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
     await finish(e, botId);
   });
 
-  it("flags a position the bot stopped tracking after a settings change (its own line), and the grid waits instead of adding (B2)", async () => {
+  it("keeps the grid position across a settings change: no second starting buy, no alert (#223, replaces B2)", async () => {
     const { eq } = await import("drizzle-orm");
     const gw = new PosGateway();
     const { botId, e } = await running(gw, "pos-ver");
@@ -8627,38 +9029,233 @@ describe("position check: real SoDEX position vs the bot ledger (DEC-306)", () =
       version: 2,
       paramSource: "manual",
       status: "pending",
-      config: v1?.config ?? {},
+      config: { ...(v1?.config as Record<string, unknown>), maxLoss: "150" },
     });
-    await step(e); // áp v2: sổ cái bắt đầu lại (0) trong khi SoDEX còn long 2
+    await step(e); // áp v2: sổ cái giữ long 2, khớp SoDEX
     expect(
       (await db.select().from(botVersions).where(eq(botVersions.botId, botId))).find(
         (v) => v.status === "active",
       )?.version,
     ).toBe(2);
-    await step(e);
-    await step(e);
-    await step(e);
-    const lines = await eventsOf(botId);
-    const untracked = (await allEvents(botId)).filter((x) => x.decision === "Position not tracked");
-    expect(lines).toEqual([]);
-    expect(untracked.map((x) => x.why)).toEqual([
-      "Settings changed while your BTC-USD position (2) was open, so the bot no longer tracks it. The bot won't start new trades that add to it, and a grid may wait to start until it's closed. Close or manage the position on SoDEX.",
-    ]);
-    expect((await botState(botId))?.positionMismatch?.["BTC-USD"]?.cause).toBe("version");
-    // Grid v2 muốn mua vị thế ban đầu (tăng |vị thế|): bỏ cả bước, không gửi gì, không ghi thêm.
-    // (Đòn bẩy của v2 vẫn được đặt một lần trước bước chiến lược: không mở vị thế.)
+    expect(await ledgerOf(botId)).toBe("2");
+    const applied = (await allEvents(botId)).find((x) => x.decision === "Applied v2");
+    expect(applied?.why).toMatch(
+      /^Cancelled \d+ orders and kept the open position; new orders for it follow on the next price\.$/,
+    );
+    // Giá đầu tiên: grid v2 dựng lệnh quanh vị thế, không mua lại vị thế ban đầu, chỉ bán phần đang giữ.
     const sent = gw.received.length;
-    const lines2 = async () =>
-      (await allEvents(botId)).filter((x) => x.decision !== "Leverage set").length;
-    const count = await lines2();
-    for (let i = 0; i < 3; i += 1) {
-      clock += 1_000;
-      await e.onPrice("BTC-USD", "100", clock);
-    }
-    expect(gw.received.length).toBe(sent);
-    expect(await lines2()).toBe(count);
-    expect((await botState(botId))?.state).toBe("running");
+    clock += 1_000;
+    await e.onPrice("BTC-USD", "100", clock);
+    const placed = gw.received.slice(sent);
+    expect(placed.some((o) => o.type === "market" || o.tag === "grid:init")).toBe(false);
+    expect(placed.map((o) => `${o.side}@${o.price ?? ""}`).sort()).toEqual(
+      ["buy@90", "buy@95", "sell@105", "sell@110"].sort(),
+    );
+    expect(placed.every((o) => o.clOrdID.split("-")[1] === "2")).toBe(true);
+    for (let i = 0; i < 4; i += 1) await step(e);
+    const lines = await allEvents(botId);
+    expect(lines.some((x) => x.decision === "Position not tracked")).toBe(false);
+    expect(await eventsOf(botId)).toEqual([]);
+    expect((await botState(botId))?.positionMismatch).toBeNull();
+    expect(await ledgerOf(botId)).toBe("2");
     await finish(e, botId);
+  });
+
+  const pendingV2 = async (botId: string, patch: Record<string, unknown>) => {
+    const { eq } = await import("drizzle-orm");
+    const [v1] = await db.select().from(botVersions).where(eq(botVersions.botId, botId));
+    await db.insert(botVersions).values({
+      botId,
+      version: 2,
+      paramSource: "manual",
+      status: "pending",
+      config: { ...(v1?.config as Record<string, unknown>), ...patch },
+    });
+  };
+  const activeVersion = async (botId: string) => {
+    const { eq } = await import("drizzle-orm");
+    return (await db.select().from(botVersions).where(eq(botVersions.botId, botId))).find(
+      (v) => v.status === "active",
+    )?.version;
+  };
+
+  it("cancels a v1 order that a fill placed while the apply was cancelling, and builds v2 only around the real position (#223 M1)", async () => {
+    const gw = new PosGateway();
+    const { botId, accountId, e, tag } = await running(gw, "pos-m1");
+    await pendingV2(botId, { maxLoss: "150" });
+    let release: () => void = () => undefined;
+    gw.holdCancel = new Promise<void>((r) => {
+      release = r;
+    });
+    const applying = step(e);
+    for (let i = 0; i < 200 && !gw.cancelHeld; i += 1) await new Promise((r) => setTimeout(r, 10));
+    expect(gw.cancelHeld).toBe(true);
+    // Mua 95 của v1 khớp đúng lúc engine đang huỷ: bước của v1 đặt lệnh bán đối ứng.
+    const before = gw.received.length;
+    await e.onFill(accountId, tag("grid:1:buy"), "1", "95", "0", clock);
+    gw.perpsPositions.set("BTC-USD", { size: "3", entryPrice: "98" });
+    const counter = gw.received.slice(before).find((o) => o.side === "sell");
+    expect(counter?.clOrdID.split("-")[1]).toBe("1");
+    release();
+    await applying;
+    expect(await activeVersion(botId)).toBe(2);
+    expect(gw.cancelled).toContain(counter?.clOrdID);
+    expect(await ledgerOf(botId)).toBe("3");
+    const sent = gw.received.length;
+    clock += 1_000;
+    await e.onPrice("BTC-USD", "100", clock);
+    const placed = gw.received.slice(sent);
+    const qty = (side: string) =>
+      placed.filter((o) => o.side === side).reduce((a, o) => a.add(o.quantity), dec("0"));
+    expect(placed.length).toBeGreaterThan(0);
+    expect(placed.every((o) => o.clOrdID.split("-")[1] === "2" && o.type !== "market")).toBe(true);
+    expect(qty("sell").lte(3)).toBe(true);
+    expect(qty("buy").add(3).lte(5)).toBe(true);
+    await finish(e, botId);
+  });
+
+  it("applies a waiting version once the engine gives up an unknown starting order and reports it done (#223 M3)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new PosGateway();
+    const { botId } = await seedBot("running", grid);
+    const e = posEngine(gw, "pos-m3");
+    await e.tick();
+    gw.timeoutNext = "lost";
+    await e.onPrice("BTC-USD", "100", clock);
+    const [row] = (await db.select().from(orders).where(eq(orders.botId, botId))).filter(
+      (o) => o.tag === "grid:init",
+    );
+    const init = row?.clOrdId ?? "";
+    expect(row?.status).toBe("unknown");
+    await pendingV2(botId, { maxLoss: "150" });
+    await step(e, 1_000);
+    expect(await activeVersion(botId)).toBe(1);
+    expect((await allEvents(botId)).find((x) => x.decision === "Applying v2")?.why).toBe(
+      "Waits for an order in flight to finish or the open position to close; v1 keeps managing the bot until then. No orders were cancelled.",
+    );
+    await db
+      .update(orders)
+      .set({ sodexOrderId: 78n, missingConfirmedAt: new Date(clock - 11 * 60_000) })
+      .where(eq(orders.clOrdId, init));
+    for (let i = 0; i < 8 && (await activeVersion(botId)) !== 2; i += 1) await step(e, 60_000);
+    expect(
+      (await db.select().from(orders).where(eq(orders.clOrdId, init)))[0]?.unknownGaveUpAt,
+    ).not.toBeNull();
+    expect(await activeVersion(botId)).toBe(2);
+    await finish(e, botId);
+  });
+
+  it("retries the given-up booking when the trades read failed, so a waiting version still applies (#223 re-review minor 2)", async () => {
+    const { eq } = await import("drizzle-orm");
+    let failTrades = true;
+    const gw = new (class extends PosGateway {
+      override recentTrades(a: AccountRef): Promise<(OrderTrade & { clOrdID: string })[]> {
+        return failTrades ? Promise.reject(new Error("SoDEX down")) : super.recentTrades(a);
+      }
+    })();
+    const { botId } = await seedBot("running", grid);
+    const e = posEngine(gw, "pos-m3-retry");
+    await e.tick();
+    gw.timeoutNext = "lost";
+    await e.onPrice("BTC-USD", "100", clock);
+    const [row] = (await db.select().from(orders).where(eq(orders.botId, botId))).filter(
+      (o) => o.tag === "grid:init",
+    );
+    const init = row?.clOrdId ?? "";
+    await pendingV2(botId, { maxLoss: "150" });
+    await db
+      .update(orders)
+      .set({ sodexOrderId: 79n, missingConfirmedAt: new Date(clock - 11 * 60_000) })
+      .where(eq(orders.clOrdId, init));
+    for (let i = 0; i < 4; i += 1) await step(e, 60_000);
+    const gaveUp = (await db.select().from(orders).where(eq(orders.clOrdId, init)))[0];
+    expect(gaveUp?.unknownGaveUpAt).not.toBeNull();
+    expect(gaveUp?.doneFedAt).toBeNull();
+    expect(await activeVersion(botId)).toBe(1);
+    failTrades = false;
+    for (let i = 0; i < 4 && (await activeVersion(botId)) !== 2; i += 1) await step(e, 60_000);
+    expect(
+      (await db.select().from(orders).where(eq(orders.clOrdId, init)))[0]?.doneFedAt,
+    ).not.toBeNull();
+    expect(await activeVersion(botId)).toBe(2);
+    await finish(e, botId);
+  });
+
+  const dca = {
+    strategy: "futures_dca",
+    market: "BTC-USD",
+    engine: "perps" as const,
+    config: {
+      market: "BTC-USD",
+      leverage: 2,
+      marginMode: "cross",
+      direction: "long",
+      baseOrder: "100",
+      safetyOrder: "100",
+      maxSafetyOrders: 2,
+      firstStepPct: "2",
+      stepMultiplier: "1",
+      sizeMultiplier: "1",
+      takeProfitPct: "1",
+      stopLossPct: "10",
+    },
+  };
+  /** Bot Futures DCA đang chạy: base 2 BTC đã khớp ở 100, safety + take profit trên sổ. */
+  async function dcaRunning(gw: PosGateway, id: string) {
+    const { botId, accountId } = await seedBot("running", dca);
+    const e = posEngine(gw, id);
+    await e.tick();
+    await e.onPrice("BTC-USD", "100", clock);
+    const base = gw.received.find((o) => o.tag === "dca:1:base")?.clOrdID ?? "";
+    clock += 100;
+    await e.onFill(accountId, base, "2", "100", "0", clock);
+    await e.onOrderClosed(accountId, base, "filled", clock);
+    gw.perpsPositions.set("BTC-USD", { size: "2", entryPrice: "100" });
+    expect(await ledgerOf(botId)).toBe("2");
+    return { botId, accountId, e };
+  }
+
+  it("Futures DCA end to end: the new version keeps the position, waits for v1 orders, then rebuilds a reduce-only take profit (#223)", async () => {
+    const gw = new PosGateway();
+    const { botId, e } = await dcaRunning(gw, "pos-dca");
+    expect(gw.received.some((o) => o.tag.startsWith("dca:1:tp"))).toBe(true);
+    await pendingV2(botId, { takeProfitPct: "2" });
+    await step(e, 1_000);
+    expect(await activeVersion(botId)).toBe(2);
+    expect(await ledgerOf(botId)).toBe("2");
+    expect((await allEvents(botId)).find((x) => x.decision === "Applied v2")?.why).toMatch(
+      /kept the open position/,
+    );
+    const sent = gw.received.length;
+    clock += 1_000;
+    await e.onPrice("BTC-USD", "100", clock);
+    const placed = gw.received.slice(sent);
+    expect(placed.some((o) => o.type === "market")).toBe(false);
+    expect(placed.find((o) => o.side === "sell")).toMatchObject({
+      price: "102",
+      quantity: "2",
+      reduceOnly: true,
+    });
+    expect(placed.every((o) => o.clOrdID.split("-")[1] === "2")).toBe(true);
+    await finish(e, botId);
+  });
+
+  it("Stop while a DCA direction flip waits: the bot stops on v1 and v2 never runs (#223)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const gw = new PosGateway();
+    const { botId, e } = await dcaRunning(gw, "pos-dca-stop");
+    await pendingV2(botId, { direction: "short" });
+    await step(e, 1_000);
+    expect(await activeVersion(botId)).toBe(1);
+    expect((await allEvents(botId)).some((x) => x.decision === "Applying v2")).toBe(true);
+    const sent = gw.received.length;
+    await db.update(bots).set({ state: "stopping" }).where(eq(bots.id, botId));
+    for (let i = 0; i < 4 && (await botState(botId))?.state !== "stopped"; i += 1)
+      await step(e, 1_000);
+    expect((await botState(botId))?.state).toBe("stopped");
+    expect(gw.received.slice(sent).filter((o) => o.clOrdID.split("-")[1] === "2")).toEqual([]);
+    expect(await activeVersion(botId)).toBe(1);
+    await e.stop();
   });
 
   it("uses the normal tiers (with a trades read) when the replaced ledger was flat (N2)", async () => {

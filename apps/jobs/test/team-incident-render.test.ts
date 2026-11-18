@@ -86,6 +86,7 @@ describe("team incident message", () => {
       ["cancel_unconfirmed", "🚨 CRITICAL · <b>Cancel not confirmed for 10 min</b>"],
       ["ledger_repaired", "✅ INFO · <b>Bot ledger repaired from its own fill</b>"],
       ["orphan_cancelled", "⚠️ WARNING · <b>Untracked order cancelled</b>"],
+      ["repair_waiting", "⚠️ WARNING · <b>Bot waiting to check its position on SoDEX</b>"],
     ] as const;
     for (const [kind, title] of cases) {
       const r = renderTelegram(

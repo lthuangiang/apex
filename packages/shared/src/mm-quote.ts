@@ -125,12 +125,18 @@ export const MM_ORDER_REASONS = [...MM_QUOTE_REASONS, "stop", "dust"] as const;
  * nhận huỷ, DEC-257). Gọn (~200 byte) vì mỗi lệnh một bản. Chỉ server / trang team; API không gửi cột này.
  */
 export const mmOrderContextSchema = z.object({
-  v: z.literal(1),
+  /** 1: bản đầu (#233). 2: thêm `bookAgeMs` (#229). Trang team đọc được cả hai. */
+  v: z.union([z.literal(1), z.literal(2)]),
   reason: z.enum(MM_ORDER_REASONS),
   /** Mid sổ SoDEX bot đang giữ; không có sổ (hoặc sổ chéo) thì giá khớp gần nhất bot dùng làm mid (`bid` / `ask` null). */
   mid: decimal.nullable(),
   bid: decimal.nullable(),
   ask: decimal.nullable(),
+  /**
+   * Tuổi sổ SoDEX (ms) lúc đặt, như `book.ageMs` của snapshot báo giá; null khi không theo sổ (`bid` / `ask` null). Chỉ
+   * có từ v2; lệnh v1 không có field này.
+   */
+  bookAgeMs: ms.nullable().optional(),
   /** Giá Binance quy đổi gần nhất (chỉ Smart quoting nhận) và tuổi theo giờ Binance (ms). */
   fair: decimal.nullable(),
   fairAgeMs: ms.nullable(),

@@ -24,6 +24,46 @@ export const SODEX_CALL_OUTCOMES = Object.values(SodexCallOutcome) as [
 export const SodexCallKind = { rest: "rest", ws: "ws" } as const;
 export type SodexCallKind = (typeof SodexCallKind)[keyof typeof SodexCallKind];
 
+/** Ai đóng kết nối WS user stream (#240). */
+export const SodexWsClosedBy = {
+  /** SoDEX gửi close frame. */
+  server: "server",
+  /** Kết nối đứt không có close frame (code 1006) hoặc lỗi WebSocket. */
+  network: "network",
+  /** DeskLabs đóng (tắt service, hoặc sau một subscribe bị từ chối). */
+  client: "client",
+  /** DeskLabs đóng vì SoDEX không trả pong. */
+  timeout: "timeout",
+} as const;
+export type SodexWsClosedBy = (typeof SodexWsClosedBy)[keyof typeof SodexWsClosedBy];
+
+/**
+ * Chi tiết một sự kiện WS CLOSE (#240), lưu dạng JSON ở `response_body` của dòng CLOSE (không thêm cột, DEC-309).
+ * Không có secret: code / reason là close frame của SoDEX, phần còn lại là thời gian do DeskLabs đo.
+ */
+export const sodexWsCloseInfoSchema = z.object({
+  closedBy: z.enum([
+    SodexWsClosedBy.server,
+    SodexWsClosedBy.network,
+    SodexWsClosedBy.client,
+    SodexWsClosedBy.timeout,
+  ]),
+  /** Close code của close frame (1000, 1006…); `null` khi chưa nhận close event (DeskLabs tự đóng). */
+  code: z.number().int().nullable(),
+  /** Close reason SoDEX gửi; `null` khi rỗng hoặc không có. */
+  reason: z.string().nullable(),
+  wasClean: z.boolean().nullable(),
+  /** Kết nối đã mở bao lâu (từ lúc tạo socket). */
+  openForMs: z.number().int().nonnegative().nullable(),
+  /** Tin cuối cùng nhận được cách lúc đóng bao lâu; `null` khi chưa nhận tin nào. */
+  lastMessageAgoMs: z.number().int().nonnegative().nullable(),
+  /** Thời gian chờ trước khi kết nối lại (backoff); `null` khi không kết nối lại. */
+  reconnectInMs: z.number().int().nonnegative().nullable(),
+  /** Lần kết nối lại thứ mấy kể từ lần subscribe đủ gần nhất (1 = lần đầu). */
+  reconnectAttempt: z.number().int().positive().nullable(),
+});
+export type SodexWsCloseInfo = z.infer<typeof sodexWsCloseInfoSchema>;
+
 /** Vì sao một lời gọi là `unreadable`; UI chọn câu giải thích theo mã này. */
 export const SodexUnreadableReason = {
   invalidJson: "invalid_json",
@@ -174,6 +214,20 @@ export const sodexCallDetailSchema = sodexCallItemSchema.extend({
   accountUserId: z.uuid().nullable(),
   /** Kết nối WS user stream của cùng account + engine đang mở lúc này (REST) hoặc của chính sự kiện (WS). */
   wsConn: z.object({ connId: z.string(), open: z.boolean() }).nullable(),
+  /**
+   * Chỉ với WS CLOSE (#240): chi tiết đóng (null với dòng ghi trước #240) và kết nối kế tiếp của cùng account + engine
+   * (OPEN đầu tiên trong 10 phút sau lúc đóng, cùng các SUB ack của kết nối đó). `null` với mọi dòng khác.
+   * `nextOpenAvailable: false` khi cửa sổ 10 phút đã cũ hơn thời hạn giữ dòng ok (3 ngày): OPEN kế tiếp có thể đã bị
+   * xoá, nên không tra và UI / báo cáo hiện "Not available" thay vì "none recorded" (review #256).
+   */
+  wsReconnect: z
+    .object({
+      close: sodexWsCloseInfoSchema.nullable(),
+      nextOpenAvailable: z.boolean(),
+      nextOpen: sodexCallItemSchema.nullable(),
+      nextSubscribes: z.array(sodexCallItemSchema),
+    })
+    .nullable(),
   /** Lời gọi cùng traceId hoặc clOrdID trong ±10 phút, cũ trước. */
   related: z.array(sodexCallItemSchema),
   /** Builder ID của DeskLabs cho báo cáo; `null` khi chưa cấu hình. */

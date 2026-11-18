@@ -1,9 +1,13 @@
 "use client";
 
-import type { SignalHiddenLead, SignalSuggestion } from "@drift/shared";
+import type { SignalBotFacet, SignalHiddenLead, SignalSuggestion } from "@drift/shared";
 import { AlertTriangle, Info, RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRef, type KeyboardEvent, type ReactNode } from "react";
+
+import { shortId } from "@/features/bots/bot-picker";
+
+import { monthDay } from "../format";
 
 // Thành phần nhỏ dùng chung của Signal Analysis.
 
@@ -546,4 +550,80 @@ export function useKeepSelected() {
     const name = names.current.get(selected) ?? fallback?.(selected) ?? selected;
     return [...options, { value: selected, label: t("noFills", { name }) }];
   };
+}
+
+/**
+ * Bộ chọn bot của tab VB / MM: select gốc (a11y), mỗi account một `<optgroup>` ("Account ··{tail}", DEC-288: không
+ * email), nhóm theo nhãn account, bot mới nhất trước. Mỗi dòng "{name} · {created} · {id}" như bộ chọn bot của Trading
+ * Agent (DEC-294); ngày theo múi giờ của trang (trình duyệt, hoặc UTC khi bật Show in UTC). Bot đang chọn mà kỳ mới
+ * không có fill vẫn hiện, ghi "(no fills in this range)", trong nhóm account của nó.
+ */
+export function BotSelect({
+  label,
+  allLabel,
+  bots,
+  value,
+  tz,
+  onChange,
+}: {
+  label: string;
+  allLabel: string;
+  bots: readonly SignalBotFacet[];
+  value: string | null;
+  tz: string;
+  onChange: (id: string | null) => void;
+}) {
+  const t = useTranslations("signalAnalysis");
+  const seen = useRef(new Map<string, SignalBotFacet>());
+  for (const b of bots) seen.current.set(b.id, b);
+  const missing =
+    value === null || bots.some((b) => b.id === value) ? undefined : seen.current.get(value);
+  const text = (b: SignalBotFacet) =>
+    t("filters.botOption", { name: b.name, created: monthDay(b.createdAt, tz), id: shortId(b.id) });
+  const groups = new Map<string, { value: string; label: string }[]>();
+  const sorted = [...bots].sort(
+    (a, b) =>
+      a.tail.localeCompare(b.tail) ||
+      b.createdAt.localeCompare(a.createdAt) ||
+      a.id.localeCompare(b.id),
+  );
+  for (const b of missing === undefined ? sorted : [...sorted, missing]) {
+    const g = groups.get(b.tail) ?? [];
+    g.push({
+      value: b.id,
+      label: b === missing ? t("filters.noFills", { name: text(b) }) : text(b),
+    });
+    groups.set(b.tail, g);
+  }
+  // Bot đang chọn chưa từng thấy (vd id trên URL): vẫn giữ giá trị, ghi id.
+  const unknown =
+    value !== null && missing === undefined && !bots.some((b) => b.id === value)
+      ? { value, label: t("filters.noFills", { name: shortId(value) }) }
+      : null;
+  return (
+    <label className="flex flex-col gap-1 text-[12.5px] font-bold text-ink-2">
+      {label}
+      <select
+        value={value ?? ""}
+        onChange={(e) => {
+          onChange(e.target.value === "" ? null : e.target.value);
+        }}
+        className={selectCls}
+      >
+        <option value="">{allLabel}</option>
+        {[...groups]
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([tail, opts]) => (
+            <optgroup key={tail} label={t("account", { tail })}>
+              {opts.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        {unknown === null ? null : <option value={unknown.value}>{unknown.label}</option>}
+      </select>
+    </label>
+  );
 }

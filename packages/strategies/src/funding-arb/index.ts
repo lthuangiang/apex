@@ -1,7 +1,14 @@
 import { dec, Decimal, ReasonCode } from "@drift/shared";
 
 import { clOrdId, without } from "../core/ids";
-import { applyFill, applyFunding, emptyLedger, netPnl, type Ledger } from "../core/ledger";
+import {
+  applyFill,
+  applyFunding,
+  carryLedger,
+  emptyLedger,
+  netPnl,
+  type Ledger,
+} from "../core/ledger";
 import { meetsMinimum, roundQty } from "../core/rounding";
 import type {
   OrderIntent,
@@ -139,6 +146,12 @@ function open(
   ctx: StepContext,
   at: number,
 ): StepResult<FundingArbState> {
+  // Sổ cái giữ qua lần sửa (B2): max loss đã chạm thì không vào, pause lại, không đặt lệnh (DEC-240 (a), #223 N1).
+  if (totalPnl(c, s)?.lte(dec(c.maxLoss).neg()) === true)
+    return {
+      actions: [{ type: "pause", reason: ReasonCode.botMaxLoss }],
+      state: { ...s, phase: "halted" },
+    };
   const price = s.prices[c.perpMarket];
   const spotPrice = s.prices[c.spotMarket];
   const spotRules = ctx.rules[c.spotMarket];
@@ -460,7 +473,10 @@ export function stepFundingArb(
     case "fundingRate": {
       if (e.market !== c.perpMarket) return { actions: [], state: s };
       if (s.phase === "waiting") {
-        return e.avg7d !== null && dec(e.avg7d).gte(c.enterFundingPct)
+        // Version mới đang chờ áp (DEC-304, #223): không vào lệnh mới để bot về trạng thái áp được.
+        return ctx.versionPending === undefined &&
+          e.avg7d !== null &&
+          dec(e.avg7d).gte(c.enterFundingPct)
           ? open(c, s, ctx, e.at)
           : { actions: [], state: s };
       }
@@ -543,7 +559,31 @@ export function stepFundingArb(
   }
 }
 
+/**
+ * Áp version mới (#223, DEC-320): giữ vị thế + giá vốn của hai chân trong sổ cái phiên mới (max
+ * loss tính lại từ đầu), danh sách lệnh (fill trễ vẫn vào đúng chân) và giá gần nhất. Còn vị thế thì theo dõi tiếp như
+ * đang giữ (thoát theo funding / max loss của version mới, như Resume, DEC-240); không còn thì chờ funding đủ để vào.
+ * Không đặt lệnh nào lúc áp. Lô lệnh mở / đóng / cân chân còn đang chờ thì chưa áp (null, như DEC-304).
+ */
+export function applyFundingArbVersion(s: FundingArbState): FundingArbState | null {
+  if (Object.keys(s.pending).length > 0 || s.phase === "opening" || s.phase === "closing")
+    return null;
+  const spot = carryLedger(s.spot);
+  const perp = carryLedger(s.perp);
+  const open = !dec(spot.position).isZero() || !dec(perp.position).isZero();
+  return {
+    ...initial(),
+    phase: open ? "in_position" : "waiting",
+    spot,
+    perp,
+    prices: s.prices,
+    cycle: s.cycle,
+    ...(s.orders === undefined ? {} : { orders: s.orders }),
+  };
+}
+
 export const fundingArb: StrategyModule<FundingArbConfig, FundingArbState> = {
   initialState: initial,
   step: stepFundingArb,
+  applyVersion: (_c, s) => applyFundingArbVersion(s),
 };
