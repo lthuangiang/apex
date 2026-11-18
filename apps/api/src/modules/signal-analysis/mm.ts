@@ -68,7 +68,7 @@ import {
   type Sums,
   type SumsRow,
 } from "./data";
-import { extraSet, previousSet, snapshotOf, type Snapshot } from "./sets";
+import { extraSet, previousSet, singleFlight, snapshotOf, type Snapshot } from "./sets";
 import { timelineOf } from "./timeline";
 
 // Tab Market Making: mỗi fill của bot Market Making tiền thật, cộng trong SQL (review #246 điểm 4: 30 ngày ~300k fill
@@ -394,17 +394,13 @@ export function walkLedger(
   return { walk, cuts: cuts.sort((a, b) => b.at - a.at) };
 }
 
+type MmRange = Omit<MmBase, "fine">;
+
 /**
- * Dữ liệu MM của một (kỳ, múi giờ), không theo bộ lọc (review #246 lần 2, M-B): nhóm nhỏ nhất theo mọi chiều + bot (SQL,
- * nền tính một lần), đi lại vị thế (fill hẹp, sổ cái trong Node), lần cắt, số lệnh. Bộ lọc market / bot / level / Smart
- * quoting / phía áp trong Node bằng `rollUp`, nên đổi bộ lọc không chạy lại truy vấn nặng.
+ * Phần không phụ thuộc múi giờ của một kỳ (review #246 lần 3: dùng chung cho mọi múi giờ): bot, vị thế đầu kỳ và giá vốn,
+ * đi lại vị thế (fill hẹp, sổ cái trong Node), lần cắt, số lệnh, giá đầu / cuối kỳ.
  */
-async function loadMm(
-  q: Exec,
-  w: Window,
-  tz: string,
-  range: SignalMmQuery["range"],
-): Promise<MmBase> {
+async function loadMmRange(q: Exec, w: Window, range: SignalMmQuery["range"]): Promise<MmRange> {
   const botsAll = await liveBots(q, ["volume_maker"]);
   const bots = new Map(botsAll.map((b) => [b.id, b]));
   const active = await activeBots(q, w, ["volume_maker"]);
@@ -412,25 +408,6 @@ async function loadMm(
   const [posStart] = await positionsAt(q, ids, [w.from]);
   const pos = posStart ?? new Map<string, Decimal>();
   const bases = await costBasesAt(q, pos, w.from);
-  const hz = (fn: (h: string) => string) => sql.raw(H.map(fn).join(", "));
-  const r = await q.execute(sql`
-    with ${derived({ range, tz }, w)}
-    select coalesce(lvl::text, 'unknown') as lvl_k,
-           case when smart is null then 'unknown' when smart then 'on' else 'off' end as smart_k,
-           case when not has_ctx then 'unknown' when smart is false then 'off' else coalesce(clamp, 'normal') end as clamp_k,
-           block, bot_id::text as bot, band, side, ${SUMS_SQL},
-           array[${hz((h) => `sum(b${h})`)}] as sb,
-           array[${hz((h) => `count(b${h})::int`)}] as nb,
-           array[${hz((h) => `(count(*) filter (where b${h} < 0))::int`)}] as neg,
-           sum(b60 - b0) as ab_s, count(b60 - b0)::int as ab_n,
-           sum(b60 - fee_bp) as naf_s, count(b60 - fee_bp)::int as naf_n,
-           sum(fee_bp) as fee_s, count(fee_bp)::int as fee_n,
-           (count(*) filter (where has_ctx))::int as ctx,
-           coalesce(sum(usd) filter (where r60 is not null and mid0 is not null), 0)::text as s_vol,
-           coalesce(sum(spread_usd) filter (where r60 is not null and mid0 is not null), 0)::text as s_usd
-      from x
-      group by 1, 2, 3, 4, 5, 6, 7`);
-  const fine = rowsOf<FineRow>(r);
   // Fill hẹp, theo (bot, thời gian), cho sổ cái trong Node (không giữ lại sau khi tính).
   const wr = await q.execute(sql`
     select o.bot_id::text as bot, f.id::text as id, (extract(epoch from f.filled_at) * 1000)::float8 as at,
@@ -460,12 +437,34 @@ async function loadMm(
     window: w,
     bots,
     active,
-    fine,
     walk,
     cuts: views,
     marks: { markEnd, markStart, posStart: pos },
     orders,
   };
+}
+
+/** Nhóm nhỏ nhất theo mọi chiều + bot của một (kỳ, múi giờ): chỉ phần này cần múi giờ (khối 4 giờ). */
+async function loadMmFine(q: Exec, w: Window, tz: string, range: SignalMmQuery["range"]) {
+  const hz = (fn: (h: string) => string) => sql.raw(H.map(fn).join(", "));
+  const r = await q.execute(sql`
+    with ${derived({ range, tz }, w)}
+    select coalesce(lvl::text, 'unknown') as lvl_k,
+           case when smart is null then 'unknown' when smart then 'on' else 'off' end as smart_k,
+           case when not has_ctx then 'unknown' when smart is false then 'off' else coalesce(clamp, 'normal') end as clamp_k,
+           block, bot_id::text as bot, band, side, ${SUMS_SQL},
+           array[${hz((h) => `sum(b${h})`)}] as sb,
+           array[${hz((h) => `count(b${h})::int`)}] as nb,
+           array[${hz((h) => `(count(*) filter (where b${h} < 0))::int`)}] as neg,
+           sum(b60 - b0) as ab_s, count(b60 - b0)::int as ab_n,
+           sum(b60 - fee_bp) as naf_s, count(b60 - fee_bp)::int as naf_n,
+           sum(fee_bp) as fee_s, count(fee_bp)::int as fee_n,
+           (count(*) filter (where has_ctx))::int as ctx,
+           coalesce(sum(usd) filter (where r60 is not null and mid0 is not null), 0)::text as s_vol,
+           coalesce(sum(spread_usd) filter (where r60 is not null and mid0 is not null), 0)::text as s_usd
+      from x
+      group by 1, 2, 3, 4, 5, 6, 7`);
+  return rowsOf<FineRow>(r);
 }
 
 /** Binance move lúc cắt từ dòng "Position cut" (payload.quote, DEC-312) gần lúc đặt lệnh cắt. */
@@ -523,10 +522,18 @@ async function orderCounts(q: Exec, w: Window, ids: readonly string[]): Promise<
 }
 
 /** Dữ liệu MM một (kỳ, múi giờ), gắn vào ảnh chụp của kỳ (LRU). */
-function dataFor(deps: SignalDeps, snap: Snapshot, tz: string): Promise<MmBase> {
-  return extraSet(snap, `mm|${tz}`, () =>
-    readOnly(deps.db, (x) => loadMm(x, snap.window, tz, snap.range)),
+/**
+ * Dữ liệu MM của một (kỳ, múi giờ), không theo bộ lọc (bộ lọc áp trong Node bằng `rollUp`): phần theo kỳ dùng chung mọi
+ * múi giờ, phần nhóm theo (kỳ, múi giờ). Mỗi lần tải nặng chạy một mình trong process (`singleFlight`).
+ */
+async function dataFor(deps: SignalDeps, snap: Snapshot, tz: string): Promise<MmBase> {
+  const range = extraSet(snap, "mm-range", () =>
+    singleFlight(() => readOnly(deps, (x) => loadMmRange(x, snap.window, snap.range))),
   );
+  const fine = extraSet(snap, `mm-fine|${tz}`, () =>
+    singleFlight(() => readOnly(deps, (x) => loadMmFine(x, snap.window, tz, snap.range))),
+  );
+  return { ...(await range), fine: await fine };
 }
 
 /** Áp bộ lọc trong Node: nhóm theo bot / level / Smart quoting / phía. */
@@ -558,7 +565,7 @@ export async function signalMmQuantiles(
   const snap = snapshotOf(deps, q.range, deps.now());
   const key = `mmq|${q.market ?? ""}|${q.botId ?? ""}|${String(q.level ?? "")}|${q.smart ?? ""}|${q.side ?? ""}`;
   return extraSet(snap, key, () =>
-    readOnly(deps.db, async (x) => {
+    readOnly(deps, async (x) => {
       const hz = (fn: (h: string) => string) => sql.raw(H.map(fn).join(", "));
       const r = await x.execute(sql`
         with ${derived({ ...q, tz: "UTC" }, snap.window)}
@@ -976,9 +983,9 @@ export async function signalMmFills(
   const q = parseOrThrow(signalMmFillsQuerySchema, query);
   const snap = snapshotOf(deps, q.range, deps.now());
   const bots = new Map(
-    (await readOnly(deps.db, (x) => liveBots(x, ["volume_maker"]))).map((b) => [b.id, b]),
+    (await readOnly(deps, (x) => liveBots(x, ["volume_maker"]))).map((b) => [b.id, b]),
   );
-  const rows = await readOnly(deps.db, async (x) => {
+  const rows = await readOnly(deps, async (x) => {
     if (q.sort === "worst") {
       // "Worst 1 min" cần markout của mọi fill: tính trên cả nền.
       return rowsOf<FillListRow & { total: number }>(
@@ -1066,7 +1073,7 @@ export async function signalMmFill(
   const q = parseOrThrow(signalMmQuerySchema, query);
   if (!idSchema.safeParse(id).success) throw new AppError(ErrorCode.notFound, "Fill not found.");
   const snap = snapshotOf(deps, q.range, deps.now());
-  const one = await readOnly(deps.db, async (x) => {
+  const one = await readOnly(deps, async (x) => {
     const r = await x.execute(sql`
       with ${derived(botOnly(q), snap.window, sql`f.id = ${id}::uuid`)}
       select ${FILL_COLS}, x.b30, x.b120, x.price::text as price, x.size::text as size, x.fee::text as fee,
@@ -1092,12 +1099,12 @@ export async function signalMmFill(
   });
   if (one === undefined) throw new AppError(ErrorCode.notFound, "Fill not found.");
   const bots = new Map(
-    (await readOnly(deps.db, (x) => liveBots(x, ["volume_maker"]))).map((b) => [b.id, b]),
+    (await readOnly(deps, (x) => liveBots(x, ["volume_maker"]))).map((b) => [b.id, b]),
   );
   const bot = bots.get(one.bot);
   const all = viewOf(await dataFor(deps, snap, q.tz), q).get("all|all") ?? emptyStats();
   const at = one.at;
-  const extra = await readOnly(deps.db, async (t) => {
+  const extra = await readOnly(deps, async (t) => {
     const mids = await t.execute(sql`
       select ts, mid::text as p from mid_1s
         where market = ${one.market} and ts >= ${new Date(at - 60_000)} and ts <= ${new Date(at + 300_000)}

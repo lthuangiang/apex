@@ -159,7 +159,7 @@ interface VbEvents {
 
 function loadEvents(deps: SignalDeps, snap: Snapshot, set: FillSet): Promise<VbEvents> {
   return extraSet(snap, "vbev", () =>
-    readOnly(deps.db, async (q) => {
+    readOnly(deps, async (q) => {
       const botIds = [...new Set(set.fills.map((f) => f.botId))];
       const signals = new Map<string, VbSignalSnapshot>();
       const closes = new Map<string, { at: number; why: string | null }[]>();
@@ -740,7 +740,7 @@ export async function signalVbEntry(
   const t = trades.find((x) => x.id === id);
   if (t === undefined) throw new AppError(ErrorCode.notFound, "Entry not found.");
   const ts = filterTrades(trades, q, bots);
-  const extra = await readOnly(deps.db, async (x) => {
+  const extra = await readOnly(deps, async (x) => {
     // Cả lúc giữ (review #246 điểm 12): tối đa CANDLE_CAP nến; dài hơn → MFE / MAE ghi "partial".
     const c = await x.execute(sql`
       select ts, high::text as h, low::text as l, close::text as c

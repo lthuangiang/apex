@@ -22,6 +22,8 @@ import {
   DivBar,
   FilterSelect,
   Kpi,
+  Refreshing,
+  useKeepSelected,
   Na,
   ScrollTable,
   Section,
@@ -59,6 +61,7 @@ export function AllTab({ ctx }: { ctx: PageCtx }) {
   useEffect(() => {
     onMeta(v === undefined ? null : { bots: v.bots, computedAt: v.computedAt });
   }, [v, onMeta]);
+  const keepSel = useKeepSelected();
   const set = (p: Partial<AllFilters>) => {
     setF((x) => ({ ...x, ...p }));
   };
@@ -95,7 +98,10 @@ export function AllTab({ ctx }: { ctx: PageCtx }) {
             value={f.market ?? ""}
             options={[
               { value: "", label: t("filters.allMarkets") },
-              ...(v?.markets ?? []).map((m) => ({ value: m, label: m })),
+              ...keepSel(
+                (v?.markets ?? []).map((m) => ({ value: m, label: m })),
+                f.market,
+              ),
             ]}
             onChange={(m) => {
               set({ market: m === "" ? null : m });
@@ -106,10 +112,13 @@ export function AllTab({ ctx }: { ctx: PageCtx }) {
             value={f.account ?? ""}
             options={[
               { value: "", label: t("filters.allAccounts") },
-              ...(v?.accountList ?? []).map((a) => ({
-                value: a.id,
-                label: t("account", { tail: a.tail }),
-              })),
+              ...keepSel(
+                (v?.accountList ?? []).map((a) => ({
+                  value: a.id,
+                  label: t("account", { tail: a.tail }),
+                })),
+                f.account,
+              ),
             ]}
             onChange={(a) => {
               set({ account: a === "" ? null : a });
@@ -156,7 +165,9 @@ export function AllTab({ ctx }: { ctx: PageCtx }) {
           }}
         />
       ) : (
-        <AllBody v={v} ctx={ctx} range={f.range} />
+        <Refreshing on={q.isPlaceholderData}>
+          <AllBody v={v} ctx={ctx} range={v.range} />
+        </Refreshing>
       )}
     </>
   );

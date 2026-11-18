@@ -25,6 +25,8 @@ export interface Snapshot {
   sets: Partial<Record<BotInfo["strategy"], Promise<FillSet>>>;
   prev: Promise<Prev> | null;
   extras: Map<string, Promise<unknown>>;
+  /** Số lần tải còn đang chạy: ảnh chụp đang tải không bao giờ bị bỏ (LRU / hết hạn), để không chạy lại lần tải nặng. */
+  pending: number;
 }
 
 /** Số ảnh chụp giữ cùng lúc cho một Db. */
@@ -40,7 +42,7 @@ export function snapshotOf(deps: SignalDeps, range: SignalRange, now: Date): Sna
   }
   const t = now.getTime();
   const hit = m.get(range);
-  if (hit !== undefined && t - hit.at < DATA_CACHE_MS && t >= hit.at) {
+  if (hit !== undefined && ((t - hit.at < DATA_CACHE_MS && t >= hit.at) || hit.pending > 0)) {
     // Đưa lên cuối (dùng gần nhất).
     m.delete(range);
     m.set(range, hit);
@@ -54,12 +56,13 @@ export function snapshotOf(deps: SignalDeps, range: SignalRange, now: Date): Sna
     sets: {},
     prev: null,
     extras: new Map(),
+    pending: 0,
   };
   m.set(range, snap);
-  while (m.size > SNAPSHOT_LRU) {
-    const oldest = m.keys().next().value;
-    if (oldest === undefined) break;
-    m.delete(oldest);
+  // Bỏ ảnh chụp cũ nhất không còn tải; ảnh chụp đang tải được giữ (có thể tạm vượt LRU).
+  for (const [k, v] of m) {
+    if (m.size <= SNAPSHOT_LRU) break;
+    if (v !== snap && v.pending === 0) m.delete(k);
   }
   return snap;
 }
@@ -69,10 +72,29 @@ export function clearSnapshots(db: object): void {
   snapshots.delete(db);
 }
 
-/** Lỗi thì bỏ khỏi ảnh chụp để lần sau tải lại. */
-function keep<T>(p: Promise<T>, drop: () => void): Promise<T> {
+/** Lỗi thì bỏ khỏi ảnh chụp để lần sau tải lại; đếm lần tải đang chạy của ảnh chụp. */
+function keep<T>(p: Promise<T>, drop: () => void, snap?: Snapshot): Promise<T> {
+  if (snap !== undefined) {
+    snap.pending += 1;
+    const done = () => {
+      snap.pending -= 1;
+    };
+    p.then(done, done);
+  }
   p.catch(drop);
   return p;
+}
+
+let lock: Promise<unknown> = Promise.resolve();
+
+/**
+ * Một lần tải nặng mỗi lúc trong process (review #246: nhiều kỳ / múi giờ lạnh cùng lúc không cộng dồn bộ nhớ và kết nối
+ * DB): lần sau chờ lần trước xong (kể cả khi lần trước lỗi).
+ */
+export function singleFlight<T>(fn: () => Promise<T>): Promise<T> {
+  const run = lock.then(fn, fn);
+  lock = run.catch(() => undefined);
+  return run;
 }
 
 /** Fill Volume Builder của ảnh chụp (Market Making và tab All cộng trong SQL, không giữ fill trong Node). */
@@ -84,13 +106,14 @@ export function fillSet(
   const hit = snap.sets.volume_farm;
   if (hit !== undefined) return hit;
   const p = keep(
-    readOnly(deps.db, async (q) => {
+    readOnly(deps, async (q) => {
       const bots = await liveBots(q, [strategy]);
       return loadVbFills(q, snap.window, bots);
     }),
     () => {
       if (snap.sets.volume_farm === p) delete snap.sets.volume_farm;
     },
+    snap,
   );
   snap.sets.volume_farm = p;
   return p;
@@ -102,7 +125,7 @@ export function previousSet(deps: SignalDeps, snap: Snapshot): Promise<Prev> {
   const len = SIGNAL_RANGE_MS[snap.range];
   const to = snap.window.from;
   const p = keep(
-    readOnly(deps.db, (q) =>
+    readOnly(deps, (q) =>
       previousByBot(q, ["volume_maker", "volume_farm"], {
         from: new Date(to.getTime() - len),
         to,
@@ -111,6 +134,7 @@ export function previousSet(deps: SignalDeps, snap: Snapshot): Promise<Prev> {
     () => {
       if (snap.prev === p) snap.prev = null;
     },
+    snap,
   );
   snap.prev = p;
   return p;
@@ -120,9 +144,13 @@ export function previousSet(deps: SignalDeps, snap: Snapshot): Promise<Prev> {
 export function extraSet<T>(snap: Snapshot, key: string, load: () => Promise<T>): Promise<T> {
   const hit = snap.extras.get(key);
   if (hit !== undefined) return hit as Promise<T>;
-  const p = keep(load(), () => {
-    if (snap.extras.get(key) === p) snap.extras.delete(key);
-  });
+  const p = keep(
+    load(),
+    () => {
+      if (snap.extras.get(key) === p) snap.extras.delete(key);
+    },
+    snap,
+  );
   snap.extras.set(key, p);
   return p;
 }

@@ -16,7 +16,7 @@ import { ALL, MM, MM_DETAIL, MM_FILLS, VB, VB_DETAIL, VB_ENTRIES } from "./fixtu
 
 // Signal Analysis (team): mọi số đến từ API; ở đây API giả trả fixture đã qua đúng zod schema của web.
 
-type Mode = "ok" | "forbidden" | "error" | "empty" | "pending" | "thin" | "timeout";
+type Mode = "ok" | "forbidden" | "error" | "empty" | "pending" | "thin" | "timeout" | "slow30";
 const state = vi.hoisted((): { mode: Mode; paths: string[] } => ({ mode: "ok", paths: [] }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -31,6 +31,10 @@ vi.mock("@/lib/api", async (importOriginal) => {
       const url = new URL(path, "http://x");
       if (state.mode === "timeout" && url.searchParams.get("range") === "30d")
         return Promise.reject(new real.ApiError("ANALYSIS_TIMEOUT", 503));
+      if (state.mode === "slow30" && url.searchParams.get("range") === "30d")
+        return new Promise(() => undefined);
+      if (url.pathname.endsWith("/mm") && url.searchParams.get("range") === "14d")
+        return Promise.resolve(schema.parse({ ...MM, range: "14d", markets: ["BTC-USD"] }));
       if (url.pathname.endsWith("/mm/quantiles"))
         return Promise.resolve(
           schema.parse({
@@ -260,5 +264,35 @@ describe("Signal Analysis page", { timeout: 30_000 }, () => {
     expect(last).toContain("market=ETH-USD");
     // p25 / p75 từ endpoint riêng.
     expect(await screen.findAllByText("−2.9 to +1.9")).not.toHaveLength(0);
+  });
+
+  it("while a new range loads, the old numbers keep their own range label, dimmed with Loading…", async () => {
+    state.mode = "slow30";
+    window.history.replaceState(null, "", "/admin/signal-analysis?tab=mm");
+    wrap();
+    await screen.findByText("Last 7 days · 18,420 quote fills");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Time" }), "30d");
+    expect(await screen.findByText("Loading…")).toBeInTheDocument();
+    // Tiêu đề vẫn theo dữ liệu đang hiện (7 ngày), không theo bộ lọc mới (30 ngày).
+    expect(screen.getByText("Last 7 days · 18,420 quote fills")).toBeInTheDocument();
+    expect(screen.queryByText(/Last 30 days ·/)).not.toBeInTheDocument();
+    expect(screen.getByText("Loading…").closest("[aria-busy]")).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+  });
+
+  it("keeps the selected market listed when the new range has no fills for it", async () => {
+    window.history.replaceState(null, "", "/admin/signal-analysis?tab=mm");
+    wrap();
+    await screen.findByText("Last 7 days · 18,420 quote fills");
+    const market = screen.getByRole("combobox", { name: "Market" });
+    await userEvent.selectOptions(market, "ETH-USD");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Time" }), "14d");
+    await screen.findByText("Last 14 days · 18,420 quote fills");
+    expect(
+      within(market).getByRole("option", { name: "ETH-USD (no fills in this range)" }),
+    ).toBeInTheDocument();
+    expect(market).toHaveValue("ETH-USD");
   });
 });

@@ -499,3 +499,51 @@ export function Suggestions({
     </Section>
   );
 }
+
+/**
+ * Dữ liệu cũ hiện trong lúc kỳ / bộ lọc mới đang tải (keepPreviousData): làm mờ, báo "Loading…", không bấm được; nhãn
+ * kỳ trong thân lấy từ dữ liệu (v.range), không từ bộ lọc (review #246, quy tắc 1.8).
+ */
+export function Refreshing({ on, children }: { on: boolean; children: ReactNode }) {
+  const t = useTranslations("signalAnalysis");
+  return (
+    <div aria-busy={on} className="relative flex min-w-0 flex-col gap-3">
+      {on ? (
+        <p
+          role="status"
+          className="m-0 rounded-tile bg-surface-2 px-4 py-2 text-[13px] font-bold text-ink-2"
+        >
+          {t("loading")}
+        </p>
+      ) : null}
+      <div
+        className={
+          on
+            ? "pointer-events-none flex min-w-0 flex-col gap-3 opacity-50"
+            : "flex min-w-0 flex-col gap-3"
+        }
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Lựa chọn của bộ chọn, luôn giữ giá trị đang chọn (review #246): bot / market / account không có fill trong kỳ mới vẫn
+ * hiện, ghi "(no fills in this range)", để select không lặng lẽ hiện "All …" trong khi bộ lọc vẫn áp.
+ */
+export function useKeepSelected() {
+  const t = useTranslations("signalAnalysis.filters");
+  const names = useRef(new Map<string, string>());
+  return (
+    options: readonly { value: string; label: string }[],
+    selected: string | null,
+    fallback?: (v: string) => string,
+  ) => {
+    for (const o of options) names.current.set(o.value, o.label);
+    if (selected === null || options.some((o) => o.value === selected)) return [...options];
+    const name = names.current.get(selected) ?? fallback?.(selected) ?? selected;
+    return [...options, { value: selected, label: t("noFills", { name }) }];
+  };
+}

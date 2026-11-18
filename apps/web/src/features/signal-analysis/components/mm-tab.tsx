@@ -44,6 +44,8 @@ import {
   DivBar,
   FilterSelect,
   Kpi,
+  Refreshing,
+  useKeepSelected,
   Na,
   ScrollTable,
   Section,
@@ -78,6 +80,7 @@ export function MmTab({ ctx }: { ctx: PageCtx }) {
   useEffect(() => {
     onMeta(v === undefined ? null : { bots: v.bots, computedAt: v.computedAt });
   }, [v, onMeta]);
+  const keepSel = useKeepSelected();
   const set = (p: Partial<MmFilters>) => {
     setF((x) => ({ ...x, ...p }));
   };
@@ -101,7 +104,10 @@ export function MmTab({ ctx }: { ctx: PageCtx }) {
             value={f.market ?? ""}
             options={[
               { value: "", label: t("filters.allMarkets") },
-              ...(v?.markets ?? []).map((m) => ({ value: m, label: m })),
+              ...keepSel(
+                (v?.markets ?? []).map((m) => ({ value: m, label: m })),
+                f.market,
+              ),
             ]}
             onChange={(m) => {
               set({ market: m === "" ? null : m });
@@ -112,7 +118,10 @@ export function MmTab({ ctx }: { ctx: PageCtx }) {
             value={f.botId ?? ""}
             options={[
               { value: "", label: t("filters.allMmBots") },
-              ...(v?.botList ?? []).map((b) => ({ value: b.id, label: b.name })),
+              ...keepSel(
+                (v?.botList ?? []).map((b) => ({ value: b.id, label: b.name })),
+                f.botId,
+              ),
             ]}
             onChange={(b) => {
               set({ botId: b === "" ? null : b });
@@ -206,7 +215,9 @@ export function MmTab({ ctx }: { ctx: PageCtx }) {
           }}
         />
       ) : (
-        <MmBody v={v} f={f} ctx={ctx} />
+        <Refreshing on={q.isPlaceholderData}>
+          <MmBody v={v} f={f} ctx={ctx} />
+        </Refreshing>
       )}
     </>
   );
@@ -227,7 +238,7 @@ function MmBody({ v, f, ctx }: { v: SignalMmView; f: MmFilters; ctx: PageCtx }) 
   const w = v.waterfall;
   const na = t("na");
   const bp = (x: number | null) => (x === null ? na : `${signed(x)} bp`);
-  const days = f.range === "24h" ? 1 : Number(f.range.replace(/\D/g, ""));
+  const days = v.range === "24h" ? 1 : Number(v.range.replace(/\D/g, ""));
   const d = s.vsPrev === null ? null : Number(s.vsPrev);
   const jump = (k: MmBreakdown) => {
     setBy(k);
@@ -300,7 +311,7 @@ function MmBody({ v, f, ctx }: { v: SignalMmView; f: MmFilters; ctx: PageCtx }) 
       {s.fills < 30 ? <ThinBanner n={s.fills} unit="fills" /> : null}
       <Section
         id="sa-mm-sum"
-        title={tm("sumTitle", { range: t(`filters.ranges.${f.range}`), n: count(s.fills) })}
+        title={tm("sumTitle", { range: t(`filters.ranges.${v.range}`), n: count(s.fills) })}
         sub={tm("sumSub")}
       >
         <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-6">

@@ -6982,7 +6982,8 @@
       "allMmBots": "All MM bots",
       "all": "All",
       "on": "On",
-      "off": "Off"
+      "off": "Off",
+      "noFills": "{name} (no fills in this range)"
     },
     "scope": {
       "all": "Live bots only; practice bots are left out · {bots, plural, one {# bot} other {# bots}} · {accounts, plural, one {# account} other {# accounts}} · accounts shown by account only",
@@ -7645,6 +7646,7 @@
       "mfePartial": "MFE (partial)",
       "maePartial": "MAE (partial)",
       "partialNote": "Prices cover the first 24 hours of the hold only."
-    }
+    },
+    "loading": "Loading…"
   }
 }

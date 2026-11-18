@@ -34,6 +34,8 @@ import {
   DivBar,
   FilterSelect,
   Kpi,
+  Refreshing,
+  useKeepSelected,
   Na,
   ScrollTable,
   Section,
@@ -68,6 +70,7 @@ export function VbTab({ ctx }: { ctx: PageCtx }) {
   useEffect(() => {
     onMeta(v === undefined ? null : { bots: v.bots, computedAt: v.computedAt });
   }, [v, onMeta]);
+  const keepSel = useKeepSelected();
   const set = (p: Partial<VbFilters>) => {
     setF((x) => ({ ...x, ...p }));
   };
@@ -91,7 +94,10 @@ export function VbTab({ ctx }: { ctx: PageCtx }) {
             value={f.market ?? ""}
             options={[
               { value: "", label: t("filters.allMarkets") },
-              ...(v?.markets ?? []).map((m) => ({ value: m, label: m })),
+              ...keepSel(
+                (v?.markets ?? []).map((m) => ({ value: m, label: m })),
+                f.market,
+              ),
             ]}
             onChange={(m) => {
               set({ market: m === "" ? null : m });
@@ -102,7 +108,10 @@ export function VbTab({ ctx }: { ctx: PageCtx }) {
             value={f.botId ?? ""}
             options={[
               { value: "", label: t("filters.allVbBots") },
-              ...(v?.botList ?? []).map((b) => ({ value: b.id, label: b.name })),
+              ...keepSel(
+                (v?.botList ?? []).map((b) => ({ value: b.id, label: b.name })),
+                f.botId,
+              ),
             ]}
             onChange={(b) => {
               set({ botId: b === "" ? null : b });
@@ -193,7 +202,9 @@ export function VbTab({ ctx }: { ctx: PageCtx }) {
           }}
         />
       ) : (
-        <VbBody v={v} f={f} ctx={ctx} />
+        <Refreshing on={q.isPlaceholderData}>
+          <VbBody v={v} f={f} ctx={ctx} />
+        </Refreshing>
       )}
     </>
   );
@@ -279,7 +290,7 @@ function VbBody({ v, f, ctx }: { v: SignalVbView; f: VbFilters; ctx: PageCtx }) 
       {s.entries < 30 ? <ThinBanner n={s.entries} unit="entries" /> : null}
       <Section
         id="sa-vb-sum"
-        title={tv("sumTitle", { range: t(`filters.ranges.${f.range}`), n: count(s.entries) })}
+        title={tv("sumTitle", { range: t(`filters.ranges.${v.range}`), n: count(s.entries) })}
         sub={tv("sumSub")}
       >
         <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-5">

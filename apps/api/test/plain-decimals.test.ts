@@ -30,4 +30,24 @@ describe("plainDecimals", () => {
       plainDecimals({ apiKey: { last4: "4e43" }, clOrdID: "1e5", builderId: "2e3", qty: "1e2" }),
     ).toEqual({ apiKey: { last4: "4e43" }, clOrdID: "1e5", builderId: "2e3", qty: "100" });
   });
+
+  it("keeps account tails and group keys, and never expands a huge exponent (review #246 B3)", () => {
+    expect(
+      plainDecimals({
+        tail: "23e51022",
+        label: "9e999999",
+        key: "123456e7",
+        groups: [{ label: "23e51022", net: "1e2" }],
+        odd: "9e999999",
+        dust: "2.5e-21",
+      }),
+    ).toEqual({
+      tail: "23e51022",
+      label: "9e999999",
+      key: "123456e7",
+      groups: [{ label: "23e51022", net: "100" }],
+      odd: "9e999999",
+      dust: "0.0000000000000000000025",
+    });
+  });
 });

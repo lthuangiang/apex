@@ -5,20 +5,30 @@ import type { FastifyInstance } from "fastify";
 // có thể cho "2.47775e-7"; web parse bằng DECIMAL_STRING_PATTERN nên một giá trị như vậy làm hỏng cả trang.
 // Nguồn chính vẫn phải dùng `toDecimalString`; hook này chỉ chặn chỗ còn sót.
 
-const EXPONENT = /^-?(\d+)(\.\d+)?e[+-]?\d+$/i;
-// Field định danh không phải số dù trông giống số mũ: `last4` của key có thể là "4e43" (DEC-63).
+const EXPONENT = /^-?(\d+)(\.\d+)?e([+-]?\d+)$/i;
+/**
+ * Số mũ lớn nhất còn coi là số thật (bụi của SoDEX / decimal.js là e-7…e-20). Lớn hơn thì gần như chắc là định danh
+ * (vd đuôi id "23e51022"): giữ nguyên, không bao giờ nở ra hàng nghìn / triệu chữ số (review #246 B3).
+ */
+const MAX_EXPONENT = 100;
+// Field định danh không phải số dù trông giống số mũ: `last4` của key có thể là "4e43" (DEC-63); `tail` / `label` /
+// `key` là đuôi id hoặc khoá nhóm (Signal Analysis: "Account ··23e51022").
 const IDENTIFIER_KEYS: ReadonlySet<string> = new Set([
   "last4",
   "address",
   "publicKey",
   "name",
   "symbol",
+  "tail",
+  "label",
+  "key",
 ]);
 const isIdentifierKey = (k: string) => IDENTIFIER_KEYS.has(k) || /id$/i.test(k);
 
 export function plainDecimals(value: unknown): unknown {
   if (typeof value === "string") {
-    if (!EXPONENT.test(value)) return value;
+    const m = EXPONENT.exec(value);
+    if (m === null || Math.abs(Number(m[3])) > MAX_EXPONENT) return value;
     const d = new Decimal(value);
     return d.isZero() ? "0" : d.toFixed();
   }

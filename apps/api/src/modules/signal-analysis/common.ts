@@ -18,6 +18,8 @@ import { requireTeam } from "../account/team";
 export interface SignalDeps {
   db: Db;
   now: () => Date;
+  /** Statement timeout của mỗi transaction phân tích (ms); mặc định `QUERY_TIMEOUT_MS`. Test truyền giá trị nhỏ. */
+  queryTimeoutMs?: number;
 }
 
 export const FORBIDDEN = "Signal Analysis is for the DeskLabs team only.";
@@ -26,8 +28,8 @@ export async function team(deps: SignalDeps, userId: string): Promise<void> {
   await requireTeam(deps.db, userId, FORBIDDEN);
 }
 
-/** Truy vấn nặng nhất (fill 30 ngày kèm giá tham chiếu) vẫn phải xong trong chừng này; test hạ xuống để thử lỗi. */
-export const QUERY_TIMEOUT = { ms: 10_000 };
+/** Truy vấn nặng nhất (fill 30 ngày kèm giá tham chiếu) vẫn phải xong trong chừng này. */
+export const QUERY_TIMEOUT_MS = 10_000;
 
 export type Exec = Pick<Db, "execute">;
 
@@ -46,13 +48,15 @@ function isTimeout(e: unknown): boolean {
  * Chạy `fn` trong một transaction chỉ đọc có `SET LOCAL statement_timeout` (hợp lệ qua PgBouncer). Hết thời gian →
  * `ANALYSIS_TIMEOUT` (503, C6) để web hiện trạng thái riêng ("Show 7 days"), không phải lỗi chung.
  */
-export async function readOnly<T>(db: Db, fn: (q: Exec) => Promise<T>): Promise<T> {
+export async function readOnly<T>(
+  deps: Pick<SignalDeps, "db" | "queryTimeoutMs">,
+  fn: (q: Exec) => Promise<T>,
+): Promise<T> {
+  const ms = Math.max(1, Math.round(deps.queryTimeoutMs ?? QUERY_TIMEOUT_MS));
   try {
-    return await db.transaction(async (tx) => {
+    return await deps.db.transaction(async (tx) => {
       await tx.execute(sql`SET TRANSACTION READ ONLY`);
-      await tx.execute(
-        sql.raw(`SET LOCAL statement_timeout = ${String(Math.round(QUERY_TIMEOUT.ms))}`),
-      );
+      await tx.execute(sql.raw(`SET LOCAL statement_timeout = ${String(ms)}`));
       await tx.execute(sql`SET LOCAL jit = off`);
       return fn(tx);
     });

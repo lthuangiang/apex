@@ -253,6 +253,21 @@ Migration `0043_orders_bot_filled_idx` tạo index một phần `orders (bot_id,
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "orders_bot_filled_idx" ON "orders" USING btree ("bot_id","created_at") WHERE "orders"."filled_size" > 0;
 ```
 
+`CREATE INDEX CONCURRENTLY` lỗi hoặc bị huỷ giữa chừng thì để lại một index **INVALID** cùng tên; `IF NOT EXISTS` (cả lệnh tay lẫn migration) sẽ bỏ qua nó và index không bao giờ được dùng. Sau lệnh tay, luôn kiểm tra:
+
+```sql
+select indisvalid from pg_index where indexrelid = 'orders_bot_filled_idx'::regclass;
+```
+
+Ra `false` thì xoá rồi chạy lại lệnh tạo:
+
+```sql
+DROP INDEX CONCURRENTLY IF EXISTS orders_bot_filled_idx;
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "orders_bot_filled_idx" ON "orders" USING btree ("bot_id","created_at") WHERE "orders"."filled_size" > 0;
+```
+
+Ra `true` thì deploy như thường (migration 0043 không làm gì).
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push 11 image → PM trả tag (`docs/RELEASE.md`).

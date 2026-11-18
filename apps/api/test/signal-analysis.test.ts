@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  AppError,
   errorResponseSchema,
   meSchema,
   mmFillDetailSchema,
@@ -14,7 +15,7 @@ import {
 } from "@drift/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { QUERY_TIMEOUT } from "../src/modules/signal-analysis/common";
+import { signalMm } from "../src/modules/signal-analysis/mm";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
@@ -29,6 +30,8 @@ const VB = `SV${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 /** Kịch bản 7 ngày: bot có vị thế mang sang và kỳ trước (MB), bot thiếu giá 1 phút và builder fee (MC). */
 const MB = `SB${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const MC = `SC${randomUUID().slice(0, 6).toUpperCase()}-USD`;
+/** Bot của hai account có đuôi id giống số mũ (MT). */
+const MT = `ST${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 /** Bot mở, đóng một phần, mua thêm rồi bị cắt trong kỳ (ME). */
 const ME = `SE${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 /** Bot vào kỳ với vị thế mang sang rồi bị cắt trong kỳ (MD). */
@@ -40,6 +43,7 @@ const MIN = 60_000;
 const HOUR = 3_600_000;
 
 let team: TestClient;
+let teamId = "";
 let user: TestClient;
 let mmFillId = "";
 let vbEntryId = "";
@@ -107,6 +111,7 @@ beforeAll(async () => {
   env.clock.now = T;
   team = new TestClient(env.app);
   const me = meSchema.parse((await signIn(env, team, `sa-${randomUUID()}@drift.test`)).json());
+  teamId = me.id;
   await env.pool.query("update users set role = 'team' where id = $1", [me.id]);
   user = new TestClient(env.app);
   await signIn(env, user, `sa-user-${randomUUID()}@drift.test`);
@@ -339,6 +344,39 @@ beforeAll(async () => {
     await env.pool.query(
       "insert into fills (id, order_id, sodex_trade_id, price, size, fee, builder_fee, is_maker, filled_at) values (gen_random_uuid(), $1, $2, $3, $4, 0.01, 0.002, true, $5)",
       [rows[0]?.id, Math.floor(Math.random() * 1e12), price, size, at(t)],
+    );
+  }
+  // Hai account có user id kết thúc như số mũ ("…23e51022", "…9e999999"): đuôi phải giữ nguyên (review #246 B3).
+  await env.pool.query(
+    `insert into candles_1m (market, ts, open, high, low, close, volume)
+     select $1, ts, 100, 100, 100, 100, 1
+       from generate_series($2::timestamptz, $3::timestamptz, interval '1 minute') ts
+     on conflict do nothing`,
+    [MT, at(-7 * DAY), at(-MIN)],
+  );
+  for (const uid of [
+    "00000000-0000-4000-8000-000023e51022",
+    "00000000-0000-4000-8000-00009e999999",
+  ]) {
+    await env.pool.query("insert into users (id, email) values ($1, $2) on conflict do nothing", [
+      uid,
+      `${uid}@drift.test`,
+    ]);
+    const { rows: a2 } = await env.pool.query<{ id: string }>(
+      "insert into sodex_accounts (id, user_id, address, sodex_account_id, network, status) values (gen_random_uuid(), $1, $2, $3, 'mainnet', 'connected') returning id",
+      [uid, "0x4E1e4796c10C637EDAB56461450BD8D02EFb29Db", Math.floor(Math.random() * 1e9)],
+    );
+    const { rows: b2 } = await env.pool.query<{ id: string }>(
+      "insert into bots (id, user_id, sodex_account_id, strategy, market, engine, name, state, mode) values (gen_random_uuid(), $1, $2, 'volume_maker', $3, 'perps', 'MM tail', 'running', 'live') returning id",
+      [uid, a2[0]?.id, MT],
+    );
+    const { rows: o2 } = await env.pool.query<{ id: string }>(
+      "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, status, tag, epoch, created_at) values (gen_random_uuid(), $1, $2, $3, $4, 'perps', 'buy', 'limit', 'GTX', 1, 1, 'filled', 'vm:1:open', 1, $5) returning id",
+      [b2[0]?.id, a2[0]?.id, `sa-tail-${randomUUID().slice(0, 8)}`, MT, at(-6 * DAY - 1_000)],
+    );
+    await env.pool.query(
+      "insert into fills (id, order_id, sodex_trade_id, price, size, fee, builder_fee, is_maker, filled_at) values (gen_random_uuid(), $1, $2, 100, 1, 0.01, 0.002, true, $3)",
+      [o2[0]?.id, Math.floor(Math.random() * 1e12), at(-6 * DAY)],
     );
   }
   // MC: 40 fill phí cao (1 USDC trên 100), builder fee chưa ghi.
@@ -708,13 +746,25 @@ describe("Signal Analysis API", () => {
   });
 
   it("a statement timeout returns ANALYSIS_TIMEOUT (503, standard error format)", async () => {
-    QUERY_TIMEOUT.ms = 1;
-    try {
-      const r = await team.request("GET", "/api/v1/admin/signal-analysis/mm?range=14d&tz=UTC");
-      expect(r.statusCode).toBe(503);
-      expect(errorOf(r.body).code).toBe("ANALYSIS_TIMEOUT");
-    } finally {
-      QUERY_TIMEOUT.ms = 10_000;
-    }
+    // Timeout truyền qua deps (không có biến toàn cục đổi được lúc chạy).
+    const err = await signalMm({ db: env.db, now: () => T, queryTimeoutMs: 1 }, teamId, {
+      range: "14d",
+      tz: "UTC",
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect((err as AppError).code).toBe("ANALYSIS_TIMEOUT");
+    expect((err as AppError).httpStatus).toBe(503);
+  });
+
+  it("account tails that look like exponent numbers stay as they are", async () => {
+    const r = await team.request("GET", "/api/v1/admin/signal-analysis/all?range=7d&tz=UTC");
+    expect(r.body.length).toBeLessThan(200_000);
+    const v = signalAllViewSchema.parse(r.json());
+    const tails = v.accountList.map((a) => a.tail);
+    expect(tails).toContain("23e51022");
+    expect(tails).toContain("9e999999");
+    expect(v.byAccount.map((g) => g.label)).toEqual(
+      expect.arrayContaining(["23e51022", "9e999999"]),
+    );
   });
 });

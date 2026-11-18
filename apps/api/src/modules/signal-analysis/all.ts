@@ -104,7 +104,7 @@ export async function signalAll(
   const snap = snapshotOf(deps, q.range, now);
   // Một tổng hợp mỗi (kỳ, múi giờ); bộ lọc strategy / market / account / bot áp trong Node (ô đã theo bot).
   const [data, prev] = await Promise.all([
-    extraSet(snap, `all|${q.tz}`, () => readOnly(deps.db, (x) => loadCells(x, snap.window, q.tz))),
+    extraSet(snap, `all|${q.tz}`, () => readOnly(deps, (x) => loadCells(x, snap.window, q.tz))),
     previousSet(deps, snap),
   ]);
   const bots = new Map(data.bots.map((b) => [b.id, b]));
