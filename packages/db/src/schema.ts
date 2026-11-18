@@ -650,6 +650,13 @@ export const orders = pgTable(
       .on(t.botId, t.createdAt)
       .where(sql`${t.filledSize} > 0`),
     index("orders_status_idx").on(t.status),
+    /**
+     * Lệnh còn `context` theo giờ đặt: job retention của scheduler (#229) tìm lệnh quá hạn qua index này. Index một phần
+     * nên nhỏ dần khi job đặt `context` về null.
+     */
+    index("orders_context_created_idx")
+      .on(t.createdAt)
+      .where(sql`${t.context} IS NOT NULL`),
   ],
 );
 
@@ -694,7 +701,16 @@ export const botEvents = pgTable(
     occurredAt: tstz("occurred_at").notNull(),
     ...timestamps,
   },
-  (t) => [index("bot_events_bot_idx").on(t.botId, t.occurredAt)],
+  (t) => [
+    index("bot_events_bot_idx").on(t.botId, t.occurredAt),
+    /**
+     * Event còn snapshot tín hiệu Volume Farm (`payload.signal`, DEC-311): job retention của scheduler (#229) tìm event quá
+     * hạn qua index này. Index một phần nên nhỏ dần khi job bỏ `signal` khỏi payload.
+     */
+    index("bot_events_signal_idx")
+      .on(t.occurredAt)
+      .where(sql`${t.payload} ? 'signal'`),
+  ],
 );
 
 /**

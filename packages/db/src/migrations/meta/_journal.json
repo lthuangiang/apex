@@ -309,6 +309,13 @@
       "when": 1794990968660,
       "tag": "0043_orders_bot_filled_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1795004499469,
+      "tag": "0044_snapshot_retention_idx",
+      "breakpoints": true
     }
   ]
 }

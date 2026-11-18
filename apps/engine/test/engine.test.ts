@@ -24,6 +24,7 @@ import {
   type Db,
 } from "@drift/db";
 import { AppError, dec, ErrorCode, ReasonCode } from "@drift/shared";
+import type { MmOrderContext } from "@drift/shared/mm-quote";
 import type { SignedWriteClient, SodexRestClient } from "@drift/sodex";
 import {
   clOrdId,
@@ -31,13 +32,14 @@ import {
   seededRandom,
   spotGrid,
   spotGridSchema,
+  STRATEGIES,
   type OrderIntent,
 } from "@drift/strategies";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Redis } from "ioredis";
 import { GenericContainer, type StartedTestContainer } from "testcontainers";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   Engine as RealEngine,
@@ -1335,12 +1337,44 @@ describe("engine", () => {
       expect(rows.length).toBeGreaterThanOrEqual(2);
       for (const row of rows) {
         const ctx = mmOrderContextSchema.parse(row.context);
-        expect(ctx).toMatchObject({ v: 1, reason: "first", smart: smartQuoting, pos: "0" });
+        expect(ctx).toMatchObject({ v: 2, reason: "first", smart: smartQuoting, pos: "0" });
         expect(ctx.bp).not.toBeNull();
         expect(JSON.stringify(row.context).length).toBeLessThan(320);
       }
       await e.stop();
     });
+
+  it("stores a null context when the strategy's context is malformed, and still sends the order (#229)", async () => {
+    const { eq } = await import("drizzle-orm");
+    const mod = STRATEGIES.volume_maker.module;
+    const real = mod.step.bind(mod);
+    // Chiến lược trả bối cảnh sai schema (v lạ, thiếu field) trên mọi lệnh đặt. Cố ý ép kiểu: mô phỏng chiến lược lỗi.
+    const malformed = { v: 99, reason: "nope", pos: 1 } as unknown as MmOrderContext;
+    const spy = vi.spyOn(mod, "step").mockImplementation((config, state, event, ctx) => {
+      const r = real(config, state, event, ctx);
+      return {
+        ...r,
+        actions: r.actions.map((a) => (a.type === "place" ? { ...a, context: malformed } : a)),
+      };
+    });
+    try {
+      const gw = new FakeGateway();
+      const { botId } = await seedBot("running", mmSmart(true));
+      const e = makeEngine(gw, "w-mm-ctx-bad");
+      await e.tick();
+      await e.onPrice("BTC-USD", "100000", clock);
+      expect(spy).toHaveBeenCalled();
+      const sent = gw.received.filter((o) => o.market === "BTC-USD");
+      expect(sent.length).toBeGreaterThanOrEqual(2);
+      for (const o of sent) expect(o).not.toHaveProperty("context");
+      const rows = await db.select().from(orders).where(eq(orders.botId, botId));
+      expect(rows.length).toBe(sent.length);
+      for (const row of rows) expect(row.context).toBeNull();
+      await e.stop();
+    } finally {
+      spy.mockRestore();
+    }
+  });
 
   it("logs Paused only when the pause changes the bot's state (DEC-256)", async () => {
     const { eq } = await import("drizzle-orm");

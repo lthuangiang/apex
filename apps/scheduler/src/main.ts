@@ -30,6 +30,7 @@ import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
 import { fitMmModelDaily } from "./mm-model";
 import { snapshotAndCheck } from "./risk";
+import { stripOldSnapshots } from "./snapshot-retention";
 import { redisIncidentReadStore, teamIncidentRunner } from "./team-incidents";
 
 // scheduler: một bản active (leader lease). Hiện có job market stats hằng ngày; các job lịch khác
@@ -218,6 +219,19 @@ async function feeTierTick() {
   if (r.changed > 0 || r.failed > 0) log.info(r, "builder fee tiers changed");
 }
 
+/** Retention snapshot (#229): một lượt mỗi lần, lượt trước chưa xong thì bỏ qua. */
+let snapshotRetentionRunning = false;
+async function snapshotRetentionTick() {
+  if (snapshotRetentionRunning) return;
+  snapshotRetentionRunning = true;
+  try {
+    const r = await stripOldSnapshots(db, Date.now());
+    if (r.signals + r.contexts > 0) log.info(r, "old signal snapshots stripped");
+  } finally {
+    snapshotRetentionRunning = false;
+  }
+}
+
 let timer: ReturnType<typeof setInterval> | null = null;
 let riskTimer: ReturnType<typeof setInterval> | null = null;
 async function tick() {
@@ -304,6 +318,9 @@ const stopLeader = runAsLeader(new Lease(redis, "lease:scheduler"), {
       });
       void mmModelTick().catch((error: unknown) => {
         log.error({ err: error }, "mm cost model fit failed");
+      });
+      void snapshotRetentionTick().catch((error: unknown) => {
+        log.error({ err: error }, "signal snapshot retention failed");
       });
       void feeTierTick().catch((error: unknown) => {
         log.error({ err: error }, "builder fee tiers failed");
