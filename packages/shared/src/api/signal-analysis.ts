@@ -91,7 +91,12 @@ const botFacet = z.object({
   name: z.string(),
   market: z.string(),
   strategy: z.enum(SIGNAL_STRATEGIES),
+  /** Lúc tạo bot; bộ chọn hiện ngày theo múi giờ của trang. */
+  createdAt: isoDateTimeSchema,
+  /** 8 ký tự cuối của user id ("Account ··{tail}", DEC-288); không bao giờ email. */
+  tail: z.string(),
 });
+export type SignalBotFacet = z.infer<typeof botFacet>;
 const accountFacet = z.object({ id: uuid, tail: z.string() });
 
 const head = {

@@ -436,6 +436,12 @@ describe("Signal Analysis API", () => {
     // Không có bot paper, không có Futures Grid; không lộ email.
     expect(v.byStrategy.map((s) => s.key).sort()).toEqual(["volume_farm", "volume_maker"]);
     expect(v.botList.map((b) => b.name).sort()).toEqual(["MM live", "VB live"]);
+    // Bộ chọn bot: ngày tạo + đuôi account của từng bot (DEC-288), không email.
+    const tail = teamId.replace(/-/g, "").slice(-8);
+    for (const b of v.botList) {
+      expect(b.tail).toBe(tail);
+      expect(Number.isNaN(Date.parse(b.createdAt))).toBe(false);
+    }
     expect(r.body).not.toContain("@drift.test");
     const mm = v.byStrategy.find((s) => s.key === "volume_maker");
     expect(mm?.fills).toBe(2);

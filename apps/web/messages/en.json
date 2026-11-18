@@ -7031,7 +7031,8 @@
       "all": "All",
       "on": "On",
       "off": "Off",
-      "noFills": "{name} (no fills in this range)"
+      "noFills": "{name} (no fills in this range)",
+      "botOption": "{name} · {created} · {id}"
     },
     "scope": {
       "all": "Live bots only; practice bots are left out · {bots, plural, one {# bot} other {# bots}} · {accounts, plural, one {# account} other {# accounts}} · accounts shown by account only",

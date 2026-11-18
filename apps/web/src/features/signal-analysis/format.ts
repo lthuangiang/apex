@@ -79,6 +79,13 @@ export function day(iso: string, tz: string): string {
   }).format(new Date(iso));
 }
 
+/** "Nov 12" của một thời điểm, theo múi giờ `tz` (như ngày tạo trong bộ chọn bot của Trading Agent, DEC-294). */
+export function monthDay(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: tz }).format(
+    new Date(iso),
+  );
+}
+
 /** "Nov 18" từ "2026-11-18". */
 export function shortDate(key: string): string {
   const [y, m, d] = key.split("-").map(Number);
