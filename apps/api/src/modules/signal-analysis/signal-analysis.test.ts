@@ -3,10 +3,16 @@ import type { MmOrderContext } from "@drift/shared/mm-quote";
 import type { VbSignalSnapshot } from "@drift/shared/vb-signal";
 import { describe, expect, it } from "vitest";
 
-import type { BotInfo } from "./common";
-import { costBasisOf, localClock, quantileOf } from "./common";
+import {
+  costBasisOf,
+  ledgerStep,
+  localClock,
+  quantileOf,
+  type BotInfo,
+  type Ledger,
+} from "./common";
 import { costOf } from "./data";
-import { clampOf, inventoryOf, mmSuggestions } from "./mm";
+import { clampOf, inventoryOf, mmSuggestions, walkLedger } from "./mm";
 import { exitReasonOf, leadOf, oppositeOf, scoreOf, vbSuggestions, type Trade } from "./vb";
 
 // Hàm thuần của Signal Analysis (#233): lý do thoát, phần dẫn điểm, Binance clamp, đi lại tồn kho, giờ địa phương.
@@ -96,22 +102,86 @@ describe("signal analysis helpers", () => {
     expect(costBasisOf(desc.slice(0, 2), new Decimal(1))).toBeNull();
   });
 
-  it("time flat and average position from the SQL walk; a bot without an order size → Not available", () => {
-    const bot = (config: unknown): BotInfo => ({
+  it("average-cost ledger: a partial close keeps the entry; the next add averages against what is left", () => {
+    const l = (steps: ["buy" | "sell", string, string][]) =>
+      steps.reduce<Ledger>(
+        (x, [side, size, price], i) =>
+          ledgerStep(x, side, new Decimal(size), new Decimal(price), i),
+        { pos: new Decimal(0), entry: null, openedAt: null },
+      );
+    // buy 1 @ 100, sell 0.5, buy 1 @ 110 → (0.5 × 100 + 1 × 110) ÷ 1.5 = 106.67.
+    const a = l([
+      ["buy", "1", "100"],
+      ["sell", "0.5", "105"],
+      ["buy", "1", "110"],
+    ]);
+    expect(a.entry?.toDecimalPlaces(2).toString()).toBe("106.67");
+    expect(a.openedAt).toBe(0);
+    // Partial close, then through zero: the flip opens a new position at the fill price, at the flip time.
+    const b = l([
+      ["buy", "1", "100"],
+      ["sell", "0.5", "105"],
+      ["sell", "1.5", "98"],
+    ]);
+    expect(b.pos.toString()).toBe("-1");
+    expect(b.entry?.toString()).toBe("98");
+    expect(b.openedAt).toBe(2);
+  });
+
+  it("walks one ledger per bot: time flat, average position, and cut results", () => {
+    const bot: BotInfo = {
       id: "b",
       name: "BTC maker",
       market: "BTC-USD",
       strategy: "volume_maker",
       userId: "u",
-      config,
+      config: { orderSize: "100" },
+    };
+    const f = (
+      at: number,
+      side: "buy" | "sell",
+      size: string,
+      price: string,
+      cut = false,
+      fee = "0",
+    ) => ({
+      bot: "b",
+      id: `f${String(at)}`,
+      at,
+      createdAt: at,
+      side,
+      size,
+      price,
+      fee,
+      cut,
     });
-    const walk = [
-      { bot: "b", flat_ms: 10_000, span_ms: 40_000, held_ms: 30_000, held_usd_ms: 3_000_000 },
-    ];
-    const r = inventoryOf(walk, new Map([["b", bot({ orderSize: "100" })]]));
-    expect(r.timeFlatPct).toBeCloseTo(25);
-    expect(r.avgPositionOrders).toBeCloseTo(1);
-    expect(inventoryOf(walk, new Map([["b", bot({})]])).avgPositionOrders).toBeNull();
+    // Flat 0–10 s; buy 1 @ 100 (100 USDC = 1 order) 10–40 s; sell 0.5; buy 1 @ 110; cut 1.5 @ 104.
+    const { walk, cuts } = walkLedger(
+      [
+        f(0, "buy", "1", "100"),
+        f(0, "sell", "1", "100"),
+        f(10_000, "buy", "1", "100"),
+        f(40_000, "sell", "0.5", "105"),
+        f(50_000, "buy", "1", "110"),
+        f(60_000, "sell", "1.5", "104", true, "0.1"),
+      ],
+      new Map(),
+    );
+    expect(cuts[0]?.entry?.toDecimalPlaces(2).toString()).toBe("106.67");
+    // (104 − 106.666…) × 1.5 − 0.1 = −4.1
+    expect(cuts[0]?.result?.toDecimalPlaces(4).toString()).toBe("-4.1");
+    expect(cuts[0]?.heldSecs).toBe(50);
+    const inv = inventoryOf(walk, new Map([["b", bot]]));
+    expect(inv.timeFlatPct).toBeCloseTo((10 / 60) * 100);
+    expect(
+      inventoryOf(walk, new Map([["b", { ...bot, config: {} }]])).avgPositionOrders,
+    ).toBeNull();
+    // Vị thế mang sang không có giá vốn → kết quả cắt "Not available".
+    const unknown = walkLedger(
+      [f(1_000, "sell", "1", "99", true)],
+      new Map([["b", { pos: new Decimal(1), entry: null, openedAt: null }]]),
+    );
+    expect(unknown.cuts[0]).toMatchObject({ entry: null, result: null, heldSecs: null });
   });
 
   it("splits cost on the priced volume, nulls markout past 20% unpriced and the builder split when unrecorded", () => {

@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 
-import { useSignalVb, useVbEntries, VB_DEFAULT, type VbFilters } from "../api";
+import { useSignalVb, useVbEntries, VB_DEFAULT, type VbFilters, isAnalysisTimeout } from "../api";
 import {
   clock,
   count,
@@ -168,6 +168,19 @@ export function VbTab({ ctx }: { ctx: PageCtx }) {
       ) : null}
       {q.isPending ? (
         <StateBox kind="loading" what={t("states.whatEntries")} />
+      ) : q.isError && v === undefined && isAnalysisTimeout(q.error) ? (
+        <StateBox
+          kind="timeout"
+          what=""
+          onRetry={() => void q.refetch()}
+          {...(f.range === "14d" || f.range === "30d"
+            ? {
+                onShow7d: () => {
+                  set({ range: "7d" });
+                },
+              }
+            : {})}
+        />
       ) : q.isError && v === undefined ? (
         <StateBox kind="error" what="" onRetry={() => void q.refetch()} />
       ) : v === undefined ? null : v.summary.entries === 0 ? (

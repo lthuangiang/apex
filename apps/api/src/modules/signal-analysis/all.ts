@@ -1,12 +1,11 @@
 import {
   SIGNAL_RANGE_MS,
   signalAllQuerySchema,
-  type SignalAllQuery,
   type SignalAllView,
   type SignalCostGroup,
   type SignalDriver,
 } from "@drift/shared";
-import { sql, type SQL } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 import { parseOrThrow } from "../../lib/http";
 
@@ -59,12 +58,13 @@ interface Cell {
   sums: Sums;
 }
 
-/** Bot MM / VB tiền thật có lệnh trong kỳ (cho bộ chọn; theo orders_bot_idx, không quét fill). */
+/** Bot MM / VB tiền thật có lệnh đã khớp tạo trong kỳ (cho bộ chọn; theo orders_bot_filled_idx, không quét fill). */
 export async function activeBots(q: Exec, w: Window, strategies: readonly BotInfo["strategy"][]) {
   const r = await q.execute(sql`
     select b.id::text as id from bots b
       where b.mode = 'live' and b.strategy in (${inList(strategies)})
-        and exists (select 1 from orders o where o.bot_id = b.id and o.created_at >= ${new Date(w.from.getTime() - DAY_MS)} and o.created_at < ${w.to})`);
+        and exists (select 1 from orders o
+          where o.bot_id = b.id and o.filled_size > 0 and o.created_at >= ${w.from} and o.created_at < ${w.to})`);
   return new Set(rowsOf<{ id: string }>(r).map((x) => x.id));
 }
 
@@ -72,12 +72,11 @@ async function loadCells(
   q: Exec,
   w: Window,
   tz: string,
-  where: SQL | undefined,
 ): Promise<{ cells: Cell[]; bots: BotInfo[]; active: Set<string>; marks: Marks }> {
   const bots = await liveBots(q, STRATEGIES);
   const active = await activeBots(q, w, STRATEGIES);
   const r = await q.execute(sql`
-    with ${baseCte({ w, strategies: STRATEGIES, mm: false, tz, ...(where === undefined ? {} : { where }) })}
+    with ${baseCte({ w, strategies: STRATEGIES, mm: false, tz })}
     select bot_id::text as bot, local_day as day, local_hour as hour, ${SUMS_SQL}
       from base
       group by 1, 2, 3`);
@@ -94,15 +93,6 @@ async function loadCells(
   return { cells, bots, active, marks };
 }
 
-function whereOf(q: SignalAllQuery): SQL | undefined {
-  const parts: SQL[] = [];
-  if (q.strategy !== undefined) parts.push(sql`b.strategy = ${q.strategy}`);
-  if (q.market !== undefined) parts.push(sql`b.market = ${q.market}`);
-  if (q.account !== undefined) parts.push(sql`b.user_id = ${q.account}::uuid`);
-  if (q.botId !== undefined) parts.push(sql`b.id = ${q.botId}::uuid`);
-  return parts.length === 0 ? undefined : sql.join(parts, sql` and `);
-}
-
 export async function signalAll(
   deps: SignalDeps,
   userId: string,
@@ -112,11 +102,9 @@ export async function signalAll(
   const q = parseOrThrow(signalAllQuerySchema, query);
   const now = deps.now();
   const snap = snapshotOf(deps, q.range, now);
-  const key = `all|${q.tz}|${q.strategy ?? ""}|${q.market ?? ""}|${q.account ?? ""}|${q.botId ?? ""}`;
+  // Một tổng hợp mỗi (kỳ, múi giờ); bộ lọc strategy / market / account / bot áp trong Node (ô đã theo bot).
   const [data, prev] = await Promise.all([
-    extraSet(snap, key, () =>
-      readOnly(deps.db, (x) => loadCells(x, snap.window, q.tz, whereOf(q))),
-    ),
+    extraSet(snap, `all|${q.tz}`, () => readOnly(deps.db, (x) => loadCells(x, snap.window, q.tz))),
     previousSet(deps, snap),
   ]);
   const bots = new Map(data.bots.map((b) => [b.id, b]));
@@ -155,7 +143,7 @@ export async function signalAll(
   };
   for (const c of data.cells) {
     const b = bots.get(c.bot);
-    if (b === undefined) continue;
+    if (b === undefined || !keep(c.bot)) continue;
     add(maps.total, "all", c);
     add(maps.strategy, b.strategy, c);
     add(maps.market, b.market, c);

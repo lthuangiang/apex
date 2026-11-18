@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import { markersFor, offsetMinutes } from "@/features/account/market-hours-time";
 import { ApiError } from "@/lib/api";
 
-import { ALL_DEFAULT, useSignalAll, type AllFilters } from "../api";
+import { ALL_DEFAULT, useSignalAll, type AllFilters, isAnalysisTimeout } from "../api";
 import { costTone, count, hourRange, pct, shortDate, usdc, usdM, volume } from "../format";
 
 import {
@@ -131,6 +131,19 @@ export function AllTab({ ctx }: { ctx: PageCtx }) {
       ) : null}
       {q.isPending ? (
         <StateBox kind="loading" what={t("states.whatFills")} />
+      ) : q.isError && v === undefined && isAnalysisTimeout(q.error) ? (
+        <StateBox
+          kind="timeout"
+          what=""
+          onRetry={() => void q.refetch()}
+          {...(f.range === "14d" || f.range === "30d"
+            ? {
+                onShow7d: () => {
+                  set({ range: "7d" });
+                },
+              }
+            : {})}
+        />
       ) : q.isError && v === undefined ? (
         <StateBox kind="error" what="" onRetry={() => void q.refetch()} />
       ) : v === undefined ? null : v.total.fills === 0 ? (

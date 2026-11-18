@@ -4,7 +4,7 @@ import { requireAuth } from "../../plugins/session";
 
 import { signalAll } from "./all";
 import type { SignalDeps } from "./common";
-import { signalMm, signalMmFill, signalMmFills } from "./mm";
+import { signalMm, signalMmFill, signalMmFills, signalMmQuantiles } from "./mm";
 import { signalVb, signalVbEntries, signalVbEntry } from "./vb";
 
 // Signal Analysis (team, #233): chỉ role team (401 chưa đăng nhập, 403 người ngoài team, kiểm trước khi parse tham số).
@@ -30,6 +30,10 @@ export function registerSignalAnalysisRoutes(app: FastifyInstance, deps: SignalD
   app.get(`${base}/mm`, async (request, reply) => {
     void reply.header("cache-control", "no-store");
     return signalMm(deps, requireAuth(request).userId, request.query);
+  });
+  app.get(`${base}/mm/quantiles`, async (request, reply) => {
+    void reply.header("cache-control", "no-store");
+    return signalMmQuantiles(deps, requireAuth(request).userId, request.query);
   });
   app.get(`${base}/mm/fills`, async (request, reply) => {
     void reply.header("cache-control", "no-store");

@@ -152,7 +152,10 @@ export function costOf(s: Sums, carried: Decimal | null) {
   const bNull = priced ? s.pBNull : s.bNull;
   const end = priced ? s.pEnd : s.end;
   const noMark = priced ? s.pNoMark : s.noMark;
-  const netUsdBasis = noMark > 0 || carried === null ? null : fees.sub(end).sub(carried);
+  // Phần vị thế mang sang tính cho cả bot: trên mẫu số có giá thì lấy theo tỷ lệ volume có giá (review #246 lần 2).
+  const carriedBasis =
+    carried === null ? null : priced && s.vol.gt(0) ? carried.mul(s.pVol).div(s.vol) : carried;
+  const netUsdBasis = noMark > 0 || carriedBasis === null ? null : fees.sub(end).sub(carriedBasis);
   const net = perM(netUsdBasis, vol);
   const feesPerM = perM(fees, vol);
   const markout = priced ? perM(s.mk.neg(), s.pVol) : null;
@@ -333,6 +336,7 @@ export function baseCte(o: BaseOpts): SQL {
               -- DEC-283; lệnh MM / VB nằm vài giây).
               and o.bot_id in (select id from bots where mode = 'live' and strategy in (${inList(o.strategies)}))
               and o.created_at >= ${new Date(o.w.from.getTime() - 86_400_000)}
+              and o.filled_size > 0
               ${o.ids === undefined ? sql`` : sql`and f.id in (${o.ids})`}
               ${o.where === undefined ? sql`` : sql`and ${o.where}`}) s) t)`;
 }
@@ -473,6 +477,7 @@ export async function previousByBot(
       join bots b on b.id = o.bot_id
       where f.filled_at >= ${w.from} and f.filled_at < ${w.to}
         and b.mode = 'live' and b.strategy in (${inList(strategies)})
+        and o.created_at >= ${new Date(w.from.getTime() - 86_400_000)} and o.filled_size > 0
       group by o.bot_id, o.market`);
   const rows = rowsOf<{
     bot: string;

@@ -15,7 +15,14 @@ import { useEffect, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 
-import { MM_DEFAULT, useMmFills, useSignalMm, type MmFilters } from "../api";
+import {
+  isAnalysisTimeout,
+  MM_DEFAULT,
+  useMmFills,
+  useMmQuantiles,
+  useSignalMm,
+  type MmFilters,
+} from "../api";
 import {
   clock,
   costTone,
@@ -174,6 +181,19 @@ export function MmTab({ ctx }: { ctx: PageCtx }) {
       ) : null}
       {q.isPending ? (
         <StateBox kind="loading" what={t("states.whatMm")} />
+      ) : q.isError && v === undefined && isAnalysisTimeout(q.error) ? (
+        <StateBox
+          kind="timeout"
+          what=""
+          onRetry={() => void q.refetch()}
+          {...(f.range === "14d" || f.range === "30d"
+            ? {
+                onShow7d: () => {
+                  set({ range: "7d" });
+                },
+              }
+            : {})}
+        />
       ) : q.isError && v === undefined ? (
         <StateBox kind="error" what="" onRetry={() => void q.refetch()} />
       ) : v === undefined ? null : v.summary.fills === 0 ? (
@@ -199,6 +219,10 @@ function MmBody({ v, f, ctx }: { v: SignalMmView; f: MmFilters; ctx: PageCtx }) 
   const [by, setBy] = useState<MmBreakdown>("level");
   const [bdOpen, setBdOpen] = useState(false);
   const [cmp, setCmp] = useState<"all" | "smart">("all");
+  // p25 / p75 theo bộ lọc tải sau trang chính (truy vấn riêng); lỗi / timeout → Not available.
+  const qq = useMmQuantiles(f, true);
+  const p25 = (i: number) => qq.data?.p25[i] ?? null;
+  const p75 = (i: number) => qq.data?.p75[i] ?? null;
   const s = v.summary;
   const w = v.waterfall;
   const na = t("na");
@@ -440,7 +464,12 @@ function MmBody({ v, f, ctx }: { v: SignalMmView; f: MmFilters; ctx: PageCtx }) 
                   ]
             }
             {...(cmp === "all"
-              ? { band: { lo: v.curve.all.map((x) => x.p25), hi: v.curve.all.map((x) => x.p75) } }
+              ? {
+                  band: {
+                    lo: v.curve.all.map((_, i) => p25(i)),
+                    hi: v.curve.all.map((_, i) => p75(i)),
+                  },
+                }
               : {})}
             {...(v.curve.feesBp === null
               ? {}
@@ -481,15 +510,24 @@ function MmBody({ v, f, ctx }: { v: SignalMmView; f: MmFilters; ctx: PageCtx }) 
                   <th scope="row" className={`${td} font-bold`}>
                     {tm("p25p75")}
                   </th>
-                  {v.curve.all.map((x, i) => (
-                    <td key={i} className={td}>
-                      {x.p25 === null || x.p75 === null ? (
-                        <Na />
-                      ) : (
-                        tm("range", { lo: signed(x.p25), hi: signed(x.p75) })
-                      )}
-                    </td>
-                  ))}
+                  {v.curve.all.map((_, i) => {
+                    const lo = p25(i);
+                    const hi = p75(i);
+                    return (
+                      <td key={i} className={td} aria-busy={qq.isPending}>
+                        {qq.isPending ? (
+                          <span className="text-muted">
+                            <span aria-hidden="true">…</span>
+                            <span className="sr-only">{t("states.quantLoading")}</span>
+                          </span>
+                        ) : lo === null || hi === null ? (
+                          <Na />
+                        ) : (
+                          tm("range", { lo: signed(lo), hi: signed(hi) })
+                        )}
+                      </td>
+                    );
+                  })}
                 </tr>
                 <tr>
                   <th scope="row" className={`${td} font-bold`}>

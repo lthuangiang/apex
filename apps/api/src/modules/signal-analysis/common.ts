@@ -1,5 +1,13 @@
 import type { Db } from "@drift/db";
-import { dec, Decimal, SIGNAL_MIN_GROUP, SIGNAL_RANGE_MS, type SignalRange } from "@drift/shared";
+import {
+  AppError,
+  dec,
+  Decimal,
+  ErrorCode,
+  SIGNAL_MIN_GROUP,
+  SIGNAL_RANGE_MS,
+  type SignalRange,
+} from "@drift/shared";
 import { sql, type SQL } from "drizzle-orm";
 
 import { requireTeam } from "../account/team";
@@ -18,19 +26,41 @@ export async function team(deps: SignalDeps, userId: string): Promise<void> {
   await requireTeam(deps.db, userId, FORBIDDEN);
 }
 
-/** Truy vấn nặng nhất (fill 30 ngày kèm giá tham chiếu) vẫn phải xong trong chừng này. */
-const QUERY_TIMEOUT_MS = 10_000;
+/** Truy vấn nặng nhất (fill 30 ngày kèm giá tham chiếu) vẫn phải xong trong chừng này; test hạ xuống để thử lỗi. */
+export const QUERY_TIMEOUT = { ms: 10_000 };
 
 export type Exec = Pick<Db, "execute">;
 
-/** Chạy `fn` trong một transaction chỉ đọc có `SET LOCAL statement_timeout` (hợp lệ qua PgBouncer). */
-export function readOnly<T>(db: Db, fn: (q: Exec) => Promise<T>): Promise<T> {
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`SET TRANSACTION READ ONLY`);
-    await tx.execute(sql.raw(`SET LOCAL statement_timeout = ${String(QUERY_TIMEOUT_MS)}`));
-    await tx.execute(sql`SET LOCAL jit = off`);
-    return fn(tx);
-  });
+/** SQLSTATE của "canceling statement due to statement timeout". */
+const QUERY_CANCELED = "57014";
+
+function isTimeout(e: unknown): boolean {
+  for (let x: unknown = e, i = 0; x !== null && typeof x === "object" && i < 5; i++) {
+    if ((x as { code?: unknown }).code === QUERY_CANCELED) return true;
+    x = (x as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
+ * Chạy `fn` trong một transaction chỉ đọc có `SET LOCAL statement_timeout` (hợp lệ qua PgBouncer). Hết thời gian →
+ * `ANALYSIS_TIMEOUT` (503, C6) để web hiện trạng thái riêng ("Show 7 days"), không phải lỗi chung.
+ */
+export async function readOnly<T>(db: Db, fn: (q: Exec) => Promise<T>): Promise<T> {
+  try {
+    return await db.transaction(async (tx) => {
+      await tx.execute(sql`SET TRANSACTION READ ONLY`);
+      await tx.execute(
+        sql.raw(`SET LOCAL statement_timeout = ${String(Math.round(QUERY_TIMEOUT.ms))}`),
+      );
+      await tx.execute(sql`SET LOCAL jit = off`);
+      return fn(tx);
+    });
+  } catch (e) {
+    if (isTimeout(e))
+      throw new AppError(ErrorCode.analysisTimeout, "This range took too long to load.");
+    throw e;
+  }
 }
 
 export const rowsOf = <T>(r: { rows: unknown[] }): T[] => r.rows as T[];
@@ -214,7 +244,7 @@ export async function positionsAt(
     select o.bot_id::text as bot, ${cols}
       from orders o
       join fills f on f.order_id = o.id
-      where o.bot_id in (${inList(botIds)}) and o.created_at < ${last}
+      where o.bot_id in (${inList(botIds)}) and o.created_at < ${last} and o.filled_size > 0
       group by o.bot_id`);
   for (const row of rowsOf<Record<string, string>>(r)) {
     const bot = row.bot ?? "";
@@ -229,6 +259,44 @@ export async function positionsAt(
 export const COST_BASIS_LOOKBACK = 2_000;
 const COST_BASIS_DAYS = 7;
 
+/** Trạng thái sổ cái giá vốn bình quân của một bot. `entry` null khi phẳng hoặc chưa biết giá vốn. */
+export interface Ledger {
+  pos: Decimal;
+  entry: Decimal | null;
+  openedAt: number | null;
+}
+
+/**
+ * MỘT bước của sổ cái giá vốn bình quân (review #246 B2; dùng chung cho vị thế mang sang và đi lại trong kỳ): đi từ phẳng
+ * hoặc đổi chiều → giá vào = giá khớp (chỉ phần mở mới), mở lúc này; thêm cùng chiều → giá vào = (giá vào × |vị thế
+ * trước| + giá × khối lượng) ÷ |vị thế sau|; giảm → giữ giá vào (khối lượng còn lại nhỏ đi); về phẳng → hết. Giá vốn chưa
+ * biết (null) chỉ trở lại khi phẳng / đổi chiều.
+ */
+export function ledgerStep(
+  l: Ledger,
+  side: "buy" | "sell",
+  size: Decimal,
+  price: Decimal,
+  at: number,
+): Ledger {
+  const s = size.mul(side === "buy" ? 1 : -1);
+  const before = l.pos;
+  const after = before.add(s);
+  if (after.isZero()) return { pos: after, entry: null, openedAt: null };
+  if (before.isZero() || before.isNeg() !== after.isNeg())
+    return { pos: after, entry: price, openedAt: at };
+  if (before.isNeg() === s.isNeg())
+    return {
+      pos: after,
+      entry:
+        l.entry === null
+          ? null
+          : l.entry.mul(before.abs()).add(price.mul(s.abs())).div(after.abs()),
+      openedAt: l.openedAt,
+    };
+  return { pos: after, entry: l.entry, openedAt: l.openedAt };
+}
+
 export interface CostBasis {
   /** Giá vào bình quân (sổ cái giá vốn bình quân) của vị thế đang mở tại mốc. */
   entry: Decimal;
@@ -236,44 +304,65 @@ export interface CostBasis {
   openedAt: number;
 }
 
-/**
- * Giá vốn của vị thế `pos` mà bot đang giữ tại `at` (review #246 B2): đọc ngược tối đa 2 000 fill trong 7 ngày trước
- * `at` (orders_bot_idx → fills_order_idx) để tìm fill gần nhất mà trước nó bot phẳng hoặc giữ vị thế ngược chiều, rồi
- * đi xuôi bằng sổ cái giá vốn bình quân (thêm cùng chiều thì bình quân lại, giảm thì giữ giá vào, đổi chiều thì giá vào
- * = giá khớp). Không tìm thấy điểm mở trong giới hạn → null ("Not available"), không đoán.
- */
-export async function costBasisAt(
-  q: Exec,
-  botId: string,
-  at: Date,
-  pos: Decimal,
-): Promise<CostBasis | null> {
-  if (pos.isZero()) return null;
-  // fills_filled_at_idx đọc ngược từ mốc, lọc theo bot (lệnh không khớp không bị quét).
-  const r = await q.execute(sql`
-    select (extract(epoch from f.filled_at) * 1000)::float8 as at, o.side, f.price::text as price, f.size::text as size
-      from fills f
-      join orders o on o.id = f.order_id
-      where o.bot_id = ${botId}::uuid
-        and f.filled_at < ${at} and f.filled_at >= ${new Date(at.getTime() - COST_BASIS_DAYS * 86_400_000)}
-      order by f.filled_at desc, f.id desc
-      limit ${COST_BASIS_LOOKBACK}`);
-  const rows = rowsOf<{ at: number; side: "buy" | "sell"; price: string; size: string }>(r);
-  return costBasisOf(rows, pos);
+export interface LedgerFill {
+  at: number;
+  side: "buy" | "sell";
+  price: string;
+  size: string;
 }
 
-/** Phần thuần của `costBasisAt`: `desc` = fill trước mốc, mới nhất trước. */
-export function costBasisOf(
-  desc: readonly { at: number; side: "buy" | "sell"; price: string; size: string }[],
-  pos: Decimal,
-): CostBasis | null {
+/**
+ * Giá vốn của vị thế mà mỗi bot đang giữ tại `at` (review #246 B2), một truy vấn cho mọi bot (index orders_bot_filled_idx
+ * theo bot): tối đa 2 000 fill của mỗi bot trong 7 ngày trước `at`, rồi `costBasisOf`. Không tìm thấy điểm mở trong giới
+ * hạn → không có khoá ("Not available"), không đoán.
+ */
+export async function costBasesAt(
+  q: Exec,
+  positions: ReadonlyMap<string, Decimal>,
+  at: Date,
+): Promise<Map<string, CostBasis>> {
+  const ids = [...positions].filter(([, p]) => !p.isZero()).map(([id]) => id);
+  const out = new Map<string, CostBasis>();
+  if (ids.length === 0) return out;
+  const from = new Date(at.getTime() - COST_BASIS_DAYS * 86_400_000);
+  const r = await q.execute(sql`
+    select x.bot, x.at, x.side, x.price, x.size
+      from unnest(array[${inList(ids)}]::uuid[]) as b(id)
+      cross join lateral (
+        select b.id::text as bot, (extract(epoch from f.filled_at) * 1000)::float8 as at, o.side,
+               f.price::text as price, f.size::text as size
+          from orders o
+          join fills f on f.order_id = o.id
+          where o.bot_id = b.id and o.filled_size > 0
+            and o.created_at < ${at} and o.created_at >= ${new Date(from.getTime() - 86_400_000)}
+            and f.filled_at < ${at} and f.filled_at >= ${from}
+          order by f.filled_at desc, f.id desc
+          limit ${COST_BASIS_LOOKBACK}) x`);
+  const byBot = new Map<string, LedgerFill[]>();
+  for (const row of rowsOf<LedgerFill & { bot: string }>(r)) {
+    const xs = byBot.get(row.bot) ?? [];
+    xs.push(row);
+    byBot.set(row.bot, xs);
+  }
+  for (const id of ids) {
+    const b = costBasisOf(byBot.get(id) ?? [], positions.get(id) ?? D0);
+    if (b !== null) out.set(id, b);
+  }
+  return out;
+}
+
+/**
+ * Phần thuần của `costBasesAt`: `desc` = fill trước mốc, mới nhất trước. Đọc ngược tìm fill gần nhất mà trước nó bot phẳng
+ * hoặc giữ vị thế ngược chiều, rồi đi xuôi bằng `ledgerStep`.
+ */
+export function costBasisOf(desc: readonly LedgerFill[], pos: Decimal): CostBasis | null {
+  if (pos.isZero()) return null;
   let running = pos;
   let start = -1;
   for (let i = 0; i < desc.length; i++) {
     const f = desc[i];
     if (f === undefined) break;
-    const signed = dec(f.size).mul(f.side === "buy" ? 1 : -1);
-    const before = running.sub(signed);
+    const before = running.sub(dec(f.size).mul(f.side === "buy" ? 1 : -1));
     if (before.isZero() || before.isNeg() !== pos.isNeg()) {
       start = i;
       break;
@@ -281,24 +370,16 @@ export function costBasisOf(
     running = before;
   }
   if (start < 0) return null;
-  let p = D0;
-  let entry: Decimal | null = null;
-  let openedAt = 0;
+  const first = desc[start];
+  if (first === undefined) return null;
+  let l: Ledger = {
+    pos: running.sub(dec(first.size).mul(first.side === "buy" ? 1 : -1)),
+    entry: null,
+    openedAt: null,
+  };
   for (let i = start; i >= 0; i--) {
     const f = desc[i];
-    if (f === undefined) continue;
-    const s = dec(f.size).mul(f.side === "buy" ? 1 : -1);
-    const px = dec(f.price);
-    const before = i === start ? running.sub(s) : p;
-    const after = before.add(s);
-    if (before.isZero() || before.isNeg() !== after.isNeg()) {
-      // Mở mới hoặc đổi chiều: giá vào = giá khớp.
-      entry = px;
-      openedAt = f.at;
-    } else if (before.isNeg() === s.isNeg()) {
-      entry = (entry ?? px).mul(before.abs()).add(px.mul(s.abs())).div(before.abs().add(s.abs()));
-    }
-    p = after;
+    if (f !== undefined) l = ledgerStep(l, f.side, dec(f.size), dec(f.price), f.at);
   }
-  return entry === null ? null : { entry, openedAt };
+  return l.entry === null || l.openedAt === null ? null : { entry: l.entry, openedAt: l.openedAt };
 }

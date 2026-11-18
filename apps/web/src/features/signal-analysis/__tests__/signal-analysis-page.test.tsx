@@ -16,7 +16,7 @@ import { ALL, MM, MM_DETAIL, MM_FILLS, VB, VB_DETAIL, VB_ENTRIES } from "./fixtu
 
 // Signal Analysis (team): mọi số đến từ API; ở đây API giả trả fixture đã qua đúng zod schema của web.
 
-type Mode = "ok" | "forbidden" | "error" | "empty" | "pending" | "thin";
+type Mode = "ok" | "forbidden" | "error" | "empty" | "pending" | "thin" | "timeout";
 const state = vi.hoisted((): { mode: Mode; paths: string[] } => ({ mode: "ok", paths: [] }));
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -29,6 +29,15 @@ vi.mock("@/lib/api", async (importOriginal) => {
       if (state.mode === "error") return Promise.reject(new real.ApiError("INTERNAL_ERROR", 500));
       if (state.mode === "pending") return new Promise(() => undefined);
       const url = new URL(path, "http://x");
+      if (state.mode === "timeout" && url.searchParams.get("range") === "30d")
+        return Promise.reject(new real.ApiError("ANALYSIS_TIMEOUT", 503));
+      if (url.pathname.endsWith("/mm/quantiles"))
+        return Promise.resolve(
+          schema.parse({
+            p25: [0.4, -1.2, -2.1, -2.9, -3.8, -5.6],
+            p75: [1.2, 1.4, 1.6, 1.9, 2.4, 3.6],
+          }),
+        );
       const p = url.pathname;
       const empty = state.mode === "empty";
       const thin = state.mode === "thin";
@@ -204,7 +213,10 @@ describe("Signal Analysis page", { timeout: 30_000 }, () => {
     a.unmount();
     state.mode = "error";
     const b = wrap();
-    expect(await screen.findByText("Couldn’t load the analysis")).toBeInTheDocument();
+    // Lỗi 500 được thử lại một lần (như mặc định của app) rồi mới hiện trạng thái lỗi.
+    expect(
+      await screen.findByText("Couldn’t load the analysis", {}, { timeout: 5_000 }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     b.unmount();
     state.mode = "empty";
@@ -223,5 +235,30 @@ describe("Signal Analysis page", { timeout: 30_000 }, () => {
       await screen.findByText("Signal Analysis is for the DeskLabs team only."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+
+  it("a range that times out shows its own state; Show 7 days keeps the other filters", async () => {
+    state.mode = "timeout";
+    window.history.replaceState(null, "", "/admin/signal-analysis?tab=mm");
+    wrap();
+    await screen.findByText("Last 7 days · 18,420 quote fills");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Market" }), "ETH-USD");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Time" }), "30d");
+    expect(await screen.findByText("This range took too long to load")).toBeInTheDocument();
+    expect(screen.getByText("Try a shorter range. Filters stay as they are.")).toBeInTheDocument();
+    // Không tự thử lại khi timeout: đúng một request cho kỳ 30 ngày.
+    expect(state.paths.filter((p) => p.includes("/mm?") && p.includes("range=30d"))).toHaveLength(
+      1,
+    );
+    await noViolations();
+    await userEvent.click(screen.getByRole("button", { name: "Show 7 days" }));
+    await waitFor(() => {
+      expect(screen.queryByText("This range took too long to load")).not.toBeInTheDocument();
+    });
+    const last = [...state.paths].reverse().find((p) => p.includes("/mm?")) ?? "";
+    expect(last).toContain("range=7d");
+    expect(last).toContain("market=ETH-USD");
+    // p25 / p75 từ endpoint riêng.
+    expect(await screen.findAllByText("−2.9 to +1.9")).not.toHaveLength(0);
   });
 });

@@ -2,6 +2,7 @@ import {
   mmFillDetailSchema,
   signalAllViewSchema,
   signalMmFillsPageSchema,
+  signalMmQuantilesSchema,
   signalMmViewSchema,
   signalVbEntriesPageSchema,
   signalVbViewSchema,
@@ -10,7 +11,7 @@ import {
 } from "@drift/shared";
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 
 // Query của Signal Analysis. Mọi endpoint chỉ cho role team (403 cho người khác); mọi số do API tính (cache 60 s ở
 // server), bundle web chỉ có cách hiển thị.
@@ -76,11 +77,23 @@ export function qs(f: object, tz: string, extra: Record<string, string> = {}): s
 }
 
 const STALE_RETRY_MS = 30_000;
+
+/** Truy vấn phân tích quá thời gian (503 ANALYSIS_TIMEOUT): không tự thử lại, trang hiện trạng thái riêng. */
+export const isAnalysisTimeout = (e: unknown): boolean =>
+  e instanceof ApiError && e.code === "ANALYSIS_TIMEOUT";
+
+/** Như mặc định của app (thử lại 1 lần), trừ timeout phân tích và lỗi 4xx (quyền, tham số). */
+const retry = (count: number, e: unknown) =>
+  !isAnalysisTimeout(e) && !(e instanceof ApiError && e.status < 500) && count < 1;
+
 const opts = {
   placeholderData: keepPreviousData,
-  // Lỗi khi đã có dữ liệu: giữ dữ liệu cũ (ghi chú "Showing data from …") và thử lại sau 30 s.
-  refetchInterval: (q: { state: { status: string; data: unknown } }) =>
-    q.state.status === "error" && q.state.data !== undefined ? STALE_RETRY_MS : false,
+  retry,
+  // Lỗi khi đã có dữ liệu: giữ dữ liệu cũ (ghi chú "Showing data from …") và thử lại sau 30 s (không với timeout).
+  refetchInterval: (q: { state: { status: string; data: unknown; error: unknown } }) =>
+    q.state.status === "error" && q.state.data !== undefined && !isAnalysisTimeout(q.state.error)
+      ? STALE_RETRY_MS
+      : false,
 } as const;
 
 export const SIGNAL_KEY = ["admin", "signal-analysis"] as const;
@@ -106,6 +119,7 @@ export function useSignalVb(f: VbFilters, tz: string, enabled: boolean) {
 export function useVbEntries(f: VbFilters, tz: string, sort: string, enabled: boolean) {
   return useInfiniteQuery({
     queryKey: [...SIGNAL_KEY, "vb-entries", f, tz, sort],
+    retry,
     queryFn: ({ pageParam }) =>
       api(
         "GET",
@@ -128,6 +142,7 @@ export function useVbEntry(id: string | null, f: VbFilters, tz: string) {
         vbEntryDetailSchema,
       ),
     enabled: id !== null,
+    retry,
   });
 }
 
@@ -140,9 +155,20 @@ export function useSignalMm(f: MmFilters, tz: string, enabled: boolean) {
   });
 }
 
+/** p25 / p75 theo bộ lọc: tải sau trang chính (truy vấn riêng ở server). */
+export function useMmQuantiles(f: MmFilters, enabled: boolean) {
+  return useQuery({
+    queryKey: [...SIGNAL_KEY, "mm-quantiles", f],
+    queryFn: () => api("GET", `${BASE}/mm/quantiles?${qs(f, "UTC")}`, signalMmQuantilesSchema),
+    enabled,
+    retry,
+  });
+}
+
 export function useMmFills(f: MmFilters, tz: string, sort: string, enabled: boolean) {
   return useInfiniteQuery({
     queryKey: [...SIGNAL_KEY, "mm-fills", f, tz, sort],
+    retry,
     queryFn: ({ pageParam }) =>
       api(
         "GET",
@@ -165,5 +191,6 @@ export function useMmFill(id: string | null, f: MmFilters, tz: string) {
         mmFillDetailSchema,
       ),
     enabled: id !== null,
+    retry,
   });
 }

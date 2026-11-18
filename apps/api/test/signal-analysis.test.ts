@@ -6,12 +6,15 @@ import {
   mmFillDetailSchema,
   signalAllViewSchema,
   signalMmFillsPageSchema,
+  signalMmQuantilesSchema,
   signalMmViewSchema,
   signalVbEntriesPageSchema,
   signalVbViewSchema,
   vbEntryDetailSchema,
 } from "@drift/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { QUERY_TIMEOUT } from "../src/modules/signal-analysis/common";
 
 import { signIn, startTestEnv, TestClient, type TestEnv } from "./helpers";
 
@@ -26,6 +29,8 @@ const VB = `SV${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 /** Kịch bản 7 ngày: bot có vị thế mang sang và kỳ trước (MB), bot thiếu giá 1 phút và builder fee (MC). */
 const MB = `SB${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const MC = `SC${randomUUID().slice(0, 6).toUpperCase()}-USD`;
+/** Bot mở, đóng một phần, mua thêm rồi bị cắt trong kỳ (ME). */
+const ME = `SE${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 /** Bot vào kỳ với vị thế mang sang rồi bị cắt trong kỳ (MD). */
 const MD = `SD${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const DAY = 86_400_000;
@@ -301,6 +306,41 @@ beforeAll(async () => {
     "0.0002",
     at(-2.5 * DAY),
   );
+  // ME: buy 1 @ 100 → sell 0.5 @ 105 → buy 1 @ 110 → cắt 1.5 @ 104 (giá vào bình quân 106.67).
+  const mmE = await bot("volume_maker", ME, "live", "MM partial");
+  await env.pool.query(
+    `insert into candles_1m (market, ts, open, high, low, close, volume)
+     select $1, ts, 100, 100, 100, 100, 1
+       from generate_series($2::timestamptz, $3::timestamptz, interval '1 minute') ts
+     on conflict do nothing`,
+    [ME, at(-3 * DAY), at(-MIN)],
+  );
+  const eSteps: [string, string, string, string][] = [
+    ["buy", "1", "100", "vm:1:open"],
+    ["sell", "0.5", "105", "vm:1:open"],
+    ["buy", "1", "110", "vm:1:open"],
+    ["sell", "1.5", "104", "vm:1:cut:close"],
+  ];
+  for (const [i, [side, size, price, tag]] of eSteps.entries()) {
+    const t = -2.5 * DAY + i * MIN;
+    const { rows } = await env.pool.query<{ id: string }>(
+      "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, status, tag, epoch, created_at, context) values (gen_random_uuid(), $1, $2, $3, $4, 'perps', $5, 'limit', 'GTX', $6, $6, 'filled', $7, 1, $8, null) returning id",
+      [
+        mmE,
+        account,
+        `sa-e-${String(i)}-${randomUUID().slice(0, 8)}`,
+        ME,
+        side,
+        size,
+        tag,
+        at(t - 1_000),
+      ],
+    );
+    await env.pool.query(
+      "insert into fills (id, order_id, sodex_trade_id, price, size, fee, builder_fee, is_maker, filled_at) values (gen_random_uuid(), $1, $2, $3, $4, 0.01, 0.002, true, $5)",
+      [rows[0]?.id, Math.floor(Math.random() * 1e12), price, size, at(t)],
+    );
+  }
   // MC: 40 fill phí cao (1 USDC trên 100), builder fee chưa ghi.
   for (let i = 0; i < 40; i++) {
     const t = -5 * DAY + i * MIN;
@@ -332,6 +372,7 @@ const ROUTES = [
   "/api/v1/admin/signal-analysis/mm",
   "/api/v1/admin/signal-analysis/mm/fills",
   `/api/v1/admin/signal-analysis/mm/fills/${randomUUID()}`,
+  "/api/v1/admin/signal-analysis/mm/quantiles",
 ];
 
 describe("Signal Analysis API", () => {
@@ -601,5 +642,79 @@ describe("Signal Analysis API", () => {
       resultUsd: "-1.001",
     });
     expect(v.inventory.cutsUsd).toBe("-1.001");
+  });
+
+  it("one average-cost ledger: a partial close then an add gives the right entry for the cut", async () => {
+    const v = signalMmViewSchema.parse(
+      (
+        await team.request("GET", `/api/v1/admin/signal-analysis/mm?range=7d&tz=UTC&market=${ME}`)
+      ).json(),
+    );
+    expect(v.inventory.latestCuts[0]).toMatchObject({ entry: "106.66666667", heldSecs: 180 });
+    // (104 − 106.666…) × 1.5 − 0.01 = −4.01
+    expect(v.inventory.cutsUsd).toBe("-4.01");
+  });
+
+  it("p25 / p75 come from their own endpoint, for the filters asked", async () => {
+    const r = await team.request(
+      "GET",
+      `/api/v1/admin/signal-analysis/mm/quantiles?range=7d&market=${MB}`,
+    );
+    expect(r.statusCode).toBe(200);
+    const qv = signalMmQuantilesSchema.parse(r.json());
+    expect(qv.p25).toHaveLength(6);
+    expect(qv.p25[3]).not.toBeNull();
+  });
+
+  it("a filter change reuses the cached aggregate for the range (no new heavy query)", async () => {
+    const before = signalMmViewSchema.parse(
+      (
+        await team.request(
+          "GET",
+          `/api/v1/admin/signal-analysis/mm?range=7d&market=${MB}&smart=off`,
+        )
+      ).json(),
+    );
+    // Một fill mới trong kỳ: lần đọc sau cùng (kỳ, múi giờ) vẫn dùng tổng đã cache trong 60 s.
+    const { rows } = await env.pool.query<{ id: string; account: string }>(
+      "select o.bot_id as id, o.sodex_account_id as account from orders o where o.market = $1 limit 1",
+      [MB],
+    );
+    const o = await env.pool.query<{ id: string }>(
+      "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, status, tag, epoch, created_at, context) values (gen_random_uuid(), $1, $2, $3, $4, 'perps', 'buy', 'limit', 'GTX', 1, 1, 'filled', 'vm:1:open', 1, $5, $6) returning id",
+      [
+        rows[0]?.id,
+        rows[0]?.account,
+        `sa-cache-${randomUUID()}`,
+        MB,
+        at(-HOUR - 1_000),
+        JSON.stringify(ctx(0, false, null)),
+      ],
+    );
+    await env.pool.query(
+      "insert into fills (id, order_id, sodex_trade_id, price, size, fee, builder_fee, is_maker, filled_at) values (gen_random_uuid(), $1, $2, 100, 1, 0.001, 0.0002, true, $3)",
+      [o.rows[0]?.id, Math.floor(Math.random() * 1e12), at(-HOUR)],
+    );
+    const after = signalMmViewSchema.parse(
+      (
+        await team.request(
+          "GET",
+          `/api/v1/admin/signal-analysis/mm?range=7d&market=${MB}&smart=off&side=buy`,
+        )
+      ).json(),
+    );
+    expect(before.summary.fills).toBe(40);
+    expect(after.summary.fills).toBe(20);
+  });
+
+  it("a statement timeout returns ANALYSIS_TIMEOUT (503, standard error format)", async () => {
+    QUERY_TIMEOUT.ms = 1;
+    try {
+      const r = await team.request("GET", "/api/v1/admin/signal-analysis/mm?range=14d&tz=UTC");
+      expect(r.statusCode).toBe(503);
+      expect(errorOf(r.body).code).toBe("ANALYSIS_TIMEOUT");
+    } finally {
+      QUERY_TIMEOUT.ms = 10_000;
+    }
   });
 });

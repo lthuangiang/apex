@@ -289,11 +289,14 @@ export function StateBox({
   onRetry,
   onClear,
   emptyTitle,
+  onShow7d,
 }: {
-  kind: "loading" | "error" | "empty";
+  kind: "loading" | "error" | "empty" | "timeout";
   what: string;
   onRetry?: () => void;
   onClear?: () => void;
+  /** Trạng thái timeout: chuyển sang 7 ngày, giữ các bộ lọc khác. */
+  onShow7d?: () => void;
   emptyTitle?: string;
 }) {
   const t = useTranslations("signalAnalysis.states");
@@ -312,6 +315,34 @@ export function StateBox({
         <p role="status" className="m-0 text-[12.5px] text-muted">
           {t("loading", { what })}
         </p>
+      </div>
+    );
+  if (kind === "timeout")
+    return (
+      <div
+        role="alert"
+        className="flex flex-col items-center gap-2.5 rounded-card border border-border bg-surface px-4 py-10 text-center"
+      >
+        <strong className="text-base">{t("timeoutTitle")}</strong>
+        <span className="text-sm text-muted">{t("timeoutBody")}</span>
+        {onShow7d === undefined ? (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-control border-0 bg-accent px-[18px] text-sm font-bold text-white"
+          >
+            <RefreshCw aria-hidden="true" size={16} />
+            {t("retry")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onShow7d}
+            className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-control border-0 bg-accent px-[18px] text-sm font-bold text-white"
+          >
+            {t("show7d")}
+          </button>
+        )}
       </div>
     );
   if (kind === "error")

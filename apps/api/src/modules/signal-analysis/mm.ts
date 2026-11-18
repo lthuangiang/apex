@@ -15,6 +15,7 @@ import {
   type MmRow,
   type SignalHiddenLead,
   type SignalMmFillsPage,
+  type SignalMmQuantiles,
   type SignalMmQuery,
   type SignalMmView,
   type SignalSuggestion,
@@ -32,7 +33,7 @@ import { parseOrThrow } from "../../lib/http";
 
 import { activeBots, botFacets } from "./all";
 import {
-  costBasisAt,
+  costBasesAt,
   D0,
   dec,
   Decimal,
@@ -47,8 +48,10 @@ import {
   rowsOf,
   str,
   team,
+  ledgerStep,
   type BotInfo,
   type Exec,
+  type Ledger,
   type SignalDeps,
   type Window,
 } from "./common";
@@ -78,8 +81,6 @@ import { timelineOf } from "./timeline";
 
 /** Sai số làm tròn tick khi so giá báo với giới hạn Binance (bp). */
 const CLAMP_TOLERANCE_BP = 0.25;
-/** Số lần cắt tối đa tính kết quả (mỗi lần một truy vấn có giới hạn); nhiều hơn → tổng "Not available". */
-const MAX_CUTS = 500;
 
 /**
  * Lệnh mở của bot bật Smart quoting nằm đúng giới hạn Binance (mua = giá Binance − 0,5 bp, bán = + 0,5 bp, sai số làm
@@ -121,8 +122,6 @@ function derived(q: SignalMmQuery, w: Window, extraWhere?: SQL, ids?: SQL): SQL 
     w,
     strategies: ["volume_maker"],
     mm: true,
-    // `x` được đọc hai lần (nhóm và phân vị): tính nền một lần.
-    materialized: true,
     tz: q.tz,
     clamp: {
       maxAgeMs: VM_ORACLE.maxAgeMs,
@@ -163,7 +162,8 @@ interface FineRow extends SumsRow {
   smart_k: string;
   clamp_k: string;
   block: string;
-  market: string;
+  /** Bot (market suy ra từ bot, nên lọc market / bot làm trong Node). */
+  bot: string;
   band: string;
   side: string;
   /** Σ bp, số mẫu, số mẫu < 0 ở mỗi mốc (lúc fill, 10 s, 30 s, 1, 2, 5 phút). */
@@ -181,38 +181,22 @@ interface FineRow extends SumsRow {
   s_usd: string;
 }
 
-interface WalkRow {
-  bot: string;
-  flat_ms: number | null;
-  span_ms: number | null;
-  held_ms: number | null;
-  held_usd_ms: number | null;
+/** Đi lại vị thế của một bot trong kỳ (ms; vị thế USDC × ms). */
+export interface WalkAgg {
+  flatMs: number;
+  spanMs: number;
+  heldMs: number;
+  heldUsdMs: number;
 }
 
-interface CutRow {
-  id: string;
-  at: number;
-  created_at: number;
-  bot: string;
-  market: string;
-  price: string;
-  size: string;
-  fee: string;
-  pos_before: string;
-  /** Giá vào bình quân của vị thế bị cắt; null = không tính được. */
-  entry: string | null;
-  opened_at: number | null;
-}
-
-interface MmData {
+interface MmBase {
   window: Window;
   bots: Map<string, BotInfo>;
   active: Set<string>;
-  groups: Map<string, Stats>;
-  quant: { p25: (number | null)[]; p75: (number | null)[] };
-  walk: WalkRow[];
+  fine: FineRow[];
+  walk: Map<string, WalkAgg>;
+  /** Mọi lần cắt trong kỳ (mọi bot), mới nhất trước. */
   cuts: CutView[];
-  cutsComplete: boolean;
   marks: Marks;
   orders: OrderCount[] | null;
 }
@@ -229,6 +213,7 @@ interface OrderCount {
 interface CutView {
   fillId: string;
   at: number;
+  createdAt: number;
   botId: string;
   market: string;
   position: "long" | "short";
@@ -307,8 +292,12 @@ const statsOfFine = (f: Fine, bots: string[]): Stats => ({
 });
 
 /** Cộng các nhóm nhỏ nhất thành thống kê theo từng chiều ("dim|key") và "all|all". */
-export function rollUp(rows: readonly FineRow[], bots: string[]): Map<string, Stats> {
+export function rollUp(
+  rows: readonly FineRow[],
+  botMarket: (id: string) => string | undefined,
+): Map<string, Stats> {
   const acc = new Map<string, Fine>();
+  const bots = [...new Set(rows.map((r) => r.bot))];
   const add = (k: string, f: Fine) => {
     const cur = acc.get(k);
     acc.set(k, cur === undefined ? f : addFine(cur, f));
@@ -320,162 +309,174 @@ export function rollUp(rows: readonly FineRow[], bots: string[]): Map<string, St
     add(`smart|${r.smart_k}`, f);
     add(`clamp|${r.clamp_k}`, f);
     add(`hour|${r.block}`, f);
-    add(`market|${r.market}`, f);
+    add(`market|${botMarket(r.bot) ?? "unknown"}`, f);
     add(`size|${r.band}`, f);
     add(`side|${r.side}`, f);
   }
   return new Map([...acc].map(([k, f]) => [k, statsOfFine(f, k === "all|all" ? bots : [])]));
 }
 
+interface WalkFill {
+  bot: string;
+  id: string;
+  at: number;
+  createdAt: number;
+  side: "buy" | "sell";
+  size: string;
+  price: string;
+  fee: string;
+  cut: boolean;
+}
+
 /**
- * Một truy vấn cho cả trang (nền tính một lần): thống kê theo mọi chiều breakdown, phân vị của "Price after the fill",
- * đi lại vị thế từng bot (thời gian phẳng, vị thế trung bình) và các lần cắt vị thế. Vị thế đầu kỳ của bot đưa vào
- * bằng VALUES.
+ * Đi lại vị thế từng bot bằng MỘT sổ cái (`ledgerStep`, dùng chung với vị thế mang sang): thời gian phẳng / vị thế trung
+ * bình (từ fill đầu tới fill cuối của bot trong kỳ) và kết quả mỗi lần cắt = (giá cắt − giá vào bình quân) × size × chiều
+ * − phí của fill cắt; giá vào chưa biết (vị thế mang sang không tìm được giá vốn) → "Not available".
+ * `fills` đã xếp theo (bot, thời gian).
  */
-async function loadMm(q: Exec, w: Window, qq: SignalMmQuery): Promise<MmData> {
+export function walkLedger(
+  fills: readonly WalkFill[],
+  start: ReadonlyMap<string, Ledger>,
+): { walk: Map<string, WalkAgg>; cuts: Omit<CutView, "moveBp" | "market">[] } {
+  const walk = new Map<string, WalkAgg>();
+  const cuts: Omit<CutView, "moveBp" | "market">[] = [];
+  let bot = "";
+  let l: Ledger = { pos: D0, entry: null, openedAt: null };
+  let lastAt = 0;
+  let lastUsd = 0;
+  let agg: WalkAgg = { flatMs: 0, spanMs: 0, heldMs: 0, heldUsdMs: 0 };
+  for (const f of fills) {
+    if (f.bot !== bot) {
+      bot = f.bot;
+      l = start.get(bot) ?? { pos: D0, entry: null, openedAt: null };
+      agg = { flatMs: 0, spanMs: 0, heldMs: 0, heldUsdMs: 0 };
+      walk.set(bot, agg);
+      lastAt = f.at;
+      lastUsd = 0;
+    } else {
+      // Khoảng [fill trước, fill này] với vị thế sau fill trước (USDC theo float: chỉ để đo thời gian / số lệnh).
+      const dt = f.at - lastAt;
+      agg.spanMs += dt;
+      if (lastUsd < 1) agg.flatMs += dt;
+      else {
+        agg.heldMs += dt;
+        agg.heldUsdMs += lastUsd * dt;
+      }
+    }
+    const price = dec(f.price);
+    const size = dec(f.size);
+    if (f.cut && !l.pos.isZero()) {
+      const long = l.pos.gt(0);
+      cuts.push({
+        fillId: f.id,
+        at: f.at,
+        createdAt: f.createdAt,
+        botId: bot,
+        position: long ? "long" : "short",
+        entry: l.entry,
+        price,
+        heldSecs:
+          l.entry === null || l.openedAt === null ? null : Math.round((f.at - l.openedAt) / 1000),
+        result:
+          l.entry === null
+            ? null
+            : price
+                .sub(l.entry)
+                .mul(size)
+                .mul(long ? 1 : -1)
+                .sub(dec(f.fee)),
+      });
+    }
+    l = ledgerStep(l, f.side, size, price, f.at);
+    lastAt = f.at;
+    lastUsd = Math.abs(l.pos.toNumber() * price.toNumber());
+  }
+  return { walk, cuts: cuts.sort((a, b) => b.at - a.at) };
+}
+
+/**
+ * Dữ liệu MM của một (kỳ, múi giờ), không theo bộ lọc (review #246 lần 2, M-B): nhóm nhỏ nhất theo mọi chiều + bot (SQL,
+ * nền tính một lần), đi lại vị thế (fill hẹp, sổ cái trong Node), lần cắt, số lệnh. Bộ lọc market / bot / level / Smart
+ * quoting / phía áp trong Node bằng `rollUp`, nên đổi bộ lọc không chạy lại truy vấn nặng.
+ */
+async function loadMm(
+  q: Exec,
+  w: Window,
+  tz: string,
+  range: SignalMmQuery["range"],
+): Promise<MmBase> {
   const botsAll = await liveBots(q, ["volume_maker"]);
   const bots = new Map(botsAll.map((b) => [b.id, b]));
   const active = await activeBots(q, w, ["volume_maker"]);
-  const ids = [...active].filter((id) => {
-    const b = bots.get(id);
-    return b !== undefined && botLevel(qq, b);
-  });
+  const ids = [...active].filter((id) => bots.has(id));
   const [posStart] = await positionsAt(q, ids, [w.from]);
   const pos = posStart ?? new Map<string, Decimal>();
+  const bases = await costBasesAt(q, pos, w.from);
   const hz = (fn: (h: string) => string) => sql.raw(H.map(fn).join(", "));
   const r = await q.execute(sql`
-    with ${derived(qq, w)},
-    g as (
-      select coalesce(lvl::text, 'unknown') as lvl_k,
-             case when smart is null then 'unknown' when smart then 'on' else 'off' end as smart_k,
-             case when not has_ctx then 'unknown' when smart is false then 'off' else coalesce(clamp, 'normal') end as clamp_k,
-             block, market, band, side, ${SUMS_SQL},
-             array[${hz((h) => `sum(b${h})`)}] as sb,
-             array[${hz((h) => `count(b${h})::int`)}] as nb,
-             array[${hz((h) => `(count(*) filter (where b${h} < 0))::int`)}] as neg,
-             sum(b60 - b0) as ab_s, count(b60 - b0)::int as ab_n,
-             sum(b60 - fee_bp) as naf_s, count(b60 - fee_bp)::int as naf_n,
-             sum(fee_bp) as fee_s, count(fee_bp)::int as fee_n,
-             (count(*) filter (where has_ctx))::int as ctx,
-             coalesce(sum(usd) filter (where r60 is not null and mid0 is not null), 0)::text as s_vol,
-             coalesce(sum(spread_usd) filter (where r60 is not null and mid0 is not null), 0)::text as s_usd
-        from x
-        group by 1, 2, 3, 4, 5, 6, 7),
-    qn as (
-      select ${hz((h) => `percentile_cont(0.25) within group (order by b${h}) as p25_${h}, percentile_cont(0.75) within group (order by b${h}) as p75_${h}`)},
-             array_agg(distinct bot_id::text) as bot_ids
-        from x)
-    select (select coalesce(json_agg(g), '[]') from g) as groups,
-           (select to_json(bot_ids) from qn) as bots,
-           (select row_to_json(qn) from qn) as quant`);
-  const row = rowsOf<{
-    groups: FineRow[];
-    bots: string[];
-    quant: Record<string, number | null> | null;
-  }>(r)[0];
-  // Vị thế mang sang: giá vốn và lúc mở từ lịch sử trước kỳ (review #246 B2), đưa vào đi lại như một fill ảo lúc mở.
-  // Không tìm được → giá null: lần cắt trên vị thế đó "Not available".
-  const carry: SQL[] = [];
-  for (const id of ids) {
-    const p0 = pos.get(id) ?? D0;
-    if (p0.isZero()) continue;
-    const basis = await costBasisAt(q, id, w.from, p0);
-    carry.push(
-      sql`(${id}::uuid, ${basis === null ? w.from.getTime() : basis.openedAt}::float8, ${basis?.entry.toFixed() ?? null}::numeric, ${p0.abs().toFixed()}::numeric, ${p0.isNeg() ? -1 : 1}::int)`,
-    );
-  }
-  const cv =
-    carry.length === 0
-      ? sql`select null::uuid as bot_id, 0::float8 as at, null::numeric as price, 0::numeric as size, 1 as d where false`
-      : sql`select * from (values ${sql.join(carry, sql`, `)}) v(bot_id, at, price, size, d)`;
-  // Đi lại vị thế: truy vấn riêng, chỉ fill / lệnh (không cần giá tham chiếu), để mỗi truy vấn nhẹ. Sổ cái giá vốn bình
-  // quân bằng window: đoạn = từ lúc mở (đi từ phẳng / đổi chiều); giá vào = Σ giá × khối lượng thêm vào ÷ Σ khối lượng
-  // thêm vào trong đoạn (giảm vị thế không đổi giá vào; fill đổi chiều chỉ tính phần mở mới).
+    with ${derived({ range, tz }, w)}
+    select coalesce(lvl::text, 'unknown') as lvl_k,
+           case when smart is null then 'unknown' when smart then 'on' else 'off' end as smart_k,
+           case when not has_ctx then 'unknown' when smart is false then 'off' else coalesce(clamp, 'normal') end as clamp_k,
+           block, bot_id::text as bot, band, side, ${SUMS_SQL},
+           array[${hz((h) => `sum(b${h})`)}] as sb,
+           array[${hz((h) => `count(b${h})::int`)}] as nb,
+           array[${hz((h) => `(count(*) filter (where b${h} < 0))::int`)}] as neg,
+           sum(b60 - b0) as ab_s, count(b60 - b0)::int as ab_n,
+           sum(b60 - fee_bp) as naf_s, count(b60 - fee_bp)::int as naf_n,
+           sum(fee_bp) as fee_s, count(fee_bp)::int as fee_n,
+           (count(*) filter (where has_ctx))::int as ctx,
+           coalesce(sum(usd) filter (where r60 is not null and mid0 is not null), 0)::text as s_vol,
+           coalesce(sum(spread_usd) filter (where r60 is not null and mid0 is not null), 0)::text as s_usd
+      from x
+      group by 1, 2, 3, 4, 5, 6, 7`);
+  const fine = rowsOf<FineRow>(r);
+  // Fill hẹp, theo (bot, thời gian), cho sổ cái trong Node (không giữ lại sau khi tính).
   const wr = await q.execute(sql`
-    with k as (
-      select f.id, (extract(epoch from f.filled_at) * 1000)::float8 as at, o.bot_id, o.market, f.price,
-             f.size, f.fee, case when o.side = 'buy' then 1 else -1 end as d, o.created_at,
-             case when o.tag like '%:cut:%' then 'cut' else 'other' end as kind
-        from fills f
-        join orders o on o.id = f.order_id
-        join bots b on b.id = o.bot_id
-        where f.filled_at >= ${w.from} and f.filled_at < ${w.to}
-          and b.mode = 'live' and b.strategy = 'volume_maker'
-          ${botWhere(qq) === undefined ? sql`` : sql`and ${botWhere(qq)}`}
-      union all
-      select null::uuid, at, bot_id, null, price, size, 0::numeric, d, null::timestamptz, 'carry' from (${cv}) c),
-    w1 as (
-      select k.*, sum(d * size) over (partition by bot_id order by at, id nulls first) as pos_after,
-             coalesce(lead(at) over (partition by bot_id order by at, id nulls first) - at, 0) as dt
-        from k),
-    w2 as (
-      select w1.*, pos_after - d * size as pos_before,
-             (pos_after <> 0 and (pos_after - d * size = 0 or sign(pos_after - d * size) <> sign(pos_after))) as opens
-        from w1),
-    w3 as (
-      select w2.*, sum(opens::int) over (partition by bot_id order by at, id nulls first) as seg,
-             case when opens then abs(pos_after) when pos_after <> 0 and sign(d) = sign(pos_after) then size else 0 end as add_qty
-        from w2),
-    w4 as (
-      select w3.*,
-             sum(add_qty) over s as seg_qty,
-             sum(add_qty * price) over s as seg_cash,
-             bool_or(add_qty > 0 and price is null) over s as seg_unknown,
-             min(at) over s as opened_at
-        from w3
-        window s as (partition by bot_id, seg order by at, id nulls first)),
-    wf as (
-      -- Vị thế USDC theo float (chỉ để đo thời gian / số lệnh, không phải tiền); bỏ fill ảo.
-      select bot_id, dt, abs(pos_after::float8 * price::float8) as usd_pos from w4 where kind <> 'carry'),
-    wa as (
-      select bot_id::text as bot,
-             sum(dt) filter (where usd_pos < 1) as flat_ms, sum(dt) as span_ms,
-             sum(dt) filter (where usd_pos >= 1) as held_ms,
-             sum(usd_pos * dt) filter (where usd_pos >= 1) as held_usd_ms
-        from wf group by bot_id),
-    cu as (
-      select id::text as id, at, (extract(epoch from created_at) * 1000)::float8 as created_at, bot_id::text as bot,
-             market, price::text as price, size::text as size, fee::text as fee, pos_before::text as pos_before,
-             case when seg_unknown or pos_before = 0 or seg_qty = 0 then null else (seg_cash / seg_qty)::text end as entry,
-             case when pos_before = 0 then null else opened_at end as opened_at
-        from w4 where kind = 'cut' order by at desc limit ${MAX_CUTS + 1})
-    select (select coalesce(json_agg(wa), '[]') from wa) as walk,
-           (select coalesce(json_agg(cu), '[]') from cu) as cuts`);
-  const walkRow = rowsOf<{ walk: WalkRow[]; cuts: CutRow[] }>(wr)[0];
-  const groups = rollUp(row?.groups ?? [], row?.bots ?? []);
-  const quant = {
-    p25: H.map((h) => row?.quant?.[`p25_${h}`] ?? null),
-    p75: H.map((h) => row?.quant?.[`p75_${h}`] ?? null),
-  };
+    select o.bot_id::text as bot, f.id::text as id, (extract(epoch from f.filled_at) * 1000)::float8 as at,
+           (extract(epoch from o.created_at) * 1000)::float8 as "createdAt", o.side, f.size::text as size,
+           f.price::text as price, f.fee::text as fee, o.tag like '%:cut:%' as cut
+      from fills f
+      join orders o on o.id = f.order_id
+      join bots b on b.id = o.bot_id
+      where f.filled_at >= ${w.from} and f.filled_at < ${w.to}
+        and b.mode = 'live' and b.strategy = 'volume_maker'
+        and o.created_at >= ${new Date(w.from.getTime() - 86_400_000)} and o.filled_size > 0
+      order by o.bot_id, f.filled_at, f.id`);
+  const start = new Map<string, Ledger>(
+    ids.map((id) => {
+      const p0 = pos.get(id) ?? D0;
+      const b = bases.get(id);
+      return [id, { pos: p0, entry: b?.entry ?? null, openedAt: b?.openedAt ?? null }];
+    }),
+  );
+  const { walk, cuts } = walkLedger(rowsOf<WalkFill>(wr), start);
   const markets = [...new Set(ids.map((id) => bots.get(id)?.market ?? ""))].filter((m) => m !== "");
   const markEnd = await marksAt(q, markets, w.to);
   const markStart = await marksAt(q, markets, w.from);
-  const rawCuts = walkRow?.cuts ?? [];
-  const cutsComplete = rawCuts.length <= MAX_CUTS;
-  const cuts = await cutViews(q, rawCuts.slice(0, MAX_CUTS), w);
-  const orders = SIGNAL_RANGE_MS[qq.range] > 7 * 86_400_000 ? null : await orderCounts(q, w, ids);
+  const views = await cutViews(q, cuts, bots, w);
+  const orders = SIGNAL_RANGE_MS[range] > 7 * 86_400_000 ? null : await orderCounts(q, w, ids);
   return {
     window: w,
     bots,
     active,
-    groups,
-    quant,
-    walk: walkRow?.walk ?? [],
-    cuts,
-    cutsComplete,
+    fine,
+    walk,
+    cuts: views,
     marks: { markEnd, markStart, posStart: pos },
     orders,
   };
 }
 
-/**
- * Kết quả mỗi lần cắt (review #246 B2): giá vào bình quân và lúc mở của vị thế bị cắt tính từ lịch sử fill (kể cả trước
- * kỳ, `costBasisOf`); không tìm được → "Not available", không lấy giá fill đầu kỳ. Binance move từ dòng "Position cut"
- * (payload.quote, DEC-312) gần lúc đặt lệnh cắt.
- */
-async function cutViews(q: Exec, cuts: readonly CutRow[], w: Window): Promise<CutView[]> {
+/** Binance move lúc cắt từ dòng "Position cut" (payload.quote, DEC-312) gần lúc đặt lệnh cắt. */
+async function cutViews(
+  q: Exec,
+  cuts: readonly Omit<CutView, "moveBp" | "market">[],
+  bots: Map<string, BotInfo>,
+  w: Window,
+): Promise<CutView[]> {
   if (cuts.length === 0) return [];
-  const ids = [...new Set(cuts.map((c) => c.bot))];
+  const ids = [...new Set(cuts.map((c) => c.botId))];
   const ev = await q.execute(sql`
     select bot_id::text as bot, (extract(epoch from occurred_at) * 1000)::float8 as at, payload->'quote' as quote
       from bot_events
@@ -493,34 +494,12 @@ async function cutViews(q: Exec, cuts: readonly CutRow[], w: Window): Promise<Cu
     return { bot: e.bot, at: e.at, moveBp };
   });
   return cuts.map((c) => {
-    const before = dec(c.pos_before);
-    const price = dec(c.price);
-    const entry = c.entry === null ? null : dec(c.entry);
     const hit = events
       .filter(
-        (e) => e.bot === c.bot && e.at >= c.created_at - 10_000 && e.at <= c.created_at + 2_000,
+        (e) => e.bot === c.botId && e.at >= c.createdAt - 10_000 && e.at <= c.createdAt + 2_000,
       )
-      .sort((a, b) => Math.abs(a.at - c.created_at) - Math.abs(b.at - c.created_at))[0];
-    return {
-      fillId: c.id,
-      at: c.at,
-      botId: c.bot,
-      market: c.market,
-      position: before.gte(0) ? "long" : "short",
-      entry,
-      price,
-      heldSecs:
-        entry === null || c.opened_at === null ? null : Math.round((c.at - c.opened_at) / 1000),
-      result:
-        entry === null
-          ? null
-          : price
-              .sub(entry)
-              .mul(dec(c.size))
-              .mul(before.gt(0) ? 1 : -1)
-              .sub(dec(c.fee)),
-      moveBp: hit?.moveBp ?? null,
-    };
+      .sort((a, b) => Math.abs(a.at - c.createdAt) - Math.abs(b.at - c.createdAt))[0];
+    return { ...c, market: bots.get(c.botId)?.market ?? "", moveBp: hit?.moveBp ?? null };
   });
 }
 
@@ -543,9 +522,55 @@ async function orderCounts(q: Exec, w: Window, ids: readonly string[]): Promise<
   return rowsOf<OrderCount>(r);
 }
 
-function dataFor(deps: SignalDeps, snap: Snapshot, q: SignalMmQuery): Promise<MmData> {
-  const key = `mm|${q.tz}|${q.market ?? ""}|${q.botId ?? ""}|${String(q.level ?? "")}|${q.smart ?? ""}|${q.side ?? ""}`;
-  return extraSet(snap, key, () => readOnly(deps.db, (x) => loadMm(x, snap.window, q)));
+/** Dữ liệu MM một (kỳ, múi giờ), gắn vào ảnh chụp của kỳ (LRU). */
+function dataFor(deps: SignalDeps, snap: Snapshot, tz: string): Promise<MmBase> {
+  return extraSet(snap, `mm|${tz}`, () =>
+    readOnly(deps.db, (x) => loadMm(x, snap.window, tz, snap.range)),
+  );
+}
+
+/** Áp bộ lọc trong Node: nhóm theo bot / level / Smart quoting / phía. */
+function viewOf(d: MmBase, q: SignalMmQuery): Map<string, Stats> {
+  const rows = d.fine.filter((r) => {
+    const b = d.bots.get(r.bot);
+    return (
+      b !== undefined &&
+      botLevel(q, b) &&
+      (q.level === undefined || r.lvl_k === String(q.level)) &&
+      (q.smart === undefined || r.smart_k === q.smart) &&
+      (q.side === undefined || r.side === q.side)
+    );
+  });
+  return rollUp(rows, (id) => d.bots.get(id)?.market);
+}
+
+/**
+ * Phân vị p25 / p75 của "Price after the fill" cho đúng bộ lọc (SQL, cache theo bộ lọc trong ảnh chụp): endpoint riêng,
+ * web tải sau, nên đổi bộ lọc không chờ truy vấn này.
+ */
+export async function signalMmQuantiles(
+  deps: SignalDeps,
+  userId: string,
+  query: unknown,
+): Promise<SignalMmQuantiles> {
+  await team(deps, userId);
+  const q = parseOrThrow(signalMmQuerySchema, query);
+  const snap = snapshotOf(deps, q.range, deps.now());
+  const key = `mmq|${q.market ?? ""}|${q.botId ?? ""}|${String(q.level ?? "")}|${q.smart ?? ""}|${q.side ?? ""}`;
+  return extraSet(snap, key, () =>
+    readOnly(deps.db, async (x) => {
+      const hz = (fn: (h: string) => string) => sql.raw(H.map(fn).join(", "));
+      const r = await x.execute(sql`
+        with ${derived({ ...q, tz: "UTC" }, snap.window)}
+        select ${hz((h) => `percentile_cont(0.25) within group (order by b${h}) as p25_${h}, percentile_cont(0.75) within group (order by b${h}) as p75_${h}`)}
+          from x`);
+      const row = rowsOf<Record<string, number | null>>(r)[0];
+      return {
+        p25: H.map((h) => r2(row?.[`p25_${h}`] ?? null)),
+        p75: H.map((h) => r2(row?.[`p75_${h}`] ?? null)),
+      };
+    }),
+  );
 }
 
 const ORDER: Record<MmBreakdown, readonly string[] | null> = {
@@ -576,19 +601,19 @@ function rowOf(key: string, s: Stats, total: number): MmRow {
   };
 }
 
-function breakdownOf(d: MmData): SignalMmView["breakdown"] {
-  const total = d.groups.get("all|all");
+function breakdownOf(groups: Map<string, Stats>): SignalMmView["breakdown"] {
+  const total = groups.get("all|all");
   const n = total?.sums.n ?? 0;
   const out = {} as SignalMmView["breakdown"];
   for (const by of MM_BREAKDOWNS) {
-    const keys = [...d.groups.keys()]
+    const keys = [...groups.keys()]
       .filter((k) => k.startsWith(`${by}|`))
       .map((k) => k.slice(by.length + 1));
     const order = ORDER[by] ?? [...keys].sort();
     out[by] = {
       rows: order
         .filter((k) => keys.includes(k))
-        .map((k) => rowOf(k, d.groups.get(`${by}|${k}`) ?? emptyStats(), n)),
+        .map((k) => rowOf(k, groups.get(`${by}|${k}`) ?? emptyStats(), n)),
       total: rowOf("all", total ?? emptyStats(), n),
     };
   }
@@ -626,22 +651,22 @@ const emptyStats = (): Stats => ({
 
 const orderSizeSchema = z.object({ orderSize: decimalStringSchema });
 
-/** Thời gian phẳng / vị thế trung bình (số lệnh) từ phần đi lại trong SQL; bot thiếu order size → vị thế "Not available". */
-export function inventoryOf(walk: readonly WalkRow[], bots: Map<string, BotInfo>) {
+/** Thời gian phẳng / vị thế trung bình (số lệnh) từ phần đi lại; bot thiếu order size → vị thế "Not available". */
+export function inventoryOf(walk: ReadonlyMap<string, WalkAgg>, bots: Map<string, BotInfo>) {
   let flat = 0;
   let span = 0;
   let held = 0;
   let heldOrders = 0;
   let sized = true;
-  for (const w of walk) {
-    flat += w.flat_ms ?? 0;
-    span += w.span_ms ?? 0;
-    const cfg = orderSizeSchema.safeParse(bots.get(w.bot)?.config);
+  for (const [bot, w] of walk) {
+    flat += w.flatMs;
+    span += w.spanMs;
+    const cfg = orderSizeSchema.safeParse(bots.get(bot)?.config);
     const size = cfg.success ? Number(cfg.data.orderSize) : NaN;
-    if ((w.held_ms ?? 0) > 0) {
+    if (w.heldMs > 0) {
       if (!(size > 0)) sized = false;
-      held += w.held_ms ?? 0;
-      heldOrders += (w.held_usd_ms ?? 0) / size;
+      held += w.heldMs;
+      heldOrders += w.heldUsdMs / size;
     }
   }
   return {
@@ -755,8 +780,15 @@ export async function signalMm(
   await team(deps, userId);
   const q = parseOrThrow(signalMmQuerySchema, query);
   const snap = snapshotOf(deps, q.range, deps.now());
-  const [d, prev] = await Promise.all([dataFor(deps, snap, q), previousSet(deps, snap)]);
-  const total = d.groups.get("all|all") ?? emptyStats();
+  const [d, prev] = await Promise.all([dataFor(deps, snap, q.tz), previousSet(deps, snap)]);
+  const groups = viewOf(d, q);
+  const total = groups.get("all|all") ?? emptyStats();
+  const okBot = (id: string) => {
+    const b = d.bots.get(id);
+    return b !== undefined && botLevel(q, b);
+  };
+  const cuts = d.cuts.filter((c) => okBot(c.botId));
+  const walk = new Map([...d.walk].filter(([id]) => okBot(id)));
   const marketOf = (id: string) => d.bots.get(id)?.market;
   // Vị thế mang sang chỉ cộng khi bộ lọc theo bot (không theo level / Smart quoting / phía).
   const carried = fillLevel(q) ? D0 : carriedOf(d.marks, total.bots, marketOf);
@@ -766,15 +798,15 @@ export async function signalMm(
     total.sums.pVol.gt(0) && total.sVol.div(total.sums.pVol).gte(0.8)
       ? perM(total.sUsd.neg(), total.sVol)
       : null;
-  const cutsUsd =
-    !d.cutsComplete || d.cuts.some((c) => c.result === null)
-      ? null
-      : d.cuts.reduce((s, c) => s.add(c.result ?? D0), D0);
+  const cutsUsd = cuts.some((c) => c.result === null)
+    ? null
+    : cuts.reduce((s, c) => s.add(c.result ?? D0), D0);
   const levelRates = (level: number) => {
     if (d.orders === null) return null;
     const rows = d.orders.filter(
       (o) =>
         o.level === level &&
+        okBot(o.bot) &&
         (q.smart === undefined || o.smart === (q.smart === "on")) &&
         (q.side === undefined || o.side === q.side),
     );
@@ -782,7 +814,7 @@ export async function signalMm(
     return placed === 0 ? null : (rows.reduce((s, o) => s + o.filled, 0) / placed) * 100;
   };
   const levels = [0, 1, 2, 3].map((level) => {
-    const g = d.groups.get(`level|${String(level)}`) ?? emptyStats();
+    const g = groups.get(`level|${String(level)}`) ?? emptyStats();
     return {
       level,
       n: g.sums.n,
@@ -793,13 +825,13 @@ export async function signalMm(
       thin: isThin(g.sums.n),
     };
   });
-  const breakdown = breakdownOf(d);
+  const breakdown = breakdownOf(groups);
   const netStr = str(res.net);
   const { suggestions, hidden } = mmSuggestions(
-    d.groups,
+    groups,
     levels,
     breakdown.hour,
-    d.cuts.length,
+    cuts.length,
     netStr,
   );
   const prevNet = fillLevel(q)
@@ -811,7 +843,7 @@ export async function signalMm(
           return b !== undefined && botLevel(q, b);
         }),
       );
-  const inv = inventoryOf(d.walk, d.bots);
+  const inv = inventoryOf(walk, d.bots);
   const facet = [...d.active].filter((id) => d.bots.has(id));
   const w = d.window;
   return {
@@ -831,7 +863,7 @@ export async function signalMm(
       markout1m: r2(total.avg[3]),
       feesBp: r2(total.feeBp),
       againstPct: r2(total.against[3]),
-      cuts: d.cuts.length,
+      cuts: cuts.length,
       cutsUsd: str(cutsUsd, 4),
       netPerM: netStr,
       netUsd: str(res.netUsd),
@@ -856,12 +888,13 @@ export async function signalMm(
       all: SIGNAL_MM_HORIZONS.map((_, i) => ({
         n: total.cnt[i] ?? 0,
         mean: r2(total.avg[i] ?? null),
-        p25: r2(d.quant.p25[i] ?? null),
-        p75: r2(d.quant.p75[i] ?? null),
+        // Phân vị theo bộ lọc: endpoint riêng (`/mm/quantiles`), web tải sau.
+        p25: null,
+        p75: null,
         againstPct: i === 0 ? null : r2(total.against[i] ?? null),
       })),
-      on: SIGNAL_MM_HORIZONS.map((_, i) => r2(d.groups.get("smart|on")?.avg[i] ?? null)),
-      off: SIGNAL_MM_HORIZONS.map((_, i) => r2(d.groups.get("smart|off")?.avg[i] ?? null)),
+      on: SIGNAL_MM_HORIZONS.map((_, i) => r2(groups.get("smart|on")?.avg[i] ?? null)),
+      off: SIGNAL_MM_HORIZONS.map((_, i) => r2(groups.get("smart|off")?.avg[i] ?? null)),
       feesBp: r2(total.feeBp),
     },
     levels,
@@ -869,10 +902,10 @@ export async function signalMm(
       timeFlatPct: r2(inv.timeFlatPct),
       avgPositionOrders: r2(inv.avgPositionOrders),
       inventoryPerM: str(res.inventory),
-      cuts: d.cuts.length,
+      cuts: cuts.length,
       cutsUsd: str(cutsUsd, 4),
-      avgCutMoveBp: r2(avg(d.cuts.map((c) => c.moveBp))),
-      latestCuts: d.cuts.slice(0, 5).map((c) => ({
+      avgCutMoveBp: r2(avg(cuts.map((c) => c.moveBp))),
+      latestCuts: cuts.slice(0, 5).map((c) => ({
         fillId: c.fillId,
         at: new Date(c.at).toISOString(),
         market: c.market,
@@ -995,7 +1028,7 @@ export async function signalMmFills(
   // Mới nhất: tổng lấy từ số fill của trang (ảnh chụp đã có), không đếm lại cả kỳ.
   const total =
     q.sort === "newest"
-      ? ((await dataFor(deps, snap, q)).groups.get("all|all")?.sums.n ?? 0)
+      ? (viewOf(await dataFor(deps, snap, q.tz), q).get("all|all")?.sums.n ?? 0)
       : (rows[0]?.total ?? 0);
   const next = q.offset + SIGNAL_PAGE_SIZE;
   return {
@@ -1062,8 +1095,7 @@ export async function signalMmFill(
     (await readOnly(deps.db, (x) => liveBots(x, ["volume_maker"]))).map((b) => [b.id, b]),
   );
   const bot = bots.get(one.bot);
-  const d = await dataFor(deps, snap, q);
-  const all = d.groups.get("all|all") ?? emptyStats();
+  const all = viewOf(await dataFor(deps, snap, q.tz), q).get("all|all") ?? emptyStats();
   const at = one.at;
   const extra = await readOnly(deps.db, async (t) => {
     const mids = await t.execute(sql`

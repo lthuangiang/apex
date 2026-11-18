@@ -504,6 +504,13 @@ export const signalMmViewSchema = z.object({
 });
 export type SignalMmView = z.infer<typeof signalMmViewSchema>;
 
+/** p25 / p75 của "Price after the fill" cho đúng bộ lọc (endpoint riêng, tải sau trang chính). */
+export const signalMmQuantilesSchema = z.object({
+  p25: z.array(num),
+  p75: z.array(num),
+});
+export type SignalMmQuantiles = z.infer<typeof signalMmQuantilesSchema>;
+
 export const mmFillSchema = z.object({
   id: uuid,
   filledAt: isoDateTimeSchema,
