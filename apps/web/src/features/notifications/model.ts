@@ -118,6 +118,9 @@ export function targetOf(n: Pick<NotificationItem, "type" | "data">, aiDesk: boo
     case "team_mcp_daily_limit":
     case "team_invariant":
       return "/admin/stats";
+    case "team_incident":
+    case "team_incident_digest":
+      return "/admin/bot-monitor";
   }
 }
 

@@ -1,3 +1,5 @@
+import { Decimal } from "@drift/shared";
+
 import type { Candle } from "../backtest/run";
 
 import type { VolumeFarmConfig } from "./schema";
@@ -127,50 +129,29 @@ export const REVIEW_GRID = {
 
 const TAG = /^vf:(\d+):(in|out|sl)/;
 
-/** Ghép fill thành lượt: các fill vào của một lượt, rồi fill ra (bot hoặc stop trên SoDEX) tới khi hết vị thế. */
-export function buildTrades(fills: readonly ReviewFill[]): ReviewTrade[] {
-  const sorted = [...fills].sort((a, b) => a.at - b.at);
-  const out: ReviewTrade[] = [];
-  interface Open {
-    cycle: number;
-    ins: ReviewFill[];
-    outs: ReviewFill[];
-  }
-  let cur = null as Open | null;
+/** Một lượt chưa tính tiền: các fill vào rồi các fill ra (bot hoặc stop trên SoDEX) của cùng một số lượt. */
+export interface FillGroup<F> {
+  cycle: number;
+  ins: F[];
+  outs: F[];
+}
+
+/**
+ * Lõi ghép fill thành lượt, dùng chung cho mọi nơi (Review this run, Strategy Analytics, AI Desk, replay #235): fill
+ * theo thời gian; fill `in` của một số lượt mới (hoặc sau khi lượt đã có fill ra) mở lượt mới; lượt chỉ được nhận khi
+ * `closed(ins, outs)` (khối lượng ra ≥ 99,9% khối lượng vào). Không tính tiền: nơi gọi tự tính (số thực hoặc Decimal).
+ */
+export function groupFills<F extends { tag: string; at: number }>(
+  fills: readonly F[],
+  closed: (ins: readonly F[], outs: readonly F[]) => boolean,
+): FillGroup<F>[] {
+  const out: FillGroup<F>[] = [];
+  let cur = null as FillGroup<F> | null;
   const close = () => {
     if (cur === null || cur.ins.length === 0 || cur.outs.length === 0) return;
-    const qIn = sum(cur.ins, (f) => f.size);
-    const qOut = sum(cur.outs, (f) => f.size);
-    if (qOut < qIn * 0.999) return;
-    const first = cur.ins[0];
-    const last = cur.outs.at(-1);
-    if (first === undefined || last === undefined) return;
-    const entry = sum(cur.ins, (f) => f.price * f.size) / qIn;
-    const exit = sum(cur.outs, (f) => f.price * f.size) / qOut;
-    const long = first.side === "buy";
-    const all = [...cur.ins, ...cur.outs];
-    out.push({
-      cycle: cur.cycle,
-      t0: first.at,
-      t1: last.at,
-      long,
-      qty: qIn,
-      entry,
-      exit,
-      notional: qIn * entry,
-      volume: qIn * entry + qOut * exit,
-      gross: (long ? exit - entry : entry - exit) * qIn,
-      fees: sum(all, (f) => f.fee),
-      builderFees: sum(all, (f) => f.builderFee),
-      allMaker: all.every((f) => f.isMaker),
-      makerVolume: sum(
-        all.filter((f) => f.isMaker),
-        (f) => f.price * f.size,
-      ),
-      exitByStop: cur.outs.some((f) => f.tag.endsWith(":sl")),
-    });
+    if (closed(cur.ins, cur.outs)) out.push(cur);
   };
-  for (const f of sorted) {
+  for (const f of [...fills].sort((a, b) => a.at - b.at)) {
     const m = TAG.exec(f.tag);
     if (m === null) continue;
     const cycle = Number(m[1]);
@@ -185,6 +166,123 @@ export function buildTrades(fills: readonly ReviewFill[]): ReviewTrade[] {
   }
   close();
   return out;
+}
+
+/** Ghép fill thành lượt, tiền bằng số thực: chỉ cho mô phỏng (Review this run, đo khớp lệnh), không cho số tiền hiển thị. */
+export function buildTrades(fills: readonly ReviewFill[]): ReviewTrade[] {
+  return groupFills(
+    fills,
+    (ins, outs) => sum(outs, (f) => f.size) >= sum(ins, (f) => f.size) * 0.999,
+  ).flatMap((g) => {
+    const first = g.ins[0];
+    const last = g.outs.at(-1);
+    if (first === undefined || last === undefined) return [];
+    const qIn = sum(g.ins, (f) => f.size);
+    const qOut = sum(g.outs, (f) => f.size);
+    const entry = sum(g.ins, (f) => f.price * f.size) / qIn;
+    const exit = sum(g.outs, (f) => f.price * f.size) / qOut;
+    const long = first.side === "buy";
+    const all = [...g.ins, ...g.outs];
+    return [
+      {
+        cycle: g.cycle,
+        t0: first.at,
+        t1: last.at,
+        long,
+        qty: qIn,
+        entry,
+        exit,
+        notional: qIn * entry,
+        volume: qIn * entry + qOut * exit,
+        gross: (long ? exit - entry : entry - exit) * qIn,
+        fees: sum(all, (f) => f.fee),
+        builderFees: sum(all, (f) => f.builderFee),
+        allMaker: all.every((f) => f.isMaker),
+        makerVolume: sum(
+          all.filter((f) => f.isMaker),
+          (f) => f.price * f.size,
+        ),
+        exitByStop: g.outs.some((f) => f.tag.endsWith(":sl")),
+      },
+    ];
+  });
+}
+
+/** Fill với tiền là Decimal (CLAUDE.md quy định 3), cho mọi số tiền hiển thị hoặc so sánh. */
+export interface ExactFill {
+  tag: string;
+  side: "buy" | "sell";
+  price: Decimal;
+  size: Decimal;
+  /** Đã gồm builder fee. */
+  fee: Decimal;
+  builderFee: Decimal;
+  isMaker: boolean;
+  at: number;
+}
+
+export interface ExactTrade {
+  cycle: number;
+  t0: number;
+  t1: number;
+  long: boolean;
+  qty: Decimal;
+  entry: Decimal;
+  exit: Decimal;
+  notional: Decimal;
+  /** Σ giá × size của mọi fill trong lượt. */
+  volume: Decimal;
+  /** Lãi / lỗ trước phí. */
+  gross: Decimal;
+  fees: Decimal;
+  builderFees: Decimal;
+  allMaker: boolean;
+  makerVolume: Decimal;
+  exitByStop: boolean;
+}
+
+const dsum = <T>(xs: readonly T[], f: (x: T) => Decimal) =>
+  xs.reduce((s, x) => s.add(f(x)), new Decimal(0));
+
+/** Cùng cách ghép với `buildTrades`, tiền bằng Decimal. */
+export function buildTradesExact(fills: readonly ExactFill[]): ExactTrade[] {
+  return groupFills(fills, (ins, outs) =>
+    dsum(outs, (f) => f.size).gte(dsum(ins, (f) => f.size).mul(0.999)),
+  ).flatMap((g) => {
+    const first = g.ins[0];
+    const last = g.outs.at(-1);
+    if (first === undefined || last === undefined) return [];
+    const qIn = dsum(g.ins, (f) => f.size);
+    const qOut = dsum(g.outs, (f) => f.size);
+    const inValue = dsum(g.ins, (f) => f.price.mul(f.size));
+    const outValue = dsum(g.outs, (f) => f.price.mul(f.size));
+    const entry = inValue.div(qIn);
+    const exit = outValue.div(qOut);
+    const long = first.side === "buy";
+    const all = [...g.ins, ...g.outs];
+    return [
+      {
+        cycle: g.cycle,
+        t0: first.at,
+        t1: last.at,
+        long,
+        qty: qIn,
+        entry,
+        exit,
+        notional: inValue,
+        volume: inValue.add(outValue),
+        gross: (long ? exit.sub(entry) : entry.sub(exit)).mul(qIn),
+        fees: dsum(all, (f) => f.fee),
+        builderFees: dsum(all, (f) => f.builderFee),
+        allMaker: all.every((f) => f.isMaker),
+        makerVolume: dsum(
+          all.filter((f) => f.isMaker),
+          (f) => f.price.mul(f.size),
+        ),
+        exitByStop: g.outs.some((f) => f.tag.endsWith(":sl")),
+      },
+    ];
+  });
 }
 
 function sum<T>(xs: readonly T[], f: (x: T) => number): number {

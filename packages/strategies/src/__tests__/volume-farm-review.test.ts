@@ -1,8 +1,10 @@
+import { Decimal } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
 import type { Candle } from "../backtest/run";
 import {
   buildTrades,
+  buildTradesExact,
   realFeeRates,
   replayOptions,
   reviewTrades,
@@ -108,6 +110,25 @@ describe("volume builder review (DEC-131)", () => {
     expect(short?.gross).toBeCloseTo(-0.2, 9);
     expect(short?.fees).toBeCloseTo(0.06, 9);
     expect(short?.allMaker).toBe(false);
+    // Bản Decimal ghép đúng các lượt đó, tiền chính xác (không sai số số thực).
+    const exact = buildTradesExact(
+      fills.map((f) => ({
+        ...f,
+        price: new Decimal(f.price),
+        size: new Decimal(f.size),
+        fee: new Decimal(f.fee),
+        builderFee: new Decimal(f.builderFee),
+      })),
+    );
+    expect(exact.map((t) => [t.cycle, t.t0, t.t1, t.long])).toEqual(
+      ts.map((t) => [t.cycle, t.t0, t.t1, t.long]),
+    );
+    expect(exact[1]?.gross.toString()).toBe("-0.2");
+    expect(exact[1]?.fees.toString()).toBe("0.06");
+    exact.forEach((t, i) => {
+      expect(t.volume.toNumber()).toBeCloseTo(ts[i]?.volume ?? NaN, 9);
+      expect(t.entry.toNumber()).toBeCloseTo(ts[i]?.entry ?? NaN, 9);
+    });
   });
 
   it("needs at least one closed trade (DEC-134)", () => {

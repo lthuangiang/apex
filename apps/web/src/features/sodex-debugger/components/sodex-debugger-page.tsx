@@ -27,6 +27,7 @@ import {
   callsHeadKey,
   callsListKey,
   DEFAULT_FILTERS,
+  filtersFromSearch,
   hasNarrowingFilters,
   SODEX_CALLS_KEY,
   useSodexCall,
@@ -156,6 +157,9 @@ export function SodexDebuggerPage() {
     setOffset(-new Date().getTimezoneOffset());
     const id = new URLSearchParams(window.location.search).get("call");
     if (id !== null && id !== "") setOpenId(id);
+    // ?botId= / ?show= của link báo team (#241).
+    const init = filtersFromSearch(window.location.search);
+    if (Object.keys(init).length > 0) setFilters((f) => ({ ...f, ...init }));
   }, []);
 
   const open = (id: string) => {

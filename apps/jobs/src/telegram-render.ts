@@ -2,7 +2,10 @@ import {
   escapeTelegramHtml,
   feeTierChangeText,
   groupOf,
+  TEAM_INCIDENT_KINDS,
+  TEAM_INCIDENT_SEVERITY,
   type NotificationType,
+  type TeamIncidentKind,
 } from "@drift/shared";
 
 import messages from "./messages/en.json" with { type: "json" };
@@ -17,6 +20,9 @@ const M = messages.telegram;
 const REASONS: Record<string, string> = messages.reasons;
 const STRATEGIES: Record<string, string> = messages.strategies;
 const COPY_SKIP: Record<string, string> = messages.copySkip;
+const INC = M.incident;
+const INC_KINDS: Record<string, string> = INC.kinds;
+const INC_SEVERITY: Record<string, string> = INC.severity;
 
 /**
  * Coin của market ("BTC-USD" → "BTC"). Tin bot copy (DEC-212) không dùng tên bot: tên mặc định của bot
@@ -142,7 +148,103 @@ function targetOf(row: RenderRow): { path: string; label: string } {
     case "team_mcp_daily_limit":
     case "team_invariant":
       return { path: "/admin/stats", label: M.buttons.stats };
+    case "team_incident":
+      return incidentTarget(row.data);
+    case "team_incident_digest":
+      return { path: "/admin/bot-monitor", label: M.buttons.botMonitor };
   }
+}
+
+// ---------- Sự cố tiền thật cho team (#241) ----------
+
+const incidentKind = (data: Record<string, unknown>): TeamIncidentKind | null => {
+  const k = str(data.kind);
+  return k !== null && (TEAM_INCIDENT_KINDS as readonly string[]).includes(k)
+    ? (k as TeamIncidentKind)
+    : null;
+};
+/** Bot id hợp lệ (UUID) thì mới dựng link; không bao giờ ghép chuỗi lạ vào URL. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuidOf = (v: unknown): string | null => {
+  const id = str(v);
+  return id !== null && UUID_RE.test(id) ? id : null;
+};
+const incidentBot = (data: Record<string, unknown>): string | null => uuidOf(data.botId);
+
+/** Nút của tin sự cố: lỗi SoDEX / WS → SoDEX Debugger lọc lỗi; còn lại → Bot Monitor. */
+function incidentTarget(data: Record<string, unknown>): { path: string; label: string } {
+  const kind = incidentKind(data);
+  return kind === "sodex_errors" || kind === "ws_closes"
+    ? { path: "/admin/sodex-debugger?show=errors", label: M.buttons.debugger }
+    : { path: "/admin/bot-monitor", label: M.buttons.botMonitor };
+}
+
+/** Tiêu đề một dòng: mức độ + loại. */
+function incidentTitle(data: Record<string, unknown>): string {
+  const kind = incidentKind(data);
+  const severity = kind === null ? "warning" : TEAM_INCIDENT_SEVERITY[kind];
+  return fill(INC.title, {
+    severity: INC_SEVERITY[severity] ?? severity,
+    title: kind === null ? M.titles.key_fee : (INC_KINDS[kind] ?? kind),
+  });
+}
+
+/** "Volume Farm · BTC-USD · bot ··1a2b3c4d"; phần nào thiếu thì bỏ. */
+function incidentWhere(data: Record<string, unknown>): string | null {
+  const strategy = str(data.strategy);
+  const market = str(data.market);
+  const bot = incidentBot(data);
+  const parts = [
+    strategy === null ? null : escapeTelegramHtml(STRATEGIES[strategy] ?? strategy),
+    market === null ? null : escapeTelegramHtml(market),
+    bot === null ? null : fill(INC.bot, { bot: `··${bot.slice(-8)}` }),
+  ].filter((x): x is string => x !== null);
+  return parts.length === 0 ? null : parts.join(" · ");
+}
+
+const link = (base: string, path: string, label: string) =>
+  `<a href="${escapeTelegramHtml(`${base}${path}`)}">${label}</a>`;
+
+/**
+ * Link trong tin: trang Users › chi tiết của chủ bot (có danh sách bot; team không mở được trang bot của user), SoDEX
+ * Debugger lọc theo bot, Bot Monitor. Không token đăng nhập.
+ */
+function incidentLinks(data: Record<string, unknown>, base: string): string {
+  const bot = incidentBot(data);
+  const user = uuidOf(data.userId);
+  return [
+    user === null ? null : link(base, `/admin/users/${user}`, INC.links.user),
+    bot === null ? null : link(base, `/admin/sodex-debugger?botId=${bot}`, INC.links.debugger),
+    link(base, "/admin/bot-monitor", INC.links.monitor),
+  ]
+    .filter((x): x is string => x !== null)
+    .join(" · ");
+}
+
+function incidentText(data: Record<string, unknown>, base: string): string {
+  const detail = str(data.detail);
+  return [
+    incidentTitle(data),
+    incidentWhere(data),
+    detail === null ? null : escapeTelegramHtml(detail),
+    incidentLinks(data, base),
+  ]
+    .filter((x): x is string => x !== null)
+    .join("\n");
+}
+
+/** Tin tổng hợp ngày: số lần theo loại (kể cả lần bị chặn lặp), nặng nhất trước. */
+function digestText(data: Record<string, unknown>): string {
+  const order = { critical: 0, warning: 1, info: 2 } as const;
+  const lines = TEAM_INCIDENT_KINDS.flatMap((k) => {
+    const n = data[k];
+    return typeof n === "number" && n > 0 ? [{ k, n }] : [];
+  })
+    .sort((a, b) => order[TEAM_INCIDENT_SEVERITY[a.k]] - order[TEAM_INCIDENT_SEVERITY[b.k]])
+    .map(({ k, n }) =>
+      fill(INC.digestLine, { n, title: INC_KINDS[k] ?? k, severity: TEAM_INCIDENT_SEVERITY[k] }),
+    );
+  return `${INC.digestTitle}\n${lines.length === 0 ? INC.digestNone : lines.join("\n")}`;
 }
 
 /** Bất biến tiền thật (DEC-274): không ví / key; bot ghi `··` + 8 ký tự cuối id. */
@@ -288,6 +390,10 @@ function title(row: RenderRow): string {
       return mcpTitle(row);
     case "team_invariant":
       return invariantTitle(row);
+    case "team_incident":
+      return incidentTitle(row.data);
+    case "team_incident_digest":
+      return INC.digestTitle;
   }
 }
 
@@ -354,6 +460,8 @@ function body(row: RenderRow): string | null {
     case "team_mcp_introspect_failing":
     case "team_mcp_daily_limit":
     case "team_invariant":
+    case "team_incident":
+    case "team_incident_digest":
       return null;
   }
 }
@@ -374,6 +482,21 @@ export function renderTelegram(rows: readonly RenderRow[], appUrl: string): Rend
   const base = appUrl.replace(/\/+$/, "");
   const first = rows[0];
   if (first === undefined) throw new Error("renderTelegram needs at least one row");
+  if (rows.length === 1 && first.type === "team_incident") {
+    const t = targetOf(first);
+    return {
+      text: incidentText(first.data, base),
+      button: { text: t.label, url: `${base}${t.path}` },
+    };
+  }
+  if (first.type === "team_incident_digest") {
+    // Mỗi ngày một tin; hai tin (giao lại) thì chỉ hiện tin mới nhất.
+    const last = rows[rows.length - 1] ?? first;
+    return {
+      text: digestText(last.data),
+      button: { text: M.buttons.botMonitor, url: `${base}/admin/bot-monitor` },
+    };
+  }
   if (rows.length === 1) {
     const b = body(first);
     const t = targetOf(first);
@@ -396,6 +519,28 @@ export function renderTelegram(rows: readonly RenderRow[], appUrl: string): Rend
   }
   // Báo team: worker chỉ gộp CÙNG loại sự kiện ("3 new signups"), mở trang Users.
   // Theo dõi MCP: mỗi loại tối đa 1 tin / 30 phút nên hiếm khi gộp; gộp thì liệt kê từng dòng, không thêm tiêu đề.
+  // Sự cố (#241): mỗi dòng giữ mức độ, nơi xảy ra, số liệu và link SoDEX Debugger của bot.
+  if (first.type === "team_incident") {
+    const lines = rows.slice(0, MERGED_LINES).map((r) => {
+      const where = incidentWhere(r.data);
+      const detail = str(r.data.detail);
+      const bot = incidentBot(r.data);
+      return [
+        `• ${plain(incidentTitle(r.data))}`,
+        where,
+        detail === null ? null : escapeTelegramHtml(detail),
+        bot === null ? null : link(base, `/admin/sodex-debugger?botId=${bot}`, INC.links.debugger),
+      ]
+        .filter((x): x is string => x !== null)
+        .join(" · ");
+    });
+    if (rows.length > MERGED_LINES)
+      lines.push(fill(M.merged.more, { n: rows.length - MERGED_LINES }));
+    return {
+      text: `${fill(INC.merged, { n: rows.length })}\n${lines.join("\n")}`,
+      button: { text: M.buttons.botMonitor, url: `${base}/admin/bot-monitor` },
+    };
+  }
   if (first.type.startsWith("team_mcp_")) {
     return {
       text: rows.map((r) => title(r)).join("\n"),
