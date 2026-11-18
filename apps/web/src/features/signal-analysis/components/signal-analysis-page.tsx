@@ -10,6 +10,7 @@ import { browserTimeZone, offsetLabel, offsetMinutes } from "@/features/account/
 
 import { SIGNAL_KEY } from "../api";
 import { clock } from "../format";
+import { ResearchTab } from "../research/research-tab";
 
 import { AllTab } from "./all-tab";
 import { MmTab } from "./mm-tab";
@@ -17,16 +18,21 @@ import { VbTab } from "./vb-tab";
 
 // Signal Analysis (team, #233, docs/mockups/signal-analysis): tab All / Volume Builder / Market Making. Chỉ đọc, chỉ bot
 // Market Making + Volume Builder tiền thật, người dùng theo account. Giờ theo múi giờ trình duyệt (có "Show in UTC") ở
-// mọi tab. Mọi số đến từ `/api/v1/admin/signal-analysis/*` (role team); bundle chỉ có cách hiển thị.
+// mọi tab. Mọi số đến từ `/api/v1/admin/signal-analysis/*` (role team); bundle chỉ có cách hiển thị. Tab Signal research
+// (#273, docs/mockups/signal-research) đọc `/api/v1/admin/signal-research/*` (#271): chỉ nghiên cứu, tiền giả.
 
-export type Tab = "all" | "vb" | "mm";
-const TABS: Tab[] = ["all", "vb", "mm"];
+type Meta = { bots: number | null; computedAt: string } | null;
+
+export type Tab = "all" | "vb" | "mm" | "research";
+const TABS: Tab[] = ["all", "vb", "mm", "research"];
+/** Nhãn ngắn dưới 768px (mockup signal-research/mobile.html). */
+const SHORT: Partial<Record<Tab, "vbShort" | "mmShort">> = { vb: "vbShort", mm: "mmShort" };
 
 export interface PageCtx {
   tz: string;
   utc: boolean;
-  /** Tab báo số bot và lúc tính để header hiện. */
-  onMeta: (m: { bots: number; computedAt: string } | null) => void;
+  /** Tab báo số bot (null = không hiện trên tab) và lúc tính để header hiện. */
+  onMeta: (m: Meta) => void;
   onForbidden: () => void;
 }
 
@@ -37,17 +43,18 @@ export function SignalAnalysisPage() {
   const [browserTz, setBrowserTz] = useState<string | null>(null);
   const [utc, setUtc] = useState(false);
   const [forbidden, setForbidden] = useState(false);
-  const [meta, setMeta] = useState<Record<Tab, { bots: number; computedAt: string } | null>>({
+  const [meta, setMeta] = useState<Record<Tab, Meta>>({
     all: null,
     vb: null,
     mm: null,
+    research: null,
   });
   const refs = useRef(new Map<Tab, HTMLButtonElement>());
 
   useEffect(() => {
     setBrowserTz(browserTimeZone());
     const q = new URLSearchParams(window.location.search).get("tab");
-    if (q === "vb" || q === "mm" || q === "all") setTab(q);
+    if (q === "vb" || q === "mm" || q === "all" || q === "research") setTab(q);
   }, []);
   const choose = (next: Tab) => {
     setTab(next);
@@ -130,7 +137,8 @@ export function SignalAnalysisPage() {
               >
                 {TABS.map((k) => {
                   const on = k === tab;
-                  const bots = meta[k]?.bots;
+                  const bots = meta[k]?.bots ?? undefined;
+                  const short = SHORT[k];
                   return (
                     <button
                       key={k}
@@ -150,7 +158,14 @@ export function SignalAnalysisPage() {
                       }}
                       className={`inline-flex min-h-11 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-[10px] border-0 px-4 text-sm font-extrabold ${on ? "bg-accent text-white" : "bg-transparent text-ink"}`}
                     >
-                      {t(`tabs.${k}`)}
+                      {short === undefined ? (
+                        t(`tabs.${k}`)
+                      ) : (
+                        <>
+                          <span className="md:hidden">{t(`tabs.${short}`)}</span>
+                          <span className="max-md:hidden">{t(`tabs.${k}`)}</span>
+                        </>
+                      )}
                       {bots === undefined ? null : (
                         <span className={`text-xs font-bold ${on ? "text-white" : "text-muted"}`}>
                           {t("tabs.bots", { n: bots })}
@@ -182,7 +197,18 @@ export function SignalAnalysisPage() {
               className="flex items-start gap-2.5 rounded-tile bg-accent-tint px-4 py-3 text-[13px] text-accent-ink"
             >
               <Info aria-hidden="true" size={18} className="mt-0.5 flex-none" />
-              <span>{t.rich(`past.${tab}`, { b: (c) => <b className="text-ink">{c}</b> })}</span>
+              {tab === "research" ? (
+                <>
+                  <span className="md:hidden">
+                    {t.rich("pastShort.research", { b: (c) => <b className="text-ink">{c}</b> })}
+                  </span>
+                  <span className="max-md:hidden">
+                    {t.rich("past.research", { b: (c) => <b className="text-ink">{c}</b> })}
+                  </span>
+                </>
+              ) : (
+                <span>{t.rich(`past.${tab}`, { b: (c) => <b className="text-ink">{c}</b> })}</span>
+              )}
             </div>
             <div
               id="sa-panel"
@@ -194,8 +220,10 @@ export function SignalAnalysisPage() {
                 <AllTab ctx={ctx} />
               ) : tab === "vb" ? (
                 <VbTab ctx={ctx} />
-              ) : (
+              ) : tab === "mm" ? (
                 <MmTab ctx={ctx} />
+              ) : (
+                <ResearchTab ctx={ctx} />
               )}
             </div>
           </>

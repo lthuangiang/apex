@@ -6967,7 +6967,8 @@
     "lede": {
       "all": "What every $1M of volume cost on live bots, split into fees, the price moving against fills, and holding positions. By strategy, market, hour and account.",
       "vb": "Where Volume Builder entries lose money: entry timing against fees, where the price goes after the fill, and what the opposite side would have made.",
-      "mm": "Where Market Making quotes lose money: the spread earned at the fill, the price moving against the fill afterwards, holding the position, and position cuts."
+      "mm": "Where Market Making quotes lose money: the spread earned at the fill, the price moving against the fill afterwards, holding the position, and position cuts.",
+      "research": "Team only."
     },
     "readOnly": "Read only",
     "updated": "Updated {time}",
@@ -6977,7 +6978,10 @@
       "all": "All",
       "vb": "Volume Builder",
       "mm": "Market Making",
-      "bots": "{n, plural, one {# bot} other {# bots}}"
+      "bots": "{n, plural, one {# bot} other {# bots}}",
+      "research": "Signal research",
+      "vbShort": "VB",
+      "mmShort": "MM"
     },
     "tzLocal": "Times in your time zone: {tz} ({offset})",
     "tzUtc": "Times in UTC",
@@ -6986,7 +6990,8 @@
     "past": {
       "all": "<b>Analysis of past trades, not a forecast.</b> It shows what fills on live bots cost. This page never changes a bot or a setting.",
       "vb": "<b>Analysis of past trades, not a forecast.</b> It shows what happened on these entries. This page never changes a bot; any change to VB logic is made and approved separately.",
-      "mm": "<b>Analysis of past trades, not a forecast.</b> It shows what happened after these fills. This page never changes a bot; any change to Market Making defaults or logic is made and approved separately."
+      "mm": "<b>Analysis of past trades, not a forecast.</b> It shows what happened after these fills. This page never changes a bot; any change to Market Making defaults or logic is made and approved separately.",
+      "research": "<b>Research only, fake money.</b> News signals are traded on paper as they happen. Whales, funding and price patterns are replayed every night from stored data. Nothing is sent to SoDEX. A signal type gets a page for users only after it passes the gate: 100 trades or more, average result after fees at least 2× the cost of a trade, and a likely range that stays above 0."
     },
     "na": "Not available",
     "thin": "Thin sample",
@@ -7696,6 +7701,527 @@
       "maePartial": "MAE (partial)",
       "partialNote": "Prices cover the first 24 hours of the hold only."
     },
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "pastShort": {
+      "research": "<b>Research only, fake money.</b> News is traded on paper live; whales, funding and price patterns are replayed nightly. Nothing is sent to SoDEX."
+    },
+    "research": {
+      "states": {
+        "emptyTitle": "No signal research data yet",
+        "emptyBody": "Nothing has been collected or replayed yet. Nothing is sent to SoDEX.",
+        "tradesEmpty": "No trades match these filters",
+        "tradesEmptyBody": "Try another signal type, asset or Show option.",
+        "tradesError": "Couldn’t load trades.",
+        "tradesLoading": "Loading trades…",
+        "what": "signal research"
+      },
+      "na": "Not available",
+      "notEnough": "Not enough trades",
+      "dash": "—",
+      "types": {
+        "news": "News",
+        "whales": "Whales",
+        "funding": "Funding",
+        "price": "Price patterns"
+      },
+      "labels": {
+        "live": "Live paper",
+        "replay": "Replay"
+      },
+      "levels": {
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low"
+      },
+      "sides": {
+        "long": "Long",
+        "short": "Short"
+      },
+      "status": {
+        "collecting": "Collecting",
+        "failing": "Failing",
+        "passing": "Passing"
+      },
+      "rulesV": "Rules v{v}",
+      "sources": {
+        "title": "Sources",
+        "names": {
+          "sosoNews": "SoSoValue news",
+          "macroCalendar": "Macro calendar",
+          "sodexPrices": "SoDEX prices",
+          "whaleEvents": "Whale events",
+          "fundingRates": "Funding rates",
+          "candles": "Candles"
+        },
+        "status": {
+          "live": "Live",
+          "delayed": "Delayed",
+          "down": "Down"
+        },
+        "live": "{name} · {status}",
+        "liveAgo": "{name} · {status} · {ago} ago",
+        "replayed": "{name} · replayed {time}",
+        "replayGap": "{name} · last replay {time}, {hours} h gap {day} left out",
+        "replayStatus": "{name} · {status} · last replay {time}",
+        "statusSr": "Status: {status}."
+      },
+      "bots": {
+        "title": "Paper bots",
+        "sub": "One bot per signal type, each with its own 10,000 USDC of fake money",
+        "names": {
+          "news": "News bot",
+          "whales": "Whales bot",
+          "group": "Funding · Price patterns"
+        },
+        "body": {
+          "news": "Trades each news signal the moment it passes the checks, then closes at take profit, stop loss or max hold.",
+          "whales": "Each night replays the day’s whale moves with the same rules, entering at the price when DeskLabs saw them.",
+          "group": "Same as Whales: two more bots replaying stored funding rates and candles every night."
+        },
+        "state": {
+          "live": "Running · live",
+          "replay": "Replays nightly",
+          "paused": "Paused"
+        },
+        "balance": "Balance",
+        "open": "Open",
+        "openN": "{n, plural, one {# trade} other {# trades}}",
+        "rules": "Rules",
+        "version": "v{v}",
+        "lastRun": "Last run",
+        "lastRunValue": "{time} · {n, plural, one {# trade} other {# trades}}",
+        "fundingBalance": "Funding balance",
+        "priceBalance": "Price patterns balance",
+        "pause": "Pause",
+        "pauseReplays": "Pause replays"
+      },
+      "funnel": {
+        "title": "How news becomes a paper trade · last {days} days",
+        "delay": "Delay, news out → collected",
+        "delaySub": "median · SoSoValue checked every {every}",
+        "cost": "Claude cost",
+        "costValue": "${usd} / day",
+        "costSub": "{articles} articles read · SoSoValue {used} of {limit} calls this month",
+        "costSubNoSoso": "{articles} articles read",
+        "collect": "1 · Collect",
+        "collectN": "{n} articles",
+        "collectSub": "every SoSoValue article, nothing skipped",
+        "normalize": "2 · Normalize",
+        "normalizeN": "{n} stories",
+        "normalizeSub": "{merged} articles merged into a story already seen, none dropped",
+        "score": "3 · Score",
+        "scoreN": "{n} signals",
+        "scoreSub": "level at entry: High {high} · Medium {medium} · Low {low}",
+        "filter": "4 · Filter",
+        "filterN": "{n} left",
+        "filterSub": "worth the fees, no open trade, source on time",
+        "decide": "5 · Decide",
+        "decideN": "Long {long} · Short {short}",
+        "decideSub": "{size} USDC each · TP / SL from the asset’s volatility",
+        "aria": "Funnel: {collected} articles collected, grouped into {stories} stories, {signals} scored as signals, {passed} passed filters, {trades} paper trades: {long} long and {short} short",
+        "closed": "{n} closed",
+        "tp": "{n} take profit",
+        "sl": "{n} stop loss",
+        "maxHold": "{n} max hold",
+        "open": "· {n} open",
+        "drops": "Why they dropped out",
+        "dropScore": "Score · −{n} stories",
+        "dropFilter": "Filter · −{n} signals",
+        "dropNone": "None",
+        "reason": "{label} {n}",
+        "mergeNote": "Merging articles into stories is not a drop: they raise a story’s source count.",
+        "none": "No news has been collected in this window."
+      },
+      "reasons": {
+        "notCatalyst": "Not a catalyst on the list",
+        "notOnSodex": "Asset not on SoDEX",
+        "promotional": "Promotional",
+        "notUnderstood": "Not understood",
+        "eventTooOld": "Event older than 24 h",
+        "tpUnderCost": "Take profit under 2× cost",
+        "alreadyOpen": "Trade already open on that asset",
+        "sourceLate": "Source late",
+        "noPrice": "No SoDEX price",
+        "tooThin": "Too thin to trade",
+        "riskWindow": "Big-news window"
+      },
+      "rules": {
+        "title": "What counts as a news signal",
+        "sub": "Rules v{v} · a starting guess that the results prove or drop",
+        "intro": "A signal is <b>one story</b> about one SoDEX asset, of a type on the list below. The <b>type sets the direction</b>; Claude only names the type and the asset. The bot decides on the <b>first article</b> and locks the confidence level at that moment. Articles that arrive later don’t open more trades; if they would have raised the level, the trade is tagged “later High” for analysis.",
+        "typesTable": "News types, direction and max hold",
+        "colType": "News type",
+        "colDir": "Direction",
+        "colHold": "Max hold",
+        "shortAffected": "Short the affected token",
+        "rows": {
+          "hack": "Hack or exploit",
+          "listing": "Listing on a major exchange",
+          "delisting": "Delisting from a major exchange",
+          "etf": "ETF approved / ETF delayed or denied",
+          "regulator": "Regulator acts against a project / rules in its favour",
+          "treasury": "Company buys the token for its treasury / sells it",
+          "earnings": "Earnings beat or raised guidance / miss or cut (stock markets)",
+          "unlock": "Token unlock over 2% of supply within 7 days",
+          "notSignals": "Not signals: partnerships, price analysis and opinion, macro data (macro goes to the risk filter)"
+        },
+        "tiers": "<b>Source tiers</b><br></br><t>Top:</t> the primary source itself (exchange, company, regulator, ETF issuer), Bloomberg, Reuters.<br></br><t>Mid:</t> established crypto media and verified founders or executives.<br></br><t>Low:</t> aggregators, anonymous and influencer accounts.",
+        "tiersNote": "The full list of SoSoValue source names is kept in the rules and versioned with them.",
+        "tpsl": "<b>Take profit and stop loss</b><br></br>TP = 1.5 × and SL = 0.75 × the asset’s typical move over the max hold (from its last 30 days). If TP is under 2× the cost of a trade, the signal is skipped.",
+        "levelsTable": "Results by level at entry",
+        "colLevel": "Level at entry",
+        "colWhen": "When",
+        "colSignals": "Signals",
+        "colTrades": "Trades · closed",
+        "colLs": "Long / Short",
+        "colAvg": "Average after fees",
+        "colRandom": "Random entry · difference",
+        "colVerdict": "Verdict so far",
+        "when": {
+          "high": "2 or more independent sources already at the first decision, at least one top-tier, nothing contradicting",
+          "medium": "One top-tier source, or 2 or more mid-tier sources",
+          "low": "A single mid- or low-tier source"
+        },
+        "laterHigh": " · {n} later reached High",
+        "pair": "{a} · {b}",
+        "ls": "{long} / {short}",
+        "needsClosed": "Needs {n} more closed",
+        "firstAnswer": "<b>When do we get a first answer?</b> The main test pools all news signals: about 100 closed trades, so 3–4 weeks at the current ~30 a week. Results by level or news type are a second look, once each has 30 or more trades. Once there is an average, the page shows how many trades it really needs; a small edge needs more than 100.",
+        "passIf": "<b>A level passes only if</b> it also beats random entries at the same moments, with the same long / short mix, TP, SL and max hold. A rising market makes long news look good; the random comparison takes that out.",
+        "noLevels": "No news signals yet."
+      },
+      "summary": {
+        "title": "Where each signal type stands",
+        "titleShort": "Where each type stands",
+        "sub": "Closed trades opened after the rules were fixed · cost of a trade ≈ {cost} (SoDEX taker fee and builder fee, in and out, plus spread)",
+        "table": "Where each signal type stands",
+        "colType": "Signal type",
+        "colTested": "How it’s tested",
+        "colClosed": "Closed trades",
+        "colAvg": "Average after fees",
+        "colRandom": "Random entry · difference",
+        "colRange": "Likely range",
+        "colStatus": "Status",
+        "colNeeds": "What it still needs",
+        "opened": "{n} opened",
+        "randomBetter": "{random} · <b>{diff}</b> better",
+        "randomDiff": "{random} · <b>{diff}</b>",
+        "range": "{lo} to {hi}",
+        "needs": {
+          "pooled": "About {more} more closed (all news pooled) · first verdict in ~{weeks} weeks",
+          "pooledNoWeeks": "About {more} more closed (all news pooled)",
+          "rangeBelowZero": "Range dips below 0. At this difference vs random it needs about {needed} trades, not 100.",
+          "moreTrades": "{more} more trades.",
+          "moreTradesFunding": "{more} more trades. SoDEX funding covers {days} days.",
+          "losesAfterFees": "Loses after fees. Not worth more work in this form.",
+          "passed": "Passed the gate."
+        },
+        "cardNeeds": "{label} · {n, plural, one {# trade} other {# trades}} · needs {more} more",
+        "cardAvgRange": "{label} · {n, plural, one {# trade} other {# trades}} · {avg} ({lo} to {hi})",
+        "cardAvg": "{label} · {n, plural, one {# trade} other {# trades}} · {avg}",
+        "cardPlain": "{label} · {n, plural, one {# trade} other {# trades}}",
+        "none": "No signal type has results yet.",
+        "clusters": "{n, plural, one {# day} other {# days}}",
+        "dirTable": "Long and short results for News · Live paper",
+        "colSide": "Long / Short",
+        "cardDir": "{side} · {n, plural, one {# trade} other {# trades}} · {avg} ({lo} to {hi})",
+        "cardDirAvg": "{side} · {n, plural, one {# trade} other {# trades}} · {avg}",
+        "cardDirNone": "{side} · {n, plural, one {# trade} other {# trades}} · Not enough trades"
+      },
+      "risk": {
+        "title": "Risk filter · pause new entries around big news",
+        "body": "Tested on real bot trades: if Volume Builder and Market Making bots had paused new entries in the {windows} big-news windows of the last {days} days, the cost per $1M would have been {cost}% {costDir, select, lower {lower} other {higher}} and volume {volume}% {volumeDir, select, lower {lower} other {higher}}.",
+        "next": "Next pause window",
+        "nextValue": "{event} · {day}, {from}–{to}",
+        "short": "<b>Risk filter:</b> pausing bots in big-news windows would have {dir, select, lower {cut} other {raised}} cost per $1M by {cost}%. Next: {event} {day}, {time}.",
+        "shortNoNext": "<b>Risk filter:</b> pausing bots in big-news windows would have {dir, select, lower {cut} other {raised}} cost per $1M by {cost}%.",
+        "shortNa": "<b>Risk filter:</b> Not available"
+      },
+      "trades": {
+        "title": "Trades",
+        "filters": "Filters",
+        "filtersLabel": "Trade filters",
+        "type": "Signal type",
+        "allTypes": "All types",
+        "tested": "Tested as",
+        "allLabels": "Live paper and replay",
+        "asset": "Asset",
+        "allAssets": "All assets",
+        "show": "Show",
+        "shows": {
+          "entered": "Entered",
+          "skipped": "Skipped",
+          "all": "All"
+        },
+        "table": "Signal research trades",
+        "colSignal": "Signal",
+        "colSeen": "Seen · delay",
+        "colWhat": "What happened",
+        "colMoved": "Moved before entry",
+        "colEntry": "Entry",
+        "colTp": "Take profit",
+        "colSl": "Stop loss",
+        "colHold": "Max hold",
+        "colResult": "Result after fees",
+        "typeLabel": "{type} · {label}",
+        "seen": {
+          "afterRelease": "{d} after release",
+          "afterFill": "{d} after the whale’s fill",
+          "atCandleClose": "at candle close",
+          "atFundingTime": "at funding time",
+          "afterFirst": "{d} after the first article"
+        },
+        "seenShort": {
+          "afterRelease": "{d} after release",
+          "afterFill": "seen {d} after the fill",
+          "atCandleClose": "at candle close",
+          "atFundingTime": "at funding time",
+          "afterFirst": "{d} after the first article"
+        },
+        "entryAfterFill": "price {d} after the fill",
+        "what": {
+          "whales": "Wallet ··{tail} opened {side, select, long {long} other {short}}, {size}",
+          "funding": "Funding {rate} per {hours} h, highest {top}% of {days} days",
+          "price": "Broke {mins}-min range {dir, select, up {up} other {down}}, volume {x}× usual"
+        },
+        "newsTypes": {
+          "hack": "Hack",
+          "listing": "Listing",
+          "delisting": "Delisting",
+          "etfApproved": "ETF approved",
+          "etfDelayed": "ETF delayed",
+          "regulatorAgainst": "Regulator acts against",
+          "regulatorFavour": "Regulator rules in favour",
+          "treasuryBuy": "Treasury buy",
+          "treasurySell": "Treasury sell",
+          "earningsBeat": "Raised guidance",
+          "earningsMiss": "Cut guidance",
+          "unlock": "Token unlock"
+        },
+        "newsLine": "{type} → {side}",
+        "enteredAt": "entered at <b>{level}</b> ({sources})",
+        "sourcesTop": "{n, plural, one {# top-tier source} other {# top-tier sources}}",
+        "sourcesMix": "{n} sources, {top} top-tier",
+        "sourcesN": "{n, plural, one {# source} other {# sources}}",
+        "later": "later {level} ({sources})",
+        "stillOpen": "still open",
+        "whaleLine": "Wallet in leaderboard since {date} · size {x}× usual",
+        "entered": "entered",
+        "sep": " · ",
+        "skip": {
+          "tpUnderCost": "Skipped: take profit under 2× cost ({tp} vs {need} needed)",
+          "tpUnderCostShort": "Skipped: take profit under 2× cost",
+          "alreadyOpen": "Skipped: a {type} trade on {asset} is already open",
+          "other": "Skipped: {reason}"
+        },
+        "result": {
+          "tp": "Hit take profit",
+          "sl": "Hit stop loss",
+          "maxHold": "Closed at max hold",
+          "open": "Open · {left} left",
+          "openNoLeft": "Open"
+        },
+        "resultShort": {
+          "tp": "hit take profit",
+          "sl": "hit stop loss",
+          "maxHold": "closed at max hold",
+          "open": "open"
+        },
+        "notTraded": "Not traded",
+        "cardLevels": "Entry {entry} · TP {tp} · SL {sl} · max {hold}",
+        "open": "Open the steps of {what}",
+        "loadMore": "Load more",
+        "retry": "Retry",
+        "retryTip": "Opened on a later article of the same story, within 2 hours of the first one."
+      },
+      "detail": {
+        "close": "Close",
+        "loading": "Loading trade…",
+        "error": "Couldn’t load this trade. Nothing on any bot changed.",
+        "tagType": "{type} · {label} · rules v{v}",
+        "tagSide": "{side} {asset}",
+        "result": "Result after fees <b>{pnl}</b> on {size} · {outcome}",
+        "resultNoSize": "Result after fees <b>{pnl}</b> · {outcome}",
+        "outcome": {
+          "tp": "hit take profit after {held}",
+          "sl": "hit stop loss after {held}",
+          "maxHold": "closed at max hold after {held}",
+          "open": "still open",
+          "tpNoHeld": "hit take profit",
+          "slNoHeld": "hit stop loss",
+          "maxHoldNoHeld": "closed at max hold"
+        },
+        "steps": {
+          "received": "Received",
+          "understood": "Understood",
+          "scored": "Scored",
+          "scoredScore": "Scored · {score}",
+          "scoredLevel": "Scored · {level}",
+          "checks": "Checks",
+          "trade": "Trade",
+          "result": "Result"
+        },
+        "stepsLabel": "Steps this signal went through",
+        "partLabel": {
+          "sizeVsUsual": "Size vs usual (weight {w})",
+          "walletQuality": "Wallet quality (weight {w})",
+          "sameWay": "Other whales same way, 30 min (weight {w})"
+        },
+        "checks": {
+          "sourceLive": {
+            "ok": "Source was live",
+            "fail": "Source was not live"
+          },
+          "newStory": {
+            "ok": "New story",
+            "fail": "Story already known"
+          },
+          "priceAvailable": {
+            "ok": "SoDEX had a price",
+            "fail": "SoDEX had no price"
+          },
+          "noOpenTrade": {
+            "ok": "No other {type} trade open on {asset}",
+            "fail": "A {type} trade was already open on {asset}"
+          },
+          "tpVsCost": {
+            "ok": "Take profit {pct} is at least 2× the cost ({cost})",
+            "fail": "Take profit {pct} is under 2× the cost ({cost})"
+          },
+          "riskWindow": {
+            "ok": "Risk filter: no big-news window",
+            "fail": "Risk filter: inside a big-news window"
+          },
+          "maxOpen": {
+            "ok": "With a limit of {n} open trades this would have been allowed",
+            "fail": "With a limit of {n} open trades this would have been blocked"
+          }
+        },
+        "checkOk": "Passed",
+        "checkFail": "Failed",
+        "notes": {
+          "leaderboard": "Only wallets already in the leaderboard before this moment count (in since {date}), so today’s winners don’t make the past look better.",
+          "weights": "Weights were set before testing (rules v{v}). Results are compared by score group later; no score cut-off yet."
+        },
+        "facts": {
+          "whaleFill": {
+            "label": "Whale’s fill on Hyperliquid",
+            "value": "{time}"
+          },
+          "seen": {
+            "label": "DeskLabs saw it",
+            "value": "{time} · {delay} later"
+          },
+          "published": {
+            "label": "Published",
+            "value": "{time}"
+          },
+          "collected": {
+            "label": "Collected",
+            "value": "{time} · {delay} late"
+          },
+          "source": {
+            "label": "Source",
+            "value": "{source}, synced every {delay}"
+          },
+          "sourceHealth": {
+            "label": "Source health then",
+            "value": "{status}"
+          },
+          "action": {
+            "label": "Action",
+            "value": "{side, select, long {Opened a long} other {Opened a short}}"
+          },
+          "whaleSize": {
+            "label": "Size",
+            "value": "{usd} · {x}× this wallet’s usual"
+          },
+          "market": {
+            "label": "SoDEX market",
+            "value": "{text}"
+          },
+          "walletQuality": {
+            "label": "Wallet quality on that day",
+            "value": "Top {n}, {pct}% profitable months"
+          },
+          "newsType": {
+            "label": "News type",
+            "value": "{newsType}"
+          },
+          "direction": {
+            "label": "Direction",
+            "value": "{side}"
+          },
+          "eventDate": {
+            "label": "Event date",
+            "value": "{date}"
+          },
+          "levelAtEntry": {
+            "label": "Level at entry",
+            "value": "{level} · {sources}"
+          },
+          "laterLevel": {
+            "label": "Later",
+            "value": "{level} · {sources}"
+          },
+          "fundingRate": {
+            "label": "Funding",
+            "value": "{pct} per {hours} h"
+          },
+          "entry": {
+            "label": "Entry",
+            "value": "{price} · taker, at the price when seen"
+          },
+          "size": {
+            "label": "Size",
+            "value": "{usd} USDC"
+          },
+          "tp": {
+            "label": "Take profit",
+            "value": "{price} ({pct})"
+          },
+          "sl": {
+            "label": "Stop loss",
+            "value": "{price} ({pct})"
+          },
+          "maxHold": {
+            "label": "Max hold",
+            "value": "{hold}"
+          },
+          "exit": {
+            "label": "Exit",
+            "value": "{price} at {time} · {outcome, select, tp {take profit} sl {stop loss} other {max hold}}"
+          },
+          "priceMove": {
+            "label": "Price move",
+            "value": "{pct} · {usd}"
+          },
+          "movedBeforeEntry": {
+            "label": "Moved before entry",
+            "value": "{pct}"
+          },
+          "fees": {
+            "label": "Fees and spread",
+            "value": "{usd}"
+          },
+          "best": {
+            "label": "Best move for us",
+            "value": "{pct}"
+          },
+          "worst": {
+            "label": "Worst move against",
+            "value": "{pct}"
+          },
+          "random": {
+            "label": "Random entry, same time",
+            "value": "{pct} average"
+          },
+          "whaleFillPrice": {
+            "label": "Entry at the whale’s own fill price",
+            "value": "{price} · we paid {pct} more"
+          }
+        }
+      }
+    }
   }
 }
