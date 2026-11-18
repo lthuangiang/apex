@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Snapshot tín hiệu của mỗi lượt vào Volume Farm / Volume Builder (#221, DEC-TBD-vb-signal-snapshot): engine ghi vào
+// Snapshot tín hiệu của mỗi lượt vào Volume Farm / Volume Builder (#221, DEC-311): engine ghi vào
 // `bot_events.payload.signal` của event "Enter long" / "Enter short" để trang team "VB Signal Analysis" phân tích sau.
 // Chỉ dành cho server và trang team: KHÔNG export từ `@drift/shared` (barrel mà web import), import qua subpath
 // `@drift/shared/vb-signal`, để tên thành phần tín hiệu không lọt vào bundle trình duyệt (check:bundle). API không gửi
