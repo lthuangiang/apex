@@ -341,20 +341,20 @@ describe("SoDEX Debugger page", { timeout: 30_000 }, () => {
 
       state.newer = [NEWER];
       await tick(5_000);
-      expect(await screen.findByText("1 new calls")).toBeInTheDocument();
+      expect(await screen.findByText("1 new call")).toBeInTheDocument();
       // Danh sách đang xem không đổi; trang cũ không bị tải lại.
       expect(within(table).queryByText("/perps/trade/leverage")).not.toBeInTheDocument();
       expect(state.paths.filter((p) => p.includes("cursor=")).length).toBe(1);
       await noViolations();
 
       await user.click(
-        screen.getByRole("button", { name: "Show", description: /Live paused.*1 new calls/ }),
+        screen.getByRole("button", { name: "Show", description: /Live paused.*1 new call$/ }),
       );
       const row = (await within(table).findByText("/perps/trade/leverage")).closest("tr");
       expect(row).toHaveAttribute("data-new", "true");
       expect(within(table).queryByText("/perps/markets")).not.toBeInTheDocument();
       expect(screen.queryByText("Live paused")).not.toBeInTheDocument();
-      expect(screen.getByRole("status")).toHaveTextContent("1 new calls");
+      expect(screen.getByRole("status")).toHaveTextContent(/^1 new call$/);
       await tick(3_000);
       expect(row).not.toHaveAttribute("data-new");
       await noViolations();

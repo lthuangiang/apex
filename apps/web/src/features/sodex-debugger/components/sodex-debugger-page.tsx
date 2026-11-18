@@ -103,7 +103,7 @@ export function SodexDebuggerPage() {
     first?.items.map((x) => x.id),
     JSON.stringify(filters),
     (n) => {
-      setAnnouncement(t("live.newCalls", { n: String(n) }));
+      setAnnouncement(t("live.newCalls", { n }));
     },
   );
 
@@ -342,7 +342,11 @@ export function SodexDebuggerPage() {
             {newCalls === null ? null : (
               <>
                 <span aria-hidden="true">·</span>
-                <span className="text-ink">{t("live.newCalls", { n: newCalls })}</span>
+                <span className="text-ink">
+                  {newCalls.more
+                    ? t("live.newCallsMore", { n: newCalls.n })
+                    : t("live.newCalls", { n: newCalls.n })}
+                </span>
               </>
             )}
           </span>

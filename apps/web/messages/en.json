@@ -6520,7 +6520,8 @@
     "live": {
       "label": "Live",
       "paused": "Live paused",
-      "newCalls": "{n} new calls",
+      "newCalls": "{n, plural, one {# new call} other {# new calls}}",
+      "newCallsMore": "{n}+ new calls",
       "show": "Show"
     },
     "forbidden": "This page is for the DeskLabs team only.",

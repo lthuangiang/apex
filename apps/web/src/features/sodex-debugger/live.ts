@@ -89,10 +89,13 @@ export function useFreshRows(
 }
 
 /**
- * Số dòng mới trong trang đầu mới nhất (`head`) so với danh sách đang xem, dạng chữ cho "{n} new calls"; `null` khi
- * không có. Khi không dòng nào trùng và còn trang sau, có thể còn nhiều hơn: "50+".
+ * Số dòng mới trong trang đầu mới nhất (`head`) so với danh sách đang xem; `null` khi không có. `more`: không dòng nào
+ * trùng và còn trang sau, nên có thể còn nhiều hơn ("50+ new calls").
  */
-export function countNew(head: SodexCallsPage | undefined, shown: SodexCallItem[]): string | null {
+export function countNew(
+  head: SodexCallsPage | undefined,
+  shown: SodexCallItem[],
+): { n: number; more: boolean } | null {
   const top = shown[0];
   if (head === undefined || top === undefined) return null;
   const ids = new Set(shown.map((x) => x.id));
@@ -100,7 +103,8 @@ export function countNew(head: SodexCallsPage | undefined, shown: SodexCallItem[
   const added = head.items.filter((x) => !ids.has(x.id) && Date.parse(x.at) >= since).length;
   if (added === 0) return null;
   const overlap = head.items.some((x) => ids.has(x.id));
-  return !overlap && added === head.items.length && head.nextCursor !== null
-    ? `${String(added)}+`
-    : String(added);
+  return {
+    n: added,
+    more: !overlap && added === head.items.length && head.nextCursor !== null,
+  };
 }
