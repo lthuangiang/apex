@@ -61,6 +61,33 @@ describe("team incidents (#241)", () => {
     expect(TEAM_INCIDENT_SEVERITY.position_matched).toBe("info");
   });
 
+  it("rates the Volume Farm #239 incidents as PM decided (#248)", () => {
+    expect(TEAM_INCIDENT_SEVERITY.late_fill_adopted).toBe("critical");
+    expect(TEAM_INCIDENT_SEVERITY.closing_fill_beyond).toBe("critical");
+    expect(TEAM_INCIDENT_SEVERITY.cancel_unconfirmed).toBe("critical");
+    expect(TEAM_INCIDENT_SEVERITY.ledger_repaired).toBe("info");
+    expect(TEAM_INCIDENT_SEVERITY.orphan_cancelled).toBe("warning");
+    const bot = "0b5c1f9e-4a7d-4f00-9c3e-12ab34cd56ef";
+    expect(
+      teamIncidentThrottle({ kind: "late_fill_adopted", botId: bot, market: "ETH-USD" }),
+    ).toEqual({ key: `team:incident:late_fill_adopted:${bot}:ETH-USD`, ms: 600_000 });
+    expect(teamIncidentThrottle({ kind: "orphan_cancelled", botId: bot })).toEqual({
+      key: "team:incident:orphan_cancelled",
+      ms: 1_800_000,
+    });
+    for (const kind of [
+      "late_fill_adopted",
+      "closing_fill_beyond",
+      "cancel_unconfirmed",
+      "ledger_repaired",
+      "orphan_cancelled",
+    ])
+      expect(
+        teamOpsEventSchema.safeParse({ type: "team_incident", kind, botId: bot, detail: "x" })
+          .success,
+      ).toBe(true);
+  });
+
   it("rejects an unknown kind or a detail that is too long", () => {
     expect(
       teamOpsEventSchema.safeParse({ type: "team_incident", kind: "nope", detail: "" }).success,

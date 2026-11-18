@@ -79,6 +79,32 @@ describe("team incident message", () => {
     expect(r.text).toContain(`/admin/sodex-debugger?botId=${BOT}`);
   });
 
+  it("titles the Volume Farm #239 incidents with their severity (#248)", () => {
+    const cases = [
+      ["late_fill_adopted", "🚨 CRITICAL · <b>Late fill added to a bot's position</b>"],
+      ["closing_fill_beyond", "🚨 CRITICAL · <b>Closing fill beyond a bot's position</b>"],
+      ["cancel_unconfirmed", "🚨 CRITICAL · <b>Cancel not confirmed for 10 min</b>"],
+      ["ledger_repaired", "✅ INFO · <b>Bot ledger repaired from its own fill</b>"],
+      ["orphan_cancelled", "⚠️ WARNING · <b>Untracked order cancelled</b>"],
+    ] as const;
+    for (const [kind, title] of cases) {
+      const r = renderTelegram(
+        [
+          incident({
+            kind,
+            botId: BOT,
+            market: "ETH-USD",
+            detail: "d212zms-1-2opslj5e78t6a-0 · sell 0.0957 @ 1830",
+          }),
+        ],
+        BASE,
+      );
+      const lines = r.text.split("\n");
+      expect(lines[0]).toBe(title);
+      expect(r.text).toContain("d212zms-1-2opslj5e78t6a-0 · sell 0.0957 @ 1830");
+    }
+  });
+
   it("writes the cleared position as info", () => {
     const r = renderTelegram(
       [

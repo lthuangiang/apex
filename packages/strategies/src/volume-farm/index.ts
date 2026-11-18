@@ -23,7 +23,8 @@ import { safeEntrySnapshot } from "./snapshot";
 // - Vào: hướng theo `farmSignal`; tồn kho ròng (Σ long − Σ short đã đóng) vượt `orderSizeMaxUsd` thì buộc đi ngược
 //   lệnh trước (apex MM inventory hard block); `reverseSignal` đảo hướng. Cỡ lệnh và thời gian giữ ngẫu nhiên
 //   (người dùng chọn giữ như apex, DEC-80), dùng PRNG tất định theo (botId, cycle) để backtest lặp lại được.
-// - Lệnh vào post-only trong spread (mua = ask − 1 tick, bán = bid + 1 tick); 10 s chưa khớp thì huỷ, lượt sau đặt lại. Sau `takerAfter` lần
+// - Lệnh vào post-only trong spread (mua = ask − 1 tick, bán = bid + 1 tick); 10 s chưa khớp thì huỷ, lượt sau đặt lại
+//   khi SoDEX đã xác nhận lệnh cũ kết thúc (DEC-317). Sau `takerAfter` lần
 //   không khớp liên tiếp và `allowTaker` thì vào bằng lệnh market (IOC).
 // - Thoát (thứ tự như apex): SL theo % giá → taker ngay; lãi ≥ max(tpUsd, 1.5 × phí khứ hồi); giữ ≥ maxHold;
 //   sau earlyExitSecs lãi ≥ earlyProfitFees × phí khứ hồi (DEC-130); hết thời gian giữ ngẫu nhiên. Lệnh thoát post-only reduce-only cũng
@@ -44,6 +45,13 @@ const REGIME_TEXT: Record<FarmRegime, string> = {
 export const FARM_TIMING = {
   entryFillMs: 10_000,
   exitFillMs: 15_000,
+  /**
+   * Lệnh vào đã gửi huỷ mà SoDEX chưa xác nhận kết thúc (`orderDone` / `orderReject`): gửi huỷ lại sau mỗi chừng này
+   * ms và không vào lượt mới (DEC-317). Bền qua khởi động lại vì nằm trong state.
+   */
+  cancelRetryMs: 10_000,
+  /** Chờ xác nhận huỷ lâu hơn mức này: ghi Decisions + Needs attention một lần (DEC-317). */
+  cancelStuckMs: 10 * 60_000,
   /** Không có sổ lệnh thời gian thực (DEC-82): sổ REST cũ hơn mức này thì lùi 1 tick khỏi giá gần nhất. */
   bookMaxAgeMs: 10_000,
 } as const;
@@ -73,6 +81,18 @@ const NO_BACKOFF_CODES: readonly string[] = [
 
 type Kind = "entry" | "exit" | "stop";
 
+export interface FarmOrder {
+  kind: Kind;
+  side: "buy" | "sell";
+  /** Khối lượng đặt và đã khớp (lệnh vào): khớp đủ thì lệnh đã kết thúc, không cần chờ xác nhận huỷ. */
+  qty?: string;
+  filled?: string;
+  cancelAt?: number;
+  /** Lần đầu bot gửi huỷ lệnh này (để báo khi chờ xác nhận quá lâu). */
+  cancelSince?: number;
+  done?: boolean;
+}
+
 export interface VolumeFarmState {
   phase: "idle" | "entering" | "open" | "exiting" | "halted";
   cycle: number;
@@ -88,8 +108,14 @@ export interface VolumeFarmState {
    * `VF_REJECT_BACKOFF_SECS`, `until` = lúc được vào lại.
    */
   rejectBackoff?: { step: number; until: number } | null;
-  /** Lệnh của bot còn có thể khớp (kể cả đã gửi huỷ): fill đến muộn vẫn vào đúng sổ cái. */
-  orders: Record<string, { kind: Kind; side: "buy" | "sell" }>;
+  /**
+   * Lệnh của bot còn có thể khớp (kể cả đã gửi huỷ): fill đến muộn vẫn vào đúng sổ cái. `cancelAt`: lần gần nhất bot
+   * gửi huỷ lệnh này; `done`: engine đã báo lệnh kết thúc trên SoDEX (`orderDone` / `orderReject`). Lệnh vào có
+   * `cancelAt` mà chưa `done` chặn lượt mới (DEC-317). Lệnh chưa `done` không bao giờ bị quên.
+   */
+  orders: Record<string, FarmOrder>;
+  /** Đã báo (Decisions + Needs attention) đợt chờ xác nhận huỷ hiện tại. */
+  cancelStuck?: boolean;
   entry: { id: string; placedAt: number; taker: boolean } | null;
   exit: { id: string; placedAt: number; taker: boolean } | null;
   /** Lý do thoát của lượt hiện tại (ghi vào Decisions khi đóng xong). */
@@ -218,15 +244,120 @@ export function farmRandom(botId: string, cycle: number, salt: string): number {
   return Number(fnv1a64(`${botId}|${String(cycle)}|${salt}`) % 1_000_000n) / 1_000_000;
 }
 
-/** Giữ tối đa 12 lệnh gần nhất để nhận fill đến muộn mà state không phình. */
+/**
+ * Số lệnh đã kết thúc được nhớ thêm (fill tìm thấy muộn qua lưới an toàn fill vẫn vào sổ cái, DEC-87) và trần cứng
+ * của cả danh sách. Lệnh chưa kết thúc luôn được giữ (trước đây chỉ giữ 12 lệnh gần nhất: lệnh vào còn nằm trên sổ
+ * bị quên sau vài lượt, fill của nó bị bỏ, #239), trừ khi vượt trần cứng (stream mất tin rất lâu).
+ */
+export const FARM_ORDER_MEMORY = { done: 12, max: 64 } as const;
+
+/** Lệnh bot đã gửi huỷ mà SoDEX chưa xác nhận kết thúc (lệnh vào hoặc stop trên SoDEX): chặn lượt mới. */
+const blocksEntry = (o: FarmOrder): boolean =>
+  (o.kind === "entry" || o.kind === "stop") && o.cancelAt !== undefined && o.done !== true;
+
+/**
+ * Giữ mọi lệnh chưa kết thúc + `FARM_ORDER_MEMORY.done` lệnh đã kết thúc gần nhất, tối đa `max`. Lệnh đang chờ xác nhận
+ * huỷ không bao giờ bị bỏ, kể cả khi vượt trần (bỏ lệnh khác cũ nhất trước).
+ */
+function trimOrders(orders: VolumeFarmState["orders"]): VolumeFarmState["orders"] {
+  const entries = Object.entries(orders);
+  const doneIds = entries.filter(([, o]) => o.done === true).map(([id]) => id);
+  const dropDone = new Set(doneIds.slice(0, Math.max(0, doneIds.length - FARM_ORDER_MEMORY.done)));
+  let kept = entries.filter(([id]) => !dropDone.has(id));
+  let over = kept.length - FARM_ORDER_MEMORY.max;
+  if (over > 0)
+    kept = kept.filter(([, o]) => {
+      if (over <= 0 || blocksEntry(o)) return true;
+      over -= 1;
+      return false;
+    });
+  return Object.fromEntries(kept);
+}
+
 function remember(
   orders: VolumeFarmState["orders"],
   id: string,
   kind: Kind,
   side: "buy" | "sell",
+  qty?: string,
 ): VolumeFarmState["orders"] {
-  const entries = [...Object.entries(orders), [id, { kind, side }] as const];
-  return Object.fromEntries(entries.slice(-12));
+  const rest = Object.entries(orders).filter(([k]) => k !== id);
+  const o: FarmOrder = { ...orders[id], kind, side, ...(qty === undefined ? {} : { qty }) };
+  return trimOrders(Object.fromEntries([...rest, [id, o] as const]));
+}
+
+/** Ghi phần vừa khớp của lệnh; lệnh vào khớp đủ khối lượng đặt thì đã kết thúc (fill đã xác nhận). */
+function markFilled(
+  orders: VolumeFarmState["orders"],
+  id: string,
+  quantity: string,
+): VolumeFarmState["orders"] {
+  const o = orders[id];
+  if (o === undefined) return orders;
+  const filled = dec(o.filled ?? "0").add(quantity);
+  const full = o.qty !== undefined && filled.gte(o.qty);
+  const next = { ...o, filled: filled.toString(), ...(full ? { done: true } : {}) };
+  return full ? trimOrders({ ...orders, [id]: next }) : { ...orders, [id]: next };
+}
+
+/** Bot vừa gửi huỷ lệnh này: ghi lúc gửi, để chờ SoDEX xác nhận và huỷ lại nếu cần. */
+function markCancel(
+  orders: VolumeFarmState["orders"],
+  id: string,
+  at: number,
+): VolumeFarmState["orders"] {
+  const o = orders[id];
+  return o === undefined || o.done === true
+    ? orders
+    : { ...orders, [id]: { ...o, cancelAt: at, cancelSince: o.cancelSince ?? at } };
+}
+
+/** Engine báo lệnh đã kết thúc trên SoDEX. */
+function markDone(orders: VolumeFarmState["orders"], id: string): VolumeFarmState["orders"] {
+  const o = orders[id];
+  return o === undefined || o.done === true
+    ? orders
+    : trimOrders({ ...orders, [id]: { ...o, done: true } });
+}
+
+/**
+ * Lệnh vào hoặc stop trên SoDEX bot đã gửi huỷ mà SoDEX chưa xác nhận kết thúc: còn có thể nằm trên sổ và khớp (lệnh
+ * vào: thêm vị thế; stop cả vị thế của lượt cũ: đóng vị thế của lượt mới, #239 05:31).
+ */
+function cancellingEntries(s: VolumeFarmState): [string, FarmOrder][] {
+  return Object.entries(s.orders).filter(([, o]) => blocksEntry(o));
+}
+
+/**
+ * Huỷ lại các lệnh chưa được xác nhận kết thúc, mỗi `FARM_TIMING.cancelRetryMs` (DEC-317). Engine giữ
+ * danh sách chờ huỷ trong bộ nhớ (mất khi khởi động lại / đổi shard); lần huỷ lại này nằm trong state nên bền. Engine
+ * trả lời bằng `orderDone` / `orderReject` khi dòng lệnh đã kết thúc. Chờ quá `FARM_TIMING.cancelStuckMs` thì ghi một
+ * dòng Decisions và bật Needs attention (một lần mỗi đợt chờ): bot không bao giờ đứng im mà không nói.
+ */
+function chaseCancels(s: VolumeFarmState, at: number): StepResult<VolumeFarmState> {
+  const pending = cancellingEntries(s);
+  if (pending.length === 0)
+    return s.cancelStuck === true ? none({ ...s, cancelStuck: false }) : none(s);
+  const due = pending.filter(([, o]) => at - (o.cancelAt ?? 0) >= FARM_TIMING.cancelRetryMs);
+  const stuck =
+    s.cancelStuck !== true &&
+    pending.some(([, o]) => at - (o.cancelSince ?? o.cancelAt ?? at) >= FARM_TIMING.cancelStuckMs);
+  if (due.length === 0 && !stuck) return none(s);
+  let orders = s.orders;
+  for (const [id] of due) orders = markCancel(orders, id, at);
+  const actions: StrategyAction[] = due.map(([id]) => ({ type: "cancel" as const, clOrdID: id }));
+  if (stuck)
+    actions.push(
+      // Câu chữ PM duyệt 2026-11-18 (#248).
+      {
+        type: "log",
+        decision: "Waiting for SoDEX to confirm a cancel",
+        why: `SoDEX has not confirmed that ${pending.map(([id]) => id).join(", ")} ended. The bot keeps cancelling it and starts no new trade until SoDEX confirms. Check open orders on SoDEX.`,
+        teamAlert: "cancel_unconfirmed",
+      },
+      { type: "flag", needsAttention: true },
+    );
+  return { actions, state: { ...s, orders, ...(stuck ? { cancelStuck: true } : {}) } };
 }
 
 function dust(s: VolumeFarmState, ctx: StepContext, market: string): boolean {
@@ -533,7 +664,7 @@ function tryEnter(
       staleXstop: null,
       phase: "entering",
       cycle,
-      orders: remember(s.orders, o.clOrdID, "entry", side),
+      orders: remember(s.orders, o.clOrdID, "entry", side, o.quantity),
       entry: { id: o.clOrdID, placedAt: at, taker },
       holdSecs,
       lastSkip: null,
@@ -800,9 +931,10 @@ function startExit(
   // Phần lệnh vào còn treo (khớp một phần) phải huỷ trước, không thì vị thế lớn thêm khi đang thoát.
   const cancels: StrategyAction[] =
     s.entry === null ? [] : [{ type: "cancel", clOrdID: s.entry.id }];
+  const orders = s.entry === null ? s.orders : markCancel(s.orders, s.entry.id, at);
   const r = placeExit(
     c,
-    { ...s, entry: null, exitReason: reason.why, exitForce: reason.stop },
+    { ...s, orders, entry: null, exitReason: reason.why, exitForce: reason.stop },
     ctx,
     at,
     reason.stop,
@@ -891,15 +1023,34 @@ function onTimer(
 ): StepResult<VolumeFarmState> {
   const at = e.at;
   const snap = e.market?.market === c.market ? e.market : undefined;
-  const s = snap === undefined ? s0 : mergeRestBook(s0, snap, at);
+  const merged = snap === undefined ? s0 : mergeRestBook(s0, snap, at);
+  if (merged.phase === "halted") return none(merged);
+  // Lệnh vào đã gửi huỷ mà chưa có xác nhận: huỷ lại theo nhịp, ở mọi pha (DEC-317).
+  const chase = chaseCancels(merged, at);
+  const r = phaseTimer(c, chase.state, ctx, at, snap);
+  return chase.actions.length === 0
+    ? r
+    : { actions: [...chase.actions, ...r.actions], state: r.state };
+}
+
+function phaseTimer(
+  c: VolumeFarmConfig,
+  s: VolumeFarmState,
+  ctx: StepContext,
+  at: number,
+  snap: NonNullable<Extract<StrategyEvent, { type: "timer" }>["market"]> | undefined,
+): StepResult<VolumeFarmState> {
   switch (s.phase) {
     case "entering": {
       if (s.entry === null || at - s.entry.placedAt < FARM_TIMING.entryFillMs) return none(s);
       const open = !dust(s, ctx, c.market);
+      // Chưa khớp sau 10 s: gửi huỷ, nhưng lệnh vẫn được coi là có thể còn sống cho tới khi SoDEX xác nhận kết thúc
+      // (`orderDone` / `orderReject`); trong lúc đó không vào lượt mới (DEC-317, #239).
       return {
         actions: [{ type: "cancel", clOrdID: s.entry.id }],
         state: {
           ...s,
+          orders: markCancel(s.orders, s.entry.id, at),
           phase: open ? "open" : "idle",
           entry: null,
           unfilled: open ? 0 : s.unfilled + 1,
@@ -929,6 +1080,9 @@ function onTimer(
           holdUntil: s.holdUntil ?? at,
         });
       }
+      // Lệnh vào trước còn chờ SoDEX xác nhận đã huỷ: chưa vào lượt mới. Trước đây bot coi lệnh đã xong ngay khi gửi
+      // huỷ; lệnh còn nằm trên sổ 10 phút rồi khớp trong khi bot đã vào thêm 4 lượt (#239).
+      if (cancellingEntries(s).length > 0) return none(s);
       // Version mới đang chờ áp (DEC-304): không mở lượt mới, để engine áp khi bot phẳng.
       if (ctx.versionPending !== undefined) return none(s);
       return snap === undefined ? none(s) : tryEnter(c, s, ctx, at, snap.candles);
@@ -938,6 +1092,75 @@ function onTimer(
   }
 }
 
+/** Câu Decisions khi bot nhận fill của lệnh nó đã thôi theo dõi (người dùng duyệt 2026-11-18). */
+function adoptLog(e: Extract<StrategyEvent, { type: "fill" }>, kind: Kind): StrategyAction {
+  const head = `An earlier order of this bot (${e.clOrdID}) filled ${e.quantity} at ${e.price} after the bot had stopped tracking it.`;
+  return {
+    type: "log",
+    decision: "Late fill added to the position",
+    why:
+      kind === "entry"
+        ? `${head} The bot now manages it with its normal exit rules.`
+        : `${head} It reduced the open position.`,
+    teamAlert: "late_fill_adopted",
+  };
+}
+
+/**
+ * Fill của một lệnh của chính bot (engine chỉ đưa fill theo dòng `orders` của bot) mà state không còn nhớ: ví dụ lệnh
+ * vào bị quên sau khi gửi huỷ rồi khớp muộn (#239), hoặc fill được đưa lại khi sửa sổ cái (DEC-306). Người dùng duyệt
+ * 2026-11-18: nhận vào vị thế và quản lý thoát như một lượt thường (giữ, chốt lời, cắt lỗ, stop trên SoDEX theo vị
+ * thế mới). Cần chiều lệnh (`side`, engine gửi kèm); thiếu thì bỏ qua như trước.
+ */
+function adoptFill(
+  c: VolumeFarmConfig,
+  s: VolumeFarmState,
+  ctx: StepContext,
+  e: Extract<StrategyEvent, { type: "fill" }>,
+): StepResult<VolumeFarmState> {
+  const side = e.side;
+  if (side === undefined) return none(s);
+  const pos = dec(s.ledger.position);
+  const reduces = !dust(s, ctx, c.market) && pos.gt(0) !== (side === "buy");
+  const reduceOnly = e.reduceOnly === true;
+  // Lệnh chỉ giảm (stop, thoát, lệnh đóng của engine) không bao giờ mở vị thế: luôn là "exit", phần vượt bị bỏ ở bookFill.
+  const kind: Kind = reduceOnly || reduces ? "exit" : "entry";
+  // Khối lượng đặt (engine gửi kèm): khớp đủ thì lệnh đã kết thúc và rời bộ nhớ như lệnh thường.
+  const orders = remember(s.orders, e.clOrdID, kind, side, e.size);
+  const qty = dec(e.quantity);
+  let r: StepResult<VolumeFarmState>;
+  const flip = !reduceOnly && reduces && qty.gt(pos.abs());
+  if (flip) {
+    // Lệnh mở (không reduce-only) ngược chiều và lớn hơn vị thế: đóng lượt hiện tại (huỷ stop của nó), phần còn lại là
+    // một lượt mới với stop đúng phía.
+    const closeQty = pos.abs();
+    const closeFee = dec(e.fee).mul(closeQty).div(qty);
+    const first = bookFill(
+      c,
+      { ...s, orders },
+      ctx,
+      { ...e, quantity: closeQty.toString(), fee: closeFee.toString() },
+      { kind: "exit", side },
+      true,
+    );
+    const rest = bookFill(
+      c,
+      first.state,
+      ctx,
+      { ...e, quantity: qty.sub(closeQty).toString(), fee: dec(e.fee).sub(closeFee).toString() },
+      { kind: "entry", side },
+      true,
+    );
+    r = { actions: [...first.actions, ...rest.actions], state: rest.state };
+  } else r = bookFill(c, { ...s, orders }, ctx, e, { kind, side }, true);
+  // Lệnh đóng engine tự dựng khi Stop là lệnh đóng bình thường, không phải "fill muộn". Không đổi vị thế (lệnh chỉ giảm
+  // mà bot đã phẳng) thì cũng không phải nhận vào vị thế: bookFill đã ghi lý do.
+  const booked = r.state.ledger.position !== s.ledger.position;
+  return e.tag === "close" || !booked
+    ? r
+    : { actions: [adoptLog(e, flip ? "entry" : kind), ...r.actions], state: r.state };
+}
+
 function onFill(
   c: VolumeFarmConfig,
   s: VolumeFarmState,
@@ -945,11 +1168,62 @@ function onFill(
   e: Extract<StrategyEvent, { type: "fill" }>,
 ): StepResult<VolumeFarmState> {
   const o = s.orders[e.clOrdID];
-  if (o === undefined) return none(s);
+  if (o === undefined) return adoptFill(c, s, ctx, e);
+  return bookFill(c, s, ctx, e, o, false);
+}
+
+function bookFill(
+  c: VolumeFarmConfig,
+  s: VolumeFarmState,
+  ctx: StepContext,
+  e: Extract<StrategyEvent, { type: "fill" }>,
+  o: Pick<FarmOrder, "kind" | "side">,
+  /** Fill nhận lại của lệnh bot đã thôi theo dõi: không đụng lệnh vào đang chạy (số lần trượt, chờ, taker). */
+  adopted: boolean,
+): StepResult<VolumeFarmState> {
   const before = s.ledger;
-  const ledger = applyFill(before, o.side, e.price, e.quantity, e.fee);
+  // Lệnh thoát / stop luôn reduce-only: fill của nó chỉ giảm vị thế bot đang theo dõi, không bao giờ mở hay tăng vị
+  // thế. Phần vượt (bot đã phẳng, hoặc fill lớn hơn vị thế) đã đóng một vị thế bot không theo dõi trên SoDEX (#239
+  // 05:31: stop cả vị thế của lượt cũ đóng vị thế mồ côi, bot phẳng ghi nhầm thành long mới rồi gửi 30 lệnh bán
+  // reduce-only bị từ chối). Chỉ ghi phí và khối lượng của phần đó.
+  const pos = dec(before.position);
+  const qty = dec(e.quantity);
+  let booked = qty;
+  if (o.kind !== "entry") {
+    const opposite = !pos.isZero() && pos.gt(0) !== (o.side === "buy");
+    booked = opposite ? Decimal.min(qty, pos.abs()) : new Decimal(0);
+  }
+  const excess = qty.sub(booked);
+  const ledger = booked.gt(0)
+    ? applyFill(before, o.side, e.price, booked, e.fee)
+    : { ...before, fees: dec(before.fees).add(e.fee).toString() };
   const notional = dec(e.price).mul(e.quantity);
-  let state: VolumeFarmState = { ...s, ledger, volume: dec(s.volume).add(notional).toString() };
+  let state: VolumeFarmState = {
+    ...s,
+    orders: markFilled(s.orders, e.clOrdID, e.quantity),
+    ledger,
+    volume: dec(s.volume).add(notional).toString(),
+  };
+  const excessLog: StrategyAction[] = excess.gt(0)
+    ? [
+        // Câu chữ PM duyệt 2026-11-18 (#248).
+        {
+          type: "log",
+          teamAlert: "closing_fill_beyond",
+          decision: "Closing fill beyond the bot's position",
+          why: `${e.clOrdID} is a closing order and filled ${e.quantity} at ${e.price}; ${excess.toString()} of it was more than the position the bot tracked, so it closed a position the bot was not tracking. It was not booked as a new position.`,
+        },
+      ]
+    : [];
+  // Bot đã dừng (engine đang đóng vị thế theo sổ cái): chỉ ghi sổ cái.
+  if (adopted && s.phase === "halted") return { actions: excessLog, state };
+  // Không giảm được gì (bot đã phẳng): sổ cái chỉ thêm phí, không đổi pha. Stop của chính lượt đã kích hoạt thì thôi
+  // theo dõi nó.
+  if (booked.isZero())
+    return {
+      actions: excessLog,
+      state: s.xstop?.id === e.clOrdID ? { ...state, xstop: null } : state,
+    };
   if (o.kind === "entry") {
     const first = state.openedAt === null;
     state = {
@@ -957,20 +1231,18 @@ function onFill(
       phase: state.phase === "exiting" ? "exiting" : "open",
       openedAt: state.openedAt ?? e.at,
       holdUntil: first ? e.at + (state.holdSecs ?? c.minHoldSecs) * 1000 : state.holdUntil,
-      unfilled: 0,
-      marketRejects: 0,
-      rejectBackoff: null,
+      ...(adopted ? {} : { unfilled: 0, marketRejects: 0, rejectBackoff: null }),
       ...(first
         ? {
             openRealized: before.realized,
             openFees: before.fees,
-            entryTaker: state.entry?.taker === true,
+            entryTaker: !adopted && state.entry?.taker === true,
           }
         : {}),
     };
     if (dust(state, ctx, c.market)) return none(state);
     // Lệnh market khớp hết ngay: không còn gì để huỷ.
-    if (state.entry?.taker === true) state = { ...state, entry: null };
+    if (!adopted && state.entry?.taker === true) state = { ...state, entry: null };
     // Có vị thế: đặt stop loss trên SoDEX ngay (DEC-118).
     return syncXstop(c, state, ctx, e.at);
   }
@@ -980,14 +1252,19 @@ function onFill(
       ...state,
       exitReason: s.exitReason ?? `Stop loss on SoDEX at ${s.xstop?.price ?? e.price}`,
     };
-  if (!dust(state, ctx, c.market)) return none(state);
-  // Đã đóng hết: huỷ lệnh còn lại của lượt (lệnh thoát của bot hoặc stop trên sàn).
+  if (!dust(state, ctx, c.market)) return { actions: excessLog, state };
+  // Đã đóng hết: huỷ lệnh còn lại của lượt. Stop trên SoDEX đóng CẢ vị thế thật của account trên market, nên không để
+  // SoDEX tự huỷ (DEC-119 cũ): khi còn vị thế bot không theo dõi, stop còn sống và kích hoạt sau (#239: 05:31). Gửi huỷ
+  // ngay và theo dõi tới khi SoDEX xác nhận (chặn lượt mới như lệnh vào chờ huỷ, DEC-317).
+  const stopId = o.kind === "stop" ? null : (s.xstop?.id ?? null);
   const leftovers: StrategyAction[] = [
-    // Stop trên sàn: SoDEX tự huỷ khi vị thế đóng; chỉ nhớ lại để lượt sau kiểm tra (DEC-119).
     ...(o.kind === "stop" && s.exit !== null
       ? [{ type: "cancel" as const, clOrdID: s.exit.id }]
       : []),
+    ...(stopId === null ? [] : [{ type: "cancel" as const, clOrdID: stopId }]),
+    ...excessLog,
   ];
+  if (stopId !== null) state = { ...state, orders: markCancel(state.orders, stopId, e.at) };
   const closedWhy = state.exitReason ?? "Exit filled";
   const tick = ctx.rules[c.market]?.tickSize;
   const closedEntry = tick === undefined ? before.avgCost : fmtPrice(dec(before.avgCost), tick);
@@ -1022,7 +1299,8 @@ function onFill(
     stopLogged: 0,
     xstop: null,
     xstopOff: false,
-    staleXstop: o.kind === "stop" ? null : (s.xstop?.id ?? null),
+    // Stop đã được huỷ ngay ở trên (hoặc chính nó vừa khớp): không còn stop "cũ" để huỷ ở lượt sau.
+    staleXstop: null,
   };
   const actions: StrategyAction[] = [
     ...leftovers,
@@ -1048,7 +1326,14 @@ export function applyVolumeFarmVersion(
   s: VolumeFarmState,
   ctx: StepContext,
 ): VolumeFarmState | null {
-  if (s.phase !== "idle" || s.entry !== null || s.exit !== null || !dust(s, ctx, c.market))
+  if (
+    s.phase !== "idle" ||
+    s.entry !== null ||
+    s.exit !== null ||
+    !dust(s, ctx, c.market) ||
+    // Lệnh vào cũ chưa được xác nhận đã huỷ có thể còn khớp: chờ (DEC-317).
+    cancellingEntries(s).length > 0
+  )
     return null;
   const fresh = initial();
   return {
@@ -1083,6 +1368,9 @@ export function stepVolumeFarm(
     case "fill":
       return onFill(c, s, ctx, e);
     case "orderReject": {
+      // Lệnh đã kết thúc trên SoDEX mà chưa khớp gì: thôi chờ xác nhận huỷ của nó (DEC-317).
+      const ended = markDone(s.orders, e.clOrdID);
+      if (ended !== s.orders) s = { ...s, orders: ended };
       if (s.entry?.id === e.clOrdID) {
         const open = !dust(s, ctx, c.market);
         // Lệnh vào market bị từ chối (thiếu margin…): không gửi lại mãi; đủ ngưỡng thì pause để người dùng xem
@@ -1169,11 +1457,17 @@ export function stepVolumeFarm(
         ...s,
         ledger: { ...s.ledger, funding: dec(s.ledger.funding).add(e.amount).toString() },
       });
-    case "orderDone":
+    case "orderDone": {
+      // Tin trùng (engine báo lại khi bot huỷ lại một lệnh đã kết thúc): không làm gì, nhất là với stop đang sống.
+      if (s.orders[e.clOrdID]?.done === true) return none(s);
+      // Lệnh đã kết thúc trên SoDEX: lệnh vào đã gửi huỷ thôi chặn lượt mới (DEC-317).
+      const ended = markDone(s.orders, e.clOrdID);
+      const next = ended === s.orders ? s : { ...s, orders: ended };
       // Stop trên sàn hết hiệu lực khi vị thế còn mở (SoDEX tự huỷ…): không đặt lại mãi, bot tự giữ SL.
       if (s.xstop?.id === e.clOrdID && !dust(s, ctx, c.market))
-        return none({ ...s, xstop: null, xstopOff: true });
-      return none(s);
+        return none({ ...next, xstop: null, xstopOff: true });
+      return none(next);
+    }
     case "orderAck":
       // SoDEX nhận lệnh vào: hết chờ (DEC-299).
       if (s.entry?.id === e.clOrdID && s.rejectBackoff != null)
