@@ -642,6 +642,13 @@ export const orders = pgTable(
   (t) => [
     uniqueIndex("orders_account_cl_ord_key").on(t.sodexAccountId, t.clOrdId),
     index("orders_bot_idx").on(t.botId, t.createdAt),
+    /**
+     * Lệnh đã khớp theo bot (Signal Analysis, #233): bỏ qua các lệnh báo giá không khớp (phần lớn lệnh Market Making) khi
+     * cộng vị thế / ghép fill.
+     */
+    index("orders_bot_filled_idx")
+      .on(t.botId, t.createdAt)
+      .where(sql`${t.filledSize} > 0`),
     index("orders_status_idx").on(t.status),
   ],
 );

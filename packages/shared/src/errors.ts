@@ -26,6 +26,8 @@ export const ErrorCode = {
   sodexAccountInUse: "SODEX_ACCOUNT_IN_USE",
   signatureInvalid: "SIGNATURE_INVALID",
   recoUnavailable: "RECO_UNAVAILABLE",
+  /** Truy vấn phân tích của trang team (Signal Analysis) quá thời gian cho phép (#233). */
+  analysisTimeout: "ANALYSIS_TIMEOUT",
   /** docs/NOTIFICATIONS.md mục 9 (DEC-170). */
   telegramNotConnected: "TELEGRAM_NOT_CONNECTED",
   telegramLinkExpired: "TELEGRAM_LINK_EXPIRED",
@@ -57,6 +59,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SODEX_ACCOUNT_IN_USE: 409,
   SIGNATURE_INVALID: 422,
   RECO_UNAVAILABLE: 503,
+  ANALYSIS_TIMEOUT: 503,
   TELEGRAM_NOT_CONNECTED: 409,
   TELEGRAM_LINK_EXPIRED: 410,
 };

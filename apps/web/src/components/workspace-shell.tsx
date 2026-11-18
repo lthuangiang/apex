@@ -9,6 +9,7 @@ import {
   BrainCircuit,
   Bot,
   Bug,
+  ChartNoAxesColumn,
   ChevronDown,
   Ellipsis,
   Eye,
@@ -78,8 +79,10 @@ const ITEMS = [
   ["marketHours", "/admin/market-hours", Clock, "team"],
   // System Architecture Diagram: ngay dưới Market hours.
   ["architecture", "/admin/architecture", Network, "team"],
-  // SoDEX Debugger (docs/mockups/sodex-debugger): mục cuối của TEAM.
+  // SoDEX Debugger (docs/mockups/sodex-debugger).
   ["sodexDebugger", "/admin/sodex-debugger", Bug, "team"],
+  // Signal Analysis (#233): ngay dưới SoDEX Debugger, mục cuối của TEAM.
+  ["signalAnalysis", "/admin/signal-analysis", ChartNoAxesColumn, "team"],
   ["settings", "/settings", Settings, "secondary"],
 ] as const satisfies readonly (readonly [
   string,
@@ -101,6 +104,7 @@ const TEAM_ONLY: ReadonlySet<WorkspaceKey> = new Set([
   "marketHours",
   "architecture",
   "sodexDebugger",
+  "signalAnalysis",
 ]);
 
 export function WorkspaceShell({
@@ -168,6 +172,7 @@ export function WorkspaceShell({
         "marketHours",
         "architecture",
         "sodexDebugger",
+        "signalAnalysis",
       ]),
       footer: <MoreFooter />,
     },

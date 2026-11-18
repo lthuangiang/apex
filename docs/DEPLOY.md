@@ -245,6 +245,29 @@ Mọi app service gọi SoDEX ghi lời gọi vào `sodex_calls_ok` (3 ngày) / 
 
 Kết nối DB: mỗi process một kết nối client qua PgBouncer; mỗi batch là một transaction ngắn có `SET LOCAL statement_timeout = 3000` (PgBouncer transaction mode không nhận `statement_timeout` ở tham số khởi động). Trường hợp xấu nhất ~1 kết nối server × ≤ 3 s mỗi process khi DB chậm, sau đó recorder nghỉ dần tới 60 s. Dung lượng ước tính: xem PR #217.
 
+### 2.13 Signal Analysis (#233): migration 0043 tạo index trên `orders`
+
+Migration `0043_orders_bot_filled_idx` tạo index một phần `orders (bot_id, created_at) WHERE filled_size > 0`. Migrator của drizzle chạy mọi migration trong một transaction nên **không dùng được `CREATE INDEX CONCURRENTLY`** (như 0037); lệnh giữ khoá SHARE trên `orders` (chặn ghi, không chặn đọc) trong lúc build. Đo trên 1,31M lệnh (PR #246): **0,72 s**. Prod có bao nhiêu lệnh thì xem trước (`select count(*) from orders`); vài triệu lệnh vẫn ở mức vài giây, trong lúc đó engine ghi lệnh bị chờ. Deploy lúc ít bot chạy, hoặc tạo index tay trước khi deploy để migration chỉ còn `IF NOT EXISTS`:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "orders_bot_filled_idx" ON "orders" USING btree ("bot_id","created_at") WHERE "orders"."filled_size" > 0;
+```
+
+`CREATE INDEX CONCURRENTLY` lỗi hoặc bị huỷ giữa chừng thì để lại một index **INVALID** cùng tên; `IF NOT EXISTS` (cả lệnh tay lẫn migration) sẽ bỏ qua nó và index không bao giờ được dùng. Sau lệnh tay, luôn kiểm tra:
+
+```sql
+select indisvalid from pg_index where indexrelid = 'orders_bot_filled_idx'::regclass;
+```
+
+Ra `false` thì xoá rồi chạy lại lệnh tạo:
+
+```sql
+DROP INDEX CONCURRENTLY IF EXISTS orders_bot_filled_idx;
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "orders_bot_filled_idx" ON "orders" USING btree ("bot_id","created_at") WHERE "orders"."filled_size" > 0;
+```
+
+Ra `true` thì deploy như thường (migration 0043 không làm gì).
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push 11 image → PM trả tag (`docs/RELEASE.md`).

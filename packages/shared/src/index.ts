@@ -29,6 +29,7 @@ export * from "./api/market-hours";
 export * from "./api/desk-performance";
 export * from "./api/architecture";
 export * from "./api/sodex-debugger";
+export * from "./api/signal-analysis";
 export * from "./api/desk";
 export * from "./desk";
 export * from "./leader-stats";
