@@ -1,4 +1,6 @@
 import type { ReasonCode } from "@drift/shared";
+import type { MmOrderContext, MmQuoteSnapshot } from "@drift/shared/mm-quote";
+import type { VbSignalSnapshot } from "@drift/shared/vb-signal";
 
 import type { WaitingInfo } from "../common/entry";
 
@@ -141,7 +143,11 @@ export interface MarketSnapshot {
 }
 
 export type StrategyAction =
-  | { type: "place"; order: OrderIntent }
+  /**
+   * `context`: bối cảnh lúc đặt (Market Making, #233), engine ghi vào `orders.context`; không bao giờ gửi SoDEX, chỉ có
+   * khi `StepContext.decisionPayload`.
+   */
+  | { type: "place"; order: OrderIntent; context?: MmOrderContext }
   | { type: "cancel"; clOrdID: string }
   /** Dời giá kích hoạt của stop loss gốc trên SoDEX (DEC-118); SoDEX từ chối thì engine báo `orderReject` cho lệnh đó. */
   | { type: "modifyStop"; clOrdID: string; stopPrice: string }
@@ -149,7 +155,18 @@ export type StrategyAction =
   | { type: "stop"; reason: ReasonCode; close: boolean }
   | { type: "flag"; needsAttention: boolean }
   /** Một dòng "Decisions & actions" (bot_events). */
-  | { type: "log"; decision: string; why: string };
+  | { type: "log"; decision: string; why: string; payload?: DecisionPayload };
+
+/**
+ * Dữ liệu có cấu trúc kèm một quyết định, engine ghi vào `bot_events.payload` (cạnh `orders` của BD-02). Chỉ chiến
+ * lược nhận `StepContext.decisionPayload` mới gắn; không ảnh hưởng lệnh hay state.
+ */
+export interface DecisionPayload {
+  /** Snapshot tín hiệu của lượt vào Volume Farm (#221). */
+  signal?: VbSignalSnapshot;
+  /** Snapshot báo giá của Market Making (#230). */
+  quote?: MmQuoteSnapshot;
+}
 
 export interface StepContext {
   botId: string;
@@ -170,6 +187,11 @@ export interface StepContext {
    * Chiến lược không mở lượt mới để bot về trạng thái áp được; thiếu là không có version chờ.
    */
   versionPending?: number;
+  /**
+   * Engine ghi quyết định vào `bot_events` nên cần dữ liệu kèm (`log.payload`, ví dụ snapshot tín hiệu Volume Farm,
+   * #221). Backtest / dry run / What-if không ghi event nên bỏ qua, khỏi tốn công dựng. Không bao giờ đổi lệnh hay state.
+   */
+  decisionPayload?: boolean;
 }
 
 export interface StepResult<S> {

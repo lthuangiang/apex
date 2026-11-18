@@ -1,4 +1,5 @@
 import { dec } from "@drift/shared";
+import { VB_SIGNAL_SNAPSHOT_MAX_BYTES, vbSignalSnapshotSchema } from "@drift/shared/vb-signal";
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -19,6 +20,7 @@ import {
 } from "../volume-farm";
 import { volumeFarmSchema, type VolumeFarmConfig } from "../volume-farm/schema";
 import { farmSignal, toFiveMinute } from "../volume-farm/signal";
+import { entrySnapshot, safeEntrySnapshot, type EntrySnapshotInput } from "../volume-farm/snapshot";
 
 const ctx: StepContext = {
   botId: "vf-bot",
@@ -1376,5 +1378,203 @@ describe("volume farm — new version while running (DEC-304)", () => {
     expect(late.s.ledger.position).toBe(entry.quantity);
     expect(late.s.phase).toBe("open");
     expect(places(late.all).filter((o) => o.stop !== undefined)).toHaveLength(1);
+  });
+});
+
+describe("volume farm — signal snapshot on entries (#221)", () => {
+  const snapCtx: StepContext = { ...ctx, decisionPayload: true };
+  const enters = (a: StrategyAction[]) =>
+    a.filter(
+      (x): x is Extract<StrategyAction, { type: "log" }> =>
+        x.type === "log" && x.decision.startsWith("Enter "),
+    );
+  const snapOf = (a: StrategyAction[]) => {
+    const e = enters(a);
+    expect(e).toHaveLength(1);
+    return vbSignalSnapshotSchema.parse(e[0]?.payload?.signal);
+  };
+  /** Bỏ `payload` khỏi các dòng Decisions: phần còn lại phải y hệt khi không dựng snapshot. */
+  const strip = (a: StrategyAction[]) =>
+    a.map((x) => (x.type === "log" ? { type: x.type, decision: x.decision, why: x.why } : x));
+
+  it("records signal, price context and order of a post-only entry", () => {
+    const { all } = run(cfg(), [timer(T0)], undefined, snapCtx);
+    const o = first(places(all));
+    const sig = farmSignal(candles(0.0001), book, T0, 10);
+    const snap = snapOf(all);
+    expect(snap).toMatchObject({
+      v: 1,
+      direction: "long",
+      side: "long",
+      regime: sig.regime,
+      reversed: false,
+      balanced: false,
+      reason: sig.reason,
+      price: { bid: "80000", ask: "80001", mid: "80000.5", last: null, mark: null },
+      order: { clOrdID: o.clOrdID, price: "80000", size: o.quantity, entryTry: 0, taker: false },
+    });
+    expect(snap.score).toBeCloseTo(sig.score, 4);
+    expect(snap.confidence).toBeCloseTo(sig.confidence, 4);
+    expect(snap.components.candleMomentum).toBeCloseTo(sig.components.candleMomentum, 4);
+    expect(snap.components.wickRejection).toBeCloseTo(sig.components.wickRejection, 4);
+    expect(snap.components.volumeAcceleration).toBeCloseTo(sig.components.volumeAcceleration, 4);
+    expect(snap.components.orderbookImbalance).toBeCloseTo(sig.components.orderbookImbalance, 4);
+    expect(snap.spreadBps).toBeCloseTo(sig.spreadBps ?? NaN, 2);
+    // Nến cuối đóng đúng T0: 1 phút trước là nến thứ 29 (đóng T0 − 60 s), 3 phút trước là nến thứ 27…
+    const ks = candles(0.0001);
+    const bp = (k: number) => {
+      const c = Number(ks[ks.length - 1 - k]?.c);
+      return Math.round(((80000.5 - c) / c) * 10_000 * 10) / 10;
+    };
+    expect(snap.price.chg1mBps).toBe(bp(1));
+    expect(snap.price.chg3mBps).toBe(bp(3));
+    expect(snap.price.chg5mBps).toBe(bp(5));
+    const usd = Number(snap.order.usd);
+    expect(usd).toBeGreaterThanOrEqual(100);
+    expect(usd).toBeLessThanOrEqual(200);
+    expect(snap.order.holdSecs).toBeGreaterThanOrEqual(120);
+    expect(snap.order.holdSecs).toBeLessThanOrEqual(180);
+    expect(JSON.stringify(snap).length).toBeLessThan(VB_SIGNAL_SNAPSHOT_MAX_BYTES);
+  });
+
+  it("flags Reverse the signal: signal long, entry short", () => {
+    const snap = snapOf(run(cfg({ reverseSignal: true }), [timer(T0)], undefined, snapCtx).all);
+    expect(snap).toMatchObject({
+      direction: "long",
+      side: "short",
+      reversed: true,
+      balanced: false,
+    });
+    expect(snap.order.price).toBe("80001");
+  });
+
+  it("flags an entry forced by long / short balancing (DEC-80)", () => {
+    const start = {
+      ...volumeFarm.initialState(cfg()),
+      netExposure: "300",
+      lastSide: "long" as const,
+    };
+    const snap = snapOf(run(cfg(), [timer(T0)], start, snapCtx).all);
+    expect(snap).toMatchObject({
+      direction: "long",
+      side: "short",
+      reversed: false,
+      balanced: true,
+    });
+  });
+
+  it("flags both when balancing and Reverse apply together", () => {
+    const start = {
+      ...volumeFarm.initialState(cfg()),
+      netExposure: "300",
+      lastSide: "long" as const,
+    };
+    const snap = snapOf(run(cfg({ reverseSignal: true }), [timer(T0)], start, snapCtx).all);
+    // Cân long / short buộc short, Reverse đảo lại thành long.
+    expect(snap).toMatchObject({ direction: "long", side: "long", reversed: true, balanced: true });
+  });
+
+  it("records the try number and a market order after misses", () => {
+    let r = run(cfg(), [timer(T0)], undefined, snapCtx);
+    const tries = [snapOf(r.all).order.entryTry];
+    for (let i = 0; i < 3; i += 1) {
+      const at = T0 + (i + 1) * 20_000;
+      r = run(
+        cfg(),
+        [timer(at - 20_000 + FARM_TIMING.entryFillMs, false), timer(at)],
+        r.s,
+        snapCtx,
+      );
+      const e = enters(r.all);
+      if (e.length > 0)
+        tries.push(vbSignalSnapshotSchema.parse(e[0]?.payload?.signal).order.entryTry);
+    }
+    expect(tries.at(-1)).toBe(3);
+    const snap = vbSignalSnapshotSchema.parse(enters(r.all)[0]?.payload?.signal);
+    expect(snap.order).toMatchObject({ price: null, taker: true });
+  });
+
+  it("does not change orders, Decisions text or state (same result with and without snapshot)", () => {
+    const configs = [cfg(), cfg({ reverseSignal: true }), cfg({ allowTaker: false })];
+    const starts = [
+      undefined,
+      { ...volumeFarm.initialState(cfg()), netExposure: "300", lastSide: "long" as const },
+    ];
+    const events: StrategyEvent[] = [
+      timer(T0),
+      timer(T0 + FARM_TIMING.entryFillMs, false),
+      timer(T0 + 20_000),
+      { type: "tick", at: T0 + 21_000, market: "BTC-USD", price: "80010" },
+      timer(T0 + 40_000),
+    ];
+    for (const c of configs)
+      for (const start of starts) {
+        const plain = run(c, events, start);
+        const withSnap = run(c, events, start, snapCtx);
+        // So sánh chỉ có nghĩa khi bot thật sự vào lệnh.
+        expect(enters(withSnap.all).length).toBeGreaterThan(0);
+        expect(places(withSnap.all).length).toBeGreaterThan(0);
+        expect(strip(withSnap.all)).toEqual(plain.all);
+        expect(withSnap.s).toEqual(plain.s);
+        expect(plain.all.some((a) => a.type === "log" && a.payload !== undefined)).toBe(false);
+        expect(enters(withSnap.all).every((a) => a.payload?.signal !== undefined)).toBe(true);
+      }
+  });
+
+  const snapInput = (over: Partial<EntrySnapshotInput> = {}): EntrySnapshotInput => {
+    const sig = farmSignal(candles(0.0001), book, T0, 10);
+    if (sig.direction === "skip") throw new Error("expected a signal");
+    return {
+      sig: { ...sig, direction: sig.direction },
+      side: sig.direction,
+      reversed: false,
+      balanced: false,
+      at: T0,
+      candles: candles(0.0001),
+      book,
+      bookAt: T0,
+      last: null,
+      order: first(places(run(cfg(), [timer(T0)]).all)),
+      usd: "150.00",
+      holdSecs: 150,
+      entryTry: 0,
+      taker: false,
+      ...over,
+    };
+  };
+
+  it("keeps the snapshot valid on a crossed book: spread and mid become null", () => {
+    const crossed = { ...book, bid: "80002", ask: "80001" };
+    const base = snapInput();
+    const snap = entrySnapshot(
+      snapInput({ book: crossed, sig: { ...base.sig, spreadBps: -1.25 } }),
+    );
+    expect(vbSignalSnapshotSchema.safeParse(snap).success).toBe(true);
+    expect(snap.spreadBps).toBeNull();
+    expect(snap.price).toMatchObject({ bid: "80002", ask: "80001", mid: null });
+    expect(entrySnapshot(snapInput({ sig: { ...base.sig, spreadBps: 0 } })).spreadBps).toBeNull();
+  });
+
+  it("emits no snapshot instead of throwing when the input is malformed", () => {
+    const bad = snapInput({ book: { ...book, bid: "not-a-number" } });
+    expect(() => entrySnapshot(bad)).toThrow();
+    expect(safeEntrySnapshot(bad)).toBeUndefined();
+    expect(safeEntrySnapshot(snapInput())).toBeDefined();
+  });
+
+  it("attaches nothing to other decisions", () => {
+    const { all } = run(
+      cfg({ sidewaysOnly: true }),
+      [
+        {
+          type: "timer",
+          at: T0,
+          market: { market: "BTC-USD", candles: candles(0.0001, 80_000, 120), book },
+        },
+      ],
+      undefined,
+      snapCtx,
+    );
+    expect(all.filter((a) => a.type === "log").every((a) => a.payload === undefined)).toBe(true);
   });
 });
