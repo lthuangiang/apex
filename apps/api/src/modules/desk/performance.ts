@@ -501,7 +501,8 @@ export async function deskPerformance(
 ): Promise<DeskPerformance> {
   const now = deps.now();
   const own = await ownBots(deps.db, userId);
-  // Giá live là lời gọi HTTP: đọc TRƯỚC khi mở transaction, để transaction không giữ kết nối chờ mạng.
+  // Danh sách bot và giá live (Redis MGET) đọc TRƯỚC khi mở transaction chỉ đọc, để transaction không giữ kết nối DB
+  // chờ Redis (sửa DEC-314 (6): câu lấy bot không còn nằm trong transaction đó).
   const markets = [...new Set(own.map((b) => b.market))];
   const liveMarks: Record<string, string> =
     markets.length === 0 ? {} : await deps.prices(markets).catch(() => ({}));

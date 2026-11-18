@@ -444,6 +444,10 @@ function Hours({
         <div className="flex min-w-0 flex-col gap-1.5">
           {/* Nhãn chữ trên dải rẻ / đắt nhất (UX #9): không chỉ dựa vào màu xanh / đỏ. Mỗi nhãn một hàng riêng, để hai
               khung sát nhau không đè chữ lên nhau ở 390 px (#245). */}
+          {/* Không có khung nào: giữ một hàng trống cao như cũ, để biểu đồ không nhảy lên 16 px. */}
+          {v.cheapest === null && v.dearest === null ? (
+            <div aria-hidden="true" data-testid="perf-label-spacer" className="h-4" />
+          ) : null}
           {(
             [
               [v.cheapest, "cheapest", "text-pos"],

@@ -1,7 +1,6 @@
 import { botEvents, botVersions, candles1m, fills, orders } from "@drift/db";
 import {
   AppError,
-  Decimal,
   ErrorCode,
   HOLD_BUCKETS,
   NORMAL_REJECT_CODES,
@@ -13,7 +12,7 @@ import {
   type ExitReason,
   type TradeDetail,
 } from "@drift/shared";
-import { buildTradesExact, type ExactFill, type ExactTrade } from "@drift/strategies";
+import { buildTrades, type ReviewFill, type ReviewTrade } from "@drift/strategies";
 import { and, asc, eq, gte, like, lte, sql } from "drizzle-orm";
 
 import { mmAnalytics } from "./mm-analytics";
@@ -33,12 +32,7 @@ const MAX_TRADES = 5_000;
 const SUPPORTED = new Set<string>([Strategy.volumeFarm, Strategy.volumeMaker]);
 
 const round = (v: number, dp = 4) => Math.round(v * 10 ** dp) / 10 ** dp;
-/** Tiền: cộng / chia bằng Decimal, chỉ đổi ra number ở đầu ra (#245). Làm tròn nửa lên như `Math.round`. */
-const money = (v: Decimal, dp = 4) => v.toDecimalPlaces(dp, Decimal.ROUND_HALF_CEIL).toNumber();
 const pct = (a: number, b: number) => (b > 0 ? round((a / b) * 100, 1) : null);
-const dpct = (a: Decimal, b: Decimal) => (b.gt(0) ? money(a.div(b).mul(100), 1) : null);
-const dsum = <T>(xs: readonly T[], f: (x: T) => Decimal) =>
-  xs.reduce((n, x) => n.add(f(x)), new Decimal(0));
 
 function bucketOf(secs: number): string {
   return (HOLD_BUCKETS.find((b) => secs >= b.from && secs < b.to) ?? HOLD_BUCKETS[0]).key;
@@ -58,7 +52,7 @@ export function exitReasonOf(why: string | null, byStop: boolean): ExitReason {
 }
 
 interface Loaded {
-  trades: ExactTrade[];
+  trades: ReviewTrade[];
   closes: { at: number; why: string | null }[];
   versions: { version: number; at: number; config: unknown }[];
   candles: Map<number, { o: number; h: number; l: number; c: number }>;
@@ -79,17 +73,17 @@ async function load(deps: BotDeps, botId: string, market: string): Promise<Loade
     .from(fills)
     .innerJoin(orders, eq(orders.id, fills.orderId))
     .where(and(eq(orders.botId, botId), like(orders.tag, "vf:%")));
-  const fs: ExactFill[] = rows.map((r) => ({
+  const fs: ReviewFill[] = rows.map((r) => ({
     tag: r.tag,
     side: r.side,
-    price: new Decimal(r.price),
-    size: new Decimal(r.size),
-    fee: new Decimal(r.fee),
-    builderFee: new Decimal(r.builderFee ?? "0"),
+    price: Number(r.price),
+    size: Number(r.size),
+    fee: Number(r.fee),
+    builderFee: Number(r.builderFee ?? "0"),
     isMaker: r.isMaker === true,
     at: r.at.getTime(),
   }));
-  const trades = buildTradesExact(fs).slice(-MAX_TRADES);
+  const trades = buildTrades(fs).slice(-MAX_TRADES);
   const closes = (
     await deps.db
       .select({ at: botEvents.occurredAt, why: botEvents.why })
@@ -138,7 +132,7 @@ async function load(deps: BotDeps, botId: string, market: string): Promise<Loade
   return { trades, closes, versions, candles };
 }
 
-function toTrade(t: ExactTrade, d: Loaded): AnalyticsTrade {
+function toTrade(t: ReviewTrade, d: Loaded): AnalyticsTrade {
   const close = d.closes.find((c) => c.at >= t.t1 - 5_000 && c.at <= t.t1 + 120_000) ?? null;
   const holdSecs = Math.max(0, Math.round((t.t1 - t.t0) / 1000));
   let hi = -Infinity;
@@ -150,10 +144,8 @@ function toTrade(t: ExactTrade, d: Loaded): AnalyticsTrade {
     lo = Math.min(lo, k.l);
   }
   const has = Number.isFinite(hi) && Number.isFinite(lo);
-  // MFE / MAE là tỉ lệ giá (không phải tiền), so với nến kiểu number.
-  const entry = t.entry.toNumber();
-  const mfe = !has ? null : t.long ? (hi - entry) / entry : (entry - lo) / entry;
-  const mae = !has ? null : t.long ? (entry - lo) / entry : (hi - entry) / entry;
+  const mfe = !has ? null : t.long ? (hi - t.entry) / t.entry : (t.entry - lo) / t.entry;
+  const mae = !has ? null : t.long ? (t.entry - lo) / t.entry : (hi - t.entry) / t.entry;
   const version = [...d.versions].reverse().find((v) => v.at <= t.t0 + 1_000)?.version ?? null;
   return {
     key: String(t.t0),
@@ -161,13 +153,13 @@ function toTrade(t: ExactTrade, d: Loaded): AnalyticsTrade {
     openedAt: t.t0,
     closedAt: t.t1,
     side: t.long ? "long" : "short",
-    entry: t.entry.toNumber(),
-    exit: t.exit.toNumber(),
-    qty: t.qty.toNumber(),
-    notional: money(t.notional, 2),
-    gross: money(t.gross),
-    fees: money(t.fees),
-    net: money(t.gross.sub(t.fees)),
+    entry: t.entry,
+    exit: t.exit,
+    qty: t.qty,
+    notional: round(t.notional, 2),
+    gross: round(t.gross),
+    fees: round(t.fees),
+    net: round(t.gross - t.fees),
     holdSecs,
     bucket: bucketOf(holdSecs),
     exitReason: exitReasonOf(close?.why ?? null, t.exitByStop),
@@ -245,20 +237,16 @@ export async function botAnalytics(
   }
 
   const d = await load(deps, botId, b.market);
-  // `a`: dòng trả về (number đã làm tròn); `x`: lượt gốc, mọi phép cộng tiền dùng Decimal của nó.
-  const all = d.trades.map((x) => ({ a: toTrade(x, d), x, net: x.gross.sub(x.fees) }));
-  const rs = all.filter((r) => r.x.t1 >= from);
-  const ts = rs.map((r) => r.a);
+  const all = d.trades.map((t) => toTrade(t, d));
+  const ts = all.filter((t) => t.closedAt >= from);
+  const raw = d.trades.filter((t) => t.t1 >= from);
   const prevFrom = from - (now - from);
+  // Kỳ trước không có lượt nào đóng (kể cả khi bot chưa tồn tại) → null, không phải 0 (quy tắc 1.8); UI ẩn "vs previous".
+  const prevTrades = all.filter((t) => t.closedAt >= prevFrom && t.closedAt < from);
   const prevNet =
-    period === "all"
+    period === "all" || prevTrades.length === 0
       ? null
-      : money(
-          dsum(
-            all.filter((r) => r.x.t1 >= prevFrom && r.x.t1 < from),
-            (r) => r.net,
-          ),
-        );
+      : round(prevTrades.reduce((n, t) => n + t.net, 0));
 
   // Lệnh đã gửi trong kỳ (không tính stop gốc trên SoDEX).
   const [ord] = await deps.db
@@ -279,66 +267,60 @@ export async function botAnalytics(
       ),
     );
 
-  const net = dsum(rs, (r) => r.net);
-  const gross = dsum(rs, (r) => r.x.gross);
-  const fees = dsum(rs, (r) => r.x.fees);
-  const volume = dsum(rs, (r) => r.x.volume);
-  const makerVol = dsum(rs, (r) => r.x.makerVolume);
-  const wins = dsum(
-    rs.filter((r) => r.net.gt(0)),
-    (r) => r.net,
-  );
-  const losses = dsum(
-    rs.filter((r) => r.net.lt(0)),
-    (r) => r.net,
-  ).neg();
-  const ordered = [...rs].sort((x, y) => x.x.t1 - y.x.t1);
-  let cum = new Decimal(0);
-  let peak = new Decimal(0);
-  let maxDd = new Decimal(0);
-  const equity = ordered.map((r) => {
-    cum = cum.add(r.net);
-    peak = Decimal.max(peak, cum);
-    maxDd = Decimal.min(maxDd, cum.sub(peak));
-    return { t: r.x.t1, net: money(cum) };
+  const net = ts.reduce((n, t) => n + t.net, 0);
+  const gross = ts.reduce((n, t) => n + t.gross, 0);
+  const fees = ts.reduce((n, t) => n + t.fees, 0);
+  const volume = raw.reduce((n, t) => n + t.volume, 0);
+  const makerVol = raw.reduce((n, t) => n + t.makerVolume, 0);
+  const wins = ts.filter((t) => t.net > 0).reduce((n, t) => n + t.net, 0);
+  const losses = -ts.filter((t) => t.net < 0).reduce((n, t) => n + t.net, 0);
+  const ordered = [...ts].sort((x, y) => x.closedAt - y.closedAt);
+  let cum = 0;
+  let peak = 0;
+  let maxDd = 0;
+  const equity = ordered.map((t) => {
+    cum += t.net;
+    peak = Math.max(peak, cum);
+    maxDd = Math.min(maxDd, cum - peak);
+    return { t: t.closedAt, net: round(cum) };
   });
   const holds = ts.map((t) => t.holdSecs).sort((x, y) => x - y);
   const holding = HOLD_BUCKETS.map((h) => {
-    const g = rs.filter((r) => r.a.bucket === h.key);
-    const tot = dsum(g, (r) => r.net);
+    const g = ts.filter((t) => t.bucket === h.key);
+    const tot = g.reduce((n, t) => n + t.net, 0);
     return {
       bucket: h.key,
       trades: g.length,
-      winRateGross: pct(g.filter((r) => r.x.gross.gt(0)).length, g.length),
-      winRateNet: pct(g.filter((r) => r.net.gt(0)).length, g.length),
-      avgNet: g.length === 0 ? null : money(tot.div(g.length)),
-      totalNet: money(tot),
+      winRateGross: pct(g.filter((t) => t.gross > 0).length, g.length),
+      winRateNet: pct(g.filter((t) => t.net > 0).length, g.length),
+      avgNet: g.length === 0 ? null : round(tot / g.length),
+      totalNet: round(tot),
     };
   });
   const exits = [...new Set(ts.map((t) => t.exitReason))]
     .map((reason) => {
-      const g = rs.filter((r) => r.a.exitReason === reason);
+      const g = ts.filter((t) => t.exitReason === reason);
       return {
         reason,
         trades: g.length,
-        avgNet: money(dsum(g, (r) => r.net).div(g.length)),
+        avgNet: round(g.reduce((n, t) => n + t.net, 0) / g.length),
       };
     })
     .sort((x, y) => y.trades - x.trades);
-  const best = rs.reduce<(typeof rs)[number] | null>(
-    (m, r) => (m === null || r.net.gt(m.net) ? r : m),
+  const best = ts.reduce<AnalyticsTrade | null>(
+    (m, t) => (m === null || t.net > m.net ? t : m),
     null,
-  )?.a;
-  const worst = rs.reduce<(typeof rs)[number] | null>(
-    (m, r) => (m === null || r.net.lt(m.net) ? r : m),
+  );
+  const worst = ts.reduce<AnalyticsTrade | null>(
+    (m, t) => (m === null || t.net < m.net ? t : m),
     null,
-  )?.a;
+  );
 
   // Nhận xét tính thẳng từ số của kỳ.
   const insights: BotAnalytics["insights"] = [];
   const n = ts.length;
-  const wrGross = pct(rs.filter((r) => r.x.gross.gt(0)).length, n);
-  const wrNet = pct(rs.filter((r) => r.net.gt(0)).length, n);
+  const wrGross = pct(ts.filter((t) => t.gross > 0).length, n);
+  const wrNet = pct(ts.filter((t) => t.net > 0).length, n);
   if (n > 0 && n < 30) insights.push({ key: "smallSample", params: { n } });
   const minN = Math.max(5, Math.ceil(n * 0.1));
   const bestBucket = holding
@@ -366,7 +348,7 @@ export async function botAnalytics(
         avgNet: topExit.avgNet,
       },
     });
-  const makerPct = dpct(makerVol, volume);
+  const makerPct = pct(makerVol, volume);
   if (makerPct !== null && makerPct < 90)
     insights.push({ key: "takerShare", params: { pct: makerPct } });
   const fillPct = pct(ord?.filled ?? 0, ord?.placed ?? 0);
@@ -377,14 +359,14 @@ export async function botAnalytics(
     ...empty,
     summary: {
       trades: n,
-      net: money(net),
-      gross: money(gross),
-      fees: money(fees),
-      volume: money(volume, 2),
+      net: round(net),
+      gross: round(gross),
+      fees: round(fees),
+      volume: round(volume, 2),
       winRateGross: wrGross,
       winRateNet: wrNet,
-      profitFactor: losses.gt(0) && wins.gt(0) ? money(wins.div(losses), 2) : null,
-      maxDrawdown: money(maxDd),
+      profitFactor: losses > 0 && wins > 0 ? round(wins / losses, 2) : null,
+      maxDrawdown: round(maxDd),
       avgHoldSecs: n === 0 ? null : Math.round(holds.reduce((s, x) => s + x, 0) / n),
       medianHoldSecs: n === 0 ? null : (holds[Math.floor(n / 2)] ?? null),
       prevNet,
@@ -393,8 +375,8 @@ export async function botAnalytics(
     holding,
     execution: {
       makerRatioPct: makerPct,
-      feePerTrade: n === 0 ? null : money(fees.div(n)),
-      feePerMillion: volume.gt(0) ? money(fees.div(volume).mul(1e6), 1) : null,
+      feePerTrade: n === 0 ? null : round(fees / n),
+      feePerMillion: volume > 0 ? round((fees / volume) * 1e6, 1) : null,
       ordersPlaced: ord?.placed ?? 0,
       ordersFilled: ord?.filled ?? 0,
       fillRatePct: fillPct,
