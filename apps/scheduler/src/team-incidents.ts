@@ -11,7 +11,7 @@ import {
 } from "@drift/shared";
 import { sql } from "drizzle-orm";
 
-// Sức khoẻ engine / SoDEX cho team (#241, DEC-TBD-team-incident-alerts). Scheduler kiểm tra mỗi phút, chỉ đọc: bộ đếm
+// Sức khoẻ engine / SoDEX cho team (#241, DEC-313). Scheduler kiểm tra mỗi phút, chỉ đọc: bộ đếm
 // Redis theo phút do engine ghi (không chờ, không nằm trên đường gửi lệnh) và `sodex_calls` (DEC-309). Đạt ngưỡng thì
 // ghi outbox `jobs.team_ops` type `team_incident` mức warning, tối đa một dòng / loại / 31 phút; jobs chặn lặp 1 tin / loại
 // / 30 phút và đếm cho tin tổng hợp. Mỗi ngày từ 01:00 UTC một tin tổng hợp 24 giờ. Không bao giờ email, ví đầy đủ, key.

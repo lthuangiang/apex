@@ -35,7 +35,7 @@ export const NOTIFICATION_TYPES = [
   "team_mcp_daily_limit",
   // Bất biến tiền thật trên prod (DEC-274): scheduler phát, chỉ role `team`, chỉ Telegram.
   "team_invariant",
-  // Sự cố tiền thật và sức khoẻ engine (#241, DEC-TBD-team-incident-alerts): chỉ role `team`, chỉ Telegram, có mức độ
+  // Sự cố tiền thật và sức khoẻ engine (#241, DEC-313): chỉ role `team`, chỉ Telegram, có mức độ
   // và chặn lặp theo loại; mỗi ngày một tin tổng hợp.
   "team_incident",
   "team_incident_digest",
@@ -205,7 +205,7 @@ export type TelegramLinkStatus = z.infer<typeof telegramLinkStatusSchema>;
 
 // ---------- Báo team qua Telegram (docs/NOTIFICATIONS.md mục 13, DEC-184) ----------
 
-// ---------- Sự cố tiền thật cho team (#241, DEC-TBD-team-incident-alerts) ----------
+// ---------- Sự cố tiền thật cho team (#241, DEC-313) ----------
 
 /**
  * Loại sự cố. `critical` = tiền thật đang có rủi ro (engine phát theo bot); `info` = hết sự cố (vị thế khớp lại);

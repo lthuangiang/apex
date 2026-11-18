@@ -207,7 +207,7 @@ Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegr
 
 Tin không bao giờ chứa token id hay client id.
 
-### 13.2 Sự cố tiền thật và sức khoẻ engine (#241, DEC-TBD-team-incident-alerts)
+### 13.2 Sự cố tiền thật và sức khoẻ engine (#241, DEC-313)
 
 Cùng đường gửi với mục 13 (outbox `jobs.team_ops` → jobs → Telegram của thành viên team bật nhóm `teamOps`). Hai type: `team_incident` (có `kind` và mức độ) và `team_incident_digest`.
 

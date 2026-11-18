@@ -8,7 +8,7 @@ import {
   type TeamIncidentKind,
 } from "@drift/shared";
 
-// Báo team sự cố tiền thật (#241, DEC-TBD-team-incident-alerts). Engine chỉ thêm MỘT dòng outbox `jobs.team_ops` trong
+// Báo team sự cố tiền thật (#241, DEC-313). Engine chỉ thêm MỘT dòng outbox `jobs.team_ops` trong
 // transaction đang ghi sự kiện (Decisions / cờ của bot), không chờ gì thêm; jobs chặn lặp và gửi Telegram cho team.
 // Không bao giờ email, ví, key: chỉ bot id, market và số liệu ngắn.
 
