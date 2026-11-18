@@ -6011,6 +6011,143 @@
       "plain": "{asset} moved {change} in 24 hours (range {range}).",
       "plainRange": "{asset}: range {range} in 24 hours.",
       "foot": "Last 24 hours on SoDEX · not a forecast"
+    },
+    "performance": {
+      "title": "How your bots performed",
+      "sub": {
+        "7d": "Your live Market Making and Volume Builder bots · last 7 days vs the 7 days before",
+        "30d": "Your live Market Making and Volume Builder bots · last 30 days vs the 30 days before"
+      },
+      "periodLabel": "Period",
+      "period": {
+        "7d": "7 days",
+        "30d": "30 days"
+      },
+      "before": {
+        "7d": "the week before",
+        "30d": "the 30 days before"
+      },
+      "days": {
+        "7d": "7",
+        "30d": "30"
+      },
+      "total": "Your bots traded <b>{volume} USDC</b> and paid <b>{cost} USDC</b> in fees and price moves.",
+      "totalNa": "Your bots traded <b>{volume} USDC</b>. Fees came to <b>{fees} USDC</b>. The price part is Not available: a market price is missing.",
+      "perMillion": "That's <b>{cost} per $1M</b> traded",
+      "perMillionNa": "Cost per $1M: Not available",
+      "less": "{amount} less than {before}",
+      "more": "{amount} more than {before}",
+      "same": "The same as {before}",
+      "prevNa": "vs {before}: Not available · your bots didn't trade then.",
+      "prevNaPrice": "vs {before}: Not available",
+      "notPnl": "This is what trading cost, not your profit or loss. Your net result is on each bot's page. Practice bots aren't counted.",
+      "barLabel": "Of {cost} per $1M: SoDEX fee {sodex}, DeskLabs builder fee {builder}, price moved against your trades {price}.",
+      "barLabelFavour": "Per $1M: SoDEX fee {sodex}, DeskLabs builder fee {builder}. The price moved in your favour by {price}.",
+      "sodexFee": "SoDEX fee",
+      "sodexFeeBody": "What SoDEX charges on each trade.",
+      "builderFee": "DeskLabs builder fee",
+      "builderFeeBody": "What DeskLabs charges on each trade.",
+      "price": "Price moved against your trades",
+      "priceBody": "The price went the wrong way after your orders filled, before the trade closed.",
+      "priceFavour": "Price moved in your favour: {amount}",
+      "priceFavourBody": "Over this period the price helped your trades, so it lowered the cost.",
+      "priceNa": "Price moved against your trades: Not available",
+      "whatTitle": "What does cost per $1M mean?",
+      "whatBody": "For every 1,000,000 USDC your bots trade (buys and sells added up), this is what you paid in fees plus what you lost on price. Lower is better. It describes past trades; it doesn't predict the next ones.",
+      "showDetails": "Show details",
+      "hideDetails": "Hide details",
+      "hours": {
+        "title": "Cheapest and most expensive hours",
+        "tzLocal": "Your time zone: {tz} ({offset})",
+        "tzUtc": "Times in UTC",
+        "showUtc": "Show in UTC",
+        "showLocal": "Show my time zone",
+        "together": "All {days} days together",
+        "cheapest": "Cheapest",
+        "dearest": "Most expensive",
+        "window": "{from}–{to}",
+        "windowSub": "{cost} per $1M · {trades} trades",
+        "fees": "Fees",
+        "price": "Price moved in the first minute after each trade",
+        "faded": "Outlined = fewer than 30 trades",
+        "foot": "Here the price part is how far the price moved in the first minute after each trade, so these numbers differ from the total above.",
+        "na": "<b>Cheapest and most expensive hours: Not available.</b> Hours show once 3 hours in a row have 30 trades or more.",
+        "chartLabel": "Cost per $1M by hour, {zone}.",
+        "chartCheap": "Cheapest {window}.",
+        "chartDear": "Most expensive {window}.",
+        "bar": "{hour}: {cost} per $1M, {trades} trades",
+        "barNa": "{hour}: Not available, {trades} trades",
+        "loading": "Loading hours…"
+      },
+      "exits": {
+        "title": "How your Volume Builder trades ended",
+        "note": "{bots, plural, one {# bot} other {# bots}} · {trades} trades",
+        "reason": {
+          "holdTime": "Hold time ended (random time you set)",
+          "maxHold": "Max hold reached",
+          "stopLoss": "Stop loss",
+          "takeProfit": "Take profit",
+          "earlyProfit": "Early profit",
+          "exchangeStop": "Stop on SoDEX",
+          "trailing": "Trailing stop",
+          "other": "Other"
+        },
+        "avg": "{amount} USDC a trade",
+        "barLabel": "{reason}: {pct} of trades",
+        "costliest": "<b>{reason} closes cost the most:</b> {pct} of trades, {amount} USDC each on average.",
+        "gain": "Made money after fees",
+        "loss": "Lost money after fees"
+      },
+      "bots": {
+        "title": "Each bot",
+        "note": "Lower cost per $1M is better",
+        "caption": "Cost per $1M by bot",
+        "bot": "Bot",
+        "traded": "Traded",
+        "cost": "Cost per $1M",
+        "vs": "vs {before}",
+        "split": "Fees / Price moves",
+        "thin": "Not enough trades yet ({n} of 30)",
+        "thinPill": "Thin sample",
+        "na": "Not available",
+        "strategy": {
+          "volume_maker": "Market Making",
+          "volume_farm": "Volume Builder"
+        },
+        "vsLess": "{amount} less",
+        "vsMore": "{amount} more",
+        "vsSame": "Same"
+      },
+      "ideas": {
+        "title": "Ideas within your settings",
+        "note": "From your own trades · nothing changes until you save",
+        "sidewaysOnly": {
+          "title": "Turn on Only trade sideways",
+          "body": "Trades this bot opened while the market wasn't sideways cost <b>{worse} per $1M</b>. Trades opened in a sideways market cost <b>{better}</b>. <b>{share}</b> of its trades were opened outside a sideways market."
+        },
+        "maxSpread": {
+          "title": "Lower Max spread from {from} to {to} bp ({fromPct} → {toPct})",
+          "body": "Trades entered while the spread was wider than {to} bp cost <b>{worse} per $1M</b>, against <b>{better}</b> for the rest. They were <b>{share}</b> of this bot's trades."
+        },
+        "open": "Open settings",
+        "basedOn": "Based on {n} trades",
+        "foot": "Based on your past trades, not a forecast. Results on future trades can differ. Ideas appear only when they're based on 30 trades or more."
+      },
+      "noBots": {
+        "title": "No live bots yet",
+        "body": "Once a Market Making or Volume Builder bot trades with real money, you'll see here what every $1M it trades costs you and where the cost comes from. Practice bots aren't counted.",
+        "start": "Start a bot"
+      },
+      "notEnough": {
+        "title": "Not enough trades yet",
+        "body": "Your bots made {n} trades in the last {days} days. Costs show from 30 trades, so one trade doesn't swing the numbers.",
+        "progress": "{n} of 30 trades"
+      },
+      "loading": "Loading how your bots performed…",
+      "updating": "Updating…",
+      "errorTitle": "Couldn't load how your bots performed.",
+      "errorBody": "Your bots keep running; nothing changed.",
+      "retry": "Try again"
     }
   },
   "connectLog": {
