@@ -1,4 +1,4 @@
-import { createDb, runMigrations, type Db } from "@drift/db";
+import { createDb, DeadlineExceededError, readOnlyTx, runMigrations, type Db } from "@drift/db";
 import { Decimal } from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { sql } from "drizzle-orm";
@@ -121,14 +121,18 @@ describe("VB replay loader", () => {
         "insert into candles_1m (market, ts, open, high, low, close, volume) values ($1, $2, 100, 100.05, 99.9, 100, 1)",
         [m, new Date(T0)],
       );
-    const result = await db.transaction(async (q) => {
-      await q.execute(sql`SET TRANSACTION READ ONLY`);
-      return loadEntries(q, {
-        from: new Date(T0 - 60_000),
-        to: new Date(T0 + 3_600_000),
-        ticks: new Map([[withMid, new Decimal("0.01")]]),
-      });
-    });
+    // Đúng đường của CLI: `readOnlyTx` + trần thời gian.
+    const result = await readOnlyTx(
+      db,
+      { statementTimeoutMs: 30_000, deadlineMs: 60_000 },
+      (q, checkDeadline) =>
+        loadEntries(q, {
+          from: new Date(T0 - 60_000),
+          to: new Date(T0 + 3_600_000),
+          ticks: new Map([[withMid, new Decimal("0.01")]]),
+          checkDeadline,
+        }),
+    );
     expect(result.invalid).toBe(2);
     expect(result.unmatched).toBe(2);
     expect(result.entries).toHaveLength(2);
@@ -145,5 +149,44 @@ describe("VB replay loader", () => {
     expect(candle?.reach?.source).toBe("candle");
     expect(candle?.reach?.low.toString()).toBe("99.9");
     expect(candle?.tick).toBeNull();
+  });
+});
+
+describe("readOnlyTx", () => {
+  it("rejects writes inside the transaction (SQLSTATE 25006)", async () => {
+    const err = await readOnlyTx(db, { statementTimeoutMs: 5_000 }, (q) =>
+      q.execute(sql`insert into users (id, email) values (gen_random_uuid(), 'ro@x.test')`),
+    ).catch((e: unknown) => e);
+    const code = (e: unknown): unknown =>
+      typeof e === "object" && e !== null
+        ? "code" in e
+          ? e.code
+          : "cause" in e
+            ? code(e.cause)
+            : undefined
+        : undefined;
+    expect(code(err)).toBe("25006");
+    const n = await pool.query("select count(*)::int as n from users where email = 'ro@x.test'");
+    expect(n.rows[0]).toEqual({ n: 0 });
+  });
+
+  it("sets per-statement and idle limits, and stops at the overall deadline", async () => {
+    const limits = await readOnlyTx(
+      db,
+      { statementTimeoutMs: 1_234, idleTimeoutMs: 5_678 },
+      async (q) => {
+        const r = await q.execute(
+          sql`select current_setting('statement_timeout') as st, current_setting('idle_in_transaction_session_timeout') as idle, current_setting('transaction_read_only') as ro`,
+        );
+        return (r as unknown as { rows: unknown[] }).rows[0];
+      },
+    );
+    expect(limits).toEqual({ st: "1234ms", idle: "5678ms", ro: "on" });
+    await expect(
+      readOnlyTx(db, { statementTimeoutMs: 5_000, deadlineMs: 1 }, async (q, checkDeadline) => {
+        await q.execute(sql`select pg_sleep(0.05)`);
+        checkDeadline();
+      }),
+    ).rejects.toBeInstanceOf(DeadlineExceededError);
   });
 });

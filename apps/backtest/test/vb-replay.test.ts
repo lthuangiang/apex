@@ -1,8 +1,9 @@
 import { Decimal } from "@drift/shared";
 import { describe, expect, it } from "vitest";
 
-import { groupTrades } from "../src/replay/load";
+import { checkRange, groupTrades, MAX_RANGE_DAYS, ReplayLimitError } from "../src/replay/load";
 import {
+  baseOf,
   beforeFeeBp,
   chaseRule,
   evaluate,
@@ -56,7 +57,7 @@ function entry(o: Partial<ReplayEntry> & { exit?: number; i?: number } = {}): Re
 }
 
 describe("rules", () => {
-  it("skips entries that chase a move in the signal direction, keeps unknown moves", () => {
+  it("skips entries that chase a move in the entered direction, keeps unknown moves and balance entries", () => {
     const r = chaseRule("m3", 5);
     expect(r.apply(entry({ chgBps: { m1: 0, m3: 6, m5: 0 } })).kind).toBe("skip");
     expect(r.apply(entry({ chgBps: { m1: 0, m3: 4, m5: 0 } })).kind).toBe("keep");
@@ -65,6 +66,15 @@ describe("rules", () => {
       r.apply(entry({ direction: "short", side: "short", chgBps: { m1: 0, m3: -6, m5: 0 } })).kind,
     ).toBe("skip");
     expect(r.apply(entry({ chgBps: { m1: 0, m3: null, m5: 0 } })).kind).toBe("keep");
+    // PM: hướng bot thực sự vào (Reverse: tín hiệu short, vào long; giá đã tăng 6 bp → long đuổi giá).
+    expect(
+      r.apply(entry({ direction: "short", side: "long", chgBps: { m1: 0, m3: 6, m5: 0 } })).kind,
+    ).toBe("skip");
+    expect(
+      r.apply(entry({ direction: "long", side: "short", chgBps: { m1: 0, m3: 6, m5: 0 } })).kind,
+    ).toBe("keep");
+    // Lượt cân long / short (DEC-80) giữ nguyên.
+    expect(r.apply(entry({ balanced: true, chgBps: { m1: 0, m3: 6, m5: 0 } })).kind).toBe("keep");
   });
 
   it("fills a deeper entry only when the price reached it in time", () => {
@@ -74,7 +84,9 @@ describe("rules", () => {
       kind: "reprice",
       entryPrice: d("100.02"),
     });
-    expect(pullbackRule(1).apply(entry({ tick: null })).kind).toBe("skip");
+    // Thiếu dữ liệu: không đánh giá được, không phải "bỏ lượt".
+    expect(pullbackRule(1).apply(entry({ tick: null })).kind).toBe("unknown");
+    expect(pullbackRule(1).apply(entry({ reach: null })).kind).toBe("unknown");
   });
 
   it("re-scores without candle momentum, re-checks the counter-trend block, leaves balance entries alone", () => {
@@ -155,10 +167,102 @@ describe("evaluate", () => {
     const md = toMarkdown(r, { source: "synthetic data", generatedAt: T0 });
     expect(md).toContain("# VB signal replay (#235)");
     expect(md).toContain("cannot model the bot entering again");
-    expect(md).toContain("Entry 2 ticks behind the touch *(upper bound)*");
+    expect(md).toContain(
+      "Entry 2 ticks behind the touch *(upper bound: mid_1s 160, 1-min candle 0)*",
+    );
+    expect(md).toContain("never adds entries");
+    expect(md).toContain(
+      "Re-score self-check (momentum rule at k = 1, original weights):** 0 of 160",
+    );
     expect(md.split("\n").filter((l) => l.startsWith("| ") && !l.startsWith("| Rule")).length).toBe(
       3,
     );
+  });
+});
+
+describe("missing data, markets, self-check, limits", () => {
+  const many = (n: number, o: Partial<ReplayEntry> & { exit?: number } = {}) =>
+    Array.from({ length: n }, (_, i) =>
+      entry({ i, market: i % 2 === 0 ? "BTC-USD" : "ETH-USD", exit: 100.01, ...o }),
+    );
+
+  it("reports a rule as not evaluated, not FAIL, when no entry has the data it needs", () => {
+    const r = evaluate(many(80, { tick: null }), [pullbackRule(1)]);
+    const x = r.results[0];
+    expect(x?.pass).toBe(false);
+    expect(x?.reasons).toEqual([]);
+    expect(x?.notEvaluated).toBe("tick size unavailable");
+    expect(x?.excluded).toEqual({ "tick size unavailable": 80 });
+    const md = toMarkdown(r, {
+      source: "t",
+      generatedAt: T0,
+      notes: ["Tick sizes could not be read."],
+    });
+    expect(md).toContain("Not evaluated: tick size unavailable");
+    expect(md).toContain("> **Note:** Tick sizes could not be read.");
+    expect(md).not.toContain("FAIL");
+  });
+
+  it("leaves entries without data out of both baseline and rule for that row", () => {
+    const xs = [...many(80), ...many(20, { reach: null, exit: 99 })];
+    const r = evaluate(xs, [pullbackRule(1)]);
+    const all = r.results[0]?.buckets.find((b) => b.key === "all");
+    expect(all?.base.n).toBe(80);
+    expect(r.results[0]?.excluded).toEqual({ "no price in the 10 s after the decision": 20 });
+    expect(r.results[0]?.notEvaluated).toBeNull();
+  });
+
+  it("groups BTC and ETH by exact base asset", () => {
+    expect(baseOf("ETHFI-USD")).toBe("ETHFI");
+    expect(baseOf("eth-usd")).toBe("ETH");
+    const r = evaluate([...many(60), ...many(40, { market: "ETHFI-USD" })], [sidewaysRule]);
+    expect(r.results[0]?.buckets.find((b) => b.key === "eth")?.base.n).toBe(30);
+  });
+
+  it("counts entries that do not come back as kept at k = 1", () => {
+    // Đà nến 0.9 kéo về long; vào short (side ≠ hướng tính lại) → k = 1 không ra keep.
+    const off = entry({
+      components: { ...neutral, candleMomentum: 0.9 },
+      direction: "short",
+      side: "short",
+    });
+    const r = evaluate([...many(10), off], [sidewaysRule]);
+    expect(r.selfCheck).toEqual({ notKeep: 1, of: 11 });
+    expect(toMarkdown(r, { source: "t", generatedAt: T0 })).toContain("**Warning:** 1 entries");
+  });
+
+  it("prints No entries in range instead of 1970 dates", () => {
+    const r = evaluate([], [sidewaysRule]);
+    expect(r.from).toBeNull();
+    const md = toMarkdown(r, {
+      source: "t",
+      generatedAt: T0,
+      range: { from: T0, to: T0 + 86_400_000 },
+    });
+    expect(md).toContain("**No entries in range (2026-11-10 00:00 → 2026-11-11 00:00 UTC).**");
+    expect(md).not.toContain("1970");
+  });
+
+  it("shows a negative net cost as a net gain", () => {
+    // Lãi 0.05 − phí 0.02 mỗi lượt.
+    const r = evaluate(many(40, { exit: 100.05 }), [sidewaysRule]);
+    expect(r.baseline.netCostPerMillion?.isNeg()).toBe(true);
+    expect(toMarkdown(r, { source: "t", generatedAt: T0 })).toMatch(
+      /net cost net gain \d+ per \$1M/,
+    );
+  });
+
+  it("refuses ranges longer than the limit", () => {
+    const from = new Date(T0);
+    expect(() => {
+      checkRange(from, new Date(T0 + MAX_RANGE_DAYS * 86_400_000));
+    }).not.toThrow();
+    expect(() => {
+      checkRange(from, new Date(T0 + (MAX_RANGE_DAYS + 1) * 86_400_000));
+    }).toThrow(ReplayLimitError);
+    expect(() => {
+      checkRange(from, from);
+    }).toThrow(ReplayLimitError);
   });
 });
 

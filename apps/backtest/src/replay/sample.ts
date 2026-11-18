@@ -1,11 +1,11 @@
 import { Decimal } from "@drift/shared";
 
-import { defaultRules, evaluate, toMarkdown, type ReplayEntry } from "./vb-replay";
+import { defaultRules, evaluate, momentumRule, toMarkdown, type ReplayEntry } from "./vb-replay";
 
 // Báo cáo mẫu từ dữ liệu TỰ DỰNG (không phải dữ liệu thật) để xem định dạng báo cáo replay VB (#235):
 //   pnpm --filter @drift/backtest replay:vb:sample > sample.md
-// Dữ liệu xác định (seed cố định): 800 lượt BTC / ETH trong 7 ngày; lượt vào sau khi giá đã chạy theo hướng tín hiệu lỗ
-// hơn trước phí, để có cả luật PASS và FAIL.
+// Dữ liệu xác định (seed cố định): tới 800 lượt BTC / ETH trong 7 ngày (chỉ giữ lượt mà luật (c) với k = 1 ra keep); lượt vào sau khi giá đã chạy theo hướng tín hiệu lỗ
+// hơn trước phí, để thấy luật nào cải thiện Δ (mẫu này không cố tạo luật PASS; số liệu không có ý nghĩa thật).
 
 function rng(seed: number): () => number {
   let a = seed >>> 0;
@@ -22,6 +22,7 @@ export function sampleEntries(n = 800, seed = 235): ReplayEntry[] {
   const r = rng(seed);
   const start = Date.parse("2026-11-11T00:00:00Z");
   const span = 7 * 86_400_000;
+  const k1 = momentumRule(1);
   return Array.from({ length: n }, (_, i) => {
     const at = start + Math.floor((i / n) * span);
     const btc = r() < 0.5;
@@ -70,7 +71,7 @@ export function sampleEntries(n = 800, seed = 235): ReplayEntry[] {
         source: r() < 0.3 ? "mid_1s" : "candle",
       },
     } satisfies ReplayEntry;
-  });
+  }).filter((e) => k1.apply(e).kind === "keep"); // chỉ lượt mà điểm dựng lại khớp hướng đã vào, như dữ liệu thật
 }
 
 if (process.argv[1]?.endsWith("sample.ts") === true) {
