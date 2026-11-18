@@ -96,6 +96,7 @@ import {
   type OrderTrade,
 } from "./gateway";
 import type { PaperGateway } from "./paper-gateway";
+import { TEAM_PAUSE_REASONS, teamIncidentRow } from "./team-incidents";
 
 // Engine (ARCHITECTURE.md mục 3.3–3.4, DEC-37). Mỗi account thuộc một shard ảo (64); mỗi shard có đúng
 // một worker giữ lease Redis. Khi nhận shard, `epoch` của shard trong Postgres tăng 1; mọi lần ghi lệnh /
@@ -538,6 +539,8 @@ export interface EngineDeps {
    * luôn sẵn sàng.
    */
   userStreams?: UserStreams;
+  /** Bộ đếm sức khoẻ engine cho báo team (#241): không chờ, không ném. Không truyền (test) thì không đếm. */
+  health?: (signal: "shard_lost" | "tick_slow") => void;
 }
 
 export interface UserStreams {
@@ -898,6 +901,7 @@ export class Engine {
       orderbook: () => Promise.resolve(null),
       tickWaitMs: Number.POSITIVE_INFINITY,
       lookupBudget: Number.POSITIVE_INFINITY,
+      health: () => undefined,
       ...deps,
       builderExempt: deps.builderExempt ?? true,
       feeRate: deps.feeRate,
@@ -1060,6 +1064,7 @@ export class Engine {
         // bỏ vì lỗi fencing của lease cũ.
         if (current()) {
           this.#d.log.warn({ shard, reason: "fenced", worker: this.#d.workerId }, "shard lost");
+          this.#d.health("shard_lost");
           this.#dropShard(shard);
         } else
           this.#d.log.warn({ shard, epoch: laneEpoch }, "old shard lane fenced; lease changed");
@@ -1096,6 +1101,7 @@ export class Engine {
         },
         "tick slow",
       );
+    if (ms > this.#d.leaseTtlMs / 2) this.#d.health("tick_slow");
   }
 
   /** Lease của shard còn hiệu lực; hết thì gia hạn ngay một lần rồi xem lại. */
@@ -1155,6 +1161,7 @@ export class Engine {
       { shard, reason, epoch: this.#leases.get(shard)?.epoch, worker: this.#d.workerId },
       "shard lost",
     );
+    this.#d.health("shard_lost");
     this.#dropShard(shard);
   }
 
@@ -2844,7 +2851,7 @@ export class Engine {
         `Nothing was sent to SoDEX after ${String(attempts)} attempts (${code}).`,
         at,
       );
-      await this.#pauseBot(r, ReasonCode.orderRejected);
+      await this.#pauseBot(r, ReasonCode.orderRejected, `not sent (${code})`);
       return;
     }
     const wait = Math.min(NOT_SENT_BACKOFF.firstMs * 2 ** (attempts - 1), NOT_SENT_BACKOFF.maxMs);
@@ -3311,7 +3318,7 @@ export class Engine {
       `Last: ${o.side} ${o.quantity} ${o.market} (${sodex}). Your ${o.market} position on SoDEX may already be closed or smaller than the bot expects. Check Positions on SoDEX before you resume.`,
       at,
     );
-    await this.#pauseBot(r, ReasonCode.orderRejected);
+    await this.#pauseBot(r, ReasonCode.orderRejected, `${String(limit)} reduce-only rejects`);
     return true;
   }
 
@@ -3351,7 +3358,7 @@ export class Engine {
       `SoDEX rejected ${String(n)} orders for insufficient margin (SoDEX code -1: ${last.message ?? "insufficient margin"}).${what}`,
       at,
     );
-    await this.#pauseBot(r, ReasonCode.orderRejected);
+    await this.#pauseBot(r, ReasonCode.orderRejected, `insufficient margin (${String(n)} rejects)`);
     return true;
   }
 
@@ -3729,7 +3736,7 @@ export class Engine {
   }
 
   /** pause giữ lệnh đang mở (DOMAIN.md mục 7.2). */
-  async #pauseBot(r: Runner, reason: Reason): Promise<void> {
+  async #pauseBot(r: Runner, reason: Reason, cause?: string): Promise<void> {
     const changed = await this.#fenced(r, async (tx) => {
       const [b] = await tx
         .select({ state: bots.state })
@@ -3751,6 +3758,16 @@ export class Engine {
           data: { botId: r.botId, reasonCode: reason, ...(r.paper ? { paper: true } : {}) },
         },
       });
+      // Báo team (#241): pause vì lỗi khi gửi lệnh của bot tiền thật.
+      if (!r.paper && TEAM_PAUSE_REASONS.includes(reason))
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "paused_errors",
+            botId: r.botId,
+            market: r.market,
+            detail: cause === undefined ? reason : `${reason} · ${cause}`,
+          }),
+        );
       return true;
     });
     // Chỉ ghi "Paused" khi state thật sự đổi: bot đang stopping / stopped / paused nhận thêm lệnh pause (ví dụ lệnh
@@ -4095,6 +4112,14 @@ export class Engine {
           why: `SoDEX didn't receive the close order (${code}). Your ${markets} position is still open — close it on SoDEX.`,
           occurredAt: new Date(now),
         });
+        if (!r.paper)
+          await tx.insert(outbox).values(
+            teamIncidentRow({
+              kind: "close_failed",
+              botId: r.botId,
+              detail: `${markets} position still open · close order not sent (${code})`,
+            }),
+          );
       });
       this.#d.log.warn(
         { botId: r.botId, code, attempts: b.attempts + 1 },
@@ -4475,6 +4500,15 @@ export class Engine {
         why: `${o.clOrdId}: SoDEX accepted it, but it is not in the order history and has no trades. Check this bot's position on SoDEX.`,
         occurredAt: new Date(now),
       });
+      if (!r.paper)
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "unknown_gave_up",
+            botId: r.botId,
+            market: o.market,
+            detail: `${o.side} ${dec(o.size).toString()} · ${o.clOrdId} · not on SoDEX after 10 min, fills unknown`,
+          }),
+        );
     });
   }
 
@@ -5323,6 +5357,15 @@ export class Engine {
         why: `${o.clOrdId}: SoDEX shows ${dec(filled).toString()} filled, the bot had counted ${dec(o.filledSize).toString()}. Check this bot's position on SoDEX.`,
         occurredAt: new Date(now),
       });
+      if (!r.paper)
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "late_fill",
+            botId: r.botId,
+            market: o.market,
+            detail: `${o.clOrdId} · SoDEX filled ${dec(filled).toString()}, bot counted ${dec(o.filledSize).toString()}`,
+          }),
+        );
     });
   }
 
@@ -5641,6 +5684,15 @@ export class Engine {
             : positionMismatchWhy(market, real, ledger),
         occurredAt: new Date(now),
       });
+      if (!r.paper)
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "position_mismatch",
+            botId: r.botId,
+            market,
+            detail: `real ${real} vs ledger ${ledger} · cause ${cause}`,
+          }),
+        );
     });
     r.positionMismatch = next;
     this.#d.log.warn(
@@ -5665,6 +5717,15 @@ export class Engine {
         why: positionMatchWhy(market, real),
         occurredAt: new Date(now),
       });
+      if (!r.paper)
+        await tx.insert(outbox).values(
+          teamIncidentRow({
+            kind: "position_matched",
+            botId: r.botId,
+            market,
+            detail: `real ${real} matches the ledger`,
+          }),
+        );
     });
     r.positionMismatch = next;
     if (next.size === 0) r.mismatchWaitLogged = false;

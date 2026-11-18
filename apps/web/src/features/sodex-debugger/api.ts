@@ -1,4 +1,5 @@
 import {
+  SODEX_CALL_SHOW,
   SODEX_CALL_SLOW_MS,
   sodexCallDetailSchema,
   sodexCallFacetsSchema,
@@ -37,6 +38,23 @@ export const DEFAULT_FILTERS: Filters = {
   slowMs: SODEX_CALL_SLOW_MS,
   hour: null,
 };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Bộ lọc mở sẵn từ URL (link trong tin Telegram báo team, #241): `?botId=<uuid>` và `?show=errors|timeouts|slow`. Giá trị
+ * sai dạng bị bỏ qua.
+ */
+export function filtersFromSearch(search: string): Partial<Filters> {
+  const p = new URLSearchParams(search);
+  const out: Partial<Filters> = {};
+  const botId = p.get("botId");
+  if (botId !== null && UUID_RE.test(botId)) out.botId = botId.toLowerCase();
+  const show = p.get("show");
+  if (show !== null && (SODEX_CALL_SHOW as readonly string[]).includes(show))
+    out.show = show as SodexCallShow;
+  return out;
+}
 
 /** Có bộ lọc nào khác mặc định (trừ range / show / slowMs) không. */
 export function hasNarrowingFilters(f: Filters): boolean {

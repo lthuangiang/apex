@@ -1,0 +1,1541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Token values copied from packages/ui/src/styles/tokens.css (origin/main). Mockup only: no new tokens.
+   Chart colours: actual = --accent, opposite side (what-if) = --warn-bar (validated pair, CVD dE 33), builder fee = --mh-vol-2. */
+:root{
+  --bg:#eef1fa;--surface:#ffffff;--surface-2:#f5f7fd;--border:#e3e7f5;--border-input:#d5dcf2;
+  --ink:#141a33;--ink-2:#3b4262;--muted:#5f6684;--accent:#2e62e8;--accent-ink:#1d47b8;--accent-tint:#e6ecfe;
+  --pos:#0f7a43;--pos-bg:#ddf4e7;--pos-dot:#16a05a;
+  --neg:#c2312f;--neg-ink:#a72826;--neg-bg:#fde4e1;
+  --warn:#7a3e00;--warn-bg:#fdebd3;--warn-border:#f0c27e;--warn-bar:#e08a2e;
+  --unknown:#5a2ca0;--unknown-bg:#f0e6ff;
+  --chart-bg:#f7f9ff;--mh-vol-1:#c9d6fb;--mh-vol-2:#93adf3;--mh-hatch:#e3e7f5;
+  --focus-ring:#8fb0ff;
+  --radius-control:12px;--radius-tile:18px;--radius-card:24px;
+  --tap-min:44px;
+  --shadow-accent:0 6px 16px rgb(46 98 232 / .28);
+  --shadow-card:0 8px 24px rgb(20 26 51 / .07);
+  --shadow-float:0 -8px 24px rgb(20 26 51 / .06);
+  --font-sans:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);font-variant-numeric:tabular-nums}
+body{overflow-x:hidden}
+a{color:var(--accent-ink)}a:hover{color:var(--ink)}
+:focus-visible{outline:3px solid var(--focus-ring);outline-offset:2px}
+button{font:inherit;color:inherit}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.mono{font-family:var(--font-mono);font-size:.92em}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.neg{color:var(--neg-ink)}.pos{color:var(--pos)}.mut{color:var(--muted)}
+
+/* Shell (same as SoDEX Debugger / Market hours) */
+.shell{display:flex;gap:20px;padding:20px;align-items:flex-start;min-height:100vh}
+.side{flex:0 0 236px;padding:16px 12px;border-radius:var(--radius-card);background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;gap:2px;position:sticky;top:20px}
+.brand{display:flex;align-items:center;gap:10px;padding:4px 8px 14px;color:var(--ink);text-decoration:none;font-weight:800;font-size:18px}
+.side .sec{padding:14px 12px 6px;font-size:11.5px;font-weight:800;letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+.side a.nav{display:flex;align-items:center;gap:10px;min-height:40px;padding:0 12px;border-radius:12px;color:var(--ink-2);text-decoration:none;font-size:14px;font-weight:600}
+.side a.nav[aria-current="page"]{background:var(--accent);color:#fff;box-shadow:var(--shadow-accent)}
+main{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:16px}
+.topbar{display:none}
+
+/* Header */
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px}
+.head h1{margin:0;font-size:30px;font-weight:800}
+.head p{margin:0}
+.lede{font-size:15px;line-height:1.5;color:var(--ink-2);max-width:760px}
+.note{font-size:13px;color:var(--muted);line-height:1.45}
+.head .right{margin-left:auto;display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.ro{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ink-2)}
+.btn{min-height:var(--tap-min);padding:0 16px;border-radius:var(--radius-control);border:1px solid var(--border-input);background:var(--surface);color:var(--ink);font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:var(--shadow-accent)}
+.btn.icon{width:var(--tap-min);padding:0;justify-content:center}
+.btn.sm{min-height:36px;padding:0 12px;font-size:13px}
+.sample{align-self:flex-start;padding:4px 10px;border-radius:8px;background:var(--unknown-bg);color:var(--unknown);font-size:12px;font-weight:800;letter-spacing:.04em}
+.past{display:flex;gap:10px;align-items:flex-start;padding:12px 16px;border-radius:var(--radius-tile);background:var(--accent-tint);color:var(--accent-ink);font-size:13.5px;line-height:1.5;font-weight:600}
+.past svg{flex:0 0 18px;margin-top:1px}
+.past b{color:var(--ink)}
+
+/* Card */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:16px 18px}
+.card h2{margin:0;font-size:15px;font-weight:800}
+.card .hrow{display:flex;align-items:baseline;justify-content:space-between;gap:6px 12px;flex-wrap:wrap;margin-bottom:10px}
+.card .sub{font-size:12.5px;color:var(--muted);line-height:1.45;margin:2px 0 0}
+.minih{margin:0 0 8px;font-size:13px;font-weight:800;color:var(--ink)}
+
+/* Filters */
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld .lbl{font-size:12px;font-weight:700;color:var(--ink-2)}
+.select{min-height:var(--tap-min);border:1px solid var(--border-input);border-radius:var(--radius-control);background:var(--surface);padding:0 34px 0 12px;font-size:14px;font-weight:600;color:var(--ink);display:flex;align-items:center;white-space:nowrap;position:relative;cursor:pointer}
+.select::after{content:"";position:absolute;right:13px;top:50%;width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-70%) rotate(45deg)}
+.seg{display:inline-flex;border:1px solid var(--border-input);border-radius:var(--radius-control);padding:3px;background:var(--surface-2);gap:2px}
+.seg button{min-height:36px;padding:0 12px;border:0;border-radius:9px;background:transparent;font-size:13.5px;font-weight:700;color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.seg button[aria-checked="true"],.seg button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgb(20 26 51 / .12)}
+.seg .cnt{font-weight:600;color:var(--muted);margin-left:4px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;font-size:13px;color:var(--ink-2)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:0 6px 0 10px;min-height:30px;border-radius:999px;background:var(--accent-tint);color:var(--accent-ink);font-weight:700;font-size:12.5px}
+.chip button{width:22px;height:22px;border-radius:50%;border:0;background:transparent;color:var(--accent-ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.linkbtn{background:none;border:0;color:var(--accent-ink);font-weight:700;font-size:13px;text-decoration:underline;cursor:pointer;padding:6px 2px}
+.mfilters{display:none}
+
+/* Summary */
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.kpi{background:var(--surface-2);border-radius:var(--radius-tile);padding:12px 14px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.kpi .k{font-size:12.5px;font-weight:700;color:var(--ink-2)}
+.kpi .v{font-size:24px;font-weight:800;letter-spacing:-.01em}
+.kpi .v small{font-size:13px;font-weight:700;color:var(--ink-2);margin-left:4px}
+.kpi .s{font-size:12px;color:var(--muted);line-height:1.4}
+.kpi.net{background:var(--neg-bg)}
+.kpi.net .k{color:var(--neg-ink)}
+.costs{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px 28px;margin-top:16px;align-items:start}
+.cbar{display:grid;grid-template-columns:150px minmax(0,1fr) 92px;gap:10px;align-items:center;margin-bottom:10px}
+.cbar .lab{font-size:13px;font-weight:700;color:var(--ink-2);line-height:1.3}
+.cbar .lab span{display:block;font-weight:600;font-size:11.5px;color:var(--muted)}
+.cbar .track{display:flex;gap:2px;height:30px}
+.cbar .seg1{height:100%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden}
+.cbar .seg1:first-child{border-radius:6px 0 0 6px}.cbar .seg1:last-child{border-radius:0 6px 6px 0}
+.c-tim{background:var(--warn-bar)}.c-sx{background:var(--accent);color:#fff!important}.c-bf{background:var(--mh-vol-2)}
+.c-tim.light{background:var(--warn-border)}
+.cbar .tot{font-size:14px;font-weight:800;text-align:right;color:var(--neg-ink)}
+.cbar .tot span{display:block;font-size:11.5px;font-weight:600;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--ink-2);font-weight:600}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.legend i.line{height:3px;border-radius:2px;vertical-align:3px;width:18px}
+.legend i.dash{height:0;border-top:3px dashed var(--warn-bar);border-radius:0;vertical-align:3px;width:18px;background:none}
+.legend i.band{background:var(--mh-vol-1)}
+.takeaway{background:var(--surface-2);border-radius:var(--radius-tile);padding:12px 14px;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.takeaway b{color:var(--ink)}
+
+/* Suggestions */
+.sugs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.sug{border:1px solid var(--border);border-radius:var(--radius-tile);padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.sug .top{display:flex;gap:10px;align-items:flex-start}
+.sug .num{flex:0 0 26px;height:26px;border-radius:8px;background:var(--accent-tint);color:var(--accent-ink);font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.sug h3{margin:2px 0 0;font-size:14.5px;font-weight:800;line-height:1.35}
+.sug p{margin:0;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.sug p b{color:var(--ink)}
+.sug .meta{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:12px;color:var(--muted);margin-top:auto;padding-top:2px}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:800;white-space:nowrap}
+.pill.thin{background:var(--warn-bg);color:var(--warn)}
+.pill.appr{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border)}
+.pill.what{background:var(--warn-bg);color:var(--warn)}
+.pill.sig{background:var(--accent-tint);color:var(--accent-ink)}
+.pill.bal{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--border)}
+.sugfoot{margin:12px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5;display:flex;gap:6px;align-items:flex-start}
+.sugfoot svg{flex:0 0 14px;margin-top:2px}
+
+/* Charts */
+.charts{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}
+.chartbox{position:relative;min-width:0}
+.chartbox svg{display:block}
+.chartbox text{font-family:var(--font-sans);font-variant-numeric:tabular-nums}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;font-size:12px;line-height:1.45;padding:8px 10px;border-radius:10px;white-space:nowrap;box-shadow:var(--shadow-card);z-index:3}
+.tip b{font-weight:800}
+.mtable{width:100%;border-collapse:collapse;margin-top:10px}
+.mtable th,.mtable td{font-size:12.5px;padding:6px 6px;text-align:right;white-space:nowrap}
+.mtable th{font-size:11.5px;font-weight:800;color:var(--muted)}
+.mtable td{border-top:1px solid var(--border)}
+.mtable th:first-child,.mtable td:first-child{text-align:left;padding-left:0}
+.mtable td:first-child{font-weight:700;color:var(--ink-2)}
+.cfoot{font-size:12.5px;color:var(--ink-2);margin:10px 0 0;line-height:1.5}
+
+/* Tables */
+table{border-collapse:collapse;width:100%}
+.tblwrap{overflow-x:auto}
+.bt th{position:sticky;top:0;background:var(--surface-2);font-size:11.5px;font-weight:800;color:var(--muted);text-align:right;padding:9px 10px;white-space:nowrap;letter-spacing:.02em;vertical-align:bottom}
+.bt th span{display:block;font-weight:600;font-size:11px;letter-spacing:0}
+.bt td{font-size:13px;padding:6px 10px;height:46px;border-top:1px solid var(--border);white-space:nowrap;text-align:right;vertical-align:middle}
+.bt th:first-child,.bt td:first-child{text-align:left;padding-left:18px}
+.bt th:last-child,.bt td:last-child{padding-right:18px}
+.bt tr.all td{font-weight:800;border-top:2px solid var(--border);background:var(--surface-2)}
+.bt tr.thinrow td{color:var(--muted)}
+.bt tr.thinrow td:first-child{color:var(--ink-2)}
+.grp{font-weight:700;color:var(--ink);display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.div{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end}
+.div .m{position:relative;width:84px;height:8px;background:var(--surface-2);border-radius:4px;display:inline-block}
+.div .m::before{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--border-input)}
+.div .m i{position:absolute;top:0;bottom:0;border-radius:3px}
+.div .m i.n{right:50%;background:var(--neg)}
+.div .m i.p{left:50%;background:var(--pos-dot)}
+.div b{min-width:42px;text-align:right}
+.btabs{display:flex;gap:2px;flex-wrap:wrap;padding:0 18px;border-bottom:1px solid var(--border)}
+.btabs button{min-height:var(--tap-min);border:0;background:none;padding:0 12px;font-size:13.5px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.btabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.flush{padding:0;overflow:hidden}
+.flush .hrow{padding:14px 18px 12px;margin:0}
+.tfoot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 16px;align-items:center;padding:12px 18px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted)}
+.tt td{font-size:13px;height:46px}
+.tt tr.row{cursor:pointer}
+.tt tr.row:hover td{background:var(--surface-2)}
+.tt tr.row.sel td{background:var(--accent-tint)}
+.tt tr.row.sel td:first-child{box-shadow:inset 4px 0 0 var(--accent)}
+.side-l{font-weight:800}
+.side-l.long{color:var(--pos)}.side-l.short{color:var(--neg-ink)}
+.openbtn{border:0;background:none;padding:0;font:inherit;color:var(--accent-ink);font-weight:700;text-decoration:underline;cursor:pointer;min-height:28px}
+.mcards{display:none}
+
+/* Drill-down dialog (BottomSheet wide: md:max-w-5xl) */
+.scrim{position:fixed;inset:0;background:rgb(20 26 51 / .40);display:flex;align-items:center;justify-content:center;padding:24px;z-index:20}
+.dialog{background:var(--surface);border-radius:var(--radius-card);width:min(1024px,100%);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgb(20 26 51 / .25);overflow:hidden}
+.dialog header{padding:20px 20px 4px;display:flex;gap:12px;align-items:flex-start}
+.dialog header .t{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.dialog h2{margin:0;font-size:18px;font-weight:700}
+.dialog .desc{margin:0;font-size:14px;color:var(--ink-2)}
+.xbtn{flex:0 0 44px;height:44px;border-radius:50%;border:0;background:var(--surface-2);font-size:20px;cursor:pointer;color:var(--ink)}
+.dialog .body{padding:12px 20px 20px;overflow:auto;display:flex;flex-direction:column;gap:16px}
+.dgrid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:20px;align-items:start}
+.dcol{display:flex;flex-direction:column;gap:14px;min-width:0}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat span{font-size:12px;color:var(--muted)}
+.stat strong{font-size:18px;font-weight:800}
+.stat em{font-style:normal;font-size:11px;color:var(--muted)}
+.panel{border-radius:12px;background:var(--surface-2);padding:10px 12px;font-size:13px}
+.panel h3{margin:0 0 8px;font-size:12px;font-weight:800;color:var(--muted)}
+.panel h3 .pill{margin-left:6px;vertical-align:1px}
+.comp{display:grid;grid-template-columns:132px minmax(0,1fr) 46px;gap:8px;align-items:center;font-size:12.5px;padding:3px 0}
+.comp .n{color:var(--ink-2);font-weight:600;line-height:1.25}
+.comp .n span{display:block;color:var(--muted);font-weight:500;font-size:11px}
+.comp .b{height:8px;background:var(--surface);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.comp .b i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.comp .b i.neu{background:var(--mh-hatch)}
+.comp .v{text-align:right;font-weight:800}
+.mk5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.mk5>div{background:var(--surface);border-radius:10px;padding:6px 8px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.mk5 span{font-size:11px;color:var(--muted);font-weight:700}
+.mk5 b{font-size:14px;font-weight:800}
+.mk5 em{font-style:normal;font-size:10.5px;color:var(--muted)}
+.mv3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.mv3>div{background:var(--surface);border-radius:10px;padding:6px 8px;display:flex;flex-direction:column;gap:1px}
+.mv3 span{font-size:11px;color:var(--muted);font-weight:700}
+.mv3 b{font-size:14px;font-weight:800}
+.mv3 em{font-style:normal;font-size:10.5px;color:var(--muted)}
+.wi{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:13px}
+.wi .r{text-align:right;font-weight:800}
+.wi .h{font-size:11.5px;font-weight:800;color:var(--muted)}
+.timeline{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.timeline li{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px}
+.timeline .t{color:var(--muted)}
+.timeline .x{color:var(--ink-2)}
+.timeline .x.fill{color:var(--pos)}
+.vers{border:1px solid var(--border);border-radius:12px;padding:8px 12px;font-size:14px;font-weight:700}
+.vers summary{cursor:pointer}
+
+/* States */
+.states{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--surface-2),var(--border),var(--surface-2));background-size:200% 100%;animation:sh 1.4s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:28px 16px}
+.empty h3{margin:0;font-size:16px;font-weight:800}
+.empty p{margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.5;max-width:380px}
+.thinbanner{display:flex;gap:10px;align-items:flex-start;padding:12px 16px;border-radius:14px;background:var(--warn-bg);color:var(--warn);font-size:13.5px;font-weight:600;line-height:1.5}
+.thinbanner svg{flex:0 0 18px;margin-top:2px}
+.stlabel{font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:0 0 8px}
+
+/* ---------- < 1024: no sidebar; < 768: phone ---------- */
+@media (max-width:1023px){
+  .side{display:none}
+  .shell{padding:0;display:block}
+  main{padding:12px 16px 24px}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 0}
+  .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .charts{grid-template-columns:minmax(0,1fr)}
+  .costs{grid-template-columns:minmax(0,1fr)}
+  .desk-sample{display:none}
+}
+@media (max-width:767px){
+  .head h1{font-size:26px}
+  .lede{font-size:14px}
+  .head .right{margin-left:0;width:100%;justify-content:space-between}
+  .head .right .upd{display:none}
+  .card{padding:14px}
+  .past{padding:10px 12px;font-size:13px}
+  .filters .desk-only{display:none}
+  .filters{gap:8px}
+  .filters .fld.time{flex:1 1 0}
+  .mfilters{display:inline-flex}
+  .chips .clear{display:none}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .kpi{padding:10px 12px}
+  .kpi .v{font-size:20px}
+  .kpi:first-child{grid-column:1 / -1}
+  .card.flush{padding:0}
+  #trades .seg{width:100%}
+  #trades .seg button{flex:1 1 auto;padding:0 6px;font-size:13px}
+  .cbar{grid-template-columns:minmax(0,1fr) 78px;gap:4px 10px}
+  .cbar .lab{grid-column:1 / -1}
+  .cbar .track{grid-column:1;height:26px}
+  .sugs{grid-template-columns:minmax(0,1fr)}
+  .sug{padding:12px 14px}
+  .btabs{padding:0 6px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .btabs button{padding:0 10px}
+  .bt .hide-m{display:none}
+  .bt td,.bt th{padding-left:6px;padding-right:6px;font-size:12.5px}
+  .bt th:first-child,.bt td:first-child{padding-left:14px}
+  .bt th:last-child,.bt td:last-child{padding-right:14px}
+  .bt td:first-child{white-space:normal}
+  .div .m{display:none}
+  .flush .hrow{padding:12px 14px 8px}
+  .tfoot{padding:12px 14px}
+  .ttwrap{display:none}
+  .mcards{display:flex;flex-direction:column}
+  .mcard{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:3px 10px;padding:12px 14px;border:0;border-top:1px solid var(--border);background:none;text-align:left;width:100%;cursor:pointer;color:var(--ink);font:inherit}
+  .mcard .l1{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13.5px}
+  .mcard .l2,.mcard .l3{font-size:12px;color:var(--ink-2)}
+  .mcard .r{text-align:right;font-weight:800;font-size:14px}
+  .mcard .r span{display:block;font-size:11px;font-weight:600;color:var(--muted)}
+  .mcard .chev{grid-row:1/4;grid-column:3;align-self:center;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg)}
+  .mcard.sel{background:var(--accent-tint)}
+  /* Drill-down: full-screen sheet */
+  .scrim{padding:0;align-items:stretch}
+  .dialog{border-radius:0;max-height:none;height:100vh;width:100%}
+  .dialog header{padding:14px 16px 4px}
+  .dialog h2{font-size:17px}
+  .dialog .desc{font-size:13px}
+  .dialog .body{padding:10px 16px 24px}
+  .dgrid{display:flex;flex-direction:column;gap:14px;align-items:stretch}
+  .dcol{display:contents}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .comp{grid-template-columns:116px minmax(0,1fr) 40px}
+  .mk5{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+  .mk5>div{padding:6px 5px}
+  .mk5 b{font-size:13px}
+  .timeline li{grid-template-columns:90px minmax(0,1fr);gap:6px}
+  .timeline .t{font-size:12px}
+  .states{grid-template-columns:minmax(0,1fr)}
+  .mtable th,.mtable td{white-space:normal;padding:6px 3px;font-size:11.5px}
+  .mtable td:first-child{width:76px}
+  .mtable .to{display:block;font-size:10.5px;line-height:1.1}
+}
+
+/* ===================== Signal Analysis additions (All + Market Making tabs) =====================
+   Token values only (packages/ui/src/styles/tokens.css). One extra token used from the Market hours set:
+   --mh-shock-3 (#bb92e4) for "Inventory & cuts". Validated set for the cost split: fees --accent, markout --warn-bar,
+   inventory & cuts --mh-shock-3 (all pairs pass CVD, worst ΔE 16.5). Fees are one colour in charts; SoDEX / builder
+   split stays in numbers and tooltips (light blue + light purple fail CVD as a pair). */
+:root{--mh-shock-3:#bb92e4;--mh-shock-1:#e6d6f7}
+.c-fee{background:var(--accent)}.c-mk{background:var(--warn-bar)}.c-inv{background:var(--mh-shock-3)}.c-earn{background:var(--pos-dot)}
+.ptabs{display:inline-flex;gap:2px;padding:4px;border-radius:16px;background:var(--surface);border:1px solid var(--border)}
+.ptabs button{min-height:var(--tap-min);padding:0 18px;border:0;border-radius:12px;background:transparent;font-size:14.5px;font-weight:800;color:var(--ink-2);cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
+.ptabs button .cnt{font-size:12px;font-weight:700;color:var(--muted)}
+.ptabs button[aria-selected="true"]{background:var(--accent);color:#fff;box-shadow:var(--shadow-accent)}
+.ptabs button[aria-selected="true"] .cnt{color:#fff;opacity:.85}
+.tabrow{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.tzline{font-size:13px;color:var(--muted);display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap}
+.kpis.six{grid-template-columns:repeat(6,minmax(0,1fr))}
+.kpi .v.cost{color:var(--neg-ink)}
+.kpi .v.earn{color:var(--pos)}
+.kpi .delta{font-size:12px;font-weight:700}
+.delta.down{color:var(--pos)}.delta.up{color:var(--neg-ink)}
+.two{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px}
+.two.even{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+/* decomposition rows (by strategy) */
+.drow{display:grid;grid-template-columns:170px minmax(0,1fr) 110px;gap:12px;align-items:center;padding:7px 0}
+.drow .lab{font-size:13.5px;font-weight:800;color:var(--ink);line-height:1.25}
+.drow .lab span{display:block;font-size:11.5px;font-weight:600;color:var(--muted)}
+.drow .trk{position:relative;height:28px}
+.drow .trk .zero{position:absolute;top:-4px;bottom:-4px;width:1.5px;background:var(--muted)}
+.drow .trk i{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:11.5px;font-weight:800;color:var(--ink);overflow:hidden;white-space:nowrap}
+.drow .trk i.c-fee{color:#fff}
+.drow .tot{text-align:right;font-size:15px;font-weight:800}
+.drow .tot span{display:block;font-size:11.5px;font-weight:600;color:var(--muted)}
+.drow.total{border-top:1px solid var(--border);margin-top:4px;padding-top:11px}
+.axisnote{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:2px 0 8px}
+/* drivers */
+.drivers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.drv{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:4px 12px;align-items:start;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-tile)}
+.drv .rk{width:26px;height:26px;border-radius:8px;background:var(--neg-bg);color:var(--neg-ink);font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+.drv h3{margin:2px 0 2px;font-size:14px;font-weight:800;line-height:1.35}
+.drv p{margin:0;font-size:12.5px;color:var(--ink-2);line-height:1.5}
+.drv p b{color:var(--ink)}
+.drv .x{text-align:right;font-size:15px;font-weight:800;color:var(--neg-ink);white-space:nowrap}
+.drv .x span{display:block;font-size:11.5px;font-weight:600;color:var(--muted)}
+.drv .meta{grid-column:2 / 4;display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:12px;color:var(--muted);margin-top:4px}
+.partpill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;color:var(--ink-2);padding:2px 9px 2px 7px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border)}
+.partpill i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.user{display:flex;flex-direction:column;line-height:1.3}
+.user .id{font-size:11.5px;color:var(--muted);font-weight:600}
+.cut-tag{font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;background:var(--mh-shock-1);color:var(--unknown)}
+/* waterfall */
+.wf{display:flex;flex-direction:column;gap:6px}
+.wfr{display:grid;grid-template-columns:210px minmax(0,1fr) 84px;gap:10px;align-items:center}
+.wfr .n{font-size:13px;font-weight:700;color:var(--ink-2);line-height:1.25}
+.wfr .n span{display:block;font-size:11.5px;color:var(--muted);font-weight:600}
+.wfr .t{position:relative;height:24px;background:var(--chart-bg);border-radius:6px}
+.wfr .t .z{position:absolute;top:-3px;bottom:-3px;width:1.5px;background:var(--muted)}
+.wfr .t i{position:absolute;top:3px;bottom:3px;border-radius:4px}
+.wfr .t i.net{background:var(--ink)}
+.wfr .t i.link{background:none;border-left:1px dashed var(--muted);top:-6px;bottom:-6px;border-radius:0;width:0}
+.wfr .v{text-align:right;font-size:14px;font-weight:800}
+.wfr.total .n{color:var(--ink);font-weight:800}
+/* mini stat grid */
+.mini{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.mini>div{background:var(--surface-2);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.mini span{font-size:12px;font-weight:700;color:var(--ink-2)}
+.mini b{font-size:18px;font-weight:800}
+.mini em{font-style:normal;font-size:11.5px;color:var(--muted);line-height:1.35}
+.rule{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--ink-2);background:var(--surface-2);border-radius:12px;padding:9px 12px;line-height:1.45;margin-top:12px}
+.rule svg{margin-top:2px}
+.hidden-lead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;border:1px dashed var(--border-input);border-radius:var(--radius-tile);font-size:12.5px;color:var(--muted);margin-top:12px}
+.mk6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.mk6>div{background:var(--surface);border-radius:10px;padding:6px 8px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.mk6 span{font-size:11px;color:var(--muted);font-weight:700}
+.mk6 b{font-size:14px;font-weight:800}
+.mk6 em{font-style:normal;font-size:10.5px;color:var(--muted)}
+.yn{font-weight:800}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+@media (max-width:1023px){
+  .kpis.six{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .two,.two.even{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:767px){
+  .tabrow{gap:8px}
+  .ptabs{display:flex;width:100%}
+  .ptabs button{flex:1 1 0;padding:0 6px;font-size:13.5px;justify-content:center}
+  .ptabs button .cnt{display:none}
+  .tzline{font-size:12px}
+  .kpis.six{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .drow{grid-template-columns:minmax(0,1fr) 84px;gap:4px 10px}
+  .drow .lab{grid-column:1 / -1}
+  .drow .trk{grid-column:1;height:24px}
+  .drv{grid-template-columns:26px minmax(0,1fr);padding:12px}
+  .drv .x{grid-column:2;text-align:left}
+  .drv .x span{display:inline;margin-left:6px}
+  .drv .meta{grid-column:1 / -1}
+  .wfr{grid-template-columns:minmax(0,1fr) 70px;gap:4px 8px}
+  .wfr .n{grid-column:1 / -1}
+  .wfr .t{grid-column:1}
+  .mini{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mk6{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .hide-s{display:none}
+  .kpis.six .kpi.net{grid-column:1 / -1}
+  .hidden-lead{align-items:flex-start}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// =====================================================================================================================
+// Signal Analysis (team): tabs All / Volume Builder / Market Making. ?tab=all|vb|mm, &view=states (All, MM), &view=fill (MM)
+// &view=trade (VB). SAMPLE DATA everywhere. Volume Builder tab = the VB Signal Analysis design (#222) unchanged, embedded below.
+// =====================================================================================================================
+
+/* ------------------------------------------------ Volume Builder module (verbatim from #222) ------------------------------------------------ */
+const VB = (function(){
+const P = new URLSearchParams(location.search);
+const VIEW = P.get('view') || 'overview';   // overview | trade | states
+let BY = P.get('by') || 'regime';            // breakdown tab
+let WIN = P.get('win') || '3';               // move-before window: 1 | 3 | 5
+
+const ico = (d,s=16,w=2)=>`<svg width="${s}" height="${s}" style="flex:0 0 ${s}px" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  refresh:'<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  warn:'<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
+  filter:'<path d="M4 6h16M7 12h10M10 18h4"/>',
+  menu:'<path d="M4 7h16M4 12h16M4 17h16"/>',
+  chart:'<path d="M4 19h16M7 16V9M12 16V5M17 16v-4"/>',
+};
+const f1 = v => (v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1);
+const bp = v => `${f1(v)} bp`;
+const usdM = v => `${v<0?'−':''}$${Math.round(Math.abs(v)*50)}`;   // bp → $ per 1M volume
+const cls = v => v<0?'neg':v>0?'pos':'';
+const pct = (a,b)=> Math.round(a/b*100)+'%';
+const THIN = 30;
+
+// Overall (filters: last 7 days, all markets, all VB bots)
+const ALL = {n:1284, vol:'1.01M', notional:507000, pre:-2.0, sx:3.5, bf:1.8, fees:5.3, opp:-0.6, mk:[-0.4,-0.9,-1.3,-1.7,-2.0], move:3.4};
+
+// Breakdowns: n, move before (3 min, bp in the entry's direction), markout 1 min, before fees, fees, opposite side before fees
+const B = {
+  regime:{label:'Regime', note:'Regime from 5-minute candles at entry.', rows:[
+    ['Uptrend',402,4.1,-1.6,-2.6,5.3,-0.2],
+    ['Downtrend',371,3.8,-1.5,-2.4,5.3,-0.4],
+    ['Sideways',484,2.2,-0.9,-1.1,5.3,-1.0],
+    ['Very volatile',18,7.4,-2.9,-4.8,5.6,0.9],
+    ['No clear trend',9,1.9,-0.4,-0.7,5.2,-1.3]]},
+  score:{label:'Score', note:'Signal entries only (1,008). Balance entries have no score.', total:[1008,4.0,-1.5,-2.3,5.3,-0.4], rows:[
+    ['40–50',236,2.4,-0.9,-1.3,5.3,-0.9],
+    ['50–60',318,3.3,-1.3,-2.0,5.3,-0.6],
+    ['60–70',262,4.2,-1.7,-2.7,5.3,-0.2],
+    ['70–80',154,5.4,-2.0,-3.1,5.3,0.0],
+    ['80 and up',38,6.8,-2.5,-3.7,5.4,0.3]]},
+  part:{label:'Signal part', note:'The part of the score that added the most at entry. Weights: candle momentum 30%, wick rejection 25%, volume acceleration 20%, trade pressure 15% (always neutral, no trade feed), order book 10%. Signal entries only.', total:[1008,4.0,-1.5,-2.3,5.3,-0.4], rows:[
+    ['Candle momentum',421,5.6,-1.9,-3.0,5.3,-0.1],
+    ['Wick rejection',236,3.1,-1.4,-2.4,5.3,-0.5],
+    ['Volume acceleration',287,3.4,-1.1,-1.5,5.3,-0.7],
+    ['Order book',64,1.8,-0.6,-0.9,5.2,-1.0]]},
+  exit:{label:'Exit reason', note:'Fees differ by exit: stops close with a taker order.', rows:[
+    ['Hold time ended',612,2.9,-1.0,-1.6,4.9,-0.9],
+    ['Take profit',148,2.1,1.8,6.8,4.6,-5.6],
+    ['Early profit',121,2.4,0.9,3.2,4.6,-3.4],
+    ['Max hold',205,3.6,-2.0,-3.9,5.4,1.2],
+    ['Stop loss',171,4.8,-4.1,-10.5,7.4,3.6],
+    ['Stop on SoDEX',27,5.5,-6.0,-14.2,8.8,6.0]]},
+  type:{label:'Entry type', note:'Balance entries go the other way to keep long and short volume even (DEC-80).', rows:[
+    ['Signal',1008,4.0,-1.5,-2.3,5.3,-0.4],
+    ['Balance',276,1.2,-0.6,-0.9,5.3,-1.0]]},
+  hour:{label:'Hour (UTC)', note:'4-hour blocks, by fill time.', rows:[
+    ['00:00–04:00',168,2.6,-0.9,-1.5,5.3,-0.8],
+    ['04:00–08:00',241,3.8,-1.5,-2.4,5.3,-0.4],
+    ['08:00–12:00',236,3.4,-1.2,-2.0,5.3,-0.6],
+    ['12:00–16:00',262,4.1,-1.6,-2.6,5.3,-0.3],
+    ['16:00–20:00',219,3.1,-1.1,-1.8,5.3,-0.6],
+    ['20:00–24:00',158,2.4,-0.8,-1.2,5.3,-0.9]]},
+  market:{label:'Market', note:'', rows:[
+    ['BTC-USD',702,3.1,-1.1,-1.7,5.1,-0.7],
+    ['ETH-USD',488,3.9,-1.5,-2.3,5.4,-0.4],
+    ['SOL-USD',94,4.6,-1.8,-2.8,6.0,-0.2]]},
+  size:{label:'Order size', note:'Entry notional in USDC.', rows:[
+    ['Under 250',214,3.2,-1.1,-1.8,5.3,-0.6],
+    ['250–400',611,3.4,-1.2,-1.9,5.3,-0.5],
+    ['400–550',398,3.5,-1.3,-2.2,5.3,-0.6],
+    ['550 and up',61,3.7,-1.5,-2.6,5.3,-0.7]]},
+};
+const BY_ORDER = ['regime','score','part','exit','type','hour','market','size'];
+
+// Move before entry, buckets in the entry's direction: n, before fees, opposite side before fees
+const MOVE = {
+  '1':[['Against',301,-0.4,-1.3],['0–2 bp',452,-1.6,-0.9],['2–4 bp',308,-2.6,-0.4],['4–6 bp',146,-3.6,0.0],['6 bp or more',77,-5.4,0.3]],
+  '3':[['Against',212,0.3,-1.5],['0–2 bp',318,-0.9,-1.0],['2–4 bp',316,-2.0,-0.6],['4–6 bp',248,-3.1,-0.1],['6 bp or more',190,-5.2,0.4]],
+  '5':[['Against',254,0.1,-1.4],['0–2 bp',262,-1.0,-0.9],['2–4 bp',270,-1.9,-0.6],['4–6 bp',252,-2.9,-0.2],['6 bp or more',246,-4.4,0.2]],
+};
+
+// Markout after fill: mean, p25, p75 (actual); mean (opposite side, what-if)
+const HZ = ['10 s','30 s','1 min','2 min','5 min'];
+const HZs = [10,30,60,120,300];
+const MK = {mean:[-0.4,-0.9,-1.3,-1.7,-2.0], p25:[-2.1,-3.6,-4.8,-6.2,-9.4], p75:[1.3,1.6,2.0,2.6,4.8], opp:[-0.2,-0.1,0.1,0.2,0.1], behind:[54,58,61,62,60]};
+
+// Trades (newest first). Times UTC.
+const TR = [
+ {id:'t1',t:'2026-11-18 07:31:52',m:'ETH-USD',bot:'ETH vb 3',side:'Short',type:'Signal',score:58,mv:2.9,mk:-0.8,exit:'Hold time ended',pre:-1.4,net:-6.7,opp:-5.6},
+ {id:'t2',t:'2026-11-18 07:24:10',m:'BTC-USD',bot:'BTC vb',side:'Long',type:'Balance',score:null,mv:-0.6,mk:0.4,exit:'Early profit',pre:3.1,net:-1.5,opp:-8.0},
+ {id:'t3',t:'2026-11-18 07:17:45',m:'ETH-USD',bot:'ETH vb 3',side:'Long',type:'Signal',score:66,mv:6.8,mk:-2.6,exit:'Max hold',pre:-4.4,net:-9.8,opp:-1.4},
+ {id:'t4',t:'2026-11-18 07:09:14',m:'ETH-USD',bot:'ETH vb 3',side:'Long',type:'Signal',score:69,mv:12.6,mk:-6.0,exit:'Hold time ended',pre:-8.8,net:-14.0,opp:3.4},
+ {id:'t5',t:'2026-11-18 07:02:33',m:'BTC-USD',bot:'BTC vb',side:'Short',type:'Signal',score:47,mv:1.2,mk:-0.3,exit:'Hold time ended',pre:-0.6,net:-5.7,opp:-5.9},
+ {id:'t6',t:'2026-11-18 06:55:08',m:'SOL-USD',bot:'SOL vb',side:'Long',type:'Signal',score:74,mv:8.1,mk:-3.9,exit:'Stop loss',pre:-11.6,net:-19.2,opp:3.9},
+ {id:'t7',t:'2026-11-18 06:48:41',m:'BTC-USD',bot:'BTC vb rev',side:'Short',type:'Signal',score:61,mv:-3.4,mk:0.9,exit:'Take profit',pre:6.2,net:1.6,opp:-9.7},
+ {id:'t8',t:'2026-11-18 06:41:19',m:'ETH-USD',bot:'ETH vb 3',side:'Short',type:'Balance',score:null,mv:0.8,mk:-0.2,exit:'Hold time ended',pre:-0.9,net:-6.2,opp:-5.7},
+ {id:'t9',t:'2026-11-18 06:33:02',m:'BTC-USD',bot:'BTC vb',side:'Long',type:'Signal',score:55,mv:4.4,mk:-1.7,exit:'Hold time ended',pre:-2.7,net:-7.8,opp:-2.4},
+ {id:'t10',t:'2026-11-18 06:26:37',m:'BTC-USD',bot:'BTC vb rev',side:'Long',type:'Signal',score:52,mv:-2.1,mk:0.3,exit:'Hold time ended',pre:-0.2,net:-5.3,opp:-4.9},
+];
+
+// ---------------------------------------------------------------- sidebar + header
+const navMain = ['Overview','Portfolio','Trading Agent','AI Desk','Strategy Lab','Execution & Orders','Risk Center'];
+const navTeam = ['Builder Revenue','Users','Platform Stats','Bot Monitor','Market hours','System Architecture Diagram','SoDEX Debugger','VB Signal Analysis'];
+const sidebar = `
+<nav class="side" aria-label="Main">
+  <a class="brand" href="#"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#2E62E8"></rect><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#FFFFFF"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#FFFFFF" opacity="0.7"></rect></svg>DeskLabs</a>
+  ${navMain.map(n=>`<a class="nav" href="#">${n}</a>`).join('')}
+  <span class="sec">Team</span>
+  ${navTeam.map(n=>`<a class="nav" href="#" ${n==='VB Signal Analysis'?'aria-current="page"':''}>${n==='VB Signal Analysis'?ico(I.chart,18,1.9):''}${n}</a>`).join('')}
+  <span class="sec"></span>
+  <a class="nav" href="#">Settings</a>
+</nav>`;
+
+const header = `
+<div class="topbar"><button class="btn icon" aria-label="Open menu">${ico(I.menu,20,2)}</button><span class="sample">SAMPLE DATA</span></div>
+<header class="head">
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <h1>VB Signal Analysis</h1>
+    <p class="lede">Where Volume Builder entries lose money: entry timing against fees, where the price goes after the fill, and what the opposite side would have made.</p>
+  </div>
+  <div class="right">
+    <span class="ro">${ico(I.lock,15,2)}Read only</span>
+    <span class="note upd">Updated 07:42 UTC</span>
+    <button class="btn">${ico(I.refresh,16,2.2)}Refresh</button>
+  </div>
+</header>
+<span class="sample desk-sample">SAMPLE DATA · every value on this page is made up</span>
+<div class="past" role="note">${ico(I.info,18,2)}<div><b>Analysis of past trades, not a forecast.</b> It shows what happened on these entries. This page never changes a bot; any change to VB logic is made and approved separately.</div></div>`;
+
+const filters = `
+<section class="card" aria-labelledby="h-f">
+  <h2 id="h-f" class="sr">Filters</h2>
+  <div class="filters">
+    <div class="fld time"><span class="lbl" id="l-time">Time</span><span class="select" role="button" tabindex="0" aria-labelledby="l-time" aria-haspopup="listbox">Last 7 days</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-mk">Market</span><span class="select" role="button" tabindex="0" aria-labelledby="l-mk" aria-haspopup="listbox">All markets</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-bot">Bot</span><span class="select" role="button" tabindex="0" aria-labelledby="l-bot" aria-haspopup="listbox">All VB bots</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-rg">Regime</span><span class="select" role="button" tabindex="0" aria-labelledby="l-rg" aria-haspopup="listbox">All regimes</span></div>
+    <div class="fld desk-only"><span class="lbl" id="l-et">Entry type</span>
+      <div class="seg" role="radiogroup" aria-labelledby="l-et"><button role="radio" aria-checked="true">All</button><button role="radio" aria-checked="false">Signal</button><button role="radio" aria-checked="false">Balance</button></div></div>
+    <div class="fld desk-only"><span class="lbl" id="l-rv">Reverse the signal</span>
+      <div class="seg" role="radiogroup" aria-labelledby="l-rv"><button role="radio" aria-checked="true">All</button><button role="radio" aria-checked="false">On</button><button role="radio" aria-checked="false">Off</button></div></div>
+    <div class="fld mfilters"><span class="lbl">&nbsp;</span><button class="btn">${ico(I.filter,16,2.2)}Filters</button></div>
+  </div>
+  <div class="chips"><span>Live bots only, paper excluded · 9 VB bots · 4 accounts</span></div>
+</section>`;
+
+// ---------------------------------------------------------------- summary
+function costBar(label, sub, segs, total, totSub){
+  const W = 7.6; // scale: bp for full width
+  return `<div class="cbar">
+    <div class="lab">${label}<span>${sub}</span></div>
+    <div class="track" role="img" aria-label="${label}: ${segs.map(s=>s[1]+' '+s[0].toFixed(1)+' bp').join(', ')}, total ${total.toFixed(1)} bp">
+      ${segs.map(s=>`<div class="seg1 ${s[2]}" style="flex:0 0 calc(${(s[0]/W*100).toFixed(2)}% - 2px)" title="${s[1]}: −${s[0].toFixed(1)} bp">${s[0]>=1?'−'+s[0].toFixed(1):''}</div>`).join('')}
+    </div>
+    <div class="tot">−${total.toFixed(1)} bp<span>${totSub}</span></div>
+  </div>`;
+}
+const net = ALL.pre-ALL.fees, oppNet = ALL.opp-ALL.fees;
+const summary = `
+<section class="card" aria-labelledby="h-sum">
+  <div class="hrow"><div><h2 id="h-sum">Last 7 days · ${ALL.n.toLocaleString('en-US')} entries</h2><p class="sub">Per round trip, in bp of the entry notional. $/1M is per 1M USDC of volume.</p></div></div>
+  <div class="kpis">
+    <div class="kpi"><span class="k">Entries</span><span class="v">1,284</span><span class="s">${ALL.vol} USDC volume · 1,008 signal, 276 balance</span></div>
+    <div class="kpi"><span class="k">Entry timing</span><span class="v neg">${bp(ALL.pre)}</span><span class="s">Before fees · ${usdM(ALL.pre)} / 1M</span></div>
+    <div class="kpi"><span class="k">Fees</span><span class="v neg">${bp(-ALL.fees)}</span><span class="s">${usdM(-ALL.fees)} / 1M · SoDEX −3.5, builder −1.8</span></div>
+    <div class="kpi net"><span class="k">Net</span><span class="v neg">${bp(net)}</span><span class="s">${usdM(net)} / 1M · −370 USDC</span></div>
+    <div class="kpi"><span class="k">Opposite side (what-if)</span><span class="v neg">${bp(oppNet)}</span><span class="s">1.4 bp better, still a loss · ${usdM(oppNet)} / 1M</span></div>
+  </div>
+  <div class="costs">
+    <div>
+      <h3 class="minih">Loss per trade: timing vs fees</h3>
+      ${costBar('Actual entries','as traded',[[2.0,'Entry timing','c-tim'],[3.5,'SoDEX fee','c-sx'],[1.8,'Builder fee','c-bf']],7.3,usdM(net)+' / 1M')}
+      ${costBar('Opposite side','what-if, same moments',[[0.6,'Entry timing','c-tim'],[3.5,'SoDEX fee','c-sx'],[1.8,'Builder fee','c-bf']],5.9,usdM(oppNet)+' / 1M')}
+      <div class="legend"><span><i class="c-tim"></i>Entry timing (before fees)</span><span><i class="c-sx"></i>SoDEX fee</span><span><i class="c-bf"></i>Builder fee</span></div>
+    </div>
+    <div class="takeaway"><b>Fees are 73% of the loss.</b> Entry timing adds 2.0 bp per trade on top. Taking the other side at the same moments loses 0.6 bp before fees instead of 2.0, which is still far below the 5.3 bp of fees.<br><span class="mut" style="font-size:12px">Opposite side: same entry time and hold, post-only on the other side of the book. Assumes it filled; it might not have.</span></div>
+  </div>
+</section>`;
+
+// ---------------------------------------------------------------- suggestions
+const SUGS = [
+  {h:'Don’t enter after a fast move in the signal’s direction',
+   p:'Entries after a move of <b>4 bp or more in 3 min</b> lost <b>4.0 bp</b> before fees, <b>3.0 bp more</b> than the rest. They were <b>34% of entries</b> (438 of 1,284) and <b>67% of the timing loss</b>.',
+   n:'438 entries', link:'Move before entry'},
+  {h:'Wait for the pullback before placing the entry',
+   p:'After the fill, the price kept moving against the entry: <b>−0.9 bp at 30 s</b>, <b>−2.0 bp at 5 min</b>. <b>61%</b> of entries were behind after 1 min. The post-only order fills as the move turns.',
+   n:'1,284 entries', link:'Price after the fill'},
+  {h:'Weigh candle momentum less',
+   p:'When candle momentum added the most to the score, entries lost <b>3.0 bp</b> before fees (421 entries), vs <b>1.8 bp</b> for other signal entries. Higher scores lost more: <b>−1.3 bp</b> at 40–50, <b>−3.7 bp</b> at 80 and up.',
+   n:'1,008 signal entries', link:'Signal part'},
+  {h:'The signal does worse than balance entries',
+   p:'Balance entries, which ignore the signal, lost <b>0.9 bp</b> before fees. Signal entries lost <b>2.3 bp</b>. Reversing helps by about <b>1.4 bp</b>, but both sides lose after <b>5.3 bp</b> of fees, so reversing alone doesn’t fix VB.',
+   n:'1,284 entries', link:'Entry type'},
+];
+const suggestions = `
+<section class="card" aria-labelledby="h-sug">
+  <div class="hrow"><div><h2 id="h-sug">Suggestions</h2><p class="sub">Drawn from the trades above. Each one is a lead to test, not a forecast of savings.</p></div></div>
+  <ol class="sugs" style="list-style:none;margin:0;padding:0">
+    ${SUGS.map((s,i)=>`<li class="sug"><div class="top"><span class="num" aria-hidden="true">${i+1}</span><h3>${s.h}</h3></div><p>${s.p}</p><div class="meta"><span>Based on ${s.n}</span><a href="#" class="see">See: ${s.link}</a><span class="pill appr">Needs approval (DEC-80)</span></div></li>`).join('')}
+  </ol>
+  <p class="sugfoot">${ico(I.info,14,2.2)}Numbers are averages over past entries in the filters above. Results can differ on future trades. This page never changes a bot.</p>
+</section>`;
+
+// ---------------------------------------------------------------- charts
+const chartsShell = `
+<section class="charts">
+  <div class="card" aria-labelledby="h-mk">
+    <div class="hrow"><div><h2 id="h-mk">Price after the fill</h2><p class="sub">Markout in the entry’s favour, from the fill price to the mid price. Below 0 = the price moved against the entry.</p></div></div>
+    <div class="legend" style="margin-bottom:6px"><span><i class="line" style="background:var(--accent)"></i>Actual, mean</span><span><i class="band"></i>Actual, middle half (p25–p75)</span><span><i class="dash"></i>Opposite side, mean (what-if)</span></div>
+    <div class="chartbox" id="mkchart"></div>
+    <table class="mtable"><caption class="sr">Markout after the fill, in bp</caption>
+      <thead><tr><th scope="col">After the fill</th>${HZ.map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead>
+      <tbody>
+        <tr><td>Actual, mean</td>${MK.mean.map(v=>`<td class="${cls(v)}">${f1(v)}</td>`).join('')}</tr>
+        <tr><td>p25 to p75</td>${MK.p25.map((v,i)=>`<td class="mut">${f1(v)} <span class="to">to</span> ${f1(MK.p75[i])}</td>`).join('')}</tr>
+        <tr><td>Behind the fill</td>${MK.behind.map(v=>`<td>${v}%</td>`).join('')}</tr>
+        <tr><td>Opposite side, mean</td>${MK.opp.map(v=>`<td class="${cls(v)}">${f1(v)}</td>`).join('')}</tr>
+      </tbody></table>
+  </div>
+  <div class="card" aria-labelledby="h-mv">
+    <div class="hrow"><div><h2 id="h-mv">Move before entry vs result</h2><p class="sub">How far the price had already moved in the entry’s direction when the order was placed, and the result before fees.</p></div>
+      <div class="seg" role="radiogroup" aria-label="Window before entry" id="winseg">${['1','3','5'].map(w=>`<button role="radio" data-w="${w}" aria-checked="${w===WIN}">${w} min</button>`).join('')}</div></div>
+    <div class="legend" style="margin-bottom:6px"><span><i style="background:var(--neg)"></i>Actual, before fees</span><span><i style="background:var(--warn-bar);border-radius:50%"></i>Opposite side, before fees (what-if)</span></div>
+    <div class="chartbox" id="mvchart"></div>
+    <p class="cfoot" id="mvfoot"></p>
+  </div>
+</section>`;
+
+function drawMarkout(){
+  const box = document.getElementById('mkchart'); if(!box) return;
+  const w = box.clientWidth, H = w<440?220:250;
+  const P = {l:40,r:w<440?52:96,t:14,b:28};
+  const lo=-10, hi=5;
+  const xs = i => P.l + i/(HZ.length-1)*(w-P.l-P.r);
+  const y = v => P.t + (hi-v)/(hi-lo)*(H-P.t-P.b);
+  const ticks=[-10,-8,-6,-4,-2,0,2,4];
+  const band = MK.p75.map((v,i)=>`${xs(i)},${y(v)}`).join(' ')+' '+MK.p25.map((v,i)=>`${xs(i)},${y(v)}`).reverse().join(' ');
+  const line = (arr)=>arr.map((v,i)=>`${i?'L':'M'}${xs(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  box.innerHTML = `<svg width="${w}" height="${H}" role="img" aria-label="Markout after the fill. Actual mean ${MK.mean.map((v,i)=>HZ[i]+' '+f1(v)+' bp').join(', ')}. Opposite side mean ${MK.opp.map((v,i)=>HZ[i]+' '+f1(v)+' bp').join(', ')}.">
+    <rect x="${P.l}" y="${P.t}" width="${w-P.l-P.r}" height="${H-P.t-P.b}" fill="var(--chart-bg)" rx="8"/>
+    ${ticks.map(t=>`<line x1="${P.l}" x2="${w-P.r}" y1="${y(t)}" y2="${y(t)}" stroke="${t===0?'var(--muted)':'var(--border)'}" stroke-width="${t===0?1.2:1}"/><text x="${P.l-8}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)">${t>0?'+':''}${t===0?'0':String(t).replace('-','−')}</text>`).join('')}
+    <text x="${P.l-8}" y="${P.t-2}" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--muted)">bp</text>
+    ${HZ.map((h,i)=>`<text x="${xs(i)}" y="${H-8}" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-weight="600">${h}</text>`).join('')}
+    <polygon points="${band}" fill="var(--mh-vol-1)" opacity=".75"/>
+    <path d="${line(MK.opp)}" fill="none" stroke="var(--warn-bar)" stroke-width="2" stroke-dasharray="6 4"/>
+    <path d="${line(MK.mean)}" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+    ${MK.mean.map((v,i)=>`<circle cx="${xs(i)}" cy="${y(v)}" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`).join('')}
+    ${MK.opp.map((v,i)=>`<circle cx="${xs(i)}" cy="${y(v)}" r="4" fill="var(--warn-bar)" stroke="var(--surface)" stroke-width="2"/>`).join('')}
+    <text x="${xs(4)+10}" y="${y(MK.mean[4])+4}" font-size="12" font-weight="800" fill="var(--ink)">${f1(MK.mean[4])}${w<440?'':' actual'}</text>
+    <text x="${xs(4)+10}" y="${y(MK.opp[4])-6}" font-size="12" font-weight="800" fill="var(--ink-2)">${f1(MK.opp[4])}${w<440?'':' opposite'}</text>
+    ${HZ.map((h,i)=>`<rect class="hit" data-i="${i}" x="${xs(i)-(w-P.l-P.r)/8}" y="${P.t}" width="${(w-P.l-P.r)/4}" height="${H-P.t-P.b}" fill="transparent"/>`).join('')}
+    <line id="mkx" x1="0" x2="0" y1="${P.t}" y2="${H-P.b}" stroke="var(--ink-2)" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>
+  </svg><div class="tip" id="mktip" hidden></div>`;
+  const tip = box.querySelector('#mktip'), cx = box.querySelector('#mkx');
+  box.querySelectorAll('.hit').forEach(r=>{
+    r.addEventListener('mouseenter',()=>{const i=+r.dataset.i; cx.setAttribute('x1',xs(i)); cx.setAttribute('x2',xs(i)); cx.setAttribute('opacity',1);
+      tip.hidden=false; tip.innerHTML=`<b>${HZ[i]} after the fill</b><br>Actual ${f1(MK.mean[i])} bp (middle half ${f1(MK.p25[i])} to ${f1(MK.p75[i])})<br>Behind the fill: ${MK.behind[i]}%<br>Opposite side ${f1(MK.opp[i])} bp`;
+      tip.style.left=Math.min(xs(i)+10,w-230)+'px'; tip.style.top='10px';});
+    r.addEventListener('mouseleave',()=>{tip.hidden=true;cx.setAttribute('opacity',0);});
+  });
+}
+
+function drawMove(){
+  const box = document.getElementById('mvchart'); if(!box) return;
+  const rows = MOVE[WIN]; const N = rows.reduce((a,r)=>a+r[1],0);
+  const w = box.clientWidth, H = w<440?230:262;
+  const P = {l:40,r:8,t:22,b:46};
+  const lo=-6, hi=1;
+  const bw = (w-P.l-P.r)/rows.length;
+  const y = v => P.t + (hi-v)/(hi-lo)*(H-P.t-P.b);
+  const ticks=[-6,-4,-2,0];
+  box.innerHTML = `<svg width="${w}" height="${H}" role="img" aria-label="Result before fees by move before entry over ${WIN} min. ${rows.map(r=>r[0]+': '+r[1]+' entries, '+f1(r[2])+' bp, opposite side '+f1(r[3])+' bp').join('; ')}.">
+    <rect x="${P.l}" y="${P.t}" width="${w-P.l-P.r}" height="${H-P.t-P.b}" fill="var(--chart-bg)" rx="8"/>
+    ${ticks.map(t=>`<line x1="${P.l}" x2="${w-P.r}" y1="${y(t)}" y2="${y(t)}" stroke="${t===0?'var(--muted)':'var(--border)'}" stroke-width="${t===0?1.2:1}"/><text x="${P.l-8}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)">${t===0?'0':String(t).replace('-','−')}</text>`).join('')}
+    <text x="${P.l-8}" y="${P.t-8}" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--muted)">bp</text>
+    ${rows.map((r,i)=>{const cx=P.l+bw*i+bw/2, bwi=Math.min(46,bw*0.5); const v=r[2]; const y0=y(0), y1=y(v);
+      const top=Math.min(y0,y1), h=Math.max(2,Math.abs(y1-y0)); const fill=v<0?'var(--neg)':'var(--pos-dot)';
+      const thin=r[1]<THIN;
+      const rx = v<0?`M${cx-bwi/2},${top} h${bwi} v${h-4} a4,4 0 0 1 -4,4 h${-(bwi-8)} a4,4 0 0 1 -4,-4z`:`M${cx-bwi/2},${top+4} a4,4 0 0 1 4,-4 h${bwi-8} a4,4 0 0 1 4,4 v${h-4} h${-bwi}z`;
+      return `<g><title>${r[0]}: ${r[1]} entries (${pct(r[1],N)}). Before fees ${f1(v)} bp. Opposite side ${f1(r[3])} bp.</title>
+        <path d="${rx}" fill="${fill}" ${thin?'opacity=".45"':''}/>
+        <text x="${cx}" y="${v<0?y1+15:y1-6}" text-anchor="middle" font-size="11.5" font-weight="800" fill="var(--ink)">${f1(v)}</text>
+        <circle cx="${cx+bwi/2+9}" cy="${y(r[3])}" r="5" fill="var(--warn-bar)" stroke="var(--surface)" stroke-width="2"/>
+        <text x="${cx}" y="${H-28}" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink-2)">${w<440?r[0].replace(' or more','+').replace(' bp',''):r[0]}</text>
+        <text x="${cx}" y="${H-13}" text-anchor="middle" font-size="11" fill="var(--muted)">${r[1]} · ${pct(r[1],N)}</text></g>`;}).join('')}
+  </svg>`;
+  const big = rows.slice(3), rest = rows.slice(0,3);
+  const nb = big.reduce((a,r)=>a+r[1],0), nr = N-nb;
+  const ab = big.reduce((a,r)=>a+r[1]*r[2],0)/nb, ar = rest.reduce((a,r)=>a+r[1]*r[2],0)/nr;
+  document.getElementById('mvfoot').innerHTML = `<b>4 bp or more in ${WIN} min:</b> ${nb} entries (${pct(nb,N)}), ${f1(ab)} bp before fees vs ${f1(ar)} bp for the rest. ${w<440?'Labels in bp.':'“Against” = the price had moved the other way.'}`;
+}
+
+// ---------------------------------------------------------------- breakdown
+function divCell(v, max){ const wv = Math.min(50, Math.abs(v)/max*50); return `<span class="div"><span class="m" aria-hidden="true"><i class="${v<0?'n':'p'}" style="width:${wv}%"></i></span><b class="${cls(v)}">${f1(v)}</b></span>`; }
+function breakdownRows(){
+  const d = B[BY]; const tot = d.total || [ALL.n,ALL.move,ALL.mk[2],ALL.pre,ALL.fees,ALL.opp];
+  const max = Math.max(...d.rows.map(r=>Math.abs(r[4])), 4);
+  const row = (r, all) => { const [g,n,mv,mk,pre,fee,opp]=r; const thin = !all && n<THIN; const nt=pre-fee, on=opp-fee;
+    return `<tr class="${all?'all':''} ${thin?'thinrow':''}"><td><span class="grp">${g}${thin?'<span class="pill thin">Thin sample</span>':''}</span></td>
+      <td>${n.toLocaleString('en-US')}</td><td class="hide-m">${all?'100%':pct(n,tot[0])}</td>
+      <td class="hide-m">${f1(mv)}</td><td class="hide-m ${cls(mk)}">${f1(mk)}</td>
+      <td>${divCell(pre,max)}</td><td class="hide-m neg">${f1(-fee)}</td>
+      <td class="neg" style="font-weight:800">${f1(nt)}</td><td class="hide-m">${usdM(nt)}</td>
+      <td class="hide-m ${cls(on)}">${f1(on)}</td></tr>`; };
+  return d.rows.map(r=>row(r,false)).join('') + row([d.total?'All signal entries':'All entries',...tot],true);
+}
+const breakdown = () => `
+<section class="card flush" aria-labelledby="h-bd" id="breakdown">
+  <div class="hrow"><div><h2 id="h-bd">Breakdown</h2><p class="sub" id="bdnote">${B[BY].note||'&nbsp;'}</p></div><span class="note">bp per round trip · groups under ${THIN} entries are marked Thin sample</span></div>
+  <div class="btabs" role="tablist" aria-label="Group by">${BY_ORDER.map(k=>`<button role="tab" data-by="${k}" aria-selected="${k===BY}">${B[k].label}</button>`).join('')}</div>
+  <div class="tblwrap" role="tabpanel">
+  <table class="bt"><caption class="sr">Results by ${B[BY].label}</caption>
+    <thead><tr><th scope="col">${B[BY].label}</th><th scope="col">Entries</th><th scope="col" class="hide-m">Share</th><th scope="col" class="hide-m">Move before<span>3 min, bp</span></th><th scope="col" class="hide-m">Markout<span>1 min, bp</span></th><th scope="col">Before fees<span>bp</span></th><th scope="col" class="hide-m">Fees<span>bp</span></th><th scope="col">Net<span>bp</span></th><th scope="col" class="hide-m">Net<span>$ / 1M</span></th><th scope="col" class="hide-m">Opposite side net<span>what-if, bp</span></th></tr></thead>
+    <tbody id="bdbody">${breakdownRows()}</tbody>
+  </table></div>
+</section>`;
+
+// ---------------------------------------------------------------- trades
+const tradesHTML = `
+<section class="card flush" aria-labelledby="h-tr" id="trades">
+  <div class="hrow"><div><h2 id="h-tr">Entries</h2><p class="sub">1,284 in the filters above · open one to see its prices, orders and signal</p></div>
+    <div class="seg" role="radiogroup" aria-label="Sort"><button role="radio" aria-checked="true">Newest</button><button role="radio" aria-checked="false">Worst net</button><button role="radio" aria-checked="false">Biggest move before</button></div></div>
+  <div class="tblwrap ttwrap">
+  <table class="bt tt"><caption class="sr">VB entries</caption>
+    <thead><tr><th scope="col">Filled (UTC)</th><th scope="col" style="text-align:left">Market · bot</th><th scope="col" style="text-align:left">Side</th><th scope="col" style="text-align:left">Entry type</th><th scope="col">Score</th><th scope="col">Move before<span>3 min, bp</span></th><th scope="col">Markout<span>1 min, bp</span></th><th scope="col" style="text-align:left">Exit reason</th><th scope="col">Before fees<span>bp</span></th><th scope="col">Net<span>bp</span></th><th scope="col">Opposite side net<span>what-if, bp</span></th></tr></thead>
+    <tbody>${TR.map(t=>`<tr class="row ${VIEW==='trade'&&t.id==='t4'?'sel':''}" tabindex="0"><td><button class="openbtn" aria-haspopup="dialog">${t.t.slice(11)}</button><div class="mut" style="font-size:11.5px">${t.t.slice(0,10)}</div></td>
+      <td style="text-align:left">${t.m}<div class="mut" style="font-size:11.5px">${t.bot}</div></td><td style="text-align:left"><span class="side-l ${t.side.toLowerCase()}">${t.side}</span></td>
+      <td style="text-align:left"><span class="pill ${t.type==='Signal'?'sig':'bal'}">${t.type}</span></td><td>${t.score??'—'}</td>
+      <td style="${t.mv>=4?'font-weight:800':''}">${t.mv>=4?'▲ ':''}${f1(t.mv)}</td><td class="${cls(t.mk)}">${f1(t.mk)}</td><td style="text-align:left">${t.exit}</td>
+      <td class="${cls(t.pre)}">${f1(t.pre)}</td><td class="${cls(t.net)}" style="font-weight:800">${f1(t.net)}</td><td class="${cls(t.opp)}">${f1(t.opp)}</td></tr>`).join('')}</tbody>
+  </table></div>
+  <div class="mcards">${TR.map(t=>`<button class="mcard ${VIEW==='trade'&&t.id==='t4'?'sel':''}" aria-haspopup="dialog">
+      <span class="l1"><span class="side-l ${t.side.toLowerCase()}">${t.side}</span> ${t.m}<span class="pill ${t.type==='Signal'?'sig':'bal'}">${t.type}</span></span>
+      <span class="r ${cls(t.net)}" style="grid-row:1/3;grid-column:2;align-self:center">${f1(t.net)} bp<span>net</span></span><span class="chev" aria-hidden="true"></span>
+      <span class="l2">${t.t.slice(11,16)} UTC · ${t.bot} · ${t.exit}</span>
+      <span class="l3">Move before ${t.mv>=4?'▲ ':''}${f1(t.mv)} · 1 min ${f1(t.mk)} · opposite ${f1(t.opp)}</span></button>`).join('')}</div>
+  <div class="tfoot"><span>▲ moved 4 bp or more in the entry’s direction in the 3 min before the order.</span><button class="btn sm">Load 50 more</button></div>
+</section>`;
+
+// ---------------------------------------------------------------- drill-down (reuses the Trade detail sheet, DEC-141)
+const CANDLES = [ // 1-minute ETH-USD, 07:03..07:15 UTC [minute, h, l, c]
+ [3,1821.2,1820.5,1820.9],[4,1821.4,1820.6,1821.0],[5,1821.9,1820.9,1821.6],[6,1822.6,1821.5,1822.3],[7,1823.9,1822.2,1823.5],
+ [8,1825.6,1823.4,1824.8],[9,1825.3,1823.4,1823.6],[10,1823.9,1820.5,1821.6],[11,1822.0,1820.8,1821.4],[12,1822.0,1821.0,1821.7],
+ [13,1821.8,1820.7,1821.0],[14,1821.7,1820.9,1821.3],[15,1822.0,1821.1,1821.6]];
+function drawTradeChart(){
+  const box = document.getElementById('tchart'); if(!box) return;
+  const w = box.clientWidth, H = 220, P = {l:64,r:10,t:22,b:22};
+  const lo=1820.0, hi=1826.0;
+  const m0=3, m1=15.6; // minutes
+  const x = m => P.l + (m-m0)/(m1-m0)*(w-P.l-P.r);
+  const y = v => P.t + (hi-v)/(hi-lo)*(H-P.t-P.b);
+  const entryM = 9+14/60, orderM = 9+3/60, exitM = 10+28/60;
+  const path = CANDLES.map((k,i)=>`${i?'L':'M'}${x(k[0]+.5).toFixed(1)},${y(k[3]).toFixed(1)}`).join(' ');
+  const mks = [[10,'10 s'],[30,'30 s'],[60,'1 min'],[120,'2 min'],[300,'5 min']];
+  box.innerHTML = `<svg width="${w}" height="${H}" role="img" aria-label="ETH-USD price around the trade, 1-minute candles. Price rose 12.6 bp in the 3 min before the order, filled at 1,824.1 at 07:09:14, exited at 1,822.5 at 07:10:28.">
+    <rect x="${x(orderM-3)}" y="${P.t}" width="${x(orderM)-x(orderM-3)}" height="${H-P.t-P.b}" fill="var(--warn-bg)"/>
+    <text x="${(x(orderM-3)+x(orderM))/2}" y="${P.t-7}" text-anchor="middle" font-size="11" font-weight="800" fill="var(--warn)">3 min before: +12.6 bp</text>
+    <rect x="${x(entryM)}" y="${P.t}" width="${x(exitM)-x(entryM)}" height="${H-P.t-P.b}" fill="var(--accent-tint)"/>
+    ${CANDLES.map(k=>`<line x1="${x(k[0]+.5)}" x2="${x(k[0]+.5)}" y1="${y(k[1])}" y2="${y(k[2])}" stroke="#c9d3f2" stroke-width="3"/>`).join('')}
+    <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="1.8"/>
+    <line x1="${P.l}" x2="${w-P.r}" y1="${y(1824.1)}" y2="${y(1824.1)}" stroke="var(--ink)" stroke-dasharray="5 4"/>
+    <text x="${P.l-6}" y="${y(1824.1)+4}" text-anchor="end" font-size="11" font-weight="700" fill="var(--ink)">1,824.1</text>
+    <line x1="${P.l}" x2="${w-P.r}" y1="${y(1822.5)}" y2="${y(1822.5)}" stroke="var(--neg)" stroke-dasharray="5 4"/>
+    <text x="${P.l-6}" y="${y(1822.5)+4}" text-anchor="end" font-size="11" font-weight="700" fill="var(--neg)">1,822.5</text>
+    ${[1821,1823,1825].map(v=>`<text x="${P.l-6}" y="${y(v)+4}" text-anchor="end" font-size="10.5" fill="var(--muted)">${v.toLocaleString('en-US')}</text>`).join('')}
+        ${[4,6,8,10,12,14].map(m=>`<text x="${x(m)}" y="${H-5}" text-anchor="middle" font-size="10.5" fill="var(--muted)">07:${String(m).padStart(2,'0')}</text>`).join('')}
+    <circle cx="${x(entryM)}" cy="${y(1824.1)}" r="5" fill="var(--ink)"/>
+    <circle cx="${x(exitM)}" cy="${y(1822.5)}" r="5" fill="var(--neg)"/>
+  </svg>`;
+}
+const tradeDialog = `
+<div class="scrim">
+<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dt" aria-describedby="dd">
+  <header><div class="t"><h2 id="dt">Long trade · 2026-11-18 07:09:14 UTC</h2><p class="desc" id="dd">Prices, orders and fills of one trade, from SoDEX fills and the bot’s decisions.</p></div><button class="xbtn" aria-label="Close">×</button></header>
+  <div class="body">
+    <div class="dgrid">
+      <div class="dcol">
+        <div style="order:1" class="stats">
+          <div class="stat"><span>Entry</span><strong>1,824.1</strong><em>07:09:14 UTC</em></div>
+          <div class="stat"><span>Exit</span><strong>1,822.5</strong><em>07:10:28 UTC</em></div>
+          <div class="stat"><span>Held</span><strong>1 min 14 s</strong><em>Hold time ended</em></div>
+          <div class="stat"><span>Net PnL</span><strong class="neg">−0.42 USDC</strong><em>On 300.07 USDC</em></div>
+        </div>
+        <div style="order:2"><h3 class="minih">Price around the trade <span class="note" style="font-weight:600">· ETH-USD · ETH vb 3</span></h3><div class="chartbox" id="tchart"></div>
+          <div class="legend" style="margin-top:6px"><span><i style="background:var(--warn-bg);border:1px solid var(--warn-border)"></i>3 min before the order</span><span><i style="background:var(--accent-tint);border:1px solid var(--mh-vol-1)"></i>Held</span><span><i class="line" style="background:var(--accent)"></i>1-minute close</span></div></div>
+        <div style="order:7" class="stats">
+          <div class="stat"><span>Price PnL</span><strong class="neg">−0.26 USDC</strong><em>−8.8 bp</em></div>
+          <div class="stat"><span>Fees</span><strong class="neg">−0.16 USDC</strong><em>−5.2 bp</em></div>
+          <div class="stat"><span>MFE</span><strong>0.066%</strong><em>Best move in its favour</em></div>
+          <div class="stat"><span>MAE</span><strong>0.197%</strong><em>Worst move against it</em></div>
+        </div>
+        <div style="order:8" class="panel"><h3>Order timeline</h3>
+          <ol class="timeline">
+            <li><span class="t">07:09:02.410</span><span class="x">Enter long: score 69 in an uptrend; candle momentum led.</span></li>
+            <li><span class="t">07:09:03.118</span><span class="x">Order e1: buy limit post-only at 1,824.1, sent</span></li>
+            <li><span class="t">07:09:14.552</span><span class="x fill">Filled buy 0.1645 at 1,824.1, fee 0.0786 (maker)</span></li>
+            <li><span class="t">07:10:16.004</span><span class="x">Exit: Hold time 62 s ended (PnL −0.20)</span></li>
+            <li><span class="t">07:10:16.611</span><span class="x">Order x1: sell limit post-only at 1,822.6, sent</span></li>
+            <li><span class="t">07:10:28.093</span><span class="x fill">Filled sell 0.1645 at 1,822.5, fee 0.0786 (maker)</span></li>
+          </ol></div>
+      </div>
+      <div class="dcol">
+        <div style="order:3" class="panel"><h3>Signal at entry <span class="pill sig">Signal</span></h3>
+          <div class="wi" style="margin-bottom:8px"><span>Score</span><span class="r">69 <span class="mut" style="font-weight:600">· 60–70</span></span><span>Regime (5-minute candles)</span><span class="r">Uptrend</span><span>Spread at entry</span><span class="r">0.5 bp</span></div>
+          ${[['Candle momentum','30%',84],['Wick rejection','25%',52],['Volume acceleration','20%',88],['Trade pressure','15% · no trade feed',50,true],['Order book','10%',61]].map(c=>`<div class="comp"><span class="n">${c[0]}<span>${c[1]}</span></span><span class="b" role="img" aria-label="${c[0]} ${c[2]} of 100${c[3]?', neutral':''}"><i class="${c[3]?'neu':''}" style="width:${c[2]}%"></i></span><span class="v">${c[3]?'—':c[2]}</span></div>`).join('')}
+          <p class="note" style="margin:6px 0 0;font-size:12px">Each part from 0 to 100; 50 = neutral. Trade pressure is always neutral.</p></div>
+        <div style="order:4" class="panel"><h3>Move before the order</h3>
+          <div class="mv3"><div><span>1 min</span><b>+1.8 bp</b><em>all: +1.5</em></div><div><span>3 min</span><b>▲ +12.6 bp</b><em>all: +3.4</em></div><div><span>5 min</span><b>▲ +17.5 bp</b><em>all: +4.3</em></div></div></div>
+        <div style="order:5" class="panel"><h3>Price after the fill</h3>
+          <div class="mk5">${[['10 s',-1.1,-0.4],['30 s',-2.7,-0.9],['1 min',-6.0,-1.3],['2 min',-13.2,-1.7],['5 min',-15.4,-2.0]].map(m=>`<div><span>${m[0]}</span><b class="${cls(m[1])}">${f1(m[1])}</b><em>all: ${f1(m[2])}</em></div>`).join('')}</div>
+          <p class="note" style="margin:6px 0 0;font-size:12px">bp in the entry’s favour, fill price to mid. Measured past the exit too.</p></div>
+        <div style="order:6" class="panel"><h3>Opposite side <span class="pill what">What-if</span></h3>
+          <div class="wi"><span class="h">&nbsp;</span><span class="h r">USDC</span>
+            <span>Short at 1,824.2, closed at 1,822.6</span><span class="r pos">+0.26</span>
+            <span>Fees</span><span class="r neg">−0.16</span>
+            <span><b>Net</b></span><span class="r pos">+0.10 <span class="mut" style="font-weight:600">· +3.4 bp</span></span></div>
+          <p class="note" style="margin:6px 0 0;font-size:12px">Same entry time and hold, post-only at the best ask. Assumes it filled; it might not have.</p></div>
+        <details style="order:9" class="vers"><summary>Settings version 4</summary><pre class="mono" style="margin:8px 0 0;font-size:12px;color:var(--ink-2);white-space:pre-wrap">{ "reverseSignal": false, "orderSizeMinUsd": 200,
+  "orderSizeMaxUsd": 500, "minHoldSecs": 45, "maxHoldSecs": 180 }</pre></details>
+      </div>
+    </div>
+  </div>
+</div></div>`;
+
+// ---------------------------------------------------------------- states
+const statesHTML = `
+<section class="states" aria-label="Page states">
+  <div class="card"><p class="stlabel">Loading</p>
+    <div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">${[1,2,3].map(()=>`<div class="kpi"><div class="skel" style="width:60%"></div><div class="skel" style="height:22px;width:80%;margin-top:6px"></div></div>`).join('')}</div>
+    <div class="skel" style="height:160px;margin-top:14px;border-radius:12px"></div>
+    <p class="note" style="margin:10px 0 0" role="status">Loading VB entries…</p></div>
+  <div class="card"><p class="stlabel">Empty</p>
+    <div class="empty"><h3>No VB entries in this range</h3><p>No live Volume Builder bot filled an entry with these filters. Try a longer time range or clear the filters.</p><button class="btn">Clear filters</button></div></div>
+  <div class="card"><p class="stlabel">Error</p>
+    <div class="empty"><h3>Couldn’t load the analysis</h3><p>The request failed. Nothing on your bots changed.</p><button class="btn primary">${ico(I.refresh,16,2.2)}Try again</button></div></div>
+  <div class="card"><p class="stlabel">Thin sample</p>
+    <div class="thinbanner">${ico(I.warn,18,2)}<div><b>Thin sample: 22 entries.</b> Averages over fewer than 30 entries move a lot from one trade to the next. Widen the time range or clear filters before reading much into them.</div></div>
+    <p class="note" style="margin:10px 0 0">Suggestions are hidden until a group has 30 entries or more. In tables, groups under 30 are greyed and marked <span class="pill thin">Thin sample</span>.</p>
+    <p class="stlabel" style="margin-top:14px">Stale</p>
+    <div class="thinbanner" style="background:var(--surface-2);color:var(--ink-2)">${ico(I.info,18,2)}<div>Showing data from 06:10 UTC. Entries since then are still being measured; 5-minute markouts need 5 minutes after each fill.</div></div></div>
+</section>`;
+
+
+  return {
+    body: () => VIEW==='states' ? filters + statesHTML : filters + summary + suggestions + chartsShell + breakdown() + tradesHTML,
+    dialog: () => VIEW==='trade' ? tradeDialog : '',
+    lede: 'Where Volume Builder entries lose money: entry timing against fees, where the price goes after the fill, and what the opposite side would have made.',
+    past: '<b>Analysis of past trades, not a forecast.</b> It shows what happened on these entries. This page never changes a bot; any change to VB logic is made and approved separately.',
+    draw: () => { drawMarkout(); drawMove(); drawTradeChart(); },
+    bind: (rerender, nav) => {
+      document.querySelectorAll('#winseg button').forEach(b=>b.addEventListener('click',()=>{WIN=b.dataset.w;document.querySelectorAll('#winseg button').forEach(x=>x.setAttribute('aria-checked',x===b));drawMove();}));
+      document.querySelectorAll('#breakdown .btabs button').forEach(b=>b.addEventListener('click',()=>{BY=b.dataset.by;rerender();document.getElementById('breakdown').scrollIntoView();}));
+      document.querySelectorAll('.openbtn,.mcard').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();nav('vb',{view:'trade'});}));
+      document.querySelectorAll('tr.row').forEach(r=>r.addEventListener('click',()=>nav('vb',{view:'trade'})));
+      const x=document.querySelector('.xbtn'); if(x) x.addEventListener('click',()=>nav('vb'));
+    },
+  };
+})();
+
+/* ------------------------------------------------ shared ------------------------------------------------ */
+const Q = new URLSearchParams(location.search);
+const TAB = ['all','vb','mm'].includes(Q.get('tab')) ? Q.get('tab') : 'all';
+const VQ = Q.get('view') || '';
+function nav(tab, extra={}){ location.search = '?' + new URLSearchParams({tab, ...extra}).toString(); }
+const svgI = (d,s=16,w=2)=>`<svg width="${s}" height="${s}" style="flex:0 0 ${s}px" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const IC = {
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  lock:'<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  refresh:'<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
+  warn:'<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
+  filter:'<path d="M4 6h16M7 12h10M10 18h4"/>',
+  menu:'<path d="M4 7h16M4 12h16M4 17h16"/>',
+  chart:'<path d="M4 19h16M7 16V9M12 16V5M17 16v-4"/>',
+  globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+};
+const THINN = 30;
+const M = v => (v<0?'−':'') + '$' + Math.round(Math.abs(v)).toLocaleString('en-US');           // $ per 1M volume; negative = earned
+const USDC = v => (v<0?'−':'') + Math.round(Math.abs(v)).toLocaleString('en-US') + ' USDC';
+const b1 = v => (v>0?'+':v<0?'−':'') + Math.abs(v).toFixed(1);
+const ccls = v => v>0?'neg':v<0?'pos':'';      // for costs: positive cost = red, negative (earned) = green
+const pcls = v => v<0?'neg':v>0?'pos':'';      // for markouts (in the fill's favour)
+const N = n => n.toLocaleString('en-US');
+const pctS = (a,b) => Math.round(a/b*100)+'%';
+
+const NAV_MAIN = ['Overview','Portfolio','Trading Agent','AI Desk','Strategy Lab','Execution & Orders','Risk Center'];
+const NAV_TEAM = ['Builder Revenue','Users','Platform Stats','Bot Monitor','Market hours','System Architecture Diagram','SoDEX Debugger','Signal Analysis'];
+const sidebar = `
+<nav class="side" aria-label="Main">
+  <a class="brand" href="#"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5.6" fill="#2E62E8"></rect><path d="M6.5 5h5.2a7 7 0 0 1 0 14H6.5z" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linejoin="round"></path><rect x="9.6" y="9" width="4.6" height="2" rx="1" fill="#FFFFFF"></rect><rect x="9.6" y="13" width="3.2" height="2" rx="1" fill="#FFFFFF" opacity="0.7"></rect></svg>DeskLabs</a>
+  ${NAV_MAIN.map(n=>`<a class="nav" href="#">${n}</a>`).join('')}
+  <span class="sec">Team</span>
+  ${NAV_TEAM.map(n=>`<a class="nav" href="#" ${n==='Signal Analysis'?'aria-current="page"':''}>${n==='Signal Analysis'?svgI(IC.chart,18,1.9):''}${n}</a>`).join('')}
+  <span class="sec"></span>
+  <a class="nav" href="#">Settings</a>
+</nav>`;
+
+const LEDE = {
+  all: 'What every $1M of volume cost on live bots, split into fees, the price moving against fills, and holding positions. By strategy, market, hour and user.',
+  vb: VB.lede,
+  mm: 'Where Market Making quotes lose money: the spread earned at the fill, the price moving against the fill afterwards, holding the position, and position cuts.',
+};
+const PAST = {
+  all: '<b>Analysis of past trades, not a forecast.</b> It shows what fills on live bots cost. This page never changes a bot or a setting.',
+  vb: VB.past,
+  mm: '<b>Analysis of past trades, not a forecast.</b> It shows what happened after these fills. This page never changes a bot; any change to Market Making defaults or logic is made and approved separately.',
+};
+const TABS = [['all','All','23 bots'],['vb','Volume Builder','9 bots'],['mm','Market Making','7 bots']];
+function header(){
+  return `
+<div class="topbar"><button class="btn icon" aria-label="Open menu">${svgI(IC.menu,20,2)}</button><span class="sample">SAMPLE DATA</span></div>
+<header class="head">
+  <div style="display:flex;flex-direction:column;gap:6px">
+    <h1>Signal Analysis</h1>
+    <p class="lede">${LEDE[TAB]}</p>
+  </div>
+  <div class="right">
+    <span class="ro">${svgI(IC.lock,15,2)}Read only</span>
+    <span class="note upd">Updated 14:42</span>
+    <button class="btn">${svgI(IC.refresh,16,2.2)}Refresh</button>
+  </div>
+</header>
+<span class="sample desk-sample">SAMPLE DATA · every value on this page is made up</span>
+<div class="tabrow">
+  <div class="ptabs" role="tablist" aria-label="Strategy">${TABS.map(([k,l,c])=>`<button role="tab" id="tab-${k}" aria-controls="panel" aria-selected="${k===TAB}" tabindex="${k===TAB?0:-1}" data-tab="${k}">${l}<span class="cnt">${c}</span></button>`).join('')}</div>
+  ${TAB==='vb'?'':`<span class="tzline">${svgI(IC.globe,15,2)}Times in your time zone (UTC+7) · <button class="linkbtn" style="padding:0">Show in UTC</button></span>`}
+</div>
+<div class="past" role="note">${svgI(IC.info,18,2)}<div>${PAST[TAB]}</div></div>`;
+}
+
+/* generic stacked-columns chart: cats[], rows[{fee,mk,inv,vol,n}], net dot per column; one $/1M axis */
+function stackCols(box, cats, rows, o={}){
+  if(!box) return;
+  const w = box.clientWidth, H = o.h || (w<440?210:240);
+  const P = {l:44,r:10,t:o.marks?42:16,b:o.lb||28};
+  const pos = r => Math.max(0,r.fee)+Math.max(0,r.mk)+Math.max(0,r.inv);
+  const neg = r => Math.min(0,r.fee)+Math.min(0,r.mk)+Math.min(0,r.inv);
+  const hi = o.hi ?? Math.ceil(Math.max(...rows.map(pos))/100)*100, lo = o.lo ?? Math.min(0, Math.floor(Math.min(...rows.map(neg))/50)*50);
+  const y = v => P.t + (hi-v)/(hi-lo)*(H-P.t-P.b);
+  const cw = (w-P.l-P.r)/cats.length, bw = Math.max(4, Math.min(30, cw*0.62));
+  const ticks=[]; const step = o.step || 100; for(let t=Math.ceil(lo/step)*step;t<=hi;t+=step) ticks.push(t);
+  const avg = o.avg;
+  let s = `<svg width="${w}" height="${H}" role="img" aria-label="${o.label}">
+    <rect x="${P.l}" y="${P.t}" width="${w-P.l-P.r}" height="${H-P.t-P.b}" fill="var(--chart-bg)" rx="8"/>
+    ${ticks.map(t=>`<line x1="${P.l}" x2="${w-P.r}" y1="${y(t)}" y2="${y(t)}" stroke="${t===0?'var(--muted)':'var(--border)'}" stroke-width="${t===0?1.2:1}"/><text x="${P.l-6}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)">${t<0?'−':''}$${Math.abs(t)}</text>`).join('')}`;
+  rows.forEach((r,i)=>{
+    const cx = P.l + cw*i + cw/2; const thin = r.n!==undefined && r.n<THINN; let up=0, dn=0;
+    [['fee','var(--accent)'],['mk','var(--warn-bar)'],['inv','var(--mh-shock-3)']].forEach(([k,c])=>{
+      const v=r[k]; if(!v) return;
+      if(v>0){ const y1=y(up+v), y0=y(up); s+=`<rect x="${cx-bw/2}" y="${y1+1}" width="${bw}" height="${Math.max(1,y0-y1-2)}" fill="${c}" ${thin?'opacity=".4"':''} rx="${up+v===pos(r)?2:0}"/>`; up+=v; }
+      else { const y0=y(dn), y1=y(dn+v); s+=`<rect x="${cx-bw/2}" y="${y0+1}" width="${bw}" height="${Math.max(1,y1-y0-2)}" fill="${c}" ${thin?'opacity=".4"':''}/>`; dn+=v; }
+    });
+    const net = r.fee+r.mk+r.inv;
+    s+=`<circle cx="${cx}" cy="${y(net)}" r="4" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>`;
+    const lab = o.xlab ? o.xlab(cats[i],i) : cats[i];
+    if(lab) s+=`<text x="${cx}" y="${H-P.b+16}" text-anchor="middle" font-size="11" fill="var(--ink-2)" font-weight="600">${lab}</text>`;
+    if(o.sub && o.sub(i)) s+=`<text x="${cx}" y="${H-P.b+29}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${o.sub(i)}</text>`;
+    s+=`<rect class="hit" data-i="${i}" x="${P.l+cw*i}" y="${P.t}" width="${cw}" height="${H-P.t-P.b}" fill="transparent"/>`;
+  });
+  if(avg!==undefined) s+=`<line x1="${P.l}" x2="${w-P.r}" y1="${y(avg)}" y2="${y(avg)}" stroke="var(--ink-2)" stroke-dasharray="4 4"/>`;
+  (o.marks||[]).forEach(m=>{ const cx=P.l+cw*m.i+cw/2; s+=`<line x1="${cx}" x2="${cx}" y1="${P.t-4-(m.row||0)*14}" y2="${H-P.b}" stroke="var(--ink-2)" stroke-width="1" stroke-dasharray="2 3"/><text x="${cx+(m.anchor==='end'?-4:4)}" y="${P.t-8-(m.row||0)*14}" text-anchor="${m.anchor||'start'}" font-size="11" font-weight="800" fill="var(--ink-2)">${m.t}</text>`; });
+  s+=`</svg><div class="tip" hidden></div>`;
+  box.innerHTML = s;
+  const tip = box.querySelector('.tip');
+  box.querySelectorAll('.hit').forEach(h=>{
+    h.addEventListener('mouseenter',()=>{ const i=+h.dataset.i, r=rows[i]; tip.hidden=false;
+      tip.innerHTML = `<b>${o.tipTitle?o.tipTitle(i):cats[i]}</b><br>Net cost ${M(r.fee+r.mk+r.inv)} / 1M<br>Fees ${M(r.fee)} · Markout ${M(r.mk)} · Inventory & cuts ${M(r.inv)}${r.vol!==undefined?`<br>Volume ${r.vol.toFixed(2)}M USDC${r.n!==undefined?` · ${N(r.n)} fills`:''}`:''}${r.n!==undefined&&r.n<THINN?'<br>Thin sample':''}`;
+      const cx = P.l + cw*i + cw/2; tip.style.left = Math.max(0,Math.min(cx+12, w-250))+'px'; tip.style.top='8px'; });
+    h.addEventListener('mouseleave',()=>{tip.hidden=true;});
+  });
+}
+
+/* ============================================================== ALL TAB ============================================================== */
+// SAMPLE DATA. Cost per $1M volume (volume = notional of every fill). Split per fill:
+//   Fees = SoDEX fee + builder fee. Markout = price loss from the fill price to the mid 1 min later (includes any spread earned).
+//   Inventory & cuts = the rest of the price result (holding past 1 min, position cuts, stop losses). Fees + markout + inventory = net cost.
+//   Negative = earned. Grids and Copy Trade can earn on price.
+const ST = [ // g, sub, volume (M USDC), fills, fees, markout, inventory & cuts, previous period net
+  {g:'Market Making', sub:'7 bots · 5 accounts', vol:5.10, n:18420, fee:118, mk:60, inv:32, prev:228},
+  {g:'Volume Builder', sub:'9 bots · 4 accounts', vol:2.21, n:15200, fee:265, mk:65, inv:35, prev:402},
+  {g:'Copy Trade', sub:'4 bots · 3 accounts', vol:0.74, n:5110, fee:92, mk:41, inv:-88, prev:61},
+  {g:'Futures Grid', sub:'3 bots · 2 accounts', vol:0.37, n:2480, fee:70, mk:-15, inv:-160, prev:-72},
+];
+function agg(rows){ const v=rows.reduce((a,r)=>a+r.vol,0); const w=k=>rows.reduce((a,r)=>a+r[k]*r.vol,0)/v;
+  return {vol:v, n:rows.reduce((a,r)=>a+r.n,0), fee:w('fee'), mk:w('mk'), inv:w('inv'), prev:w('prev')}; }
+const TOT = agg(ST);
+const TOTNET = TOT.fee+TOT.mk+TOT.inv;
+const MK = [
+  {g:'BTC-USD', sub:'14 bots', vol:4.02, n:17240, fee:141, mk:38, inv:18, prev:221},
+  {g:'ETH-USD', sub:'12 bots', vol:3.21, n:16080, fee:158, mk:61, inv:30, prev:240},
+  {g:'SOL-USD', sub:'5 bots', vol:0.86, n:6870, fee:176, mk:70, inv:41, prev:262},
+  {g:'5 other markets', sub:'4 bots', vol:0.33, n:1020, fee:160, mk:55, inv:-12, prev:null},
+];
+const US = [
+  {g:'gi•••@gmail.com', id:'··a3f9c21e', vol:2.84, n:11920, fee:126, mk:31, inv:24, prev:205, sub:'MM, VB · 5 bots'},
+  {g:'tr•••@proton.me', id:'··7c21e0b4', vol:1.96, n:10410, fee:221, mk:58, inv:29, prev:338, sub:'VB · 4 bots'},
+  {g:'ha•••@desklabs.xyz', id:'··0b8e4d17', vol:1.41, n:6620, fee:117, mk:24, inv:30, prev:180, sub:'MM · 3 bots · builder account'},
+  {g:'ki•••@yahoo.com', id:'··5d02aa93', vol:0.88, n:4310, fee:180, mk:66, inv:55, prev:254, sub:'MM, Copy Trade · 3 bots'},
+  {g:'mi•••@gmail.com', id:'··e61f3b08', vol:0.62, n:3200, fee:84, mk:9, inv:-131, prev:-40, sub:'Grid, Copy Trade · 4 bots'},
+  {g:'6 more users', id:'', vol:0.71, n:4750, fee:130, mk:35, inv:-6, prev:171, sub:'4 bots'},
+];
+const BOTS = [
+  {g:'ETH vb 3', sub:'Volume Builder · ETH-USD · ··7c21e0b4', vol:0.81, n:5860, fee:268, mk:88, inv:46, prev:455},
+  {g:'BTC maker 01', sub:'Market Making · BTC-USD · ··a3f9c21e', vol:1.62, n:5480, fee:117, mk:22, inv:41, prev:204},
+  {g:'SOL vb', sub:'Volume Builder · SOL-USD · ··7c21e0b4', vol:0.18, n:1290, fee:342, mk:118, inv:138, prev:520},
+  {g:'ETH mm night', sub:'Market Making · ETH-USD · ··5d02aa93', vol:0.66, n:2510, fee:121, mk:61, inv:72, prev:240},
+  {g:'BTC vb', sub:'Volume Builder · BTC-USD · ··a3f9c21e', vol:0.74, n:5100, fee:259, mk:41, inv:18, prev:351},
+  {g:'BTC copy hl', sub:'Copy Trade · 4 markets · ··5d02aa93', vol:0.22, n:1210, fee:94, mk:49, inv:-61, prev:null},
+  {g:'ETH grid wide', sub:'Futures Grid · ETH-USD · ··e61f3b08', vol:0.21, n:24, fee:72, mk:-18, inv:-171, prev:-80},
+];
+const DAYS = ['Nov 5','Nov 6','Nov 7','Nov 8','Nov 9','Nov 10','Nov 11','Nov 12','Nov 13','Nov 14','Nov 15','Nov 16','Nov 17','Nov 18'];
+const TREND = [[152,72,58,0.42],[149,70,61,0.51],[154,68,55,0.55],[150,74,49,0.38],[148,66,52,0.47],[151,63,47,0.62],[153,61,44,0.71],[149,58,48,0.69],[150,57,43,0.74],[152,55,51,0.82],[156,59,96,1.18],[151,49,27,1.21],[148,44,24,1.34],[150,42,21,0.88]]
+  .map(([fee,mk,inv,vol])=>({fee,mk,inv,vol}));
+const HOURS = Array.from({length:24},(_,h)=>{ // local hour, UTC+7
+  const fee=[146,147,145,149,150,152,151,150,149,151,153,152,154,157,158,156,153,151,150,152,155,157,154,149][h];
+  const mk=[33,30,28,31,38,44,47,46,43,45,49,55,62,71,74,68,57,51,48,52,58,63,51,40][h];
+  const inv=[12,10,9,14,18,21,22,19,18,20,24,28,33,41,46,39,30,26,24,31,49,55,38,20][h];
+  const vol=[0.24,0.21,0.19,0.22,0.27,0.31,0.33,0.34,0.35,0.37,0.38,0.40,0.42,0.44,0.45,0.43,0.41,0.39,0.38,0.40,0.42,0.43,0.36,0.29][h];
+  return {fee,mk,inv,vol,n:Math.round(vol*4900)};
+});
+const DRIVERS = [
+  {t:'Volume Builder · ETH-USD · 12:00–16:00', why:'Markout was <b>$148 / 1M</b> here vs <b>$65</b> for Volume Builder overall: entries filled just as short moves turned.', cpm:512, vol:0.41, n:2940, part:'mk', see:'Strategy'},
+  {t:'tr•••@proton.me (··7c21e0b4)', why:'4 Volume Builder bots with <b>random hold up to 600 s</b> and <b>Use taker orders</b> on: fees <b>$221 / 1M</b>, a third of them taker.', cpm:308, vol:1.96, n:10410, part:'fee', see:'User'},
+  {t:'SOL vb · Volume Builder · SOL-USD', why:'<b>31% of exits</b> were stop losses closed with a market order; inventory & cuts <b>$138 / 1M</b>.', cpm:598, vol:0.18, n:1290, part:'inv', see:'Bot'},
+  {t:'Market Making · BTC-USD · 20:00–24:00', why:'<b>9 of 14</b> position cuts happened here (15 bp rule, DEC-249); inventory & cuts <b>$104 / 1M</b> vs $32 overall.', cpm:286, vol:0.62, n:2210, part:'inv', see:'Market'},
+];
+DRIVERS.forEach(d=>d.extra=(d.cpm-TOTNET)*d.vol);
+DRIVERS.sort((a,b)=>b.extra-a.extra);
+const PARTN = {fee:['Fees','c-fee'],mk:['Markout','c-mk'],inv:['Inventory & cuts','c-inv']};
+let ABY = Q.get('by') || 'strategy';
+const ABYS = {strategy:['Strategy',ST], market:['Market',MK], bot:['Bot',BOTS], user:['User',US]};
+
+function allFilters(){ return `
+<section class="card" aria-labelledby="a-f"><h2 id="a-f" class="sr">Filters</h2>
+  <div class="filters">
+    <div class="fld time"><span class="lbl" id="al-time">Time</span><span class="select" role="button" tabindex="0" aria-labelledby="al-time" aria-haspopup="listbox">Last 7 days</span></div>
+    <div class="fld desk-only"><span class="lbl" id="al-st">Strategy</span><span class="select" role="button" tabindex="0" aria-labelledby="al-st" aria-haspopup="listbox">All strategies</span></div>
+    <div class="fld desk-only"><span class="lbl" id="al-mk">Market</span><span class="select" role="button" tabindex="0" aria-labelledby="al-mk" aria-haspopup="listbox">All markets</span></div>
+    <div class="fld desk-only"><span class="lbl" id="al-us">User</span><span class="select" role="button" tabindex="0" aria-labelledby="al-us" aria-haspopup="listbox">All users</span></div>
+    <div class="fld desk-only"><span class="lbl" id="al-cmp">Compare with</span><span class="select" role="button" tabindex="0" aria-labelledby="al-cmp" aria-haspopup="listbox">Previous 7 days</span></div>
+    <div class="fld mfilters"><span class="lbl">&nbsp;</span><button class="btn">${svgI(IC.filter,16,2.2)}Filters</button></div>
+  </div>
+  <div class="chips"><span>Live bots only, paper excluded · 23 bots · 11 accounts · users shown by masked email and account id</span></div>
+</section>`; }
+
+function dRow(r, scale, total){
+  const W = scale[1]-scale[0], z = (0-scale[0])/W*100; let up=0, dn=0; let segs='';
+  [['fee','c-fee','Fees'],['mk','c-mk','Markout'],['inv','c-inv','Inventory & cuts']].forEach(([k,c,l])=>{
+    const v=r[k]; if(!v) return; const wd=Math.abs(v)/W*100;
+    const left = v>0 ? z+up/W*100 : z-(Math.abs(dn)+Math.abs(v))/W*100;
+    segs += `<i class="${c}" style="left:calc(${left.toFixed(2)}% + 1px);width:calc(${wd.toFixed(2)}% - 2px)" title="${l}: ${M(v)} / 1M">${wd>9?M(v):''}</i>`;
+    if(v>0) up+=v; else dn+=v; });
+  const net=r.fee+r.mk+r.inv; const d = r.prev==null?null:net-r.prev;
+  return `<div class="drow ${total?'total':''}"><div class="lab">${r.g}<span>${r.sub||''}</span></div>
+    <div class="trk" role="img" aria-label="${r.g}: fees ${M(r.fee)}, markout ${M(r.mk)}, inventory and cuts ${M(r.inv)}, net ${M(net)} per 1M"><span class="zero" style="left:${z}%"></span>${segs}</div>
+    <div class="tot ${ccls(net)}">${M(net)}<span>${d==null?'vs before: Not available':(d<0?'▼ ':'▲ ')+M(Math.abs(d))+' vs before'}</span></div></div>`;
+}
+function allSummary(){
+  const d = TOTNET-TOT.prev;
+  const sx = TOT.fee*0.69, bf = TOT.fee-sx;
+  return `
+<section class="card" aria-labelledby="a-sum">
+  <div class="hrow"><div><h2 id="a-sum">Last 7 days · ${TOT.vol.toFixed(2)}M USDC volume</h2><p class="sub">Cost per $1M of volume (every fill’s notional). Fees + markout + inventory & cuts = net cost. Negative = earned.</p></div></div>
+  <div class="kpis">
+    <div class="kpi"><span class="k">Volume</span><span class="v">${TOT.vol.toFixed(2)}M</span><span class="s">USDC · ${N(TOT.n)} fills · 23 bots</span></div>
+    <div class="kpi net"><span class="k">Net cost / $1M</span><span class="v neg">${M(TOTNET)}</span><span class="s">${USDC(TOTNET*TOT.vol)} in total · <span class="delta down">▼ ${M(-d)} vs previous 7 days</span></span></div>
+    <div class="kpi"><span class="k">Fees / $1M</span><span class="v cost">${M(TOT.fee)}</span><span class="s">SoDEX ${M(sx)} · builder ${M(bf)} · ${pctS(TOT.fee,TOTNET)} of net cost</span></div>
+    <div class="kpi"><span class="k">Markout / $1M</span><span class="v cost">${M(TOT.mk)}</span><span class="s">Price against the fill after 1 min, spread earned included</span></div>
+    <div class="kpi"><span class="k">Inventory & cuts / $1M</span><span class="v cost">${M(TOT.inv)}</span><span class="s">Holding past 1 min, position cuts, stop losses</span></div>
+  </div>
+  <div class="costs">
+    <div>
+      <h3 class="minih">By strategy</h3>
+      <div class="axisnote"><span>← earned</span><span>cost →</span></div>
+      ${ST.map(r=>dRow(r,[-200,520])).join('')}
+      ${dRow({g:'All live bots',sub:'volume-weighted',...TOT},[-200,520],true)}
+      <div class="legend" style="margin-top:8px"><span><i class="c-fee"></i>Fees (SoDEX + builder)</span><span><i class="c-mk"></i>Markout, 1 min</span><span><i class="c-inv"></i>Inventory & cuts</span><span><i style="background:var(--muted);width:2px;border-radius:0"></i>$0</span></div>
+    </div>
+    <div class="takeaway"><b>Fees are ${pctS(TOT.fee,TOTNET)} of the net cost.</b> Volume Builder costs the most per $1M (${M(365)}), and ${pctS(2.21*365,TOTNET*TOT.vol)} of all cost, on a quarter of the volume. Market Making is ${M(210)}, down ${M(18)}; position cuts started on Nov 15.<br><span class="mut" style="font-size:12px">Grids and Copy Trade earn on price, so they can cost less than their fees or show a gain.</span></div>
+  </div>
+</section>`; }
+
+function allTrend(){ return `
+<section class="two">
+  <div class="card" aria-labelledby="a-tr">
+    <div class="hrow"><div><h2 id="a-tr">Cost per $1M over time</h2><p class="sub">Daily, all live bots. Bars are the split, the dot is the net cost.</p></div>
+      <div class="seg" role="radiogroup" aria-label="Interval"><button role="radio" aria-checked="true">Daily</button><button role="radio" aria-checked="false">Hourly</button></div></div>
+    <div class="legend" style="margin-bottom:6px"><span><i class="c-fee"></i>Fees</span><span><i class="c-mk"></i>Markout</span><span><i class="c-inv"></i>Inventory & cuts</span><span><i style="background:var(--ink);border-radius:50%"></i>Net cost</span><span><i class="dash" style="border-top-color:var(--ink-2)"></i>Period average ${M(TOTNET)}</span></div>
+    <div class="chartbox" id="a-trend"></div>
+    <p class="cfoot">Marked: Nov 15, position cuts start (DEC-249); Nov 17, Volume Builder waits for a fresh SoDEX price (DEC-298). Markers show when a change shipped, not that it caused the change.</p>
+  </div>
+  <div class="card" aria-labelledby="a-hr">
+    <div class="hrow"><div><h2 id="a-hr">By hour of day</h2><p class="sub">Your time zone (UTC+7), by fill time, all 7 days together.</p></div></div>
+    <div class="chartbox" id="a-hours"></div>
+    <table class="mtable"><caption class="sr">Cheapest and most expensive hours</caption>
+      <thead><tr><th scope="col"></th><th scope="col">Hours</th><th scope="col">Net / $1M</th><th scope="col">Volume</th></tr></thead>
+      <tbody><tr><td>Cheapest</td><td>00:00–03:00</td><td class="neg">${M(187)}</td><td>0.64M</td></tr>
+      <tr><td>Most expensive</td><td>12:00–15:00</td><td class="neg">${M(277)}</td><td>1.31M</td></tr></tbody></table>
+    <p class="cfoot">Most of the gap is markout and inventory; fees per $1M barely move by hour.</p>
+  </div>
+</section>`; }
+
+function allDrivers(){ return `
+<section class="card" aria-labelledby="a-dr">
+  <div class="hrow"><div><h2 id="a-dr">Top cost drivers</h2><p class="sub">Groups that cost the most above the period average (${M(TOTNET)} / 1M). Extra cost = (group cost per $1M − average) × group volume.</p></div></div>
+  <ol class="drivers">${DRIVERS.map((d,i)=>`<li class="drv"><span class="rk" aria-hidden="true">${i+1}</span>
+    <div><h3>${d.t}</h3><p>${d.why}</p></div>
+    <div class="x">+${USDC(d.extra)}<span>${M(d.cpm)} / 1M · ${pctS(d.extra,TOTNET*TOT.vol)} of all cost</span></div>
+    <div class="meta"><span class="partpill"><i class="${PARTN[d.part][1]}"></i>Biggest part: ${PARTN[d.part][0]}</span><span>${d.vol.toFixed(2)}M volume · ${N(d.n)} fills</span><a href="#a-bd">See: ${d.see}</a></div></li>`).join('')}</ol>
+  <p class="sugfoot">${svgI(IC.info,14,2.2)}Groups under ${THINN} fills are never listed here. Past cost, not a forecast; this page never changes a bot.</p>
+</section>`; }
+
+function aRow(r, all, tot){
+  const net=r.fee+r.mk+r.inv; const thin=!all && r.n<THINN; const d = r.prev==null?null:net-r.prev;
+  const max=600; const wv=Math.min(50,Math.abs(net)/max*50);
+  return `<tr class="${all?'all':''} ${thin?'thinrow':''}"><td><span class="grp">${r.id!==undefined&&r.id?`<span class="user"><span>${r.g}</span><span class="id">${r.id} · ${r.sub}</span></span>`:`<span class="user"><span>${r.g}</span>${r.sub&&!all?`<span class="id">${r.sub}</span>`:''}</span>`}${thin?'<span class="pill thin">Thin sample</span>':''}</span></td>
+    <td>${r.vol.toFixed(2)}M</td><td class="hide-m">${all?'100%':pctS(r.vol,tot)}</td><td class="hide-m">${N(r.n)}</td>
+    <td class="hide-m ${ccls(r.fee)}">${M(r.fee)}</td><td class="hide-m ${ccls(r.mk)}">${M(r.mk)}</td><td class="hide-m ${ccls(r.inv)}">${M(r.inv)}</td>
+    <td><span class="div"><span class="m" aria-hidden="true"><i class="${net>0?'n':'p'}" style="width:${wv}%;${net>0?'left:50%;right:auto':'right:50%;left:auto'}"></i></span><b class="${ccls(net)}">${M(net)}</b></span></td>
+    <td class="hide-m ${ccls(net)}">${USDC(net*r.vol)}</td>
+    <td class="hide-m">${d==null?'<span class="mut">Not available</span>':`<span class="${d<0?'pos':'neg'}">${d<0?'▼':'▲'} ${M(Math.abs(d))}</span>`}</td></tr>`;
+}
+function allBreakdown(){ const [lab,rows]=ABYS[ABY]; const tot=rows.reduce((a,r)=>a+r.vol,0); return `
+<section class="card flush" aria-labelledby="a-bdh" id="a-bd">
+  <div class="hrow"><div><h2 id="a-bdh">Breakdown</h2><p class="sub">${ABY==='user'?'Team only. Users by masked email and the last 8 characters of the account id; open one in Users.':ABY==='bot'?'Top 7 bots by total cost.':'Cost per $1M of volume. Negative = earned.'}</p></div><span class="note">groups under ${THINN} fills are marked Thin sample</span></div>
+  <div class="btabs" role="tablist" aria-label="Group by">${Object.keys(ABYS).map(k=>`<button role="tab" data-aby="${k}" aria-selected="${k===ABY}">${ABYS[k][0]}</button>`).join('')}</div>
+  <div class="tblwrap" role="tabpanel">
+  <table class="bt"><caption class="sr">Cost by ${lab}</caption>
+    <thead><tr><th scope="col">${lab}</th><th scope="col">Volume<span>USDC</span></th><th scope="col" class="hide-m">Share</th><th scope="col" class="hide-m">Fills</th><th scope="col" class="hide-m">Fees<span>$ / 1M</span></th><th scope="col" class="hide-m">Markout<span>1 min, $ / 1M</span></th><th scope="col" class="hide-m">Inventory & cuts<span>$ / 1M</span></th><th scope="col">Net cost<span>$ / 1M</span></th><th scope="col" class="hide-m">Net cost<span>total</span></th><th scope="col" class="hide-m">vs previous<span>7 days</span></th></tr></thead>
+    <tbody>${rows.map(r=>aRow(r,false,tot)).join('')}${aRow({g:'All live bots',...TOT},true,tot)}</tbody>
+  </table></div>
+  <div class="tfoot"><span>“Not available” = no fills in the previous 7 days to compare with.</span><button class="btn sm">Export CSV</button></div>
+</section>`; }
+
+function drawAll(){
+  stackCols(document.getElementById('a-trend'), DAYS, TREND, {label:'Daily cost per $1M, split into fees, markout and inventory and cuts', hi:350, lo:0, step:100, avg:TOTNET,
+    xlab:(c,i)=>{ const narrow = document.getElementById('a-trend').clientWidth<520; return narrow ? (i%3===0||i===13?c.replace('Nov ',''):'') : c.replace('Nov ',''); },
+    tipTitle:i=>DAYS[i], marks:[{i:10,t:'Position cuts on',anchor:'end'},{i:12,t:'VB fresh price',anchor:'end',row:1}]});
+  stackCols(document.getElementById('a-hours'), HOURS.map((_,h)=>h), HOURS, {label:'Cost per $1M by hour of day', hi:300, lo:0, step:100,
+    xlab:(h)=>h%3===0?String(h).padStart(2,'0'):'', tipTitle:i=>`${String(i).padStart(2,'0')}:00–${String(i+1).padStart(2,'0')}:00`});
+}
+
+const statesAll = (what) => `
+<section class="states" aria-label="Page states">
+  <div class="card"><p class="stlabel">Loading</p>
+    <div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">${[1,2,3].map(()=>`<div class="kpi"><div class="skel" style="width:60%"></div><div class="skel" style="height:22px;width:80%;margin-top:6px"></div></div>`).join('')}</div>
+    <div class="skel" style="height:160px;margin-top:14px;border-radius:12px"></div>
+    <p class="note" style="margin:10px 0 0" role="status">Loading ${what}…</p></div>
+  <div class="card"><p class="stlabel">Empty</p>
+    <div class="empty"><h3>No fills on live ${what==='fills'?'bots':'Market Making bots'} in this range</h3><p>Paper bots are never counted. Try a longer time range or clear the filters.</p><button class="btn">Clear filters</button></div></div>
+  <div class="card"><p class="stlabel">Error</p>
+    <div class="empty"><h3>Couldn’t load the analysis</h3><p>The request failed. Nothing on any bot changed.</p><button class="btn primary">${svgI(IC.refresh,16,2.2)}Try again</button></div></div>
+  <div class="card"><p class="stlabel">Thin sample</p>
+    <div class="thinbanner">${svgI(IC.warn,18,2)}<div><b>Thin sample: 22 fills.</b> Costs over fewer than 30 fills move a lot from one fill to the next. Widen the time range or clear filters before reading much into them.</div></div>
+    <p class="note" style="margin:10px 0 0">Suggestions and cost drivers are hidden until a group has 30 fills or more. In tables and charts, groups under 30 are greyed and marked <span class="pill thin">Thin sample</span>.</p>
+    <p class="stlabel" style="margin-top:14px">Stale</p>
+    <div class="thinbanner" style="background:var(--surface-2);color:var(--ink-2)">${svgI(IC.info,18,2)}<div>Showing data from 13:10. Fills since then are still being measured; 5-minute markouts need 5 minutes after each fill.</div></div></div>
+  <div class="card"><p class="stlabel">Not on the team</p>
+    <div class="empty"><h3>Signal Analysis is for the DeskLabs team only.</h3><p>Ask a team admin for access.</p></div></div>
+  <div class="card"><p class="stlabel">Missing value</p>
+    <p class="note" style="margin:0 0 8px">A value the API doesn’t return shows “Not available”, never 0. Example: a bot with no fills last week.</p>
+    <table class="bt"><tbody><tr><td>BTC copy hl</td><td>${M(82)}</td><td class="mut">vs previous: Not available</td></tr></tbody></table></div>
+</section>`;
+
+function allBody(){ return VQ==='states' ? allFilters()+statesAll('fills') : allFilters()+allSummary()+allDrivers()+allTrend()+allBreakdown(); }
+
+/* ============================================================== MARKET MAKING TAB ============================================================== */
+// SAMPLE DATA, last 7 days, 7 live MM bots. Per fill, bp of the fill notional, in the fill's favour.
+//   Spread earned = mid at the fill − fill price (bid) / fill price − mid (ask). Markout at t = mid at t vs fill price (spread included).
+//   Adverse move at t = spread earned − markout at t. "Against" = markout at t below 0. $ / 1M = bp × 100 (one fill = its own volume).
+const MMT = {n:18420, vol:5.10, spread:0.9, fees:1.18, sx:0.82, bf:0.36, inv:18, cuts:14, ncuts:14, cutUsd:71};
+const HZ6 = ['At fill','10 s','30 s','1 min','2 min','5 min'];
+const CURVE = {mean:[0.9,0.2,-0.3,-0.6,-0.8,-1.1], p25:[0.4,-1.2,-2.1,-2.9,-3.8,-5.6], p75:[1.2,1.4,1.6,1.9,2.4,3.6], against:[0,44,53,58,59,59],
+  on:[1.0,0.4,0.0,-0.3,-0.4,-0.7], off:[0.8,-0.1,-0.7,-1.1,-1.4,-1.7]};
+let CMP = Q.get('cmp')==='smart';
+const LEVELS = [ // name, fills, spread earned, adverse 1 min, fill rate of quotes
+  ['At best price',9840,0.6,1.6,4.1],['1 step back',5210,1.1,0.9,1.9],['2 steps back',2860,1.5,0.7,0.9],['3+ steps back',510,1.9,0.6,0.3]];
+// breakdown rows: g, fills, spread, mk10, mk1m, mk5m, against 1 min %, inv $/1M, note
+const MMB = {
+  level:{label:'Where to quote', note:'Quote level at the fill. “At best price” = 0 steps back.', rows:[
+    ['At best price',9840,0.6,-0.1,-1.0,-1.6,63,34],['1 step back',5210,1.1,0.5,0.2,-0.5,52,30],['2 steps back',2860,1.5,0.8,0.8,0.1,47,28],['3+ steps back',510,1.9,1.1,1.3,0.6,41,25]]},
+  smart:{label:'Smart quoting', note:'Setting at the fill. Position cuts happen only with Smart quoting on.', rows:[
+    ['On',11240,1.0,0.4,-0.3,-0.7,54,20],['Off',7180,0.8,-0.1,-1.1,-1.7,64,54]]},
+  clamp:{label:'Binance clamp', note:'Clamp hit = the quote sat at the Binance limit (0.5 bp past the Binance price) instead of its normal place.', rows:[
+    ['Clamp hit',2310,0.3,0.6,0.2,-0.2,47,16],['Normal place',8930,1.2,0.4,-0.4,-0.8,56,21],['Smart quoting off',7180,0.8,-0.1,-1.1,-1.7,64,54]]},
+  hour:{label:'Hour', note:'4-hour blocks in your time zone (UTC+7), by fill time.', rows:[
+    ['00:00–04:00',2140,1.0,0.4,-0.2,-0.5,51,12],['04:00–08:00',2890,0.9,0.3,-0.4,-0.8,55,16],['08:00–12:00',3210,0.9,0.2,-0.5,-0.9,57,19],['12:00–16:00',3620,0.8,0.0,-0.9,-1.4,61,27],['16:00–20:00',3350,0.9,0.2,-0.6,-1.0,58,22],['20:00–24:00',3210,0.8,-0.2,-1.0,-1.9,66,104]]},
+  market:{label:'Market', note:'', rows:[
+    ['BTC-USD',8810,0.8,0.3,-0.4,-0.9,56,36],['ETH-USD',7240,0.9,0.1,-0.8,-1.3,60,30],['SOL-USD',2346,1.2,0.0,-0.9,-1.4,61,26],['DOGE-USD',24,1.6,0.4,-0.2,-0.6,50,0]]},
+  size:{label:'Order size', note:'Fill notional in USDC.', rows:[
+    ['Under 200',3120,0.9,0.3,-0.4,-0.8,55,14],['200–500',9880,0.9,0.2,-0.6,-1.1,58,29],['500–1,000',4640,0.9,0.1,-0.7,-1.3,59,41],['1,000 and up',780,0.8,-0.1,-0.9,-1.6,62,58]]},
+  side:{label:'Side', note:'', rows:[['Bid fills',9330,0.9,0.1,-0.7,-1.2,59,33],['Ask fills',9090,0.9,0.3,-0.5,-1.0,57,31]]},
+};
+const MMB_ORDER = ['level','smart','clamp','hour','market','size','side'];
+let MBY = Q.get('mby') || 'level';
+const CUTS = [ // time, bot, market, side, binance move bp, entry, cut price, loss USDC, held
+  ['Nov 18 16:13:58','BTC maker 01','BTC-USD','Long',16.8,'91,284.5','91,128.0',-1.07,'1 min 22 s'],
+  ['Nov 18 03:41:10','ETH mm night','ETH-USD','Short',15.4,'3,092.1','3,097.4',-0.94,'4 min 05 s'],
+  ['Nov 17 22:18:44','BTC maker 01','BTC-USD','Short',21.9,'90,612.0','90,815.5',-1.31,'52 s'],
+  ['Nov 17 21:02:09','BTC mm 2','BTC-USD','Long',15.2,'90,920.5','90,779.0',-0.88,'7 min 40 s'],
+  ['Nov 16 20:55:31','BTC maker 01','BTC-USD','Long',18.1,'89,844.0','89,671.5',-1.12,'2 min 14 s'],
+];
+const FILLS = [
+  {id:'f1',t:'16:12:41',d:'2026-11-18',m:'BTC-USD',bot:'BTC maker 01',side:'Bid',lv:'At best price',sm:'On',cl:'No',usd:474.68,sp:0.6,m10:-1.8,m1:-12.4,m5:-14.2,then:'Position cut'},
+  {id:'f2',t:'16:11:02',d:'2026-11-18',m:'ETH-USD',bot:'ETH mm night',side:'Ask',lv:'1 step back',sm:'On',cl:'No',usd:309.20,sp:1.2,m10:0.9,m1:0.4,m5:-0.3,then:'Closed by quote'},
+  {id:'f3',t:'16:10:47',d:'2026-11-18',m:'BTC-USD',bot:'BTC mm 2',side:'Ask',lv:'At best price',sm:'Off',cl:'—',usd:500.11,sp:0.5,m10:-0.6,m1:-2.1,m5:-3.0,then:'Closed by quote'},
+  {id:'f4',t:'16:09:15',d:'2026-11-18',m:'SOL-USD',bot:'SOL quotes',side:'Bid',lv:'2 steps back',sm:'On',cl:'Yes',usd:250.40,sp:1.6,m10:1.2,m1:1.0,m5:0.8,then:'Closed by quote'},
+  {id:'f5',t:'16:08:51',d:'2026-11-18',m:'BTC-USD',bot:'BTC maker 01',side:'Ask',lv:'At best price',sm:'On',cl:'No',usd:474.12,sp:0.6,m10:0.1,m1:-0.9,m5:-1.4,then:'Closed by quote'},
+  {id:'f6',t:'16:07:30',d:'2026-11-18',m:'ETH-USD',bot:'ETH maker b',side:'Bid',lv:'1 step back',sm:'On',cl:'Yes',usd:300.00,sp:0.9,m10:0.5,m1:0.3,m5:0.2,then:'Still open'},
+  {id:'f7',t:'16:06:12',d:'2026-11-18',m:'BTC-USD',bot:'BTC basic quotes',side:'Bid',lv:'At best price',sm:'Off',cl:'—',usd:200.05,sp:0.5,m10:-0.9,m1:-1.8,m5:-2.6,then:'Closed by quote'},
+];
+const fNet = f => f.m1 - MMT.fees;
+
+function mmFilters(){ return `
+<section class="card" aria-labelledby="m-f"><h2 id="m-f" class="sr">Filters</h2>
+  <div class="filters">
+    <div class="fld time"><span class="lbl" id="ml-time">Time</span><span class="select" role="button" tabindex="0" aria-labelledby="ml-time" aria-haspopup="listbox">Last 7 days</span></div>
+    <div class="fld desk-only"><span class="lbl" id="ml-mk">Market</span><span class="select" role="button" tabindex="0" aria-labelledby="ml-mk" aria-haspopup="listbox">All markets</span></div>
+    <div class="fld desk-only"><span class="lbl" id="ml-bot">Bot</span><span class="select" role="button" tabindex="0" aria-labelledby="ml-bot" aria-haspopup="listbox">All MM bots</span></div>
+    <div class="fld desk-only"><span class="lbl" id="ml-lv">Where to quote</span><span class="select" role="button" tabindex="0" aria-labelledby="ml-lv" aria-haspopup="listbox">All quote levels</span></div>
+    <div class="fld desk-only"><span class="lbl" id="ml-sm">Smart quoting</span>
+      <div class="seg" role="radiogroup" aria-labelledby="ml-sm"><button role="radio" aria-checked="true">All</button><button role="radio" aria-checked="false">On</button><button role="radio" aria-checked="false">Off</button></div></div>
+    <div class="fld desk-only"><span class="lbl" id="ml-sd">Side</span>
+      <div class="seg" role="radiogroup" aria-labelledby="ml-sd"><button role="radio" aria-checked="true">All</button><button role="radio" aria-checked="false">Bid</button><button role="radio" aria-checked="false">Ask</button></div></div>
+    <div class="fld mfilters"><span class="lbl">&nbsp;</span><button class="btn">${svgI(IC.filter,16,2.2)}Filters</button></div>
+  </div>
+  <div class="chips"><span>Live bots only, paper excluded · 7 Market Making bots · 5 accounts</span></div>
+</section>`; }
+
+function wfRows(){
+  const adv = (MMT.spread - CURVE.mean[3])*100;             // adverse move within 1 min, $/1M
+  const steps = [['Spread earned at the fill','mid vs fill price',-MMT.spread*100,'var(--pos-dot)'],
+    ['Price against the fill','within 1 min',adv,'var(--warn-bar)'],
+    ['Fees','SoDEX $82 · builder $36',MMT.fees*100,'var(--accent)'],
+    ['Inventory','holding past 1 min',MMT.inv,'var(--mh-shock-3)'],
+    ['Position cuts',`${MMT.ncuts} cuts at market (DEC-249)`,MMT.cuts,'var(--mh-shock-3)']];
+  const lo=-120, hi=200, W=hi-lo, X=v=>(v-lo)/W*100; let run=0, out='';
+  steps.forEach(([n,s,v,c])=>{ const a=run, b=run+v; run=b;
+    out+=`<div class="wfr"><div class="n">${n}<span>${s}</span></div><div class="t" role="img" aria-label="${n}: ${M(v)} per 1M"><span class="z" style="left:${X(0)}%"></span><i style="left:${X(Math.min(a,b))}%;width:${Math.abs(v)/W*100}%;background:${c}"></i></div><div class="v ${ccls(v)}">${v<0?'−'+M(-v)+' earned':M(v)}</div></div>`; });
+  out+=`<div class="wfr total"><div class="n">Net cost / $1M<span>${USDC(run*MMT.vol)} on ${MMT.vol.toFixed(2)}M</span></div><div class="t"><span class="z" style="left:${X(0)}%"></span><i class="net" style="left:${X(0)}%;width:${run/W*100}%"></i></div><div class="v neg">${M(run)}</div></div>`;
+  return {html:out, net:run, adv};
+}
+function mmSummary(){ const wf = wfRows(); return `
+<section class="card" aria-labelledby="m-sum">
+  <div class="hrow"><div><h2 id="m-sum">Last 7 days · ${N(MMT.n)} quote fills</h2><p class="sub">Per fill, in bp of the fill notional, in the fill’s favour. $/1M = bp × 100.</p></div></div>
+  <div class="kpis six">
+    <div class="kpi"><span class="k">Quote fills</span><span class="v">${N(MMT.n)}</span><span class="s">${MMT.vol.toFixed(2)}M USDC volume · 7 bots</span></div>
+    <div class="kpi"><span class="k">Spread earned</span><span class="v pos">+${MMT.spread.toFixed(1)} bp</span><span class="s">At the fill, mid vs fill price</span></div>
+    <div class="kpi"><span class="k">Markout · 1 min</span><span class="v neg">${b1(CURVE.mean[3])} bp</span><span class="s">Spread included · fees are ${MMT.fees.toFixed(2)} bp per fill</span></div>
+    <div class="kpi"><span class="k">Adverse selection</span><span class="v">${CURVE.against[3]}%</span><span class="s">of fills the price went against within 1 min</span></div>
+    <div class="kpi"><span class="k">Position cuts</span><span class="v">${MMT.ncuts}</span><span class="s">${USDC(MMT.cutUsd)} · ${M(MMT.cuts)} / 1M · Thin sample</span></div>
+    <div class="kpi net"><span class="k">Net cost / $1M</span><span class="v neg">${M(wf.net)}</span><span class="s"><span class="delta down">▼ ${M(18)} vs previous 7 days</span></span></div>
+  </div>
+  <div class="costs">
+    <div><h3 class="minih">From spread earned to net cost, per $1M</h3><div class="wf">${wf.html}</div></div>
+    <div class="takeaway"><b>The spread earned (${M(90)}) doesn’t cover the price moving against fills (${M(wf.adv)}).</b> Fills lose ${M(wf.adv-90)} / 1M on price within a minute, before ${M(118)} of fees. Inventory and position cuts add ${M(32)}.<br><span class="mut" style="font-size:12px">Spread earned and markout use the SoDEX mid. Position cuts: ${MMT.ncuts} is under 30, so treat that row as a thin sample.</span></div>
+  </div>
+</section>`; }
+
+const MMSUGS = [
+  {h:'Default Where to quote to 1 step back', p:'At the best price, fills ended <b>−2.2 bp</b> after fees at 1 min; 1 step back, <b>−1.0 bp</b>. The price went against <b>63%</b> of best-price fills vs <b>52%</b>. Trade-off: 1 step back filled <b>1.9%</b> of quotes vs <b>4.1%</b>, so volume comes slower.', n:'15,050 fills', link:'Where to quote'},
+  {h:'Keep Smart quoting on by default', p:'With Smart quoting on, markout at 1 min was <b>−0.3 bp</b> vs <b>−1.1 bp</b> off, and inventory & cuts <b>$20 / 1M</b> vs <b>$54</b>, position cuts included. Fills off: <b>39%</b> of volume.', n:'18,420 fills', link:'Smart quoting'},
+  {h:'Look at quoting in 20:00–24:00', p:'Fills in 20:00–24:00 (your time) cost <b>$286 / 1M</b> vs <b>$210</b> overall; <b>66%</b> went against within 1 min and <b>9 of 14</b> position cuts were here. No bot setting limits hours today.', n:'3,210 fills', link:'Hour'},
+];
+function mmSuggestions(){ return `
+<section class="card" aria-labelledby="m-sug">
+  <div class="hrow"><div><h2 id="m-sug">Suggestions</h2><p class="sub">Drawn from the fills above. Each one is a lead to test, not a forecast of savings.</p></div></div>
+  <ol class="sugs" style="list-style:none;margin:0;padding:0">
+    ${MMSUGS.map((s,i)=>`<li class="sug"><div class="top"><span class="num" aria-hidden="true">${i+1}</span><h3>${s.h}</h3></div><p>${s.p}</p><div class="meta"><span>Based on ${s.n}</span><a href="#m-bd" class="see">See: ${s.link}</a><span class="pill appr">Needs approval</span></div></li>`).join('')}
+  </ol>
+  <div class="hidden-lead">${svgI(IC.info,14,2.2)}<span><b>1 lead hidden:</b> position cuts (14 cuts). A suggestion shows only when its group has 30 or more.</span><span class="pill thin">Thin sample</span></div>
+  <p class="sugfoot">${svgI(IC.info,14,2.2)}Numbers are averages over past fills in the filters above. Results can differ on future trades. This page never changes a bot or a default.</p>
+</section>`; }
+
+function mmCharts(){ return `
+<section class="charts">
+  <div class="card" aria-labelledby="m-mk">
+    <div class="hrow"><div><h2 id="m-mk">Price after the fill</h2><p class="sub">Markout in the fill’s favour, fill price to the SoDEX mid. “At fill” is the spread earned. A fill pays for itself above the fee line.</p></div>
+      <div class="seg" role="radiogroup" aria-label="Compare" id="m-cmp"><button role="radio" data-c="0" aria-checked="${!CMP}">All fills</button><button role="radio" data-c="1" aria-checked="${CMP}">Smart quoting on vs off</button></div></div>
+    <div class="legend" style="margin-bottom:6px">${CMP?`<span><i class="line" style="background:var(--accent)"></i>Smart quoting on, mean</span><span><i class="dash"></i>Smart quoting off, mean</span>`:`<span><i class="line" style="background:var(--accent)"></i>Mean</span><span><i class="band"></i>Middle half (p25–p75)</span>`}<span><i class="line" style="background:var(--ink-2);height:0;border-top:2px dotted var(--ink-2)"></i>Fees per fill (+1.18)</span></div>
+    <div class="chartbox" id="m-curve"></div>
+    <table class="mtable"><caption class="sr">Markout after the fill, in bp</caption>
+      <thead><tr><th scope="col">After the fill</th>${HZ6.map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead>
+      <tbody>
+        <tr><td>Mean</td>${CURVE.mean.map(v=>`<td class="${pcls(v)}">${b1(v)}</td>`).join('')}</tr>
+        <tr><td>p25 to p75</td>${CURVE.p25.map((v,i)=>`<td class="mut">${b1(v)} <span class="to">to</span> ${b1(CURVE.p75[i])}</td>`).join('')}</tr>
+        <tr><td>Against the fill</td>${CURVE.against.map((v,i)=>`<td>${i?v+'%':'—'}</td>`).join('')}</tr>
+        <tr class="hide-s"><td>Smart on / off</td>${CURVE.on.map((v,i)=>`<td>${b1(v)} <span class="to">/</span> ${b1(CURVE.off[i])}</td>`).join('')}</tr>
+      </tbody></table>
+  </div>
+  <div class="card" aria-labelledby="m-lv">
+    <div class="hrow"><div><h2 id="m-lv">Spread earned vs price against, by quote level</h2><p class="sub">Per fill at 1 min. Quoting further back earns more spread and gets hit less, but fills less often.</p></div></div>
+    <div class="legend" style="margin-bottom:6px"><span><i style="background:var(--pos-dot)"></i>Spread earned</span><span><i style="background:var(--warn-bar)"></i>Price against, 1 min</span><span><i style="background:var(--ink);border-radius:50%"></i>Net after fees</span></div>
+    <div class="chartbox" id="m-levels"></div>
+    <table class="mtable"><caption class="sr">By quote level, bp per fill at 1 min</caption>
+      <thead><tr><th scope="col">Per fill, bp</th>${LEVELS.map(l=>`<th scope="col">${l[0].replace('At best price','Best').replace(' steps back',' back').replace(' step back',' back')}</th>`).join('')}</tr></thead>
+      <tbody><tr><td>Spread earned</td>${LEVELS.map(l=>`<td class="pos">+${l[2].toFixed(1)}</td>`).join('')}</tr>
+      <tr><td>Price against</td>${LEVELS.map(l=>`<td class="neg">−${l[3].toFixed(1)}</td>`).join('')}</tr>
+      <tr><td>Net after fees</td>${LEVELS.map(l=>{const v=l[2]-l[3]-MMT.fees;return `<td class="${pcls(v)}" style="font-weight:800">${b1(v)}</td>`}).join('')}</tr>
+      <tr><td>Fill rate</td>${LEVELS.map(l=>`<td>${l[4]}%</td>`).join('')}</tr></tbody></table>
+    <p class="cfoot"><b>Fill rate</b> = quotes that filled ÷ quotes placed at that level. At the best price: 4.1%; 3+ steps back: 0.3%.</p>
+  </div>
+</section>`; }
+
+function mmInventory(){ return `
+<section class="card" aria-labelledby="m-inv">
+  <div class="hrow"><div><h2 id="m-inv">Inventory & position cuts</h2><p class="sub">What holding a position cost after the first minute, and the market closes of the 15 bp rule.</p></div></div>
+  <div class="mini">
+    <div><span>Time flat</span><b>46%</b><em>No position open</em></div>
+    <div><span>Average position</span><b>0.8 orders</b><em>While holding · max set: 2–3 orders</em></div>
+    <div><span>Inventory cost</span><b class="neg">${M(MMT.inv)} / 1M</b><em>Price change while holding, past 1 min, cuts excluded</em></div>
+    <div><span>Position cuts</span><b class="neg">${MMT.ncuts} · ${USDC(MMT.cutUsd)}</b><em>Average Binance move at the cut 17.9 bp · <span class="pill thin" style="padding:1px 7px">Thin sample</span></em></div>
+  </div>
+  <div class="rule">${svgI(IC.info,15,2.2)}<span><b>Cut rule (DEC-249):</b> with Smart quoting on, if the Binance price runs 15 bp or more against the open position, the bot cancels its orders and closes the position at market. Bots with Smart quoting off never cut.</span></div>
+  <h3 class="minih" style="margin-top:14px">Latest position cuts</h3>
+  <div class="tblwrap"><table class="bt"><caption class="sr">Latest position cuts</caption>
+    <thead><tr><th scope="col">Cut (your time)</th><th scope="col" style="text-align:left">Market · bot</th><th scope="col" style="text-align:left">Position</th><th scope="col">Binance move<span>bp against</span></th><th scope="col" class="hide-m">Entry → cut</th><th scope="col" class="hide-m">Held</th><th scope="col">Result<span>USDC, fees in</span></th></tr></thead>
+    <tbody>${CUTS.map(c=>`<tr><td>${c[0]}</td><td style="text-align:left">${c[2]}<div class="mut" style="font-size:11.5px">${c[1]}</div></td><td style="text-align:left"><span class="side-l ${c[3].toLowerCase()}">${c[3]}</span></td><td>${c[4].toFixed(1)}</td><td class="hide-m">${c[5]} → ${c[6]}</td><td class="hide-m">${c[7+1]}</td><td class="neg" style="font-weight:800">${c[7].toFixed(2)}</td></tr>`).join('')}</tbody></table></div>
+</section>`; }
+
+function mRow(r, all){ const [g,n,sp,m10,m1,m5,ag,inv]=r; const thin=!all&&n<THINN; const net=m1-MMT.fees; const cpm=-(net)*100+inv;
+  const wv=Math.min(50,Math.abs(net)/4*50);
+  return `<tr class="${all?'all':''} ${thin?'thinrow':''}"><td><span class="grp">${g}${thin?'<span class="pill thin">Thin sample</span>':''}</span></td>
+    <td>${N(n)}</td><td class="hide-m">${all?'100%':pctS(n,MMT.n)}</td><td class="hide-m pos">+${sp.toFixed(1)}</td>
+    <td class="hide-m ${pcls(m10)}">${b1(m10)}</td><td class="${pcls(m1)}">${b1(m1)}</td><td class="hide-m ${pcls(m5)}">${b1(m5)}</td>
+    <td class="hide-m">${ag}%</td>
+    <td><span class="div"><span class="m" aria-hidden="true"><i class="${net<0?'n':'p'}" style="width:${wv}%"></i></span><b class="${pcls(net)}">${b1(net)}</b></span></td>
+    <td class="hide-m ${ccls(cpm)}">${M(cpm)}</td></tr>`; }
+function mmBreakdown(){ const d=MMB[MBY]; return `
+<section class="card flush" aria-labelledby="m-bdh" id="m-bd">
+  <div class="hrow"><div><h2 id="m-bdh">Breakdown</h2><p class="sub">${d.note||'&nbsp;'}</p></div><span class="note">bp per fill · groups under ${THINN} fills are marked Thin sample</span></div>
+  <div class="btabs" role="tablist" aria-label="Group by">${MMB_ORDER.map(k=>`<button role="tab" data-mby="${k}" aria-selected="${k===MBY}">${MMB[k].label}</button>`).join('')}</div>
+  <div class="tblwrap" role="tabpanel">
+  <table class="bt"><caption class="sr">Market Making fills by ${d.label}</caption>
+    <thead><tr><th scope="col">${d.label}</th><th scope="col">Fills</th><th scope="col" class="hide-m">Share</th><th scope="col" class="hide-m">Spread earned<span>bp</span></th><th scope="col" class="hide-m">Markout<span>10 s, bp</span></th><th scope="col">Markout<span>1 min, bp</span></th><th scope="col" class="hide-m">Markout<span>5 min, bp</span></th><th scope="col" class="hide-m">Against<span>1 min</span></th><th scope="col">Net after fees<span>1 min, bp</span></th><th scope="col" class="hide-m">Net cost<span>$ / 1M, incl. inventory</span></th></tr></thead>
+    <tbody>${d.rows.map(r=>mRow(r,false)).join('')}${mRow(['All fills',MMT.n,0.9,0.2,-0.6,-1.1,58,32],true)}</tbody>
+  </table></div>
+</section>`; }
+
+function mmFills(){ const sel = VQ==='fill'; return `
+<section class="card flush" aria-labelledby="m-fl" id="m-fills">
+  <div class="hrow"><div><h2 id="m-fl">Fills</h2><p class="sub">18,420 in the filters above · open one to see the prices around it, the quote and what happened next</p></div>
+    <div class="seg" role="radiogroup" aria-label="Sort"><button role="radio" aria-checked="true">Newest</button><button role="radio" aria-checked="false">Worst 1 min</button><button role="radio" aria-checked="false">Position cuts</button></div></div>
+  <div class="tblwrap ttwrap">
+  <table class="bt tt"><caption class="sr">Market Making fills</caption>
+    <thead><tr><th scope="col">Filled (your time)</th><th scope="col" style="text-align:left">Market · bot</th><th scope="col" style="text-align:left">Side</th><th scope="col" style="text-align:left">Where to quote</th><th scope="col" style="text-align:left">Smart · clamp</th><th scope="col">Size<span>USDC</span></th><th scope="col">Spread<span>bp</span></th><th scope="col">Markout<span>10 s</span></th><th scope="col">Markout<span>1 min</span></th><th scope="col">Markout<span>5 min</span></th><th scope="col">Net after fees<span>1 min, bp</span></th><th scope="col" style="text-align:left">Then</th></tr></thead>
+    <tbody>${FILLS.map(f=>`<tr class="row mrow ${sel&&f.id==='f1'?'sel':''}" tabindex="0"><td><button class="openbtn mopen" aria-haspopup="dialog">${f.t}</button><div class="mut" style="font-size:11.5px">${f.d}</div></td>
+      <td style="text-align:left">${f.m}<div class="mut" style="font-size:11.5px">${f.bot}</div></td><td style="text-align:left"><span class="side-l ${f.side==='Bid'?'long':'short'}">${f.side}</span></td>
+      <td style="text-align:left">${f.lv}</td><td style="text-align:left">${f.sm}${f.sm==='On'?` · clamp ${f.cl.toLowerCase()}`:''}</td><td>${f.usd.toFixed(2)}</td>
+      <td class="pos">+${f.sp.toFixed(1)}</td><td class="${pcls(f.m10)}">${b1(f.m10)}</td><td class="${pcls(f.m1)}">${b1(f.m1)}</td><td class="${pcls(f.m5)}">${b1(f.m5)}</td>
+      <td class="${pcls(fNet(f))}" style="font-weight:800">${b1(fNet(f))}</td><td style="text-align:left">${f.then==='Position cut'?'<span class="cut-tag">Position cut</span>':f.then}</td></tr>`).join('')}</tbody>
+  </table></div>
+  <div class="mcards">${FILLS.map(f=>`<button class="mcard mopen ${sel&&f.id==='f1'?'sel':''}" aria-haspopup="dialog">
+      <span class="l1"><span class="side-l ${f.side==='Bid'?'long':'short'}">${f.side}</span> ${f.m}${f.then==='Position cut'?'<span class="cut-tag">Position cut</span>':''}</span>
+      <span class="r ${pcls(fNet(f))}" style="grid-row:1/3;grid-column:2;align-self:center">${b1(fNet(f))} bp<span>net, 1 min</span></span><span class="chev" aria-hidden="true"></span>
+      <span class="l2">${f.t.slice(0,5)} · ${f.bot} · ${f.lv}</span>
+      <span class="l3">Spread +${f.sp.toFixed(1)} · 1 min ${b1(f.m1)} · Smart ${f.sm.toLowerCase()}</span></button>`).join('')}</div>
+  <div class="tfoot"><span>Net after fees at 1 min = markout at 1 min − ${MMT.fees.toFixed(2)} bp fees. The fill’s own fee is in its detail.</span><button class="btn sm">Load 50 more</button></div>
+</section>`; }
+
+// drill-down data: BTC-USD around the fill, seconds from −60 to +300, SoDEX mid and Binance (converted to SoDEX)
+const FX = [-60,-45,-30,-15,0,10,20,30,45,60,77,82,90,120,150,180,240,300];
+const FMID = [91291.0,91289.5,91288.0,91286.9,91287.0,91270.4,91250.2,91224.1,91198.0,91171.8,91133.0,91129.5,91130.6,91108.0,91120.4,91131.0,91142.7,91154.9];
+const FBN  = [91290.4,91288.8,91287.1,91285.2,91281.9,91262.0,91241.7,91216.0,91190.3,91160.2,91131.0,91126.3,91128.9,91104.5,91118.0,91129.7,91141.1,91153.0];
+function drawFill(){
+  const box=document.getElementById('m-fchart'); if(!box) return;
+  const w=box.clientWidth, H=230, P={l:66,r:30,t:24,b:24};
+  const lo=91090, hi=91310, x0=-60, x1=300;
+  const x=s=>P.l+(s-x0)/(x1-x0)*(w-P.l-P.r), y=v=>P.t+(hi-v)/(hi-lo)*(H-P.t-P.b);
+  const path=a=>a.map((v,i)=>`${i?'L':'M'}${x(FX[i]).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const hz=[[10,'10 s'],[30,'30 s'],[60,'1 min'],[120,'2 min'],[300,'5 min']];
+  box.innerHTML=`<svg width="${w}" height="${H}" role="img" aria-label="BTC-USD SoDEX mid and Binance price from 1 minute before to 5 minutes after the bid fill at 91,284.5. Price fell; position cut at 91,128.0 after 82 seconds.">
+    <rect x="${x(0)}" y="${P.t}" width="${x(82)-x(0)}" height="${H-P.t-P.b}" fill="var(--accent-tint)"/>
+    <line x1="${P.l}" x2="${w-P.r}" y1="${y(91284.5)}" y2="${y(91284.5)}" stroke="var(--ink)" stroke-dasharray="5 4"/>
+    <text x="${P.l-6}" y="${y(91284.5)+4}" text-anchor="end" font-size="11" font-weight="700" fill="var(--ink)">91,284.5</text>
+    <line x1="${P.l}" x2="${w-P.r}" y1="${y(91284.5*(1-0.0015))}" y2="${y(91284.5*(1-0.0015))}" stroke="var(--neg)" stroke-dasharray="2 3"/>
+    <text x="${w-P.r-4}" y="${y(91284.5*(1-0.0015))-5}" text-anchor="end" font-size="11" font-weight="800" fill="var(--neg-ink)">15 bp against: cut line</text>
+    ${[91120,91160,91200,91240].map(v=>`<text x="${P.l-6}" y="${y(v)+4}" text-anchor="end" font-size="10.5" fill="var(--muted)">${v.toLocaleString('en-US')}</text>`).join('')}
+    ${hz.map(([s,l])=>`<line x1="${x(s)}" x2="${x(s)}" y1="${P.t}" y2="${H-P.b}" stroke="var(--border)"/><text x="${x(s)}" y="${P.t-8}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--muted)">${l}</text>`).join('')}
+    <path d="${path(FBN)}" fill="none" stroke="var(--warn-bar)" stroke-width="2" stroke-dasharray="6 4"/>
+    <path d="${path(FMID)}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+    <circle cx="${x(0)}" cy="${y(91284.5)}" r="5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>
+    <circle cx="${x(82)}" cy="${y(91128.0)}" r="5" fill="var(--neg)" stroke="var(--surface)" stroke-width="2"/>
+    <text x="${x(82)-8}" y="${y(91128.0)+18}" text-anchor="end" font-size="11" font-weight="800" fill="var(--neg-ink)">Cut 91,128.0</text>
+    ${[-60,0,60,120,180,240,300].map(s=>`<text x="${x(s)}" y="${H-6}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${s===0?'fill':(s>0?'+':'−')+Math.abs(s/60)+' min'}</text>`).join('')}
+  </svg>`;
+}
+const fillDialog = `
+<div class="scrim">
+<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="mdt" aria-describedby="mdd">
+  <header><div class="t"><h2 id="mdt">Bid fill · 2026-11-18 16:12:41 (UTC+7)</h2><p class="desc" id="mdd">One quote fill: the prices around it, the quote that filled and what happened to the position. From SoDEX fills and the bot’s decisions.</p></div><button class="xbtn mx" aria-label="Close">×</button></header>
+  <div class="body">
+    <div class="dgrid">
+      <div class="dcol">
+        <div style="order:1" class="stats">
+          <div class="stat"><span>Fill</span><strong>91,284.5</strong><em>Buy 0.0052 · 474.68 USDC</em></div>
+          <div class="stat"><span>Spread earned</span><strong class="pos">+0.6 bp</strong><em>Mid 91,290.0 at the fill</em></div>
+          <div class="stat"><span>Closed</span><strong>91,128.0</strong><em>Position cut · 1 min 22 s later</em></div>
+          <div class="stat"><span>Net PnL</span><strong class="neg">−1.07 USDC</strong><em>Price −0.81 · fees −0.26</em></div>
+        </div>
+        <div style="order:2"><h3 class="minih">Price around the fill <span class="note" style="font-weight:600">· BTC-USD · BTC maker 01</span></h3><div class="chartbox" id="m-fchart"></div>
+          <div class="legend" style="margin-top:6px"><span><i class="line" style="background:var(--accent)"></i>SoDEX mid</span><span><i class="dash"></i>Binance price, converted to SoDEX</span><span><i style="background:var(--accent-tint);border:1px solid var(--mh-vol-1)"></i>Position open</span></div></div>
+        <div style="order:7" class="panel"><h3>Order timeline</h3>
+          <ol class="timeline">
+            <li><span class="t">16:12:35.120</span><span class="x">Order b812: buy limit post-only at 91,284.5 (at best price), sent</span></li>
+            <li><span class="t">16:12:41.884</span><span class="x fill">Filled buy 0.0052 at 91,284.5, fee 0.0237 (maker)</span></li>
+            <li><span class="t">16:12:41.990</span><span class="x">Order a813: sell limit post-only reduce-only at 91,290.1 (close quote), sent</span></li>
+            <li><span class="t">16:13:58.402</span><span class="x">Position cut · At 09:13:58 UTC the Binance price (91,131.0) was 16.8 bp against your long entry at 91,284.5. Closed 0.0052 at market.</span></li>
+            <li><span class="t">16:14:03.215</span><span class="x fill">Filled sell 0.0052 at 91,128.0, fee 0.2040 (taker)</span></li>
+          </ol></div>
+      </div>
+      <div class="dcol">
+        <div style="order:3" class="panel"><h3>The quote at the fill</h3>
+          <div class="wi"><span>Where to quote</span><span class="r">At best price (0 steps back)</span>
+            <span>Smart quoting</span><span class="r">On</span>
+            <span>Binance clamp</span><span class="r">Not hit · 1.4 bp inside the limit</span>
+            <span>Lopsided book</span><span class="r">No</span>
+            <span>Spread at the fill</span><span class="r">1.2 bp</span>
+            <span>Time on the book</span><span class="r">6.8 s</span>
+            <span>Position</span><span class="r">Flat → 1 order long</span></div></div>
+        <div style="order:4" class="panel"><h3>Price after the fill</h3>
+          <div class="mk6">${[['At fill',0.6,0.9],['10 s',-1.8,0.2],['30 s',-6.9,-0.3],['1 min',-12.4,-0.6],['2 min',-19.0,-0.8],['5 min',-14.2,-1.1]].map(m=>`<div><span>${m[0]}</span><b class="${pcls(m[1])}">${b1(m[1])}</b><em>all: ${b1(m[2])}</em></div>`).join('')}</div>
+          <p class="note" style="margin:6px 0 0;font-size:12px">bp in the fill’s favour, fill price to SoDEX mid. Measured past the close too.</p></div>
+        <div style="order:5" class="panel"><h3>Where the 1.07 USDC went</h3>
+          <div class="wi"><span class="h">&nbsp;</span><span class="h r">USDC</span>
+            <span>Spread earned at the fill</span><span class="r pos">+0.03</span>
+            <span>Price against the fill until the cut</span><span class="r neg">−0.84</span>
+            <span>SoDEX fees (maker in, taker out)</span><span class="r neg">−0.23</span>
+            <span>Builder fee</span><span class="r neg">−0.03</span>
+            <span><b>Net</b></span><span class="r neg">−1.07</span></div></div>
+        <details style="order:6" class="vers"><summary>Settings version 6</summary><pre class="mono" style="margin:8px 0 0;font-size:12px;color:var(--ink-2);white-space:pre-wrap">{ "orderSize": 475, "quoteLevel": 0, "smartQuoting": true,
+  "maxOrders": 2, "refreshSeconds": 3, "pauseOnFastMoves": false }</pre></details>
+      </div>
+    </div>
+  </div>
+</div></div>`;
+
+function drawCurve(){
+  const box=document.getElementById('m-curve'); if(!box) return;
+  const w=box.clientWidth, H=w<440?220:250, P={l:40,r:w<440?46:90,t:14,b:28};
+  const lo=-6, hi=4; const xs=i=>P.l+i/(HZ6.length-1)*(w-P.l-P.r), y=v=>P.t+(hi-v)/(hi-lo)*(H-P.t-P.b);
+  const line=a=>a.map((v,i)=>`${i?'L':'M'}${xs(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const band=CURVE.p75.map((v,i)=>`${xs(i)},${y(v)}`).join(' ')+' '+CURVE.p25.map((v,i)=>`${xs(i)},${y(v)}`).reverse().join(' ');
+  const a = CMP?CURVE.on:CURVE.mean;
+  box.innerHTML=`<svg width="${w}" height="${H}" role="img" aria-label="Markout after the fill. ${CMP?'Smart quoting on '+CURVE.on.map((v,i)=>HZ6[i]+' '+b1(v)).join(', ')+'; off '+CURVE.off.map((v,i)=>HZ6[i]+' '+b1(v)).join(', '):'Mean '+CURVE.mean.map((v,i)=>HZ6[i]+' '+b1(v)+' bp').join(', ')}. Fees 1.18 bp per fill.">
+    <rect x="${P.l}" y="${P.t}" width="${w-P.l-P.r}" height="${H-P.t-P.b}" fill="var(--chart-bg)" rx="8"/>
+    ${[-6,-4,-2,0,2].map(t=>`<line x1="${P.l}" x2="${w-P.r}" y1="${y(t)}" y2="${y(t)}" stroke="${t===0?'var(--muted)':'var(--border)'}" stroke-width="${t===0?1.2:1}"/><text x="${P.l-8}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)">${t>0?'+':''}${String(t).replace('-','−')}</text>`).join('')}
+    <text x="${P.l-8}" y="${P.t-2}" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--muted)">bp</text>
+    ${HZ6.map((h,i)=>`<text x="${xs(i)}" y="${H-8}" text-anchor="middle" font-size="11.5" fill="var(--ink-2)" font-weight="600">${w<440&&i===0?'Fill':h}</text>`).join('')}
+    ${CMP?'':`<polygon points="${band}" fill="var(--mh-vol-1)" opacity=".75"/>`}
+    <line x1="${P.l}" x2="${w-P.r}" y1="${y(1.18)}" y2="${y(1.18)}" stroke="var(--ink-2)" stroke-width="1.6" stroke-dasharray="2 3"/>
+    <text x="${w-P.r+6}" y="${y(1.18)+4}" font-size="11.5" font-weight="800" fill="var(--ink-2)">${w<440?'fees':'fees +1.18'}</text>
+    ${CMP?`<path d="${line(CURVE.off)}" fill="none" stroke="var(--warn-bar)" stroke-width="2" stroke-dasharray="6 4"/>${CURVE.off.map((v,i)=>`<circle cx="${xs(i)}" cy="${y(v)}" r="4" fill="var(--warn-bar)" stroke="var(--surface)" stroke-width="2"/>`).join('')}
+      <text x="${xs(5)+10}" y="${y(CURVE.off[5])+14}" font-size="12" font-weight="800" fill="var(--ink-2)">${b1(CURVE.off[5])}${w<440?'':' off'}</text>`:''}
+    <path d="${line(a)}" fill="none" stroke="var(--accent)" stroke-width="2.2"/>
+    ${a.map((v,i)=>`<circle cx="${xs(i)}" cy="${y(v)}" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`).join('')}
+    <text x="${xs(5)+10}" y="${y(a[5])+(CMP?-4:4)}" font-size="12" font-weight="800" fill="var(--ink)">${b1(a[5])}${w<440?'':CMP?' on':' mean'}</text>
+    ${HZ6.map((h,i)=>`<rect class="hit" data-i="${i}" x="${xs(i)-(w-P.l-P.r)/10}" y="${P.t}" width="${(w-P.l-P.r)/5}" height="${H-P.t-P.b}" fill="transparent"/>`).join('')}
+  </svg><div class="tip" hidden></div>`;
+  const tip=box.querySelector('.tip');
+  box.querySelectorAll('.hit').forEach(r=>{ r.addEventListener('mouseenter',()=>{const i=+r.dataset.i; tip.hidden=false;
+    tip.innerHTML=`<b>${HZ6[i]}</b><br>Mean ${b1(CURVE.mean[i])} bp (middle half ${b1(CURVE.p25[i])} to ${b1(CURVE.p75[i])})<br>${i?`Against the fill: ${CURVE.against[i]}%<br>`:''}Smart on ${b1(CURVE.on[i])} · off ${b1(CURVE.off[i])}`;
+    tip.style.left=Math.min(xs(i)+10,w-240)+'px'; tip.style.top='10px';}); r.addEventListener('mouseleave',()=>tip.hidden=true); });
+}
+function drawLevels(){
+  const box=document.getElementById('m-levels'); if(!box) return;
+  const w=box.clientWidth, H=w<440?250:276, P={l:40,r:30,t:18,b:48};
+  const lo=-3, hi=2.5; const y=v=>P.t+(hi-v)/(hi-lo)*(H-P.t-P.b); const cw=(w-P.l-P.r)/LEVELS.length; const bw=Math.min(26,cw*0.22);
+  let s=`<svg width="${w}" height="${H}" role="img" aria-label="By quote level: ${LEVELS.map(l=>`${l[0]} spread earned ${l[2]} bp, price against ${l[3]} bp, net after fees ${b1(l[2]-l[3]-MMT.fees)} bp, fill rate ${l[4]}%`).join('; ')}.">
+    <rect x="${P.l}" y="${P.t}" width="${w-P.l-P.r}" height="${H-P.t-P.b}" fill="var(--chart-bg)" rx="8"/>
+    ${[-3,-2,-1,0,1,2].map(t=>`<line x1="${P.l}" x2="${w-P.r}" y1="${y(t)}" y2="${y(t)}" stroke="${t===0?'var(--muted)':'var(--border)'}" stroke-width="${t===0?1.2:1}"/><text x="${P.l-8}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)">${t>0?'+':''}${String(t).replace('-','−')}</text>`).join('')}
+    <text x="${P.l-8}" y="${P.t-6}" text-anchor="end" font-size="10.5" font-weight="700" fill="var(--muted)">bp</text>`;
+  LEVELS.forEach(([g,n,sp,adv,fr],i)=>{ const cx=P.l+cw*i+cw/2; const net=sp-adv-MMT.fees;
+    s+=`<g><title>${g}: ${N(n)} fills. Spread earned +${sp} bp, price against −${adv} bp within 1 min, net after fees ${b1(net)} bp. Fill rate ${fr}%.</title>
+      <rect x="${cx-bw-10}" y="${y(sp)}" width="${bw}" height="${y(0)-y(sp)-1}" fill="var(--pos-dot)" rx="3"/>
+      ${w<440?'':`<text x="${cx-bw/2-10}" y="${y(sp)-5}" text-anchor="middle" font-size="11" font-weight="800" fill="var(--ink)">+${sp.toFixed(1)}</text>`}
+      <rect x="${cx-6}" y="${y(0)+1}" width="${bw}" height="${y(-adv)-y(0)-1}" fill="var(--warn-bar)" rx="3"/>
+      ${w<440?'':`<text x="${cx+bw/2-6}" y="${y(-adv)+14}" text-anchor="middle" font-size="11" font-weight="800" fill="var(--ink)">−${adv.toFixed(1)}</text>`}
+      <circle cx="${cx+bw+4}" cy="${y(net)}" r="5.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>
+      <text x="${cx+bw+13}" y="${y(net)+4}" text-anchor="start" font-size="11.5" font-weight="800" fill="${net<0?'var(--neg-ink)':'var(--pos)'}">${b1(net)}</text>
+      <text x="${cx}" y="${H-30}" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink-2)">${w<440?g.replace('At best price','Best').replace(' steps back',' back').replace(' step back',' back'):g}</text>
+      <text x="${cx}" y="${H-15}" text-anchor="middle" font-size="11" fill="var(--muted)">${w<440?'':N(n)+' · '}fills ${fr}%</text></g>`; });
+  box.innerHTML=s+'</svg>';
+}
+function mmBody(){ return VQ==='states' ? mmFilters()+statesAll('Market Making fills') : mmFilters()+mmSummary()+mmSuggestions()+mmCharts()+mmInventory()+mmBreakdown()+mmFills(); }
+
+/* ============================================================== render ============================================================== */
+function render(){
+  const body = TAB==='vb' ? VB.body() : TAB==='mm' ? mmBody() : allBody();
+  const dialog = TAB==='vb' ? VB.dialog() : (TAB==='mm' && VQ==='fill') ? fillDialog : '';
+  document.getElementById('app').innerHTML = `<div class="shell">${sidebar}<main>${header()}<div id="panel" role="tabpanel" aria-labelledby="tab-${TAB}" style="display:flex;flex-direction:column;gap:16px">${body}</div></main></div>${dialog}`;
+  draw();
+  document.querySelectorAll('.ptabs button').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.tab)));
+  document.querySelector('.ptabs').addEventListener('keydown',e=>{ if(!['ArrowLeft','ArrowRight'].includes(e.key)) return; const k=TABS.map(t=>t[0]); const i=k.indexOf(TAB); nav(k[(i+(e.key==='ArrowRight'?1:2))%3]); });
+  if(TAB==='vb') VB.bind(render, nav);
+  document.querySelectorAll('[data-aby]').forEach(b=>b.addEventListener('click',()=>{ABY=b.dataset.aby;render();document.getElementById('a-bd').scrollIntoView();}));
+  document.querySelectorAll('[data-mby]').forEach(b=>b.addEventListener('click',()=>{MBY=b.dataset.mby;render();document.getElementById('m-bd').scrollIntoView();}));
+  document.querySelectorAll('#m-cmp button').forEach(b=>b.addEventListener('click',()=>{CMP=b.dataset.c==='1';render();document.getElementById('m-mk').scrollIntoView();}));
+  document.querySelectorAll('.mopen').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();nav('mm',{view:'fill'});}));
+  document.querySelectorAll('tr.mrow').forEach(r=>r.addEventListener('click',()=>nav('mm',{view:'fill'})));
+  const mx=document.querySelector('.mx'); if(mx) mx.addEventListener('click',()=>nav('mm'));
+}
+function draw(){ if(TAB==='vb') VB.draw(); if(TAB==='all') drawAll(); if(TAB==='mm'){ drawCurve(); drawLevels(); drawFill(); } }
+render();
+let rtm; addEventListener('resize',()=>{clearTimeout(rtm);rtm=setTimeout(draw,120);});
+</script>
+</body>
+</html>

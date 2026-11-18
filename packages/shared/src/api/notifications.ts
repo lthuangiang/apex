@@ -35,6 +35,10 @@ export const NOTIFICATION_TYPES = [
   "team_mcp_daily_limit",
   // Bất biến tiền thật trên prod (DEC-274): scheduler phát, chỉ role `team`, chỉ Telegram.
   "team_invariant",
+  // Sự cố tiền thật và sức khoẻ engine (#241, DEC-313): chỉ role `team`, chỉ Telegram, có mức độ
+  // và chặn lặp theo loại; mỗi ngày một tin tổng hợp.
+  "team_incident",
+  "team_incident_digest",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -54,6 +58,8 @@ export const NOTIFICATION_GROUPS = {
     "team_mcp_introspect_failing",
     "team_mcp_daily_limit",
     "team_invariant",
+    "team_incident",
+    "team_incident_digest",
   ],
 } as const satisfies Record<string, readonly NotificationType[]>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
@@ -199,6 +205,97 @@ export type TelegramLinkStatus = z.infer<typeof telegramLinkStatusSchema>;
 
 // ---------- Báo team qua Telegram (docs/NOTIFICATIONS.md mục 13, DEC-184) ----------
 
+// ---------- Sự cố tiền thật cho team (#241, DEC-313) ----------
+
+/**
+ * Loại sự cố. `critical` = tiền thật đang có rủi ro (engine phát theo bot); `info` = hết sự cố (vị thế khớp lại);
+ * `warning` = sức khoẻ engine / SoDEX (scheduler phát).
+ */
+export const TEAM_INCIDENT_SEVERITY = {
+  position_mismatch: "critical",
+  close_failed: "critical",
+  unknown_gave_up: "critical",
+  late_fill: "critical",
+  paused_errors: "critical",
+  position_matched: "info",
+  shard_lost: "warning",
+  tick_slow: "warning",
+  reads_skipped: "warning",
+  ws_closes: "warning",
+  sodex_errors: "warning",
+} as const satisfies Record<string, "critical" | "warning" | "info">;
+export type TeamIncidentKind = keyof typeof TEAM_INCIDENT_SEVERITY;
+export type TeamIncidentSeverity = (typeof TEAM_INCIDENT_SEVERITY)[TeamIncidentKind];
+export const TEAM_INCIDENT_KINDS = Object.keys(TEAM_INCIDENT_SEVERITY) as [
+  TeamIncidentKind,
+  ...TeamIncidentKind[],
+];
+export const TEAM_INCIDENT_DETAIL_MAX = 200;
+
+/** Ngưỡng và chặn lặp (#241). Thời gian tính bằng ms. */
+export const TEAM_INCIDENT_RULES = {
+  /** critical: tối đa 1 tin / (loại, bot, market) / 10 phút (trừ lệch vị thế / khớp lại: không chặn lặp). */
+  botThrottleMs: 10 * 60_000,
+  /** warning: tối đa 1 tin / loại / 30 phút (như DEC-225). */
+  typeThrottleMs: 30 * 60_000,
+  /** Shard bị mất: ≥ 1 lần trong 5 phút. */
+  shardLostWindowMs: 5 * 60_000,
+  shardLostMin: 1,
+  /** Vòng engine chậm (`tick slow`): ≥ 3 lần trong 10 phút. */
+  tickSlowWindowMs: 10 * 60_000,
+  tickSlowMin: 3,
+  /** Đọc nền bị phần dự trữ chặn (DEC-310): một phút bất kỳ trong 5 phút qua ≥ 100 lời gọi. */
+  readsSkippedWindowMs: 5 * 60_000,
+  readsSkippedPerMinute: 100,
+  /** WS user stream đóng: > 10 lần / giờ ở một account. */
+  wsClosesWindowMs: 60 * 60_000,
+  wsClosesPerHour: 10,
+  /** SoDEX lỗi / timeout: trong 10 phút ≥ 100 lời gọi REST và ≥ 10% timeout / network / unreadable / HTTP 5xx. */
+  sodexWindowMs: 10 * 60_000,
+  sodexMinCalls: 100,
+  sodexMinPct: 10,
+  /** Bộ đếm cho tin tổng hợp: theo giờ, giữ 3 ngày; tin gửi mỗi ngày từ 01:00 UTC (08:00 giờ Việt Nam). */
+  countTtlMs: 3 * 24 * 60 * 60_000,
+  digestHourUtc: 1,
+  digestClaimMs: 36 * 60 * 60_000,
+} as const;
+
+/**
+ * Loại không bao giờ bị chặn lặp: lệch vị thế / khớp lại. Engine chỉ phát mỗi lần chuyển trạng thái một lần, và một lần
+ * "matched" bị ẩn sau "mismatch" (hay ngược lại) sẽ làm team hiểu sai trạng thái hiện tại.
+ */
+export const TEAM_INCIDENT_UNTHROTTLED: readonly TeamIncidentKind[] = [
+  "position_mismatch",
+  "position_matched",
+];
+
+/** Khoá chặn lặp (SET NX PX) của một sự cố; null = không chặn lặp. */
+export function teamIncidentThrottle(e: {
+  kind: TeamIncidentKind;
+  botId?: string | undefined;
+  market?: string | undefined;
+}): { key: string; ms: number } | null {
+  if (TEAM_INCIDENT_UNTHROTTLED.includes(e.kind)) return null;
+  return TEAM_INCIDENT_SEVERITY[e.kind] === "warning"
+    ? { key: `team:incident:${e.kind}`, ms: TEAM_INCIDENT_RULES.typeThrottleMs }
+    : {
+        key: `team:incident:${e.kind}:${e.botId ?? "-"}:${e.market ?? "-"}`,
+        ms: TEAM_INCIDENT_RULES.botThrottleMs,
+      };
+}
+
+/** Bộ đếm theo giờ của tin tổng hợp (jobs tăng, scheduler đọc). `hour` = floor(ms / 3 600 000). */
+export const teamIncidentCountKey = (hour: number, kind: TeamIncidentKind) =>
+  `team:incident_count:${String(hour)}:${kind}`;
+
+/** Bộ đếm theo phút của tín hiệu sức khoẻ engine (engine tăng, không chờ; scheduler đọc). */
+export const ENGINE_HEALTH_SIGNALS = ["shard_lost", "tick_slow", "reads_skipped"] as const;
+export type EngineHealthSignal = (typeof ENGINE_HEALTH_SIGNALS)[number];
+export const engineHealthKey = (signal: EngineHealthSignal, minute: number) =>
+  `team:engine_health:${signal}:${String(minute)}`;
+/** Giữ bộ đếm sức khoẻ engine 2 giờ. */
+export const ENGINE_HEALTH_TTL_MS = 2 * 60 * 60_000;
+
 /**
  * Sự kiện api / engine ghi vào outbox `jobs.team_ops` trong cùng transaction với thay đổi trạng thái. jobs fan-out cho
  * từng thành viên team. Vốn do engine tính sẵn lúc phát (jobs chỉ hiển thị).
@@ -237,6 +334,22 @@ export const teamOpsEventSchema = z.discriminatedUnion("type", [
     botId: uuidSchema,
     /** Số liệu ngắn đã format, tiếng Anh (không ví, không key); rỗng với `resolved`. */
     detail: z.string().max(200),
+  }),
+  // Sự cố tiền thật / sức khoẻ engine (#241). Engine ghi các loại theo bot trong CÙNG transaction với sự kiện; scheduler
+  // ghi các loại sức khoẻ. Không bao giờ email, ví đầy đủ, key; account chỉ ở dạng đã che.
+  z.object({
+    type: z.literal("team_incident"),
+    kind: z.enum(TEAM_INCIDENT_KINDS),
+    /** Bot của sự cố (loại theo bot); không có với loại sức khoẻ engine. */
+    botId: uuidSchema.optional(),
+    market: z.string().max(40).optional(),
+    /** Số liệu ngắn đã format, tiếng Anh (không email / ví đầy đủ / key). */
+    detail: z.string().max(TEAM_INCIDENT_DETAIL_MAX),
+  }),
+  z.object({
+    type: z.literal("team_incident_digest"),
+    /** Số sự cố trong 24 giờ qua theo loại (kể cả lần bị chặn lặp); loại không có thì không có khoá. */
+    counts: z.record(z.string(), z.number().int().nonnegative()),
   }),
   z.object({
     type: z.literal("team_mcp_daily_limit"),
