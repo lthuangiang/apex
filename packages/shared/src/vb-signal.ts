@@ -28,7 +28,8 @@ export const vbSignalSnapshotSchema = z.object({
     tradePressure: unit,
     orderbookImbalance: unit,
   }),
-  spreadBps: z.number().nonnegative().nullable(),
+  /** Spread lúc quyết định (bp); null khi không có sổ, sổ chéo hoặc bằng giá (spread ≤ 0). */
+  spreadBps: z.number().positive().nullable(),
   reason: z.string().max(200),
   /** "Reverse the signal" bật lúc vào. */
   reversed: z.boolean(),

@@ -51,6 +51,18 @@ export interface EntrySnapshotInput {
   taker: boolean;
 }
 
+/**
+ * Snapshot an toàn: lỗi bất ngờ khi dựng (dữ liệu lạ) thì trả undefined, lượt vào vẫn ghi quyết định và đặt lệnh như
+ * thường. Không bao giờ ném lỗi ra bước chiến lược.
+ */
+export function safeEntrySnapshot(i: EntrySnapshotInput): VbSignalSnapshot | undefined {
+  try {
+    return entrySnapshot(i);
+  } catch {
+    return undefined;
+  }
+}
+
 export function entrySnapshot(i: EntrySnapshotInput): VbSignalSnapshot {
   const usable = i.book !== null && dec(i.book.bid).gt(0) && dec(i.book.ask).gt(i.book.bid);
   const mid = usable && i.book !== null ? dec(i.book.bid).add(i.book.ask).div(2).toFixed() : null;
@@ -72,7 +84,11 @@ export function entrySnapshot(i: EntrySnapshotInput): VbSignalSnapshot {
       tradePressure: r4(c.tradePressure),
       orderbookImbalance: r4(c.orderbookImbalance),
     },
-    spreadBps: i.sig.spreadBps === null ? null : Math.round(i.sig.spreadBps * 100) / 100,
+    // Sổ chéo / bằng giá (spread ≤ 0) hoặc không hữu hạn: null, không làm hỏng cả snapshot.
+    spreadBps:
+      i.sig.spreadBps === null || !Number.isFinite(i.sig.spreadBps) || i.sig.spreadBps <= 0
+        ? null
+        : Math.round(i.sig.spreadBps * 100) / 100,
     reason: i.sig.reason.slice(0, 200),
     reversed: i.reversed,
     balanced: i.balanced,

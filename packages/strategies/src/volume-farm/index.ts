@@ -15,7 +15,7 @@ import type {
 
 import type { VolumeFarmConfig } from "./schema";
 import { farmSignal, type FarmRegime } from "./signal";
-import { entrySnapshot } from "./snapshot";
+import { safeEntrySnapshot } from "./snapshot";
 
 // S10 Volume Farm (DEC-80): vòng lặp FARM của bot "standard" trong apex (src/modules/Watcher.ts), viết lại dạng
 // hàm thuần cho engine của DRIFT.
@@ -496,6 +496,25 @@ function tryEnter(
     `${at_}, ${usd.toDecimalPlaces(2).toString()} USDC, hold ${String(holdSecs)} s.`,
     `Details: score ${sig.score.toFixed(2)}, confidence ${sig.confidence.toFixed(2)}.`,
   ].join(" ");
+  const signal =
+    ctx.decisionPayload === true
+      ? safeEntrySnapshot({
+          sig: { ...sig, direction: sig.direction },
+          side: direction,
+          reversed: c.reverseSignal,
+          balanced,
+          at,
+          candles,
+          book: s.book,
+          bookAt: s.bookAt,
+          last: s.lastPrice,
+          order: o,
+          usd: usd.toDecimalPlaces(2).toFixed(2),
+          holdSecs,
+          entryTry: s.unfilled,
+          taker,
+        })
+      : undefined;
   return {
     actions: [
       // Stop của lượt trước chưa chắc đã được SoDEX huỷ: gửi huỷ; engine bỏ qua nếu đã xác nhận huỷ (DEC-119).
@@ -506,28 +525,7 @@ function tryEnter(
         decision: `Enter ${direction}`,
         why,
         // #221: snapshot tín hiệu cho trang team "VB Signal Analysis"; chỉ dựng khi engine ghi event.
-        ...(ctx.decisionPayload === true
-          ? {
-              payload: {
-                signal: entrySnapshot({
-                  sig: { ...sig, direction: sig.direction },
-                  side: direction,
-                  reversed: c.reverseSignal,
-                  balanced,
-                  at,
-                  candles,
-                  book: s.book,
-                  bookAt: s.bookAt,
-                  last: s.lastPrice,
-                  order: o,
-                  usd: usd.toDecimalPlaces(2).toFixed(2),
-                  holdSecs,
-                  entryTry: s.unfilled,
-                  taker,
-                }),
-              },
-            }
-          : {}),
+        ...(signal === undefined ? {} : { payload: { signal } }),
       },
     ],
     state: {

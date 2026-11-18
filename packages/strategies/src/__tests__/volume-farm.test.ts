@@ -20,6 +20,7 @@ import {
 } from "../volume-farm";
 import { volumeFarmSchema, type VolumeFarmConfig } from "../volume-farm/schema";
 import { farmSignal, toFiveMinute } from "../volume-farm/signal";
+import { entrySnapshot, safeEntrySnapshot, type EntrySnapshotInput } from "../volume-farm/snapshot";
 
 const ctx: StepContext = {
   botId: "vf-bot",
@@ -1510,11 +1511,55 @@ describe("volume farm — signal snapshot on entries (#221)", () => {
       for (const start of starts) {
         const plain = run(c, events, start);
         const withSnap = run(c, events, start, snapCtx);
+        // So sánh chỉ có nghĩa khi bot thật sự vào lệnh.
+        expect(enters(withSnap.all).length).toBeGreaterThan(0);
+        expect(places(withSnap.all).length).toBeGreaterThan(0);
         expect(strip(withSnap.all)).toEqual(plain.all);
         expect(withSnap.s).toEqual(plain.s);
         expect(plain.all.some((a) => a.type === "log" && a.payload !== undefined)).toBe(false);
         expect(enters(withSnap.all).every((a) => a.payload?.signal !== undefined)).toBe(true);
       }
+  });
+
+  const snapInput = (over: Partial<EntrySnapshotInput> = {}): EntrySnapshotInput => {
+    const sig = farmSignal(candles(0.0001), book, T0, 10);
+    if (sig.direction === "skip") throw new Error("expected a signal");
+    return {
+      sig: { ...sig, direction: sig.direction },
+      side: sig.direction,
+      reversed: false,
+      balanced: false,
+      at: T0,
+      candles: candles(0.0001),
+      book,
+      bookAt: T0,
+      last: null,
+      order: first(places(run(cfg(), [timer(T0)]).all)),
+      usd: "150.00",
+      holdSecs: 150,
+      entryTry: 0,
+      taker: false,
+      ...over,
+    };
+  };
+
+  it("keeps the snapshot valid on a crossed book: spread and mid become null", () => {
+    const crossed = { ...book, bid: "80002", ask: "80001" };
+    const base = snapInput();
+    const snap = entrySnapshot(
+      snapInput({ book: crossed, sig: { ...base.sig, spreadBps: -1.25 } }),
+    );
+    expect(vbSignalSnapshotSchema.safeParse(snap).success).toBe(true);
+    expect(snap.spreadBps).toBeNull();
+    expect(snap.price).toMatchObject({ bid: "80002", ask: "80001", mid: null });
+    expect(entrySnapshot(snapInput({ sig: { ...base.sig, spreadBps: 0 } })).spreadBps).toBeNull();
+  });
+
+  it("emits no snapshot instead of throwing when the input is malformed", () => {
+    const bad = snapInput({ book: { ...book, bid: "not-a-number" } });
+    expect(() => entrySnapshot(bad)).toThrow();
+    expect(safeEntrySnapshot(bad)).toBeUndefined();
+    expect(safeEntrySnapshot(snapInput())).toBeDefined();
   });
 
   it("attaches nothing to other decisions", () => {

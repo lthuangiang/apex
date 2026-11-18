@@ -82,6 +82,12 @@ export default config(
               message:
                 "Recommendation engine rules and thresholds stay on the server; use a dedicated constant (e.g. RECO_RECURRING).",
             },
+            {
+              // #221: snapshot tín hiệu Volume Farm (tên thành phần là marker của check:bundle), chỉ cho server / trang team.
+              name: "@drift/shared/vb-signal",
+              message:
+                "The Volume Farm signal snapshot is server-only: its field names are strategy internals (check:bundle).",
+            },
           ],
           patterns: [
             {
