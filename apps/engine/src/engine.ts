@@ -52,7 +52,11 @@ import {
   PLANNED_STOP_REASONS,
   STOPPED_BY_USER,
 } from "@drift/shared";
-import { mmQuoteSnapshotSchema, type MmQuoteSnapshot } from "@drift/shared/mm-quote";
+import {
+  mmOrderContextSchema,
+  mmQuoteSnapshotSchema,
+  type MmQuoteSnapshot,
+} from "@drift/shared/mm-quote";
 import { vbSignalSnapshotSchema, type VbSignalSnapshot } from "@drift/shared/vb-signal";
 import { isInsufficientMarginReject } from "@drift/sodex";
 import {
@@ -2969,6 +2973,8 @@ export class Engine {
       }
     }
     if (places.length > 0) {
+      // Bối cảnh lúc đặt (#233) dựng trước, ghi cùng dòng `unknown` (không thêm lần ghi, không đổi lệnh gửi đi).
+      const contexts = this.#orderContexts(r, actions);
       // Ghi trước (unknown) rồi mới gửi; đã có (chạy lại sau chuyển shard) thì không gửi lại.
       const fresh = await this.#fenced(r, async (tx) => {
         const inserted = await tx
@@ -2990,6 +2996,7 @@ export class Engine {
               tag: o.tag,
               epoch: r.epoch,
               submittedAt: new Date(at),
+              context: contexts.get(o.clOrdID) ?? null,
             })),
           )
           .onConflictDoNothing()
@@ -4278,6 +4285,35 @@ export class Engine {
       });
       if (also !== undefined) await also(tx);
     });
+  }
+
+  /**
+   * Bối cảnh lúc đặt của từng lệnh (Market Making, #233) theo clOrdID, parse lại bằng zod. Sai schema thì bỏ riêng bối
+   * cảnh đó (log warn, chỉ tên field); không bao giờ ném lỗi, không bao giờ chặn việc ghi / gửi lệnh.
+   */
+  #orderContexts(
+    r: Runner,
+    actions: readonly StrategyAction[],
+  ): Map<string, Record<string, unknown>> {
+    const out = new Map<string, Record<string, unknown>>();
+    try {
+      for (const a of actions) {
+        if (a.type !== "place" || a.context === undefined) continue;
+        const parsed = mmOrderContextSchema.safeParse(a.context);
+        if (parsed.success) out.set(a.order.clOrdID, parsed.data);
+        else
+          this.#d.log.warn(
+            {
+              botId: r.botId,
+              fields: parsed.error.issues.map((i) => i.path.map(String).join(".")).slice(0, 5),
+            },
+            "order context dropped: schema mismatch",
+          );
+      }
+    } catch {
+      out.clear();
+    }
+    return out;
   }
 
   /**

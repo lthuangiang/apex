@@ -632,6 +632,11 @@ export const orders = pgTable(
     missingConfirmedAt: tstz("missing_confirmed_at"),
     /** Lúc engine bỏ cuộc đối soát lệnh `unknown` (Needs attention + Decisions một lần); lệnh rời truy vấn mỗi vòng. */
     unknownGaveUpAt: tstz("unknown_gave_up_at"),
+    /**
+     * Bối cảnh lúc đặt do chiến lược gắn (Market Making, `mmOrderContextSchema` ở `@drift/shared/mm-quote`, #233): ghi
+     * cùng dòng `unknown` trước khi gửi. Chỉ cho trang team; API không gửi cột này. Null với lệnh cũ / chiến lược khác.
+     */
+    context: jsonb("context").$type<Record<string, unknown>>(),
     ...timestamps,
   },
   (t) => [

@@ -1,4 +1,9 @@
-import { MM_QUOTE_SNAPSHOT_MAX_BYTES, mmQuoteSnapshotSchema } from "@drift/shared/mm-quote";
+import {
+  MM_ORDER_CONTEXT_MAX_BYTES,
+  MM_QUOTE_SNAPSHOT_MAX_BYTES,
+  mmOrderContextSchema,
+  mmQuoteSnapshotSchema,
+} from "@drift/shared/mm-quote";
 import { describe, expect, it } from "vitest";
 
 import { clOrdId } from "../core/ids";
@@ -2036,9 +2041,17 @@ describe("volume maker — quote snapshot on quoting decisions (#230)", () => {
   const fairAt = (at: number, fair: string, age = 50) =>
     ({ type: "fair", at, market: "BTC-USD", fair, binanceAt: at - age }) as const;
   const quoted7s = (c = on) => runWith(c, [...firstQuote(), tickAt(7000, "100000"), snap(7000)]);
-  /** Bỏ `payload` khỏi các dòng Decisions: phần còn lại phải y hệt khi không dựng snapshot. */
+  /** Bỏ `payload` (Decisions) và `context` (lệnh): phần còn lại phải y hệt khi không dựng snapshot. */
   const strip = (a: StrategyAction[]) =>
-    a.map((x) => (x.type === "log" ? { type: x.type, decision: x.decision, why: x.why } : x));
+    a.map((x) =>
+      x.type === "log"
+        ? { type: x.type, decision: x.decision, why: x.why }
+        : x.type === "place"
+          ? { type: x.type, order: x.order }
+          : x,
+    );
+  const ctxOf = (a: StrategyAction[]) =>
+    a.flatMap((x) => (x.type === "place" ? [{ order: x.order, context: x.context }] : []));
 
   it("records the pulled ask, the Binance price and how far past it the ask was", () => {
     const r = runWith(on, [fairAt(7500, "100003")], snapCtx, quoted7s().s, false);
@@ -2217,6 +2230,12 @@ describe("volume maker — quote snapshot on quoting decisions (#230)", () => {
       expect(strip(withSnap.all)).toEqual(plain.all);
       expect(withSnap.s).toEqual(plain.s);
       expect(plain.all.some((a) => a.type === "log" && a.payload !== undefined)).toBe(false);
+      expect(plain.all.some((a) => a.type === "place" && a.context !== undefined)).toBe(false);
+      // Mọi lệnh có bối cảnh hợp lệ, gọn (#233).
+      for (const p of ctxOf(withSnap.all)) {
+        const x = mmOrderContextSchema.parse(p.context);
+        expect(JSON.stringify(x).length).toBeLessThan(MM_ORDER_CONTEXT_MAX_BYTES);
+      }
       for (const l of logsOf(withSnap.all))
         if (l.payload?.quote !== undefined) {
           quoteLogs += 1;
@@ -2226,6 +2245,103 @@ describe("volume maker — quote snapshot on quoting decisions (#230)", () => {
     }
     // Có dòng được gắn snapshot thật (không so sánh rỗng).
     expect(quoteLogs).toBeGreaterThan(5);
+  });
+
+  it("puts a placement context on every order, opening and closing, without Smart quoting (#233)", () => {
+    const c = cfg(); // theo khoảng cách bp, tắt Smart quoting
+    let r = runWith(c, [...firstQuote(), snap(3000)]);
+    // Lệnh mở đặt lại ở bước SoDEX xác nhận huỷ (không có dòng Decisions) vẫn có bối cảnh.
+    const opens = ctxOf(r.all);
+    expect(opens.length).toBeGreaterThanOrEqual(4);
+    for (const p of opens) expect(p.context).toBeDefined();
+    const first = mmOrderContextSchema.parse(opens[0]?.context);
+    expect(first).toMatchObject({
+      v: 1,
+      reason: "first",
+      mid: "100000",
+      bid: null,
+      ask: null,
+      fair: null,
+      level: null,
+      pos: "0",
+      smart: false,
+      sig: null,
+      fastPause: false,
+    });
+    expect(first.bp).toBe(-1);
+    const later = opens.slice(2).map((p) => mmOrderContextSchema.parse(p.context));
+    // Đặt ở bước SoDEX xác nhận huỷ của lần báo giá 3 s (DEC-257): `requote`, theo sổ REST lúc đó.
+    expect(later.map((x) => [x.reason, x.mid])).toEqual([
+      ["requote", "99999.95"],
+      ["requote", "99999.95"],
+    ]);
+    // Khớp bid → vị thế long; lần báo giá sau có lệnh đóng reduce-only với bối cảnh có vị thế.
+    const bid = opens.filter((p) => p.order.side === "buy").at(-1)?.order;
+    r = runWith(
+      c,
+      [
+        {
+          type: "fill",
+          at: 3100,
+          clOrdID: bid?.clOrdID ?? "",
+          price: bid?.price ?? "0",
+          quantity: bid?.quantity ?? "0",
+          fee: "0",
+        },
+        snap(6100),
+      ],
+      snapCtx,
+      r.s,
+    );
+    const close = ctxOf(r.all).find((p) => p.order.reduceOnly);
+    expect(close).toBeDefined();
+    expect(mmOrderContextSchema.parse(close?.context)).toMatchObject({
+      reason: "refresh",
+      pos: "0.005",
+    });
+  });
+
+  it("names cut, stop and Binance distance in the placement context (#233)", () => {
+    const r0 = quoted7s();
+    const ctxs = ctxOf(r0.all).map((p) => mmOrderContextSchema.parse(p.context));
+    expect(ctxs.every((x) => x.smart && x.level === 0)).toBe(true);
+    const bid = places(r0.all)
+      .filter((o) => o.side === "buy")
+      .at(-1);
+    const long = runWith(
+      on,
+      [
+        {
+          type: "fill",
+          at: 7100,
+          clOrdID: bid?.clOrdID ?? "",
+          price: bid?.price ?? "0",
+          quantity: bid?.quantity ?? "0",
+          fee: "0",
+        },
+      ],
+      snapCtx,
+      r0.s,
+    ).s;
+    const cut = ctxOf(runWith(on, [fairAt(8100, "99839.9", 0)], snapCtx, long, false).all);
+    expect(cut).toHaveLength(1);
+    expect(mmOrderContextSchema.parse(cut[0]?.context)).toMatchObject({
+      reason: "cut",
+      fair: "99839.9",
+      fairAgeMs: 0,
+      bp: null,
+      fairBp: null,
+      pos: "0.005",
+    });
+    // Bot tự dừng (Stop when costs reach) kèm đóng vị thế: lệnh đóng market có lý do `stop`.
+    const tight = cfg({
+      quoteLevel: 0,
+      smartQuoting: true,
+      costBudget: "1",
+      inventoryLossStop: "0.5",
+    });
+    const stop = ctxOf(runWith(tight, [tickAt(7200, "99000")], snapCtx, long).all);
+    expect(stop.map((p) => p.context?.reason)).toEqual(["stop"]);
   });
 
   it("attaches nothing to decisions that are not about quoting", () => {
@@ -2286,6 +2402,7 @@ describe("volume maker — quote snapshot on quoting decisions (#230)", () => {
       { actions: [{ type: "log", decision: "Order requests", why: "x" }], state: after },
       e,
       args.oracle,
+      VOLUME_MAKER_STOPPED,
     );
     const q = mmQuoteSnapshotSchema.parse((step.actions[0] as Log).payload?.quote);
     expect(JSON.stringify(q).length).toBeLessThan(MM_QUOTE_SNAPSHOT_MAX_BYTES);
@@ -2306,6 +2423,7 @@ describe("volume maker — quote snapshot on quoting decisions (#230)", () => {
       r,
       { type: "timer", at: 7000 },
       { marginBp: 0.5, maxAgeMs: 1500 },
+      VOLUME_MAKER_STOPPED,
     );
     expect(out).toBe(r);
   });

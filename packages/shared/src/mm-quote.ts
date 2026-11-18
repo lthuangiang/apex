@@ -115,3 +115,39 @@ export type MmQuoteReason = (typeof MM_QUOTE_REASONS)[number];
 
 /** Kích thước tối đa (byte, JSON) của một snapshot. */
 export const MM_QUOTE_SNAPSHOT_MAX_BYTES = 1024;
+
+/** Lý do của một lệnh: như `MM_QUOTE_REASONS`, thêm `stop` (lệnh đóng lúc bot tự dừng) và `dust` (đóng vị thế lẻ, DEC-292). */
+export const MM_ORDER_REASONS = [...MM_QUOTE_REASONS, "stop", "dust"] as const;
+
+/**
+ * Bối cảnh lúc đặt của MỌI lệnh Market Making (#233), engine ghi vào cột `orders.context` cùng lúc ghi dòng `unknown`
+ * (trước khi gửi), kể cả bot tắt Smart quoting và lệnh đặt ở bước không có dòng Decisions (lệnh mở đặt lại khi SoDEX xác
+ * nhận huỷ, DEC-257). Gọn (~200 byte) vì mỗi lệnh một bản. Chỉ server / trang team; API không gửi cột này.
+ */
+export const mmOrderContextSchema = z.object({
+  v: z.literal(1),
+  reason: z.enum(MM_ORDER_REASONS),
+  /** Mid sổ SoDEX bot đang giữ; không có sổ (hoặc sổ chéo) thì giá khớp gần nhất bot dùng làm mid (`bid` / `ask` null). */
+  mid: decimal.nullable(),
+  bid: decimal.nullable(),
+  ask: decimal.nullable(),
+  /** Giá Binance quy đổi gần nhất (chỉ Smart quoting nhận) và tuổi theo giờ Binance (ms). */
+  fair: decimal.nullable(),
+  fairAgeMs: ms.nullable(),
+  /** `quoteLevel` của config; null = báo giá theo khoảng cách bp (config cũ). */
+  level: z.number().int().nonnegative().nullable(),
+  /** (giá − mid) ÷ mid × 10 000; null với lệnh market. */
+  bp: z.number().nullable(),
+  /** (giá − fair) ÷ fair × 10 000; null với lệnh market hoặc không có fair. */
+  fairBp: z.number().nullable(),
+  /** Vị thế theo sổ của bot lúc đặt (có dấu). */
+  pos: decimal,
+  smart: z.boolean(),
+  sig: z.string().max(40).nullable(),
+  fastPause: z.boolean(),
+});
+
+export type MmOrderContext = z.infer<typeof mmOrderContextSchema>;
+
+/** Kích thước tối đa (byte, JSON) của một bối cảnh lệnh. */
+export const MM_ORDER_CONTEXT_MAX_BYTES = 320;

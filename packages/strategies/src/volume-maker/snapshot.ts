@@ -1,6 +1,7 @@
 import { dec } from "@drift/shared";
 import {
   MM_QUOTE_SNAPSHOT_MAX_BYTES,
+  type MmOrderContext,
   type MmQuoteOrder,
   type MmQuoteReason,
   type MmQuoteSnapshot,
@@ -192,10 +193,97 @@ function bounded(s: MmQuoteSnapshot): MmQuoteSnapshot {
 }
 
 /**
+ * Bối cảnh lúc đặt của từng lệnh trong bước (#233): sổ / fair / vị thế / Smart quoting theo state sau bước (đúng state mà
+ * chiến lược vừa dùng để định giá), khoảng cách bp theo giá lệnh. Trả map clOrdID → bối cảnh.
+ */
+export function orderContexts(
+  c: VolumeMakerConfig,
+  before: VolumeMakerState,
+  after: VolumeMakerState,
+  e: StrategyEvent,
+  actions: readonly StrategyAction[],
+  oracle: MmOracleParams,
+  stopped: boolean,
+): Map<string, MmOrderContext> {
+  const out = new Map<string, MmOrderContext>();
+  const places = actions.flatMap((a) => (a.type === "place" ? [a.order] : []));
+  if (places.length === 0) return out;
+  const at = e.at;
+  const book = after.book ?? null;
+  const usable = book !== null && dec(book.bid).gt(0) && dec(book.ask).gt(book.bid);
+  const mid = usable
+    ? dec(book.bid).add(book.ask).div(2).toFixed()
+    : after.mid === null
+      ? null
+      : fixed(after.mid);
+  const fair = after.fair == null ? null : fixed(after.fair);
+  const fairAgeMs =
+    after.fairBinanceAt == null ? null : Math.max(0, Math.round(at - after.fairBinanceAt));
+  const fairRef = fair !== null && fairAgeMs !== null && fairAgeMs <= oracle.maxAgeMs ? fair : null;
+  const step = stepReason(c, before, after, e, actions);
+  for (const o of places) {
+    const price = o.price === undefined ? null : fixed(o.price);
+    const reason = o.tag.includes(":dust:")
+      ? "dust"
+      : o.tag.includes(":cut:")
+        ? "cut"
+        : stopped
+          ? "stop"
+          : step === "sample" || step === "pulled"
+            ? "requote"
+            : step;
+    out.set(o.clOrdID, {
+      v: 1,
+      reason,
+      mid,
+      bid: usable ? fixed(book.bid) : null,
+      ask: usable ? fixed(book.ask) : null,
+      fair,
+      fairAgeMs,
+      level: c.quoteLevel ?? null,
+      bp: bpOf(price, mid),
+      fairBp: bpOf(price, fairRef),
+      pos: dec(after.ledger.position).toFixed(),
+      smart: c.smartQuoting,
+      sig: after.smartSig == null ? null : after.smartSig.slice(0, 40),
+      fastPause: after.fastPauseUntil != null && at < after.fastPauseUntil,
+    });
+  }
+  return out;
+}
+
+/**
  * Gắn `payload.quote` vào các dòng Decisions về báo giá của bước (chỉ khi engine ghi event, `ctx.decisionPayload`).
  * Chỉ thêm `payload` vào action `log`; lệnh, thứ tự action và state giữ nguyên. Lỗi bất ngờ thì trả kết quả gốc.
  */
 export function withQuoteSnapshots(
+  c: VolumeMakerConfig,
+  before: VolumeMakerState,
+  r: StepResult<VolumeMakerState>,
+  e: StrategyEvent,
+  oracle: MmOracleParams,
+  stopDecision: string,
+): StepResult<VolumeMakerState> {
+  let base = r;
+  // Bối cảnh từng lệnh (#233): lỗi thì bỏ riêng phần này.
+  try {
+    const stopped = r.actions.some((a) => a.type === "log" && a.decision === stopDecision);
+    const ctxs = orderContexts(c, before, r.state, e, r.actions, oracle, stopped);
+    if (ctxs.size > 0)
+      base = {
+        actions: r.actions.map((a): StrategyAction => {
+          const x = a.type === "place" ? ctxs.get(a.order.clOrdID) : undefined;
+          return x === undefined || a.type !== "place" ? a : { ...a, context: x };
+        }),
+        state: r.state,
+      };
+  } catch {
+    base = r;
+  }
+  return withDecisionSnapshots(c, before, base, e, oracle);
+}
+
+function withDecisionSnapshots(
   c: VolumeMakerConfig,
   before: VolumeMakerState,
   r: StepResult<VolumeMakerState>,

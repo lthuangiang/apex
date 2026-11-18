@@ -1295,6 +1295,30 @@ describe("engine", () => {
     await e.stop();
   });
 
+  for (const smartQuoting of [true, false])
+    it(`stores a placement context on every Market Making order with Smart quoting ${smartQuoting ? "on" : "off"} (#233)`, async () => {
+      const { eq } = await import("drizzle-orm");
+      const { mmOrderContextSchema } = await import("@drift/shared/mm-quote");
+      const gw = new FakeGateway();
+      const { botId } = await seedBot("running", mmSmart(smartQuoting));
+      const e = makeEngine(gw, `w-mm-ctx-${String(smartQuoting)}`);
+      await e.tick();
+      await e.onPrice("BTC-USD", "100000", clock);
+      const sent = gw.received.filter((o) => o.market === "BTC-USD");
+      expect(sent.length).toBeGreaterThanOrEqual(2);
+      // Gateway (SoDEX) không bao giờ nhận bối cảnh.
+      for (const o of sent) expect(o).not.toHaveProperty("context");
+      const rows = await db.select().from(orders).where(eq(orders.botId, botId));
+      expect(rows.length).toBeGreaterThanOrEqual(2);
+      for (const row of rows) {
+        const ctx = mmOrderContextSchema.parse(row.context);
+        expect(ctx).toMatchObject({ v: 1, reason: "first", smart: smartQuoting, pos: "0" });
+        expect(ctx.bp).not.toBeNull();
+        expect(JSON.stringify(row.context).length).toBeLessThan(320);
+      }
+      await e.stop();
+    });
+
   it("logs Paused only when the pause changes the bot's state (DEC-256)", async () => {
     const { eq } = await import("drizzle-orm");
     const paused = async (botId: string) =>

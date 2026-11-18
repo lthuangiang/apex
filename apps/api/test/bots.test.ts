@@ -1123,8 +1123,30 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     );
     const tag = randomUUID().slice(0, 8);
     await env.pool.query(
-      "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, avg_price, status, tag, epoch, created_at) values (gen_random_uuid(), $1, $2, $3, 'BTC-USD', 'perps', 'sell', 'market', 'IOC', 0.005, 0.005, 99839.9, 'filled', 'vm:9:cut:close', 1, $4)",
-      [id, rows[0]?.acc ?? "", `q-${tag}`, env.clock.now],
+      "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, avg_price, status, tag, epoch, created_at, context) values (gen_random_uuid(), $1, $2, $3, 'BTC-USD', 'perps', 'sell', 'market', 'IOC', 0.005, 0.005, 99839.9, 'filled', 'vm:9:cut:close', 1, $4, $5)",
+      [
+        id,
+        rows[0]?.acc ?? "",
+        `q-${tag}`,
+        env.clock.now,
+        // Bối cảnh lúc đặt (#233): cột `orders.context` cũng không bao giờ tới trình duyệt.
+        JSON.stringify({
+          v: 1,
+          reason: "cut",
+          mid: "99999.95",
+          bid: "99999.9",
+          ask: "100000",
+          fair: "99839.9",
+          fairAgeMs: 0,
+          level: 0,
+          bp: null,
+          fairBp: null,
+          pos: "0.005",
+          smart: true,
+          sig: "buy:2|sell:pull",
+          fastPause: false,
+        }),
+      ],
     );
     const quote = {
       v: 1,
@@ -1166,8 +1188,17 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
     expect(ev).toMatchObject({ order: `q-${tag}`, outcome: "filled" });
     expect(ev).not.toHaveProperty("payload");
     expect(ev).not.toHaveProperty("quote");
-    for (const marker of ["fairBp", "clampBp", "fastPause", "buy:2|sell:pull"])
+    for (const marker of ["fairBp", "clampBp", "fastPause", "fairAgeMs", "buy:2|sell:pull"])
       expect(res.body).not.toContain(marker);
+    // Danh sách lệnh và fill của bot cũng không gửi `orders.context`.
+    for (const path of [`/api/v1/orders?botId=${id}`, `/api/v1/bots/${id}/fills`]) {
+      const r = await client.request("GET", path);
+      expect(r.statusCode).toBe(200);
+      for (const marker of ["fairBp", "fairAgeMs", "fastPause", "buy:2|sell:pull"])
+        expect(r.body).not.toContain(marker);
+    }
+    const list = await client.request("GET", `/api/v1/orders?botId=${id}`);
+    expect(list.body).toContain(`q-${tag}`);
   });
 
   it("splits post-only misses from other rejects and counts rounds that filled (DEC-300)", async () => {
