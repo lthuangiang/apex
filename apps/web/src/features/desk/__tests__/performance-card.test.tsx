@@ -231,6 +231,26 @@ describe("How your bots performed", () => {
     expect(within(table).getByText("$47 less")).toBeInTheDocument();
   });
 
+  it("puts the two window labels on separate rows and keeps the row height when there is no window", async () => {
+    state.view = {
+      ...READY,
+      cheapest: { from: 13, costPerMillion: "156", fills: 150 },
+      dearest: { from: 14, costPerMillion: "216", fills: 150 },
+    };
+    wrap();
+    // Hai khung sát nhau: mỗi nhãn một hàng riêng, không chung một hàng (390 px).
+    await screen.findByRole("img", { name: /^Cost per \$1M by hour/ });
+    const rows = document.querySelectorAll("div[aria-hidden='true'].h-4");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.textContent).toBe("Cheapest");
+    expect(rows[1]?.textContent).toBe("Most expensive");
+    cleanup();
+    state.view = { ...READY, cheapest: null, dearest: null };
+    wrap();
+    await screen.findByRole("img", { name: /^Cost per \$1M by hour/ });
+    expect(screen.getByTestId("perf-label-spacer")).toBeInTheDocument();
+  });
+
   it("shows the price helping as its own line, never a negative bar", async () => {
     state.view = {
       ...READY,

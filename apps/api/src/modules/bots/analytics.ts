@@ -241,14 +241,12 @@ export async function botAnalytics(
   const ts = all.filter((t) => t.closedAt >= from);
   const raw = d.trades.filter((t) => t.t1 >= from);
   const prevFrom = from - (now - from);
+  // Kỳ trước không có lượt nào đóng (kể cả khi bot chưa tồn tại) → null, không phải 0 (quy tắc 1.8); UI ẩn "vs previous".
+  const prevTrades = all.filter((t) => t.closedAt >= prevFrom && t.closedAt < from);
   const prevNet =
-    period === "all"
+    period === "all" || prevTrades.length === 0
       ? null
-      : round(
-          all
-            .filter((t) => t.closedAt >= prevFrom && t.closedAt < from)
-            .reduce((n, t) => n + t.net, 0),
-        );
+      : round(prevTrades.reduce((n, t) => n + t.net, 0));
 
   // Lệnh đã gửi trong kỳ (không tính stop gốc trên SoDEX).
   const [ord] = await deps.db
