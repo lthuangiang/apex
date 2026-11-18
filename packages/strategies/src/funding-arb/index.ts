@@ -560,7 +560,7 @@ export function stepFundingArb(
 }
 
 /**
- * Áp version mới (#223, DEC-319): giữ vị thế + giá vốn của hai chân trong sổ cái phiên mới (max
+ * Áp version mới (#223, DEC-320): giữ vị thế + giá vốn của hai chân trong sổ cái phiên mới (max
  * loss tính lại từ đầu), danh sách lệnh (fill trễ vẫn vào đúng chân) và giá gần nhất. Còn vị thế thì theo dõi tiếp như
  * đang giữ (thoát theo funding / max loss của version mới, như Resume, DEC-240); không còn thì chờ funding đủ để vào.
  * Không đặt lệnh nào lúc áp. Lô lệnh mở / đóng / cân chân còn đang chờ thì chưa áp (null, như DEC-304).

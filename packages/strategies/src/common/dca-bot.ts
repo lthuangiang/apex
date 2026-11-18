@@ -792,7 +792,7 @@ function onOrderDone(
 }
 
 /**
- * Áp version mới (#223, DEC-319). Engine huỷ mọi lệnh đang mở (safety, take profit). State mới giữ
+ * Áp version mới (#223, DEC-320). Engine huỷ mọi lệnh đang mở (safety, take profit). State mới giữ
  * sổ cái (PM chốt B2: phiên tiếp tục, max loss giữ mốc) và số Cycle, nhớ mọi lệnh cũ chưa kết thúc (`retiring`, huỷ lại
  * mỗi 10 s; fill muộn vào sổ cái theo chiều của chính lệnh) và chỉ dựng lệnh khi chúng đã kết thúc. Còn vị thế thì Cycle
  * đang dở chạy tiếp với cấu hình mới như Resume (DEC-240): take profit theo vị thế và các safety chưa khớp ở mức chưa bị

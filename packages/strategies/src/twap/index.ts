@@ -306,7 +306,7 @@ export function stepTwap(
 }
 
 /**
- * Áp version mới (#223, DEC-319): trước đây version mới bắt đầu lại từ 0 và mua / bán lại cả
+ * Áp version mới (#223, DEC-320): trước đây version mới bắt đầu lại từ 0 và mua / bán lại cả
  * tổng khối lượng. Nay giữ tiến độ (phần đã khớp tính vào tổng của version mới, lát kế tiếp, giờ bắt đầu), sổ cái (PM
  * chốt B2: phiên tiếp tục) và danh sách lát (fill muộn vẫn vào sổ cái theo chiều của chính lát). Đổi chiều Buy ↔ Sell:
  * tiến độ bắt đầu từ 0, sổ cái và các lát cũ chưa kết thúc vẫn được giữ. Lát còn đang chờ thì chưa áp (null, như

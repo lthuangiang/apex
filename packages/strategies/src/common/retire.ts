@@ -2,7 +2,7 @@ import { dec, Decimal } from "@drift/shared";
 
 import type { Side, StrategyAction, StrategyEvent } from "../core/types";
 
-// Lệnh của version cũ mà engine đã huỷ lúc áp version mới (#223, DEC-319), theo khuôn chờ xác
+// Lệnh của version cũ mà engine đã huỷ lúc áp version mới (#223, DEC-320), theo khuôn chờ xác
 // nhận huỷ của DEC-317: lệnh coi là còn sống tới khi SoDEX báo kết thúc (`orderDone` / `orderReject`) hoặc đã khớp đủ;
 // trong lúc chờ, chiến lược gửi huỷ lại mỗi `RETIRE_RETRY_MS` và KHÔNG dựng lệnh của version mới (một lệnh cũ khớp
 // muộn sẽ làm sai giới hạn của bố cục mới). Fill tới muộn được ghi vào sổ cái theo chiều của chính lệnh (chiều trong event
