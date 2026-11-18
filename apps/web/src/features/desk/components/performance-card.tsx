@@ -442,36 +442,41 @@ function Hours({
       </div>
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
         <div className="flex min-w-0 flex-col gap-1.5">
-          {/* Nhãn chữ trên dải rẻ / đắt nhất (UX #9): không chỉ dựa vào màu xanh / đỏ. */}
-          <div aria-hidden="true" className="flex h-4 pl-9 text-[10.5px] font-extrabold">
-            {v.hours.map((h) => {
-              // Khung ở nửa sau ngày: canh nhãn theo mép phải của giờ cuối khung, để không tràn ra ngoài (390 px).
-              const at = (w: { from: number } | null) =>
-                w === null
-                  ? null
-                  : w.from < 12
-                    ? w.from === h.hour
-                      ? "left"
-                      : null
-                    : (w.from + PERFORMANCE_WINDOW_HOURS - 1) % 24 === h.hour
-                      ? "right"
-                      : null;
-              const cheap = at(v.cheapest);
-              const dear = at(v.dearest);
-              const side = cheap ?? dear;
-              return (
-                <span key={h.hour} className="relative min-w-0 flex-1">
-                  {side === null ? null : (
-                    <span
-                      className={`absolute whitespace-nowrap ${side === "left" ? "left-0" : "right-0"} ${cheap !== null ? "text-pos" : "text-neg-ink"}`}
-                    >
-                      {t(cheap !== null ? "cheapest" : "dearest")}
+          {/* Nhãn chữ trên dải rẻ / đắt nhất (UX #9): không chỉ dựa vào màu xanh / đỏ. Mỗi nhãn một hàng riêng, để hai
+              khung sát nhau không đè chữ lên nhau ở 390 px (#245). */}
+          {(
+            [
+              [v.cheapest, "cheapest", "text-pos"],
+              [v.dearest, "dearest", "text-neg-ink"],
+            ] as const
+          ).map(([w, key, tone]) =>
+            w === null ? null : (
+              <div
+                key={key}
+                aria-hidden="true"
+                className={`flex h-4 pl-9 text-[10.5px] font-extrabold ${tone}`}
+              >
+                {v.hours.map((h) => {
+                  // Khung ở nửa sau ngày: canh nhãn theo mép phải của giờ cuối khung, để không tràn ra ngoài (390 px).
+                  const side =
+                    w.from < 12
+                      ? w.from === h.hour
+                        ? "left-0"
+                        : null
+                      : (w.from + PERFORMANCE_WINDOW_HOURS - 1) % 24 === h.hour
+                        ? "right-0"
+                        : null;
+                  return (
+                    <span key={h.hour} className="relative min-w-0 flex-1">
+                      {side === null ? null : (
+                        <span className={`absolute whitespace-nowrap ${side}`}>{t(key)}</span>
+                      )}
                     </span>
-                  )}
-                </span>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+            ),
+          )}
           <div role="img" aria-label={label} className="relative h-[180px] pl-9">
             {ticks.map((k) => (
               <div
