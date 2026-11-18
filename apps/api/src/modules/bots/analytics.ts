@@ -39,7 +39,7 @@ function bucketOf(secs: number): string {
 }
 
 /** Lý do thoát từ dòng "Closed long/short" (phần trước dấu ";"), hoặc stop trên SoDEX. */
-function exitReasonOf(why: string | null, byStop: boolean): ExitReason {
+export function exitReasonOf(why: string | null, byStop: boolean): ExitReason {
   const w = why ?? "";
   if (w.startsWith("Take profit")) return "takeProfit";
   if (w.startsWith("Early profit")) return "earlyProfit";

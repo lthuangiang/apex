@@ -19,6 +19,7 @@ import { GoalCard } from "./goal-card";
 import { MarketToday } from "./market-today";
 import { GoalLossCard, NeedsYouCard } from "./needs-you-card";
 import { PaperChip } from "./paper-chip";
+import { PerformanceCard } from "./performance-card";
 import { YourBots as AnalystNotes } from "./your-bots";
 
 // AI Desk B+ (DEC-166, artboard BP-Home / BP-Phone): Needs you (tối đa 3, mỗi việc có what-if) → sức khoẻ bot. Thẻ
@@ -154,6 +155,7 @@ function Home({ v }: { v: DeskHomeView }) {
           )}
         </section>
         <YourBots bots={v.bots} />
+        <PerformanceCard />
         <MarketToday />
       </div>
       <div className="min-w-0 xl:sticky xl:top-5">
