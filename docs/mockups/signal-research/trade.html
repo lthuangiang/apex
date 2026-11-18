@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trade steps</title>
+
+</head>
+<body>
+
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1d47b8}a:hover{color:#2e62e8}
+.k{font-size:12px;font-weight:700;color:#5f6684}
+.v{font-size:14px;font-weight:700}
+.step{display:flex;gap:14px}
+.dot{flex:none;width:28px;height:28px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800}
+.body{flex:1;display:flex;flex-direction:column;gap:8px;padding-bottom:18px;border-bottom:1px solid #eef1fa}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px}
+</style>
+
+<div style="width:640px;height:1700px;box-sizing:border-box;background:#fff;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#141a33;padding:28px;display:flex;flex-direction:column;gap:18px;border-left:1px solid #e3e7f5">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:#eef1fa;color:#3b4262">Whales · Replay · rules v1</span>
+        <span style="font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:#ddf4e7;color:#0f7a43">Long ETH</span>
+      </div>
+      <h2 style="margin:0;font-size:22px;font-weight:800;line-height:1.3">Wallet ··9c3fa1e2 opened long, $1.2M</h2>
+      <span style="font-size:14px;color:#3b4262">Result after fees <b style="color:#c2312f">−$3.01</b> on $500 · hit stop loss after 1 h 48 min</span>
+    </div>
+    <a href="Main.dc.html" aria-label="Close" style="flex:none;display:inline-flex;width:44px;height:44px;border-radius:12px;border:1px solid #e3e7f5;align-items:center;justify-content:center;color:#3b4262;text-decoration:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></a>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div class="step"><span class="dot" style="background:#ddf4e7;color:#0f7a43">1</span><div class="body">
+      <span style="font-weight:800">Received</span>
+      <div class="grid">
+        <div><div class="k">Whale’s fill on Hyperliquid</div><div class="v">21:12:13</div></div>
+        <div><div class="k">DeskLabs saw it</div><div class="v">21:12:44 · 31 s later</div></div>
+        <div><div class="k">Source</div><div class="v">Whale events, synced every 30 s</div></div>
+        <div><div class="k">Source health then</div><div class="v">Live</div></div>
+      </div>
+    </div></div>
+
+    <div class="step"><span class="dot" style="background:#ddf4e7;color:#0f7a43">2</span><div class="body">
+      <span style="font-weight:800">Understood</span>
+      <div class="grid">
+        <div><div class="k">Action</div><div class="v">Opened a long</div></div>
+        <div><div class="k">Size</div><div class="v">$1.2M · 3.4× this wallet’s usual</div></div>
+        <div><div class="k">SoDEX market</div><div class="v">ETH-USD</div></div>
+        <div><div class="k">Wallet quality on that day</div><div class="v">Top 20, 61% profitable months</div></div>
+      </div>
+      <span style="font-size:13px;color:#3b4262">Only wallets already in the leaderboard before this moment count (in since Oct 2), so today’s winners don’t make the past look better.</span>
+    </div></div>
+
+    <div class="step"><span class="dot" style="background:#ddf4e7;color:#0f7a43">3</span><div class="body">
+      <span style="font-weight:800">Scored · 0.78</span>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:14px">
+        <div style="display:flex;justify-content:space-between"><span>Size vs usual (weight 35)</span><b>+0.30</b></div>
+        <div style="display:flex;justify-content:space-between"><span>Wallet quality (weight 40)</span><b>+0.32</b></div>
+        <div style="display:flex;justify-content:space-between"><span>Other whales same way, 30 min (weight 25)</span><b>+0.16</b></div>
+      </div>
+      <span style="font-size:13px;color:#3b4262">Weights were set before testing (rules v1). Results are compared by score group later; no score cut-off yet.</span>
+    </div></div>
+
+    <div class="step"><span class="dot" style="background:#ddf4e7;color:#0f7a43">4</span><div class="body">
+      <span style="font-weight:800">Checks</span>
+      <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;font-size:14px;color:#3b4262">
+        <li>Source was live</li>
+        <li>No other Whales trade open on ETH</li>
+        <li>Take profit 1.0% is at least 2× the cost (0.20%)</li>
+        <li>Risk filter: no big-news window</li>
+        <li>With a limit of 3 open trades this would have been allowed</li>
+      </ul>
+    </div></div>
+
+    <div class="step"><span class="dot" style="background:#e6ecfe;color:#1d47b8">5</span><div class="body">
+      <span style="font-weight:800">Trade</span>
+      <div class="grid">
+        <div><div class="k">Entry</div><div class="v">3,412.5 · taker, at the price when seen</div></div>
+        <div><div class="k">Size</div><div class="v">500 USDC</div></div>
+        <div><div class="k">Take profit</div><div class="v">3,446.6 (+1.0%)</div></div>
+        <div><div class="k">Stop loss</div><div class="v">3,395.4 (−0.5%)</div></div>
+        <div><div class="k">Max hold</div><div class="v">4 h</div></div>
+        <div><div class="k">Exit</div><div class="v">3,395.4 at 23:00:31 · stop loss</div></div>
+      </div>
+    </div></div>
+
+    <div class="step"><span class="dot" style="background:#fde4e1;color:#a72826">6</span><div class="body" style="border-bottom:0">
+      <span style="font-weight:800">Result</span>
+      <div class="grid">
+        <div><div class="k">Price move</div><div class="v">−0.50% · −$2.51</div></div>
+        <div><div class="k">Fees and spread</div><div class="v">−$0.50</div></div>
+        <div><div class="k">Best move for us</div><div class="v">+0.38%</div></div>
+        <div><div class="k">Worst move against</div><div class="v">−0.50%</div></div>
+        <div><div class="k">Random entry, same time</div><div class="v">−0.04% average</div></div>
+        <div><div class="k">Entry at the whale’s own fill price</div><div class="v">3,408.9 · we paid 0.11% more</div></div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+
+</body>
+</html>
