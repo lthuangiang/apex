@@ -6856,7 +6856,28 @@
       "loading": "Loading the call…",
       "error": "Couldn’t load this call.",
       "retry": "Try again",
-      "notFound": "This call is no longer stored."
+      "notFound": "This call is no longer stored.",
+      "wsClose": {
+        "title": "Close",
+        "closedBy": "Closed by",
+        "code": "Close code",
+        "reason": "Close reason",
+        "noReason": "None",
+        "openFor": "Open for",
+        "lastMessage": "Last message",
+        "lastMessageValue": "{value} before close",
+        "lastMessageNone": "None on this connection",
+        "reconnect": "Reconnect",
+        "reconnectValue": "after {value} (attempt {attempt})",
+        "noReconnect": "None (DeskLabs stopped the stream)",
+        "nextOpen": "Next open",
+        "nextOpenValue": "{time} UTC · {gap} after close · {connId}",
+        "nextOpenNone": "None recorded within 10 minutes",
+        "nextSubscribe": "Next subscribe",
+        "nextSubscribeValue": "{time} UTC · {channel} · {outcome} · {latency}",
+        "nextSubscribeNone": "No ack recorded",
+        "notAvailable": "Not available"
+      }
     },
     "report": {
       "title": "Report for SoDEX",
@@ -6911,6 +6932,29 @@
       "relatedMany": "Related calls",
       "relatedLine": "{time} UTC  {method} {target}",
       "relatedSub": "{details}",
+      "wsClose": {
+        "title": "WebSocket close",
+        "closedBy": "Closed by:    {value}",
+        "by": {
+          "server": "SoDEX (close frame)",
+          "network": "connection dropped (no close frame)",
+          "client": "DeskLabs",
+          "timeout": "DeskLabs (no pong from SoDEX)"
+        },
+        "code": "Close code:   {value}",
+        "reason": "Close reason: {value}",
+        "noReason": "none",
+        "openFor": "Open for:     {value}",
+        "lastMessage": "Last message: {value} before close",
+        "lastMessageNone": "Last message: none on this connection",
+        "reconnect": "Reconnect:    after {value} (attempt {attempt})",
+        "noReconnect": "Reconnect:    none (DeskLabs stopped the stream)",
+        "nextOpen": "Next open:    {time} UTC, connID {connId}, {gap} after close",
+        "nextOpenNone": "Next open:    none recorded within 10 minutes",
+        "nextSubscribe": "Next subscribe: {time} UTC {channel} {outcome} ({latency})",
+        "nextSubscribeNone": "Next subscribe: no ack recorded",
+        "notAvailable": "Not available"
+      },
       "footer": "Sent from DeskLabs SoDEX Debugger"
     }
   },

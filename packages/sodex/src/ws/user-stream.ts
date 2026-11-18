@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 
+import { SodexWsClosedBy, type SodexWsCloseInfo } from "@drift/shared";
 import type { Address } from "viem";
 
 import {
@@ -34,7 +35,9 @@ export interface WebSocketLike {
   readonly readyState: number;
   send(data: string): void;
   close(): void;
-  addEventListener(type: "open" | "close" | "error", listener: () => void): void;
+  addEventListener(type: "open" | "error", listener: () => void): void;
+  /** `event` là `CloseEvent` (code / reason / wasClean); đọc phòng thủ vì socket khác có thể không đưa. */
+  addEventListener(type: "close", listener: (event: unknown) => void): void;
   addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
 }
 export type WebSocketFactory = (url: string) => WebSocketLike;
@@ -78,6 +81,51 @@ export interface WsUserStreamOptions {
 /** Vì sao kết nối bị đóng (để ghi CLOSE đúng outcome). */
 type DropReason = "server" | "idle" | "rejected" | "error";
 
+/** Close reason dài hơn mức này bị cắt (theo giao thức tối đa 123 byte; phòng server gửi sai). */
+const CLOSE_REASON_MAX = 256;
+/** Close code 1006: kết nối đứt mà không có close frame. */
+const ABNORMAL_CLOSURE = 1006;
+
+/** Close code / reason / wasClean đọc từ close event (#240). */
+function closeFrameOf(event: unknown): {
+  code: number | null;
+  reason: string | null;
+  wasClean: boolean | null;
+} {
+  const e: Partial<Record<"code" | "reason" | "wasClean", unknown>> =
+    typeof event === "object" && event !== null ? event : {};
+  const { code, reason, wasClean } = e;
+  return {
+    code: typeof code === "number" && Number.isInteger(code) ? code : null,
+    reason:
+      typeof reason === "string" && reason.length > 0 ? reason.slice(0, CLOSE_REASON_MAX) : null,
+    wasClean: typeof wasClean === "boolean" ? wasClean : null,
+  };
+}
+
+/** Câu `detail` của dòng CLOSE (hiện ở Debugger và trong báo cáo cho SoDEX). */
+export function wsCloseDetail(info: SodexWsCloseInfo, cause: DropReason | "client"): string {
+  let head: string;
+  if (cause === "server") {
+    const code = info.code === null ? "no code" : `code ${String(info.code)}`;
+    head =
+      info.code === ABNORMAL_CLOSURE
+        ? `connection dropped without a close frame (${code})`
+        : `closed by SoDEX (${code}, ${info.reason === null ? "no reason" : `reason ${JSON.stringify(info.reason)}`})`;
+  } else if (cause === "idle") {
+    head = "no pong from SoDEX";
+  } else if (cause === "rejected") {
+    head = "closed after a rejected subscribe";
+  } else if (cause === "error") {
+    head = "WebSocket error";
+  } else {
+    head = "closed by DeskLabs";
+  }
+  return info.reconnectInMs === null
+    ? head
+    : `${head}: reconnecting in ${String(info.reconnectInMs)} ms (attempt ${String(info.reconnectAttempt ?? 1)})`;
+}
+
 const OPEN = 1;
 /** accountOrderUpdate + accountTrade. */
 const SUBSCRIPTIONS = 2;
@@ -96,6 +144,8 @@ export class WsUserStream {
   /** Id kết nối hiện tại cho debugger (`ws-perps-3f8a1c2d`). */
   #connId = "";
   #openedAt = 0;
+  /** `Date.now()` của tin cuối trên kết nối hiện tại (0 = chưa có tin). */
+  #lastMessageAt = 0;
   /** Lúc gửi subscribe theo `id` (để đo thời gian tới ack). */
   readonly #subSentAt = new Map<number, { at: number; t: number; text: string; channel: string }>();
   #closed = false;
@@ -180,7 +230,7 @@ export class WsUserStream {
     this.#clearTimer();
     const ws = this.#ws;
     this.#ws = null;
-    if (ws !== null) this.#record("CLOSE", { detail: "closed by DeskLabs" });
+    if (ws !== null) this.#recordClose("client", null);
     ws?.close();
   }
 
@@ -190,6 +240,7 @@ export class WsUserStream {
     this.#ws = ws;
     this.#connId = `ws-${this.#engine}-${randomBytes(4).toString("hex")}`;
     this.#openedAt = Date.now();
+    this.#lastMessageAt = 0;
     const t0 = performance.now();
 
     ws.addEventListener("open", () => {
@@ -204,11 +255,12 @@ export class WsUserStream {
     });
     ws.addEventListener("message", (event) => {
       if (this.#ws !== ws) return;
+      if (this.#recorder !== undefined) this.#lastMessageAt = Date.now();
       this.#armIdleTimer(ws);
       if (typeof event.data === "string") this.#handleMessage(event.data);
     });
-    ws.addEventListener("close", () => {
-      this.#drop(ws, "server");
+    ws.addEventListener("close", (event) => {
+      this.#drop(ws, "server", event);
     });
     ws.addEventListener("error", () => {
       if (this.#ws === ws) this.#record("ERROR", { outcome: "network", detail: "WebSocket error" });
@@ -325,21 +377,57 @@ export class WsUserStream {
     }, this.#pingIntervalMs);
   }
 
-  #drop(ws: WebSocketLike, reason: DropReason): void {
+  /**
+   * Ghi CLOSE với close code / reason, ai đóng và thời gian kết nối lại (#240). Chi tiết nằm ở `response` dạng JSON
+   * (schema `sodexWsCloseInfoSchema`); không bao giờ chứa secret.
+   */
+  #recordClose(
+    cause: DropReason | "client",
+    reconnect: { inMs: number; attempt: number } | null,
+    event?: unknown,
+  ): void {
+    if (this.#recorder === undefined) return;
+    const now = Date.now();
+    const frame = closeFrameOf(event);
+    const closedBy =
+      cause === "server"
+        ? frame.code === ABNORMAL_CLOSURE
+          ? SodexWsClosedBy.network
+          : SodexWsClosedBy.server
+        : cause === "idle"
+          ? SodexWsClosedBy.timeout
+          : cause === "error"
+            ? SodexWsClosedBy.network
+            : SodexWsClosedBy.client;
+    const info: SodexWsCloseInfo = {
+      closedBy,
+      ...frame,
+      openForMs: this.#openedAt === 0 ? null : Math.max(0, now - this.#openedAt),
+      lastMessageAgoMs: this.#lastMessageAt === 0 ? null : Math.max(0, now - this.#lastMessageAt),
+      reconnectInMs: reconnect?.inMs ?? null,
+      reconnectAttempt: reconnect?.attempt ?? null,
+    };
+    this.#record("CLOSE", {
+      startedAt: now,
+      outcome:
+        cause === "idle" ? "timeout" : cause === "server" || cause === "error" ? "network" : "ok",
+      response: JSON.stringify(info),
+      detail: wsCloseDetail(info, cause),
+    });
+  }
+
+  #drop(ws: WebSocketLike, reason: DropReason, event?: unknown): void {
     if (this.#ws !== ws) return;
-    if (reason === "idle") {
-      this.#record("CLOSE", { outcome: "timeout", detail: "no pong from SoDEX: reconnecting" });
-    } else if (reason === "server") {
-      this.#record("CLOSE", { outcome: "network", detail: "closed by SoDEX" });
-    } else if (reason === "rejected") {
-      this.#record("CLOSE", { detail: "closed after a rejected subscribe: reconnecting" });
-    }
+    const reconnect = this.#closed
+      ? null
+      : { inMs: reconnectDelay(this.#attempt), attempt: this.#attempt + 1 };
+    this.#recordClose(reason, reconnect, event);
     this.#ws = null;
     this.#acked = 0;
     this.#clearTimer();
     ws.close();
-    if (this.#closed) return;
-    const delay = reconnectDelay(this.#attempt);
+    if (reconnect === null) return;
+    const delay = reconnect.inMs;
     this.#attempt += 1;
     this.#timer = setTimeout(() => {
       this.#timer = null;

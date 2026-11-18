@@ -121,6 +121,100 @@ export const DETAIL: SodexCallDetail = {
   accountUserId: null,
   wsConn: { connId: "ws-perps-3f8a", open: true },
   related: [PLACE],
+  wsReconnect: null,
+  builderId: "1645",
+};
+
+const WS_CONN = "ws-perps-e03438e0";
+const WS_NEXT = "ws-perps-5b1c09aa";
+const wsItem = (over: Partial<SodexCallItem>): SodexCallItem => ({
+  id: "0195f3a0-0000-7000-8000-0000000000d0",
+  at: "2026-11-18T04:42:53.817Z",
+  service: "engine",
+  kind: "ws",
+  method: "CLOSE",
+  endpoint: "connection",
+  httpStatus: null,
+  outcome: "network",
+  sodexCode: null,
+  sodexSays:
+    'closed by SoDEX (code 1001, reason "going away"): reconnecting in 1100 ms (attempt 1)',
+  latencyMs: 0,
+  bot: null,
+  accountAddress: ADDRESS,
+  clOrdIds: [],
+  connId: WS_CONN,
+  ...over,
+});
+
+/** WS CLOSE do SoDEX đóng, kèm OPEN và hai SUB ack của kết nối kế tiếp (#240). */
+export const WS_CLOSE: SodexCallDetail = {
+  ...wsItem({}),
+  url: "wss://mainnet-gw.sodex.dev/ws/perps",
+  engine: "perps",
+  actionType: null,
+  requestHeaders: [],
+  requestBody: null,
+  requestBodyBytes: null,
+  signed: false,
+  responseHeaders: [],
+  responseBody:
+    '{"closedBy":"server","code":1001,"reason":"going away","wasClean":true,"openForMs":3600000,"lastMessageAgoMs":1200,"reconnectInMs":1100,"reconnectAttempt":1}',
+  responseBodyBytes: 150,
+  responseTruncated: false,
+  envelopeCode: null,
+  orderCodes: [],
+  unreadableReason: null,
+  traceId: null,
+  sodexAccountId: "47125",
+  orderIds: [],
+  botDetail: null,
+  accountUserId: null,
+  wsConn: { connId: WS_CONN, open: true },
+  related: [],
+  wsReconnect: {
+    close: {
+      closedBy: "server",
+      code: 1001,
+      reason: "going away",
+      wasClean: true,
+      openForMs: 3_600_000,
+      lastMessageAgoMs: 1200,
+      reconnectInMs: 1100,
+      reconnectAttempt: 1,
+    },
+    nextOpen: wsItem({
+      id: "0195f3a0-0000-7000-8000-0000000000d1",
+      at: "2026-11-18T04:42:54.967Z",
+      method: "OPEN",
+      outcome: "ok",
+      sodexSays: null,
+      latencyMs: 41,
+      connId: WS_NEXT,
+    }),
+    nextSubscribes: [
+      wsItem({
+        id: "0195f3a0-0000-7000-8000-0000000000d2",
+        at: "2026-11-18T04:42:55.052Z",
+        method: "SUB",
+        endpoint: "accountOrderUpdate",
+        outcome: "ok",
+        sodexSays: null,
+        latencyMs: 84,
+        connId: WS_NEXT,
+      }),
+      wsItem({
+        id: "0195f3a0-0000-7000-8000-0000000000d3",
+        at: "2026-11-18T04:42:55.060Z",
+        method: "SUB",
+        endpoint: "accountTrade",
+        outcome: "rejected",
+        sodexSays: "user not found",
+        latencyMs: 92,
+        connId: WS_NEXT,
+      }),
+    ],
+  },
   builderId: "1645",
 };
 

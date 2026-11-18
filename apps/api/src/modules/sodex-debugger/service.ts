@@ -7,6 +7,7 @@ import {
   SODEX_CALL_SLOW_MS,
   sodexCallFacetsQuerySchema,
   sodexCallsQuerySchema,
+  sodexWsCloseInfoSchema,
   type SodexCallDetail,
   type SodexCallFacets,
   type SodexCallItem,
@@ -16,6 +17,7 @@ import {
   type SodexCallSummary,
   type SodexEndpointStat,
   type SodexHeader,
+  type SodexWsCloseInfo,
 } from "@drift/shared";
 import { uuidV7Time } from "@drift/sodex";
 import { sql, type SQL } from "drizzle-orm";
@@ -285,7 +287,7 @@ export async function sodexCallDetail(
     if (r.cl_ord_ids.length > 0)
       links.push(sql`c.cl_ord_ids && ${sql.param(r.cl_ord_ids)}::text[]`);
 
-    const [related, owner, conn] = await Promise.all([
+    const [related, owner, conn, reconnect] = await Promise.all([
       links.length === 0
         ? Promise.resolve({ rows: [] as ItemRow[] })
         : q.execute<ItemRow>(sql`
@@ -300,6 +302,7 @@ export async function sodexCallDetail(
             WHERE ${r.account_id === null ? sql`lower(address) = ${r.account_address}` : sql`id = ${r.account_id}::uuid`}
             LIMIT 1`),
       wsConnection(q, r),
+      wsReconnect(q, r),
     ]);
 
     const requestHeaders: SodexHeader[] = headerListSchema.safeParse(r.request_headers).data ?? [];
@@ -334,9 +337,54 @@ export async function sodexCallDetail(
       accountUserId: owner.rows[0]?.user_id ?? null,
       wsConn: conn,
       related: related.rows.map(toItem),
+      wsReconnect: reconnect,
       builderId: deps.builderId === null ? null : deps.builderId.toString(),
     };
   });
+}
+
+/** Tìm kết nối kế tiếp sau một WS CLOSE trong ngần này (backoff tối đa 30 s + jitter, dư nhiều). */
+const RECONNECT_WINDOW_MS = 10 * 60_000;
+
+/** Đọc chi tiết đóng từ body đã lưu; dữ liệu từ DB vẫn qua zod, sai thì coi như không có. */
+function parseCloseInfo(body: string | null): SodexWsCloseInfo | null {
+  if (body === null) return null;
+  try {
+    return sodexWsCloseInfoSchema.safeParse(JSON.parse(body)).data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * WS CLOSE (#240): chi tiết đóng và kết nối kế tiếp của cùng service + account + engine (OPEN đầu tiên trong 10 phút
+ * sau lúc đóng, cùng SUB ack của chính kết nối đó). Dùng index (account_address, at).
+ */
+async function wsReconnect(db: Exec, r: DetailRow): Promise<SodexCallDetail["wsReconnect"]> {
+  if (r.kind !== "ws" || r.method !== "CLOSE") return null;
+  const close = parseCloseInfo(r.response_body);
+  if (r.account_address === null || r.engine === null) {
+    return { close, nextOpen: null, nextSubscribes: [] };
+  }
+  const from = new Date(r.at).toISOString();
+  const to = new Date(r.at + RECONNECT_WINDOW_MS).toISOString();
+  const next = await db.execute<ItemRow>(sql`
+    SELECT ${ITEM_COLUMNS} FROM sodex_calls c LEFT JOIN bots b ON b.id = c.bot_id
+    WHERE c.account_address = ${r.account_address} AND c.at > ${from}::timestamptz AND c.at <= ${to}::timestamptz
+      AND c.kind = 'ws' AND c.method IN ('OPEN', 'SUB') AND c.engine = ${r.engine} AND c.service = ${r.service}
+      AND c.sodex_account_id IS NOT DISTINCT FROM ${r.sodex_account_id}
+      AND c.conn_id IS DISTINCT FROM ${r.conn_id}
+    ORDER BY c.at ASC LIMIT 5`);
+  const open = next.rows.find((x) => x.method === "OPEN");
+  const subscribes =
+    open === undefined
+      ? []
+      : next.rows.filter((x) => x.method === "SUB" && x.conn_id === open.conn_id);
+  return {
+    close,
+    nextOpen: open === undefined ? null : toItem(open),
+    nextSubscribes: subscribes.map(toItem),
+  };
 }
 
 /** WS: kết nối của chính sự kiện. REST: kết nối user stream gần nhất của cùng account + engine mở trước lời gọi. */

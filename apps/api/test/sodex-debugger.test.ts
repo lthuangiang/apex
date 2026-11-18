@@ -421,6 +421,114 @@ describe("SoDEX Debugger API", () => {
     expect(next.counts).toBeNull();
     expect(next.items).toHaveLength(2);
   });
+
+  it("shows a WS close with its code, reason, reconnect delay and the next open and subscribe acks (#240)", async () => {
+    const now = env.clock.now.getTime();
+    const addr = "0xc602000000000000000000000000000000000426";
+    const t0 = now - 50 * MIN;
+    const base: SodexWsCapture = {
+      kind: "ws",
+      startedAt: t0,
+      latencyMs: 0,
+      event: "CLOSE",
+      url: "wss://mainnet-gw.sodex.dev/ws/perps",
+      engine: "perps",
+      channel: null,
+      connId: "ws-perps-e03438e0",
+      accountAddress: addr,
+      sodexAccountId: "47125",
+      request: null,
+      response: JSON.stringify({
+        closedBy: "server",
+        code: 1001,
+        reason: "going away",
+        wasClean: true,
+        openForMs: 3_600_000,
+        lastMessageAgoMs: 1200,
+        reconnectInMs: 1100,
+        reconnectAttempt: 1,
+      }),
+      outcome: "network",
+      detail:
+        'closed by SoDEX (code 1001, reason "going away"): reconnecting in 1100 ms (attempt 1)',
+      context: undefined,
+    };
+    const sub = (at: number, id: number, channel: string, connId: string, account = addr) => ({
+      ...base,
+      event: "SUB" as const,
+      startedAt: at,
+      latencyMs: 80,
+      channel,
+      connId,
+      accountAddress: account,
+      request: `{"op":"subscribe","id":${String(id)},"params":{"channel":"${channel}"}}`,
+      response: `{"op":"subscribe","id":${String(id)},"success":true}`,
+      outcome: "ok" as const,
+      detail: null,
+    });
+    const captures: SodexWsCapture[] = [
+      base,
+      // Kết nối của account khác mở ngay sau: không được nối.
+      {
+        ...base,
+        event: "OPEN",
+        startedAt: t0 + 500,
+        connId: "ws-perps-other",
+        accountAddress: ADDR,
+        sodexAccountId: "20417",
+        response: null,
+        outcome: "ok",
+        detail: null,
+      },
+      {
+        ...base,
+        event: "OPEN",
+        startedAt: t0 + 1150,
+        latencyMs: 40,
+        connId: "ws-perps-next0001",
+        response: null,
+        outcome: "ok",
+        detail: null,
+      },
+      sub(t0 + 1250, 1, "accountOrderUpdate", "ws-perps-next0001"),
+      sub(t0 + 1260, 2, "accountTrade", "ws-perps-next0001"),
+      sub(t0 + 1270, 1, "accountOrderUpdate", "ws-perps-other", ADDR),
+    ];
+    const sink = createSodexCallSink(env.container.getConnectionUri());
+    await sink.write(captures.map((c) => toSodexCallRow(c, "engine")));
+    await sink.close();
+
+    const close = (await list("?q=ws-perps-e03438e0")).items.find((i) => i.method === "CLOSE");
+    const res = await team.request("GET", `/api/v1/admin/sodex-calls/${close?.id ?? ""}`);
+    expect(res.statusCode).toBe(200);
+    const d = sodexCallDetailSchema.parse(res.json());
+    expect(d.sodexSays).toContain("code 1001");
+    expect(d.wsReconnect?.close).toEqual({
+      closedBy: "server",
+      code: 1001,
+      reason: "going away",
+      wasClean: true,
+      openForMs: 3_600_000,
+      lastMessageAgoMs: 1200,
+      reconnectInMs: 1100,
+      reconnectAttempt: 1,
+    });
+    expect(d.wsReconnect?.nextOpen).toMatchObject({ method: "OPEN", connId: "ws-perps-next0001" });
+    expect(new Date(d.wsReconnect?.nextOpen?.at ?? 0).getTime() - new Date(d.at).getTime()).toBe(
+      1150,
+    );
+    expect(d.wsReconnect?.nextSubscribes.map((s) => [s.endpoint, s.outcome, s.connId])).toEqual([
+      ["accountOrderUpdate", "ok", "ws-perps-next0001"],
+      ["accountTrade", "ok", "ws-perps-next0001"],
+    ]);
+
+    // Dòng không phải CLOSE: không có wsReconnect.
+    const open = (await list("?q=ws-perps-next0001")).items.find((i) => i.method === "OPEN");
+    const openDetail = sodexCallDetailSchema.parse(
+      (await team.request("GET", `/api/v1/admin/sodex-calls/${open?.id ?? ""}`)).json(),
+    );
+    expect(openDetail.wsReconnect).toBeNull();
+  });
 });
 
 function restRawForSink(over: Partial<SodexRestCapture>): SodexRestCapture {
