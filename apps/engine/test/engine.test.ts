@@ -3672,7 +3672,11 @@ describe("engine", () => {
       (x) => x.decision === "Position checked on SoDEX",
     );
     expect(checked).toHaveLength(1);
-    expect((await botState(botId))?.needsAttention).toBe(false);
+    expect(checked[0]?.why).toBe(
+      "DeskLabs read this bot's position on SoDEX and checked its ledger.",
+    );
+    // Needs attention giữ nguyên (người dùng tự bỏ, PM chốt #253).
+    expect((await botState(botId))?.needsAttention).toBe(true);
     await e.stop();
     await stopFarmBots();
   });
@@ -3873,6 +3877,29 @@ describe("engine", () => {
         (o) => o.market === "STL-USD" && o.reduceOnly && o.stop === undefined && o.side === "sell",
       ),
     ).toBe(true);
+    await e.stop();
+    await stopFarmBots();
+  });
+
+  it("v2.12.1 (review #253): a reduce-only stop stripped because the real position is 0 is reported to the strategy as not placed", async () => {
+    const gw = new FakeGateway();
+    // Cờ lệch với `real` 0 đã lưu, SoDEX vẫn 0, sổ cái long 0.5 không sửa được; lượt đang mở chưa có stop trên SoDEX.
+    const { botId } = await seedWaitingFarm("PHT-USD", "0", {
+      xstopOff: false,
+      holdUntil: clock + 3_600_000,
+    });
+    const e = farmEngine(gw, "repair-phantom");
+    for (let i = 0; i < 6; i += 1) {
+      await e.tick();
+      clock += 3_000;
+    }
+    // Không lệnh reduce-only nào tới SoDEX; chiến lược biết stop không được đặt (không có lệnh "ma").
+    expect(gw.received.filter((o) => o.market === "PHT-USD" && o.reduceOnly)).toEqual([]);
+    const st = (await farmState(botId)) as
+      { xstop?: { id: string } | null; xstopOff?: boolean; exit: unknown } | undefined;
+    expect(st?.xstop ?? null).toBeNull();
+    expect(st?.xstopOff).toBe(true);
+    expect(st?.exit ?? null).toBeNull();
     await e.stop();
     await stopFarmBots();
   });

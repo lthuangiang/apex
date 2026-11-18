@@ -740,9 +740,13 @@ export const REPAIR_WAIT_WHY =
   "DeskLabs could not read this bot's position on SoDEX to check its ledger, so the bot is not trading yet. It keeps trying and starts again once the check is done.";
 /** Câu Decisions khi lần kiểm tra cuối cùng đọc được vị thế sau khi đã báo chờ (câu chữ PM duyệt 2026-11-18, #253). */
 export const REPAIR_DONE_DECISION = "Position checked on SoDEX";
-/** Câu giải thích đi kèm (câu chữ mới, chờ duyệt). */
-export const REPAIR_DONE_WHY =
-  "DeskLabs read this bot's position on SoDEX and checked its ledger. The bot trades again.";
+/**
+ * Mã `orderReject` engine báo cho Volume Farm khi bỏ một lệnh reduce-only vì vị thế thật bằng 0 trong lúc lệch (không gửi
+ * gì, như `not_sent`; review #253).
+ */
+export const NO_REAL_POSITION = "NO_REAL_POSITION";
+/** Câu giải thích đi kèm (câu chữ PM duyệt 2026-11-18, #253). */
+export const REPAIR_DONE_WHY = "DeskLabs read this bot's position on SoDEX and checked its ledger.";
 
 /** `retryAfterMs` của lỗi rate limit (AppError RATE_LIMITED của @drift/sodex); null nếu không có. */
 function retryAfterOf(error: unknown): number | null {
@@ -2753,9 +2757,13 @@ export class Engine {
     // đây sổ cái sai (+0.0957) làm bot gửi 30 lệnh bán reduce-only bị từ chối rồi pause (#239). Fill / ack đi trọn. Chiến
     // lược coi lệnh bị bỏ như đã gửi; lần huỷ sau của nó được engine báo `orderReject` NOT_PLACED (không có dòng lệnh).
     let actions = result.actions;
+    let stripped: string[] = [];
     if (r.strategy === Strategy.volumeFarm && !accounting) {
       const kept = actions.filter((a) => !this.#reduceOnZeroReal(r, a));
       if (kept.length !== actions.length) {
+        stripped = actions.flatMap((a) =>
+          a.type === "place" && this.#reduceOnZeroReal(r, a) ? [a.order.clOrdID] : [],
+        );
         actions = kept;
         if (!r.zeroRealSkipLogged) {
           r.zeroRealSkipLogged = true;
@@ -2811,6 +2819,10 @@ export class Engine {
       prev,
       produced: result.state,
     });
+    // Lệnh reduce-only bị bỏ ở trên không bao giờ rời DeskLabs: báo chiến lược ngay như `not_sent`, để nó không tin là
+    // stop / lệnh thoát đang có (review #253, lệnh "ma").
+    for (const clOrdID of stripped)
+      await this.#feed(r, { type: "orderReject", at: event.at, clOrdID, code: NO_REAL_POSITION });
   }
 
   /**
@@ -6211,8 +6223,9 @@ export class Engine {
   /**
    * Đã đọc được vị thế thật (lần kiểm tra sửa sổ cái, hoặc lần kiểm tra vị thế 30 s, review #253 minor 3): kiểm tra xong.
    * Mọi market đang cảnh báo nhận vị thế thật mới (kể cả khi đã khớp, để `real` cũ trong DB không chặn lệnh thoát, minor 1),
-   * market còn lệch thì thử nhận fill bị bỏ qua của chính bot. Đã báo chờ (5 phút) thì ghi "Position checked on SoDEX" và
-   * bỏ Needs attention mà lần chờ đó bật (minor 5).
+   * market còn lệch thì thử nhận fill bị bỏ qua của chính bot. Đã báo chờ (5 phút) thì ghi "Position checked on SoDEX";
+   * Needs attention giữ nguyên (người dùng tự bỏ, như cờ chờ xác nhận huỷ; PM chốt #253). `repairPending` chỉ được bỏ
+   * SAU khi mọi việc ghi DB ở đây xong (review #253): lỗi giữa chừng thì bot vẫn chờ và lần sau làm lại.
    */
   async #repairWithPositions(
     r: Runner,
@@ -6220,12 +6233,8 @@ export class Engine {
     now: number,
   ): Promise<void> {
     const waited = r.repairPending;
-    r.repairPending = null;
-    r.resumeRepaired = true;
     if (waited?.logged === true)
-      await this.#event(r, "reconcile", REPAIR_DONE_DECISION, REPAIR_DONE_WHY, now, async (tx) => {
-        await tx.update(bots).set({ needsAttention: false }).where(eq(bots.id, r.botId));
-      });
+      await this.#event(r, "reconcile", REPAIR_DONE_DECISION, REPAIR_DONE_WHY, now);
     for (const [market, mm] of r.positionMismatch) {
       const ledger = positionOf(r.state, market, "perps");
       const step = r.ctx.rules[market]?.stepSize;
@@ -6243,6 +6252,8 @@ export class Engine {
         this.#d.log.warn({ err: error, botId: r.botId, market }, "repair on load failed");
       }
     }
+    r.repairPending = null;
+    r.resumeRepaired = true;
   }
 
   /** Lệnh reduce-only ở market đang lệch mà vị thế thật đọc gần nhất bằng 0 (không có gì để giảm). */
