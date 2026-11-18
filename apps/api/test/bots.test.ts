@@ -1111,6 +1111,96 @@ describe("Start again and Archive (DEC-84, DEC-86)", () => {
       expect(res.body).not.toContain(marker);
   });
 
+  it("never sends the Market Making quote snapshot of a decision to the browser (#230)", async () => {
+    const { client } = await connectedUser(`mm-snap-${randomUUID()}@drift.test`);
+    const made = await client.request("POST", "/api/v1/bots", {
+      body: { strategy: "spot_grid", name: "Quote snapshot", paramSource: "manual", config: grid },
+    });
+    const id = made.json<{ id: string }>().id;
+    const { rows } = await env.pool.query<{ acc: string }>(
+      "select sodex_account_id as acc from bots where id = $1",
+      [id],
+    );
+    const tag = randomUUID().slice(0, 8);
+    await env.pool.query(
+      "insert into orders (id, bot_id, sodex_account_id, cl_ord_id, market, engine, side, type, time_in_force, size, filled_size, avg_price, status, tag, epoch, created_at, context) values (gen_random_uuid(), $1, $2, $3, 'BTC-USD', 'perps', 'sell', 'market', 'IOC', 0.005, 0.005, 99839.9, 'filled', 'vm:9:cut:close', 1, $4, $5)",
+      [
+        id,
+        rows[0]?.acc ?? "",
+        `q-${tag}`,
+        env.clock.now,
+        // Bối cảnh lúc đặt (#233): cột `orders.context` cũng không bao giờ tới trình duyệt.
+        JSON.stringify({
+          v: 1,
+          reason: "cut",
+          mid: "99999.95",
+          bid: "99999.9",
+          ask: "100000",
+          fair: "99839.9",
+          fairAgeMs: 0,
+          level: 0,
+          bp: null,
+          fairBp: null,
+          pos: "0.005",
+          smart: true,
+          sig: "buy:2|sell:pull",
+          fastPause: false,
+        }),
+      ],
+    );
+    const quote = {
+      v: 1,
+      reason: "cut",
+      sides: ["sell"],
+      fair: { price: "99839.9", ageMs: 40, used: true, clampBp: 0.5, clamps: 0 },
+      book: { bid: "99999.9", ask: "100000", mid: "99999.95", ageMs: 120, last: "100000" },
+      quote: { level: 0, distanceBp: null },
+      inv: {
+        position: "0.005",
+        entry: "99999.9",
+        notional: "500.00",
+        maxUsd: "2000",
+        maxOrders: null,
+      },
+      smart: { on: true, sig: "buy:2|sell:pull", fastPause: false },
+      orders: [
+        {
+          id: `q-${tag}`,
+          side: "sell",
+          role: "close",
+          st: "new",
+          price: null,
+          size: "0.005",
+          bp: null,
+          fairBp: null,
+        },
+      ],
+    };
+    await env.pool.query(
+      "insert into bot_events (id, bot_id, type, decision, payload, occurred_at) values (gen_random_uuid(), $1, 'decision', 'Position cut', $2, $3)",
+      [id, JSON.stringify({ orders: [`q-${tag}`], quote }), env.clock.now],
+    );
+    const res = await client.request("GET", `/api/v1/bots/${id}`);
+    expect(res.statusCode).toBe(200);
+    // Kết quả từ `payload.orders` vẫn có (BD-02), snapshot báo giá thì không.
+    const detail = botDetailSchema.parse(res.json());
+    const ev = detail.events.find((e) => e.decision === "Position cut");
+    expect(ev).toMatchObject({ order: `q-${tag}`, outcome: "filled" });
+    expect(ev).not.toHaveProperty("payload");
+    expect(ev).not.toHaveProperty("quote");
+    for (const marker of ["fairBp", "clampBp", "fastPause", "fairAgeMs", "buy:2|sell:pull"])
+      expect(res.body).not.toContain(marker);
+    // Danh sách lệnh và fill của bot cũng không gửi `orders.context`.
+    for (const path of [`/api/v1/orders?botId=${id}`, `/api/v1/bots/${id}/fills`]) {
+      const r = await client.request("GET", path);
+      expect(r.statusCode).toBe(200);
+      for (const marker of ["fairBp", "fairAgeMs", "fastPause", "buy:2|sell:pull"])
+        expect(r.body).not.toContain(marker);
+    }
+    const list = await client.request("GET", `/api/v1/orders?botId=${id}`);
+    expect(list.body).toContain(`q-${tag}`);
+  });
+
   it("splits post-only misses from other rejects and counts rounds that filled (DEC-300)", async () => {
     const { client } = await connectedUser(`vb-rounds-${randomUUID()}@drift.test`);
     const made = await client.request("POST", "/api/v1/bots", {

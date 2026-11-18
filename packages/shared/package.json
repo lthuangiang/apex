@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./vb-signal": "./src/vb-signal.ts"
+    "./vb-signal": "./src/vb-signal.ts",
+    "./mm-quote": "./src/mm-quote.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

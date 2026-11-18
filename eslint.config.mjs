@@ -88,6 +88,12 @@ export default config(
               message:
                 "The Volume Farm signal snapshot is server-only: its field names are strategy internals (check:bundle).",
             },
+            {
+              // #230: snapshot báo giá Market Making, chỉ cho server / trang team.
+              name: "@drift/shared/mm-quote",
+              message:
+                "The Market Making quote snapshot is server-only: its field names are strategy internals (check:bundle).",
+            },
           ],
           patterns: [
             {
