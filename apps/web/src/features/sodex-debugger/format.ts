@@ -177,7 +177,12 @@ export function wsCloseLines(d: SodexCallDetail, t: Translate): string[] {
   if (c !== null) {
     lines.push(t("wsClose.closedBy", { value: t(`wsClose.by.${c.closedBy}`) }));
     lines.push(t("wsClose.code", { value: c.code === null ? na : String(c.code) }));
-    lines.push(t("wsClose.reason", { value: c.reason ?? t("wsClose.noReason") }));
+    // Không có close frame (code null) thì reason là chưa biết, không phải rỗng (review #256).
+    lines.push(
+      t("wsClose.reason", {
+        value: c.code === null ? na : (c.reason ?? t("wsClose.noReason")),
+      }),
+    );
     lines.push(t("wsClose.openFor", { value: c.openForMs === null ? na : formatMs(c.openForMs) }));
     lines.push(
       c.lastMessageAgoMs === null
@@ -187,13 +192,18 @@ export function wsCloseLines(d: SodexCallDetail, t: Translate): string[] {
     lines.push(
       c.reconnectInMs === null
         ? t("wsClose.noReconnect")
-        : t("wsClose.reconnect", {
-            value: formatMs(c.reconnectInMs),
-            attempt: c.reconnectAttempt ?? 1,
-          }),
+        : c.reconnectAttempt === null
+          ? t("wsClose.reconnectNoAttempt", { value: formatMs(c.reconnectInMs) })
+          : t("wsClose.reconnect", {
+              value: formatMs(c.reconnectInMs),
+              attempt: c.reconnectAttempt,
+            }),
     );
   }
-  if (r.nextOpen === null) {
+  if (!r.nextOpenAvailable) {
+    // Cửa sổ 10 phút đã cũ hơn thời hạn giữ dòng ok: OPEN kế tiếp có thể đã bị xoá (review #256).
+    lines.push(t("wsClose.nextOpenExpired"));
+  } else if (r.nextOpen === null) {
     lines.push(t("wsClose.nextOpenNone"));
   } else {
     lines.push(

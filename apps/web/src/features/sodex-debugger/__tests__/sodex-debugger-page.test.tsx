@@ -25,12 +25,14 @@ const state = vi.hoisted(
     newer: SodexCallItem[];
     nextCursor: string | null;
     wsClose: boolean;
+    wsCloseExpired: boolean;
   } => ({
     mode: "ok",
     paths: [],
     newer: [],
     nextCursor: null,
     wsClose: false,
+    wsCloseExpired: false,
   }),
 );
 
@@ -50,6 +52,15 @@ vi.mock("@/lib/api", async (importOriginal) => {
         if (url.searchParams.has("cursor")) return Promise.resolve(schema.parse(page([OLDER])));
         const items = state.mode === "empty" ? [] : [...state.newer, CANCEL, PLACE, SLOW];
         return Promise.resolve(schema.parse(page(items, state.nextCursor)));
+      }
+      if (state.wsClose && state.wsCloseExpired && WS_CLOSE.wsReconnect !== null) {
+        const wsReconnect = {
+          ...WS_CLOSE.wsReconnect,
+          nextOpenAvailable: false,
+          nextOpen: null,
+          nextSubscribes: [],
+        };
+        return Promise.resolve(schema.parse({ ...WS_CLOSE, wsReconnect }));
       }
       return Promise.resolve(schema.parse(state.wsClose ? WS_CLOSE : DETAIL));
     },
@@ -91,6 +102,7 @@ afterEach(() => {
   state.newer = [];
   state.nextCursor = null;
   state.wsClose = false;
+  state.wsCloseExpired = false;
   window.history.replaceState(null, "", "/");
 });
 
@@ -264,8 +276,28 @@ describe("SoDEX Debugger page", { timeout: 30_000 }, () => {
     expect(
       box.getByText("04:42:54.967 UTC · 1,150 ms after close · ws-perps-5b1c09aa"),
     ).toBeInTheDocument();
-    expect(box.getByText("04:42:55.060 UTC · accountTrade · rejected · 92 ms")).toBeInTheDocument();
+    // Nhãn outcome từ i18n và câu SoDEX nói, như trong báo cáo (review #256).
+    expect(
+      box.getByText("04:42:55.060 UTC · accountTrade · Rejected · 92 ms · user not found"),
+    ).toBeInTheDocument();
     await noViolations();
+  });
+
+  it("shows Not available with the reason once the next open may be past the 3-day keep (review #256)", async () => {
+    const user = userEvent.setup({ delay: null });
+    state.wsClose = true;
+    state.wsCloseExpired = true;
+    window.history.replaceState(null, "", `/admin/sodex-debugger?call=${WS_CLOSE.id}`);
+    wrap();
+    await user.click(await screen.findByRole("tab", { name: "Response" }));
+    const close = (await screen.findByText("Closed by")).closest("dl");
+    if (close === null) throw new Error("no close list");
+    const box = within(close as HTMLElement);
+    expect(
+      box.getByText("Not available: connection rows older than 3 days are not kept"),
+    ).toBeInTheDocument();
+    expect(box.queryByText("None recorded within 10 minutes")).toBeNull();
+    expect(box.queryByText("Next subscribe")).toBeNull();
   });
 
   it("opens the call from ?call= in a copied link", async () => {

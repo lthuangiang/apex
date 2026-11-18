@@ -81,6 +81,18 @@ export interface WsUserStreamOptions {
 /** Vì sao kết nối bị đóng (để ghi CLOSE đúng outcome). */
 type DropReason = "server" | "idle" | "rejected" | "error";
 
+/** Trường của một sự kiện WS ghi vào SoDEX Debugger. */
+interface RecordFields {
+  channel?: string | null;
+  outcome?: "ok" | "rejected" | "timeout" | "network" | "unreadable";
+  request?: string | null;
+  response?: string | null;
+  items?: readonly unknown[] | null;
+  detail?: string | null;
+  startedAt?: number;
+  latencyMs?: number;
+}
+
 /** Close reason dài hơn mức này bị cắt (theo giao thức tối đa 123 byte; phòng server gửi sai). */
 const CLOSE_REASON_MAX = 256;
 /** Close code 1006: kết nối đứt mà không có close frame. */
@@ -179,39 +191,32 @@ export class WsUserStream {
     this.#recordContext = options.recordContext;
   }
 
-  #record(
-    event: SodexWsEvent,
-    fields: {
-      channel?: string | null;
-      outcome?: "ok" | "rejected" | "timeout" | "network" | "unreadable";
-      request?: string | null;
-      response?: string | null;
-      items?: readonly unknown[] | null;
-      detail?: string | null;
-      startedAt?: number;
-      latencyMs?: number;
-    },
-  ): void {
+  /** `fields` có thể là hàm: khi đó nó chạy trong `safeRecord`, lỗi lúc dựng chi tiết không lọt ra ngoài. */
+  #record(event: SodexWsEvent, fieldsOf: RecordFields | (() => RecordFields)): void {
     if (this.#recorder === undefined) return;
     const connId = this.#connId;
-    safeRecord(this.#recorder, () => ({
-      kind: "ws",
-      startedAt: fields.startedAt ?? Date.now(),
-      latencyMs: fields.latencyMs ?? 0,
-      event,
-      url: this.#url,
-      engine: this.#engine,
-      channel: fields.channel ?? null,
-      connId,
-      accountAddress: this.#params.user,
-      sodexAccountId: this.#params.accountID === undefined ? null : String(this.#params.accountID),
-      request: fields.request ?? null,
-      response: capBody(fields.response ?? null),
-      items: fields.items ?? null,
-      outcome: fields.outcome ?? "ok",
-      detail: fields.detail ?? null,
-      context: this.#recordContext,
-    }));
+    safeRecord(this.#recorder, () => {
+      const fields = typeof fieldsOf === "function" ? fieldsOf() : fieldsOf;
+      return {
+        kind: "ws",
+        startedAt: fields.startedAt ?? Date.now(),
+        latencyMs: fields.latencyMs ?? 0,
+        event,
+        url: this.#url,
+        engine: this.#engine,
+        channel: fields.channel ?? null,
+        connId,
+        accountAddress: this.#params.user,
+        sodexAccountId:
+          this.#params.accountID === undefined ? null : String(this.#params.accountID),
+        request: fields.request ?? null,
+        response: capBody(fields.response ?? null),
+        items: fields.items ?? null,
+        outcome: fields.outcome ?? "ok",
+        detail: fields.detail ?? null,
+        context: this.#recordContext,
+      };
+    });
   }
 
   connect(): void {
@@ -388,31 +393,34 @@ export class WsUserStream {
   ): void {
     if (this.#recorder === undefined) return;
     const now = Date.now();
-    const frame = closeFrameOf(event);
-    const closedBy =
-      cause === "server"
-        ? frame.code === ABNORMAL_CLOSURE
-          ? SodexWsClosedBy.network
-          : SodexWsClosedBy.server
-        : cause === "idle"
-          ? SodexWsClosedBy.timeout
-          : cause === "error"
+    // Dựng chi tiết bên trong safeRecord (review #256): lỗi ở đây không được chặn việc kết nối lại.
+    this.#record("CLOSE", () => {
+      const frame = closeFrameOf(event);
+      const closedBy =
+        cause === "server"
+          ? frame.code === ABNORMAL_CLOSURE
             ? SodexWsClosedBy.network
-            : SodexWsClosedBy.client;
-    const info: SodexWsCloseInfo = {
-      closedBy,
-      ...frame,
-      openForMs: this.#openedAt === 0 ? null : Math.max(0, now - this.#openedAt),
-      lastMessageAgoMs: this.#lastMessageAt === 0 ? null : Math.max(0, now - this.#lastMessageAt),
-      reconnectInMs: reconnect?.inMs ?? null,
-      reconnectAttempt: reconnect?.attempt ?? null,
-    };
-    this.#record("CLOSE", {
-      startedAt: now,
-      outcome:
-        cause === "idle" ? "timeout" : cause === "server" || cause === "error" ? "network" : "ok",
-      response: JSON.stringify(info),
-      detail: wsCloseDetail(info, cause),
+            : SodexWsClosedBy.server
+          : cause === "idle"
+            ? SodexWsClosedBy.timeout
+            : cause === "error"
+              ? SodexWsClosedBy.network
+              : SodexWsClosedBy.client;
+      const info: SodexWsCloseInfo = {
+        closedBy,
+        ...frame,
+        openForMs: this.#openedAt === 0 ? null : Math.max(0, now - this.#openedAt),
+        lastMessageAgoMs: this.#lastMessageAt === 0 ? null : Math.max(0, now - this.#lastMessageAt),
+        reconnectInMs: reconnect?.inMs ?? null,
+        reconnectAttempt: reconnect?.attempt ?? null,
+      };
+      return {
+        startedAt: now,
+        outcome:
+          cause === "idle" ? "timeout" : cause === "server" || cause === "error" ? "network" : "ok",
+        response: JSON.stringify(info),
+        detail: wsCloseDetail(info, cause),
+      };
     });
   }
 

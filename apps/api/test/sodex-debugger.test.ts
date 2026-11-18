@@ -513,6 +513,7 @@ describe("SoDEX Debugger API", () => {
       reconnectInMs: 1100,
       reconnectAttempt: 1,
     });
+    expect(d.wsReconnect?.nextOpenAvailable).toBe(true);
     expect(d.wsReconnect?.nextOpen).toMatchObject({ method: "OPEN", connId: "ws-perps-next0001" });
     expect(new Date(d.wsReconnect?.nextOpen?.at ?? 0).getTime() - new Date(d.at).getTime()).toBe(
       1150,
@@ -528,6 +529,32 @@ describe("SoDEX Debugger API", () => {
       (await team.request("GET", `/api/v1/admin/sodex-calls/${open?.id ?? ""}`)).json(),
     );
     expect(openDetail.wsReconnect).toBeNull();
+
+    // Review #256: CLOSE (bảng problem, 14 ngày) cũ hơn thời hạn giữ dòng ok (3 ngày) thì OPEN kế tiếp có thể đã bị
+    // xoá: API báo không tra được, không nói "không có". Ở đây OPEN vẫn còn trong DB, nên kết quả chỉ dựa vào tuổi.
+    const realNow = env.clock.now;
+    try {
+      const closeAt = new Date(d.at).getTime();
+      const detailAt = async (at: number) => {
+        env.clock.now = new Date(at);
+        const r = await team.request("GET", `/api/v1/admin/sodex-calls/${close?.id ?? ""}`);
+        return sodexCallDetailSchema.parse(r.json()).wsReconnect;
+      };
+      // Cửa sổ 10 phút vẫn nằm trong 3 ngày: còn tra.
+      const inside = await detailAt(closeAt + 10 * MIN + 3 * 24 * HOUR - MIN);
+      expect(inside?.nextOpenAvailable).toBe(true);
+      expect(inside?.nextOpen?.connId).toBe("ws-perps-next0001");
+      // Cửa sổ đã cũ hơn 3 ngày: không tra, chi tiết đóng vẫn còn.
+      const expired = await detailAt(closeAt + 10 * MIN + 3 * 24 * HOUR + MIN);
+      expect(expired).toEqual({
+        close: d.wsReconnect?.close,
+        nextOpenAvailable: false,
+        nextOpen: null,
+        nextSubscribes: [],
+      });
+    } finally {
+      env.clock.now = realNow;
+    }
   });
 });
 

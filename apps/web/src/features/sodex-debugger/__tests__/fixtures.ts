@@ -173,6 +173,7 @@ export const WS_CLOSE: SodexCallDetail = {
   wsConn: { connId: WS_CONN, open: true },
   related: [],
   wsReconnect: {
+    nextOpenAvailable: true,
     close: {
       closedBy: "server",
       code: 1001,

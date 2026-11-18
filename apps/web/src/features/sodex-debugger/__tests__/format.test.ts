@@ -137,6 +137,7 @@ describe("SoDEX Debugger WS close in the report (#240)", () => {
             reconnectInMs: null,
             reconnectAttempt: null,
           },
+          nextOpenAvailable: true,
           nextOpen: null,
           nextSubscribes: [],
         },
@@ -146,11 +147,48 @@ describe("SoDEX Debugger WS close in the report (#240)", () => {
     );
     expect(text).toContain("Closed by:    DeskLabs");
     expect(text).toContain("Close code:   Not available");
-    expect(text).toContain("Close reason: none");
+    // Không có close frame: reason là chưa biết, không phải "none" (review #256).
+    expect(text).toContain("Close reason: Not available");
     expect(text).toContain("Open for:     Not available");
     expect(text).toContain("Last message: none on this connection");
     expect(text).toContain("Reconnect:    none (DeskLabs stopped the stream)");
     expect(text).toContain("Next open:    none recorded within 10 minutes");
+  });
+
+  it("says none for an empty reason only when a close frame arrived, and never invents an attempt (review #256)", () => {
+    const reconnect = WS_CLOSE.wsReconnect;
+    const close = reconnect?.close ?? null;
+    if (reconnect === null || close === null) throw new Error("fixture");
+    const text = buildReport(
+      {
+        ...WS_CLOSE,
+        wsReconnect: { ...reconnect, close: { ...close, reason: null, reconnectAttempt: null } },
+      },
+      { related: false, fullAddress: true, responseHeaders: false },
+      t,
+    );
+    expect(text).toContain("Close code:   1001");
+    expect(text).toContain("Close reason: none");
+    expect(text).toContain("Reconnect:    after 1,100 ms\n");
+    expect(text).not.toMatch(/^Reconnect:.*attempt/m);
+  });
+
+  it("says Not available, not none recorded, once the next open may be past the 3-day keep (review #256)", () => {
+    const reconnect = WS_CLOSE.wsReconnect;
+    if (reconnect === null) throw new Error("fixture");
+    const text = buildReport(
+      {
+        ...WS_CLOSE,
+        wsReconnect: { ...reconnect, nextOpenAvailable: false, nextOpen: null, nextSubscribes: [] },
+      },
+      { related: false, fullAddress: true, responseHeaders: false },
+      t,
+    );
+    expect(text).toContain(
+      "Next open:    Not available: connection rows older than 3 days are not kept",
+    );
+    expect(text).not.toContain("none recorded");
+    expect(text).not.toContain("Next subscribe");
   });
 
   it("still links the next open for a close recorded before #240 (no close details)", () => {

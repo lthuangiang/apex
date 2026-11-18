@@ -217,10 +217,13 @@ export const sodexCallDetailSchema = sodexCallItemSchema.extend({
   /**
    * Chỉ với WS CLOSE (#240): chi tiết đóng (null với dòng ghi trước #240) và kết nối kế tiếp của cùng account + engine
    * (OPEN đầu tiên trong 10 phút sau lúc đóng, cùng các SUB ack của kết nối đó). `null` với mọi dòng khác.
+   * `nextOpenAvailable: false` khi cửa sổ 10 phút đã cũ hơn thời hạn giữ dòng ok (3 ngày): OPEN kế tiếp có thể đã bị
+   * xoá, nên không tra và UI / báo cáo hiện "Not available" thay vì "none recorded" (review #256).
    */
   wsReconnect: z
     .object({
       close: sodexWsCloseInfoSchema.nullable(),
+      nextOpenAvailable: z.boolean(),
       nextOpen: sodexCallItemSchema.nullable(),
       nextSubscribes: z.array(sodexCallItemSchema),
     })

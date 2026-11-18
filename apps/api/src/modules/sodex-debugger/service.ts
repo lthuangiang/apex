@@ -4,6 +4,7 @@ import {
   ErrorCode,
   SODEX_CALL_COUNT_CAP,
   SODEX_CALL_RANGE_MS,
+  SODEX_CALL_RETENTION_DAYS,
   SODEX_CALL_SLOW_MS,
   sodexCallFacetsQuerySchema,
   sodexCallsQuerySchema,
@@ -302,7 +303,7 @@ export async function sodexCallDetail(
             WHERE ${r.account_id === null ? sql`lower(address) = ${r.account_address}` : sql`id = ${r.account_id}::uuid`}
             LIMIT 1`),
       wsConnection(q, r),
-      wsReconnect(q, r),
+      wsReconnect(q, r, deps.now().getTime()),
     ]);
 
     const requestHeaders: SodexHeader[] = headerListSchema.safeParse(r.request_headers).data ?? [];
@@ -360,11 +361,20 @@ function parseCloseInfo(body: string | null): SodexWsCloseInfo | null {
  * WS CLOSE (#240): chi tiết đóng và kết nối kế tiếp của cùng service + account + engine (OPEN đầu tiên trong 10 phút
  * sau lúc đóng, cùng SUB ack của chính kết nối đó). Dùng index (account_address, at).
  */
-async function wsReconnect(db: Exec, r: DetailRow): Promise<SodexCallDetail["wsReconnect"]> {
+async function wsReconnect(
+  db: Exec,
+  r: DetailRow,
+  now: number,
+): Promise<SodexCallDetail["wsReconnect"]> {
   if (r.kind !== "ws" || r.method !== "CLOSE") return null;
   const close = parseCloseInfo(r.response_body);
+  // OPEN và SUB ack ok nằm ở sodex_calls_ok (giữ 3 ngày); CLOSE lỗi ở bảng problem (14 ngày). Cửa sổ đã cũ hơn
+  // 3 ngày thì OPEN kế tiếp có thể đã bị xoá: không được nói "không có" (quy tắc 1.8).
+  if (r.at + RECONNECT_WINDOW_MS < now - SODEX_CALL_RETENTION_DAYS.ok * 24 * HOUR) {
+    return { close, nextOpenAvailable: false, nextOpen: null, nextSubscribes: [] };
+  }
   if (r.account_address === null || r.engine === null) {
-    return { close, nextOpen: null, nextSubscribes: [] };
+    return { close, nextOpenAvailable: true, nextOpen: null, nextSubscribes: [] };
   }
   const from = new Date(r.at).toISOString();
   const to = new Date(r.at + RECONNECT_WINDOW_MS).toISOString();
@@ -382,6 +392,7 @@ async function wsReconnect(db: Exec, r: DetailRow): Promise<SodexCallDetail["wsR
       : next.rows.filter((x) => x.method === "SUB" && x.conn_id === open.conn_id);
   return {
     close,
+    nextOpenAvailable: true,
     nextOpen: open === undefined ? null : toItem(open),
     nextSubscribes: subscribes.map(toItem),
   };

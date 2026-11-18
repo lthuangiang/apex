@@ -52,6 +52,11 @@ class FakeSocket implements WebSocketLike {
     for (const listener of this.#listeners.get("close") ?? [])
       listener({ data: undefined, code, reason, wasClean });
   }
+  /** Close event tuỳ ý (kể cả event có getter ném lỗi). */
+  emitCloseEvent(event: FakeEvent): void {
+    this.readyState = 3;
+    for (const listener of this.#listeners.get("close") ?? []) listener(event);
+  }
 }
 
 function setup(
@@ -480,5 +485,33 @@ describe("WsUserStream · SoDEX Debugger", () => {
     function closeInfo(c: SodexWsCapture | undefined) {
       return sodexWsCloseInfoSchema.parse(JSON.parse(c?.response ?? "null"));
     }
+  });
+
+  it("still reconnects when building the close details throws (review #256)", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const captures: SodexWsCapture[] = [];
+    const { stream, sockets } = setup({
+      recorder: {
+        record: (c) => {
+          if (c.kind === "ws") captures.push(c);
+        },
+      },
+    });
+    stream.connect();
+    sockets[0]?.emit("open");
+    const event = { data: undefined } as FakeEvent;
+    Object.defineProperty(event, "code", {
+      get() {
+        throw new Error("odd close event");
+      },
+    });
+    expect(() => {
+      sockets[0]?.emitCloseEvent(event);
+    }).not.toThrow();
+    // Không ghi được CLOSE, nhưng kết nối lại vẫn được hẹn đúng giờ.
+    expect(captures.some((c) => c.event === "CLOSE")).toBe(false);
+    vi.advanceTimersByTime(1000);
+    expect(sockets).toHaveLength(2);
+    stream.close();
   });
 });
