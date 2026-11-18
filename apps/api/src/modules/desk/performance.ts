@@ -23,7 +23,7 @@ import { periodNetPnl } from "../account/stats-overview";
 import { exitReasonOf } from "../bots/analytics";
 import type { BotDeps } from "../bots/service";
 
-// AI Desk › "How your bots performed" (#234, DEC-TBD-ai-desk-performance). Chỉ bot tiền thật Market Making / Volume
+// AI Desk › "How your bots performed" (#234, DEC-314). Chỉ bot tiền thật Market Making / Volume
 // Builder của chính người gọi (lọc bots.user_id ở mọi truy vấn). Chỉ trả số đã tổng hợp: snapshot tín hiệu VB
 // (payload.signal, DEC-311) chỉ được đọc ở server để chia nhóm lượt cho gợi ý, không bao giờ trả về. Mọi truy vấn chạy
 // trong một transaction chỉ đọc có statement timeout.

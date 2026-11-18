@@ -5,7 +5,7 @@ import { decimalStringSchema, uuidSchema } from "../schemas";
 
 import { timeZoneSchema } from "./market-hours";
 
-// AI Desk › "How your bots performed" (#234, thiết kế #232, DEC-TBD-ai-desk-performance): chỉ bot tiền thật của chính
+// AI Desk › "How your bots performed" (#234, thiết kế #232, DEC-314): chỉ bot tiền thật của chính
 // người dùng, chỉ Market Making + Volume Builder. API chỉ trả số đã tổng hợp: không bao giờ có thành phần tín hiệu,
 // snapshot báo giá, kết quả giả định đi ngược chiều hay dữ liệu người khác.
 // - Tổng và từng bot: công thức kỳ của Platform Stats (sổ cái giá vốn bình quân, `periodNetPnl`), chi phí / $1M =
@@ -264,6 +264,6 @@ export function compareGroups(
   return { worseCost: w, betterCost: b, worseShare: share };
 }
 
-/** Nhận xét dưới lý do thoát: chỉ xét lý do có ≥ 30 lượt và ≥ 5% số lượt (DEC-TBD-ai-desk-performance). */
+/** Nhận xét dưới lý do thoát: chỉ xét lý do có ≥ 30 lượt và ≥ 5% số lượt (DEC-314). */
 export const EXIT_NOTE_MIN_TRADES = 30;
 export const EXIT_NOTE_MIN_SHARE = 0.05;
