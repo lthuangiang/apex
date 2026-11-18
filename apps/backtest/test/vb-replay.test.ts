@@ -1,6 +1,8 @@
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { fileURLToPath } from "node:url";
 
-import { Decimal } from "@drift/shared";
+import { Decimal, SIGNAL_SNAPSHOT_RETENTION_DAYS } from "@drift/shared";
 import { describe, expect, it, vi } from "vitest";
 
 import { guardIdleKill, isIdleKill } from "../src/replay/abort";
@@ -23,6 +25,7 @@ import {
 
 const d = (v: number | string) => new Decimal(v);
 const T0 = Date.parse("2026-11-10T00:00:00Z");
+const DAY = 86_400_000;
 const neutral = {
   candleMomentum: 0.5,
   wickRejection: 0.5,
@@ -257,16 +260,58 @@ describe("missing data, markets, self-check, limits", () => {
 
   it("refuses ranges longer than the limit", () => {
     const from = new Date(T0);
+    const now = T0 + 20 * DAY;
     expect(() => {
-      checkRange(from, new Date(T0 + MAX_RANGE_DAYS * 86_400_000));
+      checkRange(from, new Date(T0 + MAX_RANGE_DAYS * DAY), now);
     }).not.toThrow();
     expect(() => {
-      checkRange(from, new Date(T0 + (MAX_RANGE_DAYS + 1) * 86_400_000));
+      checkRange(from, new Date(T0 + (MAX_RANGE_DAYS + 1) * DAY), now);
     }).toThrow(ReplayLimitError);
     expect(() => {
-      checkRange(from, from);
+      checkRange(from, from, now);
     }).toThrow(ReplayLimitError);
   });
+
+  it("refuses a range that starts before the snapshot retention cut-off (review PR #257)", () => {
+    const now = T0 + SIGNAL_SNAPSHOT_RETENTION_DAYS * DAY;
+    // Đúng mốc cắt: còn đủ snapshot.
+    expect(() => {
+      checkRange(new Date(T0), new Date(T0 + DAY), now);
+    }).not.toThrow();
+    // Sớm hơn mốc 1 ms: snapshot có thể đã bị bỏ, không được chạy trên dữ liệu thiếu.
+    expect(() => {
+      checkRange(new Date(T0 - 1), new Date(T0 + DAY), now);
+    }).toThrow(
+      new ReplayLimitError(
+        "--from is more than 45 days ago; signal snapshots older than 45 days are removed, so entries before 2026-11-10T00:00:00.000Z cannot be replayed",
+      ),
+    );
+  });
+
+  it("exits with code 2 and says why when --from is older than the snapshot retention (review PR #257)", () => {
+    const old = new Date(Date.now() - (SIGNAL_SNAPSHOT_RETENTION_DAYS + 1) * DAY)
+      .toISOString()
+      .slice(0, 10);
+    const to = new Date(Date.parse(old) + DAY).toISOString().slice(0, 10);
+    const run = spawnSync(
+      process.execPath,
+      ["--import", "tsx", "src/replay/cli.ts", "--from", old, "--to", to],
+      {
+        cwd: fileURLToPath(new URL("..", import.meta.url)),
+        // Không có DB / Redis thật: CLI phải dừng trước khi kết nối.
+        env: {
+          ...process.env,
+          DATABASE_URL: "postgres://nobody@127.0.0.1:1/none",
+          REDIS_URL: "redis://127.0.0.1:1",
+        },
+        encoding: "utf8",
+        timeout: 60_000,
+      },
+    );
+    expect(run.status).toBe(2);
+    expect(run.stderr).toContain("replay: --from is more than 45 days ago");
+    expect(run.stdout).toBe("");
+  }, 70_000);
 });
 
 describe("groupTrades", () => {

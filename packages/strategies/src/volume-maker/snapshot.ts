@@ -221,6 +221,9 @@ export function orderContexts(
     after.fairBinanceAt == null ? null : Math.max(0, Math.round(at - after.fairBinanceAt));
   const fairRef = fair !== null && fairAgeMs !== null && fairAgeMs <= oracle.maxAgeMs ? fair : null;
   const step = stepReason(c, before, after, e, actions);
+  // Tuổi sổ cùng cách tính với `book.ageMs` của snapshot báo giá; chỉ khi bối cảnh theo sổ.
+  const bookAgeMs =
+    usable && after.bookAt != null ? Math.max(0, Math.round(at - after.bookAt)) : null;
   for (const o of places) {
     const price = o.price === undefined ? null : fixed(o.price);
     const reason = o.tag.includes(":dust:")
@@ -233,11 +236,12 @@ export function orderContexts(
             ? "requote"
             : step;
     out.set(o.clOrdID, {
-      v: 1,
+      v: 2,
       reason,
       mid,
       bid: usable ? fixed(book.bid) : null,
       ask: usable ? fixed(book.ask) : null,
+      bookAgeMs,
       fair,
       fairAgeMs,
       level: c.quoteLevel ?? null,

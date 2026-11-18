@@ -2256,11 +2256,12 @@ describe("volume maker — quote snapshot on quoting decisions (#230)", () => {
     for (const p of opens) expect(p.context).toBeDefined();
     const first = mmOrderContextSchema.parse(opens[0]?.context);
     expect(first).toMatchObject({
-      v: 1,
+      v: 2,
       reason: "first",
       mid: "100000",
       bid: null,
       ask: null,
+      bookAgeMs: null,
       fair: null,
       level: null,
       pos: "0",
@@ -2305,6 +2306,12 @@ describe("volume maker — quote snapshot on quoting decisions (#230)", () => {
     const r0 = quoted7s();
     const ctxs = ctxOf(r0.all).map((p) => mmOrderContextSchema.parse(p.context));
     expect(ctxs.every((x) => x.smart && x.level === 0)).toBe(true);
+    // v2 (#229): tuổi sổ có khi bối cảnh theo sổ, null khi không.
+    expect(ctxs.every((x) => x.v === 2)).toBe(true);
+    for (const x of ctxs)
+      if (x.bid === null) expect(x.bookAgeMs).toBeNull();
+      else expect(x.bookAgeMs).toBeGreaterThanOrEqual(0);
+    expect(ctxs.some((x) => x.bid !== null)).toBe(true);
     const bid = places(r0.all)
       .filter((o) => o.side === "buy")
       .at(-1);
