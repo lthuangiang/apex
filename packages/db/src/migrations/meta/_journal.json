@@ -309,6 +309,13 @@
       "when": 1794990968660,
       "tag": "0043_orders_bot_filled_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1795027382083,
+      "tag": "0044_signal_research",
+      "breakpoints": true
     }
   ]
 }

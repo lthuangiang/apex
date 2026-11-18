@@ -284,6 +284,39 @@ select c.relname, i.indisvalid from pg_index i join pg_class c on c.oid = i.inde
  where c.relname in ('bot_events_signal_idx', 'orders_context_created_idx');
 ```
 
+### 2.15 Signal research, lane tin tức (#271, DEC-322): bật trên prod
+
+Migration `0044_signal_research` (đã sửa tại chỗ trong PR #278 trước khi deploy: máy local đã chạy bản 0044 cũ phải `drop table signal_articles, signal_events, signal_paper_trades, signal_research_usage, signal_source_health, signal_stories;` và xoá dòng 0044 trong `drizzle.__drizzle_migrations` rồi migrate lại) chỉ tạo bảng mới (`build-push.sh` tự chạy migrate), không khoá bảng đang dùng. Lane chạy trong `scheduler` (leader), mặc định **tắt**, không bao giờ gửi gì tới SoDEX. Biến môi trường chỉ tới container khi có trong compose giữ tay của VPS, nên lần release đầu phải làm:
+
+1. Trong `/opt/drift/.env` thêm key (không dán vào log, ticket hay PR): `SOSO_API_KEY=…`. `DESK_AI_API_KEY` đã có (Desk AI) thì dùng chung.
+2. Trong `/opt/drift/docker-compose.yml`, cho **riêng service `scheduler`** một khối `environment` (để key SoSoValue / Claude chỉ tới scheduler, không tới mọi service qua `x-env`):
+   ```yaml
+     scheduler:
+       <<: *app
+       image: ${DRIFT_IMAGE:-docker.io/lthuangiang/drift}:scheduler-${DRIFT_TAG:-latest}
+       environment:
+         <<: *env
+         SIGNAL_RESEARCH_ENABLED: ${SIGNAL_RESEARCH_ENABLED:-false}
+         SOSO_API_KEY: ${SOSO_API_KEY:-}
+         DESK_AI_API_KEY: ${DESK_AI_API_KEY:-}
+         SIGNAL_CLAUDE_DAILY_INPUT_TOKENS: ${SIGNAL_CLAUDE_DAILY_INPUT_TOKENS:-2000000}
+         SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE: ${SIGNAL_CLAUDE_MAX_CALLS_PER_CYCLE:-50}
+         SIGNAL_SOSO_MONTHLY_LIMIT: ${SIGNAL_SOSO_MONTHLY_LIMIT:-9500}
+         SIGNAL_SOSO_MAX_PAGES: ${SIGNAL_SOSO_MAX_PAGES:-2}
+         SIGNAL_NEWS_START_LOOKBACK_MIN: ${SIGNAL_NEWS_START_LOOKBACK_MIN:-15}
+         SIGNAL_NEWS_MAX_CATCHUP_MIN: ${SIGNAL_NEWS_MAX_CATCHUP_MIN:-30}
+   ```
+   `NATS_URL` đã có trong `x-env`: scheduler dùng nó để nghe `md.*.book` (chỉ đọc). Thiếu NATS thì lane chỉ dùng giá Redis + spread theo giờ.
+3. Deploy như thường (flag vẫn `false`). **Lần bật đầu tiên**, trước khi bật flag: đo kích thước prefix được cache bằng `cd /opt/drift && docker compose exec scheduler pnpm --filter @drift/scheduler signals:once -- --cycles 1` (`countTokens` miễn phí; chạy một chu kỳ thật: chỉ ghi bảng `signal_*`, lệnh nếu có là lệnh giấy, không gửi gì tới SoDEX). Log `claude cached prefix tokens (countTokens)` có `prefixPlusMinimalUser` (phải ≥ 4 096 thì Haiku 4.5 mới cache); ghi số này vào DEC-322 (chỗ "chưa đo"). Rồi bật: đặt `SIGNAL_RESEARCH_ENABLED=true` trong `/opt/drift/.env`, `cd /opt/drift && docker compose up -d scheduler`.
+4. Kiểm tra: log scheduler có `signal research enabled`, rồi mỗi 5 phút một dòng `signal research news cycle` (bài lấy về / lưu / phân loại / bỏ theo lý do, token Claude hôm nay). `signal research not started` kèm `reason` = thiếu key. Lần chạy đầu chỉ nhận tin trong 15 phút gần nhất; phần còn lại của trang lưu thô với lý do `BACKLOG_NOT_CLASSIFIED`.
+   - Lúc nhận lease scheduler đọc danh sách market SoDEX một lần; chưa đọc được thì log `SoDEX market list not known yet, collect only` và chu kỳ chỉ thu bài (bài được xử lý ở chu kỳ sau).
+   - **Prompt cache:** lần gọi Claude đầu mỗi ngày log `signal research claude cache check` (`cachedPrefixTokens` phải ≥ 4 096). Có `signal research claude prompt cache is not being read` thì cache không hoạt động: báo team. Kiểm thêm sau khoảng một giờ: `select day, claude_calls, claude_cache_read_tokens from signal_research_usage order by day desc limit 2;` phải có `claude_cache_read_tokens > 0`.
+   - Hết hạn mức SoSoValue tháng thì log `sosovalue unavailable` với `monthly_quota`, tab hiện nguồn "Delayed"; scheduler vẫn chạy bình thường.
+   - Giá trị `SIGNAL_*` sai: flag tắt thì chỉ log `signal research env` (cảnh báo), flag bật thì `signal research not started` kèm lý do; scheduler không bao giờ dừng vì env của lane này.
+5. Báo cáo: `cd /opt/drift && docker compose exec scheduler pnpm --filter @drift/scheduler signals:report` (thêm `-- --json` để lấy JSON; chỉ đọc), hoặc `GET /api/v1/admin/signal-research/summary` bằng tài khoản team.
+
+**Tắt khẩn cấp:** `SIGNAL_RESEARCH_ENABLED=false` trong `/opt/drift/.env` rồi `docker compose up -d scheduler`. Lệnh giấy đang mở giữ nguyên trong DB; bật lại thì watcher kiểm TP / SL tiếp, còn tin trong lúc tắt không được bắt kịp quá 30 phút. Ngân sách Claude hết trong ngày thì lane tự ngừng phân loại (`CLAUDE_BUDGET_REACHED`) tới 00:00 UTC.
+
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.
 2. Người dùng gõ "release" cho PM → PM tạo tag `vX.Y.Z` → `release.yml` build + push image các app đổi (app không đổi được gắn tag mới vào image của tag trước) → PM trả tag (`docs/RELEASE.md`).

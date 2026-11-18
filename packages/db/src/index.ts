@@ -6,3 +6,4 @@ export * from "./leaders";
 export * from "./fees";
 export * from "./sodex-calls";
 export * from "./read-only";
+export * from "./signal-research";

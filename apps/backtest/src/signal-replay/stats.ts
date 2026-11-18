@@ -1,4 +1,11 @@
-import { Decimal } from "@drift/shared";
+import {
+  Decimal,
+  summarizeByDay,
+  THIN_SAMPLE,
+  tradesNeededByDay,
+  type DayObs,
+  type DaySummary,
+} from "@drift/shared";
 
 import { PAPER_SIZE_USDC, type SignalTrade } from "./types";
 
@@ -8,149 +15,25 @@ import { PAPER_SIZE_USDC, type SignalTrade } from "./types";
 //   (không bốc thăm): random = pLong × kết quả Long + (1 − pLong) × kết quả Short. Nhóm toàn Long / toàn Short (p = 1 / 0):
 //   phần chênh ≡ 0, không bao giờ thắng random (gắn cờ).
 // - Khoảng tin cậy 95%: block bootstrap theo NGÀY vào lệnh (UTC). Lệnh cùng ngày tương quan với nhau (C phá vỡ cùng lúc trên
-//   nhiều market, B cực đoan cùng giờ), nên lấy mẫu lại cả ngày, không lấy từng lệnh. Báo kèm số cụm (ngày). Khoảng xấp xỉ
-//   chuẩn (± 1.96 × sd ÷ √n, coi lệnh độc lập) giữ lại làm field phụ. Phần bootstrap tính bằng số thực (thống kê, không phải
-//   tiền), seed cố định nên tất định.
+//   nhiều market, B cực đoan cùng giờ), nên lấy mẫu lại cả ngày, không lấy từng lệnh. Báo kèm số cụm (ngày). Thuật toán ở
+//   `@drift/shared` (`summarizeByDay`), dùng chung với live paper của #271.
 // - Chia theo thời gian vào lệnh: 2/3 đầu (trong mẫu), 1/3 sau (ngoài mẫu).
 // - Cổng (ngoài mẫu): ≥ 100 lệnh; trung bình sau phí ≥ 2 × chi phí trung bình và cận dưới khoảng tin cậy > 0; phần chênh so
 //   với random có cận dưới > 0; trung bình sau phí cùng dấu ở cả hai giai đoạn (2/3 và 1/3). Mức sụt lớn nhất chỉ để báo
 //   (ngưỡng "chấp nhận được" của #263 chưa chốt).
 
-const DAY = 86_400_000;
-const Z95 = 1.96;
-/** z của power 80%, để ước tính số lệnh cần. */
-const Z_POWER = 0.8416;
-const BOOTSTRAP_RESAMPLES = 2_000;
-const BOOTSTRAP_SEED = 274;
-
 export const GATE_V1 = {
   minOutOfSample: 100,
   minMeanCostMultiple: new Decimal(2),
-  thinSample: 30,
+  thinSample: THIN_SAMPLE,
 } as const;
 
-/** Một quan sát: giá trị (bp) và giờ vào lệnh (ms) để gom cụm theo ngày. */
-export interface Obs {
-  v: Decimal;
-  at: number;
-}
-
-export interface Summary {
-  n: number;
-  /** Số ngày (UTC) có lệnh: số cụm độc lập dùng cho khoảng tin cậy. */
-  clusters: number;
-  mean: Decimal | null;
-  /** Độ lệch chuẩn từng lệnh. */
-  sd: Decimal | null;
-  /** Khoảng tin cậy 95% theo block bootstrap ngày; < 2 ngày → null. */
-  ciLow: Decimal | null;
-  ciHigh: Decimal | null;
-  /** Sai số chuẩn của trung bình theo bootstrap ngày. */
-  seMean: Decimal | null;
-  /** Khoảng xấp xỉ chuẩn, coi lệnh độc lập (phụ, hẹp hơn thực tế khi lệnh tương quan). */
-  normalCiLow: Decimal | null;
-  normalCiHigh: Decimal | null;
-  thin: boolean;
-}
-
-/** PRNG tất định (mulberry32). */
-function rng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** Block bootstrap theo ngày: trả phân vị 2.5% / 97.5% và sd của trung bình; < 2 cụm → null. */
-function dayBootstrap(obs: readonly Obs[]): { lo: number; hi: number; se: number } | null {
-  const days = new Map<number, { sum: number; n: number }>();
-  for (const o of obs) {
-    const k = Math.floor(o.at / DAY);
-    const b = days.get(k) ?? { sum: 0, n: 0 };
-    b.sum += o.v.toNumber();
-    b.n += 1;
-    days.set(k, b);
-  }
-  const blocks = [...days.values()];
-  const k = blocks.length;
-  if (k < 2) return null;
-  const next = rng(BOOTSTRAP_SEED);
-  const means: number[] = [];
-  for (let r = 0; r < BOOTSTRAP_RESAMPLES; r++) {
-    let sum = 0;
-    let n = 0;
-    for (let i = 0; i < k; i++) {
-      const b = blocks[Math.floor(next() * k)];
-      if (b === undefined) continue;
-      sum += b.sum;
-      n += b.n;
-    }
-    means.push(sum / n);
-  }
-  means.sort((a, b) => a - b);
-  const m = means.reduce((s, x) => s + x, 0) / means.length;
-  const se = Math.sqrt(means.reduce((s, x) => s + (x - m) ** 2, 0) / (means.length - 1));
-  return {
-    lo: means[Math.floor(0.025 * (means.length - 1))] ?? m,
-    hi: means[Math.ceil(0.975 * (means.length - 1))] ?? m,
-    se,
-  };
-}
-
-const num = (x: number) => new Decimal(x.toPrecision(12));
-
-export function summarize(obs: readonly Obs[]): Summary {
-  const n = obs.length;
-  const clusters = new Set(obs.map((o) => Math.floor(o.at / DAY))).size;
-  const empty = {
-    sd: null,
-    ciLow: null,
-    ciHigh: null,
-    seMean: null,
-    normalCiLow: null,
-    normalCiHigh: null,
-  };
-  if (n === 0) return { n, clusters, mean: null, ...empty, thin: true };
-  const mean = obs.reduce((s, o) => s.add(o.v), new Decimal(0)).div(n);
-  if (n < 2) return { n, clusters, mean, ...empty, thin: true };
-  const variance = obs.reduce((s, o) => s.add(o.v.sub(mean).pow(2)), new Decimal(0)).div(n - 1);
-  const sd = variance.sqrt();
-  const half = sd.div(Math.sqrt(n)).mul(Z95);
-  const boot = dayBootstrap(obs);
-  return {
-    n,
-    clusters,
-    mean,
-    sd,
-    ciLow: boot === null ? null : num(boot.lo),
-    ciHigh: boot === null ? null : num(boot.hi),
-    seMean: boot === null ? null : num(boot.se),
-    normalCiLow: mean.sub(half),
-    normalCiHigh: mean.add(half),
-    thin: n < GATE_V1.thinSample,
-  };
-}
-
-/**
- * Số lệnh cần để khoảng tin cậy 95% của trung bình không chạm 0 với power 80%: ((1.96 + 0.84) × sd hiệu dụng ÷ mean)²,
- * sd hiệu dụng = sai số chuẩn bootstrap theo ngày × √n (gồm cả tương quan trong ngày). Chưa đủ dữ liệu (n < 2 hoặc < 2 ngày)
- * hoặc trung bình ≤ 0 → null; nơi gọi phân biệt hai trường hợp.
- */
-export function tradesNeeded(s: Summary): number | null {
-  if (s.mean === null || s.seMean === null || s.mean.lte(0)) return null;
-  const sdEff = s.seMean.mul(Math.sqrt(s.n));
-  return Math.ceil(
-    sdEff
-      .mul(Z95 + Z_POWER)
-      .div(s.mean)
-      .pow(2)
-      .toNumber(),
-  );
-}
+// Thuật toán bootstrap theo ngày nằm ở packages/shared/src/stats/day-bootstrap.ts (dùng chung với Signal research live
+// paper #271); tên cũ giữ nguyên cho replay.
+export type Obs = DayObs;
+export type Summary = DaySummary;
+export const summarize = (obs: readonly Obs[]): Summary => summarizeByDay(obs, GATE_V1.thinSample);
+export const tradesNeeded = tradesNeededByDay;
 
 /**
  * Gắn kết quả random kỳ vọng vào mọi lệnh đã vào trong `trades`, với tỉ lệ Long lấy từ `basis` (phần trong mẫu). `basis`

@@ -1,0 +1,345 @@
+// Signal research: news lane (#263 D, #271; flow #269 v3.4). Paper trading của team, không bao giờ chạm SoDEX.
+// Mọi quy tắc của lane tin tức nằm ở đây, có version: đổi bảng quy tắc, hạng nguồn hay bảng map = tăng `version`
+// (cổng của #263 chỉ đếm một version).
+
+/** Loại tin được tính là tín hiệu (rules v2, #269 Design v3.3 mục 1). `none` = không thuộc danh sách. */
+export const NewsCatalyst = {
+  hackExploit: "hack_exploit",
+  listing: "listing",
+  delisting: "delisting",
+  etfApproved: "etf_approved",
+  etfDelayedOrRejected: "etf_delayed_or_rejected",
+  regulatoryAction: "regulatory_action",
+  favorableRuling: "favorable_ruling",
+  treasuryBuy: "treasury_buy",
+  treasurySell: "treasury_sell",
+  earningsBeat: "earnings_beat",
+  earningsMiss: "earnings_miss",
+  tokenUnlock: "token_unlock",
+  none: "none",
+} as const;
+export type NewsCatalyst = (typeof NewsCatalyst)[keyof typeof NewsCatalyst];
+export type SignalCatalyst = Exclude<NewsCatalyst, "none">;
+
+export const TradeDirection = { long: "long", short: "short" } as const;
+export type TradeDirection = (typeof TradeDirection)[keyof typeof TradeDirection];
+
+export const AssetKind = { crypto: "crypto", stock: "stock" } as const;
+export type AssetKind = (typeof AssetKind)[keyof typeof AssetKind];
+
+export const SourceTier = { top: "top", mid: "mid", low: "low" } as const;
+export type SourceTier = (typeof SourceTier)[keyof typeof SourceTier];
+
+export const SignalLevel = { high: "high", medium: "medium", low: "low" } as const;
+export type SignalLevel = (typeof SignalLevel)[keyof typeof SignalLevel];
+
+export interface CatalystRule {
+  direction: TradeDirection;
+  /** Thời gian giữ tối đa (giờ thực, kể cả cuối tuần). */
+  maxHoldHours: number;
+  /** Loại tài sản mà loại tin này áp dụng (earnings chỉ cho cổ phiếu). */
+  kinds: readonly AssetKind[];
+}
+
+const BOTH = [AssetKind.crypto, AssetKind.stock] as const;
+const DAY = 24;
+
+/** Bước trong pipeline (#269 v3.4) và kết quả của bước đó; mỗi dòng `signal_events` là một cặp. */
+export const SignalStage = {
+  collect: "collect",
+  normalize: "normalize",
+  understand: "understand",
+  filter: "filter",
+  decide: "decide",
+  watch: "watch",
+} as const;
+export type SignalStage = (typeof SignalStage)[keyof typeof SignalStage];
+
+export const SignalOutcome = {
+  pass: "pass",
+  /** Lưu thô, không phân loại, không giao dịch (cũ hơn mốc dưới của Collect). Không phải "bị loại". */
+  backlog: "backlog",
+  drop: "drop",
+  merge: "merge",
+  open: "open",
+  close: "close",
+} as const;
+export type SignalOutcome = (typeof SignalOutcome)[keyof typeof SignalOutcome];
+
+/** Mã lý do bị loại / gộp / đóng (hiện ở báo cáo; câu chữ UI làm sau cùng #269). */
+export const SignalReason = {
+  // collect
+  backlog: "BACKLOG_NOT_CLASSIFIED",
+  /** Chưa có danh sách market SoDEX: chu kỳ chỉ Collect, bài chờ Normalize ở chu kỳ sau. */
+  marketsUnknown: "MARKETS_UNKNOWN",
+  // normalize
+  staleNews: "STALE_NEWS",
+  noSodexMarket: "NO_SODEX_MARKET",
+  duplicate: "DUPLICATE",
+  // understand
+  notUnderstood: "NOT_UNDERSTOOD",
+  claudeBudget: "CLAUDE_BUDGET_REACHED",
+  /** Chờ Claude quá lâu (quá `maxSourceDelayMinutes` sau giờ đăng): bỏ, không gọi Claude. */
+  classifierLate: "CLASSIFIER_LATE",
+  notSignalType: "NOT_A_SIGNAL_TYPE",
+  passingMention: "PASSING_MENTION",
+  promotional: "PROMOTIONAL",
+  eventTooOld: "EVENT_TOO_OLD",
+  wrongAssetKind: "CATALYST_ASSET_MISMATCH",
+  // filter
+  sameStory: "SAME_STORY",
+  /** Câu chuyện chưa vào lệnh nhưng bài đầu tiên đã quá `retryWindowMinutes`: gộp, không vào lệnh. */
+  storyTooOld: "STORY_TOO_OLD",
+  sourceLate: "SOURCE_LATE",
+  noPrice: "NO_SODEX_PRICE",
+  noBookData: "NO_BOOK_DATA",
+  notEnoughHistory: "NOT_ENOUGH_HISTORY",
+  tooThin: "TOO_THIN_TO_TRADE",
+  moveTooSmall: "MOVE_TOO_SMALL_FOR_COST",
+  tradeOpen: "NEWS_TRADE_ALREADY_OPEN",
+  // close
+  takeProfit: "TAKE_PROFIT",
+  stopLoss: "STOP_LOSS",
+  maxHold: "MAX_HOLD",
+} as const;
+export type SignalReason = (typeof SignalReason)[keyof typeof SignalReason];
+
+export const PaperExitReason = {
+  takeProfit: "take_profit",
+  stopLoss: "stop_loss",
+  maxHold: "max_hold",
+} as const;
+export type PaperExitReason = (typeof PaperExitReason)[keyof typeof PaperExitReason];
+
+/**
+ * Quy tắc tin tức v2 (#269 Design v3.3 mục 1 + mục 7, v3.4). Mọi con số là giả thuyết của nghiên cứu, không phải
+ * tham số đã kiểm chứng.
+ */
+export const NEWS_RULES = {
+  version: "news-v2",
+  /** Số version (API hiện dạng số). */
+  versionNumber: 2,
+  lane: "news",
+  /** Bảng loại tin → chiều + giữ tối đa. Chiều do loại tin quyết định, Claude chỉ gọi tên loại tin và tài sản. */
+  catalysts: {
+    hack_exploit: { direction: TradeDirection.short, maxHoldHours: 1 * DAY, kinds: BOTH },
+    listing: { direction: TradeDirection.long, maxHoldHours: 1 * DAY, kinds: [AssetKind.crypto] },
+    delisting: {
+      direction: TradeDirection.short,
+      maxHoldHours: 2 * DAY,
+      kinds: [AssetKind.crypto],
+    },
+    etf_approved: {
+      direction: TradeDirection.long,
+      maxHoldHours: 3 * DAY,
+      kinds: [AssetKind.crypto],
+    },
+    etf_delayed_or_rejected: {
+      direction: TradeDirection.short,
+      maxHoldHours: 2 * DAY,
+      kinds: [AssetKind.crypto],
+    },
+    regulatory_action: { direction: TradeDirection.short, maxHoldHours: 3 * DAY, kinds: BOTH },
+    favorable_ruling: { direction: TradeDirection.long, maxHoldHours: 3 * DAY, kinds: BOTH },
+    treasury_buy: {
+      direction: TradeDirection.long,
+      maxHoldHours: 2 * DAY,
+      kinds: [AssetKind.crypto],
+    },
+    treasury_sell: {
+      direction: TradeDirection.short,
+      maxHoldHours: 2 * DAY,
+      kinds: [AssetKind.crypto],
+    },
+    earnings_beat: {
+      direction: TradeDirection.long,
+      maxHoldHours: 3 * DAY,
+      kinds: [AssetKind.stock],
+    },
+    earnings_miss: {
+      direction: TradeDirection.short,
+      maxHoldHours: 3 * DAY,
+      kinds: [AssetKind.stock],
+    },
+    token_unlock: {
+      direction: TradeDirection.short,
+      maxHoldHours: 2 * DAY,
+      kinds: [AssetKind.crypto],
+    },
+  } satisfies Record<SignalCatalyst, CatalystRule>,
+  /** Cỡ lệnh paper cố định (USDC). */
+  sizeUsdc: "500",
+  /** TP / SL = bội số của biến động thường gặp trong khoảng giữ tối đa. */
+  tpMultiple: "1.5",
+  slMultiple: "0.75",
+  /** Biến động thường gặp: trung vị |giá đóng sau H − giá đóng| / giá, mỗi giờ một mẫu, trên ngần này ngày nến 1 phút. */
+  volatilityLookbackDays: 30,
+  /** Cần ít nhất ngần này mẫu (giờ) để tính biến động; ít hơn → NOT_ENOUGH_HISTORY. */
+  volatilityMinSamples: 240,
+  /** TP phải ≥ bội số này × chi phí khứ hồi. */
+  minTpCostMultiple: "2",
+  /** Phí taker SoDEX dự phòng (%) khi chưa có `takerFee` của market; builder fee mỗi chiều (phần mười bp). */
+  builderFeeRate: 10,
+  /**
+   * Câu chuyện chưa từng vào lệnh chỉ được thử lại trong ngần này phút kể từ bài đầu tiên được tính (edge của tin mất
+   * nhanh); quá thì bài sau gộp vào với lý do `STORY_TOO_OLD`, không vào lệnh.
+   */
+  retryWindowMinutes: 120,
+  /** Story key (token + loại tin) đã có trong ngần này ngày → gộp, không bao giờ mở lại. */
+  storyWindowDays: 7,
+  /** Bài tới tay DeskLabs trễ hơn ngần này sau giờ đăng → nguồn không đúng giờ. */
+  maxSourceDelayMinutes: 30,
+  /** Bài đăng cũ hơn ngần này (so với lúc xử lý) → "Stale news", bỏ trước Claude. */
+  maxArticleAgeHours: 24,
+  /** Lần chạy đầu: watermark = now − ngần này phút (env `SIGNAL_NEWS_START_LOOKBACK_MIN` ghi đè). */
+  startLookbackMinutes: 15,
+  /** Không bao giờ bắt kịp quá ngần này phút sau thời gian ngừng (env `SIGNAL_NEWS_MAX_CATCHUP_MIN` ghi đè). */
+  maxCatchUpMinutes: 30,
+  /**
+   * Mốc dưới của Collect tính theo giờ DeskLabs chạy chu kỳ trước (không theo giờ đăng): bài chưa thấy, đăng sau
+   * `lastCycleAt − ngần này phút` (và không cũ hơn `maxCatchUpMinutes`), vẫn được phân loại dù SoSoValue đưa lên trễ.
+   */
+  collectMarginMinutes: 30,
+  /** Sự kiện cũ hơn ngần này so với giờ đăng → bỏ. */
+  maxEventAgeHours: 24,
+  /** Giá / sổ lệnh cũ hơn ngần này thì coi như không có. */
+  bookFreshMs: 5_000,
+  lastPriceFreshMs: 15_000,
+  /** Spread theo giờ (mm_market_hourly): cần ≥ ngần này mẫu (giây) trong 2 giờ gần nhất. */
+  hourlySpreadMinSamples: 60,
+} as const;
+
+/**
+ * Hạng nguồn theo tên tác giả SoSoValue (`author`, viết thường). Danh sách khởi đầu là phỏng đoán từ dữ liệu thật
+ * 2026-11-18 (106 bài); tên chưa có ở đây rơi về: category 7 (announcement / official: tài khoản dự án, nhưng SoSoValue
+ * cũng xếp cả báo và bot vào đây) → mid, còn lại → low.
+ * Top: nguồn gốc (sàn, công ty, cơ quan quản lý, quỹ ETF), Bloomberg, Reuters. Mid: báo crypto uy tín, nhà báo đã
+ * xác minh. Low: trang tổng hợp, bot, tài khoản ẩn danh / influencer.
+ */
+export const SOURCE_TIERS: Readonly<Record<string, SourceTier>> = {
+  bloomberg: "top",
+  reuters: "top",
+  sec: "top",
+  "sec.gov": "top",
+  binance: "top",
+  coinbase: "top",
+  upbit: "top",
+  okx: "top",
+  bybit: "top",
+  blackrock: "top",
+  techflow: "mid",
+  odaily: "mid",
+  panews: "mid",
+  foresightnews: "mid",
+  chaincatcher: "mid",
+  "chaincatcher research": "mid",
+  wublockchain12: "mid",
+  coindesk: "mid",
+  cointelegraph: "mid",
+  theblock__: "mid",
+  "the block": "mid",
+  decrypt: "mid",
+  blockworks: "mid",
+  "crypto.news": "mid",
+  defiantnews: "mid",
+  bitcoinmagazine: "mid",
+  cnbc: "mid",
+  wsj: "mid",
+  unchained: "mid",
+  ericbalchunas: "mid",
+  "moomoo news": "low",
+  sosovalue: "low",
+  "soso price bot": "low",
+  zerohedge: "low",
+  "financia ljuice": "low",
+  financialjuice: "low",
+  whalewatchalert: "low",
+  unusual_whales: "low",
+  whale_alert: "low",
+  cryptotimes_io: "low",
+  defiprime: "low",
+};
+
+/** SoSoValue category của bài "announcement / official" (tài liệu `/news`). */
+export const SOSO_OFFICIAL_CATEGORY = 7;
+
+/**
+ * Mã cổ phiếu (SoSoValue `symbol`) → market SoDEX. Chỉ cổ phiếu có ở đây mới thành ứng viên; xStock (token hoá, tên kết
+ * thúc bằng "XSTOCK", mã có thêm "X") map về cổ phiếu gốc.
+ */
+export const STOCK_MARKETS: Readonly<Record<string, string>> = {
+  AAPL: "AAPL-USD",
+  AMD: "AMD-USD",
+  AMZN: "AMZN-USD",
+  COIN: "COIN-USD",
+  CRCL: "CRCL-USD",
+  CRWD: "CRWD-USD",
+  CRWV: "CRWV-USD",
+  GOOGL: "GOOGL-USD",
+  GOOG: "GOOGL-USD",
+  HOOD: "HOOD-USD",
+  INTC: "INTC-USD",
+  MCD: "MCD-USD",
+  META: "META-USD",
+  MRNA: "MRNA-USD",
+  MRVL: "MRVL-USD",
+  MSFT: "MSFT-USD",
+  MSTR: "MSTR-USD",
+  MU: "MU-USD",
+  NBIS: "NBIS-USD",
+  NKE: "NKE-USD",
+  NVDA: "NVDA-USD",
+  ORCL: "ORCL-USD",
+  PLTR: "PLTR-USD",
+  SMCI: "SMCI-USD",
+  SNDK: "SNDK-USD",
+  TSLA: "TSLA-USD",
+  TSM: "TSM-USD",
+};
+
+/** Market SoDEX là cổ phiếu (để gắn nhãn "outside market hours"). */
+export const STOCK_MARKET_SET: ReadonlySet<string> = new Set(Object.values(STOCK_MARKETS));
+
+export const SIGNAL_CATALYSTS = Object.keys(NEWS_RULES.catalysts) as SignalCatalyst[];
+export const NEWS_CATALYSTS: readonly NewsCatalyst[] = [...SIGNAL_CATALYSTS, NewsCatalyst.none];
+
+export function catalystRule(c: SignalCatalyst): CatalystRule {
+  return NEWS_RULES.catalysts[c];
+}
+
+/** Claude phân loại tin (#271): model cố định, bảng giá để tính chi phí / ngày (USD trên 1M token, giá 2026-11). */
+export const NEWS_CLASSIFIER = {
+  model: "claude-haiku-4-5",
+  /** TTL của prompt cache: chu kỳ 5 phút đúng bằng TTL mặc định nên dùng 1 giờ (ghi 2×, đọc 0.1×). */
+  cacheTtl: "1h",
+  promptVersion: "news-classifier-v1",
+  maxTokens: 400,
+  /** Tối đa ngần này ký tự nội dung bài gửi cho Claude. */
+  maxContentChars: 4000,
+  pricing: {
+    inputPerM: "1",
+    outputPerM: "5",
+    /** Ghi cache TTL 1 giờ = 2× giá đầu vào (TTL 5 phút là 1.25×). */
+    cacheWriteMultiple: "2",
+    cacheReadMultiple: "0.1",
+  },
+} as const;
+
+/** Ngưỡng Live / Delayed / Down của từng nguồn (ms kể từ lần cuối thành công). */
+export const SOURCE_HEALTH = {
+  sosovalue: { liveMs: 7 * 60_000, delayedMs: 20 * 60_000 },
+  claude: { liveMs: 30 * 60_000, delayedMs: 2 * 3_600_000 },
+  sodex_prices: { liveMs: 2 * 60_000, delayedMs: 10 * 60_000 },
+} as const;
+export type SignalSourceKey = keyof typeof SOURCE_HEALTH;
+
+/**
+ * Hạn mức mặc định của lane tin tức (scheduler đọc env ghi đè: `SIGNAL_SOSO_MONTHLY_LIMIT`,
+ * `SIGNAL_CLAUDE_DAILY_INPUT_TOKENS`). Gói free SoSoValue: 10 000 request / tháng → chừa 500.
+ */
+export const NEWS_LIMIT_DEFAULTS = {
+  sosoMonthlyLimit: 9_500,
+  claudeDailyInputBudget: 2_000_000,
+  claudeMaxCallsPerCycle: 50,
+  sosoMaxPages: 2,
+} as const;
