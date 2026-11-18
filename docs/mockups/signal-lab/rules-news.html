@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Paper rules · News</title>
+
+</head>
+<body>
+
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1d47b8}a:hover{color:#2e62e8}
+label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:700;color:#3b4262}
+input,select{height:44px;border:1px solid #d5dcf2;border-radius:12px;padding:0 14px;font:inherit;font-size:15px;font-weight:500;color:#141a33;background:#fff;box-sizing:border-box;width:100%}
+.hint{font-size:12px;font-weight:500;color:#5f6684}
+.chip{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:999px;border:1px solid #d5dcf2;background:#fff;font:inherit;font-size:13px;font-weight:600;color:#141a33}
+.chip[aria-pressed="true"]{background:#e6ecfe;border-color:#8fb0ff;color:#1d47b8}
+</style>
+
+<div style="width:560px;height:1320px;box-sizing:border-box;background:#fff;font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;color:#141a33;padding:28px;display:flex;flex-direction:column;gap:18px;border-left:1px solid #e3e7f5">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <span style="font-size:13px;font-weight:700;color:#5a2ca0">Paper rules · Lane D2</span>
+      <h2 style="margin:0;font-size:24px;font-weight:800">News signal</h2>
+      <span style="font-size:14px;color:#5f6684">Rule v2 · SoSoValue news, classified by Claude, scored by formula</span>
+    </div>
+    <a href="Main.dc.html" aria-label="Close" style="display:inline-flex;width:44px;height:44px;border-radius:12px;border:1px solid #e3e7f5;align-items:center;justify-content:center;color:#3b4262;text-decoration:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></a>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;background:#f5f7fd;border-radius:18px;padding:14px 16px;gap:12px">
+    <div style="display:flex;flex-direction:column;gap:2px"><span style="font-weight:700">Trade this lane on paper</span><span class="hint">Off: news is still collected, classified and scored.</span></div>
+    <button type="button" aria-pressed="true" style="height:44px;min-width:72px;border:1px solid #16a05a;background:#ddf4e7;color:#0f7a43;border-radius:12px;font:inherit;font-weight:700">On</button>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <span style="font-size:15px;font-weight:800">Which signals trade</span>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+      <label>Tiers that trade<select><option>Auto and review</option><option>Auto only</option></select><span class="hint">Both trade on paper; results are split by tier</span></label>
+      <label>Min source tier<select><option>Tier 2 or better</option><option>Tier 1 only</option></select></label>
+      <label>Max promotional<input value="0.30"></label>
+      <label>Min relevance to asset<input value="0.70"></label>
+    </div>
+    <span class="k" style="font-size:13px;font-weight:700;color:#3b4262;margin-top:4px">Catalyst types</span>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="chip" aria-pressed="true">Regulatory</button>
+      <button type="button" class="chip" aria-pressed="true">Earnings</button>
+      <button type="button" class="chip" aria-pressed="true">Treasury buys</button>
+      <button type="button" class="chip" aria-pressed="true">Listings</button>
+      <button type="button" class="chip" aria-pressed="true">Partnerships</button>
+      <button type="button" class="chip" aria-pressed="false">Tech updates</button>
+      <button type="button" class="chip" aria-pressed="false">Macro prints</button>
+    </div>
+    <span class="hint">Macro prints are handled by the D1 filter by default.</span>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <span style="font-size:15px;font-weight:800">Score weights</span>
+    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">
+      <label>Confidence<input value="25"></label>
+      <label>Tradable<input value="20"></label>
+      <label>Severity<input value="15"></label>
+      <label>Source<input value="12"></label>
+      <label>Clarity<input value="10"></label>
+      <label>Catalyst<input value="10"></label>
+      <label>Novelty<input value="8"></label>
+      <label>Auto from<input value="0.70"></label>
+    </div>
+    <span class="hint">Weights add up to 100. Review tier from 0.55; below that the signal is recorded but not traded.</span>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <span style="font-size:15px;font-weight:800">Size, exits and limits</span>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px">
+      <label>Size per trade<input value="500 USDC"></label>
+      <label>Max open in this lane<input value="3"></label>
+      <label>Take profit<select><option>1.5 × volatility of the hold</option><option>Fixed %</option></select></label>
+      <label>Stop loss<select><option>0.75 × volatility of the hold</option><option>Fixed %</option></select></label>
+      <label>Max hold<select><option>From the signal (8 h–5 d)</option><option>Fixed</option></select></label>
+      <label>Same story<select><option>One trade per story</option><option>Allow a new trade if it flips</option></select></label>
+    </div>
+    <span class="hint">A newer signal on the same asset in the opposite direction closes the open trade (superseded); same direction keeps it.</span>
+  </div>
+
+  <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:auto;flex-wrap:wrap">
+    <span class="hint" style="flex:1 1 200px">Saving creates rule v3. The gate counts only one version.</span>
+    <a href="Main.dc.html" style="display:inline-flex;height:44px;align-items:center;padding:0 18px;border-radius:12px;border:1px solid #d5dcf2;color:#141a33;font-weight:700;text-decoration:none">Cancel</a>
+    <button type="button" style="height:44px;padding:0 18px;border-radius:12px;border:0;background:#2e62e8;color:#fff;font:inherit;font-weight:700;box-shadow:0 6px 16px rgb(46 98 232 / .28)">Save as v3</button>
+  </div>
+</div>
+
+
+</body>
+</html>

@@ -82,7 +82,7 @@ td{font-size:14px;color:#141a33;padding:12px;border-bottom:1px solid #eef1fa;whi
         <td><span style="background:#fde4e1;color:#a72826;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px">Fails: range crosses 0</span></td>
       </tr>
       <tr>
-        <td><div style="display:flex;gap:10px;align-items:center"><span style="display:inline-flex;width:32px;height:32px;border-radius:10px;background:#e6ecfe;color:#1d47b8;font-weight:800;align-items:center;justify-content:center">D2</span><div><div style="font-weight:700"><a href="Rules.dc.html" style="color:#141a33">News signal</a></div><div style="font-size:12px;color:#5f6684">SoSoValue, classified by Claude</div></div></div></td>
+        <td><div style="display:flex;gap:10px;align-items:center"><span style="display:inline-flex;width:32px;height:32px;border-radius:10px;background:#e6ecfe;color:#1d47b8;font-weight:800;align-items:center;justify-content:center">D2</span><div><div style="font-weight:700"><a href="Rules.dc.html" style="color:#141a33">News signal</a></div><div style="font-size:12px;color:#5f6684">SoSoValue · Claude classifies, formula scores · hold 8 h–5 d</div></div></div></td>
         <td><span style="display:inline-flex;gap:6px;align-items:center"><span style="width:8px;height:8px;border-radius:99px;background:#e08a2e"></span>Polling every 5 min</span></td>
         <td>3 min 10 s</td><td>236</td><td>11</td><td>—</td><td>11</td><td>0</td>
         <td style="color:#5f6684">Not enough trades</td>
@@ -118,7 +118,7 @@ td{font-size:14px;color:#141a33;padding:12px;border-bottom:1px solid #eef1fa;whi
     <tbody>
       <tr><td>22:41:08</td><td>31 s</td><td>A</td><td style="white-space:normal;min-width:240px">Wallet ··9c3fa1e2 opened long ETH, $1.2M</td><td>0.82</td><td><span style="background:#ddf4e7;color:#0f7a43;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px">Paper long</span></td><td>ETH-USD · entry 3,412.5 · TP 3,446.6 · SL 3,395.4</td></tr>
       <tr><td>22:39:51</td><td>2 s</td><td>C</td><td style="white-space:normal;min-width:240px">BTC broke 60-min range up, volume 2.4× median</td><td>0.61</td><td><span style="background:#eef1fa;color:#3b4262;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px">Skipped: below min score 0.65</span></td><td style="color:#5f6684">—</td></tr>
-      <tr><td>22:35:02</td><td>3 min 4 s</td><td>D2</td><td style="white-space:normal;min-width:240px">“SEC delays decision on SOL ETF” · bearish SOL, importance high</td><td>0.74</td><td><span style="background:#fde4e1;color:#a72826;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px">Paper short</span></td><td>SOL-USD · entry 142.18 · TP 139.34 · SL 143.60</td></tr>
+      <tr><td>22:35:02</td><td>3 min 4 s</td><td>D2</td><td style="white-space:normal;min-width:260px"><a href="SignalDetail.dc.html" style="color:#141a33;font-weight:600">“SEC delays decision on SOL ETF”</a><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><span style="background:#eef1fa;color:#3b4262;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px">Regulatory</span><span style="background:#eef1fa;color:#3b4262;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px">Source tier 1</span><span style="background:#eef1fa;color:#3b4262;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px">New story</span><span style="background:#e6ecfe;color:#1d47b8;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px">Auto · hold 2 d</span></div></td><td>0.74</td><td><span style="background:#fde4e1;color:#a72826;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px">Paper short</span></td><td>SOL-USD · entry 142.18 · TP 139.34 · SL 143.60</td></tr>
       <tr><td>22:31:47</td><td>58 s</td><td>B</td><td style="white-space:normal;min-width:240px">ETH funding +0.09% / 8 h, top 1% of 90 days</td><td>0.70</td><td><span style="background:#eef1fa;color:#3b4262;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px">Skipped: 3 open in this lane (max 3)</span></td><td style="color:#5f6684">—</td></tr>
       <tr><td>22:20:15</td><td>29 s</td><td>A</td><td style="white-space:normal;min-width:240px">Wallet ··41bd07aa closed short BTC, $3.4M</td><td>0.77</td><td><span style="background:#fdebd3;color:#7a3e00;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px">Blocked: news filter (CPI)</span></td><td style="color:#5f6684">—</td></tr>
     </tbody>
@@ -185,8 +185,22 @@ td{font-size:14px;color:#141a33;padding:12px;border-bottom:1px solid #eef1fa;whi
       <div style="font-size:13px;color:#3b4262">Why it fails: the result after fees is below 0, and the 95% range does not stay above 0.</div>
     </div>
     <div style="background:#f5f7fd;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:800;font-size:17px">B · Funding · D2 · News</span><span style="background:#eef1fa;color:#3b4262;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px">Too few trades</span></div>
-      <p style="margin:0;font-size:14px;color:#3b4262;line-height:1.5">B has 4 and D2 has 2 trades out of sample. Results show once a lane has 30; the gate needs 100.</p>
+      <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:800;font-size:17px">D2 · News</span><span style="background:#eef1fa;color:#3b4262;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px">Too few trades</span></div>
+      <p style="margin:0;font-size:14px;color:#3b4262;line-height:1.5">2 trades out of sample. Results show once a group has 30; the gate needs 100. At about 2 news trades a day, 100 takes about 7 weeks.</p>
+      <table>
+        <thead><tr><th style="padding:6px 8px">Split by</th><th style="padding:6px 8px">Trades</th><th style="padding:6px 8px">After fees</th></tr></thead>
+        <tbody>
+          <tr><td style="padding:8px">Tier · auto</td><td style="padding:8px">4</td><td style="padding:8px;color:#5f6684">Not enough trades</td></tr>
+          <tr><td style="padding:8px">Tier · review</td><td style="padding:8px">7</td><td style="padding:8px;color:#5f6684">Not enough trades</td></tr>
+          <tr><td style="padding:8px">Regulatory</td><td style="padding:8px">3</td><td style="padding:8px;color:#5f6684">Not enough trades</td></tr>
+          <tr><td style="padding:8px">Earnings (stocks)</td><td style="padding:8px">5</td><td style="padding:8px;color:#5f6684">Not enough trades</td></tr>
+        </tbody>
+      </table>
+      <span style="font-size:13px;color:#3b4262">Long 8 · short 3. Results are also shown long-only vs short-only, so a rising market can’t pass as an edge.</span>
+    </div>
+    <div style="background:#f5f7fd;border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:800;font-size:17px">B · Funding</span><span style="background:#eef1fa;color:#3b4262;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px">Too few trades</span></div>
+      <p style="margin:0;font-size:14px;color:#3b4262;line-height:1.5">4 trades out of sample. Results show once the lane has 30.</p>
     </div>
   </div>
   <div style="background:#f7f9ff;border:1px dashed #d5dcf2;border-radius:18px;height:220px;display:flex;align-items:center;justify-content:center;color:#5f6684;font-size:14px" role="img" aria-label="Chart: cumulative paper result after fees per lane over time">Cumulative paper result after fees, one line per lane (chart)</div>
