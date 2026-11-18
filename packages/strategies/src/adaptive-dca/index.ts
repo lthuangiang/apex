@@ -1,7 +1,14 @@
 import { dec, Decimal, ReasonCode, RoundMode } from "@drift/shared";
 
 import { clOrdId } from "../core/ids";
-import { applyFill, applyFunding, emptyLedger, netPnl, type Ledger } from "../core/ledger";
+import {
+  applyFill,
+  applyFunding,
+  carryLedger,
+  emptyLedger,
+  netPnl,
+  type Ledger,
+} from "../core/ledger";
 import { meetsMinimum, priceText, roundPrice, roundQty } from "../core/rounding";
 import type {
   MinuteCandle,
@@ -95,6 +102,8 @@ export interface AdaptiveDcaState {
   orders?: Record<string, AdcaOrder>;
   /** Số lần resume: hậu tố tag của lệnh DCA đặt lại, để không dùng lại clOrdID cũ. */
   resumes?: number;
+  /** Version mới vừa áp khi còn vị thế (#223): dựng lại lệnh như Resume ở giá đầu tiên. */
+  resumeOnTick?: boolean;
 }
 
 export interface AdcaOrder {
@@ -550,7 +559,9 @@ function onTimer(
     m === null ? s0 : { ...s0, regime: m.regime, atr: m.atr ?? s0.atr, rsi: m.rsi };
   const g = guards(c, s, ctx);
   if (g !== null) return g;
-  if (s.phase === "idle") return m === null ? none(s) : tryEnter(c, s, ctx, e.at);
+  // Version mới đang chờ áp (DEC-304, #223): không mở chu kỳ mới để bot về trạng thái áp được.
+  if (s.phase === "idle")
+    return m === null || ctx.versionPending !== undefined ? none(s) : tryEnter(c, s, ctx, e.at);
   if (s.phase !== "in_cycle" || m === null) return none(s);
   const againstRegime = c.direction === "long" ? "TREND_DOWN" : "TREND_UP";
   const againstSince = s.regime === againstRegime ? (s.againstSince ?? e.at) : null;
@@ -820,6 +831,7 @@ function resumeAdca(
     cancelled: cx.cancelled,
     resumes: (s.resumes ?? 0) + 1,
   };
+  delete base.resumeOnTick;
   if (flat)
     return { actions: cx.actions, state: { ...base, phase: "idle", tpId: null, reduced: false } };
   const tp = placeTp(c, { ...base, phase: "in_cycle" }, ctx);
@@ -877,6 +889,9 @@ export function stepAdaptiveDca(
     return s.phase === "halted"
       ? resumeAdca(c, { ...s, lastPrice: e.prices[c.market] ?? s.lastPrice }, ctx)
       : none(s);
+  // Version mới vừa áp khi còn vị thế (#223): giá đầu tiên dựng lại take profit và lệnh DCA kế tiếp như Resume.
+  if (e.type === "tick" && e.market === c.market && s.phase === "halted" && s.resumeOnTick === true)
+    return resumeAdca(c, { ...s, lastPrice: e.price }, ctx);
   if (s.phase === "halted" && e.type !== "fill" && e.type !== "orderDone") return none(s);
   switch (e.type) {
     case "tick": {
@@ -930,7 +945,60 @@ export function stepAdaptiveDca(
   }
 }
 
+/**
+ * Áp version mới (#223, DEC-TBD-version-apply-position). Engine huỷ mọi lệnh đang mở (take profit, lệnh DCA); state
+ * mới nhớ chúng trong `cancelled` / `orders` (fill trễ vẫn vào sổ cái) và giữ vị thế + giá vốn trong sổ cái phiên mới
+ * (max loss, số chu kỳ tính lại từ đầu). Còn vị thế thì chu kỳ chạy tiếp với cấu hình mới như Resume (DEC-240): giá đầu
+ * tiên đặt lại take profit theo vị thế và lệnh DCA kế tiếp; không đặt lệnh vào, không tự đóng vị thế. Phí / funding đã
+ * trả của chu kỳ được giữ trong mốc đầu chu kỳ (âm) để giá hoà vốn khi Reduce vẫn đúng. Chưa áp (null, như DEC-304)
+ * khi lệnh vào hoặc lệnh đóng còn chạy, hoặc vị thế ngược hướng của version mới (đổi Long ↔ Short): chờ chu kỳ đóng.
+ */
+export function applyAdcaVersion(
+  c: AdaptiveDcaConfig,
+  s: AdaptiveDcaState,
+): AdaptiveDcaState | null {
+  if (s.phase === "entering" || s.phase === "exiting" || s.baseId !== null || s.exitId !== null)
+    return null;
+  const pos = dec(s.ledger.position);
+  if (!pos.isZero() && pos.isPositive() !== (c.direction === "long")) return null;
+  const cancelled: Record<string, "entry" | "exit"> = { ...(s.cancelled ?? {}) };
+  if (s.safetyId !== null) cancelled[s.safetyId] = "entry";
+  if (s.tpId !== null) cancelled[s.tpId] = "exit";
+  const fresh: AdaptiveDcaState = {
+    ...initial(),
+    lastPrice: s.lastPrice,
+    atr: s.atr,
+    rsi: s.rsi,
+    regime: s.regime,
+    cooldownUntil: s.cooldownUntil,
+    ...(Object.keys(cancelled).length > 0 ? { cancelled } : {}),
+    ...(s.orders === undefined ? {} : { orders: s.orders }),
+  };
+  if (pos.isZero()) return fresh;
+  const ledger = carryLedger(s.ledger);
+  return {
+    ...fresh,
+    phase: "halted",
+    resumeOnTick: true,
+    cycle: s.cycle,
+    ledger,
+    nextSafety: s.nextSafety,
+    safetiesFilled: s.safetiesFilled,
+    lastFillPrice: s.lastFillPrice,
+    againstSince: s.againstSince ?? null,
+    cycleFeesStart: dec(ledger.fees)
+      .sub(dec(s.ledger.fees).sub(s.cycleFeesStart ?? s.ledger.fees))
+      .toString(),
+    cycleFundingStart: dec(ledger.funding)
+      .sub(dec(s.ledger.funding).sub(s.cycleFundingStart ?? s.ledger.funding))
+      .toString(),
+    peakExposure: s.peakExposure ?? "0",
+    resumes: s.resumes ?? 0,
+  };
+}
+
 export const adaptiveDca: StrategyModule<AdaptiveDcaConfig, AdaptiveDcaState> = {
   initialState: initial,
   step: stepAdaptiveDca,
+  applyVersion: applyAdcaVersion,
 };

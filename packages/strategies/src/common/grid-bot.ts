@@ -1,7 +1,14 @@
-import { dec, gt, gte, lte, mul, ReasonCode, sum } from "@drift/shared";
+import { dec, type Decimal, gt, gte, lte, mul, ReasonCode, sum } from "@drift/shared";
 
 import { clOrdId, without } from "../core/ids";
-import { applyFill, applyFunding, emptyLedger, netPnl, type Ledger } from "../core/ledger";
+import {
+  applyFill,
+  applyFunding,
+  carryLedger,
+  emptyLedger,
+  netPnl,
+  type Ledger,
+} from "../core/ledger";
 import { meetsMinimum, roundQty } from "../core/rounding";
 import type {
   OrderIntent,
@@ -113,33 +120,53 @@ function order(
   };
 }
 
+/** Mức giá và khối lượng mỗi mức theo cấu hình; không dựng được (thiếu rules, dưới min size) thì pause. */
+function layout(
+  c: GridBotConfig,
+  s: GridBotState,
+  ctx: StepContext,
+): { state: GridBotState } | { halted: StepResult<GridBotState> } {
+  const rules = ctx.rules[c.market];
+  if (rules === undefined)
+    return {
+      halted: {
+        actions: [{ type: "pause", reason: ReasonCode.orderRejected }],
+        state: { ...s, phase: "halted" },
+      },
+    };
+  const levels = gridPrices(c.lowerPrice, c.upperPrice, c.gridLevels, c.spacing, rules);
+  // Vốn chia đều theo số mức; khối lượng như nhau ở mọi mức (tính theo giá trung bình của grid).
+  const avgLevel = sum(levels).div(levels.length);
+  const qty = roundQty(dec(c.notional).div(levels.length).div(avgLevel), rules);
+  const state: GridBotState = { ...s, levels, qty, phase: "starting" };
+  if (!meetsMinimum(levels[0] ?? "0", qty, rules))
+    return {
+      halted: {
+        actions: [
+          {
+            type: "log",
+            decision: "Grid not started",
+            why: "Order size per level is below SoDEX minimum after rounding.",
+          },
+          { type: "pause", reason: ReasonCode.orderRejected },
+        ],
+        state: { ...state, phase: "halted" },
+      },
+    };
+  return { state };
+}
+
 function start(
   c: GridBotConfig,
   s: GridBotState,
   price: string,
   ctx: StepContext,
 ): StepResult<GridBotState> {
-  const rules = ctx.rules[c.market];
-  if (rules === undefined)
-    return {
-      actions: [{ type: "pause", reason: ReasonCode.orderRejected }],
-      state: { ...s, phase: "halted" },
-    };
-  const levels = gridPrices(c.lowerPrice, c.upperPrice, c.gridLevels, c.spacing, rules);
-  // Vốn chia đều theo số mức; khối lượng như nhau ở mọi mức (tính theo giá trung bình của grid).
-  const avgLevel = sum(levels).div(levels.length);
-  const qty = roundQty(dec(c.notional).div(levels.length).div(avgLevel), rules);
-  let state: GridBotState = { ...s, levels, qty, phase: "starting" };
+  const laid = layout(c, s, ctx);
+  if ("halted" in laid) return laid.halted;
+  const { levels, qty } = laid.state;
+  let state = laid.state;
   const actions: StrategyAction[] = [];
-  if (!meetsMinimum(levels[0] ?? "0", qty, rules)) {
-    actions.push({
-      type: "log",
-      decision: "Grid not started",
-      why: "Order size per level is below SoDEX minimum after rounding.",
-    });
-    actions.push({ type: "pause", reason: ReasonCode.orderRejected });
-    return { actions, state: { ...state, phase: "halted" } };
-  }
   const above = levels.map((p, i) => ({ p, i })).filter((x) => gt(x.p, price));
   const below = levels.map((p, i) => ({ p, i })).filter((x) => dec(x.p).lt(price));
   // Vị thế ban đầu: long mua đủ cho các lệnh bán phía trên; short bán đủ cho các lệnh mua phía dưới.
@@ -216,13 +243,41 @@ function resumeGrid(
   // Max loss (hoặc stop / take profit) vẫn chạm: dừng lại ngay, không đặt lệnh (resume không vượt được max loss).
   const g = guards(c, { ...s, phase: "running" }, price);
   if (g !== null) return g;
+  const pos = dec(s.ledger.position);
+  const placed = placeAround(c, ctx, s, price, {
+    sell: c.direction === "long" ? pos : null,
+    buy: c.direction === "short" ? pos.neg() : null,
+  });
+  return {
+    actions: [
+      ...placed.actions,
+      {
+        type: "log",
+        decision: "Grid resumed",
+        why: `Orders placed again around ${price} from the current position: ${String(placed.actions.length)} placed.`,
+      },
+    ],
+    state: placed.state,
+  };
+}
+
+/**
+ * Đặt lệnh ở các mức chưa có lệnh quanh `price` (mua phía dưới, bán phía trên), mức gần giá trước. `cap[side]`: tổng
+ * khối lượng tối đa của lệnh chiều đó (tính cả lệnh đang mở); null = không giới hạn.
+ */
+function placeAround(
+  c: GridBotConfig,
+  ctx: StepContext,
+  s: GridBotState,
+  price: string,
+  cap: { buy: Decimal | null; sell: Decimal | null },
+): StepResult<GridBotState> {
   const busy = new Set(Object.values(s.open).map((o) => o.level));
   const openQty = (side: "buy" | "sell") =>
     dec(s.qty).mul(Object.values(s.open).filter((o) => o.side === side).length);
-  const pos = dec(s.ledger.position);
   let room = {
-    sell: c.direction === "long" ? pos.sub(openQty("sell")) : null,
-    buy: c.direction === "short" ? pos.neg().sub(openQty("buy")) : null,
+    sell: cap.sell === null ? null : cap.sell.sub(openQty("sell")),
+    buy: cap.buy === null ? null : cap.buy.sub(openQty("buy")),
   };
   const want = [
     ...s.levels
@@ -246,12 +301,62 @@ function resumeGrid(
     actions.push({ type: "place", order: r.intent });
     state = r.state;
   }
-  actions.push({
-    type: "log",
-    decision: "Grid resumed",
-    why: `Orders placed again around ${price} from the current position: ${String(actions.length)} placed.`,
-  });
   return { actions, state };
+}
+
+/**
+ * Grid của version mới khởi động khi sổ cái còn vị thế (vị thế của version cũ, hoặc fill trễ của lệnh version cũ;
+ * #223, DEC-TBD-version-apply-position): không chờ First entry, không đặt lệnh market, giữ vị thế và đặt lệnh quanh giá
+ * như Resume (DEC-240). Lệnh làm tăng vị thế bị giới hạn để vị thế xấu nhất (vị thế + mọi lệnh cùng chiều khớp) không
+ * vượt grid mới khởi động từ phẳng: long / short tối đa khối lượng mỗi mức × số mức theo hướng của grid, không bao giờ
+ * mở phía ngược hướng (long: bán chỉ trong phần vị thế đang giữ, như Resume). Max loss / stop / take profit vẫn chạm
+ * thì dừng như thường, không đặt lệnh; không bao giờ tự đóng vị thế.
+ */
+function adoptGrid(
+  c: GridBotConfig,
+  s: GridBotState,
+  price: string,
+  ctx: StepContext,
+): StepResult<GridBotState> {
+  const laid = layout(c, s, ctx);
+  if ("halted" in laid) return laid.halted;
+  const base: GridBotState = { ...laid.state, phase: "running", lastPrice: price };
+  const g = guards(c, base, price);
+  if (g !== null) return g;
+  const pos = dec(s.ledger.position);
+  const full = dec(base.qty).mul(base.levels.length);
+  const placed = placeAround(c, ctx, base, price, {
+    buy: (c.direction === "short" ? dec("0") : full).sub(pos),
+    sell: (c.direction === "long" ? dec("0") : full).add(pos),
+  });
+  return {
+    actions: [
+      ...placed.actions,
+      {
+        type: "log",
+        decision: "Grid started",
+        why: `${String(base.levels.length)} levels around ${price}, keeping the open position of ${s.ledger.position}: ${String(placed.actions.length)} orders placed, no market order.`,
+      },
+    ],
+    state: placed.state,
+  };
+}
+
+/**
+ * Áp version mới (#223, DEC-TBD-version-apply-position). Engine huỷ mọi lệnh đang mở; state mới nhớ các lệnh đó (fill
+ * trễ vẫn vào sổ cái) và giữ vị thế + giá vốn trong sổ cái phiên mới. Còn vị thế thì tick đầu tiên dựng grid mới quanh
+ * vị thế (`adoptGrid`); phẳng thì khởi động như bot mới (DEC-38). Lệnh market mở vị thế ban đầu chưa xong thì chưa áp
+ * (null, như DEC-304): khối lượng của nó chưa biết.
+ */
+export function applyGridVersion(s: GridBotState): GridBotState | null {
+  if (s.initClOrdID !== null) return null;
+  const cancelled = { ...(s.cancelled ?? {}), ...s.open };
+  return {
+    ...initialGridBotState(),
+    ledger: carryLedger(s.ledger),
+    lastPrice: s.lastPrice,
+    ...(Object.keys(cancelled).length > 0 ? { cancelled } : {}),
+  };
 }
 
 /** Sau khi lệnh market mở vị thế khớp: đặt phía còn lại (long → bán phía trên, short → mua phía dưới). */
@@ -401,6 +506,8 @@ export function stepGridBot(
     const prev = s.lastPrice;
     const state = { ...s, lastPrice: e.price };
     if (state.phase === "idle" || state.phase === "waiting_trigger") {
+      // Sổ cái còn vị thế (version cũ để lại, #223): grid mới quản lý tiếp vị thế đó ngay, không chờ First entry.
+      if (!dec(state.ledger.position).isZero()) return adoptGrid(c, state, e.price, ctx);
       const entry = c.entry ?? { type: "now" };
       if (!entryReady(entry, c.direction, prev, e.price)) {
         return { actions: [], state: { ...state, phase: "waiting_trigger" } };
@@ -425,6 +532,14 @@ export function stepGridBot(
     }
     return { actions: [], state };
   }
+
+  // Lệnh market mở vị thế ban đầu đã kết thúc trên sàn (IOC hết hạn): không còn khớp nữa. Không có dòng này thì version
+  // mới chờ lệnh khởi tạo mãi (#223, `applyGridVersion`); fill trước đó đã đặt phía còn lại.
+  if (e.type === "orderDone" && e.clOrdID === s.initClOrdID)
+    return {
+      actions: [],
+      state: { ...s, initClOrdID: null, phase: s.phase === "starting" ? "running" : s.phase },
+    };
 
   if (e.type === "orderReject") {
     // Lệnh bị từ chối không có trên sàn: bỏ khỏi danh sách để resume đặt lại mức đó.
@@ -493,5 +608,6 @@ export function gridBotFor<C>(toGrid: (c: C) => GridBotConfig): StrategyModule<C
     initialState: initialGridBotState,
     step: (c, s, e, ctx) => stepGridBot(toGrid(c), s, e, ctx),
     waiting: (c, s) => gridWaiting(toGrid(c), s),
+    applyVersion: (_c, s) => applyGridVersion(s),
   };
 }

@@ -1,7 +1,14 @@
 import { dec, Decimal, ReasonCode } from "@drift/shared";
 
 import { clOrdId, without } from "../core/ids";
-import { applyFill, applyFunding, emptyLedger, netPnl, type Ledger } from "../core/ledger";
+import {
+  applyFill,
+  applyFunding,
+  carryLedger,
+  emptyLedger,
+  netPnl,
+  type Ledger,
+} from "../core/ledger";
 import { meetsMinimum, priceText, roundPrice, roundQty } from "../core/rounding";
 import type {
   OrderIntent,
@@ -425,6 +432,8 @@ export function stepDcaBot(
     const prev = s.lastPrice;
     const state = { ...s, lastPrice: e.price };
     if (state.phase === "idle" || state.phase === "waiting_entry") {
+      // Version mới đang chờ áp (DEC-304, #223): không mở Cycle mới để bot về trạng thái áp được.
+      if (ctx.versionPending !== undefined) return { actions: [], state };
       // Chờ thì không đặt lệnh, không khoá margin (IMP-01 bước 3).
       const gate = dcaGate(c, state);
       if (gate !== null && !gateOpen(c, gate, prev, e.price, e.at)) {
@@ -665,10 +674,43 @@ function onOrderDone(
   return { actions: [], state: s };
 }
 
+/**
+ * Áp version mới (#223, DEC-TBD-version-apply-position). Engine huỷ mọi lệnh đang mở (safety, take profit); state mới
+ * giữ danh sách lệnh (fill trễ vẫn vào sổ cái theo vai trò) và vị thế + giá vốn trong sổ cái phiên mới (DEC-38 /
+ * DEC-304: max loss, số Cycle tính lại từ đầu). Còn vị thế thì Cycle đang dở chạy tiếp với cấu hình mới như Resume
+ * (DEC-240): ở giá đầu tiên đặt lại take profit theo vị thế và các safety chưa khớp ở mức chưa bị vượt qua; không đặt
+ * base order, không tự đóng vị thế. Chưa áp (null, engine không huỷ gì, version cũ chạy tiếp như DEC-304) khi base order
+ * chưa xong, hoặc vị thế ngược hướng của version mới (đổi Long ↔ Short): chờ Cycle hiện tại đóng.
+ */
+export function applyDcaVersion(c: DcaBotConfig, s: DcaBotState): DcaBotState | null {
+  const base = s.baseClOrdID === null ? undefined : s.orders?.[s.baseClOrdID];
+  if (s.phase === "waiting_base" || (base !== undefined && base.done !== true)) return null;
+  const pos = dec(s.ledger.position);
+  if (!pos.isZero() && pos.isPositive() !== (c.direction === "long")) return null;
+  const fresh: DcaBotState = {
+    ...initialDcaState(),
+    lastPrice: s.lastPrice,
+    ...(s.orders === undefined ? {} : { orders: s.orders }),
+  };
+  if (pos.isZero()) return fresh;
+  return {
+    ...fresh,
+    // Dựng lại lệnh ở giá đầu tiên như Resume (DEC-240); fill trễ trong lúc chờ chỉ vào sổ cái.
+    phase: "halted",
+    resumeOnTick: true,
+    cycle: s.cycle,
+    ledger: carryLedger(s.ledger),
+    safetiesFilled: s.safetiesFilled,
+    basePrice: s.basePrice ?? s.ledger.avgCost,
+    resumes: s.resumes ?? 0,
+  };
+}
+
 export function dcaBotFor<C>(toDca: (c: C) => DcaBotConfig): StrategyModule<C, DcaBotState> {
   return {
     initialState: initialDcaState,
     step: (c, s, e, ctx) => stepDcaBot(toDca(c), s, e, ctx),
     waiting: (c, s) => dcaWaiting(toDca(c), s),
+    applyVersion: (c, s) => applyDcaVersion(toDca(c), s),
   };
 }

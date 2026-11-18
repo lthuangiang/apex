@@ -1,7 +1,14 @@
 import { dec, Decimal, ReasonCode, RoundMode } from "@drift/shared";
 
 import { clOrdId } from "../core/ids";
-import { applyFill, applyFunding, emptyLedger, netPnl, type Ledger } from "../core/ledger";
+import {
+  applyFill,
+  applyFunding,
+  carryLedger,
+  emptyLedger,
+  netPnl,
+  type Ledger,
+} from "../core/ledger";
 import { meetsMinimum, roundPrice, roundQty } from "../core/rounding";
 import type {
   OrderIntent,
@@ -867,9 +874,43 @@ export function copyNet(s: CopyTradeState): Decimal {
   return total;
 }
 
+/**
+ * Áp version mới (#223, DEC-TBD-version-apply-position): trước đây version mới quên phần copy đang giữ, nên lệnh đóng
+ * của leader không đóng nó và lệnh mở kế tiếp mở thêm. Nay mỗi market giữ vị thế + giá vốn trong sổ cái phiên mới (max
+ * loss tính lại từ đầu), vị thế leader đã biết và việc đang theo vị thế đó; mục tiêu = vị thế đang giữ (không đuổi theo
+ * tín hiệu cũ, không tự đóng); tín hiệu kế tiếp của leader đưa vị thế về mục tiêu theo cấu hình mới như thường. Danh
+ * sách lệnh được giữ (fill trễ vẫn vào đúng market). Còn lệnh đang chờ ở market nào thì chưa áp (null, như DEC-304).
+ */
+export function applyCopyVersion(c: CopyTradeConfig, raw: CopyTradeState): CopyTradeState | null {
+  const s = normalizeCopyState(c, raw);
+  if (Object.values(s.markets).some((m) => m.inflight !== null)) return null;
+  const markets: Record<string, CopyMarketState> = {};
+  for (const [m, v] of Object.entries(s.markets)) {
+    const ledger = carryLedger(v.ledger);
+    const held = !dec(ledger.position).isZero();
+    markets[m] = {
+      ...emptySlice(),
+      ledger,
+      lastPrice: v.lastPrice,
+      leaderPos: v.leaderPos,
+      tracking: v.tracking && held,
+      target: ledger.position,
+    };
+  }
+  return {
+    ...initial(),
+    // Bot tự pause rồi được Resume cùng lúc áp version: `resumed` kế tiếp chạy như thường (DEC-240).
+    phase: s.phase,
+    markets,
+    orders: s.orders,
+    seq: s.seq,
+  };
+}
+
 export const copyTrade: StrategyModule<CopyTradeConfig, CopyTradeState> = {
   initialState: initial,
   step: stepCopyTrade,
+  applyVersion: (c, s) => applyCopyVersion(c, s),
 };
 
 /** State có phải dạng nhiều market (DEC-163) không — cho code đọc `bot_runtime.state` mà không biết chiến lược. */

@@ -820,6 +820,24 @@ export function settleAppliedState(
   return { state: after, save: JSON.stringify(after) !== JSON.stringify(written) };
 }
 
+/**
+ * Decisions "Applying v{n}" khi engine hoãn áp version (`applyVersion` trả null). Volume Farm giữ câu đã duyệt của
+ * DEC-304; chiến lược khác hoãn khi còn lệnh đang chạy hoặc vị thế ngược hướng version mới (#223).
+ */
+export function versionWaitWhy(strategy: string, current: number): string {
+  const v = String(current);
+  return strategy === Strategy.volumeFarm
+    ? `Waits until the open trade closes; v${v} keeps managing it. No orders were cancelled.`
+    : `Waits for an order in flight to finish or the open position to close; v${v} keeps managing the bot until then. No orders were cancelled.`;
+}
+
+/** Decisions "Applied v{n}": `kept` khi version mới giữ vị thế của version cũ trong sổ cái (#223). */
+export function versionAppliedWhy(cancelled: number, kept: boolean): string {
+  return kept
+    ? `Cancelled ${String(cancelled)} orders and kept the open position; new orders for it follow on the next price.`
+    : `Cancelled ${String(cancelled)} orders; new orders follow on the next price.`;
+}
+
 export function shardOf(accountId: string, shards = ENGINE_SHARDS): number {
   return Number(fnv1a64(accountId) % BigInt(shards));
 }
@@ -2432,7 +2450,7 @@ export class Engine {
             r,
             "version",
             decision,
-            `Waits until the open trade closes; v${String(r.version)} keeps managing it. No orders were cancelled.`,
+            versionWaitWhy(r.strategy, r.version),
             this.#d.now(),
           );
       }
@@ -2520,7 +2538,17 @@ export class Engine {
       r,
       "version",
       `Applied v${String(pending.version)}`,
-      `Cancelled ${String(open.length)} orders; new orders follow on the next price.`,
+      versionAppliedWhy(
+        open.length,
+        r.strategy !== Strategy.volumeFarm &&
+          entry.module.applyVersion !== undefined &&
+          this.#marketsOf(r.market, r.config).some((m) =>
+            (["spot", "perps"] as const).some((e) => {
+              const p = positionOf(r.state, m, e);
+              return p !== null && !dec(p).isZero();
+            }),
+          ),
+      ),
       this.#d.now(),
     );
   }

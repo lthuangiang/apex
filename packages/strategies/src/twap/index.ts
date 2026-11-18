@@ -1,7 +1,7 @@
 import { add, dec, Decimal, gt, lt, ReasonCode, RoundMode, sub } from "@drift/shared";
 
 import { clOrdId } from "../core/ids";
-import { applyFill, emptyLedger, type Ledger } from "../core/ledger";
+import { applyFill, carryLedger, emptyLedger, type Ledger } from "../core/ledger";
 import { meetsMinimum, roundPrice, roundQty } from "../core/rounding";
 import type {
   StepContext,
@@ -122,11 +122,16 @@ export function stepTwap(
     return sliceDone(c, s);
   }
   if (e.type === "timer" && s.phase === "running" && s.pending === null) {
+    // Version mới đang chờ áp (DEC-304, #223): không đặt lát mới để version mới nhận đúng phần đã khớp.
+    if (ctx.versionPending !== undefined) return { actions: [], state: s };
     // `timer` là nhịp đồng hồ: lát thứ k (tính từ 0) tới hạn ở startedAt + k × duration/N.
     const dueAt = (s.startedAt ?? e.at) + s.sliceIndex * sliceIntervalMs(c);
     if (e.at < dueAt) return { actions: [], state: s };
+    // Phần còn thiếu; version mới (#223) có thể có tổng nhỏ hơn phần đã khớp.
+    const remaining = sub(c.totalSize, s.filled);
     if (
       s.sliceIndex >= c.slices ||
+      !remaining.gt(0) ||
       (s.startedAt !== null && e.at - s.startedAt > c.durationMinutes * 60_000)
     ) {
       return finish(s, `${s.filled} of ${c.totalSize} filled.`);
@@ -136,9 +141,9 @@ export function stepTwap(
     const base = dec(c.totalSize).div(c.slices);
     const isLast = s.sliceIndex === c.slices - 1;
     const want = add(base, c.onSkip === "add_to_end" ? s.carry : "0");
-    // Lát cuối lấy phần còn thiếu, tránh lệch do làm tròn.
-    const remaining = sub(c.totalSize, s.filled);
-    const raw = isLast && c.onSkip === "add_to_end" ? remaining : want;
+    // Lát cuối lấy phần còn thiếu, tránh lệch do làm tròn. Không lát nào vượt phần còn thiếu (không bao giờ khớp quá
+    // tổng khối lượng).
+    const raw = Decimal.min(isLast && c.onSkip === "add_to_end" ? remaining : want, remaining);
     const index = s.sliceIndex + 1;
     if (price === null || rules === undefined) return { actions: [], state: s };
     const blocked =
@@ -250,9 +255,31 @@ export function stepTwap(
   return { actions: [], state: s };
 }
 
+/**
+ * Áp version mới (#223, DEC-TBD-version-apply-position): trước đây version mới bắt đầu lại từ 0 và mua / bán lại cả
+ * tổng khối lượng. Nay giữ tiến độ (phần đã khớp tính vào tổng của version mới, lát kế tiếp, giờ bắt đầu), danh sách
+ * lát (fill trễ vẫn vào sổ cái) và vị thế + giá vốn trong sổ cái phiên mới. Đổi chiều Buy ↔ Sell: lệnh mới bắt đầu từ
+ * 0 nhưng sổ cái vẫn giữ vị thế. Lát còn đang chờ thì chưa áp (null, như DEC-304).
+ */
+export function applyTwapVersion(c: TwapConfig, s: TwapState): TwapState | null {
+  if (s.pending !== null) return null;
+  const pos = dec(s.ledger.position);
+  const side = pos.isZero() ? c.side : pos.isPositive() ? "buy" : "sell";
+  const ledger = carryLedger(s.ledger);
+  if (side !== c.side) return { ...initial(), ledger, lastPrice: s.lastPrice };
+  return {
+    ...s,
+    // Bot tự pause rồi được Resume cùng lúc áp version: chạy tiếp như Resume (DEC-240).
+    phase: s.phase === "halted" ? (s.startedAt === null ? "waiting" : "running") : s.phase,
+    ledger,
+    pendingAt: null,
+  };
+}
+
 export const twap: StrategyModule<TwapConfig, TwapState> = {
   initialState: initial,
   step: stepTwap,
+  applyVersion: applyTwapVersion,
   waiting: (c, s) => {
     const at = twapStartAt(c);
     return s.phase === "waiting" && at !== null ? { kind: "start_at", at } : null;
