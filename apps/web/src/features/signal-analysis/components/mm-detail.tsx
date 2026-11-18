@@ -200,11 +200,11 @@ export function MmFillDetail({
                 </dd>
                 <dt>{t("splitSodex")}</dt>
                 <dd className="m-0 text-right font-bold text-neg">
-                  {signedUsd(d.split.sodexFee, 4)}
+                  {d.split.sodexFee === null ? <Na /> : signedUsd(d.split.sodexFee, 4)}
                 </dd>
                 <dt>{t("splitBuilder")}</dt>
                 <dd className="m-0 text-right font-bold text-neg">
-                  {signedUsd(d.split.builderFee, 4)}
+                  {d.split.builderFee === null ? <Na /> : signedUsd(d.split.builderFee, 4)}
                 </dd>
                 <dt className="font-bold">{t("splitNet")}</dt>
                 <dd

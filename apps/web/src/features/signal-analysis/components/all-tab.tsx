@@ -181,8 +181,8 @@ function AllBody({
     kind === "bot"
       ? `${g.strategy === null ? "" : t(`strategies.${g.strategy}`)} · ${g.market ?? ""}`
       : t("botsAccounts", { bots: g.bots, accounts: g.accounts });
-  const prevDelta = (g: SignalCostGroup) =>
-    g.net === null || g.prevNet === null ? null : Number(g.net) - Number(g.prevNet);
+  // Hiệu "vs previous" do API tính (chuỗi thập phân), web chỉ hiển thị.
+  const prevDelta = (g: SignalCostGroup) => (g.vsPrev === null ? null : Number(g.vsPrev));
   const share = fees !== null && netTotal !== null && netTotal > 0 ? (fees / netTotal) * 100 : null;
   const top = [...v.byStrategy]
     .filter((g) => g.net !== null)
@@ -224,7 +224,7 @@ function AllBody({
   const cheapest = [...hoursKnown].sort((a, b) => Number(a.net) - Number(b.net))[0];
   const priciest = [...hoursKnown].sort((a, b) => Number(b.net) - Number(a.net))[0];
   const rangeLabel = t(`filters.ranges.${range}`);
-  const days = Number(range.replace(/\D/g, "")) * (range.endsWith("h") ? 1 / 24 : 1);
+  const days = range === "24h" ? 1 : Number(range.replace(/\D/g, ""));
 
   return (
     <>
@@ -545,7 +545,7 @@ function StrategyBars({
         ];
         let up = 0;
         let dn = 0;
-        const d = g.net === null || g.prevNet === null ? null : Number(g.net) - Number(g.prevNet);
+        const d = g.vsPrev === null ? null : Number(g.vsPrev);
         return (
           <div
             key={label}
@@ -584,7 +584,7 @@ function StrategyBars({
                   <span
                     key={k}
                     aria-hidden="true"
-                    className={`absolute top-0.5 bottom-0.5 ${colors[k] ?? ""} ${k === 0 ? "text-white" : "text-ink"} flex items-center justify-center overflow-hidden text-[11px] font-bold`}
+                    className={`absolute top-0.5 bottom-0.5 ${colors[k] ?? ""} ${k === 0 ? "text-white" : "text-ink"} flex items-center justify-center overflow-hidden text-xs font-bold`}
                     style={{ left: `${String(left)}%`, width: `${String(w)}%` }}
                     title={usdM(x)}
                   >
@@ -701,7 +701,7 @@ function BreakdownTable({
   const max = Math.max(1, ...rows.map((g) => Math.abs(Number(g.net ?? 0))));
   const cell = (v: string | null) => (v === null ? <Na /> : usdM(v));
   const row = (g: SignalCostGroup, all: boolean) => {
-    const d = g.net === null || g.prevNet === null ? null : Number(g.net) - Number(g.prevNet);
+    const d = g.vsPrev === null ? null : Number(g.vsPrev);
     return (
       <tr
         key={all ? "__all" : g.key}
@@ -721,7 +721,7 @@ function BreakdownTable({
             {!all && g.thin ? <ThinTag /> : null}
           </span>
           {all ? null : (
-            <span className="block text-[11.5px] font-semibold text-muted">{sub(g, by)}</span>
+            <span className="block text-xs font-semibold text-muted">{sub(g, by)}</span>
           )}
         </th>
         <td className={td}>{volume(g.volume)}</td>
@@ -777,7 +777,7 @@ function BreakdownTable({
               <ColHead main={ta("colInventory")} sub="$ / 1M" />
             </th>
             <th scope="col" className={th}>
-              <ColHead main={ta("colNet")} sub="$ / 1M" />
+              <ColHead main={ta("colNet")} sub={ta("colNetSub")} />
             </th>
             <th scope="col" className={th}>
               <ColHead main={ta("colNet")} sub={ta("colTotal")} />

@@ -61,13 +61,13 @@ export function BpBoxes({
     <div className="grid grid-cols-[repeat(auto-fit,minmax(68px,1fr))] gap-1.5">
       {items.map((x) => (
         <div key={x.label} className="flex flex-col rounded-[8px] bg-surface px-2 py-1.5">
-          <span className="text-[11px] text-muted">{x.label}</span>
+          <span className="text-xs text-muted">{x.label}</span>
           <b
             className={`${x.v === null ? "text-xs" : "whitespace-nowrap text-sm"} ${favourTone(x.v)}`}
           >
             {x.v === null ? <Na /> : `${x.mark === true ? "▲ " : ""}${signed(x.v)}`}
           </b>
-          <em className="text-[11px] not-italic text-muted">
+          <em className="text-xs not-italic text-muted">
             {t("all", { v: x.all === null ? t("na") : signed(x.all) })}
           </em>
         </div>

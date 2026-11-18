@@ -21,6 +21,7 @@ import {
   type VbRow,
 } from "@drift/shared";
 import { vbSignalSnapshotSchema, type VbSignalSnapshot } from "@drift/shared/vb-signal";
+import { FARM_WEIGHTS } from "@drift/strategies";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -28,7 +29,6 @@ import { parseOrThrow } from "../../lib/http";
 
 import { botFacets } from "./all";
 import {
-  bpOf,
   D0,
   dec,
   Decimal,
@@ -47,22 +47,22 @@ import {
   type BotInfo,
   type SignalDeps,
 } from "./common";
-import type { FillRow, FillSet } from "./data";
-import { extraSet, fillSet } from "./sets";
+import type { FillSet, VbFill } from "./data";
+import { extraSet, fillSet, snapshotOf, type Snapshot } from "./sets";
 import { timelineOf } from "./timeline";
 
 // Tab Volume Builder (thiết kế #222 trong khung #231): mỗi lượt vào (vào + ra) của bot Volume Builder tiền thật.
 // bp tính trên một vòng theo notional lệnh vào, + = có lợi cho lệnh vào. Snapshot tín hiệu (`bot_events.payload.signal`,
 // DEC-311) chỉ có từ v2.11.0: lượt cũ hơn vẫn có giá / phí / markout / "move before" (từ nến 1 phút), còn các phần theo
 // tín hiệu là "Not available".
-// "Opposite side" (what-if, giả định ghi trên trang): cùng giờ vào và thời gian giữ, post-only ở phía bên kia sổ lúc vào
-// và lúc ra (cách một spread lúc vào), giả sử đã khớp: trước phí = −(trước phí thật) + 2 × spread lúc vào; phí như lượt
-// thật; markout = −markout thật + spread. Không có spread lúc vào → Not available.
+// "Opposite side" (what-if, giả định ghi trên trang; `oppositeOf`, dùng chung cho tổng và chi tiết): cùng giờ vào và thời
+// gian giữ, chiều ngược lại, cùng loại lệnh ở từng chân. Chân maker (post-only khớp ở giá chạm) của lượt thật thì phía
+// ngược đặt post-only ở phía bên kia sổ, cách một spread lúc vào, và giả sử đã khớp: được thêm một spread ở chân đó; chân
+// taker / stop (market) thì phía ngược cũng khớp market ở cùng giá, không thêm spread. Phí như lượt thật (cùng loại maker /
+// taker ở từng chân). Không có spread lúc vào → Not available.
 
 const TAG = /^vf:(\d+):(in|out|sl)/;
-/** Trọng số các phần của điểm tín hiệu (DEC-80), chỉ để chọn phần "đóng góp nhiều nhất". */
-const PART_WEIGHTS = { momentum: 0.3, wick: 0.25, volume: 0.2, book: 0.1 } as const;
-type Lead = keyof typeof PART_WEIGHTS;
+type Lead = "momentum" | "wick" | "volume" | "trade" | "book";
 /** Ngưỡng "đã chạy nhanh" của gợi ý 1 và dấu ▲ trong danh sách. */
 const FAST_MOVE_BP = 4;
 
@@ -72,8 +72,8 @@ export interface Trade {
   botName: string;
   market: string;
   side: "long" | "short";
-  ins: FillRow[];
-  outs: FillRow[];
+  ins: VbFill[];
+  outs: VbFill[];
   entryAt: number;
   exitAt: number;
   orderAt: number;
@@ -85,6 +85,12 @@ export interface Trade {
   gross: Decimal;
   fees: Decimal;
   builder: Decimal;
+  /** Có fill không có builder fee đã ghi → phần SoDEX / builder "Not available". */
+  builderNull: boolean;
+  /** Mọi fill vào / ra là maker (ra: không phải stop trên SoDEX). */
+  entryMaker: boolean;
+  exitMaker: boolean;
+  exitNotional: Decimal;
   netUsd: Decimal;
   signal: VbSignalSnapshot | null;
   exit: VbExitReason | null;
@@ -96,8 +102,8 @@ export interface Trade {
   markouts: (number | null)[];
   beforeFees: number;
   feesBp: number;
-  sodexBp: number;
-  builderBp: number;
+  sodexBp: number | null;
+  builderBp: number | null;
   net: number;
   opposite: number | null;
   oppositeNet: number | null;
@@ -129,11 +135,13 @@ export function exitReasonOf(why: string | null, bySodexStop: boolean): VbExitRe
 export function leadOf(s: VbSignalSnapshot): Lead | null {
   const sign = s.direction === "long" ? 1 : -1;
   const c = s.components;
+  // Trọng số lấy từ chiến lược (FARM_WEIGHTS, DEC-80), không chép lại.
   const parts: [Lead, number][] = [
-    ["momentum", PART_WEIGHTS.momentum * (c.candleMomentum - 0.5) * sign],
-    ["wick", PART_WEIGHTS.wick * (c.wickRejection - 0.5) * sign],
-    ["volume", PART_WEIGHTS.volume * (c.volumeAcceleration - 0.5) * sign],
-    ["book", PART_WEIGHTS.book * (c.orderbookImbalance - 0.5) * sign],
+    ["momentum", FARM_WEIGHTS.candleMomentum * (c.candleMomentum - 0.5) * sign],
+    ["wick", FARM_WEIGHTS.wickRejection * (c.wickRejection - 0.5) * sign],
+    ["volume", FARM_WEIGHTS.volumeAcceleration * (c.volumeAcceleration - 0.5) * sign],
+    ["trade", FARM_WEIGHTS.tradePressure * (c.tradePressure - 0.5) * sign],
+    ["book", FARM_WEIGHTS.orderbookImbalance * (c.orderbookImbalance - 0.5) * sign],
   ];
   const top = parts.reduce((a, b) => (b[1] > a[1] ? b : a));
   return top[1] > 0 ? top[0] : null;
@@ -149,13 +157,8 @@ interface VbEvents {
   closes: Map<string, { at: number; why: string | null }[]>;
 }
 
-async function loadEvents(
-  deps: SignalDeps,
-  set: FillSet,
-  key: string,
-  now: Date,
-): Promise<VbEvents> {
-  return extraSet(deps, `vbev|${key}`, now, () =>
+function loadEvents(deps: SignalDeps, snap: Snapshot, set: FillSet): Promise<VbEvents> {
+  return extraSet(snap, "vbev", () =>
     readOnly(deps.db, async (q) => {
       const botIds = [...new Set(set.fills.map((f) => f.botId))];
       const signals = new Map<string, VbSignalSnapshot>();
@@ -195,7 +198,7 @@ async function loadEvents(
 /** Ghép fill thành lượt (fill vào của một lượt, rồi fill ra tới khi hết vị thế), như `buildTrades` nhưng bằng Decimal. */
 export function buildVbTrades(set: FillSet, ev: VbEvents): Trade[] {
   const bots = new Map(set.bots.map((b) => [b.id, b]));
-  const byBot = new Map<string, FillRow[]>();
+  const byBot = new Map<string, VbFill[]>();
   for (const f of set.fills) {
     const xs = byBot.get(f.botId) ?? [];
     xs.push(f);
@@ -204,7 +207,7 @@ export function buildVbTrades(set: FillSet, ev: VbEvents): Trade[] {
   const out: Trade[] = [];
   for (const [botId, fills] of byBot) {
     const bot = bots.get(botId);
-    let cur = null as { cycle: number; ins: FillRow[]; outs: FillRow[] } | null;
+    let cur = null as { cycle: number; ins: VbFill[]; outs: VbFill[] } | null;
     const close = () => {
       if (cur === null || cur.ins.length === 0 || cur.outs.length === 0) return;
       const t = tradeOf(bot, cur.ins, cur.outs, ev);
@@ -228,13 +231,13 @@ export function buildVbTrades(set: FillSet, ev: VbEvents): Trade[] {
   return out.sort((a, b) => b.entryAt - a.entryAt);
 }
 
-const sumOf = (xs: readonly FillRow[], f: (x: FillRow) => Decimal) =>
+const sumOf = (xs: readonly VbFill[], f: (x: VbFill) => Decimal) =>
   xs.reduce((s, x) => s.add(f(x)), D0);
 
 function tradeOf(
   bot: BotInfo | undefined,
-  ins: FillRow[],
-  outs: FillRow[],
+  ins: VbFill[],
+  outs: VbFill[],
   ev: VbEvents,
 ): Trade | null {
   const first = ins[0];
@@ -260,21 +263,33 @@ function tradeOf(
   const closeEv = (ev.closes.get(bot.id) ?? []).find(
     (c) => c.at >= last.at - 5_000 && c.at <= last.at + 120_000,
   );
-  const move = (k: 1 | 3 | 5, ref: string | null): number | null => {
+  const move = (k: 1 | 3 | 5, candle: number | null): number | null => {
     if (signal !== null) {
       const v =
         k === 1 ? signal.price.chg1mBps : k === 3 ? signal.price.chg3mBps : signal.price.chg5mBps;
       return v === null ? null : v * d;
     }
-    return first.base === null ? null : bpOf(d, ref ?? "", first.base);
+    return candle === null ? null : candle * d;
   };
-  const markouts = [first.m10, first.m30, first.r60, first.r120, first.r300].map((ref) =>
-    bpOf(d, first.price, ref),
-  );
+  // Markout của fill vào đầu tiên, theo hướng lệnh vào (= hướng fill).
+  const markouts = [first.m10, first.m30, first.m60, first.m120, first.m300];
   const beforeFees = bp(gross);
   const feesBp = -bp(fees);
+  const builderNull = all.some((f) => f.builderFee === null);
+  const entryMaker = ins.every((f) => f.maker === true);
+  const exitMaker = outs.every((f) => f.maker === true && !f.tag.endsWith(":sl"));
+  const exitNotional = qOut.mul(exitPrice);
   const spread = signal?.spreadBps ?? null;
-  const opposite = spread === null ? null : -beforeFees + 2 * spread;
+  const oppUsd = oppositeOf({
+    qty: qIn,
+    entryPrice,
+    exitPrice,
+    long,
+    entryMaker,
+    exitMaker,
+    spread,
+  });
+  const opposite = oppUsd === null ? null : bp(oppUsd.pricePnl);
   return {
     id: first.orderId,
     botId: bot.id,
@@ -294,6 +309,10 @@ function tradeOf(
     gross,
     fees,
     builder,
+    builderNull,
+    entryMaker,
+    exitMaker,
+    exitNotional,
     netUsd: gross.sub(fees),
     signal,
     exit: exitReasonOf(
@@ -305,17 +324,44 @@ function tradeOf(
     score: signal === null || signal.balanced ? null : scoreOf(signal),
     lead: signal === null || signal.balanced ? null : leadOf(signal),
     // "Move before" từ nến: (close nến đã đóng trước lúc đặt − close k phút trước đó) ÷ close k phút trước.
-    move: [move(1, first.b1), move(3, first.b3), move(5, first.b5)],
+    move: [move(1, first.c1), move(3, first.c3), move(5, first.c5)],
     markouts,
     beforeFees,
     feesBp,
-    sodexBp: -bp(fees.sub(builder)),
-    builderBp: -bp(builder),
+    sodexBp: builderNull ? null : -bp(fees.sub(builder)),
+    builderBp: builderNull ? null : -bp(builder),
     net: beforeFees + feesBp,
     opposite,
     oppositeNet: opposite === null ? null : opposite + feesBp,
-    oppositeMarkouts: markouts.map((m) => (m === null || spread === null ? null : -m + spread)),
+    // Phía ngược vào post-only ở phía bên kia (chân vào maker) thì giá vào lệch một spread: markout = −markout + spread.
+    oppositeMarkouts: markouts.map((m) =>
+      m === null || spread === null ? null : -m + (entryMaker ? spread : 0),
+    ),
   };
+}
+
+/**
+ * What-if phía ngược lại của một lượt (USDC; xem đầu file). Giá vào / ra của phía ngược: chân maker lệch một spread lúc
+ * vào về phía có lợi (post-only ở phía bên kia sổ), chân taker / stop giữ nguyên giá. Kết quả giá = −(kết quả thật) +
+ * spread × (notional vào nếu chân vào maker + notional ra nếu chân ra maker). Không có spread lúc vào → null.
+ */
+export function oppositeOf(t: {
+  qty: Decimal;
+  entryPrice: Decimal;
+  exitPrice: Decimal;
+  long: boolean;
+  entryMaker: boolean;
+  exitMaker: boolean;
+  spread: number | null;
+}): { entry: Decimal; exit: Decimal; pricePnl: Decimal } | null {
+  if (t.spread === null) return null;
+  const s = new Decimal(t.spread).div(10_000);
+  const one = new Decimal(1);
+  // Lượt thật long: phía ngược short, vào ở ask (giá + spread), ra mua ở bid (giá − spread); short thì ngược lại.
+  const entry = t.entryMaker ? t.entryPrice.mul(t.long ? one.add(s) : one.sub(s)) : t.entryPrice;
+  const exit = t.exitMaker ? t.exitPrice.mul(t.long ? one.sub(s) : one.add(s)) : t.exitPrice;
+  const pricePnl = (t.long ? entry.sub(exit) : exit.sub(entry)).mul(t.qty);
+  return { entry, exit, pricePnl };
 }
 
 function filterTrades(
@@ -334,12 +380,13 @@ function filterTrades(
 }
 
 async function tradesFor(deps: SignalDeps, range: SignalVbQuery["range"], now: Date) {
-  const set = await fillSet(deps, "volume_farm", range, now);
-  const ev = await loadEvents(deps, set, range, now);
-  const trades = await extraSet(deps, `vbtrades|${range}`, now, () =>
-    Promise.resolve(buildVbTrades(set, ev)),
+  // Tập fill, sự kiện và lượt cùng một ảnh chụp (review #246 điểm 10).
+  const snap = snapshotOf(deps, range, now);
+  const set = await fillSet(deps, snap, "volume_farm");
+  const trades = await extraSet(snap, "vbtrades", async () =>
+    buildVbTrades(set, await loadEvents(deps, snap, set)),
   );
-  return { set, trades, bots: new Map(set.bots.map((b) => [b.id, b])) };
+  return { snap, set, trades, bots: new Map(set.bots.map((b) => [b.id, b])) };
 }
 
 // ── Tổng hợp ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -375,7 +422,7 @@ const sizeBand = (usd: number): string => {
 const ORDER: Record<VbBreakdown, readonly string[] | null> = {
   regime: ["up", "down", "sideways", "volatile", "unclear", "unknown"],
   score: ["50", "55", "60", "65", "70"],
-  part: ["momentum", "wick", "volume", "book", "none"],
+  part: ["momentum", "wick", "volume", "trade", "book", "none"],
   exit: [
     "hold",
     "takeProfit",
@@ -445,7 +492,13 @@ function moveBuckets(ts: readonly Trade[], i: 0 | 1 | 2) {
   });
 }
 
-/** Gợi ý của tab VB (chỉ khi nhóm ≥ 30, cần duyệt, không bao giờ tự đổi bot). */
+/** "lost" / "earned" cho câu chữ (ICU select): + = có lời. */
+const verb = (v: number): "lost" | "earned" => (v < 0 ? "lost" : "earned");
+
+/**
+ * Gợi ý của tab VB (chỉ khi nhóm ≥ 30, cần duyệt, không bao giờ tự đổi bot). Quy tắc 1.8: số nào in ra mà không tính được
+ * thì bỏ gợi ý hoặc dùng bản câu không có vế đó, không bao giờ in 0 thay cho "không có".
+ */
 export function vbSuggestions(ts: readonly Trade[]): {
   suggestions: SignalSuggestion[];
   hidden: SignalHiddenLead[];
@@ -460,13 +513,16 @@ export function vbSuggestions(ts: readonly Trade[]): {
   const fast = known.filter((t) => (t.move[1] ?? 0) >= FAST_MOVE_BP);
   const rest = known.filter((t) => (t.move[1] ?? 0) < FAST_MOVE_BP);
   if (ok(fast.length) && ok(rest.length)) {
-    const a = avg(fast, (t) => t.beforeFees) ?? 0;
-    const b = avg(rest, (t) => t.beforeFees) ?? 0;
-    const lossAll = ts.reduce((s, t) => s + t.beforeFees, 0);
-    const lossFast = fast.reduce((s, t) => s + t.beforeFees, 0);
-    if (a < b && a < 0)
+    const a = avg(fast, (t) => t.beforeFees);
+    const b = avg(rest, (t) => t.beforeFees);
+    if (a !== null && b !== null && a < b && a < 0) {
+      // Phần của lỗ do thời điểm vào: lỗ trước phí của các lượt "chạy nhanh" ÷ lỗ trước phí của mọi lượt, chỉ cộng các lượt
+      // lỗ (lượt có lời không bù trừ), kẹp trong [0, 100] %. Không có lượt lỗ nào → không có vế này.
+      const lossAll = ts.reduce((x, t) => x + Math.min(0, t.beforeFees), 0);
+      const lossFast = fast.reduce((x, t) => x + Math.min(0, t.beforeFees), 0);
+      const timing = lossAll < 0 ? Math.max(0, Math.min(100, (lossFast / lossAll) * 100)) : null;
       suggestions.push({
-        key: "fastMove",
+        key: timing === null ? "fastMoveNoTiming" : "fastMove",
         n: fast.length,
         values: {
           lost: r2(-a) ?? 0,
@@ -474,9 +530,10 @@ export function vbSuggestions(ts: readonly Trade[]): {
           share: r2((fast.length / ts.length) * 100) ?? 0,
           count: fast.length,
           total: ts.length,
-          timing: lossAll < 0 ? (r2((lossFast / lossAll) * 100) ?? 0) : 0,
+          ...(timing === null ? {} : { timing: r2(timing) ?? 0 }),
         },
       });
+    }
   } else if (fast.length > 0) hidden.push({ key: "fastMove", n: fast.length });
 
   // 2. Giá tiếp tục chạy ngược sau khi khớp: chờ pullback.
@@ -484,15 +541,14 @@ export function vbSuggestions(ts: readonly Trade[]): {
   if (ok(m1.length)) {
     const m30 = avg(ts, (t) => t.markouts[1] ?? null);
     const m300 = avg(ts, (t) => t.markouts[4] ?? null);
-    const behind = negPct(m1.map((t) => t.markouts[2] ?? null)) ?? 0;
-    const last = m300 ?? avg(ts, (t) => t.markouts[2] ?? null);
-    if (last !== null && last < 0 && behind > 50)
+    const behind = negPct(m1.map((t) => t.markouts[2] ?? null));
+    if (m300 !== null && m300 < 0 && behind !== null && behind > 50)
       suggestions.push({
         key: m30 === null ? "pullbackNoSeconds" : "pullback",
         n: m1.length,
         values: {
-          m30: r2(m30) ?? 0,
-          m300: r2(last) ?? 0,
+          ...(m30 === null ? {} : { m30: r2(m30) ?? 0 }),
+          m300: r2(m300) ?? 0,
           behind: r2(behind) ?? 0,
         },
       });
@@ -503,40 +559,46 @@ export function vbSuggestions(ts: readonly Trade[]): {
   const mom = sig.filter((t) => t.lead === "momentum");
   const other = sig.filter((t) => t.lead !== "momentum");
   if (ok(mom.length) && ok(other.length)) {
-    const a = avg(mom, (t) => t.beforeFees) ?? 0;
-    const b = avg(other, (t) => t.beforeFees) ?? 0;
-    if (a < b && a < 0)
+    const a = avg(mom, (t) => t.beforeFees);
+    const b = avg(other, (t) => t.beforeFees);
+    if (a !== null && b !== null && a < b && a < 0)
       suggestions.push({
         key: "momentum",
         n: sig.length,
-        values: { lost: r2(-a) ?? 0, count: mom.length, other: r2(-b) ?? 0 },
+        values: {
+          lost: r2(-a) ?? 0,
+          count: mom.length,
+          otherVerb: verb(b),
+          other: r2(Math.abs(b)) ?? 0,
+        },
       });
   } else if (mom.length > 0) hidden.push({ key: "momentum", n: mom.length });
 
   // 4. Lượt theo tín hiệu tệ hơn lượt cân long / short.
   const bal = ts.filter((t) => t.entryType === "balance");
   if (ok(sig.length) && ok(bal.length)) {
-    const a = avg(sig, (t) => t.beforeFees) ?? 0;
-    const b = avg(bal, (t) => t.beforeFees) ?? 0;
+    const a = avg(sig, (t) => t.beforeFees);
+    const b = avg(bal, (t) => t.beforeFees);
     const withOpp = ts.filter((t) => t.opposite !== null);
     const reverse =
       withOpp.length === 0 ? null : avg(withOpp, (t) => (t.opposite ?? 0) - t.beforeFees);
-    const fees = avg(ts, (t) => t.feesBp) ?? 0;
+    const fees = avg(ts, (t) => t.feesBp);
     const oppNet = avg(withOpp, (t) => t.oppositeNet);
-    if (a < b)
+    if (a !== null && b !== null && a < b) {
+      const long =
+        reverse !== null && reverse > 0 && oppNet !== null && oppNet < 0 && fees !== null;
       suggestions.push({
-        key:
-          reverse !== null && reverse > 0 && oppNet !== null && oppNet < 0
-            ? "signalVsBalance"
-            : "signalVsBalanceShort",
+        key: long ? "signalVsBalance" : "signalVsBalanceShort",
         n: ts.length,
         values: {
-          balance: r2(-b) ?? 0,
-          signal: r2(-a) ?? 0,
-          reverse: r2(reverse) ?? 0,
-          fees: r2(-fees) ?? 0,
+          balanceVerb: verb(b),
+          balance: r2(Math.abs(b)) ?? 0,
+          signalVerb: verb(a),
+          signal: r2(Math.abs(a)) ?? 0,
+          ...(long ? { reverse: r2(reverse) ?? 0, fees: r2(-fees) ?? 0 } : {}),
         },
       });
+    }
   } else if (bal.length > 0 || sig.length > 0)
     hidden.push({ key: "signalVsBalance", n: Math.min(sig.length, bal.length) });
 
@@ -551,28 +613,24 @@ export async function signalVb(
   await team(deps, userId);
   const q = parseOrThrow(signalVbQuerySchema, query);
   const now = deps.now();
-  const { set, trades, bots } = await tradesFor(deps, q.range, now);
+  const { snap, set, trades, bots } = await tradesFor(deps, q.range, now);
   const ts = filterTrades(trades, q, bots);
   const volume = ts.reduce((s, t) => s.add(t.volume), D0);
   const netUsd = ts.reduce((s, t) => s.add(t.netUsd), D0);
   const gross = ts.reduce((s, t) => s.add(t.gross), D0);
   const fees = ts.reduce((s, t) => s.add(t.fees), D0);
   const withOpp = ts.filter((t) => t.opposite !== null);
-  const oppNetUsd = withOpp.reduce(
-    (s, t) =>
-      s.add(
-        t.gross
-          .neg()
-          .add(t.notional.mul((t.signal?.spreadBps ?? 0) * 2).div(10_000))
-          .sub(t.fees),
-      ),
-    D0,
-  );
+  // Cùng `oppositeOf` với hộp chi tiết (review #246 điểm 8).
+  const oppNetUsd = withOpp.reduce((s, t) => {
+    const o = oppositeOf({ ...t, long: t.side === "long", spread: t.signal?.spreadBps ?? null });
+    return o === null ? s : s.add(o.pricePnl.sub(t.fees));
+  }, D0);
+  const builderNull = ts.some((t) => t.builderNull);
   const oppVolume = withOpp.reduce((s, t) => s.add(t.volume), D0);
   const none = ts.length === 0;
   const { suggestions, hidden } = vbSuggestions(ts);
   return {
-    computedAt: now.toISOString(),
+    computedAt: new Date(snap.at).toISOString(),
     range: q.range,
     tz: q.tz,
     from: set.window.from.toISOString(),
@@ -580,7 +638,10 @@ export async function signalVb(
     bots: new Set(ts.map((t) => t.botId)).size,
     accounts: new Set(ts.map((t) => bots.get(t.botId)?.userId)).size,
     markets: [...new Set(set.fills.map((f) => f.market))].sort(),
-    botList: botFacets(set.fills, bots),
+    botList: botFacets(
+      set.fills.map((f) => f.botId),
+      bots,
+    ),
     summary: {
       entries: ts.length,
       signal: ts.filter((t) => t.entryType === "signal").length,
@@ -589,8 +650,8 @@ export async function signalVb(
       volume: str(volume) ?? "0",
       beforeFees: r2(mean(ts.map((t) => t.beforeFees))),
       fees: r2(mean(ts.map((t) => t.feesBp))),
-      sodexFees: r2(mean(ts.map((t) => t.sodexBp))),
-      builderFees: r2(mean(ts.map((t) => t.builderBp))),
+      sodexFees: builderNull ? null : r2(mean(ts.map((t) => t.sodexBp))),
+      builderFees: builderNull ? null : r2(mean(ts.map((t) => t.builderBp))),
       net: r2(mean(ts.map((t) => t.net))),
       beforeFeesPerM: str(perM(none ? null : gross, volume)),
       feesPerM: str(perM(none ? null : fees.neg(), volume)),
@@ -653,7 +714,7 @@ export async function signalVbEntries(
   const ts = filterTrades(trades, q, bots);
   const sorted =
     q.sort === "worst"
-      ? [...ts].sort((a, b) => a.net - b.net)
+      ? [...ts].sort((a, b) => a.net - b.net || b.entryAt - a.entryAt)
       : q.sort === "move"
         ? [...ts].sort((a, b) => desc(a.move[1], b.move[1]))
         : ts;
@@ -663,6 +724,8 @@ export async function signalVbEntries(
 }
 
 const idSchema = z.uuid();
+/** Nến 1 phút tối đa của hộp chi tiết (24 giờ giữ). */
+const CANDLE_CAP = 1_440;
 
 export async function signalVbEntry(
   deps: SignalDeps,
@@ -678,13 +741,14 @@ export async function signalVbEntry(
   if (t === undefined) throw new AppError(ErrorCode.notFound, "Entry not found.");
   const ts = filterTrades(trades, q, bots);
   const extra = await readOnly(deps.db, async (x) => {
+    // Cả lúc giữ (review #246 điểm 12): tối đa CANDLE_CAP nến; dài hơn → MFE / MAE ghi "partial".
     const c = await x.execute(sql`
       select ts, high::text as h, low::text as l, close::text as c
         from candles_1m
         where market = ${t.market}
           and ts >= ${new Date(t.orderAt - 5 * 60_000)} and ts <= ${new Date(t.exitAt + 3 * 60_000)}
         order by ts
-        limit 180`);
+        limit ${CANDLE_CAP}`);
     const timeline = await timelineOf(x, t.botId, t.orderAt - 30_000, t.exitAt + 5_000, "vf:%");
     return { candles: rowsOf<{ ts: string | Date; h: string; l: string; c: string }>(c), timeline };
   });
@@ -702,14 +766,14 @@ export async function signalVbEntry(
     mfe = Math.max(0, ((long ? hi - e : e - lo) / e) * 100);
     mae = Math.max(0, ((long ? e - lo : hi - e) / e) * 100);
   }
-  const spread = t.signal?.spreadBps ?? null;
+  const partial =
+    extra.candles.length >= CANDLE_CAP &&
+    new Date(extra.candles.at(-1)?.ts ?? 0).getTime() < t.exitAt;
   const opp = (() => {
-    if (spread === null) return null;
-    const s = new Decimal(spread).div(10_000);
-    // Phía ngược: vào ở phía bên kia sổ lúc vào, ra ở phía bên kia sổ lúc ra, cách một spread lúc vào.
-    const entry = long ? t.entryPrice.mul(s.add(1)) : t.entryPrice.mul(new Decimal(1).sub(s));
-    const exit = long ? t.exitPrice.mul(new Decimal(1).sub(s)) : t.exitPrice.mul(s.add(1));
-    const pnl = (long ? entry.sub(exit) : exit.sub(entry)).mul(t.qty);
+    const o = oppositeOf({ ...t, long, spread: t.signal?.spreadBps ?? null });
+    if (o === null) return null;
+    const { entry, exit } = o;
+    const pnl = o.pricePnl;
     const net = pnl.sub(t.fees);
     return {
       side: long ? ("short" as const) : ("long" as const),
@@ -737,6 +801,7 @@ export async function signalVbEntry(
     feesBp: r2(t.feesBp),
     mfePct: mfe === null ? null : Math.round(mfe * 1000) / 1000,
     maePct: mae === null ? null : Math.round(mae * 1000) / 1000,
+    mfePartial: partial,
     candles: extra.candles.map((k) => ({
       t: new Date(k.ts).toISOString(),
       h: k.h,

@@ -55,6 +55,8 @@ const group = (
   net: "222",
   netUsd: "222",
   prevNet: "245",
+  vsPrev: "-23",
+  priced: true,
   thin: false,
   ...over,
 });
@@ -71,6 +73,7 @@ export const ALL: SignalAllView = {
       inventory: "35",
       net: "365",
       prevNet: null,
+      vsPrev: null,
     }),
     group("volume_maker", "volume_maker", {
       strategy: "volume_maker",
@@ -230,6 +233,7 @@ export const VB_DETAIL: VbEntryDetail = {
   feesBp: -5.2,
   mfePct: 0.066,
   maePct: 0.197,
+  mfePartial: false,
   candles: [
     { t: "2026-11-18T07:05:00.000Z", h: "1822", l: "1821", c: "1821.6" },
     { t: "2026-11-18T07:08:00.000Z", h: "1825.6", l: "1823.4", c: "1824.8" },
@@ -315,6 +319,7 @@ export const MM: SignalMmView = {
     netPerM: "210",
     netUsd: "1071",
     prevNetPerM: "228",
+    vsPrev: "-18",
     withContext: 18000,
   },
   waterfall: {

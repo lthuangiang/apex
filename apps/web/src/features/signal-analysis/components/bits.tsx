@@ -64,7 +64,7 @@ export function Kpi({
 export function ThinTag() {
   const t = useTranslations("signalAnalysis");
   return (
-    <span className="ml-1.5 inline-flex whitespace-nowrap rounded-full bg-warn-bg px-2 py-0.5 text-[11.5px] font-bold text-warn">
+    <span className="ml-1.5 inline-flex whitespace-nowrap rounded-full bg-warn-bg px-2 py-0.5 text-xs font-bold text-warn">
       {t("thin")}
     </span>
   );
@@ -258,7 +258,7 @@ export function ColHead({ main, sub }: { main: string; sub?: string }) {
     <>
       {main}
       {sub === undefined ? null : (
-        <span className="block text-[11px] font-semibold text-muted">{sub}</span>
+        <span className="block text-xs font-semibold text-muted">{sub}</span>
       )}
     </>
   );

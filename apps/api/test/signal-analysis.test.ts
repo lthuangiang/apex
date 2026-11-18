@@ -23,6 +23,12 @@ let env: TestEnv;
 const T = new Date("2026-11-18T12:00:00Z");
 const MM = `SM${randomUUID().slice(0, 6).toUpperCase()}-USD`;
 const VB = `SV${randomUUID().slice(0, 6).toUpperCase()}-USD`;
+/** Kịch bản 7 ngày: bot có vị thế mang sang và kỳ trước (MB), bot thiếu giá 1 phút và builder fee (MC). */
+const MB = `SB${randomUUID().slice(0, 6).toUpperCase()}-USD`;
+const MC = `SC${randomUUID().slice(0, 6).toUpperCase()}-USD`;
+/** Bot vào kỳ với vị thế mang sang rồi bị cắt trong kỳ (MD). */
+const MD = `SD${randomUUID().slice(0, 6).toUpperCase()}-USD`;
+const DAY = 86_400_000;
 const errorOf = (body: string) => errorResponseSchema.parse(JSON.parse(body)).error;
 const at = (ms: number) => new Date(T.getTime() + ms).toISOString();
 const MIN = 60_000;
@@ -32,6 +38,7 @@ let team: TestClient;
 let user: TestClient;
 let mmFillId = "";
 let vbEntryId = "";
+let bot: (strategy: string, market: string, mode: string, name: string) => Promise<string>;
 
 const signal = {
   v: 1,
@@ -104,7 +111,7 @@ beforeAll(async () => {
     [me.id, "0x4E1e4796c10C637EDAB56461450BD8D02EFb29Db", Math.floor(Math.random() * 1e9)],
   );
   const account = acc[0]?.id ?? "";
-  const bot = async (strategy: string, market: string, mode: string, name: string) => {
+  bot = async (strategy: string, market: string, mode: string, name: string) => {
     const { rows } = await env.pool.query<{ id: string }>(
       "insert into bots (id, user_id, sodex_account_id, strategy, market, engine, name, state, mode) values (gen_random_uuid(), $1, $2, $3, $4, 'perps', $5, 'running', $6) returning id",
       [me.id, account, strategy, market, name, mode],
@@ -162,7 +169,7 @@ beforeAll(async () => {
     orderId: string,
     price: string,
     fee: string,
-    builder: string,
+    builder: string | null,
     filledAt: string,
   ) => {
     const { rows } = await env.pool.query<{ id: string }>(
@@ -221,6 +228,97 @@ beforeAll(async () => {
     "0.005",
     at(e2 + 60_000),
   );
+
+  // ── Kịch bản 7 ngày (ngoài cửa sổ 24 giờ của các test trên) ───────────────────────────────────────────────────
+  const mmB = await bot("volume_maker", MB, "live", "MM carried");
+  const mmC = await bot("volume_maker", MC, "live", "MM unpriced");
+  await env.pool.query(
+    `insert into candles_1m (market, ts, open, high, low, close, volume)
+     select $1, ts, 100, 100.01, 99.99, case when ts > $3::timestamptz - interval '1 hour' then 101 else 100 end, 1
+       from generate_series($2::timestamptz, $3::timestamptz, interval '1 minute') ts
+     on conflict do nothing`,
+    [MB, at(-15 * DAY), at(-MIN)],
+  );
+  // MC: chỉ có nến trong giờ cuối (giá cuối kỳ), không có giá 1 phút sau các fill.
+  await env.pool.query(
+    `insert into candles_1m (market, ts, open, high, low, close, volume)
+     select $1, ts, 100, 100, 100, 100, 1
+       from generate_series($2::timestamptz, $3::timestamptz, interval '1 minute') ts
+     on conflict do nothing`,
+    [MC, at(-HOUR), at(-MIN)],
+  );
+  // Kỳ trước (T − 14d … T − 7d): mua 1 @ 99 lúc T − 8d → bot mang vị thế +1 vào kỳ 7 ngày.
+  await fill(
+    await order(mmB, MB, "buy", "vm:1:open", at(-8 * DAY - 5_000), ctx(0, true, -2)),
+    "99",
+    "0.01",
+    "0.002",
+    at(-8 * DAY),
+  );
+  // Trong kỳ: 80 fill xen kẽ bán / mua (vị thế vẫn +1). 40 fill đầu bật Smart quoting (lệch 2 bp), 40 fill sau tắt (0.5
+  // bp). 40 fill đầu ở level 1, 40 fill sau ở level 0.
+  for (let i = 0; i < 80; i++) {
+    const sell = i % 2 === 0;
+    const smart = i < 40;
+    const off = smart ? 0.02 : 0.005;
+    const price = (sell ? 100 + off : 100 - off).toFixed(3);
+    const t = -3 * DAY + i * MIN;
+    await fill(
+      await order(
+        mmB,
+        MB,
+        sell ? "sell" : "buy",
+        "vm:1:open",
+        at(t - 3_000),
+        ctx(smart ? 1 : 0, smart, -2),
+      ),
+      price,
+      "0.001",
+      "0.0002",
+      at(t),
+    );
+  }
+  // MD: mua 1 @ 99 lúc T − 8d (trước kỳ), bị cắt bằng bán 1 @ 98 lúc T − 2d: giá vào lấy từ lịch sử trước kỳ.
+  const mmD = await bot("volume_maker", MD, "live", "MM cut");
+  await env.pool.query(
+    `insert into candles_1m (market, ts, open, high, low, close, volume)
+     select $1, ts, 100, 100, 100, 100, 1
+       from generate_series($2::timestamptz, $3::timestamptz, interval '1 minute') ts
+     on conflict do nothing`,
+    [MD, at(-9 * DAY), at(-MIN)],
+  );
+  await fill(
+    await order(mmD, MD, "buy", "vm:1:open", at(-8 * DAY - 3_000), ctx(0, true, -2)),
+    "99",
+    "0.01",
+    "0.002",
+    at(-8 * DAY),
+  );
+  await fill(
+    await order(mmD, MD, "sell", "vm:2:cut:close", at(-2.5 * DAY - 1_000), ctx(0, true, null)),
+    "98",
+    "0.001",
+    "0.0002",
+    at(-2.5 * DAY),
+  );
+  // MC: 40 fill phí cao (1 USDC trên 100), builder fee chưa ghi.
+  for (let i = 0; i < 40; i++) {
+    const t = -5 * DAY + i * MIN;
+    await fill(
+      await order(
+        mmC,
+        MC,
+        i % 2 === 0 ? "buy" : "sell",
+        "vm:1:open",
+        at(t - 3_000),
+        ctx(0, false, null),
+      ),
+      "100",
+      "1",
+      null,
+      at(t),
+    );
+  }
 });
 afterAll(async () => {
   await env.close();
@@ -423,5 +521,85 @@ describe("Signal Analysis API", () => {
       true,
     );
     expect(d.body).not.toMatch(/candleMomentum|"payload"/);
+  });
+
+  it("7d: carried-in position, the previous period and n ≥ 30 suggestions (MM)", async () => {
+    const v = signalMmViewSchema.parse(
+      (
+        await team.request("GET", `/api/v1/admin/signal-analysis/mm?range=7d&tz=UTC&market=${MB}`)
+      ).json(),
+    );
+    expect(v.summary.fills).toBe(80);
+    // Phí 0.08 − kết quả giá 1.0 − vị thế mang sang 1 × (101 − 100) = −1.92 USDC trên 8 000 → −240 / 1M (có lời).
+    expect(v.summary.netPerM).toBe("-240");
+    expect(v.waterfall).toMatchObject({ fees: "10", inventory: "-125", net: "-240" });
+    // Kỳ trước: mua 1 @ 99, giá cuối kỳ trước 100 → −0.99 trên 99 → −10 000 / 1M; hiệu do API tính.
+    expect(v.summary.prevNetPerM).toBe("-10000");
+    expect(v.summary.vsPrev).toBe("9760");
+    const keys = v.suggestions.map((x) => x.key);
+    expect(keys).toContain("smart");
+    expect(keys).toContain("level");
+    expect(v.levels[0]).toMatchObject({ n: 40, fillRatePct: 100, thin: false });
+    // Lọc theo Smart quoting: không cộng vị thế mang sang, không so kỳ trước.
+    const on = signalMmViewSchema.parse(
+      (
+        await team.request("GET", `/api/v1/admin/signal-analysis/mm?range=7d&market=${MB}&smart=on`)
+      ).json(),
+    );
+    expect(on.summary).toMatchObject({ fills: 40, prevNetPerM: null, vsPrev: null });
+  });
+
+  it("7d: more than 20% of volume without a 1-min price → markout / inventory Not available; no builder fee → no split", async () => {
+    const v = signalMmViewSchema.parse(
+      (await team.request("GET", `/api/v1/admin/signal-analysis/mm?range=7d&market=${MC}`)).json(),
+    );
+    expect(v.summary.fills).toBe(40);
+    expect(v.waterfall).toMatchObject({
+      fees: "10000",
+      sodexFees: null,
+      builderFees: null,
+      priceAgainst: null,
+      inventory: null,
+      net: "10000",
+    });
+    const all = signalAllViewSchema.parse(
+      (await team.request("GET", `/api/v1/admin/signal-analysis/all?range=7d&market=${MC}`)).json(),
+    );
+    expect(all.total).toMatchObject({
+      markout: null,
+      inventory: null,
+      priced: false,
+      net: "10000",
+    });
+  });
+
+  it("7d All: carried position and previous period per group, and a cost driver at n ≥ 30", async () => {
+    const mb = signalAllViewSchema.parse(
+      (
+        await team.request("GET", `/api/v1/admin/signal-analysis/all?range=7d&tz=UTC&market=${MB}`)
+      ).json(),
+    );
+    expect(mb.total).toMatchObject({ net: "-240", prevNet: "-10000", vsPrev: "9760" });
+    const all = signalAllViewSchema.parse(
+      (await team.request("GET", "/api/v1/admin/signal-analysis/all?range=7d&tz=UTC")).json(),
+    );
+    const d = all.drivers.find((x) => x.kind === "bot" && x.group.market === MC);
+    expect(d).toMatchObject({ part: "fees", group: { net: "10000", thin: false } });
+  });
+
+  it("7d: a position cut on a position carried in from before the period uses its real cost basis", async () => {
+    const v = signalMmViewSchema.parse(
+      (
+        await team.request("GET", `/api/v1/admin/signal-analysis/mm?range=7d&tz=UTC&market=${MD}`)
+      ).json(),
+    );
+    expect(v.inventory.cuts).toBe(1);
+    expect(v.inventory.latestCuts[0]).toMatchObject({
+      position: "long",
+      entry: "99",
+      heldSecs: 5.5 * 86_400,
+      resultUsd: "-1.001",
+    });
+    expect(v.inventory.cutsUsd).toBe("-1.001");
   });
 });

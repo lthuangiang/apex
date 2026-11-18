@@ -203,9 +203,8 @@ function MmBody({ v, f, ctx }: { v: SignalMmView; f: MmFilters; ctx: PageCtx }) 
   const w = v.waterfall;
   const na = t("na");
   const bp = (x: number | null) => (x === null ? na : `${signed(x)} bp`);
-  const days = Number(f.range.replace(/\D/g, "")) * (f.range.endsWith("h") ? 1 / 24 : 1);
-  const d =
-    s.netPerM === null || s.prevNetPerM === null ? null : Number(s.netPerM) - Number(s.prevNetPerM);
+  const days = f.range === "24h" ? 1 : Number(f.range.replace(/\D/g, ""));
+  const d = s.vsPrev === null ? null : Number(s.vsPrev);
   const jump = (k: MmBreakdown) => {
     setBy(k);
     setBdOpen(true);
@@ -687,7 +686,7 @@ function MmBody({ v, f, ctx }: { v: SignalMmView; f: MmFilters; ctx: PageCtx }) 
                     </td>
                     <td className={td}>
                       {c.market}
-                      <span className="block text-[11.5px] text-muted">{c.botName}</span>
+                      <span className="block text-xs text-muted">{c.botName}</span>
                     </td>
                     <td
                       className={`${td} font-bold ${c.position === "long" ? "text-pos" : "text-neg"}`}
@@ -1051,11 +1050,11 @@ function Fills({
                   >
                     {clock(x.filledAt, ctx.tz)}
                   </button>
-                  <span className="block text-[11.5px] text-muted">{day(x.filledAt, ctx.tz)}</span>
+                  <span className="block text-xs text-muted">{day(x.filledAt, ctx.tz)}</span>
                 </td>
                 <td className={td}>
                   {x.market}
-                  <span className="block text-[11.5px] text-muted">{x.botName}</span>
+                  <span className="block text-xs text-muted">{x.botName}</span>
                 </td>
                 <td className={`${td} font-bold ${x.side === "buy" ? "text-pos" : "text-neg"}`}>
                   {tm(`sides.${x.side}`)}
@@ -1082,7 +1081,7 @@ function Fills({
                 </td>
                 <td className={td}>
                   {x.kind === "cut" ? (
-                    <span className="rounded-full bg-unknown-bg px-2 py-0.5 text-[11.5px] font-bold text-unknown">
+                    <span className="rounded-full bg-unknown-bg px-2 py-0.5 text-xs font-bold text-unknown">
                       {tm("kinds.cut")}
                     </span>
                   ) : (

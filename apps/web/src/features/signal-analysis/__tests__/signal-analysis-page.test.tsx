@@ -115,7 +115,7 @@ describe("Signal Analysis page", { timeout: 30_000 }, () => {
     wrap();
     expect(await screen.findByText("Last 7 days · 2.00M USDC volume")).toBeInTheDocument();
     const sum = screen.getByRole("region", { name: /Last 7 days · 2.00M USDC volume/ });
-    expect(within(sum).getByText("Net cost / $1M")).toBeInTheDocument();
+    expect(within(sum).getByText("Net cost / $1M (negative = net gain)")).toBeInTheDocument();
     expect(within(sum).getAllByText("$222").length).toBeGreaterThan(0);
     // Chỉ hai chiến lược, không Copy Trade / Futures Grid.
     expect(screen.queryByText(/Copy Trade|Futures Grid/)).not.toBeInTheDocument();
@@ -125,6 +125,8 @@ describe("Signal Analysis page", { timeout: 30_000 }, () => {
     expect(document.body.textContent).not.toMatch(/@/);
     // Kỳ trước thiếu → "Not available", không phải $0.
     expect(screen.getAllByText("vs before: Not available").length).toBeGreaterThan(0);
+    // Hiệu "vs previous" lấy nguyên từ API (vsPrev), web không tự trừ.
+    expect(screen.getAllByText(/▼ \$23 vs previous 7 days/).length).toBeGreaterThan(0);
     // Múi giờ trình duyệt + nút Show in UTC (cùng kiểu Market hours).
     expect(screen.getByText(/Times in your time zone: /)).toBeInTheDocument();
     const utc = screen.getByRole("button", { name: "Show in UTC" });

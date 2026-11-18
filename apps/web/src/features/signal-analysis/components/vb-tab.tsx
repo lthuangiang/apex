@@ -582,7 +582,7 @@ function LossBar({
               key={i}
               aria-hidden="true"
               title={`${names[i] ?? ""}: ${signed(x)} bp`}
-              className={`flex items-center justify-center text-[11px] font-bold ${colors[i] ?? ""}`}
+              className={`flex items-center justify-center text-xs font-bold ${colors[i] ?? ""}`}
               style={{ width: `${String(((abs[i] ?? 0) / span) * 100)}%` }}
             >
               {(abs[i] ?? 0) / span > 0.1 ? signed(x) : ""}
@@ -778,11 +778,11 @@ function Entries({ f, ctx, total }: { f: VbFilters; ctx: PageCtx; total: number 
                   >
                     {clock(e.filledAt, ctx.tz)}
                   </button>
-                  <span className="block text-[11.5px] text-muted">{day(e.filledAt, ctx.tz)}</span>
+                  <span className="block text-xs text-muted">{day(e.filledAt, ctx.tz)}</span>
                 </td>
                 <td className={td}>
                   {e.market}
-                  <span className="block text-[11.5px] text-muted">{e.botName}</span>
+                  <span className="block text-xs text-muted">{e.botName}</span>
                 </td>
                 <td className={`${td} font-bold ${e.side === "long" ? "text-pos" : "text-neg"}`}>
                   {tv(`sides.${e.side}`)}

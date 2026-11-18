@@ -140,6 +140,10 @@ export const signalCostGroupSchema = z.object({
   netUsd: money.nullable(),
   /** Net cost / $1M của kỳ trước cùng độ dài; null = không có fill kỳ trước hoặc thiếu giá. */
   prevNet: money.nullable(),
+  /** Net cost / $1M kỳ này − kỳ trước (API tính, web không trừ); null khi thiếu một trong hai. */
+  vsPrev: money.nullable(),
+  /** Các số / 1M chia cho volume có giá 1 phút (false = dưới 80% có giá, markout / tồn kho Not available). */
+  priced: z.boolean(),
   thin: z.boolean(),
 });
 export type SignalCostGroup = z.infer<typeof signalCostGroupSchema>;
@@ -362,6 +366,8 @@ export const vbEntryDetailSchema = z.object({
   /** % so với giá vào, từ high / low nến 1 phút trong lúc giữ. */
   mfePct: num,
   maePct: num,
+  /** Nến không phủ hết lúc giữ (giữ > 24 giờ): MFE / MAE chỉ tính trên phần có. */
+  mfePartial: z.boolean(),
   candles: z.array(candle),
   timeline: z.array(signalTimelineItemSchema),
   signal: z
@@ -377,7 +383,7 @@ export const vbEntryDetailSchema = z.object({
         trade: z.number(),
         book: z.number(),
       }),
-      lead: z.enum(["momentum", "wick", "volume", "book"]).nullable(),
+      lead: z.enum(["momentum", "wick", "volume", "trade", "book"]).nullable(),
       reversed: z.boolean(),
     })
     .nullable(),
@@ -435,6 +441,7 @@ export const signalMmViewSchema = z.object({
     netPerM: money.nullable(),
     netUsd: money.nullable(),
     prevNetPerM: money.nullable(),
+    vsPrev: money.nullable(),
     /** Fill có bối cảnh lệnh (DEC-312); fill cũ hơn không có quote level / Smart quoting. */
     withContext: z.number().int().nonnegative(),
   }),
@@ -549,8 +556,9 @@ export const mmFillDetailSchema = z.object({
   split: z.object({
     spread: money.nullable(),
     priceAgainst: money.nullable(),
-    sodexFee: money,
-    builderFee: money,
+    /** null khi fill không có builder fee đã ghi (không dồn vào phí SoDEX). */
+    sodexFee: money.nullable(),
+    builderFee: money.nullable(),
     net: money.nullable(),
   }),
   timeline: z.array(signalTimelineItemSchema),

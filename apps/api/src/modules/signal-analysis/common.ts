@@ -35,34 +35,8 @@ export function readOnly<T>(db: Db, fn: (q: Exec) => Promise<T>): Promise<T> {
 
 export const rowsOf = <T>(r: { rows: unknown[] }): T[] => r.rows as T[];
 
-/** Cache 60 s cho tập dữ liệu của một kỳ (mọi bộ lọc dùng chung, lọc trong bộ nhớ); gộp các lần gọi trùng lúc. */
+/** Ảnh chụp dữ liệu của một kỳ được giữ chừng này (sets.ts). */
 export const DATA_CACHE_MS = 60_000;
-const MAX_ENTRIES = 24;
-
-export class TtlCache<T> {
-  readonly #map = new Map<string, { at: number; value: Promise<T> }>();
-  constructor(readonly ttlMs: number) {}
-
-  get(key: string, now: number, load: () => Promise<T>): Promise<T> {
-    const hit = this.#map.get(key);
-    if (hit !== undefined && now - hit.at < this.ttlMs) return hit.value;
-    const value = load();
-    this.#map.set(key, { at: now, value });
-    // Lỗi thì không giữ trong cache.
-    value.catch(() => {
-      if (this.#map.get(key)?.value === value) this.#map.delete(key);
-    });
-    if (this.#map.size > MAX_ENTRIES) {
-      const oldest = [...this.#map.entries()].sort((a, b) => a[1].at - b[1].at)[0];
-      if (oldest !== undefined) this.#map.delete(oldest[0]);
-    }
-    return value;
-  }
-
-  clear(): void {
-    this.#map.clear();
-  }
-}
 
 export interface Window {
   from: Date;
@@ -249,4 +223,82 @@ export async function positionsAt(
     });
   }
   return out;
+}
+
+/** Số fill tối đa đọc ngược trước một mốc để tìm lúc vị thế mang sang được mở. */
+export const COST_BASIS_LOOKBACK = 2_000;
+const COST_BASIS_DAYS = 7;
+
+export interface CostBasis {
+  /** Giá vào bình quân (sổ cái giá vốn bình quân) của vị thế đang mở tại mốc. */
+  entry: Decimal;
+  /** Lúc vị thế đó được mở (đi từ phẳng / đổi chiều). */
+  openedAt: number;
+}
+
+/**
+ * Giá vốn của vị thế `pos` mà bot đang giữ tại `at` (review #246 B2): đọc ngược tối đa 2 000 fill trong 7 ngày trước
+ * `at` (orders_bot_idx → fills_order_idx) để tìm fill gần nhất mà trước nó bot phẳng hoặc giữ vị thế ngược chiều, rồi
+ * đi xuôi bằng sổ cái giá vốn bình quân (thêm cùng chiều thì bình quân lại, giảm thì giữ giá vào, đổi chiều thì giá vào
+ * = giá khớp). Không tìm thấy điểm mở trong giới hạn → null ("Not available"), không đoán.
+ */
+export async function costBasisAt(
+  q: Exec,
+  botId: string,
+  at: Date,
+  pos: Decimal,
+): Promise<CostBasis | null> {
+  if (pos.isZero()) return null;
+  // fills_filled_at_idx đọc ngược từ mốc, lọc theo bot (lệnh không khớp không bị quét).
+  const r = await q.execute(sql`
+    select (extract(epoch from f.filled_at) * 1000)::float8 as at, o.side, f.price::text as price, f.size::text as size
+      from fills f
+      join orders o on o.id = f.order_id
+      where o.bot_id = ${botId}::uuid
+        and f.filled_at < ${at} and f.filled_at >= ${new Date(at.getTime() - COST_BASIS_DAYS * 86_400_000)}
+      order by f.filled_at desc, f.id desc
+      limit ${COST_BASIS_LOOKBACK}`);
+  const rows = rowsOf<{ at: number; side: "buy" | "sell"; price: string; size: string }>(r);
+  return costBasisOf(rows, pos);
+}
+
+/** Phần thuần của `costBasisAt`: `desc` = fill trước mốc, mới nhất trước. */
+export function costBasisOf(
+  desc: readonly { at: number; side: "buy" | "sell"; price: string; size: string }[],
+  pos: Decimal,
+): CostBasis | null {
+  let running = pos;
+  let start = -1;
+  for (let i = 0; i < desc.length; i++) {
+    const f = desc[i];
+    if (f === undefined) break;
+    const signed = dec(f.size).mul(f.side === "buy" ? 1 : -1);
+    const before = running.sub(signed);
+    if (before.isZero() || before.isNeg() !== pos.isNeg()) {
+      start = i;
+      break;
+    }
+    running = before;
+  }
+  if (start < 0) return null;
+  let p = D0;
+  let entry: Decimal | null = null;
+  let openedAt = 0;
+  for (let i = start; i >= 0; i--) {
+    const f = desc[i];
+    if (f === undefined) continue;
+    const s = dec(f.size).mul(f.side === "buy" ? 1 : -1);
+    const px = dec(f.price);
+    const before = i === start ? running.sub(s) : p;
+    const after = before.add(s);
+    if (before.isZero() || before.isNeg() !== after.isNeg()) {
+      // Mở mới hoặc đổi chiều: giá vào = giá khớp.
+      entry = px;
+      openedAt = f.at;
+    } else if (before.isNeg() === s.isNeg()) {
+      entry = (entry ?? px).mul(before.abs()).add(px.mul(s.abs())).div(before.abs().add(s.abs()));
+    }
+    p = after;
+  }
+  return entry === null ? null : { entry, openedAt };
 }

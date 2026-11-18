@@ -157,14 +157,14 @@ export function VbEntryDetail({
                 sub={d.feesBp === null ? undefined : `${signed(d.feesBp)} bp`}
               />
               <Stat
-                label="MFE"
+                label={d.mfePartial ? t("mfePartial") : "MFE"}
                 value={d.mfePct === null ? <Na /> : `${d.mfePct.toFixed(3)}%`}
-                sub={t("mfe")}
+                sub={d.mfePartial ? t("partialNote") : t("mfe")}
               />
               <Stat
-                label="MAE"
+                label={d.mfePartial ? t("maePartial") : "MAE"}
                 value={d.maePct === null ? <Na /> : `${d.maePct.toFixed(3)}%`}
-                sub={t("mae")}
+                sub={d.mfePartial ? t("partialNote") : t("mae")}
               />
             </div>
             <Panel title={t("timeline")}>
@@ -176,7 +176,7 @@ export function VbEntryDetail({
               title={t("signalAtEntry")}
               tag={
                 d.entry.entryType === null ? undefined : (
-                  <span className="rounded-full bg-accent-tint px-2 py-0.5 text-[11.5px] font-bold text-accent-ink">
+                  <span className="rounded-full bg-accent-tint px-2 py-0.5 text-xs font-bold text-accent-ink">
                     {tv(`types.${d.entry.entryType}`)}
                   </span>
                 )
@@ -209,9 +209,7 @@ export function VbEntryDetail({
                         >
                           <span>
                             {tv(`parts.${p}`)}
-                            <span className="block text-[11.5px] text-muted">
-                              {t(`weight.${p}`)}
-                            </span>
+                            <span className="block text-xs text-muted">{t(`weight.${p}`)}</span>
                           </span>
                           <span
                             role="img"
@@ -258,7 +256,7 @@ export function VbEntryDetail({
             <Panel
               title={t("opposite")}
               tag={
-                <span className="rounded-full bg-warn-bg px-2 py-0.5 text-[11.5px] font-bold text-warn">
+                <span className="rounded-full bg-warn-bg px-2 py-0.5 text-xs font-bold text-warn">
                   {t("whatIf")}
                 </span>
               }

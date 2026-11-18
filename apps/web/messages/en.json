@@ -7032,10 +7032,10 @@
       "usOpenTip": "US stock market open, 09:30 New York.",
       "utcMarkTip": "Fixed UTC marker, the same as on Market hours.",
       "sumTitle": "{range} · {volume} USDC volume",
-      "sumSub": "Cost per $1M of volume (every fill’s notional). Fees + price against the fill + inventory & cuts = net cost. Negative = earned.",
+      "sumSub": "Cost per $1M of volume. Fees + price against the fill + inventory & cuts = net cost. Per $1M figures are divided by the volume of fills with a 1-minute price (all fills when under 80% have one). Negative = net gain.",
       "kVolume": "Volume",
       "kVolumeSub": "USDC · {fills} fills · {bots, plural, one {# bot} other {# bots}}",
-      "kNet": "Net cost / $1M",
+      "kNet": "Net cost / $1M (negative = net gain)",
       "kNetTotal": "{usd} in total",
       "kFees": "Fees / $1M",
       "kFeesSub": "SoDEX {sodex} · builder {builder} · {share} of net cost",
@@ -7113,7 +7113,8 @@
       "colNet": "Net cost",
       "colTotal": "total, USDC",
       "colPrev": "vs previous",
-      "colPrevSub": "{days, plural, =1 {24 hours} other {# days}}"
+      "colPrevSub": "{days, plural, =1 {24 hours} other {# days}}",
+      "colNetSub": "$ / 1M, negative = net gain"
     },
     "vb": {
       "regime": "Regime",
@@ -7157,7 +7158,7 @@
       "insightFees": "Fees are {share} of the loss.",
       "insightTiming": "Entry timing adds {bp} bp per trade on top.",
       "insightOpposite": "Taking the other side at the same moments: {bp} bp before fees.",
-      "assumption": "Opposite side: same entry time and hold, post-only on the other side of the book at entry and at exit (one entry spread away). Assumes it filled; it might not have.",
+      "assumption": "Opposite side: same entry time and hold, the other direction, the same order type on each leg. A maker leg is placed post-only on the other side of the book, one entry spread away, and assumed filled (it might not have); a taker or stop leg fills at the same price and adds no spread. Fees as paid on the actual legs.",
       "links": {
         "move": "Move before entry",
         "markout": "Price after the fill",
@@ -7167,7 +7168,7 @@
       "sug": {
         "fastMove": {
           "title": "Don’t enter after a fast move in the signal’s direction",
-          "body": "Entries after a move of <b>4 bp or more in 3 min</b> lost <b>{lost} bp</b> before fees, <b>{more} bp more</b> than the rest. They were <b>{share}% of entries</b> ({count, number} of {total, number}) and <b>{timing}% of the timing loss</b>."
+          "body": "Entries after a move of <b>4 bp or more in 3 min</b> lost <b>{lost} bp</b> before fees, <b>{more} bp more</b> than the rest. They were <b>{share}% of entries</b> ({count, number} of {total, number}) and <b>{timing}% of the timing loss</b> (losses before fees on losing entries)."
         },
         "pullback": {
           "title": "Wait for the pullback before placing the entry",
@@ -7179,15 +7180,19 @@
         },
         "momentum": {
           "title": "Weigh candle momentum less",
-          "body": "When candle momentum added the most to the score, entries lost <b>{lost} bp</b> before fees ({count} entries), vs <b>{other} bp</b> for other signal entries."
+          "body": "When candle momentum added the most to the score, entries lost <b>{lost} bp</b> before fees ({count} entries), vs {otherVerb, select, earned {<b>earned {other} bp</b>} other {<b>lost {other} bp</b>}} for other signal entries."
         },
         "signalVsBalance": {
           "title": "The signal does worse than balance entries",
-          "body": "Balance entries, which ignore the signal, lost <b>{balance} bp</b> before fees. Signal entries lost <b>{signal} bp</b>. Reversing helps by about <b>{reverse} bp</b>, but both sides lose after <b>{fees} bp</b> of fees, so reversing alone doesn’t fix VB."
+          "body": "Balance entries, which ignore the signal, {balanceVerb, select, earned {<b>earned {balance} bp</b>} other {<b>lost {balance} bp</b>}} before fees. Signal entries {signalVerb, select, earned {<b>earned {signal} bp</b>} other {<b>lost {signal} bp</b>}}. Reversing helps by about <b>{reverse} bp</b>, but both sides lose after <b>{fees} bp</b> of fees, so reversing alone doesn’t fix VB."
         },
         "signalVsBalanceShort": {
           "title": "The signal does worse than balance entries",
-          "body": "Balance entries, which ignore the signal, lost <b>{balance} bp</b> before fees. Signal entries lost <b>{signal} bp</b>."
+          "body": "Balance entries, which ignore the signal, {balanceVerb, select, earned {<b>earned {balance} bp</b>} other {<b>lost {balance} bp</b>}} before fees. Signal entries {signalVerb, select, earned {<b>earned {signal} bp</b>} other {<b>lost {signal} bp</b>}}."
+        },
+        "fastMoveNoTiming": {
+          "title": "Don’t enter after a fast move in the signal’s direction",
+          "body": "Entries after a move of <b>4 bp or more in 3 min</b> lost <b>{lost} bp</b> before fees, <b>{more} bp more</b> than the rest. They were <b>{share}% of entries</b> ({count, number} of {total, number})."
         }
       },
       "hiddenLead": {
@@ -7350,7 +7355,7 @@
       "kAgainst": "Price against the fill",
       "kAgainstSub": "of fills the price went against within 1 min",
       "kCuts": "Position cuts",
-      "kNet": "Net cost / $1M",
+      "kNet": "Net cost / $1M (negative = net gain)",
       "vsNa": "vs before: Not available",
       "vsPrev": "{days, plural, =1 {{v} vs previous 24 hours} other {{v} vs previous # days}}",
       "wfTitle": "From spread earned to net cost, per $1M",
@@ -7368,7 +7373,7 @@
       "insightNotCover": "The spread earned ({spread}) doesn’t cover the price moving against fills ({against}).",
       "insightCover": "The spread earned ({spread}) covers the price moving against fills ({against}).",
       "insightInventory": "Inventory and position cuts add {inv} / 1M.",
-      "insightNote": "Spread earned and markout use the SoDEX mid: per second when stored (48 hours), otherwise the mid when the quote was placed.",
+      "insightNote": "Spread earned and markout use the SoDEX mid: per second when stored (48 hours), otherwise the mid when the quote was placed. Fees, markout and inventory per $1M are divided by the volume of fills with a 1-minute price; the spread uses the fills that also have a mid.",
       "sug": {
         "level": {
           "title": "Default Where to quote to {levelName}",
@@ -7385,6 +7390,22 @@
         "hours": {
           "title": "Look at quoting in {hours}",
           "body": "Fills in {hours} (page time) cost <b>${net} / 1M</b> vs <b>${overall}</b> overall; <b>{against}%</b> went against within 1 min. No bot setting limits hours today."
+        },
+        "levelNoAgainst": {
+          "title": "Default Where to quote to {levelName}",
+          "body": "At the best price, fills ended <b>{baseNet} bp</b> after fees at 1 min; {levelName}, <b>{bestNet} bp</b>. Trade-off: {levelName} filled <b>{bestRate}%</b> of quotes vs <b>{baseRate}%</b>, so volume comes slower."
+        },
+        "levelNoAgainstNoRate": {
+          "title": "Default Where to quote to {levelName}",
+          "body": "At the best price, fills ended <b>{baseNet} bp</b> after fees at 1 min; {levelName}, <b>{bestNet} bp</b>."
+        },
+        "smartNoInventory": {
+          "title": "Keep Smart quoting on by default",
+          "body": "With Smart quoting on, markout at 1 min was <b>{on} bp</b> vs <b>{off} bp</b> off. Fills off: <b>{offShare}%</b> of volume."
+        },
+        "hoursNoAgainst": {
+          "title": "Look at quoting in {hours}",
+          "body": "Fills in {hours} (page time) cost <b>${net} / 1M</b> vs <b>${overall}</b> overall. No bot setting limits hours today."
         }
       },
       "hiddenLead": {
@@ -7510,7 +7531,7 @@
       "sub1mShort": "1 min",
       "colNetAfter": "Net after fees",
       "colNetCost": "Net cost",
-      "colNetCostSub": "$ / 1M, incl. inventory",
+      "colNetCostSub": "$ / 1M incl. inventory, negative = net gain",
       "fillsTitle": "Fills",
       "fillsSub": "{n} in the filters above · open one to see the prices around it, the quote and what happened next",
       "sortNewest": "Newest",
@@ -7616,7 +7637,10 @@
       "splitAgainst": "Price against the fill, 1 min",
       "splitSodex": "SoDEX fee",
       "splitBuilder": "Builder fee",
-      "splitNet": "Net after 1 min"
+      "splitNet": "Net after 1 min",
+      "mfePartial": "MFE (partial)",
+      "maePartial": "MAE (partial)",
+      "partialNote": "Prices cover the first 24 hours of the hold only."
     }
   }
 }
