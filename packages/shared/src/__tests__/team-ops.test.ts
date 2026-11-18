@@ -67,6 +67,16 @@ describe("team incidents (#241)", () => {
     expect(TEAM_INCIDENT_SEVERITY.cancel_unconfirmed).toBe("critical");
     expect(TEAM_INCIDENT_SEVERITY.ledger_repaired).toBe("info");
     expect(TEAM_INCIDENT_SEVERITY.orphan_cancelled).toBe("warning");
+    // #253: bot chờ đọc vị thế để kiểm tra sổ cái quá 5 phút.
+    expect(TEAM_INCIDENT_SEVERITY.repair_waiting).toBe("warning");
+    expect(
+      teamOpsEventSchema.safeParse({
+        type: "team_incident",
+        kind: "repair_waiting",
+        botId: "0b5c1f9e-4a7d-4f00-9c3e-12ab34cd56ef",
+        detail: "position not read for 5 min",
+      }).success,
+    ).toBe(true);
     const bot = "0b5c1f9e-4a7d-4f00-9c3e-12ab34cd56ef";
     expect(
       teamIncidentThrottle({ kind: "late_fill_adopted", botId: bot, market: "ETH-USD" }),

@@ -228,6 +228,8 @@ export const TEAM_INCIDENT_SEVERITY = {
   ledger_repaired: "info",
   /** Quét lệnh mồ côi của Volume Farm đã huỷ một lệnh bot không còn theo dõi (lần huỷ trước bị mất). */
   orphan_cancelled: "warning",
+  /** Volume Farm không đọc được vị thế để kiểm tra sổ cái quá 5 phút nên không giao dịch (DEC-317 sửa đổi, #253). */
+  repair_waiting: "warning",
   shard_lost: "warning",
   tick_slow: "warning",
   reads_skipped: "warning",

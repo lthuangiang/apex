@@ -104,6 +104,7 @@
         "cancel_unconfirmed": "Cancel not confirmed for 10 min",
         "ledger_repaired": "Bot ledger repaired from its own fill",
         "orphan_cancelled": "Untracked order cancelled",
+        "repair_waiting": "Bot waiting to check its position on SoDEX",
         "shard_lost": "Engine lost a shard",
         "tick_slow": "Engine ticks slow",
         "reads_skipped": "Engine reads skipped by the reserve",

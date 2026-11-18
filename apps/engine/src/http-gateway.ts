@@ -534,9 +534,10 @@ export class HttpGateway implements Gateway {
 
   async readPositions(
     account: AccountRef,
+    opts?: ReadOptions,
   ): Promise<Map<string, { size: string; entryPrice: string }>> {
     refusePaper(account);
-    const state = await this.reads.getPerpsAccountState(account.address);
+    const state = await this.#readsFor(opts).getPerpsAccountState(account.address);
     const out = new Map<string, { size: string; entryPrice: string }>();
     for (const p of state.P) {
       if (dec(p.sz).isZero()) continue;
