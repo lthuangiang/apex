@@ -551,7 +551,7 @@ describe("review PR #278 fixes", () => {
     expect(claude.titles).toEqual(["collect only"]);
   });
 
-  it("M3: a transient drop does not lock the story; the next article on the same key can trade", async () => {
+  it("R2: a transient drop does not lock; a retry within 2 h trades, measured from the first article", async () => {
     const items = [item("t1", T0 - 2 * MIN, "SOL hack first", { author: "Odaily" })];
     const claude = fakeClaude({ "SOL hack first": hack, "SOL hack second": hack });
     // Không có giá → NO_SODEX_PRICE (tạm thời).
@@ -566,32 +566,66 @@ describe("review PR #278 fixes", () => {
     book(second.sr, "SOL-USD", "99.99", "100.01", now);
     await second.sr.runCycle();
     const [t] = await db.select().from(signalPaperTrades);
-    expect(t).toMatchObject({ articleId: "t2", levelAtEntry: "high" });
+    expect(t).toMatchObject({ articleId: "t2", levelAtEntry: "high", retry: true });
+    // eventAt và moved_before_entry đo từ bài ĐẦU TIÊN (t1), không phải bài theo dõi.
+    expect(t?.eventAt.getTime()).toBe(T0 - 2 * MIN);
     const entered = await db.select().from(signalStories).where(eq(signalStories.locked, true));
     expect(entered).toHaveLength(1);
     expect(entered[0]).toMatchObject({ outcome: "entered", tradeId: t?.id });
+    // R3: hai lần thử cùng key = một câu chuyện.
+    const summary = await loadSignalResearchSummary(db, new Date(now), {
+      sosoMonthlyLimit: 9500,
+      claudeDailyInputBudget: 2_000_000,
+    });
+    expect(summary.funnel?.stories).toBe(1);
+    expect(summary.funnel?.levels).toEqual({ high: 1, medium: 0, low: 0 });
+    expect(summary.levels.find((l) => l.level === "high")?.signals).toBe(1);
+    const page = await loadSignalResearchTrades(db, { limit: 50, show: "entered" }, new Date(now));
+    expect(page.items[0]?.retry).toBe(true);
   });
 
-  it("M3: a non-transient drop (promotional) locks the key; later articles merge and never trade", async () => {
+  it("R2: a follow-up 28 h after a story that never traded merges as too old and never trades", async () => {
+    const items = [item("o1", T0 - 2 * MIN, "SOL hack day one", { author: "Odaily" })];
+    const claude = fakeClaude({ "SOL hack day one": hack, "SOL hack losses update": hack });
+    const first = setup({ items: () => items, claude, now: () => T0 });
+    await first.sr.runCycle(); // không có giá → bỏ, không khoá
+    const now = T0 + 28 * HOUR;
+    items.push(
+      item("o2", now - MIN, "SOL hack losses update", { author: "Bloomberg", category: 5 }),
+    );
+    const later = setup({ items: () => items, claude, now: () => now });
+    book(later.sr, "SOL-USD", "99.99", "100.01", now);
+    await later.sr.runCycle();
+    expect(await db.select().from(signalPaperTrades)).toHaveLength(0);
+    const all = await db.select().from(signalEvents).where(eq(signalEvents.articleId, "o2"));
+    expect(all.map((x) => `${x.stage}:${x.outcome}:${x.reason ?? ""}`)).toContain(
+      "filter:merge:STORY_TOO_OLD",
+    );
+    expect(await db.select().from(signalStories)).toHaveLength(1);
+  });
+
+  it("R1: an article-level drop (promotional) never locks or adds a source; the real article then trades", async () => {
     const promo = { ...hack, promotional: true };
     const items = [item("p1", T0 - 2 * MIN, "promo SOL hack", { author: "kol" })];
     const claude = fakeClaude({ "promo SOL hack": promo, "real SOL hack": hack });
     const s = setup({ items: () => items, claude, now: () => T0 });
     book(s.sr, "SOL-USD", "99.99", "100.01", T0);
     await s.sr.runCycle();
-    const [st] = await db.select().from(signalStories);
-    expect(st).toMatchObject({ outcome: "dropped", locked: true });
+    expect(await db.select().from(signalStories)).toHaveLength(0);
+    const [drop] = await db
+      .select()
+      .from(signalEvents)
+      .where(eq(signalEvents.reason, "PROMOTIONAL"));
+    expect(drop).toMatchObject({ stage: "understand", outcome: "drop", storyId: null });
     items.push(item("p2", T0 - MIN, "real SOL hack", { author: "Bloomberg", category: 5 }));
     const now = T0 + MIN;
     const s2 = setup({ items: () => items, claude, now: () => now });
     book(s2.sr, "SOL-USD", "99.99", "100.01", now);
     await s2.sr.runCycle();
-    expect(await db.select().from(signalPaperTrades)).toHaveLength(0);
-    const merges = await db
-      .select()
-      .from(signalEvents)
-      .where(eq(signalEvents.reason, "SAME_STORY"));
-    expect(merges.map((e) => e.articleId)).toEqual(["p2"]);
+    const [t] = await db.select().from(signalPaperTrades);
+    expect(t).toMatchObject({ articleId: "p2", retry: false, levelAtEntry: "medium" });
+    const [st] = await db.select().from(signalStories);
+    expect(st?.sources).toEqual([expect.objectContaining({ name: "Bloomberg" })]);
   });
 
   it("M4: the random baseline is stored once the hold window is over, and the summary reads it", async () => {
@@ -601,6 +635,9 @@ describe("review PR #278 fixes", () => {
     const s = setup({ items: () => items, claude, now: () => now });
     book(s.sr, "SOL-USD", "99.99", "100.01", T0);
     await s.sr.runCycle();
+    // MFE / MAE null tới lần quan sát giá đầu tiên của watcher (không bao giờ 0 khi chưa thấy giá).
+    const [opened] = await db.select().from(signalPaperTrades);
+    expect(opened).toMatchObject({ mfePct: null, maePct: null });
     // Đóng ở hết giữ tối đa, rồi chu kỳ sau cửa sổ giữ: random được tính từ nến.
     const end = T0 + 24 * HOUR;
     now = end;

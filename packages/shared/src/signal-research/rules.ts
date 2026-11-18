@@ -88,6 +88,8 @@ export const SignalReason = {
   wrongAssetKind: "CATALYST_ASSET_MISMATCH",
   // filter
   sameStory: "SAME_STORY",
+  /** Câu chuyện chưa vào lệnh nhưng bài đầu tiên đã quá `retryWindowMinutes`: gộp, không vào lệnh. */
+  storyTooOld: "STORY_TOO_OLD",
   sourceLate: "SOURCE_LATE",
   noPrice: "NO_SODEX_PRICE",
   noBookData: "NO_BOOK_DATA",
@@ -178,6 +180,11 @@ export const NEWS_RULES = {
   minTpCostMultiple: "2",
   /** Phí taker SoDEX dự phòng (%) khi chưa có `takerFee` của market; builder fee mỗi chiều (phần mười bp). */
   builderFeeRate: 10,
+  /**
+   * Câu chuyện chưa từng vào lệnh chỉ được thử lại trong ngần này phút kể từ bài đầu tiên được tính (edge của tin mất
+   * nhanh); quá thì bài sau gộp vào với lý do `STORY_TOO_OLD`, không vào lệnh.
+   */
+  retryWindowMinutes: 120,
   /** Story key (token + loại tin) đã có trong ngần này ngày → gộp, không bao giờ mở lại. */
   storyWindowDays: 7,
   /** Bài tới tay DeskLabs trễ hơn ngần này sau giờ đăng → nguồn không đúng giờ. */
@@ -336,17 +343,3 @@ export const NEWS_LIMIT_DEFAULTS = {
   claudeMaxCallsPerCycle: 50,
   sosoMaxPages: 2,
 } as const;
-
-/**
- * Lý do bị loại KHOÁ story key (token + loại tin, 7 ngày) cùng với việc đã mở lệnh (DEC-TBD-news-paper-trading, M3 của
- * review PR #278): bản chất của bài, không đổi nếu thử lại. Mọi lý do khác (không có giá / sổ lệnh / lịch sử, nguồn trễ,
- * Claude lỗi, hết ngân sách, chi phí, đang có lệnh mở) không khoá: bài sau cùng key được thử lại.
- */
-export const LOCKING_DROP_REASONS: ReadonlySet<string> = new Set([
-  "NOT_A_SIGNAL_TYPE",
-  "CATALYST_ASSET_MISMATCH",
-  "PASSING_MENTION",
-  "PROMOTIONAL",
-  "EVENT_TOO_OLD",
-  "STALE_NEWS",
-]);

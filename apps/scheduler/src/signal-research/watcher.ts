@@ -4,8 +4,8 @@ import {
   dec,
   exitCheck,
   favourableMovePct,
+  Decimal,
   midOf,
-  type Decimal,
   NEWS_RULES,
   SignalOutcome,
   SignalReason,
@@ -48,7 +48,10 @@ export class PaperWatcher {
   #busy = false;
   #healthAt = 0;
   /** MFE / MAE (%, theo chiều lệnh, giá giữa) của lệnh đang mở; ghi DB mỗi phút nếu đổi, và lúc đóng. */
-  readonly #excursion = new Map<string, { best: Decimal; worst: Decimal; dirty: boolean }>();
+  readonly #excursion = new Map<
+    string,
+    { best: Decimal | null; worst: Decimal | null; dirty: boolean }
+  >();
   #savedAt = 0;
 
   constructor(deps: WatcherDeps) {
@@ -91,8 +94,9 @@ export class PaperWatcher {
       for (const t of this.#open)
         if (!this.#excursion.has(t.id))
           this.#excursion.set(t.id, {
-            best: dec(t.mfePct ?? "0"),
-            worst: dec(t.maePct ?? "0"),
+            // null tới lần quan sát giá đầu tiên (không bao giờ 0 khi chưa thấy giá).
+            best: t.mfePct === null ? null : dec(t.mfePct),
+            worst: t.maePct === null ? null : dec(t.maePct),
             dirty: false,
           });
     }
@@ -115,8 +119,13 @@ export class PaperWatcher {
           dec(t.entryPrice),
           midOf(q),
         );
-        if (m.gt(ex.best)) Object.assign(ex, { best: m, dirty: true });
-        if (m.lt(ex.worst)) Object.assign(ex, { worst: m, dirty: true });
+        // MFE ≥ 0, MAE ≤ 0 (so với giá vào); lần quan sát đầu tiên đặt cả hai.
+        const best = ex.best ?? new Decimal(0);
+        const worst = ex.worst ?? new Decimal(0);
+        if (ex.best === null || m.gt(best))
+          Object.assign(ex, { best: m.gt(best) ? m : best, dirty: true });
+        if (ex.worst === null || m.lt(worst))
+          Object.assign(ex, { worst: m.lt(worst) ? m : worst, dirty: true });
       }
       const exit = exitCheck(
         {
@@ -151,7 +160,10 @@ export class PaperWatcher {
             resultPct: r.resultPct.toFixed(18),
             ...(ex === undefined
               ? {}
-              : { mfePct: ex.best.toFixed(18), maePct: ex.worst.toFixed(18) }),
+              : {
+                  mfePct: ex.best?.toFixed(18) ?? null,
+                  maePct: ex.worst?.toFixed(18) ?? null,
+                }),
             updatedAt: new Date(now),
           })
           .where(and(eq(signalPaperTrades.id, t.id), eq(signalPaperTrades.status, "open")))
@@ -195,7 +207,7 @@ export class PaperWatcher {
         ex.dirty = false;
         await db
           .update(signalPaperTrades)
-          .set({ mfePct: ex.best.toFixed(18), maePct: ex.worst.toFixed(18) })
+          .set({ mfePct: ex.best?.toFixed(18) ?? null, maePct: ex.worst?.toFixed(18) ?? null })
           .where(and(eq(signalPaperTrades.id, id), eq(signalPaperTrades.status, "open")));
       }
     }

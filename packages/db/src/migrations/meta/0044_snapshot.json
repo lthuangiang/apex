@@ -1,5 +1,5 @@
 {
-  "id": "54d6249b-41e3-4ff8-93c7-4e87e93134e1",
+  "id": "cb76bbc1-b441-44e0-879c-4d60d73f57e8",
   "prevId": "c9be797e-7df3-4108-a57e-2a6b2549a900",
   "version": "7",
   "dialect": "postgresql",
@@ -7137,6 +7137,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "retry": {
+          "name": "retry",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "later_high": {
           "name": "later_high",
           "type": "boolean",
@@ -7270,7 +7277,7 @@
           "name": "signal_paper_trades_random_todo_idx",
           "columns": [
             {
-              "expression": "exited_at",
+              "expression": "max_hold_until",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

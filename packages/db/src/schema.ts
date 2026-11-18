@@ -1743,9 +1743,9 @@ export const signalStories = pgTable(
     /** Mức tính lại sau khi có thêm nguồn ("later level"). */
     laterLevel: text("later_level").notNull(),
     /**
-     * Story khoá key 7 ngày chỉ khi đã mở lệnh (`entered`) hoặc bị loại vì lý do không tạm thời (`dropped`,
-     * `LOCKING_DROP_REASONS`). Bị bỏ vì lý do tạm thời (`skipped`: không có giá, nguồn trễ, Claude lỗi…) thì không khoá:
-     * bài sau cùng key được thử lại (DEC-TBD-news-paper-trading).
+     * Story khoá key 7 ngày CHỈ khi đã mở lệnh (`entered`, `locked = true`). Bị bỏ ở Filter (`skipped`, `locked = false`)
+     * thì bài sau cùng key được thử lại, nhưng chỉ trong `retryWindowMinutes` kể từ bài đầu tiên được tính
+     * (DEC-TBD-news-paper-trading). Bài bị loại ở Understand không tạo story.
      */
     outcome: text("outcome").notNull(),
     locked: boolean("locked").notNull(),
@@ -1844,6 +1844,8 @@ export const signalPaperTrades = pgTable(
     levelAtEntry: text("level_at_entry").notNull(),
     sourcesAtEntry: jsonb("sources_at_entry").notNull(),
     outsideMarketHours: boolean("outside_market_hours").notNull(),
+    /** Vào lệnh ở lần thử lại của câu chuyện (bài đầu bị bỏ vì lý do tạm thời); `eventAt` là giờ đăng của bài đầu. */
+    retry: boolean("retry").notNull().default(false),
     laterHigh: boolean("later_high").notNull().default(false),
     /** `book` (giá tốt nhất SoDEX) hoặc `last_spread` (giá gần nhất ± nửa spread đo theo giờ). */
     priceSource: text("price_source").notNull(),
@@ -1865,7 +1867,7 @@ export const signalPaperTrades = pgTable(
     index("signal_paper_trades_opened_idx").on(t.openedAt),
     index("signal_paper_trades_story_idx").on(t.storyId),
     index("signal_paper_trades_random_todo_idx")
-      .on(t.exitedAt)
+      .on(t.maxHoldUntil)
       .where(sql`${t.status} = 'closed' and ${t.randomDoneAt} is null`),
   ],
 );

@@ -9,7 +9,6 @@ import {
   eventTooOld,
   isUsMarketOpen,
   levelOf,
-  LOCKING_DROP_REASONS,
   movedPct,
   NEWS_RULES,
   normalizedText,
@@ -387,13 +386,9 @@ export async function runNewsCycle(deps: PipelineDeps): Promise<CycleReport> {
             catalyst: c.catalyst,
           };
     if (reason !== null || signal === null) {
-      const r = reason ?? SignalReason.notSignalType;
-      // Lý do không tạm thời + đã có token và loại tin → khoá story key (M3).
-      const storyId =
-        signal !== null && LOCKING_DROP_REASONS.has(r)
-          ? await lockDroppedStory(db, signal, now)
-          : null;
-      await drop(r, classification, storyId);
+      // Lỗi của BÀI (quảng cáo, nhắc qua, không thuộc danh sách, sự kiện cũ…): chỉ ghi event. Không tạo story, không thêm
+      // nguồn, không khoá key (review PR #278 R1).
+      await drop(reason ?? SignalReason.notSignalType, classification);
       continue;
     }
     const rule = catalystRule(signal.catalyst);
@@ -588,10 +583,10 @@ async function lockedStory(db: Db, key: string, now: number) {
   return s;
 }
 
-/** Nguồn của các lần thử trước (không khoá) cùng key trong 7 ngày: vẫn là nguồn độc lập của cùng câu chuyện. */
-async function earlierAttemptSources(db: Db, key: string, now: number): Promise<StorySourceRef[]> {
+/** Các lần thử trước (không khoá, chưa vào lệnh) cùng key trong 7 ngày, cũ nhất trước. */
+async function earlierAttempts(db: Db, key: string, now: number) {
   const rows = await db
-    .select({ sources: signalStories.sources })
+    .select({ id: signalStories.id, sources: signalStories.sources })
     .from(signalStories)
     .where(
       and(
@@ -602,9 +597,9 @@ async function earlierAttemptSources(db: Db, key: string, now: number): Promise<
       ),
     )
     .orderBy(asc(signalStories.firstSeenAt));
-  return rows.flatMap((r) => {
+  return rows.map((r) => {
     const p = storySources.safeParse(r.sources);
-    return p.success ? p.data : [];
+    return { id: r.id, sources: p.success ? p.data : [] };
   });
 }
 
@@ -644,45 +639,13 @@ async function mergeInto(
   return later;
 }
 
-/** Bị loại ở Understand vì lý do không tạm thời: khoá key (story `dropped`), hoặc thêm nguồn vào story đang khoá. */
-async function lockDroppedStory(db: Db, s: Signal, now: number): Promise<string | null> {
-  const key = storyKey(s.candidate.market, s.catalyst);
-  const existing = await lockedStory(db, key, now);
-  if (existing !== undefined) {
-    const prev = storySources.safeParse(existing.sources);
-    const sources = [...(prev.success ? prev.data : []), ...sourcesOf([s])];
-    await db
-      .update(signalStories)
-      .set({ sources, laterLevel: levelOf(sources), updatedAt: new Date(now) })
-      .where(eq(signalStories.id, existing.id));
-    return existing.id;
-  }
-  const sources = [...(await earlierAttemptSources(db, key, now)), ...sourcesOf([s])];
-  const level = levelOf(sources);
-  const [row] = await db
-    .insert(signalStories)
-    .values({
-      storyKey: key,
-      market: s.candidate.market,
-      catalyst: s.catalyst,
-      direction: catalystRule(s.catalyst).direction,
-      firstArticleId: s.articleId,
-      firstSeenAt: new Date(now),
-      sources,
-      levelAtEntry: level,
-      laterLevel: level,
-      outcome: "dropped",
-      locked: true,
-      ruleVersion: NEWS_RULES.version,
-    })
-    .returning({ id: signalStories.id });
-  return row?.id ?? null;
-}
-
 /**
- * Một nhóm tín hiệu cùng story key trong chu kỳ này. Story đang khoá trong 7 ngày → gộp, không bao giờ mở lại. Không có →
- * một lần thử mới: mức khoá ở lần quyết định này (nguồn của lần thử trước + nhóm này), kiểm Filter cho bài đầu tiên. Mở
- * lệnh → story `entered`, khoá key. Bị bỏ ở Filter → story `skipped`, KHÔNG khoá (bài sau cùng key được thử lại).
+ * Một nhóm tín hiệu cùng story key trong chu kỳ này.
+ * - Story đã vào lệnh trong 7 ngày (khoá) → gộp, không bao giờ mở lại.
+ * - Có lần thử trước chưa vào lệnh (bị bỏ ở Filter) → chỉ thử lại nếu bài đầu tiên được tính của câu chuyện còn trong
+ *   `retryWindowMinutes` (2 giờ); quá thì gộp với lý do `STORY_TOO_OLD`. Lần thử lại: mức tính cả nguồn của lần trước,
+ *   `eventAt` và `moved_before_entry` đo từ bài ĐẦU TIÊN của câu chuyện, lệnh gắn `retry`.
+ * - Mở lệnh → story `entered`, khoá key. Bị bỏ ở Filter → story `skipped`, không khoá.
  */
 async function decideStory(
   deps: PipelineDeps,
@@ -707,8 +670,40 @@ async function decideStory(
     return { opened: false, skipped: group.map(() => SignalReason.sameStory) };
   }
 
+  const earlier = await earlierAttempts(db, key, now);
+  const firstSource = earlier
+    .flatMap((e) => e.sources)
+    .reduce<StorySourceRef | null>((m, x) => (m === null || x.at < m.at ? x : m), null);
+  const retry = firstSource !== null;
+  const storyStart = firstSource === null ? first.publishedAt : Date.parse(firstSource.at);
+  const lastAttempt = earlier.at(-1);
+  if (
+    retry &&
+    lastAttempt !== undefined &&
+    now - storyStart > NEWS_RULES.retryWindowMinutes * MIN_MS
+  ) {
+    const sources = [...lastAttempt.sources, ...sourcesOf(group)];
+    await db.transaction(async (tx) => {
+      await tx
+        .update(signalStories)
+        .set({ sources, laterLevel: levelOf(sources), updatedAt: new Date(now) })
+        .where(eq(signalStories.id, lastAttempt.id));
+      await recordEvents(
+        tx,
+        group.map((s) =>
+          ev(s, SignalStage.filter, SignalOutcome.merge, {
+            storyId: lastAttempt.id,
+            reason: SignalReason.storyTooOld,
+            detail: { storyStartedAt: new Date(storyStart).toISOString() },
+          }),
+        ),
+      );
+    });
+    return { opened: false, skipped: group.map(() => SignalReason.storyTooOld) };
+  }
+
   const rule = catalystRule(first.catalyst);
-  const sources = [...(await earlierAttemptSources(db, key, now)), ...sourcesOf(group)];
+  const sources = [...earlier.flatMap((e) => e.sources), ...sourcesOf(group)];
   const levelAtEntry = levelOf(sources);
   const market = first.candidate.market;
   const [story] = await db
@@ -788,7 +783,7 @@ async function decideStory(
   if (costFail !== null) return fail(costFail, costDetail);
 
   // ── Decide: mở lệnh giấy ──────────────────────────────────────────────────────────────────────────────────
-  const before = await priceBefore(db, market, first.publishedAt);
+  const before = await priceBefore(db, market, storyStart);
   const moved = before === null ? null : movedPct(before, plan.entryMid);
   const outside =
     STOCK_MARKET_SET.has(market) &&
@@ -802,7 +797,8 @@ async function decideStory(
           lane: NEWS_RULES.lane,
           label: "live",
           storyId,
-          eventAt: new Date(first.publishedAt),
+          eventAt: new Date(storyStart),
+          retry,
           seenAt: new Date(first.collectedAt),
           articleId: first.articleId,
           market,
@@ -857,6 +853,7 @@ async function decideStory(
             tpPrice: plan.tpPrice.toFixed(),
             slPrice: plan.slPrice.toFixed(),
             priceSource: quote.source,
+            retry,
           },
         }),
       ]);

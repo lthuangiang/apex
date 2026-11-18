@@ -73,6 +73,7 @@ CREATE TABLE "signal_paper_trades" (
 	"level_at_entry" text NOT NULL,
 	"sources_at_entry" jsonb NOT NULL,
 	"outside_market_hours" boolean NOT NULL,
+	"retry" boolean DEFAULT false NOT NULL,
 	"later_high" boolean DEFAULT false NOT NULL,
 	"price_source" text NOT NULL,
 	"status" text NOT NULL,
@@ -137,6 +138,6 @@ CREATE INDEX "signal_events_trade_idx" ON "signal_events" USING btree ("trade_id
 CREATE UNIQUE INDEX "signal_paper_trades_open_uq" ON "signal_paper_trades" USING btree ("lane","market") WHERE "signal_paper_trades"."status" = 'open' and "signal_paper_trades"."label" = 'live';--> statement-breakpoint
 CREATE INDEX "signal_paper_trades_opened_idx" ON "signal_paper_trades" USING btree ("opened_at");--> statement-breakpoint
 CREATE INDEX "signal_paper_trades_story_idx" ON "signal_paper_trades" USING btree ("story_id");--> statement-breakpoint
-CREATE INDEX "signal_paper_trades_random_todo_idx" ON "signal_paper_trades" USING btree ("exited_at") WHERE "signal_paper_trades"."status" = 'closed' and "signal_paper_trades"."random_done_at" is null;--> statement-breakpoint
+CREATE INDEX "signal_paper_trades_random_todo_idx" ON "signal_paper_trades" USING btree ("max_hold_until") WHERE "signal_paper_trades"."status" = 'closed' and "signal_paper_trades"."random_done_at" is null;--> statement-breakpoint
 CREATE INDEX "signal_stories_key_idx" ON "signal_stories" USING btree ("story_key","first_seen_at");--> statement-breakpoint
 CREATE INDEX "signal_stories_locked_idx" ON "signal_stories" USING btree ("story_key","first_seen_at") WHERE "signal_stories"."locked";

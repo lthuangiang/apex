@@ -163,6 +163,35 @@ const classification = z.looseObject({ eventDate: z.string().nullable().optional
 
 // ── Tổng kết ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Câu chuyện "logic" (review PR #278 R3): mỗi lần thử của cùng story key là một dòng `signal_stories`, nhưng chỉ tính MỘT
+ * câu chuyện cho mỗi key trong mỗi cửa sổ 7 ngày (tính từ dòng đầu của chuỗi). Mức của câu chuyện = mức của dòng đã vào
+ * lệnh nếu có, không thì của lần thử cuối. `rows` phải xếp theo key rồi thời gian.
+ */
+export function logicalStories(
+  rows: readonly { key: string; at: Date; entry: string; later: string; locked: boolean }[],
+): { key: string; entry: string; later: string }[] {
+  const out: { key: string; entry: string; later: string }[] = [];
+  let chain: (typeof rows)[number][] = [];
+  const flush = () => {
+    const rep = chain.find((r) => r.locked) ?? chain.at(-1);
+    if (rep !== undefined) out.push({ key: rep.key, entry: rep.entry, later: rep.later });
+    chain = [];
+  };
+  for (const r of rows) {
+    const start = chain[0];
+    if (
+      start !== undefined &&
+      (start.key !== r.key ||
+        r.at.getTime() - start.at.getTime() > NEWS_RULES.storyWindowDays * DAY_MS)
+    )
+      flush();
+    chain.push(r);
+  }
+  flush();
+  return out;
+}
+
 export interface SummaryLimits {
   sosoMonthlyLimit: number;
   claudeDailyInputBudget: number;
@@ -286,11 +315,19 @@ export async function loadSignalResearchSummary(
     .where(eq(signalEvents.ruleVersion, v))
     .groupBy(signalEvents.stage, signalEvents.outcome, signalEvents.reason);
   check();
-  const stories = await q
-    .select({ entry: signalStories.levelAtEntry, later: signalStories.laterLevel, n: count() })
-    .from(signalStories)
-    .where(eq(signalStories.ruleVersion, v))
-    .groupBy(signalStories.levelAtEntry, signalStories.laterLevel);
+  const stories = logicalStories(
+    await q
+      .select({
+        key: signalStories.storyKey,
+        at: signalStories.firstSeenAt,
+        entry: signalStories.levelAtEntry,
+        later: signalStories.laterLevel,
+        locked: signalStories.locked,
+      })
+      .from(signalStories)
+      .where(eq(signalStories.ruleVersion, v))
+      .orderBy(asc(signalStories.storyKey), asc(signalStories.firstSeenAt)),
+  );
   check();
   const all = await q
     .select()
@@ -353,8 +390,7 @@ export async function loadSignalResearchSummary(
   const weeksRunning =
     enabledSince === null ? null : Math.max((nowMs - enabledSince.getTime()) / (7 * DAY_MS), 1 / 7);
 
-  const storiesAt = (lv: string) =>
-    stories.filter((s) => s.entry === lv).reduce((a, s) => a + s.n, 0);
+  const storiesAt = (lv: string) => stories.filter((s) => s.entry === lv).length;
   const levels: ResearchLevelRow[] = (["high", "medium", "low"] as const).map((lv) => {
     const trades = all.filter((t) => t.levelAtEntry === lv);
     const done = closed.filter((t) => t.levelAtEntry === lv);
@@ -368,11 +404,7 @@ export async function loadSignalResearchSummary(
       long: trades.filter((t) => t.direction === "long").length,
       short: trades.filter((t) => t.direction === "short").length,
       laterHigh:
-        lv === "high"
-          ? null
-          : stories
-              .filter((s) => s.entry === lv && s.later === "high")
-              .reduce((a, s) => a + s.n, 0),
+        lv === "high" ? null : stories.filter((s) => s.entry === lv && s.later === "high").length,
       avgPct: c.avgPct,
       randomPct: c.randomPct,
       diffPct: c.diffPct,
@@ -445,7 +477,7 @@ export async function loadSignalResearchSummary(
           articlesRead: articles?.n ?? null,
           soso: { used: Number(month?.n ?? 0), limit: limits.sosoMonthlyLimit },
           collected: events("collect", "pass"),
-          stories: stories.reduce((a, s) => a + s.n, 0),
+          stories: stories.length,
           merged: events("filter", "merge"),
           signals: events("understand", "pass"),
           levels: { high: storiesAt("high"), medium: storiesAt("medium"), low: storiesAt("low") },
@@ -675,6 +707,7 @@ function tradeItem(t: TradeRow, ctx: Ctx, now: number): ResearchTrade {
     delaySecs: Math.max(0, Math.round((t.seenAt.getTime() - t.eventAt.getTime()) / 1000)),
     what: whatOf(story, a, t.catalyst, t.sourcesAtEntry),
     skipped: null,
+    retry: t.retry,
     movedBeforePct: numOf(t.movedBeforeEntryPct),
     entry: decOut(t.entryPrice),
     tp: decOut(t.tpPrice),
@@ -713,6 +746,7 @@ function skippedItem(e: EventRow, ctx: Ctx): ResearchTrade | null {
       tpPct: tp,
       neededPct: cost === null ? null : num(cost.mul(NEWS_RULES.minTpCostMultiple)),
     },
+    retry: false,
     movedBeforePct: null,
     entry: null,
     tp: null,

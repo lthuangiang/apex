@@ -232,7 +232,13 @@ export const researchTradeSchema = z.object({
   side,
   seenAt: iso,
   delayKind: z.enum(["afterRelease", "afterFill", "atCandleClose", "atFundingTime"]),
+  /** News: từ giờ đăng bài ĐẦU TIÊN của câu chuyện tới lúc DeskLabs thấy bài làm vào lệnh (lần thử lại thì dài hơn). */
   delaySecs: int.nullable(),
+  /**
+   * Vào lệnh ở lần thử lại của câu chuyện (bài đầu bị bỏ vì lý do tạm thời, thử lại trong 2 giờ); giá đã chạy trước khi
+   * vào lệnh đo từ bài đầu. Luôn false với tín hiệu bị bỏ và với replay.
+   */
+  retry: z.boolean(),
   what: researchWhatSchema,
   skipped: researchSkipSchema.nullable(),
   movedBeforePct: z.number().nullable(),
