@@ -130,6 +130,7 @@ describe("VB replay loader", () => {
         loadEntries(q, {
           from: new Date(T0 - 60_000),
           to: new Date(T0 + 3_600_000),
+          now: T0 + 86_400_000,
           ticks: new Map([[withMid, new Decimal("0.01")]]),
           checkDeadline,
         }),

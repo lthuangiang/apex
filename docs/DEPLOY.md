@@ -268,17 +268,16 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "orders_bot_filled_idx" ON "orders" USIN
 
 Ra `true` thì deploy như thường (migration 0043 không làm gì).
 
-### 2.14 Retention snapshot (#229): migration 0044 tạo index trên `bot_events` và `orders`
+### 2.14 Retention snapshot (#229): index trên `bot_events` và `orders` do scheduler tự tạo
 
-Migration `0044_snapshot_retention_idx` tạo hai index một phần cho job retention của scheduler: `bot_events (occurred_at) WHERE payload ? 'signal'` và `orders (created_at) WHERE context IS NOT NULL`. Giống 0043, migrator chạy trong transaction nên không dùng được `CONCURRENTLY`; mỗi lệnh quét cả bảng và giữ khoá SHARE (chặn ghi, không chặn đọc) trong lúc build. Migration đặt `SET LOCAL lock_timeout = '5s'`: nếu một transaction dài đang giữ bảng thì migration báo lỗi thay vì xếp hàng và chặn mọi lệnh ghi phía sau; khi đó chạy lại `migrate` lúc ít bot chạy. Xem trước kích thước (`select count(*) from bot_events; select count(*) from orders;`). Bảng lớn thì tạo tay trước khi deploy để migration chỉ còn `IF NOT EXISTS`:
+Không cần bước tay khi deploy. Job retention của scheduler (leader, vòng 10 phút; lượt đầu 10 phút sau khi scheduler giành lease) cần hai index một phần: `bot_events_signal_idx (occurred_at) WHERE payload ? 'signal'` và `orders_context_created_idx (created_at) WHERE context IS NOT NULL`. Không có migration nào tạo chúng (migrator chạy trong transaction nên chỉ tạo được bằng CREATE INDEX thường, chặn ghi của engine suốt lúc build). Job tự tạo bằng `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, ngoài transaction, một lần: không chặn ghi hay đọc, chỉ mất thời gian quét bảng. Trước mỗi lượt job kiểm `pg_index.indisvalid`; index INVALID (build bị huỷ, ví dụ scheduler restart giữa chừng) thì job `DROP INDEX CONCURRENTLY` và lượt sau tạo lại. Job chỉ dọn dòng khi cả hai index hợp lệ.
+
+Log của scheduler: `signal snapshot index created` khi tạo xong, `invalid signal snapshot index dropped, rebuilt next run` khi bỏ index INVALID, `old signal snapshots stripped` khi có dòng được dọn, `signal snapshot retention failed` khi một lượt lỗi (lượt sau tự thử lại). Kiểm tay nếu cần:
 
 ```sql
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "bot_events_signal_idx" ON "bot_events" USING btree ("occurred_at") WHERE "bot_events"."payload" ? 'signal';
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "orders_context_created_idx" ON "orders" USING btree ("created_at") WHERE "orders"."context" IS NOT NULL;
-select indexrelid::regclass, indisvalid from pg_index where indexrelid in ('bot_events_signal_idx'::regclass, 'orders_context_created_idx'::regclass);
+select c.relname, i.indisvalid from pg_index i join pg_class c on c.oid = i.indexrelid
+ where c.relname in ('bot_events_signal_idx', 'orders_context_created_idx');
 ```
-
-Index nào ra `indisvalid = false` thì `DROP INDEX CONCURRENTLY IF EXISTS <tên>;` rồi tạo lại như 2.13. Sau deploy, scheduler (leader) dọn mỗi 10 phút; log `old signal snapshots stripped` khi có dòng được dọn, `signal snapshot retention failed` khi một lượt lỗi (lượt sau tự thử lại).
 
 ## 3. Deploy hằng ngày
 1. PR merge vào `main`, CI xanh.

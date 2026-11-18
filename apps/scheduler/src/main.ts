@@ -30,7 +30,7 @@ import { checkMcpAlerts, redisAlertStore } from "./mcp-alerts";
 import { purgeMcp } from "./mcp-purge";
 import { fitMmModelDaily } from "./mm-model";
 import { snapshotAndCheck } from "./risk";
-import { stripOldSnapshots } from "./snapshot-retention";
+import { runSnapshotRetention } from "./snapshot-retention";
 import { redisIncidentReadStore, teamIncidentRunner } from "./team-incidents";
 
 // scheduler: một bản active (leader lease). Hiện có job market stats hằng ngày; các job lịch khác
@@ -225,7 +225,15 @@ async function snapshotRetentionTick() {
   if (snapshotRetentionRunning) return;
   snapshotRetentionRunning = true;
   try {
-    const r = await stripOldSnapshots(db, Date.now());
+    // Index của job tạo bằng CONCURRENTLY ở đây, không trong migration (review PR #257).
+    const { indexes, ...r } = await runSnapshotRetention(db, Date.now());
+    if (indexes.created.length > 0)
+      log.info({ created: indexes.created }, "signal snapshot index created");
+    if (indexes.dropped.length > 0)
+      log.warn(
+        { dropped: indexes.dropped },
+        "invalid signal snapshot index dropped, rebuilt next run",
+      );
     if (r.signals + r.contexts > 0) log.info(r, "old signal snapshots stripped");
   } finally {
     snapshotRetentionRunning = false;

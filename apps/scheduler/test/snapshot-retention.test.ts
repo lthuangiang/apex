@@ -3,7 +3,13 @@ import { SIGNAL_RANGE_MS, SIGNAL_SNAPSHOT_RETENTION_DAYS } from "@drift/shared";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { snapshotCutoff, stripOldSnapshots } from "../src/snapshot-retention";
+import {
+  ensureSnapshotIndexes,
+  runSnapshotRetention,
+  SNAPSHOT_INDEXES,
+  snapshotCutoff,
+  stripOldSnapshots,
+} from "../src/snapshot-retention";
 
 // Retention snapshot của Signal Analysis (#229): bỏ `payload.signal` / `orders.context` quá hạn, giữ nguyên dòng.
 
@@ -76,6 +82,32 @@ describe("signal snapshot retention (#229)", () => {
     expect(snapshotCutoff(NOW).toISOString()).toBe("2026-10-04T00:00:00.000Z");
   });
 
+  it("creates both partial indexes itself, concurrently and once; migrations do not (review PR #257)", async () => {
+    const names = SNAPSHOT_INDEXES.map((i) => i.name);
+    const indexes = async () =>
+      (
+        await pool.query<{ name: string; valid: boolean }>(
+          "select c.relname as name, i.indisvalid as valid from pg_index i join pg_class c on c.oid = i.indexrelid where c.relname = any($1) order by 1",
+          [names],
+        )
+      ).rows;
+    // Migration không tạo index nào (CREATE INDEX trong transaction của migrator chặn ghi).
+    expect(await indexes()).toEqual([]);
+    // CREATE INDEX CONCURRENTLY không chạy được trong transaction: lượt này thành công nghĩa là đã chạy ngoài transaction.
+    const first = await runSnapshotRetention(db, NOW);
+    expect(first).toEqual({
+      indexes: { ready: true, created: names, dropped: [] },
+      signals: 0,
+      contexts: 0,
+    });
+    expect(await indexes()).toEqual([
+      { name: "bot_events_signal_idx", valid: true },
+      { name: "orders_context_created_idx", valid: true },
+    ]);
+    // Lượt sau chỉ kiểm, không tạo lại.
+    expect(await ensureSnapshotIndexes(db)).toEqual({ ready: true, created: [], dropped: [] });
+  });
+
   it("strips old signal snapshots and order contexts in batches but keeps every row", async () => {
     const oldEvents = await Promise.all(
       [46, 50, 60, 90, 120].map((d) => addEvent(d, { orders: ["drift-a"], signal: SIGNAL })),
@@ -115,7 +147,52 @@ describe("signal snapshot retention (#229)", () => {
     expect(ctx.get(freshOrder)?.context).toEqual(CONTEXT);
   });
 
+  it("drops an INVALID index, strips nothing that run, and rebuilds it on the next run (review PR #257)", async () => {
+    await ensureSnapshotIndexes(db);
+    // Giả lập một lần CREATE INDEX CONCURRENTLY bị huỷ giữa chừng: index còn đó nhưng INVALID.
+    await pool.query(
+      "update pg_index set indisvalid = false where indexrelid = 'orders_context_created_idx'::regclass",
+    );
+    const event = await addEvent(60, { signal: SIGNAL });
+    const order = await addOrder(60, CONTEXT);
+
+    const broken = await runSnapshotRetention(db, NOW);
+    expect(broken).toEqual({
+      indexes: { ready: false, created: [], dropped: ["orders_context_created_idx"] },
+      signals: 0,
+      contexts: 0,
+    });
+    // Không dọn gì khi một index chưa hợp lệ, kể cả bảng có index hợp lệ.
+    const payload = async () =>
+      (
+        await pool.query<{ payload: unknown }>("select payload from bot_events where id = $1", [
+          event,
+        ])
+      ).rows[0]?.payload;
+    expect(await payload()).toEqual({ signal: SIGNAL });
+    const { rows: gone } = await pool.query(
+      "select 1 from pg_class where relname = 'orders_context_created_idx'",
+    );
+    expect(gone).toHaveLength(0);
+
+    const rebuilt = await runSnapshotRetention(db, NOW);
+    expect(rebuilt.indexes).toEqual({
+      ready: true,
+      created: ["orders_context_created_idx"],
+      dropped: [],
+    });
+    expect(rebuilt.signals).toBeGreaterThanOrEqual(1);
+    expect(rebuilt.contexts).toBeGreaterThanOrEqual(1);
+    expect(await payload()).toEqual({});
+    const { rows } = await pool.query<{ context: unknown }>(
+      "select context from orders where id = $1",
+      [order],
+    );
+    expect(rows[0]?.context).toBeNull();
+  });
+
   it("finds expired rows through the partial indexes", async () => {
+    await ensureSnapshotIndexes(db);
     const client = await pool.connect();
     try {
       await client.query("set enable_seqscan = off");
